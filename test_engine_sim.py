@@ -55,6 +55,7 @@ class Fake:
         W.n += 1; tag = f'o:{W.n}'; W.stops[tag] = dict(s=s, ps=ps, q=float(qty), p=float(price)); return tag
     def cancel(self, s, tag): W.stops.pop(tag, None)
     def open_stop_tags(self, s): return {k for k, v in W.stops.items() if v['s'] == s}
+    def leverage_max(self, s): return 50
     def cancel_all(self, s):
         for k in [k for k, v in W.stops.items() if v['s'] == s]: W.stops.pop(k)
 

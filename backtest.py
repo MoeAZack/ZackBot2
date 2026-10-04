@@ -1,4 +1,4 @@
-"""Portfolio backtester for ZackBot strategies (same rules the live engine uses).
+"""Portfolio backtester for ZackBot strategies (same rules the live engine uses).  ENGINE_VERSION v3
 
 Fills: entries at next candle open; stop checked before anything else in a candle (conservative);
 targets/adds fill at their trigger price; signal exits at the candle close.
@@ -9,16 +9,30 @@ import pandas as pd
 import strategies as S
 
 FEE, SLIP, FUND_PER_BAR = 0.0005, 0.0002, 0.00005
-BE_BUF = 0.0015        # breakeven stop sits just past entry so fees are covered     # 0.01%/8h on 4h candles
+BE_BUF = 0.0015
+VERSION = 'v3'        # breakeven stop sits just past entry so fees are covered     # 0.01%/8h on 4h candles
 MIN_NOTIONAL = {'BTCUSDT': 50, 'ETHUSDT': 20, 'LINKUSDT': 20}
 
 
 class Book:
     """Shared data: indicator frames + cross-sectional context for a set of symbols."""
     def __init__(self, raw):      # raw: {sym: DataFrame t,o,h,l,c,v}
-        n = min(len(d) for d in raw.values())
-        self.syms = list(raw)
-        self.d = {s: S.indicators(raw[s].iloc[-n:].reset_index(drop=True)) for s in raw}
+        # align every coin on the SAME candle timestamps (intersection), so a missing candle can never shift one coin
+        # against another; bars missing inside the common window are reported in self.gaps
+        clean = {s: d.drop_duplicates('t').sort_values('t').reset_index(drop=True) for s, d in raw.items()}
+        common = None
+        for d in clean.values():
+            ts = pd.Index(pd.to_datetime(d.t))
+            common = ts if common is None else common.intersection(ts)
+        common = common.sort_values()
+        self.gaps = {}
+        if len(common):
+            lo, hi = common[0], common[-1]
+            for s_, d in clean.items():
+                inside = pd.to_datetime(d.t); inside = inside[(inside >= lo) & (inside <= hi)]
+                if len(inside) != len(common): self.gaps[s_] = int(len(inside) - len(common))
+        self.syms = list(clean)
+        self.d = {s_: S.indicators(d[pd.to_datetime(d.t).isin(common)].reset_index(drop=True)) for s_, d in clean.items()}
         self.t = self.d[self.syms[0]].t
         btc = 'BTCUSDT' if 'BTCUSDT' in self.d else self.syms[0]
         self.ctx = S.build_context(self.d, btc)
@@ -46,7 +60,9 @@ def kelly_mult(sl):
     return float(np.clip(k.get('frac', 0.5) * f / base * 2, k.get('min', 0.25), k.get('max', 2.0)))
 
 
-def run(book, sleeves, start=500.0, max_lev=10.0, daily_halt=0.08, t0=None, t1=None, warmup=220, fund_per_bar=None):
+def run(book, sleeves, start=500.0, max_lev=10.0, daily_halt=0.08, t0=None, t1=None, warmup=220, fund_per_bar=None, pessimistic='path'):
+    """pessimistic: how a stop tightened during a candle (breakeven / trailing / runner) is checked against that same candle.
+    'path' (default): infer the price path from the candle colour; 'worst': always assume the worst order; False: never (old v2)."""
     FPB = FUND_PER_BAR if fund_per_bar is None else fund_per_bar
     """sleeves: list of dict(key, share, risk, max_pos, sides(optional: long/short/both), mgmt(optional overrides),
     symbols(optional subset), params(optional))."""
@@ -76,7 +92,8 @@ def run(book, sleeves, start=500.0, max_lev=10.0, daily_halt=0.08, t0=None, t1=N
 
     eq, trades, curve = start, [], []
     day, day_start, halted = None, eq, False
-    days = pd.to_datetime(T).date
+    try: days = pd.to_datetime(T).tz_localize('UTC').tz_convert('Africa/Cairo').date      # trading day = Cairo day, like live
+    except Exception: days = (pd.to_datetime(T) + pd.Timedelta(hours=3)).date
 
     def close(sl, s, p, px, frac, i, why):
         nonlocal eq
@@ -97,7 +114,9 @@ def run(book, sleeves, start=500.0, max_lev=10.0, daily_halt=0.08, t0=None, t1=N
         return sum(p['qty'] * book.arr[s]['c'][i - 1] for s, p in sl['pos'].items())
 
     for i in idx:
-        if days[i] != day: day, day_start, halted = days[i], eq, False
+        if days[i] != day:
+            day, halted = days[i], False
+            day_start = eq + sum(p['side'] * (book.arr[s]['c'][i - 1] - p['avg']) * p['qty'] for sl in SL for s, p in sl['pos'].items())
         # ---- fills of pending entries
         for sl in SL:
             m, cfg = sl['m'], sl['cfg']
@@ -140,6 +159,7 @@ def run(book, sleeves, start=500.0, max_lev=10.0, daily_halt=0.08, t0=None, t1=N
                 eq -= p['qty'] * c * FPB; p['realized'] -= p['qty'] * c * FPB
                 fav, adv = (h, l) if sd == 1 else (l, h)          # favourable / adverse extreme
                 hit = lambda lvl, x: (x >= lvl) if sd == 1 else (x <= lvl)
+                stop_open = p['stop']
                 # 1) stop
                 if (o <= p['stop']) if sd == 1 else (o >= p['stop']):
                     close(sl, s, p, o, 1, i, 'stop'); del sl['pos'][s]; continue
@@ -149,6 +169,7 @@ def run(book, sleeves, start=500.0, max_lev=10.0, daily_halt=0.08, t0=None, t1=N
                 if 'dca' in m:
                     while p['dca'] < len(p['levels']) and ((l <= p['levels'][p['dca']]) if sd == 1 else (h >= p['levels'][p['dca']])):
                         lvl = p['levels'][p['dca']]; q = p['q0'] * p['w'][p['dca']]
+                        lvl = min(lvl, o) if sd == 1 else max(lvl, o)              # gapped through the level -> filled at the open
                         if notional(sl, i) + q * lvl > max_lev * eq * cfg['share']: break
                         p['avg'] = (p['avg'] * p['qty'] + lvl * q) / (p['qty'] + q); p['qty'] += q
                         eq -= q * lvl * FEE; p['realized'] -= q * lvl * FEE; p['dca'] += 1
@@ -167,6 +188,7 @@ def run(book, sleeves, start=500.0, max_lev=10.0, daily_halt=0.08, t0=None, t1=N
                     py = m['pyramid']
                     while p['adds'] < py['n'] and hit(p['next_add'], fav):
                         q = p['q0'] * py['frac']; lvl = p['next_add']
+                        lvl = max(lvl, o) if sd == 1 else min(lvl, o)              # gapped through the add level -> filled at the open
                         if notional(sl, i) + q * lvl > max_lev * eq * cfg['share']: break
                         p['avg'] = (p['avg'] * p['qty'] + lvl * q) / (p['qty'] + q); p['qty'] += q
                         eq -= q * lvl * FEE; p['realized'] -= q * lvl * FEE; p['adds'] += 1
@@ -195,6 +217,14 @@ def run(book, sleeves, start=500.0, max_lev=10.0, daily_halt=0.08, t0=None, t1=N
                     if lock > 0:
                         lv = p['e0'] + sd * lock * p['R']
                         p['stop'] = max(p['stop'], lv) if sd == 1 else min(p['stop'], lv)
+                # 5c) a stop raised inside this candle can already have been hit by this candle's adverse extreme
+                # candle path: green = open->low->high->close, red = open->high->low->close. A stop raised at the favourable
+                # extreme is hit if the adverse extreme comes AFTER it, or if the close is already beyond it.
+                adverse_after = (c < o) if sd == 1 else (c > o)
+                crossed = ((l <= p['stop']) if sd == 1 else (h >= p['stop'])) if (pessimistic == 'worst' or adverse_after) else \
+                          ((c <= p['stop']) if sd == 1 else (c >= p['stop']))
+                if pessimistic and p['stop'] != stop_open and crossed:
+                    close(sl, s, p, p['stop'], 1, i, 'stop'); del sl['pos'][s]; continue
                 # 6) signal / time exits at close
                 ex = sl['sigs'][s]['lx' if sd == 1 else 'sx'][i]
                 if RUN:
@@ -204,7 +234,8 @@ def run(book, sleeves, start=500.0, max_lev=10.0, daily_halt=0.08, t0=None, t1=N
                     elif winning and RUN.get('trend_exit') and not trend_ok: ex = True
                 if ex or (m.get('max_bars') and not RUN and i - p['i'] >= m['max_bars']):
                     close(sl, s, p, c, 1, i, 'signal' if ex else 'time'); del sl['pos'][s]
-        if eq / day_start - 1 <= -daily_halt: halted = True
+        up_now = sum(p['side'] * (book.arr[s]['c'][i] - p['avg']) * p['qty'] for sl in SL for s, p in sl['pos'].items())
+        if (eq + up_now) / day_start - 1 <= -daily_halt: halted = True                 # same rule as live: includes open P&L
         # ---- new signals -> fill next candle
         if not halted and i + 1 < len(T):
             for sl in SL:

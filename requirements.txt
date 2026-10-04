@@ -1,0 +1,18 @@
+# Exact versions ZackBot 3.0 was built and tested with (Python 3.14, Windows)
+pyinstaller==6.22.3
+pyinstaller-hooks-contrib==2026.8
+altgraph==0.17.5
+pefile==2024.8.26
+pywin32-ctypes==0.2.3
+packaging==26.3
+setuptools==84.0.0
+requests==2.34.2
+charset_normalizer==3.4.9
+idna==3.18
+urllib3==2.7.0
+certifi==2026.6.17
+pandas==3.0.6
+numpy==2.5.3
+python-dateutil==2.9.0.post0
+six==1.17.0
+tzdata==2026.5

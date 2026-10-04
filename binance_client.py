@@ -1,5 +1,5 @@
 """Minimal Binance USD-M futures REST client (requests + HMAC), hedge-mode aware."""
-import hashlib, hmac, time, urllib.parse
+import hashlib, hmac, random, time, urllib.parse, uuid
 import requests
 
 MAINNET = 'https://fapi.binance.com'
@@ -12,12 +12,25 @@ class BinanceError(Exception):
         self.code, self.msg = code, msg
 
 
+class AmbiguousOrder(Exception):
+    """An order request may or may not have reached Binance and its status could not be confirmed."""
+
+
+TRANSIENT = (-1001, -1003, -1006, -1007, -1008, -1015)      # disconnected / rate limit / timeout / server busy
+SAFE_METHODS = ('GET', 'DELETE')
+
+
+def new_cid(prefix='zb'):
+    return f'{prefix}{uuid.uuid4().hex[:22]}'
+
+
 class Futures:
     def __init__(self, key='', secret='', base=TESTNET, recv_window=6000):
         self.key, self.secret, self.base, self.rw = key, (secret or '').encode(), base, recv_window
         self.s = requests.Session()
         if key: self.s.headers['X-MBX-APIKEY'] = key
         self.offset = 0
+        self.last_ok = 0.0
         try: self.sync_time()
         except Exception: pass
 
@@ -25,25 +38,75 @@ class Futures:
         st = self.s.get(self.base + '/fapi/v1/time', timeout=10).json()['serverTime']
         self.offset = st - int(time.time() * 1000)
 
-    def _req(self, method, path, params=None, signed=False):
-        params = {k: v for k, v in (params or {}).items() if v is not None}
-        if signed:
-            params['timestamp'] = int(time.time() * 1000) + self.offset
-            params['recvWindow'] = self.rw
-            q = urllib.parse.urlencode(params)
-            params['signature'] = hmac.new(self.secret, q.encode(), hashlib.sha256).hexdigest()
-        for attempt in range(3):
-            try:
-                r = self.s.request(method, self.base + path, params=params, timeout=15)
-            except requests.RequestException:
-                if attempt == 2: raise
-                time.sleep(2); continue
+    def _once(self, method, url, params, signed):
+        p = dict(params)
+        if signed:                                   # re-signed on every attempt (fresh timestamp)
+            p['timestamp'] = int(time.time() * 1000) + self.offset
+            p['recvWindow'] = self.rw
+            q = urllib.parse.urlencode(p)
+            p['signature'] = hmac.new(self.secret, q.encode(), hashlib.sha256).hexdigest()
+        r = self.s.request(method, url, params=p, timeout=15)
+        try:
             data = r.json() if r.content else {}
-            if isinstance(data, dict) and 'code' in data and data['code'] not in (0, 200):
-                if data['code'] == -1021 and attempt < 2:
-                    self.sync_time(); continue
-                raise BinanceError(data['code'], data.get('msg'))
+        except ValueError:
+            data = {'code': -1000 - r.status_code, 'msg': f'HTTP {r.status_code} (not JSON)'}
+        return r, data
+
+    def _req(self, method, path, params=None, signed=False, retry=None):
+        """GET/DELETE are retried on network errors, rate limits and server errors (with backoff and Retry-After).
+        POST is never blindly retried: order placement goes through _order(), which confirms by client order id."""
+        params = {k: v for k, v in (params or {}).items() if v is not None}
+        retry = (method in SAFE_METHODS) if retry is None else retry
+        url = self.base + path
+        for attempt in range(4 if retry else 2):
+            last = attempt == (3 if retry else 1)
+            try:
+                r, data = self._once(method, url, params, signed)
+            except requests.RequestException:
+                if not retry or last: raise
+                time.sleep(min(8, 0.5 * 2 ** attempt + random.random())); continue
+            code = data.get('code') if isinstance(data, dict) else None
+            if code == -1021 and not last:              # clock drift: resync and re-sign (safe, request was rejected)
+                self.sync_time(); continue
+            busy = r.status_code in (418, 429) or r.status_code >= 500 or code in TRANSIENT
+            if busy:
+                if not retry or last:
+                    if method not in SAFE_METHODS and (r.status_code >= 500 or code in (-1001, -1006, -1007)):
+                        raise AmbiguousOrder(f'HTTP {r.status_code} on {path}')
+                    raise BinanceError(code or -r.status_code, data.get('msg') if isinstance(data, dict) else f'HTTP {r.status_code}')
+                wait = float(r.headers.get('Retry-After') or 0) or min(8, 0.5 * 2 ** attempt + random.random())
+                time.sleep(min(wait, 30)); continue
+            if isinstance(data, dict) and code not in (None, 0, 200):
+                raise BinanceError(code, data.get('msg'))
+            self.last_ok = time.time()
             return data
+
+    def get_order(self, symbol, cid):
+        try:
+            return self._req('GET', '/fapi/v1/order', dict(symbol=symbol, origClientOrderId=cid), signed=True)
+        except BinanceError as e:
+            if e.code == -2013: return None             # order does not exist
+            raise
+
+    def _order(self, params):
+        """Idempotent order placement: a client order id is attached; on a timeout / 5xx the order is looked up
+        by that id instead of being re-sent, so a lost response can never create a second position."""
+        params = dict(params); params.setdefault('newClientOrderId', new_cid())
+        try:
+            return self._req('POST', '/fapi/v1/order', params, signed=True, retry=False)
+        except (requests.RequestException, AmbiguousOrder) as first:
+            for i in range(4):
+                time.sleep(1 + i)
+                try:
+                    o = self.get_order(params['symbol'], params['newClientOrderId'])
+                except (requests.RequestException, BinanceError):
+                    continue
+                if o is None:                                   # never reached Binance -> safe to send once more
+                    return self._req('POST', '/fapi/v1/order', params, signed=True, retry=False)
+                if params.get('type') == 'MARKET' and o.get('status') not in ('FILLED', 'PARTIALLY_FILLED'):
+                    time.sleep(1); o = self.get_order(params['symbol'], params['newClientOrderId']) or o
+                return o
+            raise AmbiguousOrder(f"order {params['newClientOrderId']} unconfirmed after {first}")
 
     # ---------- public ----------
     def exchange_info(self):
@@ -100,39 +163,57 @@ class Futures:
     # ---------- orders (hedge mode: positionSide LONG/SHORT) ----------
     def open(self, symbol, pos_side, qty):
         side = 'BUY' if pos_side == 'LONG' else 'SELL'
-        return self._req('POST', '/fapi/v1/order', dict(symbol=symbol, side=side, positionSide=pos_side, type='MARKET',
-                                                         quantity=qty, newOrderRespType='RESULT'), signed=True)
+        return self._order(dict(symbol=symbol, side=side, positionSide=pos_side, type='MARKET', quantity=qty, newOrderRespType='RESULT'))
 
     def close(self, symbol, pos_side, qty):
         side = 'SELL' if pos_side == 'LONG' else 'BUY'
-        return self._req('POST', '/fapi/v1/order', dict(symbol=symbol, side=side, positionSide=pos_side, type='MARKET',
-                                                         quantity=qty, newOrderRespType='RESULT'), signed=True)
+        return self._order(dict(symbol=symbol, side=side, positionSide=pos_side, type='MARKET', quantity=qty, newOrderRespType='RESULT'))
 
     def stop(self, symbol, pos_side, qty, stop_price):
         """Exchange-side stop for qty of the given position side. Returns 'o:<id>' or 'a:<algoId>'."""
         side = 'SELL' if pos_side == 'LONG' else 'BUY'
         try:
-            r = self._req('POST', '/fapi/v1/order', dict(symbol=symbol, side=side, positionSide=pos_side, type='STOP_MARKET',
-                          quantity=qty, stopPrice=stop_price, workingType='MARK_PRICE'), signed=True)
+            r = self._order(dict(symbol=symbol, side=side, positionSide=pos_side, type='STOP_MARKET',
+                                 quantity=qty, stopPrice=stop_price, workingType='MARK_PRICE'))
             return f"o:{r['orderId']}"
         except BinanceError as e:
             if e.code not in (-4120, -1116, -1102, -4136):
                 raise
             r = self._req('POST', '/fapi/v1/algoOrder', dict(algoType='CONDITIONAL', symbol=symbol, side=side,
                           positionSide=pos_side, type='STOP_MARKET', quantity=qty, triggerPrice=stop_price,
-                          workingType='MARK_PRICE'), signed=True)
+                          workingType='MARK_PRICE'), signed=True, retry=False)
             return f"a:{r['algoId']}"
 
     def cancel(self, symbol, tag):
-        if not tag: return
+        """Cancel one stop. Returns True if cancelled or already gone; raises on other errors (rate limit, network)."""
+        if not tag: return True
         kind, oid = tag.split(':', 1)
         try:
             if kind == 'o':
                 self._req('DELETE', '/fapi/v1/order', dict(symbol=symbol, orderId=oid), signed=True)
             else:
                 self._req('DELETE', '/fapi/v1/algoOrder', dict(algoId=oid), signed=True)
-        except BinanceError:
-            pass
+        except BinanceError as e:
+            if e.code in (-2011, -2013, -4120) or 'not exist' in str(e.msg).lower() or 'unknown order' in str(e.msg).lower():
+                return True                                   # already filled / cancelled
+            raise
+        return True
+
+    def leverage_max(self, symbol):
+        try:
+            r = self._req('GET', '/fapi/v1/leverageBracket', dict(symbol=symbol), signed=True)
+            row = r[0] if isinstance(r, list) else r
+            return int(row['brackets'][0]['initialLeverage'])
+        except Exception:
+            return None
+
+    def api_restrictions(self):
+        """Key permissions (mainnet only; lives on the spot API host)."""
+        if self.base != MAINNET: return None
+        url = 'https://api.binance.com/sapi/v1/account/apiRestrictions'
+        p = dict(timestamp=int(time.time() * 1000) + self.offset, recvWindow=self.rw)
+        p['signature'] = hmac.new(self.secret, urllib.parse.urlencode(p).encode(), hashlib.sha256).hexdigest()
+        return self.s.get(url, params=p, timeout=10).json()
 
     def open_stop_tags(self, symbol):
         """Tags of stop orders still open on the exchange for this symbol (classic + algo)."""

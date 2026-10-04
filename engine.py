@@ -5,19 +5,21 @@ trailing, pyramiding adds, DCA safety orders, basket take-profit) is checked eve
 Signals (entries/exits) are evaluated right after each candle close of the sleeve's timeframe.
 Hedge mode is used so longs and shorts on the same coin can coexist.
 """
-import csv, json, math, os, time, logging, threading, copy
-from datetime import datetime, timezone
+import csv, json, math, os, re, time, logging, threading, copy, collections
+from datetime import datetime, timezone, timedelta
 import numpy as np
 import pandas as pd
 
 import strategies as S
-from binance_client import Futures, MAINNET, TESTNET, BinanceError
+from binance_client import Futures, MAINNET, TESTNET, BinanceError, AmbiguousOrder
 from ai_filter import review
 
 log = logging.getLogger('zackbot')
 TF_SEC = {'15m': 900, '1h': 3600, '4h': 14400}
-FEE_EST = 0.0005
-BE_BUF = 0.0015          # taker fee estimate per fill, used for net PnL in the trade history
+FEE_EST = 0.0005        # taker fee estimate per fill, used for net PnL in the trade history
+BE_BUF = 0.0015         # breakeven stops sit just past the average entry so fees are covered
+MANUAL_MAX_RISK = 0.05  # manual trades: at most 5% of bot capital at risk
+SYM_RE = re.compile(r'^[A-Z0-9]{2,20}USDT$')
 CORE8 = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT', 'XRPUSDT', 'DOGEUSDT', 'LINKUSDT', 'AVAXUSDT']
 TOP40 = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT', 'XRPUSDT', 'DOGEUSDT', 'LINKUSDT', 'AVAXUSDT', 'SANDUSDT', 'ZECUSDT',
          'QNTUSDT', 'WLDUSDT', 'NEARUSDT', 'SUIUSDT', 'UNIUSDT', 'ONEUSDT', 'MOVRUSDT', 'STRKUSDT', 'ZROUSDT', 'ENAUSDT',
@@ -34,23 +36,23 @@ def sleeve(id, key, share, risk, max_pos, symbols='all', sides=None, mgmt=None, 
 
 # Ready-made profiles (backtested Sep 2024 -> Oct 2026, $500 start, 10x cap; see Research tab)
 PRESETS = {
-    'original': dict(name='Original A/B (core 8)', note='What ran first: EMAx|Supertrend + EMAx|Momentum on 8 coins, 3%.',
+    'original': dict(name='Original A/B (core 8)', note='What ran first: EMAx|Supertrend + EMAx|Momentum on 8 coins, 3%. Backtest 2024-10-20 to 2026-10-04: $500 -> $3,223, max DD -39%, worst month -7.8%, ~2 trades/week.', bt={'end': 3223, 'dd': -39, 'wm': -7.8, 'wk': 2, 'start': '2024-10-20', 'stop': '2026-10-04', 'engine': 'v3', 'insample': True},
                      sleeves=[sleeve('A', 'ema_st', .5, .03, 4, 'core8'), sleeve('B', 'ema_mom', .5, .03, 4, 'core8')]),
-    'calm': dict(name='Calm', note='Backtest: $500 -> $1,545, max DD -13%, worst month -3%. Both years positive.',
+    'calm': dict(name='Calm', note='Lowest risk: 1% per trade, three strategies. Both years positive. Backtest 2024-10-20 to 2026-10-04: $500 -> $1,545, max DD -13%, worst month -3.3%, ~7 trades/week.', bt={'end': 1545, 'dd': -13, 'wm': -3.3, 'wk': 7, 'start': '2024-10-20', 'stop': '2026-10-04', 'engine': 'v3', 'insample': True},
                  sleeves=[sleeve('MOM', 'ema_mom', 1 / 3, .01, 8), sleeve('ST', 'ema_st', 1 / 3, .01, 4, 'core8'),
                           sleeve('DCA', 'dca_dip', 1 / 3, .01, 6)]),
-    'balanced': dict(name='Balanced', note='Backtest: $500 -> $5,964, max DD -29%, worst month -7%.',
+    'balanced': dict(name='Balanced', note='2% per trade with pyramiding on the trend slots. Backtest 2024-10-20 to 2026-10-04: $500 -> $5,974, max DD -29%, worst month -7.3%, ~10 trades/week.', bt={'end': 5974, 'dd': -29, 'wm': -7.3, 'wk': 10, 'start': '2024-10-20', 'stop': '2026-10-04', 'engine': 'v3', 'insample': True},
                      sleeves=[sleeve('MOM', 'ema_mom', 1 / 3, .02, 8, mgmt=PY), sleeve('ST', 'ema_st', 1 / 3, .02, 4, 'core8', mgmt=PY),
                               sleeve('DCA', 'dca_dip', 1 / 3, .02, 6)]),
-    'aggressive': dict(name='Aggressive', note='Backtest: $500 -> $12,412, max DD -39%, worst month -11%.',
+    'aggressive': dict(name='Aggressive', note='3% per trade, same mix as Balanced. Backtest 2024-10-20 to 2026-10-04: $500 -> $11,886, max DD -39%, worst month -10.8%, ~10 trades/week.', bt={'end': 11886, 'dd': -39, 'wm': -10.8, 'wk': 10, 'start': '2024-10-20', 'stop': '2026-10-04', 'engine': 'v3', 'insample': True},
                        sleeves=[sleeve('MOM', 'ema_mom', 1 / 3, .03, 8, mgmt=PY), sleeve('ST', 'ema_st', 1 / 3, .03, 4, 'core8', mgmt=PY),
                                 sleeve('DCA', 'dca_dip', 1 / 3, .03, 6)]),
-    'active': dict(name='Active (1h, more trades)', note='1h DCA dip + 1h Breakout/pyramiding on core 8. Only 6 months tested: $500 -> $1,021 (+104%), max DD -24%, ~20 trades/week.',
+    'active': dict(name='Active (1h, more trades)', note='1h DCA dip + 1h Breakout/pyramiding on core 8 - many more trades, only 6 months of 1h data tested. Backtest 2026-04-15 to 2026-10-04: $500 -> $961, max DD -24%, worst month -3.8%, ~20 trades/week.', bt={'end': 961, 'dd': -24, 'wm': -3.8, 'wk': 20, 'start': '2026-04-15', 'stop': '2026-10-04', 'engine': 'v3', 'insample': True},
                    sleeves=[sleeve('DCA1H', 'dca_dip', .5, .02, 4, 'core8', tf='1h'), sleeve('BRK1H', 'breakout_pyramid', .5, .02, 4, 'core8', tf='1h')]),
-    'boost_active': dict(name='Boost + Active (4h + 1h mix)', note='Boost on 4h with half the capital, Active 1h with the other half. Last 6 months: $500 -> $1,293 (+159%), max DD -30%, worst month -9%, ~30 trades/week (Boost alone: -46% DD).',
+    'boost_active': dict(name='Boost + Active (4h + 1h mix)', note='Boost on 4h with half the capital, Active 1h with the other half (tested side by side). Backtest 2026-04-15 to 2026-10-04: $500 -> $1,196, max DD -32%, worst month -8.0%, ~29 trades/week.', bt={'end': 1196, 'dd': -32, 'wm': -8.0, 'wk': 29, 'start': '2026-04-15', 'stop': '2026-10-04', 'engine': 'v3', 'insample': True},
                          sleeves=[sleeve('MOM', 'ema_mom', .25, .05, 8, mgmt=PY), sleeve('DCA', 'dca_dip', .25, .05, 6),
                                   sleeve('DCA1H', 'dca_dip', .25, .02, 4, 'core8', tf='1h'), sleeve('BRK1H', 'breakout_pyramid', .25, .02, 4, 'core8', tf='1h')]),
-    'boost': dict(name='Boost (short-term, high risk)', note='Backtest: $500 -> $30,361, max DD -51%, worst month -25%. For short sprints only.',
+    'boost': dict(name='Boost (short-term, high risk)', note='5% per trade. For short sprints only - deep drawdowns. Backtest 2024-10-20 to 2026-10-04: $500 -> $23,792, max DD -54%, worst month -27.8%, ~9 trades/week.', bt={'end': 23792, 'dd': -54, 'wm': -27.8, 'wk': 9, 'start': '2024-10-20', 'stop': '2026-10-04', 'engine': 'v3', 'insample': True},
                   sleeves=[sleeve('MOM', 'ema_mom', .5, .05, 8, mgmt=PY), sleeve('DCA', 'dca_dip', .5, .05, 6)]),
 }
 
@@ -61,6 +63,41 @@ GLOBAL_DEFAULTS = dict(COMPOUND=False, CAP_SINCE='', CAP_ADJ=[], CAP_CYCLES=[], 
 
 def now_utc():
     return datetime.now(timezone.utc)
+
+
+def _egypt_offset(t):
+    """Fallback when no tz database is available: Egypt is UTC+2, UTC+3 from the last Friday of April to the last Thursday of October."""
+    def last_wd(y, m, wd):
+        d = datetime(y, m + 1, 1) - timedelta(days=1) if m < 12 else datetime(y, 12, 31)
+        return d - timedelta(days=(d.weekday() - wd) % 7)
+    y = t.year
+    start, end = last_wd(y, 4, 4), last_wd(y, 10, 3) + timedelta(days=1)
+    return timedelta(hours=3) if start.date() <= t.date() < end.date() else timedelta(hours=2)
+
+
+try:
+    from zoneinfo import ZoneInfo
+    CAIRO = ZoneInfo('Africa/Cairo')
+except Exception:          # no tzdata on this machine
+    CAIRO = None
+
+
+def cairo_now():
+    t = now_utc()
+    if CAIRO is not None: return t.astimezone(CAIRO)
+    return (t + _egypt_offset(t)).replace(tzinfo=None)
+
+
+def trading_day():
+    """The bot's trading day (daily loss halt, daily summary) runs midnight-to-midnight Cairo time, DST-aware."""
+    return cairo_now().date().isoformat()
+
+
+def next_reset_utc():
+    c = cairo_now()
+    nxt = datetime.combine(c.date() + timedelta(days=1), datetime.min.time())
+    if CAIRO is not None: return nxt.replace(tzinfo=CAIRO).astimezone(timezone.utc).isoformat(timespec='seconds')
+    return (nxt - _egypt_offset(nxt)).replace(tzinfo=timezone.utc).isoformat(timespec='seconds')
 
 
 def save_json(path, obj):
@@ -87,7 +124,9 @@ class Engine:
         if os.path.exists(self.F['state']):
             try: self.state.update(json.load(open(self.F['state'])))
             except Exception: log.warning('state.json unreadable - starting empty')
-        self.state['day'] = None
+        self.state.setdefault('orphans', []); self.state.setdefault('last_cycle', {})
+        if not self.S.get('CAP_SINCE'):                  # first v3 start: bot capital counts closed P&L from now on
+            self.S['CAP_SINCE'] = now_utc().isoformat(timespec='seconds'); self.save_settings()
         self.equity_hist = json.load(open(self.F['equity'])) if os.path.exists(self.F['equity']) else []
         self.rules, self._cache, self._kc, self.signals, self.signals_time = {}, {}, {}, {}, None
         self.last_eq = self.last_balance = None
@@ -97,6 +136,12 @@ class Engine:
         self.last_account, self.last_skip, self.corr = {}, '', None
         self.error = None
         self.connected = False
+        self.marks, self.marks_t = {}, 0.0
+        self.guard_eq = None                      # bot capital used by the safety limits and shown in the app
+        self.untracked = {}                       # exchange positions the engine has no record of
+        self._lev = {}                            # leverage already set per symbol
+        self.health = dict(errors=collections.deque(maxlen=30), last_manage_ok=None, last_cycle_ok={}, manage_fail_streak=0,
+                           last_sync=None, alerted=False)
 
     def _load_list(self, k):
         try: return json.load(open(self.F[k])) if os.path.exists(self.F[k]) else []
@@ -105,13 +150,14 @@ class Engine:
     # ------------------------------------------------------------ notifications (Telegram, optional)
     def notify(self, text):
         S_ = self.S
-        if not (S_.get('TELEGRAM_ON') and S_.get('TELEGRAM_TOKEN') and S_.get('TELEGRAM_CHAT')): return
+        tok = self.cfg.get('TELEGRAM_TOKEN') or S_.get('TELEGRAM_TOKEN')
+        if not (S_.get('TELEGRAM_ON') and tok and S_.get('TELEGRAM_CHAT')): return
         def _send():
             try:
                 import requests
-                requests.post(f"https://api.telegram.org/bot{S_['TELEGRAM_TOKEN']}/sendMessage", timeout=10,
+                requests.post(f"https://api.telegram.org/bot{tok}/sendMessage", timeout=10,
                               data=dict(chat_id=S_['TELEGRAM_CHAT'], text=f"[ZackBot {'LIVE' if self.live else 'paper'}] {text}"))
-            except Exception as ex: log.warning(f'telegram: {ex}')
+            except Exception as ex: log.warning('telegram send failed: ' + type(ex).__name__)
         threading.Thread(target=_send, daemon=True).start()
 
     # ------------------------------------------------------------ settings
@@ -184,18 +230,35 @@ class Engine:
         dec = max(0, -int(math.floor(math.log10(step)))) if step < 1 else 0
         return f'{x:.{dec}f}'
 
+    def bot_unrealized(self):
+        """Open P&L of the engine's own lots on the latest mark prices (falls back to the account figure)."""
+        lots = list(self.state['lots'].values())
+        if not lots: return 0.0
+        if self.marks and all(l['symbol'] in self.marks for l in lots):
+            return sum((1 if l['side'] == 'LONG' else -1) * (self.marks[l['symbol']] - l['avg']) * l['qty'] for l in lots)
+        return float(self.last_account.get('totalUnrealizedProfit', 0) or 0)
+
     def equity(self):
+        """Returns the SIZING equity (what new trades are sized on) and refreshes guard_eq (bot capital incl. open P&L,
+        what the daily-loss halt, drawdown flatten and the dashboard use).
+          fixed mode:    sizing = start amount
+          compound mode: sizing = start amount + closed P&L since start - withdrawals + deposits
+          guard (both):  start + closed P&L + open P&L - withdrawals + deposits   (all capped by the real account)
+        With start amount 0 the whole account balance is used for everything."""
         acc = self.trade.account()
         self.last_account = {k: float(acc.get(k, 0) or 0) for k in ('totalMarginBalance', 'totalInitialMargin', 'totalMaintMargin',
                                                                      'availableBalance', 'totalUnrealizedProfit', 'totalWalletBalance')}
-        eq = float(acc['totalMarginBalance'])
-        self.last_balance = eq
-        cap = float(self.S.get('CAPITAL_CAP') or 0)
-        info = self.capital_info(acc)
-        if self.S.get('COMPOUND') and cap > 0:
-            self.last_eq = max(0.0, min(eq, info['capital']))     # start amount + closed P&L since start + deposits - withdrawals
+        bal = float(acc['totalMarginBalance'])
+        self.last_balance = bal
+        self.health['last_sync'] = now_utc().isoformat(timespec='seconds')
+        info = self.capital_info()
+        base = info['base']
+        if base <= 0:
+            self.guard_eq = self.last_eq = bal
         else:
-            self.last_eq = min(eq, cap) if cap > 0 else eq
+            self.guard_eq = max(0.0, min(bal, info['capital']))
+            sizing = info['base'] + info['realized'] + info['adj_total'] if self.S.get('COMPOUND') else base
+            self.last_eq = max(0.0, min(bal, sizing))
         return self.last_eq
 
     # ------------------------------------------------------------ capital: fixed / compounding, withdrawals, fresh starts
@@ -203,16 +266,34 @@ class Engine:
         S = self.S
         since = S.get('CAP_SINCE') or ''
         realized = sum(h.get('pnl') or 0 for h in self.history if h.get('closed', '') >= since)
-        adj = sum(a['amount'] for a in S.get('CAP_ADJ', []))
-        upnl = float((acc or {}).get('totalUnrealizedProfit', self.last_account.get('totalUnrealizedProfit', 0) if self.last_account else 0) or 0)
+        adjs = S.get('CAP_ADJ', [])
+        adj = sum(a['amount'] for a in adjs)
+        upnl = self.bot_unrealized()
         base = float(S.get('CAPITAL_CAP') or 0)
         cap = base + realized + adj + upnl
         self.cap = dict(mode='compound' if S.get('COMPOUND') else 'fixed', base=base, since=since, realized=round(realized, 2),
-                        withdrawn=round(-sum(a['amount'] for a in S.get('CAP_ADJ', []) if a['amount'] < 0), 2),
-                        deposited=round(sum(a['amount'] for a in S.get('CAP_ADJ', []) if a['amount'] > 0), 2),
+                        withdrawn=round(-sum(a['amount'] for a in adjs if a['amount'] < 0), 2),
+                        deposited=round(sum(a['amount'] for a in adjs if a['amount'] > 0), 2), adj_total=round(adj, 2),
                         unrealized=round(upnl, 2), capital=round(cap, 2), growth=round((cap - adj) / base * 100 - 100, 2) if base else None,
-                        adj=S.get('CAP_ADJ', [])[-50:], cycles=S.get('CAP_CYCLES', [])[-50:])
+                        sizing=round(self.last_eq or 0, 2), adj=adjs[-50:], cycles=S.get('CAP_CYCLES', [])[-50:])
         return self.cap
+
+    def shift_guards(self, delta):
+        """Bot capital moved for a non-trading reason (withdrawal, deposit, new start amount): move the safety baselines with it."""
+        st = self.state
+        for k in ('peak_equity', 'day_start_equity'):
+            if st.get(k) is not None: st[k] = max(0.01, st[k] + delta)
+
+    def set_capital_base(self, new):
+        with self.lock:
+            new = float(new); old = float(self.S.get('CAPITAL_CAP') or 0)
+            if new < 0: raise ValueError('start amount cannot be negative')
+            if old > 0 and new > 0: self.shift_guards(new - old)
+            else: self.state['peak_equity'] = None; self.state['day_start_equity'] = None
+            self.S['CAPITAL_CAP'] = new; self.save_settings(); self.save_state()
+            try: self.equity()
+            except Exception as ex: log.warning(f'equity refresh: {ex}')
+            if self.state.get('day_start_equity') is None and self.guard_eq: self.state['day_start_equity'] = self.state['peak_equity'] = self.guard_eq
 
     def capital_action(self, kind, amount=None, note=''):
         with self.lock:
@@ -229,8 +310,7 @@ class Engine:
                 if kind == 'withdraw' and amt > info['capital']: raise ValueError(f'more than the bot capital ({info["capital"]:.2f})')
                 sgn = -1 if kind == 'withdraw' else 1
                 S.setdefault('CAP_ADJ', []).append(dict(time=now, amount=sgn * amt, note=note or kind))
-                for k in ('peak_equity', 'day_start_equity'):       # so a withdrawal never looks like a loss to the safety limits
-                    if st.get(k): st[k] = max(0.0, st[k] + sgn * amt)
+                self.shift_guards(sgn * amt)                       # a withdrawal is not a trading loss for the safety limits
                 msg = f'{kind} of {amt:.2f} recorded'
             elif kind == 'reset':
                 new = float(amount) if amount not in (None, '') else info['capital']
@@ -238,13 +318,14 @@ class Engine:
                 S.setdefault('CAP_CYCLES', []).append(dict(start=info['since'], end=now, start_cap=info['base'], end_cap=info['capital'],
                                                            pnl=info['realized'], withdrawn=info['withdrawn'], deposited=info['deposited'], note=note))
                 S['CAPITAL_CAP'] = new; S['CAP_SINCE'] = now; S['CAP_ADJ'] = []
-                st['peak_equity'] = None; st['day_start_equity'] = None; st['day'] = None; st['halted'] = False
+                st['peak_equity'] = None; st['day_start_equity'] = None; st['halted'] = False
                 msg = f'fresh start with {new:.2f}'
             else:
                 raise ValueError('unknown capital action')
             self.save_settings(); self.save_state()
             try: self.equity()
             except Exception as ex: log.warning(f'equity refresh: {ex}')
+            if st.get('day_start_equity') is None and self.guard_eq: st['day_start_equity'] = st['peak_equity'] = self.guard_eq
             log.info('CAPITAL ' + msg); self.notify('💰 ' + msg)
             return msg
 
@@ -265,7 +346,16 @@ class Engine:
         self._kc[(sym, tf)] = (df, last_open)
         return df
 
-    def compute_signals(self, tf, syms):
+    def _orphan_sleeves(self, tf):
+        """Open lots whose strategy slot was renamed/removed still get their own strategy's exit signals."""
+        ids = {x['id'] for x in self.S['SLEEVES']}; out = {}
+        for l in self.state['lots'].values():
+            if l.get('manual') or l.get('tf', '4h') != tf or l['sleeve'] in ids or not l.get('key_strategy'): continue
+            if l['key_strategy'] not in S.STRATEGIES: continue
+            out[l['sleeve']] = dict(id=l['sleeve'], key=l['key_strategy'], tf=tf, sides='both', symbols=[], params=None)
+        return list(out.values())
+
+    def compute_signals(self, tf, syms, extra=()):
         """Signals for every enabled sleeve of this timeframe, on all its symbols."""
         need_ctx = any(sl['key'] in ('rotation', 'hot_coin', 'bear_breakdown') for sl in self.S['SLEEVES'] if sl['tf'] == tf)
         universe = sorted(set(syms) | ({'BTCUSDT'} if 'BTCUSDT' in self.rules else set()))
@@ -276,7 +366,7 @@ class Engine:
         al = {s: d for s, d in dfs.items() if len(d) >= 250}
         ctx = S.build_context(al, 'BTCUSDT' if 'BTCUSDT' in al else next(iter(al)))
         out = {}
-        for sl in self.S['SLEEVES']:
+        for sl in list(self.S['SLEEVES']) + list(extra):
             if sl['tf'] != tf: continue
             for s in syms:
                 if s not in al: continue
@@ -305,12 +395,44 @@ class Engine:
         save_json(self.F['state'], self.state)
 
     # ------------------------------------------------------------ order helpers
-    def _replace_stop(self, lot):
-        if self.dry: return
+    def err(self, msg):
+        self.health['errors'].append([now_utc().isoformat(timespec='seconds'), str(msg)[:200]])
+        log.warning(msg)
+
+    def _cancel_or_park(self, sym, tag):
+        """Cancel a stop; if Binance cannot be reached, remember it and retry later (never leave a stale stop behind)."""
+        if self.dry or not tag: return
+        try: self.trade.cancel(sym, tag)
+        except Exception as e:
+            self.state.setdefault('orphans', []).append([sym, tag])
+            self.err(f'cancel stop {sym} {tag} failed ({e}) - will retry')
+
+    def _replace_stop(self, lot, stop=None):
+        """Place the stop at `stop` (or the current lot stop, e.g. after a size change) FIRST, then cancel the old one.
+        The lot's recorded stop only changes once Binance has accepted the new order. Returns True on success."""
+        if self.dry:
+            if stop is not None: lot['stop'] = stop
+            return True
         r = self.rules[lot['symbol']]
-        new = self.trade.stop(lot['symbol'], lot['side'], self._fmt(lot['qty'], r['step']), self._fmt(lot['stop'], r['tick']))
-        self.trade.cancel(lot['symbol'], lot.get('stop_id'))
-        lot['stop_id'] = new
+        new_stop = self._rd(stop, r['tick']) if stop is not None else lot['stop']
+        sd = 1 if lot['side'] == 'LONG' else -1
+        try:
+            new = self.trade.stop(lot['symbol'], lot['side'], self._fmt(lot['qty'], r['step']), self._fmt(new_stop, r['tick']))
+        except BinanceError as e:
+            if e.code == -2021:          # stop would trigger immediately: price is already through it -> close now
+                log.warning(f"{lot['symbol']} [{lot['sleeve']}] stop {new_stop} already crossed - closing at market")
+                lot['force_close'] = True
+            lot['stop_dirty'] = True
+            self.err(f"stop update {lot['symbol']} [{lot['sleeve']}] failed: {e} - previous stop kept")
+            return False
+        except Exception as e:
+            lot['stop_dirty'] = True
+            self.err(f"stop update {lot['symbol']} [{lot['sleeve']}] failed: {e} - previous stop kept")
+            return False
+        old = lot.get('stop_id')
+        lot['stop_id'], lot['stop'], lot['stop_dirty'] = new, new_stop, False
+        if old and old != new: self._cancel_or_park(lot['symbol'], old)
+        return True
 
     def _market_close(self, lot, qty, why, mark=None):
         sym, r = lot['symbol'], self.rules[lot['symbol']]
@@ -334,7 +456,7 @@ class Engine:
     def _record_r(self, lot):
         if lot.get('manual') or not lot.get('risk_usd'): return
         h = self.state.setdefault('hist', {}).setdefault(lot['sleeve'], [])
-        h.append(round(lot.get('realized', 0.0) / lot['risk_usd'], 3)); del h[:-200]
+        h.append(round((lot.get('realized', 0.0) - lot.get('fees', 0.0)) / lot['risk_usd'], 3)); del h[:-200]
 
     def kelly_mult(self, sl):
         k = sl.get('kelly')
@@ -347,14 +469,14 @@ class Engine:
         return float(np.clip(k.get('frac', 0.5) * f / k.get('ref', 0.1) * 2, k.get('min', 0.25), k.get('max', 2.0)))
 
     def close_lot(self, key, why, mark=None):
+        """Market-close first; the protective stop is only cancelled after the close succeeded (a failed close keeps it)."""
         lot = self.state['lots'][key]
-        if not self.dry: self.trade.cancel(lot['symbol'], lot.get('stop_id'))
         qty = lot['qty']
         others = [k for k, l in self.state['lots'].items() if k != key and l['symbol'] == lot['symbol'] and l['side'] == lot['side']]
         if not others and not self.dry:            # last lot on this side: close exactly what the exchange holds (no dust)
             try: qty = self.trade.positions().get((lot['symbol'], lot['side']), qty) or qty
             except Exception: pass
-        self._market_close(lot, qty, why, mark)
+        self._market_close(lot, qty, why, mark)    # raises on failure -> lot and its stop stay as they were
         self._finish(key, why)
         self.save_state()
 
@@ -362,6 +484,7 @@ class Engine:
         """Lot fully closed: write a trade-history record and forget the lot."""
         lot = self.state['lots'].pop(key, None)
         if not lot: return
+        if why != 'stop': self._cancel_or_park(lot['symbol'], lot.get('stop_id'))   # no stale stop may survive its lot
         self._record_r(lot)
         sd = 1 if lot['side'] == 'LONG' else -1
         closes = [f for f in lot.get('fills', []) if f[1] not in ('entry', 'pyramid_add', 'safety_order')]
@@ -372,12 +495,12 @@ class Engine:
         rec = dict(id=key, sleeve=lot['sleeve'], strategy=(next((x['name'] for x in self.S['SLEEVES'] if x['id'] == lot['sleeve']), None)
                    or ('Manual' if lot.get('manual') else lot.get('key_strategy'))), symbol=lot['symbol'], side=lot['side'], tf=lot.get('tf'),
                    opened=lot['opened'], closed=closed.isoformat(timespec='seconds'), hours=round((closed - opened).total_seconds() / 3600, 1),
-                   entry=lot['e0'], avg_entry=lot['avg'], exit=exit_avg, qty_max=lot.get('qty_max', lot['q0']),
+                   entry=lot.get('entry0', lot['e0']), avg_entry=lot['avg'], exit=exit_avg, qty_max=lot.get('qty_max', lot['q0']),
                    notional=round(lot.get('qty_max', lot['q0']) * lot['e0'], 2), risk_usd=lot.get('risk_usd'),
                    pnl_gross=round(gross, 4), fees=round(fees, 4), pnl=round(net, 4),
                    r=round(net / lot['risk_usd'], 2) if lot.get('risk_usd') else None,
                    roi_capital=round(net / lot['eq_at_entry'] * 100, 3) if lot.get('eq_at_entry') else None,
-                   move_pct=round(sd * (exit_avg - lot['e0']) / lot['e0'] * 100, 2), exit_reason=why,
+                   move_pct=round(sd * (exit_avg - lot.get('entry0', lot['e0'])) / lot.get('entry0', lot['e0']) * 100, 2), exit_reason=why,
                    adds=lot.get('adds', 0), dca=lot.get('dca', 0), tp1=lot.get('tp1', False), manual=lot.get('manual', False),
                    fills=lot.get('fills', []))
         self.history.append(rec); self.history = self.history[-3000:]
@@ -412,13 +535,21 @@ class Engine:
     # ------------------------------------------------------------ fast loop: soft management on mark price
     def manage(self, marks):
         with self.lock:
+            self.marks, self.marks_t = dict(marks), time.time()
             changed = False
+            if self.state.get('orphans') and not self.dry:          # stale stops whose cancel failed earlier
+                keep = []
+                for sym, tag in self.state['orphans']:
+                    try: self.trade.cancel(sym, tag)
+                    except Exception: keep.append([sym, tag])
+                changed = len(keep) != len(self.state['orphans']); self.state['orphans'] = keep
             try:                                   # drop lots whose exchange stop already filled before touching anything
                 n0 = len(self.state['lots'])
                 self.reconcile(self.last_eq or 0)
-                changed = len(self.state['lots']) != n0
+                changed = changed or len(self.state['lots']) != n0
             except Exception as e:
-                log.warning(f'reconcile in manage: {e}'); return
+                self._manage_failed(f'reconcile: {e}'); return
+            ok = True
             for key in list(self.state['lots']):
                 lot = self.state['lots'].get(key)
                 if not lot: continue
@@ -426,24 +557,31 @@ class Engine:
                 if not m: continue
                 sd = 1 if lot['side'] == 'LONG' else -1
                 g = lot['mgmt']
+                tick = self.rules[lot['symbol']]['tick'] if lot['symbol'] in self.rules else 1e-8
                 ge = lambda lvl: sd * (m - lvl) >= 0           # price at/through a favourable level
                 try:
+                    if lot.get('force_close'):                 # a stop update found price already through the stop
+                        self.close_lot(key, 'stop_crossed', m); changed = True; continue
+                    if lot.get('stop_dirty') or not lot.get('stop_id'):   # protection missing/outdated -> retry every pass
+                        if self._replace_stop(lot): changed = True; log.info(f"{lot['symbol']} [{lot['sleeve']}] stop restored")
                     if 'dca' in g and lot.get('levels'):
                         while lot['dca'] < len(lot['levels']) and sd * (lot['levels'][lot['dca']] - m) >= 0:
-                            if not self._add_qty(lot, lot['q0'] * lot['w'][lot['dca']], m, 'safety_order'): break
+                            q = lot['q0'] * lot['w'][lot['dca']]
+                            if not self._within_cap(lot, q * m) or not self._add_qty(lot, q, m, 'safety_order'): break
                             lot['dca'] += 1
                             lot['tp'] = lot['avg'] + sd * g['dca']['tp_atr'] * lot['atr0']
                             self._replace_stop(lot); changed = True
-                        if lot['tp'] is not None and ge(lot['tp']):
+                        if lot.get('tp') is not None and ge(lot['tp']):
                             run = g.get('runner')
                             if run and run.get('dca_frac', 1) < 1:      # runner: bank part, keep the rest at breakeven
                                 self._market_close(lot, lot['qty'] * run['dca_frac'], 'basket_tp_part', m)
                                 if lot['qty'] <= 0: self._finish(key, 'basket_tp'); changed = True; continue
                                 lot['tp'] = None; lot['tp1'] = True; lot['dca'] = len(lot['levels'])
+                                lot['e0'] = lot['avg']; changed = True
                                 be = lot['avg'] * (1 + sd * BE_BUF)
-                                if sd * (be - lot['stop']) > 0: lot['stop'] = self._rd(be, self.rules[lot['symbol']]['tick'])
-                                lot['e0'] = lot['avg']; lot['R'] = max(lot['R'], abs(lot['avg'] - lot['stop']))
-                                self._replace_stop(lot); changed = True
+                                if sd * (be - lot['stop']) > 0 and sd * (m - be) > 0: self._replace_stop(lot, be)
+                                else: self._replace_stop(lot)
+                                lot['R'] = max(lot['R'], abs(lot['avg'] - lot['stop']))
                             else:
                                 self.close_lot(key, 'basket_tp', m); changed = True; continue
                     if 'pyramid' in g and lot['adds'] < g['pyramid']['n'] and ge(lot['next_add']):
@@ -453,34 +591,50 @@ class Engine:
                                 self._replace_stop(lot); changed = True
                     if g.get('tp1_r') and not lot['tp1'] and ge(lot['e0'] + sd * g['tp1_r'] * lot['R']):
                         self._market_close(lot, lot['qty'] * g.get('tp1_frac', 0.5), 'take_profit_1', m)
-                        lot['tp1'] = True
-                        if lot['qty'] <= 0: self._finish(key, 'take_profit_1'); changed = True; continue
-                        self._replace_stop(lot); changed = True
-                    if g.get('be_r') and ge(lot['e0'] + sd * g['be_r'] * lot['R']):
-                        be = lot['avg']
-                        if sd * (be - lot['stop']) > 0:
-                            lot['stop'] = self._rd(be, self.rules[lot['symbol']]['tick']); self._replace_stop(lot); changed = True
+                        lot['tp1'] = True; changed = True
+                        if lot['qty'] <= 0: self._finish(key, 'take_profit_1'); continue
+                        self._replace_stop(lot)
                     if g.get('tp_r') and not g.get('runner') and ge(lot['e0'] + sd * g['tp_r'] * lot['R']):
                         self.close_lot(key, 'take_profit', m); changed = True; continue
                     lot['best'] = max(lot['best'], m) if sd == 1 else min(lot['best'], m)
+                    # every stop tightening goes through one place: the best candidate that is still on the losing side of price
+                    cands = []
+                    if g.get('be_r') and sd * (lot['best'] - (lot['e0'] + sd * g['be_r'] * lot['R'])) >= 0:
+                        cands.append(lot['avg'])
                     if g.get('trail_atr'):
-                        cand = lot['best'] - sd * g['trail_atr'] * lot['atr_now']
-                        if sd * (cand - lot['stop']) > 0.1 * lot['atr_now']:
-                            lot['stop'] = self._rd(cand, self.rules[lot['symbol']]['tick']); self._replace_stop(lot); changed = True
+                        cands.append(lot['best'] - sd * g['trail_atr'] * lot['atr_now'])
                     run = g.get('runner')
                     if run and lot['R'] > 0:                       # ratchet: breakeven, then lock profit behind the best R reached
-                        bestR = sd * (lot['best'] - lot['e0']) / lot['R']; tgt = None
-                        if bestR >= run.get('be_r', 2.0): tgt = lot['avg'] * (1 + sd * BE_BUF)
+                        bestR = sd * (lot['best'] - lot['e0']) / lot['R']
+                        if bestR >= run.get('be_r', 2.0): cands.append(lot['avg'] * (1 + sd * BE_BUF))
                         lock = math.floor(bestR / run.get('step_r', 99)) * run.get('step_r', 99) - run.get('gap_r', 99)
                         if run.get('giveback') and bestR >= run.get('gb_from', 4.0): lock = max(lock, bestR * (1 - run['giveback']))
-                        if lock > 0:
-                            lv = lot['e0'] + sd * lock * lot['R']; tgt = lv if tgt is None else (max(tgt, lv) if sd == 1 else min(tgt, lv))
-                        if tgt is not None and sd * (tgt - lot['stop']) > 0.05 * lot.get('atr_now', lot['R']):
-                            lot['stop'] = self._rd(tgt, self.rules[lot['symbol']]['tick']); self._replace_stop(lot); changed = True
-                            log.info(f"RUNNER {lot['symbol']} [{lot['sleeve']}] stop raised to {lot['stop']} (best {bestR:.1f}R)")
+                        if lock > 0: cands.append(lot['e0'] + sd * lock * lot['R'])
+                    if cands:
+                        tgt = max(cands) if sd == 1 else min(cands)
+                        min_step = (0.1 if g.get('trail_atr') and not run else 0.05) * lot.get('atr_now', lot['R'])
+                        if sd * (tgt - lot['stop']) > max(min_step, tick):
+                            if sd * (m - tgt) <= 0:                # price already back through the level the stop should be at
+                                log.info(f"{lot['symbol']} [{lot['sleeve']}] price {m} already through protective level {tgt:.6g} - closing")
+                                self.close_lot(key, 'stop_crossed', m); changed = True; continue
+                            if self._replace_stop(lot, tgt):
+                                changed = True
+                                if run: log.info(f"RUNNER {lot['symbol']} [{lot['sleeve']}] stop raised to {lot['stop']}")
                 except Exception as e:
-                    log.warning(f'manage {key}: {e}')
+                    ok = False; self.err(f'manage {key}: {e}')
+            if ok:
+                self.health['last_manage_ok'] = now_utc().isoformat(timespec='seconds'); self.health['manage_fail_streak'] = 0
+                self.health['alerted'] = False
+            else:
+                self._manage_failed('see errors')
             if changed: self.save_state()
+
+    def _manage_failed(self, why):
+        h = self.health; h['manage_fail_streak'] += 1
+        if why != 'see errors': self.err(f'manage: {why}')
+        if h['manage_fail_streak'] >= 6 and not h['alerted']:
+            h['alerted'] = True
+            self.notify(f'🆘 Trade management is failing ({why}). Exchange stops are still in place - check the app.')
 
     def _within_cap(self, lot, add_notional):
         sl = next((x for x in self.S['SLEEVES'] if x['id'] == lot['sleeve']), None)
@@ -491,23 +645,34 @@ class Engine:
 
     # ------------------------------------------------------------ reconcile with exchange
     def reconcile(self, eq, live=None):
+        """Match engine lots to what Binance actually holds.
+        - less on the exchange: the lots whose stop order is no longer open were stopped out (identified by stop-order id);
+          if that cannot be determined this round, nothing is guessed - it is retried on the next pass;
+          if every stop is still open, the lots are resized to what the exchange holds.
+        - more on the exchange (or a position with no lot at all): reported as UNTRACKED and alerted, never ignored."""
         live = self.trade.positions() if live is None else live
         st = self.state
         groups = {}
         for k, l in st['lots'].items(): groups.setdefault((l['symbol'], l['side']), []).append(k)
+        untracked = {}
+        for (sym, side), have in live.items():
+            if (sym, side) not in groups and have > 0:
+                tol = self.rules[sym]['step'] if sym in self.rules else 1e-9
+                if have > tol: untracked[(sym, side)] = have
         for (sym, side), keys in groups.items():
             expected = sum(st['lots'][k]['qty'] for k in keys)
             have = live.get((sym, side), 0.0)
             tol = self.rules[sym]['step'] * (len(keys) + 1) if sym in self.rules else 1e-9
+            if have > expected + tol:
+                untracked[(sym, side)] = have - expected; continue
             if have >= expected - tol: continue
             sd = 1 if side == 'LONG' else -1
             try:
                 open_tags = self.trade.open_stop_tags(sym)
             except Exception as ex:
-                log.warning(f'open orders {sym}: {ex}'); open_tags = None
-            gone = [k for k in keys if open_tags is not None and st['lots'][k].get('stop_id') not in open_tags]
-            if not gone:      # fallback: infer from price (highest stop for longs triggers first)
-                gone = sorted(keys, key=lambda k: -sd * st['lots'][k]['stop'])
+                log.warning(f'open orders {sym}: {ex} - reconcile retried next pass'); continue
+            gone = [k for k in keys if st['lots'][k].get('stop_id') and st['lots'][k]['stop_id'] not in open_tags]
+            gone.sort(key=lambda k: -sd * st['lots'][k]['stop'])       # highest long stop triggers first
             for k in gone:
                 l = st['lots'][k]
                 pnl = sd * (l['stop'] - l['avg']) * l['qty']
@@ -520,36 +685,62 @@ class Engine:
                 expected -= l['qty']; self._finish(k, 'stop')
                 self.notify(f"🛑 STOP {side} {sym} [{l['sleeve']}] at {l['stop']}")
                 if have >= expected - tol: break
-            # anything still unexplained: resync the remaining lots to what the exchange actually holds
             rest = [k for k in keys if k in st['lots']]
             if rest and have < expected - tol:
                 scale = have / expected if expected > 0 else 0
                 for k in rest:
                     st['lots'][k]['qty'] = self._rd(st['lots'][k]['qty'] * scale, self.rules[sym]['step'])
                     if st['lots'][k]['qty'] <= 0: self._finish(k, 'resync')
-                    else:
-                        try: self._replace_stop(st['lots'][k])
-                        except Exception as ex: log.warning(f'stop resync {sym}: {ex}')
-                log.warning(f'{sym} {side}: exchange holds less than expected ({have} vs {expected:.6g}, gone={gone}, open_tags={open_tags}) - lots resized to match')
+                    else: self._replace_stop(st['lots'][k])
+                self.err(f'{sym} {side}: exchange holds less than expected ({have} vs {expected:.6g}) - lots resized to match')
+        new = {f'{s_}|{d}': q for (s_, d), q in untracked.items()}
+        for k, q in new.items():
+            if k not in self.untracked:
+                self.err(f'UNTRACKED position {k} qty {q} on Binance - not managed by the bot and has no bot stop')
+                self.notify(f'⚠️ Untracked position on Binance: {k} qty {q}. It has no bot stop - check it.')
+        self.untracked = new
+
+    # ------------------------------------------------------------ safety limits (run every cycle and every few minutes)
+    def check_guards(self):
+        """Daily loss halt (resets at midnight Cairo) and peak-drawdown flatten, both on bot capital incl. open P&L."""
+        st, Sg, g = self.state, self.S, self.guard_eq
+        if not g: return
+        today = trading_day()
+        if st.get('day') != today:
+            if st.get('day') and st.get('day_start_equity'): self.daily_summary(st['day'], st['day_start_equity'], g)
+            st.update(day=today, day_start_equity=g, halted=False)
+        if not st.get('day_start_equity'): st['day_start_equity'] = g
+        st['peak_equity'] = max(st.get('peak_equity') or g, g)
+        if g / st['day_start_equity'] - 1 <= -Sg['DAILY_LOSS_HALT'] and not st['halted']:
+            st['halted'] = True; log.warning(f'DAILY LOSS HALT at bot capital {g:.2f}')
+            self.notify(f'⚠️ Daily loss halt: bot capital {g:.2f} (day start {st["day_start_equity"]:.2f}). No new trades until midnight Cairo.')
+        if Sg['PEAK_DD_FLATTEN'] > 0 and g <= st['peak_equity'] * (1 - Sg['PEAK_DD_FLATTEN']):
+            log.warning('PEAK DRAWDOWN LIMIT - closing all bot trades and pausing')
+            res = self.flatten(manual_too=False)
+            st['peak_equity'] = g                    # new baseline: entries stay paused until you resume them
+            self.notify(f"🧯 Drawdown limit hit - bot trades closed ({len(res['closed'])} ok, {len(res['failed'])} failed) and entries paused.")
+        self.save_state()
+
+    def daily_summary(self, day, start, end):
+        H = [h for h in self.history if h.get('closed', '')[:10] >= day]
+        try:
+            n = len(H); w = sum(1 for h in H if h['pnl'] > 0)
+            self.notify(f"📊 Day {day}: bot capital {start:.2f} -> {end:.2f} ({(end / start - 1) * 100:+.2f}%) · {n} closed trades, {w} won · "
+                        f"{len(self.state['lots'])} open")
+        except Exception: pass
 
     # ------------------------------------------------------------ candle-close cycle
     def cycle(self, tf, reason='candle close'):
         with self.lock:
             st, Sg = self.state, self.S
-            eq = self.equity()
-            today = now_utc().date().isoformat()
-            if st['day'] != today: st.update(day=today, day_start_equity=eq, halted=False)
-            st['peak_equity'] = max(st.get('peak_equity') or eq, eq)
-            if eq / st['day_start_equity'] - 1 <= -Sg['DAILY_LOSS_HALT'] and not st['halted']:
-                st['halted'] = True; log.warning(f'DAILY LOSS HALT at equity {eq:.2f}'); self.notify(f'⚠️ Daily loss halt hit - equity {eq:.2f}')
-            if Sg['PEAK_DD_FLATTEN'] > 0 and eq <= st['peak_equity'] * (1 - Sg['PEAK_DD_FLATTEN']):
-                log.warning('PEAK DRAWDOWN LIMIT - closing all bot trades and pausing'); self.flatten(manual_too=False)
+            eq = self.equity()                       # sizing equity
+            self.check_guards()
             self.reconcile(eq)
             sleeves = [sl for sl in Sg['SLEEVES'] if sl['tf'] == tf]
             syms = sorted({s for sl in sleeves for s in self.sleeve_symbols(sl, include_off=True)} | {l['symbol'] for l in st['lots'].values() if l.get('tf') == tf})
             if not syms: return
             log.info(f'--- {tf} cycle ({reason}) | equity {eq:.2f} ---')
-            sigs, frames = self.compute_signals(tf, syms)
+            sigs, frames = self.compute_signals(tf, syms, extra=self._orphan_sleeves(tf))
             self.signals.update(sigs); self.signals_time = now_utc().isoformat(timespec='seconds')
             # refresh ATR for trailing + signal/time exits
             for k, l in list(st['lots'].items()):
@@ -570,7 +761,8 @@ class Engine:
                         ex = False
                     elif winning and run.get('trend_exit') and not trend_ok: ex = True
                 if ex or (l['mgmt'].get('max_bars') and not run and bars >= l['mgmt']['max_bars']) or (sl is None and False):
-                    self.close_lot(k, 'exit_signal' if ex else 'time_exit', sg['close'] if sg else None)
+                    try: self.close_lot(k, 'exit_signal' if ex else 'time_exit', sg['close'] if sg else None)
+                    except Exception as e: self.err(f'exit {l["symbol"]} [{l["sleeve"]}] failed: {e} - stop stays in place, retried next cycle')
             # entries (every signal that is not taken is logged with the reason)
             if Sg['ENTRIES_PAUSED'] or st['halted']:
                 log.info('entries paused' + (' (daily halt)' if st['halted'] else ''))
@@ -592,15 +784,54 @@ class Engine:
                     elif side == 'SHORT' and not self.hedge: why = 'hedge mode off (shorts unavailable)'
                     if why is None:
                         self.last_skip = ''
-                        if self.open_lot(sl, s, side, sg, frames.get(s), eq):
-                            held.append(s); continue
+                        try:
+                            if self.open_lot(sl, s, side, sg, frames.get(s), eq):
+                                held.append(s); continue
+                        except Exception as e:                     # one failed order never stops the other entries
+                            self.err(f'entry {s} [{sl["id"]}] failed: {e}'); self.last_skip = f'order failed: {e}'
                         why = self.last_skip or 'order failed'
                     self.miss(sl, s, side, sg, why)
             st['last_cycle'][tf] = now_utc().isoformat(timespec='minutes')
+            self.health['last_cycle_ok'][tf] = now_utc().isoformat(timespec='seconds')
             self.save_state()
-            self.record_equity(eq)
+            self.record_equity(self.guard_eq or eq)
+
+    def entry_block(self, sl, sym, side, manual=False):
+        """One gate for every way a trade can be opened (automatic, 'Take now', manual). Returns a reason or None."""
+        st, Sg = self.state, self.S
+        if not self.connected or self.error: return 'not connected to Binance'
+        if not SYM_RE.match(sym or '') or sym not in self.rules: return f'{sym} is not tradable'
+        if side not in ('LONG', 'SHORT'): return 'bad direction'
+        if side == 'SHORT' and not self.hedge: return 'hedge mode off (shorts unavailable)'
+        if st.get('halted'): return 'daily loss halt is active'
+        if any(l['symbol'] == sym and l['side'] == side and l.get('stop_dirty') for l in st['lots'].values()):
+            return 'an open trade on this coin is waiting for its stop to be confirmed'
+        if f'{sym}|{side}' in self.untracked: return 'Binance holds an untracked position on this coin/side - resolve it first'
+        if manual: return None
+        if Sg.get('ENTRIES_PAUSED'): return 'entries paused'
+        if not Sg['SYMBOLS_ON'].get(sym, True): return 'coin switched off'
+        if not sl.get('enabled', True): return 'strategy slot switched off'
+        held = [l for l in st['lots'].values() if l['sleeve'] == sl['id']]
+        if any(l['symbol'] == sym for l in held): return 'already in a trade on this coin'
+        if len(held) >= sl['max_pos']: return f"max positions reached ({sl['max_pos']})"
+        return None
+
+    def _ensure_leverage(self, sym):
+        """Exchange leverage = the configured cap (bounded by what Binance allows for the coin). Failure blocks the entry."""
+        want = max(1, int(self.S['MAX_LEVERAGE']))
+        if self._lev.get(sym) == want: return
+        self.trade.set_margin_type(sym, 'CROSSED')
+        mx = self.trade.leverage_max(sym)
+        lev = min(want, mx) if mx else want
+        self.trade.set_leverage(sym, lev)
+        self._lev[sym] = want
 
     def open_lot(self, sl, sym, side, sg, df, eq, risk=None, manual=False, stop_atr=None, tp_r=None):
+        block = self.entry_block(sl, sym, side, manual)
+        if block:
+            self.last_skip = block
+            if manual: raise ValueError(block)
+            return False
         r = self.rules[sym]
         g = dict(self.mgmt(sl)) if sl else {}
         if manual:
@@ -624,9 +855,8 @@ class Engine:
             qty = risk_usd / R
             stop = px - sd * R
         qty_raw = qty
-        if not manual:
-            used = sum(l['qty'] * l['avg'] for l in self.state['lots'].values() if l['sleeve'] == sl['id'])
-            qty = min(qty, max(0.0, self.S['MAX_LEVERAGE'] * sleeve_eq - used) / px)
+        used = sum(l['qty'] * l['avg'] for l in self.state['lots'].values() if l['sleeve'] == ('MAN' if manual else sl['id']))
+        qty = min(qty, max(0.0, self.S['MAX_LEVERAGE'] * sleeve_eq - used) / px)        # leverage cap applies to manual trades too
         qty = self._rd(qty, r['step'])
         if qty < r['min_qty'] or qty * px < r['min_notional']:
             log.info(f"SKIP {sym} [{sl['id'] if sl else 'MAN'}] size {qty} below Binance minimum")
@@ -649,16 +879,25 @@ class Engine:
         if self.dry:
             log.info(f'[dry] would open {side} {qty} {sym} stop {stop:.6g}'); return True
         try:
-            self.trade.set_margin_type(sym, 'CROSSED')
-            self.trade.set_leverage(sym, max(10, int(self.S['MAX_LEVERAGE'])))
+            self._ensure_leverage(sym)
         except Exception as e:
-            log.warning(f'leverage/margin setup {sym}: {e}')
-        o = self.trade.open(sym, side, self._fmt(qty, r['step']))
+            self.last_skip = f'could not set leverage/margin on Binance: {e}'
+            log.warning(f'{sym}: {self.last_skip}')
+            if manual: raise ValueError(self.last_skip)
+            return False
+        try:
+            o = self.trade.open(sym, side, self._fmt(qty, r['step']))
+        except AmbiguousOrder as e:
+            self.err(f'ENTRY {sym} {side} unconfirmed ({e}) - reconcile will flag it if it filled')
+            self.last_skip = 'entry order unconfirmed'
+            return False
         fill = float(o.get('avgPrice') or 0) or px
+        filled = float(o.get('executedQty') or 0)
+        if filled > 0: qty = self._rd(filled, r['step'])
         stop = self._rd(fill - sd * (abs(px - stop)), r['tick'])
         key = f"{'MAN' if manual else sl['id']}|{sym}|{side}|{int(time.time())}"
         lot = dict(symbol=sym, side=side, sleeve='MAN' if manual else sl['id'], key_strategy=None if manual else sl['key'],
-                   qty=qty, q0=qty, avg=fill, e0=fill, R=abs(fill - stop), stop=stop, stop_id=None, tp1=False, adds=0, dca=0,
+                   qty=qty, q0=qty, avg=fill, e0=fill, entry0=fill, R=abs(fill - stop), stop=stop, stop_id=None, stop_dirty=True, tp1=False, adds=0, dca=0,
                    best=fill, atr0=atr, atr_now=atr, mgmt=g, tf=(sl['tf'] if sl else '4h'), manual=manual,
                    opened=now_utc().isoformat(timespec='seconds'), risk_usd=round(risk_usd, 2), eq_at_entry=round(eq, 2),
                    qty_max=qty, fills=[[now_utc().isoformat(timespec='seconds'), 'entry', qty, fill]], fees=qty * fill * FEE_EST)
@@ -667,12 +906,16 @@ class Engine:
             lot['levels'] = [fill - sd * k * g['dca']['step_atr'] * atr for k in range(1, g['dca']['n'] + 1)]
             lot['w'] = [g['dca']['scale'] ** k for k in range(1, g['dca']['n'] + 1)]
             lot['tp'] = fill + sd * g['dca']['tp_atr'] * atr
-        try:
-            self._replace_stop(lot)
-        except Exception as e:
-            log.error(f'STOP FAILED {sym} ({e}) - closing for safety')
-            self.trade.close(sym, side, self._fmt(qty, r['step'])); self.last_skip = f'stop order failed: {e}'; return False
-        self.state['lots'][key] = lot
+        self.state['lots'][key] = lot; self.save_state()          # recorded BEFORE the stop: a crash here can never orphan the position
+        if not self._replace_stop(lot):
+            log.error(f'STOP FAILED {sym} - closing for safety')
+            try:
+                self.close_lot(key, 'stop_failed', px)
+                self.last_skip = 'stop order failed - trade closed again'; return False
+            except Exception as e:
+                self.err(f'{sym}: stop AND safety close failed ({e}) - kept as unprotected, retrying every few seconds')
+                self.notify(f'🆘 {side} {sym} has NO stop on Binance (stop and close both failed). The bot keeps retrying - check it.')
+                return True
         self.log_trade(time=now_utc().isoformat(timespec='seconds'), event='entry', sleeve=lot['sleeve'], symbol=sym, side=side,
                        qty=qty, price=fill, stop=stop, equity=round(eq, 2), note=reason)
         log.info(f"ENTRY {sym} {side} [{lot['sleeve']}] {qty} @ {fill} stop {stop}")
@@ -682,6 +925,11 @@ class Engine:
 
     # ------------------------------------------------------------ panel actions
     def manual_trade(self, sym, side, risk_pct, stop_atr, tp_r=None):
+        risk_pct, stop_atr = float(risk_pct), float(stop_atr)
+        if not 0 < risk_pct <= MANUAL_MAX_RISK: raise ValueError(f'manual risk must be between 0 and {MANUAL_MAX_RISK * 100:.0f}% of bot capital')
+        if not 0.5 <= stop_atr <= 10: raise ValueError('stop distance must be 0.5-10 ATR')
+        if tp_r is not None and not 0.5 <= float(tp_r) <= 50: raise ValueError('take profit must be 0.5-50 R')
+        if not SYM_RE.match(sym or ''): raise ValueError('bad symbol')
         with self.lock:
             eq = self.equity()
             df = self.candles(sym, '4h')
@@ -695,12 +943,12 @@ class Engine:
             if not sl: raise ValueError('unknown strategy slot')
             sg = self.signals.get(f'{sleeve_id}|{sym}')
             if not sg or not (sg['le'] or sg['se']): raise ValueError('no active signal for this coin/slot')
-            if any(l['sleeve'] == sleeve_id and l['symbol'] == sym for l in self.state['lots'].values()):
-                raise ValueError('this slot already holds that coin')
             side = 'LONG' if sg['le'] else 'SHORT'
-            if side == 'SHORT' and not self.hedge: raise ValueError('hedge mode is off - shorts unavailable')
+            block = self.entry_block(sl, sym, side)
+            if block: raise ValueError(block)
             eq = self.equity()
-            return self.open_lot(sl, sym, side, sg, self.candles(sym, sl['tf']), eq)
+            if not self.open_lot(sl, sym, side, sg, self.candles(sym, sl['tf']), eq): raise ValueError(self.last_skip or 'not opened')
+            return True
 
     def move_stop(self, key, price):
         with self.lock:
@@ -708,14 +956,25 @@ class Engine:
             sd = 1 if lot['side'] == 'LONG' else -1
             mark = self.trade.marks().get(lot['symbol'])
             if sd * (price - mark) >= 0: raise ValueError(f'stop must be on the losing side of the current price {mark}')
-            lot['stop'] = self._rd(price, self.rules[lot['symbol']]['tick'])
-            self._replace_stop(lot); self.save_state()
+            if not self._replace_stop(lot, price): raise ValueError('Binance did not accept the new stop - the previous stop is still active')
+            self.save_state()
             log.info(f"STOP MOVED {lot['symbol']} [{lot['sleeve']}] -> {lot['stop']}")
 
     def flatten(self, manual_too=True):
+        """Close every (bot) position. Returns {'closed': [...], 'failed': [[key, error]], 'still_open': {...}}.
+        Failed closes keep their exchange stop. Entries are paused either way."""
         with self.lock:
+            res = dict(closed=[], failed=[], still_open={})
             for k in list(self.state['lots']):
                 if manual_too or not self.state['lots'][k].get('manual'):
-                    try: self.close_lot(k, 'flatten')
-                    except Exception as e: log.error(f'flatten {k}: {e}')
+                    try: self.close_lot(k, 'flatten'); res['closed'].append(k)
+                    except Exception as e: res['failed'].append([k, str(e)[:160]]); self.err(f'flatten {k}: {e}')
             self.S['ENTRIES_PAUSED'] = True; self.save_settings()
+            if not self.dry:
+                try:
+                    live = self.trade.positions()
+                    syms = {k.split('|')[1] for k in res['closed'] + [f[0] for f in res['failed']]}
+                    res['still_open'] = {f'{a}|{b}': q for (a, b), q in live.items() if a in syms}
+                except Exception as e:
+                    res['still_open'] = {'?': f'could not verify: {e}'}
+            return res

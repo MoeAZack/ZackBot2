@@ -3,16 +3,17 @@
 Run:  python app.py            (or ZackBot.exe after building)
       python app.py --no-window  (server only; open http://localhost:8765 yourself)
 """
-import csv, glob, json, logging, math, os, shutil, subprocess, sys, threading, time, traceback, uuid, socket
+import base64, csv, glob, gzip, hmac, json, logging, logging.handlers, math, os, queue, re, secrets, shutil, subprocess, sys, threading, time, traceback, uuid, socket
 from datetime import datetime, timezone
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
+from urllib.parse import urlsplit, parse_qs
 
 import pandas as pd
 
 BUNDLE = getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__)))      # read-only app files
 EXE_DIR = os.path.dirname(os.path.abspath(sys.executable if getattr(sys, 'frozen', False) else __file__))
 PORT = 8765
-VERSION = '2.2'
+VERSION = '3.0'
 
 
 def data_dir():
@@ -24,55 +25,143 @@ def data_dir():
 
 DATA = data_dir()
 LOG_F = os.path.join(DATA, 'bot.log')
-_h = [logging.FileHandler(LOG_F, encoding='utf-8')]
+SECRETS = set()                     # values that must never appear in a log line
+
+
+class Scrub(logging.Filter):
+    """Removes API keys / Telegram tokens from every log record (they would otherwise reach bot.log and the Logs tab)."""
+    TG = re.compile(r'bot\d{5,}:[A-Za-z0-9_-]{20,}')
+
+    def filter(self, rec):
+        msg = rec.getMessage()
+        clean = self.TG.sub('bot***', msg)
+        for x in list(SECRETS):
+            if x and len(x) >= 8: clean = clean.replace(x, '***')
+        if clean != msg: rec.msg, rec.args = clean, ()
+        return True
+
+
+_h = [logging.handlers.RotatingFileHandler(LOG_F, maxBytes=5_000_000, backupCount=3, encoding='utf-8')]
 if sys.stdout is not None: _h.append(logging.StreamHandler(sys.stdout))        # windowed exe has no console
+for h_ in _h: h_.addFilter(Scrub())
 logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(message)s', handlers=_h)
 log = logging.getLogger('zackbot')
 
 import strategies as S          # noqa: E402
 import backtest as BT           # noqa: E402
-from engine import Engine, PRESETS, TOP40, CORE8, TF_SEC, save_json   # noqa: E402
+from engine import Engine, PRESETS, TOP40, CORE8, TF_SEC, MANUAL_MAX_RISK, save_json, next_reset_utc   # noqa: E402
 from binance_client import Futures, MAINNET   # noqa: E402
 
 
-# ------------------------------------------------------------------ config (keys)
+# ------------------------------------------------------------------ config (keys) - validated, atomically written, encrypted on Windows
+CFG_KEYS = ('MODE', 'LIVE_CONFIRM', 'API_KEY', 'API_SECRET', 'ANTHROPIC_API_KEY', 'ANTHROPIC_MODEL', 'TELEGRAM_TOKEN')
+CFG_SECRET = ('API_KEY', 'API_SECRET', 'ANTHROPIC_API_KEY', 'TELEGRAM_TOKEN')
+CFG_RULES = dict(MODE=r'paper|live', LIVE_CONFIRM=r'(YES_REAL_MONEY)?', API_KEY=r'[A-Za-z0-9]{8,128}', API_SECRET=r'[A-Za-z0-9]{8,128}',
+                 ANTHROPIC_API_KEY=r'[A-Za-z0-9_\-]{8,200}', ANTHROPIC_MODEL=r'[A-Za-z0-9.\-_]{0,80}', TELEGRAM_TOKEN=r'\d{5,15}:[A-Za-z0-9_\-]{20,80}')
+
+
+def cfg_value_ok(k, v):
+    return k in CFG_RULES and isinstance(v, str) and (v == '' or re.fullmatch(CFG_RULES[k], v) is not None)
+
+
+def _dpapi(data, encrypt):
+    """Windows Data Protection API: secrets can only be decrypted by this Windows user on this PC."""
+    import ctypes
+    from ctypes import wintypes as w
+
+    class BLOB(ctypes.Structure):
+        _fields_ = [('cbData', w.DWORD), ('pbData', ctypes.POINTER(ctypes.c_char))]
+    buf = ctypes.create_string_buffer(data, len(data))
+    inp = BLOB(len(data), ctypes.cast(buf, ctypes.POINTER(ctypes.c_char))); out = BLOB()
+    c32 = ctypes.windll.crypt32
+    if encrypt: ok = c32.CryptProtectData(ctypes.byref(inp), ctypes.c_wchar_p('ZackBot'), None, None, None, 0x1, ctypes.byref(out))
+    else: ok = c32.CryptUnprotectData(ctypes.byref(inp), None, None, None, None, 0x1, ctypes.byref(out))
+    if not ok: raise OSError('DPAPI call failed')
+    try: return ctypes.string_at(out.pbData, out.cbData)
+    finally: ctypes.windll.kernel32.LocalFree(ctypes.cast(out.pbData, ctypes.c_void_p))
+
+
+def protect(v):
+    if not v or os.name != 'nt': return v
+    try:
+        enc = 'dpapi:' + base64.b64encode(_dpapi(v.encode(), True)).decode()
+        if unprotect(enc) == v: return enc           # only store encrypted if it decrypts back exactly
+    except Exception as e:
+        log.warning(f'key encryption unavailable ({type(e).__name__}) - stored as plain text')
+    return v
+
+
+def unprotect(v):
+    if not v.startswith('dpapi:'): return v
+    return _dpapi(base64.b64decode(v[6:]), False).decode()
+
+
 def config_path():
     p = os.path.join(DATA, 'config.env')
     if not os.path.exists(p):
         for old in (os.path.join(EXE_DIR, 'config.env'), os.path.join(os.path.expanduser('~'), 'Documents', 'ZackBot', 'config.env')):
             if os.path.exists(old):
-                shutil.copy(old, p); log.info(f'imported settings/keys from {old}'); break
+                shutil.copy(old, p); log.info(f'imported settings/keys from {old} - you can delete that old copy'); break
     return p
 
 
 def load_cfg():
-    cfg = {}
+    cfg, plain = {}, False
     p = config_path()
     if os.path.exists(p):
         for line in open(p, encoding='utf-8'):
             line = line.strip()
-            if line and not line.startswith('#') and '=' in line:
-                k, v = line.split('=', 1); cfg[k.strip()] = v.strip()
+            if not line or line.startswith('#') or '=' not in line: continue
+            k, v = line.split('=', 1); k, v = k.strip(), v.strip()
+            if k in cfg: log.warning(f'config.env: duplicate {k} ignored'); continue      # first value wins, injected repeats are ignored
+            if k in CFG_SECRET and v.startswith('dpapi:'):
+                try: v = unprotect(v)
+                except Exception as e:
+                    log.error(f'could not decrypt {k} ({type(e).__name__}) - please enter it again in Settings'); continue
+            elif k in CFG_SECRET and v: plain = True
+            if not cfg_value_ok(k, v):
+                log.warning(f'config.env: invalid value for {k} ignored'); continue
+            cfg[k] = v
+    for k in CFG_SECRET:
+        if cfg.get(k): SECRETS.add(cfg[k])
     if cfg.get('MODE') == 'live' and cfg.get('LIVE_CONFIRM') != 'YES_REAL_MONEY':
         cfg['MODE'] = 'paper'
     cfg.setdefault('MODE', 'paper')
+    cfg['_plain'] = plain and os.name == 'nt'
     return cfg
 
 
 def write_cfg(updates):
-    cfg = load_cfg(); cfg.update({k: v for k, v in updates.items() if v is not None})
-    lines = ['# ZackBot keys and mode - edited from the app']
-    for k in ('MODE', 'LIVE_CONFIRM', 'API_KEY', 'API_SECRET', 'ANTHROPIC_API_KEY', 'ANTHROPIC_MODEL'):
-        lines.append(f'{k}={cfg.get(k, "")}')
-    with open(config_path(), 'w', encoding='utf-8') as f: f.write('\n'.join(lines) + '\n')
+    for k, v in updates.items():
+        if v is not None and not cfg_value_ok(k, v): raise ValueError(f'{k}: invalid format (letters, digits, dash and underscore only)')
+    cfg = load_cfg(); cfg.pop('_plain', None); cfg.update({k: v for k, v in updates.items() if v is not None})
+    lines = ['# ZackBot keys and mode - edited from the app (secrets are encrypted for this Windows user)']
+    for k in CFG_KEYS:
+        v = cfg.get(k, '')
+        lines.append(f'{k}={protect(v) if k in CFG_SECRET else v}')
+    tmp = config_path() + '.tmp'
+    with open(tmp, 'w', encoding='utf-8') as f: f.write('\n'.join(lines) + '\n')
+    os.replace(tmp, config_path())
+    for k in CFG_SECRET:
+        if cfg.get(k): SECRETS.add(cfg[k])
 
 
 # ------------------------------------------------------------------ candle cache for backtests
 PUB = None
 
 
+_CANDLE_LOCKS, _CL = {}, threading.Lock()
+
+
 def get_candles(sym, tf, days):
-    """Cached klines from Binance (public endpoint). Returns DataFrame t,o,h,l,c,v."""
+    """Cached klines from Binance (public endpoint). Returns DataFrame t,o,h,l,c,v. One writer per cache file at a time."""
+    if not re.fullmatch(r'[A-Z0-9]{2,20}USDT', sym) or tf not in TF_SEC: raise ValueError('bad symbol/timeframe')
+    with _CL: lk = _CANDLE_LOCKS.setdefault((sym, tf), threading.Lock())
+    with lk:
+        return _get_candles(sym, tf, days)
+
+
+def _get_candles(sym, tf, days):
     global PUB
     PUB = PUB or Futures('', '', MAINNET)
     f = os.path.join(DATA, 'candles', f'{sym}_{tf}.csv')
@@ -103,14 +192,31 @@ def get_candles(sym, tf, days):
         new = pd.DataFrame(rows, columns=['t', 'o', 'h', 'l', 'c', 'v']).astype(float)
         df = pd.concat([df.astype(float), new]).drop_duplicates('t').sort_values('t')
         df = df[df.t < time.time() * 1000 - step]          # closed candles only
-        df.to_csv(f, index=False)
+        tmp = f + '.tmp'; df.to_csv(tmp, index=False); os.replace(tmp, f)     # atomic: a crash never leaves a half-written cache
     out = df.astype(float).copy()
     out['t'] = pd.to_datetime(out.t, unit='ms')
     return out.reset_index(drop=True)
 
 
-# ------------------------------------------------------------------ backtest jobs
+# ------------------------------------------------------------------ backtest jobs (one worker, bounded queue)
 JOBS = {}
+JOBQ = queue.Queue(maxsize=8)
+BT_ID = re.compile(r'^[0-9]{8}-[0-9]{6}-[a-z0-9_\-]{2,40}$')
+
+
+def job_worker():
+    while True:
+        fn, args = JOBQ.get()
+        try: fn(*args)
+        except Exception: log.error('job failed: ' + traceback.format_exc())
+        finally:
+            done = [k for k, j in JOBS.items() if j.get('status') in ('done', 'error')]
+            for k in done[:-30]: JOBS.pop(k, None)            # keep memory bounded
+
+
+def enqueue(fn, *args):
+    try: JOBQ.put_nowait((fn, args))
+    except queue.Full: raise ValueError('too many backtests waiting - try again when the current ones finish')
 
 
 def run_backtest_job(job_id, req):
@@ -125,7 +231,7 @@ def run_backtest_job(job_id, req):
         groups = {}
         for sl in sleeves: groups.setdefault(sl.get('tf') or dtf, []).append(sl)
         total_share = sum(float(sl['share']) for sl in sleeves) or 1
-        trs, cvs, skipped, all_syms = [], [], [], set()
+        trs, cvs, skipped, all_syms, gaps = [], [], [], set(), {}
         for gi, (tf, gs) in enumerate(sorted(groups.items())):
             syms = sorted({s for sl in gs for s in (CORE8 if sl['symbols'] == 'core8' else req['universe'] if sl['symbols'] == 'all' else sl['symbols'])} | {'BTCUSDT'})
             raw = {}
@@ -140,6 +246,7 @@ def run_backtest_job(job_id, req):
             if 'BTCUSDT' not in raw: raise ValueError(f'no {tf} data for BTCUSDT')
             job['status'] = 'running' + (f' {tf} group' if len(groups) > 1 else '')
             book = BT.Book(raw)
+            gaps.update({f'{k} {tf}': v for k, v in book.gaps.items()})
             gshare = sum(float(sl['share']) for sl in gs)
             cfg = []
             for sl in gs:
@@ -163,13 +270,20 @@ def run_backtest_job(job_id, req):
         mid = cv.index[0] + (cv.index[-1] - cv.index[0]) / 2
         st = BT.stats(tr, cv, start=start, split=str(mid))
         cvd = cv.resample('1D').last().dropna()
+        cut = cv.index[0] + (cv.index[-1] - cv.index[0]) * 0.7          # last 30% of the period, reported on its own
+        a_, b_ = cv[cv.index < cut], cv[cv.index >= cut]
+        oos = dict(split=str(cut.date()), ret_first=round((a_.iloc[-1] / a_.iloc[0] - 1) * 100, 1) if len(a_) > 1 else None,
+                   ret_last=round((b_.iloc[-1] / b_.iloc[0] - 1) * 100, 1) if len(b_) > 1 else None,
+                   dd_last=round((b_ / b_.cummax() - 1).min() * 100, 1) if len(b_) > 1 else None)
+        dd_curve = [[str(t.date()), round((v / m - 1) * 100, 2)] for t, v, m in zip(cvd.index, cvd.values, cvd.cummax().values)]
         by_sleeve = tr.groupby('sleeve').pnl.agg(['count', 'sum']).round(2).reset_index().to_dict('records') if len(tr) else []
         by_sym = tr.groupby('sym').pnl.sum().round(2).sort_values().to_dict() if len(tr) else {}
         ye = cv.resample('YE').last(); prev = float(cv.iloc[0]); years = {}
         for t, v in ye.items(): years[str(t.year)] = round((v / prev - 1) * 100, 1); prev = v
         st['per_week'] = round(len(tr) / max(1, (cv.index[-1] - cv.index[0]).days) * 7, 1)
         res = dict(id=job_id, name=req.get('name') or 'Backtest', created=datetime.now().isoformat(timespec='minutes'),
-                   request=req, stats=st, skipped=skipped, years=years, period=[str(cv.index[0].date()), str(cv.index[-1].date())],
+                   request=req, stats=st, skipped=skipped, years=years, engine=BT.VERSION, oos=oos, dd_curve=dd_curve,
+                   gaps=gaps, period=[str(cv.index[0].date()), str(cv.index[-1].date())],
                    curve=[[str(t.date()), round(v, 2)] for t, v in cvd.items()], by_sleeve=by_sleeve, by_symbol=by_sym,
                    symbols=sorted(all_syms), tfs=sorted(groups))
         save_json(os.path.join(DATA, 'backtests', f'{job_id}.json'), res)
@@ -185,6 +299,7 @@ def list_backtests():
         try:
             r = json.load(open(f))
             out.append(dict(id=r['id'], name=r['name'], created=r['created'], stats=r['stats'], period=r['period'], years=r.get('years', {}),
+                            engine=r.get('engine', 'v2'), oos=r.get('oos'),
                             curve=r['curve'][::7] if 'study' in r['id'] else None,
                             sleeves=[f"{s['key']}@{s['risk']:.1%}" for s in r['request']['sleeves']], tf='+'.join(r.get('tfs') or [r['request'].get('tf', '4h')])))
         except Exception:
@@ -210,18 +325,29 @@ _ICON_FAIL, _ASSETS = {}, {'t': 0, 'map': {}}
 _ICON_LOCK = threading.Lock()
 
 
+ICON_HOSTS = re.compile(r'^https://([a-z0-9-]+\.)*(bnbstatic\.com|binance\.com)/')
+
+
+def _img_type(b):
+    if b[:8] == b'\x89PNG\r\n\x1a\n': return 'image/png'
+    if b[:3] == b'\xff\xd8\xff': return 'image/jpeg'
+    if b[:4] == b'RIFF' and b[8:12] == b'WEBP': return 'image/webp'
+    return None                                      # SVG / HTML / anything else from the network is refused
+
+
 def coin_icon(sym):
-    base = ''.join(ch for ch in sym.upper().replace('.SVG', '').replace('.PNG', '') if ch.isalnum())
+    base = ''.join(ch for ch in sym.upper().replace('.SVG', '').replace('.PNG', '') if ch.isalnum())[:24]
     if base.endswith('USDT'): base = base[:-4]
     for pre in ('1000000', '1000'):
         if base.startswith(pre) and len(base) > len(pre): base = base[len(pre):]
     if not base: return None
     f = os.path.join(BUNDLE, 'research', 'icons', base + '.svg')
-    if os.path.exists(f): return open(f, 'rb').read(), 'image/svg+xml'
+    if os.path.exists(f): return open(f, 'rb').read(), 'image/svg+xml'          # bundled, reviewed files
     cdir = os.path.join(DATA, 'icons'); os.makedirs(cdir, exist_ok=True)
-    for ext, ct in (('.svg', 'image/svg+xml'), ('.png', 'image/png')):
-        f = os.path.join(cdir, base + ext)
-        if os.path.exists(f) and os.path.getsize(f) > 100: return open(f, 'rb').read(), ct
+    f = os.path.join(cdir, base + '.img')
+    if os.path.exists(f):
+        b = open(f, 'rb').read(); t = _img_type(b)
+        if t: return b, t
     if time.time() - _ICON_FAIL.get(base, 0) < 3600: return None
     with _ICON_LOCK:
         try:
@@ -230,22 +356,21 @@ def coin_icon(sym):
                 _ASSETS['t'] = time.time()
                 try:
                     r = requests.get('https://www.binance.com/bapi/asset/v2/public/asset/asset/get-all-asset', timeout=8).json()
-                    _ASSETS['map'] = {a.get('assetCode', '').upper(): (a.get('logoUrl') or a.get('fullLogoUrl')) for a in r.get('data', []) if a.get('logoUrl') or a.get('fullLogoUrl')}
+                    _ASSETS['map'] = {str(a.get('assetCode', '')).upper(): (a.get('logoUrl') or a.get('fullLogoUrl')) for a in r.get('data', []) if a.get('logoUrl') or a.get('fullLogoUrl')}
                 except Exception as e:
-                    log.info(f'coin logo list unavailable: {e}')
-            urls = [u for u in (_ASSETS['map'].get(base), f'https://bin.bnbstatic.com/static/assets/logos/{base}.png') if u]
+                    log.info(f'coin logo list unavailable: {type(e).__name__}')
+            urls = [u for u in (_ASSETS['map'].get(base), f'https://bin.bnbstatic.com/static/assets/logos/{base}.png') if u and ICON_HOSTS.match(u)]
             for u in urls:
                 try:
-                    r = requests.get(u, timeout=8)
-                    if r.ok and len(r.content) > 100:
-                        ct = r.headers.get('Content-Type', 'image/png').split(';')[0]
-                        ext = '.svg' if 'svg' in ct else '.png'
-                        open(os.path.join(cdir, base + ext), 'wb').write(r.content)
-                        return r.content, ('image/svg+xml' if ext == '.svg' else 'image/png')
+                    r = requests.get(u, timeout=8, stream=True)
+                    b = r.raw.read(300_000, decode_content=True) if r.ok else b''
+                    t = _img_type(b)
+                    if t and len(b) < 300_000:
+                        open(f, 'wb').write(b); return b, t
                 except Exception:
                     pass
         except Exception as e:
-            log.info(f'coin logo {base}: {e}')
+            log.info(f'coin logo {base}: {type(e).__name__}')
         _ICON_FAIL[base] = time.time()
     return None
 
@@ -261,15 +386,27 @@ class App:
         self.start_engine()
 
     def start_engine(self):
-        cfg = load_cfg()
-        self.cfg = cfg
-        eng = Engine(cfg, DATA)
+        old = self.engine
+        if old is not None: old.lock.acquire()          # let a running cycle finish and save before the new engine reads state
         try:
-            eng.connect()
-        except Exception as e:
-            eng.error = f'Could not connect to Binance: {e}'
-            log.error(eng.error)
-        self.engine = eng
+            cfg = load_cfg()
+            if cfg.pop('_plain', False):
+                try: write_cfg({}); log.info('API keys are now stored encrypted (Windows DPAPI)')
+                except Exception as e: log.warning(f'could not encrypt stored keys: {e}')
+            self.cfg = cfg
+            eng = Engine(cfg, DATA)
+            tok = eng.S.pop('TELEGRAM_TOKEN', '')            # v2 kept the Telegram token in settings.json -> move to the encrypted config
+            if tok and not cfg.get('TELEGRAM_TOKEN') and cfg_value_ok('TELEGRAM_TOKEN', tok):
+                write_cfg({'TELEGRAM_TOKEN': tok}); cfg['TELEGRAM_TOKEN'] = tok
+            if tok: eng.save_settings()
+            try:
+                eng.connect()
+            except Exception as e:
+                eng.error = f'Could not connect to Binance: {e}'
+                log.error(eng.error)
+            self.engine = eng
+        finally:
+            if old is not None: old.lock.release()
         log.info(f"ZackBot {VERSION} | mode={'LIVE' if eng.live else 'PAPER'} | keys={'yes' if cfg.get('API_KEY') else 'no'} | data: {DATA}")
         self.preview()          # signals preview on start (no trading)
 
@@ -311,60 +448,100 @@ class App:
     states = {}
 
     def loop(self):
-        last_bar = {}
-        last_manage = last_eq = 0
+        e0 = self.engine
+        last_bar, last_manage, last_eq, last_guard = {}, 0, 0, 0
         while True:
             try:
                 e = self.engine
+                if e is not e0: last_bar, e0 = {}, e                      # engine restarted (keys/mode changed)
                 if e and e.connected and e.cfg.get('API_KEY') and not e.error:
                     now = time.time()
                     tfs = sorted({sl['tf'] for sl in e.S['SLEEVES']} | {l.get('tf', '4h') for l in e.state['lots'].values()})
                     for tf in tfs:
                         bar = math.floor((now - 15) / TF_SEC[tf])
-                        if tf not in last_bar: last_bar[tf] = bar
+                        if tf not in last_bar:                              # start-up: catch up a candle missed while the app was off
+                            lc = (e.state.get('last_cycle') or {}).get(tf)
+                            try: done = datetime.fromisoformat(lc).timestamp() >= bar * TF_SEC[tf] + 10 if lc else False
+                            except ValueError: done = False
+                            last_bar[tf] = bar if done else bar - 1
+                            if not done and lc: log.info(f'{tf}: last cycle {lc} - catching up the missed candle now')
+                            elif not lc: last_bar[tf] = bar                 # brand-new install: wait for the next candle
                         if bar != last_bar[tf]:
-                            last_bar[tf] = bar
-                            e.cycle(tf); self.preview()
+                            try:
+                                e.cycle(tf); last_bar[tf] = bar             # only marked done after it ran
+                            except Exception as ex:
+                                e.err(f'{tf} cycle failed: {ex} - retrying in 60s'); time.sleep(60)
+                            self.preview()
                     if e.run_now.is_set():
                         e.run_now.clear()
-                        for tf in tfs: e.cycle(tf, 'manual run'); self.preview()
+                        for tf in tfs:
+                            try: e.cycle(tf, 'manual run')
+                            except Exception as ex: e.err(f'{tf} manual cycle failed: {ex}')
+                        self.preview()
                     if now - last_manage > 8:
                         last_manage = now
-                        if e.state['lots']:
-                            e.manage(e.trade.marks())
+                        try:
+                            marks = e.data.marks()
+                            if e.state['lots']: e.manage(marks)
+                            else: e.marks, e.marks_t = marks, now
+                        except Exception as ex:
+                            e._manage_failed(f'mark prices: {ex}')
+                    if now - last_guard > 60:                               # daily halt / drawdown checked between candles too
+                        last_guard = now
+                        with e.lock:
+                            e.equity(); e.check_guards()
                     if now - last_eq > 300:
                         last_eq = now
-                        with e.lock: e.record_equity(e.equity())
+                        with e.lock: e.record_equity(e.guard_eq or e.equity())
                     e.next_cycle = {tf: datetime.fromtimestamp((math.floor(now / TF_SEC[tf]) + 1) * TF_SEC[tf] + 15, timezone.utc).isoformat(timespec='seconds') for tf in tfs}
+                    self.loop_ok = time.time()
             except Exception as ex:
                 log.error(f'main loop: {ex}')
                 time.sleep(20)
             time.sleep(2)
 
-    def snapshot(self):
-        e = self.engine
-        marks = {}
-        try: marks = e.trade.marks() if e.connected else {}
-        except Exception: pass
+    loop_ok = 0.0
+    _orders = (0, [])
+
+    # ---------------- read models for the panel (cheap; no exchange calls - prices come from the 8s mark cache)
+    def _lots_view(self, e):
+        marks = e.marks or {}
+        with e.lock: items = [(k, dict(l)) for k, l in e.state['lots'].items()]
         lots = []
-        for k, l in e.state['lots'].items():
+        for k, l in items:
             m = marks.get(l['symbol']); sd = 1 if l['side'] == 'LONG' else -1
             pnl = sd * (m - l['avg']) * l['qty'] if m else None
-            lots.append(dict(key=k, **{x: l.get(x) for x in ('symbol', 'side', 'sleeve', 'qty', 'avg', 'e0', 'stop', 'opened', 'adds', 'dca', 'tp1', 'manual')},
+            lots.append(dict(key=k, **{x: l.get(x) for x in ('symbol', 'side', 'sleeve', 'qty', 'avg', 'e0', 'stop', 'opened', 'adds', 'dca', 'tp1', 'manual', 'tf', 'risk_usd')},
+                             tp=l.get('tp'), protected=bool(l.get('stop_id')) and not l.get('stop_dirty'),
                              mark=m, pnl=pnl, r=(pnl / l['risk_usd']) if (pnl is not None and l.get('risk_usd')) else None,
                              risk_to_stop=sd * ((m or l['avg']) - l['stop']) * l['qty'], notional=(m or l['avg']) * l['qty']))
-        trades = []
-        if os.path.exists(e.F['trades']):
-            with open(e.F['trades']) as f: trades = list(csv.DictReader(f))
-        realized = {}
-        for t in trades:
-            try: realized[t['sleeve']] = realized.get(t['sleeve'], 0) + float(t['pnl'] or 0)
-            except ValueError: pass
-        try:
-            with open(LOG_F, encoding='utf-8') as f: logs = f.readlines()[-80:]
-        except Exception: logs = []
+        return lots
+
+    def health(self, e, lots):
+        h = e.health
+        now = time.time()
+        mt = max(e.marks_t or 0, 0)
+        exch = 'error' if e.error else ('ok' if e.connected and now - mt < 60 else 'stale')
+        unprot = [l['key'] for l in lots if not l['protected']]
+        lm = h.get('last_manage_ok')
+        engine = 'stopped' if now - (self.loop_ok or 0) > 60 else ('degraded' if (h['manage_fail_streak'] >= 3 or unprot or e.untracked or e.state.get('orphans')) else 'ok')
+        entries = 'halted' if e.state.get('halted') else 'paused' if e.S.get('ENTRIES_PAUSED') else 'open'
+        return dict(engine=engine, exchange=exch, last_sync=h.get('last_sync'), last_prices=datetime.fromtimestamp(mt, timezone.utc).isoformat(timespec='seconds') if mt else None,
+                    last_manage_ok=lm, last_cycle_ok=h.get('last_cycle_ok'), errors=list(h['errors'])[-12:][::-1], unprotected=unprot,
+                    untracked=e.untracked, orphans=len(e.state.get('orphans') or []), entries=entries, next_reset=next_reset_utc(),
+                    fail_streak=h['manage_fail_streak'])
+
+    def revs(self, e):
+        hl = e.history[-1]['id'] if e.history else ''
+        ml = e.missed[-1]['logged'] if e.missed else ''
+        eh = e.equity_hist[-1][0] if e.equity_hist else 0
+        return dict(history=f'{len(e.history)}:{hl}', missed=f'{len(e.missed)}:{ml}', signals=str(e.signals_time),
+                    equity=f'{len(e.equity_hist)}:{eh}', meta=VERSION)
+
+    def snapshot(self):
+        e = self.engine
+        lots = self._lots_view(e)
         st = e.state
-        # exposure
         eqv = e.last_eq or 0
         by_coin = {}
         for l in lots:
@@ -381,84 +558,261 @@ class App:
                         gross_lev=(long_n + short_n) / eqv if eqv else 0, risk=sum(c['risk'] for c in by_coin.values()),
                         by_coin=by_coin, by_sleeve=by_sleeve, margin_used=acc.get('totalInitialMargin'), maint=acc.get('totalMaintMargin'),
                         margin_balance=acc.get('totalMarginBalance'), available=acc.get('availableBalance'), corr=e.corr)
-        missed = []
+        settings = {k: v for k, v in e.S.items() if k != 'TELEGRAM_TOKEN'}
+        settings['TELEGRAM_TOKEN_SET'] = bool(e.cfg.get('TELEGRAM_TOKEN'))
+        return dict(version=VERSION, mode='LIVE' if e.live else 'PAPER', keys=bool(e.cfg.get('API_KEY')), ai_key=bool(e.cfg.get('ANTHROPIC_API_KEY')),
+                    error=e.error, hedge=e.hedge, equity=e.guard_eq if e.guard_eq is not None else e.last_eq, sizing_equity=e.last_eq,
+                    balance=e.last_balance, day_start=st.get('day_start_equity'), peak=st.get('peak_equity'), halted=st.get('halted'),
+                    last_cycle=st.get('last_cycle'), next_cycle=getattr(e, 'next_cycle', None), settings=settings, lots=lots,
+                    signals_time=e.signals_time, exposure=exposure, capital=e.capital_info(), health=self.health(e, lots), rev=self.revs(e),
+                    jobs={k: {x: y for x, y in j.items() if x != 'result'} for k, j in list(JOBS.items())[-12:]})
+
+    def meta(self):
+        e = self.engine
+        return dict(version=VERSION, presets={k: dict(name=v['name'], note=v['note'], bt=v.get('bt'), sleeves=v['sleeves']) for k, v in PRESETS.items()},
+                    library={k: dict(name=v['name'], style=v['style'], sides=v['sides'], desc=v['desc'], mgmt=v['mgmt']) for k, v in S.STRATEGIES.items()},
+                    core8=CORE8, top40=TOP40, tradable=sorted(e.rules) if e.rules else [], manual_max_risk=MANUAL_MAX_RISK * 100)
+
+    def missed_view(self):
+        e = self.engine; marks = e.marks or {}
+        out = []
         for m in e.missed[-300:][::-1]:
             mk = marks.get(m['symbol']); sd = 1 if m['side'] == 'LONG' else -1
-            missed.append(dict(m, now=mk, move_pct=round(sd * (mk - m['price']) / m['price'] * 100, 2) if mk else None))
-        return dict(version=VERSION, mode='LIVE' if e.live else 'PAPER', keys=bool(e.cfg.get('API_KEY')), ai_key=bool(e.cfg.get('ANTHROPIC_API_KEY')),
-                    error=e.error, hedge=e.hedge, equity=e.last_eq, balance=e.last_balance, day_start=st.get('day_start_equity'),
-                    peak=st.get('peak_equity'), halted=st.get('halted'), last_cycle=st.get('last_cycle'), next_cycle=getattr(e, 'next_cycle', None),
-                    settings={k: (('•' * 8) if (k == 'TELEGRAM_TOKEN' and v) else v) for k, v in e.S.items()}, lots=lots, trades=trades[-150:][::-1], realized=realized,
-                    signals=e.signals, states=self.states, signals_time=e.signals_time, equity_hist=e.equity_hist[-3000:],
-                    logs=[x.rstrip() for x in logs][::-1], history=e.history[-1500:], missed=missed, exposure=exposure, capital=e.capital_info(), tradable=sorted(e.rules) if e.rules else [],
-                    presets={k: dict(name=v['name'], note=v['note'], sleeves=v['sleeves']) for k, v in PRESETS.items()},
-                    library={k: dict(name=v['name'], style=v['style'], sides=v['sides'], desc=v['desc'], mgmt=v['mgmt']) for k, v in S.STRATEGIES.items()},
-                    core8=CORE8, top40=TOP40, jobs={k: {x: y for x, y in j.items() if x != 'result'} for k, j in JOBS.items()})
+            out.append(dict(m, now=mk, move_pct=round(sd * (mk - m['price']) / m['price'] * 100, 2) if mk else None))
+        return out
+
+    def orders_view(self):
+        e = self.engine
+        try: mt = os.path.getmtime(e.F['trades'])
+        except OSError: return []
+        if self._orders[0] != mt:
+            with open(e.F['trades']) as f: rows = list(csv.DictReader(f))
+            self._orders = (mt, rows[-300:][::-1])
+        return self._orders[1]
+
+    def candles_view(self, sym, tf, n):
+        """Candles + markers for the price chart of one coin (entries, exits, current stop/targets)."""
+        e = self.engine
+        if not re.fullmatch(r'[A-Z0-9]{2,20}USDT', sym or '') or tf not in TF_SEC: raise ValueError('bad symbol/timeframe')
+        df = e.candles(sym, tf).tail(max(30, min(int(n), 400)))
+        bars = [[int(t.timestamp()), round(o, 10), round(h, 10), round(l, 10), round(c, 10)] for t, o, h, l, c in zip(df.t, df.o, df.h, df.l, df.c)]
+        t0 = bars[0][0] if bars else 0
+        fills = []
+        for h in e.history[-1500:]:
+            if h['symbol'] != sym: continue
+            for f in h.get('fills') or []:
+                ts = datetime.fromisoformat(f[0]).timestamp()
+                if ts >= t0: fills.append(dict(t=int(ts), kind=f[1], qty=f[2], px=f[3], side=h['side'], sleeve=h['sleeve']))
+        lines = []
+        with e.lock:
+            for l in e.state['lots'].values():
+                if l['symbol'] != sym: continue
+                for f in l.get('fills') or []:
+                    ts = datetime.fromisoformat(f[0]).timestamp()
+                    if ts >= t0: fills.append(dict(t=int(ts), kind=f[1], qty=f[2], px=f[3], side=l['side'], sleeve=l['sleeve']))
+                lines.append(dict(kind='avg', px=l['avg'], side=l['side'], sleeve=l['sleeve']))
+                lines.append(dict(kind='stop', px=l['stop'], side=l['side'], sleeve=l['sleeve']))
+                if l.get('tp'): lines.append(dict(kind='target', px=l['tp'], side=l['side'], sleeve=l['sleeve']))
+        return dict(symbol=sym, tf=tf, bars=bars, fills=fills, lines=lines, mark=(e.marks or {}).get(sym))
+
+    def log_tail(self, n=250):
+        try:
+            with open(LOG_F, 'rb') as f:
+                f.seek(0, 2); size = f.tell(); f.seek(max(0, size - 96_000))
+                lines = f.read().decode('utf-8', 'replace').splitlines()[-n:]
+        except Exception: lines = []
+        return lines[::-1]
+
+    def test_connection(self):
+        e = self.engine
+        out = dict(mode='LIVE' if e.live else 'PAPER (Binance Futures testnet)', checks=[])
+        add = lambda ok, name, detail='': out['checks'].append(dict(ok=ok, name=name, detail=detail))
+        if not e.cfg.get('API_KEY'): add(False, 'API key saved', 'add your keys below'); return out
+        try:
+            t0 = time.time(); e.trade.sync_time(); add(True, 'Binance reachable', f'{(time.time() - t0) * 1000:.0f} ms, clock offset {e.trade.offset} ms')
+        except Exception as ex: add(False, 'Binance reachable', str(ex)[:120]); return out
+        try:
+            acc = e.trade.account()
+            add(bool(acc.get('canTrade', True)), 'Key can trade futures', f"balance {float(acc.get('totalMarginBalance', 0)):.2f} USDT")
+        except Exception as ex: add(False, 'Key can trade futures', str(ex)[:140]); return out
+        try: add(e.trade.hedge_mode(), 'Hedge mode (longs + shorts together)', 'on' if e.hedge else 'off - shorts are skipped')
+        except Exception as ex: add(False, 'Hedge mode', str(ex)[:120])
+        if e.live:
+            try:
+                r = e.trade.api_restrictions() or {}
+                add(not r.get('enableWithdrawals', False), 'Withdrawals DISABLED on this key', 'ENABLED - turn it off on Binance now!' if r.get('enableWithdrawals') else 'good')
+                add(bool(r.get('ipRestrict')), 'Key restricted to your IP', 'recommended' if not r.get('ipRestrict') else 'good')
+                add(bool(r.get('enableFutures', True)), 'Futures permission', '')
+            except Exception as ex: add(False, 'Key permissions', f'could not read: {str(ex)[:100]}')
+        else:
+            add(True, 'Paper mode', 'orders go to the Binance testnet - no real money')
+        return out
+
+    def research_get(self):
+        return self.research
 
 
 APP = None
+TOKEN = secrets.token_urlsafe(32)
+HOSTS = (f'127.0.0.1:{PORT}', f'localhost:{PORT}')
+ORIGINS = (f'http://127.0.0.1:{PORT}', f'http://localhost:{PORT}')
+SEC_HEADERS = {'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer', 'X-Frame-Options': 'DENY',
+               'Content-Security-Policy': "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; "
+                                          "img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'"}
+LOCKED_PAGE = ('<!doctype html><meta charset=utf-8><title>ZackBot</title><body style="background:#0b0920;color:#ddd;font:15px Segoe UI,sans-serif;'
+               'display:grid;place-items:center;height:90vh"><div><h2>ZackBot is running</h2><p>For security, the control panel only opens from the '
+               'ZackBot shortcut. Close this tab and start ZackBot again from the desktop or Start menu.</p></div>')
 
 
-# ------------------------------------------------------------------ HTTP
+# ------------------------------------------------------------------ HTTP (loopback only, per-launch token, exact Host/Origin)
 class H(BaseHTTPRequestHandler):
     def log_message(self, *a): pass
 
-    def _send(self, code, body, ctype='application/json', cache='no-store'):
+    def _send(self, code, body, ctype='application/json', cache='no-store', extra=None):
         b = body.encode() if isinstance(body, str) else body
+        gz = len(b) > 1400 and 'gzip' in (self.headers.get('Accept-Encoding') or '') and ctype.startswith(('application/json', 'text/'))
+        if gz: b = gzip.compress(b, 5)
         self.send_response(code); self.send_header('Content-Type', ctype); self.send_header('Content-Length', str(len(b)))
-        self.send_header('Cache-Control', cache); self.end_headers(); self.wfile.write(b)
+        if gz: self.send_header('Content-Encoding', 'gzip')
+        self.send_header('Cache-Control', cache)
+        for k, v in {**SEC_HEADERS, **(extra or {})}.items(): self.send_header(k, v)
+        self.end_headers(); self.wfile.write(b)
 
     def _json(self, obj, code=200):
         self._send(code, json.dumps(obj, default=str))
 
+    def _authed(self):
+        tok = self.headers.get('X-ZB-Token', '')
+        for part in (self.headers.get('Cookie') or '').split(';'):
+            k, _, v = part.strip().partition('=')
+            if k == 'zb': tok = tok or v
+        return bool(tok) and hmac.compare_digest(tok, TOKEN)
+
+    def _host_ok(self):
+        return self.headers.get('Host', '') in HOSTS
+
     def do_GET(self):
-        p = self.path.split('?')[0]
+        if not self._host_ok(): return self._send(421, '{}')
+        u = urlsplit(self.path); p, q = u.path, parse_qs(u.query)
         if p in ('/', '/index.html'):
+            t = (q.get('t') or [''])[0]
+            if t and hmac.compare_digest(t, TOKEN):            # launch link -> session cookie, then a clean URL
+                self.send_response(303); self.send_header('Location', '/')
+                self.send_header('Set-Cookie', f'zb={TOKEN}; HttpOnly; SameSite=Strict; Path=/')
+                for k, v in SEC_HEADERS.items(): self.send_header(k, v)
+                self.send_header('Content-Length', '0'); self.end_headers(); return
+            if not self._authed(): return self._send(401, LOCKED_PAGE, 'text/html; charset=utf-8')
             return self._send(200, open(os.path.join(BUNDLE, 'panel.html'), encoding='utf-8').read(), 'text/html; charset=utf-8')
-        if p.startswith('/icon/'):
-            r = coin_icon(p[6:])
-            if r: return self._send(200, r[0], r[1], 'max-age=86400')
-            return self._send(404, b'', 'image/svg+xml', 'max-age=600')
-        if p == '/api/status': return self._json(APP.snapshot())
-        if p == '/api/research': return self._json(APP.research)
-        if p == '/api/backtests': return self._json(list_backtests())
-        if p.startswith('/api/backtest/'):
-            bid = p.rsplit('/', 1)[1]
-            if bid in JOBS: return self._json({k: v for k, v in JOBS[bid].items()})
-            f = os.path.join(DATA, 'backtests', f'{bid}.json')
-            if os.path.exists(f): return self._json(dict(status='done', result=json.load(open(f))))
-            return self._json(dict(status='missing'), 404)
+        if p == '/api/ping':
+            return self._json(dict(app='zackbot', ok=self._authed(), version=VERSION), 200 if self._authed() else 401)
+        if not self._authed(): return self._json(dict(ok=False, error='not authorised - reopen ZackBot from its shortcut'), 401)
+        try:
+            if p.startswith('/icon/'):
+                r = coin_icon(p[6:])
+                ext = {'Content-Security-Policy': "default-src 'none'; style-src 'unsafe-inline'"}
+                if r: return self._send(200, r[0], r[1], 'private, max-age=86400', ext)
+                return self._send(404, b'', 'image/png', 'private, max-age=600', ext)
+            if p == '/api/status': return self._json(APP.snapshot())
+            if p == '/api/meta': return self._json(APP.meta())
+            if p == '/api/history': return self._json(dict(rev=APP.revs(APP.engine)['history'], history=APP.engine.history[-1500:]))
+            if p == '/api/missed': return self._json(dict(rev=APP.revs(APP.engine)['missed'], missed=APP.missed_view()))
+            if p == '/api/signals':
+                e = APP.engine
+                return self._json(dict(rev=str(e.signals_time), signals=e.signals, states=APP.states, time=e.signals_time))
+            if p == '/api/equity': return self._json(dict(rev=APP.revs(APP.engine)['equity'], equity_hist=APP.engine.equity_hist[-3000:]))
+            if p == '/api/orders': return self._json(APP.orders_view())
+            if p == '/api/logs': return self._json(APP.log_tail())
+            if p == '/api/candles':
+                return self._json(APP.candles_view((q.get('symbol') or [''])[0], (q.get('tf') or ['4h'])[0], (q.get('n') or ['160'])[0]))
+            if p == '/api/research': return self._json(APP.research)
+            if p == '/api/backtests': return self._json(list_backtests())
+            if p.startswith('/api/backtest/'):
+                bid = p.rsplit('/', 1)[1]
+                if bid in JOBS: return self._json({k: v for k, v in JOBS[bid].items()})
+                if not BT_ID.match(bid): return self._json(dict(status='missing'), 404)
+                f = os.path.join(DATA, 'backtests', f'{bid}.json')
+                if os.path.exists(f): return self._json(dict(status='done', result=json.load(open(f))))
+                return self._json(dict(status='missing'), 404)
+        except ValueError as ex:
+            return self._json(dict(ok=False, error=str(ex)), 400)
+        except Exception as ex:
+            log.error(f'GET {p}: {ex}'); return self._json(dict(ok=False, error=str(ex)), 500)
         self._send(404, '{}')
 
     def do_POST(self):
-        origin = self.headers.get('Origin', '')
-        if origin and not origin.startswith((f'http://localhost:{PORT}', f'http://127.0.0.1:{PORT}')):
+        if not self._host_ok(): return self._send(421, '{}')
+        origin = self.headers.get('Origin')
+        if origin is not None and origin not in ORIGINS:
             return self._json(dict(ok=False, error='forbidden origin'), 403)
+        if not self._authed(): return self._json(dict(ok=False, error='not authorised - reopen ZackBot from its shortcut'), 401)
+        if 'application/json' not in (self.headers.get('Content-Type') or ''):
+            return self._json(dict(ok=False, error='JSON only'), 415)
+        n = int(self.headers.get('Content-Length') or 0)
+        if n > 1_000_000: return self._json(dict(ok=False, error='request too large'), 413)
         try:
-            body = json.loads(self.rfile.read(int(self.headers.get('Content-Length', 0))) or b'{}')
+            body = json.loads(self.rfile.read(n) or b'{}')
+            if not isinstance(body, dict): raise ValueError('bad request')
             self._json(dict(ok=True, msg=handle(self.path, body)))
-        except (ValueError, KeyError) as e:
+        except (ValueError, KeyError, TypeError) as e:
             log.warning(f'panel action rejected: {e}'); self._json(dict(ok=False, error=str(e)), 400)
         except Exception as e:
             log.error('panel action failed: ' + traceback.format_exc()); self._json(dict(ok=False, error=str(e)), 400)
 
 
-LIMITS = dict(MAX_LEVERAGE=(1, 50), DAILY_LOSS_HALT=(0.01, 1.0), PEAK_DD_FLATTEN=(0.0, 0.95), CAPITAL_CAP=(0, 1e9))
+# ------------------------------------------------------------------ request validation
+LIMITS = dict(MAX_LEVERAGE=(1, 50), DAILY_LOSS_HALT=(0.01, 1.0), PEAK_DD_FLATTEN=(0.0, 0.95))
+SYM = re.compile(r'^[A-Z0-9]{2,20}USDT$')
+MG_NUM = dict(stop_atr=(0.3, 20), trail_atr=(0.3, 20), be_r=(0.1, 50), tp1_r=(0.1, 50), tp1_frac=(0.05, 1), tp_r=(0.2, 100), max_bars=(1, 5000))
+MG_SUB = dict(pyramid=dict(n=(0, 10), step_r=(0.1, 20), frac=(0.05, 5)),
+              dca=dict(n=(0, 10), step_atr=(0.1, 20), scale=(0.1, 5), tp_atr=(0.1, 20), stop_atr=(0.1, 30)),
+              runner=dict(be_r=(0.1, 100), step_r=(0.1, 100), gap_r=(0.1, 100), giveback=(0.05, 1), gb_from=(0.1, 100), dca_frac=(0.05, 1), trend_exit=(0, 1)))
+
+
+def _num(v, lo, hi, name):
+    try: x = float(v)
+    except (TypeError, ValueError): raise ValueError(f'{name} must be a number')
+    if not (lo <= x <= hi) or x != x: raise ValueError(f'{name} must be between {lo} and {hi}')
+    return x
+
+
+def clean_mgmt(m):
+    if not isinstance(m, dict): raise ValueError('bad trade management settings')
+    out = {}
+    for k, v in m.items():
+        if v is None: continue
+        if k in MG_NUM: out[k] = _num(v, *MG_NUM[k], k)
+        elif k in MG_SUB:
+            if not isinstance(v, dict): raise ValueError(f'bad {k} settings')
+            out[k] = {kk: _num(vv, *MG_SUB[k][kk], f'{k}.{kk}') for kk, vv in v.items() if kk in MG_SUB[k] and vv is not None}
+            for kk in ('n',):
+                if kk in out[k]: out[k][kk] = int(out[k][kk])
+        else: raise ValueError(f'unknown setting {k}')
+    return out
+
+
+def clean_symbols(v):
+    if v in ('all', 'core8'): return v
+    if not isinstance(v, list) or len(v) > 80: raise ValueError('coin list must be all, core8 or a list of up to 80 coins')
+    for x in v:
+        if not isinstance(x, str) or not SYM.match(x): raise ValueError(f'bad coin symbol: {str(x)[:20]}')
+    return v
 
 
 def validate_sleeve(sl, i):
-    if sl.get('key') not in S.STRATEGIES: raise ValueError(f'unknown strategy {sl.get("key")}')
-    out = dict(id=str(sl.get('id') or f'S{i + 1}')[:12], key=sl['key'], name=S.STRATEGIES[sl['key']]['name'],
-               enabled=bool(sl.get('enabled', True)), share=float(sl['share']), risk=float(sl['risk']), max_pos=int(sl['max_pos']),
-               symbols=sl.get('symbols', 'all'), sides=sl.get('sides') or S.STRATEGIES[sl['key']]['sides'],
-               mgmt=sl.get('mgmt') or {}, tf=sl.get('tf', '4h'))
-    if sl.get('hours'): out['hours'] = [int(h) for h in sl['hours'] if 0 <= int(h) <= 23]
-    if sl.get('vol_max_pct'): out['vol_max_pct'] = float(sl['vol_max_pct'])
-    if sl.get('kelly'): out['kelly'] = dict(frac=float(sl['kelly'].get('frac', 0.5)), min=float(sl['kelly'].get('min', 0.25)), max=float(sl['kelly'].get('max', 2.0)))
-    if not 0 < out['share'] <= 1: raise ValueError('capital share must be between 1% and 100%')
-    if not 0.0005 <= out['risk'] <= 0.25: raise ValueError('risk per trade must be between 0.05% and 25%')
-    if not 1 <= out['max_pos'] <= 20: raise ValueError('max positions must be 1-20')
-    if out['sides'] not in ('long', 'short', 'both'): raise ValueError('sides must be long/short/both')
+    if not isinstance(sl, dict) or sl.get('key') not in S.STRATEGIES: raise ValueError(f'unknown strategy {str(sl.get("key"))[:30]}')
+    sid = str(sl.get('id') or f'S{i + 1}')[:12]
+    if not re.fullmatch(r'[A-Za-z0-9_\-]{1,12}', sid): raise ValueError('slot names: letters, digits, - and _ only (max 12)')
+    if sid == 'MAN': raise ValueError('MAN is reserved for manual trades')
+    out = dict(id=sid, key=sl['key'], name=S.STRATEGIES[sl['key']]['name'],
+               enabled=bool(sl.get('enabled', True)), share=_num(sl['share'], 0.001, 1, 'capital share'), risk=_num(sl['risk'], 0.0005, 0.25, 'risk per trade'),
+               max_pos=int(_num(sl['max_pos'], 1, 20, 'max positions')), symbols=clean_symbols(sl.get('symbols', 'all')),
+               sides=sl.get('sides') or S.STRATEGIES[sl['key']]['sides'], mgmt=clean_mgmt(sl.get('mgmt') or {}), tf=sl.get('tf', '4h'))
+    if sl.get('hours'): out['hours'] = sorted({int(_num(h, 0, 23, 'hour')) for h in sl['hours']})
+    if sl.get('vol_max_pct'): out['vol_max_pct'] = _num(sl['vol_max_pct'], 0.05, 1, 'volatility filter')
+    if sl.get('kelly'):
+        k = sl['kelly'] if isinstance(sl['kelly'], dict) else {}
+        out['kelly'] = dict(frac=_num(k.get('frac', 0.5), 0.05, 1, 'Kelly fraction'), min=_num(k.get('min', 0.25), 0.05, 2, 'Kelly min'), max=_num(k.get('max', 2.0), 0.5, 4, 'Kelly max'))
+    if out['sides'] not in ('long', 'short', 'both'): raise ValueError('direction must be long/short/both')
     if out['tf'] not in TF_SEC: raise ValueError('timeframe must be 15m, 1h or 4h')
     return out
 
@@ -469,27 +823,42 @@ def handle(path, b):
         with e.lock:
             for k, v in b.items():
                 if k in LIMITS:
-                    lo, hi = LIMITS[k]; v = float(v)
-                    if not lo <= v <= hi: raise ValueError(f'{k} must be between {lo} and {hi}')
-                    e.S[k] = v
+                    e.S[k] = _num(v, *LIMITS[k], k)
+                    if k == 'MAX_LEVERAGE': e._lev = {}                       # re-apply on the next entry per coin
+                elif k == 'CAPITAL_CAP': e.set_capital_base(_num(v, 0, 1e9, 'start amount'))
                 elif k in ('ENTRIES_PAUSED', 'AI_FILTER', 'RUN_IN_BACKGROUND', 'TELEGRAM_ON'): e.S[k] = bool(v)
-                elif k in ('TELEGRAM_TOKEN', 'TELEGRAM_CHAT'):
-                    if str(v).strip() and set(str(v).strip()) != {'•'}: e.S[k] = str(v).strip()
-                elif k == 'SYMBOLS_ON': e.S['SYMBOLS_ON'].update({s: bool(x) for s, x in v.items()})
+                elif k == 'TELEGRAM_TOKEN':
+                    v = str(v).strip()
+                    if v and set(v) != {'•'}:
+                        if not cfg_value_ok('TELEGRAM_TOKEN', v): raise ValueError('that does not look like a Telegram bot token (123456:ABC...)')
+                        write_cfg({'TELEGRAM_TOKEN': v}); e.cfg['TELEGRAM_TOKEN'] = v; APP.cfg['TELEGRAM_TOKEN'] = v
+                elif k == 'TELEGRAM_CHAT':
+                    v = str(v).strip()
+                    if v and not re.fullmatch(r'-?\d{3,20}|@[A-Za-z0-9_]{4,40}', v): raise ValueError('chat id is a number like 123456789 or -100..., or @channelname')
+                    e.S[k] = v
+                elif k == 'SYMBOLS_ON':
+                    if not isinstance(v, dict): raise ValueError('bad coin switches')
+                    e.S['SYMBOLS_ON'].update({s: bool(x) for s, x in v.items() if s in e.S['UNIVERSE']})
                 elif k == 'ADD_SYMBOL':
-                    s = v.strip().upper(); s = s if s.endswith('USDT') else s + 'USDT'
-                    if e.rules and s not in e.rules: raise ValueError(f'{s} is not a Binance USDT perpetual')
+                    s = str(v).strip().upper(); s = s if s.endswith('USDT') else s + 'USDT'
+                    if not SYM.match(s): raise ValueError('coin names are letters/digits, e.g. HYPE or 1000PEPE')
+                    if not e.rules: raise ValueError('not connected to Binance - cannot check that coin right now')
+                    if s not in e.rules: raise ValueError(f'{s} is not a Binance USDT perpetual')
                     if s not in e.S['UNIVERSE']: e.S['UNIVERSE'].append(s); e.S['SYMBOLS_ON'][s] = True
                 elif k == 'REMOVE_SYMBOL':
                     if v in e.S['UNIVERSE']: e.S['UNIVERSE'].remove(v); e.S['SYMBOLS_ON'].pop(v, None)
                 elif k == 'UNIVERSE':
-                    e.S['UNIVERSE'] = [s for s in v if not e.rules or s in e.rules]
+                    if not isinstance(v, list) or not e.rules: raise ValueError('cannot replace the coin list right now')
+                    e.S['UNIVERSE'] = [s for s in v if isinstance(s, str) and SYM.match(s) and s in e.rules][:120]
                     e.S['SYMBOLS_ON'] = {s: e.S['SYMBOLS_ON'].get(s, True) for s in e.S['UNIVERSE']}
+                else:
+                    raise ValueError(f'unknown setting {str(k)[:30]}')
             e.save_settings()
-        log.info('settings changed from panel: ' + ', '.join(b.keys()))
+        log.info('settings changed from panel: ' + ', '.join(str(k) for k in b.keys()))
         APP.preview()
         return 'saved'
     if path == '/api/sleeves':
+        if not isinstance(b.get('sleeves'), list) or len(b['sleeves']) > 12: raise ValueError('1-12 strategy slots')
         sl = [validate_sleeve(x, i) for i, x in enumerate(b['sleeves'])]
         if len({x['id'] for x in sl}) != len(sl): raise ValueError('each strategy slot needs a unique name')
         if sum(x['share'] for x in sl if x['enabled']) > 1.0001: raise ValueError('capital shares of active strategies add up to more than 100%')
@@ -499,15 +868,20 @@ def handle(path, b):
         APP.preview()
         return 'strategies saved'
     if path == '/api/preset':
+        if b.get('name') not in PRESETS: raise ValueError('unknown profile')
         e.apply_preset(b['name']); APP.preview()
         return f"preset {PRESETS[b['name']]['name']} applied"
     if path == '/api/keys':
         upd = {}
         for k in ('API_KEY', 'API_SECRET', 'ANTHROPIC_API_KEY'):
-            if b.get(k): upd[k] = b[k].strip()
+            v = str(b.get(k) or '').strip()
+            if v:
+                if not cfg_value_ok(k, v): raise ValueError(f'{k.replace("_", " ").lower()}: unexpected characters - copy it again from Binance/Anthropic')
+                upd[k] = v
         if b.get('MODE') in ('paper', 'live'):
             if b['MODE'] == 'live' and b.get('CONFIRM') != 'YES_REAL_MONEY': raise ValueError('type YES_REAL_MONEY to switch to live')
             upd['MODE'] = b['MODE']; upd['LIVE_CONFIRM'] = 'YES_REAL_MONEY' if b['MODE'] == 'live' else ''
+        elif b.get('MODE') is not None: raise ValueError('mode must be paper or live')
         if upd.get('MODE') and upd['MODE'] != APP.cfg.get('MODE') and e.state['lots']:
             raise ValueError('close all open positions before switching paper/live')
         write_cfg(upd)
@@ -515,14 +889,18 @@ def handle(path, b):
         return 'saved - engine restarted'
     if path == '/api/backtest':
         jid = datetime.now().strftime('%Y%m%d-%H%M%S-') + uuid.uuid4().hex[:4]
-        req = dict(b); req['universe'] = req.get('universe') or e.S['UNIVERSE']
-        req['sleeves'] = [validate_sleeve(x, i) for i, x in enumerate(req['sleeves'])]
+        req = dict(name=str(b.get('name') or 'Backtest')[:80], days=int(_num(b.get('days', 730), 30, 2200, 'period')),
+                   tf=b.get('tf') if b.get('tf') in TF_SEC else '4h', start=_num(b.get('start', 500), 50, 1e8, 'start capital'),
+                   max_lev=_num(b.get('max_lev', 10), 1, 50, 'max leverage'), daily_halt=_num(b.get('daily_halt', 0.08), 0.01, 1, 'daily halt'),
+                   universe=[s for s in (b.get('universe') or e.S['UNIVERSE']) if isinstance(s, str) and SYM.match(s)][:80])
+        if not isinstance(b.get('sleeves'), list) or not b['sleeves']: raise ValueError('no strategies to test')
+        req['sleeves'] = [validate_sleeve(x, i) for i, x in enumerate(b['sleeves'][:12])]
         JOBS[jid] = dict(id=jid, status='queued')
-        threading.Thread(target=run_backtest_job, args=(jid, req), daemon=True).start()
+        try: enqueue(run_backtest_job, jid, req)
+        except ValueError: JOBS.pop(jid, None); raise
         return jid
     if path == '/api/study':
-        # backtest every ready-made profile over the same period, one after another (shares the candle cache)
-        days = int(b.get('days', 1460)); start = float(b.get('start', 500))
+        days = int(_num(b.get('days', 1460), 90, 2200, 'period')); start = _num(b.get('start', 500), 50, 1e8, 'start')
         if any(j.get('study') and j['status'] not in ('done', 'error') for j in JOBS.values()):
             raise ValueError('a profile study is already running')
         keys = [k for k in PRESETS if k != 'original']
@@ -540,57 +918,79 @@ def handle(path, b):
                 JOBS[sid]['status'] = f'{PRESETS[k]["name"]}: ' + JOBS[jid]['status'] + f' ({n + 1}/{len(keys)})'
                 JOBS[sid]['done'] = n + 1; JOBS[sid]['ids'].append(jid)
             JOBS[sid]['status'] = 'done'
-        threading.Thread(target=study, daemon=True).start()
+        try: enqueue(study)
+        except ValueError: JOBS.pop(sid, None); raise
         return sid
     if path == '/api/backtest_delete':
-        f = os.path.join(DATA, 'backtests', f"{b['id']}.json")
+        bid = str(b.get('id', ''))
+        if not BT_ID.match(bid): raise ValueError('bad backtest id')
+        f = os.path.join(DATA, 'backtests', f'{bid}.json')
+        if os.path.realpath(os.path.dirname(f)) != os.path.realpath(os.path.join(DATA, 'backtests')): raise ValueError('bad backtest id')
         if os.path.exists(f): os.remove(f)
         return 'deleted'
     if path == '/api/action':
         a = b.get('action')
         if a == 'run_cycle': e.run_now.set(); return 'cycle requested'
         if a == 'refresh_signals': APP.preview(); return 'refreshing signals'
-        if a == 'flatten': e.flatten(); return 'all positions closed, entries paused'
+        if a == 'flatten':
+            r = e.flatten()
+            msg = f"closed {len(r['closed'])} position(s), entries paused"
+            if r['failed']: raise ValueError(msg + f" - {len(r['failed'])} FAILED (their stops are still on Binance): " + '; '.join(f'{k.split("|")[1]}: {x}' for k, x in r['failed'])[:300])
+            if r['still_open']: msg += ' - Binance still shows: ' + ', '.join(f'{k} {v}' for k, v in r['still_open'].items())
+            return msg
         if a == 'close':
-            with e.lock: e.close_lot(b['key'], 'closed_from_panel', e.trade.marks().get(e.state['lots'][b['key']]['symbol']))
+            with e.lock:
+                if b.get('key') not in e.state['lots']: raise ValueError('that position is no longer open')
+                e.close_lot(b['key'], 'closed_from_panel', (e.marks or {}).get(e.state['lots'][b['key']]['symbol']))
             return 'closed'
         if a == 'telegram_test':
-            if not (e.S.get('TELEGRAM_TOKEN') and e.S.get('TELEGRAM_CHAT')): raise ValueError('add the bot token and chat id first')
+            tok = e.cfg.get('TELEGRAM_TOKEN')
+            if not (tok and e.S.get('TELEGRAM_CHAT')): raise ValueError('add the bot token and chat id first')
             import requests
-            r = requests.post(f"https://api.telegram.org/bot{e.S['TELEGRAM_TOKEN']}/sendMessage", timeout=10,
-                              data=dict(chat_id=e.S['TELEGRAM_CHAT'], text='ZackBot test message - notifications are working'))
+            try:
+                r = requests.post(f"https://api.telegram.org/bot{tok}/sendMessage", timeout=10,
+                                  data=dict(chat_id=e.S['TELEGRAM_CHAT'], text='ZackBot test message - notifications are working'))
+            except Exception as ex:
+                raise ValueError(f'could not reach Telegram ({type(ex).__name__})')
             if not r.ok: raise ValueError(f'Telegram said: {r.text[:150]}')
             return 'test message sent'
         if a == 'take_signal':
-            ok = e.take_signal(b['sleeve'], b['symbol'])
-            return 'trade opened' if ok else 'skipped (size below Binance minimum or AI veto)'
-        if a == 'capital': return e.capital_action(b['kind'], b.get('amount'), str(b.get('note', ''))[:80])
-        if a == 'move_stop': e.move_stop(b['key'], float(b['stop'])); return 'stop moved'
+            e.take_signal(str(b.get('sleeve', '')), str(b.get('symbol', '')))
+            return 'trade opened'
+        if a == 'capital': return e.capital_action(b.get('kind'), b.get('amount'), str(b.get('note', ''))[:80])
+        if a == 'move_stop': e.move_stop(b['key'], _num(b['stop'], 0, 1e12, 'stop')); return 'stop moved'
         if a == 'manual_trade':
-            ok = e.manual_trade(b['symbol'], b.get('side', 'LONG'), float(b['risk']) / 100, float(b['stop_atr']),
-                                float(b['tp_r']) if b.get('tp_r') else None)
-            return 'manual trade opened' if ok else 'skipped (size below Binance minimum)'
+            if b.get('side') not in ('LONG', 'SHORT'): raise ValueError('direction must be LONG or SHORT')
+            ok = e.manual_trade(str(b.get('symbol', '')), b['side'], _num(b['risk'], 0.01, 100, 'risk') / 100, _num(b['stop_atr'], 0.1, 50, 'stop distance'),
+                                _num(b['tp_r'], 0.5, 50, 'take profit') if b.get('tp_r') else None)
+            if not ok: raise ValueError(e.last_skip or 'not opened')
+            return 'manual trade opened'
+        if a == 'test_connection': return APP.test_connection()
         if a == 'top_by_volume':
             t = Futures('', '', MAINNET).tickers_24h()
-            ok = [x for x in t if x['symbol'].endswith('USDT') and (not e.rules or x['symbol'] in e.rules)]
-            top = [x['symbol'] for x in sorted(ok, key=lambda x: -float(x['quoteVolume']))[:int(b.get('n', 40))]]
-            return top
+            ok = [x for x in t if x['symbol'].endswith('USDT') and SYM.match(x['symbol']) and (not e.rules or x['symbol'] in e.rules)]
+            return [x['symbol'] for x in sorted(ok, key=lambda x: -float(x['quoteVolume']))[:int(_num(b.get('n', 40), 5, 100, 'n'))]]
         if a == 'quit':
             log.info('quit from panel (exchange stops stay active)')
-            threading.Timer(0.5, lambda: os._exit(0)).start(); return 'bye'
+            e.notify('⏹ ZackBot was closed from the app. Exchange stops stay active, but nothing manages trades until it runs again.')
+            with e.lock: e.save_state()
+            threading.Timer(1.0, lambda: os._exit(0)).start(); return 'bye'
     raise ValueError('unknown request')
 
 
 # ------------------------------------------------------------------ window
+SESSION_F = os.path.join(DATA, 'session.json')
+
+
 def find_browser():
     cands = [os.path.join(os.environ.get(v, ''), *p) for v in ('PROGRAMFILES(X86)', 'PROGRAMFILES', 'LOCALAPPDATA')
              for p in (('Microsoft', 'Edge', 'Application', 'msedge.exe'), ('Google', 'Chrome', 'Application', 'chrome.exe'))]
     return next((c for c in cands if os.path.exists(c)), None)
 
 
-def open_window():
+def open_window(token):
     b = find_browser()
-    url = f'http://127.0.0.1:{PORT}'
+    url = f'http://127.0.0.1:{PORT}/?t={token}'
     if not b:
         import webbrowser; webbrowser.open(url); return None
     prof = os.path.join(DATA, 'app-window')
@@ -605,18 +1005,45 @@ def port_in_use():
         return s.connect_ex(('127.0.0.1', PORT)) == 0
 
 
+def message_box(text):
+    log.error(text)
+    if os.name == 'nt':
+        try:
+            import ctypes; ctypes.windll.user32.MessageBoxW(None, text, 'ZackBot', 0x30)
+        except Exception: pass
+
+
+def existing_instance_token():
+    """Port already taken: only open it if it is really ZackBot (it must accept the token we saved at its launch)."""
+    try:
+        tok = json.load(open(SESSION_F)).get('token', '')
+        import urllib.request
+        rq = urllib.request.Request(f'http://127.0.0.1:{PORT}/api/ping', headers={'X-ZB-Token': tok})
+        r = json.loads(urllib.request.urlopen(rq, timeout=4).read())
+        if r.get('app') == 'zackbot' and r.get('ok'): return tok
+    except Exception:
+        pass
+    return None
+
+
 def main():
     global APP
-    if port_in_use():                       # already running -> just show it
-        open_window(); return
+    if port_in_use():                       # already running -> just show it (after verifying it is ours)
+        tok = existing_instance_token()
+        if tok: open_window(tok)
+        else: message_box(f'Port {PORT} is used by another program, not ZackBot. Close that program and start ZackBot again.')
+        return
+    save_json(SESSION_F, dict(token=TOKEN, port=PORT, pid=os.getpid(), started=datetime.now(timezone.utc).isoformat(timespec='seconds')))
+    threading.Thread(target=job_worker, daemon=True).start()
     APP = App()
     srv = ThreadingHTTPServer(('127.0.0.1', PORT), H)
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     threading.Thread(target=APP.loop, daemon=True).start()
-    log.info(f'control panel at http://127.0.0.1:{PORT}')
+    log.info(f'control panel at http://127.0.0.1:{PORT} (opens from the ZackBot shortcut)')
+    APP.engine.notify(f'▶️ ZackBot {VERSION} started ({"LIVE" if APP.engine.live else "paper"}).')
     if '--no-window' in sys.argv:
         while True: time.sleep(3600)
-    w = open_window()
+    w = open_window(TOKEN)
     while True:
         time.sleep(2)
         if w is not None and w.poll() is not None:
@@ -624,7 +1051,9 @@ def main():
                 log.info('window closed - bot keeps running in the background (open ZackBot again to see it)')
                 w = None
             else:
-                log.info('window closed - quitting (exchange stops stay active)'); os._exit(0)
+                log.info('window closed - quitting (exchange stops stay active)')
+                with APP.engine.lock: APP.engine.save_state()
+                os._exit(0)
 
 
 if __name__ == '__main__':

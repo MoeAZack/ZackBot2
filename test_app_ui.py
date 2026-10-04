@@ -39,6 +39,7 @@ class Fake:
     def cancel(self, s, t): STOPS.pop(t, None)
     def cancel_all(self, s): pass
     def open_stop_tags(self, s): return {k for k, v in STOPS.items() if v == s}
+    def leverage_max(self, s): return 50
 import binance_client; binance_client.Futures = Fake
 import engine; engine.Futures = Fake
 import app; app.Futures = Fake
@@ -48,7 +49,10 @@ threading.Thread(target=app.main, daemon=True).start()
 time.sleep(8)
 import requests
 U = 'http://127.0.0.1:8765'
-st = requests.get(U + '/api/status').json(); print('status ok: eq', st['equity'], 'sleeves', [s['id'] for s in st['settings']['SLEEVES']], 'signals', len(st['signals']), 'states', len(st['states']))
+TOK = json.load(open(os.path.join(tmp, 'ZackBot', 'session.json')))['token']
+_S = requests.Session(); _S.headers['X-ZB-Token'] = TOK
+requests = type('R', (), {'get': staticmethod(_S.get), 'post': staticmethod(_S.post)})
+st = requests.get(U + '/api/status').json(); st['presets'] = requests.get(U + '/api/meta').json()['presets']; print('status ok: eq', st['equity'], 'sleeves', [s['id'] for s in st['settings']['SLEEVES']], 'health', st['health']['engine'], st['health']['exchange'])
 P = lambda p, b: requests.post(U + p, json=b).json()
 print('preset', P('/api/preset', {'name': 'balanced'}))
 print('bad sleeve', P('/api/sleeves', {'sleeves': [{'id': 'X', 'key': 'ema_mom', 'share': 0.7, 'risk': .02, 'max_pos': 4}, {'id': 'Y', 'key': 'dca_dip', 'share': 0.5, 'risk': .02, 'max_pos': 4}]}))
@@ -58,7 +62,7 @@ print('good sleeves', P('/api/sleeves', {'sleeves': [{'id': 'MOM', 'key': 'ema_m
 print('add coin', P('/api/settings', {'ADD_SYMBOL': 'nope'}), P('/api/settings', {'CAPITAL_CAP': 500, 'MAX_LEVERAGE': 10}))
 print('manual long', P('/api/action', {'action': 'manual_trade', 'symbol': 'ETHUSDT', 'side': 'LONG', 'risk': 1, 'stop_atr': 2.5, 'tp_r': 3}))
 print('manual short', P('/api/action', {'action': 'manual_trade', 'symbol': 'SOLUSDT', 'side': 'SHORT', 'risk': 1, 'stop_atr': 2.5}))
-st = requests.get(U + '/api/status').json(); lots = st['lots']; print('lots', [(l['symbol'], l['side'], l['qty'], round(l['stop'], 3)) for l in lots])
+st = requests.get(U + '/api/status').json(); st['presets'] = requests.get(U + '/api/meta').json()['presets']; lots = st['lots']; print('lots', [(l['symbol'], l['side'], l['qty'], round(l['stop'], 3)) for l in lots])
 k = [l for l in lots if l['side'] == 'SHORT'][0]
 print('move stop wrong side', P('/api/action', {'action': 'move_stop', 'key': k['key'], 'stop': k['mark'] * 0.9}))
 print('move stop ok', P('/api/action', {'action': 'move_stop', 'key': k['key'], 'stop': k['mark'] * 1.03}))
@@ -89,13 +93,13 @@ for _ in range(60):
 print('mixed backtest', jm['status'], jm.get('error'), jm.get('result', {}).get('tfs'), jm.get('result', {}).get('stats'))
 print('icon BTC', requests.get(U + '/icon/BTC').status_code, requests.get(U + '/icon/BTC').headers.get('Content-Type'), 'icon TAO (no net) ', requests.get(U + '/icon/TAO').status_code)
 print('backtest result', j['status'], j.get('error'), j.get('result', {}).get('stats'))
-st2=requests.get(U + '/api/status').json(); print('signals later', len(st2['signals']), 'states', len(st2['states']))
+sg2=requests.get(U + '/api/signals').json(); print('signals later', len(sg2['signals']), 'states', len(sg2['states']))
 print('research', list(requests.get(U + '/api/research').json().keys()), 'saved', len(requests.get(U + '/api/backtests').json()))
 from playwright.sync_api import sync_playwright
 with sync_playwright() as pw:
     b = pw.chromium.launch(); pg = b.new_page(viewport={'width': 1560, 'height': 1000}); errs = []
     pg.on('pageerror', lambda e: errs.append(str(e))); pg.on('dialog', lambda d: d.accept())
-    pg.goto(U); time.sleep(3)
+    pg.goto(U + '/?t=' + TOK); time.sleep(3)
     for t in ['dash', 'trades', 'risk', 'strat', 'coins', 'sig', 'bt', 'res', 'logs', 'set', 'help']:
         pg.click(f'#n_{t}'); time.sleep(1.2); pg.screenshot(path=f'/tmp/claude-0/-home-claude/d6ad53d0-10de-5d7c-a74c-77ea7be8c649/scratchpad/ui_{t}.png', full_page=True)
     pg.click('#n_trades'); time.sleep(1)
