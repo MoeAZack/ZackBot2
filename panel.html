@@ -89,10 +89,10 @@ body.nohelp .help{display:none}
 /* ---------- controls */
 button{background:var(--panel2);color:var(--text);border:1px solid var(--line2);border-radius:11px;padding:7px 13px;font:600 12px "Segoe UI Variable","Segoe UI",system-ui;cursor:pointer;white-space:nowrap;transition:all .15s}
 button:hover{background:var(--panel3);border-color:rgba(255,255,255,.25)}button:disabled{opacity:.45;cursor:default}
-.b-pri{background:var(--grad);border-color:rgba(255,255,255,.2);color:#fff;box-shadow:0 4px 18px rgba(124,58,237,.45)}.b-pri:hover{filter:brightness(1.12);box-shadow:0 6px 24px rgba(124,58,237,.6)}
+.b-pri{background:var(--grad);border-color:rgba(255,255,255,.2);color:#fff;box-shadow:0 4px 18px rgba(124,58,237,.45)}.b-pri:hover{background:var(--grad);filter:brightness(1.12);box-shadow:0 6px 24px rgba(124,58,237,.6)}
 .b-ok{background:linear-gradient(135deg,#16a34a,#10b981);border-color:rgba(255,255,255,.15);color:#fff;box-shadow:0 4px 16px rgba(16,185,129,.35)}
 .b-bad{background:rgba(244,63,94,.14);border-color:rgba(244,63,94,.45);color:#ffc2cc}.b-bad:hover{background:rgba(244,63,94,.28)}
-.b-gold{background:var(--grad2);border-color:rgba(255,255,255,.2);color:#fff}.b-ghost{background:transparent}
+.b-gold,.b-gold:hover{background:var(--grad2);border-color:rgba(255,255,255,.2);color:#fff}.b-ok:hover{background:linear-gradient(135deg,#16a34a,#10b981);filter:brightness(1.1)}.b-ghost{background:transparent}
 .sm{padding:4px 10px;font-size:11px;border-radius:9px}
 input,select,textarea{background:rgba(5,3,20,.45);color:var(--text);border:1px solid var(--line2);border-radius:10px;padding:6px 9px;font:inherit}
 select option{background:var(--solid2)}
@@ -344,6 +344,55 @@ td.wrap{white-space:normal;min-width:130px;max-width:210px;line-height:1.3}
 .pos-card .btns input{flex:1 1 80px;min-width:70px}
 @media(max-width:640px){.card>h3 .r{flex-wrap:wrap}.card>h3 .r input{max-width:140px}.g6{grid-template-columns:repeat(2,minmax(0,1fr))}.hbrow{grid-template-columns:70px 1fr 110px!important}}
 @media(max-width:900px) and (min-width:641px){.g4,.g6{grid-template-columns:repeat(2,minmax(0,1fr))}.dgrid{grid-template-columns:repeat(2,minmax(0,1fr))}.dgrid .hero{grid-column:span 2}}
+/* ================= v3.1 additions ================= */
+.sub{margin:18px 0 8px;font-size:11px;text-transform:uppercase;letter-spacing:1.1px;color:var(--text2);font-weight:700;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.sub:first-child{margin-top:0}
+.btsaid{display:flex;gap:7px;align-items:flex-start;font-size:11px;color:#c7d2fe;background:rgba(99,102,241,.12);border:1px solid rgba(99,102,241,.3);border-radius:9px;padding:5px 9px;margin-top:6px;line-height:1.4}
+.btsaid::before{content:"backtest";flex-shrink:0;font-size:9.5px;font-weight:800;letter-spacing:.6px;text-transform:uppercase;color:#a5b4fc;padding-top:1px}
+.btsaid.bd{color:#ffd0d7;background:var(--bad-bg);border-color:rgba(244,63,94,.4)}.btsaid.bd::before{color:#fda4af}
+.tag.t-bad{background:var(--bad-bg);color:#ffb4c0}.tag.t-ok{background:var(--good-bg);color:#86efac}
+.rrow{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,1.15fr) minmax(0,1fr);gap:10px 16px;align-items:center;padding:11px 0;border-bottom:1px solid var(--line)}
+.rrow:last-child{border:0}.rrow.off .rm{opacity:.45}
+.rrow .rc{display:flex;flex-direction:column;gap:6px;align-items:flex-start}
+.rrow .rm .meter{margin:0}
+.pf{display:inline-flex;align-items:center;gap:6px;white-space:nowrap;color:var(--mute);font-size:11px}
+.pf input[type=number]{width:72px}
+.advsec{border:1px solid var(--line);border-radius:12px;padding:10px 11px;background:rgba(5,3,20,.22);display:flex;flex-direction:column;gap:6px;min-width:0}
+.advsec>b{font-size:12px;display:flex;align-items:center;gap:6px}
+.advsec .adx{color:var(--mute);font-size:11px;line-height:1.4}
+.adv2{grid-column:1/-1;display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:10px;margin-top:6px}
+.adv .advsec label{display:flex;justify-content:space-between;align-items:center;gap:6px}
+.ladr{display:flex;gap:6px;align-items:center}.ladr input[type=number]{width:66px}.ladr .mute{font-size:11px}
+.xb{background:transparent;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;font-size:12px;line-height:1.2;color:var(--mute)}.xb:hover{color:#fff;background:var(--bad-bg);border-color:rgba(244,63,94,.45)}
+.dcaro{grid-column:1/-1;border:1px dashed var(--line2);border-radius:12px;padding:9px 11px;font-size:12px;color:var(--text2);line-height:1.5}
+.dcaro.mart{border:1px solid rgba(244,63,94,.45);background:rgba(244,63,94,.07)}
+.badge-mart{display:inline-block;padding:2px 8px;border-radius:7px;font-size:10.5px;font-weight:800;letter-spacing:.4px;background:linear-gradient(135deg,#e11d48,#be123c);color:#fff;text-transform:uppercase;margin-right:6px}
+.grule{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:9px 10px;border:1px solid var(--line);border-radius:12px;margin-bottom:8px;background:rgba(5,3,20,.22)}
+.grule.hr{border-color:rgba(244,63,94,.55);background:rgba(244,63,94,.07)}
+.grule .w{color:var(--mute);font-size:11.5px}
+.grule input[type=number]{width:70px}
+.gslot{border:1px solid var(--line);border-radius:16px;padding:13px;margin-bottom:12px;background:linear-gradient(160deg,rgba(255,255,255,.06),rgba(255,255,255,.015))}
+.gslot.offs{opacity:.75}
+.gfields{display:grid;grid-template-columns:repeat(auto-fill,minmax(205px,1fr));gap:8px 14px;margin-top:10px}
+.gfields label{color:var(--mute);font-size:11px;display:flex;justify-content:space-between;align-items:center;gap:6px}
+.gfields input[type=number]{width:74px}
+.gprev{margin-top:12px;border-top:1px dashed var(--line2);padding-top:10px}
+.gprev .kvs b{font-size:14px}.gprev .kvs{grid-template-columns:repeat(4,minmax(0,1fr))}
+#labCard .row>label,#labCard .row>.t2{white-space:nowrap;flex-shrink:0}#labCard .row select{min-width:0;max-width:66%}#labCard .g4{gap:0 22px}#labTool{flex-wrap:wrap}
+.pbar{height:8px;border-radius:999px;background:rgba(5,3,20,.5);overflow:hidden;border:1px solid var(--line);flex:1;min-width:120px}
+.pbar b{display:block;height:100%;background:var(--grad);border-radius:999px;transition:width .4s}
+.labrun{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:12px}
+.sprow{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:7px 0;border-bottom:1px solid var(--line)}
+.sprow input[type=number]{width:74px}
+tr.base td{background:rgba(139,92,246,.12)}
+tr.overfit td{background:rgba(244,63,94,.07)}
+.lchk{display:inline-flex;gap:6px;align-items:center;color:var(--text2);font-size:12px;white-space:nowrap}
+.cmdl{display:grid;grid-template-columns:auto 1fr;gap:3px 12px;font-size:12px}.cmdl code{font:12px Consolas,monospace;color:#ddd6fe}.cmdl span{color:var(--text2)}
+ol.steps{margin:0 0 8px;padding-left:18px;line-height:1.7;color:var(--text2);font-size:12px}
+tr.wrnrow td:first-child{box-shadow:inset 3px 0 0 var(--warn)}
+@media(max-width:1100px){.rrow{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}.rrow .rm{grid-column:1/-1}}
+@media(max-width:1250px){.gprev .kvs{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:640px){.rrow{grid-template-columns:minmax(0,1fr)}.adv2{grid-template-columns:minmax(0,1fr)}.gfields{grid-template-columns:minmax(0,1fr)}.ladr input[type=number]{width:60px}}
 </style>
 </head>
 <body>
@@ -440,9 +489,9 @@ td.wrap{white-space:normal;min-width:130px;max-width:210px;line-height:1.3}
   </div>
   <div id="trOpen" style="display:none"><div class="card"><h3>Open trades</h3><div class="tw" id="openTable"></div></div></div>
   <div id="trMissed" style="display:none">
-    <div class="help">A "missed" signal is one of your strategies firing on a coin but no trade being opened. "Since signal" shows how price moved afterwards in the signal's direction, so you can judge whether a filter is helping or costing you. Prices refresh every 15 seconds while this view is open.</div>
+    <div class="help">A "missed" signal is one of your strategies firing on a coin but no trade being opened. "Since signal" shows how price moved afterwards in the signal's direction, so you can judge whether a filter is helping or costing you. Prices refresh every 15 seconds while this view is open. Rows with an amber <b>warning</b> chip are different: those trades <b>did</b> open, but broke a risk rule that is set to "Warn" (Risk &amp; Exposure → Risk rules).</div>
     <div class="g4" id="missTiles"></div>
-    <div class="card" style="margin-top:14px"><h3>Missed signals <span class="r"><label class="small t2" style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="missHideHeld" checked onchange="renderTrades()"> hide "already in a trade"</label></span></h3><div class="tw" id="missTable"></div></div>
+    <div class="card" style="margin-top:14px"><h3>Missed signals <span class="r"><label class="small t2" style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="missShowWarn" checked onchange="renderTrades()"> show risk-rule warnings</label><label class="small t2" style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="missHideHeld" checked onchange="renderTrades()"> hide "already in a trade"</label></span></h3><div class="tw" id="missTable"></div></div>
   </div>
 </section>
 
@@ -474,6 +523,17 @@ td.wrap{white-space:normal;min-width:130px;max-width:210px;line-height:1.3}
       <div><div class="row"><div class="l"><b><label for="DAILY_LOSS_HALT">Daily loss halt %</label></b><small>stop opening trades until midnight Cairo</small></div><input id="DAILY_LOSS_HALT" type="number" step="1" min="1" max="100"></div></div>
       <div><div class="row"><div class="l"><b><label for="PEAK_DD_FLATTEN">Drawdown flatten %</label></b><small>close all if down this much from peak (0 = off)</small></div><input id="PEAK_DD_FLATTEN" type="number" step="1" min="0" max="95"></div></div>
     </div></div>
+  <div class="card" id="rrCard"><h3>Risk rules &amp; automation <span class="r mute small">new in v3.1 · everything starts off or warn-only</span></h3>
+    <div class="help"><b>Warn</b> = the trade still opens, but a "warning" line appears in Trades → Missed signals and the log. <b>Enforce</b> = the entry is refused. Rules only affect <b>new</b> entries; open trades keep their stops. The bar next to each rule shows where you are right now versus its limit.</div>
+    <div class="sub">Portfolio risk rules</div>
+    <div id="rrRules"></div>
+    <div class="g2" style="margin-top:6px">
+      <div><div class="sub">How entries are placed</div><div id="rrEntry"></div></div>
+      <div><div class="sub">Pump guard · all slots</div><div id="rrPump"></div></div>
+    </div>
+    <div class="sub">Risk governor <span id="govMode" class="tag t-mute"></span></div>
+    <div id="govBox"></div>
+  </div>
   <div class="unsaved" id="usRisk" role="region" aria-label="Unsaved changes"><span class="sp" id="usRiskT"></span><button class="sm" onclick="discardRisk()">Discard</button><button class="sm b-save" onclick="saveRiskForm()">Save</button></div>
 </section>
 
@@ -486,6 +546,16 @@ td.wrap{white-space:normal;min-width:130px;max-width:210px;line-height:1.3}
   <div class="card"><h3>Active strategy slots <span class="r"><select id="addkey" aria-label="Strategy to add"></select><button class="sm" onclick="addSleeve()">+ Add slot</button><button class="sm b-pri" onclick="saveSleeves()">Save strategies</button><button class="sm" onclick="sendToBacktest()">Backtest these</button></span></h3>
     <div class="chart" id="allocBar" style="margin-bottom:12px"></div>
     <div id="sleeves"></div><div class="mute small" id="sharesum"></div></div>
+  <div class="card" id="gridCard"><button class="cardh" id="gridToggle" aria-expanded="false" aria-controls="gridBody"><span style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">Grid bots <span class="tag t-warn" style="text-transform:none;letter-spacing:0">experimental · lost money in our 2-year test</span><span id="gridSum" class="mute small" style="text-transform:none;letter-spacing:0;font-weight:500"></span></span><span class="chev" aria-hidden="true">▾</span></button>
+    <div id="gridBody" hidden style="margin-top:12px">
+      <div class="help">A <b>grid bot</b> cuts a price band into levels: it buys each level on the way down and sells it one level higher (neutral grids also short above the start price). It earns small amounts while price moves sideways and loses when price trends out of the band — then the hard stop beyond the band closes everything. Each slot gets its share of bot capital, split over up to "max coins" grids. The preview below shows the worst case before you save.</div>
+      <div class="btsaid bd">0 of 32 grid configurations were profitable over 2 years (best neutral grid: $500 → $438); the COMBO variant (DCA entry + grid take-profits) ended about flat. Use small shares, on paper first.</div>
+      <div id="gridSlots" style="margin-top:12px"></div>
+      <div class="btns" style="margin-top:4px"><button class="sm" onclick="gridAdd()">+ Add grid slot</button><button class="sm b-pri" onclick="gridSave()">Save grid slots</button><button class="sm" id="gridDisc" onclick="gridDiscard()" hidden>Discard changes</button><span class="mute small" id="gridShare"></span></div>
+      <div class="sub" style="margin-top:18px">Running grids</div>
+      <div class="tw" id="gridRun"></div>
+      <div id="gridStart" style="margin-top:10px"></div>
+    </div></div>
   <div class="card"><h3>Strategy library</h3><div class="tw" id="library"></div></div>
   <div class="unsaved" id="usStrat" role="region" aria-label="Unsaved changes"><span class="sp" id="usStratT"></span><button class="sm" onclick="discardSleeves()">Discard</button><button class="sm b-save" onclick="saveSleeves()">Save strategies</button></div>
 </section>
@@ -523,6 +593,36 @@ td.wrap{white-space:normal;min-width:130px;max-width:210px;line-height:1.3}
         <div class="row"><label class="t2" for="bt_coins">Coins</label><select id="bt_coins"><option value="cur">my coin list</option><option value="top40">top 40 (research set)</option><option value="core8">core 8</option></select></div>
         <div class="row"><span id="bt_status" class="mute" aria-live="polite"></span><button class="b-pri" onclick="runBT()">Run backtest</button></div></div>
     </div></div>
+  <div class="card" id="roCard"><button class="cardh" id="roToggle" aria-expanded="false" aria-controls="roBody"><span style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">Run options · used by backtests and Lab tests <span id="roSum" class="mute small" style="text-transform:none;letter-spacing:0;font-weight:500"></span></span><span class="chev" aria-hidden="true">▾</span></button>
+    <div id="roBody" hidden style="margin-top:12px">
+      <div class="help">Simulate the v3.1 live features in a backtest. Off = the classic simulation (market entries, no rules). Only risk rules set to <b>Enforce</b> act in a backtest (warnings change nothing there).</div>
+      <div class="g2">
+        <div>
+          <div class="row"><div class="l"><b><label for="ro_maker">Maker (post-only) entries</label></b><small>limit orders that wait in the book; unfilled ones fall back to market</small></div><label class="sw"><input type="checkbox" id="ro_maker" onchange="roSum()"><span></span></label></div>
+          <div class="row"><div class="l"><b><label for="ro_fee">Maker fee %</label></b><small>Binance default 0.02% (taker 0.05%)</small></div><input id="ro_fee" type="number" step="0.005" min="-0.1" max="0.2" value="0.02" oninput="roSum()"></div>
+          <div class="row"><div class="l"><b><label for="ro_pg">Pump guard: max signal candle (ATR)</label></b><small>skip entries after a candle bigger than this · empty = off</small></div><input id="ro_pg" type="number" step="0.5" min="0.5" max="20" placeholder="off" oninput="roSum()"></div>
+          <div class="row"><div class="l"><b><label for="ro_pgb">Pump guard: BTC 1h move %</label></b><small>skip entries when BTC moved more than this in an hour · empty = off</small></div><input id="ro_pgb" type="number" step="0.5" min="0.2" max="30" placeholder="off" oninput="roSum()"></div>
+        </div>
+        <div>
+          <div class="row"><div class="l"><b><label for="ro_rr">Apply my risk rules</label></b><small>the rules from Risk &amp; Exposure; only "Enforce" rules act</small></div><label class="sw"><input type="checkbox" id="ro_rr" onchange="roSum()"><span></span></label></div>
+          <div class="row"><div class="l"><b><label for="ro_gov">Apply my governor rules</label></b><small>simulated as "auto" (risk changes really happen)</small></div><label class="sw"><input type="checkbox" id="ro_gov" onchange="roSum()"><span></span></label></div>
+          <div class="row"><div class="l"><b><label for="ro_mm">Liquidation check · maintenance margin %</label></b><small>liquidate positions if margin falls below this (Binance ≈ 0.4-1%) · empty = off</small></div><input id="ro_mm" type="number" step="0.1" min="0" max="5" placeholder="off" oninput="roSum()"></div>
+        </div>
+      </div></div></div>
+  <div class="card" id="labCard"><h3>Lab · stress-test a strategy before you trust it <span class="r"><span class="seg" id="labTool" role="group" aria-label="Lab tool"><button data-v="optimize" class="on">Optimize</button><button data-v="walk_forward">Walk-forward</button><button data-v="monte_carlo">Monte Carlo</button><button data-v="lookahead">Lookahead check</button></span></span></h3>
+    <div class="help" id="labHelp"></div>
+    <div class="g4" id="labCommon">
+      <div class="row"><label class="t2" for="lab_src">Strategies</label><select id="lab_src"></select></div>
+      <div class="row"><label class="t2" for="lab_days">Period</label><select id="lab_days"><option value="180">180 days</option><option value="365">1 year</option><option value="730" selected>2 years</option><option value="1095">3 years</option><option value="1460">4 years</option></select></div>
+      <div class="row"><label class="t2" for="lab_coins">Coins</label><select id="lab_coins"><option value="core8">core 8 (fast)</option><option value="cur">my coin list</option><option value="top40">top 40 (research set)</option></select></div>
+      <div class="row"><label class="t2" for="lab_start">Start capital ($)</label><input id="lab_start" type="number" value="500" min="50"></div>
+    </div>
+    <div id="labForm" style="margin-top:6px"></div>
+    <div class="labrun"><button class="b-pri" id="labGo" onclick="labRun()">Run</button><button class="sm b-bad" id="labCancel" onclick="labCancel()" hidden>Cancel</button><span class="pbar" id="labBar" hidden><b style="width:0%"></b></span><span class="mute small" id="labStatus" aria-live="polite"></span></div>
+    <div id="labOut" style="margin-top:14px"></div>
+    <div class="sub" style="margin-top:18px">Saved lab results</div>
+    <div class="tw" id="labList" style="max-height:260px"></div>
+  </div>
   <div class="card"><h3>Profile study · every profile on the same long history <span class="r"><select id="st_days" aria-label="Study period"><option value="1460" selected>4 years</option><option value="1095">3 years</option><option value="1825">5 years</option><option value="730">2 years</option></select><button class="sm b-pri" onclick="runStudy()">Run study</button><span id="st_status" class="mute small" aria-live="polite"></span></span></h3>
     <div class="help">Runs every ready-made profile, one after another, on the same period with $500 and your leverage cap — so you see how each behaves through a full cycle (2022 bear market, 2023 recovery, 2024 bull run, 2025–26). The first run downloads about 4 years of candles for the top 40 coins and takes several minutes; coins that did not exist for the whole period are left out (listed under each result). Results are saved below like any backtest.</div>
     <div class="chart" id="studyChart" style="height:280px"></div><div class="legend" id="studyLeg"></div><div class="tw" id="studyTable" style="margin-top:12px"></div></div>
@@ -532,6 +632,24 @@ td.wrap{white-space:normal;min-width:130px;max-width:210px;line-height:1.3}
 
 <!-- ======================= RESEARCH ======================= -->
 <section class="tab" id="t_res" role="tabpanel" aria-labelledby="n_res">
+  <div class="card" id="res31"><h3>v3.1 findings · what the new features did in our backtests</h3>
+    <div class="help">Same engine, $500 start, 2 years, compounded, fees included. Baselines: <b>Balanced $500 → $5,974</b> and <b>Boost $500 → $23,792</b>. These are in-sample tests — use them to compare features, not as a forecast. Every v3.1 feature ships <b>off</b> (risk rules: warn only).</div>
+    <div class="tw"><table><thead><tr><th>Feature</th><th>Tested on</th><th class="num">$500 →</th><th>Other numbers</th><th>Verdict</th></tr></thead><tbody>
+      <tr><td><b>Take-profit ladder</b> 1R / 2R / 3R × 25%</td><td>Balanced</td><td class="num neg">$1,866</td><td class="mute">vs $5,974</td><td class="wrap">Worse — it cuts the big trends</td></tr>
+      <tr><td><b>Trailing take-profit</b> from 2R, 3% pull-back</td><td>Balanced</td><td class="num neg">$1,354</td><td class="mute">vs $5,974</td><td class="wrap">Worse</td></tr>
+      <tr><td><b>Maker (post-only) entries</b></td><td>Balanced</td><td class="num pos">$6,181</td><td class="mute">+3% vs $5,974</td><td class="wrap">Small gain from the lower fee</td></tr>
+      <tr><td><b>Pump guard</b> 3 ATR</td><td>Balanced</td><td class="num neg">$4,794</td><td class="mute">vs $5,974</td><td class="wrap">Less return</td></tr>
+      <tr><td><b>Market filter</b> trend slots bull-only</td><td>Balanced</td><td class="num neg">$3,722</td><td class="mute">worst month −5.9% (was −7.3%)</td><td class="wrap">Slightly smoother, much less profit</td></tr>
+      <tr><td><b>Governor</b> halve risk in a 15% drawdown</td><td>Boost</td><td class="num">$15,547</td><td class="mute">max DD −54% → −36% · worst month −28% → −15%</td><td class="wrap">Less profit, much smaller drawdowns</td></tr>
+      <tr><td><b>Governor</b> risk × 0.33 after +100%</td><td>Boost</td><td class="num">$10,718</td><td class="mute">max DD −28% · worst month −11%</td><td class="wrap">Locks in the gains, big profit cut</td></tr>
+      <tr><td><b>Martingale recovery</b> risk × 1.5 after a 15% drawdown</td><td>Boost</td><td class="num neg">$14,807</td><td class="mute">max DD −69%</td><td class="wrap"><b class="neg">Worse on every measure</b></td></tr>
+      <tr><td><b>Grid bots</b> (32 configurations)</td><td>grid study</td><td class="num neg">$438</td><td class="mute">best neutral grid · 0 of 32 profitable · COMBO about flat</td><td class="wrap"><b class="neg">Lost money</b> — experimental only</td></tr>
+    </tbody></table></div>
+    <div class="g3" style="margin-top:14px">
+      <div class="note" style="margin:0"><b>Monte Carlo (daily blocks)</b><br>Balanced: median max drawdown <b class="neg">−33%</b>, 5% worst <b class="neg">−51%</b>, chance of ending below half the start <b>0.6%</b>.<br>Boost: median <b class="neg">−59%</b>, 5% worst <b class="neg">−80%</b>, P(drawdown ≥ 50%) <b class="neg">80%</b>, below half the start <b class="neg">11.7%</b>.</div>
+      <div class="note" style="margin:0"><b>Walk-forward</b><br>Re-optimising Balanced every window did <b>worse</b> out-of-sample than simply keeping the defaults: <b>+239% / −39%</b> max DD vs <b>+296% / −28%</b>. The optimiser mostly fits noise.</div>
+      <div class="note" style="margin:0"><b>Lookahead check</b><br>No strategy or indicator used future data — every signal computed on cut-off history matched the full-history result.</div>
+    </div></div>
   <div class="card"><h3>Lead-trader study · 85 top Binance lead traders, 5,782 closed positions</h3><div id="leadtraders"></div></div>
   <div class="card"><h3>Letting winners run · every profile, $500 start, 2 years (Active: 6 months of 1h)</h3>
     <div class="help">Each profile tested with different ways of handling winning trades. "Standard" already lets winners run — the EMA strategies have no profit target and only exit when the trend reverses, which is where the 100R+ trades come from. Moving the stop up tightly (breakeven at 1R, then 1R behind every new high) makes the equity curve smoother but cuts those big trends short: crypto often pulls back 2-4R inside a strong trend. The exception is the 1h Active profile: there a tight ladder (breakeven at 1R, stop 1R behind each new high) did best in a 6-month test - few variants survive that much testing, so treat it as a candidate. Results are compounded (no withdrawals).</div>
@@ -563,11 +681,21 @@ td.wrap{white-space:normal;min-width:130px;max-width:210px;line-height:1.3}
       <div class="row" style="margin-top:6px"><span class="mute small">Paper keys: testnet.binancefuture.com. Live: a sub-account key with Futures only.</span><span class="btns"><button onclick="testConn()" id="tcBtn">Test connection</button><button class="b-pri" onclick="saveKeys()">Save &amp; reconnect</button></span></div>
       <div id="tcOut" class="tc" aria-live="polite"></div></div>
     <div class="card"><h3>Telegram alerts <span class="r" id="tgstate"></span></h3>
-      <div class="help">1) In Telegram, message <b>@BotFather</b> → /newbot → copy the token. 2) Send any message to your new bot, then open api.telegram.org/bot&lt;token&gt;/getUpdates to find your chat id (or add the bot to your group/channel). 3) Paste both here and press Test.</div>
+      <div class="help">1) In Telegram, message <b>@BotFather</b> → /newbot → copy the token. 2) Open your new bot and press <b>Start</b>. 3) Message <b>@userinfobot</b> — it replies with <b>your</b> id; paste that as the chat id (or a group/channel id). 4) Save and press Send test. The chat id is <b>your</b> id, not the bot's: the number before the ":" in the token is the bot's own id, and using it gives "bot can't send messages to the bot".</div>
       <div class="row"><label class="t2" for="tg_token">Bot token</label><input id="tg_token" type="password" placeholder="123456:ABC..." style="width:270px" autocomplete="off"></div>
       <div class="row"><label class="t2" for="tg_chat">Chat id</label><input id="tg_chat" placeholder="e.g. 123456789 or -100..." style="width:270px"></div>
       <div class="row"><span class="t2" id="lb_tg2">Send alerts</span><label class="sw"><input type="checkbox" id="sw_tg2" aria-labelledby="lb_tg2" onchange="setS({TELEGRAM_ON:this.checked})"><span></span></label></div>
       <div class="row"><span></span><span class="btns"><button onclick="saveTG()">Save</button><button class="b-pri" onclick="act({action:'telegram_test'})">Send test</button></span></div></div>
+    <div class="card" id="tgcCard"><h3>Telegram control <span class="r" id="tgcState"></span></h3>
+      <div class="help">Lets you check and steer the bot from Telegram (same bot token and chat id as the alerts). Only your chat id is obeyed — messages from anyone else are ignored and counted below.</div>
+      <ol class="steps"><li>Open your bot in Telegram and press <b>Start</b>.</li><li>Message <b>@userinfobot</b> to get <b>your</b> id.</li><li>Paste it as the chat id above, save, then switch Telegram control on.</li></ol>
+      <div class="note wn" style="margin:0 0 8px">The chat id must be <b>your own</b> id, not the bot's. The number before the ":" in the token is the bot's id — using it gives "bot can't send messages to the bot".</div>
+      <div class="row"><div class="l"><b id="lb_tgc">Telegram control</b><small>answer commands from your chat</small></div><label class="sw"><input type="checkbox" id="sw_tgc" aria-labelledby="lb_tgc" onchange="setS({TELEGRAM_CONTROL:this.checked})"><span></span></label></div>
+      <div class="row"><div class="l"><b><label for="tg_pin">PIN</label></b><small id="tgPinTxt">4-8 digits, asked for /flatten and /close</small></div><span class="btns"><input id="tg_pin" type="password" inputmode="numeric" autocomplete="off" placeholder="4-8 digits" style="width:120px"><button class="sm" onclick="savePin()">Set PIN</button><button class="sm b-bad" id="tgPinClr" onclick="clearPin()" hidden>Clear PIN</button></span></div>
+      <div id="tgcStat" class="small t2" style="margin-top:8px" aria-live="polite"></div>
+      <div class="sub" style="margin-top:12px">Commands</div>
+      <div class="cmdl"><code>/status</code><span>mode, health, capital, today, open P&amp;L</span><code>/positions</code><span>open trades</span><code>/profit [days]</code><span>closed trades (default 7 days)</span><code>/daily</code><span>today vs the day start</span><code>/risk</code><span>daily loss, drawdown, open risk, leverage</span><code>/signals</code><span>active entry signals</span><code>/pause</code> <span>stop new entries (open trades keep running)</span><code>/resume</code><span>allow new entries again</span><code>/flatten</code><span>close everything — needs the confirm code (+ PIN)</span><code>/close COIN</code><span>close one coin — needs the confirm code (+ PIN)</span></div>
+      <div class="mute small" style="margin-top:8px">/flatten and /close reply with a 6-character code; send it back within 60 s (followed by your PIN if one is set). There is deliberately no remote "stop bot" command.</div></div>
     <div class="card"><h3>Claude review key (optional) <span class="r" id="aistate"></span></h3>
       <div class="row"><label class="t2" for="k_ai">Anthropic API key</label><input id="k_ai" type="password" placeholder="leave blank to keep" style="width:270px" autocomplete="off"></div>
       <div class="row"><span></span><button onclick="saveAI()">Save</button></div></div>
@@ -943,6 +1071,7 @@ function renderSafety(){const h=D.health||{},S=D.settings,eq=D.equity||0,errs=h.
    +`<button class="chip2 ${nc}" id="sb_ent" aria-label="New entries ${h.entries}${h.entries==='open'?' - click to pause':h.entries==='paused'?' - click to resume':''}"><i class="d"></i><span class="k">Entries</span>${esc(h.entries||'?')}${h.entries==='halted'?` · resets in <span id="sb_reset">${until(h.next_reset)}</span>`:''}</button>`
    +`<span class="chip2 ${lc}" title="Today's loss of bot capital vs the daily loss halt (${((S.DAILY_LOSS_HALT||0)*100).toFixed(0)}% of the day start). Resets at midnight Cairo."><span class="k">Daily loss</span>${usd(loss,0)} / ${usd(lim,0)} ${mm(lr,lc)}</span>`
    +(fl?`<span class="chip2 ${dc}" title="Drawdown of bot capital from its peak vs the drawdown flatten limit"><span class="k">Drawdown</span>${dd.toFixed(1)}% / ${fl.toFixed(0)}% ${mm(dr,dc)}</span>`:`<span class="chip2" title="Drawdown flatten is off - set it on the Risk tab"><span class="k">Drawdown</span>${dd.toFixed(1)}% · no flatten</span>`)
+   +v31Chips()
    +(un?`<button class="chip2 bd" id="sb_unp" aria-label="${un} positions without a confirmed exchange stop - details"><i class="d"></i>Unprotected: ${un}</button>`:'')
    +(ut?`<button class="chip2 wn" id="sb_unt" aria-label="${ut} untracked positions on Binance - what is this?"><i class="d"></i>Untracked: ${ut}</button>`:'')
    +(orph?`<button class="chip2 wn" id="sb_orph" aria-label="${orph} orphan orders - what is this?">Orphan orders: ${orph}</button>`:'')
@@ -1018,7 +1147,7 @@ function renderDash(){const S=D.settings,eq=D.equity||0,H=CH.history,st=statsOf(
   const C=D.capital||{},h=D.health||{};
   const ev=[...(H.slice(-12).map(h=>({t:h.closed,dot:h.pnl>0?'var(--good)':'var(--bad)',txt:`<b>${coin(h.symbol)}</b> ${h.side.toLowerCase()} closed (${esc(h.exit_reason.replace(/_/g,' '))}) <span class="${cls(h.pnl)}">${susd(h.pnl)}</span> · ${h.r??'–'}R`}))),
     ...(D.lots.map(l=>({t:l.opened,dot:'var(--s1)',txt:`<b>${coin(l.symbol)}</b> ${l.side.toLowerCase()} opened by ${esc(l.sleeve)}`}))),
-    ...(CH.missed.filter(m=>!/already in a trade/.test(m.reason)).slice(0,8).map(m=>({t:m.logged,dot:'var(--warn)',txt:`<b>${coin(m.symbol)}</b> ${m.side.toLowerCase()} signal not taken — ${esc(m.reason)}`}))),
+    ...(CH.missed.filter(m=>!/already in a trade/.test(m.reason)).slice(0,8).map(m=>isWarn(m)?{t:m.logged,dot:'var(--warn)',txt:`<b>${coin(m.symbol)}</b> ${m.side.toLowerCase()} opened with a risk-rule <span style="color:#fcd34d">warning</span> — ${esc(warnTxt(m.reason))}`}:{t:m.logged,dot:'var(--s2)',txt:`<b>${coin(m.symbol)}</b> ${m.side.toLowerCase()} signal not taken — ${esc(m.reason)}`})),
     ...((h.errors||[]).slice(0,6).map(([t,m])=>({t,dot:'var(--bad)',txt:`<span class="neg"><b>Error</b></span> ${esc(String(m).slice(0,160))}`}))),
     ...((C.adj||[]).map(a=>({t:a.time,dot:'var(--gold2)',txt:`<b>${a.amount<0?'Withdrawal':'Deposit'}</b> recorded <span class="${cls(a.amount)}">${susd(a.amount)}</span>`}))),
     ...((C.cycles||[]).slice(-3).map(c=>({t:c.end,dot:'var(--gold2)',txt:`<b>New capital cycle</b> started (previous ${usd(c.start_cap,0)} → ${usd(c.end_cap,0)})`}))),
@@ -1081,20 +1210,24 @@ RER.closed=renderClosedTable;
 function renderOpenTable(){const cols=[{k:'opened',l:'Opened',s:p=>ms(p.opened)},{k:'symbol',l:'Coin',s:p=>coin(p.symbol)},{k:'side',l:'Side'},{k:'sleeve',l:'Slot'},{k:'qty',l:'Qty',num:1},{k:'avg',l:'Avg entry',num:1},{k:'mark',l:'Mark',num:1},{k:'stop',l:'Stop',num:1},{k:'notional',l:'Size $',num:1},{k:'pnl',l:'P&amp;L',num:1},{k:'r',l:'R',num:1},{k:'risk_to_stop',l:'Risk left',num:1},{k:'protected',l:'Exchange stop',s:p=>p.protected?1:0},{k:'_c',l:'<span class="sr">Chart</span>',nosort:1}];
   setHTML($('openTable'),D.lots.length?T('open',cols,D.lots,{row:p=>`<tr><td class="mute">${fT(p.opened)}</td><td>${coinIc(p.symbol)}<b>${coin(p.symbol)}</b></td><td>${sideTag(p.side)}</td><td class="wrap"><b>${esc(p.sleeve)}</b> <span class="mute small">${esc(stratName(p.sleeve))}</span> <span class="tag t-mute">${esc(p.tf||'')}</span></td><td class="num">${p.qty}</td><td class="num">${px(p.avg)}</td><td class="num">${px(p.mark)}</td><td class="num">${px(p.stop)}</td><td class="num">${usd(p.notional,0)}</td><td class="num ${cls(p.pnl)}">${susd(p.pnl)}</td><td class="num ${cls(p.r)}">${p.r==null?'–':p.r.toFixed(2)+'R'}</td><td class="num">${usd(p.risk_to_stop)}</td><td>${p.protected?'<span class="tag t-long">✓ confirmed</span>':'<span class="tag t-short">✕ not confirmed</span>'}</td><td><button class="sm" onclick="chartLot(${jsa(p.key)})" aria-label="Price chart for ${esc(coin(p.symbol))} ${p.side}">Chart</button></td></tr>`}):'<div class="empty">No open trades.</div>')}
 RER.open=renderOpenTable;
-function renderMissed(){const hide=$('missHideHeld').checked,lim=trR?Date.now()-trR*864e5:0;const M=CH.missed.filter(m=>(!hide||!/already in a trade/.test(m.reason))&&(!lim||ms(m.logged)>=lim)&&(!$('trCoin').value||m.symbol===$('trCoin').value)&&(!$('trStrat').value||m.sleeve===$('trStrat').value)&&(!$('trSide').value||m.side===$('trSide').value));
+const isWarn=m=>m.kind==='warning'||/^WARNING:/.test(m.reason||'');
+const warnTxt=r=>String(r||'').replace(/^WARNING:\s*/,'');
+function renderMissed(){const hide=$('missHideHeld').checked,showW=$('missShowWarn').checked,lim=trR?Date.now()-trR*864e5:0;const all=CH.missed.filter(m=>(isWarn(m)||!hide||!/already in a trade/.test(m.reason))&&(!lim||ms(m.logged)>=lim)&&(!$('trCoin').value||m.symbol===$('trCoin').value)&&(!$('trStrat').value||m.sleeve===$('trStrat').value)&&(!$('trSide').value||m.side===$('trSide').value));
+  const M=all.filter(m=>!isWarn(m)),nW=all.length-M.length,rows=showW?all:M;
   const rc={};M.forEach(m=>rc[m.reason]=(rc[m.reason]||0)+1);const mv=M.filter(m=>m.move_pct!=null);
-  setHTML($('missTiles'),tile('Missed signals',M.length,'in this filter')+(()=>{const top=Object.entries(rc).sort((a,b)=>b[1]-a[1])[0];return tile('Most common reason',top?esc(top[0]):'–',top?top[1]+' of '+M.length+' signals':'','vsm')})()
+  setHTML($('missTiles'),tile('Missed signals',M.length,'in this filter'+(nW?` · <span style="color:#fcd34d">+${nW} risk-rule warning${nW>1?'s':''}</span>`:''),'',nW?'Warnings are not missed trades: those trades opened, but broke a risk rule set to "Warn". They are listed with an amber chip.':'')+(()=>{const top=Object.entries(rc).sort((a,b)=>b[1]-a[1])[0];return tile('Most common reason',top?esc(top[0]):'–',top?top[1]+' of '+M.length+' signals':'','vsm')})()
     +tile('Avg move since signal',mv.length?pp(mv.reduce((a,m)=>a+m.move_pct,0)/mv.length,2):'–','in the signal\'s direction',mv.length?cls(mv.reduce((a,m)=>a+m.move_pct,0)):'','Positive = the missed trades would currently be in profit on average (before stops/exits).')
     +tile('Went your way',mv.length?Math.round(mv.filter(m=>m.move_pct>0).length/mv.length*100)+'%':'–','of missed signals'));
   const cols=[{k:'candle',l:'Signal candle',s:m=>ms(m.candle)},{k:'symbol',l:'Coin',s:m=>coin(m.symbol)},{k:'side',l:'Side'},{k:'sleeve',l:'Slot'},{k:'price',l:'Price then',num:1},{k:'now',l:'Now',num:1},{k:'move_pct',l:'Since signal',num:1},{k:'reason',l:'Why not taken'}];
-  setHTML($('missTable'),M.length?T('missed',cols,M,{page:100,row:m=>`<tr><td class="mute">${fT(m.candle)}</td><td>${coinIc(m.symbol)}<b>${coin(m.symbol)}</b></td><td>${sideTag(m.side)}</td><td class="wrap"><b>${esc(m.sleeve)}</b> <span class="mute small">${esc(m.strategy)}</span></td><td class="num">${px(m.price)}</td><td class="num">${px(m.now)}</td><td class="num ${cls(m.move_pct)}">${pp(m.move_pct,2)}</td><td><span class="tag t-warn">${esc(m.reason)}</span></td></tr>`}):'<div class="empty">No missed signals — every signal was taken (or none fired yet).</div>')}
+  setHTML($('missTable'),rows.length?T('missed',cols,rows,{page:100,row:m=>{const w=isWarn(m);return `<tr${w?' class="wrnrow"':''}><td class="mute">${fT(m.candle)}</td><td>${coinIc(m.symbol)}<b>${coin(m.symbol)}</b></td><td>${sideTag(m.side)}</td><td class="wrap"><b>${esc(m.sleeve)}</b> <span class="mute small">${esc(m.strategy)}</span></td><td class="num">${px(m.price)}</td><td class="num">${px(m.now)}</td><td class="num ${cls(m.move_pct)}">${pp(m.move_pct,2)}</td><td>${w?`<span class="tag t-warn">⚠ warning</span> <span class="small" style="color:#fde68a">${esc(warnTxt(m.reason))}</span> <span class="mute small">· trade was taken</span>`:`<span class="tag t-mute">${esc(m.reason)}</span>`}</td></tr>`}}):`<div class="empty">${nW&&!showW?`No missed signals in this filter (${nW} risk-rule warning${nW>1?'s':''} hidden).`:'No missed signals — every signal was taken (or none fired yet).'}</div>`)}
 RER.missed=renderMissed;
 function exportCSV(){const H=closedFiltered();const cols=['closed','opened','symbol','side','sleeve','strategy','tf','avg_entry','exit','qty_max','notional','risk_usd','pnl_gross','fees','pnl','r','roi_capital','move_pct','hours','exit_reason','adds','dca'];
   const csv=[cols.join(',')].concat(H.map(h=>cols.map(c=>JSON.stringify(h[c]??'')).join(','))).join('\n');const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));a.download='zackbot_trades.csv';a.click()}
 // ---------------- risk & exposure
 const RF=[['MAX_LEVERAGE',v=>+v,x=>x],['DAILY_LOSS_HALT',v=>+(v*100).toFixed(1),x=>x/100],['PEAK_DD_FLATTEN',v=>+(v*100).toFixed(1),x=>x/100]];
 function riskDiff(){if(!D)return [];const S=D.settings,out=[];RF.forEach(([k,show])=>{const i=$(k);if(i.dataset.dirty&&i.value!==''&&+i.value!==show(S[k]))out.push(k)});
-  const cb=$('capBase');if(cb.dataset.dirty&&cb.value!==''&&D.capital&&+cb.value!==+(D.capital.base||0))out.push('CAPITAL_CAP');return out}
+  const cb=$('capBase');if(cb.dataset.dirty&&cb.value!==''&&D.capital&&+cb.value!==+(D.capital.base||0))out.push('CAPITAL_CAP');
+  if(govDirty&&GOVD&&JSON.stringify(govClean(GOVD))!==JSON.stringify(govClean(D.settings.GOVERNOR||{mode:'off',rules:[]})))out.push('GOVERNOR');return out}
 function renderRisk(){const S=D.settings,eq=D.equity||0,E=D.exposure||{},lots=D.lots,h=D.health||{};
   const ds=D.day_start||eq,dayLoss=Math.max(0,ds-eq),dd=D.peak&&eq?Math.max(0,1-eq/D.peak)*100:0,mu=E.margin_balance?(E.margin_used||0)/E.margin_balance*100:0;
   setHTML($('riskTiles'),tile('Open risk to stops',usd(E.risk),eq?(E.risk/eq*100).toFixed(1)+'% of bot capital':'','','Total loss if every stop is hit at once.')
@@ -1128,12 +1261,13 @@ function renderRisk(){const S=D.settings,eq=D.equity||0,E=D.exposure||{},lots=D.
    [S.SLEEVES.filter(s=>s.enabled).every(s=>s.risk<=0.03)?1:.5,'Risk per trade ≤ 3% on every slot','Above 3% the backtests showed 50-80% drawdowns.']];
   setHTML($('checklist'),items.map(([ok,t,hh])=>`<div class="check"><span class="ic ${ok===1?'ok':ok?'wn':'bd'}" aria-hidden="true">${ok===1?'✓':ok?'!':'✕'}</span><div><b>${t}</b><span class="sr">${ok===1?' (ok)':ok?' (warning)':' (problem)'}</span><div class="mute small">${hh}</div></div></div>`).join(''));
   RF.forEach(([k,show])=>{const i=$(k);if(document.activeElement!==i&&!i.dataset.dirty)i.value=show(S[k])});
-  renderCapital();updUnsaved()}
+  renderCapital();renderRiskRules();renderEntryOpts();renderGov();updUnsaved()}
 RF.forEach(([k])=>$(k).addEventListener('input',()=>{$(k).dataset.dirty=1;updUnsaved()}));$('capBase').addEventListener('input',()=>{$('capBase').dataset.dirty=1;updUnsaved()});
 function clearRiskDirty(){RF.forEach(([k])=>delete $(k).dataset.dirty);delete $('capBase').dataset.dirty}
 async function saveRiskForm(){const o={};RF.forEach(([k,,back])=>{const v=parseFloat($(k).value);if(!isNaN(v))o[k]=back(v)});const cb=$('capBase').value;if(cb!=='')o.CAPITAL_CAP=+cb||0;
-  try{await post('/api/settings',o);clearRiskDirty();toast('Saved');load()}catch(e){toast(e.message,true)}}
-function discardRisk(){clearRiskDirty();if(D){RF.forEach(([k,show])=>$(k).value=show(D.settings[k]));$('capBase').value=D.capital?D.capital.base:''}updUnsaved()}
+  if(govDirty&&GOVD){const bad=govCheck(GOVD);if(bad)return toast(bad,true);o.GOVERNOR=govClean(GOVD)}
+  try{await post('/api/settings',o);clearRiskDirty();if(o.GOVERNOR){govDirty=false;GOVD=null}toast('Saved');load()}catch(e){toast(e.message,true)}}
+function discardRisk(){clearRiskDirty();govDirty=false;GOVD=null;if(D){RF.forEach(([k,show])=>$(k).value=show(D.settings[k]));$('capBase').value=D.capital?D.capital.base:'';renderGov()}updUnsaved()}
 function renderCapital(){const C=D.capital;if(!C)return;const comp=C.mode==='compound';segSet('capMode',C.mode);
   setHTML($('capTiles'),tile('Mode',comp?'Compounding':'Fixed size',comp?'trade size follows the account':'trade size stays on the start amount')
    +tile('Start amount',C.base?usd(C.base,0):'whole balance',C.since?'since '+fDay(C.since):'')
@@ -1152,7 +1286,7 @@ function capAct(kind){const amt=kind==='reset'?$('capNew').value:$('capAmt').val
 function slDiff(){if(!slDirty||!SLV||!D)return 0;const cur=D.settings.SLEEVES,norm=s=>JSON.stringify(cleanMg(s),Object.keys(cleanMg(s)).sort());let n=0;const byId={};cur.forEach(s=>byId[s.id]=s);
   SLV.forEach((s,i)=>{const o=cur[i];if(!o||JSON.stringify(cleanMg(o))!==JSON.stringify(cleanMg(s)))n++});n+=Math.max(0,cur.length-SLV.length);return n}
 function updUnsaved(){const n=slDiff();$('usStrat').classList.toggle('on',n>0);$('usStratT').textContent=`${n} unsaved strategy change${n===1?'':'s'}`;
-  const r=riskDiff();$('usRisk').classList.toggle('on',r.length>0);$('usRiskT').textContent=`${r.length} unsaved change${r.length===1?'':'s'} (${r.map(k=>({MAX_LEVERAGE:'max leverage',DAILY_LOSS_HALT:'daily loss halt',PEAK_DD_FLATTEN:'drawdown flatten',CAPITAL_CAP:'start amount'})[k]).join(', ')})`}
+  const r=riskDiff();$('usRisk').classList.toggle('on',r.length>0);$('usRiskT').textContent=`${r.length} unsaved change${r.length===1?'':'s'} (${r.map(k=>({MAX_LEVERAGE:'max leverage',DAILY_LOSS_HALT:'daily loss halt',PEAK_DD_FLATTEN:'drawdown flatten',CAPITAL_CAP:'start amount',GOVERNOR:'risk governor'})[k]).join(', ')})`}
 function discardSleeves(){if(!confirm('Discard your unsaved strategy changes?'))return;slDirty=false;SLV=null;ADV.clear();renderSleeves(true);updUnsaved()}
 
 // ---------------- strategies
@@ -1212,8 +1346,10 @@ function renderSleeves(force){if(!SLV||!slDirty)SLV=JSON.parse(JSON.stringify(D.
       <label title="UTC hour of the signal candle, e.g. 0,4,8">Entry hours UTC<input id="sl${i}_hrs" style="width:90px;text-align:left" value="${(s.hours||[]).join(',')}" onchange="SLV[${i}].hours=this.value?this.value.split(',').map(x=>+x.trim()):null;ed()"></label>
       <label title="Skip entries when volatility is in the top X of the last 180 candles">Vol filter (max pct 0-1)<input id="sl${i}_vol" type="number" step="0.05" min="0" max="1" value="${s.vol_max_pct??''}" onchange="SLV[${i}].vol_max_pct=this.value?+this.value:null;ed()"></label>
       <label title="Scale risk by fractional Kelly from this slot's last 40 trades">Kelly sizing (fraction)<input id="sl${i}_kel" type="number" step="0.25" min="0" max="1" value="${s.kelly?s.kelly.frac:''}" onchange="SLV[${i}].kelly=this.value&&+this.value>0?{frac:+this.value,min:.5,max:1.5}:null;ed()"></label>
+      ${dcaInfo(i,s,m)}${advV31(i,s,m)}
     </div></div>`}).join('')||'<div class="empty">No strategy slots — add one or apply a profile.</div>',{force});
-  setHTML($('sharesum'),`Active slots use <b class="${tot>1.0001?'neg':''}">${(tot*100).toFixed(0)}%</b> of bot capital${tot>1.0001?' — must be 100% or less':''}.`,{force});
+  const gsh=gridShareSaved(),all=tot+gsh;
+  setHTML($('sharesum'),`Active slots use <b class="${all>1.0001?'neg':''}">${(tot*100).toFixed(0)}%</b> of bot capital${gsh?` + enabled grid bots ${(gsh*100).toFixed(0)}% = <b class="${all>1.0001?'neg':''}">${(all*100).toFixed(0)}%</b>`:''}${all>1.0001?' — must be 100% or less':''}.`,{force});
   setHTML($('library'),T('lib',[{k:'name',l:'Strategy'},{k:'style',l:'Style'},{k:'sides',l:'Direction'},{k:'desc',l:'How it works',nosort:1}],Object.values(L),{row:v=>`<tr><td><b>${esc(v.name)}</b></td><td><span class="tag t-${v.style}">${v.style}</span></td><td>${v.sides}</td><td class="small t2" style="white-space:normal;min-width:280px">${esc(v.desc)}</td></tr>`}));
   updUnsaved()}
 RER.lib=()=>renderSleeves(true);
@@ -1231,9 +1367,9 @@ function setWin(i,k){if(!WIN[k])return;const m=SLV[i].mgmt=SLV[i].mgmt||{};Objec
 function setRun(i,k,v){const m=SLV[i].mgmt=SLV[i].mgmt||{};const r=m.runner=Object.assign({be_r:2,step_r:99,gap_r:99,dca_frac:1},m.runner||{});if(v===''){delete r[k];if(k==='giveback')delete r.gb_from}else{r[k]=+v;if(k==='giveback'&&!r.gb_from)r.gb_from=4}ed()}
 function setMg(i,k,v){SLV[i].mgmt=SLV[i].mgmt||{};SLV[i].mgmt[k]=v===''?null:+v;ed()}
 function setPy(i,k,v){const m=SLV[i].mgmt=SLV[i].mgmt||{};const base=Object.assign({n:1,step_r:1.5,frac:.5},m.pyramid||D.library[SLV[i].key].mgmt.pyramid||{});if(k==='n'&&(v===''||+v===0))m.pyramid=null;else{base[k]=+v;m.pyramid=base}ed()}
-function setDca(i,k,v){const m=SLV[i].mgmt=SLV[i].mgmt||{};const base=Object.assign({n:3,step_atr:1,scale:1.5,tp_atr:1,stop_atr:2},m.dca||D.library[SLV[i].key].mgmt.dca||{});if(k==='n'&&(v===''||+v===0))m.dca=null;else{base[k]=+v;m.dca=base}ed()}
+function setDca(i,k,v){const m=SLV[i].mgmt=SLV[i].mgmt||{};const base=Object.assign({n:3,step_atr:1,scale:1.5,tp_atr:1,stop_atr:2},m.dca||D.library[SLV[i].key].mgmt.dca||{});if(k==='n'&&(v===''||+v===0))m.dca=null;else{base[k]=+v;m.dca=base}ed();renderSleeves(true)}
 function addSleeve(){const k=$('addkey').value,L=D.library[k];if(!SLV)SLV=JSON.parse(JSON.stringify(D.settings.SLEEVES));let n=SLV.length+1;while(SLV.some(s=>s.id==='S'+n))n++;SLV.push({id:'S'+n,key:k,enabled:true,share:.25,risk:.01,max_pos:4,symbols:'all',sides:L.sides,mgmt:{},tf:'4h'});ed();renderSleeves(true)}
-function cleanMg(s){const m={};for(const[k,v]of Object.entries(s.mgmt||{}))if(v!==null&&v!==undefined)m[k]=v;const o=Object.assign({},s,{mgmt:m});['hours','vol_max_pct','kelly'].forEach(k=>{if(o[k]==null)delete o[k]});return o}
+function cleanMg(s){const m={};for(const[k,v]of Object.entries(s.mgmt||{}))if(v!==null&&v!==undefined&&!(k==='tps'&&Array.isArray(v)&&!v.length))m[k]=v;const o=Object.assign({},s,{mgmt:m});['hours','vol_max_pct','kelly','trail_entry','pump_guard'].forEach(k=>{if(o[k]==null||(typeof o[k]==='object'&&!Array.isArray(o[k])&&!Object.keys(o[k]).length))delete o[k]});if(o.when==null||o.when==='any')delete o.when;return o}
 async function saveSleeves(){try{toast(await post('/api/sleeves',{sleeves:SLV.map(cleanMg)}));slDirty=false;ADV.clear();LS.set('zb_profile','1');updUnsaved();load()}catch(e){toast(e.message,true)}}
 function sendToBacktest(){tab('bt');$('bt_src').value='__current';toast('Backtest will use the slots on the Strategies tab (saved or not)')}
 
@@ -1265,17 +1401,20 @@ segInit('sigF',d=>{sigF=d.v;renderSignals()});$('sigSort').onchange=()=>renderSi
 function takeSig(id,s){act({action:'take_signal',sleeve:id,symbol:s},`Open ${coin(s)} now for slot ${id} using its risk settings?`)}
 
 // ---------------- backtest lab
-function btSources(){const o=[['__current','My current strategy slots'],...Object.entries(D.presets).map(([k,p])=>[k,'Profile: '+p.name])];const v=$('bt_src').value;if($('bt_src').options.length!==o.length)$('bt_src').innerHTML=o.map(([k,n])=>`<option value="${k}">${esc(n)}</option>`).join('');if(v)$('bt_src').value=v}
+function btSources(){const o=[['__current','My current strategy slots'],...Object.entries(D.presets).map(([k,p])=>[k,'Profile: '+p.name])];
+  ['bt_src','lab_src'].forEach(id=>{const el=$(id),v=el.value;if(el.options.length!==o.length)el.innerHTML=o.map(([k,n])=>`<option value="${esc(k)}">${esc(n)}</option>`).join('');if(v)el.value=v})}
 async function runBT(){const src=$('bt_src').value;let sl=src==='__current'?(SLV||D.settings.SLEEVES):D.presets[src].sleeves;sl=JSON.parse(JSON.stringify(sl)).map(cleanMg).filter(s=>s.enabled!==false);
   if(!sl.length)return toast('no enabled strategy slots to test',true);
   const r=$('bt_risk').value,tf=$('bt_tf').value;sl.forEach(s=>{if(r)s.risk=r/100;if(tf)s.tf=tf});const cs=$('bt_coins').value;const uni=cs==='cur'?D.settings.UNIVERSE:cs==='core8'?D.core8:D.top40;
   const name=$('bt_name').value||(src==='__current'?'My slots':D.presets[src].name)+(r?` @${r}%`:'')+` · ${$('bt_days').selectedOptions[0].text}`;
-  try{const id=await post('/api/backtest',{name,sleeves:sl,days:+$('bt_days').value,tf:sl[0].tf||'4h',start:+$('bt_start').value,max_lev:+$('bt_lev').value,universe:uni,daily_halt:D.settings.DAILY_LOSS_HALT});$('bt_status').textContent='queued…';pollBT(id)}catch(e){toast(e.message,true)}}
+  const ro=runOpts();const body={name:name+(ro?' · +options':''),sleeves:sl,days:+$('bt_days').value,tf:sl[0].tf||'4h',start:+$('bt_start').value,max_lev:+$('bt_lev').value,universe:uni,daily_halt:D.settings.DAILY_LOSS_HALT};if(ro)body.run_options=ro;
+  try{const id=await post('/api/backtest',body);$('bt_status').textContent='queued…';pollBT(id)}catch(e){toast(e.message,true)}}
 async function pollBT(id){try{const j=await api('/api/backtest/'+id);$('bt_status').textContent=j.status==='done'?'done':j.status==='error'?'error: '+j.error:j.status+'…';if(j.status==='done'){showBT(j.result);loadBT()}else if(j.status!=='error')setTimeout(()=>pollBT(id),1500)}catch(e){$('bt_status').textContent='error: '+e.message}}
-async function loadBT(){if(!D)return;btSources();try{BTL=await api('/api/backtests')}catch(e){BTL=BTL||[]}renderBTList();renderStudy()}
+async function loadBT(){if(!D)return;btSources();try{BTL=await api('/api/backtests')}catch(e){BTL=BTL||[]}renderBTList();renderStudy();renderLabList()}
 function renderBTList(){const cols=[{k:'name',l:'Name'},{k:'created',l:'Run',s:b=>ms(toD(b.created,true))},{k:'period',l:'Period',s:b=>b.period[0]},{k:'sleeves',l:'Strategies',nosort:1},{k:'end',l:'End $',num:1,s:b=>b.stats.end},{k:'ret',l:'Return',num:1,s:b=>b.stats.ret},{k:'maxdd',l:'Max DD',num:1,s:b=>b.stats.maxdd},{k:'sharpe',l:'Sharpe',num:1,s:b=>b.stats.sharpe},
    {k:'oosf',l:'First 70%',num:1,s:b=>(b.oos||{}).ret_first??b.stats.y1},{k:'oosl',l:'Last 30%',num:1,s:b=>(b.oos||{}).ret_last??b.stats.y2},{k:'wm',l:'Worst month',num:1,s:b=>b.stats.worst_month},{k:'trades',l:'Trades',num:1,s:b=>b.stats.trades},{k:'_a',l:'<span class="sr">Actions</span>',nosort:1}];
-  setHTML($('bt_list'),BTL&&BTL.length?T('bts',cols,BTL,{row:b=>{const s=b.stats,o=b.oos,old=b.engine!=='v3';return `<tr class="click" onclick="openBT(${jsa(b.id)})" title="click to open"><td><b>${esc(b.name)}</b>${old?' <span class="tag t-warn" title="Made with the old engine - re-run for current numbers">old engine</span>':''}</td><td class="mute">${fT(b.created,true)}</td><td class="mute">${b.period.map(esc).join(' → ')}</td><td class="small" style="white-space:normal;min-width:240px;line-height:1.35">${b.sleeves.map(x=>{const[k,r]=String(x).split('@');return `<span title="${esc(x)}">${esc(libName(k))}${r?' <span class="mute">'+esc(r)+'</span>':''}</span>`}).join('<br>')}</td><td class="num">${usd(s.end,0)}</td><td class="num ${cls(s.ret)}">${pp(s.ret)}</td><td class="num neg">${s.maxdd}%</td><td class="num">${s.sharpe}</td><td class="num ${cls(o?o.ret_first:s.y1)}">${pp(o?o.ret_first:s.y1)}</td><td class="num ${cls(o?o.ret_last:s.y2)}">${pp(o?o.ret_last:s.y2)}</td><td class="num neg">${s.worst_month}%</td><td class="num">${s.trades}</td><td><button class="sm" onclick="event.stopPropagation();openBT(${jsa(b.id)})">View</button> <button class="sm b-bad" aria-label="Delete backtest ${esc(b.name)}" title="Delete backtest" onclick="event.stopPropagation();delBT(${jsa(b.id)})">×</button></td></tr>`}}):'<div class="empty">No saved backtests yet.</div>')}
+  const BL=(BTL||[]).filter(b=>!b.lab&&b.stats);
+  setHTML($('bt_list'),BL.length?T('bts',cols,BL,{row:b=>{const s=b.stats,o=b.oos,old=b.engine!=='v3';return `<tr class="click" onclick="openBT(${jsa(b.id)})" title="click to open"><td><b>${esc(b.name)}</b>${old?' <span class="tag t-warn" title="Made with the old engine - re-run for current numbers">old engine</span>':''}</td><td class="mute">${fT(b.created,true)}</td><td class="mute">${b.period.map(esc).join(' → ')}</td><td class="small" style="white-space:normal;min-width:240px;line-height:1.35">${b.sleeves.map(x=>{const[k,r]=String(x).split('@');return `<span title="${esc(x)}">${esc(libName(k))}${r?' <span class="mute">'+esc(r)+'</span>':''}</span>`}).join('<br>')}</td><td class="num">${usd(s.end,0)}</td><td class="num ${cls(s.ret)}">${pp(s.ret)}</td><td class="num neg">${s.maxdd}%</td><td class="num">${s.sharpe}</td><td class="num ${cls(o?o.ret_first:s.y1)}">${pp(o?o.ret_first:s.y1)}</td><td class="num ${cls(o?o.ret_last:s.y2)}">${pp(o?o.ret_last:s.y2)}</td><td class="num neg">${s.worst_month}%</td><td class="num">${s.trades}</td><td><button class="sm" onclick="event.stopPropagation();openBT(${jsa(b.id)})">View</button> <button class="sm b-bad" aria-label="Delete backtest ${esc(b.name)}" title="Delete backtest" onclick="event.stopPropagation();delBT(${jsa(b.id)})">×</button></td></tr>`}}):'<div class="empty">No saved backtests yet.</div>')}
 RER.bts=renderBTList;
 async function runStudy(){const d=+$('st_days').value;if(!confirm(`Backtest all ${Object.keys(D.presets).length-1} profiles over ${d/365} years? The first run downloads a lot of history and can take 5-15 minutes. The bot keeps trading meanwhile.`))return;
   try{const id=await post('/api/study',{days:d,start:500});pollStudy(id)}catch(e){toast(e.message,true)}}
@@ -1294,10 +1433,12 @@ async function delBT(id){if(!confirm('Delete this saved backtest?'))return;try{a
 let BTCUR=null;
 function showBT(r){BTCUR=r;const s=r.stats||{},q=r.request||{},el=$('bt_detail'),sl=q.sleeves||[],uni=q.universe||[],o=r.oos,old=r.engine!=='v3';el.style.display='block';
   const coinsOf=x=>x.symbols==='core8'?'core 8':x.symbols==='all'?`all (${uni.length})`:Array.isArray(x.symbols)?x.symbols.map(coin).join(', '):String(x.symbols||'all');
-  const mgTxt=x=>{const m=x.mgmt||{},o2=[];if(m.stop_atr)o2.push(`stop ${m.stop_atr}×ATR`);if(m.trail_atr)o2.push(`trail ${m.trail_atr}×ATR`);if(m.tp1_r)o2.push(`TP1 ${m.tp1_r}R`);if(m.tp_r)o2.push(`TP ${m.tp_r}R`);if(m.pyramid)o2.push(`pyramid ×${m.pyramid.n}`);if(m.dca)o2.push(`DCA ×${m.dca.n}`);if(x.hours)o2.push('hours filter');if(x.vol_max_pct)o2.push('vol filter');if(x.kelly)o2.push('Kelly');return o2.join(' · ')||'strategy defaults'};
+  const mgTxt=x=>{const m=x.mgmt||{},o2=[];if(m.stop_atr)o2.push(`stop ${m.stop_atr}×ATR`);if(m.trail_atr)o2.push(`trail ${m.trail_atr}×ATR`);if(m.tp1_r)o2.push(`TP1 ${m.tp1_r}R`);if(m.tp_r)o2.push(`TP ${m.tp_r}R`);if(m.pyramid)o2.push(`pyramid ×${m.pyramid.n}`);if(m.dca)o2.push(`DCA ×${m.dca.n}`);if(m.tps)o2.push(`TP ladder ${m.tps.length} levels`);if(m.ttp)o2.push(`trailing TP ${m.ttp.at_r}R/${m.ttp.dev_pct}%`);if(x.trail_entry)o2.push('trailing entry');if(x.when)o2.push(`${x.when} market only`);if(x.pump_guard)o2.push('pump guard');if(x.hours)o2.push('hours filter');if(x.vol_max_pct)o2.push('vol filter');if(x.kelly)o2.push('Kelly');return o2.join(' · ')||'strategy defaults'};
   el._h=null;el.innerHTML=`<h3>${esc(r.name||'Backtest')} <span class="r"><button class="sm" onclick="$('bt_detail').style.display='none'">Close</button><button class="sm b-pri" onclick="applyBT()">Use these strategies live</button></span></h3>
   ${old?'<div class="note wn" style="margin:0 0 12px">Old engine (v2) result — re-run this backtest for numbers from the current engine.</div>':''}
-  <div class="g6">${tile('End balance',usd(s.end,0),'from '+usd(q.start||500,0))}${tile('Return',pp(s.ret),'compounded',cls(s.ret))}${tile('Max drawdown',(s.maxdd??'–')+'%','','neg')}${tile('Sharpe',s.sharpe??'–','risk-adjusted')}${o?tile('First 70% / last 30%',`${pp(o.ret_first,0)} / ${pp(o.ret_last,0)}`,`split ${esc(o.split)} · last-30% max DD ${o.dd_last}%`,'','Return over the first 70% of the period and over the most recent 30% (with its own max drawdown). Big differences mean the result depends on one market phase.'):tile('1st / 2nd half',`${pp(s.y1,0)} / ${pp(s.y2,0)}`,'2nd half = more recent')}${tile('Worst month',(s.worst_month??'–')+'%',`${s.trades??0} trades · ${s.win??'–'}% win`,'neg')}</div>
+  ${q.run_options&&Object.keys(q.run_options).length?`<div class="small t2" style="margin:-4px 0 10px">Run options: <b>${esc(roText(q.run_options))}</b></div>`:''}
+  ${s.liquidations?`<div class="note bd" style="margin:0 0 12px"><b>${s.liquidations} liquidation${s.liquidations>1?'s':''}</b> in this test — the margin ran out before the stop could act. Lower the risk, the leverage cap or the DCA depth.</div>`:''}
+  <div class="g6">${tile('End balance',usd(s.end,0),'from '+usd(q.start||500,0))}${tile('Return',pp(s.ret),'compounded',cls(s.ret))}${tile('Max drawdown',(s.maxdd??'–')+'%',s.liquidations!=null?`${s.liquidations} liquidation${s.liquidations===1?'':'s'}`:'','neg','Liquidations: positions closed by the exchange because the margin ran out (only simulated when a maintenance margin is set in Run options).')}${tile('Sharpe',s.sharpe??'–','risk-adjusted')}${o?tile('First 70% / last 30%',`${pp(o.ret_first,0)} / ${pp(o.ret_last,0)}`,`split ${esc(o.split)} · last-30% max DD ${o.dd_last}%`,'','Return over the first 70% of the period and over the most recent 30% (with its own max drawdown). Big differences mean the result depends on one market phase.'):tile('1st / 2nd half',`${pp(s.y1,0)} / ${pp(s.y2,0)}`,'2nd half = more recent')}${tile('Worst month',(s.worst_month??'–')+'%',`${s.trades??0} trades · ${s.win??'–'}% win`,'neg')}</div>
   ${o?`<div class="small t2" style="margin-top:8px">Stability check: first 70%: <b class="${cls(o.ret_first)}">${pp(o.ret_first)}</b> · last 30%: <b class="${cls(o.ret_last)}">${pp(o.ret_last)}</b>, max DD <b class="neg">${o.dd_last}%</b> (split on ${esc(o.split)}). This is <b>not</b> a true out-of-sample test — the strategies were chosen on this history.</div>`:''}
   <div class="chart" id="btchart" style="height:230px;margin-top:14px"></div>
   ${(r.dd_curve||[]).length>1?`<div class="small t2" style="margin-top:10px">Drawdown from the running peak</div><div class="chart" id="btdd" style="height:110px;margin-top:4px"></div>`:''}
@@ -1350,7 +1491,7 @@ async function copyDiag(){let lines=CH.logs;try{lines=await api('/api/logs')}cat
 function renderSet(){const S=D.settings;$('keystate').innerHTML=D.keys?'<span class="tag t-long">keys saved</span>':'<span class="tag t-short">no keys</span>';$('ver').textContent=D.version;
   if(document.activeElement.id!=='k_mode')$('k_mode').value=D.mode==='LIVE'?'live':'paper';if(document.activeElement.id!=='tg_chat'&&!$('tg_chat').value)$('tg_chat').value=S.TELEGRAM_CHAT||'';
   $('tgstate').innerHTML=S.TELEGRAM_TOKEN_SET?'<span class="tag t-long">token saved ✓</span>':'<span class="tag t-mute">no token</span>';$('tg_token').placeholder=S.TELEGRAM_TOKEN_SET?'saved ✓ — leave blank to keep':'123456:ABC...';
-  $('aistate').innerHTML=D.ai_key?'<span class="tag t-long">key saved ✓</span>':'';renderTC()}
+  $('aistate').innerHTML=D.ai_key?'<span class="tag t-long">key saved ✓</span>':'';renderTC();renderTgCtl()}
 function renderTC(){const el=$('tcOut');if(!TC){setHTML(el,'');return}if(TC.busy){setHTML(el,'<div class="mute small">Testing the connection…</div>');return}if(TC.err){setHTML(el,`<div class="note bd">${esc(TC.err)}</div>`);return}
   const m=TC.msg||{};setHTML(el,`<div class="small t2" style="margin-top:8px">Mode: <b>${esc(m.mode||'')}</b> · tested ${fTime(TC.t)}</div>`+(m.checks||[]).map(c=>`<div><span class="ic ${c.ok?'ok':'bd'}" style="width:22px;height:22px;border-radius:50%;display:grid;place-items:center;font-weight:900;flex-shrink:0" aria-hidden="true">${c.ok?'✓':'✕'}</span><div><b>${esc(c.name)}</b><span class="sr">${c.ok?' passed':' failed'}</span><div class="mute small">${esc(c.detail||'')}</div></div></div>`).join(''))}
 async function testConn(){TC={busy:1};renderTC();$('tcBtn').disabled=true;try{const m=await post('/api/action',{action:'test_connection'});TC={msg:m,t:new Date()};if((m.checks||[]).length&&m.checks.every(c=>c.ok))LS.set('zb_conn_ok','1')}catch(e){TC={err:e.message}}$('tcBtn').disabled=false;renderTC();if(D&&CUR==='dash')renderOnb()}
@@ -1394,10 +1535,387 @@ const GLOSS=[['Slot (sleeve)','One strategy with its own share of bot capital, r
  ['Unprotected position','A trade whose stop order on Binance is not confirmed. The bot retries; if it stays, move the stop or close the trade.'],
  ['Untracked position','A position on Binance the bot did not open and does not manage (no stop from the bot, not closed by Flatten).'],
  ['Missed signal','A strategy fired but no trade opened (entries paused, risk caps, size below minimum, already in a trade…).'],
- ['Flatten','Close every position the bot tracks at market and pause new entries.']];
+ ['Flatten','Close every position the bot tracks at market and pause new entries.'],
+ ['Take-profit ladder','Several partial take-profits, e.g. close 25% at +1R, 25% at +2R and 25% at +3R, the rest runs. Smooths results but in our tests cut the big trends that make most of the profit.'],
+ ['Trailing take-profit','Once a trade reaches a set profit (e.g. +2R), it closes as soon as price pulls back a set % from its best level since then.'],
+ ['Trailing entry','Instead of entering right at the signal, wait for price to stretch further and then turn back by a set distance (in ATR) — a better price, but some signals never fill. Gives up after a set number of candles.'],
+ ['Maker / taker','A taker order (market order) fills immediately against the order book and pays the higher fee (Binance 0.05%). A maker order rests in the book and is filled by someone else, paying the lower maker fee (0.02%).'],
+ ['Post-only','A limit order that is cancelled instead of filling immediately, so it can only ever be a maker order. ZackBot re-prices it a few times and can fall back to market if it does not fill.'],
+ ['Pump guard','Skips an entry when the signal candle is unusually large (more than X × ATR) or when BTC moved more than Y% in the last hour — to avoid buying the top of a spike.'],
+ ['Circuit breaker','A rule that pauses new entries after a violent market move (here: BTC moving more than X% within an hour) for a few hours.'],
+ ['Funding rate','The fee longs and shorts pay each other on perpetual futures every 8 hours. A high positive rate means crowded longs; the funding filter avoids joining a crowded side.'],
+ ['Regime filter (market filter)','Lets a slot trade only in one market state: bull (BTC above its 200-day average), bear (below it) or range (sideways, weak trend).'],
+ ['Governor','Rules that change risk automatically from the account\'s own results, e.g. halve the risk after a 15% drawdown until a new high, or switch to a calmer profile after +100%. "Suggest" only tells you; "Auto" applies it.'],
+ ['Martingale','Increasing size after losses (bigger safety orders, or more risk in a drawdown) to win back faster. It makes the worst case much worse; in our test 1.5× risk after a 15% drawdown was worse on every measure.'],
+ ['Anti-martingale','The opposite: reducing size after losses and adding to winners. "Halve risk in a drawdown" and pyramiding are anti-martingale ideas.'],
+ ['Grid bot','A bot that buys at a ladder of prices below the start and sells one step higher (and shorts above in neutral mode). Earns in sideways markets, loses when price trends out of the band.'],
+ ['COMBO','A grid variant: DCA safety orders to enter a dip, then a ladder of grid take-profits above the average price. About flat in our 2-year test.'],
+ ['Walk-forward','Optimise on a training window, then test the chosen settings on the next unseen window, and repeat. The joined test windows show how re-optimising would really have done.'],
+ ['Hold-out','The last part of the history (here 25%) kept aside during optimisation and only used to check the winner. If the best settings do worse there than your current ones, they were probably overfit.'],
+ ['Monte Carlo','Re-running history many times in a random order to see the range of outcomes luck could have produced. "Daily blocks" reshuffles 5-day chunks of real days and keeps bad streaks together, so it shows risk more honestly than shuffling single trades.'],
+ ['Lookahead bias','When a backtest accidentally uses data that was not known yet at the time of the trade. It makes results look far too good. The Lookahead check recomputes signals on cut-off history to prove it does not happen.'],
+ ['Liquidation','The exchange force-closes a position when the margin left falls below the maintenance margin. With a hard stop and modest leverage the stop should always come first.']];
 function renderGloss(){const q=$('glQ').value.trim().toLowerCase();let n=0;
   $('gloss').innerHTML=GLOSS.map(([t,d])=>{const on=!q||(t+' '+d).toLowerCase().includes(q);if(on)n++;return on?`<div style="break-inside:avoid;margin-bottom:10px"><dt>${esc(t)}</dt><dd>${esc(d)}</dd></div>`:''}).join('');$('glNone').hidden=n>0}
 $('glQ').addEventListener('input',renderGloss);renderGloss();
+// ================================================================ v3.1 features
+const BTS={tps:'Ladder 1R / 2R / 3R × 25% on Balanced: $5,974 → $1,866 — it cuts the big trends.',ttp:'Trailing take-profit 2R / 3% on Balanced: $5,974 → $1,354.',
+ maker:'Maker entries on Balanced: $5,974 → $6,181 (+3%, a small fee saving).',pump:'Pump guard 3 ATR on Balanced: $5,974 → $4,794.',
+ when:'Trend slots bull-only on Balanced: $5,974 → $3,722, but the worst month was −5.9% instead of −7.3%.',
+ govDd:'Boost + "halve risk in a 15% drawdown": $23,792 → $15,547, max drawdown −54% → −36%, worst month −28% → −15%.',
+ govUp:'Boost + "risk × 0.33 after +100%": $23,792 → $10,718, max drawdown −28%, worst month −11%.',
+ mart:'Martingale recovery (risk × 1.5 after a 15% drawdown) on Boost: $23,792 → $14,807 with a −69% max drawdown — worse on every measure.'};
+const said=(t,bad)=>`<div class="btsaid${bad?' bd':''}">${t}</div>`;
+const pc1=v=>v==null||isNaN(v)?'–':(v*100).toFixed(1)+'%';      // probability 0-1 -> "12.3%"
+
+// ---------------- strategy slots: v3.1 advanced settings
+function typAtr(){const a=Object.values(CH.states||{}).map(x=>x&&x.atr_pct).filter(x=>x>0).sort((a,b)=>a-b);return a.length?a[Math.floor(a.length/2)]:null}
+function dcaInfo(i,s,m){const d=m.dca;if(!d||!(+d.n>0))return '';const n=Math.round(+d.n),sc=+d.scale||1,st=+d.step_atr||1,sa=+d.stop_atr||0;
+  if(!(sa>0))return `<div class="dcaro mart"><span class="badge-mart">no stop</span><b>A DCA basket must keep a hard basket stop.</b> Set "DCA basket stop (ATR)" — the bot refuses baskets without one.</div>`;
+  const w=[...Array(n+1)].map((_,k)=>sc**k),W=w.reduce((a,b)=>a+b,0),Dt=n*st+sa,den=w.reduce((a,wk,k)=>a+wk*(Dt-k*st),0);
+  const mart=sc>1.5||n>4,cap=D.sizing_equity?D.sizing_equity*s.share:null,ru=cap?cap*s.risk:null,ap=typAtr(),notl=ru&&ap&&den>0?ru*W/(ap*den):null,lev=D.settings.MAX_LEVERAGE;
+  return `<div class="dcaro ${mart?'mart':''}">${mart?'<span class="badge-mart">martingale</span>':''}<b>DCA worst case:</b> if all ${n} safety order${n>1?'s':''} fill and the basket stop hits, you lose ≈ <b>${ru?usd(ru):'the slot\'s risk'}</b> (1R, this slot's risk per trade) plus fees — the basket is sized so that this holds; a price gap through the stop can lose more. The basket stop sits ${+Dt.toFixed(2)} ATR beyond the first entry.<br>
+   The catch is size: fully filled, the position is <b>${W.toFixed(1)}×</b> the first order${notl&&cap?` — about <b>${usd(notl,0)}</b>, ${(notl/cap).toFixed(1)}× this slot's capital, at a typical ${(ap*100).toFixed(1)}% ATR`:''}.
+   ${notl&&cap&&notl>cap*lev?`<span class="neg">That is above your ${lev}× leverage cap, so the last safety orders will be cut or skipped.</span> `:''}${mart?'<span class="neg">Scale above 1.5 or more than 4 safety orders is martingale territory: the position is biggest exactly when the trade is going wrong.</span>':''}${sc<1?' <span class="neg">The engine refuses a scale below 1.</span>':''}</div>`}
+const WHEN=[['any','Any market','Trades in every market.'],['bull','Bull only','Only enters while BTC is above its 200-day average.'],['bear','Bear only','Only enters while BTC is below its 200-day average.'],['range','Range only','Only enters while BTC moves sideways (weak trend, narrow Bollinger bands).']];
+const PAIR={ttp:[['at_r','ttp_a',2],['dev_pct','ttp_d',3]],trail_entry:[['dev_atr','te_d',.5],['max_bars','te_b',3]],pump_guard:[['max_candle_atr','pg_a',null],['btc_1h_pct','pg_b',null]]};
+function setPair(i,g){const sl=SLV[i],cur=g==='ttp'?(sl.mgmt||{}).ttp:sl[g];let o=null;const vals=PAIR[g].map(([k,id,def])=>[k,$(`sl${i}_${id}`).value.trim(),def]);
+  const ok=v=>v!==''&&!isNaN(+v)&&+v>0,cleared=g!=='pump_guard'&&cur&&Object.keys(cur).length&&vals.some(v=>v[1]==='');   // clearing a field of an active pair switches it off
+  if(!cleared&&vals.some(v=>ok(v[1]))){o={};vals.forEach(([k,v,def])=>{if(ok(v))o[k]=+v;else if(def!=null)o[k]=def})}
+  if(g==='ttp'){sl.mgmt=sl.mgmt||{};sl.mgmt.ttp=o}else sl[g]=o;ed();renderSleeves(true)}
+function tpList(i){const m=SLV[i].mgmt=SLV[i].mgmt||{};if(!Array.isArray(m.tps))m.tps=[];return m.tps}
+function tpAdd(i){const t=tpList(i);if(t.length>=8)return toast('up to 8 take-profit levels',true);const used=t.reduce((a,x)=>a+(+x[1]||0),0),last=t.length?+t[t.length-1][0]:0;t.push([last+1,Math.max(.05,Math.min(.25,+(1-used).toFixed(2)))]);ed();renderSleeves(true)}
+function tpDel(i,k){const t=tpList(i);t.splice(k,1);if(!t.length)SLV[i].mgmt.tps=null;ed();renderSleeves(true)}
+function tpSet(i,k,j,v){const t=tpList(i),x=parseFloat(v);if(isNaN(x))return toast('enter a number',true);t[k][j]=j===1?+(x/100).toFixed(4):x;ed();renderSleeves(true)}
+function advV31(i,s,m){const tps=Array.isArray(m.tps)?m.tps:[],sum=tps.reduce((a,x)=>a+(+x[1]||0),0),tt=m.ttp||null,te=s.trail_entry||null,pg=s.pump_guard||{},w=s.when||'any',G=D.settings.PUMP_GUARD||{};
+  const inp=(id,lab,val,mn,mx,st,g)=>`<label for="sl${i}_${id}">${lab}<input type="number" id="sl${i}_${id}" min="${mn}" max="${mx}" step="${st}" placeholder="off" value="${val??''}" onchange="setPair(${i},'${g}')"></label>`;
+  const gTxt=[G.max_candle_atr?G.max_candle_atr+' ATR candle':'',G.btc_1h_pct?'BTC '+G.btc_1h_pct+'%/1h':''].filter(Boolean).join(' · ')||'off';
+  return `<div class="adv2">
+   <div class="advsec"><b>Take-profit ladder ${Q('Close part of the position at several profit levels (in R). The rest keeps running on the normal exits. Fractions must add up to 100% or less.')}</b>
+    ${tps.map((t,k)=>`<div class="ladr"><span class="mute">at</span><input type="number" id="sl${i}_tp${k}r" aria-label="Level ${k+1}: profit in R" step="0.5" min="0.1" max="100" value="${+t[0]}" onchange="tpSet(${i},${k},0,this.value)"><span class="mute">R close</span><input type="number" id="sl${i}_tp${k}f" aria-label="Level ${k+1}: percent of the position" step="5" min="1" max="100" value="${+(t[1]*100).toFixed(1)}" onchange="tpSet(${i},${k},1,this.value)"><span class="mute">%</span><button class="xb" aria-label="Remove take-profit level ${k+1}" onclick="tpDel(${i},${k})">×</button></div>`).join('')||'<div class="adx">Off — the strategy\'s own exits (and the partial TP above) apply.</div>'}
+    <div class="btns">${tps.length<8?`<button class="sm" onclick="tpAdd(${i})">+ Add level</button>`:''}${tps.length?`<span class="small ${sum>1.0001?'neg':'mute'}">${(sum*100).toFixed(0)}% of the position${sum>1.0001?' — must be 100% or less':sum<0.999?` · ${(100-sum*100).toFixed(0)}% runs on`:''}</span>`:''}</div>${said(BTS.tps,1)}</div>
+   <div class="advsec"><b>Trailing take-profit ${Q('Once the trade reaches the start profit (in R), it closes as soon as price pulls back this % from its best price since then.')}</b>
+    ${inp('ttp_a','Start at profit (R)',tt&&tt.at_r,0.2,50,0.5,'ttp')}${inp('ttp_d','Close after a pull-back of (%)',tt&&tt.dev_pct,0.1,50,0.5,'ttp')}<div class="adx">Empty = off · clear a field to switch it off.</div>${said(BTS.ttp,1)}</div>
+   <div class="advsec"><b>Trailing entry ${Q('Do not buy at the signal price: wait until price stretches further and then turns back by this distance (in ATR), for a better entry. Gives up after the max number of candles — some signals never fill.')}</b>
+    ${inp('te_d','Turn-back distance (ATR)',te&&te.dev_atr,0.05,10,0.25,'trail_entry')}${inp('te_b','Give up after (candles)',te&&te.max_bars,1,50,1,'trail_entry')}<div class="adx">Empty = enter at once (normal) · clear a field to switch it off.</div></div>
+   <div class="advsec"><b><label for="sl${i}_when" style="all:unset">Market filter</label> ${Q('Lets this slot trade only in one market state, judged on BTC. Trend strategies are usually set to bull only; nothing changes for trades already open.')}</b>
+    <select id="sl${i}_when" onchange="SLV[${i}].when=this.value==='any'?null:this.value;ed();renderSleeves(true)">${WHEN.map(([k,n])=>`<option value="${k}" ${k===w?'selected':''}>${n}</option>`).join('')}</select>
+    <div class="adx">${(WHEN.find(x=>x[0]===w)||WHEN[0])[2]} Bull = BTC above its 200-day average.</div>${said(BTS.when)}</div>
+   <div class="advsec"><b>Pump guard for this slot ${Q('Skip an entry right after a spike: when the signal candle is bigger than X × ATR, or when BTC moved more than Y% in the last hour. Empty = use the global setting on the Risk & Exposure tab.')}</b>
+    ${inp('pg_a','Max signal candle (× ATR)',pg.max_candle_atr,0.5,20,0.5,'pump_guard')}${inp('pg_b','Max BTC 1-hour move (%)',pg.btc_1h_pct,0.2,30,0.5,'pump_guard')}<div class="adx">Empty = global setting (now: ${esc(gTxt)}).</div>${said(BTS.pump)}</div>
+  </div>`}
+
+// ---------------- risk rules
+const RRI={coin_cap:{n:'Coin cap',d:'Total position size on any one coin (all slots together) stays below this many × bot capital.',p:[['x','max × capital',.1,50,.5,1]],
+   m:(st,c)=>[st.value,c.x,`${(+st.value||0).toFixed(2)}×${st.detail?' · '+esc(coin(st.detail)):''}`,`${c.x}×`,'largest coin']},
+ open_risk_cap:{n:'Open risk cap',d:'What you would lose if every open stop were hit at once (including the new trade) stays below this % of bot capital.',p:[['pct','max % of capital',.5,100,1,1]],
+   m:(st,c)=>[st.value,c.pct,`${(+st.value||0).toFixed(1)}%`,`${c.pct}%`,'risk to stops']},
+ correlated_cap:{n:'Correlated trades cap',d:'At most N open trades in the same direction on coins that move together (30-day correlation above ρ) — they behave like one big trade.',p:[['n','max trades',1,20,1,1],['rho','correlation ρ above',.3,.99,.05,1]],
+   m:(st,c)=>[st.value,c.n,`${st.value??0} trade${st.value===1?'':'s'}${st.detail&&!/not computed/.test(st.detail)?' · '+esc(st.detail.replace('USDT','')):''}`,`${c.n}`,st.detail&&/not computed/.test(st.detail)?'correlation not computed yet':'biggest group']},
+ btc_breaker:{n:'BTC circuit breaker',d:'If BTC moves more than X% within an hour, no new entries for the next H hours. "Tighten" also moves profitable stops to breakeven.',p:[['pct','BTC 1h move %',.5,30,.5,1],['hours','pause (hours)',.25,72,1,1]],b:['tighten','tighten stops'],
+   m:(st,c)=>[st.value==null?0:Math.abs(st.value),c.pct,st.value==null?'no data':`${Math.abs(st.value).toFixed(2)}% BTC 1h`,`${c.pct}%`,st.paused_until?`<span style="color:#fcd34d">paused until ${esc(fT(st.paused_until))}</span>`:'last hour']},
+ funding_filter:{n:'Funding filter',d:'No longs while the funding rate is above this (crowded longs), no shorts while it is below minus this.',p:[['rate','max funding %',.005,5,.01,100]],
+   m:(st,c)=>[Math.abs(st.value||0),c.rate,`${((st.value||0)*100).toFixed(4)}%${st.detail?' · '+esc(coin(st.detail)):''}`,`±${+(c.rate*100).toFixed(4)}%`,'most extreme coin']}};
+function rrCfg(){const S=(D&&D.settings.RISK_RULES)||{},Df=(META&&META.risk_rule_defaults)||{},o={};Object.keys(RRI).forEach(k=>o[k]=Object.assign({},Df[k]||{},S[k]||{}));return o}
+function rmeter(lab,val,lim,txt,limTxt,on,cap){const r=lim?Math.abs(+val||0)/lim:0,c=!on?'rgba(255,255,255,.28)':r>=1?'var(--bad)':r>=.7?'var(--warn)':'var(--good)';
+  return `<div class="meter"><div class="top"><span class="t2 small">now</span><b>${txt}</b></div><div class="bar" role="meter" aria-label="${esc(lab)}" aria-valuemin="0" aria-valuemax="${lim}" aria-valuenow="${(+val||0)}"><div class="fill" style="width:${Math.min(100,r*100).toFixed(1)}%;background:${c}"></div></div><div class="cap"><span>${cap||''}</span><span>limit ${limTxt}</span></div></div>`}
+function renderRiskRules(){const cfg=rrCfg(),ST=D.risk_rules||{};
+  setHTML($('rrRules'),ST.error?`<div class="note bd">Risk rule status unavailable: ${esc(ST.error)}</div>`:Object.entries(RRI).map(([k,I])=>{const c=cfg[k],st=ST[k]||{},mode=c.mode||'off',on=mode!=='off',[v,l,txt,lt,cap]=I.m(st,c);
+    const state=!on?'<span class="tag t-mute">off</span>':st.ok===false?(mode==='enforce'?'<span class="tag t-bad">over limit · entries blocked</span>':'<span class="tag t-warn">over limit · warning only</span>'):'<span class="tag t-ok">within limit</span>';
+    return `<div class="rrow ${on?'':'off'}"><div class="rl"><b>${I.n}</b> ${state}<div class="mute small">${I.d}</div></div>
+     <div class="rc"><span class="seg" role="group" aria-label="${I.n} mode">${['off','warn','enforce'].map(x=>`<button class="${x===mode?'on':''}" aria-pressed="${x===mode}" onclick="rrSet(${jsa(k)},'mode',${jsa(x)})">${x==='off'?'Off':x==='warn'?'Warn':'Enforce'}</button>`).join('')}</span>
+      <span class="btns">${I.p.map(([p,lb,lo,hi,stp,f])=>`<label class="pf" for="rr_${k}_${p}">${lb}<input type="number" id="rr_${k}_${p}" min="${lo}" max="${hi}" step="${stp}" value="${+((+c[p]||0)*f).toPrecision(6)}" onchange="rrSet(${jsa(k)},${jsa(p)},this.value)"></label>`).join('')}${I.b?`<label class="pf"><input type="checkbox" id="rr_${k}_${I.b[0]}" ${c[I.b[0]]?'checked':''} onchange="rrSet(${jsa(k)},${jsa(I.b[0])},this.checked)">${I.b[1]}</label>`:''}</span></div>
+     <div class="rm">${rmeter(I.n,v,l,txt,lt,on,cap)}</div></div>`}).join(''))}
+async function rrSet(k,p,v){const cfg=rrCfg(),I=RRI[k];if(p==='mode')cfg[k].mode=v;else if(typeof v==='boolean')cfg[k][p]=v;
+  else{const x=parseFloat(v),P=I.p.find(q=>q[0]===p);if(isNaN(x))return toast('enter a number',true);if(x<P[2]||x>P[3])return toast(`${I.n}: ${P[1]} must be between ${P[2]} and ${P[3]}`,true);cfg[k][p]=p==='n'?Math.round(x):x/(P[5]||1)}
+  try{await post('/api/settings',{RISK_RULES:cfg});toast(p==='mode'?`${I.n}: ${v}`:'Saved');load()}catch(e){toast(e.message,true);load()}}
+function renderEntryOpts(){const S=D.settings,mk=S.ENTRY_ORDER==='maker',pg=S.PUMP_GUARD||{};
+  setHTML($('rrEntry'),`<div class="row"><div class="l"><b>Entry order type ${Q('Market (taker) orders fill at once and pay the taker fee (0.05%). Maker (post-only) orders rest in the order book at the best price and pay the lower maker fee; they can miss a fast move.')}</b><small>${mk?'Maker: a post-only limit order waits in the book, re-priced a few times.':'Market: fills at once, pays the taker fee.'}</small></div><span class="seg" role="group" aria-label="Entry order type"><button class="${mk?'':'on'}" aria-pressed="${!mk}" onclick="setS({ENTRY_ORDER:'market'})">Market</button><button class="${mk?'on':''}" aria-pressed="${mk}" onclick="setS({ENTRY_ORDER:'maker'})">Maker (post-only)</button></span></div>
+   ${mk?`<div class="row"><div class="l"><b id="lb_mfb">Fall back to market</b><small>if it has not filled after the re-prices, the rest goes at market (off = the unfilled part is skipped)</small></div><label class="sw"><input type="checkbox" id="sw_mfb" aria-labelledby="lb_mfb" ${S.MAKER_FALLBACK!==false?'checked':''} onchange="setS({MAKER_FALLBACK:this.checked})"><span></span></label></div>
+   <div class="row"><div class="l"><b><label for="mk_rp">Re-prices</label></b><small>move the order to the new best price up to this many times (0-10)</small></div><input id="mk_rp" type="number" min="0" max="10" step="1" value="${S.MAKER_REPRICE??3}" onchange="setNum('MAKER_REPRICE',this.value)"></div>
+   <div class="row"><div class="l"><b><label for="mk_w">Wait (seconds)</label></b><small>total time the order may rest (5-300)</small></div><input id="mk_w" type="number" min="5" max="300" step="5" value="${S.MAKER_WAIT_S??40}" onchange="setNum('MAKER_WAIT_S',this.value)"></div>
+   <div class="row"><div class="l"><b><label for="mk_f">Maker fee %</label></b><small>your Binance maker fee (default 0.02%)</small></div><input id="mk_f" type="number" min="-0.1" max="0.2" step="0.005" value="${+((S.FEE_MAKER??0.0002)*100).toFixed(4)}" onchange="setNum('FEE_MAKER',this.value,100)"></div>`:''}${said(BTS.maker)}`);
+  setHTML($('rrPump'),`<div class="mute small" style="margin-bottom:4px">Skips an entry right after a spike, so the bot does not buy the top of a pump. A slot can override this in its Advanced settings. Empty = off.</div>
+   <div class="row"><div class="l"><b><label for="pg_a">Max signal candle (× ATR)</label></b><small>skip if the signal candle is bigger than this</small></div><input id="pg_a" type="number" min="0.5" max="20" step="0.5" placeholder="off" value="${pg.max_candle_atr??''}" onchange="savePump()"></div>
+   <div class="row"><div class="l"><b><label for="pg_b">Max BTC 1-hour move (%)</label></b><small>skip if BTC moved more than this in the last hour</small></div><input id="pg_b" type="number" min="0.2" max="30" step="0.5" placeholder="off" value="${pg.btc_1h_pct??''}" onchange="savePump()"></div>${said(BTS.pump)}`)}
+function setNum(k,v,f){const x=parseFloat(v);if(isNaN(x))return toast('enter a number',true);setS({[k]:f?+(x/f).toFixed(8):x})}
+function savePump(){const a=parseFloat($('pg_a').value),b=parseFloat($('pg_b').value),o={};if(a>0)o.max_candle_atr=a;if(b>0)o.btc_1h_pct=b;setS({PUMP_GUARD:o})}
+
+// ---------------- risk governor (draft -> saved with the Risk tab's unsaved bar)
+let GOVD=null,govDirty=false;
+const GOV_IF={growth_gte:'growth this cycle ≥',dd_gte:'drawdown from peak ≥'};
+const GOV_UNTIL=[['new_high','bot capital makes a new high'],['reset','you start a new capital cycle'],['','the condition no longer holds']];
+const GOV_MODE={off:'Rules are ignored.',suggest:'When a rule triggers you get a Telegram / log message and a suggestion here. Nothing changes by itself.',auto:'Rules apply by themselves: new trades are sized with the product of all active multipliers (kept between 0.05× and the cap), and profile switches happen at most once a day. Open trades are not changed.'};
+const gmax=()=>(META&&META.gov_mult_max)||2;
+function govCur(){return GOVD||JSON.parse(JSON.stringify((D&&D.settings.GOVERNOR)||{mode:'off',rules:[]}))}
+function govClean(g){return {mode:g.mode||'off',rules:(g.rules||[]).map(r=>({if:r.if,value:+r.value,then:r.then&&r.then.profile?{profile:r.then.profile}:{risk_mult:+((r.then||{}).risk_mult)},until:r.until||null}))}}
+function govCheck(g){for(const[i,r]of(g.rules||[]).entries()){if(!(+r.value>=0.5&&+r.value<=1000))return `Governor rule ${i+1}: the threshold must be 0.5-1000%`;
+  if(!(r.then&&r.then.profile)){const m=+(r.then||{}).risk_mult;if(!(m>=0.05&&m<=gmax()))return `Governor rule ${i+1}: the risk multiplier must be 0.05-${gmax()}`}}return ''}
+function govTxt(r){const t=r.then||{};return `${r.if==='growth_gte'?'growth':'drawdown'} ≥ ${r.value}% → ${t.profile?'profile '+((D.presets[t.profile]||{}).name||t.profile):'risk × '+t.risk_mult}${r.until?' until '+(GOV_UNTIL.find(x=>x[0]===r.until)||['',''])[1]:''}`}
+function govEd(f){const g=GOVD=govCur();f(g);govDirty=true;renderGov();updUnsaved()}
+function govSet(k,v){govEd(g=>g[k]=v)}
+function govRule(i,k,v){govEd(g=>{const r=g.rules[i];if(!r)return;if(k==='if')r.if=v;else if(k==='value')r.value=v===''?'':+v;else if(k==='until')r.until=v||null;
+  else if(k==='kind')r.then=v==='profile'?{profile:Object.keys(D.presets).includes('calm')?'calm':Object.keys(D.presets)[0]}:{risk_mult:.5};else if(k==='mult')r.then={risk_mult:v===''?'':+v};else if(k==='profile')r.then={profile:v}})}
+function govAdd(p){if(govCur().rules.length>=8)return toast('up to 8 governor rules',true);govEd(g=>g.rules.push(p||{if:'dd_gte',value:15,then:{risk_mult:.5},until:'new_high'}))}
+function govDel(i){govEd(g=>g.rules.splice(i,1))}
+async function govApply(k){if(!D.presets[k])return;if(!confirm(`Apply the "${D.presets[k].name}" profile now, as the governor suggests? Your strategy slots are replaced; open trades keep their own stops.`))return;
+  try{toast(await post('/api/preset',{name:k}));slDirty=false;SLV=null;load()}catch(e){toast(e.message,true)}}
+function renderGov(){if(!D)return;const g=govCur(),G=D.governor||{},same=JSON.stringify(govClean(g))===JSON.stringify(govClean(D.settings.GOVERNOR||{mode:'off',rules:[]}));
+  const hr=(g.rules||[]).some(r=>r.then&&!r.then.profile&&+r.then.risk_mult>1)||(same&&G.high_risk),mult=G.risk_mult??1;
+  const tg=$('govMode');tg.textContent=(G.mode||'off')+(G.mode&&G.mode!=='off'&&mult!==1?` · risk ×${(+mult).toFixed(2)}`:'');tg.className='tag '+(G.mode==='auto'?'t-acc':G.mode==='suggest'?'t-balanced':'t-mute');
+  const rows=(g.rules||[]).map((r,i)=>{const st=same?(G.rules||[])[i]:null,isP=!!(r.then&&r.then.profile),m=isP?null:(r.then||{}).risk_mult,h=!isP&&+m>1;
+    return `<div class="grule ${h?'hr':''}"><span class="w">If</span><select id="gv${i}_if" aria-label="Rule ${i+1} condition" onchange="govRule(${i},'if',this.value)">${Object.entries(GOV_IF).map(([k,l])=>`<option value="${k}" ${k===r.if?'selected':''}>${l}</option>`).join('')}</select>
+     <input type="number" id="gv${i}_v" aria-label="Rule ${i+1} threshold in percent" min="0.5" max="1000" step="1" value="${esc(r.value)}" onchange="govRule(${i},'value',this.value)"><span class="w">% →</span>
+     <select id="gv${i}_k" aria-label="Rule ${i+1} action" onchange="govRule(${i},'kind',this.value)"><option value="mult" ${isP?'':'selected'}>risk ×</option><option value="profile" ${isP?'selected':''}>switch to profile</option></select>
+     ${isP?`<select id="gv${i}_p" aria-label="Rule ${i+1} profile" onchange="govRule(${i},'profile',this.value)">${Object.entries(D.presets).map(([k,p])=>`<option value="${esc(k)}" ${k===r.then.profile?'selected':''}>${esc(p.name)}</option>`).join('')}</select>`:`<input type="number" id="gv${i}_m" aria-label="Rule ${i+1} risk multiplier" min="0.05" max="${gmax()}" step="0.05" value="${esc(m)}" onchange="govRule(${i},'mult',this.value)">`}
+     <span class="w">until</span><select id="gv${i}_u" aria-label="Rule ${i+1} ends when" onchange="govRule(${i},'until',this.value)">${GOV_UNTIL.map(([k,l])=>`<option value="${k}" ${(r.until||'')===k?'selected':''}>${l}</option>`).join('')}</select>
+     ${st?(st.active?`<span class="tag ${st.suggestion?'t-warn':'t-acc'}">${st.suggestion?'suggested now':'active'}${st.since?' since '+esc(fT(st.since)):''}</span>`:'<span class="tag t-mute">not triggered</span>'):''}${h?'<span class="tag t-bad">martingale</span>':''}
+     <button class="xb" style="margin-left:auto" aria-label="Remove governor rule ${i+1}" onclick="govDel(${i})">×</button></div>`}).join('');
+  const sug=same?(G.rules||[]).filter(x=>x.suggestion):[];
+  setHTML($('govBox'),`<div class="help" style="margin-top:0">The governor changes risk from the account's own results: e.g. halve the risk after a 15% drawdown until a new high, or switch to a calmer profile after +100%. It never touches open trades. Growth and drawdown are measured on this capital cycle's bot capital.</div>
+   <div class="kvs" style="margin-bottom:10px"><div><span>Mode (saved)</span><b>${esc(G.mode||'off')}</b></div><div><span>Risk multiplier now</span><b class="${mult<1?'gold':mult>1?'neg':''}">×${(+mult).toFixed(2)}</b></div><div><span>Growth this cycle</span><b class="${cls(G.growth)}">${G.growth==null?'–':pp(G.growth)}</b></div><div><span>Drawdown from peak</span><b class="${G.dd>0?'neg':''}">${(+(G.dd||0)).toFixed(1)}%</b></div><div><span>Last profile switch</span><b>${G.last_switch?esc(fT(G.last_switch)):'never'}</b></div></div>
+   ${sug.length?`<div class="note wn" style="margin:0 0 10px"><b>The governor suggests:</b>${sug.map(x=>{const r=x.rule,t=r.then||{};return `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:6px"><span>${esc(govTxt(r))}</span>${t.profile?`<button class="sm b-pri" onclick="govApply(${jsa(t.profile)})">Apply profile ${esc((D.presets[t.profile]||{}).name||t.profile)}</button>`:'<span class="small">Lower the risk % of your slots on the Strategies tab, or switch the governor to Auto to let it do this.</span>'}</div>`}).join('')}</div>`:''}
+   <div class="row"><div class="l"><b>Governor mode</b><small>${GOV_MODE[g.mode||'off']}</small></div><span class="seg" role="group" aria-label="Governor mode">${['off','suggest','auto'].map(x=>`<button class="${(g.mode||'off')===x?'on':''}" aria-pressed="${(g.mode||'off')===x}" onclick="govSet('mode',${jsa(x)})">${x==='off'?'Off':x==='suggest'?'Suggest':'Auto'}</button>`).join('')}</span></div>
+   <div style="margin-top:10px">${rows||'<div class="mute small" style="margin-bottom:8px">No rules yet — start from a preset below.</div>'}</div>
+   <div class="btns"><button class="sm" onclick="govAdd()" ${g.rules.length>=8?'disabled':''}>+ Add rule</button><button class="sm" onclick="govAdd({if:'growth_gte',value:100,then:{risk_mult:.33},until:'reset'})">Preset: calm down after +100%</button><button class="sm" onclick="govAdd({if:'dd_gte',value:15,then:{risk_mult:.5},until:'new_high'})">Preset: halve risk in a drawdown</button>
+    ${govDirty&&!same?'<span class="small" style="color:#fde68a">Unsaved governor changes</span><button class="sm b-pri" onclick="saveRiskForm()">Save governor</button><button class="sm" onclick="govDirty=false;GOVD=null;renderGov();updUnsaved()">Discard</button>':''}</div>
+   ${hr?`<div class="note bd"><b>Martingale-style rule.</b> A risk multiplier above 1 makes trades bigger exactly when the account is losing (or keeps raising risk after gains). The engine caps it at ${gmax()}×. ${BTS.mart}</div>`:''}
+   ${said(BTS.govDd)}${said(BTS.govUp)}`)}
+
+// ---------------- safety-bar chips for v3.1 state
+function v31Chips(){let x='';const G=D.governor||{},rb=(D.risk_rules||{}).btc_breaker,gr=((D.grids||{}).grids||[]).length;
+  if(G.mode&&G.mode!=='off'){const m=+(G.risk_mult??1);x+=`<span class="chip2 ${G.high_risk?'bd':m<1?'wn':''}" title="Risk governor (Risk &amp; Exposure tab) is in ${esc(G.mode)} mode; new trades are sized × ${m}."><span class="k">Governor</span>${esc(G.mode)}${m!==1?` · risk ×${m.toFixed(2)}`:''}</span>`}
+  if(rb&&rb.paused_until&&rb.mode!=='off')x+=`<span class="chip2 ${rb.mode==='enforce'?'bd':'wn'}" title="BTC moved more than ${esc(rb.limit)}% within an hour"><i class="d"></i><span class="k">BTC breaker</span>${rb.mode==='enforce'?'entries paused':'warning'} until ${esc(fT(rb.paused_until))}</span>`;
+  if(gr)x+=`<span class="chip2" title="Grid bots running (Strategies tab)"><span class="k">Grids</span>${gr} running</span>`;return x}
+
+// ---------------- grid bots
+let GRD=null,gridDirty=false,GPREV={},GPT={},GPC={};
+const gridOpen=()=>$('gridToggle').getAttribute('aria-expanded')==='true';
+function gridShareSaved(){return ((D&&D.settings.GRID_SLOTS)||[]).filter(g=>g.enabled).reduce((a,g)=>a+ +g.share,0)}
+function gridCur(){if(!GRD)GRD=JSON.parse(JSON.stringify(D.settings.GRID_SLOTS||[]));return GRD}
+function gCoins(g){return g.symbols==='core8'?(D.core8||[]):g.symbols==='all'?D.settings.UNIVERSE:Array.isArray(g.symbols)?g.symbols:[]}
+const GF=[['mode','Direction','sel',[['neutral','neutral (both ways)'],['long','long only'],['short','short only']],'Neutral buys the cells below the start price and shorts the cells above it. Long / short only trade one side.'],
+ ['range_kind','Band from','sel',[['atr','± ATR around price'],['pct','± % around price'],['lookback','recent low / high']],'How the price band is set when a grid starts.'],
+ ['range_value','Band size','num',[1,500,0.5],'± ATR: 1-20 ATR. ± %: 1-50%. Recent low / high: of the last 10-500 candles.'],
+ ['levels','Levels','num',[4,40,1],'Cells in the band. More levels = smaller steps and smaller profit per cycle; every step must clear the fees.'],
+ ['spacing','Spacing','sel',[['geom','equal % (geometric)'],['arith','equal $ (arithmetic)']],'Geometric keeps the same % between levels; arithmetic the same dollar step.'],
+ ['capital_frac','Size (× grid capital)','num',[0.1,10,0.1],'Position size with every cell on one side filled, × this grid\'s capital. Above 1 means leverage.'],
+ ['max_lev','Max leverage','num',[1,10,0.5],'Upper limit for the size above.'],
+ ['stop_out_pct','Hard stop beyond band (%)','num',[0.5,20,0.5],'Closes everything when price leaves the band by this much.'],
+ ['need_range','Only in a sideways market','bool',null,'Start only while the coin is ranging (ADX below 20, narrow Bollinger bands), and close the grid when it starts trending.'],
+ ['trend_bars','Close after trending (candles)','num',[1,50,1],'With the option above: close the grid when the coin has not been ranging for this many candles in a row.'],
+ ['cooldown_bars','Cooldown (candles)','num',[0,100,1],'Wait this long after a stop before a new grid on that coin.'],
+ ['max_worst_loss_pct','Max worst case (% of grid capital)','num',[1,100,1],'Refuse a grid whose worst case (every cell on one side filled, then the hard stop) would lose more than this.']];
+function gridDef(){const ids=new Set(gridCur().map(g=>g.id).concat(D.settings.SLEEVES.map(s=>s.id)));let n=1;while(ids.has('G'+n))n++;return Object.assign({id:'G'+n,enabled:false,auto:true,symbols:'core8',tf:'4h',share:.1,max_coins:2},(META&&META.grid_defaults)||{})}
+function gCfg(g){const o={};GF.forEach(([k])=>{if(g[k]!=null&&g[k]!=='')o[k]=g[k]});['share','max_coins','tf'].forEach(k=>o[k]=g[k]);return o}
+function gSet(i,k,v,re){const g=gridCur()[i];if(!g)return;g[k]=v;gridDirty=true;$('gridDisc').hidden=false;if(re)renderGrids(true);else updGridShare();if(k!=='id'&&k!=='enabled'&&k!=='auto')gPrevSched(i)}
+function gridAdd(){if(gridCur().length>=6)return toast('up to 6 grid slots',true);gridCur().push(gridDef());gridDirty=true;renderGrids(true)}
+function gridDel(i){if(!confirm('Remove this grid slot? (Press Save grid slots to make it final.)'))return;gridCur().splice(i,1);gridDirty=true;GPREV={};GPC={};renderGrids(true)}
+function gridDiscard(){GRD=null;gridDirty=false;GPREV={};GPC={};renderGrids(true)}
+async function gridSave(){const S=gridCur().map(g=>Object.assign({},g));try{toast(await post('/api/grid_slots',{slots:S}));GRD=null;gridDirty=false;load()}catch(e){toast(e.message,true)}}
+async function gridStart(slot,sym){if(!confirm(`Start the ${slot} grid on ${coin(sym)} now? It places its first orders at market right away (long and neutral grids may hold cells from the start).`))return;
+  try{const m=await post('/api/grid_start',{slot,symbol:sym});toast(typeof m==='string'?m:`${slot} grid on ${coin(sym)}: ${(m&&(m.status||m.msg))||'started'}`);load()}catch(e){toast(e.message,true)}}
+async function gridStop(slot,sym){if(!confirm(`Stop the ${slot} grid on ${coin(sym)}? Its open inventory is closed at market.`))return;
+  try{const m=await post('/api/grid_stop',{slot,symbol:sym});toast(typeof m==='string'?m:'grid stopped');load()}catch(e){toast(e.message,true)}}
+function gPrevSched(i){clearTimeout(GPT[i]);GPT[i]=setTimeout(()=>gPrev(i),500)}
+async function gPrev(i){const g=gridCur()[i];if(!g||!gridOpen())return;const cs=gCoins(g),sym=GPC[i]&&cs.includes(GPC[i])?GPC[i]:(cs[0]||'BTCUSDT'),key=JSON.stringify([sym,gCfg(g)]);
+  GPREV[i]=Object.assign({},GPREV[i],{busy:1,key});renderGPrev(i);
+  try{const r=await post('/api/grid_preview',{symbol:sym,cfg:gCfg(g)});if((GPREV[i]||{}).key!==key)return;GPREV[i]={key,r,sym}}catch(e){if((GPREV[i]||{}).key!==key)return;GPREV[i]={key,err:e.message,sym}}renderGPrev(i)}
+function renderGPrev(i){const el=$('gp'+i),g=gridCur()[i];if(!el||!g)return;const P=GPREV[i]||{},R=P.r,cs=gCoins(g),sym=P.sym||cs[0];
+  let h=`<div class="btns" style="margin-bottom:8px"><b class="small t2">Risk preview ${Q('Calculated by the bot on the coin\'s current price and ATR for one grid of this slot (slot capital ÷ max coins). Worst case = every cell on one side filled, then the hard stop, incl. fees and slippage.')}</b><select id="gpc${i}" aria-label="Preview coin for grid slot ${esc(g.id)}" onchange="GPC[${i}]=this.value;gPrev(${i})">${cs.slice(0,60).map(s=>`<option value="${esc(s)}" ${s===sym?'selected':''}>${esc(coin(s))}</option>`).join('')}</select><span class="mute small">${P.busy?'calculating…':R?`price ${px(R.price)} · ATR ${(R.atr_pct*100).toFixed(2)}% · grid capital ${usd(R.capital,0)}`:''}</span></div>`;
+  if(P.err)h+=`<div class="note bd" style="margin:0"><b>This grid would be refused:</b> ${esc(P.err)}</div>`;
+  else if(R&&R.metrics){const m=R.metrics,lim=(R.cfg||{}).max_worst_loss_pct??g.max_worst_loss_pct;
+    h+=`<div class="kvs"><div><span>Worst-case loss</span><b class="neg">${usd(-m.worst_loss_usd)}</b><span>${m.worst_loss_pct}% of grid capital (limit ${lim}%)</span></div>
+     <div><span>Liquidation distance</span><b class="${m.liq_distance_pct<=5?'neg':''}">${m.liq_distance_pct>=100?'far away':m.liq_distance_pct.toFixed(1)+'%'}</b><span>beyond the hard stop${m.liq_price?' · ≈ '+px(m.liq_price):''}</span></div>
+     <div><span>Profit per cycle</span><b class="pos">${usd(m.profit_per_cycle_after_fees,3)}</b><span>${m.profit_per_cycle_pct}% of a cell, after fees</span></div>
+     <div><span>Fee share</span><b class="${m.fee_share_pct>35?'neg':''}">${m.fee_share_pct}%</b><span>of the tightest cycle's gross</span></div>
+     <div><span>Step size</span><b>${m.spacing_pct.toFixed(3)}%</b><span>min profitable ${m.min_fee_positive_spacing_pct.toFixed(3)}%</span></div>
+     <div><span>Band</span><b>${m.range_pct.toFixed(1)}% wide</b><span>stop ${px(m.stop_lo)} / ${px(m.stop_hi)}</span></div>
+     <div><span>Max position</span><b>${usd(m.max_notional,0)}</b><span>${m.eff_leverage}× grid capital</span></div>
+     <div><span>Cycles to earn back</span><b>${m.cycles_to_recover??'–'}</b><span>completed cycles per worst case</span></div></div>
+     <div class="small t2" style="margin-top:8px">If ${esc(coin(sym))} trends through the band and hits the stop with every cell filled, this grid loses about <b class="neg">${usd(m.worst_loss_usd)}</b> — about <b>${m.cycles_to_recover??'many'}</b> completed buy-low/sell-high cycles of profit.</div>`}
+  else if(!P.busy)h+='<div class="mute small">Preview appears here.</div>';
+  setHTML(el,h)}
+function updGridShare(){if(!D)return;const st=D.settings.SLEEVES.filter(s=>s.enabled).reduce((a,s)=>a+ +s.share,0),gs=gridCur().filter(g=>g.enabled).reduce((a,g)=>a+(+g.share||0),0),t=st+gs;
+  $('gridShare').innerHTML=`strategies ${(st*100).toFixed(0)}% + enabled grids ${(gs*100).toFixed(0)}% = <b class="${t>1.0001?'neg':''}">${(t*100).toFixed(0)}%</b> of bot capital${t>1.0001?' — must be 100% or less (lower a share first)':''}`}
+function renderGrids(force){if(!D)return;if(!gridDirty)GRD=null;const GS=gridCur(),Rn=(D.grids&&D.grids.grids)||[];
+  $('gridSum').textContent=`· ${GS.length} slot${GS.length===1?'':'s'}${GS.length?`, ${GS.filter(g=>g.enabled).length} on`:''} · ${Rn.length} running`;$('gridDisc').hidden=!gridDirty;
+  if(!gridOpen())return;
+  const fg=(i,f,lab,inp)=>`<span class="fg"><label for="gs${i}_${f}">${lab}</label>${inp}</span>`;
+  const fld=(i,g,[k,l,t,o,h])=>t==='sel'?`<label for="gs${i}_${k}">${l} ${h?Q(h):''}<select id="gs${i}_${k}" onchange="gSet(${i},'${k}',this.value)">${o.map(([v,n])=>`<option value="${v}" ${String(g[k])===v?'selected':''}>${n}</option>`).join('')}</select></label>`
+    :t==='bool'?`<label for="gs${i}_${k}">${l} ${h?Q(h):''}<input type="checkbox" id="gs${i}_${k}" ${g[k]?'checked':''} onchange="gSet(${i},'${k}',this.checked)"></label>`
+    :`<label for="gs${i}_${k}">${l} ${h?Q(h):''}<input type="number" id="gs${i}_${k}" min="${o[0]}" max="${o[1]}" step="${o[2]}" value="${g[k]??''}" onchange="gSet(${i},'${k}',this.value===''?null:+this.value)"></label>`;
+  setHTML($('gridSlots'),GS.map((g,i)=>{const csel=typeof g.symbols==='string'?g.symbols:'custom',nm=esc(g.id);
+    return `<div class="gslot ${g.enabled?'':'offs'}"><div class="slh">
+     <label class="sw" title="Grid slot on/off"><input type="checkbox" id="gs${i}_on" aria-label="Grid slot ${nm} on" ${g.enabled?'checked':''} onchange="gSet(${i},'enabled',this.checked,1)"><span></span></label>
+     <input id="gs${i}_id" value="${nm}" aria-label="Grid slot name" style="width:76px;font-weight:700" onchange="gSet(${i},'id',this.value)">
+     <span class="tag ${g.enabled?'t-warn':'t-mute'}">${g.enabled?'on':'off'}</span>
+     ${fg(i,'share','capital %',`<input type="number" id="gs${i}_share" value="${+((+g.share||0)*100).toFixed(1)}" step="5" min="1" max="100" onchange="gSet(${i},'share',this.value/100,1)">`)}
+     ${fg(i,'mc','max coins',`<input type="number" id="gs${i}_mc" value="${g.max_coins}" step="1" min="1" max="20" onchange="gSet(${i},'max_coins',+this.value,1)">`)}
+     ${fg(i,'coins','coins',`<select id="gs${i}_coins" onchange="gSet(${i},'symbols',this.value==='custom'?(D.core8||[]).slice(0,2):this.value,1)">${[['core8','core 8'],['all','all my coins'],['custom','custom list']].map(([v,n])=>`<option value="${v}" ${v===csel?'selected':''}>${n}</option>`).join('')}</select>`)}
+     ${fg(i,'tf','candles',`<select id="gs${i}_tf" onchange="gSet(${i},'tf',this.value)">${['4h','1h'].map(x=>`<option ${x===g.tf?'selected':''}>${x}</option>`).join('')}</select>`)}
+     <span class="fg"><label class="lchk" for="gs${i}_auto"><input type="checkbox" id="gs${i}_auto" ${g.auto?'checked':''} onchange="gSet(${i},'auto',this.checked)">start by itself</label>${Q('On: the bot starts a grid on a coin of this slot whenever that coin is ranging (and a coin place is free). Off: grids only start when you press Start below.')}</span>
+     <span class="fg"><button class="sm b-bad" aria-label="Remove grid slot ${nm}" onclick="gridDel(${i})">Remove</button></span></div>
+     ${csel==='custom'?`<div style="margin-top:6px"><input id="gs${i}_list" aria-label="Coins for grid slot ${nm}" style="width:100%" value="${esc((g.symbols||[]).join(','))}" onchange="gSet(${i},'symbols',this.value.split(',').map(x=>x.trim().toUpperCase()).filter(Boolean).map(x=>x.endsWith('USDT')?x:x+'USDT'),1)"></div>`:''}
+     <div class="mute small" style="margin-top:6px">${D.sizing_equity?`≈ ${usd(D.sizing_equity*(+g.share||0),0)} for this slot · ${usd(D.sizing_equity*(+g.share||0)/Math.max(1,g.max_coins),0)} per grid`:''}</div>
+     <div class="gfields">${GF.map(f=>fld(i,g,f)).join('')}</div>
+     <div class="gprev" id="gp${i}"></div></div>`}).join('')||'<div class="empty">No grid slots. "+ Add grid slot" creates one — it stays off until you switch it on and save.</div>',{force});
+  GS.forEach((g,i)=>{if(!GPREV[i])gPrevSched(i);else renderGPrev(i)});
+  updGridShare();renderGridRun()}
+function renderGridRun(){const Rn=(D.grids&&D.grids.grids)||[],SL=(D.settings.GRID_SLOTS||[]);
+  const cols=[{k:'slot',l:'Slot'},{k:'symbol',l:'Coin',s:x=>coin(x.symbol)},{k:'mode',l:'Mode'},{k:'status',l:'Status'},{k:'band',l:'Band',nosort:1},{k:'filled',l:'Filled L / S',nosort:1,num:1},{k:'inv',l:'Inventory',nosort:1,num:1},{k:'cycles',l:'Cycles',num:1},{k:'cycle_pnl',l:'Cycle P&amp;L',num:1},{k:'up',l:'Open P&amp;L',num:1,s:x=>(x.upnl_long||0)+(x.upnl_short||0)},{k:'wl',l:'Worst case',num:1,s:x=>(x.metrics||{}).worst_loss_usd},{k:'started',l:'Started',s:x=>ms(x.started)},{k:'_a',l:'<span class="sr">Actions</span>',nosort:1}];
+  setHTML($('gridRun'),Rn.length?T('grids',cols,Rn,{row:x=>{const up=(x.upnl_long||0)+(x.upnl_short||0);return `<tr><td><b>${esc(x.slot)}</b></td><td>${coinIc(x.symbol)}<b>${esc(coin(x.symbol))}</b></td><td><span class="tag t-mute">${esc(x.mode)}</span></td><td>${esc(x.status)}${x.why?` <span class="mute small">${esc(x.why)}</span>`:''}${x.pending?' <span class="tag t-warn">order pending</span>':''}</td><td class="num">${px(x.lo)} – ${px(x.hi)}<br><span class="mute small">${x.levels} levels</span></td><td class="num">${x.filled_long||0}/${x.cells_long||0} · ${x.filled_short||0}/${x.cells_short||0}</td><td class="num">${x.inv_long?'+'+(+(+x.inv_long).toPrecision(3)):''}${x.inv_long&&x.inv_short?' / ':''}${x.inv_short?'−'+(+(+x.inv_short).toPrecision(3)):''}${!x.inv_long&&!x.inv_short?'–':''}</td><td class="num">${x.cycles}</td><td class="num ${cls(x.cycle_pnl)}">${susd(x.cycle_pnl)}</td><td class="num ${cls(up)}">${susd(up)}</td><td class="num neg">${x.metrics&&x.metrics.worst_loss_usd!=null?usd(-x.metrics.worst_loss_usd):'–'}</td><td class="mute">${fT(x.started)}</td><td><button class="sm b-bad" onclick="gridStop(${jsa(x.slot)},${jsa(x.symbol)})" aria-label="Stop the ${esc(x.slot)} grid on ${esc(coin(x.symbol))}">Stop</button></td></tr>`}}):'<div class="empty">No grid is running.</div>');
+  const on=SL.filter(g=>g.enabled),run=new Set(Rn.map(x=>x.slot+'|'+x.symbol));
+  setHTML($('gridStart'),on.length?on.map(g=>{const cs=gCoins(g).filter(s=>!run.has(g.id+'|'+s));return `<div class="btns" style="margin-bottom:6px"><b class="small t2">Start ${esc(g.id)} on:</b>${cs.slice(0,40).map(s=>`<button class="sm" onclick="gridStart(${jsa(g.id)},${jsa(s)})" aria-label="Start grid ${esc(g.id)} on ${esc(coin(s))}">▶ ${esc(coin(s))}</button>`).join('')||'<span class="mute small">running on all its coins</span>'}${g.auto?'<span class="mute small">· also starts by itself while a coin is ranging</span>':''}</div>`}).join(''):'<div class="mute small">Switch a grid slot on and press "Save grid slots" to start grids by hand here.</div>')}
+RER.grids=renderGridRun;
+
+// ---------------- backtest run options (shared by backtests and the Lab)
+function runOpts(){if(!D)return null;const o={};if($('ro_maker').checked){o.entry_order='maker';o.maker_fallback=true;const f=parseFloat($('ro_fee').value);if(!isNaN(f))o.fee_maker=+(f/100).toFixed(6)}
+  const a=parseFloat($('ro_pg').value),b=parseFloat($('ro_pgb').value);if(a>0||b>0){o.pump_guard={};if(a>0)o.pump_guard.max_candle_atr=a;if(b>0)o.pump_guard.btc_1h_pct=b}
+  if($('ro_rr').checked)o.risk_rules=rrCfg();if($('ro_gov').checked)o.governor={mode:'auto',rules:govClean(D.settings.GOVERNOR||{rules:[]}).rules};
+  const mm=$('ro_mm').value;if(mm!==''&&!isNaN(+mm)&&+mm>=0)o.maint_margin=+(+mm/100).toFixed(5);return Object.keys(o).length?o:null}
+function roText(o){const t=[];if(!o)return '';if(o.entry_order==='maker')t.push('maker entries'+(o.fee_maker!=null?` (${+(o.fee_maker*100).toFixed(4)}% fee)`:''));
+  if(o.pump_guard)t.push('pump guard '+[o.pump_guard.max_candle_atr?o.pump_guard.max_candle_atr+' ATR':'',o.pump_guard.btc_1h_pct?'BTC '+o.pump_guard.btc_1h_pct+'%':''].filter(Boolean).join(' / '));
+  if(o.risk_rules){const n=Object.values(o.risk_rules).filter(r=>r.mode==='enforce').length;t.push(`risk rules (${n} enforced${n?'':' — no effect'})`)}
+  if(o.governor){const n=(o.governor.rules||[]).length;t.push(`governor (${n} rule${n===1?'':'s'})`)}if(o.maint_margin!=null)t.push(`liquidation at ${+(o.maint_margin*100).toFixed(3)}% maintenance`);return t.join(' · ')}
+function roSum(){const o=runOpts();$('roSum').textContent=o?'· on: '+roText(o):'· all off (classic simulation)'}
+
+// ---------------- Lab: optimize / walk-forward / Monte Carlo / lookahead
+let labTool='optimize',LABJOB=null,LABRES=null,LABSP=[{slot:0,path:'risk',min:0.5,max:3,step:0.5}];
+const LABP=[['risk','Risk per trade (%)',100,[0.5,3,0.5]],['share','Capital share (%)',100,[10,50,10]],['max_pos','Max positions',1,[2,8,2],1],['mgmt.stop_atr','Stop (ATR)',1,[1.5,3.5,0.5]],['mgmt.trail_atr','Trailing stop (ATR)',1,[2,4,1]],
+ ['mgmt.be_r','Breakeven after (R)',1,[1,3,1]],['mgmt.tp1_r','Partial TP at (R)',1,[1,4,1]],['mgmt.tp1_frac','Partial TP size (0-1)',1,[.25,.75,.25]],['mgmt.tp_r','Full TP at (R)',1,[2,6,2]],['mgmt.max_bars','Time exit (candles)',1,[20,80,20],1],
+ ['mgmt.pyramid.n','Pyramid adds',1,[0,2,1],1],['mgmt.pyramid.step_r','Pyramid every (R)',1,[1,2,.5]],['mgmt.pyramid.frac','Pyramid size (× first)',1,[.25,.75,.25]],
+ ['mgmt.dca.n','DCA safety orders',1,[2,5,1],1],['mgmt.dca.step_atr','DCA step (ATR)',1,[.5,1.5,.5]],['mgmt.dca.scale','DCA size scale',1,[1,2,.25]],['mgmt.dca.tp_atr','DCA basket TP (ATR)',1,[.5,1.5,.5]],['mgmt.dca.stop_atr','DCA basket stop (ATR)',1,[1,3,.5]],
+ ['mgmt.runner.be_r','Runner breakeven (R)',1,[1,3,1]],['mgmt.runner.step_r','Runner lock step (R)',1,[1,3,1]],['mgmt.runner.gap_r','Runner lock distance (R)',1,[1,3,1]],['mgmt.runner.giveback','Runner max give-back (0-1)',1,[.3,.7,.2]]];
+const METRIC_L=[['calmar','Calmar (yearly return ÷ max drawdown)'],['return_dd','Return ÷ drawdown, bad months penalised'],['sharpe','Sharpe ratio'],['return','Return'],['profit_factor','Profit factor']];
+const LABHELP={optimize:'Tries different values for up to 6 settings on the first 75% of the period, then checks the best ones on the last 25% it never saw (the <b>hold-out</b>). When the winners do worse there than your current settings, they were fitted to noise — keep your settings.',
+ walk_forward:'Optimises on a training window, trades the next (unseen) test window with the winner, moves forward and repeats. The joined test windows are an honest out-of-sample curve — compare it with simply keeping your settings.',
+ monte_carlo:'Runs one backtest, then reshuffles its history thousands of times to show the range of drawdowns luck could have produced. Read the <b>daily-block</b> numbers first: they keep losing streaks together; shuffling single trades understates the risk.',
+ lookahead:'Recomputes every indicator and signal on history cut off at random points and compares them with the full-history values. Any difference means a strategy peeked at the future, and its backtest is too good to be true.'};
+function labSlots(){const src=$('lab_src').value||'__current',sl=src==='__current'?(SLV||D.settings.SLEEVES):((D.presets[src]||{}).sleeves||[]);return JSON.parse(JSON.stringify(sl)).filter(s=>s.enabled!==false)}
+function renderLabForm(){if(!D)return;const t=labTool;$('labHelp').innerHTML=LABHELP[t];
+  const sel=(id,opts,v,lab)=>`<div class="row"><label class="t2" for="${id}">${lab}</label><select id="${id}">${opts.map(([k,n])=>`<option value="${k}" ${String(k)===String(v)?'selected':''}>${n}</option>`).join('')}</select></div>`;
+  const num=(id,lab,v,mn,mx,st)=>`<div class="row"><label class="t2" for="${id}">${lab}</label><input id="${id}" type="number" value="${v}" min="${mn}" max="${mx}" step="${st||1}" oninput="spCount()"></div>`;
+  const sp=`<div class="sub" style="margin-top:12px">Settings to try <span class="mute small" style="text-transform:none;letter-spacing:0;font-weight:500">up to 6 · each from min to max in steps</span></div><div id="labSpace"></div>`;
+  let h='';
+  if(t==='optimize')h=`<div class="g4">${sel('lab_metric',METRIC_L,'calmar','Score by')}${sel('lab_method',[['random','random sample'],['grid','every combination']],'random','Search')}${num('lab_trials','Trials (max 300)',60,1,300)}${num('lab_mintr','Min trades',30,0,100000)}</div>`+sp;
+  else if(t==='walk_forward')h=`<div class="g4">${sel('lab_metric',METRIC_L,'calmar','Score by')}${num('lab_train','Train window (days)',180,14,1500)}${num('lab_test','Test window (days)',60,7,730)}${num('lab_step','Step (days)',60,7,730)}</div><div class="g4">${num('lab_trials','Trials per window (max 100)',20,1,100)}${num('lab_mintr','Min trades per window',10,0,100000)}</div>`+sp;
+  else if(t==='monte_carlo')h=`<div class="g4">${num('lab_n','Simulations',2000,100,10000,100)}${sel('lab_mcm',[['shuffle','shuffle the trades'],['bootstrap','draw trades with repeats']],'shuffle','Trade method')}</div><div class="mute small">The daily-block test (5-day chunks of the real equity curve) always runs as well and is shown first.</div>`;
+  else h=`<div class="g4">${sel('lab_keys',[['src','strategies in the chosen source'],['all','all strategies']],'src','Check')}${num('lab_pts','Check points (suggest 15)',15,3,200)}</div><div class="mute small">The coin and period fields above apply; more check points = slower but more thorough.</div>`;
+  setHTML($('labForm'),h,{force:true});renderSpace()}
+function spDef(p){return (LABP.find(x=>x[0]===p)||LABP[0])}
+function spPath(k,p){const d=spDef(p)[3];Object.assign(LABSP[k],{path:p,min:d[0],max:d[1],step:d[2]});renderSpace()}
+function spAdd(){if(LABSP.length>=6)return;const used=new Set(LABSP.map(r=>r.slot+'|'+r.path)),p=LABP.find(x=>!used.has('0|'+x[0]))||LABP[0],d=p[3];LABSP.push({slot:0,path:p[0],min:d[0],max:d[1],step:d[2]});renderSpace()}
+function spVals(r){const P=spDef(r.path),f=P[2],int=P[4],out=[];if(!(r.step>0)||!(r.max>=r.min))return null;for(let v=+r.min,n=0;v<=+r.max+1e-9&&n<60;v+=+r.step,n++){let x=v/f;x=int?Math.round(x):+x.toFixed(8);if(!out.includes(x))out.push(x)}return out}
+function spCount(){if(!$('lspTot'))return;let tot=1,bad='';LABSP.forEach((r,k)=>{const v=spVals(r),e=$(`lsp${k}_n`);if(!v){bad='check min / max / step';if(e)e.textContent='–'}else{tot*=v.length;if(e)e.textContent=`${v.length} value${v.length>1?'s':''}`;if(v.length>50)bad='at most 50 values per setting'}});
+  const tr=+(($('lab_trials')||{}).value||60),grid=($('lab_method')||{}).value==='grid';
+  $('lspTot').innerHTML=bad?`<span class="neg">${bad}</span>`:!LABSP.length?'':labTool==='optimize'?(grid?`${tot} combinations — every one is tested${tot>300?' <span class="neg">(max 300: use random or fewer values)</span>':''}`:`${tot} combinations · random sample tests ${Math.min(tr,tot)}`):`${tot} combinations · ${Math.min(tr,tot)} tried per window`}
+function renderSpace(){const el=$('labSpace');if(!el)return;const sl=labSlots();LABSP.forEach(r=>{if(r.slot>=sl.length)r.slot=0});
+  const rows=LABSP.map((r,k)=>`<div class="sprow"><select id="lsp${k}_s" aria-label="Slot for setting ${k+1}" onchange="LABSP[${k}].slot=+this.value;spCount()">${sl.map((s,i)=>`<option value="${i}" ${i===r.slot?'selected':''}>${esc(s.id)} · ${esc(libName(s.key))}</option>`).join('')||'<option value="0">no slots</option>'}</select>
+    <select id="lsp${k}_p" aria-label="Setting ${k+1}" onchange="spPath(${k},this.value)">${LABP.map(([p,l])=>`<option value="${p}" ${p===r.path?'selected':''}>${l}</option>`).join('')}</select>
+    <label class="pf" for="lsp${k}_a">from<input type="number" id="lsp${k}_a" value="${r.min}" step="any" onchange="LABSP[${k}].min=+this.value;spCount()"></label><label class="pf" for="lsp${k}_b">to<input type="number" id="lsp${k}_b" value="${r.max}" step="any" onchange="LABSP[${k}].max=+this.value;spCount()"></label><label class="pf" for="lsp${k}_c">step<input type="number" id="lsp${k}_c" value="${r.step}" step="any" min="0" onchange="LABSP[${k}].step=+this.value;spCount()"></label>
+    <span class="mute small" id="lsp${k}_n"></span><button class="xb" aria-label="Remove setting ${k+1}" onclick="LABSP.splice(${k},1);renderSpace()">×</button></div>`).join('');
+  setHTML(el,(rows||'<div class="mute small">Add at least one setting to try.</div>')+`<div class="btns" style="margin-top:8px">${LABSP.length<6?'<button class="sm" onclick="spAdd()">+ Add setting</button>':''}<span class="small t2" id="lspTot"></span></div>`,{force:true});spCount()}
+async function labRun(){if(!D)return;if(LABJOB)return toast('a Lab test is already running — cancel it first',true);const src=$('lab_src').value,cs=$('lab_coins').value,t=labTool,sl=labSlots();
+  const b={kind:t,days:+$('lab_days').value,start:+$('lab_start').value||500,max_lev:D.settings.MAX_LEVERAGE,daily_halt:D.settings.DAILY_LOSS_HALT,universe:cs==='cur'?D.settings.UNIVERSE:cs==='core8'?D.core8:D.top40};
+  const ro=runOpts();if(ro)b.run_options=ro;
+  if(t!=='lookahead'){if(!sl.length)return toast('no enabled strategy slots in that source',true);if(sl.length>8)return toast('the Lab takes up to 8 slots',true);
+    const tfs=[...new Set(sl.map(s=>s.tf||'4h'))];b.tf=tfs.length===1?tfs[0]:'4h';if(tfs.length>1)toast('Mixed timeframes: the Lab runs every slot on 4h candles');
+    if(src==='__current')b.sleeves=sl.map(cleanMg);else b.preset=src}else b.tf='4h';
+  if(t==='optimize'||t==='walk_forward'){if(!LABSP.length)return toast('add at least one setting to try',true);const space=[];
+    for(const r of LABSP){const v=spVals(r);if(!v||!v.length)return toast(`${spDef(r.path)[1]}: check min / max / step`,true);if(v.length>50)return toast(`${spDef(r.path)[1]}: at most 50 values`,true);space.push({path:`sleeves[${r.slot}].${r.path}`,values:v})}
+    b.space=space;b.metric=$('lab_metric').value;b.n_trials=+$('lab_trials').value;b.min_trades=+$('lab_mintr').value;b.method=t==='optimize'?$('lab_method').value:'random';
+    if(t==='walk_forward')Object.assign(b,{train_days:+$('lab_train').value,test_days:+$('lab_test').value,step_days:+$('lab_step').value})}
+  if(t==='monte_carlo')Object.assign(b,{n:+$('lab_n').value,method:$('lab_mcm').value});
+  if(t==='lookahead'){b.n_points=+$('lab_pts').value;if($('lab_keys').value==='src'){const k=[...new Set(sl.map(s=>s.key))];if(k.length)b.keys=k}}
+  try{const id=await post('/api/lab',b);LABJOB={id,kind:t};labUI(true,0,'queued');labPoll()}catch(e){toast(e.message,true)}}
+function labUI(on,p,st){$('labGo').disabled=!!on;$('labCancel').hidden=!on;$('labBar').hidden=!on;if(on){$('labBar').firstElementChild.style.width=Math.max(2,(p||0)*100).toFixed(0)+'%';$('labStatus').textContent=`${String(st||'').replace(/^running - /,'')} · ${((p||0)*100).toFixed(0)}%`}}
+async function labPoll(){const J=LABJOB;if(!J)return;let j;try{j=await api('/api/backtest/'+J.id)}catch(e){if(LABJOB===J)setTimeout(labPoll,3000);return}if(LABJOB!==J)return;
+  if(j.status==='done'){LABJOB=null;labUI(false);$('labStatus').textContent=`${j.result&&j.result.cancelled?'cancelled · partial result below':'done'}${j.result&&j.result.cpu_s!=null?` · ${j.result.cpu_s} s CPU`:''}`;LABRES=j.result;renderLabOut();loadBT();return}
+  if(/^(error|cancelled|missing)$/.test(j.status)){LABJOB=null;labUI(false);$('labStatus').innerHTML=j.status==='error'?`<span class="neg">The test failed: ${esc(j.error||'unknown error')}</span>`:esc(j.status==='cancelled'?'cancelled':'job not found');return}
+  labUI(true,j.progress||0,j.status);setTimeout(labPoll,1500)}
+async function labCancel(){if(!LABJOB)return;try{await post('/api/job_cancel',{id:LABJOB.id});$('labStatus').textContent='cancelling…'}catch(e){toast(e.message,true)}}
+function labResume(){if(!$('labForm')._h)renderLabForm();if(LABJOB||!D||!D.jobs)return;const r=Object.entries(D.jobs).find(([k,j])=>/-lab-/.test(k)&&!/^(done|error|cancelled)$/.test(j.status));if(r){LABJOB={id:r[0],kind:r[1].kind};labPoll()}}
+function renderLabList(){const L=(BTL||[]).filter(b=>b.lab);
+  setHTML($('labList'),L.length?`<table><thead><tr><th>Test</th><th>Run</th><th><span class="sr">Actions</span></th></tr></thead><tbody>${L.map(b=>`<tr class="click" onclick="labView(${jsa(b.id)})"><td><b>${esc(b.name||b.lab)}</b></td><td class="mute">${fT(b.created,true)}</td><td><button class="sm" onclick="event.stopPropagation();labView(${jsa(b.id)})">View</button> <button class="sm b-bad" aria-label="Delete lab result ${esc(b.name||'')}" title="Delete" onclick="event.stopPropagation();delBT(${jsa(b.id)})">×</button></td></tr>`).join('')}</tbody></table>`:'<div class="empty">No lab results yet.</div>')}
+async function labView(id){try{const j=await api('/api/backtest/'+id);if(!j.result)throw new Error(j.error||'no saved result');LABRES=j.result;if(j.result.kind&&j.result.kind!==labTool&&LABHELP[j.result.kind]){labTool=j.result.kind;segSet('labTool',labTool);renderLabForm()}renderLabOut();$('labOut').scrollIntoView({behavior:'smooth',block:'start'})}catch(e){toast('Could not open: '+e.message,true)}}
+function labPName(p){const m=/^sleeves\[(\d+)\]\.(.+)$/.exec(p||'');if(!m)return p;const sl=(LABRES&&LABRES.sleeves)||[],s=sl[+m[1]];return `${s?s.id:'S'+(+m[1]+1)} ${(LABP.find(x=>x[0]===m[2])||[0,m[2]])[1]}`}
+function labPVal(p,v){const m=/\.(risk|share)$/.test(p);return m?+(v*100).toFixed(3)+'%':String(+(+v).toFixed(4))}
+const fsc=v=>v==null||!isFinite(v)?'–':(+v).toFixed(2);
+const pdate=x=>String(x||'').slice(0,10);
+function labOpt(r){const b=r.baseline||{},bh=(b.holdout||{}).score,P=r.period||{},res=r.results||[],ml=(METRIC_L.find(x=>x[0]===r.metric)||[0,r.metric])[1];
+  const over=x=>!x.base&&x.holdout&&bh!=null&&x.holdout.score!=null&&x.holdout.score<bh;const top=res[0];
+  const pl=p=>Object.entries(p||{}).map(([k,v])=>`<span class="tag t-mute" style="margin:1px">${esc(labPName(k))} = ${esc(labPVal(k,v))}</span>`).join(' ');
+  const verdict=!top?'<div class="note wn">No setting combination had enough trades to be scored.</div>':over(top)?`<div class="note bd"><b>Probably overfit.</b> The best training result scores ${fsc(top.holdout.score)} on the hold-out, your current settings ${fsc(bh)}. Keep your settings.</div>`:`<div class="note">The best result also beats your settings on the hold-out (${fsc((top.holdout||{}).score)} vs ${fsc(bh)}). Treat it as a candidate only — confirm it with a Walk-forward test before using it.</div>`;
+  const row=x=>{const s=x.stats||{},h=x.holdout||{},hs=h.stats||{},o=over(x);return `<tr class="${x.base?'base':o?'overfit':''}"><td>${x.base?'<b>base</b>':x.rank}</td><td class="wrap" style="max-width:360px;min-width:200px">${x.base?'<b>Your current settings</b>':pl(x.params)}</td><td class="num">${fsc(x.score)}</td><td class="num ${cls(s.ret)}">${pp(s.ret)}</td><td class="num neg">${s.maxdd??'–'}%</td><td class="num">${s.trades??'–'}</td><td class="num"><b>${fsc(h.score)}</b></td><td class="num ${cls(hs.ret)}">${pp(hs.ret)}</td><td class="num neg">${hs.maxdd??'–'}%</td><td>${x.base?'':o?'<span class="tag t-bad">probably overfit</span>':'<span class="tag t-ok">beats base</span>'}</td></tr>`};
+  return `<div class="small t2" style="margin-bottom:8px">Score: <b>${esc(ml)}</b> · ${r.evaluated??res.length} tested${r.rejected?`, ${r.rejected} skipped (too few trades)`:''} · training ${esc(pdate((P.train||[])[0]))} → ${esc(pdate((P.train||[])[1]))} · hold-out ${esc(pdate((P.holdout||[])[0]))} → ${esc(pdate((P.holdout||[])[1]))}</div>${verdict}
+   <div class="tw" style="margin-top:10px"><table><thead><tr><th>#</th><th>Settings</th><th class="num">Train score</th><th class="num">Train return</th><th class="num">Train max DD</th><th class="num">Trades</th><th class="num">Hold-out score</th><th class="num">Hold-out return</th><th class="num">Hold-out max DD</th><th>Verdict</th></tr></thead><tbody>${row(Object.assign({base:1},b))}${res.map(row).join('')}</tbody></table></div>
+   <div class="mute small" style="margin-top:6px">Ranked by the training score. Red rows score worse on the hold-out (data the optimiser never saw) than your current settings.</div>`}
+function labWF(r){const s=r.summary||{},W=r.windows||[],worse=s.oos_return!=null&&s.baseline_oos_return!=null&&s.oos_return<s.baseline_oos_return;
+  return `<div class="g4">${tile('Out-of-sample return',pp(s.oos_return),`keeping your settings: ${pp(s.baseline_oos_return)}`,cls(s.oos_return),'Return of the joined test windows, each traded with the settings chosen on the window before it.')}${tile('Out-of-sample max DD',(s.oos_maxdd??'–')+'%',`keeping your settings: ${s.baseline_oos_maxdd??'–'}%`,'neg')}${tile('Profitable test windows',(s.pct_profitable_windows??s.pct_profitable??'–')+'%',`${s.windows??W.length} windows`)}${tile('Efficiency',s.efficiency==null?'–':(+s.efficiency).toFixed(2),'test score ÷ train score','','Close to 1 = the settings did about as well on new data as on the data they were picked on. Far below 1 = mostly fitted to noise.')}</div>
+   <div class="note ${worse?'wn':''}">${worse?`<b>Re-optimising did worse out-of-sample</b> than keeping your settings (${pp(s.oos_return)} vs ${pp(s.baseline_oos_return)}). The optimiser is mostly fitting noise here — keep your settings.`:`Re-optimising did better out-of-sample than keeping your settings (${pp(s.oos_return)} vs ${pp(s.baseline_oos_return)}). Check that the chosen settings are stable across windows before relying on it.`}</div>
+   <div class="chart" id="labWfChart" style="height:240px;margin-top:12px"></div><div class="legend"><span><i style="background:#a78bfa"></i>re-optimised every window (out-of-sample)</span><span><i style="background:#8f89b8"></i>keeping your settings</span></div>
+   <div class="tw" style="margin-top:12px"><table><thead><tr><th>#</th><th>Train</th><th>Test</th><th>Chosen settings</th><th class="num">Train score</th><th class="num">Test return</th><th class="num">Keep settings</th><th class="num">Difference</th></tr></thead><tbody>${W.map((w,i)=>{const d=(w.test_ret??0)-(w.baseline_test_ret??0);return `<tr><td>${i+1}</td><td class="mute">${esc(pdate(w.train[0]))} → ${esc(pdate(w.train[1]))}</td><td class="mute">${esc(pdate(w.test[0]))} → ${esc(pdate(w.test[1]))}</td><td class="wrap" style="max-width:320px">${Object.entries(w.best_params||{}).map(([k,v])=>`<span class="tag t-mute" style="margin:1px">${esc(labPName(k))} = ${esc(labPVal(k,v))}</span>`).join(' ')||'<span class="mute">your settings</span>'}${w.fallback?' <span class="tag t-warn" title="No candidate had enough trades - your settings were used">fallback</span>':''}</td><td class="num">${fsc(w.train_score)}</td><td class="num ${cls(w.test_ret)}">${pp(w.test_ret)}</td><td class="num ${cls(w.baseline_test_ret)}">${pp(w.baseline_test_ret)}</td><td class="num ${cls(d)}">${pp(d)}</td></tr>`}).join('')}</tbody></table></div>`}
+function labMC(r){const d=r.daily||{},dd=d.max_dd||{},ec=d.end_capital||{},t=r.max_dd||{},te=r.end_capital||{},st=r.start||500;
+  const dt=d.error?`<div class="note bd">Daily-block test unavailable: ${esc(d.error)}</div>`:`<div class="g6">${tile('Median max drawdown',(dd.p50??'–')+'%','half the runs were worse','neg','Daily blocks: 5-day chunks of the real equity curve put together in random order, so losing streaks stay together.')}${tile('5% worst max drawdown',(dd.p5??'–')+'%','1 run in 20 was this bad or worse','neg')}${tile('P(drawdown ≥ 30%)',pc1(d.prob_dd_30),'chance of a 30% fall','')}${tile('P(drawdown ≥ 50%)',pc1(d.prob_dd_50),'chance of halving from a peak',d.prob_dd_50>0.1?'neg':'')}${tile('Ends below half the start',pc1(d.ruin_50),`below ${usd(st/2,0)} · ${pc1(d.ruin_20)} below ${usd(st/5,0)}`,d.ruin_50>0.02?'neg':'','"Ruin": the run ends with less than 50% of the start capital.')}${tile('Median end capital',usd(ec.p50,0),`5%: ${usd(ec.p5,0)} · 95%: ${usd(ec.p95,0)}`)}</div>`;
+  return `<div class="sub" style="margin-top:0">Daily blocks · read these first</div>${dt}
+   <div class="sub">Trade shuffle · understates risk</div>
+   <div class="chart" id="labMcChart" style="height:250px"></div><div class="legend"><span><i style="background:rgba(139,92,246,.35)"></i>5-95% of runs</span><span><i style="background:#c4b5fd"></i>median run</span><span><i style="background:#ec4899"></i>actual order</span><span><i style="background:rgba(255,255,255,.25)"></i>sample runs</span><span class="mute">x = trade number</span></div>
+   <div class="kvs" style="margin-top:10px"><div><span>Median max DD</span><b class="neg">${t.p50??'–'}%</b></div><div><span>5% worst max DD</span><b class="neg">${t.p5??'–'}%</b></div><div><span>P(DD ≥ 30%)</span><b>${pc1(r.prob_dd_30)}</b></div><div><span>P(DD ≥ 50%)</span><b>${pc1(r.prob_dd_50)}</b></div><div><span>Ends below half</span><b>${pc1(r.ruin_50)}</b></div><div><span>Losing streak (median / 95%)</span><b>${(r.losing_streak||{}).p50??'–'} / ${(r.losing_streak||{}).p95??'–'}</b></div><div><span>Median end</span><b>${usd(te.p50,0)}</b></div><div><span>Trades</span><b>${r.trades??'–'}</b></div></div>
+   <div class="mute small" style="margin-top:6px">Shuffling single trades breaks up losing streaks that happen together in real markets (crashes hit many coins at once), so its drawdowns look smaller than the daily-block ones. ${r.backtest?`The underlying backtest: ${usd(r.backtest.end,0)} end, ${r.backtest.maxdd}% max drawdown.`:''}</div>`}
+function labLA(r){const S=r.strategies||{},I=r.indicators||{},G=r.regime||{},li=r.leaky_indicators||[];
+  return `${r.ok?'<div class="note" style="border-color:rgba(34,197,94,.4);background:var(--good-bg);color:#bbf7d0"><b>✓ No lookahead found.</b> Every signal and indicator computed on cut-off history matched the full-history result.</div>':`<div class="note bd"><b>Lookahead found.</b> ${(r.leaky_strategies||[]).length?'Strategies: <b>'+esc(r.leaky_strategies.map(libName).join(', '))+'</b>. ':''}${li.length?'Indicators: <b>'+esc(li.join(', '))+'</b>. ':''}Backtests that use these are too good to be true.</div>`}
+   <div class="small t2" style="margin-top:8px">${r.cuts??'–'} cut-off points × ${r.symbols??'–'} coins${r.cancelled?' · <span class="neg">cancelled early</span>':''}</div>
+   <div class="tw" style="margin-top:10px"><table><thead><tr><th>Strategy</th><th>Result</th><th class="num">Checks</th><th class="num">Differences</th><th class="num">At the last candle</th></tr></thead><tbody>${Object.entries(S).map(([k,x])=>`<tr><td><b>${esc(libName(k))}</b></td><td>${x.ok?'<span class="tag t-ok">✓ pass</span>':'<span class="tag t-bad">✕ leak</span>'}</td><td class="num">${x.checked??'–'}</td><td class="num ${x.mismatches?'neg':''}">${x.mismatches??0}</td><td class="num">${x.last_bar_mismatches??0}</td></tr>`).join('')}</tbody></table></div>
+   <div class="small t2" style="margin-top:8px">Indicators: ${Object.keys(I).length} checked${li.length?` · <span class="neg">leaking: ${esc(li.join(', '))}</span>`:' · all matched'}${Object.keys(G).length?` · market-regime checks: ${Object.values(G).every(x=>x.ok)?'all matched':'<span class="neg">differences found</span>'}`:''}</div>`}
+function renderLabOut(){const r=LABRES,el=$('labOut');el._h=null;if(!r){el.innerHTML='';return}const k=r.kind,q=r.request||{};
+  const src=k==='lookahead'?`${(q.keys||Object.keys(r.strategies||{})).length} strategies`:q.preset?'Profile: '+((D.presets[q.preset]||{}).name||q.preset):`${(r.sleeves||[]).length} slot${(r.sleeves||[]).length===1?'':'s'}`;
+  const per=Array.isArray(r.period)?r.period.map(pdate).join(' → '):'';
+  el.innerHTML=`<div class="btns" style="margin-bottom:10px;border-top:1px solid var(--line);padding-top:12px"><b>${esc(r.name||'Lab result')}</b>${r.cancelled?'<span class="tag t-warn">stopped early · partial result</span>':''}<span class="mute small">${esc(src)}${per?' · '+esc(per):''}${q.run_options&&Object.keys(q.run_options).length?' · '+esc(roText(q.run_options)):''}${r.cpu_s!=null?` · ${r.cpu_s} s CPU`:''}</span><button class="sm" style="margin-left:auto" onclick="LABRES=null;renderLabOut()">Close</button></div>`+
+    (k==='optimize'?labOpt(r):k==='walk_forward'?labWF(r):k==='monte_carlo'?labMC(r):k==='lookahead'?labLA(r):'<div class="mute">Unknown result type.</div>');
+  if(k==='walk_forward'&&$('labWfChart')){const c=(r.curve||[]).map(p=>[ms(p[0]),p[1]]),b=(r.baseline_curve||[]).map(p=>[ms(p[0]),p[1]]);xyChart($('labWfChart'),{time:true,series:[{name:'keep settings',pts:b,color:'#8f89b8',w:1.6,dash:'5 4'},{name:'re-optimised',pts:c,color:'#a78bfa',w:2.2}]})}
+  if(k==='monte_carlo'&&$('labMcChart')&&r.chart){const C=r.chart,x=C.x||[],P=v=>(v||[]).map((y,i)=>[x[i],y]),B=C.bands||{};
+    xyChart($('labMcChart'),{xfmt:v=>'#'+Math.round(v),bands:B.p5&&B.p95?[{lo:P(B.p5),hi:P(B.p95),color:'rgba(139,92,246,.22)',name:'5-95%'}]:[],
+      series:[...(C.samples||[]).slice(0,20).map(s=>({pts:P(s),color:'rgba(255,255,255,.16)',w:1})),{name:'median',pts:P(B.p50),color:'#c4b5fd',w:2},{name:'actual',pts:P(C.actual),color:'#ec4899',w:2}],ref:r.start})}}
+// generic x/y chart: lines + optional bands, hover lists the named series
+function xyChart(el,o){if(hoverGuard(el,()=>xyChart(el,o)))return;const W=el.clientWidth||700,H=el.clientHeight||240,P={l:62,r:14,t:10,b:24};
+  const S=(o.series||[]).filter(s=>s.pts&&s.pts.length),Bn=o.bands||[],all=S.flatMap(s=>s.pts).concat(Bn.flatMap(b=>b.lo.concat(b.hi))).filter(p=>p[0]!=null&&!isNaN(p[0])&&p[1]!=null);
+  if(all.length<2){setHTML(el,'<div class="empty">Not enough data to draw.</div>');return}
+  const xs=all.map(p=>p[0]),ys=all.map(p=>p[1]).concat(o.ref!=null?[o.ref]:[]),x0=Math.min(...xs),x1=Math.max(...xs);let y0=Math.min(...ys),y1=Math.max(...ys);const pad=((y1-y0)||Math.abs(y1)||1)*.06;y0-=pad;y1+=pad;
+  const X=x=>P.l+(x-x0)/((x1-x0)||1)*(W-P.l-P.r),Y=y=>P.t+(1-(y-y0)/((y1-y0)||1))*(H-P.t-P.b),yf=o.yfmt||(v=>usd(v,0)),pth=pts=>pts.map((p,i)=>(i?'L':'M')+X(p[0]).toFixed(1)+' '+Y(p[1]).toFixed(1)).join(' ');
+  let g='';for(let i=0;i<=4;i++){const v=y0+(y1-y0)*i/4,y=Y(v);g+=`<line x1="${P.l}" x2="${W-P.r}" y1="${y}" y2="${y}" stroke="rgba(255,255,255,.07)"/><text x="${P.l-8}" y="${y+4}" fill="#8f89b8" font-size="10.5" text-anchor="end">${esc(yf(v))}</text>`}
+  if(o.time)g+=xAxis(timeTicks(x0,x1,Math.max(3,Math.floor((W-P.l-P.r)/110))),X,W,P,H);
+  else{const n=Math.max(2,Math.min(6,Math.floor((W-P.l-P.r)/90)));for(let i=0;i<=n;i++){const v=x0+(x1-x0)*i/n;g+=`<text x="${X(v)}" y="${H-6}" fill="#8f89b8" font-size="10.5" text-anchor="${i===0?'start':i===n?'end':'middle'}">${esc((o.xfmt||(z=>Math.round(z)))(v))}</text>`}}
+  if(o.ref!=null){const y=Y(o.ref);g+=`<line x1="${P.l}" x2="${W-P.r}" y1="${y}" y2="${y}" stroke="rgba(255,255,255,.3)" stroke-dasharray="3 3"/>`}
+  const band=Bn.map(b=>`<path d="${pth(b.hi)} ${b.lo.slice().reverse().map(p=>'L'+X(p[0]).toFixed(1)+' '+Y(p[1]).toFixed(1)).join(' ')}Z" fill="${b.color}"/>`).join('');
+  const lines=S.map(s=>`<path d="${pth(s.pts)}" fill="none" stroke="${s.color}" stroke-width="${s.w||2}" ${s.dash?`stroke-dasharray="${s.dash}"`:''} stroke-linejoin="round"/>`).join('');
+  if(!setHTML(el,svgEl(W,H)+g+band+lines+`<line class="xh" y1="${P.t}" y2="${H-P.b}" stroke="#8f89b8" stroke-dasharray="3 3" style="display:none"/></svg><div class="tt"></div>`)&&el._bound)return;el._bound=1;
+  const sv=el.querySelector('svg'),tt=el.querySelector('.tt'),xh=el.querySelector('.xh'),named=S.filter(s=>s.name);
+  const near=(pts,t)=>{let lo=0,hi=pts.length-1;while(hi-lo>1){const m=(lo+hi)>>1;if(pts[m][0]<t)lo=m;else hi=m}return Math.abs(pts[lo][0]-t)<=Math.abs(pts[hi][0]-t)?pts[lo]:pts[hi]};
+  sv.onmousemove=ev=>{const r=sv.getBoundingClientRect(),mx=(ev.clientX-r.left)/r.width*W,t=x0+(mx-P.l)/((W-P.l-P.r)||1)*(x1-x0);const cx=X(Math.max(x0,Math.min(x1,t)));xh.setAttribute('x1',cx);xh.setAttribute('x2',cx);xh.style.display='';
+    tt.style.display='block';tt.innerHTML=`<div>${esc(o.time?fDay(t):(o.xfmt||(z=>Math.round(z)))(t))}</div>`+Bn.filter(b=>b.name).map(b=>`<div>${esc(b.name)} <b>${esc(yf(near(b.lo,t)[1]))} – ${esc(yf(near(b.hi,t)[1]))}</b></div>`).join('')+named.map(s=>`<div><i style="display:inline-block;width:9px;height:9px;border-radius:2px;background:${s.color};margin-right:6px"></i>${esc(s.name)} <b>${esc(yf(near(s.pts,t)[1]))}</b></div>`).join('');
+    const tx=cx/W*r.width;tt.style.left=(tx>r.width*.6?Math.max(0,tx-tt.offsetWidth-12):tx+12)+'px';tt.style.top='8px'};
+  sv.onmouseleave=()=>{tt.style.display='none';xh.style.display='none'}}
+
+// ---------------- Telegram control (Settings)
+function renderTgCtl(){const S=D.settings,T=D.telegram||{},sw=$('sw_tgc');if(document.activeElement!==sw)sw.checked=!!S.TELEGRAM_CONTROL;
+  $('tgPinClr').hidden=!S.TELEGRAM_PIN_SET;$('tgPinTxt').innerHTML=S.TELEGRAM_PIN_SET?'<span class="pos">PIN set ✓</span> — asked after the confirm code for /flatten and /close':'optional · 4-8 digits, asked after the confirm code for /flatten and /close';$('tg_pin').placeholder=S.TELEGRAM_PIN_SET?'new PIN':'4-8 digits';
+  $('tgcState').innerHTML=!S.TELEGRAM_CONTROL?'<span class="tag t-mute">off</span>':T.enabled&&T.running?'<span class="tag t-long">listening</span>':'<span class="tag t-warn">not ready</span>';
+  const need=[];if(!S.TELEGRAM_TOKEN_SET)need.push('a bot token');if(!S.TELEGRAM_CHAT)need.push('your chat id');
+  let h=`<div>${S.TELEGRAM_CONTROL?(need.length?`<span style="color:#fcd34d">Switched on, but it still needs ${need.join(' and ')} (Telegram alerts card).</span>`:T.running?`Listening · last poll <b>${T.last_poll?esc(ago(T.last_poll)):'not yet'}</b> · ${T.commands_today||0} command${T.commands_today===1?'':'s'} today`:'Starting…'):'Off — Telegram messages to the bot are ignored (alerts work separately).'}</div>`;
+  if(T.last_error)h+=`<div class="neg">Last error: ${esc(T.last_error)}</div>`;
+  if(T.ignored)h+=`<div style="color:#fcd34d">${T.ignored} message${T.ignored===1?'':'s'} from other chats ignored.</div>`;
+  if(T.last_ignored_chat)h+=`<div class="note wn" style="margin-top:6px">A chat with id <b>${esc(T.last_ignored_chat)}</b> tried to talk to your bot — is that you? If so, use that id as your chat id. <button class="sm" onclick="useChat(${jsa(T.last_ignored_chat)})">Use this id</button></div>`;
+  setHTML($('tgcStat'),h)}
+function useChat(id){if(!confirm(`Use ${id} as your Telegram chat id? Alerts and commands will then go to that chat.`))return;$('tg_chat').value=id;setS({TELEGRAM_CHAT:String(id)})}
+function savePin(){const v=$('tg_pin').value.trim();if(!/^\d{4,8}$/.test(v))return toast('the PIN must be 4-8 digits',true);setS({TELEGRAM_PIN:v});$('tg_pin').value=''}
+function clearPin(){if(confirm('Remove the Telegram PIN? /flatten and /close will then only need the confirm code.'))setS({TELEGRAM_PIN:''})}
+
+// ---------------- wiring
+$('gridToggle').onclick=()=>{const o=!gridOpen();$('gridToggle').setAttribute('aria-expanded',o);$('gridBody').hidden=!o;if(o&&D)renderGrids(true)};
+$('roToggle').onclick=()=>{const o=$('roToggle').getAttribute('aria-expanded')!=='true';$('roToggle').setAttribute('aria-expanded',o);$('roBody').hidden=!o};
+segInit('labTool',d=>{labTool=d.v;renderLabForm()});
+$('lab_src').addEventListener('change',()=>renderSpace());
 // ---------------- data loading: light /api/status every 5 s, heavy pieces only when their rev changes
 let POLL=null,LOADING=false,LASTJOBS='';
 async function refreshMissed(){try{const j=await api('/api/missed');CH.missed=j.missed||[];REV.missed=j.rev;LAST.missed=Date.now();if(D&&CUR==='trades'&&trView==='missed')renderTrades()}catch(e){}}
@@ -1417,7 +1935,8 @@ async function load(){if(EXPIRED||LOADING)return;LOADING=true;
   finally{LOADING=false}}
 function renderAll(){SKIPPED=0;renderHeader();const t=CUR;
   try{if(t==='dash')renderDash();if(t==='trades')renderTrades();if(t==='risk')renderRisk();if(t==='strat'){renderPresets();if(!slDirty)renderSleeves();else updUnsaved()}
-    if(t==='coins')renderCoins();if(t==='sig')renderSignals();if(t==='logs')renderLogs();if(t==='set')renderSet();if(t==='bt')btSources()}
+    if(t==='strat')renderGrids();
+    if(t==='coins')renderCoins();if(t==='sig')renderSignals();if(t==='logs')renderLogs();if(t==='set')renderSet();if(t==='bt'){btSources();labResume();roSum()}}
   finally{renderSafety()}}
 function startPoll(){if(POLL||EXPIRED)return;POLL=setInterval(load,5000)}
 function stopPoll(){clearInterval(POLL);POLL=null}

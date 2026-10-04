@@ -78,6 +78,7 @@ def _btc_move_1h(book, btc, bar_sec, btc1h=None):
         h = btc1h.sort_values('t'); h = pd.DataFrame(dict(ct=pd.to_datetime(h.t) + pd.Timedelta(hours=1),
                                                           mv=(h.c / h.c.shift() - 1).abs().fillna(0).values * 100))
         left = pd.DataFrame(dict(ct=pd.to_datetime(book.t) + pd.Timedelta(seconds=bar_sec)))
+        h['ct'] = h['ct'].astype('datetime64[ns]'); left['ct'] = left['ct'].astype('datetime64[ns]')
         out = pd.merge_asof(left, h, on='ct', direction='backward').mv.fillna(0).values
         return out
     return (c / c.shift() - 1).abs().fillna(0).values * 100 / np.sqrt(bar_sec / 3600)

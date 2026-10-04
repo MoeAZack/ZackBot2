@@ -251,6 +251,8 @@ def regime(d, ema_days=200, adx_max=20.0, bbw_max=0.35, min_days=30):
         h4 = indicators(raw)
     rr = pd.DataFrame({'avail': pd.to_datetime(h4['t']).values + (step if step >= pd.Timedelta(hours=4) else pd.Timedelta(hours=4)),
                        'range': ((h4['adx'] < adx_max) & (h4['bbw_pct'] < bbw_max)).values})
+    left['ct'] = pd.to_datetime(left['ct']).astype('datetime64[ns]')
+    dd['avail'] = pd.to_datetime(dd['avail']).astype('datetime64[ns]'); rr['avail'] = pd.to_datetime(rr['avail']).astype('datetime64[ns]')
     out = pd.merge_asof(left, dd.sort_values('avail'), left_on='ct', right_on='avail', direction='backward')
     out = pd.merge_asof(out.drop(columns='avail'), rr.sort_values('avail'), left_on='ct', right_on='avail', direction='backward')
     out = out.sort_values('row')

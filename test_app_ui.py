@@ -128,5 +128,15 @@ with sync_playwright() as pw:
     pg.click('#n_strat'); time.sleep(1); pg.click('.preset:has-text("Active (1h") button:has-text("Combine")'); time.sleep(1); pg.screenshot(path=SP+'/ui_combine.png', full_page=True)
     pg.click('#n_trades'); time.sleep(1); pg.click('#trView [data-v="closed"]'); time.sleep(.5); pg.click('.cal .d.has >> nth=0'); time.sleep(1); pg.screenshot(path=SP+'/ui_trades_day.png', full_page=True)
     pg.click('#n_strat'); time.sleep(1); pg.click('button:has-text("Advanced") >> nth=0'); time.sleep(.5); pg.screenshot(path='/tmp/claude-0/-home-claude/d6ad53d0-10de-5d7c-a74c-77ea7be8c649/scratchpad/ui_strat_adv.png', full_page=True)
+    pg.set_viewport_size({'width':1560,'height':2600})
+    for cid, tab in (('rrCard','risk'),('gridCard','strat'),('labCard','bt'),('tgcCard','set'),('res31','res'),('roCard','bt')):
+        try:
+            pg.click(f'#n_{tab}'); time.sleep(1.2); el = pg.locator('#'+cid)
+            if el.count():
+                tg = pg.locator(f'#{cid} .cardh')
+                if tg.count() and tg.first.get_attribute('aria-expanded')=='false': tg.first.click(); time.sleep(.8)
+                el.scroll_into_view_if_needed(); el.screenshot(path=SP+f'/card_{cid}.png'); print('card', cid, el.is_visible())
+            else: print('card', cid, 'MISSING')
+        except Exception as ex: print('card', cid, 'ERR', str(ex)[:120])
     print('JS errors:', errs); b.close()
 print('flatten', P('/api/action', {'action': 'flatten'}), 'positions after', {k: v for k, v in POS.items() if v > 1e-9})
