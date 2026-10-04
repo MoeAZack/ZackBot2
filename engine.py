@@ -11,8 +11,9 @@ import numpy as np
 import pandas as pd
 
 import strategies as S
-from binance_client import Futures, MAINNET, TESTNET, BinanceError, AmbiguousOrder
+from binance_client import Futures, MAINNET, TESTNET, BinanceError, AmbiguousOrder, new_cid
 from ai_filter import review
+import grid as GRID
 
 log = logging.getLogger('zackbot')
 TF_SEC = {'15m': 900, '1h': 3600, '4h': 14400}
@@ -58,7 +59,20 @@ PRESETS = {
 
 GLOBAL_DEFAULTS = dict(COMPOUND=False, CAP_SINCE='', CAP_ADJ=[], CAP_CYCLES=[], TELEGRAM_ON=False, TELEGRAM_TOKEN='', TELEGRAM_CHAT='', MAX_LEVERAGE=10, DAILY_LOSS_HALT=0.08, PEAK_DD_FLATTEN=0.0, CAPITAL_CAP=500.0,
                        ENTRIES_PAUSED=False, AI_FILTER=False, PRESET='original',
-                       UNIVERSE=list(TOP40), SYMBOLS_ON={}, RUN_IN_BACKGROUND=True)
+                       UNIVERSE=list(TOP40), SYMBOLS_ON={}, RUN_IN_BACKGROUND=True,
+                       # v3.1 - all off by default (risk rules only WARN: they log, never block, until set to 'enforce')
+                       ENTRY_ORDER='market', MAKER_FALLBACK=True, MAKER_REPRICE=3, MAKER_WAIT_S=40, FEE_MAKER=0.0002,
+                       PUMP_GUARD={}, RISK_RULES={}, GOVERNOR=dict(mode='off', rules=[]))
+
+# Portfolio risk rules: mode 'off' | 'warn' (log + 'WARNING:' entry on the missed list, still trades) | 'enforce' (entry refused)
+RISK_RULE_DEFAULTS = dict(
+    coin_cap=dict(mode='warn', x=3.0),                 # total notional on one coin (all slots) <= x * bot capital
+    open_risk_cap=dict(mode='warn', pct=15.0),         # open risk to stops incl. the new trade <= pct % of bot capital
+    correlated_cap=dict(mode='warn', n=3, rho=0.8),    # < n open same-direction trades on coins correlated > rho with the new coin
+    btc_breaker=dict(mode='warn', pct=5.0, hours=4.0, tighten=False),   # BTC moved > pct % in the last hour -> pause `hours`
+    funding_filter=dict(mode='warn', rate=0.001))      # no longs when funding > rate, no shorts when < -rate
+GOV_COOLDOWN_S = 24 * 3600                             # minimum time between two automatic profile switches
+GOV_MULT_MAX = 2.0                                     # martingale-style recovery (risk_mult > 1) is capped here
 
 
 def now_utc():
@@ -126,6 +140,7 @@ class Engine:
             try: self.state.update(json.load(open(self.F['state'])))
             except Exception: log.warning('state.json unreadable - starting empty')
         self.state.setdefault('orphans', []); self.state.setdefault('last_cycle', {})
+        self.state.setdefault('pending_entries', {}); self.state.setdefault('resting_entries', {})
         if not self.S.get('CAP_SINCE'):                  # first v3 start: bot capital counts closed P&L from now on
             self.S['CAP_SINCE'] = now_utc().isoformat(timespec='seconds'); self.save_settings()
         self.equity_hist = json.load(open(self.F['equity'])) if os.path.exists(self.F['equity']) else []
@@ -141,8 +156,10 @@ class Engine:
         self.guard_eq = None                      # bot capital used by the safety limits and shown in the app
         self.untracked = {}                       # exchange positions the engine has no record of
         self._lev = {}                            # leverage already set per symbol
+        self._btc1h = None; self._fund = {}; self._regime = None; self._rule_warns = []
         self.health = dict(errors=collections.deque(maxlen=30), last_manage_ok=None, last_cycle_ok={}, manage_fail_streak=0,
                            last_sync=None, alerted=False)
+        self.grids = GRID.GridManager(self)
 
     def _load_list(self, k):
         try: return json.load(open(self.F[k])) if os.path.exists(self.F[k]) else []
@@ -172,7 +189,19 @@ class Engine:
         for k in ('RISK_PER_TRADE', 'MAX_POSITIONS_PER_SLEEVE', 'STOP_ATR', 'SPLIT_ST', 'SLEEVE_ST', 'SLEEVE_TSM'):
             s.pop(k, None)                                       # v1 keys
         s['SYMBOLS_ON'] = {sym: s.get('SYMBOLS_ON', {}).get(sym, True) for sym in s['UNIVERSE']}
+        if not isinstance(s.get('RISK_RULES'), dict): s['RISK_RULES'] = {}
+        if not isinstance(s.get('GOVERNOR'), dict): s['GOVERNOR'] = dict(mode='off', rules=[])
+        s.setdefault('GRID_SLOTS', [])
         self.S = s
+
+    def risk_rules_cfg(self):
+        """RISK_RULES merged over the defaults (a partial setting only overrides what it names)."""
+        out = {}
+        for k, d in RISK_RULE_DEFAULTS.items():
+            v = (self.S.get('RISK_RULES') or {}).get(k) or {}
+            out[k] = dict(d, **(v if isinstance(v, dict) else {}))
+            if out[k]['mode'] not in ('off', 'warn', 'enforce'): out[k]['mode'] = 'warn'
+        return out
 
     def save_settings(self):
         save_json(self.F['settings'], self.S)
@@ -377,7 +406,8 @@ class Engine:
                                               se=bool(raw['se'][-1]) and sl['sides'] in ('short', 'both'),
                                               lx=bool(raw['lx'][-1]), sx=bool(raw['sx'][-1]), close=float(d.c),
                                               vol_rank=float((al[s].atr / al[s].c).rolling(180, min_periods=60).rank(pct=True).iloc[-1]),
-                                              atr=float(d.atr), time=str(d.t))
+                                              atr=float(d.atr), time=str(d.t),
+                                              rng_atr=float((d.h - d.l) / d.atr) if d.atr > 0 else 0.0)
         return out, al
 
     def record_equity(self, eq):
@@ -550,11 +580,14 @@ class Engine:
         save_json(self.F['history'], self.history)
         self.notify(f"{'✅' if net > 0 else '❌'} CLOSED {lot['side']} {lot['symbol']} [{lot['sleeve']}] {why} · PnL {net:+.2f} USDT ({rec['r']}R) · {rec['hours']}h")
 
-    def miss(self, sl, sym, side, sg, reason):
-        k = (sl['id'], sym, sg['time'])
-        if any((m['sleeve'], m['symbol'], m['candle']) == k for m in self.missed[-200:]): return
-        self.missed.append(dict(candle=sg['time'], logged=now_utc().isoformat(timespec='seconds'), sleeve=sl['id'], strategy=sl['name'],
-                                symbol=sym, side=side, price=sg['close'], reason=reason))
+    def miss(self, sl, sym, side, sg, reason, kind=None):
+        """Record a signal that was not taken (kind None) or a risk-rule warning on a trade that WAS taken (kind 'warning')."""
+        k = (sl['id'], sym, sg['time'], kind)
+        if any((m['sleeve'], m['symbol'], m['candle'], m.get('kind')) == k for m in self.missed[-200:]): return
+        rec = dict(candle=sg['time'], logged=now_utc().isoformat(timespec='seconds'), sleeve=sl['id'], strategy=sl.get('name', sl['id']),
+                   symbol=sym, side=side, price=sg['close'], reason=reason)
+        if kind: rec['kind'] = kind
+        self.missed.append(rec)
         self.missed = self.missed[-600:]
         save_json(self.F['missed'], self.missed)
 
@@ -573,13 +606,13 @@ class Engine:
         self._apply_add(lot, q, px, why)
         return True
 
-    def _apply_add(self, lot, q, px, why):
+    def _apply_add(self, lot, q, px, why, fee=None):
         r = self.rules[lot['symbol']]
         lot['avg'] = (lot['avg'] * lot['qty'] + px * q) / (lot['qty'] + q)
         lot['qty'] = self._rd(lot['qty'] + q, r['step'])
         lot['qty_max'] = max(lot.get('qty_max', 0), lot['qty'])
         lot.setdefault('fills', []).append([now_utc().isoformat(timespec='seconds'), why, q, px])
-        lot['fees'] = lot.get('fees', 0.0) + q * px * FEE_EST
+        lot['fees'] = lot.get('fees', 0.0) + q * px * (FEE_EST if fee is None else fee)
         self.log_trade(time=now_utc().isoformat(timespec='seconds'), event=why, sleeve=lot['sleeve'], symbol=lot['symbol'],
                        side=lot['side'], qty=q, price=px, stop=lot['stop'], equity=round(self.last_eq or 0, 2))
         log.info(f"{why.upper()} {lot['symbol']} {lot['side']} [{lot['sleeve']}] +{q} @ {px} (avg {lot['avg']:.6g})")
@@ -595,6 +628,10 @@ class Engine:
                     try: self.trade.cancel(sym, tag)
                     except Exception: keep.append([sym, tag])
                 changed = len(keep) != len(self.state['orphans']); self.state['orphans'] = keep
+            if self.state.get('resting_entries'):                  # maker entry orders working on the book
+                for rk in list(self.state['resting_entries']):
+                    try: changed = self._maker_poll(rk, marks) or changed
+                    except Exception as e: self.err(f'maker entry {rk}: {e}')
             try:                                   # drop lots whose exchange stop already filled before touching anything
                 n0 = len(self.state['lots'])
                 self.reconcile(self.last_eq or 0)
@@ -602,6 +639,12 @@ class Engine:
             except Exception as e:
                 self._manage_failed(f'reconcile: {e}'); return
             ok = True
+            if self.state.get('pending_entries'):
+                try: changed = self._trail_entries(marks) or changed
+                except Exception as e: ok = False; self.err(f'trailing entries: {e}')
+            if self.risk_rules_cfg()['btc_breaker']['mode'] == 'enforce':
+                try: self._breaker()                              # trips the pause (and the optional tighten) without waiting for a signal
+                except Exception as e: log.debug(f'breaker: {e}')
             for key in list(self.state['lots']):
                 lot = self.state['lots'].get(key)
                 if not lot: continue
@@ -649,7 +692,23 @@ class Engine:
                         lot['tp1'] = True; changed = True
                         if lot['qty'] <= 0: self._finish(key, 'take_profit_1'); continue
                         self._replace_stop(lot)
-                    if g.get('tp_r') and not g.get('runner') and ge(lot['e0'] + sd * g['tp_r'] * lot['R']):
+                    tps = S.norm_tps(g.get('tps'))
+                    if tps:                                    # take-profit ladder: each level fires once (fraction of the full size)
+                        done, fired = list(lot.get('tps_done', [])), False
+                        rr = self.rules.get(lot['symbol'], dict(min_qty=0, min_notional=0))
+                        for k_, (r_, f_) in enumerate(tps):
+                            if k_ in done: continue
+                            if not ge(lot['e0'] + sd * r_ * lot['R']): break
+                            q = min(lot['qty'], lot.get('qty_max', lot['q0']) * f_)
+                            rest = lot['qty'] - q
+                            if rest > 0 and (rest < rr['min_qty'] or rest * m < rr['min_notional']): q = lot['qty']   # never leave dust
+                            done.append(k_)
+                            self._market_close(lot, q, 'take_profit_ladder', m, post={'tps_done': list(done)})
+                            lot['tps_done'] = list(done); fired = changed = True
+                            if lot['qty'] <= 0: break
+                        if lot['qty'] <= 0: self._finish(key, 'take_profit_ladder'); continue
+                        if fired: self._replace_stop(lot)
+                    if g.get('tp_r') and not g.get('runner') and not g.get('ttp') and ge(lot['e0'] + sd * g['tp_r'] * lot['R']):
                         self.close_lot(key, 'take_profit', m); changed = True; continue
                     lot['best'] = max(lot['best'], m) if sd == 1 else min(lot['best'], m)
                     # every stop tightening goes through one place: the best candidate that is still on the losing side of price
@@ -658,6 +717,9 @@ class Engine:
                         cands.append(lot['avg'])
                     if g.get('trail_atr'):
                         cands.append(lot['best'] - sd * g['trail_atr'] * lot['atr_now'])
+                    ttp = g.get('ttp')
+                    if ttp and lot['R'] > 0 and sd * (lot['best'] - lot['e0']) / lot['R'] >= ttp.get('at_r', 2.0):
+                        cands.append(lot['best'] * (1 - sd * ttp.get('dev_pct', 3.0) / 100))   # trailing take-profit
                     run = g.get('runner')
                     if run and lot['R'] > 0:                       # ratchet: breakeven, then lock profit behind the best R reached
                         bestR = sd * (lot['best'] - lot['e0']) / lot['R']
@@ -677,6 +739,8 @@ class Engine:
                                 if run: log.info(f"RUNNER {lot['symbol']} [{lot['sleeve']}] stop raised to {lot['stop']}")
                 except Exception as e:
                     ok = False; self.err(f'manage {key}: {e}')
+            try: changed = self.grids.on_marks(marks) or changed
+            except Exception as e: ok = False; self.err(f'grid: {e}')
             if ok:
                 self.health['last_manage_ok'] = now_utc().isoformat(timespec='seconds'); self.health['manage_fail_streak'] = 0
                 self.health['alerted'] = False
@@ -713,10 +777,13 @@ class Engine:
         def dust(sym, q):        # below Binance's minimum order: cannot be traded or closed normally, not worth an alarm
             r = self.rules.get(sym); px = (self.marks or {}).get(sym)
             return r is not None and (q < r['min_qty'] or (px and q * px < r['min_notional']))
+        resting = {}                       # maker entry orders still working: their fills are not in a lot yet
+        for r_ in st.get('resting_entries', {}).values():
+            resting[(r_['symbol'], r_['side'])] = resting.get((r_['symbol'], r_['side']), 0.0) + r_['qty']
         for (sym, side), have in live.items():
             if (sym, side) not in groups and have > 0:
                 tol = self.rules[sym]['step'] if sym in self.rules else 1e-9
-                if have > tol and not dust(sym, have): untracked[(sym, side)] = have
+                if have > tol + resting.get((sym, side), 0.0) and not dust(sym, have): untracked[(sym, side)] = have
         short_seen = st.setdefault('short_seen', {}); seen_now = set()
         for (sym, side), keys in groups.items():
             expected = sum(st['lots'][k]['qty'] for k in keys)
@@ -729,7 +796,8 @@ class Engine:
                 keys = [k for k in keys if k in st['lots']]; expected = sum(st['lots'][k]['qty'] for k in keys)
             gk = f'{sym}|{side}'
             if have > expected + tol:
-                if not dust(sym, have - expected): untracked[(sym, side)] = have - expected
+                if have > expected + tol + resting.get((sym, side), 0.0) and not dust(sym, have - expected):
+                    untracked[(sym, side)] = have - expected
                 continue
             if have >= expected - tol: continue
             sd = 1 if side == 'LONG' else -1
@@ -801,6 +869,8 @@ class Engine:
             res = self.flatten(manual_too=False)
             st['peak_equity'] = g                    # new baseline: entries stay paused until you resume them
             self.notify(f"🧯 Drawdown limit hit - bot trades closed ({len(res['closed'])} ok, {len(res['failed'])} failed) and entries paused.")
+        try: self.governor_tick()
+        except Exception as ex: self.err(f'governor: {ex}')
         self.save_state()
 
     def daily_summary(self, day, start, end):
@@ -864,6 +934,16 @@ class Engine:
                     elif sl.get('hours') and pd.Timestamp(sg['time']).hour not in sl['hours']: why = 'outside entry hours'
                     elif sl.get('vol_max_pct') and sg.get('vol_rank', 0.5) > sl['vol_max_pct']: why = 'volatility filter'
                     elif side == 'SHORT' and not self.hedge: why = 'hedge mode off (shorts unavailable)'
+                    te = sl.get('trail_entry') or {}
+                    if why is None and te.get('dev_atr'):          # trailing entry: wait for a rebound off the extreme
+                        why = self.entry_block(sl, s, side, sg=sg)
+                        if why is None:
+                            self.state['pending_entries'][f"{sl['id']}|{s}"] = dict(
+                                sleeve=sl['id'], symbol=s, side=side, ext=sg['close'], atr=sg['atr'], dev=float(te['dev_atr']),
+                                sg=dict(sg), tf=sl['tf'], created=time.time(),
+                                until=time.time() + int(te.get('max_bars', 3)) * TF_SEC.get(sl['tf'], 14400))
+                            log.info(f"TRAIL ENTRY armed {s} {side} [{sl['id']}] rebound {te['dev_atr']} ATR from the extreme")
+                            held.append(s); continue
                     if why is None:
                         self.last_skip = ''
                         try:
@@ -873,13 +953,18 @@ class Engine:
                             self.err(f'entry {s} [{sl["id"]}] failed: {e}'); self.last_skip = f'order failed: {e}'
                         why = self.last_skip or 'order failed'
                     self.miss(sl, s, side, sg, why)
+            try: self.grids.on_cycle(tf)
+            except Exception as e: self.err(f'grid cycle {tf}: {e}')
             st['last_cycle'][tf] = now_utc().isoformat(timespec='minutes')
             self.health['last_cycle_ok'][tf] = now_utc().isoformat(timespec='seconds')
             self.save_state()
             self.record_equity(self.guard_eq or eq)
 
-    def entry_block(self, sl, sym, side, manual=False):
-        """One gate for every way a trade can be opened (automatic, 'Take now', manual). Returns a reason or None."""
+    def entry_block(self, sl, sym, side, manual=False, size=None, sg=None, skip_pending=None):
+        """One gate for every way a trade can be opened (automatic, 'Take now', trailing entry, manual). Returns a reason or None.
+        size: dict(notional, risk) of the trade being opened (for the size-based risk rules); sg: the signal (pump guard).
+        Risk-rule warnings of this call are left in self._rule_warns."""
+        self._rule_warns = []
         st, Sg = self.state, self.S
         if not self.connected or self.error: return 'not connected to Binance'
         if not SYM_RE.match(sym or '') or sym not in self.rules: return f'{sym} is not tradable'
@@ -889,14 +974,32 @@ class Engine:
         if any(l['symbol'] == sym and l['side'] == side and l.get('stop_dirty') for l in st['lots'].values()):
             return 'an open trade on this coin is waiting for its stop to be confirmed'
         if f'{sym}|{side}' in self.untracked: return 'Binance holds an untracked position on this coin/side - resolve it first'
-        if manual: return None
+        if manual: return self._rules_block(sl, sym, side, size, manual=True)
         if Sg.get('ENTRIES_PAUSED'): return 'entries paused'
         if not Sg['SYMBOLS_ON'].get(sym, True): return 'coin switched off'
         if not sl.get('enabled', True): return 'strategy slot switched off'
         held = [l for l in st['lots'].values() if l['sleeve'] == sl['id']]
         if any(l['symbol'] == sym for l in held): return 'already in a trade on this coin'
-        if len(held) >= sl['max_pos']: return f"max positions reached ({sl['max_pos']})"
-        return None
+        working = [p for k, p in st.get('pending_entries', {}).items() if p['sleeve'] == sl['id'] and k != skip_pending] + \
+                  [r for r in st.get('resting_entries', {}).values() if r['sleeve'] == sl['id']]
+        if any(p['symbol'] == sym for p in working): return 'an entry is already working on this coin'
+        if len(held) + len(working) >= sl['max_pos']: return f"max positions reached ({sl['max_pos']})"
+        when = sl.get('when') or 'any'
+        if when != 'any':
+            try:
+                rg = self.regime_now()
+                if not rg.get(when): return f'regime: {S.regime_label(rg)} market'
+            except Exception as e:
+                return f'regime unknown ({e})'                 # a slot restricted to a regime does not trade blind
+        pg = sl.get('pump_guard') or Sg.get('PUMP_GUARD') or {}
+        if pg.get('max_candle_atr') and sg and sg.get('rng_atr', 0) > pg['max_candle_atr']:
+            return f"pump guard: signal candle {sg['rng_atr']:.1f} ATR > {pg['max_candle_atr']}"
+        if pg.get('btc_1h_pct'):
+            try:
+                mv = self.btc_move_1h()
+                if mv > pg['btc_1h_pct']: return f"pump guard: BTC moved {mv:.1f}% in the last hour (> {pg['btc_1h_pct']}%)"
+            except Exception as e: log.info(f'pump guard: BTC 1h data unavailable ({e})')
+        return self._rules_block(sl, sym, side, size)
 
     def _ensure_leverage(self, sym):
         """Exchange leverage = the configured cap (bounded by what Binance allows for the coin). Failure blocks the entry."""
@@ -912,7 +1015,7 @@ class Engine:
         self._lev[sym] = want
 
     def open_lot(self, sl, sym, side, sg, df, eq, risk=None, manual=False, stop_atr=None, tp_r=None):
-        block = self.entry_block(sl, sym, side, manual)
+        block = self.entry_block(sl, sym, side, manual, sg=sg)
         if block:
             self.last_skip = block
             if manual: raise ValueError(block)
@@ -924,8 +1027,14 @@ class Engine:
             if tp_r: g['tp_r'] = tp_r
         sd = 1 if side == 'LONG' else -1
         sleeve_eq = eq if manual else eq * sl['share']
-        risk = risk if risk is not None else sl['risk'] * self.kelly_mult(sl)
+        risk = risk if risk is not None else sl['risk'] * self.kelly_mult(sl) * self.governor_mult()
         risk_usd = sleeve_eq * risk
+        if 'dca' in g:                                  # martingale DCA: a hard basket stop is mandatory, depth/scale bounded
+            dc = g['dca']
+            if not dc.get('stop_atr') or dc['stop_atr'] <= 0:
+                self.last_skip = 'DCA basket without a hard stop (stop_atr) is not allowed'; return False
+            if not (1 <= int(dc.get('n', 0)) <= 8 and 1.0 <= float(dc.get('scale', 1)) <= 3.0):
+                self.last_skip = 'DCA settings out of range (n 1-8, scale 1-3)'; return False
         px = self.trade.marks().get(sym) if not self.dry else sg['close']
         atr = sg['atr']
         if 'dca' in g:
@@ -948,8 +1057,15 @@ class Engine:
             self.last_skip = ('leverage cap reached for this slot' if qty_raw * px >= r['min_notional'] and qty_raw >= r['min_qty']
                               else 'size below Binance minimum (raise capital or risk)')
             return False
+        block = self.entry_block(sl, sym, side, manual, size=dict(notional=qty * px, risk=risk_usd * qty / qty_raw if qty_raw else 0), sg=sg)
+        if block:
+            self.last_skip = block
+            if manual: raise ValueError(block)
+            return False
+        warns = list(self._rule_warns)
         reason = 'manual' if manual else 'signal'
         if not manual and self.S.get('AI_FILTER'):
+            if df is None: df = self.candles(sym, sl['tf'])
             last = df.tail(12)[['o', 'h', 'l', 'c']].round(6).values.tolist() if df is not None else []
             try: funding = self.data.premium(sym)['lastFundingRate']
             except Exception: funding = 'n/a'
@@ -970,28 +1086,49 @@ class Engine:
             log.warning(f'{sym}: {self.last_skip}')
             if manual: raise ValueError(self.last_skip)
             return False
+        for w_ in warns:                                 # risk rules in 'warn' mode: logged, the trade still goes ahead
+            log.warning(f'RISK WARNING {sym} {side}: {w_}')
+            if sl and not manual: self.miss(sl, sym, side, sg, 'WARNING: ' + w_, kind='warning')
+        plan = dict(sl=None if manual else {k: sl[k] for k in ('id', 'key', 'tf', 'name') if k in sl}, sym=sym, side=side, qty=qty,
+                    stop_dist=abs(px - stop), atr=atr, g=g, risk_usd=risk_usd, eq=eq, manual=manual, reason=reason, px=px,
+                    sg=dict(time=sg.get('time'), close=sg.get('close')))
+        if not manual and self.S.get('ENTRY_ORDER') == 'maker':
+            return self._maker_start(plan)
+        return self._market_entry(plan)
+
+    def _market_entry(self, plan):
+        sym, side, r = plan['sym'], plan['side'], self.rules[plan['sym']]
         try:
-            o = self.trade.open(sym, side, self._fmt(qty, r['step']))
+            o = self.trade.open(sym, side, self._fmt(plan['qty'], r['step']))
         except AmbiguousOrder as e:
             self.err(f'ENTRY {sym} {side} unconfirmed ({e}) - reconcile will flag it if it filled')
             self.last_skip = 'entry order unconfirmed'
             return False
-        fill = float(o.get('avgPrice') or 0) or px
+        fill = float(o.get('avgPrice') or 0) or plan['px']
         filled = float(o.get('executedQty') or 0)
-        if filled > 0: qty = self._rd(filled, r['step'])
-        stop = self._rd(fill - sd * (abs(px - stop)), r['tick'])
+        qty = self._rd(filled, r['step']) if filled > 0 else plan['qty']
+        return self._create_lot(plan, qty, fill)
+
+    def _create_lot(self, plan, qty, fill, maker_qty=0.0):
+        """Record a filled entry as a lot and protect it with its exchange stop (recorded BEFORE the stop is sent)."""
+        sym, side, sl, manual, g, atr = plan['sym'], plan['side'], plan['sl'], plan['manual'], plan['g'], plan['atr']
+        r, sd, eq, risk_usd, reason, px = self.rules[sym], (1 if side == 'LONG' else -1), plan['eq'], plan['risk_usd'], plan['reason'], plan['px']
+        stop = self._rd(fill - sd * plan['stop_dist'], r['tick'])
         key = f"{'MAN' if manual else sl['id']}|{sym}|{side}|{int(time.time())}"
+        fee = maker_qty * fill * float(self.S.get('FEE_MAKER', 0.0002)) + (qty - maker_qty) * fill * FEE_EST
         lot = dict(symbol=sym, side=side, sleeve='MAN' if manual else sl['id'], key_strategy=None if manual else sl['key'],
                    qty=qty, q0=qty, avg=fill, e0=fill, entry0=fill, R=abs(fill - stop), stop=stop, stop_id=None, stop_dirty=True, tp1=False, adds=0, dca=0,
                    best=fill, atr0=atr, atr_now=atr, mgmt=g, tf=(sl['tf'] if sl else '4h'), manual=manual,
                    opened=now_utc().isoformat(timespec='seconds'), risk_usd=round(risk_usd, 2), eq_at_entry=round(eq, 2),
-                   qty_max=qty, fills=[[now_utc().isoformat(timespec='seconds'), 'entry', qty, fill]], fees=qty * fill * FEE_EST)
+                   qty_max=qty, fills=[[now_utc().isoformat(timespec='seconds'), 'entry', qty, fill]], fees=fee)
+        if maker_qty > 0: lot['maker_qty'] = maker_qty
         if 'pyramid' in g: lot['next_add'] = fill + sd * g['pyramid']['step_r'] * lot['R']
         if 'dca' in g:
             lot['levels'] = [fill - sd * k * g['dca']['step_atr'] * atr for k in range(1, g['dca']['n'] + 1)]
             lot['w'] = [g['dca']['scale'] ** k for k in range(1, g['dca']['n'] + 1)]
             lot['tp'] = fill + sd * g['dca']['tp_atr'] * atr
         self.state['lots'][key] = lot; self.save_state()          # recorded BEFORE the stop: a crash here can never orphan the position
+        self._last_lot_key = key
         if not self._replace_stop(lot):
             log.error(f'STOP FAILED {sym} - closing for safety')
             try:
@@ -1007,6 +1144,353 @@ class Engine:
         self.notify(f"🚀 OPEN {side} {sym} [{lot['sleeve']}] {qty} @ {fill} · stop {stop} · risk {risk_usd:.2f} USDT")
         self.save_state()
         return True
+
+    # ------------------------------------------------------------ v3.1: market data for the entry rules (cached)
+    def regime_now(self):
+        """BTC market regime of the last closed 4h candle: dict(bull, bear, range) - strategies.regime (shared with the backtest)."""
+        df = self.candles('BTCUSDT', '4h')
+        last = str(df.t.iloc[-1])
+        if self._regime is None or self._regime[0] != last:
+            r = S.regime(df).iloc[-1]
+            self._regime = (last, dict(bull=bool(r['bull']), bear=bool(r['bear']), range=bool(r['range'])))
+        return self._regime[1]
+
+    def btc_move_1h(self):
+        """|%| close-to-close move of BTC over the last closed 1h candle (refreshed at most once a minute)."""
+        now = time.time()
+        if self._btc1h and now - self._btc1h[0] < 60: return self._btc1h[1]
+        raw = self.data.klines('BTCUSDT', '1h', 3)
+        closed = [x for x in raw if float(x[6]) < now * 1000]
+        mv = abs(float(closed[-1][4]) / float(closed[-2][4]) - 1) * 100 if len(closed) >= 2 else 0.0
+        self._btc1h = (now, mv)
+        return mv
+
+    def funding_rate(self, sym):
+        hit = self._fund.get(sym)
+        if hit and time.time() - hit[0] < 300: return hit[1]
+        f = float(self.data.premium(sym)['lastFundingRate'])
+        self._fund[sym] = (time.time(), f)
+        return f
+
+    def _lot_risk(self, l):
+        """Open risk of a lot to its stop (0 once the stop is past breakeven), incl. DCA safety orders not filled yet."""
+        sd = 1 if l['side'] == 'LONG' else -1
+        r = max(0.0, sd * (l['avg'] - l['stop'])) * l['qty']
+        if l.get('levels'):
+            for k in range(l.get('dca', 0), len(l['levels'])):
+                r += l['q0'] * l['w'][k] * abs(l['levels'][k] - l['stop'])
+        return r
+
+    def _corr(self, a, b):
+        c = self.corr
+        if not c or a not in c.get('symbols', []) or b not in c.get('symbols', []): return None
+        return c['m'][c['symbols'].index(a)][c['symbols'].index(b)]
+
+    # ------------------------------------------------------------ v3.1: portfolio risk rules
+    def _rules_eval(self, sl, sym, side, size=None, manual=False):
+        """[(rule, mode, message)] for every rule (not 'off') the entry would break. Data problems never block (logged)."""
+        R, out = self.risk_rules_cfg(), []
+        cap = self.guard_eq or self.last_eq or 0.0
+        lots = list(self.state['lots'].values())
+        mk = self.marks or {}
+        size = size or {}
+        r = R['coin_cap']
+        if r['mode'] != 'off' and cap > 0:
+            tot = sum(l['qty'] * mk.get(l['symbol'], l['avg']) for l in lots if l['symbol'] == sym) + size.get('notional', 0.0)
+            if tot > r['x'] * cap: out.append(('coin_cap', r['mode'], f"{sym} exposure {tot:.0f} USDT > {r['x']:g}x bot capital ({r['x'] * cap:.0f})"))
+        r = R['open_risk_cap']
+        if r['mode'] != 'off' and cap > 0:
+            tot = sum(self._lot_risk(l) for l in lots) + size.get('risk', 0.0)
+            if tot > r['pct'] / 100 * cap: out.append(('open_risk_cap', r['mode'], f"open risk to stops {tot / cap * 100:.1f}% > {r['pct']:g}% of bot capital"))
+        if manual: return out
+        r = R['correlated_cap']
+        if r['mode'] != 'off' and self.corr:
+            same = {l['symbol'] for l in lots if l['side'] == side and l['symbol'] != sym}
+            n = sum(1 for s2 in same if (self._corr(sym, s2) or 0) > r['rho'])
+            if n >= r['n']: out.append(('correlated_cap', r['mode'], f"{n} open {side.lower()}s on coins correlated > {r['rho']:g} with {sym} (max {r['n']})"))
+        r = R['btc_breaker']
+        if r['mode'] != 'off':
+            try:
+                b = self._breaker()
+                if b and b['active']:
+                    out.append(('btc_breaker', r['mode'], f"BTC moved {b['move']:.1f}% in an hour - entries paused until "
+                                                          f"{datetime.fromtimestamp(b['until'], timezone.utc).isoformat(timespec='minutes')}"))
+            except Exception as e: log.info(f'btc breaker: data unavailable ({e})')
+        r = R['funding_filter']
+        if r['mode'] != 'off':
+            try:
+                f = self.funding_rate(sym)
+                if (side == 'LONG' and f > r['rate']) or (side == 'SHORT' and f < -r['rate']):
+                    out.append(('funding_filter', r['mode'], f"funding {f * 100:.3f}% against a {side.lower()} (limit {r['rate'] * 100:.3f}%)"))
+            except Exception as e: log.info(f'funding filter: data unavailable ({e})')
+        return out
+
+    def _rules_block(self, sl, sym, side, size=None, manual=False):
+        hits = self._rules_eval(sl, sym, side, size, manual)
+        self._rule_warns = [m for _, mode, m in hits if mode == 'warn']
+        enf = [f'risk rule {n}: {m}' for n, mode, m in hits if mode == 'enforce']
+        return enf[0] if enf else None
+
+    def _breaker(self):
+        """BTC circuit breaker: a > pct % move in the last hour pauses entries for `hours` (enforce) or warns (warn).
+        In enforce mode with tighten, every winning lot's stop moves to breakeven when it trips."""
+        r = self.risk_rules_cfg()['btc_breaker']
+        if r['mode'] == 'off': return None
+        k = 'breaker_until' if r['mode'] == 'enforce' else 'breaker_warn_until'
+        now, mv = time.time(), self.btc_move_1h()
+        if mv > r['pct']:
+            was = (self.state.get(k) or 0) > now
+            self.state[k] = max(self.state.get(k) or 0, now + r['hours'] * 3600)
+            if not was:
+                log.warning(f"BTC CIRCUIT BREAKER ({r['mode']}): BTC moved {mv:.1f}% in the last hour")
+                self.notify(f"⚡ BTC moved {mv:.1f}% in an hour - " + (f"entries paused for {r['hours']:g}h" if r['mode'] == 'enforce' else 'warning only'))
+                if r['mode'] == 'enforce' and r.get('tighten'): self._tighten_all()
+                self.save_state()
+        return dict(active=(self.state.get(k) or 0) > now, move=mv, until=self.state.get(k) or 0)
+
+    def _tighten_all(self):
+        for l in list(self.state['lots'].values()):
+            m = (self.marks or {}).get(l['symbol'])
+            if not m or l.get('pending') or l.get('manual'): continue
+            sd = 1 if l['side'] == 'LONG' else -1
+            be = l['avg'] * (1 + sd * BE_BUF)
+            if sd * (m - be) > 0 and sd * (be - l['stop']) > 0 and self._replace_stop(l, be):
+                log.info(f"BREAKER {l['symbol']} [{l['sleeve']}] stop moved to breakeven {l['stop']}")
+
+    def risk_rules_status(self):
+        """Current values vs limits of every portfolio risk rule, for the UI."""
+        R, out = self.risk_rules_cfg(), {}
+        cap = self.guard_eq or self.last_eq or 0.0
+        lots = list(self.state['lots'].values()); mk = self.marks or {}
+        per = {}
+        for l in lots: per[l['symbol']] = per.get(l['symbol'], 0.0) + l['qty'] * mk.get(l['symbol'], l['avg'])
+        top = max(per.items(), key=lambda x: x[1]) if per else (None, 0.0)
+        v = top[1] / cap if cap else 0.0
+        out['coin_cap'] = dict(mode=R['coin_cap']['mode'], value=round(v, 2), limit=R['coin_cap']['x'], ok=v <= R['coin_cap']['x'], detail=top[0])
+        v = sum(self._lot_risk(l) for l in lots) / cap * 100 if cap else 0.0
+        out['open_risk_cap'] = dict(mode=R['open_risk_cap']['mode'], value=round(v, 2), limit=R['open_risk_cap']['pct'], ok=v <= R['open_risk_cap']['pct'])
+        rc = R['correlated_cap']; worst, detail = 0, None
+        if self.corr:
+            for side in ('LONG', 'SHORT'):
+                ss = sorted({l['symbol'] for l in lots if l['side'] == side})
+                for a in ss:
+                    n = 1 + sum(1 for b in ss if b != a and (self._corr(a, b) or 0) > rc['rho'])
+                    if n > worst: worst, detail = n, f'{a} {side.lower()}'
+        out['correlated_cap'] = dict(mode=rc['mode'], value=worst, limit=rc['n'], ok=worst <= rc['n'], detail=detail if self.corr else 'correlation not computed yet')
+        rb = R['btc_breaker']
+        try: mv = self.btc_move_1h() if rb['mode'] != 'off' else None
+        except Exception: mv = None
+        until = self.state.get('breaker_until' if rb['mode'] == 'enforce' else 'breaker_warn_until') or 0
+        out['btc_breaker'] = dict(mode=rb['mode'], value=None if mv is None else round(mv, 2), limit=rb['pct'], ok=until <= time.time(),
+                                  paused_until=datetime.fromtimestamp(until, timezone.utc).isoformat(timespec='minutes') if until > time.time() else None)
+        rf = R['funding_filter']; fr = {s: v_[1] for s, v_ in self._fund.items() if time.time() - v_[0] < 3600}
+        worst = max(fr.items(), key=lambda x: abs(x[1])) if fr else (None, 0.0)
+        out['funding_filter'] = dict(mode=rf['mode'], value=round(worst[1], 6), limit=rf['rate'], ok=abs(worst[1]) <= rf['rate'], detail=worst[0])
+        return out
+
+    # ------------------------------------------------------------ v3.1: risk governor (equity rules)
+    def _gov_rules(self):
+        G = self.S.get('GOVERNOR') or {}
+        out = []
+        for r in G.get('rules', []) or []:
+            if not isinstance(r, dict) or r.get('if') not in ('growth_gte', 'dd_gte') or not isinstance(r.get('then'), dict): continue
+            out.append(r)
+        return G.get('mode', 'off'), out
+
+    def governor_tick(self):
+        """Evaluate the equity rules (called from check_guards). 'suggest': notify once per trigger; 'auto': apply."""
+        mode, rules = self._gov_rules()
+        gs = self.state.setdefault('governor', dict(rules={}, last_switch=0, since=self.S.get('CAP_SINCE')))
+        if mode not in ('suggest', 'auto') or not rules:
+            gs['rules'] = {}; return
+        if gs.get('since') != self.S.get('CAP_SINCE'):               # fresh capital cycle: every rule starts over
+            gs['rules'] = {}; gs['since'] = self.S.get('CAP_SINCE')
+        g = self.guard_eq
+        if not g: return
+        info = self.capital_info()
+        growth = info.get('growth') or 0.0
+        peak = self.state.get('peak_equity') or g
+        dd = max(0.0, (1 - g / peak) * 100) if peak else 0.0
+        now = time.time()
+        for i, r in enumerate(rules):
+            sig = json.dumps(r, sort_keys=True)
+            rs = gs['rules'].get(str(i))
+            if not rs or rs.get('sig') != sig: rs = gs['rules'][str(i)] = dict(sig=sig, on=False)
+            cond = (growth >= r['value']) if r['if'] == 'growth_gte' else (dd >= r['value'])
+            if not rs['on']:
+                if not cond: continue
+                rs.update(on=True, t=now, peak=peak, done=False)
+                what = f"risk x{r['then']['risk_mult']}" if 'risk_mult' in r['then'] else f"profile '{r['then'].get('profile')}'"
+                trig = f"{'growth' if r['if'] == 'growth_gte' else 'drawdown'} {growth if r['if'] == 'growth_gte' else dd:.1f}% >= {r['value']}%"
+                if mode == 'suggest':
+                    self.notify(f'🧭 Risk governor suggests {what} ({trig})'); log.info(f'GOVERNOR suggests {what} ({trig})')
+                else:
+                    log.warning(f'GOVERNOR {what} ({trig})'); self.notify(f'🧭 Risk governor: {what} ({trig})')
+            elif r.get('until') == 'new_high':
+                if g > (rs.get('peak') or peak): rs['on'] = False; log.info(f'GOVERNOR rule {i + 1} released at a new equity high')
+            elif r.get('until') == 'reset':
+                pass
+            elif not cond:
+                rs['on'] = False
+            if rs['on'] and mode == 'auto' and 'profile' in r['then'] and not rs.get('done'):
+                key = r['then']['profile']
+                if key not in PRESETS: rs['done'] = True; self.err(f'governor: unknown profile {key}')
+                elif now - (gs.get('last_switch') or 0) >= GOV_COOLDOWN_S:
+                    self.apply_preset(key); gs['last_switch'] = now; rs['done'] = True
+                    self.notify(f"🧭 Risk governor switched the profile to {PRESETS[key]['name']} (open trades keep their own management)")
+
+    def governor_mult(self):
+        """Risk multiplier for NEW entries from active 'auto' rules: product, clipped to 0.05-2 (martingale capped at 2x)."""
+        mode, rules = self._gov_rules()
+        if mode != 'auto': return 1.0
+        rs = (self.state.get('governor') or {}).get('rules', {})
+        m = 1.0
+        for i, r in enumerate(rules):
+            if 'risk_mult' in r['then'] and rs.get(str(i), {}).get('on'): m *= float(r['then']['risk_mult'])
+        return float(min(GOV_MULT_MAX, max(0.05, m)))
+
+    def governor_status(self):
+        mode, rules = self._gov_rules()
+        gs = self.state.get('governor') or {}
+        g = self.guard_eq or 0; peak = self.state.get('peak_equity') or g
+        out = dict(mode=mode, growth=(self.capital_info().get('growth') if g else None), dd=round(max(0.0, (1 - g / peak) * 100), 2) if peak else 0.0,
+                   risk_mult=self.governor_mult(), last_switch=gs.get('last_switch') or None,
+                   cooldown_h=round(max(0.0, GOV_COOLDOWN_S - (time.time() - (gs.get('last_switch') or 0))) / 3600, 1), rules=[], high_risk=False)
+        for i, r in enumerate(rules):
+            st_ = (gs.get('rules') or {}).get(str(i), {})
+            m = r['then'].get('risk_mult')
+            hr = m is not None and float(m) > 1 and r['if'] == 'dd_gte'          # martingale-style: more risk after losing
+            out['high_risk'] = out['high_risk'] or hr
+            out['rules'].append(dict(rule=r, active=bool(st_.get('on')), since=st_.get('t'), high_risk=hr,
+                                     capped=m is not None and float(m) > GOV_MULT_MAX,
+                                     suggestion=(mode == 'suggest' and bool(st_.get('on')))))
+        return out
+
+    # ------------------------------------------------------------ v3.1: trailing entries (checked on marks)
+    def _trail_entries(self, marks):
+        changed = False
+        pe = self.state['pending_entries']
+        for k, p in list(pe.items()):
+            sl = next((x for x in self.S['SLEEVES'] if x['id'] == p['sleeve']), None)
+            sg = p['sg']; sym, side = p['symbol'], p['side']
+            def cancel(why):
+                pe.pop(k, None); log.info(f'TRAIL ENTRY {sym} {side} [{p["sleeve"]}] cancelled: {why}')
+                if sl: self.miss(sl, sym, side, sg, why)
+            if sl is None: pe.pop(k, None); changed = True; continue
+            if time.time() > p['until']: cancel('trailing entry expired (no rebound in time)'); changed = True; continue
+            blk = self.entry_block(sl, sym, side, sg=sg, skip_pending=k)
+            if blk: cancel(f'trailing entry cancelled: {blk}'); changed = True; continue
+            m = marks.get(sym)
+            if not m: continue
+            sd = 1 if side == 'LONG' else -1
+            ext = min(p['ext'], m) if sd == 1 else max(p['ext'], m)
+            if ext != p['ext']: p['ext'] = ext; changed = True
+            if sd * (m - (ext + sd * p['dev'] * p['atr'])) < 0: continue
+            pe.pop(k, None); changed = True
+            log.info(f'TRAIL ENTRY {sym} {side} [{sl["id"]}] triggered at {m} (extreme {ext:.6g})')
+            self.last_skip = ''
+            try:
+                ok = self.open_lot(sl, sym, side, dict(sg, close=m), None, self.last_eq or self.equity())
+            except Exception as e:
+                ok = False; self.err(f'trailing entry {sym} [{sl["id"]}] failed: {e}'); self.last_skip = f'order failed: {e}'
+            if not ok: self.miss(sl, sym, side, sg, self.last_skip or 'order failed')
+        return changed
+
+    # ------------------------------------------------------------ v3.1: maker (post-only) entries
+    # A resting entry lives in state['resting_entries'] from BEFORE its order is sent until its fills became a lot:
+    # polled by client order id every manage pass, cancelled on timeout, re-priced up to MAKER_REPRICE times within
+    # MAKER_WAIT_S seconds, then (MAKER_FALLBACK) the rest goes at market. Partial fills always become a lot.
+    def _maker_start(self, plan):
+        k = f"ME|{plan['sl']['id']}|{plan['sym']}|{plan['side']}"
+        if k in self.state['resting_entries']: self.last_skip = 'an entry is already working on this coin'; return False
+        rec = dict(key=k, sleeve=plan['sl']['id'], symbol=plan['sym'], side=plan['side'], qty=plan['qty'], filled=0.0, cost=0.0,
+                   n=0, t0=time.time(), status='between', cid=None, plan=plan)
+        self.state['resting_entries'][k] = rec
+        try:
+            self._maker_place(rec)
+        except Exception:
+            if rec['status'] != 'open': self.state['resting_entries'].pop(k, None)   # nothing was sent: forget it
+            self.save_state(); raise
+        self.save_state()
+        self.last_skip = 'maker entry working'
+        return True
+
+    def _maker_place(self, rec):
+        sym, r = rec['symbol'], self.rules[rec['symbol']]
+        rem = self._rd(rec['qty'] - rec['filled'], r['step'])
+        bt = self.trade._req('GET', '/fapi/v1/ticker/bookTicker', dict(symbol=sym))
+        px = float(bt['bidPrice'] if rec['side'] == 'LONG' else bt['askPrice'])
+        cid = new_cid('zm')
+        rec.update(cid=cid, price=px, placed_t=time.time(), status='open', n=rec['n'] + 1)
+        self.save_state()                                            # recorded BEFORE it is sent: never unaccounted
+        try:
+            o = self.trade._order(dict(symbol=sym, side='BUY' if rec['side'] == 'LONG' else 'SELL', positionSide=rec['side'], type='LIMIT',
+                                       timeInForce='GTX', quantity=self._fmt(rem, r['step']), price=self._fmt(self._rd(px, r['tick']), r['tick']),
+                                       newClientOrderId=cid, newOrderRespType='RESULT'))
+            log.info(f"MAKER entry {sym} {rec['side']} {rem} @ {px} (try {rec['n']})")
+            if o and o.get('status') in ('EXPIRED', 'REJECTED', 'CANCELED', 'FILLED'): self._maker_done_order(rec, o)
+        except AmbiguousOrder as e:
+            self.err(f'maker entry {sym} unconfirmed ({e}) - polled by its id')     # status stays 'open': resolved by get_order
+        except BinanceError as e:                                                   # e.g. -5022 post-only would take: re-price
+            log.info(f'maker entry {sym} rejected: {e}'); rec['status'] = 'between'
+
+    def _maker_done_order(self, rec, o):
+        ex = float(o.get('executedQty') or 0)
+        if ex > 0:
+            px = float(o.get('avgPrice') or 0) or rec['price']
+            rec['filled'] += ex; rec['cost'] += ex * px
+        rec['status'] = 'between'
+
+    def _maker_poll(self, k, marks):
+        rec = self.state['resting_entries'][k]
+        sym, r = rec['symbol'], self.rules[rec['symbol']]
+        K, T = int(self.S.get('MAKER_REPRICE', 3)), float(self.S.get('MAKER_WAIT_S', 40))
+        slice_s = T / (K + 1)
+        if rec['status'] in ('open', 'cancelling'):
+            o = self.trade.get_order(sym, rec['cid'])
+            age = time.time() - rec['placed_t']
+            if o is None:
+                if age < 20: return False                            # may not be visible yet
+                rec['status'] = 'between'                            # never reached Binance
+            elif o.get('status') in ('FILLED', 'CANCELED', 'EXPIRED', 'REJECTED', 'EXPIRED_IN_MATCH'):
+                self._maker_done_order(rec, o)
+            elif rec['status'] == 'open' and age >= slice_s:
+                self.trade.cancel(sym, f"c:{rec['cid']}"); rec['status'] = 'cancelling'; rec['cancel_t'] = time.time()
+                return True                                          # final fill read on the next pass
+            elif rec['status'] == 'cancelling' and time.time() - rec.get('cancel_t', 0) > 30:
+                self.trade.cancel(sym, f"c:{rec['cid']}"); rec['cancel_t'] = time.time(); return True
+            else:
+                return False
+        rem = self._rd(rec['qty'] - rec['filled'], r['step'])
+        px_ = (marks or {}).get(sym) or rec.get('price') or rec['plan']['px']
+        small = rem < r['min_qty'] or rem * px_ < r['min_notional']
+        if not small and rec['n'] <= K and time.time() - rec['t0'] < T:
+            self._maker_place(rec); return True
+        self._maker_finalize(k, rem, small, px_)
+        return True
+
+    def _maker_finalize(self, k, rem, small, px):
+        rec = self.state['resting_entries'].pop(k)
+        plan, r = rec['plan'], self.rules[rec['symbol']]
+        sl = next((x for x in self.S['SLEEVES'] if x['id'] == rec['sleeve']), None) or dict(plan['sl'], enabled=False, max_pos=0)
+        sg = dict(plan['sg'], close=px)
+        fallback = bool(self.S.get('MAKER_FALLBACK', True)) and not small
+        if rec['filled'] > 0:
+            q = self._rd(rec['filled'], r['step']); avg = rec['cost'] / rec['filled']
+            ok = self._create_lot(plan, q, avg, maker_qty=q)
+            lot = self.state['lots'].get(getattr(self, '_last_lot_key', None))
+            if ok and lot and fallback and not self.entry_block(sl, rec['symbol'], rec['side'], manual=True):
+                try: self._add_qty(lot, rem, px, 'entry_fallback')
+                except Exception as e: self.err(f"maker fallback {rec['symbol']}: {e}")
+                else: self._replace_stop(lot)
+            return
+        if fallback:
+            blk = self.entry_block(sl, rec['symbol'], rec['side'], sg=sg)
+            if blk: self.miss(sl, rec['symbol'], rec['side'], sg, f'maker entry not filled; market fallback blocked: {blk}'); return
+            log.info(f"MAKER entry {rec['symbol']} not filled - market fallback")
+            if not self._market_entry(dict(plan, px=px)): self.miss(sl, rec['symbol'], rec['side'], sg, self.last_skip or 'order failed')
+        else:
+            self.miss(sl, rec['symbol'], rec['side'], sg, 'maker entry not filled (no market fallback)')
 
     # ------------------------------------------------------------ panel actions
     def manual_trade(self, sym, side, risk_pct, stop_atr, tp_r=None):

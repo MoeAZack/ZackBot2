@@ -13,7 +13,7 @@ import pandas as pd
 BUNDLE = getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__)))      # read-only app files
 EXE_DIR = os.path.dirname(os.path.abspath(sys.executable if getattr(sys, 'frozen', False) else __file__))
 PORT = 8765
-VERSION = '3.0'
+VERSION = '3.1'
 
 
 def data_dir():
@@ -51,6 +51,10 @@ import strategies as S          # noqa: E402
 import backtest as BT           # noqa: E402
 from engine import Engine, PRESETS, TOP40, CORE8, TF_SEC, MANUAL_MAX_RISK, save_json, next_reset_utc   # noqa: E402
 from binance_client import Futures, MAINNET   # noqa: E402
+import grid as GRID             # noqa: E402
+import lab as LAB               # noqa: E402
+from engine import RISK_RULE_DEFAULTS, GOV_MULT_MAX   # noqa: E402
+from telegram_ctl import TelegramControl, clean_setting as tg_clean_setting   # noqa: E402
 
 
 # ------------------------------------------------------------------ config (keys) - validated, atomically written, encrypted on Windows
@@ -306,11 +310,50 @@ def run_backtest_job(job_id, req):
         job.update(status='error', error=str(e))
 
 
+def lab_book(q):
+    """Candles for a lab job: the slots' coins + BTC, period + warm-up, from the shared candle cache."""
+    tf, days = q['tf'], int(q['days'])
+    syms = set(['BTCUSDT'])
+    for sl in q.get('sleeves') or []:
+        sy = sl.get('symbols', 'all')
+        syms |= set(CORE8 if sy == 'core8' else (q.get('universe') or TOP40) if sy == 'all' else sy)
+    if not q.get('sleeves'): syms |= set(CORE8)
+    raw = {}
+    for s_ in sorted(syms):
+        try:
+            d = get_candles(s_, tf, days)
+            if len(d) * TF_SEC[tf] >= (days * 86400) * 0.95 + 200 * TF_SEC[tf]:
+                raw[s_] = d[d.t >= d.t.iloc[-1] - pd.Timedelta(days=days) - pd.Timedelta(seconds=230 * TF_SEC[tf])]
+        except Exception as ex:
+            log.warning(f'lab data {s_}: {ex}')
+    if 'BTCUSDT' not in raw: raise ValueError('no BTC data for that period')
+    return BT.Book(raw)
+
+
+def run_lab(jid, kind, req):
+    job = JOBS[jid]
+    def prog(f, text=''): job.update(progress=round(float(f), 3), status=f'running - {text}' if text else 'running')
+    try:
+        if req.get('preset') in PRESETS and not req.get('sleeves'):
+            req = dict(req, sleeves=[validate_sleeve(dict(x), i) for i, x in enumerate(PRESETS[req['preset']]['sleeves'])])
+        res = LAB.run_lab_job(kind, req, lab_book, prog, lambda: job.get('cancel'))
+        res.update(id=jid, kind=kind, name=f"Lab · {kind.replace('_', ' ')}", created=datetime.now().isoformat(timespec='minutes'))
+        save_json(os.path.join(DATA, 'backtests', f'{jid}.json'), dict(res, lab=True))
+        job.update(status='done', result=res, progress=1.0)
+    except LAB.Cancelled:
+        job.update(status='cancelled')
+    except Exception as ex:
+        log.error('lab job failed: ' + traceback.format_exc()); job.update(status='error', error=str(ex))
+
+
 def list_backtests():
     out = []
     for f in sorted(glob.glob(os.path.join(DATA, 'backtests', '*.json')), key=os.path.getmtime, reverse=True):
         try:
             r = json.load(open(f))
+            if r.get('lab'):
+                out.append(dict(id=r['id'], name=r.get('name'), created=r.get('created'), lab=r.get('kind'), stats={}, period=[], sleeves=[], tf=''))
+                continue
             out.append(dict(id=r['id'], name=r['name'], created=r['created'], stats=r['stats'], period=r['period'], years=r.get('years', {}),
                             engine=r.get('engine', 'v2'), oos=r.get('oos'),
                             curve=r['curve'][::7] if 'study' in r['id'] else None,
@@ -397,6 +440,8 @@ class App:
         self._want_preview = threading.Event()
         threading.Thread(target=self.preview_worker, daemon=True).start()
         self.start_engine()
+        self.tg = TelegramControl(lambda: self.engine, lambda: self)
+        self.tg.start()
 
     def start_engine(self):
         old = self.engine
@@ -472,7 +517,8 @@ class App:
                 if e is not e0: last_bar, e0 = {}, e                      # engine restarted (keys/mode changed)
                 if e and e.connected and e.cfg.get('API_KEY') and not e.error:
                     now = time.time()
-                    tfs = sorted({sl['tf'] for sl in e.S['SLEEVES']} | {l.get('tf', '4h') for l in e.state['lots'].values()})
+                    tfs = sorted({sl['tf'] for sl in e.S['SLEEVES']} | {l.get('tf', '4h') for l in e.state['lots'].values()}
+                                 | {g.get('tf', '4h') for g in e.S.get('GRID_SLOTS', []) if g.get('enabled')})
                     for tf in tfs:
                         bar = math.floor((now - 15) / TF_SEC[tf])
                         if tf not in last_bar:                              # start-up: catch up a candle missed while the app was off
@@ -498,7 +544,7 @@ class App:
                         last_manage = now
                         try:
                             marks = e.data.marks()
-                            if e.state['lots']: e.manage(marks)
+                            if e.state['lots'] or e.state.get('grids') or e.state.get('pending_entries') or e.state.get('resting_entries'): e.manage(marks)
                             else: e.marks, e.marks_t = marks, now
                         except Exception as ex:
                             e._manage_failed(f'mark prices: {ex}')
@@ -574,20 +620,27 @@ class App:
                         gross_lev=(long_n + short_n) / eqv if eqv else 0, risk=sum(c['risk'] for c in by_coin.values()),
                         by_coin=by_coin, by_sleeve=by_sleeve, margin_used=acc.get('totalInitialMargin'), maint=acc.get('totalMaintMargin'),
                         margin_balance=acc.get('totalMarginBalance'), available=acc.get('availableBalance'), corr=e.corr)
-        settings = {k: v for k, v in e.S.items() if k != 'TELEGRAM_TOKEN'}
+        settings = {k: v for k, v in e.S.items() if k not in ('TELEGRAM_TOKEN', 'TELEGRAM_PIN')}
         settings['TELEGRAM_TOKEN_SET'] = bool(e.cfg.get('TELEGRAM_TOKEN'))
+        settings['TELEGRAM_PIN_SET'] = bool(e.S.get('TELEGRAM_PIN'))
+        extra = {}
+        for name, fn in (('risk_rules', e.risk_rules_status), ('governor', e.governor_status), ('grids', e.grids.status)):
+            try: extra[name] = fn()
+            except Exception as ex: extra[name] = dict(error=str(ex)[:120])
+        extra['telegram'] = self.tg.status() if getattr(self, 'tg', None) else None
         return dict(version=VERSION, mode='LIVE' if e.live else 'PAPER', keys=bool(e.cfg.get('API_KEY')), ai_key=bool(e.cfg.get('ANTHROPIC_API_KEY')),
                     error=e.error, hedge=e.hedge, equity=e.guard_eq if e.guard_eq is not None else e.last_eq, sizing_equity=e.last_eq,
                     balance=e.last_balance, day_start=st.get('day_start_equity'), peak=st.get('peak_equity'), halted=st.get('halted'),
                     last_cycle=st.get('last_cycle'), next_cycle=getattr(e, 'next_cycle', None), settings=settings, lots=lots,
                     signals_time=e.signals_time, exposure=exposure, capital=e.capital_info(), health=self.health(e, lots), rev=self.revs(e),
-                    jobs={k: {x: y for x, y in j.items() if x != 'result'} for k, j in list(JOBS.items())[-12:]})
+                    jobs={k: {x: y for x, y in j.items() if x != 'result'} for k, j in list(JOBS.items())[-12:]}, **extra)
 
     def meta(self):
         e = self.engine
         return dict(version=VERSION, presets={k: dict(name=v['name'], note=v['note'], bt=v.get('bt'), sleeves=v['sleeves']) for k, v in PRESETS.items()},
                     library={k: dict(name=v['name'], style=v['style'], sides=v['sides'], desc=v['desc'], mgmt=v['mgmt']) for k, v in S.STRATEGIES.items()},
-                    core8=CORE8, top40=TOP40, tradable=sorted(e.rules) if e.rules else [], manual_max_risk=MANUAL_MAX_RISK * 100)
+                    core8=CORE8, top40=TOP40, tradable=sorted(e.rules) if e.rules else [], manual_max_risk=MANUAL_MAX_RISK * 100,
+                    risk_rule_defaults=RISK_RULE_DEFAULTS, grid_defaults=GRID.clean_cfg({}), gov_mult_max=GOV_MULT_MAX)
 
     def missed_view(self):
         e = self.engine; marks = e.marks or {}
@@ -783,7 +836,8 @@ LIMITS = dict(MAX_LEVERAGE=(1, 50), DAILY_LOSS_HALT=(0.01, 1.0), PEAK_DD_FLATTEN
 SYM = re.compile(r'^[A-Z0-9]{2,20}USDT$')
 MG_NUM = dict(stop_atr=(0.3, 20), trail_atr=(0.3, 20), be_r=(0.1, 50), tp1_r=(0.1, 50), tp1_frac=(0.05, 1), tp_r=(0.2, 100), max_bars=(1, 5000))
 MG_SUB = dict(pyramid=dict(n=(0, 10), step_r=(0.1, 20), frac=(0.05, 5)),
-              dca=dict(n=(0, 10), step_atr=(0.1, 20), scale=(0.1, 5), tp_atr=(0.1, 20), stop_atr=(0.1, 30)),
+              dca=dict(n=(0, 8), step_atr=(0.1, 20), scale=(0.1, 3), tp_atr=(0.1, 20), stop_atr=(0.1, 30)),
+              ttp=dict(at_r=(0.2, 50), dev_pct=(0.1, 50)),
               runner=dict(be_r=(0.1, 100), step_r=(0.1, 100), gap_r=(0.1, 100), giveback=(0.05, 1), gb_from=(0.1, 100), dca_frac=(0.05, 1), trend_exit=(0, 1)))
 
 
@@ -802,6 +856,14 @@ def clean_mgmt(m):
         if k in MG_NUM:
             if k in ('be_r', 'tp1_r', 'tp_r', 'max_bars', 'trail_atr') and v in (0, '0', 0.0): out[k] = 0; continue   # 0 = off
             out[k] = _num(v, *MG_NUM[k], k)
+        elif k == 'tps':
+            if not isinstance(v, list) or len(v) > 8: raise ValueError('take-profit ladder: up to 8 levels')
+            lv = []
+            for it in v:
+                if not isinstance(it, (list, tuple)) or len(it) != 2: raise ValueError('each take-profit level is [R, fraction]')
+                lv.append([_num(it[0], 0.1, 100, 'take-profit R'), _num(it[1], 0.01, 1, 'take-profit fraction')])
+            if sum(x[1] for x in lv) > 1.0001: raise ValueError('take-profit fractions add up to more than 100%')
+            if lv: out[k] = sorted(lv)
         elif k in MG_SUB:
             if not isinstance(v, dict): raise ValueError(f'bad {k} settings')
             out[k] = {kk: _num(vv, *MG_SUB[k][kk], f'{k}.{kk}') for kk, vv in v.items() if kk in MG_SUB[k] and vv is not None}
@@ -819,6 +881,53 @@ def clean_symbols(v):
     return v
 
 
+def clean_pump(v):
+    if not isinstance(v, dict): raise ValueError('pump guard must be an object')
+    out = {}
+    if v.get('max_candle_atr') not in (None, '', 0): out['max_candle_atr'] = _num(v['max_candle_atr'], 0.5, 20, 'pump guard candle size')
+    if v.get('btc_1h_pct') not in (None, '', 0): out['btc_1h_pct'] = _num(v['btc_1h_pct'], 0.2, 30, 'pump guard BTC move')
+    return out
+
+
+RR_PARAMS = dict(coin_cap=dict(x=(0.1, 50)), open_risk_cap=dict(pct=(0.5, 100)), correlated_cap=dict(n=(1, 20), rho=(0.3, 0.99)),
+                 btc_breaker=dict(pct=(0.5, 30), hours=(0.25, 72)), funding_filter=dict(rate=(0.00005, 0.05)))
+
+
+def clean_risk_rules(v):
+    if not isinstance(v, dict): raise ValueError('risk rules must be an object')
+    out = {}
+    for rule, cfg in v.items():
+        if rule not in RISK_RULE_DEFAULTS or not isinstance(cfg, dict): raise ValueError(f'unknown risk rule {str(rule)[:30]}')
+        c = {}
+        if 'mode' in cfg:
+            if cfg['mode'] not in ('off', 'warn', 'enforce'): raise ValueError('rule mode must be off, warn or enforce')
+            c['mode'] = cfg['mode']
+        for k, rng in RR_PARAMS[rule].items():
+            if cfg.get(k) is not None: c[k] = _num(cfg[k], *rng, f'{rule}.{k}')
+        if rule == 'correlated_cap' and 'n' in c: c['n'] = int(c['n'])
+        if rule == 'btc_breaker' and 'tighten' in cfg: c['tighten'] = bool(cfg['tighten'])
+        out[rule] = c
+    return out
+
+
+def clean_governor(v):
+    if not isinstance(v, dict): raise ValueError('governor must be an object')
+    mode = v.get('mode', 'off')
+    if mode not in ('off', 'suggest', 'auto'): raise ValueError('governor mode must be off, suggest or auto')
+    rules = v.get('rules') or []
+    if not isinstance(rules, list) or len(rules) > 8: raise ValueError('up to 8 governor rules')
+    out = []
+    for r in rules:
+        if not isinstance(r, dict) or r.get('if') not in ('growth_gte', 'dd_gte'): raise ValueError('rule condition must be growth_gte or dd_gte')
+        then = r.get('then') if isinstance(r.get('then'), dict) else {}
+        if 'risk_mult' in then: then = dict(risk_mult=_num(then['risk_mult'], 0.05, GOV_MULT_MAX, 'risk multiplier'))
+        elif then.get('profile') in PRESETS: then = dict(profile=then['profile'])
+        else: raise ValueError('rule action must be a risk multiplier or a profile')
+        if r.get('until') not in (None, 'new_high', 'reset'): raise ValueError('until must be new_high, reset or empty')
+        out.append({'if': r['if'], 'value': _num(r.get('value'), 0.5, 1000, 'rule threshold'), 'then': then, 'until': r.get('until')})
+    return dict(mode=mode, rules=out)
+
+
 def validate_sleeve(sl, i):
     if not isinstance(sl, dict) or sl.get('key') not in S.STRATEGIES: raise ValueError(f'unknown strategy {str(sl.get("key"))[:30]}')
     sid = str(sl.get('id') or f'S{i + 1}')[:12]
@@ -829,6 +938,17 @@ def validate_sleeve(sl, i):
                max_pos=int(_num(sl['max_pos'], 1, 20, 'max positions')), symbols=clean_symbols(sl.get('symbols', 'all')),
                sides=sl.get('sides') or S.STRATEGIES[sl['key']]['sides'], mgmt=clean_mgmt(sl.get('mgmt') or {}), tf=sl.get('tf', '4h'))
     if sl.get('hours'): out['hours'] = sorted({int(_num(h, 0, 23, 'hour')) for h in sl['hours']})
+    if sl.get('when') not in (None, 'any'):
+        if sl['when'] not in ('bull', 'bear', 'range'): raise ValueError('market filter must be any, bull, bear or range')
+        out['when'] = sl['when']
+    if sl.get('trail_entry'):
+        te = sl['trail_entry'] if isinstance(sl['trail_entry'], dict) else {}
+        out['trail_entry'] = dict(dev_atr=_num(te.get('dev_atr', 0.5), 0.05, 10, 'trailing entry distance'),
+                                  max_bars=int(_num(te.get('max_bars', 3), 1, 50, 'trailing entry candles')))
+    if sl.get('pump_guard'): out['pump_guard'] = clean_pump(sl['pump_guard'])
+    if 'dca' in out['mgmt'] and out['mgmt']['dca'].get('n') and not out['mgmt']['dca'].get('stop_atr') \
+            and not S.STRATEGIES[sl['key']]['mgmt'].get('dca', {}).get('stop_atr'):
+        raise ValueError('a DCA / martingale basket must keep a hard basket stop')
     if sl.get('vol_max_pct'): out['vol_max_pct'] = _num(sl['vol_max_pct'], 0.05, 1, 'volatility filter')
     if sl.get('kelly'):
         k = sl['kelly'] if isinstance(sl['kelly'], dict) else {}
@@ -847,7 +967,18 @@ def handle(path, b):
                     e.S[k] = _num(v, *LIMITS[k], k)
                     if k == 'MAX_LEVERAGE': e._lev = {}                       # re-apply on the next entry per coin
                 elif k == 'CAPITAL_CAP': e.set_capital_base(_num(v, 0, 1e9, 'start amount'))
-                elif k in ('ENTRIES_PAUSED', 'AI_FILTER', 'RUN_IN_BACKGROUND', 'TELEGRAM_ON'): e.S[k] = bool(v)
+                elif k in ('ENTRIES_PAUSED', 'AI_FILTER', 'RUN_IN_BACKGROUND', 'TELEGRAM_ON', 'MAKER_FALLBACK'): e.S[k] = bool(v)
+                elif k == 'ENTRY_ORDER':
+                    if v not in ('market', 'maker'): raise ValueError('entry order must be market or maker')
+                    e.S[k] = v
+                elif k == 'MAKER_REPRICE': e.S[k] = int(_num(v, 0, 10, 'maker re-prices'))
+                elif k == 'MAKER_WAIT_S': e.S[k] = int(_num(v, 5, 300, 'maker wait seconds'))
+                elif k == 'FEE_MAKER': e.S[k] = _num(v, -0.001, 0.002, 'maker fee')
+                elif k == 'PUMP_GUARD': e.S[k] = clean_pump(v)
+                elif k == 'RISK_RULES': e.S[k] = clean_risk_rules(v)
+                elif k == 'GOVERNOR': e.S[k] = clean_governor(v)
+                elif k in ('TELEGRAM_CONTROL', 'TELEGRAM_PIN'):
+                    nv = tg_clean_setting(k, v, e.S.get(k)); e.S[k] = nv if nv is not None else e.S.get(k, '')
                 elif k == 'TELEGRAM_TOKEN':
                     v = str(v).strip()
                     if v and set(v) != {'•'}:
@@ -876,13 +1007,15 @@ def handle(path, b):
                     raise ValueError(f'unknown setting {str(k)[:30]}')
             e.save_settings()
         log.info('settings changed from panel: ' + ', '.join(str(k) for k in b.keys()))
+        if any(str(k).startswith('TELEGRAM') for k in b) and getattr(APP, 'tg', None): APP.tg.restart()
         APP.preview()
         return 'saved'
     if path == '/api/sleeves':
         if not isinstance(b.get('sleeves'), list) or len(b['sleeves']) > 12: raise ValueError('1-12 strategy slots')
         sl = [validate_sleeve(x, i) for i, x in enumerate(b['sleeves'])]
         if len({x['id'] for x in sl}) != len(sl): raise ValueError('each strategy slot needs a unique name')
-        if sum(x['share'] for x in sl if x['enabled']) > 1.0001: raise ValueError('capital shares of active strategies add up to more than 100%')
+        gshare = sum(g.get('share', 0) for g in e.S.get('GRID_SLOTS', []) if g.get('enabled'))
+        if sum(x['share'] for x in sl if x['enabled']) + gshare > 1.0001: raise ValueError('capital shares of active strategies (and grids) add up to more than 100%')
         with e.lock:
             e.S['SLEEVES'] = sl; e.S['PRESET'] = 'custom'; e.save_settings()
         log.info('strategies updated from panel: ' + ', '.join(f"{x['id']}={x['key']}@{x['risk']:.1%}" + ('' if x['enabled'] else '(off)') for x in sl))
@@ -916,6 +1049,7 @@ def handle(path, b):
                    universe=[s for s in (b.get('universe') or e.S['UNIVERSE']) if isinstance(s, str) and SYM.match(s)][:80])
         if not isinstance(b.get('sleeves'), list) or not b['sleeves']: raise ValueError('no strategies to test')
         req['sleeves'] = [validate_sleeve(x, i) for i, x in enumerate(b['sleeves'][:12])]
+        if b.get('run_options'): req['run_options'] = LAB._validate_run_options(b['run_options'])
         JOBS[jid] = dict(id=jid, status='queued')
         try: enqueue(run_backtest_job, jid, req)
         except ValueError: JOBS.pop(jid, None); raise
@@ -942,6 +1076,41 @@ def handle(path, b):
         try: enqueue(study)
         except ValueError: JOBS.pop(sid, None); raise
         return sid
+    if path == '/api/lab':
+        kind = b.get('kind')
+        if kind not in ('optimize', 'walk_forward', 'monte_carlo', 'lookahead', 'liquidation'): raise ValueError('unknown lab test')
+        req = {k: v for k, v in b.items() if k != 'kind'}
+        req.setdefault('universe', e.S['UNIVERSE'])
+        LAB.validate_lab_request(kind, req)                      # fail fast with a readable message
+        jid = datetime.now().strftime('%Y%m%d-%H%M%S-') + 'lab-' + kind.replace('_', '')
+        JOBS[jid] = dict(id=jid, status='queued', kind=kind, progress=0.0, cancel=False)
+        try: enqueue(run_lab, jid, kind, req)
+        except ValueError: JOBS.pop(jid, None); raise
+        return jid
+    if path == '/api/job_cancel':
+        j = JOBS.get(str(b.get('id', '')))
+        if not j: raise ValueError('no such job')
+        j['cancel'] = True; return 'cancelling'
+    if path == '/api/grid_slots':
+        if not isinstance(b.get('slots'), list) or len(b['slots']) > 6: raise ValueError('0-6 grid slots')
+        slots = [GRID.validate_slot(x, i, strategy_ids=[s_['id'] for s_ in e.S['SLEEVES']]) for i, x in enumerate(b['slots'])]
+        if len({x['id'] for x in slots}) != len(slots): raise ValueError('each grid slot needs a unique name')
+        used = sum(x['share'] for x in e.S['SLEEVES'] if x['enabled']) + sum(x['share'] for x in slots if x['enabled'])
+        if used > 1.0001: raise ValueError('capital shares of strategies + grids add up to more than 100%')
+        with e.lock: e.S['GRID_SLOTS'] = slots; e.save_settings()
+        return 'grid slots saved'
+    if path == '/api/grid_start':
+        with e.lock: return e.grids.start(str(b.get('slot', '')), str(b.get('symbol', '')))
+    if path == '/api/grid_stop':
+        with e.lock: return e.grids.stop(str(b.get('slot', '')), str(b.get('symbol', '')), 'manual')
+    if path == '/api/grid_preview':
+        sym = str(b.get('symbol') or 'BTCUSDT')
+        if not SYM.match(sym): raise ValueError('bad symbol')
+        df = e.candles(sym, (b.get('cfg') or {}).get('tf', '4h') if (b.get('cfg') or {}).get('tf') in TF_SEC else '4h')
+        px, atr = float(df.c.iloc[-1]), float(df.atr.iloc[-1])
+        cap = (e.last_eq or 0) * _num((b.get('cfg') or {}).get('share', 0.25), 0.01, 1, 'share') / max(1, int(_num((b.get('cfg') or {}).get('max_coins', 4), 1, 20, 'coins')))
+        cfg, m = GRID.validate_cfg(b.get('cfg') or {}, (b.get('cfg') or {}).get('max_worst_loss_pct'), price=px, atr_pct=atr / px, capital=cap or 100.0)
+        return dict(cfg=cfg, metrics=m, price=px, atr_pct=atr / px, capital=cap)
     if path == '/api/backtest_delete':
         bid = str(b.get('id', ''))
         if not BT_ID.match(bid): raise ValueError('bad backtest id')

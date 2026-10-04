@@ -209,6 +209,60 @@ def build_context(dfs, btc_key='BTCUSDT'):
     return out
 
 
+def norm_tps(tps):
+    """Take-profit ladder: up to 8 [r, frac] pairs, r > 0, 0 < frac <= 1, sorted by r. Bad entries are dropped."""
+    out = []
+    for x in (tps or [])[:8]:
+        try:
+            r_, f_ = float(x[0]), float(x[1])
+        except Exception:
+            continue
+        if r_ > 0 and 0 < f_ <= 1: out.append((r_, f_))
+    return sorted(out)
+
+
+def regime(d, ema_days=200, adx_max=20.0, bbw_max=0.35, min_days=30):
+    """Market regime of BTC for every candle of d (t,o,h,l,c,v; any timeframe up to 4h), shared by the live engine and
+    the backtester. Uses only data that has CLOSED at each candle's close (no lookahead):
+      bull  = the last completed daily close is above its 200-day EMA (daily candles resampled from d)
+      bear  = below it
+      range = 4h ADX < adx_max and 4h Bollinger-width percentile < bbw_max (4h resampled from d when d is finer)
+    bull/bear are both False until min_days daily closes exist. Returns DataFrame(bull, bear, range) aligned to d's rows."""
+    t = pd.to_datetime(d['t']).reset_index(drop=True)
+    n = len(t)
+    if n == 0: return pd.DataFrame(dict(bull=[], bear=[], range=[]), dtype=bool)
+    step = t.diff().median() if n > 1 else pd.Timedelta(hours=4)
+    step = step if pd.notna(step) and step > pd.Timedelta(0) else pd.Timedelta(hours=4)
+    left = pd.DataFrame({'ct': t + step, 'row': np.arange(n)})
+    s = pd.Series(np.asarray(d['c'], float), index=t)
+    daily = s.resample('1D').last().dropna()
+    e = ema(daily, ema_days)
+    ok = np.arange(1, len(daily) + 1) >= min_days
+    dd = pd.DataFrame({'avail': daily.index + pd.Timedelta(days=1), 'bull': (daily.values > e.values) & ok,
+                       'bear': (daily.values < e.values) & ok})
+    raw = pd.DataFrame({'t': t, 'o': np.asarray(d['o'], float), 'h': np.asarray(d['h'], float), 'l': np.asarray(d['l'], float),
+                        'c': np.asarray(d['c'], float), 'v': np.asarray(d['v'], float) if 'v' in d else 0.0})
+    if step < pd.Timedelta(hours=4):
+        h4 = raw.set_index('t').resample('4h').agg(dict(o='first', h='max', l='min', c='last', v='sum')).dropna().reset_index()
+        h4 = indicators(h4)
+    elif 'adx' in d and 'bbw_pct' in d:
+        h4 = pd.DataFrame({'t': t, 'adx': np.asarray(d['adx'], float), 'bbw_pct': np.asarray(d['bbw_pct'], float)})
+    else:
+        h4 = indicators(raw)
+    rr = pd.DataFrame({'avail': pd.to_datetime(h4['t']).values + (step if step >= pd.Timedelta(hours=4) else pd.Timedelta(hours=4)),
+                       'range': ((h4['adx'] < adx_max) & (h4['bbw_pct'] < bbw_max)).values})
+    out = pd.merge_asof(left, dd.sort_values('avail'), left_on='ct', right_on='avail', direction='backward')
+    out = pd.merge_asof(out.drop(columns='avail'), rr.sort_values('avail'), left_on='ct', right_on='avail', direction='backward')
+    out = out.sort_values('row')
+    return pd.DataFrame({k: out[k].fillna(False).astype(bool).values for k in ('bull', 'bear', 'range')})
+
+
+def regime_label(r):
+    """Text for a missed-signal reason: 'bull' / 'bear' / 'range' / 'unknown' (r: a row/dict of regime())."""
+    if r.get('range'): return 'range'
+    return 'bull' if r.get('bull') else ('bear' if r.get('bear') else 'unknown')
+
+
 def signals(key, d, ctx, params=None, mask_sides=True):
     st = STRATEGIES[key]
     p = dict(st.get('params', {}), **(params or {}))

@@ -73,6 +73,23 @@ print('withdraw too much', P('/api/action', {'action': 'capital', 'kind': 'withd
 c = requests.get(U + '/api/status').json()['capital']; print('capital', {k: c[k] for k in ('mode', 'base', 'realized', 'withdrawn', 'deposited', 'capital', 'growth')})
 print('reset', P('/api/action', {'action': 'capital', 'kind': 'reset', 'amount': 600}), 'withdraw', P('/api/action', {'action': 'capital', 'kind': 'withdraw', 'amount': 25}))
 c = requests.get(U + '/api/status').json(); print('after reset', {k: c['capital'][k] for k in ('base', 'capital', 'withdrawn')}, 'cycles', len(c['capital']['cycles']), 'bot equity', c['equity'])
+print('v31 settings', P('/api/settings', {'RISK_RULES': {'coin_cap': {'mode': 'enforce', 'x': 3}}, 'GOVERNOR': {'mode': 'suggest', 'rules': [{'if': 'dd_gte', 'value': 15, 'then': {'risk_mult': 0.5}, 'until': 'new_high'}]}, 'ENTRY_ORDER': 'maker', 'PUMP_GUARD': {'max_candle_atr': 3}, 'TELEGRAM_CONTROL': False}))
+print('v31 bad settings', P('/api/settings', {'GOVERNOR': {'mode': 'auto', 'rules': [{'if': 'dd_gte', 'value': 10, 'then': {'risk_mult': 9}}]}}))
+print('grid preview', str(P('/api/grid_preview', {'symbol': 'BTCUSDT', 'cfg': {'levels': 12, 'share': 0.25}}))[:220])
+print('grid slots', P('/api/grid_slots', {'slots': [{'id': 'G1', 'enabled': False, 'share': 0.1}]}))
+lid = P('/api/lab', {'kind': 'monte_carlo', 'preset': 'calm', 'days': 365, 'n': 500})
+for _ in range(100):
+    jl = requests.get(U + '/api/backtest/' + lid['msg']).json()
+    if jl['status'] in ('done', 'error', 'cancelled'): break
+    time.sleep(2)
+print('lab mc', jl['status'], jl.get('error'), {k: jl.get('result', {}).get(k) for k in ('ruin_50', 'prob_dd_30')})
+lk = P('/api/lab', {'kind': 'lookahead', 'days': 365, 'n_points': 4, 'keys': ['ema_mom']})
+for _ in range(100):
+    jk = requests.get(U + '/api/backtest/' + lk['msg']).json()
+    if jk['status'] in ('done', 'error', 'cancelled'): break
+    time.sleep(2)
+print('lab lookahead', jk['status'], jk.get('error'), jk.get('result', {}).get('ok'))
+st3 = requests.get(U + '/api/status').json(); print('status v31 keys', [k for k in ('risk_rules', 'governor', 'grids', 'telegram') if k in st3], str(st3.get('risk_rules'))[:200])
 print('run cycle', P('/api/action', {'action': 'run_cycle'})); time.sleep(6)
 print('backtest', jid := P('/api/backtest', {'name': 'ui test', 'sleeves': json.loads(json.dumps(st['presets']['calm']['sleeves'])), 'days': 365, 'tf': '4h', 'start': 500, 'max_lev': 10, 'universe': engine.CORE8}))
 for _ in range(60):
