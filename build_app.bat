@@ -13,7 +13,7 @@ echo [1/6] Stopping the old ZackBot (only ZackBot - nothing else)...
 powershell -NoProfile -Command "Get-Process ZackBot -ErrorAction SilentlyContinue | Stop-Process -Force; Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -match 'ZackBot\\src\\app\.py' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }" >> "%LOG%" 2>&1
 
 echo [2/6] Copying app files (no keys, logs or test data)...
-robocopy "%SRC%." "%DST%" /E /XD __pycache__ .git tests data data1h /XF build_app.bat config.env *.log session.json *.tmp /NFL /NDL /NJH /NJS >> "%LOG%" 2>&1
+robocopy "%SRC%." "%DST%" /E /XD __pycache__ .git tests data data1h data_long /XF build_app.bat config.env *.log session.json *.tmp /NFL /NDL /NJH /NJS >> "%LOG%" 2>&1
 
 set PY=python
 where py >nul 2>nul && set PY=py
