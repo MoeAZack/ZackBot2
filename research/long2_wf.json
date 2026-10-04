@@ -1,0 +1,90 @@
+{
+ "balanced": {
+  "kind": "walk_forward",
+  "metric": "calmar",
+  "summary": {
+   "oos_return": 411.0,
+   "oos_end": 2555.15,
+   "oos_maxdd": -30.8,
+   "oos_cagr": 51.3,
+   "baseline_oos_return": 623.5,
+   "baseline_oos_maxdd": -22.6,
+   "pct_profitable": 50.0,
+   "windows": 16,
+   "pct_profitable_windows": 50.0,
+   "is_score_mean": 4.3337,
+   "oos_score_mean": 9.4901,
+   "efficiency": 0.5451,
+   "efficiency_score": -0.0042
+  },
+  "cancelled": false,
+  "elapsed_s": 12.0,
+  "windows": 16
+ },
+ "aggressive": {
+  "kind": "walk_forward",
+  "metric": "calmar",
+  "summary": {
+   "oos_return": 469.8,
+   "oos_end": 2849.24,
+   "oos_maxdd": -30.5,
+   "oos_cagr": 55.5,
+   "baseline_oos_return": 1484.7,
+   "baseline_oos_maxdd": -30.0,
+   "pct_profitable": 56.2,
+   "windows": 16,
+   "pct_profitable_windows": 56.2,
+   "is_score_mean": 4.6717,
+   "oos_score_mean": 10.2568,
+   "efficiency": 0.5646,
+   "efficiency_score": 0.2351
+  },
+  "cancelled": false,
+  "elapsed_s": 13.5,
+  "windows": 16
+ },
+ "bull:balanced": {
+  "kind": "walk_forward",
+  "metric": "calmar",
+  "summary": {
+   "oos_return": 288.9,
+   "oos_end": 1944.43,
+   "oos_maxdd": -30.8,
+   "oos_cagr": 41.1,
+   "baseline_oos_return": 465.5,
+   "baseline_oos_maxdd": -22.5,
+   "pct_profitable": 62.5,
+   "windows": 16,
+   "pct_profitable_windows": 62.5,
+   "is_score_mean": 4.9709,
+   "oos_score_mean": 6.9131,
+   "efficiency": 0.4042,
+   "efficiency_score": 0.7145
+  },
+  "cancelled": false,
+  "elapsed_s": 21.1,
+  "windows": 16
+ },
+ "active": {
+  "kind": "walk_forward",
+  "metric": "calmar",
+  "summary": {
+   "oos_return": 772.1,
+   "oos_end": 4360.42,
+   "oos_maxdd": -34.7,
+   "oos_cagr": 91.2,
+   "baseline_oos_return": 722.3,
+   "baseline_oos_maxdd": -48.4,
+   "pct_profitable": 78.6,
+   "windows": 14,
+   "pct_profitable_windows": 78.6,
+   "is_score_mean": 3.9681,
+   "oos_score_mean": 37.4017,
+   "efficiency": 1.042,
+   "efficiency_score": 1.1391
+  },
+  "cancelled": false,
+  "elapsed_s": 33.2,
+  "windows": 14
+ }
+}
