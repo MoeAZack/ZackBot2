@@ -39,13 +39,17 @@ echo [5/6] Building ZackBot.exe (takes 1-3 minutes)...
 
 set TARGET=%ROOT%\app\ZackBot.exe
 set ARGS=
+set PSARGS=
 if not exist "%TARGET%" (
   echo EXE build failed - using the Python version instead >> "%LOG%"
-  for /f "delims=" %%i in ('%PY% -c "import sys,os;print(os.path.join(os.path.dirname(sys.executable),'pythonw.exe'))"') do set TARGET=%%i
+  if exist "%VENV%\Scripts\pythonw.exe" (set TARGET=%VENV%\Scripts\pythonw.exe) else (
+    for /f "delims=" %%i in ('%PY% -c "import sys,os;print(os.path.join(os.path.dirname(sys.executable),'pythonw.exe'))"') do set TARGET=%%i
+  )
   set ARGS="%DST%\app.py"
+  set PSARGS=\"%DST%\app.py\"
 )
 echo [6/6] Creating desktop and Start-menu shortcuts...
-powershell -NoProfile -Command "$w=New-Object -ComObject WScript.Shell; foreach($d in @([Environment]::GetFolderPath('Desktop'), [Environment]::GetFolderPath('Programs'))){ $s=$w.CreateShortcut((Join-Path $d 'ZackBot.lnk')); $s.TargetPath='%TARGET%'; $s.Arguments='%ARGS%'; $s.WorkingDirectory='%DST%'; $s.IconLocation='%DST%\zackbot.ico'; $s.Description='ZackBot trading app'; $s.Save() }" >> "%LOG%" 2>&1
+powershell -NoProfile -Command "$w=New-Object -ComObject WScript.Shell; foreach($d in @([Environment]::GetFolderPath('Desktop'), [Environment]::GetFolderPath('Programs'))){ $s=$w.CreateShortcut((Join-Path $d 'ZackBot.lnk')); $s.TargetPath='%TARGET%'; $s.Arguments='%PSARGS%'; $s.WorkingDirectory='%DST%'; $s.IconLocation='%DST%\zackbot.ico'; $s.Description='ZackBot trading app'; $s.Save() }" >> "%LOG%" 2>&1
 echo BUILD_DONE target=%TARGET% >> "%LOG%"
 echo.
 echo Done. Starting ZackBot...

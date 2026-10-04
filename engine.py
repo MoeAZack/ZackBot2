@@ -70,9 +70,10 @@ def _egypt_offset(t):
     def last_wd(y, m, wd):
         d = datetime(y, m + 1, 1) - timedelta(days=1) if m < 12 else datetime(y, 12, 31)
         return d - timedelta(days=(d.weekday() - wd) % 7)
+    # DST starts at local midnight in winter time (UTC+2) and ends at local midnight in summer time (UTC+3)
     y = t.year
     start, end = last_wd(y, 4, 4), last_wd(y, 10, 3) + timedelta(days=1)
-    return timedelta(hours=3) if start.date() <= t.date() < end.date() else timedelta(hours=2)
+    return timedelta(hours=3) if start.date() <= (t + timedelta(hours=2)).date() and (t + timedelta(hours=3)).date() < end.date() else timedelta(hours=2)
 
 
 try:
@@ -418,6 +419,11 @@ class Engine:
         sd = 1 if lot['side'] == 'LONG' else -1
         try:
             new = self.trade.stop(lot['symbol'], lot['side'], self._fmt(lot['qty'], r['step']), self._fmt(new_stop, r['tick']))
+        except AmbiguousOrder as e:
+            if e.tag: self.state.setdefault('orphans', []).append([lot['symbol'], e.tag])   # cancel it if it exists; a fresh stop follows
+            lot['stop_dirty'] = True; lot['last_order_t'] = time.time()
+            self.err(f"stop update {lot['symbol']} [{lot['sleeve']}] unconfirmed: {e} - previous stop kept, retrying")
+            return False
         except BinanceError as e:
             if e.code == -2021:          # stop would trigger immediately: price is already through it -> close now
                 log.warning(f"{lot['symbol']} [{lot['sleeve']}] stop {new_stop} already crossed - closing at market")
@@ -430,18 +436,29 @@ class Engine:
             self.err(f"stop update {lot['symbol']} [{lot['sleeve']}] failed: {e} - previous stop kept")
             return False
         old = lot.get('stop_id')
-        lot['stop_id'], lot['stop'], lot['stop_dirty'] = new, new_stop, False
+        lot['stop_id'], lot['stop'], lot['stop_dirty'], lot['last_order_t'] = new, new_stop, False, time.time()
         if old and old != new: self._cancel_or_park(lot['symbol'], old)
         return True
 
-    def _market_close(self, lot, qty, why, mark=None):
+    def _market_close(self, lot, qty, why, mark=None, post=None):
+        """Close qty at market. If Binance's answer is lost (AmbiguousOrder) the lot is marked 'pending' and reconcile()
+        decides from the real position whether it filled - so a partial take-profit can never fire twice."""
         sym, r = lot['symbol'], self.rules[lot['symbol']]
         qty = self._rd(qty, r['step'])
         if qty <= 0: return 0.0
         px = mark or lot['avg']
         if not self.dry:
-            o = self.trade.close(sym, lot['side'], self._fmt(qty, r['step']))
+            lot['last_order_t'] = time.time()
+            try:
+                o = self.trade.close(sym, lot['side'], self._fmt(qty, r['step']))
+            except AmbiguousOrder as e:
+                lot['pending'] = dict(kind='close', qty=qty, px=px, why=why, post=post or {}, t=time.time())
+                self.save_state(); self.err(f'{sym} close unconfirmed ({e}) - waiting for Binance position to confirm'); raise
             px = float(o.get('avgPrice') or 0) or px
+        return self._apply_close(lot, qty, px, why)
+
+    def _apply_close(self, lot, qty, px, why):
+        sym, r = lot['symbol'], self.rules[lot['symbol']]
         sd = 1 if lot['side'] == 'LONG' else -1
         pnl = sd * (px - lot['avg']) * qty
         lot['realized'] = lot.get('realized', 0.0) + pnl
@@ -452,6 +469,32 @@ class Engine:
                        side=lot['side'], qty=qty, price=px, pnl=round(pnl, 4), equity=round(self.last_eq or 0, 2))
         log.info(f"{why.upper()} {sym} {lot['side']} [{lot['sleeve']}] {qty} @ {px} pnl {pnl:+.2f}")
         return pnl
+
+    def _resolve_pending(self, key, have, expected, tol):
+        """A close/add whose answer was lost: decide from the exchange position whether it filled. Returns True if resolved."""
+        l = self.state['lots'][key]; pd_ = l['pending']; age = time.time() - pd_.get('t', 0)
+        target = expected - pd_['qty'] if pd_['kind'] == 'close' else expected + pd_['qty']
+        if abs(have - target) <= tol:                                    # it filled
+            del l['pending']
+            if pd_['kind'] == 'close':
+                self._apply_close(l, pd_['qty'], pd_['px'], pd_['why'])
+            else:
+                self._apply_add(l, pd_['qty'], pd_['px'], pd_['why'])
+            post = dict(pd_.get('post') or {})
+            fin = post.pop('finish', None)
+            l.update(post)
+            if 'dca' in l.get('mgmt', {}) and pd_['kind'] == 'add' and l.get('tp') is not None:
+                sd = 1 if l['side'] == 'LONG' else -1
+                l['tp'] = l['avg'] + sd * l['mgmt']['dca']['tp_atr'] * l['atr0']
+            log.info(f"{l['symbol']} [{l['sleeve']}] unconfirmed {pd_['kind']} confirmed from the position")
+            if fin or l['qty'] <= 0: self._finish(key, fin or pd_['why'])
+            else: self._replace_stop(l)
+            return True
+        if abs(have - expected) <= tol and age > 20:                       # it never filled
+            del l['pending']; log.info(f"{l['symbol']} [{l['sleeve']}] unconfirmed {pd_['kind']} did not fill - will retry"); return True
+        if age > 300:
+            del l['pending']; self.err(f"{l['symbol']} [{l['sleeve']}] could not confirm {pd_['kind']} after 5 min - resyncing to the exchange"); return False
+        return None
 
     def _record_r(self, lot):
         if lot.get('manual') or not lot.get('risk_usd'): return
@@ -476,7 +519,7 @@ class Engine:
         if not others and not self.dry:            # last lot on this side: close exactly what the exchange holds (no dust)
             try: qty = self.trade.positions().get((lot['symbol'], lot['side']), qty) or qty
             except Exception: pass
-        self._market_close(lot, qty, why, mark)    # raises on failure -> lot and its stop stay as they were
+        self._market_close(lot, qty, why, mark, post={'finish': why})    # raises on failure -> lot and its stop stay as they were
         self._finish(key, why)
         self.save_state()
 
@@ -515,13 +558,23 @@ class Engine:
         self.missed = self.missed[-600:]
         save_json(self.F['missed'], self.missed)
 
-    def _add_qty(self, lot, q, px, why):
+    def _add_qty(self, lot, q, px, why, post=None):
         r = self.rules[lot['symbol']]
         q = self._rd(q, r['step'])
         if q < r['min_qty'] or q * px < r['min_notional']: return False
         if not self.dry:
-            o = self.trade.open(lot['symbol'], lot['side'], self._fmt(q, r['step']))
+            lot['last_order_t'] = time.time()
+            try:
+                o = self.trade.open(lot['symbol'], lot['side'], self._fmt(q, r['step']))
+            except AmbiguousOrder as e:
+                lot['pending'] = dict(kind='add', qty=q, px=px, why=why, post=post or {}, t=time.time())
+                self.save_state(); self.err(f"{lot['symbol']} {why} unconfirmed ({e}) - waiting for Binance position to confirm"); raise
             px = float(o.get('avgPrice') or 0) or px
+        self._apply_add(lot, q, px, why)
+        return True
+
+    def _apply_add(self, lot, q, px, why):
+        r = self.rules[lot['symbol']]
         lot['avg'] = (lot['avg'] * lot['qty'] + px * q) / (lot['qty'] + q)
         lot['qty'] = self._rd(lot['qty'] + q, r['step'])
         lot['qty_max'] = max(lot.get('qty_max', 0), lot['qty'])
@@ -530,7 +583,6 @@ class Engine:
         self.log_trade(time=now_utc().isoformat(timespec='seconds'), event=why, sleeve=lot['sleeve'], symbol=lot['symbol'],
                        side=lot['side'], qty=q, price=px, stop=lot['stop'], equity=round(self.last_eq or 0, 2))
         log.info(f"{why.upper()} {lot['symbol']} {lot['side']} [{lot['sleeve']}] +{q} @ {px} (avg {lot['avg']:.6g})")
-        return True
 
     # ------------------------------------------------------------ fast loop: soft management on mark price
     def manage(self, marks):
@@ -559,6 +611,7 @@ class Engine:
                 g = lot['mgmt']
                 tick = self.rules[lot['symbol']]['tick'] if lot['symbol'] in self.rules else 1e-8
                 ge = lambda lvl: sd * (m - lvl) >= 0           # price at/through a favourable level
+                if lot.get('pending'): continue                # waiting for the exchange to confirm an unanswered order
                 try:
                     if lot.get('force_close'):                 # a stop update found price already through the stop
                         self.close_lot(key, 'stop_crossed', m); changed = True; continue
@@ -567,14 +620,15 @@ class Engine:
                     if 'dca' in g and lot.get('levels'):
                         while lot['dca'] < len(lot['levels']) and sd * (lot['levels'][lot['dca']] - m) >= 0:
                             q = lot['q0'] * lot['w'][lot['dca']]
-                            if not self._within_cap(lot, q * m) or not self._add_qty(lot, q, m, 'safety_order'): break
+                            if not self._within_cap(lot, q * m) or not self._add_qty(lot, q, m, 'safety_order', post={'dca': lot['dca'] + 1}): break
                             lot['dca'] += 1
                             lot['tp'] = lot['avg'] + sd * g['dca']['tp_atr'] * lot['atr0']
                             self._replace_stop(lot); changed = True
                         if lot.get('tp') is not None and ge(lot['tp']):
                             run = g.get('runner')
                             if run and run.get('dca_frac', 1) < 1:      # runner: bank part, keep the rest at breakeven
-                                self._market_close(lot, lot['qty'] * run['dca_frac'], 'basket_tp_part', m)
+                                self._market_close(lot, lot['qty'] * run['dca_frac'], 'basket_tp_part', m,
+                                                   post={'tp': None, 'tp1': True, 'dca': len(lot['levels']), 'e0': lot['avg']})
                                 if lot['qty'] <= 0: self._finish(key, 'basket_tp'); changed = True; continue
                                 lot['tp'] = None; lot['tp1'] = True; lot['dca'] = len(lot['levels'])
                                 lot['e0'] = lot['avg']; changed = True
@@ -586,11 +640,12 @@ class Engine:
                                 self.close_lot(key, 'basket_tp', m); changed = True; continue
                     if 'pyramid' in g and lot['adds'] < g['pyramid']['n'] and ge(lot['next_add']):
                         if self._within_cap(lot, lot['q0'] * g['pyramid']['frac'] * m):
-                            if self._add_qty(lot, lot['q0'] * g['pyramid']['frac'], m, 'pyramid_add'):
+                            if self._add_qty(lot, lot['q0'] * g['pyramid']['frac'], m, 'pyramid_add',
+                                             post={'adds': lot['adds'] + 1, 'next_add': lot['next_add'] + sd * g['pyramid']['step_r'] * lot['R']}):
                                 lot['adds'] += 1; lot['next_add'] += sd * g['pyramid']['step_r'] * lot['R']
                                 self._replace_stop(lot); changed = True
                     if g.get('tp1_r') and not lot['tp1'] and ge(lot['e0'] + sd * g['tp1_r'] * lot['R']):
-                        self._market_close(lot, lot['qty'] * g.get('tp1_frac', 0.5), 'take_profit_1', m)
+                        self._market_close(lot, lot['qty'] * g.get('tp1_frac', 0.5), 'take_profit_1', m, post={'tp1': True})
                         lot['tp1'] = True; changed = True
                         if lot['qty'] <= 0: self._finish(key, 'take_profit_1'); continue
                         self._replace_stop(lot)
@@ -655,16 +710,27 @@ class Engine:
         groups = {}
         for k, l in st['lots'].items(): groups.setdefault((l['symbol'], l['side']), []).append(k)
         untracked = {}
+        def dust(sym, q):        # below Binance's minimum order: cannot be traded or closed normally, not worth an alarm
+            r = self.rules.get(sym); px = (self.marks or {}).get(sym)
+            return r is not None and (q < r['min_qty'] or (px and q * px < r['min_notional']))
         for (sym, side), have in live.items():
             if (sym, side) not in groups and have > 0:
                 tol = self.rules[sym]['step'] if sym in self.rules else 1e-9
-                if have > tol: untracked[(sym, side)] = have
+                if have > tol and not dust(sym, have): untracked[(sym, side)] = have
+        short_seen = st.setdefault('short_seen', {}); seen_now = set()
         for (sym, side), keys in groups.items():
             expected = sum(st['lots'][k]['qty'] for k in keys)
             have = live.get((sym, side), 0.0)
             tol = self.rules[sym]['step'] * (len(keys) + 1) if sym in self.rules else 1e-9
+            pend = [k for k in keys if st['lots'][k].get('pending')]
+            if pend:                                                    # an unanswered order on this coin/side: settle it first
+                res = self._resolve_pending(pend[0], have, expected, tol)
+                if res is not False: continue                           # resolved (re-checked next pass) or still waiting
+                keys = [k for k in keys if k in st['lots']]; expected = sum(st['lots'][k]['qty'] for k in keys)
+            gk = f'{sym}|{side}'
             if have > expected + tol:
-                untracked[(sym, side)] = have - expected; continue
+                if not dust(sym, have - expected): untracked[(sym, side)] = have - expected
+                continue
             if have >= expected - tol: continue
             sd = 1 if side == 'LONG' else -1
             try:
@@ -687,13 +753,29 @@ class Engine:
                 if have >= expected - tol: break
             rest = [k for k in keys if k in st['lots']]
             if rest and have < expected - tol:
+                # every stop is still open but the position is smaller: only act after it is seen twice in a row and no order
+                # was sent on this coin in the last 30 s (Binance's position report can lag right after an order)
+                recent = any(time.time() - st['lots'][k].get('last_order_t', 0) < 30 for k in rest)
+                short_seen[gk] = short_seen.get(gk, 0) + 1; seen_now.add(gk)
+                if recent or short_seen[gk] < 2: continue
                 scale = have / expected if expected > 0 else 0
+                mk = (self.marks or {}).get(sym)
                 for k in rest:
-                    st['lots'][k]['qty'] = self._rd(st['lots'][k]['qty'] * scale, self.rules[sym]['step'])
-                    if st['lots'][k]['qty'] <= 0: self._finish(k, 'resync')
-                    else: self._replace_stop(st['lots'][k])
+                    l = st['lots'][k]
+                    newq = self._rd(l['qty'] * scale, self.rules[sym]['step'])
+                    gone_q = l['qty'] - newq
+                    if gone_q > 0: self._apply_close(l, gone_q, mk or l['stop'], 'resync')    # book what left at the market price
+                    if l['qty'] <= 0: self._finish(k, 'resync')
+                    else: self._replace_stop(l)
                 self.err(f'{sym} {side}: exchange holds less than expected ({have} vs {expected:.6g}) - lots resized to match')
-        new = {f'{s_}|{d}': q for (s_, d), q in untracked.items()}
+        for k in list(short_seen):
+            if k not in seen_now: short_seen.pop(k, None)
+        over = st.setdefault('over_seen', {})
+        cand = {f'{s_}|{d}': q for (s_, d), q in untracked.items()}
+        for k in list(over):
+            if k not in cand: over.pop(k, None)
+        for k in cand: over[k] = over.get(k, 0) + 1
+        new = {k: q for k, q in cand.items() if over[k] >= 2 or k in self.untracked}     # seen twice before alerting
         for k, q in new.items():
             if k not in self.untracked:
                 self.err(f'UNTRACKED position {k} qty {q} on Binance - not managed by the bot and has no bot stop')

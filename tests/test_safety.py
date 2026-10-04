@@ -192,10 +192,11 @@ def test_no_wrong_lot_guessing_when_stop_list_unavailable():
 
 def test_untracked_position_is_flagged_and_blocks_entries():
     e, _ = mk_engine(); e.trade.pos[('ETHUSDT', 'SHORT')] = 3.0
+    e.reconcile(500); assert not e.untracked                                 # one reading could be lag
     e.reconcile(500)
     assert 'ETHUSDT|SHORT' in e.untracked
     assert 'untracked' in (e.entry_block(SL, 'ETHUSDT', 'SHORT') or '')
-    k = opened(e); e.trade.pos[('BTCUSDT', 'LONG')] += 1.0; e.reconcile(500)
+    k = opened(e); e.trade.pos[('BTCUSDT', 'LONG')] += 1.0; e.reconcile(500); e.reconcile(500)
     assert 'BTCUSDT|LONG' in e.untracked                                    # extra size on a tracked coin too
 
 
@@ -355,3 +356,81 @@ def test_book_aligns_on_timestamps():
     assert bk.gaps == {'BTCUSDT': 1} or bk.gaps == {}                       # reported, never shifted
     assert (bk.d['BTCUSDT'].t.values == bk.d['XUSDT'].t.values).all()
     assert (bk.d['BTCUSDT'].c.values == bk.d['XUSDT'].c.values).all()        # same timestamp -> same row
+
+
+# ------------------------------------------------------------------ v3 re-review: lost answers, lagging position reports
+class Amb(Exception): pass
+
+
+def ambiguous_once(e, name, fill=True):
+    """Next call of trade.<name> executes on the 'exchange' (if fill) but the answer is lost."""
+    orig = getattr(e.trade, name)
+    def f(*a, **k):
+        setattr(e.trade, name, orig)
+        if fill: orig(*a, **k)
+        raise BC.AmbiguousOrder('response lost', 'c:zbtest')
+    setattr(e.trade, name, f)
+
+
+def test_lost_partial_tp_answer_does_not_fire_twice():
+    e, _ = mk_engine(); sl = dict(SL, mgmt={'tp1_r': 1.0, 'tp1_frac': 0.5}); k = None
+    assert e.open_lot(sl, 'BTCUSDT', 'LONG', SG, None, e.equity()); k = next(iter(e.state['lots'])); lot = e.state['lots'][k]
+    q0 = lot['qty']; e.trade.mark['BTCUSDT'] = 120.0
+    ambiguous_once(e, 'close'); e.manage(e.trade.marks())
+    assert lot.get('pending')
+    for _ in range(3): e.manage(e.trade.marks())
+    assert abs(e.trade.pos[('BTCUSDT', 'LONG')] - q0 / 2) < 0.002               # exactly one half closed
+    assert lot['tp1'] and not lot.get('pending') and abs(lot['qty'] - q0 / 2) < 0.002
+
+
+def test_lost_pyramid_add_answer_is_not_repeated():
+    e, _ = mk_engine(); sl = dict(SL, mgmt={'pyramid': {'n': 1, 'step_r': 1.0, 'frac': 0.5}})
+    assert e.open_lot(sl, 'BTCUSDT', 'LONG', SG, None, e.equity()); lot = next(iter(e.state['lots'].values())); q0 = lot['qty']
+    e.trade.mark['BTCUSDT'] = 106.0
+    ambiguous_once(e, 'open'); e.manage(e.trade.marks())
+    for _ in range(3): e.manage(e.trade.marks())
+    assert abs(e.trade.pos[('BTCUSDT', 'LONG')] - q0 * 1.5) < 0.002 and lot['adds'] == 1 and abs(lot['qty'] - q0 * 1.5) < 0.002
+    assert not e.untracked
+
+
+def test_lost_stop_answer_is_cleaned_up():
+    e, _ = mk_engine(); k = opened(e); lot = e.state['lots'][k]
+    ambiguous_once(e, 'stop')
+    assert e._replace_stop(lot, lot['stop'] + 1) is False and ['BTCUSDT', 'c:zbtest'] in e.state['orphans']
+    e.manage(e.trade.marks())
+    assert not lot['stop_dirty'] and e.state['orphans'] == []
+
+
+def test_one_lagging_position_report_does_not_drop_a_lot():
+    e, _ = mk_engine(); k = opened(e); e.state['lots'][k]['last_order_t'] = 0
+    real = dict(e.trade.pos); e.trade.pos[('BTCUSDT', 'LONG')] = 0          # one stale read
+    e.reconcile(500); assert k in e.state['lots']
+    e.trade.pos.update(real); e.reconcile(500); assert k in e.state['lots'] and e.state['short_seen'] == {}
+
+
+def test_lost_full_close_is_booked_at_its_price():
+    e, _ = mk_engine(); k = opened(e); e.trade.mark['BTCUSDT'] = 110.0
+    ambiguous_once(e, 'close')
+    with pytest.raises(BC.AmbiguousOrder): e.close_lot(k, 'exit_signal', 110.0)
+    e.manage(e.trade.marks())
+    assert k not in e.state['lots'] and e.history[-1]['exit_reason'] == 'exit_signal' and e.history[-1]['pnl'] > 0
+
+
+def test_cairo_fallback_late_thursday_utc():
+    assert E._egypt_offset(datetime(2026, 10, 29, 21, 30)) == timedelta(hours=2)   # already Friday 00:30 local -> winter
+
+
+def test_config_keeps_values_it_could_not_read(app):
+    with open(app.config_path(), 'w') as f: f.write('MODE=paper\nAPI_KEY=bad key with spaces\nAPI_SECRET="' + 'C' * 64 + '"\n')
+    c = app.load_cfg(); assert c.get('API_SECRET') == 'C' * 64 and 'API_KEY' not in c
+    app.write_cfg({'TELEGRAM_TOKEN': '123456789:' + 'A' * 35})
+    txt = open(app.config_path()).read(); assert 'API_KEY=bad key with spaces' in txt
+
+
+def test_zero_turns_management_off(app):
+    assert app.clean_mgmt({'be_r': 0, 'tp_r': '0'}) == {'be_r': 0, 'tp_r': 0}
+
+
+def test_dust_is_not_flagged_untracked():
+    e, _ = mk_engine(); e.trade.pos[('ETHUSDT', 'LONG')] = 0.002          # 0.10 USDT of ETH: below Binance's minimum
+    e.reconcile(500); e.reconcile(500); assert not e.untracked

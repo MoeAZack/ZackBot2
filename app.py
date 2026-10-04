@@ -105,21 +105,27 @@ def config_path():
     return p
 
 
+_RAW = {}                       # config lines that failed validation/decryption: kept untouched when the file is rewritten
+
+
 def load_cfg():
     cfg, plain = {}, False
+    _RAW.clear()
     p = config_path()
     if os.path.exists(p):
         for line in open(p, encoding='utf-8'):
             line = line.strip()
             if not line or line.startswith('#') or '=' not in line: continue
             k, v = line.split('=', 1); k, v = k.strip(), v.strip()
-            if k in cfg: log.warning(f'config.env: duplicate {k} ignored'); continue      # first value wins, injected repeats are ignored
+            if len(v) >= 2 and v[0] == v[-1] and v[0] in '"\'': v = v[1:-1].strip()     # hand-edited "quoted" values
+            if k in cfg or k in _RAW: log.warning(f'config.env: duplicate {k} ignored'); continue      # first value wins, injected repeats are ignored
             if k in CFG_SECRET and v.startswith('dpapi:'):
                 try: v = unprotect(v)
                 except Exception as e:
-                    log.error(f'could not decrypt {k} ({type(e).__name__}) - please enter it again in Settings'); continue
+                    _RAW[k] = v; log.error(f'could not decrypt {k} ({type(e).__name__}) - please enter it again in Settings'); continue
             elif k in CFG_SECRET and v: plain = True
             if not cfg_value_ok(k, v):
+                if k in CFG_RULES and '\n' not in v: _RAW[k] = v
                 log.warning(f'config.env: invalid value for {k} ignored'); continue
             cfg[k] = v
     for k in CFG_SECRET:
@@ -135,8 +141,11 @@ def write_cfg(updates):
     for k, v in updates.items():
         if v is not None and not cfg_value_ok(k, v): raise ValueError(f'{k}: invalid format (letters, digits, dash and underscore only)')
     cfg = load_cfg(); cfg.pop('_plain', None); cfg.update({k: v for k, v in updates.items() if v is not None})
+    raw = dict(_RAW)
     lines = ['# ZackBot keys and mode - edited from the app (secrets are encrypted for this Windows user)']
     for k in CFG_KEYS:
+        if k not in updates and k not in cfg and k in raw:
+            lines.append(f'{k}={raw[k]}'); continue                 # never wipe a value we could not read
         v = cfg.get(k, '')
         lines.append(f'{k}={protect(v) if k in CFG_SECRET else v}')
     tmp = config_path() + '.tmp'
@@ -144,6 +153,10 @@ def write_cfg(updates):
     os.replace(tmp, config_path())
     for k in CFG_SECRET:
         if cfg.get(k): SECRETS.add(cfg[k])
+    stale = os.path.join(DATA, 'src', 'config.env')                  # v2 installer copied the plaintext keys here
+    if os.path.exists(stale):
+        try: os.remove(stale); log.info('removed an old plaintext copy of the keys from the app folder')
+        except OSError: pass
 
 
 # ------------------------------------------------------------------ candle cache for backtests
@@ -395,10 +408,13 @@ class App:
                 except Exception as e: log.warning(f'could not encrypt stored keys: {e}')
             self.cfg = cfg
             eng = Engine(cfg, DATA)
-            tok = eng.S.pop('TELEGRAM_TOKEN', '')            # v2 kept the Telegram token in settings.json -> move to the encrypted config
-            if tok and not cfg.get('TELEGRAM_TOKEN') and cfg_value_ok('TELEGRAM_TOKEN', tok):
-                write_cfg({'TELEGRAM_TOKEN': tok}); cfg['TELEGRAM_TOKEN'] = tok
-            if tok: eng.save_settings()
+            tok = eng.S.get('TELEGRAM_TOKEN', '')            # v2 kept the Telegram token in settings.json -> move to the encrypted config
+            if tok and set(tok) != {'•'}:
+                try:
+                    if not cfg.get('TELEGRAM_TOKEN'): write_cfg({'TELEGRAM_TOKEN': tok}); cfg['TELEGRAM_TOKEN'] = tok
+                    eng.S.pop('TELEGRAM_TOKEN', None); eng.save_settings()
+                except Exception as ex:
+                    log.warning(f'Telegram token not migrated ({ex}) - re-enter it in Settings')
             try:
                 eng.connect()
             except Exception as e:
@@ -686,7 +702,7 @@ class H(BaseHTTPRequestHandler):
         for part in (self.headers.get('Cookie') or '').split(';'):
             k, _, v = part.strip().partition('=')
             if k == 'zb': tok = tok or v
-        return bool(tok) and hmac.compare_digest(tok, TOKEN)
+        return bool(tok) and hmac.compare_digest(tok.encode('utf-8', 'surrogateescape'), TOKEN.encode())
 
     def _host_ok(self):
         return self.headers.get('Host', '') in HOSTS
@@ -696,15 +712,17 @@ class H(BaseHTTPRequestHandler):
         u = urlsplit(self.path); p, q = u.path, parse_qs(u.query)
         if p in ('/', '/index.html'):
             t = (q.get('t') or [''])[0]
-            if t and hmac.compare_digest(t, TOKEN):            # launch link -> session cookie, then a clean URL
+            if t and hmac.compare_digest(t.encode('utf-8', 'surrogateescape'), TOKEN.encode()):            # launch link -> session cookie, then a clean URL
                 self.send_response(303); self.send_header('Location', '/')
                 self.send_header('Set-Cookie', f'zb={TOKEN}; HttpOnly; SameSite=Strict; Path=/')
                 for k, v in SEC_HEADERS.items(): self.send_header(k, v)
                 self.send_header('Content-Length', '0'); self.end_headers(); return
             if not self._authed(): return self._send(401, LOCKED_PAGE, 'text/html; charset=utf-8')
             return self._send(200, open(os.path.join(BUNDLE, 'panel.html'), encoding='utf-8').read(), 'text/html; charset=utf-8')
-        if p == '/api/ping':
-            return self._json(dict(app='zackbot', ok=self._authed(), version=VERSION), 200 if self._authed() else 401)
+        if p == '/api/ping':          # proves it is THIS ZackBot: answers a nonce with HMAC(token, nonce)
+            nonce = (q.get('nonce') or [''])[0][:64]
+            proof = hmac.new(TOKEN.encode(), nonce.encode(), 'sha256').hexdigest() if nonce else ''
+            return self._json(dict(app='zackbot', version=VERSION, proof=proof))
         if not self._authed(): return self._json(dict(ok=False, error='not authorised - reopen ZackBot from its shortcut'), 401)
         try:
             if p.startswith('/icon/'):
@@ -745,10 +763,11 @@ class H(BaseHTTPRequestHandler):
         if origin is not None and origin not in ORIGINS:
             return self._json(dict(ok=False, error='forbidden origin'), 403)
         if not self._authed(): return self._json(dict(ok=False, error='not authorised - reopen ZackBot from its shortcut'), 401)
-        if 'application/json' not in (self.headers.get('Content-Type') or ''):
+        if (self.headers.get('Content-Type') or '').split(';')[0].strip().lower() != 'application/json':
             return self._json(dict(ok=False, error='JSON only'), 415)
-        n = int(self.headers.get('Content-Length') or 0)
-        if n > 1_000_000: return self._json(dict(ok=False, error='request too large'), 413)
+        try: n = int(self.headers.get('Content-Length') or 0)
+        except ValueError: n = -1
+        if not 0 <= n <= 1_000_000: return self._json(dict(ok=False, error='bad request size'), 413)
         try:
             body = json.loads(self.rfile.read(n) or b'{}')
             if not isinstance(body, dict): raise ValueError('bad request')
@@ -780,7 +799,9 @@ def clean_mgmt(m):
     out = {}
     for k, v in m.items():
         if v is None: continue
-        if k in MG_NUM: out[k] = _num(v, *MG_NUM[k], k)
+        if k in MG_NUM:
+            if k in ('be_r', 'tp1_r', 'tp_r', 'max_bars', 'trail_atr') and v in (0, '0', 0.0): out[k] = 0; continue   # 0 = off
+            out[k] = _num(v, *MG_NUM[k], k)
         elif k in MG_SUB:
             if not isinstance(v, dict): raise ValueError(f'bad {k} settings')
             out[k] = {kk: _num(vv, *MG_SUB[k][kk], f'{k}.{kk}') for kk, vv in v.items() if kk in MG_SUB[k] and vv is not None}
@@ -1018,9 +1039,10 @@ def existing_instance_token():
     try:
         tok = json.load(open(SESSION_F)).get('token', '')
         import urllib.request
-        rq = urllib.request.Request(f'http://127.0.0.1:{PORT}/api/ping', headers={'X-ZB-Token': tok})
-        r = json.loads(urllib.request.urlopen(rq, timeout=4).read())
-        if r.get('app') == 'zackbot' and r.get('ok'): return tok
+        nonce = secrets.token_hex(16)
+        r = json.loads(urllib.request.urlopen(f'http://127.0.0.1:{PORT}/api/ping?nonce={nonce}', timeout=4).read())
+        want = hmac.new(tok.encode(), nonce.encode(), 'sha256').hexdigest()
+        if tok and r.get('app') == 'zackbot' and hmac.compare_digest(str(r.get('proof', '')), want): return tok
     except Exception:
         pass
     return None

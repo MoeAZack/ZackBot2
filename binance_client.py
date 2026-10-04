@@ -13,7 +13,10 @@ class BinanceError(Exception):
 
 
 class AmbiguousOrder(Exception):
-    """An order request may or may not have reached Binance and its status could not be confirmed."""
+    """An order request may or may not have reached Binance and its status could not be confirmed.
+    .tag is a cancel tag for it ('c:<clientOrderId>' or 'ac:<clientAlgoId>') when one is known."""
+    def __init__(self, msg, tag=None):
+        super().__init__(msg); self.tag = tag
 
 
 TRANSIENT = (-1001, -1003, -1006, -1007, -1008, -1015)      # disconnected / rate limit / timeout / server busy
@@ -90,23 +93,32 @@ class Futures:
 
     def _order(self, params):
         """Idempotent order placement: a client order id is attached; on a timeout / 5xx the order is looked up
-        by that id instead of being re-sent, so a lost response can never create a second position."""
+        by that id instead of being re-sent, so a lost response can never create a second position.
+        A MARKET order that cannot be confirmed as filled raises AmbiguousOrder (tag = its client id)."""
         params = dict(params); params.setdefault('newClientOrderId', new_cid())
+        cid, tag = params['newClientOrderId'], f"c:{params['newClientOrderId']}"
         try:
             return self._req('POST', '/fapi/v1/order', params, signed=True, retry=False)
         except (requests.RequestException, AmbiguousOrder) as first:
             for i in range(4):
                 time.sleep(1 + i)
                 try:
-                    o = self.get_order(params['symbol'], params['newClientOrderId'])
-                except (requests.RequestException, BinanceError):
+                    o = self.get_order(params['symbol'], cid)
+                except (requests.RequestException, BinanceError, AmbiguousOrder):
                     continue
                 if o is None:                                   # never reached Binance -> safe to send once more
-                    return self._req('POST', '/fapi/v1/order', params, signed=True, retry=False)
-                if params.get('type') == 'MARKET' and o.get('status') not in ('FILLED', 'PARTIALLY_FILLED'):
-                    time.sleep(1); o = self.get_order(params['symbol'], params['newClientOrderId']) or o
+                    try:
+                        return self._req('POST', '/fapi/v1/order', params, signed=True, retry=False)
+                    except (requests.RequestException, AmbiguousOrder) as e:
+                        raise AmbiguousOrder(f'order {cid} resend unconfirmed: {e}', tag)
+                if params.get('type') == 'MARKET' and o.get('status') not in ('FILLED',):
+                    time.sleep(1)
+                    try: o = self.get_order(params['symbol'], cid) or o
+                    except (requests.RequestException, BinanceError, AmbiguousOrder): pass
+                    if o.get('status') != 'FILLED':
+                        raise AmbiguousOrder(f"market order {cid} status {o.get('status')}", tag)
                 return o
-            raise AmbiguousOrder(f"order {params['newClientOrderId']} unconfirmed after {first}")
+            raise AmbiguousOrder(f'order {cid} unconfirmed after {first}', tag)
 
     # ---------- public ----------
     def exchange_info(self):
@@ -179,9 +191,13 @@ class Futures:
         except BinanceError as e:
             if e.code not in (-4120, -1116, -1102, -4136):
                 raise
-            r = self._req('POST', '/fapi/v1/algoOrder', dict(algoType='CONDITIONAL', symbol=symbol, side=side,
-                          positionSide=pos_side, type='STOP_MARKET', quantity=qty, triggerPrice=stop_price,
-                          workingType='MARK_PRICE'), signed=True, retry=False)
+            acid = new_cid('za')
+            try:
+                r = self._req('POST', '/fapi/v1/algoOrder', dict(algoType='CONDITIONAL', symbol=symbol, side=side, clientAlgoId=acid,
+                              positionSide=pos_side, type='STOP_MARKET', quantity=qty, triggerPrice=stop_price,
+                              workingType='MARK_PRICE'), signed=True, retry=False)
+            except (requests.RequestException, AmbiguousOrder) as ex:
+                raise AmbiguousOrder(f'algo stop unconfirmed: {ex}', f'ac:{acid}')
             return f"a:{r['algoId']}"
 
     def cancel(self, symbol, tag):
@@ -191,6 +207,10 @@ class Futures:
         try:
             if kind == 'o':
                 self._req('DELETE', '/fapi/v1/order', dict(symbol=symbol, orderId=oid), signed=True)
+            elif kind == 'c':
+                self._req('DELETE', '/fapi/v1/order', dict(symbol=symbol, origClientOrderId=oid), signed=True)
+            elif kind == 'ac':
+                self._req('DELETE', '/fapi/v1/algoOrder', dict(clientAlgoId=oid), signed=True)
             else:
                 self._req('DELETE', '/fapi/v1/algoOrder', dict(algoId=oid), signed=True)
         except BinanceError as e:
