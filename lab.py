@@ -115,7 +115,7 @@ def resolve_sleeves(sleeves, book, universe=None, tf=None):
         cfg = dict(key=sl['key'], share=float(sl['share']) / tot, risk=float(sl['risk']), max_pos=int(sl['max_pos']),
                    sides=sl.get('sides') or S.STRATEGIES[sl['key']]['sides'], mgmt=copy.deepcopy(sl.get('mgmt') or {}),
                    symbols=[s for s in sy if s in book.syms], id=sl.get('id'))
-        for k in ('params', 'hours', 'vol_max_pct', 'kelly'):
+        for k in ('params', 'hours', 'vol_max_pct', 'kelly', 'when', 'trail_entry', 'pump_guard'):
             if sl.get(k) is not None: cfg[k] = copy.deepcopy(sl[k])
         out.append(cfg)
     return out

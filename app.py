@@ -270,10 +270,11 @@ def run_backtest_job(job_id, req):
                 symbols = CORE8 if sl['symbols'] == 'core8' else req['universe'] if sl['symbols'] == 'all' else sl['symbols']
                 cfg.append(dict(key=sl['key'], share=float(sl['share']) / gshare, risk=sl['risk'], max_pos=int(sl['max_pos']), id=sl.get('id'),
                                 sides=sl.get('sides'), mgmt=sl.get('mgmt', {}), symbols=[s for s in symbols if s in raw],
-                                hours=sl.get('hours'), vol_max_pct=sl.get('vol_max_pct'), kelly=sl.get('kelly')))
+                                hours=sl.get('hours'), vol_max_pct=sl.get('vol_max_pct'), kelly=sl.get('kelly'),
+                                **{k: sl[k] for k in ('when', 'trail_entry', 'pump_guard') if sl.get(k) is not None}))
             gstart = start * gshare / total_share if len(groups) > 1 else start
             tr, cv = BT.run(book, cfg, start=gstart, max_lev=float(req.get('max_lev', 10)), daily_halt=float(req.get('daily_halt', 0.08)),
-                            fund_per_bar=BT.FUND_PER_BAR * TF_SEC[tf] / 14400)
+                            fund_per_bar=BT.FUND_PER_BAR * TF_SEC[tf] / 14400, **(req.get('run_options') or {}))
             if len(tr): tr = tr.assign(tf=tf)
             trs.append(tr); cvs.append(cv); all_syms |= set(raw)
         if len(cvs) == 1:

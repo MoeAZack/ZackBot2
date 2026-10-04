@@ -69,6 +69,11 @@ class Futures:
                 if not retry or last: raise
                 time.sleep(min(8, 0.5 * 2 ** attempt + random.random())); continue
             code = data.get('code') if isinstance(data, dict) else None
+            if isinstance(code, str):                   # algo endpoints answer {"code":"200","msg":"success"}
+                try: code = int(code)
+                except ValueError: pass
+            if isinstance(data, dict) and str(data.get('msg', '')).lower() == 'success' and code in (200, '200'):
+                code = 200
             if code == -1021 and not last:              # clock drift: resync and re-sign (safe, request was rejected)
                 self.sync_time(); continue
             busy = r.status_code in (418, 429) or r.status_code >= 500 or code in TRANSIENT

@@ -439,3 +439,14 @@ def test_dust_is_not_flagged_untracked():
 def test_margin_type_error_does_not_block_entry():
     e, _ = mk_engine(); e.trade.fail.add('margin')
     assert e.open_lot(SL, 'BTCUSDT', 'LONG', SG, None, e.equity())
+
+
+def test_algo_cancel_string_200_is_success(monkeypatch):
+    import binance_client as BC
+    monkeypatch.setattr(BC.Futures, 'sync_time', lambda self: None)
+    c = BC.Futures('k', 's')
+    class R:
+        status_code = 200; headers = {}; content = b'{"code":"200","msg":"success"}'; text = content.decode()
+        def json(self): return {'code': '200', 'msg': 'success'}
+    monkeypatch.setattr(c.s, 'request', lambda *a, **k: R())
+    assert c.cancel('BTCUSDT', 'a:123') is True

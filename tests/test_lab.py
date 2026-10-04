@@ -256,3 +256,12 @@ def test_run_lab_job_json(book):
     stop = lab.run_lab_job('optimize', dict(sleeves=SL, days=200, n_trials=2, space=[dict(path='sleeves[0].risk', values=[0.01, 0.02])]),
                            get_book, should_stop=lambda: True)
     assert stop['cancelled'] is True
+
+
+def test_resolve_sleeves_keeps_v31_slot_options():
+    import lab as L, backtest as B
+    class FakeBook: syms = ['BTCUSDT', 'ETHUSDT']
+    sl = [dict(key='ema_mom', share=1, risk=0.02, max_pos=2, symbols='all', when='bull', trail_entry={'dev_atr': 1, 'max_bars': 3},
+               pump_guard={'max_candle_atr': 3})]
+    out = L.resolve_sleeves(sl, FakeBook())
+    assert out[0]['when'] == 'bull' and out[0]['trail_entry']['dev_atr'] == 1 and out[0]['pump_guard']['max_candle_atr'] == 3
