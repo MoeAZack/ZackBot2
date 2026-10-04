@@ -1,0 +1,54 @@
+{
+ "kpis": [
+  [
+   "Traders analysed",
+   "85"
+  ],
+  [
+   "Closed positions",
+   "5,782"
+  ],
+  [
+   "Median leverage",
+   "15x"
+  ],
+  [
+   "Median hold",
+   "6 h"
+  ],
+  [
+   "Median win rate",
+   "88%"
+  ],
+  [
+   "Median payoff (avg win / avg loss)",
+   "1.6"
+  ],
+  [
+   "Median max drawdown",
+   "14%"
+  ],
+  [
+   "Short trades (median share)",
+   "45%"
+  ],
+  [
+   "Lost >100% of margin on one trade",
+   "29 of 85"
+  ],
+  [
+   "Trade gold/stocks/oil perps in top-3",
+   "34 of 85"
+  ]
+ ],
+ "findings": [
+  "Most top lead traders are short-term traders, not bots: median hold 6 hours, 37 of 85 hold under 4 hours (scalpers).",
+  "They trade both directions: about 45% of positions are shorts. Our original bot was long-only \u2014 the new app lets any strategy go short or both.",
+  "Very high win rates (median 88%) with small average wins come from taking profit early and sitting through losers. 29 of 85 had a single trade lose more than 100% of its margin \u2014 the classic sign of averaging down without a stop. The app keeps a hard exchange stop on every trade, including DCA baskets.",
+  "Leverage drives the leaderboard: the 2,500%+ ROI traders run 15-20x and carry 38-55% max drawdowns. The low-drawdown group (MDD under 25%, 57 traders) are mostly fast scalpers at ~10x with worst trades around -23%.",
+  "40% of them trade TradFi perpetuals (gold XAU, memory stocks SNDK/SKHYNIX/MU, oil, SOXL) next to BTC/ETH and the hot coin of the moment (ZEC, HYPE). You can add these symbols on the Coins tab.",
+  "What we took from them: partial take-profit + breakeven (Squeeze, Pullback strategies), hot-coin momentum chase, shorts, and DCA safety orders \u2014 each with hard stops. What we avoided: no-stop averaging down.",
+  "Research also used: Concretum Group's Donchian-ensemble trend model (Sharpe >1.5 on top-20 coins), Freqtrade/NostalgiaForInfinity protections (cooldowns, max-drawdown guard), 3Commas DCA safety-order and multi-take-profit mechanics.",
+  "Caveat: the leaderboard shows survivors of the last 90-180 days; many high-ROI accounts disappear after one bad month."
+ ]
+}
