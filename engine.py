@@ -902,10 +902,13 @@ class Engine:
         """Exchange leverage = the configured cap (bounded by what Binance allows for the coin). Failure blocks the entry."""
         want = max(1, int(self.S['MAX_LEVERAGE']))
         if self._lev.get(sym) == want: return
-        self.trade.set_margin_type(sym, 'CROSSED')
+        try: self.trade.set_margin_type(sym, 'CROSSED')        # cross is Binance's default; a refusal here is not a safety issue
+        except Exception as e: log.info(f'{sym}: margin type not changed ({e})')
         mx = self.trade.leverage_max(sym)
         lev = min(want, mx) if mx else want
-        self.trade.set_leverage(sym, lev)
+        try: self.trade.set_leverage(sym, lev)
+        except Exception as e:                                  # transient testnet/API errors: one retry, then block the entry
+            log.info(f'{sym}: leverage retry after {e}'); time.sleep(1); self.trade.set_leverage(sym, lev)
         self._lev[sym] = want
 
     def open_lot(self, sl, sym, side, sg, df, eq, risk=None, manual=False, stop_atr=None, tp_r=None):

@@ -434,3 +434,8 @@ def test_zero_turns_management_off(app):
 def test_dust_is_not_flagged_untracked():
     e, _ = mk_engine(); e.trade.pos[('ETHUSDT', 'LONG')] = 0.002          # 0.10 USDT of ETH: below Binance's minimum
     e.reconcile(500); e.reconcile(500); assert not e.untracked
+
+
+def test_margin_type_error_does_not_block_entry():
+    e, _ = mk_engine(); e.trade.fail.add('margin')
+    assert e.open_lot(SL, 'BTCUSDT', 'LONG', SG, None, e.equity())
