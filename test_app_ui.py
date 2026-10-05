@@ -12,6 +12,9 @@ Writes <OUT>/ui_baseline/summary.json and screenshots per viewport. Exit code 0 
 Needs: pip install playwright  +  python -m playwright install chromium
 """
 import os, sys, json, time, tempfile, threading, shutil, socket, hmac, secrets, traceback
+if __name__ != '__main__' and 'pytest' in sys.modules:   # collected by pytest: this is a script, never run it on import
+    import pytest
+    pytest.skip('test_app_ui.py is the UI harness script - run: python test_app_ui.py (or run_ui_baseline.bat)', allow_module_level=True)
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
