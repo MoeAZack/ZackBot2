@@ -111,3 +111,28 @@ def test_release_refuses_off_windows():
         return
     r = subprocess.run([sys.executable, 'verify.py', 'release'], cwd=ROOT, capture_output=True, text=True, timeout=60)
     assert r.returncode == 2 and 'Windows PC only' in r.stdout
+
+def test_ui_harness_gets_seed_history_on_a_clean_checkout(monkeypatch, tmp_path):
+    """GitHub run #6 (T04): dev_out/ is not in Git, so the harness had no closed trades and its calendar-day flow timed out.
+    verify full now hands the harness the seeds replay 1 wrote in the same run; dev_out/ is only the fallback."""
+    root, out = tmp_path / 'repo', tmp_path / 'out'
+    (root / 'dev_out').mkdir(parents=True)
+    monkeypatch.setattr(verify, 'ROOT', str(root))
+    rep = verify.Report('full', str(out))
+    assert verify.ui_seeds(rep) == ([], 'none')
+    (root / 'dev_out' / 'seed_history.json').write_text('[]')
+    files, src = verify.ui_seeds(rep)
+    assert src.startswith('dev_out') and [os.path.basename(f) for f in files] == ['seed_history.json']
+    run1 = out / ('replay_' + verify.REPLAYS[0][0].split(':')[0].replace(' ', ''))
+    run1.mkdir(parents=True)
+    for n in ('seed_history.json', 'seed_missed.json'): (run1 / n).write_text('[]')
+    files, src = verify.ui_seeds(rep)
+    assert src == 'replay 1 (this run)' and sorted(os.path.basename(f) for f in files) == ['seed_history.json', 'seed_missed.json']
+    seen = {}
+    def fake_run(cmd, timeout, env=None):
+        seen['files'] = sorted(os.listdir(env['ZB_OUT']))
+        return 0, 'UI HARNESS: PASS - 171/171 checks passed\n', 1.0
+    monkeypatch.setattr(verify, 'run', fake_run)
+    assert verify.ui_step(rep)
+    assert seen['files'] == ['seed_history.json', 'seed_missed.json'], 'the harness must find the seeds in its ZB_OUT folder'
+    assert rep.data['ui']['seeds'] == 'replay 1 (this run)'
