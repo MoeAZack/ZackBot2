@@ -1,6 +1,6 @@
 # ZackBot owner overview
 
-*Last refreshed: 2026-10-05 23:05 Cairo (Africa/Cairo) by Claude, on branch `t04-ci`. This is the plain-language owner view. `ROADMAP.md` and `docs/reviews/` hold the detailed scope and evidence.*
+*Last refreshed: 2026-10-05 23:15 Cairo (Africa/Cairo) by Codex, on branch `t04-ci`. This is the plain-language owner view. `ROADMAP.md` and `docs/reviews/` hold the detailed scope and evidence.*
 
 ## Where we are now
 
@@ -11,19 +11,19 @@
 | Installed application | **Unchanged** since build `20261005-204405` (T03). T04 does not install anything. |
 | Latest accepted commit | `master` `8b6641f` (T03 accepted + this overview) |
 | Current ticket | **T04: automatic checks (CI): fast / full / release verification** |
-| Stage | **Review.** Code is pushed (`706fd33`); a pull request into `master` is open; waiting for the GitHub `verify full` run and Codex's review |
-| What Claude is doing | Opened the pull request, corrected the review document, posting **READY FOR CODEX** once the checks finish |
-| What Codex is reviewing | T04 on branch `t04-ci` (the exact commit is named in the pull-request comment) |
-| Your action | None right now. Later (I will ask first): run `verify.bat full` on the PC, then protect `master` on GitHub |
+| Stage | **Changes requested.** Codex reviewed handoff `b884a79` and confirmed three release-gate defects. T04 is not ready for the long Windows full run or acceptance. |
+| What Claude is doing | Fix the Windows fixture, testnet-before-drill gate and skip-to-PASS behavior; then post **FIXED FOR CODEX** with a new SHA and evidence |
+| What Codex is reviewing | The exact remote handoff `b884a790845fc90d15a69133313950c90378fb4f`; review: `docs/reviews/T04_review_gpt.md` |
+| Your action | **None.** Do not run `verify.bat full` yet; the automated review loop has returned the findings to Claude. |
 
 ## Latest test results
 
 | Where | Result |
 |---|---|
 | GitHub, run #1 (push of `706fd33`) | **verify fast PASS** (3 min 20 s) |
-| GitHub, pull request | `verify fast` + `verify full`: running, results go in the pull-request comment |
+| GitHub, pull request | `verify fast` PASS for `b884a79`; **verify full FAILED** with 168/171 UI checks (two mobile overflows and one calendar-flow timeout). Unit tests and both strict replays passed. |
 | Claude's cloud sandbox (Linux) | `verify fast` PASS; `verify full` PASS (215 tests passed, 1 Windows-only skip; both strict replays PASS; UI 171/171) |
-| Your Windows PC | Last full Windows run: T03, 207/207 tests. The T04 Windows run (`verify.bat full`) is still to do |
+| Your Windows PC | Codex targeted T04 tests: **1 failed, 23 passed**. Confirmed cross-platform newline bug in the new manifest test. The long T04 run is deferred. |
 
 All results above are simulated or automated test environments with a fake exchange. None placed real orders.
 
@@ -46,11 +46,17 @@ All results above are simulated or automated test environments with a fake excha
 | Open | High | Binance testnet refuses leverage changes on SOL/XRP (`-1000`) | Signals are skipped safely; no unsafe order. Fix: **T03a**, next after T04. |
 | Open | Medium | Panel can feel frozen during a long engine cycle | Planned in T06–T09 (core extraction). |
 | Open | Low | Risk tab "Compounding" tile clips at about 390 px wide | Next UI/mobile ticket. |
+| Open (T04 review) | High | `verify release` drills before proving PAPER/testnet and does not require PAPER to pass reconciliation | Must be fixed before any release drill. |
+| Open (T04 review) | High | Required replay and UI gates can be skipped while full/release reports PASS | Must be made fail-closed or moved to an explicitly partial diagnostic mode. |
+| Open (T04 review) | High | New manifest test fails on Windows because fixture bytes differ from its expected hash | Blocks the owner's Windows full verification. |
+| Open (T04 review) | High | GitHub full verification failed: mobile Signals overflow 22 px, Research overflow 12 px, and Trades calendar click timed out | Diagnose from the uploaded evidence; fix without weakening the UI requirements. |
+| Open (T04 review) | Medium | Lightweight secret check misses nested private filenames and all JSON contents | Strengthen in T04 or explicitly carry into T04b with planted tests. |
 | Fixed (T04 docs) | Low | T04 review document named commit ids from before the branch was rebuilt | Corrected on `t04-ci`. |
 
 ## Open risks
 
-- **CI maintenance (new, low):** GitHub warns that three standard actions used by the checks target an old Node version, and that the Linux runner image changes to Ubuntu 26 on 2026-10-19. Nothing fails today. Proposed fix as a tiny follow-up (T04b): pin the runner image and update the three actions.
+- **T04 release gates (high):** Codex found three confirmed defects in the first handoff. No installer, rollback drill or long Windows run is requested while they are open.
+- **CI maintenance (low):** GitHub warns that three standard actions used by the checks target an old Node version, and that the Linux runner image changes to Ubuntu 26 on 2026-10-19. Nothing fails today. Proposed fix as a tiny follow-up (T04b): pin the runner image and update the three actions.
 - No protected `master` yet: comes right after T04 is accepted.
 - Installer logic is long Windows batch code: T03b.
 
