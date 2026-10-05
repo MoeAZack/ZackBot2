@@ -1,6 +1,9 @@
 @echo off
 title ZackBot installer
 setlocal EnableExtensions
+rem Windows PowerShell 5.1 must use its OWN module paths. A PSModulePath inherited from another shell (e.g. PowerShell 7)
+rem made Get-FileHash unavailable during the T03 drill and emptied the checksum. Cleared for this window only.
+set "PSModulePath="
 set SRC=%~dp0
 set ROOT=%LOCALAPPDATA%\ZackBot
 set DST=%ROOT%\src
@@ -43,6 +46,11 @@ if "%BUILD_ID%"=="" goto fail_copy
 > "%STAGE%\src\build_info.py" echo BUILD_ID = '%BUILD_ID%'
 set CHK=powershell -NoProfile -ExecutionPolicy Bypass -File "%STAGE%\src\installer_check.ps1"
 echo   build id %BUILD_ID% >> "%LOG%"
+rem Preflight: the checksum helper must work in THIS environment before anything else (it is needed for the backup,
+rem the swap and the rollback). Fails in seconds instead of after the tests and the build.
+call :hash "%STAGE%\src\app.py" PREHASH
+if "%PREHASH%"=="" goto fail_helper
+echo   checksum helper ok >> "%LOG%"
 
 echo [2/8] Preparing the private build environment (pinned versions only)...
 set PY=python
@@ -202,7 +210,10 @@ goto fail
 set WHY=the new exe failed its self-test (missing files or wrong version)
 goto fail
 :fail_hash
-set WHY=could not checksum the new exe
+set WHY=could not checksum the new exe - the reason is in the log
+goto fail
+:fail_helper
+set WHY=the checksum helper does not work in this window - nothing was changed; the reason is in the log
 goto fail
 :fail_prevdel
 set WHY=could not remove the old backup ZackBot.prev.exe (is it running?)
@@ -234,7 +245,7 @@ exit /b 1
 rem ---------------------------------------------------------------- helpers
 :hash
 set %2=
-for /f %%h in ('%CHK% hash "%~1"') do set %2=%%h
+for /f %%h in ('%CHK% hash "%~1" 2^>^>"%LOG%"') do set %2=%%h
 exit /b 0
 
 :stopbot

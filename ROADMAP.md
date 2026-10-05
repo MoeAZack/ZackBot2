@@ -347,7 +347,8 @@ A high score **never** changes settings automatically.
 |---|---|---|---|
 | T01 | Git baseline | No behaviour change | ✅ Done 2026-10-05 (history in `%LOCALAPPDATA%\ZackBot\history.git`, tag v3.2-rc2) |
 | T02 | Playwright on Windows | No behaviour change | ✅ Done 2026-10-05 (accepted after 3 reviews: Windows 171/171 UI checks, 192/192 tests, strict replays unchanged; branch `t02-ui-baseline` @ 2fc8642) |
-| T03 | Installer rollback drill ("simulate failed launch" switch) | Deployment only | ◐ In progress |
+| T03 | Installer rollback drill ("simulate failed launch" switch) | Deployment only | ◐ Review 1 (2026-10-05): drill stopped safely at step 6 - checksum helper failed under the Windows launcher (Get-FileHash unavailable). Fixed: .NET-only helper, PSModulePath reset, checksum preflight, helper tests. Pending: Windows drill PASS + re-review |
+| T03a | Leverage-refusal fallback: when Binance refuses a leverage change (testnet `-1000` on every SOLUSDT/XRPUSDT attempt so far), read the coin's current leverage (read-only); enter only if it is at or below the cap, otherwise skip as today; count refusals per coin in the panel | E-class (order path): tests + strict replays | ⬜ After T03 |
 | T04 | CI fast/full pipelines (moved up: every later ticket is checked by it) | No behaviour change | ⬜ |
 | T05 | Fill telemetry (maker/market expected vs actual) | Observe | ⬜ |
 | T06 | Shared-core contracts, reason codes and `AccountContext` spec | No behaviour change | ⬜ |

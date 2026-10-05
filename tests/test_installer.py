@@ -124,3 +124,104 @@ def test_switch_is_inert_without_the_flag():
     assert src.count('--simulate-failed-launch') == 1, 'the switch must be read in exactly one place'
     i = src.index("if '--simulate-failed-launch' in sys.argv:")
     assert src.index("if '--selftest' in sys.argv:") < i < src.index('if port_in_use():'), 'switch must sit before the port check'
+
+
+# ---------------------------------------------------------------- installer_check.ps1 (T03 review: hash failed from batch)
+import hashlib, hmac as _hmac, http.server, json, shutil, threading, urllib.parse
+
+PS1 = os.path.join(ROOT, 'installer_check.ps1')
+
+
+def _ps_runner():
+    """How the installer runs the helper: on Windows cmd.exe -> Windows PowerShell 5.1 (exactly like build_app.bat);
+    elsewhere PowerShell 7 if installed (dev box / CI). None -> skip."""
+    if os.name == 'nt' and shutil.which('powershell'):
+        return lambda args, env=None: subprocess.run(
+            ['cmd', '/c', 'powershell -NoProfile -ExecutionPolicy Bypass -File "%s" %s' % (PS1, ' '.join('"%s"' % a for a in args))],
+            capture_output=True, text=True, env=env, timeout=120)
+    pw = shutil.which('pwsh') or ('/opt/pwsh/pwsh' if os.path.exists('/opt/pwsh/pwsh') else None)
+    if pw:
+        return lambda args, env=None: subprocess.run([pw, '-NoProfile', '-File', PS1] + list(args),
+                                                     capture_output=True, text=True, env=env, timeout=120)
+    return None
+
+
+RUN_PS = _ps_runner()
+needs_ps = pytest.mark.skipif(RUN_PS is None, reason='no PowerShell on this machine')
+
+
+def _env(**kw):
+    e = dict(os.environ); e.update(kw); return e
+
+
+@needs_ps
+def test_hash_helper_matches_python_sha256():
+    want = hashlib.sha256(_read('README.md')).hexdigest().upper()
+    r = RUN_PS(['hash', os.path.join(ROOT, 'README.md')])
+    assert r.returncode == 0 and r.stdout.strip() == want, (r.returncode, r.stdout, r.stderr[-400:])
+
+
+@needs_ps
+def test_hash_helper_ignores_a_foreign_psmodulepath():
+    """The T03 failure: a PSModulePath from another PowerShell made Get-FileHash disappear. The helper must not care."""
+    foreign = (r'C:\Program Files\PowerShell\7\Modules;C:\nowhere\Modules' if os.name == 'nt' else '/nowhere/ps7/Modules')
+    want = hashlib.sha256(_read('README.md')).hexdigest().upper()
+    r = RUN_PS(['hash', os.path.join(ROOT, 'README.md')], env=_env(PSModulePath=foreign))
+    assert r.returncode == 0 and r.stdout.strip() == want, (r.returncode, r.stdout, r.stderr[-400:])
+
+
+@needs_ps
+def test_hash_helper_reports_why_it_failed():
+    t = time.time()
+    r = RUN_PS(['hash', os.path.join(ROOT, 'no-such-file.exe')])
+    assert r.returncode == 1 and r.stdout.strip() == '' and 'FAILED' in r.stderr and 'not found' in r.stderr, (r.stdout, r.stderr)
+    assert time.time() - t < 30, 'a missing file must not wait for the scanner-lock retries'
+
+
+def test_hash_helper_uses_no_cmdlets():
+    """Only .NET and the language: a module problem in the caller's environment cannot break it again."""
+    src = '\n'.join(l for l in open(PS1, encoding='utf-8').read().split('\n') if not l.lstrip().startswith('#'))
+    own = set(re.findall(r'^function\s+([A-Za-z]+-[A-Za-z0-9]+)', src, re.M))
+    used = set(re.findall(r'(?<![\w.$:\[-])([A-Z][a-z]+-[A-Z][A-Za-z0-9]+)\b', src)) - own
+    assert not used, f'installer_check.ps1 calls cmdlets: {sorted(used)}'
+
+
+@needs_ps
+def test_ping_helper_requires_build_id_and_hmac_proof():
+    tok, state = 'tok-' + os.urandom(4).hex(), {'build': 'B1', 'key': None}
+    state['key'] = tok
+
+    class H(http.server.BaseHTTPRequestHandler):
+        def log_message(self, *a): pass
+
+        def do_GET(self):
+            n = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query).get('nonce', [''])[0]
+            body = json.dumps(dict(app='zackbot', version='3.2', build=state['build'],
+                                   proof=_hmac.new(state['key'].encode(), n.encode(), 'sha256').hexdigest())).encode()
+            self.send_response(200); self.send_header('Content-Type', 'application/json'); self.end_headers(); self.wfile.write(body)
+
+    srv = http.server.ThreadingHTTPServer(('127.0.0.1', 0), H)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    with tempfile.TemporaryDirectory() as tmp:
+        os.makedirs(os.path.join(tmp, 'ZackBot'))
+        with open(os.path.join(tmp, 'ZackBot', 'session.json'), 'w') as f: json.dump({'token': tok}, f)
+        env = _env(LOCALAPPDATA=tmp, ZB_PING_PORT=str(srv.server_address[1]))   # never the real bot's port
+        try:
+            ok = RUN_PS(['ping', 'B1', '5'], env=env)
+            assert ok.returncode == 0 and 'ping ok' in ok.stdout, (ok.stdout, ok.stderr[-300:])
+            assert RUN_PS(['ping', 'B2', '2'], env=env).returncode == 1, 'wrong build id must fail'
+            state['key'] = 'someone-else'
+            assert RUN_PS(['ping', 'B1', '2'], env=env).returncode == 1, 'a process without our token must fail'
+        finally:
+            srv.shutdown()
+
+
+@needs_installer
+def test_installer_isolates_powershell_and_checks_the_helper_first():
+    L = _lines('build_app.bat')
+    first_ps = _idx(L, lambda l: 'powershell' in l.lower() and not l.startswith('rem'), 'first PowerShell call')[0]
+    clear = _idx(L, lambda l: l == 'set "PSModulePath="', 'PSModulePath reset')[0]
+    pre = _idx(L, lambda l: l.startswith('call :hash') and 'PREHASH' in l, 'checksum preflight')[0]
+    tests = _idx(L, lambda l: '-m pytest' in l, 'test step')[0]
+    assert clear < first_ps and pre < tests, 'reset PSModulePath before any PowerShell; checksum preflight before the tests'
+    assert any("2^>^>\"%LOG%\"" in l for l in L if 'hash "%~1"' in l), 'helper errors must reach build.log'
