@@ -346,7 +346,7 @@ A high score **never** changes settings automatically.
 | ID | Ticket | Mode | Status |
 |---|---|---|---|
 | T01 | Git baseline | No behaviour change | ✅ Done 2026-10-05 (history in `%LOCALAPPDATA%\ZackBot\history.git`, tag v3.2-rc2) |
-| T02 | Playwright on Windows | No behaviour change | ◐ Harness done 2026-10-05 (165/165 in dev sandbox, tests + strict replays unchanged). Pending: Windows run (`run_ui_baseline.bat`) + review |
+| T02 | Playwright on Windows | No behaviour change | ◐ Review 1: 165/165 on Windows; 2 P1 + 3 P2 + 2 P3 findings fixed 2026-10-05 (170/170 in dev sandbox). Pending: plain Windows run of `run_ui_baseline.bat`, clean Git branch, re-review |
 | T03 | Installer rollback drill ("simulate failed launch" switch) | Deployment only | ⬜ |
 | T04 | CI fast/full pipelines (moved up: every later ticket is checked by it) | No behaviour change | ⬜ |
 | T05 | Fill telemetry (maker/market expected vs actual) | Observe | ⬜ |
