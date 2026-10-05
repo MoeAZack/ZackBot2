@@ -43,6 +43,12 @@ def finish(extra=None):
     print(f"\nUI HARNESS: {'PASS' if not fails else 'FAIL'} - {len(CHECKS) - len(fails)}/{len(CHECKS)} checks passed"
           f" - summary {os.path.join(BASE, 'summary.json')}")
     for c in fails: print('  failed:', c['name'], '-', c['detail'][:200])
+    import logging                             # release the app's log files (Windows locks open files), then remove the temp folder
+    for h in list(logging.getLogger().handlers) + [h for lg in logging.Logger.manager.loggerDict.values() if isinstance(lg, logging.Logger) for h in lg.handlers]:
+        try: h.close()
+        except Exception: pass
+    shutil.rmtree(TMP, ignore_errors=True)
+    print('temp folder', 'removed' if not os.path.exists(TMP) else f'NOT fully removed: {TMP}')
     sys.stdout.flush()
     os._exit(0 if not fails else 1)            # daemon server threads: exit hard, with the right code
 
@@ -51,7 +57,28 @@ def free_port():
 PORT = int(os.environ.get('ZB_UI_PORT') or free_port())
 
 # ---------------------------------------------------------------- isolated app on a fake exchange
+# Playwright finds Chromium through LOCALAPPDATA on Windows; pin the real location BEFORE LOCALAPPDATA is redirected below
+# (review finding T02-P1). run_ui_baseline.bat sets PLAYWRIGHT_BROWSERS_PATH explicitly; this covers direct runs.
+if os.name == 'nt' and not os.environ.get('PLAYWRIGHT_BROWSERS_PATH') and os.environ.get('LOCALAPPDATA'):
+    os.environ['PLAYWRIGHT_BROWSERS_PATH'] = os.path.join(os.environ['LOCALAPPDATA'], 'ms-playwright')
 TMP = tempfile.mkdtemp(prefix='zb_ui_'); os.environ['LOCALAPPDATA'] = TMP
+
+# Outbound network guard for THIS process: only loopback may be resolved/connected. Anything else is blocked and recorded,
+# and the run fails if the app tried it (review finding T02-P2: coin icons used to be fetched from Binance's CDN).
+import socket as _sock
+NET_BLOCKED = []
+_LOCAL = ('127.0.0.1', 'localhost', '::1')
+_orig_gai, _orig_connect = _sock.getaddrinfo, _sock.socket.connect
+def _guard_gai(host, *a, **k):
+    if str(host) not in _LOCAL: NET_BLOCKED.append(f'resolve {host}'); raise OSError(f'harness: network blocked ({host})')
+    return _orig_gai(host, *a, **k)
+def _guard_connect(self, addr):
+    h = addr[0] if isinstance(addr, tuple) else str(addr)
+    if self.family in (_sock.AF_INET, _sock.AF_INET6) and h not in _LOCAL: NET_BLOCKED.append(f'connect {h}'); raise OSError(f'harness: network blocked ({h})')
+    return _orig_connect(self, addr)
+_sock.getaddrinfo, _sock.socket.connect = _guard_gai, _guard_connect
+for _v in ('HTTP_PROXY', 'HTTPS_PROXY', 'http_proxy', 'https_proxy', 'ALL_PROXY', 'all_proxy'): os.environ.pop(_v, None)
+os.environ['NO_PROXY'] = '127.0.0.1,localhost'
 os.makedirs(os.path.join(TMP, 'ZackBot'), exist_ok=True)
 for f in ('history', 'missed'):              # seeds written by test_engine_sim.py (optional)
     for src in (os.path.join(OUT, f'seed_{f}.json'), os.path.join(HERE, 'dev_out', f'seed_{f}.json')):
@@ -97,6 +124,9 @@ import binance_client; binance_client.Futures = Fake
 import engine; engine.Futures = Fake
 import app; app.Futures = Fake
 app.load_cfg = lambda: dict(MODE='paper', API_KEY='k', API_SECRET='s')
+class _NeverDownload(dict):                 # coin icons: serve bundled/cached files only, never download (offline harness)
+    def get(self, k, d=None): return time.time()
+app._ICON_FAIL = _NeverDownload()
 # private port: the real ZackBot (8765) can keep running while this harness runs
 app.PORT = PORT
 app.HOSTS = (f'127.0.0.1:{PORT}', f'localhost:{PORT}')
@@ -118,7 +148,7 @@ while time.time() - t0 < 90:                 # wait for our own instance: sessio
             TOK = tok; break
     except Exception: pass
     time.sleep(0.5)
-if not check('app started (own instance proved by HMAC ping)', TOK, f'no answer on {U} within 90 s'): finish()
+if not check('app started (own instance proved by HMAC ping)', TOK, '' if TOK else f'no valid answer on {U} within 90 s'): finish()
 print(f'app up on {U} in {time.time() - t0:.1f}s, data {app.DATA}')
 
 # ---------------------------------------------------------------- auth boundary (no token / foreign origin)
@@ -185,9 +215,13 @@ try:
         check('job: backtest done with stats', j['status'] == 'done' and j.get('result', {}).get('stats'), j.get('error') or j['status'])
         js = wait_job(P('/api/study', {'days': 365})['msg'], limit=900, step=3)
         check('job: study done', js['status'] == 'done' and js.get('ids'), js.get('error') or js['status'])
-        res = {i.split('-')[-1]: G('/api/backtest/' + i) for i in js.get('ids', [])}
+        want = [k2 for k2 in app.PRESETS if k2 != 'original']          # what /api/study promises to run
+        ids = js.get('ids', [])
+        res = {i[len(js['id']) + 1:] if i.startswith(js['id'] + '-') else i: G('/api/backtest/' + i) for i in ids}
         bad = {k2: (v.get('status'), v.get('error')) for k2, v in res.items() if not (v.get('status') == 'done' and (v.get('result') or {}).get('stats'))}
-        check(f'job: study has a result for every profile ({len(res)})', res and not bad, bad)
+        check(f'job: study ran every profile exactly once ({len(want)} expected)', len(ids) == len(set(ids)) == len(want) and sorted(res) == sorted(want),
+              f'expected {sorted(want)}, got {sorted(res)}')
+        check(f'job: study has a successful result for all {len(want)} profiles', len(res) == len(want) and not bad, bad)
         jm = wait_job(P('/api/backtest', {'name': 'mixed tf', 'sleeves': st['presets']['boost_active']['sleeves'], 'days': 180, 'tf': '4h', 'start': 500, 'max_lev': 10, 'universe': engine.CORE8})['msg'])
         check('job: mixed-timeframe backtest done', jm['status'] == 'done', jm.get('error') or jm['status'])
     r = _S.get(U + '/icon/BTC'); check('api: coin icon served as image', r.status_code == 200 and 'image' in (r.headers.get('Content-Type') or ''), r.status_code)
@@ -204,7 +238,7 @@ CONSOLE = {}                                   # context name -> [{type, text, u
 NETFAIL = {}
 EXPECTED_NOISE = ('/icon/',)                   # coin icons: the fake exchange has no network, a missing icon falls back to text
 
-def wait_until(fn, timeout=8.0, step=0.15):
+def wait_until(fn, timeout=20.0, step=0.15):
     t = time.time()
     while time.time() - t < timeout:
         try:
@@ -215,6 +249,10 @@ def wait_until(fn, timeout=8.0, step=0.15):
 
 def new_page(browser, name, w, h):
     ctx = browser.new_context(viewport={'width': w, 'height': h}, device_scale_factor=1)
+    def _route(r):                             # the panel must not load anything from the internet
+        if r.request.url.startswith(U): return r.continue_()
+        NET_BLOCKED.append(f'browser {r.request.url[:120]}'); return r.abort()
+    ctx.route('**/*', _route)
     pg = ctx.new_page(); CONSOLE[name] = []; NETFAIL[name] = []
     pg.on('console', lambda m: m.type in ('error', 'warning') and CONSOLE[name].append(dict(type=m.type, text=m.text[:300], url=(m.location or {}).get('url', ''))))
     pg.on('pageerror', lambda e: CONSOLE[name].append(dict(type='pageerror', text=str(e)[:300], url='')))
@@ -247,10 +285,16 @@ def goto_tab(pg, t, narrow):
     if narrow and pg.locator('#hamb').is_visible():
         pg.click('#hamb'); pg.wait_for_selector('#side.open', timeout=3000)
     pg.click(f'#n_{t}')
-    return wait_until(lambda: pg.evaluate(f"document.getElementById('t_{t}').classList.contains('on') && document.getElementById('n_{t}').getAttribute('aria-selected')==='true'"), 5)
+    return wait_until(lambda: pg.evaluate(f"document.getElementById('t_{t}').classList.contains('on') && document.getElementById('n_{t}').getAttribute('aria-selected')==='true'"), 20)
 
 def real_errors(name):
     return [c for c in CONSOLE[name] if c['type'] in ('error', 'pageerror') and not any(n in (c['url'] + c['text']) for n in EXPECTED_NOISE)]
+
+def click_save(pg, selector, timeout=30):
+    """Click something that POSTs /api/settings and wait for the server's answer (the engine can hold it for seconds)."""
+    with pg.expect_response(lambda r: '/api/settings' in r.url and r.request.method == 'POST', timeout=timeout * 1000) as ri:
+        pg.click(selector)
+    return ri.value.status
 
 def toast_text(pg):
     return pg.evaluate("(()=>{const t=document.getElementById('toast');return t&&t.style.display==='block'?t.textContent:''})()")
@@ -265,6 +309,9 @@ try:
             pg.goto(f'{U}/?t={TOK}')
             check(f'{vp}: panel loads and first status renders', wait_until(lambda: 'OFFLINE' not in pg.inner_text('#status') and pg.evaluate('typeof D==="object" && D!==null'), 20), pg.inner_text('#status'))
             narrow = w <= 640
+            side = pg.evaluate("(()=>{const a=document.querySelector('aside'),sp=document.querySelector('#n_dash span');return {w:a.getBoundingClientRect().width,label:getComputedStyle(sp).display!=='none'}})()")
+            if vp == 'desktop': check('desktop: full sidebar with labels', side['w'] > 150 and side['label'], side)
+            if vp == 'tablet': check('tablet: compact icon sidebar (labels hidden)', side['w'] <= 80 and not side['label'], side)
             if narrow: check(f'{vp}: menu button shown, sidebar hidden until opened', pg.locator('#hamb').is_visible() and not pg.evaluate("document.getElementById('side').classList.contains('open')"))
             for t in TABS:
                 ok = goto_tab(pg, t, narrow); time.sleep(0.6)
@@ -287,37 +334,69 @@ try:
         pg.goto(f'{U}/?t={TOK}'); wait_until(lambda: pg.evaluate('typeof D==="object" && D!==null'), 20)
         S0 = G('/api/status')['settings']
         goto_tab(pg, 'set', False)
-        wait_until(lambda: pg.inner_text('#ver').strip(), 5); ver = pg.inner_text('#ver')
+        wait_until(lambda: pg.inner_text('#ver').strip(), 20); ver = pg.inner_text('#ver')
         check('settings: version and build id shown', app.VERSION in ver and (app.BUILD_ID == 'dev' or str(app.BUILD_ID) in ver), ver[:120])
         goto_tab(pg, 'risk', False); time.sleep(0.5)
         shown = float(pg.input_value('#DAILY_LOSS_HALT') or 'nan')
         check('settings load: daily loss halt field equals saved value', abs(shown - S0['DAILY_LOSS_HALT'] * 100) < 0.05, f'field {shown} vs saved {S0["DAILY_LOSS_HALT"] * 100}')
         new = shown + 1 if shown < 50 else shown - 1
         pg.fill('#DAILY_LOSS_HALT', str(new)); pg.dispatch_event('#DAILY_LOSS_HALT', 'input')
-        check('settings: unsaved-changes bar appears', wait_until(lambda: pg.locator('#usRisk').is_visible(), 3))
-        pg.click('#t_risk button:has-text("Save limits")')
-        check('settings save: server stored the new value', wait_until(lambda: abs(G('/api/status')['settings']['DAILY_LOSS_HALT'] * 100 - new) < 0.05, 6))
-        check('settings save: "Saved" confirmation shown', wait_until(lambda: 'Saved' in toast_text(pg), 4), toast_text(pg))
+        check('settings: unsaved-changes bar appears', wait_until(lambda: pg.locator('#usRisk').is_visible(), 20))
+        click_save(pg, '#t_risk button:has-text("Save limits")')
+        check('settings save: server stored the new value', wait_until(lambda: abs(G('/api/status')['settings']['DAILY_LOSS_HALT'] * 100 - new) < 0.05, 20))
+        check('settings save: "Saved" confirmation shown', wait_until(lambda: 'Saved' in toast_text(pg), 20), toast_text(pg))
         pg.reload(); wait_until(lambda: pg.evaluate('typeof D==="object" && D!==null'), 20); goto_tab(pg, 'risk', False); time.sleep(0.5)
         check('settings round-trip: value survives a reload', abs(float(pg.input_value('#DAILY_LOSS_HALT')) - new) < 0.05, pg.input_value('#DAILY_LOSS_HALT'))
-        pg.fill('#DAILY_LOSS_HALT', str(shown)); pg.dispatch_event('#DAILY_LOSS_HALT', 'input'); pg.click('#t_risk button:has-text("Save limits")')
-        check('settings: original value restored', wait_until(lambda: abs(G('/api/status')['settings']['DAILY_LOSS_HALT'] - S0['DAILY_LOSS_HALT']) < 1e-9, 6))
+        pg.fill('#DAILY_LOSS_HALT', str(shown)); pg.dispatch_event('#DAILY_LOSS_HALT', 'input'); click_save(pg, '#t_risk button:has-text("Save limits")')
+        check('settings: original value restored', wait_until(lambda: abs(G('/api/status')['settings']['DAILY_LOSS_HALT'] - S0['DAILY_LOSS_HALT']) < 1e-9, 20))
         goto_tab(pg, 'dash', False); time.sleep(0.4)
         bg0 = G('/api/status')['settings'].get('RUN_IN_BACKGROUND')
-        pg.click('label:has(#sw_bg)')
-        check('settings: switch saves immediately', wait_until(lambda: G('/api/status')['settings'].get('RUN_IN_BACKGROUND') == (not bg0), 6))
-        pg.click('label:has(#sw_bg)'); wait_until(lambda: G('/api/status')['settings'].get('RUN_IN_BACKGROUND') == bg0, 6)
-        # existing harness flows (screenshots kept as the visual baseline)
-        flows = [('trades: open view', lambda: (goto_tab(pg, 'trades', False), pg.click('#trView [data-v="open"]')), 'flows/trades_open.png'),
-                 ('trades: missed view', lambda: pg.click('#trView [data-v="missed"]'), 'flows/trades_missed.png'),
-                 ('dash: explanations off', lambda: (goto_tab(pg, 'dash', False), pg.click('label:has(#helpsw)')), 'flows/dash_nohelp.png'),
-                 ('dash: explanations back on', lambda: pg.click('label:has(#helpsw)'), None),
-                 ('strat: combine profile', lambda: (goto_tab(pg, 'strat', False), pg.click('.preset:has-text("Active (1h") button:has-text("Combine")')), 'flows/strat_combine.png'),
-                 ('trades: calendar day', lambda: (goto_tab(pg, 'trades', False), pg.click('#trView [data-v="closed"]'), time.sleep(.5), pg.click('.cal .d.has >> nth=0')), 'flows/trades_day.png'),
-                 ('strat: advanced slot settings', lambda: (goto_tab(pg, 'strat', False), pg.click('button:has-text("Advanced") >> nth=0')), 'flows/strat_advanced.png')]
-        if not QUICK: flows.insert(3, ('backtest: open saved result', lambda: (goto_tab(pg, 'bt', False), pg.click('#bt_list button:has-text("View") >> nth=0')), 'flows/bt_detail.png'))
+        click_save(pg, 'label:has(#sw_bg)')
+        check('settings: switch saves immediately', wait_until(lambda: G('/api/status')['settings'].get('RUN_IN_BACKGROUND') == (not bg0), 20))
+        click_save(pg, 'label:has(#sw_bg)')
+        check('settings: switch restored', wait_until(lambda: G('/api/status')['settings'].get('RUN_IN_BACKGROUND') == bg0, 20))
+        # deep flows: each one asserts the state it should produce (review finding T02-P2: "no exception" is not a check)
+        E = pg.evaluate
+        n_missed = len(G('/api/missed').get('missed', []))
+        def f_open():
+            goto_tab(pg, 'trades', False); pg.click('#trView [data-v="open"]')
+            return wait_until(lambda: pg.is_visible('#trOpen') and not pg.is_visible('#trClosed') and all(c in pg.inner_text('#openTable') for c in ('ETH', 'SOL'))), \
+                'open view shows both open trades'
+        def f_missed():
+            pg.click('#trView [data-v="missed"]')
+            return wait_until(lambda: pg.is_visible('#trMissed') and (pg.locator('#missTable tbody tr').count() > 0 if n_missed else True)), \
+                f'missed view visible with rows ({n_missed} missed signals in the API)'
+        def f_help_off():
+            goto_tab(pg, 'dash', False); pg.click('label:has(#helpsw)')
+            return wait_until(lambda: E("document.body.classList.contains('nohelp')")), 'explanations hidden (body.nohelp)'
+        def f_help_on():
+            pg.click('label:has(#helpsw)'); return wait_until(lambda: not E("document.body.classList.contains('nohelp')")), 'explanations shown again'
+        def f_bt():
+            goto_tab(pg, 'bt', False); pg.click('#bt_list button:has-text("View") >> nth=0')
+            return wait_until(lambda: pg.is_visible('#bt_detail') and E('!!(BTCUR&&BTCUR.stats&&BTCUR.stats.trades>0)')), 'saved backtest result opened with its stats'
+        def f_combine():
+            goto_tab(pg, 'strat', False); before = E('D.settings.SLEEVES.length')
+            pg.click('.preset:has-text("Active (1h") button:has-text("Combine")')
+            return wait_until(lambda: E('slDirty') and E('SLV.length') > before and pg.is_visible('#usStrat')), 'combined slots added, unsaved bar shown'
+        def f_day():
+            goto_tab(pg, 'trades', False); pg.click('#trView [data-v="closed"]'); time.sleep(.4)
+            pg.click('.cal .d.has >> nth=0')
+            ok = wait_until(lambda: E('trDay!==null') and pg.is_visible('#dayChip button') and ' of ' in pg.inner_text('#trCount'))
+            txt = pg.inner_text('#trCount'); n = int(txt.split()[0]) if txt.split()[0].isdigit() else -1
+            return ok and 0 < n < len(CH_HIST), f'day filter: {txt}'
+        def f_adv():
+            goto_tab(pg, 'strat', False); pg.click('button:has-text("Advanced") >> nth=0')
+            return wait_until(lambda: E("document.getElementById('sl0_advp').classList.contains('show') && document.getElementById('sl0_adv').getAttribute('aria-expanded')==='true'")), \
+                'advanced settings panel open'
+        CH_HIST = G('/api/history').get('history', [])
+        flows = [('trades: open view', f_open, 'flows/trades_open.png'), ('trades: missed view', f_missed, 'flows/trades_missed.png'),
+                 ('dash: explanations off', f_help_off, 'flows/dash_nohelp.png'), ('dash: explanations back on', f_help_on, None),
+                 ('strat: combine profile', f_combine, 'flows/strat_combine.png'), ('trades: calendar day', f_day, 'flows/trades_day.png'),
+                 ('strat: advanced slot settings', f_adv, 'flows/strat_advanced.png')]
+        if not QUICK: flows.insert(4, ('backtest: open saved result', f_bt, 'flows/bt_detail.png'))
         for name, fn, sp in flows:
-            try: fn(); time.sleep(1); sp and shot(pg, sp, tab=pg.evaluate('CUR')); check('flow: ' + name, True)
+            try:
+                ok, what = fn(); time.sleep(.5); sp and shot(pg, sp, tab=E('CUR')); check(f'flow: {name} - {what}', ok)
             except Exception as ex: check('flow: ' + name, False, str(ex).splitlines()[0])
         pg.set_viewport_size({'width': 1560, 'height': 2600})
         for cid, t in (('posCards', 'dash'), ('resLong', 'res'), ('rrCard', 'risk'), ('gridCard', 'strat'), ('labCard', 'bt'), ('tgcCard', 'set'), ('res31', 'res'), ('roCard', 'bt')):
@@ -341,29 +420,29 @@ try:
         status = lambda: pg.inner_text('#status')
         pg.route('**/api/status', lambda r: r.fulfill(status=500, body='Internal error', content_type='text/plain'))
         pg.evaluate('load()')
-        check('api failure: HTTP 500 shows APP OFFLINE', wait_until(lambda: 'OFFLINE' in status(), 6), status())
+        check('api failure: HTTP 500 shows APP OFFLINE', wait_until(lambda: 'OFFLINE' in status(), 20), status())
         shot(pg, 'failures/status_500.png', full=False)
         check('api failure: panel stays usable while offline', goto_tab(pg, 'risk', False) and goto_tab(pg, 'dash', False))
         pg.unroute('**/api/status'); pg.evaluate('load()')
-        check('api failure: recovers when the API answers again', wait_until(lambda: 'OFFLINE' not in status(), 8), status())
+        check('api failure: recovers when the API answers again', wait_until(lambda: 'OFFLINE' not in status(), 20), status())
         pg.route('**/api/status', lambda r: r.abort('connectionrefused'))
         pg.evaluate('load()')
-        check('api failure: connection refused shows APP OFFLINE', wait_until(lambda: 'OFFLINE' in status(), 6), status())
-        pg.unroute('**/api/status'); pg.evaluate('load()'); wait_until(lambda: 'OFFLINE' not in status(), 8)
+        check('api failure: connection refused shows APP OFFLINE', wait_until(lambda: 'OFFLINE' in status(), 20), status())
+        pg.unroute('**/api/status'); pg.evaluate('load()'); wait_until(lambda: 'OFFLINE' not in status(), 20)
         bg0 = G('/api/status')['settings'].get('RUN_IN_BACKGROUND')
         pg.route('**/api/settings', lambda r: r.fulfill(status=200, body=json.dumps({'ok': False, 'error': 'harness: simulated rejection'}), content_type='application/json'))
         pg.click('label:has(#sw_bg)')
-        check('api failure: rejected save shows the error message', wait_until(lambda: 'simulated rejection' in toast_text(pg), 5), toast_text(pg))
+        check('api failure: rejected save shows the error message', wait_until(lambda: 'simulated rejection' in toast_text(pg), 20), toast_text(pg))
         shot(pg, 'failures/save_rejected.png', full=False)
-        check('api failure: switch returns to the saved state', wait_until(lambda: pg.is_checked('#sw_bg') == bool(bg0), 8) and G('/api/status')['settings'].get('RUN_IN_BACKGROUND') == bg0)
+        check('api failure: switch returns to the saved state', wait_until(lambda: pg.is_checked('#sw_bg') == bool(bg0), 20) and G('/api/status')['settings'].get('RUN_IN_BACKGROUND') == bg0)
         pg.unroute('**/api/settings')
         pg.route('**/api/settings', lambda r: r.fulfill(status=502, body='<html>Bad gateway</html>', content_type='text/html'))
         pg.click('label:has(#sw_bg)')
-        check('api failure: non-JSON 502 shows "bad response"', wait_until(lambda: 'bad response' in toast_text(pg), 5), toast_text(pg))
-        pg.unroute('**/api/settings'); wait_until(lambda: pg.is_checked('#sw_bg') == bool(bg0), 8)
+        check('api failure: non-JSON 502 shows "bad response"', wait_until(lambda: 'bad response' in toast_text(pg), 20), toast_text(pg))
+        pg.unroute('**/api/settings'); wait_until(lambda: pg.is_checked('#sw_bg') == bool(bg0), 20)
         pg.route('**/api/status', lambda r: r.fulfill(status=401, body=json.dumps({'ok': False, 'error': 'not authorised'}), content_type='application/json'))
         pg.evaluate('load()')
-        check('api failure: 401 shows the session-expired banner', wait_until(lambda: pg.locator('#expired').is_visible() and 'EXPIRED' in status(), 6), status())
+        check('api failure: 401 shows the session-expired banner', wait_until(lambda: pg.locator('#expired').is_visible() and 'EXPIRED' in status(), 20), status())
         check('api failure: polling stops after session expiry', pg.evaluate('POLL===null'))
         shot(pg, 'failures/session_expired.png', full=False)
         unexpected = [c for c in CONSOLE['api_failures'] if c['type'] == 'pageerror']
@@ -377,5 +456,6 @@ try:
     check('cleanup: flatten closes every fake position', not {k2: v for k2, v in POS.items() if v > 1e-9}, POS)
 except Exception as ex:
     check('cleanup: flatten', False, ex)
+check('isolation: no internet access attempted (app process and browser)', not NET_BLOCKED, NET_BLOCKED[:5])
 finish(dict(app_version=app.VERSION, build=str(app.BUILD_ID), viewports=VIEWPORTS, console=CONSOLE,
             network_failures={k2: v[:50] for k2, v in NETFAIL.items()}))

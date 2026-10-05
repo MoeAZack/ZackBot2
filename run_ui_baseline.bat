@@ -2,7 +2,8 @@
 title ZackBot UI baseline
 rem Runs the browser/UI harness (test_app_ui.py) on Windows.
 rem Safe while ZackBot is running: the harness starts its OWN copy on a free port with a temporary data folder and a fake
-rem exchange. It never talks to Binance, never reads your keys and never touches %LOCALAPPDATA%\ZackBot data.
+rem exchange. It blocks every internet connection (and fails if one is attempted), never reads your keys and never
+rem touches your ZackBot data in %LOCALAPPDATA%\ZackBot.
 rem   run_ui_baseline.bat          full run (about 5-10 minutes)
 rem   run_ui_baseline.bat quick    skips the long backtest/study jobs (about 2 minutes)
 setlocal EnableExtensions
@@ -12,6 +13,9 @@ set UIENV=%ROOT%\uienv
 set OUTDIR=%~dp0dev_out
 set LOG=%OUTDIR%\ui_baseline.log
 set PYTHONIOENCODING=utf-8
+rem Chromium lives in a FIXED folder: the harness redirects LOCALAPPDATA for isolation, so Playwright must not derive
+rem the browser location from it (review finding T02-P1). Set before the install and kept for the test run.
+set PLAYWRIGHT_BROWSERS_PATH=%ROOT%\ms-playwright
 if not exist "%OUTDIR%" mkdir "%OUTDIR%"
 echo ==== ZackBot UI baseline %date% %time% ==== > "%LOG%"
 
@@ -24,7 +28,7 @@ if not exist "%UPY%" (set WHY=could not create %UIENV% - is Python installed?& g
 "%UPY%" -m pip install --disable-pip-version-check -q -r requirements-ui.txt >> "%LOG%" 2>&1
 if errorlevel 1 (set WHY=installing the pinned libraries failed - internet or pip problem, see the log& goto fail)
 
-echo [2/4] Installing the Chromium test browser (first time only, about 150 MB)...
+echo [2/4] Installing the Chromium test browser into %PLAYWRIGHT_BROWSERS_PATH% (first time only, about 150 MB)...
 "%UPY%" -m playwright install chromium >> "%LOG%" 2>&1
 if errorlevel 1 (set WHY=downloading Chromium failed - internet, proxy or antivirus, see the log& goto fail)
 

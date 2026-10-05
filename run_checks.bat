@@ -18,6 +18,8 @@ if exist data\BTCUSDT_4h.csv (
 ) else echo   skipped - the data folder is not present
 echo [3/3] UI harness
 set UPY=%LOCALAPPDATA%\ZackBot\uienv\Scripts\python.exe
+set PLAYWRIGHT_BROWSERS_PATH=%LOCALAPPDATA%\ZackBot\ms-playwright
+set PYTHONIOENCODING=utf-8
 if not exist "%UPY%" (echo   skipped - run run_ui_baseline.bat once to set up Playwright) else (
   "%UPY%" test_app_ui.py > dev_out_ui.txt 2>&1 || (findstr /b /c:"FAIL " /c:"UI HARNESS" dev_out_ui.txt & goto fail)
   findstr /b /c:"UI HARNESS" dev_out_ui.txt

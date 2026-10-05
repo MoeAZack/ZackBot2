@@ -33,8 +33,10 @@ Run **setup_git.bat** once to turn this folder into a private Git repository wit
   so it is safe while ZackBot runs. Checks every API action, every tab at desktop (1560), tablet (820) and mobile (390) width,
   navigation, settings load/save round-trip, console errors, and injected API failures (500, refused, rejected save, bad JSON, 401).
   Exit code 0 = all checks passed; `dev_out/ui_baseline/summary.json` + screenshots are the baseline evidence (Cairo time).
+  It blocks all internet access from the app and the browser and fails if anything tries; the temp folder is removed at the end.
   On Windows: double-click **run_ui_baseline.bat** (`quick` argument skips the long backtest jobs). It installs Playwright
-  and Chromium into its own environment `%LOCALAPPDATA%\ZackBot\uienv`, never into the build environment.
+  into its own environment `%LOCALAPPDATA%\ZackBot\uienv` and Chromium into `%LOCALAPPDATA%\ZackBot\ms-playwright`
+  (fixed path, because the harness redirects LOCALAPPDATA), never into the build environment.
 
 ## Reproduce the research
 Candle data: `data/` (40 coins 4h, 2 years), `data1h/` (core 8 1h, 6 months), `data_long/` (core 8: 4h 4.8 years, 1h 4.1 years).
