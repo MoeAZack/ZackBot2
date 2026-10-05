@@ -1,3 +1,6 @@
+import os as _os
+OUT = _os.environ.get('ZB_OUT') or _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), 'dev_out')
+_os.makedirs(OUT, exist_ok=True)
 """Replay test: real Engine vs simulated Binance, compared with backtest.run on the same window."""
 import logging; logging.basicConfig(level=logging.INFO, format="%(message)s")
 import sys, os, tempfile, time, json, types
@@ -15,6 +18,7 @@ SLEEVES = json.loads(sys.argv[2]) if len(sys.argv) > 2 else [
     E.sleeve('DCA', 'dca_dip', .3, .03, 4, 'core8'),
     E.sleeve('SQZ', 'squeeze_tp', .3, .03, 4, 'core8', sides='both')]
 FEE, SLIP = B.FEE, B.SLIP
+STEPS = int(os.environ.get('ZB_SIM_STEPS', '6'))
 D = {s: RAW[s].reset_index(drop=True) for s in SYMS}
 
 
@@ -104,11 +108,19 @@ for i in range(T0, N - 1):
     fake_now[0] = D['BTCUSDT'].t[i].timestamp() + 14400 + 15
     W.mark.update({s: D[s].o[i + 1] for s in SYMS})
     eng.cycle('4h')
-    # intrabar path of candle i+1: open -> low -> high -> close (stops first, then favourable)
+    # intrabar path of candle i+1, the SAME assumption as the backtester's 'path' mode: green O->L->H->C, red O->H->L->C,
+    # walked in STEPS small moves per leg (the live bot re-checks prices every 8 s, so adds/stops trigger near their level,
+    # not at the candle's extreme)
     j = i + 1
-    for col in ('l', 'h', 'c'):
-        _move({s: D[s][col][j] for s in SYMS})
-        eng.manage(dict(W.mark))
+    legs = [{s: (D[s].l[j] if D[s].c[j] >= D[s].o[j] else D[s].h[j]) for s in SYMS},
+            {s: (D[s].h[j] if D[s].c[j] >= D[s].o[j] else D[s].l[j]) for s in SYMS},
+            {s: D[s].c[j] for s in SYMS}]
+    for tgt in legs:
+        a = dict(W.mark)
+        for k in range(1, STEPS + 1):
+            _move({s: a[s] + (tgt[s] - a[s]) * k / STEPS for s in SYMS})
+            if eng.state['lots']: eng.manage(dict(W.mark))
+        if not eng.state['lots']: eng.manage(dict(W.mark))
     W.cash -= sum(l['q'] * W.mark[l['s']] * B.FUND_PER_BAR for l in W.lots)
     curve.append((D['BTCUSDT'].t[j], _equity()))
 cv = pd.Series([c for _, c in curve], index=[t for t, _ in curve])
@@ -127,4 +139,15 @@ print('STOPS', list(W.stops.values()))
 import collections
 print('HISTORY', len(eng.history), 'net pnl sum', round(sum(h['pnl'] for h in eng.history), 2), 'sample', {k: eng.history[-1][k] for k in ('symbol','side','strategy','pnl','r','roi_capital','move_pct','hours','exit_reason','fees')})
 print('MISSED', len(eng.missed), collections.Counter(m['reason'] for m in eng.missed).most_common(6))
-json.dump(eng.history, open('/tmp/claude-0/-home-claude/d6ad53d0-10de-5d7c-a74c-77ea7be8c649/scratchpad/seed_history.json','w'), default=str); json.dump(eng.missed, open('/tmp/claude-0/-home-claude/d6ad53d0-10de-5d7c-a74c-77ea7be8c649/scratchpad/seed_missed.json','w'), default=str)
+json.dump(eng.history, open(OUT+'/seed_history.json','w'), default=str); t2.to_csv(OUT+'/bt_trades.csv', index=False); json.dump(eng.missed, open(OUT+'/seed_missed.json','w'), default=str)
+# ---- pass/fail gate (run_checks): engine and backtest must agree and the exchange must hold exactly what the engine tracks
+er, br = (cv.iloc[-1] / 500 - 1) * 100, (c2.iloc[-1] / 500 - 1) * 100
+held = {(l['s'], l['ps']): 0.0 for l in W.lots}
+for l in W.lots: held[(l['s'], l['ps'])] += l['q']
+mine = {}
+for l in eng.state['lots'].values(): mine[(l['symbol'], l['side'])] = mine.get((l['symbol'], l['side']), 0.0) + l['qty']
+def _dust(k, q): return q * W.mark[k[0]] < eng.rules.get(k[0], {}).get('min_notional', 5)
+mismatch = {k: (held.get(k, 0), mine.get(k, 0)) for k in set(held) | set(mine) if not _dust(k, abs(held.get(k, 0) - mine.get(k, 0)))}
+ok = abs(er - br) <= 15 and not mismatch and len(W.stops) == len(eng.state['lots'])
+print(f'GATE engine {er:+.1f}% vs backtest {br:+.1f}% (gap {er - br:+.1f} pp, limit 15) | position mismatches {mismatch} | stops {len(W.stops)} lots {len(eng.state["lots"])} ->', 'PASS' if ok else 'FAIL')
+sys.exit(0 if ok else 1)

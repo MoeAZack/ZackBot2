@@ -198,7 +198,7 @@ def test_lookahead_flags_leaky_indicator(monkeypatch):
 
 
 def test_lookahead_real_slice_clean():
-    import load_data
+    load_data = pytest.importorskip('load_data')
     raw = load_data.load(syms=['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'DOGEUSDT'])
     if len(raw) < 4: pytest.skip('real data not present')
     raw = {s: d.iloc[-700:] for s, d in raw.items()}

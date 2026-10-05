@@ -42,15 +42,15 @@ PRESETS = {
     'calm': dict(name='Calm', note='Lowest risk: 1% per trade, three strategies. Both years positive. Backtest 2024-10-20 to 2026-10-04: $500 -> $1,545, max DD -13%, worst month -3.3%, ~7 trades/week.', bt={'end': 1545, 'dd': -13, 'wm': -3.3, 'wk': 7, 'start': '2024-10-20', 'stop': '2026-10-04', 'engine': 'v3', 'insample': True},
                  sleeves=[sleeve('MOM', 'ema_mom', 1 / 3, .01, 8), sleeve('ST', 'ema_st', 1 / 3, .01, 4, 'core8'),
                           sleeve('DCA', 'dca_dip', 1 / 3, .01, 6)]),
-    'balanced': dict(name='Balanced', note='2% per trade with pyramiding on the trend slots. Backtest 2024-10-20 to 2026-10-04: $500 -> $5,974, max DD -29%, worst month -7.3%, ~10 trades/week.', bt={'end': 5974, 'dd': -29, 'wm': -7.3, 'wk': 10, 'start': '2024-10-20', 'stop': '2026-10-04', 'engine': 'v3', 'insample': True},
+    'balanced': dict(name='Balanced', note='2% per trade with pyramiding on the trend slots. Backtest 2024-10-20 to 2026-10-04: $500 -> $5,925, max DD -29%, worst month -7.3%, ~10 trades/week.', bt={'end': 5925, 'dd': -29, 'wm': -7.3, 'wk': 10, 'start': '2024-10-20', 'stop': '2026-10-04', 'engine': 'v3', 'insample': True},
                      sleeves=[sleeve('MOM', 'ema_mom', 1 / 3, .02, 8, mgmt=PY), sleeve('ST', 'ema_st', 1 / 3, .02, 4, 'core8', mgmt=PY),
                               sleeve('DCA', 'dca_dip', 1 / 3, .02, 6)]),
-    'aggressive': dict(name='Aggressive', note='3% per trade, same mix as Balanced. Backtest 2024-10-20 to 2026-10-04: $500 -> $11,886, max DD -39%, worst month -10.8%, ~10 trades/week.', bt={'end': 11886, 'dd': -39, 'wm': -10.8, 'wk': 10, 'start': '2024-10-20', 'stop': '2026-10-04', 'engine': 'v3', 'insample': True},
+    'aggressive': dict(name='Aggressive', note='3% per trade, same mix as Balanced. Backtest 2024-10-20 to 2026-10-04: $500 -> $11,917, max DD -39%, worst month -10.8%, ~10 trades/week.', bt={'end': 11917, 'dd': -39, 'wm': -10.8, 'wk': 10, 'start': '2024-10-20', 'stop': '2026-10-04', 'engine': 'v3', 'insample': True},
                        sleeves=[sleeve('MOM', 'ema_mom', 1 / 3, .03, 8, mgmt=PY), sleeve('ST', 'ema_st', 1 / 3, .03, 4, 'core8', mgmt=PY),
                                 sleeve('DCA', 'dca_dip', 1 / 3, .03, 6)]),
-    'active': dict(name='Active (1h, more trades)', note='1h DCA dip + 1h Breakout/pyramiding on core 8 - many more trades. 6-month test: $500 -> $961, max DD -24%. WARNING: the 4-year 1h test (2022-08 to 2026-10) ended $3,172 but with a -63% max drawdown, driven by the 1h breakout slot - prefer Active DCA (1h) or Steady mix.', bt={'end': 961, 'dd': -24, 'wm': -3.8, 'wk': 20, 'start': '2026-04-15', 'stop': '2026-10-04', 'engine': 'v3', 'insample': True},
+    'active': dict(name='Active (1h, more trades)', note='1h DCA dip + 1h Breakout/pyramiding on core 8 - many more trades. 6-month test: $500 -> $935, max DD -26%. WARNING: over 4 years of 1h data (2022-08 to 2026-10) it ended $3,947 but with a -50% max drawdown (Monte Carlo: 18% chance of falling below half the start), driven by the 1h breakout slot - prefer Active DCA (1h) or Steady mix.', bt={'end': 935, 'dd': -26, 'wm': -3.4, 'wk': 21, 'start': '2026-04-08', 'stop': '2026-10-04', 'engine': 'v3.1', 'insample': True},
                    sleeves=[sleeve('DCA1H', 'dca_dip', .5, .02, 4, 'core8', tf='1h'), sleeve('BRK1H', 'breakout_pyramid', .5, .02, 4, 'core8', tf='1h')]),
-    'boost_active': dict(name='Boost + Active (4h + 1h mix)', note='Boost on 4h with half the capital, Active 1h with the other half (tested side by side). Backtest 2026-04-15 to 2026-10-04: $500 -> $1,196, max DD -32%, worst month -8.0%, ~29 trades/week.', bt={'end': 1196, 'dd': -32, 'wm': -8.0, 'wk': 29, 'start': '2026-04-15', 'stop': '2026-10-04', 'engine': 'v3', 'insample': True},
+    'boost_active': dict(name='Boost + Active (4h + 1h mix)', note='Boost on 4h with half the capital, Active 1h with the other half (tested side by side). 6-month test 2026-04-08 to 2026-10-04: $500 -> $1,575, max DD -38%, worst month -11%, ~30 trades/week. 4-year test on core 8 (from 2022-09): $500 -> $8,112, max DD -33%; the 1h breakout slot is the weak part - see Steady mix.', bt={'end': 1575, 'dd': -38, 'wm': -11.4, 'wk': 30, 'start': '2026-04-08', 'stop': '2026-10-04', 'engine': 'v3.1', 'insample': True},
                          sleeves=[sleeve('MOM', 'ema_mom', .25, .05, 8, mgmt=PY), sleeve('DCA', 'dca_dip', .25, .05, 6),
                                   sleeve('DCA1H', 'dca_dip', .25, .02, 4, 'core8', tf='1h'), sleeve('BRK1H', 'breakout_pyramid', .25, .02, 4, 'core8', tf='1h')]),
     'steady_mix': dict(name='Steady mix (4h trend, bull-filtered + 1h DCA)', note='Half the capital: Balanced with the trend slots only trading while BTC is above its 200-day average; other half: 1h DCA dip on core 8 at 2%. Long test on core 8 coins 2022-09-04 to 2026-10-04 (incl. the FTX crash): $500 -> $4,015, max DD -15%, worst month -7.3%. Not yet tested on 40 coins for the 1h half.', bt={'end': 4015, 'dd': -15, 'wm': -7.3, 'wk': 15, 'start': '2022-09-04', 'stop': '2026-10-04', 'engine': 'v3.1', 'insample': True},
@@ -58,7 +58,7 @@ PRESETS = {
                                 sleeve('DCA', 'dca_dip', 1 / 6, .02, 6), sleeve('DCA1H', 'dca_dip', .5, .02, 4, 'core8', tf='1h')]),
     'active_dca': dict(name='Active DCA (1h)', note='Only the 1h DCA dip slot of Active (the 1h breakout slot caused most of Active\'s losses over 4 years). Core 8, 2%. Long test 2022-09-03 to 2026-10-04: $500 -> $4,637, max DD -26%, worst month -13.6%, ~12 trades/week; positive every year incl. late 2022.', bt={'end': 4637, 'dd': -26, 'wm': -13.6, 'wk': 12, 'start': '2022-09-03', 'stop': '2026-10-04', 'engine': 'v3.1', 'insample': True},
                        sleeves=[sleeve('DCA1H', 'dca_dip', 1.0, .02, 4, 'core8', tf='1h')]),
-    'boost': dict(name='Boost (short-term, high risk)', note='5% per trade. For short sprints only - deep drawdowns. Backtest 2024-10-20 to 2026-10-04: $500 -> $23,792, max DD -54%, worst month -27.8%, ~9 trades/week.', bt={'end': 23792, 'dd': -54, 'wm': -27.8, 'wk': 9, 'start': '2024-10-20', 'stop': '2026-10-04', 'engine': 'v3', 'insample': True},
+    'boost': dict(name='Boost (short-term, high risk)', note='5% per trade. For short sprints only - deep drawdowns. Backtest 2024-10-20 to 2026-10-04: $500 -> $23,598, max DD -54%, worst month -27.8%, ~9 trades/week.', bt={'end': 23598, 'dd': -54, 'wm': -27.8, 'wk': 9, 'start': '2024-10-20', 'stop': '2026-10-04', 'engine': 'v3', 'insample': True},
                   sleeves=[sleeve('MOM', 'ema_mom', .5, .05, 8, mgmt=PY), sleeve('DCA', 'dca_dip', .5, .05, 6)]),
 }
 
@@ -146,6 +146,9 @@ class Engine:
             except Exception: log.warning('state.json unreadable - starting empty')
         self.state.setdefault('orphans', []); self.state.setdefault('last_cycle', {})
         self.state.setdefault('pending_entries', {}); self.state.setdefault('resting_entries', {})
+        for l in self.state['lots'].values():           # lots saved by older versions may hold half-filled dca/pyramid blocks
+            if l.get('key_strategy') in S.STRATEGIES and isinstance(l.get('mgmt'), dict):
+                l['mgmt'] = S.merge_mgmt(l['key_strategy'], {k: v for k, v in l['mgmt'].items()})
         if not self.S.get('CAP_SINCE'):                  # first v3 start: bot capital counts closed P&L from now on
             self.S['CAP_SINCE'] = now_utc().isoformat(timespec='seconds'); self.save_settings()
         self.equity_hist = json.load(open(self.F['equity'])) if os.path.exists(self.F['equity']) else []
@@ -226,7 +229,7 @@ class Engine:
         return [s for s in base if include_off or self.S['SYMBOLS_ON'].get(s, True)]
 
     def mgmt(self, sl):
-        return dict(S.STRATEGIES[sl['key']]['mgmt'], **sl.get('mgmt', {}))
+        return S.merge_mgmt(sl['key'], sl.get('mgmt'))
 
     # ------------------------------------------------------------ exchange setup
     def connect(self):
@@ -668,7 +671,7 @@ class Engine:
                     if 'dca' in g and lot.get('levels'):
                         while lot['dca'] < len(lot['levels']) and sd * (lot['levels'][lot['dca']] - m) >= 0:
                             q = lot['q0'] * lot['w'][lot['dca']]
-                            if not self._within_cap(lot, q * m) or not self._add_qty(lot, q, m, 'safety_order', post={'dca': lot['dca'] + 1}): break
+                            if self._add_gate(lot, q, m, 'safety_order') or not self._add_qty(lot, q, m, 'safety_order', post={'dca': lot['dca'] + 1}): break
                             lot['dca'] += 1
                             lot['tp'] = lot['avg'] + sd * g['dca']['tp_atr'] * lot['atr0']
                             self._replace_stop(lot); changed = True
@@ -687,7 +690,7 @@ class Engine:
                             else:
                                 self.close_lot(key, 'basket_tp', m); changed = True; continue
                     if 'pyramid' in g and lot['adds'] < g['pyramid']['n'] and ge(lot['next_add']):
-                        if self._within_cap(lot, lot['q0'] * g['pyramid']['frac'] * m):
+                        if not self._add_gate(lot, lot['q0'] * g['pyramid']['frac'], m, 'pyramid_add'):
                             if self._add_qty(lot, lot['q0'] * g['pyramid']['frac'], m, 'pyramid_add',
                                              post={'adds': lot['adds'] + 1, 'next_add': lot['next_add'] + sd * g['pyramid']['step_r'] * lot['R']}):
                                 lot['adds'] += 1; lot['next_add'] += sd * g['pyramid']['step_r'] * lot['R']
@@ -760,12 +763,95 @@ class Engine:
             h['alerted'] = True
             self.notify(f'🆘 Trade management is failing ({why}). Exchange stops are still in place - check the app.')
 
-    def _within_cap(self, lot, add_notional):
-        sl = next((x for x in self.S['SLEEVES'] if x['id'] == lot['sleeve']), None)
-        if not sl or lot.get('manual'): return True
-        sleeve_eq = (self.last_eq or 0) * sl['share']
-        used = sum(l['qty'] * l['avg'] for l in self.state['lots'].values() if l['sleeve'] == lot['sleeve'])
-        return used + add_notional <= self.S['MAX_LEVERAGE'] * sleeve_eq
+    def exit_plan(self, l):
+        """Plain-language exit plan of an open lot, for the panel and Telegram: dict(title, steps[], next).
+        Many trend slots deliberately have NO fixed target - this says so instead of leaving a blank."""
+        g, sd = l.get('mgmt') or {}, (1 if l['side'] == 'LONG' else -1)
+        R, e0 = l.get('R') or 0.0, l.get('e0', l['avg'])
+        p = lambda v: f'{v:.6g}'
+        steps, nxt, title = [], None, None
+        if l.get('manual') and l.get('tp'):
+            title = f"Fixed target {p(l['tp'])}"
+        if l.get('levels'):
+            n, k = len(l['levels']), l.get('dca', 0)
+            if l.get('tp') is not None:
+                title = f"Basket target {p(l['tp'])}"; steps.append(f'DCA basket: target moves closer after each safety order ({k} of {n} filled)')
+            else:
+                title = 'Basket target banked - the rest runs'; steps.append('rest rides with the stop at breakeven or better')
+            if k < n and l.get('tp') is not None:
+                nxt = f"safety order {k + 1} at {p(l['levels'][k])}"
+        tps = [x for i, x in enumerate(S.norm_tps(g.get('tps'))) if i not in (l.get('tps_done') or [])]
+        if tps and R:
+            steps.append('take-profit ladder: ' + ', '.join(f'{f * 100:.0f}% at {p(e0 + sd * r * R)} (+{r:g}R)' for r, f in tps))
+            nxt = nxt or f'ladder level at {p(e0 + sd * tps[0][0] * R)}'
+        if g.get('tp1_r') and not l.get('tp1') and R:
+            lvl = e0 + sd * g['tp1_r'] * R
+            steps.append(f"take {g.get('tp1_frac', 0.5) * 100:.0f}% profit at {p(lvl)} (+{g['tp1_r']:g}R)"); nxt = nxt or f'partial take-profit at {p(lvl)}'
+        if g.get('tp_r') and not g.get('runner') and not g.get('ttp') and R:
+            lvl = e0 + sd * g['tp_r'] * R
+            title = title or f'Fixed target {p(lvl)}'; steps.append(f"close everything at {p(lvl)} (+{g['tp_r']:g}R)")
+        if g.get('be_r') and R and sd * (l['stop'] - l['avg']) < 0:
+            lvl = e0 + sd * g['be_r'] * R; steps.append(f"stop moves to breakeven once price reaches {p(lvl)} (+{g['be_r']:g}R)")
+            nxt = nxt or f'breakeven trigger at {p(lvl)}'
+        if g.get('trail_atr'): steps.append(f"trailing stop {g['trail_atr']:g} ATR behind the best price")
+        if g.get('ttp'): steps.append(f"trailing take-profit from +{g['ttp'].get('at_r', 2):g}R, closes on a {g['ttp'].get('dev_pct', 3):g}% pull-back")
+        run = g.get('runner')
+        if run: steps.append(f"runner: breakeven at +{run.get('be_r', 2):g}R, then the stop locks {run.get('gap_r', 1):g}R behind every new {run.get('step_r', 1):g}R")
+        if 'pyramid' in g and l.get('adds', 0) < g['pyramid'].get('n', 0) and l.get('next_add') is not None:
+            steps.append(f"pyramid add {l.get('adds', 0) + 1} of {g['pyramid']['n']} at {p(l['next_add'])}"); nxt = nxt or f"pyramid add at {p(l['next_add'])}"
+        if g.get('max_bars'): steps.append(f"time exit after {g['max_bars']} candles")
+        if not l.get('manual') and l.get('key_strategy'):
+            steps.append(f"or the strategy's own exit signal at a candle close")
+        if title is None and l.get('manual'):
+            title = 'Manual trade: stop only'
+        if title is None:
+            title = 'No fixed target - lets the winner run'
+            if not steps or steps == ["or the strategy's own exit signal at a candle close"]:
+                steps.insert(0, "exits only on the strategy's reversal signal or the stop")
+        steps.append(f"stop {p(l['stop'])} on Binance protects the position")
+        if l.get('add_blocked'): steps.append(f"adds blocked: {l['add_blocked']}")
+        return dict(title=title, steps=steps, next=nxt)
+
+    def _add_block(self, lot, q, px):
+        """One gate for every quantity ADDED to an open lot (DCA safety order, pyramid add). Returns a reason or None.
+        An add is new exposure, so it passes the same checks as an entry: daily halt, paused entries, a confirmed stop,
+        the slot's leverage cap (on the share recorded when the lot opened - a removed/replaced slot gets no more adds;
+        its stop and exits keep running) and the portfolio risk rules (coin cap, open risk, funding)."""
+        st, Sg = self.state, self.S
+        if st.get('halted'): return 'daily loss halt is active'
+        if Sg.get('ENTRIES_PAUSED'): return 'entries paused'
+        if lot.get('stop_dirty'): return 'stop not confirmed yet'
+        if lot.get('manual'): return 'manual trade (no adds)'
+        sl = next((x for x in Sg['SLEEVES'] if x['id'] == lot['sleeve']), None)
+        if not sl or (lot.get('key_strategy') and sl['key'] != lot['key_strategy']):
+            return 'strategy slot removed or replaced - no more adds (stop and exits still run)'
+        share = min(float(sl['share']), float(lot.get('share', sl['share'])))
+        cap = Sg['MAX_LEVERAGE'] * (self.last_eq or 0) * share
+        used = sum(l['qty'] * l['avg'] for l in st['lots'].values() if l['sleeve'] == lot['sleeve'])
+        if used + q * px > cap: return f'slot leverage cap ({used + q * px:.0f} > {cap:.0f} USDT)'
+        sd = 1 if lot['side'] == 'LONG' else -1
+        add_risk = 0.0 if lot.get('levels') else q * max(0.0, sd * (px - lot['stop']))   # DCA levels are already in open risk
+        hits = self._rules_eval(sl, lot['symbol'], lot['side'], dict(notional=q * px, risk=add_risk), add=True)
+        warn = [m for _, mode, m in hits if mode == 'warn']
+        if warn and lot.get('add_warned') != warn[0]:
+            lot['add_warned'] = warn[0]; log.warning(f"{lot['symbol']} [{lot['sleeve']}] add allowed but: {warn[0]}")
+        enf = [f'risk rule {n}: {m}' for n, mode, m in hits if mode == 'enforce']
+        return enf[0] if enf else None
+
+    def _add_gate(self, lot, q, px, why):
+        """True = the add is BLOCKED (logged once per reason, kept on the lot and in the missed list for the UI)."""
+        reason = self._add_block(lot, q, px)
+        if not reason:
+            lot.pop('add_blocked', None); return False
+        if lot.get('add_blocked') != reason:
+            lot['add_blocked'] = reason
+            self.health['adds_blocked'] = self.health.get('adds_blocked', 0) + 1
+            log.warning(f"{lot['symbol']} [{lot['sleeve']}] {why} blocked: {reason}")
+            rec = dict(candle=now_utc().isoformat(timespec='seconds'), logged=now_utc().isoformat(timespec='seconds'), sleeve=lot['sleeve'],
+                       strategy=lot.get('key_strategy') or lot['sleeve'], symbol=lot['symbol'], side=lot['side'], price=px,
+                       reason=f'{why} blocked: {reason}', kind='add_blocked')
+            self.missed.append(rec); self.missed = self.missed[-600:]; save_json(self.F['missed'], self.missed)
+        return True
 
     # ------------------------------------------------------------ reconcile with exchange
     def reconcile(self, eq, live=None):
@@ -1074,9 +1160,10 @@ class Engine:
             last = df.tail(12)[['o', 'h', 'l', 'c']].round(6).values.tolist() if df is not None else []
             try: funding = self.data.premium(sym)['lastFundingRate']
             except Exception: funding = 'n/a'
-            dec, why = review(dict(self.cfg, AI_FILTER='on'), sym, f"{sl['name']} {side}", dict(sg, e20=float(df.e20.iloc[-1]), e50=float(df.e50.iloc[-1]),
-                              e200=float(df.e200.iloc[-1]), st_dir=int(df.st.iloc[-1]), ret42=float(df.ret42.iloc[-1]), ret180=float(df.ret180.iloc[-1])), last, funding)
-            log.info(f'AI review {sym} {side}: {dec} - {why}')
+            dec, why, meta = review(dict(self.cfg, AI_FILTER='on'), sym, f"{sl['name']} {side}", dict(sg, e20=float(df.e20.iloc[-1]), e50=float(df.e50.iloc[-1]),
+                                    e200=float(df.e200.iloc[-1]), st_dir=int(df.st.iloc[-1]), ret42=float(df.ret42.iloc[-1]), ret180=float(df.ret180.iloc[-1])),
+                                    last, funding, tf=sl.get('tf', '4h'), side=side)
+            log.info(f'AI review {sym} {side} [{sl["id"]} {sl.get("tf", "4h")}]: {dec} - {why} | {meta}')
             if dec == 'skip':
                 self.log_trade(time=sg['time'], event='ai_veto', sleeve=sl['id'], symbol=sym, side=side, qty=qty, price=px, note=why)
                 self.last_skip = f'Claude review vetoed: {why}'
@@ -1094,7 +1181,7 @@ class Engine:
         for w_ in warns:                                 # risk rules in 'warn' mode: logged, the trade still goes ahead
             log.warning(f'RISK WARNING {sym} {side}: {w_}')
             if sl and not manual: self.miss(sl, sym, side, sg, 'WARNING: ' + w_, kind='warning')
-        plan = dict(sl=None if manual else {k: sl[k] for k in ('id', 'key', 'tf', 'name') if k in sl}, sym=sym, side=side, qty=qty,
+        plan = dict(sl=None if manual else {k: sl[k] for k in ('id', 'key', 'tf', 'name', 'share') if k in sl}, sym=sym, side=side, qty=qty,
                     stop_dist=abs(px - stop), atr=atr, g=g, risk_usd=risk_usd, eq=eq, manual=manual, reason=reason, px=px,
                     sg=dict(time=sg.get('time'), close=sg.get('close')))
         if not manual and self.S.get('ENTRY_ORDER') == 'maker':
@@ -1126,6 +1213,7 @@ class Engine:
                    best=fill, atr0=atr, atr_now=atr, mgmt=g, tf=(sl['tf'] if sl else '4h'), manual=manual,
                    opened=now_utc().isoformat(timespec='seconds'), risk_usd=round(risk_usd, 2), eq_at_entry=round(eq, 2),
                    qty_max=qty, fills=[[now_utc().isoformat(timespec='seconds'), 'entry', qty, fill]], fees=fee)
+        if sl and not manual and sl.get('share') is not None: lot['share'] = float(sl['share'])            # cap basis for later adds (survives slot edits)
         if maker_qty > 0: lot['maker_qty'] = maker_qty
         if 'pyramid' in g: lot['next_add'] = fill + sd * g['pyramid']['step_r'] * lot['R']
         if 'dca' in g:
@@ -1192,7 +1280,7 @@ class Engine:
         return c['m'][c['symbols'].index(a)][c['symbols'].index(b)]
 
     # ------------------------------------------------------------ v3.1: portfolio risk rules
-    def _rules_eval(self, sl, sym, side, size=None, manual=False):
+    def _rules_eval(self, sl, sym, side, size=None, manual=False, add=False):
         """[(rule, mode, message)] for every rule (not 'off') the entry would break. Data problems never block (logged)."""
         R, out = self.risk_rules_cfg(), []
         cap = self.guard_eq or self.last_eq or 0.0
@@ -1209,12 +1297,12 @@ class Engine:
             if tot > r['pct'] / 100 * cap: out.append(('open_risk_cap', r['mode'], f"open risk to stops {tot / cap * 100:.1f}% > {r['pct']:g}% of bot capital"))
         if manual: return out
         r = R['correlated_cap']
-        if r['mode'] != 'off' and self.corr:
+        if r['mode'] != 'off' and self.corr and not add:     # an add does not open a new correlated position
             same = {l['symbol'] for l in lots if l['side'] == side and l['symbol'] != sym}
             n = sum(1 for s2 in same if (self._corr(sym, s2) or 0) > r['rho'])
             if n >= r['n']: out.append(('correlated_cap', r['mode'], f"{n} open {side.lower()}s on coins correlated > {r['rho']:g} with {sym} (max {r['n']})"))
         r = R['btc_breaker']
-        if r['mode'] != 'off':
+        if r['mode'] != 'off' and not add:                   # the breaker pauses NEW trades; adds follow their plan
             try:
                 b = self._breaker()
                 if b and b['active']:

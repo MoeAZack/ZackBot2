@@ -643,7 +643,7 @@ def liquidation_report(book, sleeves, tr, cv, max_lev=10.0, mm=0.005, start=500.
         risk = abs(row.pnl / row.R)
         a = book.arr[row.sym]; i, j, sd = int(row.i_in), int(row.i_out), int(row.side)
         px, atr = a['o'][i], a['atr'][i - 1]
-        m = dict(S.STRATEGIES[row.sleeve]['mgmt'], **(sl.get('mgmt') or {}))
+        m = S.merge_mgmt(row.sleeve, sl.get('mgmt'))
         cap = max_lev * row.eq_in * sl['share'] / px
         h, l = a['h'][i:j + 1], a['l'][i:j + 1]
         fav = np.maximum.accumulate(h) if sd == 1 else np.minimum.accumulate(l)

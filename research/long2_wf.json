@@ -18,7 +18,7 @@
    "efficiency_score": -0.0042
   },
   "cancelled": false,
-  "elapsed_s": 12.0,
+  "elapsed_s": 18.5,
   "windows": 16
  },
  "aggressive": {
@@ -29,7 +29,7 @@
    "oos_end": 2849.24,
    "oos_maxdd": -30.5,
    "oos_cagr": 55.5,
-   "baseline_oos_return": 1484.7,
+   "baseline_oos_return": 1483.7,
    "baseline_oos_maxdd": -30.0,
    "pct_profitable": 56.2,
    "windows": 16,
@@ -40,7 +40,7 @@
    "efficiency_score": 0.2351
   },
   "cancelled": false,
-  "elapsed_s": 13.5,
+  "elapsed_s": 18.6,
   "windows": 16
  },
  "bull:balanced": {
@@ -62,29 +62,29 @@
    "efficiency_score": 0.7145
   },
   "cancelled": false,
-  "elapsed_s": 21.1,
+  "elapsed_s": 34.0,
   "windows": 16
  },
  "active": {
   "kind": "walk_forward",
   "metric": "calmar",
   "summary": {
-   "oos_return": 772.1,
-   "oos_end": 4360.42,
-   "oos_maxdd": -34.7,
-   "oos_cagr": 91.2,
-   "baseline_oos_return": 722.3,
+   "oos_return": 615.3,
+   "oos_end": 3576.3,
+   "oos_maxdd": -40.5,
+   "oos_cagr": 80.2,
+   "baseline_oos_return": 671.8,
    "baseline_oos_maxdd": -48.4,
-   "pct_profitable": 78.6,
+   "pct_profitable": 85.7,
    "windows": 14,
-   "pct_profitable_windows": 78.6,
-   "is_score_mean": 3.9681,
-   "oos_score_mean": 37.4017,
-   "efficiency": 1.042,
-   "efficiency_score": 1.1391
+   "pct_profitable_windows": 85.7,
+   "is_score_mean": 4.4817,
+   "oos_score_mean": 26.8028,
+   "efficiency": 0.9044,
+   "efficiency_score": 1.0971
   },
   "cancelled": false,
-  "elapsed_s": 33.2,
+  "elapsed_s": 48.0,
   "windows": 14
  }
 }

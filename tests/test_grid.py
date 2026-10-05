@@ -4,7 +4,7 @@ Run:  python -m pytest -q tests/test_grid.py"""
 import os, sys, tempfile
 import numpy as np, pandas as pd, pytest
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-os.environ.setdefault('LOCALAPPDATA', tempfile.mkdtemp())
+os.environ['LOCALAPPDATA'] = os.environ.get('LOCALAPPDATA') if 'zb_test_' in os.environ.get('LOCALAPPDATA', '') else tempfile.mkdtemp()
 import binance_client as BC
 import engine as E
 import backtest as B

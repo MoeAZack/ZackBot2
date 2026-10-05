@@ -384,7 +384,7 @@ def test_lost_partial_tp_answer_does_not_fire_twice():
 
 
 def test_lost_pyramid_add_answer_is_not_repeated():
-    e, _ = mk_engine(); sl = dict(SL, mgmt={'pyramid': {'n': 1, 'step_r': 1.0, 'frac': 0.5}})
+    e, _ = mk_engine(); sl = dict(SL, mgmt={'pyramid': {'n': 1, 'step_r': 1.0, 'frac': 0.5}}); e.S['SLEEVES'] = [sl]
     assert e.open_lot(sl, 'BTCUSDT', 'LONG', SG, None, e.equity()); lot = next(iter(e.state['lots'].values())); q0 = lot['qty']
     e.trade.mark['BTCUSDT'] = 106.0
     ambiguous_once(e, 'open'); e.manage(e.trade.marks())
@@ -450,3 +450,162 @@ def test_algo_cancel_string_200_is_success(monkeypatch):
         def json(self): return {'code': '200', 'msg': 'success'}
     monkeypatch.setattr(c.s, 'request', lambda *a, **k: R())
     assert c.cancel('BTCUSDT', 'a:123') is True
+
+
+# ------------------------------------------------------------------ adds (DCA safety orders / pyramid) pass the same gate as entries
+PY = {'pyramid': {'n': 2, 'step_r': 1.0, 'frac': 0.5}}
+
+
+def _pyr(e, **kw):
+    sl = dict(SL, mgmt=PY, **kw); e.S['SLEEVES'] = [sl]
+    assert e.open_lot(sl, 'BTCUSDT', 'LONG', SG, None, e.equity()), e.last_skip
+    return sl, next(iter(e.state['lots'].values()))
+
+
+def test_pyramid_add_respects_enforced_coin_cap():
+    e, _ = mk_engine(); sl, lot = _pyr(e); q0 = lot['qty']
+    cap = e.guard_eq or e.last_eq
+    e.S['RISK_RULES'] = {'coin_cap': {'mode': 'enforce', 'x': (q0 * 106.0 * 1.2) / cap}}      # entry fits, entry + add does not
+    e.trade.mark['BTCUSDT'] = 106.0; e.manage(e.trade.marks())
+    assert lot['adds'] == 0 and abs(lot['qty'] - q0) < 1e-9 and 'coin_cap' in lot['add_blocked']
+    assert any(m.get('kind') == 'add_blocked' for m in e.missed)
+    e.S['RISK_RULES'] = {}; e.manage(e.trade.marks())
+    assert lot['adds'] == 1 and 'add_blocked' not in lot
+
+
+def test_pyramid_add_respects_enforced_open_risk_cap():
+    e, _ = mk_engine(); sl, lot = _pyr(e)
+    cap = e.guard_eq or e.last_eq
+    e.S['RISK_RULES'] = {'open_risk_cap': {'mode': 'enforce', 'pct': e._lot_risk(lot) / cap * 100 + 0.01}}
+    e.trade.mark['BTCUSDT'] = 106.0; e.manage(e.trade.marks())
+    assert lot['adds'] == 0 and 'open_risk_cap' in lot['add_blocked']
+
+
+def test_warn_mode_rules_never_block_adds():
+    e, _ = mk_engine(); sl, lot = _pyr(e)
+    e.S['RISK_RULES'] = {'coin_cap': {'mode': 'warn', 'x': 0.0001}, 'open_risk_cap': {'mode': 'warn', 'pct': 0.0001}}
+    e.trade.mark['BTCUSDT'] = 106.0; e.manage(e.trade.marks())
+    assert lot['adds'] == 1
+
+
+def test_dca_safety_order_respects_enforced_coin_cap():
+    e, _ = mk_engine()
+    sl = dict(SL, key='dca_dip', mgmt={'dca': {'n': 3, 'step_atr': 1.0, 'scale': 1.5, 'tp_atr': 1.0, 'stop_atr': 2.0}}); e.S['SLEEVES'] = [sl]
+    assert e.open_lot(sl, 'BTCUSDT', 'LONG', SG, None, e.equity()), e.last_skip
+    lot = next(iter(e.state['lots'].values())); q0 = lot['qty']; cap = e.guard_eq or e.last_eq
+    e.S['RISK_RULES'] = {'coin_cap': {'mode': 'enforce', 'x': q0 * 100 * 1.1 / cap}}
+    e.trade.mark['BTCUSDT'] = lot['levels'][0] - 0.01; e.manage(e.trade.marks())
+    assert lot['dca'] == 0 and abs(lot['qty'] - q0) < 1e-9 and 'coin_cap' in lot['add_blocked']
+
+
+def test_orphaned_lot_gets_no_adds_but_keeps_its_stop():
+    e, _ = mk_engine(); sl, lot = _pyr(e); stop_id = lot['stop_id']
+    e.S['SLEEVES'] = []                                     # slot removed by a profile change
+    e.trade.mark['BTCUSDT'] = 106.0; e.manage(e.trade.marks())
+    assert lot['adds'] == 0 and 'removed' in lot['add_blocked'] and lot['stop_id']
+
+
+def test_reused_slot_id_with_other_strategy_gets_no_adds():
+    e, _ = mk_engine(); sl, lot = _pyr(e)
+    e.S['SLEEVES'] = [dict(sl, key='dca_dip', share=1.0)]   # same id 'T', different strategy and a bigger share
+    e.trade.mark['BTCUSDT'] = 106.0; e.manage(e.trade.marks())
+    assert lot['adds'] == 0 and 'replaced' in lot['add_blocked']
+
+
+def test_add_cap_uses_share_recorded_at_entry():
+    e, _ = mk_engine(); sl, lot = _pyr(e, share=0.5)
+    assert lot['share'] == 0.5
+    e.S['SLEEVES'] = [dict(sl, share=0.0005)]               # slot shrunk after the entry: the smaller share wins
+    e.trade.mark['BTCUSDT'] = 106.0; e.manage(e.trade.marks())
+    assert lot['adds'] == 0 and 'leverage cap' in lot['add_blocked']
+
+
+def test_no_adds_while_paused_or_halted():
+    for flag in ('pause', 'halt'):
+        e, _ = mk_engine(); sl, lot = _pyr(e)
+        if flag == 'pause': e.S['ENTRIES_PAUSED'] = True
+        else: e.state['halted'] = True
+        e.trade.mark['BTCUSDT'] = 106.0; e.manage(e.trade.marks())
+        assert lot['adds'] == 0, flag
+
+
+# ------------------------------------------------------------------ partial nested management settings
+def test_partial_dca_override_keeps_defaults_engine_and_backtest():
+    import strategies as S
+    m = S.merge_mgmt('dca_dip', {'dca': {'n': 4}})
+    assert m['dca'] == dict(n=4, step_atr=1.0, scale=1.5, tp_atr=1.0, stop_atr=2.0) and m['max_bars'] == 60
+    assert S.merge_mgmt('ema_mom', {'pyramid': {'frac': 0.3}})['pyramid'] == dict(n=1, step_r=1.5, frac=0.3)
+    e, _ = mk_engine()
+    sl = dict(SL, key='dca_dip', mgmt={'dca': {'n': 4}}); e.S['SLEEVES'] = [sl]
+    assert e.open_lot(sl, 'BTCUSDT', 'LONG', SG, None, e.equity()), e.last_skip
+    lot = next(iter(e.state['lots'].values()))
+    assert len(lot['levels']) == 4 and lot['tp'] is not None
+    e.trade.mark['BTCUSDT'] = lot['levels'][0] - 0.01; e.manage(e.trade.marks())       # no KeyError on tp_atr
+    assert lot['dca'] == 1
+
+
+def test_legacy_lot_with_half_filled_block_is_repaired_on_load(tmp_path):
+    e, _ = mk_engine(str(tmp_path)); k = opened(e)
+    e.state['lots'][k]['mgmt'] = {'stop_atr': 2.5, 'pyramid': {'n': 1}}; e.save_state()
+    e2, _ = mk_engine(str(tmp_path))
+    assert e2.state['lots'][k]['mgmt']['pyramid'] == dict(n=1, step_r=1.5, frac=0.5)
+
+
+def test_backtest_partial_override_runs():
+    import backtest as B
+    rng = np.random.default_rng(0); n = 600
+    t = pd.date_range('2025-01-01', periods=n, freq='4h'); c = 100 * np.exp(np.cumsum(rng.normal(0, 0.01, n)))
+    d = pd.DataFrame(dict(t=t, o=c, h=c * 1.01, l=c * 0.99, c=c, v=1000.0))
+    bk = B.Book({'BTCUSDT': d, 'ETHUSDT': d.copy()})
+    tr, cv = B.run(bk, [dict(key='dca_dip', share=1, risk=0.02, max_pos=2, sides='long', mgmt={'dca': {'n': 2}}, symbols=['BTCUSDT', 'ETHUSDT'])])
+    assert len(cv) > 0
+
+
+def test_exit_plan_explains_no_target_and_dca():
+    e, _ = mk_engine(); k = opened(e); x = e.exit_plan(e.state['lots'][k])
+    assert 'No fixed target' in x['title'] and any('exit signal' in s for s in x['steps'])
+    sl = dict(SL, id='D', key='dca_dip'); e.S['SLEEVES'] = [SL, sl]
+    assert e.open_lot(sl, 'ETHUSDT', 'LONG', SG, None, e.equity()), e.last_skip
+    lot = next(l for l in e.state['lots'].values() if l['sleeve'] == 'D'); x = e.exit_plan(lot)
+    assert x['title'].startswith('Basket target') and x['next'].startswith('safety order 1')
+
+
+def test_ai_prompt_uses_real_timeframe_and_claims_no_news():
+    import ai_filter as A
+    assert 'no news' in A.PROMPT and '{tf}' in A.PROMPT
+    sig = dict(time='t', close=1.0, e20=1, e50=1, e200=1, atr=0.1, ret42=0.1, ret180=0.2, st_dir=1)
+    msg = A.PROMPT.format(sleeve='X', symbol='BTCUSDT', tf='1h', side='SHORT', side_l='short', st='up', funding=0, candles=[], **sig)
+    assert '1h candles' in msg and '4h' not in msg and 'SHORT signal' in msg
+    assert A.review({}, 'BTCUSDT', 'X', sig, [], 0)[0] == 'take'          # no key -> rules decide
+
+
+# ------------------------------------------------------------------ backtest must not use the future in trade MANAGEMENT
+@pytest.mark.parametrize('key,mgmt', [('breakout_pyramid', {}), ('donchian_ens', {}), ('squeeze_tp', {}), ('dca_dip', {}),
+                                      ('ema_mom', {'runner': {'be_r': 1, 'step_r': 1, 'gap_r': 1}}), ('ema_st', {'ttp': {'at_r': 1.5, 'dev_pct': 2}})])
+def test_backtest_truncation_invariance(key, mgmt):
+    """Cut the data at bar k: every trade that CLOSED before k must be identical with or without the later candles.
+    Any difference means some decision used data from the future (this caught the same-candle ATR in the trailing stop)."""
+    import backtest as B
+    rng = np.random.default_rng(7); n = 1400
+    t = pd.date_range('2024-01-01', periods=n, freq='4h')
+    raw = {}
+    for j, s in enumerate(['BTCUSDT', 'ETHUSDT', 'SOLUSDT']):
+        r = rng.standard_t(4, n) * 0.012 + 0.0004 * np.sin(np.arange(n) / (60 + 15 * j))
+        c = 100 * np.exp(np.cumsum(r)); o = np.r_[c[0], c[:-1]]
+        w = np.abs(rng.normal(0, 0.008, n)) * c
+        raw[s] = pd.DataFrame(dict(t=t, o=o, h=np.maximum(o, c) + w, l=np.minimum(o, c) - w, c=c, v=1000.0))
+    cfg = [dict(key=key, share=1, risk=0.02, max_pos=3, sides='both' if key != 'dca_dip' else 'long', mgmt=mgmt, symbols=list(raw))]
+    k = 1100
+    tr_full, _ = B.run(B.Book(raw), cfg)
+    tr_cut, _ = B.run(B.Book({s: d.iloc[:k] for s, d in raw.items()}), cfg)
+    done = lambda tr: tr[tr.i_out < k - 2].sort_values(['i_in', 'sym']).reset_index(drop=True)[['sym', 'i_in', 'i_out', 'pnl']].round(6)
+    a, b = done(tr_full), done(tr_cut)
+    assert len(a) >= 3, 'scenario produced too few trades to be meaningful'
+    pd.testing.assert_frame_equal(a, b)
+
+
+def test_exit_plan_manual_with_target():
+    e, _ = mk_engine(); e.S['SLEEVES'] = [SL]
+    e.open_lot(None, 'ETHUSDT', 'LONG', SG, None, e.equity(), risk=0.01, manual=True, stop_atr=2.0, tp_r=3)
+    lot = next(l for l in e.state['lots'].values() if l.get('manual'))
+    assert e.exit_plan(lot)['title'].startswith('Fixed target')

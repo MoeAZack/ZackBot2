@@ -140,7 +140,7 @@ def run(book, sleeves, start=500.0, max_lev=10.0, daily_halt=0.08, t0=None, t1=N
     SL = []
     for sl in sleeves:
         st = S.STRATEGIES[sl['key']]
-        m = dict(st['mgmt'], **sl.get('mgmt', {}))
+        m = S.merge_mgmt(sl['key'], sl.get('mgmt'))
         sides = sl.get('sides', st['sides'])
         syms = [s for s in sl.get('symbols', syms_all) if s in syms_all]
         sigs = {s: book.raw_sig(sl['key'], s, sl.get('params')) for s in syms}
@@ -208,7 +208,7 @@ def run(book, sleeves, start=500.0, max_lev=10.0, daily_halt=0.08, t0=None, t1=N
             v = np.corrcoef(ra, rb)[0, 1]
         return 0.0 if not np.isfinite(v) else float(v)
 
-    def rule_block(s, side, qty, px, new_risk, i):
+    def rule_block(s, side, qty, px, new_risk, i, add=False):
         if not (RR['coin_cap'] or RR['open_risk_cap'] or RR['correlated_cap']): return None
         allp = [(s_, p) for x in SL for s_, p in x['pos'].items()]
         cap_now = eq + sum(p['side'] * (book.arr[s_]['c'][i - 1] - p['avg']) * p['qty'] for s_, p in allp)
@@ -219,7 +219,7 @@ def run(book, sleeves, start=500.0, max_lev=10.0, daily_halt=0.08, t0=None, t1=N
         if RR['open_risk_cap']:
             tot = sum(lot_risk(s_, p, i) for s_, p in allp) + new_risk
             if tot > RR['open_risk_cap'].get('pct', 15.0) / 100 * cap_now: return 'open_risk_cap'
-        if RR['correlated_cap']:
+        if RR['correlated_cap'] and not add:
             n, rho = RR['correlated_cap'].get('n', 4), RR['correlated_cap'].get('rho', 0.8)
             same = {s_ for s_, p in allp if p['side'] == side and s_ != s}
             if sum(1 for s_ in same if corr(s, s_, i) > rho) >= n: return 'correlated_cap'
@@ -319,7 +319,8 @@ def run(book, sleeves, start=500.0, max_lev=10.0, daily_halt=0.08, t0=None, t1=N
             for s in list(sl['pos']):
                 p = sl['pos'][s]; a = book.arr[s]; sd = p['side']
                 if p.get('skip_i') == i: continue
-                o, h, l, c, atr = a['o'][i], a['h'][i], a['l'][i], a['c'][i], a['atr'][i]
+                # ATR of the last CLOSED candle: candle i's own ATR contains its future high/low (the live engine cannot know it)
+                o, h, l, c, atr = a['o'][i], a['h'][i], a['l'][i], a['c'][i], a['atr'][i - 1]
                 eq -= p['qty'] * c * FPB; p['realized'] -= p['qty'] * c * FPB
                 fav, adv = (h, l) if sd == 1 else (l, h)          # favourable / adverse extreme
                 hit = lambda lvl, x: (x >= lvl) if sd == 1 else (x <= lvl)
@@ -334,7 +335,8 @@ def run(book, sleeves, start=500.0, max_lev=10.0, daily_halt=0.08, t0=None, t1=N
                     while p['dca'] < len(p['levels']) and ((l <= p['levels'][p['dca']]) if sd == 1 else (h >= p['levels'][p['dca']])):
                         lvl = p['levels'][p['dca']]; q = p['q0'] * p['w'][p['dca']]
                         lvl = min(lvl, o) if sd == 1 else max(lvl, o)              # gapped through the level -> filled at the open
-                        if notional(sl, i) + q * lvl > max_lev * eq * cfg['share']: break
+                        if halted or notional(sl, i) + q * lvl > max_lev * eq * cfg['share']: break
+                        if rule_block(s, sd, q, lvl, 0.0, i, add=True): break                  # same add gate as live
                         p['avg'] = (p['avg'] * p['qty'] + lvl * q) / (p['qty'] + q); p['qty'] += q
                         eq -= q * lvl * FEE; p['realized'] -= q * lvl * FEE; p['dca'] += 1
                         p['qmax'] = max(p['qmax'], p['qty'])
@@ -354,7 +356,8 @@ def run(book, sleeves, start=500.0, max_lev=10.0, daily_halt=0.08, t0=None, t1=N
                     while p['adds'] < py['n'] and hit(p['next_add'], fav):
                         q = p['q0'] * py['frac']; lvl = p['next_add']
                         lvl = max(lvl, o) if sd == 1 else min(lvl, o)              # gapped through the add level -> filled at the open
-                        if notional(sl, i) + q * lvl > max_lev * eq * cfg['share']: break
+                        if halted or notional(sl, i) + q * lvl > max_lev * eq * cfg['share']: break
+                        if rule_block(s, sd, q, lvl, q * max(0.0, sd * (lvl - p['stop'])), i, add=True): break
                         p['avg'] = (p['avg'] * p['qty'] + lvl * q) / (p['qty'] + q); p['qty'] += q
                         eq -= q * lvl * FEE; p['realized'] -= q * lvl * FEE; p['adds'] += 1
                         p['qmax'] = max(p['qmax'], p['qty'])

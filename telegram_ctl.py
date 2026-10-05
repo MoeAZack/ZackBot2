@@ -371,8 +371,14 @@ class TelegramControl:
                             stop=l.get('stop'), mark=m, pnl=pnl, manual=l.get('manual'),
                             r=pnl / l['risk_usd'] if pnl is not None and l.get('risk_usd') else None,
                             protected=bool(l.get('stop_id')) and not l.get('stop_dirty'),
-                            risk_to_stop=sd * ((m or l['avg']) - l['stop']) * l['qty'], notional=(m or l['avg']) * l['qty']))
+                            risk_to_stop=sd * ((m or l['avg']) - l['stop']) * l['qty'], notional=(m or l['avg']) * l['qty'],
+                            exit=self._exit(e, l)))
         return out
+
+    @staticmethod
+    def _exit(e, l):
+        try: return e.exit_plan(l)
+        except Exception: return None
 
     def _health(self, e, lots):
         app = None
@@ -430,7 +436,8 @@ class TelegramControl:
         for l in sorted(lots, key=lambda x: (x['symbol'], x['side'])):
             out.append(f"{l['symbol'].replace('USDT', '')} {l['side']} [{l['sleeve']}] qty {_p(l['qty'])}\n"
                        f"  entry {_p(l['avg'])}  mark {_p(l['mark'])}  P&L {_sgn(l['pnl'])} ({_sgn(l['r'])}R)  stop {_p(l['stop'])}"
-                       + ('' if l['protected'] else '  (stop NOT confirmed)'))
+                       + ('' if l['protected'] else '  (stop NOT confirmed)')
+                       + (f"\n  exit: {l['exit']['title']}" + (f" - next: {l['exit']['next']}" if l['exit'].get('next') else '') if l.get('exit') else ''))
         out.append(f"Total open P&L: {_sgn(sum(l['pnl'] or 0 for l in lots))} USDT")
         return '\n'.join(out)
 

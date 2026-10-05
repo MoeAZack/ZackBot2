@@ -1,0 +1,389 @@
+{
+ "note": "Candle data used by the research scripts and dev harnesses. Binance USD-M futures klines (fapi /fapi/v1/klines), UTC open time, columns t,o,h,l,c,v. data/ and data1h/ were downloaded in the dev sandbox on 2026-10-04; data_long/ is a copy of the app's own candle cache from the owner's PC (%LOCALAPPDATA%\\ZackBot\\candles) taken 2026-10-04. Universe = today's top coins (survivorship bias: delisted coins such as LUNA/FTT are NOT included).",
+ "files": {
+  "data/1000PEPEUSDT_4h.csv": {
+   "sha256": "dbdef6b41d6a9e6d831832b4027cffef4535f1796166d86b2c18c8f2768b0035",
+   "rows": 4500,
+   "first": "2024-09-14 04:00:00",
+   "last": "2026-10-04 00:00:00"
+  },
+  "data/AAVEUSDT_4h.csv": {
+   "sha256": "3f2f92fa05aa3b5202eb53bd51df4858cf5ab373ed0fff57e55b6ba98f388d11",
+   "rows": 4500,
+   "first": "2024-09-14 04:00:00",
+   "last": "2026-10-04 00:00:00"
+  },
+  "data/ADAUSDT_4h.csv": {
+   "sha256": "ebc417339d80ca639f049407902f0567f5d0bed0607d97647c8f37de912d788f",
+   "rows": 4500,
+   "first": "2024-09-14 04:00:00",
+   "last": "2026-10-04 00:00:00"
+  },
+  "data/APTUSDT_4h.csv": {
+   "sha256": "befffbfc04f0425ce9bacc0f4c6a6c0924e632a1686732d08c6810b30be1a8a2",
+   "rows": 4500,
+   "first": "2024-09-14 04:00:00",
+   "last": "2026-10-04 00:00:00"
+  },
+  "data/ARBUSDT_4h.csv": {
+   "sha256": "f331a44dcd2a7b340e33f31b31e59705c2054784a95a2d90bc239b7d02900409",
+   "rows": 4500,
+   "first": "2024-09-14 04:00:00",
+   "last": "2026-10-04 00:00:00"
+  },
+  "data/ARKUSDT_4h.csv": {
+   "sha256": "974927bcaafaa9f4300457bfcf72c48176620b18f7c43e5853c4c05c355a9421",
+   "rows": 4500,
+   "first": "2024-09-14 04:00:00",
+   "last": "2026-10-04 00:00:00"
+  },
+  "data/AVAXUSDT_4h.csv": {
+   "sha256": "bea92c41efdf8322e7567f959e484d4c97ba1f5e0d572250367c412d4a5abe80",
+   "rows": 4500,
+   "first": "2024-09-14 04:00:00",
+   "last": "2026-10-04 00:00:00"
+  },
+  "data/BCHUSDT_4h.csv": {
+   "sha256": "992162e6c7baca11f1fa822c5a14d32379f76e576e5602bff06e370692290d10",
+   "rows": 4500,
+   "first": "2024-09-14 04:00:00",
+   "last": "2026-10-04 00:00:00"
+  },
+  "data/BNBUSDT_4h.csv": {
+   "sha256": "7a4ef13d9326d2411b7054ba52ffb23455fb65bb60f53d306c3edafb78185e60",
+   "rows": 4500,
+   "first": "2024-09-14 04:00:00",
+   "last": "2026-10-04 00:00:00"
+  },
+  "data/BTCUSDT_4h.csv": {
+   "sha256": "49184cbb761b757e61c3f8f729e68ca5ee93ef6f943767a446bda87675379e73",
+   "rows": 4500,
+   "first": "2024-09-14 04:00:00",
+   "last": "2026-10-04 00:00:00"
+  },
+  "data/DOGEUSDT_4h.csv": {
+   "sha256": "8038ce8031675bdc081a0174bc8105c26ed6512e8eb072b49669b844d62f2e76",
+   "rows": 4500,
+   "first": "2024-09-14 04:00:00",
+   "last": "2026-10-04 00:00:00"
+  },
+  "data/DOTUSDT_4h.csv": {
+   "sha256": "c9a1499b88760cb27e9ecbc43bf8ff67817d81f6b8f8324368d61dd41aa7919a",
+   "rows": 4500,
+   "first": "2024-09-14 04:00:00",
+   "last": "2026-10-04 00:00:00"
+  },
+  "data/ENAUSDT_4h.csv": {
+   "sha256": "9ad4aaa3652eda1e73ae2bccbb4166a50e7f8869a1f12a604b1f6f33ea2c2e41",
+   "rows": 4500,
+   "first": "2024-09-14 04:00:00",
+   "last": "2026-10-04 00:00:00"
+  },
+  "data/ENJUSDT_4h.csv": {
+   "sha256": "551d00d2fe3f5b9532cf2d746e886761cd6c0a74bf4140504d8d9cf2e819275a",
+   "rows": 4500,
+   "first": "2024-09-14 04:00:00",
+   "last": "2026-10-04 00:00:00"
+  },
+  "data/ETCUSDT_4h.csv": {
+   "sha256": "9e970e910631aafe0859e6ed469045d3d72e9d40e8c6f2da4af6d11aa57123bf",
+   "rows": 4500,
+   "first": "2024-09-14 04:00:00",
+   "last": "2026-10-04 00:00:00"
+  },
+  "data/ETHUSDT_4h.csv": {
+   "sha256": "643db850c17a128c4a44ca78273ebd3028fe526fff63dac6e7e7669d0f11c225",
+   "rows": 4500,
+   "first": "2024-09-14 04:00:00",
+   "last": "2026-10-04 00:00:00"
+  },
+  "data/FETUSDT_4h.csv": {
+   "sha256": "351cd3b0e4b0e5ad798f1a9c6994bc2e02070929ea525863d93664a7e029b69c",
+   "rows": 4500,
+   "first": "2024-09-14 04:00:00",
+   "last": "2026-10-04 00:00:00"
+  },
+  "data/FILUSDT_4h.csv": {
+   "sha256": "ba83d8993efb68beb0359809a2bb4187addad5add0d3229d087675d3ca0ad13c",
+   "rows": 4500,
+   "first": "2024-09-14 04:00:00",
+   "last": "2026-10-04 00:00:00"
+  },
+  "data/GALAUSDT_4h.csv": {
+   "sha256": "bd84f44848893b4bce29c3751be383aed0896414cf3577b261def6d5a98b19f7",
+   "rows": 4500,
+   "first": "2024-09-14 04:00:00",
+   "last": "2026-10-04 00:00:00"
+  },
+  "data/INJUSDT_4h.csv": {
+   "sha256": "358ceddeeef981a4bb5efaa352458ab9a0d389c909740210fec58d817abd05c2",
+   "rows": 4500,
+   "first": "2024-09-14 04:00:00",
+   "last": "2026-10-04 00:00:00"
+  },
+  "data/LINKUSDT_4h.csv": {
+   "sha256": "798f35e9137dd9e23ff1b607aa4c534d74eba1232cd84f9c982351402c17764d",
+   "rows": 4500,
+   "first": "2024-09-14 04:00:00",
+   "last": "2026-10-04 00:00:00"
+  },
+  "data/LTCUSDT_4h.csv": {
+   "sha256": "07a8cb94377890135268c6154904981df26673ea710eaafbd9a6106d3a5f0744",
+   "rows": 4500,
+   "first": "2024-09-14 04:00:00",
+   "last": "2026-10-04 00:00:00"
+  },
+  "data/MANAUSDT_4h.csv": {
+   "sha256": "baaf5b15d7cf2cb9fa022940fc1313b7bcd0150a815f64e9939c93c6b92674c4",
+   "rows": 4500,
+   "first": "2024-09-14 04:00:00",
+   "last": "2026-10-04 00:00:00"
+  },
+  "data/MOVRUSDT_4h.csv": {
+   "sha256": "1fa3f33f4a6e9c36c0587be154ba9ab14846131cd16bdcc4f8f04012a6819860",
+   "rows": 4500,
+   "first": "2024-09-14 04:00:00",
+   "last": "2026-10-04 00:00:00"
+  },
+  "data/NEARUSDT_4h.csv": {
+   "sha256": "199849ef47f964c4089429299d9ec65ead9056f6e6ee588d5e39186983df0e91",
+   "rows": 4500,
+   "first": "2024-09-14 04:00:00",
+   "last": "2026-10-04 00:00:00"
+  },
+  "data/ONDOUSDT_4h.csv": {
+   "sha256": "f67bf80900bb8075b1a56acc2b71734130389d6ac5383617d87cbcd7407d1096",
+   "rows": 4500,
+   "first": "2024-09-14 04:00:00",
+   "last": "2026-10-04 00:00:00"
+  },
+  "data/ONEUSDT_4h.csv": {
+   "sha256": "5b23ce5835caf0a6aa346bd3586b91c450f3bb967abd5b1bb6697a37793dd5e5",
+   "rows": 4500,
+   "first": "2024-09-14 04:00:00",
+   "last": "2026-10-04 00:00:00"
+  },
+  "data/QNTUSDT_4h.csv": {
+   "sha256": "f6a6ec8fef964bde613a27c33c3e15b8db93419eb27f967db826a76bc1936609",
+   "rows": 4500,
+   "first": "2024-09-14 04:00:00",
+   "last": "2026-10-04 00:00:00"
+  },
+  "data/SANDUSDT_4h.csv": {
+   "sha256": "6bb42ce61716f0e085f8e7ad34ed1a4dab4fdf70b0fa89f718954afd14778c92",
+   "rows": 4500,
+   "first": "2024-09-14 04:00:00",
+   "last": "2026-10-04 00:00:00"
+  },
+  "data/SOLUSDT_4h.csv": {
+   "sha256": "6eaea59a03fc04b6c1661de7ed003e6a6bc58d5c007a74a98adf8b1fde20306a",
+   "rows": 4500,
+   "first": "2024-09-14 04:00:00",
+   "last": "2026-10-04 00:00:00"
+  },
+  "data/STRKUSDT_4h.csv": {
+   "sha256": "e037777e837f94bfec8767ef7a304a62041b13d800a8f37b92c80b38d79e98ae",
+   "rows": 4500,
+   "first": "2024-09-14 04:00:00",
+   "last": "2026-10-04 00:00:00"
+  },
+  "data/SUIUSDT_4h.csv": {
+   "sha256": "3e318ffc469eb5766054364e8f8f3a22376c64b7b95ca786ffaec5fba2754447",
+   "rows": 4500,
+   "first": "2024-09-14 04:00:00",
+   "last": "2026-10-04 00:00:00"
+  },
+  "data/SUPERUSDT_4h.csv": {
+   "sha256": "91b446e8771eb521df43a7589971ca8d868115aef8f6c82b282ed45ffe9ce309",
+   "rows": 4500,
+   "first": "2024-09-14 04:00:00",
+   "last": "2026-10-04 00:00:00"
+  },
+  "data/TAOUSDT_4h.csv": {
+   "sha256": "6d1ba1223920881491b816d282ce53377a8d9b7425f77f6bf393394e121f9e8a",
+   "rows": 4500,
+   "first": "2024-09-14 04:00:00",
+   "last": "2026-10-04 00:00:00"
+  },
+  "data/UNIUSDT_4h.csv": {
+   "sha256": "471fa5c6e1c9dec5aa17de31c59b24ec1ef7be5de0695f76ac444f95e9448566",
+   "rows": 4500,
+   "first": "2024-09-14 04:00:00",
+   "last": "2026-10-04 00:00:00"
+  },
+  "data/WLDUSDT_4h.csv": {
+   "sha256": "e3c05f8638b76208e65167968897ff6d372900dffeac9044c9f08f4ce735ece7",
+   "rows": 4500,
+   "first": "2024-09-14 04:00:00",
+   "last": "2026-10-04 00:00:00"
+  },
+  "data/XLMUSDT_4h.csv": {
+   "sha256": "418114ce55e951d40ade72ecb97eea7b79d33e403fa11cf3c069757a9fdd8083",
+   "rows": 4500,
+   "first": "2024-09-14 04:00:00",
+   "last": "2026-10-04 00:00:00"
+  },
+  "data/XRPUSDT_4h.csv": {
+   "sha256": "55a4f3bbe184665cff741a3cd641c0a09137fe5829cac8e4721a5724d148cd78",
+   "rows": 4500,
+   "first": "2024-09-14 04:00:00",
+   "last": "2026-10-04 00:00:00"
+  },
+  "data/ZECUSDT_4h.csv": {
+   "sha256": "942b7022a201696aea1d6f86c622f9d59da1d5b24f55a8edeb76a22546d03dda",
+   "rows": 4500,
+   "first": "2024-09-14 04:00:00",
+   "last": "2026-10-04 00:00:00"
+  },
+  "data/ZROUSDT_4h.csv": {
+   "sha256": "4d4229c57d2d9f9e65eea64b2a327a395e359b002305e9952825946c79828021",
+   "rows": 4500,
+   "first": "2024-09-14 04:00:00",
+   "last": "2026-10-04 00:00:00"
+  },
+  "data1h/AVAXUSDT_1h.csv": {
+   "sha256": "8926d4e211627fdfdc95b31425ae2e728162fff474cf14686a814ec9e6eb886c",
+   "rows": 4499,
+   "first": "2026-03-30 16:00:00",
+   "last": "2026-10-04 03:00:00"
+  },
+  "data1h/BNBUSDT_1h.csv": {
+   "sha256": "ff27f307572e395478f3aff86f6be3493231a29fd2a9da7736f4ec6763fc00a5",
+   "rows": 4499,
+   "first": "2026-03-30 16:00:00",
+   "last": "2026-10-04 03:00:00"
+  },
+  "data1h/BTCUSDT_1h.csv": {
+   "sha256": "d0b0d28ddcc5e862657e2dac833e28e4239f4f09a774c176341f0eeca19f1e8e",
+   "rows": 4499,
+   "first": "2026-03-30 16:00:00",
+   "last": "2026-10-04 03:00:00"
+  },
+  "data1h/DOGEUSDT_1h.csv": {
+   "sha256": "3cef2cad9eebdbfb48b0fd74df8ccbb1eab1a6f9f73294ef7cbc36b0def5cc79",
+   "rows": 4499,
+   "first": "2026-03-30 16:00:00",
+   "last": "2026-10-04 03:00:00"
+  },
+  "data1h/ETHUSDT_1h.csv": {
+   "sha256": "5c3a6cf2ab4095b5ff78288cc82910b8b423e337a09cdc05e47a7808f0585ff8",
+   "rows": 4499,
+   "first": "2026-03-30 16:00:00",
+   "last": "2026-10-04 03:00:00"
+  },
+  "data1h/LINKUSDT_1h.csv": {
+   "sha256": "aebc7406a4de273d25d1740e1ddc33192426a0306965e5c6b4f7a4bf3e9ca08e",
+   "rows": 4499,
+   "first": "2026-03-30 16:00:00",
+   "last": "2026-10-04 03:00:00"
+  },
+  "data1h/SOLUSDT_1h.csv": {
+   "sha256": "ce7adc888270f37d831e305a23e88a79ce3cf4936a2f69efe345db192599d089",
+   "rows": 4499,
+   "first": "2026-03-30 16:00:00",
+   "last": "2026-10-04 03:00:00"
+  },
+  "data1h/XRPUSDT_1h.csv": {
+   "sha256": "f0abb05a52d054cd45f049bc31c40eb5d0de84a7ce0abb632a87c0afa801c4dc",
+   "rows": 4499,
+   "first": "2026-03-30 16:00:00",
+   "last": "2026-10-04 03:00:00"
+  },
+  "data_long/1h/AVAXUSDT_1h.csv": {
+   "sha256": "0a151f1c3383a0535fb5296e7f8da695ac0b00c9c86537241eda306f7a707ca1",
+   "rows": 35999,
+   "first": "2022-08-26 06:00:00",
+   "last": "2026-10-04 04:00:00"
+  },
+  "data_long/1h/BNBUSDT_1h.csv": {
+   "sha256": "52d287320443bb8e835da669f128e1215daf44b008d0144c68b58f81941f2f85",
+   "rows": 35999,
+   "first": "2022-08-26 06:00:00",
+   "last": "2026-10-04 04:00:00"
+  },
+  "data_long/1h/BTCUSDT_1h.csv": {
+   "sha256": "05717edafd19982d332ae85dfe00e4e588457ab2f59474644b25a0379761e368",
+   "rows": 35999,
+   "first": "2022-08-26 06:00:00",
+   "last": "2026-10-04 04:00:00"
+  },
+  "data_long/1h/DOGEUSDT_1h.csv": {
+   "sha256": "1ff2d7dc5cef172afe8c503c56b191c7a8c020a2c95bbc88bb25c1c064a82a70",
+   "rows": 35999,
+   "first": "2022-08-26 06:00:00",
+   "last": "2026-10-04 04:00:00"
+  },
+  "data_long/1h/ETHUSDT_1h.csv": {
+   "sha256": "86b2d57897601f5a530a929c2d094f448641a6bfec0fa2e33084f4d7f9734a9c",
+   "rows": 35999,
+   "first": "2022-08-26 06:00:00",
+   "last": "2026-10-04 04:00:00"
+  },
+  "data_long/1h/LINKUSDT_1h.csv": {
+   "sha256": "9536ea5dea36e345aa41e7419ec3be3aedc7c2bb580327bd4437407f4c8bda5d",
+   "rows": 35999,
+   "first": "2022-08-26 06:00:00",
+   "last": "2026-10-04 04:00:00"
+  },
+  "data_long/1h/SOLUSDT_1h.csv": {
+   "sha256": "53ef0e063a65eb27471fed665d73bd01610cfef3a379b4799f7723088148ee30",
+   "rows": 35999,
+   "first": "2022-08-26 06:00:00",
+   "last": "2026-10-04 04:00:00"
+  },
+  "data_long/1h/XRPUSDT_1h.csv": {
+   "sha256": "88840ca8ca6e03a39fb81e42372854ef88d00715195093a8879d88b4c130bfbc",
+   "rows": 35999,
+   "first": "2022-08-26 06:00:00",
+   "last": "2026-10-04 04:00:00"
+  },
+  "data_long/4h/AVAXUSDT_4h.csv": {
+   "sha256": "96e34b44cd53f137625c7cb7ccd42f67905cd978291a44904386b631782cd1ba",
+   "rows": 10499,
+   "first": "2021-12-19 08:00:00",
+   "last": "2026-10-04 00:00:00"
+  },
+  "data_long/4h/BNBUSDT_4h.csv": {
+   "sha256": "a54474e67eab0a26222a63851c9e443e7ad5c07f807abc44bc28601e026d9d2b",
+   "rows": 10499,
+   "first": "2021-12-19 08:00:00",
+   "last": "2026-10-04 00:00:00"
+  },
+  "data_long/4h/BTCUSDT_4h.csv": {
+   "sha256": "469420592551c251ed5e48edc4e9e3568ee4a40b185adfcb423cf6d33024848d",
+   "rows": 10499,
+   "first": "2021-12-19 08:00:00",
+   "last": "2026-10-04 00:00:00"
+  },
+  "data_long/4h/DOGEUSDT_4h.csv": {
+   "sha256": "aac668cc4e4f5210a54923bf4280b43816572d27c65fae63d9af3dd96e5112a2",
+   "rows": 10499,
+   "first": "2021-12-19 08:00:00",
+   "last": "2026-10-04 00:00:00"
+  },
+  "data_long/4h/ETHUSDT_4h.csv": {
+   "sha256": "d250487771d802728edddf778079cb790f9975ad55d635cdde7ea906576425b8",
+   "rows": 10499,
+   "first": "2021-12-19 08:00:00",
+   "last": "2026-10-04 00:00:00"
+  },
+  "data_long/4h/LINKUSDT_4h.csv": {
+   "sha256": "669a6c7af684cccd5c08bdfd6c621423c609dbf3437ad208eac23f57d6418484",
+   "rows": 10499,
+   "first": "2021-12-19 08:00:00",
+   "last": "2026-10-04 00:00:00"
+  },
+  "data_long/4h/SOLUSDT_4h.csv": {
+   "sha256": "f726dfd5adb3f29c240058b0417c2793d1738b91fb2feeedf23ac9928ad939a3",
+   "rows": 10499,
+   "first": "2021-12-19 08:00:00",
+   "last": "2026-10-04 00:00:00"
+  },
+  "data_long/4h/XRPUSDT_4h.csv": {
+   "sha256": "68b6e8ebd302d5606f5c4b62eeb3045e4fd36996ed334a5dbbe9c7c8d740b1f6",
+   "rows": 10499,
+   "first": "2021-12-19 08:00:00",
+   "last": "2026-10-04 00:00:00"
+  }
+ }
+}

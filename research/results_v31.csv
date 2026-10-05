@@ -1,0 +1,13 @@
+feature,preset,end,maxdd,worst_month,trades,liquidations
+Balanced baseline,balanced,5925.0,-29.2,-7.3,1051,0
+TP ladder 1R/2R/3R x 25%,balanced,1866.0,-23.8,-7.4,1003,0
+"Trailing TP from 2R, 3% pull-back",balanced,1354.0,-27.9,-9.0,982,0
+Maker (post-only) entries,balanced,6131.0,-28.8,-7.3,1056,0
+"Maker entries, no market fallback",balanced,6248.0,-28.4,-7.3,1052,0
+Pump guard 3 ATR,balanced,4755.0,-33.4,-9.6,1020,0
+Trend slots bull-only,balanced,3722.0,-24.3,-5.9,887,0
+"Risk rules enforce (coin 3x, open risk 15%, corr 3)",balanced,5790.0,-28.0,-7.3,1028,0
+Boost baseline,boost,23598.0,-54.4,-27.8,904,0
+Governor: halve risk in a 15% drawdown,boost,15486.0,-35.8,-14.7,956,0
+Governor: risk x 0.33 after +100%,boost,10622.0,-28.4,-11.0,965,0
+Martingale recovery: risk x 1.5 after a 15% drawdown,boost,17688.0,-67.2,-33.1,852,0

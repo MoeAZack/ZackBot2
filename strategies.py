@@ -209,6 +209,25 @@ def build_context(dfs, btc_key='BTCUSDT'):
     return out
 
 
+SUB_DEFAULTS = dict(pyramid=dict(n=1, step_r=1.5, frac=0.5),
+                    dca=dict(n=3, step_atr=1.0, scale=1.5, tp_atr=1.0, stop_atr=2.0),
+                    ttp=dict(at_r=2.0, dev_pct=3.0), runner={})
+
+
+def merge_mgmt(key, override=None):
+    """Effective management settings of a slot: strategy defaults + the slot's overrides, merged one level DEEP for the
+    nested blocks (pyramid / dca / ttp / runner). A partial override such as {'dca': {'n': 4}} keeps every other dca
+    value from the strategy default (or the generic default), so the engine never meets a half-filled block."""
+    base = STRATEGIES[key]['mgmt'] if key in STRATEGIES else {}
+    out = dict(base)
+    for k, v in (override or {}).items():
+        if k in SUB_DEFAULTS and isinstance(v, dict):
+            out[k] = {**SUB_DEFAULTS[k], **(base.get(k) or {}), **v}
+        else:
+            out[k] = v
+    return out
+
+
 def norm_tps(tps):
     """Take-profit ladder: up to 8 [r, frac] pairs, r > 0, 0 < frac <= 1, sorted by r. Bad entries are dropped."""
     out = []

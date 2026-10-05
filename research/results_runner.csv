@@ -1,36 +1,64 @@
 profile,variant,end,ret,dd,wm,sh,n,win,avgR,maxR,hold_h,y1,y2
-"Active (1h, more trades)",Standard (current rules),961.0,92.1,-24.2,-3.8,1.8,494,64.2,0.18,19.6,11.0,-4.8,100.8
-"Active (1h, more trades)",Hold winners (ignore exit while trend up),952.0,90.4,-24.2,-3.8,1.78,494,64.2,0.18,19.6,12.0,-5.7,100.8
-"Active (1h, more trades)",Hold winners + breakeven at 2R,1003.0,100.5,-23.3,-3.0,1.9,498,66.9,0.18,19.6,11.0,-2.5,104.7
-"Active (1h, more trades)",Hold + BE 2R + lock 3R behind best,1014.0,102.8,-23.3,-3.0,1.92,499,66.9,0.19,20.1,11.0,-2.5,107.0
-"Active (1h, more trades)",Hold + BE 2R + give back max 50% after 4R,1017.0,103.4,-23.3,-3.0,1.93,499,66.9,0.19,19.6,11.0,-1.6,105.7
-"Active (1h, more trades)",Hold + 1/4 off at 3R + give back max 50%,991.0,98.1,-22.9,-3.0,1.95,499,66.5,0.18,22.4,11.0,-0.1,97.3
-"Active (1h, more trades)","Bank & run: 1/4 off at 3R, breakeven at 2R",993.0,98.7,-23.3,-3.4,1.96,497,64.0,0.18,22.4,11.0,-0.7,99.0
-"Active (1h, more trades)","DCA runner: half off at basket target, rest runs",898.0,79.6,-25.4,-3.1,1.63,379,53.8,0.19,19.6,24.0,-9.9,98.2
-Aggressive,Standard (current rules),11886.0,2277.1,-38.8,-10.8,2.27,1067,66.2,0.56,176.3,57.0,962.3,130.2
-Aggressive,Hold winners (ignore exit while trend up),10335.0,1967.0,-44.2,-14.7,2.14,1042,64.1,0.54,165.4,63.0,909.8,110.8
-Aggressive,Hold winners + breakeven at 2R,7525.0,1405.0,-55.2,-17.2,2.04,1062,63.0,0.51,165.4,60.0,1031.5,36.8
-Aggressive,Hold + BE 2R + lock 3R behind best,2593.0,418.7,-53.6,-17.2,1.49,1064,63.0,0.23,21.7,55.0,217.3,62.6
-Aggressive,Hold + BE 2R + give back max 50% after 4R,5170.0,934.0,-52.9,-17.5,1.92,1063,63.0,0.35,104.8,56.0,592.1,48.7
-Aggressive,Hold + 1/4 off at 3R + give back max 50%,4146.0,729.2,-50.1,-16.9,1.89,1065,63.6,0.3,79.5,56.0,468.8,45.1
-Aggressive,"Bank & run: 1/4 off at 3R, breakeven at 2R",6467.0,1193.4,-47.6,-15.6,2.12,1082,65.2,0.43,133.1,54.0,803.0,46.5
-Aggressive,"DCA runner: half off at basket target, rest runs",9227.0,1745.4,-45.5,-17.0,2.08,691,49.5,0.79,165.4,144.0,848.4,100.6
-Balanced,Standard (current rules),5974.0,1094.8,-29.2,-7.3,2.26,1053,65.6,0.57,176.3,57.0,529.2,94.2
-Balanced,Hold winners (ignore exit while trend up),5334.0,966.9,-33.6,-9.9,2.12,1036,63.7,0.55,165.4,64.0,499.7,82.0
+"Active (1h, more trades)",Standard (current rules),951.0,90.2,-24.2,-3.4,2.01,504,62.9,0.16,13.5,11.0,-2.3,93.7
+"Active (1h, more trades)",Hold winners (ignore exit while trend up),943.0,88.5,-24.2,-3.4,1.98,504,62.9,0.16,13.5,11.0,-3.2,93.7
+"Active (1h, more trades)",Hold winners + breakeven at 2R,990.0,98.1,-23.5,-2.7,2.11,504,65.5,0.17,13.5,11.0,-0.7,98.5
+"Active (1h, more trades)",Hold + BE 2R + lock 3R behind best,990.0,98.1,-23.5,-2.7,2.11,504,65.5,0.17,13.5,11.0,-0.7,98.5
+"Active (1h, more trades)",Hold + BE 2R + give back max 50% after 4R,992.0,98.4,-23.5,-2.7,2.12,504,65.5,0.17,13.5,11.0,-0.6,98.5
+"Active (1h, more trades)",Hold + 1/4 off at 3R + give back max 50%,960.0,91.9,-24.2,-2.7,2.09,505,65.1,0.16,15.4,11.0,-0.3,91.5
+"Active (1h, more trades)","Bank & run: 1/4 off at 3R, breakeven at 2R",955.0,91.1,-24.4,-3.1,2.09,504,62.7,0.16,15.4,11.0,-0.1,90.3
+"Active (1h, more trades)","DCA runner: half off at basket target, rest runs",891.0,78.3,-25.4,-2.7,1.8,397,53.4,0.17,13.5,23.0,-7.5,91.8
+"Active (1h, more trades)","Tight ladder: BE at 1R, stop locks 1R behind every new R",1381.0,176.2,-17.2,-1.9,2.52,555,73.5,0.21,19.5,9.0,22.0,125.3
+"Active (1h, more trades)",Tight ladder + 1/3 off at 1.5R,1099.0,119.7,-15.2,-1.2,2.36,551,73.3,0.16,15.4,9.0,14.7,90.6
+"Active (1h, more trades)",Tight ladder + 1/2 off at 2R,1043.0,108.6,-14.8,-0.1,2.37,550,73.3,0.15,13.3,9.0,14.9,80.6
+"Active (1h, more trades)",Ladder 1.5R behind + 1/3 off at 1.5R,1037.0,107.3,-15.6,-1.2,2.36,540,73.9,0.16,15.3,10.0,9.5,88.3
+"Active (1h, more trades)",Tight ladder + 1/3 off + 3 ATR trail,965.0,92.9,-17.0,-1.2,2.02,573,65.4,0.13,15.4,8.0,9.5,75.2
+"Active (1h, more trades)",Tight ladder + 1/3 off + 4.5 ATR trail,1089.0,117.7,-14.6,-1.3,2.33,542,72.7,0.17,15.4,9.0,13.4,91.0
+"Active (1h, more trades)",Tight ladder + 1/3 off + exit when trend breaks,892.0,78.5,-15.5,-1.7,1.83,679,62.4,0.1,15.4,5.0,8.9,63.3
+Aggressive,Standard (current rules),11917.0,2283.4,-38.8,-10.8,2.27,1068,66.3,0.56,176.3,56.0,966.0,130.0
+Aggressive,Hold winners (ignore exit while trend up),10323.0,1964.6,-44.2,-14.7,2.14,1042,64.1,0.54,165.4,63.0,909.0,110.8
+Aggressive,Hold winners + breakeven at 2R,7422.0,1384.4,-55.7,-17.2,2.03,1060,62.8,0.51,165.4,60.0,1030.6,35.1
+Aggressive,Hold + BE 2R + lock 3R behind best,2594.0,418.8,-53.6,-17.2,1.49,1064,63.0,0.23,21.7,55.0,217.1,62.8
+Aggressive,Hold + BE 2R + give back max 50% after 4R,5100.0,920.1,-53.5,-17.5,1.91,1062,62.9,0.35,104.8,55.0,591.6,46.8
+Aggressive,Hold + 1/4 off at 3R + give back max 50%,4089.0,717.8,-50.8,-16.9,1.88,1064,63.4,0.3,79.5,56.0,468.4,43.2
+Aggressive,"Bank & run: 1/4 off at 3R, breakeven at 2R",6407.0,1181.3,-48.2,-15.6,2.11,1081,65.2,0.42,133.1,54.0,806.1,44.6
+Aggressive,"DCA runner: half off at basket target, rest runs",9224.0,1744.9,-45.5,-17.0,2.08,691,49.5,0.79,165.4,144.0,848.4,100.5
+Aggressive,"Tight ladder: BE at 1R, stop locks 1R behind every new R",1784.0,256.7,-39.0,-15.2,1.52,1095,64.7,0.15,18.7,39.0,144.8,45.0
+Aggressive,Tight ladder + 1/3 off at 1.5R,1414.0,182.8,-34.4,-13.0,1.45,1082,66.7,0.12,13.0,38.0,109.3,34.4
+Aggressive,Tight ladder + 1/2 off at 2R,1367.0,173.5,-33.4,-12.6,1.43,1077,64.2,0.12,10.4,39.0,109.5,29.9
+Aggressive,Ladder 1.5R behind + 1/3 off at 1.5R,1373.0,174.6,-38.7,-14.2,1.37,1060,66.4,0.12,12.5,41.0,106.5,32.3
+Aggressive,Tight ladder + 1/3 off + 3 ATR trail,1330.0,165.9,-35.5,-17.9,1.47,1175,60.5,0.1,13.0,27.0,109.4,26.4
+Aggressive,Tight ladder + 1/3 off + 4.5 ATR trail,1470.0,194.0,-31.7,-11.8,1.53,1120,65.1,0.12,13.0,34.0,121.1,32.3
+Aggressive,Tight ladder + 1/3 off + exit when trend breaks,1464.0,192.8,-32.0,-12.2,1.53,1380,71.9,0.09,13.0,19.0,114.8,35.7
+Balanced,Standard (current rules),5925.0,1085.1,-29.2,-7.3,2.25,1051,65.5,0.57,176.3,57.0,529.2,92.6
+Balanced,Hold winners (ignore exit while trend up),5291.0,958.1,-33.6,-9.9,2.11,1034,63.5,0.55,165.4,64.0,499.7,80.5
 Balanced,Hold winners + breakeven at 2R,4152.0,730.4,-43.6,-11.8,2.01,1051,62.1,0.51,165.4,60.0,550.6,30.5
 Balanced,Hold + BE 2R + lock 3R behind best,1729.0,245.8,-40.8,-11.8,1.45,942,59.3,0.26,21.7,56.0,130.1,49.8
 Balanced,Hold + BE 2R + give back max 50% after 4R,2898.0,479.6,-41.4,-12.0,1.87,1027,61.6,0.36,104.8,55.0,309.3,41.1
 Balanced,Hold + 1/4 off at 3R + give back max 50%,2317.0,363.3,-39.2,-11.6,1.83,1014,61.7,0.3,79.5,56.0,247.2,33.0
 Balanced,"Bank & run: 1/4 off at 3R, breakeven at 2R",3507.0,601.4,-37.3,-10.7,2.11,1065,64.5,0.43,133.1,55.0,436.1,33.1
 Balanced,"DCA runner: half off at basket target, rest runs",4816.0,863.2,-34.5,-11.9,2.03,707,49.2,0.77,165.4,136.0,453.1,78.3
-"Boost (short-term, high risk)",Standard (current rules),23792.0,4658.5,-54.4,-27.8,2.2,905,70.9,0.42,176.3,47.0,1877.6,150.2
-"Boost (short-term, high risk)",Hold winners (ignore exit while trend up),17951.0,3490.1,-62.5,-35.9,2.03,897,69.0,0.39,165.4,53.0,1813.8,95.5
-"Boost (short-term, high risk)",Hold winners + breakeven at 2R,16961.0,3292.2,-61.8,-35.1,2.04,907,68.1,0.39,165.4,51.0,2110.2,59.7
-"Boost (short-term, high risk)",Hold + BE 2R + lock 3R behind best,2980.0,496.0,-67.6,-35.1,1.37,930,67.7,0.13,21.7,48.0,326.5,37.9
-"Boost (short-term, high risk)",Hold + BE 2R + give back max 50% after 4R,4192.0,738.3,-70.2,-35.1,1.53,929,67.2,0.17,50.3,47.0,673.7,7.0
+Balanced,"Tight ladder: BE at 1R, stop locks 1R behind every new R",1275.0,155.0,-28.3,-10.4,1.54,966,61.7,0.17,18.7,39.0,94.7,30.5
+Balanced,Tight ladder + 1/3 off at 1.5R,1066.0,113.2,-24.6,-9.0,1.48,939,63.5,0.14,13.0,39.0,72.1,23.5
+Balanced,Tight ladder + 1/2 off at 2R,1063.0,112.6,-22.7,-8.6,1.51,938,60.9,0.14,10.4,39.0,72.6,22.8
+Balanced,Ladder 1.5R behind + 1/3 off at 1.5R,1070.0,113.9,-27.2,-9.8,1.43,921,63.4,0.14,12.5,43.0,71.2,24.5
+Balanced,Tight ladder + 1/3 off + 3 ATR trail,996.0,99.2,-25.2,-12.3,1.47,1008,57.8,0.12,13.0,29.0,67.1,18.8
+Balanced,Tight ladder + 1/3 off + 4.5 ATR trail,1047.0,109.4,-22.8,-8.1,1.48,954,61.5,0.13,13.0,36.0,71.4,21.7
+Balanced,Tight ladder + 1/3 off + exit when trend breaks,1060.0,111.9,-22.2,-8.3,1.51,1163,67.9,0.11,13.0,22.0,68.6,25.3
+"Boost (short-term, high risk)",Standard (current rules),23598.0,4619.5,-54.4,-27.8,2.19,904,70.9,0.42,176.3,47.0,1879.6,147.9
+"Boost (short-term, high risk)",Hold winners (ignore exit while trend up),17635.0,3427.1,-62.5,-35.9,2.03,896,69.0,0.39,165.4,53.0,1809.1,92.5
+"Boost (short-term, high risk)",Hold winners + breakeven at 2R,16711.0,3242.1,-61.8,-35.1,2.04,907,68.0,0.38,165.4,51.0,2101.6,58.0
+"Boost (short-term, high risk)",Hold + BE 2R + lock 3R behind best,2862.0,472.5,-67.6,-35.1,1.35,930,67.7,0.12,21.7,48.0,326.5,32.5
+"Boost (short-term, high risk)",Hold + BE 2R + give back max 50% after 4R,4115.0,722.9,-70.2,-35.1,1.52,929,67.2,0.17,50.3,47.0,673.7,5.1
 "Boost (short-term, high risk)",Hold + 1/4 off at 3R + give back max 50%,4331.0,766.2,-66.9,-35.0,1.59,938,67.8,0.16,38.6,47.0,620.8,18.7
-"Boost (short-term, high risk)","Bank & run: 1/4 off at 3R, breakeven at 2R",16618.0,3223.6,-53.8,-29.7,2.16,937,70.1,0.33,133.1,46.0,1855.3,75.7
-"Boost (short-term, high risk)","DCA runner: half off at basket target, rest runs",12905.0,2481.1,-63.6,-36.8,1.91,548,52.7,0.59,165.4,148.0,1511.7,67.0
+"Boost (short-term, high risk)","Bank & run: 1/4 off at 3R, breakeven at 2R",16548.0,3209.6,-53.8,-29.7,2.16,936,70.1,0.33,133.1,46.0,1852.7,75.2
+"Boost (short-term, high risk)","DCA runner: half off at basket target, rest runs",12766.0,2453.2,-63.6,-36.8,1.91,547,52.7,0.59,165.4,148.0,1513.2,65.1
+"Boost (short-term, high risk)","Tight ladder: BE at 1R, stop locks 1R behind every new R",3028.0,505.5,-58.6,-28.3,1.5,999,69.1,0.11,18.7,37.0,295.0,51.3
+"Boost (short-term, high risk)",Tight ladder + 1/3 off at 1.5R,2137.0,327.5,-59.1,-26.8,1.39,1000,70.8,0.08,13.0,37.0,242.2,23.3
+"Boost (short-term, high risk)",Tight ladder + 1/2 off at 2R,2216.0,343.3,-54.4,-26.8,1.42,1000,69.0,0.08,10.4,37.0,242.8,27.6
+"Boost (short-term, high risk)",Ladder 1.5R behind + 1/3 off at 1.5R,2032.0,306.4,-60.5,-28.1,1.32,993,71.0,0.08,12.5,39.0,227.7,22.4
+"Boost (short-term, high risk)",Tight ladder + 1/3 off + 3 ATR trail,1706.0,241.1,-58.8,-31.9,1.28,1117,64.1,0.06,13.0,24.0,211.0,8.2
+"Boost (short-term, high risk)",Tight ladder + 1/3 off + 4.5 ATR trail,2376.0,375.2,-51.9,-24.4,1.5,1044,68.5,0.08,13.0,30.0,281.4,23.0
+"Boost (short-term, high risk)",Tight ladder + 1/3 off + exit when trend breaks,2408.0,381.6,-51.3,-24.8,1.53,1342,75.7,0.06,13.0,14.0,259.3,32.4
 Calm,Standard (current rules),1545.0,209.0,-13.3,-3.3,2.17,715,57.1,0.58,118.0,68.0,134.2,33.2
 Calm,Hold winners (ignore exit while trend up),1478.0,195.6,-14.6,-3.0,2.03,696,54.5,0.57,110.7,74.0,127.7,31.0
 Calm,Hold winners + breakeven at 2R,1461.0,192.1,-14.4,-3.6,2.02,700,53.3,0.56,110.7,72.0,129.6,28.4
@@ -39,38 +67,10 @@ Calm,Hold + BE 2R + give back max 50% after 4R,1123.0,124.6,-16.0,-4.4,1.85,615,
 Calm,Hold + 1/4 off at 3R + give back max 50%,1004.0,100.7,-14.7,-4.4,1.82,579,45.3,0.39,53.5,70.0,64.1,22.1
 Calm,"Bank & run: 1/4 off at 3R, breakeven at 2R",1301.0,160.1,-12.3,-3.0,2.15,679,54.9,0.49,89.2,68.0,107.3,26.3
 Calm,"DCA runner: half off at basket target, rest runs",1497.0,199.5,-17.2,-4.1,2.0,578,45.5,0.65,110.7,124.0,130.1,31.2
-"Active (1h, more trades)","Tight ladder: BE at 1R, stop locks 1R behind every new R",1235.0,147.0,-20.1,-2.1,2.27,492,70.5,0.22,19.5,18.0,14.2,115.1
-"Active (1h, more trades)",Tight ladder + 1/3 off at 1.5R,962.0,92.5,-18.8,-1.3,1.99,489,70.1,0.16,15.4,18.0,6.4,79.9
-"Active (1h, more trades)",Tight ladder + 1/2 off at 2R,919.0,83.9,-18.6,-0.3,2.0,490,70.2,0.14,13.3,18.0,6.8,71.2
-"Active (1h, more trades)",Ladder 1.5R behind + 1/3 off at 1.5R,957.0,91.4,-22.4,-2.2,1.83,437,64.3,0.19,15.5,21.0,-3.4,97.0
-"Active (1h, more trades)",Tight ladder + 1/3 off + 3 ATR trail,928.0,85.6,-19.4,-1.3,1.91,561,64.9,0.13,15.4,11.0,5.9,74.3
-"Active (1h, more trades)",Tight ladder + 1/3 off + 4.5 ATR trail,1018.0,103.7,-15.5,-1.4,2.14,530,72.1,0.16,15.4,15.0,11.9,80.8
-"Active (1h, more trades)",Tight ladder + 1/3 off + exit when trend breaks,846.0,69.2,-18.1,-1.5,1.69,677,62.3,0.09,15.4,5.0,4.6,61.2
-Aggressive,"Tight ladder: BE at 1R, stop locks 1R behind every new R",1680.0,236.0,-44.4,-16.3,1.42,956,61.2,0.17,18.7,72.0,144.9,36.5
-Aggressive,Tight ladder + 1/3 off at 1.5R,1247.0,149.3,-43.0,-14.4,1.24,939,62.8,0.13,13.0,70.0,102.3,22.6
-Aggressive,Tight ladder + 1/2 off at 2R,1255.0,151.1,-38.7,-13.7,1.29,940,60.2,0.13,10.4,70.0,103.2,23.0
-Aggressive,Ladder 1.5R behind + 1/3 off at 1.5R,1174.0,134.8,-50.3,-17.9,1.12,878,62.8,0.13,12.5,82.0,93.1,21.0
-Aggressive,Tight ladder + 1/3 off + 3 ATR trail,1152.0,130.5,-40.2,-19.0,1.26,1127,59.4,0.09,13.0,43.0,94.1,18.1
-Aggressive,Tight ladder + 1/3 off + 4.5 ATR trail,1384.0,176.7,-37.3,-13.0,1.4,1047,63.6,0.12,13.0,57.0,109.2,31.5
-Aggressive,Tight ladder + 1/3 off + exit when trend breaks,1330.0,166.0,-33.9,-12.5,1.41,1370,71.7,0.09,13.0,19.0,102.0,31.1
-Balanced,"Tight ladder: BE at 1R, stop locks 1R behind every new R",1178.0,135.6,-32.0,-11.2,1.4,858,57.6,0.18,18.7,67.0,85.7,26.5
-Balanced,Tight ladder + 1/3 off at 1.5R,997.0,99.4,-29.8,-9.9,1.3,848,60.1,0.14,13.0,64.0,66.4,19.5
-Balanced,Tight ladder + 1/2 off at 2R,993.0,98.6,-26.5,-9.5,1.34,848,57.2,0.14,10.4,64.0,66.3,19.0
-Balanced,Ladder 1.5R behind + 1/3 off at 1.5R,978.0,95.5,-36.6,-12.3,1.19,797,60.2,0.15,12.5,75.0,64.6,18.4
-Balanced,Tight ladder + 1/3 off + 3 ATR trail,923.0,84.6,-28.4,-13.0,1.29,971,57.2,0.11,13.0,43.0,60.2,14.8
-Balanced,Tight ladder + 1/3 off + 4.5 ATR trail,1030.0,106.0,-26.2,-9.0,1.4,911,60.3,0.14,13.0,54.0,66.6,23.3
-Balanced,Tight ladder + 1/3 off + exit when trend breaks,1005.0,101.0,-23.6,-8.6,1.42,1152,67.8,0.11,13.0,22.0,63.5,22.6
-"Boost (short-term, high risk)","Tight ladder: BE at 1R, stop locks 1R behind every new R",2577.0,415.4,-64.8,-30.1,1.37,838,65.3,0.13,18.7,80.0,277.7,34.6
-"Boost (short-term, high risk)",Tight ladder + 1/3 off at 1.5R,1788.0,257.7,-67.7,-29.0,1.21,837,67.4,0.1,13.0,79.0,224.1,8.8
-"Boost (short-term, high risk)",Tight ladder + 1/2 off at 2R,2090.0,318.1,-61.2,-28.6,1.34,839,65.4,0.1,10.4,80.0,254.8,16.2
-"Boost (short-term, high risk)",Ladder 1.5R behind + 1/3 off at 1.5R,1499.0,199.9,-71.3,-32.8,1.06,782,67.1,0.1,12.5,91.0,156.7,15.2
-"Boost (short-term, high risk)",Tight ladder + 1/3 off + 3 ATR trail,1145.0,129.0,-65.8,-33.8,0.95,1065,62.7,0.05,13.0,42.0,144.4,-7.6
-"Boost (short-term, high risk)",Tight ladder + 1/3 off + 4.5 ATR trail,1996.0,299.3,-59.8,-25.0,1.31,968,67.1,0.09,13.0,58.0,213.5,25.6
-"Boost (short-term, high risk)",Tight ladder + 1/3 off + exit when trend breaks,1842.0,268.5,-54.3,-25.1,1.32,1339,75.7,0.06,13.0,14.0,198.3,22.0
-Calm,"Tight ladder: BE at 1R, stop locks 1R behind every new R",753.0,50.7,-12.5,-4.5,1.44,527,37.6,0.25,12.9,50.0,27.4,18.1
-Calm,Tight ladder + 1/3 off at 1.5R,689.0,37.8,-11.7,-4.0,1.32,516,39.1,0.2,9.2,50.0,22.4,12.4
-Calm,Tight ladder + 1/2 off at 2R,693.0,38.7,-11.5,-3.6,1.37,517,36.4,0.2,7.5,51.0,23.0,12.6
-Calm,Ladder 1.5R behind + 1/3 off at 1.5R,690.0,38.0,-14.1,-4.7,1.23,496,40.5,0.21,8.8,65.0,22.1,12.8
-Calm,Tight ladder + 1/3 off + 3 ATR trail,661.0,32.2,-14.4,-6.7,1.24,521,39.0,0.17,9.2,39.0,23.1,7.2
-Calm,Tight ladder + 1/3 off + 4.5 ATR trail,692.0,38.4,-11.7,-3.8,1.34,516,39.3,0.2,9.2,49.0,22.6,12.7
-Calm,Tight ladder + 1/3 off + exit when trend breaks,684.0,36.7,-11.5,-3.7,1.31,524,40.6,0.19,9.2,41.0,21.8,12.0
+Calm,"Tight ladder: BE at 1R, stop locks 1R behind every new R",759.0,51.8,-12.4,-4.5,1.47,531,38.0,0.26,12.9,45.0,27.5,18.8
+Calm,Tight ladder + 1/3 off at 1.5R,694.0,38.8,-11.5,-4.0,1.36,518,39.6,0.2,9.2,45.0,22.5,13.1
+Calm,Tight ladder + 1/2 off at 2R,697.0,39.4,-11.3,-3.5,1.4,519,36.6,0.21,7.5,45.0,23.1,13.1
+Calm,Ladder 1.5R behind + 1/3 off at 1.5R,688.0,37.7,-11.7,-3.6,1.27,507,39.3,0.21,8.8,52.0,21.7,12.9
+Calm,Tight ladder + 1/3 off + 3 ATR trail,650.0,29.9,-13.4,-6.5,1.22,521,39.0,0.16,9.2,35.0,23.4,5.1
+Calm,Tight ladder + 1/3 off + 4.5 ATR trail,688.0,37.7,-11.6,-3.8,1.33,518,39.6,0.2,9.2,45.0,22.7,12.0
+Calm,Tight ladder + 1/3 off + exit when trend breaks,686.0,37.1,-11.3,-3.6,1.32,526,40.9,0.19,9.2,41.0,22.0,12.2

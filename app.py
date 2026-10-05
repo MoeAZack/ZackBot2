@@ -13,7 +13,9 @@ import pandas as pd
 BUNDLE = getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__)))      # read-only app files
 EXE_DIR = os.path.dirname(os.path.abspath(sys.executable if getattr(sys, 'frozen', False) else __file__))
 PORT = 8765
-VERSION = '3.1'
+VERSION = '3.2'
+try: from build_info import BUILD_ID          # written by build_app.bat for each build (verified after the build)
+except ImportError: BUILD_ID = 'dev'
 
 
 def data_dir():
@@ -575,7 +577,8 @@ class App:
             m = marks.get(l['symbol']); sd = 1 if l['side'] == 'LONG' else -1
             pnl = sd * (m - l['avg']) * l['qty'] if m else None
             lots.append(dict(key=k, **{x: l.get(x) for x in ('symbol', 'side', 'sleeve', 'qty', 'avg', 'e0', 'stop', 'opened', 'adds', 'dca', 'tp1', 'manual', 'tf', 'risk_usd')},
-                             tp=l.get('tp'), protected=bool(l.get('stop_id')) and not l.get('stop_dirty'),
+                             tp=l.get('tp'), protected=bool(l.get('stop_id')) and not l.get('stop_dirty'), add_blocked=l.get('add_blocked'),
+                             exit=_safe(lambda: e.exit_plan(l)),
                              mark=m, pnl=pnl, r=(pnl / l['risk_usd']) if (pnl is not None and l.get('risk_usd')) else None,
                              risk_to_stop=sd * ((m or l['avg']) - l['stop']) * l['qty'], notional=(m or l['avg']) * l['qty']))
         return lots
@@ -629,7 +632,7 @@ class App:
             try: extra[name] = fn()
             except Exception as ex: extra[name] = dict(error=str(ex)[:120])
         extra['telegram'] = self.tg.status() if getattr(self, 'tg', None) else None
-        return dict(version=VERSION, mode='LIVE' if e.live else 'PAPER', keys=bool(e.cfg.get('API_KEY')), ai_key=bool(e.cfg.get('ANTHROPIC_API_KEY')),
+        return dict(version=VERSION, build=BUILD_ID, mode='LIVE' if e.live else 'PAPER', keys=bool(e.cfg.get('API_KEY')), ai_key=bool(e.cfg.get('ANTHROPIC_API_KEY')),
                     error=e.error, hedge=e.hedge, equity=e.guard_eq if e.guard_eq is not None else e.last_eq, sizing_equity=e.last_eq,
                     balance=e.last_balance, day_start=st.get('day_start_equity'), peak=st.get('peak_equity'), halted=st.get('halted'),
                     last_cycle=st.get('last_cycle'), next_cycle=getattr(e, 'next_cycle', None), settings=settings, lots=lots,
@@ -638,7 +641,7 @@ class App:
 
     def meta(self):
         e = self.engine
-        return dict(version=VERSION, presets={k: dict(name=v['name'], note=v['note'], bt=v.get('bt'), sleeves=v['sleeves']) for k, v in PRESETS.items()},
+        return dict(version=VERSION, build=BUILD_ID, presets={k: dict(name=v['name'], note=v['note'], bt=v.get('bt'), sleeves=v['sleeves']) for k, v in PRESETS.items()},
                     library={k: dict(name=v['name'], style=v['style'], sides=v['sides'], desc=v['desc'], mgmt=v['mgmt']) for k, v in S.STRATEGIES.items()},
                     core8=CORE8, top40=TOP40, tradable=sorted(e.rules) if e.rules else [], manual_max_risk=MANUAL_MAX_RISK * 100,
                     risk_rule_defaults=RISK_RULE_DEFAULTS, grid_defaults=GRID.clean_cfg({}), gov_mult_max=GOV_MULT_MAX)
@@ -776,7 +779,7 @@ class H(BaseHTTPRequestHandler):
         if p == '/api/ping':          # proves it is THIS ZackBot: answers a nonce with HMAC(token, nonce)
             nonce = (q.get('nonce') or [''])[0][:64]
             proof = hmac.new(TOKEN.encode(), nonce.encode(), 'sha256').hexdigest() if nonce else ''
-            return self._json(dict(app='zackbot', version=VERSION, proof=proof))
+            return self._json(dict(app='zackbot', version=VERSION, build=BUILD_ID, proof=proof))
         if not self._authed(): return self._json(dict(ok=False, error='not authorised - reopen ZackBot from its shortcut'), 401)
         try:
             if p.startswith('/icon/'):
@@ -1218,8 +1221,34 @@ def existing_instance_token():
     return None
 
 
+def _safe(f):
+    try: return f()
+    except Exception as ex:
+        log.debug(f'view helper: {ex}'); return None
+
+
+def selftest(path):
+    """build_app.bat runs the new exe with --selftest <file> BEFORE replacing the old one: proves the bundle imports, has its
+    data files and time-zone data, and reports the version/build id it was built from."""
+    res = dict(version=VERSION, build=BUILD_ID, ok=False)
+    try:
+        import zoneinfo
+        zoneinfo.ZoneInfo('Africa/Cairo')
+        for f in ('panel.html', 'research'):
+            if not os.path.exists(os.path.join(BUNDLE, f)): raise RuntimeError(f'{f} missing from the bundle')
+        import lab, grid, telegram_ctl, ai_filter    # noqa: F401  (every module the app loads lazily)
+        if not PRESETS or not S.STRATEGIES: raise RuntimeError('presets/strategies missing')
+        res['ok'] = True
+    except Exception as e:
+        res['error'] = f'{type(e).__name__}: {e}'
+    with open(path, 'w', encoding='utf-8') as f: json.dump(res, f)
+
+
 def main():
     global APP
+    if '--selftest' in sys.argv:
+        i = sys.argv.index('--selftest')
+        selftest(sys.argv[i + 1] if i + 1 < len(sys.argv) else os.path.join(DATA, 'selftest.json')); return
     if port_in_use():                       # already running -> just show it (after verifying it is ours)
         tok = existing_instance_token()
         if tok: open_window(tok)

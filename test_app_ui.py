@@ -1,10 +1,13 @@
+import os as _os
+OUT = _os.environ.get('ZB_OUT') or _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), 'dev_out')
+_os.makedirs(OUT, exist_ok=True)
 import sys, os, tempfile, threading, time, json
-SP='/tmp/claude-0/-home-claude/d6ad53d0-10de-5d7c-a74c-77ea7be8c649/scratchpad'
+SP=OUT
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 tmp = tempfile.mkdtemp(); os.environ['LOCALAPPDATA'] = tmp
 import shutil; os.makedirs(os.path.join(tmp,'ZackBot'), exist_ok=True)
 for f in ('history','missed'):
-    if os.path.exists('/tmp/claude-0/-home-claude/d6ad53d0-10de-5d7c-a74c-77ea7be8c649/scratchpad/seed_'+f+'.json'): shutil.copy('/tmp/claude-0/-home-claude/d6ad53d0-10de-5d7c-a74c-77ea7be8c649/scratchpad/seed_'+f+'.json', os.path.join(tmp,'ZackBot',f+'.json'))
+    if os.path.exists(OUT+'/seed_'+f+'.json'): shutil.copy(OUT+'/seed_'+f+'.json', os.path.join(tmp,'ZackBot',f+'.json'))
 import pandas as pd, load_data
 RAW = load_data.load()
 MS = {s: (d.t.astype('datetime64[ns]').astype('int64') // 10**6).values for s, d in RAW.items()}
@@ -118,20 +121,21 @@ with sync_playwright() as pw:
     pg.on('pageerror', lambda e: errs.append(str(e))); pg.on('dialog', lambda d: d.accept())
     pg.goto(U + '/?t=' + TOK); time.sleep(3)
     for t in ['dash', 'trades', 'risk', 'strat', 'coins', 'sig', 'bt', 'res', 'logs', 'set', 'help']:
-        pg.click(f'#n_{t}'); time.sleep(1.2); pg.screenshot(path=f'/tmp/claude-0/-home-claude/d6ad53d0-10de-5d7c-a74c-77ea7be8c649/scratchpad/ui_{t}.png', full_page=True)
+        pg.click(f'#n_{t}'); time.sleep(1.2); pg.screenshot(path=f'{OUT}/ui_{t}.png', full_page=True)
     pg.click('#n_trades'); time.sleep(1)
     for v in ('open','missed'):
         pg.click(f'#trView [data-v="{v}"]'); time.sleep(1); pg.screenshot(path=SP+'/ui_trades_'+v+'.png', full_page=True)
     pg.click('#n_dash'); time.sleep(.5); pg.click('label:has(#helpsw)'); time.sleep(.5); pg.screenshot(path=SP+'/ui_dash_nohelp.png', full_page=True)
     pg.click('#n_res'); time.sleep(2); pg.screenshot(path=SP+'/ui_res_runner.png')
-    pg.click('#n_bt'); time.sleep(1); pg.click('#bt_list button:has-text("View")'); time.sleep(1.5); pg.screenshot(path='/tmp/claude-0/-home-claude/d6ad53d0-10de-5d7c-a74c-77ea7be8c649/scratchpad/ui_bt_detail.png', full_page=True)
+    pg.click('#n_bt'); time.sleep(1); pg.click('#bt_list button:has-text("View")'); time.sleep(1.5); pg.screenshot(path=OUT+'/ui_bt_detail.png', full_page=True)
     pg.click('#n_strat'); time.sleep(1); pg.click('.preset:has-text("Active (1h") button:has-text("Combine")'); time.sleep(1); pg.screenshot(path=SP+'/ui_combine.png', full_page=True)
     pg.click('#n_trades'); time.sleep(1); pg.click('#trView [data-v="closed"]'); time.sleep(.5); pg.click('.cal .d.has >> nth=0'); time.sleep(1); pg.screenshot(path=SP+'/ui_trades_day.png', full_page=True)
-    pg.click('#n_strat'); time.sleep(1); pg.click('button:has-text("Advanced") >> nth=0'); time.sleep(.5); pg.screenshot(path='/tmp/claude-0/-home-claude/d6ad53d0-10de-5d7c-a74c-77ea7be8c649/scratchpad/ui_strat_adv.png', full_page=True)
+    pg.click('#n_strat'); time.sleep(1); pg.click('button:has-text("Advanced") >> nth=0'); time.sleep(.5); pg.screenshot(path=OUT+'/ui_strat_adv.png', full_page=True)
     pg.set_viewport_size({'width':1560,'height':2600})
-    for cid, tab in (('resLong','res'),('rrCard','risk'),('gridCard','strat'),('labCard','bt'),('tgcCard','set'),('res31','res'),('roCard','bt')):
+    for cid, tab in (('posCards','dash'),('resLong','res'),('rrCard','risk'),('gridCard','strat'),('labCard','bt'),('tgcCard','set'),('res31','res'),('roCard','bt')):
         try:
             pg.click(f'#n_{tab}'); time.sleep(1.2); el = pg.locator('#'+cid)
+            if cid == 'posCards': pg.evaluate("document.querySelectorAll('#posCards details').forEach(d=>d.open=true)"); time.sleep(.3)
             if el.count():
                 tg = pg.locator(f'#{cid} .cardh')
                 if tg.count() and tg.first.get_attribute('aria-expanded')=='false': tg.first.click(); time.sleep(.8)
