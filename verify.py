@@ -173,18 +173,30 @@ def replay_step(rep, name, args):
     return rep.step(name, ok, sec, **met, why=None if ok else (out.strip().splitlines()[-3:]))
 
 
+def ui_seeds(rep):
+    """Seed files (seed_history.json, seed_missed.json) for the UI harness. Preferred: the ones replay 1 wrote in THIS run
+    (same data on GitHub, the PC and the sandbox); fallback: dev_out/ from an earlier local replay. dev_out/ is not in Git,
+    so without this a clean checkout (GitHub) has no closed trades and the harness's calendar-day flow cannot pass."""
+    run_dir = os.path.join(rep.out, 'replay_' + REPLAYS[0][0].split(':')[0].replace(' ', ''))
+    for src, d in (('replay 1 (this run)', run_dir), ('dev_out (earlier local replay)', os.path.join(ROOT, 'dev_out'))):
+        f = sorted(glob.glob(os.path.join(d, 'seed_*.json')))
+        if any(os.path.basename(x) == 'seed_history.json' for x in f): return f, src
+    return [], 'none'
+
+
 def ui_step(rep):
     ui_out = os.path.join(rep.out, 'ui')
     env = dict(os.environ, ZB_OUT=ui_out, PYTHONIOENCODING='utf-8')
     if WIN and not env.get('PLAYWRIGHT_BROWSERS_PATH'):
         env['PLAYWRIGHT_BROWSERS_PATH'] = os.path.join(os.environ.get('LOCALAPPDATA', ''), 'ZackBot', 'ms-playwright')
-    for f in glob.glob(os.path.join(ROOT, 'dev_out', 'seed_*.json')):      # optional replay seeds give the UI richer data
-        os.makedirs(ui_out, exist_ok=True)
-        import shutil; shutil.copy(f, ui_out)
+    seeds, src = ui_seeds(rep)                  # closed-trade history for the harness (the calendar/day flow needs some)
+    os.makedirs(ui_out, exist_ok=True)
+    import shutil
+    for f in seeds: shutil.copy(f, ui_out)
     rc, out, sec = run([sys.executable, 'test_app_ui.py'], 2400, env=env)
     g = re.search(r'UI HARNESS: (PASS|FAIL) - (\d+)/(\d+) checks passed', out)
     summ = os.path.join(ui_out, 'ui_baseline', 'summary.json')
-    info = dict(checks_passed=int(g.group(2)) if g else None, checks_total=int(g.group(3)) if g else None,
+    info = dict(seeds=src, checks_passed=int(g.group(2)) if g else None, checks_total=int(g.group(3)) if g else None,
                 evidence=os.path.relpath(summ, ROOT) if os.path.exists(summ) else None,
                 failed=[l for l in out.splitlines() if l.startswith('FAIL ')][:10])
     rep.data['ui'] = info
