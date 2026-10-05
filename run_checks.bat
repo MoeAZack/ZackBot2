@@ -17,8 +17,11 @@ if exist data\BTCUSDT_4h.csv (
   findstr /b "TRADES STRICT GATE" dev_out_engine_sim2.txt
 ) else echo   skipped - the data folder is not present
 echo [3/3] UI harness
-"%BPY%" -c "import playwright" 2>nul
-if errorlevel 1 (echo   skipped - run: pip install playwright ^&^& playwright install chromium) else ("%BPY%" test_app_ui.py || goto fail)
+set UPY=%LOCALAPPDATA%\ZackBot\uienv\Scripts\python.exe
+if not exist "%UPY%" (echo   skipped - run run_ui_baseline.bat once to set up Playwright) else (
+  "%UPY%" test_app_ui.py > dev_out_ui.txt 2>&1 || (findstr /b /c:"FAIL " /c:"UI HARNESS" dev_out_ui.txt & goto fail)
+  findstr /b /c:"UI HARNESS" dev_out_ui.txt
+)
 echo ALL CHECKS PASSED
 exit /b 0
 :fail

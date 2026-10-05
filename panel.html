@@ -783,7 +783,7 @@ async function api(p){const r=await fetch(p,{cache:'no-store',credentials:'same-
 async function post(p,b){const r=await fetch(p,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b),credentials:'same-origin'});if(r.status===401){sessionExpired();throw new Error('session expired - reopen ZackBot from its shortcut')}
   let j;try{j=await r.json()}catch(e){throw new Error('bad response ('+r.status+')')}if(!j.ok)throw new Error(j.error||'failed');return j.msg}
 async function act(b,c){if(c&&!confirm(c))return false;try{const m=await post('/api/action',b);toast(typeof m==='string'?m:'done');load();return true}catch(e){toast(e.message,true);if(b.action==='take_signal'||b.action==='manual_trade')dialog({title:'Not opened',body:`<div class="note bd">${esc(e.message)}</div>`,buttons:[{l:'OK',v:1,cls:'b-pri'}]});return false}}
-async function setS(o){try{await post('/api/settings',o);toast('Saved');load()}catch(e){toast(e.message,true);load()}}
+async function setS(o){try{await post('/api/settings',o);toast('Saved');load()}catch(e){toast(e.message,true);const a=document.activeElement;if(a&&a.type==='checkbox')a.blur();load()}}   // rejected: un-focus the switch so the re-render shows the saved state again
 function setHelp(on){document.body.classList.toggle('nohelp',!on);try{localStorage.setItem('zb_help',on?'1':'0')}catch(e){}}
 const LS={get(k,d){try{const v=localStorage.getItem(k);return v==null?d:v}catch(e){return d}},set(k,v){try{localStorage.setItem(k,v)}catch(e){}},del(k){try{localStorage.removeItem(k)}catch(e){}}};
 

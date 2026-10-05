@@ -11,5 +11,8 @@ if [ -f data/BTCUSDT_4h.csv ]; then
   python3 test_engine_sim.py 3000 replay_scenario2.json | grep -E '^(ENGINE|BACKTEST|TRADES|STRICT|GATE)'      # trailing stops, pyramiding, shorts
 else echo "  skipped - no data folder"; fi
 echo "[3/3] UI harness"
-if python3 -c "import playwright" 2>/dev/null; then python3 test_app_ui.py | grep -E 'JS errors|^card'; else echo "  skipped - pip install playwright && playwright install chromium"; fi
+if python3 -c "import playwright" 2>/dev/null; then
+  python3 test_app_ui.py > dev_out_ui.txt 2>&1 || { grep -E '^(FAIL |UI HARNESS)' dev_out_ui.txt; exit 1; }
+  grep -E '^UI HARNESS' dev_out_ui.txt
+else echo "  skipped - pip install -r requirements-ui.txt && python -m playwright install chromium"; fi
 echo "ALL CHECKS PASSED"
