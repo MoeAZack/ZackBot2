@@ -1,6 +1,6 @@
 # ZackBot owner overview
 
-*Last refreshed: 2026-10-05 22:45 Cairo (Africa/Cairo) by Claude, on branch `t04-ci`. This is the plain-language owner view. `ROADMAP.md` and `docs/reviews/` hold the detailed scope and evidence.*
+*Last refreshed: 2026-10-05 23:05 Cairo (Africa/Cairo) by Claude, on branch `t04-ci`. This is the plain-language owner view. `ROADMAP.md` and `docs/reviews/` hold the detailed scope and evidence.*
 
 ## Where we are now
 
@@ -82,26 +82,49 @@ Every ticket now ends with a **clean-up pass on the files it touched**: remove d
 | Scale | **T10–T16** | Order budgets, trade records, "Why?", scorecards, VPS, multi-account, ML data |
 | Final gate | Release audit + your explicit mainnet approval | |
 
-## Scouting: new topics (proposed, not started)
+## Scouting: ideas from other bots and from Claude/Codex (proposed, not started)
 
-Scouted topics are attached to an existing ticket as a **subtopic** when they fit there, or proposed as a new ticket. Nothing starts without a roadmap slot.
+How scouting works: Claude and Codex look at what leading bots do (3Commas, Cryptohopper, Bitsgap, Pionex, Freqtrade, Passivbot, Hummingbot, Cornix) and at ideas from our own reviews. A worthwhile idea is attached to an existing ticket as a **subtopic**, or proposed as a new ticket. Nothing is built without a roadmap slot, its own tests and the normal review. Ideas we already have are not repeated.
 
-| Topic | Value | Proposed place |
-|---|---|---|
-| Pin CI runner image + update GitHub actions | Avoids a surprise CI break on 2026-10-19 | New tiny ticket **T04b**, right after T04 |
-| Dependency and secret scanning in CI (e.g. `pip-audit`, history secret scan) | Catches vulnerable libraries and leaked keys automatically | Subtopic of T04b |
-| Leverage "refusal counter" shown per coin with a daily Telegram summary | Owner sees silent skips | Subtopic of **T03a** |
-| Structured logs (JSON lines) for the installer | Faster diagnosis of a failed install | Subtopic of **T03b** |
-| Record order-book spread at signal time | Makes the maker-fill model checkable | Subtopic of **T05** |
-| Performance budgets (cycle time, panel response, memory) as tests | Turns slowdowns into test failures | Subtopic of **T06** |
-| Point-in-time coin list with delisted coins (LUNA, FTT) | Removes survivorship bias from research | Subtopic of **T13** (scorecard) |
-| Weekly automatic owner report generated from evidence files | Status page can never go stale | Subtopic of **T12** |
+### From other bots (first pass, 2026-10-05)
+
+| Idea (seen in) | What it would add to ZackBot | Proposed place | Value |
+|---|---|---|---|
+| **Stop-loss streak guard** (Freqtrade *StoplossGuard*) | Pause new entries after N stop-outs within X hours, per coin or overall | Subtopic of the risk-rule work in **T10** (risk/execution, backtested first) | High |
+| **Cooldown after exit** (Freqtrade *CooldownPeriod*) | No re-entry on the same coin for a set time after a close; stops whipsaw re-entries | Same as above, **T10** | Medium |
+| **Weak-coin lock** (Freqtrade *LowProfitPairs*) | Temporarily drop a coin whose recent trades keep losing | Research first, then **T13** scorecard | Medium |
+| **Delisting and new-listing filters** (Freqtrade *DelistFilter*, *AgeFilter*) | Never open on a coin Binance is about to delist; skip coins with too little history | Subtopic of **T03a** follow-up (safety, small) or **T06** | High |
+| **Spread / volatility filters** (Freqtrade *SpreadFilter*, *VolatilityFilter*) | Skip coins whose spread or volatility makes stops and maker fills unreliable | Subtopic of **T05** (needs the fill data) | Medium |
+| **Total wallet exposure limit** (Passivbot *TWEL*) | One hard cap on total position size versus capital, across all slots | Subtopic of **T10**; required before lead portfolios (Phase 7) | High |
+| **1-minute-candle backtests** (Passivbot) | Exact intrabar order instead of the open/low/high/close guess | Subtopic of **T09** (parity) | Medium |
+| **One exit object: stop + target + time limit** (Hummingbot *triple barrier*) | Cleaner, testable trade management | Design input for **T08** | Medium |
+| **Signal producer / consumer** (Freqtrade) | One engine publishes intents, other accounts consume them | Design input for **T15** (multi-account) | High (later) |
+| **Indicator warm-up check** (Freqtrade *recursive-analysis*) | Proves indicators give the same value with short and long history | Subtopic of **T04b** (CI) | Medium |
+| **Telegram/TradingView signal intake** (Cornix, 3Commas) | Already planned | Phase 11, unchanged | — |
+| **Evolutionary parameter optimiser** (Passivbot) | Our walk-forward showed re-tuning hurts | **Not recommended** | Low |
+| **"Unstucking" losing DCA baskets** (Passivbot) | Closes stuck baskets in small loss slices | Research only (tail-risk test first) | Low |
+
+### From Claude/Codex reviews
+
+| Idea | Proposed place |
+|---|---|
+| Pin the CI runner image + update GitHub actions (avoids a break on 2026-10-19) | New tiny ticket **T04b** right after T04 |
+| Dependency and secret scanning in CI | Subtopic of **T04b** |
+| Windows self-hosted runner for the real installer/exe checks (Codex) | After **T03b** |
+| Leverage refusal counter per coin + daily Telegram summary | Subtopic of **T03a** |
+| Structured (JSON) installer logs | Subtopic of **T03b** |
+| Record the order-book spread at signal time | Subtopic of **T05** |
+| Performance budgets (cycle time, panel response, memory) as tests (Codex) | Subtopic of **T06** |
+| Point-in-time coin list incl. delisted coins (LUNA, FTT) | Subtopic of **T13** |
+| Generate this page from the evidence files so it can't go stale (Codex) | Subtopic of **T12** |
+| Event-triggered PR handling instead of polling (Codex) | Process, when the GitHub trigger is proven |
 
 ## Decisions for you (no rush)
 
 1. **Grid / COMBO:** keep (disabled, experimental) or remove from the app?
 2. **Duplicate `DCA1H2` slot** in the canary profile: keep or remove? (Unchanged from T03.)
 3. **T04b:** OK to add the small CI-maintenance ticket right after T04?
+4. **Scouting:** any idea above you want moved up, or dropped?
 
 ## How Claude and Codex coordinate
 
