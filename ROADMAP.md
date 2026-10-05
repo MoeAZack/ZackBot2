@@ -93,7 +93,7 @@ These apply to every phase.
 |---|---|---|
 | 0.1 | Git from the rc2 bundle | ✅ Done. History in `%LOCALAPPDATA%\ZackBot\history.git`, identical to tag v3.2-rc2; use `..\ZackBot2_git\zbgit.bat`. |
 | 0.2 | Branches: `main` protected, one branch per bounded change | ⬜ |
-| 0.3 | Playwright on Windows | ◐ Passed on identical source in the dev sandbox. Windows run pending (`pip install playwright` + `python -m playwright install chromium`). |
+| 0.3 | Playwright on Windows | ✅ Done (T02): `run_ui_baseline.bat`, 171/171 on Windows. |
 | 0.4 | Installer rehearsal | ◐ Install verified (build 20261005-103320, self-test, hash, ping proof). **Rollback drill** pending; needs a "simulate failed launch" switch. |
 | 0.5 | CI | ⬜ Fast tests on every commit; full tests, strict replays, UI and build on release. |
 | 0.6 | One testnet canary | ◐ Running v3.2. The slot set must equal a tested profile; the DCA1H2 duplicate is pending a decision. |
@@ -346,8 +346,8 @@ A high score **never** changes settings automatically.
 | ID | Ticket | Mode | Status |
 |---|---|---|---|
 | T01 | Git baseline | No behaviour change | ✅ Done 2026-10-05 (history in `%LOCALAPPDATA%\ZackBot\history.git`, tag v3.2-rc2) |
-| T02 | Playwright on Windows | No behaviour change | ◐ Review 1: 165/165 on Windows; 2 P1 + 3 P2 + 2 P3 findings fixed 2026-10-05 (170/170 in dev sandbox). Pending: plain Windows run of `run_ui_baseline.bat`, clean Git branch, re-review |
-| T03 | Installer rollback drill ("simulate failed launch" switch) | Deployment only | ⬜ |
+| T02 | Playwright on Windows | No behaviour change | ✅ Done 2026-10-05 (accepted after 3 reviews: Windows 171/171 UI checks, 192/192 tests, strict replays unchanged; branch `t02-ui-baseline` @ 2fc8642) |
+| T03 | Installer rollback drill ("simulate failed launch" switch) | Deployment only | ◐ In progress |
 | T04 | CI fast/full pipelines (moved up: every later ticket is checked by it) | No behaviour change | ⬜ |
 | T05 | Fill telemetry (maker/market expected vs actual) | Observe | ⬜ |
 | T06 | Shared-core contracts, reason codes and `AccountContext` spec | No behaviour change | ⬜ |
