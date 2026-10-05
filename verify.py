@@ -246,11 +246,33 @@ def installer_mode(rep, mode, timeout):
     return rep.step(f'installer {mode}', ok, sec, **info)
 
 
+def runtime_problems(st):
+    """Fail-closed check of the running bot's /api/status (T04 review round 2): every safety field must be PRESENT, well
+    formed and exactly safe - a missing, truncated or malformed answer is a problem, never 'nothing to report'.
+    Returns the list of problems; empty = PAPER (testnet), engine/exchange ok, no recent errors, nothing unprotected,
+    nothing untracked, no orphan orders, and every lot explicitly protected."""
+    if not isinstance(st, dict): return ['status is not a JSON object']
+    p, h, lots = [], st.get('health'), st.get('lots')
+    if st.get('mode') != 'PAPER': p.append(f"mode is {st.get('mode')!r}, not 'PAPER'")
+    if not isinstance(h, dict): return p + ['health missing or malformed']
+    for k in ('engine', 'exchange'):
+        if h.get(k) != 'ok': p.append(f'health.{k} is {h.get(k)!r}, not ok')
+    for k, kinds in (('errors', (list,)), ('unprotected', (list,)), ('untracked', (dict, list))):
+        v = h.get(k, None)
+        if not isinstance(v, kinds): p.append(f'health.{k} missing or malformed ({type(v).__name__})')
+        elif len(v): p.append(f'health.{k} not empty ({len(v)})')
+    o = h.get('orphans', None)
+    if type(o) is not int: p.append(f'health.orphans missing or malformed ({type(o).__name__})')
+    elif o != 0: p.append(f'health.orphans = {o}')
+    if not isinstance(lots, list): p.append('lots missing or malformed')
+    else:
+        bad = [i for i, l in enumerate(lots) if not isinstance(l, dict) or l.get('protected') is not True]
+        if bad: p.append(f'{len(bad)} lot(s) not explicitly protected')
+    return p
+
+
 def runtime_ok(st):
-    """The running bot is on TESTNET (mode PAPER), healthy, and every position is protected - nothing untracked, no orphans."""
-    h = st.get('health', {}); lots = st.get('lots', [])
-    return (st.get('mode') == 'PAPER' and h.get('engine') == 'ok' and h.get('exchange') == 'ok' and not h.get('unprotected')
-            and not h.get('untracked') and not h.get('orphans') and all(l.get('protected') for l in lots))
+    return not runtime_problems(st)
 
 
 def bot_status():
@@ -268,10 +290,12 @@ def reconcile_step(rep, phase='after drill', wait=180):
         try:
             st = bot_status()
             h = st.get('health', {}); lots = st.get('lots', [])
+            h = h if isinstance(h, dict) else {}; lots = lots if isinstance(lots, list) else []
             info = dict(mode=st.get('mode'), build=st.get('build'), engine=h.get('engine'), exchange=h.get('exchange'),
                         lots=len(lots), unprotected=h.get('unprotected'), untracked=h.get('untracked'), orphans=h.get('orphans'),
-                        errors=h.get('errors', [])[:5])
-            ok = runtime_ok(st)
+                        errors=(h.get('errors') or [])[:5] if isinstance(h.get('errors'), list) else h.get('errors'),
+                        problems=runtime_problems(st))
+            ok = not info['problems']
             if st.get('mode') != 'PAPER': break      # LIVE (or unknown) never becomes acceptable by waiting
         except Exception as e:
             last_err = f'{type(e).__name__}: {e}'
@@ -281,8 +305,7 @@ def reconcile_step(rep, phase='after drill', wait=180):
     if not info:
         return rep.step(name, False, round(time.time() - t, 1), why=last_err)
     rep.data.setdefault('reconciliation', {})[phase] = info
-    why = None if ok else ('the running bot is not in PAPER (testnet) mode' if info.get('mode') != 'PAPER'
-                           else 'engine/exchange not ok, or an unprotected/untracked position, or orphan orders')
+    why = None if ok else '; '.join(info.get('problems') or ['status check failed'])
     return rep.step(name, ok, round(time.time() - t, 1), **info, why=why)
 
 
