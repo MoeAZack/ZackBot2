@@ -1,6 +1,6 @@
 # ZackBot owner overview
 
-*Last refreshed: 2026-10-05 23:15 Cairo (Africa/Cairo) by Codex, on branch `t04-ci`. This is the plain-language owner view. `ROADMAP.md` and `docs/reviews/` hold the detailed scope and evidence.*
+*Last refreshed: 2026-10-06 00:15 Cairo (Africa/Cairo) by Claude, on branch `t04-ci`. This is the plain-language owner view. `ROADMAP.md` and `docs/reviews/` hold the detailed scope and evidence.*
 
 ## Where we are now
 
@@ -11,19 +11,19 @@
 | Installed application | **Unchanged** since build `20261005-204405` (T03). T04 does not install anything. |
 | Latest accepted commit | `master` `8b6641f` (T03 accepted + this overview) |
 | Current ticket | **T04: automatic checks (CI): fast / full / release verification** |
-| Stage | **Changes requested.** Codex reviewed handoff `b884a79` and confirmed three release-gate defects. T04 is not ready for the long Windows full run or acceptance. |
-| What Claude is doing | Fix the Windows fixture, testnet-before-drill gate and skip-to-PASS behavior; then post **FIXED FOR CODEX** with a new SHA and evidence |
-| What Codex is reviewing | The exact remote handoff `b884a790845fc90d15a69133313950c90378fb4f`; review: `docs/reviews/T04_review_gpt.md` |
-| Your action | **None.** Do not run `verify.bat full` yet; the automated review loop has returned the findings to Claude. |
+| Stage | **Fixes pushed, re-review requested.** All five findings from Codex review round 1 are addressed on `t04-ci` (head named in the **FIXED FOR CODEX** comment on PR #1). Waiting for GitHub fast/full on that head and Codex re-review. |
+| What Claude is doing | Posting **FIXED FOR CODEX** once GitHub fast + full are green on the new head. In parallel (nothing pushed): T03a leverage-refusal fallback prepared and tested in the sandbox. |
+| What Codex is reviewing | Round 1 done (`docs/reviews/T04_review_gpt.md`, changes requested). Next: re-review of the fixes. |
+| Your action | **None.** (You approved the 2-minute Windows test run; it passed.) Still deferred until Codex agrees: the long `verify.bat full`. |
 
 ## Latest test results
 
 | Where | Result |
 |---|---|
 | GitHub, run #1 (push of `706fd33`) | **verify fast PASS** (3 min 20 s) |
-| GitHub, pull request | `verify fast` PASS for `b884a79`; **verify full FAILED** with 168/171 UI checks (two mobile overflows and one calendar-flow timeout). Unit tests and both strict replays passed. |
+| GitHub, pull request | Run for `b884a79`: verify fast PASS; verify full FAILED 168/171 UI (calendar flow had no seeded trades on a clean checkout; two mobile overflows with GitHub's fonts). Both fixed; re-run on the new head is reported in the PR comment. |
 | Claude's cloud sandbox (Linux) | `verify fast` PASS; `verify full` PASS (215 tests passed, 1 Windows-only skip; both strict replays PASS; UI 171/171) |
-| Your Windows PC | Codex targeted T04 tests: **1 failed, 23 passed**. Confirmed cross-platform newline bug in the new manifest test. The long T04 run is deferred. |
+| Your Windows PC | **T04 targeted tests at `94d23d4`: 30 passed (23 s)** (`tests/test_verify.py` + `tests/test_installer.py`, build Python, bot not stopped). Codex's earlier run at `b884a79`: 1 failed, 23 passed (CRLF fixture bug, now fixed). |
 
 All results above are simulated or automated test environments with a fake exchange. None placed real orders.
 
@@ -46,16 +46,16 @@ All results above are simulated or automated test environments with a fake excha
 | Open | High | Binance testnet refuses leverage changes on SOL/XRP (`-1000`) | Signals are skipped safely; no unsafe order. Fix: **T03a**, next after T04. |
 | Open | Medium | Panel can feel frozen during a long engine cycle | Planned in T06–T09 (core extraction). |
 | Open | Low | Risk tab "Compounding" tile clips at about 390 px wide | Next UI/mobile ticket. |
-| Open (T04 review) | High | `verify release` drills before proving PAPER/testnet and does not require PAPER to pass reconciliation | Must be fixed before any release drill. |
-| Open (T04 review) | High | Required replay and UI gates can be skipped while full/release reports PASS | Must be made fail-closed or moved to an explicitly partial diagnostic mode. |
-| Open (T04 review) | High | New manifest test fails on Windows because fixture bytes differ from its expected hash | Blocks the owner's Windows full verification. |
-| Open (T04 review) | High | GitHub full verification failed: mobile Signals overflow 22 px, Research overflow 12 px, and Trades calendar click timed out | Diagnose from the uploaded evidence; fix without weakening the UI requirements. |
-| Open (T04 review) | Medium | Lightweight secret check misses nested private filenames and all JSON contents | Strengthen in T04 or explicitly carry into T04b with planted tests. |
+| Fixed, in re-review (T04 round 1) | High | `verify release` drills before proving PAPER/testnet and does not require PAPER to pass reconciliation | Must be fixed before any release drill. |
+| Fixed, in re-review (T04 round 1) | High | Required replay and UI gates can be skipped while full/release reports PASS | Must be made fail-closed or moved to an explicitly partial diagnostic mode. |
+| Fixed, in re-review (T04 round 1) | High | New manifest test fails on Windows because fixture bytes differ from its expected hash | Blocks the owner's Windows full verification. |
+| Fixed, in re-review (T04 round 1) | High | GitHub full verification failed: mobile Signals overflow 22 px, Research overflow 12 px, and Trades calendar click timed out | Diagnose from the uploaded evidence; fix without weakening the UI requirements. |
+| Fixed, in re-review (T04 round 1) | Medium | Lightweight secret check misses nested private filenames and all JSON contents | Strengthen in T04 or explicitly carry into T04b with planted tests. |
 | Fixed (T04 docs) | Low | T04 review document named commit ids from before the branch was rebuilt | Corrected on `t04-ci`. |
 
 ## Open risks
 
-- **T04 release gates (high):** Codex found three confirmed defects in the first handoff. No installer, rollback drill or long Windows run is requested while they are open.
+- **T04 release gates:** the three confirmed defects from review round 1 are fixed with regression tests; they stay listed until Codex accepts.
 - **CI maintenance (low):** GitHub warns that three standard actions used by the checks target an old Node version, and that the Linux runner image changes to Ubuntu 26 on 2026-10-19. Nothing fails today. Proposed fix as a tiny follow-up (T04b): pin the runner image and update the three actions.
 - No protected `master` yet: comes right after T04 is accepted.
 - Installer logic is long Windows batch code: T03b.
