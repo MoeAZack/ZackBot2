@@ -1,6 +1,6 @@
 # ZackBot owner overview
 
-*Last refreshed: 2026-10-06 00:53 Cairo (Africa/Cairo) by Codex, on branch `t04-ci`. This is the plain-language owner view. `ROADMAP.md` and `docs/reviews/` hold the detailed scope and evidence.*
+*Last refreshed: 2026-10-06 01:20 Cairo (Africa/Cairo) by Codex, on branch `t04b-ci-maintenance`. This is the plain-language owner view. `ROADMAP.md` and `docs/reviews/` hold the detailed scope and evidence.*
 
 ## Where we are now
 
@@ -9,12 +9,12 @@
 | Environment | **Binance Futures testnet only.** Mainnet stays impossible until the roadmap and the final release audit are complete and you approve it. |
 | Is ZackBot running? | Yes, on your PC (testnet). Last confirmed healthy at the end of T03: engine and exchange ok, 4 positions, all protected, 0 orphans. Nothing in T04 has stopped or touched it. |
 | Installed application | **Unchanged** since build `20261005-204405` (T03). T04 does not install anything. |
-| Latest accepted commit | `master` `8b6641f` (T03 accepted + this overview) |
-| Current ticket | **T04: automatic checks (CI): fast / full / release verification** |
-| Stage | **Accepted by Codex at `8043c7e`.** GitHub fast/full and the complete Windows full verification are green. |
-| What Claude is doing | Waiting for the acceptance handoff; then T04 can be merged and the next roadmap ticket prepared. |
-| What Codex is reviewing | T04 final evidence is complete in `docs/reviews/T04_review_gpt.md`. |
-| Your action | **None for testing.** Repository branch protection still needs to be enabled before PR #1 is merged. |
+| Latest accepted commit | `master` `7e0c245` (T04 accepted and merged) |
+| Current ticket | **T04b: deterministic CI maintenance** |
+| Stage | T04 merged under protected checks. T04b removes the dated GitHub runner/action warnings before 2026-10-19. |
+| What Claude is doing | Review and improve the narrow T04b CI change after the GitHub handoff. |
+| What Codex is reviewing | Official action versions, immutable pins, tests and the new PR results. |
+| Your action | **None.** |
 
 ## Latest test results
 
@@ -29,7 +29,7 @@ All results above are simulated or automated test environments with a fake excha
 
 ## What just changed
 
-### T04 — automatic checks: accepted, merge pending
+### T04 — automatic checks: accepted and merged
 
 - One command, `verify.py`, with three levels: **fast** (every push), **full** (every pull request into `master`), **release** (on your PC: adds the rollback drill and a read-only check of the running bot).
 - Each run saves one summary file: commit, build, dataset checksum, library versions, test counts, replay numbers, UI result, exe checksum, Cairo times.
@@ -79,7 +79,7 @@ Every ticket now ends with a **clean-up pass on the files it touched**: remove d
 
 | Order | Ticket | Why it comes here |
 |---|---|---|
-| Merge | **T04 — automatic checks** | Accepted; protect `master`, merge PR #1 |
+| Now | **T04b — deterministic CI maintenance** | Pin runner/action versions before GitHub's 2026-10-19 image change |
 | Next | **T03a — leverage-refusal fallback** | Fixes the confirmed SOL/XRP gap, under CI |
 | Then | **T03b — installer in PowerShell** | Easier to maintain once behaviour is proven |
 | Then | **T05 — fill telemetry** | Measures expected vs actual fills |
