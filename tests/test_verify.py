@@ -257,3 +257,20 @@ def test_every_incomplete_status_prevents_the_drill(monkeypatch, tmp_path):
         assert calls == [], f'{name}: the drill must not be called'
     monkeypatch.setattr(verify, 'bot_status', _good)
     assert verify.release_steps(verify.Report('release', str(tmp_path / 'ok'))) and calls == ['drill']
+
+
+# ---------------------------------------------------------------- T04b: deterministic, Node-24 CI foundation
+def test_ci_uses_pinned_runner_and_immutable_node24_actions():
+    """Avoid ubuntu-latest image drift and mutable action tags in the release gate."""
+    workflow = open(os.path.join(ROOT, '.github', 'workflows', 'verify.yml'), encoding='utf-8').read()
+    assert 'ubuntu-latest' not in workflow
+    assert workflow.count('runs-on: ubuntu-24.04') == 2
+    expected = {
+        'actions/checkout': '3d3c42e5aac5ba805825da76410c181273ba90b1',
+        'actions/setup-python': '5fda3b95a4ea91299a34e894583c3862153e4b97',
+        'actions/upload-artifact': '043fb46d1a93c77aae656e7c1c64a875d1fc6a0a',
+    }
+    for action, sha in expected.items():
+        uses = re.findall(rf'uses:\s*{re.escape(action)}@([^\s#]+)', workflow)
+        assert uses and set(uses) == {sha}, (action, uses)
+        assert all(re.fullmatch(r'[0-9a-f]{40}', ref) for ref in uses)
