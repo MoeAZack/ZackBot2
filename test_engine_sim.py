@@ -13,7 +13,7 @@ SYMS = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT', 'XRPUSDT', 'DOGEUSDT', 'LINK
 RAW = load_data.load(syms=SYMS)
 N = len(RAW['BTCUSDT'])
 T0 = int(sys.argv[1]) if len(sys.argv) > 1 else N - 900
-SLEEVES = json.loads(sys.argv[2]) if len(sys.argv) > 2 else [
+SLEEVES = (json.load(open(sys.argv[2])) if sys.argv[2].endswith('.json') else json.loads(sys.argv[2])) if len(sys.argv) > 2 else [
     E.sleeve('MOM', 'ema_mom', .4, .03, 4, 'core8', mgmt=E.PY),
     E.sleeve('DCA', 'dca_dip', .3, .03, 4, 'core8'),
     E.sleeve('SQZ', 'squeeze_tp', .3, .03, 4, 'core8', sides='both')]

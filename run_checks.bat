@@ -11,6 +11,8 @@ echo [2/3] engine vs backtest replay
 if exist data\BTCUSDT_4h.csv (
   "%BPY%" test_engine_sim.py > dev_out_engine_sim.txt 2>&1 || goto fail
   findstr /b "GATE" dev_out_engine_sim.txt
+  "%BPY%" test_engine_sim.py 3000 replay_scenario2.json > dev_out_engine_sim2.txt 2>&1 || goto fail
+  findstr /b "GATE" dev_out_engine_sim2.txt
 ) else echo   skipped - the data folder is not present
 echo [3/3] UI harness
 "%BPY%" -c "import playwright" 2>nul

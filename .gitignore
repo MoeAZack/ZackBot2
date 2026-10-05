@@ -2,3 +2,4 @@ __pycache__/
 *.pyc
 dev_out/
 research/*.pkl
+dev_out_engine_sim*.txt

@@ -25,7 +25,7 @@ All clock times in the panel are Cairo time (the bot's trading day).
 - `pytest -q tests` alone needs only `requirements-dev.txt`.
 - `test_engine_sim.py [start_bar] [slots_json]` replays the LIVE engine against a simulated exchange and the backtester on the same
   candles; it fails if the results differ by more than 15 points or the exchange position differs from what the engine tracks.
-  Scenario 2 (trailing stops, pyramiding, shorts): `python test_engine_sim.py 3000 "<json of dev_out/scenario2.json>"`.
+  Scenario 2 (trailing stops, pyramiding, shorts): `python test_engine_sim.py 3000 replay_scenario2.json`.
 - `test_app_ui.py`: headless browser harness over every tab and API (needs `pip install playwright` + `playwright install chromium`).
   Screenshots go to `dev_out/` (or `$ZB_OUT`).
 
