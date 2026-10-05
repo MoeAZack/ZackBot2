@@ -1073,7 +1073,7 @@ function renderSafety(){const h=D.health||{},S=D.settings,eq=D.equity||0,errs=h.
   const ds=D.day_start||eq,lim=(S.DAILY_LOSS_HALT||0)*ds,loss=Math.max(0,ds-eq),lr=lim?loss/lim:0,lc=lr>=.9?'bd':lr>=.7?'wn':'';
   const dd=D.peak&&eq?Math.max(0,1-eq/D.peak)*100:0,fl=(S.PEAK_DD_FLATTEN||0)*100,dr=fl?dd/fl:0,dc=dr>=.9?'bd':dr>=.7?'wn':'';
   const mm=(r,c)=>`<span class="mm" aria-hidden="true"><b style="width:${Math.min(100,r*100).toFixed(0)}%;background:${c==='bd'?'var(--bad)':c==='wn'?'var(--warn)':'var(--good)'}"></b></span>`;
-  const un=(h.unprotected||[]).length,ut=Object.keys(h.untracked||{}).length,orph=h.orphans||0;
+  const un=(h.unprotected||[]).length,ut=Object.keys(h.untracked||{}).length,orph=h.orphans||0,lrf=Object.values(h.lev_refusals||{}).reduce((a,r)=>a+(r.count||0),0);
   const nx=Object.entries(D.next_cycle||{}).sort((a,b)=>ms(a[1])-ms(b[1]))[0];
   let x=(D.mode==='LIVE'?`<span class="chip2 live" id="mode"><i class="d"></i>LIVE · real money</span>`:`<span class="chip2 paper" id="mode"><i class="d"></i>TESTNET (paper)</span>`)
    +`<button class="chip2 ${ec}" id="sb_eng" aria-haspopup="dialog" aria-expanded="false" aria-label="Engine ${h.engine||'unknown'}${errs.length?', '+errs.length+' recent errors':''} - show details"><i class="d"></i><span class="k">Engine</span>${esc(h.engine||'?')}${errs.length?`<span class="cnt">${errs.length}</span>`:''}<span aria-hidden="true">▾</span></button>`
@@ -1085,11 +1085,12 @@ function renderSafety(){const h=D.health||{},S=D.settings,eq=D.equity||0,errs=h.
    +(un?`<button class="chip2 bd" id="sb_unp" aria-label="${un} positions without a confirmed exchange stop - details"><i class="d"></i>Unprotected: ${un}</button>`:'')
    +(ut?`<button class="chip2 wn" id="sb_unt" aria-label="${ut} untracked positions on Binance - what is this?"><i class="d"></i>Untracked: ${ut}</button>`:'')
    +(orph?`<button class="chip2 wn" id="sb_orph" aria-label="${orph} orphan orders - what is this?">Orphan orders: ${orph}</button>`:'')
+   +(lrf?`<button class="chip2 wn" id="sb_lev" aria-label="${lrf} leverage refusals by Binance - details">Leverage refusals: ${lrf}</button>`:'')
    +(nx?`<span class="chip2"><span class="k">Next ${esc(nx[0])} candle</span><span id="sb_nc"></span></span>`:'');
   setHTML($('sbChips'),x);
   $('sbPause').textContent=S.ENTRIES_PAUSED?'Resume entries':'Pause entries';$('sbPause').classList.toggle('b-ok',!!S.ENTRIES_PAUSED);
   $('editHint').hidden=!SKIPPED;tick()}
-$('sbChips').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;if(b.id==='sb_eng'){$('engPop').hidden?engPop(b):closePop()}else if(b.id==='sb_ent')toggleEntries();else if(b.id==='sb_unp')unprotDlg();else if(b.id==='sb_unt')untrackedDlg();else if(b.id==='sb_orph')orphDlg()});
+$('sbChips').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;if(b.id==='sb_eng'){$('engPop').hidden?engPop(b):closePop()}else if(b.id==='sb_ent')toggleEntries();else if(b.id==='sb_unp')unprotDlg();else if(b.id==='sb_unt')untrackedDlg();else if(b.id==='sb_orph')orphDlg();else if(b.id==='sb_lev')levDlg()});
 $('sbPause').onclick=()=>{if(!D)return;if(D.settings.ENTRIES_PAUSED){if(confirm('Resume opening new trades?'))setS({ENTRIES_PAUSED:false})}else setS({ENTRIES_PAUSED:true})};
 $('sbFlat').onclick=()=>flatten();
 function engPop(b){const h=D.health||{},errs=h.errors||[];const ex={ok:'Running normally: cycles, trade management and stops are working.',degraded:'Running, but something needs attention: repeated management failures, a stop that is not confirmed, untracked positions or orphan orders.',stopped:'The main loop has not reported for over a minute. Trades keep their exchange stops, but nothing manages them. Restart ZackBot if this stays.'}[h.engine]||'';
@@ -1101,6 +1102,7 @@ function untrackedDlg(){const u=D.health.untracked||{};info('Untracked positions
 function unprotDlg(){const u=D.health.unprotected||[];info('Positions without a confirmed stop',`<p class="t2">For these trades the bot could not confirm a stop order on Binance, so they are not protected if ZackBot or your PC stops.</p>
   <div class="rv">${u.map(k=>{const l=D.lots.find(x=>x.key===k)||{};return `<span>${esc(coin(l.symbol||k.split('|')[1]))} ${esc(l.side||'')}</span><b>${esc(l.sleeve||'')} · stop ${px(l.stop)}</b>`}).join('')}</div>
   <div class="note bd">The bot retries every few seconds. If this stays red, use <b>Move stop</b> on the position card to place it again, or close the position.</div>`)}
+function levDlg(){const r=D.health.lev_refusals||{};info('Leverage refusals',`<p class="t2">Binance refused to change the leverage for these coins. The bot then reads the coin's current leverage: if it is already at or below your cap the trade goes ahead, otherwise the signal is skipped. No trade ever runs above your cap.</p><div class="tw"><table><thead><tr><th>Coin</th><th>Refusals</th><th>Went ahead</th><th>Skipped</th><th>Leverage now / cap</th><th>Last</th></tr></thead><tbody>${Object.entries(r).map(([s,v])=>`<tr><td>${esc(s)}</td><td>${v.count||0}</td><td>${v.proceeded||0}</td><td>${v.skipped||0}</td><td>${v.current==null?'unknown':esc(String(v.current))+'x'} / ${esc(String(v.cap))}x</td><td title="${esc(v.last_error||'')}">${esc(fT(v.last_time))}</td></tr>`).join('')}</tbody></table></div>`)}
 function orphDlg(){info('Orphan orders',`<p class="t2">${D.health.orphans} stop order(s) on Binance belong to no open trade (usually left behind after a position closed while the app was offline). The bot cleans them up when it can; you can also cancel them in the Binance app.</p>`)}
 async function toggleEntries(){const h=D.health||{};if(h.entries==='halted'){info('Daily loss halt is active',`<p class="t2">Today's loss reached the daily loss halt, so no new trades open until <b>midnight Cairo</b> (${fT(h.next_reset)}, in ${until(h.next_reset)}). Open trades keep their stops. You can still pause entries so they stay off after the reset.</p>`);return}
   if(h.entries==='open')setS({ENTRIES_PAUSED:true});else if(confirm('Resume opening new trades?'))setS({ENTRIES_PAUSED:false})}
