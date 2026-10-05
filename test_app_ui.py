@@ -52,6 +52,15 @@ def finish(extra=None):
     sys.stdout.flush()
     os._exit(0 if not fails else 1)            # daemon server threads: exit hard, with the right code
 
+def wait_until(fn, timeout=20.0, step=0.15):
+    t = time.time()
+    while time.time() - t < timeout:
+        try:
+            if fn(): return True
+        except Exception: pass
+        time.sleep(step)
+    return False
+
 def free_port():
     with socket.socket() as s: s.bind(('127.0.0.1', 0)); return s.getsockname()[1]
 PORT = int(os.environ.get('ZB_UI_PORT') or free_port())
@@ -205,7 +214,14 @@ try:
     check('api: grid slots saved (disabled)', P('/api/grid_slots', {'slots': [{'id': 'G1', 'enabled': False, 'share': 0.1}]}).get('ok'))
     st3 = G('/api/status')
     check('api: status carries v3.1 blocks', all(k2 in st3 for k2 in ('risk_rules', 'governor', 'grids', 'telegram')))
-    check('api: manual run_cycle accepted', P('/api/action', {'action': 'run_cycle'}).get('ok')); time.sleep(6)
+    check('api: manual run_cycle accepted', P('/api/action', {'action': 'run_cycle'}).get('ok'))
+    # Engine.cycle() holds the engine lock for the whole cycle and /api/status waits for that lock, so the panel cannot
+    # refresh while a cycle runs. Wait for this cycle to finish before driving the browser, and record how long it blocked.
+    _e = app.APP.engine; wait_until(lambda: not _e.run_now.is_set(), 30); _t = time.time()
+    ok_cyc = wait_until(lambda: app.APP.loop_ok > _t, 300)          # main loop finished the pass that ran every cycle
+    CYCLE_BLOCK_S = round(time.time() - _t, 1)
+    check('api: manual cycle completed', ok_cyc, f'not finished after {CYCLE_BLOCK_S}s')
+    print(f'manual cycle pass took {CYCLE_BLOCK_S}s (the panel cannot refresh while a cycle holds the engine lock)')
     if not QUICK:
         j = wait_job(P('/api/lab', {'kind': 'monte_carlo', 'preset': 'calm', 'days': 365, 'n': 500})['msg'])
         check('job: lab Monte Carlo done', j['status'] == 'done', j.get('error') or j['status'])
@@ -238,25 +254,19 @@ CONSOLE = {}                                   # context name -> [{type, text, u
 NETFAIL = {}
 EXPECTED_NOISE = ('/icon/',)                   # coin icons: the fake exchange has no network, a missing icon falls back to text
 
-def wait_until(fn, timeout=20.0, step=0.15):
-    t = time.time()
-    while time.time() - t < timeout:
-        try:
-            if fn(): return True
-        except Exception: pass
-        time.sleep(step)
-    return False
-
 def new_page(browser, name, w, h):
     ctx = browser.new_context(viewport={'width': w, 'height': h}, device_scale_factor=1)
     def _route(r):                             # the panel must not load anything from the internet
         if r.request.url.startswith(U): return r.continue_()
         NET_BLOCKED.append(f'browser {r.request.url[:120]}'); return r.abort()
     ctx.route('**/*', _route)
-    pg = ctx.new_page(); CONSOLE[name] = []; NETFAIL[name] = []
-    pg.on('console', lambda m: m.type in ('error', 'warning') and CONSOLE[name].append(dict(type=m.type, text=m.text[:300], url=(m.location or {}).get('url', ''))))
-    pg.on('pageerror', lambda e: CONSOLE[name].append(dict(type='pageerror', text=str(e)[:300], url='')))
-    pg.on('requestfailed', lambda r: NETFAIL[name].append(dict(url=r.url, why=r.failure)))
+    pg = ctx.new_page(); CONSOLE[name] = []; NETFAIL[name] = []; INFLIGHT[name] = set(); RELOADING[name] = False
+    nav = lambda: dict(during_reload=True) if RELOADING[name] else {}
+    pg.on('console', lambda m: m.type in ('error', 'warning') and CONSOLE[name].append(dict(type=m.type, text=m.text[:300], url=(m.location or {}).get('url', ''), **nav())))
+    pg.on('pageerror', lambda e: CONSOLE[name].append(dict(type='pageerror', text=str(e)[:300], url='', **nav())))
+    pg.on('request', lambda r: INFLIGHT[name].add(r))
+    pg.on('requestfinished', lambda r: INFLIGHT[name].discard(r))
+    pg.on('requestfailed', lambda r: (INFLIGHT[name].discard(r), NETFAIL[name].append(dict(url=r.url, why=r.failure, **nav()))))
     pg.on('response', lambda r: r.status >= 400 and NETFAIL[name].append(dict(url=r.url, status=r.status)))
     pg.on('dialog', lambda d: d.accept())
     return ctx, pg
@@ -287,8 +297,26 @@ def goto_tab(pg, t, narrow):
     pg.click(f'#n_{t}')
     return wait_until(lambda: pg.evaluate(f"document.getElementById('t_{t}').classList.contains('on') && document.getElementById('n_{t}').getAttribute('aria-selected')==='true'"), 20)
 
+INFLIGHT, RELOADING = {}, {}
+def reload_page(pg, name):
+    """Reload without racing the panel's 5-second poll (review 2 finding: a poll in flight at reload time is cancelled
+    by the browser and the panel logs 'Failed to fetch'). Stop polling, wait until no request is in flight, then reload.
+    Anything that still fails while the reload is under way is tagged during_reload, kept in summary.json, and only the
+    cancelled-fetch signature is excused; every other error still fails the run."""
+    try: pg.evaluate('stopPoll()')
+    except Exception: pass
+    wait_until(lambda: not INFLIGHT[name] and not pg.evaluate('LOADING'), 20)
+    RELOADING[name] = True
+    try:
+        pg.reload(); wait_until(lambda: pg.evaluate('typeof D==="object" && D!==null'), 20)
+    finally:
+        RELOADING[name] = False
+
 def real_errors(name):
-    return [c for c in CONSOLE[name] if c['type'] in ('error', 'pageerror') and not any(n in (c['url'] + c['text']) for n in EXPECTED_NOISE)]
+    def excused(c):
+        return c.get('during_reload') and c['type'] == 'error' and c['text'].startswith('TypeError: Failed to fetch')
+    return [c for c in CONSOLE[name] if c['type'] in ('error', 'pageerror') and not excused(c)
+            and not any(n in (c['url'] + c['text']) for n in EXPECTED_NOISE)]
 
 def click_save(pg, selector, timeout=30):
     """Click something that POSTs /api/settings and wait for the server's answer (the engine can hold it for seconds)."""
@@ -307,7 +335,7 @@ try:
         for vp, w, h in VIEWPORTS:
             ctx, pg = new_page(b, vp, w, h)
             pg.goto(f'{U}/?t={TOK}')
-            check(f'{vp}: panel loads and first status renders', wait_until(lambda: 'OFFLINE' not in pg.inner_text('#status') and pg.evaluate('typeof D==="object" && D!==null'), 20), pg.inner_text('#status'))
+            check(f'{vp}: panel loads and first status renders', wait_until(lambda: 'OFFLINE' not in pg.inner_text('#status') and pg.evaluate('typeof D==="object" && D!==null'), 60), pg.inner_text('#status'))
             narrow = w <= 640
             side = pg.evaluate("(()=>{const a=document.querySelector('aside'),sp=document.querySelector('#n_dash span');return {w:a.getBoundingClientRect().width,label:getComputedStyle(sp).display!=='none'}})()")
             if vp == 'desktop': check('desktop: full sidebar with labels', side['w'] > 150 and side['label'], side)
@@ -325,7 +353,7 @@ try:
                 pg.evaluate("(()=>{const d=document.createElement('div');d.id='zb_probe';d.style.width='3000px';d.style.height='4px';document.getElementById('t_help').appendChild(d)})()")
                 check('harness self-test: sideways-scroll detector catches a planted 3000px block', overflow_x(pg, 'help') > 1000)
                 pg.evaluate("document.getElementById('zb_probe').remove()")
-            pg.reload(); check(f'{vp}: last tab remembered after reload', wait_until(lambda: pg.evaluate("document.getElementById('t_help').classList.contains('on')"), 10))
+            reload_page(pg, vp); check(f'{vp}: last tab remembered after reload', wait_until(lambda: pg.evaluate("document.getElementById('t_help').classList.contains('on')"), 10))
             check(f'{vp}: no JS/console errors', not real_errors(vp), real_errors(vp)[:3])
             ctx.close()
 
@@ -345,7 +373,7 @@ try:
         click_save(pg, '#t_risk button:has-text("Save limits")')
         check('settings save: server stored the new value', wait_until(lambda: abs(G('/api/status')['settings']['DAILY_LOSS_HALT'] * 100 - new) < 0.05, 20))
         check('settings save: "Saved" confirmation shown', wait_until(lambda: 'Saved' in toast_text(pg), 20), toast_text(pg))
-        pg.reload(); wait_until(lambda: pg.evaluate('typeof D==="object" && D!==null'), 20); goto_tab(pg, 'risk', False); time.sleep(0.5)
+        reload_page(pg, 'desktop_flows'); goto_tab(pg, 'risk', False); time.sleep(0.5)
         check('settings round-trip: value survives a reload', abs(float(pg.input_value('#DAILY_LOSS_HALT')) - new) < 0.05, pg.input_value('#DAILY_LOSS_HALT'))
         pg.fill('#DAILY_LOSS_HALT', str(shown)); pg.dispatch_event('#DAILY_LOSS_HALT', 'input'); click_save(pg, '#t_risk button:has-text("Save limits")')
         check('settings: original value restored', wait_until(lambda: abs(G('/api/status')['settings']['DAILY_LOSS_HALT'] - S0['DAILY_LOSS_HALT']) < 1e-9, 20))
@@ -457,5 +485,5 @@ try:
 except Exception as ex:
     check('cleanup: flatten', False, ex)
 check('isolation: no internet access attempted (app process and browser)', not NET_BLOCKED, NET_BLOCKED[:5])
-finish(dict(app_version=app.VERSION, build=str(app.BUILD_ID), viewports=VIEWPORTS, console=CONSOLE,
+finish(dict(observations=dict(manual_cycle_blocked_status_s=globals().get('CYCLE_BLOCK_S')), app_version=app.VERSION, build=str(app.BUILD_ID), viewports=VIEWPORTS, console=CONSOLE,
             network_failures={k2: v[:50] for k2, v in NETFAIL.items()}))
