@@ -2,6 +2,8 @@
 and every summary carries the provenance fields the review asked for."""
 import json, os, re, subprocess, sys, tempfile
 
+import pytest
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 import verify  # noqa: E402
@@ -68,6 +70,25 @@ def test_one_failed_step_fails_the_run_and_the_summary_says_so(tmp_path):
     assert d['timezone'] == 'Africa/Cairo' and re.search(r'\+0[23]:00$', d['started']), 'Cairo time with offset'
 
 
+def test_manifest_check_catches_missing_and_changed_files(monkeypatch, tmp_path):
+    """Self-contained (runs in the installer's staging copy too): a fake dataset with one changed and one missing file."""
+    import hashlib
+    (tmp_path / 'data').mkdir()
+    (tmp_path / 'data' / 'ok.csv').write_text('a,b\n1,2\n')
+    (tmp_path / 'data' / 'changed.csv').write_text('tampered\n')
+    good = hashlib.sha256(b'a,b\n1,2\n').hexdigest()
+    man = {'files': {'data/ok.csv': {'sha256': good}, 'data/changed.csv': {'sha256': good}, 'data/missing.csv': {'sha256': good}}}
+    (tmp_path / 'DATA_MANIFEST.json').write_text(json.dumps(man))
+    monkeypatch.setattr(verify, 'ROOT', str(tmp_path))
+    rep = verify.Report('fast', str(tmp_path / 'out'))
+    assert not verify.manifest_check(rep)
+    assert rep.data['dataset']['missing'] == ['data/missing.csv'] and rep.data['dataset']['changed'] == ['data/changed.csv']
+    (tmp_path / 'data' / 'changed.csv').write_text('a,b\n1,2\n'); (tmp_path / 'data' / 'missing.csv').write_text('a,b\n1,2\n')
+    assert verify.manifest_check(verify.Report('fast', str(tmp_path / 'out2')))
+
+
+@pytest.mark.skipif(not os.path.isdir(os.path.join(ROOT, 'data')),
+                    reason='installer staging copy: the data folders are not copied there (the manifest check needs them)')
 def test_summary_has_the_required_provenance_fields(tmp_path):
     """Real run of the cheap part (static + manifest) through main(): commit, dependencies, dataset hash, Cairo times."""
     out = tmp_path / 'v'
