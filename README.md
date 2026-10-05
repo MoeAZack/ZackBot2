@@ -34,19 +34,21 @@ All clock times in the panel are Cairo time (the bot's trading day).
 Run **setup_git.bat** once to turn this folder into a private Git repository with the full history (tags v2.2, v3.0, v3.0.1, v3.1, v3.2-rc1, v3.2-rc2) from `..\ZackBot2_git\zackbot_v3.2-rc2.1.bundle`. Then `git diff --stat v3.1 v3.2-rc2` shows exactly what changed. If Windows blocks Git from writing into Documents (Controlled folder access), the history is kept in `%LOCALAPPDATA%\ZackBot\history.git` and `..\ZackBot2_git\zbgit.bat` replaces `git` for this folder.
 
 ## Verify (developers / reviewers)
-- `run_checks.bat` (Windows) or `./run_checks.sh`: unit + safety tests, engine-vs-backtest replay gate, UI harness if Playwright is installed.
-- `pytest -q tests` alone needs only `requirements-dev.txt`.
+One command, three levels, one machine-readable summary per run (`dev_out/verify/latest_<level>.json`: commit, build id,
+dataset manifest hash, dependency versions, pass/fail/skip counts, replay metrics, UI evidence path, exe hash, Cairo times):
+
+| Level | What | Where |
+|---|---|---|
+| `verify fast` | every .py compiles, no private files / key-like strings, data files match `DATA_MANIFEST.json`, fast tests (`-m "not slow"`), installer preflight (Windows) | GitHub on every push; `verify.bat` (default) |
+| `verify full` | all tests, both strict replays (24 steps, `replay.STRICT`), full UI harness, and on Windows `build_app.bat buildcheck` (PyInstaller build + exe self-test, nothing installed) | GitHub on pull requests into `master` and on demand; `verify.bat full` |
+| `verify release` | full checks + rollback drill + read-only check of the running bot (engine/exchange ok, every lot protected, no untracked positions, no orphan orders) | the Windows PC: double-click `verify_release.bat` |
+
+`python verify.py fast|full|release` runs the same thing anywhere (`release` on Windows only). `run_checks.bat/.sh` call `verify full`.
+- `pytest` alone (repo root) runs the 200+ tests in `tests/`; `test_app_ui.py` and `test_engine_sim.py` are scripts used by `verify full`.
 - `test_engine_sim.py [start_bar] [slots_json]` replays the LIVE engine against a simulated exchange and the backtester on the same
-  candles; it fails if the results differ by more than 15 points or the exchange position differs from what the engine tracks.
-  Scenario 2 (trailing stops, pyramiding, shorts): `python test_engine_sim.py 3000 replay_scenario2.json`.
-- `test_app_ui.py`: headless browser harness. Starts its **own** copy of the app (free port, temporary data folder, fake exchange),
-  so it is safe while ZackBot runs. Checks every API action, every tab at desktop (1560), tablet (820) and mobile (390) width,
-  navigation, settings load/save round-trip, console errors, and injected API failures (500, refused, rejected save, bad JSON, 401).
-  Exit code 0 = all checks passed; `dev_out/ui_baseline/summary.json` + screenshots are the baseline evidence (Cairo time).
-  It blocks all internet access from the app and the browser and fails if anything tries; the temp folder is removed at the end.
-  On Windows: double-click **run_ui_baseline.bat** (`quick` argument skips the long backtest jobs). It installs Playwright
-  into its own environment `%LOCALAPPDATA%\ZackBot\uienv` and Chromium into `%LOCALAPPDATA%\ZackBot\ms-playwright`
-  (fixed path, because the harness redirects LOCALAPPDATA), never into the build environment.
+  candles. Scenario 2 (trailing stops, pyramiding, shorts): `python test_engine_sim.py 3000 replay_scenario2.json`.
+- `test_app_ui.py`: headless browser harness on its own copy of the app (free port, temporary data folder, fake exchange, no
+  internet). On Windows `run_ui_baseline.bat` sets up Playwright/Chromium in `%LOCALAPPDATA%\ZackBot\uienv` / `ms-playwright`.
 
 ## Reproduce the research
 Candle data: `data/` (40 coins 4h, 2 years), `data1h/` (core 8 1h, 6 months), `data_long/` (core 8: 4h 4.8 years, 1h 4.1 years).

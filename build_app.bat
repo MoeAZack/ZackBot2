@@ -26,6 +26,13 @@ set PREFLIGHT=0
 if /i "%~1"=="preflight" set PREFLIGHT=1
 if "%PREFLIGHT%"=="1" set STAGE=%ROOT%\staging_preflight
 if "%PREFLIGHT%"=="1" set LOG=%ROOT%\build_preflight.log
+rem "build_app.bat buildcheck" = verify full on Windows: steps 1-6 (staging, pins, tests, PyInstaller, exe self-test, hash) in
+rem its own staging folder and log, then exit - never reaches step 7, so nothing is backed up, stopped or installed.
+set BUILDCHECK=0
+if /i "%~1"=="buildcheck" set BUILDCHECK=1
+if "%BUILDCHECK%"=="1" set STAGE=%ROOT%\staging_buildcheck
+if "%BUILDCHECK%"=="1" set LOG=%ROOT%\build_check.log
+rem ZB_NOPAUSE=1 (set by verify.py) = never wait for a key press.
 if not exist "%ROOT%" mkdir "%ROOT%"
 echo ==== ZackBot build %date% %time% ==== > "%LOG%"
 echo.
@@ -97,6 +104,11 @@ if errorlevel 1 goto fail_selftest
 call :hash "%STAGE%\dist\ZackBot.exe" NEWHASH
 if "%NEWHASH%"=="" goto fail_hash
 echo   new exe sha256 %NEWHASH% >> "%LOG%"
+if "%BUILDCHECK%"=="0" goto buildcheck_done
+echo BUILDCHECK_OK build=%BUILD_ID% sha256=%NEWHASH% exe=%STAGE%\dist\ZackBot.exe >> "%LOG%"
+echo BUILDCHECK_OK build %BUILD_ID% sha256 %NEWHASH%
+exit /b 0
+:buildcheck_done
 
 echo [7/8] Backing up the current version (verified) before touching it...
 if not exist "%APPDIR%" mkdir "%APPDIR%"
@@ -153,7 +165,7 @@ if defined WARN echo BUILD_WARNINGS %WARN% >> "%LOG%"
 echo.
 echo Done - build %BUILD_ID% installed and confirmed running (Settings shows the same build id).
 if defined WARN echo Warnings: %WARN%
-if defined WARN pause
+if defined WARN if not defined ZB_NOPAUSE pause
 timeout /t 5 >nul
 exit /b 0
 
@@ -190,7 +202,7 @@ echo  ROLLBACK DRILL PASSED: the new build %BUILD_ID% failed its launch on purpo
 echo  restored build %OLDBUILD% - same SHA-256 as before - and proved it is running again.
 echo  Details: %LOG%
 echo.
-pause
+if not defined ZB_NOPAUSE pause
 exit /b 0
 :rollback_none
 if exist "%APPDIR%\ZackBot.exe" del /f /q "%APPDIR%\ZackBot.exe" >> "%LOG%" 2>&1
@@ -252,6 +264,8 @@ echo  *** BUILD FAILED: %WHY%
 echo  Details: %LOG%
 echo.
 if "%PREFLIGHT%"=="1" exit /b 1
+if "%BUILDCHECK%"=="1" exit /b 1
+if defined ZB_NOPAUSE exit /b 1
 pause
 exit /b 1
 

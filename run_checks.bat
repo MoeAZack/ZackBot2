@@ -1,31 +1,3 @@
 @echo off
-rem One-command verification on Windows: unit/safety tests, engine-vs-backtest replay, and (if Playwright is installed) the UI harness.
-setlocal
-cd /d "%~dp0"
-set BPY=%LOCALAPPDATA%\ZackBot\buildenv\Scripts\python.exe
-if not exist "%BPY%" set BPY=python
-"%BPY%" -m pip install --disable-pip-version-check -q -r requirements-dev.txt || goto fail
-echo [1/3] unit, safety, causality and parity tests (incl. slow, about 10 minutes)
-"%BPY%" -m pytest -q -p no:cacheprovider tests || goto fail
-echo [2/3] engine vs backtest replay (strict release gate, about 30-60 minutes)
-set ZB_SIM_STEPS=24
-set ZB_REPLAY_STRICT=1
-if exist data\BTCUSDT_4h.csv (
-  "%BPY%" test_engine_sim.py > dev_out_engine_sim.txt 2>&1 || goto fail
-  findstr /b "TRADES STRICT GATE" dev_out_engine_sim.txt
-  "%BPY%" test_engine_sim.py 3000 replay_scenario2.json > dev_out_engine_sim2.txt 2>&1 || goto fail
-  findstr /b "TRADES STRICT GATE" dev_out_engine_sim2.txt
-) else echo   skipped - the data folder is not present
-echo [3/3] UI harness
-set UPY=%LOCALAPPDATA%\ZackBot\uienv\Scripts\python.exe
-set PLAYWRIGHT_BROWSERS_PATH=%LOCALAPPDATA%\ZackBot\ms-playwright
-set PYTHONIOENCODING=utf-8
-if not exist "%UPY%" (echo   skipped - run run_ui_baseline.bat once to set up Playwright) else (
-  "%UPY%" test_app_ui.py > dev_out_ui.txt 2>&1 || (findstr /b /c:"FAIL " /c:"UI HARNESS" dev_out_ui.txt & goto fail)
-  findstr /b /c:"UI HARNESS" dev_out_ui.txt
-)
-echo ALL CHECKS PASSED
-exit /b 0
-:fail
-echo CHECKS FAILED
-exit /b 1
+rem Kept for compatibility: the full verification is now verify.bat full (one summary: dev_out\verify\latest_full.json).
+call "%~dp0verify.bat" full

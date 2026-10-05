@@ -1,0 +1,84 @@
+# ZackBot verification (T04). Same commands as on the PC: python verify.py fast|full.
+# fast: every push and pull request. full: pull requests into master, and on demand (Actions -> verify -> Run workflow).
+# release (rollback drill + running-bot reconciliation) needs the owner's Windows install: run verify_release.bat on the PC.
+name: verify
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+    branches: [master]
+  workflow_dispatch:
+    inputs:
+      level:
+        description: 'fast or full'
+        type: choice
+        options: [full, fast]
+        default: full
+
+permissions:
+  contents: read
+
+concurrency:
+  group: verify-${{ github.ref }}-${{ github.event_name }}
+  cancel-in-progress: true
+
+jobs:
+  fast:
+    name: verify fast
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.14'
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
+      - name: Install pinned dependencies
+        run: python -m pip install --disable-pip-version-check -r requirements-dev.txt
+      - name: verify fast
+        env:
+          TZ: Africa/Cairo
+        run: python verify.py fast --out verify_out
+      - name: Upload summary
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: verify-fast-${{ github.sha }}
+          path: verify_out/
+          retention-days: 30
+
+  full:
+    name: verify full
+    if: github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.level == 'full')
+    needs: fast
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.14'
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
+            requirements-ui.txt
+      - name: Install pinned dependencies (incl. UI harness)
+        run: |
+          python -m pip install --disable-pip-version-check -r requirements-ui.txt
+          python -m playwright install --with-deps chromium
+      - name: verify full
+        env:
+          TZ: Africa/Cairo
+        run: python verify.py full --out verify_out
+      - name: Upload summary and evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: verify-full-${{ github.sha }}
+          path: verify_out/
+          retention-days: 30
