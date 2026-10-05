@@ -4,7 +4,7 @@
 
 | Item | Value |
 |---|---|
-| Branch | `t04-ci`, on `master` `e9e16bf` (T03 accepted) |
+| Branch | `t04-ci`, on `master` `8b6641f` (T03 accepted + Codex owner overview) |
 | Implementation | `35d2efd`, plus the staging-safety fix `5ab2984` and this document |
 | Owner decision (2026-10-05) | GitHub runs `verify fast` on every push and `verify full` on pull requests into `master` and on demand. `verify release` runs on the PC. |
 | Behaviour change | **None** to trading, engine, backtest, exchange or panel code: `git diff master` on those files is empty. The installer gains two **opt-in** modes plus an unattended flag. |
