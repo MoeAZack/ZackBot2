@@ -140,7 +140,7 @@ def test_ui_harness_gets_seed_history_on_a_clean_checkout(monkeypatch, tmp_path)
 
 # ---------------------------------------------------------------- T04 review round 1
 def _status(mode='PAPER', engine='ok', lots=({'protected': True},), **h):
-    return dict(mode=mode, build='b', lots=list(lots), health=dict(dict(engine=engine, exchange='ok', unprotected=[], untracked={}, orphans=0), **h))
+    return dict(mode=mode, build='b', lots=list(lots), health=dict(dict(engine=engine, exchange='ok', errors=[], unprotected=[], untracked={}, orphans=0), **h))
 
 
 def _fake_clock(monkeypatch):
@@ -211,3 +211,49 @@ def test_secret_scan_planted_files(tmp_path):
     kinds = sorted(h.split(': ', 1)[1].rsplit(' ', 1)[0] for h in hits)
     assert kinds == ['Telegram bot token', 'key-like 64-char string', 'private key block'], hits
     assert not any(h.startswith(('data', 'dev_out', 'ok.json')) for h in hits)
+
+
+# ---------------------------------------------------------------- T04 review round 2: fail-closed status schema
+def _good():
+    return dict(mode='PAPER', build='b', lots=[{'protected': True}, {'protected': True}],
+                health=dict(engine='ok', exchange='ok', errors=[], unprotected=[], untracked={}, orphans=0))
+
+
+def _mutations():
+    """Every way a status answer can be incomplete, errored or malformed. Each must block the drill."""
+    def m(fn):
+        st = _good(); fn(st); return st
+    cases = {'missing lots': m(lambda s: s.pop('lots')), 'lots not a list': m(lambda s: s.update(lots={'a': 1})),
+             'lot without protected': m(lambda s: s['lots'].append({})), 'lot protected=1 (not True)': m(lambda s: s['lots'].append({'protected': 1})),
+             'lot not a dict': m(lambda s: s['lots'].append('x')), 'missing health': m(lambda s: s.pop('health')),
+             'health not a dict': m(lambda s: s.update(health=[])), 'non-empty errors': m(lambda s: s['health'].update(errors=['boom'])),
+             'errors malformed': m(lambda s: s['health'].update(errors='boom')), 'unprotected malformed': m(lambda s: s['health'].update(unprotected=0)),
+             'untracked malformed': m(lambda s: s['health'].update(untracked=0)), 'orphans as string': m(lambda s: s['health'].update(orphans='0')),
+             'orphans as bool': m(lambda s: s['health'].update(orphans=False)), 'orphans > 0': m(lambda s: s['health'].update(orphans=1)),
+             'mode missing': m(lambda s: s.pop('mode')), 'mode LIVE': m(lambda s: s.update(mode='LIVE')), 'status not a dict': ['x']}
+    for k in ('engine', 'exchange', 'errors', 'unprotected', 'untracked', 'orphans'):
+        cases[f'missing health.{k}'] = m(lambda s, k=k: s['health'].pop(k))
+    return cases
+
+
+def test_runtime_gate_is_fail_closed_on_incomplete_or_malformed_status():
+    assert verify.runtime_problems(_good()) == [] and verify.runtime_ok(_good())
+    assert verify.runtime_ok(dict(_good(), lots=[]))                           # no open positions is a valid, safe state
+    for name, st in _mutations().items():
+        assert not verify.runtime_ok(st), f'{name} must not pass the runtime gate'
+    # the two fail-open shapes Codex reproduced on 494d12d
+    assert not verify.runtime_ok({'mode': 'PAPER', 'health': {'engine': 'ok', 'exchange': 'ok'}})
+    assert not verify.runtime_ok(dict(_good(), health=dict(_good()['health'], errors=['recent engine error'])))
+
+
+def test_every_incomplete_status_prevents_the_drill(monkeypatch, tmp_path):
+    calls = []
+    monkeypatch.setattr(verify, 'installer_mode', lambda rep, mode, t: calls.append(mode) or rep.step('installer ' + mode, True))
+    _fake_clock(monkeypatch)
+    for name, st in _mutations().items():
+        monkeypatch.setattr(verify, 'bot_status', lambda st=st: st)
+        rep = verify.Report('release', str(tmp_path / 'r'))
+        assert not verify.release_steps(rep), name
+        assert calls == [], f'{name}: the drill must not be called'
+    monkeypatch.setattr(verify, 'bot_status', _good)
+    assert verify.release_steps(verify.Report('release', str(tmp_path / 'ok'))) and calls == ['drill']
