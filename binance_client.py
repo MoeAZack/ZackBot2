@@ -170,6 +170,13 @@ class Futures:
     def set_leverage(self, symbol, lev):
         return self._req('POST', '/fapi/v1/leverage', dict(symbol=symbol, leverage=int(lev)), signed=True)
 
+    def current_leverage(self, symbol):
+        """The coin's leverage as Binance has it now (read-only). None if Binance reports no row for the coin."""
+        rows = self._req('GET', '/fapi/v2/positionRisk', dict(symbol=symbol), signed=True)
+        levs = [int(float(r['leverage'])) for r in (rows if isinstance(rows, list) else [rows])
+                if r.get('symbol') == symbol and r.get('leverage') not in (None, '')]
+        return max(levs) if levs else None
+
     def set_margin_type(self, symbol, mtype='CROSSED'):
         try:
             return self._req('POST', '/fapi/v1/marginType', dict(symbol=symbol, marginType=mtype), signed=True)
