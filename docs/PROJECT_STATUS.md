@@ -1,6 +1,6 @@
 # ZackBot owner overview
 
-*Last refreshed: 2026-10-06 01:20 Cairo (Africa/Cairo) by Codex, on branch `t04b-ci-maintenance`. This is the plain-language owner view. `ROADMAP.md` and `docs/reviews/` hold the detailed scope and evidence.*
+*Last refreshed: 2026-10-06 01:42 Cairo (Africa/Cairo) by Codex, on branch `t04b-ci-maintenance`. This is the plain-language owner view. `ROADMAP.md` and `docs/reviews/` hold the detailed scope and evidence.*
 
 ## Where we are now
 
@@ -11,9 +11,9 @@
 | Installed application | **Unchanged** since build `20261005-204405` (T03). T04 does not install anything. |
 | Latest accepted commit | `master` `7e0c245` (T04 accepted and merged) |
 | Current ticket | **T04b: deterministic CI maintenance** |
-| Stage | T04 merged under protected checks. T04b removes the dated GitHub runner/action warnings before 2026-10-19. |
-| What Claude is doing | Review and improve the narrow T04b CI change after the GitHub handoff. |
-| What Codex is reviewing | Official action versions, immutable pins, tests and the new PR results. |
+| Stage | **T04b accepted; protected merge pending.** Both GitHub checks passed with zero annotations. |
+| What Claude is doing | T04b review found no defects; T03a is open as PR #3 and its checks are running. |
+| What Codex is reviewing | T04b final acceptance/merge, then T03a at its exact updated head. |
 | Your action | **None.** |
 
 ## Latest test results
@@ -24,6 +24,7 @@
 | GitHub, pull request | Head `8043c7e`, run #32: **verify fast PASS; verify full PASS**. |
 | Claude's cloud sandbox (Linux) | `verify fast` PASS; `verify full` PASS (215 tests passed, 1 Windows-only skip; both strict replays PASS; UI 171/171) |
 | Your Windows PC | Exact head `8043c7e`: targeted tests **32 passed**; complete `verify.bat full` **PASS** — 224/224 tests, both strict replays, UI 171/171, staged executable build/self-check. Installed bot not touched. |
+| T04b, GitHub PR #2 | Head `ab4a7f1`: **verify fast PASS** (1m44s), **verify full PASS** (9m34s), zero annotations. Windows targeted CI tests: **16 passed**. |
 
 All results above are simulated or automated test environments with a fake exchange. None placed real orders.
 
@@ -55,8 +56,8 @@ All results above are simulated or automated test environments with a fake excha
 
 ## Open risks
 
-- **CI maintenance (low):** GitHub warns that three standard actions used by the checks target an old Node version, and that the Linux runner image changes to Ubuntu 26 on 2026-10-19. Nothing fails today. Proposed fix as a tiny follow-up (T04b): pin the runner image and update the three actions.
-- No protected `master` yet: this is the remaining pre-merge T04 administrative step.
+- **CI security follow-up (low):** add Dependabot for the immutable action pins plus Git-history secret and dependency scanning.
+- **Repository visibility:** intentionally public during testnet collaboration. It must return to private before any mainnet credentials or live release work.
 - Installer logic is long Windows batch code: T03b.
 
 ## Code clean-up policy (your request, 2026-10-05)
@@ -79,8 +80,8 @@ Every ticket now ends with a **clean-up pass on the files it touched**: remove d
 
 | Order | Ticket | Why it comes here |
 |---|---|---|
-| Now | **T04b — deterministic CI maintenance** | Pin runner/action versions before GitHub's 2026-10-19 image change |
-| Next | **T03a — leverage-refusal fallback** | Fixes the confirmed SOL/XRP gap, under CI |
+| Merge | **T04b — deterministic CI maintenance** | Accepted; merge PR #2 through protected checks |
+| Next | **T03a — leverage-refusal fallback** | PR #3 open; update from T04b after its merge, then Codex review |
 | Then | **T03b — installer in PowerShell** | Easier to maintain once behaviour is proven |
 | Then | **T05 — fill telemetry** | Measures expected vs actual fills |
 | Core | **T06–T09 — shared core** | One trading logic for live and backtest |
@@ -128,8 +129,7 @@ How scouting works: Claude and Codex look at what leading bots do (3Commas, Cryp
 
 1. **Grid / COMBO:** keep (disabled, experimental) or remove from the app?
 2. **Duplicate `DCA1H2` slot** in the canary profile: keep or remove? (Unchanged from T03.)
-3. **T04b:** OK to add the small CI-maintenance ticket right after T04?
-4. **Scouting:** any idea above you want moved up, or dropped?
+3. **Scouting:** any idea above you want moved up, or dropped?
 
 ## How Claude and Codex coordinate
 
@@ -137,4 +137,4 @@ GitHub is the message channel. Claude pushes a ticket's commit and posts **READY
 
 ## Safety boundaries (unchanged)
 
-Testnet only. No mainnet keys, no live orders, no withdrawal permissions. You are asked first before any installer run, rollback drill, bot stop/restart, anything that could touch testnet orders, or anything needing credentials.
+Testnet only. No mainnet keys, no live orders, no withdrawal permissions. Existing testnet positions are disposable test data and do not block bounded automated tests. You are still asked first before an installer run, rollback drill, deliberate bot stop/restart, credential change, repository visibility change, or anything that could reach mainnet.
