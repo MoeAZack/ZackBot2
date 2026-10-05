@@ -11,6 +11,14 @@ Double-click **build_app.bat**. It is fail-closed:
 6. only then stops the running bot, keeps the old exe as `ZackBot.prev.exe`, swaps in the new one and starts it.
 
 If any step fails, the running bot is not touched and the window says why (details in `%LOCALAPPDATA%\ZackBot\build.log`).
+If the new version is swapped in but does not answer with its build id, the installer restores `ZackBot.prev.exe`
+(SHA-256 must equal the pre-install exe), restarts it and **proves the previous build is running again** (same HMAC ping);
+the source mirror and shortcuts are only updated after a confirmed launch.
+
+**Rollback drill:** double-click **rollback_drill.bat** (= `build_app.bat drill`). It installs the new build, makes it fail
+its launch on purpose (`--simulate-failed-launch`, used only by the drill) and passes only if the rollback restores the
+previous exe and confirms it running. The bot is stopped for about 1-2 minutes; exchange stops stay on Binance. Afterwards the
+previous version is still installed - run `build_app.bat` normally to install the new one.
 Settings shows the version and build id that is actually running.
 
 Everything (keys, settings, logs, trades, backtests, candle cache) lives in `%LOCALAPPDATA%\ZackBot`.

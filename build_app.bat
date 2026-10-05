@@ -10,17 +10,33 @@ set VENV=%ROOT%\buildenv
 set LOG=%ROOT%\build.log
 set WARN=
 set HAVEOLD=0
+set OLDBUILD=
+set RBOK=0
+set RBNOTE=
+rem "build_app.bat drill" = rollback drill: install the new build, make it fail its launch on purpose
+rem (--simulate-failed-launch), and require the installer to restore the previous version and prove it runs again.
+set DRILL=0
+if /i "%~1"=="drill" set DRILL=1
 if not exist "%ROOT%" mkdir "%ROOT%"
 echo ==== ZackBot build %date% %time% ==== > "%LOG%"
 echo.
 echo  The running ZackBot is NOT touched until the new build has passed every check.
 echo  If the new version does not start correctly, the previous one is put back automatically.
 echo.
+if "%DRILL%"=="0" goto drill_banner_done
+echo  *** ROLLBACK DRILL ***
+echo  The new build is installed and then deliberately made to fail its launch. The installer must put the
+echo  current version back and prove it is running again. The bot is stopped for about 1-2 minutes;
+echo  your stops stay on Binance during that time.
+echo.
+echo   ROLLBACK DRILL requested >> "%LOG%"
+if not exist "%APPDIR%\ZackBot.exe" goto fail_drill_noold
+:drill_banner_done
 
 echo [1/8] Copying the source to a clean staging folder...
 if exist "%STAGE%" rmdir /s /q "%STAGE%"
 if exist "%STAGE%" goto fail_stage
-robocopy "%SRC%." "%STAGE%\src" /MIR /XD __pycache__ .git .git_failed_* data data1h data_long dev_out /XF build_app.bat setup_git.bat config.env *.log session.json *.tmp *.pkl build_info.py /NFL /NDL /NJH /NJS >> "%LOG%" 2>&1
+robocopy "%SRC%." "%STAGE%\src" /MIR /XD __pycache__ .git .git_failed_* data data1h data_long dev_out /XF build_app.bat rollback_drill.bat setup_git.bat config.env *.log session.json *.tmp *.pkl build_info.py /NFL /NDL /NJH /NJS >> "%LOG%" 2>&1
 if errorlevel 8 goto fail_copy
 for /f %%i in ('powershell -NoProfile -Command "Get-Date -Format yyyyMMdd-HHmmss"') do set BUILD_ID=%%i
 if "%BUILD_ID%"=="" goto fail_copy
@@ -75,6 +91,12 @@ if "%OLDHASH%"=="" goto fail_backup
 if /i not "%OLDHASH%"=="%PREVHASH%" goto fail_backup
 set HAVEOLD=1
 echo   backup ok sha256 %OLDHASH% >> "%LOG%"
+rem Which build is the previous version? Needed to PROVE a rollback really brought it back (ping with its build id).
+if exist "%STAGE%\old_selftest.json" del /f /q "%STAGE%\old_selftest.json"
+start "" /wait "%APPDIR%\ZackBot.prev.exe" --selftest "%STAGE%\old_selftest.json"
+for /f %%b in ('powershell -NoProfile -Command "try { (Get-Content -Raw '%STAGE%\old_selftest.json' | ConvertFrom-Json).build } catch { }"') do set OLDBUILD=%%b
+echo   previous build %OLDBUILD% >> "%LOG%"
+if "%DRILL%"=="1" if "%OLDBUILD%"=="" goto fail_drill_oldbuild
 :no_old
 
 echo [8/8] Installing: stopping the old ZackBot, swapping the exe, starting and checking the new one...
@@ -91,13 +113,21 @@ goto swap
 :swapped
 call :hash "%APPDIR%\ZackBot.exe" INSTHASH
 if /i not "%INSTHASH%"=="%NEWHASH%" goto rollback
+set LAUNCHARGS=
+set PINGWAIT=60
+if "%DRILL%"=="1" set LAUNCHARGS=--simulate-failed-launch
+if "%DRILL%"=="1" set PINGWAIT=20
+if "%DRILL%"=="1" echo   DRILL: launching the new exe with --simulate-failed-launch >> "%LOG%"
+start "" "%APPDIR%\ZackBot.exe" %LAUNCHARGS%
+%CHK% ping %BUILD_ID% %PINGWAIT% >> "%LOG%" 2>&1
+if errorlevel 1 goto rollback
+if "%DRILL%"=="1" goto fail_drill_noscenario
+rem Only now, with the new version confirmed running, update the source mirror and the shortcuts (a rollback must not
+rem leave %DST% describing a build that is not installed).
 robocopy "%STAGE%\src" "%DST%" /MIR /XD tests /NFL /NDL /NJH /NJS >> "%LOG%" 2>&1
 if errorlevel 8 set WARN=%WARN% [source copy in %DST% failed]
 powershell -NoProfile -Command "$w=New-Object -ComObject WScript.Shell; foreach($d in @([Environment]::GetFolderPath('Desktop'), [Environment]::GetFolderPath('Programs'))){ $s=$w.CreateShortcut((Join-Path $d 'ZackBot.lnk')); $s.TargetPath='%APPDIR%\ZackBot.exe'; $s.Arguments=''; $s.WorkingDirectory='%APPDIR%'; $s.IconLocation='%APPDIR%\ZackBot.exe,0'; $s.Description='ZackBot trading app'; $s.Save() }" >> "%LOG%" 2>&1
 if errorlevel 1 set WARN=%WARN% [desktop/start-menu shortcut not updated]
-start "" "%APPDIR%\ZackBot.exe"
-%CHK% ping %BUILD_ID% 60 >> "%LOG%" 2>&1
-if errorlevel 1 goto rollback
 echo BUILD_DONE build=%BUILD_ID% sha256=%NEWHASH% target=%APPDIR%\ZackBot.exe >> "%LOG%"
 if defined WARN echo BUILD_WARNINGS %WARN% >> "%LOG%"
 echo.
@@ -114,9 +144,34 @@ if "%HAVEOLD%"=="0" goto rollback_none
 copy /y "%APPDIR%\ZackBot.prev.exe" "%APPDIR%\ZackBot.exe" >> "%LOG%" 2>&1
 call :hash "%APPDIR%\ZackBot.exe" RBHASH
 if /i not "%RBHASH%"=="%OLDHASH%" (set WHY=the new version failed AND restoring the previous exe failed - ZackBot.prev.exe is still in %APPDIR%& goto fail)
+echo   restored exe sha256 %RBHASH% equals the pre-install hash >> "%LOG%"
 start "" "%APPDIR%\ZackBot.exe"
-set WHY=the new version did not start correctly - the previous version was restored and restarted
+if "%OLDBUILD%"=="" goto rb_unverified
+%CHK% ping %OLDBUILD% 60 >> "%LOG%" 2>&1
+if errorlevel 1 goto rb_noanswer
+set RBOK=1
+set RBNOTE=the previous version %OLDBUILD% was restored and confirmed running
+goto rb_report
+:rb_unverified
+set RBNOTE=the previous version was restored and restarted, but its build id could not be read so it was not verified
+goto rb_report
+:rb_noanswer
+set RBNOTE=the previous version was restored but did NOT confirm it is running - open ZackBot and check
+:rb_report
+echo ROLLBACK_RESULT verified=%RBOK% - %RBNOTE% >> "%LOG%"
+if "%DRILL%"=="1" goto drill_report
+set WHY=the new version did not start correctly - %RBNOTE%
 goto fail
+:drill_report
+if not "%RBOK%"=="1" (set WHY=ROLLBACK DRILL FAILED - %RBNOTE%& goto fail)
+echo DRILL_PASSED new=%BUILD_ID% failed its launch on purpose, restored=%OLDBUILD% sha256=%RBHASH% confirmed running >> "%LOG%"
+echo.
+echo  ROLLBACK DRILL PASSED: the new build %BUILD_ID% failed its launch on purpose, and the installer
+echo  restored build %OLDBUILD% - same SHA-256 as before - and proved it is running again.
+echo  Details: %LOG%
+echo.
+pause
+exit /b 0
 :rollback_none
 if exist "%APPDIR%\ZackBot.exe" del /f /q "%APPDIR%\ZackBot.exe" >> "%LOG%" 2>&1
 set WHY=the new version did not start correctly (there was no previous version to restore)
@@ -157,6 +212,15 @@ set WHY=backing up the current ZackBot.exe failed or the copy does not match - n
 goto fail
 :fail_stop
 set WHY=the running ZackBot did not stop - nothing was changed
+goto fail
+:fail_drill_noold
+set WHY=rollback drill needs an installed ZackBot to roll back to - install normally first; nothing was changed
+goto fail
+:fail_drill_oldbuild
+set WHY=rollback drill: could not read the installed version's build id, so a rollback could not be proven - nothing was changed
+goto fail
+:fail_drill_noscenario
+set WHY=ROLLBACK DRILL INVALID: the new exe answered although it was told to fail - the new build %BUILD_ID% is running; check --simulate-failed-launch
 goto fail
 :fail
 echo BUILD_FAILED: %WHY% >> "%LOG%"

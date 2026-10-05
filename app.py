@@ -1252,6 +1252,9 @@ def main():
     if '--selftest' in sys.argv:
         i = sys.argv.index('--selftest')
         selftest(sys.argv[i + 1] if i + 1 < len(sys.argv) else os.path.join(DATA, 'selftest.json')); return
+    if '--simulate-failed-launch' in sys.argv:   # installer rollback drill ONLY (build_app.bat drill): fail before anything
+        log.warning('simulate-failed-launch: exiting before the panel/engine start (installer rollback drill)')   # starts:
+        sys.exit(3)                              # no port, no session.json, no engine, no exchange call
     if port_in_use():                       # already running -> just show it (after verifying it is ours)
         tok = existing_instance_token()
         if tok: open_window(tok)
