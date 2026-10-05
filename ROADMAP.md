@@ -10,10 +10,19 @@
 - Backtester lookahead fixed: trailing stops used the ATR of the candle being walked; found by the engine-vs-backtest replay
 - Reproducibility: conftest sandbox, requirements-dev, run_checks, replay gate, data manifest, research_refresh.py
 
+## v3.2-rc2 (done - reviewer follow-up, 2026-10-05)
+- BTC circuit breaker (enforce) pauses pyramid adds; DCA safety orders follow a per-basket policy fixed at entry: pause (default) / half_size / continue_plan
+- replay.py: trade-level metrics (matched %, median/p95 |dR|, return and DD gap, reconciliation); strict targets are the release gate in run_checks (24 steps); both scenarios pass
+- tests/test_causality.py: engine perturbation (unseen-price) test across 6 modes + per-trade parity on synthetic data + a leak detector proven to fail on the old same-candle-ATR bug
+- installer: verified backup (hash), stale backup removed first, installed-exe hash check, source/shortcut checks, post-launch /api/ping with HMAC proof of the new build id, automatic rollback
+- engine: no crash when no coin has 250 closed candles yet
+- private Git history with version tags (setup_git.bat + bundle)
+
 ## Next (engineering)
 - Shared core: move sizing, management levels, fees and state transitions into pure functions used by BOTH engine.py and
   backtest.py (the replay found one real drift; duplicated logic will drift again)
-- More replay scenarios in CI (DCA + runner, shorts, gaps, minimum-order rounding) and seeded property tests
+- More replay scenarios (gaps, minimum-order rounding, maker entries, risk-rule blocks) on real data
+- Optional entry ranking when signals exceed free slots (today: fixed coin order, identical in live and backtest)
 - CI pipeline running run_checks on every commit; Windows runner for the build script
 - Point-in-time coin universe incl. delisted coins (LUNA, FTT ...) for the long tests; historical funding series
 - Log every testnet maker/market fill to calibrate the backtest fill model
