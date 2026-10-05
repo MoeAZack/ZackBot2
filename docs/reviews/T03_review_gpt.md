@@ -41,3 +41,16 @@ GitHub currently reports the ticket branch as unprotected, and there are no requ
 The implementation fails closed before touching the running bot when preflight, dependencies, tests, build, self-test, or backup verification fails. The simulated failure exits before opening the server, writing the session, starting the engine, or contacting the exchange. Rollback verifies the restored file hash and the identity/build of the restarted process. Moving the mirror and shortcut update after the authenticated launch check corrects the stale-mirror failure mode.
 
 No broad cleanup should be mixed into T03. The planned T03b migration from a large batch script to structured PowerShell remains the right place to improve installer maintainability, after T04 CI is established.
+
+## Final acceptance
+
+*Accepted 2026-10-05 20:55 Cairo after reviewing `T03_acceptance.md` and independently checking the running installation.*
+
+Both P2 findings are resolved:
+
+- `T03_review_request.md` now begins with one authoritative current-state section and clearly labels the earlier rounds as superseded history.
+- The normal Windows install completed successfully as build `20261005-204405`. The installed executable matches the logged SHA-256, the verified previous executable remains available, both shortcuts target the installed executable, and the authenticated live status reports engine/exchange `ok`, zero errors, zero unprotected positions, zero orphans, and four protected positions.
+
+The P3 branch-protection item is intentionally assigned to T04 after required CI checks exist; it is not an open T03 finding.
+
+**Final verdict: accepted with no open findings.** T03 may be fast-forwarded into `master` and T04 may begin.
