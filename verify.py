@@ -6,8 +6,9 @@
     python verify.py release   Windows PC only: full (without buildcheck) + rollback drill (build, self-test, forced failed
                                launch, verified restore) + read-only testnet reconciliation of the running bot
 
-Options: --out DIR (default dev_out/verify), --skip-ui, --skip-replays (both recorded in the summary as skipped).
-Exit code 0 = every executed step passed. Summary: <out>/<level>_<cairo-time>.json and <out>/latest_<level>.json.
+Options: --out DIR (default dev_out/verify). There are no skip switches: a named level always runs all of its gates
+(T04 review: a full/release run with an omitted gate must never report PASS). For a quick look, run pytest or the
+scripts directly. Exit code 0 = every executed step passed; the only skips are Windows-only steps on other systems. Summary: <out>/<level>_<cairo-time>.json and <out>/latest_<level>.json.
 Never weakens a gate: replay thresholds come from replay.STRICT, tests run unmodified, nothing is retried.
 """
 import argparse, glob, hashlib, json, os, platform, re, subprocess, sys, time, urllib.request, xml.etree.ElementTree as ET
@@ -106,21 +107,44 @@ def static_checks(rep):
     rep.step('static: every .py file compiles', not bad, round(time.time() - t, 1), files=len(py), errors=bad[:10])
     # secrets / private files must never be in the tree
     t = time.time()
-    forbidden = [p for p in ('config.env', 'session.json', 'state.json', 'settings.json', 'trades.csv') if os.path.exists(os.path.join(ROOT, p))]
-    key_rx = re.compile(r'(?<![A-Za-z0-9])[A-Za-z0-9]{64}(?![A-Za-z0-9])')
-    hits = []
-    for p in glob.glob(os.path.join(ROOT, '**', '*'), recursive=True):
-        rel = os.path.relpath(p, ROOT)
-        if (not os.path.isfile(p) or rel.split(os.sep)[0] in ('data', 'data1h', 'data_long', 'dev_out', 'research', '.git')
-                or p.endswith(('.svg', '.png', '.ico', '.pyc', '.bundle', '.exe', '.json')) or os.path.getsize(p) > 2_000_000):
-            continue
-        try: txt = open(p, encoding='utf-8', errors='ignore').read()
-        except OSError: continue
-        for m in key_rx.findall(txt):
-            if not re.fullmatch(r'[0-9a-fA-F]{64}', m) and len(set(m)) > 4:     # hex = checksums; 'CCCC...' = fixtures
-                hits.append(f'{rel}: {m[:6]}...')
+    forbidden, hits = secret_scan(ROOT)
     rep.step('static: no private files or key-like strings in the tree', not forbidden and not hits, round(time.time() - t, 1),
              forbidden=forbidden, key_like=hits[:10])
+
+
+PRIVATE_NAMES = ('config.env', 'session.json', 'state.json', 'settings.json', 'trades.csv', 'history.json', 'missed.json')
+LOCAL_ONLY = ('.git', 'dev_out', 'verify_out', '__pycache__', '.pytest_cache')        # never committed (.gitignore) - not scanned
+SECRET_RX = [('key-like 64-char string', re.compile(r'(?<![A-Za-z0-9])[A-Za-z0-9]{64}(?![A-Za-z0-9])')),
+             ('private key block', re.compile(r'-----BEGIN (?:RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----')),
+             ('Telegram bot token', re.compile(r'(?<![0-9])[0-9]{8,10}:AA[A-Za-z0-9_-]{33}(?![A-Za-z0-9_-])')),
+             ('DPAPI blob', re.compile(r'dpapi:[A-Za-z0-9+/=]{40,}'))]
+
+
+def secret_scan(root):
+    """Current-tree guard (T04 review P2): private app files by NAME at any depth, and secret-looking CONTENT in every text
+    file up to 2 MB - JSON included - except the market-data folders. Git-history scanning is T04b."""
+    forbidden, hits = [], []
+    for dp, dns, fns in os.walk(root):
+        dns[:] = [d for d in dns if d not in LOCAL_ONLY]
+        reld = os.path.relpath(dp, root)
+        top = reld.split(os.sep)[0]
+        for fn in fns:
+            rel = os.path.normpath(os.path.join(reld, fn))
+            if fn in PRIVATE_NAMES: forbidden.append(rel)
+            p = os.path.join(dp, fn)
+            if (top in ('data', 'data1h', 'data_long') or fn.endswith(('.svg', '.png', '.ico', '.pyc', '.bundle', '.exe', '.zip', '.mp4'))
+                    or os.path.getsize(p) > 2_000_000):
+                continue
+            try: txt = open(p, encoding='utf-8', errors='ignore').read()
+            except OSError: continue
+            for what, rx in SECRET_RX:
+                for m in rx.findall(txt):
+                    if what.startswith('key-like') and (re.fullmatch(r'[0-9a-fA-F]{64}', m) or len(set(m)) <= 4):
+                        continue                                  # hex = checksums; 'CCCC...' = test fixtures
+                    if what.startswith('Telegram') and m.startswith('123456789:'):
+                        continue                                  # the tests' obviously fake bot id
+                    hits.append(f'{rel}: {what} {m[:6]}...')
+    return forbidden, hits
 
 
 def manifest_check(rep):
@@ -222,29 +246,53 @@ def installer_mode(rep, mode, timeout):
     return rep.step(f'installer {mode}', ok, sec, **info)
 
 
-def reconcile_step(rep):
-    """Read-only check of the RUNNING bot through its own authenticated /api/status (never places or changes anything)."""
+def runtime_ok(st):
+    """The running bot is on TESTNET (mode PAPER), healthy, and every position is protected - nothing untracked, no orphans."""
+    h = st.get('health', {}); lots = st.get('lots', [])
+    return (st.get('mode') == 'PAPER' and h.get('engine') == 'ok' and h.get('exchange') == 'ok' and not h.get('unprotected')
+            and not h.get('untracked') and not h.get('orphans') and all(l.get('protected') for l in lots))
+
+
+def bot_status():
+    sess = json.load(open(os.path.join(os.environ['LOCALAPPDATA'], 'ZackBot', 'session.json'), encoding='utf-8'))
+    req = urllib.request.Request(f"http://127.0.0.1:{sess.get('port', 8765)}/api/status", headers={'X-ZB-Token': sess['token']})
+    return json.load(urllib.request.urlopen(req, timeout=20))
+
+
+def reconcile_step(rep, phase='after drill', wait=180):
+    """Read-only check of the RUNNING bot through its own authenticated /api/status (never places or changes anything).
+    Must report mode PAPER (testnet): a LIVE bot never passes, and before the drill it means the drill is not started."""
     t = time.time()
     ok, info, last_err = False, {}, None
-    while time.time() - t < 180 and not ok:          # right after a restart the price feed needs up to a minute: wait, never relax
+    while not ok:                                    # right after a restart the price feed needs up to a minute: wait, never relax
         try:
-            sess = json.load(open(os.path.join(os.environ['LOCALAPPDATA'], 'ZackBot', 'session.json'), encoding='utf-8'))
-            req = urllib.request.Request(f"http://127.0.0.1:{sess.get('port', 8765)}/api/status", headers={'X-ZB-Token': sess['token']})
-            st = json.load(urllib.request.urlopen(req, timeout=20))
+            st = bot_status()
             h = st.get('health', {}); lots = st.get('lots', [])
             info = dict(mode=st.get('mode'), build=st.get('build'), engine=h.get('engine'), exchange=h.get('exchange'),
                         lots=len(lots), unprotected=h.get('unprotected'), untracked=h.get('untracked'), orphans=h.get('orphans'),
                         errors=h.get('errors', [])[:5])
-            ok = (h.get('engine') == 'ok' and h.get('exchange') == 'ok' and not h.get('unprotected') and not h.get('untracked')
-                  and not h.get('orphans') and all(l.get('protected') for l in lots))
+            ok = runtime_ok(st)
+            if st.get('mode') != 'PAPER': break      # LIVE (or unknown) never becomes acceptable by waiting
         except Exception as e:
             last_err = f'{type(e).__name__}: {e}'
-        if not ok: time.sleep(10)
+        if ok or time.time() - t >= wait: break
+        time.sleep(10)
+    name = f'testnet reconciliation {phase} (running bot)'
     if not info:
-        return rep.step('testnet reconciliation (running bot)', False, round(time.time() - t, 1), why=last_err)
-    rep.data['reconciliation'] = info
-    return rep.step('testnet reconciliation (running bot)', ok, round(time.time() - t, 1), **info,
-                    why=None if ok else 'engine/exchange not ok, or an unprotected/untracked position, or orphan orders')
+        return rep.step(name, False, round(time.time() - t, 1), why=last_err)
+    rep.data.setdefault('reconciliation', {})[phase] = info
+    why = None if ok else ('the running bot is not in PAPER (testnet) mode' if info.get('mode') != 'PAPER'
+                           else 'engine/exchange not ok, or an unprotected/untracked position, or orphan orders')
+    return rep.step(name, ok, round(time.time() - t, 1), **info, why=why)
+
+
+def release_steps(rep):
+    """The drill stops and restarts ZackBot, so it only starts after a read-only gate proves the running bot is PAPER
+    (testnet), healthy and fully protected (T04 review P1). Afterwards the same gate must pass again."""
+    if not reconcile_step(rep, 'before drill', wait=60):
+        return rep.step('installer drill', False, why='not started: the pre-drill gate failed (bot must be PAPER, healthy, all protected)')
+    installer_mode(rep, 'drill', 3600)
+    return reconcile_step(rep, 'after drill')
 
 
 # ---------------------------------------------------------------- levels
@@ -252,7 +300,6 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('level', choices=['fast', 'full', 'release'])
     ap.add_argument('--out', default=os.path.join(ROOT, 'dev_out', 'verify'))
-    ap.add_argument('--skip-ui', action='store_true'); ap.add_argument('--skip-replays', action='store_true')
     a = ap.parse_args()
     if a.level == 'release' and not WIN:
         print('verify release runs on the Windows PC only (rollback drill + running-bot reconciliation)'); return 2
@@ -270,15 +317,10 @@ def main():
         installer_mode(rep, 'preflight', 600)
     else:
         pytest_step(rep, 'tests (all)', ['tests'], 3600)
-        for name, args in REPLAYS:
-            if a.skip_replays: rep.step(name, True, skip=True, why='--skip-replays')
-            else: replay_step(rep, name, args)
-        if a.skip_ui: rep.step('UI harness (all tabs x 3 widths, flows, API failures)', True, skip=True, why='--skip-ui')
-        else: ui_step(rep)
+        for name, args in REPLAYS: replay_step(rep, name, args)
+        ui_step(rep)
         if a.level == 'full': installer_mode(rep, 'buildcheck', 3600)
-        if a.level == 'release':
-            installer_mode(rep, 'drill', 3600)
-            reconcile_step(rep)
+        if a.level == 'release': release_steps(rep)
     return rep.finish()
 
 
