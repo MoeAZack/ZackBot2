@@ -136,9 +136,18 @@ def _ps_runner():
     """How the installer runs the helper: on Windows cmd.exe -> Windows PowerShell 5.1 (exactly like build_app.bat);
     elsewhere PowerShell 7 if installed (dev box / CI). None -> skip."""
     if os.name == 'nt' and shutil.which('powershell'):
-        return lambda args, env=None: subprocess.run(
-            ['cmd', '/c', 'powershell -NoProfile -ExecutionPolicy Bypass -File "%s" %s' % (PS1, ' '.join('"%s"' % a for a in args))],
-            capture_output=True, text=True, env=env, timeout=120)
+        # A real batch file calls the helper with the installer's own line pattern. The command line is handed to
+        # CreateProcess as ONE string (cmd /d /s /c "..."), so Python cannot re-quote it: passing a list made Python
+        # escape the inner quotes as \" and powershell received a path with quote characters (T03 drill, round 2).
+        bat = os.path.join(tempfile.mkdtemp(prefix='zb_chk_'), 'call_check.bat')
+        with open(bat, 'wb') as f:
+            f.write(b'@echo off\r\npowershell -NoProfile -ExecutionPolicy Bypass -File "%~1" %2 "%~3" %4\r\nexit /b %errorlevel%\r\n')
+
+        def run(args, env=None):
+            a = list(args) + [''] * (3 - len(args))
+            line = 'cmd /d /s /c ""%s" "%s" %s "%s" %s"' % (bat, PS1, a[0], a[1], a[2])
+            return subprocess.run(line, capture_output=True, text=True, env=env, timeout=120)
+        return run
     pw = shutil.which('pwsh') or ('/opt/pwsh/pwsh' if os.path.exists('/opt/pwsh/pwsh') else None)
     if pw:
         return lambda args, env=None: subprocess.run([pw, '-NoProfile', '-File', PS1] + list(args),
