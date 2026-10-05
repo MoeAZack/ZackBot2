@@ -595,7 +595,7 @@ class App:
         return dict(engine=engine, exchange=exch, last_sync=h.get('last_sync'), last_prices=datetime.fromtimestamp(mt, timezone.utc).isoformat(timespec='seconds') if mt else None,
                     last_manage_ok=lm, last_cycle_ok=h.get('last_cycle_ok'), errors=list(h['errors'])[-12:][::-1], unprotected=unprot,
                     untracked=e.untracked, orphans=len(e.state.get('orphans') or []), entries=entries, next_reset=next_reset_utc(),
-                    fail_streak=h['manage_fail_streak'])
+                    fail_streak=h['manage_fail_streak'], lev_refusals={k: dict(v) for k, v in getattr(e, 'lev_refusals', {}).items()})
 
     def revs(self, e):
         hl = e.history[-1]['id'] if e.history else ''
