@@ -17,6 +17,7 @@ class FakeX:
         self.mark = {'BTCUSDT': 100.0, 'ETHUSDT': 50.0}
         self.fail = set()          # names of methods that should raise
         self.balance = 5000.0
+        self.cur_lev = None        # T03a: the coin's current leverage as Binance reports it (None = no row)
         self.offset = 0
     def _f(self, name, code=-1000):
         self.calls.append(name)
@@ -34,6 +35,7 @@ class FakeX:
     def set_margin_type(self, *a): self._f('margin')
     def leverage_max(self, s): return 125
     def set_leverage(self, s, lev): self._f('leverage'); self.calls.append(('lev', s, lev))
+    def current_leverage(self, s): self._f('curlev'); return self.cur_lev
     def open(self, s, ps, q):
         self._f('open'); self.pos[(s, ps)] = self.pos.get((s, ps), 0) + float(q); return {'avgPrice': str(self.mark[s]), 'executedQty': q}
     def close(self, s, ps, q):
@@ -242,6 +244,75 @@ def test_exchange_leverage_follows_setting():
 def test_leverage_failure_blocks_entry():
     e, _ = mk_engine(); e.trade.fail.add('leverage')
     assert not e.open_lot(SL, 'BTCUSDT', 'LONG', SG, None, e.equity()) and 'leverage' in e.last_skip and not e.state['lots']
+
+
+# ------------------------------------------------------------------ T03a: leverage-refusal fallback
+def test_leverage_refused_but_already_within_cap_enters_and_counts(monkeypatch):
+    monkeypatch.setattr(E.time, 'sleep', lambda s: None)
+    e, _ = mk_engine(MAX_LEVERAGE=10); e.trade.fail.add('leverage'); e.trade.cur_lev = 5
+    k = opened(e)                                                          # entry goes ahead
+    assert e.state['lots'][k]['stop_id'] in e.trade.stops                   # with its exchange stop, as always
+    r = e.lev_refusals['BTCUSDT']
+    assert (r['count'], r['proceeded'], r['skipped'], r['current'], r['cap']) == (1, 1, 0, 5, 10) and 'injected' in r['last_error']
+    assert 'BTCUSDT' not in e._lev, 'a refused change is not cached: the next entry tries to set the leverage again'
+
+
+def test_leverage_refused_exactly_at_cap_enters(monkeypatch):
+    monkeypatch.setattr(E.time, 'sleep', lambda s: None)
+    e, _ = mk_engine(MAX_LEVERAGE=10); e.trade.fail.add('leverage'); e.trade.cur_lev = 10
+    opened(e)
+    assert e.lev_refusals['BTCUSDT']['proceeded'] == 1
+
+
+def test_leverage_refused_and_above_cap_skips(monkeypatch):
+    monkeypatch.setattr(E.time, 'sleep', lambda s: None)
+    e, _ = mk_engine(MAX_LEVERAGE=10); e.trade.fail.add('leverage'); e.trade.cur_lev = 20
+    assert not e.open_lot(SL, 'BTCUSDT', 'LONG', SG, None, e.equity())
+    assert 'leverage' in e.last_skip and 'above the 10x cap' in e.last_skip and not e.state['lots'] and not e.trade.stops
+    assert 'open' not in e.trade.calls, 'no order may be sent when the exchange leverage is above the cap'
+    r = e.lev_refusals['BTCUSDT']; assert (r['count'], r['proceeded'], r['skipped'], r['current']) == (1, 0, 1, 20)
+
+
+def test_leverage_refused_and_current_unknown_skips(monkeypatch):
+    monkeypatch.setattr(E.time, 'sleep', lambda s: None)
+    for setup in (lambda t: setattr(t, 'cur_lev', None), lambda t: t.fail.add('curlev')):
+        e, _ = mk_engine(MAX_LEVERAGE=10); e.trade.fail.add('leverage'); setup(e.trade)
+        assert not e.open_lot(SL, 'BTCUSDT', 'LONG', SG, None, e.equity())
+        assert 'current leverage unknown' in e.last_skip and not e.state['lots'] and 'open' not in e.trade.calls
+        assert e.lev_refusals['BTCUSDT']['skipped'] == 1
+
+
+def test_leverage_cap_uses_the_coin_maximum(monkeypatch):
+    """Cap = min(setting, the coin's Binance maximum): a coin capped at 8x by Binance and currently at 10x is refused."""
+    monkeypatch.setattr(E.time, 'sleep', lambda s: None)
+    e, _ = mk_engine(MAX_LEVERAGE=10); e.trade.fail.add('leverage'); e.trade.cur_lev = 10
+    monkeypatch.setattr(e.trade, 'leverage_max', lambda s: 8)
+    assert not e.open_lot(SL, 'BTCUSDT', 'LONG', SG, None, e.equity()) and 'above the 8x cap' in e.last_skip
+
+
+def test_leverage_refusals_count_per_coin_and_manual_trades_raise(monkeypatch):
+    monkeypatch.setattr(E.time, 'sleep', lambda s: None)
+    e, _ = mk_engine(MAX_LEVERAGE=10); e.trade.fail.add('leverage'); e.trade.cur_lev = 20
+    for _ in range(3): e.open_lot(SL, 'BTCUSDT', 'LONG', SG, None, e.equity())
+    e.trade.cur_lev = 3; e.open_lot(SL, 'ETHUSDT', 'LONG', dict(SG, close=50.0, atr=1.0), None, e.equity())
+    assert e.lev_refusals['BTCUSDT']['count'] == 3 and e.lev_refusals['ETHUSDT'] == dict(e.lev_refusals['ETHUSDT'], count=1, proceeded=1)
+    e.trade.cur_lev = 20; monkeypatch.setattr(e, 'candles', lambda s, tf: pd.DataFrame(dict(c=[100.0], atr=[2.0])))
+    with pytest.raises(ValueError, match='leverage'): e.manual_trade('BTCUSDT', 'LONG', 0.01, 1.0)
+
+
+def test_successful_leverage_change_records_no_refusal():
+    e, _ = mk_engine(MAX_LEVERAGE=3); opened(e)
+    assert e.lev_refusals == {} and 'curlev' not in e.trade.calls, 'the current leverage is only read after a refusal'
+
+
+def test_client_current_leverage_reads_position_risk():
+    c, calls = client_with([Resp(200, [dict(symbol='SOLUSDT', positionSide='LONG', leverage='5'),
+                                       dict(symbol='SOLUSDT', positionSide='SHORT', leverage='5')])])
+    assert c.current_leverage('SOLUSDT') == 5
+    m, path, params = calls[0]
+    assert m == 'GET' and path == '/v2/positionRisk' and params['symbol'] == 'SOLUSDT'
+    c, _ = client_with([Resp(200, [])])
+    assert c.current_leverage('SOLUSDT') is None
 
 
 # ------------------------------------------------------------------ capital, guards, restarts
