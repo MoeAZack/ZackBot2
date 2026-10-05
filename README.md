@@ -19,6 +19,8 @@ the source mirror and shortcuts are only updated after a confirmed launch.
 its launch on purpose (`--simulate-failed-launch`, used only by the drill) and passes only if the rollback restores the
 previous exe and confirms it running. The bot is stopped for about 1-2 minutes; exchange stops stay on Binance. Afterwards the
 previous version is still installed - run `build_app.bat` normally to install the new one.
+`build_app.bat preflight` is a non-destructive check (used by the tests): it stages the source into its own folder,
+verifies the checksum helper and exits (log: `%LOCALAPPDATA%\ZackBot\build_preflight.log`); it never stops or replaces anything.
 Settings shows the version and build id that is actually running.
 
 Everything (keys, settings, logs, trades, backtests, candle cache) lives in `%LOCALAPPDATA%\ZackBot`.

@@ -84,7 +84,8 @@ def test_rollback_restores_verified_hash_then_proves_old_build_runs():
         lambda l: 'ping %OLDBUILD%' in l)]
     assert order == sorted(order), 'rollback must: restore -> hash check -> start -> ping the old build'
     assert any(l.startswith('if "%DRILL%"=="1" if "%OLDBUILD%"==""') for l in L), 'drill needs the old build id up front'
-    assert any('fail_drill_noold' in l for l in L[:40]), 'drill must refuse early when nothing is installed'
+    step1 = _idx(L, lambda l: l.startswith('echo [1/8]'), 'step 1')[0]
+    assert any('goto fail_drill_noold' in l for l in L[:step1]), 'drill must refuse before step 1 when nothing is installed'
 
 
 def test_simulate_failed_launch_exits_before_anything_starts():
@@ -136,18 +137,12 @@ def _ps_runner():
     """How the installer runs the helper: on Windows cmd.exe -> Windows PowerShell 5.1 (exactly like build_app.bat);
     elsewhere PowerShell 7 if installed (dev box / CI). None -> skip."""
     if os.name == 'nt' and shutil.which('powershell'):
-        # A real batch file calls the helper with the installer's own line pattern. The command line is handed to
-        # CreateProcess as ONE string (cmd /d /s /c "..."), so Python cannot re-quote it: passing a list made Python
-        # escape the inner quotes as \" and powershell received a path with quote characters (T03 drill, round 2).
-        bat = os.path.join(tempfile.mkdtemp(prefix='zb_chk_'), 'call_check.bat')
-        with open(bat, 'wb') as f:
-            f.write(b'@echo off\r\npowershell -NoProfile -ExecutionPolicy Bypass -File "%~1" %2 "%~3" %4\r\nexit /b %errorlevel%\r\n')
-
-        def run(args, env=None):
-            a = list(args) + [''] * (3 - len(args))
-            line = 'cmd /d /s /c ""%s" "%s" %s "%s" %s"' % (bat, PS1, a[0], a[1], a[2])
-            return subprocess.run(line, capture_output=True, text=True, env=env, timeout=120)
-        return run
+        # Windows PowerShell 5.1 called directly with an argument list (review round 2: building a "cmd /c ..." string
+        # inside a Python list made the -File path carry literal quotes). The batch-level path is covered separately by
+        # test_build_app_preflight_from_cmd, which runs the real build_app.bat.
+        ps = shutil.which('powershell')
+        return lambda args, env=None: subprocess.run([ps, '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', PS1] + list(args),
+                                                     capture_output=True, text=True, env=env, timeout=120)
     pw = shutil.which('pwsh') or ('/opt/pwsh/pwsh' if os.path.exists('/opt/pwsh/pwsh') else None)
     if pw:
         return lambda args, env=None: subprocess.run([pw, '-NoProfile', '-File', PS1] + list(args),
@@ -234,3 +229,47 @@ def test_installer_isolates_powershell_and_checks_the_helper_first():
     tests = _idx(L, lambda l: '-m pytest' in l, 'test step')[0]
     assert clear < first_ps and pre < tests, 'reset PSModulePath before any PowerShell; checksum preflight before the tests'
     assert any("2^>^>\"%LOG%\"" in l for l in L if 'hash "%~1"' in l), 'helper errors must reach build.log'
+
+
+@needs_installer
+def test_preflight_mode_is_non_destructive():
+    """build_app.bat preflight: own staging folder + own log, exits right after the checksum check (before step 2),
+    never pauses - so it cannot stop, swap or roll back anything and cannot hang a test."""
+    L = _lines('build_app.bat')
+    own_stage = _idx(L, lambda l: l == 'if "%PREFLIGHT%"=="1" set STAGE=%ROOT%\\staging_preflight', 'preflight staging')[0]
+    own_log = _idx(L, lambda l: l == 'if "%PREFLIGHT%"=="1" set LOG=%ROOT%\\build_preflight.log', 'preflight log')[0]
+    first_log_write = _idx(L, lambda l: '> "%LOG%"' in l, 'first log write')[0]
+    first_rmdir = _idx(L, lambda l: l.startswith('if exist "%STAGE%" rmdir'), 'staging cleanup')[0]
+    pre_ok = _idx(L, lambda l: l.startswith('echo PREFLIGHT_OK'), 'PREFLIGHT_OK')[0]
+    exit0 = next(i for i in range(pre_ok, len(L)) if L[i] == 'exit /b 0')
+    step2 = _idx(L, lambda l: l.startswith('echo [2/8]'), 'step 2')[0]
+    assert own_stage < first_log_write and own_log < first_log_write and own_stage < first_rmdir
+    assert pre_ok < exit0 < step2, 'preflight must exit before step 2'
+    f = _idx(L, lambda l: l == ':fail', ':fail')[0]
+    pause = next(i for i in range(f, len(L)) if L[i] == 'pause')
+    assert any(L[i] == 'if "%PREFLIGHT%"=="1" exit /b 1' for i in range(f, pause)), 'preflight failures must not pause'
+
+
+@needs_installer
+@pytest.mark.skipif(os.name != 'nt', reason='runs the real build_app.bat through cmd.exe (Windows only)')
+def test_build_app_preflight_from_cmd():
+    """The real batch file, the real helper, Windows PowerShell 5.1 - also with a PowerShell-7-style PSModulePath.
+    Must not touch the real staging folder or build.log."""
+    root = os.path.join(os.environ['LOCALAPPDATA'], 'ZackBot')
+    def snap():
+        out = {}
+        for f in ('build.log',):
+            p = os.path.join(root, f)
+            out[f] = hashlib.sha256(open(p, 'rb').read()).hexdigest() if os.path.exists(p) else None
+        st = os.path.join(root, 'staging')
+        out['staging'] = sorted(os.listdir(st)) if os.path.isdir(st) else None
+        out['staging_mtime'] = os.path.getmtime(st) if os.path.isdir(st) else None
+        return out
+    before = snap()
+    bat = os.path.join(ROOT, 'build_app.bat')
+    for env in (None, _env(PSModulePath=r'C:\Program Files\PowerShell\7\Modules;C:\nowhere\Modules')):
+        r = subprocess.run(['cmd', '/d', '/c', bat, 'preflight'], capture_output=True, text=True, env=env, timeout=300,
+                           stdin=subprocess.DEVNULL)
+        assert r.returncode == 0 and 'PREFLIGHT_OK' in r.stdout, (r.returncode, r.stdout[-800:], r.stderr[-400:])
+    assert snap() == before, 'preflight must not touch the real staging folder or build.log'
+    assert not os.path.exists(os.path.join(root, 'staging_preflight')), 'preflight staging folder must be removed'

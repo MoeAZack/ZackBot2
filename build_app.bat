@@ -20,6 +20,12 @@ rem "build_app.bat drill" = rollback drill: install the new build, make it fail 
 rem (--simulate-failed-launch), and require the installer to restore the previous version and prove it runs again.
 set DRILL=0
 if /i "%~1"=="drill" set DRILL=1
+rem "build_app.bat preflight" = non-destructive check used by the tests: staging copy + checksum helper, then exit.
+rem Own staging folder and log, no pause; never reaches step 2, so it cannot stop, swap or roll back anything.
+set PREFLIGHT=0
+if /i "%~1"=="preflight" set PREFLIGHT=1
+if "%PREFLIGHT%"=="1" set STAGE=%ROOT%\staging_preflight
+if "%PREFLIGHT%"=="1" set LOG=%ROOT%\build_preflight.log
 if not exist "%ROOT%" mkdir "%ROOT%"
 echo ==== ZackBot build %date% %time% ==== > "%LOG%"
 echo.
@@ -51,6 +57,12 @@ rem the swap and the rollback). Fails in seconds instead of after the tests and 
 call :hash "%STAGE%\src\app.py" PREHASH
 if "%PREHASH%"=="" goto fail_helper
 echo   checksum helper ok >> "%LOG%"
+if "%PREFLIGHT%"=="0" goto preflight_done
+echo PREFLIGHT_OK build=%BUILD_ID% app.py sha256=%PREHASH% >> "%LOG%"
+echo PREFLIGHT_OK app.py sha256=%PREHASH%
+if exist "%STAGE%" rmdir /s /q "%STAGE%"
+exit /b 0
+:preflight_done
 
 echo [2/8] Preparing the private build environment (pinned versions only)...
 set PY=python
@@ -239,6 +251,7 @@ echo.
 echo  *** BUILD FAILED: %WHY%
 echo  Details: %LOG%
 echo.
+if "%PREFLIGHT%"=="1" exit /b 1
 pause
 exit /b 1
 

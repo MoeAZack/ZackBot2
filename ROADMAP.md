@@ -347,9 +347,10 @@ A high score **never** changes settings automatically.
 |---|---|---|---|
 | T01 | Git baseline | No behaviour change | ✅ Done 2026-10-05 (history in `%LOCALAPPDATA%\ZackBot\history.git`, tag v3.2-rc2) |
 | T02 | Playwright on Windows | No behaviour change | ✅ Done 2026-10-05 (accepted after 3 reviews: Windows 171/171 UI checks, 192/192 tests, strict replays unchanged; branch `t02-ui-baseline` @ 2fc8642) |
-| T03 | Installer rollback drill ("simulate failed launch" switch) | Deployment only | ◐ Review 1 (2026-10-05): drill stopped safely at step 6 - checksum helper failed under the Windows launcher (Get-FileHash unavailable). Fixed: .NET-only helper, PSModulePath reset, checksum preflight, helper tests. Pending: Windows drill PASS + re-review |
-| T03a | Leverage-refusal fallback: when Binance refuses a leverage change (testnet `-1000` on every SOLUSDT/XRPUSDT attempt so far), read the coin's current leverage (read-only); enter only if it is at or below the cap, otherwise skip as today; count refusals per coin in the panel | E-class (order path): tests + strict replays | ⬜ After T03 |
-| T04 | CI fast/full pipelines (moved up: every later ticket is checked by it) | No behaviour change | ⬜ |
+| T03 | Installer rollback drill ("simulate failed launch" switch) | Deployment only | ◐ Review 1: helper failed under the Windows launcher (fixed: .NET-only helper, PSModulePath reset, preflight). Round 2: 4 new helper tests mis-quoted the path on Windows (fixed: direct powershell call + real `build_app.bat preflight` test). Installer stopped safely both times. Pending: installer tests on Windows, drill PASS, normal install + positions/stops check, re-review |
+| T04 | CI fast/full pipelines: `verify fast` (static checks, unit tests, installer preflight; < 3 min), `verify full` (all tests, strict replays, full UI harness, build + exe self-test), `verify release` (full + Windows rollback drill + testnet reconciliation). Each writes one machine-readable summary: commit, build id, dataset manifest hash, dependency versions, pass/fail/skip counts, replay metrics, UI evidence path, exe hash, Cairo start/finish | No behaviour change | ⬜ Next after T03 |
+| T03a | Leverage-refusal fallback: when Binance refuses a leverage change (testnet `-1000` on every SOLUSDT/XRPUSDT attempt so far), read the coin's current leverage (read-only); enter only if it is at or below the cap, otherwise skip as today; count refusals per coin in the panel | E-class (order path): tests + strict replays | ⬜ After T04 (order-path change: only under CI) |
+| T03b | Installer logic moved from CMD into a structured PowerShell script (functions, real error handling, testable); `build_app.bat` / `rollback_drill.bat` stay as tiny double-click launchers. Same steps, same fail-closed rules, drill re-run | Deployment only | ⬜ After T03a |
 | T05 | Fill telemetry (maker/market expected vs actual) | Observe | ⬜ |
 | T06 | Shared-core contracts, reason codes and `AccountContext` spec | No behaviour change | ⬜ |
 | T07 | Extract costs, rounding and sizing | Refactor, zero replay change | ⬜ |
@@ -362,6 +363,8 @@ A high score **never** changes settings automatically.
 | T14 | VPS service, secrets, heartbeat, deploy/rollback | Ops | ⬜ |
 | T15 | Multi-account workers + internal copy (shadow) | Off/Shadow | ⬜ |
 | T16 | ML dataset builder (leakage checks, manifests) | Research | ⬜ |
+
+**Order agreed 2026-10-05 (review of T03 round 2):** T03 → T04 (CI) → T03a → T03b → T05 → T06–T09 core extraction, and only then large features (more exchanges, copy trading, stocks/gold, mobile control). No broad clean-up mixed into tickets; refactors never carry new strategy behaviour. Recommended (owner's decision, credentials needed): a private GitHub repository so both assistants review the same commits and CI runs on every change; before the first push exclude keys, `config.env`, session tokens, account data, logs, market data, executables and evidence, and run a secret scan over the whole history.
 
 **Ticket rules:** one ticket at a time, in this order. A ticket is marked ✅ (with the date) only when its acceptance checks pass **and** the other assistant's review has no open findings. ◐ = implemented, review or Windows run pending.
 
