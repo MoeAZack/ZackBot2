@@ -21,7 +21,7 @@ Closing the window keeps the bot trading in the background; reopen with the shor
 All clock times in the panel are Cairo time (the bot's trading day).
 
 ## Version history
-Run **setup_git.bat** once to turn this folder into a private Git repository with the full history (tags v2.2, v3.0, v3.0.1, v3.1, v3.2-rc1, v3.2-rc2) from `..\ZackBot2_git\zackbot_v3.2-rc2.bundle`. Then `git diff --stat v3.1 v3.2-rc2` shows exactly what changed.
+Run **setup_git.bat** once to turn this folder into a private Git repository with the full history (tags v2.2, v3.0, v3.0.1, v3.1, v3.2-rc1, v3.2-rc2) from `..\ZackBot2_git\zackbot_v3.2-rc2.1.bundle`. Then `git diff --stat v3.1 v3.2-rc2` shows exactly what changed. If Windows blocks Git from writing into Documents (Controlled folder access), the history is kept in `%LOCALAPPDATA%\ZackBot\history.git` and `..\ZackBot2_git\zbgit.bat` replaces `git` for this folder.
 
 ## Verify (developers / reviewers)
 - `run_checks.bat` (Windows) or `./run_checks.sh`: unit + safety tests, engine-vs-backtest replay gate, UI harness if Playwright is installed.

@@ -20,7 +20,7 @@ echo.
 echo [1/8] Copying the source to a clean staging folder...
 if exist "%STAGE%" rmdir /s /q "%STAGE%"
 if exist "%STAGE%" goto fail_stage
-robocopy "%SRC%." "%STAGE%\src" /MIR /XD __pycache__ .git data data1h data_long dev_out /XF build_app.bat setup_git.bat config.env *.log session.json *.tmp *.pkl build_info.py /NFL /NDL /NJH /NJS >> "%LOG%" 2>&1
+robocopy "%SRC%." "%STAGE%\src" /MIR /XD __pycache__ .git .git_failed_* data data1h data_long dev_out /XF build_app.bat setup_git.bat config.env *.log session.json *.tmp *.pkl build_info.py /NFL /NDL /NJH /NJS >> "%LOG%" 2>&1
 if errorlevel 8 goto fail_copy
 for /f %%i in ('powershell -NoProfile -Command "Get-Date -Format yyyyMMdd-HHmmss"') do set BUILD_ID=%%i
 if "%BUILD_ID%"=="" goto fail_copy
