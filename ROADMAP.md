@@ -92,10 +92,10 @@ These apply to every phase.
 | # | Item | Status |
 |---|---|---|
 | 0.1 | Git from the rc2 bundle | ✅ Done. History in `%LOCALAPPDATA%\ZackBot\history.git`, identical to tag v3.2-rc2; use `..\ZackBot2_git\zbgit.bat`. |
-| 0.2 | Branches: `main` protected, one branch per bounded change | ⬜ |
+| 0.2 | Branches: `master` protected, one branch per bounded change | ✅ Done. Pull request, fast/full checks and linear history required; force-push and deletion blocked. |
 | 0.3 | Playwright on Windows | ✅ Done (T02): `run_ui_baseline.bat`, 171/171 on Windows. |
 | 0.4 | Installer rehearsal | ✅ Done (T03): failure-path rollback drill and normal install verified; current test build `20261005-204405`; hashes, authenticated restart, source mirror, shortcuts and protected positions confirmed. |
-| 0.5 | CI | ⬜ Fast tests on every commit; full tests, strict replays, UI and build on release. |
+| 0.5 | CI | ✅ Done (T04/T04b): fast on pushes; full on pull requests; release gate on Windows; fixed Ubuntu 24.04 and immutable Node-24 action pins. |
 | 0.6 | One testnet canary | ◐ Running v3.2. The slot set must equal a tested profile; the DCA1H2 duplicate is pending a decision. |
 | 0.7 | Fill telemetry | ⬜ Log every maker/market fill: expected vs actual price, wait, partials, fallback. |
 
@@ -349,8 +349,8 @@ A high score **never** changes settings automatically.
 | T02 | Playwright on Windows | No behaviour change | ✅ Done 2026-10-05 (accepted after 3 reviews: Windows 171/171 UI checks, 192/192 tests, strict replays unchanged; branch `t02-ui-baseline` @ 2fc8642) |
 | T03 | Installer rollback drill ("simulate failed launch" switch) | Deployment only | ✅ Done 2026-10-05 (failure-path drill passed; normal install build 20261005-204405 passed; mirror + shortcuts updated; 4/4 lots protected; 207/207 Windows tests; Codex final review has no open findings) |
 | T04 | CI fast/full pipelines: `verify fast` (static checks, unit tests, installer preflight; < 3 min), `verify full` (all tests, strict replays, full UI harness, build + exe self-test), `verify release` (full + Windows rollback drill + testnet reconciliation). Each writes one machine-readable summary: commit, build id, dataset manifest hash, dependency versions, pass/fail/skip counts, replay metrics, UI evidence path, exe hash, Cairo start/finish | No behaviour change | ✅ Done 2026-10-06 (Windows full PASS; GitHub fast/full green; fail-closed release gate; protected `master`; PR #1 merged) |
-| T04b | Deterministic CI runner/action maintenance: fixed Ubuntu 24.04 image and immutable Node-24 action pins | No behaviour change | ◐ Accepted at `ab4a7f1`; protected PR #2 merge pending. Follow-up: Dependabot + history/dependency scanning |
-| T03a | Leverage-refusal fallback: when Binance refuses a leverage change (testnet `-1000` on every SOLUSDT/XRPUSDT attempt so far), read the coin's current leverage (read-only); enter only if it is at or below the cap, otherwise skip as today; count refusals per coin in the panel | E-class (order path): tests + strict replays | ◐ Implemented on PR #3; checks/review pending after T04b merge |
+| T04b | Deterministic CI runner/action maintenance: fixed Ubuntu 24.04 image and immutable Node-24 action pins | No behaviour change | ✅ Done 2026-10-06 (accepted; PR #2 merged as `ad1d584`). Follow-up: Dependabot + history/dependency scanning |
+| T03a | Leverage-refusal fallback: when Binance refuses a leverage change (testnet `-1000` on every SOLUSDT/XRPUSDT attempt so far), read the coin's current leverage (read-only); enter only if it is at or below the cap, otherwise skip as today; count refusals per coin in the panel | E-class (order path): tests + strict replays + canary | ◐ Code review passed at `fc29214` on PR #4; owner-authorized testnet install/canary pending before final acceptance |
 | T03b | Installer logic moved from CMD into a structured PowerShell script (functions, real error handling, testable); `build_app.bat` / `rollback_drill.bat` stay as tiny double-click launchers. Same steps, same fail-closed rules, drill re-run | Deployment only | ⬜ After T03a |
 | T05 | Fill telemetry (maker/market expected vs actual) | Observe | ⬜ |
 | T06 | Shared-core contracts, reason codes and `AccountContext` spec | No behaviour change | ⬜ |

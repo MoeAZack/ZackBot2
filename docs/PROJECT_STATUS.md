@@ -1,20 +1,20 @@
 # ZackBot owner overview
 
-*Last refreshed: 2026-10-06 01:42 Cairo (Africa/Cairo) by Codex, on branch `t04b-ci-maintenance`. This is the plain-language owner view. `ROADMAP.md` and `docs/reviews/` hold the detailed scope and evidence.*
+*Last refreshed: 2026-10-06 02:44 Cairo (Africa/Cairo) by Codex, on branch `t03a-leverage-fallback-v2`. This is the plain-language owner view. `ROADMAP.md` and `docs/reviews/` hold the detailed scope and evidence.*
 
 ## Where we are now
 
 | Item | Current state |
 |---|---|
 | Environment | **Binance Futures testnet only.** Mainnet stays impossible until the roadmap and the final release audit are complete and you approve it. |
-| Is ZackBot running? | Yes, on your PC (testnet). Last confirmed healthy at the end of T03: engine and exchange ok, 4 positions, all protected, 0 orphans. Nothing in T04 has stopped or touched it. |
-| Installed application | **Unchanged** since build `20261005-204405` (T03). T04 does not install anything. |
-| Latest accepted commit | `master` `7e0c245` (T04 accepted and merged) |
-| Current ticket | **T04b: deterministic CI maintenance** |
-| Stage | **T04b accepted; protected merge pending.** Both GitHub checks passed with zero annotations. |
-| What Claude is doing | T04b review found no defects; T03a is open as PR #3 and its checks are running. |
-| What Codex is reviewing | T04b final acceptance/merge, then T03a at its exact updated head. |
-| Your action | **None.** |
+| Is ZackBot running? | Yes, on your PC (testnet). Last confirmed healthy at the end of T03: engine and exchange ok, 4 positions, all protected, 0 orphans. The T04/T04b work and T03a code review did not stop or touch it. |
+| Installed application | **Unchanged** since build `20261005-204405` (T03). T03a has not been installed yet. |
+| Latest accepted commit | `master` `ad1d584` (T04b accepted and merged) |
+| Current ticket | **T03a: leverage-refusal fallback** — replacement PR #4 |
+| Stage | **Code review passed at `fc29214`; testnet runtime gate pending.** Final acceptance and merge wait for one installed-build canary. |
+| What Claude is doing | T03a implementation and handoff are complete; both final GitHub checks passed. |
+| What Codex is reviewing | Code review is complete with no blocking findings. Installation/canary evidence is next. |
+| Your action | **Approve one normal installer run and bounded testnet canary, or tell us to defer it.** |
 
 ## Latest test results
 
@@ -25,6 +25,8 @@
 | Claude's cloud sandbox (Linux) | `verify fast` PASS; `verify full` PASS (215 tests passed, 1 Windows-only skip; both strict replays PASS; UI 171/171) |
 | Your Windows PC | Exact head `8043c7e`: targeted tests **32 passed**; complete `verify.bat full` **PASS** — 224/224 tests, both strict replays, UI 171/171, staged executable build/self-check. Installed bot not touched. |
 | T04b, GitHub PR #2 | Head `ab4a7f1`: **verify fast PASS** (1m44s), **verify full PASS** (9m34s), zero annotations. Windows targeted CI tests: **16 passed**. |
+| T03a, Windows official pytest | Final head `fc29214`: focused safety/verification set **94 passed** in 5.50s. |
+| T03a, GitHub PR #4 | Final head `fc29214`: **verify fast PASS; verify full PASS**, including all tests, both strict replays and UI harness. |
 
 All results above are simulated or automated test environments with a fake exchange. None placed real orders.
 
@@ -40,11 +42,18 @@ All results above are simulated or automated test environments with a fake excha
 
 - Failed-launch drill proved the previous version is restored byte-for-byte and restarted. Normal install proved. 207/207 Windows tests. Positions stayed protected throughout.
 
+### T03a — leverage-refusal fallback: code review passed
+
+- If Binance refuses to change leverage twice, ZackBot reads the coin's current leverage and proceeds only when it is already at or below the stricter user/coin cap.
+- Unknown or above-cap leverage still skips the signal without placing an entry order.
+- Per-coin refusal, proceeded and skipped counts appear in the panel.
+- Final acceptance waits for an owner-authorized testnet install and one bounded SOL/XRP canary with a verified exchange stop.
+
 ## Bugs
 
 | Status | Priority | Item | Notes |
 |---|---|---|---|
-| Open | High | Binance testnet refuses leverage changes on SOL/XRP (`-1000`) | Signals are skipped safely; no unsafe order. Fix: **T03a**, next after T04. |
+| Runtime proof pending | High | Binance testnet refuses leverage changes on SOL/XRP (`-1000`) | T03a code and automated checks passed; installed-build testnet canary remains. |
 | Open | Medium | Panel can feel frozen during a long engine cycle | Planned in T06–T09 (core extraction). |
 | Open | Low | Risk tab "Compounding" tile clips at about 390 px wide | Next UI/mobile ticket. |
 | Fixed and accepted (T04) | High | Release drill could run without first proving an exact healthy PAPER status | Now fail-closed before and after the drill; 23 planted unsafe shapes prove the drill is never called. |
@@ -80,8 +89,7 @@ Every ticket now ends with a **clean-up pass on the files it touched**: remove d
 
 | Order | Ticket | Why it comes here |
 |---|---|---|
-| Merge | **T04b — deterministic CI maintenance** | Accepted; merge PR #2 through protected checks |
-| Next | **T03a — leverage-refusal fallback** | PR #3 open; update from T04b after its merge, then Codex review |
+| Current | **T03a — leverage-refusal fallback** | Code review passed on replacement PR #4; install/canary gate pending |
 | Then | **T03b — installer in PowerShell** | Easier to maintain once behaviour is proven |
 | Then | **T05 — fill telemetry** | Measures expected vs actual fills |
 | Core | **T06–T09 — shared core** | One trading logic for live and backtest |
