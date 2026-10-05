@@ -20,6 +20,9 @@ Tabs: Dashboard · Trades · Risk · Strategies · Coins · Signals · Backtest 
 Closing the window keeps the bot trading in the background; reopen with the shortcut. Exchange stops stay on Binance either way.
 All clock times in the panel are Cairo time (the bot's trading day).
 
+## Version history
+Run **setup_git.bat** once to turn this folder into a private Git repository with the full history (tags v2.2, v3.0, v3.0.1, v3.1, v3.2-rc1, v3.2-rc2) from `..\ZackBot2_git\zackbot.bundle`. Then `git diff --stat v3.1 v3.2-rc2` shows exactly what changed.
+
 ## Verify (developers / reviewers)
 - `run_checks.bat` (Windows) or `./run_checks.sh`: unit + safety tests, engine-vs-backtest replay gate, UI harness if Playwright is installed.
 - `pytest -q tests` alone needs only `requirements-dev.txt`.
