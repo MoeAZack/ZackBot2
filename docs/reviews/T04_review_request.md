@@ -4,12 +4,15 @@
 
 | Item | Value |
 |---|---|
-| Branch | `t04-ci`, on `master` `8b6641f` (T03 accepted + Codex owner overview) |
-| Implementation | `35d2efd`, plus the staging-safety fix `5ab2984` and this document |
+| Updated | 2026-10-05 22:40 Cairo (Africa/Cairo) |
+| Branch | `t04-ci`, on `master` `8b6641f` (T03 accepted + Codex owner overview); 0 behind `master` |
+| Commits | `68faa88` verify.py + GitHub workflow + PC launchers; `c8a59c4` staging-safety fix; `17b7191`, `706fd33` review request; then this documentation update. (Earlier drafts of this file named `35d2efd` / `5ab2984`: those were the dev-sandbox ids before the branch was rebuilt on `8b6641f`; the content is the same.) |
+| Code reviewed | `706fd33` for code; commits after it on this branch change **documentation only** (`docs/`). The exact head to review is named in the **READY FOR CODEX** pull-request comment. |
 | Owner decision (2026-10-05) | GitHub runs `verify fast` on every push and `verify full` on pull requests into `master` and on demand. `verify release` runs on the PC. |
 | Behaviour change | **None** to trading, engine, backtest, exchange or panel code: `git diff master` on those files is empty. The installer gains two **opt-in** modes plus an unattended flag. |
+| GitHub evidence | Run #1 (push of `706fd33`): **verify fast PASS** (3 min 20 s), artifact `verify-fast-706fd33…`; verify full correctly not run on a push. Results of the pull-request run are in the PR comment. |
 | Dev-sandbox evidence | `verify fast` PASS; `verify full` PASS; bare `pytest` 215 passed and 1 skipped (Windows-only); installer staging set 200 passed and 10 skipped |
-| Pending | First GitHub Actions run on push (owner pushes); owner's `verify.bat full` on Windows (adds the build check); review; then the owner protects `master` |
+| Pending | `verify full` on the pull request; Codex review; owner's `verify.bat full` on Windows (adds the build check; nothing installed, bot not stopped); then the owner protects `master` and the PR is merged |
 
 ## What T04 adds
 
@@ -91,20 +94,27 @@ After the drill's restart it waits up to 180 s for the price feed to warm up, po
 
 ## Limits, stated rather than hidden
 
-- **`verify fast` takes about 3 minutes on 2 cores, not under 2.** 160 of its 177 s of tests are the seven core look-ahead and parity tests. They are also the installer's gate and must stay. `pytest-xdist` was measured and gave no gain, because the tests already saturate both cores. It was not added.
+- **`verify fast` takes about 3 minutes on 2 cores, not under 2.** 160 of its 177 s of tests are the seven core look-ahead and parity tests. They are also the installer's gate and must stay. `pytest-xdist` was measured and gave no gain, because the tests already saturate both cores. It was not added. (GitHub run #1: 3 min 20 s.)
 - **The GitHub `verify full` cannot build the Windows exe.** The build and exe self-test run in the PC's `verify full` (`buildcheck`) and in the release drill.
-- **This session cannot trigger or read GitHub Actions.** The first CI results come from the owner's push: GitHub → **Actions** → **verify**.
+- **How Claude reaches GitHub in this session:** through the owner's signed-in Chrome (reading branches, runs, PRs; writing documentation commits, the PR and comments). This session has no git push access, so documentation commits on this branch show the owner's account as author. Code changes still travel as a verified bundle (`zb_update.bat`).
+
+## GitHub annotations seen on run #1 (not failures)
+
+- **Node 20 deprecation:** `actions/checkout@v4`, `actions/setup-python@v5` and `actions/upload-artifact@v4` target Node 20; GitHub currently forces them onto Node 24.
+- **Runner image:** `ubuntu-latest` moves to Ubuntu 26 from 2026-10-19. A new image can change system libraries that Playwright's `--with-deps` installs.
+- **Proposal:** a small follow-up (T04b, CI maintenance): pin `runs-on: ubuntu-24.04` and move to the Node 24 releases of the three actions, proven by one green fast + full run. Not done inside T04, so the reviewed workflow stays exactly the one that passed. Codex: say if you would rather have it in T04.
 
 ## Owner's steps
 
-1. `zb_update.bat` creates `t04-ci` on the PC (files are already identical) and pushes it. That triggers **verify fast** on GitHub.
-2. Open a **pull request** `t04-ci` → `master` on GitHub. That triggers **verify fast** and **verify full**.
-3. On the PC, run `verify.bat full` (about 40–60 min, including the build check). Optionally run `verify_release.bat` (about 60–80 min, including the drill; the bot is stopped for about 1 min).
-4. After acceptance and a green PR: protect `master` as described in `docs/reviews/README.md` (require **verify fast** and **verify full**, no force-push, no deletion), then merge the PR.
+1. ✅ `zb_update.bat` created `t04-ci` on the PC and pushed it (run #1, verify fast PASS).
+2. ✅ Pull request `t04-ci` → `master` (opened by Claude through the owner's Chrome). It runs **verify fast** and **verify full**.
+3. On the PC, run `verify.bat full` (about 40–60 min, including the build check; nothing is installed and the bot keeps running). `verify_release.bat` (about 60–80 min, the bot is stopped for about 1–2 min by the drill) only with the owner's go-ahead.
+4. After Codex accepts and the PR is green: protect `master` as described in `docs/reviews/README.md` (require **verify fast** and **verify full**, no force-push, no deletion), then merge the PR.
+5. On the PC afterwards: `zbgit.bat pull` so the local history includes the documentation commits made on GitHub.
 
 ## Rollback
 
-- **Git:** delete or abandon the branch; `master` is unchanged.
+- **Git:** close the pull request and delete or abandon the branch; `master` is unchanged.
 - **Runtime:** nothing. The new installer modes only run when explicitly requested.
 
 **Next ticket after acceptance:** T03a (the leverage-refusal fallback), now under CI.
