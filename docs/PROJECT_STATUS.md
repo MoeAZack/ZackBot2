@@ -1,6 +1,6 @@
 # ZackBot owner overview
 
-*Last refreshed: 2026-10-06 00:15 Cairo (Africa/Cairo) by Claude, on branch `t04-ci`. This is the plain-language owner view. `ROADMAP.md` and `docs/reviews/` hold the detailed scope and evidence.*
+*Last refreshed: 2026-10-06 00:17 Cairo (Africa/Cairo) by Codex, on branch `t04-ci`. This is the plain-language owner view. `ROADMAP.md` and `docs/reviews/` hold the detailed scope and evidence.*
 
 ## Where we are now
 
@@ -11,10 +11,10 @@
 | Installed application | **Unchanged** since build `20261005-204405` (T03). T04 does not install anything. |
 | Latest accepted commit | `master` `8b6641f` (T03 accepted + this overview) |
 | Current ticket | **T04: automatic checks (CI): fast / full / release verification** |
-| Stage | **Fixes pushed, re-review requested.** All five findings from Codex review round 1 are addressed on `t04-ci` (head named in the **FIXED FOR CODEX** comment on PR #1). Waiting for GitHub fast/full on that head and Codex re-review. |
-| What Claude is doing | Posting **FIXED FOR CODEX** once GitHub fast + full are green on the new head. In parallel (nothing pushed): T03a leverage-refusal fallback prepared and tested in the sandbox. |
-| What Codex is reviewing | Round 1 done (`docs/reviews/T04_review_gpt.md`, changes requested). Next: re-review of the fixes. |
-| Your action | **None.** (You approved the 2-minute Windows test run; it passed.) Still deferred until Codex agrees: the long `verify.bat full`. |
+| Stage | **Re-review changes requested.** The round-1 fixes are present and targeted tests pass, but Codex found one remaining fail-open condition in the pre-drill safety gate. |
+| What Claude is doing | Make the runtime status validation fail closed for missing/malformed fields and non-empty errors; then post a new **FIXED FOR CODEX** handoff. |
+| What Codex is reviewing | Round 2 of T04 at `494d12d`; detailed evidence is appended to `docs/reviews/T04_review_gpt.md`. |
+| Your action | **None.** Do not run the long `verify.bat full` yet. |
 
 ## Latest test results
 
@@ -51,11 +51,12 @@ All results above are simulated or automated test environments with a fake excha
 | Fixed, in re-review (T04 round 1) | High | New manifest test fails on Windows because fixture bytes differ from its expected hash | Blocks the owner's Windows full verification. |
 | Fixed, in re-review (T04 round 1) | High | GitHub full verification failed: mobile Signals overflow 22 px, Research overflow 12 px, and Trades calendar click timed out | Diagnose from the uploaded evidence; fix without weakening the UI requirements. |
 | Fixed, in re-review (T04 round 1) | Medium | Lightweight secret check misses nested private filenames and all JSON contents | Strengthen in T04 or explicitly carry into T04b with planted tests. |
+| Open (T04 round 2) | High | Pre-drill `runtime_ok` treats missing safety fields as safe and permits non-empty engine errors | Validate the complete status shape and exact empty values; planted cases must prove the drill is never called. |
 | Fixed (T04 docs) | Low | T04 review document named commit ids from before the branch was rebuilt | Corrected on `t04-ci`. |
 
 ## Open risks
 
-- **T04 release gates:** the three confirmed defects from review round 1 are fixed with regression tests; they stay listed until Codex accepts.
+- **T04 release gate (high):** the PAPER-before-drill sequence is fixed, but incomplete or errored health responses still pass the new predicate. The long Windows run remains deferred.
 - **CI maintenance (low):** GitHub warns that three standard actions used by the checks target an old Node version, and that the Linux runner image changes to Ubuntu 26 on 2026-10-19. Nothing fails today. Proposed fix as a tiny follow-up (T04b): pin the runner image and update the three actions.
 - No protected `master` yet: comes right after T04 is accepted.
 - Installer logic is long Windows batch code: T03b.

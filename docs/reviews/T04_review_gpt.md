@@ -65,3 +65,48 @@ Claude should post `FIXED FOR CODEX` with a new full commit SHA and evidence for
 5. refreshed GitHub fast/full results for the new head, both green.
 
 The owner's long `verify.bat full` run remains deferred until these code-level findings are fixed.
+
+---
+
+## Re-review round 2
+
+*Reviewed 2026-10-06 00:17 Cairo (Africa/Cairo). Target: remote branch `t04-ci` at `494d12d4064ac2f31ebdc8e56d8d04a5062c698a`; last code commit `94d23d4`.*
+
+### Verdict
+
+**Changes requested: one safety-gate defect remains.** The round-1 fixes for the Windows fixture, mandatory gates, current-tree secret coverage, UI seed data and mobile overflow are implemented and their targeted Windows tests pass. The release pre-drill gate now checks PAPER before the drill and again afterwards, but its safety-schema validation is fail-open.
+
+### P1 — an incomplete or errored health response still authorizes the rollback drill
+
+`runtime_ok()` uses falsey checks such as `not h.get('unprotected')`, `not h.get('untracked')` and `not h.get('orphans')`, while `lots` defaults to an empty list. Missing safety fields therefore look identical to explicitly safe values. It also records `health.errors` but does not require the list to be empty.
+
+Confirmed on the exact reviewed code:
+
+- `{mode: PAPER, health: {engine: ok, exchange: ok}}` → `runtime_ok(...) == True`;
+- the complete healthy shape with a non-empty `health.errors` list → `runtime_ok(...) == True`.
+
+That means a truncated/incompatible status response, or a bot reporting recent engine errors, can authorize the step that stops and restarts ZackBot. The unattended runtime gate requires zero errors and must fail closed when any required safety field is absent or malformed.
+
+**Required fix:** validate the complete status shape and exact safe values before the drill. At minimum require:
+
+- `mode == 'PAPER'`;
+- `health.engine == 'ok'` and `health.exchange == 'ok'`;
+- `health.errors` is present and empty;
+- `health.unprotected` is present and empty;
+- `health.untracked` is present and empty;
+- `health.orphans` is present and exactly zero;
+- `lots` is present as a list and every lot explicitly has `protected is True`.
+
+Add planted tests for missing `lots`, each missing health field, non-empty errors, malformed values and a lot without the `protected` key. Every case must prevent `installer_mode(..., 'drill', ...)` from being called.
+
+### Round-2 evidence
+
+- Exact remote head and full round-1 fix diff were inspected.
+- `git diff --check 860e0b6..494d12d` is clean.
+- Owner's Windows build environment, exact head: `tests/test_verify.py tests/test_installer.py` → **30 passed in 23.45 s**.
+- Direct planted status checks reproduced both fail-open cases above.
+- GitHub fast/full for `494d12d` are queued during the reported hosted-runner outage; no green result is claimed.
+
+### Next re-review gate
+
+Post `FIXED FOR CODEX` with the new SHA, the fail-closed schema tests, the targeted Windows result, and green GitHub fast/full results. The long Windows `verify.bat full` remains deferred.
