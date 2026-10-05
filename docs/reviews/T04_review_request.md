@@ -14,6 +14,24 @@
 | Dev-sandbox evidence | `verify fast` PASS; `verify full` PASS; bare `pytest` 215 passed and 1 skipped (Windows-only); installer staging set 200 passed and 10 skipped |
 | Pending | `verify full` on the pull request; Codex review; owner's `verify.bat full` on Windows (adds the build check; nothing installed, bot not stopped); then the owner protects `master` and the PR is merged |
 
+## Review round 1 (Codex, `b884a79`, `T04_review_gpt.md`): dispositions
+
+*2026-10-06 00:20 Cairo. All commits below are on `t04-ci`; the exact head for re-review is named in the **FIXED FOR CODEX** comment on PR #1.*
+
+| # | Finding | Class | Disposition | Commits | Evidence |
+|---|---|---|---|---|---|
+| 1a | GitHub full: Trades calendar-day flow timed out | Confirmed defect (CI data) | **Fixed.** Root cause: `dev_out/seed_*.json` is gitignored, so a clean checkout had no closed trades to click. `verify full` now hands the harness the seeds that **replay 1 of the same run** wrote (fallback `dev_out/`; source recorded as `ui.seeds`). The flow and its assertion are unchanged. | `3bb5656`, `ab4be38` | Sandbox: no seeds → 168/171 (calendar timeout, reproduced); with seeds → 171/171. New test `test_ui_harness_gets_seed_history_on_a_clean_checkout` |
+| 1b | GitHub full: mobile Signals +22 px, Research +12 px | Confirmed defect (responsive) | **Fixed.** Cause: segmented filter buttons (`.seg`, inline-flex, no wrap) are wider than 390 px with the runner's fallback font (DejaVu Sans; the PC and the sandbox have Segoe UI / Inter). One rule in the existing ≤640 px block: `.seg{flex-wrap:wrap;max-width:100%}`. The ≤1 px check is unchanged; the harness now also names the offending elements in the failure detail. | `e04ed2f` (harness detail), `6b14726` (CSS) | Sandbox with GitHub's font forced via fontconfig: before 161/163 (sig 22 px, res 12 px — identical to GitHub), after 163/163 quick and **171/171 full**; with the normal font also **171/171** |
+| 2 | Manifest test fails on Windows (CRLF) | Confirmed defect (test) | **Fixed.** Fixture written with `write_bytes`. | `e785ac4` | **Owner's PC, `94d23d4`: `tests/test_verify.py tests/test_installer.py` → 30 passed in 23 s** |
+| 3 | Release drill could stop a LIVE bot before proving testnet | Safety concern | **Fixed.** `release_steps`: read-only gate first (mode must be exactly `PAPER`, engine/exchange ok, every lot protected, nothing untracked, no orphans); if it fails the drill is **not started** and the run fails. After the drill the same gate must pass again (a bot that comes back LIVE fails). A LIVE status ends the wait immediately. | `2a77d45` (+ tests `e785ac4`) | Tests: `test_live_bot_blocks_the_drill_before_any_stop` (LIVE, degraded, unprotected lot, orphans, bot unreachable → drill never called), `test_paper_bot_is_drilled_then_checked_again`, `test_runtime_gate_requires_paper_mode` |
+| 4 | full/release could PASS with `--skip-ui` / `--skip-replays` | Confirmed defect | **Fixed** by removing both switches: a named level always runs all its gates; the only skips left are Windows-only steps on other systems. Quick looks use pytest / the scripts directly. | `2a77d45` (+ tests `e785ac4`) | `test_full_and_release_have_no_skip_switches`: exit 2, no `latest_full.json` / `latest_release.json` written |
+| 5 | Secret scan: root-only names, JSON skipped | Safety improvement | **Fixed (current tree).** Private file names at any depth; content scan of every text file ≤2 MB incl. JSON (market-data folders and gitignored local folders excluded); patterns: 64-char key-like strings, private-key blocks, Telegram bot tokens, DPAPI blobs. **Git-history scan stays in T04b.** | `2a77d45` (+ tests `e785ac4`) | `test_secret_scan_planted_files` (nested `config.env`, key in JSON, private key, Telegram token caught; checksums, fixtures, data folder, `dev_out` not flagged); the real tree scans clean |
+| — | `git diff --check` whitespace noise in batch files | Cleanup (Codex: not a blocker) | Deferred to T03b (the installer moves to PowerShell there). | — | — |
+
+Also fixed while testing: the two drill-gate tests waited 60 s per case in real time (+4 min on `verify fast`); they now use a fake clock (`94d23d4`).
+
+**Verification by Claude for this round** (sandbox, Linux): UI harness 171/171 twice (GitHub font and normal font) on the fixed code; `test_verify.py` all pass except the provenance test, which needs pytest installed (the sandbox cannot install it - stated, not hidden; it passed on the PC). The official runs are GitHub fast + full on the new head and the PC run above.
+
 ## What T04 adds
 
 | File | What |
