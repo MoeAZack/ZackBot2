@@ -94,7 +94,7 @@ These apply to every phase.
 | 0.1 | Git from the rc2 bundle | ✅ Done. History in `%LOCALAPPDATA%\ZackBot\history.git`, identical to tag v3.2-rc2; use `..\ZackBot2_git\zbgit.bat`. |
 | 0.2 | Branches: `main` protected, one branch per bounded change | ⬜ |
 | 0.3 | Playwright on Windows | ✅ Done (T02): `run_ui_baseline.bat`, 171/171 on Windows. |
-| 0.4 | Installer rehearsal | ◐ Install verified (build 20261005-103320, self-test, hash, ping proof). **Rollback drill** pending; needs a "simulate failed launch" switch. |
+| 0.4 | Installer rehearsal | ✅ Done (T03): failure-path rollback drill and normal install verified; current test build `20261005-204405`; hashes, authenticated restart, source mirror, shortcuts and protected positions confirmed. |
 | 0.5 | CI | ⬜ Fast tests on every commit; full tests, strict replays, UI and build on release. |
 | 0.6 | One testnet canary | ◐ Running v3.2. The slot set must equal a tested profile; the DCA1H2 duplicate is pending a decision. |
 | 0.7 | Fill telemetry | ⬜ Log every maker/market fill: expected vs actual price, wait, partials, fallback. |
