@@ -74,8 +74,8 @@ def test_manifest_check_catches_missing_and_changed_files(monkeypatch, tmp_path)
     """Self-contained (runs in the installer's staging copy too): a fake dataset with one changed and one missing file."""
     import hashlib
     (tmp_path / 'data').mkdir()
-    (tmp_path / 'data' / 'ok.csv').write_text('a,b\n1,2\n')
-    (tmp_path / 'data' / 'changed.csv').write_text('tampered\n')
+    (tmp_path / 'data' / 'ok.csv').write_bytes(b'a,b\n1,2\n')         # exact bytes: write_text() turns \n into CRLF on Windows
+    (tmp_path / 'data' / 'changed.csv').write_bytes(b'tampered\n')
     good = hashlib.sha256(b'a,b\n1,2\n').hexdigest()
     man = {'files': {'data/ok.csv': {'sha256': good}, 'data/changed.csv': {'sha256': good}, 'data/missing.csv': {'sha256': good}}}
     (tmp_path / 'DATA_MANIFEST.json').write_text(json.dumps(man))
@@ -83,7 +83,7 @@ def test_manifest_check_catches_missing_and_changed_files(monkeypatch, tmp_path)
     rep = verify.Report('fast', str(tmp_path / 'out'))
     assert not verify.manifest_check(rep)
     assert rep.data['dataset']['missing'] == ['data/missing.csv'] and rep.data['dataset']['changed'] == ['data/changed.csv']
-    (tmp_path / 'data' / 'changed.csv').write_text('a,b\n1,2\n'); (tmp_path / 'data' / 'missing.csv').write_text('a,b\n1,2\n')
+    (tmp_path / 'data' / 'changed.csv').write_bytes(b'a,b\n1,2\n'); (tmp_path / 'data' / 'missing.csv').write_bytes(b'a,b\n1,2\n')
     assert verify.manifest_check(verify.Report('fast', str(tmp_path / 'out2')))
 
 
@@ -136,3 +136,71 @@ def test_ui_harness_gets_seed_history_on_a_clean_checkout(monkeypatch, tmp_path)
     assert verify.ui_step(rep)
     assert seen['files'] == ['seed_history.json', 'seed_missed.json'], 'the harness must find the seeds in its ZB_OUT folder'
     assert rep.data['ui']['seeds'] == 'replay 1 (this run)'
+
+
+# ---------------------------------------------------------------- T04 review round 1
+def _status(mode='PAPER', engine='ok', lots=({'protected': True},), **h):
+    return dict(mode=mode, build='b', lots=list(lots), health=dict(dict(engine=engine, exchange='ok', unprotected=[], untracked={}, orphans=0), **h))
+
+
+def test_live_bot_blocks_the_drill_before_any_stop(monkeypatch, tmp_path):
+    """T04 review P1: the drill stops/restarts ZackBot, so a LIVE (or unhealthy) bot must stop the release run BEFORE it."""
+    calls = []
+    monkeypatch.setattr(verify, 'installer_mode', lambda rep, mode, t: calls.append(mode) or rep.step('installer ' + mode, True))
+    monkeypatch.setattr(verify.time, 'sleep', lambda s: None)
+    for st in (_status(mode='LIVE'), _status(engine='degraded'), _status(lots=({'protected': False},)), _status(orphans=2)):
+        monkeypatch.setattr(verify, 'bot_status', lambda st=st: st)
+        rep = verify.Report('release', str(tmp_path / 'r'))
+        assert not verify.release_steps(rep)
+        assert calls == [], f'drill must not start for {st}'
+        assert rep.finish() == 1 and 'installer drill' in rep.data['failed_steps']
+    monkeypatch.setattr(verify, 'bot_status', lambda: (_ for _ in ()).throw(OSError('bot not running')))
+    rep = verify.Report('release', str(tmp_path / 'r2'))
+    assert not verify.release_steps(rep) and calls == []
+
+
+def test_paper_bot_is_drilled_then_checked_again(monkeypatch, tmp_path):
+    seq, calls = [_status(), _status(mode='LIVE')], []
+    monkeypatch.setattr(verify, 'installer_mode', lambda rep, mode, t: calls.append(mode) or rep.step('installer ' + mode, True))
+    monkeypatch.setattr(verify.time, 'sleep', lambda s: None)
+    monkeypatch.setattr(verify, 'bot_status', lambda: seq[0] if not calls else seq[1])
+    rep = verify.Report('release', str(tmp_path / 'r'))
+    assert not verify.release_steps(rep), 'a bot that comes back LIVE after the drill must fail the run'
+    assert calls == ['drill'] and set(rep.data['reconciliation']) == {'before drill', 'after drill'}
+    calls.clear(); seq[1] = _status()
+    rep = verify.Report('release', str(tmp_path / 'r2'))
+    assert verify.release_steps(rep) and calls == ['drill'] and rep.finish() == 0
+
+
+def test_runtime_gate_requires_paper_mode():
+    assert verify.runtime_ok(_status())
+    assert not verify.runtime_ok(_status(mode='LIVE')) and not verify.runtime_ok(_status(mode=None))
+
+
+def test_full_and_release_have_no_skip_switches(tmp_path):
+    """T04 review P1: a named full/release run can no longer omit the replay or UI gate and still say PASS."""
+    for level in ('full', 'release'):
+        for sw in ('--skip-ui', '--skip-replays'):
+            out = tmp_path / f'{level}{sw}'
+            r = subprocess.run([sys.executable, 'verify.py', level, sw, '--out', str(out)], cwd=ROOT, capture_output=True, text=True, timeout=60)
+            assert r.returncode == 2 and 'unrecognized arguments' in r.stderr, (level, sw, r.stdout[-300:], r.stderr[-300:])
+            assert not (out / f'latest_{level}.json').exists()
+
+
+def test_secret_scan_planted_files(tmp_path):
+    """T04 review P2: private files at any depth and secrets inside JSON are caught; market data, checksums and fixtures are not."""
+    (tmp_path / 'sub' / 'deeper').mkdir(parents=True); (tmp_path / 'data').mkdir(); (tmp_path / 'dev_out').mkdir()
+    real_key = 'Zq7' + 'x9Lm2Np4Rt6Vb8Kd0Fh1Jg3Sa5Wc7Ye9Ui2Oo4Pq6Ar8Ts0Dv1Bn3Mk5Lj7Hg9F'[:61]
+    assert len(real_key) == 64
+    (tmp_path / 'sub' / 'deeper' / 'config.env').write_text('MODE=paper\n')
+    (tmp_path / 'sub' / 'creds.json').write_text(json.dumps({'api_secret': real_key}))
+    (tmp_path / 'sub' / 'k.txt').write_text('-----BEGIN OPENSSH ' + 'PRIVATE KEY-----\nabc\n')
+    (tmp_path / 'sub' / 'tg.md').write_text('token 987654321:AA' + 'b' * 16 + 'C' * 17)
+    (tmp_path / 'data' / 'x.csv').write_text(real_key)                         # market-data folder: not scanned
+    (tmp_path / 'dev_out' / 'config.env').write_text('x')                      # local-only, gitignored: not scanned
+    (tmp_path / 'ok.json').write_text(json.dumps({'sha256': 'ab' * 32, 'fixture': 'C' * 64, 'tg': '123456789:AA' + 'x' * 33}))
+    forbidden, hits = verify.secret_scan(str(tmp_path))
+    assert forbidden == [os.path.join('sub', 'deeper', 'config.env')]
+    kinds = sorted(h.split(': ', 1)[1].rsplit(' ', 1)[0] for h in hits)
+    assert kinds == ['Telegram bot token', 'key-like 64-char string', 'private key block'], hits
+    assert not any(h.startswith(('data', 'dev_out', 'ok.json')) for h in hits)
