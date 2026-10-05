@@ -343,24 +343,26 @@ A high score **never** changes settings automatically.
 
 ## D. First tickets
 
-| ID | Ticket | Mode |
-|---|---|---|
-| T01 | Git baseline | ✅ |
-| T02 | Playwright on Windows | No behaviour change |
-| T03 | Installer rollback drill ("simulate failed launch" switch) | Deployment only |
-| T04 | Fill telemetry (maker/market expected vs actual) | Observe |
-| T05 | CI fast/full pipelines | No behaviour change |
-| T06 | Shared-core contracts, reason codes and `AccountContext` spec | No behaviour change |
-| T07 | Extract costs, rounding and sizing | Refactor, zero replay change |
-| T08 | Extract management levels | Refactor |
-| T09 | Pure trade state transition | Refactor, parity maintained |
-| T10 | Per-account order budget and priority queue | E-class, burst tests |
-| T11 | SQLite trade-event store | Feature Off |
-| T12 | Entry/close reason records + "Why?" view | Observe |
-| T13 | Scorecard v1 + readiness + copy suitability | Read-only |
-| T14 | VPS service, secrets, heartbeat, deploy/rollback | Ops |
-| T15 | Multi-account workers + internal copy (shadow) | Off/Shadow |
-| T16 | ML dataset builder (leakage checks, manifests) | Research |
+| ID | Ticket | Mode | Status |
+|---|---|---|---|
+| T01 | Git baseline | No behaviour change | ✅ Done 2026-10-05 (history in `%LOCALAPPDATA%\ZackBot\history.git`, tag v3.2-rc2) |
+| T02 | Playwright on Windows | No behaviour change | ⬜ |
+| T03 | Installer rollback drill ("simulate failed launch" switch) | Deployment only | ⬜ |
+| T04 | Fill telemetry (maker/market expected vs actual) | Observe | ⬜ |
+| T05 | CI fast/full pipelines | No behaviour change | ⬜ |
+| T06 | Shared-core contracts, reason codes and `AccountContext` spec | No behaviour change | ⬜ |
+| T07 | Extract costs, rounding and sizing | Refactor, zero replay change | ⬜ |
+| T08 | Extract management levels | Refactor | ⬜ |
+| T09 | Pure trade state transition | Refactor, parity maintained | ⬜ |
+| T10 | Per-account order budget and priority queue | E-class, burst tests | ⬜ |
+| T11 | SQLite trade-event store | Feature Off | ⬜ |
+| T12 | Entry/close reason records + "Why?" view | Observe | ⬜ |
+| T13 | Scorecard v1 + readiness + copy suitability | Read-only | ⬜ |
+| T14 | VPS service, secrets, heartbeat, deploy/rollback | Ops | ⬜ |
+| T15 | Multi-account workers + internal copy (shadow) | Off/Shadow | ⬜ |
+| T16 | ML dataset builder (leakage checks, manifests) | Research | ⬜ |
+
+**Ticket rules:** one ticket at a time, in this order. A ticket is marked ✅ (with the date) only when its acceptance checks pass **and** the other assistant's review has no open findings. ◐ = implemented, review or Windows run pending.
 
 ---
 
