@@ -4,8 +4,8 @@
 
 | Item | Value |
 |---|---|
-| Branch | `t03a-leverage-fallback`, from `master` 7e0c245 (T04 merged) |
-| Head for review | `2ad1c74` (see the PR for the full SHA) |
+| Branch | `t03a-leverage-fallback` (from `master` 7e0c245; master ad1d584 with T04b merged in via Update branch at bac56a2) |
+| Head for review | the PR #3 head: this doc commit on top of bac56a2. The full SHA is in the READY FOR CODEX comment |
 | Commits | 11e1cb2 engine fallback, 31b7389 client read, 9c030ad status, a889327 panel chip/dialog, 2ad1c74 tests |
 | Files | engine.py (+26/-2), binance_client.py (+7), app.py (1 line), panel.html (+6/-3), tests/test_safety.py (+71) |
 | Class | **E - risk/execution (order path).** Lands only under CI, with strict replays unchanged |
@@ -53,7 +53,10 @@ It ran on the exact pushed tree (`git archive t03a-leverage-fallback`):
 - Strict replays with the T03a engine: replay 1 PASS (100% match, 0.017, 2.81pp); replay 2 PASS (99.7%, 0.019, 2.17pp). Replays never hit a leverage refusal, so this shows that nothing else moved.
 - Mutation proof: as listed above.
 
-Pending (official): GitHub `verify fast` + `verify full` on the PR, and the owner's targeted Windows pytest run.
+Official:
+- **Windows (owner PC, real pytest, buildenv)** on aa880be: `pytest tests/test_safety.py tests/test_verify.py`: **93 passed** in 4.81s. `verify.bat fast`: **PASS** (compile, secret scan, manifest, fast tests 168.6s, installer preflight). Log: `C:\Dev\ZackBot2_git\t03a_pc_tests.log`.
+- **GitHub** on aa880be: push run #44 fast PASS. PR run #45: fast 1m50s PASS, full 18m47s PASS (all tests, both strict replays, UI harness).
+- **GitHub** on the final head (T04b pinned runner): see the PR checks. Acceptance must name a green final head.
 
 Not run, and not touched: no installer, no drill, ZackBot not stopped, no orders, no account calls. The installed app is untouched.
 
