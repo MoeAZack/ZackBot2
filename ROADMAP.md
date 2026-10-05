@@ -348,8 +348,8 @@ A high score **never** changes settings automatically.
 | T01 | Git baseline | No behaviour change | ✅ Done 2026-10-05 (history in `%LOCALAPPDATA%\ZackBot\history.git`, tag v3.2-rc2) |
 | T02 | Playwright on Windows | No behaviour change | ⬜ |
 | T03 | Installer rollback drill ("simulate failed launch" switch) | Deployment only | ⬜ |
-| T04 | Fill telemetry (maker/market expected vs actual) | Observe | ⬜ |
-| T05 | CI fast/full pipelines | No behaviour change | ⬜ |
+| T04 | CI fast/full pipelines (moved up: every later ticket is checked by it) | No behaviour change | ⬜ |
+| T05 | Fill telemetry (maker/market expected vs actual) | Observe | ⬜ |
 | T06 | Shared-core contracts, reason codes and `AccountContext` spec | No behaviour change | ⬜ |
 | T07 | Extract costs, rounding and sizing | Refactor, zero replay change | ⬜ |
 | T08 | Extract management levels | Refactor | ⬜ |
