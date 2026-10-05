@@ -1,4 +1,88 @@
-# T03: Installer rollback drill. Review request (round 2)
+# T03: Installer rollback drill. Review request
+
+## Current state (authoritative; everything below "History" is superseded)
+
+| Item | Value |
+|---|---|
+| Branch | `t03-rollback-drill` |
+| Implementation commit | **`24ff38b`**: last code change; later commits only touch `docs/reviews` and `ROADMAP.md` |
+| Base | `master` `f67d373` = accepted T02 `2fc8642` + roadmap |
+| Reviews | Codex review `474c876` (conditionally approved, no P1); this document |
+| Windows test suite | **207 passed** (Codex, 2026-10-05), incl. `tests/test_installer.py` 15 passed and the real `cmd.exe → build_app.bat preflight → Windows PowerShell` test |
+| Windows rollback drill | **PASSED**, 2026-10-05 20:20 Cairo |
+| Drill builds | New build `20261005-202028` failed its launch on purpose. The installer restored `20261005-103320`; SHA-256 `67528ACA8CFB23D535EF6D926B22DE1A01FAEE2FC2F1AB9306D3068E9B79B5D6` equals the pre-install exe; the HMAC ping confirmed it running. |
+| Live bot after the drill (Codex, 20:32) | Paper mode; engine ok, exchange ok; 4 positions, all with active stops; 0 unprotected, 0 orphans |
+| **Remaining for acceptance** | The **normal install**: see the next section |
+
+## Remaining acceptance step: the normal (success) path
+
+The drill proves backup, stop, swap, failure detection, hash-verified restore, restart and the authenticated health check. It cannot reach the success-only section, which updates the source mirror and shortcuts after the new build answers.
+
+**Owner:** double-click `C:\Dev\ZackBot2\build_app.bat`. The bot stops for about 1 minute; exchange stops stay on Binance.
+
+**Required evidence**, collected by Claude from the PC and recorded in `T03_acceptance.md`:
+
+1. `build.log` contains `checksum helper ok`, the tests passed, `BUILD_DONE build=<new> ...`, and no `ROLLBACK`.
+2. The installed `ZackBot.exe` hash equals the logged new-exe hash. `ZackBot.prev.exe` hash equals `67528ACA…B79B5D6`.
+3. The source mirror `%LOCALAPPDATA%\ZackBot\src\build_info.py` carries the new build id; the mirror matches the T03 source.
+4. The Desktop and Start-menu shortcuts point at `%LOCALAPPDATA%\ZackBot\app\ZackBot.exe`.
+5. `bot.log`: the new build started, there were no errors after start-up, and reconcile ran.
+6. Positions: every open lot still has an exchange stop (`stop_id`), with nothing unprotected and no orphans.
+7. Settings in the panel show the new build id. *The owner checks this one.*
+
+## What T03 changes (current code at `24ff38b`)
+
+| File | Change |
+|---|---|
+| `app.py` | `--simulate-failed-launch`, read in one place only. It exits with code 3 **before** the port, `session.json`, the engine or the exchange are touched. Without the flag it does nothing. |
+| `build_app.bat` | Details below. |
+| `installer_check.ps1` | **No cmdlets**, only .NET and the language. **hash:** `SHA256` over a shared-read stream, with 5 × 1 s retries for scanner locks. **ping:** `HttpWebRequest`, requiring the build id **and** an HMAC proof. Every failure prints its reason to stderr. |
+| `rollback_drill.bat` | Double-click wrapper for `build_app.bat drill`. |
+| `tests/test_installer.py` | 15 tests, details below. |
+| `README.md`, `ROADMAP.md`, `pytest.ini` | Documentation; T03a and T03b are recorded; the agreed ticket order is recorded. |
+
+**`build_app.bat`, in order:**
+
+1. `set "PSModulePath="`, so Windows PowerShell uses its own module paths.
+2. **Checksum preflight** right after staging. The helper's stderr goes to `build.log`.
+3. `drill` and `preflight` modes.
+4. The **previous build id** is read from `ZackBot.prev.exe --selftest`.
+5. **Every rollback restores, checks the hash, starts the old exe, then proves the previous build answers the HMAC ping.**
+6. The **source mirror and shortcuts are updated only after a confirmed launch**.
+
+**`tests/test_installer.py`, 15 tests:**
+- **Batch files:** CRLF/ASCII, and every `goto`/`call` target exists.
+- **Installer ordering:** the drill-only switch, the rollback order, and preflight is non-destructive.
+- **The switch:** a real-app test that is fail-safe if the switch ever breaks.
+- **The helper:** checked against Python's SHA-256, including with a PowerShell-7 `PSModulePath`; reports why it failed; contains no cmdlets; `ping` requires the build id and the HMAC proof.
+- **Windows only:** the real `cmd → build_app.bat preflight` run.
+
+**Mutation proof:** 14 deliberate defects in total (M1–M6, H1–H5, P1–P3); each was caught by its test.
+
+**Not changed:** engine, backtest, strategies, replay and exchange client. The strict replays are identical to baseline: scenario 1 100% / 0.017 / 0.118 / 2.81 pp / 0.03 pp; scenario 2 99.7% / 0.019 / 0.096 / 2.17 pp / 0.97 pp.
+
+## Codex review (474c876): answers
+
+| Finding | Answer |
+|---|---|
+| P2: the canonical summary pointed at obsolete states | Fixed by this layout: one authoritative block at the top, older rounds below as history. |
+| P2: normal success path unproven on Windows | Agreed. It is the remaining acceptance step above; T03 stays ◐ until `T03_acceptance.md` records it. |
+| P3: protect `master` after T04 | Recorded in the ROADMAP T04 row: required fast/full checks before merge, no force-push or deletion on `master`. |
+
+## Rollback of T03
+
+- **Git:** `zbgit checkout t02-ui-baseline`.
+- **Runtime:** a normal install keeps `ZackBot.prev.exe`, so the previous exe can be restored with a hash check. The drill itself leaves the pre-drill exe installed.
+
+---
+
+## History (superseded rounds, kept for the record; do NOT use the commit ids or steps below)
+
+- **Round 0** (`b72b78b`): first implementation.
+- **Round 1** (`6aa4405`): the checksum helper failed under the Windows launcher; fixed.
+- **Round 2** (`6741ee3`, `24ff38b`): the Windows helper tests were wrongly quoted; fixed with a direct PowerShell call and the real `preflight` test.
+
+### Original request (round 0, tip `b72b78b`) - superseded
 
 *2026-10-05, Cairo time. Claude. Please review before T04 (CI) starts.*
 
@@ -9,7 +93,7 @@
 
 If the original prompt asked for more, please list it in the review.
 
-## Git
+#### Git
 
 | Ref | Commit | Notes |
 |---|---|---|
@@ -23,7 +107,7 @@ The import was rehearsed on a copy of the PC's repo state:
 - clean: ends on `b72b78b`, master `f67d373`;
 - one changed file: detected and fully restored.
 
-## Changed files
+#### Changed files
 
 | File | Change |
 |---|---|
@@ -85,7 +169,7 @@ Each deliberate defect was caught by its test:
 
 After the mutation runs, the originals were restored byte-identical (hash-checked).
 
-## Evidence (dev sandbox)
+#### Evidence (dev sandbox)
 
 | Check | Before (`f67d373`) | After (`b72b78b`) |
 |---|---|---|
@@ -97,7 +181,7 @@ After the mutation runs, the originals were restored byte-identical (hash-checke
 
 **Not runnable here:** `cmd.exe`. The batch logic was reviewed line by line, and is guarded by the static tests above. **The acceptance test is the Windows drill.**
 
-## Owner's Windows drill (acceptance)
+#### Owner's Windows drill (acceptance)
 
 1. Run `C:\Dev\ZackBot2_git\t03_git_sync.bat`. Expected: `HEAD -> t03-rollback-drill` at **`6aa4405`** (round 2; see the end of this document), clean.
 2. Double-click `C:\Dev\ZackBot2\rollback_drill.bat`. It takes about 6–10 min: tests about 4 min, build 1–3 min. **The bot is stopped for about 1 min during step 8**; exchange stops stay on Binance.
@@ -122,13 +206,13 @@ After the mutation runs, the originals were restored byte-identical (hash-checke
    - open lots are reconciled with their stops.
 4. **Optional second exercise:** run `build_app.bat` normally. This installs the new build (T02 panel fix plus T03 installer) through the reordered success path. Expected: `installed and confirmed running`, and Settings shows the new build id.
 
-## Unresolved risks
+#### Unresolved risks
 
 - **Very old installed exes:** before v3.2-rc2, an exe doesn't know `--selftest`. Asking it for its build id would briefly open the panel, and the rollback would be "not verified". The PC's build supports it.
 - **The drill stops the testnet bot for about 1 minute.** Positions keep their exchange stops; the existing reconcile runs on restart.
 - **Downtime during the drill's ping:** in a real failure, total downtime is about the 60 s ping plus the restore. In the drill it is 20 s plus the restore.
 
-## Rollback of T03
+#### Rollback of T03
 
 - **Git:** `zbgit checkout t02-ui-baseline`.
 - **Runtime:** nothing to roll back. The drill itself ends with the pre-drill exe installed (hash-verified).
@@ -138,7 +222,7 @@ After the mutation runs, the originals were restored byte-identical (hash-checke
 
 ---
 
-## Review 1: rejected. Fixed in commit `6aa4405`
+#### Review 1: rejected. Fixed in commit `6aa4405`
 
 ### The finding
 
@@ -220,7 +304,7 @@ Both were rehearsed, plus a mismatch, which was correctly undone. Before handove
 
 ---
 
-## Round 2: Windows test runner (commits `6741ee3`, `24ff38b`)
+#### Round 2: Windows test runner (commits `6741ee3`, `24ff38b`)
 
 ### What happened
 
