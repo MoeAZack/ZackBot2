@@ -1,6 +1,6 @@
 # ZackBot owner overview
 
-*Last refreshed: 2026-10-06 00:17 Cairo (Africa/Cairo) by Codex, on branch `t04-ci`. This is the plain-language owner view. `ROADMAP.md` and `docs/reviews/` hold the detailed scope and evidence.*
+*Last refreshed: 2026-10-06 00:53 Cairo (Africa/Cairo) by Codex, on branch `t04-ci`. This is the plain-language owner view. `ROADMAP.md` and `docs/reviews/` hold the detailed scope and evidence.*
 
 ## Where we are now
 
@@ -11,25 +11,25 @@
 | Installed application | **Unchanged** since build `20261005-204405` (T03). T04 does not install anything. |
 | Latest accepted commit | `master` `8b6641f` (T03 accepted + this overview) |
 | Current ticket | **T04: automatic checks (CI): fast / full / release verification** |
-| Stage | **Re-review changes requested.** The round-1 fixes are present and targeted tests pass, but Codex found one remaining fail-open condition in the pre-drill safety gate. |
-| What Claude is doing | Make the runtime status validation fail closed for missing/malformed fields and non-empty errors; then post a new **FIXED FOR CODEX** handoff. |
-| What Codex is reviewing | Round 2 of T04 at `494d12d`; detailed evidence is appended to `docs/reviews/T04_review_gpt.md`. |
-| Your action | **None.** Do not run the long `verify.bat full` yet. |
+| Stage | **Accepted by Codex at `8043c7e`.** GitHub fast/full and the complete Windows full verification are green. |
+| What Claude is doing | Waiting for the acceptance handoff; then T04 can be merged and the next roadmap ticket prepared. |
+| What Codex is reviewing | T04 final evidence is complete in `docs/reviews/T04_review_gpt.md`. |
+| Your action | **None for testing.** Repository branch protection still needs to be enabled before PR #1 is merged. |
 
 ## Latest test results
 
 | Where | Result |
 |---|---|
 | GitHub, run #1 (push of `706fd33`) | **verify fast PASS** (3 min 20 s) |
-| GitHub, pull request | Run for `b884a79`: verify fast PASS; verify full FAILED 168/171 UI (calendar flow had no seeded trades on a clean checkout; two mobile overflows with GitHub's fonts). Both fixed; re-run on the new head is reported in the PR comment. |
+| GitHub, pull request | Head `8043c7e`, run #32: **verify fast PASS; verify full PASS**. |
 | Claude's cloud sandbox (Linux) | `verify fast` PASS; `verify full` PASS (215 tests passed, 1 Windows-only skip; both strict replays PASS; UI 171/171) |
-| Your Windows PC | **T04 targeted tests at `94d23d4`: 30 passed (23 s)** (`tests/test_verify.py` + `tests/test_installer.py`, build Python, bot not stopped). Codex's earlier run at `b884a79`: 1 failed, 23 passed (CRLF fixture bug, now fixed). |
+| Your Windows PC | Exact head `8043c7e`: targeted tests **32 passed**; complete `verify.bat full` **PASS** — 224/224 tests, both strict replays, UI 171/171, staged executable build/self-check. Installed bot not touched. |
 
 All results above are simulated or automated test environments with a fake exchange. None placed real orders.
 
 ## What just changed
 
-### T04 — automatic checks: in review
+### T04 — automatic checks: accepted, merge pending
 
 - One command, `verify.py`, with three levels: **fast** (every push), **full** (every pull request into `master`), **release** (on your PC: adds the rollback drill and a read-only check of the running bot).
 - Each run saves one summary file: commit, build, dataset checksum, library versions, test counts, replay numbers, UI result, exe checksum, Cairo times.
@@ -46,19 +46,17 @@ All results above are simulated or automated test environments with a fake excha
 | Open | High | Binance testnet refuses leverage changes on SOL/XRP (`-1000`) | Signals are skipped safely; no unsafe order. Fix: **T03a**, next after T04. |
 | Open | Medium | Panel can feel frozen during a long engine cycle | Planned in T06–T09 (core extraction). |
 | Open | Low | Risk tab "Compounding" tile clips at about 390 px wide | Next UI/mobile ticket. |
-| Fixed, in re-review (T04 round 1) | High | `verify release` drills before proving PAPER/testnet and does not require PAPER to pass reconciliation | Must be fixed before any release drill. |
-| Fixed, in re-review (T04 round 1) | High | Required replay and UI gates can be skipped while full/release reports PASS | Must be made fail-closed or moved to an explicitly partial diagnostic mode. |
-| Fixed, in re-review (T04 round 1) | High | New manifest test fails on Windows because fixture bytes differ from its expected hash | Blocks the owner's Windows full verification. |
-| Fixed, in re-review (T04 round 1) | High | GitHub full verification failed: mobile Signals overflow 22 px, Research overflow 12 px, and Trades calendar click timed out | Diagnose from the uploaded evidence; fix without weakening the UI requirements. |
-| Fixed, in re-review (T04 round 1) | Medium | Lightweight secret check misses nested private filenames and all JSON contents | Strengthen in T04 or explicitly carry into T04b with planted tests. |
-| Open (T04 round 2) | High | Pre-drill `runtime_ok` treats missing safety fields as safe and permits non-empty engine errors | Validate the complete status shape and exact empty values; planted cases must prove the drill is never called. |
+| Fixed and accepted (T04) | High | Release drill could run without first proving an exact healthy PAPER status | Now fail-closed before and after the drill; 23 planted unsafe shapes prove the drill is never called. |
+| Fixed and accepted (T04) | High | Required replay and UI gates could be skipped while full/release reported PASS | Skip switches removed from named levels; regression tested. |
+| Fixed and accepted (T04) | High | Windows manifest fixture mismatch | Byte-exact fixture; Windows full suite passed. |
+| Fixed and accepted (T04) | High | GitHub UI baseline had mobile overflow and missing clean-checkout history | Responsive wrap and deterministic replay seed handoff; GitHub and Windows UI 171/171. |
+| Fixed and accepted (T04) | Medium | Lightweight secret check missed nested private filenames and JSON contents | Current-tree scan strengthened with planted tests; Git-history scan remains T04b. |
 | Fixed (T04 docs) | Low | T04 review document named commit ids from before the branch was rebuilt | Corrected on `t04-ci`. |
 
 ## Open risks
 
-- **T04 release gate (high):** the PAPER-before-drill sequence is fixed, but incomplete or errored health responses still pass the new predicate. The long Windows run remains deferred.
 - **CI maintenance (low):** GitHub warns that three standard actions used by the checks target an old Node version, and that the Linux runner image changes to Ubuntu 26 on 2026-10-19. Nothing fails today. Proposed fix as a tiny follow-up (T04b): pin the runner image and update the three actions.
-- No protected `master` yet: comes right after T04 is accepted.
+- No protected `master` yet: this is the remaining pre-merge T04 administrative step.
 - Installer logic is long Windows batch code: T03b.
 
 ## Code clean-up policy (your request, 2026-10-05)
@@ -81,7 +79,7 @@ Every ticket now ends with a **clean-up pass on the files it touched**: remove d
 
 | Order | Ticket | Why it comes here |
 |---|---|---|
-| Now | **T04 — automatic checks** | Stops later bugs reaching `master` |
+| Merge | **T04 — automatic checks** | Accepted; protect `master`, merge PR #1 |
 | Next | **T03a — leverage-refusal fallback** | Fixes the confirmed SOL/XRP gap, under CI |
 | Then | **T03b — installer in PowerShell** | Easier to maintain once behaviour is proven |
 | Then | **T05 — fill telemetry** | Measures expected vs actual fills |

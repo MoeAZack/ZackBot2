@@ -110,3 +110,33 @@ Add planted tests for missing `lots`, each missing health field, non-empty error
 ### Next re-review gate
 
 Post `FIXED FOR CODEX` with the new SHA, the fail-closed schema tests, the targeted Windows result, and green GitHub fast/full results. The long Windows `verify.bat full` remains deferred.
+
+---
+
+## Final re-review and acceptance
+
+*Accepted 2026-10-06 00:53 Cairo (Africa/Cairo). Target: `t04-ci` at `8043c7ee4e04464261b9558a5da2b931be0928c7`, based on `master` `8b6641f440e826bc50d2271a28f09b92fec76d2d`.*
+
+### Verdict
+
+**Accepted.** The round-2 safety defect is fixed. The runtime gate now rejects every planted incomplete, malformed or errored status before the rollback drill can be called. No remaining T04 code blocker was found.
+
+### Evidence
+
+- Diff review: the round-2 change is limited to `verify.py` and `tests/test_verify.py`; `runtime_problems()` validates the complete status shape and exact safe values, and `runtime_ok()` succeeds only when that list is empty.
+- Targeted Windows regression set at the exact head: **32 passed** in about 23 seconds, including 23 planted unsafe status shapes that must never call the drill.
+- GitHub PR run #32 for head `8043c7e`: required **verify fast** and **verify full** checks both passed.
+- Owner's Windows `verify.bat full`, exact clean head `8043c7e`: **PASS** from 00:32:55 to 00:53:05 Cairo.
+  - static compile, secret/private-file scan and all 64 dataset-manifest files passed;
+  - tests: **224 passed, 0 failed, 0 skipped**;
+  - strict replay 1: PASS, 100.0% matched, median |dR| 0.017, p95 0.118;
+  - strict replay 2: PASS, 99.7% matched, median |dR| 0.019, p95 0.096;
+  - UI harness: **171/171**;
+  - non-installing Windows buildcheck: PASS, staged build `20261006-004913`, executable SHA-256 `A25A5DB5139FA4DCE022170920E8FA79B535AF6D1F3D5478C2DD30AC1A391F8A`.
+- The installed ZackBot was not replaced, stopped or restarted. No order-handling code changed.
+
+### Remaining non-blocking work
+
+- Protect `master` with the required `verify fast` and `verify full` checks, no force-push and no branch deletion, then merge PR #1.
+- Carry the GitHub action-version / pinned-runner maintenance and stronger history/dependency scanning into T04b.
+- The batch-file whitespace noise remains intentionally deferred to T03b, where installer logic moves to PowerShell.
