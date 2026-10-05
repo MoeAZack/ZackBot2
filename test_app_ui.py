@@ -281,6 +281,17 @@ SCROLLER_JS = """(t)=>{let e=document.getElementById('t_'+t);while(e&&e!==docume
 def overflow_x(pg, t):
     return pg.evaluate(f"(()=>{{const e=({SCROLLER_JS})('{t}');return Math.max(e.scrollWidth-e.clientWidth, document.documentElement.scrollWidth-window.innerWidth)}})()")
 
+def overflow_culprits(pg, t):
+    """The deepest elements of tab t that stick out past the right edge of the screen (for the failure detail)."""
+    return pg.evaluate("""(t)=>{const W=window.innerWidth,r=[];const all=[...document.getElementById('t_'+t).querySelectorAll('*')];
+      const clipped=e=>{for(let a=e.parentElement;a&&a.id!=='t_'+t;a=a.parentElement){const s=getComputedStyle(a);
+        if(s.overflowX!=='visible'&&a.getBoundingClientRect().right<=W+1)return true}return false};
+      const out=all.filter(e=>{const b=e.getBoundingClientRect();return b.width>0&&b.right>W+1&&getComputedStyle(e).position!=='fixed'&&!clipped(e)});
+      for(const e of out){if(out.some(o=>o!==e&&e.contains(o)))continue;const b=e.getBoundingClientRect();
+        r.push(`${e.tagName.toLowerCase()}${e.id?'#'+e.id:''}${e.className&&typeof e.className==='string'?'.'+e.className.trim().split(/\\s+/).join('.'):''} right=${Math.round(b.right)} w=${Math.round(b.width)} "${(e.innerText||'').trim().slice(0,30)}"`);
+        if(r.length>=4)break}return r}""", t)
+
+
 def shot(pg, rel, full=True, el=None, tab=None):
     p = os.path.join(BASE, rel); os.makedirs(os.path.dirname(p), exist_ok=True)
     pg.mouse.move(pg.viewport_size['width'] - 2, pg.viewport_size['height'] - 2)   # park the pointer: no hover tooltips in the evidence
@@ -349,7 +360,8 @@ try:
                 body = pg.evaluate(f"document.getElementById('t_{t}').innerText.trim().length")
                 over = overflow_x(pg, t)
                 check(f'{vp}: tab {t} opens with content', ok and body > 20, f'active={ok} text={body}')
-                check(f'{vp}: tab {t} has no sideways page scroll', over <= 1, f'{over}px wider than the screen')
+                check(f'{vp}: tab {t} has no sideways page scroll', over <= 1,
+                      f'{over}px wider than the screen' + (f' - {overflow_culprits(pg, t)}' if over > 1 else ''))
                 if narrow: check(f'{vp}: drawer closes after navigating to {t}', not pg.evaluate("document.getElementById('side').classList.contains('open')"))
                 shot(pg, f'{vp}/{t}.png', tab=t)
             if vp == 'mobile':                 # prove the detector works: plant a too-wide block, expect it to be caught, remove it
