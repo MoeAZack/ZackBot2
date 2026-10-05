@@ -165,6 +165,7 @@ class Engine:
         self.guard_eq = None                      # bot capital used by the safety limits and shown in the app
         self.untracked = {}                       # exchange positions the engine has no record of
         self._lev = {}                            # leverage already set per symbol
+        self.lev_refusals = {}                    # T03a: Binance leverage refusals per symbol (count, outcome, last error)
         self._btc1h = None; self._fund = {}; self._regime = None; self._rule_warns = []
         self.health = dict(errors=collections.deque(maxlen=30), last_manage_ok=None, last_cycle_ok={}, manage_fail_streak=0,
                            last_sync=None, alerted=False)
@@ -1116,9 +1117,30 @@ class Engine:
         mx = self.trade.leverage_max(sym)
         lev = min(want, mx) if mx else want
         try: self.trade.set_leverage(sym, lev)
-        except Exception as e:                                  # transient testnet/API errors: one retry, then block the entry
-            log.info(f'{sym}: leverage retry after {e}'); time.sleep(1); self.trade.set_leverage(sym, lev)
+        except Exception as e:                                  # transient testnet/API errors: one retry, then the fallback below
+            log.info(f'{sym}: leverage retry after {e}'); time.sleep(1)
+            try: self.trade.set_leverage(sym, lev)
+            except Exception as e2:
+                self._leverage_fallback(sym, lev, e2)           # proceeds only if the exchange is already at or below the cap
+                return                                          # not cached: the next entry tries to set it again
         self._lev[sym] = want
+
+    def _leverage_fallback(self, sym, lev, err):
+        """T03a. Binance refused the leverage change (testnet answers -1000 on some coins). Read the coin's CURRENT leverage
+        (read-only) and allow the entry only if it is already at or below the cap; a higher or unknown leverage re-raises,
+        so the entry is skipped exactly as before. Every refusal is counted per coin for the panel and /api/status."""
+        cur = None
+        try: cur = self.trade.current_leverage(sym)
+        except Exception as e3: log.info(f'{sym}: current leverage unavailable ({e3})')
+        ok = cur is not None and 1 <= cur <= lev
+        r = self.lev_refusals.setdefault(sym, dict(count=0, proceeded=0, skipped=0))
+        r['count'] += 1; r['proceeded' if ok else 'skipped'] += 1
+        r.update(last_error=str(err)[:160], last_time=now_utc().isoformat(timespec='seconds'), current=cur, cap=lev)
+        if ok:
+            log.warning(f'{sym}: Binance refused leverage {lev}x ({err}); the coin is already at {cur}x <= cap - entry proceeds')
+            return
+        why = 'current leverage unknown' if cur is None else f'current leverage {cur}x is above the {lev}x cap'
+        raise RuntimeError(f'leverage {lev}x refused ({err}); {why}')
 
     def open_lot(self, sl, sym, side, sg, df, eq, risk=None, manual=False, stop_atr=None, tp_r=None):
         block = self.entry_block(sl, sym, side, manual, sg=sg)
