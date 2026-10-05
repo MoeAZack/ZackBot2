@@ -273,3 +273,34 @@ def test_build_app_preflight_from_cmd():
         assert r.returncode == 0 and 'PREFLIGHT_OK' in r.stdout, (r.returncode, r.stdout[-800:], r.stderr[-400:])
     assert snap() == before, 'preflight must not touch the real staging folder or build.log'
     assert not os.path.exists(os.path.join(root, 'staging_preflight')), 'preflight staging folder must be removed'
+
+
+@needs_installer
+def test_buildcheck_mode_builds_but_never_installs():
+    """build_app.bat buildcheck (verify full on Windows): own staging folder + own log, exits right after the exe self-test
+    and hash - before step 7, so nothing is backed up, stopped, swapped or installed."""
+    L = _lines('build_app.bat')
+    own_stage = _idx(L, lambda l: l == 'if "%BUILDCHECK%"=="1" set STAGE=%ROOT%\\staging_buildcheck', 'buildcheck staging')[0]
+    own_log = _idx(L, lambda l: l == 'if "%BUILDCHECK%"=="1" set LOG=%ROOT%\\build_check.log', 'buildcheck log')[0]
+    first_log_write = _idx(L, lambda l: '> "%LOG%"' in l, 'first log write')[0]
+    selftest = _idx(L, lambda l: '--selftest "%STAGE%\\selftest.json"' in l, 'new exe self-test')[0]
+    newhash = _idx(L, lambda l: l.startswith('echo   new exe sha256'), 'new exe hash line')[0]
+    ok = _idx(L, lambda l: l.startswith('echo BUILDCHECK_OK'), 'BUILDCHECK_OK')[0]
+    exit0 = next(i for i in range(ok, len(L)) if L[i] == 'exit /b 0')
+    step7 = _idx(L, lambda l: l.startswith('echo [7/8]'), 'step 7')[0]
+    assert own_stage < first_log_write and own_log < first_log_write
+    assert selftest < newhash < ok < exit0 < step7, 'buildcheck must exit after the self-test and hash, before step 7'
+    f = _idx(L, lambda l: l == ':fail', ':fail')[0]
+    pause = next(i for i in range(f, len(L)) if L[i] == 'pause')
+    assert any(L[i] == 'if "%BUILDCHECK%"=="1" exit /b 1' for i in range(f, pause)), 'buildcheck failures must not pause'
+
+
+@needs_installer
+def test_every_pause_honours_zb_nopause():
+    """verify.py runs the installer unattended: no pause may block when ZB_NOPAUSE is set."""
+    L = _lines('build_app.bat')
+    f = _idx(L, lambda l: l == ':fail', ':fail')[0]
+    for i, l in enumerate(L):
+        if l.rstrip().endswith('pause') and not l.startswith('rem'):
+            guarded = 'if not defined ZB_NOPAUSE' in l or (i > f and any(L[k] == 'if defined ZB_NOPAUSE exit /b 1' for k in range(f, i)))
+            assert guarded, f'line {i + 1} can block an unattended run: {l}'
