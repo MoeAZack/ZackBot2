@@ -1,153 +1,41 @@
-import os as _os
-OUT = _os.environ.get('ZB_OUT') or _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), 'dev_out')
-_os.makedirs(OUT, exist_ok=True)
-"""Replay test: real Engine vs simulated Binance, compared with backtest.run on the same window."""
-import logging; logging.basicConfig(level=logging.INFO, format="%(message)s")
-import sys, os, tempfile, time, json, types
-import numpy as np, pandas as pd
-sys.path.insert(0, os.path.dirname(__file__))
-import load_data, backtest as B, strategies as S
-import engine as E
+"""Replay check: the LIVE engine vs simulated Binance, compared trade-by-trade with the backtester on the same candles.
 
+    python test_engine_sim.py [start_bar] [slots.json | slots-json-string]
+
+Exit code 1 if the HARD gate fails (return gap > 15 pp, a position mismatch, or a lot without its exchange stop).
+The STRICT metrics (matched >= 98 %, median |dR| <= 0.05, p95 |dR| <= 0.25, return gap <= 3 pp, DD gap <= 2 pp) are printed as
+warnings; set ZB_REPLAY_STRICT=1 to make them blocking too (the release target once engine and backtest share one core).
+Writes dev_out/seed_history.json, seed_missed.json (UI harness seeds) and replay_trades.csv (matched trade table)."""
+import json, os, sys
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import load_data, engine as E
+from replay import run_replay, STRICT, LOOSE_RET_GAP
+
+OUT = os.environ.get('ZB_OUT') or os.path.join(os.path.dirname(os.path.abspath(__file__)), 'dev_out')
+os.makedirs(OUT, exist_ok=True)
 SYMS = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT', 'XRPUSDT', 'DOGEUSDT', 'LINKUSDT', 'AVAXUSDT']
-RAW = load_data.load(syms=SYMS)
-N = len(RAW['BTCUSDT'])
-T0 = int(sys.argv[1]) if len(sys.argv) > 1 else N - 900
-SLEEVES = (json.load(open(sys.argv[2])) if sys.argv[2].endswith('.json') else json.loads(sys.argv[2])) if len(sys.argv) > 2 else [
-    E.sleeve('MOM', 'ema_mom', .4, .03, 4, 'core8', mgmt=E.PY),
-    E.sleeve('DCA', 'dca_dip', .3, .03, 4, 'core8'),
-    E.sleeve('SQZ', 'squeeze_tp', .3, .03, 4, 'core8', sides='both')]
-FEE, SLIP = B.FEE, B.SLIP
-STEPS = int(os.environ.get('ZB_SIM_STEPS', '6'))
-D = {s: RAW[s].reset_index(drop=True) for s in SYMS}
 
-
-class W:   # simulated exchange world
-    i = None; mark = {}; cash = 500.0; lots = []; stops = {}; n = 0; closed = []
-
-
-class Fake:
-    def __init__(self, *a, **k): pass
-    def sync_time(self): pass
-    def exchange_info(self):
-        return {'symbols': [{'symbol': s, 'contractType': 'PERPETUAL', 'status': 'TRADING', 'filters': [
-            {'filterType': 'MARKET_LOT_SIZE', 'stepSize': '0.00001', 'minQty': '0.00001'}, {'filterType': 'PRICE_FILTER', 'tickSize': '0.000001'},
-            {'filterType': 'MIN_NOTIONAL', 'notional': str(B.MIN_NOTIONAL.get(s, 5))}]} for s in SYMS]}
-    def klines(self, s, tf, limit=1500, **k):
-        d = D[s].iloc[max(0, W.i - 1000 + 1):W.i + 2]
-        ms = (d.t.astype('datetime64[ns]').astype('int64') // 10 ** 6).values
-        return [[int(t), o, h, l, c, v, int(t) + 14400000 - 1] for t, o, h, l, c, v in zip(ms, d.o, d.h, d.l, d.c, d.v)]
-    def marks(self): return dict(W.mark)
-    def premium(self, s): return {'lastFundingRate': '0.0001'}
-    def account(self): return {'totalMarginBalance': str(W.equity())}
-    def positions(self):
-        out = {}
-        for l in W.lots: out[(l['s'], l['ps'])] = out.get((l['s'], l['ps']), 0) + l['q']
-        return {k: v for k, v in out.items() if v > 1e-12}
-    def hedge_mode(self): return True
-    def set_hedge_mode(self, on=True): pass
-    def set_leverage(self, *a): pass
-    def set_margin_type(self, *a): pass
-    def open(self, s, ps, qty):
-        q = float(qty); sd = 1 if ps == 'LONG' else -1; px = W.mark[s] * (1 + sd * SLIP)
-        W.cash -= q * px * FEE; W.lots.append(dict(s=s, ps=ps, q=q, avg=px)); W.merge(s, ps)
-        return {'avgPrice': str(px)}
-    def close(self, s, ps, qty):
-        q = float(qty); sd = 1 if ps == 'LONG' else -1; px = W.mark[s] * (1 - sd * SLIP)
-        W.reduce(s, ps, q, px); return {'avgPrice': str(px)}
-    def stop(self, s, ps, qty, price):
-        W.n += 1; tag = f'o:{W.n}'; W.stops[tag] = dict(s=s, ps=ps, q=float(qty), p=float(price)); return tag
-    def cancel(self, s, tag): W.stops.pop(tag, None)
-    def open_stop_tags(self, s): return {k for k, v in W.stops.items() if v['s'] == s}
-    def leverage_max(self, s): return 50
-    def cancel_all(self, s):
-        for k in [k for k, v in W.stops.items() if v['s'] == s]: W.stops.pop(k)
-
-
-def _merge(s, ps):
-    ls = [l for l in W.lots if l['s'] == s and l['ps'] == ps]
-    if len(ls) > 1:
-        q = sum(l['q'] for l in ls); avg = sum(l['q'] * l['avg'] for l in ls) / q
-        for l in ls: W.lots.remove(l)
-        W.lots.append(dict(s=s, ps=ps, q=q, avg=avg))
-def _reduce(s, ps, q, px):
-    l = next(l for l in W.lots if l['s'] == s and l['ps'] == ps)
-    q = min(q, l['q']); sd = 1 if ps == 'LONG' else -1
-    W.cash += sd * (px - l['avg']) * q - q * px * FEE; l['q'] -= q
-    if l['q'] <= 1e-12: W.lots.remove(l)
-def _equity():
-    return W.cash + sum((1 if l['ps'] == 'LONG' else -1) * (W.mark[l['s']] - l['avg']) * l['q'] for l in W.lots)
-def _move(px_by_sym):
-    """Move marks; trigger exchange stops."""
-    for s, p in px_by_sym.items():
-        W.mark[s] = p
-        for tag, st in list(W.stops.items()):
-            if st['s'] != s: continue
-            sd = 1 if st['ps'] == 'LONG' else -1
-            if sd * (p - st['p']) <= 0:
-                have = sum(l['q'] for l in W.lots if l['s'] == s and l['ps'] == st['ps'])
-                q = min(st['q'], have)
-                if q > 0: _reduce(s, st['ps'], q, st['p'] * (1 - sd * SLIP) if True else p)
-                W.stops.pop(tag)
-W.merge, W.reduce, W.equity = staticmethod(_merge), staticmethod(_reduce), staticmethod(_equity)
-
-E.Futures = Fake
-import ai_filter
-tmp = tempfile.mkdtemp()
-fake_now = [0.0]
-E.now_utc = lambda: pd.Timestamp(fake_now[0], unit='s', tz='UTC').to_pydatetime()
-E.time = types.SimpleNamespace(time=lambda: fake_now[0], sleep=lambda x: None)
-eng = E.Engine(dict(MODE='paper', API_KEY='x', API_SECRET='y'), tmp)
-eng.S['SLEEVES'] = SLEEVES; eng.S['UNIVERSE'] = SYMS; eng.S['SYMBOLS_ON'] = {s: True for s in SYMS}; eng.S['CAPITAL_CAP'] = 0
-eng.S['MAX_LEVERAGE'] = 10
-eng.equity_hist = []; eng.record_equity = lambda e: None
-eng.connect()
-curve = []
-for i in range(T0, N - 1):
-    W.i = i
-    fake_now[0] = D['BTCUSDT'].t[i].timestamp() + 14400 + 15
-    W.mark.update({s: D[s].o[i + 1] for s in SYMS})
-    eng.cycle('4h')
-    # intrabar path of candle i+1, the SAME assumption as the backtester's 'path' mode: green O->L->H->C, red O->H->L->C,
-    # walked in STEPS small moves per leg (the live bot re-checks prices every 8 s, so adds/stops trigger near their level,
-    # not at the candle's extreme)
-    j = i + 1
-    legs = [{s: (D[s].l[j] if D[s].c[j] >= D[s].o[j] else D[s].h[j]) for s in SYMS},
-            {s: (D[s].h[j] if D[s].c[j] >= D[s].o[j] else D[s].l[j]) for s in SYMS},
-            {s: D[s].c[j] for s in SYMS}]
-    for tgt in legs:
-        a = dict(W.mark)
-        for k in range(1, STEPS + 1):
-            _move({s: a[s] + (tgt[s] - a[s]) * k / STEPS for s in SYMS})
-            if eng.state['lots']: eng.manage(dict(W.mark))
-        if not eng.state['lots']: eng.manage(dict(W.mark))
-    W.cash -= sum(l['q'] * W.mark[l['s']] * B.FUND_PER_BAR for l in W.lots)
-    curve.append((D['BTCUSDT'].t[j], _equity()))
-cv = pd.Series([c for _, c in curve], index=[t for t, _ in curve])
-tr = pd.read_csv(os.path.join(tmp, 'trades.csv')) if os.path.exists(os.path.join(tmp, 'trades.csv')) else pd.DataFrame()
-ev = tr.event.value_counts().to_dict() if len(tr) else {}
-print(f'ENGINE  500 -> {cv.iloc[-1]:.0f} ({(cv.iloc[-1]/500-1)*100:+.1f}%)  maxDD {(cv/cv.cummax()-1).min()*100:.1f}%  events {ev}')
-bk = B.Book({s: RAW[s] for s in SYMS})
-cfg = [dict(key=s['key'], share=s['share'], risk=s['risk'], max_pos=s['max_pos'], symbols=SYMS, sides=s['sides'], mgmt=s['mgmt']) for s in SLEEVES]
-t2, c2 = B.run(bk, cfg, start=500, max_lev=10, t0=D['BTCUSDT'].t[T0 + 1])
-print(f'BACKTEST 500 -> {c2.iloc[-1]:.0f} ({(c2.iloc[-1]/500-1)*100:+.1f}%)  maxDD {(c2/c2.cummax()-1).min()*100:.1f}%  trades {len(t2)} by sleeve {t2.sleeve.value_counts().to_dict() if len(t2) else {}}  exits {t2.why.value_counts().to_dict() if len(t2) else {}}')
-ent = tr[tr.event == 'entry'] if len(tr) else tr
-print('engine entries by sleeve', ent.sleeve.value_counts().to_dict() if len(ent) else {}, '| leftover exchange lots', len(W.lots), 'stops', len(W.stops), 'engine lots', len(eng.state['lots']))
-print('EXCHANGE LOTS', [(l['s'], l['ps'], round(l['q'], 6)) for l in W.lots])
-print('ENGINE LOTS', [(l['symbol'], l['side'], l['qty'], l['sleeve']) for l in eng.state['lots'].values()])
-print('STOPS', list(W.stops.values()))
-import collections
-print('HISTORY', len(eng.history), 'net pnl sum', round(sum(h['pnl'] for h in eng.history), 2), 'sample', {k: eng.history[-1][k] for k in ('symbol','side','strategy','pnl','r','roi_capital','move_pct','hours','exit_reason','fees')})
-print('MISSED', len(eng.missed), collections.Counter(m['reason'] for m in eng.missed).most_common(6))
-json.dump(eng.history, open(OUT+'/seed_history.json','w'), default=str); t2.to_csv(OUT+'/bt_trades.csv', index=False); json.dump(eng.missed, open(OUT+'/seed_missed.json','w'), default=str)
-# ---- pass/fail gate (run_checks): engine and backtest must agree and the exchange must hold exactly what the engine tracks
-er, br = (cv.iloc[-1] / 500 - 1) * 100, (c2.iloc[-1] / 500 - 1) * 100
-held = {(l['s'], l['ps']): 0.0 for l in W.lots}
-for l in W.lots: held[(l['s'], l['ps'])] += l['q']
-mine = {}
-for l in eng.state['lots'].values(): mine[(l['symbol'], l['side'])] = mine.get((l['symbol'], l['side']), 0.0) + l['qty']
-def _dust(k, q): return q * W.mark[k[0]] < eng.rules.get(k[0], {}).get('min_notional', 5)
-mismatch = {k: (held.get(k, 0), mine.get(k, 0)) for k in set(held) | set(mine) if not _dust(k, abs(held.get(k, 0) - mine.get(k, 0)))}
-ok = abs(er - br) <= 15 and not mismatch and len(W.stops) == len(eng.state['lots'])
-print(f'GATE engine {er:+.1f}% vs backtest {br:+.1f}% (gap {er - br:+.1f} pp, limit 15) | position mismatches {mismatch} | stops {len(W.stops)} lots {len(eng.state["lots"])} ->', 'PASS' if ok else 'FAIL')
-sys.exit(0 if ok else 1)
+if __name__ == '__main__':
+    raw = load_data.load(syms=SYMS)
+    N = len(raw['BTCUSDT'])
+    t0 = int(sys.argv[1]) if len(sys.argv) > 1 else N - 900
+    if len(sys.argv) > 2:
+        sleeves = json.load(open(sys.argv[2])) if sys.argv[2].endswith('.json') else json.loads(sys.argv[2])
+    else:
+        sleeves = [E.sleeve('MOM', 'ema_mom', .4, .03, 4, 'core8', mgmt=E.PY), E.sleeve('DCA', 'dca_dip', .3, .03, 4, 'core8'),
+                   E.sleeve('SQZ', 'squeeze_tp', .3, .03, 4, 'core8', sides='both')]
+    r = run_replay(raw, sleeves, t0, steps=int(os.environ.get('ZB_SIM_STEPS', '6')))
+    m = r['metrics']
+    print(f"ENGINE  500 -> {r['engine_curve'].iloc[-1]:.0f} ({m['engine_ret']:+.1f}%)  maxDD {m['engine_dd']:.1f}%  trades {m['trades_engine']}")
+    print(f"BACKTEST 500 -> {r['bt_curve'].iloc[-1]:.0f} ({m['bt_ret']:+.1f}%)  maxDD {m['bt_dd']:.1f}%  trades {m['trades_bt']}")
+    print(f"TRADES matched {m['matched']} ({m['matched_pct']}%)  median |dR| {m['med_dr']}  p95 |dR| {m['p95_dr']}  "
+          f"return gap {m['ret_gap']} pp  DD gap {m['dd_gap']} pp  position mismatches {r['mismatch']}  stops {m['stops']} lots {m['lots']}")
+    json.dump(r['history'], open(OUT + '/seed_history.json', 'w'), default=str)
+    json.dump(r['missed'], open(OUT + '/seed_missed.json', 'w'), default=str)
+    r['matched'].to_csv(OUT + '/replay_trades.csv', index=False)
+    strict = os.environ.get('ZB_REPLAY_STRICT') == '1'
+    sf = m['strict_fail']
+    print(f"STRICT targets {STRICT}: " + ('all met' if not sf else 'NOT met: ' + ', '.join(sf)))
+    ok = m['hard_ok'] and (not strict or not sf)
+    print(f"GATE hard (return gap <= {LOOSE_RET_GAP} pp, positions/stops reconcile){' + strict' if strict else ''} ->", 'PASS' if ok else 'FAIL')
+    sys.exit(0 if ok else 1)

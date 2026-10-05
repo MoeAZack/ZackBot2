@@ -335,6 +335,10 @@ def run(book, sleeves, start=500.0, max_lev=10.0, daily_halt=0.08, t0=None, t1=N
                     while p['dca'] < len(p['levels']) and ((l <= p['levels'][p['dca']]) if sd == 1 else (h >= p['levels'][p['dca']])):
                         lvl = p['levels'][p['dca']]; q = p['q0'] * p['w'][p['dca']]
                         lvl = min(lvl, o) if sd == 1 else max(lvl, o)              # gapped through the level -> filled at the open
+                        if RR['btc_breaker'] and i <= breaker_until:                             # same breaker policy as live
+                            pol = RR['btc_breaker'].get('dca', 'pause')
+                            if pol == 'pause': break
+                            if pol == 'half_size': q *= 0.5
                         if halted or notional(sl, i) + q * lvl > max_lev * eq * cfg['share']: break
                         if rule_block(s, sd, q, lvl, 0.0, i, add=True): break                  # same add gate as live
                         p['avg'] = (p['avg'] * p['qty'] + lvl * q) / (p['qty'] + q); p['qty'] += q
@@ -356,7 +360,7 @@ def run(book, sleeves, start=500.0, max_lev=10.0, daily_halt=0.08, t0=None, t1=N
                     while p['adds'] < py['n'] and hit(p['next_add'], fav):
                         q = p['q0'] * py['frac']; lvl = p['next_add']
                         lvl = max(lvl, o) if sd == 1 else min(lvl, o)              # gapped through the add level -> filled at the open
-                        if halted or notional(sl, i) + q * lvl > max_lev * eq * cfg['share']: break
+                        if halted or (RR['btc_breaker'] and i <= breaker_until) or notional(sl, i) + q * lvl > max_lev * eq * cfg['share']: break
                         if rule_block(s, sd, q, lvl, q * max(0.0, sd * (lvl - p['stop'])), i, add=True): break
                         p['avg'] = (p['avg'] * p['qty'] + lvl * q) / (p['qty'] + q); p['qty'] += q
                         eq -= q * lvl * FEE; p['realized'] -= q * lvl * FEE; p['adds'] += 1

@@ -609,3 +609,40 @@ def test_exit_plan_manual_with_target():
     e.open_lot(None, 'ETHUSDT', 'LONG', SG, None, e.equity(), risk=0.01, manual=True, stop_atr=2.0, tp_r=3)
     lot = next(l for l in e.state['lots'].values() if l.get('manual'))
     assert e.exit_plan(lot)['title'].startswith('Fixed target')
+
+
+# ------------------------------------------------------------------ BTC circuit breaker vs adds (policy fixed per basket)
+def _dca_lot(e, policy):
+    e.S['RISK_RULES'] = {'btc_breaker': {'mode': 'enforce', 'pct': 5, 'hours': 4, 'dca': policy}}
+    sl = dict(SL, key='dca_dip', mgmt={'dca': {'n': 3, 'step_atr': 1.0, 'scale': 1.5, 'tp_atr': 1.0, 'stop_atr': 2.0}}); e.S['SLEEVES'] = [sl]
+    assert e.open_lot(sl, 'BTCUSDT', 'LONG', SG, None, e.equity()), e.last_skip
+    return next(iter(e.state['lots'].values()))
+
+
+@pytest.mark.parametrize('policy,mult', [('pause', 0.0), ('half_size', 0.5), ('continue_plan', 1.0)])
+def test_breaker_dca_policy(policy, mult):
+    e, _ = mk_engine(); lot = _dca_lot(e, policy); q0 = lot['qty']
+    assert lot['breaker_dca'] == policy
+    e._breaker = lambda: None
+    e.state['breaker_until'] = E.time.time() + 3600                        # breaker active
+    e.S['RISK_RULES']['btc_breaker']['dca'] = 'continue_plan'               # a later setting change must NOT affect this basket
+    e.trade.mark['BTCUSDT'] = lot['levels'][0] - 0.01; e.manage(e.trade.marks())
+    added = lot['qty'] - q0
+    if mult == 0: assert added == 0 and 'breaker' in lot['add_blocked']
+    else: assert abs(added - q0 * lot['w'][0] * mult) < 0.002, (added, q0 * lot['w'][0] * mult)
+
+
+def test_breaker_blocks_pyramid_adds_only_while_active():
+    e, _ = mk_engine(); sl, lot = _pyr(e)
+    e.S['RISK_RULES'] = {'btc_breaker': {'mode': 'enforce', 'pct': 5, 'hours': 4}}; e._breaker = lambda: None
+    e.state['breaker_until'] = E.time.time() + 3600
+    e.trade.mark['BTCUSDT'] = 106.0; e.manage(e.trade.marks())
+    assert lot['adds'] == 0 and 'breaker' in lot['add_blocked'] and lot['stop_id']
+    e.state['breaker_until'] = 0; e.manage(e.trade.marks())
+    assert lot['adds'] == 1
+
+
+def test_breaker_policy_validation():
+    import app as A
+    assert A.clean_risk_rules({'btc_breaker': {'dca': 'half_size'}})['btc_breaker']['dca'] == 'half_size'
+    with pytest.raises(ValueError): A.clean_risk_rules({'btc_breaker': {'dca': 'yolo'}})

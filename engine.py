@@ -74,7 +74,8 @@ RISK_RULE_DEFAULTS = dict(
     coin_cap=dict(mode='warn', x=3.0),                 # total notional on one coin (all slots) <= x * bot capital
     open_risk_cap=dict(mode='warn', pct=15.0),         # open risk to stops incl. the new trade <= pct % of bot capital
     correlated_cap=dict(mode='warn', n=3, rho=0.8),    # < n open same-direction trades on coins correlated > rho with the new coin
-    btc_breaker=dict(mode='warn', pct=5.0, hours=4.0, tighten=False),   # BTC moved > pct % in the last hour -> pause `hours`
+    btc_breaker=dict(mode='warn', pct=5.0, hours=4.0, tighten=False, dca='pause'),   # BTC moved > pct % in the last hour -> pause `hours`;
+    #   while it is active (enforce): no pyramid adds; DCA safety orders follow the lot's policy pause / half_size / continue_plan
     funding_filter=dict(mode='warn', rate=0.001))      # no longs when funding > rate, no shorts when < -rate
 GOV_COOLDOWN_S = 24 * 3600                             # minimum time between two automatic profile switches
 GOV_MULT_MAX = 2.0                                     # martingale-style recovery (risk_mult > 1) is capped here
@@ -402,6 +403,8 @@ class Engine:
             try: dfs[s] = self.candles(s, tf)
             except Exception as e: log.warning(f'candles {s} {tf}: {e}')
         al = {s: d for s, d in dfs.items() if len(d) >= 250}
+        if not al:                                     # not enough history on any coin yet (new listings / short cache)
+            log.info(f'{tf}: fewer than 250 closed candles on every coin - no signals this cycle'); return {}, dfs
         ctx = S.build_context(al, 'BTCUSDT' if 'BTCUSDT' in al else next(iter(al)))
         out = {}
         for sl in list(self.S['SLEEVES']) + list(extra):
@@ -670,7 +673,7 @@ class Engine:
                         if self._replace_stop(lot): changed = True; log.info(f"{lot['symbol']} [{lot['sleeve']}] stop restored")
                     if 'dca' in g and lot.get('levels'):
                         while lot['dca'] < len(lot['levels']) and sd * (lot['levels'][lot['dca']] - m) >= 0:
-                            q = lot['q0'] * lot['w'][lot['dca']]
+                            q = lot['q0'] * lot['w'][lot['dca']] * (self._breaker_add_mult(lot) or 1.0)   # 0 -> the gate blocks it
                             if self._add_gate(lot, q, m, 'safety_order') or not self._add_qty(lot, q, m, 'safety_order', post={'dca': lot['dca'] + 1}): break
                             lot['dca'] += 1
                             lot['tp'] = lot['avg'] + sd * g['dca']['tp_atr'] * lot['atr0']
@@ -780,6 +783,8 @@ class Engine:
                 title = 'Basket target banked - the rest runs'; steps.append('rest rides with the stop at breakeven or better')
             if k < n and l.get('tp') is not None:
                 nxt = f"safety order {k + 1} at {p(l['levels'][k])}"
+                steps.append('if the BTC circuit breaker trips: safety orders ' + {'pause': 'pause', 'half_size': 'continue at half size',
+                             'continue_plan': 'continue as planned'}.get(l.get('breaker_dca', 'pause'), 'pause'))
         tps = [x for i, x in enumerate(S.norm_tps(g.get('tps'))) if i not in (l.get('tps_done') or [])]
         if tps and R:
             steps.append('take-profit ladder: ' + ', '.join(f'{f * 100:.0f}% at {p(e0 + sd * r * R)} (+{r:g}R)' for r, f in tps))
@@ -822,6 +827,8 @@ class Engine:
         if Sg.get('ENTRIES_PAUSED'): return 'entries paused'
         if lot.get('stop_dirty'): return 'stop not confirmed yet'
         if lot.get('manual'): return 'manual trade (no adds)'
+        if self._breaker_add_mult(lot) == 0.0:
+            return 'BTC circuit breaker active - ' + ('DCA safety orders paused' if lot.get('levels') else 'pyramid adds paused')
         sl = next((x for x in Sg['SLEEVES'] if x['id'] == lot['sleeve']), None)
         if not sl or (lot.get('key_strategy') and sl['key'] != lot['key_strategy']):
             return 'strategy slot removed or replaced - no more adds (stop and exits still run)'
@@ -837,6 +844,14 @@ class Engine:
             lot['add_warned'] = warn[0]; log.warning(f"{lot['symbol']} [{lot['sleeve']}] add allowed but: {warn[0]}")
         enf = [f'risk rule {n}: {m}' for n, mode, m in hits if mode == 'enforce']
         return enf[0] if enf else None
+
+    def _breaker_add_mult(self, lot):
+        """Size multiplier for an add while the BTC circuit breaker (enforce) is active: pyramid adds 0; DCA safety orders
+        follow the policy recorded on the lot when it opened (pause 0 / half_size 0.5 / continue_plan 1). 1 otherwise."""
+        rb = self.risk_rules_cfg()['btc_breaker']
+        if rb['mode'] != 'enforce' or (self.state.get('breaker_until') or 0) <= time.time(): return 1.0
+        if not lot.get('levels'): return 0.0
+        return {'pause': 0.0, 'half_size': 0.5, 'continue_plan': 1.0}.get(lot.get('breaker_dca', 'pause'), 0.0)
 
     def _add_gate(self, lot, q, px, why):
         """True = the add is BLOCKED (logged once per reason, kept on the lot and in the missed list for the UI)."""
@@ -1220,6 +1235,7 @@ class Engine:
             lot['levels'] = [fill - sd * k * g['dca']['step_atr'] * atr for k in range(1, g['dca']['n'] + 1)]
             lot['w'] = [g['dca']['scale'] ** k for k in range(1, g['dca']['n'] + 1)]
             lot['tp'] = fill + sd * g['dca']['tp_atr'] * atr
+            lot['breaker_dca'] = self.risk_rules_cfg()['btc_breaker'].get('dca', 'pause')   # fixed for the life of this basket
         self.state['lots'][key] = lot; self.save_state()          # recorded BEFORE the stop: a crash here can never orphan the position
         self._last_lot_key = key
         if not self._replace_stop(lot):

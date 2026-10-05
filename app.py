@@ -910,6 +910,9 @@ def clean_risk_rules(v):
             if cfg.get(k) is not None: c[k] = _num(cfg[k], *rng, f'{rule}.{k}')
         if rule == 'correlated_cap' and 'n' in c: c['n'] = int(c['n'])
         if rule == 'btc_breaker' and 'tighten' in cfg: c['tighten'] = bool(cfg['tighten'])
+        if rule == 'btc_breaker' and 'dca' in cfg:
+            if cfg['dca'] not in ('pause', 'half_size', 'continue_plan'): raise ValueError('breaker DCA policy must be pause, half_size or continue_plan')
+            c['dca'] = cfg['dca']
         out[rule] = c
     return out
 
