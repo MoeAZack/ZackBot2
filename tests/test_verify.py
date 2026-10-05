@@ -143,11 +143,18 @@ def _status(mode='PAPER', engine='ok', lots=({'protected': True},), **h):
     return dict(mode=mode, build='b', lots=list(lots), health=dict(dict(engine=engine, exchange='ok', unprotected=[], untracked={}, orphans=0), **h))
 
 
+def _fake_clock(monkeypatch):
+    """reconcile_step waits up to 60-180 s for a healthy bot: a fake clock makes those waits instant (sleep advances it)."""
+    now = [1_000_000.0]
+    monkeypatch.setattr(verify.time, 'time', lambda: now[0])
+    monkeypatch.setattr(verify.time, 'sleep', lambda s: now.__setitem__(0, now[0] + s))
+
+
 def test_live_bot_blocks_the_drill_before_any_stop(monkeypatch, tmp_path):
     """T04 review P1: the drill stops/restarts ZackBot, so a LIVE (or unhealthy) bot must stop the release run BEFORE it."""
     calls = []
     monkeypatch.setattr(verify, 'installer_mode', lambda rep, mode, t: calls.append(mode) or rep.step('installer ' + mode, True))
-    monkeypatch.setattr(verify.time, 'sleep', lambda s: None)
+    _fake_clock(monkeypatch)
     for st in (_status(mode='LIVE'), _status(engine='degraded'), _status(lots=({'protected': False},)), _status(orphans=2)):
         monkeypatch.setattr(verify, 'bot_status', lambda st=st: st)
         rep = verify.Report('release', str(tmp_path / 'r'))
@@ -162,7 +169,7 @@ def test_live_bot_blocks_the_drill_before_any_stop(monkeypatch, tmp_path):
 def test_paper_bot_is_drilled_then_checked_again(monkeypatch, tmp_path):
     seq, calls = [_status(), _status(mode='LIVE')], []
     monkeypatch.setattr(verify, 'installer_mode', lambda rep, mode, t: calls.append(mode) or rep.step('installer ' + mode, True))
-    monkeypatch.setattr(verify.time, 'sleep', lambda s: None)
+    _fake_clock(monkeypatch)
     monkeypatch.setattr(verify, 'bot_status', lambda: seq[0] if not calls else seq[1])
     rep = verify.Report('release', str(tmp_path / 'r'))
     assert not verify.release_steps(rep), 'a bot that comes back LIVE after the drill must fail the run'
