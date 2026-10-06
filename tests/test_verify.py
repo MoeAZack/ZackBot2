@@ -262,13 +262,16 @@ def test_every_incomplete_status_prevents_the_drill(monkeypatch, tmp_path):
 # ---------------------------------------------------------------- T04b: deterministic, Node-24 CI foundation
 def test_ci_uses_pinned_runner_and_immutable_node24_actions():
     """Avoid ubuntu-latest image drift and mutable action tags in the release gate."""
-    workflow = open(os.path.join(ROOT, '.github', 'workflows', 'verify.yml'), encoding='utf-8').read()
+    workflow = ''.join(open(os.path.join(ROOT, '.github', 'workflows', f), encoding='utf-8').read()
+                       for f in ('verify.yml', 'verify-fast.yml', 'verify-push.yml'))   # T04d: full, PR fast, push
     assert 'ubuntu-latest' not in workflow
-    assert workflow.count('runs-on: ubuntu-24.04') == 2
+    runs_on = re.findall(r'runs-on:\s*(\S+)', workflow)
+    assert len(runs_on) >= 2 and set(runs_on) == {'ubuntu-24.04'}, runs_on        # T04d: more jobs, same pinned image
     expected = {
         'actions/checkout': '3d3c42e5aac5ba805825da76410c181273ba90b1',
         'actions/setup-python': '5fda3b95a4ea91299a34e894583c3862153e4b97',
         'actions/upload-artifact': '043fb46d1a93c77aae656e7c1c64a875d1fc6a0a',
+        'actions/download-artifact': '3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c',    # T04d: v8.0.1
     }
     for action, sha in expected.items():
         uses = re.findall(rf'uses:\s*{re.escape(action)}@([^\s#]+)', workflow)

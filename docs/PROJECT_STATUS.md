@@ -1,6 +1,6 @@
 # ZackBot owner overview
 
-*Last refreshed: 2026-10-06 09:10 Cairo (Africa/Cairo) by Codex, on branch `t05-fill-telemetry`. This is the plain-language owner view. `ROADMAP.md` and `docs/reviews/` hold the detailed scope and evidence.*
+*Last refreshed: 2026-10-06 11:20 Cairo (Africa/Cairo) by Codex, on branch `t04d-faster-ci`. This is the plain-language owner view. `ROADMAP.md` and `docs/reviews/` hold the detailed scope and evidence.*
 
 ## Where we are now
 
@@ -9,11 +9,11 @@
 | Environment | **Binance Futures testnet only.** Mainnet stays impossible until the roadmap and the final release audit are complete and you approve it. |
 | Is ZackBot running? | Yes, on your PC (testnet), build `20261006-064354`: engine and exchange ok, four positions, all protected, zero errors/untracked/orphans after the T03b install and rollback drill. |
 | Installed application | **T03b installed and rollback-proven.** SHA-256 `203B155474942709B6AD40C3517BA32D058721664D245191C900068CBC4A60A6`; the drill restored the same build and hash exactly. |
-| Latest accepted commit | `master` `d68d6ef` (T03b accepted and merged) |
-| Current ticket | **T05: observe-only fill telemetry** |
-| Stage | **Code accepted at `e58f0c2`; final GitHub fast/full gate and protected merge remain.** |
-| What Claude is doing | T05 round-three race fix is complete; waiting for the final CI/merge gate. T04d CI-speed work is on PR #7. |
-| What Codex is reviewing | T05 final checks, then T04d and the approved T05a causal trade-audit plan. |
+| Latest accepted commit | `master` `566ed56` (T05 accepted and merged) |
+| Current ticket | **T04d: faster, fail-closed CI review loop** |
+| Stage | **Round-five review-clean. Preparing the final documentation head, then one fast/CodeQL pass and one `full-ready` exact-head full gate.** |
+| What Claude is doing | Waiting for Codex's final labelled gate and protected merge. T03c PR #9 remains queued. |
+| What Codex is reviewing | T04d's final live protection proof. No executable or runtime action is involved. |
 | Your action | **None.** |
 
 ## Latest test results
@@ -36,8 +36,10 @@
 | T03b round 3 fixes, Windows | Focused installer/verification set **80 passed**; real non-installing buildcheck **PASS** with eight successful steps; accepted installed exe unchanged. GitHub fast passed; full was still running at 06:10 Cairo. |
 | T03b normal install | Build `20261006-064354`, 14/14 structured steps, no warnings; mirror 120/120 exact; both shortcuts correct; PAPER health clean with four protected lots. |
 | T03b rollback drill | Deliberately failed build `20261006-064800`; restored `20261006-064354` with the exact pre-drill hash and authenticated proof; PAPER health remained clean. |
-| T05 focused Windows review | Exact head `e58f0c2`: **46/46 passed** in 11.04 s; deterministic close-vs-admission race test passed. |
-| T05 GitHub | Final review/status head pending fresh `verify fast` and `verify full`; no runtime or exchange operation is required. |
+| T05 focused Windows review | Accepted implementation head `e58f0c2`: **46/46 passed** in 11.04 s; deterministic close-vs-admission race test passed. |
+| T05 GitHub | Final exact-head fast/full gates passed and T05 merged into protected `master` at `566ed56` at 09:35 Cairo. |
+| T04d round-three Windows review | Exact implementation head `b6d4e81`: **51/51 passed** in 14.88 s, including a fresh `core.autocrlf=true` clone and byte-exact manifest proof. |
+| T04d GitHub | Round-four head `99b8a6a`: single fast passed in 5m14s; CodeQL clean; unrelated-label live probe published no `verify full`. Final stable documentation head and `full-ready` gate remain. |
 
 Automated test-suite results use a fake exchange. The final T03a gate used the real Binance Futures testnet account; it correctly sent no entry order because leverage was above the cap.
 
@@ -69,12 +71,22 @@ Automated test-suite results use a fake exchange. The final T03a gate used the r
 - The drill restored build `20261006-064354` byte-for-byte and proved it running. All four testnet lots remained protected and health stayed clean.
 - Accepted and merged to protected `master` as `d68d6ef`.
 
-### T05 — fill telemetry: code accepted, final CI pending
+### T05 — fill telemetry: accepted and merged
 
 - Records requested versus executed quantity, expected versus actual price, adverse slippage, wait time, maker attempts and exact fallback state.
 - One process-wide, non-blocking writer owns the JSONL file; slow or broken telemetry cannot delay lot persistence or exchange-side protection.
 - Restart/rotation, malformed records, missing quantities, fallback truthfulness and writer lifecycle are covered by 46 focused tests.
-- Codex found and Claude fixed the final close-vs-admission race. No code findings remain; only fresh GitHub checks and protected merge remain.
+- Codex found and Claude fixed the final close-vs-admission race. The final exact-head checks passed and protected `master` now contains T05 at `566ed56`.
+
+### T04d — faster review CI: review-clean, final live gate pending
+
+- Feature-branch commits now run one PR fast check rather than duplicate push and PR checks.
+- Rejected review iterations do not run the expensive full suite. Codex explicitly dispatches one parallel full gate only after review is clean.
+- The full gate is tied to one exact approved SHA and refuses stale or moved heads.
+- Fresh Git-for-Windows checkouts reproduce the byte-hashed datasets even when `core.autocrlf=true`.
+- The reviewed implementation passed 51 focused Windows tests. The stable head passed its single fast check and all exact-head full slices.
+- A live protection check exposed that dispatch-only full results do not satisfy PR protection. The final gate now uses the PR-associated `full-ready` label instead.
+- An unrelated-label probe proved it cannot create the required full identity, and CodeQL is clean after replacing its flagged test regex with deterministic parsing.
 
 ## Bugs
 
@@ -94,16 +106,20 @@ Automated test-suite results use a fake exchange. The final T03a gate used the r
 | Fixed and accepted (T03b) | Medium | Installed-file evidence could be stale | Re-reads presence/hash at every verdict and verifies failed first-install deletion; confirmed on Windows. |
 | Fixed and accepted (T03b) | Medium | Raw launcher parser could select install/drill from malformed extra arguments | Anchors on the first exact launcher token and refuses the three reproduced ambiguity cases. |
 | Fixed and accepted (T03b) | Low | Launcher test claimed it could neutralize hostile outer CMD syntax | Tests the real boundary: fixed supported invocations and refusal of ordinary unknown/extra tokens. |
-| Fixed; final CI pending (T05) | High | Optional fill telemetry performed synchronous file I/O before protection | Order paths now use bounded non-blocking admission to a dedicated process-wide writer. |
-| Fixed; final CI pending (T05) | High | A timed-out writer handover could overlap two writers on one file | Settings restarts share one writer; a stuck closer stays registered and drop-only until proven stopped. |
-| Fixed; final CI pending (T05) | Medium | Fallback, malformed-history and unknown-quantity telemetry could be misleading or break status | Exact fallback states, defensive normalization and explicit unknown outcomes are covered by focused tests. |
-| Fixed; final CI pending (T05) | Medium | `emit()` could accept after `close()` stopped the writer | Admission and closing are atomic under one lock; deterministic race test passes. |
+| Fixed and accepted (T05) | High | Optional fill telemetry performed synchronous file I/O before protection | Order paths now use bounded non-blocking admission to a dedicated process-wide writer. |
+| Fixed and accepted (T05) | High | A timed-out writer handover could overlap two writers on one file | Settings restarts share one writer; a stuck closer stays registered and drop-only until proven stopped. |
+| Fixed and accepted (T05) | Medium | Fallback, malformed-history and unknown-quantity telemetry could be misleading or break status | Exact fallback states, defensive normalization and explicit unknown outcomes are covered by focused tests. |
+| Fixed and accepted (T05) | Medium | `emit()` could accept after `close()` stopped the writer | Admission and closing are atomic under one lock; deterministic race test passes. |
+| Fixed; final gate pending (T04d) | High | Every rejected PR iteration ran the full suite | Full verification is now explicit and exact-head only; ordinary PR updates run fast only. |
+| Fixed; final gate pending (T04d) | Medium | Feature heads started duplicate push and PR fast runs | Feature branches now have one PR fast producer; push-fast is master-only. |
+| Fixed; final gate pending (T04d) | High | Fresh Windows checkouts changed hashed dataset bytes to CRLF | Manifest datasets and manifest JSON are pinned to LF and tested in a fresh autocrlf-enabled clone. |
+| Fixed; final gate pending (T04d) | High gate / low runtime exposure | CodeQL flagged exponential backtracking in `tests/test_ci.py` | The regex was removed in favor of deterministic line parsing; CodeQL is green on `99b8a6a`. |
 
 ## Open risks
 
 - **CI security follow-up (low):** add Dependabot for the immutable action pins plus Git-history secret and dependency scanning.
-- **Repository visibility:** intentionally public during testnet collaboration. It must return to private before any mainnet credentials or live release work.
-- T05 has no remaining code finding. It is observe-only and needs no installer or testnet canary; final CI and protected merge remain.
+- **Repository visibility:** GitHub currently reports the repository as **public**. The owner previously accepted that testnet-development risk; it must return to private before any mainnet credential or live-release work.
+- T04d has no remaining code or trading/runtime finding. The final labelled CI/protection proof remains; it requires no installer, bot stop, or testnet canary.
 
 ## Code clean-up policy (your request, 2026-10-05)
 
@@ -125,11 +141,15 @@ Every ticket now ends with a **clean-up pass on the files it touched**: remove d
 
 | Order | Ticket | Why it comes here |
 |---|---|---|
-| Closing | **T05 — fill telemetry** | Code accepted; final CI and protected merge pending |
-| Parallel process | **T04d — faster CI** | Removes duplicate review runs while preserving canonical gates and evidence |
+| Current | **T04d — faster CI** | Review-clean; stable-head fast/CodeQL and one labelled full gate remain |
+| Next execution | **T03c — automatic leverage handling** | Queued PR #9; review starts after T04d merges |
+| Resilience | **T05b — exchange-outage handling** | Backoff/circuit state, incident coalescing and reconciliation after transient Binance failures |
 | Next measurement | **T05a — causal trade audit** | Peak profit/MFE, give-back, hold/close reasons and causal earlier-exit comparisons |
 | Core | **T06–T09 — shared core** | One trading logic for live and backtest |
-| Scale | **T10–T16** | Order budgets, trade records, "Why?", scorecards, VPS, multi-account, ML data |
+| Strategy research | **T09a** | Range, short and scalp families; Quick Bank TP/runner/micro-DCA components; research/shadow first |
+| Regime and macro | **T09b** | Per-asset/timeframe regimes plus USD, US bonds/rates, equities, commodities and optional TradingView evidence |
+| Scale and control | **T10–T13a** | Order budgets, trade records, scorecards, bounded risk grades and Manual/Recommend/Automatic authority |
+| Product expansion | **T14–T16 and Phases 8–12** | VPS, multi-account/copy, PWA, TradingView/news, gold and TradFi after the safety foundation |
 | Final gate | Release audit + your explicit mainnet approval | |
 
 ## Scouting: ideas from other bots and from Claude/Codex (proposed, not started)

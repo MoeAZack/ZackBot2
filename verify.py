@@ -224,7 +224,24 @@ def ui_step(rep):
                 evidence=os.path.relpath(summ, ROOT) if os.path.exists(summ) else None,
                 failed=[l for l in out.splitlines() if l.startswith('FAIL ')][:10])
     rep.data['ui'] = info
-    return rep.step('UI harness (all tabs x 3 widths, flows, API failures)', rc == 0 and g is not None and g.group(1) == 'PASS', sec, **info)
+    return rep.step(UI_STEP, rc == 0 and g is not None and g.group(1) == 'PASS', sec, **info)
+
+
+UI_STEP = 'UI harness (all tabs x 3 widths, flows, API failures)'
+# T04d: THE full-level gate plan, in order. `verify.py full` runs it sequentially; verify_ci.py runs exact,
+# duplicate-free slices of it in parallel and refuses to merge unless the slices cover exactly this list.
+FULL_PLAN = (
+    ('tests (all)', lambda rep: pytest_step(rep, 'tests (all)', ['tests'], 3600)),
+    (REPLAYS[0][0], lambda rep: replay_step(rep, *REPLAYS[0])),
+    (REPLAYS[1][0], lambda rep: replay_step(rep, *REPLAYS[1])),
+    (UI_STEP, lambda rep: ui_step(rep)),
+)
+
+
+def run_full_plan(rep, names=None):
+    """Run the full-level gates (all, or only `names`) in plan order."""
+    for name, fn in FULL_PLAN:
+        if names is None or name in names: fn(rep)
 
 
 def installer_command(mode):
@@ -347,9 +364,7 @@ def main():
         pytest_step(rep, 'tests (fast set: -m "not slow")', ['-m', 'not slow', 'tests'], 1800)
         installer_mode(rep, 'preflight', 600)
     else:
-        pytest_step(rep, 'tests (all)', ['tests'], 3600)
-        for name, args in REPLAYS: replay_step(rep, name, args)
-        ui_step(rep)
+        run_full_plan(rep)
         if a.level == 'full': installer_mode(rep, 'buildcheck', 3600)
         if a.level == 'release': release_steps(rep)
     return rep.finish()
