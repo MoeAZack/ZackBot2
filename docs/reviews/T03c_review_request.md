@@ -19,6 +19,18 @@
   Mutations caught: base gate removed, malformed filtering removed.
 - **Kept as reusable test infrastructure:** it is inert unless explicitly enabled on testnet. T05b may add `kind`s (e.g. a read outage) under the same gate.
 
+**Runtime finding on 64d1528 (P2 telemetry), fixed.** The canary showed `api_refusals = 1` although both the try and the retry were refused: `_leverage_fallback` counted only the error it received. Fix:
+- A new `_lev_api_refused(sym, err)` is called at EVERY failed leverage request in `_ensure_leverage`, so a try + retry = 2. A refused try that succeeds on retry still counts 1.
+- It keeps `last_api_error`/`last_api_time` (+ the `last_error` alias) and `last_api_errors`, the last two errors.
+- `_leverage_fallback` no longer increments the counter.
+- `count`/`proceeded`/`skipped` stay decision counters, and `cooldown_checks` stays decisions without a POST.
+
+Tests:
+- the existing expectations were corrected: 1→2, and 2→4 after a second round;
+- 3 new tests: both errors kept, a refused try then success counts 1, and `last_api_errors` is bounded to 2.
+
+Mutations caught: the first-attempt count removed (6 fail), errors not kept (2 fail).
+
 **Canary procedure** (Codex executes; record a status snapshot at every step; stop on any unknown account state):
 0. **Preconditions** (/api/status):
    - PAPER/testnet; engine and exchange ok;
