@@ -1,5 +1,5 @@
 """Minimal Binance USD-M futures REST client (requests + HMAC), hedge-mode aware."""
-import hashlib, hmac, math, random, time, urllib.parse, uuid
+import email.utils, hashlib, hmac, math, random, re, threading, time, urllib.parse, uuid
 import requests
 
 MAINNET = 'https://fapi.binance.com'
@@ -19,8 +19,127 @@ class AmbiguousOrder(Exception):
         super().__init__(msg); self.tag = tag
 
 
+class ExchangeUnavailable(BinanceError):
+    """T05b: a READ was not sent because Binance is in a known outage (shared cooldown). No order is involved.
+    The message is stable (no countdown) so repeated activity lines coalesce; the seconds are in .retry_in."""
+    def __init__(self, msg, retry_in=None):
+        super().__init__(-1007, msg); self.retry_in = retry_in; self.kind = 'read'
+
+
+RETRY_AFTER_MAX = 60.0
+
+
+def retry_after(headers, now=None):
+    """Retry-After as finite seconds in [0, RETRY_AFTER_MAX]: numeric seconds or an HTTP-date; anything else -> 0.
+    Never raises (it is parsed inside the order path, where an exception would skip the client-id lookup)."""
+    try:
+        v = (headers or {}).get('Retry-After')
+        if v is None or str(v).strip() == '': return 0.0
+        v = str(v).strip()
+        try:
+            sec = float(v)
+        except ValueError:
+            dt = email.utils.parsedate_to_datetime(v)
+            sec = dt.timestamp() - (time.time() if now is None else now)
+        if not math.isfinite(sec): return 0.0
+        return min(RETRY_AFTER_MAX, max(0.0, sec))
+    except Exception:
+        return 0.0
+
+
+_SIGNED_QS = re.compile(r'(/[A-Za-z0-9_./-]*)\?[^\s\'")]*')
+
+
+def scrub(text):
+    """Drop URL query strings (timestamp / signature / ids) from an error text: signatures are never shown, and a
+    per-request timestamp would make every repeat of the same failure look like a new message."""
+    return _SIGNED_QS.sub(r'\1', str(text))
+
+
+def _scrubbed(ex):
+    """The same requests exception type, with the query string removed and NO chained cause/context: requests chains the
+    urllib3 error whose text holds the full signed URL, and a logged traceback (panel action / job) would print it."""
+    msg = scrub(ex)
+    try: clean = type(ex)(msg)
+    except Exception: clean = requests.ConnectionError(msg)
+    clean.__cause__, clean.__suppress_context__ = None, True
+    return clean
+
+
+class ExchangeHealth:
+    """T05b (local draft): one shared, bounded circuit for transient Binance failures, per client.
+    ok -> degraded (a transient failure) -> outage (OUTAGE_FAILS in a row, or no success for OUTAGE_S) -> ok (any success).
+    While in outage a read inside the cooldown fails fast without touching the network; one probe per window is let
+    through (half-open). Orders are never refused here: they always go through _order() (idempotent by client id)."""
+    OUTAGE_FAILS, OUTAGE_S, COOL_MIN, COOL_MAX = 3, 30.0, 2.0, 60.0
+
+    def __init__(self, clock=time.monotonic):
+        self.clock, self.lock = clock, threading.Lock()
+        self.state, self.since, self.fails, self.first_fail = 'ok', None, 0, None
+        self.cool, self.next_probe, self.last_ok, self.last_fail = 0.0, 0.0, None, None
+        self.fail_fast = self.probes = self.recoveries = 0
+        self.other_fails = 0                        # telemetry only: order / cancel / confirmation failures
+        self.recovered = False                      # set on outage -> ok; the engine clears it after its reconcile
+
+    def admit_read(self):
+        """None = send the read; otherwise the seconds until the next probe (the read must fail fast)."""
+        with self.lock:
+            if self.state != 'outage': return None
+            now = self.clock()
+            if now >= self.next_probe:
+                self.next_probe = now + self.cool; self.probes += 1
+                return None
+            self.fail_fast += 1
+            return round(self.next_probe - now, 1)
+
+    def ok(self):
+        with self.lock:
+            now = self.clock()
+            if self.state == 'outage': self.recovered = True; self.recoveries += 1
+            self.state, self.since, self.fails, self.first_fail, self.cool, self.last_ok = 'ok', None, 0, None, 0.0, now
+
+    def fail(self, what, retry_after=0.0, read=True):
+        """A transient failure. Only status checks (read=True: non-critical GETs) drive the circuit: an order, a cancel
+        or an order's own confirmation lookup failing is counted for telemetry but never opens it or moves next_probe
+        (otherwise one orphan cancel failing every pass would keep positions from ever being re-read)."""
+        with self.lock:
+            now = self.clock()
+            try: retry_after = float(retry_after or 0)
+            except (TypeError, ValueError): retry_after = 0.0
+            if not math.isfinite(retry_after): retry_after = 0.0
+            retry_after = min(RETRY_AFTER_MAX, max(0.0, retry_after))
+            if not read:
+                self.other_fails += 1; self.last_fail = dict(t=now, what=str(what)[:120], read=False)
+                return
+            self.fails += 1; self.last_fail = dict(t=now, what=str(what)[:120], read=True)
+            if self.first_fail is None: self.first_fail = now
+            if self.state == 'ok': self.state, self.since = 'degraded', now
+            if self.state == 'degraded' and (self.fails >= self.OUTAGE_FAILS or now - self.first_fail >= self.OUTAGE_S):
+                self.state, self.since, self.cool = 'outage', now, self.COOL_MIN
+                self.next_probe = now + max(self.cool, retry_after)
+            elif self.state == 'outage':
+                self.cool = min(self.COOL_MAX, max(self.COOL_MIN, self.cool * 2))
+                self.next_probe = now + max(self.cool * (0.8 + 0.4 * random.random()), retry_after)
+
+    def snapshot(self):
+        with self.lock:
+            return dict(state=self.state, since=self.since, consecutive_fail=self.fails, last_ok=self.last_ok,
+                        last_fail=self.last_fail, cooldown_s=self.cool, fail_fast=self.fail_fast, probes=self.probes,
+                        recoveries=self.recoveries, other_fails=self.other_fails)
+
+
+ALGO_UNSUPPORTED = (-5000, -1404, -404)    # endpoint unknown here: -5000 "Path ..., Method GET is invalid" / plain 404
 TRANSIENT = (-1001, -1003, -1006, -1007, -1008, -1015)      # disconnected / rate limit / timeout / server busy
 SAFE_METHODS = ('GET', 'DELETE')
+
+
+def is_transient(e):
+    """T05b: the request failed because Binance was unreachable/busy - its answer is UNKNOWN, not a business refusal.
+    _req raises BinanceError(-status) for a busy HTTP answer and -1000-status when the body was not JSON."""
+    if isinstance(e, ExchangeUnavailable): return True
+    if not isinstance(e, BinanceError): return False
+    c = e.code if isinstance(e.code, int) else None
+    return c is not None and (c in TRANSIENT or c in (-418, -429) or -599 <= c <= -500 or -1599 <= c <= -1500)
 
 
 def new_cid(prefix='zb'):
@@ -70,6 +189,13 @@ class Futures:
         try: self.sync_time()
         except Exception: pass
 
+    @property
+    def health(self):
+        """The shared outage circuit (created on first use, so clients built without __init__ get one too)."""
+        h = self.__dict__.get('_health')
+        if h is None: h = self.__dict__['_health'] = ExchangeHealth()
+        return h
+
     def sync_time(self):
         st = self.s.get(self.base + '/fapi/v1/time', timeout=10).json()['serverTime']
         self.offset = st - int(time.time() * 1000)
@@ -88,18 +214,24 @@ class Futures:
             data = {'code': -1000 - r.status_code, 'msg': f'HTTP {r.status_code} (not JSON)'}
         return r, data
 
-    def _req(self, method, path, params=None, signed=False, retry=None):
+    def _req(self, method, path, params=None, signed=False, retry=None, critical=False):
         """GET/DELETE are retried on network errors, rate limits and server errors (with backoff and Retry-After).
         POST is never blindly retried: order placement goes through _order(), which confirms by client order id."""
         params = {k: v for k, v in (params or {}).items() if v is not None}
         retry = (method in SAFE_METHODS) if retry is None else retry
         url = self.base + path
+        read = method == 'GET' and not critical          # T05b: only status checks drive / obey the outage circuit
+        if read:                                         # reads share one cooldown during a known outage
+            wait = self.health.admit_read()
+            if wait is not None:
+                raise ExchangeUnavailable(f'Binance outage: status check {path} not sent (waiting for the next probe)', wait)
         for attempt in range(4 if retry else 2):
             last = attempt == (3 if retry else 1)
             try:
                 r, data = self._once(method, url, params, signed)
-            except requests.RequestException:
-                if not retry or last: raise
+            except requests.RequestException as ex:
+                self.health.fail(f'{method} {path}: {type(ex).__name__}', read=read)
+                if not retry or last or (read and self.health.state == 'outage'): raise _scrubbed(ex) from None
                 time.sleep(min(8, 0.5 * 2 ** attempt + random.random())); continue
             code = data.get('code') if isinstance(data, dict) else None
             if isinstance(code, str):                   # algo endpoints answer {"code":"200","msg":"success"}
@@ -111,12 +243,18 @@ class Futures:
                 self.sync_time(); continue
             busy = r.status_code in (418, 429) or r.status_code >= 500 or code in TRANSIENT
             if busy:
+                ra = retry_after(r.headers)
+                self.health.fail(f'{method} {path}: HTTP {r.status_code} code {code}', ra, read=read)
+                if retry and not last and read and self.health.state == 'outage':
+                    raise ExchangeUnavailable(f'Binance outage: status check {path} failed (HTTP {r.status_code}, code {code})',
+                                              self.health.cool)
                 if not retry or last:
                     if method not in SAFE_METHODS and (r.status_code >= 500 or code in (-1001, -1006, -1007)):
                         raise AmbiguousOrder(f'HTTP {r.status_code} on {path}')
                     raise BinanceError(code or -r.status_code, data.get('msg') if isinstance(data, dict) else f'HTTP {r.status_code}')
-                wait = float(r.headers.get('Retry-After') or 0) or min(8, 0.5 * 2 ** attempt + random.random())
+                wait = ra or min(8, 0.5 * 2 ** attempt + random.random())
                 time.sleep(min(wait, 30)); continue
+            self.health.ok()                             # Binance answered (even a business error proves it is up)
             if isinstance(data, dict) and code not in (None, 0, 200):
                 raise BinanceError(code, data.get('msg'))
             self.last_ok = time.time()
@@ -124,7 +262,8 @@ class Futures:
 
     def get_order(self, symbol, cid):
         try:
-            return self._req('GET', '/fapi/v1/order', dict(symbol=symbol, origClientOrderId=cid), signed=True)
+            return self._req('GET', '/fapi/v1/order', dict(symbol=symbol, origClientOrderId=cid), signed=True,
+                             critical=True)      # T05b: an order's own confirmation is never skipped by the circuit
         except BinanceError as e:
             if e.code == -2013: return None             # order does not exist
             raise
@@ -166,8 +305,9 @@ class Futures:
         return self._req('GET', '/fapi/v1/klines', dict(symbol=symbol, interval=interval, limit=limit,
                                                           endTime=end_time, startTime=start_time))
 
-    def marks(self):
-        return {x['symbol']: float(x['markPrice']) for x in self._req('GET', '/fapi/v1/premiumIndex')}
+    def marks(self, critical=False):
+        """critical=True (a protective action such as a manual stop move) is never skipped by the outage circuit."""
+        return {x['symbol']: float(x['markPrice']) for x in self._req('GET', '/fapi/v1/premiumIndex', critical=critical)}
 
     def premium(self, symbol):
         return self._req('GET', '/fapi/v1/premiumIndex', dict(symbol=symbol))
@@ -179,10 +319,10 @@ class Futures:
     def account(self):
         return self._req('GET', '/fapi/v2/account', signed=True)
 
-    def positions(self):
-        """{(symbol, 'LONG'|'SHORT'): abs qty}"""
+    def positions(self, critical=False):
+        """{(symbol, 'LONG'|'SHORT'): abs qty}. critical=True (sizing an order) is never skipped by the outage circuit."""
         out = {}
-        for p in self._req('GET', '/fapi/v2/positionRisk', signed=True):
+        for p in self._req('GET', '/fapi/v2/positionRisk', signed=True, critical=critical):
             amt = float(p['positionAmt'])
             if amt == 0: continue
             side = p.get('positionSide', 'BOTH')
@@ -369,9 +509,9 @@ class Futures:
             r = self._req('GET', '/fapi/v1/openAlgoOrders', dict(symbol=symbol), signed=True)
             for o in (r.get('orders', r) if isinstance(r, dict) else r) or []:
                 if isinstance(o, dict) and 'algoId' in o: tags.add(f"a:{o['algoId']}")
-        except BinanceError:
-            pass
-        return tags
+        except BinanceError as e:                        # unknown algo-stop state is NOT "no algo stops" (T05b review):
+            if isinstance(e, ExchangeUnavailable) or e.code not in ALGO_UNSUPPORTED: raise
+        return tags                                      # only an explicit "no such endpoint" means no algo stops
 
     def cancel_all(self, symbol):
         for path in ('/fapi/v1/allOpenOrders', '/fapi/v1/algoOpenOrders'):
