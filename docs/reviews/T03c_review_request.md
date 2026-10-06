@@ -1,5 +1,52 @@
 # T03c: automatic leverage handling. Review request
 
+## Exceptional-path canary: testnet-only leverage-refusal injector (Codex "Claude implement A", 2026-10-06)
+
+**Why.** The above-cap exception runs only when Binance refuses the leverage POST twice AND the coin's live leverage is above `MAX_LEVERAGE`. Testnet no longer refuses naturally, so the refusal is injected deterministically. Everything else stays real Binance testnet: account, positionRisk, open orders (classic + algo), brackets, margin state, the market entry and the stop.
+
+**Code** (binance_client.py, engine.py):
+- `testnet_faults(base, kind)` returns symbols ONLY when `base == TESTNET` exactly, from `ZB_TESTNET_FAULTS="lev_refuse:SOLUSDT[,lev_refuse:...]"`. A malformed or unknown entry is ignored: an unknown kind, a lowercase or empty symbol, or a symbol with spaces or other characters.
+- `Futures.set_leverage(sym, …)` raises `BinanceError(-1000, 'injected testnet refusal (ZB_TESTNET_FAULTS)')` for a listed symbol before sending anything. Every other symbol, and any MAINNET client, behaves exactly as before.
+- The engine logs one warning at startup listing only the refused symbols. No keys, account data or env dump.
+- **Tests** (`tests/test_testnet_faults.py`, 14):
+  - inert by default;
+  - the listed testnet symbol refuses and nothing is sent;
+  - other symbols stay normal;
+  - MAINNET and look-alike bases stay normal even with the flag set;
+  - malformed values inject nothing;
+  - several symbols and whitespace.
+
+  Mutations caught: base gate removed, malformed filtering removed.
+- **Kept as reusable test infrastructure:** it is inert unless explicitly enabled on testnet. T05b may add `kind`s (e.g. a read outage) under the same gate.
+
+**Canary procedure** (Codex executes; record a status snapshot at every step; stop on any unknown account state):
+0. **Preconditions** (/api/status):
+   - PAPER/testnet; engine and exchange ok;
+   - all lots protected; 0 untracked / orphan / unprotected;
+   - no bot lot on SOLUSDT.
+1. **Set SOLUSDT above the cap.** SOL leverage on testnet = 20x (cap 10x), one signed POST /fapi/v1/leverage. Confirm marginType CROSSED.
+2. **Enable the injector.** Restart the app with `ZB_TESTNET_FAULTS=lev_refuse:SOLUSDT`. Check the startup warning, and that the existing lots are re-managed and still protected.
+3. **One entry.** "Take now" SOLUSDT at the smallest size (0.25% risk). Exception entries always go at market.
+4. **Pass criteria:**
+   - 2 refusals in `lev_refusals[SOLUSDT].api_refusals`, cooldown set;
+   - margin state 20x CROSSED;
+   - outcome `exposure` (went ahead), with effective leverage, worst margin ratio, bracket maintenance and snapshot counts recorded;
+   - the fill is confirmed and its stop is OPEN on Binance at the lot's stop price;
+   - the lot has `lev_exception`;
+   - levDlg shows the decision.
+5. **Add pause.** DCA/pyramid adds and maker fallback show the paused reason. Restart once: the pause persists and the stop is still confirmed.
+6. **Negative check:**
+   - while SOL is still in cooldown, open a tiny MANUAL position on another coin in the testnet UI (untracked);
+   - "Take now" SOLUSDT again. Expect a SKIP (check `reconcile`/untracked) and no order;
+   - close the manual position.
+7. **Clean up:**
+   - close the canary lot from the panel (the stop is cancelled only after the close; no orphans);
+   - restart WITHOUT `ZB_TESTNET_FAULTS` and confirm there is no startup warning;
+   - set SOL leverage back to 10x;
+   - the final status equals step 0.
+8. **Record:** step snapshots, lev_refusals and Binance order/stop ids (never keys) go in docs/reviews/T03c_review_gpt.md.
+
+
 ## Round 2 follow-ups (Claude)
 
 Two fail-open edges found in Claude's review of `50c10fa`/`0640bbf`, fixed conservatively (no safety check weakened):
