@@ -106,8 +106,8 @@ Codex independently reproduced and closed six remaining integration gaps:
    readers now require finite positive integers, and position/order numeric adapters reject bool/NaN/Inf before normalization.
 5. **P2 malformed boolean flags:** Python treated the string `"false"` as true, which could hide an exposure-increasing order
    as reduce-only. Required exchange flags must now be present and actual booleans.
-6. **P2 account-specific bracket coefficient:** `notionalCoef` was ignored. Effective floors, caps and cumulative maintenance
-   are scaled consistently before continuity validation and maintenance calculations.
+6. **P2 account-specific bracket coefficient:** `notionalCoef` was ignored. The first integration attempted to scale the
+   schedule; round 3 supersedes that behavior because Binance does not document whether returned rows are already adjusted.
 
 ## Evidence so far
 
@@ -127,3 +127,29 @@ would safely but unnecessarily disable the exception whenever a fully accounted 
 1. Push code commit `50c10fa` plus this evidence update, then require fast/CodeQL on the exact remote head.
 2. If review remains clean, apply `full-ready` once for that exact head and require the protected full gate.
 3. Only after code acceptance: ask the owner separately before any build/install, ZackBot restart or bounded testnet canary.
+
+---
+
+# T03c automatic leverage handling — Codex review, round 3
+
+*2026-10-06 14:00 Africa/Cairo; exact head `001a0322c24c771762b4124850823ab4ce3c2068`*
+
+## Verdict
+
+**Code review clean. Apply `full-ready` once to this exact documentation head after the normal fast/CodeQL checks pass. Do
+not install or run a testnet canary without the owner's separate approval.**
+
+Claude's independent review of round 2 found two valid follow-ups, both resolved conservatively:
+
+1. Binance does not document whether `notionalCoef` has already been applied to the returned bracket rows. The earlier
+   multiplication could therefore understate maintenance. The client now accepts only an omitted/unit coefficient and
+   rejects every other or malformed coefficient; the exception consequently fails closed and the schedule is not cached.
+2. A legacy persisted exceptional maker record can no longer be re-priced on stale approval. Any still-open order is
+   cancelled immediately, a terminal partial fill is protected through the normal lot path, and no market remainder is sent.
+
+Exact-head Windows evidence: leverage/safety/grid/fills **320/320 passed in 27.43 s**; Python compilation and diff validation
+pass. GitHub exact-head fast passed in 4:38 and both CodeQL analyses plus the summary are green. No open P1/P2 finding remains.
+
+The pre-existing normal maker/external-leverage race is not represented as fixed: an external actor can change exchange
+leverage while an ordinary maker order rests. Track that separately as a general maker-admission hardening item; it does not
+weaken the new above-cap exception, which never rests as maker.

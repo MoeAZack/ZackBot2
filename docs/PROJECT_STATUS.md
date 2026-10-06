@@ -1,6 +1,6 @@
 # ZackBot owner overview
 
-*Last refreshed: 2026-10-06 13:23 Cairo (Africa/Cairo) by Codex, on branch `codex-t03c-integration`. This is the plain-language owner view. `ROADMAP.md` and `docs/reviews/` hold the detailed scope and evidence.*
+*Last refreshed: 2026-10-06 14:00 Cairo (Africa/Cairo) by Codex, on branch `codex-t03c-integration`. This is the plain-language owner view. `ROADMAP.md` and `docs/reviews/` hold the detailed scope and evidence.*
 
 ## Where we are now
 
@@ -11,9 +11,9 @@
 | Installed application | **T03b installed and rollback-proven.** SHA-256 `203B155474942709B6AD40C3517BA32D058721664D245191C900068CBC4A60A6`; the drill restored the same build and hash exactly. |
 | Latest accepted commit | `master` `cb5092b` (T04d accepted and merged) |
 | Current ticket | **T03c: automatic fail-closed leverage handling** |
-| Stage | **Claude round 1b integrated with Codex's independent review. Focused 335/335 and complete local 514/514 gates passed; exact-head GitHub gates remain.** |
-| What Claude is doing | Round 1b and its 42-mutation adversarial evidence are on PR #9; waiting for the integrated Codex handoff. |
-| What Codex is reviewing | The combined account-wide exposure proof, exact exchange-stop proof and stale maker/cache edge cases. No executable or runtime action is involved. |
+| Stage | **Code review clean at `001a032`; exact-head focused, fast and CodeQL gates pass. One labelled full gate remains before code acceptance.** |
+| What Claude is doing | Round-2 follow-ups are published and reviewed: ambiguous bracket coefficients fail closed and legacy exceptional makers cannot be re-placed. |
+| What Codex is reviewing | Final documentation head and the single exact-head `full-ready` gate. No executable or runtime action is involved. |
 | Your action | **None.** |
 
 ## Latest test results
@@ -41,6 +41,7 @@
 | T04d round-three Windows review | Exact implementation head `b6d4e81`: **51/51 passed** in 14.88 s, including a fresh `core.autocrlf=true` clone and byte-exact manifest proof. |
 | T04d GitHub | Final head `cb5092b`: fast, CodeQL and exact-head `full-ready` verification passed; PR #7 merged through protected master. |
 | T03c integrated Windows review | Claude head `a8e7b79` plus Codex code commit `50c10fa`: focused leverage/safety/grid/fill/maker set **335/335 passed**; complete suite **514/514 passed in 7:01**; isolated causality **13/13 passed in 3:35**; Python compilation and diff validation pass. |
+| T03c round-3 exact head | `001a032`: leverage/safety/grid/fills **320/320 passed in 27.43 s**; Python compilation and diff validation pass; GitHub fast **PASS in 4:38** and CodeQL green. Code review clean; labelled full remains. |
 
 Automated test-suite results use a fake exchange. The final T03a gate used the real Binance Futures testnet account; it correctly sent no entry order because leverage was above the cap.
 
@@ -97,6 +98,8 @@ Automated test-suite results use a fake exchange. The final T03a gate used the r
 - Stop proof now validates the exact stop-market type, mark-price trigger basis, open status, side, quantity and trigger; malformed exchange values fail closed.
 - Cached leverage is rechecked against Binance; account-specific bracket coefficients and strict numeric/boolean parsing are covered by direct tests.
 - No install, restart or testnet order has been performed for T03c.
+- Binance's ambiguous `notionalCoef` is no longer scaled speculatively: any non-unit value rejects the above-cap exception.
+- Legacy exceptional maker records are cancelled/finalized without re-pricing or a market remainder.
 
 ## Bugs
 
@@ -128,7 +131,10 @@ Automated test-suite results use a fake exchange. The final T03a gate used the r
 | Fixed; T03c GitHub/runtime gates pending | High | A non-stop conditional order could satisfy the old stop-tag proof | Exact protective order type, trigger basis, status, side, quantity and trigger are now required. |
 | Fixed; T03c GitHub/runtime gates pending | High | Cached leverage could hide an external change above the cap | Every cache reuse is verified read-only against Binance. |
 | Fixed; T03c GitHub/runtime gates pending | Medium | Fractional/bool leverage and string boolean flags could normalize incorrectly | Strict exchange adapters reject invalid numbers and non-boolean flags. |
-| Fixed; T03c GitHub/runtime gates pending | Medium | User-specific Binance bracket coefficient was ignored | Floor, cap and cumulative maintenance are scaled consistently and continuity-tested. |
+| Superseded during T03c review | Medium | User-specific Binance bracket coefficient was initially ignored, then speculatively scaled | Round 3 replaces scaling with fail-closed handling because Binance's returned-row semantics are undocumented. |
+| Fixed; T03c full/runtime gates pending | High | Ambiguous `notionalCoef` scaling could understate maintenance if Binance already adjusted returned tiers | Non-unit or malformed coefficients now fail closed and are never cached. |
+| Fixed; T03c full/runtime gates pending | High | Legacy exceptional maker records could be re-priced using stale approval | They are cancelled/finalized without re-placement or market fallback; partial fills use the normal protected-lot path. |
+| Open follow-up | Medium | An external leverage change can occur while an ordinary within-cap maker order rests | General maker-admission hardening; the new above-cap exception is unaffected because it never rests as maker. |
 
 ## Open risks
 
