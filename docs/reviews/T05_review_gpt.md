@@ -114,3 +114,22 @@ Every `Engine` constructor starts a permanent daemon thread. Its bound target st
 3. Any malformed or older JSONL record is skipped/countable and cannot break status.
 4. Engine/replay/test lifecycle leaves no telemetry threads behind, including construction failure.
 5. The 28 focused tests, existing order-path tests, full suite and fresh GitHub fast/full checks pass after rebasing onto protected `master`.
+
+
+---
+
+## Round 3 review — one lifecycle race remains
+
+*Reviewed exact fix head `ba8381049e30ad33c70b8ac1d3ce3eeda1a879ca` on 2026-10-06 (Africa/Cairo).*
+
+The round-two changes correctly establish one process-wide writer per telemetry path, retain a stuck writer in visible `closing` state, distinguish attempted/confirmed/pending/failed fallbacks, reject malformed history records, start writers lazily, and close replay/test writers. The four round-two findings are otherwise resolved. The push fast check passed in 4m30s; the PR full check was still running when this review was written. Nothing was installed or run against Binance.
+
+### P2 — `emit()` can accept a record after `close()` has already stopped the writer
+
+`FillWriter.emit()` checks `closing` and starts the thread while holding `self.lock`, but releases that lock before `q.put_nowait(rec)` and before incrementing `accepted` (`engine.py:63-78`). `FillWriter.close()` can acquire the lock in that gap, set `closing`, observe an empty queue, set the stop event, join the now-idle thread, and return success. The suspended emitter can then resume, enqueue the record on the stopped/orphaned writer, and count it as accepted. The record is never written, is not counted as dropped or a write error, and a later `fill_writer(path)` may replace the apparently stopped writer while its abandoned queue still contains work.
+
+This does not block or alter an order, but it breaks the lifecycle guarantee introduced by this round and makes the telemetry health counters untruthful at shutdown/replay cleanup.
+
+**Required fix:** make the closing check and queue admission one atomic operation under `self.lock` (including the `accepted`/`dropped` counter update). `close()` must not be able to mark the writer closing between the successful admission decision and `put_nowait`. Keep the put non-blocking. Add a deterministic race test that pauses an emitter immediately before queue admission, calls `close()`, then releases the emitter and proves either (a) the admitted record is persisted before close succeeds, or (b) it is rejected and counted as dropped; it must never remain accepted in a dead writer's queue.
+
+After that narrow fix, rerun `tests/test_fills.py` plus the fast check. A new full 25-minute run is unnecessary if the only code change is this lock-boundary fix and the new focused test; the already-running full result on `ba83810` can remain supporting evidence, followed by one final full run only when T05 is otherwise ready to merge.
