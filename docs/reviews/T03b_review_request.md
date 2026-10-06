@@ -5,7 +5,8 @@
 | Item | Value |
 |---|---|
 | Branch | `t03b-installer-powershell` (opened by Codex at a1963f1, from master f9778ca) |
-| Head for review | the PR head. The full SHA is in the READY FOR CODEX comment |
+| Head for review | the PR head. The full SHA is in the latest READY / FIXED FOR CODEX comment |
+| Round | **Review round 1 fixed** (Codex `e98d409`: 2x P1, P2, P3). See the section below |
 | Class | Deployment only. No trading, engine, panel or API change |
 | Runtime | **Nothing installed, no drill run, ZackBot untouched.** A real install plus the rollback drill needs separate owner approval |
 
@@ -86,3 +87,35 @@ Pending (official): GitHub verify fast/full. A Windows targeted run (`tests/test
 1. Is rolling back on an unexpected exception after the stop the right call (vs. failing and leaving the bot down as CMD effectively did)?
 2. Refusing an unknown mode (exit 2) instead of installing: OK?
 3. Windows PowerShell 5.1 specifics I can't run here: `ProcessStartInfo` quoting (CommandLineToArgvW rules, tested here), `System.Management` for the source-run app.py stop, and `WScript.Shell` via `[Activator]`. Please run the flow tests under 5.1 on the PC.
+
+## Review round 1: dispositions (Codex review `e98d409` of `9ee9d28`)
+
+All four findings are **confirmed defects** and fixed on the branch. No installer, drill or bot stop ran.
+
+| # | Finding | Disposition | Fix |
+|---|---|---|---|
+| P1 | An invalid drill (the new exe answers although launched with `--simulate-failed-launch`) left the untrusted build installed and running | Confirmed defect | Step 8 now marks `DrillInvalid`, records `launch` as failed and returns to the **verified rollback**: stop the new exe, restore `ZackBot.prev.exe`, hash check, start, HMAC ping of the old build. The run then fails with `ROLLBACK DRILL INVALID: ... - <rollback note>`. `DRILL_PASSED` is impossible on this path. The log says `ROLLBACK: invalid drill - ...`. |
+| P1 | A failed stop attempt had no runtime verification or recovery | Confirmed safety concern | New `Invoke-StopRecovery` (step `stop_recovery`). It **never swaps**. (1) It proves the previous build still answers (HMAC ping, 20 s). (2) If it doesn't, and the installed exe still matches its verified backup hash, it restarts it **once** and requires the build-specific HMAC answer (60 s). (3) Otherwise it reports unverified and does not restart an exe whose hash changed. It writes `STOP_RECOVERY verified=0/1 - <note>` and always fails with `the running ZackBot did not stop - the exe was NOT replaced; <note>`. |
+| P2 | The record overstated recovery (`installed_after` after an unverified rollback; `bot_stopped` true after a failed stop) | Confirmed defect | `installed_after` is set **only for a build proven running** (BUILD_DONE, verified rollback, verified stop recovery), otherwise null. New `installed_file_sha256` holds the last verified file hash. `bot_stopped` is replaced by `bot_stop_attempted` + `bot_stop_confirmed`. New `stop_recovery {attempted, verified, note}`. |
+| P3 | The launcher re-expanded the mode unquoted | Confirmed defect (local robustness) | `powershell ... -File "%~dp0installer.ps1" "%ZBMODE%"`. The argument is captured with `set "ZBMODE=%~1"`, so metacharacters stay one argument and installer.ps1 refuses it (exit 2). The launcher message now reads "refused the mode or did not run". |
+
+New tests:
+- invalid drill: old exe installed, the new one stopped (second `stop` before restore), rollback verified, BUILD_FAILED, no DRILL_PASSED, `installed_after` = OLD1;
+- failed stop with the old bot still answering: no swap, no start, ping old, `stop`=false then `stop_recovery`=true, `bot_stop_confirmed`=false, rollback not attempted;
+- failed stop that killed the bot: one restart of the verified old exe plus ping;
+- unrecoverable stop: verified=false, `installed_after` null;
+- an exe whose hash changed is never restarted;
+- the record never claims an unverified install (rollback without an answer; unknown old build id);
+- static launcher quoting;
+- Windows-only: `build_app.bat "x&echo PWNED_BY_CMD"` exits 2 and cmd.exe does not run the injected echo.
+
+Mutations, each caught:
+- invalid drill without rollback (1 failed);
+- failed stop without recovery (4);
+- optimistic `installed_after` (10);
+- `StopConfirmed` never set (2);
+- `bot_stop_confirmed` sourced from the attempt (1);
+- restart without the hash check (1);
+- unquoted mode (1).
+
+Sandbox (stand-in runner, PowerShell 7.4.6): `tests/test_installer.py` 56 passed, 2 skipped (both Windows-only cmd.exe tests). Codex's earlier Windows 5.1 runs (53 passed, 269 bare, BUILDCHECK_OK) were on `9ee9d28`; please re-run on the new head.
