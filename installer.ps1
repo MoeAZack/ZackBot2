@@ -17,7 +17,7 @@
 # environment (T03: a foreign PSModulePath made Get-FileHash disappear) cannot break it. Every outside effect (processes,
 # copies, the checksum/ping helper, stopping the bot, shortcuts, pauses) goes through one small function, so the tests can
 # dot-source this file with -NoRun, replace those functions with fakes and run the whole flow on any machine.
-param([string]$Mode = 'install', [switch]$NoRun)
+param([string]$Mode = 'install', [switch]$NoRun, [switch]$FromLauncher)
 Set-StrictMode -Version 2.0
 $ErrorActionPreference = 'Stop'
 
@@ -34,7 +34,7 @@ function New-InstallerState([string]$mode, [string]$src, [string]$localAppData) 
         Drill = ($mode -eq 'drill'); Preflight = ($mode -eq 'preflight'); BuildCheck = ($mode -eq 'buildcheck')
         BuildId = ''; NewHash = ''; OldHash = ''; OldBuild = ''; HaveOld = $false; Stopped = $false; InRollback = $false
         Warn = ''; RbOk = $false; RbNote = ''; RbHash = ''; RbTried = $false; StopCalled = $false; StopConfirmed = $false; DrillInvalid = $false
-        RecTried = $false; RecOk = $false; RecNote = ''; FileHash = ''
+        RecTried = $false; RecOk = $false; RecNote = ''; FileHash = ''; FilePresent = $null; TouchesInstall = ($mode -eq 'install' -or $mode -eq 'drill')
         WarnList = [Collections.Generic.List[string]]::new()
         Steps = [Collections.Generic.List[object]]::new(); Current = ''; CurrentAt = ''
         Started = ''; Finished = ''; Verdict = ''; Reason = ''; ExitCode = $null
@@ -102,7 +102,8 @@ function ConvertTo-JsonText($v, [int]$ind = 0) {
 function Get-Record {
     $s = $script:S
     # installed_after = the build PROVEN running at the end (HMAC ping with its build id); null when nothing was proven.
-    # installed_file_sha256 = what the exe file is (last verified hash), independent of whether it runs.
+    # installed_file_present / installed_file_sha256 = the installed exe as it is at the END of the run (re-read right
+    # before the verdict; null/false when there is no file), independent of whether it runs.
     $installed = $null
     if ($s.Verdict -eq 'BUILD_DONE') { $installed = [ordered]@{ build = $s.BuildId; sha256 = $s.NewHash } }
     elseif ($s.RbOk) { $installed = [ordered]@{ build = $s.OldBuild; sha256 = $s.RbHash } }
@@ -115,7 +116,7 @@ function Get-Record {
         build_id = (& $nz $s.BuildId); new_exe_sha256 = (& $nz $s.NewHash)
         previous = [ordered]@{ build = (& $nz $s.OldBuild); sha256 = (& $nz $s.OldHash) }
         bot_stop_attempted = $s.StopCalled; bot_stop_confirmed = $s.StopConfirmed
-        installed_after = $installed; installed_file_sha256 = (& $nz $s.FileHash)
+        installed_after = $installed; installed_file_present = $s.FilePresent; installed_file_sha256 = (& $nz $s.FileHash)
         steps = $s.Steps
         warnings = $s.WarnList
         rollback = [ordered]@{ attempted = $s.RbTried; verified = $s.RbOk; restored_sha256 = (& $nz $s.RbHash); note = (& $nz $s.RbNote) }
@@ -142,9 +143,20 @@ function Complete-Step([bool]$ok = $true, [string]$detail = '') {
     Save-Record
 }
 
+function Update-InstalledFileState {
+    # Re-read the installed exe (install/drill only): present + its actual hash, or absent. Never throws.
+    $s = $script:S
+    if (-not $s.TouchesInstall) { return }
+    try {
+        if (-not [IO.File]::Exists($s.Exe)) { $s.FilePresent = $false; $s.FileHash = ''; return }
+        $s.FilePresent = $true; $s.FileHash = Get-FileSha $s.Exe          # '' (-> null) if it cannot be read
+    } catch { $s.FileHash = ''; try { Write-Log ('  installed exe state not read: ' + $_.Exception.Message) } catch { } }
+}
+
 function Set-Verdict([string]$verdict, [string]$reason, [int]$code) {
     $s = $script:S
     if ($s.Current) { Complete-Step ($code -eq 0) $reason }
+    Update-InstalledFileState
     $s.Verdict = $verdict; $s.Reason = $reason; $s.ExitCode = $code; $s.Finished = Get-CairoTime
     Save-Record
 }
@@ -506,6 +518,9 @@ function Invoke-Rollback {
     [void](Stop-Bot)
     if (-not $s.HaveOld) {
         Remove-FileSafe $s.Exe
+        if ([IO.File]::Exists($s.Exe)) {
+            Stop-Install "the new version did not start correctly (there was no previous version to restore) and the failed exe could NOT be removed - delete $($s.Exe) before starting ZackBot"
+        }
         Stop-Install 'the new version did not start correctly (there was no previous version to restore)'
     }
     [void](Copy-FileSafe $s.Prev $s.Exe)
@@ -574,9 +589,27 @@ function Invoke-Flow {
     return Invoke-Rollback
 }
 
+function Get-LauncherMode([string]$cmdline) {
+    # build_app.bat never expands its arguments (CMD would interpret quotes and & in them). It hands its own raw command
+    # line (CMDCMDLINE, via delayed expansion = not re-parsed) to us; we pick the mode here. Quotes are dropped and the
+    # rest split on spaces; the result must be nothing (= install) or exactly one known mode. Anything else -> $null.
+    $i = $cmdline.ToLowerInvariant().LastIndexOf('build_app.bat')
+    if ($i -lt 0) { return $null }
+    $rest = $cmdline.Substring($i + 'build_app.bat'.Length).Replace('"', ' ')
+    $tokens = @($rest.Split([char[]]@(' ', "`t"), [StringSplitOptions]::RemoveEmptyEntries))
+    if ($tokens.Count -eq 0) { return 'install' }
+    if ($tokens.Count -eq 1 -and @('install', 'drill', 'preflight', 'buildcheck') -contains $tokens[0].ToLowerInvariant()) { return $tokens[0].ToLowerInvariant() }
+    return $null
+}
+
 function Invoke-Main([string]$mode, [string]$src, [string]$localAppData) {
     if (@('install', 'drill', 'preflight', 'buildcheck') -notcontains $mode) {
-        Write-Say "usage: installer.ps1 install|drill|preflight|buildcheck (got '$mode')"; return 2
+        Write-Say "usage: installer.ps1 install|drill|preflight|buildcheck (got '$mode')"
+        if ($mode.StartsWith('refused: ')) {
+            Write-Say 'build_app.bat takes no argument (install) or exactly one of: preflight, buildcheck, drill. Nothing was changed.'
+            Write-Say 'From an open Command Prompt start it as: cmd /c build_app.bat <mode>   (or double-click it / rollback_drill.bat).'
+        }
+        return 2
     }
     $script:S = New-InstallerState $mode $src $localAppData
     $script:FailWhy = ''
@@ -600,5 +633,9 @@ function Invoke-Main([string]$mode, [string]$src, [string]$localAppData) {
 
 if (-not $NoRun) {
     $src = [IO.Path]::GetDirectoryName($MyInvocation.MyCommand.Path)
+    if ($FromLauncher) {
+        $Mode = Get-LauncherMode ([string]$env:ZB_CMDLINE)
+        if (-not $Mode) { $Mode = 'refused: ' + [string]$env:ZB_CMDLINE }          # Invoke-Main prints usage, exit 2
+    }
     exit (Invoke-Main $Mode $src $env:LOCALAPPDATA)
 }
