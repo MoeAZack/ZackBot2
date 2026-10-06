@@ -133,48 +133,124 @@ def test_merge_rejects_an_unexpected_slice(monkeypatch, tmp_path):
 
 
 # ---------------------------------------------------------------- required checks: never skipped, never reused
+REQUIRED = ('verify fast', 'verify full')
+_NAME_EXPR = re.compile(r"\$\{\{ github\.event\.label\.name == '([^']+)' && '([^']+)' \|\| '([^']+)' \}\}$")
+
+
+def _job_blocks(wf):
+    body = wf.split('\njobs:\n')[1]
+    return re.findall(r'^  ([\w-]+):\n((?:(?:    .*)?\n)*)', body + '\n', re.M)
+
+
+def _resolve(expr, label):
+    """The job name / job `if` exactly as used in these workflows, for a given event label (anything else -> error)."""
+    m = _NAME_EXPR.fullmatch(expr)
+    if m: return m.group(2) if label == m.group(1) else m.group(3)
+    m = re.fullmatch(r"github\.event\.label\.name == '([^']+)'", expr)
+    if m: return label == m.group(1)
+    if expr == 'always()': return True
+    if '${{' not in expr.replace('${{ matrix.part }}', ''): return expr   # a matrix name is static per event (never required)
+    raise AssertionError(f'unmodelled expression {expr!r}')
+
+
+def _triggered(wf, event, action):
+    on = _on(wf)
+    if event == 'push': return on.lstrip().startswith('push:')
+    if not on.lstrip().startswith('pull_request:'): return False
+    m = re.search(r'types: \[([^\]]+)\]', on)
+    types = [t.strip() for t in m.group(1).split(',')] if m else ['opened', 'synchronize', 'reopened']   # GitHub default
+    return action in types
+
+
+def _published(event, action=None, label=None):
+    """Every check name each workflow publishes for one event: [(file, name, 'run'|'skipped')]."""
+    out = []
+    for f, wf in WORKFLOWS.items():
+        if not _triggered(wf, event, action): continue
+        for _, block in _job_blocks(wf):
+            name = _resolve(re.search(r'^    name: (.+)$', block, re.M).group(1), label)
+            cond = re.search(r'^    if: (.+)$', block, re.M)
+            out.append((f, name, 'run' if cond is None or _resolve(cond.group(1), label) else 'skipped'))
+    return out
+
+
 def test_each_required_name_has_exactly_one_producer():
-    """verify fast: only verify-fast.yml (PR). verify full: only verify.yml (dispatched). push fast: only verify-push.yml."""
-    owners = {n: [f for f, wf in WORKFLOWS.items() if n in _jobs(wf)] for n in ('verify fast', 'verify full', 'push fast')}
+    """verify fast: only verify-fast.yml (PR). verify full: only verify.yml (full-ready label). push fast: only
+    verify-push.yml."""
+    owners = {n: sorted({f for ev in (('pull_request', a, l) for a in ('opened', 'synchronize', 'reopened', 'labeled')
+                                       for l in (None, 'full-ready', 'bug')) for f, nm, _ in _published(*ev) if nm == n}
+                        | {f for f, nm, _ in _published('push') if nm == n}) for n in ('verify fast', 'verify full', 'push fast')}
     assert owners == {'verify fast': ['verify-fast.yml'], 'verify full': ['verify.yml'], 'push fast': ['verify-push.yml']}
     assert _jobs(WQ) == ['verify fast'] and _jobs(WP) == ['push fast']
-    assert set(_jobs(WF)) == {'full slice ${{ matrix.part }}', 'verify full'}
 
 
 def test_triggers_one_fast_run_per_feature_commit_and_no_full_on_pr():
-    """Owner speed decision + Codex round 2: a PR commit gets ONE fast run (PR workflow) and NO full run; push
-    verification is master-only; the full gate is workflow_dispatch only."""
+    """Owner speed decision + Codex rounds 2/4: an ordinary PR event (opened/synchronize/reopened) gets ONE "verify fast"
+    and NO "verify full" in any state; push verification is master-only; the full gate is the labelled event only."""
     assert _on(WQ).strip() == 'pull_request:\n    branches: [master]'
     assert _on(WP).strip() == 'push:\n    branches: [master]'
-    full_on = _on(WF)
-    assert 'workflow_dispatch:' in full_on and 'pull_request' not in full_on and 'push:' not in full_on and 'schedule' not in full_on
-    for f, wf in WORKFLOWS.items():                                         # nothing that runs on a PR/push makes "verify full"
-        if 'pull_request' in _on(wf) or 'push:' in _on(wf): assert 'verify full' not in _jobs(wf), f
+    assert _on(WF).strip() == 'pull_request:\n    types: [labeled]\n    branches: [master]'
+    for action in ('opened', 'synchronize', 'reopened'):
+        got = _published('pull_request', action)
+        assert got == [('verify-fast.yml', 'verify fast', 'run')], (action, got)
+    assert _published('push') == [('verify-push.yml', 'push fast', 'run')]
+    for f, wf in WORKFLOWS.items():
+        assert 'workflow_dispatch' not in _on(wf) and 'schedule' not in _on(wf) and 'pull_request_target' not in _on(wf), f
 
 
-def test_full_gate_requires_and_enforces_the_exact_approved_head():
-    on = _on(WF)
-    assert re.search(r'inputs:\n\s+head_sha:\n(?:\s+.+\n)*?\s+required: true', on), 'head_sha must be a required dispatch input'
-    assert 'ZB_HEAD_SHA: ${{ inputs.head_sha }}' in WF
+def test_only_the_full_ready_label_publishes_verify_full():
+    """Codex round 4: the full-ready label runs the slices and the real aggregator as "verify full"; any other label
+    runs no slice and names the aggregator "full gate not requested" - never "verify full", neither run nor skipped -
+    and does not start "verify fast" again."""
+    got = _published('pull_request', 'labeled', 'full-ready')
+    assert sorted(got) == sorted([('verify.yml', 'full slice ${{ matrix.part }}', 'run'), ('verify.yml', 'verify full', 'run')])
+    for label in ('bug', 'Full-Ready', 'full-ready ', 'verify full', 'full', ''):
+        got = _published('pull_request', 'labeled', label)
+        assert ('verify.yml', 'full gate not requested', 'run') in got, label
+        assert all(nm not in REQUIRED for _, nm, _ in got), (label, got)
+        assert ('verify.yml', 'full slice ${{ matrix.part }}', 'skipped') in got
+    assert _published('pull_request', 'unlabeled', 'full-ready') == []          # removing the label publishes nothing
+
+
+def test_the_not_requested_aggregator_does_no_work():
+    full = WF.split('\n  full:\n')[1]
+    steps = full.split('    steps:\n')[1].split('\n      - ')
+    assert "if: github.event.label.name != 'full-ready'" in steps[0] and 'run: echo' in steps[0]
+    for st in steps[1:]:                                                    # everything else needs the label
+        assert re.search(r"if: (always\(\) && )?github\.event\.label\.name == 'full-ready'", st), st
+
+
+def test_full_gate_binds_to_the_exact_pr_head():
+    """The event's PR head SHA (not the refs/pull/N/merge commit) is format-checked first, checked out explicitly,
+    re-proved after checkout, used for the slice artifacts, and re-checked by the merge."""
+    assert 'ZB_HEAD_SHA: ${{ github.event.pull_request.head.sha }}' in WF
+    assert 'github.sha' not in WF and '${{ inputs.' not in WF
     for job in ('\n  full-part:\n', '\n  full:\n'):
         body = WF.split(job)[1].split('\n  full:\n')[0]
-        first = body.split('    steps:\n')[1].split('\n      - ')[0]
-        assert 'Exact-head guard' in first, 'the guard must be the FIRST step of every full job'
-        assert '[ "$GITHUB_SHA" = "$ZB_HEAD_SHA" ]' in first and '^[0-9a-f]{40}$' in first
-    assert '--expected-sha "$ZB_HEAD_SHA"' in WF.split('\n  full:\n')[1]   # and the merge re-checks it
+        steps = [st for st in body.split('    steps:\n')[1].split('\n      - ') if "!= 'full-ready'" not in st]
+        assert 'Exact-head guard' in steps[0], 'the guard must be the FIRST working step of every full job'
+        assert '[ "$ZB_LABEL" = "full-ready" ]' in steps[0] and '^[0-9a-f]{40}$' in steps[0]
+        assert steps[1].startswith('uses: actions/checkout@') and 'ref: ${{ github.event.pull_request.head.sha }}' in steps[1]
+        assert 'python verify_ci.py guard --expected "$ZB_HEAD_SHA"' in steps[2]
+    assert 'name: verify-full-${{ matrix.part }}-${{ github.event.pull_request.head.sha }}' in WF
+    assert 'pattern: verify-full-*-${{ github.event.pull_request.head.sha }}' in WF
+    assert '--expected-sha "$ZB_HEAD_SHA"' in WF.split('\n  full:\n')[1]
+    assert 'group: verify-full-${{ github.event.pull_request.number }}-${{ github.event.label.name }}' in WF  # other labels never cancel a full
 
 
 def test_a_new_commit_invalidates_the_full_result():
-    """A new head has no "verify full" until Codex dispatches again: no trigger can create one implicitly, and a dispatch
-    for the old SHA refuses to run on the moved branch (the guard compares the checked-out commit with head_sha)."""
-    assert 'workflow_dispatch' in _on(WF) and all('workflow_dispatch' not in _on(w) for w in (WQ, WP))
+    """A new head gets no "verify full": synchronize does not start verify.yml, so the old run's result stays on the old
+    SHA and protection blocks until Codex removes and re-adds full-ready; a mismatched checkout is refused."""
+    assert all(nm != 'verify full' for _, nm, _ in _published('pull_request', 'synchronize'))
     old, new = 'a' * 40, 'b' * 40
     assert C.head_problem(old, new) and 'stale' in C.head_problem(old, new)
     assert C.head_problem(new, new) is None
 
 
 def test_guard_command(monkeypatch):
-    monkeypatch.setenv('GITHUB_SHA', A)
+    """The guard compares the CHECKED-OUT commit (git rev-parse), never GITHUB_SHA (the PR merge ref on PR events)."""
+    monkeypatch.setattr(V, 'git_info', lambda: dict(commit=A))
+    monkeypatch.setenv('GITHUB_SHA', B)
     assert C.main(['guard', '--expected', A]) == 0
     assert C.main(['guard', '--expected', B]) == 1
     for bad in ('', 'abc', A[:12], A.upper(), A + 'f'):
@@ -197,15 +273,18 @@ def test_required_jobs_are_never_conditionally_skipped():
     part = WF.split('\n  full-part:\n')[1].split('\n  full:\n')[0]
     full = WF.split('\n  full:\n')[1]
     fast = WQ.split('\n  fast:\n')[1]
-    assert '\n    if:' not in fast and '\n    if:' not in part                 # no job-level condition at all
+    assert '\n    if:' not in fast                                         # no job-level condition at all
+    assert re.findall(r'\n    if: (.+)\n', part) == ["github.event.label.name == 'full-ready'"]   # non-required slices only
     assert re.search(r'\n    if: always\(\)\n', full) and 'needs: full-part' in full   # a failed/cancelled slice FAILS it
     assert full.count('\n    if:') == 1
+    assert 'verify full' not in re.search(r'^    name: (.+)$', part, re.M).group(1)   # a skippable job never carries the name
     for wf in (WF, WQ):
         code = '\n'.join(l for l in wf.splitlines() if not l.lstrip().startswith('#'))
         assert 'reuse' not in code and 'verify_ci.py reused' not in code and 'verify_ci.py plan' not in code
     assert 'python verify.py fast --out verify_out' in fast and 'python verify_ci.py merge --parts parts --out verify_out' in full
     assert 'part: [tests, replay2, replay1-ui]' in part and set(C.PARTS) == {'tests', 'replay2', 'replay1-ui'} and 'fail-fast: false' in part
     assert 'permissions:\n  contents: read\n\n' in WF and 'permissions:\n  contents: read\n\n' in WQ
+    assert 'write' not in WF and 'write' not in WQ
 
 
 def test_push_workflow_permissions_and_wiring():
