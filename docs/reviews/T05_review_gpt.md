@@ -2,6 +2,8 @@
 
 *2026-10-06, Africa/Cairo. Reviewed exact head `153cf6d960e15cbbd5cafff521580d5081dac9ee`.*
 
+*Round 2 reviewed exact fix head `2d0e985bd3f43d916f6f9984c2dde9bcaabeceed`.*
+
 ## Decision: fixes requested
 
 The telemetry schema and coverage are a useful base, and the focused tests pass (`15 passed`). GitHub fast/full checks are green. Nothing from this branch was installed. However, T05 cannot be accepted as observe-only yet because its synchronous file I/O runs inside safety-critical order paths.
@@ -60,3 +62,55 @@ Entry/add/exit hooks use `executedQty or requested_qty`. If Binance returns no `
 ## Scope note
 
 Keep T05 observe-only. Runner profitability, target counterfactuals, and other analysis belong in T05a; `runner_frac` and parent/child execution behavior belong in T09a. No strategy or order behavior should be added while fixing this ticket.
+
+---
+
+## Round 2 review — fixes still requested
+
+The original P1 is substantially improved: order paths now use `put_nowait`, the writer owns disk I/O, persisted-only statistics remove phantom counts, the two-file window survives rotation/restart, missing execution quantities are `unknown`, and fallback decisions are recorded after the decision. The focused Windows suite passes: **28 passed in 1.27 s**.
+
+Three correctness/lifecycle gaps remain.
+
+### P1 — A timed-out handover starts a second writer on the same files
+
+`_fill_stop()` waits up to two seconds, tries to enqueue a sentinel, and returns the flush result (`engine.py:522-528`). It never joins or proves the thread ended. `App.start_engine()` ignores that result and immediately constructs a new `Engine`, whose constructor starts another writer (`app.py:451-460`). If the old writer is blocked by a slow disk or antivirus—the exact failure this design is meant to tolerate—both writers remain alive against the same `fills.jsonl` and rotation target.
+
+This was reproduced on the reviewed head by blocking `_fill_write`: `_fill_stop(0.05)` returned `False`, then a replacement engine was constructed; both `old_writer_alive` and `new_writer_alive` were `True`. If the queue is full, even the sentinel's `put_nowait` can fail silently, so the old writer may never stop at all.
+
+**Required fix:** make writer ownership exclusive and explicit. A stop must first prevent new accepts, guarantee a stop signal, and join the writer. If it cannot prove termination within the bounded handover, `start_engine` must not start another writer for the same path. A process-scoped single writer is preferable; alternatively start the replacement with telemetry disabled/drop-only and expose the handover failure until ownership is safe. The caller must check the result.
+
+Add blocked-write and full-queue settings-restart tests that assert there is never more than one thread capable of writing/rotating the file, the restart remains bounded, and a failed handover is visible rather than ignored.
+
+### P2 — `fallback=true` still means “call returned,” not “fill confirmed”
+
+The updated review contract says `fallback` is true only when the fallback order filled. However, `_add_qty()` and `_market_entry()` retain the trading fallback to requested quantity when `executedQty` is missing. Their telemetry record correctly says `outcome=unknown`, but their Boolean return still causes the parent maker record to set `fallback=true`.
+
+Reproduction on the reviewed head, using an unfilled maker whose fallback response omitted `executedQty`, produced:
+
+`entry_fallback: outcome=unknown, fallback=true`; `entry_maker: outcome=unfilled, fallback=true`.
+
+Ambiguous/lost-answer orders are similarly labelled `fallback_failed`, although they are pending reconciliation rather than confirmed failures.
+
+**Required fix:** separate `fallback_attempted`, `fallback_confirmed`, `fallback_pending` and `fallback_failed` (or equivalent exact states). A missing/zero execution quantity must never set the confirmed flag. An `AmbiguousOrder` must be pending/unknown, not failed. Add partial and unfilled maker tests for missing quantity and ambiguous fallback responses. If reconcile completion remains a later ticket, retain a truthful pending state now.
+
+### P2 — One valid but malformed JSON line can break `/api/status`
+
+`_load_fills()` appends any JSON value to `_fill_win`; `fill_summary()` assumes every item is a dictionary and performs `rec.get`. A local `fills.jsonl` containing the valid JSON line `[]` makes `fill_summary()` raise `AttributeError: 'list' object has no attribute 'get'`. Malformed field types can likewise break `sum`/`max`.
+
+Telemetry is optional and must not take down health/status after corruption, manual inspection, or a schema change.
+
+**Required fix:** validate and normalize loaded records before admitting them to the window, skip/count invalid records, and keep summary aggregation defensive per record. Add scalar/list JSON, wrong field types, truncated line and mixed old/new-schema restart tests. Expose an `invalid_records` health counter.
+
+### P2 — Writer lifetime is not closed for tests, replays, or failed construction
+
+Every `Engine` constructor starts a permanent daemon thread. Its bound target strongly retains the engine, so the weak-reference `atexit` callback does not make unused engines collectible. The suite has at least 99 `mk_engine()` call sites, and replay/test engines do not close their writers. If construction fails after `_fill_init()` (for example in later initialization), the writer also leaks because no caller owns the partial engine.
+
+**Required fix:** add one idempotent lifecycle method/context boundary and call it in app replacement, replay `finally`, and test fixtures. Prefer lazy or process-scoped ownership so engines that never emit telemetry do not consume threads. Test constructor failure and repeated engine creation/replacement for stable thread count.
+
+## Round 2 acceptance conditions
+
+1. A blocked/full old writer can never overlap a replacement writer on the same telemetry files.
+2. Fallback state distinguishes attempted, confirmed, pending/ambiguous and failed; unknown quantity is never confirmed.
+3. Any malformed or older JSONL record is skipped/countable and cannot break status.
+4. Engine/replay/test lifecycle leaves no telemetry threads behind, including construction failure.
+5. The 28 focused tests, existing order-path tests, full suite and fresh GitHub fast/full checks pass after rebasing onto protected `master`.
