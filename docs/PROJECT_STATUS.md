@@ -11,9 +11,9 @@
 | Installed application | **T03b installed and rollback-proven.** SHA-256 `203B155474942709B6AD40C3517BA32D058721664D245191C900068CBC4A60A6`; the drill restored the same build and hash exactly. |
 | Latest accepted commit | `master` `d68d6ef` (T03b accepted and merged) |
 | Current ticket | **T05: fill telemetry** |
-| Stage | **Fixes requested on PR #6.** T04d faster CI and T03c automatic leverage handling are implemented in separate branches and queued behind the T05 hand-off. |
-| What Claude is doing | Addressing the T05 safety/durability review; holding T04d/T03c for their ordered reviews. |
-| What Codex is reviewing | T05 rework next; roadmap corrections are in PR #8. |
+| Stage | **Fixes requested on PR #6 (T05) and PR #7 (T04d).** T03c automatic leverage handling is implemented separately and remains queued behind them. |
+| What Claude is doing | Addressing the T05 telemetry and T04d verification findings; holding T03c for its ordered review. |
+| What Codex is reviewing | The next exact T05/T04d heads after Claude posts them; roadmap corrections are in PR #8. |
 | Your action | **None.** |
 
 ## Latest test results
@@ -91,6 +91,7 @@ Automated test-suite results use a fake exchange. The final T03a gate used the r
 - **CI security follow-up (low):** add Dependabot for the immutable action pins plus Git-history secret and dependency scanning.
 - **Repository visibility:** private. It must stay private before any mainnet credentials or live release work.
 - **T05 safety review:** synchronous telemetry file I/O currently sits between exchange fills and protective state/stop actions. PR #6 must move it to a bounded non-blocking writer before acceptance.
+- **T04d verification review:** PR #7 must ensure skipped push jobs cannot satisfy the required full-check name, share one canonical full-gate plan, and keep Windows unit tests away from the real builder.
 
 ## Code clean-up policy (your request, 2026-10-05)
 
@@ -113,7 +114,7 @@ Every ticket now ends with a **clean-up pass on the files it touched**: remove d
 | Order | Ticket | Why it comes here |
 |---|---|---|
 | Active | **T05 — fill telemetry** | Fix optional disk I/O so it can never delay protection, then re-review |
-| Next | **T04d — faster CI** | Review the already-green parallel/reuse implementation before more order-path work |
+| Next | **T04d — faster CI** | Fix the required-check identity, canonical gate list, provenance and Windows test isolation; then re-review |
 | Then | **T03c — automatic leverage handling** | Review and bounded testnet canary of the cross-margin exposure fallback |
 | Measure | **T05a — exit/opportunity attribution** | Observe current runner/exit value before changing runner behaviour |
 | Core | **T06–T09 — shared core** | One trading logic for live and backtest |
