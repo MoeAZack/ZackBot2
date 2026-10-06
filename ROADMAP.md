@@ -1,6 +1,6 @@
 # ZackBot roadmap
 
-*Plan v4, 2026-10-05 (Cairo).*
+*Plan v5, 2026-10-06 (Cairo).*
 
 This plan merges:
 - the companion "ZackBot Master Roadmap & Build Vision" (32 pages, 2026-10-05);
@@ -66,9 +66,10 @@ These apply to every phase.
    - a rollback path.
 3. **One shared risk gateway.** Strategies, manual trades, TradingView, news, ML and copy logic are all *inputs* to it. None may bypass it.
 4. **No automatic system may raise risk above the user's mechanical limit.** ML and the governor may only reduce risk.
-5. **Account isolation.** One account's failure, rate limit or bad state can never delay another account's stop management.
-6. **Masters are production.** Nothing reaches a lead portfolio without passing through an own live canary first.
-7. **Do not relax replay thresholds to make a feature pass.** Fix the shared logic or the simulator instead.
+5. **Experience, risk and authority are separate controls.** Simple / Guided / Pro changes what the UI explains; Amateur through Maniac changes bounded loss and exposure; Manual / Recommend / Automatic changes who selects among strategies the user has allowed. None silently changes another.
+6. **Account isolation.** One account's failure, rate limit or bad state can never delay another account's stop management.
+7. **Masters are production.** Nothing reaches a lead portfolio without passing through an own live canary first.
+8. **Do not relax replay thresholds to make a feature pass.** Fix the shared logic or the simulator instead.
 
 **Required evidence by change class:**
 
@@ -145,6 +146,10 @@ Data foundation per account, stored in **SQLite**.
   - lifecycle;
   - close reason and R;
   - causal MFE/MAE.
+  - entry side, timeframe, global and per-symbol regime;
+  - raw-signal and rejection-funnel reason codes;
+  - target touch, profit banked, runner activation, runner-only P&L, peak open profit and give-back;
+  - a parent trade id so partial exits, adds and the remaining runner are attributable without counting them as separate trades.
 - **Integrity:** every event is hashed and chained to the previous one.
 - **UI and exports:**
   - a "Why?" view on every trade;
@@ -157,13 +162,14 @@ Data foundation per account, stored in **SQLite**.
 
 This is the top product priority. It comes before ML.
 
-**Four scores are kept separate:**
-- performance;
-- risk;
-- evidence readiness;
-- operational readiness.
+**Five user-facing outputs are kept separate:**
+- return quality;
+- risk and tail behaviour;
+- robustness / evidence readiness;
+- execution and operational readiness;
+- current regime fit (context, never a forecast).
 
-A high score **never** changes settings automatically.
+A high score **never** changes settings automatically by itself. A later user-enabled Automatic control mode may select only from an explicit allowlist, inside the user's capital, risk, drawdown and direction limits.
 
 **Scorecard v1 weights:**
 
@@ -196,6 +202,19 @@ A high score **never** changes settings automatically.
 - leverage-tag risk (Binance tags ≥ 20×).
 
 **Exit gate:** scores reproduce from frozen manifests, and the UI cannot confuse readiness with profitability.
+
+### Phase 3a — Approved strategy and risk expansion
+
+The owner approved the detailed plan on 2026-10-06. The durable specification is
+[`docs/STRATEGY_AND_RISK_EXPANSION.md`](docs/STRATEGY_AND_RISK_EXPANSION.md).
+
+- Build a broad, plugin-style catalog of independently testable trend, breakout, pullback, momentum, range, mean-reversion, DCA, grid, scalp and short strategies.
+- Do not enable a strategy merely to fill a market regime. Failed candidates stay visible in Research as **experimental** and are excluded from Automatic mode.
+- Range and short candidates are researched after shared-core parity. Existing grid/COMBO and `bear_breakdown` are not promoted unchanged: current evidence is weak.
+- Short-term mean-reversion and DCA default to a complete planned exit; runners are explicit child quantities, measured separately, regime-gated and time-limited.
+- 15-minute and faster scalping requires high-resolution data, spread/slippage/partial-fill modelling, walk-forward/holdout evidence, shadow mode and a bounded testnet canary.
+- The controlled-capital value, not the exchange wallet balance, is the sizing base and hard allocation ceiling.
+- Simple / Guided / Pro, Amateur through Maniac, and Manual / Recommend / Automatic remain independent controls. Manual strategy selection and allocation always remain available.
 
 ### Phase 4 — 24/7 operations (new phase; required before any live master)
 
@@ -297,13 +316,17 @@ A high score **never** changes settings automatically.
 - the app shows stale data clearly;
 - Telegram stays as the independent backup channel.
 
-### Phase 9 — Simple / Guided / Pro, and direction preference
+### Phase 9 — Simple / Guided / Pro, risk grades and control authority
 
 - **One engine with three views.** Mode changes never alter open trades.
 - **Beginner controls:**
   - bot capital;
-  - discrete Risk Level and Loss Tolerance settings;
+  - discrete Risk Level and Loss Tolerance settings, presented as two simple sliders;
   - Long/Short preference (new entries only; low value until a short strategy proves itself).
+- **Risk grades:** Amateur, Conservative, Intermediate, Advanced, Expert and Maniac. They bound stop-based loss, total open risk, exposure, margin use, daily loss and drawdown; they are not leverage labels.
+- **Control modes:** Manual, Recommend and Automatic. Automatic can use only strategies, sides, coins, timeframes and maximum risk explicitly allowed by the user.
+- **Pro controls:** strategy/timeframe/side allowlists, capital shares, maximum positions, stop/target/runner/time-exit policy, DCA/pyramid permissions and regime gates.
+- Mode changes never rewrite or reinterpret an already-open trade plan.
 
 ### Phase 10 — ML in shadow
 
@@ -353,19 +376,22 @@ A high score **never** changes settings automatically.
 | T03a | Leverage-refusal fallback: when Binance refuses a leverage change (testnet `-1000` on every SOLUSDT/XRPUSDT attempt so far), read the coin's current leverage (read-only); enter only if it is at or below the cap, otherwise skip as today; count refusals per coin in the panel | E-class (order path): tests + strict replays + canary | ✅ Done 2026-10-06 (code review and CI green; build `20261006-030952` installed; bounded SOL testnet canary safely skipped at current 20× > cap 10×; no order; existing positions stayed protected) |
 | T03b | Installer logic moved from CMD into a structured PowerShell script (functions, real error handling, testable); `build_app.bat` / `rollback_drill.bat` stay as tiny double-click launchers. Same steps, same fail-closed rules, drill re-run | Deployment only | ✅ Done 2026-10-06 (Windows tests/buildcheck, normal install and verified rollback drill passed; PR #5 acceptance pending protected merge) |
 | T05 | Fill telemetry (maker/market expected vs actual) | Observe | ⬜ |
+| T05a | Exit/opportunity attribution: signal funnel by side/regime, MFE/MAE, target touch, banked P&L, runner-only P&L and give-back | Observe only | ⬜ After T05 |
 | T06 | Shared-core contracts, reason codes and `AccountContext` spec | No behaviour change | ⬜ |
 | T07 | Extract costs, rounding and sizing | Refactor, zero replay change | ⬜ |
 | T08 | Extract management levels | Refactor | ⬜ |
 | T09 | Pure trade state transition | Refactor, parity maintained | ⬜ |
+| T09a | Strategy research harness and candidates: explicit runner child lots; range/mean-reversion; multiple scalp styles; independently validated short models | Research → Shadow; no automatic orders | ⬜ After T09 |
 | T10 | Per-account order budget and priority queue | E-class, burst tests | ⬜ |
 | T11 | SQLite trade-event store | Feature Off | ⬜ |
 | T12 | Entry/close reason records + "Why?" view | Observe | ⬜ |
 | T13 | Scorecard v1 + readiness + copy suitability | Read-only | ⬜ |
+| T13a | Strategy catalog + risk/drawdown calculation + Simple/Guided/Pro and Amateur→Maniac + Manual/Recommend/Automatic policy | Feature Off; manual remains available | ⬜ After T13 and T09a evidence |
 | T14 | VPS service, secrets, heartbeat, deploy/rollback | Ops | ⬜ |
 | T15 | Multi-account workers + internal copy (shadow) | Off/Shadow | ⬜ |
 | T16 | ML dataset builder (leakage checks, manifests) | Research | ⬜ |
 
-**Order agreed 2026-10-05 (review of T03 round 2), with the dated CI-maintenance insert:** T03 → T04 (CI) → T04b → T03a → T03b → T05 → T06–T09 core extraction, and only then large features (more exchanges, copy trading, stocks/gold, mobile control). No broad clean-up mixed into tickets; refactors never carry new strategy behaviour. GitHub is intentionally public during testnet collaboration and protected by required checks; it must return to private before mainnet credentials or release work. Keys, `config.env`, session tokens, account data, logs, market data, executables and evidence remain excluded.
+**Order agreed 2026-10-05 and extended by the owner's 2026-10-06 strategy decision:** T03 → T04 (CI) → T04b → T03a → T03b → T05 → T05a → T06–T09 core extraction → T09a research/shadow → T10–T13 → T13a, and only then authority-bearing strategy automation and the other large features (more exchanges, copy trading, stocks/gold, mobile control). No broad clean-up mixed into tickets; refactors never carry new strategy behaviour. GitHub is intentionally public during testnet collaboration and protected by required checks; it must return to private before mainnet credentials or release work. Keys, `config.env`, session tokens, account data, logs, market data, executables and evidence remain excluded.
 
 **Ticket rules:** one ticket at a time, in this order. A ticket is marked ✅ (with the date) only when its acceptance checks pass **and** the other assistant's review has no open findings. ◐ = implemented, review or Windows run pending.
 
