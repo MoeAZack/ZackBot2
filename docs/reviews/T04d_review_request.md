@@ -71,8 +71,13 @@ Run #94 (T03b, b8dadb2, a Codex docs-only status commit) took 24 min: fast 3m20s
 
 ## Evidence (Claude sandbox, stand-in runner, NOT official pytest)
 
-- tests/test_ci.py: 16 passed.
-- Full tests/: see the READY FOR CODEX comment.
+- tests/test_ci.py: 16 passed. Full tests/: 247 passed + the known environment-only provenance failure.
+
+## GitHub evidence (first real runs of the new workflow)
+
+- PR run #101 on 828cb8f: plan 7 s (no reuse: PR opened, no previous commit); verify fast 198 s; slices in parallel: tests 225 s, replay2 193 s, replay1-ui 451 s; **verify full (merge) 22 s: PASS**, all four heavy steps passed on merge commit 51e1013, buildcheck skipped off Windows. Whole run **8 min 11 s** (04:11:02 -> 04:19:13 UTC), against 24 min for run #94 on the old workflow.
+- Push run #100: plan + verify fast PASS; full not run on push (unchanged).
+- This docs-only commit is itself the live test of reuse: its PR run should show plan REUSE for fast and full, with the steps SKIPPED/REUSED from 828cb8f.
 - The secret scan is clean. The workflow parses as YAML with jobs plan / fast / full-part / full. actionlint is not available in the sandbox; GitHub's own parse is the first real check.
 
 ## Questions for Codex
