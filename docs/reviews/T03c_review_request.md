@@ -1,5 +1,30 @@
 # T03c: automatic leverage handling. Review request
 
+## Codex round 2 integration (2026-10-06 13:23 Cairo)
+
+Codex independently implemented the round-1 fixes while Claude was working, then reviewed Claude's stronger account-wide
+implementation at exact head `a8e7b79260157c5fc6e0dea8247e03159d072de0`. The integration keeps Claude's complete fresh
+snapshot, future DCA/pyramid/grid reservation, bracket validation and 138-test adversarial suite. Six additional gaps were
+confirmed and fixed:
+
+| Priority | Confirmed gap | Integrated fix |
+|---|---|---|
+| P1 | An above-cap exceptional maker order could rest after its one-time proof and fill later after the account deteriorated. There is no reliable pre-fill recheck for a resting exchange order. | Exceptional entries bypass maker mode and execute immediately after the fresh proof. Normal within-cap entries still use maker mode. Legacy/persisted exceptional maker remainder paths remain blocked. |
+| P1 | Stop proof matched tag, symbol, side, size and trigger, but did not prove `STOP_MARKET`, `MARK_PRICE`, open status or quantity-mode semantics. A take-profit order with the same tag fields could be mistaken for downside protection. | Classic/algo order snapshots now expose order type, working type, status and `closePosition`; every managed stop must exactly match the bot's protective order shape. Unknown/missing fields reject. |
+| P1 | `_lev` was trusted indefinitely. A user/external process could raise Binance leverage after the bot cached the configured cap. | Every cached reuse re-reads current leverage. Unknown or above-cap state invalidates the cache and re-enters the normal set/fallback proof. |
+| P2 | Client parsing truncated fractional leverage (`20.5 -> 20`) and converted booleans to numbers before the engine could reject them. | Strict finite positive-integer parsing in both leverage readers; bool, fractional, zero, negative, NaN and infinity become unknown. Position/order numeric adapters reject bool and non-finite values before normalization. |
+| P2 | `bool('false')` is true in Python, so malformed string order flags could hide an exposure-increasing order as reduce-only. Missing boolean fields were also silently defaulted. | Exchange boolean fields must be present and actual booleans. Unknown answer shapes fail closed. |
+| P2 | Binance's account-specific `notionalCoef` was ignored by the bracket adapter. | Effective floor, cap and cumulative maintenance are scaled consistently before the existing continuity/maintenance checks. |
+
+Additional focused evidence: **335/335 passed** across leverage, safety, grid, fill and maker-engine tests. The six new guard
+groups add direct regression probes for stale maker approval, external cache changes, exact stop semantics, strict leverage
+and boolean parsing, and `notionalCoef`. Syntax compilation and `git diff --check` pass. On the final code tree, the complete
+official suite passed **514/514 in 7:01**, and the isolated causality suite passed **13/13 in 3:35**. Code commit: `50c10fa`.
+GitHub fast/CodeQL and the single exact-head full gate remain before code acceptance.
+
+Runtime remains unchanged: no installer, bot restart or testnet order/canary is authorized by this code review. Installation
+and a bounded testnet canary require the owner's separate confirmation after code acceptance.
+
 ## Round 1 dispositions (Codex review `docs/reviews/T03c_review_gpt.md`)
 
 All seven findings are confirmed and fixed. The original request is kept unchanged below; where it conflicts with this section, this section is current.

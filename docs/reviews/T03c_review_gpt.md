@@ -75,3 +75,55 @@ Existing evidence remains useful but does not cover these states: the original 1
 ## Gate and runtime boundary
 
 After the fixes, publish a new exact head and run the single fast review gate. Keep `full-ready` off until Codex accepts the code; then run one final labelled full gate. T03c changes order admission, so installation and any testnet canary still require a separate owner confirmation at that stage. The earlier T03a canary approval does not automatically authorize T03c runtime testing.
+
+---
+
+# T03c automatic leverage handling — Codex review, round 2
+
+*2026-10-06 13:19 Africa/Cairo*
+
+## Verdict
+
+**Round-1 findings are resolved in the integrated code; final acceptance remains gated on the complete exact-head test/CI
+evidence. Do not install or run the T03c canary yet.**
+
+Claude's round-1b head `a8e7b79260157c5fc6e0dea8247e03159d072de0` replaces the original local proof with a stronger
+account-wide model: exact answer shapes, all live positions and open orders, confirmed exchange stops, mark-to-stop loss,
+future maker/DCA/pyramid/grid reserves, short notional growth and validated bracket maintenance. Its 42 planted mutations
+and internal adversarial repros cover the round-1 findings.
+
+Codex independently reproduced and closed six remaining integration gaps:
+
+1. **P1 stale exceptional maker admission:** an exchange maker order can fill after its one-time account proof becomes stale.
+   Above-cap exceptional entries now bypass maker mode and execute immediately after the fresh proof. Normal entries retain
+   maker behavior; legacy exceptional maker remainder paths remain blocked.
+2. **P1 incomplete stop semantics:** tag/side/quantity/trigger matching did not distinguish a real mark-price stop-market
+   from another conditional order. The proof now requires `STOP_MARKET`, `MARK_PRICE`, open status, quantity mode, side,
+   quantity and trigger. Missing or malformed order fields reject.
+3. **P1 stale leverage cache:** `_lev` could survive an external leverage change. Cache reuse now performs a read-only
+   current-leverage check; unknown/above-cap state re-enters the normal set/fallback path.
+4. **P2 numeric adapter truncation:** fractional or boolean leverage could become an apparently valid integer. Both client
+   readers now require finite positive integers, and position/order numeric adapters reject bool/NaN/Inf before normalization.
+5. **P2 malformed boolean flags:** Python treated the string `"false"` as true, which could hide an exposure-increasing order
+   as reduce-only. Required exchange flags must now be present and actual booleans.
+6. **P2 account-specific bracket coefficient:** `notionalCoef` was ignored. Effective floors, caps and cumulative maintenance
+   are scaled consistently before continuity validation and maintenance calculations.
+
+## Evidence so far
+
+- Focused Windows gate: **335/335 passed** (`test_leverage_auto`, safety, grid, fills and maker engine).
+- Additional Windows gate: **103/103 passed** (Telegram, Lab, CI and verification-runner tests).
+- T03c file alone: **153/153 passed**, including the added round-2 probes.
+- Python compilation and `git diff --check`: pass.
+- Official complete suite: **514/514 passed in 7:01** on the final code tree.
+- Independent causality isolation: **13/13 passed in 3:35**.
+
+The integration intentionally does not require `totalOpenOrderInitialMargin == 0`: Claude's stronger snapshot identifies and
+reserves every exposure-increasing open order, including the bot's own maker orders. Rejecting all positive reserved margin
+would safely but unnecessarily disable the exception whenever a fully accounted maker order exists.
+
+## Remaining gates
+
+1. Push code commit `50c10fa` plus this evidence update, then require fast/CodeQL on the exact remote head.
+2. If review remains clean, apply `full-ready` once for that exact head and require the protected full gate.
+3. Only after code acceptance: ask the owner separately before any build/install, ZackBot restart or bounded testnet canary.
