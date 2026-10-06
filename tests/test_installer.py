@@ -1,7 +1,8 @@
-"""T03: installer rollback drill - static checks of the Windows batch files and the app's --simulate-failed-launch switch.
+"""T03/T03b: the installer (build_app.bat launcher + installer.ps1) and the app's --simulate-failed-launch switch.
 
-The batch files cannot run on the Linux dev box, so these tests pin the properties the drill depends on; the drill
-itself (build_app.bat drill) is run on the owner's Windows PC.
+T03b moved the installer logic from CMD into installer.ps1. Its whole flow (install, rollback, drill, preflight,
+buildcheck) runs here under PowerShell with every outside effect replaced by a recording fake, so the fail-closed order
+is tested by executing it, not by pinning lines. The real installer and the drill run only on the owner's Windows PC.
 """
 import os, re, socket, subprocess, sys, tempfile, time
 
@@ -46,46 +47,6 @@ def _idx(lines, pred, what):
     hits = [i for i, l in enumerate(lines) if pred(l)]
     assert hits, f'build_app.bat: {what} not found'
     return hits
-
-
-@needs_installer
-def test_mirror_and_shortcuts_only_after_confirmed_launch():
-    L = _lines('build_app.bat')
-    ping_new = _idx(L, lambda l: 'ping %BUILD_ID%' in l, 'post-launch ping of the new build')[0]
-    mirror = _idx(L, lambda l: l.startswith('robocopy') and '"%DST%"' in l, 'source mirror')[0]
-    shortcut = _idx(L, lambda l: 'CreateShortcut' in l, 'shortcut update')[0]
-    done = _idx(L, lambda l: l.startswith('echo BUILD_DONE'), 'BUILD_DONE')[0]
-    assert ping_new < mirror < done and ping_new < shortcut < done, 'mirror/shortcuts must follow the confirmed launch'
-    rb = _idx(L, lambda l: l == ':rollback', ':rollback label')[0]
-    assert mirror < rb, 'no source mirror on the rollback path'
-
-
-@needs_installer
-def test_simulate_switch_reaches_the_exe_only_in_drill_mode():
-    L = _lines('build_app.bat')
-    sets = [l for l in L if 'LAUNCHARGS=' in l and 'simulate-failed-launch' in l]
-    assert sets and all(l.startswith('if "%DRILL%"=="1" set LAUNCHARGS=') for l in sets), sets
-    assert any(l.strip() == 'set LAUNCHARGS=' for l in L), 'LAUNCHARGS must be cleared first'
-    launch = [l for l in L if l.startswith('start "" "%APPDIR%\\ZackBot.exe"')]
-    # exactly two launches: the new exe (with %LAUNCHARGS%) and the restored exe on rollback (never with the switch)
-    assert len(launch) == 2 and launch[0].endswith('%LAUNCHARGS%') and 'simulate' not in launch[1], launch
-    assert any(l == 'if /i "%~1"=="drill" set DRILL=1' for l in L) and any(l == 'set DRILL=0' for l in L)
-
-
-@needs_installer
-def test_rollback_restores_verified_hash_then_proves_old_build_runs():
-    L = _lines('build_app.bat')
-    rb = _idx(L, lambda l: l == ':rollback', ':rollback')[0]
-    body = L[rb:]
-    order = [next(i for i, l in enumerate(body) if pred(l)) for pred in (
-        lambda l: l.startswith('copy /y "%APPDIR%\\ZackBot.prev.exe"'),
-        lambda l: 'RBHASH' in l and 'OLDHASH' in l,
-        lambda l: l.startswith('start "" "%APPDIR%\\ZackBot.exe"'),
-        lambda l: 'ping %OLDBUILD%' in l)]
-    assert order == sorted(order), 'rollback must: restore -> hash check -> start -> ping the old build'
-    assert any(l.startswith('if "%DRILL%"=="1" if "%OLDBUILD%"==""') for l in L), 'drill needs the old build id up front'
-    step1 = _idx(L, lambda l: l.startswith('echo [1/8]'), 'step 1')[0]
-    assert any('goto fail_drill_noold' in l for l in L[:step1]), 'drill must refuse before step 1 when nothing is installed'
 
 
 def test_simulate_failed_launch_exits_before_anything_starts():
@@ -221,36 +182,6 @@ def test_ping_helper_requires_build_id_and_hmac_proof():
 
 
 @needs_installer
-def test_installer_isolates_powershell_and_checks_the_helper_first():
-    L = _lines('build_app.bat')
-    first_ps = _idx(L, lambda l: 'powershell' in l.lower() and not l.startswith('rem'), 'first PowerShell call')[0]
-    clear = _idx(L, lambda l: l == 'set "PSModulePath="', 'PSModulePath reset')[0]
-    pre = _idx(L, lambda l: l.startswith('call :hash') and 'PREHASH' in l, 'checksum preflight')[0]
-    tests = _idx(L, lambda l: '-m pytest' in l, 'test step')[0]
-    assert clear < first_ps and pre < tests, 'reset PSModulePath before any PowerShell; checksum preflight before the tests'
-    assert any("2^>^>\"%LOG%\"" in l for l in L if 'hash "%~1"' in l), 'helper errors must reach build.log'
-
-
-@needs_installer
-def test_preflight_mode_is_non_destructive():
-    """build_app.bat preflight: own staging folder + own log, exits right after the checksum check (before step 2),
-    never pauses - so it cannot stop, swap or roll back anything and cannot hang a test."""
-    L = _lines('build_app.bat')
-    own_stage = _idx(L, lambda l: l == 'if "%PREFLIGHT%"=="1" set STAGE=%ROOT%\\staging_preflight', 'preflight staging')[0]
-    own_log = _idx(L, lambda l: l == 'if "%PREFLIGHT%"=="1" set LOG=%ROOT%\\build_preflight.log', 'preflight log')[0]
-    first_log_write = _idx(L, lambda l: '> "%LOG%"' in l, 'first log write')[0]
-    first_rmdir = _idx(L, lambda l: l.startswith('if exist "%STAGE%" rmdir'), 'staging cleanup')[0]
-    pre_ok = _idx(L, lambda l: l.startswith('echo PREFLIGHT_OK'), 'PREFLIGHT_OK')[0]
-    exit0 = next(i for i in range(pre_ok, len(L)) if L[i] == 'exit /b 0')
-    step2 = _idx(L, lambda l: l.startswith('echo [2/8]'), 'step 2')[0]
-    assert own_stage < first_log_write and own_log < first_log_write and own_stage < first_rmdir
-    assert pre_ok < exit0 < step2, 'preflight must exit before step 2'
-    f = _idx(L, lambda l: l == ':fail', ':fail')[0]
-    pause = next(i for i in range(f, len(L)) if L[i] == 'pause')
-    assert any(L[i] == 'if "%PREFLIGHT%"=="1" exit /b 1' for i in range(f, pause)), 'preflight failures must not pause'
-
-
-@needs_installer
 @pytest.mark.skipif(os.name != 'nt', reason='runs the real build_app.bat through cmd.exe (Windows only)')
 def test_build_app_preflight_from_cmd():
     """The real batch file, the real helper, Windows PowerShell 5.1 - also with a PowerShell-7-style PSModulePath.
@@ -275,32 +206,455 @@ def test_build_app_preflight_from_cmd():
     assert not os.path.exists(os.path.join(root, 'staging_preflight')), 'preflight staging folder must be removed'
 
 
-@needs_installer
-def test_buildcheck_mode_builds_but_never_installs():
-    """build_app.bat buildcheck (verify full on Windows): own staging folder + own log, exits right after the exe self-test
-    and hash - before step 7, so nothing is backed up, stopped, swapped or installed."""
-    L = _lines('build_app.bat')
-    own_stage = _idx(L, lambda l: l == 'if "%BUILDCHECK%"=="1" set STAGE=%ROOT%\\staging_buildcheck', 'buildcheck staging')[0]
-    own_log = _idx(L, lambda l: l == 'if "%BUILDCHECK%"=="1" set LOG=%ROOT%\\build_check.log', 'buildcheck log')[0]
-    first_log_write = _idx(L, lambda l: '> "%LOG%"' in l, 'first log write')[0]
-    selftest = _idx(L, lambda l: '--selftest "%STAGE%\\selftest.json"' in l, 'new exe self-test')[0]
-    newhash = _idx(L, lambda l: l.startswith('echo   new exe sha256'), 'new exe hash line')[0]
-    ok = _idx(L, lambda l: l.startswith('echo BUILDCHECK_OK'), 'BUILDCHECK_OK')[0]
-    exit0 = next(i for i in range(ok, len(L)) if L[i] == 'exit /b 0')
-    step7 = _idx(L, lambda l: l.startswith('echo [7/8]'), 'step 7')[0]
-    assert own_stage < first_log_write and own_log < first_log_write
-    assert selftest < newhash < ok < exit0 < step7, 'buildcheck must exit after the self-test and hash, before step 7'
-    f = _idx(L, lambda l: l == ':fail', ':fail')[0]
-    pause = next(i for i in range(f, len(L)) if L[i] == 'pause')
-    assert any(L[i] == 'if "%BUILDCHECK%"=="1" exit /b 1' for i in range(f, pause)), 'buildcheck failures must not pause'
+# ---------------------------------------------------------------- T03b: build_app.bat is a launcher, installer.ps1 the logic
+INSTALLER = os.path.join(ROOT, 'installer.ps1')
 
 
 @needs_installer
-def test_every_pause_honours_zb_nopause():
-    """verify.py runs the installer unattended: no pause may block when ZB_NOPAUSE is set."""
+def test_launcher_is_tiny_and_isolates_powershell():
     L = _lines('build_app.bat')
-    f = _idx(L, lambda l: l == ':fail', ':fail')[0]
-    for i, l in enumerate(L):
-        if l.rstrip().endswith('pause') and not l.startswith('rem'):
-            guarded = 'if not defined ZB_NOPAUSE' in l or (i > f and any(L[k] == 'if defined ZB_NOPAUSE exit /b 1' for k in range(f, i)))
-            assert guarded, f'line {i + 1} can block an unattended run: {l}'
+    code = [l for l in L if l.strip() and not l.lower().startswith(('rem', '@echo', 'title'))]
+    assert len(code) <= 10, f'build_app.bat must stay a launcher, found {len(code)} code lines: {code}'
+    clear = _idx(L, lambda l: l == 'set "PSModulePath="', 'PSModulePath reset')[0]
+    ps = _idx(L, lambda l: l.lower().startswith('powershell '), 'installer.ps1 call')
+    assert len(ps) == 1 and clear < ps[0], 'clear PSModulePath before the one PowerShell call'
+    assert '-NoProfile -ExecutionPolicy Bypass -File "%~dp0installer.ps1" %ZBMODE%' in L[ps[0]]
+    assert any(l == 'if "%ZBMODE%"=="" set "ZBMODE=install"' for l in L), 'no argument = normal install'
+    for l in L:                                            # the only pause: when installer.ps1 itself could not run
+        if l.rstrip().endswith('pause') and not l.lower().startswith('rem'):
+            assert 'if not defined ZB_NOPAUSE' in l, l
+    assert _lines('rollback_drill.bat')[-2] == 'call "%~dp0build_app.bat" drill'
+
+
+@needs_installer
+def test_installer_uses_no_cmdlets():
+    """Same rule as installer_check.ps1: only .NET and the language, so a module problem cannot break the installer."""
+    src = '\n'.join(l for l in open(INSTALLER, encoding='utf-8').read().split('\n') if not l.lstrip().startswith('#'))
+    own = set(re.findall(r'^function\s+([A-Za-z]+-[A-Za-z0-9]+)', src, re.M))
+    used = set(re.findall(r'(?<![\w.$:\[-])([A-Z][a-z]+-[A-Z][A-Za-z0-9]+)\b', src)) - own - {'Set-StrictMode'}
+    assert not used, f'installer.ps1 calls cmdlets: {sorted(used)}'
+    open(INSTALLER, encoding='ascii').read()
+
+
+@needs_installer
+def test_staging_copy_excludes_the_installer_and_private_files():
+    src = open(INSTALLER, encoding='utf-8').read()
+    xf = re.search(r"'/XF',(.*?)'/NFL'", src, re.S).group(1)
+    for f in ('build_app.bat', 'rollback_drill.bat', 'installer.ps1', 'setup_git.bat', 'config.env', 'session.json', '*.log'):
+        assert f"'{f}'" in xf, f'{f} must not be copied into the build'
+
+
+# The fake world: every outside effect of installer.ps1 is replaced; files live in a temp LOCALAPPDATA.
+_FAKES = r'''
+param([string]$TInstaller, [string]$TCfg, [string]$TMode, [string]$TSrc, [string]$TLad)
+$ErrorActionPreference = 'Stop'
+. $TInstaller -NoRun        # (its param block would reset a caller variable named $Mode: hence the T prefix)
+$global:Cfg = Get-Content -Raw $TCfg | ConvertFrom-Json
+$global:Calls = [Collections.Generic.List[string]]::new()
+function C([string]$x) { $global:Calls.Add($x) }
+function Opt($name, $default) { $p = $global:Cfg.PSObject.Properties[$name]; if ($null -ne $p) { return $p.Value } return $default }
+function New-BuildId { return 'NEW1' }
+function Find-Python { return 'python' }
+function Wait-Seconds([int]$n) { }
+function Invoke-Pause { C 'pause' }
+function Stop-Bot { C 'stop'; return [bool](Opt 'stopOk' $true) }
+function Update-Shortcuts { C 'shortcuts'; return $true }
+function Remove-Stage([string]$dir) { C 'rmdir'; if ([IO.Directory]::Exists($dir)) { [IO.Directory]::Delete($dir, $true) } }
+function Start-App([string]$exe, [string[]]$argv) {
+    $kind = [IO.File]::ReadAllText($exe)
+    C ("start:$kind" + $(if ($argv) { ' ' + ($argv -join ' ') } else { '' }))
+    if ((Opt 'throwOnStart' $false) -and $kind -eq 'NEWEXE') { throw 'simulated crash' }
+    $global:Running = $kind
+}
+function Wait-Ping([string]$buildId, [int]$seconds) {
+    C "ping:${buildId}:$seconds"
+    if ($buildId -eq 'NEW1') { return ($global:Running -eq 'NEWEXE' -and [bool](Opt 'newAnswers' $true)) }
+    return ($global:Running -eq 'OLDEXE' -and [bool](Opt 'oldAnswers' $true))
+}
+function Copy-FileSafe([string]$from, [string]$to) {
+    C ('copy:' + [IO.Path]::GetFileName($from) + '>' + [IO.Path]::GetFileName($to))
+    $bad = Opt 'copyFail' ''                     # 'from>to' file names, e.g. 'ZackBot.prev.exe>ZackBot.exe'
+    if ($bad -and ([IO.Path]::GetFileName($from) + '>' + [IO.Path]::GetFileName($to)) -eq $bad) { return $false }
+    [IO.File]::Copy($from, $to, $true); return $true
+}
+function Get-FileSha([string]$path) {
+    $bad = Opt 'hashFail' ''
+    if ($bad -and $path.EndsWith($bad)) { return '' }
+    $sha = [Security.Cryptography.SHA256]::Create()
+    try { return ([BitConverter]::ToString($sha.ComputeHash([IO.File]::ReadAllBytes($path))) -replace '-', '') } finally { $sha.Dispose() }
+}
+function Invoke-ExeWait([string]$exe, [string[]]$argv) {
+    $kind = [IO.File]::ReadAllText($exe); C "selftest:$kind"
+    if ($kind -eq 'NEWEXE' -and -not (Opt 'selftestFail' $false)) {
+        [IO.File]::WriteAllText($argv[1], '{"ok": true, "build": "NEW1", "version": "3.2"}')
+    }
+    if ($kind -eq 'OLDEXE' -and -not (Opt 'noOldBuild' $false)) { [IO.File]::WriteAllText($argv[1], '{"ok": true, "build": "OLD1"}') }
+    return 0
+}
+function Invoke-Logged([string]$file, [string[]]$argv, [string]$cwd = '', [switch]$Quiet) {
+    $s = $script:S; $code = 0; $name = [IO.Path]::GetFileName($file)
+    if ($name -eq 'robocopy' -and $argv[1] -eq $s.StageSrc) {
+        C 'stage'; [void][IO.Directory]::CreateDirectory($s.StageSrc)
+        [IO.File]::WriteAllText([IO.Path]::Combine($s.StageSrc, 'app.py'), 'print(1)')
+        $code = [int](Opt 'stageCode' 1)
+    } elseif ($name -eq 'robocopy') { C 'mirror'; $code = [int](Opt 'mirrorCode' 1) }
+    elseif ($name -eq 'python' -and $argv[1] -eq 'venv') {
+        C 'venv'; $d = [IO.Path]::Combine($argv[2], 'Scripts'); [void][IO.Directory]::CreateDirectory($d)
+        [IO.File]::WriteAllText([IO.Path]::Combine($d, 'python.exe'), 'py')
+    } elseif ($name -eq 'python.exe') {
+        $step = @{ pip = 'pip'; '-c' = 'libs'; pytest = 'pytest'; PyInstaller = 'pyinstaller' }
+        $k = if ($argv[0] -eq '-c') { 'libs' } else { $step[$argv[1]] }
+        C $k; $code = [int](Opt ($k + 'Code') 0)
+        if ($k -eq 'pyinstaller' -and $code -eq 0) {
+            [void][IO.Directory]::CreateDirectory([IO.Path]::Combine($s.Stage, 'dist'))
+            [IO.File]::WriteAllText($s.NewExe, 'NEWEXE')
+        }
+    } else { C "other:$name" }
+    return @{ Code = $code; Out = ''; Err = '' }
+}
+$rc = Invoke-Main $TMode $TSrc $TLad
+[Console]::Out.WriteLine('RC=' + $rc)
+[Console]::Out.WriteLine('CALLS=' + ($global:Calls -join '|'))
+'''
+
+# On Windows the installer really runs under Windows PowerShell 5.1, so the flow tests use it too; elsewhere PowerShell 7.
+PWSH = (shutil.which('powershell') if os.name == 'nt' else None) or shutil.which('pwsh') or \
+    ('/opt/pwsh/pwsh' if os.path.exists('/opt/pwsh/pwsh') else None)
+needs_flow = pytest.mark.skipif(PWSH is None or not os.path.exists(INSTALLER), reason='no PowerShell / no installer.ps1')
+
+
+def _flow(mode, have_old=True, nopause=True, **cfg):
+    """Runs installer.ps1's real Invoke-Main in the fake world. Returns (rc, calls, log text, app dir)."""
+    with tempfile.TemporaryDirectory() as tmp:
+        lad, app = os.path.join(tmp, 'lad'), os.path.join(tmp, 'lad', 'ZackBot', 'app')
+        os.makedirs(app)
+        if have_old:
+            open(os.path.join(app, 'ZackBot.exe'), 'w').write('OLDEXE')
+        cfgp, fk = os.path.join(tmp, 'cfg.json'), os.path.join(tmp, 'fakes.ps1')
+        json.dump(cfg, open(cfgp, 'w')); open(fk, 'w').write(_FAKES)
+        env = dict(os.environ); env.pop('ZB_NOPAUSE', None)
+        if nopause: env['ZB_NOPAUSE'] = '1'
+        r = subprocess.run([PWSH, '-NoProfile', '-NonInteractive', '-File', fk, INSTALLER, cfgp, mode, ROOT, lad],
+                           capture_output=True, text=True, env=env, timeout=120)
+        assert 'RC=' in r.stdout, (r.stdout[-1500:], r.stderr[-1500:])
+        m = re.search(r'^RC=(\d+)$', r.stdout, re.M)
+        assert m, f'Invoke-Main must return exactly one exit code (stray pipeline output?): {r.stdout[-400:]}'
+        rc = int(m.group(1))
+        calls = re.search(r'CALLS=(.*)', r.stdout).group(1).split('|')
+        logs = [f for f in ('build.log', 'build_preflight.log', 'build_check.log') if os.path.exists(os.path.join(lad, 'ZackBot', f))]
+        assert len(logs) == 1, logs
+        text = open(os.path.join(lad, 'ZackBot', logs[0]), encoding='utf-8').read()
+        jp = os.path.join(lad, 'ZackBot', logs[0][:-4] + '.json')
+        record = json.load(open(jp, encoding='utf-8')) if os.path.exists(jp) else None
+        exe = os.path.join(app, 'ZackBot.exe')
+        installed = open(exe).read() if os.path.exists(exe) else None
+        stages = [d for d in os.listdir(os.path.join(lad, 'ZackBot')) if d.startswith('staging')]
+        return dict(rc=rc, calls=calls, log=text, logname=logs[0], installed=installed, stages=stages, out=r.stdout, rec=record)
+
+
+def _order(calls, *names):
+    idx = [calls.index(n) for n in names]
+    assert idx == sorted(idx), (names, calls)
+
+
+@needs_flow
+def test_flow_install_succeeds_and_mirror_follows_the_confirmed_launch():
+    f = _flow('install')
+    assert f['rc'] == 0 and f['installed'] == 'NEWEXE', f
+    _order(f['calls'], 'stage', 'pytest', 'pyinstaller', 'selftest:NEWEXE', 'copy:ZackBot.exe>ZackBot.prev.exe',
+           'selftest:OLDEXE', 'stop', 'copy:ZackBot.exe>ZackBot.exe', 'start:NEWEXE', 'ping:NEW1:60', 'mirror', 'shortcuts')
+    assert 'start:NEWEXE --simulate-failed-launch' not in f['calls']
+    for m in ('build id NEW1', 'checksum helper ok', 'new exe sha256 ', 'backup ok sha256', 'previous build OLD1', 'BUILD_DONE build=NEW1'):
+        assert m in f['log'], m
+    assert 'ROLLBACK' not in f['log'] and 'pause' not in f['calls']
+
+
+@needs_flow
+def test_flow_first_install_without_previous_version():
+    f = _flow('install', have_old=False)
+    assert f['rc'] == 0 and f['installed'] == 'NEWEXE' and 'selftest:OLDEXE' not in f['calls'], f
+
+
+@needs_flow
+def test_flow_new_build_silent_rolls_back_to_verified_previous_version():
+    f = _flow('install', newAnswers=False)
+    assert f['rc'] == 1 and f['installed'] == 'OLDEXE', f
+    c = f['calls']
+    _order(c, 'start:NEWEXE', 'ping:NEW1:60', 'copy:ZackBot.prev.exe>ZackBot.exe', 'start:OLDEXE', 'ping:OLD1:60')
+    assert 'mirror' not in c and 'shortcuts' not in c, 'no mirror or shortcut update on the rollback path'
+    assert 'restored exe sha256' in f['log'] and 'ROLLBACK_RESULT verified=1' in f['log']
+    assert 'BUILD_FAILED: the new version did not start correctly - the previous version OLD1 was restored and confirmed running' in f['log']
+
+
+@needs_flow
+def test_flow_rollback_refuses_a_restored_exe_with_the_wrong_hash():
+    f = _flow('install', newAnswers=False, copyFail='ZackBot.prev.exe>ZackBot.exe')   # the restore copy fails
+    assert f['rc'] == 1 and f['installed'] == 'NEWEXE' and 'start:OLDEXE' not in f['calls'], f
+    assert 'restoring the previous exe failed - ZackBot.prev.exe is still in' in f['log'], f['log']
+
+
+@needs_flow
+def test_flow_swap_that_keeps_failing_rolls_back_after_five_tries():
+    f = _flow('install', copyFail='ZackBot.exe>ZackBot.exe')
+    assert f['calls'].count('copy:ZackBot.exe>ZackBot.exe') == 5 and 'start:NEWEXE' not in f['calls']
+    assert f['rc'] == 1 and f['installed'] == 'OLDEXE' and 'ROLLBACK_RESULT verified=1' in f['log'], f
+
+
+@needs_flow
+def test_flow_no_previous_version_removes_the_failed_exe():
+    f = _flow('install', have_old=False, newAnswers=False)
+    assert f['rc'] == 1 and f['installed'] is None
+    assert 'there was no previous version to restore' in f['log']
+
+
+@needs_flow
+def test_flow_drill_passes_only_when_the_old_build_is_proven_running():
+    f = _flow('drill', newAnswers=True)              # the fake new exe would answer, but the drill launch must fail it
+    c = f['calls']
+    assert 'start:NEWEXE --simulate-failed-launch' in c and 'ping:NEW1:20' in c
+    # fake: the new exe 'answers' -> the drill is INVALID (it was told to fail)
+    assert f['rc'] == 1 and 'ROLLBACK DRILL INVALID' in f['log'], f['log']
+    f = _flow('drill', newAnswers=False)
+    assert f['rc'] == 0 and f['installed'] == 'OLDEXE', f
+    _order(f['calls'], 'start:NEWEXE --simulate-failed-launch', 'ping:NEW1:20', 'copy:ZackBot.prev.exe>ZackBot.exe',
+           'start:OLDEXE', 'ping:OLD1:60')
+    assert 'DRILL_PASSED new=NEW1' in f['log'] and 'restored=OLD1' in f['log'] and 'mirror' not in f['calls']
+    f = _flow('drill', newAnswers=False, oldAnswers=False)
+    assert f['rc'] == 1 and 'ROLLBACK DRILL FAILED' in f['log'] and 'DRILL_PASSED' not in f['log']
+
+
+@needs_flow
+def test_flow_drill_refuses_without_an_installed_version_or_old_build_id():
+    f = _flow('drill', have_old=False)
+    assert f['rc'] == 1 and 'stage' not in f['calls'] and 'needs an installed ZackBot' in f['log'], 'refuse before step 1'
+    f = _flow('drill', noOldBuild=True)
+    assert f['rc'] == 1 and 'stop' not in f['calls'] and 'rollback could not be proven' in f['log']
+
+
+@needs_flow
+def test_flow_preflight_is_non_destructive():
+    f = _flow('preflight')
+    assert f['rc'] == 0 and f['logname'] == 'build_preflight.log' and 'PREFLIGHT_OK build=NEW1 app.py sha256=' in f['log']
+    assert f['calls'] == ['rmdir', 'stage', 'rmdir'] and f['installed'] == 'OLDEXE' and f['stages'] == [], f
+
+
+@needs_flow
+def test_flow_buildcheck_builds_but_never_installs():
+    f = _flow('buildcheck')
+    assert f['rc'] == 0 and f['logname'] == 'build_check.log' and 'BUILDCHECK_OK build=NEW1 sha256=' in f['log']
+    for x in ('stop', 'start:NEWEXE', 'copy:ZackBot.exe>ZackBot.prev.exe', 'mirror'):
+        assert x not in f['calls'], x
+    assert f['stages'] == ['staging_buildcheck'] and f['installed'] == 'OLDEXE'
+
+
+@pytest.mark.parametrize('cfg, why', [
+    (dict(stageCode=8), 'copying the source failed'),
+    (dict(hashFail='app.py'), 'the checksum helper does not work'),
+    (dict(pipCode=1), 'installing the pinned libraries failed'),
+    (dict(libsCode=1), 'the build libraries do not load'),
+    (dict(pytestCode=1), 'the safety tests FAILED'),
+    (dict(pyinstallerCode=1), 'PyInstaller failed'),
+    (dict(selftestFail=True), 'the new exe failed its self-test'),
+    (dict(copyFail='ZackBot.exe>ZackBot.prev.exe'), 'backing up the current ZackBot.exe failed'),
+    (dict(stopOk=False), 'the running ZackBot did not stop'),
+])
+@needs_flow
+def test_flow_every_failure_before_the_swap_leaves_the_old_version_untouched(cfg, why):
+    f = _flow('install', **cfg)
+    assert f['rc'] == 1 and f['installed'] == 'OLDEXE' and f'BUILD_FAILED: {why}' in f['log'], (cfg, f['log'][-600:])
+    assert not any(c.startswith('start:') for c in f['calls']) and 'mirror' not in f['calls']
+
+
+@needs_flow
+def test_flow_unexpected_error_after_the_stop_restores_the_previous_version():
+    """T03b real error handling: an exception after the old bot was stopped must not leave it down."""
+    f = _flow('install', throwOnStart=True)
+    assert f['rc'] == 1 and f['installed'] == 'OLDEXE', f
+    assert 'UNEXPECTED: simulated crash' in f['log'] and 'ROLLBACK_RESULT verified=1' in f['log']
+    _order(f['calls'], 'stop', 'start:NEWEXE', 'copy:ZackBot.prev.exe>ZackBot.exe', 'start:OLDEXE', 'ping:OLD1:60')
+
+
+@needs_flow
+def test_flow_pauses_only_for_a_person_and_never_with_zb_nopause():
+    for mode, cfg in (('install', dict(pytestCode=1)), ('install', dict(newAnswers=False)), ('drill', dict(newAnswers=False)),
+                      ('install', dict(mirrorCode=8))):
+        assert 'pause' not in _flow(mode, nopause=True, **cfg)['calls'], (mode, cfg)
+        assert 'pause' in _flow(mode, nopause=False, **cfg)['calls'], (mode, cfg)
+    for mode in ('preflight', 'buildcheck'):                   # used by tests and verify.py: never pause, even on failure
+        assert 'pause' not in _flow(mode, nopause=False, stageCode=8)['calls'], mode
+
+
+@needs_flow
+def test_flow_unknown_mode_is_refused():
+    with tempfile.TemporaryDirectory() as tmp:
+        fk = os.path.join(tmp, 'f.ps1'); cfgp = os.path.join(tmp, 'c.json')
+        open(fk, 'w').write(_FAKES); open(cfgp, 'w').write('{}')
+        r = subprocess.run([PWSH, '-NoProfile', '-NonInteractive', '-File', fk, INSTALLER, cfgp, 'instal', ROOT, tmp],
+                           capture_output=True, text=True, timeout=120)
+        assert 'RC=2' in r.stdout and 'usage' in r.stdout and 'CALLS=' in r.stdout and not os.path.exists(os.path.join(tmp, 'ZackBot'))
+
+
+@needs_flow
+def test_real_process_runner_and_hash_helper_path():
+    """No fakes: the real Invoke-Logged starts the real installer_check.ps1 (quoted path with a space) and Get-FileSha
+    returns its SHA-256; a missing file returns '' and the helper's reason lands in the log."""
+    with tempfile.TemporaryDirectory() as tmp:
+        stage = os.path.join(tmp, 'stage dir', 'src'); os.makedirs(stage)
+        shutil.copy(PS1, stage)
+        target = os.path.join(tmp, 'a file.txt'); open(target, 'wb').write(b'zackbot\r\n')
+        log = os.path.join(tmp, 'build.log')
+        script = os.path.join(tmp, 'real.ps1')
+        open(script, 'w').write(
+            "param($I, $L, $St, $F)\n. $I -NoRun\n"
+            "$script:S = @{ Log = $L; StageSrc = $St }\n"
+            "[Console]::Out.WriteLine('SHA=' + (Get-FileSha $F))\n"
+            "[Console]::Out.WriteLine('MISSING=[' + (Get-FileSha ($F + '.nope')) + ']')\n")
+        r = subprocess.run([PWSH, '-NoProfile', '-NonInteractive', '-File', script, INSTALLER, log, stage, target],
+                           capture_output=True, text=True, timeout=120)
+        assert ('SHA=' + hashlib.sha256(b'zackbot\r\n').hexdigest().upper()) in r.stdout, (r.stdout, r.stderr[-500:])
+        assert 'MISSING=[]' in r.stdout
+        assert 'installer_check hash' in open(log, encoding='utf-8').read() and 'not found' in open(log, encoding='utf-8').read()
+
+
+CAIRO_TS = re.compile(r'^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\+0[23]:00$')
+
+
+def _steps(rec):
+    return [(x['step'], x['ok']) for x in rec['steps']]
+
+
+@needs_flow
+def test_json_record_of_a_successful_install():
+    f = _flow('install'); rec = f['rec']
+    assert rec and rec['schema'] == 1 and rec['mode'] == 'install' and rec['verdict'] == 'BUILD_DONE' and rec['exit_code'] == 0
+    assert CAIRO_TS.match(rec['started']) and CAIRO_TS.match(rec['finished']), (rec['started'], rec['finished'])
+    assert all(CAIRO_TS.match(x['started']) and CAIRO_TS.match(x['finished']) for x in rec['steps'])
+    assert _steps(rec) == [(n, True) for n in ('stage', 'checksum_helper', 'build_env', 'libs', 'safety_tests', 'pyinstaller',
+                                               'selftest_new', 'hash_new', 'backup', 'stop', 'swap', 'launch', 'mirror', 'shortcuts')]
+    assert rec['build_id'] == 'NEW1' and re.fullmatch(r'[0-9A-F]{64}', rec['new_exe_sha256'])
+    assert rec['previous']['build'] == 'OLD1' and rec['installed_after'] == dict(build='NEW1', sha256=rec['new_exe_sha256'])
+    assert rec['bot_stopped'] is True and rec['rollback']['attempted'] is False and rec['warnings'] == []
+
+
+@needs_flow
+def test_json_record_of_a_rollback_and_of_warnings():
+    f = _flow('install', newAnswers=False); rec = f['rec']
+    assert rec['verdict'] == 'BUILD_FAILED' and rec['exit_code'] == 1 and 'did not start correctly' in rec['reason']
+    assert _steps(rec)[-2:] == [('launch', False), ('rollback', True)]
+    assert rec['rollback'] == dict(attempted=True, verified=True, restored_sha256=rec['previous']['sha256'],
+                                   note='the previous version OLD1 was restored and confirmed running')
+    assert rec['installed_after'] == dict(build='OLD1', sha256=rec['previous']['sha256'])
+    f = _flow('install', mirrorCode=8); rec = f['rec']
+    assert rec['verdict'] == 'BUILD_DONE' and ('mirror', False) in _steps(rec) and len(rec['warnings']) == 1
+
+
+@needs_flow
+def test_json_record_of_the_drill_preflight_buildcheck_and_a_crash():
+    rec = _flow('drill', newAnswers=False)['rec']
+    assert rec['verdict'] == 'DRILL_PASSED' and _steps(rec)[0] == ('drill_precheck', True)
+    assert ('launch', True) in _steps(rec) and _steps(rec)[-1] == ('rollback', True)       # failing launch = expected
+    rec = _flow('preflight')['rec']
+    assert rec['verdict'] == 'PREFLIGHT_OK' and _steps(rec) == [('stage', True), ('checksum_helper', True)]
+    assert rec['bot_stopped'] is False and rec['installed_after'] is None
+    rec = _flow('buildcheck')['rec']
+    assert rec['verdict'] == 'BUILDCHECK_OK' and _steps(rec)[-1] == ('hash_new', True) and rec['bot_stopped'] is False
+    rec = _flow('install', throwOnStart=True)['rec']
+    assert ('launch', False) in _steps(rec) and 'unexpected: simulated crash' in str(rec['steps']) and rec['rollback']['verified'] is True
+
+
+@pytest.mark.parametrize('cfg, step', [
+    (dict(stageCode=8), 'stage'), (dict(hashFail='app.py'), 'checksum_helper'), (dict(pipCode=1), 'build_env'),
+    (dict(libsCode=1), 'libs'), (dict(pytestCode=1), 'safety_tests'), (dict(pyinstallerCode=1), 'pyinstaller'),
+    (dict(selftestFail=True), 'selftest_new'), (dict(copyFail='ZackBot.exe>ZackBot.prev.exe'), 'backup'), (dict(stopOk=False), 'stop'),
+])
+@needs_flow
+def test_json_record_names_the_failed_step(cfg, step):
+    rec = _flow('install', **cfg)['rec']
+    assert rec['verdict'] == 'BUILD_FAILED' and _steps(rec)[-1] == (step, False) and rec['steps'][-1]['detail'] == rec['reason']
+    assert all(ok for _, ok in _steps(rec)[:-1]) and rec['installed_after'] is None
+
+
+@needs_flow
+def test_json_record_never_contains_secrets():
+    """The record holds paths, build ids, hashes and step results - never the session token or settings."""
+    rec = _flow('install')['rec']
+    text = json.dumps(rec).lower()
+    for bad in ('token', 'secret', 'api_key', 'apikey', 'password', 'config.env', 'session.json'):
+        assert bad not in text, bad
+    src = open(INSTALLER, encoding='utf-8').read()
+    body = src[src.index('function Get-Record'):src.index('function Save-Record')]
+    assert 'session' not in body.lower() and 'token' not in body.lower()
+
+
+@needs_flow
+def test_one_install_attempt_and_one_launch_per_run():
+    for mode, cfg in (('install', dict(newAnswers=False)), ('drill', dict(newAnswers=False)), ('install', {})):
+        c = _flow(mode, **cfg)['calls']
+        assert sum(x.startswith('start:NEWEXE') for x in c) == 1 and sum(x.startswith('ping:NEW1') for x in c) == 1, (mode, c)
+        assert c.count('pyinstaller') == 1 and c.count('pytest') == 1 and c.count('start:OLDEXE') <= 1, (mode, c)
+
+
+@needs_flow
+def test_argument_quoting_matches_windows_rules():
+    """ConvertTo-ArgString must produce what CommandLineToArgvW splits back into the same list (paths with spaces,
+    trailing backslashes, quotes, empty arguments)."""
+    cases = [['a', 'b c', ''], ['C:\\Program Files\\x\\', '-m', 'not slow'], ['x"y', 'p q\\"r', 'end\\\\'],
+             ['C:\\Users\\A B\\AppData\\Local\\ZackBot\\staging\\src\\panel.html;.']]
+    with tempfile.TemporaryDirectory() as tmp:
+        script = os.path.join(tmp, 'q.ps1')
+        open(script, 'w').write("param($I, $J)\n. $I -NoRun\n$cases = Get-Content -Raw $J | ConvertFrom-Json\n"
+                                "foreach ($c in $cases) { [Console]::Out.WriteLine('ARGS=' + (ConvertTo-ArgString ([string[]]@($c)))) }\n")
+        jp = os.path.join(tmp, 'c.json'); json.dump(cases, open(jp, 'w'))
+        r = subprocess.run([PWSH, '-NoProfile', '-NonInteractive', '-File', script, INSTALLER, jp], capture_output=True, text=True, timeout=120)
+        got = [l[5:] for l in r.stdout.splitlines() if l.startswith('ARGS=')]
+        assert len(got) == len(cases), (r.stdout, r.stderr[-400:])
+        assert [_split_windows(g) for g in got] == cases, got
+
+
+def _split_windows(cmd):
+    """CommandLineToArgvW / MS C runtime splitting: 2n backslashes + quote -> n backslashes and a quote toggle,
+    2n+1 backslashes + quote -> n backslashes and a literal quote, other backslashes are literal."""
+    args, cur, quoted, have, i = [], [], False, False, 0
+    while i < len(cmd):
+        ch = cmd[i]
+        if ch == '\\':
+            n = 0
+            while i < len(cmd) and cmd[i] == '\\': n += 1; i += 1
+            if i < len(cmd) and cmd[i] == '"':
+                cur.append('\\' * (n // 2)); have = True
+                if n % 2: cur.append('"'); i += 1
+            else:
+                cur.append('\\' * n); have = True
+            continue
+        if ch == '"': quoted = not quoted; have = True
+        elif ch in ' \t' and not quoted:
+            if have: args.append(''.join(cur)); cur, have = [], False
+        else: cur.append(ch); have = True
+        i += 1
+    if have: args.append(''.join(cur))
+    return args
+
+
+@needs_installer
+def test_installer_is_windows_powershell_5_1_syntax():
+    """installer.ps1 runs under Windows PowerShell 5.1: no PowerShell-7-only operators or features."""
+    src = '\n'.join(l.split(' #')[0] for l in open(INSTALLER, encoding='utf-8').read().split('\n') if not l.lstrip().startswith('#'))
+    code = re.sub(r"'[^']*'|\"[^\"]*\"", "''", src)                      # ignore string contents
+    for pat, what in ((r'\?\?', 'null-coalescing ??'), (r'\?\.', 'null-conditional ?.'), (r'&&|\|\|', 'pipeline chain && / ||'),
+                      (r'\s\?\s[^:]*\s:\s', 'ternary ? :'), (r'-Parallel\b', 'ForEach -Parallel'), (r'\bclean\s*\{', 'clean block')):
+        assert not re.search(pat, code), f'installer.ps1 uses {what} (PowerShell 7 only)'
+    assert 'Set-StrictMode -Version 2.0' in src and "$ErrorActionPreference = 'Stop'" in src
+
+
+@needs_installer
+def test_bare_pytest_cannot_reach_a_real_side_effect():
+    """Every installer function that starts/stops processes, touches shortcuts or pauses is replaced in the fake world,
+    so a bare pytest run on the owner's PC can never stop the bot, start an exe or install anything."""
+    src = open(INSTALLER, encoding='utf-8').read()
+    funcs = re.findall(r'^function\s+([A-Za-z]+-[A-Za-z0-9]+)[^\n]*\n(.*?)(?=^function\s|\Z)', src, re.S | re.M)
+    risky = {n for n, body in funcs if re.search(r'Process\]::Start|\.Kill\(\)|CreateShortcut|cmd\.exe|robocopy', body)}
+    faked = set(re.findall(r'^function\s+([A-Za-z]+-[A-Za-z0-9]+)', _FAKES, re.M))
+    # Invoke-Logged / Invoke-ExeWait / Start-App etc. are the only process starters; callers go through them
+    starters = {'Invoke-Logged', 'Invoke-ExeWait', 'Start-App', 'Stop-Bot', 'Update-Shortcuts', 'Remove-Stage', 'Invoke-Pause'}
+    assert risky <= starters | {'Invoke-Step1Stage', 'Invoke-Finish', 'Invoke-Helper'}, risky
+    assert starters <= faked, starters - faked
