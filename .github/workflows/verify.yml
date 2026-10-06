@@ -1,64 +1,59 @@
-# ZackBot verification (T04). Same commands as on the PC: python verify.py fast|full.
-# fast: every push and pull request. full: pull requests into master, and on demand (Actions -> verify -> Run workflow).
+# ZackBot final full gate (T04; T04d: parallel full; round 4: PR-associated label trigger). Same gates as
+# `python verify.py full`.
+# Trigger: ONLY the pull_request `labeled` event into master. Codex adds the label `full-ready` to the PR once code review
+# is clean; GitHub associates that run with the PR, so its "verify full" appears in the PR's required-check rollup (a
+# workflow_dispatch run does not - Codex round 4 on 6ac349e). Ordinary opened/synchronize/reopened events never start
+# this workflow, so a PR iteration costs only "verify fast" (verify-fast.yml).
+# Exact head: the PR head SHA from the event is format-checked as the FIRST step of every job, checked out explicitly
+# (not the refs/pull/N/merge commit), re-proved after checkout (verify_ci.py guard), recorded in every slice summary and
+# re-checked by the aggregator (verify_ci.py merge --expected-sha). A later commit has no "verify full" (synchronize does
+# not trigger this workflow), so branch protection blocks it until Codex removes and re-adds `full-ready`.
+# Wrong label: the slices do not run, and the aggregator runs under the NON-required name "full gate not requested" and
+# does nothing, so no other label can ever publish "verify full" (neither a success nor a skipped one).
+# "verify full" = three parallel slices of verify.FULL_PLAN (tests | replay 2 | replay 1 + UI harness), merged by the
+# required job, which fails unless the slices cover exactly the plan and every slice ran on this commit and passed.
+# The aggregator uses `if: always()` so a failed/cancelled slice FAILS it; it is never conditionally skipped.
 # release (rollback drill + running-bot reconciliation) needs the owner's Windows install: run verify_release.bat on the PC.
 name: verify
 
 on:
-  push:
-    branches: ['**']
   pull_request:
+    types: [labeled]
     branches: [master]
-  workflow_dispatch:
-    inputs:
-      level:
-        description: 'fast or full'
-        type: choice
-        options: [full, fast]
-        default: full
 
 permissions:
   contents: read
 
 concurrency:
-  group: verify-${{ github.ref }}-${{ github.event_name }}
+  group: verify-full-${{ github.event.pull_request.number }}-${{ github.event.label.name }}
   cancel-in-progress: true
 
-jobs:
-  fast:
-    name: verify fast
-    runs-on: ubuntu-24.04
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
-        with:
-          python-version: '3.14'
-          cache: pip
-          cache-dependency-path: |
-            requirements.txt
-            requirements-dev.txt
-      - name: Install pinned dependencies
-        run: python -m pip install --disable-pip-version-check -r requirements-dev.txt
-      - name: verify fast
-        env:
-          TZ: Africa/Cairo
-        run: python verify.py fast --out verify_out
-      - name: Upload summary
-        if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
-        with:
-          name: verify-fast-${{ github.sha }}
-          path: verify_out/
-          retention-days: 30
+env:
+  TZ: Africa/Cairo
+  ZB_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+  ZB_LABEL: ${{ github.event.label.name }}
 
-  full:
-    name: verify full
-    if: github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.level == 'full')
-    needs: fast
+jobs:
+  full-part:
+    name: full slice ${{ matrix.part }}
+    if: github.event.label.name == 'full-ready'
+    strategy:
+      fail-fast: false
+      matrix:
+        part: [tests, replay2, replay1-ui]
     runs-on: ubuntu-24.04
-    timeout-minutes: 120
+    timeout-minutes: 90
     steps:
+      - name: Exact-head guard (first step - the PR head SHA from the event, full-ready only)
+        run: |
+          echo "label=$ZB_LABEL  PR head_sha=$ZB_HEAD_SHA  (GITHUB_SHA=$GITHUB_SHA is the merge ref, not used)"
+          [ "$ZB_LABEL" = "full-ready" ] || { echo "not the full-ready label"; exit 1; }
+          [[ "$ZB_HEAD_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "head_sha must be a full 40-character SHA"; exit 1; }
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+      - name: Checked-out commit is exactly the PR head
+        run: python verify_ci.py guard --expected "$ZB_HEAD_SHA"
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: '3.14'
@@ -67,18 +62,70 @@ jobs:
             requirements.txt
             requirements-dev.txt
             requirements-ui.txt
-      - name: Install pinned dependencies (incl. UI harness)
+      - name: Install pinned dependencies
+        run: python -m pip install --disable-pip-version-check -r requirements-dev.txt
+      - name: Install the UI harness (replay1-ui only)
+        if: matrix.part == 'replay1-ui'
         run: |
           python -m pip install --disable-pip-version-check -r requirements-ui.txt
           python -m playwright install --with-deps chromium
-      - name: verify full
-        env:
-          TZ: Africa/Cairo
-        run: python verify.py full --out verify_out
-      - name: Upload summary and evidence
+      - name: verify full slice
+        run: python verify_ci.py part ${{ matrix.part }} --out verify_out
+      - name: Upload slice summary and evidence
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: verify-full-${{ github.sha }}
+          name: verify-full-${{ matrix.part }}-${{ github.event.pull_request.head.sha }}
+          path: verify_out/
+          retention-days: 30
+
+  full:
+    name: ${{ github.event.label.name == 'full-ready' && 'verify full' || 'full gate not requested' }}
+    needs: full-part
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Not requested (any label other than full-ready) - nothing runs, the required name is never used
+        if: github.event.label.name != 'full-ready'
+        run: echo "label '$ZB_LABEL' is not full-ready - no full gate"
+      - name: Exact-head guard (first step - the PR head SHA from the event, full-ready only)
+        if: github.event.label.name == 'full-ready'
+        run: |
+          echo "label=$ZB_LABEL  PR head_sha=$ZB_HEAD_SHA  (GITHUB_SHA=$GITHUB_SHA is the merge ref, not used)"
+          [ "$ZB_LABEL" = "full-ready" ] || { echo "not the full-ready label"; exit 1; }
+          [[ "$ZB_HEAD_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "head_sha must be a full 40-character SHA"; exit 1; }
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        if: github.event.label.name == 'full-ready'
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+      - name: Checked-out commit is exactly the PR head
+        if: github.event.label.name == 'full-ready'
+        run: python verify_ci.py guard --expected "$ZB_HEAD_SHA"
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        if: github.event.label.name == 'full-ready'
+        with:
+          python-version: '3.14'
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
+      - name: Install pinned dependencies
+        if: github.event.label.name == 'full-ready'
+        run: python -m pip install --disable-pip-version-check -r requirements-dev.txt
+      - name: Download slice summaries
+        if: github.event.label.name == 'full-ready'
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: verify-full-*-${{ github.event.pull_request.head.sha }}
+          path: parts/
+      - name: verify full (merge the slices; re-checks the approved SHA)
+        if: github.event.label.name == 'full-ready'
+        run: python verify_ci.py merge --parts parts --out verify_out --expected-sha "$ZB_HEAD_SHA"
+      - name: Upload summary
+        if: always() && github.event.label.name == 'full-ready'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: verify-full-${{ github.event.pull_request.head.sha }}
           path: verify_out/
           retention-days: 30
