@@ -1,6 +1,6 @@
 # ZackBot owner overview
 
-*Last refreshed: 2026-10-06 03:15 Cairo (Africa/Cairo) by Codex, on branch `t03a-leverage-fallback-v2`. This is the plain-language owner view. `ROADMAP.md` and `docs/reviews/` hold the detailed scope and evidence.*
+*Last refreshed: 2026-10-06 03:39 Cairo (Africa/Cairo) by Codex, on branch `t03b-installer-powershell`. This is the plain-language owner view. `ROADMAP.md` and `docs/reviews/` hold the detailed scope and evidence.*
 
 ## Where we are now
 
@@ -9,11 +9,11 @@
 | Environment | **Binance Futures testnet only.** Mainnet stays impossible until the roadmap and the final release audit are complete and you approve it. |
 | Is ZackBot running? | Yes, on your PC (testnet), build `20261006-030952`: engine and exchange ok, three positions, all protected, zero errors/untracked/orphans after the T03a installer and canary. |
 | Installed application | **T03a installed and verified.** SHA-256 `72ABCA7CC25FC7859C93A62F4518AE3659A2C8B9B524F3ACA203798E769F430D`; previous verified executable retained for rollback. |
-| Latest accepted commit | `master` `ad1d584` (T04b accepted and merged) |
-| Current ticket | **T03a accepted; protected PR #4 merge is next, then T03b** |
-| Stage | **Runtime gate passed.** Acceptance evidence is being pushed; protected checks must pass before merge. |
-| What Claude is doing | Holding as requested until Codex posts the runtime result, then T03b can begin after merge. |
-| What Codex is reviewing | Final acceptance documentation, protected checks and merge. |
+| Latest accepted commit | `master` `f9778ca` (T03a accepted and merged) |
+| Current ticket | **T03b: move installer logic from CMD to PowerShell** |
+| Stage | **Ready for Claude implementation on the new T03b branch.** Behaviour must remain fail-closed and unchanged. |
+| What Claude is doing | Waiting for the READY FOR CLAUDE handoff, then implementing T03b without running an installer or rollback drill. |
+| What Codex is reviewing | Monitoring the GitHub handoff and waiting for T03b's exact review-ready commit. |
 | Your action | **None.** |
 
 ## Latest test results
@@ -91,8 +91,7 @@ Every ticket now ends with a **clean-up pass on the files it touched**: remove d
 
 | Order | Ticket | Why it comes here |
 |---|---|---|
-| Merge | **T03a — leverage-refusal fallback** | Accepted; merge PR #4 after the acceptance-document checks pass |
-| Next | **T03b — installer in PowerShell** | Easier to maintain now that current behaviour is proven |
+| Current | **T03b — installer in PowerShell** | Implementation and static/test review first; a later installer/rollback drill requires separate owner approval |
 | Then | **T05 — fill telemetry** | Measures expected vs actual fills |
 | Core | **T06–T09 — shared core** | One trading logic for live and backtest |
 | Scale | **T10–T16** | Order budgets, trade records, "Why?", scorecards, VPS, multi-account, ML data |
