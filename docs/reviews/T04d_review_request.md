@@ -5,9 +5,34 @@
 | Item | Value |
 |---|---|
 | Branch | `t04d-faster-ci`, **merged with protected `master` 566ed56** (T05) in round 2 (T05 preserved unchanged). **Pipeline mode** |
-| Head for review | the PR head. The full SHA is in the FIXED FOR CODEX comment (round 1 reviewed 3481f12 → Codex d74932f; round 2 reviewed 99a276e → Codex PR comment "ROUND 2 — FIXES REQUESTED") |
+| Head for review | the PR head. The full SHA is in the FIXED FOR CODEX comment (round 1 reviewed 3481f12 → Codex d74932f; round 2 reviewed 99a276e → Codex PR comment "ROUND 2 — FIXES REQUESTED"; round 4 blocker reported in 6ac349e) |
 | Class | CI/verification only. No bot, installer or trading change. `verify.py`: the full level now runs one canonical `FULL_PLAN` (same gates, same order) |
 | Owner approval | "Faster CI" speed-up, selected by the owner on 2026-10-06 (relayed on PR #5) |
+
+## Round 4 disposition (Codex blocker in 6ac349e: dispatch-only full not counted by protection)
+
+**P1: the successful dispatched `verify full` was on the commit's check runs but absent from PR #7's `statusCheckRollup`, so the PR stayed BLOCKED.** Confirmed (GitHub does not associate `workflow_dispatch` runs with a PR). Fixed with a PR-associated trigger:
+- `verify.yml` now triggers ONLY on `pull_request: types: [labeled], branches: [master]` (no `workflow_dispatch`). Codex adds the label **`full-ready`** to the PR once code review is clean; a `pull_request` run is associated with the PR and appears in its rollup.
+- Ordinary `opened` / `synchronize` / `reopened` events never start `verify.yml`: they produce exactly one `verify fast` (verify-fast.yml, default types) and no `verify full` in any state. Adding a label does not re-run `verify fast`.
+- **Only the real aggregator can be `verify full`.** Its job name is `${{ github.event.label.name == 'full-ready' && 'verify full' || 'full gate not requested' }}`, with `needs: full-part` + `if: always()` (never skipped). For any other label (including `Full-Ready`, `full-ready `, `verify full`, empty) the slices are skipped under their non-required names and the aggregator runs as **"full gate not requested"**, does nothing (every working step requires the label), and so never publishes a successful or skipped `verify full`.
+- **Exact head.** `ZB_HEAD_SHA = github.event.pull_request.head.sha` (the PR head, not the `refs/pull/N/merge` commit that `GITHUB_SHA` points to on PR events). In every job: first working step = label + 40-hex format check; then `actions/checkout` with `ref: <head sha>`; then `verify_ci.py guard --expected "$ZB_HEAD_SHA"`, which now compares the CHECKED-OUT commit (`git rev-parse HEAD`), never `GITHUB_SHA`. Every slice records that commit; artifacts are named by the head SHA; the merge re-checks it (`--expected-sha`, step "exact approved head") and requires every slice on the same commit.
+- **Invalidation.** `synchronize` does not trigger `verify.yml`, so the old run's `verify full` stays on the old SHA and a later commit has none; protection blocks until Codex **removes and re-adds** `full-ready` (a new deliberate trigger on the new head).
+- Concurrency is per PR number + label name, so adding an unrelated label never cancels a running full; re-adding `full-ready` replaces the previous full.
+
+Tests (tests/test_ci.py): a small event simulator reads the three workflow files and computes, per event, which check names each workflow publishes and whether each job runs or is skipped (GitHub default PR types, `types:` filters, the job `if`, the label-dependent name; any unmodelled expression fails the test). New/changed:
+- `test_each_required_name_has_exactly_one_producer` (over all PR actions × labels and push);
+- `test_triggers_one_fast_run_per_feature_commit_and_no_full_on_pr` (opened/synchronize/reopened → exactly `[verify fast run]`; no dispatch/schedule/pull_request_target anywhere);
+- `test_only_the_full_ready_label_publishes_verify_full` (full-ready → slices + `verify full`; 6 wrong labels → "full gate not requested", no required name in any state; unlabel → nothing);
+- `test_the_not_requested_aggregator_does_no_work`;
+- `test_full_gate_binds_to_the_exact_pr_head` (guard first, explicit head checkout, post-checkout guard, head-SHA artifacts, merge `--expected-sha`, no `github.sha`, concurrency key);
+- `test_a_new_commit_invalidates_the_full_result`, `test_guard_command` (checked-out commit wins over a different `GITHUB_SHA`), `test_required_jobs_are_never_conditionally_skipped` (the only job-level `if` on the slices is the label; the aggregator's is `always()`; no `write` permission).
+actionlint 1.7.7: clean on all three workflows.
+
+**Mutation proof (round 4): 12/12 caught.** Static `verify full` name; `synchronize` or `opened` added to the types; types removed; slices without the label condition; checkout without the head ref; post-checkout guard removed; merge without `--expected-sha`; merge step unconditional; concurrency without the label key; guard reading `GITHUB_SHA`; `workflow_dispatch` re-added.
+
+**P2 (CodeQL alert 10, `py/redos`, recorded in 9503634): the multiline `head_sha` input regex in `tests/test_ci.py`.** Confirmed. Fixed: that test and regex are gone (there is no dispatch input any more), and the new job-block reader `_job_blocks` uses plain line parsing, not a regex. The remaining test regexes are single-line and linear (anchored literals with `[^']+`, `[^\]]+` or one `.+` per line).
+
+**Process:** rejected iteration → focused + one `verify fast`. Review-clean candidate → Codex adds `full-ready` (about 8–9 min of job time); a later commit → remove + re-add.
 
 ## Round 2 dispositions (Codex PR review on 99a276e + owner speed decision)
 
