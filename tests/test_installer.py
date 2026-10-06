@@ -218,7 +218,8 @@ def test_launcher_is_tiny_and_isolates_powershell():
     clear = _idx(L, lambda l: l == 'set "PSModulePath="', 'PSModulePath reset')[0]
     ps = _idx(L, lambda l: l.lower().startswith('powershell '), 'installer.ps1 call')
     assert len(ps) == 1 and clear < ps[0], 'clear PSModulePath before the one PowerShell call'
-    assert '-NoProfile -ExecutionPolicy Bypass -File "%~dp0installer.ps1" %ZBMODE%' in L[ps[0]]
+    assert L[ps[0]].endswith('-NoProfile -ExecutionPolicy Bypass -File "%~dp0installer.ps1" "%ZBMODE%"'), 'mode must be passed quoted'
+    assert any(l == 'set "ZBMODE=%~1"' for l in L), 'the argument is captured inside quotes'
     assert any(l == 'if "%ZBMODE%"=="" set "ZBMODE=install"' for l in L), 'no argument = normal install'
     for l in L:                                            # the only pause: when installer.ps1 itself could not run
         if l.rstrip().endswith('pause') and not l.lower().startswith('rem'):
@@ -257,7 +258,13 @@ function New-BuildId { return 'NEW1' }
 function Find-Python { return 'python' }
 function Wait-Seconds([int]$n) { }
 function Invoke-Pause { C 'pause' }
-function Stop-Bot { C 'stop'; return [bool](Opt 'stopOk' $true) }
+$global:Running = $(if ([bool](Opt 'oldRunning' $true)) { 'OLDEXE' } else { '' })   # what answers pings right now
+function Stop-Bot {
+    C 'stop'
+    if ([bool](Opt 'stopOk' $true)) { $global:Running = ''; return $true }
+    if ([bool](Opt 'stopKills' $false)) { $global:Running = '' }            # killed it, but the wait timed out
+    return $false
+}
 function Update-Shortcuts { C 'shortcuts'; return $true }
 function Remove-Stage([string]$dir) { C 'rmdir'; if ([IO.Directory]::Exists($dir)) { [IO.Directory]::Delete($dir, $true) } }
 function Start-App([string]$exe, [string[]]$argv) {
@@ -280,6 +287,7 @@ function Copy-FileSafe([string]$from, [string]$to) {
 function Get-FileSha([string]$path) {
     $bad = Opt 'hashFail' ''
     if ($bad -and $path.EndsWith($bad)) { return '' }
+    if ((Opt 'exeHashChangesAfterStop' $false) -and $global:Calls.Contains('stop') -and $path -eq $script:S.Exe) { return 'CHANGED' }
     $sha = [Security.Cryptography.SHA256]::Create()
     try { return ([BitConverter]::ToString($sha.ComputeHash([IO.File]::ReadAllBytes($path))) -replace '-', '') } finally { $sha.Dispose() }
 }
@@ -412,8 +420,16 @@ def test_flow_drill_passes_only_when_the_old_build_is_proven_running():
     f = _flow('drill', newAnswers=True)              # the fake new exe would answer, but the drill launch must fail it
     c = f['calls']
     assert 'start:NEWEXE --simulate-failed-launch' in c and 'ping:NEW1:20' in c
-    # fake: the new exe 'answers' -> the drill is INVALID (it was told to fail)
-    assert f['rc'] == 1 and 'ROLLBACK DRILL INVALID' in f['log'], f['log']
+    # fake: the new exe 'answers' -> the drill is INVALID (it was told to fail) and the untrusted build must NOT stay:
+    # the previous verified build is restored and proven running, and the run still fails.
+    assert f['rc'] == 1 and f['installed'] == 'OLDEXE', f
+    assert 'ROLLBACK DRILL INVALID' in f['log'] and 'DRILL_PASSED' not in f['log'] and 'ROLLBACK_RESULT verified=1' in f['log']
+    assert c.count('stop') == 2, 'the answering new exe is stopped before the restore'
+    tail = c[c.index('ping:NEW1:20'):]
+    assert tail[:5] == ['ping:NEW1:20', 'stop', 'copy:ZackBot.prev.exe>ZackBot.exe', 'start:OLDEXE', 'ping:OLD1:60'], tail
+    rec = f['rec']
+    assert rec['verdict'] == 'BUILD_FAILED' and rec['rollback']['verified'] is True and ('launch', False) in _steps(rec)
+    assert rec['installed_after']['build'] == 'OLD1'
     f = _flow('drill', newAnswers=False)
     assert f['rc'] == 0 and f['installed'] == 'OLDEXE', f
     _order(f['calls'], 'start:NEWEXE --simulate-failed-launch', 'ping:NEW1:20', 'copy:ZackBot.prev.exe>ZackBot.exe',
@@ -533,7 +549,7 @@ def test_json_record_of_a_successful_install():
                                                'selftest_new', 'hash_new', 'backup', 'stop', 'swap', 'launch', 'mirror', 'shortcuts')]
     assert rec['build_id'] == 'NEW1' and re.fullmatch(r'[0-9A-F]{64}', rec['new_exe_sha256'])
     assert rec['previous']['build'] == 'OLD1' and rec['installed_after'] == dict(build='NEW1', sha256=rec['new_exe_sha256'])
-    assert rec['bot_stopped'] is True and rec['rollback']['attempted'] is False and rec['warnings'] == []
+    assert rec['bot_stop_attempted'] is True and rec['bot_stop_confirmed'] is True and rec['rollback']['attempted'] is False and rec['warnings'] == []
 
 
 @needs_flow
@@ -555,9 +571,9 @@ def test_json_record_of_the_drill_preflight_buildcheck_and_a_crash():
     assert ('launch', True) in _steps(rec) and _steps(rec)[-1] == ('rollback', True)       # failing launch = expected
     rec = _flow('preflight')['rec']
     assert rec['verdict'] == 'PREFLIGHT_OK' and _steps(rec) == [('stage', True), ('checksum_helper', True)]
-    assert rec['bot_stopped'] is False and rec['installed_after'] is None
+    assert rec['bot_stop_attempted'] is False and rec['installed_after'] is None and rec['installed_file_sha256'] is None
     rec = _flow('buildcheck')['rec']
-    assert rec['verdict'] == 'BUILDCHECK_OK' and _steps(rec)[-1] == ('hash_new', True) and rec['bot_stopped'] is False
+    assert rec['verdict'] == 'BUILDCHECK_OK' and _steps(rec)[-1] == ('hash_new', True) and rec['bot_stop_attempted'] is False
     rec = _flow('install', throwOnStart=True)['rec']
     assert ('launch', False) in _steps(rec) and 'unexpected: simulated crash' in str(rec['steps']) and rec['rollback']['verified'] is True
 
@@ -565,7 +581,7 @@ def test_json_record_of_the_drill_preflight_buildcheck_and_a_crash():
 @pytest.mark.parametrize('cfg, step', [
     (dict(stageCode=8), 'stage'), (dict(hashFail='app.py'), 'checksum_helper'), (dict(pipCode=1), 'build_env'),
     (dict(libsCode=1), 'libs'), (dict(pytestCode=1), 'safety_tests'), (dict(pyinstallerCode=1), 'pyinstaller'),
-    (dict(selftestFail=True), 'selftest_new'), (dict(copyFail='ZackBot.exe>ZackBot.prev.exe'), 'backup'), (dict(stopOk=False), 'stop'),
+    (dict(selftestFail=True), 'selftest_new'), (dict(copyFail='ZackBot.exe>ZackBot.prev.exe'), 'backup'),
 ])
 @needs_flow
 def test_json_record_names_the_failed_step(cfg, step):
@@ -658,3 +674,67 @@ def test_bare_pytest_cannot_reach_a_real_side_effect():
     starters = {'Invoke-Logged', 'Invoke-ExeWait', 'Start-App', 'Stop-Bot', 'Update-Shortcuts', 'Remove-Stage', 'Invoke-Pause'}
     assert risky <= starters | {'Invoke-Step1Stage', 'Invoke-Finish', 'Invoke-Helper'}, risky
     assert starters <= faked, starters - faked
+
+
+# ---------------------------------------------------------------- T03b review round 1 (Codex): post-stop recovery
+@needs_flow
+def test_failed_stop_never_swaps_and_proves_the_old_build_still_answers():
+    f = _flow('install', stopOk=False)                    # old process keeps running and answering
+    c = f['calls']
+    assert f['rc'] == 1 and f['installed'] == 'OLDEXE' and 'copy:ZackBot.exe>ZackBot.exe' not in c and not any(x.startswith('start:') for x in c)
+    _order(c, 'stop', 'ping:OLD1:20')
+    assert 'STOP_RECOVERY verified=1' in f['log'] and 'still running and answered' in f['log']
+    rec = f['rec']
+    assert rec['bot_stop_attempted'] is True and rec['bot_stop_confirmed'] is False and rec['rollback']['attempted'] is False
+    assert rec['stop_recovery']['attempted'] is True and rec['stop_recovery']['verified'] is True
+    assert _steps(rec)[-2:] == [('stop', False), ('stop_recovery', True)] and rec['installed_after']['build'] == 'OLD1'
+    assert 'the exe was NOT replaced' in rec['reason']
+
+
+@needs_flow
+def test_failed_stop_that_killed_the_bot_restarts_the_verified_old_exe_once():
+    f = _flow('install', stopOk=False, stopKills=True)
+    c = f['calls']
+    assert f['rc'] == 1 and f['installed'] == 'OLDEXE' and 'copy:ZackBot.exe>ZackBot.exe' not in c
+    _order(c, 'stop', 'ping:OLD1:20', 'start:OLDEXE', 'ping:OLD1:60')
+    assert c.count('start:OLDEXE') == 1 and 'restarted once and confirmed running' in f['log']
+    assert f['rec']['stop_recovery']['verified'] is True
+
+
+@needs_flow
+def test_failed_stop_with_an_unrecoverable_bot_is_reported_unverified():
+    f = _flow('install', stopOk=False, stopKills=True, oldAnswers=False)
+    c = f['calls']
+    assert f['rc'] == 1 and c.count('start:OLDEXE') == 1 and 'STOP_RECOVERY verified=0' in f['log']
+    rec = f['rec']
+    assert rec['stop_recovery']['verified'] is False and rec['installed_after'] is None
+    assert rec['installed_file_sha256'] == rec['previous']['sha256'] and 'open ZackBot and check' in rec['reason']
+
+
+@needs_flow
+def test_failed_stop_does_not_restart_an_exe_whose_hash_changed():
+    """Defensive: the recovery restarts only the exe that still matches the verified old hash."""
+    f = _flow('install', stopOk=False, stopKills=True, exeHashChangesAfterStop=True)
+    assert f['rc'] == 1 and 'start:OLDEXE' not in f['calls'] and 'no longer matches its verified hash' in f['log']
+
+
+@needs_flow
+def test_record_never_claims_an_unverified_install():
+    rec = _flow('install', newAnswers=False, oldAnswers=False)['rec']       # restored file, but it never answered
+    assert rec['rollback'] == dict(attempted=True, verified=False, restored_sha256=rec['previous']['sha256'],
+                                   note='the previous version was restored but did NOT confirm it is running - open ZackBot and check')
+    assert rec['installed_after'] is None and rec['installed_file_sha256'] == rec['previous']['sha256']
+    rec = _flow('install', noOldBuild=True, newAnswers=False)['rec']         # old build id unknown: restored but unverifiable
+    assert rec['installed_after'] is None and rec['rollback']['verified'] is False
+    rec = _flow('install')['rec']
+    assert rec['bot_stop_attempted'] is True and rec['bot_stop_confirmed'] is True and rec['installed_file_sha256'] == rec['new_exe_sha256']
+
+
+@needs_installer
+@pytest.mark.skipif(os.name != 'nt', reason='runs the real launcher through cmd.exe (Windows only)')
+def test_launcher_keeps_cmd_metacharacters_inside_the_mode():
+    """build_app.bat "x&echo PWNED": the whole string must reach installer.ps1 as ONE unknown mode (exit 2); cmd.exe
+    must not run the part after &. Harmless: an unknown mode is refused before anything is staged."""
+    r = subprocess.run(['cmd', '/d', '/c', os.path.join(ROOT, 'build_app.bat'), 'x&echo PWNED_BY_CMD'], capture_output=True,
+                       text=True, timeout=120, env=_env(ZB_NOPAUSE='1'), stdin=subprocess.DEVNULL)
+    assert r.returncode == 2 and 'usage' in r.stdout and 'PWNED_BY_CMD' not in r.stdout.replace("got 'x&echo PWNED_BY_CMD'", ''), r.stdout
