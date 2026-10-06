@@ -1,5 +1,5 @@
 """Minimal Binance USD-M futures REST client (requests + HMAC), hedge-mode aware."""
-import hashlib, hmac, random, time, urllib.parse, uuid
+import hashlib, hmac, math, os, random, time, urllib.parse, uuid
 import requests
 
 MAINNET = 'https://fapi.binance.com'
@@ -10,6 +10,18 @@ class BinanceError(Exception):
     def __init__(self, code, msg):
         super().__init__(f'{code}: {msg}')
         self.code, self.msg = code, msg
+
+
+def testnet_faults(base, kind):
+    """T03c exceptional-path canary: symbols for which a controlled testnet failure of `kind` is injected, from the env
+    flag ZB_TESTNET_FAULTS="lev_refuse:SOLUSDT,lev_refuse:ETHUSDT". Always empty unless `base` is exactly TESTNET, so the
+    flag can never change a mainnet client. Malformed entries are ignored."""
+    if base != TESTNET: return frozenset()
+    out = set()
+    for item in (os.environ.get('ZB_TESTNET_FAULTS') or '').split(','):
+        k, _, sym = item.strip().partition(':')
+        if k == kind and sym.isalnum() and sym.isupper(): out.add(sym)
+    return frozenset(out)
 
 
 class AmbiguousOrder(Exception):
@@ -25,6 +37,39 @@ SAFE_METHODS = ('GET', 'DELETE')
 
 def new_cid(prefix='zb'):
     return f'{prefix}{uuid.uuid4().hex[:22]}'
+
+
+def _finite_number(value, *, positive=False, nonnegative=False):
+    """Strict exchange number: bool, missing and NaN/Inf are never data."""
+    if isinstance(value, bool) or value in (None, ''): raise ValueError('missing or boolean number')
+    number = float(value)
+    if not math.isfinite(number): raise ValueError('non-finite number')
+    if positive and number <= 0: raise ValueError('number is not positive')
+    if nonnegative and number < 0: raise ValueError('number is negative')
+    return number
+
+
+class BracketSchedule(list):
+    """T03c r2 follow-up. A leverage-bracket schedule (a plain list of tier dicts) that also carries, for telemetry, the raw
+    notionalCoef Binance returned and the factor applied (always 1: any other coef is rejected)."""
+    def __init__(self, rows=(), notional_coef=1.0, coef_applied=1.0):
+        super().__init__(rows); self.notional_coef, self.coef_applied = notional_coef, coef_applied
+
+
+def _positive_int(value):
+    number = _finite_number(value, positive=True)
+    if not number.is_integer(): raise ValueError('number is not an integer')
+    return int(number)
+
+
+_MISSING = object()
+
+
+def _bool_field(row, key, default=_MISSING):
+    value = row.get(key, default)
+    if value is _MISSING: raise ValueError(f'{key}: missing boolean')
+    if not isinstance(value, bool): raise ValueError(f'{key}: expected boolean')
+    return value
 
 
 class Futures:
@@ -168,14 +213,96 @@ class Futures:
             raise
 
     def set_leverage(self, symbol, lev):
+        if symbol in testnet_faults(self.base, 'lev_refuse'):     # T03c canary only: inert unless TESTNET + the env flag
+            raise BinanceError(-1000, 'injected testnet refusal (ZB_TESTNET_FAULTS)')
         return self._req('POST', '/fapi/v1/leverage', dict(symbol=symbol, leverage=int(lev)), signed=True)
 
     def current_leverage(self, symbol):
         """The coin's leverage as Binance has it now (read-only). None if Binance reports no row for the coin."""
         rows = self._req('GET', '/fapi/v2/positionRisk', dict(symbol=symbol), signed=True)
-        levs = [int(float(r['leverage'])) for r in (rows if isinstance(rows, list) else [rows])
-                if r.get('symbol') == symbol and r.get('leverage') not in (None, '')]
-        return max(levs) if levs else None
+        try:
+            levs = [_positive_int(r['leverage']) for r in (rows if isinstance(rows, list) else [rows])
+                    if isinstance(r, dict) and r.get('symbol') == symbol and r.get('leverage') not in (None, '')]
+            return max(levs) if levs else None
+        except (TypeError, ValueError, OverflowError):
+            return None
+
+    def margin_state(self, symbol):
+        """T03c. The coin's leverage and margin type as Binance has them now (read-only), from positionRisk:
+        dict(leverage=int|None, margin_type='CROSSED'|'ISOLATED'|None). Unknown or mixed answers give None."""
+        rows = self._req('GET', '/fapi/v2/positionRisk', dict(symbol=symbol), signed=True)
+        rows = [r for r in (rows if isinstance(rows, list) else [rows]) if isinstance(r, dict) and r.get('symbol') == symbol]
+        try: levs = [_positive_int(r['leverage']) for r in rows if r.get('leverage') not in (None, '')]
+        except (TypeError, ValueError, OverflowError): levs = []
+        kinds = {str(r.get('marginType', '')).lower() for r in rows}
+        mtype = {'cross': 'CROSSED', 'crossed': 'CROSSED', 'isolated': 'ISOLATED'}.get(kinds.pop()) if len(kinds) == 1 else None
+        return dict(leverage=max(levs) if levs else None, margin_type=mtype)
+
+    def position_risk(self):
+        """T03c round 1. Every symbol's open positions as Binance has them now (read-only, one positionRisk read):
+        a list of dict(symbol, side 'LONG'|'SHORT', qty >= 0, mark, notional >= 0). Values are passed through as floats
+        (the engine validates them: NaN / negative / missing must never be treated as safe). An answer that is not a list raises."""
+        rows = self._req('GET', '/fapi/v2/positionRisk', signed=True)
+        if not isinstance(rows, list): raise ValueError(f'positionRisk: unexpected answer shape ({type(rows).__name__})')
+        out = []
+        for p in rows:
+            if not isinstance(p, dict): raise ValueError('positionRisk: malformed position row')
+            amt = _finite_number(p.get('positionAmt'))
+            if amt == 0: continue
+            side = p.get('positionSide', 'BOTH')
+            if side == 'BOTH': side = 'LONG' if amt > 0 else 'SHORT'
+            out.append(dict(symbol=p['symbol'], side=side, qty=abs(amt), mark=_finite_number(p.get('markPrice'), positive=True),
+                            notional=abs(_finite_number(p['notional'])) if p.get('notional') not in (None, '') else float('nan')))
+        return out
+
+    def open_orders_all(self):
+        """T03c round 1. Every open order on the account (classic + algo/conditional), read-only. A list of
+        dict(tag 'o:<orderId>'|'a:<algoId>', symbol, side, position_side, qty (unfilled), price, stop_price, reduce_only,
+        client_id). Unlike open_stop_tags, a failed algo read RAISES: callers use this as proof, so unknown != empty.
+        Only the exact shapes count: a list for openOrders; a list, or a dict whose 'orders' is a list, for openAlgoOrders."""
+        rows = self._req('GET', '/fapi/v1/openOrders', signed=True)
+        if not isinstance(rows, list): raise ValueError(f'openOrders: unexpected answer shape ({type(rows).__name__})')
+        out = []
+        for o in rows:
+            if not isinstance(o, dict) or 'orderId' not in o: raise ValueError('openOrders: malformed order row')
+            out.append(dict(tag=f"o:{o['orderId']}", symbol=o.get('symbol'), side=o.get('side'), position_side=o.get('positionSide', 'BOTH'),
+                            qty=_finite_number(o.get('origQty') or 0, nonnegative=True) - _finite_number(o.get('executedQty') or 0, nonnegative=True),
+                            price=_finite_number(o.get('price') or 0, nonnegative=True), stop_price=_finite_number(o.get('stopPrice') or 0, nonnegative=True),
+                            client_id=o.get('clientOrderId'), reduce_only=_bool_field(o, 'reduceOnly') or _bool_field(o, 'closePosition'),
+                            close_position=_bool_field(o, 'closePosition'), order_type=o.get('type'), working_type=o.get('workingType'),
+                            status=o.get('status')))
+        r = self._req('GET', '/fapi/v1/openAlgoOrders', signed=True)
+        algo = r if isinstance(r, list) else r.get('orders') if isinstance(r, dict) else None
+        if not isinstance(algo, list): raise ValueError(f'openAlgoOrders: unexpected answer shape ({type(r).__name__})')
+        for o in algo:
+            if not isinstance(o, dict) or 'algoId' not in o: raise ValueError('openAlgoOrders: malformed order row')
+            out.append(dict(tag=f"a:{o['algoId']}", symbol=o.get('symbol'), side=o.get('side'), position_side=o.get('positionSide', 'BOTH'),
+                            qty=_finite_number(o.get('quantity') or 0, nonnegative=True) - _finite_number(o.get('executedQty') or 0, nonnegative=True),
+                            price=_finite_number(o.get('price') or 0, nonnegative=True), stop_price=_finite_number(o.get('triggerPrice') or 0, nonnegative=True),
+                            client_id=o.get('clientAlgoId'), reduce_only=_bool_field(o, 'reduceOnly') or _bool_field(o, 'closePosition'),
+                            close_position=_bool_field(o, 'closePosition'), order_type=o.get('orderType'), working_type=o.get('workingType'),
+                            status=o.get('algoStatus')))
+        return out
+
+    def leverage_brackets(self, symbol):
+        """T03c round 1. The coin's full leverage/maintenance bracket schedule (read-only), sorted by notional floor:
+        a list of dict(floor, cap, mmr, cum, lev). Raises on a missing or malformed answer (never a partial schedule)."""
+        r = self._req('GET', '/fapi/v1/leverageBracket', dict(symbol=symbol), signed=True)
+        rows = [x for x in (r if isinstance(r, list) else [r]) if isinstance(x, dict) and x.get('symbol', symbol) == symbol]
+        if len(rows) != 1 or not rows[0].get('brackets'): raise ValueError(f'no leverage brackets for {symbol}')
+        # T03c r2 follow-up (Codex disposition): Binance does not say whether the returned brackets already include
+        # notionalCoef, so the scaling direction is not guessed. A present coef must be exactly 1; anything else (any other
+        # value, non-finite, non-positive, junk) rejects the schedule (fail closed) until a real adjusted-account payload
+        # proves the semantics. An omitted coef is the normal, unadjusted case.
+        raw_coef = _finite_number(rows[0]['notionalCoef'], positive=True) if 'notionalCoef' in rows[0] else 1.0
+        if raw_coef != 1.0: raise ValueError(f'{symbol} notionalCoef {raw_coef} != 1: bracket scaling unknown (fail closed)')
+        coef = 1.0
+        out = [dict(floor=_finite_number(b['notionalFloor'], nonnegative=True) * coef,
+                    cap=_finite_number(b['notionalCap'], positive=True) * coef,
+                    mmr=_finite_number(b['maintMarginRatio'], positive=True),
+                    cum=_finite_number(b['cum'], nonnegative=True) * coef,
+                    lev=_positive_int(b['initialLeverage'])) for b in rows[0]['brackets']]
+        return BracketSchedule(sorted(out, key=lambda b: b['floor']), notional_coef=raw_coef, coef_applied=coef)
 
     def set_margin_type(self, symbol, mtype='CROSSED'):
         try:

@@ -11,7 +11,7 @@ import numpy as np
 import pandas as pd
 
 import strategies as S
-from binance_client import Futures, MAINNET, TESTNET, BinanceError, AmbiguousOrder, new_cid
+from binance_client import Futures, MAINNET, TESTNET, BinanceError, AmbiguousOrder, new_cid, testnet_faults
 from ai_filter import review
 import grid as GRID
 
@@ -175,6 +175,70 @@ def close_fill_writers(timeout=2.0):
 
 
 atexit.register(close_fill_writers, 2.0)
+
+LEV_REFUSAL_COOLDOWN_S = 1800     # T03c: after Binance refuses a leverage change, no new change request for this coin for 30 min
+LEV_MARGIN_RATIO_MAX = 0.5        # T03c: worst-case account margin ratio (every stop filled) allowed for an above-cap entry
+LEV_STOP_SLIP = 1.5               # T03c: every stop loss in that worst case (open lots, reserved orders, the new entry) is 1.5x worse
+LEGACY_LEV_EXC_MAKER = ('maker entry saved by older code through the above-cap leverage exception: not re-priced '
+                       'on that old approval (no market fallback)')                    # T03c r2 follow-up
+LEV_BRACKET_TTL_S = 3600          # T03c r1: a coin's leverage/maintenance bracket schedule is static venue data: cached 1 h
+LEV_EXC_RECHECK_S = 60            # T03c r1: while adds are paused by the above-cap exception, re-read the coin's leverage at most once a minute
+
+
+class LevReject(Exception):
+    """T03c r1. The above-cap exception cannot be proven. .check names the failed check (shown in the panel)."""
+    def __init__(self, check, why, numbers=None):
+        super().__init__(why); self.check, self.numbers = check, numbers or {}
+
+
+def lev_num(x, name, pos=False, lo=0.0):
+    """A finite number >= lo (> 0 with pos). Anything else (None, text, bool, NaN, inf, out of range) raises LevReject."""
+    if isinstance(x, bool): raise LevReject('numeric', f'{name} is not a number ({x!r})')
+    try: v = float(x)
+    except (TypeError, ValueError): raise LevReject('numeric', f'{name} is not a number ({x!r})')
+    if not math.isfinite(v) or v < lo or (pos and v <= 0): raise LevReject('numeric', f'{name} is invalid ({x!r})')
+    return v
+
+
+def check_brackets(b):
+    """T03c r1. Validate a leverage-bracket schedule (Binance /fapi/v1/leverageBracket, as Futures.leverage_brackets returns
+    it): contiguous [floor, cap) tiers from 0, maintenance rate in (0, 1) and non-decreasing, initial leverage >= 1 and
+    non-increasing, cum >= 0 and continuous (cum_i = cum_i-1 + floor_i * (mmr_i - mmr_i-1)). Raises ValueError if not."""
+    if not isinstance(b, (list, tuple)) or not b: raise ValueError('empty bracket schedule')
+    prev = None
+    for i, x in enumerate(b):
+        try: f, c, m, cum, lv = (float(x[k]) for k in ('floor', 'cap', 'mmr', 'cum', 'lev'))
+        except (KeyError, TypeError, ValueError): raise ValueError(f'bracket {i} malformed')
+        if not all(math.isfinite(v) for v in (f, c, m, cum, lv)): raise ValueError(f'bracket {i} not finite')
+        if not (0 < m < 1 and cum >= 0 and lv >= 1 and c > f >= 0): raise ValueError(f'bracket {i} out of range')
+        if prev is None:
+            if f != 0: raise ValueError('first bracket does not start at 0')
+        else:
+            pf, pc, pm, pcum, plv = prev
+            if abs(f - pc) > 1e-9 * max(1.0, pc): raise ValueError(f'bracket {i} not contiguous')
+            if m < pm or lv > plv: raise ValueError(f'bracket {i} not monotonic')
+            if abs(cum - (pcum + f * (m - pm))) > max(1.0, 1e-6 * f): raise ValueError(f'bracket {i} cum not continuous')
+        prev = (f, c, m, cum, lv)
+    return b
+
+
+def bracket_maint(b, notional):
+    """T03c r1. Maintenance margin of an aggregate symbol notional: notional * mmr - cum of the bracket whose [floor, cap)
+    holds it (tier crossing included). Raises ValueError for a malformed schedule or a notional beyond the last tier."""
+    check_brackets(b)
+    n = float(notional)
+    if not math.isfinite(n) or n < 0: raise ValueError(f'invalid notional {notional!r}')
+    for x in b:
+        if float(x['floor']) <= n < float(x['cap']):
+            return max(0.0, n * float(x['mmr']) - float(x['cum']))
+    raise ValueError(f'notional {n:.0f} is beyond the last leverage bracket')
+
+
+def _fin(v, d=4):
+    """Rounded finite number or None (status JSON must never carry NaN/inf)."""
+    try: v = float(v)
+    except (TypeError, ValueError): return None
+    return round(v, d) if math.isfinite(v) else None
 TF_SEC = {'15m': 900, '1h': 3600, '4h': 14400}
 FEE_EST = 0.0005        # taker fee estimate per fill, used for net PnL in the trade history
 BE_BUF = 0.0015         # breakeven stops sit just past the average entry so fees are covered
@@ -295,6 +359,8 @@ class Engine:
         self.lock = threading.RLock()
         self.trade = Futures(cfg.get('API_KEY', ''), cfg.get('API_SECRET', ''), MAINNET if self.live else TESTNET)
         self.data = Futures('', '', MAINNET)
+        _faults = testnet_faults(getattr(self.trade, 'base', None), 'lev_refuse')
+        if _faults: log.warning(f'TESTNET FAULT INJECTION active: leverage changes refused for {sorted(_faults)} (ZB_TESTNET_FAULTS)')
         self.load_settings()
         # migrate v1 files (single-strategy bot) so logs stay readable
         if os.path.exists(self.F['trades']):
@@ -326,6 +392,9 @@ class Engine:
         self._lev = {}                            # leverage already set per symbol
         self.lev_refusals = {}                    # T03a: Binance leverage refusals per symbol (count, outcome, last error)
         self._fillw = fill_writer(self.F['fills'])   # T05: process-wide telemetry writer for this file (lazy thread)
+        self._lev_cool = {}                       # T03c: symbol -> time before which a refused leverage change is not re-sent
+        self._brk = {}                            # T03c r1: symbol -> (fetched time, leverage bracket schedule), TTL LEV_BRACKET_TTL_S
+        self._lev_exc_chk = {}                    # T03c r1: symbol -> last read-only leverage check while adds are paused
         self._btc1h = None; self._fund = {}; self._regime = None; self._rule_warns = []
         self.health = dict(errors=collections.deque(maxlen=30), last_manage_ok=None, last_cycle_ok={}, manage_fail_streak=0,
                            last_sync=None, alerted=False)
@@ -1046,6 +1115,8 @@ class Engine:
         if Sg.get('ENTRIES_PAUSED'): return 'entries paused'
         if lot.get('stop_dirty'): return 'stop not confirmed yet'
         if lot.get('manual'): return 'manual trade (no adds)'
+        lx = self._lev_exception_block(lot['symbol'])             # T03c r1: the above-cap exception admitted the entry only
+        if lx: return lx
         if self._breaker_add_mult(lot) == 0.0:
             return 'BTC circuit breaker active - ' + ('DCA safety orders paused' if lot.get('levels') else 'pyramid adds paused')
         sl = next((x for x in Sg['SLEEVES'] if x['id'] == lot['sleeve']), None)
@@ -1326,39 +1397,345 @@ class Engine:
             except Exception as e: log.info(f'pump guard: BTC 1h data unavailable ({e})')
         return self._rules_block(sl, sym, side, size)
 
-    def _ensure_leverage(self, sym):
-        """Exchange leverage = the configured cap (bounded by what Binance allows for the coin). Failure blocks the entry."""
+    def _ensure_leverage(self, sym, notional=None, risk=None):
+        """Exchange leverage = the configured cap (bounded by what Binance allows for the coin). Failure blocks the entry,
+        unless the read-only fallback below proves the entry is safe anyway (T03a: already within the cap; T03c: cross
+        margin and the account-wide exposure proof of _exposure_check). Returns how the entry may go ahead:
+        'set' (leverage set or already cached), 'within_cap' or 'exposure' (the above-cap exception); raises otherwise."""
         want = max(1, int(self.S['MAX_LEVERAGE']))
-        if self._lev.get(sym) == want: return
+        if self._lev.get(sym) == want:
+            try: current, _ = self._margin_state(sym); current = lev_num(current, 'current leverage', pos=True)
+            except Exception: current = None
+            if current is not None and current <= want: return 'set'
+            self._lev.pop(sym, None)                              # external/unknown change: prove or set it again
+        cool = self._lev_cool.get(sym, 0)
+        if cool > time.time():                                  # T03c: decided BEFORE any venue write or bracket fetch (r1 P3)
+            mx = self._lev_max(sym, fetch=False)                # cached schedule only; cur <= coin max anyway
+            return self._leverage_fallback(sym, min(want, mx) if mx else want, None, notional, risk, via='cooldown',
+                                           wait=int(cool - time.time()))
         try: self.trade.set_margin_type(sym, 'CROSSED')        # cross is Binance's default; a refusal here is not a safety issue
         except Exception as e: log.info(f'{sym}: margin type not changed ({e})')
-        mx = self.trade.leverage_max(sym)
+        mx = self._lev_max(sym)
         lev = min(want, mx) if mx else want
         try: self.trade.set_leverage(sym, lev)
         except Exception as e:                                  # transient testnet/API errors: one retry, then the fallback below
+            self._lev_api_refused(sym, e)                       # every failed leverage request counts (runtime finding)
             log.info(f'{sym}: leverage retry after {e}'); time.sleep(1)
             try: self.trade.set_leverage(sym, lev)
             except Exception as e2:
-                self._leverage_fallback(sym, lev, e2)           # proceeds only if the exchange is already at or below the cap
-                return                                          # not cached: the next entry tries to set it again
+                self._lev_api_refused(sym, e2)
+                self._lev_cool[sym] = time.time() + LEV_REFUSAL_COOLDOWN_S
+                return self._leverage_fallback(sym, lev, e2, notional, risk)   # proceeds only if proven safe (read-only)
+        self._lev_cool.pop(sym, None)
         self._lev[sym] = want
+        return 'set'
 
-    def _leverage_fallback(self, sym, lev, err):
-        """T03a. Binance refused the leverage change (testnet answers -1000 on some coins). Read the coin's CURRENT leverage
-        (read-only) and allow the entry only if it is already at or below the cap; a higher or unknown leverage re-raises,
-        so the entry is skipped exactly as before. Every refusal is counted per coin for the panel and /api/status."""
-        cur = None
-        try: cur = self.trade.current_leverage(sym)
-        except Exception as e3: log.info(f'{sym}: current leverage unavailable ({e3})')
-        ok = cur is not None and 1 <= cur <= lev
+    def _brackets(self, sym, fetch=True):
+        """T03c r1. The coin's validated bracket schedule, cached LEV_BRACKET_TTL_S (static venue data). A failed, missing
+        or malformed answer raises LevReject (never cached, never a stale schedule past its TTL). fetch=False: cache only."""
+        c = self._brk.get(sym)
+        if c and time.time() - c[0] < LEV_BRACKET_TTL_S: return c[1]
+        if not fetch: return None
+        if not hasattr(self.trade, 'leverage_brackets'): raise LevReject('brackets', 'leverage brackets unavailable')
+        try: b = check_brackets(self.trade.leverage_brackets(sym))
+        except Exception as e: raise LevReject('brackets', f'{sym} leverage brackets unavailable or malformed ({e})')
+        self._brk[sym] = (time.time(), b)
+        return b
+
+    def _lev_max(self, sym, fetch=True):
+        """The coin's maximum initial leverage (first bracket), or None if unknown/invalid."""
+        try:
+            if hasattr(self.trade, 'leverage_brackets'):
+                b = self._brackets(sym, fetch); mx = b[0]['lev'] if b else None
+            else:
+                mx = self.trade.leverage_max(sym) if fetch else None     # older client
+            mx = float(mx) if mx is not None else None
+            return int(mx) if mx is not None and math.isfinite(mx) and mx >= 1 else None
+        except Exception:
+            return None
+
+    def _margin_state(self, sym):
+        """(leverage, margin type 'CROSSED'/'ISOLATED'/None) as Binance reports the coin now. Read-only; None = unknown."""
+        if hasattr(self.trade, 'margin_state'):
+            ms = self.trade.margin_state(sym) or {}
+            return ms.get('leverage'), ms.get('margin_type')
+        return self.trade.current_leverage(sym), None          # older client: leverage only, margin type unknown
+
+    def _exposure_check(self, sym, notional, risk):
+        """T03c. Whether an entry is safe although the coin's exchange leverage stays above the cap. Returns (ok, why, numbers);
+        numbers['check'] names the failed check. Any unknown, unconfirmed or invalid fact rejects (see _exposure_proof)."""
+        try: return self._exposure_proof(sym, notional, risk)
+        except LevReject as e: return False, str(e), dict(e.numbers, check=e.check)
+
+    def _exposure_proof(self, sym, notional, risk):
+        """T03c (round 1). Under CROSS margin the coin's leverage setting only changes the margin Binance reserves; the size
+        is capped by the bot and liquidation is account-wide. The entry is proven safe only from a FRESH exchange snapshot
+        (account, every position on every symbol and side, every open order), and only if ALL hold:
+          reconcile    - no untracked position, no unconfirmed order, every exchange position matches the bot's lots
+                         (a bot maker entry still working may explain extra quantity);
+          stops        - every lot has a confirmed exchange stop: stop_id set, not dirty, open on Binance on the right
+                         symbol/side and covering the lot's quantity;
+          working      - no exposure-increasing order is working on Binance other than the bot's own maker entries;
+          effective    - (gross current notional of all positions + reserved exposure + this entry) / totalMarginBalance
+                         <= MAX_LEVERAGE. Reserved: bot maker entries working, DCA safety orders not filled yet, pyramid
+                         adds left, and active grids (full-fill notional);
+          worst case   - every position moves from its CURRENT mark to its stop (loss x LEV_STOP_SLIP), every reserved
+                         order fills and stops out, and this entry stops out (x LEV_STOP_SLIP). totalMarginBalance already
+                         holds the unrealized P&L, so the projected balance is margin balance minus those mark-to-stop
+                         losses. Maintenance = totalMaintMargin + the bracket increase (notional * mmr - cum of the tier,
+                         aggregate both sides) from each symbol's current to its worst-case notional. Ratio <= 50%.
+        Every input and derived value must be finite and in range. Raises LevReject; returns (True, why, numbers)."""
+        cap = lev_num(self.S['MAX_LEVERAGE'], 'leverage cap', pos=True)
+        if notional is None or risk is None: raise LevReject('entry_size', 'entry size unknown')
+        notional = lev_num(notional, 'entry notional', pos=True); risk = lev_num(risk, 'entry risk')
+        st, slip = self.state, LEV_STOP_SLIP
+        lots = list(st['lots'].values())
+        rest = list((st.get('resting_entries') or {}).values())
+        grids = [g for g in (st.get('grids') or {}).values() if isinstance(g, dict)]
+        if self.untracked: raise LevReject('reconcile', f'Binance holds an untracked position ({next(iter(self.untracked))})')
+        for l in lots:
+            if l.get('pending') or l.get('force_close'):
+                raise LevReject('reconcile', f"an order on {l.get('symbol')} {l.get('side')} is still unconfirmed")
+        if any(g.get('op') for g in grids): raise LevReject('reconcile', 'a grid order is still unconfirmed')
+        # ---- the lots themselves: numeric fields and a known stop
+        for l in lots:
+            s_ = l.get('stop')
+            if isinstance(s_, bool) or not isinstance(s_, (int, float)) or not math.isfinite(s_) or s_ <= 0:
+                raise LevReject('stops', 'an open lot has no known stop')
+            if l.get('side') not in ('LONG', 'SHORT') or not l.get('symbol'): raise LevReject('numeric', 'an open lot is malformed')
+            lev_num(l.get('qty'), f"{l['symbol']} lot quantity", pos=True); lev_num(l.get('avg'), f"{l['symbol']} lot entry", pos=True)
+        # ---- fresh exchange snapshot (read-only)
+        acc = self.trade.account() or {}
+        if not isinstance(acc, dict) or 'totalMarginBalance' not in acc or 'totalMaintMargin' not in acc:
+            raise LevReject('account', 'account margin data unavailable')
+        bal = lev_num(acc['totalMarginBalance'], 'account margin balance', pos=True)
+        mm = lev_num(acc['totalMaintMargin'], 'account maintenance margin')
+        try: rows, orders, marks = self.trade.position_risk(), self.trade.open_orders_all(), self.trade.marks()
+        except Exception as e: raise LevReject('snapshot', f'exchange positions/orders unavailable ({e})')
+        pos = {}                                                 # (sym, side) -> [qty, notional, mark]
+        for r in rows or []:
+            if not isinstance(r, dict) or r.get('side') not in ('LONG', 'SHORT') or not r.get('symbol'):
+                raise LevReject('snapshot', 'malformed position row')
+            q = lev_num(r.get('qty'), f"{r['symbol']} position quantity")
+            if q == 0: continue
+            mk = lev_num(r.get('mark'), f"{r['symbol']} mark price", pos=True)
+            nt = max(lev_num(r.get('notional'), f"{r['symbol']} position notional"), q * mk)
+            p_ = pos.setdefault((r['symbol'], r['side']), [0.0, 0.0, mk]); p_[0] += q; p_[1] += nt; p_[2] = mk
+        def mark_of(s):
+            for sd_ in ('LONG', 'SHORT'):
+                if (s, sd_) in pos: return pos[(s, sd_)][2]
+            return lev_num((marks or {}).get(s), f'{s} mark price', pos=True)
+        # ---- reconcile engine lots with the exchange
+        groups, resting = {}, {}
+        for l in lots: groups.setdefault((l['symbol'], l['side']), []).append(l)
+        for rec in rest:                                         # only the FILLED part of a maker entry may exist on Binance
+            k_ = (rec.get('symbol'), rec.get('side'))
+            q_ = lev_num(rec.get('qty'), f'{k_[0]} maker entry quantity', pos=True)
+            f_ = lev_num(rec.get('filled', 0.0), f'{k_[0]} maker entry filled quantity')
+            if f_ > q_ + 1e-12: raise LevReject('numeric', f'{k_[0]} maker entry filled more than its quantity')
+            resting[k_] = resting.get(k_, 0.0) + f_
+        for k_ in set(pos) | set(groups):
+            have = pos.get(k_, [0.0])[0]; exp = sum(l['qty'] for l in groups.get(k_, []))
+            tol = float((self.rules.get(k_[0]) or {}).get('step', 1e-9)) * (len(groups.get(k_, [])) + 1)
+            if have < exp - tol or have > exp + tol + resting.get(k_, 0.0):
+                raise LevReject('reconcile', f'{k_[0]} {k_[1]}: Binance holds {have:g}, the bot expects {exp:g}')
+        # ---- every lot has a confirmed exchange stop
+        by_tag = {o.get('tag'): o for o in (orders or []) if isinstance(o, dict) and o.get('tag')}
+        per_order = {}                                           # stop order tag -> [lot qty it must cover, lots, step]
+        for l in lots:
+            nm = f"{l['symbol']} {l['side']}"
+            if l.get('stop_dirty') or not l.get('stop_id'): raise LevReject('stops', f'{nm}: stop not confirmed yet')
+            o = by_tag.get(l['stop_id'])
+            if o is None: raise LevReject('stops', f"{nm}: stop {l['stop_id']} is not open on Binance")
+            closing = 'SELL' if l['side'] == 'LONG' else 'BUY'
+            if o.get('symbol') != l['symbol'] or o.get('side') != closing or o.get('position_side') not in (l['side'], 'BOTH'):
+                raise LevReject('stops', f"{nm}: stop {l['stop_id']} does not protect this position")
+            if (o.get('order_type') != 'STOP_MARKET' or o.get('working_type') != 'MARK_PRICE'
+                    or o.get('status') not in ('NEW', 'ACCEPTED') or o.get('close_position') is not False):
+                raise LevReject('stops', f"{nm}: stop {l['stop_id']} has the wrong type or trigger basis")
+            step = float((self.rules.get(l['symbol']) or {}).get('step', 1e-9))
+            if lev_num(o.get('qty'), f'{nm} stop quantity') < l['qty'] - step:
+                raise LevReject('stops', f'{nm}: stop covers less than the position')
+            tick = float((self.rules.get(l['symbol']) or {}).get('tick', 1e-8))
+            if abs(lev_num(o.get('stop_price'), f'{nm} stop price', pos=True) - l['stop']) > tick * 1.001 + 1e-12:
+                raise LevReject('stops', f"{nm}: stop on Binance is at {o.get('stop_price')}, the bot expects {l['stop']}")
+            c_ = per_order.setdefault(l['stop_id'], [0.0, 0, step]); c_[0] += l['qty']; c_[1] += 1
+        for tag, (need, n_lots, step) in per_order.items():     # one stop ORDER can protect only up to its own size
+            if need > lev_num(by_tag[tag].get('qty'), 'stop quantity') + step * n_lots:
+                raise LevReject('stops', f'stop {tag} is shared by {n_lots} lots ({need:g}) but covers only {by_tag[tag].get("qty")}')
+        # ---- working orders that could add exposure: only the bot's own maker entries (reserved below)
+        bot_cids = {rec.get('cid') for rec in rest if rec.get('cid')}
+        stop_tags = {l['stop_id'] for l in lots}
+        for o in by_tag.values():
+            if o['tag'] in stop_tags or o.get('reduce_only'): continue
+            ps, sd_ = o.get('position_side'), o.get('side')
+            if not (ps == 'BOTH' or (ps == 'LONG' and sd_ == 'BUY') or (ps == 'SHORT' and sd_ == 'SELL')): continue
+            if o.get('client_id') and o.get('client_id') in bot_cids: continue
+            raise LevReject('working_orders', f"an order on {o.get('symbol')} that can add exposure is working on Binance (not a bot entry)")
+        def move(sd, mk, stop):
+            """Worst loss per unit from the current mark to the stop, slippage included. A stop already through the mark
+            gives no gain: it is charged its distance from the mark as slippage instead (0 when exactly at the mark)."""
+            d = sd * (mk - stop)
+            return d * slip if d > 0 else abs(d)
+        # ---- reserved exposure: (symbol, side, notional, worst loss incl. slippage); side None = may be either (grids)
+        res, filled_parts, unprotected = [], [], []
+        for rec in rest:
+            q = lev_num(rec['qty'], 'maker entry quantity', pos=True); plan = rec.get('plan') or {}
+            f_ = lev_num(rec.get('filled', 0.0), 'maker entry filled quantity')
+            dist = lev_num(plan.get('stop_dist'), 'maker entry stop distance', pos=True)
+            px0 = lev_num(rec.get('price') or plan.get('px'), 'maker entry price', pos=True)
+            sd = 1 if rec['side'] == 'LONG' else -1
+            if f_ > 0:                                           # already filled: a position with NO stop yet (it gets one as a lot)
+                fill = lev_num(rec.get('cost'), 'maker entry cost') / f_ if rec.get('cost') else px0
+                filled_parts.append((rec['symbol'], sd, f_, fill - sd * dist))
+                unprotected.append(f"{rec['symbol']} {rec['side']} {f_:g}")
+            if q - f_ > 0:
+                px = max(px0, mark_of(rec['symbol']))
+                res.append((rec['symbol'], rec['side'], (q - f_) * px, (q - f_) * dist * slip))
+        for l in lots:
+            if l.get('manual'): continue                         # manual trades get no adds
+            sd = 1 if l['side'] == 'LONG' else -1; s = l['symbol']
+            if l.get('levels'):
+                for k in range(int(lev_num(l.get('dca', 0), 'DCA step')), len(l['levels'])):
+                    q = lev_num(l.get('q0'), 'DCA base quantity', pos=True) * lev_num(l['w'][k], 'DCA weight', pos=True)
+                    lv = lev_num(l['levels'][k], 'DCA level', pos=True)
+                    res.append((s, l['side'], q * max(lv, mark_of(s)), q * abs(lv - l['stop']) * slip))
+            py = (l.get('mgmt') or {}).get('pyramid')
+            if py:
+                left = int(lev_num(py.get('n'), 'pyramid adds')) - int(lev_num(l.get('adds', 0), 'pyramid adds done'))
+                q = lev_num(l.get('q0'), 'pyramid base quantity', pos=True) * lev_num(py.get('frac'), 'pyramid fraction')
+                for j in range(max(0, left)):
+                    pj = lev_num(l.get('next_add'), 'pyramid level', pos=True) + sd * j * lev_num(py.get('step_r'), 'pyramid step') * lev_num(l.get('R'), 'lot R')
+                    res.append((s, l['side'], q * max(pj, mark_of(s)), q * max(0.0, sd * (pj - l['stop'])) * slip))
+        for g in grids:
+            m, k = g.get('metrics') or {}, 2 if g.get('mode') == 'neutral' else 1
+            res.append((g.get('sym'), None, k * lev_num(m.get('max_notional'), 'grid notional'), k * lev_num(m.get('worst_loss_usd'), 'grid worst loss') * slip))
+        # ---- current notional, mark-to-stop losses, worst-case notional per symbol
+        ncur, nws, loss_lots = {}, {}, 0.0
+        for (s, _), (q, nt, mk) in pos.items(): ncur[s] = ncur.get(s, 0.0) + nt
+        nws.update(ncur)
+        held = [(l['symbol'], 1 if l['side'] == 'LONG' else -1, l['qty'], l['stop']) for l in lots] + filled_parts
+        for s, sd, q, stop in held:                              # lots and filled maker parts: current mark -> stop
+            mv = move(sd, mark_of(s), stop)
+            loss_lots += q * mv
+            if sd == -1: nws[s] = nws.get(s, 0.0) + q * mv     # a short's notional grows to its stop
+        for s, side, nt, ls in res:                              # reserved orders: notional, and a short grows to its stop
+            nws[s] = nws.get(s, 0.0) + nt + (ls if side != 'LONG' else 0.0)
+        nws[sym] = nws.get(sym, 0.0) + notional + risk * slip
+        maint_add = 0.0
+        for s, n_ in nws.items():
+            if n_ <= ncur.get(s, 0.0) + 1e-9: continue
+            b = self._brackets(s)
+            try: maint_add += bracket_maint(b, n_) - bracket_maint(b, ncur.get(s, 0.0))
+            except ValueError as e: raise LevReject('brackets', f'{s}: {e}')
+        loss_res = sum(x[3] for x in res)
+        gross = sum(p_[1] for p_ in pos.values()) + sum(x[2] for x in res) + notional
+        eff = gross / bal
+        left = bal - loss_lots - loss_res - risk * slip
+        maint = mm + maint_add
+        open_risk = sum(lev_num(self._lot_risk(l), 'lot risk') for l in lots)    # entry-to-stop risk: reported, not the margin basis
+        for v, nm in ((gross, 'gross notional'), (eff, 'effective leverage'), (maint, 'maintenance margin'),
+                      (loss_lots, 'loss to stops'), (loss_res, 'reserved loss'), (maint_add, 'bracket maintenance')):
+            lev_num(v, nm)
+        lev_num(left, 'balance after stops', lo=-math.inf)
+        worst = maint / left if left > 0 else None
+        n = dict(effective_leverage=_fin(eff, 2), worst_margin_ratio=_fin(worst), margin_balance=_fin(bal, 2),
+                 balance_after_stops=_fin(left, 2), maint_after_stops=_fin(maint, 2), gross_notional=_fin(gross, 2),
+                 reserved_notional=_fin(sum(x[2] for x in res), 2), loss_to_stops=_fin(loss_lots + loss_res + risk * slip, 2),
+                 open_risk=_fin(open_risk, 2), positions=len(pos))
+        if unprotected:
+            raise LevReject('unprotected', f'a maker entry has a filled part without a stop yet ({unprotected[0]})', n)
+        if eff > cap: raise LevReject('effective_leverage', f'account effective leverage {eff:.1f}x would exceed the {cap:g}x cap', n)
+        if worst is None or worst > LEV_MARGIN_RATIO_MAX:
+            raise LevReject('worst_margin_ratio', f"worst-case margin ratio {'over 100%' if worst is None else f'{worst:.0%}'} "
+                            f'if every stop fills is above {LEV_MARGIN_RATIO_MAX:.0%}', n)
+        return True, 'cross margin, within the leverage cap and the worst-case margin limit', dict(n, check=None)
+
+    def _lev_api_refused(self, sym, err):
+        """Count ONE failed leverage request (POST refused or unanswered) in lev_refusals[sym].api_refusals and keep its error:
+        last_api_error/_time (+ the last_error alias) and last_api_errors (the most recent two, so a try + retry keeps both)."""
         r = self.lev_refusals.setdefault(sym, dict(count=0, proceeded=0, skipped=0))
-        r['count'] += 1; r['proceeded' if ok else 'skipped'] += 1
-        r.update(last_error=str(err)[:160], last_time=now_utc().isoformat(timespec='seconds'), current=cur, cap=lev)
+        for k in ('by_exposure', 'cooldown_checks', 'api_refusals'): r.setdefault(k, 0)
+        now = now_utc().isoformat(timespec='seconds'); msg = str(err)[:160]
+        r['api_refusals'] += 1
+        r['last_api_error'] = r['last_error'] = msg; r['last_api_time'] = now
+        r['last_api_errors'] = (list(r.get('last_api_errors') or []) + [dict(time=now, error=msg)])[-2:]
+
+    def _leverage_fallback(self, sym, lev, err, notional=None, risk=None, via='refused', wait=None):
+        """T03a/T03c. Binance refused the leverage change (testnet answers -1000 on some coins; mainnet can refuse too, e.g.
+        with open orders or venue rules), or refused it recently (via='cooldown': no POST was sent). Read-only checks decide:
+        proceed if the coin is already at or below the cap (T03a), or if the exposure proof accepts the entry under cross
+        margin (T03c); otherwise raise, so the entry is skipped exactly as before. Returns 'within_cap' or 'exposure'.
+        lev_refusals[sym]: count = decisions (proceeded + skipped), api_refusals = EVERY failed leverage request, counted by
+        _lev_api_refused at each attempt (a try + retry = 2; last_api_error/_time, last_error alias, last_api_errors = last
+        two), cooldown_checks = decisions without a POST, and the last decision: outcome ('went_ahead'|'skipped'), reason (code), detail (text), via, exposure numbers."""
+        r = self.lev_refusals.setdefault(sym, dict(count=0, proceeded=0, skipped=0))
+        for k in ('by_exposure', 'cooldown_checks', 'api_refusals'): r.setdefault(k, 0)
+        now = now_utc().isoformat(timespec='seconds')
+        r['count'] += 1                                         # every decision (= proceeded + skipped), as in T03a
+        if via == 'cooldown':
+            r['cooldown_checks'] += 1
+            head = f'leverage {lev}x refused recently (no new request for {wait}s)'
+        else:                                                   # the failed requests were already counted at each attempt
+            head = f'leverage {lev}x refused ({err})'
+        r.update(last_time=now, via=via, cooldown_left=wait if via == 'cooldown' else None, cap=lev, current=None,
+                 margin_type=None, accepted=None, exposure=None)
+        cur = mtype = None; read_err = None
+        try: cur, mtype = self._margin_state(sym)
+        except Exception as e3: read_err = str(e3)[:120]; log.info(f'{sym}: current leverage unavailable ({e3})')
+        if cur is not None:
+            try: cur = lev_num(cur, 'current leverage', pos=True)
+            except LevReject: read_err, cur = f'invalid current leverage {cur!r}', None
+            else: cur = int(cur) if cur == int(cur) else cur
+        r.update(current=cur, margin_type=mtype if mtype in ('CROSSED', 'ISOLATED') else None)
+
+        def done(ok, reason, detail):
+            r.update(outcome='went_ahead' if ok else 'skipped', reason=reason, detail=str(detail)[:200])
+            r['proceeded' if ok else 'skipped'] += 1
+            if ok: return
+            raise RuntimeError(f'{head}; {detail}')
+
+        if cur is not None and cur >= 1 and cur <= lev:
+            r['accepted'] = 'within_cap'
+            log.warning(f'{sym}: {head}; the coin is already at {cur}x <= cap - entry proceeds')
+            done(True, 'within_cap', f'the coin is already at {cur}x, within the {lev}x cap')
+            return 'within_cap'
+        if cur is None:
+            done(False, 'leverage_unknown', 'current leverage unknown' + (f' ({read_err})' if read_err else ''))
+        if mtype != 'CROSSED':
+            done(False, 'margin_isolated' if mtype == 'ISOLATED' else 'margin_unknown',
+                 f'current leverage {cur}x is above the {lev}x cap and the margin type is {mtype or "unknown"} (not cross)')
+        try: ok, why, n = self._exposure_check(sym, notional, risk)
+        except Exception as e4: ok, why, n = False, f'exposure check failed ({e4})', dict(check='error')
+        r['exposure'] = dict({k: (_fin(v) if isinstance(v, float) else v) for k, v in n.items()}, ok=ok, why=str(why)[:200])
         if ok:
-            log.warning(f'{sym}: Binance refused leverage {lev}x ({err}); the coin is already at {cur}x <= cap - entry proceeds')
-            return
-        why = 'current leverage unknown' if cur is None else f'current leverage {cur}x is above the {lev}x cap'
-        raise RuntimeError(f'leverage {lev}x refused ({err}); {why}')
+            r['by_exposure'] += 1; r['accepted'] = 'exposure'
+            log.warning(f'{sym}: {head}; the coin stays at {cur}x but the entry is safe: {why} {n}')
+            done(True, 'exposure_ok', why)
+            return 'exposure'
+        done(False, 'exposure_rejected', f'current leverage {cur}x is above the {lev}x cap and {why}')
+
+    def _lev_exception_block(self, sym, flagged=False):
+        """T03c r1. While a coin trades through the above-cap exception (its Binance leverage stayed above the cap), every
+        exposure-increasing follow-up order on it - DCA/pyramid adds, grid adds, the maker entry's market fallback/remainder -
+        is paused: the exception proof covered only the entry it admitted. The pause ends once the bot set the leverage
+        since, or a read-only check (at most once per LEV_EXC_RECHECK_S) shows the coin at or below the cap.
+        flagged: the caller's own order came through the exception (e.g. a maker plan). Returns a reason or None."""
+        lots = [l for l in self.state['lots'].values() if l.get('symbol') == sym and l.get('lev_exception')]
+        if not (flagged or lots): return None
+        want = max(1, int(self.S['MAX_LEVERAGE']))
+        back = self._lev.get(sym) == want
+        if not back and not self.dry and time.time() - self._lev_exc_chk.get(sym, 0) >= LEV_EXC_RECHECK_S:
+            self._lev_exc_chk[sym] = time.time()
+            try:
+                cur, _ = self._margin_state(sym)
+                back = cur is not None and 1 <= lev_num(cur, 'current leverage', pos=True) <= want
+            except Exception as e: log.info(f'{sym}: leverage re-check unavailable ({e})')
+        if back:
+            for l in lots: l.pop('lev_exception', None)
+            return None
+        return (f'{sym} leverage on Binance is still above your {want}x cap (entered through the cross-margin exception) '
+                f'- orders that add exposure are paused until it is back within the cap')
 
     def open_lot(self, sl, sym, side, sg, df, eq, risk=None, manual=False, stop_atr=None, tp_r=None):
         block = self.entry_block(sl, sym, side, manual, sg=sg)
@@ -1427,7 +1804,7 @@ class Engine:
         if self.dry:
             log.info(f'[dry] would open {side} {qty} {sym} stop {stop:.6g}'); return True
         try:
-            self._ensure_leverage(sym)
+            how = self._ensure_leverage(sym, notional=qty * px, risk=risk_usd * qty / qty_raw if qty_raw else None)
         except Exception as e:
             self.last_skip = f'could not set leverage/margin on Binance: {e}'
             log.warning(f'{sym}: {self.last_skip}')
@@ -1439,7 +1816,8 @@ class Engine:
         plan = dict(sl=None if manual else {k: sl[k] for k in ('id', 'key', 'tf', 'name', 'share') if k in sl}, sym=sym, side=side, qty=qty,
                     stop_dist=abs(px - stop), atr=atr, g=g, risk_usd=risk_usd, eq=eq, manual=manual, reason=reason, px=px,
                     sg=dict(time=sg.get('time'), close=sg.get('close')))
-        if not manual and self.S.get('ENTRY_ORDER') == 'maker':
+        if how == 'exposure': plan['lev_exception'] = True     # T03c r1: no adds / market remainder until leverage is within the cap
+        if not manual and self.S.get('ENTRY_ORDER') == 'maker' and how != 'exposure':
             return self._maker_start(plan)
         return self._market_entry(plan)
 
@@ -1477,6 +1855,7 @@ class Engine:
                    qty_max=qty, fills=[[now_utc().isoformat(timespec='seconds'), 'entry', qty, fill]], fees=fee)
         if sl and not manual and sl.get('share') is not None: lot['share'] = float(sl['share'])            # cap basis for later adds (survives slot edits)
         if maker_qty > 0: lot['maker_qty'] = maker_qty
+        if plan.get('lev_exception'): lot['lev_exception'] = True    # T03c r1: entered while Binance leverage stayed above the cap
         if 'pyramid' in g: lot['next_add'] = fill + sd * g['pyramid']['step_r'] * lot['R']
         if 'dca' in g:
             lot['levels'] = [fill - sd * k * g['dca']['step_atr'] * atr for k in range(1, g['dca']['n'] + 1)]
@@ -1803,6 +2182,10 @@ class Engine:
         sym, r = rec['symbol'], self.rules[rec['symbol']]
         K, T = int(self.S.get('MAKER_REPRICE', 3)), float(self.S.get('MAKER_WAIT_S', 40))
         slice_s = T / (K + 1)
+        # T03c r2 follow-up: a record whose plan came through the above-cap exception (only older code let one rest) is never
+        # re-priced on that old approval: its resting order is cancelled now and the record finalized without a market
+        # fallback - whatever filled becomes a lot through the normal finalize path.
+        legacy = LEGACY_LEV_EXC_MAKER if (rec.get('plan') or {}).get('lev_exception') else None
         if rec['status'] in ('open', 'cancelling'):
             o = self.trade.get_order(sym, rec['cid'])
             age = time.time() - rec['placed_t']
@@ -1811,7 +2194,8 @@ class Engine:
                 rec['status'] = 'between'                            # never reached Binance
             elif o.get('status') in ('FILLED', 'CANCELED', 'EXPIRED', 'REJECTED', 'EXPIRED_IN_MATCH'):
                 self._maker_done_order(rec, o)
-            elif rec['status'] == 'open' and age >= slice_s:
+            elif rec['status'] == 'open' and (age >= slice_s or legacy):
+                if legacy: log.warning(f"{sym}: {legacy} - cancelling its resting order")
                 self.trade.cancel(sym, f"c:{rec['cid']}"); rec['status'] = 'cancelling'; rec['cancel_t'] = time.time()
                 return True                                          # final fill read on the next pass
             elif rec['status'] == 'cancelling' and time.time() - rec.get('cancel_t', 0) > 30:
@@ -1821,27 +2205,28 @@ class Engine:
         rem = self._rd(rec['qty'] - rec['filled'], r['step'])
         px_ = (marks or {}).get(sym) or rec.get('price') or rec['plan']['px']
         small = rem < r['min_qty'] or rem * px_ < r['min_notional']
-        if not small and rec['n'] <= K and time.time() - rec['t0'] < T:
+        if not legacy and not small and rec['n'] <= K and time.time() - rec['t0'] < T:
             self._maker_place(rec); return True
-        self._maker_finalize(k, rem, small, px_)
+        self._maker_finalize(k, rem, small, px_, no_fallback=legacy)
         return True
 
-    def _maker_finalize(self, k, rem, small, px):
+    def _maker_finalize(self, k, rem, small, px, no_fallback=None):
         rec = self.state['resting_entries'].pop(k)
         plan, r = rec['plan'], self.rules[rec['symbol']]
         sl = next((x for x in self.S['SLEEVES'] if x['id'] == rec['sleeve']), None) or dict(plan['sl'], enabled=False, max_pos=0)
         sg = dict(plan['sg'], close=px)
-        fallback = bool(self.S.get('MAKER_FALLBACK', True)) and not small
+        fallback = bool(self.S.get('MAKER_FALLBACK', True)) and not small and not no_fallback
         buy = rec['side'] == 'LONG'
         if rec['filled'] > 0:
             q = self._rd(rec['filled'], r['step']); avg = rec['cost'] / rec['filled']
             mrec = self._fill_rec('entry_maker', rec['symbol'], rec['side'], buy, rec.get('px0') or rec.get('price'), avg, plan['qty'], q,
                                   rec.get('t0'), signal_px=plan['px'], maker_tries=rec['n'])
-            st = {}                                                      # fallback state, only from what actually happened
+            st = dict(fallback_skipped=no_fallback) if no_fallback and rem > 0 else {}   # fallback state, only from what actually happened
             ok = self._create_lot(plan, q, avg, maker_qty=q)
             lot = self.state['lots'].get(getattr(self, '_last_lot_key', None))
             if fallback and rem > 0:
-                blk = self.entry_block(sl, rec['symbol'], rec['side'], manual=True) if ok and lot else None
+                blk = (self.entry_block(sl, rec['symbol'], rec['side'], manual=True)
+                       or self._lev_exception_block(rec['symbol'], bool(plan.get('lev_exception')))) if ok and lot else None
                 if not (ok and lot): st['fallback_skipped'] = 'maker lot not created'
                 elif blk: st['fallback_blocked'] = blk
                 else:
@@ -1857,9 +2242,11 @@ class Engine:
             if mrec: mrec.update(st)
             self._fill_emit(mrec)
             return
-        blk = self.entry_block(sl, rec['symbol'], rec['side'], sg=sg) if fallback else None
+        blk = (self.entry_block(sl, rec['symbol'], rec['side'], sg=sg)
+               or self._lev_exception_block(rec['symbol'], bool(plan.get('lev_exception')))) if fallback else None
         mrec = self._fill_rec('entry_maker', rec['symbol'], rec['side'], buy, rec.get('px0') or rec.get('price'), None, plan['qty'], 0,
                               rec.get('t0'), outcome='unfilled', signal_px=plan['px'], maker_tries=rec['n'], fallback_blocked=blk or None)
+        if mrec and no_fallback: mrec['fallback_skipped'] = no_fallback
         try:
             if fallback:
                 if blk: self.miss(sl, rec['symbol'], rec['side'], sg, f'maker entry not filled; market fallback blocked: {blk}'); return
@@ -1879,7 +2266,8 @@ class Engine:
                 if mrec: mrec.update(st)
                 if not ok: self.miss(sl, rec['symbol'], rec['side'], sg, self.last_skip or 'order failed')
             else:
-                self.miss(sl, rec['symbol'], rec['side'], sg, 'maker entry not filled (no market fallback)')
+                self.miss(sl, rec['symbol'], rec['side'], sg, f'maker entry not filled; {no_fallback}' if no_fallback
+                          else 'maker entry not filled (no market fallback)')
         finally:
             self._fill_emit(mrec)
 
