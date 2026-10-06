@@ -112,6 +112,8 @@ The research matrix compares: (A) base exit with no quick bank or add; (B) quick
 
 Manual control remains available. Simple mode may expose `Protect profit early` and `Allow one rescue add`; Pro mode exposes the target/bank fraction, runner policy, add trigger/size and time limit. Risk grades cap or disable the add and runner independently, and changing a setting never rewrites an open trade's fixed plan.
 
+An optional **green-session guard** is tested separately from the entry and exit logic. It measures the account's realized daily result after all costs. Once a user-set daily profit threshold is reached it may reduce Quick Bank risk, disable its DCA, or pause new Quick Bank entries; a second session give-back floor may pause them if too much of that realized gain is later lost. It never widens stops, adds to an existing trade, closes unrelated strategies merely to preserve a green display, or promises that the day cannot turn negative. The UI states whether the guard is `building`, `protecting`, `paused after give-back`, or off.
+
 ### Short-specific candidates
 
 - bear breakdown followed by failed retest;
@@ -178,6 +180,7 @@ Every strategy/timeframe/side/regime combination receives separate outputs:
 - rejected/ambiguous/reconciled orders;
 - order count and follower-minimum suitability.
 - Quick Bank target/fill rate, time to bank, percentage of trades green after all costs, and percentage that satisfy the stricter net profit lock;
+- positive-session frequency, realized daily profit at guard activation, profit retained at day end, peak-to-close session give-back, and the opportunity cost of trades skipped by the green-session guard;
 - micro-DCA trigger/dependency rate, incremental P&L and added MAE/tail loss;
 - runner incremental P&L and give-back versus closing the same remainder at TP1;
 - partial-fill, cancellation, replacement, reconciliation and minimum-notional failure rates for every child order.
