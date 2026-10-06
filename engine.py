@@ -11,7 +11,7 @@ import numpy as np
 import pandas as pd
 
 import strategies as S
-from binance_client import Futures, MAINNET, TESTNET, BinanceError, AmbiguousOrder, new_cid, testnet_faults
+from binance_client import Futures, MAINNET, TESTNET, BinanceError, AmbiguousOrder, ExchangeUnavailable, is_transient, new_cid, scrub, testnet_faults, testnet_read_outage
 from ai_filter import review
 import grid as GRID
 
@@ -350,6 +350,16 @@ def save_json(path, obj):
     os.replace(tmp, path)
 
 
+INCIDENT_IDLE_S = 900                 # T05b: a repeat after 15 quiet minutes starts a new entry
+INCIDENT_MAX = 200                    # T05b: incidents kept (oldest dropped first, closed before open)
+INCIDENT_LOCK = threading.RLock()     # T05b final: err()/resolve()/sweep run on the loop thread AND the HTTP thread
+MANAGE_ALERT_REARM_S = 900            # T05b final: the same management-failure alert is not re-sent within 15 min (flapping)
+OUTAGE_ADD = 'Binance outage - no adds until it answers again'
+MARK_FRESH_S = 120                    # T05b: a cached mark this recent may validate a manual stop move when Binance is down
+EXCHANGE_DOWN = ('Binance is not answering status checks (no order was sent) - positions and stops are left as they '
+                 'are and re-checked when it answers')
+
+
 class Engine:
     def __init__(self, cfg, data_dir, dry=False):
         self.cfg, self.dir, self.dry = cfg, data_dir, dry
@@ -361,6 +371,9 @@ class Engine:
         self.data = Futures('', '', MAINNET)
         _faults = testnet_faults(getattr(self.trade, 'base', None), 'lev_refuse')
         if _faults: log.warning(f'TESTNET FAULT INJECTION active: leverage changes refused for {sorted(_faults)} (ZB_TESTNET_FAULTS)')
+        _ro = testnet_read_outage(getattr(self.trade, 'base', None))
+        if _ro: log.warning(f'TESTNET FAULT INJECTION active: non-critical status reads under {_ro[1]} answer HTTP 503 for {_ro[0]} s '
+                            f'from the first one (orders and critical reads unaffected) (ZB_TESTNET_FAULTS)')
         self.load_settings()
         # migrate v1 files (single-strategy bot) so logs stay readable
         if os.path.exists(self.F['trades']):
@@ -397,7 +410,7 @@ class Engine:
         self._lev_exc_chk = {}                    # T03c r1: symbol -> last read-only leverage check while adds are paused
         self._btc1h = None; self._fund = {}; self._regime = None; self._rule_warns = []
         self.health = dict(errors=collections.deque(maxlen=30), last_manage_ok=None, last_cycle_ok={}, manage_fail_streak=0,
-                           last_sync=None, alerted=False)
+                           last_sync=None, alerted=False, incidents={}, confirmed={})
         self.grids = GRID.GridManager(self)
 
     def _load_list(self, k):
@@ -720,9 +733,76 @@ class Engine:
         return rec.get('outcome') in ('filled', 'partial') and bool(rec.get('qty_fill'))
 
     # ------------------------------------------------------------ order helpers
-    def err(self, msg):
-        self.health['errors'].append([now_utc().isoformat(timespec='seconds'), str(msg)[:200]])
+    def err(self, msg, key=None):
+        """Recent Activity entry. T05b: a repeat of an OPEN incident (same key; default = the exact message) updates that
+        one entry in place (latest text, count, first time) instead of adding a new line. Known floods pass a key."""
+        with INCIDENT_LOCK: self._err(scrub(msg), key)
+
+    def _err(self, msg, key):
+        keyed = key is not None; key = key or msg[:200]; now = now_utc().isoformat(timespec='seconds')
+        incs = self.health.setdefault('incidents', {})
+        self._sweep_incidents()
+        inc = incs.get(key)
+        if inc and inc['open'] and (now_utc() - datetime.fromisoformat(inc['last'])).total_seconds() > INCIDENT_IDLE_S:
+            inc['open'] = False                                       # a repeat after a long quiet gap is a new incident
+        if inc and inc['open']:
+            if not any(x is inc['entry'] for x in self.health['errors']):
+                self.health['errors'].append(inc['entry'])           # its line scrolled out: show it again (once)
+            inc['count'] += 1; inc['last'] = now; inc['msg'] = msg[:200]
+            inc['entry'][0] = now; inc['entry'][1] = f"{msg[:150]} (x{inc['count']} since {inc['first'][11:19]} UTC)"
+            if inc['count'] % 20 == 0 or msg != inc.get('logged'):
+                log.warning(f"{msg} (x{inc['count']})"); inc['logged'] = msg
+            return
+        entry = [now, msg[:200]]
+        self.health['errors'].append(entry)
         log.warning(msg)
+        if len(incs) >= INCIDENT_MAX:                                 # bounded: oldest first, closed before open
+            for k in sorted(incs, key=lambda k: (incs[k]['open'], incs[k]['last']))[:len(incs) - INCIDENT_MAX + 1]:
+                incs.pop(k, None)
+        incs[key] = dict(key=key, msg=msg[:200], first=now, last=now, count=1, open=True, entry=entry, logged=msg, keyed=keyed)
+
+    def _sweep_incidents(self):
+        """T05b: a generic (unkeyed) incident with no repeat for INCIDENT_IDLE_S is over: close it, so a one-off error
+        is not reported as open for days. Keyed incidents (exchange-down, open-orders|SYM) stay open until resolve()."""
+        cut = now_utc().timestamp() - INCIDENT_IDLE_S
+        with INCIDENT_LOCK:
+            for inc in list((self.health.get('incidents') or {}).values()):
+                try:
+                    if inc.get('open') and not inc.get('keyed') and datetime.fromisoformat(inc['last']).timestamp() < cut:
+                        inc['open'] = False
+                except Exception:
+                    pass
+
+    def exchange_down_incident(self, where):
+        """A step failed only because Binance is unreachable: one shared exchange-down incident (closed by the recovery
+        reconcile), no guessing."""
+        self.err(f'{where}: {EXCHANGE_DOWN}', key='exchange-down')
+
+    def resolve(self, key, note):
+        """Close an open incident with ONE recovery entry (count, first, duration)."""
+        with INCIDENT_LOCK:
+            inc = self.health.get('incidents', {}).get(key)
+            if not inc or not inc['open']: return False
+            inc['open'] = False
+            t0 = datetime.fromisoformat(inc['first']); dur = int((now_utc() - t0).total_seconds())
+            line = f"{note} after {dur // 60}m{dur % 60:02d}s ({inc['count']} failed checks since {inc['first'][11:19]} UTC)"
+            self.health['errors'].append([now_utc().isoformat(timespec='seconds'), line[:200]])
+        log.info(line)
+        return True
+
+    def _positions_critical(self):
+        """Positions for sizing an order: never skipped by the outage circuit (a real attempt, like before T05b)."""
+        try: return self.trade.positions(critical=True)
+        except TypeError: return self.trade.positions()
+
+    def exchange_state(self):
+        """T05b: the trading client's shared outage circuit ('ok' when the client has none, e.g. a test fake)."""
+        h = getattr(self.trade, '__dict__', {}).get('_health') if self.trade is not None else None
+        return h.snapshot() if h is not None else dict(state='ok')
+
+    def _exchange_down(self, e):
+        """A read failed because Binance is unreachable (transient), not because of a bad request."""
+        return is_transient(e) or type(e).__module__.startswith('requests')
 
     def _cancel_or_park(self, sym, tag):
         """Cancel a stop; if Binance cannot be reached, remember it and retry later (never leave a stale stop behind)."""
@@ -843,7 +923,7 @@ class Engine:
         qty = lot['qty']
         others = [k for k, l in self.state['lots'].items() if k != key and l['symbol'] == lot['symbol'] and l['side'] == lot['side']]
         if not others and not self.dry:            # last lot on this side: close exactly what the exchange holds (no dust)
-            try: qty = self.trade.positions().get((lot['symbol'], lot['side']), qty) or qty
+            try: qty = self._positions_critical().get((lot['symbol'], lot['side']), qty) or qty
             except Exception: pass
         self._market_close(lot, qty, why, mark, post={'finish': why})    # raises on failure -> lot and its stop stay as they were
         self._finish(key, why)
@@ -936,7 +1016,12 @@ class Engine:
                 self.reconcile(self.last_eq or 0)
                 changed = changed or len(self.state['lots']) != n0
             except Exception as e:
-                self._manage_failed(f'reconcile: {e}'); return
+                if self._exchange_down(e):                         # T05b: one incident, plain words; nothing guessed
+                    self._manage_failed(EXCHANGE_DOWN, key='exchange-down')
+                else:
+                    self._manage_failed(f'reconcile: {e}')
+                return
+            self._after_confirmed()
             ok = True
             if self.state.get('pending_entries'):
                 try: changed = self._trail_entries(marks) or changed
@@ -1047,11 +1132,24 @@ class Engine:
                 self._manage_failed('see errors')
             if changed: self.save_state()
 
-    def _manage_failed(self, why):
+    def _after_confirmed(self):
+        """T05b: positions were just re-read and reconciled. On the first success after an outage, close the incident with
+        one recovery entry (the reconcile that just ran IS the recovery reconcile; nothing older is acted on)."""
+        h = getattr(self.trade, '__dict__', {}).get('_health')
+        if h is not None and h.state == 'outage': return    # T05b final: a later read in this pass re-opened it - not recovered
+        if self.health.get('incidents', {}).get('exchange-down', {}).get('open') or (h is not None and h.recovered):
+            self.resolve('exchange-down', 'Binance answering again - positions re-read and reconciled')
+            if h is not None: h.recovered = False
+
+    def _manage_failed(self, why, key=None):
         h = self.health; h['manage_fail_streak'] += 1
-        if why != 'see errors': self.err(f'manage: {why}')
+        if why != 'see errors': self.err(f'manage: {why}', key=key)
+        cause, t = key or why, time.time()
         if h['manage_fail_streak'] >= 6 and not h['alerted']:
-            h['alerted'] = True
+            h['alerted'] = True                                     # re-armed by a good pass; T05b final: the SAME cause is
+            last = h.get('alert_last') or (None, 0.0)               # not re-sent within MANAGE_ALERT_REARM_S (flapping outage)
+            if last[0] == cause and t - last[1] < MANAGE_ALERT_REARM_S: return
+            h['alert_last'] = (cause, t)
             self.notify(f'🆘 Trade management is failing ({why}). Exchange stops are still in place - check the app.')
 
     def exit_plan(self, l):
@@ -1113,6 +1211,7 @@ class Engine:
         st, Sg = self.state, self.S
         if st.get('halted'): return 'daily loss halt is active'
         if Sg.get('ENTRIES_PAUSED'): return 'entries paused'
+        if self.exchange_state().get('state') == 'outage': return OUTAGE_ADD     # T05b final: an add is new exposure
         if lot.get('stop_dirty'): return 'stop not confirmed yet'
         if lot.get('manual'): return 'manual trade (no adds)'
         lx = self._lev_exception_block(lot['symbol'])             # T03c r1: the above-cap exception admitted the entry only
@@ -1165,7 +1264,9 @@ class Engine:
           if that cannot be determined this round, nothing is guessed - it is retried on the next pass;
           if every stop is still open, the lots are resized to what the exchange holds.
         - more on the exchange (or a position with no lot at all): reported as UNTRACKED and alerted, never ignored."""
+        fetched = live is None
         live = self.trade.positions() if live is None else live
+        if fetched: self.health.setdefault('confirmed', {})['positions'] = now_utc().isoformat(timespec='seconds')
         st = self.state
         groups = {}
         for k, l in st['lots'].items(): groups.setdefault((l['symbol'], l['side']), []).append(k)
@@ -1200,7 +1301,9 @@ class Engine:
             try:
                 open_tags = self.trade.open_stop_tags(sym)
             except Exception as ex:
-                log.warning(f'open orders {sym}: {ex} - reconcile retried next pass'); continue
+                self.err(f'open orders {sym}: {ex} - nothing changed, re-checked next pass', key=f'open-orders|{sym}'); continue
+            self.health.setdefault('confirmed', {}).setdefault('stops', {})[sym] = now_utc().isoformat(timespec='seconds')
+            self.resolve(f'open-orders|{sym}', f'open orders {sym} readable again')
             gone = [k for k in keys if st['lots'][k].get('stop_id') and st['lots'][k]['stop_id'] not in open_tags]
             gone.sort(key=lambda k: -sd * st['lots'][k]['stop'])       # highest long stop triggers first
             for k in gone:
@@ -1363,6 +1466,7 @@ class Engine:
         self._rule_warns = []
         st, Sg = self.state, self.S
         if not self.connected or self.error: return 'not connected to Binance'
+        if self.exchange_state().get('state') == 'outage': return 'Binance outage - no new entries until it answers again'
         if not SYM_RE.match(sym or '') or sym not in self.rules: return f'{sym} is not tradable'
         if side not in ('LONG', 'SHORT'): return 'bad direction'
         if side == 'SHORT' and not self.hedge: return 'hedge mode off (shorts unavailable)'
@@ -1675,7 +1779,7 @@ class Engine:
         r['count'] += 1                                         # every decision (= proceeded + skipped), as in T03a
         if via == 'cooldown':
             r['cooldown_checks'] += 1
-            head = f'leverage {lev}x refused recently (no new request for {wait}s)'
+            head = f'leverage {lev}x refused recently (no new request during the cooldown)'   # stable; seconds: cooldown_left
         else:                                                   # the failed requests were already counted at each attempt
             head = f'leverage {lev}x refused ({err})'
         r.update(last_time=now, via=via, cooldown_left=wait if via == 'cooldown' else None, cap=lev, current=None,
@@ -2302,11 +2406,26 @@ class Engine:
         with self.lock:
             lot = self.state['lots'][key]
             sd = 1 if lot['side'] == 'LONG' else -1
-            mark = self.trade.marks().get(lot['symbol'])
+            mark = self._protective_mark(lot['symbol'])
             if sd * (price - mark) >= 0: raise ValueError(f'stop must be on the losing side of the current price {mark}')
             if not self._replace_stop(lot, price): raise ValueError('Binance did not accept the new stop - the previous stop is still active')
             self.save_state()
             log.info(f"STOP MOVED {lot['symbol']} [{lot['sleeve']}] -> {lot['stop']}")
+
+    def _protective_mark(self, sym):
+        """T05b: the price a manual stop move is validated against. A critical read (never refused by the outage
+        circuit), else the mark cache if fresh. Unknown -> refuse: a stop already through the price makes
+        _replace_stop close at market, so the side check is never skipped (the previous stop stays active)."""
+        why = None
+        try:
+            try: mk = self.trade.marks(critical=True)
+            except TypeError: mk = self.trade.marks()
+            if mk.get(sym): return mk[sym]
+        except Exception as ex:
+            why = ex
+        if (self.marks or {}).get(sym) and time.time() - (self.marks_t or 0) <= MARK_FRESH_S:
+            return self.marks[sym]
+        raise ValueError(f'current price of {sym} unavailable ({why or "no mark"}) - stop not moved, the previous stop is still active')
 
     def flatten(self, manual_too=True):
         """Close every (bot) position. Returns {'closed': [...], 'failed': [[key, error]], 'still_open': {...}}.

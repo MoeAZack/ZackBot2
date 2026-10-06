@@ -55,7 +55,7 @@ from engine import Engine, PRESETS, TOP40, CORE8, TF_SEC, MANUAL_MAX_RISK, save_
 from binance_client import Futures, MAINNET   # noqa: E402
 import grid as GRID             # noqa: E402
 import lab as LAB               # noqa: E402
-from engine import RISK_RULE_DEFAULTS, GOV_MULT_MAX   # noqa: E402
+from engine import RISK_RULE_DEFAULTS, GOV_MULT_MAX, EXCHANGE_DOWN   # noqa: E402
 from telegram_ctl import TelegramControl, clean_setting as tg_clean_setting   # noqa: E402
 
 
@@ -549,15 +549,27 @@ class App:
                             marks = e.data.marks()
                             if e.state['lots'] or e.state.get('grids') or e.state.get('pending_entries') or e.state.get('resting_entries'): e.manage(marks)
                             else: e.marks, e.marks_t = marks, now
-                        except Exception as ex:
-                            e._manage_failed(f'mark prices: {ex}')
+                        except Exception as ex:                     # T05b final: Binance down -> the one exchange-down incident
+                            if e._exchange_down(ex): e._manage_failed(f'mark prices: {EXCHANGE_DOWN}', key='exchange-down')
+                            else: e._manage_failed(f'mark prices: {ex}')
                     if now - last_guard > 60:                               # daily halt / drawdown checked between candles too
                         last_guard = now
                         with e.lock:
-                            e.equity(); e.check_guards()
+                            try:
+                                e.equity(); e.check_guards()
+                                if not (e.state['lots'] or e.state.get('grids') or e.state.get('pending_entries')
+                                        or e.state.get('resting_entries')):   # nothing to reconcile: account read = recovered
+                                    e.resolve('exchange-down', 'Binance answering again - account readable')
+                            except Exception as ex:                     # T05b: Binance down -> guards simply retry next pass
+                                if not e._exchange_down(ex): raise
+                                e.exchange_down_incident('daily guards')
                     if now - last_eq > 300:
                         last_eq = now
-                        with e.lock: e.record_equity(e.guard_eq or e.equity())
+                        with e.lock:
+                            try: e.record_equity(e.guard_eq or e.equity())
+                            except Exception as ex:
+                                if not e._exchange_down(ex): raise
+                                e.exchange_down_incident('equity record')
                     e.next_cycle = {tf: datetime.fromtimestamp((math.floor(now / TF_SEC[tf]) + 1) * TF_SEC[tf] + 15, timezone.utc).isoformat(timespec='seconds') for tf in tfs}
                     self.loop_ok = time.time()
             except Exception as ex:
@@ -584,7 +596,11 @@ class App:
         return lots
 
     def health(self, e, lots):
+        def ms_iso(t):
+            try: return datetime.fromisoformat(t).timestamp()
+            except Exception: return 0.0
         h = e.health
+        if hasattr(e, '_sweep_incidents'): e._sweep_incidents()        # T05b: one-off errors stop being "open" when idle
         now = time.time()
         mt = max(e.marks_t or 0, 0)
         exch = 'error' if e.error else ('ok' if e.connected and now - mt < 60 else 'stale')
@@ -596,7 +612,12 @@ class App:
                     last_manage_ok=lm, last_cycle_ok=h.get('last_cycle_ok'), errors=list(h['errors'])[-12:][::-1], unprotected=unprot,
                     untracked=e.untracked, orphans=len(e.state.get('orphans') or []), entries=entries, next_reset=next_reset_utc(),
                     fail_streak=h['manage_fail_streak'], lev_refusals={k: dict(v) for k, v in getattr(e, 'lev_refusals', {}).items()},
-                    fills=e.fill_summary() if hasattr(e, 'fill_summary') else None)
+                    fills=e.fill_summary() if hasattr(e, 'fill_summary') else None,
+                    exchange_circuit=e.exchange_state() if hasattr(e, 'exchange_state') else None,      # T05b
+                    confirmed=dict(h.get('confirmed') or {}),
+                    incidents=[{k: v for k, v in i.items() if k not in ('entry', 'logged')} for i in sorted(
+                        [i for i in list((h.get('incidents') or {}).values()) if i.get('open')],   # snapshot: loop thread mutates
+                        key=lambda i: (i.get('key') != 'exchange-down', -ms_iso(i.get('last'))))][:20])
 
     def revs(self, e):
         hl = e.history[-1]['id'] if e.history else ''
