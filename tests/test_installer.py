@@ -260,6 +260,22 @@ def test_staging_copy_excludes_the_installer_and_private_files():
         assert f"'{f}'" in xf, f'{f} must not be copied into the build'
 
 
+@needs_installer
+def test_staging_keeps_manifest_data_for_tests_then_removes_it_before_packaging():
+    """T03c runtime gate: CI tests validate DATA_MANIFEST, so their files must exist while staged pytest runs. The
+    research datasets are test inputs only and must be deleted before PyInstaller and the installed source mirror."""
+    src = open(INSTALLER, encoding='utf-8').read()
+    xd = re.search(r"'/XD',(.*?)'/XF'", src, re.S).group(1)
+    assert all(f"'{d}'" not in xd for d in ('data', 'data1h', 'data_long'))
+    pytest_at = src.index("@('-m', 'pytest'")
+    cleanup_at = src.index("foreach ($name in @('data', 'data1h', 'data_long'))")
+    build_at = src.index("@('-m', 'PyInstaller'")
+    assert pytest_at < cleanup_at < build_at
+    cleanup = src[cleanup_at:build_at]
+    assert '[IO.Directory]::Delete($path, $true)' in cleanup
+    assert 'Stop-Install' in cleanup
+
+
 # The fake world: every outside effect of installer.ps1 is replaced; files live in a temp LOCALAPPDATA.
 _FAKES = r'''
 param([string]$TInstaller, [string]$TCfg, [string]$TMode, [string]$TSrc, [string]$TLad)

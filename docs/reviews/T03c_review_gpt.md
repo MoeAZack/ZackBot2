@@ -153,3 +153,17 @@ pass. GitHub exact-head fast passed in 4:38 and both CodeQL analyses plus the su
 The pre-existing normal maker/external-leverage race is not represented as fixed: an external actor can change exchange
 leverage while an ordinary maker order rests. Track that separately as a general maker-admission hardening item; it does not
 weaken the new above-cap exception, which never rests as maker.
+
+## Runtime-gate addendum — installer stopped safely
+
+*2026-10-06 17:42 Africa/Cairo*
+
+The owner approved the T03c install and bounded testnet canary. The pre-install status was PAPER/testnet and healthy: three
+protected lots, engine/exchange ok, zero errors, unprotected, untracked or orphan orders. The installer then failed at staged
+safety tests **before stopping or replacing the running build**. Cause: T04d CI tests validate every `DATA_MANIFEST.json`
+file, while the installer intentionally excluded `data/`, `data1h/` and `data_long/` from its staging copy.
+
+Fix: keep the 33 MB of manifest-controlled research data only through staged pytest, delete those three temporary staging
+directories fail-closed before PyInstaller, and continue excluding them from the executable and installed source mirror.
+Direct regression evidence: installer + CI tests **100/100 passed in 3:19**. A non-mutating build gate and independent review
+must pass before the already-approved install is retried.

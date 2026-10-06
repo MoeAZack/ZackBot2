@@ -1,6 +1,6 @@
 # ZackBot owner overview
 
-*Last refreshed: 2026-10-06 14:00 Cairo (Africa/Cairo) by Codex, on branch `codex-t03c-integration`. This is the plain-language owner view. `ROADMAP.md` and `docs/reviews/` hold the detailed scope and evidence.*
+*Last refreshed: 2026-10-06 17:42 Cairo (Africa/Cairo) by Codex, on branch `codex-t03c-integration`. This is the plain-language owner view. `ROADMAP.md` and `docs/reviews/` hold the detailed scope and evidence.*
 
 ## Where we are now
 
@@ -11,9 +11,9 @@
 | Installed application | **T03b installed and rollback-proven.** SHA-256 `203B155474942709B6AD40C3517BA32D058721664D245191C900068CBC4A60A6`; the drill restored the same build and hash exactly. |
 | Latest accepted commit | `master` `cb5092b` (T04d accepted and merged) |
 | Current ticket | **T03c: automatic fail-closed leverage handling** |
-| Stage | **Code review clean at `001a032`; exact-head focused, fast and CodeQL gates pass. One labelled full gate remains before code acceptance.** |
-| What Claude is doing | Round-2 follow-ups are published and reviewed: ambiguous bracket coefficients fail closed and legacy exceptional makers cannot be re-placed. |
-| What Codex is reviewing | Final documentation head and the single exact-head `full-ready` gate. No executable or runtime action is involved. |
+| Stage | **Code/CI accepted at `d8e02dd`. Owner-approved install exposed a fail-safe staging regression before the bot was touched; fix review is in progress.** |
+| What Claude is doing | Awaiting the installer-staging fix handoff: manifest data must exist for staged tests, then be removed before packaging. |
+| What Codex is reviewing | Installer fix and non-mutating build gate. The previous testnet build remains running and healthy. |
 | Your action | **None.** |
 
 ## Latest test results
@@ -42,6 +42,7 @@
 | T04d GitHub | Final head `cb5092b`: fast, CodeQL and exact-head `full-ready` verification passed; PR #7 merged through protected master. |
 | T03c integrated Windows review | Claude head `a8e7b79` plus Codex code commit `50c10fa`: focused leverage/safety/grid/fill/maker set **335/335 passed**; complete suite **514/514 passed in 7:01**; isolated causality **13/13 passed in 3:35**; Python compilation and diff validation pass. |
 | T03c round-3 exact head | `001a032`: leverage/safety/grid/fills **320/320 passed in 27.43 s**; Python compilation and diff validation pass; GitHub fast **PASS in 4:38** and CodeQL green. Code review clean; labelled full remains. |
+| T03c runtime attempt 1 | Installer stopped safely at staged tests: 3 CI tests could not verify `DATA_MANIFEST.json` because the installer omitted its data folders. ZackBot was never stopped/replaced. Fix regression gate: installer + CI **100/100 passed in 3:19**. |
 
 Automated test-suite results use a fake exchange. The final T03a gate used the real Binance Futures testnet account; it correctly sent no entry order because leverage was above the cap.
 
@@ -135,6 +136,7 @@ Automated test-suite results use a fake exchange. The final T03a gate used the r
 | Fixed; T03c full/runtime gates pending | High | Ambiguous `notionalCoef` scaling could understate maintenance if Binance already adjusted returned tiers | Non-unit or malformed coefficients now fail closed and are never cached. |
 | Fixed; T03c full/runtime gates pending | High | Legacy exceptional maker records could be re-priced using stale approval | They are cancelled/finalized without re-placement or market fallback; partial fills use the normal protected-lot path. |
 | Open follow-up | Medium | An external leverage change can occur while an ordinary within-cap maker order rests | General maker-admission hardening; the new above-cap exception is unaffected because it never rests as maker. |
+| Fixed; installer re-review pending | High deployment gate | Installer excluded manifest-controlled datasets but staged CI tests require them | Datasets now exist through staged pytest and are deleted before PyInstaller; they are never bundled or mirrored. First install attempt touched no runtime. |
 
 ## Open risks
 

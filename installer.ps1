@@ -329,8 +329,11 @@ function Invoke-Step1Stage {
     Start-Step 'stage'
     Remove-Stage $s.Stage
     if ([IO.Directory]::Exists($s.Stage)) { Stop-Install "could not clear the staging folder $($s.Stage) (a file is open there?)" }
+    # Keep the manifest-controlled candle datasets through the safety-test step. T04d's CI tests validate every file in
+    # DATA_MANIFEST.json; excluding these folders made a normal installer fail before touching the running bot. They are
+    # removed from this temporary staging tree immediately after the tests and are never bundled or mirrored.
     $r = Invoke-Logged 'robocopy' @(($s.Src.TrimEnd('\') + '\.'), $s.StageSrc, '/MIR',
-        '/XD', '__pycache__', '.git', '.git_failed_*', 'data', 'data1h', 'data_long', 'dev_out',
+        '/XD', '__pycache__', '.git', '.git_failed_*', 'dev_out',
         '/XF', 'build_app.bat', 'rollback_drill.bat', 'installer.ps1', 'setup_git.bat', 'config.env', '*.log', 'session.json',
         '*.tmp', '*.pkl', 'build_info.py', '/NFL', '/NDL', '/NJH', '/NJS')
     if ($r.Code -ge 8) { Stop-Install 'copying the source failed' }
@@ -366,6 +369,12 @@ function Invoke-BuildSteps {
     Start-Step 'safety_tests'
     $r = Invoke-Logged $bpy @('-m', 'pytest', '-q', '-p', 'no:cacheprovider', '-m', 'not slow', 'tests') $s.StageSrc
     if ($r.Code -ne 0) { Stop-Install 'the safety tests FAILED - this build is not safe to install' }
+    foreach ($name in @('data', 'data1h', 'data_long')) {
+        $path = [IO.Path]::Combine($s.StageSrc, $name)
+        try { if ([IO.Directory]::Exists($path)) { [IO.Directory]::Delete($path, $true) } }
+        catch { Stop-Install "could not remove temporary test data from staging ($name)" }
+        if ([IO.Directory]::Exists($path)) { Stop-Install "could not remove temporary test data from staging ($name)" }
+    }
 
     Write-Say '[5/8] Building ZackBot.exe (takes 1-3 minutes)...'
     Start-Step 'pyinstaller'
