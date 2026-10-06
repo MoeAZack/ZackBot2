@@ -1419,9 +1419,11 @@ class Engine:
         lev = min(want, mx) if mx else want
         try: self.trade.set_leverage(sym, lev)
         except Exception as e:                                  # transient testnet/API errors: one retry, then the fallback below
+            self._lev_api_refused(sym, e)                       # every failed leverage request counts (runtime finding)
             log.info(f'{sym}: leverage retry after {e}'); time.sleep(1)
             try: self.trade.set_leverage(sym, lev)
             except Exception as e2:
+                self._lev_api_refused(sym, e2)
                 self._lev_cool[sym] = time.time() + LEV_REFUSAL_COOLDOWN_S
                 return self._leverage_fallback(sym, lev, e2, notional, risk)   # proceeds only if proven safe (read-only)
         self._lev_cool.pop(sym, None)
@@ -1649,13 +1651,24 @@ class Engine:
                             f'if every stop fills is above {LEV_MARGIN_RATIO_MAX:.0%}', n)
         return True, 'cross margin, within the leverage cap and the worst-case margin limit', dict(n, check=None)
 
+    def _lev_api_refused(self, sym, err):
+        """Count ONE failed leverage request (POST refused or unanswered) in lev_refusals[sym].api_refusals and keep its error:
+        last_api_error/_time (+ the last_error alias) and last_api_errors (the most recent two, so a try + retry keeps both)."""
+        r = self.lev_refusals.setdefault(sym, dict(count=0, proceeded=0, skipped=0))
+        for k in ('by_exposure', 'cooldown_checks', 'api_refusals'): r.setdefault(k, 0)
+        now = now_utc().isoformat(timespec='seconds'); msg = str(err)[:160]
+        r['api_refusals'] += 1
+        r['last_api_error'] = r['last_error'] = msg; r['last_api_time'] = now
+        r['last_api_errors'] = (list(r.get('last_api_errors') or []) + [dict(time=now, error=msg)])[-2:]
+
     def _leverage_fallback(self, sym, lev, err, notional=None, risk=None, via='refused', wait=None):
         """T03a/T03c. Binance refused the leverage change (testnet answers -1000 on some coins; mainnet can refuse too, e.g.
         with open orders or venue rules), or refused it recently (via='cooldown': no POST was sent). Read-only checks decide:
         proceed if the coin is already at or below the cap (T03a), or if the exposure proof accepts the entry under cross
         margin (T03c); otherwise raise, so the entry is skipped exactly as before. Returns 'within_cap' or 'exposure'.
-        lev_refusals[sym]: count = decisions (proceeded + skipped), api_refusals = refused POSTs (last_api_error/_time, also
-        kept as last_error), cooldown_checks = decisions without a POST, and the last decision: outcome ('went_ahead'|'skipped'), reason (code), detail (text), via, exposure numbers."""
+        lev_refusals[sym]: count = decisions (proceeded + skipped), api_refusals = EVERY failed leverage request, counted by
+        _lev_api_refused at each attempt (a try + retry = 2; last_api_error/_time, last_error alias, last_api_errors = last
+        two), cooldown_checks = decisions without a POST, and the last decision: outcome ('went_ahead'|'skipped'), reason (code), detail (text), via, exposure numbers."""
         r = self.lev_refusals.setdefault(sym, dict(count=0, proceeded=0, skipped=0))
         for k in ('by_exposure', 'cooldown_checks', 'api_refusals'): r.setdefault(k, 0)
         now = now_utc().isoformat(timespec='seconds')
@@ -1663,9 +1676,7 @@ class Engine:
         if via == 'cooldown':
             r['cooldown_checks'] += 1
             head = f'leverage {lev}x refused recently (no new request for {wait}s)'
-        else:
-            r['api_refusals'] += 1
-            r['last_api_error'] = r['last_error'] = str(err)[:160]; r['last_api_time'] = now
+        else:                                                   # the failed requests were already counted at each attempt
             head = f'leverage {lev}x refused ({err})'
         r.update(last_time=now, via=via, cooldown_left=wait if via == 'cooldown' else None, cap=lev, current=None,
                  margin_type=None, accepted=None, exposure=None)
