@@ -5,9 +5,10 @@ rem   build_app.bat              build + install: fail-closed, the running bot i
 rem                              automatic verified rollback if the new version does not start correctly
 rem   build_app.bat preflight    non-destructive check used by the tests (own staging folder and log)
 rem   build_app.bat buildcheck   verify full on Windows: build + exe self-test, nothing installed
-rem   rollback drill: double-click rollback_drill.bat
+rem   rollback drill: rollback_drill.bat (fixed entry point; build_app.bat refuses 'drill' and any other argument)
 rem This file NEVER expands its arguments (no percent-1 / percent-star): CMD would interpret quotes, & and | inside them. It passes its own
 rem command line to installer.ps1 through delayed expansion (not re-parsed); installer.ps1 accepts only a known mode.
+rem Hostile raw CMD syntax in the CALLER's command line (x"&...) is parsed by that shell before this file runs.
 rem ZB_NOPAUSE=1 (set by verify.py) = never wait for a key press.
 setlocal EnableExtensions DisableDelayedExpansion
 rem Windows PowerShell 5.1 must use its OWN module paths. A PSModulePath inherited from another shell (e.g. PowerShell 7)

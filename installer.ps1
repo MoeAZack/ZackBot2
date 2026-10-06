@@ -589,16 +589,37 @@ function Invoke-Flow {
     return Invoke-Rollback
 }
 
+function Split-CmdLine([string]$line) {
+    # Tokens of a CMD-style command line: whitespace separates outside quotes, quotes toggle and are dropped.
+    $tokens = [Collections.Generic.List[string]]::new(); $cur = [Text.StringBuilder]::new(); $q = $false; $have = $false
+    foreach ($ch in $line.ToCharArray()) {
+        if ($ch -eq '"') { $q = -not $q; $have = $true; continue }
+        if (-not $q -and ($ch -eq ' ' -or $ch -eq "`t")) {
+            if ($have) { $tokens.Add($cur.ToString()); [void]$cur.Clear(); $have = $false }
+            continue
+        }
+        [void]$cur.Append($ch); $have = $true
+    }
+    if ($have) { $tokens.Add($cur.ToString()) }
+    return ,$tokens
+}
+
 function Get-LauncherMode([string]$cmdline) {
-    # build_app.bat never expands its arguments (CMD would interpret quotes and & in them). It hands its own raw command
-    # line (CMDCMDLINE, via delayed expansion = not re-parsed) to us; we pick the mode here. Quotes are dropped and the
-    # rest split on spaces; the result must be nothing (= install) or exactly one known mode. Anything else -> $null.
-    $i = $cmdline.ToLowerInvariant().LastIndexOf('build_app.bat')
-    if ($i -lt 0) { return $null }
-    $rest = $cmdline.Substring($i + 'build_app.bat'.Length).Replace('"', ' ')
-    $tokens = @($rest.Split([char[]]@(' ', "`t"), [StringSplitOptions]::RemoveEmptyEntries))
-    if ($tokens.Count -eq 0) { return 'install' }
-    if ($tokens.Count -eq 1 -and @('install', 'drill', 'preflight', 'buildcheck') -contains $tokens[0].ToLowerInvariant()) { return $tokens[0].ToLowerInvariant() }
+    # build_app.bat never expands its arguments; it hands over its own raw command line (CMDCMDLINE, via delayed
+    # expansion = not re-parsed). The launcher is the FIRST token that is build_app.bat itself (a path ending in
+    # \build_app.bat); everything after it must be nothing (= install) or exactly ONE non-destructive mode
+    # (preflight / buildcheck). The drill has its own fixed launcher (rollback_drill.bat). Anything else -> $null.
+    # Hostile raw CMD syntax (e.g. x"&cmd) is parsed by the CALLING shell before this file runs - out of scope.
+    $t = Split-CmdLine $cmdline
+    $k = -1
+    for ($n = 0; $n -lt $t.Count; $n++) {
+        $tok = $t[$n].Trim().ToLowerInvariant()
+        if ($tok -eq 'build_app.bat' -or $tok.EndsWith('\build_app.bat') -or $tok.EndsWith('/build_app.bat')) { $k = $n; break }
+    }
+    if ($k -lt 0) { return $null }
+    $rest = @(for ($n = $k + 1; $n -lt $t.Count; $n++) { if ($t[$n].Trim()) { $t[$n].Trim() } })
+    if ($rest.Count -eq 0) { return 'install' }
+    if ($rest.Count -eq 1 -and @('preflight', 'buildcheck') -contains $rest[0].ToLowerInvariant()) { return $rest[0].ToLowerInvariant() }
     return $null
 }
 
@@ -606,8 +627,8 @@ function Invoke-Main([string]$mode, [string]$src, [string]$localAppData) {
     if (@('install', 'drill', 'preflight', 'buildcheck') -notcontains $mode) {
         Write-Say "usage: installer.ps1 install|drill|preflight|buildcheck (got '$mode')"
         if ($mode.StartsWith('refused: ')) {
-            Write-Say 'build_app.bat takes no argument (install) or exactly one of: preflight, buildcheck, drill. Nothing was changed.'
-            Write-Say 'From an open Command Prompt start it as: cmd /c build_app.bat <mode>   (or double-click it / rollback_drill.bat).'
+            Write-Say 'build_app.bat takes no argument (install) or exactly one of: preflight, buildcheck. Nothing was changed.'
+            Write-Say 'The rollback drill is rollback_drill.bat. From an open Command Prompt use: cmd /c build_app.bat [preflight|buildcheck]'
         }
         return 2
     }
