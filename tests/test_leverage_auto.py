@@ -3,6 +3,7 @@ entry may still go ahead - but only under CROSS margin, and only when a FRESH ex
 (every position, every working order, every confirmed stop) stays within the cap and far from liquidation if every stop
 fills. Every unknown answer keeps the T03a skip. Round 1 (Codex review) groups 1-7 are marked below."""
 import json, math, os, shutil, subprocess, sys, tempfile, time
+import requests
 import pytest
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -272,11 +273,12 @@ def test_g1_several_resting_entries_are_all_reserved():
     assert n['gross_notional'] == pytest.approx(50 + 200 + 100)                  # reserved + this entry
 
 
-def test_g1_partially_filled_resting_entry_on_the_exchange_reconciles():
+def test_g1_partially_filled_resting_entry_reconciles_but_is_unprotected():
     e = refusing()
     resting(e, qty=1.0, filled=0.5); e.trade.extra_pos[('ETHUSDT', 'LONG')] = 0.5   # fill seen on Binance before it is a lot
     ok, why, n = check(e)
-    assert ok, why
+    assert not ok and n['check'] == 'unprotected' and 'without a stop' in why, why   # reconciled, but it has no stop yet
+    assert n['loss_to_stops'] is not None                                          # the numbers are still reported
 
 
 def test_g1_unknown_working_order_rejects_but_reduce_only_and_bot_entries_do_not():
@@ -725,3 +727,227 @@ def test_g7_panel_renders_every_path_escaped():
                 'cross-margin exposure proof passed, cross margin, account leverage 1.2x, worst-case margin ratio 3%', '>skipped<'):
         assert txt in html, txt
     assert '1 / 0' in html and '3 / 0' in html                                  # Binance refusals / cooldown checks
+
+# ------------------------------------------------------------------ round 1, internal adversarial pass (independent verifier repros)
+def fut_with(answers):
+    f = BC.Futures.__new__(BC.Futures)                 # no network: every read is answered by `answers`
+    f._req = lambda m, path, params=None, signed=False, retry=None: answers[path]
+    return f
+
+
+# AV1 (answer shape): unknown-shaped answers become "no orders" instead of raising (docstring: "unknown != empty")
+def test_av1_algo_orders_answer_in_an_unknown_shape_is_never_read_as_empty():
+    algo = dict(algoId=5, symbol='ETHUSDT', side='BUY', positionSide='LONG', quantity='100', triggerPrice='45', reduceOnly=False)
+    f = fut_with({'/fapi/v1/openOrders': [], '/fapi/v1/openAlgoOrders': {'code': '200', 'msg': 'success', 'data': [algo]}})
+    try: out = f.open_orders_all()
+    except Exception: return                       # raising is the fail-closed answer
+    assert any(o['tag'] == 'a:5' for o in out), 'an open algo entry order was silently dropped'
+
+
+def test_av1_open_orders_empty_dict_answer_raises():
+    f = fut_with({'/fapi/v1/openOrders': {}, '/fapi/v1/openAlgoOrders': []})
+    with pytest.raises(Exception):
+        f.open_orders_all()
+
+
+def test_av1_position_risk_empty_dict_answer_raises():
+    f = fut_with({'/fapi/v2/positionRisk': {}})
+    with pytest.raises(Exception):
+        f.position_risk()
+
+
+# AV5 (shared stop order): one exchange stop order counted as protection for two lots
+def test_av5_two_lots_cannot_share_one_stop_order_beyond_its_size():
+    e = refusing()
+    k1, l1 = add_lot(e, qty=10.0)
+    k2, l2 = add_lot(e, qty=10.0, with_stop=False)
+    l2['stop_id'] = l1['stop_id']                  # the single 10-qty stop is the only protection for 20 qty
+    ok, why, n = check(e)
+    assert not ok, 'two lots (20 qty) accepted as protected by one 10-qty stop'
+
+
+# AV4 (maker tolerance): a manual / stop-less position hidden by a working maker entry's FULL quantity (not its filled part)
+def test_av4_unfilled_maker_entry_does_not_hide_an_unprotected_position():
+    e = refusing()
+    resting(e, qty=10.0, filled=0.0)               # bot maker entry: nothing filled yet
+    e.trade.extra_pos[('ETHUSDT', 'LONG')] = 10.0  # yet Binance holds 10 ETH LONG with no stop (manual)
+    ok, why, n = check(e)
+    assert not ok, 'an unprotected position equal to an unfilled maker entry was accepted'
+
+
+# AV3 (reserved shorts): reserved SHORT exposure does not grow to its stop in the maintenance projection (lots and the entry do)
+def test_av3_reserved_short_grows_to_its_stop_like_a_lot():
+    steep = [dict(floor=0.0, cap=1000.0, mmr=0.01, cum=0.0, lev=50.0),
+             dict(floor=1000.0, cap=1e9, mmr=0.4, cum=390.0, lev=2.0)]
+    def run(as_lot):
+        e = refusing(bal=5000.0)
+        e.trade.brk['ETHUSDT'] = steep
+        if as_lot:   # the same short already filled at 50 with its stop at 60
+            add_lot(e, side='SHORT', qty=19.9, avg=50.0, stop=60.0 - 0.0, R=10.0)
+            e.trade.mark['ETHUSDT'] = 50.0
+        else:
+            resting(e, side='SHORT', qty=19.9, price=50.0, stop_dist=10.0)
+        return check(e)[2]
+    lot_n, res_n = run(True), run(False)
+    # lot: notional 995 -> 995 + 19.9*10*1.5 = 1293.5 crosses into the 40% tier; the reserved short stays at 995
+    assert res_n['maint_after_stops'] >= lot_n['maint_after_stops'] - 1e-6, (lot_n, res_n)
+
+
+# AV2 (filled maker part): a maker fill already on Binance - its loss is the mark-to-stop move, not the planned stop distance
+def test_av2_filled_maker_part_loss_is_mark_to_stop():
+    e = refusing(bal=5000.0)
+    e.trade.mark['ETHUSDT'] = 60.0                  # filled at 50, mark now 60 (+100 unrealized in the balance)
+    resting(e, qty=10.0, filled=10.0, price=50.0, stop_dist=2.0)   # its stop will be 48
+    e.trade.extra_pos[('ETHUSDT', 'LONG')] = 10.0
+    ok, why, n = check(e, notional=100.0, risk=0.0)
+    assert n['loss_to_stops'] >= 10.0 * (60.0 - 48.0) * 1.5 - 1e-6, n
+
+
+# AV: status JSON stays valid and the gate never raises anything but its RuntimeError skip
+@pytest.mark.parametrize('acc', [{'totalMarginBalance': 'NaN', 'totalMaintMargin': '0'}, None, [], 'x'])
+def test_av_account_answer_shapes_fail_closed_with_valid_json(acc):
+    e = refusing(); e.trade.account = lambda: acc
+    with pytest.raises(RuntimeError):
+        e._ensure_leverage('BTCUSDT', notional=100.0, risk=5.0)
+    json.dumps(e.lev_refusals, allow_nan=False)
+
+
+def test_av_network_error_in_the_snapshot_rejects():
+    e = refusing()
+    def boom(): raise requests.ConnectionError('down')
+    e.trade.open_orders_all = boom
+    with pytest.raises(RuntimeError):
+        e._ensure_leverage('BTCUSDT', notional=100.0, risk=5.0)
+    assert e.lev_refusals['BTCUSDT']['outcome'] == 'skipped'
+    json.dumps(e.lev_refusals, allow_nan=False)
+
+
+def test_av_network_error_in_margin_state_rejects():
+    e = refusing()
+    def boom(s): raise requests.Timeout('t')
+    e.trade.margin_state = boom
+    with pytest.raises(RuntimeError):
+        e._ensure_leverage('BTCUSDT', notional=100.0, risk=5.0)
+
+
+@pytest.mark.parametrize('lev', ['20', '5', 'NaN', 'inf', None, True, -3, 0])
+def test_av_leverage_answer_strings_and_junk(lev):
+    e = refusing(); e.trade.margin_state = lambda s: dict(leverage=lev, margin_type='CROSSED')
+    try: how = e._ensure_leverage('BTCUSDT', notional=1e9, risk=1e9)   # huge size: the proof must reject
+    except RuntimeError: how = None
+    if how is not None:
+        assert how == 'within_cap' and float(lev) <= 10 and float(lev) >= 1
+    json.dumps(e.lev_refusals, allow_nan=False)
+
+
+# AV: the add pause never lifts on a failed/invalid re-check, and re-checks are fresh
+def test_av_add_pause_never_lifts_on_a_bad_read(monkeypatch):
+    e = refusing()
+    t = [1000.0]; monkeypatch.setattr(E.time, 'time', lambda: t[0])
+    k, lot = add_lot(e, sym='BTCUSDT', lev_exception=True)
+    for bad in (dict(leverage=None, margin_type='CROSSED'), dict(leverage='NaN', margin_type='CROSSED'),
+                dict(leverage=0, margin_type='CROSSED'), dict(leverage=True, margin_type='CROSSED')):
+        e.trade.margin_state = lambda s, b=bad: b
+        t[0] += 61
+        assert e._lev_exception_block('BTCUSDT'), bad
+    e.trade.margin_state = lambda s: dict(leverage=5, margin_type='CROSSED')
+    assert e._lev_exception_block('BTCUSDT'), 'within 60 s of the last check: still paused (no reuse of a positive read)'
+    t[0] += 61
+    assert e._lev_exception_block('BTCUSDT') is None
+
+
+# ---- verdict flips (ACCEPT where the documented rule says REJECT)
+def test_av1_hidden_algo_entry_order_rejects_end_to_end():
+    """No lots; Binance has a manual 1000-ETH conditional BUY (algo). The algo list comes back dict-wrapped: the real
+    client parser drops it and the gate ACCEPTS the above-cap entry."""
+    e = refusing()
+    algo = dict(algoId=5, symbol='ETHUSDT', side='BUY', positionSide='LONG', quantity='1000', triggerPrice='45', reduceOnly=False)
+    f = fut_with({'/fapi/v1/openOrders': [], '/fapi/v1/openAlgoOrders': {'code': '200', 'msg': 'success', 'data': [algo]}})
+    e.trade.open_orders_all = f.open_orders_all
+    ok, why, n = check(e)
+    assert not ok, 'accepted with an unknown exposure-increasing algo order working'
+
+
+def test_av2_filled_maker_gain_is_not_counted_as_cushion():
+    e = refusing(bal=400.0, mm=120.0)
+    e.trade.mark['ETHUSDT'] = 60.0
+    resting(e, qty=10.0, filled=10.0, price=50.0, stop_dist=2.0)
+    e.trade.extra_pos[('ETHUSDT', 'LONG')] = 10.0
+    ok, why, n = check(e, notional=100.0, risk=0.0)
+    true_left = 400.0 - 10.0 * (60.0 - 48.0) * 1.5
+    true_ratio = n['maint_after_stops'] / true_left
+    assert not (ok and true_ratio > 0.5), f'accepted at reported {n["worst_margin_ratio"]}, mark-to-stop ratio {true_ratio:.2f}'
+
+
+def test_av3_reserved_short_tier_crossing_counts():
+    steep = [dict(floor=0.0, cap=1000.0, mmr=0.01, cum=0.0, lev=50.0), dict(floor=1000.0, cap=1e9, mmr=0.4, cum=390.0, lev=2.0)]
+    e = refusing(bal=330.0); e.trade.brk['ETHUSDT'] = steep
+    resting(e, side='SHORT', qty=19.9, price=50.0, stop_dist=10.0)
+    ok, why, n = check(e)
+    stop_notional = 19.9 * (50.0 + 10.0 * 1.5)
+    true_maint = 19.9 * 50 * 0.0 + (stop_notional * 0.4 - 390.0) + n['maint_after_stops'] - 9.95  # replace ETH 995 tier-1 maint
+    assert not (ok and true_maint / n['balance_after_stops'] > 0.5), (n, true_maint)
+
+
+# ------------------------------------------------------------------ round 1, internal adversarial pass: extra coverage
+def test_av1_algo_answer_shapes_accepted_and_rejected():
+    algo = dict(algoId=5, symbol='ETHUSDT', side='SELL', positionSide='LONG', quantity='1', triggerPrice='45')
+    assert [o['tag'] for o in fut_with({'/fapi/v1/openOrders': [], '/fapi/v1/openAlgoOrders': {'orders': [algo]}}).open_orders_all()] == ['a:5']
+    assert [o['tag'] for o in fut_with({'/fapi/v1/openOrders': [], '/fapi/v1/openAlgoOrders': [algo]}).open_orders_all()] == ['a:5']
+    for bad in ({}, {'orders': None}, {'orders': {'a': 1}}, None, 'x', [dict(symbol='ETHUSDT')], ['x']):
+        with pytest.raises(Exception): fut_with({'/fapi/v1/openOrders': [], '/fapi/v1/openAlgoOrders': bad}).open_orders_all()
+    for bad in (None, 'x', {'data': []}):
+        with pytest.raises(Exception): fut_with({'/fapi/v1/openOrders': bad, '/fapi/v1/openAlgoOrders': []}).open_orders_all()
+        with pytest.raises(Exception): fut_with({'/fapi/v2/positionRisk': bad}).position_risk()
+    assert fut_with({'/fapi/v2/positionRisk': []}).position_risk() == []          # a real empty list is flat
+
+
+def test_av4_maker_tolerance_is_the_filled_part_only():
+    e = refusing()
+    resting(e, qty=10.0, filled=2.0); e.trade.extra_pos[('ETHUSDT', 'LONG')] = 3.0  # 1 more than filled
+    ok, why, n = check(e); assert not ok and n['check'] == 'reconcile', why
+    e = refusing(); resting(e, qty=10.0, filled=11.0)
+    ok, why, n = check(e); assert not ok and n['check'] == 'numeric', why
+
+
+def test_av5_lots_sharing_one_stop_within_its_size_pass_and_beyond_reject():
+    e = refusing()
+    k1, l1 = add_lot(e, qty=5.0)
+    s_, ps, q, p = e.trade.stops[l1['stop_id']]; e.trade.stops[l1['stop_id']] = (s_, ps, 10.0, p)
+    k2, l2 = add_lot(e, qty=5.0, with_stop=False); l2['stop_id'] = l1['stop_id']
+    assert check(e)[0], 'two 5-lots under one 10-stop are covered'
+    l2['qty'] = 6.0; e.trade.pos[('ETHUSDT', 'LONG')] = 11.0
+    ok, why, n = check(e); assert not ok and n['check'] == 'stops' and 'shared' in why, why
+
+
+def test_ava_stop_price_mismatch_beyond_a_tick_rejects():
+    e = refusing(); k, lot = add_lot(e, stop=45.0)
+    s_, ps, q, p = e.trade.stops[lot['stop_id']]
+    e.trade.stops[lot['stop_id']] = (s_, ps, q, 45.01)                            # one tick (0.01): fine
+    assert check(e)[0]
+    e.trade.stops[lot['stop_id']] = (s_, ps, q, 40.0)                             # the bot believes 45, Binance holds 40
+    ok, why, n = check(e); assert not ok and n['check'] == 'stops' and 'the bot expects' in why, why
+
+
+def test_avb_stop_past_the_mark_is_charged_its_distance_as_slippage():
+    e = refusing(); add_lot(e, qty=10.0, avg=40.0, stop=52.0)                     # long stop 2 above the mark (50)
+    ok, why, n = check(e, notional=100.0, risk=5.0)
+    assert ok and n['loss_to_stops'] == pytest.approx(10 * 2.0 + 5 * 1.5)        # no gain, one distance of slippage
+    e = refusing(); add_lot(e, side='SHORT', qty=10.0, avg=60.0, stop=48.0)       # short stop 2 below the mark
+    ok, why, n = check(e, notional=100.0, risk=5.0)
+    assert ok and n['loss_to_stops'] == pytest.approx(10 * 2.0 + 5 * 1.5)
+
+
+def test_av3_short_dca_pyramid_and_grid_reserves_grow_to_their_stop():
+    e = refusing(bal=1e6)
+    add_lot(e, side='SHORT', qty=1.0, avg=50.0, stop=60.0, levels=[55.0], w=[2.0], q0=1.0)    # one short DCA order left
+    ok, why, n = check(e, sym='BTCUSDT')
+    dca_loss = 2.0 * (60.0 - 55.0) * 1.5
+    cur, worst = 50.0, 50.0 + 1.0 * 10 * 1.5 + 2.0 * 55.0 + dca_loss                          # lot + DCA notional at stop
+    assert n['maint_after_stops'] == pytest.approx(E.bracket_maint(BRK, worst) - E.bracket_maint(BRK, cur) +
+                                                   E.bracket_maint(BRK, 100 + 7.5), abs=0.01)
+    e = refusing(bal=1e6)
+    e.state['grids'] = {'G|ETHUSDT': dict(sym='ETHUSDT', op=None, mode='short', metrics=dict(max_notional=300.0, worst_loss_usd=20.0))}
+    ok, why, n = check(e, sym='BTCUSDT')
+    assert n['maint_after_stops'] == pytest.approx(E.bracket_maint(BRK, 300 + 30) + E.bracket_maint(BRK, 107.5), abs=0.01)
+
