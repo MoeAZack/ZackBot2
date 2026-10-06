@@ -13,9 +13,10 @@ rem made Get-FileHash unavailable during the T03 drill and emptied the checksum.
 set "PSModulePath="
 set "ZBMODE=%~1"
 if "%ZBMODE%"=="" set "ZBMODE=install"
-powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0installer.ps1" %ZBMODE%
+rem The mode is passed QUOTED, so CMD metacharacters in it stay one argument and installer.ps1 refuses it (exit 2).
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0installer.ps1" "%ZBMODE%"
 set RC=%errorlevel%
-rem 0 = done, 1 = failed (installer.ps1 already explained it and paused); anything else = installer.ps1 did not run.
-if %RC% geq 2 echo  *** BUILD FAILED: installer.ps1 did not run (exit code %RC%). Details: %LOCALAPPDATA%\ZackBot
+rem 0 = done, 1 = failed (installer.ps1 already explained it and paused), 2 = unknown mode, other = installer.ps1 did not run.
+if %RC% geq 2 echo  *** BUILD FAILED: installer.ps1 refused the mode or did not run (exit code %RC%). Details: %LOCALAPPDATA%\ZackBot
 if %RC% geq 2 if not defined ZB_NOPAUSE pause
 exit /b %RC%

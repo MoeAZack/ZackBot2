@@ -33,7 +33,8 @@ function New-InstallerState([string]$mode, [string]$src, [string]$localAppData) 
         Log = [IO.Path]::Combine($root, 'build.log')
         Drill = ($mode -eq 'drill'); Preflight = ($mode -eq 'preflight'); BuildCheck = ($mode -eq 'buildcheck')
         BuildId = ''; NewHash = ''; OldHash = ''; OldBuild = ''; HaveOld = $false; Stopped = $false; InRollback = $false
-        Warn = ''; RbOk = $false; RbNote = ''; RbHash = ''; RbTried = $false; StopCalled = $false
+        Warn = ''; RbOk = $false; RbNote = ''; RbHash = ''; RbTried = $false; StopCalled = $false; StopConfirmed = $false; DrillInvalid = $false
+        RecTried = $false; RecOk = $false; RecNote = ''; FileHash = ''
         WarnList = [Collections.Generic.List[string]]::new()
         Steps = [Collections.Generic.List[object]]::new(); Current = ''; CurrentAt = ''
         Started = ''; Finished = ''; Verdict = ''; Reason = ''; ExitCode = $null
@@ -100,9 +101,12 @@ function ConvertTo-JsonText($v, [int]$ind = 0) {
 
 function Get-Record {
     $s = $script:S
+    # installed_after = the build PROVEN running at the end (HMAC ping with its build id); null when nothing was proven.
+    # installed_file_sha256 = what the exe file is (last verified hash), independent of whether it runs.
     $installed = $null
     if ($s.Verdict -eq 'BUILD_DONE') { $installed = [ordered]@{ build = $s.BuildId; sha256 = $s.NewHash } }
-    elseif ($s.RbTried -and $s.RbHash -and $s.RbHash -eq $s.OldHash) { $installed = [ordered]@{ build = $s.OldBuild; sha256 = $s.RbHash } }
+    elseif ($s.RbOk) { $installed = [ordered]@{ build = $s.OldBuild; sha256 = $s.RbHash } }
+    elseif ($s.RecOk) { $installed = [ordered]@{ build = $s.OldBuild; sha256 = $s.OldHash } }
     $nz = { param($x) if ($x) { $x } else { $null } }
     return [ordered]@{
         schema = 1; tool = 'installer.ps1'; mode = $s.Mode
@@ -110,10 +114,12 @@ function Get-Record {
         source_dir = $s.Src; log = $s.Log
         build_id = (& $nz $s.BuildId); new_exe_sha256 = (& $nz $s.NewHash)
         previous = [ordered]@{ build = (& $nz $s.OldBuild); sha256 = (& $nz $s.OldHash) }
-        bot_stopped = $s.StopCalled; installed_after = $installed
+        bot_stop_attempted = $s.StopCalled; bot_stop_confirmed = $s.StopConfirmed
+        installed_after = $installed; installed_file_sha256 = (& $nz $s.FileHash)
         steps = $s.Steps
         warnings = $s.WarnList
         rollback = [ordered]@{ attempted = $s.RbTried; verified = $s.RbOk; restored_sha256 = (& $nz $s.RbHash); note = (& $nz $s.RbNote) }
+        stop_recovery = [ordered]@{ attempted = $s.RecTried; verified = $s.RecOk; note = (& $nz $s.RecNote) }
         verdict = (& $nz $s.Verdict); reason = (& $nz $s.Reason); exit_code = $s.ExitCode
     }
 }
@@ -390,6 +396,7 @@ function Invoke-Step7Backup {
     $prevHash = Get-FileSha $s.Prev
     if (-not $s.OldHash -or $s.OldHash -ne $prevHash) { Stop-Install 'backing up the current ZackBot.exe failed or the copy does not match - nothing was changed' }
     $s.HaveOld = $true
+    $s.FileHash = $s.OldHash
     Write-Log "  backup ok sha256 $($s.OldHash)"
     # Which build is the previous version? Needed to PROVE a rollback really brought it back (ping with its build id).
     $ost = [IO.Path]::Combine($s.Stage, 'old_selftest.json')
@@ -407,7 +414,11 @@ function Invoke-Step8Install {
     Write-Say '[8/8] Installing: stopping the old ZackBot, swapping the exe, starting and checking the new one...'
     Start-Step 'stop'
     $s.Stopped = $true; $s.StopCalled = $true            # from here on, any unexpected error rolls back
-    if (-not (Stop-Bot)) { $s.Stopped = $false; Stop-Install 'the running ZackBot did not stop - nothing was changed' }
+    if (-not (Stop-Bot)) {
+        Complete-Step $false 'ZackBot did not stop within 15 s (a stop was attempted)'
+        Invoke-StopRecovery                                  # never swaps; proves the old build runs, then fails
+    }
+    $s.StopConfirmed = $true
     Start-Step 'swap'
     $copied = $false
     for ($try = 0; $try -lt 5; $try++) {
@@ -415,15 +426,48 @@ function Invoke-Step8Install {
         if ($try -lt 4) { Wait-Seconds 2 }
     }
     if (-not $copied) { Complete-Step $false 'the new exe could not be copied into place (5 tries)'; return $false }
-    if ((Get-FileSha $s.Exe) -ne $s.NewHash) { Complete-Step $false 'the installed exe does not match the new build hash'; return $false }
+    $inst = Get-FileSha $s.Exe
+    if ($inst) { $s.FileHash = $inst }
+    if ($inst -ne $s.NewHash) { Complete-Step $false 'the installed exe does not match the new build hash'; return $false }
     Start-Step 'launch'
     $launch = @(); $wait = 60
     if ($s.Drill) { $launch = @('--simulate-failed-launch'); $wait = 20; Write-Log '  DRILL: launching the new exe with --simulate-failed-launch' }
     Start-App $s.Exe $launch
     if (-not (Wait-Ping $s.BuildId $wait)) { Complete-Step $s.Drill "build $($s.BuildId) did not answer within $wait s (the drill requires exactly this)"; return $false }
-    if ($s.Drill) { Stop-Install "ROLLBACK DRILL INVALID: the new exe answered although it was told to fail - the new build $($s.BuildId) is running; check --simulate-failed-launch" }
+    if ($s.Drill) {
+        # The untrusted new build answered although it was told to fail: never leave it running - restore the previous
+        # verified build (Invoke-Rollback), then fail as an INVALID drill.
+        $s.DrillInvalid = $true
+        Write-Log "  DRILL INVALID: build $($s.BuildId) answered although it was launched with --simulate-failed-launch - rolling back"
+        Complete-Step $false "INVALID: build $($s.BuildId) answered although it was told to fail"
+        return $false
+    }
     Complete-Step $true "build $($s.BuildId) answered with HMAC proof"
     return $true
+}
+
+function Invoke-StopRecovery {
+    # A stop was attempted but ZackBot did not (fully) stop. The exe was NOT replaced, but the runtime state is unknown:
+    # prove the previous build still answers; if not, make ONE bounded restart of the verified old exe and require its
+    # build-specific HMAC answer. Always ends the run as a failure.
+    $s = $script:S
+    $s.Stopped = $false; $s.RecTried = $true
+    Start-Step 'stop_recovery'
+    $why = 'the running ZackBot did not stop - the exe was NOT replaced'
+    if (-not $s.OldBuild) {
+        $s.RecNote = 'no verifiable previous build id, so whether ZackBot is running could not be proven - open ZackBot and check'
+    } elseif (Wait-Ping $s.OldBuild 20) {
+        $s.RecOk = $true; $s.RecNote = "the previous version $($s.OldBuild) is still running and answered with HMAC proof"
+    } elseif ((Get-FileSha $s.Exe) -ne $s.OldHash) {
+        $s.RecNote = 'the previous version did not answer and the installed exe no longer matches its verified hash, so it was not restarted - open ZackBot and check'
+    } else {
+        Start-App $s.Exe @()
+        if (Wait-Ping $s.OldBuild 60) { $s.RecOk = $true; $s.RecNote = "the previous version $($s.OldBuild) was restarted once and confirmed running" }
+        else { $s.RecNote = 'the previous version did NOT confirm it is running after one restart - open ZackBot and check' }
+    }
+    Write-Log "STOP_RECOVERY verified=$([int]$s.RecOk) - $($s.RecNote)"
+    Complete-Step $s.RecOk $s.RecNote
+    Stop-Install "$why; $($s.RecNote)"
 }
 
 function Invoke-Finish {
@@ -457,7 +501,8 @@ function Invoke-Rollback {
     $s.InRollback = $true; $s.RbTried = $true
     if ($s.Current) { Complete-Step $false 'interrupted - rolling back' }
     Start-Step 'rollback'
-    Write-Log "ROLLBACK: the new version did not install or did not answer with build $($s.BuildId)"
+    if ($s.DrillInvalid) { Write-Log "ROLLBACK: invalid drill - build $($s.BuildId) answered although it was told to fail" }
+    else { Write-Log "ROLLBACK: the new version did not install or did not answer with build $($s.BuildId)" }
     [void](Stop-Bot)
     if (-not $s.HaveOld) {
         Remove-FileSafe $s.Exe
@@ -465,6 +510,7 @@ function Invoke-Rollback {
     }
     [void](Copy-FileSafe $s.Prev $s.Exe)
     $s.RbHash = Get-FileSha $s.Exe
+    if ($s.RbHash) { $s.FileHash = $s.RbHash }
     if (-not $s.RbHash -or $s.RbHash -ne $s.OldHash) {
         Stop-Install "the new version failed AND restoring the previous exe failed - ZackBot.prev.exe is still in $($s.AppDir)"
     }
@@ -479,6 +525,7 @@ function Invoke-Rollback {
     }
     Write-Log "ROLLBACK_RESULT verified=$([int]$s.RbOk) - $($s.RbNote)"
     Complete-Step $s.RbOk $s.RbNote
+    if ($s.DrillInvalid) { Stop-Install "ROLLBACK DRILL INVALID: the new exe answered although it was told to fail (check --simulate-failed-launch) - $($s.RbNote)" }
     if (-not $s.Drill) { Stop-Install "the new version did not start correctly - $($s.RbNote)" }
     if (-not $s.RbOk) { Stop-Install "ROLLBACK DRILL FAILED - $($s.RbNote)" }
     Set-Verdict 'DRILL_PASSED' '' 0
