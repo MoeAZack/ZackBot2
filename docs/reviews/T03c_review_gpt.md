@@ -167,3 +167,22 @@ Fix: keep the 33 MB of manifest-controlled research data only through staged pyt
 directories fail-closed before PyInstaller, and continue excluding them from the executable and installed source mirror.
 Direct regression evidence: installer + CI tests **100/100 passed in 3:19**. A non-mutating build gate and independent review
 must pass before the already-approved install is retried.
+
+---
+
+# T03c automatic leverage handling — Codex review, round 4
+
+*2026-10-06 18:45 Africa/Cairo; exact behavior head `1f02e3340c854b9f28a799638cb477e76f6fb9dd`*
+
+## Verdict
+
+**Focused code review clean.** The exceptional-path canary injector is inert by default and activates only when the trading
+client base equals the exact Binance Futures TESTNET URL and `ZB_TESTNET_FAULTS` contains a valid symbol-scoped
+`lev_refuse:<SYMBOL>` entry. It cannot alter a MAINNET, empty, trailing-slash or look-alike client, even when the environment
+flag is present. The injected refusal occurs before any leverage request is sent; all exposure-proof reads, entry and stop
+operations remain real testnet calls.
+
+Malformed and unknown entries are ignored, other symbols retain the normal request path, and the startup warning contains
+only the affected symbols. Official Windows focused evidence: **334/334 passed** across the injector, leverage, safety,
+grid and fill suites; `git diff --check` passed. No blocking finding remains. Require fast/CodeQL and one exact-head full
+gate before reinstalling and running the owner-approved PAPER canary procedure.
