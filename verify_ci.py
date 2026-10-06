@@ -13,11 +13,14 @@
 
 Workflows (round 2, Codex review on 99a276e + owner speed decision):
   - verify-fast.yml  (pull_request into master): the ONLY producer of the required "verify fast" - one run per PR commit.
-  - verify.yml       (workflow_dispatch ONLY, required input head_sha): the ONLY producer of the required "verify full".
-    Codex dispatches it on the PR branch once code review is clean. Its first step in every job fails unless
-    GITHUB_SHA == head_sha, and the merge re-checks it, so a stale/moved head can never publish "verify full". A later
-    commit simply has no "verify full", so branch protection blocks it until Codex dispatches again. Rejected review
-    iterations therefore cost only "verify fast" (no full run).
+  - verify.yml       (pull_request `labeled` into master ONLY): the ONLY producer of the required "verify full".
+    Codex adds the label `full-ready` once code review is clean (round 4: a workflow_dispatch run is not counted in the
+    PR's required-check rollup; a pull_request run is). The event's PR head SHA is format-checked as the first step of
+    every job, checked out explicitly, re-proved after checkout (`guard`), recorded in every slice and re-checked by
+    `merge --expected-sha`. Any other label runs no slice and names the aggregator "full gate not requested", so it can
+    never publish "verify full". synchronize does not start this workflow, so a later commit has no "verify full" and
+    branch protection blocks it until Codex removes and re-adds `full-ready`. Rejected review iterations therefore
+    cost only "verify fast" (no full run).
   - verify-push.yml  (push to master ONLY, job "push fast", not required): one fast run per master commit, so a feature
     commit is never verified twice. Docs-only reuse exists only here and only from the same context:
       - push event, a real previous commit (`before`, not all zeros) that is an ancestor of the new head;
@@ -53,7 +56,7 @@ def head_problem(expected, actual):
 
 
 def cmd_guard(a):
-    actual = os.environ.get('GITHUB_SHA') or V.git_info().get('commit')
+    actual = V.git_info().get('commit')     # the CHECKED-OUT commit (git rev-parse HEAD), never the event's merge ref
     prob = head_problem(a.expected, actual)
     print(f"exact-head guard: {'OK ' + str(actual) if prob is None else 'REFUSED - ' + prob}", flush=True)
     return 0 if prob is None else 1
@@ -125,7 +128,7 @@ def slice_problem(name, s, commit):
 def cmd_merge(a):
     rep = _report('full', a.out)
     commit = rep.data['git'].get('commit')
-    if a.expected_sha is not None:                               # the dispatched final gate: bind to the approved head
+    if a.expected_sha is not None:                               # the labelled final gate: bind to the PR head SHA
         prob = head_problem(a.expected_sha, commit)
         rep.data['approved_head_sha'] = a.expected_sha
         rep.step('exact approved head', prob is None, why=prob)
