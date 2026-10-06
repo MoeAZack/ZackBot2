@@ -187,6 +187,49 @@ class Futures:
         mtype = {'cross': 'CROSSED', 'crossed': 'CROSSED', 'isolated': 'ISOLATED'}.get(kinds.pop()) if len(kinds) == 1 else None
         return dict(leverage=max(levs) if levs else None, margin_type=mtype)
 
+    def position_risk(self):
+        """T03c round 1. Every symbol's open positions as Binance has them now (read-only, one positionRisk read):
+        a list of dict(symbol, side 'LONG'|'SHORT', qty >= 0, mark, notional >= 0). Values are passed through as floats
+        (the engine validates them: NaN / negative / missing must never be treated as safe)."""
+        out = []
+        for p in self._req('GET', '/fapi/v2/positionRisk', signed=True) or []:
+            amt = float(p['positionAmt'])
+            if amt == 0: continue
+            side = p.get('positionSide', 'BOTH')
+            if side == 'BOTH': side = 'LONG' if amt > 0 else 'SHORT'
+            out.append(dict(symbol=p['symbol'], side=side, qty=abs(amt), mark=float(p['markPrice']),
+                            notional=abs(float(p['notional'])) if p.get('notional') not in (None, '') else float('nan')))
+        return out
+
+    def open_orders_all(self):
+        """T03c round 1. Every open order on the account (classic + algo/conditional), read-only. A list of
+        dict(tag 'o:<orderId>'|'a:<algoId>', symbol, side, position_side, qty (unfilled), price, stop_price, reduce_only,
+        client_id). Unlike open_stop_tags, a failed algo read RAISES: callers use this as proof, so unknown != empty."""
+        out = []
+        for o in self._req('GET', '/fapi/v1/openOrders', signed=True) or []:
+            out.append(dict(tag=f"o:{o['orderId']}", symbol=o.get('symbol'), side=o.get('side'), position_side=o.get('positionSide', 'BOTH'),
+                            qty=float(o.get('origQty') or 0) - float(o.get('executedQty') or 0), price=float(o.get('price') or 0),
+                            stop_price=float(o.get('stopPrice') or 0), client_id=o.get('clientOrderId'),
+                            reduce_only=bool(o.get('reduceOnly')) or bool(o.get('closePosition'))))
+        r = self._req('GET', '/fapi/v1/openAlgoOrders', signed=True)
+        for o in (r.get('orders', r) if isinstance(r, dict) else r) or []:
+            if not isinstance(o, dict) or 'algoId' not in o: continue
+            out.append(dict(tag=f"a:{o['algoId']}", symbol=o.get('symbol'), side=o.get('side'), position_side=o.get('positionSide', 'BOTH'),
+                            qty=float(o.get('quantity') or 0) - float(o.get('executedQty') or 0), price=float(o.get('price') or 0),
+                            stop_price=float(o.get('triggerPrice') or 0), client_id=o.get('clientAlgoId'),
+                            reduce_only=bool(o.get('reduceOnly')) or bool(o.get('closePosition'))))
+        return out
+
+    def leverage_brackets(self, symbol):
+        """T03c round 1. The coin's full leverage/maintenance bracket schedule (read-only), sorted by notional floor:
+        a list of dict(floor, cap, mmr, cum, lev). Raises on a missing or malformed answer (never a partial schedule)."""
+        r = self._req('GET', '/fapi/v1/leverageBracket', dict(symbol=symbol), signed=True)
+        rows = [x for x in (r if isinstance(r, list) else [r]) if isinstance(x, dict) and x.get('symbol', symbol) == symbol]
+        if len(rows) != 1 or not rows[0].get('brackets'): raise ValueError(f'no leverage brackets for {symbol}')
+        out = [dict(floor=float(b['notionalFloor']), cap=float(b['notionalCap']), mmr=float(b['maintMarginRatio']),
+                    cum=float(b['cum']), lev=float(b['initialLeverage'])) for b in rows[0]['brackets']]
+        return sorted(out, key=lambda b: b['floor'])
+
     def set_margin_type(self, symbol, mtype='CROSSED'):
         try:
             return self._req('POST', '/fapi/v1/marginType', dict(symbol=symbol, marginType=mtype), signed=True)

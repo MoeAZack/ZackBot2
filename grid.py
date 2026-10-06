@@ -656,6 +656,7 @@ class GridManager:
         if e.S.get('ENTRIES_PAUSED') or e.state.get('halted'): return False
         if f"{g['sym']}|{side}" in e.untracked: return False
         if any(l['symbol'] == g['sym'] and l['side'] == side and l.get('stop_dirty') for l in e.state['lots'].values()): return False
+        if e._lev_exception_block(g['sym']): return False     # T03c r1: coin traded through the above-cap leverage exception
         return True
 
     # ---------------------------------------------------------------- start / stop
