@@ -1,19 +1,19 @@
 # ZackBot owner overview
 
-*Last refreshed: 2026-10-06 03:15 Cairo (Africa/Cairo) by Codex, on branch `t03a-leverage-fallback-v2`. This is the plain-language owner view. `ROADMAP.md` and `docs/reviews/` hold the detailed scope and evidence.*
+*Last refreshed: 2026-10-06 07:08 Cairo (Africa/Cairo) by Codex, on branch `t03b-installer-powershell`. This is the plain-language owner view. `ROADMAP.md` and `docs/reviews/` hold the detailed scope and evidence.*
 
 ## Where we are now
 
 | Item | Current state |
 |---|---|
 | Environment | **Binance Futures testnet only.** Mainnet stays impossible until the roadmap and the final release audit are complete and you approve it. |
-| Is ZackBot running? | Yes, on your PC (testnet), build `20261006-030952`: engine and exchange ok, three positions, all protected, zero errors/untracked/orphans after the T03a installer and canary. |
-| Installed application | **T03a installed and verified.** SHA-256 `72ABCA7CC25FC7859C93A62F4518AE3659A2C8B9B524F3ACA203798E769F430D`; previous verified executable retained for rollback. |
-| Latest accepted commit | `master` `ad1d584` (T04b accepted and merged) |
-| Current ticket | **T03a accepted; protected PR #4 merge is next, then T03b** |
-| Stage | **Runtime gate passed.** Acceptance evidence is being pushed; protected checks must pass before merge. |
-| What Claude is doing | Holding as requested until Codex posts the runtime result, then T03b can begin after merge. |
-| What Codex is reviewing | Final acceptance documentation, protected checks and merge. |
+| Is ZackBot running? | Yes, on your PC (testnet), build `20261006-064354`: engine and exchange ok, four positions, all protected, zero errors/untracked/orphans after the T03b install and rollback drill. |
+| Installed application | **T03b installed and rollback-proven.** SHA-256 `203B155474942709B6AD40C3517BA32D058721664D245191C900068CBC4A60A6`; the drill restored the same build and hash exactly. |
+| Latest accepted commit | `master` `f9778ca` (T03a accepted and merged) |
+| Current ticket | **T03b: move installer logic from CMD to PowerShell** |
+| Stage | **Accepted; acceptance/status commit checks and protected merge remain.** |
+| What Claude is doing | Holding while Codex completes the acceptance commit and merge gate. |
+| What Codex is reviewing | Final acceptance checks, protected merge, then opening T05 fill telemetry. |
 | Your action | **None.** |
 
 ## Latest test results
@@ -29,6 +29,13 @@
 | T03a, GitHub PR #4 | Reviewed head `fc29214` and review head `35cd02b`: **verify fast PASS; verify full PASS**, including all tests, both strict replays and UI harness. |
 | T03a installer gate | Installer tests **17 passed**; normal install succeeded once with no warnings; source mirror and shortcuts verified. |
 | T03a testnet canary | SOL 0.25% risk / about 18.90 USDT planned notional: safely skipped because current leverage 20× exceeded cap 10×; no order or SOL position; refusal telemetry correct. |
+| T03b, GitHub PR #5 | Review/status head `b8dadb2`: **verify fast PASS; verify full PASS**, zero annotations; PR clean and mergeable before the runtime gate. |
+| T03b, Windows review | PowerShell 5.1 installer tests **53 passed**; bare pytest **269 passed**; non-installing buildcheck **PASS** with eight successful structured steps. Installed executable hash unchanged. |
+| T03b round 1 fixes, Windows | Focused PowerShell 5.1 installer suite **58 passed**. Both high-severity recovery fixes reproduced correctly; no runtime operation was performed. |
+| T03b round 2 fixes, Windows | **62 passed, 1 failed.** Installed-file evidence is correct; the new embedded-quote launcher test reproduces marker execution and returns 0. Buildcheck was not rerun while focused tests are red. |
+| T03b round 3 fixes, Windows | Focused installer/verification set **80 passed**; real non-installing buildcheck **PASS** with eight successful steps; accepted installed exe unchanged. GitHub fast passed; full was still running at 06:10 Cairo. |
+| T03b normal install | Build `20261006-064354`, 14/14 structured steps, no warnings; mirror 120/120 exact; both shortcuts correct; PAPER health clean with four protected lots. |
+| T03b rollback drill | Deliberately failed build `20261006-064800`; restored `20261006-064354` with the exact pre-drill hash and authenticated proof; PAPER health remained clean. |
 
 Automated test-suite results use a fake exchange. The final T03a gate used the real Binance Futures testnet account; it correctly sent no entry order because leverage was above the cap.
 
@@ -51,6 +58,15 @@ Automated test-suite results use a fake exchange. The final T03a gate used the r
 - Per-coin refusal, proceeded and skipped counts appear in the panel.
 - Build `20261006-030952` is running. The bounded SOL canary exercised the real refusal path and correctly placed no order at 20× current leverage versus the 10× cap. Existing positions and stops stayed healthy.
 
+### T03b — installer PowerShell rewrite: accepted
+
+- The 281-line CMD installer was replaced by a small launcher plus structured PowerShell functions and JSON evidence.
+- Windows PowerShell 5.1 tests, the complete Python suite, GitHub CI and a real non-installing executable build all passed.
+- Claude fixed both high-severity recovery paths, exact evidence fields and the launcher boundary; Codex confirmed them on Windows.
+- The owner approved one normal install and one rollback drill. Both passed once, with structured evidence and no warnings.
+- The drill restored build `20261006-064354` byte-for-byte and proved it running. All four testnet lots remained protected and health stayed clean.
+- Acceptance/status checks and the protected merge are the only remaining T03b steps.
+
 ## Bugs
 
 | Status | Priority | Item | Notes |
@@ -64,12 +80,17 @@ Automated test-suite results use a fake exchange. The final T03a gate used the r
 | Fixed and accepted (T04) | High | GitHub UI baseline had mobile overflow and missing clean-checkout history | Responsive wrap and deterministic replay seed handoff; GitHub and Windows UI 171/171. |
 | Fixed and accepted (T04) | Medium | Lightweight secret check missed nested private filenames and JSON contents | Current-tree scan strengthened with planted tests; Git-history scan remains T04b. |
 | Fixed (T04 docs) | Low | T04 review document named commit ids from before the branch was rebuilt | Corrected on `t04-ci`. |
+| Fixed and accepted (T03b) | High | Invalid rollback drill left the deliberately untrusted new build installed and running | Restores and HMAC-verifies the old build, then retains a failed invalid-drill verdict; the real drill passed. |
+| Fixed and accepted (T03b) | High | Failed stop attempt did not verify or recover the previous runtime | Proves the old runtime or performs one hash-guarded restart; confirmed across answering, restart and unrecoverable cases. |
+| Fixed and accepted (T03b) | Medium | Installed-file evidence could be stale | Re-reads presence/hash at every verdict and verifies failed first-install deletion; confirmed on Windows. |
+| Fixed and accepted (T03b) | Medium | Raw launcher parser could select install/drill from malformed extra arguments | Anchors on the first exact launcher token and refuses the three reproduced ambiguity cases. |
+| Fixed and accepted (T03b) | Low | Launcher test claimed it could neutralize hostile outer CMD syntax | Tests the real boundary: fixed supported invocations and refusal of ordinary unknown/extra tokens. |
 
 ## Open risks
 
 - **CI security follow-up (low):** add Dependabot for the immutable action pins plus Git-history secret and dependency scanning.
 - **Repository visibility:** intentionally public during testnet collaboration. It must return to private before any mainnet credentials or live release work.
-- Installer logic is long Windows batch code: T03b.
+- T03b has no remaining finding and passed its install/rollback runtime gate. Only acceptance-commit checks and protected merge remain.
 
 ## Code clean-up policy (your request, 2026-10-05)
 
@@ -91,9 +112,8 @@ Every ticket now ends with a **clean-up pass on the files it touched**: remove d
 
 | Order | Ticket | Why it comes here |
 |---|---|---|
-| Merge | **T03a — leverage-refusal fallback** | Accepted; merge PR #4 after the acceptance-document checks pass |
-| Next | **T03b — installer in PowerShell** | Easier to maintain now that current behaviour is proven |
-| Then | **T05 — fill telemetry** | Measures expected vs actual fills |
+| Closing | **T03b — installer in PowerShell** | Accepted; protected merge pending |
+| Next | **T05 — fill telemetry** | Measures expected vs actual fills |
 | Core | **T06–T09 — shared core** | One trading logic for live and backtest |
 | Scale | **T10–T16** | Order budgets, trade records, "Why?", scorecards, VPS, multi-account, ML data |
 | Final gate | Release audit + your explicit mainnet approval | |

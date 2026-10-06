@@ -274,3 +274,14 @@ def test_ci_uses_pinned_runner_and_immutable_node24_actions():
         uses = re.findall(rf'uses:\s*{re.escape(action)}@([^\s#]+)', workflow)
         assert uses and set(uses) == {sha}, (action, uses)
         assert all(re.fullmatch(r'[0-9a-f]{40}', ref) for ref in uses)
+
+
+def test_installer_modes_use_their_fixed_launchers():
+    """T03b review round 3: the drill only through rollback_drill.bat (no argument); build_app.bat only preflight/buildcheck."""
+    d = verify.installer_command('drill')
+    assert d[:3] == ['cmd', '/d', '/c'] and d[3].endswith('rollback_drill.bat') and len(d) == 4
+    for m in ('preflight', 'buildcheck'):
+        c = verify.installer_command(m)
+        assert c[3].endswith('build_app.bat') and c[4:] == [m]
+    with pytest.raises(AssertionError):
+        verify.installer_command('install')
