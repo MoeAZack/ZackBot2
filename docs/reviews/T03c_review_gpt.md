@@ -207,3 +207,28 @@ no error text is logged beyond the existing 160-character limit. Focused Windows
 Require fast/CodeQL and the protected exact-head full gate after this documentation commit. The currently open SOL testnet
 canary remains protected on the prior installed build; rebuilding, restarting and repeating the bounded canary are separate
 runtime actions and must not occur until the gates are green.
+
+---
+
+# T03c automatic leverage handling — final runtime acceptance
+
+*2026-10-06 23:40 Africa/Cairo; accepted head `ee564c101ac6866acaaac4febcd0fddef3b8c199`; installed build `20261006-233104`*
+
+The owner approved the guarded rebuild/install/restart and bounded SOL testnet canary. The installer completed every safety
+test and executable self-test before stopping the previous bot, installed SHA-256
+`1156603D33D2A8BA1DDBFC605758866C7B57F0CEAD5DE9AD27EC2E917C3C8F6B`, and proved the same build running with no warning.
+After reconciliation, all four pre-existing lots were protected and health was clean.
+
+With the exact-testnet, SOL-only refusal injector enabled, the old disposable SOL canary was closed cleanly and one new
+minimum-risk SOL LONG was opened through the exceptional path. Runtime evidence: `api_refusals=2`, decision `count=1`,
+`proceeded=1`, `skipped=0`, `accepted=exposure`, `outcome=went_ahead`, current leverage 20x, margin type `CROSSED`, effective
+account leverage 0.13x and worst-case margin ratio 0.0015. Both bounded error-history entries were retained. The real fill
+had a numeric exchange stop, `protected=true`, and its persisted lot carried `lev_exception=true`.
+
+The lot and stop were adopted across a second injector-enabled restart with zero errors, unprotected/untracked positions or
+orphans. Cleanup then closed the canary, restarted without the injector, opened one minimum-size normal protected SOL entry
+to restore the configured 10x leverage path, and closed it. Final state: PAPER, build `20261006-233104`, engine/exchange OK,
+no SOL lot, three original lots all protected, and zero errors, unprotected, untracked or orphan orders.
+
+**Final verdict: accepted.** No open T03c P1/P2 finding remains. The separate ordinary-maker leverage-change race stays on
+the follow-up backlog; it does not affect exceptional entries, which never rest as maker orders.

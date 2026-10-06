@@ -1,19 +1,19 @@
 # ZackBot owner overview
 
-*Last refreshed: 2026-10-06 17:42 Cairo (Africa/Cairo) by Codex, on branch `codex-t03c-integration`. This is the plain-language owner view. `ROADMAP.md` and `docs/reviews/` hold the detailed scope and evidence.*
+*Last refreshed: 2026-10-06 23:40 Cairo (Africa/Cairo) by Codex, on branch `codex-t03c-integration`. This is the plain-language owner view. `ROADMAP.md` and `docs/reviews/` hold the detailed scope and evidence.*
 
 ## Where we are now
 
 | Item | Current state |
 |---|---|
 | Environment | **Binance Futures testnet only.** Mainnet stays impossible until the roadmap and the final release audit are complete and you approve it. |
-| Is ZackBot running? | Yes, on your PC (testnet), build `20261006-064354`: engine and exchange ok, four positions, all protected, zero errors/untracked/orphans after the T03b install and rollback drill. |
-| Installed application | **T03b installed and rollback-proven.** SHA-256 `203B155474942709B6AD40C3517BA32D058721664D245191C900068CBC4A60A6`; the drill restored the same build and hash exactly. |
+| Is ZackBot running? | Yes, on your PC (testnet), build `20261006-233104`: engine and exchange OK, three original positions, all protected, zero errors/untracked/orphans after the T03c canary cleanup. |
+| Installed application | **T03c installed and runtime-proven.** SHA-256 `1156603D33D2A8BA1DDBFC605758866C7B57F0CEAD5DE9AD27EC2E917C3C8F6B`; installer hash and installed hash match exactly. |
 | Latest accepted commit | `master` `cb5092b` (T04d accepted and merged) |
-| Current ticket | **T03c: automatic fail-closed leverage handling** |
-| Stage | **Code/CI accepted at `d8e02dd`. Owner-approved install exposed a fail-safe staging regression before the bot was touched; fix review is in progress.** |
-| What Claude is doing | Awaiting the installer-staging fix handoff: manifest data must exist for staged tests, then be removed before packaging. |
-| What Codex is reviewing | Installer fix and non-mutating build gate. The previous testnet build remains running and healthy. |
+| Current ticket | **T05b: exchange-outage resilience** |
+| Stage | **T03c accepted; acceptance/status commit and protected merge are being completed.** |
+| What Claude is doing | Updating T05b onto accepted master after T03c merges. |
+| What Codex is reviewing | T03c acceptance/merge, then the T05b review handoff. |
 | Your action | **None.** |
 
 ## Latest test results
@@ -43,6 +43,8 @@
 | T03c integrated Windows review | Claude head `a8e7b79` plus Codex code commit `50c10fa`: focused leverage/safety/grid/fill/maker set **335/335 passed**; complete suite **514/514 passed in 7:01**; isolated causality **13/13 passed in 3:35**; Python compilation and diff validation pass. |
 | T03c round-3 exact head | `001a032`: leverage/safety/grid/fills **320/320 passed in 27.43 s**; Python compilation and diff validation pass; GitHub fast **PASS in 4:38** and CodeQL green. Code review clean; labelled full remains. |
 | T03c runtime attempt 1 | Installer stopped safely at staged tests: 3 CI tests could not verify `DATA_MANIFEST.json` because the installer omitted its data folders. ZackBot was never stopped/replaced. Fix regression gate: installer + CI **100/100 passed in 3:19**. |
+| T03c final exact head | `ee564c1`: fast, both CodeQL analyses, tests, both strict replays, UI and the exact-head merged full summary **PASS**. Focused Windows review **291/291 passed**. |
+| T03c final runtime | Build `20261006-233104` installed with matching SHA-256. SOL canary: two refusals counted, exposure accepted at 0.13x effective leverage / 0.15% worst margin ratio, real fill protected, restart adoption clean; cleanup left three original protected lots and zero errors/unprotected/untracked/orphans. |
 
 Automated test-suite results use a fake exchange. The final T03a gate used the real Binance Futures testnet account; it correctly sent no entry order because leverage was above the cap.
 
@@ -91,14 +93,16 @@ Automated test-suite results use a fake exchange. The final T03a gate used the r
 - A live protection check exposed that dispatch-only full results do not satisfy PR protection. The final gate now uses the PR-associated `full-ready` label instead.
 - An unrelated-label probe proved it cannot create the required full identity, and CodeQL is clean after replacing its flagged test regex with deterministic parsing.
 
-### T03c — automatic leverage handling: integrated review in progress
+### T03c — automatic leverage handling: accepted
 
 - Above-cap leverage is allowed only on cross margin after a fresh account-wide proof of positions, open orders, confirmed stops, reserved future exposure, effective leverage and bracket-aware post-stop margin.
 - DCA, pyramid, grid and maker remainders remain paused for an exception lot until Binance leverage is back within the cap.
 - An exceptional initial entry never rests as a maker order, because account safety can change before a resting order fills.
 - Stop proof now validates the exact stop-market type, mark-price trigger basis, open status, side, quantity and trigger; malformed exchange values fail closed.
 - Cached leverage is rechecked against Binance; account-specific bracket coefficients and strict numeric/boolean parsing are covered by direct tests.
-- No install, restart or testnet order has been performed for T03c.
+- Exact-head fast, CodeQL and protected full gates passed. The owner-approved installer and bounded SOL testnet canary passed,
+  including corrected two-request refusal telemetry, real stop protection, restart adoption and clean injector removal.
+- Build `20261006-233104` is running in PAPER mode. The disposable SOL canary is closed; three original lots remain protected.
 - Binance's ambiguous `notionalCoef` is no longer scaled speculatively: any non-unit value rejects the above-cap exception.
 - Legacy exceptional maker records are cancelled/finalized without re-pricing or a market remainder.
 
@@ -164,8 +168,8 @@ Every ticket now ends with a **clean-up pass on the files it touched**: remove d
 
 | Order | Ticket | Why it comes here |
 |---|---|---|
-| Current | **T03c — automatic leverage handling** | Integrated review; complete local suite, exact-head fast/full CI, code acceptance, then owner-approved install/canary |
-| Resilience | **T05b — exchange-outage handling** | Backoff/circuit state, incident coalescing and reconciliation after transient Binance failures |
+| Accepted | **T03c — automatic leverage handling** | Exact-head CI, install, exceptional-path canary, restart adoption and cleanup passed |
+| Current | **T05b — exchange-outage handling** | Backoff/circuit state, incident coalescing and reconciliation after transient Binance failures |
 | Next measurement | **T05a — causal trade audit** | Peak profit/MFE, give-back, hold/close reasons and causal earlier-exit comparisons |
 | Core | **T06–T09 — shared core** | One trading logic for live and backtest |
 | Strategy research | **T09a** | Range, short and scalp families; Quick Bank TP/runner/micro-DCA components; research/shadow first |
