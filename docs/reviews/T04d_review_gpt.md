@@ -1,42 +1,47 @@
-# T04d: Faster CI — Codex round-three review
+# T04d: Faster CI — Codex round-four review
 
-*2026-10-06, Africa/Cairo. Reviewed exact implementation head `b6d4e8101cc7455110ebe24eb5943edb1db560c6` against protected master `566ed5641b4bacdff72b97e9f1488ce0ddb2e3fd`.*
+*2026-10-06, Africa/Cairo. Reviewed exact stable head `b3e63dbf98d7db38f4c5201fc0f1e836e09a7754` against protected master `566ed5641b4bacdff72b97e9f1488ce0ddb2e3fd`.*
 
-## Decision: review-clean; final exact-head full gate required
+## Decision: fixes requested
 
-The three round-two blockers are fixed. No code finding remains in the reviewed implementation. This document and the owner status page are prepared before the final gate so the next commit can be the stable candidate: it must pass the one PR fast check, then Codex may dispatch exactly one parallel full run for that exact SHA. No installation, bot stop, exchange call, or runtime change is part of T04d.
+The three round-two implementation blockers are fixed, all focused tests pass, and the explicitly dispatched parallel full run passed. One P1 integration blocker remains: in this repository, GitHub does not accept the `workflow_dispatch` run as the pull request's required `verify full` result. The protected merge remains blocked and correctly refused without an override.
 
-## Findings and dispositions
+## Finding
 
-### Fixed — rejected PR iterations no longer run the full suite
+### P1 — Dispatched full passes on the commit but does not satisfy the PR protection rollup
 
-`.github/workflows/verify.yml` now responds only to an explicit dispatch with a required 40-character `head_sha`. Every full slice and the final aggregator first compare `GITHUB_SHA` with the approved SHA, and the merger checks the same SHA again. A moved branch therefore fails closed, while an ordinary PR update creates no `verify full` result at all.
+Stable head `b3e63db` passed its single PR `verify fast` in 5m24s. Codex then dispatched `verify.yml` on that exact branch/head. Every exact-head guard passed, all slices passed, and the strict `verify full` aggregator passed.
 
-The required full identity remains exclusive to the real aggregator. It uses `if: always()` only so a failed or cancelled slice makes the aggregator fail rather than skip.
+The commit check-runs API shows successful GitHub Actions checks named `verify fast` and `verify full` on `b3e63db`. However, PR #7's `statusCheckRollup` contains only `verify fast`; `mergeStateStatus` remains `BLOCKED`. A normal protected rebase merge with `--match-head-commit b3e63db...` was refused by the base-branch policy. No administrator override was used.
 
-### Fixed — one fast run per feature-branch commit
+This makes the dispatch-only design operationally unusable even though the verification itself is correct: it cannot complete the protected PR merge it was designed to gate.
 
-The new `.github/workflows/verify-fast.yml` is the sole producer of `verify fast` and runs on pull requests into `master`. `.github/workflows/verify-push.yml` is restricted to pushes to `master` and publishes only the non-required `push fast` identity. Feature heads no longer pay for both push and PR fast runs.
+**Required fix:** trigger the final full through a pull-request-associated event that GitHub counts for this PR's required-check rollup, while preserving all existing fail-closed properties:
 
-### Fixed — fresh Git-for-Windows checkouts reproduce manifest bytes
+- ordinary open/synchronize/reopen PR events run one `verify fast` and create no `verify full`;
+- Codex deliberately triggers the final phase only after review is clean (a `full-ready` label is acceptable);
+- the real aggregator remains the only producer of the required `verify full` identity;
+- no nonmatching event may publish a skipped/successful `verify full`;
+- the event's exact PR head SHA is recorded, explicitly checked out, validated in every slice, and rechecked by the aggregator;
+- a later commit has no valid full result and remains blocked until a new deliberate trigger;
+- adding an unrelated label either creates no required identity or fails closed; it must never satisfy protection;
+- focused tests prove the trigger contract, head movement invalidation, wrong-label behavior, and exclusive check-name ownership.
 
-`.gitattributes` pins LF checkout for all 64 manifest-governed CSV files and `DATA_MANIFEST.json`. It does not alter the CRLF batch launchers and does not regenerate or weaken the manifest. The focused Windows suite creates a clean clone with `core.autocrlf=true`, verifies every SHA-256 value, and passes the real manifest check.
+A label-driven `pull_request: types: [labeled]` workflow can satisfy this if it runs the full jobs only for the deliberate `full-ready` transition without exposing a skipped required identity; another design is acceptable if a live PR proof shows GitHub includes its successful `verify full` in `statusCheckRollup`.
 
 ## Evidence
 
-- Remote branch contains current protected master as an ancestor and is mergeable.
-- PR diff from master is limited to the T04d workflows, verification code/tests, `.gitattributes`, and review documents.
-- Exact implementation head focused Windows review: `51 passed` in 14.88 seconds for `tests/test_ci.py tests/test_verify.py`.
-- The focused suite includes exact required-check ownership, ordinary-PR versus dispatched-full triggers, stale-head refusal, strict slice merging, new-commit invalidation, action pinning, and the fresh `core.autocrlf=true` clone.
-- The implementation head started one `verify fast` run and no duplicate push-fast or automatic full run.
-- No application, installer, trading, engine, exchange, or runtime file is changed by the PR relative to current master.
+- Windows focused review on implementation head `b6d4e81`: **51/51 passed** in 14.88 seconds, including a fresh `core.autocrlf=true` clone and byte-exact manifest proof.
+- Stable candidate fast run: <https://github.com/MoeAZack/ZackBot2/actions/runs/37430110451> — success, 5m24s; no duplicate push run and no automatic full run.
+- Exact-head dispatched full: <https://github.com/MoeAZack/ZackBot2/actions/runs/37430712018> — all guards and slices passed; tests 4m02s, replay1/UI 6m23s, replay2 6m31s, aggregator 31s.
+- Commit check-runs API: both required names successful from GitHub Actions.
+- PR rollup: only `verify fast`; merge status `BLOCKED`.
+- Protected rebase merge: refused by base-branch policy. No `--admin`, protection change, installation, bot stop, exchange call, order, credential, or runtime action occurred.
 
-## Final acceptance gate
+## Acceptance conditions
 
-1. Commit this review and the refreshed owner status without changing executable/configuration files.
-2. The resulting exact head must pass its single `verify fast` check.
-3. Codex dispatches `.github/workflows/verify.yml` on that branch with that exact 40-character head SHA.
-4. All three slices and the required `verify full` aggregator must pass on that SHA.
-5. Confirm no second feature-branch fast run appeared, the PR remains mergeable/current, and protected linear merge succeeds.
-
-Until those steps complete, the verdict is **review-clean but not yet accepted or merged**.
+1. Preserve the fixed one-fast-run, deterministic line-ending, canonical-plan and strict-merge behavior.
+2. Replace the dispatch-only final trigger with a deliberate PR-associated trigger that appears as `verify full` in PR #7's live status rollup.
+3. Run focused tests and one PR fast check on the new exact head.
+4. Codex triggers exactly one final full; all slices and the aggregator pass on the exact reviewed head.
+5. GitHub reports both required checks successful in the PR rollup, `mergeStateStatus` is no longer blocked, and a normal protected linear merge succeeds without override.
