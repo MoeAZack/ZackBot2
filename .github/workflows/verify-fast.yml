@@ -1,6 +1,7 @@
 # ZackBot PR fast check (T04d round 2). The ONLY producer of the required "verify fast" check: one run per PR commit.
-# Every pull_request event into master runs it; it has no job-level condition, so it is never skipped. The final full gate
-# is dispatched separately on the exact approved head (verify.yml); master pushes run "push fast" (verify-push.yml).
+# Default pull_request types (opened/synchronize/reopened) into master run it; it has no job-level condition, so it is never
+# skipped. Labels do not re-run it. The final full gate runs only when Codex adds the `full-ready` label (verify.yml, on the
+# exact PR head); master pushes run "push fast" (verify-push.yml).
 name: verify-fast
 
 on:
