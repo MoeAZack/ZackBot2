@@ -1,5 +1,29 @@
 # T03c: automatic leverage handling. Review request
 
+## Round 2 follow-ups (Claude)
+
+Two fail-open edges found in Claude's review of `50c10fa`/`0640bbf`, fixed conservatively (no safety check weakened):
+
+| Gap | Fix |
+|---|---|
+| `notionalCoef`: Binance does not say whether returned brackets are already adjusted; multiplying again by a coef > 1 widens the tiers and **understates** maintenance (repro: coef 3 at 600k notional, 4700 -> 3000). | Per Codex's disposition the direction is not guessed: an omitted coef or exactly 1 is the normal schedule; ANY other present coef (above or below 1) and any invalid value (NaN/inf/0/negative/bool/empty) rejects the schedule, so the above-cap exception fails closed (`LevReject('brackets')`, never cached) until a real adjusted-account payload proves the semantics. |
+| A resting maker record saved by older code with `plan.lev_exception=True` was re-priced by `_maker_poll -> _maker_place` with no leverage re-check. | Such a record is never re-placed: an open order is cancelled at once (not at the slice end); the record is then finalized with **no market fallback** (even if leverage is back), whatever filled becomes a lot through the existing finalize path, and the reason is recorded (`fallback_skipped`, missed-entry reason). Ordinary maker records re-price as before. |
+
+Tests (`tests/test_leverage_auto.py`):
+- omitted / unit coef (None, 1, '1', 1.0, '1.0') gives the normal schedule;
+- any other coef (0.5, 0.999, 2, 3, 1.0001) rejects the schedule;
+- invalid coef (NaN, inf, 0, negative, bool, None, empty) rejects;
+- the reviewer's coef-3 repro never reaches the maintenance math;
+- a refused schedule raises `LevReject` and is never cached;
+- a legacy record is not re-priced and is finalized without fallback, with leverage still above or back within the cap;
+- a legacy open order is cancelled at once and its partial fill becomes a lot;
+- ordinary records still re-price;
+- the reviewer's three normal-path tests: cached within cap reads once and writes nothing; a cached read failure re-sets; the bot's own stop in Binance doc shape passes.
+
+Stand-in runner: leverage_auto 182, safety + grid + fills 138, all passed.
+
+Mutations: coef check removed (8 tests fail), no positive check, legacy detection off, legacy fallback allowed, no immediate cancel, legacy applied to every record. Each failed a test, and the code was restored byte-exact.
+
 ## Codex round 2 integration (2026-10-06 13:23 Cairo)
 
 Codex independently implemented the round-1 fixes while Claude was working, then reviewed Claude's stronger account-wide
