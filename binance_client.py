@@ -177,6 +177,16 @@ class Futures:
                 if r.get('symbol') == symbol and r.get('leverage') not in (None, '')]
         return max(levs) if levs else None
 
+    def margin_state(self, symbol):
+        """T03c. The coin's leverage and margin type as Binance has them now (read-only), from positionRisk:
+        dict(leverage=int|None, margin_type='CROSSED'|'ISOLATED'|None). Unknown or mixed answers give None."""
+        rows = self._req('GET', '/fapi/v2/positionRisk', dict(symbol=symbol), signed=True)
+        rows = [r for r in (rows if isinstance(rows, list) else [rows]) if isinstance(r, dict) and r.get('symbol') == symbol]
+        levs = [int(float(r['leverage'])) for r in rows if r.get('leverage') not in (None, '')]
+        kinds = {str(r.get('marginType', '')).lower() for r in rows}
+        mtype = {'cross': 'CROSSED', 'crossed': 'CROSSED', 'isolated': 'ISOLATED'}.get(kinds.pop()) if len(kinds) == 1 else None
+        return dict(leverage=max(levs) if levs else None, margin_type=mtype)
+
     def set_margin_type(self, symbol, mtype='CROSSED'):
         try:
             return self._req('POST', '/fapi/v1/marginType', dict(symbol=symbol, marginType=mtype), signed=True)

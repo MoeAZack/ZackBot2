@@ -16,6 +16,9 @@ from ai_filter import review
 import grid as GRID
 
 log = logging.getLogger('zackbot')
+LEV_REFUSAL_COOLDOWN_S = 1800     # T03c: after Binance refuses a leverage change, no new change request for this coin for 30 min
+LEV_MARGIN_RATIO_MAX = 0.5        # T03c: worst-case account margin ratio (every stop filled) allowed for an above-cap entry
+LEV_STOP_SLIP = 1.5               # T03c: the new entry's stop loss is assumed 1.5x worse (slippage) in that worst case
 TF_SEC = {'15m': 900, '1h': 3600, '4h': 14400}
 FEE_EST = 0.0005        # taker fee estimate per fill, used for net PnL in the trade history
 BE_BUF = 0.0015         # breakeven stops sit just past the average entry so fees are covered
@@ -166,6 +169,7 @@ class Engine:
         self.untracked = {}                       # exchange positions the engine has no record of
         self._lev = {}                            # leverage already set per symbol
         self.lev_refusals = {}                    # T03a: Binance leverage refusals per symbol (count, outcome, last error)
+        self._lev_cool = {}                       # T03c: symbol -> time before which a refused leverage change is not re-sent
         self._btc1h = None; self._fund = {}; self._regime = None; self._rule_warns = []
         self.health = dict(errors=collections.deque(maxlen=30), last_manage_ok=None, last_cycle_ok={}, manage_fail_streak=0,
                            last_sync=None, alerted=False)
@@ -1108,39 +1112,102 @@ class Engine:
             except Exception as e: log.info(f'pump guard: BTC 1h data unavailable ({e})')
         return self._rules_block(sl, sym, side, size)
 
-    def _ensure_leverage(self, sym):
-        """Exchange leverage = the configured cap (bounded by what Binance allows for the coin). Failure blocks the entry."""
+    def _ensure_leverage(self, sym, notional=None, risk=None):
+        """Exchange leverage = the configured cap (bounded by what Binance allows for the coin). Failure blocks the entry,
+        unless the read-only fallback below proves the entry is safe anyway (T03a: already within the cap; T03c: cross
+        margin with the account's effective leverage and worst-case margin within limits)."""
         want = max(1, int(self.S['MAX_LEVERAGE']))
         if self._lev.get(sym) == want: return
         try: self.trade.set_margin_type(sym, 'CROSSED')        # cross is Binance's default; a refusal here is not a safety issue
         except Exception as e: log.info(f'{sym}: margin type not changed ({e})')
         mx = self.trade.leverage_max(sym)
         lev = min(want, mx) if mx else want
+        cool = self._lev_cool.get(sym, 0)
+        if cool > time.time():                                  # T03c: refused recently - no new POST until the cooldown ends
+            self._leverage_fallback(sym, lev, f'refused recently (no retry for {int(cool - time.time())}s)', notional, risk, mx)
+            return
         try: self.trade.set_leverage(sym, lev)
         except Exception as e:                                  # transient testnet/API errors: one retry, then the fallback below
             log.info(f'{sym}: leverage retry after {e}'); time.sleep(1)
             try: self.trade.set_leverage(sym, lev)
             except Exception as e2:
-                self._leverage_fallback(sym, lev, e2)           # proceeds only if the exchange is already at or below the cap
-                return                                          # not cached: the next entry tries to set it again
+                self._lev_cool[sym] = time.time() + LEV_REFUSAL_COOLDOWN_S
+                self._leverage_fallback(sym, lev, e2, notional, risk, mx)   # proceeds only if proven safe (read-only)
+                return                                          # not cached: after the cooldown the next entry tries again
+        self._lev_cool.pop(sym, None)
         self._lev[sym] = want
 
-    def _leverage_fallback(self, sym, lev, err):
-        """T03a. Binance refused the leverage change (testnet answers -1000 on some coins). Read the coin's CURRENT leverage
-        (read-only) and allow the entry only if it is already at or below the cap; a higher or unknown leverage re-raises,
-        so the entry is skipped exactly as before. Every refusal is counted per coin for the panel and /api/status."""
-        cur = None
-        try: cur = self.trade.current_leverage(sym)
+    def _margin_state(self, sym):
+        """(leverage, margin type 'CROSSED'/'ISOLATED'/None) as Binance reports the coin now. Read-only; None = unknown."""
+        if hasattr(self.trade, 'margin_state'):
+            ms = self.trade.margin_state(sym) or {}
+            return ms.get('leverage'), ms.get('margin_type')
+        return self.trade.current_leverage(sym), None          # older client: leverage only, margin type unknown
+
+    def _exposure_check(self, sym, notional, risk, mx):
+        """T03c. Whether an entry is safe although the coin's exchange leverage stays above the cap. Under CROSS margin the
+        coin's leverage setting only changes the margin Binance reserves; the size is capped by the bot itself and
+        liquidation is account-wide. So the entry is allowed only if ALL hold (any unknown -> not allowed):
+          - margin type CROSSED (isolated: the coin's leverage sets its own liquidation price -> never);
+          - account effective leverage after the entry (bot lots + this entry) <= MAX_LEVERAGE;
+          - worst case: every open lot AND this entry stopped out (this one with 1.5x slippage) leaves the account margin
+            ratio (maintenance margin / remaining margin balance) <= 50%, so every stop fires long before a liquidation.
+        Returns (ok, why, numbers)."""
+        cap = float(self.S['MAX_LEVERAGE'])
+        if not (notional and notional > 0 and risk is not None and risk >= 0): return False, 'entry size unknown', {}
+        lots = list(self.state['lots'].values())
+        if any(not isinstance(l.get('stop'), (int, float)) or not l['stop'] > 0 for l in lots):
+            return False, 'an open lot has no known stop', {}
+        acc = self.trade.account() or {}
+        try: bal, mm = float(acc['totalMarginBalance']), float(acc['totalMaintMargin'])
+        except (KeyError, TypeError, ValueError): return False, 'account margin data unavailable', {}
+        if bal <= 0: return False, 'account margin balance is not positive', {}
+        open_notional = sum(l['qty'] * l['avg'] for l in lots)
+        open_risk = sum(self._lot_risk(l) for l in lots)       # to each stop, incl. DCA safety orders not filled yet
+        mmr = 1.0 / mx if mx else 0.1                          # initial-margin rate >= Binance's maintenance rate (conservative)
+        eff = (open_notional + notional) / bal
+        left = bal - open_risk - risk * LEV_STOP_SLIP
+        worst = (mm + notional * mmr) / left if left > 0 else float('inf')
+        n = dict(effective_leverage=round(eff, 2), worst_margin_ratio=round(worst, 4) if worst != float('inf') else None,
+                 margin_balance=round(bal, 2))
+        if eff > cap: return False, f'account effective leverage {eff:.1f}x would exceed the {cap:g}x cap', n
+        if worst > LEV_MARGIN_RATIO_MAX:
+            return False, f'worst-case margin ratio {worst:.0%} if every stop fills is above {LEV_MARGIN_RATIO_MAX:.0%}', n
+        return True, 'cross margin, within the leverage cap and the worst-case margin limit', n
+
+    def _leverage_fallback(self, sym, lev, err, notional=None, risk=None, mx=None):
+        """T03a/T03c. Binance refused the leverage change (testnet answers -1000 on some coins; mainnet can refuse too, e.g.
+        with open orders or venue rules). Read-only checks decide: proceed if the coin is already at or below the cap
+        (T03a), or if the exposure check proves the entry safe under cross margin (T03c); otherwise re-raise, so the entry
+        is skipped exactly as before. Every refusal is counted per coin for the panel and /api/status."""
+        cur = mtype = None
+        try: cur, mtype = self._margin_state(sym)
         except Exception as e3: log.info(f'{sym}: current leverage unavailable ({e3})')
-        ok = cur is not None and 1 <= cur <= lev
         r = self.lev_refusals.setdefault(sym, dict(count=0, proceeded=0, skipped=0))
-        r['count'] += 1; r['proceeded' if ok else 'skipped'] += 1
-        r.update(last_error=str(err)[:160], last_time=now_utc().isoformat(timespec='seconds'), current=cur, cap=lev)
-        if ok:
+        r.setdefault('by_exposure', 0)
+        r['count'] += 1
+        r.update(last_error=str(err)[:160], last_time=now_utc().isoformat(timespec='seconds'), current=cur, cap=lev,
+                 margin_type=mtype, accepted=None, exposure=None)
+        if cur is not None and 1 <= cur <= lev:
+            r['proceeded'] += 1; r['accepted'] = 'within_cap'
             log.warning(f'{sym}: Binance refused leverage {lev}x ({err}); the coin is already at {cur}x <= cap - entry proceeds')
             return
-        why = 'current leverage unknown' if cur is None else f'current leverage {cur}x is above the {lev}x cap'
-        raise RuntimeError(f'leverage {lev}x refused ({err}); {why}')
+        if cur is None:
+            r['skipped'] += 1
+            raise RuntimeError(f'leverage {lev}x refused ({err}); current leverage unknown')
+        if mtype != 'CROSSED':
+            r['skipped'] += 1
+            raise RuntimeError(f'leverage {lev}x refused ({err}); current leverage {cur}x is above the {lev}x cap '
+                               f'and the margin type is {mtype or "unknown"} (not cross)')
+        try: ok, why, n = self._exposure_check(sym, notional, risk, mx)
+        except Exception as e4: ok, why, n = False, f'exposure check failed ({e4})', {}
+        r['exposure'] = dict(n, ok=ok, why=why)
+        if ok:
+            r['proceeded'] += 1; r['by_exposure'] += 1; r['accepted'] = 'exposure'
+            log.warning(f'{sym}: Binance refused leverage {lev}x ({err}); the coin stays at {cur}x but the entry is safe: {why} {n}')
+            return
+        r['skipped'] += 1
+        raise RuntimeError(f'leverage {lev}x refused ({err}); current leverage {cur}x is above the {lev}x cap and {why}')
 
     def open_lot(self, sl, sym, side, sg, df, eq, risk=None, manual=False, stop_atr=None, tp_r=None):
         block = self.entry_block(sl, sym, side, manual, sg=sg)
@@ -1209,7 +1276,7 @@ class Engine:
         if self.dry:
             log.info(f'[dry] would open {side} {qty} {sym} stop {stop:.6g}'); return True
         try:
-            self._ensure_leverage(sym)
+            self._ensure_leverage(sym, notional=qty * px, risk=risk_usd * qty / qty_raw if qty_raw else None)
         except Exception as e:
             self.last_skip = f'could not set leverage/margin on Binance: {e}'
             log.warning(f'{sym}: {self.last_skip}')
