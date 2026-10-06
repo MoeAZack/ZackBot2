@@ -218,13 +218,28 @@ def test_launcher_is_tiny_and_isolates_powershell():
     clear = _idx(L, lambda l: l == 'set "PSModulePath="', 'PSModulePath reset')[0]
     ps = _idx(L, lambda l: l.lower().startswith('powershell '), 'installer.ps1 call')
     assert len(ps) == 1 and clear < ps[0], 'clear PSModulePath before the one PowerShell call'
-    assert L[ps[0]].endswith('-NoProfile -ExecutionPolicy Bypass -File "%~dp0installer.ps1" "%ZBMODE%"'), 'mode must be passed quoted'
-    assert any(l == 'set "ZBMODE=%~1"' for l in L), 'the argument is captured inside quotes'
-    assert any(l == 'if "%ZBMODE%"=="" set "ZBMODE=install"' for l in L), 'no argument = normal install'
-    for l in L:                                            # the only pause: when installer.ps1 itself could not run
+    assert L[ps[0]] == 'powershell -NoProfile -ExecutionPolicy Bypass -File "!ZBPS1!" -FromLauncher'
+    for l in L:                                            # the only pause: when installer.ps1 refused / could not run
         if l.rstrip().endswith('pause') and not l.lower().startswith('rem'):
             assert 'if not defined ZB_NOPAUSE' in l, l
-    assert _lines('rollback_drill.bat')[-2] == 'call "%~dp0build_app.bat" drill'
+
+
+@needs_installer
+def test_launchers_never_expand_their_arguments():
+    """T03b review round 2: CMD interprets quotes, & and | inside an expanded argument (x"&echo MARK escaped the
+    quoting). build_app.bat therefore never expands percent-1 / percent-star / percent-~1: it passes its own command
+    line through DELAYED expansion (not re-parsed) and installer.ps1 picks the mode; rollback_drill.bat has a fixed mode."""
+    for bat in ('build_app.bat', 'rollback_drill.bat'):
+        text = '\n'.join(_lines(bat))
+        assert not re.search(r'%~?[1-9*]', text), f'{bat} expands an argument'
+    L = _lines('build_app.bat')
+    dx = _idx(L, lambda l: l == 'setlocal EnableDelayedExpansion', 'delayed expansion')[0]
+    cl = _idx(L, lambda l: l == 'set "ZB_CMDLINE=!CMDCMDLINE!"', 'command line hand-over')[0]
+    path = _idx(L, lambda l: l == 'set "ZBPS1=%~dp0installer.ps1"', 'script path captured before delayed expansion')[0]
+    assert path < dx < cl
+    D = _lines('rollback_drill.bat')
+    k = D.index('powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0installer.ps1" drill')
+    assert D[k - 1] == 'set "PSModulePath="' and sum(l.lower().startswith('powershell') for l in D) == 1, D
 
 
 @needs_installer
@@ -258,6 +273,11 @@ function New-BuildId { return 'NEW1' }
 function Find-Python { return 'python' }
 function Wait-Seconds([int]$n) { }
 function Invoke-Pause { C 'pause' }
+function Remove-FileSafe([string]$path) {
+    $bad = Opt 'deleteFail' ''
+    if ($bad -and [IO.Path]::GetFileName($path) -eq $bad -and $path -eq $script:S.Exe) { C 'delete-failed'; return }
+    if ([IO.File]::Exists($path)) { [IO.File]::Delete($path) }
+}
 $global:Running = $(if ([bool](Opt 'oldRunning' $true)) { 'OLDEXE' } else { '' })   # what answers pings right now
 function Stop-Bot {
     C 'stop'
@@ -730,11 +750,71 @@ def test_record_never_claims_an_unverified_install():
     assert rec['bot_stop_attempted'] is True and rec['bot_stop_confirmed'] is True and rec['installed_file_sha256'] == rec['new_exe_sha256']
 
 
+# ---------------------------------------------------------------- T03b review round 2 (Codex): file state + launcher
+@needs_flow
+def test_launcher_mode_is_picked_from_the_raw_command_line():
+    cases = {
+        r'C:\WINDOWS\system32\cmd.exe /c ""C:\Dev\ZackBot2\build_app.bat" "': 'install',          # double-click
+        r'cmd /d /c C:\Dev\ZackBot2\build_app.bat preflight': 'preflight',                           # verify.py
+        r'cmd /d /c "C:\Program Files\Zack Bot\build_app.bat" buildcheck': 'buildcheck',
+        r'cmd /d /c C:\Dev\ZackBot2\build_app.bat "DRILL"': 'drill',
+        r'cmd /d /c C:\build_app.bat-old\build_app.bat': 'install',
+        r'cmd /d /c C:\Dev\ZackBot2\build_app.bat x"&echo MARK_B': None,                            # Codex probe
+        r'cmd /d /c C:\Dev\ZackBot2\build_app.bat x&echo MARK_A': None,
+        r'cmd /d /c C:\Dev\ZackBot2\build_app.bat preflight extra': None,
+        r'cmd /d /c C:\Dev\ZackBot2\build_app.bat "preflight&calc"': None,
+        r'cmd /d /c C:\Dev\ZackBot2\build_app.bat instal': None,
+        r'C:\WINDOWS\system32\cmd.exe': None,                                                       # typed in a console
+        '': None,
+    }
+    with tempfile.TemporaryDirectory() as tmp:
+        jp, script = os.path.join(tmp, 'c.json'), os.path.join(tmp, 'q.ps1')
+        json.dump(list(cases), open(jp, 'w'))
+        open(script, 'w').write("param($I, $J)\n. $I -NoRun\n"
+                                "foreach ($c in (Get-Content -Raw $J | ConvertFrom-Json)) { $m = Get-LauncherMode $c; "
+                                "[Console]::Out.WriteLine('MODE=' + $(if ($m) { $m } else { '<none>' })) }\n")
+        r = subprocess.run([PWSH, '-NoProfile', '-NonInteractive', '-File', script, INSTALLER, jp], capture_output=True, text=True, timeout=120)
+        got = [l[5:] for l in r.stdout.splitlines() if l.startswith('MODE=')]
+        assert got == [v or '<none>' for v in cases.values()], (list(zip(cases, got)), r.stderr[-400:])
+
+
+@needs_flow
+def test_refused_launcher_arguments_change_nothing():
+    with tempfile.TemporaryDirectory() as tmp:
+        env = _env(ZB_CMDLINE=r'cmd /d /c C:\x\build_app.bat x"&echo MARK_B', LOCALAPPDATA=tmp, ZB_NOPAUSE='1')
+        r = subprocess.run([PWSH, '-NoProfile', '-NonInteractive', '-File', INSTALLER, '-FromLauncher'], capture_output=True,
+                           text=True, timeout=120, env=env)
+        assert r.returncode == 2 and 'Nothing was changed' in r.stdout and 'cmd /c build_app.bat' in r.stdout, r.stdout
+        assert not os.path.exists(os.path.join(tmp, 'ZackBot')), 'a refused launch must not even create the log folder'
+
+
+@needs_flow
+def test_record_reads_the_installed_file_at_the_end():
+    f = _flow('install', have_old=False, newAnswers=False)              # first install fails -> the exe is removed
+    rec = f['rec']
+    assert f['installed'] is None and rec['installed_file_present'] is False and rec['installed_file_sha256'] is None, rec
+    f = _flow('install', stopOk=False, stopKills=True, exeHashChangesAfterStop=True)   # hash change detected
+    assert f['rec']['installed_file_sha256'] == 'CHANGED' and f['rec']['installed_file_present'] is True
+    rec = _flow('install')['rec']
+    assert rec['installed_file_present'] is True and rec['installed_file_sha256'] == rec['new_exe_sha256']
+    rec = _flow('preflight')['rec']
+    assert rec['installed_file_present'] is None and rec['installed_file_sha256'] is None, 'preflight never inspects the install'
+
+
+@needs_flow
+def test_failed_first_install_reports_an_exe_it_could_not_remove():
+    f = _flow('install', have_old=False, newAnswers=False, deleteFail='ZackBot.exe')
+    rec = f['rec']
+    assert f['rc'] == 1 and f['installed'] == 'NEWEXE' and 'the failed exe could NOT be removed' in rec['reason'], rec['reason']
+    assert rec['installed_file_present'] is True and rec['installed_file_sha256'] == rec['new_exe_sha256'] and rec['installed_after'] is None
+
+
 @needs_installer
 @pytest.mark.skipif(os.name != 'nt', reason='runs the real launcher through cmd.exe (Windows only)')
-def test_launcher_keeps_cmd_metacharacters_inside_the_mode():
-    """build_app.bat "x&echo PWNED": the whole string must reach installer.ps1 as ONE unknown mode (exit 2); cmd.exe
-    must not run the part after &. Harmless: an unknown mode is refused before anything is staged."""
-    r = subprocess.run(['cmd', '/d', '/c', os.path.join(ROOT, 'build_app.bat'), 'x&echo PWNED_BY_CMD'], capture_output=True,
-                       text=True, timeout=120, env=_env(ZB_NOPAUSE='1'), stdin=subprocess.DEVNULL)
-    assert r.returncode == 2 and 'usage' in r.stdout and 'PWNED_BY_CMD' not in r.stdout.replace("got 'x&echo PWNED_BY_CMD'", ''), r.stdout
+def test_launcher_refuses_embedded_quotes_and_metacharacters():
+    """Codex probe: x"&echo MARK_B must not run the echo and must not install: exit 2, marker absent."""
+    for arg in ('x"&echo MARK_B', 'x&echo MARK_A', '"preflight"&echo MARK_C'):
+        r = subprocess.run(['cmd', '/d', '/c', os.path.join(ROOT, 'build_app.bat'), arg], capture_output=True, text=True,
+                           timeout=120, env=_env(ZB_NOPAUSE='1'), stdin=subprocess.DEVNULL)
+        shown = r.stdout.replace(arg, '').replace(arg.replace('"', ''), '')
+        assert r.returncode == 2 and 'MARK_' not in shown.split('(got')[0] and 'MARK_' not in r.stderr, (arg, r.returncode, r.stdout)
