@@ -1399,7 +1399,11 @@ class Engine:
         margin and the account-wide exposure proof of _exposure_check). Returns how the entry may go ahead:
         'set' (leverage set or already cached), 'within_cap' or 'exposure' (the above-cap exception); raises otherwise."""
         want = max(1, int(self.S['MAX_LEVERAGE']))
-        if self._lev.get(sym) == want: return 'set'
+        if self._lev.get(sym) == want:
+            try: current, _ = self._margin_state(sym); current = lev_num(current, 'current leverage', pos=True)
+            except Exception: current = None
+            if current is not None and current <= want: return 'set'
+            self._lev.pop(sym, None)                              # external/unknown change: prove or set it again
         cool = self._lev_cool.get(sym, 0)
         if cool > time.time():                                  # T03c: decided BEFORE any venue write or bracket fetch (r1 P3)
             mx = self._lev_max(sym, fetch=False)                # cached schedule only; cur <= coin max anyway
@@ -1540,6 +1544,9 @@ class Engine:
             closing = 'SELL' if l['side'] == 'LONG' else 'BUY'
             if o.get('symbol') != l['symbol'] or o.get('side') != closing or o.get('position_side') not in (l['side'], 'BOTH'):
                 raise LevReject('stops', f"{nm}: stop {l['stop_id']} does not protect this position")
+            if (o.get('order_type') != 'STOP_MARKET' or o.get('working_type') != 'MARK_PRICE'
+                    or o.get('status') not in ('NEW', 'ACCEPTED') or o.get('close_position') is not False):
+                raise LevReject('stops', f"{nm}: stop {l['stop_id']} has the wrong type or trigger basis")
             step = float((self.rules.get(l['symbol']) or {}).get('step', 1e-9))
             if lev_num(o.get('qty'), f'{nm} stop quantity') < l['qty'] - step:
                 raise LevReject('stops', f'{nm}: stop covers less than the position')
@@ -1795,7 +1802,7 @@ class Engine:
                     stop_dist=abs(px - stop), atr=atr, g=g, risk_usd=risk_usd, eq=eq, manual=manual, reason=reason, px=px,
                     sg=dict(time=sg.get('time'), close=sg.get('close')))
         if how == 'exposure': plan['lev_exception'] = True     # T03c r1: no adds / market remainder until leverage is within the cap
-        if not manual and self.S.get('ENTRY_ORDER') == 'maker':
+        if not manual and self.S.get('ENTRY_ORDER') == 'maker' and how != 'exposure':
             return self._maker_start(plan)
         return self._market_entry(plan)
 

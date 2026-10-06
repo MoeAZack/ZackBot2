@@ -44,7 +44,8 @@ def refusing(cur=20, mtype='CROSSED', bal=5000.0, mm=0.0, **S):
     def open_orders_all():
         t.calls.append('orders_all')
         return [dict(tag=k, symbol=s, side='SELL' if ps == 'LONG' else 'BUY', position_side=ps, qty=q, price=0.0, stop_price=p,
-                     reduce_only=False, client_id=None) for k, (s, ps, q, p) in t.stops.items()] + list(t.extra_orders)
+                     reduce_only=False, close_position=False, client_id=None, order_type='STOP_MARKET', working_type='MARK_PRICE',
+                     status='NEW') for k, (s, ps, q, p) in t.stops.items()] + list(t.extra_orders)
 
     def leverage_brackets(s):
         t.calls.append('brackets'); b = t.brk[s]
@@ -357,7 +358,8 @@ def test_g2_client_open_orders_all_raises_when_the_algo_read_fails():
     orders = [dict(orderId=1, symbol='ETHUSDT', side='SELL', positionSide='LONG', origQty='2', executedQty='0', price='0',
                    stopPrice='45', reduceOnly=False, closePosition=False, clientOrderId='x')]
     c, calls = client_with([Resp(200, orders), Resp(200, {'orders': [dict(algoId=9, symbol='ETHUSDT', side='BUY', positionSide='SHORT',
-                                                                            quantity='3', triggerPrice='55', clientAlgoId='y')]})])
+                                                                            quantity='3', triggerPrice='55', clientAlgoId='y',
+                                                                            reduceOnly=False, closePosition=False)]})])
     out = c.open_orders_all()
     assert [o['tag'] for o in out] == ['o:1', 'a:9'] and out[0]['qty'] == 2.0 and out[1]['stop_price'] == 55.0
     assert all('symbol' not in p for _, _, p in calls), 'account-wide reads'
@@ -469,13 +471,21 @@ def test_g4_grid_adds_are_blocked_on_an_exception_coin(monkeypatch):
 def maker_plan(e):
     seen = {}
     e.S['ENTRY_ORDER'] = 'maker'; e.S['SLEEVES'] = [SL]
+    e._ensure_leverage = lambda *a, **k: 'set'                   # fabricate a legacy persisted exceptional maker plan
     e._maker_start = lambda plan: (seen.update(plan=plan), True)[1]
     assert e.open_lot(SL, 'BTCUSDT', 'LONG', SG, None, e.equity())
-    plan = seen['plan']; assert plan['lev_exception'] is True
+    plan = seen['plan']; plan['lev_exception'] = True
     k = f"ME|T|BTCUSDT|LONG"
     e.state['resting_entries'][k] = dict(key=k, sleeve='T', symbol='BTCUSDT', side='LONG', qty=plan['qty'], filled=0.0, cost=0.0, n=4,
                                          t0=time.time(), status='between', cid=None, plan=plan, price=100.0)
     return k, plan
+
+
+def test_exception_entry_never_rests_as_a_maker_order(monkeypatch):
+    e = refusing(ENTRY_ORDER='maker')
+    monkeypatch.setattr(e, '_maker_start', lambda plan: pytest.fail('above-cap exception must not rest on stale approval'))
+    k = opened(e)
+    assert e.state['lots'][k]['lev_exception'] is True and 'open' in e.trade.calls
 
 
 def test_g4_maker_remainder_is_not_sent_at_market_after_a_partial_fill(monkeypatch):
@@ -737,7 +747,8 @@ def fut_with(answers):
 
 # AV1 (answer shape): unknown-shaped answers become "no orders" instead of raising (docstring: "unknown != empty")
 def test_av1_algo_orders_answer_in_an_unknown_shape_is_never_read_as_empty():
-    algo = dict(algoId=5, symbol='ETHUSDT', side='BUY', positionSide='LONG', quantity='100', triggerPrice='45', reduceOnly=False)
+    algo = dict(algoId=5, symbol='ETHUSDT', side='BUY', positionSide='LONG', quantity='100', triggerPrice='45',
+                reduceOnly=False, closePosition=False)
     f = fut_with({'/fapi/v1/openOrders': [], '/fapi/v1/openAlgoOrders': {'code': '200', 'msg': 'success', 'data': [algo]}})
     try: out = f.open_orders_all()
     except Exception: return                       # raising is the fail-closed answer
@@ -861,7 +872,8 @@ def test_av1_hidden_algo_entry_order_rejects_end_to_end():
     """No lots; Binance has a manual 1000-ETH conditional BUY (algo). The algo list comes back dict-wrapped: the real
     client parser drops it and the gate ACCEPTS the above-cap entry."""
     e = refusing()
-    algo = dict(algoId=5, symbol='ETHUSDT', side='BUY', positionSide='LONG', quantity='1000', triggerPrice='45', reduceOnly=False)
+    algo = dict(algoId=5, symbol='ETHUSDT', side='BUY', positionSide='LONG', quantity='1000', triggerPrice='45',
+                reduceOnly=False, closePosition=False)
     f = fut_with({'/fapi/v1/openOrders': [], '/fapi/v1/openAlgoOrders': {'code': '200', 'msg': 'success', 'data': [algo]}})
     e.trade.open_orders_all = f.open_orders_all
     ok, why, n = check(e)
@@ -891,7 +903,8 @@ def test_av3_reserved_short_tier_crossing_counts():
 
 # ------------------------------------------------------------------ round 1, internal adversarial pass: extra coverage
 def test_av1_algo_answer_shapes_accepted_and_rejected():
-    algo = dict(algoId=5, symbol='ETHUSDT', side='SELL', positionSide='LONG', quantity='1', triggerPrice='45')
+    algo = dict(algoId=5, symbol='ETHUSDT', side='SELL', positionSide='LONG', quantity='1', triggerPrice='45',
+                reduceOnly=False, closePosition=False)
     assert [o['tag'] for o in fut_with({'/fapi/v1/openOrders': [], '/fapi/v1/openAlgoOrders': {'orders': [algo]}}).open_orders_all()] == ['a:5']
     assert [o['tag'] for o in fut_with({'/fapi/v1/openOrders': [], '/fapi/v1/openAlgoOrders': [algo]}).open_orders_all()] == ['a:5']
     for bad in ({}, {'orders': None}, {'orders': {'a': 1}}, None, 'x', [dict(symbol='ETHUSDT')], ['x']):
@@ -938,6 +951,55 @@ def test_avb_stop_past_the_mark_is_charged_its_distance_as_slippage():
     assert ok and n['loss_to_stops'] == pytest.approx(10 * 2.0 + 5 * 1.5)
 
 
+# ------------------------------------------------------------------ Codex round 2: independent integration probes
+def test_cached_leverage_is_verified_against_binance_before_reuse():
+    e = refusing(); e._lev['BTCUSDT'] = 10
+    how = e._ensure_leverage('BTCUSDT', notional=100.0, risk=5.0)
+    assert how == 'exposure' and lev_posts(e) == 2, 'external leverage changes must invalidate the local cache'
+
+
+@pytest.mark.parametrize('bad', [True, '2.5', 'NaN', 0, -1])
+def test_client_leverage_parsers_do_not_truncate_or_accept_invalid_values(bad):
+    row = dict(symbol='SOLUSDT', positionSide='LONG', leverage=bad, marginType='cross')
+    c, _ = client_with([Resp(200, [row])]); assert c.current_leverage('SOLUSDT') is None
+    c, _ = client_with([Resp(200, [row])]); assert c.margin_state('SOLUSDT')['leverage'] is None
+
+
+@pytest.mark.parametrize(('field', 'bad'), [('order_type', 'TAKE_PROFIT_MARKET'), ('working_type', 'CONTRACT_PRICE'),
+                                             ('status', 'CANCELED'), ('close_position', True)])
+def test_confirmed_stop_must_have_the_exact_protective_order_shape(field, bad):
+    e = refusing(); add_lot(e); real = e.trade.open_orders_all
+    def altered():
+        rows = real(); rows[0][field] = bad; return rows
+    e.trade.open_orders_all = altered
+    ok, why, n = check(e)
+    assert not ok and n['check'] == 'stops' and 'wrong type or trigger basis' in why
+
+
+def test_account_notional_coefficient_scales_bracket_boundaries_and_cumulative_margin():
+    payload = [dict(symbol='BTCUSDT', notionalCoef='2', brackets=[
+        dict(notionalFloor='0', notionalCap='1000', maintMarginRatio='0.004', cum='0', initialLeverage='125'),
+        dict(notionalFloor='1000', notionalCap='5000', maintMarginRatio='0.005', cum='1', initialLeverage='50')])]
+    c, _ = client_with([Resp(200, payload)])
+    got = c.leverage_brackets('BTCUSDT')
+    assert got[1] == dict(floor=2000.0, cap=10000.0, mmr=.005, cum=2.0, lev=50)
+    assert E.check_brackets(got) == got
+
+
+def test_string_false_order_flags_are_rejected_instead_of_becoming_true():
+    order = dict(orderId=1, symbol='BTCUSDT', side='SELL', positionSide='LONG', origQty='1', executedQty='0',
+                 price='0', stopPrice='90', reduceOnly='false', closePosition=False)
+    c, _ = client_with([Resp(200, [order]), Resp(200, [])])
+    with pytest.raises(ValueError, match='reduceOnly'): c.open_orders_all()
+
+
+def test_missing_order_boolean_flags_are_unknown_not_safe_defaults():
+    order = dict(orderId=1, symbol='BTCUSDT', side='SELL', positionSide='LONG', origQty='1', executedQty='0',
+                 price='0', stopPrice='90', reduceOnly=False)
+    c, _ = client_with([Resp(200, [order]), Resp(200, [])])
+    with pytest.raises(ValueError, match='closePosition'): c.open_orders_all()
+
+
 def test_av3_short_dca_pyramid_and_grid_reserves_grow_to_their_stop():
     e = refusing(bal=1e6)
     add_lot(e, side='SHORT', qty=1.0, avg=50.0, stop=60.0, levels=[55.0], w=[2.0], q0=1.0)    # one short DCA order left
@@ -950,4 +1012,3 @@ def test_av3_short_dca_pyramid_and_grid_reserves_grow_to_their_stop():
     e.state['grids'] = {'G|ETHUSDT': dict(sym='ETHUSDT', op=None, mode='short', metrics=dict(max_notional=300.0, worst_loss_usd=20.0))}
     ok, why, n = check(e, sym='BTCUSDT')
     assert n['maint_after_stops'] == pytest.approx(E.bracket_maint(BRK, 300 + 30) + E.bracket_maint(BRK, 107.5), abs=0.01)
-

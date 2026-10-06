@@ -1,5 +1,5 @@
 """Minimal Binance USD-M futures REST client (requests + HMAC), hedge-mode aware."""
-import hashlib, hmac, random, time, urllib.parse, uuid
+import hashlib, hmac, math, random, time, urllib.parse, uuid
 import requests
 
 MAINNET = 'https://fapi.binance.com'
@@ -25,6 +25,32 @@ SAFE_METHODS = ('GET', 'DELETE')
 
 def new_cid(prefix='zb'):
     return f'{prefix}{uuid.uuid4().hex[:22]}'
+
+
+def _finite_number(value, *, positive=False, nonnegative=False):
+    """Strict exchange number: bool, missing and NaN/Inf are never data."""
+    if isinstance(value, bool) or value in (None, ''): raise ValueError('missing or boolean number')
+    number = float(value)
+    if not math.isfinite(number): raise ValueError('non-finite number')
+    if positive and number <= 0: raise ValueError('number is not positive')
+    if nonnegative and number < 0: raise ValueError('number is negative')
+    return number
+
+
+def _positive_int(value):
+    number = _finite_number(value, positive=True)
+    if not number.is_integer(): raise ValueError('number is not an integer')
+    return int(number)
+
+
+_MISSING = object()
+
+
+def _bool_field(row, key, default=_MISSING):
+    value = row.get(key, default)
+    if value is _MISSING: raise ValueError(f'{key}: missing boolean')
+    if not isinstance(value, bool): raise ValueError(f'{key}: expected boolean')
+    return value
 
 
 class Futures:
@@ -173,16 +199,20 @@ class Futures:
     def current_leverage(self, symbol):
         """The coin's leverage as Binance has it now (read-only). None if Binance reports no row for the coin."""
         rows = self._req('GET', '/fapi/v2/positionRisk', dict(symbol=symbol), signed=True)
-        levs = [int(float(r['leverage'])) for r in (rows if isinstance(rows, list) else [rows])
-                if r.get('symbol') == symbol and r.get('leverage') not in (None, '')]
-        return max(levs) if levs else None
+        try:
+            levs = [_positive_int(r['leverage']) for r in (rows if isinstance(rows, list) else [rows])
+                    if isinstance(r, dict) and r.get('symbol') == symbol and r.get('leverage') not in (None, '')]
+            return max(levs) if levs else None
+        except (TypeError, ValueError, OverflowError):
+            return None
 
     def margin_state(self, symbol):
         """T03c. The coin's leverage and margin type as Binance has them now (read-only), from positionRisk:
         dict(leverage=int|None, margin_type='CROSSED'|'ISOLATED'|None). Unknown or mixed answers give None."""
         rows = self._req('GET', '/fapi/v2/positionRisk', dict(symbol=symbol), signed=True)
         rows = [r for r in (rows if isinstance(rows, list) else [rows]) if isinstance(r, dict) and r.get('symbol') == symbol]
-        levs = [int(float(r['leverage'])) for r in rows if r.get('leverage') not in (None, '')]
+        try: levs = [_positive_int(r['leverage']) for r in rows if r.get('leverage') not in (None, '')]
+        except (TypeError, ValueError, OverflowError): levs = []
         kinds = {str(r.get('marginType', '')).lower() for r in rows}
         mtype = {'cross': 'CROSSED', 'crossed': 'CROSSED', 'isolated': 'ISOLATED'}.get(kinds.pop()) if len(kinds) == 1 else None
         return dict(leverage=max(levs) if levs else None, margin_type=mtype)
@@ -195,12 +225,13 @@ class Futures:
         if not isinstance(rows, list): raise ValueError(f'positionRisk: unexpected answer shape ({type(rows).__name__})')
         out = []
         for p in rows:
-            amt = float(p['positionAmt'])
+            if not isinstance(p, dict): raise ValueError('positionRisk: malformed position row')
+            amt = _finite_number(p.get('positionAmt'))
             if amt == 0: continue
             side = p.get('positionSide', 'BOTH')
             if side == 'BOTH': side = 'LONG' if amt > 0 else 'SHORT'
-            out.append(dict(symbol=p['symbol'], side=side, qty=abs(amt), mark=float(p['markPrice']),
-                            notional=abs(float(p['notional'])) if p.get('notional') not in (None, '') else float('nan')))
+            out.append(dict(symbol=p['symbol'], side=side, qty=abs(amt), mark=_finite_number(p.get('markPrice'), positive=True),
+                            notional=abs(_finite_number(p['notional'])) if p.get('notional') not in (None, '') else float('nan')))
         return out
 
     def open_orders_all(self):
@@ -212,19 +243,24 @@ class Futures:
         if not isinstance(rows, list): raise ValueError(f'openOrders: unexpected answer shape ({type(rows).__name__})')
         out = []
         for o in rows:
+            if not isinstance(o, dict) or 'orderId' not in o: raise ValueError('openOrders: malformed order row')
             out.append(dict(tag=f"o:{o['orderId']}", symbol=o.get('symbol'), side=o.get('side'), position_side=o.get('positionSide', 'BOTH'),
-                            qty=float(o.get('origQty') or 0) - float(o.get('executedQty') or 0), price=float(o.get('price') or 0),
-                            stop_price=float(o.get('stopPrice') or 0), client_id=o.get('clientOrderId'),
-                            reduce_only=bool(o.get('reduceOnly')) or bool(o.get('closePosition'))))
+                            qty=_finite_number(o.get('origQty') or 0, nonnegative=True) - _finite_number(o.get('executedQty') or 0, nonnegative=True),
+                            price=_finite_number(o.get('price') or 0, nonnegative=True), stop_price=_finite_number(o.get('stopPrice') or 0, nonnegative=True),
+                            client_id=o.get('clientOrderId'), reduce_only=_bool_field(o, 'reduceOnly') or _bool_field(o, 'closePosition'),
+                            close_position=_bool_field(o, 'closePosition'), order_type=o.get('type'), working_type=o.get('workingType'),
+                            status=o.get('status')))
         r = self._req('GET', '/fapi/v1/openAlgoOrders', signed=True)
         algo = r if isinstance(r, list) else r.get('orders') if isinstance(r, dict) else None
         if not isinstance(algo, list): raise ValueError(f'openAlgoOrders: unexpected answer shape ({type(r).__name__})')
         for o in algo:
             if not isinstance(o, dict) or 'algoId' not in o: raise ValueError('openAlgoOrders: malformed order row')
             out.append(dict(tag=f"a:{o['algoId']}", symbol=o.get('symbol'), side=o.get('side'), position_side=o.get('positionSide', 'BOTH'),
-                            qty=float(o.get('quantity') or 0) - float(o.get('executedQty') or 0), price=float(o.get('price') or 0),
-                            stop_price=float(o.get('triggerPrice') or 0), client_id=o.get('clientAlgoId'),
-                            reduce_only=bool(o.get('reduceOnly')) or bool(o.get('closePosition'))))
+                            qty=_finite_number(o.get('quantity') or 0, nonnegative=True) - _finite_number(o.get('executedQty') or 0, nonnegative=True),
+                            price=_finite_number(o.get('price') or 0, nonnegative=True), stop_price=_finite_number(o.get('triggerPrice') or 0, nonnegative=True),
+                            client_id=o.get('clientAlgoId'), reduce_only=_bool_field(o, 'reduceOnly') or _bool_field(o, 'closePosition'),
+                            close_position=_bool_field(o, 'closePosition'), order_type=o.get('orderType'), working_type=o.get('workingType'),
+                            status=o.get('algoStatus')))
         return out
 
     def leverage_brackets(self, symbol):
@@ -233,8 +269,12 @@ class Futures:
         r = self._req('GET', '/fapi/v1/leverageBracket', dict(symbol=symbol), signed=True)
         rows = [x for x in (r if isinstance(r, list) else [r]) if isinstance(x, dict) and x.get('symbol', symbol) == symbol]
         if len(rows) != 1 or not rows[0].get('brackets'): raise ValueError(f'no leverage brackets for {symbol}')
-        out = [dict(floor=float(b['notionalFloor']), cap=float(b['notionalCap']), mmr=float(b['maintMarginRatio']),
-                    cum=float(b['cum']), lev=float(b['initialLeverage'])) for b in rows[0]['brackets']]
+        coef = _finite_number(rows[0].get('notionalCoef', 1.0), positive=True)
+        out = [dict(floor=_finite_number(b['notionalFloor'], nonnegative=True) * coef,
+                    cap=_finite_number(b['notionalCap'], positive=True) * coef,
+                    mmr=_finite_number(b['maintMarginRatio'], positive=True),
+                    cum=_finite_number(b['cum'], nonnegative=True) * coef,
+                    lev=_positive_int(b['initialLeverage'])) for b in rows[0]['brackets']]
         return sorted(out, key=lambda b: b['floor'])
 
     def set_margin_type(self, symbol, mtype='CROSSED'):
