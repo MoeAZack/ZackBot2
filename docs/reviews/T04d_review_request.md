@@ -4,10 +4,57 @@
 
 | Item | Value |
 |---|---|
-| Branch | `t04d-faster-ci`, **merged with protected `master` d68d6ef** (T03b) in this round. **Pipeline mode** |
-| Head for review | the PR head. The full SHA is in the FIXED FOR CODEX comment (round 1 reviewed 3481f12; Codex review d74932f) |
+| Branch | `t04d-faster-ci`, **merged with protected `master` 566ed56** (T05) in round 2 (T05 preserved unchanged). **Pipeline mode** |
+| Head for review | the PR head. The full SHA is in the FIXED FOR CODEX comment (round 1 reviewed 3481f12 → Codex d74932f; round 2 reviewed 99a276e → Codex PR comment "ROUND 2 — FIXES REQUESTED") |
 | Class | CI/verification only. No bot, installer or trading change. `verify.py`: the full level now runs one canonical `FULL_PLAN` (same gates, same order) |
 | Owner approval | "Faster CI" speed-up, selected by the owner on 2026-10-06 (relayed on PR #5) |
+
+## Round 2 dispositions (Codex PR review on 99a276e + owner speed decision)
+
+1. **P1: full ran on every PR iteration; no review-clean trigger.** Confirmed. Fixed:
+   - `verify.yml` is now `workflow_dispatch` ONLY, with a required `head_sha` input. It holds the three full slices plus the required `verify full` aggregator.
+   - The FIRST step of every full job fails unless `head_sha` is a full 40-character SHA AND `GITHUB_SHA == head_sha`. The merge re-checks it (`verify_ci.py merge --expected-sha`, step "exact approved head").
+   - Codex dispatches it on the PR branch once code review is clean (`gh workflow run verify.yml --ref t04d-faster-ci -f head_sha=<sha>`, or the Actions UI). The workflow is already registered on master, so dispatching on the branch runs the branch's version.
+   - Rejected iterations cost only `verify fast`.
+   - Invalidation: a new commit has no `verify full` at all (nothing else creates it), so branch protection blocks the merge until Codex dispatches again, and a dispatch naming an old SHA refuses to run on the moved branch.
+   - The aggregator keeps `if: always()`. That is not a skip condition: it makes a failed or cancelled slice FAIL `verify full` instead of skipping it. No other job has a job-level `if`.
+2. **P2: two fast runs per feature commit.** Confirmed (push run + PR run on 99a276e). Fixed:
+   - `verify-push.yml` now triggers on `push: branches: [master]` only;
+   - the new `verify-fast.yml` (`pull_request` into master) is the only producer of the required `verify fast`, so a feature commit gets exactly one fast run.
+3. **P1: a fresh Git-for-Windows checkout failed the manifest gate (CRLF).** Confirmed. Fixed:
+   - a new `.gitattributes` sets `text eol=lf` for `data/**/*.csv`, `data1h/**/*.csv`, `data_long/**/*.csv` and `DATA_MANIFEST.json`;
+   - the index was already LF, so no content changes, and the manifest is not regenerated or weakened;
+   - the 7 CRLF `.bat` launchers are deliberately untouched.
+   Tests:
+   - `git check-attr eol` gives `lf` for all 65 paths;
+   - a brand-new `git -c core.autocrlf=true clone` reproduces every manifest hash and passes `manifest_check` (marked slow: it runs in full, not fast);
+   - removing `.gitattributes` makes both tests fail.
+
+Tests added or changed (tests/test_ci.py):
+- exactly one producer per required name;
+- one fast run per feature commit and no full on PR/push;
+- the exact-head guard is the first step of every full job and the merge is bound to it;
+- new-commit invalidation;
+- the `guard` command;
+- merge refuses an unapproved head;
+- no conditional skips (fast, slices);
+- both manifest line-ending tests.
+`tests/test_verify.py:265` (action pins) now covers all three workflow files.
+
+**Mutation proof (round 2): 7/7 caught.**
+- full on PR again;
+- push on all branches;
+- guard without the SHA comparison;
+- `head_sha` optional;
+- `head_problem` ignoring a mismatch;
+- merge not bound to the SHA;
+- `.gitattributes` removed.
+
+**Process this enables (owner speed decision):**
+- rejected code iteration: focused + `verify fast` only (about 4–5 min);
+- final candidate: Codex dispatches one exact-head parallel full (about 8–9 min of job time).
+- Prepare review and acceptance text before dispatching, so no post-green commit invalidates the result.
+- Docs-only reuse for the required full is not attempted (see round 1); it exists only for master pushes.
 
 ## Round 1 dispositions (Codex review d74932f on 3481f12)
 
@@ -48,7 +95,7 @@
 
 Run #94 (T03b, b8dadb2, a Codex docs-only status commit) took 24 min: fast 3m20s, then full 20m15s run serially. Full is tests 376 s, replay 1 212 s, replay 2 363 s and UI 207 s, after waiting for fast.
 
-## The change (current design, after round 1)
+## The change (round 1 design; workflows superseded by round 2 above)
 
 1. **Parallel full in the required workflow (`verify.yml`, pull_request + workflow_dispatch only).**
    - Three slices of `verify.FULL_PLAN` run at the same time through `verify_ci.py part`: `tests`, `replay2`, and `replay1-ui` (the UI harness seeds its closed trades from replay 1 of the same run).

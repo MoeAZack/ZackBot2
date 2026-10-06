@@ -1,21 +1,31 @@
 """T04d: faster GitHub CI, built on verify.py's canonical full plan (no gate is weakened).
 
     python verify_ci.py part tests|replay2|replay1-ui --out DIR     one exact slice of verify.FULL_PLAN, as a parallel job
-    python verify_ci.py merge --parts DIR --out DIR                 the required "verify full" check: the slices must be an
-                                                                    exact partition of verify.FULL_PLAN, every slice must be
-                                                                    present once, on this commit, passed, with exactly its
-                                                                    steps in order and all passed -> one full summary
-    python verify_ci.py plan --before SHA --head SHA                push workflow only: docs-only reuse decision
-    python verify_ci.py reused --before SHA --head SHA --out DIR    push workflow only: re-proves reuse, runs the cheap
-                                                                    static checks, records the heavy steps SKIPPED (reused)
+    python verify_ci.py merge --parts DIR --out DIR [--expected-sha SHA]
+                                                                    the required "verify full" check: the checked-out commit
+                                                                    must be the approved SHA, the slices an exact partition of
+                                                                    verify.FULL_PLAN, every slice present once, on this commit,
+                                                                    passed, with exactly its steps in order -> one summary
+    python verify_ci.py guard --expected SHA                        exit 0 only if the checked-out commit IS that SHA
+    python verify_ci.py plan --before SHA --head SHA                push workflow (master) only: docs-only reuse decision
+    python verify_ci.py reused --before SHA --head SHA --out DIR    push workflow (master) only: re-proves reuse, runs the
+                                                                    cheap static checks, records heavy steps SKIPPED (reused)
 
-Required checks ("verify fast", "verify full") come only from the pull-request/on-demand workflow (verify.yml), and every
-run of it executes them: nothing there is skipped or reused (Codex T04d review). Docs-only reuse exists only in the
-non-required push workflow (verify-push.yml, job "push fast") and only from the same context:
-  - push event, with a real previous commit (`before`, not all zeros) that is an ancestor of the new head;
-  - every changed file is a document under docs/ (no code/config extension; nothing executed reads docs/);
-  - a successful run of the SAME push workflow, from a push event, on exactly `before`.
-Any error or unknown answer means "no reuse" (the full push check runs). The summary records the run it reused.
+Workflows (round 2, Codex review on 99a276e + owner speed decision):
+  - verify-fast.yml  (pull_request into master): the ONLY producer of the required "verify fast" - one run per PR commit.
+  - verify.yml       (workflow_dispatch ONLY, required input head_sha): the ONLY producer of the required "verify full".
+    Codex dispatches it on the PR branch once code review is clean. Its first step in every job fails unless
+    GITHUB_SHA == head_sha, and the merge re-checks it, so a stale/moved head can never publish "verify full". A later
+    commit simply has no "verify full", so branch protection blocks it until Codex dispatches again. Rejected review
+    iterations therefore cost only "verify fast" (no full run).
+  - verify-push.yml  (push to master ONLY, job "push fast", not required): one fast run per master commit, so a feature
+    commit is never verified twice. Docs-only reuse exists only here and only from the same context:
+      - push event, a real previous commit (`before`, not all zeros) that is an ancestor of the new head;
+      - every changed file is a document under docs/ (no code/config extension; nothing executed reads docs/);
+      - a successful run of the SAME push workflow, from a push event, on exactly `before`.
+    Any error or unknown answer means "no reuse". The summary records the run it reused.
+No required job has a job-level condition that can skip it; the full aggregator uses `if: always()` so that a failed or
+cancelled slice FAILS "verify full" instead of skipping it.
 """
 import argparse, glob, json, os, re, sys, urllib.parse, urllib.request
 import verify as V
@@ -26,11 +36,27 @@ CODE_EXT = ('.py', '.pyw', '.ps1', '.psm1', '.bat', '.cmd', '.js', '.html', '.ym
 ZERO = '0' * 40
 SHA_RX = re.compile(r'[0-9a-f]{40}')
 PUSH_WORKFLOW = '.github/workflows/verify-push.yml'
+FULL_WORKFLOW = '.github/workflows/verify.yml'
+FAST_WORKFLOW = '.github/workflows/verify-fast.yml'
 PARTS = {                                       # slice -> the FULL_PLAN steps it runs (plan order is kept)
     'tests': ['tests (all)'],
     'replay2': [V.REPLAYS[1][0]],
     'replay1-ui': [V.REPLAYS[0][0], V.UI_STEP],  # the UI harness seeds its closed trades from replay 1 of the same run
 }
+
+
+def head_problem(expected, actual):
+    """Why `actual` (the checked-out commit) is not the approved full-gate SHA `expected` (None = it is)."""
+    if not SHA_RX.fullmatch(expected or ''): return f'approved head_sha {expected!r} is not a full 40-character SHA'
+    if actual != expected: return f'checked-out commit {str(actual)[:12]} is not the approved head {expected[:12]} (stale or moved head)'
+    return None
+
+
+def cmd_guard(a):
+    actual = os.environ.get('GITHUB_SHA') or V.git_info().get('commit')
+    prob = head_problem(a.expected, actual)
+    print(f"exact-head guard: {'OK ' + str(actual) if prob is None else 'REFUSED - ' + prob}", flush=True)
+    return 0 if prob is None else 1
 
 
 def plan_names():
@@ -99,6 +125,10 @@ def slice_problem(name, s, commit):
 def cmd_merge(a):
     rep = _report('full', a.out)
     commit = rep.data['git'].get('commit')
+    if a.expected_sha is not None:                               # the dispatched final gate: bind to the approved head
+        prob = head_problem(a.expected_sha, commit)
+        rep.data['approved_head_sha'] = a.expected_sha
+        rep.step('exact approved head', prob is None, why=prob)
     V.static_checks(rep)
     V.manifest_check(rep)
     bad = partition_problems()
@@ -211,8 +241,10 @@ def main(argv=None):
         if name == 'reused': p.add_argument('--out', required=True)
     p = sub.add_parser('part'); p.add_argument('name', choices=list(PARTS)); p.add_argument('--out', required=True)
     p = sub.add_parser('merge'); p.add_argument('--parts', required=True); p.add_argument('--out', required=True)
+    p.add_argument('--expected-sha', default=None)
+    p = sub.add_parser('guard'); p.add_argument('--expected', required=True)
     a = ap.parse_args(argv)
-    return dict(plan=cmd_plan, reused=cmd_reused, part=cmd_part, merge=cmd_merge)[a.cmd](a)
+    return dict(plan=cmd_plan, reused=cmd_reused, part=cmd_part, merge=cmd_merge, guard=cmd_guard)[a.cmd](a)
 
 
 if __name__ == '__main__':

@@ -1,6 +1,6 @@
 """T04d: faster CI. The parallel slices must be an exact partition of verify.FULL_PLAN, the merge must reject every
 deviation, required checks must never be skipped or reused, and push-only docs reuse must be fail-closed."""
-import io, json, os, re, subprocess, sys
+import hashlib, io, json, os, re, subprocess, sys
 import pytest
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import verify as V                                                         # noqa: E402
@@ -9,6 +9,16 @@ import verify_ci as C                                                      # noq
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 WF = open(os.path.join(ROOT, '.github', 'workflows', 'verify.yml'), encoding='utf-8').read()
 WP = open(os.path.join(ROOT, '.github', 'workflows', 'verify-push.yml'), encoding='utf-8').read()
+WQ = open(os.path.join(ROOT, '.github', 'workflows', 'verify-fast.yml'), encoding='utf-8').read()
+WORKFLOWS = {'verify.yml': WF, 'verify-fast.yml': WQ, 'verify-push.yml': WP}
+
+
+def _on(wf):
+    return wf.split('\non:\n')[1].split('\npermissions:')[0]
+
+
+def _jobs(wf):
+    return re.findall(r'^    name: (.+)$', wf, re.M)
 A, B = 'a' * 40, 'b' * 40
 
 
@@ -123,27 +133,79 @@ def test_merge_rejects_an_unexpected_slice(monkeypatch, tmp_path):
 
 
 # ---------------------------------------------------------------- required checks: never skipped, never reused
-def test_only_the_pull_request_workflow_produces_the_required_check_names():
-    jobs = re.findall(r'^    name: (.+)$', WF, re.M)
-    assert jobs.count('verify fast') == 1 and jobs.count('verify full') == 1
-    pjobs = re.findall(r'^    name: (.+)$', WP, re.M)
-    assert pjobs == ['push fast'] and 'verify fast' not in WP.split('jobs:')[1] and 'verify full' not in WP.split('jobs:')[1]
-    on = WF.split('\non:\n')[1].split('\npermissions:')[0]
-    assert 'pull_request:' in on and 'workflow_dispatch:' in on and 'push:' not in on and 'inputs:' not in on
-    assert 'push:' in WP.split('\non:\n')[1].split('\npermissions:')[0]
+def test_each_required_name_has_exactly_one_producer():
+    """verify fast: only verify-fast.yml (PR). verify full: only verify.yml (dispatched). push fast: only verify-push.yml."""
+    owners = {n: [f for f, wf in WORKFLOWS.items() if n in _jobs(wf)] for n in ('verify fast', 'verify full', 'push fast')}
+    assert owners == {'verify fast': ['verify-fast.yml'], 'verify full': ['verify.yml'], 'push fast': ['verify-push.yml']}
+    assert _jobs(WQ) == ['verify fast'] and _jobs(WP) == ['push fast']
+    assert set(_jobs(WF)) == {'full slice ${{ matrix.part }}', 'verify full'}
+
+
+def test_triggers_one_fast_run_per_feature_commit_and_no_full_on_pr():
+    """Owner speed decision + Codex round 2: a PR commit gets ONE fast run (PR workflow) and NO full run; push
+    verification is master-only; the full gate is workflow_dispatch only."""
+    assert _on(WQ).strip() == 'pull_request:\n    branches: [master]'
+    assert _on(WP).strip() == 'push:\n    branches: [master]'
+    full_on = _on(WF)
+    assert 'workflow_dispatch:' in full_on and 'pull_request' not in full_on and 'push:' not in full_on and 'schedule' not in full_on
+    for f, wf in WORKFLOWS.items():                                         # nothing that runs on a PR/push makes "verify full"
+        if 'pull_request' in _on(wf) or 'push:' in _on(wf): assert 'verify full' not in _jobs(wf), f
+
+
+def test_full_gate_requires_and_enforces_the_exact_approved_head():
+    on = _on(WF)
+    assert re.search(r'inputs:\n\s+head_sha:\n(?:\s+.+\n)*?\s+required: true', on), 'head_sha must be a required dispatch input'
+    assert 'ZB_HEAD_SHA: ${{ inputs.head_sha }}' in WF
+    for job in ('\n  full-part:\n', '\n  full:\n'):
+        body = WF.split(job)[1].split('\n  full:\n')[0]
+        first = body.split('    steps:\n')[1].split('\n      - ')[0]
+        assert 'Exact-head guard' in first, 'the guard must be the FIRST step of every full job'
+        assert '[ "$GITHUB_SHA" = "$ZB_HEAD_SHA" ]' in first and '^[0-9a-f]{40}$' in first
+    assert '--expected-sha "$ZB_HEAD_SHA"' in WF.split('\n  full:\n')[1]   # and the merge re-checks it
+
+
+def test_a_new_commit_invalidates_the_full_result():
+    """A new head has no "verify full" until Codex dispatches again: no trigger can create one implicitly, and a dispatch
+    for the old SHA refuses to run on the moved branch (the guard compares the checked-out commit with head_sha)."""
+    assert 'workflow_dispatch' in _on(WF) and all('workflow_dispatch' not in _on(w) for w in (WQ, WP))
+    old, new = 'a' * 40, 'b' * 40
+    assert C.head_problem(old, new) and 'stale' in C.head_problem(old, new)
+    assert C.head_problem(new, new) is None
+
+
+def test_guard_command(monkeypatch):
+    monkeypatch.setenv('GITHUB_SHA', A)
+    assert C.main(['guard', '--expected', A]) == 0
+    assert C.main(['guard', '--expected', B]) == 1
+    for bad in ('', 'abc', A[:12], A.upper(), A + 'f'):
+        assert C.main(['guard', '--expected', bad]) == 1, bad
+
+
+def test_merge_refuses_a_head_other_than_the_approved_one(monkeypatch, tmp_path):
+    monkeypatch.setattr(V, 'git_info', lambda: dict(commit=A))
+    monkeypatch.setattr(V, 'dependency_versions', lambda: {})
+    monkeypatch.setattr(V, 'installer_mode', lambda rep, mode, t: rep.step(f'installer {mode}', True, skip=True))
+    parts = tmp_path / 'parts'; parts.mkdir()
+    for part in C.PARTS: _slice(parts, part)
+    assert C.main(['merge', '--parts', str(parts), '--out', str(tmp_path / 'ok'), '--expected-sha', A]) == 0
+    assert C.main(['merge', '--parts', str(parts), '--out', str(tmp_path / 'no'), '--expected-sha', B]) == 1
+    s = json.load(open(tmp_path / 'no' / 'latest_full.json'))
+    assert 'exact approved head' in s['failed_steps'] and s['approved_head_sha'] == B
 
 
 def test_required_jobs_are_never_conditionally_skipped():
-    fast = WF.split('\n  fast:\n')[1].split('\n  full-part:\n')[0]
     part = WF.split('\n  full-part:\n')[1].split('\n  full:\n')[0]
     full = WF.split('\n  full:\n')[1]
+    fast = WQ.split('\n  fast:\n')[1]
     assert '\n    if:' not in fast and '\n    if:' not in part                 # no job-level condition at all
-    assert re.search(r'\n    if: always\(\)\n', full) and 'needs: full-part' in full   # a failed/cancelled slice fails it
-    code = '\n'.join(l for l in WF.splitlines() if not l.lstrip().startswith('#'))
-    assert 'reuse' not in code and 'verify_ci.py reused' not in code and 'verify_ci.py plan' not in code
+    assert re.search(r'\n    if: always\(\)\n', full) and 'needs: full-part' in full   # a failed/cancelled slice FAILS it
+    assert full.count('\n    if:') == 1
+    for wf in (WF, WQ):
+        code = '\n'.join(l for l in wf.splitlines() if not l.lstrip().startswith('#'))
+        assert 'reuse' not in code and 'verify_ci.py reused' not in code and 'verify_ci.py plan' not in code
     assert 'python verify.py fast --out verify_out' in fast and 'python verify_ci.py merge --parts parts --out verify_out' in full
     assert 'part: [tests, replay2, replay1-ui]' in part and set(C.PARTS) == {'tests', 'replay2', 'replay1-ui'} and 'fail-fast: false' in part
-    assert 'permissions:\n  contents: read\n\n' in WF
+    assert 'permissions:\n  contents: read\n\n' in WF and 'permissions:\n  contents: read\n\n' in WQ
 
 
 def test_push_workflow_permissions_and_wiring():
@@ -256,5 +318,49 @@ def test_nothing_executed_reads_docs():
             scanned.add(os.path.relpath(p, ROOT).replace(os.sep, '/'))
             txt = open(p, encoding='utf-8', errors='ignore').read()
             if re.search(r"""['"/\\]docs['"/\\]""", txt): hits.append(os.path.relpath(p, ROOT))
-    assert '.github/workflows/verify.yml' in scanned and '.github/workflows/verify-push.yml' in scanned
+    assert {'.github/workflows/verify.yml', '.github/workflows/verify-push.yml', '.github/workflows/verify-fast.yml'} <= scanned
     assert hits == []
+
+
+# ---------------------------------------------------------------- round 2: deterministic dataset bytes on every checkout
+def _manifest():
+    return json.load(open(os.path.join(ROOT, 'DATA_MANIFEST.json'), encoding='utf-8'))['files']
+
+
+def _git(*a, cwd=ROOT):
+    return subprocess.run(['git', '-C', cwd] + list(a), capture_output=True, text=True)
+
+
+def test_every_manifest_file_is_checked_out_with_lf():
+    """Codex round 2 P1: Git for Windows (core.autocrlf=true) converted the 64 hashed CSVs to CRLF. .gitattributes pins
+    eol=lf for every manifest path and for DATA_MANIFEST.json itself."""
+    paths = list(_manifest()) + ['DATA_MANIFEST.json']
+    assert len(paths) == 65
+    if _git('rev-parse', '--git-dir').returncode != 0: pytest.skip('not a git checkout')
+    out = _git('check-attr', 'eol', '--', *paths).stdout.splitlines()
+    eol = {l.split(': ')[0]: l.rsplit(': ', 1)[1] for l in out}
+    assert {p: eol.get(p) for p in paths} == {p: 'lf' for p in paths}
+    ga = open(os.path.join(ROOT, '.gitattributes'), encoding='utf-8').read()
+    assert '*.bat' not in ga                                               # the CRLF launchers are left alone
+
+
+@pytest.mark.slow
+def test_a_fresh_autocrlf_clone_passes_the_manifest_check(tmp_path):
+    """A brand-new clone with core.autocrlf=true (Git for Windows' default) must reproduce the hashed bytes exactly."""
+    if _git('rev-parse', '--git-dir').returncode != 0: pytest.skip('not a git checkout')
+    if _git('cat-file', '-e', 'HEAD:.gitattributes').returncode != 0: pytest.skip('.gitattributes not committed in this checkout')
+    dst = tmp_path / 'clone'
+    r = subprocess.run(['git', '-c', 'core.autocrlf=true', 'clone', '-q', '--no-hardlinks', ROOT, str(dst)], capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr
+    assert _git('config', 'core.autocrlf', cwd=str(dst)).stdout.strip() in ('', 'true')
+    bad = []
+    for rel, meta in _manifest().items():
+        b = open(dst / rel, 'rb').read()
+        if b'\r\n' in b or hashlib.sha256(b).hexdigest() != meta['sha256']: bad.append(rel)
+    assert bad == [], f'{len(bad)} manifest files differ in a fresh autocrlf=true clone, e.g. {bad[:3]}'
+    rep = V.Report('full', str(tmp_path / 'rep'))
+    old = V.ROOT
+    try:
+        V.ROOT = str(dst); assert V.manifest_check(rep)
+    finally:
+        V.ROOT = old

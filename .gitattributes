@@ -1,0 +1,7 @@
+# T04d round 2: byte-exact datasets. DATA_MANIFEST.json pins the SHA-256 of these files' repository (LF) bytes, so every
+# checkout - including Git for Windows with core.autocrlf=true - must write them with LF, never CRLF.
+# The .bat launchers are deliberately not listed here (they are committed with CRLF and stay as they are).
+data/**/*.csv text eol=lf
+data1h/**/*.csv text eol=lf
+data_long/**/*.csv text eol=lf
+DATA_MANIFEST.json text eol=lf
