@@ -1,6 +1,6 @@
 # ZackBot owner overview
 
-*Last refreshed: 2026-10-06 10:48 Cairo (Africa/Cairo) by Codex, on branch `t04d-faster-ci`. This is the plain-language owner view. `ROADMAP.md` and `docs/reviews/` hold the detailed scope and evidence.*
+*Last refreshed: 2026-10-06 11:07 Cairo (Africa/Cairo) by Codex, on branch `t04d-faster-ci`. This is the plain-language owner view. `ROADMAP.md` and `docs/reviews/` hold the detailed scope and evidence.*
 
 ## Where we are now
 
@@ -11,8 +11,8 @@
 | Installed application | **T03b installed and rollback-proven.** SHA-256 `203B155474942709B6AD40C3517BA32D058721664D245191C900068CBC4A60A6`; the drill restored the same build and hash exactly. |
 | Latest accepted commit | `master` `566ed56` (T05 accepted and merged) |
 | Current ticket | **T04d: faster, fail-closed CI review loop** |
-| Stage | **Round-four fix requested: the full run passed, but GitHub did not count the dispatch-only `verify full` in PR protection, so the protected merge remains blocked.** |
-| What Claude is doing | Replace the final-full trigger with a deliberate PR-associated trigger that satisfies the live required-check rollup without restoring duplicate or rejected full runs. T03c PR #9 remains queued. |
+| Stage | **Round-four fixes requested: GitHub did not count the dispatch-only full result in PR protection, and CodeQL found one inefficient test regex.** |
+| What Claude is doing | Replace the final-full trigger with a deliberate PR-associated trigger and replace the CodeQL-flagged test regex with deterministic parsing. T03c PR #9 remains queued. |
 | What Codex is reviewing | T04d's final GitHub protection integration. No executable or runtime action is involved. |
 | Your action | **None.** |
 
@@ -112,12 +112,13 @@ Automated test-suite results use a fake exchange. The final T03a gate used the r
 | Fixed; final gate pending (T04d) | High | Every rejected PR iteration ran the full suite | Full verification is now explicit and exact-head only; ordinary PR updates run fast only. |
 | Fixed; final gate pending (T04d) | Medium | Feature heads started duplicate push and PR fast runs | Feature branches now have one PR fast producer; push-fast is master-only. |
 | Fixed; final gate pending (T04d) | High | Fresh Windows checkouts changed hashed dataset bytes to CRLF | Manifest datasets and manifest JSON are pinned to LF and tested in a fresh autocrlf-enabled clone. |
+| Open (T04d) | High gate / low runtime exposure | CodeQL flags exponential backtracking in `tests/test_ci.py` | The input is a small repository-owned workflow file, but the newly introduced regex leaves the security gate red; replace it with deterministic parsing. |
 
 ## Open risks
 
 - **CI security follow-up (low):** add Dependabot for the immutable action pins plus Git-history secret and dependency scanning.
 - **Repository visibility:** GitHub currently reports the repository as **public**. The owner previously accepted that testnet-development risk; it must return to private before any mainnet credential or live-release work.
-- T04d has no remaining code finding. It changes CI/review infrastructure only and requires no installer, bot stop, or testnet canary.
+- T04d has no trading/runtime finding. Its remaining issues are CI protection integration and one test-only CodeQL alert; it requires no installer, bot stop, or testnet canary.
 
 ## Code clean-up policy (your request, 2026-10-05)
 
@@ -139,7 +140,7 @@ Every ticket now ends with a **clean-up pass on the files it touched**: remove d
 
 | Order | Ticket | Why it comes here |
 |---|---|---|
-| Current | **T04d — faster CI** | Review-clean; final stable-head fast/full evidence and protected merge remain |
+| Current | **T04d — faster CI** | Round-four CI-trigger and CodeQL fixes pending before the final full gate |
 | Next execution | **T03c — automatic leverage handling** | Queued PR #9; review starts after T04d merges |
 | Resilience | **T05b — exchange-outage handling** | Backoff/circuit state, incident coalescing and reconciliation after transient Binance failures |
 | Next measurement | **T05a — causal trade audit** | Peak profit/MFE, give-back, hold/close reasons and causal earlier-exit comparisons |

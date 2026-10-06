@@ -4,7 +4,7 @@
 
 ## Decision: fixes requested
 
-The three round-two implementation blockers are fixed, all focused tests pass, and the explicitly dispatched parallel full run passed. One P1 integration blocker remains: in this repository, GitHub does not accept the `workflow_dispatch` run as the pull request's required `verify full` result. The protected merge remains blocked and correctly refused without an override.
+The three round-two implementation blockers are fixed, all focused tests pass, and the explicitly dispatched parallel full run passed. One P1 integration blocker remains: in this repository, GitHub does not accept the `workflow_dispatch` run as the pull request's required `verify full` result. The protected merge remains blocked and correctly refused without an override. CodeQL also found one high-severity-classified inefficient regular expression in the new workflow test; its actual scope is test-only, but the red security check must be fixed.
 
 ## Finding
 
@@ -29,6 +29,12 @@ This makes the dispatch-only design operationally unusable even though the verif
 
 A label-driven `pull_request: types: [labeled]` workflow can satisfy this if it runs the full jobs only for the deliberate `full-ready` transition without exposing a skipped required identity; another design is acceptable if a live PR proof shows GitHub includes its successful `verify full` in `statusCheckRollup`.
 
+### P2 — CodeQL flags exponential backtracking in the new workflow test
+
+GitHub Advanced Security alert 10 (`py/redos`) identifies the multiline expression in `tests/test_ci.py:157` that searches the workflow input block. CodeQL classifies it as high severity because repeated whitespace/line groups can backtrack exponentially on a crafted long string. The current input is a small repository-owned workflow file, so this is not an exposed trading/runtime vulnerability, but it is newly introduced code and leaves the security gate red.
+
+**Required fix:** replace the multiline regular expression with deterministic line/block parsing or bounded literal assertions. Add or retain a test proving `head_sha` is present and `required: true` without a backtracking expression. The next PR head must have a clean CodeQL summary.
+
 ## Evidence
 
 - Windows focused review on implementation head `b6d4e81`: **51/51 passed** in 14.88 seconds, including a fresh `core.autocrlf=true` clone and byte-exact manifest proof.
@@ -37,11 +43,13 @@ A label-driven `pull_request: types: [labeled]` workflow can satisfy this if it 
 - Commit check-runs API: both required names successful from GitHub Actions.
 - PR rollup: only `verify fast`; merge status `BLOCKED`.
 - Protected rebase merge: refused by base-branch policy. No `--admin`, protection change, installation, bot stop, exchange call, order, credential, or runtime action occurred.
+- CodeQL language jobs succeeded, but the security summary failed with one new `py/redos` alert at `tests/test_ci.py:157`.
 
 ## Acceptance conditions
 
 1. Preserve the fixed one-fast-run, deterministic line-ending, canonical-plan and strict-merge behavior.
 2. Replace the dispatch-only final trigger with a deliberate PR-associated trigger that appears as `verify full` in PR #7's live status rollup.
-3. Run focused tests and one PR fast check on the new exact head.
-4. Codex triggers exactly one final full; all slices and the aggregator pass on the exact reviewed head.
-5. GitHub reports both required checks successful in the PR rollup, `mergeStateStatus` is no longer blocked, and a normal protected linear merge succeeds without override.
+3. Replace the CodeQL-flagged multiline regex with deterministic parsing; the security check must be clean.
+4. Run focused tests and one PR fast check on the new exact head.
+5. Codex triggers exactly one final full; all slices and the aggregator pass on the exact reviewed head.
+6. GitHub reports both required checks successful in the PR rollup, `mergeStateStatus` is no longer blocked, and a normal protected linear merge succeeds without override.
