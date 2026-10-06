@@ -158,3 +158,26 @@ Keep a harmless Windows integration test for the supported modes and ordinary un
 ### Round 2 verdict
 
 **Changes required.** Do not run the installer or drill. The file-evidence issue is closed; the new launcher parser and failing Windows-only test need one focused correction. No runtime operation was performed during this review.
+
+## Round 3 fix review
+
+*Reviewed 2026-10-06 06:10 Cairo. Fix head `86c24368f3a48756a15a5a587891a94bfd9bbdfb`.*
+
+**No remaining code finding. The code/static stage is approved, subject to the final GitHub full check and the separately owner-approved runtime gate.**
+
+The parser now anchors on the first token that is actually `build_app.bat`, so later argument text cannot re-anchor it. `build_app.bat` accepts only no argument (install), `preflight`, or `buildcheck`; it refuses `drill` and every unknown/extra token. The destructive drill has only the fixed `rollback_drill.bat` entry point, and `verify.py` uses that wrapper. The test contract now correctly treats hostile syntax already parsed by an outer CMD shell as outside the batch file's security boundary.
+
+### Round 3 evidence
+
+- Exact remote implementation head verified and reviewed: `86c24368f3a48756a15a5a587891a94bfd9bbdfb`.
+- Windows PowerShell 5.1 focused set (`tests/test_installer.py` + `tests/test_verify.py`): **80 passed**.
+- The former Windows launcher failure is gone; ordinary unknown/extra tokens are refused before staging.
+- All three re-anchoring cases are refused, including the case that previously selected `drill`.
+- Real non-installing `build_app.bat buildcheck`: **BUILDCHECK_OK**, build `20261006-060630`, eight successful structured steps, zero failed steps, no stop attempt.
+- Installed ZackBot remained byte-identical to accepted T03a: SHA-256 `72ABCA7CC25FC7859C93A62F4518AE3659A2C8B9B524F3ACA203798E769F430D`.
+- GitHub fast checks passed; the required full check was still running when this review record was written.
+- No normal installer, rollback drill, ZackBot stop/restart, trading action or credential operation was performed.
+
+### Remaining gate
+
+After the final GitHub full check passes, T03b requires a new explicit owner approval for the normal installer and rollback drill. The earlier T03a runtime authorization does not apply. Until then, do not install, drill, stop ZackBot, merge, or mark the ticket accepted.
