@@ -757,8 +757,14 @@ def test_launcher_mode_is_picked_from_the_raw_command_line():
         r'C:\WINDOWS\system32\cmd.exe /c ""C:\Dev\ZackBot2\build_app.bat" "': 'install',          # double-click
         r'cmd /d /c C:\Dev\ZackBot2\build_app.bat preflight': 'preflight',                           # verify.py
         r'cmd /d /c "C:\Program Files\Zack Bot\build_app.bat" buildcheck': 'buildcheck',
-        r'cmd /d /c C:\Dev\ZackBot2\build_app.bat "DRILL"': 'drill',
+        r'cmd /d /c C:\Dev\ZackBot2\build_app.bat "BUILDCHECK"': 'buildcheck',
+        r'cmd /d /c C:\Dev\ZackBot2\build_app.bat drill': None,                        # drill = rollback_drill.bat only
+        r'cmd /d /c C:\build_app.bat\build_app.bat preflight': 'preflight',
+        r'cmd /c C:\Dev\ZackBot2\build_app.bat typo build_app.bat': None,              # Codex round 3: a later
+        r'cmd /c C:\Dev\ZackBot2\build_app.bat x build_app.bat drill': None,           # build_app.bat never
+        r'cmd /c C:\Dev\ZackBot2\build_app.bat typo C:\x\build_app.bat preflight': None,   # re-anchors the parse
         r'cmd /d /c C:\build_app.bat-old\build_app.bat': 'install',
+        r'cmd /d /c C:\build_app.bat-old\setup_git.bat buildcheck': None,             # name only CONTAINS it
         r'cmd /d /c C:\Dev\ZackBot2\build_app.bat x"&echo MARK_B': None,                            # Codex probe
         r'cmd /d /c C:\Dev\ZackBot2\build_app.bat x&echo MARK_A': None,
         r'cmd /d /c C:\Dev\ZackBot2\build_app.bat preflight extra': None,
@@ -811,10 +817,15 @@ def test_failed_first_install_reports_an_exe_it_could_not_remove():
 
 @needs_installer
 @pytest.mark.skipif(os.name != 'nt', reason='runs the real launcher through cmd.exe (Windows only)')
-def test_launcher_refuses_embedded_quotes_and_metacharacters():
-    """Codex probe: x"&echo MARK_B must not run the echo and must not install: exit 2, marker absent."""
-    for arg in ('x"&echo MARK_B', 'x&echo MARK_A', '"preflight"&echo MARK_C'):
-        r = subprocess.run(['cmd', '/d', '/c', os.path.join(ROOT, 'build_app.bat'), arg], capture_output=True, text=True,
+def test_launcher_refuses_unknown_and_extra_tokens_before_staging():
+    """The launcher contract (Codex round 3): supported invocations pick exactly one fixed mode; ordinary unknown or extra
+    tokens are refused (exit 2) before anything is staged. Only harmless tokens are used here - none of them can map to
+    install or the drill even if the parser were broken. Hostile raw CMD syntax in the CALLER's command line (x"&...) is
+    parsed by the calling shell before build_app.bat runs, so no batch file can neutralise it: out of scope."""
+    root = os.path.join(os.environ['LOCALAPPDATA'], 'ZackBot')
+    before = sorted(os.listdir(root)) if os.path.isdir(root) else None
+    for args in (['zzz'], ['preflight', 'zzz'], ['"buildcheck"', 'zzz']):
+        r = subprocess.run(['cmd', '/d', '/c', os.path.join(ROOT, 'build_app.bat')] + args, capture_output=True, text=True,
                            timeout=120, env=_env(ZB_NOPAUSE='1'), stdin=subprocess.DEVNULL)
-        shown = r.stdout.replace(arg, '').replace(arg.replace('"', ''), '')
-        assert r.returncode == 2 and 'MARK_' not in shown.split('(got')[0] and 'MARK_' not in r.stderr, (arg, r.returncode, r.stdout)
+        assert r.returncode == 2 and 'Nothing was changed' in r.stdout, (args, r.returncode, r.stdout[-500:])
+    assert (sorted(os.listdir(root)) if os.path.isdir(root) else None) == before, 'a refused launch must not stage or log'
