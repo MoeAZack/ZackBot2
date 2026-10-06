@@ -1,6 +1,7 @@
 """T05: fill telemetry (observe only). Every fill the bot sends records expected vs actual price, slippage in bps
 (+ = worse for us), requested vs filled qty, wait, maker tries and fallback - without ever changing what is traded."""
 import json, os, sys
+import pytest
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from test_safety import mk_engine, SL, SG, opened                       # noqa: E402
@@ -17,8 +18,14 @@ def fill_at(e, px):
 
 
 def recs(e):
+    assert e._fill_flush(5), 'the telemetry writer did not catch up'
     p = e.F['fills']
     return [json.loads(l) for l in open(p)] if os.path.exists(p) else []
+
+
+def summ(e):
+    e._fill_flush(5)
+    return e.fill_summary()
 
 
 def test_market_entry_records_adverse_slippage_for_a_long():
@@ -28,7 +35,7 @@ def test_market_entry_records_adverse_slippage_for_a_long():
     r = [x for x in recs(e) if x['kind'] == 'entry_market'][-1]
     assert (r['symbol'], r['side'], r['buy'], r['expected'], r['actual']) == ('BTCUSDT', 'LONG', True, 100.0, 100.5)
     assert r['slip_bps'] == 50.0 and r['outcome'] == 'filled' and r['qty_fill'] == r['qty_req'] > 0 and r['wait_s'] >= 0
-    s = e.fill_summary()['by_kind']['entry_market']
+    s = summ(e)['by_kind']['entry_market']
     assert s['n'] == 1 and s['slip_avg_bps'] == 50.0 and s['slip_worst_bps'] == 50.0
 
 
@@ -77,7 +84,7 @@ def test_maker_partial_then_market_fallback_records_both_parts():
     assert mk['outcome'] == 'partial' and mk['fallback'] is True and mk['maker_tries'] >= 1
     assert fb['fallback'] is True and fb['outcome'] == 'filled' and fb['qty_fill'] > 0
     assert abs(mk['qty_fill'] + fb['qty_fill'] - lot_of(e)['qty']) < 0.002
-    s = e.fill_summary()['by_kind']
+    s = summ(e)['by_kind']
     assert s['entry_maker']['partial'] == 1 and s['entry_fallback']['fallback'] == 1
 
 
@@ -89,7 +96,7 @@ def test_maker_unfilled_with_fallback_records_the_miss_and_the_market_order():
     fb = [x for x in recs(e) if x['kind'] == 'entry_fallback'][-1]
     assert mk['outcome'] == 'unfilled' and mk['actual'] is None and mk['fallback'] is True
     assert fb['signal_px'] == 100.0 and fb['maker_tries'] == mk['maker_tries'] and fb['fallback'] is True
-    assert e.fill_summary()['by_kind']['entry_maker']['unfilled'] == 1
+    assert summ(e)['by_kind']['entry_maker']['unfilled'] == 1
 
 
 def test_maker_unfilled_without_fallback_records_only_the_miss():
@@ -110,9 +117,9 @@ def test_telemetry_failure_never_blocks_a_trade(tmp_path):
 
 def test_summary_survives_a_restart():
     e, d = mk_engine()
-    fill_at(e, 100.2); opened(e)
+    fill_at(e, 100.2); opened(e); assert e._fill_flush(5)
     e2, _ = mk_engine(d)
-    s = e2.fill_summary()
+    s = summ(e2)
     assert s['by_kind']['entry_market']['n'] == 1 and s['recent'][-1]['actual'] == 100.2
 
 
@@ -127,8 +134,8 @@ def test_status_exposes_the_fill_summary():
     src = open(os.path.join(ROOT, 'app.py'), encoding='utf-8').read()
     assert "fills=e.fill_summary() if hasattr(e, 'fill_summary') else None" in src
     e, _ = mk_engine(); opened(e)
-    s = e.fill_summary()
-    assert set(s) == {'by_kind', 'recent'} and json.dumps(s)          # JSON-serialisable for /api/status
+    s = summ(e)
+    assert set(s) == {'by_kind', 'recent', 'telemetry'} and json.dumps(s)          # JSON-serialisable for /api/status
 
 
 def test_telemetry_does_not_change_what_is_traded():
@@ -154,3 +161,141 @@ def test_blocked_maker_fallback_is_recorded_as_blocked_not_as_fallback():
 def test_zero_slippage_is_not_negative_zero():
     e, _ = mk_engine(); opened(e, side='SHORT')
     assert json.dumps(recs(e)[-1]['slip_bps']) == '0.0'
+
+
+# ---------------------------------------------------------------- Codex T05 review fixes
+import threading, time                                                    # noqa: E402
+
+
+def block_writer(e):
+    """The writer's disk operation hangs until the returned event is set (slow disk, antivirus, file lock)."""
+    gate, real = threading.Event(), e._fill_write
+    e._fill_write = lambda rec: (gate.wait(8), real(rec))[1]
+    return gate
+
+
+def test_a_hung_writer_never_delays_lot_persistence_stops_adds_or_closes():
+    e, _ = mk_engine()
+    gate = block_writer(e)
+    t = time.time()
+    k = opened(e)                                                          # market entry -> fill -> lot -> stop
+    lot = e.state['lots'][k]
+    assert lot['stop_id'] in e.trade.stops and k in json.load(open(e.F['state']))['lots']
+    assert e._add_qty(lot, lot['qty'], 100.0, 'pyramid_add')               # add -> fill -> applied
+    e._replace_stop(lot); assert lot['stop_id'] in e.trade.stops
+    e.close_lot(k, 'signal', mark=100.0)                                   # close -> fill -> applied
+    assert k not in e.state['lots'] and time.time() - t < 3, 'order paths must not wait for the telemetry disk'
+    assert e._fill_q.unfinished_tasks >= 2                                 # the records are queued, not lost
+    gate.set()
+    kinds = [r['kind'] for r in recs(e)]
+    assert kinds == ['entry_market', 'pyramid_add', 'exit']
+
+
+def test_a_full_queue_drops_records_without_waiting_and_counts_them(monkeypatch):
+    monkeypatch.setattr(E, 'FILL_QUEUE_MAX', 2)
+    e, _ = mk_engine()
+    gate = block_writer(e)
+    t = time.time()
+    for i in range(6): e._fill('exit', 'BTCUSDT', 'LONG', False, 100.0, 100.0, 1, 1)
+    assert time.time() - t < 1
+    c = e.fill_summary()['telemetry']
+    assert c['dropped'] >= 3 and c['accepted'] + c['dropped'] == 6 and c['persisted'] == 0
+    gate.set(); e._fill_flush(5)
+    c = summ(e)['telemetry']
+    assert c['persisted'] == c['accepted'] and summ(e)['by_kind']['exit']['n'] == c['persisted']
+
+
+def test_failed_writes_leave_no_phantom_counts_and_are_visible():
+    e, d = mk_engine()
+    os.makedirs(e.F['fills'])                                              # every write fails
+    opened(e)
+    s = summ(e)
+    assert s['by_kind'] == {} and s['recent'] == []                       # nothing claimed that is not on disk
+    assert s['telemetry']['write_errors'] >= 1 and s['telemetry']['persisted'] == 0 and s['telemetry']['accepted'] >= 1
+    e2, _ = mk_engine(d)
+    assert summ(e2)['by_kind'] == {}                                       # the restart agrees
+
+
+def test_the_summary_window_is_the_same_before_and_after_a_restart_across_rotation(monkeypatch):
+    monkeypatch.setattr(E, 'FILL_ROTATE_BYTES', 600)
+    monkeypatch.setattr(E, 'FILL_WINDOW', 6)
+    e, d = mk_engine()
+    for i in range(12): e._fill('exit', 'BTCUSDT', 'LONG', False, 100.0, 100.0 - i * 0.01, 1, 1)
+    before = summ(e)
+    assert os.path.exists(e.F['fills'] + '.1'), 'rotation happened'
+    e2, _ = mk_engine(d)
+    after = summ(e2)
+    assert before['by_kind'] == after['by_kind'] and before['recent'] == after['recent']
+    assert after['by_kind']['exit']['n'] == 6 and after['telemetry']['in_window'] == 6
+
+
+@pytest.mark.parametrize('qty', [None, '0', ''])
+def test_missing_executed_quantity_is_unknown_not_a_full_fill(qty):
+    e, _ = mk_engine()
+    real = e.trade.open
+    e.trade.open = lambda s, ps, q: {k: v for k, v in dict(real(s, ps, q), executedQty=qty).items() if v is not None}
+    k = opened(e)
+    r = [x for x in recs(e) if x['kind'] == 'entry_market'][-1]
+    assert r['qty_fill'] is None and r['outcome'] == 'unknown' and r['qty_req'] > 0
+    assert e.state['lots'][k]['qty'] == r['qty_req'], 'trading unchanged: the lot still uses the requested quantity'
+    assert summ(e)['by_kind']['entry_market']['unknown'] == 1
+
+
+def _partial_maker(e, bk):
+    e.open_lot(SL, 'BTCUSDT', 'LONG', SG, None, e.equity())
+    bk.fill(0.4); age(e); e.manage(e.trade.marks())
+    for _ in range(3): age(e, total=True); e.manage(e.trade.marks())
+    return [x for x in recs(e) if x['kind'] == 'entry_maker'][-1], [x for x in recs(e) if x['kind'] == 'entry_fallback']
+
+
+def test_partial_maker_with_a_blocked_fallback_does_not_claim_it_ran():
+    e, bk = maker_engine()
+    real = e.entry_block
+    e.entry_block = lambda *a, **k: 'daily loss halt' if k.get('manual') else real(*a, **k)
+    mk, fb = _partial_maker(e, bk)
+    assert mk['outcome'] == 'partial' and 'fallback' not in mk and mk['fallback_blocked'] == 'daily loss halt' and fb == []
+
+
+def test_partial_maker_with_a_failed_fallback_order_records_the_failure():
+    e, bk = maker_engine()
+    e.trade.fail.add('open')                                               # the market remainder order is refused
+    mk, fb = _partial_maker(e, bk)
+    assert 'fallback' not in mk and 'injected open failure' in mk['fallback_failed'] and fb == []
+    assert lot_of(e)['stop_id'] in e.trade.stops                           # the maker part stays protected
+
+
+def test_partial_maker_without_a_lot_records_the_fallback_as_skipped():
+    e, bk = maker_engine()
+    e._create_lot = lambda *a, **k: False
+    mk, fb = _partial_maker(e, bk)
+    assert 'fallback' not in mk and mk['fallback_skipped'] == 'maker lot not created' and fb == []
+
+
+def test_unfilled_maker_whose_market_fallback_fails_records_the_failure():
+    e, bk = maker_engine(); e.S['SLEEVES'] = [dict(SL, enabled=True)]
+    e.trade.fail.add('open')
+    e.open_lot(SL, 'BTCUSDT', 'LONG', SG, None, e.equity())
+    for _ in range(5): age(e, total=True); e.manage(e.trade.marks())
+    mk = [x for x in recs(e) if x['kind'] == 'entry_maker'][-1]
+    assert mk['outcome'] == 'unfilled' and 'fallback' not in mk and mk['fallback_failed']
+
+
+def test_order_paths_do_no_telemetry_file_io():
+    """Static guard: the record is built and queued in the order path; only the writer touches the disk."""
+    import inspect
+    for fn in (E.Engine._fill, E.Engine._fill_rec, E.Engine._fill_emit):
+        src = inspect.getsource(fn)
+        assert 'open(' not in src and 'os.' not in src and '.put(' not in src.replace('.put_nowait(', ''), fn.__name__
+
+
+def test_a_replaced_engine_hands_over_the_telemetry_file_cleanly():
+    e, d = mk_engine()
+    opened(e)
+    assert e._fill_stop(5)                                                 # queued records written, writer ended
+    e._fill_thread.join(2)
+    assert not e._fill_thread.is_alive()
+    e2, _ = mk_engine(d)
+    assert summ(e2)['by_kind']['entry_market']['n'] == 1
+    src = open(os.path.join(ROOT, 'app.py'), encoding='utf-8').read()
+    i = src.index('def start_engine(self):')
+    assert "old._fill_stop(2.0)" in src[i:i + 600] and src.index('old.lock.acquire()', i) < src.index('old._fill_stop(2.0)', i)
