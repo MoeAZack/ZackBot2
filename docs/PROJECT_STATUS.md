@@ -1,6 +1,6 @@
 # ZackBot owner overview
 
-*Last refreshed: 2026-10-06 03:39 Cairo (Africa/Cairo) by Codex, on branch `t03b-installer-powershell`. This is the plain-language owner view. `ROADMAP.md` and `docs/reviews/` hold the detailed scope and evidence.*
+*Last refreshed: 2026-10-06 04:47 Cairo (Africa/Cairo) by Codex, on branch `t03b-installer-powershell`. This is the plain-language owner view. `ROADMAP.md` and `docs/reviews/` hold the detailed scope and evidence.*
 
 ## Where we are now
 
@@ -11,9 +11,9 @@
 | Installed application | **T03a installed and verified.** SHA-256 `72ABCA7CC25FC7859C93A62F4518AE3659A2C8B9B524F3ACA203798E769F430D`; previous verified executable retained for rollback. |
 | Latest accepted commit | `master` `f9778ca` (T03a accepted and merged) |
 | Current ticket | **T03b: move installer logic from CMD to PowerShell** |
-| Stage | **Ready for Claude implementation on the new T03b branch.** Behaviour must remain fail-closed and unchanged. |
-| What Claude is doing | Waiting for the READY FOR CLAUDE handoff, then implementing T03b without running an installer or rollback drill. |
-| What Codex is reviewing | Monitoring the GitHub handoff and waiting for T03b's exact review-ready commit. |
+| Stage | **First implementation review complete; changes required before any installer or rollback drill.** |
+| What Claude is doing | Fixing two post-stop recovery gaps, structured-record accuracy, and launcher quoting from Codex's review of `9ee9d28`. |
+| What Codex is reviewing | Waiting for `FIXED FOR CODEX`, then rerunning the Windows PowerShell 5.1 flow and non-installing buildcheck. |
 | Your action | **None.** |
 
 ## Latest test results
@@ -29,6 +29,8 @@
 | T03a, GitHub PR #4 | Reviewed head `fc29214` and review head `35cd02b`: **verify fast PASS; verify full PASS**, including all tests, both strict replays and UI harness. |
 | T03a installer gate | Installer tests **17 passed**; normal install succeeded once with no warnings; source mirror and shortcuts verified. |
 | T03a testnet canary | SOL 0.25% risk / about 18.90 USDT planned notional: safely skipped because current leverage 20× exceeded cap 10×; no order or SOL position; refusal telemetry correct. |
+| T03b, GitHub PR #5 | Head `9ee9d28`: **verify fast PASS; verify full PASS**, zero annotations. |
+| T03b, Windows review | PowerShell 5.1 installer tests **53 passed**; bare pytest **269 passed**; non-installing buildcheck **PASS** with eight successful structured steps. Installed executable hash unchanged. |
 
 Automated test-suite results use a fake exchange. The final T03a gate used the real Binance Futures testnet account; it correctly sent no entry order because leverage was above the cap.
 
@@ -51,6 +53,13 @@ Automated test-suite results use a fake exchange. The final T03a gate used the r
 - Per-coin refusal, proceeded and skipped counts appear in the panel.
 - Build `20261006-030952` is running. The bounded SOL canary exercised the real refusal path and correctly placed no order at 20× current leverage versus the 10× cap. Existing positions and stops stayed healthy.
 
+### T03b — installer PowerShell rewrite: first review complete
+
+- The 281-line CMD installer was replaced by a small launcher plus structured PowerShell functions and JSON evidence.
+- Windows PowerShell 5.1 tests, the complete Python suite, GitHub CI and a real non-installing executable build all passed.
+- Codex found four issues before runtime acceptance: an invalid drill can leave the new build running; a failed stop is not followed by old-build verification/recovery; two JSON fields overstate unverified states; and the batch mode needs quoting.
+- **No installer, rollback drill, ZackBot stop or trading action was run.** Claude is fixing these findings next.
+
 ## Bugs
 
 | Status | Priority | Item | Notes |
@@ -64,12 +73,16 @@ Automated test-suite results use a fake exchange. The final T03a gate used the r
 | Fixed and accepted (T04) | High | GitHub UI baseline had mobile overflow and missing clean-checkout history | Responsive wrap and deterministic replay seed handoff; GitHub and Windows UI 171/171. |
 | Fixed and accepted (T04) | Medium | Lightweight secret check missed nested private filenames and JSON contents | Current-tree scan strengthened with planted tests; Git-history scan remains T04b. |
 | Fixed (T04 docs) | Low | T04 review document named commit ids from before the branch was rebuilt | Corrected on `t04-ci`. |
+| Open (T03b review) | High | Invalid rollback drill leaves the deliberately untrusted new build installed and running | Confirmed with the real flow under Windows PowerShell 5.1; must restore and verify the old build, then fail the drill. |
+| Open (T03b review) | High | Failed stop attempt does not verify or recover the previous runtime | The executable is unchanged, but the installer performs no HMAC check or restart after it has attempted to kill the bot. |
+| Open (T03b review) | Medium | Structured installer evidence overstates unverified recovery | `installed_after` can name a build whose ping failed; `bot_stopped` currently means stop attempted. |
+| Open (T03b review) | Low | Thin batch launcher does not quote the mode argument | Fixed values are safe, but CMD metacharacters can be interpreted before PowerShell rejects the mode. |
 
 ## Open risks
 
 - **CI security follow-up (low):** add Dependabot for the immutable action pins plus Git-history secret and dependency scanning.
 - **Repository visibility:** intentionally public during testnet collaboration. It must return to private before any mainnet credentials or live release work.
-- Installer logic is long Windows batch code: T03b.
+- T03b PowerShell rewrite is substantially cleaner, but its four first-review findings must close before any runtime drill.
 
 ## Code clean-up policy (your request, 2026-10-05)
 
