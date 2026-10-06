@@ -133,3 +133,16 @@ This does not block or alter an order, but it breaks the lifecycle guarantee int
 **Required fix:** make the closing check and queue admission one atomic operation under `self.lock` (including the `accepted`/`dropped` counter update). `close()` must not be able to mark the writer closing between the successful admission decision and `put_nowait`. Keep the put non-blocking. Add a deterministic race test that pauses an emitter immediately before queue admission, calls `close()`, then releases the emitter and proves either (a) the admitted record is persisted before close succeeds, or (b) it is rejected and counted as dropped; it must never remain accepted in a dead writer's queue.
 
 After that narrow fix, rerun `tests/test_fills.py` plus the fast check. A new full 25-minute run is unnecessary if the only code change is this lock-boundary fix and the new focused test; the already-running full result on `ba83810` can remain supporting evidence, followed by one final full run only when T05 is otherwise ready to merge.
+
+---
+
+## Round 4 code verdict — accepted, final CI pending
+
+*Reviewed exact fix head `e58f0c2cdc41cb97f9a1bfe957915598acde2bbc` on 2026-10-06 (Africa/Cairo).*
+
+No code findings remain. `FillWriter.emit()` now holds the same lock used by `close()` across the closing check,
+non-blocking queue admission and accepted/dropped counter update. The deterministic race test pauses admission inside that
+critical section and proves close cannot complete around it. The focused Windows suite passed: **46/46** in 11.04 s.
+
+T05 remains observe-only: no installer, ZackBot restart, exchange call or Binance action was performed. Final acceptance
+and protected merge are gated only on fresh GitHub `verify fast` and `verify full` checks for the final review/status head.

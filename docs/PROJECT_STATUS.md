@@ -1,6 +1,6 @@
 # ZackBot owner overview
 
-*Last refreshed: 2026-10-06 07:08 Cairo (Africa/Cairo) by Codex, on branch `t03b-installer-powershell`. This is the plain-language owner view. `ROADMAP.md` and `docs/reviews/` hold the detailed scope and evidence.*
+*Last refreshed: 2026-10-06 09:10 Cairo (Africa/Cairo) by Codex, on branch `t05-fill-telemetry`. This is the plain-language owner view. `ROADMAP.md` and `docs/reviews/` hold the detailed scope and evidence.*
 
 ## Where we are now
 
@@ -9,11 +9,11 @@
 | Environment | **Binance Futures testnet only.** Mainnet stays impossible until the roadmap and the final release audit are complete and you approve it. |
 | Is ZackBot running? | Yes, on your PC (testnet), build `20261006-064354`: engine and exchange ok, four positions, all protected, zero errors/untracked/orphans after the T03b install and rollback drill. |
 | Installed application | **T03b installed and rollback-proven.** SHA-256 `203B155474942709B6AD40C3517BA32D058721664D245191C900068CBC4A60A6`; the drill restored the same build and hash exactly. |
-| Latest accepted commit | `master` `f9778ca` (T03a accepted and merged) |
-| Current ticket | **T03b: move installer logic from CMD to PowerShell** |
-| Stage | **Accepted; acceptance/status commit checks and protected merge remain.** |
-| What Claude is doing | Holding while Codex completes the acceptance commit and merge gate. |
-| What Codex is reviewing | Final acceptance checks, protected merge, then opening T05 fill telemetry. |
+| Latest accepted commit | `master` `d68d6ef` (T03b accepted and merged) |
+| Current ticket | **T05: observe-only fill telemetry** |
+| Stage | **Code accepted at `e58f0c2`; final GitHub fast/full gate and protected merge remain.** |
+| What Claude is doing | T05 round-three race fix is complete; waiting for the final CI/merge gate. T04d CI-speed work is on PR #7. |
+| What Codex is reviewing | T05 final checks, then T04d and the approved T05a causal trade-audit plan. |
 | Your action | **None.** |
 
 ## Latest test results
@@ -36,6 +36,8 @@
 | T03b round 3 fixes, Windows | Focused installer/verification set **80 passed**; real non-installing buildcheck **PASS** with eight successful steps; accepted installed exe unchanged. GitHub fast passed; full was still running at 06:10 Cairo. |
 | T03b normal install | Build `20261006-064354`, 14/14 structured steps, no warnings; mirror 120/120 exact; both shortcuts correct; PAPER health clean with four protected lots. |
 | T03b rollback drill | Deliberately failed build `20261006-064800`; restored `20261006-064354` with the exact pre-drill hash and authenticated proof; PAPER health remained clean. |
+| T05 focused Windows review | Exact head `e58f0c2`: **46/46 passed** in 11.04 s; deterministic close-vs-admission race test passed. |
+| T05 GitHub | Final review/status head pending fresh `verify fast` and `verify full`; no runtime or exchange operation is required. |
 
 Automated test-suite results use a fake exchange. The final T03a gate used the real Binance Futures testnet account; it correctly sent no entry order because leverage was above the cap.
 
@@ -65,7 +67,14 @@ Automated test-suite results use a fake exchange. The final T03a gate used the r
 - Claude fixed both high-severity recovery paths, exact evidence fields and the launcher boundary; Codex confirmed them on Windows.
 - The owner approved one normal install and one rollback drill. Both passed once, with structured evidence and no warnings.
 - The drill restored build `20261006-064354` byte-for-byte and proved it running. All four testnet lots remained protected and health stayed clean.
-- Acceptance/status checks and the protected merge are the only remaining T03b steps.
+- Accepted and merged to protected `master` as `d68d6ef`.
+
+### T05 — fill telemetry: code accepted, final CI pending
+
+- Records requested versus executed quantity, expected versus actual price, adverse slippage, wait time, maker attempts and exact fallback state.
+- One process-wide, non-blocking writer owns the JSONL file; slow or broken telemetry cannot delay lot persistence or exchange-side protection.
+- Restart/rotation, malformed records, missing quantities, fallback truthfulness and writer lifecycle are covered by 46 focused tests.
+- Codex found and Claude fixed the final close-vs-admission race. No code findings remain; only fresh GitHub checks and protected merge remain.
 
 ## Bugs
 
@@ -85,12 +94,16 @@ Automated test-suite results use a fake exchange. The final T03a gate used the r
 | Fixed and accepted (T03b) | Medium | Installed-file evidence could be stale | Re-reads presence/hash at every verdict and verifies failed first-install deletion; confirmed on Windows. |
 | Fixed and accepted (T03b) | Medium | Raw launcher parser could select install/drill from malformed extra arguments | Anchors on the first exact launcher token and refuses the three reproduced ambiguity cases. |
 | Fixed and accepted (T03b) | Low | Launcher test claimed it could neutralize hostile outer CMD syntax | Tests the real boundary: fixed supported invocations and refusal of ordinary unknown/extra tokens. |
+| Fixed; final CI pending (T05) | High | Optional fill telemetry performed synchronous file I/O before protection | Order paths now use bounded non-blocking admission to a dedicated process-wide writer. |
+| Fixed; final CI pending (T05) | High | A timed-out writer handover could overlap two writers on one file | Settings restarts share one writer; a stuck closer stays registered and drop-only until proven stopped. |
+| Fixed; final CI pending (T05) | Medium | Fallback, malformed-history and unknown-quantity telemetry could be misleading or break status | Exact fallback states, defensive normalization and explicit unknown outcomes are covered by focused tests. |
+| Fixed; final CI pending (T05) | Medium | `emit()` could accept after `close()` stopped the writer | Admission and closing are atomic under one lock; deterministic race test passes. |
 
 ## Open risks
 
 - **CI security follow-up (low):** add Dependabot for the immutable action pins plus Git-history secret and dependency scanning.
 - **Repository visibility:** intentionally public during testnet collaboration. It must return to private before any mainnet credentials or live release work.
-- T03b has no remaining finding and passed its install/rollback runtime gate. Only acceptance-commit checks and protected merge remain.
+- T05 has no remaining code finding. It is observe-only and needs no installer or testnet canary; final CI and protected merge remain.
 
 ## Code clean-up policy (your request, 2026-10-05)
 
@@ -112,8 +125,9 @@ Every ticket now ends with a **clean-up pass on the files it touched**: remove d
 
 | Order | Ticket | Why it comes here |
 |---|---|---|
-| Closing | **T03b — installer in PowerShell** | Accepted; protected merge pending |
-| Next | **T05 — fill telemetry** | Measures expected vs actual fills |
+| Closing | **T05 — fill telemetry** | Code accepted; final CI and protected merge pending |
+| Parallel process | **T04d — faster CI** | Removes duplicate review runs while preserving canonical gates and evidence |
+| Next measurement | **T05a — causal trade audit** | Peak profit/MFE, give-back, hold/close reasons and causal earlier-exit comparisons |
 | Core | **T06–T09 — shared core** | One trading logic for live and backtest |
 | Scale | **T10–T16** | Order budgets, trade records, "Why?", scorecards, VPS, multi-account, ML data |
 | Final gate | Release audit + your explicit mainnet approval | |
