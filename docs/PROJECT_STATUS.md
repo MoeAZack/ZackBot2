@@ -116,7 +116,7 @@ Every ticket now ends with a **clean-up pass on the files it touched**: remove d
 | Active | **T05 — fill telemetry** | Fix optional disk I/O so it can never delay protection, then re-review |
 | Next | **T04d — faster CI** | Fix the required-check identity, canonical gate list, provenance and Windows test isolation; then re-review |
 | Then | **T03c — automatic leverage handling** | Review and bounded testnet canary of the cross-margin exposure fallback |
-| Measure | **T05a — exit/opportunity attribution** | Observe current runner/exit value before changing runner behaviour |
+| Measure | **T05a — exit/opportunity attribution** | Record peak favorable profit/time, why each trade kept running, give-back, and fair causal earlier-exit alternatives before changing runner behaviour |
 | Core | **T06–T09 — shared core** | One trading logic for live and backtest |
 | Scale | **T10–T16** | Order budgets, trade records, "Why?", scorecards, VPS, multi-account, ML data |
 | Final gate | Release audit + your explicit mainnet approval | |
@@ -157,6 +157,7 @@ How scouting works: Claude and Codex look at what leading bots do (3Commas, Cryp
 | Point-in-time coin list incl. delisted coins (LUNA, FTT) | Subtopic of **T13** |
 | Generate this page from the evidence files so it can't go stale (Codex) | Subtopic of **T12** |
 | Event-triggered PR handling instead of polling (Codex) | Process, when the GitHub trigger is proven |
+| Trade exit audit: peak favorable price/profit, hold-reason trace, give-back and causal earlier-exit comparison (owner) | **T05a** measurement; displayed later in **T12 Why?** |
 
 ## Decisions for you (no rush)
 

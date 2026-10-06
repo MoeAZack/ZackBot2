@@ -182,10 +182,17 @@ It must answer, by strategy/timeframe/side/regime:
 - where each candidate was rejected;
 - how much the planned target banked;
 - whether the runner added or subtracted value versus closing the same remainder at the target;
+- the most favorable price and timestamp reached before the actual close, with peak net open P&L, peak R and MFE;
+- actual close P&L versus peak, including absolute and percentage/R give-back;
+- why the engine continued holding at each meaningful exit evaluation: the active policy, signal/regime state, target/trailing/time conditions and any execution constraint;
+- whether a **predeclared causal exit rule**, using only information available at that moment, would have closed earlier for more net profit after fees, funding and modeled slippage;
+- the absolute best observed exit as a separately labelled **hindsight ceiling**, never presented as a decision the live bot could necessarily have made;
 - fees, funding and slippage attributable to the extra holding period;
 - whether the result changes across holding horizon and regime.
 
-T05a measures the behaviour that exists today from current fill/trade records and a counterfactual close of the same remaining quantity at the planned target. It does not add `runner_frac`, split lots or alter exits. Its append-only observation records live as JSONL beside T05 fill telemetry; T11 later migrates both into the versioned SQLite event store.
+T05a measures the behaviour that exists today from current fill/trade records and counterfactual closes of the same remaining quantity at the planned target and other predeclared exit policies. It does not add `runner_frac`, split lots or alter exits. Its append-only observation records live as JSONL beside T05 fill telemetry; T11 later migrates both into the versioned SQLite event store.
+
+The audit must never silently use future candles to call an earlier exit "available." For every comparison it records `kind=hindsight_ceiling` or `kind=causal_policy`, the market-data resolution, decision timestamp, information cutoff, exit rule, modeled execution cost and confidence/limitations. With candle-only data, an intrabar high/low is an upper bound unless lower-timeframe ordering proves the exit could have occurred.
 
 ## Validation ladder
 

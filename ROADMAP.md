@@ -145,10 +145,13 @@ Data foundation per account, stored in **SQLite**.
   - execution (request, ack, fills, latency, slippage, fees);
   - lifecycle;
   - close reason and R;
-  - causal MFE/MAE.
+  - causal MFE/MAE, including the most favorable price, time, net open P&L and R reached before closing;
   - entry side, timeframe, global and per-symbol regime;
   - raw-signal and rejection-funnel reason codes;
   - target touch, profit banked, runner activation, runner-only P&L, peak open profit and give-back;
+  - an exit-decision trace: at every meaningful close opportunity, why the bot held instead (for example target not reached, trend/signal still valid, runner policy active, trailing stop protecting, minimum/time rule not reached, or an execution/risk restriction);
+  - two explicitly separate earlier-exit comparisons: the absolute best observed price is a **hindsight ceiling**, while a **causal alternative** may use only information available at that timestamp and a predeclared exit rule; both include estimated fees, funding and slippage;
+  - for each qualifying earlier causal exit: timestamp, price, net P&L/R, improvement versus the actual close, the rule that would have closed, and the actual hold reason. Candle data must not claim an exact intrabar exit that its resolution cannot prove;
   - a parent trade id so partial exits, adds and the remaining runner are attributable without counting them as separate trades.
 - **Integrity:** every event is hashed and chained to the previous one.
 - **UI and exports:**
@@ -378,7 +381,7 @@ The owner approved the detailed plan on 2026-10-06. The durable specification is
 | T05 | Fill telemetry (maker/market expected vs actual) | Observe | ◐ PR #6 round 2 fixes requested: exclusive writer handover/lifecycle, truthful confirmed-vs-pending fallback state, malformed-log resilience; original order-path I/O and durability findings fixed |
 | T04d | Faster CI: parallel full-check slices with a fail-closed merge, plus tightly scoped reuse for documentation-only follow-ups | Verification only | ◐ PR #7 fixes requested: required-check identity, canonical gate plan, reuse provenance and Windows test isolation |
 | T03c | Automatic leverage handling after a leverage-change refusal: cross-margin exposure and worst-case margin checks, unknown/isolated fail closed, 30-minute retry cooldown and panel evidence | E-class (entry gate): tests + strict replays + bounded testnet canary | ◐ Implemented on `t03c-auto-leverage`; review/CI/canary pending |
-| T05a | Observe today's exit/opportunity behaviour: signal funnel by side/regime, MFE/MAE, target touch, banked P&L, runner-only P&L and counterfactual close-at-target give-back; JSONL beside T05, migrated to T11 SQLite | Observe only; no runner/order change | ⬜ After T05 |
+| T05a | Observe today's exit/opportunity behaviour: signal funnel by side/regime; peak favorable price/time/net P&L/R; MFE/MAE; target touch; banked and runner-only P&L; hold-reason trace; hindsight ceiling versus causal earlier-exit alternatives and give-back; JSONL beside T05, migrated to T11 SQLite | Observe only; no runner/order change | ⬜ After T05 |
 | T06 | Shared-core contracts, reason codes and `AccountContext` spec | No behaviour change | ⬜ |
 | T07 | Extract costs, rounding and sizing | Refactor, zero replay change | ⬜ |
 | T08 | Extract management levels | Refactor | ⬜ |
@@ -386,7 +389,7 @@ The owner approved the detailed plan on 2026-10-06. The durable specification is
 | T09a | Strategy research harness and candidates: explicit runner child lots; range/mean-reversion; multiple scalp styles; independently validated short models | Research → Shadow; no automatic orders | ⬜ After T09 |
 | T10 | Per-account order budget and priority queue | E-class, burst tests | ⬜ |
 | T11 | SQLite trade-event store | Feature Off | ⬜ |
-| T12 | Entry/close reason records + "Why?" view | Observe | ⬜ |
+| T12 | Entry/close reason records + "Why did it hold/close?" view, including peak profit, give-back and causal earlier-exit comparison | Observe | ⬜ |
 | T13 | Scorecard v1 + readiness + copy suitability | Read-only | ⬜ |
 | T13a | Strategy catalog + risk/drawdown calculation + Simple/Guided/Pro and Amateur→Maniac + Manual/Recommend/Automatic policy | Feature Off; manual remains available | ⬜ After T13 and T09a evidence |
 | T14 | VPS service, secrets, heartbeat, deploy/rollback | Ops | ⬜ |
