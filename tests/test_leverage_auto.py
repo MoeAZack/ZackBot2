@@ -525,6 +525,102 @@ def test_g4_maker_fallback_runs_normally_once_leverage_was_set(monkeypatch):
     assert 'open' in e.trade.calls and e.state['lots']
 
 
+# T03c r2 follow-up (Claude): a resting maker record saved by older code through the above-cap exception is never re-priced
+@pytest.mark.parametrize('lev_back', [False, True])
+def test_legacy_exceptional_resting_entry_is_repriced_without_recheck(monkeypatch, lev_back):
+    """Reviewer repro, now asserting the fix: not re-placed, finalized without a market order (even if leverage is back)."""
+    e = refusing(ENTRY_ORDER='maker'); e.S['SLEEVES'] = [SL]
+    if lev_back: e._lev['BTCUSDT'] = 10
+    placed, emitted = [], []
+    monkeypatch.setattr(e, '_maker_place', lambda rec: placed.append(rec['key']))
+    monkeypatch.setattr(e, '_fill_emit', lambda r: emitted.append(r))
+    k = 'ME|T|BTCUSDT|LONG'
+    plan = dict(sl=dict(id='T'), sym='BTCUSDT', side='LONG', qty=1.0, px=100.0, stop_dist=5.0, lev_exception=True, sg=dict(time=SG['time'], close=100.0))
+    e.state['resting_entries'][k] = dict(key=k, sleeve='T', symbol='BTCUSDT', side='LONG', qty=1.0, filled=0.0, cost=0.0, n=1,
+                                         t0=time.time(), status='between', cid=None, plan=plan, price=100.0)
+    n_open = e.trade.calls.count('open')
+    assert e._maker_poll(k, {'BTCUSDT': 100.0})
+    assert placed == [] and k not in e.state['resting_entries'] and e.trade.calls.count('open') == n_open
+    assert not e.state['lots'] and 'older code' in e.missed[-1]['reason']
+    assert 'older code' in emitted[0]['fallback_skipped']
+
+
+def test_legacy_exceptional_open_maker_order_is_cancelled_and_its_fill_becomes_a_lot(monkeypatch):
+    e = refusing()
+    t = [1000.0]; monkeypatch.setattr(E.time, 'time', lambda: t[0])
+    k, plan = maker_plan(e)
+    rec = e.state['resting_entries'][k]; rec.update(status='open', cid='zmX', placed_t=t[0], n=1)   # young: inside its slice
+    order = dict(status='NEW', executedQty='0')
+    e.trade.get_order = lambda s, cid: dict(order)
+    monkeypatch.setattr(e, '_maker_place', lambda r: pytest.fail('a legacy exceptional record must not be re-priced'))
+    emitted = []; monkeypatch.setattr(e, '_fill_emit', lambda r: emitted.append(r))
+    n_open = e.trade.calls.count('open')
+    assert e._maker_poll(k, {'BTCUSDT': 100.0})
+    assert rec['status'] == 'cancelling' and 'cancel' in e.trade.calls          # cancelled at once, not at the slice end
+    half = plan['qty'] / 2
+    order.update(status='CANCELED', executedQty=str(half), avgPrice='100'); e.trade.pos[('BTCUSDT', 'LONG')] = half
+    t[0] += 1; assert e._maker_poll(k, {'BTCUSDT': 100.0})
+    assert k not in e.state['resting_entries'] and e.trade.calls.count('open') == n_open, 'no market remainder'
+    lot = next(l for l in e.state['lots'].values() if l['symbol'] == 'BTCUSDT')
+    assert lot['qty'] == pytest.approx(half) and lot['lev_exception']
+    assert 'older code' in emitted[0]['fallback_skipped']
+
+
+def test_ordinary_maker_record_is_still_repriced(monkeypatch):
+    e = refusing(ENTRY_ORDER='maker'); e.S['SLEEVES'] = [SL]
+    placed = []; monkeypatch.setattr(e, '_maker_place', lambda rec: placed.append(rec['key']))
+    k = 'ME|T|BTCUSDT|LONG'
+    plan = dict(sl=dict(id='T'), sym='BTCUSDT', side='LONG', qty=1.0, px=100.0, stop_dist=5.0, sg=dict(time=SG['time'], close=100.0))
+    e.state['resting_entries'][k] = dict(key=k, sleeve='T', symbol='BTCUSDT', side='LONG', qty=1.0, filled=0.0, cost=0.0, n=1,
+                                         t0=time.time(), status='between', cid=None, plan=plan, price=100.0)
+    assert e._maker_poll(k, {'BTCUSDT': 100.0}) and placed == [k] and k in e.state['resting_entries']
+    e.state['resting_entries'][k].update(status='open', cid='zmY', placed_t=time.time())   # young open order: left resting
+    e.trade.get_order = lambda s, cid: dict(status='NEW', executedQty='0')
+    n_cancel = e.trade.calls.count('cancel')
+    assert e._maker_poll(k, {'BTCUSDT': 100.0}) is False and e.trade.calls.count('cancel') == n_cancel
+
+
+# ------------------------------------------------------------------ T03c r2 review (Claude): normal-path regressions
+def test_cached_within_cap_reads_once_and_writes_nothing():
+    e, _ = mk_engine(MAX_LEVERAGE=10); t = e.trade
+    t.margin_state = lambda s: (t.calls.append('mstate'), dict(leverage=10, margin_type='CROSSED'))[1]
+    e._lev['BTCUSDT'] = 10
+    n0 = len(t.calls)
+    assert e._ensure_leverage('BTCUSDT', 100.0, 5.0) == 'set'
+    assert t.calls[n0:] == ['mstate'], t.calls[n0:]
+
+
+def test_cached_read_failure_falls_back_to_setting_again_not_rejecting():
+    e, _ = mk_engine(MAX_LEVERAGE=10); t = e.trade
+    def boom(s): raise RuntimeError('positionRisk timeout')
+    t.margin_state = boom
+    e._lev['BTCUSDT'] = 10
+    assert e._ensure_leverage('BTCUSDT', 100.0, 5.0) == 'set'
+    assert lev_posts(e) >= 1 and e._lev['BTCUSDT'] == 10
+
+
+ALGO_DOC_ROW = dict(algoId=7, clientAlgoId='zaX', algoType='CONDITIONAL', orderType='STOP_MARKET', symbol='ETHUSDT', side='SELL',
+                    positionSide='LONG', timeInForce='GTC', quantity='10', algoStatus='NEW', actualOrderId='', actualPrice='0.00000',
+                    triggerPrice='45.00', price='0.00', icebergQuantity=None, selfTradePreventionMode='EXPIRE_MAKER',
+                    workingType='MARK_PRICE', priceMatch='NONE', closePosition=False, priceProtect=False, reduceOnly=False,
+                    createTime=1, updateTime=1, triggerTime=0, goodTillDate=0)
+ORDER_DOC_ROW = dict(orderId=8, clientOrderId='zbY', symbol='ETHUSDT', side='SELL', positionSide='LONG', type='STOP_MARKET',
+                     origType='STOP_MARKET', origQty='10', executedQty='0', price='0', avgPrice='0.00000', stopPrice='45.00',
+                     status='NEW', timeInForce='GTC', workingType='MARK_PRICE', priceProtect=False, reduceOnly=False,
+                     closePosition=False, cumQuote='0', time=1, updateTime=1)
+
+
+@pytest.mark.parametrize('kind', ['algo', 'order'])
+def test_bots_own_stop_in_binance_shape_passes(kind):
+    e = refusing(); _, lot = add_lot(e)
+    f = fut_with({'/fapi/v1/openOrders': [ORDER_DOC_ROW] if kind == 'order' else [],
+                  '/fapi/v1/openAlgoOrders': [ALGO_DOC_ROW] if kind == 'algo' else []})
+    e.trade.open_orders_all = f.open_orders_all
+    lot['stop_id'] = 'a:7' if kind == 'algo' else 'o:8'
+    ok, why, n = check(e)
+    assert ok, why
+
+
 # ------------------------------------------------------------------ group 5: leverage brackets
 def test_g5_bracket_maintenance_at_exact_boundaries_and_tiers():
     m = E.bracket_maint
@@ -976,14 +1072,52 @@ def test_confirmed_stop_must_have_the_exact_protective_order_shape(field, bad):
     assert not ok and n['check'] == 'stops' and 'wrong type or trigger basis' in why
 
 
-def test_account_notional_coefficient_scales_bracket_boundaries_and_cumulative_margin():
-    payload = [dict(symbol='BTCUSDT', notionalCoef='2', brackets=[
-        dict(notionalFloor='0', notionalCap='1000', maintMarginRatio='0.004', cum='0', initialLeverage='125'),
-        dict(notionalFloor='1000', notionalCap='5000', maintMarginRatio='0.005', cum='1', initialLeverage='50')])]
-    c, _ = client_with([Resp(200, payload)])
+COEF_PAYLOAD_BRK = [dict(notionalFloor='0', notionalCap='1000', maintMarginRatio='0.004', cum='0', initialLeverage='125'),
+                    dict(notionalFloor='1000', notionalCap='5000', maintMarginRatio='0.005', cum='1', initialLeverage='50')]
+
+
+# T03c r2 follow-up (Codex disposition): Binance does not say whether the per-user brackets already include notionalCoef,
+# so the scaling direction is not guessed: an omitted coef or exactly 1 is the normal schedule; any other present coef
+# (above or below 1, or invalid) rejects the schedule, so the above-cap exception fails closed.
+@pytest.mark.parametrize('coef', [None, 1, '1', 1.0, '1.0'])
+def test_omitted_or_unit_notional_coefficient_is_the_normal_schedule(coef):
+    row = dict(symbol='BTCUSDT', brackets=COEF_PAYLOAD_BRK)
+    if coef is not None: row['notionalCoef'] = coef                   # None = Binance omitted the field (no adjustment)
+    c, _ = client_with([Resp(200, [row])])
     got = c.leverage_brackets('BTCUSDT')
-    assert got[1] == dict(floor=2000.0, cap=10000.0, mmr=.005, cum=2.0, lev=50)
-    assert E.check_brackets(got) == got
+    assert got[1] == dict(floor=1000.0, cap=5000.0, mmr=.005, cum=1.0, lev=50)
+    assert got.notional_coef == 1.0 and got.coef_applied == 1.0
+    assert E.check_brackets(got) is got
+
+
+@pytest.mark.parametrize('coef', ['0.5', 0.5, 0.999, '2', 2, 3, 1.0001])
+def test_any_other_notional_coefficient_rejects_the_schedule(coef):
+    c, _ = client_with([Resp(200, [dict(symbol='BTCUSDT', notionalCoef=coef, brackets=COEF_PAYLOAD_BRK)])])
+    with pytest.raises(ValueError, match='notionalCoef'): c.leverage_brackets('BTCUSDT')
+
+
+@pytest.mark.parametrize('bad', ['NaN', 'inf', 0, '0', -1, '-2', True, None, ''])
+def test_invalid_notional_coefficient_rejects_the_schedule(bad):
+    c, _ = client_with([Resp(200, [dict(symbol='BTCUSDT', notionalCoef=bad, brackets=COEF_PAYLOAD_BRK)])])
+    with pytest.raises(ValueError): c.leverage_brackets('BTCUSDT')
+
+
+def test_notional_coef_above_one_never_reaches_the_maintenance_math():
+    """Reviewer repro (round 2): a double-applied coef 3 would drop maintenance at 600k from 4700 to 3000. Now the
+    schedule is refused, so the exception proof has no schedule and rejects."""
+    raw = [dict(notionalFloor=str(b['floor']), notionalCap=str(b['cap']), maintMarginRatio=str(b['mmr']), cum=str(b['cum']),
+                initialLeverage=str(int(b['lev']))) for b in BRK]
+    c, _ = client_with([Resp(200, [dict(symbol='BTCUSDT', notionalCoef=3, brackets=raw)])])
+    with pytest.raises(ValueError): c.leverage_brackets('BTCUSDT')
+    assert E.bracket_maint(BRK, 600000.0) == pytest.approx(4700.0)
+
+
+def test_a_refused_coefficient_schedule_makes_the_exception_reject():
+    e = refusing()
+    def adjusted(s): raise ValueError('BTCUSDT notionalCoef 2.0 != 1: bracket scaling unknown (fail closed)')
+    e.trade.leverage_brackets = adjusted
+    with pytest.raises(E.LevReject) as ex: e._brackets('BTCUSDT')
+    assert 'notionalCoef' in str(ex.value) and 'BTCUSDT' not in e._brk
 
 
 def test_string_false_order_flags_are_rejected_instead_of_becoming_true():
