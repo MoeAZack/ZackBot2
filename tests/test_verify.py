@@ -262,7 +262,8 @@ def test_every_incomplete_status_prevents_the_drill(monkeypatch, tmp_path):
 # ---------------------------------------------------------------- T04b: deterministic, Node-24 CI foundation
 def test_ci_uses_pinned_runner_and_immutable_node24_actions():
     """Avoid ubuntu-latest image drift and mutable action tags in the release gate."""
-    workflow = open(os.path.join(ROOT, '.github', 'workflows', 'verify.yml'), encoding='utf-8').read()
+    workflow = ''.join(open(os.path.join(ROOT, '.github', 'workflows', f), encoding='utf-8').read()
+                       for f in ('verify.yml', 'verify-push.yml'))                  # T04d: required + push workflows
     assert 'ubuntu-latest' not in workflow
     runs_on = re.findall(r'runs-on:\s*(\S+)', workflow)
     assert len(runs_on) >= 2 and set(runs_on) == {'ubuntu-24.04'}, runs_on        # T04d: more jobs, same pinned image

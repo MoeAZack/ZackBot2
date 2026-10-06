@@ -4,76 +4,98 @@
 
 | Item | Value |
 |---|---|
-| Branch | `t04d-faster-ci`, from protected `master` f9778ca. **Pipeline mode** (owner, 2026-10-06) |
-| Head for review | the PR head. The full SHA is in the READY FOR CODEX comment |
-| Class | CI/verification only. No bot, installer or trading change. `verify.py` is unchanged |
-| Owner approval | "Faster CI" speed-up, selected by the owner on 2026-10-06 (relayed on PR #5): docs-only changes skip the heavy steps but still report the required checks; full is split into parallel jobs |
-| Overlap | `tests/test_verify.py`: one assertion (runs-on count) and one pin added, in the T04b block. T03b (PR #5) adds a test elsewhere in that file; git merges the two hunks cleanly. Rebased onto master if T03b merges first |
+| Branch | `t04d-faster-ci`, **merged with protected `master` d68d6ef** (T03b) in this round. **Pipeline mode** |
+| Head for review | the PR head. The full SHA is in the FIXED FOR CODEX comment (round 1 reviewed 3481f12; Codex review d74932f) |
+| Class | CI/verification only. No bot, installer or trading change. `verify.py`: the full level now runs one canonical `FULL_PLAN` (same gates, same order) |
+| Owner approval | "Faster CI" speed-up, selected by the owner on 2026-10-06 (relayed on PR #5) |
+
+## Round 1 dispositions (Codex review d74932f on 3481f12)
+
+1. **P1: a skipped push job published the required `verify full` name.** Confirmed defect (it predated T04d, but T04d rewrote the workflow and must not keep it). Fixed by splitting the workflow:
+   - `verify.yml` runs only on `pull_request` (into master) and `workflow_dispatch` (no inputs) and is the ONLY producer of `verify fast` / `verify full`;
+   - in it every job runs: no job-level `if` on fast or the slices, and the `verify full` aggregator is `if: always()` with `needs: full-part`, so a failed or cancelled slice fails it instead of skipping it;
+   - pushes run the new non-required `verify-push.yml`, whose only job is named `push fast`.
+   Tests assert job names, triggers, the absence of job conditions and the absence of any reuse in the required workflow. After the push, GitHub will show no `verify full` check on push runs.
+2. **P1: the parallel plan could silently omit a gate; the merge was permissive.** Confirmed defect. Fixed:
+   - `verify.FULL_PLAN` is the one canonical ordered gate list. `verify.py full` runs it (`run_full_plan`), and `verify_ci.py part` runs exact slices of it.
+   - `partition_problems()` proves the slices are an exact, duplicate-free partition. A slice refuses to run, and the merge fails, if not.
+   - The merge requires exactly one summary per slice, the exact level `full-<slice>`, this commit, `passed is True`, exactly the slice's ordered step names, and every step `passed`. Unexpected slice summaries also fail it.
+   Tests and mutations cover:
+   - a new gate in the plan but in no slice;
+   - an extra failed step;
+   - a duplicate step;
+   - `passed` false or missing;
+   - wrong level, reordered steps, malformed steps;
+   - other commit, missing slice, duplicate summary, failed step;
+   - an unexpected slice.
+3. **P2: unit tests started the real Windows builder.** Confirmed defect. The merge helper now mocks `verify.installer_mode` and asserts it was asked for `buildcheck` exactly once. No unit test can start a build.
+4. **P2: reuse did not bind provenance.** Confirmed. Fixed by your first option: **no reuse for required checks** (the PR workflow always runs everything; parallel full is about 8 min). Docs-only reuse remains only in the non-required push workflow and only from the same context: a successful run of `verify-push.yml` (path checked), from a `push` event, on exactly `before`. The summary records the run id and url. Tests cover event mismatch, another workflow path, another commit, failure, in-progress, network error and no token.
+5. **P3: the docs guard omitted workflows/config.** Accepted. The scan now covers .py .pyw .ps1 .psm1 .bat .cmd .html .js .spec .yml .yaml .toml .ini .cfg, and asserts that both workflow files were scanned.
+
+**Mutation proof (round 1): 8/8 caught.**
+- slice `passed` ignored;
+- subset instead of exact steps;
+- merge ignoring the plan partition;
+- reuse on PR events;
+- any workflow accepted;
+- any event accepted;
+- slice commit ignored;
+- slice level ignored.
+
+**Trade-off for the owner:** docs-only commits on a PR (status and review commits) now run the full 8-minute required check instead of 45 s. They still benefit from the parallel speed-up (24 → 8 min).
 
 ## Why
 
 Run #94 (T03b, b8dadb2, a Codex docs-only status commit) took 24 min: fast 3m20s, then full 20m15s run serially. Full is tests 376 s, replay 1 212 s, replay 2 363 s and UI 207 s, after waiting for fast.
 
-## The change
+## The change (current design, after round 1)
 
-1. **Parallel full.** The `full` job is split into three slices that run at the same time, each in its own job, through `verify_ci.py part`:
-   - `tests` (all of tests/);
-   - `replay2`;
-   - `replay1-ui` (the UI harness seeds its closed trades from replay 1 of the same run, as in verify.py).
-   The required **"verify full"** job (same name, so branch protection is unchanged) runs `verify_ci.py merge`. It passes only if:
-   - exactly one summary per slice is present;
-   - every slice ran on this commit;
-   - every expected step is present and passed.
-   Otherwise it fails (it runs with `always()`, so a failed or cancelled slice fails the check rather than skipping it). The merged `latest_full.json` has the same shape as `verify.py full`, including the off-Windows `installer buildcheck` skip.
-   Full no longer waits for fast. Expected: about 8–9 min for full instead of 20, and about 9 min end to end instead of 24.
-2. **Docs-only reuse.** A `plan` job decides, and the fast and full jobs re-decide independently (`verify_ci.py reused` does not trust the plan output). The heavy steps are reused only if ALL of these hold:
-   - push or pull_request event (never `workflow_dispatch`), with a real previous commit (`github.event.before`; empty or all zeros means no reuse);
-   - `before` is an ancestor of the new head (no force-push);
-   - every changed file is a document under `docs/`: no code or config extension (.py .ps1 .bat .yml .json .html …), no `..`;
-   - the SAME check ("verify fast" / "verify full"), from the `github-actions` app, completed with `success` on `before` (check-runs API, read-only token, `checks: read`).
-   Then the job still runs the static compile check, the secret scan (which covers docs/) and the dataset manifest. Every heavy step is recorded as **SKIPPED** with `REUSED: docs-only change; passed on <sha> (<run url>)` and `reused_from`. Any error or unknown answer means no reuse, so the slow path runs.
-   - A PR that changes code is never docs-only, because the diff is from the previous PR head, so a branch update that merges master is not docs-only either.
-   - What it speeds up: status and review-doc commits on top of an already green head (Codex's PROJECT_STATUS/review commits, my review requests).
+1. **Parallel full in the required workflow (`verify.yml`, pull_request + workflow_dispatch only).**
+   - Three slices of `verify.FULL_PLAN` run at the same time through `verify_ci.py part`: `tests`, `replay2`, and `replay1-ui` (the UI harness seeds its closed trades from replay 1 of the same run).
+   - The required `verify full` job runs `verify_ci.py merge` with the strict rules in disposition 2. The merged `latest_full.json` lists the gates in plan order, with the off-Windows `installer buildcheck` skip as before.
+   - `verify fast` runs `verify.py fast` unchanged. Full no longer waits for fast.
+2. **Push check (`verify-push.yml`, non-required, job `push fast`).**
+   - It runs `verify.py fast` on every push.
+   - A docs-only change on top of a commit where this same push workflow succeeded (push event, exact `before`, ancestor) reuses that run. It still runs the static compile check, the secret scan and the manifest. The heavy steps are recorded as SKIPPED with `REUSED: … push run <id> (<url>)`, and `reused` re-decides independently of the plan step.
 
-## Why reuse is safe
+## Why push reuse is safe
 
-- Nothing executed reads `docs/`. `test_nothing_executed_reads_docs` scans every .py/.ps1/.bat/.html/.js/.spec outside docs/ and data folders. pytest collects only tests/, and the build does not include docs/.
-- The checks that do look at docs/ (secret scan, compile) are re-run, not reused.
+- Nothing executed reads `docs/`. The guard scans every code, script, page, workflow and config extension outside docs/ and data folders, and asserts that both workflows are covered.
+- Secret scan and compile, which do look at docs/, are re-run.
+- It never feeds a required check.
 
-## Tests (`tests/test_ci.py`, 16; `tests/test_verify.py` pin test updated)
+## Tests (`tests/test_ci.py`: 16 test functions (27 runner entries: the 12-case merge-deviation test is parametrized); `tests/test_verify.py` pin test now covers both workflows)
 
-- The slices cover exactly verify.py full: same step names, no duplicates. A source check fails if verify.py full's sequence changes.
-- Each slice runs only its own steps; replay 1 and the UI share one output folder.
-- Merge: passes with all slices on this commit; fails on a missing slice, a failed step, another commit, a duplicate summary or a missing step.
-- docs_only: rejects root files, code/config extensions under docs/, `..` and mixed changes.
-- decide (in a real git repo): reuses docs-only on top of a passed check. It refuses:
-  - code changes;
-  - docs+code;
-  - workflow_dispatch;
-  - a zero or empty `before`;
-  - a non-ancestor (including a sibling whose diff is docs-only);
-  - an unknown commit;
-  - no prior success.
-  It also looks up the same check on `before`.
-- prior_success: only completed + success + github-actions + same sha + same name. Network error or no token gives None.
-- reused: re-checks, labels every skipped step REUSED with the commit, and really runs the static checks. If the conditions fail, the check FAILS.
-- plan writes both outputs. The workflow keeps both required job names; the full job uses needs [plan, full-part] + always(), merge, fail-fast false, read-only permissions plus checks: read, and pinned download-artifact v8.0.1 (3e5f45b).
-
-**Mutation proof: 8/8 caught.** (The ancestry mutation first survived; the sibling-branch case was added and now catches it.)
-- code extension allowed under docs/;
-- app slug ignored;
-- any conclusion accepted;
-- slice commit ignored;
-- duplicate summaries allowed;
-- ancestry ignored;
-- reuse on workflow_dispatch;
-- `reused` trusting the plan.
+- Plan and partition: the exact partition; a new gate missing from the slices fails both the merge and the slice; sequential full runs the plan in order; each slice runs only its steps, in plan order; replay 1 and the UI share one folder.
+- Merge: passes when everything is exact. It rejects, each tested separately:
+  - a missing slice;
+  - a failed step;
+  - another commit;
+  - a duplicate summary;
+  - a missing step;
+  - an extra failed step;
+  - a duplicate step;
+  - `passed` false or missing;
+  - wrong level;
+  - reordered steps;
+  - malformed steps;
+  - an unexpected slice.
+  buildcheck is mocked and asked for exactly once.
+- Workflows: required names only in verify.yml; triggers are pull_request + dispatch with no inputs and no push; no job-level conditions on required jobs; aggregator always() + needs; no reuse in the required workflow; push workflow names and permissions.
+- Push reuse:
+  - docs_only rules;
+  - decide is push-only (PR, dispatch, empty and pull_request_target events refused);
+  - code, docs+code, zero or empty `before`, non-ancestor (including a docs-only sibling), unknown commit and no prior run are all refused;
+  - prior_push_success requires the same workflow path, a push event, the same sha and success, and fails closed on network or token problems;
+  - `reused` labels and re-checks, and fails when the conditions do not hold;
+  - plan output.
 
 ## Evidence (Claude sandbox, stand-in runner, NOT official pytest)
 
-- tests/test_ci.py: 16 passed. Full tests/: 247 passed + the known environment-only provenance failure.
+- tests/test_ci.py: 27 passed in the stand-in runner. Full tests/: see the FIXED FOR CODEX comment.
+- Both workflows parse as YAML (jobs: fast / full-part / full; push-fast).
 
-## GitHub evidence (first real runs of the new workflow)
+## GitHub evidence (round 0, before the workflow split)
 
 - PR run #101 on 828cb8f: plan 7 s (no reuse: PR opened, no previous commit); verify fast 198 s; slices in parallel: tests 225 s, replay2 193 s, replay1-ui 451 s; **verify full (merge) 22 s: PASS**, all four heavy steps passed on merge commit 51e1013, buildcheck skipped off Windows. Whole run **8 min 11 s** (04:11:02 -> 04:19:13 UTC), against 24 min for run #94 on the old workflow.
 - Push run #100: plan + verify fast PASS; full not run on push (unchanged).
@@ -82,5 +104,4 @@ Run #94 (T03b, b8dadb2, a Codex docs-only status commit) took 24 min: fast 3m20s
 
 ## Questions for Codex
 
-1. Is reuse of the same check on `before` acceptable when push and PR runs both report "verify fast" on the same sha? Either one counts; both run the same gate, but the PR run tests the merge commit.
-2. Should docs-only reuse also cover root `ROADMAP.md`? It is excluded for now; only `docs/` is reused.
+1. Both round 0 questions are answered by the redesign: required checks are never reused, and `ROADMAP.md` is not docs-only.
