@@ -90,7 +90,7 @@ def test_cross_margin_above_cap_enters_when_the_exposure_is_safe():
     lot = e.state['lots'][k]
     assert lot['stop_id'] in e.trade.stops and lot['lev_exception'] is True        # entry with its exchange stop, flagged
     r = e.lev_refusals['BTCUSDT']
-    assert (r['count'], r['api_refusals'], r['proceeded'], r['by_exposure'], r['skipped'], r['accepted']) == (1, 1, 1, 1, 0, 'exposure')
+    assert (r['count'], r['api_refusals'], r['proceeded'], r['by_exposure'], r['skipped'], r['accepted']) == (1, 2, 1, 1, 0, 'exposure')
     assert r['current'] == 20 and r['margin_type'] == 'CROSSED' and r['exposure']['ok'] is True and r['exposure']['check'] is None
     assert r['exposure']['effective_leverage'] <= 10 and r['exposure']['worst_margin_ratio'] <= 0.5
     assert (r['outcome'], r['reason'], r['via']) == ('went_ahead', 'exposure_ok', 'refused')
@@ -165,12 +165,12 @@ def test_a_refusal_starts_a_cooldown_without_new_change_requests(monkeypatch):
     t[0] += 60; opened(e)
     assert lev_posts(e) == 2, 'inside the cooldown: no new leverage change request'
     r = e.lev_refusals['BTCUSDT']
-    assert (r['count'], r['api_refusals'], r['cooldown_checks'], r['via']) == (2, 1, 1, 'cooldown')
+    assert (r['count'], r['api_refusals'], r['cooldown_checks'], r['via']) == (2, 2, 1, 'cooldown')
     assert 'injected' in r['last_api_error'] and 'injected' in r['last_error'], 'the real Binance error is preserved'
     e.close_lot(next(iter(e.state['lots'])), 'signal', mark=100.0)
     t[0] += E.LEV_REFUSAL_COOLDOWN_S; opened(e)
     assert lev_posts(e) == 4, 'after the cooldown the change is requested again'
-    assert e.lev_refusals['BTCUSDT']['api_refusals'] == 2
+    assert e.lev_refusals['BTCUSDT']['api_refusals'] == 4                  # 2 failed requests per attempt round
 
 
 def test_cooldown_still_applies_every_safety_check():
@@ -772,7 +772,7 @@ def test_g7_every_path_records_outcome_reason_and_counts(monkeypatch):
     e = refusing(); opened(e); paths['exposure_ok'] = dict(e.lev_refusals['BTCUSDT'])
     for reason, r in paths.items():
         assert r['reason'] == reason and r['outcome'] == ('went_ahead' if reason in ('within_cap', 'exposure_ok') else 'skipped')
-        assert r['detail'] and r['via'] == 'refused' and r['api_refusals'] == 1 and r['cooldown_checks'] == 0
+        assert r['detail'] and r['via'] == 'refused' and r['api_refusals'] == 2 and r['cooldown_checks'] == 0
         assert 'injected' in r['last_api_error'] and r['count'] == r['proceeded'] + r['skipped']
     assert paths['exposure_rejected']['exposure']['check'] == 'stops'
     assert paths['leverage_unknown']['exposure'] is None and paths['margin_isolated']['margin_type'] == 'ISOLATED'
@@ -788,7 +788,7 @@ def test_g7_cooldown_decides_before_any_venue_write_or_bracket_fetch(monkeypatch
     assert 'margin' not in e.trade.calls and 'leverage' not in e.trade.calls and 'brackets' not in e.trade.calls
     assert {'account', 'positions_all', 'orders_all', 'mstate'} <= set(e.trade.calls), 'fresh safety reads still happen'
     r = e.lev_refusals['BTCUSDT']
-    assert (r['via'], r['cooldown_checks'], r['api_refusals'], r['outcome']) == ('cooldown', 1, 1, 'went_ahead')
+    assert (r['via'], r['cooldown_checks'], r['api_refusals'], r['outcome']) == ('cooldown', 1, 2, 'went_ahead')
     assert r['cooldown_left'] == E.LEV_REFUSAL_COOLDOWN_S - 60 and 'injected' in r['last_api_error']
 
 
@@ -1146,3 +1146,40 @@ def test_av3_short_dca_pyramid_and_grid_reserves_grow_to_their_stop():
     e.state['grids'] = {'G|ETHUSDT': dict(sym='ETHUSDT', op=None, mode='short', metrics=dict(max_notional=300.0, worst_loss_usd=20.0))}
     ok, why, n = check(e, sym='BTCUSDT')
     assert n['maint_after_stops'] == pytest.approx(E.bracket_maint(BRK, 300 + 30) + E.bracket_maint(BRK, 107.5), abs=0.01)
+
+
+# ---------------------------------------------------------------- T03c runtime finding (64d1528): every failed request counts
+def test_api_refusals_counts_every_failed_leverage_request_and_keeps_both_errors():
+    """Canary on 64d1528 showed api_refusals=1 although the try AND the retry were refused. Each failed request counts;
+    count/proceeded/skipped stay decision counters; cooldown_checks stay no-POST decisions; both errors are kept."""
+    e = refusing()
+    errs = iter(['first refusal -1000', 'second refusal -1000'])
+    def refuse(sym, lev):
+        e.trade.calls.append('leverage'); raise BC.BinanceError(-1000, next(errs))
+    e.trade.set_leverage = refuse
+    try: e._ensure_leverage('BTCUSDT', notional=50.0, risk=1.0)
+    except Exception: pass
+    r = e.lev_refusals['BTCUSDT']
+    assert lev_posts(e) == 2 and r['api_refusals'] == 2 and r['count'] == 1 and r['cooldown_checks'] == 0
+    assert r['proceeded'] + r['skipped'] == r['count']
+    assert [x['error'] for x in r['last_api_errors']] == ['-1000: first refusal -1000', '-1000: second refusal -1000']
+    assert r['last_api_error'] == r['last_error'] == '-1000: second refusal -1000'
+
+
+def test_a_refused_first_try_that_succeeds_on_retry_still_counts_one_refusal():
+    e = refusing()
+    seq = iter([BC.BinanceError(-1000, 'transient'), None])
+    def flaky(sym, lev):
+        e.trade.calls.append('leverage'); x = next(seq)
+        if x: raise x
+    e.trade.set_leverage = flaky
+    assert e._ensure_leverage('BTCUSDT') == 'set'
+    r = e.lev_refusals['BTCUSDT']
+    assert r['api_refusals'] == 1 and r['count'] == 0 and r['last_api_error'] == '-1000: transient'
+
+
+def test_last_api_errors_is_bounded_to_two():
+    e = refusing()
+    for i in range(5): e._lev_api_refused('BTCUSDT', f'err{i}')
+    r = e.lev_refusals['BTCUSDT']
+    assert r['api_refusals'] == 5 and [x['error'] for x in r['last_api_errors']] == ['err3', 'err4']
