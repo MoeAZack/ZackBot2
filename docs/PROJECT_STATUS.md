@@ -1,19 +1,19 @@
 # ZackBot owner overview
 
-*Last refreshed: 2026-10-06 07:08 Cairo (Africa/Cairo) by Codex, on branch `t03b-installer-powershell`. This is the plain-language owner view. `ROADMAP.md` and `docs/reviews/` hold the detailed scope and evidence.*
+*Last refreshed: 2026-10-06 09:24 Cairo (Africa/Cairo) by Codex, on branch `roadmap-strategy-expansion`. This is the plain-language owner view. `ROADMAP.md` and `docs/reviews/` hold the detailed scope and evidence.*
 
 ## Where we are now
 
 | Item | Current state |
 |---|---|
 | Environment | **Binance Futures testnet only.** Mainnet stays impossible until the roadmap and the final release audit are complete and you approve it. |
-| Is ZackBot running? | Yes, on your PC (testnet), build `20261006-064354`: engine and exchange ok, four positions, all protected, zero errors/untracked/orphans after the T03b install and rollback drill. |
+| Is ZackBot running? | Yes, on your PC (testnet), build `20261006-064354`: engine and exchange currently ok. A fresh read-only check at 09:23 Cairo matched all four local/exchange quantities and confirmed all four stop ids open, with no pending, untracked or orphan orders. |
 | Installed application | **T03b installed and rollback-proven.** SHA-256 `203B155474942709B6AD40C3517BA32D058721664D245191C900068CBC4A60A6`; the drill restored the same build and hash exactly. |
-| Latest accepted commit | `master` `f9778ca` (T03a accepted and merged) |
-| Current ticket | **T03b: move installer logic from CMD to PowerShell** |
-| Stage | **Accepted; acceptance/status commit checks and protected merge remain.** |
-| What Claude is doing | Holding while Codex completes the acceptance commit and merge gate. |
-| What Codex is reviewing | Final acceptance checks, protected merge, then opening T05 fill telemetry. |
+| Latest accepted commit | `master` `d68d6ef` (T03b accepted and merged) |
+| Current ticket | **T05: fill telemetry** |
+| Stage | **Fixes requested on PR #6 (T05) and PR #7 (T04d).** T03c automatic leverage handling is implemented separately and remains queued behind them. |
+| What Claude is doing | Addressing the T05 telemetry and T04d verification findings; holding T03c for its ordered review. |
+| What Codex is reviewing | The next exact T05/T04d heads after Claude posts them; roadmap corrections are in PR #8. |
 | Your action | **None.** |
 
 ## Latest test results
@@ -36,6 +36,7 @@
 | T03b round 3 fixes, Windows | Focused installer/verification set **80 passed**; real non-installing buildcheck **PASS** with eight successful steps; accepted installed exe unchanged. GitHub fast passed; full was still running at 06:10 Cairo. |
 | T03b normal install | Build `20261006-064354`, 14/14 structured steps, no warnings; mirror 120/120 exact; both shortcuts correct; PAPER health clean with four protected lots. |
 | T03b rollback drill | Deliberately failed build `20261006-064800`; restored `20261006-064354` with the exact pre-drill hash and authenticated proof; PAPER health remained clean. |
+| Testnet outage check, 2026-10-06 | Binance returned `-1007` during read-only reconciliation from 07:17–07:21 Cairo. The bot recovered automatically. At 09:23 Cairo, engine/exchange health was ok; PEPE, HYPE, DOGE and BNB quantities matched Binance and every recorded stop was confirmed open. |
 
 Automated test-suite results use a fake exchange. The final T03a gate used the real Binance Futures testnet account; it correctly sent no entry order because leverage was above the cap.
 
@@ -65,12 +66,13 @@ Automated test-suite results use a fake exchange. The final T03a gate used the r
 - Claude fixed both high-severity recovery paths, exact evidence fields and the launcher boundary; Codex confirmed them on Windows.
 - The owner approved one normal install and one rollback drill. Both passed once, with structured evidence and no warnings.
 - The drill restored build `20261006-064354` byte-for-byte and proved it running. All four testnet lots remained protected and health stayed clean.
-- Acceptance/status checks and the protected merge are the only remaining T03b steps.
+- PR #5 was merged into protected `master` as `d68d6ef`; T03b is closed.
 
 ## Bugs
 
 | Status | Priority | Item | Notes |
 |---|---|---|---|
+| Open — T05b | Medium | A short Binance `-1007` outage floods Recent Activity and retries without a shared cooldown | Confirmed 21 duplicate reconciliation warnings plus 4 main-loop errors in 4m45s. This reconciliation call was a GET and sent no order. Add bounded backoff, incident coalescing, a plain-language read-vs-order message, last-confirmed timestamps and one recovery event; preserve fail-closed order reconciliation. |
 | Fixed and accepted (T03a) | High | Binance testnet refuses leverage changes on SOL/XRP (`-1000`) | Fallback reads current leverage and remains fail-closed; real testnet canary skipped safely at 20× > cap 10× with no order. |
 | Open | Medium | Panel can feel frozen during a long engine cycle | Planned in T06–T09 (core extraction). |
 | Open | Low | Risk tab "Compounding" tile clips at about 390 px wide | Next UI/mobile ticket. |
@@ -89,8 +91,9 @@ Automated test-suite results use a fake exchange. The final T03a gate used the r
 ## Open risks
 
 - **CI security follow-up (low):** add Dependabot for the immutable action pins plus Git-history secret and dependency scanning.
-- **Repository visibility:** intentionally public during testnet collaboration. It must return to private before any mainnet credentials or live release work.
-- T03b has no remaining finding and passed its install/rollback runtime gate. Only acceptance-commit checks and protected merge remain.
+- **Repository visibility:** private. It must stay private before any mainnet credentials or live release work.
+- **T05 safety review:** round 1 successfully moved disk I/O off order/protection paths and corrected persistence/provenance. Round 2 must prevent an old timed-out writer overlapping its replacement, distinguish confirmed/pending/failed fallbacks, tolerate malformed JSONL, and close test/replay writer threads.
+- **T04d verification review:** PR #7 must ensure skipped push jobs cannot satisfy the required full-check name, share one canonical full-gate plan, and keep Windows unit tests away from the real builder.
 
 ## Code clean-up policy (your request, 2026-10-05)
 
@@ -112,8 +115,11 @@ Every ticket now ends with a **clean-up pass on the files it touched**: remove d
 
 | Order | Ticket | Why it comes here |
 |---|---|---|
-| Closing | **T03b — installer in PowerShell** | Accepted; protected merge pending |
-| Next | **T05 — fill telemetry** | Measures expected vs actual fills |
+| Active | **T05 — fill telemetry** | Fix optional disk I/O so it can never delay protection, then re-review |
+| Next | **T04d — faster CI** | Fix the required-check identity, canonical gate list, provenance and Windows test isolation; then re-review |
+| Then | **T03c — automatic leverage handling** | Review and bounded testnet canary of the cross-margin exposure fallback |
+| Stabilize | **T05b — exchange-outage resilience** | Bound transient retries, distinguish read timeouts from ambiguous orders, coalesce duplicate activity, and prove safe automatic recovery |
+| Measure | **T05a — exit/opportunity attribution** | Record peak favorable profit/time, why each trade kept running, give-back, and fair causal earlier-exit alternatives before changing runner behaviour |
 | Core | **T06–T09 — shared core** | One trading logic for live and backtest |
 | Scale | **T10–T16** | Order budgets, trade records, "Why?", scorecards, VPS, multi-account, ML data |
 | Final gate | Release audit + your explicit mainnet approval | |
@@ -154,6 +160,8 @@ How scouting works: Claude and Codex look at what leading bots do (3Commas, Cryp
 | Point-in-time coin list incl. delisted coins (LUNA, FTT) | Subtopic of **T13** |
 | Generate this page from the evidence files so it can't go stale (Codex) | Subtopic of **T12** |
 | Event-triggered PR handling instead of polling (Codex) | Process, when the GitHub trigger is proven |
+| Trade exit audit: peak favorable price/profit, hold-reason trace, give-back and causal earlier-exit comparison (owner) | **T05a** measurement; displayed later in **T12 Why?** |
+| Quick Bank scalping: fee-aware early partial TP, optional conditional runner, one risk-budgeted micro-DCA, and a separately tested green-session guard (owner) | **T09a** component-isolated research after T05a/T06–T09; no order change yet |
 
 ## Decisions for you (no rush)
 
