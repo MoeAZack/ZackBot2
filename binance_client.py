@@ -1,5 +1,5 @@
 """Minimal Binance USD-M futures REST client (requests + HMAC), hedge-mode aware."""
-import hashlib, hmac, math, random, time, urllib.parse, uuid
+import hashlib, hmac, math, os, random, time, urllib.parse, uuid
 import requests
 
 MAINNET = 'https://fapi.binance.com'
@@ -10,6 +10,18 @@ class BinanceError(Exception):
     def __init__(self, code, msg):
         super().__init__(f'{code}: {msg}')
         self.code, self.msg = code, msg
+
+
+def testnet_faults(base, kind):
+    """T03c exceptional-path canary: symbols for which a controlled testnet failure of `kind` is injected, from the env
+    flag ZB_TESTNET_FAULTS="lev_refuse:SOLUSDT,lev_refuse:ETHUSDT". Always empty unless `base` is exactly TESTNET, so the
+    flag can never change a mainnet client. Malformed entries are ignored."""
+    if base != TESTNET: return frozenset()
+    out = set()
+    for item in (os.environ.get('ZB_TESTNET_FAULTS') or '').split(','):
+        k, _, sym = item.strip().partition(':')
+        if k == kind and sym.isalnum() and sym.isupper(): out.add(sym)
+    return frozenset(out)
 
 
 class AmbiguousOrder(Exception):
@@ -201,6 +213,8 @@ class Futures:
             raise
 
     def set_leverage(self, symbol, lev):
+        if symbol in testnet_faults(self.base, 'lev_refuse'):     # T03c canary only: inert unless TESTNET + the env flag
+            raise BinanceError(-1000, 'injected testnet refusal (ZB_TESTNET_FAULTS)')
         return self._req('POST', '/fapi/v1/leverage', dict(symbol=symbol, leverage=int(lev)), signed=True)
 
     def current_leverage(self, symbol):

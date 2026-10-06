@@ -11,7 +11,7 @@ import numpy as np
 import pandas as pd
 
 import strategies as S
-from binance_client import Futures, MAINNET, TESTNET, BinanceError, AmbiguousOrder, new_cid
+from binance_client import Futures, MAINNET, TESTNET, BinanceError, AmbiguousOrder, new_cid, testnet_faults
 from ai_filter import review
 import grid as GRID
 
@@ -359,6 +359,8 @@ class Engine:
         self.lock = threading.RLock()
         self.trade = Futures(cfg.get('API_KEY', ''), cfg.get('API_SECRET', ''), MAINNET if self.live else TESTNET)
         self.data = Futures('', '', MAINNET)
+        _faults = testnet_faults(getattr(self.trade, 'base', None), 'lev_refuse')
+        if _faults: log.warning(f'TESTNET FAULT INJECTION active: leverage changes refused for {sorted(_faults)} (ZB_TESTNET_FAULTS)')
         self.load_settings()
         # migrate v1 files (single-strategy bot) so logs stay readable
         if os.path.exists(self.F['trades']):
