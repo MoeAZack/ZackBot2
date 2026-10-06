@@ -1,52 +1,34 @@
-# ZackBot required verification (T04; T04d: parallel full). Same gates as on the PC: python verify.py fast|full.
-# This workflow is the ONLY producer of the required checks "verify fast" and "verify full", and every run of it executes
-# both: no skipped or reused required check (Codex T04d review). Pushes run the separate, non-required verify-push.yml.
-# "verify full" = three parallel slices of verify.FULL_PLAN (tests | replay 2 | replay 1 + UI harness), merged by the
-# required job, which fails unless the slices cover exactly the plan and every slice ran on this commit and passed.
+# ZackBot final full gate (T04; T04d: parallel full; round 2: review-clean trigger). Same gates as `python verify.py full`.
+# workflow_dispatch ONLY: Codex dispatches it on the PR branch once code review is clean, passing the exact head SHA it
+# approved. Every job first refuses to run unless the checked-out commit IS that SHA, so a stale or moved head can never
+# publish "verify full". A later commit has no "verify full" at all, so branch protection blocks it until Codex dispatches
+# again. "verify full" = three parallel slices of verify.FULL_PLAN (tests | replay 2 | replay 1 + UI harness), merged by
+# the required job, which fails unless the slices cover exactly the plan and every slice ran on this commit and passed.
+# The aggregator uses `if: always()` so a failed/cancelled slice FAILS it; it is never conditionally skipped.
+# PR iterations run only "verify fast" (verify-fast.yml); master pushes run "push fast" (verify-push.yml).
 # release (rollback drill + running-bot reconciliation) needs the owner's Windows install: run verify_release.bat on the PC.
 name: verify
 
 on:
-  pull_request:
-    branches: [master]
   workflow_dispatch:
+    inputs:
+      head_sha:
+        description: 'Exact 40-character commit SHA approved for the final full gate'
+        required: true
+        type: string
 
 permissions:
   contents: read
 
 concurrency:
-  group: verify-${{ github.ref }}-${{ github.event_name }}
+  group: verify-full-${{ github.ref }}
   cancel-in-progress: true
 
 env:
   TZ: Africa/Cairo
+  ZB_HEAD_SHA: ${{ inputs.head_sha }}
 
 jobs:
-  fast:
-    name: verify fast
-    runs-on: ubuntu-24.04
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
-        with:
-          python-version: '3.14'
-          cache: pip
-          cache-dependency-path: |
-            requirements.txt
-            requirements-dev.txt
-      - name: Install pinned dependencies
-        run: python -m pip install --disable-pip-version-check -r requirements-dev.txt
-      - name: verify fast
-        run: python verify.py fast --out verify_out
-      - name: Upload summary
-        if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
-        with:
-          name: verify-fast-${{ github.sha }}
-          path: verify_out/
-          retention-days: 30
-
   full-part:
     name: full slice ${{ matrix.part }}
     strategy:
@@ -56,6 +38,11 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     steps:
+      - name: Exact-head guard (first step - refuse anything but the approved SHA)
+        run: |
+          echo "approved head_sha=$ZB_HEAD_SHA  checked-out GITHUB_SHA=$GITHUB_SHA"
+          [[ "$ZB_HEAD_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "head_sha must be a full 40-character SHA"; exit 1; }
+          [ "$GITHUB_SHA" = "$ZB_HEAD_SHA" ] || { echo "STALE: the branch head is not the approved SHA"; exit 1; }
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
@@ -89,6 +76,11 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
+      - name: Exact-head guard (first step - refuse anything but the approved SHA)
+        run: |
+          echo "approved head_sha=$ZB_HEAD_SHA  checked-out GITHUB_SHA=$GITHUB_SHA"
+          [[ "$ZB_HEAD_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "head_sha must be a full 40-character SHA"; exit 1; }
+          [ "$GITHUB_SHA" = "$ZB_HEAD_SHA" ] || { echo "STALE: the branch head is not the approved SHA"; exit 1; }
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
@@ -104,8 +96,8 @@ jobs:
         with:
           pattern: verify-full-*-${{ github.sha }}
           path: parts/
-      - name: verify full (merge the slices)
-        run: python verify_ci.py merge --parts parts --out verify_out
+      - name: verify full (merge the slices; re-checks the approved SHA)
+        run: python verify_ci.py merge --parts parts --out verify_out --expected-sha "$ZB_HEAD_SHA"
       - name: Upload summary
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7

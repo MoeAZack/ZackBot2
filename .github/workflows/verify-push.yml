@@ -1,12 +1,13 @@
 # ZackBot push check (T04d). NOT a required check: its only job is "push fast", never "verify fast"/"verify full".
-# Runs the fast gate on every push. A docs/-only change on top of a commit whose push check passed (same workflow, push
-# event, exact previous commit) reuses that result: verify_ci.py reused, heavy steps recorded as SKIPPED/REUSED with the
-# run it reused. Anything else - or any doubt - runs the fast gate. The required gates run in verify.yml on pull requests.
+# Round 2: master pushes only, so a feature-branch commit gets exactly one fast run (the PR's "verify fast").
+# A docs/-only change on top of a master commit whose push check passed (same workflow, push event, exact previous
+# commit) reuses that result: verify_ci.py reused, heavy steps recorded as SKIPPED/REUSED with the run it reused.
+# Anything else - or any doubt - runs the fast gate. Required checks: verify-fast.yml (PR) and verify.yml (dispatched full).
 name: verify-push
 
 on:
   push:
-    branches: ['**']
+    branches: [master]
 
 permissions:
   contents: read
