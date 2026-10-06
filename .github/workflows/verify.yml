@@ -1,28 +1,18 @@
-# ZackBot verification (T04, faster in T04d). Same gates as on the PC: python verify.py fast|full.
-# fast: every push and pull request. full: pull requests into master, and on demand (Actions -> verify -> Run workflow).
-# T04d: "verify full" runs as three parallel slices (tests | replay 2 | replay 1 + UI harness), merged by the required
-# "verify full" job, which fails unless every slice ran on this commit and every step passed (verify_ci.py merge).
-# T04d: a docs/-only change on top of a commit whose same check already passed reuses that result (verify_ci.py reused,
-# heavy steps recorded as SKIPPED/REUSED with the commit and run). Anything else - or any doubt - runs the full gate.
+# ZackBot required verification (T04; T04d: parallel full). Same gates as on the PC: python verify.py fast|full.
+# This workflow is the ONLY producer of the required checks "verify fast" and "verify full", and every run of it executes
+# both: no skipped or reused required check (Codex T04d review). Pushes run the separate, non-required verify-push.yml.
+# "verify full" = three parallel slices of verify.FULL_PLAN (tests | replay 2 | replay 1 + UI harness), merged by the
+# required job, which fails unless the slices cover exactly the plan and every slice ran on this commit and passed.
 # release (rollback drill + running-bot reconciliation) needs the owner's Windows install: run verify_release.bat on the PC.
 name: verify
 
 on:
-  push:
-    branches: ['**']
   pull_request:
     branches: [master]
   workflow_dispatch:
-    inputs:
-      level:
-        description: 'fast or full'
-        type: choice
-        options: [full, fast]
-        default: full
 
 permissions:
   contents: read
-  checks: read
 
 concurrency:
   group: verify-${{ github.ref }}-${{ github.event_name }}
@@ -30,39 +20,14 @@ concurrency:
 
 env:
   TZ: Africa/Cairo
-  ZB_BEFORE: ${{ github.event.before }}
-  ZB_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
 
 jobs:
-  plan:
-    name: plan (docs-only reuse?)
-    runs-on: ubuntu-24.04
-    timeout-minutes: 10
-    outputs:
-      reuse_fast: ${{ steps.plan.outputs.reuse_fast }}
-      reuse_full: ${{ steps.plan.outputs.reuse_full }}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          fetch-depth: 0
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
-        with:
-          python-version: '3.14'
-      - id: plan
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: python verify_ci.py plan --event "${{ github.event_name }}" --before "$ZB_BEFORE" --head "$ZB_HEAD"
-
   fast:
     name: verify fast
-    needs: plan
-    if: always()
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          fetch-depth: 0
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: '3.14'
@@ -72,13 +37,7 @@ jobs:
             requirements-dev.txt
       - name: Install pinned dependencies
         run: python -m pip install --disable-pip-version-check -r requirements-dev.txt
-      - name: verify fast (reused - docs-only change)
-        if: needs.plan.outputs.reuse_fast == 'true'
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: python verify_ci.py reused fast --event "${{ github.event_name }}" --before "$ZB_BEFORE" --head "$ZB_HEAD" --out verify_out
       - name: verify fast
-        if: needs.plan.outputs.reuse_fast != 'true'
         run: python verify.py fast --out verify_out
       - name: Upload summary
         if: always()
@@ -90,10 +49,6 @@ jobs:
 
   full-part:
     name: full slice ${{ matrix.part }}
-    needs: plan
-    if: >-
-      always() && needs.plan.outputs.reuse_full != 'true' &&
-      (github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.level == 'full'))
     strategy:
       fail-fast: false
       matrix:
@@ -129,16 +84,12 @@ jobs:
 
   full:
     name: verify full
-    needs: [plan, full-part]
-    if: >-
-      always() &&
-      (github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.level == 'full'))
+    needs: full-part
+    if: always()
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          fetch-depth: 0
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: '3.14'
@@ -149,18 +100,11 @@ jobs:
       - name: Install pinned dependencies
         run: python -m pip install --disable-pip-version-check -r requirements-dev.txt
       - name: Download slice summaries
-        if: needs.plan.outputs.reuse_full != 'true'
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           pattern: verify-full-*-${{ github.sha }}
           path: parts/
-      - name: verify full (reused - docs-only change)
-        if: needs.plan.outputs.reuse_full == 'true'
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: python verify_ci.py reused full --event "${{ github.event_name }}" --before "$ZB_BEFORE" --head "$ZB_HEAD" --out verify_out
-      - name: verify full (merge the three slices)
-        if: needs.plan.outputs.reuse_full != 'true'
+      - name: verify full (merge the slices)
         run: python verify_ci.py merge --parts parts --out verify_out
       - name: Upload summary
         if: always()

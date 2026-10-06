@@ -1,0 +1,60 @@
+# ZackBot push check (T04d). NOT a required check: its only job is "push fast", never "verify fast"/"verify full".
+# Runs the fast gate on every push. A docs/-only change on top of a commit whose push check passed (same workflow, push
+# event, exact previous commit) reuses that result: verify_ci.py reused, heavy steps recorded as SKIPPED/REUSED with the
+# run it reused. Anything else - or any doubt - runs the fast gate. The required gates run in verify.yml on pull requests.
+name: verify-push
+
+on:
+  push:
+    branches: ['**']
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: verify-push-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  TZ: Africa/Cairo
+
+jobs:
+  push-fast:
+    name: push fast
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: '3.14'
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
+      - id: plan
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          ZB_BEFORE: ${{ github.event.before }}
+        run: python verify_ci.py plan --before "$ZB_BEFORE" --head "$GITHUB_SHA"
+      - name: Install pinned dependencies
+        run: python -m pip install --disable-pip-version-check -r requirements-dev.txt
+      - name: push fast (reused - docs-only change)
+        if: steps.plan.outputs.reuse == 'true'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          ZB_BEFORE: ${{ github.event.before }}
+        run: python verify_ci.py reused --before "$ZB_BEFORE" --head "$GITHUB_SHA" --out verify_out
+      - name: push fast
+        if: steps.plan.outputs.reuse != 'true'
+        run: python verify.py fast --out verify_out
+      - name: Upload summary
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: push-fast-${{ github.sha }}
+          path: verify_out/
+          retention-days: 30
