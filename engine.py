@@ -179,6 +179,8 @@ atexit.register(close_fill_writers, 2.0)
 LEV_REFUSAL_COOLDOWN_S = 1800     # T03c: after Binance refuses a leverage change, no new change request for this coin for 30 min
 LEV_MARGIN_RATIO_MAX = 0.5        # T03c: worst-case account margin ratio (every stop filled) allowed for an above-cap entry
 LEV_STOP_SLIP = 1.5               # T03c: every stop loss in that worst case (open lots, reserved orders, the new entry) is 1.5x worse
+LEGACY_LEV_EXC_MAKER = ('maker entry saved by older code through the above-cap leverage exception: not re-priced '
+                       'on that old approval (no market fallback)')                    # T03c r2 follow-up
 LEV_BRACKET_TTL_S = 3600          # T03c r1: a coin's leverage/maintenance bracket schedule is static venue data: cached 1 h
 LEV_EXC_RECHECK_S = 60            # T03c r1: while adds are paused by the above-cap exception, re-read the coin's leverage at most once a minute
 
@@ -2167,6 +2169,10 @@ class Engine:
         sym, r = rec['symbol'], self.rules[rec['symbol']]
         K, T = int(self.S.get('MAKER_REPRICE', 3)), float(self.S.get('MAKER_WAIT_S', 40))
         slice_s = T / (K + 1)
+        # T03c r2 follow-up: a record whose plan came through the above-cap exception (only older code let one rest) is never
+        # re-priced on that old approval: its resting order is cancelled now and the record finalized without a market
+        # fallback - whatever filled becomes a lot through the normal finalize path.
+        legacy = LEGACY_LEV_EXC_MAKER if (rec.get('plan') or {}).get('lev_exception') else None
         if rec['status'] in ('open', 'cancelling'):
             o = self.trade.get_order(sym, rec['cid'])
             age = time.time() - rec['placed_t']
@@ -2175,7 +2181,8 @@ class Engine:
                 rec['status'] = 'between'                            # never reached Binance
             elif o.get('status') in ('FILLED', 'CANCELED', 'EXPIRED', 'REJECTED', 'EXPIRED_IN_MATCH'):
                 self._maker_done_order(rec, o)
-            elif rec['status'] == 'open' and age >= slice_s:
+            elif rec['status'] == 'open' and (age >= slice_s or legacy):
+                if legacy: log.warning(f"{sym}: {legacy} - cancelling its resting order")
                 self.trade.cancel(sym, f"c:{rec['cid']}"); rec['status'] = 'cancelling'; rec['cancel_t'] = time.time()
                 return True                                          # final fill read on the next pass
             elif rec['status'] == 'cancelling' and time.time() - rec.get('cancel_t', 0) > 30:
@@ -2185,23 +2192,23 @@ class Engine:
         rem = self._rd(rec['qty'] - rec['filled'], r['step'])
         px_ = (marks or {}).get(sym) or rec.get('price') or rec['plan']['px']
         small = rem < r['min_qty'] or rem * px_ < r['min_notional']
-        if not small and rec['n'] <= K and time.time() - rec['t0'] < T:
+        if not legacy and not small and rec['n'] <= K and time.time() - rec['t0'] < T:
             self._maker_place(rec); return True
-        self._maker_finalize(k, rem, small, px_)
+        self._maker_finalize(k, rem, small, px_, no_fallback=legacy)
         return True
 
-    def _maker_finalize(self, k, rem, small, px):
+    def _maker_finalize(self, k, rem, small, px, no_fallback=None):
         rec = self.state['resting_entries'].pop(k)
         plan, r = rec['plan'], self.rules[rec['symbol']]
         sl = next((x for x in self.S['SLEEVES'] if x['id'] == rec['sleeve']), None) or dict(plan['sl'], enabled=False, max_pos=0)
         sg = dict(plan['sg'], close=px)
-        fallback = bool(self.S.get('MAKER_FALLBACK', True)) and not small
+        fallback = bool(self.S.get('MAKER_FALLBACK', True)) and not small and not no_fallback
         buy = rec['side'] == 'LONG'
         if rec['filled'] > 0:
             q = self._rd(rec['filled'], r['step']); avg = rec['cost'] / rec['filled']
             mrec = self._fill_rec('entry_maker', rec['symbol'], rec['side'], buy, rec.get('px0') or rec.get('price'), avg, plan['qty'], q,
                                   rec.get('t0'), signal_px=plan['px'], maker_tries=rec['n'])
-            st = {}                                                      # fallback state, only from what actually happened
+            st = dict(fallback_skipped=no_fallback) if no_fallback and rem > 0 else {}   # fallback state, only from what actually happened
             ok = self._create_lot(plan, q, avg, maker_qty=q)
             lot = self.state['lots'].get(getattr(self, '_last_lot_key', None))
             if fallback and rem > 0:
@@ -2226,6 +2233,7 @@ class Engine:
                or self._lev_exception_block(rec['symbol'], bool(plan.get('lev_exception')))) if fallback else None
         mrec = self._fill_rec('entry_maker', rec['symbol'], rec['side'], buy, rec.get('px0') or rec.get('price'), None, plan['qty'], 0,
                               rec.get('t0'), outcome='unfilled', signal_px=plan['px'], maker_tries=rec['n'], fallback_blocked=blk or None)
+        if mrec and no_fallback: mrec['fallback_skipped'] = no_fallback
         try:
             if fallback:
                 if blk: self.miss(sl, rec['symbol'], rec['side'], sg, f'maker entry not filled; market fallback blocked: {blk}'); return
@@ -2245,7 +2253,8 @@ class Engine:
                 if mrec: mrec.update(st)
                 if not ok: self.miss(sl, rec['symbol'], rec['side'], sg, self.last_skip or 'order failed')
             else:
-                self.miss(sl, rec['symbol'], rec['side'], sg, 'maker entry not filled (no market fallback)')
+                self.miss(sl, rec['symbol'], rec['side'], sg, f'maker entry not filled; {no_fallback}' if no_fallback
+                          else 'maker entry not filled (no market fallback)')
         finally:
             self._fill_emit(mrec)
 

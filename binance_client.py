@@ -37,6 +37,13 @@ def _finite_number(value, *, positive=False, nonnegative=False):
     return number
 
 
+class BracketSchedule(list):
+    """T03c r2 follow-up. A leverage-bracket schedule (a plain list of tier dicts) that also carries, for telemetry, the raw
+    notionalCoef Binance returned and the factor applied (always 1: any other coef is rejected)."""
+    def __init__(self, rows=(), notional_coef=1.0, coef_applied=1.0):
+        super().__init__(rows); self.notional_coef, self.coef_applied = notional_coef, coef_applied
+
+
 def _positive_int(value):
     number = _finite_number(value, positive=True)
     if not number.is_integer(): raise ValueError('number is not an integer')
@@ -269,13 +276,19 @@ class Futures:
         r = self._req('GET', '/fapi/v1/leverageBracket', dict(symbol=symbol), signed=True)
         rows = [x for x in (r if isinstance(r, list) else [r]) if isinstance(x, dict) and x.get('symbol', symbol) == symbol]
         if len(rows) != 1 or not rows[0].get('brackets'): raise ValueError(f'no leverage brackets for {symbol}')
-        coef = _finite_number(rows[0].get('notionalCoef', 1.0), positive=True)
+        # T03c r2 follow-up (Codex disposition): Binance does not say whether the returned brackets already include
+        # notionalCoef, so the scaling direction is not guessed. A present coef must be exactly 1; anything else (any other
+        # value, non-finite, non-positive, junk) rejects the schedule (fail closed) until a real adjusted-account payload
+        # proves the semantics. An omitted coef is the normal, unadjusted case.
+        raw_coef = _finite_number(rows[0]['notionalCoef'], positive=True) if 'notionalCoef' in rows[0] else 1.0
+        if raw_coef != 1.0: raise ValueError(f'{symbol} notionalCoef {raw_coef} != 1: bracket scaling unknown (fail closed)')
+        coef = 1.0
         out = [dict(floor=_finite_number(b['notionalFloor'], nonnegative=True) * coef,
                     cap=_finite_number(b['notionalCap'], positive=True) * coef,
                     mmr=_finite_number(b['maintMarginRatio'], positive=True),
                     cum=_finite_number(b['cum'], nonnegative=True) * coef,
                     lev=_positive_int(b['initialLeverage'])) for b in rows[0]['brackets']]
-        return sorted(out, key=lambda b: b['floor'])
+        return BracketSchedule(sorted(out, key=lambda b: b['floor']), notional_coef=raw_coef, coef_applied=coef)
 
     def set_margin_type(self, symbol, mtype='CROSSED'):
         try:
