@@ -190,9 +190,11 @@ class Futures:
     def position_risk(self):
         """T03c round 1. Every symbol's open positions as Binance has them now (read-only, one positionRisk read):
         a list of dict(symbol, side 'LONG'|'SHORT', qty >= 0, mark, notional >= 0). Values are passed through as floats
-        (the engine validates them: NaN / negative / missing must never be treated as safe)."""
+        (the engine validates them: NaN / negative / missing must never be treated as safe). An answer that is not a list raises."""
+        rows = self._req('GET', '/fapi/v2/positionRisk', signed=True)
+        if not isinstance(rows, list): raise ValueError(f'positionRisk: unexpected answer shape ({type(rows).__name__})')
         out = []
-        for p in self._req('GET', '/fapi/v2/positionRisk', signed=True) or []:
+        for p in rows:
             amt = float(p['positionAmt'])
             if amt == 0: continue
             side = p.get('positionSide', 'BOTH')
@@ -204,16 +206,21 @@ class Futures:
     def open_orders_all(self):
         """T03c round 1. Every open order on the account (classic + algo/conditional), read-only. A list of
         dict(tag 'o:<orderId>'|'a:<algoId>', symbol, side, position_side, qty (unfilled), price, stop_price, reduce_only,
-        client_id). Unlike open_stop_tags, a failed algo read RAISES: callers use this as proof, so unknown != empty."""
+        client_id). Unlike open_stop_tags, a failed algo read RAISES: callers use this as proof, so unknown != empty.
+        Only the exact shapes count: a list for openOrders; a list, or a dict whose 'orders' is a list, for openAlgoOrders."""
+        rows = self._req('GET', '/fapi/v1/openOrders', signed=True)
+        if not isinstance(rows, list): raise ValueError(f'openOrders: unexpected answer shape ({type(rows).__name__})')
         out = []
-        for o in self._req('GET', '/fapi/v1/openOrders', signed=True) or []:
+        for o in rows:
             out.append(dict(tag=f"o:{o['orderId']}", symbol=o.get('symbol'), side=o.get('side'), position_side=o.get('positionSide', 'BOTH'),
                             qty=float(o.get('origQty') or 0) - float(o.get('executedQty') or 0), price=float(o.get('price') or 0),
                             stop_price=float(o.get('stopPrice') or 0), client_id=o.get('clientOrderId'),
                             reduce_only=bool(o.get('reduceOnly')) or bool(o.get('closePosition'))))
         r = self._req('GET', '/fapi/v1/openAlgoOrders', signed=True)
-        for o in (r.get('orders', r) if isinstance(r, dict) else r) or []:
-            if not isinstance(o, dict) or 'algoId' not in o: continue
+        algo = r if isinstance(r, list) else r.get('orders') if isinstance(r, dict) else None
+        if not isinstance(algo, list): raise ValueError(f'openAlgoOrders: unexpected answer shape ({type(r).__name__})')
+        for o in algo:
+            if not isinstance(o, dict) or 'algoId' not in o: raise ValueError('openAlgoOrders: malformed order row')
             out.append(dict(tag=f"a:{o['algoId']}", symbol=o.get('symbol'), side=o.get('side'), position_side=o.get('positionSide', 'BOTH'),
                             qty=float(o.get('quantity') or 0) - float(o.get('executedQty') or 0), price=float(o.get('price') or 0),
                             stop_price=float(o.get('triggerPrice') or 0), client_id=o.get('clientAlgoId'),

@@ -1518,9 +1518,12 @@ class Engine:
         # ---- reconcile engine lots with the exchange
         groups, resting = {}, {}
         for l in lots: groups.setdefault((l['symbol'], l['side']), []).append(l)
-        for rec in rest:
+        for rec in rest:                                         # only the FILLED part of a maker entry may exist on Binance
             k_ = (rec.get('symbol'), rec.get('side'))
-            resting[k_] = resting.get(k_, 0.0) + lev_num(rec.get('qty'), f'{k_[0]} maker entry quantity', pos=True)
+            q_ = lev_num(rec.get('qty'), f'{k_[0]} maker entry quantity', pos=True)
+            f_ = lev_num(rec.get('filled', 0.0), f'{k_[0]} maker entry filled quantity')
+            if f_ > q_ + 1e-12: raise LevReject('numeric', f'{k_[0]} maker entry filled more than its quantity')
+            resting[k_] = resting.get(k_, 0.0) + f_
         for k_ in set(pos) | set(groups):
             have = pos.get(k_, [0.0])[0]; exp = sum(l['qty'] for l in groups.get(k_, []))
             tol = float((self.rules.get(k_[0]) or {}).get('step', 1e-9)) * (len(groups.get(k_, [])) + 1)
@@ -1528,6 +1531,7 @@ class Engine:
                 raise LevReject('reconcile', f'{k_[0]} {k_[1]}: Binance holds {have:g}, the bot expects {exp:g}')
         # ---- every lot has a confirmed exchange stop
         by_tag = {o.get('tag'): o for o in (orders or []) if isinstance(o, dict) and o.get('tag')}
+        per_order = {}                                           # stop order tag -> [lot qty it must cover, lots, step]
         for l in lots:
             nm = f"{l['symbol']} {l['side']}"
             if l.get('stop_dirty') or not l.get('stop_id'): raise LevReject('stops', f'{nm}: stop not confirmed yet')
@@ -1539,6 +1543,13 @@ class Engine:
             step = float((self.rules.get(l['symbol']) or {}).get('step', 1e-9))
             if lev_num(o.get('qty'), f'{nm} stop quantity') < l['qty'] - step:
                 raise LevReject('stops', f'{nm}: stop covers less than the position')
+            tick = float((self.rules.get(l['symbol']) or {}).get('tick', 1e-8))
+            if abs(lev_num(o.get('stop_price'), f'{nm} stop price', pos=True) - l['stop']) > tick * 1.001 + 1e-12:
+                raise LevReject('stops', f"{nm}: stop on Binance is at {o.get('stop_price')}, the bot expects {l['stop']}")
+            c_ = per_order.setdefault(l['stop_id'], [0.0, 0, step]); c_[0] += l['qty']; c_[1] += 1
+        for tag, (need, n_lots, step) in per_order.items():     # one stop ORDER can protect only up to its own size
+            if need > lev_num(by_tag[tag].get('qty'), 'stop quantity') + step * n_lots:
+                raise LevReject('stops', f'stop {tag} is shared by {n_lots} lots ({need:g}) but covers only {by_tag[tag].get("qty")}')
         # ---- working orders that could add exposure: only the bot's own maker entries (reserved below)
         bot_cids = {rec.get('cid') for rec in rest if rec.get('cid')}
         stop_tags = {l['stop_id'] for l in lots}
@@ -1548,12 +1559,26 @@ class Engine:
             if not (ps == 'BOTH' or (ps == 'LONG' and sd_ == 'BUY') or (ps == 'SHORT' and sd_ == 'SELL')): continue
             if o.get('client_id') and o.get('client_id') in bot_cids: continue
             raise LevReject('working_orders', f"an order on {o.get('symbol')} that can add exposure is working on Binance (not a bot entry)")
-        # ---- reserved exposure: (symbol, notional, worst loss incl. slippage)
-        res = []
+        def move(sd, mk, stop):
+            """Worst loss per unit from the current mark to the stop, slippage included. A stop already through the mark
+            gives no gain: it is charged its distance from the mark as slippage instead (0 when exactly at the mark)."""
+            d = sd * (mk - stop)
+            return d * slip if d > 0 else abs(d)
+        # ---- reserved exposure: (symbol, side, notional, worst loss incl. slippage); side None = may be either (grids)
+        res, filled_parts, unprotected = [], [], []
         for rec in rest:
             q = lev_num(rec['qty'], 'maker entry quantity', pos=True); plan = rec.get('plan') or {}
-            px = max(lev_num(rec.get('price') or plan.get('px'), 'maker entry price', pos=True), mark_of(rec['symbol']))
-            res.append((rec['symbol'], q * px, q * lev_num(plan.get('stop_dist'), 'maker entry stop distance', pos=True) * slip))
+            f_ = lev_num(rec.get('filled', 0.0), 'maker entry filled quantity')
+            dist = lev_num(plan.get('stop_dist'), 'maker entry stop distance', pos=True)
+            px0 = lev_num(rec.get('price') or plan.get('px'), 'maker entry price', pos=True)
+            sd = 1 if rec['side'] == 'LONG' else -1
+            if f_ > 0:                                           # already filled: a position with NO stop yet (it gets one as a lot)
+                fill = lev_num(rec.get('cost'), 'maker entry cost') / f_ if rec.get('cost') else px0
+                filled_parts.append((rec['symbol'], sd, f_, fill - sd * dist))
+                unprotected.append(f"{rec['symbol']} {rec['side']} {f_:g}")
+            if q - f_ > 0:
+                px = max(px0, mark_of(rec['symbol']))
+                res.append((rec['symbol'], rec['side'], (q - f_) * px, (q - f_) * dist * slip))
         for l in lots:
             if l.get('manual'): continue                         # manual trades get no adds
             sd = 1 if l['side'] == 'LONG' else -1; s = l['symbol']
@@ -1561,27 +1586,28 @@ class Engine:
                 for k in range(int(lev_num(l.get('dca', 0), 'DCA step')), len(l['levels'])):
                     q = lev_num(l.get('q0'), 'DCA base quantity', pos=True) * lev_num(l['w'][k], 'DCA weight', pos=True)
                     lv = lev_num(l['levels'][k], 'DCA level', pos=True)
-                    res.append((s, q * max(lv, mark_of(s)), q * abs(lv - l['stop']) * slip))
+                    res.append((s, l['side'], q * max(lv, mark_of(s)), q * abs(lv - l['stop']) * slip))
             py = (l.get('mgmt') or {}).get('pyramid')
             if py:
                 left = int(lev_num(py.get('n'), 'pyramid adds')) - int(lev_num(l.get('adds', 0), 'pyramid adds done'))
                 q = lev_num(l.get('q0'), 'pyramid base quantity', pos=True) * lev_num(py.get('frac'), 'pyramid fraction')
                 for j in range(max(0, left)):
                     pj = lev_num(l.get('next_add'), 'pyramid level', pos=True) + sd * j * lev_num(py.get('step_r'), 'pyramid step') * lev_num(l.get('R'), 'lot R')
-                    res.append((s, q * max(pj, mark_of(s)), q * max(0.0, sd * (pj - l['stop'])) * slip))
+                    res.append((s, l['side'], q * max(pj, mark_of(s)), q * max(0.0, sd * (pj - l['stop'])) * slip))
         for g in grids:
             m, k = g.get('metrics') or {}, 2 if g.get('mode') == 'neutral' else 1
-            res.append((g.get('sym'), k * lev_num(m.get('max_notional'), 'grid notional'), k * lev_num(m.get('worst_loss_usd'), 'grid worst loss') * slip))
+            res.append((g.get('sym'), None, k * lev_num(m.get('max_notional'), 'grid notional'), k * lev_num(m.get('worst_loss_usd'), 'grid worst loss') * slip))
         # ---- current notional, mark-to-stop losses, worst-case notional per symbol
         ncur, nws, loss_lots = {}, {}, 0.0
         for (s, _), (q, nt, mk) in pos.items(): ncur[s] = ncur.get(s, 0.0) + nt
         nws.update(ncur)
-        for l in lots:
-            sd = 1 if l['side'] == 'LONG' else -1; mk = mark_of(l['symbol'])
-            move = max(0.0, sd * (mk - l['stop'])) * slip         # per unit, current mark -> stop (profit given back included)
-            loss_lots += l['qty'] * move
-            if sd == -1: nws[l['symbol']] = nws.get(l['symbol'], 0.0) + l['qty'] * move   # a short's notional grows to its stop
-        for s, nt, _ in res: nws[s] = nws.get(s, 0.0) + nt
+        held = [(l['symbol'], 1 if l['side'] == 'LONG' else -1, l['qty'], l['stop']) for l in lots] + filled_parts
+        for s, sd, q, stop in held:                              # lots and filled maker parts: current mark -> stop
+            mv = move(sd, mark_of(s), stop)
+            loss_lots += q * mv
+            if sd == -1: nws[s] = nws.get(s, 0.0) + q * mv     # a short's notional grows to its stop
+        for s, side, nt, ls in res:                              # reserved orders: notional, and a short grows to its stop
+            nws[s] = nws.get(s, 0.0) + nt + (ls if side != 'LONG' else 0.0)
         nws[sym] = nws.get(sym, 0.0) + notional + risk * slip
         maint_add = 0.0
         for s, n_ in nws.items():
@@ -1589,8 +1615,8 @@ class Engine:
             b = self._brackets(s)
             try: maint_add += bracket_maint(b, n_) - bracket_maint(b, ncur.get(s, 0.0))
             except ValueError as e: raise LevReject('brackets', f'{s}: {e}')
-        loss_res = sum(x[2] for x in res)
-        gross = sum(p_[1] for p_ in pos.values()) + sum(x[1] for x in res) + notional
+        loss_res = sum(x[3] for x in res)
+        gross = sum(p_[1] for p_ in pos.values()) + sum(x[2] for x in res) + notional
         eff = gross / bal
         left = bal - loss_lots - loss_res - risk * slip
         maint = mm + maint_add
@@ -1602,8 +1628,10 @@ class Engine:
         worst = maint / left if left > 0 else None
         n = dict(effective_leverage=_fin(eff, 2), worst_margin_ratio=_fin(worst), margin_balance=_fin(bal, 2),
                  balance_after_stops=_fin(left, 2), maint_after_stops=_fin(maint, 2), gross_notional=_fin(gross, 2),
-                 reserved_notional=_fin(sum(x[1] for x in res), 2), loss_to_stops=_fin(loss_lots + loss_res + risk * slip, 2),
+                 reserved_notional=_fin(sum(x[2] for x in res), 2), loss_to_stops=_fin(loss_lots + loss_res + risk * slip, 2),
                  open_risk=_fin(open_risk, 2), positions=len(pos))
+        if unprotected:
+            raise LevReject('unprotected', f'a maker entry has a filled part without a stop yet ({unprotected[0]})', n)
         if eff > cap: raise LevReject('effective_leverage', f'account effective leverage {eff:.1f}x would exceed the {cap:g}x cap', n)
         if worst is None or worst > LEV_MARGIN_RATIO_MAX:
             raise LevReject('worst_margin_ratio', f"worst-case margin ratio {'over 100%' if worst is None else f'{worst:.0%}'} "
