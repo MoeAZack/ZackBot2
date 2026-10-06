@@ -1,6 +1,6 @@
 # ZackBot owner overview
 
-*Last refreshed: 2026-10-06 11:07 Cairo (Africa/Cairo) by Codex, on branch `t04d-faster-ci`. This is the plain-language owner view. `ROADMAP.md` and `docs/reviews/` hold the detailed scope and evidence.*
+*Last refreshed: 2026-10-06 11:20 Cairo (Africa/Cairo) by Codex, on branch `t04d-faster-ci`. This is the plain-language owner view. `ROADMAP.md` and `docs/reviews/` hold the detailed scope and evidence.*
 
 ## Where we are now
 
@@ -11,9 +11,9 @@
 | Installed application | **T03b installed and rollback-proven.** SHA-256 `203B155474942709B6AD40C3517BA32D058721664D245191C900068CBC4A60A6`; the drill restored the same build and hash exactly. |
 | Latest accepted commit | `master` `566ed56` (T05 accepted and merged) |
 | Current ticket | **T04d: faster, fail-closed CI review loop** |
-| Stage | **Round-four fixes requested: GitHub did not count the dispatch-only full result in PR protection, and CodeQL found one inefficient test regex.** |
-| What Claude is doing | Replace the final-full trigger with a deliberate PR-associated trigger and replace the CodeQL-flagged test regex with deterministic parsing. T03c PR #9 remains queued. |
-| What Codex is reviewing | T04d's final GitHub protection integration. No executable or runtime action is involved. |
+| Stage | **Round-five review-clean. Preparing the final documentation head, then one fast/CodeQL pass and one `full-ready` exact-head full gate.** |
+| What Claude is doing | Waiting for Codex's final labelled gate and protected merge. T03c PR #9 remains queued. |
+| What Codex is reviewing | T04d's final live protection proof. No executable or runtime action is involved. |
 | Your action | **None.** |
 
 ## Latest test results
@@ -39,7 +39,7 @@
 | T05 focused Windows review | Accepted implementation head `e58f0c2`: **46/46 passed** in 11.04 s; deterministic close-vs-admission race test passed. |
 | T05 GitHub | Final exact-head fast/full gates passed and T05 merged into protected `master` at `566ed56` at 09:35 Cairo. |
 | T04d round-three Windows review | Exact implementation head `b6d4e81`: **51/51 passed** in 14.88 s, including a fresh `core.autocrlf=true` clone and byte-exact manifest proof. |
-| T04d GitHub | Stable head `b3e63db`: single fast passed in 5m24s; all parallel full slices and strict aggregator passed in about seven minutes. **GitHub PR protection still shows only fast and blocks merge**, so the trigger needs one more fix. |
+| T04d GitHub | Round-four head `99b8a6a`: single fast passed in 5m14s; CodeQL clean; unrelated-label live probe published no `verify full`. Final stable documentation head and `full-ready` gate remain. |
 
 Automated test-suite results use a fake exchange. The final T03a gate used the real Binance Futures testnet account; it correctly sent no entry order because leverage was above the cap.
 
@@ -78,14 +78,15 @@ Automated test-suite results use a fake exchange. The final T03a gate used the r
 - Restart/rotation, malformed records, missing quantities, fallback truthfulness and writer lifecycle are covered by 46 focused tests.
 - Codex found and Claude fixed the final close-vs-admission race. The final exact-head checks passed and protected `master` now contains T05 at `566ed56`.
 
-### T04d — faster review CI: protection-integration fix pending
+### T04d — faster review CI: review-clean, final live gate pending
 
 - Feature-branch commits now run one PR fast check rather than duplicate push and PR checks.
 - Rejected review iterations do not run the expensive full suite. Codex explicitly dispatches one parallel full gate only after review is clean.
 - The full gate is tied to one exact approved SHA and refuses stale or moved heads.
 - Fresh Git-for-Windows checkouts reproduce the byte-hashed datasets even when `core.autocrlf=true`.
 - The reviewed implementation passed 51 focused Windows tests. The stable head passed its single fast check and all exact-head full slices.
-- A live protection check exposed one remaining issue: a successful dispatch-only `verify full` is attached to the commit but omitted from PR #7's required-check rollup. GitHub correctly blocked the normal merge. Claude must move the deliberate final trigger onto a PR-associated event and prove it live.
+- A live protection check exposed that dispatch-only full results do not satisfy PR protection. The final gate now uses the PR-associated `full-ready` label instead.
+- An unrelated-label probe proved it cannot create the required full identity, and CodeQL is clean after replacing its flagged test regex with deterministic parsing.
 
 ## Bugs
 
@@ -112,13 +113,13 @@ Automated test-suite results use a fake exchange. The final T03a gate used the r
 | Fixed; final gate pending (T04d) | High | Every rejected PR iteration ran the full suite | Full verification is now explicit and exact-head only; ordinary PR updates run fast only. |
 | Fixed; final gate pending (T04d) | Medium | Feature heads started duplicate push and PR fast runs | Feature branches now have one PR fast producer; push-fast is master-only. |
 | Fixed; final gate pending (T04d) | High | Fresh Windows checkouts changed hashed dataset bytes to CRLF | Manifest datasets and manifest JSON are pinned to LF and tested in a fresh autocrlf-enabled clone. |
-| Open (T04d) | High gate / low runtime exposure | CodeQL flags exponential backtracking in `tests/test_ci.py` | The input is a small repository-owned workflow file, but the newly introduced regex leaves the security gate red; replace it with deterministic parsing. |
+| Fixed; final gate pending (T04d) | High gate / low runtime exposure | CodeQL flagged exponential backtracking in `tests/test_ci.py` | The regex was removed in favor of deterministic line parsing; CodeQL is green on `99b8a6a`. |
 
 ## Open risks
 
 - **CI security follow-up (low):** add Dependabot for the immutable action pins plus Git-history secret and dependency scanning.
 - **Repository visibility:** GitHub currently reports the repository as **public**. The owner previously accepted that testnet-development risk; it must return to private before any mainnet credential or live-release work.
-- T04d has no trading/runtime finding. Its remaining issues are CI protection integration and one test-only CodeQL alert; it requires no installer, bot stop, or testnet canary.
+- T04d has no remaining code or trading/runtime finding. The final labelled CI/protection proof remains; it requires no installer, bot stop, or testnet canary.
 
 ## Code clean-up policy (your request, 2026-10-05)
 
@@ -140,7 +141,7 @@ Every ticket now ends with a **clean-up pass on the files it touched**: remove d
 
 | Order | Ticket | Why it comes here |
 |---|---|---|
-| Current | **T04d — faster CI** | Round-four CI-trigger and CodeQL fixes pending before the final full gate |
+| Current | **T04d — faster CI** | Review-clean; stable-head fast/CodeQL and one labelled full gate remain |
 | Next execution | **T03c — automatic leverage handling** | Queued PR #9; review starts after T04d merges |
 | Resilience | **T05b — exchange-outage handling** | Backoff/circuit state, incident coalescing and reconciliation after transient Binance failures |
 | Next measurement | **T05a — causal trade audit** | Peak profit/MFE, give-back, hold/close reasons and causal earlier-exit comparisons |

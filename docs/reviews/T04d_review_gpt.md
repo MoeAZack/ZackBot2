@@ -1,55 +1,47 @@
-# T04d: Faster CI — Codex round-four review
+# T04d: Faster CI — Codex round-five review
 
-*2026-10-06, Africa/Cairo. Reviewed exact stable head `b3e63dbf98d7db38f4c5201fc0f1e836e09a7754` against protected master `566ed5641b4bacdff72b97e9f1488ce0ddb2e3fd`.*
+*2026-10-06, Africa/Cairo. Reviewed exact round-four implementation head `99b8a6a4ad71047b8017db2d7817a5a574750201` against protected master `566ed5641b4bacdff72b97e9f1488ce0ddb2e3fd`.*
 
-## Decision: fixes requested
+## Decision: review-clean; final labelled full gate required
 
-The three round-two implementation blockers are fixed, all focused tests pass, and the explicitly dispatched parallel full run passed. One P1 integration blocker remains: in this repository, GitHub does not accept the `workflow_dispatch` run as the pull request's required `verify full` result. The protected merge remains blocked and correctly refused without an override. CodeQL also found one high-severity-classified inefficient regular expression in the new workflow test; its actual scope is test-only, but the red security check must be fixed.
+No code finding remains. The final-full workflow is now PR-associated, exact-head, and deliberately triggered by the `full-ready` label. Ordinary PR updates still run one fast check and no full suite. The CodeQL finding is fixed with deterministic line parsing.
 
-## Finding
+This review and the owner status page are prepared before the final gate. The resulting documentation head must pass its single fast and CodeQL checks; Codex will then add `full-ready` exactly once. No later commit may be added before merge.
 
-### P1 — Dispatched full passes on the commit but does not satisfy the PR protection rollup
+## Round-four dispositions
 
-Stable head `b3e63db` passed its single PR `verify fast` in 5m24s. Codex then dispatched `verify.yml` on that exact branch/head. Every exact-head guard passed, all slices passed, and the strict `verify full` aggregator passed.
+### Fixed — the final full result is now associated with the pull request
 
-The commit check-runs API shows successful GitHub Actions checks named `verify fast` and `verify full` on `b3e63db`. However, PR #7's `statusCheckRollup` contains only `verify fast`; `mergeStateStatus` remains `BLOCKED`. A normal protected rebase merge with `--match-head-commit b3e63db...` was refused by the base-branch policy. No administrator override was used.
+`.github/workflows/verify.yml` now listens only for `pull_request` label events into `master`. The intended `full-ready` label runs the three slices and the real aggregator named `verify full`. Ordinary opened, synchronized, and reopened events never start this workflow; they run only `verify fast` through `verify-fast.yml`.
 
-This makes the dispatch-only design operationally unusable even though the verification itself is correct: it cannot complete the protected PR merge it was designed to gate.
+Every full job takes the PR head SHA from the event, validates its format, checks out that SHA explicitly, then verifies the checked-out commit. Slice artifacts are keyed by that SHA, and the merger rechecks it. A later commit therefore has no full result until `full-ready` is removed and deliberately added again.
 
-**Required fix:** trigger the final full through a pull-request-associated event that GitHub counts for this PR's required-check rollup, while preserving all existing fail-closed properties:
+### Fixed — unrelated labels cannot satisfy the required full identity
 
-- ordinary open/synchronize/reopen PR events run one `verify fast` and create no `verify full`;
-- Codex deliberately triggers the final phase only after review is clean (a `full-ready` label is acceptable);
-- the real aggregator remains the only producer of the required `verify full` identity;
-- no nonmatching event may publish a skipped/successful `verify full`;
-- the event's exact PR head SHA is recorded, explicitly checked out, validated in every slice, and rechecked by the aggregator;
-- a later commit has no valid full result and remains blocked until a new deliberate trigger;
-- adding an unrelated label either creates no required identity or fails closed; it must never satisfy protection;
-- focused tests prove the trigger contract, head movement invalidation, wrong-label behavior, and exclusive check-name ownership.
+For any label other than the exact lowercase `full-ready`, slice jobs are skipped under non-required names and the aggregator is named `full gate not requested`. Its only running step records that no gate was requested; all verification steps are skipped. It never publishes `verify full` as successful or skipped.
 
-A label-driven `pull_request: types: [labeled]` workflow can satisfy this if it runs the full jobs only for the deliberate `full-ready` transition without exposing a skipped required identity; another design is acceptable if a live PR proof shows GitHub includes its successful `verify full` in `statusCheckRollup`.
+Codex tested this live by adding the existing `question` label to PR #7. Run 37435296506 completed in seconds with only `full gate not requested` successful and the non-required slice name skipped. No `verify full` check existed. The probe label was removed immediately.
 
-### P2 — CodeQL flags exponential backtracking in the new workflow test
+### Fixed — CodeQL inefficient-regex alert
 
-GitHub Advanced Security alert 10 (`py/redos`) identifies the multiline expression in `tests/test_ci.py:157` that searches the workflow input block. CodeQL classifies it as high severity because repeated whitespace/line groups can backtrack exponentially on a crafted long string. The current input is a small repository-owned workflow file, so this is not an exposed trading/runtime vulnerability, but it is newly introduced code and leaves the security gate red.
-
-**Required fix:** replace the multiline regular expression with deterministic line/block parsing or bounded literal assertions. Add or retain a test proving `head_sha` is present and `required: true` without a backtracking expression. The next PR head must have a clean CodeQL summary.
+The multiline regex identified by alert 10 (`py/redos`) is gone. Workflow job blocks are parsed line-by-line, and the old dispatch-input test no longer exists. CodeQL's actions and Python analyses and its security summary all pass on `99b8a6a`.
 
 ## Evidence
 
-- Windows focused review on implementation head `b6d4e81`: **51/51 passed** in 14.88 seconds, including a fresh `core.autocrlf=true` clone and byte-exact manifest proof.
-- Stable candidate fast run: <https://github.com/MoeAZack/ZackBot2/actions/runs/37430110451> — success, 5m24s; no duplicate push run and no automatic full run.
-- Exact-head dispatched full: <https://github.com/MoeAZack/ZackBot2/actions/runs/37430712018> — all guards and slices passed; tests 4m02s, replay1/UI 6m23s, replay2 6m31s, aggregator 31s.
-- Commit check-runs API: both required names successful from GitHub Actions.
-- PR rollup: only `verify fast`; merge status `BLOCKED`.
-- Protected rebase merge: refused by base-branch policy. No `--admin`, protection change, installation, bot stop, exchange call, order, credential, or runtime action occurred.
-- CodeQL language jobs succeeded, but the security summary failed with one new `py/redos` alert at `tests/test_ci.py:157`.
+- Remote branch contains current protected master as an ancestor and is mergeable.
+- Exact implementation head `99b8a6a`: one PR `verify fast` passed in 5m14s; no feature push run and no automatic full run.
+- CodeQL: actions analysis, Python analysis, and security summary all successful; the prior alert is absent from the current head.
+- Windows focused review: **53/53 passed** in 17.70 seconds for `tests/test_ci.py tests/test_verify.py`.
+- Focused coverage includes event/action simulation, exclusive required-check ownership, wrong-label behavior, exact PR-head checkout, post-checkout guard, new-head invalidation, strict slice merging, action pins, and fresh `core.autocrlf=true` clone proof.
+- Live wrong-label probe: <https://github.com/MoeAZack/ZackBot2/actions/runs/37435296506>.
+- No administrator override, protection change, installation, bot stop, exchange call, order, credential, or runtime action occurred.
 
-## Acceptance conditions
+## Final acceptance gate
 
-1. Preserve the fixed one-fast-run, deterministic line-ending, canonical-plan and strict-merge behavior.
-2. Replace the dispatch-only final trigger with a deliberate PR-associated trigger that appears as `verify full` in PR #7's live status rollup.
-3. Replace the CodeQL-flagged multiline regex with deterministic parsing; the security check must be clean.
-4. Run focused tests and one PR fast check on the new exact head.
-5. Codex triggers exactly one final full; all slices and the aggregator pass on the exact reviewed head.
-6. GitHub reports both required checks successful in the PR rollup, `mergeStateStatus` is no longer blocked, and a normal protected linear merge succeeds without override.
+1. Commit this review and the refreshed owner status only; executable/configuration files must remain identical to `99b8a6a`.
+2. The resulting exact head must pass its single `verify fast` check and clean CodeQL summary.
+3. Codex adds `full-ready` once. The PR-associated run must execute all three full slices and publish `verify full` on the exact head.
+4. All slices and the strict aggregator pass; PR #7's rollup must contain both required checks and GitHub must remove the protection block.
+5. Record final acceptance in a PR comment, then perform a normal protected rebase merge without override.
+
+Until those live steps complete, the verdict is **review-clean but not yet accepted or merged**.
