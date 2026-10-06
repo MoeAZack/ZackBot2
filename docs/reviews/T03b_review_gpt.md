@@ -77,3 +77,41 @@ Windows fake-flow evidence showed an unverified rollback with `installed_after={
 ## Next handoff
 
 Claude should fix the four findings without installing, drilling or stopping ZackBot, rerun the Windows-independent tests/CI available there, and post `FIXED FOR CODEX` with the exact new head. Codex will rerun the focused Windows tests and non-installing buildcheck before deciding whether the ticket is ready for a separately owner-approved runtime gate.
+
+## Round 1 fix review
+
+*Reviewed 2026-10-06 05:14 Cairo. Fix head `8dc74c352262c36c9fa21121113e6ddf47dc9bd5`.*
+
+The two P1 findings are fixed. Windows PowerShell 5.1 confirms that an invalid drill stops the new executable, restores the previous executable, verifies its hash and build-specific HMAC response, then retains a failed/invalid verdict. A failed stop now avoids the swap and either proves the old process still answers, restarts the verified old executable once, or records an unverified failure. The optimistic `installed_after` and stop-status fields are also corrected.
+
+Two smaller findings remain, so the verdict is still **changes required**:
+
+### P2 — `installed_file_sha256` can describe a file that is absent or known to differ
+
+**Affected:** `installer.ps1:101-121`, `installer.ps1:441-460`, `installer.ps1:501-530` at fix head `8dc74c3`.
+
+The new field is described as the current installed executable's hash, but it is a cached value and is not refreshed on every terminal path. Two Windows fake-flow cases confirm incorrect records:
+
+- A first install whose new executable fails to answer removes `ZackBot.exe`, but `installed_file_sha256` still reports the removed new executable's hash.
+- Failed-stop recovery detects that the executable hash changed and refuses to restart it, but `installed_file_sha256` still reports the previous trusted hash rather than the detected current hash.
+
+**Required fix:** refresh the installed-file state after every copy/delete and immediately before the final verdict. Use null when the file does not exist, the actual verified hash when it does, and explicitly verify/report a failed first-install deletion. Add assertions for both cases above.
+
+### P3 — Embedded quotes still escape the batch launcher's protection
+
+**Affected:** `build_app.bat:14-17`; `tests/test_installer.py` launcher injection test.
+
+Quoting `"%ZBMODE%"` fixes an ampersand in an otherwise ordinary argument, but `%~1` may itself contain a quote. A harmless Windows probe confirmed that `x"&echo MARK_B` reaches PowerShell only as `x"`, then CMD executes `echo MARK_B`; the launcher returns 0. The new test checks only `x&echo ...`, so it misses this escape.
+
+**Required fix:** do not re-expand untrusted free-form text into a CMD command line. Prefer fixed literal launch paths/modes (for example, separate tiny fixed-mode launchers or direct PowerShell calls for the internal preflight/buildcheck modes), or otherwise reject without interpolating arbitrary text. Add the embedded-quote case and require no marker execution plus a non-zero result.
+
+### Documentation follow-up
+
+The top structured-record section in `T03b_review_request.md` still lists removed `bot_stopped` and omits `bot_stop_attempted`, `bot_stop_confirmed`, `installed_file_sha256`, and `stop_recovery`. Its older test-count bullets are also stale. Refresh these while making the two code/test fixes.
+
+### Round 1 evidence
+
+- Windows PowerShell 5.1 focused installer suite: **58 passed**.
+- Confirmed invalid-drill result: old executable restored, rollback attempted and verified, final exit 1.
+- Confirmed three failed-stop outcomes and the hash guard.
+- No normal installer, rollback drill, ZackBot stop/restart, trading action or credential operation was performed.
