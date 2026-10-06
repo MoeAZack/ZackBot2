@@ -138,8 +138,14 @@ _NAME_EXPR = re.compile(r"\$\{\{ github\.event\.label\.name == '([^']+)' && '([^
 
 
 def _job_blocks(wf):
-    body = wf.split('\njobs:\n')[1]
-    return re.findall(r'^  ([\w-]+):\n((?:(?:    .*)?\n)*)', body + '\n', re.M)
+    """[(job id, job body)] by plain line parsing (no backtracking regex: CodeQL py/redos, Codex round 4 P2)."""
+    out = []
+    for line in wf.split('\njobs:\n')[1].splitlines():
+        if line.startswith('  ') and not line.startswith('   ') and line.rstrip().endswith(':'):
+            out.append([line.strip()[:-1], ''])
+        elif out and (line.startswith('    ') or not line.strip()):
+            out[-1][1] += line + '\n'
+    return [tuple(x) for x in out]
 
 
 def _resolve(expr, label):
