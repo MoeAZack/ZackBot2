@@ -1,0 +1,176 @@
+# T03b: Installer logic from CMD to PowerShell. Review request
+
+## Current state
+
+| Item | Value |
+|---|---|
+| Branch | `t03b-installer-powershell` (opened by Codex at a1963f1, from master f9778ca) |
+| Head for review | the PR head. The full SHA is in the latest READY / FIXED FOR CODEX comment |
+| Round | **Review round 3 fixed** (Codex `87a3f92`: launcher parser P2, test contract P3). Rounds 1 (`e98d409`) and 2 (`a6766c9`) fixed earlier. See the sections below |
+| Class | Deployment only. No trading, engine, panel or API change |
+| Runtime | **Nothing installed, no drill run, ZackBot untouched.** A real install plus the rollback drill needs separate owner approval |
+
+## The change
+
+- **`installer.ps1` (new):** the whole installer as PowerShell functions.
+  - The steps are the same: stage, build id, checksum preflight, venv + pinned pip, libs, safety tests, PyInstaller, self-test, hash, verified backup, old build id, stop, swap (5 tries), hash check, launch, HMAC ping, mirror and shortcuts after the confirmed launch, verified rollback, drill report.
+  - The modes are the same (`install`, `drill`, `preflight`, `buildcheck`) with the same staging folders, logs and markers (`build id`, `new exe sha256`, `PREFLIGHT_OK`, `BUILDCHECK_OK`, `BUILD_DONE`, `ROLLBACK_RESULT`, `DRILL_PASSED`, `BUILD_FAILED: <same reasons>`), so `verify.py` is unchanged.
+  - Like `installer_check.ps1`, it uses **no cmdlets** (only .NET and the language). A foreign PSModulePath cannot break it (the T03 lesson), and a test enforces this.
+- **`build_app.bat`:** now a launcher of 10 code lines.
+  - It clears PSModulePath and **never expands its arguments**: CMD would interpret quotes, `&` and `|` inside them.
+  - It hands its own raw command line (`!CMDCMDLINE!`, via delayed expansion, which is not re-parsed) to `installer.ps1 -FromLauncher` in `ZB_CMDLINE`.
+  - `installer.ps1` tokenizes that line (quotes toggle, whitespace separates) and anchors on the **first** token that *is* `build_app.bat` (a path ending in `\build_app.bat`). After it there must be nothing (`install`) or exactly **one non-destructive** mode, `preflight` or `buildcheck`. Anything else, including `drill`, is refused with exit 2 and nothing changes.
+  - **Contract:** supported invocations (double-click, `cmd /c build_app.bat [preflight|buildcheck]`, verify.py) select exactly one fixed mode. Ordinary arguments are never re-expanded by the launcher. Unknown or extra tokens are refused before staging. Hostile raw CMD syntax in the *caller's* command line (e.g. `x"&cmd`) is parsed by the invoking shell before the batch file runs, so it is out of scope: no batch file can neutralize it.
+  - It pauses only if `installer.ps1` refused or could not run.
+- **`rollback_drill.bat`:** the **only** drill entry point (fixed mode). It clears PSModulePath and calls `installer.ps1 drill` directly; no argument is read. `verify.py` now runs the release drill through it (`installer_command('drill')`); preflight and buildcheck still go through `build_app.bat <mode>`.
+- **Known limitation:** typed inside an already-open Command Prompt, `build_app.bat <mode>` is refused, because CMDCMDLINE is that console's own command line. The refusal message says to use `cmd /c build_app.bat <mode>`. Double-click, verify.py (`cmd /d /c build_app.bat <mode>`), a PowerShell prompt and rollback_drill.bat all work.
+- **Real error handling:**
+  - One `Stop-Install <reason>` path, caught once.
+  - **New:** an *unexpected* exception after the old bot was stopped runs the verified rollback instead of leaving the bot down. Under CMD this case had no handler.
+  - An unknown mode is refused (exit 2). CMD silently treated it as a normal install.
+- **Testable:**
+  - Every outside effect (processes, copies, the checksum/ping helper, stopping the bot, shortcuts, pauses) is one small function.
+  - `tests/test_installer.py` dot-sources `installer.ps1 -NoRun`, replaces those functions with recording fakes in a temp LOCALAPPDATA, and **executes the real flow**. This replaces the T03 tests that pinned CMD line order.
+- **Kept as is:** `installer_check.ps1` (only its header comment changed). The checksum preflight still runs the staging copy of the helper before anything else.
+- **Structured JSON log (from the handoff):** each run writes `build.json` / `build_preflight.json` / `build_check.json` next to the readable log. It is rewritten after every step, so a crash keeps the steps done so far. Fields:
+  - `schema`, `mode`, `started` / `finished` (Cairo, ISO with offset), `source_dir`, `log`;
+  - `build_id`, `new_exe_sha256`, `previous {build, sha256}`;
+  - `bot_stop_attempted`, `bot_stop_confirmed`;
+  - `installed_after {build, sha256}`: only a build **proven running** (BUILD_DONE, verified rollback, verified stop recovery), otherwise null;
+  - `installed_file_present` / `installed_file_sha256`: the installed exe **re-read right before the verdict** (absent means false/null; install and drill only);
+  - `stop_recovery {attempted, verified, note}`;
+  - `steps[]` with `{step, ok, started, finished, detail}`: drill_precheck, stage, checksum_helper, build_env, libs, safety_tests, pyinstaller, selftest_new, hash_new, backup, stop, swap, launch, mirror, shortcuts, rollback. A failed step's `detail` is the exact BUILD_FAILED reason;
+  - `warnings[]`, `rollback {attempted, verified, restored_sha256, note}`, `verdict` (BUILD_DONE / BUILD_FAILED / DRILL_PASSED / PREFLIGHT_OK / BUILDCHECK_OK), `reason`, `exit_code`.
+
+  It has no keys, tokens or settings (a test enforces this). It is written by a small serializer, because `ConvertTo-Json` would be a cmdlet. A failed JSON write is logged and never blocks the install.
+- **Cleanup:** the CMD `goto` and label maze is gone. The staging copy now also excludes `installer.ps1`.
+
+## Tests (`tests/test_installer.py`)
+
+New flow tests (PowerShell 7 here and on the GitHub runner; Windows PowerShell 5.1 on the PC):
+- install succeeds; order stage < tests < build < self-test < backup < old self-test < stop < swap < launch < ping < mirror < shortcuts;
+- first install without a previous version;
+- a silent new build rolls back: restore, hash, start, ping old; no mirror or shortcuts; exact BUILD_FAILED reason;
+- a restore copy that fails is refused (hash mismatch), so the old exe is never started blind;
+- a swap that keeps failing rolls back after exactly 5 tries;
+- no previous version: the failed exe is removed;
+- drill: the launch carries `--simulate-failed-launch` with 20 s; PASS only when the old build is proven running; INVALID if the new exe answers; FAILED if the old one does not answer;
+- drill refuses before step 1 without an installed version, and refuses before stopping without the old build id;
+- preflight: only stage + checksum, own log, staging removed, nothing else touched;
+- buildcheck: builds and self-tests, never stops, backs up, swaps or mirrors;
+- 9 parametrised failures before the swap (stage, checksum helper, pip, libs, tests, PyInstaller, self-test, backup, stop): old exe untouched, never started, exact reason;
+- an unexpected crash after the stop restores the previous version;
+- pauses happen only for a person and never with ZB_NOPAUSE; preflight and buildcheck never pause, even on failure;
+- an unknown mode is refused;
+- no fakes: the real process runner starts the real helper (paths with spaces) and the hash matches Python; a missing file returns '' and logs the reason;
+- JSON record: success (all 14 steps ok, Cairo timestamps, hashes, installed_after = new); rollback (launch fails, rollback verified, installed_after = old); warnings; drill, preflight, buildcheck and crash records; 9 parametrised failures each name the failed step with detail == reason; no secrets;
+- one-attempt rules: exactly one new launch, one new ping, one build and one test run per mode;
+- path quoting: `ConvertTo-ArgString` output splits back (CommandLineToArgvW rules) into the original arguments (spaces, trailing backslashes, quotes, empty, `;.` add-data);
+- Windows PowerShell 5.1 syntax guard: no `??`, `?.`, `&&`/`||`, ternary, `-Parallel` or `clean` blocks;
+- bare-pytest safety: every process-starting, stopping, shortcut or pause function is replaced in the fake world, so bare pytest cannot stop the bot or start an exe.
+
+Static: the launcher stays a launcher (at most 10 code lines, PSModulePath cleared before the single PowerShell call, the only pause is guarded); neither launcher expands an argument; `installer.ps1` is ASCII and cmdlet-free; the staging copy excludes the installer and private files. Unchanged: CRLF/ASCII .bat, labels, `--simulate-failed-launch` app tests, helper tests, and the Windows-only real `build_app.bat preflight` through cmd.exe.
+
+**Mutation proof:** each of these breaks at least one test:
+- skip the new-build ping (6 tests fail);
+- drop the drill switch (1);
+- skip the restore hash check (1);
+- remove the unexpected-error rollback (1);
+- unguarded pause (1);
+- mirror before the stop (4);
+- ignore failing safety tests (2);
+- quoting without doubling trailing backslashes (1);
+- no verdict written on failure (10).
+
+One mutation is not detected on its own: removing the failed-step marker in `Stop-Install`. `Set-Verdict` marks the open step failed with the same reason as a second line of defence, so the record stays correct.
+
+## Evidence so far (Claude sandbox: Linux, PowerShell 7.4.6, stand-in pytest runner, NOT official pytest)
+
+- `tests/test_installer.py` (initial head 9ee9d28): 52 passed, 1 skipped. Current counts are in the round 2 section.
+- Simulated staging copy (no `build_app.bat` / `installer.ps1`): only the app/helper tests run, and the installer tests skip as intended (re-run below).
+- Full `tests/`: 250 passed, 1 failed (`test_summary_has_the_required_provenance_fields`, which needs real pytest: environment-only, known).
+- `verify.secret_scan`: clean.
+
+Pending (official): GitHub verify fast/full. A Windows targeted run (`tests/test_installer.py` under Windows PowerShell 5.1, plus `build_app.bat preflight` and `buildcheck`) needs owner approval. A real install plus `rollback_drill.bat` needs separate owner approval (stop condition).
+
+## Questions for Codex
+
+1. Is rolling back on an unexpected exception after the stop the right call (vs. failing and leaving the bot down as CMD effectively did)?
+2. Refusing an unknown mode (exit 2) instead of installing: OK?
+3. Windows PowerShell 5.1 specifics I can't run here: `ProcessStartInfo` quoting (CommandLineToArgvW rules, tested here), `System.Management` for the source-run app.py stop, and `WScript.Shell` via `[Activator]`. Please run the flow tests under 5.1 on the PC.
+
+## Review round 1: dispositions (Codex review `e98d409` of `9ee9d28`)
+
+All four findings are **confirmed defects** and fixed on the branch. No installer, drill or bot stop ran.
+
+| # | Finding | Disposition | Fix |
+|---|---|---|---|
+| P1 | An invalid drill (the new exe answers although launched with `--simulate-failed-launch`) left the untrusted build installed and running | Confirmed defect | Step 8 now marks `DrillInvalid`, records `launch` as failed and returns to the **verified rollback**: stop the new exe, restore `ZackBot.prev.exe`, hash check, start, HMAC ping of the old build. The run then fails with `ROLLBACK DRILL INVALID: ... - <rollback note>`. `DRILL_PASSED` is impossible on this path. The log says `ROLLBACK: invalid drill - ...`. |
+| P1 | A failed stop attempt had no runtime verification or recovery | Confirmed safety concern | New `Invoke-StopRecovery` (step `stop_recovery`). It **never swaps**. (1) It proves the previous build still answers (HMAC ping, 20 s). (2) If it doesn't, and the installed exe still matches its verified backup hash, it restarts it **once** and requires the build-specific HMAC answer (60 s). (3) Otherwise it reports unverified and does not restart an exe whose hash changed. It writes `STOP_RECOVERY verified=0/1 - <note>` and always fails with `the running ZackBot did not stop - the exe was NOT replaced; <note>`. |
+| P2 | The record overstated recovery (`installed_after` after an unverified rollback; `bot_stopped` true after a failed stop) | Confirmed defect | `installed_after` is set **only for a build proven running** (BUILD_DONE, verified rollback, verified stop recovery), otherwise null. New `installed_file_sha256` holds the last verified file hash. `bot_stopped` is replaced by `bot_stop_attempted` + `bot_stop_confirmed`. New `stop_recovery {attempted, verified, note}`. |
+| P3 | The launcher re-expanded the mode unquoted | Confirmed defect (local robustness) | `powershell ... -File "%~dp0installer.ps1" "%ZBMODE%"`. The argument is captured with `set "ZBMODE=%~1"`, so metacharacters stay one argument and installer.ps1 refuses it (exit 2). The launcher message now reads "refused the mode or did not run". |
+
+New tests:
+- invalid drill: old exe installed, the new one stopped (second `stop` before restore), rollback verified, BUILD_FAILED, no DRILL_PASSED, `installed_after` = OLD1;
+- failed stop with the old bot still answering: no swap, no start, ping old, `stop`=false then `stop_recovery`=true, `bot_stop_confirmed`=false, rollback not attempted;
+- failed stop that killed the bot: one restart of the verified old exe plus ping;
+- unrecoverable stop: verified=false, `installed_after` null;
+- an exe whose hash changed is never restarted;
+- the record never claims an unverified install (rollback without an answer; unknown old build id);
+- static launcher quoting;
+- Windows-only: `build_app.bat "x&echo PWNED_BY_CMD"` exits 2 and cmd.exe does not run the injected echo.
+
+Mutations, each caught:
+- invalid drill without rollback (1 failed);
+- failed stop without recovery (4);
+- optimistic `installed_after` (10);
+- `StopConfirmed` never set (2);
+- `bot_stop_confirmed` sourced from the attempt (1);
+- restart without the hash check (1);
+- unquoted mode (1).
+
+Sandbox (stand-in runner, PowerShell 7.4.6): `tests/test_installer.py` 56 passed, 2 skipped (both Windows-only cmd.exe tests). Codex's earlier Windows 5.1 runs (53 passed, 269 bare, BUILDCHECK_OK) were on `9ee9d28`; please re-run on the new head.
+
+## Review round 2: dispositions (Codex review `a6766c9` of `8dc74c3`)
+
+| # | Finding | Disposition | Fix |
+|---|---|---|---|
+| P2 | `installed_file_sha256` was cached: it reported a removed first-install exe, or the trusted hash after a detected change | Confirmed defect | New `Update-InstalledFileState` runs inside `Set-Verdict` (every terminal path, install and drill). It re-reads the exe: if present, its actual hash (null if unreadable); if absent, `installed_file_present=false` and a null hash. The failed first-install deletion is now verified: if the exe is still there, the reason says `the failed exe could NOT be removed - delete <path> before starting ZackBot`. |
+| P3 | An embedded quote in `%~1` still escaped the launcher (`x"&echo MARK_B`) | Confirmed defect | The launchers no longer expand any argument (no percent-1 / percent-star / percent-~1; a static test enforces this). `build_app.bat` passes `!CMDCMDLINE!` via delayed expansion; `installer.ps1 -FromLauncher` drops quotes, splits on spaces and accepts only nothing or exactly one known mode. `rollback_drill.bat` calls `installer.ps1 drill` with a literal. |
+| Docs | Stale record schema and counts in this file | Fixed | The structured-record and launcher sections above are refreshed. |
+
+New tests:
+- `Get-LauncherMode` against 12 raw command lines: double-click; verify.py; a quoted path with spaces; `"DRILL"`; a folder named `build_app.bat-old`; Codex's `x"&echo MARK_B`; `x&echo`; an extra token; `"preflight&calc"`; a typo; an interactive console; empty;
+- a refused launch exits 2, prints the guidance and does not even create the log folder;
+- the record re-reads the file: a removed first-install exe gives present=false and a null hash; a detected change gives the actual hash; success gives the new hash; preflight gives null;
+- a failed first-install removal is reported;
+- static checks that neither launcher expands arguments, the delayed-expansion hand-over, and the fixed-mode drill launcher;
+- Windows-only: `build_app.bat` with `x"&echo MARK_B`, `x&echo MARK_A` and `"preflight"&echo MARK_C` exits 2 with no marker executed.
+
+Mutations, each caught:
+- no file refresh before the verdict (2 failed);
+- no deletion check (1);
+- lax mode parse that takes the first token (1);
+- the launcher re-introducing `set "ZBMODE=%~1"` (1);
+- the drill launcher going back through `build_app.bat` (1).
+
+Sandbox (stand-in runner, PowerShell 7.4.6): `tests/test_installer.py` **61 passed, 2 skipped** (Windows-only cmd.exe tests). Please re-run the Windows 5.1 suite, the cmd.exe tests (the real `build_app.bat preflight` and the metacharacter probe) and buildcheck on the new head.
+
+## Review round 3: dispositions (Codex review `87a3f92` of `c3a625b`)
+
+| # | Finding | Disposition | Fix |
+|---|---|---|---|
+| P2 | `Get-LauncherMode` anchored on the **last** `build_app.bat` text, so `build_app.bat typo build_app.bat` gave install and `... x build_app.bat drill` gave drill | Confirmed defect | New `Split-CmdLine` tokenizer. The anchor is the **first** token that *is* `build_app.bat` (equal, or ending in `\build_app.bat` or `/build_app.bat`, not merely containing it). Everything after it must be nothing or exactly one of `preflight` / `buildcheck`. Destructive modes have fixed entry points only: install is `build_app.bat` with no argument, and the drill is `rollback_drill.bat`. `build_app.bat drill` is now refused, and `verify.py` uses `rollback_drill.bat` for the release drill. |
+| P3 | The Windows test asserted that the batch file can neutralize hostile raw CMD syntax (`x"&echo MARK_B`) | Accepted: the claim was wrong | Replaced with the real contract test: `zzz`, `preflight zzz` and `"buildcheck" zzz` each exit 2, and `%LOCALAPPDATA%\ZackBot` is unchanged. Only harmless tokens are used, so a broken parser could never trigger install or the drill on the PC. The out-of-scope boundary is documented in `build_app.bat`, `installer.ps1` and this file. |
+
+New and changed tests:
+- launcher cases, now 18: your three re-anchoring cases; `build_app.bat drill` gives None; `"BUILDCHECK"`; a folder literally named `build_app.bat`; a name that only *contains* it gives None;
+- `test_verify.py::test_installer_modes_use_their_fixed_launchers`: drill maps to `rollback_drill.bat` with no argument; preflight and buildcheck map to `build_app.bat <mode>`; install is not a verify mode.
+
+Mutations, each caught:
+- last-occurrence anchor;
+- `drill` accepted by `build_app.bat`;
+- verify.py drill sent back through `build_app.bat`;
+- substring ("contains") anchor.
+
+Sandbox (stand-in runner, PowerShell 7.4.6): `tests/test_installer.py` + `tests/test_verify.py` 77 passed, 2 skipped (Windows-only cmd.exe tests), plus the known environment-only provenance failure.
