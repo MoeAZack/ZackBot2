@@ -72,7 +72,7 @@ def test_maker_full_fill_is_measured_against_the_posted_price():
     bk.fill(); e.manage(e.trade.marks())
     r = [x for x in recs(e) if x['kind'] == 'entry_maker'][-1]
     assert (r['expected'], r['actual'], r['slip_bps'], r['signal_px'], r['maker_tries'], r['outcome']) == (99.9, 99.9, 0.0, 100.0, 1, 'filled')
-    assert 'fallback' not in r and not any(x['kind'] == 'entry_fallback' for x in recs(e))
+    assert not any(k.startswith('fallback') for k in r) and not any(x['kind'] == 'entry_fallback' for x in recs(e))
 
 
 def test_maker_partial_then_market_fallback_records_both_parts():
@@ -81,11 +81,11 @@ def test_maker_partial_then_market_fallback_records_both_parts():
     for _ in range(3): age(e, total=True); e.manage(e.trade.marks())
     mk = [x for x in recs(e) if x['kind'] == 'entry_maker'][-1]
     fb = [x for x in recs(e) if x['kind'] == 'entry_fallback'][-1]
-    assert mk['outcome'] == 'partial' and mk['fallback'] is True and mk['maker_tries'] >= 1
-    assert fb['fallback'] is True and fb['outcome'] == 'filled' and fb['qty_fill'] > 0
+    assert mk['outcome'] == 'partial' and mk['fallback_attempted'] is True and mk['fallback_confirmed'] is True and mk['maker_tries'] >= 1
+    assert fb['fallback_order'] is True and fb['outcome'] == 'filled' and fb['qty_fill'] > 0
     assert abs(mk['qty_fill'] + fb['qty_fill'] - lot_of(e)['qty']) < 0.002
     s = summ(e)['by_kind']
-    assert s['entry_maker']['partial'] == 1 and s['entry_fallback']['fallback'] == 1
+    assert s['entry_maker']['partial'] == 1 and s['entry_maker']['fallback'] == 1
 
 
 def test_maker_unfilled_with_fallback_records_the_miss_and_the_market_order():
@@ -94,8 +94,8 @@ def test_maker_unfilled_with_fallback_records_the_miss_and_the_market_order():
     for _ in range(5): age(e, total=True); e.manage(e.trade.marks())
     mk = [x for x in recs(e) if x['kind'] == 'entry_maker'][-1]
     fb = [x for x in recs(e) if x['kind'] == 'entry_fallback'][-1]
-    assert mk['outcome'] == 'unfilled' and mk['actual'] is None and mk['fallback'] is True
-    assert fb['signal_px'] == 100.0 and fb['maker_tries'] == mk['maker_tries'] and fb['fallback'] is True
+    assert mk['outcome'] == 'unfilled' and mk['actual'] is None and mk['fallback_confirmed'] is True
+    assert fb['signal_px'] == 100.0 and fb['maker_tries'] == mk['maker_tries'] and fb['fallback_order'] is True
     assert summ(e)['by_kind']['entry_maker']['unfilled'] == 1
 
 
@@ -103,7 +103,7 @@ def test_maker_unfilled_without_fallback_records_only_the_miss():
     e, bk = maker_engine(MAKER_FALLBACK=False); e.open_lot(SL, 'BTCUSDT', 'LONG', SG, None, e.equity())
     for _ in range(5): age(e, total=True); e.manage(e.trade.marks())
     kinds = [x['kind'] for x in recs(e)]
-    assert kinds == ['entry_maker'] and recs(e)[0]['outcome'] == 'unfilled' and 'fallback' not in recs(e)[0]
+    assert kinds == ['entry_maker'] and recs(e)[0]['outcome'] == 'unfilled' and not any(k.startswith('fallback') for k in recs(e)[0])
 
 
 def test_telemetry_failure_never_blocks_a_trade(tmp_path):
@@ -154,7 +154,7 @@ def test_blocked_maker_fallback_is_recorded_as_blocked_not_as_fallback():
     e, bk = maker_engine(); e.open_lot(SL, 'BTCUSDT', 'LONG', SG, None, e.equity())
     for _ in range(5): age(e, total=True); e.manage(e.trade.marks())
     r = recs(e)[-1]
-    assert r['kind'] == 'entry_maker' and r['outcome'] == 'unfilled' and 'fallback' not in r
+    assert r['kind'] == 'entry_maker' and r['outcome'] == 'unfilled' and 'fallback_attempted' not in r and 'fallback_confirmed' not in r
     assert r['fallback_blocked'] == 'strategy slot switched off' and not any(x['kind'] == 'entry_fallback' for x in recs(e))
 
 
@@ -164,13 +164,13 @@ def test_zero_slippage_is_not_negative_zero():
 
 
 # ---------------------------------------------------------------- Codex T05 review fixes
-import threading, time                                                    # noqa: E402
+import tempfile, threading, time                                          # noqa: E402
 
 
 def block_writer(e):
     """The writer's disk operation hangs until the returned event is set (slow disk, antivirus, file lock)."""
-    gate, real = threading.Event(), e._fill_write
-    e._fill_write = lambda rec: (gate.wait(8), real(rec))[1]
+    gate, real = threading.Event(), e._fillw.write
+    e._fillw.write = lambda rec: (gate.wait(8), real(rec))[1]
     return gate
 
 
@@ -185,7 +185,7 @@ def test_a_hung_writer_never_delays_lot_persistence_stops_adds_or_closes():
     e._replace_stop(lot); assert lot['stop_id'] in e.trade.stops
     e.close_lot(k, 'signal', mark=100.0)                                   # close -> fill -> applied
     assert k not in e.state['lots'] and time.time() - t < 3, 'order paths must not wait for the telemetry disk'
-    assert e._fill_q.unfinished_tasks >= 2                                 # the records are queued, not lost
+    assert e._fillw.q.unfinished_tasks >= 2                                 # the records are queued, not lost
     gate.set()
     kinds = [r['kind'] for r in recs(e)]
     assert kinds == ['entry_market', 'pyramid_add', 'exit']
@@ -253,14 +253,14 @@ def test_partial_maker_with_a_blocked_fallback_does_not_claim_it_ran():
     real = e.entry_block
     e.entry_block = lambda *a, **k: 'daily loss halt' if k.get('manual') else real(*a, **k)
     mk, fb = _partial_maker(e, bk)
-    assert mk['outcome'] == 'partial' and 'fallback' not in mk and mk['fallback_blocked'] == 'daily loss halt' and fb == []
+    assert mk['outcome'] == 'partial' and 'fallback_attempted' not in mk and 'fallback_confirmed' not in mk and mk['fallback_blocked'] == 'daily loss halt' and fb == []
 
 
 def test_partial_maker_with_a_failed_fallback_order_records_the_failure():
     e, bk = maker_engine()
     e.trade.fail.add('open')                                               # the market remainder order is refused
     mk, fb = _partial_maker(e, bk)
-    assert 'fallback' not in mk and 'injected open failure' in mk['fallback_failed'] and fb == []
+    assert mk['fallback_attempted'] is True and 'fallback_confirmed' not in mk and 'injected open failure' in mk['fallback_failed'] and fb == []
     assert lot_of(e)['stop_id'] in e.trade.stops                           # the maker part stays protected
 
 
@@ -268,7 +268,7 @@ def test_partial_maker_without_a_lot_records_the_fallback_as_skipped():
     e, bk = maker_engine()
     e._create_lot = lambda *a, **k: False
     mk, fb = _partial_maker(e, bk)
-    assert 'fallback' not in mk and mk['fallback_skipped'] == 'maker lot not created' and fb == []
+    assert 'fallback_attempted' not in mk and 'fallback_confirmed' not in mk and mk['fallback_skipped'] == 'maker lot not created' and fb == []
 
 
 def test_unfilled_maker_whose_market_fallback_fails_records_the_failure():
@@ -277,7 +277,7 @@ def test_unfilled_maker_whose_market_fallback_fails_records_the_failure():
     e.open_lot(SL, 'BTCUSDT', 'LONG', SG, None, e.equity())
     for _ in range(5): age(e, total=True); e.manage(e.trade.marks())
     mk = [x for x in recs(e) if x['kind'] == 'entry_maker'][-1]
-    assert mk['outcome'] == 'unfilled' and 'fallback' not in mk and mk['fallback_failed']
+    assert mk['outcome'] == 'unfilled' and mk['fallback_attempted'] is True and 'fallback_confirmed' not in mk and mk['fallback_failed']
 
 
 def test_order_paths_do_no_telemetry_file_io():
@@ -288,14 +288,126 @@ def test_order_paths_do_no_telemetry_file_io():
         assert 'open(' not in src and 'os.' not in src and '.put(' not in src.replace('.put_nowait(', ''), fn.__name__
 
 
-def test_a_replaced_engine_hands_over_the_telemetry_file_cleanly():
+def test_engines_sharing_a_file_share_one_writer_so_two_never_overlap():
+    """Codex round 2 P1: a settings restart makes a new Engine on the same data folder. It gets the SAME process-wide
+    writer, so a blocked old writer can never run next to a new one - by construction, not by a timed handover."""
     e, d = mk_engine()
+    gate = block_writer(e)
+    opened(e)                                                              # the writer is now blocked on a write
+    e2, _ = mk_engine(d)                                                   # the settings-restart replacement
+    try:
+        assert e2._fillw is e._fillw and e._fillw.alive()
+        assert [p for p in E._FILL_WRITERS if p == os.path.abspath(e.F['fills'])] == [os.path.abspath(e.F['fills'])]
+        e2._fill('exit', 'BTCUSDT', 'LONG', False, 100.0, 100.0, 1, 1)
+        assert e2._fillw.thread is e._fillw.thread                          # still the one and only writer thread
+    finally:
+        gate.set()
+    assert 'old._fill_stop' not in open(os.path.join(ROOT, 'app.py'), encoding='utf-8').read()
+    assert summ(e2)['by_kind']['entry_market']['n'] == 1 and summ(e2)['by_kind']['exit']['n'] == 1
+
+
+def test_a_writer_that_cannot_be_stopped_is_never_replaced_by_a_second_one():
+    e, d = mk_engine()
+    gate = block_writer(e)
     opened(e)
-    assert e._fill_stop(5)                                                 # queued records written, writer ended
-    e._fill_thread.join(2)
-    assert not e._fill_thread.is_alive()
+    t = time.time()
+    assert E.close_fill_writer(e.F['fills'], 0.2) is False                 # cannot prove the stop while the write hangs
+    assert time.time() - t < 3                                            # bounded
     e2, _ = mk_engine(d)
-    assert summ(e2)['by_kind']['entry_market']['n'] == 1
-    src = open(os.path.join(ROOT, 'app.py'), encoding='utf-8').read()
-    i = src.index('def start_engine(self):')
-    assert "old._fill_stop(2.0)" in src[i:i + 600] and src.index('old.lock.acquire()', i) < src.index('old._fill_stop(2.0)', i)
+    assert e2._fillw is e._fillw and e2.fill_summary()['telemetry']['state'] == 'closing'   # visible, not ignored
+    e2._fill('exit', 'BTCUSDT', 'LONG', False, 100.0, 100.0, 1, 1)
+    assert e2.fill_summary()['telemetry']['dropped'] >= 1                 # drop-only while closing, counted
+    assert e2._fillw.thread is e._fillw.thread                              # no second thread for this file
+    gate.set(); e._fillw.thread.join(5)
+    assert not e._fillw.alive()
+    e3, _ = mk_engine(d)
+    assert e3._fillw is not e._fillw                                      # only now a fresh writer may exist
+
+
+def test_closing_works_even_when_the_queue_is_full(monkeypatch):
+    monkeypatch.setattr(E, 'FILL_QUEUE_MAX', 1)
+    e, _ = mk_engine()
+    gate = block_writer(e)
+    for _ in range(4): e._fill('exit', 'BTCUSDT', 'LONG', False, 100.0, 100.0, 1, 1)
+    assert E.close_fill_writer(e.F['fills'], 0.2) is False
+    gate.set()
+    e._fillw.thread.join(5)
+    assert not e._fillw.alive(), 'the stop signal does not depend on free queue space'
+
+
+def test_no_writer_thread_until_the_first_record_and_none_left_after_close():
+    engines = [mk_engine()[0] for _ in range(5)]
+    assert all(x._fillw.thread is None for x in engines), 'lazy: engines that emit nothing start no thread'
+    for x in engines: x._fill('exit', 'BTCUSDT', 'LONG', False, 100.0, 100.0, 1, 1)
+    threads = [x._fillw.thread for x in engines]
+    assert all(t.is_alive() for t in threads)
+    assert all(E.close_fill_writer(x.F['fills'], 5) for x in engines)
+    assert not any(t.is_alive() for t in threads)
+    assert not [p for p in E._FILL_WRITERS if any(p == os.path.abspath(x.F['fills']) for x in engines)]
+
+
+def test_construction_failure_leaves_no_writer_thread(monkeypatch):
+    d = tempfile.mkdtemp()
+    monkeypatch.setattr(E.Engine, 'connect', lambda self: (_ for _ in ()).throw(RuntimeError('boom')))
+    with pytest.raises(RuntimeError): mk_engine(d)
+    w = E._FILL_WRITERS.get(os.path.abspath(os.path.join(d, 'fills.jsonl')))
+    assert w is None or w.thread is None, 'a half-built engine never started a writer thread'
+
+
+def test_replay_closes_its_writer():
+    src = open(os.path.join(ROOT, 'replay.py'), encoding='utf-8').read()
+    fin = src[src.index('    finally:\n        E.Futures, E.now_utc, E.time = saved'):]
+    assert "E.close_fill_writer(os.path.join(tmp, 'fills.jsonl'))" in fin[:400]
+
+
+@pytest.mark.parametrize('qty', [None, '0'])
+def test_a_fallback_without_executed_quantity_is_never_confirmed(qty):
+    e, bk = maker_engine(); e.S['SLEEVES'] = [dict(SL, enabled=True)]
+    real = e.trade.open
+    e.trade.open = lambda s, ps, q: {k: v for k, v in dict(real(s, ps, q), executedQty=qty).items() if v is not None}
+    e.open_lot(SL, 'BTCUSDT', 'LONG', SG, None, e.equity())
+    for _ in range(5): age(e, total=True); e.manage(e.trade.marks())
+    mk = [x for x in recs(e) if x['kind'] == 'entry_maker'][-1]
+    fb = [x for x in recs(e) if x['kind'] == 'entry_fallback'][-1]
+    assert fb['outcome'] == 'unknown' and mk['fallback_attempted'] is True
+    assert 'fallback_confirmed' not in mk and mk['fallback_unconfirmed'] and summ(e)['by_kind']['entry_maker']['fallback'] == 0
+
+
+def test_partial_maker_fallback_without_executed_quantity_is_never_confirmed():
+    e, bk = maker_engine()
+    real = e.trade.open
+    e.trade.open = lambda s, ps, q: {k: v for k, v in real(s, ps, q).items() if k != 'executedQty'}
+    mk, fb = _partial_maker(e, bk)
+    assert fb and fb[-1]['outcome'] == 'unknown' and 'fallback_confirmed' not in mk and mk['fallback_unconfirmed']
+
+
+def test_ambiguous_fallback_answers_are_pending_not_failed():
+    e, bk = maker_engine(); e.S['SLEEVES'] = [dict(SL, enabled=True)]
+    def lost(s, ps, q): raise E.AmbiguousOrder('answer lost', 'c:x')
+    e.trade.open = lost
+    e.open_lot(SL, 'BTCUSDT', 'LONG', SG, None, e.equity())
+    for _ in range(5): age(e, total=True); e.manage(e.trade.marks())
+    mk = [x for x in recs(e) if x['kind'] == 'entry_maker'][-1]
+    assert 'answer lost' in mk['fallback_pending'] and 'fallback_failed' not in mk and 'fallback_confirmed' not in mk
+    e2, bk2 = maker_engine()
+    e2.trade.open = lost
+    mk2, fb2 = _partial_maker(e2, bk2)
+    assert 'answer lost' in mk2['fallback_pending'] and 'fallback_failed' not in mk2 and fb2 == []
+
+
+@pytest.mark.parametrize('line', ['[]', '7', '"text"', 'null', '{"kind": 5}', '{"no_kind": 1}', '{"kind": "exit", "slip_bps": "x"',
+                                  '{"kind": "exit", "slip_bps": "bad", "wait_s": [1], "outcome": 3}'])
+def test_malformed_lines_never_break_the_status(line):
+    e, d = mk_engine()
+    with open(e.F['fills'], 'w') as f:
+        f.write(json.dumps(dict(kind='entry_market', outcome='filled', slip_bps=5.0, fallback=True)) + '\n')   # old schema
+        f.write(line + '\n')
+        f.write(json.dumps(dict(kind='entry_maker', outcome='partial', slip_bps=1.0, fallback_confirmed=True)) + '\n')
+    E.close_fill_writer(e.F['fills'])                                      # restart: reload from disk
+    e2, _ = mk_engine(d)
+    s = e2.fill_summary()
+    assert json.dumps(s) and s['by_kind']['entry_market']['n'] == 1 and s['by_kind']['entry_maker']['fallback'] == 1
+    assert s['by_kind']['entry_market']['fallback'] == 0                   # an old unverified "fallback" claim is not counted
+    good = line.startswith('{"kind": "exit", "slip_bps": "bad"')
+    assert s['telemetry']['invalid_records'] == (0 if good else 1)
+    if good: assert s['by_kind']['exit']['slip_avg_bps'] is None and s['by_kind']['exit']['unknown'] == 1

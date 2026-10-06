@@ -5,13 +5,13 @@
 | Item | Value |
 |---|---|
 | Branch | `t05-fill-telemetry`, from protected `master` f9778ca. **Pipeline mode** (owner, 2026-10-06): runs alongside the T03b runtime gate; no shared files with T03b |
-| Head for review | the PR head. The full SHA is in the FIXED FOR CODEX comment (round 1 reviewed 153cf6d; Codex review 3633ce6) |
+| Head for review | the PR head. The full SHA is in the FIXED FOR CODEX comment (round 1 reviewed 153cf6d → Codex 3633ce6; round 2 reviewed 2d0e985 → Codex ac2afe4) |
 | Class | **Observe only.** Nothing traded changes: same decisions, orders, sizes, stops and exchange calls |
 | Runtime | Nothing installed. The telemetry becomes active with the next approved install |
 
 ## The change
 
-Every fill the bot sends itself is recorded as one JSON line in `%LOCALAPPDATA%\ZackBot\fills.jsonl` (rotated to `fills.jsonl.1` at 5 MB). Since round 1, order paths only build the record and `put_nowait` it into a bounded queue (1000). A single background writer does every file operation (see "Round 1 dispositions"):
+Every fill the bot sends itself is recorded as one JSON line in `%LOCALAPPDATA%\ZackBot\fills.jsonl` (rotated to `fills.jsonl.1` at 5 MB). Order paths only build the record and `put_nowait` it into a bounded queue (1000). Since round 2, ONE process-wide `FillWriter` per file does every file operation: it is shared by engines replaced in a settings restart, and its thread starts lazily (see the dispositions):
 
 | Field | Meaning |
 |---|---|
@@ -20,9 +20,9 @@ Every fill the bot sends itself is recorded as one JSON line in `%LOCALAPPDATA%\
 | `slip_bps` | (actual - expected) / expected × 10 000, signed so that **+ = worse for us** (buying higher or selling lower) |
 | `qty_req` / `qty_fill` / `outcome` | Requested vs filled; `filled`, `partial`, `unfilled`, or `unknown` (Binance gave no executedQty: `qty_fill` is `null`, never the requested quantity) |
 | `wait_s` | Seconds from send (maker: from the first posting) to the result |
-| extras | `signal_px`, `maker_tries`, `reason` (exit or add reason), `manual`. Maker records state what actually happened to the fallback: `fallback` (true only when the fallback order filled), `fallback_blocked` (the reason it was refused), `fallback_failed` (the order error), `fallback_skipped` (no lot, or remainder below the minimum) |
+| extras | `signal_px`, `maker_tries`, `reason` (exit or add reason), `manual`, `fallback_order` (this order WAS the market fallback). Maker records state exactly what happened to the fallback: `fallback_attempted` (an order was sent), `fallback_confirmed` (only when its own record shows an executed quantity), `fallback_unconfirmed` (answered without a quantity), `fallback_pending` (answer lost, reconcile decides), `fallback_failed` (order error), `fallback_blocked`, `fallback_skipped`, `fallback_note` |
 
-- **Summary:** `/api/status` → `health.fills = {by_kind: {n, partial, unfilled, unknown, fallback, slip_avg_bps, slip_worst_bps, wait_avg_s}, recent: [last 10], telemetry: {accepted, persisted, dropped, write_errors, queued, window, in_window}}`.
+- **Summary:** `/api/status` → `health.fills = {by_kind: {n, partial, unfilled, unknown, fallback (= confirmed fallbacks), slip_avg_bps, slip_worst_bps, wait_avg_s}, recent: [last 10], telemetry: {accepted, persisted, dropped, write_errors, invalid_records, queued, window, in_window, state: idle|running|closing}}`.
   - **Window:** the last 5000 records **written to disk** (`FILL_WINDOW`). It is rebuilt at start from `fills.jsonl.1` + `fills.jsonl`. Rotation happens at 5 MB, about 16k records, so the two files always hold the window and a restart shows the same summary.
   - **Counters:** since process start.
 - **Hooks:**
@@ -34,14 +34,17 @@ Every fill the bot sends itself is recorded as one JSON line in `%LOCALAPPDATA%\
   - No file I/O and no blocking queue operation happen in an order path; a full queue drops the record and counts it.
   - Building a record catches everything.
   - Dry mode records nothing.
-  - On a settings restart, `start_engine` (under the old engine's lock, outside order handling) lets the old writer finish within 2 s, then ends it, so two writers never share the file. At exit, a 2 s flush runs via atexit, holding only a weak reference to the engine.
+  - A settings restart reuses the same writer (no handover).
+  - A writer that cannot be proven stopped stays registered as `closing` (drop-only, counted), and no second writer starts next to it.
+  - `close_fill_writer(s)` (atexit, replay `finally`, test fixture) stops accepting, flushes (bounded), signals through an Event (no queue space needed) and joins.
+  - Loaded lines are validated: non-dicts and wrong types are skipped and counted as `invalid_records`, and the summary is defensive per record.
 
 Not covered (known limits, proposed for later):
 - exchange-side stop fills: Binance fills these, so their expected-vs-actual needs the stop price plus the fill read from reconcile;
 - fills resolved from a lost answer (`pending` → reconcile);
 - backtest calibration from this data (roadmap "fill telemetry calibrated").
 
-## Tests (`tests/test_fills.py`: 15 from round 1 + 13 new = 28 in the runner; the parametrized test counts once)
+## Tests (`tests/test_fills.py`: 45 in the runner, parametrized cases included: 15 original, 13 from round 1, 17 from round 2)
 
 - long and short market entries: adverse slippage is positive on both sides;
 - exit against the decision mark;
@@ -77,6 +80,18 @@ Round 1 additions:
 - no restart reload;
 - the maker expectation taken from the signal instead of the posted price.
 
+**Mutation proof (round 2): 10/10 caught.**
+- no shared writer;
+- replacing a live closing writer;
+- a closing writer still accepting;
+- stop needing queue space;
+- confirmed on any answer;
+- partial ambiguous treated as failed;
+- unfilled ambiguous treated as failed;
+- non-dict records admitted;
+- eager thread start;
+- replay leaving its writer.
+
 **Mutation proof (round 1): 8/8 caught.**
 - synchronous write in the order path;
 - blocking put;
@@ -86,6 +101,30 @@ Round 1 additions:
 - fallback claimed before the decision;
 - no writer handover in app.py;
 - unfilled-fallback exception not recorded.
+
+## Round 2 dispositions (Codex review ac2afe4 on 2d0e985)
+
+1. **P1: a timed-out handover started a second writer.** Confirmed defect. Fixed by construction:
+   - one process-wide `FillWriter` per file path (`fill_writer(path)` registry); a replacement Engine on the same data folder gets the same object, so there is no handover at all, and `app.start_engine` no longer touches telemetry;
+   - a writer is replaced only when it is closing AND its thread is provably dead;
+   - a stuck writer stays registered as `closing`: new records are dropped and counted, and the state is visible in `telemetry.state`;
+   - stopping uses an Event plus join, so it works with a full queue.
+   Tests:
+   - blocked write + replacement engine: the same writer and the same thread;
+   - close times out: bounded, `closing` visible, drop-only, and a new writer only after the old thread ended;
+   - close with a full queue still ends the thread.
+2. **P2: `fallback=true` meant "call returned".** Confirmed defect. Fixed:
+   - `fallback_attempted`, `fallback_confirmed` (only when the fallback order's own record has an executed quantity), `fallback_unconfirmed`, `fallback_pending` (AmbiguousOrder: the lost answer in `_market_entry` and `_add_qty`), `fallback_failed`, `fallback_blocked`, `fallback_skipped`;
+   - the child order carries `fallback_order`, and the summary counts only confirmed fallbacks.
+   Tests: missing or zero executedQty on unfilled and partial makers gives not confirmed; ambiguous answers on unfilled and partial makers give pending, not failed.
+3. **P2: a malformed line broke /api/status.** Confirmed defect. Fixed: `_fill_normalize` admits only dicts with a string `kind`; wrong numeric types and NaN/inf become null; a non-string outcome becomes `unknown`. Rejects are counted as `invalid_records`, and aggregation is defensive per record. Tests: `[]`, scalar, string, null, non-string kind, missing kind, a truncated line, wrong field types, and mixed old/new schema (an old unverified `fallback: true` is not counted).
+4. **P2: writer lifetime.** Confirmed defect. Fixed:
+   - lazy thread: engines that never emit start none;
+   - the thread targets the writer, not the engine;
+   - `close_fill_writer(path)` in replay `finally`;
+   - an autouse fixture in `tests/conftest.py` closes all writers after every test;
+   - atexit closes all writers.
+   Tests: five engines start no thread until they emit, and no thread remains after close; construction failure starts no thread; static check on replay.
 
 ## Round 1 dispositions (Codex review 3633ce6 on 153cf6d)
 
@@ -107,4 +146,9 @@ Round 1 (sandbox, stand-in runner, NOT official pytest), on master d68d6ef (T03b
 - full tests/: 305 passed, 2 skipped, plus the known environment-only provenance failure;
 - secret scan: clean.
 
-Pending: GitHub fast/full on the new head, and Codex re-review.
+Round 2 (sandbox, stand-in runner, NOT official pytest), on master d68d6ef + these files:
+- tests/test_fills.py: 45 passed;
+- full tests/: 322 passed, 2 skipped, plus the known environment-only provenance failure;
+- strict replay 1 (24 steps): GATE PASS, 133/133 trades matched, return gap 2.81 pp, and the replay closes its writer.
+
+Pending: GitHub fast/full on the new head (the branch now includes master via a merge commit), and Codex re-review.
