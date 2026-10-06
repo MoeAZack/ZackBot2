@@ -449,6 +449,8 @@ class App:
     def start_engine(self):
         old = self.engine
         if old is not None: old.lock.acquire()          # let a running cycle finish and save before the new engine reads state
+        if old is not None and hasattr(old, '_fill_stop'):
+            old._fill_stop(2.0)                          # T05: old telemetry writer finishes (bounded) before the new one starts
         try:
             cfg = load_cfg()
             if cfg.pop('_plain', False):

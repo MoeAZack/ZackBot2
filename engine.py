@@ -5,7 +5,7 @@ trailing, pyramiding adds, DCA safety orders, basket take-profit) is checked eve
 Signals (entries/exits) are evaluated right after each candle close of the sleeve's timeframe.
 Hedge mode is used so longs and shorts on the same coin can coexist.
 """
-import csv, json, math, os, re, time, logging, threading, copy, collections
+import atexit, weakref, csv, json, math, os, queue, re, time, logging, threading, copy, collections
 from datetime import datetime, timezone, timedelta
 import numpy as np
 import pandas as pd
@@ -16,6 +16,9 @@ from ai_filter import review
 import grid as GRID
 
 log = logging.getLogger('zackbot')
+FILL_QUEUE_MAX = 1000             # T05: telemetry records waiting for the writer; beyond this they are dropped (counted)
+FILL_WINDOW = 5000                # T05: the summary covers the last 5000 records written (rebuilt from disk at start)
+FILL_ROTATE_BYTES = 5_000_000     # T05: fills.jsonl -> fills.jsonl.1 above 5 MB (~16k records, so .1 always holds the window)
 TF_SEC = {'15m': 900, '1h': 3600, '4h': 14400}
 FEE_EST = 0.0005        # taker fee estimate per fill, used for net PnL in the trade history
 BE_BUF = 0.0015         # breakeven stops sit just past the average entry so fees are covered
@@ -166,8 +169,7 @@ class Engine:
         self.untracked = {}                       # exchange positions the engine has no record of
         self._lev = {}                            # leverage already set per symbol
         self.lev_refusals = {}                    # T03a: Binance leverage refusals per symbol (count, outcome, last error)
-        self.fill_stats, self.fill_recent = {}, []  # T05: fill telemetry (rebuilt from fills.jsonl at start)
-        self._load_fills()
+        self._fill_init()                         # T05: fill telemetry (background writer; window rebuilt from disk)
         self._btc1h = None; self._fund = {}; self._regime = None; self._rule_warns = []
         self.health = dict(errors=collections.deque(maxlen=30), last_manage_ok=None, last_cycle_ok={}, manage_fail_streak=0,
                            last_sync=None, alerted=False)
@@ -441,60 +443,121 @@ class Engine:
 
     # ------------------------------------------------------------ T05: fill telemetry (observe only)
     # One record per fill the bot itself sends: expected vs actual price, slippage in bps (+ = worse for us), requested
-    # vs filled qty, wait, maker tries, fallback. Appended to fills.jsonl (rotated at 5 MB) and summarised per kind for
-    # /api/status. Telemetry NEVER raises into an order path and never changes what is traded.
+    # vs filled qty, wait, maker tries, fallback. Order paths only BUILD a record (no I/O) and hand it over with a
+    # non-blocking put into a bounded queue; one background writer owns rotation and disk writes (Codex T05 P1). A full
+    # queue drops the record and counts it. The summary covers the last FILL_WINDOW records written to disk (across
+    # fills.jsonl.1 + fills.jsonl), so the same window is rebuilt after a restart. Telemetry never raises into an order
+    # path, never waits on the disk there, and never changes what is traded.
     FILL_KINDS = ('entry_market', 'entry_maker', 'entry_fallback', 'pyramid_add', 'safety_order', 'exit')
 
-    def _fill(self, kind, sym, side, buy, expected, actual, q_req, q_fill, t0=None, **extra):
+    def _fill_init(self):
+        self._fill_q = queue.Queue(maxsize=FILL_QUEUE_MAX)
+        self._fill_lock = threading.Lock()
+        self._fill_win = collections.deque(maxlen=FILL_WINDOW)          # persisted records only (no phantom counts)
+        self._fill_ctr = dict(accepted=0, persisted=0, dropped=0, write_errors=0)
+        self._load_fills()
+        self._fill_thread = threading.Thread(target=self._fill_writer, name='fill-telemetry', daemon=True)
+        self._fill_thread.start()
+        ref = weakref.ref(self)                                         # no strong ref: a replaced engine can be freed
+        atexit.register(lambda: ref() is not None and ref()._fill_flush(2.0))
+
+    def _fill_rec(self, kind, sym, side, buy, expected, actual, q_req, q_fill, t0=None, outcome=None, **extra):
+        """Build one record (pure: no I/O). q_fill None/0 from the exchange = unknown, never invented as a full fill."""
         try:
             exp = float(expected) if expected else None
             act = float(actual) if actual else None
             slip = round((act - exp) / exp * 1e4 * (1 if buy else -1), 2) + 0.0 if exp and act else None
-            q_req, q_fill = float(q_req or 0), float(q_fill or 0)
-            outcome = 'unfilled' if q_fill <= 0 else ('partial' if q_req and q_fill + 1e-12 < q_req else 'filled')
+            q_req = float(q_req or 0)
+            try: qf = float(q_fill) if q_fill not in (None, '') else None
+            except (TypeError, ValueError): qf = None
+            if outcome is None:
+                if not qf or qf <= 0: qf, outcome = None, 'unknown'
+                else: outcome = 'partial' if q_req and qf + 1e-12 < q_req else 'filled'
             rec = dict(time=now_utc().isoformat(timespec='seconds'), kind=kind, symbol=sym, side=side, buy=bool(buy),
-                       expected=exp, actual=act, slip_bps=slip, qty_req=q_req, qty_fill=q_fill, outcome=outcome,
+                       expected=exp, actual=act, slip_bps=slip, qty_req=q_req, qty_fill=qf, outcome=outcome,
                        wait_s=round(max(0.0, time.time() - t0), 2) if t0 else None)
             rec.update({k: v for k, v in extra.items() if v is not None})
-            self._fill_count(rec)
-            p = self.F['fills']
-            if os.path.exists(p) and os.path.getsize(p) > 5_000_000: os.replace(p, p + '.1')
-            with open(p, 'a') as f: f.write(json.dumps(rec) + '\n')
+            return rec
         except Exception as e:
-            log.warning(f'fill telemetry not recorded ({e})')
+            log.warning(f'fill telemetry record not built ({e})'); return None
 
-    def _fill_count(self, rec):
-        s = self.fill_stats.setdefault(rec.get('kind', '?'), dict(n=0, partial=0, unfilled=0, fallback=0, slip_n=0, slip_sum=0.0,
-                                                                 slip_worst=None, wait_n=0, wait_sum=0.0))
-        s['n'] += 1; s['partial'] += rec.get('outcome') == 'partial'; s['unfilled'] += rec.get('outcome') == 'unfilled'
-        s['fallback'] += bool(rec.get('fallback'))
-        if rec.get('slip_bps') is not None:
-            s['slip_n'] += 1; s['slip_sum'] += rec['slip_bps']
-            s['slip_worst'] = rec['slip_bps'] if s['slip_worst'] is None else max(s['slip_worst'], rec['slip_bps'])
-        if rec.get('wait_s') is not None: s['wait_n'] += 1; s['wait_sum'] += rec['wait_s']
-        self.fill_recent = (self.fill_recent + [rec])[-50:]
+    def _fill_emit(self, rec):
+        """Hand a finished record to the writer without ever waiting: a full or broken queue drops it (counted)."""
+        if not rec: return
+        try:
+            self._fill_q.put_nowait(rec)
+            with self._fill_lock: self._fill_ctr['accepted'] += 1
+        except Exception:
+            try:
+                with self._fill_lock: self._fill_ctr['dropped'] += 1
+            except Exception: pass
+
+    def _fill(self, kind, sym, side, buy, expected, actual, q_req, q_fill, t0=None, **extra):
+        self._fill_emit(self._fill_rec(kind, sym, side, buy, expected, actual, q_req, q_fill, t0, **extra))
+
+    def _fill_write(self, rec):
+        p = self.F['fills']
+        if os.path.exists(p) and os.path.getsize(p) > FILL_ROTATE_BYTES: os.replace(p, p + '.1')
+        with open(p, 'a') as f: f.write(json.dumps(rec) + '\n')
+
+    def _fill_writer(self):
+        while True:
+            rec = self._fill_q.get()
+            if rec is None: self._fill_q.task_done(); return             # _fill_stop: this engine is being replaced
+            try:
+                self._fill_write(rec)
+                with self._fill_lock: self._fill_win.append(rec); self._fill_ctr['persisted'] += 1
+            except Exception as e:
+                with self._fill_lock: self._fill_ctr['write_errors'] += 1
+                log.warning(f'fill telemetry not written ({e})')
+            finally:
+                self._fill_q.task_done()
+
+    def _fill_flush(self, timeout=2.0):
+        """Wait (bounded) until the writer has handled every queued record. Never call from an order path."""
+        end = time.time() + timeout
+        while self._fill_q.unfinished_tasks and time.time() < end: time.sleep(0.01)
+        return not self._fill_q.unfinished_tasks
+
+    def _fill_stop(self, timeout=2.0):
+        """Engine replaced (settings restart): let the writer finish what is queued (bounded), then end its thread, so two
+        writers never share fills.jsonl and the new engine's window starts from a complete file. Not for order paths."""
+        ok = self._fill_flush(timeout)
+        try: self._fill_q.put_nowait(None)
+        except Exception: pass
+        return ok
 
     def _load_fills(self):
-        """Rebuild the summary from the last ~2 MB of fills.jsonl, so it survives restarts. Never raises."""
+        """Rebuild the window from fills.jsonl.1 + fills.jsonl (the last FILL_WINDOW records on disk). Never raises."""
         try:
             p = self.F['fills']
-            if not os.path.exists(p): return
-            with open(p, 'rb') as f:
-                f.seek(max(0, os.path.getsize(p) - 2_000_000)); lines = f.read().decode('utf-8', 'replace').splitlines()
-            for ln in lines[1:] if len(lines) > 1 and os.path.getsize(p) > 2_000_000 else lines:
-                try: self._fill_count(json.loads(ln))
-                except Exception: pass
+            for f in (p + '.1', p):
+                if not os.path.exists(f): continue
+                with open(f, encoding='utf-8', errors='replace') as fh:
+                    for ln in fh:
+                        try: self._fill_win.append(json.loads(ln))
+                        except Exception: pass
         except Exception as e:
             log.warning(f'fill telemetry history not loaded ({e})')
 
     def fill_summary(self):
-        """Per-kind counts, average/worst slippage (bps) and average wait, plus the 10 most recent fills."""
+        """Per-kind counts, average/worst slippage (bps) and average wait over the last FILL_WINDOW written records, the
+        10 most recent, and the telemetry's own health (accepted / written / dropped / write errors since start)."""
+        with self._fill_lock: win, ctr = list(self._fill_win), dict(self._fill_ctr)
         out = {}
-        for k, s in list(self.fill_stats.items()):
-            out[k] = dict(n=s['n'], partial=s['partial'], unfilled=s['unfilled'], fallback=s['fallback'],
-                          slip_avg_bps=round(s['slip_sum'] / s['slip_n'], 2) if s['slip_n'] else None, slip_worst_bps=s['slip_worst'],
-                          wait_avg_s=round(s['wait_sum'] / s['wait_n'], 2) if s['wait_n'] else None)
-        return dict(by_kind=out, recent=[dict(r) for r in list(self.fill_recent)[-10:]])
+        for rec in win:
+            s = out.setdefault(rec.get('kind', '?'), dict(n=0, partial=0, unfilled=0, unknown=0, fallback=0, _s=[], _w=[]))
+            s['n'] += 1; o = rec.get('outcome')
+            s['partial'] += o == 'partial'; s['unfilled'] += o == 'unfilled'; s['unknown'] += o == 'unknown'
+            s['fallback'] += rec.get('fallback') is True
+            if rec.get('slip_bps') is not None: s['_s'].append(rec['slip_bps'])
+            if rec.get('wait_s') is not None: s['_w'].append(rec['wait_s'])
+        for s in out.values():
+            sl, w = s.pop('_s'), s.pop('_w')
+            s.update(slip_avg_bps=round(sum(sl) / len(sl), 2) if sl else None, slip_worst_bps=max(sl) if sl else None,
+                     wait_avg_s=round(sum(w) / len(w), 2) if w else None)
+        ctr.update(queued=self._fill_q.qsize(), window=FILL_WINDOW, in_window=len(win))
+        return dict(by_kind=out, recent=[dict(r) for r in win[-10:]], telemetry=ctr)
 
     # ------------------------------------------------------------ order helpers
     def err(self, msg):
@@ -556,7 +619,7 @@ class Engine:
                 lot['pending'] = dict(kind='close', qty=qty, px=px, why=why, post=post or {}, t=time.time())
                 self.save_state(); self.err(f'{sym} close unconfirmed ({e}) - waiting for Binance position to confirm'); raise
             act = float(o.get('avgPrice') or 0) or None
-            self._fill('exit', sym, lot['side'], lot['side'] == 'SHORT', mark, act, qty, float(o.get('executedQty') or qty), t0, reason=why)
+            self._fill('exit', sym, lot['side'], lot['side'] == 'SHORT', mark, act, qty, o.get('executedQty'), t0, reason=why)
             px = act or px
         return self._apply_close(lot, qty, px, why)
 
@@ -677,7 +740,7 @@ class Engine:
                 self.save_state(); self.err(f"{lot['symbol']} {why} unconfirmed ({e}) - waiting for Binance position to confirm"); raise
             act = float(o.get('avgPrice') or 0) or None
             self._fill(why if why in self.FILL_KINDS else 'pyramid_add', lot['symbol'], lot['side'], lot['side'] == 'LONG', px, act, q,
-                       float(o.get('executedQty') or q), t0, reason=why, fallback=(why == 'entry_fallback') or None)
+                       o.get('executedQty'), t0, reason=why, fallback=(why == 'entry_fallback') or None)
             px = act or px
         self._apply_add(lot, q, px, why)
         return True
@@ -1302,7 +1365,7 @@ class Engine:
         fill = act or plan['px']
         filled = float(o.get('executedQty') or 0)
         self._fill('entry_fallback' if plan.get('fallback') else 'entry_market', sym, side, side == 'LONG', plan['px'], act, plan['qty'],
-                   filled or plan['qty'], t0, signal_px=plan.get('signal_px'), maker_tries=plan.get('maker_tries'),
+                   o.get('executedQty'), t0, signal_px=plan.get('signal_px'), maker_tries=plan.get('maker_tries'),
                    fallback=plan.get('fallback') or None, manual=plan.get('manual') or None)
         qty = self._rd(filled, r['step']) if filled > 0 else plan['qty']
         return self._create_lot(plan, qty, fill)
@@ -1679,24 +1742,45 @@ class Engine:
         buy = rec['side'] == 'LONG'
         if rec['filled'] > 0:
             q = self._rd(rec['filled'], r['step']); avg = rec['cost'] / rec['filled']
-            self._fill('entry_maker', rec['symbol'], rec['side'], buy, rec.get('px0') or rec.get('price'), avg, plan['qty'], q, rec.get('t0'),
-                       signal_px=plan['px'], maker_tries=rec['n'], fallback=(fallback and rem > 0) or None)
+            mrec = self._fill_rec('entry_maker', rec['symbol'], rec['side'], buy, rec.get('px0') or rec.get('price'), avg, plan['qty'], q,
+                                  rec.get('t0'), signal_px=plan['px'], maker_tries=rec['n'])
+            ran = blocked = failed = skipped = None                      # filled in only from what actually happened below
             ok = self._create_lot(plan, q, avg, maker_qty=q)
             lot = self.state['lots'].get(getattr(self, '_last_lot_key', None))
-            if ok and lot and fallback and not self.entry_block(sl, rec['symbol'], rec['side'], manual=True):
-                try: self._add_qty(lot, rem, px, 'entry_fallback')
-                except Exception as e: self.err(f"maker fallback {rec['symbol']}: {e}")
-                else: self._replace_stop(lot)
+            if fallback and rem > 0:
+                blk = self.entry_block(sl, rec['symbol'], rec['side'], manual=True) if ok and lot else None
+                if not (ok and lot): skipped = 'maker lot not created'
+                elif blk: blocked = blk
+                else:
+                    try: ran = self._add_qty(lot, rem, px, 'entry_fallback') or None
+                    except Exception as e: failed = str(e)[:160]; self.err(f"maker fallback {rec['symbol']}: {e}")
+                    else:
+                        if not ran: skipped = 'remainder below the Binance minimum'
+                        self._replace_stop(lot)
+            if mrec: mrec.update({k: v for k, v in dict(fallback=ran, fallback_blocked=blocked, fallback_failed=failed,
+                                                         fallback_skipped=skipped).items() if v is not None})
+            self._fill_emit(mrec)
             return
         blk = self.entry_block(sl, rec['symbol'], rec['side'], sg=sg) if fallback else None
-        self._fill('entry_maker', rec['symbol'], rec['side'], buy, rec.get('px0') or rec.get('price'), None, plan['qty'], 0, rec.get('t0'),
-                   signal_px=plan['px'], maker_tries=rec['n'], fallback=(fallback and not blk) or None, fallback_blocked=blk or None)
-        if fallback:
-            if blk: self.miss(sl, rec['symbol'], rec['side'], sg, f'maker entry not filled; market fallback blocked: {blk}'); return
-            log.info(f"MAKER entry {rec['symbol']} not filled - market fallback")
-            if not self._market_entry(dict(plan, px=px, fallback=True, signal_px=plan['px'], maker_tries=rec['n'])): self.miss(sl, rec['symbol'], rec['side'], sg, self.last_skip or 'order failed')
-        else:
-            self.miss(sl, rec['symbol'], rec['side'], sg, 'maker entry not filled (no market fallback)')
+        mrec = self._fill_rec('entry_maker', rec['symbol'], rec['side'], buy, rec.get('px0') or rec.get('price'), None, plan['qty'], 0,
+                              rec.get('t0'), outcome='unfilled', signal_px=plan['px'], maker_tries=rec['n'], fallback_blocked=blk or None)
+        try:
+            if fallback:
+                if blk: self.miss(sl, rec['symbol'], rec['side'], sg, f'maker entry not filled; market fallback blocked: {blk}'); return
+                log.info(f"MAKER entry {rec['symbol']} not filled - market fallback")
+                try: ok = self._market_entry(dict(plan, px=px, fallback=True, signal_px=plan['px'], maker_tries=rec['n']))
+                except Exception as e:
+                    if mrec: mrec['fallback_failed'] = str(e)[:160]
+                    raise                                                # unchanged: the error propagates as before
+                if ok:
+                    if mrec: mrec['fallback'] = True
+                else:
+                    if mrec: mrec['fallback_failed'] = (self.last_skip or 'order failed')[:160]
+                    self.miss(sl, rec['symbol'], rec['side'], sg, self.last_skip or 'order failed')
+            else:
+                self.miss(sl, rec['symbol'], rec['side'], sg, 'maker entry not filled (no market fallback)')
+        finally:
+            self._fill_emit(mrec)
 
     # ------------------------------------------------------------ panel actions
     def manual_trade(self, sym, side, risk_pct, stop_atr, tp_r=None):
