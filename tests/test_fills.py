@@ -411,3 +411,26 @@ def test_malformed_lines_never_break_the_status(line):
     good = line.startswith('{"kind": "exit", "slip_bps": "bad"')
     assert s['telemetry']['invalid_records'] == (0 if good else 1)
     if good: assert s['by_kind']['exit']['slip_avg_bps'] is None and s['by_kind']['exit']['unknown'] == 1
+
+
+def test_close_cannot_slip_between_admission_and_enqueue():
+    """Codex round 3: an emitter paused at the moment of queue admission must not let close() finish around it. The record
+    ends up written before close() succeeds (never accepted into a stopped writer's queue)."""
+    e, _ = mk_engine()
+    w = e._fillw
+    e._fill('exit', 'BTCUSDT', 'LONG', False, 100.0, 100.0, 1, 1); assert w.flush(5)   # writer running, queue empty
+    gate, entered, real_put = threading.Event(), threading.Event(), w.q.put_nowait
+    def paused_put(x):
+        entered.set(); gate.wait(5); return real_put(x)
+    w.q.put_nowait = paused_put
+    em = threading.Thread(target=e._fill, args=('exit', 'BTCUSDT', 'LONG', False, 100.0, 99.0, 1, 1)); em.start()
+    assert entered.wait(5)
+    res = {}
+    cl = threading.Thread(target=lambda: res.setdefault('ok', w.close(3))); cl.start()
+    time.sleep(0.3)
+    assert 'ok' not in res, 'close() must wait for the admission in progress'
+    gate.set(); em.join(5); cl.join(10)
+    c = w.summary()['telemetry']
+    assert res['ok'] is True and w.q.unfinished_tasks == 0
+    assert c['accepted'] == c['persisted'] == 2 and c['dropped'] == 0
+    assert [r['actual'] for r in w.summary()['recent']] == [100.0, 99.0]

@@ -5,7 +5,7 @@
 | Item | Value |
 |---|---|
 | Branch | `t05-fill-telemetry`, from protected `master` f9778ca. **Pipeline mode** (owner, 2026-10-06): runs alongside the T03b runtime gate; no shared files with T03b |
-| Head for review | the PR head. The full SHA is in the FIXED FOR CODEX comment (round 1 reviewed 153cf6d → Codex 3633ce6; round 2 reviewed 2d0e985 → Codex ac2afe4) |
+| Head for review | the PR head. The full SHA is in the FIXED FOR CODEX comment (round 1 reviewed 153cf6d → Codex 3633ce6; round 2 reviewed 2d0e985 → Codex ac2afe4; round 3 reviewed ba83810 → Codex 5e7d4b9) |
 | Class | **Observe only.** Nothing traded changes: same decisions, orders, sizes, stops and exchange calls |
 | Runtime | Nothing installed. The telemetry becomes active with the next approved install |
 
@@ -102,6 +102,13 @@ Round 1 additions:
 - no writer handover in app.py;
 - unfilled-fallback exception not recorded.
 
+## Round 3 disposition (Codex review 5e7d4b9 on ba83810)
+
+1. **P2: `emit()` could accept a record after `close()` stopped the writer.** Confirmed race. Fixed: the closing check, the non-blocking `put_nowait` and the accepted/dropped count are now one atomic step under `FillWriter.lock`. `close()` takes the same lock to set `closing`, so it cannot complete around an admission in progress. The put stays non-blocking, because a full queue raises at once.
+   - Deterministic test: an emitter is paused inside queue admission and `close()` starts. close() is proven to wait. After release, the record is written before close() succeeds: accepted == persisted == 2, dropped 0, nothing left queued.
+   - Mutation: restoring the old non-atomic admission makes the test fail.
+   - Only `FillWriter.emit` and this test changed.
+
 ## Round 2 dispositions (Codex review ac2afe4 on 2d0e985)
 
 1. **P1: a timed-out handover started a second writer.** Confirmed defect. Fixed by construction:
@@ -147,7 +154,7 @@ Round 1 (sandbox, stand-in runner, NOT official pytest), on master d68d6ef (T03b
 - secret scan: clean.
 
 Round 2 (sandbox, stand-in runner, NOT official pytest), on master d68d6ef + these files:
-- tests/test_fills.py: 45 passed;
+- tests/test_fills.py: 45 passed (46 after round 3);
 - full tests/: 322 passed, 2 skipped, plus the known environment-only provenance failure;
 - strict replay 1 (24 steps): GATE PASS, 133/133 trades matched, return gap 2.81 pp, and the replay closes its writer.
 

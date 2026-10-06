@@ -68,19 +68,21 @@ class FillWriter:
                 log.warning(f'fill telemetry history not loaded from {f} ({e})')
 
     def emit(self, rec):
+        """Admission is ONE atomic step under the lock (Codex T05 round 3): the closing check, the non-blocking put and the
+        accepted/dropped count. close() cannot slip in between, so a record is either queued before close() flushes it,
+        or rejected and counted - never accepted into a stopped writer's queue."""
         with self.lock:
             if self.closing:
                 self.ctr['dropped'] += 1; return False
             if self.thread is None:
                 self.thread = threading.Thread(target=self._run, name='fill-telemetry', daemon=True)
                 self.thread.start()
-        try:
-            self.q.put_nowait(rec)
-        except Exception:
-            with self.lock: self.ctr['dropped'] += 1
-            return False
-        with self.lock: self.ctr['accepted'] += 1
-        return True
+            try:
+                self.q.put_nowait(rec)                                   # never blocks (a full queue raises at once)
+            except Exception:
+                self.ctr['dropped'] += 1; return False
+            self.ctr['accepted'] += 1
+            return True
 
     def write(self, rec):
         if os.path.exists(self.path) and os.path.getsize(self.path) > FILL_ROTATE_BYTES: os.replace(self.path, self.path + '.1')
