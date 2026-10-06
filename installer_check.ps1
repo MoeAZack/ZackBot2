@@ -1,4 +1,4 @@
-# Helper for build_app.bat (run with -NoProfile -ExecutionPolicy Bypass -File). Uses ONLY .NET and the language - NO
+# Helper for installer.ps1 (started from build_app.bat; run with -NoProfile -ExecutionPolicy Bypass -File). Uses ONLY .NET and the language - NO
 # cmdlets at all (Get-FileHash, Invoke-RestMethod, ConvertFrom-Json, Get-Content): T03 review found Get-FileHash missing when the
 # batch file was started from an environment with a foreign PSModulePath, which silently emptied the checksum.
 # Commands:

@@ -227,12 +227,20 @@ def ui_step(rep):
     return rep.step('UI harness (all tabs x 3 widths, flows, API failures)', rc == 0 and g is not None and g.group(1) == 'PASS', sec, **info)
 
 
+def installer_command(mode):
+    """T03b: the drill has its own fixed launcher; build_app.bat takes only preflight / buildcheck (or nothing = install)."""
+    if mode == 'drill':
+        return ['cmd', '/d', '/c', os.path.join(ROOT, 'rollback_drill.bat')]
+    assert mode in ('preflight', 'buildcheck'), mode
+    return ['cmd', '/d', '/c', os.path.join(ROOT, 'build_app.bat'), mode]
+
+
 def installer_mode(rep, mode, timeout):
-    """build_app.bat preflight | buildcheck | drill, non-interactive (ZB_NOPAUSE). Windows only."""
+    """build_app.bat preflight | buildcheck, rollback_drill.bat (drill); non-interactive (ZB_NOPAUSE). Windows only."""
     if not WIN:
         return rep.step(f'installer {mode}', True, skip=True, why='Windows only')
     env = dict(os.environ, ZB_NOPAUSE='1')
-    rc, out, sec = run(['cmd', '/d', '/c', os.path.join(ROOT, 'build_app.bat'), mode], timeout, env=env)
+    rc, out, sec = run(installer_command(mode), timeout, env=env)
     logname = {'preflight': 'build_preflight.log', 'buildcheck': 'build_check.log', 'drill': 'build.log'}[mode]
     log = os.path.join(os.environ.get('LOCALAPPDATA', ''), 'ZackBot', logname)
     text = open(log, encoding='utf-8', errors='replace').read() if os.path.exists(log) else ''
