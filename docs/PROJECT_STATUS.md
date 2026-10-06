@@ -1,6 +1,6 @@
 # ZackBot owner overview
 
-*Last refreshed: 2026-10-06 07:08 Cairo (Africa/Cairo) by Codex, on branch `t03b-installer-powershell`. This is the plain-language owner view. `ROADMAP.md` and `docs/reviews/` hold the detailed scope and evidence.*
+*Last refreshed: 2026-10-06 07:48 Cairo (Africa/Cairo) by Codex, on branch `roadmap-strategy-expansion`. This is the plain-language owner view. `ROADMAP.md` and `docs/reviews/` hold the detailed scope and evidence.*
 
 ## Where we are now
 
@@ -9,11 +9,11 @@
 | Environment | **Binance Futures testnet only.** Mainnet stays impossible until the roadmap and the final release audit are complete and you approve it. |
 | Is ZackBot running? | Yes, on your PC (testnet), build `20261006-064354`: engine and exchange ok, four positions, all protected, zero errors/untracked/orphans after the T03b install and rollback drill. |
 | Installed application | **T03b installed and rollback-proven.** SHA-256 `203B155474942709B6AD40C3517BA32D058721664D245191C900068CBC4A60A6`; the drill restored the same build and hash exactly. |
-| Latest accepted commit | `master` `f9778ca` (T03a accepted and merged) |
-| Current ticket | **T03b: move installer logic from CMD to PowerShell** |
-| Stage | **Accepted; acceptance/status commit checks and protected merge remain.** |
-| What Claude is doing | Holding while Codex completes the acceptance commit and merge gate. |
-| What Codex is reviewing | Final acceptance checks, protected merge, then opening T05 fill telemetry. |
+| Latest accepted commit | `master` `d68d6ef` (T03b accepted and merged) |
+| Current ticket | **T05: fill telemetry** |
+| Stage | **Fixes requested on PR #6.** T04d faster CI and T03c automatic leverage handling are implemented in separate branches and queued behind the T05 hand-off. |
+| What Claude is doing | Addressing the T05 safety/durability review; holding T04d/T03c for their ordered reviews. |
+| What Codex is reviewing | T05 rework next; roadmap corrections are in PR #8. |
 | Your action | **None.** |
 
 ## Latest test results
@@ -65,7 +65,7 @@ Automated test-suite results use a fake exchange. The final T03a gate used the r
 - Claude fixed both high-severity recovery paths, exact evidence fields and the launcher boundary; Codex confirmed them on Windows.
 - The owner approved one normal install and one rollback drill. Both passed once, with structured evidence and no warnings.
 - The drill restored build `20261006-064354` byte-for-byte and proved it running. All four testnet lots remained protected and health stayed clean.
-- Acceptance/status checks and the protected merge are the only remaining T03b steps.
+- PR #5 was merged into protected `master` as `d68d6ef`; T03b is closed.
 
 ## Bugs
 
@@ -89,8 +89,8 @@ Automated test-suite results use a fake exchange. The final T03a gate used the r
 ## Open risks
 
 - **CI security follow-up (low):** add Dependabot for the immutable action pins plus Git-history secret and dependency scanning.
-- **Repository visibility:** intentionally public during testnet collaboration. It must return to private before any mainnet credentials or live release work.
-- T03b has no remaining finding and passed its install/rollback runtime gate. Only acceptance-commit checks and protected merge remain.
+- **Repository visibility:** private. It must stay private before any mainnet credentials or live release work.
+- **T05 safety review:** synchronous telemetry file I/O currently sits between exchange fills and protective state/stop actions. PR #6 must move it to a bounded non-blocking writer before acceptance.
 
 ## Code clean-up policy (your request, 2026-10-05)
 
@@ -112,8 +112,10 @@ Every ticket now ends with a **clean-up pass on the files it touched**: remove d
 
 | Order | Ticket | Why it comes here |
 |---|---|---|
-| Closing | **T03b — installer in PowerShell** | Accepted; protected merge pending |
-| Next | **T05 — fill telemetry** | Measures expected vs actual fills |
+| Active | **T05 — fill telemetry** | Fix optional disk I/O so it can never delay protection, then re-review |
+| Next | **T04d — faster CI** | Review the already-green parallel/reuse implementation before more order-path work |
+| Then | **T03c — automatic leverage handling** | Review and bounded testnet canary of the cross-margin exposure fallback |
+| Measure | **T05a — exit/opportunity attribution** | Observe current runner/exit value before changing runner behaviour |
 | Core | **T06–T09 — shared core** | One trading logic for live and backtest |
 | Scale | **T10–T16** | Order budgets, trade records, "Why?", scorecards, VPS, multi-account, ML data |
 | Final gate | Release audit + your explicit mainnet approval | |

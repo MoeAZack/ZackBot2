@@ -41,7 +41,7 @@ These are research bands to calibrate, not promised returns or final production 
 | Intermediate | 1.00–2.00% | 7–12% | Balanced frequency, return and drawdown |
 | Advanced | 2.00–3.00% | 12–18% | Aggressive sizing and more simultaneous risk |
 | Expert | 3.00–4.00% | 18–25% | High volatility and substantial expected drawdowns |
-| Maniac | 4.00–5.00% | 25–35%+ | Extreme; Research/Testnet by default until a later explicit mainnet policy gate |
+| Maniac | 4.00–5.00% | 25–35% (hard ceiling 35%) | Extreme; Research/Testnet by default until a later explicit mainnet policy gate |
 
 The calculation uses loss at the exchange-side stop, total open and correlated risk, gross exposure, margin use, liquidation distance, planned DCA/pyramid commitments, daily loss and current drawdown. Leverage alone is never treated as risk. No automatic component may exceed the user's controlled capital, loss tolerance or mechanical caps.
 
@@ -52,7 +52,7 @@ The user-entered **controlled capital** remains the sizing base and allocation c
 | Mode | Behaviour |
 |---|---|
 | Manual | Trade only the exact strategy configuration selected by the user |
-| Recommend | Calculate and explain proposed changes; the user approves them |
+| Recommend | Calculate and explain proposed changes; the user approves them. Experimental candidates may be listed only with an explicit **Experimental** label and are never proposed as the default |
 | Automatic | Select only from the user's strategy/side/coin/timeframe allowlist, inside every capital and risk cap |
 
 Mode changes affect new decisions only and never reinterpret an open trade plan.
@@ -93,7 +93,7 @@ The first candidate should use a per-symbol range definition, reversal confirmat
 - bearish rejection;
 - fast trailing breakout.
 
-The initial research timeframes are 15 minutes and 1 hour. Genuine 1–5 minute strategies require retained high-resolution data, order-book/spread inputs, realistic latency, partial-fill and queue modelling, and more demanding execution infrastructure. A selectable timeframe is not evidence that a scalp is production-ready.
+The initial research timeframes are 15 minutes and 1 hour under the normal validation ladder. Genuine sub-15-minute strategies (especially 1–5 minute) additionally require retained high-resolution data, order-book/spread inputs, realistic latency, partial-fill and queue modelling, and more demanding execution infrastructure. A selectable timeframe is not evidence that a scalp is production-ready.
 
 ### Short-specific candidates
 
@@ -111,7 +111,7 @@ Shorts are not forced to equal longs. They earn allocation through evidence. Sho
 
 "Runner" must mean an explicit remaining fraction, not an implicit replacement for every other exit.
 
-- Add an explicit `runner_frac` and parent/child attribution.
+- T09a may add an explicit `runner_frac` and parent/child attribution after the observe-only evidence and shared-core work; T05a does not change lots, exits or order behaviour.
 - At the planned target, bank the main quantity and separately track the remaining child quantity.
 - Preserve a runner-specific maximum holding time and hard stop.
 - Record target touch, banked P&L, runner-only P&L, MFE/MAE, peak open profit, protected profit and give-back.
@@ -185,6 +185,8 @@ It must answer, by strategy/timeframe/side/regime:
 - fees, funding and slippage attributable to the extra holding period;
 - whether the result changes across holding horizon and regime.
 
+T05a measures the behaviour that exists today from current fill/trade records and a counterfactual close of the same remaining quantity at the planned target. It does not add `runner_frac`, split lots or alter exits. Its append-only observation records live as JSONL beside T05 fill telemetry; T11 later migrates both into the versioned SQLite event store.
+
 ## Validation ladder
 
 No candidate reaches Automatic live selection without all applicable stages:
@@ -200,7 +202,7 @@ No candidate reaches Automatic live selection without all applicable stages:
 9. bounded Testnet canary;
 10. own-account live canary after the later explicit mainnet gate.
 
-Failed candidates remain labelled **experimental** in Research. They are not silently deleted, promoted or used by Automatic mode.
+Failed candidates remain labelled **experimental** in Research. They are not silently deleted, promoted or used by Automatic mode. Recommend mode may list them only under an explicit **Experimental** label and must never propose one as the default.
 
 ## Delivery mapping
 
