@@ -186,3 +186,24 @@ Malformed and unknown entries are ignored, other symbols retain the normal reque
 only the affected symbols. Official Windows focused evidence: **334/334 passed** across the injector, leverage, safety,
 grid and fill suites; `git diff --check` passed. No blocking finding remains. Require fast/CodeQL and one exact-head full
 gate before reinstalling and running the owner-approved PAPER canary procedure.
+
+---
+
+# T03c automatic leverage handling — Codex review, round 5
+
+*2026-10-06, Africa/Cairo; exact behavior head `3214257e263311f2f15e79bf96712e0e2cfebba7`*
+
+## Verdict
+
+**Telemetry correction accepted; no new P1/P2 finding.** The runtime canary exposed that two failed leverage requests were
+reported as one API refusal. `_lev_api_refused` now records each failed request at the point it occurs, while
+`count`/`proceeded`/`skipped` remain fallback-decision counters and cooldown checks still add no API refusal. A first-attempt
+failure followed by retry success records one refusal and no fallback decision, as intended.
+
+The most recent error aliases remain compatible, the last two request errors are retained in a bounded JSON-safe list, and
+no error text is logged beyond the existing 160-character limit. Focused Windows evidence on the exact behavior head:
+**291/291 passed in 17.17 s** across leverage, safety, grid and testnet-fault suites; `git diff --check` passed.
+
+Require fast/CodeQL and the protected exact-head full gate after this documentation commit. The currently open SOL testnet
+canary remains protected on the prior installed build; rebuilding, restarting and repeating the bounded canary are separate
+runtime actions and must not occur until the gates are green.
