@@ -6,7 +6,7 @@
 |---|---|
 | Branch | `t03b-installer-powershell` (opened by Codex at a1963f1, from master f9778ca) |
 | Head for review | the PR head. The full SHA is in the latest READY / FIXED FOR CODEX comment |
-| Round | **Review round 2 fixed** (Codex `a6766c9`: P2, P3, docs). Round 1 (`e98d409`) fixed earlier. See the sections below |
+| Round | **Review round 3 fixed** (Codex `87a3f92`: launcher parser P2, test contract P3). Rounds 1 (`e98d409`) and 2 (`a6766c9`) fixed earlier. See the sections below |
 | Class | Deployment only. No trading, engine, panel or API change |
 | Runtime | **Nothing installed, no drill run, ZackBot untouched.** A real install plus the rollback drill needs separate owner approval |
 
@@ -19,9 +19,10 @@
 - **`build_app.bat`:** now a launcher of 10 code lines.
   - It clears PSModulePath and **never expands its arguments**: CMD would interpret quotes, `&` and `|` inside them.
   - It hands its own raw command line (`!CMDCMDLINE!`, via delayed expansion, which is not re-parsed) to `installer.ps1 -FromLauncher` in `ZB_CMDLINE`.
-  - `installer.ps1` then picks the mode: none means `install`, otherwise exactly one of `preflight` / `buildcheck` / `drill`. Anything else is refused with exit 2 and nothing changes.
+  - `installer.ps1` tokenizes that line (quotes toggle, whitespace separates) and anchors on the **first** token that *is* `build_app.bat` (a path ending in `\build_app.bat`). After it there must be nothing (`install`) or exactly **one non-destructive** mode, `preflight` or `buildcheck`. Anything else, including `drill`, is refused with exit 2 and nothing changes.
+  - **Contract:** supported invocations (double-click, `cmd /c build_app.bat [preflight|buildcheck]`, verify.py) select exactly one fixed mode. Ordinary arguments are never re-expanded by the launcher. Unknown or extra tokens are refused before staging. Hostile raw CMD syntax in the *caller's* command line (e.g. `x"&cmd`) is parsed by the invoking shell before the batch file runs, so it is out of scope: no batch file can neutralize it.
   - It pauses only if `installer.ps1` refused or could not run.
-- **`rollback_drill.bat`:** has a fixed mode. It clears PSModulePath and calls `installer.ps1 drill` directly; no argument is read.
+- **`rollback_drill.bat`:** the **only** drill entry point (fixed mode). It clears PSModulePath and calls `installer.ps1 drill` directly; no argument is read. `verify.py` now runs the release drill through it (`installer_command('drill')`); preflight and buildcheck still go through `build_app.bat <mode>`.
 - **Known limitation:** typed inside an already-open Command Prompt, `build_app.bat <mode>` is refused, because CMDCMDLINE is that console's own command line. The refusal message says to use `cmd /c build_app.bat <mode>`. Double-click, verify.py (`cmd /d /c build_app.bat <mode>`), a PowerShell prompt and rollback_drill.bat all work.
 - **Real error handling:**
   - One `Stop-Install <reason>` path, caught once.
@@ -154,3 +155,22 @@ Mutations, each caught:
 - the drill launcher going back through `build_app.bat` (1).
 
 Sandbox (stand-in runner, PowerShell 7.4.6): `tests/test_installer.py` **61 passed, 2 skipped** (Windows-only cmd.exe tests). Please re-run the Windows 5.1 suite, the cmd.exe tests (the real `build_app.bat preflight` and the metacharacter probe) and buildcheck on the new head.
+
+## Review round 3: dispositions (Codex review `87a3f92` of `c3a625b`)
+
+| # | Finding | Disposition | Fix |
+|---|---|---|---|
+| P2 | `Get-LauncherMode` anchored on the **last** `build_app.bat` text, so `build_app.bat typo build_app.bat` gave install and `... x build_app.bat drill` gave drill | Confirmed defect | New `Split-CmdLine` tokenizer. The anchor is the **first** token that *is* `build_app.bat` (equal, or ending in `\build_app.bat` or `/build_app.bat`, not merely containing it). Everything after it must be nothing or exactly one of `preflight` / `buildcheck`. Destructive modes have fixed entry points only: install is `build_app.bat` with no argument, and the drill is `rollback_drill.bat`. `build_app.bat drill` is now refused, and `verify.py` uses `rollback_drill.bat` for the release drill. |
+| P3 | The Windows test asserted that the batch file can neutralize hostile raw CMD syntax (`x"&echo MARK_B`) | Accepted: the claim was wrong | Replaced with the real contract test: `zzz`, `preflight zzz` and `"buildcheck" zzz` each exit 2, and `%LOCALAPPDATA%\ZackBot` is unchanged. Only harmless tokens are used, so a broken parser could never trigger install or the drill on the PC. The out-of-scope boundary is documented in `build_app.bat`, `installer.ps1` and this file. |
+
+New and changed tests:
+- launcher cases, now 18: your three re-anchoring cases; `build_app.bat drill` gives None; `"BUILDCHECK"`; a folder literally named `build_app.bat`; a name that only *contains* it gives None;
+- `test_verify.py::test_installer_modes_use_their_fixed_launchers`: drill maps to `rollback_drill.bat` with no argument; preflight and buildcheck map to `build_app.bat <mode>`; install is not a verify mode.
+
+Mutations, each caught:
+- last-occurrence anchor;
+- `drill` accepted by `build_app.bat`;
+- verify.py drill sent back through `build_app.bat`;
+- substring ("contains") anchor.
+
+Sandbox (stand-in runner, PowerShell 7.4.6): `tests/test_installer.py` + `tests/test_verify.py` 77 passed, 2 skipped (Windows-only cmd.exe tests), plus the known environment-only provenance failure.
