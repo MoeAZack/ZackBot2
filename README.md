@@ -22,6 +22,11 @@ previous version is still installed - run `build_app.bat` normally to install th
 `build_app.bat preflight` is a non-destructive check (used by the tests): it stages the source into its own folder,
 verifies the checksum helper and exits (log: `%LOCALAPPDATA%\ZackBot\build_preflight.log`); it never stops or replaces anything.
 Settings shows the version and build id that is actually running.
+`build_app.bat` is only a launcher: the installer logic lives in `installer.ps1` (one function per step, one fail-closed
+error path, and an unexpected error after the old bot was stopped restores the previous version). Its whole flow is tested
+with fakes in `tests/test_installer.py`; only the real install and the drill need the Windows PC.
+Next to each readable log the installer writes a structured record (`build.json`, `build_preflight.json`, `build_check.json`):
+Cairo timestamps, mode, build ids and hashes, one entry per step, rollback result and final verdict - no keys or settings.
 
 Everything (keys, settings, logs, trades, backtests, candle cache) lives in `%LOCALAPPDATA%\ZackBot`.
 Keys are stored encrypted for your Windows user (DPAPI).
