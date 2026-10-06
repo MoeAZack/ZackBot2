@@ -1,6 +1,6 @@
 # ZackBot owner overview
 
-*Last refreshed: 2026-10-06 05:14 Cairo (Africa/Cairo) by Codex, on branch `t03b-installer-powershell`. This is the plain-language owner view. `ROADMAP.md` and `docs/reviews/` hold the detailed scope and evidence.*
+*Last refreshed: 2026-10-06 05:41 Cairo (Africa/Cairo) by Codex, on branch `t03b-installer-powershell`. This is the plain-language owner view. `ROADMAP.md` and `docs/reviews/` hold the detailed scope and evidence.*
 
 ## Where we are now
 
@@ -11,9 +11,9 @@
 | Installed application | **T03a installed and verified.** SHA-256 `72ABCA7CC25FC7859C93A62F4518AE3659A2C8B9B524F3ACA203798E769F430D`; previous verified executable retained for rollback. |
 | Latest accepted commit | `master` `f9778ca` (T03a accepted and merged) |
 | Current ticket | **T03b: move installer logic from CMD to PowerShell** |
-| Stage | **Round 1 fixes reviewed; the two high-severity recovery issues are fixed, with two smaller corrections remaining.** |
-| What Claude is doing | Correcting two residual issues: exact installed-file evidence and complete launcher argument containment. |
-| What Codex is reviewing | Waiting for round 2, then rerunning the Windows PowerShell 5.1 flow and non-installing buildcheck. |
+| Stage | **Round 2 reviewed. Installed-file evidence is fixed; one focused launcher correction remains.** |
+| What Claude is doing | Simplifying/correcting the launcher mode parser and replacing an impossible Windows shell-injection assertion. |
+| What Codex is reviewing | Waiting for round 3, then rerunning the Windows PowerShell 5.1 suite; buildcheck remains gated on green focused tests. |
 | Your action | **None.** |
 
 ## Latest test results
@@ -32,6 +32,7 @@
 | T03b, GitHub PR #5 | Head `9ee9d28`: **verify fast PASS; verify full PASS**, zero annotations. |
 | T03b, Windows review | PowerShell 5.1 installer tests **53 passed**; bare pytest **269 passed**; non-installing buildcheck **PASS** with eight successful structured steps. Installed executable hash unchanged. |
 | T03b round 1 fixes, Windows | Focused PowerShell 5.1 installer suite **58 passed**. Both high-severity recovery fixes reproduced correctly; no runtime operation was performed. |
+| T03b round 2 fixes, Windows | **62 passed, 1 failed.** Installed-file evidence is correct; the new embedded-quote launcher test reproduces marker execution and returns 0. Buildcheck was not rerun while focused tests are red. |
 
 Automated test-suite results use a fake exchange. The final T03a gate used the real Binance Futures testnet account; it correctly sent no entry order because leverage was above the cap.
 
@@ -59,7 +60,8 @@ Automated test-suite results use a fake exchange. The final T03a gate used the r
 - The 281-line CMD installer was replaced by a small launcher plus structured PowerShell functions and JSON evidence.
 - Windows PowerShell 5.1 tests, the complete Python suite, GitHub CI and a real non-installing executable build all passed.
 - Claude fixed both high-severity recovery paths and the optimistic runtime fields. Codex confirmed them under Windows PowerShell 5.1.
-- Two smaller corrections remain: the cached installed-file hash can be stale after deletion/mismatch, and an embedded quote can still escape the batch launcher's mode quoting.
+- Installed-file evidence is now re-read and correct at every final verdict.
+- The launcher attempt is still not acceptable: its Windows-only security test fails, and the raw-command parser can be confused by a later `build_app.bat` token into selecting install or drill.
 - **No installer, rollback drill, ZackBot stop or trading action was run.** Claude is fixing these findings next.
 
 ## Bugs
@@ -77,14 +79,15 @@ Automated test-suite results use a fake exchange. The final T03a gate used the r
 | Fixed (T04 docs) | Low | T04 review document named commit ids from before the branch was rebuilt | Corrected on `t04-ci`. |
 | Fixed in branch; final acceptance pending | High | Invalid rollback drill left the deliberately untrusted new build installed and running | Round 1 now restores and HMAC-verifies the old build, then retains a failed invalid-drill verdict; confirmed on Windows. |
 | Fixed in branch; final acceptance pending | High | Failed stop attempt did not verify or recover the previous runtime | Round 1 now proves the old runtime or performs one hash-guarded restart; confirmed across answering, restart and unrecoverable cases. |
-| Open (T03b round 2) | Medium | Installed-file evidence can be stale | After a failed first install the field names a deleted file; after detecting a changed hash it still reports the former trusted hash. |
-| Open (T03b round 2) | Low | Embedded quotes escape the thin launcher's mode quoting | Ordinary ampersands are contained, but a harmless Windows probe confirmed execution after an embedded quote. |
+| Fixed in branch; final acceptance pending | Medium | Installed-file evidence could be stale | Round 2 re-reads presence/hash at every verdict and verifies failed first-install deletion; confirmed on Windows. |
+| Open (T03b round 3) | Medium | Raw launcher parser can select install/drill from malformed extra arguments | `LastIndexOf('build_app.bat')` lets a later argument override the actual launcher token. |
+| Open (T03b round 3) | Low | Launcher test claims it can neutralize hostile outer CMD syntax | Its own Windows test fails: outer `cmd /c` executes the marker. The contract and test must reflect the real shell boundary. |
 
 ## Open risks
 
 - **CI security follow-up (low):** add Dependabot for the immutable action pins plus Git-history secret and dependency scanning.
 - **Repository visibility:** intentionally public during testnet collaboration. It must return to private before any mainnet credentials or live release work.
-- T03b PowerShell rewrite is substantially cleaner; two high findings are fixed and two smaller round-2 findings remain before any runtime drill.
+- T03b PowerShell rewrite is substantially cleaner; recovery and evidence findings are fixed, with one focused launcher round remaining before any runtime drill.
 
 ## Code clean-up policy (your request, 2026-10-05)
 

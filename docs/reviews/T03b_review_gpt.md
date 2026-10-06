@@ -115,3 +115,46 @@ The top structured-record section in `T03b_review_request.md` still lists remove
 - Confirmed invalid-drill result: old executable restored, rollback attempted and verified, final exit 1.
 - Confirmed three failed-stop outcomes and the hash guard.
 - No normal installer, rollback drill, ZackBot stop/restart, trading action or credential operation was performed.
+
+## Round 2 fix review
+
+*Reviewed 2026-10-06 05:41 Cairo. Fix head `c3a625baaba1db392def66594bad3b938a17361a`.*
+
+The installed-file evidence fix is correct: every install/drill verdict now re-reads the executable, absence is represented as false/null, a changed file reports its actual hash, and a failed first-install deletion is explicit. Those tests passed under Windows PowerShell 5.1.
+
+The launcher fix is not accepted. The focused Windows suite is **62 passed, 1 failed**: its own embedded-quote test executes `MARK_B` and returns 0. This also clarifies the boundary: once a caller gives `cmd.exe /c` a malformed command string whose embedded quote exposes `&`, the outer CMD parser can execute the following command before or after the batch file. Code inside `build_app.bat` cannot retroactively make that caller-controlled command line a security boundary.
+
+### P2 — Raw-command-line parsing can select a destructive mode from malformed extra arguments
+
+**Affected:** `installer.ps1:Get-LauncherMode`, the new `CMDCMDLINE` hand-off in `build_app.bat`, and its tests.
+
+`Get-LauncherMode` uses the last textual occurrence of `build_app.bat`. That means an otherwise invalid invocation can override the real launcher occurrence:
+
+```text
+cmd /c C:\Dev\ZackBot2\build_app.bat typo build_app.bat          -> install
+cmd /c C:\Dev\ZackBot2\build_app.bat x build_app.bat drill       -> drill
+cmd /c C:\Dev\ZackBot2\build_app.bat typo C:\x\build_app.bat preflight -> preflight
+```
+
+The last case is non-destructive, but the first two can select installation or the rollback drill even though the original invocation contains extra/unknown arguments. This violates the stated rule that anything except no argument or one known mode is refused.
+
+**Required fix:** remove the last-occurrence ambiguity. Prefer simplifying the design to fixed literal entry points for destructive modes, or identify the actual first launcher token with an unambiguous boundary and reject everything after it unless it is exactly one supported token. Add the three cases above and require refusal.
+
+### P3 — The Windows injection test asserts a guarantee the batch file cannot provide
+
+**Affected:** `tests/test_installer.py:test_launcher_refuses_embedded_quotes_and_metacharacters`; launcher documentation.
+
+The exact new Windows test fails with `x"&echo MARK_B`: return code 0 and `MARK_B` appears. This command is already syntactically hostile to the *outer* `cmd /c` parser. A local caller able to supply raw CMD syntax can run local commands directly, so the batch file is not the security boundary.
+
+**Required fix:** replace the impossible assertion with the real contract:
+
+- supported internal/double-click invocations select exactly one fixed mode;
+- normal quoted arguments are not re-expanded a second time by the launcher;
+- unknown or extra ordinary tokens are refused before staging;
+- hostile raw CMD syntax is explicitly out of scope because it is parsed by the invoking shell.
+
+Keep a harmless Windows integration test for the supported modes and ordinary unknown/extra tokens. Do not claim the launcher can neutralize an already malformed outer CMD command line.
+
+### Round 2 verdict
+
+**Changes required.** Do not run the installer or drill. The file-evidence issue is closed; the new launcher parser and failing Windows-only test need one focused correction. No runtime operation was performed during this review.
