@@ -1,6 +1,6 @@
 # ZackBot owner overview
 
-*Last refreshed: 2026-10-06 07:48 Cairo (Africa/Cairo) by Codex, on branch `roadmap-strategy-expansion`. This is the plain-language owner view. `ROADMAP.md` and `docs/reviews/` hold the detailed scope and evidence.*
+*Last refreshed: 2026-10-06 08:11 Cairo (Africa/Cairo) by Codex, on branch `roadmap-strategy-expansion`. This is the plain-language owner view. `ROADMAP.md` and `docs/reviews/` hold the detailed scope and evidence.*
 
 ## Where we are now
 
@@ -90,7 +90,7 @@ Automated test-suite results use a fake exchange. The final T03a gate used the r
 
 - **CI security follow-up (low):** add Dependabot for the immutable action pins plus Git-history secret and dependency scanning.
 - **Repository visibility:** private. It must stay private before any mainnet credentials or live release work.
-- **T05 safety review:** synchronous telemetry file I/O currently sits between exchange fills and protective state/stop actions. PR #6 must move it to a bounded non-blocking writer before acceptance.
+- **T05 safety review:** round 1 successfully moved disk I/O off order/protection paths and corrected persistence/provenance. Round 2 must prevent an old timed-out writer overlapping its replacement, distinguish confirmed/pending/failed fallbacks, tolerate malformed JSONL, and close test/replay writer threads.
 - **T04d verification review:** PR #7 must ensure skipped push jobs cannot satisfy the required full-check name, share one canonical full-gate plan, and keep Windows unit tests away from the real builder.
 
 ## Code clean-up policy (your request, 2026-10-05)
