@@ -216,6 +216,7 @@ The owner approved the detailed plan on 2026-10-06. The durable specification is
 - Range and short candidates are researched after shared-core parity. Existing grid/COMBO and `bear_breakdown` are not promoted unchanged: current evidence is weak.
 - Short-term mean-reversion and DCA default to a complete planned exit; runners are explicit child quantities, measured separately, regime-gated and time-limited.
 - Initial scalp research uses 15-minute and 1-hour data under the normal validation ladder. Genuine sub-15-minute (especially 1–5 minute) scalping additionally requires retained high-resolution data, order-book/spread inputs, realistic latency, partial-fill and queue modelling, shadow mode and a bounded testnet canary.
+- Research a separate **Quick Bank** scalp-management family: an early fee-aware partial take-profit, an optional small conditional runner, and at most one pre-budgeted micro-DCA before TP1/invalidation. Compare each component independently. A strict `net profit lock` may be shown only when realized profit plus the remaining stop is provably positive after modeled fees, funding and slippage; "more green trades" is not itself an acceptance metric.
 - The controlled-capital value, not the exchange wallet balance, is the sizing base and hard allocation ceiling.
 - Simple / Guided / Pro, Amateur through Maniac, and Manual / Recommend / Automatic remain independent controls. Manual strategy selection and allocation always remain available.
 
@@ -386,7 +387,7 @@ The owner approved the detailed plan on 2026-10-06. The durable specification is
 | T07 | Extract costs, rounding and sizing | Refactor, zero replay change | ⬜ |
 | T08 | Extract management levels | Refactor | ⬜ |
 | T09 | Pure trade state transition | Refactor, parity maintained | ⬜ |
-| T09a | Strategy research harness and candidates: explicit runner child lots; range/mean-reversion; multiple scalp styles; independently validated short models | Research → Shadow; no automatic orders | ⬜ After T09 |
+| T09a | Strategy research harness and candidates: explicit runner child lots; range/mean-reversion; multiple scalp styles; Quick Bank variants (early TP, conditional runner, one pre-budgeted micro-DCA); independently validated short models | Research → Shadow; no automatic orders | ⬜ After T09 |
 | T10 | Per-account order budget and priority queue | E-class, burst tests | ⬜ |
 | T11 | SQLite trade-event store | Feature Off | ⬜ |
 | T12 | Entry/close reason records + "Why did it hold/close?" view, including peak profit, give-back and causal earlier-exit comparison | Observe | ⬜ |

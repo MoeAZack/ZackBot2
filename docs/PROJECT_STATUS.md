@@ -158,6 +158,7 @@ How scouting works: Claude and Codex look at what leading bots do (3Commas, Cryp
 | Generate this page from the evidence files so it can't go stale (Codex) | Subtopic of **T12** |
 | Event-triggered PR handling instead of polling (Codex) | Process, when the GitHub trigger is proven |
 | Trade exit audit: peak favorable price/profit, hold-reason trace, give-back and causal earlier-exit comparison (owner) | **T05a** measurement; displayed later in **T12 Why?** |
+| Quick Bank scalping: fee-aware early partial TP, optional conditional runner and one risk-budgeted micro-DCA (owner) | **T09a** five-variant research matrix after T05a/T06–T09; no order change yet |
 
 ## Decisions for you (no rush)
 

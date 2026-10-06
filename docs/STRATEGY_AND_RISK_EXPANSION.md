@@ -95,6 +95,23 @@ The first candidate should use a per-symbol range definition, reversal confirmat
 
 The initial research timeframes are 15 minutes and 1 hour under the normal validation ladder. Genuine sub-15-minute strategies (especially 1–5 minute) additionally require retained high-resolution data, order-book/spread inputs, realistic latency, partial-fill and queue modelling, and more demanding execution infrastructure. A selectable timeframe is not evidence that a scalp is production-ready.
 
+### Quick Bank scalp management
+
+Research a fee-aware **Quick Bank** plan alongside the scalp entries. It is a trade-management family, not a promise that a trade or account will finish green:
+
+- place an early take-profit for an explicit fraction of the parent trade, then either close the rest or leave a small, separately measured runner only when its regime gate remains valid;
+- test the early target, bank fraction and runner fraction in R/ATR terms rather than hard-coding one percentage for every coin and timeframe;
+- offer a strict **net profit lock** variant: only after the bank fill is confirmed, the worst modeled result from realized profit plus the remaining stop must be positive after fees, funding and slippage. If exchange sizing or stop constraints cannot prove that condition, it must say `not locked`;
+- allow at most one optional micro-DCA before the first target and before the original thesis is invalidated. The initial entry is pre-sized to reserve that add, and the add must never widen the stop or increase the trade's precommitted maximum loss;
+- disable the add after TP1, during abnormal spread/volatility, a news/risk veto, a portfolio halt, stale data, or when either resulting order would violate exchange or copy-follower minimums;
+- resize and verify the exchange-side protective stop after every confirmed partial fill or add. Ambiguous fills fail closed and reconcile before another action;
+- translate exits through venue-specific position-side/close-only rules and verify that every child order can only reduce the intended position;
+- retain one parent trade id with child ids for the initial lot, add, bank fill and runner so neither win rate nor trade count is inflated.
+
+The research matrix compares: (A) base exit with no quick bank or add; (B) quick bank only; (C) quick bank plus conditional runner; (D) quick bank plus bounded micro-DCA; and (E) quick bank plus both bounded micro-DCA and conditional runner. Candidate starting ranges such as a 0.35–0.75R first target, 50–80% bank and 0.25–0.50× add are search bounds only, not production defaults. Promotion depends on out-of-sample net expectancy and tail risk, not the percentage of green trades.
+
+Manual control remains available. Simple mode may expose `Protect profit early` and `Allow one rescue add`; Pro mode exposes the target/bank fraction, runner policy, add trigger/size and time limit. Risk grades cap or disable the add and runner independently, and changing a setting never rewrites an open trade's fixed plan.
+
 ### Short-specific candidates
 
 - bear breakdown followed by failed retest;
@@ -160,6 +177,10 @@ Every strategy/timeframe/side/regime combination receives separate outputs:
 - wait, fallback and partial-fill rates;
 - rejected/ambiguous/reconciled orders;
 - order count and follower-minimum suitability.
+- Quick Bank target/fill rate, time to bank, percentage of trades green after all costs, and percentage that satisfy the stricter net profit lock;
+- micro-DCA trigger/dependency rate, incremental P&L and added MAE/tail loss;
+- runner incremental P&L and give-back versus closing the same remainder at TP1;
+- partial-fill, cancellation, replacement, reconciliation and minimum-notional failure rates for every child order.
 
 ### Current fit
 
@@ -217,7 +238,7 @@ Failed candidates remain labelled **experimental** in Research. They are not sil
 |---|---|---|
 | T05a | Runner/exit attribution and side/regime opportunity funnel | Observe only |
 | T06–T09 | Shared live/backtest contracts and pure transitions | No strategy behaviour change |
-| T09a | Range, scalp, short and runner research harness/candidates | Research, then Shadow |
+| T09a | Range, scalp, short and runner research harness/candidates, including Quick Bank + bounded micro-DCA variants | Research, then Shadow |
 | T11–T12 | Durable event store and user-facing Why? records | Observe/explain |
 | T13 | Reproducible scorecard and readiness | Read-only |
 | T13a | Catalog, calculation system, risk grades, sliders and control modes | Feature Off until its own gates |
