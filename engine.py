@@ -131,7 +131,7 @@ class Engine:
     def __init__(self, cfg, data_dir, dry=False):
         self.cfg, self.dir, self.dry = cfg, data_dir, dry
         self.F = {k: os.path.join(data_dir, f) for k, f in dict(state='state.json', trades='trades.csv', settings='settings.json', history='history.json', missed='missed.json',
-                                                                equity='equity.json').items()}
+                                                                equity='equity.json', fills='fills.jsonl').items()}
         self.live = cfg.get('MODE') == 'live'
         self.lock = threading.RLock()
         self.trade = Futures(cfg.get('API_KEY', ''), cfg.get('API_SECRET', ''), MAINNET if self.live else TESTNET)
@@ -166,6 +166,8 @@ class Engine:
         self.untracked = {}                       # exchange positions the engine has no record of
         self._lev = {}                            # leverage already set per symbol
         self.lev_refusals = {}                    # T03a: Binance leverage refusals per symbol (count, outcome, last error)
+        self.fill_stats, self.fill_recent = {}, []  # T05: fill telemetry (rebuilt from fills.jsonl at start)
+        self._load_fills()
         self._btc1h = None; self._fund = {}; self._regime = None; self._rule_warns = []
         self.health = dict(errors=collections.deque(maxlen=30), last_manage_ok=None, last_cycle_ok={}, manage_fail_streak=0,
                            last_sync=None, alerted=False)
@@ -437,6 +439,63 @@ class Engine:
     def save_state(self):
         save_json(self.F['state'], self.state)
 
+    # ------------------------------------------------------------ T05: fill telemetry (observe only)
+    # One record per fill the bot itself sends: expected vs actual price, slippage in bps (+ = worse for us), requested
+    # vs filled qty, wait, maker tries, fallback. Appended to fills.jsonl (rotated at 5 MB) and summarised per kind for
+    # /api/status. Telemetry NEVER raises into an order path and never changes what is traded.
+    FILL_KINDS = ('entry_market', 'entry_maker', 'entry_fallback', 'pyramid_add', 'safety_order', 'exit')
+
+    def _fill(self, kind, sym, side, buy, expected, actual, q_req, q_fill, t0=None, **extra):
+        try:
+            exp = float(expected) if expected else None
+            act = float(actual) if actual else None
+            slip = round((act - exp) / exp * 1e4 * (1 if buy else -1), 2) + 0.0 if exp and act else None
+            q_req, q_fill = float(q_req or 0), float(q_fill or 0)
+            outcome = 'unfilled' if q_fill <= 0 else ('partial' if q_req and q_fill + 1e-12 < q_req else 'filled')
+            rec = dict(time=now_utc().isoformat(timespec='seconds'), kind=kind, symbol=sym, side=side, buy=bool(buy),
+                       expected=exp, actual=act, slip_bps=slip, qty_req=q_req, qty_fill=q_fill, outcome=outcome,
+                       wait_s=round(max(0.0, time.time() - t0), 2) if t0 else None)
+            rec.update({k: v for k, v in extra.items() if v is not None})
+            self._fill_count(rec)
+            p = self.F['fills']
+            if os.path.exists(p) and os.path.getsize(p) > 5_000_000: os.replace(p, p + '.1')
+            with open(p, 'a') as f: f.write(json.dumps(rec) + '\n')
+        except Exception as e:
+            log.warning(f'fill telemetry not recorded ({e})')
+
+    def _fill_count(self, rec):
+        s = self.fill_stats.setdefault(rec.get('kind', '?'), dict(n=0, partial=0, unfilled=0, fallback=0, slip_n=0, slip_sum=0.0,
+                                                                 slip_worst=None, wait_n=0, wait_sum=0.0))
+        s['n'] += 1; s['partial'] += rec.get('outcome') == 'partial'; s['unfilled'] += rec.get('outcome') == 'unfilled'
+        s['fallback'] += bool(rec.get('fallback'))
+        if rec.get('slip_bps') is not None:
+            s['slip_n'] += 1; s['slip_sum'] += rec['slip_bps']
+            s['slip_worst'] = rec['slip_bps'] if s['slip_worst'] is None else max(s['slip_worst'], rec['slip_bps'])
+        if rec.get('wait_s') is not None: s['wait_n'] += 1; s['wait_sum'] += rec['wait_s']
+        self.fill_recent = (self.fill_recent + [rec])[-50:]
+
+    def _load_fills(self):
+        """Rebuild the summary from the last ~2 MB of fills.jsonl, so it survives restarts. Never raises."""
+        try:
+            p = self.F['fills']
+            if not os.path.exists(p): return
+            with open(p, 'rb') as f:
+                f.seek(max(0, os.path.getsize(p) - 2_000_000)); lines = f.read().decode('utf-8', 'replace').splitlines()
+            for ln in lines[1:] if len(lines) > 1 and os.path.getsize(p) > 2_000_000 else lines:
+                try: self._fill_count(json.loads(ln))
+                except Exception: pass
+        except Exception as e:
+            log.warning(f'fill telemetry history not loaded ({e})')
+
+    def fill_summary(self):
+        """Per-kind counts, average/worst slippage (bps) and average wait, plus the 10 most recent fills."""
+        out = {}
+        for k, s in list(self.fill_stats.items()):
+            out[k] = dict(n=s['n'], partial=s['partial'], unfilled=s['unfilled'], fallback=s['fallback'],
+                          slip_avg_bps=round(s['slip_sum'] / s['slip_n'], 2) if s['slip_n'] else None, slip_worst_bps=s['slip_worst'],
+                          wait_avg_s=round(s['wait_sum'] / s['wait_n'], 2) if s['wait_n'] else None)
+        return dict(by_kind=out, recent=[dict(r) for r in list(self.fill_recent)[-10:]])
+
     # ------------------------------------------------------------ order helpers
     def err(self, msg):
         self.health['errors'].append([now_utc().isoformat(timespec='seconds'), str(msg)[:200]])
@@ -490,13 +549,15 @@ class Engine:
         if qty <= 0: return 0.0
         px = mark or lot['avg']
         if not self.dry:
-            lot['last_order_t'] = time.time()
+            lot['last_order_t'] = t0 = time.time()
             try:
                 o = self.trade.close(sym, lot['side'], self._fmt(qty, r['step']))
             except AmbiguousOrder as e:
                 lot['pending'] = dict(kind='close', qty=qty, px=px, why=why, post=post or {}, t=time.time())
                 self.save_state(); self.err(f'{sym} close unconfirmed ({e}) - waiting for Binance position to confirm'); raise
-            px = float(o.get('avgPrice') or 0) or px
+            act = float(o.get('avgPrice') or 0) or None
+            self._fill('exit', sym, lot['side'], lot['side'] == 'SHORT', mark, act, qty, float(o.get('executedQty') or qty), t0, reason=why)
+            px = act or px
         return self._apply_close(lot, qty, px, why)
 
     def _apply_close(self, lot, qty, px, why):
@@ -608,13 +669,16 @@ class Engine:
         q = self._rd(q, r['step'])
         if q < r['min_qty'] or q * px < r['min_notional']: return False
         if not self.dry:
-            lot['last_order_t'] = time.time()
+            lot['last_order_t'] = t0 = time.time()
             try:
                 o = self.trade.open(lot['symbol'], lot['side'], self._fmt(q, r['step']))
             except AmbiguousOrder as e:
                 lot['pending'] = dict(kind='add', qty=q, px=px, why=why, post=post or {}, t=time.time())
                 self.save_state(); self.err(f"{lot['symbol']} {why} unconfirmed ({e}) - waiting for Binance position to confirm"); raise
-            px = float(o.get('avgPrice') or 0) or px
+            act = float(o.get('avgPrice') or 0) or None
+            self._fill(why if why in self.FILL_KINDS else 'pyramid_add', lot['symbol'], lot['side'], lot['side'] == 'LONG', px, act, q,
+                       float(o.get('executedQty') or q), t0, reason=why, fallback=(why == 'entry_fallback') or None)
+            px = act or px
         self._apply_add(lot, q, px, why)
         return True
 
@@ -1227,14 +1291,19 @@ class Engine:
 
     def _market_entry(self, plan):
         sym, side, r = plan['sym'], plan['side'], self.rules[plan['sym']]
+        t0 = time.time()
         try:
             o = self.trade.open(sym, side, self._fmt(plan['qty'], r['step']))
         except AmbiguousOrder as e:
             self.err(f'ENTRY {sym} {side} unconfirmed ({e}) - reconcile will flag it if it filled')
             self.last_skip = 'entry order unconfirmed'
             return False
-        fill = float(o.get('avgPrice') or 0) or plan['px']
+        act = float(o.get('avgPrice') or 0) or None
+        fill = act or plan['px']
         filled = float(o.get('executedQty') or 0)
+        self._fill('entry_fallback' if plan.get('fallback') else 'entry_market', sym, side, side == 'LONG', plan['px'], act, plan['qty'],
+                   filled or plan['qty'], t0, signal_px=plan.get('signal_px'), maker_tries=plan.get('maker_tries'),
+                   fallback=plan.get('fallback') or None, manual=plan.get('manual') or None)
         qty = self._rd(filled, r['step']) if filled > 0 else plan['qty']
         return self._create_lot(plan, qty, fill)
 
@@ -1552,6 +1621,7 @@ class Engine:
         bt = self.trade._req('GET', '/fapi/v1/ticker/bookTicker', dict(symbol=sym))
         px = float(bt['bidPrice'] if rec['side'] == 'LONG' else bt['askPrice'])
         cid = new_cid('zm')
+        rec.setdefault('px0', px)                                    # T05: first posted price = the maker expectation
         rec.update(cid=cid, price=px, placed_t=time.time(), status='open', n=rec['n'] + 1)
         self.save_state()                                            # recorded BEFORE it is sent: never unaccounted
         try:
@@ -1606,8 +1676,11 @@ class Engine:
         sl = next((x for x in self.S['SLEEVES'] if x['id'] == rec['sleeve']), None) or dict(plan['sl'], enabled=False, max_pos=0)
         sg = dict(plan['sg'], close=px)
         fallback = bool(self.S.get('MAKER_FALLBACK', True)) and not small
+        buy = rec['side'] == 'LONG'
         if rec['filled'] > 0:
             q = self._rd(rec['filled'], r['step']); avg = rec['cost'] / rec['filled']
+            self._fill('entry_maker', rec['symbol'], rec['side'], buy, rec.get('px0') or rec.get('price'), avg, plan['qty'], q, rec.get('t0'),
+                       signal_px=plan['px'], maker_tries=rec['n'], fallback=(fallback and rem > 0) or None)
             ok = self._create_lot(plan, q, avg, maker_qty=q)
             lot = self.state['lots'].get(getattr(self, '_last_lot_key', None))
             if ok and lot and fallback and not self.entry_block(sl, rec['symbol'], rec['side'], manual=True):
@@ -1615,11 +1688,13 @@ class Engine:
                 except Exception as e: self.err(f"maker fallback {rec['symbol']}: {e}")
                 else: self._replace_stop(lot)
             return
+        blk = self.entry_block(sl, rec['symbol'], rec['side'], sg=sg) if fallback else None
+        self._fill('entry_maker', rec['symbol'], rec['side'], buy, rec.get('px0') or rec.get('price'), None, plan['qty'], 0, rec.get('t0'),
+                   signal_px=plan['px'], maker_tries=rec['n'], fallback=(fallback and not blk) or None, fallback_blocked=blk or None)
         if fallback:
-            blk = self.entry_block(sl, rec['symbol'], rec['side'], sg=sg)
             if blk: self.miss(sl, rec['symbol'], rec['side'], sg, f'maker entry not filled; market fallback blocked: {blk}'); return
             log.info(f"MAKER entry {rec['symbol']} not filled - market fallback")
-            if not self._market_entry(dict(plan, px=px)): self.miss(sl, rec['symbol'], rec['side'], sg, self.last_skip or 'order failed')
+            if not self._market_entry(dict(plan, px=px, fallback=True, signal_px=plan['px'], maker_tries=rec['n'])): self.miss(sl, rec['symbol'], rec['side'], sg, self.last_skip or 'order failed')
         else:
             self.miss(sl, rec['symbol'], rec['side'], sg, 'maker entry not filled (no market fallback)')
 
