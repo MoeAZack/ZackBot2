@@ -199,3 +199,11 @@
 - every connect error treated as non-transient.
 
 Plus 5 for the adversarial-pass fixes: old engine kept after replacement; refused-key does not close the incident; no "waiting for a stop" note; stop-unseen never closed; a non-transient stop-read error not explained.
+
+### Codex fix review at 6a07f72 (ee1ba92): P2 retry backoff overflow → fixed
+
+- **Confirmed defect.** `5.0 * 2 ** (n - 1)` raises `OverflowError` at n=1025, roughly 17–20 h of continuous start-up outage. After that, retry scheduling itself failed.
+- **Fix:** the exponent is capped before exponentiation, `2 ** min(n - 1, 6)`. The delay is unchanged: 5, 10, 20, 40, then 60 s.
+- **Test:** `test_retry_schedule_survives_a_very_long_outage_without_overflow`, for n = 1024, 1025, 5000 and 10^9. The delay is exactly 60 s and the count keeps increasing.
+- **Mutation check:** the uncapped exponent makes the test fail; restored afterwards.
+- **Other exponentiation sites:** the client retry sleeps use bounded `attempt` (≤ 4). The circuit cooldown doubles a value that is already capped (`min(COOL_MAX, cool * 2)`), so it cannot overflow either.
