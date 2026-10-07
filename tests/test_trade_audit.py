@@ -296,7 +296,7 @@ def test_engine_audit_summary_never_raises(monkeypatch):
 
 
 def test_status_exposes_the_audit_summary():
-    src = open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'app.py')).read()
+    src = open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'app.py'), encoding='utf-8').read()
     assert "audit=e.audit_summary() if hasattr(e, 'audit_summary') else None" in src
 
 
@@ -2380,7 +2380,7 @@ def test_cycle_hold_records_the_candle_trend_and_triggers_the_regime_exit(monkey
 
 
 def test_audit_summary_endpoint_is_read_only_and_exposes_segments():
-    src = open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'app.py')).read()
+    src = open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'app.py'), encoding='utf-8').read()
     assert "if p == '/api/audit_summary':" in src
     blk = src[src.index("if p == '/api/audit_summary':"):].split('\n', 1)[1].split("if p == '/api/history'")[0]   # the handler body
     assert 'audit_summary()' in blk and 'lock' not in blk and 'save' not in blk
@@ -2416,8 +2416,8 @@ def test_panel_audit_card_renders_escaped():
     D = dict(health=dict(audit=dict(segments=seg, missed_short=dict(n=3, by_why={evil: 3}))))
     harness = js + '\nlet out="";const el={};const $=()=>el;const setHTML=(e,h)=>{out=h};const D=' + json.dumps(D) + \
               ';renderAudit();process.stdout.write(out);'
-    with tempfile.NamedTemporaryFile('w', suffix='.js', delete=False) as f: f.write(harness)
-    try: html = subprocess.run(['node', f.name], capture_output=True, text=True, timeout=30, check=True).stdout
+    with tempfile.NamedTemporaryFile('w', suffix='.js', delete=False, encoding='utf-8') as f: f.write(harness)
+    try: html = subprocess.run(['node', f.name], capture_output=True, text=True, encoding='utf-8', timeout=30, check=True).stdout
     finally: os.unlink(f.name)
     assert '<img' not in html and '&lt;img src=x onerror=alert(1)&gt;' in html and 'green to red' in html and '50%' in html
 
