@@ -47,7 +47,7 @@ class FakeBinance:
             lo, hi = params['startTime'], min(params['endTime'], now)
             ts = [t for t in range(-(-lo // p) * p, hi + 1, p) if t + p <= now]
             ts = ts[-params['limit']:]                       # Binance's ambiguous ordering: the LAST rows of a long range
-            return [dict(symbol=sym, timestamp=t, sumOpenInterest='1.5', sumOpenInterestValue='2.5', longShortRatio='1.1',
+            return [dict(symbol=sym, timestamp=t, sumOpenInterest='1.5', sumOpenInterestValue='2.5', CMCCirculatingSupply='19.5', longShortRatio='1.1',
                          longAccount='0.52', shortAccount='0.48', buySellRatio='0.9', buyVol='10', sellVol='11') for t in ts]
         if path == '/fapi/v1/fundingRate':
             step = self.funding_h * H
@@ -409,22 +409,50 @@ class _Resp:
     def json(self): return self._d
 
 
-def _real_futures(fb):
-    """A real binance_client.Futures (keyless MAINNET, no network): _once answers from the fake Binance."""
+def _engine_futures():
+    """The engine's real binance_client.Futures (keyless MAINNET, no network) as a tripwire: the collector must never send
+    a request through it, so _once records and fails."""
     f = BC.Futures.__new__(BC.Futures)
     f.key, f.secret, f.base, f.rw, f.offset, f.last_ok = '', b'', BC.MAINNET, 6000, 0, 0.0
-    f.s = None
+    f.s, f.engine_calls = None, []
     def once(method, url, params, signed):
-        assert method == 'GET' and not signed, 'public reads only'
-        path = url[len(BC.MAINNET):]
-        try:
-            d = fb.get(path, params)
-            return _Resp(200, d), d
-        except MD.Banned as b: return _Resp(418, {'code': -1003, 'msg': 'banned'}, {'Retry-After': str(int(b.retry_after))}), {'code': -1003, 'msg': 'banned'}
-        except MD.RateLimited as r: return _Resp(429, {'code': -1003, 'msg': 'too many'}, {'Retry-After': '1'}), {'code': -1003, 'msg': 'too many'}
-        except MD.Refused as x: return _Resp(400, {'code': x.code, 'msg': 'no'}), {'code': x.code, 'msg': 'no'}
+        f.engine_calls.append(url); raise AssertionError(f'collector request went through the engine client: {url}')
     f._once = once
+    f.health                                   # the engine has read before: its circuit exists
     return f
+
+
+class FakeSession:
+    """requests.Session stand-in for the collector's OWN RequestsTransport: answers from the fake Binance with the HTTP
+    status Binance would use. Script entries: MD.Banned -> 418, MD.RateLimited -> 429, MD.Transient -> 503,
+    requests.ConnectionError -> raised (network failure), MD.Refused -> 400."""
+    def __init__(self, fb):
+        self.fb, self.headers, self.urls = fb, {}, []
+
+    def get(self, url, params=None, timeout=None):
+        import requests
+        self.urls.append(url)
+        assert url.startswith(MD.MAINNET), url
+        path = url[len(MD.MAINNET):]
+        try:
+            d = self.fb.get(path, params or {})
+            return _Resp(200, d)
+        except requests.RequestException: raise
+        except MD.Banned as x: return _Resp(418, {'code': -1003, 'msg': 'banned'}, {'Retry-After': str(int(x.retry_after))})
+        except MD.RateLimited as x: return _Resp(429, {'code': -1003, 'msg': 'too many'}, {'Retry-After': str(int(x.retry_after))})
+        except MD.Transient: return _Resp(503, None)
+        except MD.Refused as x: return _Resp(400, {'code': x.code, 'msg': 'no'})
+
+
+def _collector_transport(fb):
+    sess = FakeSession(fb)
+    return (lambda: MD.RequestsTransport(MD.MAINNET, session=sess)), sess
+
+
+def _circuit(f):
+    """Every field of the engine's ExchangeHealth (state-for-state comparison)."""
+    h = f.health
+    return {k: v for k, v in vars(h).items() if k not in ('lock', 'clock')}
 
 
 class GuardLock:
@@ -441,23 +469,27 @@ class GuardLock:
 
 def _engine(fb, on=True):
     e = types.SimpleNamespace(S=dict(MARKET_COLLECTOR=on, UNIVERSE=['BTCUSDT', 'ETHUSDT']), lock=GuardLock(),
-                              data=_real_futures(fb), state=dict(lots={}), trade=object())
+                              data=_engine_futures(), state=dict(lots={}), trade=object())
     e.orders_touched = []
     return e
 
 
-def _fast(mc, clk):
+def _mc(e, fb, out, clk, **kw):
+    """An in-app collector whose OWN transport answers from `fb` (fast pacing, fake sleep)."""
+    factory, sess = _collector_transport(fb)
+    mc = MC.MarketCollector(lambda: e, out, clock=clk, transport_factory=factory, **kw)
     mc.WEIGHT_PER_MIN = 1e9
     mc._sleep = clk.sleep
+    mc.sess = sess
     return mc
 
 
-def test_in_app_thread_collects_without_ever_taking_engine_lock(tmp_path, monkeypatch):
-    monkeypatch.setattr(BC.time, 'sleep', lambda s: None)
+def test_in_app_thread_collects_without_ever_taking_engine_lock(tmp_path):
     clk = Clock(); fb = FakeBinance(clk, symbols=('BTCUSDT', 'ETHUSDT'))
     fb.onboard = NOW - 20 * MD.DAY_MS
     e = _engine(fb)
-    mc = _fast(MC.MarketCollector(lambda: e, str(tmp_path / 'md'), every_s=3600, first_delay_s=0, clock=clk), clk)
+    before = _circuit(e.data)
+    mc = _mc(e, fb, str(tmp_path / 'md'), clk, every_s=3600, first_delay_s=0)
     done = threading.Event()
     real = mc.run_once
     mc.run_once = lambda: (real(), done.set(), mc.stop())
@@ -468,51 +500,92 @@ def test_in_app_thread_collects_without_ever_taking_engine_lock(tmp_path, monkey
     st = mc.status()
     assert st['runs'] == 1 and st['last_run']['rows_added'] > 0 and st['last_run']['errors'] == 0 and st['enabled'] is True
     assert st['running'] is False and st['out'].endswith('md')
+    assert st['request_health']['ok'] == len(fb.calls) and st['request_health']['failed'] == 0
     m = MD.read_json(os.path.join(tmp_path, 'md', 'manifest.json'))
     assert m['last_run']['kind'] == 'in-app' and m['series']['mark_klines/ETHUSDT/4h']['rows'] == 20 * 6
     assert {p for p, _ in fb.calls} <= {'/fapi/v1/exchangeInfo', '/fapi/v1/fundingInfo', '/fapi/v1/fundingRate',
                                         '/fapi/v1/markPriceKlines'} | {MD.DATASETS[d]['path'] for d in MD.DATASETS}
-    assert e.data.health.state == 'ok'
+    assert e.data.engine_calls == [] and _circuit(e.data) == before, 'collector success must not touch the engine circuit'
+    assert 'X-MBX-APIKEY' not in mc.sess.headers
     assert not os.path.exists(os.path.join(tmp_path, 'md', MD.LOCK_FILE))
 
 
-def test_in_app_418_through_the_real_client_stops_and_is_reported(tmp_path, monkeypatch):
-    monkeypatch.setattr(BC.time, 'sleep', lambda s: None)
+def _failure(kind):
+    import requests
+    return dict(ok=None, e429=MD.RateLimited(1), e418=MD.Banned(900), e5xx=MD.Transient('busy'),
+                network=requests.ConnectionError('connection reset'))[kind]
+
+
+@pytest.mark.parametrize('kind', ['ok', 'e429', 'e418', 'e5xx', 'network'])
+@pytest.mark.parametrize('engine_flags', [False, True])
+def test_collector_outcomes_never_change_the_engine_circuit(tmp_path, kind, engine_flags):
+    """P1 (DATA_COLLECTOR_review_gpt): collector success, 429, 418, 5xx and network failure leave the engine's
+    ExchangeHealth state-for-state unchanged, and nothing is ever sent through the engine's client."""
+    clk = Clock(); fb = FakeBinance(clk, symbols=('BTCUSDT',))
+    fb.onboard = NOW - 3 * MD.DAY_MS
+    e = _engine(fb); e.S['UNIVERSE'] = ['BTCUSDT']
+    if engine_flags:                        # a just-recovered engine circuit: a collector success must not reset its flags
+        e.data.health.recovered, e.data.health.recoveries, e.data.health.fail_fast = True, 2, 7
+    before = _circuit(e.data)
+    fb.script = [None, _failure(kind)] * 6 if kind != 'ok' else []
+    mc = _mc(e, fb, str(tmp_path), clk)
+    s = mc.run_once()
+    assert s is not None
+    assert e.data.engine_calls == [], 'a request went through the engine client'
+    assert _circuit(e.data) == before, f'collector {kind} changed the engine circuit'
+    rh = mc.status()['request_health']
+    if kind == 'ok': assert rh['failed'] == 0 and rh['ok'] > 0
+    else: assert rh['failed'] >= 1 and rh['last_failure']
+    if kind == 'e418': assert s['stopped'] and '418' in s['stopped'] and len(fb.calls) == 2, 'the ban was not retried'
+
+
+def test_in_app_418_stops_and_is_reported(tmp_path):
     clk = Clock(); fb = FakeBinance(clk)
     e = _engine(fb)
     fb.script = [None, MD.Banned(900)]
-    mc = _fast(MC.MarketCollector(lambda: e, str(tmp_path), clock=clk), clk)
+    mc = _mc(e, fb, str(tmp_path), clk)
     s = mc.run_once()
     assert s['stopped'] and '418' in s['stopped'] and len(fb.calls) == 2, 'the ban was not retried'
     assert mc.status()['banned_until']
+    assert mc.run_once()['stopped'].startswith('IP ban recorded') and len(fb.calls) == 2, 'nothing sent during the ban'
 
 
-def test_in_app_429_through_the_real_client_backs_off_and_respects_the_engine_circuit(tmp_path, monkeypatch):
-    """A 429 marks the engine's shared circuit 'degraded'. The collector honours Retry-After, then waits (bounded) for the
-    engine's next good read before sending anything else; if it never comes, the run stops instead of adding load."""
-    monkeypatch.setattr(BC.time, 'sleep', lambda s: None)
+def test_in_app_429_backs_off_on_its_own_state(tmp_path):
+    """A collector 429 is handled by the collector's own back-off (Retry-After honoured) and the run carries on; the
+    engine circuit stays 'ok' throughout."""
     clk = Clock(); fb = FakeBinance(clk, symbols=('BTCUSDT',))
+    fb.onboard = NOW - 3 * MD.DAY_MS
     e = _engine(fb); e.S['UNIVERSE'] = ['BTCUSDT']
     fb.script = [None, None, MD.RateLimited(1)]
-    mc = _fast(MC.MarketCollector(lambda: e, str(tmp_path), clock=clk), clk)
-    mc.DEGRADED_WAIT_S = 0
+    mc = _mc(e, fb, str(tmp_path), clk)
     s = mc.run_once()
-    assert s['stopped'] == 'engine exchange circuit degraded - not adding load' and len(fb.calls) == 3
+    assert s['stopped'] is None and s['errors'] == 0 and len(fb.calls) > 3
     assert any(abs(x - 1.0) < 1e-9 for x in clk.slept), clk.slept
-    # the engine's own next read succeeds while the collector waits -> the run carries on
-    fb.calls.clear(); fb.script = [None, None, MD.RateLimited(1)]
+    assert e.data.health.state == 'ok' and mc.status()['request_health']['failed'] == 1
+
+
+def test_engine_circuit_degraded_is_a_one_way_gate(tmp_path):
+    """The engine's own reads degraded its circuit: the collector waits (bounded) for the engine's next good read and
+    stops if it never comes - it only reads the state, never drives it."""
+    clk = Clock(); fb = FakeBinance(clk, symbols=('BTCUSDT',))
+    fb.onboard = NOW - 3 * MD.DAY_MS
+    e = _engine(fb); e.S['UNIVERSE'] = ['BTCUSDT']
+    e.data.health.fail('GET /fapi/v1/klines: HTTP 503 (engine read)')
+    before = _circuit(e.data)
+    mc = _mc(e, fb, str(tmp_path), clk); mc.DEGRADED_WAIT_S = 0
+    s = mc.run_once()
+    assert s['stopped'] == 'engine exchange circuit degraded - not adding load' and fb.calls == []
+    assert _circuit(e.data) == before
     mc.DEGRADED_WAIT_S = 20
-    e.data.health.ok()                                                  # (the engine read fine since)
-    threading.Timer(0.3, e.data.health.ok).start()
+    threading.Timer(0.3, e.data.health.ok).start()           # the ENGINE's next read succeeds while the collector waits
     s = mc.run_once()
     assert s['stopped'] is None and s['errors'] == 0 and len(fb.calls) > 3
 
 
-def test_setting_off_disables_and_switching_off_mid_run_stops(tmp_path, monkeypatch):
-    monkeypatch.setattr(BC.time, 'sleep', lambda s: None)
+def test_setting_off_disables_and_switching_off_mid_run_stops(tmp_path):
     clk = Clock(); fb = FakeBinance(clk)
     e = _engine(fb, on=False)
-    mc = _fast(MC.MarketCollector(lambda: e, str(tmp_path), clock=clk), clk)
+    mc = _mc(e, fb, str(tmp_path), clk)
     assert mc.run_once() is None and fb.calls == [] and mc.status()['last_skip']['why'] == 'MARKET_COLLECTOR off'
     assert mc.status()['enabled'] is False
     e.S['MARKET_COLLECTOR'] = True
@@ -532,15 +605,29 @@ def test_engine_circuit_outage_means_no_requests(tmp_path):
     e = _engine(fb)
     h = e.data.health
     h.state = 'outage'; h.next_probe = time.monotonic() + 999
-    mc = _fast(MC.MarketCollector(lambda: e, str(tmp_path), clock=clk), clk)
+    before = _circuit(e.data)
+    mc = _mc(e, fb, str(tmp_path), clk)
     s = mc.run_once()
-    assert s['stopped'] and 'circuit' in s['stopped'] and fb.calls == []
+    assert s['stopped'] and 'circuit' in s['stopped'] and fb.calls == [] and mc.sess.urls == []
+    assert _circuit(e.data) == before, 'the collector must not probe or clear an engine outage'
+
+
+def test_default_transport_is_its_own_keyless_mainnet_session():
+    t = MC.public_transport()
+    assert isinstance(t, MD.RequestsTransport) and t.base == MD.MAINNET and 'X-MBX-APIKEY' not in t.s.headers
+    src = open(os.path.join(ROOT, 'market_collector.py'), encoding='utf-8').read()
+    import ast
+    tree = ast.parse(src)
+    called = {n.func.attr for n in ast.walk(tree) if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)}
+    assert not called & {'_req', '_once', 'fail', 'ok', 'admit_read', 'klines', 'premium'}, called
+    imported = {a.name for n in ast.walk(tree) if isinstance(n, (ast.Import, ast.ImportFrom)) for a in n.names} |                {n.module for n in ast.walk(tree) if isinstance(n, ast.ImportFrom)}
+    assert 'binance_client' not in imported and 'FuturesTransport' not in src
 
 
 def test_overlapping_run_is_skipped(tmp_path):
     clk = Clock(); fb = FakeBinance(clk)
     e = _engine(fb)
-    mc = _fast(MC.MarketCollector(lambda: e, str(tmp_path), clock=clk), clk)
+    mc = _mc(e, fb, str(tmp_path), clk)
     mc._run_lock.acquire()
     assert mc.run_once() is None and mc.status()['last_skip']['why'] == 'previous run still going'
     mc._run_lock.release()
@@ -552,7 +639,7 @@ def test_run_failure_is_one_log_line_and_the_thread_survives(tmp_path):
     import logging
     clk = Clock()
     e = types.SimpleNamespace(S=dict(MARKET_COLLECTOR=True, UNIVERSE=['BTCUSDT']), data=object(), lock=GuardLock())
-    mc = MC.MarketCollector(lambda: e, str(tmp_path), clock=clk, transport_factory=lambda d: 1 / 0)
+    mc = MC.MarketCollector(lambda: e, str(tmp_path), clock=clk, transport_factory=lambda: 1 / 0)
     got = []
     class Hd(logging.Handler):
         def emit(self, r): got.append(r.getMessage())
@@ -621,3 +708,36 @@ def test_installer_keeps_collected_data_out_of_the_build():
     xd = re.search(r"'/XD',(.*?)'/XF'", src, re.S).group(1)
     assert "'data_market'" in xd
     assert 'data_market/' in open(os.path.join(ROOT, '.gitignore'), encoding='utf-8').read()
+
+
+# ------------------------------------------------------------------ real payload fixtures
+# Verbatim public Binance answer, GET /futures/data/openInterestHist?symbol=BTCUSDT&period=1h&limit=2 (fetched 2026-10-07).
+OI_HIST_REAL = json.loads('[{"symbol":"BTCUSDT","sumOpenInterest":"96134.66800000","sumOpenInterestValue":"8085202021.00375200",'
+                          '"CMCCirculatingSupply":"20094521.00000000","timestamp":1791360000000},{"symbol":"BTCUSDT",'
+                          '"sumOpenInterest":"96007.33800000","sumOpenInterestValue":"8055975731.58000000",'
+                          '"CMCCirculatingSupply":"20094521.00000000","timestamp":1791363600000}]')
+
+
+def test_every_column_exists_in_the_real_open_interest_payload():
+    """P1 (DATA_COLLECTOR_review_gpt): the schema asked for CMCirculatingSupply; Binance sends CMCCirculatingSupply."""
+    cols = MD.DATASETS['open_interest_hist']['cols']
+    assert 'CMCCirculatingSupply' in cols and 'CMCirculatingSupply' not in cols
+    for row in OI_HIST_REAL:
+        assert set(cols) <= set(row), set(cols) - set(row)
+
+
+def test_real_open_interest_payload_reaches_the_csv_with_circulating_supply(tmp_path):
+    clk = Clock(1791363600000 + 2 * H)
+    class Real:
+        used_weight, calls = None, []
+        def get(self, path, params):
+            self.calls.append(path)
+            assert path == '/futures/data/openInterestHist'
+            return [r for r in OI_HIST_REAL if params['startTime'] <= r['timestamp'] <= params['endTime']]
+    c = MD.Collector(Real(), str(tmp_path), sleep=clk.sleep, clock=clk)
+    assert c.collect_window('open_interest_hist', 'BTCUSDT', '1h') == 2
+    rows = read_csv(MD.series_path(str(tmp_path), 'open_interest_hist', 'BTCUSDT', '1h'))
+    assert [r['CMCCirculatingSupply'] for r in rows] == ['20094521.00000000', '20094521.00000000']
+    assert [r['sumOpenInterest'] for r in rows] == ['96134.66800000', '96007.33800000']
+    assert [r['time_utc'] for r in rows] == ['2026-10-07T08:00:00Z', '2026-10-07T09:00:00Z']
+    assert all(v != '' for r in rows for v in r.values()), 'no column may be silently blank'

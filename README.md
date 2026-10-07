@@ -61,9 +61,11 @@ continuously, together with funding-rate history, funding intervals, mark-price 
 `exchangeInfo` snapshots. One implementation (`market_data.py`), two ways to run it:
 
 - **Inside the app** (`market_collector.py`): a background thread, first run ~3 min after start, then every ~4 h (jittered).
-  It uses the engine's public MAINNET data client, never takes the engine lock, never touches orders/positions/state, pauses
-  while the exchange circuit is not healthy and writes only to `%LOCALAPPDATA%\ZackBot\market_data`. Status: `/api/status`
-  -> `health.market_collector` (last run, rows added, errors). Off switch: setting `MARKET_COLLECTOR` (default on).
+  It uses its OWN keyless public MAINNET client (separate session, rate-limit and failure state) - never the engine's data
+  client, so a collector 429/418/5xx can never degrade trading reads. It only reads the engine's exchange circuit (pauses
+  while it is not healthy), never takes the engine lock, never touches orders/positions/state and writes only to
+  `%LOCALAPPDATA%\ZackBot\market_data`. Status: `/api/status` -> `health.market_collector` (last run, rows added, errors,
+  request_health). Off switch: setting `MARKET_COLLECTOR` (default on).
 - **Standalone** (runs even when ZackBot is closed): `tools\collect_market_data.bat` (= `python tools/collect_market_data.py`).
 
 | Command | What |

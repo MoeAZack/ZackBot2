@@ -1,45 +1,66 @@
 """In-app market-data collector (observe-only): a daemon thread that every ~4 h (jittered) runs market_data.Collector
-through the engine's PUBLIC mainnet data client (engine.data: Futures('', '', MAINNET), its _req, rate-limit handling
-and T05b outage circuit).
+over its OWN keyless public MAINNET client (market_data.RequestsTransport: separate requests.Session, separate rate-limit
+/ ban / failure state). It never sends a request through engine.data and never calls its outage circuit's ok()/fail():
+a collector 429, 418, 5xx or network error cannot degrade the engine's market-data reads, and a collector success can
+never clear an engine outage. The engine circuit is only READ, as a one-way gate (not 'ok' -> no collector traffic).
 
 Contract (tests/test_market_collector.py):
   - never takes engine.lock, never touches orders, positions, stops or engine state; reads only e.S (MARKET_COLLECTOR,
-    UNIVERSE) and e.data
+    UNIVERSE) and e.data.health.state
   - writes only under its own directory (%LOCALAPPDATA%/ZackBot/market_data), every file atomically (market_data)
   - bounded: one run at a time (a run still going -> the next one is skipped), a per-run time limit, pacing below the
     engine's own request budget; a run aborts while the engine's exchange circuit is not healthy, on an IP ban (418)
     or when the setting is switched off
-  - one log line per run; status() is shown in /api/status -> health.market_collector
+  - one log line per run; status() is shown in /api/status -> health.market_collector (incl. its own request health)
   - MARKET_COLLECTOR (default ON) switches it off
 """
 import logging, os, random, threading, time
-import requests
 
 import market_data as MD
-from binance_client import BinanceError, ExchangeUnavailable, is_transient
 
 log = logging.getLogger('zackbot')
 
 
-class FuturesTransport:
-    """market_data transport over a binance_client.Futures (single attempt: the collector does its own back-off, and a
-    418 ban must never be retried)."""
-    def __init__(self, futures):
-        self.f = futures
+def public_transport():
+    """The collector's own keyless MAINNET transport (no API key header, its own HTTP session)."""
+    return MD.RequestsTransport(MD.MAINNET)
+
+
+class RequestHealth:
+    """The collector's own request outcome counters - independent of the engine's ExchangeHealth (never shared)."""
+    def __init__(self):
+        self._lk = threading.Lock()
+        self.ok = self.failed = 0
+        self.last_ok = self.last_failure = None
+
+    def record(self, ok, what=''):
+        with self._lk:
+            if ok: self.ok += 1; self.last_ok = MD.utc_iso(MD.now_ms())
+            else: self.failed += 1; self.last_failure = dict(t=MD.utc_iso(MD.now_ms()), what=str(what)[:160])
+
+    def snapshot(self):
+        with self._lk:
+            return dict(ok=self.ok, failed=self.failed, last_ok=self.last_ok, last_failure=self.last_failure)
+
+
+class _Tracked:
+    """Wraps the collector transport: every answer / error is recorded in the collector's RequestHealth only."""
+    def __init__(self, t, health):
+        self.t, self.health = t, health
+
+    @property
+    def used_weight(self):
+        return getattr(self.t, 'used_weight', None)
 
     def get(self, path, params):
         try:
-            return self.f._req('GET', path, dict(params), retry=False)
-        except ExchangeUnavailable as ex:          # the engine's circuit says Binance is down: do not add load
-            raise MD.StopRun(f'engine exchange circuit open ({str(ex)[:80]})') from None
-        except BinanceError as ex:
-            st, ra = getattr(ex, 'http_status', None), getattr(ex, 'retry_after', 0.0)
-            if st == 418: raise MD.Banned(ra, f'HTTP 418 on {path}') from None
-            if st == 429 or ex.code in (-1003, -429): raise MD.RateLimited(ra, f'rate limited on {path}') from None
-            if is_transient(ex): raise MD.Transient(f'{path}: {ex.code}') from None
-            raise MD.Refused(ex.code, str(ex.msg)[:160]) from None
-        except requests.RequestException as ex:
-            raise MD.Transient(f'{path}: {type(ex).__name__}') from None
+            out = self.t.get(path, params)
+        except MD.Refused:
+            self.health.record(True); raise              # Binance answered (business refusal): reachable
+        except Exception as ex:
+            self.health.record(False, f'{path}: {type(ex).__name__} {str(ex)[:100]}'); raise
+        self.health.record(True)
+        return out
 
 
 class MarketCollector:
@@ -50,11 +71,13 @@ class MarketCollector:
     WEIGHT_PER_MIN = 400            # well under Binance's 2400 / min IP budget, leaving room for the engine's own reads
     DEGRADED_WAIT_S = 60            # circuit 'degraded': wait this long for the engine's next good read, then stop the run
 
-    def __init__(self, get_engine, out, every_s=None, first_delay_s=None, clock=time.time, transport_factory=FuturesTransport):
+    def __init__(self, get_engine, out, every_s=None, first_delay_s=None, clock=time.time, transport_factory=public_transport):
         self.get_engine, self.out = get_engine, out
         self.every_s = self.EVERY_S if every_s is None else every_s
         self.first_delay_s = self.FIRST_DELAY_S if first_delay_s is None else first_delay_s
         self.clock, self.transport_factory = clock, transport_factory
+        self.req_health = RequestHealth()          # the collector's own - the engine's circuit is only ever read
+        self._transport = None                     # created on the first run, then reused (one keep-alive session)
         self._stop = threading.Event()
         self._run_lock = threading.Lock()          # the collector's own lock - never the engine's
         self._st_lock = threading.Lock()
@@ -69,7 +92,8 @@ class MarketCollector:
         return v is True
 
     def gate(self):
-        """Checked by market_data before every request: a reason string stops the run."""
+        """Checked by market_data before every request: a reason string stops the run. Reads the engine circuit's state
+        only (one-way): nothing here calls its ok() / fail() / admit_read()."""
         if self._stop.is_set(): return 'app stopping'
         e = self.get_engine()
         if not self.enabled(e): return 'MARKET_COLLECTOR switched off'
@@ -94,14 +118,13 @@ class MarketCollector:
             e = self.get_engine()
             if e is None: self._skip('engine not started'); return None
             if not self.enabled(e): self._skip('MARKET_COLLECTOR off'); return None
-            data = getattr(e, 'data', None)
-            if data is None: self._skip('no market data client'); return None
             if not MD.acquire_lock(self.out, clock=self.clock):
                 self._skip('another collector (standalone tool) is writing this folder'); return None
             with self._st_lock: self._st['running'] = True
             try:
                 symbols = [s for s in list((e.S or {}).get('UNIVERSE') or MD.CORE8) if isinstance(s, str)]
-                c = MD.Collector(self.transport_factory(data), self.out, source=getattr(data, 'base', MD.MAINNET), sleep=self._sleep,
+                if self._transport is None: self._transport = self.transport_factory()
+                c = MD.Collector(_Tracked(self._transport, self.req_health), self.out, source=MD.MAINNET, sleep=self._sleep,
                                  clock=self.clock, weight_per_min=self.WEIGHT_PER_MIN, min_gap=0.5, gate=self.gate,
                                  max_run_s=self.MAX_RUN_S)
                 s = c.run(symbols, run_kind='in-app')
@@ -154,6 +177,7 @@ class MarketCollector:
         try: st['enabled'] = self.enabled()
         except Exception: st['enabled'] = None
         st['out'] = self.out
+        st['request_health'] = self.req_health.snapshot()
         ban = MD.read_json(os.path.join(self.out, MD.BAN_FILE)) or {}
         try: st['banned_until'] = ban.get('until_utc') if float(ban.get('until') or 0) > self.clock() else None
         except (TypeError, ValueError): st['banned_until'] = None
