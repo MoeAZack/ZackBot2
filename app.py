@@ -286,7 +286,12 @@ def run_backtest_job(job_id, req):
         total_share = sum(float(sl['share']) for sl in sleeves) or 1
         trs, cvs, skipped, all_syms, gaps = [], [], [], set(), {}
         xsnap, xstate, xdetail = exchange_rules_now() if req.get('exchange_rules', 'on') != 'off' else (None, 'off', 'exchange rules off')
-        feas = dict(rules_state=xstate, rules_detail=xdetail, environment=(xsnap or {}).get('environment'), groups={})
+        # BT02 review P1: only a valid, verified, fresh snapshot of THIS environment may change the canonical result
+        # (entries, equity, PF, DD). Anything else runs the legacy floor and says so; it is never a promotable number.
+        xapply = xsnap if xstate == 'ok' else None
+        feas = dict(rules_state=xstate, rules_detail=xdetail, environment=(xsnap or {}).get('environment'), groups={},
+                    rules_applied=xapply is not None, promotable=xapply is not None,
+                    rules_version=(xapply or {}).get('version'), rules_fetched_at=(xapply or {}).get('fetched_at'))
         for gi, (tf, gs) in enumerate(sorted(groups.items())):
             syms = sorted({s for sl in gs for s in (CORE8 if sl['symbols'] == 'core8' else req['universe'] if sl['symbols'] == 'all' else sl['symbols'])} | {'BTCUSDT'})
             raw = {}
@@ -312,7 +317,7 @@ def run_backtest_job(job_id, req):
                                 **{k: sl[k] for k in ('when', 'trail_entry', 'pump_guard') if sl.get(k) is not None}))
             gstart = start * gshare / total_share if len(groups) > 1 else start
             tr, cv = BT.run(book, cfg, start=gstart, max_lev=float(req.get('max_lev', 10)), daily_halt=float(req.get('daily_halt', 0.08)),
-                            fund_per_bar=BT.FUND_PER_BAR * TF_SEC[tf] / 14400, exchange_rules=xsnap, **(req.get('run_options') or {}))
+                            fund_per_bar=BT.FUND_PER_BAR * TF_SEC[tf] / 14400, exchange_rules=xapply, **(req.get('run_options') or {}))
             fz = dict(cv.attrs.get('feasibility') or {}); fz['skips'] = (fz.get('skips') or [])[:100]
             feas['groups'][tf] = fz
             if len(tr): tr = tr.assign(tf=tf)
@@ -355,8 +360,10 @@ _PF_FILES = {}
 
 
 def preflight_market(e, keys):
-    """{(symbol, tf): dict(px, atr)} for the preflight: last close and a typical ATR (median ATR/price of the last 180
-    closed candles x last close). Source: the engine's candle cache, else the candle files shipped with the app."""
+    """{(symbol, tf): dict(px, atr, atr_median, t, basis)} for the preflight. px / atr: the LATEST closed candle's close and
+    ATR - what the engine sizes the next signal with (signal atr = the last closed candle's d.atr). atr_median: the median
+    ATR/price of the last 180 closed candles x last close, a separate planning estimate only (BT02 review P2).
+    Source: the engine's candle cache, else the candle files shipped with the app."""
     out, asof = {}, {}
     kc = getattr(e, '_kc', None) or {}
     for sym, tf in sorted(keys):
@@ -373,9 +380,9 @@ def preflight_market(e, keys):
             except Exception: continue
         if 'atr' not in df or len(df) < 30: continue
         tail = df.tail(180)
-        ratio = float((tail.atr / tail.c).median()); px = float(df.c.iloc[-1])
-        if not (ratio > 0 and px > 0): continue
-        out[(sym, tf)] = dict(px=px, atr=ratio * px)
+        ratio = float((tail.atr / tail.c).median()); px = float(df.c.iloc[-1]); atr = float(df.atr.iloc[-1])
+        if not (ratio > 0 and px > 0 and atr > 0): continue
+        out[(sym, tf)] = dict(px=px, atr=atr, atr_median=ratio * px, t=str(df.t.iloc[-1])[:16], basis='latest closed candle')
         asof[f'{sym} {tf}'] = f'{str(df.t.iloc[-1])[:16]} ({src})'
     return out, asof
 
@@ -407,7 +414,9 @@ def run_lab(jid, kind, req):
         if req.get('preset') in PRESETS and not req.get('sleeves'):
             req = dict(req, sleeves=[validate_sleeve(dict(x), i) for i, x in enumerate(PRESETS[req['preset']]['sleeves'])])
         res = LAB.run_lab_job(kind, req, lab_book, prog, lambda: job.get('cancel'))
-        res.update(id=jid, kind=kind, name=f"Lab · {kind.replace('_', ' ')}", created=datetime.now().isoformat(timespec='minutes'))
+        res.update(id=jid, kind=kind, name=f"Lab · {kind.replace('_', ' ')}", created=datetime.now().isoformat(timespec='minutes'),
+                   # BT02 review decision 2: lab runs use the legacy floor, never exchange rules -> exploratory, never promotable
+                   execution=dict(exchange_rules='not applied (legacy 5 USDT floor)', execution_realistic=False, promotable=False))
         save_json(os.path.join(DATA, 'backtests', f'{jid}.json'), dict(res, lab=True))
         job.update(status='done', result=res, progress=1.0)
     except LAB.Cancelled:
@@ -811,8 +820,16 @@ class App:
         market, asof = preflight_market(e, need)
         lev = float(e.S.get('MAX_LEVERAGE') or 10)
         res = {k: F.preflight(v, capital, market, rules, st, detail, lev) for k, v in slots_by.items()}
+        # planning estimate (typical volatility): the same check with the 180-candle median ATR - never the headline status
+        typical = {k: dict(v, atr=v['atr_median']) for k, v in market.items()}
+        for k, v in slots_by.items():
+            p = F.preflight(v, capital, typical, rules, st, detail, lev)
+            res[k]['planning'] = dict(basis='median ATR of the last 180 closed candles', status=p['status'], estimate=p['estimate'],
+                                      plan_executable_pct=p['plan_executable_pct'], min_capital_all=p['min_capital_all'])
         return dict(capital=capital, rules_state=st, rules_detail=detail, environment=(snap or {}).get('environment'),
-                    rules_source=(snap or {}).get('source'), market_asof=asof, presets=res)
+                    rules_source=(snap or {}).get('source'), rules_fetched_at=(snap or {}).get('fetched_at'),
+                    market_basis='latest closed candle (price and ATR), as the engine sizes the next signal',
+                    market_asof=asof, presets=res)
 
     def missed_view(self):
         e = self.engine; marks = e.marks or {}

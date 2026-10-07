@@ -230,13 +230,21 @@ def run(book, sleeves, start=500.0, max_lev=10.0, daily_halt=0.08, t0=None, t1=N
     except Exception: days = (pd.to_datetime(T) + pd.Timedelta(hours=3)).date
 
     def close(sl, s, p, px, frac, i, why):
+        """Close frac of the position at px. BT02 engine parity (_market_close / _apply_close): a PARTIAL close is floored
+        to the symbol's step and a partial that floors to 0 sends nothing; the remainder is floored to the step. A full
+        close (frac >= 1) and the legacy rule (step None) are unchanged."""
         nonlocal eq
+        step = RULES[s].get('step')
         q = p['qty'] * frac
+        if frac < 1 and step:
+            q = F.round_step(q, step)
+            if q <= 0: return False
         px = px * (1 - p['side'] * SLIP)
         pnl = p['side'] * (px - p['avg']) * q - q * px * FEE
         eq += pnl
         p['realized'] += pnl
         p['qty'] -= q
+        if step: p['qty'] = max(0.0, F.round_step(p['qty'], step))
         if p['qty'] <= 1e-12:
             sl['hist'].append(p['realized'] / p['risk'])
             trades.append(dict(sleeve=sl['cfg']['key'], sym=s, side=p['side'], i_in=p['i'], i_out=i,
@@ -451,7 +459,9 @@ def run(book, sleeves, start=500.0, max_lev=10.0, daily_halt=0.08, t0=None, t1=N
                     if close(sl, s, p, lv, m.get('tp1_frac', 0.5), i, 'tp1'): return True
                 elif ev == 'lad':
                     p['tps_done'].add(e[4])
-                    if close(sl, s, p, lv, min(1.0, p['qmax'] * TPS[e[4]][1] / p['qty']), i, 'tp_ladder'): return True
+                    q = min(p['qty'], p['qmax'] * TPS[e[4]][1])
+                    if F.leaves_dust(p['qty'] - q, lv, ADD_RULES[s]): q = p['qty']   # the engine's no-dust rule (real rules only)
+                    if close(sl, s, p, lv, min(1.0, q / p['qty']), i, 'tp_ladder'): return True
                 else:
                     close(sl, s, p, lv, 1, i, 'tp'); return True
 

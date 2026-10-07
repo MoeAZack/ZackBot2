@@ -221,30 +221,70 @@ def test_snapshot_states():
     assert F.snapshot_state(snap(fetched_at='2026-09-01T00:00:00Z'), NOW, max_age_days=30)[0] == 'ok'
 
 
-def test_shipped_testnet_snapshot_is_labelled_unverified_and_mainnet_is_absent():
+def test_shipped_testnet_snapshot_is_a_verified_direct_fetch_and_mainnet_is_absent():
+    """BT02 review P1: the placeholder is replaced by a direct public fetch of the testnet exchangeInfo, with provenance."""
     s = XR.load('testnet')
-    assert s['schema'] == F.SCHEMA and s['environment'] == 'testnet' and s['verified'] is False and s['fetched_at'] is None
-    assert 'unverified' in s['note'] and 'PLACEHOLDER' in s['source']
-    assert F.snapshot_state(s, NOW, 'testnet')[0] == 'unverified'            # never 'ok' -> never a green pass
-    assert s['symbols']['BTCUSDT']['min_notional'] == 50 and s['symbols']['ETHUSDT']['min_notional'] == 20
-    assert s['symbols']['SOLUSDT']['min_notional'] == 5
+    assert s['schema'] == F.SCHEMA and s['environment'] == 'testnet' and s['verified'] is True
+    assert s['provenance'] == 'direct_fetch' and s['source_url'] == 'https://testnet.binancefuture.com/fapi/v1/exchangeInfo'
+    assert len(s['raw_sha256']) == 64 and int(s['raw_sha256'], 16) >= 0
+    t = F._ts(s['fetched_at'])
+    assert F.snapshot_state(s, t + 86400, 'testnet')[0] == 'ok'
+    assert F.snapshot_state(s, t + 31 * 86400, 'testnet')[0] == 'stale'            # it expires: refresh with `fetch`
+    assert F.snapshot_state(s, t + 86400, 'mainnet')[0] == 'wrong_environment'
+    r = s['symbols']                                       # the values the Codex review fetched independently
+    assert (r['BTCUSDT']['step'], r['BTCUSDT']['min_qty'], r['BTCUSDT']['min_notional']) == (0.0001, 0.0001, 50.0)
+    assert r['ETHUSDT']['min_notional'] == 20.0 and r['LINKUSDT']['min_notional'] == 5.0 and r['SOLUSDT']['min_notional'] == 5.0
+    assert r['DOGEUSDT']['step'] == r['1000PEPEUSDT']['step'] == 1.0
     assert XR.load('mainnet') is None or XR.load('mainnet')['environment'] == 'mainnet'
-    with open(XR.path_for('testnet'), encoding='utf-8') as f: json.load(f)
 
 
-def test_builder_reads_exchange_info_file_and_versions(tmp_path):
-    p = tmp_path / 'exchangeInfo.json'; p.write_text(json.dumps(info(TESTNET)), encoding='utf-8')
+def test_file_import_never_self_certifies(tmp_path):
+    """BT02 review P2: only a direct fetch is verified automatically; a file keeps its real capture time, never 'now'."""
+    p = tmp_path / 'exchangeInfo.json'
+    p.write_text(json.dumps(dict(info(TESTNET), serverTime=1_789_000_000_000)), encoding='utf-8')
     out = str(tmp_path / 'exchange_rules_testnet.json')
-    s1, old = XR.build_file(str(p), 'testnet', out=out, fetched_at=ISO_NOW)
-    assert old is None and s1['version'] == 1 and s1['verified'] is True and s1['symbols'] == F.rules_from_exchange_info(info(TESTNET))
-    assert F.snapshot_state(XR.load('testnet', path=out), NOW, 'testnet')[0] == 'ok'
+    s1, old = XR.build_file(str(p), 'testnet', out=out)
+    assert old is None and s1['version'] == 1 and s1['verified'] is False and s1['provenance'] == 'file_import'
+    assert s1['fetched_at'] == '2026-09-10T00:26:40Z' == s1['server_time']            # the file's own serverTime
+    assert s1['symbols'] == F.rules_from_exchange_info(info(TESTNET))
+    assert s1['raw_sha256'] == __import__('hashlib').sha256(p.read_bytes()).hexdigest()
+    assert F.snapshot_state(XR.load('testnet', path=out), NOW, 'testnet')[0] == 'unverified'
+    # a saved MAINNET answer imported as --env testnet with a fresh --fetched-at is still not green
+    s2, _ = XR.build_file(str(p), 'testnet', out=out, source='https://fapi.binance.com/fapi/v1/exchangeInfo', fetched_at=ISO_NOW)
+    assert s2['verified'] is False and F.snapshot_state(s2, NOW, 'testnet')[0] == 'unverified'
+    # no capture time at all -> stale even when trusted; never stamped with the current time
+    p.write_text(json.dumps(info(TESTNET)), encoding='utf-8')
+    warned = []
+    s3, _ = XR.build_file(str(p), 'testnet', out=out, trust=True, warn=warned.append)
+    assert s3['fetched_at'] is None and F.snapshot_state(s3, NOW, 'testnet')[0] == 'stale'
+    assert s3['verified'] is True and s3['provenance'] == 'file_import_trusted' and warned and 'VERIFIED' in warned[0]
+    # an old file trusted by hand keeps its old time -> stale
+    p.write_text(json.dumps(dict(info(TESTNET), serverTime=1_780_000_000_000)), encoding='utf-8')
+    s4, _ = XR.build_file(str(p), 'testnet', out=out, trust=True)
+    assert F.snapshot_state(s4, NOW, 'testnet')[0] == 'stale'
+    # trusting a file whose --source is the other environment's URL is refused
+    with pytest.raises(ValueError):
+        XR.build_file(str(p), 'testnet', out=out, source='https://fapi.binance.com/fapi/v1/exchangeInfo', trust=True)
+    # versions + diff
     changed = copy.deepcopy(TESTNET); changed['BTCUSDT']['min_notional'] = 100.0; changed['SOLUSDT']['step'] = 1.0
     p.write_text(json.dumps(info(changed)), encoding='utf-8')
-    s2, old = XR.build_file(str(p), 'testnet', out=out, fetched_at=ISO_NOW)
-    assert s2['version'] == 2 and old['version'] == 1
-    dif = F.diff_snapshots(old, s2)
-    assert dif['changed'] == {'BTCUSDT': {'min_notional': (50.0, 100.0)}, 'SOLUSDT': {'step': (0.01, 1.0)}}
+    s5, old = XR.build_file(str(p), 'testnet', out=out, fetched_at=ISO_NOW)
+    assert s5['version'] == old['version'] + 1
+    assert F.diff_snapshots(old, s5)['changed'] == {'BTCUSDT': {'min_notional': (50.0, 100.0)}, 'SOLUSDT': {'step': (0.01, 1.0)}}
     with pytest.raises(ValueError): F.build_snapshot(info(TESTNET), 'paper', 'x')
+
+
+def test_direct_fetch_is_verified_with_provenance(tmp_path):
+    body = json.dumps(dict(info(TESTNET), serverTime=1_789_000_000_000)).encode('utf-8')
+    class R:
+        content = body
+        def raise_for_status(self): pass
+    urls = []
+    s, _ = XR.fetch('testnet', out=str(tmp_path / 'x.json'), get=lambda u: urls.append(u) or R())
+    assert urls == ['https://testnet.binancefuture.com/fapi/v1/exchangeInfo']
+    assert s['verified'] is True and s['provenance'] == 'direct_fetch' and s['source_url'] == urls[0]
+    assert s['raw_sha256'] == __import__('hashlib').sha256(body).hexdigest() and s['server_time'] == '2026-09-10T00:26:40Z'
+    assert XR.env_of_url(urls[0]) == 'testnet' and XR.env_of_url('https://fapi.binance.com/x') == 'mainnet' and XR.env_of_url('x') is None
 
 
 # ---------------------------------------------------------------- 4) backtest: skipped signals instead of synthetic fills
@@ -339,6 +379,85 @@ def test_backtest_pyramid_add_below_minimum_is_skipped_not_filled():
     assert cv2.iloc[-1] != cv.iloc[-1]                       # the add really fired there (a larger position on the rally)
 
 
+def _run_side(side, rule, mgmt, candles, risk=0.01, start=1000.0):
+    """One SOL position (px 100, ATR 1, stop 2 ATR) long or short; candles for the short case are mirrored around 100."""
+    if side == 'short': candles = {k: (200 - o, 200 - l, 200 - h, 200 - c) for k, (o, h, l, c) in candles.items()}
+    bk = _book(dict(SOLUSDT=100.0), sig_at=(10,), atr=1.0, candles={'SOLUSDT': candles})
+    if side == 'short':
+        g = bk._sig[('ema_mom', 'SOLUSDT', 'None')]; g['se'], g['le'] = g['le'], g['se'].copy()
+    sl = [dict(key='ema_mom', share=1.0, risk=risk, max_pos=1, sides=side, id='X', symbols=['SOLUSDT'], mgmt=mgmt)]
+    return B.run(bk, sl, start=start, warmup=5, maint_margin=0, fund_per_bar=0, exchange_rules=rule)
+
+
+TP1_THEN_STOP = {12: (100.0, 102.5, 100.0, 102.0), 13: (102.0, 102.0, 97.0, 97.0)}   # +1R (tp1 at 102), then the stop (98)
+STEP = lambda st, mn=5.0: {'SOLUSDT': dict(step=st, min_qty=st, min_notional=mn)}
+
+
+@pytest.mark.parametrize('side', ['long', 'short'])
+def test_backtest_partial_exit_is_floored_to_the_step_like_the_engine(side):
+    """BT02 review P1: qty 5, tp1 half = 2.5. Step 0.5 closes 2.5 (= the legacy run); step 1 closes floor(2.5) = 2 like
+    engine._market_close, so 0.5 more rides to the stop: P&L differs by exactly 0.5 x (stop fill - tp1 fill) after costs."""
+    m = {'stop_atr': 2.0, 'tp1_r': 1.0, 'tp1_frac': 0.5}
+    leg, _ = _run_side(side, None, m, TP1_THEN_STOP)
+    half, _ = _run_side(side, STEP(0.5), m, TP1_THEN_STOP)
+    one, _ = _run_side(side, STEP(1.0), m, TP1_THEN_STOP)
+    assert len(leg) == len(half) == len(one) == 1 and one.why[0] == 'stop' and one.i_out[0] == 13
+    assert half.pnl[0] == pytest.approx(leg.pnl[0], abs=1e-9), 'an exact step multiple behaves exactly like before'
+    k = (1 - B.SLIP) * (1 - B.FEE) if side == 'long' else (1 + B.SLIP) * (1 + B.FEE)
+    assert one.pnl[0] - half.pnl[0] == pytest.approx(-0.5 * 4 * k, rel=1e-9)
+
+
+@pytest.mark.parametrize('side', ['long', 'short'])
+def test_backtest_partial_that_floors_to_zero_sends_nothing(side):
+    """qty 1 (step 1): tp1 half = 0.5 floors to 0 -> no partial order (the engine's _market_close returns 0); the whole
+    position rides to the stop, exactly as if tp1 had never been reached."""
+    m = {'stop_atr': 2.0, 'tp1_r': 1.0, 'tp1_frac': 0.5}
+    hit, _ = _run_side(side, STEP(1.0), m, TP1_THEN_STOP, risk=0.002)                    # 2 USDT / 2 = 1 SOL
+    no_tp1 = {12: (100.0, 101.0, 100.0, 101.0), 13: (101.0, 101.0, 97.0, 97.0)}
+    plain, _ = _run_side(side, STEP(1.0), m, no_tp1, risk=0.002)
+    assert len(hit) == len(plain) == 1 and hit.why[0] == plain.why[0] == 'stop'
+    assert hit.pnl[0] == pytest.approx(plain.pnl[0], abs=1e-9)
+    leg, _ = _run_side(side, None, m, TP1_THEN_STOP, risk=0.002)                          # legacy: 0.5 closed at tp1
+    assert leg.pnl[0] > hit.pnl[0]
+
+
+@pytest.mark.parametrize('side', ['long', 'short'])
+def test_backtest_ladder_closes_the_whole_lot_instead_of_leaving_dust(side):
+    """Ladder level 1 closes half (2.5 of 5). With a 300 USDT minimum the 2.5 left (~255 USDT) would be dust -> the
+    engine's rule (feasibility.leaves_dust) closes the whole lot there; with a 5 USDT minimum the rest rides on."""
+    m = {'stop_atr': 2.0, 'tps': [[1.0, 0.5], [5.0, 0.5]]}
+    dust, _ = _run_side(side, STEP(0.5, 300.0), m, TP1_THEN_STOP)
+    keep, _ = _run_side(side, STEP(0.5, 5.0), m, TP1_THEN_STOP)
+    assert len(dust) == 1 and dust.why[0] == 'tp_ladder' and dust.i_out[0] == 12
+    assert len(keep) == 1 and keep.why[0] == 'stop' and keep.i_out[0] == 13
+    leg, _ = _run_side(side, None, m, TP1_THEN_STOP)                                      # legacy: no dust rule, unchanged
+    assert leg.pnl[0] == pytest.approx(keep.pnl[0], abs=1e-9)
+
+
+@pytest.mark.parametrize('mode', ['tp1 half', pytest.param('ladder', marks=pytest.mark.slow)])
+def test_partial_exits_match_the_engine_through_replay(mode):
+    """Engine vs backtest on the same candles and the same coarse rules (step 1): every trade matches and the return gap is
+    small. On the pre-fix backtest (raw fractional partials, no dust rule) tp1 was 1.07 % apart and the ladder matched
+    only 1 of 2 trades (1.51 % apart)."""
+    import engine as E
+    from test_causality import synth, SYMS, T0
+    from replay import run_replay
+    sl = {'tp1 half': [E.sleeve('M', 'ema_mom', 1.0, .02, 3, 'core8', mgmt={'tp1_r': 1.0, 'tp1_frac': 0.5})],
+          'ladder': [E.sleeve('L', 'ema_mom', 1.0, .02, 3, 'core8', mgmt={'tps': [[0.8, 0.4], [1.6, 0.4]]})]}[mode]
+    rules = {s: dict(step=1.0, min_qty=1.0, min_notional=5.0, tick=0.001) for s in SYMS}
+    m = run_replay(synth(n=520, seed=6), copy.deepcopy(sl), T0, steps=6, exchange_rules=rules)['metrics']
+    assert m['trades_engine'] >= 1 and m['trades_engine'] == m['trades_bt'] == m['matched'], m
+    assert m['mismatches'] == 0 and m['ret_gap'] <= 0.25, m
+
+
+def test_leaves_dust_is_the_engine_rule():
+    r = dict(step=0.01, min_qty=0.1, min_notional=5.0)
+    assert F.leaves_dust(0.05, 100.0, r) and F.leaves_dust(0.2, 10.0, r) and not F.leaves_dust(0.2, 100.0, r)
+    assert not F.leaves_dust(0.0, 100.0, r) and not F.leaves_dust(0.05, 100.0, None)
+    src = open(os.path.join(ROOT, 'engine.py'), encoding='utf-8').read()
+    assert 'if F.leaves_dust(rest, m, rr): q = lot[\'qty\']' in src, 'the engine ladder uses the shared predicate'
+
+
 # ---------------------------------------------------------------- 5) preflight: executable %, minimum capital, unknown
 def _slots(risk=0.02, share=1.0, key='dca_dip', mgmt=None, syms=('BTCUSDT', 'SOLUSDT'), tf='4h'):
     import strategies as S
@@ -383,13 +502,51 @@ def test_preflight_never_green_on_unknown_rules():
 
 
 def test_preflight_flags_undersized_pyramid_add():
-    r = F.preflight(_slots(key='ema_mom', mgmt={'pyramid': {'n': 1, 'step_r': 1.5, 'frac': 0.5}}, syms=('SOLUSDT',), risk=0.0006),
-                    500.0, MARKET, dict(SOLUSDT=dict(step=0.01, min_qty=0.01, min_notional=5.0)), 'ok')
-    # entry 0.3 USDT risk / (2.5 * 1.5) * 150 = 12 USDT ok; add 6 USDT ok -> lower the risk until the add fails
-    assert r['executable_pct'] == 100.0
-    r = F.preflight(_slots(key='ema_mom', mgmt={'pyramid': {'n': 1, 'step_r': 1.5, 'frac': 0.5}}, syms=('SOLUSDT',), risk=0.0003),
-                    500.0, MARKET, dict(SOLUSDT=dict(step=0.01, min_qty=0.01, min_notional=5.0)), 'ok')
-    assert r['executable_pct'] == 100.0 and len(r['add_undersized']) == 1
+    """BT02 review P1 (Codex repro): SOL, $500, 0.03 % risk, pyramid frac 0.5 -> the entry passes but the add cannot:
+    never 'ok' / 100 %, and the minimum capital is set by the add."""
+    rule = dict(SOLUSDT=dict(step=0.01, min_qty=0.01, min_notional=5.0))
+    sl = lambda risk, n=1: _slots(key='ema_mom', mgmt={'pyramid': {'n': n, 'step_r': 1.5, 'frac': 0.5}}, syms=('SOLUSDT',), risk=risk)
+    r = F.preflight(sl(0.0006), 500.0, MARKET, rule, 'ok')
+    assert r['status'] == 'ok' and r['plan_executable_pct'] == r['entry_executable_pct'] == 100.0 and r['add_undersized'] == []
+    r = F.preflight(sl(0.0003), 500.0, MARKET, rule, 'ok')
+    assert r['status'] == 'partial' and r['estimate'] == 'partial'
+    assert r['entry_executable_pct'] == 100.0 and r['plan_executable_pct'] == 0.0 and r['executable_pct'] == 0.0
+    a = r['add_undersized']
+    assert len(a) == 1 and a[0]['leg'] == 'pyramid add 1' and a[0]['code'] == 'below_min_notional' and a[0]['notional'] < 5
+    assert r['min_capital_all'] > 500 and r['min_capital_binding']['leg'] == 'pyramid add 1'
+    assert 'later order' in r['warning'] and 'pyramid add 1' in r['warning']
+    # at the stated minimum capital every planned order passes, just below it the add fails
+    legs = F.check_legs(F.slot_order_legs(sl(0.0003)[0], r['min_capital_all'] * 1.001, 150.0, 1.5, rule=rule['SOLUSDT']), rule['SOLUSDT'])
+    assert all(x['ok'] for x in legs)
+    legs = F.check_legs(F.slot_order_legs(sl(0.0003)[0], r['min_capital_all'] * 0.99, 150.0, 1.5, rule=rule['SOLUSDT']), rule['SOLUSDT'])
+    assert not all(x['ok'] for x in legs)
+    # n = 2 adds -> two legs, both checked
+    assert [x['leg'] for x in F.slot_order_legs(sl(0.0003, 2)[0], 500.0, 150.0, 1.5)] == ['entry', 'pyramid_add', 'pyramid_add']
+
+
+def test_preflight_dca_safety_order_sets_the_minimum_capital():
+    """A DCA plan whose deep safety order (low price, scale 1) is the smallest notional: entry passes, safety order 3
+    does not -> partial, and min_capital_all is set by 'safety order 3'."""
+    mg = {'dca': {'n': 3, 'step_atr': 20.0, 'scale': 1.0, 'stop_atr': 2.0, 'tp_atr': 2.0}}
+    rule = dict(SOLUSDT=dict(step=0.01, min_qty=0.01, min_notional=5.0))
+    r = F.preflight(_slots(key='dca_dip', mgmt=mg, syms=('SOLUSDT',), risk=0.027), 500.0, MARKET, rule, 'ok')
+    legs = F.slot_order_legs(_slots(key='dca_dip', mgmt=mg, syms=('SOLUSDT',), risk=0.027)[0], 500.0, 150.0, 1.5)
+    assert [x['leg'] for x in legs] == ['entry', 'safety_order', 'safety_order', 'safety_order']
+    assert legs[3]['px'] == pytest.approx(150.0 - 3 * 20 * 1.5)                         # DCA level 3 (engine levels)
+    assert r['entry_executable_pct'] == 100.0 and r['plan_executable_pct'] == 0.0 and r['status'] == 'partial'
+    assert [a['leg'] for a in r['add_undersized']] == ['safety order 3']
+    assert r['min_capital_binding']['leg'] == 'safety order 3' and r['min_capital_all'] > 500
+
+
+def test_panel_never_shows_tradable_when_a_later_order_fails():
+    """The green tag is mapped only from status 'ok', and preflight() never returns 'ok' with an undersized add."""
+    rule = dict(SOLUSDT=dict(step=0.01, min_qty=0.01, min_notional=5.0))
+    for risk in (0.0001, 0.0002, 0.0003, 0.0004, 0.0006, 0.001):
+        r = F.preflight(_slots(key='ema_mom', mgmt={'pyramid': {'n': 2, 'step_r': 1.5, 'frac': 0.5}}, syms=('SOLUSDT',), risk=risk),
+                        500.0, MARKET, rule, 'ok')
+        assert not (r['status'] == 'ok' and r['add_undersized']), risk
+    html = open(os.path.join(ROOT, 'panel.html'), encoding='utf-8').read()
+    assert "ok:['t-long','Tradable at your capital']" in html
 
 
 def test_feasibility_module_is_pure():
@@ -412,20 +569,37 @@ def _csv_candles(sym, tf, days):
     return d.tail(int(days * 86400 / 14400) + 260).reset_index(drop=True)
 
 
-def test_app_backtest_reports_feasibility_with_the_snapshot(monkeypatch):
-    import app as A, engine as E
-    monkeypatch.setattr(A, 'APP', None)                     # no engine: the shipped snapshot file is used
-    monkeypatch.setattr(A, 'get_candles', _csv_candles)
-    jid = '20260101-000000-bt02'
+def _app_bt(monkeypatch, A, E, xsnap, xstate, rules='on'):
+    monkeypatch.setattr(A, 'exchange_rules_now', lambda e=None: (xsnap, xstate, f'test {xstate}'))
+    jid = f'20260101-000000-bt02-{xstate}-{rules}'
     A.JOBS[jid] = dict(status='queued')
     A.run_backtest_job(jid, dict(name='bt02', sleeves=copy.deepcopy(E.PRESETS['calm']['sleeves']), days=120, tf='4h', start=500,
-                                 universe=list(E.CORE8)))
+                                 universe=list(E.CORE8), exchange_rules=rules))
     j = A.JOBS.pop(jid)
     assert j['status'] == 'done', j
-    f = j['result']['feasibility']
-    assert f['rules_state'] == 'unverified' and f['environment'] == 'testnet' and f['groups']['4h']['mode'] == 'rules'
-    assert f['executable_pct'] is not None and f['executed'] + sum(f['skipped'].values()) == sum(v['attempts'] for v in f['by_slot'].values())
-    assert f['by_symbol'].get('BTCUSDT', {}).get('skipped', 0) >= 1          # calm's 1% slots cannot buy 0.001 BTC at $500
+    return j['result']
+
+
+def test_app_backtest_applies_only_verified_fresh_rules_of_this_environment(monkeypatch):
+    """BT02 review P1: unverified / stale / invalid / wrong-environment / missing rules must not change the canonical
+    result (trades, curve, stats) - it equals the run with exchange rules off, and says the rules were not applied."""
+    import app as A, engine as E
+    monkeypatch.setattr(A, 'APP', None)
+    monkeypatch.setattr(A, 'get_candles', _csv_candles)
+    real = XR.load('testnet')
+    off = _app_bt(monkeypatch, A, E, None, 'off', rules='off')
+    ok = _app_bt(monkeypatch, A, E, real, 'ok')
+    f = ok['feasibility']
+    assert f['rules_applied'] is True and f['promotable'] is True and f['groups']['4h']['mode'] == 'rules'
+    assert f['rules_version'] == real['version'] and f['rules_fetched_at'] == real['fetched_at']
+    assert f['by_symbol'].get('BTCUSDT', {}).get('skipped', 0) >= 1          # calm's small slots cannot buy BTC at $500
+    assert ok['curve'] != off['curve']
+    for st in ('unverified', 'stale', 'invalid', 'wrong_environment', 'unavailable'):
+        r = _app_bt(monkeypatch, A, E, None if st == 'unavailable' else real, st)
+        g = r['feasibility']
+        assert g['rules_applied'] is False and g['promotable'] is False and g['rules_state'] == st, st
+        assert g['groups']['4h']['mode'] == 'legacy', st
+        assert r['curve'] == off['curve'] and r['stats'] == off['stats'] and r['by_symbol'] == off['by_symbol'], st
 
 
 def test_app_preflight_calls_the_shared_function(monkeypatch):
@@ -436,10 +610,12 @@ def test_app_preflight_calls_the_shared_function(monkeypatch):
     real = F.preflight
     monkeypatch.setattr(F, 'preflight', lambda *a, **k: calls.append(a) or real(*a, **k))
     r = ap.preflight()
-    assert len(calls) == len(r['presets']) and '__current' in r['presets'] and 'calm' in r['presets']
+    assert len(calls) == 2 * len(r['presets']) and '__current' in r['presets'] and 'calm' in r['presets']   # headline + planning
+    assert all('planning' in v for v in r['presets'].values()) and 'latest closed candle' in r['market_basis']
     assert r['rules_state'] == 'ok' and 'live connection' in r['rules_detail'] and r['environment'] == 'testnet'
     assert all(v['status'] in ('ok', 'partial', 'infeasible', 'unknown') for v in r['presets'].values())
-    e.rules = {}                                            # not connected -> the unverified file snapshot -> never green
+    e.rules = {}                                            # not connected -> an unverified file snapshot -> never green
+    monkeypatch.setattr(XR, 'load', lambda env, root=None, path=None: snap(verified=False))
     r = ap.preflight()
     assert r['rules_state'] == 'unverified' and all(v['status'] == 'unknown' for v in r['presets'].values())
 
@@ -451,3 +627,23 @@ def test_backtest_accounting_separates_risk_rule_refusals():
     f = cv.attrs['feasibility']
     assert f['attempts'] == 3 and f['executed'] == 1 and f['rule_blocked'] == 2 and sum(f['skipped'].values()) == 0
     assert f['executable_pct'] == 100.0                     # a risk-rule refusal is not an exchange-filter skip
+
+
+def test_preflight_market_uses_the_latest_closed_candle_atr_like_the_engine():
+    """BT02 review P2: the headline 'would execute now' uses the last closed candle's ATR (the engine's signal atr); the
+    180-candle median is only a separate planning estimate, and the basis / time is reported."""
+    import app as A, types
+    n = 200
+    df = pd.DataFrame(dict(t=pd.date_range('2026-01-01', periods=n, freq='4h'), c=np.full(n, 150.0), atr=np.full(n, 1.5)))
+    df.loc[n - 1, 'atr'] = 15.0                                 # volatility just exploded: latest ATR 10x the median
+    e = types.SimpleNamespace(_kc={('SOLUSDT', '4h'): (df,)})
+    m, asof = A.preflight_market(e, {('SOLUSDT', '4h')})
+    x = m[('SOLUSDT', '4h')]
+    assert x['atr'] == 15.0 and x['atr_median'] == pytest.approx(1.5) and x['px'] == 150.0
+    assert x['basis'] == 'latest closed candle' and x['t'] == str(df.t.iloc[-1])[:16] and 'engine' in asof['SOLUSDT 4h']
+    # the status follows the latest ATR: 10x the ATR -> 1/10 the size -> below the minimum now, fine on the median
+    rule = dict(SOLUSDT=dict(step=0.01, min_qty=0.01, min_notional=5.0))
+    sl = _slots(key='ema_mom', syms=('SOLUSDT',), risk=0.0006)
+    now = F.preflight(sl, 500.0, m, rule, 'ok')
+    typ = F.preflight(sl, 500.0, {k: dict(v, atr=v['atr_median']) for k, v in m.items()}, rule, 'ok')
+    assert now['status'] == 'infeasible' and typ['status'] == 'ok'
