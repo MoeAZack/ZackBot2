@@ -35,3 +35,22 @@ Fix: store the exact Binance field name (or deliberately normalize it to a docum
 ## Re-review gate
 
 Return a new exact commit with both fixes and focused regression tests. Then run the focused Windows suite, a two-symbol real one-shot collection, verify non-empty circulating-supply values and manifest counts, and only after acceptance start the recurring collector.
+
+## Fix re-review — code accepted, runtime gate pending
+
+Re-reviewed Claude fix commit `1fdb6eb0b31e04aac1f1e2dc19ef2966ae71cf3c` on 2026-10-07 (Africa/Cairo).
+
+Both P1 findings are fixed in code:
+
+- The in-app collector now owns a keyless `RequestsTransport` and independent request-health counters. It reads the engine circuit only as a gate and no longer calls or routes through the engine client.
+- The schema uses Binance's exact `CMCCirculatingSupply` key and real-shaped regression coverage proves it reaches CSV output.
+
+Independent Windows evidence:
+
+- Focused collector suite: **50 passed**.
+- Related outage/startup suites: **63 passed**.
+- Real public mainnet two-symbol collection: **172,061 new rows**, 142 requests, 0 errors in 71.2 seconds.
+- BTC 1h open-interest CSV: **719 rows**, 719 unique timestamps, 0 blank circulating-supply values; manifest also reports 719.
+- Immediate repeat: **0 new rows**, 12 requests, 0 errors in 5.1 seconds.
+
+Code verdict: **PASS**. Final acceptance remains gated on the requested isolated in-app PAPER runtime check at this exact implementation commit; do not start the permanent recurring scheduled task until that evidence returns.
