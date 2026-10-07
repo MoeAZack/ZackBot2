@@ -357,8 +357,17 @@ def test_the_recovery_line_never_claims_stops_were_read():
     n0 = len(e.health['errors'])
     e.manage(e.trade.marks())
     lines = [x[1] for x in list(e.health['errors'])[n0 - 1:]]
-    assert any('answering again' in l for l in lines) and not any('stops re-confirmed' in l for l in lines), lines
+    # T05b canary finding: recovery is declared only after the protective orders were re-read too
+    assert not any('answering again' in l for l in lines), lines
+    assert e.health['incidents']['exchange-down']['open']
     assert any('open orders' in l for l in lines)                          # its own incident says what failed
+    e.trade.fail.discard('tags')
+    e.trade.pos[('BTCUSDT', 'LONG')] = e.state['lots'][k]['qty']           # full position, stop still open
+    n1 = len(e.health['errors'])
+    e.manage(e.trade.marks())
+    lines = [x[1] for x in list(e.health['errors'])[n1:]]
+    assert any('answering again' in l and 'stops re-confirmed' in l for l in lines), lines
+    assert not e.health['incidents']['exchange-down']['open']
 
 
 # ------------------------------------------------------------------ second adversarial pass (verifier repros + gaps)
