@@ -1258,10 +1258,32 @@ class Engine:
             except Exception: held = None          # unreadable: send this lot's own quantity (only the READ is guarded)
             if held:
                 extra = held - qty
-                if extra <= 0 or F.leaves_dust(extra, mark or lot['avg'], self.rules.get(lot['symbol'])): qty = held
+                if extra <= 0 or (not self._entry_claims(lot['symbol'], lot['side'])
+                                  and F.leaves_dust(extra, mark or lot['avg'], self.rules.get(lot['symbol']))): qty = held
         self._market_close(lot, qty, why, mark, post={'finish': why})    # raises on failure -> lot and its stop stay as they were
         self._finish(key, why)
         self.save_state()
+
+    def _entry_claims(self, sym, side):
+        """AUD-02 (Codex r1): a local entry on this coin/side may own exchange size that no lot records yet - a resting maker
+        entry (its partial fills become its own lot) or a pending/trailing entry. While one exists, size beyond a closing
+        lot is never swept, not even when it is dust."""
+        recs = list((self.state.get('resting_entries') or {}).values()) + list((self.state.get('pending_entries') or {}).values())
+        return any(r.get('symbol') == sym and r.get('side') == side for r in recs if isinstance(r, dict))
+
+    def _partial_zero(self, lot, name, q):
+        """AUD-02 / C25 (Codex: option b). True when a PARTIAL take-profit floors to zero tradable quantity (a lot too small
+        to split): no order is sent and NOTHING is marked done - tp1 / basket part / ladder level stay open and are
+        evaluated again on later passes (e.g. after an add made the lot splittable), so no breakeven move, runner promotion
+        or DCA completion is ever triggered by a take-profit that never happened. Reported once per lot and stage.
+        The backtester applies the same rule (backtest.run: part_zero)."""
+        if self._rd(q, self.rules[lot['symbol']]['step']) > 0: return False
+        seen = lot.setdefault('zero_partials', [])
+        if name not in seen:
+            seen.append(name)
+            log.info(f"{lot['symbol']} [{lot['sleeve']}] {name} reached but {lot['qty']} cannot be split (part floors to 0) - "
+                     "nothing sent, nothing marked done; checked again on later passes")
+        return True
 
     def _finish(self, key, why):
         """Lot fully closed: write a trade-history record and forget the lot."""
@@ -1416,15 +1438,16 @@ class Engine:
                         if lot.get('tp') is not None and ge(lot['tp']):
                               run = g.get('runner')
                               if run and run.get('dca_frac', 1) < 1:      # runner: bank part, keep the rest at breakeven
-                                  self._market_close(lot, lot['qty'] * run['dca_frac'], 'basket_tp_part', m,
-                                                     post={'tp': None, 'tp1': True, 'dca': len(lot['levels']), 'e0': lot['avg']})
-                                  if lot['qty'] <= 0: self._finish(key, 'basket_tp'); changed = True; continue
-                                  lot['tp'] = None; lot['tp1'] = True; lot['dca'] = len(lot['levels'])
-                                  lot['e0'] = lot['avg']; changed = True
-                                  be = lot['avg'] * (1 + sd * BE_BUF)
-                                  if sd * (be - lot['stop']) > 0 and sd * (m - be) > 0: self._replace_stop(lot, be)
-                                  else: self._replace_stop(lot)
-                                  lot['R'] = max(lot['R'], abs(lot['avg'] - lot['stop']))
+                                if not self._partial_zero(lot, 'basket_tp_part', lot['qty'] * run['dca_frac']):   # C25
+                                    self._market_close(lot, lot['qty'] * run['dca_frac'], 'basket_tp_part', m,
+                                                       post={'tp': None, 'tp1': True, 'dca': len(lot['levels']), 'e0': lot['avg']})
+                                    if lot['qty'] <= 0: self._finish(key, 'basket_tp'); changed = True; continue
+                                    lot['tp'] = None; lot['tp1'] = True; lot['dca'] = len(lot['levels'])
+                                    lot['e0'] = lot['avg']; changed = True
+                                    be = lot['avg'] * (1 + sd * BE_BUF)
+                                    if sd * (be - lot['stop']) > 0 and sd * (m - be) > 0: self._replace_stop(lot, be)
+                                    else: self._replace_stop(lot)
+                                    lot['R'] = max(lot['R'], abs(lot['avg'] - lot['stop']))
                               else:
                                   self.close_lot(key, 'basket_tp', m); changed = True; continue
                     if key not in self.state['lots']: continue   # AUD-02: finished by a stage (or its recovery)
@@ -1436,7 +1459,8 @@ class Engine:
                                 lot['adds'] += 1; lot['next_add'] += sd * g['pyramid']['step_r'] * lot['R']
                                 self._replace_stop(lot); changed = True
                     if key not in self.state['lots']: continue   # AUD-02: finished by a stage (or its recovery)
-                    if g.get('tp1_r') and not lot['tp1'] and ge(lot['e0'] + sd * g['tp1_r'] * lot['R']):
+                    if (g.get('tp1_r') and not lot['tp1'] and ge(lot['e0'] + sd * g['tp1_r'] * lot['R'])
+                            and not self._partial_zero(lot, 'take_profit_1', lot['qty'] * g.get('tp1_frac', 0.5))):   # C25
                       with self._stage(key, lot, 'take_profit_1', failed):
                         self._market_close(lot, lot['qty'] * g.get('tp1_frac', 0.5), 'take_profit_1', m, post={'tp1': True})
                         lot['tp1'] = True; changed = True
@@ -1454,6 +1478,7 @@ class Engine:
                               q = min(lot['qty'], lot.get('qty_max', lot['q0']) * f_)
                               rest = lot['qty'] - q
                               if F.leaves_dust(rest, m, rr): q = lot['qty']   # never leave dust (shared with the backtest)
+                              if self._partial_zero(lot, 'take_profit_ladder', q): break   # C25: the level stays open
                               done.append(k_)
                               self._market_close(lot, q, 'take_profit_ladder', m, post={'tps_done': list(done)})
                               lot['tps_done'] = list(done); fired = changed = True
