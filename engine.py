@@ -2012,12 +2012,24 @@ class Engine:
         return ({u['side'] for u in (self.state.get('unconfirmed_entries') or {}).values() if u.get('symbol') == sym}
                 | {r_['side'] for r_ in (self.state.get('resting_entries') or {}).values() if r_.get('symbol') == sym})
 
+    @staticmethod
+    def _protects(row, side):
+        """AUD-04 r1 (Codex): True only for a stop that CLOSES a `side` position - LONG closes with SELL, SHORT with BUY. In
+        hedge mode its positionSide must be that side; a one-way (BOTH) row must also be reduceOnly or closePosition.
+        A same-positionSide stop that BUYS a LONG (or SELLS a SHORT) is an entry/add order: never protection. Unknown
+        direction -> not protection (fail closed: the bot restores its own stop)."""
+        close = 'SELL' if side == 'LONG' else 'BUY'
+        if str(row.get('side') or '').upper() != close: return False
+        ps = str(row.get('position_side') or '').upper()
+        if ps == side: return True
+        return ps == 'BOTH' and bool(row.get('reduce_only') or row.get('close_position'))
+
     def _adopt_stop(self, k, l, extras):
         """A bot stop nothing owns, on this lot's side, with this lot's quantity and stop price, IS this lot's stop (e.g.
         a placement whose answer was lost): record it instead of placing a second one."""
         r = self.rules.get(l['symbol']) or dict(step=1e-9, tick=1e-9)
         for x in extras:
-            if x.get('position_side') not in (l['side'], None) or x.get('qty') is None or x.get('stop_price') is None: continue
+            if not self._protects(x, l['side']) or x.get('qty') is None or x.get('stop_price') is None: continue
             if abs(x['qty'] - l['qty']) <= r['step'] / 2 and abs(x['stop_price'] - l['stop']) <= r['tick'] / 2:
                 extras.remove(x)
                 l['stop_id'], l['stop_dirty'], l['stop_miss'], l['stop_confirmed_t'] = x['tag'], False, 0, self.clock()
@@ -2040,7 +2052,7 @@ class Engine:
         r = self.rules.get(sym) or dict(step=1e-9)
         grp = [x for x in self.state['lots'].values() if x['symbol'] == sym and x['side'] == side and not x.get('pending')]
         expected = sum(x['qty'] for x in grp)
-        fx = next((x for x in foreign if x.get('position_side') == side and (
+        fx = next((x for x in foreign if self._protects(x, side) and (
                    x.get('close_position') or not x.get('qty')                  # Binance-app position TP/SL: whole position
                    or x['qty'] >= l['qty'] - r['step'] / 2)), None)          # same size or larger: it covers this lot
         if fx is not None:

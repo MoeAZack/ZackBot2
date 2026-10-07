@@ -29,6 +29,7 @@ class VX(FakeX):
     def __init__(self, *a, **k):
         super().__init__(*a, **k)
         self.hidden, self.status, self.cids, self.algo = set(), {}, {}, False
+        self.sides, self.ro = {}, {}                  # per-tag order side / reduceOnly overrides (default: the closing side)
     def stop(self, s, ps, q, p):
         tag = super().stop(s, ps, q, p)
         if self.algo:
@@ -40,8 +41,8 @@ class VX(FakeX):
         return True
     def open_stop_orders(self, s, strict_algo=False, retry=None):
         self._f('tags'); self.calls.append(('strict', strict_algo)); self.calls.append(('retry', retry))
-        return [dict(tag=k, type='STOP_MARKET', position_side=v[1], side='SELL' if v[1] == 'LONG' else 'BUY', qty=v[2],
-                     stop_price=v[3], client_id=self.cids.get(k, cid(k)), status='NEW')
+        return [dict(tag=k, type='STOP_MARKET', position_side=v[1], side=self.sides.get(k, 'SELL' if v[1] == 'LONG' else 'BUY'),
+                     qty=v[2], stop_price=v[3], client_id=self.cids.get(k, cid(k)), status='NEW', reduce_only=self.ro.get(k, False))
                 for k, v in self.stops.items() if v[0] == s and k not in self.hidden]
     def stop_status(self, s, tag, retry=None):
         self._f('status'); self.calls.append(('status', tag)); return self.status.get(tag)
@@ -50,8 +51,10 @@ class VX(FakeX):
         self.stops.pop(tag); self.status[tag] = status
     def trigger(self, tag, status='FILLED'):
         s, ps, q, p = self.stops.pop(tag); self.pos[(s, ps)] = self.pos.get((s, ps), 0) - q; self.status[tag] = status
-    def add_stop(self, s, ps, q, p, cid):
+    def add_stop(self, s, ps, q, p, cid, side=None, reduce_only=False):
         self.n += 1; tag = f'o:{self.n}'; self.stops[tag] = (s, ps, float(q), float(p)); self.cids[tag] = cid; self.status[tag] = 'NEW'
+        if side: self.sides[tag] = side
+        if reduce_only: self.ro[tag] = True
         return tag
 
 
@@ -359,7 +362,7 @@ def test_real_client_rows_and_status_lookups_for_classic_and_algo(monkeypatch):
     rows = c.open_stop_orders('BTCUSDT')
     assert [r['tag'] for r in rows] == ['o:11', 'o:12', 'a:7'] and c.open_stop_tags('BTCUSDT') == {'o:11', 'o:12', 'a:7'}
     assert rows[0] == dict(tag='o:11', type='STOP_MARKET', position_side='LONG', side='SELL', qty=0.5, stop_price=95.0,
-                           client_id='zbA', status='NEW', close_position=False)
+                           client_id='zbA', status='NEW', close_position=False, reduce_only=False)
     assert rows[1]['client_id'] is None and rows[1]['qty'] is None
     assert rows[2]['client_id'] == 'zaB' and rows[2]['stop_price'] == 60.0 and rows[2]['position_side'] == 'SHORT'
     assert c.stop_status('BTCUSDT', 'o:11') == 'CANCELED'
@@ -959,3 +962,58 @@ def test_a_crash_of_the_verifier_is_one_keyed_incident_closed_when_it_runs_again
 def test_the_owner_check_text_says_how_to_clear_it():
     for t in (E.STOP_MISSING_BLOCKS['owner_check'], E.STOP_MISSING_NOTES['owner_check']):
         assert 'remove the extra stop on Binance' in t and 'Move stop' in t
+
+
+# ------------------------------------------------------------------ Codex r1 on bc96b53: only a CLOSING stop is protection
+@pytest.mark.parametrize('side, wrong', [('LONG', 'BUY'), ('SHORT', 'SELL')])
+def test_a_foreign_same_position_side_stop_that_opens_is_not_owner_protection(side, wrong):
+    """Codex r1 P1: a foreign STOP_MARKET positionSide=LONG side=BUY (an entry/add trigger) was taken as the owner's stop:
+    owner_check, nothing restored, the long left without any closing stop. Now the bot restores its own stop."""
+    e, clk, _ = mk(); k = lot_open(e, side=side); l = e.state['lots'][k]; tag = l['stop_id']
+    tick(e, clk, 4.0)
+    s_, ps, q, p = e.trade.stops[tag]
+    entry = e.trade.add_stop(s_, ps, q, 120.0 if side == 'LONG' else 80.0, 'web_entry', side=wrong)
+    e.trade.ext_cancel(tag); tick(e, clk, E.STOP_VERIFY_S * 1.25)
+    assert l.get('stop_miss_why') != 'owner_check' and e.stopv_stats['restored'] == 1
+    assert l['stop_id'] not in (tag, entry) and l['stop_id'] in e.trade.stops and entry in e.trade.stops   # his order untouched
+
+
+@pytest.mark.parametrize('side', ['LONG', 'SHORT'])
+def test_a_foreign_closing_stop_still_is_owner_protection(side):
+    e, clk, _ = mk(); k = lot_open(e, side=side); l = e.state['lots'][k]; tag = l['stop_id']
+    tick(e, clk, 4.0)
+    s_, ps, q, p = e.trade.stops[tag]
+    mine = e.trade.add_stop(s_, ps, q, p, 'web_stop')                       # default side = the closing side
+    e.trade.ext_cancel(tag); tick(e, clk, E.STOP_VERIFY_S * 1.25)
+    assert l['stop_miss_why'] == 'owner_check' and e.stopv_stats['restored'] == 0 and set(e.trade.stops) == {mine}
+
+
+def test_a_wrong_side_bot_stop_is_never_adopted_as_the_lots_stop():
+    e, clk, _ = mk(); k = lot_open(e); l = e.state['lots'][k]; tag = l['stop_id']
+    tick(e, clk, 4.0)
+    s_, ps, q, p = e.trade.stops[tag]
+    twin = e.trade.add_stop(s_, ps, q, p, cid('o:999'), side='BUY')         # bot client id, same qty/price, but it BUYS
+    e.trade.ext_cancel(tag); tick(e, clk, E.STOP_VERIFY_S * 1.25)
+    assert l['stop_id'] != twin and e.stopv_stats['adopted'] == 0 and e.stopv_stats['restored'] == 1
+
+
+def test_protects_rules_for_hedge_and_one_way_rows():
+    P = E.Engine._protects
+    assert P(dict(side='SELL', position_side='LONG'), 'LONG') and P(dict(side='BUY', position_side='SHORT'), 'SHORT')
+    assert not P(dict(side='BUY', position_side='LONG'), 'LONG') and not P(dict(side='SELL', position_side='SHORT'), 'SHORT')
+    assert not P(dict(side=None, position_side='LONG'), 'LONG'), 'unknown direction is not protection'
+    assert P(dict(side='SELL', position_side='BOTH', reduce_only=True), 'LONG')
+    assert P(dict(side='SELL', position_side='BOTH', close_position=True), 'LONG')
+    assert not P(dict(side='SELL', position_side='BOTH'), 'LONG'), 'one-way, not reduce-only: could open a short'
+
+
+def test_client_rows_carry_reduce_only():
+    c = BC.Futures.__new__(BC.Futures)
+    def req(m, path, params=None, signed=False, retry=None, critical=None):
+        if path == '/fapi/v1/openOrders':
+            return [dict(orderId=1, type='STOP_MARKET', positionSide='BOTH', side='SELL', origQty='0.5', stopPrice='95',
+                         clientOrderId='x', status='NEW', reduceOnly=True, closePosition=False)]
+        return []
+    c._req = req
+    (row,) = c.open_stop_orders('BTCUSDT')
+    assert row['reduce_only'] is True and row['close_position'] is False and row['side'] == 'SELL'

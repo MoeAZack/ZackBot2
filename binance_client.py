@@ -563,7 +563,7 @@ class Futures:
     def open_stop_orders(self, symbol, strict_algo=False, retry=None):
         """AUD-04. Open orders of ONE symbol (classic + algo), two weight-1 reads, with the details the stop verifier
         needs: dict(tag 'o:<orderId>'|'a:<algoId>', type, position_side, side, qty, stop_price, client_id, status,
-        close_position).
+        close_position, reduce_only).
         Same failure contract as before: a failed or busy algo read RAISES (unknown is never 'no algo stops'); only an
         explicit "no such endpoint" (ALGO_UNSUPPORTED) means there are none. Missing detail fields are None (a
         detail-less row still confirms a stop id, it is never treated as a bot duplicate or a foreign stop).
@@ -577,7 +577,8 @@ class Futures:
         for o in self._req('GET', '/fapi/v1/openOrders', dict(symbol=symbol), signed=True, retry=retry) or []:
             out.append(dict(tag=f"o:{o['orderId']}", type=o.get('type'), position_side=o.get('positionSide'), side=o.get('side'),
                             qty=num(o.get('origQty')), stop_price=num(o.get('stopPrice')), client_id=o.get('clientOrderId'),
-                            status=o.get('status'), close_position=str(o.get('closePosition')).lower() == 'true'))
+                            status=o.get('status'), close_position=str(o.get('closePosition')).lower() == 'true',
+                            reduce_only=str(o.get('reduceOnly')).lower() == 'true'))
         try:
             r = self._req('GET', '/fapi/v1/openAlgoOrders', dict(symbol=symbol), signed=True, retry=retry)
             for o in (r.get('orders', r) if isinstance(r, dict) else r) or []:
@@ -585,7 +586,8 @@ class Futures:
                     out.append(dict(tag=f"a:{o['algoId']}", type=o.get('orderType'), position_side=o.get('positionSide'),
                                     side=o.get('side'), qty=num(o.get('quantity')), stop_price=num(o.get('triggerPrice')),
                                     client_id=o.get('clientAlgoId'), status=o.get('algoStatus'),
-                                    close_position=str(o.get('closePosition')).lower() == 'true'))
+                                    close_position=str(o.get('closePosition')).lower() == 'true',
+                                    reduce_only=str(o.get('reduceOnly')).lower() == 'true'))
         except BinanceError as e:                        # unknown algo-stop state is NOT "no algo stops" (T05b review):
             if strict_algo or isinstance(e, ExchangeUnavailable) or e.code not in ALGO_UNSUPPORTED: raise
         return out                                       # only an explicit "no such endpoint" means no algo stops
