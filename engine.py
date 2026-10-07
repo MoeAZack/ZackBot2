@@ -802,15 +802,23 @@ class Engine:
             if out[k]['mode'] not in ('off', 'warn', 'enforce'): out[k]['mode'] = 'warn'
         return out
 
+    SETTINGS_SECRET_KEYS = ('TELEGRAM_TOKEN',)            # live only in the encrypted config (app.write_cfg), never settings.json
+
+    @classmethod
+    def _settings_on_disk(cls, s):
+        """What settings.json may hold: everything except secrets (the Telegram token belongs to the encrypted config; the
+        Telegram PIN is stored only as its pbkdf2 hash). Defense in depth for CodeQL py/clear-text-storage on PR #30."""
+        return {k: v for k, v in s.items() if k not in cls.SETTINGS_SECRET_KEYS}
+
     def save_settings(self):
-        return self._save_safe('settings', self.S)
+        return self._save_safe('settings', self._settings_on_disk(self.S))
 
     def commit_settings(self, ns):
         """AUD-05: apply a fully validated settings dict atomically: written to disk first (durable, with .bak) - a failed
         save raises and leaves memory untouched - then every changed top-level key is applied in one step under the lock
         (unchanged keys keep their objects)."""
         with self.lock:
-            self._save_safe('settings', ns, strict=True)
+            self._save_safe('settings', self._settings_on_disk(ns), strict=True)
             for k in [k for k in self.S if k not in ns]: self.S.pop(k)
             for k, v in ns.items():
                 if k not in self.S or self.S[k] != v: self.S[k] = v

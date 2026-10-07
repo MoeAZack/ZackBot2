@@ -414,3 +414,15 @@ def test_r1_record_equity_never_raises(monkeypatch):
     monkeypatch.setattr(E, 'save_json', fail)
     e.record_equity(510.0)
     assert e.equity_hist[-1][1] == 510.0 and e.health['incidents']['save|equity']['open']
+
+
+def test_settings_json_never_holds_the_telegram_token(tmp_path):
+    """CodeQL py/clear-text-storage on PR #30: the token lives in the encrypted config only; settings.json never stores it."""
+    import json, os
+    import engine as E
+    e = E.Engine(dict(MODE='paper', API_KEY='k' * 16, API_SECRET='s' * 16), str(tmp_path), dry=True)
+    e.S['TELEGRAM_TOKEN'] = '123456:ABCDEFGHIJKLMNOPQRSTUVWX'
+    e.save_settings()
+    assert 'TELEGRAM_TOKEN' not in json.load(open(os.path.join(str(tmp_path), 'settings.json'), encoding='utf-8'))
+    e.commit_settings(dict(e.S))
+    assert 'TELEGRAM_TOKEN' not in json.load(open(os.path.join(str(tmp_path), 'settings.json'), encoding='utf-8'))
