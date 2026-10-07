@@ -311,12 +311,17 @@ PRESETS = {
                   sleeves=[sleeve('MOM', 'ema_mom', .5, .05, 8, mgmt=PY), sleeve('DCA', 'dca_dip', .5, .05, 6)]),
 }
 
-# FBL-BT01 (label only - no default, note or number changed): every profile with a DCA slot was backtested before the
-# intrabar path fix (basket TP after a safety order was tested against the same candle's earlier extreme). Its quoted
-# numbers stay as they were until they are re-validated with the fixed backtester.
-UNVERIFIED_BT01 = 'unverified: backtest path fix pending re-validation (FBL-BT01)'
+# FBL-BT01 / audit AUD-06a (owner decision 2026-10-07: relabel, do not hide): every profile with a DCA slot was
+# backtested before the intrabar path fix (basket TP after a safety order was tested against the same candle's earlier
+# extreme). Its quoted numbers are kept but marked UNVERIFIED everywhere they are shown, until they are re-validated with
+# the fixed backtester (and BT02 exchange filters). No default, slot or number is changed here.
+UNVERIFIED_BT01 = ('UNVERIFIED - these numbers come from the old backtester (before the FBL-BT01 fix). A corrected re-run '
+                   'of the 1h DCA slot was far worse (profit factor about 0.8). Do not rely on them until re-validated.')
+UNVERIFIED_NOTE = 'UNVERIFIED (old backtest, see the warning): '
 for _p in PRESETS.values():
-    if any(_s['key'] == 'dca_dip' for _s in _p['sleeves']): _p['bt']['unverified'] = UNVERIFIED_BT01
+    if any(_s['key'] == 'dca_dip' for _s in _p['sleeves']):
+        _p['bt']['unverified'] = UNVERIFIED_BT01; _p['bt']['verified'] = False
+        if not _p['note'].startswith(UNVERIFIED_NOTE): _p['note'] = UNVERIFIED_NOTE + _p['note']
 del _p
 
 GLOBAL_DEFAULTS = dict(COMPOUND=False, CAP_SINCE='', CAP_ADJ=[], CAP_CYCLES=[], TELEGRAM_ON=False, TELEGRAM_TOKEN='', TELEGRAM_CHAT='', MAX_LEVERAGE=10, DAILY_LOSS_HALT=0.08, PEAK_DD_FLATTEN=0.0, CAPITAL_CAP=500.0,
