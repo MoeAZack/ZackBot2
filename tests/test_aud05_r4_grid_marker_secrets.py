@@ -180,7 +180,7 @@ def test_an_unredactable_secret_sibling_is_an_unresolved_secret_incident(monkeyp
         if '.corrupt-' in p: raise PermissionError(13, 'locked')
         return real(p, data)
     monkeypatch.setattr(E, '_write_bytes_durable', refuse)
-    assert E.scrub_legacy_secrets(tmp) and 'corrupt' in E.scrub_legacy_secrets(tmp)[0]
+    assert E.redact_settings_files(tmp) and 'corrupt' in E.redact_settings_files(tmp)[0]
     e = restart(tmp, TS.FakeX())
     assert inc(e, 'secret-unresolved')['open']
 

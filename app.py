@@ -543,7 +543,7 @@ def migrate_settings_secrets(cfg, data_dir=None):
             write_cfg({'TELEGRAM_TOKEN': tok}); cfg['TELEGRAM_TOKEN'] = tok
         except Exception as ex:
             log.warning(f'Telegram token not migrated ({type(ex).__name__}) - re-enter it in Settings')
-    ENG.scrub_legacy_secrets(data_dir)
+    ENG.redact_settings_files(data_dir)
 
 
 class App:

@@ -858,7 +858,7 @@ def settings_siblings(data_dir):
     return out
 
 
-def scrub_legacy_secrets(data_dir):
+def redact_settings_files(data_dir):
     """Remove legacy secret material from every settings sibling (after migrate_legacy_secrets' token reached the encrypted
     config): a parseable file loses its secret keys; anything else is redacted byte-wise (the rest of the evidence stays).
     Each rewrite is atomic. Returns the names that could NOT be cleaned (the caller raises an unresolved-secret incident)."""
@@ -1377,11 +1377,11 @@ class Engine:
     # ------------------------------------------------------------ settings
     def load_settings(self):
         s = copy.deepcopy(GLOBAL_DEFAULTS)
-        try: bad = scrub_legacy_secrets(os.path.dirname(self.F['settings']))   # AUD-05 r3/r4: no legacy secret survives a load
-        except Exception as ex: bad = [f'scan failed ({type(ex).__name__})']
-        if bad and hasattr(self, '_integrity_alert'):
+        try: unredacted = redact_settings_files(os.path.dirname(self.F['settings']))   # AUD-05 r3/r4: no legacy secret survives a load
+        except Exception as ex: unredacted = [f'scan failed ({type(ex).__name__})']
+        if unredacted and hasattr(self, '_integrity_alert'):
             self._integrity_alert('secret-unresolved', 'a legacy Telegram token may still be stored in clear text in: '
-                                  + ', '.join(bad)[:150] + ' - it could not be redacted; remove these files by hand')
+                                  + ', '.join(unredacted)[:150] + ' - it could not be redacted; remove these files by hand')
         got, status = Engine._load_safe(self, 'settings', dict, initialized=vars(self).get('_installed'))
         #   AUD-05: corrupt -> older .bak; none -> defaults; either way ENTRIES PAUSED; missing on an initialized install ->
         #   fail closed (called unbound: the offline UI harness loads settings on a bare namespace)
