@@ -108,3 +108,105 @@ Result: **20/20 mutants killed**.
 whose kind is not `entry` / `pyramid_add` / `safety_order`. That means `entry_fallback`, `grid_buy` and `grid_sell` adds
 are averaged into the exit price of `history.json`. This is pre-existing trading/history code, so the observe-only T05a
 leaves it alone. It should be a separate fix.
+
+## Owner scope 2026-10-07 (PR #8)
+
+The owner's measurement request ("per trade record MFE/MAE in price, USD, %, and R; time-to-MFE; realized result; give-back;
+executable MFE after fees/slippage; exit/hold reason at each decision point; whether BE, partial TP, trailing, time or regime
+exit would have improved the result without look-ahead; segments; failure classes; counts, expectancy and sample audits in
+the UI"). **Still observe only:** nothing below is read by a trading decision, order, stop, size, DCA, target, runner,
+reconciliation or strategy selection. Every new engine hook is wrapped in `try/except` like the existing T05a hooks. No new
+disk/network I/O and no `save_state` in the mark loop. Policy set `POLICY_VERSION` 1 → 2 (lots declared under v1 keep v1).
+
+### Requirement → implementation → tests
+
+All tests are in `tests/test_trade_audit.py`. Mutation ids (O1–O16) refer to `t05a_add/mut.py` (results below).
+
+| Requirement | Implementation | Tests (mutants killed) |
+|---|---|---|
+| MFE/MAE in price, USD, %, R | `trade_metrics()` → record `metrics.mfe` / `metrics.mae`: `price` = sd·(mark − average entry **valid at that observation**, from the state snapshot `st[mfe_si]`), `usd` = price × the quantity open at that observation (gross of fees), `pct` = price / that average × 100, `r` = usd / `risk_usd`. Unknown snapshot → price/% vs `entry0`, USD/R withheld (`basis='entry0_state_unknown'`). Price excursion = mark samples only. | `test_metrics_usd_pct_r_and_time_to_mfe_long_and_short` (O11) |
+| Time to MFE | `metrics.time_to_mfe_s` / `time_to_mae_s` / `time_to_peak_net_s` from `lot.opened` (`time_basis`; tracking start if the entry time is unknown). | same test |
+| Realized result | `metrics.net_usd`, `metrics.net_r` (= record `net_pnl`, `r`). | same test |
+| Give-back from MFE to exit | `metrics.giveback_usd` = lifecycle net peak − final net; `giveback_pct_of_mfe` = that / peak × 100 (peak > 0). The legacy flat `giveback*` fields stay. | same test |
+| Maximum favourable profit actually executable after fees/slippage | `metrics.executable_mfe_usd` = the lifecycle net peak (whole-position close at a **recorded mark sample**: realized − fees paid + open P&L − estimated exit fee, quantity changes included) minus modelled adverse slippage at that mark: `peak − s·px·q·(1 − sd·fee)`, `s = EXEC_SLIP_BPS = 2 bps`. `observe()` now also stores the peak's mark and quantity (`ex.peak_px/peak_q/peak_n`, memory only). Candle extremes are never used (`executable_basis`). Lots tracked before this field → `null`, not guessed. | `test_executable_mfe_is_the_net_peak_at_a_mark_sample_minus_slippage_never_a_candle_extreme` (O10) |
+| Exit/hold reason at each decision point | Existing: one `hold_eval` per open lot per closed candle (`action` hold / close_exit_signal / close_time_exit, `exit_signal` before the runner override, `runner_override`, target/stop/time-cap checks) + the record's `exit_reason`. New: `hold_eval.regime` = the closed candle's trend state (same cutoff as the candle). | `test_cycle_hold_records_the_candle_trend_and_triggers_the_regime_exit`, existing `test_cycle_emits_one_hold_eval…` |
+| BE / partial TP / trailing / time / regime exit without look-ahead | Existing causal policies: target, trailing, time cap, runner (= partial TP: the runner quantity closed at its activation fill). **New, predeclared at entry (v2):** `breakeven_after_costs` (arms when a mark is +`BE_ARM_R`=1R from the declared entry; from the NEXT observation on closes at the first mark where net P&L after fees, with the state valid at that observation, is ≤ 0; online at every observation; info cutoff = arming observation seq < decision seq) and `regime_exit` (at a closed candle of the lot tf with trend `down` for a LONG / `up` for a SHORT, decided in `cycle()` only if candle close < now; filled at the first mark sample at/after that decision). Both are `causal_policy` with `decision_at`/`info_cutoff`; a v1 lot says "not declared". | `test_breakeven_after_costs_online_long_and_short_is_causal` (O8), `test_breakeven_path_fallback_needs_an_earlier_arming_point`, `test_regime_exit_trigger_is_causal_and_fills_at_the_next_mark` (O9) |
+| Segment by strategy, side, symbol, timeframe, regime, DCA count, runner status | Record `segment` = {strategy (sleeve id), side, symbol, tf, regime (entry label), dca (`0/1/2/3+` safety-order fills), runner (`runner` / `no_runner`)}. `segments()` aggregates per dimension: n, wins, win rate, expectancy (mean net USD, mean net R), net sum, flag counts. Slim window keeps compact strings (`flags`, `flags_unknown`, `seg='regime\|dca\|runner'`); slim and full give identical results. | `test_segments_aggregate_counts_expectancy_flags_and_samples` (O12), `test_close_record_carries_metrics_flags_and_segment` |
+| Failure classes | Record `flags` (list), `flags_unknown` (classes that could not be evaluated, never guessed), `flag_detail`. Definitions below. | per-flag tests below (O1–O7, O16) |
+| Counts, expectancy and sample audits in the UI | `audit_summary()` adds `segments` (cached with the attribution) and `missed_short` (computed per call, ≤ 600 items). Exposed on `/api/status` → `health.audit` (existing) and new read-only `GET /api/audit_summary` (no engine lock; the writer lock is held only to copy the window). UI: collapsed `<details>` "Trade audit" card on the Trades tab (separate commit, droppable). | `test_audit_summary_endpoint_is_read_only_and_exposes_segments`, `test_panel_audit_card_is_additive_collapsed_and_escaped`, `test_panel_audit_card_renders_escaped` (node, `<img onerror>` payload) |
+
+### Failure class definitions (deterministic)
+
+"Peak" = lifecycle net peak (`ex.peak_pnl`: realized − fees paid + open P&L − estimated exit fee, at a mark sample).
+"Green value" = `executable_mfe_usd` (peak minus modelled slippage), else the peak when no executable value is recorded
+(`flag_detail.green_basis`). Final = the record's `net_pnl`.
+
+| Flag | Definition | Unknown when | Tests |
+|---|---|---|---|
+| `never_green` | peak ≤ 0 (never above zero after fees) | no peak recorded | `test_failure_flags_green_red_giveback_never_green_both_sides` (O1) |
+| `green_to_red` | green value > 0 and final < 0 | no peak | same (O3) |
+| `gave_back_gt_50pct_mfe` | green value > 0 and (green value − final) > 0.5 × green value (exactly 50 % is not flagged) | no peak | same (O2) |
+| `dca_into_trend` | ≥ 1 `safety_order` fill whose regime snapshot (lot tf, last CLOSED candle known at the fill) is against the position: LONG: close < EMA200 **or** EMA20 < EMA50; SHORT mirrored. Pyramid / grid adds do not count. | an add has no usable snapshot (not recorded, stale > 2 bars, cutoff after the fill, indicators missing) and no add is against | `test_dca_into_trend_long_short_and_unknown_regime_is_not_flagged` (O5, O6, O16), `test_engine_records_the_entry_and_dca_add_regime_causally_and_flags_the_close` |
+| `long_in_bear_regime` / `short_in_bull_regime` | entry regime label `bear` for a LONG / `bull` for a SHORT. Label: `bear` = symbol close < EMA200 on the lot tf **and** BTCUSDT close < EMA200 on 4h (lot-tf BTC when 4h is not cached; `btc_basis` says which); `bull` mirrored; `mixed` when they differ (not flagged). | either snapshot not usable | `test_long_in_bear_and_short_in_bull_from_the_entry_regime` (O7) |
+| `missed_short_opportunity` (funnel, not a trade flag) | a candidate (slot, coin, candle) where the RAW short signal fired, or a SHORT candidate, and no short was taken: `side_masked` (slot sides hide shorts), `not_taken` (a SHORT stopped by a gate; its stage/code is kept), `long_preferred` (both raw sides fired, the long was taken / tried). Counted once per candle; the funnel event carries `missed_short_opportunity`. | — | `test_missed_short_definition`, `test_engine_counts_missed_shorts_once_per_candle_and_summarises_them` (O13) |
+
+### Regime snapshots: causal by construction
+
+`cycle()` calls `_audit_regime_cache(tf, frames)` right after `compute_signals`: for every frame it already holds (closed
+candles only, `candles()` drops the forming one) plus BTCUSDT 4h from the candle cache when present (no fetch), it stores the
+last row's close / EMA20 / EMA50 / EMA200 with `cutoff_t` = that candle's close. At entry (`_create_lot`, stored in
+`lot['ap']['ctx']['entry']`) and at an add fill (`_audit_fill`, `lot['ap']['ctx']['adds']`, ≤ 16) the engine only reads that
+dict; `regime_at()` returns status `ok` only when `cutoff_t ≤ decision_at` and the snapshot is ≤ 2 bars old, otherwise
+`unknown` with a reason. `ap` is excluded from the "audit never changes trading" lot comparisons, like before.
+Tests: `test_regime_snapshot_and_causal_lookup` (O4, O14), `test_trend_against_is_symmetric_and_never_guesses`,
+`test_engine_records_the_entry_and_dca_add_regime_causally_and_flags_the_close` (entry/add `info_cutoff ≤ decision_at`;
+`candles()` and `klines` patched to raise, so no fetch happens; O15),
+`test_engine_without_a_cached_snapshot_records_unknown_never_a_guess`.
+
+### Causal vs hindsight
+
+- **Causal** (`kind='causal_policy'`, `decision_at` + `info_cutoff`, withheld unless the cutoff is before the decision):
+  target, trailing, time cap, runner, breakeven_after_costs, regime_exit; regime snapshots (`causal_ok`, status).
+- **Hindsight** (describe the finished trade, never available live): `metrics` (labelled `hindsight`), the
+  `hindsight_ceiling` counterfactual, the failure flags that use the peak / final result (`never_green`, `green_to_red`,
+  `gave_back_gt_50pct_mfe`). `dca_into_trend` and the regime flags classify with causal snapshots but are assigned at the
+  close.
+- **Not implemented:** a hindsight N-bar outcome for missed shorts (no cheap causal-labelled source in the audit path;
+  the Missed signals view already shows the move since the signal). Counts only.
+
+### Limitations
+
+- Mark samples ~8 s: MFE/MAE/peak/executable values miss intrabar extremes (records say so).
+- `executable_mfe_usd` uses a modelled 2 bps slippage, not the fill telemetry's measured slippage.
+- Regime snapshots exist only for symbol/tf pairs a cycle computed; manual / grid lots on other pairs get `unknown`.
+  Missed-short counts are memory since engine start (bounded 600); `short_not_taken_in_missed_list` is from the persisted
+  missed list.
+- The regime exit needs a candle-close cycle; if the lot closes in that same cycle (exit signal) it is not evaluated.
+- Record size grew by ~2.8 KB (test bound 6000 → 9000 B); files stay byte-capped and the window slimmed (7.3 MB / 5000).
+
+### Evidence (on `t05a-v3` + owner-scope commits)
+
+- **Replay no-behaviour-change vs `65f0114`** (`v3_rc.py`, 6 modes × 2 seeds, `ex`/`ap` stripped): `engine_trades`,
+  `engine_curve`, `history`, `missed`, `metrics`, `bt_trades`, `bt_curve`, `matched`, `mismatch` are **identical** in all
+  12 runs (backtest code untouched).
+- **test_causality** (per case, 2 parallel): 6 × `test_engine_decisions_never_depend_on_unseen_prices`, 6 ×
+  `test_backtest_matches_causal_engine_trade_by_trade` and `test_parity_catches_same_candle_information`: all passed.
+- **Tests** (sandbox stand-in runner, per file): `test_trade_audit.py` 137 (114 + 23 new), `test_t05a_t05b_interaction.py`
+  2, `test_t05b_startup_outage.py` 13, `test_outage.py` 42, `test_outage_final.py` 8, `test_t03c_t05b_interaction.py` 3,
+  `test_safety.py` 78, `test_grid.py` 14, `test_leverage_auto.py` 185, `test_fills.py` 46, `test_v31_engine.py` 45,
+  `test_telegram.py` 23, `test_testnet_faults.py` 47, `test_lab.py` 27, `test_ci.py` 36, all passed; `test_verify.py` 16
+  passed, 1 failed (the env-only `test_summary_has_the_required_provenance_fields`, as on the base). The existing
+  no-I/O-in-the-mark-loop tests (`test_trending_mark_loop_saves_state_exactly_as_often…` = 49/50 pinned,
+  `test_mark_loop_opens_no_file_on_the_calling_thread`) and both "every audit function raises" equivalence tests pass
+  with the new hooks (the cycle one patches every `trade_audit` function, including the new ones).
+- **Mutations** (`t05a_add/mut.py`): **18/18 killed**. O1 never_green `<`, O2 give-back `>=`, O3 green_to_red without the
+  green check, O4 regime cutoff after the decision accepted, O5 trend-against needs both conditions, O6 unknown add regime
+  flagged, O7 bear label with OR, O8 BE arms and exits on the same observation, O9 regime trigger at the candle close
+  itself, O10 slippage improves the executable MFE, O11 metrics on the final average, O12 a zero-net trade counted as a win,
+  O13 / O13b / O13c missed-short counter (first reason overwritten / key without the candle / another candle's raw signal),
+  O14 stale snapshot accepted, O15 a fetch at entry instead of the cached snapshot, O16 pyramid adds counted as DCA.
+  O8, O12 and O13 survived the first run; `test_breakeven_never_arms_and_exits_on_the_same_observation`,
+  `test_segments_breakeven_trade_is_not_a_win` and `test_engine_missed_short_counter_keys_per_candle_and_keeps_the_first_reason`
+  were added and kill them.
+- **UI:** there is no screenshot/DOM baseline harness in the repo (panel tests are source/node-render checks), so the card
+  is additive inside a closed `<details>` on the Trades tab; it is its own commit and can be dropped (the API stays).
