@@ -42,3 +42,25 @@ preset re-runs are not yet trustworthy.
 
 The reproducer was executed in the official Windows build environment against exact head `30a68e1`; no installer,
 runtime, settings or order action occurred. Full gates were not started because this Critical result blocks acceptance.
+
+## Round 2 — accepted
+
+*2026-10-07 10:46 Africa/Cairo; corrected implementation `d5ba3dc4f39030a4c769ed44a5fb411fff0802d0`, integrated with current master at `f9323785bd4aca33bccdb0617e18ac8a1e4ac33a` before this review update.*
+
+**Code review clean.** The stop is now an adverse-leg event ordered with safety orders. A gap already through the stop
+fills at the open without adds; every safety order reached before a deeper stop fills first; an exact safety/stop tie uses
+the conservative add-then-stop result. Long, short, gap, tie, target-plus-stop, raised-stop and pyramid cases are covered.
+
+Independent Windows evidence:
+
+- the original deterministic fixture changed from `-0.209243R` to **`-1.038717R`**, including all three safety fills;
+- `tests/test_bt_intrabar_path.py`: **23 passed**;
+- `tests/test_causality.py` plus `tests/test_verify.py`: **30 passed** in 4m33s;
+- diff validation is clean, and the only master integration is the docs-only `CLAUDE.md` working agreement.
+
+The corrected preset results are materially worse and are now credible enough to guide later research: the current DCA
+profiles must remain labelled unverified and must not be promoted from these results. BT02 exchange-filter feasibility is
+the next realism ticket before COPY100/COPY200 calibration.
+
+Proceed with the exact-head `verify fast`, CodeQL and one labelled `verify full` gate. This ticket changes research and
+backtest behaviour only; it does not require an installer, runtime restart or exchange canary.
