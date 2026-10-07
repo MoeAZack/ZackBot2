@@ -31,9 +31,9 @@ in the order the market reaches them.
   therefore reachable only by later price moves.
 
 Unchanged conventions (kept on purpose, as they were conservative or not intrabar):
-- The stop as it stood at the open is checked first against the whole candle (gap at the open, then the adverse
-  extreme). A stop and a target that both existed at the open and are both inside the candle -> the stop, even on a red
-  long candle whose path reaches the target first.
+- ~~The stop as it stood at the open is checked first against the whole candle~~ - changed in Codex round 1 (see that
+  section): only a gap through the stop at the open is handled before the walk; the stop is an adverse-leg event, and
+  stop-first survives only as "a stop inside the candle beats any target in that candle" (adds still fire first).
 - Entries at the next open; trailing entries keep their own `c >= o` path rule (they fill mid-candle and are managed
   from the next candle, `skip_i`); signal / time exits at the close; the liquidation check at the adverse extremes.
 - A safety order or add refused by a gate (breaker, leverage cap, risk rules, halt) is not retried in the same candle.
@@ -142,6 +142,9 @@ but its return gap 3.16 pp failed the strict 3.0 pp gate; that version was not k
 
 ## Presets: old vs new backtester, same data
 
+> **Round 0 numbers (before Codex round 1).** Superseded: the full rerun with the round-1 code is in progress - see
+> "Codex round 1 -> Presets (rerun after the round-1 fix)". Kept below for reference only.
+
 Data: `data_long/` (core 8; 4h from 2021-12-19, 1h from 2022-08-26, to 2026-10-04), the jobs of `research_long.py` /
 `research_long2.py` (`research_long.sleeves(preset, tf)`, $500, 10x cap, warmup 220, funding per bar scaled to the
 timeframe). The 4h+1h profiles are the 50/50 side-by-side mix (`research_long.mixed`, daily curves, from 2022-09-04),
@@ -203,10 +206,92 @@ Where the difference comes from:
 | tests/test_causality.py | 13/13 (per-case driver) |
 | tests/test_leverage_auto.py, test_telegram.py, test_outage.py (engine.py touched) | 185 / 23 / 42 passed |
 
+## Codex round 1 (PR #16 at 30a68e1: CHANGES REQUESTED, P1)
+
+**Finding.** `run()` checked the stop as it stood at the open against the whole candle and exited before `walk_path()`.
+On a monotonic adverse leg the market meets every DCA safety level before the deeper basket stop: live adds exposure
+first, then the exchange stop closes the enlarged basket. Codex's fixture (long 100.02, safety 99.02 / 98.02 / 97.02,
+stop 95.02, red candle O100 H100.2 L94 C99): the branch booked -0.209 R (first unit only).
+
+**Fix (commit a1e7c82).**
+- Only a **gap through the stop at the open** is handled before the walk: filled at the open, no adds.
+- The stop (as of the open, or raised earlier in the candle) is an **adverse-leg event** queued with the safety orders in
+  price order: every safety order met before the stop fills, then the stop closes the enlarged basket. Codex's fixture
+  now books the 3 safety orders + stop: -1.039 R (short mirror -1.042 R; exact P&L asserted, incl. fees, slippage, funding). Symmetric for shorts.
+- **Exact tie** (safety level == stop): the safety order fills first, then the stop - the worse outcome for the account.
+- **Stop-first** is kept only for the ambiguous case it was meant for: when the open's stop is inside the candle's range,
+  no target exit (basket TP, tp1, ladder, tp_r) is taken in that candle, even where the path reaches the target first.
+  Adds are not suppressed: safety orders and pyramid adds still fire in path order before the stop.
+- **Pyramid analogue**: the same precheck suppressed a pyramid add made on the way up of a red candle that then fell to
+  the stop. Now: red candle -> add at the high, then the stop closes 1.5 units; green candle (low first) -> stopped
+  before the add.
+- **Trailing / breakeven stops set earlier in the candle vs adds**: a raised stop lying above the first safety order
+  (long) is met first on the way down -> closed, no safety order. `pessimistic=False` (old v2) keeps testing only the
+  open's stop inside the walk.
+
+**New tests** (`tests/test_bt_intrabar_path.py`, 23 tests now, ~14 s; also 23/23 under the CP1252 shim):
+`test_every_safety_order_on_the_way_down_fills_before_the_basket_stop_long` (Codex fixture), `..._up_..._short`,
+`test_gap_through_the_stop_fills_at_the_open_without_adds` (long + short), `test_safety_level_exactly_at_the_stop_fills_first_then_the_stop`,
+`test_target_and_stop_both_in_the_candle_the_stop_wins_after_the_adds`, `test_trailing_stop_raised_earlier_is_met_before_the_safety_orders_below_it`,
+`test_pyramid_add_before_the_stop_on_a_red_candle_and_not_on_a_green_one`, and the live engine replay
+`test_engine_and_backtest_agree_on_safety_orders_then_basket_stop_in_one_candle[long, short]` (one candle through every
+safety order and the stop, 40 steps per leg: engine 3 safety orders + exchange stop, backtester the same, |dR| <= 0.1).
+Against the round-0 code (b0a0e33) 8 of them fail (all but the gap case, which was already right).
+
+**Mutation check: 15/15 killed** (M1-M9 from round 0, M6 now "stop never checked on the adverse legs", plus):
+
+| Mutant | Failing tests |
+|---|---|
+| M10 whole-candle stop precheck restored | long/short basket-stop fixtures, tie, target+stop, trail vs safety orders, pyramid add before stop, engine-vs-bt [long, short] |
+| M11 tie: the stop first | tie |
+| M12 no stop-first for the ambiguous case | stop-before-target (round 0), target+stop |
+| M13 gap through the stop not handled at the open | gap |
+| M14 stop-first suppresses adds too | pyramid add before the stop |
+| M15 the stop tested is always the open's (raised stop ignored) | pyramid red-candle trail, DCA runner breakeven, zero-length leg, trail vs safety orders |
+
+**Causality**: 13/13 pass (per-case driver, 2 parallel). Parity metrics changed in one mode only:
+"breakout pyramid + trail" p95 abs(dR) 0.070 -> 0.054, return gap 0.42 -> 0.54 pp, DD gap 0.38 -> 0.40 pp (same 11/11
+matched trades); "DCA basket" and "trend long + pyramid" unchanged.
+
+**Strict replays** (24 steps, strict gate on; tolerances unchanged):
+
+| Replay | 874cfd8 / round 0 | round 1 (a1e7c82) | Gate (limit) | Strict |
+|---|---|---|---|---|
+| 1: MOM pyramid + DCA + Squeeze | matched 133/133, median 0.017, p95 0.118, return gap 2.81 pp, DD gap 0.03 pp | matched 133/133, median 0.015, p95 0.110, return gap 1.97 pp, DD gap 0.22 pp | 98 % / 0.05 / 0.25 / 3.0 / 2.0 | PASS |
+| 2: breakout + bear shorts + Donchian | matched 300/301, median 0.019, p95 0.096, return gap 2.17 pp, DD gap 0.97 pp | matched 300/301, median 0.019, p95 0.072, return gap 1.80 pp, DD gap 1.33 pp | same | PASS |
+
+Engine side unchanged (+54.9 % / -8.9 %); backtester +52.1 -> +53.0 % and -11.1 -> -7.1 %. Return gaps and p95 improve
+in both; DD gaps grow but stay inside the 2.0 pp gate (replay 2: 1.33 pp).
+
+**Core suites**: test_lab 27, test_v31_engine 45, test_grid 14, test_safety 78, test_fills 46, test_ci 36 passed;
+test_verify 16 passed + the known env-only `test_summary_has_the_required_provenance_fields`.
+
+### Presets (rerun after the round-1 fix)
+
+The round-0 table above is superseded. Full old (874cfd8 backtester) vs new (this branch, round-1 fix) rerun:
+
+| Preset | TF | Window | Final equity old -> new | PF old -> new | Max DD old -> new | Trades old -> new | Win % old -> new | 2022 old -> new | 2023 old -> new | 2024 old -> new | 2025 old -> new | 2026 old -> new |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| calm | 4h | 2022-01-25 to 2026-10-04 | $1,169 -> $1,141 | 2.21 -> 2.13 | -13.3% -> -13.3% | 595 -> 592 | 44.7 -> 44.1 | -7.1% -> -7.1% | 36.1% -> 36.2% | 31.6% -> 31.0% | 12.1% -> 11.0% | 25.3% -> 24.1% |
+| balanced | 4h | 2022-01-25 to 2026-10-04 | $3,593 -> $3,066 | 2.34 -> 2.09 | -33.6% -> -33.9% | 864 -> 820 | 55.8 -> 52.1 | -19.7% -> -20.1% | 91.4% -> 90.5% | 104.5% -> 98.7% | 33.0% -> 24.4% | 71.8% -> 63.0% |
+| aggressive | 4h | 2022-01-25 to 2026-10-04 | $6,916 -> $4,938 | 2.29 -> 1.96 | -45.2% -> -46.8% | 976 -> 927 | 60.2 -> 56.2 | -27.4% -> -29.4% | 128.9% -> 125.1% | 167.2% -> 147.6% | 51.5% -> 31.5% | 105.7% -> 90.8% |
+| boost | 4h | 2022-01-25 to 2026-10-04 | $9,274 -> $3,943 | 2.65 -> 1.79 | -41.0% -> -45.6% | 821 -> 765 | 77.3 -> 73.5 | -26.6% -> -29.7% | 226.3% -> 205.9% | 95.3% -> 53.8% | 59.7% -> 12.7% | 148.4% -> 111.6% |
+| active | 1h | 2022-09-04 to 2026-10-04 | $3,947 -> $1,294 | 1.18 -> 1.08 | -49.9% -> -61.4% | 4416 -> 4044 | 60.6 -> 55.7 | -24.6% -> -34.0% | 111.2% -> 53.3% | 88.8% -> 49.4% | 46.1% -> 15.9% | 79.7% -> 47.8% |
+| active_dca | 1h | 2022-09-04 to 2026-10-04 | $4,637 -> $210 | 1.75 -> 0.8 | -25.9% -> -67.6% | 2491 -> 2034 | 94.1 -> 89.9 | 21.7% -> -16.9% | 133.1% -> -3.6% | 94.0% -> -12.8% | 49.9% -> -16.4% | 12.4% -> -28.2% |
+| steady_mix | 4h half | 2022-01-25 to 2026-10-04 | $3,445 -> $2,868 | 2.57 -> 2.14 | -22.1% -> -23.1% | 773 -> 736 | 66.0 -> 62.4 | 1.0% -> 0.5% | 94.1% -> 92.3% | 109.9% -> 101.4% | 39.9% -> 29.5% | 19.7% -> 13.7% |
+| steady_mix | 1h half | 2022-09-04 to 2026-10-04 | $4,637 -> $210 | 1.75 -> 0.8 | -25.9% -> -67.6% | 2491 -> 2034 | 94.1 -> 89.9 | 21.7% -> -16.9% | 133.1% -> -3.6% | 94.0% -> -12.8% | 49.9% -> -16.4% | 12.4% -> -28.2% |
+| steady_mix | 4h+1h (50/50 mixed) | 2022-09-04 to 2026-10-04 | $4,015 -> $1,517 | 1.94 -> 1.56 | -14.7% -> -25.9% | 3264 -> 2770 | 87.5 -> 82.6 | 10.6% -> -8.9% | 115.5% -> 48.6% | 100.4% -> 67.6% | 45.6% -> 22.4% | 15.4% -> 9.3% |
+| boost_active | 4h half | 2022-01-25 to 2026-10-04 | $9,274 -> $3,943 | 2.65 -> 1.79 | -41.0% -> -45.6% | 821 -> 765 | 77.3 -> 73.5 | -26.6% -> -29.7% | 226.3% -> 205.9% | 95.3% -> 53.8% | 59.7% -> 12.7% | 148.4% -> 111.6% |
+| boost_active | 1h half | 2022-09-04 to 2026-10-04 | $3,947 -> $1,294 | 1.18 -> 1.08 | -49.9% -> -61.4% | 4416 -> 4044 | 60.6 -> 55.7 | -24.6% -> -34.0% | 111.2% -> 53.3% | 88.8% -> 49.4% | 46.1% -> 15.9% | 79.7% -> 47.8% |
+| boost_active | 4h+1h (50/50 mixed) | 2022-09-04 to 2026-10-04 | $8,112 -> $3,256 | 1.51 -> 1.3 | -32.5% -> -43.8% | 5237 -> 4809 | 63.2 -> 58.5 | -13.8% -> -20.6% | 176.2% -> 142.8% | 93.1% -> 52.6% | 55.3% -> 13.5% | 127.3% -> 94.9% |
+
+Rerun finished (background job, frozen copy of ffca8f0 vs the 874cfd8 backtester; data_long, core 8, research_long/long2 jobs). `original` (no DCA slot) is unchanged.
+
 ## For Codex to decide
 
 1. **Doji policy**: worst case per position side (favourable first). No measured preset impact; replay.py follows it.
-2. **Stop-first for levels that existed at the open** is kept, so the walk is not a pure path walk for those levels.
+2. **Stop-first** (round 1): kept only as "the open's stop inside the candle -> no target exit in that candle"; adds
+   and the stop itself follow the path. Exact tie safety level == stop: the safety order fills first.
 3. **Fresh-ATR trail timing**: kept as before (after the first leg). Ratcheting at the bare open would follow the engine
    but fails strict replay 2's return gap (3.16 > 3.0 pp) on a scenario without DCA; that is an engine/backtest timing
    gap that predates this ticket (the engine also needs a minimum step of 0.1 ATR before it moves a stop, the
