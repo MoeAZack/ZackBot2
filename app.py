@@ -61,6 +61,7 @@ import exchange_rules as XRULES  # noqa: E402
 from engine import RISK_RULE_DEFAULTS, GOV_MULT_MAX, EXCHANGE_DOWN   # noqa: E402
 from telegram_ctl import TelegramControl, clean_setting as tg_clean_setting   # noqa: E402
 import market_collector as MC     # noqa: E402
+import engine as ENG              # noqa: E402
 
 
 # ------------------------------------------------------------------ config (keys) - validated, atomically written, encrypted on Windows
@@ -531,6 +532,20 @@ def coin_icon(sym):
 
 
 # ------------------------------------------------------------------ app state
+def migrate_settings_secrets(cfg, data_dir=None):
+    """AUD-05 r2: v2 kept the Telegram token in settings.json. Move it into the encrypted config, then rewrite settings.json
+    and its .bak without it - before any Engine is created, so no engine save (init, pause, recovery) can persist it. If
+    the config cannot be written the token is still removed from settings (re-enter it in Settings) - never kept in clear."""
+    data_dir = data_dir or DATA
+    tok = ENG.migrate_legacy_secrets(data_dir)
+    if tok and set(tok) != {'•'} and not cfg.get('TELEGRAM_TOKEN'):
+        try:
+            write_cfg({'TELEGRAM_TOKEN': tok}); cfg['TELEGRAM_TOKEN'] = tok
+        except Exception as ex:
+            log.warning(f'Telegram token not migrated ({type(ex).__name__}) - re-enter it in Settings')
+    ENG.scrub_legacy_secrets(data_dir)
+
+
 class App:
     def __init__(self):
         self.engine = None
@@ -551,14 +566,8 @@ class App:
                 try: write_cfg({}); log.info('API keys are now stored encrypted (Windows DPAPI)')
                 except Exception as e: log.warning(f'could not encrypt stored keys: {e}')
             self.cfg = cfg
+            migrate_settings_secrets(cfg)                    # AUD-05 r2: BEFORE the engine exists (it never sees a secret)
             eng = Engine(cfg, DATA)
-            tok = eng.S.get('TELEGRAM_TOKEN', '')            # v2 kept the Telegram token in settings.json -> move to the encrypted config
-            if tok and set(tok) != {'•'}:
-                try:
-                    if not cfg.get('TELEGRAM_TOKEN'): write_cfg({'TELEGRAM_TOKEN': tok}); cfg['TELEGRAM_TOKEN'] = tok
-                    eng.S.pop('TELEGRAM_TOKEN', None); eng.save_settings()
-                except Exception as ex:
-                    log.warning(f'Telegram token not migrated ({ex}) - re-enter it in Settings')
             try:
                 eng.connect()
             except Exception as e:

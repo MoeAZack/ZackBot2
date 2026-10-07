@@ -320,7 +320,7 @@ for _p in PRESETS.values():
     if any(_s['key'] == 'dca_dip' for _s in _p['sleeves']): _p['bt']['unverified'] = UNVERIFIED_BT01
 del _p
 
-GLOBAL_DEFAULTS = dict(COMPOUND=False, CAP_SINCE='', CAP_ADJ=[], CAP_CYCLES=[], TELEGRAM_ON=False, TELEGRAM_TOKEN='', TELEGRAM_CHAT='', MAX_LEVERAGE=10, DAILY_LOSS_HALT=0.08, PEAK_DD_FLATTEN=0.0, CAPITAL_CAP=500.0,
+GLOBAL_DEFAULTS = dict(COMPOUND=False, CAP_SINCE='', CAP_ADJ=[], CAP_CYCLES=[], TELEGRAM_ON=False, TELEGRAM_CHAT='', MAX_LEVERAGE=10, DAILY_LOSS_HALT=0.08, PEAK_DD_FLATTEN=0.0, CAPITAL_CAP=500.0,
                        ENTRIES_PAUSED=False, AI_FILTER=False, PRESET='original',
                        UNIVERSE=list(TOP40), SYMBOLS_ON={}, RUN_IN_BACKGROUND=True,
                        MARKET_COLLECTOR=True,         # observe-only public market-data collector (market_collector.py); owner: collect now
@@ -407,13 +407,21 @@ def _fsync_dir(d):
         pass
 
 
-def _write_durable(path, data):
-    """AUD-05: write `data` to a temp file in the same folder, flush + fsync, then atomically replace `path`. A failure at any
-    point leaves the previous `path` exactly as it was (never a partially written target) and removes the temp file."""
+def _dump(obj, f, strict):
+    """strict (safety files): canonical - sorted keys, no NaN/Infinity, no silent coercion of unsupported values (a set,
+    a datetime, a numpy integer ... raises TypeError and nothing is written). Non-strict (aux / backtest files): as before."""
+    if strict: json.dump(obj, f, indent=2, sort_keys=True, allow_nan=False)
+    else: json.dump(obj, f, indent=2, default=str)
+
+
+def _write_durable(path, obj, strict=False):
+    """AUD-05: serialise `obj` into a temp file in the same folder, flush + fsync, then atomically replace `path`. A failure at
+    any point (unsupported value, disk full, a held file) leaves the previous `path` exactly as it was (never a partially
+    written target) and removes the temp file."""
     tmp = f'{path}.{os.getpid()}-{threading.get_ident()}.tmp'
     try:
         with open(tmp, 'w', encoding='utf-8', newline='') as f:
-            f.write(data); f.flush(); os.fsync(f.fileno())
+            _dump(obj, f, strict); f.flush(); os.fsync(f.fileno())
         _replace_retry(tmp, path)
     except BaseException:
         try: os.remove(tmp)
@@ -448,13 +456,21 @@ def read_json_retry(path, kind=None):
             _sleep(d)
 
 
-def save_json(path, obj, backup=False):
-    """Durable JSON write (AUD-05): serialised first (a bad object never touches the disk), temp file + fsync + atomic
-    replace. backup=True first keeps the previous file as `<path>.bak` (also durable) - only when that previous file is
-    itself good JSON of the same top-level type, so a damaged file never replaces a good backup. AUD-05 r1: a previous
-    file that is damaged at save time is moved aside as evidence first (never silently overwritten); its evidence path is
-    returned (else None). If it cannot be moved aside nothing is written and OSError is raised."""
-    data = json.dumps(obj, indent=2, default=str)
+SECRET_SETTING_KEYS = ('TELEGRAM_TOKEN',)        # AUD-05 r2: secrets live only in the encrypted config, never in settings
+
+
+def scrub_secrets(doc):
+    """A copy of a settings-like dict without secret keys (anything else is returned unchanged)."""
+    return {k: v for k, v in doc.items() if k not in SECRET_SETTING_KEYS} if isinstance(doc, dict) else doc
+
+
+def save_json(path, obj, backup=False, strict=False):
+    """Durable JSON write (AUD-05): temp file + fsync + atomic replace (a bad object or a failed write never touches the
+    target). strict=True: canonical serialisation (sorted keys, no NaN, no coercion). backup=True first keeps the previous
+    file as `<path>.bak` (also durable, secrets scrubbed) - only when that previous file is itself good JSON of the same
+    top-level type, so a damaged file never replaces a good backup. A previous file that is damaged at save time is moved
+    aside as evidence first (never silently overwritten); its evidence path is returned (else None). If it cannot be moved
+    aside nothing is written and OSError is raised."""
     evidence = None
     if backup and os.path.exists(path):
         try: prev = read_json(path, type(obj))
@@ -463,10 +479,230 @@ def save_json(path, obj, backup=False):
             if not evidence: raise OSError(f'{os.path.basename(path)} is damaged and could not be moved aside - not saved over')
         except OSError: prev = None
         if prev is not None:
-            try: _write_durable(path + '.bak', json.dumps(prev, indent=2, default=str))
-            except OSError as ex: log.warning(f'{os.path.basename(path)}.bak not written ({type(ex).__name__}: {ex}) - main file still saved')
-    _write_durable(path, data)
+            try: _write_durable(path + '.bak', scrub_secrets(prev), strict)
+            except (OSError, TypeError, ValueError) as ex:
+                log.warning(f'{os.path.basename(path)}.bak not written ({type(ex).__name__}: {ex}) - main file still saved')
+    _write_durable(path, obj, strict)
     return evidence
+
+
+# ------------------------------------------------------------------ AUD-05 r2: versioned schemas (validated before use)
+STATE_SCHEMA = 1           # state.json: v0 = unversioned (before AUD-05 r2) -> migrated by adding the version
+SETTINGS_SCHEMA = 1        # settings.json: same; v0 legacy secrets are dropped by the migration
+INSTALL_SCHEMA = 1
+SIDES = ('LONG', 'SHORT')
+_SYM_RE = re.compile(r'[A-Z0-9]{2,30}')
+_TAG_RE = re.compile(r'(o|a|c|ac):[A-Za-z0-9_.\-]{1,80}')
+_CID_RE = re.compile(r'[A-Za-z0-9_.\-]{1,36}')
+PENDING_KINDS = ('add', 'close')
+RESTING_STATUS = ('between', 'open', 'cancelling')
+
+
+class SchemaError(CorruptFile):
+    """AUD-05 r2: syntactically valid JSON that breaks the schema (types, finite numbers, enums, ids, ownership records).
+    Handled exactly like a damaged file: moved aside, older backup or fail closed."""
+
+
+def _bad(where, what):
+    raise SchemaError(f'{where}: {what}')
+
+
+def _num(v, where, lo=None, hi=None, opt=False, gt=None):
+    if v is None and opt: return
+    if isinstance(v, bool) or not isinstance(v, (int, float)): _bad(where, f'not a number ({type(v).__name__})')
+    if not math.isfinite(v): _bad(where, 'not finite')
+    if lo is not None and v < lo: _bad(where, f'below {lo}')
+    if hi is not None and v > hi: _bad(where, f'above {hi}')
+    if gt is not None and not v > gt: _bad(where, f'must be > {gt}')
+
+
+def _int(v, where, lo=0, opt=False):
+    if v is None and opt: return
+    if isinstance(v, bool) or not isinstance(v, int) or v < lo: _bad(where, f'not an integer >= {lo}')
+
+
+def _str(v, where, rx=None, opt=False, choices=None):
+    if v is None and opt: return
+    if not isinstance(v, str): _bad(where, f'not a string ({type(v).__name__})')
+    if choices is not None and v not in choices: _bad(where, f'{v[:20]!r} not one of {choices}')
+    if rx is not None and not rx.fullmatch(v): _bad(where, f'{v[:30]!r} has the wrong format')
+
+
+def _dict(v, where, opt=False):
+    if v is None and opt: return {}
+    if not isinstance(v, dict): _bad(where, f'not an object ({type(v).__name__})')
+    return v
+
+
+def _bool(v, where, opt=False):
+    if v is None and opt: return
+    if not isinstance(v, bool): _bad(where, 'not true/false')
+
+
+def _version(doc, cur, name):
+    v = doc.get('schema_version', 0)
+    if isinstance(v, bool) or not isinstance(v, int) or v < 0: _bad(f'{name}.schema_version', 'not a version number')
+    if v > cur: _bad(f'{name}.schema_version', f'{v} is newer than this build understands ({cur})')
+    return v
+
+
+def migrate_state(doc):
+    """Explicit migrations of state.json (in place). v0 -> v1: the version field is added; the content is unchanged."""
+    if _version(doc, STATE_SCHEMA, 'state') < 1: doc['schema_version'] = 1
+    return doc
+
+
+def migrate_settings(doc):
+    """Explicit migrations of settings.json (in place). v0 -> v1: the version is added and a legacy plain-text Telegram
+    token is dropped (app.migrate_legacy_secrets moved it into the encrypted config before the engine starts)."""
+    if _version(doc, SETTINGS_SCHEMA, 'settings') < 1: doc['schema_version'] = 1
+    for k in SECRET_SETTING_KEYS: doc.pop(k, None)
+    return doc
+
+
+def _validate_lot(k, l):
+    w = f'lots[{k[:40]}]'
+    _dict(l, w)
+    _str(l.get('symbol'), w + '.symbol', _SYM_RE); _str(l.get('side'), w + '.side', choices=SIDES)
+    _str(l.get('sleeve'), w + '.sleeve')
+    _num(l.get('qty'), w + '.qty', lo=0); _num(l.get('avg'), w + '.avg', gt=0); _num(l.get('stop'), w + '.stop', gt=0)
+    _str(l.get('stop_id'), w + '.stop_id', _TAG_RE, opt=True)
+    _bool(l.get('stop_dirty'), w + '.stop_dirty', opt=True)
+    _int(l.get('stop_miss'), w + '.stop_miss', opt=True)
+    _num(l.get('stop_miss_t'), w + '.stop_miss_t', opt=True)
+    _str(l.get('stop_miss_why'), w + '.stop_miss_why', opt=True, choices=STOP_MISS_ORDER)
+    _str(l.get('stop_foreign'), w + '.stop_foreign', _TAG_RE, opt=True)
+    _num(l.get('stop_confirmed_t'), w + '.stop_confirmed_t', opt=True)
+    _bool(l.get('restored_from_bak'), w + '.restored_from_bak', opt=True)
+    pd_ = l.get('pending')
+    if pd_ is not None:
+        _dict(pd_, w + '.pending')
+        _str(pd_.get('kind'), w + '.pending.kind', choices=PENDING_KINDS)
+        _num(pd_.get('qty'), w + '.pending.qty', lo=0); _num(pd_.get('t'), w + '.pending.t', lo=0)
+        _num(pd_.get('px'), w + '.pending.px', opt=True)
+        _str(pd_.get('cid'), w + '.pending.cid', _CID_RE, opt=True)
+        _dict(pd_.get('post'), w + '.pending.post', opt=True)
+    _dict(l.get('mgmt'), w + '.mgmt', opt=True)
+
+
+def _validate_ue(k, u):
+    w = f'unconfirmed_entries[{k[:40]}]'
+    _dict(u, w)
+    _str(u.get('symbol'), w + '.symbol', _SYM_RE); _str(u.get('side'), w + '.side', choices=SIDES)
+    _str(u.get('cid'), w + '.cid', _CID_RE, opt=True)
+    _num(u.get('qty'), w + '.qty', gt=0); _num(u.get('t'), w + '.t', lo=0)
+    _str(u.get('prov'), w + '.prov', _TAG_RE, opt=True); _num(u.get('prov_qty'), w + '.prov_qty', lo=0, opt=True)
+    _num(u.get('prov_stop'), w + '.prov_stop', gt=0, opt=True); _num(u.get('seen_qty'), w + '.seen_qty', lo=0, opt=True)
+    pp = u.get('prov_pending')
+    if pp is not None:
+        _dict(pp, w + '.prov_pending')
+        _str(pp.get('tag'), w + '.prov_pending.tag', _TAG_RE); _str(pp.get('alt'), w + '.prov_pending.alt', _TAG_RE, opt=True)
+        _num(pp.get('qty'), w + '.prov_pending.qty', gt=0); _num(pp.get('stop'), w + '.prov_pending.stop', gt=0)
+        _num(pp.get('t'), w + '.prov_pending.t', lo=0)
+    plan = _dict(u.get('plan'), w + '.plan')
+    _num(plan.get('px'), w + '.plan.px', gt=0); _num(plan.get('stop_dist'), w + '.plan.stop_dist', gt=0)
+
+
+def _validate_resting(k, r_):
+    w = f'resting_entries[{k[:40]}]'
+    _dict(r_, w)
+    _str(r_.get('symbol'), w + '.symbol', _SYM_RE); _str(r_.get('side'), w + '.side', choices=SIDES)
+    _num(r_.get('qty'), w + '.qty', gt=0); _num(r_.get('filled'), w + '.filled', lo=0); _num(r_.get('cost'), w + '.cost', lo=0)
+    _int(r_.get('n'), w + '.n'); _str(r_.get('status'), w + '.status', choices=RESTING_STATUS)
+    _str(r_.get('cid'), w + '.cid', _CID_RE, opt=True)
+    if r_.get('status') in ('open', 'cancelling') and not r_.get('cid'): _bad(w + '.cid', 'a working order needs its client id')
+    _dict(r_.get('plan'), w + '.plan')
+
+
+def _validate_trail(k, p):
+    w = f'pending_entries[{k[:40]}]'
+    _dict(p, w)
+    _str(p.get('symbol'), w + '.symbol', _SYM_RE); _str(p.get('side'), w + '.side', choices=SIDES)
+    _str(p.get('sleeve'), w + '.sleeve')
+    for f in ('ext', 'atr', 'dev', 'until'): _num(p.get(f), f'{w}.{f}')
+
+
+def validate_state(doc):
+    """AUD-05 r2: every AUD-00..04 ownership record of state.json, before it is used. Raises SchemaError."""
+    if _version(doc, STATE_SCHEMA, 'state') != STATE_SCHEMA: _bad('state.schema_version', 'not migrated')
+    for k, l in _dict(doc.get('lots'), 'lots', opt=True).items(): _validate_lot(k, l)
+    for k, u in _dict(doc.get('unconfirmed_entries'), 'unconfirmed_entries', opt=True).items(): _validate_ue(k, u)
+    for k, r_ in _dict(doc.get('resting_entries'), 'resting_entries', opt=True).items(): _validate_resting(k, r_)
+    for k, p_ in _dict(doc.get('pending_entries'), 'pending_entries', opt=True).items(): _validate_trail(k, p_)
+    orph = doc.get('orphans') or []
+    if not isinstance(orph, list): _bad('orphans', 'not a list')
+    for i, o in enumerate(orph):
+        if not (isinstance(o, list) and len(o) == 2): _bad(f'orphans[{i}]', 'not a [symbol, tag] pair')
+        _str(o[0], f'orphans[{i}].symbol', _SYM_RE); _str(o[1], f'orphans[{i}].tag', _TAG_RE)
+    for f in ('short_seen', 'over_seen'):
+        for k, n in _dict(doc.get(f), f, opt=True).items(): _int(n, f'{f}[{k[:40]}]')
+    _bool(doc.get('halted'), 'halted', opt=True)
+    for f in ('day_start_equity', 'peak_equity'): _num(doc.get(f), f, opt=True)
+    _str(doc.get('day'), 'day', opt=True)
+    _dict(doc.get('grids'), 'grids', opt=True)
+    return doc
+
+
+_SETTING_NUM = dict(MAX_LEVERAGE=(1, 125), DAILY_LOSS_HALT=(0.0, 1.0), PEAK_DD_FLATTEN=(0.0, 1.0), CAPITAL_CAP=(0.0, 1e12),
+                    MAKER_REPRICE=(0, 10), MAKER_WAIT_S=(0, 3600), FEE_MAKER=(-0.01, 0.01))
+_SETTING_BOOL = ('ENTRIES_PAUSED', 'COMPOUND', 'TELEGRAM_ON', 'AI_FILTER', 'MAKER_FALLBACK', 'RUN_IN_BACKGROUND')
+
+
+def validate_settings(doc):
+    """AUD-05 r2: the safety-relevant settings, before use (cosmetic / optional switches keep their lenient fallbacks in
+    load_settings). Raises SchemaError."""
+    if _version(doc, SETTINGS_SCHEMA, 'settings') != SETTINGS_SCHEMA: _bad('settings.schema_version', 'not migrated')
+    for k in SECRET_SETTING_KEYS:
+        if k in doc: _bad(k, 'a secret must not be stored in settings')
+    for k, (lo, hi) in _SETTING_NUM.items():
+        if k in doc: _num(doc[k], k, lo, hi)
+    for k in _SETTING_BOOL:
+        if k in doc: _bool(doc[k], k)
+    if 'ENTRY_ORDER' in doc: _str(doc['ENTRY_ORDER'], 'ENTRY_ORDER', choices=('market', 'maker'))
+    if 'UNIVERSE' in doc:
+        if not isinstance(doc['UNIVERSE'], list): _bad('UNIVERSE', 'not a list')
+        for i, x in enumerate(doc['UNIVERSE']): _str(x, f'UNIVERSE[{i}]', _SYM_RE)
+    for k, v in _dict(doc.get('SYMBOLS_ON'), 'SYMBOLS_ON', opt=True).items(): _bool(v, f'SYMBOLS_ON[{k[:30]}]')
+    if 'SLEEVES' in doc:
+        if not isinstance(doc['SLEEVES'], list): _bad('SLEEVES', 'not a list')
+        for i, sl in enumerate(doc['SLEEVES']):
+            w = f'SLEEVES[{i}]'; _dict(sl, w)
+            _str(sl.get('id'), w + '.id'); _str(sl.get('key'), w + '.key')
+            _num(sl.get('share'), w + '.share', 0.0, 1.0); _num(sl.get('risk'), w + '.risk', 0.0, 1.0)
+    if 'GRID_SLOTS' in doc and not isinstance(doc['GRID_SLOTS'], list): _bad('GRID_SLOTS', 'not a list')
+    return doc
+
+
+def account_fingerprint(cfg, base):
+    """Non-secret account identity for install.json: mode, exchange URL and a short one-way hash of the API key."""
+    key = str((cfg or {}).get('API_KEY') or '')
+    import hashlib
+    return dict(mode='live' if (cfg or {}).get('MODE') == 'live' else 'paper', base=str(base or ''),
+                key=hashlib.sha256(key.encode()).hexdigest()[:16] if key else '')
+
+
+def migrate_legacy_secrets(data_dir):
+    """AUD-05 r2: a v2 settings.json (and its .bak) may hold the Telegram token in plain text. Returns that token (or '')
+    and rewrites both files without it - called by the app BEFORE the engine is created, after the token was stored in
+    the encrypted config. Never raises; a file that cannot be parsed is left untouched (it is evidence)."""
+    found = ''
+    for p in (os.path.join(data_dir, 'settings.json'), os.path.join(data_dir, 'settings.json.bak')):
+        try: doc = read_json(p, dict) if os.path.exists(p) else None
+        except (CorruptFile, OSError): doc = None
+        if not doc: continue
+        tok = next((doc.get(k) for k in SECRET_SETTING_KEYS if doc.get(k)), '')
+        if any(k in doc for k in SECRET_SETTING_KEYS): found = found or str(tok or '')
+    return found
+
+
+def scrub_legacy_secrets(data_dir):
+    """Rewrite settings.json / .bak without secret keys (after migrate_legacy_secrets' token reached the encrypted config)."""
+    for p in (os.path.join(data_dir, 'settings.json'), os.path.join(data_dir, 'settings.json.bak')):
+        try: doc = read_json(p, dict) if os.path.exists(p) else None
+        except (CorruptFile, OSError): doc = None
+        if doc and any(k in doc for k in SECRET_SETTING_KEYS):
+            try: _write_durable(p, scrub_secrets(doc))
+            except Exception as ex: log.warning(f'{os.path.basename(p)}: legacy secret not removed ({type(ex).__name__})')
 
 
 def corrupt_siblings(path):
@@ -566,6 +802,7 @@ class Engine:
         if _ro: log.warning(f'TESTNET FAULT INJECTION active: non-critical status reads under {_ro[1]} answer HTTP 503 for {_ro[0]} s '
                             f'from the first one (orders and critical reads unaffected) (ZB_TESTNET_FAULTS)')
         self._boot_incidents = []                 # AUD-05: load problems found before self.health exists (reported after)
+        self.state_untrusted = {}                 # AUD-05 r2: name -> why a safety file could not be saved (blocks new risk)
         self._save_hold = {}                      # AUD-05: name -> why its file is never saved over ('unmovable' / 'unreadable')
         self.integrity = {}                       # AUD-05: name -> what happened to a damaged safety file at start-up
         self.load_settings()
@@ -578,12 +815,15 @@ class Engine:
         self.state = dict(lots={}, day=None, day_start_equity=None, halted=False, peak_equity=None, last_cycle={})
         # AUD-05: corrupt -> .bak (an OLDER copy); no good copy -> empty. Either way entries are paused, and the pause is
         # made durable BEFORE the damaged file is moved aside (a crash in between can never come back unpaused)
-        st, status = self._load_safe('state', dict, before_aside=self._pause_or_raise)
+        self.F['install'] = os.path.join(data_dir, 'install.json')
+        installed = self._install_read()          # AUD-05 r2: an initialized install with no state is NOT a first run
+        st, status = self._load_safe('state', dict, before_aside=self._pause_or_raise, initialized=installed)
         if st: self.state.update(st)
         if status == 'restored':
             for l in (self.state.get('lots') or {}).values():
                 l['restored_from_bak'] = True     # reconcile books nothing for it while entries stay paused (owner review)
         if status != 'ok': self._persist_pause()
+        self._install_write(installed)
         self.state.setdefault('orphans', []); self.state.setdefault('last_cycle', {})
         self.state.setdefault('pending_entries', {}); self.state.setdefault('resting_entries', {})
         self.state.setdefault('unconfirmed_entries', {})           # AUD-03b: entries whose order answer was lost
@@ -670,7 +910,53 @@ class Engine:
             self._integrity_alert('integrity|pause', f'entries paused in memory but the pause could not be saved '
                                                      f'({type(ex).__name__}: {str(ex)[:100]}) - check the data folder')
 
-    def _load_safe(self, name, kind, before_aside=None):
+    def _install_read(self):
+        """AUD-05 r2: install.json marks a data folder that has already been initialized (written once, at the first start).
+        Returns the marker dict, True when it exists but is damaged (treated as initialized: fail closed), or None."""
+        p = self.F['install']
+        if not os.path.exists(p): return None
+        try:
+            doc = read_json_retry(p, dict)
+            _int(doc.get('schema_version'), 'install.schema_version', lo=1)
+            return doc
+        except Exception as ex:
+            self._integrity_alert('integrity|install', f'install.json unreadable ({str(ex)[:80]}) - treated as an initialized '
+                                                       'installation; rewritten')
+            quarantine(p)
+            return True
+
+    def _install_write(self, installed):
+        """Write install.json at the first start (or rewrite a damaged one); a different account than recorded is reported
+        and pauses entries when the bot holds any record of trades."""
+        fp = account_fingerprint(self.cfg, getattr(self.trade, 'base', None))
+        if isinstance(installed, dict):
+            if installed.get('account') == fp: return
+            busy = self.state.get('lots') or self.state.get('unconfirmed_entries') or self.state.get('resting_entries')
+            self._integrity_alert('integrity|install-account', 'this data folder was initialized for a different account / mode'
+                                  + (' and holds open trade records - ENTRIES PAUSED; check before resuming' if busy else
+                                     ' - recorded the current account'))
+            if busy: self._persist_pause(); return
+        if installed is None and not os.path.exists(self.F['state']) and not self.save_state():
+            return                                # first run: the empty state must exist on disk before the marker does
+        doc = dict(schema_version=INSTALL_SCHEMA, created=(installed or {}).get('created') if isinstance(installed, dict) else None,
+                   account=fp)
+        doc['created'] = doc['created'] or now_utc().isoformat(timespec='seconds')
+        try: save_json(self.F['install'], doc, strict=True)
+        except Exception as ex: self._integrity_alert('integrity|install', f'install.json not written ({type(ex).__name__})')
+
+    @staticmethod
+    def _prepare(name, doc):
+        """Migrate then validate a loaded settings / state document (SchemaError = handled like a damaged file)."""
+        if name == 'state': return validate_state(migrate_state(doc))
+        if name == 'settings': return validate_settings(migrate_settings(doc))
+        return doc
+
+    @staticmethod
+    def _read_valid(path, name, kind):
+        doc = read_json_retry(path, kind)
+        return Engine._prepare(name, doc) if name in ('state', 'settings') else doc
+
+    def _load_safe(self, name, kind, before_aside=None, initialized=None):
         """AUD-05: load a safety-relevant file (settings / state). Returns (obj | None, status):
         - 'ok': good file, or a true first run (no file, no backup, no earlier evidence)
         - 'restored': the file was damaged (or missing while a backup exists) -> the OLDER <name>.bak is returned; the
@@ -685,12 +971,17 @@ class Engine:
         if not os.path.exists(path):
             ev = corrupt_siblings(path)
             if not os.path.exists(bak):
-                if not ev: return None, 'ok'
-                return self._load_failed(name, f'missing while the damaged copy {ev[-1]} exists (an earlier recovery did '
-                                               'not finish)', 'no backup', f'damaged copy kept as {ev[-1]}', None)
+                if ev:
+                    return self._load_failed(name, f'missing while the damaged copy {ev[-1]} exists (an earlier recovery did '
+                                                   'not finish)', 'no backup', f'damaged copy kept as {ev[-1]}', None)
+                if initialized:                       # AUD-05 r2: deleted / lost on an initialized install: NOT a first run
+                    return self._load_failed(name, 'missing on an already initialized installation (install.json)', 'no backup',
+                                             'resume entries once the account on Binance has been checked', None)
+                return None, 'ok'
             why = 'missing while its backup exists'
         else:
-            try: return read_json_retry(path, kind), 'ok'
+            try: return Engine._read_valid(path, name, kind), 'ok'
+            except SchemaError as ex: why = f'invalid: {str(ex)[:120]}'
             except CorruptFile as ex: why = f'damaged: {str(ex)[:100]}'
             except OSError as ex:
                 hold[name] = 'unreadable'
@@ -712,7 +1003,7 @@ class Engine:
                 'damaged file could NOT be moved aside - it is left in place and never saved over' if hold.get(name)
                 else 'no damaged file to keep')
         try:
-            obj, bwhy = read_json_retry(bak, kind), ''
+            obj, bwhy = Engine._read_valid(bak, name, kind), ''
         except Exception as ex:
             obj, bwhy = None, ('no backup' if not os.path.exists(bak) else f'backup unreadable too ({str(ex)[:60]})')
         if obj is not None:
@@ -756,11 +1047,60 @@ class Engine:
                 except Exception: pass
             if strict: raise OSError(msg)
             return False
-        ev = save_json(path, obj, backup=True)
+        if name in ('state', 'settings'):
+            obj = dict(obj, schema_version=STATE_SCHEMA if name == 'state' else SETTINGS_SCHEMA)
+            if name == 'settings': obj = scrub_secrets(obj)
+        try:
+            ev = save_json(path, obj, backup=True, strict=True)
+        except Exception as ex:                 # AUD-05 r2: disk full, a held/locked file, an unsupported value ...
+            self._persist_fault(name, ex)
+            if strict: raise
+            return False
         if ev:
             self._integrity_alert(f'integrity|{name}|save', f'{fn} was found damaged on disk at save time - kept as '
                                                              f'{os.path.basename(ev)} and replaced by the current in-memory copy')
+        unt = vars(self).setdefault('state_untrusted', {})
+        if name in unt:                           # cleared only by a successful save of the WHOLE document
+            unt.pop(name, None)
+            if hasattr(self, 'health'):
+                self.resolve(f'persist|{name}', f'{fn} saved again - new risk allowed once entries are resumed')
         return True
+
+    def _persist_fault(self, name, ex):
+        """AUD-05 r2: a safety file could not be written. Latch `state_untrusted` (blocks every risk-adding path: entries,
+        adds, grid starts/adds, maker placements), pause entries (persisted when settings.json can still be written), alert
+        once. Stops, closes, reconcile and the verifier keep running."""
+        unt = vars(self).setdefault('state_untrusted', {})
+        first = name not in unt
+        why = f'{type(ex).__name__}: {str(ex)[:120]}'
+        unt[name] = dict(why=why, t=time.time())
+        S_ = getattr(self, 'S', None)
+        if isinstance(S_, dict) and not S_.get('ENTRIES_PAUSED'):
+            S_['ENTRIES_PAUSED'] = True
+            if name != 'settings':
+                try: self._save_safe('settings', self._settings_on_disk(S_))
+                except Exception: pass
+        msg = (f'{os.path.basename(self.F[name])} could not be saved ({why}) - NO new risk (entries, adds, grids, maker orders) '
+               'until it saves again; stops, closes and reconcile keep running; entries paused')
+        if first: self._integrity_alert(f'persist|{name}', msg)
+        elif hasattr(self, 'health'): self.err(msg, key=f'persist|{name}')
+
+    def persist_block(self):
+        """AUD-05 r2: reason no new risk may be added while a safety file cannot be saved (None = fine)."""
+        unt = getattr(self, 'state_untrusted', None)
+        if unt: return f"data file not saved ({', '.join(sorted(unt))}.json) - no new risk until it saves again"
+        return None
+
+    def _send(self, fn, *a, **cids):
+        """Call an exchange order function with explicit client ids when it accepts them (test fakes may not)."""
+        import binance_client as _BC
+        if not isinstance(getattr(fn, '__self__', None), _BC.Futures):   # the real client always takes them; a test fake
+            try:                                                           # only when it declares them explicitly
+                prm = inspect.signature(fn).parameters
+                cids = {k: v for k, v in cids.items() if k in prm and prm[k].kind != prm[k].VAR_KEYWORD}
+            except (TypeError, ValueError):
+                cids = {}
+        return fn(*a, **cids)
 
     # ------------------------------------------------------------ notifications (Telegram, optional)
     def notify(self, text):
@@ -782,6 +1122,8 @@ class Engine:
         #   way ENTRIES PAUSED (called unbound: the offline UI harness loads settings on a bare namespace)
         if got: s.update(got)
         if status != 'ok': s['ENTRIES_PAUSED'] = True
+        s.pop('schema_version', None)
+        for k in SECRET_SETTING_KEYS: s.pop(k, None)              # AUD-05 r2: never in S (the app migrated it to the config)
         if 'SLEEVES' not in s:
             s['SLEEVES'] = copy.deepcopy(PRESETS[s.get('PRESET', 'original')]['sleeves'])
         for k in ('RISK_PER_TRADE', 'MAX_POSITIONS_PER_SLEEVE', 'STOP_ATR', 'SPLIT_ST', 'SLEEVE_ST', 'SLEEVE_TSM'):
@@ -802,7 +1144,7 @@ class Engine:
             if out[k]['mode'] not in ('off', 'warn', 'enforce'): out[k]['mode'] = 'warn'
         return out
 
-    SETTINGS_SECRET_KEYS = ('TELEGRAM_TOKEN',)            # live only in the encrypted config (app.write_cfg), never settings.json
+    SETTINGS_SECRET_KEYS = SECRET_SETTING_KEYS            # live only in the encrypted config (app.write_cfg), never settings.json
 
     @classmethod
     def _settings_on_disk(cls, s):
@@ -1172,6 +1514,11 @@ class Engine:
 
     def save_state(self):
         return self._save_safe('state', self.state)
+
+    def _save_wal(self):
+        """AUD-05 r2 write-ahead save (before a risk-adding order is sent): raises when the state is not durable - the caller
+        must not send."""
+        return self._save_safe('state', self.state, strict=True)
 
     # ------------------------------------------------------------ T05: fill telemetry (observe only)
     # One record per fill the bot itself sends: expected vs actual price, slippage in bps (+ = worse for us), requested
@@ -1785,6 +2132,7 @@ class Engine:
         """Record a signal that was not taken (kind None) or a risk-rule warning on a trade that WAS taken (kind 'warning')."""
         k = (sl['id'], sym, sg['time'], kind)
         if any((m['sleeve'], m['symbol'], m['candle'], m.get('kind')) == k for m in self.missed[-200:]): return
+        reason = scrub(str(reason))                               # AUD-05 r2: exchange error texts can carry signed URLs
         rec = dict(candle=sg['time'], logged=now_utc().isoformat(timespec='seconds'), sleeve=sl['id'], strategy=sl.get('name', sl['id']),
                    symbol=sym, side=side, price=sg['close'], reason=reason)
         if kind: rec['kind'] = kind
@@ -1804,12 +2152,27 @@ class Engine:
         if not d['ok']: return False
         q = d['qty']
         if not self.dry:
+            pb = self.persist_block()
+            if pb: raise RuntimeError(f"{lot['symbol']} {why} not sent: {pb}")
+            # AUD-05 r2 write-ahead: the add is recorded durably as this lot's pending order (with its client id) BEFORE it
+            # is sent; a crash / lost answer after the send is settled from its order record (_resolve_pending)
+            cid = new_cid()
+            lot['pending'] = dict(kind='add', qty=q, px=px, why=why, post=post or {}, t=time.time(), cid=cid)
+            try:
+                self._save_wal()
+            except Exception as ex:
+                lot.pop('pending', None)
+                raise RuntimeError(f"{lot['symbol']} {why} not sent - its write-ahead record could not be saved "
+                                   f"({type(ex).__name__})") from None
             lot['last_order_t'] = t0 = time.time()
             try:
-                o = self.trade.open(lot['symbol'], lot['side'], self._fmt(q, r['step']))
+                o = self._send(self.trade.open, lot['symbol'], lot['side'], self._fmt(q, r['step']), cid=cid)
             except AmbiguousOrder as e:
-                lot['pending'] = dict(kind='add', qty=q, px=px, why=why, post=post or {}, t=time.time(), cid=_cid_of(e.tag))
+                lot['pending'] = dict(kind='add', qty=q, px=px, why=why, post=post or {}, t=time.time(), cid=_cid_of(e.tag) or cid)
                 self.save_state(); self.err(f"{lot['symbol']} {why} unconfirmed ({e}) - waiting for Binance position to confirm"); raise
+            except Exception:
+                lot.pop('pending', None); self.save_state(); raise          # refused by Binance: nothing executed
+            lot.pop('pending', None)
             got = self._exec_of(o, q, r['step'])                          # AUD-03: book what Binance executed
             if got is None: self._unknown_answer(lot, 'add', q, px, why, post, o)
             if got <= 0:
@@ -2442,6 +2805,8 @@ class Engine:
         the slot's leverage cap (on the share recorded when the lot opened - a removed/replaced slot gets no more adds;
         its stop and exits keep running) and the portfolio risk rules (coin cap, open risk, funding)."""
         st, Sg = self.state, self.S
+        pb = self.persist_block()                                 # AUD-05 r2
+        if pb: return pb
         if st.get('halted'): return 'daily loss halt is active'
         if Sg.get('ENTRIES_PAUSED'): return 'entries paused'
         if self.exchange_state().get('state') == 'outage': return OUTAGE_ADD     # T05b final: an add is new exposure
@@ -2742,6 +3107,8 @@ class Engine:
         Risk-rule warnings of this call are left in self._rule_warns."""
         self._rule_warns = []
         st, Sg = self.state, self.S
+        pb = self.persist_block()                                 # AUD-05 r2: a safety file cannot be saved -> no new risk
+        if pb: return pb
         if not self.connected or self.error: return 'not connected to Binance'
         if self.exchange_state().get('state') == 'outage': return 'Binance outage - no new entries until it answers again'
         if not SYM_RE.match(sym or '') or sym not in self.rules: return f'{sym} is not tradable'
@@ -3201,15 +3568,32 @@ class Engine:
 
     def _market_entry(self, plan):
         sym, side, r = plan['sym'], plan['side'], self.rules[plan['sym']]
+        pb = self.persist_block()
+        if pb: self.last_skip = pb; return False
+        # AUD-05 r2 write-ahead: the entry is recorded DURABLY (as an unconfirmed entry with its client id) BEFORE it is sent.
+        # A crash or a lost answer after the send is then settled from Binance's order record; a failed record = no send.
+        cid = new_cid()
+        try:
+            uk = self._remember_unconfirmed(plan, cid, strict=True)
+        except Exception as ex:
+            self.last_skip = f'entry not sent: its write-ahead record could not be saved ({type(ex).__name__})'
+            self.err(f'ENTRY {sym} {side} NOT sent - the write-ahead record could not be saved ({str(ex)[:120]})', key='wal|entry')
+            return False
         t0 = time.time()
         try:
-            o = self.trade.open(sym, side, self._fmt(plan['qty'], r['step']))
+            o = self._send(self.trade.open, sym, side, self._fmt(plan['qty'], r['step']), cid=cid)
         except AmbiguousOrder as e:
             self._last_order = dict(pending=str(e)[:160])                # T05: answer lost - reconcile decides, not "failed"
-            self._remember_unconfirmed(plan, _cid_of(e.tag))
+            ue = self.state['unconfirmed_entries'].get(uk)
+            if ue is not None and _cid_of(e.tag): ue['cid'] = _cid_of(e.tag)
+            self.save_state()
             self.err(f'ENTRY {sym} {side} unconfirmed ({e}) - protected and settled from Binance as soon as it shows')
             self.last_skip = 'entry order unconfirmed'
             return False
+        except Exception:
+            self.state['unconfirmed_entries'].pop(uk, None)          # Binance refused it: nothing was opened
+            self.save_state()
+            raise
         act = float(o.get('avgPrice') or 0) or None
         fill = act or plan['px']
         got = self._exec_of(o, plan['qty'], r['step'])                    # AUD-03: exchange truth, never the request
@@ -3218,13 +3602,17 @@ class Engine:
                                                maker_tries=plan.get('maker_tries'), fallback_order=plan.get('fallback') or None,
                                                manual=plan.get('manual') or None, **({'outcome': 'unfilled'} if got == 0 else {})))
         if got is None:                                                   # answered, not final: like a lost answer
-            self._remember_unconfirmed(plan, o.get('clientOrderId'))
+            ue = self.state['unconfirmed_entries'].get(uk)
+            if ue is not None and o.get('clientOrderId'): ue['cid'] = o.get('clientOrderId')
+            self.save_state()
             self.err(f"ENTRY {sym} {side} answered {o.get('status')} (not final) - settled from Binance as soon as it shows")
             self.last_skip = 'entry order unconfirmed'
             return False
+        self.state['unconfirmed_entries'].pop(uk, None)                  # answered and final: the intent becomes the lot
         if got <= 0:                                                      # EXPIRED / CANCELED with nothing executed
             log.info(f"ENTRY {sym} {side}: Binance {o.get('status')} - nothing executed, no trade opened")
             self.last_skip = 'entry order not filled'
+            self.save_state()
             return False
         return self._create_lot(plan, got, fill)
 
@@ -3237,12 +3625,20 @@ class Engine:
     #      {UNCONF_ADOPT_S} s -> adopted from the position at the mark price.
     # The lot inherits the provisional stop (_replace_stop places the real one first, then cancels it). New entries on that
     # coin/side wait until it is settled. Engine._owned_stop_tags lists every stop the bot owns (for AUD-04's verifier).
-    def _remember_unconfirmed(self, plan, cid):
+    def _remember_unconfirmed(self, plan, cid, strict=False):
+        """Record an entry by its client id. strict=True (AUD-05 r2 write-ahead): raises if the record is not durable - the
+        record is then removed from memory too and the caller must not send."""
         sl = plan.get('sl') or {}
+        ue = self.state.setdefault('unconfirmed_entries', {})
         k = f"UE|{'MAN' if plan.get('manual') else sl.get('id')}|{plan['sym']}|{plan['side']}|{int(time.time() * 1000)}"
-        self.state.setdefault('unconfirmed_entries', {})[k] = dict(
-            symbol=plan['sym'], side=plan['side'], cid=cid, qty=plan['qty'], t=time.time(), prov=None, prov_qty=0.0, plan=plan)
-        self.save_state()
+        while k in ue: k += '+'
+        ue[k] = dict(symbol=plan['sym'], side=plan['side'], cid=cid, qty=plan['qty'], t=time.time(), prov=None, prov_qty=0.0,
+                     plan=plan)
+        try:
+            self._save_wal() if strict else self.save_state()
+        except Exception:
+            ue.pop(k, None); raise
+        return k
 
     def _owned_stop_tags(self, sym=None):
         """Every exchange stop the bot owns: lot stops and AUD-03b provisional stops (a verifier must never cancel these)."""
@@ -3282,8 +3678,19 @@ class Engine:
         if old and abs(qty - u.get('prov_qty', 0.0)) < 1e-12: return
         sd = 1 if side == 'LONG' else -1
         stop = self._rd(plan['px'] - sd * plan['stop_dist'], r['tick'])
+        # AUD-05 r2 write-ahead: both client ids (classic + algo fallback) are owned durably BEFORE the stop is sent; a crash
+        # after the send is settled by _prov_pending_settled from the order's status. A failed record = no send.
+        cid, acid = new_cid('zb'), new_cid('za')
+        u['prov_pending'] = dict(tag=f'c:{cid}', alt=f'ac:{acid}', qty=qty, stop=stop, t=time.time())
         try:
-            tag = self.trade.stop(sym, side, self._fmt(qty, r['step']), self._fmt(stop, r['tick']))
+            self._save_wal()
+        except Exception as ex:
+            u.pop('prov_pending', None)
+            self.err(f"{sym} {side} unconfirmed entry: provisional stop NOT sent - its write-ahead record could not be saved "
+                     f"({type(ex).__name__}); retried next pass", key=f'prov|{uk}')
+            return
+        try:
+            tag = self._send(self.trade.stop, sym, side, self._fmt(qty, r['step']), self._fmt(stop, r['tick']), cid=cid, acid=acid)
         except AmbiguousOrder as ex:                          # AUD-04 r2 (Codex): it may be LIVE on Binance - keep owning it
             if not ex.tag: raise
             u['prov_pending'] = dict(tag=ex.tag, qty=qty, stop=stop, t=time.time())
@@ -3296,6 +3703,7 @@ class Engine:
                      "until Binance shows its status", key=f'prov|{uk}')
             return
         except Exception as ex:
+            u.pop('prov_pending', None)                       # refused by Binance: nothing was placed
             if old and qty < u.get('prov_qty', 0.0):          # Codex r2: a SHRINK failed - the old stop is now oversized and could
                 u['prov'], u['prov_qty'] = None, 0.0          # close a sibling's size: drop it at once (cancel, or park + retry),
                 self.save_state()                             # ownership cleared durably; the unresolved part is re-protected
@@ -3309,6 +3717,7 @@ class Engine:
                          key=f'prov|{uk}')
             return
         u['prov'], u['prov_qty'], u['prov_stop'] = tag, qty, stop
+        u.pop('prov_pending', None)
         self.save_state()
         if old and old != tag: self._cancel_or_park(sym, old)
         log.info(f"ENTRY {sym} {side} unconfirmed: {qty} on Binance protected by a provisional stop at {stop}")
@@ -3322,6 +3731,11 @@ class Engine:
         try:
             st = self.trade.stop_status(sym, tag, retry=False) if hasattr(self.trade, 'stop_status') else 'UNKNOWN'
             known = st in STOP_LIVE or st in STOP_GONE or st in STOP_FIRED or (st is None and tag.startswith('c:'))
+            if st is None and tag.startswith('c:') and pend.get('alt'):   # AUD-05 r2: the classic id never reached Binance -
+                st2 = self.trade.stop_status(sym, pend['alt'], retry=False)   # the algo fallback id may have
+                if st2 in STOP_LIVE: tag, st = pend['alt'], st2
+                elif st2 is None: known = False if pend['alt'].startswith('a:') else known
+                else: st = st2
         except Exception:
             st, known = None, False
         if known and st in STOP_LIVE:
@@ -3712,13 +4126,19 @@ class Engine:
 
     def _maker_place(self, rec):
         sym, r = rec['symbol'], self.rules[rec['symbol']]
+        pb = self.persist_block()                                    # AUD-05 r2: no new resting order while state is untrusted
+        if pb: raise RuntimeError(f'maker entry {sym} not sent: {pb}')
         rem = self._rd(rec['qty'] - rec['filled'], r['step'])
         bt = self.trade._req('GET', '/fapi/v1/ticker/bookTicker', dict(symbol=sym))
         px = float(bt['bidPrice'] if rec['side'] == 'LONG' else bt['askPrice'])
         cid = new_cid('zm')
         rec.setdefault('px0', px)                                    # T05: first posted price = the maker expectation
+        prev = {k_: rec.get(k_) for k_ in ('cid', 'price', 'placed_t', 'status', 'n')}
         rec.update(cid=cid, price=px, placed_t=time.time(), status='open', n=rec['n'] + 1)
-        self.save_state()                                            # recorded BEFORE it is sent: never unaccounted
+        try:
+            self._save_wal()                             # recorded BEFORE it is sent: never unaccounted
+        except Exception:
+            rec.update(prev); raise                                  # AUD-05 r2: not durable -> not sent
         try:
             o = self.trade._order(dict(symbol=sym, side='BUY' if rec['side'] == 'LONG' else 'SELL', positionSide=rec['side'], type='LIMIT',
                                        timeInForce='GTX', quantity=self._fmt(rem, r['step']), price=self._fmt(self._rd(px, r['tick']), r['tick']),

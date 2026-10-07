@@ -258,7 +258,8 @@ def test_a_failed_save_leaves_memory_unchanged(api, monkeypatch):
     monkeypatch.setattr(E, 'save_json', fail)
     with pytest.raises(PermissionError):
         A.handle('/api/settings', dict(MAX_LEVERAGE=3))
-    assert _snap(e) == before
+    assert e.S['MAX_LEVERAGE'] != 3 and _snap(e)[1:] == before[1:], 'the update is not applied (memory, disk, state)'
+    assert e.S['ENTRIES_PAUSED'] is True and 'settings' in e.state_untrusted, 'AUD-05 r2: a failed save latches + pauses'
 
 
 def test_a_failed_side_effect_is_reported_and_the_settings_stay_committed(api, monkeypatch):

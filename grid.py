@@ -654,6 +654,7 @@ class GridManager:
     def _can_add(self, g, side):
         e = self.e
         if e.S.get('ENTRIES_PAUSED') or e.state.get('halted'): return False
+        if getattr(e, 'state_untrusted', None): return False             # AUD-05 r2: a safety file cannot be saved - no new risk
         if e.exchange_state().get('state') == 'outage': return False     # T05b: no new grid exposure while Binance is down
         if f"{g['sym']}|{side}" in e.untracked: return False
         if any(l['symbol'] == g['sym'] and l['side'] == side and l.get('stop_dirty') for l in e.state['lots'].values()): return False
@@ -872,7 +873,10 @@ class GridManager:
 
     def _op(self, g, side, kind, cells, qty, px, full=False):
         op = dict(id=uuid.uuid4().hex[:12], side=side, kind=kind, cells=list(cells), qty=qty, px=px, t=time.time(), full=full)
-        g['op'] = op; self.e.save_state()                           # recorded BEFORE the order is sent
+        g['op'] = op
+        try: self.e._save_wal()                         # recorded BEFORE the order is sent (AUD-05 r2: durably,
+        except Exception:                                           # or it is not sent at all)
+            g['op'] = None; raise
         return op
 
     def _open(self, g, op):
