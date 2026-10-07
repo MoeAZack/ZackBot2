@@ -675,6 +675,13 @@ def _validate_grid(k, g, lots):
     if len(ref['cells']) != len(cells): _bad(w + '.cells', f"{len(cells)} cells, the configuration builds {len(ref['cells'])}")
     tol = lambda x, y: abs(x - y) <= 1e-9 * max(abs(x), abs(y), 1e-12)
     if not all(tol(x, y) for x, y in zip(lines, ref['lines'])): _bad(w + '.lines', 'do not match lo..hi with the configured spacing')
+    # AUD-05 r4 (Cowork): the protective stop-out prices are rebuilt too - below lo / above hi at the configured stop_out_pct.
+    # They are stored rounded to the exchange tick, and a working grid's tick is finer than half its line spacing.
+    slack = max(min(lines[i + 1] - lines[i] for i in range(len(lines) - 1)) / 2, 1e-9 * g['lo'])
+    if not g['stop_lo'] < g['lo'] or abs(g['stop_lo'] - ref['stop_lo']) > slack:
+        _bad(w + '.stop_lo', f"{g['stop_lo']:g} is not the configured stop-out below the range ({ref['stop_lo']:g})")
+    if not g['stop_hi'] > g['hi'] or abs(g['stop_hi'] - ref['stop_hi']) > slack:
+        _bad(w + '.stop_hi', f"{g['stop_hi']:g} is not the configured stop-out above the range ({ref['stop_hi']:g})")
     n_l = sum(1 for c in cells if isinstance(c, dict) and c.get('k') == 'L')
     n_s = sum(1 for c in cells if isinstance(c, dict) and c.get('k') == 'S')
     per = g['capital'] * float(cfg.get('capital_frac', 1.0)) / max(n_l, n_s, 1)

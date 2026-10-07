@@ -71,6 +71,11 @@ TOPOLOGY = {
     'metrics_missing': lambda d: _g(d).update(metrics={}),
     'metrics_nan': lambda d: _g(d)['metrics'].update(worst_loss_usd=float('nan')),
     'metrics_negative': lambda d: _g(d)['metrics'].update(worst_loss_usd=-5),
+    # Cowork r4: the stop-out prices are rebuilt too (they were only checked > 0)
+    'stop_lo_tiny': lambda d: _g(d).update(stop_lo=1e-9),
+    'stop_hi_huge': lambda d: _g(d).update(stop_hi=1e12),
+    'stop_lo_inside_range': lambda d: _g(d).update(stop_lo=_g(d)['lo'] * 1.5),
+    'stops_swapped': lambda d: _g(d).update(stop_lo=_g(d)['stop_hi'], stop_hi=_g(d)['stop_lo']),
 }
 
 
