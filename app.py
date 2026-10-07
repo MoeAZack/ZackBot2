@@ -3,7 +3,7 @@
 Run:  python app.py            (or ZackBot.exe after building)
       python app.py --no-window  (server only; open http://localhost:8765 yourself)
 """
-import base64, csv, glob, gzip, hmac, json, logging, logging.handlers, math, os, queue, re, secrets, shutil, subprocess, sys, threading, time, traceback, uuid, socket
+import base64, csv, glob, gzip, hmac, json, logging, logging.handlers, math, os, queue, random, re, secrets, shutil, subprocess, sys, threading, time, traceback, uuid, socket
 from datetime import datetime, timezone
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlsplit, parse_qs
@@ -55,7 +55,7 @@ from engine import Engine, PRESETS, TOP40, CORE8, TF_SEC, MANUAL_MAX_RISK, save_
 from binance_client import Futures, MAINNET   # noqa: E402
 import grid as GRID             # noqa: E402
 import lab as LAB               # noqa: E402
-from engine import RISK_RULE_DEFAULTS, GOV_MULT_MAX   # noqa: E402
+from engine import RISK_RULE_DEFAULTS, GOV_MULT_MAX, EXCHANGE_DOWN   # noqa: E402
 from telegram_ctl import TelegramControl, clean_setting as tg_clean_setting   # noqa: E402
 
 
@@ -466,13 +466,55 @@ class App:
             try:
                 eng.connect()
             except Exception as e:
-                eng.error = f'Could not connect to Binance: {e}'
-                log.error(eng.error)
+                self._connect_failed(eng, e)
             self.engine = eng
         finally:
             if old is not None: old.lock.release()
         log.info(f"ZackBot {VERSION} | mode={'LIVE' if eng.live else 'PAPER'} | keys={'yes' if cfg.get('API_KEY') else 'no'} | data: {DATA}")
         self.preview()          # signals preview on start (no trading)
+
+    CONNECT_RETRY_MIN, CONNECT_RETRY_MAX = 5.0, 60.0
+
+    def _connect_failed(self, eng, ex, now=None):
+        """T05b: start-up connect failed. Binance unreachable (transient) -> one exchange-down incident and an automatic,
+        backed-off retry (5 s doubling to 60 s, jittered, never sooner than the outage circuit's next probe). Nothing is
+        inferred from the failed read: no rules/positions/stops are assumed; the loop stays idle until connect succeeds and
+        the incident is closed only by the later successful reconcile / account read. Other errors keep the old behaviour."""
+        now = time.time() if now is None else now
+        if not eng._exchange_down(ex):
+            if eng.connect_retry:                       # Binance answers again but refuses (e.g. key): outage is over
+                eng.resolve('exchange-down', f'Binance answering again - connect refused: {str(ex)[:80]}')
+            eng.connect_retry = None
+            eng.error = f'Could not connect to Binance: {ex}'
+            log.error(eng.error)
+            return
+        r = eng.connect_retry or dict(n=0, since=now)
+        r['n'] += 1
+        delay = min(self.CONNECT_RETRY_MAX, self.CONNECT_RETRY_MIN * 2 ** min(r['n'] - 1, 6)) * random.uniform(0.8, 1.2)  # exponent capped first: no float overflow after a long outage
+        try: floor = float(getattr(ex, 'retry_in', 0) or 0)
+        except (TypeError, ValueError): floor = 0.0
+        r['next_t'] = now + min(self.CONNECT_RETRY_MAX * 1.2, max(delay, floor if math.isfinite(floor) else 0.0))
+        eng.connect_retry = r
+        eng.error = f'Could not connect to Binance: {EXCHANGE_DOWN} - retrying automatically'
+        eng.exchange_down_incident('start-up connect')
+
+    def _reconnect(self, e, now=None):
+        """T05b: retry a start-up connect that failed because Binance was unreachable. Same process, no restart."""
+        r = e.connect_retry
+        now = time.time() if now is None else now
+        if e.connected or not r or now < r['next_t']: return False
+        with e.lock:                                    # held across the connect, like start_engine (panel reads may wait)
+            if self.engine is not e: return False       # replaced while waiting: the new engine connects itself
+            try:
+                e.connect()
+            except Exception as ex:
+                self._connect_failed(e, ex, now)
+                return False
+            e.connect_retry = None; e.error = None
+        log.info(f"Binance answering again - connected after {int(now - r['since'])}s ({r['n']} failed start-up attempts); "
+                 'the outage incident closes only once positions and stops were re-read')
+        self.preview()
+        return True
 
     def preview(self):
         """Ask the background worker to refresh signals (debounced, never blocks trading)."""
@@ -518,6 +560,10 @@ class App:
             try:
                 e = self.engine
                 if e is not e0: last_bar, e0 = {}, e                      # engine restarted (keys/mode changed)
+                if e and not e.connected and getattr(e, 'connect_retry', None):   # T05b: start-up outage -> retry here
+                    self._reconnect(e)
+                    if self.engine is not e: e = None               # replaced (settings saved) during the retry: never
+                                                                    # finish this pass on the old engine; next pass = new one
                 if e and e.connected and e.cfg.get('API_KEY') and not e.error:
                     now = time.time()
                     tfs = sorted({sl['tf'] for sl in e.S['SLEEVES']} | {l.get('tf', '4h') for l in e.state['lots'].values()}
@@ -549,15 +595,27 @@ class App:
                             marks = e.data.marks()
                             if e.state['lots'] or e.state.get('grids') or e.state.get('pending_entries') or e.state.get('resting_entries'): e.manage(marks)
                             else: e.marks, e.marks_t = marks, now
-                        except Exception as ex:
-                            e._manage_failed(f'mark prices: {ex}')
+                        except Exception as ex:                     # T05b final: Binance down -> the one exchange-down incident
+                            if e._exchange_down(ex): e._manage_failed(f'mark prices: {EXCHANGE_DOWN}', key='exchange-down')
+                            else: e._manage_failed(f'mark prices: {ex}')
                     if now - last_guard > 60:                               # daily halt / drawdown checked between candles too
                         last_guard = now
                         with e.lock:
-                            e.equity(); e.check_guards()
+                            try:
+                                e.equity(); e.check_guards()
+                                if not (e.state['lots'] or e.state.get('grids') or e.state.get('pending_entries')
+                                        or e.state.get('resting_entries')):   # nothing to reconcile: account read = recovered
+                                    e.resolve('exchange-down', 'Binance answering again - account readable')
+                            except Exception as ex:                     # T05b: Binance down -> guards simply retry next pass
+                                if not e._exchange_down(ex): raise
+                                e.exchange_down_incident('daily guards')
                     if now - last_eq > 300:
                         last_eq = now
-                        with e.lock: e.record_equity(e.guard_eq or e.equity())
+                        with e.lock:
+                            try: e.record_equity(e.guard_eq or e.equity())
+                            except Exception as ex:
+                                if not e._exchange_down(ex): raise
+                                e.exchange_down_incident('equity record')
                     e.next_cycle = {tf: datetime.fromtimestamp((math.floor(now / TF_SEC[tf]) + 1) * TF_SEC[tf] + 15, timezone.utc).isoformat(timespec='seconds') for tf in tfs}
                     self.loop_ok = time.time()
             except Exception as ex:
@@ -584,7 +642,11 @@ class App:
         return lots
 
     def health(self, e, lots):
+        def ms_iso(t):
+            try: return datetime.fromisoformat(t).timestamp()
+            except Exception: return 0.0
         h = e.health
+        if hasattr(e, '_sweep_incidents'): e._sweep_incidents()        # T05b: one-off errors stop being "open" when idle
         now = time.time()
         mt = max(e.marks_t or 0, 0)
         exch = 'error' if e.error else ('ok' if e.connected and now - mt < 60 else 'stale')
@@ -596,7 +658,12 @@ class App:
                     last_manage_ok=lm, last_cycle_ok=h.get('last_cycle_ok'), errors=list(h['errors'])[-12:][::-1], unprotected=unprot,
                     untracked=e.untracked, orphans=len(e.state.get('orphans') or []), entries=entries, next_reset=next_reset_utc(),
                     fail_streak=h['manage_fail_streak'], lev_refusals={k: dict(v) for k, v in getattr(e, 'lev_refusals', {}).items()},
-                    fills=e.fill_summary() if hasattr(e, 'fill_summary') else None)
+                    fills=e.fill_summary() if hasattr(e, 'fill_summary') else None,
+                    exchange_circuit=e.exchange_state() if hasattr(e, 'exchange_state') else None,      # T05b
+                    confirmed=dict(h.get('confirmed') or {}),
+                    incidents=[{k: v for k, v in i.items() if k not in ('entry', 'logged')} for i in sorted(
+                        [i for i in list((h.get('incidents') or {}).values()) if i.get('open')],   # snapshot: loop thread mutates
+                        key=lambda i: (i.get('key') != 'exchange-down', -ms_iso(i.get('last'))))][:20])
 
     def revs(self, e):
         hl = e.history[-1]['id'] if e.history else ''

@@ -1,19 +1,19 @@
 # ZackBot owner overview
 
-*Last refreshed: 2026-10-06 23:40 Cairo (Africa/Cairo) by Codex, on branch `codex-t03c-integration`. This is the plain-language owner view. `ROADMAP.md` and `docs/reviews/` hold the detailed scope and evidence.*
+*Last refreshed: 2026-10-07 04:55 Cairo (Africa/Cairo) by Codex, on branch `t05b-outage-resilience-v2`. This is the plain-language owner view. `ROADMAP.md` and `docs/reviews/` hold the detailed scope and evidence.*
 
 ## Where we are now
 
 | Item | Current state |
 |---|---|
 | Environment | **Binance Futures testnet only.** Mainnet stays impossible until the roadmap and the final release audit are complete and you approve it. |
-| Is ZackBot running? | Yes, on your PC (testnet), build `20261006-233104`: engine and exchange OK, three original positions, all protected, zero errors/untracked/orphans after the T03c canary cleanup. |
-| Installed application | **T03c installed and runtime-proven.** SHA-256 `1156603D33D2A8BA1DDBFC605758866C7B57F0CEAD5DE9AD27EC2E917C3C8F6B`; installer hash and installed hash match exactly. |
+| Is ZackBot running? | Yes, on your PC (PAPER/testnet), build `20261007-044336`: engine, exchange and circuit OK; three positions, all protected; zero errors/untracked/orphans. |
+| Installed application | **T05b installed and runtime-proven.** A 180-second startup outage recovered automatically in the same process, then a normal restart reconciled cleanly. |
 | Latest accepted commit | `master` `cb5092b` (T04d accepted and merged) |
 | Current ticket | **T05b: exchange-outage resilience** |
-| Stage | **T03c accepted; acceptance/status commit and protected merge are being completed.** |
-| What Claude is doing | Updating T05b onto accepted master after T03c merges. |
-| What Codex is reviewing | T03c acceptance/merge, then the T05b review handoff. |
+| Stage | **T05b accepted; final documentation gate and protected merge are being completed.** |
+| What Claude is doing | Waiting for the T05b merge handoff. |
+| What Codex is reviewing | T05b acceptance/merge, then T05a. |
 | Your action | **None.** |
 
 ## Latest test results
@@ -169,8 +169,8 @@ Every ticket now ends with a **clean-up pass on the files it touched**: remove d
 | Order | Ticket | Why it comes here |
 |---|---|---|
 | Accepted | **T03c — automatic leverage handling** | Exact-head CI, install, exceptional-path canary, restart adoption and cleanup passed |
-| Current | **T05b — exchange-outage handling** | Backoff/circuit state, incident coalescing and reconciliation after transient Binance failures |
-| Next measurement | **T05a — causal trade audit** | Peak profit/MFE, give-back, hold/close reasons and causal earlier-exit comparisons |
+| Accepted | **T05b — exchange-outage handling** | Exact-head CI, Windows tests, guarded install and same-process startup-outage recovery passed |
+| Current measurement | **T05a — causal trade audit** | Peak profit/MFE, give-back, hold/close reasons and causal earlier-exit comparisons |
 | Core | **T06–T09 — shared core** | One trading logic for live and backtest |
 | Strategy research | **T09a** | Range, short and scalp families; Quick Bank TP/runner/micro-DCA components; research/shadow first |
 | Regime and macro | **T09b** | Per-asset/timeframe regimes plus USD, US bonds/rates, equities, commodities and optional TradingView evidence |
