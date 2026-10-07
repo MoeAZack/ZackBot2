@@ -229,14 +229,25 @@ def run(book, sleeves, start=500.0, max_lev=10.0, daily_halt=0.08, t0=None, t1=N
     try: days = pd.to_datetime(T).tz_localize('UTC').tz_convert('Africa/Cairo').date      # trading day = Cairo day, like live
     except Exception: days = (pd.to_datetime(T) + pd.Timedelta(hours=3)).date
 
-    def close(sl, s, p, px, frac, i, why):
+    def close(sl, s, p, px, frac, i, why, part=False, want=None):
+        """Close frac of the position (want: an explicit quantity instead). part=True marks a PARTIAL exit (tp1, ladder
+        level, runner basket part): with a real exchange rule for the symbol it follows the engine's _market_close
+        (P1-C, feasibility.close_qty / remaining_qty): the quantity is floored to the step, a partial that floors to 0
+        closes nothing (returns False, position unchanged - the caller still marks the partial done, like the engine), and
+        the remainder is floored again. Without a rule (legacy, exchange_rules=None or symbol not in the snapshot) and for
+        every full close: the raw quantity, unchanged."""
         nonlocal eq
-        q = p['qty'] * frac
+        r = ADD_RULES[s] if part else None
+        q = p['qty'] * frac if want is None else want
+        if r is not None:
+            q = F.close_qty(q, r.get('step'))
+            if q <= 0: return False
         px = px * (1 - p['side'] * SLIP)
         pnl = p['side'] * (px - p['avg']) * q - q * px * FEE
         eq += pnl
         p['realized'] += pnl
-        p['qty'] -= q
+        if r is not None: p['qty'] = F.remaining_qty(p['qty'], q, r.get('step'))
+        else: p['qty'] -= q
         if p['qty'] <= 1e-12:
             sl['hist'].append(p['realized'] / p['risk'])
             trades.append(dict(sleeve=sl['cfg']['key'], sym=s, side=p['side'], i_in=p['i'], i_out=i,
@@ -426,7 +437,8 @@ def run(book, sleeves, start=500.0, max_lev=10.0, daily_halt=0.08, t0=None, t1=N
                 e = min(cand); ev, lv = e[2], e[3]           # first level met on the way
                 if ev == 'tp':
                     if RUN:      # runner: bank part at the basket target, keep the rest at breakeven
-                        if close(sl, s, p, lv, RUN.get('dca_frac', 1.0), i, 'tp' if RUN.get('dca_frac', 1.0) >= 1 else 'tp1'):
+                        if close(sl, s, p, lv, RUN.get('dca_frac', 1.0), i, 'tp' if RUN.get('dca_frac', 1.0) >= 1 else 'tp1',
+                                 part=RUN.get('dca_frac', 1.0) < 1):
                             return True
                         p['tp'] = np.inf * sd; p['tp1'] = True; p['dca'] = len(p['levels'])
                         p['stop'] = max(p['stop'], p['avg'] * (1 + BE_BUF)) if sd == 1 else min(p['stop'], p['avg'] * (1 - BE_BUF))
@@ -448,10 +460,15 @@ def run(book, sleeves, start=500.0, max_lev=10.0, daily_halt=0.08, t0=None, t1=N
                     p['next_add'] += sd * py['step_r'] * p['R']
                 elif ev == 'tp1':
                     p['tp1'] = True
-                    if close(sl, s, p, lv, m.get('tp1_frac', 0.5), i, 'tp1'): return True
+                    if close(sl, s, p, lv, m.get('tp1_frac', 0.5), i, 'tp1', part=True): return True   # may close all (frac 1): removed
                 elif ev == 'lad':
                     p['tps_done'].add(e[4])
-                    if close(sl, s, p, lv, min(1.0, p['qmax'] * TPS[e[4]][1] / p['qty']), i, 'tp_ladder'): return True
+                    xr = ADD_RULES[s]
+                    if xr is None:                            # legacy: the raw fraction, unchanged
+                        if close(sl, s, p, lv, min(1.0, p['qmax'] * TPS[e[4]][1] / p['qty']), i, 'tp_ladder'): return True
+                    else:                                     # P1-C: the engine's ladder - no dust left below the venue minimum
+                        if close(sl, s, p, lv, 1.0, i, 'tp_ladder', part=True,
+                                 want=F.ladder_qty(p['qty'], p['qmax'] * TPS[e[4]][1], lv, xr)): return True
                 else:
                     close(sl, s, p, lv, 1, i, 'tp'); return True
 

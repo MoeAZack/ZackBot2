@@ -1329,15 +1329,27 @@ function btBadge(bt){if(!bt)return '';return `${bt.unverified?`<div class="tag t
 function btFeas(f){if(!f||f.executable_pct==null)return '';   // BT02: entries skipped by the Binance minimum-order check (never rounded up)
   const sk=Object.values(f.skipped||{}).reduce((a,b)=>a+b,0),ad=Object.values(f.add_skipped||{}).reduce((a,b)=>a+b,0);
   const top=Object.entries(f.by_symbol||{}).filter(([,v])=>v.skipped).sort((a,b)=>b[1].skipped-a[1].skipped).slice(0,6).map(([k,v])=>`${esc(coin(k))} ${v.skipped}/${v.attempts}`).join(', ');
-  const rs=f.rules_state==='ok'?'':` Exchange rules: ${esc(f.rules_detail||f.rules_state)} - treat these counts as an estimate.`;
+  const rs=f.rules_applied===false?` <b>Exchange rules NOT applied</b> (${esc(f.rules_detail||f.rules_state)}): these results use the old minimum-notional floor and are not execution-realistic. Connect the bot or run <code>python exchange_rules.py fetch --env ${esc(f.target_environment||'testnet')}</code>.`:f.rules_state==='ok'?'':` Exchange rules: ${esc(f.rules_detail||f.rules_state)} - treat these counts as an estimate.`;
   return `<div class="note ${sk||rs?'wn':''}">Executable signals: <b>${esc(f.executable_pct)}%</b> (${f.executed} placed, ${sk} skipped as below the Binance minimum order size${ad?`, ${ad} later orders skipped`:''}).${top?` Most skipped: ${top}.`:''}${rs}</div>`}
 function pfBadge(k){const r=PF&&PF.presets&&PF.presets[k];if(!r)return '';
-  const tag={ok:['t-long','Tradable at your capital'],partial:['t-warn','Partly tradable'],infeasible:['t-short','Not tradable at your capital'],unknown:['t-mute','Exchange check: unknown']}[r.status]||['t-mute',r.status];
+  // BT02: green "Tradable" only for status ok = the first order AND every planned DCA safety order / pyramid add pass
+  const addOnly=r.status==='partial'&&!(r.undersized||[]).length&&(r.add_undersized||[]).length;
+  const tag={ok:['t-long','Tradable at your capital'],partial:['t-warn',addOnly?'Partly tradable (later orders too small)':'Partly tradable'],infeasible:['t-short','Not tradable at your capital'],unknown:['t-mute','Exchange check: unknown']}[r.status]||['t-mute',r.status];
   const est=r.status==='unknown'&&r.estimate&&r.estimate!=='unknown'?` <span class="mute">(estimate: ${esc(r.estimate)})</span>`:'';
   const und=(r.undersized||[]).slice(0,4).map(u=>`${esc(coin(u.symbol))} <span class="mute">${esc(u.slot)} ${esc(u.tf)}</span> needs ~${usd(u.min_capital,0)}${u.min_risk_pct!=null?` or risk ≥ ${esc(u.min_risk_pct)}%`:''}`).join(' · ');
   const more=(r.undersized||[]).length>4?` · +${r.undersized.length-4} more`:'';
-  return `<div class="small" style="display:flex;flex-direction:column;gap:3px" title="${esc('Binance minimum order size check (step, min quantity, min notional) at '+usd(PF.capital,0)+'. Rules: '+(PF.rules_detail||PF.rules_state))}"><div><span class="tag ${tag[0]}" style="text-transform:none;letter-spacing:0">${esc(tag[1])}</span>${est} ${r.executable_pct!=null?`<span class="mute">${esc(r.executable_pct)}% of coin/slot pairs can place an order at ${usd(PF.capital,0)}</span>`:''}</div>
-  ${r.warning?`<div class="${r.status==='ok'?'mute':'t2'}" style="white-space:normal">${esc(r.warning)}</div>`:''}${und?`<div class="mute" style="font-size:10.5px">${und}${more}</div>`:''}</div>`}
+  const adds=(r.add_undersized||[]).slice(0,4).map(u=>`${esc(coin(u.symbol))} <span class="mute">${esc(u.slot)} ${esc(u.tf)}</span> ${esc((u.legs||[]).map(x=>x.leg).join(', '))} too small, full plan needs ~${usd(u.min_capital,0)}`).join(' · ');
+  const addMore=(r.add_undersized||[]).length>4?` · +${r.add_undersized.length-4} more`:'';
+  const pm=r.planning_median_atr;
+  const ts=PF.atr_ts?(PF.atr_ts.oldest===PF.atr_ts.newest?PF.atr_ts.newest:PF.atr_ts.oldest+' to '+PF.atr_ts.newest):'n/a';
+  const tip='Binance minimum order size check (step, min quantity, min notional) at '+usd(PF.capital,0)+' for the first order and every planned later order (DCA safety orders, pyramid adds). "Tradable" = the whole order plan passes on every coin/slot pair.'
+    +' Sizing basis: close and ATR of the latest closed candle (as the bot sizes; the still-forming candle is excluded), candle open time UTC '+ts+'.'
+    +(r.entry_executable_pct!=null?' First order passes on '+r.entry_executable_pct+'% of pairs, whole plan on '+r.plan_executable_pct+'%.':'')
+    +(r.min_capital_all?' Capital for every full plan: ~'+usd(r.min_capital_all,0)+' (set by '+r.min_capital_leg+' on '+r.min_capital_pair+').':'')
+    +(pm&&pm.plan_executable_pct!=null?' Planning estimate with the 180-candle median ATR: whole plan on '+pm.plan_executable_pct+'% of pairs'+(pm.min_capital_all?', ~'+usd(pm.min_capital_all,0)+' for every full plan':'')+' (estimate only, not the status).':'')
+    +' Rules: '+(PF.rules_detail||PF.rules_state);
+  return `<div class="small" style="display:flex;flex-direction:column;gap:3px" title="${esc(tip)}"><div><span class="tag ${tag[0]}" style="text-transform:none;letter-spacing:0">${esc(tag[1])}</span>${est} ${r.executable_pct!=null?`<span class="mute">${esc(r.executable_pct)}% of coin/slot pairs can place their full order plan at ${usd(PF.capital,0)}${r.entry_executable_pct!=null&&r.entry_executable_pct!==r.executable_pct?` (first order: ${esc(r.entry_executable_pct)}%)`:''}</span>`:''}</div>
+  ${r.warning?`<div class="${r.status==='ok'?'mute':'t2'}" style="white-space:normal">${esc(r.warning)}</div>`:''}${und?`<div class="mute" style="font-size:10.5px">${und}${more}</div>`:''}${adds?`<div class="mute" style="font-size:10.5px">${adds}${addMore}</div>`:''}</div>`}
 function renderPresets(){const S=D.settings;setHTML($('presets'),Object.entries(D.presets).map(([k,p])=>`<div class="preset ${S.PRESET===k?'cur':''}"><div style="display:flex;justify-content:space-between;align-items:center"><b style="font-size:14px">${esc(p.name)}</b>${S.PRESET===k?'<span class="tag t-acc">ACTIVE</span>':''}</div>
   <div class="small t2">${esc(p.note.replace(/\s*Backtest \d{4}-\d\d-\d\d to [^:]*:.*$/,''))}</div>${btBadge(p.bt)}${pfBadge(k)}<div class="small mute">${p.sleeves.map(s=>`<b>${esc(s.id)}</b> ${esc(s.name||libName(s.key))} · ${(s.risk*100).toFixed(0)}% · ${s.tf}`).join('<br>')}</div>
   <div class="mute" style="font-size:10.5px">Past, in-sample results — strategies were picked on this same history; live results are usually worse.</div>

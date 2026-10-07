@@ -1059,7 +1059,7 @@ class Engine:
         """Close qty at market. If Binance's answer is lost (AmbiguousOrder) the lot is marked 'pending' and reconcile()
         decides from the real position whether it filled - so a partial take-profit can never fire twice."""
         sym, r = lot['symbol'], self.rules[lot['symbol']]
-        qty = self._rd(qty, r['step'])
+        qty = F.close_qty(qty, r['step'])                # P1-C: shared with the backtester (floor to the step)
         if qty <= 0: return 0.0
         px = mark or lot['avg']
         if not self.dry:
@@ -1081,7 +1081,7 @@ class Engine:
         lot['realized'] = lot.get('realized', 0.0) + pnl
         lot.setdefault('fills', []).append([now_utc().isoformat(timespec='seconds'), why, qty, px])
         lot['fees'] = lot.get('fees', 0.0) + qty * px * FEE_EST
-        lot['qty'] = max(0.0, self._rd(lot['qty'] - qty, r['step']))
+        lot['qty'] = F.remaining_qty(lot['qty'], qty, r['step'])
         self.log_trade(time=now_utc().isoformat(timespec='seconds'), event=why, sleeve=lot['sleeve'], symbol=sym,
                        side=lot['side'], qty=qty, price=px, pnl=round(pnl, 4), equity=round(self.last_eq or 0, 2))
         self._audit_fill(lot)                                      # T05a: cohort / runner events (memory + queue only)
@@ -1315,9 +1315,7 @@ class Engine:
                         for k_, (r_, f_) in enumerate(tps):
                             if k_ in done: continue
                             if not ge(lot['e0'] + sd * r_ * lot['R']): break
-                            q = min(lot['qty'], lot.get('qty_max', lot['q0']) * f_)
-                            rest = lot['qty'] - q
-                            if rest > 0 and (rest < rr['min_qty'] or rest * m < rr['min_notional']): q = lot['qty']   # never leave dust
+                            q = F.ladder_qty(lot['qty'], lot.get('qty_max', lot['q0']) * f_, m, rr)   # never leave dust (shared)
                             done.append(k_)
                             self._market_close(lot, q, 'take_profit_ladder', m, post={'tps_done': list(done)})
                             lot['tps_done'] = list(done); fired = changed = True

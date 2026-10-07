@@ -240,19 +240,30 @@ def enqueue(fn, *args):
     except queue.Full: raise ValueError('too many backtests waiting - try again when the current ones finish')
 
 
+RULES_ROOTS = [DATA, os.path.join(BUNDLE, 'data')]   # where `python exchange_rules.py fetch` snapshots are looked for (none shipped)
+
+
+def rules_env(e=None):
+    """The environment whose exchange rules apply: 'mainnet' if the engine is live, else 'testnet'."""
+    if e is None and APP is not None: e = APP.engine
+    return 'mainnet' if e is not None and e.live else 'testnet'
+
+
 def exchange_rules_now(e=None):
     """BT02: the exchange rules backtests and the preflight use -> (snapshot, state, detail).
-    The connected engine's own exchangeInfo rules (this environment, read at connect) win; otherwise the snapshot file
-    data/exchange_rules_<testnet|mainnet>.json. Testnet and mainnet are never mixed."""
+    The connected engine's own exchangeInfo rules (this environment, read at connect) win; otherwise a snapshot file
+    exchange_rules_<testnet|mainnet>.json made by `python exchange_rules.py fetch` (RULES_ROOTS; none is shipped ->
+    'unavailable'). Testnet and mainnet are never mixed."""
     if e is None and APP is not None: e = APP.engine
-    env = 'mainnet' if e is not None and e.live else 'testnet'
+    env = rules_env(e)
     meta = getattr(e, 'rules_meta', None) if e is not None else None
     if e is not None and e.rules and meta and meta.get('environment') == env:
         snap = dict(schema=F.SCHEMA, version=0, environment=env, source=meta['source'], fetched_at=meta['fetched_at'],
-                    verified=True, note='', symbols=e.rules)
+                    verified=True, provenance='engine', note='', symbols=e.rules)
     else:
-        snap = XRULES.load(env)
+        snap = next((x for x in (XRULES.load(env, root=r) for r in RULES_ROOTS) if x is not None), None)
     st, detail = F.snapshot_state(snap, time.time(), env)
+    if st == 'unavailable': detail = f'no {env} exchange-rule snapshot (connect the bot, or run: python exchange_rules.py fetch --env {env})'
     return snap, st, detail
 
 
@@ -286,7 +297,10 @@ def run_backtest_job(job_id, req):
         total_share = sum(float(sl['share']) for sl in sleeves) or 1
         trs, cvs, skipped, all_syms, gaps = [], [], [], set(), {}
         xsnap, xstate, xdetail = exchange_rules_now() if req.get('exchange_rules', 'on') != 'off' else (None, 'off', 'exchange rules off')
-        feas = dict(rules_state=xstate, rules_detail=xdetail, environment=(xsnap or {}).get('environment'), groups={})
+        # only a verified, fresh snapshot of THIS environment may change the reported numbers; anything else = legacy floor
+        xrun, xapplied, xwhy = F.trusted_rules(xsnap, xstate, rules_env())
+        feas = dict(rules_state=xstate, rules_detail=xdetail, environment=(xsnap or {}).get('environment'), target_environment=rules_env(), groups={},
+                    rules_applied=xapplied, rules_reason=xwhy, execution_realistic=xapplied)
         for gi, (tf, gs) in enumerate(sorted(groups.items())):
             syms = sorted({s for sl in gs for s in (CORE8 if sl['symbols'] == 'core8' else req['universe'] if sl['symbols'] == 'all' else sl['symbols'])} | {'BTCUSDT'})
             raw = {}
@@ -312,7 +326,7 @@ def run_backtest_job(job_id, req):
                                 **{k: sl[k] for k in ('when', 'trail_entry', 'pump_guard') if sl.get(k) is not None}))
             gstart = start * gshare / total_share if len(groups) > 1 else start
             tr, cv = BT.run(book, cfg, start=gstart, max_lev=float(req.get('max_lev', 10)), daily_halt=float(req.get('daily_halt', 0.08)),
-                            fund_per_bar=BT.FUND_PER_BAR * TF_SEC[tf] / 14400, exchange_rules=xsnap, **(req.get('run_options') or {}))
+                            fund_per_bar=BT.FUND_PER_BAR * TF_SEC[tf] / 14400, exchange_rules=xrun, **(req.get('run_options') or {}))
             fz = dict(cv.attrs.get('feasibility') or {}); fz['skips'] = (fz.get('skips') or [])[:100]
             feas['groups'][tf] = fz
             if len(tr): tr = tr.assign(tf=tf)
@@ -354,10 +368,23 @@ def run_backtest_job(job_id, req):
 _PF_FILES = {}
 
 
-def preflight_market(e, keys):
-    """{(symbol, tf): dict(px, atr)} for the preflight: last close and a typical ATR (median ATR/price of the last 180
-    closed candles x last close). Source: the engine's candle cache, else the candle files shipped with the app."""
+def _closed_only(df, tf, now):
+    """Rows whose candle has closed at `now` (epoch s) - the engine's rule in Engine.candles: a kline is kept only when
+    its close time (open + step - 1 ms) is before now, i.e. open + step <= now. Drops the still-forming candle."""
+    cut = pd.Timestamp(float(now), unit='s') - pd.Timedelta(seconds=TF_SEC.get(tf, 14400))
+    return df[df.t <= cut]
+
+
+def preflight_market(e, keys, now=None):
+    """{(symbol, tf): dict(px, atr, atr_median, atr_basis, atr_ts, price_ts, src)} for the preflight.
+    px / atr = close and ATR of the LATEST CLOSED candle - what the engine sizes with (open_lot: sg['atr'] = the last
+    row of Engine.candles, which holds closed candles only); the still-forming candle is excluded with the engine's own
+    rule (_closed_only). atr_median = median ATR/price of the last 180 closed candles x that close: a separate planning
+    estimate only, never the primary status. Source: the engine's candle cache, else the candle files shipped with the
+    app; a shipped file has no close-time column, so its last row (maybe still forming when the file was saved) is
+    dropped too. atr_ts / price_ts: open time (UTC) of the candle used."""
     out, asof = {}, {}
+    now = time.time() if now is None else float(now)
     kc = getattr(e, '_kc', None) or {}
     for sym, tf in sorted(keys):
         df = kc.get((sym, tf), (None,))[0]
@@ -368,15 +395,22 @@ def preflight_market(e, keys):
             if not os.path.exists(f): continue
             try:
                 ck = (f, os.path.getmtime(f))
-                if ck not in _PF_FILES: _PF_FILES[ck] = S.indicators(pd.read_csv(f, parse_dates=['t']).tail(400).reset_index(drop=True))
+                if ck not in _PF_FILES:
+                    raw = pd.read_csv(f, parse_dates=['t'], encoding='utf-8').tail(401).reset_index(drop=True)
+                    _PF_FILES[ck] = S.indicators(raw.iloc[:-1].reset_index(drop=True))     # last row: completion unknown
                 df = _PF_FILES[ck]
             except Exception: continue
-        if 'atr' not in df or len(df) < 30: continue
+        if 'atr' not in df or 't' not in df: continue
+        df = _closed_only(df, tf, now)
+        if len(df) < 30: continue
+        last = df.iloc[-1]
+        px, atr = float(last.c), float(last.atr)
         tail = df.tail(180)
-        ratio = float((tail.atr / tail.c).median()); px = float(df.c.iloc[-1])
-        if not (ratio > 0 and px > 0): continue
-        out[(sym, tf)] = dict(px=px, atr=ratio * px)
-        asof[f'{sym} {tf}'] = f'{str(df.t.iloc[-1])[:16]} ({src})'
+        ratio = float((tail.atr / tail.c).median())
+        if not (px > 0 and atr > 0 and ratio > 0): continue
+        ts = str(last.t)[:16]
+        out[(sym, tf)] = dict(px=px, atr=atr, atr_median=ratio * px, atr_basis='latest_closed', atr_ts=ts, price_ts=ts, src=src)
+        asof[f'{sym} {tf}'] = f'{ts} ({src})'
     return out, asof
 
 
@@ -805,14 +839,26 @@ class App:
                 sy = x.get('symbols', 'all')
                 sy = CORE8 if sy == 'core8' else uni if sy == 'all' else list(sy)
                 out.append(dict(id=x.get('id'), key=x['key'], share=float(x['share']), risk=float(x['risk']), tf=x.get('tf') or '4h',
-                                symbols=list(sy), mgmt=S.merge_mgmt(x['key'], x.get('mgmt'))))
+                                symbols=list(sy), mgmt=S.merge_mgmt(x['key'], x.get('mgmt')),
+                                sides=x.get('sides') or S.STRATEGIES[x['key']]['sides']))
             slots_by[k] = out
         need = {(s_, x['tf']) for v in slots_by.values() for x in v for s_ in x['symbols']}
         market, asof = preflight_market(e, need)
         lev = float(e.S.get('MAX_LEVERAGE') or 10)
+        # primary "would execute now" status: latest closed candle (as the engine sizes); the 180-candle median ATR is a
+        # separate planning estimate (a typical day rather than today) and never changes the status
         res = {k: F.preflight(v, capital, market, rules, st, detail, lev) for k, v in slots_by.items()}
+        med = {k_: dict(v_, atr=v_['atr_median'], atr_basis='median_180') for k_, v_ in market.items()}
+        for k, v in slots_by.items():
+            p = F.preflight(v, capital, med, rules, st, detail, lev)
+            res[k]['planning_median_atr'] = {x: p[x] for x in ('status', 'estimate', 'executable_pct', 'entry_executable_pct',
+                                                               'plan_executable_pct', 'min_capital_all', 'min_capital_leg', 'min_capital_pair')}
+            res[k]['atr_basis'] = 'latest_closed'
+        ts = sorted({m['atr_ts'] for m in market.values()})
         return dict(capital=capital, rules_state=st, rules_detail=detail, environment=(snap or {}).get('environment'),
-                    rules_source=(snap or {}).get('source'), market_asof=asof, presets=res)
+                    rules_source=(snap or {}).get('source'), market_asof=asof, presets=res, atr_basis='latest_closed',
+                    price_basis='latest_closed_close', atr_ts=dict(oldest=ts[0], newest=ts[-1]) if ts else None,
+                    price_ts=dict(oldest=ts[0], newest=ts[-1]) if ts else None)
 
     def missed_view(self):
         e = self.engine; marks = e.marks or {}
@@ -1409,7 +1455,7 @@ def selftest(path):
     try:
         import zoneinfo
         zoneinfo.ZoneInfo('Africa/Cairo')
-        for f in ('panel.html', 'research', os.path.join('data', 'exchange_rules_testnet.json')):
+        for f in ('panel.html', 'research'):
             if not os.path.exists(os.path.join(BUNDLE, f)): raise RuntimeError(f'{f} missing from the bundle')
         import lab, grid, telegram_ctl, ai_filter    # noqa: F401  (every module the app loads lazily)
         if not PRESETS or not S.STRATEGIES: raise RuntimeError('presets/strategies missing')

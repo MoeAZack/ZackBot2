@@ -28,7 +28,9 @@ def run_replay(raw, sleeves, t0, steps=6, start=500.0, tf_sec=14400, quiet=True,
     decisions so far: dict(lots, events, history, stops) (a list -> {point: that dict}) - used by the causality test.
     exchange_rules (BT02): a snapshot or {symbol: rule}. The simulated exchange then serves exactly these filters to the engine
     and the backtester gets the same rules (both floor to the step and skip below the minimums through feasibility.size_check).
-    None (default): unchanged - the engine sees step 1e-5 / backtest.MIN_NOTIONAL, the backtester its legacy floor."""
+    None (default): unchanged - the engine sees step 1e-5 / backtest.MIN_NOTIONAL, the backtester its legacy floor.
+    Rules passed here are an explicit, exploratory parity input (both sides get the same filters); a replay is never a
+    promoted / execution-realistic number unless the caller checked feasibility.trusted_rules() first."""
     syms = list(raw)
     D = {s: raw[s].reset_index(drop=True) for s in syms}
     N = len(D[syms[0]])
