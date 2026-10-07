@@ -17,9 +17,12 @@ TAKEOVER_STALE_S = 60
 
 # ------------------------------------------------------------------ exclusive control-panel bind
 class ExclusiveServer(ThreadingHTTPServer):
-    """ThreadingHTTPServer that can never share its port: no SO_REUSEADDR, and SO_EXCLUSIVEADDRUSE on Windows (also stops
-    another program from binding the same address with SO_REUSEADDR after us)."""
-    allow_reuse_address = False
+    """ThreadingHTTPServer that can never share its port, with platform-correct semantics:
+    - Windows: SO_REUSEADDR would let a SECOND listener bind the same port (proven on this project's Windows PC), so it
+      is off and SO_EXCLUSIVEADDRUSE is set (also stops a foreign SO_REUSEADDR bind after us);
+    - POSIX: SO_REUSEADDR never allows two listeners - it only lets a restart bind over the dead owner's TIME_WAIT
+      connections (without it a crash recovery was locked out ~60 s on Linux: CI / Cowork, PR #26) - so it stays on."""
+    allow_reuse_address = os.name != 'nt'
 
     def server_bind(self):
         if os.name == 'nt' and hasattr(socket, 'SO_EXCLUSIVEADDRUSE'):
@@ -99,11 +102,20 @@ def owner_gone(info, alive=pid_alive, start=proc_start):
 
 
 # ------------------------------------------------------------------ the ownership lock
+UNREADABLE = None                     # the lock exists but cannot be read right now (sharing violation / antivirus)
+
+
 def _info(p):
+    """The lock record: a dict ({} = missing or corrupt -> reclaimable), or UNREADABLE when the file exists but cannot be
+    read (another process or an antivirus holds it). Unreadable is never treated as "no owner": the lock is kept."""
     try:
         with open(p, encoding='utf-8') as f: d = json.load(f)
-    except (OSError, ValueError):
+    except FileNotFoundError:
         return {}
+    except ValueError:
+        return {}
+    except OSError:
+        return UNREADABLE
     return d if isinstance(d, dict) else {}
 
 
@@ -139,7 +151,7 @@ def acquire(data_dir, alive=pid_alive, start=proc_start, now=None):
     mine = dict(pid=os.getpid(), start=start(os.getpid()), token=token, t=(now or time.time)())
     if _create(p, mine): return token
     seen = _info(p)
-    if not owner_gone(seen, alive, start): return None
+    if seen is UNREADABLE or not owner_gone(seen, alive, start): return None
     m = p + '.takeover'
     try:
         os.close(os.open(m, os.O_CREAT | os.O_EXCL | os.O_WRONLY))
@@ -152,10 +164,12 @@ def acquire(data_dir, alive=pid_alive, start=proc_start, now=None):
             pass
         return None
     try:
-        cur = _info(p) if os.path.exists(p) else None
-        if cur is not None and (cur != seen or not owner_gone(cur, alive, start)):
+        exists = os.path.exists(p)
+        cur = _info(p) if exists else {}
+        if cur is UNREADABLE: return None
+        if exists and (cur != seen or not owner_gone(cur, alive, start)):
             return None                                           # replaced meanwhile -> not ours
-        if cur is not None:
+        if exists:
             try: os.remove(p)
             except FileNotFoundError: pass
             except OSError: return None
@@ -168,6 +182,7 @@ def acquire(data_dir, alive=pid_alive, start=proc_start, now=None):
 def release(data_dir, token):
     """Remove the lock only if it is still ours (same token). Never raises."""
     p = os.path.join(data_dir, LOCK_NAME)
-    if not token or _info(p).get('token') != token: return False
+    info = _info(p)
+    if not token or info is UNREADABLE or info.get('token') != token: return False
     try: os.remove(p); return True
     except OSError: return False

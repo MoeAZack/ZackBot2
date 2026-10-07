@@ -137,11 +137,32 @@ print('MAIN_RETURNED', flush=True)
 
 
 def _spawn(home, port):
+    """One app process; its output goes to a file (readable while it runs, dumped when the test fails)."""
     env = dict(os.environ, LOCALAPPDATA=os.path.join(home, 'local'), USERPROFILE=os.path.join(home, 'home'),
                HOME=os.path.join(home, 'home'), ZB_T_PORT=str(port), PYTHONIOENCODING='utf-8')
     env.pop('ZB_TESTNET_FAULTS', None)
-    return subprocess.Popen([sys.executable, '-c', _LAUNCH], cwd=ROOT, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                            text=True, encoding='utf-8', errors='replace')
+    n = len([f for f in os.listdir(home) if f.startswith('child')])
+    log = os.path.join(home, f'child{n}.out')
+    with open(log, 'w', encoding='utf-8') as fh:
+        p = subprocess.Popen([sys.executable, '-c', _LAUNCH], cwd=ROOT, env=env, stdout=fh, stderr=subprocess.STDOUT)
+    p.log = log
+    return p
+
+
+def _out(p):
+    try: return open(p.log, encoding='utf-8', errors='replace').read()
+    except OSError: return ''
+
+
+def _dump(home, procs):
+    """Everything needed to diagnose a timeout: each child's output and the tail of bot.log."""
+    parts = [f'--- child pid {p.pid} rc={p.poll()} ---\n{_out(p)[-2500:]}' for p in procs]
+    try:
+        parts.append('--- bot.log tail ---\n' + open(os.path.join(home, 'local', 'ZackBot', 'bot.log'), encoding='utf-8',
+                                                     errors='replace').read()[-3000:])
+    except OSError:
+        pass
+    return '\n'.join(parts)
 
 
 def _kill(pid):
@@ -172,32 +193,75 @@ def test_two_processes_started_together_give_exactly_one_engine():
         data = os.path.join(home, 'local', 'ZackBot'); port = _free_port()
         procs = [_spawn(home, port), _spawn(home, port)]
         try:
-            assert _wait(lambda: sum(p.poll() is None for p in procs) == 1 and _engine_starts(data) >= 1, 90), \
-                [p.poll() for p in procs]
-            time.sleep(3)
-            alive = [p for p in procs if p.poll() is None]; loser = [p for p in procs if p.poll() is not None]
-            assert len(alive) == 1 and len(loser) == 1
-            out = loser[0].stdout.read()
-            assert 'MAIN_RETURNED' in out and ('WOULD_OPEN_EXISTING' in out or 'MESSAGE' in out), out[-1500:]
-            assert _engine_starts(data) == 1, 'the loser never built an engine'
-            # (a Windows venv python.exe is a launcher: the app runs as its child, so identity comes from the app's own records)
-            sess = json.load(open(os.path.join(data, 'session.json'), encoding='utf-8'))
-            lock = json.load(open(os.path.join(data, INST.LOCK_NAME), encoding='utf-8'))
-            owner = sess['pid']; owners.append(owner)
-            assert owner == lock['pid'] and INST.pid_alive(owner), 'one process wrote session.json AND owns the folder'
-            # sequential control: a later start while the owner runs changes nothing
-            late = _spawn(home, port)
-            assert late.wait(90) == 0 and 'MAIN_RETURNED' in late.stdout.read()
-            assert _engine_starts(data) == 1 and json.load(open(os.path.join(data, 'session.json')))['pid'] == owner
-            # forced death (no release, like a crash or the installer's kill): the next start reclaims the folder
-            _kill(owner); alive[0].wait(30)
-            assert _wait(lambda: not INST.pid_alive(owner), 30)
-            nxt = _spawn(home, port); procs.append(nxt)
-            assert _wait(lambda: _engine_starts(data) == 2, 90) and nxt.poll() is None
-            new = json.load(open(os.path.join(data, INST.LOCK_NAME), encoding='utf-8'))['pid']; owners.append(new)
-            assert new != owner and INST.pid_alive(new)
-            assert json.load(open(os.path.join(data, 'session.json')))['pid'] == new
+            try:
+                assert _wait(lambda: sum(p.poll() is None for p in procs) == 1 and _engine_starts(data) >= 1, 90), \
+                    [p.poll() for p in procs]
+                time.sleep(3)
+                alive = [p for p in procs if p.poll() is None]; loser = [p for p in procs if p.poll() is not None]
+                assert len(alive) == 1 and len(loser) == 1
+                out = _out(loser[0])
+                assert 'MAIN_RETURNED' in out and ('WOULD_OPEN_EXISTING' in out or 'MESSAGE' in out), out[-1500:]
+                assert _engine_starts(data) == 1, 'the loser never built an engine'
+                # (a Windows venv python.exe is a launcher: the app runs as its child, so identity comes from the app's own records)
+                sess = json.load(open(os.path.join(data, 'session.json'), encoding='utf-8'))
+                lock = json.load(open(os.path.join(data, INST.LOCK_NAME), encoding='utf-8'))
+                owner = sess['pid']; owners.append(owner)
+                assert owner == lock['pid'] and INST.pid_alive(owner), 'one process wrote session.json AND owns the folder'
+                # sequential control: a later start while the owner runs changes nothing
+                late = _spawn(home, port)
+                procs.append(late)
+                assert late.wait(90) == 0 and 'MAIN_RETURNED' in _out(late)
+                assert _engine_starts(data) == 1 and json.load(open(os.path.join(data, 'session.json')))['pid'] == owner
+                # forced death (no release, like a crash or the installer's kill): the next start reclaims the folder
+                _kill(owner); alive[0].wait(30)
+                assert _wait(lambda: not INST.pid_alive(owner), 30)
+                nxt = _spawn(home, port); procs.append(nxt)
+                assert _wait(lambda: _engine_starts(data) == 2, 90) and nxt.poll() is None
+                new = json.load(open(os.path.join(data, INST.LOCK_NAME), encoding='utf-8'))['pid']; owners.append(new)
+                assert new != owner and INST.pid_alive(new)
+                assert json.load(open(os.path.join(data, 'session.json')))['pid'] == new
+            except (AssertionError, subprocess.TimeoutExpired) as ex:
+                pytest.fail(f'{ex}\n{_dump(home, procs)}')
         finally:
             for pid in owners: _kill(pid)
             for p in procs:
                 if p.poll() is None: p.kill(); p.wait(30)
+
+
+def test_exclusivity_is_platform_correct_and_a_crash_restart_binds_at_once():
+    """CI / Cowork on PR #26: on Linux a server killed after serving a request left TIME_WAIT connections, and with
+    SO_REUSEADDR off everywhere the restart could not bind for ~60 s. POSIX keeps SO_REUSEADDR (it never allows two
+    listeners); Windows keeps it off with SO_EXCLUSIVEADDRUSE (its SO_REUSEADDR would allow a second listener)."""
+    assert INST.ExclusiveServer.allow_reuse_address is (os.name != 'nt')
+    import urllib.request
+    port = _free_port()
+
+    class Ok(_H):
+        def do_GET(self):
+            self.send_response(200); self.end_headers(); self.wfile.write(b'ok')
+    a = INST.bind_exclusive(('127.0.0.1', port), Ok)
+    t = threading.Thread(target=a.handle_request, daemon=True); t.start()
+    assert urllib.request.urlopen(f'http://127.0.0.1:{port}/', timeout=5).read() == b'ok'      # traffic -> TIME_WAIT
+    t.join(5); a.server_close()                                                                # the owner "dies"
+    b = INST.bind_exclusive(('127.0.0.1', port), _H)
+    try:
+        assert b is not None, 'a restart must bind the port at once after the owner died'
+        assert INST.bind_exclusive(('127.0.0.1', port), _H) is None, 'and it is still exclusive while bound'
+    finally:
+        if b: b.server_close()
+
+
+def test_an_unreadable_lock_is_kept_never_taken_over(tmp_path, monkeypatch):
+    """Cowork PR #26 note: a sharing violation / antivirus read failure is not "no owner"."""
+    import builtins
+    _plant(tmp_path, pid=424242, start=1, token='live')
+    real = builtins.open
+
+    def locked(path, *a, **k):
+        if str(path).endswith(INST.LOCK_NAME): raise PermissionError(32, 'being used by another process', str(path))
+        return real(path, *a, **k)
+    monkeypatch.setattr(builtins, 'open', locked)
+    assert INST.acquire(str(tmp_path), alive=lambda pid: False) is None
+    assert INST.release(str(tmp_path), 'live') is False
+    monkeypatch.undo()
+    assert json.load(open(os.path.join(tmp_path, INST.LOCK_NAME)))['token'] == 'live'
