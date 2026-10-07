@@ -399,6 +399,7 @@ class Engine:
         self.last_account, self.last_skip, self.corr = {}, '', None
         self.error = None
         self.connected = False
+        self.connect_retry = None                 # T05b: {'n', 'next_t', 'since'} while start-up connect waits for Binance
         self.marks, self.marks_t = {}, 0.0
         self.guard_eq = None                      # bot capital used by the safety limits and shown in the app
         self.untracked = {}                       # exchange positions the engine has no record of
@@ -497,6 +498,7 @@ class Engine:
                     else:
                         log.warning('Account has open positions in one-way mode: shorts disabled until flat')
             except Exception as e:
+                if self._exchange_down(e): raise          # T05b: Binance unreachable -> the whole connect is retried later
                 log.warning(f'hedge mode check failed: {e}')
             self.equity()
         self.connected = True
@@ -1138,8 +1140,41 @@ class Engine:
         h = getattr(self.trade, '__dict__', {}).get('_health')
         if h is not None and h.state == 'outage': return    # T05b final: a later read in this pass re-opened it - not recovered
         if self.health.get('incidents', {}).get('exchange-down', {}).get('open') or (h is not None and h.recovered):
-            self.resolve('exchange-down', 'Binance answering again - positions re-read and reconciled')
+            waiting = self._stops_reconfirmed()
+            if waiting is None: return                           # protective orders not readable yet: stays open, next pass
+            note = 'Binance answering again - positions re-read and reconciled, stops re-confirmed'
+            if waiting: note += f' ({waiting} lot(s) still waiting for a stop - being placed)'
+            self.resolve('exchange-down', note)
             if h is not None: h.recovered = False
+
+    def _stops_reconfirmed(self):
+        """T05b (canary finding): recovery is only declared once the protective orders were re-read too, not just the
+        positions. Reads open orders once per held symbol. Any read failure -> None (nothing changed, retried next pass;
+        a non-transient failure gets its own open-orders|SYM incident). A recorded stop id that is not among the open
+        orders is reported (keyed stop-unseen, closed when seen again); nothing is changed and no order is sent here: the
+        normal reconcile decides fills vs resize from the position size. Returns the number of lots that have no
+        confirmed stop yet (being placed by manage), so the recovery line never over-claims."""
+        held = [l for l in self.state['lots'].values() if not l.get('pending')]
+        waiting = sum(1 for l in held if not l.get('stop_id') or l.get('stop_dirty'))
+        if self.dry: return waiting
+        lots = [l for l in held if l.get('stop_id')]
+        for sym in sorted({l['symbol'] for l in lots}):
+            try: tags = self.trade.open_stop_tags(sym)
+            except Exception as ex:
+                if not self._exchange_down(ex):
+                    self.err(f'open orders {sym}: {ex} - nothing changed, re-checked next pass', key=f'open-orders|{sym}')
+                return None
+            self.health.setdefault('confirmed', {}).setdefault('stops', {})[sym] = now_utc().isoformat(timespec='seconds')
+            self.resolve(f'open-orders|{sym}', f'open orders {sym} readable again')
+            for l in lots:
+                if l['symbol'] != sym: continue
+                key = f"stop-unseen|{sym}|{l['side']}"
+                if l['stop_id'] not in tags:
+                    self.err(f"{sym} {l['side']}: stop {l['stop_id']} not seen among Binance open orders after the outage - "
+                             'check this position\'s protection (nothing was changed)', key=key)
+                else:
+                    self.resolve(key, f"{sym} {l['side']}: stop seen among open orders again")
+        return waiting
 
     def _manage_failed(self, why, key=None):
         h = self.health; h['manage_fail_streak'] += 1

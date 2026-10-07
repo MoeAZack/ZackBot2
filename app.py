@@ -3,7 +3,7 @@
 Run:  python app.py            (or ZackBot.exe after building)
       python app.py --no-window  (server only; open http://localhost:8765 yourself)
 """
-import base64, csv, glob, gzip, hmac, json, logging, logging.handlers, math, os, queue, re, secrets, shutil, subprocess, sys, threading, time, traceback, uuid, socket
+import base64, csv, glob, gzip, hmac, json, logging, logging.handlers, math, os, queue, random, re, secrets, shutil, subprocess, sys, threading, time, traceback, uuid, socket
 from datetime import datetime, timezone
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlsplit, parse_qs
@@ -466,13 +466,55 @@ class App:
             try:
                 eng.connect()
             except Exception as e:
-                eng.error = f'Could not connect to Binance: {e}'
-                log.error(eng.error)
+                self._connect_failed(eng, e)
             self.engine = eng
         finally:
             if old is not None: old.lock.release()
         log.info(f"ZackBot {VERSION} | mode={'LIVE' if eng.live else 'PAPER'} | keys={'yes' if cfg.get('API_KEY') else 'no'} | data: {DATA}")
         self.preview()          # signals preview on start (no trading)
+
+    CONNECT_RETRY_MIN, CONNECT_RETRY_MAX = 5.0, 60.0
+
+    def _connect_failed(self, eng, ex, now=None):
+        """T05b: start-up connect failed. Binance unreachable (transient) -> one exchange-down incident and an automatic,
+        backed-off retry (5 s doubling to 60 s, jittered, never sooner than the outage circuit's next probe). Nothing is
+        inferred from the failed read: no rules/positions/stops are assumed; the loop stays idle until connect succeeds and
+        the incident is closed only by the later successful reconcile / account read. Other errors keep the old behaviour."""
+        now = time.time() if now is None else now
+        if not eng._exchange_down(ex):
+            if eng.connect_retry:                       # Binance answers again but refuses (e.g. key): outage is over
+                eng.resolve('exchange-down', f'Binance answering again - connect refused: {str(ex)[:80]}')
+            eng.connect_retry = None
+            eng.error = f'Could not connect to Binance: {ex}'
+            log.error(eng.error)
+            return
+        r = eng.connect_retry or dict(n=0, since=now)
+        r['n'] += 1
+        delay = min(self.CONNECT_RETRY_MAX, self.CONNECT_RETRY_MIN * 2 ** (r['n'] - 1)) * random.uniform(0.8, 1.2)
+        try: floor = float(getattr(ex, 'retry_in', 0) or 0)
+        except (TypeError, ValueError): floor = 0.0
+        r['next_t'] = now + min(self.CONNECT_RETRY_MAX * 1.2, max(delay, floor if math.isfinite(floor) else 0.0))
+        eng.connect_retry = r
+        eng.error = f'Could not connect to Binance: {EXCHANGE_DOWN} - retrying automatically'
+        eng.exchange_down_incident('start-up connect')
+
+    def _reconnect(self, e, now=None):
+        """T05b: retry a start-up connect that failed because Binance was unreachable. Same process, no restart."""
+        r = e.connect_retry
+        now = time.time() if now is None else now
+        if e.connected or not r or now < r['next_t']: return False
+        with e.lock:                                    # held across the connect, like start_engine (panel reads may wait)
+            if self.engine is not e: return False       # replaced while waiting: the new engine connects itself
+            try:
+                e.connect()
+            except Exception as ex:
+                self._connect_failed(e, ex, now)
+                return False
+            e.connect_retry = None; e.error = None
+        log.info(f"Binance answering again - connected after {int(now - r['since'])}s ({r['n']} failed start-up attempts); "
+                 'the outage incident closes only once positions and stops were re-read')
+        self.preview()
+        return True
 
     def preview(self):
         """Ask the background worker to refresh signals (debounced, never blocks trading)."""
@@ -518,6 +560,10 @@ class App:
             try:
                 e = self.engine
                 if e is not e0: last_bar, e0 = {}, e                      # engine restarted (keys/mode changed)
+                if e and not e.connected and getattr(e, 'connect_retry', None):   # T05b: start-up outage -> retry here
+                    self._reconnect(e)
+                    if self.engine is not e: e = None               # replaced (settings saved) during the retry: never
+                                                                    # finish this pass on the old engine; next pass = new one
                 if e and e.connected and e.cfg.get('API_KEY') and not e.error:
                     now = time.time()
                     tfs = sorted({sl['tf'] for sl in e.S['SLEEVES']} | {l.get('tf', '4h') for l in e.state['lots'].values()}
