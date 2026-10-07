@@ -527,12 +527,12 @@ def _create_lock(p, data):
             except OSError: pass
         try:
             os.link(tmp, p); return True
-        except FileExistsError:
+        except (FileExistsError, PermissionError):                # Windows: a contended / delete-pending lock = taken
             return False
         except OSError:                                           # no hard links on this volume: exclusive create
             try:
                 fd = os.open(p, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
-            except FileExistsError:
+            except (FileExistsError, PermissionError):
                 return False
             with os.fdopen(fd, 'w', encoding='utf-8') as f: json.dump(data, f)
             return True
@@ -560,6 +560,8 @@ def acquire_lock(out, clock=time.time, stale_s=LOCK_STALE_S, alive=pid_alive):
     m = p + '.takeover'
     try:
         os.close(os.open(m, os.O_CREAT | os.O_EXCL | os.O_WRONLY))
+    except PermissionError:                                       # Windows: the marker is contended or being deleted by
+        return None                                               # its owner right now -> someone else is taking over
     except FileExistsError:                                       # another run is taking over right now
         try:
             if time.time() - os.path.getmtime(m) > TAKEOVER_STALE_S: os.remove(m)    # its owner died mid-takeover

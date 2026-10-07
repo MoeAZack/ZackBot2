@@ -75,8 +75,9 @@ continuously, together with funding-rate history, funding intervals, mark-price 
 | `tools\collect_market_data.bat --once --symbols BTCUSDT,ETHUSDT --out D:\zb_market` | other coins / folder |
 | `tools\collect_market_data.bat --testnet` | TESTNET `exchangeInfo` snapshot (BT02); also builds `data\exchange_rules_testnet.json` when `exchange_rules.py` is in the checkout |
 
-Default coins: the app's `UNIVERSE` (`%LOCALAPPDATA%\ZackBot\settings.json`), else `engine.TOP40`. Output: `data_market\`
-(git-ignored): `<dataset>\<SYMBOL>_<period>.csv`, `exchange_info\`, `funding_info\ALL.csv`, `manifest.json` (rows,
+Default coins: the app's `UNIVERSE` (`%LOCALAPPDATA%\ZackBot\settings.json`), else `engine.TOP40`. Output: the app's own
+folder `%LOCALAPPDATA%\ZackBot\market_data` (shared with the in-app collector and its lock; outside the repo and the
+installed source, so an upgrade can never delete it; `--out` overrides): `<dataset>\<SYMBOL>_<period>.csv`, `exchange_info\`, `funding_info\ALL.csv`, `manifest.json` (rows,
 first/last time, last run, source), `collector.log`. Re-running is safe (rows are de-duplicated by timestamp; files are
 replaced atomically). Rate limits: paced under half the IP weight budget; HTTP 429 backs off with Retry-After; HTTP 418
 (IP ban) stops at once and nothing is sent until the ban ends (`ban.json`). Exit code 0 ok, 1 errors, 3 stopped/locked.
