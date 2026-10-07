@@ -1198,7 +1198,11 @@ def settings_update(e, b):
         elif k == 'CAPITAL_CAP':
             cap = _num(v, 0, 1e9, 'start amount')
             after.append(('start amount', lambda cap=cap: e.set_capital_base(cap)))     # shifts the guards + saves itself
-        elif k in ('ENTRIES_PAUSED', 'AI_FILTER', 'RUN_IN_BACKGROUND', 'TELEGRAM_ON', 'MAKER_FALLBACK'): ns[k] = bool(v)
+        elif k == 'ENTRIES_PAUSED':
+            if not bool(v) and e.install_block():          # AUD-05 r5: resuming never bypasses the account confirmation
+                raise ValueError('cannot resume entries: ' + e.install_block())
+            ns[k] = bool(v)
+        elif k in ('AI_FILTER', 'RUN_IN_BACKGROUND', 'TELEGRAM_ON', 'MAKER_FALLBACK'): ns[k] = bool(v)
         elif k == 'MARKET_COLLECTOR':
             if not isinstance(v, bool): raise ValueError('market data collector switch must be true or false')
             ns[k] = v

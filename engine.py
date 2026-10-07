@@ -638,6 +638,7 @@ GRID_OP_KINDS = ('open', 'add', 'red')
 _OP_ID_RE = re.compile(r'[0-9a-f]{6,32}')
 
 
+GRID_SAFETY_METRICS = ('worst_loss_usd', 'max_notional')   # read by the leverage/risk aggregation and the grid lot
 GRID_MAX_SPAN = 20.0          # hi / lo of any grid the bot builds stays far below this (pct <= 50 %: 3x)
 
 
@@ -716,8 +717,8 @@ def _validate_grid(k, g, lots):
         if op['qty'] > sum(cells[j]['q'] for j in idx) * (1 + 1e-6) + 1e-12: _bad(wo + '.qty', 'larger than its cells')
     _int(g.get('cycles', 0), w + '.cycles'); _num(g.get('cycle_pnl', 0.0), w + '.cycle_pnl')
     _int(g.get('trend_bars', 0), w + '.trend_bars')
-    met = _dict(g.get('metrics'), w + '.metrics')                 # AUD-05 r4: every metric the bot USES must be there
-    _num(met.get('worst_loss_usd'), w + '.metrics.worst_loss_usd', lo=0, hi=g['capital'] * 1e3)
+    met = _dict(g.get('metrics'), w + '.metrics')                 # AUD-05 r4/r5: every metric safety code USES must be there
+    for f in GRID_SAFETY_METRICS: _num(met.get(f), f'{w}.metrics.{f}', lo=0, hi=g['capital'] * 1e3)
 
 
 def validate_install(doc):
@@ -851,18 +852,23 @@ def migrate_legacy_secrets(data_dir):
     return found
 
 
+SETTINGS_FILES = ('settings.json', 'settings.json.bak')     # main + its backup (save_json backup=True: '<path>.bak')
+
+
+def _is_settings_sibling(n):
+    """AUD-05 r4/r5: names derived from how the code writes them, for BOTH settings files: the file itself, quarantine()
+    evidence '<file>.corrupt-<UTC>[-n]' and _write_durable / _write_bytes_durable temp files '<file>.<pid>-<tid>.tmp'."""
+    for b in SETTINGS_FILES:
+        if n == b or n.startswith(b + '.corrupt-') or (n.startswith(b + '.') and n.endswith('.tmp')): return True
+    return False
+
+
 def settings_siblings(data_dir):
-    """AUD-05 r4: every file that may hold settings bytes: settings.json, .bak, damaged-copy evidence (.corrupt-*) and
-    temp files of an interrupted write (settings.json.<pid>-<tid>.tmp, settings.json.bak.<pid>-<tid>.tmp)."""
+    """AUD-05 r4/r5: every file that may hold settings bytes (see _is_settings_sibling)."""
     try: names = os.listdir(data_dir)
     except OSError: return []
-    out = []
-    for n in sorted(names):
-        if n in ('settings.json', 'settings.json.bak') or (n.startswith('settings.json.corrupt-')) or \
-                (n.startswith('settings.json.') and n.endswith('.tmp')):
-            p = os.path.join(data_dir, n)
-            if os.path.isfile(p): out.append(p)
-    return out
+    return [os.path.join(data_dir, n) for n in sorted(names)
+            if _is_settings_sibling(n) and os.path.isfile(os.path.join(data_dir, n))]
 
 
 def redact_settings_files(data_dir):
@@ -1353,9 +1359,17 @@ class Engine:
         elif hasattr(self, 'health'): self.err(msg, key=f'persist|{name}')
 
     def persist_block(self):
-        """AUD-05 r2: reason no new risk may be added while a safety file cannot be saved (None = fine)."""
+        """AUD-05 r2/r5: THE central no-new-risk gate (entries, adds, grid starts/adds, maker placements): a safety file that
+        cannot be saved, or an unresolved install / account binding (only confirm_install clears that - resuming entries
+        does not). None = fine."""
         unt = getattr(self, 'state_untrusted', None)
         if unt: return f"data file not saved ({', '.join(sorted(unt))}.json) - no new risk until it saves again"
+        return self.install_block()
+
+    def install_block(self):
+        """AUD-05 r5: reason while the account this data folder belongs to is unresolved (None = confirmed)."""
+        if getattr(self, '_install_bad', None) or getattr(self, 'install_mismatch', None):
+            return 'account not confirmed for this data folder - type THIS_ACCOUNT in Settings first'
         return None
 
     def _send(self, fn, *a, **cids):
@@ -3633,7 +3647,11 @@ class Engine:
                     res.append((s, l['side'], q * max(pj, mark_of(s)), q * max(0.0, sd * (pj - l['stop'])) * slip))
         for g in grids:
             m, k = g.get('metrics') or {}, 2 if g.get('mode') == 'neutral' else 1
-            res.append((g.get('sym'), None, k * lev_num(m.get('max_notional'), 'grid notional'), k * lev_num(m.get('worst_loss_usd'), 'grid worst loss') * slip))
+            try: rm = GRID.risk_metrics(g)                   # AUD-05 r5: recomputed from the cells - a persisted metric can
+            except Exception: rm = {}                        # only raise the reservation, never lower it
+            nt = max(lev_num(m.get('max_notional'), 'grid notional'), float(rm.get('max_notional') or 0.0))
+            wl = max(lev_num(m.get('worst_loss_usd'), 'grid worst loss'), float(rm.get('worst_loss_usd') or 0.0))
+            res.append((g.get('sym'), None, k * nt, k * wl * slip))
         # ---- current notional, mark-to-stop losses, worst-case notional per symbol
         ncur, nws, loss_lots = {}, {}, 0.0
         for (s, _), (q, nt, mk) in pos.items(): ncur[s] = ncur.get(s, 0.0) + nt

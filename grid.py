@@ -654,7 +654,7 @@ class GridManager:
     def _can_add(self, g, side):
         e = self.e
         if e.S.get('ENTRIES_PAUSED') or e.state.get('halted'): return False
-        if getattr(e, 'state_untrusted', None): return False             # AUD-05 r2: a safety file cannot be saved - no new risk
+        if e.persist_block(): return False             # AUD-05 r2/r5: state not durable / account unresolved - no new risk
         if e.exchange_state().get('state') == 'outage': return False     # T05b: no new grid exposure while Binance is down
         if f"{g['sym']}|{side}" in e.untracked: return False
         if any(l['symbol'] == g['sym'] and l['side'] == side and l.get('stop_dirty') for l in e.state['lots'].values()): return False
@@ -878,7 +878,7 @@ class GridManager:
                     op = self._op(g, side, 'open', add, q, m)
                     self._open(g, op); changed = True
                 else:
-                    try: self._order_ok(g, q, m)                           # AUD-05 r4: before the op / the send
+                    try: self._order_ok(g, q, m, side)                     # AUD-05 r4/r5: before the op / the send
                     except ValueError as ex: self.e.err(f"grid {g['key']} add: {ex}"); continue
                     op = self._op(g, side, 'add', add, q, m)
                     try:
@@ -910,19 +910,39 @@ class GridManager:
         if not (isinstance(w, (int, float)) and math.isfinite(w) and w >= 0): raise ValueError('grid worst case not computable')
         return w
 
-    def _order_ok(self, g, q, m):
-        """AUD-05 r4: last check before a risk-adding grid order: the mark inside the grid's stops and the order's notional
-        within the grid's own capital (x capital_frac x range span). Raises ValueError (nothing is sent)."""
+    def _order_ok(self, g, q, m, side=None):
+        """AUD-05 r4/r5: last check before a risk-adding grid order: no central block, the mark inside the grid's stops, the
+        order's notional within the grid's own capital (x capital_frac x range span) and - for `side` - the protective
+        stop exactly as it will be placed (rounded to the tick) is valid. Raises ValueError (nothing is sent)."""
+        pb = self.e.persist_block()
+        if pb: raise ValueError(pb)
+        if side: self._stop_ok(g, side, m)
         if not (g['stop_lo'] <= m <= g['stop_hi']): raise ValueError(f"mark {m:g} outside the grid's stops - not sent")
         cap = g['capital'] * float(g['cfg'].get('capital_frac', 1.0)) * (g['hi'] / g['lo']) * 1.05
         if q * m > cap: raise ValueError(f"order {q:g} @ {m:g} exceeds the grid's own capital - not sent")
+
+    def _stop_ok(self, g, side, m):
+        """AUD-05 r5: the side's stop-out ROUNDED to the tick (what the lot's exchange stop will be) must be > 0, on the
+        protective side of the entry and of the range, and the configured stop-out within half the smallest line spacing."""
+        e = self.e; tick = e.rules[g['sym']]['tick']
+        pct = float(g['cfg'].get('stop_out_pct', GRID_DEFAULTS['stop_out_pct'])) / 100
+        lines = g['lines']; slack = max(min(lines[i + 1] - lines[i] for i in range(len(lines) - 1)) / 2, tick)
+        if side == 'LONG':
+            st, want = e._rd(g['stop_lo'], tick), g['lo'] * (1 - pct)
+            ok = 0 < st < m and st < g['lo']
+        else:
+            st, want = e._rd(g['stop_hi'], tick), g['hi'] * (1 + pct)
+            ok = st > m and st > g['hi']
+        if not (ok and math.isfinite(st) and abs(st - want) <= slack):
+            raise ValueError(f"{side} stop {st:g} is not a valid protective stop (configured {want:g}) - not sent")
+        return st
 
     def _open(self, g, op):
         e = self.e; sym, side, r = g['sym'], op['side'], e.rules[g['sym']]
         q = e._rd(op['qty'], r['step'])
         px = op['px']
         try:
-            risk = self._risk(g); self._order_ok(g, q, px)                 # everything _create needs, BEFORE the send
+            risk = self._risk(g); self._order_ok(g, q, px, side)           # everything _create needs, BEFORE the send
         except Exception as ex:
             g['op'] = None; e.save_state(); e.err(f"grid {g['key']} first {side} order not sent: {ex}"); return
         if not e.dry:
