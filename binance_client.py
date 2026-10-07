@@ -63,7 +63,18 @@ class ExchangeUnavailable(BinanceError):
         super().__init__(-1007, msg); self.retry_in = retry_in; self.kind = 'read'
 
 
+class RateLimitBan(ExchangeUnavailable):
+    """TRATE: Binance answered HTTP 418 (this IP is banned for sending too many requests). That answer, and every request
+    while the ban lasts, raises this. A request refused during the ban was NEVER SENT (no network call), so for an order
+    it is a definite failure, not an AmbiguousOrder. Stable message (no countdown); the seconds left are in .retry_in."""
+    def __init__(self, msg, retry_in=None):
+        BinanceError.__init__(self, -418, msg); self.retry_in = retry_in; self.kind = 'ban'
+
+
 RETRY_AFTER_MAX = 60.0
+BAN_MAX_S = 3 * 86400.0          # TRATE: a recorded 418 ban never exceeds 3 days (in memory only; a restart clears it)
+BAN_DEFAULT_S = 60.0             # TRATE: a 418 whose Retry-After is missing / unreadable still bans for this long
+RATE_LIMIT_SLEEP_MAX = 2.0       # TRATE: at most this many seconds slept inside one _req call because of HTTP 429
 
 
 def retry_after(headers, now=None):
@@ -82,6 +93,25 @@ def retry_after(headers, now=None):
         return min(RETRY_AFTER_MAX, max(0.0, sec))
     except Exception:
         return 0.0
+
+
+def ban_seconds(headers, now=None):
+    """TRATE: how long a 418 ban lasts, from the RAW Retry-After (not clamped to RETRY_AFTER_MAX: Binance bans run from
+    minutes to days). Finite seconds in [0, BAN_MAX_S]; a huge value or +inf -> BAN_MAX_S; missing / garbage / NaN ->
+    BAN_DEFAULT_S. Never raises."""
+    try:
+        v = (headers or {}).get('Retry-After')
+        if v is None or str(v).strip() == '': return BAN_DEFAULT_S
+        v = str(v).strip()
+        try:
+            sec = float(v)
+        except ValueError:
+            dt = email.utils.parsedate_to_datetime(v)
+            sec = dt.timestamp() - (time.time() if now is None else now)
+        if math.isnan(sec) or sec == -math.inf: return BAN_DEFAULT_S
+        return min(BAN_MAX_S, max(0.0, sec))
+    except Exception:
+        return BAN_DEFAULT_S
 
 
 _SIGNED_QS = re.compile(r'(/[A-Za-z0-9_./-]*)\?[^\s\'")]*')
@@ -117,6 +147,26 @@ class ExchangeHealth:
         self.fail_fast = self.probes = self.recoveries = 0
         self.other_fails = 0                        # telemetry only: order / cancel / confirmation failures
         self.recovered = False                      # set on outage -> ok; the engine clears it after its reconcile
+        self.ban_until, self.bans, self.ban_refused = None, 0, 0     # TRATE: HTTP 418 IP ban (circuit clock)
+
+    def ban(self, seconds, what):
+        """TRATE: Binance answered 418. Record ban-until (never shortened by a later, smaller answer)."""
+        with self.lock:
+            now = self.clock()
+            until = now + min(BAN_MAX_S, max(0.0, float(seconds)))
+            self.ban_until = until if self.ban_until is None else max(self.ban_until, until)
+            self.bans += 1; self.last_fail = dict(t=now, what=str(what)[:120], read=False)
+
+    def banned(self, count=True):
+        """TRATE: None = no ban; otherwise the seconds the 418 ban still lasts (the request must not be sent).
+        count=False only looks (no refusal is counted)."""
+        with self.lock:
+            if self.ban_until is None: return None
+            left = self.ban_until - self.clock()
+            if left <= 0:
+                self.ban_until = None; return None
+            if count: self.ban_refused += 1
+            return round(left, 1)
 
     def admit_read(self):
         """None = send the read; otherwise the seconds until the next probe (the read must fail fast)."""
@@ -162,7 +212,9 @@ class ExchangeHealth:
         with self.lock:
             return dict(state=self.state, since=self.since, consecutive_fail=self.fails, last_ok=self.last_ok,
                         last_fail=self.last_fail, cooldown_s=self.cool, fail_fast=self.fail_fast, probes=self.probes,
-                        recoveries=self.recoveries, other_fails=self.other_fails)
+                        recoveries=self.recoveries, other_fails=self.other_fails,
+                        ban_s=round(max(0.0, self.ban_until - self.clock()), 1) if self.ban_until is not None else 0.0,
+                        bans=self.bans, ban_refused=self.ban_refused)
 
 
 ALGO_UNSUPPORTED = (-5000, -1404, -404)    # endpoint unknown here: -5000 "Path ..., Method GET is invalid" / plain 404
@@ -262,16 +314,23 @@ class Futures:
         return now < w['until']
 
     def _req(self, method, path, params=None, signed=False, retry=None, critical=False):
-        """GET/DELETE are retried on network errors, rate limits and server errors (with backoff and Retry-After).
+        """GET/DELETE are retried on network errors and server errors (with backoff and Retry-After).
+        TRATE: HTTP 429 sleeps at most RATE_LIMIT_SLEEP_MAX seconds in total, then fails fast (the caller - orphan list,
+        next pass - retries; this runs under the engine lock, so a long sleep here would block stops / flatten / panel).
+        HTTP 418 (IP ban) is never retried: the ban is recorded and every request fails fast, unsent, until it ends.
         POST is never blindly retried: order placement goes through _order(), which confirms by client order id."""
         params = {k: v for k, v in (params or {}).items() if v is not None}
         retry = (method in SAFE_METHODS) if retry is None else retry
         url = self.base + path
+        left = self.health.banned()                      # TRATE: reads AND writes; nothing is sent during a 418 ban
+        if left is not None:
+            raise RateLimitBan(f'Binance IP ban (HTTP 418): {method} {path} not sent', left)
         read = method == 'GET' and not critical          # T05b: only status checks drive / obey the outage circuit
         if read:                                         # reads share one cooldown during a known outage
             wait = self.health.admit_read()
             if wait is not None:
                 raise ExchangeUnavailable(f'Binance outage: status check {path} not sent (waiting for the next probe)', wait)
+        slept_limited = 0.0
         for attempt in range(4 if retry else 2):
             last = attempt == (3 if retry else 1)
             try:
@@ -291,19 +350,28 @@ class Futures:
                 code = 200
             if code == -1021 and not last:              # clock drift: resync and re-sign (safe, request was rejected)
                 self.sync_time(); continue
-            busy = r.status_code in (418, 429) or r.status_code >= 500 or code in TRANSIENT
+            if r.status_code == 418:                    # TRATE: IP ban - Binance refused the request; never retried
+                ban = ban_seconds(r.headers)
+                self.health.fail(f'{method} {path}: HTTP 418 code {code}', retry_after(r.headers), read=read)
+                self.health.ban(ban, f'{method} {path}: HTTP 418 code {code}')
+                raise RateLimitBan(f'Binance IP ban (HTTP 418) on {method} {path}', ban)
+            busy = r.status_code == 429 or r.status_code >= 500 or code in TRANSIENT
             if busy:
                 ra = retry_after(r.headers)
                 self.health.fail(f'{method} {path}: HTTP {r.status_code} code {code}', ra, read=read)
                 if retry and not last and read and self.health.state == 'outage':
                     raise ExchangeUnavailable(f'Binance outage: status check {path} failed (HTTP {r.status_code}, code {code})',
                                               self.health.cool)
+                wait = min(ra or min(8, 0.5 * 2 ** attempt + random.random()), 30)
+                limited = r.status_code == 429 or code in (-1003, -1015)
+                if limited and slept_limited + wait > RATE_LIMIT_SLEEP_MAX:
+                    last = True                         # TRATE: rate limited for longer than the bound -> fail fast now
                 if not retry or last:
                     if method not in SAFE_METHODS and (r.status_code >= 500 or code in (-1001, -1006, -1007)):
                         raise AmbiguousOrder(f'HTTP {r.status_code} on {path}')
                     raise BinanceError(code or -r.status_code, data.get('msg') if isinstance(data, dict) else f'HTTP {r.status_code}')
-                wait = ra or min(8, 0.5 * 2 ** attempt + random.random())
-                time.sleep(min(wait, 30)); continue
+                if limited: slept_limited += wait
+                time.sleep(wait); continue
             self.health.ok()                             # Binance answered (even a business error proves it is up)
             if isinstance(data, dict) and code not in (None, 0, 200):
                 raise BinanceError(code, data.get('msg'))

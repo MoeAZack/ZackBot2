@@ -598,7 +598,9 @@ class App:
                             if e.state['lots'] or e.state.get('grids') or e.state.get('pending_entries') or e.state.get('resting_entries'): e.manage(marks)
                             else: e.marks, e.marks_t = marks, now
                         except Exception as ex:                     # T05b final: Binance down -> the one exchange-down incident
-                            if e._exchange_down(ex): e._manage_failed(f'mark prices: {EXCHANGE_DOWN}', key='exchange-down')
+                            if e._exchange_down(ex):
+                                why, key = e._down_why(ex)      # TRATE: a 418 ban -> the one 'rate-ban' incident
+                                e._manage_failed(f'mark prices: {why}', key=key)
                             else: e._manage_failed(f'mark prices: {ex}')
                     if now - last_guard > 60:                               # daily halt / drawdown checked between candles too
                         last_guard = now
@@ -608,6 +610,7 @@ class App:
                                 if not (e.state['lots'] or e.state.get('grids') or e.state.get('pending_entries')
                                         or e.state.get('resting_entries')):   # nothing to reconcile: account read = recovered
                                     e.resolve('exchange-down', 'Binance answering again - account readable')
+                                    e.resolve('rate-ban', 'Binance IP ban over - account readable')     # TRATE
                             except Exception as ex:                     # T05b: Binance down -> guards simply retry next pass
                                 if not e._exchange_down(ex): raise
                                 e.exchange_down_incident('daily guards')

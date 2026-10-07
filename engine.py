@@ -12,7 +12,7 @@ import pandas as pd
 
 import strategies as S
 import trade_audit as TA
-from binance_client import Futures, MAINNET, TESTNET, BinanceError, AmbiguousOrder, ExchangeUnavailable, is_transient, new_cid, scrub, testnet_faults, testnet_read_outage
+from binance_client import Futures, MAINNET, TESTNET, BinanceError, AmbiguousOrder, ExchangeUnavailable, RateLimitBan, is_transient, new_cid, scrub, testnet_faults, testnet_read_outage
 from ai_filter import review
 import grid as GRID
 
@@ -392,6 +392,8 @@ OUTAGE_ADD = 'Binance outage - no adds until it answers again'
 MARK_FRESH_S = 120                    # T05b: a cached mark this recent may validate a manual stop move when Binance is down
 EXCHANGE_DOWN = ('Binance is not answering status checks (no order was sent) - positions and stops are left as they '
                  'are and re-checked when it answers')
+RATE_BAN = ('Binance has banned this IP for too many requests (HTTP 418) - nothing is sent until the ban ends; positions '
+            'and stops are left as they are and re-checked when it ends')     # TRATE: one keyed incident 'rate-ban'
 
 
 class Engine:
@@ -988,10 +990,21 @@ class Engine:
                 except Exception:
                     pass
 
-    def exchange_down_incident(self, where):
+    def exchange_down_incident(self, where, ex=None):
         """A step failed only because Binance is unreachable: one shared exchange-down incident (closed by the recovery
-        reconcile), no guessing."""
-        self.err(f'{where}: {EXCHANGE_DOWN}', key='exchange-down')
+        reconcile), no guessing. TRATE: while a 418 IP ban is recorded on a client it is its own single incident, 'rate-ban'."""
+        why, key = self._down_why(ex)
+        self.err(f'{where}: {why}', key=key)
+
+    def _down_why(self, ex=None):
+        """TRATE: (message, incident key) for a step that failed because Binance cannot be used right now: a 418 ban
+        ('rate-ban') or the generic 'exchange-down'. Decided from the error when given, else from a ban still recorded
+        on the trading / data client (callers that do not pass the error)."""
+        banned = isinstance(ex, RateLimitBan)
+        for c in ((getattr(self, 'trade', None), getattr(self, 'data', None)) if ex is None else ()):
+            h = getattr(c, '__dict__', {}).get('_health') if c is not None else None
+            if not banned and h is not None and getattr(h, 'banned', None): banned = h.banned(count=False) is not None
+        return (RATE_BAN, 'rate-ban') if banned else (EXCHANGE_DOWN, 'exchange-down')
 
     def resolve(self, key, note):
         """Close an open incident with ONE recovery entry (count, first, duration)."""
@@ -1244,7 +1257,8 @@ class Engine:
                 changed = changed or len(self.state['lots']) != n0
             except Exception as e:
                 if self._exchange_down(e):                         # T05b: one incident, plain words; nothing guessed
-                    self._manage_failed(EXCHANGE_DOWN, key='exchange-down')
+                    why, key = self._down_why(e)                   # TRATE: a 418 ban -> the one 'rate-ban' incident
+                    self._manage_failed(why, key=key)
                 else:
                     self._manage_failed(f'reconcile: {e}')
                 return
@@ -1372,12 +1386,14 @@ class Engine:
         one recovery entry (the reconcile that just ran IS the recovery reconcile; nothing older is acted on)."""
         h = getattr(self.trade, '__dict__', {}).get('_health')
         if h is not None and h.state == 'outage': return    # T05b final: a later read in this pass re-opened it - not recovered
-        if self.health.get('incidents', {}).get('exchange-down', {}).get('open') or (h is not None and h.recovered):
+        incs = self.health.get('incidents', {})
+        if incs.get('exchange-down', {}).get('open') or incs.get('rate-ban', {}).get('open') or (h is not None and h.recovered):
             waiting = self._stops_reconfirmed()
             if waiting is None: return                           # protective orders not readable yet: stays open, next pass
             note = 'Binance answering again - positions re-read and reconciled, stops re-confirmed'
             if waiting: note += f' ({waiting} lot(s) still waiting for a stop - being placed)'
             self.resolve('exchange-down', note)
+            self.resolve('rate-ban', 'Binance IP ban over - ' + note[0].lower() + note[1:])   # TRATE
             if h is not None: h.recovered = False
 
     def _stops_reconfirmed(self):
