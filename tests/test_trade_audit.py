@@ -790,7 +790,9 @@ def test_state_size_per_lot_and_record_size_are_bounded():
     l = _realistic_lot()
     rec = TA.close_record(l, 3.0, fee_rate=0.0005)
     rec.update(kind='trade_audit', id='S1|ETHUSDT|x', exit_reason='take_profit', closed=_ts2(40000))
-    assert len(json.dumps(l['ex'])) < 12000 and len(json.dumps(rec)) < 6000
+    # record bound 6000 -> 9000 B (owner scope 2026-10-07: metrics, flags, segment + the two v2 policies add ~2.8 KB); the
+    # audit file stays bounded by AUDIT_ROTATE_BYTES and the in-memory window by slim_record (see the next test)
+    assert len(json.dumps(l['ex'])) < 12000 and len(json.dumps(rec)) < 9000
 
 
 def test_audit_window_is_slimmed_and_the_summary_is_fast():
@@ -2052,3 +2054,407 @@ def test_cycle_never_changes_trading_when_every_audit_function_raises(monkeypatc
         assert normal == broken, maker
         lots, stops, calls, pos, history, missed, pend, rest = normal
         assert history or lots, maker                                       # entries really happened in cycle()
+
+
+# ------------------------------------------------------------------ owner scope 2026-10-07 (PR #8): metrics, failure classes,
+# regime snapshots, breakeven / regime-exit policies, segmentation, missed shorts, summary endpoint
+def _snap(sym='BTCUSDT', tf='4h', t='2026-10-04T00:00:00', c=100.0, e20=101.0, e50=102.0, e200=110.0):
+    return TA.regime_snapshot(sym, tf, t, None, c, e20, e50, e200)
+
+
+def test_metrics_usd_pct_r_and_time_to_mfe_long_and_short():
+    for side, sd in (('LONG', 1), ('SHORT', -1)):
+        l = plot(side=side, mgmt=dict(tp_r=50.0)); l['realized'] = 0.0; l['fees'] = 0.0      # entry 100 @ iso(0), qty 1, risk 2
+        TA.observe(l, 100 + sd * 3.0, iso(2), fee_rate=0.0)                 # MFE +3 at 2h
+        l.update(qty=2.0, avg=100 - sd * 1.0)                                # an add: avg 99 (long) / 101 (short), qty 2
+        TA.observe(l, 100 - sd * 4.0, iso(3), fee_rate=0.0)                 # MAE at 3h with the NEW state
+        TA.observe(l, 100 + sd * 0.5, iso(4), fee_rate=0.0)
+        rec = TA.close_record(l, 1.0, fee_rate=0.0)
+        m = rec['metrics']
+        assert m['mfe']['price'] == 3.0 and m['mfe']['usd'] == 3.0 and m['mfe']['pct'] == 3.0 and m['mfe']['r'] == 1.5, side
+        assert m['mae']['avg_at'] == 100 - sd and m['mae']['qty_at'] == 2.0 and m['mae']['price'] == -3.0 and m['mae']['usd'] == -6.0
+        assert m['mae']['pct'] == round(-3.0 / (100 - sd) * 100, 4) and m['mae']['r'] == -3.0
+        assert m['time_to_mfe_s'] == 7200 and m['time_to_mae_s'] == 10800 and m['time_basis'].startswith('entry')
+        assert m['net_usd'] == 1.0 and m['net_r'] == 0.5 and m['peak_net_usd'] == 3.0 and m['time_to_peak_net_s'] == 7200
+        assert m['giveback_usd'] == 2.0 and m['giveback_pct_of_mfe'] == round(2 / 3 * 100, 2) and 'hindsight' in m['label']
+
+
+def test_executable_mfe_is_the_net_peak_at_a_mark_sample_minus_slippage_never_a_candle_extreme():
+    l = plot(mgmt=dict(tp_r=50.0)); l['realized'] = 0.0; l['fees'] = 0.0
+    TA.observe(l, 104.0, iso(1), fee_rate=0.0005)
+    TA.hold_eval(l, 'k', dict(t=iso(1), h=120.0, l=99.0, c=103.0, tf_s=3600), iso(2.01), 'hold')   # candle high 120: not used
+    TA.observe(l, 101.0, iso(2), fee_rate=0.0005)
+    m = TA.trade_metrics(l, 0.9, fee_rate=0.0005, slip_bps=10.0)
+    peak = 4.0 - 104.0 * 0.0005
+    assert l['ex']['peak_pnl'] == round(peak, 6) and m['executable_px'] == 104.0 and m['executable_qty'] == 1.0
+    assert abs(m['executable_mfe_usd'] - (peak - 0.001 * 104.0 * (1 - 0.0005))) < 1e-6 and m['executable_mfe_usd'] < m['peak_net_usd']
+    assert 'no candle extremes' in m['executable_basis'] and m['mfe']['px'] == 104.0
+    old = plot(); old['ex'].pop('peak_px')                                   # tracked before the field: not guessed
+    assert TA.trade_metrics(old, 0.0)['executable_mfe_usd'] is None
+
+
+def _flags(peak, final, side='LONG', exec_px=True):
+    l = plot(side=side)
+    l['ex'].update(peak_pnl=peak, peak_t=iso(1))
+    if not exec_px: l['ex'].pop('peak_px', None)
+    else: l['ex'].update(peak_px=100.0, peak_q=1.0)
+    m = TA.trade_metrics(l, final, fee_rate=0.0, slip_bps=0.0)
+    return TA.failure_flags(l, final, m)
+
+
+def test_failure_flags_green_red_giveback_never_green_both_sides():
+    for side in ('LONG', 'SHORT'):
+        assert _flags(-0.5, -1.0, side)['flags'][:1] == ['never_green']
+        assert _flags(0.0, -1.0, side)['flags'][:1] == ['never_green']       # peak exactly 0 is never green
+        f = _flags(4.0, -1.0, side)['flags']
+        assert 'green_to_red' in f and 'gave_back_gt_50pct_mfe' in f and 'never_green' not in f
+        f = _flags(4.0, 1.0, side)['flags']
+        assert f[:1] == ['gave_back_gt_50pct_mfe'] and 'green_to_red' not in f
+        assert not {'green_to_red', 'gave_back_gt_50pct_mfe', 'never_green'} & set(_flags(4.0, 2.0, side)['flags'])   # exactly 50%: no
+        assert not {'green_to_red', 'gave_back_gt_50pct_mfe'} & set(_flags(4.0, 3.5, side)['flags'])
+    g = _flags(0.01, -1.0)                                                    # slippage makes the peak non-executable
+    l = plot(); l['ex'].update(peak_pnl=0.01, peak_px=100.0, peak_q=1.0)
+    m = TA.trade_metrics(l, -1.0, fee_rate=0.0, slip_bps=5.0)               # 0.01 - 0.05 < 0: green only before slippage
+    f = TA.failure_flags(l, -1.0, m)
+    assert 'green_to_red' not in f['flags'] and 'never_green' not in f['flags'] and f['detail']['green_basis'] == 'executable_mfe_usd'
+    assert 'green_to_red' in g['flags']
+    u = plot(); u['ex']['peak_pnl'] = None
+    f = TA.failure_flags(u, -1.0, TA.trade_metrics(u, -1.0))
+    assert {'never_green', 'green_to_red', 'gave_back_gt_50pct_mfe'} <= set(f['unknown']) and not f['flags']
+
+
+def test_regime_snapshot_and_causal_lookup():
+    s = _snap()                                                               # candle 00:00-04:00, close < e200, e20 < e50
+    assert s['cutoff_t'] == '2026-10-04T04:00:00+00:00' and s['trend'] == 'down' and s['above200'] is False
+    ok = TA.regime_at(s, '2026-10-04T04:00:05+00:00')
+    assert ok['status'] == 'ok' and ok['causal_ok'] and ok['info_cutoff'] <= ok['decision_at']
+    early = TA.regime_at(s, '2026-10-04T03:59:59+00:00')                      # decision BEFORE the candle closed
+    assert early['status'] == 'unknown' and early['causal_ok'] is False and 'not causal' in early['why']
+    assert TA.regime_at(s, '2026-10-04T16:00:01+00:00')['status'] == 'unknown'   # > 2 bars old: stale
+    assert TA.regime_at(None, 'x')['status'] == 'unknown'
+    assert TA.regime_snapshot('X', '4h', '2026-10-04T00:00:00', None, 100.0, float('nan'), 1.0, 1.0)['trend'] == 'unknown'
+    assert TA.regime_at(TA.regime_snapshot('X', '4h', '2026-10-04T00:00:00', None, 100.0, None, 1.0, 1.0), '2026-10-04T05:00:00')['status'] == 'unknown'
+    assert TA.regime_snapshot('X', '7x', 'junk', None, 1, 1, 1, 1) is None
+    up = _snap(c=120.0, e20=105.0, e50=104.0)
+    assert up['trend'] == 'up' and _snap(c=120.0)['trend'] == 'mixed'
+
+
+def test_trend_against_is_symmetric_and_never_guesses():
+    at = lambda **k: TA.regime_at(_snap(**k), '2026-10-04T05:00:00+00:00')
+    down, up, mixed = at(), at(c=120.0, e20=105.0, e50=104.0), at(c=120.0)    # mixed: above 200 but EMA20 < EMA50
+    assert TA.trend_against('LONG', down) is True and TA.trend_against('SHORT', down) is False
+    assert TA.trend_against('LONG', up) is False and TA.trend_against('SHORT', up) is True
+    assert TA.trend_against('LONG', mixed) is True and TA.trend_against('SHORT', mixed) is True
+    assert TA.trend_against('LONG', TA.regime_at(None, 'x')) is None and TA.trend_against('SHORT', None) is None
+
+
+def _dca_lot(side, regimes):
+    l = plot(side=side)
+    l['fills'] = [[iso(0), 'entry', 1.0, 100.0]]
+    l['ap']['ctx'] = dict(entry=None)
+    for j, rg in enumerate(regimes):
+        f = [iso(1 + j), 'safety_order', 1.0, 99.0]; l['fills'].append(f)
+        TA.note_add(l, f, rg)
+    return l
+
+
+def test_dca_into_trend_long_short_and_unknown_regime_is_not_flagged():
+    at = lambda **k: TA.regime_at(_snap(**k), '2026-10-04T05:00:00+00:00')
+    down, up = at(), at(c=120.0, e20=105.0, e50=104.0)
+    for side, against, wth in (('LONG', down, up), ('SHORT', up, down)):
+        r = lambda l: TA.failure_flags(l, -1.0, TA.trade_metrics(l, -1.0))
+        f = r(_dca_lot(side, [wth, against]))
+        assert 'dca_into_trend' in f['flags'] and [a['against'] for a in f['detail']['dca_adds']] == [False, True], side
+        f = r(_dca_lot(side, [wth, wth]))
+        assert 'dca_into_trend' not in f['flags'] and 'dca_into_trend' not in f['unknown']
+        f = r(_dca_lot(side, [wth, TA.regime_at(None, iso(2))]))             # regime not recorded -> unknown, not flagged
+        assert 'dca_into_trend' not in f['flags'] and 'dca_into_trend' in f['unknown']
+    l = _dca_lot('LONG', [down]); l['ap']['ctx']['adds'] = []                 # add fill without a stored snapshot
+    f = TA.failure_flags(l, -1.0, TA.trade_metrics(l, -1.0))
+    assert 'dca_into_trend' not in f['flags'] and 'dca_into_trend' in f['unknown']
+    p = _dca_lot('LONG', []); p['fills'].append([iso(2), 'pyramid_add', 1.0, 101.0]); TA.note_add(p, p['fills'][-1], down)
+    assert 'dca_into_trend' not in TA.failure_flags(p, 0.0, TA.trade_metrics(p, 0.0))['flags']      # only safety orders count
+
+
+def test_long_in_bear_and_short_in_bull_from_the_entry_regime():
+    at = lambda **k: TA.regime_at(_snap(**k), '2026-10-04T05:00:00+00:00')
+    bear, bull = at(), at(c=120.0, e20=105.0, e50=104.0)
+    ctx = lambda s, b: TA.entry_context(s, b, 'BTCUSDT 4h')
+    assert ctx(bear, bear)['label'] == 'bear' and ctx(bull, bull)['label'] == 'bull' and ctx(bear, bull)['label'] == 'mixed'
+    assert ctx(bear, TA.regime_at(None, 'x'))['label'] == 'unknown'
+    for side, c, want in (('LONG', ctx(bear, bear), 'long_in_bear_regime'), ('SHORT', ctx(bull, bull), 'short_in_bull_regime')):
+        l = plot(side=side); l['ap']['ctx'] = dict(entry=c)
+        f = TA.failure_flags(l, 0.0, TA.trade_metrics(l, 0.0))
+        assert want in f['flags'] and f['regime'] == c['label']
+        l['ap']['ctx'] = dict(entry=ctx(bull, bull) if side == 'LONG' else ctx(bear, bear))      # with the regime: no flag
+        assert want not in TA.failure_flags(l, 0.0, TA.trade_metrics(l, 0.0))['flags']
+        l['ap']['ctx'] = dict(entry=ctx(bear, bull))                                             # mixed: no flag
+        assert want not in TA.failure_flags(l, 0.0, TA.trade_metrics(l, 0.0))['flags']
+        l['ap'].pop('ctx')
+        f = TA.failure_flags(l, 0.0, TA.trade_metrics(l, 0.0))
+        assert want not in f['flags'] and want in f['unknown']
+
+
+def test_breakeven_after_costs_online_long_and_short_is_causal():
+    for side, sd in (('LONG', 1), ('SHORT', -1)):
+        l = plot(side=side, mgmt=dict(tp_r=50.0)); l['realized'] = 0.0; l['fees'] = 0.0      # R = 2: arms at +2
+        for h, d in ((1, 1.0), (2, 2.5), (3, 1.0), (4, 0.0), (5, -3.0)): TA.observe(l, 100 + sd * d, iso(h), fee_rate=0.0005)
+        on = l['ex']['on']
+        assert on['be_arm'][0] == iso(2) and on['be'][0] == iso(4), side      # net <= 0 first at the entry price (exit fee)
+        rec = TA.close_record(l, -3.0, fee_rate=0.0005)
+        c = _cf(rec, 'causal_policy', 'breakeven')
+        assert c['causal_ok'] and c['online'] and c['decision_at']['t'] == iso(4) and c['info_cutoff']['seq'] < c['decision_at']['seq']
+        assert c['armed_t'] == iso(2) and abs(c['value'] - (-100.0 * 0.0005)) < 1e-9 and c['vs_actual'] > 0
+        n = plot(side=side, mgmt=dict(tp_r=50.0)); n['realized'] = 0.0; n['fees'] = 0.0
+        for h, d in ((1, 1.9), (2, -1.0)): TA.observe(n, 100 + sd * d, iso(h), fee_rate=0.0005)
+        c = _cf(TA.close_record(n, -1.0), 'causal_policy', 'breakeven')
+        assert c['value'] is None and 'never armed' in c['limitations']
+    v1 = plot(); v1['ap']['policies'].pop('breakeven'); v1['ap']['policies'].pop('regime_exit')
+    cs = {c['rule'][:12]: c for c in TA.close_record(v1, 0.0)['counterfactuals']}
+    assert cs['breakeven af']['value'] is None and 'not declared' in cs['breakeven af']['limitations']
+    assert cs['regime exit:']['value'] is None and 'not declared' in cs['regime exit:']['limitations']
+
+
+def test_breakeven_path_fallback_needs_an_earlier_arming_point():
+    l = plot(mgmt=dict(tp_r=50.0)); l['realized'] = 0.0; l['fees'] = 0.0
+    path = [(iso(1), 102.0), (iso(2), 99.0)]
+    c = TA.policy_breakeven(l, -1.0, 0.0, 0.0, path)
+    assert c['causal_ok'] and c['decision_t'] == iso(2) and c['armed_t'] == iso(1) and c['value'] == -1.0
+    c = TA.policy_breakeven(l, -1.0, 0.0, 0.0, [(iso(1), 99.0), (iso(2), 102.0)])   # never back after arming
+    assert c['value'] is None
+
+
+def test_regime_exit_trigger_is_causal_and_fills_at_the_next_mark():
+    for side, sd, trend in (('LONG', 1, dict()), ('SHORT', -1, dict(c=120.0, e20=105.0, e50=104.0))):
+        l = plot(side=side, mgmt=dict(tp_r=50.0), tf='4h'); l['realized'] = 0.0; l['fees'] = 0.0
+        s = _snap(**trend)                                                    # against the side, closed 04:00
+        assert TA.regime_trigger(l, s, '2026-10-04T04:00:00+00:00') is None  # decision AT the close: not strictly after
+        assert TA.regime_trigger(l, _snap(**(dict(c=120.0, e20=105.0, e50=104.0) if side == 'LONG' else {})), '2026-10-04T04:00:05+00:00') is None
+        d = TA.regime_trigger(l, s, '2026-10-04T04:00:05+00:00')
+        assert d and d[0] == s['cutoff_t'] and TA.regime_trigger(l, s, '2026-10-04T08:00:05+00:00') is None   # decided once
+        TA.observe(l, 100 + sd * 1.0, '2026-10-04T04:00:13+00:00', fee_rate=0.0)
+        TA.observe(l, 100 - sd * 5.0, '2026-10-04T05:00:00+00:00', fee_rate=0.0)
+        c = _cf(TA.close_record(l, -5.0, fee_rate=0.0), 'causal_policy', 'regime exit')
+        assert c['causal_ok'] and c['decision_t'] == '2026-10-04T04:00:13+00:00' and c['value'] == 1.0 and c['vs_actual'] == 6.0, side
+        assert c['info_cutoff']['t'] <= c['decision_at']['t'] and c['candle_cutoff'] == s['cutoff_t']
+    l = plot(); assert _cf(TA.close_record(l, 0.0), 'causal_policy', 'regime exit')['value'] is None
+
+
+def _arec(i, sleeve='A', side='LONG', net=1.0, r=0.5, flags=(), seg=None, sym='BTCUSDT'):
+    return dict(kind='trade_audit', id=f'{sleeve}|{sym}|{side}|{i}', sleeve=sleeve, side=side, tf='4h', symbol=sym, net_pnl=net, r=r,
+                flags=list(flags), flags_unknown=[], segment=dict(dict(strategy=sleeve, side=side, symbol=sym, tf='4h', regime='bull',
+                                                                        dca='0', runner='no_runner'), **(seg or {})))
+
+
+def test_segments_aggregate_counts_expectancy_flags_and_samples():
+    recs = [_arec(1, net=2.0, r=1.0), _arec(2, net=-1.0, r=-0.5, flags=['green_to_red', 'gave_back_gt_50pct_mfe']),
+            _arec(3, side='SHORT', net=-2.0, r=-1.0, flags=['never_green'], seg=dict(regime='bear', dca='3+', runner='runner')),
+            _arec(4, net=-1.0, r=-0.5, flags=['green_to_red']), _arec(5, net=0.5, r=0.25, flags=['green_to_red']),
+            _arec(6, net=-0.5, r=-0.25, flags=['green_to_red']), dict(reason='entries paused'), 'junk', dict(kind='trade_audit')]
+    s = TA.segments(recs)
+    assert s['trades'] == 7
+    long_ = next(x for x in s['by']['side'] if x['key'] == 'LONG')
+    assert long_['n'] == 5 and long_['wins'] == 2 and long_['win_rate'] == 0.4 and long_['exp_usd'] == 0.0 and long_['exp_r'] == 0.0
+    assert long_['flags'] == {'green_to_red': 4, 'gave_back_gt_50pct_mfe': 1}
+    assert {x['key']: x['n'] for x in s['by']['dca']} == {'0': 5, '3+': 1, '?': 1} and {x['key'] for x in s['by']['runner']} == {'runner', 'no_runner'}
+    assert {x['key'] for x in s['by']['regime']} == {'bull', 'bear', 'unknown'}
+    assert s['flags']['green_to_red']['n'] == 4 and s['flags']['green_to_red']['samples'] == ['A|BTCUSDT|LONG|4', 'A|BTCUSDT|LONG|5', 'A|BTCUSDT|LONG|6']
+    assert s['flags']['never_green'] == dict(n=1, samples=['A|BTCUSDT|SHORT|3']) and s['flags']['dca_into_trend']['n'] == 0
+    assert set(s['by']) == set(TA.SEG_DIMS)
+    assert TA.segments([TA.slim_record(json.loads(json.dumps(r))) for r in recs]) == s      # the slimmed window gives the same
+
+
+def test_close_record_carries_metrics_flags_and_segment():
+    l = plot(mgmt=dict(tp_r=50.0), sleeve='S1', tf='4h'); l['realized'] = 0.0; l['fees'] = 0.0
+    for h, m in ((1, 104.0), (2, 99.0)): TA.observe(l, m, iso(h), fee_rate=0.0)
+    l['fills'] = [[iso(0), 'entry', 1.0, 100.0], [iso(1.5), 'take_profit_1', 0.5, 103.0], [iso(2), 'stop', 0.5, 99.0]]
+    rec = TA.close_record(l, 1.0, fee_rate=0.0)
+    assert rec['flags'] == ['gave_back_gt_50pct_mfe'] and 'long_in_bear_regime' in rec['flags_unknown']
+    assert rec['segment'] == dict(strategy='S1', side='LONG', symbol='BTCUSDT', tf='4h', regime='unknown', dca='0', runner='runner')
+    assert rec['metrics']['mfe']['usd'] == 4.0 and TA.clean(rec) == json.loads(json.dumps(TA.clean(rec), allow_nan=False))
+
+
+def test_missed_short_definition():
+    ms = TA.missed_short
+    assert ms('side_masked', 'SHORT', dict(se=True)) == 'side_masked' and ms('side_masked', 'LONG', dict(le=True, se=False)) is None
+    assert ms('not_taken', 'SHORT', None) == 'not_taken' and ms('not_taken', 'LONG', dict(le=True, se=True)) == 'long_preferred'
+    assert ms('not_taken', 'LONG', dict(le=True, se=False)) is None and ms('taken', 'LONG', dict(le=True, se=True)) == 'long_preferred'
+    assert ms('taken', 'SHORT', dict(se=True)) is None and ms('order_placed', 'SHORT', None) is None and ms('warning', 'SHORT', None) is None
+    ev = TA.funnel_event('t', 'L', 'BTCUSDT', 'SHORT', 'c', 'side_masked', raw=dict(le=False, se=True, sides='long'))
+    assert ev['missed_short_opportunity'] == 'side_masked'
+    assert 'missed_short_opportunity' not in TA.funnel_event('t', 'L', 'BTCUSDT', 'LONG', 'c', 'taken', raw=dict(le=True, se=False))
+
+
+def test_engine_counts_missed_shorts_once_per_candle_and_summarises_them(monkeypatch):
+    import engine as E
+    longonly = E.sleeve('L', 'ema_mom', 0.5, 0.02, 2, ['BTCUSDT'], sides='long', tf='4h', enabled=False)
+    e, df = _signal_engine(monkeypatch, [longonly], dict(le=False, se=True, lx=False, sx=False))
+    try:
+        e.cycle('4h'); e.cycle('4h')                                          # the same candle twice: counted once
+        a = e.audit_summary()['missed_short']
+        assert a['n'] == 1 and a['by_why'] == {'side_masked': 1} and a['samples'][0]['symbol'] == 'BTCUSDT'
+        from test_safety import SG
+        e.miss(longonly, 'ETHUSDT', 'SHORT', dict(SG, time='2026-10-05 00:00:00'), 'hedge mode off (shorts unavailable)')
+        a = e.audit_summary()['missed_short']
+        assert a['n'] == 2 and a['by_code'] == {'side_mask/hedge_off': 1} and a['short_not_taken_in_missed_list'] == 1
+        assert 'no hindsight' in a['basis']
+    finally:
+        E.close_fill_writer(e.F['audit'])
+
+
+def _ind_frame(n=300, c=100.0, e20=101.0, e50=102.0, e200=110.0):
+    return pd.DataFrame(dict(t=pd.date_range(end='2026-10-04 00:00:00', periods=n, freq='4h'), o=c, h=c + 1, l=c - 1, c=c, v=1.0,
+                             atr=2.0, e20=e20, e50=e50, e200=e200))
+
+
+def test_engine_records_the_entry_and_dca_add_regime_causally_and_flags_the_close(monkeypatch):
+    import engine as E
+    from test_safety import mk_engine, SL, SG
+    clk = _clocked(monkeypatch, datetime(2026, 10, 4, 4, 0, 5, tzinfo=timezone.utc))
+    monkeypatch.setattr(E.time, 'time', lambda: clk[0].timestamp())
+    e, _ = mk_engine()
+    try:
+        bear = _ind_frame()                                                   # close 100 < EMA200 110, EMA20 < EMA50
+        e._audit_regime_cache('4h', {'BTCUSDT': bear, 'ETHUSDT': bear})
+        def boom(*a, **k): raise AssertionError('no fetch / I/O for a regime snapshot')
+        monkeypatch.setattr(e, 'candles', boom); monkeypatch.setattr(e.data, 'klines', boom, raising=False)
+        sl = dict(SL, key='dca_dip', mgmt={'dca': {'n': 3, 'step_atr': 1.0, 'scale': 1.5, 'tp_atr': 1.0, 'stop_atr': 2.0}}); e.S['SLEEVES'] = [sl]
+        assert e.open_lot(sl, 'BTCUSDT', 'LONG', SG, None, e.equity()), e.last_skip
+        k, lot_ = next(iter(e.state['lots'].items()))
+        ent = lot_['ap']['ctx']['entry']
+        assert ent['label'] == 'bear' and ent['btc_basis'] == 'BTCUSDT 4h' and ent['symbol']['status'] == 'ok'
+        assert ent['symbol']['info_cutoff'] <= ent['symbol']['decision_at'] == lot_['opened']
+        clk[0] += timedelta(seconds=30)
+        e.trade.mark['BTCUSDT'] = lot_['levels'][0] - 0.01; e.manage(e.trade.marks())
+        assert lot_['dca'] == 1
+        add = lot_['ap']['ctx']['adds'][0]
+        assert add['why'] == 'safety_order' and add['regime']['status'] == 'ok' and add['regime']['trend'] == 'down'
+        assert add['regime']['info_cutoff'] <= add['regime']['decision_at'] and add['fill_i'] == 1
+        e.close_lot(k, 'signal', mark=lot_['levels'][0] - 1.0)
+        rec = _last_audit(e)
+        assert rec['kind'] == 'trade_audit' and {'dca_into_trend', 'long_in_bear_regime', 'never_green'} <= set(rec['flags'])
+        assert rec['segment']['regime'] == 'bear' and rec['segment']['dca'] == '1'
+        s = e.audit_summary()['segments']
+        assert s['flags']['dca_into_trend'] == dict(n=1, samples=[k]) and s['by']['regime'][0]['key'] == 'bear'
+    finally:
+        E.close_fill_writer(e.F['audit'])
+
+
+def test_engine_without_a_cached_snapshot_records_unknown_never_a_guess(monkeypatch):
+    import engine as E
+    from test_safety import mk_engine, opened
+    e, _ = mk_engine()
+    try:
+        k = opened(e)
+        ent = e.state['lots'][k]['ap']['ctx']['entry']
+        assert ent['label'] == 'unknown' and ent['symbol']['status'] == 'unknown'
+        e._audit_regime_cache('4h', {'BTCUSDT': pd.DataFrame(dict(t=[pd.Timestamp('2026-10-04')], c=[1.0]))})   # no EMAs: unknown
+        assert e._audit_rg[('BTCUSDT', '4h')]['trend'] == 'unknown'
+        e._audit_regime_cache('4h', {'BTCUSDT': 'junk'}); e._audit_regime_cache('4h', None)   # never raises
+    finally:
+        E.close_fill_writer(e.F['audit'])
+
+
+def test_cycle_hold_records_the_candle_trend_and_triggers_the_regime_exit(monkeypatch):
+    import engine as E
+    from test_safety import mk_engine, opened, SL, SG
+    clk = _clocked(monkeypatch)
+    e, _ = mk_engine()
+    try:
+        k = opened(e)
+        e.trade.mark['BTCUSDT'] = 100.5; e.manage(e.trade.marks())
+        df = _ind_frame(n=1); df['t'] = [pd.Timestamp('2026-10-04 04:00:00')]
+        e.S['SLEEVES'] = [SL]
+        e.compute_signals = lambda tf, syms, extra=(): ({f"{SL['id']}|BTCUSDT": dict(SG, le=False, lx=False)}, {'BTCUSDT': df})
+        clk[0] = datetime(2026, 10, 4, 8, 0, 5, tzinfo=timezone.utc); e.cycle('4h')
+        h = _events(e, 'hold_eval')[-1]
+        assert h['regime'] == dict(trend='down', above200=False, ema20_gt_ema50=False) and k in e.state['lots']
+        on = e.state['lots'][k]['ex']['on']
+        assert on['rx_dec'][0] == '2026-10-04T08:00:00+00:00' and on['rx_dec'][1] == '2026-10-04T08:00:05+00:00'
+        clk[0] = datetime(2026, 10, 4, 8, 0, 13, tzinfo=timezone.utc)
+        e.trade.mark['BTCUSDT'] = 99.0; e.manage(e.trade.marks())
+        assert on['rx'][0] == '2026-10-04T08:00:13+00:00' and on['rx'][1] == 99.0
+        assert e._audit_rg[('BTCUSDT', '4h')]['trend'] == 'down'
+    finally:
+        E.close_fill_writer(e.F['audit'])
+
+
+def test_audit_summary_endpoint_is_read_only_and_exposes_segments():
+    src = open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'app.py')).read()
+    assert "if p == '/api/audit_summary':" in src
+    blk = src[src.index("if p == '/api/audit_summary':"):].split('\n', 1)[1].split("if p == '/api/history'")[0]   # the handler body
+    assert 'audit_summary()' in blk and 'lock' not in blk and 'save' not in blk
+    from test_safety import mk_engine
+    import engine as E
+    e, _ = mk_engine()
+    try:
+        a = e.audit_summary()
+        assert set(a['segments']) >= {'trades', 'by', 'flags'} and a['missed_short']['n'] == 0
+        json.dumps(a, allow_nan=False)
+    finally:
+        E.close_fill_writer(e.F['audit'])
+
+
+def test_panel_audit_card_is_additive_collapsed_and_escaped():
+    src = open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'panel.html'), encoding='utf-8').read()
+    if 'id="auditCard"' not in src: return                                    # API-only build (the UI commit dropped)
+    card = src[src.index('id="auditCard"') - 60:][:400]
+    assert '<details' in card and ' open' not in card.split('>')[0]
+    js = src[src.index('function renderAudit('):src.index('function renderTrades(')]
+    assert 'esc(' in js and 'innerHTML' not in js and 'try{renderAudit()}catch(e){}' in src
+
+
+def test_panel_audit_card_renders_escaped():
+    import shutil, subprocess, tempfile
+    src = open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'panel.html'), encoding='utf-8').read()
+    if 'function renderAudit(' not in src or not shutil.which('node'): return
+    pre = '\n'.join(src[src.index(k):].split('\n', 1)[0] for k in ('const fmt=', 'const susd=', 'const esc='))
+    js = pre + '\n' + src[src.index('const AUDF='):src.index('function renderTrades(')]
+    evil = '<img src=x onerror=alert(1)>'
+    seg = dict(trades=2, by=dict(symbol=[dict(key=evil, n=2, win_rate=0.5, exp_usd=-1.25, exp_r=-0.5)]),
+               flags=dict(green_to_red=dict(n=1, samples=[evil]), never_green=dict(n=0, samples=[])))
+    D = dict(health=dict(audit=dict(segments=seg, missed_short=dict(n=3, by_why={evil: 3}))))
+    harness = js + '\nlet out="";const el={};const $=()=>el;const setHTML=(e,h)=>{out=h};const D=' + json.dumps(D) + \
+              ';renderAudit();process.stdout.write(out);'
+    with tempfile.NamedTemporaryFile('w', suffix='.js', delete=False) as f: f.write(harness)
+    try: html = subprocess.run(['node', f.name], capture_output=True, text=True, timeout=30, check=True).stdout
+    finally: os.unlink(f.name)
+    assert '<img' not in html and '&lt;img src=x onerror=alert(1)&gt;' in html and 'green to red' in html and '50%' in html
+
+
+def test_breakeven_never_arms_and_exits_on_the_same_observation():
+    """A booked loss makes the net negative at the very observation that arms (+1R): the exit can only be decided at a
+    LATER observation (arming is information from before the decision)."""
+    l = plot(mgmt=dict(tp_r=50.0)); l['realized'] = -3.0; l['fees'] = 0.0             # R = 2
+    TA.observe(l, 102.5, iso(1), fee_rate=0.0)                                          # arms; net = -0.5
+    on = l['ex']['on']
+    assert on['be_arm'][0] == iso(1) and on['be'] is None
+    TA.observe(l, 102.6, iso(2), fee_rate=0.0)
+    assert on['be'][0] == iso(2)
+    c = _cf(TA.close_record(l, -0.4, fee_rate=0.0), 'causal_policy', 'breakeven')
+    assert c['causal_ok'] and c['decision_at']['t'] == iso(2) and c['info_cutoff']['seq'] < c['decision_at']['seq']
+
+
+def test_segments_breakeven_trade_is_not_a_win():
+    s = TA.segments([_arec(1, net=0.0, r=0.0), _arec(2, net=1.0, r=0.5)])
+    row = s['by']['side'][0]
+    assert row['wins'] == 1 and row['win_rate'] == 0.5 and row['exp_usd'] == 0.5 and row['exp_r'] == 0.25
+
+
+def test_engine_missed_short_counter_keys_per_candle_and_keeps_the_first_reason():
+    from test_safety import mk_engine
+    import engine as E
+    e, _ = mk_engine()
+    try:
+        raw = dict(le=True, se=True, time='c1')
+        e._audit_missed_short('S', 'BTCUSDT', 'LONG', 'c1', 'taken', raw)                       # long preferred
+        e._audit_missed_short('S', 'BTCUSDT', 'SHORT', 'c1', 'not_taken', None, 'entries paused')   # same candle: not again
+        assert list(e._audit_mso.values()) == [dict(sleeve='S', symbol='BTCUSDT', candle='c1', why='long_preferred', code=None)]
+        e._audit_missed_short('S', 'BTCUSDT', 'SHORT', 'c2', 'not_taken', raw, 'entries paused')   # next candle counts
+        assert len(e._audit_mso) == 2 and e._audit_mso[('S', 'BTCUSDT', 'c2')]['code'] == 'filter/paused'
+        e._audit_missed_short('S', 'BTCUSDT', None, 'c3', 'side_masked', raw)                     # raw of ANOTHER candle: ignored
+        assert len(e._audit_mso) == 2
+        for i in range(700): e._audit_missed_short('S', 'X', 'SHORT', f'k{i}', 'not_taken', None)
+        assert len(e._audit_mso) == 600                                                           # bounded
+    finally:
+        E.close_fill_writer(e.F['audit'])
