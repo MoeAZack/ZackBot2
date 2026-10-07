@@ -87,3 +87,38 @@ Required:
 6. Latest ATR drives current feasibility; the 180-candle median may be shown separately for planning.
 
 Do not advance the stacked DCA-default or COPY100/COPY200 behavior PR until these truthfulness gaps are fixed. No runtime, installer, settings or order action is required for this review.
+
+## Round 2 combined-head re-review — one P1 remains
+
+Reviewed combined implementation head `2c95341ab081c2529e2dce1b099ffe65a28cab7e` on 2026-10-07 (Africa/Cairo).
+
+The original 3 P1 and 2 P2 findings are fixed. The comparison merge correctly keeps the direct-fetch snapshot and replay
+coverage, removes the local-file trust override, enforces trusted provenance, uses side-correct add prices, excludes
+forming/stale candles from a green status, and preserves the entry/full-plan field meanings. The focused Windows suite
+passes **48/48**.
+
+### P1 — preflight can still show a green full plan when the live leverage gate must block every add
+
+Affected: `feasibility.slot_order_legs`, `feasibility.preflight`, the Strategies-tab feasibility badge; live reference:
+`engine._add_gate`.
+
+The preflight checks each entry/DCA/pyramid leg independently against exchange minimums, but never simulates cumulative
+slot exposure. The live engine applies `used + add_notional <= MAX_LEVERAGE * equity * share` before every add. Therefore
+the UI can report `status=ok`, `entry_executable_pct=100` and `plan_executable_pct=100` while the advertised plan cannot
+be built under its configured leverage cap.
+
+Deterministic reproduction: $100 capital, share 1, max leverage 1, SOL $100, a one-level equal-size DCA, permissive
+exchange minimums. The entry is leverage-capped to 1 SOL / $100 and passes. Preflight also passes the 1 SOL safety order
+at $99 and returns a green 100% full plan. Live cumulative exposure would be $199 against a $100 cap, so `_add_gate`
+must reject it. Increasing capital does not resolve a structurally over-cap plan because both quantities and the cap scale
+together.
+
+Fix: simulate cumulative exposure for every planned leg using the same per-slot leverage-cap semantics as `_add_gate`.
+Distinguish exchange-minimum failure from leverage-plan failure. A plan blocked by leverage must never be green and must
+not recommend a misleading higher-capital number; advise lowering planned add size/risk or raising the allowed leverage
+instead. Add DCA and multi-pyramid regressions, including the reproduction above and a plan that stays below the cap.
+
+The disclosed hedge-mode partial-close runtime question (D3) remains a separate testnet/mainnet-safety ticket; D6/D7 are
+non-blocking follow-ups. No installer, runtime, settings or order action occurred in this review.
+
+**Verdict: CHANGES REQUESTED — one contained P1.**
