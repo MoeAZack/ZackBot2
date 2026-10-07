@@ -1,6 +1,7 @@
 """Portfolio backtester for ZackBot strategies (same rules the live engine uses).  ENGINE_VERSION v3
 
-Fills: entries at next candle open; stop checked before anything else in a candle (conservative);
+Fills: entries at next candle open; a stop inside the candle beats any target in it (conservative), safety orders
+met before the stop on the path fill first;
 targets/adds fill at their trigger price; signal exits at the candle close.
 Intrabar order (FBL-BT01): every other intrabar event is fired along ONE declared price path, see path_points().
 Costs: taker fee + slippage per side, funding cost on every open position.
@@ -120,9 +121,10 @@ def path_points(o, h, l, c, side, worst=False):
         adverse extreme last: long open -> high -> low -> close, short open -> low -> high -> close. (A target or add level
         recomputed at the adverse extreme can then never be reached in the same candle, and a stop raised at the
         favourable extreme is checked against the adverse one.)
-    Not part of the walk (unchanged conventions): the stop as it stood at the open is checked against the whole candle
-    first; entries fill at the next open (or on the candle path for trailing entries, which keep their own c >= o rule);
-    signal / time exits and the liquidation check use the close / the adverse extreme."""
+    Not part of the walk: a gap through the stop at the open (filled at the open, no adds). Stop-first convention kept
+    for the ambiguous case only: if the open's stop is inside the candle, no target exit is taken in that candle (adds
+    still fire in path order before the stop - Codex round 1). Entries fill at the next open (or on the candle path for
+    trailing entries, which keep their own c >= o rule); signal / time exits and the liquidation check use the close / the adverse extreme."""
     if worst or c == o:
         return (o, h, l, c) if side == 1 else (o, l, h, c)
     return (o, l, h, c) if c > o else (o, h, l, c)
@@ -315,6 +317,11 @@ def run(book, sleeves, start=500.0, max_lev=10.0, daily_halt=0.08, t0=None, t1=N
         """FBL-BT01: walk candle i along the declared price path (path_points) and fire every intrabar event in path order.
         A level set or recomputed at some point of the path (basket TP after a safety order, next pyramid level, a raised
         stop) can only be reached by the price moves AFTER that point. Inside one monotonic leg, levels fire in price order.
+        The stop (as it stood at the open, or raised earlier in the candle) is an adverse-leg event like the safety orders:
+        every safety order met before it on the way down (long) fills first, then the stop closes the enlarged basket.
+        Stop-first convention (kept, for the ambiguous case only): when the open's stop is inside this candle's range, the
+        candle ends at that stop - no target / tp1 / ladder / tp_r / basket TP is taken in it, even where the path would
+        reach the target first. Adds (safety orders, pyramid adds) still fire in path order before the stop.
         Returns True when the position was fully closed (the caller removes it)."""
         nonlocal eq
         m, cfg, sd = sl['m'], sl['cfg'], p['side']
@@ -322,21 +329,26 @@ def run(book, sleeves, start=500.0, max_lev=10.0, daily_halt=0.08, t0=None, t1=N
         fav_reached = lambda lvl, x: sd * (x - lvl) >= 0     # price x at / through a favourable level
         adv_reached = lambda lvl, x: sd * (lvl - x) >= 0     # price x at / through an adverse level (safety order, stop)
         blocked_ = dict(dca=False, add=False)                # an add refused by a gate is not retried in this candle
+        stop_open = p['stop']
+        stop_in_candle = adv_reached(stop_open, l if sd == 1 else h)   # the candle WILL end at a stop: no exits at targets
 
         def adverse_leg(a_, b_, first):
-            """Price moves against the position from a_ to b_: DCA safety orders and a stop raised earlier in this candle,
-            in the order price meets them (the stop as it stood at the open was already checked against the whole candle)."""
+            """Price moves against the position from a_ to b_: DCA safety orders and the stop, in the order price meets
+            them. Exact tie safety level == stop: the safety order fills first, then the stop closes the larger basket (the
+            worse outcome for the account). A gap through the stop at the open is handled before the walk (filled at the
+            open, no adds)."""
             nonlocal eq
+            st = p['stop'] if pessimistic else stop_open      # pessimistic=False (old v2): a stop raised in-candle is not tested
             while True:
                 cand = []
                 if 'dca' in m and not blocked_['dca'] and p['dca'] < len(p['levels']) and adv_reached(p['levels'][p['dca']], b_):
-                    cand.append((sd * p['levels'][p['dca']], 0, 'dca'))
-                if pessimistic and not first and adv_reached(p['stop'], b_):
-                    cand.append((sd * p['stop'], 1, 'stop'))
+                    cand.append((sd * p['levels'][p['dca']], 1, 'dca'))
+                if not first and adv_reached(st, b_):
+                    cand.append((sd * st, 0, 'stop'))
                 if not cand: return False
-                ev = max(cand)[2]                            # first level met on the way (tie: the stop - conservative)
+                ev = max(cand)[2]                            # first level met on the way (tie: the safety order, then the stop)
                 if ev == 'stop':
-                    px = p['stop'] if sd * (a_ - p['stop']) >= 0 else a_       # already through it -> filled where price is
+                    px = st if sd * (a_ - st) >= 0 else a_                     # already through it -> filled where price is
                     close(sl, s, p, px, 1, i, 'stop'); return True
                 lvl = p['levels'][p['dca']]; q = p['q0'] * p['w'][p['dca']]
                 lvl = min(lvl, a_) if sd == 1 else max(lvl, a_)              # gapped through the level -> filled where price is
@@ -371,6 +383,7 @@ def run(book, sleeves, start=500.0, max_lev=10.0, daily_halt=0.08, t0=None, t1=N
                 if m.get('tp_r') and not RUN and not TTP:
                     lv = p['e0'] + sd * m['tp_r'] * p['R']
                     if fav_reached(lv, b_): cand.append((sd * lv, 4, 'tpr', lv))
+                if stop_in_candle: cand = [x for x in cand if x[2] == 'add']   # stop-first convention: adds only, no exits
                 if not cand: return False
                 e = min(cand); ev, lv = e[2], e[3]           # first level met on the way
                 if ev == 'tp':
@@ -464,14 +477,11 @@ def run(book, sleeves, start=500.0, max_lev=10.0, daily_halt=0.08, t0=None, t1=N
                 # ATR of the last CLOSED candle: candle i's own ATR contains its future high/low (the live engine cannot know it)
                 o, h, l, c, atr = a['o'][i], a['h'][i], a['l'][i], a['c'][i], a['atr'][i - 1]
                 eq -= p['qty'] * c * FPB; p['realized'] -= p['qty'] * c * FPB
-                # 1) stop as it stood at the open, against the WHOLE candle, before anything else (conservative convention,
-                #    kept: a stop and a target that both existed at the open and are both inside the candle -> the stop)
+                # 1) gap at the open already through the stop: filled at the open, nothing else (no adds)
                 if (o <= p['stop']) if sd == 1 else (o >= p['stop']):
                     close(sl, s, p, o, 1, i, 'stop'); del sl['pos'][s]; continue
-                if (l <= p['stop']) if sd == 1 else (h >= p['stop']):
-                    close(sl, s, p, p['stop'], 1, i, 'stop'); del sl['pos'][s]; continue
-                # 2-5) every intrabar event (DCA fills, basket TP, pyramid adds, tp1 / ladder / tp_r, breakeven and trailing
-                # ratchets, a stop raised inside this candle) in the order of the declared price path - see path_points()
+                # 2-5) every intrabar event (stop, DCA fills, basket TP, pyramid adds, tp1 / ladder / tp_r, breakeven and
+                # trailing ratchets) in the order of the declared price path - see path_points() and walk_path()
                 if walk_path(sl, s, p, i, o, h, l, c, atr): del sl['pos'][s]; continue
                 # 6) signal / time exits at close
                 ex = sl['sigs'][s]['lx' if sd == 1 else 'sx'][i]
