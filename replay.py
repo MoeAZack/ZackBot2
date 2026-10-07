@@ -56,7 +56,10 @@ def run_replay(raw, sleeves, t0, steps=6, start=500.0, tf_sec=14400, quiet=True,
     def equity():
         return W.cash + sum((1 if l['ps'] == 'LONG' else -1) * (W.mark[l['s']] - l['avg']) * l['q'] for l in W.lots)
 
-    def move(px_by_sym):
+    def move(px_by_sym, at_open=False):
+        # at_open (AUD-07 C13f): the candle OPEN is a price move like any other, so a stop-market the open has gapped through
+        # triggers there and fills at the open (where the market is), with the exit slippage - the backtester's convention
+        # (backtest.py: gap at the open -> close at o). Inside the path the step lands near the level, so the stop price is kept.
         for s, p in px_by_sym.items():
             W.mark[s] = p
             for tag, st in list(W.stops.items()):
@@ -65,7 +68,7 @@ def run_replay(raw, sleeves, t0, steps=6, start=500.0, tf_sec=14400, quiet=True,
                 if sd * (p - st['p']) <= 0:
                     have = sum(l['q'] for l in W.lots if l['s'] == s and l['ps'] == st['ps'])
                     q = min(st['q'], have)
-                    if q > 0: reduce(s, st['ps'], q, st['p'] * (1 - sd * SLIP))
+                    if q > 0: reduce(s, st['ps'], q, (p if at_open else st['p']) * (1 - sd * SLIP))
                     W.stops.pop(tag)
 
     class Fake:
@@ -129,7 +132,7 @@ def run_replay(raw, sleeves, t0, steps=6, start=500.0, tf_sec=14400, quiet=True,
         for i in range(t0, N - 1):
             W.i = i
             fake_now[0] = D[syms[0]].t[i].timestamp() + tf_sec + 15
-            W.mark.update({s: D[s].o[i + 1] for s in syms})
+            move({s: D[s].o[i + 1] for s in syms}, at_open=True)   # C13f: the open runs the simulated stops (was mark.update)
             eng.cycle(tf)
             j = i + 1
             # FBL-BT01: the backtester's path policy (backtest.path_points). A doji takes the worst-case path of the side
