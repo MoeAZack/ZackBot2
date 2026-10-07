@@ -5,7 +5,7 @@ trailing, pyramiding adds, DCA safety orders, basket take-profit) is checked eve
 Signals (entries/exits) are evaluated right after each candle close of the sleeve's timeframe.
 Hedge mode is used so longs and shorts on the same coin can coexist.
 """
-import atexit, contextlib, csv, inspect, json, math, os, queue, re, time, zlib, logging, threading, copy, collections
+import atexit, contextlib, csv, functools, inspect, json, math, os, queue, re, time, zlib, logging, threading, copy, collections
 from datetime import datetime, timezone, timedelta
 import numpy as np
 import pandas as pd
@@ -673,12 +673,19 @@ def validate_settings(doc):
     return doc
 
 
-def account_fingerprint(cfg, base):
-    """Non-secret account identity for install.json: mode, exchange URL and a short one-way hash of the API key."""
-    key = str((cfg or {}).get('API_KEY') or '')
+@functools.lru_cache(maxsize=8)
+def _key_digest(key):
+    """Slow salted KDF (PBKDF2-HMAC-SHA256), not a fast hash: the marker must not make an API key cheap to brute-force
+    (CodeQL py/weak-sensitive-data-hashing). Cached: computed once per key per process."""
     import hashlib
+    return hashlib.pbkdf2_hmac('sha256', key.encode(), b'zackbot-install-marker-v1', 200_000).hex()[:16]
+
+
+def account_fingerprint(cfg, base):
+    """Non-secret account identity for install.json: mode, exchange URL and a short one-way KDF digest of the API key."""
+    key = str((cfg or {}).get('API_KEY') or '')
     return dict(mode='live' if (cfg or {}).get('MODE') == 'live' else 'paper', base=str(base or ''),
-                key=hashlib.sha256(key.encode()).hexdigest()[:16] if key else '')
+                key=_key_digest(key) if key else '')
 
 
 def migrate_legacy_secrets(data_dir):
