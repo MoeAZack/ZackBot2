@@ -441,6 +441,8 @@ class Engine:
         self._audit_start()
         self._btc1h = None; self._fund = {}; self._regime = None; self._rule_warns = []
         self._sig_raw = {}                        # T05a: '<sleeve>|<symbol>' -> raw long/short flags before side masking
+        self._audit_rg = {}                       # T05a owner scope: (symbol, tf) -> trend snapshot of the last CLOSED candle (cycle)
+        self._audit_mso = {}                      # T05a owner scope: missed short opportunities since start (bounded, memory)
         self.health = dict(errors=collections.deque(maxlen=30), last_manage_ok=None, last_cycle_ok={}, manage_fail_streak=0,
                            last_sync=None, alerted=False, incidents={}, confirmed={})
         self.grids = GRID.GridManager(self)
@@ -822,6 +824,11 @@ class Engine:
             key = next((k for k, v in self.state['lots'].items() if v is lot), None)
             for ev in TA.fill_events(lot, key, FEE_EST): self._audit_emit(ev)
         except Exception: pass
+        try:                                                       # owner scope: regime known at an add (a dict read, not per mark)
+            f = (lot.get('fills') or [None])[-1]
+            if f and f[1] in TA.ENTRY_KINDS and f[1] != 'entry':
+                TA.note_add(lot, f, TA.regime_at(self._audit_rg.get((lot['symbol'], lot.get('tf'))), f[0]))
+        except Exception: pass
 
     def _audit_cand(self, sl, sym, side, sg, decision, reason=None):
         """A candidate funnel event for a signal that was taken / armed / placed as a maker order, a deferred terminal
@@ -835,6 +842,7 @@ class Engine:
                 side = 'LONG' if raw.get('le') else 'SHORT'
             elif raw and raw.get('time') != sg.get('time'): raw = None    # a later candle's raw signal is not this candidate's
             self._audit_emit(TA.funnel_event(now_utc().isoformat(timespec='seconds'), sid, sym, side, sg.get('time'), decision, reason, raw))
+            self._audit_missed_short(sid, sym, side, sg.get('time'), decision, raw, reason)
         except Exception: pass
 
     def _audit_opened(self, sl, sym, side, sg):
@@ -851,8 +859,53 @@ class Engine:
             row = d.iloc[-1]
             candle = dict(t=pd.Timestamp(row.t).isoformat(), h=float(row.h), l=float(row.l), c=float(row.c), tf_s=TF_SEC.get(l.get('tf')))
             act = ('close_exit_signal' if ex else 'close_time_exit') if closing else 'hold'
-            self._audit_emit(TA.hold_eval(l, k, candle, now_utc().isoformat(timespec='seconds'), act, exit_signal=ex0,
-                                          runner_override=bool(ex0) != bool(ex), missing=self._audit_ctx()[0], fee_rate=FEE_EST))
+            now = now_utc().isoformat(timespec='seconds')
+            rg = TA.regime_snapshot(l['symbol'], l.get('tf'), candle['t'], candle['tf_s'], row.get('c'), row.get('e20'), row.get('e50'), row.get('e200'))
+            missing = self._audit_ctx()[0]
+            self._audit_emit(TA.hold_eval(l, k, candle, now, act, exit_signal=ex0, runner_override=bool(ex0) != bool(ex),
+                                          missing=missing, fee_rate=FEE_EST, regime=rg))
+            if not missing and not closing: TA.regime_trigger(l, rg, now)    # predeclared regime exit: decision at this close
+        except Exception: pass
+
+    def _audit_regime_cache(self, tf, frames):
+        """T05a owner scope (cycle path, never per mark): the trend state of the last CLOSED candle of every frame this
+        cycle already holds in memory, plus BTCUSDT 4h from the candle cache when present (no fetch). Looked up - a dict
+        read - when a lot is created or an add fills, so the snapshot is causal (its candle closed before that moment)."""
+        try:
+            bar = TF_SEC.get(tf)
+            src = [((s, tf), d) for s, d in (frames or {}).items()]
+            hit = self._kc.get(('BTCUSDT', '4h'))
+            if hit is not None and not (tf == '4h' and 'BTCUSDT' in (frames or {})): src.append((('BTCUSDT', '4h'), hit[0]))
+            for (s, tf_), d in src:
+                try:
+                    if d is None or not len(d): continue
+                    row = d.iloc[-1]
+                    snap = TA.regime_snapshot(s, tf_, pd.Timestamp(row['t']).isoformat(), TF_SEC.get(tf_) or bar, row.get('c'),
+                                              row.get('e20'), row.get('e50'), row.get('e200'))
+                    if snap: self._audit_rg[(s, tf_)] = snap
+                except Exception: pass
+        except Exception: pass
+
+    def _audit_entry_ctx(self, sym, tf, t):
+        try:
+            b = self._audit_rg.get(('BTCUSDT', '4h')); basis = 'BTCUSDT 4h'
+            if b is None: b = self._audit_rg.get(('BTCUSDT', tf)); basis = f'BTCUSDT {tf} (4h not cached)'
+            return TA.entry_context(TA.regime_at(self._audit_rg.get((sym, tf)), t), TA.regime_at(b, t), basis)
+        except Exception:
+            return None
+
+    def _audit_missed_short(self, sid, sym, side, candle, decision, raw, reason=None):
+        """Count a missed short opportunity once per (slot, coin, candle) - memory only, bounded."""
+        try:
+            if raw and raw.get('time') is not None and str(raw.get('time')) != str(candle): raw = None   # another candle's raw signal
+            why = TA.missed_short(decision, side, raw)
+            if not why: return
+            k = (sid, sym, str(candle))
+            if k in self._audit_mso: return
+            i = TA.reason_info(reason) if reason else {}
+            self._audit_mso[k] = dict(sleeve=sid, symbol=sym, candle=str(candle), why=why,
+                                      code=f"{i['stage']}/{i['code']}" if i.get('stage') else None)
+            while len(self._audit_mso) > 600: self._audit_mso.pop(next(iter(self._audit_mso)))
         except Exception: pass
 
     def audit_summary(self):
@@ -871,8 +924,10 @@ class Engine:
                 with w.lock: win = list(w.win)
                 a = TA.attribution(win + list(ms[-600:]))
                 a['coverage'] = TA.coverage(hs, win, getattr(self, '_audit_since', None))   # legacy / rotated / missing
+                a['segments'] = TA.segments(win)                                       # owner scope: segments, flags, samples
                 c = self._audit_cache = (key, a)
             out = dict(c[1])
+            out['missed_short'] = TA.missed_short_summary(list(getattr(self, '_audit_mso', {}).values()), ms)
             out['telemetry'] = dict(ctr, window=FILL_WINDOW, in_window=n, queued=w.q.qsize())
             return out
         except Exception as e:
@@ -1125,6 +1180,7 @@ class Engine:
         try: self._audit_emit(TA.funnel_event(rec['logged'], sl['id'], sym, side, sg['time'], 'warning' if kind == 'warning' else
                                               (kind or 'not_taken'), reason, self._sig_raw.get(f"{sl['id']}|{sym}")))
         except Exception: pass
+        if not kind: self._audit_missed_short(sl['id'], sym, side, sg['time'], 'not_taken', self._sig_raw.get(f"{sl['id']}|{sym}"), reason)
         self.missed.append(rec)
         self.missed = self.missed[-600:]
         save_json(self.F['missed'], self.missed)
@@ -1597,6 +1653,7 @@ class Engine:
             log.info(f'--- {tf} cycle ({reason}) | equity {eq:.2f} ---')
             sigs, frames = self.compute_signals(tf, syms, extra=self._orphan_sleeves(tf))
             self.signals.update(sigs); self.signals_time = now_utc().isoformat(timespec='seconds')
+            self._audit_regime_cache(tf, frames)               # T05a: closed-candle trend snapshots (memory only, observe only)
             # refresh ATR for trailing + signal/time exits
             for k, l in list(st['lots'].items()):
                 if l.get('tf') != tf or l.get('manual'): continue
@@ -2179,7 +2236,9 @@ class Engine:
             lot['breaker_dca'] = self.risk_rules_cfg()['btc_breaker'].get('dca', 'pause')   # fixed for the life of this basket
         try:                                                      # T05a: causal policies PREDECLARED at entry (observe only)
             ap = TA.declare(lot, lot['opened'])
-            if ap is not None: lot['ap'] = ap
+            if ap is not None:
+                ap['ctx'] = dict(entry=self._audit_entry_ctx(sym, lot['tf'], lot['opened']))   # regime known at entry
+                lot['ap'] = ap
         except Exception: pass
         self.state['lots'][key] = lot; self.save_state()          # recorded BEFORE the stop: a crash here can never orphan the position
         self._last_lot_key = key

@@ -24,7 +24,8 @@ import statistics
 from datetime import datetime, timedelta, timezone
 
 AUDIT_VERSION = 3        # schema version of every trade_audit.jsonl line ('v')
-POLICY_VERSION = 1       # version of the predeclared policy set stored on a lot at entry (lot['ap']['v'])
+POLICY_VERSION = 2       # version of the predeclared policy set stored on a lot at entry (lot['ap']['v']); v2 adds
+#                          breakeven_after_costs + regime_exit (owner scope 2026-10-07); a v1 lot keeps its v1 set
 EVENT_KINDS = ('funnel', 'hold_eval', 'excursion', 'cohort', 'runner', 'trade_audit', 'coverage')
 FEE_EST = 0.0005         # must equal engine.FEE_EST (the engine passes its own value; a test pins the two together)
 PATH_MAX = 64            # live price path kept on the lot: at most this many (t, mark) points, decimated in time order
@@ -48,6 +49,15 @@ TIME_CAP_BARS_DEFAULT = 48     # predeclared: close at the first observation at/
 RULE_TARGET = 'close the remainder at the planned target'
 RULE_TRAIL = 'trailing stop k x ATR from the running best since entry'
 RULE_RUNNER = 'close the runner quantity at its activation'
+RULE_BE = 'breakeven after costs: once +arm_r x R in favour, close when the net P&L after fees falls back to zero'
+RULE_REGIME = 'regime exit: close at the first mark after a closed candle of the lot tf with the trend against the position'
+BE_ARM_R = 1.0                 # predeclared: the breakeven-after-costs stop arms at +1R (mark vs the entry price)
+EXEC_SLIP_BPS = 2.0            # modelled adverse slippage (bps) for the executable MFE (metrics.executable_mfe_usd)
+REGIME_STALE_BARS = 2          # a closed-candle trend snapshot older than this many bars at a decision = 'unknown'
+CTX_ADDS_MAX = 16              # add-fill regime snapshots kept on a lot (lot['ap']['ctx']['adds']); more are only counted
+FLAGS = ('never_green', 'green_to_red', 'gave_back_gt_50pct_mfe', 'dca_into_trend', 'long_in_bear_regime',
+         'short_in_bull_regime')          # failure classes on a trade_audit record (definitions: docs/reviews/T05a_review_request.md)
+SEG_DIMS = ('strategy', 'side', 'symbol', 'tf', 'regime', 'dca', 'runner')
 _TF_UNIT = {'m': 60, 'h': 3600, 'd': 86400, 'w': 604800}
 
 
@@ -133,7 +143,14 @@ def declare(lot, t, late=False, why=None, seq=-1):
             time_cap=dict(v=1, rule=f'time cap: close at the first observation at/after entry + {TIME_CAP_BARS_DEFAULT} bars',
                           params=dict(bars=TIME_CAP_BARS_DEFAULT, tf_s=bar, cap_t=cap)),
             runner=dict(v=1, rule=RULE_RUNNER, params=dict(qty='open quantity right after the first partial take-profit',
-                                                          price='that partial close fill', cohorts='FIFO'))))
+                                                          price='that partial close fill', cohorts='FIFO')),
+            breakeven=dict(v=1, rule=RULE_BE, params=dict(arm_r=BE_ARM_R, R=float(lot['R']) if _num(lot.get('R')) and lot['R'] > 0 else None,
+                                                         e0=float(b) if _num(b) else None,
+                                                         level='net P&L after fees paid and the estimated exit fee = 0, with the lot state at each observation',
+                                                         fill='the observed mark that crossed it (never improved)')),
+            regime_exit=dict(v=1, rule=RULE_REGIME, params=dict(tf=lot.get('tf'), against='LONG: close < EMA200 and EMA20 < EMA50 '
+                                                               '(SHORT mirrored) on the last CLOSED candle of the lot tf',
+                                                               fill='the first mark sample at/after the candle-close decision'))))
     except Exception:
         return None
 
@@ -168,14 +185,35 @@ def _online_init(lot, t):
     cap = _ts(tc.get('cap_t'))
     return dict(tc_n=tc.get('bars', TIME_CAP_BARS_DEFAULT), tc_e=cap.timestamp() if cap else None, tc=None,
                 tk=tr.get('k', TRAIL_ATR_DEFAULT), atr=tr.get('atr'), atr_src=tr.get('atr_src'),
-                tb=tr.get('best_from'), tb_pt=None, tr=None)
+                tb=tr.get('best_from'), tb_pt=None, tr=None, **_online_init_v2(pol))
 
 
-def _online_step(lot, on, sd, mark, t, si, i, after_gap):
+def _online_init_v2(pol):
+    """Online state of the v2 policies (only when DECLARED: a v1 lot gets none and its record says so)."""
+    out = {}
+    be = (pol.get('breakeven') or {}).get('params')
+    if isinstance(be, dict): out.update(be_r=be.get('arm_r'), be_R=be.get('R'), be_e0=be.get('e0'), be_arm=None, be=None)
+    if isinstance((pol.get('regime_exit') or {}).get('params'), dict): out.update(rx_dec=None, rx=None)
+    return out
+
+
+def _online_step(lot, on, sd, mark, t, si, i, after_gap, net=None):
     """One observation for the online policies. Causal by construction: the trailing stop comes from the best mark seen
     BEFORE this observation and the ATR declared at entry; the time cap fires at the first observation at/after the
-    declared cap. Returns (changed, decided)."""
+    declared cap; breakeven-after-costs arms at an EARLIER observation (+arm_r x R from the declared entry) and exits when
+    this observation's net P&L (state before it, estimated exit fee) is <= 0; the regime exit fills at the first
+    observation at/after a candle-close decision (regime_trigger, cycle path). Arithmetic only. Returns (changed, decided)."""
     chg = dec = False
+    if 'be' in on and on.get('be') is None and _num(on.get('be_R')) and on['be_R'] > 0 and _num(on.get('be_e0')) and _num(on.get('be_r')):
+        if on.get('be_arm') is None:
+            if sd * (mark - on['be_e0']) >= on['be_r'] * on['be_R']: on['be_arm'] = [t, mark, si, i]; chg = True
+        elif _num(net) and net <= 0:
+            on['be'] = [t, mark, si, i]; on['be_gap'] = after_gap; chg = dec = True
+    rx = on.get('rx_dec')
+    if on.get('rx') is None and isinstance(rx, (list, tuple)) and len(rx) >= 2:
+        d, dd = _ts(t), _ts(rx[1])
+        if d is not None and dd is not None and d >= dd:
+            on['rx'] = [t, mark, si, i]; on['rx_gap'] = after_gap; chg = dec = True
     if on.get('tc') is None and on.get('tc_e') is not None:
         d = _ts(t)
         if d is not None and d.timestamp() >= on['tc_e']:
@@ -267,12 +305,14 @@ def observe(lot, mark, t, fee_rate=FEE_EST, restored=False, missing=False, down_
             path.append([t, mark, si, i])
             if len(path) > PATH_MAX: path[:] = path[::2]; ex['stride'] = stride * 2
         ex['last'] = [t, mark, si, i]
+        pnl = None
         if cur[5] is not None and cur[6] is not None:
             pnl = cur[5] - cur[6] + sd * (mark - avg) * qty - qty * mark * fee_rate
             risk = lot.get('risk_usd')
             rr = lambda v: round(v / risk, 4) if _num(risk) and risk > 0 else None
             if ex['peak_pnl'] is None or pnl > ex['peak_pnl']:
                 ex['peak_pnl'], ex['peak_t'], ex['peak_r'] = round(pnl, 6), t, rr(pnl); chg = True
+                ex['peak_px'], ex['peak_q'], ex['peak_n'] = mark, qty, i      # the mark + quantity of the peak (executable MFE)
             if ex.get('trough_pnl') is None or pnl < ex['trough_pnl']:
                 ex['trough_pnl'], ex['trough_t'], ex['trough_r'] = round(pnl, 6), t, rr(pnl); chg = True
         tgt = cur[2]
@@ -281,7 +321,7 @@ def observe(lot, mark, t, fee_rate=FEE_EST, restored=False, missing=False, down_
         on = ex.get('on')
         if isinstance(on, dict):
             try:
-                c_, d_ = _online_step(lot, on, sd, mark, t, si, i, after_gap)
+                c_, d_ = _online_step(lot, on, sd, mark, t, si, i, after_gap, net=pnl)
                 chg, force = chg or c_, force or d_
             except Exception: ex['on'] = None                     # online policies off for this lot; path fallback remains
         if chg: ex['chg'] = ex.get('chg', 0) + 1
@@ -426,7 +466,7 @@ def recorded_path(lot):
             if ex.get(a) is not None and _num(ex.get(b)) and c in ex: raw.append((ex[a], ex[b], ex[c], ex.get(d)))
         raw.append(ex.get('last'))
         on = ex.get('on') if isinstance(ex.get('on'), dict) else {}
-        for k in ('tc', 'tr', 'tb_pt'):
+        for k in ('tc', 'tr', 'tb_pt', 'be', 'be_arm', 'rx'):
             if isinstance(on.get(k), (list, tuple)): raw.append(on[k][:4])
         seen, out = set(), []
         for p in raw:
@@ -639,6 +679,13 @@ def close_record(lot, net_pnl, fee_rate=FEE_EST, slip_bps=0.0, path=None, cap_ba
             rec.update(giveback=round(gb, 6), giveback_pct=round(gb / peak * 100, 2) if peak > 0 else None,
                        giveback_r=round(gb / risk, 4) if risk else None)
         rec['counterfactuals'] = counterfactuals(lot, net_pnl, fee_rate, slip_bps, path, cap_bars, trail_k, ledger=led)
+        try:                                                   # owner scope 2026-10-07: metrics, failure classes, segment keys
+            m = trade_metrics(lot, net_pnl, fee_rate)
+            fl = failure_flags(lot, net_pnl, m)
+            rec.update(metrics=m, flags=fl['flags'], flags_unknown=fl['unknown'] or None, flag_detail=fl['detail'],
+                       segment=segment_of(lot, led, fl.get('regime')))
+        except Exception:
+            rec.update(metrics=None, flags=None, flags_unknown=['not evaluated'], segment=None)
         return rec
     except Exception:
         return None
@@ -896,11 +943,382 @@ def counterfactuals(lot, net_pnl, fee_rate=FEE_EST, slip_bps=0.0, path=None, cap
     out.append(policy_time_cap(lot, net_pnl, fee_rate, slip_bps, path, cap_bars))
     try: out.append(policy_runner(lot, net_pnl, ledger if ledger is not None else cohort_ledger(lot, fee_rate)))
     except Exception: pass
+    out.append(policy_breakeven(lot, net_pnl, fee_rate, slip_bps, path))
+    out.append(policy_regime_exit(lot, net_pnl, fee_rate, slip_bps, path))
     return out
 
 
+def policy_breakeven(lot, net_pnl, fee_rate, slip_bps, path):
+    """Breakeven after costs (predeclared in policy set v2): arms once a mark is +arm_r x R in favour of the declared
+    entry price; from the NEXT observation on, closes at the first mark where the net P&L after fees (state valid at that
+    observation, estimated exit fee) is <= 0, filled at that observed mark. Online (every observation) for a live path;
+    the path-based fallback walks the recorded points. Not declared (v1 lot) -> value None, says why."""
+    rule = RULE_BE
+    try:
+        dp = _dparams(lot, 'breakeven')
+        if dp is None: return _policy(rule, None, None, net_pnl, 'not declared for this lot (policy set v1, opened before v2)', predeclared=False)
+        R, e0, arm = dp.get('R'), dp.get('e0'), dp.get('arm_r')
+        if not (_num(R) and R > 0 and _num(e0) and _num(arm)):
+            return _policy(rule, None, None, net_pnl, 'no entry price / initial risk R declared', arm_r=arm)
+        on = (lot.get('ex') or {}).get('on')
+        if _live(path) and isinstance(on, dict) and 'be' in on:
+            b, a = on.get('be'), on.get('be_arm')
+            if isinstance(b, (list, tuple)) and len(b) >= 4 and isinstance(a, (list, tuple)) and len(a) >= 4:
+                lim = 'evaluated online at every observation; filled at the observed mark at/below net zero; samples miss intrabar moves'
+                if on.get('be_gap'): lim += '; decided at the first sample after a gap / missing samples'
+                return _decide(lot, rule, tuple(b[:4]), b[1], fee_rate, slip_bps, net_pnl, lim,
+                               parts=[_decl_part(lot), (a[0], a[3], 'armed at an earlier observation')], arm_r=arm, R=R,
+                               armed_t=a[0], online=True, after_gap=bool(on.get('be_gap')))
+            return _policy(rule, None, None, net_pnl, ('armed, ' if a else 'never armed (+%gR not reached), ' % arm) +
+                           'no observation at/below net zero after arming (evaluated online)', arm_r=arm, R=R, online=True,
+                           armed_t=a[0] if isinstance(a, (list, tuple)) and a else None)
+        if not path: return _policy(rule, None, None, net_pnl, 'no time-ordered price path recorded for this lot', arm_r=arm, R=R)
+        sd, apt = _side(lot), None
+        for pt in path:
+            t, p, si = _pt(pt)
+            if not (_num(p) and p > 0): continue
+            if apt is None:
+                if sd * (p - e0) >= arm * R: apt = pt
+                continue
+            st, why = state_at(lot, t, si)
+            if st is None: return _policy(rule, None, None, net_pnl, f'decided at {t} but {why}', arm_r=arm, R=R)
+            if st['realized'] is None or st['fees'] is None: continue
+            net = st['realized'] - st['fees'] + sd * (p - st['avg']) * st['qty'] - st['qty'] * p * fee_rate
+            if net <= 0:
+                n = apt[3] if len(apt) > 3 and isinstance(apt[3], int) else None
+                return _decide(lot, rule, pt, p, fee_rate, slip_bps, net_pnl, 'filled at the observed mark at/below net zero; samples miss intrabar moves',
+                               parts=[_decl_part(lot), (apt[0], n, 'armed at an earlier observation')], arm_r=arm, R=R, armed_t=apt[0])
+        return _policy(rule, None, None, net_pnl, ('armed, never back to net zero' if apt else 'never armed') + ' within the recorded path', arm_r=arm, R=R)
+    except Exception as e:
+        return _policy(rule, None, None, net_pnl, f'not evaluated ({type(e).__name__})')
+
+
+def policy_regime_exit(lot, net_pnl, fee_rate, slip_bps, path):
+    """Regime exit (predeclared in policy set v2): at a closed candle of the lot tf whose trend is against the position
+    (regime_trigger, info cutoff = that candle close < the cycle's decision time), close at the first mark sample at/after
+    the decision. Needs the candle-close trend, so it is evaluated online only (live path)."""
+    rule = RULE_REGIME
+    try:
+        if _dparams(lot, 'regime_exit') is None:
+            return _policy(rule, None, None, net_pnl, 'not declared for this lot (policy set v1, opened before v2)', predeclared=False)
+        on = (lot.get('ex') or {}).get('on')
+        if not (_live(path) and isinstance(on, dict) and 'rx' in on):
+            return _policy(rule, None, None, net_pnl, 'evaluated online only (needs the closed-candle trend at each cycle); no online state')
+        rx, d = on.get('rx'), on.get('rx_dec')
+        if not (isinstance(d, (list, tuple)) and len(d) >= 3):
+            return _policy(rule, None, None, net_pnl, 'no closed candle with the trend against the position before the actual exit', online=True)
+        if not (isinstance(rx, (list, tuple)) and len(rx) >= 4):
+            return _policy(rule, None, None, net_pnl, 'trend turned against at a candle close but no mark sample followed before the actual exit',
+                           online=True, candle_cutoff=d[0], trend=d[2])
+        lim = 'filled at the first mark sample at/after the candle-close decision; samples miss intrabar moves'
+        if on.get('rx_gap'): lim += '; first sample after a gap / missing samples'
+        return _decide(lot, rule, tuple(rx[:4]), rx[1], fee_rate, slip_bps, net_pnl, lim,
+                       parts=[_decl_part(lot), (d[0], None, 'closed candle (trend against the position)'),
+                              (d[1], None, 'cycle decision after the candle close')],
+                       online=True, candle_cutoff=d[0], trend=d[2], after_gap=bool(on.get('rx_gap')))
+    except Exception as e:
+        return _policy(rule, None, None, net_pnl, f'not evaluated ({type(e).__name__})')
+
+
+# ------------------------------------------------------------------ owner scope 2026-10-07: regime snapshots (closed candles only)
+def _f(x):
+    try:
+        v = float(x)
+        return v if math.isfinite(v) else None
+    except Exception:
+        return None
+
+
+def regime_snapshot(symbol, tf, candle_t, tf_s, c, e20, e50, e200):
+    """Trend state of ONE closed candle (the engine passes the last closed candle of its cached frame; cycle path, never
+    per mark): above200 = close > EMA200, ema20_gt_ema50 = EMA20 > EMA50; trend 'up' (both), 'down' (neither), 'mixed',
+    or 'unknown' (an input missing / not finite). cutoff_t = the candle close = the information cutoff. None on junk."""
+    try:
+        t0, bar = _ts(candle_t), tf_s or tf_seconds(tf)
+        if t0 is None or not bar: return None
+        c, e20, e50, e200 = _f(c), _f(e20), _f(e50), _f(e200)
+        a = None if c is None or e200 is None else c > e200
+        u = None if e20 is None or e50 is None else e20 > e50
+        tr = 'unknown' if a is None or u is None else 'up' if a and u else 'down' if not a and not u else 'mixed'
+        return dict(symbol=symbol, tf=tf, tf_s=bar, candle_t=t0.isoformat(timespec='seconds'),
+                    cutoff_t=(t0 + timedelta(seconds=bar)).isoformat(timespec='seconds'), c=c, e20=e20, e50=e50, e200=e200,
+                    above200=a, ema20_gt_ema50=u, trend=tr)
+    except Exception:
+        return None
+
+
+def regime_at(snap, decision_t, stale_bars=REGIME_STALE_BARS):
+    """The snapshot as known at a decision: status 'ok' only when its cutoff (candle close) is at/before the decision
+    and it is at most stale_bars bars old; otherwise status 'unknown' with why (never guessed). Pure."""
+    try:
+        if not isinstance(snap, dict): return dict(status='unknown', why='no closed-candle snapshot for this symbol / timeframe', decision_at=decision_t)
+        out = dict(snap, decision_at=decision_t, info_cutoff=snap.get('cutoff_t'))
+        cut, dec, bar = _ts(snap.get('cutoff_t')), _ts(decision_t), snap.get('tf_s')
+        if cut is None or dec is None or not bar: return dict(out, status='unknown', causal_ok=None, why='unparseable times')
+        age = (dec - cut).total_seconds() / bar
+        out.update(causal_ok=cut <= dec, age_bars=round(age, 3))
+        if cut > dec: return dict(out, status='unknown', why='snapshot cutoff is after the decision (not causal)')
+        if age > stale_bars: return dict(out, status='unknown', why=f'snapshot older than {stale_bars} bars')
+        if snap.get('trend') == 'unknown': return dict(out, status='unknown', why='indicator values missing')
+        return dict(out, status='ok')
+    except Exception:
+        return dict(status='unknown', why='not evaluated', decision_at=decision_t)
+
+
+def entry_context(sym_at, btc_at, btc_basis):
+    """Regime context of an entry: the symbol on the lot tf and BTC (4h preferred) as known at the entry. label:
+    'bear' = both closes below their EMA200, 'bull' = both above, 'mixed' = they differ, 'unknown' = either not usable."""
+    try:
+        a = sym_at.get('above200') if isinstance(sym_at, dict) and sym_at.get('status') == 'ok' else None
+        b = btc_at.get('above200') if isinstance(btc_at, dict) and btc_at.get('status') == 'ok' else None
+        lab = 'unknown' if a is None or b is None else 'bull' if a and b else 'bear' if not a and not b else 'mixed'
+        return dict(symbol=sym_at, btc=btc_at, btc_basis=btc_basis, label=lab,
+                    rule="bear: symbol close < EMA200 (lot tf) AND BTC close < EMA200 (btc_basis); bull mirrored; else mixed / unknown")
+    except Exception:
+        return dict(label='unknown')
+
+
+def trend_against(side, s):
+    """True when a usable snapshot shows the trend against the side (LONG: close < EMA200 OR EMA20 < EMA50; SHORT
+    mirrored), False when both are known and neither is against, None when unknown (never guessed)."""
+    if not isinstance(s, dict) or s.get('status') != 'ok': return None
+    a, u = s.get('above200'), s.get('ema20_gt_ema50')
+    bad = (a is False, u is False) if side == 'LONG' else (a is True, u is True)
+    if any(bad): return True
+    return None if a is None or u is None else False
+
+
+def note_add(lot, fill, snap_at):
+    """Store the regime snapshot known at an add fill on lot['ap']['ctx']['adds'] (bounded). Memory only, called by the
+    engine right after it books the add (not per mark). Returns True if stored."""
+    try:
+        ap = lot.get('ap')
+        if not isinstance(ap, dict): return False
+        ctx = ap.setdefault('ctx', dict(entry=None))
+        adds = ctx.setdefault('adds', [])
+        ctx['adds_n'] = ctx.get('adds_n', 0) + 1
+        if len(adds) >= CTX_ADDS_MAX: return False
+        i = len(lot.get('fills') or ()) - 1
+        adds.append(dict(fill_i=i, t=fill[0], why=fill[1], regime=_slim_snap(snap_at)))
+        return True
+    except Exception:
+        return False
+
+
+def _slim_snap(s):
+    if not isinstance(s, dict): return None
+    return {k: s.get(k) for k in ('status', 'why', 'tf', 'candle_t', 'info_cutoff', 'decision_at', 'causal_ok', 'age_bars',
+                                  'c', 'e20', 'e50', 'e200', 'above200', 'ema20_gt_ema50', 'trend') if k in s}
+
+
+def regime_trigger(lot, snap, now_t):
+    """Cycle path (candle close, never per mark): when the lot declared the regime exit and the just-closed candle's trend
+    is against the position (LONG: trend 'down', SHORT: 'up'), store the decision on the online state; the next mark
+    sample fills it (_online_step). Only if the candle close is strictly before now. Returns the decision or None."""
+    try:
+        if _dparams(lot, 'regime_exit') is None or not isinstance(snap, dict): return None
+        ex = lot.get('ex')
+        on = ex.get('on') if isinstance(ex, dict) else None
+        if not isinstance(on, dict) or 'rx' not in on or on.get('rx_dec') is not None: return None
+        cut, dn = _ts(snap.get('cutoff_t')), _ts(now_t)
+        if cut is None or dn is None or not cut < dn: return None
+        if snap.get('trend') != ('down' if lot.get('side') == 'LONG' else 'up'): return None
+        on['rx_dec'] = [snap['cutoff_t'], now_t, snap['trend'], snap.get('candle_t')]
+        ex['chg'] = ex.get('chg', 0) + 1; ex['ck_force'] = True
+        return on['rx_dec']
+    except Exception:
+        return None
+
+
+# ------------------------------------------------------------------ owner scope 2026-10-07: per-trade metrics + failure classes
+def trade_metrics(lot, net_pnl, fee_rate=FEE_EST, slip_bps=EXEC_SLIP_BPS):
+    """MFE/MAE of the mark samples in price (distance from the average entry valid AT that observation), USD (on the
+    quantity open at that observation, gross of fees), % of that average and R (risk_usd); time to MFE / MAE / net peak;
+    realized net; give-back from the lifecycle net peak to the exit; executable MFE = the lifecycle net peak (a whole-
+    position close at a recorded mark sample, after fees paid + exit fee) minus modelled adverse slippage at that mark.
+    Candle extremes are never used. Hindsight: these describe the trade after the fact (no live decision uses them)."""
+    ex = lot.get('ex') or {}
+    sd = _side(lot)
+    risk = float(lot['risk_usd']) if _num(lot.get('risk_usd')) and lot['risk_usd'] > 0 else None
+    st = ex.get('st') or []
+    t_entry = _ts(lot.get('opened'))
+    t_ref, t_basis = (t_entry, 'entry (lot.opened)') if t_entry else (_ts(ex.get('t0')), 'tracking start (entry time unknown)')
+    rnd = lambda v, n=6: round(v, n) if _num(v) else None
+
+    def exc(px, t, si):
+        if not _num(px): return None
+        d = dict(px=px, t=t)
+        if isinstance(si, int) and not isinstance(si, bool) and 0 <= si < len(st) and _num(st[si][1]) and st[si][1] > 0 and _num(st[si][2]):
+            avg, q = float(st[si][1]), float(st[si][2])
+            dist = sd * (px - avg)
+            d.update(avg_at=avg, qty_at=q, price=rnd(dist, 10), usd=rnd(dist * q), pct=rnd(dist / avg * 100, 4),
+                     r=rnd(dist * q / risk, 4) if risk else None, basis='state_at_obs')
+        else:
+            e = lot.get('entry0', lot.get('e0'))
+            dist = sd * (px - float(e)) if _num(e) and e > 0 else None
+            d.update(price=rnd(dist, 10), usd=None, pct=rnd(dist / float(e) * 100, 4) if dist is not None else None, r=None,
+                     basis='entry0_state_unknown')
+        dt = _ts(t)
+        d['time_from_entry_s'] = round((dt - t_ref).total_seconds()) if dt is not None and t_ref is not None else None
+        return d
+
+    mfe, mae = exc(ex.get('mfe_px'), ex.get('mfe_t'), ex.get('mfe_si')), exc(ex.get('mae_px'), ex.get('mae_t'), ex.get('mae_si'))
+    peak = ex.get('peak_pnl') if _num(ex.get('peak_pnl')) else None
+    dp = _ts(ex.get('peak_t'))
+    out = dict(mfe=mfe, mae=mae, time_basis=t_basis, excursion_basis='mark samples; price = distance from the average entry at that '
+               'observation (state_at_obs; entry0_state_unknown = USD/R withheld), USD on the open quantity then, gross of fees',
+               time_to_mfe_s=(mfe or {}).get('time_from_entry_s'), time_to_mae_s=(mae or {}).get('time_from_entry_s'),
+               time_to_peak_net_s=round((dp - t_ref).total_seconds()) if dp is not None and t_ref is not None else None,
+               net_usd=rnd(net_pnl), net_r=rnd(net_pnl / risk, 4) if risk and _num(net_pnl) else None,
+               peak_net_usd=peak, peak_net_r=rnd(peak / risk, 4) if risk and peak is not None else None,
+               giveback_usd=rnd(peak - net_pnl) if peak is not None and _num(net_pnl) else None,
+               giveback_pct_of_mfe=rnd((peak - net_pnl) / peak * 100, 2) if peak is not None and peak > 0 and _num(net_pnl) else None,
+               label='hindsight (describes the finished trade; no live decision input)')
+    px, q = ex.get('peak_px'), ex.get('peak_q')
+    if peak is not None and _num(px) and _num(q):
+        s = slip_bps / 1e4
+        ev = peak - s * px * q * (1 - sd * fee_rate)          # the same close at px * (1 - sd x slip): adverse fill, its fee
+        out.update(executable_mfe_usd=rnd(ev), executable_mfe_r=rnd(ev / risk, 4) if risk else None, executable_mfe_t=ex.get('peak_t'),
+                   executable_px=px, executable_qty=q, executable_slip_bps=slip_bps,
+                   executable_basis='net peak at a recorded mark sample, after fees + exit fee, minus modelled slippage; no candle extremes')
+    else:
+        out.update(executable_mfe_usd=None, executable_mfe_r=None, executable_mfe_t=None,
+                   executable_basis='not available: no net peak mark/quantity recorded')
+    return out
+
+
+def _green(m):
+    """(value, basis) the green tests use: the executable MFE, else the lifecycle net peak."""
+    if _num(m.get('executable_mfe_usd')): return float(m['executable_mfe_usd']), 'executable_mfe_usd'
+    if _num(m.get('peak_net_usd')): return float(m['peak_net_usd']), 'peak_net_usd (no executable MFE recorded)'
+    return None, None
+
+
+def failure_flags(lot, net_pnl, m):
+    """Deterministic failure classes (FLAGS) of a finished trade. A class that cannot be evaluated goes to 'unknown'
+    (never guessed). See docs/reviews/T05a_review_request.md for the definitions."""
+    flags, unknown, det = [], [], {}
+    peak = m.get('peak_net_usd')
+    if _num(peak):
+        if peak <= 0: flags.append('never_green')
+    else: unknown.append('never_green')
+    g, gb = _green(m)
+    if g is None or not _num(net_pnl): unknown += ['green_to_red', 'gave_back_gt_50pct_mfe']
+    else:
+        det['green_basis'] = gb
+        if g > 0 and net_pnl < 0: flags.append('green_to_red')
+        if g > 0 and (g - net_pnl) > 0.5 * g: flags.append('gave_back_gt_50pct_mfe')
+    side = lot.get('side')
+    ap = lot.get('ap') if isinstance(lot.get('ap'), dict) else {}
+    ctx = ap.get('ctx') if isinstance(ap.get('ctx'), dict) else {}
+    so = [i for i, f in enumerate(lot.get('fills') or ()) if isinstance(f, (list, tuple)) and len(f) >= 2 and f[1] == 'safety_order']
+    if so:
+        adds = {a.get('fill_i'): a for a in (ctx.get('adds') or ()) if isinstance(a, dict)}
+        res = [trend_against(side, (adds.get(i) or {}).get('regime')) for i in so]
+        det['dca_adds'] = [dict(fill_i=i, against=r) for i, r in zip(so, res)][:CTX_ADDS_MAX]
+        if any(r is True for r in res): flags.append('dca_into_trend')
+        elif any(r is None for r in res): unknown.append('dca_into_trend')
+    ent = ctx.get('entry') if isinstance(ctx.get('entry'), dict) else None
+    lab = ent.get('label') if ent else 'unknown'
+    name = 'long_in_bear_regime' if side == 'LONG' else 'short_in_bull_regime'
+    if lab in ('bull', 'bear', 'mixed'):
+        if (side == 'LONG' and lab == 'bear') or (side == 'SHORT' and lab == 'bull'): flags.append(name)
+    else: unknown.append(name)
+    det['entry_regime'] = lab
+    return dict(flags=flags, unknown=unknown, detail=det, regime=lab)
+
+
+def _dca_bucket(n):
+    return '?' if not isinstance(n, int) else '3+' if n >= 3 else str(n)
+
+
+def segment_of(lot, ledger, regime=None):
+    """The segment keys of a finished trade (SEG_DIMS)."""
+    n = sum(1 for f in (lot.get('fills') or ()) if isinstance(f, (list, tuple)) and len(f) >= 2 and f[1] == 'safety_order')
+    return dict(strategy=_key_str(lot.get('sleeve')), side=_key_str(lot.get('side')), symbol=_key_str(lot.get('symbol')),
+                tf=_key_str(lot.get('tf')), regime=regime or 'unknown', dca=_dca_bucket(n),
+                runner='runner' if (ledger or {}).get('runner') else 'no_runner')
+
+
+def segments(records, top=12, samples=3):
+    """Aggregate trade_audit records by every SEG_DIMS dimension: n, win rate, expectancy (mean net USD and mean net R),
+    flag counts; plus per flag the count and up to `samples` most recent audit ids. Pure; never raises."""
+    dims = {d: {} for d in SEG_DIMS}
+    fl, unk, n_all = {f: dict(n=0, samples=[]) for f in FLAGS}, {}, 0
+    for r in records or ():
+        try:
+            if not (isinstance(r, dict) and r.get('kind') == 'trade_audit'): continue
+            n_all += 1
+            sg = dict(strategy=_key_str(r.get('sleeve')), side=_key_str(r.get('side')), symbol=_key_str(r.get('symbol')),
+                      tf=_key_str(r.get('tf')), regime='unknown', dca='?', runner='runner' if isinstance(r.get('runner'), dict) else 'no_runner')
+            if isinstance(r.get('segment'), dict): sg.update(r['segment'])                  # a full record
+            elif isinstance(r.get('seg'), str) and r['seg'].count('|') == 2:              # a slimmed window record
+                sg.update(zip(('regime', 'dca', 'runner'), r['seg'].split('|')))
+            net = r.get('net_pnl') if _num(r.get('net_pnl')) else None
+            rr = r.get('r') if _num(r.get('r')) else None
+            sp = lambda v: v.split(',') if isinstance(v, str) else v if isinstance(v, list) else ()
+            fs = [f for f in sp(r.get('flags')) if f in fl]
+            for f in fs:
+                fl[f]['n'] += 1
+                if isinstance(r.get('id'), str): fl[f]['samples'] = (fl[f]['samples'] + [r['id']])[-samples:]
+            for f in sp(r.get('flags_unknown')):
+                if isinstance(f, str): unk[f[:40]] = unk.get(f[:40], 0) + 1
+            for d in SEG_DIMS:
+                g = dims[d].setdefault(_key_str(sg.get(d)), dict(n=0, _net=[], _r=[], fl={}))
+                g['n'] += 1
+                if net is not None: g['_net'].append(float(net))
+                if rr is not None: g['_r'].append(float(rr))
+                for f in fs: g['fl'][f] = g['fl'].get(f, 0) + 1
+        except Exception:
+            continue
+    out = {}
+    for d, gs in dims.items():
+        rows = []
+        for k, g in gs.items():
+            ns, rs = g['_net'], g['_r']
+            rows.append(dict(key=k, n=g['n'], n_net=len(ns), wins=sum(1 for x in ns if x > 0),
+                             win_rate=round(sum(1 for x in ns if x > 0) / len(ns), 4) if ns else None,
+                             exp_usd=round(sum(ns) / len(ns), 6) if ns else None, exp_r=round(sum(rs) / len(rs), 4) if rs else None,
+                             n_r=len(rs), net_usd=round(sum(ns), 6) if ns else None, flags=g['fl']))
+        rows.sort(key=lambda x: (-x['n'], x['key']))
+        out[d] = rows[:top]
+    return dict(trades=n_all, by=out, flags=fl, flags_unknown=unk,
+                basis='trade_audit records in the audit window; expectancy = mean net P&L after fees (USD) and mean net R')
+
+
+def missed_short(decision, side, raw=None):
+    """Why a funnel candidate is a missed short opportunity (the RAW short signal fired, or a SHORT candidate, and no
+    short was taken), or None: 'side_masked' (the slot's sides hide shorts), 'not_taken' (a SHORT candidate stopped by a
+    gate), 'long_preferred' (both raw sides fired; the engine took / tried the long)."""
+    try:
+        rs = isinstance(raw, dict) and bool(raw.get('se'))
+        if decision == 'side_masked': return 'side_masked' if rs else None
+        if decision == 'not_taken': return 'not_taken' if side == 'SHORT' else ('long_preferred' if rs else None)
+        if decision == 'taken' and side == 'LONG' and rs: return 'long_preferred'
+    except Exception:
+        pass
+    return None
+
+
+def missed_short_summary(items, missed=None, samples=3):
+    """Counts of missed short opportunities (engine memory since start, one per sleeve/symbol/candle) by why and by
+    gate code, plus the SHORT not-taken records in the persisted missed list. Counts only: no hindsight outcome."""
+    try:
+        it = [x for x in (items or ()) if isinstance(x, dict)]
+        by, codes = {}, {}
+        for x in it:
+            by[x.get('why') or '?'] = by.get(x.get('why') or '?', 0) + 1
+            if x.get('code'): codes[x['code']] = codes.get(x['code'], 0) + 1
+        ms = sum(1 for m in (missed or ()) if isinstance(m, dict) and m.get('side') == 'SHORT' and not m.get('kind'))
+        return dict(n=len(it), by_why=by, by_code=dict(sorted(codes.items(), key=lambda kv: (-kv[1], kv[0]))),
+                    samples=[{k: x.get(k) for k in ('sleeve', 'symbol', 'candle', 'why', 'code')} for x in it[-samples:]],
+                    short_not_taken_in_missed_list=ms, basis='since engine start (memory, bounded); counts only, no hindsight outcome')
+    except Exception:
+        return dict(error='missed short summary not evaluated')
+
+
 # ------------------------------------------------------------------ candle-close hold/close evaluation (cycle; memory only)
-def hold_eval(lot, key, candle, now_t, action, exit_signal=None, runner_override=None, missing=False, fee_rate=FEE_EST):
+def hold_eval(lot, key, candle, now_t, action, exit_signal=None, runner_override=None, missing=False, fee_rate=FEE_EST, regime=None):
     """One 'hold_eval' event per open lot per closed candle of its tf: what the bot did (action: 'hold' / 'close_exit_signal'
     / 'close_time_exit') and what the predeclared rules saw at the candle close. info_cutoff = the candle close,
     decision_at = now; withheld unless close < now. Close-price checks are executable; checks on the candle high/low
@@ -917,6 +1335,8 @@ def hold_eval(lot, key, candle, now_t, action, exit_signal=None, runner_override
                   candle_t=candle.get('t'), info_cutoff=dict(t=t_close.isoformat(timespec='seconds') if t_close else None, what='candle close'),
                   decision_at=dict(t=now_t), causal_ok=bool(ok and not missing), missing_sample=bool(missing), action=action,
                   exit_signal=exit_signal, runner_override=runner_override, qty=lot.get('qty'), avg=lot.get('avg'))
+        if isinstance(regime, dict):                       # the closed candle's trend state (same cutoff as the candle)
+            ev['regime'] = {k: regime.get(k) for k in ('trend', 'above200', 'ema20_gt_ema50')}
         if missing: ev['withheld'] = 'exchange outage (T05b): missing sample'; return ev
         if not ok: ev['withheld'] = 'candle close is not before the decision'; return ev
         c, h, l = (float(candle[k]) if _num(candle.get(k)) else None for k in ('c', 'h', 'l'))
@@ -961,6 +1381,8 @@ def funnel_event(t, sleeve, symbol, side, candle, decision, reason=None, raw=Non
         if isinstance(raw, dict):
             ev.update(raw_long=bool(raw.get('le')), raw_short=bool(raw.get('se')), sides=raw.get('sides'),
                       masked_long=raw.get('le_m'), masked_short=raw.get('se_m'), both_raw=bool(raw.get('le')) and bool(raw.get('se')))
+        ms = missed_short(decision, side, raw)
+        if ms: ev['missed_short_opportunity'] = ms
         return ev
     except Exception:
         return None
@@ -980,7 +1402,7 @@ def _key_str(x):
     return x if isinstance(x, str) and x else '?'
 
 
-_SLIM_KEYS = ('kind', 'id', 't', 'coverage', 'sleeve', 'tf', 'side', 'r', 'giveback_pct', 'target')
+_SLIM_KEYS = ('kind', 'id', 't', 'coverage', 'sleeve', 'tf', 'side', 'r', 'giveback_pct', 'target', 'symbol', 'net_pnl')
 
 
 def slim_record(r):
@@ -998,6 +1420,10 @@ def slim_record(r):
                                 if isinstance(c, dict) and c.get('kind') == 'causal_policy' and c.get('rule') == RULE_TARGET]
         ru = r.get('runner')
         s['runner'] = dict(value_vs_activation=ru.get('value_vs_activation')) if isinstance(ru, dict) else None
+        j = lambda v: ','.join(x for x in v if isinstance(x, str)) or None if isinstance(v, list) else None
+        s['flags'], s['flags_unknown'] = j(r.get('flags')), j(r.get('flags_unknown'))       # compact strings (window memory)
+        sg = r.get('segment')
+        if isinstance(sg, dict): s['seg'] = f"{sg.get('regime')}|{sg.get('dca')}|{sg.get('runner')}"
         return s
     except Exception:
         return r
