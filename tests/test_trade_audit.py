@@ -2319,6 +2319,7 @@ def test_engine_records_the_entry_and_dca_add_regime_causally_and_flags_the_clos
         def boom(*a, **k): raise AssertionError('no fetch / I/O for a regime snapshot')
         monkeypatch.setattr(e, 'candles', boom); monkeypatch.setattr(e.data, 'klines', boom, raising=False)
         sl = dict(SL, key='dca_dip', mgmt={'dca': {'n': 3, 'step_atr': 1.0, 'scale': 1.5, 'tp_atr': 1.0, 'stop_atr': 2.0}}); e.S['SLEEVES'] = [sl]
+        e.S['DCA_ENABLED'] = True  # DCA mechanics test: explicit opt-in (owner decision 2026-10-07 = DCA off by default)
         assert e.open_lot(sl, 'BTCUSDT', 'LONG', SG, None, e.equity()), e.last_skip
         k, lot_ = next(iter(e.state['lots'].items()))
         ent = lot_['ap']['ctx']['entry']

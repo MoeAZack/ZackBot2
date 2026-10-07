@@ -560,7 +560,7 @@ def test_warn_mode_rules_never_block_adds():
 
 
 def test_dca_safety_order_respects_enforced_coin_cap():
-    e, _ = mk_engine()
+    e, _ = mk_engine(); e.S['DCA_ENABLED'] = True  # DCA mechanics test: explicit opt-in (owner decision 2026-10-07 = DCA off by default)
     sl = dict(SL, key='dca_dip', mgmt={'dca': {'n': 3, 'step_atr': 1.0, 'scale': 1.5, 'tp_atr': 1.0, 'stop_atr': 2.0}}); e.S['SLEEVES'] = [sl]
     assert e.open_lot(sl, 'BTCUSDT', 'LONG', SG, None, e.equity()), e.last_skip
     lot = next(iter(e.state['lots'].values())); q0 = lot['qty']; cap = e.guard_eq or e.last_eq
@@ -606,7 +606,7 @@ def test_partial_dca_override_keeps_defaults_engine_and_backtest():
     m = S.merge_mgmt('dca_dip', {'dca': {'n': 4}})
     assert m['dca'] == dict(n=4, step_atr=1.0, scale=1.5, tp_atr=1.0, stop_atr=2.0) and m['max_bars'] == 60
     assert S.merge_mgmt('ema_mom', {'pyramid': {'frac': 0.3}})['pyramid'] == dict(n=1, step_r=1.5, frac=0.3)
-    e, _ = mk_engine()
+    e, _ = mk_engine(); e.S['DCA_ENABLED'] = True  # DCA mechanics test: explicit opt-in (owner decision 2026-10-07 = DCA off by default)
     sl = dict(SL, key='dca_dip', mgmt={'dca': {'n': 4}}); e.S['SLEEVES'] = [sl]
     assert e.open_lot(sl, 'BTCUSDT', 'LONG', SG, None, e.equity()), e.last_skip
     lot = next(iter(e.state['lots'].values()))
@@ -635,7 +635,7 @@ def test_backtest_partial_override_runs():
 def test_exit_plan_explains_no_target_and_dca():
     e, _ = mk_engine(); k = opened(e); x = e.exit_plan(e.state['lots'][k])
     assert 'No fixed target' in x['title'] and any('exit signal' in s for s in x['steps'])
-    sl = dict(SL, id='D', key='dca_dip'); e.S['SLEEVES'] = [SL, sl]
+    sl = dict(SL, id='D', key='dca_dip'); e.S['SLEEVES'] = [SL, sl]; e.S['DCA_ENABLED'] = True  # DCA mechanics test: explicit opt-in (owner decision 2026-10-07 = DCA off by default)
     assert e.open_lot(sl, 'ETHUSDT', 'LONG', SG, None, e.equity()), e.last_skip
     lot = next(l for l in e.state['lots'].values() if l['sleeve'] == 'D'); x = e.exit_plan(lot)
     assert x['title'].startswith('Basket target') and x['next'].startswith('safety order 1')
@@ -684,6 +684,7 @@ def test_exit_plan_manual_with_target():
 
 # ------------------------------------------------------------------ BTC circuit breaker vs adds (policy fixed per basket)
 def _dca_lot(e, policy):
+    e.S['DCA_ENABLED'] = True  # DCA mechanics test: explicit opt-in (owner decision 2026-10-07 = DCA off by default)
     e.S['RISK_RULES'] = {'btc_breaker': {'mode': 'enforce', 'pct': 5, 'hours': 4, 'dca': policy}}
     sl = dict(SL, key='dca_dip', mgmt={'dca': {'n': 3, 'step_atr': 1.0, 'scale': 1.5, 'tp_atr': 1.0, 'stop_atr': 2.0}}); e.S['SLEEVES'] = [sl]
     assert e.open_lot(sl, 'BTCUSDT', 'LONG', SG, None, e.equity()), e.last_skip

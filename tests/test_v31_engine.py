@@ -400,6 +400,7 @@ def test_martingale_risk_metric_and_hard_stop_required():
 
 def test_engine_refuses_dca_without_stop():
     e, _ = mk_engine(); sl = dict(SL, key='dca_dip', mgmt={'dca': dict(n=3, step_atr=1, scale=1.5, tp_atr=1, stop_atr=0)})
+    e.S['DCA_ENABLED'] = True  # DCA mechanics test: explicit opt-in (owner decision 2026-10-07 = DCA off by default)
     assert not e.open_lot(sl, 'BTCUSDT', 'LONG', SG, None, e.equity()) and 'hard stop' in e.last_skip
     sl['mgmt'] = {'dca': dict(n=9, step_atr=0.5, scale=3, tp_atr=1, stop_atr=2)}
     assert not e.open_lot(sl, 'BTCUSDT', 'LONG', SG, None, e.equity()) and 'out of range' in e.last_skip
