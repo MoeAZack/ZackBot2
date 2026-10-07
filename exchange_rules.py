@@ -8,13 +8,12 @@ Fetch it directly (public endpoint, no API key) and build - the ONLY way to get 
   python exchange_rules.py fetch --env testnet
 Import a saved exchangeInfo JSON file (always UNVERIFIED: a file cannot prove which environment it came from or when):
   python exchange_rules.py build exchangeInfo.json --env testnet [--source "..."] [--fetched-at 2026-10-07T12:00:00Z]
-  The capture time is --fetched-at, else the file's own serverTime, else none (state 'stale'); it is never "now".
-  --trust marks the import verified anyway: a loud warning, provenance 'file_import_trusted' (never 'direct_fetch'),
-  and the environment must match a --source URL when one is given.
+  The capture time is --fetched-at, else the file's own serverTime, else none; it is never "now". There is no way to
+  mark an imported file verified: only `fetch` (a direct request to that environment's exchangeInfo) is trusted.
 Show the rule changes between two snapshots:
   python exchange_rules.py diff old.json new.json
 
-Provenance recorded in every snapshot: provenance ('direct_fetch' | 'file_import' | 'file_import_trusted'), source /
+Provenance recorded in every snapshot: provenance ('direct_fetch' | 'file_import'), source /
 source_url, fetched_at, server_time, raw_sha256 (SHA-256 of the exact bytes received / read). The pure parsing / checks
 live in feasibility.py (shared with the engine, the backtester and the panel).
 """
@@ -35,9 +34,12 @@ def load(environment, root=None, path=None):
     """The snapshot dict for this environment, or None when the file is missing / unreadable (-> state 'unavailable')."""
     p = path or path_for(environment, root)
     try:
-        with open(p, encoding='utf-8') as f: return json.load(f)
+        with open(p, encoding='utf-8') as f: snap = json.load(f)
     except (OSError, ValueError):
         return None
+    if isinstance(snap, dict) and snap.get('provenance') == 'engine':      # only the live connection is 'engine'
+        snap['provenance'] = 'engine claimed in a file (not trusted)'
+    return snap
 
 
 def save(snap, path):
@@ -74,25 +76,19 @@ def _with_provenance(snap, provenance, raw, info, source_url=None):
     return snap
 
 
-def build_file(info_path, environment, out=None, source=None, fetched_at=None, version=None, trust=False, warn=None):
-    """Import a saved exchangeInfo file. UNVERIFIED unless trust=True (which is loud and recorded as 'file_import_trusted').
-    fetched_at: given, else the file's serverTime, else None - never the current time (BT02 review P2)."""
+def build_file(info_path, environment, out=None, source=None, fetched_at=None, version=None):
+    """Import a saved exchangeInfo file: ALWAYS unverified (provenance 'file_import') - a file cannot prove which environment
+    it came from or when. fetched_at: given, else the file's serverTime, else None - never the current time (BT02 P2)."""
     with open(info_path, 'rb') as f: raw = f.read()
     info = json.loads(raw.decode('utf-8'))
     if not isinstance(info, dict) or not isinstance(info.get('symbols'), list): raise ValueError('not an exchangeInfo answer')
-    if trust and env_of_url(source) not in (None, environment):
-        raise ValueError(f'--source is a {env_of_url(source)} URL but --env is {environment}: refusing to trust it')
     st = info.get('serverTime')
     when = fetched_at or (_iso_ms(st) if isinstance(st, (int, float)) and not isinstance(st, bool) else None)
     old = load(environment, path=out)
-    note = ('imported from a file and TRUSTED by hand (--trust) - not a direct fetch' if trust
-            else 'imported from a file - unverified (only a direct fetch is verified); refresh with: exchange_rules.py fetch')
-    if trust and warn: warn(f'WARNING: marking {os.path.basename(info_path)} as VERIFIED {environment} rules by hand. Only do this for '
-                            f'a file you fetched yourself from {BASES[environment]}/fapi/v1/exchangeInfo. Recorded as file_import_trusted.')
     snap = F.build_snapshot(info, environment, source or f'exchangeInfo file {os.path.basename(info_path)}', fetched_at=when,
-                            verified=bool(trust), version=version or ((old or {}).get('version', 0) + 1), note=note)
-    _with_provenance(snap, 'file_import_trusted' if trust else 'file_import', raw, info,
-                     source_url=source if env_of_url(source) else None)
+                            verified=False, version=version or ((old or {}).get('version', 0) + 1),
+                            note='imported from a file - unverified (only a direct fetch is trusted); run: exchange_rules.py fetch')
+    _with_provenance(snap, 'file_import', raw, info, source_url=None)
     save(snap, out or path_for(environment))
     return snap, old
 
@@ -123,8 +119,10 @@ def main(argv):
         print(json.dumps(F.diff_snapshots(a, b), indent=1)); return 0
     env = opt('--env', 'testnet')
     if argv[0] == 'build':
-        snap, old = build_file(argv[1], env, opt('--out'), opt('--source'), opt('--fetched-at'), trust='--trust' in argv,
-                               warn=lambda m: print(m, file=sys.stderr))
+        if '--trust' in argv:
+            print('--trust is not supported: an imported file is never verified. Use: python exchange_rules.py fetch --env '
+                  + env, file=sys.stderr); return 2
+        snap, old = build_file(argv[1], env, opt('--out'), opt('--source'), opt('--fetched-at'))
     else: snap, old = fetch(env, opt('--out'))
     print(f"{env}: {len(snap['symbols'])} symbols, version {snap['version']}, fetched {snap['fetched_at']}, "
           f"{snap['provenance']}, verified={snap['verified']}, raw sha256 {snap['raw_sha256'][:12]}")

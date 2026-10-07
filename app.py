@@ -249,7 +249,7 @@ def exchange_rules_now(e=None):
     meta = getattr(e, 'rules_meta', None) if e is not None else None
     if e is not None and e.rules and meta and meta.get('environment') == env:
         snap = dict(schema=F.SCHEMA, version=0, environment=env, source=meta['source'], fetched_at=meta['fetched_at'],
-                    verified=True, note='', symbols=e.rules)
+                    verified=True, provenance='engine', note='', symbols=e.rules)
     else:
         snap = XRULES.load(env)
     st, detail = F.snapshot_state(snap, time.time(), env)

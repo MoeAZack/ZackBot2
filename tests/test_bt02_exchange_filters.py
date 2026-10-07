@@ -60,8 +60,10 @@ TESTNET = dict(BTCUSDT=dict(step=0.001, min_qty=0.001, min_notional=50.0), ETHUS
                SOLUSDT=dict(step=0.01, min_qty=0.01, min_notional=5.0), DOGEUSDT=dict(step=1.0, min_qty=1.0, min_notional=5.0))
 
 
-def snap(rules=TESTNET, env='testnet', verified=True, fetched_at=ISO_NOW, version=1):
+def snap(rules=TESTNET, env='testnet', verified=True, fetched_at=ISO_NOW, version=1, provenance='direct_fetch', source_url=None):
+    """A snapshot as a direct fetch of `env` produces it (provenance + that environment's exchangeInfo URL)."""
     return dict(schema=F.SCHEMA, version=version, environment=env, source='test', fetched_at=fetched_at, verified=verified, note='',
+                provenance=provenance, source_url=F.TRUSTED_SOURCES.get(env) if source_url is None else source_url,
                 symbols=copy.deepcopy(rules))
 
 
@@ -252,19 +254,18 @@ def test_file_import_never_self_certifies(tmp_path):
     # a saved MAINNET answer imported as --env testnet with a fresh --fetched-at is still not green
     s2, _ = XR.build_file(str(p), 'testnet', out=out, source='https://fapi.binance.com/fapi/v1/exchangeInfo', fetched_at=ISO_NOW)
     assert s2['verified'] is False and F.snapshot_state(s2, NOW, 'testnet')[0] == 'unverified'
-    # no capture time at all -> stale even when trusted; never stamped with the current time
+    # no capture time at all -> no fetch time; never stamped with the current time
     p.write_text(json.dumps(info(TESTNET)), encoding='utf-8')
-    warned = []
-    s3, _ = XR.build_file(str(p), 'testnet', out=out, trust=True, warn=warned.append)
-    assert s3['fetched_at'] is None and F.snapshot_state(s3, NOW, 'testnet')[0] == 'stale'
-    assert s3['verified'] is True and s3['provenance'] == 'file_import_trusted' and warned and 'VERIFIED' in warned[0]
-    # an old file trusted by hand keeps its old time -> stale
-    p.write_text(json.dumps(dict(info(TESTNET), serverTime=1_780_000_000_000)), encoding='utf-8')
-    s4, _ = XR.build_file(str(p), 'testnet', out=out, trust=True)
-    assert F.snapshot_state(s4, NOW, 'testnet')[0] == 'stale'
-    # trusting a file whose --source is the other environment's URL is refused
-    with pytest.raises(ValueError):
-        XR.build_file(str(p), 'testnet', out=out, source='https://fapi.binance.com/fapi/v1/exchangeInfo', trust=True)
+    s3, _ = XR.build_file(str(p), 'testnet', out=out)
+    assert s3['fetched_at'] is None and s3['verified'] is False and s3['provenance'] == 'file_import'
+    # there is no trust override: the old flag is refused loudly by the CLI and the function has no such parameter
+    import inspect, io, contextlib
+    assert 'trust' not in inspect.signature(XR.build_file).parameters
+    err = io.StringIO()
+    with contextlib.redirect_stderr(err):
+        assert XR.main(['build', str(p), '--env', 'testnet', '--out', out, '--trust']) == 2
+    assert 'not supported' in err.getvalue() and 'fetch' in err.getvalue()
+    # versions + diff
     # versions + diff
     changed = copy.deepcopy(TESTNET); changed['BTCUSDT']['min_notional'] = 100.0; changed['SOLUSDT']['step'] = 1.0
     p.write_text(json.dumps(info(changed)), encoding='utf-8')
@@ -272,6 +273,30 @@ def test_file_import_never_self_certifies(tmp_path):
     assert s5['version'] == old['version'] + 1
     assert F.diff_snapshots(old, s5)['changed'] == {'BTCUSDT': {'min_notional': (50.0, 100.0)}, 'SOLUSDT': {'step': (0.01, 1.0)}}
     with pytest.raises(ValueError): F.build_snapshot(info(TESTNET), 'paper', 'x')
+
+
+def test_only_a_direct_fetch_of_this_environment_or_the_live_engine_is_trusted(tmp_path):
+    """Codex comparison note: 'ok' needs trusted provenance, not just verified=true. A hand-edited file cannot get there."""
+    assert F.snapshot_state(snap(), NOW, 'testnet')[0] == 'ok'
+    assert F.snapshot_state(snap(provenance='engine'), NOW, 'testnet')[0] == 'ok'          # the live connection (in memory)
+    for bad in (snap(provenance='file_import'), snap(provenance=None), snap(provenance='fetch'),
+                snap(source_url='https://fapi.binance.com/fapi/v1/exchangeInfo'),      # mainnet URL labelled testnet
+                snap(source_url='https://evil.example/fapi/v1/exchangeInfo'), snap(source_url='')):
+        st, detail = F.snapshot_state(bad, NOW, 'testnet')
+        assert st == 'unverified' and 'exchange_rules.py fetch --env testnet' in detail, bad
+    assert F.snapshot_state(snap(env='mainnet'), NOW, 'mainnet')[0] == 'ok'
+    # a file on disk that claims the live engine as its source is demoted when loaded
+    out = tmp_path / 'exchange_rules_testnet.json'
+    out.write_text(json.dumps(snap(provenance='engine')), encoding='utf-8')
+    got = XR.load('testnet', path=str(out))
+    assert got['provenance'] != 'engine' and F.snapshot_state(got, NOW, 'testnet')[0] == 'unverified'
+
+
+def test_app_live_engine_rules_are_trusted_and_labelled(monkeypatch):
+    import app as A, test_safety as TS
+    e, _ = TS.mk_engine()
+    snap_, st, detail = A.exchange_rules_now(e)
+    assert snap_['provenance'] == 'engine' and st == 'ok', (st, detail)
 
 
 def test_direct_fetch_is_verified_with_provenance(tmp_path):

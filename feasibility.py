@@ -17,6 +17,11 @@ SCHEMA = 'zackbot.exchange_rules/1'
 ENVIRONMENTS = ('testnet', 'mainnet')
 DEFAULT_MIN_NOTIONAL = 5.0          # engine.connect default when a symbol has no MIN_NOTIONAL filter
 MAX_AGE_DAYS = 30
+# BT02 review P2 (Codex comparison note): only rules read directly from the exchange may be trusted. 'direct_fetch' must
+# come from exactly this environment's exchangeInfo URL; 'engine' is the live connection (built in memory, never
+# accepted from a file - exchange_rules.load demotes it). A file import is never trusted, whatever it claims.
+TRUSTED_SOURCES = {'testnet': 'https://testnet.binancefuture.com/fapi/v1/exchangeInfo',
+                   'mainnet': 'https://fapi.binance.com/fapi/v1/exchangeInfo'}
 
 # engine skip texts (unchanged wording - the panel and the trade history show them)
 REASON_LEV_CAP = 'leverage cap reached for this slot'
@@ -88,7 +93,8 @@ def _rule_ok(r):
 
 
 def snapshot_state(snap, now, environment=None, max_age_days=MAX_AGE_DAYS):
-    """-> (state, detail). state 'ok' only for a valid, verified, fresh snapshot of the asked environment; otherwise one of
+    """-> (state, detail). state 'ok' only for a valid, verified, fresh snapshot of the asked environment whose provenance is
+    a direct fetch from that environment's exchangeInfo URL or the live engine connection; otherwise one of
     'unavailable' | 'invalid' | 'wrong_environment' | 'unverified' | 'stale' (all shown as 'unknown' to the user).
     now: epoch seconds (passed in - this module never reads the clock)."""
     if not snap: return 'unavailable', 'no exchange-rule snapshot'
@@ -101,6 +107,10 @@ def snapshot_state(snap, now, environment=None, max_age_days=MAX_AGE_DAYS):
         return 'wrong_environment', f'snapshot is for {env}, not {environment} (testnet and mainnet rules differ)'
     if not snap.get('verified'):
         return 'unverified', snap.get('note') or 'unverified, refresh from exchangeInfo'
+    prov = snap.get('provenance')
+    if not (prov == 'engine' or (prov == 'direct_fetch' and snap.get('source_url') == TRUSTED_SOURCES.get(env))):
+        return 'unverified', (f'snapshot provenance {prov!r} is not a direct exchangeInfo fetch of {env} '
+                              f'(run: python exchange_rules.py fetch --env {env})')
     t = _ts(snap.get('fetched_at'))
     if t is None: return 'stale', 'snapshot has no fetch time'
     age = (float(now) - t) / 86400
