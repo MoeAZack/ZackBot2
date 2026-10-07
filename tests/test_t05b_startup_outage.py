@@ -290,3 +290,17 @@ def test_stop_unseen_closes_when_the_stop_is_seen_again(monkeypatch):
     e._after_confirmed(); assert e.health['incidents']['stop-unseen|BTCUSDT|LONG']['open']
     e.trade.stops[tag] = saved; e.exchange_down_incident('t2')
     e._after_confirmed(); assert not e.health['incidents']['stop-unseen|BTCUSDT|LONG']['open']
+
+
+def test_retry_schedule_survives_a_very_long_outage_without_overflow(monkeypatch):
+    """Codex review P2 (ee1ba92): 5.0 * 2 ** (n - 1) overflowed at n=1025 (~17-20 h of start-up outage), so retry
+    scheduling itself raised and the engine could no longer recover. The exponent is capped before exponentiation."""
+    import app as A
+    app = A.App.__new__(A.App); app.preview = lambda: None
+    monkeypatch.setattr(A.random, 'uniform', lambda a, b: 1.0)
+    e = types.SimpleNamespace(connect_retry=None, error=None, _exchange_down=lambda ex: True,
+                              exchange_down_incident=lambda where: None)
+    for n in (1024, 1025, 5000, 10 ** 9):
+        e.connect_retry = dict(n=n, since=0.0)
+        app._connect_failed(e, BC.BinanceError(-1007, 'Timeout'), now=1000.0)
+        assert e.connect_retry['next_t'] - 1000.0 == 60 and e.connect_retry['n'] == n + 1
