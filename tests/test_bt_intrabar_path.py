@@ -184,8 +184,107 @@ def test_trail_from_the_fresh_atr_ratchets_after_a_zero_length_first_leg():
     assert len(run(bk, key='ema_mom', mgmt=m)) == 0
 
 
+# ---------------------------------------------------------------- Codex round 1: the stop is an event on the adverse leg
+Q0 = 10.0 / (1 * 5 + 1.5 * 4 + 2.25 * 3 + 3.375 * 2)          # DCA first order: risk $10 over the 4 orders down to the stop
+W = (1.0, 1.5, 2.25, 3.375)
+
+
+def _basket_stop_pnl(side, fills, stop, c_fill_candle):
+    """P&L of a DCA basket whose orders `fills` (prices, entry first) all filled and that was then stopped at `stop`.
+    Funding: candle 11 (flat, q0 at 100) and the fill candle (charged on q0 before its events)."""
+    q = Q0 * sum(W[:len(fills)]); avg = Q0 * sum(w * f for w, f in zip(W, fills)) / q
+    px = stop * (1 - side * B.SLIP)
+    return side * (px - avg) * q - q * px * B.FEE - sum(Q0 * w * f * B.FEE for w, f in zip(W, fills)) \
+        - Q0 * 100.0 * B.FUND_PER_BAR - Q0 * c_fill_candle * B.FUND_PER_BAR
+
+
+def test_every_safety_order_on_the_way_down_fills_before_the_basket_stop_long():
+    """Codex's fixture: red candle O100 H100.2 L94 C99 (path O->H->L->C). On the way down price meets 99.02, 98.02, 97.02
+    (all three safety orders fill) and only then the basket stop 95.02, which closes the ENLARGED basket: about -1R plus
+    costs. The old whole-candle stop precheck closed the first unit only (-0.21R)."""
+    tr = run(book({12: (100.0, 100.2, 94.0, 99.0)}))
+    assert len(tr) == 1 and tr.why[0] == 'stop' and tr.i_out[0] == 12, tr
+    want = _basket_stop_pnl(1, [E_LONG, 99.02, 98.02, 97.02], 95.02, 99.0)
+    assert tr.pnl[0] == pytest.approx(want, rel=1e-9)
+    assert -1.1 < tr.R[0] < -1.0, tr.R[0]
+
+
+def test_every_safety_order_on_the_way_up_fills_before_the_basket_stop_short():
+    """Short mirror: green candle O100 L99.8 H106 C101 (O->L->H->C): the low does not reach the TP (98.98); on the way up
+    the safety orders 100.98 / 101.98 / 102.98 fill, then the basket stop 104.98 closes the enlarged basket."""
+    tr = run(book({12: (100.0, 106.0, 99.8, 101.0)}, side=-1), side=-1)
+    assert len(tr) == 1 and tr.why[0] == 'stop' and tr.i_out[0] == 12, tr
+    want = _basket_stop_pnl(-1, [E_SHORT, 100.98, 101.98, 102.98], 104.98, 101.0)
+    assert tr.pnl[0] == pytest.approx(want, rel=1e-9)
+    assert -1.1 < tr.R[0] < -1.0, tr.R[0]
+
+
+def test_gap_through_the_stop_fills_at_the_open_without_adds():
+    """Open already below the stop (94.5 < 95.02): filled at the open, no safety order (they were never quoted)."""
+    tr = run(book({12: (94.5, 99.5, 94.0, 99.0)}))
+    assert len(tr) == 1 and tr.why[0] == 'stop' and tr.i_out[0] == 12, tr
+    px = 94.5 * (1 - B.SLIP)
+    want = (px - E_LONG) * Q0 - Q0 * px * B.FEE - Q0 * E_LONG * B.FEE - Q0 * 100.0 * B.FUND_PER_BAR - Q0 * 99.0 * B.FUND_PER_BAR
+    assert tr.pnl[0] == pytest.approx(want, rel=1e-9)
+    tr = run(book({12: (105.5, 106.0, 100.5, 101.0)}, side=-1), side=-1)     # short: open above the stop 104.98
+    assert len(tr) == 1 and tr.why[0] == 'stop', tr
+    px = 105.5 * (1 + B.SLIP)
+    want = (E_SHORT - px) * Q0 - Q0 * px * B.FEE - Q0 * E_SHORT * B.FEE - Q0 * 100.0 * B.FUND_PER_BAR - Q0 * 101.0 * B.FUND_PER_BAR
+    assert tr.pnl[0] == pytest.approx(want, rel=1e-9)
+
+
+def test_safety_level_exactly_at_the_stop_fills_first_then_the_stop():
+    """Tie (stop_atr 0: the basket stop sits exactly on the last safety order 97.02): the safety order fills, then the
+    stop closes the larger basket - the worse outcome for the account."""
+    m = {'dca': {'n': 3, 'step_atr': 1.0, 'scale': 1.5, 'tp_atr': 1.0, 'stop_atr': 0.0}}
+    tr = run(book({12: (100.0, 100.2, 96.0, 99.0)}), mgmt=m)
+    assert len(tr) == 1 and tr.why[0] == 'stop', tr
+    q0 = 10.0 / (1 * 3 + 1.5 * 2 + 2.25 * 1)                  # distances to the stop at 97.02: 3, 2, 1, 0
+    q = q0 * sum(W); fills = [E_LONG, 99.02, 98.02, 97.02]
+    avg = q0 * sum(w * f for w, f in zip(W, fills)) / q; px = 97.02 * (1 - B.SLIP)
+    want = (px - avg) * q - q * px * B.FEE - sum(q0 * w * f * B.FEE for w, f in zip(W, fills)) \
+        - q0 * 100.0 * B.FUND_PER_BAR - q0 * 99.0 * B.FUND_PER_BAR
+    assert tr.pnl[0] == pytest.approx(want, rel=1e-9)
+
+
+def test_target_and_stop_both_in_the_candle_the_stop_wins_after_the_adds():
+    """Ambiguous case (kept convention): red candle reaching the basket TP (101.02) on its way up and the stop on its way
+    down. The stop wins - no TP - and the safety orders met before the stop still fill."""
+    tr = run(book({12: (100.0, 101.5, 94.0, 95.0)}))
+    assert len(tr) == 1 and tr.why[0] == 'stop', tr
+    assert tr.pnl[0] == pytest.approx(_basket_stop_pnl(1, [E_LONG, 99.02, 98.02, 97.02], 95.02, 95.0), rel=1e-9)
+
+
+def test_trailing_stop_raised_earlier_is_met_before_the_safety_orders_below_it():
+    """A DCA basket with a tight trail (0.5 ATR): raised to 99.52 on the entry candle and to 99.7 at this candle's high
+    (red: the high comes first), it lies ABOVE the first safety order (99.02), so on the way down the stop closes the
+    first unit and no safety order fills."""
+    tr = run(book({12: (100.0, 100.2, 98.5, 99.0)}), mgmt={'trail_atr': 0.5})
+    assert len(tr) == 1 and tr.why[0] == 'stop' and tr.i_out[0] == 12, tr
+    px = (100.2 - 0.5) * (1 - B.SLIP)
+    want = (px - E_LONG) * Q0 - Q0 * px * B.FEE - Q0 * E_LONG * B.FEE - Q0 * 100.0 * B.FUND_PER_BAR - Q0 * 99.0 * B.FUND_PER_BAR
+    assert tr.pnl[0] == pytest.approx(want, rel=1e-9)
+
+
+def test_pyramid_add_before_the_stop_on_a_red_candle_and_not_on_a_green_one():
+    """Pyramid analogue of the precheck: red candle O100 H102.5 L97.5 C98 - the add at 102.02 fills on the way up, then the
+    stop 98.02 closes the enlarged position. Green candle with the same range: the low (stop) comes first, no add."""
+    m = {'stop_atr': 2.0, 'pyramid': {'n': 1, 'step_r': 1.0, 'frac': 0.5}}
+    tr = run(book({12: (100.0, 102.5, 97.5, 98.0)}), key='ema_mom', mgmt=m)
+    assert len(tr) == 1 and tr.why[0] == 'stop' and tr.i_out[0] == 12, tr
+    q0 = 5.0; add = E_LONG + 2.0; q = 1.5 * q0; avg = (q0 * E_LONG + 0.5 * q0 * add) / q; px = (E_LONG - 2.0) * (1 - B.SLIP)
+    want = (px - avg) * q - q * px * B.FEE - q0 * E_LONG * B.FEE - 0.5 * q0 * add * B.FEE \
+        - q0 * 100.0 * B.FUND_PER_BAR - q0 * 98.0 * B.FUND_PER_BAR
+    assert tr.pnl[0] == pytest.approx(want, rel=1e-9)
+    tr = run(book({12: (100.0, 102.5, 97.5, 102.0)}), key='ema_mom', mgmt=m)
+    assert len(tr) == 1 and tr.why[0] == 'stop', tr
+    px = (E_LONG - 2.0) * (1 - B.SLIP)
+    want = (px - E_LONG) * q0 - q0 * px * B.FEE - q0 * E_LONG * B.FEE - q0 * 100.0 * B.FUND_PER_BAR - q0 * 102.0 * B.FUND_PER_BAR
+    assert tr.pnl[0] == pytest.approx(want, rel=1e-9)
+
+
 # ---------------------------------------------------------------- live engine vs backtester on the same path
-def _replay_case(candles, side):
+def _replay_case(candles, side, steps=8):
     import engine as E
     from replay import run_replay
     syms = ['SOLUSDT']                                     # min notional 5 (BTC's 50 is above this small basket)
@@ -211,7 +310,7 @@ def _replay_case(candles, side):
     S.signals = fake
     try:
         sl = [E.sleeve('C', 'dca_dip', 1.0, .02, 1, syms, sides='long' if side == 1 else 'short')]
-        r = run_replay(raw, sl, 260, steps=8)
+        r = run_replay(raw, sl, 260, steps=steps)
         bk = B.Book(raw)                                    # the same backtest, kept with its exit candle / reason columns
         r['bt_full'], _ = B.run(bk, [dict(key='dca_dip', share=1.0, risk=.02, max_pos=1, symbols=syms, sides=sl[0]['sides'], mgmt={})],
                                 start=500.0, max_lev=10, t0=t[261])
@@ -246,6 +345,21 @@ def test_engine_and_backtest_agree_on_dca_fills_and_tp_along_the_path(side):
     assert len(bt) == 1 and bt.why.iloc[0] == 'tp' and int(bt.i_out.iloc[0]) == 283, bt    # NOT 281 (the fill candle)
     assert eh.exit_reason[0] == 'basket_tp' and int(eh.dca[0]) == 1, eh.to_dict('records')
     assert abs(eh.pnl[0] / eh.risk_usd[0] - bt.R.iloc[0]) <= 0.1, (eh.to_dict('records'), bt)
+
+
+@pytest.mark.parametrize('side', [1, -1])
+def test_engine_and_backtest_agree_on_safety_orders_then_basket_stop_in_one_candle(side):
+    """Codex round 1, live engine: one candle runs through every safety order and the basket stop. The engine adds each
+    safety order as its mark crosses it and the exchange stop then closes the enlarged basket; the backtester must book
+    the same: 3 safety orders, stop, about -1R."""
+    if side == 1: cs = {0: (100.0, 100.3, 99.8, 100.0), 1: (100.0, 100.2, 93.5, 99.0)}         # red: high, then down
+    else: cs = {0: (100.0, 100.2, 99.7, 100.0), 1: (100.0, 106.5, 99.8, 101.0)}               # green: low, then up
+    r = _replay_case(cs, side, steps=40)                    # fine steps: the engine fills each order near its level
+    eh, bt = _cmp(r)
+    assert len(bt) == 1 and bt.why.iloc[0] == 'stop' and int(bt.i_out.iloc[0]) == 281, bt
+    assert int(eh.dca[0]) == 3, eh.to_dict('records')
+    assert abs(eh.pnl[0] / eh.risk_usd[0] - bt.R.iloc[0]) <= 0.1, (eh.to_dict('records'), bt)
+    assert bt.R.iloc[0] < -0.95, bt
 
 
 @pytest.mark.parametrize('side', [1, -1])
