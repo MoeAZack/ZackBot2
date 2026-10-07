@@ -46,7 +46,9 @@ def run_replay(raw, sleeves, t0, steps=6, start=500.0, tf_sec=14400, quiet=True,
             W.lots.append(dict(s=s, ps=ps, q=q, avg=avg))
 
     def reduce(s, ps, q, px):
-        l = next(l for l in W.lots if l['s'] == s and l['ps'] == ps)
+        l = next((l for l in W.lots if l['s'] == s and l['ps'] == ps), None)
+        if l is None:      # Binance rejects a close with no position; a bare StopIteration here logged an empty error
+            raise RuntimeError(f'simulated exchange holds no {s} {ps} position to close ({q})')
         q = min(q, l['q']); sd = 1 if ps == 'LONG' else -1
         W.cash += sd * (px - l['avg']) * q - q * px * FEE; l['q'] -= q
         if l['q'] <= 1e-12: W.lots.remove(l)
