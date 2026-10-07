@@ -92,6 +92,11 @@ _sock.getaddrinfo, _sock.socket.connect = _guard_gai, _guard_connect
 for _v in ('HTTP_PROXY', 'HTTPS_PROXY', 'http_proxy', 'https_proxy', 'ALL_PROXY', 'all_proxy'): os.environ.pop(_v, None)
 os.environ['NO_PROXY'] = '127.0.0.1,localhost'
 os.makedirs(os.path.join(TMP, 'ZackBot'), exist_ok=True)
+# The public market-data collector (default ON for real PAPER installs) reaches mainnet market data. This harness is offline,
+# so it starts the scratch app with the collector switched OFF through its own settings file, before the app loads -
+# never by whitelisting Binance or weakening the network guard (Codex CI review, PR #19).
+HARNESS_SETTINGS = dict(MARKET_COLLECTOR=False)
+with open(os.path.join(TMP, 'ZackBot', 'settings.json'), 'w', encoding='utf-8') as _f: json.dump(HARNESS_SETTINGS, _f)
 for f in ('history', 'missed'):              # seeds written by test_engine_sim.py (optional)
     for src in (os.path.join(OUT, f'seed_{f}.json'), os.path.join(HERE, 'dev_out', f'seed_{f}.json')):
         if os.path.exists(src): shutil.copy(src, os.path.join(TMP, 'ZackBot', f + '.json')); break
@@ -162,6 +167,9 @@ while time.time() - t0 < 90:                 # wait for our own instance: sessio
     time.sleep(0.5)
 if not check('app started (own instance proved by HMAC ping)', TOK, '' if TOK else f'no valid answer on {U} within 90 s'): finish()
 print(f'app up on {U} in {time.time() - t0:.1f}s, data {app.DATA}')
+check('isolation: public market-data collector is off in this harness', app.APP.engine.S.get('MARKET_COLLECTOR') is False
+      and not app.APP.collector.enabled(), app.APP.engine.S.get('MARKET_COLLECTOR'))
+check('isolation: normal PAPER default keeps the collector on', engine.GLOBAL_DEFAULTS['MARKET_COLLECTOR'] is True)
 
 # ---------------------------------------------------------------- auth boundary (no token / foreign origin)
 check('auth: /api/status without token -> 401', _rq.get(U + '/api/status').status_code == 401)

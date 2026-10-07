@@ -884,3 +884,22 @@ def test_standalone_default_folder_is_the_apps_folder_outside_any_source_tree(mo
     assert not os.path.abspath(out).startswith(os.path.abspath(ROOT))
     src = open(os.path.join(ROOT, 'app.py'), encoding='utf-8').read()
     assert "os.path.join(DATA, 'market_data')" in src, 'same folder (and so the same lock) as the in-app collector'
+
+
+def test_offline_ui_harness_switches_the_collector_off_before_the_app_starts_and_defaults_stay_on(tmp_path):
+    """Codex CI review (PR #19): the offline UI harness must disable public collection through its scratch settings
+    BEFORE app startup (no Binance whitelist, no weaker network guard), while a normal PAPER install keeps it on."""
+    import engine
+    assert engine.GLOBAL_DEFAULTS['MARKET_COLLECTOR'] is True, 'a normal PAPER install collects by default'
+    src = open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'test_app_ui.py'), encoding='utf-8').read()
+    seed, guard, start = src.index('HARNESS_SETTINGS = dict(MARKET_COLLECTOR=False)'), src.index('_sock.getaddrinfo, _sock.socket.connect = _guard_gai'), src.index('import app;')
+    assert guard < seed < start, 'network guard first, then the collector-off settings, then the app'
+    assert "'settings.json'" in src[seed:start] and 'binance.com' not in src, 'no Binance whitelist in the harness'
+    assert "_LOCAL = ('127.0.0.1', 'localhost', '::1')" in src, 'the network guard still allows loopback only'
+    # the seeded file really switches a fresh engine's collector off (and only that switch)
+    with open(tmp_path / 'settings.json', 'w', encoding='utf-8') as f: json.dump(dict(MARKET_COLLECTOR=False), f)
+    e = types.SimpleNamespace(F=dict(settings=str(tmp_path / 'settings.json')))
+    e.S = None
+    engine.Engine.load_settings(e)
+    assert e.S['MARKET_COLLECTOR'] is False and e.S['RUN_IN_BACKGROUND'] is engine.GLOBAL_DEFAULTS['RUN_IN_BACKGROUND']
+    assert MC.MarketCollector(lambda: e, str(tmp_path / 'md')).enabled(e) is False
