@@ -1,5 +1,10 @@
 # ZackBot owner overview
 
+> **08 Oct 2026 roadmap alignment:** the shared replacement-first execution spine is in
+> [`NEWCORE_EXECUTION_PLAN.md`](NEWCORE_EXECUTION_PLAN.md). Claude Code implements, Cowork independently validates and
+> runs evidence/research, and Codex owns scope, review, ordering and protected merge. Active work is AUD-05 durable state
+> and restart truth (PR #30); strategy expansion waits for the NEWCORE contract spine.
+
 *Last refreshed: 2026-10-07 15:05 Cairo (Africa/Cairo) by Codex, on branch `bt02-exchange-filters`. This is the plain-language owner view. `ROADMAP.md` and `docs/reviews/` hold the detailed scope and evidence.*
 
 ## Where we are now

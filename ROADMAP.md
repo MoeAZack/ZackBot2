@@ -2,6 +2,10 @@
 
 *Plan v4, 2026-10-05 (Cairo).*
 
+> **Execution control:** the replacement-first build order, three-agent responsibilities, bug/scouting interruption rules
+> and current next steps are maintained in [`docs/NEWCORE_EXECUTION_PLAN.md`](docs/NEWCORE_EXECUTION_PLAN.md). This file
+> remains the long-term product vision; the execution plan controls the near-term sequence when the two differ.
+
 This plan merges:
 - the companion "ZackBot Master Roadmap & Build Vision" (32 pages, 2026-10-05);
 - Claude's review of it;
