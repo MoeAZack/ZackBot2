@@ -1317,7 +1317,7 @@ class Engine:
                             if not ge(lot['e0'] + sd * r_ * lot['R']): break
                             q = min(lot['qty'], lot.get('qty_max', lot['q0']) * f_)
                             rest = lot['qty'] - q
-                            if rest > 0 and (rest < rr['min_qty'] or rest * m < rr['min_notional']): q = lot['qty']   # never leave dust
+                            if F.leaves_dust(rest, m, rr): q = lot['qty']   # never leave dust (shared with the backtest)
                             done.append(k_)
                             self._market_close(lot, q, 'take_profit_ladder', m, post={'tps_done': list(done)})
                             lot['tps_done'] = list(done); fired = changed = True

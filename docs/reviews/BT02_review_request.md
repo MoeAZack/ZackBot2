@@ -262,3 +262,129 @@ aggressive ~2,170, boost ~870. The difference is the rules and the ATR basis; a 
    numbers after a verified snapshot, or add a "needs about X USDT" line from the preflight now?
 5. **Attempt counting**: per signal candle (repeated signals counted again) vs per distinct signal episode.
 6. **Preflight ATR basis**: median of the last 180 candles (stable) vs the latest ATR (what the engine sizes with).
+
+## Round 2: fixes for `BT02_review_gpt.md` (3 × P1, 2 × P2), 07 Oct 2026 (Cairo)
+
+Implementation fixes reviewed head `ce5c40d` / review commit `31fa7bc`. Sections above describe round 1. Where they
+conflict with this section (placeholder data, preflight math, ATR basis, partial closes), **this section supersedes them**.
+
+### P1: untrusted rules can no longer change the canonical backtest
+- `app.run_backtest_job`: rules are passed to `BT.run` **only when `snapshot_state == 'ok'`** for the selected environment
+  (`xapply`). Every other state (unverified / stale / invalid / wrong_environment / unavailable) runs the legacy floor.
+  The result says so: `feasibility.rules_applied=false`, `promotable=false`, plus `rules_state` and `rules_detail`.
+  The panel shows "Binance minimum-order rules were **not applied** (...). Not a verified number."
+  An applied result records `rules_version` / `rules_fetched_at`.
+- The placeholder is **gone**. `data/exchange_rules_testnet.json` is now a direct public fetch (07 Oct 2026 09:52 UTC,
+  12:52 Cairo; 570 symbols, version 2, `provenance: direct_fetch`, `raw_sha256 65c6bd689c30…`,
+  `source_url https://testnet.binancefuture.com/fapi/v1/exchangeInfo`). Its values match Codex's independent capture:
+  BTC step / minQty 0.0001, min notional 50; ETH 20; LINK 5; DOGE and 1000PEPE step 1. Testnet's own `serverTime` in the
+  answer read 03:42 UTC; it is recorded as `server_time` but not used. `fetched_at` is the fetching PC's UTC clock.
+  The file expires after 30 days (state `stale`, so backtests fall back to legacy and say so). Refresh with
+  `python exchange_rules.py fetch --env testnet`.
+- Lab jobs (decision 2) never apply exchange rules. Their results now carry
+  `execution: {exchange_rules: 'not applied (legacy 5 USDT floor)', execution_realistic: false, promotable: false}`, and
+  the Lab panel shows an "Exploratory ... not execution-realistic" note.
+- Tests: `test_app_backtest_applies_only_verified_fresh_rules_of_this_environment` runs `run_backtest_job` 7 times.
+  Each non-ok state gives curve, stats and by-symbol P&L **identical** to `exchange_rules='off'`. The `ok` state applies
+  the rules and differs. `test_shipped_testnet_snapshot_is_a_verified_direct_fetch_and_mainnet_is_absent` pins the values
+  above, plus `ok` → `stale` after 31 days and `wrong_environment` for mainnet.
+
+### P1: preflight covers every planned order
+- `feasibility.slot_order_legs` lists every order the engine would plan for one coin/slot:
+  - the entry;
+  - each DCA safety order `q0 × scale^k` at DCA level k (`q0` = the entry floored to the step, the engine's lot `q0`);
+  - each of the `n` pyramid adds `q0 × frac`, k × step_r × R from the entry.
+
+  Each add is checked at its own price, on the side where its notional is smallest, so the check is never optimistic
+  for either direction.
+- `preflight` returns:
+  - `entry_executable_pct` and `plan_executable_pct` (`executable_pct` is now the plan %);
+  - `status` 'ok' **only when every order of every pair passes** ('partial' when any entry or later order fails);
+  - `add_undersized` per failing order (leg, notional, code);
+  - `min_capital_all` over every order, with `min_capital_binding` (symbol / slot / leg). It is a linear estimate per
+    leg on unfloored sizes, confirmed with the real check.
+- Panel: the green "Tradable at your capital" tag comes only from status 'ok'. The badge shows
+  "x% … can place every planned order (y% can open)" and a "Later orders too small: …" line.
+- Codex's repro (SOL, $500, 0.03%, pyramid 0.5): it was `ok` / 100% / min 500. It is now `partial`, entry 100%, plan 0%,
+  `min_capital_all ≈ 1,000` "set by pyramid add 1".
+- Tests: `test_preflight_flags_undersized_pyramid_add` (inverted: it asserted the defect), plus:
+  - `test_preflight_dca_safety_order_sets_the_minimum_capital` (binding = safety order 3);
+  - `test_panel_never_shows_tradable_when_a_later_order_fails`;
+  - pyramid n=2 → two legs.
+
+  At `min_capital_all × 1.001` every leg passes; at ×0.99 one fails.
+
+### P1: backtest partial exits match the engine
+- `backtest.close`:
+  - a **partial** (frac < 1) is floored to the step, as in `engine._market_close`;
+  - a partial that floors to 0 sends nothing;
+  - the remainder is floored to the step, as in `_apply_close`.
+
+  A full close (frac = 1) and the legacy rule (step None) are bit-identical to before.
+- Ladder: the engine's no-dust rule is now one shared predicate, `feasibility.leaves_dust(rest, px, rule)`, used by
+  both `engine.py` (ladder) and `backtest.py` (ladder, real rules only; legacy keeps no dust rule).
+  TP1 / basket runner part get step flooring and no dust rule, exactly like the engine.
+- Binance reduce-only exemption: **not modelled and not assumed**. This is an engine-parity rule. Whether Binance would
+  accept a reduce-only close of a sub-minimum remainder is a separate question, to be checked on testnet if it matters.
+- Tests (long and short):
+  - TP1 at a step boundary: step 1 vs 0.5. The P&L differs by exactly 0.5 × (stop − tp1) after slip and fee:
+    −2·(1−s)(1−f) long, −2·(1+s)(1+f) short.
+  - TP1 that floors to 0: identical to never reaching TP1.
+  - Ladder remainder below the minimum: whole lot closed at the ladder candle.
+  - The engine uses the shared predicate.
+  - **Engine vs backtest through `replay.run_replay`** with step-1 rules (`test_partial_exits_match_the_engine_through_replay`;
+    TP1 in the fast tier, ladder marked slow): every trade matches, with return gap ≤ 0.25%. Measured on the pre-fix
+    backtest: TP1 gap 1.07%, and the ladder matched only 1 of 2 trades (gap 1.51%). After the fix: 0.05% and 0.06%,
+    all matched.
+- Observation (pre-existing, not caused by this change, identical on the old code): with step 1.0 rules some replay
+  scenarios (`squeeze_tp`, seed 23) log `exit … failed: (empty) - stop stays in place` with engine/simulator quantity
+  mismatches. This looks like a `StopIteration` in the simulator's `reduce()`. It is filed as a separate task, not
+  widened into BT02.
+
+### P2: a file import cannot self-certify
+- `exchange_rules.build_file` is **unverified by default** (`provenance: file_import`). The capture time is
+  `--fetched-at`, else the file's own `serverTime`, else none (state `stale`). It is never "now".
+- `--trust` marks the import verified only with a stderr WARNING and `provenance: file_import_trusted`. It is refused
+  when `--source` is the other environment's URL.
+- Only `fetch` produces `direct_fetch`. Every snapshot records `raw_sha256` (the exact bytes), `source_url` and
+  `server_time`.
+- Tests: `test_file_import_never_self_certifies` covers:
+  - a mainnet-URL file imported as testnet with a fresh `--fetched-at` stays unverified;
+  - no time → stale even when trusted;
+  - an old trusted file → stale;
+  - a cross-environment trust is refused.
+
+  Also `test_direct_fetch_is_verified_with_provenance`.
+
+### P2: current-capital preflight uses the latest ATR
+- `preflight_market` returns `px` and `atr` of the **latest closed candle** (the engine's signal `atr`), plus
+  `atr_median` (180-candle median × last close), `t` and `basis`.
+- `App.preflight` headline = latest ATR. Each preset also gets a `planning` block (median ATR, labelled). The response
+  carries `market_basis`, `market_asof` and `rules_fetched_at`, all shown in the badge tooltip.
+- Test: `test_preflight_market_uses_the_latest_closed_candle_atr_like_the_engine`. Latest ATR is 10× the median: the
+  headline is `infeasible` while the median-based planning check says `ok`.
+
+### Preset feasibility on the VERIFIED testnet rules (replaces the placeholder table above)
+Shipped candle files, latest closed candle as of 2026-10-04 00:00–03:00 UTC, max leverage 10, every planned order.
+"entries" = the first order can be placed; "full plan" = the entry **and** every DCA / pyramid add can be placed.
+
+| Profile | $100: entries / full plan | $200: entries / full plan | $500: entries / full plan | Capital for every planned order (binding order) |
+|---|---|---|---|---|
+| original | 100% / 100% ok | 100% / 100% ok | 100% / 100% ok | $70 (entry, BTC A 4h) |
+| calm | 17.0% / 17.0% | 40.9% / 40.9% | 52.3% / 52.3% | $16,566 (entry, QNT DCA 4h) |
+| balanced | 40.9% / 15.9% | 52.3% / 35.2% | 65.9% / 64.8% | $8,283 (entry, QNT DCA 4h) |
+| aggressive | 47.7% / 27.3% | 54.5% / 46.6% | 78.4% / 77.3% | $5,522 (entry, QNT DCA 4h) |
+| active | 81.2% / 81.2% | 87.5% / 87.5% | 100% / 100% ok | $273 (entry, BTC DCA1H 1h) |
+| boost_active | 47.9% / 32.3% | 58.3% / 55.2% | 86.5% / 84.4% | $4,418 (entry, QNT DCA 4h) |
+| steady_mix | 20.8% / 5.2% | 43.8% / 20.8% | 56.2% / 47.9% | $16,566 (entry, QNT DCA 4h) |
+| active_dca | 75.0% / 75.0% | 100% / 100% ok | 100% / 100% ok | $136 (entry, BTC DCA1H 1h) |
+| boost | 53.8% / 50.0% | 76.2% / 75.0% | 97.5% / 97.5% | $2,209 (entry, QNT DCA 4h) |
+
+These are exchange-minimum feasibility numbers only, not profitability. Per decision 4, preset cards stay unchanged until
+BT01+BT02 reruns on an accepted verified snapshot. For the $100–$200 follower range, only `original` is fully tradable
+at both amounts. `active_dca` is fully tradable from $200 and `active` from $500. The DCA-heavy profiles cannot build
+most of their planned positions.
+
+### Not done here (deliberately)
+- Distinct-signal-episode counting (decision 5, "if useful"): not added. Attempts stay per signal candle.
+- COPY100 / COPY200 and the DCA-default PRs remain untouched until BT02 is accepted.
