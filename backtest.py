@@ -208,6 +208,18 @@ def run(book, sleeves, start=500.0, max_lev=10.0, daily_halt=0.08, t0=None, t1=N
     FEAS = dict(mode='legacy' if XR is None else 'rules', attempts=0, executed=0, rule_blocked=0, skipped={}, by_symbol={}, by_slot={},
                 add_skipped={}, skips=[], unknown_symbols=sorted(s for s in syms_all if XR is not None and s not in XR))
     add_seen = set()
+    FEAS['zero_partials'] = {}                            # AUD-02 / C25: partial exits that floored to 0 (once per position+event)
+    zero_seen = set()
+
+    def part_zero(sl, s, p, frac, ev):
+        """AUD-02 / C25 (engine Engine._partial_zero): a PARTIAL exit whose quantity floors to 0 at the symbol's step sends
+        nothing and marks nothing done; the caller blocks that event for the rest of this candle only (tried again later)."""
+        step = RULES[s].get('step')
+        if frac >= 1 or not step or F.round_step(p['qty'] * frac, step) > 0: return False
+        k = (id(sl), s, p['i'], ev)
+        if k not in zero_seen:
+            zero_seen.add(k); FEAS['zero_partials'][ev] = FEAS['zero_partials'].get(ev, 0) + 1
+        return True
 
     def feas_skip(sl, s, side, i, d, px, qty_raw, add=None):
         sid = sl['cfg'].get('id') or sl['cfg']['key']
@@ -371,7 +383,7 @@ def run(book, sleeves, start=500.0, max_lev=10.0, daily_halt=0.08, t0=None, t1=N
         RUN = m.get('runner'); TTP = m.get('ttp'); TPS = sl['tps']; py = m.get('pyramid')
         fav_reached = lambda lvl, x: sd * (x - lvl) >= 0     # price x at / through a favourable level
         adv_reached = lambda lvl, x: sd * (lvl - x) >= 0     # price x at / through an adverse level (safety order, stop)
-        blocked_ = dict(dca=False, add=False)                # an add refused by a gate is not retried in this candle
+        blocked_ = dict(dca=False, add=False, tp=False, tp1=False, lad=False)   # gate-refused / C25 zero part: not retried this candle
         stop_open = p['stop']
         stop_in_candle = adv_reached(stop_open, l if sd == 1 else h)   # the candle WILL end at a stop: no exits at targets
 
@@ -414,14 +426,14 @@ def run(book, sleeves, start=500.0, max_lev=10.0, daily_halt=0.08, t0=None, t1=N
             nonlocal eq
             while True:
                 cand = []
-                if 'dca' in m and np.isfinite(p['tp']) and fav_reached(p['tp'], b_):
+                if 'dca' in m and not blocked_['tp'] and np.isfinite(p['tp']) and fav_reached(p['tp'], b_):
                     cand.append((sd * p['tp'], 0, 'tp', p['tp']))
                 if py and not blocked_['add'] and p['adds'] < py['n'] and fav_reached(p['next_add'], b_):
                     cand.append((sd * p['next_add'], 1, 'add', p['next_add']))
-                if m.get('tp1_r') and not p['tp1']:
+                if m.get('tp1_r') and not p['tp1'] and not blocked_['tp1']:
                     lv = p['e0'] + sd * m['tp1_r'] * p['R']
                     if fav_reached(lv, b_): cand.append((sd * lv, 2, 'tp1', lv))
-                if TPS:                                       # take-profit ladder: the first level not yet done
+                if TPS and not blocked_['lad']:               # take-profit ladder: the first level not yet done
                     k = next((k for k in range(len(TPS)) if k not in p['tps_done']), None)
                     if k is not None:
                         lv = p['e0'] + sd * TPS[k][0] * p['R']
@@ -434,6 +446,7 @@ def run(book, sleeves, start=500.0, max_lev=10.0, daily_halt=0.08, t0=None, t1=N
                 e = min(cand); ev, lv = e[2], e[3]           # first level met on the way
                 if ev == 'tp':
                     if RUN:      # runner: bank part at the basket target, keep the rest at breakeven
+                        if part_zero(sl, s, p, RUN.get('dca_frac', 1.0), 'basket_tp_part'): blocked_['tp'] = True; continue
                         if close(sl, s, p, lv, RUN.get('dca_frac', 1.0), i, 'tp' if RUN.get('dca_frac', 1.0) >= 1 else 'tp1'):
                             return True
                         p['tp'] = np.inf * sd; p['tp1'] = True; p['dca'] = len(p['levels'])
@@ -455,12 +468,14 @@ def run(book, sleeves, start=500.0, max_lev=10.0, daily_halt=0.08, t0=None, t1=N
                     p['qmax'] = max(p['qmax'], p['qty'])
                     p['next_add'] += sd * py['step_r'] * p['R']
                 elif ev == 'tp1':
+                    if part_zero(sl, s, p, m.get('tp1_frac', 0.5), 'tp1'): blocked_['tp1'] = True; continue
                     p['tp1'] = True
                     if close(sl, s, p, lv, m.get('tp1_frac', 0.5), i, 'tp1'): return True
                 elif ev == 'lad':
-                    p['tps_done'].add(e[4])
                     q = min(p['qty'], p['qmax'] * TPS[e[4]][1])
                     if F.leaves_dust(p['qty'] - q, lv, ADD_RULES[s]): q = p['qty']   # the engine's no-dust rule (real rules only)
+                    if part_zero(sl, s, p, min(1.0, q / p['qty']), 'take_profit_ladder'): blocked_['lad'] = True; continue
+                    p['tps_done'].add(e[4])
                     if close(sl, s, p, lv, min(1.0, q / p['qty']), i, 'tp_ladder'): return True
                 else:
                     close(sl, s, p, lv, 1, i, 'tp'); return True
