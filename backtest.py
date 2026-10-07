@@ -9,12 +9,19 @@ Costs: taker fee + slippage per side, funding cost on every open position.
 import numpy as np
 import pandas as pd
 import strategies as S
+import feasibility as F
 
 FEE, SLIP, FUND_PER_BAR = 0.0005, 0.0002, 0.00005
 FEE_MAKER = 0.0002    # maker fee (post-only limit entries)
 BE_BUF = 0.0015
 VERSION = 'v3.1'        # breakeven stop sits just past entry so fees are covered     # 0.01%/8h on 4h candles
-MIN_NOTIONAL = {'BTCUSDT': 50, 'ETHUSDT': 20, 'LINKUSDT': 20}
+MIN_NOTIONAL = {'BTCUSDT': 50, 'ETHUSDT': 20, 'LINKUSDT': 20}    # legacy floor (pre-BT02): notional only, no step / minQty
+
+
+def legacy_rule(sym):
+    """The pre-BT02 backtest floor as a rule: min notional only (MIN_NOTIONAL, default 5), no step rounding, no minQty.
+    Used for every symbol when run(exchange_rules=None), and for symbols missing from a snapshot (reported as unknown)."""
+    return dict(step=None, min_qty=0.0, min_notional=float(MIN_NOTIONAL.get(sym, 5)))
 
 
 class Book:
@@ -132,7 +139,7 @@ def path_points(o, h, l, c, side, worst=False):
 
 def run(book, sleeves, start=500.0, max_lev=10.0, daily_halt=0.08, t0=None, t1=None, warmup=220, fund_per_bar=None, pessimistic='path',
         entry_order='market', fee_maker=None, maker_fallback=True, pump_guard=None, risk_rules=None, governor=None,
-        maint_margin=0.005, btc1h=None):
+        maint_margin=0.005, btc1h=None, exchange_rules=None):
     """pessimistic: how a stop tightened during a candle (breakeven / trailing / runner) is checked against that same candle.
     'path' (default): the declared price path (path_points: candle colour, doji = worst case for the side); 'worst': the
     worst-case path (favourable extreme first, adverse last) on every candle; False: never (old v2).
@@ -146,6 +153,11 @@ def run(book, sleeves, start=500.0, max_lev=10.0, daily_halt=0.08, t0=None, t1=N
       governor    {'rules': [{'if': 'growth_gte'|'dd_gte', 'value': pct, 'then': {'risk_mult': m}, 'until': 'new_high'|'reset'|None}]}
       maint_margin cross-margin liquidation check per bar (0 = off)
       btc1h       optional BTC 1h candles (t,c) for the 'BTC moved X% in the last hour' rules on a 4h book
+      exchange_rules BT02 execution feasibility: a snapshot (feasibility / exchange_rules.py) or {symbol: rule}. Entries and
+                  adds (DCA safety orders, pyramid adds) are floored to the symbol's step and skipped - never rounded up - when
+                  below minQty / minNotional (feasibility.size_check, the engine's own check). None (default) = the legacy
+                  floor (notional only, MIN_NOTIONAL), unchanged results; symbols missing from a snapshot also use the legacy
+                  floor and are listed as 'unknown'. Skips are counted in cv.attrs['feasibility'].
     sleeve extras: 'when' ('any'|'bull'|'bear'|'range'), 'trail_entry' {'dev_atr','max_bars'}, 'pump_guard', mgmt 'tps', 'ttp'."""
     FPB = FUND_PER_BAR if fund_per_bar is None else fund_per_bar
     FM = FEE_MAKER if fee_maker is None else fee_maker
@@ -189,6 +201,28 @@ def run(book, sleeves, start=500.0, max_lev=10.0, daily_halt=0.08, t0=None, t1=N
     gmult, peak_mtm = 1.0, start
     breaker_until = -1                                   # bar index until which entries are paused
     liqs, blocked = 0, {}
+    # ---- BT02: exchange filters (one rule per symbol) and skipped-signal accounting
+    XR = F.snapshot_rules(exchange_rules)
+    RULES = {s: (XR[s] if XR is not None and s in XR else legacy_rule(s)) for s in syms_all}
+    ADD_RULES = {s: (XR or {}).get(s) for s in syms_all}  # adds are checked only against a real rule (legacy: never, as before)
+    FEAS = dict(mode='legacy' if XR is None else 'rules', attempts=0, executed=0, rule_blocked=0, skipped={}, by_symbol={}, by_slot={},
+                add_skipped={}, skips=[], unknown_symbols=sorted(s for s in syms_all if XR is not None and s not in XR))
+    add_seen = set()
+
+    def feas_skip(sl, s, side, i, d, px, qty_raw, add=None):
+        sid = sl['cfg'].get('id') or sl['cfg']['key']
+        if add:
+            k = (id(sl), s, add)
+            if k in add_seen: return                       # one count per position and order level, not per candle
+            add_seen.add(k); FEAS['add_skipped'][d['code']] = FEAS['add_skipped'].get(d['code'], 0) + 1; return
+        FEAS['skipped'][d['code']] = FEAS['skipped'].get(d['code'], 0) + 1
+        for grp, key in ((FEAS['by_symbol'], s), (FEAS['by_slot'], sid)):
+            g = grp.setdefault(key, dict(attempts=0, skipped=0)); g['skipped'] += 1
+        if len(FEAS['skips']) < 500:
+            r = RULES[s]
+            FEAS['skips'].append(dict(t=str(pd.Timestamp(T[i])), slot=sid, sym=s, side=side, code=d['code'], reason=d['reason'],
+                                      qty_raw=float(qty_raw), qty=float(d['qty']), px=float(px), notional=round(float(d['qty'] * px), 4),
+                                      min_notional=r['min_notional'], min_qty=r['min_qty'], step=r['step']))
 
     eq, trades, curve = start, [], []
     day, day_start, halted = None, eq, False
@@ -196,13 +230,21 @@ def run(book, sleeves, start=500.0, max_lev=10.0, daily_halt=0.08, t0=None, t1=N
     except Exception: days = (pd.to_datetime(T) + pd.Timedelta(hours=3)).date
 
     def close(sl, s, p, px, frac, i, why):
+        """Close frac of the position at px. BT02 engine parity (_market_close / _apply_close): a PARTIAL close is floored
+        to the symbol's step and a partial that floors to 0 sends nothing; the remainder is floored to the step. A full
+        close (frac >= 1) and the legacy rule (step None) are unchanged."""
         nonlocal eq
+        step = RULES[s].get('step')
         q = p['qty'] * frac
+        if frac < 1 and step:
+            q = F.round_step(q, step)
+            if q <= 0: return False
         px = px * (1 - p['side'] * SLIP)
         pnl = p['side'] * (px - p['avg']) * q - q * px * FEE
         eq += pnl
         p['realized'] += pnl
         p['qty'] -= q
+        if step: p['qty'] = max(0.0, F.round_step(p['qty'], step))
         if p['qty'] <= 1e-12:
             sl['hist'].append(p['realized'] / p['risk'])
             trades.append(dict(sleeve=sl['cfg']['key'], sym=s, side=p['side'], i_in=p['i'], i_out=i,
@@ -251,24 +293,25 @@ def run(book, sleeves, start=500.0, max_lev=10.0, daily_halt=0.08, t0=None, t1=N
         nonlocal eq
         m, cfg = sl['m'], sl['cfg']
         risk_usd = sl_eq * cfg['risk'] * kelly_mult(sl) * gmult
-        if 'dca' in m:
-            dc = m['dca']
-            lv = [px - side * k * dc['step_atr'] * atr for k in range(dc['n'] + 1)]
-            w = [dc['scale'] ** k for k in range(dc['n'] + 1)]
-            stop = lv[-1] - side * dc['stop_atr'] * atr
-            base = risk_usd / sum(wk * abs(lk - stop) for wk, lk in zip(w, lv))
-            qty, stop_dist = base, abs(px - stop)
-        else:
-            stop_dist = m.get('stop_atr', 2.5) * atr
-            qty = risk_usd / stop_dist
-            stop = px - side * stop_dist
+        z = F.risk_qty(m, risk_usd, px, atr, side)          # shared with engine.open_lot
+        qty, stop, stop_dist, lv, w = z['qty'], z['stop'], z['R'], z['levels'], z['weights']
         qty_raw = qty
         cap = max(0.0, max_lev * sl_eq - notional(sl, i)) / px
         qty = min(qty, cap)
-        if qty * px < MIN_NOTIONAL.get(s, 5): return None
+        sid = cfg.get('id') or cfg['key']
+        FEAS['attempts'] += 1
+        for grp, key in ((FEAS['by_symbol'], s), (FEAS['by_slot'], sid)):
+            grp.setdefault(key, dict(attempts=0, skipped=0))['attempts'] += 1
+        d = F.size_check(qty_raw, qty, px, RULES[s])         # BT02: the engine's exchange-filter check (floor, never round up)
+        if not d['ok']: feas_skip(sl, s, side, i, d, px, qty_raw); return None
+        qty = d['qty']
         if RR['coin_cap'] or RR['open_risk_cap'] or RR['correlated_cap']:
             why = rule_block(s, side, qty, px, risk_usd * qty / qty_raw, i)
-            if why: blocked[why] = blocked.get(why, 0) + 1; return None
+            if why:
+                blocked[why] = blocked.get(why, 0) + 1; FEAS['rule_blocked'] += 1      # sized fine, refused by a risk rule
+                for grp, key in ((FEAS['by_symbol'], s), (FEAS['by_slot'], sid)): grp[key]['rule_blocked'] = grp[key].get('rule_blocked', 0) + 1
+                return None
+        FEAS['executed'] += 1
         eq -= qty * px * fee
         p = dict(side=side, qty=qty, q0=qty, avg=px, e0=px, stop=stop, R=stop_dist, risk=risk_usd, i=i,
                  best=px, realized=-qty * px * fee, tp1=False, adds=0, dca=0, atr0=atr, qmax=qty, tps_done=set())
@@ -358,6 +401,9 @@ def run(book, sleeves, start=500.0, max_lev=10.0, daily_halt=0.08, t0=None, t1=N
                     if pol == 'half_size': q *= 0.5
                 if halted or notional(sl, i) + q * lvl > max_lev * eq * cfg['share']: blocked_['dca'] = True; continue
                 if rule_block(s, sd, q, lvl, 0.0, i, add=True): blocked_['dca'] = True; continue   # same add gate as live
+                d = F.size_check(q, q, lvl, ADD_RULES[s])     # BT02: the engine's _add_qty check (floor to step, minimums)
+                if d['ok'] is False: feas_skip(sl, s, sd, i, d, lvl, q, add=('dca', p['i'], p['dca'])); blocked_['dca'] = True; continue
+                q = d['qty']
                 p['avg'] = (p['avg'] * p['qty'] + lvl * q) / (p['qty'] + q); p['qty'] += q
                 eq -= q * lvl * FEE; p['realized'] -= q * lvl * FEE; p['dca'] += 1
                 p['qmax'] = max(p['qmax'], p['qty'])
@@ -401,6 +447,9 @@ def run(book, sleeves, start=500.0, max_lev=10.0, daily_halt=0.08, t0=None, t1=N
                     if halted or (RR['btc_breaker'] and i <= breaker_until) or notional(sl, i) + q * lvl > max_lev * eq * cfg['share']:
                         blocked_['add'] = True; continue
                     if rule_block(s, sd, q, lvl, q * max(0.0, sd * (lvl - p['stop'])), i, add=True): blocked_['add'] = True; continue
+                    d = F.size_check(q, q, lvl, ADD_RULES[s])  # BT02: the engine's _add_qty check
+                    if d['ok'] is False: feas_skip(sl, s, sd, i, d, lvl, q, add=('add', p['i'], p['adds'])); blocked_['add'] = True; continue
+                    q = d['qty']
                     p['avg'] = (p['avg'] * p['qty'] + lvl * q) / (p['qty'] + q); p['qty'] += q
                     eq -= q * lvl * FEE; p['realized'] -= q * lvl * FEE; p['adds'] += 1
                     p['qmax'] = max(p['qmax'], p['qty'])
@@ -410,7 +459,9 @@ def run(book, sleeves, start=500.0, max_lev=10.0, daily_halt=0.08, t0=None, t1=N
                     if close(sl, s, p, lv, m.get('tp1_frac', 0.5), i, 'tp1'): return True
                 elif ev == 'lad':
                     p['tps_done'].add(e[4])
-                    if close(sl, s, p, lv, min(1.0, p['qmax'] * TPS[e[4]][1] / p['qty']), i, 'tp_ladder'): return True
+                    q = min(p['qty'], p['qmax'] * TPS[e[4]][1])
+                    if F.leaves_dust(p['qty'] - q, lv, ADD_RULES[s]): q = p['qty']   # the engine's no-dust rule (real rules only)
+                    if close(sl, s, p, lv, min(1.0, q / p['qty']), i, 'tp_ladder'): return True
                 else:
                     close(sl, s, p, lv, 1, i, 'tp'); return True
 
@@ -544,6 +595,9 @@ def run(book, sleeves, start=500.0, max_lev=10.0, daily_halt=0.08, t0=None, t1=N
             break
     cv = pd.Series(curve, index=pd.to_datetime(T[idx[:len(curve)]]))
     cv.attrs['liquidations'] = liqs; cv.attrs['blocked'] = blocked
+    n_feas = FEAS['executed'] + sum(FEAS['skipped'].values())
+    FEAS['executable_pct'] = round(FEAS['executed'] / n_feas * 100, 1) if n_feas else None
+    cv.attrs['feasibility'] = FEAS
     return pd.DataFrame(trades), cv
 
 

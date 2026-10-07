@@ -383,6 +383,7 @@ function Invoke-BuildSteps {
         '--icon', [IO.Path]::Combine($src, 'zackbot.ico'),
         '--add-data', ([IO.Path]::Combine($src, 'panel.html') + ';.'),
         '--add-data', ([IO.Path]::Combine($src, 'research') + ';research'),
+        '--add-data', ([IO.Path]::Combine($src, 'data', 'exchange_rules_testnet.json') + ';data'),
         '--collect-data', 'tzdata',
         '--distpath', [IO.Path]::Combine($s.Stage, 'dist'), '--workpath', [IO.Path]::Combine($s.Stage, 'work'),
         '--specpath', [IO.Path]::Combine($s.Stage, 'work'), [IO.Path]::Combine($src, 'app.py'))
