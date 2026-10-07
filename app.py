@@ -3,7 +3,7 @@
 Run:  python app.py            (or ZackBot.exe after building)
       python app.py --no-window  (server only; open http://localhost:8765 yourself)
 """
-import base64, csv, glob, gzip, hmac, json, logging, logging.handlers, math, os, queue, random, re, secrets, shutil, subprocess, sys, threading, time, traceback, uuid, socket
+import atexit, base64, csv, glob, gzip, hmac, json, logging, logging.handlers, math, os, queue, random, re, secrets, shutil, subprocess, sys, threading, time, traceback, uuid, socket
 from datetime import datetime, timezone
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlsplit, parse_qs
@@ -55,6 +55,9 @@ from engine import Engine, PRESETS, TOP40, CORE8, TF_SEC, MANUAL_MAX_RISK, save_
 from binance_client import Futures, MAINNET   # noqa: E402
 import grid as GRID             # noqa: E402
 import lab as LAB               # noqa: E402
+import feasibility as F         # noqa: E402
+import instance as INST         # noqa: E402  (AUD-00: one process per data folder / account)
+import exchange_rules as XRULES  # noqa: E402
 from engine import RISK_RULE_DEFAULTS, GOV_MULT_MAX, EXCHANGE_DOWN   # noqa: E402
 from telegram_ctl import TelegramControl, clean_setting as tg_clean_setting   # noqa: E402
 
@@ -238,6 +241,38 @@ def enqueue(fn, *args):
     except queue.Full: raise ValueError('too many backtests waiting - try again when the current ones finish')
 
 
+def exchange_rules_now(e=None):
+    """BT02: the exchange rules backtests and the preflight use -> (snapshot, state, detail).
+    The connected engine's own exchangeInfo rules (this environment, read at connect) win; otherwise the snapshot file
+    data/exchange_rules_<testnet|mainnet>.json. Testnet and mainnet are never mixed."""
+    if e is None and APP is not None: e = APP.engine
+    env = 'mainnet' if e is not None and e.live else 'testnet'
+    meta = getattr(e, 'rules_meta', None) if e is not None else None
+    if e is not None and e.rules and meta and meta.get('environment') == env:
+        snap = dict(schema=F.SCHEMA, version=0, environment=env, source=meta['source'], fetched_at=meta['fetched_at'],
+                    verified=True, provenance='engine', note='', symbols=e.rules)
+    else:
+        snap = XRULES.load(env)
+    st, detail = F.snapshot_state(snap, time.time(), env)
+    return snap, st, detail
+
+
+def feas_total(feas):
+    """BT02: per-timeframe feasibility counts -> totals (executable %, skips by reason, per symbol, per slot)."""
+    out = dict(feas, executed=0, rule_blocked=0, skipped={}, add_skipped={}, by_symbol={}, by_slot={}, unknown_symbols=[])
+    for g in feas['groups'].values():
+        out['executed'] += g.get('executed', 0); out['rule_blocked'] += g.get('rule_blocked', 0)
+        for k in ('skipped', 'add_skipped'):
+            for c, n in (g.get(k) or {}).items(): out[k][c] = out[k].get(c, 0) + n
+        for k in ('by_symbol', 'by_slot'):
+            for c, v in (g.get(k) or {}).items():
+                x = out[k].setdefault(c, dict(attempts=0, skipped=0)); x['attempts'] += v['attempts']; x['skipped'] += v['skipped']
+        out['unknown_symbols'] = sorted(set(out['unknown_symbols']) | set(g.get('unknown_symbols') or []))
+    n = out['executed'] + sum(out['skipped'].values())
+    out['executable_pct'] = round(out['executed'] / n * 100, 1) if n else None
+    return out
+
+
 def run_backtest_job(job_id, req):
     """Runs each candle-size group (4h / 1h / 15m) on its own data with its share of capital, then adds the curves.
     Mixed profiles (e.g. Boost 4h + Active 1h) are therefore simulated as side-by-side sub-accounts."""
@@ -251,6 +286,13 @@ def run_backtest_job(job_id, req):
         for sl in sleeves: groups.setdefault(sl.get('tf') or dtf, []).append(sl)
         total_share = sum(float(sl['share']) for sl in sleeves) or 1
         trs, cvs, skipped, all_syms, gaps = [], [], [], set(), {}
+        xsnap, xstate, xdetail = exchange_rules_now() if req.get('exchange_rules', 'on') != 'off' else (None, 'off', 'exchange rules off')
+        # BT02 review P1: only a valid, verified, fresh snapshot of THIS environment may change the canonical result
+        # (entries, equity, PF, DD). Anything else runs the legacy floor and says so; it is never a promotable number.
+        xapply = xsnap if xstate == 'ok' else None
+        feas = dict(rules_state=xstate, rules_detail=xdetail, environment=(xsnap or {}).get('environment'), groups={},
+                    rules_applied=xapply is not None, promotable=xapply is not None,
+                    rules_version=(xapply or {}).get('version'), rules_fetched_at=(xapply or {}).get('fetched_at'))
         for gi, (tf, gs) in enumerate(sorted(groups.items())):
             syms = sorted({s for sl in gs for s in (CORE8 if sl['symbols'] == 'core8' else req['universe'] if sl['symbols'] == 'all' else sl['symbols'])} | {'BTCUSDT'})
             raw = {}
@@ -276,7 +318,9 @@ def run_backtest_job(job_id, req):
                                 **{k: sl[k] for k in ('when', 'trail_entry', 'pump_guard') if sl.get(k) is not None}))
             gstart = start * gshare / total_share if len(groups) > 1 else start
             tr, cv = BT.run(book, cfg, start=gstart, max_lev=float(req.get('max_lev', 10)), daily_halt=float(req.get('daily_halt', 0.08)),
-                            fund_per_bar=BT.FUND_PER_BAR * TF_SEC[tf] / 14400, **(req.get('run_options') or {}))
+                            fund_per_bar=BT.FUND_PER_BAR * TF_SEC[tf] / 14400, exchange_rules=xapply, **(req.get('run_options') or {}))
+            fz = dict(cv.attrs.get('feasibility') or {}); fz['skips'] = (fz.get('skips') or [])[:100]
+            feas['groups'][tf] = fz
             if len(tr): tr = tr.assign(tf=tf)
             trs.append(tr); cvs.append(cv); all_syms |= set(raw)
         if len(cvs) == 1:
@@ -305,12 +349,59 @@ def run_backtest_job(job_id, req):
                    request=req, stats=st, skipped=skipped, years=years, engine=BT.VERSION, oos=oos, dd_curve=dd_curve,
                    gaps=gaps, period=[str(cv.index[0].date()), str(cv.index[-1].date())],
                    curve=[[str(t.date()), round(v, 2)] for t, v in cvd.items()], by_sleeve=by_sleeve, by_symbol=by_sym,
-                   symbols=sorted(all_syms), tfs=sorted(groups))
+                   symbols=sorted(all_syms), tfs=sorted(groups), feasibility=feas_total(feas))
+        fz = res['feasibility']
+        fz['execution_realistic'] = bool(fz.get('rules_applied')) and not fz.get('unknown_symbols')
+        fz['promotable'] = fz['execution_realistic']
         save_json(os.path.join(DATA, 'backtests', f'{job_id}.json'), res)
         job.update(status='done', result=res)
     except Exception as e:
         log.error('backtest failed: ' + traceback.format_exc())
         job.update(status='error', error=str(e))
+
+
+_PF_FILES = {}
+
+
+def preflight_market(e, keys, now=None):
+    """{(symbol, tf): dict(px, atr, atr_median, t, basis, stale)} for the preflight. px / atr: the LATEST closed candle's
+    close and ATR - what the engine sizes the next signal with (signal atr = the last closed candle's d.atr). atr_median:
+    the median ATR/price of the last 180 closed candles x last close, a separate planning estimate only (BT02 review P2).
+    Source: the engine's candle cache (closed candles only), else the candle files shipped with the app - their last row
+    may have been a still-forming candle when the file was written, so it is dropped, and any candle that has not closed
+    by `now` is cut (the engine's rule). stale = the latest closed candle is more than 2 candles older than it should be:
+    the preflight then says 'unknown' (never a green pass on old prices) and keeps its estimate."""
+    out, asof = {}, {}
+    now = time.time() if now is None else float(now)
+    kc = getattr(e, '_kc', None) or {}
+    for sym, tf in sorted(keys):
+        df = kc.get((sym, tf), (None,))[0]
+        src = 'engine'
+        if df is None or not len(df):
+            src = 'shipped file'
+            f = os.path.join(BUNDLE, {'4h': 'data', '1h': 'data1h'}.get(tf, 'data'), f'{sym}_{tf}.csv')
+            if not os.path.exists(f): continue
+            try:
+                ck = (f, os.path.getmtime(f))
+                if ck not in _PF_FILES:
+                    raw = pd.read_csv(f, parse_dates=['t'], encoding='utf-8').tail(401).reset_index(drop=True)
+                    _PF_FILES[ck] = S.indicators(raw.iloc[:-1].reset_index(drop=True))     # last row: completion unknown
+                df = _PF_FILES[ck]
+            except Exception: continue
+        if 'atr' not in df or not len(df): continue
+        tf_s = TF_SEC.get(tf, 14400)
+        opened = pd.to_datetime(df.t).map(lambda x: x.timestamp())                  # unit-safe (ns / us / s)
+        closed = (opened + tf_s) <= now                                             # the engine keeps only closed candles
+        if not closed.all(): df = df[closed.values].reset_index(drop=True)
+        if len(df) < 30: continue
+        tail = df.tail(180)
+        ratio = float((tail.atr / tail.c).median()); px = float(df.c.iloc[-1]); atr = float(df.atr.iloc[-1])
+        if not (ratio > 0 and px > 0 and atr > 0): continue
+        close_t = pd.Timestamp(df.t.iloc[-1]).timestamp() + tf_s
+        out[(sym, tf)] = dict(px=px, atr=atr, atr_median=ratio * px, t=str(df.t.iloc[-1])[:16], basis='latest closed candle',
+                              src=src, stale=bool(now - close_t > 2 * tf_s))
+        asof[f'{sym} {tf}'] = f'{str(df.t.iloc[-1])[:16]} ({src})'
+    return out, asof
 
 
 def lab_book(q):
@@ -340,7 +431,9 @@ def run_lab(jid, kind, req):
         if req.get('preset') in PRESETS and not req.get('sleeves'):
             req = dict(req, sleeves=[validate_sleeve(dict(x), i) for i, x in enumerate(PRESETS[req['preset']]['sleeves'])])
         res = LAB.run_lab_job(kind, req, lab_book, prog, lambda: job.get('cancel'))
-        res.update(id=jid, kind=kind, name=f"Lab · {kind.replace('_', ' ')}", created=datetime.now().isoformat(timespec='minutes'))
+        res.update(id=jid, kind=kind, name=f"Lab · {kind.replace('_', ' ')}", created=datetime.now().isoformat(timespec='minutes'),
+                   # BT02 review decision 2: lab runs use the legacy floor, never exchange rules -> exploratory, never promotable
+                   execution=dict(exchange_rules='not applied (legacy 5 USDT floor)', execution_realistic=False, promotable=False))
         save_json(os.path.join(DATA, 'backtests', f'{jid}.json'), dict(res, lab=True))
         job.update(status='done', result=res, progress=1.0)
     except LAB.Cancelled:
@@ -717,6 +810,45 @@ class App:
                     core8=CORE8, top40=TOP40, tradable=sorted(e.rules) if e.rules else [], manual_max_risk=MANUAL_MAX_RISK * 100,
                     risk_rule_defaults=RISK_RULE_DEFAULTS, grid_defaults=GRID.clean_cfg({}), gov_mult_max=GOV_MULT_MAX)
 
+    def preflight(self):
+        """BT02: exchange-filter preflight of every profile (and the current slots) at the current capital, through the
+        same feasibility functions the engine's entry gate and the backtester use. Prices / ATR: the engine's cached closed
+        candles when it has them, else the candle files shipped with the app (data/, data1h/) - the result says which."""
+        e = self.engine
+        snap, st, detail = exchange_rules_now(e)
+        rules = F.snapshot_rules(snap) or {}
+        try: capital = float(e.capital_info()['capital'])
+        except Exception: capital = float(e.S.get('CAPITAL_CAP') or 0)
+        if capital <= 0: capital = float(e.S.get('CAPITAL_CAP') or 500)
+        uni = [s for s in (e.S.get('UNIVERSE') or TOP40)]
+        sets = {k: v['sleeves'] for k, v in PRESETS.items()}
+        sets['__current'] = e.S.get('SLEEVES') or []
+        slots_by = {}
+        for k, sl in sets.items():
+            out = []
+            for x in sl:
+                if not x.get('enabled', True): continue
+                sy = x.get('symbols', 'all')
+                sy = CORE8 if sy == 'core8' else uni if sy == 'all' else list(sy)
+                out.append(dict(id=x.get('id'), key=x['key'], share=float(x['share']), risk=float(x['risk']), tf=x.get('tf') or '4h',
+                                symbols=list(sy), mgmt=S.merge_mgmt(x['key'], x.get('mgmt')),
+                                sides=x.get('sides') or (S.STRATEGIES.get(x['key']) or {}).get('sides') or 'both'))
+            slots_by[k] = out
+        need = {(s_, x['tf']) for v in slots_by.values() for x in v for s_ in x['symbols']}
+        market, asof = preflight_market(e, need)
+        lev = float(e.S.get('MAX_LEVERAGE') or 10)
+        res = {k: F.preflight(v, capital, market, rules, st, detail, lev) for k, v in slots_by.items()}
+        # planning estimate (typical volatility): the same check with the 180-candle median ATR - never the headline status
+        typical = {k: dict(v, atr=v['atr_median']) for k, v in market.items()}
+        for k, v in slots_by.items():
+            p = F.preflight(v, capital, typical, rules, st, detail, lev)
+            res[k]['planning'] = dict(basis='median ATR of the last 180 closed candles', status=p['status'], estimate=p['estimate'],
+                                      plan_executable_pct=p['plan_executable_pct'], min_capital_all=p['min_capital_all'])
+        return dict(capital=capital, rules_state=st, rules_detail=detail, environment=(snap or {}).get('environment'),
+                    rules_source=(snap or {}).get('source'), rules_fetched_at=(snap or {}).get('fetched_at'),
+                    market_basis='latest closed candle (price and ATR), as the engine sizes the next signal',
+                    market_asof=asof, presets=res)
+
     def missed_view(self):
         e = self.engine; marks = e.marks or {}
         out = []
@@ -860,6 +992,7 @@ class H(BaseHTTPRequestHandler):
                 return self._send(404, b'', 'image/png', 'private, max-age=600', ext)
             if p == '/api/status': return self._json(APP.snapshot())
             if p == '/api/meta': return self._json(APP.meta())
+            if p == '/api/preflight': return self._json(APP.preflight())
             if p == '/api/audit_summary':     # T05a: read-only trade-audit summary (cached; no engine lock held)
                 e = APP.engine
                 return self._json(e.audit_summary() if hasattr(e, 'audit_summary') else dict(error='no audit'))
@@ -1245,6 +1378,7 @@ def handle(path, b):
             log.info('quit from panel (exchange stops stay active)')
             e.notify('⏹ ZackBot was closed from the app. Exchange stops stay active, but nothing manages trades until it runs again.')
             with e.lock: e.save_state()
+            release_owner()                                  # AUD-00: the data folder is free for the next start
             threading.Timer(1.0, lambda: os._exit(0)).start(); return 'bye'
     raise ValueError('unknown request')
 
@@ -1284,6 +1418,26 @@ def message_box(text):
         except Exception: pass
 
 
+OWNER = None        # AUD-00: this process's data-folder ownership token (instance.acquire)
+
+
+def release_owner():
+    """AUD-00: give the data folder back on a normal quit (os._exit skips atexit); a crash is reclaimed by the next start."""
+    if OWNER: INST.release(DATA, OWNER)
+
+
+def show_existing_instance(tries=10):
+    """The port or the data folder belongs to another process: open the running ZackBot if it proves it is ours (it may
+    still be starting - a simultaneous launch lost the race by milliseconds - so retry for a few seconds), else say so."""
+    tok = None
+    for i in range(tries):
+        tok = existing_instance_token()
+        if tok: break
+        time.sleep(1)
+    if tok: open_window(tok)
+    else: message_box(f'ZackBot is already running, or port {PORT} is used by another program. Close it and start ZackBot again.')
+
+
 def existing_instance_token():
     """Port already taken: only open it if it is really ZackBot (it must accept the token we saved at its launch)."""
     try:
@@ -1311,9 +1465,9 @@ def selftest(path):
     try:
         import zoneinfo
         zoneinfo.ZoneInfo('Africa/Cairo')
-        for f in ('panel.html', 'research'):
+        for f in ('panel.html', 'research', os.path.join('data', 'exchange_rules_testnet.json')):
             if not os.path.exists(os.path.join(BUNDLE, f)): raise RuntimeError(f'{f} missing from the bundle')
-        import lab, grid, telegram_ctl, ai_filter    # noqa: F401  (every module the app loads lazily)
+        import lab, grid, telegram_ctl, ai_filter, instance    # noqa: F401  (every module the app loads lazily)
         if not PRESETS or not S.STRATEGIES: raise RuntimeError('presets/strategies missing')
         res['ok'] = True
     except Exception as e:
@@ -1329,15 +1483,20 @@ def main():
     if '--simulate-failed-launch' in sys.argv:   # installer rollback drill ONLY (build_app.bat drill): fail before anything
         log.warning('simulate-failed-launch: exiting before the panel/engine start (installer rollback drill)')   # starts:
         sys.exit(3)                              # no port, no session.json, no engine, no exchange call
-    if port_in_use():                       # already running -> just show it (after verifying it is ours)
-        tok = existing_instance_token()
-        if tok: open_window(tok)
-        else: message_box(f'Port {PORT} is used by another program, not ZackBot. Close that program and start ZackBot again.')
-        return
+    # AUD-00 (C18): win BOTH gates before anything touches shared state (session.json, App(), Engine(), Telegram, exchange):
+    # 1) the control-panel port, bound exclusively (Windows SO_EXCLUSIVEADDRUSE; the old check-then-bind with
+    #    SO_REUSEADDR let a second Windows process bind the same port); 2) the data-folder ownership lock.
+    srv = INST.bind_exclusive(('127.0.0.1', PORT), H)
+    if srv is None:
+        show_existing_instance(); return          # another ZackBot (or another program) has the port: nothing touched
+    global OWNER
+    OWNER = INST.acquire(DATA)
+    if not OWNER:
+        srv.server_close(); show_existing_instance(); return    # another live ZackBot owns this data folder
+    atexit.register(INST.release, DATA, OWNER)
     save_json(SESSION_F, dict(token=TOKEN, port=PORT, pid=os.getpid(), started=datetime.now(timezone.utc).isoformat(timespec='seconds')))
     threading.Thread(target=job_worker, daemon=True).start()
     APP = App()
-    srv = ThreadingHTTPServer(('127.0.0.1', PORT), H)
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     threading.Thread(target=APP.loop, daemon=True).start()
     log.info(f'control panel at http://127.0.0.1:{PORT} (opens from the ZackBot shortcut)')
@@ -1354,6 +1513,7 @@ def main():
             else:
                 log.info('window closed - quitting (exchange stops stay active)')
                 with APP.engine.lock: APP.engine.save_state()
+                release_owner()
                 os._exit(0)
 
 

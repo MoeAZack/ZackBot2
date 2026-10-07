@@ -366,6 +366,8 @@ A high score **never** changes settings automatically.
 | T05 | Fill telemetry (maker/market expected vs actual) | Observe | ✅ Done 2026-10-06 (PR #6 merged in protected master as `566ed56`) |
 | T03c | Automatic leverage handling after a refusal: allow above-cap coin settings only under cross margin after a fresh account-wide exposure, stop and bracket proof; fail closed on every unknown | E-class (order path): adversarial tests + strict replays + owner-approved canary | **Accepted** at `ee564c1`; exact-head CI and the corrected two-refusal SOL testnet canary passed; build `20261006-233104` installed and cleanup healthy |
 | T05a | Causal trade audit: MFE/MAE, peak profit and give-back, hold/close reasons, earlier-exit counterfactuals, runner/side/regime attribution | Observe/research | ⬜ Planned in PR #8; follows T05 |
+| BT01 | Causal intrabar OHLC path shared by engine replay and backtest | Backtest realism | ✅ Done 2026-10-07 (PR #16 merged as `ef6abc0`) |
+| BT02 | Binance step/minimum feasibility, full-plan leverage simulation and truthful capital guidance | Backtest/UI realism | ✅ Accepted 2026-10-07 at `e224a8b`; protected merge pending. Follow-ups: hedge partial-close runtime proof, small API/docs cleanup, and the pre-existing T02 calendar-day harness repair |
 | T06 | Shared-core contracts, reason codes and `AccountContext` spec | No behaviour change | ⬜ |
 | T07 | Extract costs, rounding and sizing | Refactor, zero replay change | ⬜ |
 | T08 | Extract management levels | Refactor | ⬜ |

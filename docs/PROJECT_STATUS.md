@@ -1,6 +1,6 @@
 # ZackBot owner overview
 
-*Last refreshed: 2026-10-07 08:03 Cairo (Africa/Cairo) by Codex, on branch `t05a-causal-audit`. This is the plain-language owner view. `ROADMAP.md` and `docs/reviews/` hold the detailed scope and evidence.*
+*Last refreshed: 2026-10-07 15:05 Cairo (Africa/Cairo) by Codex, on branch `bt02-exchange-filters`. This is the plain-language owner view. `ROADMAP.md` and `docs/reviews/` hold the detailed scope and evidence.*
 
 ## Where we are now
 
@@ -9,17 +9,21 @@
 | Environment | **Binance Futures testnet only.** Mainnet stays impossible until the roadmap and the final release audit are complete and you approve it. |
 | Is ZackBot running? | Yes, on your PC (PAPER/testnet), build `20261007-075404`: engine and exchange OK; four positions, all protected; zero open incidents or unprotected lots. |
 | Installed application | **T05a installed and runtime-proven.** The causal trade-audit endpoint/card and bounded audit file are active without changing trading decisions. |
-| Latest accepted commit | T05a reviewed head `d6f6a4d`; protected merge is the current final gate. |
-| Current ticket | **T05a: causal trade audit** |
-| Stage | **T05a accepted; acceptance documentation and protected merge are being completed.** |
-| What Claude is doing | Preparing FBL-BT01, the critical DCA intrabar-causality fix, without overlapping T05a. |
-| What Codex is reviewing | T05a acceptance/merge; next independent gate is FBL-BT01. |
+| Latest accepted commit | BT02 implementation `e224a8b`; acceptance/status documentation is being added before protected merge. |
+| Current ticket | **BT02: exchange-filter and full-plan feasibility** |
+| Stage | **BT02 accepted after three review rounds; protected merge pending.** |
+| What Claude is doing | Fixing the separate one-step quantity/orphan safety ticket on PR #20. |
+| What Codex is reviewing | BT02 acceptance/merge, then PR #20 and the remaining runtime gates. |
 | Your action | **None.** |
 
 ## Latest test results
 
 | Where | Result |
 |---|---|
+| BT02 focused Windows review | **52/52 passed** at `e224a8b`. |
+| BT02 GitHub | Fast and CodeQL gates passed on the implementation head. |
+| BT02 full suite reported by Claude | **875 passed**, 0 failed. |
+| BT02 quick UI review | Strategies tab and all viewports rendered cleanly. One unrelated Trades calendar click failed (162/163), identically on `origin/master`; tracked as a T02 harness repair. |
 | T05a exact-head GitHub | Fast, CodeQL, tests, both strict replay/UI slices and aggregate full **PASS** at `d6f6a4d`. |
 | T05a Windows review | Corrected focused set **152/152**; broader audit/safety/fills/outage/leverage set **503/503**. |
 | T05a runtime | Build `20261007-075404` installed; PAPER engine/exchange OK, four existing lots protected, zero unprotected/incidents; audit API/card/file active. |
@@ -143,6 +147,7 @@ Automated test-suite results use a fake exchange. The final T03a gate used the r
 | Fixed and accepted (T04d) | Medium | Feature heads started duplicate push and PR fast runs | Feature branches now have one PR fast producer; push-fast is master-only. |
 | Fixed and accepted (T04d) | High | Fresh Windows checkouts changed hashed dataset bytes to CRLF | Manifest datasets and manifest JSON are pinned to LF and tested in a fresh autocrlf-enabled clone. |
 | Fixed and accepted (T04d) | High gate / low runtime exposure | CodeQL flagged exponential backtracking in `tests/test_ci.py` | The regex was removed in favor of deterministic line parsing; final CodeQL and protected merge are green. |
+| Fixed; accepted for merge | High | A one-step exchange position could be hidden by whole-step reconciliation tolerance, leaving a stopped-out lot open or a tradable orphan unreported | Reconciliation and leverage preflight now tolerate only sub-step float noise; exact one-step stop-outs and untracked positions are regression tested in PR #25. |
 | Fixed; T03c GitHub/runtime gates pending | High | Exceptional maker entry could fill later using stale account approval | Above-cap exception entries now go immediately at market after the fresh proof; they never rest on the book. |
 | Fixed; T03c GitHub/runtime gates pending | High | A non-stop conditional order could satisfy the old stop-tag proof | Exact protective order type, trigger basis, status, side, quantity and trigger are now required. |
 | Fixed; T03c GitHub/runtime gates pending | High | Cached leverage could hide an external change above the cap | Every cache reuse is verified read-only against Binance. |
@@ -182,8 +187,9 @@ Every ticket now ends with a **clean-up pass on the files it touched**: remove d
 | Accepted | **T03c — automatic leverage handling** | Exact-head CI, install, exceptional-path canary, restart adoption and cleanup passed |
 | Accepted | **T05b — exchange-outage handling** | Exact-head CI, Windows tests, guarded install and same-process startup-outage recovery passed |
 | Accepted | **T05a — causal trade audit** | Exact-head CI, Windows review, guarded install and runtime measurement checks passed |
-| Current critical fix | **FBL-BT01 — DCA intrabar causality** | Correct the backtest path before trusting DCA or preset results |
-| Next realism fix | **BT02 — Binance order-filter feasibility** | Make advertised capital/presets executable under step/minimum rules |
+| Accepted | **FBL-BT01 — DCA intrabar causality** | PR #16 merged; one causal OHLC path now drives DCA/pyramid/stop/target order |
+| Accepted | **BT02 — Binance order-filter feasibility** | PR #18 merged as master `3fa11e5`; full-plan exchange minimum and cumulative leverage truthfulness accepted |
+| Accepted; merge pending | **QTY tolerance / orphan boundary** | PR #25 fixes missed few-step stop-outs and reports a tradable orphan of exactly one exchange step |
 | Copy product | **COPY100/COPY200** | $500 lead with $100–$200 follower targets and a UI feasibility toggle after BT01/BT02 |
 | Core | **T06–T09 — shared core** | One trading logic for live and backtest |
 | Strategy research | **T09a** | Range, short and scalp families; Quick Bank TP/runner/micro-DCA components; research/shadow first |
