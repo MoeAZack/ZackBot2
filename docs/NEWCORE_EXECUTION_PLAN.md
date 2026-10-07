@@ -1,6 +1,6 @@
 # ZackBot NEWCORE execution plan
 
-**Control plan v2 — 08 Oct 2026, Africa/Cairo**
+**Control plan v3 — 08 Oct 2026, Africa/Cairo**
 
 This is the shared execution document for the owner, Claude Code, Cowork and Codex. It converts the historical audit,
 the product roadmap and the replacement-first decision into one ordered build plan.
@@ -63,7 +63,7 @@ positions are disposable. Mainnet credentials, funds and deployment remain a sep
 | Role | Primary responsibility | Must not do |
 |---|---|---|
 | **Claude Code — implementation owner** | Product code, migrations, focused regression tests and touched-file cleanup; publishes exact-SHA handoffs. | Self-accept, silently broaden a ticket, or preserve legacy code without a named contract. |
-| **Cowork — validation/evidence owner** | Independent adversarial/runtime testing; Windows, UI, testnet and fault evidence; backtest/research runs; scouting briefs. | Change the implementation under review or claim an environment it did not test. |
+| **Cowork — research/adversarial-evidence owner** | Independent Linux/sandbox validation; strategy research; backtest-design review; frozen-data runs that fit its limits; assumption, leakage and overfit attacks; scouting briefs. | Change the implementation under review, claim Windows/network/testnet evidence it did not run, or report a timed-out test as passed. |
 | **Codex — integration/roadmap owner** | Ticket boundaries, reproduction, architecture review, severity, ordering, exact-head acceptance, protected merge and owner summary. | Build a competing implementation while Claude owns the ticket or merge without independent evidence. |
 | **Owner — product authority** | Product priorities, capital/risk intent and eventual mainnet/release decision. | Routine copy/paste, test approvals or agent coordination. |
 
@@ -89,7 +89,7 @@ Three lanes should remain active whenever useful work exists:
 | Lane | Owner | Work that can run concurrently |
 |---|---|---|
 | **Build** | Claude Code | The active product ticket. Claude may use independent Code subagents/worktrees for non-overlapping modules/tests, with one integration owner and no parallel edits to shared state. |
-| **Evidence** | Cowork | Black-box tests for the active head; prepare the next ticket's adversarial harness; Windows/testnet runs; frozen-data backtests; scouting. Never edit the implementation being reviewed. |
+| **Evidence** | Cowork | Black-box Linux/sandbox tests for the active head; prepare the next ticket's adversarial harness; frozen-data backtests within its runtime limit; strategy research and scouting. Never edit the implementation being reviewed. Windows, native UI, installer and connected testnet evidence comes from Claude Code/Codex Windows runs or an available owner-PC link. |
 | **Integration** | Codex | Review the current exact head; reproduce risks; draft the next acceptance contract/ADR; maintain status, dependencies and merge gates. Never build a competing product patch. |
 
 Acceleration controls:
@@ -203,6 +203,25 @@ simulated accounts without invoking the legacy engine.
 ### Wave D — engine strategies, regimes and risk controls
 
 This is the primary product wave. Optional application features remain behind it.
+
+#### Strategy research starts in parallel before Wave D implementation
+
+`STRAT-00` is a research-only lane and may start while Waves A-C build the trustworthy engine. It cannot promote a
+strategy or change runtime behavior. Its purpose is to make the later implementation faster and harder to fool:
+
+| Owner | Starts now | Output |
+|---|---|---|
+| **Codex** | Define the strategy taxonomy, economic hypotheses, risk contracts, comparison metrics, rejection rules and promotion gates. Review trading merit and integrate the final experiment order. | Versioned strategy/evidence matrix and acceptance contract. |
+| **Cowork** | Independently inventory current evidence; research candidate long/short, trend/range, breakout/breakdown and short-horizon families; attack leakage, selection bias, costs, fills, funding and regime assumptions; review proposed backtests. | Source/evidence ledger, contradiction report, falsifiable experiments and adversarial backtest checklist. Unknown/timed-out work is explicitly unverified. |
+| **Claude Code** | Keep the current safety/core implementation line moving. Once DATA-01/RES-01 contracts are accepted, implement the data adapters, shared research harness and one bounded candidate at a time. | Reproducible code and exact-SHA result artifacts; never self-accepts trading merit. |
+
+Research runs are split into small deterministic shards when Cowork's time limit is lower than the full study. Claude
+Code/Codex run long Windows jobs and native UI/testnet checks. All agents compare the same dataset manifest, configuration,
+seed, cost model and output schema; results from different environments are complementary, not silently pooled.
+
+Every candidate begins with a written mechanism and a stop condition. It is rejected or parked if it cannot survive
+after-cost baselines, causal truncation, anchored walk-forward testing, untouched holdout, parameter-neighbour checks,
+symbol/year concentration checks and gap/funding/slippage stress. More strategies are not automatically better.
 
 | Order | Ticket | Deliverable | Promotion gate |
 |---:|---|---|---|

@@ -5,8 +5,10 @@
 > runs evidence/research, and Codex owns scope, review, ordering and protected merge. Active work is AUD-05 durable state
 > and restart truth (PR #30). The primary milestone is a mainnet-candidate engine with long/short strategy coverage,
 > bounded bias/risk/drawdown controls and crypto/gold/TradFi venue readiness; optional product features follow it.
+> Cowork's evidence scope is Linux/sandbox research and adversarial validation; Windows, native UI, installer and connected
+> testnet claims come from Claude Code/Codex Windows runs. STRAT-00 research can run beside core work without changing runtime.
 
-*Last refreshed: 2026-10-07 15:05 Cairo (Africa/Cairo) by Codex, on branch `bt02-exchange-filters`. This is the plain-language owner view. `ROADMAP.md` and `docs/reviews/` hold the detailed scope and evidence.*
+*Last refreshed: 2026-10-08 01:12 Cairo (Africa/Cairo) by Codex, on branch `roadmap/newcore-execution-plan`. This is the plain-language owner view. `ROADMAP.md` and `docs/reviews/` hold the detailed scope and evidence.*
 
 ## Where we are now
 
