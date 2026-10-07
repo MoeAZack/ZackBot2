@@ -131,12 +131,16 @@ def test_reads_are_budgeted_per_symbol_about_once_a_minute():
     assert E.Engine._stopv_period('BTCUSDT') != E.Engine._stopv_period('ETHUSDT')
 
 
-def test_candle_close_re_verifies_unless_read_in_the_last_ten_seconds():
-    e, clk, _ = mk(); lot_open(e)
+def test_candle_close_re_verifies_only_symbols_not_read_within_their_routine_period():
+    """Review (c): a candle close (often several timeframes at once) must not burst a read of every held symbol; it
+    re-reads only coins whose last read is older than their routine period (i.e. the routine pass fell behind)."""
+    e, clk, _ = mk(); lot_open(e); lot_open(e, 'ETHUSDT')
     e.compute_signals = lambda tf, syms, extra=(): ({}, {})
-    tick(e, clk, 4.0)                                                       # the routine pass read it (and set next due)
-    c0 = n_tags(e); clk[0] += 5; e.cycle('4h'); assert n_tags(e) == c0     # read 5 s ago: skipped
-    clk[0] += 6; e.cycle('4h'); assert n_tags(e) == c0 + 1                 # 11 s: the candle close re-verifies
+    tick(e, clk, 4.0)                                                       # the routine pass read both coins
+    c0 = n_tags(e); clk[0] += 11; e.cycle('4h'); e.cycle('1h'); assert n_tags(e) == c0   # read 11 s ago: no burst
+    clk[0] += 30; e.cycle('4h'); assert n_tags(e) == c0                     # 41 s: still within the routine period
+    clk[0] += E.STOP_VERIFY_S * 1.25; e.cycle('4h'); assert n_tags(e) == c0 + 2   # older than the period: one read each
+    e.cycle('1h'); assert n_tags(e) == c0 + 2                               # a second timeframe closing at once: nothing
 
 
 def test_a_stop_order_action_is_re_verified_on_the_next_pass():
@@ -355,7 +359,7 @@ def test_real_client_rows_and_status_lookups_for_classic_and_algo(monkeypatch):
     rows = c.open_stop_orders('BTCUSDT')
     assert [r['tag'] for r in rows] == ['o:11', 'o:12', 'a:7'] and c.open_stop_tags('BTCUSDT') == {'o:11', 'o:12', 'a:7'}
     assert rows[0] == dict(tag='o:11', type='STOP_MARKET', position_side='LONG', side='SELL', qty=0.5, stop_price=95.0,
-                           client_id='zbA', status='NEW')
+                           client_id='zbA', status='NEW', close_position=False)
     assert rows[1]['client_id'] is None and rows[1]['qty'] is None
     assert rows[2]['client_id'] == 'zaB' and rows[2]['stop_price'] == 60.0 and rows[2]['position_side'] == 'SHORT'
     assert c.stop_status('BTCUSDT', 'o:11') == 'CANCELED'
@@ -813,3 +817,145 @@ def test_a_failing_verifier_never_blocks_the_other_management_stages(monkeypatch
     tick(e, clk, 4.0)
     assert n_stops(e) == s0 + 1 and not l['stop_dirty']                      # the every-pass stop retry still ran
     assert e.health['last_manage_ok'] and e.health['manage_fail_streak'] == 0
+
+
+# ------------------------------------------------------------------ AUD-04 r1: review of 967c494 (F1-F4, a-c)
+def _owner_took_over(e, clk, l, qty=None):
+    """The owner replaces the bot's stop in the Binance app (foreign client id); the verifier ends in owner_check."""
+    tick(e, clk, 4.0)
+    s_, ps, q, p = e.trade.stops[l['stop_id']]
+    e.trade.ext_cancel(l['stop_id']); mine = e.trade.add_stop(s_, ps, q if qty is None else qty, p * 1.01, 'web_abc123')
+    tick(e, clk, 8.0, n=10)
+    assert l['stop_miss_why'] == 'owner_check' and set(e.trade.stops) == {mine}
+    return mine
+
+
+def test_f1_tp1_during_owner_check_places_no_second_stop_and_keeps_the_state():
+    e, clk, _ = mk(); sl = dict(SL, mgmt={'tp1_r': 1.0, 'tp1_frac': 0.5})
+    assert e.open_lot(sl, 'BTCUSDT', 'LONG', dict(SG, close=100.0), None, e.equity())
+    k = next(iter(e.state['lots'])); l = e.state['lots'][k]
+    mine = _owner_took_over(e, clk, l); s0 = n_stops(e)
+    e.trade.mark['BTCUSDT'] = 120.0; tick(e, clk, 2.0)                    # TP1 fires: half closed at market
+    assert l['tp1'] and l['qty'] == pytest.approx(0.5) and e.trade.pos[('BTCUSDT', 'LONG')] == pytest.approx(0.5)
+    assert set(e.trade.stops) == {mine} and n_stops(e) == s0                # no bot stop next to the owner's
+    assert l['stop_miss_why'] == 'owner_check' and l['stop_dirty'] and l['stop_miss'] > 0   # never silently cleared
+    assert e.health['incidents'][f'stop-missing|{k}']['open']
+    tick(e, clk, 8.0, n=10); assert set(e.trade.stops) == {mine} and l['stop_miss_why'] == 'owner_check'
+    e.trade.ext_cancel(mine)                                                # owner removes his stop: verified -> restored
+    tick(e, clk, E.STOP_RECHECK_S + 1)
+    assert len(e.trade.stops) == 1 and l['stop_id'] in e.trade.stops and e.trade.stops[l['stop_id']][2] == pytest.approx(0.5)
+    assert not l.get('stop_miss') and not l['stop_dirty'] and 'stop_miss_why' not in l
+
+
+def test_f1_move_stop_during_owner_check_takes_over_and_leaves_exactly_one_stop():
+    e, clk, _ = mk(); k = lot_open(e); l = e.state['lots'][k]
+    mine = _owner_took_over(e, clk, l)
+    e.move_stop(k, 97.0)
+    assert list(e.trade.stops) == [l['stop_id']] and mine not in e.trade.stops and l['stop'] == 97.0
+    assert 'stop_miss_why' not in l and not l.get('stop_miss') and 'stop_foreign' not in l
+    tick(e, clk, E.STOP_ACTION_MIN_S + 1)
+    assert e.stop_view(l)['protected'] and not e.health['incidents'][f'stop-missing|{k}']['open']
+    assert e.entry_block(SL, 'BTCUSDT', 'SHORT') not in E.STOP_MISSING_BLOCKS.values()
+
+
+def test_f1_exits_still_work_during_owner_check():
+    e, clk, _ = mk(); k = lot_open(e); l = e.state['lots'][k]
+    _owner_took_over(e, clk, l)
+    e.close_lot(k, 'manual_close')
+    assert k not in e.state['lots'] and e.trade.pos[('BTCUSDT', 'LONG')] == 0
+
+
+def test_f2_a_grid_never_adds_while_a_stop_on_its_coin_is_missing():
+    import test_grid as TG
+    e, gm, _ = TG.mk()
+    with e.lock: gm.start('G1', 'BTCUSDT')
+    g = TG.grid_of(e); lines = sorted(c['a'] for c in g['cells'] if c['k'] == 'L')
+    TG.tick(e, gm, lines[-1] - 0.05)
+    L = TG.lot_of(e, 'LONG'); old = L['stop_id']; q1 = L['qty']
+    s_, ps, q, p = e.trade.stops.pop(old)                                   # the owner replaced the grid lot's stop
+    e.trade.n += 1; mine = f'o:{e.trade.n}'; e.trade.stops[mine] = (s_, ps, q, p * 0.99)
+    e.trade.open_stop_orders = lambda s, strict_algo=False, retry=None: [dict(
+        tag=t, type='STOP_MARKET', position_side=v[1], side='SELL', qty=v[2], stop_price=v[3],
+        client_id=('web_x' if t == mine else 'zb' + '0' * 22), status='NEW') for t, v in e.trade.stops.items() if v[0] == s]
+    e.trade.stop_status = lambda s, t, retry=None: 'CANCELED'
+    L['stop_placed_t'] = 0; e._stopv['BTCUSDT'] = 0
+    TG.tick(e, gm, lines[-1] - 0.05)
+    assert e.stop_missing_on('BTCUSDT') and not gm._can_add(g, 'LONG')
+    TG.tick(e, gm, lines[-2] - 0.05)                                        # next grid line down: no add
+    assert L['qty'] == q1 and set(e.trade.stops) == {mine}
+
+
+def test_f3_a_binance_app_position_stop_close_position_is_the_owners_stop():
+    e, clk, _ = mk(); k = lot_open(e); l = e.state['lots'][k]; tag = l['stop_id']
+    tick(e, clk, 4.0)
+    s_, ps, q, p = e.trade.stops[tag]
+    e.trade.ext_cancel(tag); mine = e.trade.add_stop(s_, ps, 0.0, p * 1.01, 'web_closepos')   # closePosition: origQty 0
+    tick(e, clk, 8.0, n=12)
+    assert set(e.trade.stops) == {mine} and e.stopv_stats['restored'] == 0 and l['stop_miss_why'] == 'owner_check'
+
+
+def test_f3_real_client_reports_close_position(monkeypatch):
+    clk = Clock(); _nosleep(monkeypatch, clk)
+    def answer(m, p, q):
+        if p == '/v1/openOrders': return Resp(200, [{'orderId': 5, 'type': 'STOP_MARKET', 'positionSide': 'LONG', 'origQty': '0',
+                                                     'stopPrice': '90', 'clientOrderId': 'web_x', 'closePosition': True}])
+        return Resp(200, {'orders': [{'algoId': 6, 'orderType': 'STOP_MARKET', 'positionSide': 'LONG', 'quantity': '0',
+                                      'triggerPrice': '90', 'clientAlgoId': 'web_y', 'closePosition': 'true'}]})
+    c, _ = client(answer, clk)
+    assert [r['close_position'] for r in c.open_stop_orders('BTCUSDT')] == [True, True]
+
+
+def test_f4_a_never_executed_unconfirmed_entry_does_not_defer_a_sibling_restore():
+    from test_safety import ambiguous_once
+    e, clk, _ = mk(); ka = lot_open(e); la = e.state['lots'][ka]; a_stop = la['stop_id']
+    tick(e, clk, 4.0)
+    sl2 = dict(SL, id='T2'); e.S['SLEEVES'] = [SL, sl2]
+    ambiguous_once(e, 'open', fill=False)                                   # never reached the book
+    assert not e.open_lot(sl2, 'BTCUSDT', 'LONG', dict(SG, close=100.0), None, e.equity())
+    e.trade.get_order = lambda s, c: (_ for _ in ()).throw(RuntimeError('lookup timeout'))   # record unreadable
+    e.trade.ext_cancel(a_stop); tick(e, clk, E.STOP_VERIFY_S * 1.25)
+    assert e.state['unconfirmed_entries'] and e.stopv_stats['deferred'] == 0
+    assert la['stop_id'] != a_stop and list(e.trade.stops) == [la['stop_id']]   # restored at the first detection
+
+
+def test_f4_an_unfilled_resting_entry_does_not_defer_a_restore_but_its_fills_do():
+    e, clk, _ = mk(); ka = lot_open(e); la = e.state['lots'][ka]; a_stop = la['stop_id']
+    tick(e, clk, 4.0)
+    rk = 'ME|T2|BTCUSDT|LONG'
+    e.state['resting_entries'][rk] = dict(key=rk, sleeve='T2', symbol='BTCUSDT', side='LONG', qty=la['qty'], filled=0.0)
+    assert e._side_claims('BTCUSDT') == {}
+    e.state['resting_entries'][rk]['filled'] = 0.4
+    assert e._side_claims('BTCUSDT') == {'LONG': 0.4}
+    e.state['resting_entries'][rk]['filled'] = 0.0
+    e._maker_poll = lambda rk_, marks: False                                # the fake has no book: keep it resting
+    e.trade.ext_cancel(a_stop); tick(e, clk, E.STOP_VERIFY_S * 1.25)
+    assert e.stopv_stats['deferred'] == 0 and la['stop_id'] != a_stop and la['stop_id'] in e.trade.stops
+
+
+def test_f4_size_that_showed_up_is_claimed_even_when_the_provisional_stop_failed():
+    e, clk, _ = mk(); ka = lot_open(e); la = e.state['lots'][ka]; a_stop = la['stop_id']
+    tick(e, clk, 4.0)
+    e.trade.fail.add('stop')                                                # provisional stop cannot be placed
+    uk, u = _lost_second_entry(e); tick(e, clk, 4.0)
+    assert not u.get('prov') and u['seen_qty'] == pytest.approx(la['qty'])
+    e.trade.fail.discard('stop'); s0 = n_stops(e)
+    e.trade.trigger(a_stop, 'EXPIRED'); e.trade.fail.add('stop')            # keep the provisional from being placed now
+    clk[0] += E.STOP_VERIFY_S * 1.25; e.verify_stops()
+    assert e.stopv_stats['deferred'] == 1 and e.stopv_stats['restored'] == 0
+
+
+def test_a_crash_of_the_verifier_is_one_keyed_incident_closed_when_it_runs_again(monkeypatch):
+    e, clk, _ = mk(); lot_open(e)
+    real = e.verify_stops
+    monkeypatch.setattr(e, 'verify_stops', lambda *a, **k: (_ for _ in ()).throw(RuntimeError('boom')))
+    tick(e, clk, 8.0, n=3)
+    inc = e.health['incidents']['stop-verify']; assert inc['open'] and inc['count'] == 3 and 'boom' in inc['msg']
+    e.compute_signals = lambda tf, syms, extra=(): ({}, {}); e.cycle('4h')    # the candle-close stage reports it too
+    assert e.health['incidents']['stop-verify']['count'] == 4
+    monkeypatch.setattr(e, 'verify_stops', real); tick(e, clk, 8.0)
+    assert not e.health['incidents']['stop-verify']['open']
+
+
+def test_the_owner_check_text_says_how_to_clear_it():
+    for t in (E.STOP_MISSING_BLOCKS['owner_check'], E.STOP_MISSING_NOTES['owner_check']):
+        assert 'remove the extra stop on Binance' in t and 'Move stop' in t
