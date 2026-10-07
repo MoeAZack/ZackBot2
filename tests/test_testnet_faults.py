@@ -175,5 +175,6 @@ def test_engine_canary_window_blocks_entries_and_adds_changes_no_lot_then_recove
     new = [x[1] for x in list(e.health['errors'])[n0:]]
     assert sum('answering again' in l for l in new) == 1, new               # exactly one recovery line
     assert [x for x in calls[c0:] if x[0] == 'GET' and x[1] == '/v2/positionRisk']           # positions re-read
-    assert {x: dict(v) for x, v in e.state['lots'].items()} == lots0 and _orders(calls, c0) == []
+    nots = lambda d: {x: {f: w for f, w in v.items() if f != 'stop_confirmed_t'} for x, v in d.items()}   # AUD-04: re-read refreshes it
+    assert nots(e.state['lots']) == nots(lots0) and _orders(calls, c0) == []
     assert e.entry_block(SL, 'ETHUSDT', 'LONG') != 'Binance outage - no new entries until it answers again'

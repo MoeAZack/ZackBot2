@@ -55,6 +55,41 @@ dataset manifest hash, dependency versions, pass/fail/skip counts, replay metric
 - `test_app_ui.py`: headless browser harness on its own copy of the app (free port, temporary data folder, fake exchange, no
   internet). On Windows `run_ui_baseline.bat` sets up Playwright/Chromium in `%LOCALAPPDATA%\ZackBot\uienv` / `ms-playwright`.
 
+## Market data collector (public data, no API key, never trades)
+Binance serves only the **last ~30 days** of open interest, long/short ratios and taker buy/sell ratio, so they are collected
+continuously, together with funding-rate history, funding intervals, mark-price klines (1h, 4h; full history) and
+`exchangeInfo` snapshots. One implementation (`market_data.py`), two ways to run it:
+
+- **Inside the app** (`market_collector.py`): a background thread, first run ~3 min after start, then every ~4 h (jittered).
+  It uses its OWN keyless public MAINNET client (separate session, rate-limit and failure state) - never the engine's data
+  client, so a collector 429/418/5xx can never degrade trading reads. It only reads the engine's exchange circuit (pauses
+  while it is not healthy), never takes the engine lock, never touches orders/positions/state and writes only to
+  `%LOCALAPPDATA%\ZackBot\market_data`. Status: `/api/status` -> `health.market_collector` (last run, rows added, errors,
+  request_health). Off switch: setting `MARKET_COLLECTOR` (default on).
+- **Standalone** (runs even when ZackBot is closed): `tools\collect_market_data.bat` (= `python tools/collect_market_data.py`).
+
+| Command | What |
+|---|---|
+| `tools\collect_market_data.bat --once` | back-fill + append once (first run takes ~20-40 min for 40 coins; later runs ~1-2 min) |
+| `tools\collect_market_data.bat --loop --every 4h` | keep running in a console window |
+| `tools\collect_market_data.bat --once --symbols BTCUSDT,ETHUSDT --out D:\zb_market` | other coins / folder |
+| `tools\collect_market_data.bat --testnet` | TESTNET `exchangeInfo` snapshot (BT02); also builds `data\exchange_rules_testnet.json` when `exchange_rules.py` is in the checkout |
+
+Default coins: the app's `UNIVERSE` (`%LOCALAPPDATA%\ZackBot\settings.json`), else `engine.TOP40`. Output: the app's own
+folder `%LOCALAPPDATA%\ZackBot\market_data` (shared with the in-app collector and its lock; outside the repo and the
+installed source, so an upgrade can never delete it; `--out` overrides): `<dataset>\<SYMBOL>_<period>.csv`, `exchange_info\`, `funding_info\ALL.csv`, `manifest.json` (rows,
+first/last time, last run, source), `collector.log`. Re-running is safe (rows are de-duplicated by timestamp; files are
+replaced atomically). Rate limits: paced under half the IP weight budget; HTTP 429 backs off with Retry-After; HTTP 418
+(IP ban) stops at once and nothing is sent until the ban ends (`ban.json`). Exit code 0 ok, 1 errors, 3 stopped/locked.
+
+Every 4 hours with Windows Task Scheduler (from the repo folder, e.g. `C:\Dev\ZackBot2`):
+
+    schtasks /create /tn "ZackBot market data" /sc hourly /mo 4 /st 00:05 /f /tr "\"C:\Dev\ZackBot2\tools\collect_market_data.bat\" --once"
+
+Check: `schtasks /query /tn "ZackBot market data"`; run now: `schtasks /run /tn "ZackBot market data"`; remove:
+`schtasks /delete /tn "ZackBot market data" /f`. The standalone tool and the app thread use different folders; if both are
+pointed at the same folder a lock file (`.collector.lock`) keeps them from writing at the same time.
+
 ## Reproduce the research
 Candle data: `data/` (40 coins 4h, 2 years), `data1h/` (core 8 1h, 6 months), `data_long/` (core 8: 4h 4.8 years, 1h 4.1 years).
 Checksums, row counts and date ranges: `DATA_MANIFEST.json`.

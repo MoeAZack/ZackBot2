@@ -370,10 +370,17 @@ class TelegramControl:
             out.append(dict(key=k, symbol=l['symbol'], side=l['side'], sleeve=l.get('sleeve'), qty=l.get('qty'), avg=l.get('avg'),
                             stop=l.get('stop'), mark=m, pnl=pnl, manual=l.get('manual'),
                             r=pnl / l['risk_usd'] if pnl is not None and l.get('risk_usd') else None,
-                            protected=bool(l.get('stop_id')) and not l.get('stop_dirty'),
+                            protected=self._protected(e, l),
                             risk_to_stop=sd * ((m or l['avg']) - l['stop']) * l['qty'], notional=(m or l['avg']) * l['qty'],
                             exit=self._exit(e, l)))
         return out
+
+    @staticmethod
+    def _protected(e, l):
+        """AUD-04: same rule as the panel - a recorded clean stop AND a fresh confirmation on Binance (fail closed)."""
+        if not hasattr(e, 'stop_view'): return bool(l.get('stop_id')) and not l.get('stop_dirty')
+        try: return bool(e.stop_view(l).get('protected'))
+        except Exception: return False
 
     @staticmethod
     def _exit(e, l):

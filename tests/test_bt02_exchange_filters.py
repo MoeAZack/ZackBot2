@@ -818,5 +818,49 @@ def test_check_legs_uses_the_engine_add_gate_formula():
     assert [x['code'] for x in F.check_legs(legs, _SOL['SOLUSDT'])] == ['ok', 'ok', 'leverage_plan']   # before _add_qty)
     legs[0]['cap'] = 1000.0                                                           # room under the cap: the minimum decides
     assert [x['code'] for x in F.check_legs(legs, _SOL['SOLUSDT'])] == ['ok', 'ok', 'below_min_notional']
-    src_gate = src[src.index("while lot['dca'] < len(lot['levels'])"):][:600]
+    src_gate = src[src.index("lot['dca'] < len(lot['levels'])"):][:600]
     assert src_gate.index('_add_gate(') < src_gate.index('_add_qty('), 'engine order: cap gate, then exchange minimum'
+
+
+# ---------------------------------------------------------------- AUD-02 / C25 (Codex option b): engine parity
+TP1_THEN_ADD = {12: (100.0, 101.5, 100.0, 101.5),    # tp1 (101) reached while the lot is 1 step: floors to 0, nothing done
+                13: (101.5, 102.5, 101.5, 102.5),    # pyramid add at 102 -> 2 steps
+                14: (102.5, 103.0, 102.5, 103.0),    # tp1 still open -> fires now for 1 step
+                15: (103.0, 103.0, 97.0, 97.0)}      # the rest stops out
+
+
+@pytest.mark.parametrize('side', ['long', 'short'])
+def test_backtest_zero_partial_marks_nothing_done_and_fires_once_splittable(side):
+    """C25 (b), same rule as Engine._partial_zero: a tp1 that floored to 0 is NOT marked done, so after the pyramid add
+    made the position splittable it banks its half for real (the old rule marked tp1 done at 101 and never took it)."""
+    m = {'stop_atr': 2.0, 'tp1_r': 0.5, 'tp1_frac': 0.5, 'pyramid': {'n': 1, 'step_r': 1.0, 'frac': 1.0}}
+    hit, cv = _run_side(side, STEP(1.0), m, TP1_THEN_ADD, risk=0.002)                   # 1 SOL, +1 at the add
+    no_tp1 = dict(m); no_tp1.pop('tp1_r')
+    plain, _ = _run_side(side, STEP(1.0), no_tp1, TP1_THEN_ADD, risk=0.002)
+    assert len(hit) == len(plain) == 1 and hit.why[0] == plain.why[0] == 'stop'
+    assert hit.pnl[0] - plain.pnl[0] == pytest.approx(3.0, abs=0.1)   # 1 SOL banked at the tp1 level 101 instead of the 98 stop
+    assert cv.attrs['feasibility']['zero_partials'] == {'tp1': 1}
+
+
+@pytest.mark.parametrize('side', ['long', 'short'])
+def test_backtest_zero_partial_on_the_first_level_leaves_the_trade_as_if_untouched(side):
+    m = {'stop_atr': 2.0, 'tp1_r': 1.0, 'tp1_frac': 0.5}
+    hit, cv = _run_side(side, STEP(1.0), m, TP1_THEN_STOP, risk=0.002)
+    assert cv.attrs['feasibility']['zero_partials'] == {'tp1': 1}, 'counted once per position, not per candle/leg'
+
+
+def test_zero_partial_rule_matches_the_engine_through_replay():
+    """C25 (b) engine vs backtest on the same candles (step 1): 1-step lots reach tp1 (half floors to 0, nothing done),
+    then a pyramid add makes them splittable and tp1 fires for real - AFTER the add, in both. Every trade matches.
+    Under the old rule both sides marked tp1 done at the first touch and no take_profit_1 fill followed an add."""
+    import engine as E
+    from test_causality import synth, SYMS, T0
+    from replay import run_replay
+    sl = [E.sleeve('Z', 'ema_mom', 1.0, .02, 3, 'core8',
+                   mgmt={'tp1_r': 0.3, 'tp1_frac': 0.5, 'pyramid': {'n': 1, 'step_r': 0.6, 'frac': 1.0}})]
+    rules = {s: dict(step=1.0, min_qty=1.0, min_notional=5.0, tick=0.001) for s in SYMS}
+    r = run_replay(synth(n=520, seed=4), copy.deepcopy(sl), T0, steps=6, exchange_rules=rules)
+    m = r['metrics']
+    assert m['trades_engine'] >= 2 and m['trades_engine'] == m['trades_bt'] == m['matched'] and m['mismatches'] == 0, m
+    late = [h for h in r['history'] if [f[1] for f in h['fills']][:3] == ['entry', 'pyramid_add', 'take_profit_1']]
+    assert late and all(h['fills'][0][2] == 1.0 for h in late), 'a 1-step lot took tp1 only once the add made it splittable'

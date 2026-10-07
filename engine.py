@@ -5,7 +5,7 @@ trailing, pyramiding adds, DCA safety orders, basket take-profit) is checked eve
 Signals (entries/exits) are evaluated right after each candle close of the sleeve's timeframe.
 Hedge mode is used so longs and shorts on the same coin can coexist.
 """
-import atexit, csv, json, math, os, queue, re, time, logging, threading, copy, collections
+import atexit, contextlib, csv, inspect, json, math, os, queue, re, time, zlib, logging, threading, copy, collections
 from datetime import datetime, timezone, timedelta
 import numpy as np
 import pandas as pd
@@ -328,6 +328,7 @@ del _p
 GLOBAL_DEFAULTS = dict(COMPOUND=False, CAP_SINCE='', CAP_ADJ=[], CAP_CYCLES=[], TELEGRAM_ON=False, TELEGRAM_TOKEN='', TELEGRAM_CHAT='', MAX_LEVERAGE=10, DAILY_LOSS_HALT=0.08, PEAK_DD_FLATTEN=0.0, CAPITAL_CAP=500.0,
                        ENTRIES_PAUSED=False, AI_FILTER=False, PRESET='original',
                        UNIVERSE=list(TOP40), SYMBOLS_ON={}, RUN_IN_BACKGROUND=True,
+                       MARKET_COLLECTOR=True,         # observe-only public market-data collector (market_collector.py); owner: collect now
                        # v3.1 - all off by default (risk rules only WARN: they log, never block, until set to 'enforce')
                        ENTRY_ORDER='market', MAKER_FALLBACK=True, MAKER_REPRICE=3, MAKER_WAIT_S=40, FEE_MAKER=0.0002,
                        PUMP_GUARD={}, RISK_RULES={}, GOVERNOR=dict(mode='off', rules=[]))
@@ -390,12 +391,59 @@ def save_json(path, obj):
     os.replace(tmp, path)
 
 
+ORDER_FINAL = ('FILLED', 'EXPIRED', 'CANCELED', 'REJECTED', 'EXPIRED_IN_MATCH')   # AUD-03: executedQty is final in these
+
+
+class UnfilledOrder(RuntimeError):
+    """AUD-03: Binance answered with a FINAL status and nothing executed (e.g. a market order EXPIRED): nothing is booked,
+    the lot, its quantity and its stop are exactly as before. The management stage reports it (an add is cooled down)."""
+
+
+class PartialClose(RuntimeError):
+    """AUD-03: a full close executed only partly - the executed part is booked, the lot keeps the rest with its stop."""
+
+
+def _cid_of(tag):
+    return tag[2:] if isinstance(tag, str) and tag.startswith('c:') else None
+
+
+ADD_RETRY_S, ADD_RETRY_TRANSIENT_S = 300, 60
+UNCONF_DROP_S, UNCONF_ADOPT_S = 20, 300        # AUD-03b: an unconfirmed entry is dropped / adopted from the position after   # AUD-02: a failed add is retried after this (not every pass)
+JOURNAL_BACKLOG_MAX = 5000            # AUD-01: trades.csv rows kept in memory while the file cannot be written
 INCIDENT_IDLE_S = 900                 # T05b: a repeat after 15 quiet minutes starts a new entry
 INCIDENT_MAX = 200                    # T05b: incidents kept (oldest dropped first, closed before open)
 INCIDENT_LOCK = threading.RLock()     # T05b final: err()/resolve()/sweep run on the loop thread AND the HTTP thread
 MANAGE_ALERT_REARM_S = 900            # T05b final: the same management-failure alert is not re-sent within 15 min (flapping)
 OUTAGE_ADD = 'Binance outage - no adds until it answers again'
 MARK_FRESH_S = 120                    # T05b: a cached mark this recent may validate a manual stop move when Binance is down
+# AUD-04 (audit C04): routine exchange verification + repair of each lot's protective stop (budget: see verify_stops)
+STOP_VERIFY_S = 60.0                  # each held symbol's open orders are re-read at most about once a minute (+-20% jitter)
+STOP_VERIFY_JITTER = 0.2              # fixed per-coin phase: held coins drift apart instead of bursting in one pass
+STOP_SETTLE_S = 3.0                   # a stop order action is re-verified this soon after (next manage pass) ...
+STOP_ACTION_MIN_S = 30.0              # ... but never sooner than 30 s after that coin's last read (a stop trailing every pass)
+STOP_RECHECK_S = 10.0                 # after a miss or an unknown read the symbol is re-checked this soon
+STOP_LIST_GRACE_S = 10.0              # a stop placed this recently that is not listed yet is not a miss (delayed visibility)
+STOP_FRESH_S = 300.0                  # the panel shows 'protected' only with a confirmation newer than this
+STOP_ALGO_UNKNOWN_MISSES = 3          # an algo stop whose status cannot be read is restored only at this many misses AND only
+#                                       when that pass's open-order read was strict (classic + algo listing both read)
+STOP_GONE = ('CANCELED', 'EXPIRED', 'REJECTED', 'EXPIRED_IN_MATCH')         # the stop no longer exists and never closed
+STOP_FIRED = ('FILLED', 'PARTIALLY_FILLED', 'TRIGGERING', 'TRIGGERED', 'FINISHED')   # the stop fired: reconcile books it
+STOP_LIVE = ('NEW',)
+PROV_PENDING_S = 60          # AUD-04 r2: a provisional stop whose answer was lost: its status decides; unknown this long -> parked
+STOP_TYPES = ('STOP_MARKET', 'STOP')
+BOT_STOP_CID_RE = re.compile(r'z[ab][0-9a-f]{22}')   # exact new_cid('zb'|'za') shape of the bot's own stop client ids
+#   (classic / algo); any other client id (manual, web, other bots, malformed) is never adopted or cancelled
+STOP_MISS_ORDER = ('owner_check', 'restoring', 'checking')       # lot['stop_miss_why'] values, most severe first
+STOP_MISSING_BLOCKS = dict(
+    checking='protective stop not found on Binance for this coin - re-checking it; no new entries or adds until it is confirmed',
+    restoring='protective stop missing on Binance for this coin - restoring it; no new entries or adds until it is confirmed',
+    owner_check='the bot cannot confirm its own stop for this coin on Binance (another stop is there, or its stop cannot be '
+                'read) - remove the extra stop on Binance (the bot then restores its own) or use Move stop in the panel (the '
+                'bot places its stop and cancels the other one); no new entries or adds until then')
+STOP_MISSING_NOTES = dict(checking='stop not found on Binance - re-checking it before any restore',
+                          restoring='stop missing on Binance - restoring it',
+                          owner_check='bot stop not confirmed (another stop on Binance or unreadable) - remove the extra '
+                                      'stop on Binance or use Move stop')
 EXCHANGE_DOWN = ('Binance is not answering status checks (no order was sent) - positions and stops are left as they '
                  'are and re-checked when it answers')
 
@@ -425,7 +473,10 @@ class Engine:
             except Exception: log.warning('state.json unreadable - starting empty')
         self.state.setdefault('orphans', []); self.state.setdefault('last_cycle', {})
         self.state.setdefault('pending_entries', {}); self.state.setdefault('resting_entries', {})
+        self.state.setdefault('unconfirmed_entries', {})           # AUD-03b: entries whose order answer was lost
         for l in self.state['lots'].values():           # lots saved by older versions may hold half-filled dca/pyramid blocks
+            l['stop_confirmed_t'] = None                 # AUD-04: a confirmation from before this start is not fresh evidence
+            l.setdefault('stop_miss', 0)                 #   (unconfirmed until the start-up pass re-verifies it)
             if l.get('key_strategy') in S.STRATEGIES and isinstance(l.get('mgmt'), dict):
                 l['mgmt'] = S.merge_mgmt(l['key_strategy'], {k: v for k, v in l['mgmt'].items()})
         if not self.S.get('CAP_SINCE'):                  # first v3 start: bot capital counts closed P&L from now on
@@ -443,6 +494,7 @@ class Engine:
         self.marks, self.marks_t = {}, 0.0
         self.guard_eq = None                      # bot capital used by the safety limits and shown in the app
         self.untracked = {}                       # exchange positions the engine has no record of
+        self._journal_backlog = []                # AUD-01: trades.csv rows not written yet (file locked / disk full)
         self._lev = {}                            # leverage already set per symbol
         self.lev_refusals = {}                    # T03a: Binance leverage refusals per symbol (count, outcome, last error)
         self._fillw = fill_writer(self.F['fills'])   # T05: process-wide telemetry writer for this file (lazy thread)
@@ -460,6 +512,11 @@ class Engine:
         self.health = dict(errors=collections.deque(maxlen=30), last_manage_ok=None, last_cycle_ok={}, manage_fail_streak=0,
                            last_sync=None, alerted=False, incidents={}, confirmed={})
         self.grids = GRID.GridManager(self)
+        self.clock = time.time                    # AUD-04: stop-verifier clock (replaceable in tests)
+        self._stopv = {}                          # AUD-04: symbol -> time its stops are next due for verification
+        self._stopv_last = {}                     # AUD-04: symbol -> time of the last successful open-order read
+        self.stopv_stats = dict(reads=0, lookups=0, unknown=0, misses=0, restored=0, adopted=0, extras_cancelled=0, deferred=0,
+                                owner_checks=0)
 
     def _load_list(self, k):
         try: return json.load(open(self.F[k])) if os.path.exists(self.F[k]) else []
@@ -492,6 +549,7 @@ class Engine:
         if not isinstance(s.get('RISK_RULES'), dict): s['RISK_RULES'] = {}
         if not isinstance(s.get('GOVERNOR'), dict): s['GOVERNOR'] = dict(mode='off', rules=[])
         s.setdefault('GRID_SLOTS', [])
+        if not isinstance(s.get('MARKET_COLLECTOR'), bool): s['MARKET_COLLECTOR'] = True
         self.S = s
 
     def risk_rules_cfg(self):
@@ -732,12 +790,126 @@ class Engine:
         self.equity_hist = self.equity_hist[-8000:]
         save_json(self.F['equity'], self.equity_hist)
 
+    JOURNAL_FIELDS = ['time', 'event', 'sleeve', 'symbol', 'side', 'qty', 'price', 'stop', 'pnl', 'equity', 'note']
+
     def log_trade(self, **row):
-        new = not os.path.exists(self.F['trades'])
-        with open(self.F['trades'], 'a', newline='') as f:
-            w = csv.DictWriter(f, fieldnames=['time', 'event', 'sleeve', 'symbol', 'side', 'qty', 'price', 'stop', 'pnl', 'equity', 'note'])
-            if new: w.writeheader()
-            w.writerow({k: row.get(k, '') for k in w.fieldnames})
+        """Append a row to trades.csv. AUD-01: NEVER raises - it is called inside order paths, after Binance has already
+        executed the order. If the file cannot be written (opened in Excel, antivirus, full disk) the row is kept in memory
+        (bounded), one incident is raised, and the backlog is written first on the next successful call."""
+        bl = self.__dict__.setdefault('_journal_backlog', [])
+        rows, done = bl + [row], 0
+        try:
+            new = not os.path.exists(self.F['trades'])
+            with open(self.F['trades'], 'a', newline='') as f:
+                w = csv.DictWriter(f, fieldnames=self.JOURNAL_FIELDS)
+                if new: w.writeheader()
+                for r in rows:
+                    w.writerow({k: r.get(k, '') for k in w.fieldnames}); done += 1
+        except Exception as ex:
+            left = rows[done:]                                           # rows already written are not repeated
+            over = max(0, len(left) - JOURNAL_BACKLOG_MAX)
+            if over: self.health['journal_dropped'] = self.health.get('journal_dropped', 0) + over
+            bl[:] = left[:JOURNAL_BACKLOG_MAX]
+            try:
+                self.err(f'trade journal (trades.csv) cannot be written ({type(ex).__name__}) - {len(bl)} row(s) kept in memory '
+                         'and written when the file is free again; trading and stops are not affected', key='journal')
+            except Exception:
+                pass
+            return
+        if len(rows) > 1:
+            try: self.resolve('journal', 'trade journal (trades.csv) writable again - kept rows written')
+            except Exception: pass
+        bl.clear()
+
+    def _save_aux(self, name, obj):
+        """AUD-01: history / missed-signal files are written from order and management paths. A failed write must never
+        raise there: the in-memory list stays complete and the whole list is written again on the next save."""
+        try:
+            save_json(self.F[name], obj)
+        except Exception as ex:
+            try: self.err(f'{name}.json cannot be written ({type(ex).__name__}) - kept in memory, saved again next time', key=f'save|{name}')
+            except Exception: pass
+
+    @contextlib.contextmanager
+    def _stage(self, key, lot, name, failed, add=False):
+        """AUD-02: one management stage of one lot. An unanswered order (AmbiguousOrder) still aborts the lot's management for
+        this pass (the lot is now `pending`); any other failure is reported and the NEXT stages still run, so a rejected add
+        or exit can never starve the trailing stop, breakeven or the other exits. A failed add is cooled down."""
+        try:
+            yield
+        except AmbiguousOrder:
+            raise
+        except Exception as ex:
+            failed.append(name)
+            if add:
+                lot['add_retry_at'] = time.time() + (ADD_RETRY_TRANSIENT_S if is_transient(ex) else ADD_RETRY_S)
+                self.err(f"{lot['symbol']} [{lot['sleeve']}] {name} failed ({str(ex)[:160]}) - exits and the stop keep being managed; "
+                         f"next try in {int(lot['add_retry_at'] - time.time())} s", key=f'add|{key}')
+            else:
+                self.err(f'manage {key} {name}: {ex}', key=f'manage|{key}|{name}')
+
+    @staticmethod
+    def _add_cooling(lot):
+        return time.time() < (lot.get('add_retry_at') or 0)
+
+    @staticmethod
+    def _exec_of(o, requested, step):
+        """AUD-03: how much of an order Binance REPORTS executed (exchange truth), capped at what was requested.
+        A final status (FILLED / EXPIRED / CANCELED ...) with executedQty -> that quantity (0 = nothing executed).
+        A non-final status (NEW / PARTIALLY_FILLED) -> None: unknown, handled exactly like a lost answer (pending).
+        No status at all (simulated / replay answers): a reported quantity > 0 is used, otherwise the request (a real
+        Binance RESULT answer always carries both, so this keeps only the simulated paths unchanged)."""
+        st = str((o or {}).get('status') or '').upper()
+        raw = (o or {}).get('executedQty')
+        try: eq = float(raw) if raw not in (None, '') else None
+        except (TypeError, ValueError): eq = None
+        if st in ORDER_FINAL:
+            if eq is None: return requested if st == 'FILLED' else None
+            q = min(F.round_step(eq, step), requested)
+            if q <= 0 < eq:                       # Cowork #28 F2: below one step - not tradable, booked as nothing (said so)
+                log.warning(f'order executed only {eq} (< one step {step}): booked as nothing executed - that dust stays on '
+                            'Binance below the minimum, without a bot stop')
+            return q
+        if st: return None
+        if eq: return min(F.round_step(eq, step), requested)
+        return requested
+
+    def _unknown_answer(self, lot, kind, qty, px, why, post, o):
+        """AUD-03: Binance answered but the order is not final yet: identical to a lost answer - the lot is `pending` with
+        the order's client id (reconcile reads that order's final record first) and AmbiguousOrder aborts this pass."""
+        cid = (o or {}).get('clientOrderId')
+        lot['pending'] = dict(kind=kind, qty=qty, px=px, why=why, post=post or {}, t=time.time(), cid=cid)
+        self.save_state()
+        self.err(f"{lot['symbol']} {why} answered {(o or {}).get('status')} (not final) - waiting for Binance to confirm")
+        raise AmbiguousOrder(f"{lot['symbol']} {kind} status {(o or {}).get('status')}", f'c:{cid}' if cid else None)
+
+    def _after_fill_failed(self, lot, post, why, ex):
+        """AUD-01 second layer: something failed AFTER Binance executed a close / add. Mark the event done exactly like
+        _resolve_pending does: its own `post` bookkeeping (the same dict an unconfirmed order uses) is applied, and a
+        requested `finish` (a full close) or a lot left at zero is finished once - so the event can never fire twice, no
+        zero-quantity ghost lot is left, and a remaining lot's stop is re-placed next pass. The recovered state is saved at
+        once (best effort, a save failure is reported but never masks the original error). The exception still propagates."""
+        try:
+            post = dict(post or {})
+            fin = post.pop('finish', None)                          # same semantics as _resolve_pending
+            lot.update(post)
+            lot['stop_dirty'] = True
+            self.err(f"{lot['symbol']} [{lot['sleeve']}] {why} done on Binance but local bookkeeping failed "
+                     f"({type(ex).__name__}: {str(ex)[:120]}) - marked done, stop re-placed next pass")
+        except Exception:
+            fin = None
+        key = next((k for k, l in self.state['lots'].items() if l is lot), None)
+        if key is not None and (fin or (lot.get('qty') or 0) <= 0):
+            try:
+                self._finish(key, fin or why)             # pops the lot first: terminal bookkeeping cannot repeat
+            except Exception as ex2:
+                log.warning(f"{lot['symbol']} [{lot['sleeve']}] finish after a post-fill failure incomplete: {type(ex2).__name__}: {ex2}")
+        try:                                              # durable at once: a restart must not resurrect a closed lot or
+            self.save_state()                             # replay the event (the caller's own save is skipped by the raise)
+        except Exception as ex3:                          # reported, never replaces the original post-fill exception
+            try: self.err(f"state not saved after post-fill recovery ({type(ex3).__name__}: {str(ex3)[:120]}) - saved again next pass",
+                          key='save|state')
+            except Exception: pass
 
     def save_state(self):
         save_json(self.F['state'], self.state)
@@ -1035,19 +1207,36 @@ class Engine:
         return is_transient(e) or type(e).__module__.startswith('requests')
 
     def _cancel_or_park(self, sym, tag):
-        """Cancel a stop; if Binance cannot be reached, remember it and retry later (never leave a stale stop behind)."""
-        if self.dry or not tag: return
-        try: self.trade.cancel(sym, tag)
+        """Cancel a stop; if Binance cannot be reached, remember it and retry later (never leave a stale stop behind).
+        Returns True when Binance confirmed the cancel (or that it was already gone), False when it was only parked -
+        parking is bookkeeping, not proof that the stop is gone (AUD-04 r3). Existing callers may ignore the result."""
+        if self.dry or not tag: return True
+        try:
+            self.trade.cancel(sym, tag); return True
         except Exception as e:
-            self.state.setdefault('orphans', []).append([sym, tag])
+            orph = self.state.setdefault('orphans', [])
+            if [sym, tag] not in orph: orph.append([sym, tag])
             self.err(f'cancel stop {sym} {tag} failed ({e}) - will retry')
+            return False
 
-    def _replace_stop(self, lot, stop=None):
+    def _replace_stop(self, lot, stop=None, owner=False):
         """Place the stop at `stop` (or the current lot stop, e.g. after a size change) FIRST, then cancel the old one.
-        The lot's recorded stop only changes once Binance has accepted the new order. Returns True on success."""
+        The lot's recorded stop only changes once Binance has accepted the new order. Returns True on success.
+        AUD-04: while the lot is in owner_check (a stop placed outside the bot holds the position, or the bot's own stop
+        cannot be read) NO bot stop is placed: the update is owed (stop_dirty) and done once the verifier has proven the
+        state (the other stop gone -> restore), or when the owner uses Move stop (owner=True): the bot's stop is placed
+        first, then the other stop is cancelled - never two stops."""
         if self.dry:
             if stop is not None: lot['stop'] = stop
             return True
+        if lot.get('stop_miss_why') == 'owner_check' and not owner:
+            lot['stop_dirty'] = True
+            key = next((k for k, l in self.state['lots'].items() if l is lot), lot['symbol'])
+            if not (self.health.get('incidents', {}).get(f'stop-missing|{key}') or {}).get('open'):
+                self.err(f"{lot['symbol']} {lot['side']} [{lot['sleeve']}]: stop update held - {STOP_MISSING_NOTES['owner_check']}",
+                         key=f'stop-missing|{key}')
+            log.info(f"{lot['symbol']} [{lot['sleeve']}] stop update deferred: owner check pending (no second stop placed)")
+            return False
         r = self.rules[lot['symbol']]
         new_stop = self._rd(stop, r['tick']) if stop is not None else lot['stop']
         sd = 1 if lot['side'] == 'LONG' else -1
@@ -1071,7 +1260,14 @@ class Engine:
             return False
         old = lot.get('stop_id')
         lot['stop_id'], lot['stop'], lot['stop_dirty'], lot['last_order_t'] = new, new_stop, False, time.time()
+        lot['stop_confirmed_t'] = lot['stop_placed_t'] = self.clock()      # AUD-04: Binance accepted it (id known) - re-verified
+        lot['stop_miss'] = 0; lot.pop('stop_miss_t', None); lot.pop('stop_miss_why', None)   # on the open-order list shortly,
+        self._stopv_due(lot['symbol'], max(lot['stop_placed_t'] + STOP_SETTLE_S,               # floored so a stop trailing
+                                           self._stopv_last.get(lot['symbol'], -1e18) + STOP_ACTION_MIN_S))  # every pass is
+        #   not re-read on every pass
         if old and old != new: self._cancel_or_park(lot['symbol'], old)
+        fx = lot.pop('stop_foreign', None)                 # AUD-04: Move stop took over from a stop placed outside the bot
+        if fx and fx not in (old, new): self._cancel_or_park(lot['symbol'], fx)
         return True
 
     def _market_close(self, lot, qty, why, mark=None, post=None):
@@ -1086,12 +1282,31 @@ class Engine:
             try:
                 o = self.trade.close(sym, lot['side'], self._fmt(qty, r['step']))
             except AmbiguousOrder as e:
-                lot['pending'] = dict(kind='close', qty=qty, px=px, why=why, post=post or {}, t=time.time())
+                lot['pending'] = dict(kind='close', qty=qty, px=px, why=why, post=post or {}, t=time.time(), cid=_cid_of(e.tag))
                 self.save_state(); self.err(f'{sym} close unconfirmed ({e}) - waiting for Binance position to confirm'); raise
+            got = self._exec_of(o, qty, r['step'])                        # AUD-03: book what Binance executed
             act = float(o.get('avgPrice') or 0) or None
-            self._fill('exit', sym, lot['side'], lot['side'] == 'SHORT', mark, act, qty, o.get('executedQty'), t0, reason=why)
-            px = act or px
-        return self._apply_close(lot, qty, px, why)
+            self._fill('exit', sym, lot['side'], lot['side'] == 'SHORT', mark, act, qty, o.get('executedQty'), t0, reason=why,
+                       **({'outcome': 'unfilled'} if got == 0 else {}))
+            if got is None: self._unknown_answer(lot, 'close', qty, px, why, post, o)
+            if got <= 0:
+                raise UnfilledOrder(f"{sym} {why}: Binance {o.get('status')} - nothing executed, the position is unchanged")
+            if got < qty and (post or {}).get('finish'):
+                post = {k: v for k, v in post.items() if k != 'finish'}       # a partial full-close finishes nothing
+                short = qty - got
+            else:
+                short = 0.0
+            qty, px = got, act or px
+        else:
+            short = 0.0
+        try:
+            pnl = self._apply_close(lot, qty, px, why)
+        except Exception as ex:
+            self._after_fill_failed(lot, post, why, ex); raise
+        if short > 0 and lot['qty'] > 0:
+            raise PartialClose(f"{sym} [{lot['sleeve']}] {why} executed {qty} of {qty + short} - {lot['qty']} kept with its stop, "
+                               "the rest is closed on a later pass")
+        return pnl
 
     def _apply_close(self, lot, qty, px, why):
         sym, r = lot['symbol'], self.rules[lot['symbol']]
@@ -1112,6 +1327,36 @@ class Engine:
         The position may also carry dust the lots do not own (reconcile tolerates it): a match within that dust counts only
         when the other outcome does not match too - otherwise it keeps waiting and the 5-minute resync decides."""
         l = self.state['lots'][key]; pd_ = l['pending']; age = time.time() - pd_.get('t', 0)
+        fr = self._order_result(l['symbol'], pd_.get('cid'), pd_['qty'])
+        if fr['state'] == 'final':                                       # AUD-03: Binance's own final answer decides
+            got, px = fr['qty'], fr['px'] or pd_['px']
+            del l['pending']
+            if got <= 0:
+                log.info(f"{l['symbol']} [{l['sleeve']}] unconfirmed {pd_['kind']} did not execute (order record) - will retry")
+                return True
+            post = dict(pd_.get('post') or {})
+            fin = post.pop('finish', None)
+            if got < pd_['qty']: fin = None                              # a partial full-close finishes nothing
+            if pd_['kind'] == 'close': self._apply_close(l, got, px, pd_['why'])
+            else: self._apply_add(l, got, px, pd_['why'])
+            l.update(post)
+            if 'dca' in l.get('mgmt', {}) and pd_['kind'] == 'add' and l.get('tp') is not None:
+                sd = 1 if l['side'] == 'LONG' else -1
+                l['tp'] = l['avg'] + sd * l['mgmt']['dca']['tp_atr'] * l['atr0']
+            log.info(f"{l['symbol']} [{l['sleeve']}] unconfirmed {pd_['kind']} confirmed from its order record: {got} of {pd_['qty']} @ {px}")
+            if fin or l['qty'] <= 0: self._finish(key, fin or pd_['why'])
+            else: self._replace_stop(l)
+            return True
+        if fr['state'] != 'nosource':                                    # AUD-03 r1: a KNOWN order is decided only by its record
+            if fr['state'] == 'notfound' and age > 20:                   # Binance has no such order: it never executed
+                del l['pending']; log.info(f"{l['symbol']} [{l['sleeve']}] unconfirmed {pd_['kind']} never reached Binance - will retry")
+                return True
+            if age > 300:                                                # no record within the evidence window: timed resync
+                del l['pending']
+                self.err(f"{l['symbol']} [{l['sleeve']}] could not read the order record of a {pd_['kind']} for 5 min "
+                         f"({fr['state']}) - resyncing to the exchange")
+                return False
+            return None                                                  # wait: the position alone could pick the wrong cause
         # a close of the whole position includes that dust (close_lot), and a position never goes below zero
         target = max(0.0, expected - pd_['qty']) if pd_['kind'] == 'close' else expected + pd_['qty']
         near = lambda d: -tol <= d <= tol                                # whole step multiples: only float noise is tolerated
@@ -1140,6 +1385,44 @@ class Engine:
             del l['pending']; self.err(f"{l['symbol']} [{l['sleeve']}] could not confirm {pd_['kind']} after 5 min - resyncing to the exchange"); return False
         return None
 
+    @staticmethod
+    def _fill_px(o):
+        """The average price Binance reports for an order (avgPrice, else cumQuote / executedQty), or None."""
+        try:
+            px = float((o or {}).get('avgPrice') or 0)
+            if px > 0: return px
+            q, cq = float((o or {}).get('executedQty') or 0), float((o or {}).get('cumQuote') or 0)
+            return cq / q if q > 0 and cq > 0 else None
+        except (TypeError, ValueError):
+            return None
+
+    def _order_result(self, sym, cid, requested):
+        """AUD-03 (Codex r1): THE fill-result boundary for an order known by its client id. Returns
+        dict(state, qty, px, status, cid) with state:
+          'final'      - Binance's final record: qty = executed (capped at the request; 0 = nothing), px = its average
+          'pending'    - the order exists but is not final yet (NEW / PARTIALLY_FILLED)
+          'notfound'   - Binance has no such order (never reached it)
+          'unreadable' - the lookup failed (timeout, outage, error)
+          'nosource'   - no client id, or this exchange adapter cannot read order records (simulations)
+        Only 'final' is order truth; callers must not infer an outcome for a known id from anything else."""
+        res = dict(state='nosource', qty=None, px=None, status=None, cid=cid)
+        getter = getattr(self.trade, 'get_order', None)
+        if not cid or self.dry or getter is None: return res
+        try:
+            o = getter(sym, cid)
+        except Exception:
+            res['state'] = 'unreadable'; return res
+        if not o:
+            res['state'] = 'notfound'; return res
+        st = str(o.get('status') or '').upper(); res['status'] = st
+        if st not in ORDER_FINAL:
+            res['state'] = 'pending'; return res
+        q = self._exec_of(o, requested, self.rules[sym]['step'])
+        if q is None:
+            res['state'] = 'pending'; return res
+        res.update(state='final', qty=q, px=self._fill_px(o) if q > 0 else None)
+        return res
+
     def _record_r(self, lot):
         if lot.get('manual') or not lot.get('risk_usd'): return
         h = self.state.setdefault('hist', {}).setdefault(lot['sleeve'], [])
@@ -1156,21 +1439,62 @@ class Engine:
         return float(np.clip(k.get('frac', 0.5) * f / k.get('ref', 0.1) * 2, k.get('min', 0.25), k.get('max', 2.0)))
 
     def close_lot(self, key, why, mark=None):
-        """Market-close first; the protective stop is only cancelled after the close succeeded (a failed close keeps it)."""
+        """Market-close first; the protective stop is only cancelled after the close succeeded (a failed close keeps it).
+        AUD-02: refused while an earlier order of this lot is unconfirmed (`pending`): if that order filled, closing the
+        recorded quantity would take size from a sibling lot or a resting maker fill. The size sent is this lot's own
+        quantity; what the exchange holds beyond it is swept along ONLY when it is dust (not tradable on its own) - never
+        another slot's resting-maker fill or an untracked position."""
         lot = self.state['lots'][key]
+        if lot.get('pending'):
+            raise RuntimeError(f"{lot['symbol']} [{lot['sleeve']}] close deferred: an earlier order on this lot is not confirmed yet "
+                               "- it is resolved on the next management pass, then the close can be retried")
         qty = lot['qty']
         others = [k for k, l in self.state['lots'].items() if k != key and l['symbol'] == lot['symbol'] and l['side'] == lot['side']]
-        if not others and not self.dry:            # last lot on this side: close exactly what the exchange holds (no dust)
-            try: qty = self._positions_critical().get((lot['symbol'], lot['side']), qty) or qty
-            except Exception: pass
-        self._market_close(lot, qty, why, mark, post={'finish': why})    # raises on failure -> lot and its stop stay as they were
+        if not others and not self.dry:            # last lot on this side: no dust may be left behind
+            try: held = self._positions_critical().get((lot['symbol'], lot['side']))
+            except Exception: held = None          # unreadable: send this lot's own quantity (only the READ is guarded)
+            if held:
+                extra = held - qty
+                if extra <= 0 or (not self._entry_claims(lot['symbol'], lot['side'])
+                                  and F.leaves_dust(extra, mark or lot['avg'], self.rules.get(lot['symbol']))): qty = held
+        try:
+            self._market_close(lot, qty, why, mark, post={'finish': why})    # raises on failure -> lot and its stop stay as they were
+        except PartialClose:
+            lot['stop_dirty'] = True                       # AUD-03: the rest stays a lot; its stop is resized to what is left
+            try: self._replace_stop(lot)
+            except Exception as ex: log.warning(f"{lot['symbol']} stop resize after a partial close failed ({ex}) - retried next pass")
+            self.save_state(); raise
         self._finish(key, why)
         self.save_state()
+
+    def _entry_claims(self, sym, side):
+        """AUD-02 (Codex r1): a local entry on this coin/side may own exchange size that no lot records yet - a resting maker
+        entry (its partial fills become its own lot) or a pending/trailing entry. While one exists, size beyond a closing
+        lot is never swept, not even when it is dust."""
+        recs = (list((self.state.get('resting_entries') or {}).values()) + list((self.state.get('pending_entries') or {}).values())
+                + list((self.state.get('unconfirmed_entries') or {}).values()))
+        return any(r.get('symbol') == sym and r.get('side') == side for r in recs if isinstance(r, dict))
+
+    def _partial_zero(self, lot, name, q):
+        """AUD-02 / C25 (Codex: option b). True when a PARTIAL take-profit floors to zero tradable quantity (a lot too small
+        to split): no order is sent and NOTHING is marked done - tp1 / basket part / ladder level stay open and are
+        evaluated again on later passes (e.g. after an add made the lot splittable), so no breakeven move, runner promotion
+        or DCA completion is ever triggered by a take-profit that never happened. Reported once per lot and stage.
+        The backtester applies the same rule (backtest.run: part_zero)."""
+        r = self.rules.get(lot['symbol'])
+        if not r or self._rd(q, r['step']) > 0: return False     # no rules (Cowork #27 note): the order path decides, never a KeyError
+        seen = lot.setdefault('zero_partials', [])
+        if name not in seen:
+            seen.append(name)
+            log.info(f"{lot['symbol']} [{lot['sleeve']}] {name} reached but {lot['qty']} cannot be split (part floors to 0) - "
+                     "nothing sent, nothing marked done; checked again on later passes")
+        return True
 
     def _finish(self, key, why):
         """Lot fully closed: write a trade-history record and forget the lot."""
         lot = self.state['lots'].pop(key, None)
         if not lot: return
+        self.resolve(f'stop-missing|{key}', f"{lot['symbol']} {lot['side']} [{lot['sleeve']}]: trade closed ({why}) - stop check ended")
         if why != 'stop': self._cancel_or_park(lot['symbol'], lot.get('stop_id'))   # no stale stop may survive its lot
         self._record_r(lot)
         sd = 1 if lot['side'] == 'LONG' else -1
@@ -1195,7 +1519,7 @@ class Engine:
             if au: au.update(kind='trade_audit', id=key, exit_reason=why, closed=rec['closed'], t=rec['closed']); self._audit_emit(au)
         except Exception as e: log.warning(f'trade audit not recorded ({e})')
         self.history.append(rec); self.history = self.history[-3000:]
-        save_json(self.F['history'], self.history)
+        self._save_aux('history', self.history)
         self.notify(f"{'✅' if net > 0 else '❌'} CLOSED {lot['side']} {lot['symbol']} [{lot['sleeve']}] {why} · PnL {net:+.2f} USDT ({rec['r']}R) · {rec['hours']}h")
 
     def miss(self, sl, sym, side, sg, reason, kind=None):
@@ -1213,7 +1537,7 @@ class Engine:
         if not kind: self._audit_missed_short(sl['id'], sym, side, sg['time'], 'not_taken', self._sig_raw.get(f"{sl['id']}|{sym}"), reason)
         self.missed.append(rec)
         self.missed = self.missed[-600:]
-        save_json(self.F['missed'], self.missed)
+        self._save_aux('missed', self.missed)
 
     def _add_qty(self, lot, q, px, why, post=None):
         r = self.rules[lot['symbol']]
@@ -1225,13 +1549,23 @@ class Engine:
             try:
                 o = self.trade.open(lot['symbol'], lot['side'], self._fmt(q, r['step']))
             except AmbiguousOrder as e:
-                lot['pending'] = dict(kind='add', qty=q, px=px, why=why, post=post or {}, t=time.time())
+                lot['pending'] = dict(kind='add', qty=q, px=px, why=why, post=post or {}, t=time.time(), cid=_cid_of(e.tag))
                 self.save_state(); self.err(f"{lot['symbol']} {why} unconfirmed ({e}) - waiting for Binance position to confirm"); raise
+            got = self._exec_of(o, q, r['step'])                          # AUD-03: book what Binance executed
+            if got is None: self._unknown_answer(lot, 'add', q, px, why, post, o)
+            if got <= 0:
+                self._fill(why if why in self.FILL_KINDS else 'pyramid_add', lot['symbol'], lot['side'], lot['side'] == 'LONG',
+                           px, None, q, o.get('executedQty'), t0, reason=why, outcome='unfilled')
+                raise UnfilledOrder(f"{lot['symbol']} {why}: Binance {o.get('status')} - nothing executed, the lot is unchanged")
+            q = got
             act = float(o.get('avgPrice') or 0) or None
             self._last_order = dict(rec=self._fill(why if why in self.FILL_KINDS else 'pyramid_add', lot['symbol'], lot['side'], lot['side'] == 'LONG',
                                     px, act, q, o.get('executedQty'), t0, reason=why, fallback_order=(why == 'entry_fallback') or None))
             px = act or px
-        self._apply_add(lot, q, px, why)
+        try:
+            self._apply_add(lot, q, px, why)
+        except Exception as ex:
+            self._after_fill_failed(lot, post, why, ex); raise
         return True
 
     def _apply_add(self, lot, q, px, why, fee=None):
@@ -1272,6 +1606,7 @@ class Engine:
                     self._manage_failed(f'reconcile: {e}')
                 return
             self._after_confirmed()
+            changed = self._verify_stage() or changed               # AUD-04: its own stage, budgeted; never blocks the rest
             ok = True
             if self.state.get('pending_entries'):
                 try: changed = self._trail_entries(marks) or changed
@@ -1297,61 +1632,77 @@ class Engine:
                     if isinstance(lot.get('ex'), dict): rs.discard(key)   # only once observe() really started tracking
                     self._audit_emit(TA.checkpoint(lot, key, t_))  # bounded checkpoint event goes to the writer queue
                 except Exception: pass                         # audit never raises into a trading path
+                failed = []                                    # AUD-02: stages of this lot that failed this pass
                 try:
                     if lot.get('force_close'):                 # a stop update found price already through the stop
                         self.close_lot(key, 'stop_crossed', m); changed = True; continue
                     if lot.get('stop_dirty') or not lot.get('stop_id'):   # protection missing/outdated -> retry every pass
                         if self._replace_stop(lot): changed = True; log.info(f"{lot['symbol']} [{lot['sleeve']}] stop restored")
                     if 'dca' in g and lot.get('levels'):
-                        while lot['dca'] < len(lot['levels']) and sd * (lot['levels'][lot['dca']] - m) >= 0:
-                            q = lot['q0'] * lot['w'][lot['dca']] * (self._breaker_add_mult(lot) or 1.0)   # 0 -> the gate blocks it
-                            if self._add_gate(lot, q, m, 'safety_order') or not self._add_qty(lot, q, m, 'safety_order', post={'dca': lot['dca'] + 1}): break
-                            lot['dca'] += 1
-                            lot['tp'] = lot['avg'] + sd * g['dca']['tp_atr'] * lot['atr0']
-                            self._replace_stop(lot); changed = True
+                        with self._stage(key, lot, 'safety_order', failed, add=True):
+                            while (lot['dca'] < len(lot['levels']) and sd * (lot['levels'][lot['dca']] - m) >= 0
+                                   and not self._add_cooling(lot)):
+                                q = lot['q0'] * lot['w'][lot['dca']] * (self._breaker_add_mult(lot) or 1.0)   # 0 -> the gate blocks it
+                                if self._add_gate(lot, q, m, 'safety_order') or not self._add_qty(lot, q, m, 'safety_order', post={'dca': lot['dca'] + 1}): break
+                                lot['dca'] += 1
+                                lot['tp'] = lot['avg'] + sd * g['dca']['tp_atr'] * lot['atr0']
+                                self._replace_stop(lot); changed = True
+                    if 'dca' in g and lot.get('levels'):
+                      with self._stage(key, lot, 'basket_tp', failed):
                         if lot.get('tp') is not None and ge(lot['tp']):
-                            run = g.get('runner')
-                            if run and run.get('dca_frac', 1) < 1:      # runner: bank part, keep the rest at breakeven
-                                self._market_close(lot, lot['qty'] * run['dca_frac'], 'basket_tp_part', m,
-                                                   post={'tp': None, 'tp1': True, 'dca': len(lot['levels']), 'e0': lot['avg']})
-                                if lot['qty'] <= 0: self._finish(key, 'basket_tp'); changed = True; continue
-                                lot['tp'] = None; lot['tp1'] = True; lot['dca'] = len(lot['levels'])
-                                lot['e0'] = lot['avg']; changed = True
-                                be = lot['avg'] * (1 + sd * BE_BUF)
-                                if sd * (be - lot['stop']) > 0 and sd * (m - be) > 0: self._replace_stop(lot, be)
-                                else: self._replace_stop(lot)
-                                lot['R'] = max(lot['R'], abs(lot['avg'] - lot['stop']))
-                            else:
-                                self.close_lot(key, 'basket_tp', m); changed = True; continue
-                    if 'pyramid' in g and lot['adds'] < g['pyramid']['n'] and ge(lot['next_add']):
+                              run = g.get('runner')
+                              if run and run.get('dca_frac', 1) < 1:      # runner: bank part, keep the rest at breakeven
+                                if not self._partial_zero(lot, 'basket_tp_part', lot['qty'] * run['dca_frac']):   # C25
+                                    self._market_close(lot, lot['qty'] * run['dca_frac'], 'basket_tp_part', m,
+                                                       post={'tp': None, 'tp1': True, 'dca': len(lot['levels']), 'e0': lot['avg']})
+                                    if lot['qty'] <= 0: self._finish(key, 'basket_tp'); changed = True; continue
+                                    lot['tp'] = None; lot['tp1'] = True; lot['dca'] = len(lot['levels'])
+                                    lot['e0'] = lot['avg']; changed = True
+                                    be = lot['avg'] * (1 + sd * BE_BUF)
+                                    if sd * (be - lot['stop']) > 0 and sd * (m - be) > 0: self._replace_stop(lot, be)
+                                    else: self._replace_stop(lot)
+                                    lot['R'] = max(lot['R'], abs(lot['avg'] - lot['stop']))
+                              else:
+                                  self.close_lot(key, 'basket_tp', m); changed = True; continue
+                    if key not in self.state['lots']: continue   # AUD-02: finished by a stage (or its recovery)
+                    if 'pyramid' in g and lot['adds'] < g['pyramid']['n'] and ge(lot['next_add']) and not self._add_cooling(lot):
+                      with self._stage(key, lot, 'pyramid_add', failed, add=True):
                         if not self._add_gate(lot, lot['q0'] * g['pyramid']['frac'], m, 'pyramid_add'):
                             if self._add_qty(lot, lot['q0'] * g['pyramid']['frac'], m, 'pyramid_add',
                                              post={'adds': lot['adds'] + 1, 'next_add': lot['next_add'] + sd * g['pyramid']['step_r'] * lot['R']}):
                                 lot['adds'] += 1; lot['next_add'] += sd * g['pyramid']['step_r'] * lot['R']
                                 self._replace_stop(lot); changed = True
-                    if g.get('tp1_r') and not lot['tp1'] and ge(lot['e0'] + sd * g['tp1_r'] * lot['R']):
+                    if key not in self.state['lots']: continue   # AUD-02: finished by a stage (or its recovery)
+                    if (g.get('tp1_r') and not lot['tp1'] and ge(lot['e0'] + sd * g['tp1_r'] * lot['R'])
+                            and not self._partial_zero(lot, 'take_profit_1', lot['qty'] * g.get('tp1_frac', 0.5))):   # C25
+                      with self._stage(key, lot, 'take_profit_1', failed):
                         self._market_close(lot, lot['qty'] * g.get('tp1_frac', 0.5), 'take_profit_1', m, post={'tp1': True})
                         lot['tp1'] = True; changed = True
                         if lot['qty'] <= 0: self._finish(key, 'take_profit_1'); continue
                         self._replace_stop(lot)
+                    if key not in self.state['lots']: continue   # AUD-02: finished by a stage (or its recovery)
                     tps = S.norm_tps(g.get('tps'))
                     if tps:                                    # take-profit ladder: each level fires once (fraction of the full size)
-                        done, fired = list(lot.get('tps_done', [])), False
-                        rr = self.rules.get(lot['symbol'], dict(min_qty=0, min_notional=0))
-                        for k_, (r_, f_) in enumerate(tps):
-                            if k_ in done: continue
-                            if not ge(lot['e0'] + sd * r_ * lot['R']): break
-                            q = min(lot['qty'], lot.get('qty_max', lot['q0']) * f_)
-                            rest = lot['qty'] - q
-                            if F.leaves_dust(rest, m, rr): q = lot['qty']   # never leave dust (shared with the backtest)
-                            done.append(k_)
-                            self._market_close(lot, q, 'take_profit_ladder', m, post={'tps_done': list(done)})
-                            lot['tps_done'] = list(done); fired = changed = True
-                            if lot['qty'] <= 0: break
-                        if lot['qty'] <= 0: self._finish(key, 'take_profit_ladder'); continue
-                        if fired: self._replace_stop(lot)
+                      with self._stage(key, lot, 'take_profit_ladder', failed):
+                          done, fired = list(lot.get('tps_done', [])), False
+                          rr = self.rules.get(lot['symbol'], dict(min_qty=0, min_notional=0))
+                          for k_, (r_, f_) in enumerate(tps):
+                              if k_ in done: continue
+                              if not ge(lot['e0'] + sd * r_ * lot['R']): break
+                              q = min(lot['qty'], lot.get('qty_max', lot['q0']) * f_)
+                              rest = lot['qty'] - q
+                              if F.leaves_dust(rest, m, rr): q = lot['qty']   # never leave dust (shared with the backtest)
+                              if self._partial_zero(lot, 'take_profit_ladder', q): break   # C25: the level stays open
+                              done.append(k_)
+                              self._market_close(lot, q, 'take_profit_ladder', m, post={'tps_done': list(done)})
+                              lot['tps_done'] = list(done); fired = changed = True
+                              if lot['qty'] <= 0: break
+                          if lot['qty'] <= 0: self._finish(key, 'take_profit_ladder'); continue
+                          if fired: self._replace_stop(lot)
                     if g.get('tp_r') and not g.get('runner') and not g.get('ttp') and ge(lot['e0'] + sd * g['tp_r'] * lot['R']):
-                        self.close_lot(key, 'take_profit', m); changed = True; continue
+                      with self._stage(key, lot, 'take_profit', failed):
+                          self.close_lot(key, 'take_profit', m); changed = True; continue
+                    if key not in self.state['lots']: continue   # AUD-02: finished by a stage (or its recovery)
                     lot['best'] = max(lot['best'], m) if sd == 1 else min(lot['best'], m)
                     # every stop tightening goes through one place: the best candidate that is still on the losing side of price
                     cands = []
@@ -1376,11 +1727,14 @@ class Engine:
                             if sd * (m - tgt) <= 0:                # price already back through the level the stop should be at
                                 log.info(f"{lot['symbol']} [{lot['sleeve']}] price {m} already through protective level {tgt:.6g} - closing")
                                 self.close_lot(key, 'stop_crossed', m); changed = True; continue
-                            if self._replace_stop(lot, tgt):
+                            if lot.get('stop_miss_why') == 'owner_check':   # AUD-04: the owner must check this coin's
+                                pass                                        # stop on Binance - no automatic second stop
+                            elif self._replace_stop(lot, tgt):
                                 changed = True
                                 if run: log.info(f"RUNNER {lot['symbol']} [{lot['sleeve']}] stop raised to {lot['stop']}")
                 except Exception as e:
                     ok = False; self.err(f'manage {key}: {e}')
+                if failed: ok = False                          # AUD-02: a failed stage is still a failed pass (alerting)
             try: changed = self.grids.on_marks(marks) or changed
             except Exception as e: ok = False; self.err(f'grid: {e}')
             if ok:
@@ -1422,15 +1776,341 @@ class Engine:
                 return None
             self.health.setdefault('confirmed', {}).setdefault('stops', {})[sym] = now_utc().isoformat(timespec='seconds')
             self.resolve(f'open-orders|{sym}', f'open orders {sym} readable again')
+            self._stops_seen(sym, tags, push=True)                      # AUD-04: confirmed now; no second read this pass
             for l in lots:
                 if l['symbol'] != sym: continue
                 key = f"stop-unseen|{sym}|{l['side']}"
                 if l['stop_id'] not in tags:
+                    self._stopv_due(sym, 0.0)                           # AUD-04: the verifier checks (and repairs) it now
                     self.err(f"{sym} {l['side']}: stop {l['stop_id']} not seen among Binance open orders after the outage - "
                              'check this position\'s protection (nothing was changed)', key=key)
                 else:
                     self.resolve(key, f"{sym} {l['side']}: stop seen among open orders again")
         return waiting
+
+    # ------------------------------------------------------------ AUD-04: routine verification + repair of protective stops
+    @staticmethod
+    def _fast(fn, *a, **k):
+        """Call an exchange read with retry=False when it takes that parameter: the verifier holds the engine lock, so one
+        attempt and never a backoff / Retry-After sleep; a failure is 'unknown'. Keyword arguments the callable does not
+        take (a test fake, an older client) are dropped."""
+        try: ps = inspect.signature(fn).parameters
+        except (TypeError, ValueError): ps = {}
+        var = any(x.kind == x.VAR_KEYWORD for x in ps.values())
+        kw = {n: v for n, v in k.items() if var or n in ps}
+        if var or 'retry' in ps: kw['retry'] = False
+        return fn(*a, **kw)
+
+    def _stops_seen(self, sym, tags, push=False):
+        """Positive evidence from ANY successful open-order read of `sym` (verifier, reconcile, T05b recovery): every lot
+        whose recorded stop is listed is confirmed now (miss state cleared, its stop-missing incident closed).
+        push=True (the T05b recovery read): when every lot's stop there is listed, the routine verification of the coin
+        moves a full period on - the same symbol is not read twice in one pass."""
+        now = self.clock(); self._stopv_last[sym] = now
+        for k, l in self.state['lots'].items():
+            if l['symbol'] != sym or not l.get('stop_id') or l['stop_id'] not in tags: continue
+            l['stop_confirmed_t'] = now
+            if l.get('stop_miss') or l.get('stop_miss_why'):
+                l['stop_miss'] = 0; l.pop('stop_miss_t', None); l.pop('stop_miss_why', None); l.pop('stop_foreign', None)
+            self.resolve(f'stop-missing|{k}', f"{sym} {l['side']} [{l['sleeve']}]: protective stop {l['stop_id']} seen on Binance")
+        grp_all = [l for l in self.state['lots'].values() if l['symbol'] == sym and not l.get('pending')]
+        for side in {l['side'] for l in grp_all}:                  # T05b's post-outage report too, once every stop is listed
+            grp = [l for l in grp_all if l['side'] == side]
+            if grp and all(l.get('stop_id') in tags for l in grp):
+                self.resolve(f'stop-unseen|{sym}|{side}', f'{sym} {side}: stop seen among open orders again')
+        if push and grp_all and all(l.get('stop_id') in tags and not l.get('stop_dirty') for l in grp_all):
+            self._stopv[sym] = max(self._stopv.get(sym, -1e18), now + self._stopv_period(sym))
+
+    def _stop_rows(self, sym):
+        """Open orders of one symbol for the verifier -> (rows, strict). Detailed rows when the client offers them, else
+        tag-only rows. While a lot on the coin holds an ALGO stop, an 'algo endpoint unsupported' answer raises (unknown),
+        never 'no algo stops'. strict=True: the classic AND the algo listing were both read, so a recorded stop that is
+        absent is really not open; the tag-only fallback cannot prove that for algo stops (strict=False)."""
+        fn = getattr(self.trade, 'open_stop_orders', None)
+        algo = any(l['symbol'] == sym and str(l.get('stop_id') or '').startswith(('a:', 'ac:')) for l in self.state['lots'].values())
+        if callable(fn): return list(self._fast(fn, sym, strict_algo=algo)), True
+        return [dict(tag=t) for t in self._fast(self.trade.open_stop_tags, sym)], False
+
+    def _stop_lookup(self, sym, tag):
+        """Direct status of one stop by id ('o:'/'a:'), or None = unknown (no lookup available, not found, read failed)."""
+        fn = getattr(self.trade, 'stop_status', None)
+        if not callable(fn): return None
+        self.stopv_stats['lookups'] += 1
+        try: return self._fast(fn, sym, tag)
+        except Exception as ex:
+            log.info(f'stop status {sym} {tag} unknown ({ex})'); return None
+
+    def _positions_fast(self):
+        """Positions right before a stop restore: critical (never skipped by the circuit), one attempt (no sleep)."""
+        return self._fast(self.trade.positions, critical=True)
+
+    def stop_missing_block(self, sym):
+        """Entry / add block text while a lot on this coin has a recorded stop the verifier did not find on Binance; the
+        text follows the most severe lot state: owner_check > restoring > checking. None = not blocked."""
+        whys = {l.get('stop_miss_why') or 'checking' for l in self.state['lots'].values() if l['symbol'] == sym and l.get('stop_miss')}
+        return next((STOP_MISSING_BLOCKS[w] for w in STOP_MISS_ORDER if w in whys), None)
+
+    def stop_missing_on(self, sym):
+        return self.stop_missing_block(sym) is not None
+
+    def stop_view(self, l, now=None):
+        """Panel / Telegram view of one lot's protection. 'protected' needs a recorded, clean stop AND a confirmation on
+        Binance within STOP_FRESH_S; an older (or no) confirmation is shown as not confirmed, never as protected. A missing
+        stop's note says what the bot is doing about it (lot['stop_miss_why'])."""
+        now = self.clock() if now is None else now
+        t = l.get('stop_confirmed_t'); age = (now - t) if t else None
+        if l.get('stop_miss'): st = 'missing'
+        elif not l.get('stop_id') or l.get('stop_dirty'): st = 'placing'
+        elif age is None: st = 'unverified'
+        elif age > STOP_FRESH_S: st = 'stale'
+        else: st = 'confirmed'
+        note = dict(placing='stop being placed', missing=STOP_MISSING_NOTES.get(l.get('stop_miss_why') or 'checking'),
+                    unverified='stop not verified on Binance yet', confirmed=None,
+                    stale=f'stop last confirmed {int(age // 60) if age else 0} min ago').get(st)
+        return dict(protected=st == 'confirmed', stop_state=st, stop_age_s=None if age is None else round(age, 1), stop_note=note)
+
+    @staticmethod
+    def _stopv_period(sym):
+        """Per-symbol verification period in STOP_VERIFY_S * [0.8, 1.2]: a fixed per-coin phase (crc32 of the symbol), so
+        held coins drift apart instead of bursting together, and runs stay deterministic (replays / tests)."""
+        frac = (zlib.crc32(sym.encode()) % 1000) / 999.0
+        return STOP_VERIFY_S * (1 - STOP_VERIFY_JITTER + 2 * STOP_VERIFY_JITTER * frac)
+
+    def _stopv_due(self, sym, when):
+        """Bring a symbol's next verification forward to `when` (never pushes an earlier one back)."""
+        self._stopv[sym] = min(self._stopv.get(sym, when), when)
+
+    def verify_stops(self, reason='routine', cycle=False):
+        """AUD-04: confirm that every held lot's recorded stop is still open on Binance, and repair it when it is not.
+        Budget: ONE symbol-scoped openOrders + openAlgoOrders read (weight 1 + 1) per held symbol, at most about once per
+        STOP_VERIFY_S (fixed per-coin jitter +-20%) from manage; a candle close (cycle=True) re-reads only symbols whose
+        last read is older than their routine period (never a burst of every held symbol); a stop order action brings its symbol forward to STOP_SETTLE_S, but never sooner than
+        STOP_ACTION_MIN_S after its last read; the first pass after a start reads every held symbol. A missing stop costs
+        one order-status lookup (weight 1) and, before any restore, one critical positions read (weight 5). Every read is
+        one attempt with no sleep (it runs under the engine lock). Never runs in dry mode or while the T05b circuit is in
+        outage; a read that fails leaves everything unknown (no miss is counted, nothing is changed).
+        Returns True when lot state changed (the caller saves)."""
+        if self.dry or self.trade is None or not self.connected: return False
+        if self.exchange_state().get('state') == 'outage': return False
+        now = self.clock(); changed = False
+        held = sorted({l['symbol'] for l in self.state['lots'].values() if not l.get('pending')})
+        for sym in list(self._stopv):
+            if sym not in held: self._stopv.pop(sym, None)
+        for sym in held:
+            due = self._stopv.get(sym, 0.0) <= now
+            if cycle and now - self._stopv_last.get(sym, -1e18) >= self._stopv_period(sym): due = True
+            if not due: continue
+            self._stopv[sym] = now + self._stopv_period(sym)       # routine next read; a miss / order action pulls it forward
+            res = self._verify_symbol(sym, reason)
+            if res is None:                                       # unknown: no conclusion, re-checked soon
+                self.stopv_stats['unknown'] += 1; self._stopv_due(sym, now + STOP_RECHECK_S)
+                if self.exchange_state().get('state') == 'outage': break      # the circuit just opened: stop reading
+                continue
+            changed = changed or res
+        return changed
+
+    def _verify_stage(self, reason='routine', cycle=False):
+        """verify_stops as an isolated stage: a crash never blocks the rest of manage / the cycle; it is one keyed,
+        deduplicated incident (closed by the next pass that completes)."""
+        try:
+            res = self.verify_stops(reason, cycle=cycle)
+        except Exception as e:
+            self.err(f'stop verification failed ({type(e).__name__}: {str(e)[:120]}) - stops not checked this pass, retried next pass',
+                     key='stop-verify')
+            return False
+        self.resolve('stop-verify', 'stop verification running again')
+        return res
+
+    def _owner_alert(self, k, l, msg, push):
+        """One keyed stop-missing incident per lot; the Telegram push only when the incident is new."""
+        key = f'stop-missing|{k}'
+        new_inc = not (self.health.get('incidents', {}).get(key) or {}).get('open')
+        self.err(msg, key=key)
+        if new_inc and push: self.notify(push)
+
+    def _verify_symbol(self, sym, reason):
+        """One verification of `sym`. None = unknown (read failed); else True/False = lot state changed."""
+        try:
+            rows, strict = self._stop_rows(sym)
+        except Exception as ex:
+            if not self._exchange_down(ex):
+                self.err(f'open orders {sym}: {ex} - nothing changed, re-checked next pass', key=f'open-orders|{sym}')
+            return None
+        self.stopv_stats['reads'] += 1
+        self.health.setdefault('confirmed', {}).setdefault('stops', {})[sym] = now_utc().isoformat(timespec='seconds')
+        self.resolve(f'open-orders|{sym}', f'open orders {sym} readable again')
+        tags = {r['tag'] for r in rows}
+        self._stops_seen(sym, tags)
+        now, changed, recheck = self.clock(), False, False
+        owned = self._owned_stop_tags(sym)        # lot stops AND AUD-03b provisional stops: never an extra, never adopted
+        orph = {t for s_, t in self.state.get('orphans') or [] if s_ == sym}   # queued for cancellation: never adopted (the
+        def queued(r):                                                          # sweep would cancel the lot's only stop)
+            cid = str(r.get('client_id') or '')                                 # nor double-cancelled here
+            return r['tag'] in orph or (cid and (f'c:{cid}' in orph or f'ac:{cid}' in orph))
+        free = [r for r in rows if not self._row_owned(r, owned) and not queued(r) and str(r.get('type') or '').upper() in STOP_TYPES]
+        extras = [r for r in free if BOT_STOP_CID_RE.fullmatch(str(r.get('client_id') or ''))]
+        foreign = [r for r in free if not BOT_STOP_CID_RE.fullmatch(str(r.get('client_id') or ''))]
+        for r in foreign:                       # AUD-04 r2 (Codex): coverage ledger for this pass - a fixed-quantity stop covers
+            r['left'] = float('inf') if r.get('close_position') is True else float(r.get('qty') or 0.0)   # at most its quantity
+        for k, l in list(self.state['lots'].items()):
+            if l['symbol'] != sym or l.get('pending') or k not in self.state['lots']: continue
+            if not l.get('stop_id'):                              # no recorded stop: adopt a matching bot stop if one exists
+                if self._adopt_stop(k, l, extras): changed = True
+                continue
+            if l['stop_id'] in tags: continue                     # confirmed above
+            if l.get('stop_dirty') and l.get('stop_miss_why') != 'owner_check': continue   # being replaced by manage already
+            if now - (l.get('stop_placed_t') or -1e18) < STOP_LIST_GRACE_S:
+                recheck = True; continue                          # just placed: not listed yet is not a miss
+            l['stop_miss'] = l.get('stop_miss', 0) + 1; l.setdefault('stop_miss_t', now); changed = recheck = True
+            self.stopv_stats['misses'] += 1
+            st = self._stop_lookup(sym, l['stop_id'])
+            if st in STOP_LIVE:                                   # listed late, but Binance says it is working: confirmed
+                l['stop_miss'] = 0; l.pop('stop_miss_t', None); l.pop('stop_miss_why', None); l.pop('stop_foreign', None)
+                l['stop_confirmed_t'] = now
+                self.resolve(f'stop-missing|{k}', f"{sym} {l['side']} [{l['sleeve']}]: stop {l['stop_id']} confirmed working")
+                continue
+            why = 'checking'
+            if st in STOP_GONE: gone = True
+            elif st in STOP_FIRED: gone = l['stop_miss'] >= 3      # 'fired' but the position may be intact: re-check first
+            elif st is None and str(l['stop_id']).startswith(('a:', 'ac:')):
+                gone = strict and l['stop_miss'] >= STOP_ALGO_UNKNOWN_MISSES   # never on one guess, never unprotected forever
+                if not gone and l['stop_miss'] >= 2:
+                    why = 'owner_check'; self.stopv_stats['owner_checks'] += 1
+                    self._owner_alert(k, l, f"{sym} {l['side']} [{l['sleeve']}]: algo stop {l['stop_id']} not listed and its status "
+                                      'cannot be read - not replaced yet (could create a second stop); check it on Binance',
+                                      f"🆘 {l['side']} {sym} [{l['sleeve']}]: algo stop {l['stop_id']} cannot be confirmed on Binance - check it.")
+            else: gone = l['stop_miss'] >= 2
+            if not gone:
+                if l.get('stop_miss_why') == 'owner_check' and self._take_cover(l, foreign, l.get('stop_foreign')):
+                    why = 'owner_check'                               # still there AND still covering this lot (ledger)
+                l['stop_miss_why'] = why
+                log.info(f"{sym} {l['side']} [{l['sleeve']}] stop {l['stop_id']} not listed (status {st or 'unknown'}, "
+                         f"miss {l['stop_miss']}) - re-checking before any restore"); continue
+            self._restore_missing_stop(k, l, st, extras, foreign)
+        clean = all(l.get('stop_id') in tags and not l.get('stop_dirty') for l in self.state['lots'].values()
+                    if l['symbol'] == sym and not l.get('pending'))
+        claims = self._side_entries(sym)
+        if extras and clean:                                     # never two live stops: cancel bot stops nothing owns -
+            for r in extras:                                     # only once every lot's own stop is listed (never 0 stops)
+                if self._row_owned(r, self._owned_stop_tags(sym)): continue
+                gk = f"{sym}|{r.get('position_side')}"             # Binance holds more than the lots there (untracked, seen
+                if (gk in self.untracked or gk in self.state.get('over_seen', {})   # once, or an entry not booked yet): that
+                        or r.get('position_side') in claims):      # stop may be protecting it - kept
+                    continue
+                self.err(f"{sym}: extra bot stop {r['tag']} ({r.get('position_side') or '?'} @ {r.get('stop_price')}) not owned by "
+                         'any trade - cancelled so the position never carries two stops', key=f'stop-extra|{sym}|{r["tag"]}')
+                self._cancel_or_park(sym, r['tag']); self.stopv_stats['extras_cancelled'] += 1; changed = True
+                if [sym, r['tag']] not in (self.state.get('orphans') or []):      # cancelled -> incident over
+                    self.resolve(f'stop-extra|{sym}|{r["tag"]}', f"{sym}: extra bot stop {r['tag']} cancelled")
+        if recheck: self._stopv_due(sym, now + STOP_RECHECK_S)
+        return changed
+
+    def _side_claims(self, sym):
+        """side -> quantity that local entries not booked as lots yet DO hold on Binance: an AUD-03b unconfirmed entry
+        owns the size that showed up for it (prov_qty / seen_qty), a resting maker entry its recorded fills. Such size
+        never makes a lot's stop look intact; an entry that never executed claims nothing (a sibling lot's missing stop
+        is restored at once)."""
+        out = {}
+        for u in (self.state.get('unconfirmed_entries') or {}).values():
+            if u.get('symbol') == sym:
+                q = max(float(u.get('prov_qty') or 0), float(u.get('seen_qty') or 0))
+                if q > 0: out[u['side']] = out.get(u['side'], 0.0) + q
+        for r_ in (self.state.get('resting_entries') or {}).values():
+            if r_.get('symbol') == sym and float(r_.get('filled') or 0) > 0:
+                out[r_['side']] = out.get(r_['side'], 0.0) + float(r_['filled'])
+        return out
+
+    def _side_entries(self, sym):
+        """Sides of `sym` with any local entry not booked as a lot yet (unconfirmed or resting): a bot stop nothing owns
+        there may be protecting it (e.g. an earlier provisional stop whose answer was lost) - never cancelled as an extra."""
+        return ({u['side'] for u in (self.state.get('unconfirmed_entries') or {}).values() if u.get('symbol') == sym}
+                | {r_['side'] for r_ in (self.state.get('resting_entries') or {}).values() if r_.get('symbol') == sym})
+
+    @staticmethod
+    def _protects(row, side):
+        """AUD-04 r1 (Codex): True only for a stop that CLOSES a `side` position - LONG closes with SELL, SHORT with BUY. In
+        hedge mode its positionSide must be that side; a one-way (BOTH) row must also be reduceOnly or closePosition.
+        A same-positionSide stop that BUYS a LONG (or SELLS a SHORT) is an entry/add order: never protection. Unknown
+        direction -> not protection (fail closed: the bot restores its own stop)."""
+        close = 'SELL' if side == 'LONG' else 'BUY'
+        if str(row.get('side') or '').upper() != close: return False
+        ps = str(row.get('position_side') or '').upper()
+        if ps == side: return True
+        return ps == 'BOTH' and bool(row.get('reduce_only') or row.get('close_position'))
+
+    def _adopt_stop(self, k, l, extras):
+        """A bot stop nothing owns, on this lot's side, with this lot's quantity and stop price, IS this lot's stop (e.g.
+        a placement whose answer was lost): record it instead of placing a second one."""
+        r = self.rules.get(l['symbol']) or dict(step=1e-9, tick=1e-9)
+        for x in extras:
+            if not self._protects(x, l['side']) or x.get('qty') is None or x.get('stop_price') is None: continue
+            if abs(x['qty'] - l['qty']) <= r['step'] / 2 and abs(x['stop_price'] - l['stop']) <= r['tick'] / 2:
+                extras.remove(x)
+                l['stop_id'], l['stop_dirty'], l['stop_miss'], l['stop_confirmed_t'] = x['tag'], False, 0, self.clock()
+                l.pop('stop_miss_t', None); l.pop('stop_miss_why', None); l.pop('stop_foreign', None)
+                self.stopv_stats['adopted'] += 1
+                log.warning(f"{l['symbol']} {l['side']} [{l['sleeve']}] adopted the matching bot stop {x['tag']} found on Binance")
+                self.resolve(f'stop-missing|{k}', f"{l['symbol']} {l['side']} [{l['sleeve']}]: matching stop {x['tag']} found and adopted")
+                return True
+        return False
+
+    def _take_cover(self, l, foreign, tag=None):
+        """AUD-04 r2 (Codex): take this lot's size out of the pass's external-stop coverage ledger. A row covers the lot only
+        if it CLOSES the lot's side (_protects) and has enough quantity left (an explicit closePosition row covers the whole
+        side: unlimited); unknown / zero quantity without closePosition is not coverage (fail closed). `tag` restricts the
+        choice to that row. Returns the row used, or None."""
+        step = (self.rules.get(l['symbol']) or dict(step=1e-9))['step']
+        for x in foreign:
+            if tag is not None and x['tag'] != tag: continue
+            if not self._protects(x, l['side']): continue
+            if x.get('left', 0.0) >= l['qty'] - step / 2:
+                x['left'] = x.get('left', 0.0) - l['qty']
+                return x
+        return None
+
+    def _restore_missing_stop(self, k, l, status, extras, foreign):
+        """Fail closed for a recorded stop that is gone while the position may still be open: adopt a matching bot stop;
+        else a stop placed OUTSIDE the bot on this side covering at least this lot's size, or the whole position (the owner
+        edited it in the Binance app) -> owner_check alert, nothing placed (never a second stop); else re-read the position (critical, one attempt) RIGHT before acting -
+        smaller than the lots (size of entries not booked yet is NOT counted) means the stop or something else closed it
+        and reconcile books it, nothing is placed; intact -> keyed alert, lot marked stop_dirty and the stop restored
+        through the normal stop-first _replace_stop (a failure stays dirty and is retried every pass)."""
+        sym, side = l['symbol'], l['side']
+        if self._adopt_stop(k, l, extras): return True
+        r = self.rules.get(sym) or dict(step=1e-9)
+        grp = [x for x in self.state['lots'].values() if x['symbol'] == sym and x['side'] == side and not x.get('pending')]
+        expected = sum(x['qty'] for x in grp)
+        fx = self._take_cover(l, foreign)            # r2: a closing stop with quantity LEFT for this lot (ledger), or closePosition
+        if fx is not None:
+            l['stop_miss_why'] = 'owner_check'; l['stop_foreign'] = fx['tag']; self.stopv_stats['owner_checks'] += 1
+            self._owner_alert(k, l, f"{sym} {side} [{l['sleeve']}]: stop {l['stop_id']} is gone and Binance holds a stop for the same "
+                              f"size placed outside the bot ({fx['tag']} @ {fx.get('stop_price')}) - not replaced (it would be a "
+                              'second stop); check it on Binance',
+                              f"🆘 {side} {sym} [{l['sleeve']}]: its bot stop was replaced by another stop on Binance "
+                              f"(@ {fx.get('stop_price')}). The bot does not add a second one - check it.")
+            return True
+        try:
+            live = self._positions_fast()
+        except Exception as ex:
+            l['stop_miss_why'] = 'checking'
+            log.info(f'{sym} {side}: position re-check before restoring the stop failed ({ex}) - re-checked next pass'); return True
+        claim = self._side_claims(sym).get(side, 0.0)
+        have = max(0.0, live.get((sym, side), 0.0) - claim)
+        tol = r['step'] * (len(grp) + 1) if sym in self.rules else 1e-9
+        if have < expected - tol:
+            self.stopv_stats['deferred'] += 1; l['stop_miss_why'] = 'checking'
+            log.info(f"{sym} {side} [{l['sleeve']}] stop {l['stop_id']} gone (status {status or 'unknown'}) and the position is "
+                     f'smaller ({have} vs {expected:.6g}, {claim} held for unbooked entries) - left to reconcile, no stop placed')
+            return True
+        old = l['stop_id']; l['stop_miss_why'] = 'restoring'; l.pop('stop_foreign', None)   # verified: no other stop there
+        self._owner_alert(k, l, f"{sym} {side} [{l['sleeve']}]: protective stop {old} is no longer open on Binance (status "
+                          f"{status or 'not listed'}) while the position is still open - restoring it",
+                          f'🆘 {side} {sym} [{l["sleeve"]}]: its stop on Binance disappeared ({status or "not listed"}). Restoring it now.')
+        l['stop_dirty'] = True
+        if self._replace_stop(l):                                  # clears the miss state on success
+            self.stopv_stats['restored'] += 1
+            log.warning(f'{sym} {side} [{l["sleeve"]}] stop restored: {old} -> {l["stop_id"]}')
+        return True
 
     def _manage_failed(self, why, key=None):
         h = self.health; h['manage_fail_streak'] += 1
@@ -1504,6 +2184,8 @@ class Engine:
         if Sg.get('ENTRIES_PAUSED'): return 'entries paused'
         if self.exchange_state().get('state') == 'outage': return OUTAGE_ADD     # T05b final: an add is new exposure
         if lot.get('stop_dirty'): return 'stop not confirmed yet'
+        blk = self.stop_missing_block(lot['symbol'])               # AUD-04: a stop on this coin is missing on Binance
+        if blk: return blk
         if lot.get('manual'): return 'manual trade (no adds)'
         lx = self._lev_exception_block(lot['symbol'])             # T03c r1: the above-cap exception admitted the entry only
         if lx: return lx
@@ -1545,7 +2227,7 @@ class Engine:
             rec = dict(candle=now_utc().isoformat(timespec='seconds'), logged=now_utc().isoformat(timespec='seconds'), sleeve=lot['sleeve'],
                        strategy=lot.get('key_strategy') or lot['sleeve'], symbol=lot['symbol'], side=lot['side'], price=px,
                        reason=f'{why} blocked: {reason}', kind='add_blocked')
-            self.missed.append(rec); self.missed = self.missed[-600:]; save_json(self.F['missed'], self.missed)
+            self.missed.append(rec); self.missed = self.missed[-600:]; self._save_aux('missed', self.missed)
         return True
 
     # ------------------------------------------------------------ reconcile with exchange
@@ -1558,6 +2240,7 @@ class Engine:
         fetched = live is None
         live = self.trade.positions() if live is None else live
         if fetched: self.health.setdefault('confirmed', {})['positions'] = now_utc().isoformat(timespec='seconds')
+        if self.state.get('unconfirmed_entries'): self._settle_unconfirmed(live)   # AUD-03b
         st = self.state
         groups = {}
         for k, l in st['lots'].items(): groups.setdefault((l['symbol'], l['side']), []).append(k)
@@ -1568,6 +2251,7 @@ class Engine:
         resting = {}                       # maker entry orders still working: their fills are not in a lot yet
         for r_ in st.get('resting_entries', {}).values():
             resting[(r_['symbol'], r_['side'])] = resting.get((r_['symbol'], r_['side']), 0.0) + r_['qty']
+        for k_, q_ in self._unconfirmed_claims().items(): resting[k_] = resting.get(k_, 0.0) + q_   # AUD-03b: not untracked
         for (sym, side), have in live.items():
             if (sym, side) not in groups and have > 0:
                 # one whole step of a position with no lot is real (e.g. 0.001 BTC = a tradable ~$120 orphan): the same sub-step
@@ -1597,6 +2281,7 @@ class Engine:
                 self.err(f'open orders {sym}: {ex} - nothing changed, re-checked next pass', key=f'open-orders|{sym}'); continue
             self.health.setdefault('confirmed', {}).setdefault('stops', {})[sym] = now_utc().isoformat(timespec='seconds')
             self.resolve(f'open-orders|{sym}', f'open orders {sym} readable again')
+            self._stops_seen(sym, open_tags)                            # AUD-04: listed stops are confirmed now
             gone = [k for k in keys if st['lots'][k].get('stop_id') and st['lots'][k]['stop_id'] not in open_tags]
             gone.sort(key=lambda k: -sd * st['lots'][k]['stop'])       # highest long stop triggers first
             for k in gone:
@@ -1688,6 +2373,7 @@ class Engine:
             eq = self.equity()                       # sizing equity
             self.check_guards()
             self.reconcile(eq)
+            self._verify_stage('candle close', cycle=True)          # AUD-04: before any entry decision
             sleeves = [sl for sl in Sg['SLEEVES'] if sl['tf'] == tf]
             syms = sorted({s for sl in sleeves for s in self.sleeve_symbols(sl, include_off=True)} | {l['symbol'] for l in st['lots'].values() if l.get('tf') == tf})
             if not syms: return
@@ -1782,7 +2468,10 @@ class Engine:
         if st.get('halted'): return 'daily loss halt is active'
         if any(l['symbol'] == sym and l['side'] == side and l.get('stop_dirty') for l in st['lots'].values()):
             return 'an open trade on this coin is waiting for its stop to be confirmed'
+        blk = self.stop_missing_block(sym)                         # AUD-04 (entries only, both sides: exits never consult it)
+        if blk: return blk
         if f'{sym}|{side}' in self.untracked: return 'Binance holds an untracked position on this coin/side - resolve it first'
+        if (sym, side) in self._unconfirmed_claims(): return 'an earlier entry on this coin/side is not confirmed yet'
         if manual: return self._rules_block(sl, sym, side, size, manual=True)
         if Sg.get('ENTRIES_PAUSED'): return 'entries paused'
         if not Sg['SYMBOLS_ON'].get(sym, True): return 'coin switched off'
@@ -2235,20 +2924,191 @@ class Engine:
             o = self.trade.open(sym, side, self._fmt(plan['qty'], r['step']))
         except AmbiguousOrder as e:
             self._last_order = dict(pending=str(e)[:160])                # T05: answer lost - reconcile decides, not "failed"
-            self.err(f'ENTRY {sym} {side} unconfirmed ({e}) - reconcile will flag it if it filled')
+            self._remember_unconfirmed(plan, _cid_of(e.tag))
+            self.err(f'ENTRY {sym} {side} unconfirmed ({e}) - protected and settled from Binance as soon as it shows')
             self.last_skip = 'entry order unconfirmed'
             return False
         act = float(o.get('avgPrice') or 0) or None
         fill = act or plan['px']
-        filled = float(o.get('executedQty') or 0)
+        got = self._exec_of(o, plan['qty'], r['step'])                    # AUD-03: exchange truth, never the request
         self._last_order = dict(rec=self._fill('entry_fallback' if plan.get('fallback') else 'entry_market', sym, side, side == 'LONG',
                                                plan['px'], act, plan['qty'], o.get('executedQty'), t0, signal_px=plan.get('signal_px'),
                                                maker_tries=plan.get('maker_tries'), fallback_order=plan.get('fallback') or None,
-                                               manual=plan.get('manual') or None))
-        qty = self._rd(filled, r['step']) if filled > 0 else plan['qty']
-        return self._create_lot(plan, qty, fill)
+                                               manual=plan.get('manual') or None, **({'outcome': 'unfilled'} if got == 0 else {})))
+        if got is None:                                                   # answered, not final: like a lost answer
+            self._remember_unconfirmed(plan, o.get('clientOrderId'))
+            self.err(f"ENTRY {sym} {side} answered {o.get('status')} (not final) - settled from Binance as soon as it shows")
+            self.last_skip = 'entry order unconfirmed'
+            return False
+        if got <= 0:                                                      # EXPIRED / CANCELED with nothing executed
+            log.info(f"ENTRY {sym} {side}: Binance {o.get('status')} - nothing executed, no trade opened")
+            self.last_skip = 'entry order not filled'
+            return False
+        return self._create_lot(plan, got, fill)
 
-    def _create_lot(self, plan, qty, fill, maker_qty=0.0):
+    # ------------------------------------------------------------ AUD-03b: entries whose answer was lost
+    # An entry whose order answer is lost (or not final) is remembered with its client order id. Every reconcile pass:
+    #   1. its FINAL order record decides: executed > 0 -> booked as a lot (exact qty and price), 0 -> forgotten;
+    #   2. until then, size on the exchange beyond the lots is protected AT ONCE by a provisional stop at the planned stop
+    #      price (no position waits hours for the next candle), and is never reported as untracked;
+    #   3. no record and no position after {UNCONF_DROP_S} s -> it never executed; a position but no record after
+    #      {UNCONF_ADOPT_S} s -> adopted from the position at the mark price.
+    # The lot inherits the provisional stop (_replace_stop places the real one first, then cancels it). New entries on that
+    # coin/side wait until it is settled. Engine._owned_stop_tags lists every stop the bot owns (for AUD-04's verifier).
+    def _remember_unconfirmed(self, plan, cid):
+        sl = plan.get('sl') or {}
+        k = f"UE|{'MAN' if plan.get('manual') else sl.get('id')}|{plan['sym']}|{plan['side']}|{int(time.time() * 1000)}"
+        self.state.setdefault('unconfirmed_entries', {})[k] = dict(
+            symbol=plan['sym'], side=plan['side'], cid=cid, qty=plan['qty'], t=time.time(), prov=None, prov_qty=0.0, plan=plan)
+        self.save_state()
+
+    def _owned_stop_tags(self, sym=None):
+        """Every exchange stop the bot owns: lot stops and AUD-03b provisional stops (a verifier must never cancel these)."""
+        tags = {l.get('stop_id') for l in self.state['lots'].values() if sym in (None, l['symbol'])}
+        for u in (self.state.get('unconfirmed_entries') or {}).values():
+            if sym in (None, u['symbol']):
+                tags.add(u.get('prov')); tags.add((u.get('prov_pending') or {}).get('tag'))   # AUD-04 r2: lost answer = still ours
+        return {t for t in tags if t}
+
+    @staticmethod
+    def _row_owned(r, owned):
+        """A listed stop row is owned when its tag OR its client id (c:/ac: tags of a lost answer) is in `owned`."""
+        cid = str(r.get('client_id') or '')
+        return r['tag'] in owned or bool(cid and (f'c:{cid}' in owned or f'ac:{cid}' in owned))
+
+    def _unconfirmed_claims(self):
+        out = {}
+        for u in (self.state.get('unconfirmed_entries') or {}).values():
+            out[(u['symbol'], u['side'])] = out.get((u['symbol'], u['side']), 0.0) + u['qty']
+        return out
+
+    def _prov_set(self, uk, u, qty):
+        """AUD-03 r1: keep an unconfirmed entry's provisional stop EXACTLY at the unresolved size on Binance: placed or resized
+        replace-first (new stop, then cancel the old), cancelled when nothing unresolved remains. If a SHRINK cannot be placed,
+        the oversized old stop is removed at once (cancelled, or parked for retry with its ownership cleared) and the gap is
+        alerted and retried - so a live provisional stop is never larger than what it protects and can never close a sibling
+        lot's size. A failed first placement / grow keeps the smaller old stop (conservative) and retries."""
+        sym, side, r, plan = u['symbol'], u['side'], self.rules[u['symbol']], u['plan']
+        if u.get('prov_pending') and not self._prov_pending_settled(sym, u): return   # r2: nothing new while it is unknown
+        old = u.get('prov')
+        if qty <= 0:
+            if old:
+                u['prov'], u['prov_qty'] = None, 0.0; self.save_state()
+                self._cancel_or_park(sym, old)
+                log.info(f"ENTRY {sym} {side} unconfirmed: nothing unresolved on Binance any more - provisional stop cancelled")
+            return
+        if old and abs(qty - u.get('prov_qty', 0.0)) < 1e-12: return
+        sd = 1 if side == 'LONG' else -1
+        stop = self._rd(plan['px'] - sd * plan['stop_dist'], r['tick'])
+        try:
+            tag = self.trade.stop(sym, side, self._fmt(qty, r['step']), self._fmt(stop, r['tick']))
+        except AmbiguousOrder as ex:                          # AUD-04 r2 (Codex): it may be LIVE on Binance - keep owning it
+            if not ex.tag: raise
+            u['prov_pending'] = dict(tag=ex.tag, qty=qty, stop=stop, t=time.time())
+            if old and qty < u.get('prov_qty', 0.0):          # a shrink: the old one is oversized - removed as before
+                u['prov'], u['prov_qty'] = None, 0.0
+                self.save_state(); self._cancel_or_park(sym, old)
+            else:
+                self.save_state()
+            self.err(f"{sym} {side} unconfirmed entry: provisional stop answer lost ({ex.tag}) - owned as pending, no second stop "
+                     "until Binance shows its status", key=f'prov|{uk}')
+            return
+        except Exception as ex:
+            if old and qty < u.get('prov_qty', 0.0):          # Codex r2: a SHRINK failed - the old stop is now oversized and could
+                u['prov'], u['prov_qty'] = None, 0.0          # close a sibling's size: drop it at once (cancel, or park + retry),
+                self.save_state()                             # ownership cleared durably; the unresolved part is re-protected
+                self._cancel_or_park(sym, old)                # next pass
+                self.err(f"{sym} {side} unconfirmed entry: resizing its provisional stop to {qty} failed ({str(ex)[:120]}) - the "
+                         f"oversized stop was removed, {qty} is UNPROTECTED until the retry next pass", key=f'prov|{uk}')
+                self.notify(f'⚠️ {sym} {side}: {qty} of an unconfirmed entry has NO stop for a moment (the provisional stop could '
+                            'not be resized; the oversized one was removed so it cannot close another trade). Retrying now.')
+            else:                                             # first placement / a grow failed: the smaller old stop (if any) stays
+                self.err(f"{sym} {side} unconfirmed entry: provisional stop for {qty} failed ({str(ex)[:120]}) - retried next pass",
+                         key=f'prov|{uk}')
+            return
+        u['prov'], u['prov_qty'], u['prov_stop'] = tag, qty, stop
+        self.save_state()
+        if old and old != tag: self._cancel_or_park(sym, old)
+        log.info(f"ENTRY {sym} {side} unconfirmed: {qty} on Binance protected by a provisional stop at {stop}")
+
+    def _prov_pending_settled(self, sym, u):
+        """AUD-04 r2: a provisional stop whose placement answer was lost (c:/ac: client-id tag). Its exchange status decides:
+        working -> it becomes the provisional stop (the old one, if any, is cancelled); gone / never reached Binance ->
+        forgotten; unknown -> nothing is placed, and after PROV_PENDING_S it is cancelled or parked (orphans: retried,
+        never adopted) before a replacement is allowed. Returns True when settled (the caller may act)."""
+        pend = u['prov_pending']; tag = pend['tag']
+        try:
+            st = self.trade.stop_status(sym, tag, retry=False) if hasattr(self.trade, 'stop_status') else 'UNKNOWN'
+            known = st in STOP_LIVE or st in STOP_GONE or st in STOP_FIRED or (st is None and tag.startswith('c:'))
+        except Exception:
+            st, known = None, False
+        if known and st in STOP_LIVE:
+            old = u.get('prov')
+            u['prov'], u['prov_qty'], u['prov_stop'] = tag, pend['qty'], pend['stop']; u.pop('prov_pending', None)
+            self.save_state()
+            if old and old != tag: self._cancel_or_park(sym, old)
+            log.info(f"{sym} {u['side']} unconfirmed entry: the provisional stop {tag} whose answer was lost is working - owned")
+            return True
+        if known:
+            u.pop('prov_pending', None); self.save_state()
+            log.info(f"{sym} {u['side']} unconfirmed entry: lost provisional stop {tag} is not working ({st}) - placing anew")
+            return True
+        if time.time() - pend.get('t', 0) > PROV_PENDING_S:
+            if self._cancel_or_park(sym, tag):                # r3 (Codex): ONLY a confirmed cancel unlocks a replacement
+                u.pop('prov_pending', None); self.save_state()
+                self.err(f"{sym} {u['side']} unconfirmed entry: status of provisional stop {tag} unknown for {PROV_PENDING_S} s - "
+                         "cancelled on Binance, a new one is placed", key=f"prov|{sym}|{u['side']}")
+                return True
+            self.save_state()                                 # parked in orphans too, but still pending: it may be LIVE, so
+            self.err(f"{sym} {u['side']} unconfirmed entry: provisional stop {tag} - status unknown and its cancel failed; no "
+                     "replacement until Binance confirms it gone or cancelled", key=f"prov|{sym}|{u['side']}")   # no second stop
+        return False
+
+    def _settle_unconfirmed(self, live):
+        ue = self.state.get('unconfirmed_entries') or {}
+        for uk, u in list(ue.items()):
+            sym, side = u['symbol'], u['side']
+            r = self.rules.get(sym)
+            if r is None: continue
+            age = time.time() - u.get('t', 0)
+            plan = u['plan']
+            fr = self._order_result(sym, u.get('cid'), u['qty'])
+            if fr['state'] == 'final':                                     # 1. the order's final record decides
+                got = fr['qty']
+                ue.pop(uk, None)
+                if got > 0:
+                    px = fr['px'] or plan['px']
+                    log.info(f"ENTRY {sym} {side} unconfirmed -> confirmed from its order record: {got} @ {px}")
+                    self._create_lot(plan, got, px, adopt_stop=u.get('prov'))
+                else:
+                    log.info(f"ENTRY {sym} {side} unconfirmed -> its order record shows nothing executed")
+                    if u.get('prov'): self._cancel_or_park(sym, u['prov'])
+                self.save_state(); continue
+            lots_q = sum(l['qty'] for l in self.state['lots'].values() if l['symbol'] == sym and l['side'] == side)
+            rest_q = sum(x['qty'] for x in (self.state.get('resting_entries') or {}).values()
+                         if x['symbol'] == sym and x['side'] == side)
+            # Cowork #28 F1: a sibling lot's own unconfirmed ADD may already be on Binance before its lot grows - that size is
+            # the add's, never this entry's (else it would get this entry's stop and, after 5 min, be adopted twice)
+            add_q = sum((l.get('pending') or {}).get('qty', 0.0) for l in self.state['lots'].values()
+                        if l['symbol'] == sym and l['side'] == side and (l.get('pending') or {}).get('kind') == 'add')
+            extra = self._rd(min(u['qty'], max(0.0, live.get((sym, side), 0.0) - lots_q - rest_q - add_q)), r['step'])
+            u['seen_qty'] = extra                                          # AUD-04: size this entry owns NOW (stop verifier)
+            self._prov_set(uk, u, extra)                                   # 2. protect exactly what is unresolved
+            if extra > 0:
+                if age > UNCONF_ADOPT_S:                                   # 3b. no record in 5 min: adopt the position
+                    ue.pop(uk, None)
+                    px = (self.marks or {}).get(sym) or plan['px']
+                    self.err(f"ENTRY {sym} {side} could not be confirmed from its order record ({fr['state']}) - adopted from "
+                             f"the position ({extra} @ mark {px})")
+                    self._create_lot(plan, extra, px, adopt_stop=u.get('prov'))
+                    self.save_state()
+            elif age > (UNCONF_DROP_S if fr['state'] in ('notfound', 'nosource') else UNCONF_ADOPT_S):   # 3a. never executed
+                ue.pop(uk, None)
+                if u.get('prov'): self._cancel_or_park(sym, u['prov'])
+                log.info(f"ENTRY {sym} {side} unconfirmed -> nothing on Binance after {int(age)} s ({fr['state']}), forgotten")
+                self.save_state()
+
+    def _create_lot(self, plan, qty, fill, maker_qty=0.0, adopt_stop=None):
         """Record a filled entry as a lot and protect it with its exchange stop (recorded BEFORE the stop is sent)."""
         sym, side, sl, manual, g, atr = plan['sym'], plan['side'], plan['sl'], plan['manual'], plan['g'], plan['atr']
         r, sd, eq, risk_usd, reason, px = self.rules[sym], (1 if side == 'LONG' else -1), plan['eq'], plan['risk_usd'], plan['reason'], plan['px']
@@ -2275,6 +3135,7 @@ class Engine:
                 ap['ctx'] = dict(entry=self._audit_entry_ctx(sym, lot['tf'], lot['opened']))   # regime known at entry
                 lot['ap'] = ap
         except Exception: pass
+        if adopt_stop: lot['stop_id'] = adopt_stop               # AUD-03b: the provisional stop is replaced (new first, then cancelled)
         self.state['lots'][key] = lot; self.save_state()          # recorded BEFORE the stop: a crash here can never orphan the position
         self._last_lot_key = key
         if not self._replace_stop(lot):
@@ -2725,7 +3586,8 @@ class Engine:
             sd = 1 if lot['side'] == 'LONG' else -1
             mark = self._protective_mark(lot['symbol'])
             if sd * (price - mark) >= 0: raise ValueError(f'stop must be on the losing side of the current price {mark}')
-            if not self._replace_stop(lot, price): raise ValueError('Binance did not accept the new stop - the previous stop is still active')
+            if not self._replace_stop(lot, price, owner=True):     # AUD-04: also takes over from a stop placed outside the bot
+                raise ValueError('Binance did not accept the new stop - the previous stop is still active')
             self.save_state()
             log.info(f"STOP MOVED {lot['symbol']} [{lot['sleeve']}] -> {lot['stop']}")
 
@@ -2754,6 +3616,8 @@ class Engine:
                     try: self.close_lot(k, 'flatten'); res['closed'].append(k)
                     except Exception as e: res['failed'].append([k, str(e)[:160]]); self.err(f'flatten {k}: {e}')
             self.S['ENTRIES_PAUSED'] = True; self.save_settings()
+            if self.state.get('unconfirmed_entries'):                 # AUD-03b: not a lot yet - settled + protected by reconcile
+                res['unconfirmed'] = sorted(f"{u['symbol']}|{u['side']}" for u in self.state['unconfirmed_entries'].values())
             if not self.dry:
                 try:
                     live = self.trade.positions()

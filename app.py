@@ -60,6 +60,7 @@ import instance as INST         # noqa: E402  (AUD-00: one process per data fold
 import exchange_rules as XRULES  # noqa: E402
 from engine import RISK_RULE_DEFAULTS, GOV_MULT_MAX, EXCHANGE_DOWN   # noqa: E402
 from telegram_ctl import TelegramControl, clean_setting as tg_clean_setting   # noqa: E402
+import market_collector as MC     # noqa: E402
 
 
 # ------------------------------------------------------------------ config (keys) - validated, atomically written, encrypted on Windows
@@ -712,7 +713,8 @@ class App:
                         last_manage = now
                         try:
                             marks = e.data.marks()
-                            if e.state['lots'] or e.state.get('grids') or e.state.get('pending_entries') or e.state.get('resting_entries'): e.manage(marks)
+                            if (e.state['lots'] or e.state.get('grids') or e.state.get('pending_entries') or e.state.get('resting_entries')
+                                    or e.state.get('unconfirmed_entries')): e.manage(marks)   # AUD-03b: settle + protect them
                             else: e.marks, e.marks_t = marks, now
                         except Exception as ex:                     # T05b final: Binance down -> the one exchange-down incident
                             if e._exchange_down(ex): e._manage_failed(f'mark prices: {EXCHANGE_DOWN}', key='exchange-down')
@@ -723,7 +725,7 @@ class App:
                             try:
                                 e.equity(); e.check_guards()
                                 if not (e.state['lots'] or e.state.get('grids') or e.state.get('pending_entries')
-                                        or e.state.get('resting_entries')):   # nothing to reconcile: account read = recovered
+                                        or e.state.get('resting_entries') or e.state.get('unconfirmed_entries')):   # nothing to reconcile
                                     e.resolve('exchange-down', 'Binance answering again - account readable')
                             except Exception as ex:                     # T05b: Binance down -> guards simply retry next pass
                                 if not e._exchange_down(ex): raise
@@ -754,7 +756,7 @@ class App:
             m = marks.get(l['symbol']); sd = 1 if l['side'] == 'LONG' else -1
             pnl = sd * (m - l['avg']) * l['qty'] if m else None
             lots.append(dict(key=k, **{x: l.get(x) for x in ('symbol', 'side', 'sleeve', 'qty', 'avg', 'e0', 'stop', 'opened', 'adds', 'dca', 'tp1', 'manual', 'tf', 'risk_usd')},
-                             tp=l.get('tp'), protected=bool(l.get('stop_id')) and not l.get('stop_dirty'), add_blocked=l.get('add_blocked'),
+                             tp=l.get('tp'), add_blocked=l.get('add_blocked'), **_stop_view(e, l),     # AUD-04: fresh confirmation
                              exit=_safe(lambda: e.exit_plan(l)),
                              mark=m, pnl=pnl, r=(pnl / l['risk_usd']) if (pnl is not None and l.get('risk_usd')) else None,
                              risk_to_stop=sd * ((m or l['avg']) - l['stop']) * l['qty'], notional=(m or l['avg']) * l['qty']))
@@ -780,10 +782,12 @@ class App:
                     fills=e.fill_summary() if hasattr(e, 'fill_summary') else None,
                     exchange_circuit=e.exchange_state() if hasattr(e, 'exchange_state') else None,      # T05b
                     confirmed=dict(h.get('confirmed') or {}),
+                    stop_verify=dict(getattr(e, 'stopv_stats', None) or {}) or None,           # AUD-04 counters
                     incidents=[{k: v for k, v in i.items() if k not in ('entry', 'logged')} for i in sorted(
                         [i for i in list((h.get('incidents') or {}).values()) if i.get('open')],   # snapshot: loop thread mutates
                         key=lambda i: (i.get('key') != 'exchange-down', -ms_iso(i.get('last'))))][:20],
-                    audit=e.audit_summary() if hasattr(e, 'audit_summary') else None)
+                    audit=e.audit_summary() if hasattr(e, 'audit_summary') else None,
+                    market_collector=self.collector.status() if getattr(self, 'collector', None) else None)
 
     def revs(self, e):
         hl = e.history[-1]['id'] if e.history else ''
@@ -1206,6 +1210,9 @@ def handle(path, b):
                     if k == 'MAX_LEVERAGE': e._lev = {}                       # re-apply on the next entry per coin
                 elif k == 'CAPITAL_CAP': e.set_capital_base(_num(v, 0, 1e9, 'start amount'))
                 elif k in ('ENTRIES_PAUSED', 'AI_FILTER', 'RUN_IN_BACKGROUND', 'TELEGRAM_ON', 'MAKER_FALLBACK'): e.S[k] = bool(v)
+                elif k == 'MARKET_COLLECTOR':
+                    if not isinstance(v, bool): raise ValueError('market data collector switch must be true or false')
+                    e.S[k] = v
                 elif k == 'ENTRY_ORDER':
                     if v not in ('market', 'maker'): raise ValueError('entry order must be market or maker')
                     e.S[k] = v
@@ -1402,7 +1409,8 @@ def handle(path, b):
             log.info('quit from panel (exchange stops stay active)')
             e.notify('⏹ ZackBot was closed from the app. Exchange stops stay active, but nothing manages trades until it runs again.')
             with e.lock: e.save_state()
-            release_owner()                                  # AUD-00: the data folder is free for the next start
+            if getattr(APP, 'collector', None): APP.collector.shutdown()      # release its folder lock before exiting
+            release_owner()                                  # AUD-00: the data folder is free for the next start (last)
             threading.Timer(1.0, lambda: os._exit(0)).start(); return 'bye'
     raise ValueError('unknown request')
 
@@ -1476,6 +1484,20 @@ def existing_instance_token():
     return None
 
 
+
+def _stop_view(e, l):
+    """AUD-04: 'protected' needs a recorded clean stop AND a fresh confirmation on Binance (engine.stop_view). A failing
+    view is shown as NOT protected (fail closed); an engine object without the verifier (a UI test fake) keeps the old rule."""
+    if not hasattr(e, 'stop_view'):
+        p = bool(l.get('stop_id')) and not l.get('stop_dirty')
+        return dict(protected=p, stop_state=None, stop_age_s=None, stop_note=None)
+    try: v = e.stop_view(l)
+    except Exception as ex:
+        log.debug(f'stop view: {ex}'); v = None
+    if not isinstance(v, dict): v = dict(protected=False, stop_state='unknown', stop_age_s=None, stop_note='stop state unknown')
+    return dict(protected=bool(v.get('protected')), stop_state=v.get('stop_state'), stop_age_s=v.get('stop_age_s'), stop_note=v.get('stop_note'))
+
+
 def _safe(f):
     try: return f()
     except Exception as ex:
@@ -1491,7 +1513,7 @@ def selftest(path):
         zoneinfo.ZoneInfo('Africa/Cairo')
         for f in ('panel.html', 'research', os.path.join('data', 'exchange_rules_testnet.json')):
             if not os.path.exists(os.path.join(BUNDLE, f)): raise RuntimeError(f'{f} missing from the bundle')
-        import lab, grid, telegram_ctl, ai_filter, instance    # noqa: F401  (every module the app loads lazily)
+        import lab, grid, telegram_ctl, ai_filter, instance, market_collector, market_data    # noqa: F401  (every module the app loads lazily)
         if not PRESETS or not S.STRATEGIES: raise RuntimeError('presets/strategies missing')
         res['ok'] = True
     except Exception as e:
@@ -1523,6 +1545,8 @@ def main():
     APP = App()
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     threading.Thread(target=APP.loop, daemon=True).start()
+    APP.collector = MC.MarketCollector(lambda: APP.engine, os.path.join(DATA, 'market_data'))   # observe-only, own thread + folder
+    APP.collector.start()
     log.info(f'control panel at http://127.0.0.1:{PORT} (opens from the ZackBot shortcut)')
     APP.engine.notify(f'▶️ ZackBot {VERSION} started ({"LIVE" if APP.engine.live else "paper"}).')
     if '--no-window' in sys.argv:
@@ -1537,6 +1561,7 @@ def main():
             else:
                 log.info('window closed - quitting (exchange stops stay active)')
                 with APP.engine.lock: APP.engine.save_state()
+                APP.collector.shutdown()
                 release_owner()
                 os._exit(0)
 

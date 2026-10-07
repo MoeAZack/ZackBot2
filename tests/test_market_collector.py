@@ -1,0 +1,905 @@
+"""Market-data collector (market_data.py core, tools/collect_market_data.py, market_collector.py in-app thread).
+No network: every test drives a fake Binance through an injected transport and a fake clock."""
+import csv, io, json, os, sys, tempfile, threading, time, types
+import pytest
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, ROOT); sys.path.insert(0, os.path.join(ROOT, 'tools'))
+import market_data as MD
+import market_collector as MC
+import binance_client as BC
+
+H = MD.HOUR_MS
+NOW = 1791331200000                       # 2026-10-07T00:00:00Z
+ONBOARD = NOW - 400 * MD.DAY_MS           # ~13 months of history -> several kline pages
+
+
+class Clock:
+    def __init__(self, t_ms=NOW): self.t = t_ms / 1000.0; self.slept = []
+    def __call__(self): return self.t
+    def sleep(self, s): self.slept.append(s); self.t += max(0.0, s)
+
+
+class FakeBinance:
+    """Answers like Binance for the endpoints the collector uses; `script` is a list of exceptions (or None) consumed one
+    per request before answering; `calls` records (path, params)."""
+    def __init__(self, clock, symbols=('BTCUSDT', 'ETHUSDT'), onboard=ONBOARD, funding_h=8):
+        self.clock, self.symbols, self.onboard, self.funding_h = clock, list(symbols), onboard, funding_h
+        self.calls, self.script, self.used_weight = [], [], None
+
+    def now(self): return int(self.clock() * 1000)
+
+    def get(self, path, params):
+        self.calls.append((path, dict(params)))
+        if self.script:
+            ex = self.script.pop(0)
+            if ex is not None: raise ex
+        now = self.now()
+        if path == '/fapi/v1/exchangeInfo':
+            return dict(serverTime=now, rateLimits=[], symbols=[dict(symbol=s, onboardDate=self.onboard, status='TRADING') for s in self.symbols])
+        if path == '/fapi/v1/fundingInfo':
+            return [dict(symbol='BTCUSDT', fundingIntervalHours=8, adjustedFundingRateCap='0.02', adjustedFundingRateFloor='-0.02')]
+        sym = params['symbol']
+        if sym not in self.symbols: raise MD.Refused(-1121, 'Invalid symbol.')
+        if path.startswith('/futures/data/'):
+            p = MD.PERIOD_MS[params['period']]
+            if params['startTime'] < now - 30 * MD.DAY_MS: raise MD.Refused(-1130, 'startTime outside the 30-day window')
+            lo, hi = params['startTime'], min(params['endTime'], now)
+            ts = [t for t in range(-(-lo // p) * p, hi + 1, p) if t + p <= now]
+            ts = ts[-params['limit']:]                       # Binance's ambiguous ordering: the LAST rows of a long range
+            return [dict(symbol=sym, timestamp=t, sumOpenInterest='1.5', sumOpenInterestValue='2.5', CMCCirculatingSupply='19.5', longShortRatio='1.1',
+                         longAccount='0.52', shortAccount='0.48', buySellRatio='0.9', buyVol='10', sellVol='11') for t in ts]
+        if path == '/fapi/v1/fundingRate':
+            step = self.funding_h * H
+            first = self.onboard + (-(self.onboard - params['startTime']) // step) * step if params['startTime'] > self.onboard else self.onboard
+            out, t = [], first
+            while t <= now and len(out) < params['limit']:
+                out.append(dict(symbol=sym, fundingTime=t, fundingRate='0.0001', markPrice='100.0')); t += step
+            return out
+        if path == '/fapi/v1/markPriceKlines':
+            p = MD.PERIOD_MS[params['interval']]
+            t = max(self.onboard, -(-params['startTime'] // p) * p)
+            out = []
+            while t <= now and len(out) < params['limit']:     # includes the still-open candle like Binance
+                out.append([t, '1', '2', '0.5', '1.5', '0', t + p - 1, '0', 0, '0', '0', '0']); t += p
+            return out
+        raise AssertionError(path)
+
+
+def mk(tmp, clock=None, symbols=('BTCUSDT',), **kw):
+    clock = clock or Clock()
+    fb = FakeBinance(clock, symbols=symbols)
+    c = MD.Collector(fb, str(tmp), sleep=clock.sleep, clock=clock, **kw)
+    return c, fb, clock
+
+
+def read_csv(path):
+    with open(path, encoding='utf-8', newline='') as f: return list(csv.DictReader(f))
+
+
+# ------------------------------------------------------------------ pagination + idempotency
+def test_full_history_pagination_is_complete_ordered_and_closed_only(tmp_path):
+    c, fb, clk = mk(tmp_path)
+    s = c.run(['BTCUSDT'], datasets=('mark_klines', 'funding_rate'), funding_info=False)
+    assert s['stopped'] is None and s['errors'] == 0, s
+    for per in ('1h', '4h'):
+        rows = read_csv(MD.series_path(str(tmp_path), 'mark_klines', 'BTCUSDT', per))
+        ts = [int(r['open_time']) for r in rows]
+        p = MD.PERIOD_MS[per]
+        assert ts[0] == ONBOARD and ts == list(range(ONBOARD, ts[-1] + 1, p)), 'gapless, ascending, from onboard'
+        assert ts[-1] + p <= NOW and all(int(r['close_time']) < NOW for r in rows), 'the open candle is never stored'
+        pages = [x for x in fb.calls if x[0] == '/fapi/v1/markPriceKlines' and x[1]['interval'] == per]
+        assert len(pages) == -(-len(ts) // 1500) or len(pages) == -(-len(ts) // 1500) + 1
+        assert all(x[1]['limit'] == 1500 for x in pages)
+    fr = read_csv(MD.series_path(str(tmp_path), 'funding_rate', 'BTCUSDT', None))
+    assert len(fr) == (NOW - ONBOARD) // (8 * H) + 1 and len({r['fundingTime'] for r in fr}) == len(fr)
+    assert all(x[1]['limit'] == 1000 for x in fb.calls if x[0] == '/fapi/v1/fundingRate')
+
+
+def test_second_run_adds_nothing_and_later_runs_only_append_new_rows(tmp_path):
+    c, fb, clk = mk(tmp_path)
+    c.run(['BTCUSDT'])
+    files = {}
+    for dp, _, fns in os.walk(tmp_path):
+        for fn in fns:
+            if fn.endswith('.csv'): files[os.path.join(dp, fn)] = open(os.path.join(dp, fn), encoding='utf-8').read()
+    c2 = MD.Collector(fb, str(tmp_path), sleep=clk.sleep, clock=clk)
+    s2 = c2.run(['BTCUSDT'])
+    assert s2['rows_added'] == 0 and s2['errors'] == 0
+    for p, txt in files.items(): assert open(p, encoding='utf-8').read() == txt, f'{p} rewritten differently'
+    clk.t += 8 * 3600                                                  # 8 hours later
+    fb.calls.clear()
+    s3 = MD.Collector(fb, str(tmp_path), sleep=clk.sleep, clock=clk).run(['BTCUSDT'])
+    assert s3['rows_added'] > 0 and s3['errors'] == 0
+    k1h = [x for x in fb.calls if x[0] == '/fapi/v1/markPriceKlines' and x[1]['interval'] == '1h']
+    assert len(k1h) == 1 and k1h[0][1]['startTime'] == NOW, 'resumes right after the last stored closed candle'
+    rows = read_csv(MD.series_path(str(tmp_path), 'mark_klines', 'BTCUSDT', '1h'))
+    ts = [int(r['open_time']) for r in rows]
+    assert len(ts) == len(set(ts)) and ts == sorted(ts) and ts[-1] == NOW + 7 * H
+    oi = read_csv(MD.series_path(str(tmp_path), 'open_interest_hist', 'BTCUSDT', '1h'))
+    assert len({r['timestamp'] for r in oi}) == len(oi)
+
+
+def test_merge_dedupes_by_timestamp_and_newer_answer_wins(tmp_path):
+    c, fb, clk = mk(tmp_path)
+    ex = {}
+    c._store('funding_rate', 'BTCUSDT', None, ex, [dict(fundingTime=1, fundingRate='0.1', markPrice='1')])
+    n = c._store('funding_rate', 'BTCUSDT', None, ex, [dict(fundingTime=1, fundingRate='0.2', markPrice='1'),
+                                                      dict(fundingTime=2, fundingRate='0.3', markPrice='1')])
+    assert n == 1
+    rows = read_csv(MD.series_path(str(tmp_path), 'funding_rate', 'BTCUSDT', None))
+    assert [(r['fundingTime'], r['fundingRate']) for r in rows] == [('1', '0.2'), ('2', '0.3')]
+
+
+# ------------------------------------------------------------------ 30-day window
+def test_window_series_stay_inside_30_days_in_chunks_of_at_most_limit(tmp_path):
+    c, fb, clk = mk(tmp_path)
+    c.run(['BTCUSDT'], datasets=('open_interest_hist', 'global_ls_account', 'top_ls_position', 'taker_ls_ratio'), exchange_info=False,
+          funding_info=False)
+    reqs = [x[1] for x in fb.calls if x[0].startswith('/futures/data/')]
+    assert reqs and all(r['startTime'] >= NOW - 30 * MD.DAY_MS for r in reqs)
+    for r in reqs:
+        p = MD.PERIOD_MS[r['period']]
+        assert r['limit'] == 500 and (r['endTime'] - r['startTime']) // p + 1 <= 500
+    rows = read_csv(MD.series_path(str(tmp_path), 'open_interest_hist', 'BTCUSDT', '1h'))
+    ts = [int(r['timestamp']) for r in rows]
+    assert len(ts) >= 29 * 24 and ts == list(range(ts[0], ts[-1] + 1, H)), 'chunking kept every hour (none lost to limit)'
+    assert not c.gaps
+
+
+def test_window_gap_after_a_long_pause_is_recorded_not_hidden(tmp_path):
+    c, fb, clk = mk(tmp_path)
+    c.run(['BTCUSDT'], datasets=('open_interest_hist',), exchange_info=False, funding_info=False)
+    clk.t += 40 * 86400
+    c2 = MD.Collector(fb, str(tmp_path), sleep=clk.sleep, clock=clk)
+    s = c2.run(['BTCUSDT'], datasets=('open_interest_hist',), exchange_info=False, funding_info=False)
+    assert s['errors'] == 2 and len(s['gaps']) == 2 and 'no longer served' in s['gaps'][0]
+    m = MD.read_json(os.path.join(tmp_path, 'manifest.json'))
+    assert m['series']['open_interest_hist/BTCUSDT/1h']['gaps']
+
+
+# ------------------------------------------------------------------ rate limits
+def test_429_backs_off_with_retry_after_then_succeeds(tmp_path):
+    c, fb, clk = mk(tmp_path)
+    fb.script = [None, None, MD.RateLimited(7.0), MD.RateLimited(0)]    # exchangeInfo, fundingInfo, then two 429s
+    s = c.run(['BTCUSDT'], datasets=('funding_rate',))
+    assert s['stopped'] is None and s['errors'] == 0
+    assert 7.0 in clk.slept and 4.0 in clk.slept, clk.slept            # Retry-After honoured; no header -> 2 * 2**1
+    assert read_csv(MD.series_path(str(tmp_path), 'funding_rate', 'BTCUSDT', None))
+
+
+def test_429_that_never_clears_stops_the_run_bounded(tmp_path):
+    c, fb, clk = mk(tmp_path, max_retries=3)
+    fb.script = [None, None] + [MD.RateLimited(1.0)] * 50
+    s = c.run(['BTCUSDT'], datasets=('funding_rate', 'mark_klines'))
+    assert s['stopped'] and 'rate limit' in s['stopped']
+    assert len(fb.calls) == 2 + 4, 'bounded: 1 try + 3 retries, then nothing more'
+
+
+def test_418_stops_immediately_and_blocks_later_runs_until_the_ban_ends(tmp_path):
+    c, fb, clk = mk(tmp_path)
+    fb.script = [None, None, MD.Banned(600.0)]
+    s = c.run(['BTCUSDT'])
+    assert s['stopped'] and '418' in s['stopped'] and len(fb.calls) == 3
+    ban = MD.read_json(os.path.join(tmp_path, MD.BAN_FILE))
+    assert ban['until'] == pytest.approx(clk() + 600, abs=1)
+    n = len(fb.calls)
+    s2 = MD.Collector(fb, str(tmp_path), sleep=clk.sleep, clock=clk).run(['BTCUSDT'])
+    assert s2['stopped'] and len(fb.calls) == n, 'nothing is sent while banned'
+    clk.t += 601
+    s3 = MD.Collector(fb, str(tmp_path), sleep=clk.sleep, clock=clk).run(['BTCUSDT'], datasets=('funding_rate',))
+    assert s3['stopped'] is None and len(fb.calls) > n
+
+
+def test_requests_are_paced(tmp_path):
+    c, fb, clk = mk(tmp_path, weight_per_min=600)
+    times = []
+    orig = fb.get
+    fb.get = lambda p, q: (times.append((p, clk())), orig(p, q))[1]
+    c.run(['BTCUSDT'], datasets=('mark_klines',), exchange_info=False, funding_info=False)
+    kt = [t for p, t in times if p == '/fapi/v1/markPriceKlines']
+    assert len(kt) > 2 and all(b - a >= 1.0 - 1e-6 for a, b in zip(kt, kt[1:])), 'weight 10 at 600/min -> >= 1 s apart'
+
+
+def test_unreachable_binance_stops_after_three_series(tmp_path):
+    c, fb, clk = mk(tmp_path, symbols=('BTCUSDT', 'ETHUSDT'), max_retries=1)
+    fb.script = [None, None] + [MD.Transient('down')] * 100
+    s = c.run(['BTCUSDT', 'ETHUSDT'])
+    assert s['stopped'] and 'unreachable' in s['stopped'] and len(fb.calls) == 2 + 3 * 2
+
+
+def test_refused_series_is_skipped_others_continue(tmp_path):
+    c, fb, clk = mk(tmp_path, symbols=('BTCUSDT',))
+    s = c.run(['BTCUSDT', 'NOPEUSDT'], datasets=('funding_rate',))
+    assert s['errors'] == 1 and 'NOPEUSDT' in s['last_errors'][0]
+    assert read_csv(MD.series_path(str(tmp_path), 'funding_rate', 'BTCUSDT', None))
+
+
+# ------------------------------------------------------------------ manifest + snapshots
+def test_manifest_tracks_rows_first_last_and_source(tmp_path):
+    c, fb, clk = mk(tmp_path)
+    c.run(['BTCUSDT'])
+    m = MD.read_json(os.path.join(tmp_path, 'manifest.json'))
+    e = m['series']['mark_klines/BTCUSDT/4h']
+    rows = read_csv(os.path.join(tmp_path, e['file']))
+    assert e['rows'] == len(rows) and e['first_ts'] == ONBOARD and e['last_ts'] == int(rows[-1]['open_time'])
+    assert e['source'] == MD.MAINNET and e['last_run'].startswith('2026-10-07T')
+    assert m['last_run']['rows_added'] > 0 and m['last_run']['kind'] == 'once'
+    assert {'funding_info', 'exchange_info/mainnet', 'funding_rate/BTCUSDT', 'taker_ls_ratio/BTCUSDT/1h'} <= set(m['series'])
+
+
+def test_exchange_info_snapshot_new_file_only_when_content_changes(tmp_path):
+    c, fb, clk = mk(tmp_path)
+    c.snapshot_exchange_info('mainnet')
+    clk.t += 3600
+    c.snapshot_exchange_info('mainnet')                     # same content (serverTime differs) -> no new stamped copy
+    d = os.path.join(tmp_path, 'exchange_info')
+    assert len([f for f in os.listdir(d) if 'latest' not in f]) == 1
+    fb.symbols.append('SOLUSDT'); clk.t += 3600
+    c.snapshot_exchange_info('mainnet')
+    assert len([f for f in os.listdir(d) if 'latest' not in f]) == 2
+    latest = MD.read_json(os.path.join(d, 'mainnet_exchangeInfo_latest.json'))
+    assert len(latest['symbols']) == 2 and 'serverTime' in latest       # raw answer: exchange_rules.py `build` input
+
+
+def test_funding_info_logs_changes_once(tmp_path):
+    c, fb, clk = mk(tmp_path)
+    assert c.snapshot_funding_info() == 1 and c.snapshot_funding_info() == 0
+    rows = read_csv(os.path.join(tmp_path, 'funding_info', 'ALL.csv'))
+    assert rows[0]['symbol'] == 'BTCUSDT' and rows[0]['fundingIntervalHours'] == '8'
+
+
+# ------------------------------------------------------------------ atomic writes
+def test_failed_replace_never_corrupts_the_existing_file(tmp_path, monkeypatch):
+    p = os.path.join(tmp_path, 'x', 'f.csv')
+    MD.atomic_write_text(p, 'old,complete\n')
+    def boom(a, b): raise OSError('disk full')
+    monkeypatch.setattr(MD.os, 'replace', boom)
+    with pytest.raises(OSError): MD.atomic_write_text(p, 'new' * 1000)
+    assert open(p, encoding='utf-8').read() == 'old,complete\n'
+    assert os.listdir(os.path.dirname(p)) == ['f.csv'], 'no temp file left behind'
+
+
+def test_crash_mid_write_keeps_the_previous_complete_csv(tmp_path, monkeypatch):
+    c, fb, clk = mk(tmp_path)
+    c.run(['BTCUSDT'], datasets=('funding_rate',), exchange_info=False, funding_info=False)
+    p = MD.series_path(str(tmp_path), 'funding_rate', 'BTCUSDT', None)
+    before = open(p, encoding='utf-8').read()
+    real_open = open
+    class Partial(io.StringIO):
+        def __init__(self, path): super().__init__(); self.path = path
+        def write(self, s):
+            with real_open(self.path, 'w', encoding='utf-8') as f: f.write(s[:10])    # half the bytes reach the disk
+            raise OSError('power cut')
+        def fileno(self): return -1
+    monkeypatch.setattr('builtins.open', lambda path, mode='r', *a, **k: Partial(path) if path.endswith('.tmp') and 'w' in mode
+                        else real_open(path, mode, *a, **k))
+    clk.t += 86400
+    with pytest.raises(OSError):
+        c._store('funding_rate', 'BTCUSDT', None, MD.read_rows(p, 'fundingTime'), [dict(fundingTime=NOW + 1, fundingRate='1', markPrice='1')])
+    monkeypatch.undo()
+    assert open(p, encoding='utf-8').read() == before
+    assert not [f for f in os.listdir(os.path.dirname(p)) if f.endswith('.tmp')]
+
+
+def test_interrupted_backfill_resumes_from_its_checkpoint(tmp_path):
+    c, fb, clk = mk(tmp_path)
+    fb.script = [None] * 3 + [MD.Banned(1.0)]                         # stop during the 1h kline back-fill (7 pages)
+    s = c.run(['BTCUSDT'], datasets=('mark_klines',), exchange_info=False, funding_info=False, periods=('1h',))
+    assert s['stopped']
+    rows = read_csv(MD.series_path(str(tmp_path), 'mark_klines', 'BTCUSDT', '1h'))
+    assert len(rows) == 3 * 1500, 'every fetched page before the stop was kept (checkpoint + final store)'
+    clk.t += 300
+    fb.calls.clear()
+    MD.Collector(fb, str(tmp_path), sleep=clk.sleep, clock=clk).run(['BTCUSDT'], datasets=('mark_klines',), exchange_info=False,
+                                                                     funding_info=False, periods=('1h',))
+    assert fb.calls[0][1]['startTime'] == ONBOARD + 3 * 1500 * H
+    ts = [int(r['open_time']) for r in read_csv(MD.series_path(str(tmp_path), 'mark_klines', 'BTCUSDT', '1h'))]
+    assert ts == list(range(ONBOARD, ts[-1] + 1, H))
+
+
+def test_temp_files_left_by_a_killed_process_are_swept(tmp_path):
+    c, fb, clk = mk(tmp_path)
+    d = os.path.join(tmp_path, 'mark_klines'); os.makedirs(d)
+    old_tmp, new_tmp, data = (os.path.join(d, n) for n in ('BTCUSDT_1h.csv.4242.tmp', 'BTCUSDT_4h.csv.4243.tmp', 'keep.csv'))
+    for p in (old_tmp, new_tmp, data): open(p, 'w', encoding='utf-8').write('x')
+    os.utime(old_tmp, (time.time() - 7200, time.time() - 7200)); os.utime(data, (time.time() - 7200, time.time() - 7200))
+    c.sweep_tmp()
+    assert not os.path.exists(old_tmp) and os.path.exists(new_tmp) and os.path.exists(data)
+
+
+def test_lock_is_single_writer_and_stale_lock_is_taken_over(tmp_path):
+    clk = Clock()
+    a = MD.acquire_lock(str(tmp_path), clock=clk)
+    assert a and not MD.acquire_lock(str(tmp_path), clock=clk)
+    clk.t += MD.LOCK_STALE_S + 1
+    b = MD.acquire_lock(str(tmp_path), clock=clk)
+    assert b and b != a
+    MD.release_lock(str(tmp_path), b)
+    assert not os.path.exists(os.path.join(tmp_path, MD.LOCK_FILE))
+
+
+def test_a_taken_over_run_never_deletes_the_new_owners_lock(tmp_path):
+    """Cowork D1: run A outlives the stale limit, B takes the lock over, then A finishes: A must not remove B's lock
+    (otherwise a third run C would write the folder at the same time as B)."""
+    clk = Clock()
+    a = MD.acquire_lock(str(tmp_path), clock=clk)
+    clk.t += MD.LOCK_STALE_S + 1
+    b = MD.acquire_lock(str(tmp_path), clock=clk)
+    assert MD.release_lock(str(tmp_path), a) is False                     # A's late release is refused
+    assert os.path.exists(os.path.join(tmp_path, MD.LOCK_FILE))
+    assert not MD.acquire_lock(str(tmp_path), clock=clk), 'C must still be kept out while B runs'
+    assert MD.release_lock(str(tmp_path), b) is True and not MD.release_lock(str(tmp_path), None)
+
+
+def test_lock_of_a_process_that_is_gone_is_taken_over_at_once(tmp_path):
+    """Cowork N1: an app that quit (os._exit) mid-run leaves its lock; the next start must not skip collection for hours."""
+    clk = Clock()
+    p = os.path.join(tmp_path, MD.LOCK_FILE)
+    with open(p, 'w', encoding='utf-8') as f: json.dump(dict(pid=424242, t=clk(), token='old'), f)
+    assert not MD.acquire_lock(str(tmp_path), clock=clk, alive=lambda pid: True)       # still running -> respected
+    tok = MD.acquire_lock(str(tmp_path), clock=clk, alive=lambda pid: False)           # gone -> taken over now
+    assert tok and MD.read_json(p)['pid'] == os.getpid()
+
+
+def test_pid_alive_is_safe_and_correct():
+    import subprocess
+    assert MD.pid_alive(os.getpid()) is True
+    assert MD.pid_alive(None) is False and MD.pid_alive('x') is False and MD.pid_alive(-5) is False
+    pr = subprocess.Popen([sys.executable, '-c', 'pass']); pr.wait()
+    assert MD.pid_alive(pr.pid) is False
+    src = open(os.path.join(ROOT, 'market_data.py'), encoding='utf-8').read()
+    body = src[src.index('def pid_alive'):src.index('def acquire_lock')]
+    assert body.index("os.name == 'nt'") < body.rindex('os.kill('), 'never os.kill on Windows (it terminates)'
+
+
+def test_app_quit_releases_the_collector_lock(tmp_path):
+    clk = Clock(); fb = FakeBinance(clk)
+    e = _engine(fb)
+    mc = _mc(e, fb, str(tmp_path), clk)
+    tok = MD.acquire_lock(str(tmp_path), clock=clk); mc._lock_token = tok          # a run is going
+    mc.shutdown()
+    assert mc._stop.is_set() and not os.path.exists(os.path.join(tmp_path, MD.LOCK_FILE))
+    src = open(os.path.join(ROOT, 'app.py'), encoding='utf-8').read()
+    assert src.count('collector.shutdown()') == 2, 'both quit paths (panel quit, window closed) release the lock'
+
+
+# ------------------------------------------------------------------ CP1252 / UTF-8
+def test_every_file_open_names_utf8():
+    import re
+    for f in ('market_data.py', 'market_collector.py', os.path.join('tools', 'collect_market_data.py')):
+        src = open(os.path.join(ROOT, f), encoding='utf-8').read()
+        for m in re.finditer(r'(?<![\w.])open\(([^\n]*)', src):
+            assert "encoding='utf-8'" in m.group(1), f'{f}: {m.group(0)}'
+        assert 'fdopen' not in src or "fdopen(fd, 'w', encoding='utf-8')" in src
+
+
+def test_non_ascii_survives_a_round_trip(tmp_path):
+    c, fb, clk = mk(tmp_path)
+    ex = {}
+    c._store('funding_rate', 'BTCUSDT', None, ex, [dict(fundingTime=5, fundingRate='0.1', markPrice='€1→2')])
+    rows = read_csv(MD.series_path(str(tmp_path), 'funding_rate', 'BTCUSDT', None))
+    assert rows[0]['markPrice'] == '€1→2'
+    MD.atomic_write_json(os.path.join(tmp_path, 'j.json'), dict(x='é→'))
+    assert MD.read_json(os.path.join(tmp_path, 'j.json')) == dict(x='é→')
+
+
+# ------------------------------------------------------------------ standalone tool
+def test_cli_once_symbols_out_and_exit_codes(tmp_path):
+    import collect_market_data as T
+    clk = Clock(); fb = FakeBinance(clk)
+    rc = T.main(['--once', '--symbols', 'btc,ETHUSDT', '--out', str(tmp_path)], transport=fb, sleep=clk.sleep, clock=clk)
+    assert rc == 0
+    m = MD.read_json(os.path.join(tmp_path, 'manifest.json'))
+    assert m['last_run']['symbols'] == 2 and 'mark_klines/ETHUSDT/1h' in m['series']
+    assert 'run done' in open(os.path.join(tmp_path, 'collector.log'), encoding='utf-8').read()
+    held = MD.acquire_lock(str(tmp_path), clock=clk)                   # held by "another run" now
+    assert held
+    assert T.main(['--once', '--symbols', 'BTCUSDT', '--out', str(tmp_path)], transport=fb, sleep=clk.sleep, clock=clk) == 3
+    MD.release_lock(str(tmp_path), held)
+    fb.script = [MD.Banned(60)]
+    assert T.main(['--once', '--symbols', 'BTCUSDT', '--out', str(tmp_path)], transport=fb, sleep=clk.sleep, clock=clk) == 3
+    with pytest.raises(SystemExit): T.main(['--every', '1m'])
+
+
+def test_cli_default_universe_is_the_engine_top40():
+    import collect_market_data as T, engine
+    assert T.top40_from_engine() == engine.TOP40
+    syms, why = T.resolve_symbols('')
+    assert syms == engine.TOP40 and why == 'engine.py TOP40'          # conftest LOCALAPPDATA has no settings.json
+
+
+def test_cli_testnet_snapshot_feeds_exchange_rules(tmp_path, monkeypatch):
+    import collect_market_data as T
+    clk = Clock(); fb = FakeBinance(clk)
+    built = []
+    fake = types.ModuleType('exchange_rules')
+    def build_file(path, env, out=None, source=None, fetched_at=None, version=None):
+        with open(path, encoding='utf-8') as f: info = json.load(f)
+        built.append((env, source, fetched_at, len(info['symbols']))); return dict(symbols={}, version=1), None
+    fake.build_file = build_file
+    monkeypatch.setitem(sys.modules, 'exchange_rules', fake)
+    assert T.main(['--testnet', '--out', str(tmp_path)], transport=fb, sleep=clk.sleep, clock=clk) == 0
+    assert [x[0] for x in fb.calls] == ['/fapi/v1/exchangeInfo'], 'testnet mode fetches only exchangeInfo'
+    assert built == [('testnet', MD.TESTNET + '/fapi/v1/exchangeInfo', '2026-10-07T00:00:00Z', 2)]
+    assert os.path.exists(os.path.join(tmp_path, 'exchange_info', 'testnet_exchangeInfo_latest.json'))
+    assert MD.read_json(os.path.join(tmp_path, 'manifest.json'))['series']['exchange_info/testnet']['source'] == MD.TESTNET
+    monkeypatch.setitem(sys.modules, 'exchange_rules', None)          # not in this checkout -> prints the build command
+    lines = []
+    T.build_rules(os.path.join(tmp_path, 'x.json'), NOW, lines.append)
+    assert 'exchange_rules.py build' in lines[0] and '--env testnet' in lines[0]
+
+
+def test_requests_transport_maps_status_codes_and_never_sends_a_key():
+    class R:
+        def __init__(self, code, data, headers=None): self.status_code, self._d, self.headers = code, data, headers or {}; self.content = b'x'
+        def json(self): return self._d
+    class S:
+        def __init__(self): self.headers, self.q = {'X-MBX-APIKEY': 'leak'}, []
+        def get(self, url, params=None, timeout=None): self.q.append(url); return self.q_resp.pop(0)
+    s = S()
+    t = MD.RequestsTransport(session=s)
+    assert 'X-MBX-APIKEY' not in s.headers
+    s.q_resp = [R(418, {'code': -1003}, {'Retry-After': '120'}), R(429, {}, {'Retry-After': '3'}), R(503, None),
+                R(400, {'code': -1121, 'msg': 'Invalid symbol.'}), R(200, [1])]
+    with pytest.raises(MD.Banned) as b: t.get('/x', {})
+    assert b.value.retry_after == 120
+    with pytest.raises(MD.RateLimited) as r: t.get('/x', {})
+    assert r.value.retry_after == 3
+    with pytest.raises(MD.Transient): t.get('/x', {})
+    with pytest.raises(MD.Refused): t.get('/x', {})
+    assert t.get('/x', {}) == [1]
+
+
+# ------------------------------------------------------------------ in-app collector
+class _Resp:
+    def __init__(self, code, data, headers=None): self.status_code, self._d, self.headers = code, data, headers or {}; self.content = b'x'
+    def json(self): return self._d
+
+
+def _engine_futures():
+    """The engine's real binance_client.Futures (keyless MAINNET, no network) as a tripwire: the collector must never send
+    a request through it, so _once records and fails."""
+    f = BC.Futures.__new__(BC.Futures)
+    f.key, f.secret, f.base, f.rw, f.offset, f.last_ok = '', b'', BC.MAINNET, 6000, 0, 0.0
+    f.s, f.engine_calls = None, []
+    def once(method, url, params, signed):
+        f.engine_calls.append(url); raise AssertionError(f'collector request went through the engine client: {url}')
+    f._once = once
+    f.health                                   # the engine has read before: its circuit exists
+    return f
+
+
+class FakeSession:
+    """requests.Session stand-in for the collector's OWN RequestsTransport: answers from the fake Binance with the HTTP
+    status Binance would use. Script entries: MD.Banned -> 418, MD.RateLimited -> 429, MD.Transient -> 503,
+    requests.ConnectionError -> raised (network failure), MD.Refused -> 400."""
+    def __init__(self, fb):
+        self.fb, self.headers, self.urls = fb, {}, []
+
+    def get(self, url, params=None, timeout=None):
+        import requests
+        self.urls.append(url)
+        assert url.startswith(MD.MAINNET), url
+        path = url[len(MD.MAINNET):]
+        try:
+            d = self.fb.get(path, params or {})
+            return _Resp(200, d)
+        except requests.RequestException: raise
+        except MD.Banned as x: return _Resp(418, {'code': -1003, 'msg': 'banned'}, {'Retry-After': str(int(x.retry_after))})
+        except MD.RateLimited as x: return _Resp(429, {'code': -1003, 'msg': 'too many'}, {'Retry-After': str(int(x.retry_after))})
+        except MD.Transient: return _Resp(503, None)
+        except MD.Refused as x: return _Resp(400, {'code': x.code, 'msg': 'no'})
+
+
+def _collector_transport(fb):
+    sess = FakeSession(fb)
+    return (lambda: MD.RequestsTransport(MD.MAINNET, session=sess)), sess
+
+
+def _circuit(f):
+    """Every field of the engine's ExchangeHealth (state-for-state comparison)."""
+    h = f.health
+    return {k: v for k, v in vars(h).items() if k not in ('lock', 'clock')}
+
+
+class GuardLock:
+    """engine.lock stand-in: acquiring it from the collector thread is a test failure."""
+    def __init__(self): self.bad = []
+    def _chk(self):
+        if threading.current_thread().name == 'market-collector': self.bad.append('acquired from the collector thread')
+        return True
+    def acquire(self, *a, **k): return self._chk()
+    def release(self): pass
+    def __enter__(self): self._chk(); return self
+    def __exit__(self, *a): return False
+
+
+def _engine(fb, on=True):
+    e = types.SimpleNamespace(S=dict(MARKET_COLLECTOR=on, UNIVERSE=['BTCUSDT', 'ETHUSDT']), lock=GuardLock(),
+                              data=_engine_futures(), state=dict(lots={}), trade=object())
+    e.orders_touched = []
+    return e
+
+
+def _mc(e, fb, out, clk, **kw):
+    """An in-app collector whose OWN transport answers from `fb` (fast pacing, fake sleep)."""
+    factory, sess = _collector_transport(fb)
+    mc = MC.MarketCollector(lambda: e, out, clock=clk, transport_factory=factory, **kw)
+    mc.WEIGHT_PER_MIN = 1e9
+    mc._sleep = clk.sleep
+    mc.sess = sess
+    return mc
+
+
+def test_in_app_thread_collects_without_ever_taking_engine_lock(tmp_path):
+    clk = Clock(); fb = FakeBinance(clk, symbols=('BTCUSDT', 'ETHUSDT'))
+    fb.onboard = NOW - 20 * MD.DAY_MS
+    e = _engine(fb)
+    before = _circuit(e.data)
+    mc = _mc(e, fb, str(tmp_path / 'md'), clk, every_s=3600, first_delay_s=0)
+    done = threading.Event()
+    real = mc.run_once
+    mc.run_once = lambda: (real(), done.set(), mc.stop())
+    mc.start()
+    assert done.wait(60), 'collector run did not finish'
+    mc.thread.join(5)
+    assert e.lock.bad == [], e.lock.bad
+    st = mc.status()
+    assert st['runs'] == 1 and st['last_run']['rows_added'] > 0 and st['last_run']['errors'] == 0 and st['enabled'] is True
+    assert st['running'] is False and st['out'].endswith('md')
+    assert st['request_health']['ok'] == len(fb.calls) and st['request_health']['failed'] == 0
+    m = MD.read_json(os.path.join(tmp_path, 'md', 'manifest.json'))
+    assert m['last_run']['kind'] == 'in-app' and m['series']['mark_klines/ETHUSDT/4h']['rows'] == 20 * 6
+    assert {p for p, _ in fb.calls} <= {'/fapi/v1/exchangeInfo', '/fapi/v1/fundingInfo', '/fapi/v1/fundingRate',
+                                        '/fapi/v1/markPriceKlines'} | {MD.DATASETS[d]['path'] for d in MD.DATASETS}
+    assert e.data.engine_calls == [] and _circuit(e.data) == before, 'collector success must not touch the engine circuit'
+    assert 'X-MBX-APIKEY' not in mc.sess.headers
+    assert not os.path.exists(os.path.join(tmp_path, 'md', MD.LOCK_FILE))
+
+
+def _failure(kind):
+    import requests
+    return dict(ok=None, e429=MD.RateLimited(1), e418=MD.Banned(900), e5xx=MD.Transient('busy'),
+                network=requests.ConnectionError('connection reset'))[kind]
+
+
+@pytest.mark.parametrize('kind', ['ok', 'e429', 'e418', 'e5xx', 'network'])
+@pytest.mark.parametrize('engine_flags', [False, True])
+def test_collector_outcomes_never_change_the_engine_circuit(tmp_path, kind, engine_flags):
+    """P1 (DATA_COLLECTOR_review_gpt): collector success, 429, 418, 5xx and network failure leave the engine's
+    ExchangeHealth state-for-state unchanged, and nothing is ever sent through the engine's client."""
+    clk = Clock(); fb = FakeBinance(clk, symbols=('BTCUSDT',))
+    fb.onboard = NOW - 3 * MD.DAY_MS
+    e = _engine(fb); e.S['UNIVERSE'] = ['BTCUSDT']
+    if engine_flags:                        # a just-recovered engine circuit: a collector success must not reset its flags
+        e.data.health.recovered, e.data.health.recoveries, e.data.health.fail_fast = True, 2, 7
+    before = _circuit(e.data)
+    fb.script = [None, _failure(kind)] * 6 if kind != 'ok' else []
+    mc = _mc(e, fb, str(tmp_path), clk)
+    s = mc.run_once()
+    assert s is not None
+    assert e.data.engine_calls == [], 'a request went through the engine client'
+    assert _circuit(e.data) == before, f'collector {kind} changed the engine circuit'
+    rh = mc.status()['request_health']
+    if kind == 'ok': assert rh['failed'] == 0 and rh['ok'] > 0
+    else: assert rh['failed'] >= 1 and rh['last_failure']
+    if kind == 'e418': assert s['stopped'] and '418' in s['stopped'] and len(fb.calls) == 2, 'the ban was not retried'
+
+
+def test_in_app_418_stops_and_is_reported(tmp_path):
+    clk = Clock(); fb = FakeBinance(clk)
+    e = _engine(fb)
+    fb.script = [None, MD.Banned(900)]
+    mc = _mc(e, fb, str(tmp_path), clk)
+    s = mc.run_once()
+    assert s['stopped'] and '418' in s['stopped'] and len(fb.calls) == 2, 'the ban was not retried'
+    assert mc.status()['banned_until']
+    assert mc.run_once()['stopped'].startswith('IP ban recorded') and len(fb.calls) == 2, 'nothing sent during the ban'
+
+
+def test_in_app_429_backs_off_on_its_own_state(tmp_path):
+    """A collector 429 is handled by the collector's own back-off (Retry-After honoured) and the run carries on; the
+    engine circuit stays 'ok' throughout."""
+    clk = Clock(); fb = FakeBinance(clk, symbols=('BTCUSDT',))
+    fb.onboard = NOW - 3 * MD.DAY_MS
+    e = _engine(fb); e.S['UNIVERSE'] = ['BTCUSDT']
+    fb.script = [None, None, MD.RateLimited(1)]
+    mc = _mc(e, fb, str(tmp_path), clk)
+    s = mc.run_once()
+    assert s['stopped'] is None and s['errors'] == 0 and len(fb.calls) > 3
+    assert any(abs(x - 1.0) < 1e-9 for x in clk.slept), clk.slept
+    assert e.data.health.state == 'ok' and mc.status()['request_health']['failed'] == 1
+
+
+def test_engine_circuit_degraded_is_a_one_way_gate(tmp_path):
+    """The engine's own reads degraded its circuit: the collector waits (bounded) for the engine's next good read and
+    stops if it never comes - it only reads the state, never drives it."""
+    clk = Clock(); fb = FakeBinance(clk, symbols=('BTCUSDT',))
+    fb.onboard = NOW - 3 * MD.DAY_MS
+    e = _engine(fb); e.S['UNIVERSE'] = ['BTCUSDT']
+    e.data.health.fail('GET /fapi/v1/klines: HTTP 503 (engine read)')
+    before = _circuit(e.data)
+    mc = _mc(e, fb, str(tmp_path), clk); mc.DEGRADED_WAIT_S = 0
+    s = mc.run_once()
+    assert s['stopped'] == 'engine exchange circuit degraded - not adding load' and fb.calls == []
+    assert _circuit(e.data) == before
+    mc.DEGRADED_WAIT_S = 20
+    threading.Timer(0.3, e.data.health.ok).start()           # the ENGINE's next read succeeds while the collector waits
+    s = mc.run_once()
+    assert s['stopped'] is None and s['errors'] == 0 and len(fb.calls) > 3
+
+
+def test_setting_off_disables_and_switching_off_mid_run_stops(tmp_path):
+    clk = Clock(); fb = FakeBinance(clk)
+    e = _engine(fb, on=False)
+    mc = _mc(e, fb, str(tmp_path), clk)
+    assert mc.run_once() is None and fb.calls == [] and mc.status()['last_skip']['why'] == 'MARKET_COLLECTOR off'
+    assert mc.status()['enabled'] is False
+    e.S['MARKET_COLLECTOR'] = True
+    orig = fb.get
+    def get(p, q):
+        if len(fb.calls) == 3: e.S['MARKET_COLLECTOR'] = False             # owner flips the switch during the run
+        return orig(p, q)
+    fb.get = get
+    s = mc.run_once()
+    assert s['stopped'] == 'MARKET_COLLECTOR switched off' and len(fb.calls) == 4, 'the request in flight ends, no new one'
+    e.S['MARKET_COLLECTOR'] = 'yes'                                         # anything but True counts as off
+    assert not mc.enabled()
+
+
+def test_engine_circuit_outage_means_no_requests(tmp_path):
+    clk = Clock(); fb = FakeBinance(clk)
+    e = _engine(fb)
+    h = e.data.health
+    h.state = 'outage'; h.next_probe = time.monotonic() + 999
+    before = _circuit(e.data)
+    mc = _mc(e, fb, str(tmp_path), clk)
+    s = mc.run_once()
+    assert s['stopped'] and 'circuit' in s['stopped'] and fb.calls == [] and mc.sess.urls == []
+    assert _circuit(e.data) == before, 'the collector must not probe or clear an engine outage'
+
+
+def test_default_transport_is_its_own_keyless_mainnet_session():
+    t = MC.public_transport()
+    assert isinstance(t, MD.RequestsTransport) and t.base == MD.MAINNET and 'X-MBX-APIKEY' not in t.s.headers
+    src = open(os.path.join(ROOT, 'market_collector.py'), encoding='utf-8').read()
+    import ast
+    tree = ast.parse(src)
+    called = {n.func.attr for n in ast.walk(tree) if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)}
+    assert not called & {'_req', '_once', 'fail', 'ok', 'admit_read', 'klines', 'premium'}, called
+    imported = {a.name for n in ast.walk(tree) if isinstance(n, (ast.Import, ast.ImportFrom)) for a in n.names} |                {n.module for n in ast.walk(tree) if isinstance(n, ast.ImportFrom)}
+    assert 'binance_client' not in imported and 'FuturesTransport' not in src
+
+
+def test_overlapping_run_is_skipped(tmp_path):
+    clk = Clock(); fb = FakeBinance(clk)
+    e = _engine(fb)
+    mc = _mc(e, fb, str(tmp_path), clk)
+    mc._run_lock.acquire()
+    assert mc.run_once() is None and mc.status()['last_skip']['why'] == 'previous run still going'
+    mc._run_lock.release()
+    MD.acquire_lock(str(tmp_path), clock=clk)
+    assert mc.run_once() is None and 'standalone' in mc.status()['last_skip']['why'] and fb.calls == []
+
+
+def test_run_failure_is_one_log_line_and_the_thread_survives(tmp_path):
+    import logging
+    clk = Clock()
+    e = types.SimpleNamespace(S=dict(MARKET_COLLECTOR=True, UNIVERSE=['BTCUSDT']), data=object(), lock=GuardLock())
+    mc = MC.MarketCollector(lambda: e, str(tmp_path), clock=clk, transport_factory=lambda: 1 / 0)
+    got = []
+    class Hd(logging.Handler):
+        def emit(self, r): got.append(r.getMessage())
+    hd, lg = Hd(level=0), logging.getLogger('zackbot')
+    lg.addHandler(hd); old = lg.level; lg.setLevel(logging.INFO)
+    try: assert mc.run_once() is None
+    finally: lg.removeHandler(hd); lg.setLevel(old)
+    assert mc.status()['error'].startswith('ZeroDivisionError')
+    assert [m for m in got if 'market data' in m] == ['market data: run failed - ZeroDivisionError: division by zero']
+    assert not os.path.exists(os.path.join(tmp_path, MD.LOCK_FILE)) and mc._run_lock.acquire(blocking=False)
+
+
+# ------------------------------------------------------------------ app wiring: setting, status, start-up
+def _app_engine(monkeypatch, tmp):
+    import engine as E
+    class FX:
+        def __init__(self, *a, **k): self.base = BC.MAINNET
+    monkeypatch.setattr(E, 'Futures', FX)
+    return E.Engine(dict(MODE='paper'), tmp)
+
+
+def test_setting_default_on_and_validated(monkeypatch, tmp_path):
+    import app as A
+    e = _app_engine(monkeypatch, str(tmp_path))
+    assert e.S['MARKET_COLLECTOR'] is True
+    with open(e.F['settings'], 'w', encoding='utf-8') as f: json.dump(dict(MARKET_COLLECTOR='off'), f)
+    e.load_settings(); assert e.S['MARKET_COLLECTOR'] is True, 'a corrupt value falls back to the default'
+    app = A.App.__new__(A.App); app.engine = e; app.preview = lambda: None
+    monkeypatch.setattr(A, 'APP', app, raising=False)
+    with pytest.raises(ValueError): A.handle('/api/settings', dict(MARKET_COLLECTOR='no'))
+    assert e.S['MARKET_COLLECTOR'] is True
+    A.handle('/api/settings', dict(MARKET_COLLECTOR=False))
+    assert e.S['MARKET_COLLECTOR'] is False
+    assert json.load(open(e.F['settings'], encoding='utf-8'))['MARKET_COLLECTOR'] is False
+
+
+def test_status_is_exposed_in_api_health(monkeypatch, tmp_path):
+    import app as A
+    e = _app_engine(monkeypatch, str(tmp_path))
+    app = A.App.__new__(A.App); app.engine = e; app.loop_ok = time.time()
+    assert app.health(e, [])['market_collector'] is None                 # older App objects without a collector
+    app.collector = MC.MarketCollector(lambda: e, str(tmp_path / 'md'))
+    app.collector._skip('MARKET_COLLECTOR off')
+    h = app.health(e, [])['market_collector']
+    assert h['enabled'] is True and h['runs'] == 0 and h['last_skip']['why'] == 'MARKET_COLLECTOR off'
+    json.dumps(h)
+
+
+def test_app_starts_the_collector_after_the_engine_and_selftest_imports_it():
+    src = open(os.path.join(ROOT, 'app.py'), encoding='utf-8').read()
+    main = src[src.index('def main():'):]
+    assert main.index('APP = App()') < main.index("APP.collector = MC.MarketCollector(lambda: APP.engine, os.path.join(DATA, 'market_data'))") \
+        < main.index('APP.collector.start()')
+    assert 'market_collector, market_data' in src[src.index('def selftest('):src.index('def main():')]
+    col = open(os.path.join(ROOT, 'market_collector.py'), encoding='utf-8').read()
+    import ast
+    attrs = {n.attr for n in ast.walk(ast.parse(col)) if isinstance(n, ast.Attribute)}
+    assert 'lock' not in attrs, 'the collector never references engine.lock'
+    assert not attrs & {'trade', 'state', 'lots', 'save_state', 'open_lot', 'close_lot', 'cancel', 'cancel_all', '_order', 'stop_order'}
+    assert 'signed=True' not in col
+
+
+def test_installer_keeps_collected_data_out_of_the_build():
+    import re
+    src = open(os.path.join(ROOT, 'installer.ps1'), encoding='utf-8').read()
+    xd = re.search(r"'/XD',(.*?)'/XF'", src, re.S).group(1)
+    assert "'data_market'" in xd
+    assert 'data_market/' in open(os.path.join(ROOT, '.gitignore'), encoding='utf-8').read()
+
+
+# ------------------------------------------------------------------ real payload fixtures
+# Verbatim public Binance answer, GET /futures/data/openInterestHist?symbol=BTCUSDT&period=1h&limit=2 (fetched 2026-10-07).
+OI_HIST_REAL = json.loads('[{"symbol":"BTCUSDT","sumOpenInterest":"96134.66800000","sumOpenInterestValue":"8085202021.00375200",'
+                          '"CMCCirculatingSupply":"20094521.00000000","timestamp":1791360000000},{"symbol":"BTCUSDT",'
+                          '"sumOpenInterest":"96007.33800000","sumOpenInterestValue":"8055975731.58000000",'
+                          '"CMCCirculatingSupply":"20094521.00000000","timestamp":1791363600000}]')
+
+
+def test_every_column_exists_in_the_real_open_interest_payload():
+    """P1 (DATA_COLLECTOR_review_gpt): the schema asked for CMCirculatingSupply; Binance sends CMCCirculatingSupply."""
+    cols = MD.DATASETS['open_interest_hist']['cols']
+    assert 'CMCCirculatingSupply' in cols and 'CMCirculatingSupply' not in cols
+    for row in OI_HIST_REAL:
+        assert set(cols) <= set(row), set(cols) - set(row)
+
+
+def test_real_open_interest_payload_reaches_the_csv_with_circulating_supply(tmp_path):
+    clk = Clock(1791363600000 + 2 * H)
+    class Real:
+        used_weight, calls = None, []
+        def get(self, path, params):
+            self.calls.append(path)
+            assert path == '/futures/data/openInterestHist'
+            return [r for r in OI_HIST_REAL if params['startTime'] <= r['timestamp'] <= params['endTime']]
+    c = MD.Collector(Real(), str(tmp_path), sleep=clk.sleep, clock=clk)
+    assert c.collect_window('open_interest_hist', 'BTCUSDT', '1h') == 2
+    rows = read_csv(MD.series_path(str(tmp_path), 'open_interest_hist', 'BTCUSDT', '1h'))
+    assert [r['CMCCirculatingSupply'] for r in rows] == ['20094521.00000000', '20094521.00000000']
+    assert [r['sumOpenInterest'] for r in rows] == ['96134.66800000', '96007.33800000']
+    assert [r['time_utc'] for r in rows] == ['2026-10-07T08:00:00Z', '2026-10-07T09:00:00Z']
+    assert all(v != '' for r in rows for v in r.values()), 'no column may be silently blank'
+
+
+def test_simultaneous_takeover_of_a_dead_lock_has_exactly_one_winner(tmp_path):
+    """Cowork follow-up: 8 runs starting at once against a dead owner's lock -> exactly one owner, every round."""
+    clk = Clock()
+    p = os.path.join(tmp_path, MD.LOCK_FILE)
+    for rnd in range(25):
+        with open(p, 'w', encoding='utf-8') as f: json.dump(dict(pid=424242, t=clk(), token=f'dead{rnd}'), f)
+        start, wins, errs = threading.Barrier(8), [], []
+        def go():
+            try:
+                start.wait()
+                t = MD.acquire_lock(str(tmp_path), clock=clk, alive=lambda pid: pid != 424242)
+                if t: wins.append(t)
+            except BaseException as ex:                       # a worker crash must FAIL the test, not just warn
+                errs.append(repr(ex))
+        th = [threading.Thread(target=go) for _ in range(8)]
+        for x in th: x.start()
+        for x in th: x.join(10)
+        assert not errs, (rnd, errs)
+        assert len(wins) == 1, (rnd, wins)
+        assert MD.read_json(p)['token'] == wins[0]
+        assert not os.path.exists(p + '.takeover')
+        os.remove(p)
+
+
+def test_concurrent_acquire_on_a_clean_folder_has_one_winner_and_the_lock_is_never_empty(tmp_path):
+    clk = Clock(); start, wins, errs = threading.Barrier(16), [], []
+    def go():
+        try:
+            start.wait(); t = MD.acquire_lock(str(tmp_path), clock=clk)
+            if t: wins.append(t)
+        except BaseException as ex:
+            errs.append(repr(ex))
+    th = [threading.Thread(target=go) for _ in range(16)]
+    for x in th: x.start()
+    for x in th: x.join(10)
+    assert not errs, errs
+    assert len(wins) == 1 and MD.read_json(os.path.join(tmp_path, MD.LOCK_FILE))['token'] == wins[0]
+    assert not [f for f in os.listdir(tmp_path) if f.endswith('.tmp')], 'no temp file left behind'
+
+
+def test_malformed_lock_files_never_crash_and_are_reclaimed(tmp_path):
+    clk = Clock(); p = os.path.join(tmp_path, MD.LOCK_FILE)
+    for bad in ('[1, 2]', '', 'garbage', 'null', '{"pid": -1, "t": "x"}'):
+        open(p, 'w', encoding='utf-8').write(bad)
+        assert MD.release_lock(str(tmp_path), 'whatever') is False          # never raises, never deletes
+        tok = MD.acquire_lock(str(tmp_path), clock=clk)
+        assert tok, bad
+        assert MD.release_lock(str(tmp_path), tok) is True
+
+
+def test_an_interrupted_takeover_marker_expires(tmp_path):
+    clk = Clock(); p = os.path.join(tmp_path, MD.LOCK_FILE)
+    with open(p, 'w', encoding='utf-8') as f: json.dump(dict(pid=424242, t=clk(), token='dead'), f)
+    m = p + '.takeover'; open(m, 'w').close()
+    assert MD.acquire_lock(str(tmp_path), clock=clk, alive=lambda pid: False) is None    # someone is taking over
+    old = time.time() - MD.TAKEOVER_STALE_S - 5; os.utime(m, (old, old))
+    assert MD.acquire_lock(str(tmp_path), clock=clk, alive=lambda pid: False) is None    # stale marker cleared
+    assert MD.acquire_lock(str(tmp_path), clock=clk, alive=lambda pid: False)            # next attempt takes over
+
+
+def test_windows_contention_on_the_takeover_marker_is_skip_not_crash(tmp_path, monkeypatch):
+    """Codex PR #19 P1: on Windows a contended / delete-pending .takeover marker raises PermissionError (not
+    FileExistsError). That is "someone else is taking over": skip (None), never an exception; the lock is untouched."""
+    clk = Clock(); p = os.path.join(tmp_path, MD.LOCK_FILE)
+    with open(p, 'w', encoding='utf-8') as f: json.dump(dict(pid=424242, t=clk(), token='dead'), f)
+    real = os.open
+    def contended(path, *a, **k):
+        if str(path).endswith('.takeover'): raise PermissionError(13, 'Access is denied', str(path))
+        return real(path, *a, **k)
+    monkeypatch.setattr(MD.os, 'open', contended)
+    assert MD.acquire_lock(str(tmp_path), clock=clk, alive=lambda pid: False) is None
+    assert MD.read_json(p)['token'] == 'dead'
+
+
+def test_windows_contention_on_the_lock_itself_is_taken_not_crash(tmp_path, monkeypatch):
+    """os.link / exclusive create raising PermissionError (a delete-pending lock on Windows) = the lock is taken."""
+    clk = Clock()
+    def denied(a, b): raise PermissionError(13, 'Access is denied')
+    monkeypatch.setattr(MD.os, 'link', denied)
+    assert MD._create_lock(os.path.join(tmp_path, MD.LOCK_FILE), dict(pid=1, t=0, token='x')) is False
+    assert MD.acquire_lock(str(tmp_path), clock=clk) is None
+    assert not [f for f in os.listdir(tmp_path) if f.endswith('.tmp')]
+
+
+def test_standalone_default_folder_is_the_apps_folder_outside_any_source_tree(monkeypatch, tmp_path):
+    """Codex PR #19 P1 root cause: the default --out was <repo>/data_market, inside the source tree an upgrade mirrors."""
+    import collect_market_data as T
+    monkeypatch.setenv('LOCALAPPDATA', str(tmp_path))
+    out = T.default_out()
+    assert out == os.path.join(str(tmp_path), 'ZackBot', 'market_data')
+    assert not os.path.abspath(out).startswith(os.path.abspath(ROOT))
+    src = open(os.path.join(ROOT, 'app.py'), encoding='utf-8').read()
+    assert "os.path.join(DATA, 'market_data')" in src, 'same folder (and so the same lock) as the in-app collector'
+
+
+def test_offline_ui_harness_switches_the_collector_off_before_the_app_starts_and_defaults_stay_on(tmp_path):
+    """Codex CI review (PR #19): the offline UI harness must disable public collection through its scratch settings
+    BEFORE app startup (no Binance whitelist, no weaker network guard), while a normal PAPER install keeps it on."""
+    import engine
+    assert engine.GLOBAL_DEFAULTS['MARKET_COLLECTOR'] is True, 'a normal PAPER install collects by default'
+    src = open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'test_app_ui.py'), encoding='utf-8').read()
+    seed, guard, start = src.index('HARNESS_SETTINGS = dict(MARKET_COLLECTOR=False)'), src.index('_sock.getaddrinfo, _sock.socket.connect = _guard_gai'), src.index('import app;')
+    assert guard < seed < start, 'network guard first, then the collector-off settings, then the app'
+    assert "'settings.json'" in src[seed:start] and 'binance.com' not in src, 'no Binance whitelist in the harness'
+    assert "_LOCAL = ('127.0.0.1', 'localhost', '::1')" in src, 'the network guard still allows loopback only'
+    # the seeded file really switches a fresh engine's collector off (and only that switch)
+    with open(tmp_path / 'settings.json', 'w', encoding='utf-8') as f: json.dump(dict(MARKET_COLLECTOR=False), f)
+    e = types.SimpleNamespace(F=dict(settings=str(tmp_path / 'settings.json')))
+    e.S = None
+    engine.Engine.load_settings(e)
+    assert e.S['MARKET_COLLECTOR'] is False and e.S['RUN_IN_BACKGROUND'] is engine.GLOBAL_DEFAULTS['RUN_IN_BACKGROUND']
+    assert MC.MarketCollector(lambda: e, str(tmp_path / 'md')).enabled(e) is False

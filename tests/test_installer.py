@@ -342,7 +342,9 @@ function Invoke-Logged([string]$file, [string[]]$argv, [string]$cwd = '', [switc
         C 'stage'; [void][IO.Directory]::CreateDirectory($s.StageSrc)
         [IO.File]::WriteAllText([IO.Path]::Combine($s.StageSrc, 'app.py'), 'print(1)')
         $code = [int](Opt 'stageCode' 1)
-    } elseif ($name -eq 'robocopy') { C 'mirror'; $code = [int](Opt 'mirrorCode' 1) }
+    } elseif ($name -eq 'robocopy') {
+        C 'mirror'; $global:MirrorOpts = $argv[2..($argv.Count - 1)]; $code = [int](Opt 'mirrorCode' 1)
+    }
     elseif ($name -eq 'python' -and $argv[1] -eq 'venv') {
         C 'venv'; $d = [IO.Path]::Combine($argv[2], 'Scripts'); [void][IO.Directory]::CreateDirectory($d)
         [IO.File]::WriteAllText([IO.Path]::Combine($d, 'python.exe'), 'py')
@@ -360,6 +362,7 @@ function Invoke-Logged([string]$file, [string[]]$argv, [string]$cwd = '', [switc
 $rc = Invoke-Main $TMode $TSrc $TLad
 [Console]::Out.WriteLine('RC=' + $rc)
 [Console]::Out.WriteLine('CALLS=' + ($global:Calls -join '|'))
+if ($global:MirrorOpts) { [Console]::Out.WriteLine('MIRROR=' + ($global:MirrorOpts -join '|')) }
 '''
 
 # On Windows the installer really runs under Windows PowerShell 5.1, so the flow tests use it too; elsewhere PowerShell 7.
@@ -394,7 +397,9 @@ def _flow(mode, have_old=True, nopause=True, **cfg):
         exe = os.path.join(app, 'ZackBot.exe')
         installed = open(exe).read() if os.path.exists(exe) else None
         stages = [d for d in os.listdir(os.path.join(lad, 'ZackBot')) if d.startswith('staging')]
-        return dict(rc=rc, calls=calls, log=text, logname=logs[0], installed=installed, stages=stages, out=r.stdout, rec=record)
+        mo = re.search(r'^MIRROR=(.*)$', r.stdout, re.M)
+        return dict(rc=rc, calls=calls, log=text, logname=logs[0], installed=installed, stages=stages, out=r.stdout, rec=record,
+                    mirror_opts=mo.group(1).strip().split('|') if mo else None)
 
 
 def _order(calls, *names):
@@ -846,3 +851,24 @@ def test_launcher_refuses_unknown_and_extra_tokens_before_staging():
                            timeout=120, env=_env(ZB_NOPAUSE='1'), stdin=subprocess.DEVNULL)
         assert r.returncode == 2 and 'Nothing was changed' in r.stdout, (args, r.returncode, r.stdout[-500:])
     assert (sorted(os.listdir(root)) if os.path.isdir(root) else None) == before, 'a refused launch must not stage or log'
+
+
+@needs_flow
+@pytest.mark.skipif(os.name != 'nt' or not shutil.which('robocopy'), reason='real robocopy (Windows) needed')
+def test_upgrade_mirror_preserves_collected_market_data():
+    """PR #19 Codex P1: an upgrade's final /MIR into the installed source must never purge collected market data (history
+    older than Binance's ~30-day window cannot be fetched again). Behavioural: the EXACT options the installer passes to
+    its final mirror are replayed with the real robocopy on a fake install that holds data_market/."""
+    f = _flow('install')
+    assert f['rc'] == 0 and f['mirror_opts'], f
+    with tempfile.TemporaryDirectory() as tmp:
+        src, dst = os.path.join(tmp, 'stage_src'), os.path.join(tmp, 'installed_src')
+        os.makedirs(src); open(os.path.join(src, 'app.py'), 'w').write('new')
+        for d, f_ in (('data_market', 'manifest.json'), (os.path.join('data_market', 'open_interest_hist'), 'BTCUSDT_1h.csv')):
+            os.makedirs(os.path.join(dst, d), exist_ok=True); open(os.path.join(dst, d, f_), 'w').write('history')
+        open(os.path.join(dst, 'old_module.py'), 'w').write('stale')                 # a normal stale file IS removed
+        r = subprocess.run(['robocopy', src, dst] + f['mirror_opts'], capture_output=True, text=True, timeout=60)
+        assert r.returncode < 8, r.stdout[-800:]
+        assert open(os.path.join(dst, 'data_market', 'open_interest_hist', 'BTCUSDT_1h.csv')).read() == 'history'
+        assert os.path.exists(os.path.join(dst, 'data_market', 'manifest.json'))
+        assert open(os.path.join(dst, 'app.py')).read() == 'new' and not os.path.exists(os.path.join(dst, 'old_module.py'))
