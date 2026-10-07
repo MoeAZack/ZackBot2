@@ -783,14 +783,34 @@ class GridManager:
         return changed
 
     def _resolve_open(self, g, op):
+        """AUD-05 r3: the first order of a grid side whose answer was lost (or a crash after the send): its own order record
+        (by client id) decides; the aggregate position is only a fallback for an op without a readable record source, and
+        then only an exact match (half a step) is adopted."""
         e = self.e; sym, side = g['sym'], op['side']
+        fr = e._order_result(sym, op.get('cid'), op['qty'])
+        if fr['state'] == 'final':
+            if fr['qty'] > 0:
+                log.info(f"grid {g['key']}: first {side} order confirmed from its order record: {fr['qty']} @ {fr['px']}")
+                self._create(g, op, fr['qty'], fr['px'] or op['px'])
+            else:
+                g['op'] = None; log.info(f"grid {g['key']}: first {side} order record shows nothing executed - retried")
+            return True
+        if fr['state'] == 'notfound':
+            if time.time() - op['t'] > 20:
+                g['op'] = None; log.info(f"grid {g['key']}: first {side} order never reached Binance - retried"); return True
+            return False
+        if fr['state'] in ('pending', 'unreadable'):
+            if time.time() - op['t'] > 300:
+                e.err(f"grid {g['key']}: first {side} order record unreadable for 5 min ({fr['state']}) - nothing adopted or "
+                      'retried; check Binance', key=f"grid-op|{g['key']}")
+            return False
         try: live = e.trade.positions()
         except Exception: return False
         others = sum(l['qty'] for l in e.state['lots'].values() if l['symbol'] == sym and l['side'] == side)
         extra = live.get((sym, side), 0.0) - others - sum(r_['filled'] for r_ in e.state.get('resting_entries', {}).values()
                                                           if r_['symbol'] == sym and r_['side'] == side)
         step = e.rules[sym]['step']
-        if op['qty'] - 1.5 * step <= extra <= op['qty'] * 1.5 + step:     # exactly our order (anything else stays untracked)
+        if abs(extra - op['qty']) <= 0.5 * step:                          # exactly our order (anything else stays untracked)
             log.info(f"grid {g['key']}: unconfirmed first {side} order found on Binance - adopted")
             self._create(g, op, e._rd(extra, step), (e.marks or {}).get(sym) or op['px'])
             return True
@@ -860,7 +880,8 @@ class GridManager:
                 else:
                     op = self._op(g, side, 'add', add, q, m)
                     try:
-                        ok = self.e._add_qty(lot, q, m, 'grid_buy' if kind == 'L' else 'grid_sell', post={'grid_ack': op['id']})
+                        ok = self.e._add_qty(lot, q, m, 'grid_buy' if kind == 'L' else 'grid_sell', post={'grid_ack': op['id']},
+                                             cid=op.get('cid'))
                     except Exception as ex:
                         if not _ambiguous(ex): g['op'] = None
                         self.e.err(f"grid {g['key']} add: {ex}"); return True
@@ -872,7 +893,9 @@ class GridManager:
         return changed
 
     def _op(self, g, side, kind, cells, qty, px, full=False):
-        op = dict(id=uuid.uuid4().hex[:12], side=side, kind=kind, cells=list(cells), qty=qty, px=px, t=time.time(), full=full)
+        from binance_client import new_cid                          # AUD-05 r3: the order's client id is owned before the send
+        op = dict(id=uuid.uuid4().hex[:12], side=side, kind=kind, cells=list(cells), qty=qty, px=px, t=time.time(), full=full,
+                  cid=new_cid())
         g['op'] = op
         try: self.e._save_wal()                         # recorded BEFORE the order is sent (AUD-05 r2: durably,
         except Exception:                                           # or it is not sent at all)
@@ -885,9 +908,12 @@ class GridManager:
         px = op['px']
         if not e.dry:
             try:
-                o = e.trade.open(sym, side, e._fmt(q, r['step']))
+                o = e._send(e.trade.open, sym, side, e._fmt(q, r['step']), cid=op.get('cid'))
             except Exception as ex:
-                if _ambiguous(ex): e.err(f"grid {g['key']} first {side} order unconfirmed ({ex}) - checking the position"); e.save_state(); return
+                if _ambiguous(ex):
+                    tag = getattr(ex, 'tag', None)
+                    if isinstance(tag, str) and tag.startswith('c:'): op['cid'] = tag[2:]
+                    e.err(f"grid {g['key']} first {side} order unconfirmed ({ex}) - settled from its order record"); e.save_state(); return
                 g['op'] = None; e.err(f"grid {g['key']} first {side} order failed: {ex}"); return
             px = float(o.get('avgPrice') or 0) or px
             filled = float(o.get('executedQty') or 0)

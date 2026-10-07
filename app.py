@@ -1263,6 +1263,9 @@ def handle(path, b):
             except Exception: pass
             raise ValueError(msg)
         return 'saved'
+    if path == '/api/install/confirm':                    # AUD-05 r3: the owner confirms the account of this data folder
+        if b.get('CONFIRM') != 'THIS_ACCOUNT': raise ValueError('type THIS_ACCOUNT to confirm the account of this data folder')
+        return e.confirm_install()
     if path == '/api/sleeves':
         if not isinstance(b.get('sleeves'), list) or len(b['sleeves']) > 12: raise ValueError('1-12 strategy slots')
         sl = [validate_sleeve(x, i) for i, x in enumerate(b['sleeves'])]

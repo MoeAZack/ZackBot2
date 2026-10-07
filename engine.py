@@ -622,6 +622,90 @@ def _validate_trail(k, p):
     for f in ('ext', 'atr', 'dev', 'until'): _num(p.get(f), f'{w}.{f}')
 
 
+OWNERSHIP_FAMILIES = ('lots', 'unconfirmed_entries', 'resting_entries', 'pending_entries', 'grids', 'orphans')
+
+
+def ownership_present(state):
+    """AUD-05 r3: THE predicate for 'this state owns something on (or intends something for) the exchange account':
+    lots (incl. their pending orders), unconfirmed / resting / trailing entry intents, grids (incl. their pending ops) and
+    stops queued for cancellation. Returns the sorted list of non-empty families ([] = owns nothing)."""
+    return [f for f in OWNERSHIP_FAMILIES if (state or {}).get(f)]
+
+
+GRID_STATUS = ('active', 'stopping')
+GRID_MODES = ('long', 'short', 'neutral')
+GRID_OP_KINDS = ('open', 'add', 'red')
+_OP_ID_RE = re.compile(r'[0-9a-f]{6,32}')
+
+
+def _validate_grid(k, g, lots):
+    """AUD-05 r3: the persisted grid contract. Quantities must be what build_grid could have produced for the grid's own
+    capital (q * lo <= capital * capital_frac / max cells per side), so a tampered cell can never become an order."""
+    w = f'grids[{k[:40]}]'
+    _dict(g, w)
+    _str(g.get('slot'), w + '.slot'); _str(g.get('sym'), w + '.sym', _SYM_RE)
+    if g.get('key') != k or k != f"{g.get('slot')}|{g.get('sym')}": _bad(w + '.key', 'does not match slot|symbol')
+    _str(g.get('status'), w + '.status', choices=GRID_STATUS); _str(g.get('mode'), w + '.mode', choices=GRID_MODES)
+    _str(g.get('tf'), w + '.tf')
+    for f in ('p0', 'lo', 'hi', 'stop_lo', 'stop_hi'): _num(g.get(f), f'{w}.{f}', gt=0)
+    if not g['lo'] < g['hi']: _bad(w, 'lo must be below hi')
+    _num(g.get('capital'), w + '.capital', gt=0, hi=1e9)
+    cfg = _dict(g.get('cfg'), w + '.cfg')
+    _num(cfg.get('capital_frac', 1.0), w + '.cfg.capital_frac', 0.1, 10)
+    _str(cfg.get('mode', g['mode']), w + '.cfg.mode', choices=GRID_MODES)
+    cells = g.get('cells')
+    if not isinstance(cells, list) or not 1 <= len(cells) <= 40: _bad(w + '.cells', 'not a list of 1-40 cells')
+    lines = g.get('lines')
+    if not isinstance(lines, list) or len(lines) != len(cells) + 1: _bad(w + '.lines', 'must have one more line than cells')
+    for i, x in enumerate(lines): _num(x, f'{w}.lines[{i}]', gt=0)
+    if any(lines[i] >= lines[i + 1] for i in range(len(lines) - 1)): _bad(w + '.lines', 'not strictly increasing')
+    n_l = sum(1 for c in cells if isinstance(c, dict) and c.get('k') == 'L')
+    n_s = sum(1 for c in cells if isinstance(c, dict) and c.get('k') == 'S')
+    per = g['capital'] * float(cfg.get('capital_frac', 1.0)) / max(n_l, n_s, 1)
+    for i, c in enumerate(cells):
+        wc = f'{w}.cells[{i}]'; _dict(c, wc)
+        _num(c.get('a'), wc + '.a', gt=0); _num(c.get('b'), wc + '.b', gt=0)
+        if not c['a'] < c['b']: _bad(wc, 'a must be below b')
+        _str(c.get('k'), wc + '.k', choices=('L', 'S')); _bool(c.get('f'), wc + '.f'); _bool(c.get('init'), wc + '.init', opt=True)
+        _num(c.get('q'), wc + '.q', lo=0)
+        if c['q'] * g['lo'] > per * (1 + 1e-6) + 1e-12: _bad(wc + '.q', f"{c['q']:g} exceeds the grid's own budget per cell")
+        _num(c.get('e'), wc + '.e', gt=0, opt=True)
+    for side, lk in _dict(g.get('lots'), w + '.lots').items():
+        _str(side, w + '.lots.side', choices=SIDES); _str(lk, f'{w}.lots[{side}]')
+        l = lots.get(lk)
+        if l is not None and (l.get('symbol') != g['sym'] or l.get('side') != side):
+            _bad(f'{w}.lots[{side}]', 'refers to a lot of another coin / side')
+    op = g.get('op')
+    if op is not None:
+        wo = w + '.op'; _dict(op, wo)
+        _str(op.get('id'), wo + '.id', _OP_ID_RE); _str(op.get('side'), wo + '.side', choices=SIDES)
+        _str(op.get('kind'), wo + '.kind', choices=GRID_OP_KINDS); _str(op.get('cid'), wo + '.cid', _CID_RE, opt=True)
+        idx = op.get('cells')
+        if not isinstance(idx, list) or not idx: _bad(wo + '.cells', 'not a list of cell indexes')
+        for j in idx:
+            if isinstance(j, bool) or not isinstance(j, int) or not 0 <= j < len(cells): _bad(wo + '.cells', f'{j!r} is not a cell')
+        _num(op.get('qty'), wo + '.qty', gt=0); _num(op.get('px'), wo + '.px', gt=0); _num(op.get('t'), wo + '.t', lo=0)
+        _bool(op.get('full'), wo + '.full', opt=True)
+        if op['qty'] > sum(cells[j]['q'] for j in idx) * (1 + 1e-6) + 1e-12: _bad(wo + '.qty', 'larger than its cells')
+    _int(g.get('cycles', 0), w + '.cycles'); _num(g.get('cycle_pnl', 0.0), w + '.cycle_pnl')
+    _int(g.get('trend_bars', 0), w + '.trend_bars')
+    _dict(g.get('metrics'), w + '.metrics', opt=True)
+
+
+def validate_install(doc):
+    """AUD-05 r3: install.json - exact version, created time, and the account fingerprint structure."""
+    v = doc.get('schema_version')
+    if isinstance(v, bool) or v != INSTALL_SCHEMA: _bad('install.schema_version', f'{v!r} is not the supported {INSTALL_SCHEMA}')
+    _str(doc.get('created'), 'install.created')
+    if not doc['created']: _bad('install.created', 'empty')
+    acct = _dict(doc.get('account'), 'install.account')
+    _str(acct.get('mode'), 'install.account.mode', choices=('paper', 'live'))
+    _str(acct.get('base'), 'install.account.base')
+    _str(acct.get('key'), 'install.account.key')
+    if acct['key'] and not re.fullmatch(r'[0-9a-f]{16}', acct['key']): _bad('install.account.key', 'not a 16-hex digest')
+    return doc
+
+
 def validate_state(doc):
     """AUD-05 r2: every AUD-00..04 ownership record of state.json, before it is used. Raises SchemaError."""
     if _version(doc, STATE_SCHEMA, 'state') != STATE_SCHEMA: _bad('state.schema_version', 'not migrated')
@@ -639,7 +723,9 @@ def validate_state(doc):
     _bool(doc.get('halted'), 'halted', opt=True)
     for f in ('day_start_equity', 'peak_equity'): _num(doc.get(f), f, opt=True)
     _str(doc.get('day'), 'day', opt=True)
-    _dict(doc.get('grids'), 'grids', opt=True)
+    lots = _dict(doc.get('lots'), 'lots', opt=True)
+    for k, g in _dict(doc.get('grids'), 'grids', opt=True).items(): _validate_grid(k, g, lots)
+    if not isinstance(doc.get('grid_history', []), list): _bad('grid_history', 'not a list')
     return doc
 
 
@@ -688,28 +774,69 @@ def account_fingerprint(cfg, base):
                 key=_key_digest(key) if key else '')
 
 
+# AUD-05 r3: raw-byte redaction of legacy secret material, for files that cannot be parsed (damaged settings evidence):
+# a secret key name with whatever value follows it (also an unterminated / truncated one), and bot-token-shaped values
+_SECRET_KEY_RX = re.compile(rb'"?(?:' + b'|'.join(re.escape(k.encode()) for k in SECRET_SETTING_KEYS) +
+                            rb')"?[ \t]*:?[ \t]*(?:"[^"\r\n]*"?|[^,}\r\n]*)')
+_BOT_TOKEN_RX = re.compile(rb'\d{5,}:[A-Za-z0-9_\-]{8,}')
+_TOKEN_VALUE_RX = re.compile(rb'"(?:' + b'|'.join(re.escape(k.encode()) for k in SECRET_SETTING_KEYS) +
+                             rb')"[ \t]*:[ \t]*"(\d{5,15}:[A-Za-z0-9_\-]{20,80})"')
+REDACTED = b'"[redacted]": "[redacted]"'
+
+
+def redact_secrets(raw):
+    """Bytes with every recognizable legacy secret (key name + value, bot-token-shaped values) replaced."""
+    return _BOT_TOKEN_RX.sub(b'[redacted]', _SECRET_KEY_RX.sub(REDACTED, raw))
+
+
+def _secret_bearing(path):
+    return os.path.basename(path).startswith('settings.json')
+
+
+def _write_bytes_durable(path, data):
+    tmp = f'{path}.{os.getpid()}-{threading.get_ident()}.tmp'
+    try:
+        with open(tmp, 'wb') as f: f.write(data); f.flush(); os.fsync(f.fileno())
+        _replace_retry(tmp, path)
+    except BaseException:
+        try: os.remove(tmp)
+        except OSError: pass
+        raise
+    _fsync_dir(os.path.dirname(path))
+
+
 def migrate_legacy_secrets(data_dir):
-    """AUD-05 r2: a v2 settings.json (and its .bak) may hold the Telegram token in plain text. Returns that token (or '')
-    and rewrites both files without it - called by the app BEFORE the engine is created, after the token was stored in
-    the encrypted config. Never raises; a file that cannot be parsed is left untouched (it is evidence)."""
+    """AUD-05 r2/r3: a v2 settings.json (and its .bak) may hold the Telegram token in plain text. Returns that token (or '')
+    - also from a file that no longer parses, when the token is still recognizable in it. Never raises."""
     found = ''
     for p in (os.path.join(data_dir, 'settings.json'), os.path.join(data_dir, 'settings.json.bak')):
-        try: doc = read_json(p, dict) if os.path.exists(p) else None
-        except (CorruptFile, OSError): doc = None
-        if not doc: continue
-        tok = next((doc.get(k) for k in SECRET_SETTING_KEYS if doc.get(k)), '')
-        if any(k in doc for k in SECRET_SETTING_KEYS): found = found or str(tok or '')
+        if not os.path.exists(p): continue
+        try:
+            doc = read_json(p, dict)
+            tok = next((doc.get(k) for k in SECRET_SETTING_KEYS if doc.get(k)), '')
+            found = found or str(tok or '')
+        except (CorruptFile, OSError):
+            try:
+                with open(p, 'rb') as f: m = _TOKEN_VALUE_RX.search(f.read())
+                if m: found = found or m.group(1).decode('ascii')
+            except OSError: pass
     return found
 
 
 def scrub_legacy_secrets(data_dir):
-    """Rewrite settings.json / .bak without secret keys (after migrate_legacy_secrets' token reached the encrypted config)."""
+    """Rewrite settings.json / .bak without secret material (after migrate_legacy_secrets' token reached the encrypted
+    config). A parseable file loses its secret keys; a damaged one is redacted byte-wise (the rest of the evidence stays)."""
     for p in (os.path.join(data_dir, 'settings.json'), os.path.join(data_dir, 'settings.json.bak')):
-        try: doc = read_json(p, dict) if os.path.exists(p) else None
-        except (CorruptFile, OSError): doc = None
-        if doc and any(k in doc for k in SECRET_SETTING_KEYS):
-            try: _write_durable(p, scrub_secrets(doc))
-            except Exception as ex: log.warning(f'{os.path.basename(p)}: legacy secret not removed ({type(ex).__name__})')
+        if not os.path.exists(p): continue
+        try:
+            doc = read_json(p, dict)
+            if any(k in doc for k in SECRET_SETTING_KEYS): _write_durable(p, scrub_secrets(doc))
+        except (CorruptFile, OSError):
+            try:
+                with open(p, 'rb') as f: raw = f.read()
+                red = redact_secrets(raw)
+                if red != raw: _write_bytes_durable(p, red)
+            except Exception as ex: log.warning(f'{os.path.basename(p)}: legacy secret not redacted ({type(ex).__name__})')
 
 
 def corrupt_siblings(path):
@@ -725,6 +852,19 @@ def quarantine(path):
     base = f"{path}.corrupt-{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}"
     dst, n = base, 1
     while os.path.exists(dst): n += 1; dst = f'{base}-{n}'
+    if _secret_bearing(path):                        # AUD-05 r3: settings evidence never keeps a legacy secret
+        try:
+            with open(path, 'rb') as f: raw = f.read()
+            red = redact_secrets(raw)
+        except OSError:
+            return None
+        if red != raw:
+            try:
+                with open(dst, 'xb') as f: f.write(red); f.flush(); os.fsync(f.fileno())
+                os.remove(path)
+                return dst
+            except OSError:
+                return None
     try:
         os.rename(path, dst); return dst
     except OSError:
@@ -810,8 +950,12 @@ class Engine:
                             f'from the first one (orders and critical reads unaffected) (ZB_TESTNET_FAULTS)')
         self._boot_incidents = []                 # AUD-05: load problems found before self.health exists (reported after)
         self.state_untrusted = {}                 # AUD-05 r2: name -> why a safety file could not be saved (blocks new risk)
+        self.install_mismatch = None              # AUD-05 r3: dict(recorded, current, owned) until the owner confirms
+        self._install_bad = None
         self._save_hold = {}                      # AUD-05: name -> why its file is never saved over ('unmovable' / 'unreadable')
         self.integrity = {}                       # AUD-05: name -> what happened to a damaged safety file at start-up
+        self.F['install'] = os.path.join(data_dir, 'install.json')
+        self._installed = self._install_read()    # AUD-05 r3: read BEFORE both safety files (initialized install evidence)
         self.load_settings()
         if (self.integrity.get('settings') or {}).get('status'):
             self._persist_pause()                 # AUD-05: restored or failed: the pause is durable (damaged file already aside)
@@ -822,8 +966,7 @@ class Engine:
         self.state = dict(lots={}, day=None, day_start_equity=None, halted=False, peak_equity=None, last_cycle={})
         # AUD-05: corrupt -> .bak (an OLDER copy); no good copy -> empty. Either way entries are paused, and the pause is
         # made durable BEFORE the damaged file is moved aside (a crash in between can never come back unpaused)
-        self.F['install'] = os.path.join(data_dir, 'install.json')
-        installed = self._install_read()          # AUD-05 r2: an initialized install with no state is NOT a first run
+        installed = self._installed               # AUD-05 r2: an initialized install with no state is NOT a first run
         st, status = self._load_safe('state', dict, before_aside=self._pause_or_raise, initialized=installed)
         if st: self.state.update(st)
         if status == 'restored':
@@ -918,38 +1061,73 @@ class Engine:
                                                      f'({type(ex).__name__}: {str(ex)[:100]}) - check the data folder')
 
     def _install_read(self):
-        """AUD-05 r2: install.json marks a data folder that has already been initialized (written once, at the first start).
-        Returns the marker dict, True when it exists but is damaged (treated as initialized: fail closed), or None."""
+        """AUD-05 r2/r3: install.json marks a data folder that has already been initialized (written once, at the first
+        start). Returns the validated marker dict; True when it is damaged / of an unknown version, or missing while its
+        damaged copy exists (treated as initialized and failed closed: never silently rewritten); None = never initialized."""
         p = self.F['install']
-        if not os.path.exists(p): return None
+        if not os.path.exists(p):
+            ev = corrupt_siblings(p)
+            if ev:
+                self._install_bad = f'missing while its damaged copy {ev[-1]} exists'
+                self._integrity_alert('integrity|install', f'install.json {self._install_bad} - ENTRIES PAUSED until the owner '
+                                                           'confirms the account (Settings)')
+                return True
+            return None
         try:
-            doc = read_json_retry(p, dict)
-            _int(doc.get('schema_version'), 'install.schema_version', lo=1)
-            return doc
+            return validate_install(read_json_retry(p, dict))
         except Exception as ex:
-            self._integrity_alert('integrity|install', f'install.json unreadable ({str(ex)[:80]}) - treated as an initialized '
-                                                       'installation; rewritten')
-            quarantine(p)
+            aside = quarantine(p)
+            self._install_bad = f'invalid ({str(ex)[:80]})'
+            self._integrity_alert('integrity|install', f'install.json {self._install_bad} - treated as an initialized '
+                                  f'installation, ENTRIES PAUSED until the owner confirms the account; kept as '
+                                  f'{os.path.basename(aside) if aside else "(not movable, left in place)"}')
             return True
 
     def _install_write(self, installed):
-        """Write install.json at the first start (or rewrite a damaged one); a different account than recorded is reported
-        and pauses entries when the bot holds any record of trades."""
+        """First start: write install.json (after the empty state and the settings are durable). Damaged / unknown marker:
+        paused, nothing rewritten. Another account than recorded while the state owns anything (ownership_present): the
+        original marker is PRESERVED and entries pause until the owner confirms (confirm_install); with no ownership at all
+        the new account is recorded."""
         fp = account_fingerprint(self.cfg, getattr(self.trade, 'base', None))
+        if installed is True:
+            self._persist_pause(); return
         if isinstance(installed, dict):
             if installed.get('account') == fp: return
-            busy = self.state.get('lots') or self.state.get('unconfirmed_entries') or self.state.get('resting_entries')
-            self._integrity_alert('integrity|install-account', 'this data folder was initialized for a different account / mode'
-                                  + (' and holds open trade records - ENTRIES PAUSED; check before resuming' if busy else
-                                     ' - recorded the current account'))
-            if busy: self._persist_pause(); return
-        if installed is None and not os.path.exists(self.F['state']) and not self.save_state():
-            return                                # first run: the empty state must exist on disk before the marker does
-        doc = dict(schema_version=INSTALL_SCHEMA, created=(installed or {}).get('created') if isinstance(installed, dict) else None,
-                   account=fp)
-        doc['created'] = doc['created'] or now_utc().isoformat(timespec='seconds')
-        try: save_json(self.F['install'], doc, strict=True)
-        except Exception as ex: self._integrity_alert('integrity|install', f'install.json not written ({type(ex).__name__})')
+            owned = ownership_present(self.state)
+            if owned:
+                self.install_mismatch = dict(recorded=installed.get('account'), current=fp, owned=owned)
+                self._integrity_alert('integrity|install-account', 'this data folder was initialized for a different account / '
+                                      f"mode and holds {', '.join(owned)} - ENTRIES PAUSED; install.json kept unchanged until "
+                                      'the owner confirms the account')
+                self._persist_pause(); return
+            self._integrity_alert('integrity|install-account', 'this data folder was initialized for a different account / mode '
+                                  '- it owned nothing, the current account is recorded')
+        if installed is None:                     # first run: state and settings must be on disk before the marker is
+            if not os.path.exists(self.F['state']) and not self.save_state(): return
+            if not os.path.exists(self.F['settings']) and not self.save_settings(): return
+        self._install_save(installed.get('created') if isinstance(installed, dict) else None)
+
+    def _install_save(self, created=None):
+        doc = dict(schema_version=INSTALL_SCHEMA, created=created or now_utc().isoformat(timespec='seconds'),
+                   account=account_fingerprint(self.cfg, getattr(self.trade, 'base', None)))
+        try:
+            save_json(self.F['install'], doc, strict=True); return True
+        except Exception as ex:
+            self._integrity_alert('integrity|install', f'install.json not written ({type(ex).__name__})'); return False
+
+    def confirm_install(self):
+        """AUD-05 r3: the owner's explicit resolution of a damaged / unknown / other-account install.json: the CURRENT
+        account is recorded (the old marker was already kept aside or is replaced here on purpose). Entries stay paused
+        until the owner resumes them."""
+        with self.lock:
+            cur = self.F['install']
+            if os.path.exists(cur) and not self._installed is True and isinstance(self._installed, dict):
+                quarantine(cur)                   # the other account's marker is kept as evidence, not overwritten
+            if not self._install_save(): raise OSError('install.json could not be written')
+            self._installed = read_json(cur, dict); self.install_mismatch = None; self._install_bad = None
+            self.resolve('integrity|install-account', 'account confirmed by the owner')
+            self.resolve('integrity|install', 'install.json confirmed by the owner')
+            return 'account confirmed - resume entries when ready'
 
     @staticmethod
     def _prepare(name, doc):
@@ -1099,14 +1277,13 @@ class Engine:
         return None
 
     def _send(self, fn, *a, **cids):
-        """Call an exchange order function with explicit client ids when it accepts them (test fakes may not)."""
-        import binance_client as _BC
-        if not isinstance(getattr(fn, '__self__', None), _BC.Futures):   # the real client always takes them; a test fake
-            try:                                                           # only when it declares them explicitly
-                prm = inspect.signature(fn).parameters
-                cids = {k: v for k, v in cids.items() if k in prm and prm[k].kind != prm[k].VAR_KEYWORD}
-            except (TypeError, ValueError):
-                cids = {}
+        """Call an exchange order function with explicit client ids when it DECLARES them (binance_client.Futures does; an
+        offline harness / test fake may not - checked by signature, never by class, since harnesses replace the class)."""
+        try:
+            prm = inspect.signature(fn).parameters
+            cids = {k: v for k, v in cids.items() if k in prm and prm[k].kind != prm[k].VAR_KEYWORD}
+        except (TypeError, ValueError):
+            cids = {}
         return fn(*a, **cids)
 
     # ------------------------------------------------------------ notifications (Telegram, optional)
@@ -1125,8 +1302,11 @@ class Engine:
     # ------------------------------------------------------------ settings
     def load_settings(self):
         s = copy.deepcopy(GLOBAL_DEFAULTS)
-        got, status = Engine._load_safe(self, 'settings', dict)   # AUD-05: corrupt -> older .bak; none -> defaults; either
-        #   way ENTRIES PAUSED (called unbound: the offline UI harness loads settings on a bare namespace)
+        try: scrub_legacy_secrets(os.path.dirname(self.F['settings']))   # AUD-05 r3: no legacy secret survives a load
+        except Exception: pass
+        got, status = Engine._load_safe(self, 'settings', dict, initialized=vars(self).get('_installed'))
+        #   AUD-05: corrupt -> older .bak; none -> defaults; either way ENTRIES PAUSED; missing on an initialized install ->
+        #   fail closed (called unbound: the offline UI harness loads settings on a bare namespace)
         if got: s.update(got)
         if status != 'ok': s['ENTRIES_PAUSED'] = True
         s.pop('schema_version', None)
@@ -2153,7 +2333,7 @@ class Engine:
         self.missed = self.missed[-600:]
         self._save_aux('missed', self.missed)
 
-    def _add_qty(self, lot, q, px, why, post=None):
+    def _add_qty(self, lot, q, px, why, post=None, cid=None):
         r = self.rules[lot['symbol']]
         d = F.size_check(q, q, px, r)                    # BT02: the shared check (floor to the step, minQty, minNotional)
         if not d['ok']: return False
@@ -2163,7 +2343,7 @@ class Engine:
             if pb: raise RuntimeError(f"{lot['symbol']} {why} not sent: {pb}")
             # AUD-05 r2 write-ahead: the add is recorded durably as this lot's pending order (with its client id) BEFORE it
             # is sent; a crash / lost answer after the send is settled from its order record (_resolve_pending)
-            cid = new_cid()
+            cid = cid or new_cid()
             lot['pending'] = dict(kind='add', qty=q, px=px, why=why, post=post or {}, t=time.time(), cid=cid)
             try:
                 self._save_wal()
