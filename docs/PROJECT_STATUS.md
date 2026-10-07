@@ -147,6 +147,7 @@ Automated test-suite results use a fake exchange. The final T03a gate used the r
 | Fixed and accepted (T04d) | Medium | Feature heads started duplicate push and PR fast runs | Feature branches now have one PR fast producer; push-fast is master-only. |
 | Fixed and accepted (T04d) | High | Fresh Windows checkouts changed hashed dataset bytes to CRLF | Manifest datasets and manifest JSON are pinned to LF and tested in a fresh autocrlf-enabled clone. |
 | Fixed and accepted (T04d) | High gate / low runtime exposure | CodeQL flagged exponential backtracking in `tests/test_ci.py` | The regex was removed in favor of deterministic line parsing; final CodeQL and protected merge are green. |
+| Fixed; accepted for merge | High | A one-step exchange position could be hidden by whole-step reconciliation tolerance, leaving a stopped-out lot open or a tradable orphan unreported | Reconciliation and leverage preflight now tolerate only sub-step float noise; exact one-step stop-outs and untracked positions are regression tested in PR #25. |
 | Fixed; T03c GitHub/runtime gates pending | High | Exceptional maker entry could fill later using stale account approval | Above-cap exception entries now go immediately at market after the fresh proof; they never rest on the book. |
 | Fixed; T03c GitHub/runtime gates pending | High | A non-stop conditional order could satisfy the old stop-tag proof | Exact protective order type, trigger basis, status, side, quantity and trigger are now required. |
 | Fixed; T03c GitHub/runtime gates pending | High | Cached leverage could hide an external change above the cap | Every cache reuse is verified read-only against Binance. |
@@ -187,7 +188,8 @@ Every ticket now ends with a **clean-up pass on the files it touched**: remove d
 | Accepted | **T05b — exchange-outage handling** | Exact-head CI, Windows tests, guarded install and same-process startup-outage recovery passed |
 | Accepted | **T05a — causal trade audit** | Exact-head CI, Windows review, guarded install and runtime measurement checks passed |
 | Accepted | **FBL-BT01 — DCA intrabar causality** | PR #16 merged; one causal OHLC path now drives DCA/pyramid/stop/target order |
-| Accepted; merge pending | **BT02 — Binance order-filter feasibility** | Three review rounds passed; full-plan exchange minimum and cumulative leverage truthfulness accepted |
+| Accepted | **BT02 — Binance order-filter feasibility** | PR #18 merged as master `3fa11e5`; full-plan exchange minimum and cumulative leverage truthfulness accepted |
+| Accepted; merge pending | **QTY tolerance / orphan boundary** | PR #25 fixes missed few-step stop-outs and reports a tradable orphan of exactly one exchange step |
 | Copy product | **COPY100/COPY200** | $500 lead with $100–$200 follower targets and a UI feasibility toggle after BT01/BT02 |
 | Core | **T06–T09 — shared core** | One trading logic for live and backtest |
 | Strategy research | **T09a** | Range, short and scalp families; Quick Bank TP/runner/micro-DCA components; research/shadow first |
