@@ -148,3 +148,47 @@ recovered; a re-run added 0 rows.
   Settings tab can follow if wanted.
 - Parquet is not used. CSV keeps the tool dependency-free and diff-able, and the files are small (about 30 MB for
   40 coins of full 1h mark klines).
+
+## Round 2 — fixes for `DATA_COLLECTOR_review_gpt.md` (2 × P1), 07 Oct 2026 (Cairo)
+
+The "In-app collector -> Transport" paragraph above describes round 1 and is **superseded** by this section.
+
+### P1 — collector no longer touches the engine's outage circuit
+- `market_collector.py`: `FuturesTransport` (which sent every request through `engine.data._req`) is removed. The in-app
+  collector builds its **own** keyless `market_data.RequestsTransport(MAINNET)` once per app run (own `requests.Session`,
+  no `X-MBX-APIKEY`) and keeps its own `RequestHealth` counters (ok / failed / last failure), shown in
+  `health.market_collector.request_health`. Back-off, 429 Retry-After, the 418 `ban.json` and 5xx/network retries are
+  the collector's own (`market_data.Collector`), exactly as in the standalone tool.
+- The engine circuit is read only, as a one-way gate (`gate()` reads `e.data.health.state`). Not `ok` stops the run or
+  waits up to 60 s for the engine's own next good read. Nothing in the module calls `ok()`, `fail()`, `admit_read()` or
+  `_req()` (AST-checked in a test). `market_collector.py` no longer imports `binance_client`.
+- `binance_client.py` is reverted to master byte-for-byte (the `http_status` / `retry_after` attributes were only for
+  the removed transport). The trading client is unchanged by this PR.
+
+### P1 — `CMCCirculatingSupply`
+- `DATASETS['open_interest_hist'].cols` now uses Binance's exact key `CMCCirculatingSupply`. No collection ran from the
+  round-1 head, so no data needs repairing.
+
+### Tests (tests/test_market_collector.py, 50 pass; was 36)
+- `test_collector_outcomes_never_change_the_engine_circuit[ok|e429|e418|e5xx|network × fresh|just-recovered]` — a real
+  `binance_client.Futures` is the engine client, wired as a tripwire (any request through it fails the test). Every
+  `ExchangeHealth` field must be identical before and after the collector run, and the collector's own
+  `request_health` records the failure.
+- `test_engine_circuit_outage_means_no_requests` (outage: no traffic, circuit unchanged) and
+  `test_engine_circuit_degraded_is_a_one_way_gate` (degraded by an engine read: the collector waits and stops, or resumes
+  only after the ENGINE's own success).
+- `test_in_app_429_backs_off_on_its_own_state`, `test_in_app_418_stops_and_is_reported` (also: nothing is sent during
+  the ban), `test_default_transport_is_its_own_keyless_mainnet_session` (no engine-client calls in the module source).
+- `test_every_column_exists_in_the_real_open_interest_payload` and
+  `test_real_open_interest_payload_reaches_the_csv_with_circulating_supply` — a fixture copied verbatim from the public
+  `openInterestHist` answer (BTCUSDT 1h, fetched 07 Oct 2026) must reach the CSV with no blank column.
+- Mutation check: with the round-1 `market_collector.py` / `market_data.py` / `binance_client.py` put back, all 13
+  isolation tests fail. They catch the defect.
+
+### Real public run (standalone tool, this PC, round-2 code, 07 Oct 2026 12:45 Cairo)
+`python tools/collect_market_data.py --once --symbols BTCUSDT,ETHUSDT --out <scratch>` -> exit 0, 142 requests,
+172 059 rows, 0 errors, 70.8 s. `open_interest_hist/*/1h` = 719 rows each (the expected ~720), `/4h` = 180.
+`CMCCirculatingSupply` has **0 blank values** (BTC 20094521.00000000, ETH 122110434.69485405). Funding from 2019-09-10
+(BTC) / 2019-11-27 (ETH). Mark klines start 2019-12-23 for both coins, which looks like where Binance's markPriceKlines
+history begins (recorded, not a collector gap). No API key, no order endpoint, scratch folder only; the data is not
+committed.

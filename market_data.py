@@ -1,8 +1,8 @@
 """Market-data collector core (observe-only): public Binance USD-M futures market data -> CSV files + a manifest.
 
 One implementation shared by the standalone tool (tools/collect_market_data.py, plain `requests`) and the in-app
-background collector (market_collector.py, the engine's public MAINNET data client). Public endpoints only: no API key
-is ever sent, nothing here can place, change or read orders.
+background collector (market_collector.py, its OWN keyless RequestsTransport - never the engine's client or circuit).
+Public endpoints only: no API key is ever sent, nothing here can place, change or read orders.
 
 Datasets (one CSV per dataset / symbol / period under <out>/<dataset>/):
   open_interest_hist   /futures/data/openInterestHist             1h, 4h   last 30 days only (Binance limit)
@@ -38,7 +38,7 @@ LOCK_STALE_S = 6 * 3600
 # name -> spec. kind: 'window' (30-day /futures/data), 'forward' (paginate forward from the last row), 'snapshot'
 DATASETS = {
     'open_interest_hist': dict(kind='window', path='/futures/data/openInterestHist', limit=500, ts='timestamp', periods=('1h', '4h'),
-                               cols=['timestamp', 'sumOpenInterest', 'sumOpenInterestValue', 'CMCirculatingSupply']),
+                               cols=['timestamp', 'sumOpenInterest', 'sumOpenInterestValue', 'CMCCirculatingSupply']),   # exact Binance key (2 Cs)
     'global_ls_account': dict(kind='window', path='/futures/data/globalLongShortAccountRatio', limit=500, ts='timestamp', periods=('1h', '4h'),
                               cols=['timestamp', 'longShortRatio', 'longAccount', 'shortAccount']),
     'top_ls_position': dict(kind='window', path='/futures/data/topLongShortPositionRatio', limit=500, ts='timestamp', periods=('1h', '4h'),

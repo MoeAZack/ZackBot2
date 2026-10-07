@@ -301,9 +301,7 @@ class Futures:
                 if not retry or last:
                     if method not in SAFE_METHODS and (r.status_code >= 500 or code in (-1001, -1006, -1007)):
                         raise AmbiguousOrder(f'HTTP {r.status_code} on {path}')
-                    err = BinanceError(code or -r.status_code, data.get('msg') if isinstance(data, dict) else f'HTTP {r.status_code}')
-                    err.http_status, err.retry_after = r.status_code, ra      # market collector: tell a 418 ban from a 429
-                    raise err
+                    raise BinanceError(code or -r.status_code, data.get('msg') if isinstance(data, dict) else f'HTTP {r.status_code}')
                 wait = ra or min(8, 0.5 * 2 ** attempt + random.random())
                 time.sleep(min(wait, 30)); continue
             self.health.ok()                             # Binance answered (even a business error proves it is up)
