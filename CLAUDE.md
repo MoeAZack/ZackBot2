@@ -17,7 +17,7 @@ This is a standing working agreement set by the owner (Moe). Every Claude sessio
 - **Use several agents** when that makes a task faster, and show an agent board (active/done, what each is doing, its result).
 - **Give short progress updates** while working, even when the owner seems away.
 - **Keep the scheduled check-ins current.** They are a backup loop, so each must carry the latest state and point at the runbook's last STATE line.
-- **Ask before running tests on the owner's PC.** If there is no reply within 5 minutes while he is away, use the cloud run instead.
+- **Do not wait for routine testnet approvals.** Automatically use the fastest trustworthy environment (the owner's PC or cloud) for safe tests and backtests, and keep independent work moving while long jobs run. Approval pauses resume only at the mainnet/live boundary or another safety boundary listed below.
 
 ## PR protocol
 - **One ticket per PR, on a new branch from current master.**
