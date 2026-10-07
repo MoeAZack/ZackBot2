@@ -30,3 +30,13 @@ Recommended narrow fix:
 3. Add companion boundaries: below-min-notional one-step dust remains ignored, and an exactly-one-step filled resting entry is not reported as orphaned.
 
 No installer, bot stop/restart, credentials, or trading action was performed.
+
+## Fix review — accepted
+
+Reviewed exact head `3aa1bc9e03603cff7bb2607828ff4fb60e5f76d1` on 2026-10-07 (Africa/Cairo).
+
+The P1 boundary is fixed. The no-lot branch now uses the same sub-step tolerance as the tracked-lot path, while the existing dust and resting-entry exclusions remain in place. The requested regression boundaries cover a tradable one-step orphan, below-minimum dust, and a filled resting entry with a one-step excess.
+
+Independent focused verification on Windows passed: `tests/test_qty_tolerance.py` — **24 passed**. Code inspection found no new blocker in the four-file diff from merged master `3fa11e5`.
+
+**Verdict: accepted for merge.** No installer, bot restart, credentials, or trading action was required for this code-only correction.
