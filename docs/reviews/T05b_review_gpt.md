@@ -4,9 +4,25 @@
 
 ## Verdict
 
-**Code review clean; no open P1/P2 finding.** Apply `full-ready` once after fast/CodeQL pass on the final documentation
-head. A build/install/restart and bounded testnet read-outage canary require the owner's separate confirmation after the
-exact-head full gate passes.
+**Changes requested — one confirmed P1 runtime finding. Do not merge.** Static review and the focused/full gates passed,
+but the approved exact-head testnet canary found that a process which starts during a Binance read outage cannot recover
+without another process restart.
+
+### P1 — startup outage permanently leaves the engine disconnected
+
+At 03:23:58 Africa/Cairo, installed build `20261007-031714` was restarted in PAPER mode with the exact-TESTNET-only
+`ZB_TESTNET_FAULTS=read_outage:180` injector. Startup reconciliation immediately drove the shared circuit to `outage`
+after three injected HTTP 503 / `-1007` reads, but `App.start_engine()` caught `eng.connect()` once, stored the error and
+returned. `App.loop()` only works when `e.connected` is already true and `e.error` is empty, so it made no further status
+read, probe or reconnect attempt. After 39 seconds the observable state was still `engine=stopped`, `exchange=error`,
+`circuit=outage`, `probes=0`, `recoveries=0`, with no open incident. Because the injector window starts on an eligible
+read and the stopped engine makes no more eligible reads, merely waiting past 180 seconds cannot recover the process.
+
+Required fix: add a bounded, backoff-controlled reconnect path when initial `connect()` fails. It must reuse the shared
+circuit/probe rules, never infer empty positions/stops from a failed read, coalesce one `exchange-down` incident, and only
+mark recovery after positions and protective orders have been re-read successfully. Add a regression test that starts the
+real app/loop with the first reconciliation unavailable, advances beyond the injected window, and proves automatic
+recovery without restarting the process. Then repeat this exact runtime canary.
 
 ## Safety review
 
@@ -37,6 +53,10 @@ as user settings now.
   testnet-fault boundary, leverage, safety and grid suites.
 - Review covered request retry classification, half-open transitions, protection/write bypasses, incident coalescing,
   reconciliation, add/entry gates, T03c interaction, log scrubbing, panel status and injector isolation.
+- Exact-head installer passed all eight stages and installed build `20261007-031714` before the canary. The injected run
+  sent no new entry and reported zero unprotected, untracked or orphaned positions. It was stopped after the startup-retry
+  defect was confirmed. A clean restart without the injector restored `engine=ok`, `exchange=ok`, circuit `ok`, and all
+  three original lots with identical quantities, stop prices and stop ids.
 
 ## Non-blocking follow-up
 
