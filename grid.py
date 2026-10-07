@@ -884,9 +884,14 @@ class GridManager:
             except Exception as ex:
                 if _ambiguous(ex): e.err(f"grid {g['key']} first {side} order unconfirmed ({ex}) - checking the position"); e.save_state(); return
                 g['op'] = None; e.err(f"grid {g['key']} first {side} order failed: {ex}"); return
-            px = float(o.get('avgPrice') or 0) or px
-            filled = float(o.get('executedQty') or 0)
-            if filled > 0: q = e._rd(filled, r['step'])
+            got, act, st = e._exec_of(sym, o)                     # FBL-ENG02: book only what Binance executed
+            if got is None:                                       # no usable quantity: the position decides (_resolve_open)
+                e.err(f"grid {g['key']} first {side} order answered without an executed quantity (status {st or '?'}) - checking the position")
+                e.save_state(); return
+            got = min(e._rd(got, r['step']), q)
+            if got <= 0:
+                g['op'] = None; e.err(f"grid {g['key']} first {side} order not filled (Binance executed 0 of {q}, status {st or '?'})"); return
+            q, px = got, act or px
         self._create(g, op, q, px)
 
     def _create(self, g, op, q, px):

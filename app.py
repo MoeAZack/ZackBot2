@@ -595,7 +595,8 @@ class App:
                         last_manage = now
                         try:
                             marks = e.data.marks()
-                            if e.state['lots'] or e.state.get('grids') or e.state.get('pending_entries') or e.state.get('resting_entries'): e.manage(marks)
+                            if (e.state['lots'] or e.state.get('grids') or e.state.get('pending_entries') or e.state.get('resting_entries')
+                                    or e.state.get('unconfirmed_entries')): e.manage(marks)
                             else: e.marks, e.marks_t = marks, now
                         except Exception as ex:                     # T05b final: Binance down -> the one exchange-down incident
                             if e._exchange_down(ex): e._manage_failed(f'mark prices: {EXCHANGE_DOWN}', key='exchange-down')
@@ -606,7 +607,7 @@ class App:
                             try:
                                 e.equity(); e.check_guards()
                                 if not (e.state['lots'] or e.state.get('grids') or e.state.get('pending_entries')
-                                        or e.state.get('resting_entries')):   # nothing to reconcile: account read = recovered
+                                        or e.state.get('resting_entries') or e.state.get('unconfirmed_entries')):   # nothing to reconcile: account read = recovered
                                     e.resolve('exchange-down', 'Binance answering again - account readable')
                             except Exception as ex:                     # T05b: Binance down -> guards simply retry next pass
                                 if not e._exchange_down(ex): raise
@@ -667,7 +668,10 @@ class App:
                     incidents=[{k: v for k, v in i.items() if k not in ('entry', 'logged')} for i in sorted(
                         [i for i in list((h.get('incidents') or {}).values()) if i.get('open')],   # snapshot: loop thread mutates
                         key=lambda i: (i.get('key') != 'exchange-down', -ms_iso(i.get('last'))))][:20],
-                    audit=e.audit_summary() if hasattr(e, 'audit_summary') else None)
+                    audit=e.audit_summary() if hasattr(e, 'audit_summary') else None,
+                    unconfirmed=[dict(symbol=u.get('sym'), side=u.get('side'), qty=u.get('qty'), protected=bool(u.get('prov')),
+                                      age_s=int(now - (u.get('t') or now)), close_on_book=u.get('close_on_book'))   # FBL-ENG02 r3
+                                 for u in list((e.state.get('unconfirmed_entries') or {}).values())])
 
     def revs(self, e):
         hl = e.history[-1]['id'] if e.history else ''

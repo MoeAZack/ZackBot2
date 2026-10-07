@@ -211,6 +211,31 @@ LEV_BRACKET_TTL_S = 3600          # T03c r1: a coin's leverage/maintenance brack
 LEV_EXC_RECHECK_S = 60            # T03c r1: while adds are paused by the above-cap exception, re-read the coin's leverage at most once a minute
 
 
+ORDER_FINAL = ('FILLED', 'EXPIRED', 'CANCELED', 'REJECTED', 'EXPIRED_IN_MATCH')   # FBL-ENG02: executedQty is final
+ORDER_LOOKUPS = 4                 # FBL-ENG02: client-id lookups of a non-final / quantity-less MARKET answer before it is unknown
+ORDER_LOOKUP_GAP_S = 1.0          # back-off between them: 1, 2, 3 s (the client's own lost-answer back-off is 1 + i s)
+UNCONF_DROP_S = 20                # FBL-ENG02 r2: an unconfirmed entry with no order record and no position after this is dropped
+UNCONF_CANCEL_S = 60              # ... still NEW / PARTIALLY_FILLED after this: cancelled by its client id (the record still decides)
+UNCONF_GIVEUP_S = 300             # ... no FINAL record after this: adopted from the provisional stop's position, else dropped
+CLOSE_RETRY_MAX = 10              # FBL-ENG02 r2: a partial / unfilled full close is re-sent on this many manage passes, then alerted
+
+
+class UnfilledOrder(Exception):
+    """FBL-ENG02: Binance answered a MARKET order with a FINAL status and executedQty 0 - nothing was booked."""
+
+
+class PartialFill(Exception):
+    """FBL-ENG02: a full close executed only part of its quantity - the part is booked, the rest keeps a resized stop."""
+
+
+def _qty_num(v):
+    """A finite executed quantity / price >= 0 from an exchange answer, else None (missing, '', text, NaN)."""
+    if v is None or v == '' or isinstance(v, bool): return None
+    try: x = float(v)
+    except (TypeError, ValueError): return None
+    return x if math.isfinite(x) and x >= 0 else None
+
+
 class LevReject(Exception):
     """T03c r1. The above-cap exception cannot be proven. .check names the failed check (shown in the panel)."""
     def __init__(self, check, why, numbers=None):
@@ -1049,6 +1074,95 @@ class Engine:
             self.state.setdefault('orphans', []).append([sym, tag])
             self.err(f'cancel stop {sym} {tag} failed ({e}) - will retry')
 
+    # ------------------------------------------------------------ FBL-ENG02: what a MARKET answer really executed
+    def _exec_of(self, sym, o):
+        """(executed qty | None, avg price | None, status | None) for a MARKET order answer. A non-final status
+        (NEW / PARTIALLY_FILLED) or a missing quantity is looked up by the order's client id first; a final status
+        (FILLED / EXPIRED / CANCELED / REJECTED) with a readable executedQty is authoritative (EXPIRED 0 = nothing).
+        An answer without a status but with executedQty > 0 is taken as executed. Anything else -> qty None = unknown:
+        the caller confirms from a critical position read or the pending machinery, never by assuming the request."""
+        o = o if isinstance(o, dict) else {}
+        def parse(o):
+            st = str(o.get('status') or '').upper() or None
+            q = _qty_num(o.get('executedQty'))
+            avg = _qty_num(o.get('avgPrice')) or None
+            cq = _qty_num(o.get('cumQuote'))
+            if not avg and q and cq: avg = cq / q                      # avgPrice 0/missing: cumQuote / executedQty
+            return st, q, avg
+        st, q, avg = parse(o)
+        cid, look = o.get('clientOrderId'), getattr(self.trade, 'get_order', None)
+        n = 0
+        while (st not in ORDER_FINAL or q is None) and cid and callable(look) and n < ORDER_LOOKUPS:
+            if n: time.sleep(ORDER_LOOKUP_GAP_S * n)
+            n += 1
+            try: o2 = look(sym, cid)
+            except Exception: continue
+            if isinstance(o2, dict):
+                st2, q2, avg2 = parse(o2)
+                if st2: st, q, avg = st2, (q2 if q2 is not None else q), (avg2 or avg)
+        if st in ORDER_FINAL and q is not None: return q, (avg if q > 0 else None), st
+        if st is None and q: return q, avg, None
+        return None, avg, st
+
+    def _pos_dirty(self, sym, side, skip_cid=None, own_grid=False):
+        """FBL-ENG02 r2: a position delta on sym/side cannot be attributed to ONE order while anything else on it is
+        unsettled: a pending add/close of a lot, another unconfirmed entry, an unconfirmed grid order, or an untracked /
+        over-seen position. Returns the reason, or None when the delta is clean."""
+        st = self.state
+        if any(l['symbol'] == sym and l['side'] == side and l.get('pending') for l in st['lots'].values()): return 'a lot order is pending'
+        if any(u['sym'] == sym and u['side'] == side and c != skip_cid for c, u in (st.get('unconfirmed_entries') or {}).items()):
+            return 'another entry is unconfirmed'
+        if not own_grid and any(g.get('sym') == sym and (g.get('op') or {}).get('side', side) == side
+                                for g in (st.get('grids') or {}).values() if isinstance(g, dict) and g.get('op')):
+            return 'a grid order is unconfirmed'                 # (a grid's own order is recorded as its op before it is sent)
+        k = f'{sym}|{side}'
+        if k in (self.untracked or {}) or k in (st.get('over_seen') or {}): return 'an untracked position is present'
+        return None
+
+    def _pos_delta(self, sym, side, live=None):
+        """(exchange qty, bot-held qty) for sym/side from a CRITICAL position read (or `live`); None if the read fails."""
+        if live is None:
+            try: live = self._positions_critical()
+            except Exception: return None
+        held = sum(l['qty'] for l in self.state['lots'].values() if l['symbol'] == sym and l['side'] == side)
+        held += sum(r_.get('filled', 0.0) for r_ in self.state.get('resting_entries', {}).values()
+                    if r_['symbol'] == sym and r_['side'] == side)
+        return float(live.get((sym, side), 0.0) or 0.0), held
+
+    @staticmethod
+    def _moved_to(have, before, delta, tol):
+        """The position moved by `delta`: within tol of the target AND clearly closer to it than to the unchanged level
+        (a 1-2 step order is never 'confirmed' by the tolerance alone)."""
+        d = abs(have - (before + delta))
+        return d <= tol and d < abs(have - before) - 1e-12
+
+    def _confirm_by_position(self, lot, delta):
+        """An add (+q) / close (-q) answered without a usable executed quantity: confirmed only if the position now shows
+        exactly that change (within the reconcile tolerance) and nothing else on the coin/side is unsettled. Returns the
+        quantity, or None (-> pending)."""
+        sym, side = lot['symbol'], lot['side']
+        if self._pos_dirty(sym, side, own_grid=lot.get('key_strategy') == 'grid'): return None
+        pd_ = self._pos_delta(sym, side)
+        if pd_ is None: return None
+        have, held = pd_
+        n = sum(1 for l in self.state['lots'].values() if l['symbol'] == sym and l['side'] == side)
+        tol = self.rules[sym]['step'] * (n + 1)
+        if delta < 0: delta = -min(-delta, held)
+        return abs(delta) if self._moved_to(have, held, delta, tol) else None
+
+    @staticmethod
+    def _cid_of(tag):
+        return tag[2:] if isinstance(tag, str) and tag.startswith('c:') else None
+
+    def _unknown_pending(self, lot, kind, qty, px, why, post, st, cid=None):
+        """Unknown execution of an add/close: the existing pending machinery (reconcile/_resolve_pending) decides."""
+        lot['pending'] = dict(kind=kind, qty=qty, px=px, why=why, post=post or {}, t=time.time())
+        if cid: lot['pending']['cid'] = cid
+        self.save_state()
+        msg = f"{lot['symbol']} {why}: Binance answered without an executed quantity (status {st or '?'}) - waiting for Binance position to confirm"
+        self.err(msg)
+        raise AmbiguousOrder(msg)
+
     def _replace_stop(self, lot, stop=None):
         """Place the stop at `stop` (or the current lot stop, e.g. after a size change) FIRST, then cancel the old one.
         The lot's recorded stop only changes once Binance has accepted the new order. Returns True on success."""
@@ -1088,9 +1202,13 @@ class Engine:
 
     def _market_close(self, lot, qty, why, mark=None, post=None):
         """Close qty at market. If Binance's answer is lost (AmbiguousOrder) the lot is marked 'pending' and reconcile()
-        decides from the real position whether it filled - so a partial take-profit can never fire twice."""
+        decides from the real position whether it filled - so a partial take-profit can never fire twice.
+        FBL-ENG02: only Binance's executedQty is booked (at its avgPrice / cumQuote). A FINAL answer with 0 executed books
+        nothing and raises UnfilledOrder; a partial books the part (the caller resizes the stop to the real remainder);
+        an answer without a usable quantity is confirmed from a critical position read, else it goes pending."""
         sym, r = lot['symbol'], self.rules[lot['symbol']]
         qty = self._rd(qty, r['step'])
+        self._last_exec = (qty, qty)
         if qty <= 0: return 0.0
         px = mark or lot['avg']
         if not self.dry:
@@ -1099,10 +1217,22 @@ class Engine:
                 o = self.trade.close(sym, lot['side'], self._fmt(qty, r['step']))
             except AmbiguousOrder as e:
                 lot['pending'] = dict(kind='close', qty=qty, px=px, why=why, post=post or {}, t=time.time())
+                if self._cid_of(e.tag): lot['pending']['cid'] = self._cid_of(e.tag)
                 self.save_state(); self.err(f'{sym} close unconfirmed ({e}) - waiting for Binance position to confirm'); raise
-            act = float(o.get('avgPrice') or 0) or None
-            self._fill('exit', sym, lot['side'], lot['side'] == 'SHORT', mark, act, qty, o.get('executedQty'), t0, reason=why)
-            px = act or px
+            got, act, st = self._exec_of(sym, o)
+            self._fill('exit', sym, lot['side'], lot['side'] == 'SHORT', mark, act, qty, got, t0, reason=why,
+                       outcome='unfilled' if got == 0 else None, status=st)
+            if got is None:
+                got = self._confirm_by_position(lot, -qty)
+                if got is None: self._unknown_pending(lot, 'close', qty, act or px, why, post, st, (o or {}).get('clientOrderId'))
+            got = min(self._rd(got, r['step']), qty)
+            if got <= 0:
+                raise UnfilledOrder(f"{sym} {why}: Binance executed 0 of {qty} (status {st or '?'}) - nothing booked, lot and stop unchanged")
+            self._last_exec = (qty, got)
+            if got < qty:
+                self.err(f"{sym} {why}: Binance executed {got} of {qty} (status {st or '?'}) - {got} booked, the rest stays protected",
+                         key=f"partial|{sym}|{lot['side']}")
+            qty, px = got, act or px
         return self._apply_close(lot, qty, px, why)
 
     def _apply_close(self, lot, qty, px, why):
@@ -1113,29 +1243,207 @@ class Engine:
         lot.setdefault('fills', []).append([now_utc().isoformat(timespec='seconds'), why, qty, px])
         lot['fees'] = lot.get('fees', 0.0) + qty * px * FEE_EST
         lot['qty'] = max(0.0, self._rd(lot['qty'] - qty, r['step']))
+        if lot['qty'] > 0 and not self.dry: lot['stop_dirty'] = True   # FBL-ENG02 r2: size changed -> manage resizes the stop
         self.log_trade(time=now_utc().isoformat(timespec='seconds'), event=why, sleeve=lot['sleeve'], symbol=sym,
                        side=lot['side'], qty=qty, price=px, pnl=round(pnl, 4), equity=round(self.last_eq or 0, 2))
         self._audit_fill(lot)                                      # T05a: cohort / runner events (memory + queue only)
         log.info(f"{why.upper()} {sym} {lot['side']} [{lot['sleeve']}] {qty} @ {px} pnl {pnl:+.2f}")
         return pnl
 
+    def _order_record(self, sym, cid):
+        """FBL-ENG02: one critical lookup of an order by client id. (qty, avg, status) when FINAL, else None."""
+        look = getattr(self.trade, 'get_order', None)
+        if self.dry or not cid or not callable(look): return None
+        try: o = look(sym, cid)
+        except Exception: return None
+        if not isinstance(o, dict): return None
+        st = str(o.get('status') or '').upper()
+        q = _qty_num(o.get('executedQty'))
+        if st not in ORDER_FINAL or q is None: return None
+        avg = _qty_num(o.get('avgPrice')) or None
+        cq = _qty_num(o.get('cumQuote'))
+        if not avg and q and cq: avg = cq / q
+        return q, avg, st
+
+    def _pending_order(self, l, pd_):
+        """The unanswered add/close's own FINAL record by client id, else None."""
+        return self._order_record(l['symbol'], pd_.get('cid'))
+
+    # ------------------------------------------------------------ FBL-ENG02 r2: entries whose execution is not known yet
+    # state['unconfirmed_entries'][cid] = {cid, sym, side, qty, plan, t, prov, prov_qty}. Recorded before this call
+    # returns; settled in reconcile() from the order's own FINAL record. While it waits, its quantity is never reported
+    # untracked and, as soon as the position shows a clean increase, a PROVISIONAL stop protects it.
+    def _entry_unconfirmed(self, plan, cid, st, why):
+        sym, side = plan['sym'], plan['side']
+        u = dict(cid=cid, sym=sym, side=side, qty=plan['qty'], plan=plan, t=time.time(), prov=None, prov_qty=0.0)
+        self.state.setdefault('unconfirmed_entries', {})[cid] = u
+        self.save_state()                                         # recorded before anything else can fail
+        self.err(f'ENTRY {sym} {side} unconfirmed ({why}, status {st or "?"}) - tracked by its client id, '
+                 f'protected as soon as Binance shows the position', key=f'unconfirmed|{sym}|{side}')
+        pd_ = self._pos_delta(sym, side)
+        if pd_ is not None: self._protect_unconfirmed(u, pd_[0] - pd_[1])
+        self.save_state()
+        return False
+
+    def _protect_unconfirmed(self, u, extra):
+        """A clean position increase is visible for an unconfirmed entry: place / resize its provisional stop.
+        Returns True when the provisional stop changed (the caller persists it)."""
+        sym, side = u['sym'], u['side']; r = self.rules.get(sym)
+        if r is None or self._pos_dirty(sym, side, skip_cid=u['cid']): return False
+        q = self._rd(min(extra, u['qty']), r['step'])
+        if extra > u['qty'] + r['step'] or q <= 0 or abs(q - u.get('prov_qty', 0.0)) < r['step'] * 0.5: return False
+        sd = 1 if side == 'LONG' else -1
+        stop = self._rd(u['plan']['px'] - sd * u['plan']['stop_dist'], r['tick'])
+        try:
+            tag = self.trade.stop(sym, side, self._fmt(q, r['step']), self._fmt(stop, r['tick']))
+        except AmbiguousOrder as e:
+            if e.tag: self.state.setdefault('orphans', []).append([sym, e.tag])
+            self.err(f'{sym} {side}: provisional stop for the unconfirmed entry unconfirmed ({e}) - retried'); return True
+        except Exception as e:
+            self.err(f'{sym} {side}: provisional stop for the unconfirmed entry failed ({e}) - retried every pass',
+                     key=f'prov-stop|{sym}|{side}')
+            self.notify(f'🆘 {side} {sym}: an entry is on Binance but its stop failed ({str(e)[:80]}). The bot keeps retrying - check it.')
+            return False
+        old, u['prov'], u['prov_qty'], u['prov_px'] = u.get('prov'), tag, q, stop
+        if old and old != tag: self._cancel_or_park(sym, old)
+        self.save_state()                                         # r3 (X2): the tag is on disk before anything else happens
+        log.warning(f'{sym} {side}: unconfirmed entry visible on Binance ({q}) - provisional stop {stop} placed')
+        return True
+
+    def _book_unconfirmed(self, u, q, fill, why):
+        """r3: turn an unconfirmed entry into a lot. Its provisional stop is cancelled only once the lot has its own
+        stop (or the lot is already closed again); an unprotected lot inherits the provisional stop (X4). An entry
+        marked by flatten() is closed right after it is booked (X3)."""
+        sym = u['sym']
+        log.info(f"{sym} {u['side']}: unconfirmed entry {why} ({q})")
+        self._last_lot_key = None
+        self._create_lot(u['plan'], q, fill)
+        key = getattr(self, '_last_lot_key', None); lot = self.state['lots'].get(key) if key else None
+        prov = u.get('prov')
+        if prov:
+            if lot is not None and not lot.get('stop_id'):
+                lot['stop_id'], lot['stop_dirty'] = prov, True      # keep the only protection; manage resizes it
+                self.err(f"{sym} {u['side']}: the new lot's stop failed - the provisional stop is kept as its stop")
+            else:
+                self._cancel_or_park(sym, prov)
+        if lot is not None and u.get('close_on_book'):
+            try: self.close_lot(key, u['close_on_book'], (self.marks or {}).get(sym))
+            except Exception as e: self.err(f"{sym}: {u['close_on_book']} of the just-confirmed entry failed ({e}) - retried")
+        self.save_state()
+        return key
+
+    def _book_stopped(self, u, q, fill):
+        """r3 (X5): the provisional stop already fired before the record was readable: the trade is recorded as an entry
+        that was stopped at the provisional stop price - no lot / exchange stop is created for a position that is gone."""
+        sym, side = u['sym'], u['side']
+        self._last_lot_key = None
+        self._create_lot(u['plan'], q, fill, protect=False)
+        key = getattr(self, '_last_lot_key', None); lot = self.state['lots'].get(key) if key else None
+        if lot is None: return
+        px = u.get('prov_px') or lot['stop']
+        self._apply_close(lot, lot['qty'], px, 'stop')
+        self._finish(key, 'stop')
+        self.err(f'{sym} {side}: the unconfirmed entry was stopped by its provisional stop at {px} before Binance confirmed it - recorded')
+        self.save_state()
+
+    def _settle_unconfirmed(self, live):
+        """Called by reconcile() before lots are compared: book / drop / protect every unconfirmed entry. One bad entry
+        never breaks reconcile for the other lots."""
+        ue = self.state.get('unconfirmed_entries') or {}
+        changed = False
+        for cid, u in list(ue.items()):
+            try: changed = self._settle_one(ue, cid, u, live) or changed
+            except Exception as e:
+                self.err(f"unconfirmed entry {u.get('sym')} {u.get('side')}: {e} - retried next pass", key=f'unconfirmed-err|{cid}')
+        if changed: self.save_state()                            # r3 (X2)
+
+    def _settle_one(self, ue, cid, u, live):
+        sym, side = u['sym'], u['side']; r = self.rules.get(sym); age = time.time() - u['t']
+        if r is None:
+            self.err(f'unconfirmed entry {sym} {side}: no trading rules for {sym} - kept, retried', key=f'unconfirmed-err|{cid}')
+            return False
+        have, held = self._pos_delta(sym, side, live)
+        extra = have - held; seen = extra > r['step'] * 0.5
+        if u.get('prov'):                                         # r3: is the provisional stop still working on Binance?
+            tags = self.trade.open_stop_tags(sym)                 # (a failed read raises: nothing is decided this pass)
+            if u['prov'] not in tags:
+                if seen:                                          # cancelled by hand (position still there): place it again
+                    self.err(f'{sym} {side}: provisional stop {u["prov"]} is gone but the position is not - placing it again')
+                    u['prov'], u['prov_qty'] = None, 0.0
+                else:
+                    u['prov_fired'] = True                        # it fired: the position is gone
+        rec = self._order_record(sym, cid)
+        if rec is not None:                                       # FINAL: exactly its executedQty
+            ue.pop(cid, None); q = min(self._rd(rec[0], r['step']), u['qty'])
+            if q <= 0:
+                log.info(f'{sym} {side}: unconfirmed entry did not fill ({rec[2]}, 0 executed) - dropped')
+                if u.get('prov') and not u.get('prov_fired'): self._cancel_or_park(sym, u['prov'])
+            elif u.get('prov_fired'):
+                self._book_stopped(u, q, rec[1] or u['plan']['px'])
+            else:
+                self._book_unconfirmed(u, q, rec[1] or u['plan']['px'], f'confirmed by its order record ({rec[2]})')
+            return True
+        if u.get('prov_fired'):
+            return False                                          # wait for the record to book what the stop closed
+        changed = self._protect_unconfirmed(u, extra) if seen else False
+        if age > UNCONF_GIVEUP_S:
+            if u.get('prov') and seen and self._pos_dirty(sym, side, skip_cid=cid):
+                self.err(f'{sym} {side}: entry order still unconfirmed - kept with its provisional stop until the coin is settled',
+                         key=f'unconfirmed|{sym}|{side}')
+                return changed                                    # never drop a provisional stop that protects a position
+            ue.pop(cid, None)
+            if u.get('prov') and seen:
+                q = self._rd(min(extra, u['qty']), r['step'])
+                self.err(f'{sym} {side}: entry order never confirmed - adopted from the position ({q}) with a stop')
+                self._book_unconfirmed(u, q, (self.marks or {}).get(sym) or u['plan']['px'], 'adopted from the position')
+            else:
+                if u.get('prov'): self._cancel_or_park(sym, u['prov'])
+                self.err(f'{sym} {side}: entry order could not be confirmed after 5 min - dropped (reconcile reports any position)')
+            return True
+        if age > UNCONF_CANCEL_S and not u.get('cancelled'):      # r3: re-sent every pass until Binance accepts the cancel
+            try:
+                self.trade.cancel(sym, f'c:{cid}'); u['cancelled'] = True; changed = True
+            except Exception as e: log.info(f'{sym}: cancel of the unconfirmed entry {cid}: {e} - retried next pass')
+        if age > UNCONF_DROP_S and not u.get('prov') and not seen:
+            look = getattr(self.trade, 'get_order', None)
+            try: o = look(sym, cid) if callable(look) else None
+            except Exception: o = 'unknown'
+            if o is None:                                         # no such order on Binance and nothing visible: never filled
+                ue.pop(cid, None); log.info(f'{sym} {side}: unconfirmed entry never reached Binance - dropped'); return True
+        return changed
+
     def _resolve_pending(self, key, have, expected, tol):
-        """A close/add whose answer was lost: decide from the exchange position whether it filled. Returns True if resolved."""
+        """A close/add whose answer was lost: decide whether it filled - first from the order's own FINAL record (client id,
+        FBL-ENG02: exactly its executedQty, a partial included), else from the exchange position. Returns True if resolved."""
         l = self.state['lots'][key]; pd_ = l['pending']; age = time.time() - pd_.get('t', 0)
         target = expected - pd_['qty'] if pd_['kind'] == 'close' else expected + pd_['qty']
-        if abs(have - target) <= tol:                                    # it filled
+        rec, q, px = self._pending_order(l, pd_), pd_['qty'], pd_['px']
+        if rec is not None:
+            step = self.rules[l['symbol']]['step'] if l['symbol'] in self.rules else 1e-9
+            q = min(self._rd(rec[0], step), pd_['qty']); px = rec[1] or px
+            if q <= 0:
+                del l['pending']
+                log.info(f"{l['symbol']} [{l['sleeve']}] unconfirmed {pd_['kind']} did not fill (order {rec[2]}, 0 executed) - will retry")
+                return True
+        moved = self._moved_to(have, expected, target - expected, tol)  # r2: never 'filled' by the tolerance alone (1-2 step orders)
+        if rec is not None or moved:                                     # it filled (all of it, or the part the order record proves)
+            full = q >= pd_['qty']
             del l['pending']
             if pd_['kind'] == 'close':
-                self._apply_close(l, pd_['qty'], pd_['px'], pd_['why'])
+                self._apply_close(l, q, px, pd_['why'])
             else:
-                self._apply_add(l, pd_['qty'], pd_['px'], pd_['why'])
+                self._apply_add(l, q, px, pd_['why'])
             post = dict(pd_.get('post') or {})
             fin = post.pop('finish', None)
+            if not full:
+                fin = None
+                self.err(f"{l['symbol']} [{l['sleeve']}] unconfirmed {pd_['kind']} executed {q} of {pd_['qty']} (order {rec[2]}) "
+                         f"- {q} booked, the rest stays protected", key=f"partial|{l['symbol']}|{l['side']}")
             l.update(post)
             if 'dca' in l.get('mgmt', {}) and pd_['kind'] == 'add' and l.get('tp') is not None:
                 sd = 1 if l['side'] == 'LONG' else -1
                 l['tp'] = l['avg'] + sd * l['mgmt']['dca']['tp_atr'] * l['atr0']
-            log.info(f"{l['symbol']} [{l['sleeve']}] unconfirmed {pd_['kind']} confirmed from the position")
+            log.info(f"{l['symbol']} [{l['sleeve']}] unconfirmed {pd_['kind']} confirmed from the {'order record' if rec else 'position'}")
             if fin or l['qty'] <= 0: self._finish(key, fin or pd_['why'])
             else: self._replace_stop(l)
             return True
@@ -1165,10 +1473,32 @@ class Engine:
         lot = self.state['lots'][key]
         qty = lot['qty']
         others = [k for k, l in self.state['lots'].items() if k != key and l['symbol'] == lot['symbol'] and l['side'] == lot['side']]
+        others += [c for c, u in (self.state.get('unconfirmed_entries') or {}).items()     # r3 (X1): not ours to close
+                   if u['sym'] == lot['symbol'] and u['side'] == lot['side']]
+        others += [k for k, r_ in (self.state.get('resting_entries') or {}).items()
+                   if r_['symbol'] == lot['symbol'] and r_['side'] == lot['side'] and r_.get('filled', 0) > 0]
         if not others and not self.dry:            # last lot on this side: close exactly what the exchange holds (no dust)
             try: qty = self._positions_critical().get((lot['symbol'], lot['side']), qty) or qty
             except Exception: pass
-        self._market_close(lot, qty, why, mark, post={'finish': why})    # raises on failure -> lot and its stop stay as they were
+        try:
+            self._market_close(lot, qty, why, mark, post={'finish': why})    # raises on failure -> lot and its stop stay as they were
+            req, got = getattr(self, '_last_exec', (qty, qty))
+            if got < req and lot['qty'] > 0:              # FBL-ENG02: partial close - the rest stays a lot with a resized stop
+                self._replace_stop(lot); self.save_state()
+                raise PartialFill(f"{lot['symbol']} {why}: Binance closed {got} of {req} - remainder {lot['qty']} kept with its stop, retried")
+        except Exception as ex:                           # FBL-ENG02 r2: re-sent on the next manage passes (bounded)
+            if not (isinstance(ex, (PartialFill, UnfilledOrder)) or lot.get('close_retry')) or key not in self.state['lots']:
+                raise                                     # r3 (X6): once retrying, EVERY failure counts toward the bound
+            n = lot.get('close_retry_n', 0) + 1
+            if n > CLOSE_RETRY_MAX:
+                lot.pop('close_retry', None); lot.pop('close_retry_n', None)
+                self.err(f"{lot['symbol']} [{lot['sleeve']}] {why}: close still not executed after {CLOSE_RETRY_MAX} tries - "
+                         f"automatic retries stopped, the stop protects the remaining {lot['qty']}")
+                self.notify(f"⚠️ {lot['side']} {lot['symbol']} [{lot['sleeve']}]: closing failed {CLOSE_RETRY_MAX}x ({why}). Its stop is in place - check it.")
+            else:
+                lot['close_retry'], lot['close_retry_n'] = why, n
+            self.save_state()
+            raise
         self._finish(key, why)
         self.save_state()
 
@@ -1222,6 +1552,8 @@ class Engine:
         save_json(self.F['missed'], self.missed)
 
     def _add_qty(self, lot, q, px, why, post=None):
+        """Add q at market. FBL-ENG02: only Binance's executedQty is booked (a FINAL 0 raises UnfilledOrder, a partial
+        books the part); an answer without a usable quantity is confirmed from a critical position read, else pending."""
         r = self.rules[lot['symbol']]
         q = self._rd(q, r['step'])
         if q < r['min_qty'] or q * px < r['min_notional']: return False
@@ -1231,11 +1563,22 @@ class Engine:
                 o = self.trade.open(lot['symbol'], lot['side'], self._fmt(q, r['step']))
             except AmbiguousOrder as e:
                 lot['pending'] = dict(kind='add', qty=q, px=px, why=why, post=post or {}, t=time.time())
+                if self._cid_of(e.tag): lot['pending']['cid'] = self._cid_of(e.tag)
                 self.save_state(); self.err(f"{lot['symbol']} {why} unconfirmed ({e}) - waiting for Binance position to confirm"); raise
-            act = float(o.get('avgPrice') or 0) or None
+            got, act, st = self._exec_of(lot['symbol'], o)
             self._last_order = dict(rec=self._fill(why if why in self.FILL_KINDS else 'pyramid_add', lot['symbol'], lot['side'], lot['side'] == 'LONG',
-                                    px, act, q, o.get('executedQty'), t0, reason=why, fallback_order=(why == 'entry_fallback') or None))
-            px = act or px
+                                    px, act, q, got, t0, reason=why, fallback_order=(why == 'entry_fallback') or None,
+                                    outcome='unfilled' if got == 0 else None, status=st))
+            if got is None:
+                got = self._confirm_by_position(lot, q)
+                if got is None: self._unknown_pending(lot, 'add', q, act or px, why, post, st, (o or {}).get('clientOrderId'))
+            got = min(self._rd(got, r['step']), q)
+            if got <= 0:
+                raise UnfilledOrder(f"{lot['symbol']} {why}: Binance executed 0 of {q} (status {st or '?'}) - nothing booked")
+            if got < q:
+                self.err(f"{lot['symbol']} {why}: Binance executed {got} of {q} (status {st or '?'}) - {got} booked, stop resized to the position",
+                         key=f"partial|{lot['symbol']}|{lot['side']}")
+            q, px = got, act or px
         self._apply_add(lot, q, px, why)
         return True
 
@@ -1244,6 +1587,7 @@ class Engine:
         lot['avg'] = (lot['avg'] * lot['qty'] + px * q) / (lot['qty'] + q)
         lot['qty'] = self._rd(lot['qty'] + q, r['step'])
         lot['qty_max'] = max(lot.get('qty_max', 0), lot['qty'])
+        if not self.dry: lot['stop_dirty'] = True                    # FBL-ENG02 r2: size changed -> manage resizes the stop
         lot.setdefault('fills', []).append([now_utc().isoformat(timespec='seconds'), why, q, px])
         lot['fees'] = lot.get('fees', 0.0) + q * px * (FEE_EST if fee is None else fee)
         self.log_trade(time=now_utc().isoformat(timespec='seconds'), event=why, sleeve=lot['sleeve'], symbol=lot['symbol'],
@@ -1309,6 +1653,8 @@ class Engine:
                         self.close_lot(key, 'stop_crossed', m); changed = True; continue
                     if lot.get('stop_dirty') or not lot.get('stop_id'):   # protection missing/outdated -> retry every pass
                         if self._replace_stop(lot): changed = True; log.info(f"{lot['symbol']} [{lot['sleeve']}] stop restored")
+                    if lot.get('close_retry'):                 # FBL-ENG02 r2: a partial / unfilled full close, re-sent (bounded);
+                        self.close_lot(key, lot['close_retry'], m); changed = True; continue   # r3: after the stop repair
                     if 'dca' in g and lot.get('levels'):
                         while lot['dca'] < len(lot['levels']) and sd * (lot['levels'][lot['dca']] - m) >= 0:
                             q = lot['q0'] * lot['w'][lot['dca']] * (self._breaker_add_mult(lot) or 1.0)   # 0 -> the gate blocks it
@@ -1550,6 +1896,8 @@ class Engine:
         self._stops_seen(sym, tags)
         now, changed, recheck = self.clock(), False, False
         claimed = {l.get('stop_id') for l in self.state['lots'].values() if l.get('stop_id')}
+        # ENG02 provisional stops protect unconfirmed entries (not lots yet); they are owned, never 'extra'.
+        claimed |= {u.get('prov') for u in (self.state.get('unconfirmed_entries') or {}).values() if u.get('prov')}
         orph = {t for s_, t in self.state.get('orphans') or [] if s_ == sym}   # review D1: queued for cancellation - never
         def queued(r):                                                          # adopted (the sweep would cancel the lot's
             cid = str(r.get('client_id') or '')                                 # only stop) nor double-cancelled here
@@ -1771,6 +2119,7 @@ class Engine:
         live = self.trade.positions() if live is None else live
         if fetched: self.health.setdefault('confirmed', {})['positions'] = now_utc().isoformat(timespec='seconds')
         st = self.state
+        if st.get('unconfirmed_entries') and not self.dry: self._settle_unconfirmed(live)   # FBL-ENG02 r2: before lots are compared
         groups = {}
         for k, l in st['lots'].items(): groups.setdefault((l['symbol'], l['side']), []).append(k)
         untracked = {}
@@ -1780,6 +2129,8 @@ class Engine:
         resting = {}                       # maker entry orders still working: their fills are not in a lot yet
         for r_ in st.get('resting_entries', {}).values():
             resting[(r_['symbol'], r_['side'])] = resting.get((r_['symbol'], r_['side']), 0.0) + r_['qty']
+        for u_ in (st.get('unconfirmed_entries') or {}).values():   # FBL-ENG02 r2: an unconfirmed entry is not untracked
+            resting[(u_['sym'], u_['side'])] = resting.get((u_['sym'], u_['side']), 0.0) + u_['qty']
         for (sym, side), have in live.items():
             if (sym, side) not in groups and have > 0:
                 tol = self.rules[sym]['step'] if sym in self.rules else 1e-9
@@ -1989,6 +2340,8 @@ class Engine:
             return 'an open trade on this coin is waiting for its stop to be confirmed'
         if self.stop_missing_on(sym): return STOP_MISSING_BLOCK          # FBL-ENG01 (entries only: exits never consult this)
         if f'{sym}|{side}' in self.untracked: return 'Binance holds an untracked position on this coin/side - resolve it first'
+        if any(u['sym'] == sym for u in (st.get('unconfirmed_entries') or {}).values()):
+            return 'an entry is already working on this coin'              # FBL-ENG02 r2: an unconfirmed market entry
         if manual: return self._rules_block(sl, sym, side, size, manual=True)
         if Sg.get('ENTRIES_PAUSED'): return 'entries paused'
         if not Sg['SYMBOLS_ON'].get(sym, True): return 'coin switched off'
@@ -2116,6 +2469,7 @@ class Engine:
             if l.get('pending') or l.get('force_close'):
                 raise LevReject('reconcile', f"an order on {l.get('symbol')} {l.get('side')} is still unconfirmed")
         if any(g.get('op') for g in grids): raise LevReject('reconcile', 'a grid order is still unconfirmed')
+        if st.get('unconfirmed_entries'): raise LevReject('reconcile', 'an entry order is still unconfirmed')   # FBL-ENG02 r2
         # ---- the lots themselves: numeric fields and a known stop
         for l in lots:
             s_ = l.get('stop')
@@ -2446,21 +2800,44 @@ class Engine:
         try:
             o = self.trade.open(sym, side, self._fmt(plan['qty'], r['step']))
         except AmbiguousOrder as e:
-            self._last_order = dict(pending=str(e)[:160])                # T05: answer lost - reconcile decides, not "failed"
-            self.err(f'ENTRY {sym} {side} unconfirmed ({e}) - reconcile will flag it if it filled')
-            self.last_skip = 'entry order unconfirmed'
-            return False
-        act = float(o.get('avgPrice') or 0) or None
-        fill = act or plan['px']
-        filled = float(o.get('executedQty') or 0)
+            cid = self._cid_of(e.tag)
+            rec = self._order_record(sym, cid) if cid else None   # FBL-ENG02: the order's own FINAL record by client id decides
+            if rec is None:
+                self._last_order = dict(pending=str(e)[:160])            # T05: answer lost - reconcile decides, not "failed"
+                self.last_skip = 'entry order unconfirmed'
+                if cid and not self.dry: return self._entry_unconfirmed(plan, cid, None, str(e))
+                self.err(f'ENTRY {sym} {side} unconfirmed ({e}) - reconcile will flag it if it filled')
+                return False
+            got, act, st = rec
+        else:
+            got, act, st = self._exec_of(sym, o)                             # FBL-ENG02: what Binance really executed
         self._last_order = dict(rec=self._fill('entry_fallback' if plan.get('fallback') else 'entry_market', sym, side, side == 'LONG',
-                                               plan['px'], act, plan['qty'], o.get('executedQty'), t0, signal_px=plan.get('signal_px'),
+                                               plan['px'], act, plan['qty'], got, t0, signal_px=plan.get('signal_px'),
                                                maker_tries=plan.get('maker_tries'), fallback_order=plan.get('fallback') or None,
-                                               manual=plan.get('manual') or None))
-        qty = self._rd(filled, r['step']) if filled > 0 else plan['qty']
-        return self._create_lot(plan, qty, fill)
+                                               manual=plan.get('manual') or None, outcome='unfilled' if got == 0 else None, status=st))
+        if got is None and (o or {}).get('clientOrderId') and not self.dry:   # r2: tracked by its client id until FINAL
+            self.last_skip = 'entry order unconfirmed'
+            return self._entry_unconfirmed(plan, o['clientOrderId'], st, 'answered without an executed quantity')
+        if got is None:                                  # no usable quantity, no client id: a CLEAN critical position delta decides
+            pd_ = None if self._pos_dirty(sym, side) else self._pos_delta(sym, side)
+            extra = pd_[0] - pd_[1] if pd_ else 0.0
+            if extra <= r['step'] * 0.5:
+                self.err(f'ENTRY {sym} {side} unconfirmed (Binance answered without an executed quantity, status {st or "?"}) '
+                         f'- reconcile will flag it if it filled')
+                self.last_skip = 'entry order unconfirmed'
+                return False
+            got = min(extra, plan['qty'])
+        qty = min(self._rd(got, r['step']), plan['qty'])
+        if qty <= 0:
+            self.err(f'ENTRY {sym} {side} not filled (Binance executed 0 of {plan["qty"]}, status {st or "?"}) - nothing booked',
+                     key=f'unfilled|{sym}|{side}')
+            self.last_skip = 'entry order not filled'
+            return False
+        if qty < plan['qty']:
+            log.warning(f"ENTRY {sym} {side} partially filled: {qty} of {plan['qty']} (status {st or '?'}) - lot and stop sized to {qty}")
+        return self._create_lot(plan, qty, act or plan['px'])
 
-    def _create_lot(self, plan, qty, fill, maker_qty=0.0):
+    def _create_lot(self, plan, qty, fill, maker_qty=0.0, protect=True):
         """Record a filled entry as a lot and protect it with its exchange stop (recorded BEFORE the stop is sent)."""
         sym, side, sl, manual, g, atr = plan['sym'], plan['side'], plan['sl'], plan['manual'], plan['g'], plan['atr']
         r, sd, eq, risk_usd, reason, px = self.rules[sym], (1 if side == 'LONG' else -1), plan['eq'], plan['risk_usd'], plan['reason'], plan['px']
@@ -2489,6 +2866,7 @@ class Engine:
         except Exception: pass
         self.state['lots'][key] = lot; self.save_state()          # recorded BEFORE the stop: a crash here can never orphan the position
         self._last_lot_key = key
+        if not protect: return True                               # r3: booked only to record a trade whose position is gone
         if not self._replace_stop(lot):
             log.error(f'STOP FAILED {sym} - closing for safety')
             try:
@@ -2956,6 +3334,31 @@ class Engine:
             return self.marks[sym]
         raise ValueError(f'current price of {sym} unavailable ({why or "no mark"}) - stop not moved, the previous stop is still active')
 
+    def _flatten_unconfirmed(self, res):
+        """Every unconfirmed entry is marked close_on_book='flatten'. One settle pass runs at once; an entry that is still
+        unconfirmed but visibly protected by its provisional stop is adopted at its protected size and closed now. The
+        rest are closed as soon as Binance confirms them (reported as failed until then)."""
+        ue = self.state['unconfirmed_entries']
+        for u in ue.values(): u['close_on_book'] = 'flatten'
+        self.save_state()
+        try: live = self._positions_critical()
+        except Exception as e: live = None; self.err(f'flatten: positions unreadable for the unconfirmed entries ({e})')
+        for cid, u in list(ue.items()):
+            label = f"UNCONF|{u['sym']}|{u['side']}|{cid}"
+            n0 = set(self.state['lots'])
+            try:
+                if live is not None: self._settle_one(ue, cid, u, live)
+                if cid in ue and u.get('prov') and not u.get('prov_fired'):
+                    ue.pop(cid, None)
+                    self._book_unconfirmed(u, u['prov_qty'], (self.marks or {}).get(u['sym']) or u['plan']['px'], 'adopted by flatten')
+            except Exception as e:
+                res['failed'].append([label, str(e)[:160]]); self.err(f'flatten {label}: {e}'); continue
+            left = [k for k in self.state['lots'] if k not in n0]
+            if cid in ue: res['failed'].append([label, 'entry not confirmed by Binance yet - it is closed as soon as it is'])
+            elif left: res['failed'].extend([k, 'booked but its close failed - retried'] for k in left)
+            else: res['closed'].append(label)
+        self.save_state()
+
     def flatten(self, manual_too=True):
         """Close every (bot) position. Returns {'closed': [...], 'failed': [[key, error]], 'still_open': {...}}.
         Failed closes keep their exchange stop. Entries are paused either way."""
@@ -2965,6 +3368,8 @@ class Engine:
                 if manual_too or not self.state['lots'][k].get('manual'):
                     try: self.close_lot(k, 'flatten'); res['closed'].append(k)
                     except Exception as e: res['failed'].append([k, str(e)[:160]]); self.err(f'flatten {k}: {e}')
+            if self.state.get('unconfirmed_entries') and not self.dry:   # r3 (X3): entries Binance has not confirmed yet
+                self._flatten_unconfirmed(res)
             self.S['ENTRIES_PAUSED'] = True; self.save_settings()
             if not self.dry:
                 try:
