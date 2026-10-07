@@ -2572,8 +2572,10 @@ class Engine:
 
     def _prov_set(self, uk, u, qty):
         """AUD-03 r1: keep an unconfirmed entry's provisional stop EXACTLY at the unresolved size on Binance: placed or resized
-        replace-first (new stop, then cancel the old), cancelled when nothing unresolved remains - never larger than what it
-        protects, so it can never close a sibling lot's size."""
+        replace-first (new stop, then cancel the old), cancelled when nothing unresolved remains. If a SHRINK cannot be placed,
+        the oversized old stop is removed at once (cancelled, or parked for retry with its ownership cleared) and the gap is
+        alerted and retried - so a live provisional stop is never larger than what it protects and can never close a sibling
+        lot's size. A failed first placement / grow keeps the smaller old stop (conservative) and retries."""
         sym, side, r, plan = u['symbol'], u['side'], self.rules[u['symbol']], u['plan']
         old = u.get('prov')
         if qty <= 0:
@@ -2588,8 +2590,15 @@ class Engine:
         try:
             tag = self.trade.stop(sym, side, self._fmt(qty, r['step']), self._fmt(stop, r['tick']))
         except Exception as ex:
-            self.err(f"{sym} {side} unconfirmed entry: provisional stop for {qty} failed ({str(ex)[:120]}) - retried next pass",
-                     key=f'prov|{uk}')
+            if old and qty < u.get('prov_qty', 0.0):          # Codex r2: a SHRINK failed - the old stop is now oversized and could
+                u['prov'], u['prov_qty'] = None, 0.0          # close a sibling's size: drop it at once (cancel, or park + retry),
+                self.save_state()                             # ownership cleared durably; the unresolved part is re-protected
+                self._cancel_or_park(sym, old)                # next pass
+                self.err(f"{sym} {side} unconfirmed entry: resizing its provisional stop to {qty} failed ({str(ex)[:120]}) - the "
+                         f"oversized stop was removed, {qty} is UNPROTECTED until the retry next pass", key=f'prov|{uk}')
+            else:                                             # first placement / a grow failed: the smaller old stop (if any) stays
+                self.err(f"{sym} {side} unconfirmed entry: provisional stop for {qty} failed ({str(ex)[:120]}) - retried next pass",
+                         key=f'prov|{uk}')
             return
         u['prov'], u['prov_qty'], u['prov_stop'] = tag, qty, stop
         self.save_state()

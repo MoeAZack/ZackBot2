@@ -337,3 +337,50 @@ def test_a_pending_order_is_booked_at_binances_average_price():
 def test_fill_price_falls_back_to_cum_quote():
     assert E.Engine._fill_px({'avgPrice': '0', 'executedQty': '2', 'cumQuote': '160'}) == 80.0
     assert E.Engine._fill_px({'avgPrice': '0', 'executedQty': '0'}) is None
+
+
+# ---------------------------------------------------------------- Codex r2 on 31cdbde: failure directions of the resize
+def _fail_next_stop(e):
+    real = e.trade.stop
+    def f(*a, **k):
+        e.trade.stop = real; raise BC.BinanceError(-1001, 'Internal error; unable to process your request.')
+    e.trade.stop = f
+
+
+def test_a_failed_shrink_removes_the_oversized_provisional_stop_and_retries():
+    e, _ = mk_engine(); k, q, uk, u = _sibling_and_lost_second(e)
+    second = e.trade.pos[('BTCUSDT', 'LONG')] - q
+    e.manage(e.trade.marks()); p1 = u['prov']
+    half = round(int(second / 2 / 0.001) * 0.001, 3)
+    e.trade.pos[('BTCUSDT', 'LONG')] = q + half
+    _fail_next_stop(e); e.manage(e.trade.marks())
+    assert p1 not in e.trade.stops and u['prov'] is None and u['prov_qty'] == 0.0, 'never an oversized live stop'
+    assert any('UNPROTECTED' in str(i) for i in e.health['incidents'].values())
+    e.manage(e.trade.marks())                                             # retry: protected again at the right size
+    assert u['prov'] in e.trade.stops and e.trade.stops[u['prov']][2] == pytest.approx(half)
+
+
+def test_a_failed_grow_keeps_the_smaller_provisional_stop():
+    e, _ = mk_engine(); k, q, uk, u = _sibling_and_lost_second(e)
+    second = e.trade.pos[('BTCUSDT', 'LONG')] - q
+    half = round(int(second / 2 / 0.001) * 0.001, 3)
+    e.trade.pos[('BTCUSDT', 'LONG')] = q + half
+    e.manage(e.trade.marks()); p1 = u['prov']
+    e.trade.pos[('BTCUSDT', 'LONG')] = q + second
+    _fail_next_stop(e); e.manage(e.trade.marks())
+    assert u['prov'] == p1 and e.trade.stops[p1][2] == pytest.approx(half), 'the smaller stop stays (conservative)'
+    e.manage(e.trade.marks())
+    assert e.trade.stops[u['prov']][2] == pytest.approx(second) and p1 not in e.trade.stops
+
+
+def test_a_failed_cancel_at_zero_clears_ownership_and_parks_the_stop_for_retry():
+    e, _ = mk_engine(); k, q, uk, u = _sibling_and_lost_second(e)
+    e.manage(e.trade.marks()); p1 = u['prov']
+    e.trade.pos[('BTCUSDT', 'LONG')] = q
+    real = e.trade.cancel
+    def fail_cancel(s, tag): raise BC.BinanceError(-1001, 'Internal error')
+    e.trade.cancel = fail_cancel
+    e.manage(e.trade.marks())
+    assert u['prov'] is None and ['BTCUSDT', p1] in e.state['orphans']
+    e.trade.cancel = real; e.manage(e.trade.marks())
+    assert p1 not in e.trade.stops and ['BTCUSDT', p1] not in e.state['orphans']
