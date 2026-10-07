@@ -263,3 +263,124 @@ def test_partial_zero_check_never_raises_for_a_coin_without_rules():
     e, _ = mk_engine(); k = opened(e); lot = e.state['lots'][k]
     e.rules.pop('BTCUSDT')
     assert e._partial_zero(lot, 'take_profit_1', 0.0001) is False
+
+
+# ---------------------------------------------------------------- Codex r1 on a31d4eb
+def _sibling_and_lost_second(e):
+    k = opened(e); q = e.state['lots'][k]['qty']
+    sl2 = dict(SL, id='T2'); e.S['SLEEVES'] = [SL, sl2]
+    ambiguous_once(e, 'open')
+    assert not e.open_lot(sl2, 'BTCUSDT', 'LONG', SG, None, e.equity())
+    (uk, u), = e.state['unconfirmed_entries'].items()
+    def unreadable(s, cid): raise TimeoutError('order lookup timed out')
+    e.trade.get_order = unreadable
+    return k, q, uk, u
+
+
+def test_provisional_stop_follows_the_unresolved_size_down_and_is_cancelled_at_zero():
+    """Codex r1 P1: the provisional stop was only ever enlarged. When the unresolved size shrinks (or is gone) while the
+    record stays unreadable, a larger stop stayed live and could later close the sibling lot's size."""
+    e, _ = mk_engine(); k, q, uk, u = _sibling_and_lost_second(e)
+    second = e.trade.pos[('BTCUSDT', 'LONG')] - q
+    e.manage(e.trade.marks()); p1 = u['prov']
+    assert e.trade.stops[p1][2] == pytest.approx(second)
+    half = round(int(second / 2 / 0.001) * 0.001, 3)
+    e.trade.pos[('BTCUSDT', 'LONG')] = q + half
+    e.manage(e.trade.marks()); p2 = u['prov']
+    assert p2 != p1 and p1 not in e.trade.stops and e.trade.stops[p2][2] == pytest.approx(half), 'resized replace-first'
+    e.trade.pos[('BTCUSDT', 'LONG')] = q                                  # venue back to the sibling's size only
+    e.manage(e.trade.marks())
+    assert u['prov'] is None and p2 not in e.trade.stops
+    assert [t for t, v in e.trade.stops.items() if v[0] == 'BTCUSDT'] == [e.state['lots'][k]['stop_id']]
+
+
+def test_a_known_order_whose_record_is_unreadable_is_never_guessed_from_the_position(monkeypatch):
+    """Codex r1 P1: pending close executed NOTHING, the lot's own stop then closed the position, and the order lookup
+    times out. Before: the empty position 'confirmed' the close -> booked as exit_signal. Now it waits for the record;
+    after the evidence window the timed resync attributes the exit to the stop."""
+    e, _ = mk_engine(); k = opened(e); lot = e.state['lots'][k]
+    ambiguous_once(e, 'close', fill=False)
+    with pytest.raises(BC.AmbiguousOrder): e.close_lot(k, 'exit_signal', 100.0)
+    def unreadable(s, cid): raise TimeoutError('order lookup timed out')
+    e.trade.get_order = unreadable
+    e.trade.pos[('BTCUSDT', 'LONG')] = 0.0; e.trade.stops.pop(lot['stop_id'])   # the stop filled on Binance
+    for _ in range(3): e.reconcile(500)
+    assert k in e.state['lots'] and 'pending' in lot and e.history == [], 'no outcome guessed for a known order'
+    real = E.time.time
+    monkeypatch.setattr(E.time, 'time', lambda: real() + 301)
+    e.reconcile(500); e.reconcile(500)
+    assert k not in e.state['lots'] and e.history[-1]['exit_reason'] == 'stop'
+
+
+def test_a_known_add_whose_record_is_unreadable_is_not_booked_from_a_matching_position():
+    e, _ = mk_engine(); k = opened(e); lot = e.state['lots'][k]; q0 = lot['qty']
+    ambiguous_once(e, 'open', fill=False)
+    with pytest.raises(BC.AmbiguousOrder): e._add_qty(lot, q0, 100.0, 'pyramid_add')
+    def unreadable(s, cid): raise TimeoutError('order lookup timed out')
+    e.trade.get_order = unreadable
+    e.trade.pos[('BTCUSDT', 'LONG')] = 2 * q0                               # same size appeared from somewhere else
+    e.reconcile(500); e.reconcile(500)
+    assert 'pending' in lot and lot['qty'] == q0
+
+
+def test_a_pending_order_is_booked_at_binances_average_price():
+    """Codex r1 P2: requested at 100, final record EXPIRED 0.05 @ avgPrice 80 -> the lot average uses 80, not 100."""
+    e, _ = mk_engine(); k = opened(e); lot = e.state['lots'][k]; q0, a0 = lot['qty'], lot['avg']
+    ambiguous_once(e, 'open', fill=False)
+    with pytest.raises(BC.AmbiguousOrder): e._add_qty(lot, q0, 100.0, 'pyramid_add')
+    e.trade.pos[('BTCUSDT', 'LONG')] = q0 + 0.05
+    e.trade.get_order = lambda s, cid: {'status': 'EXPIRED', 'executedQty': '0.05', 'avgPrice': '80', 'clientOrderId': cid}
+    e.reconcile(500)
+    assert lot['avg'] == pytest.approx((a0 * q0 + 80 * 0.05) / (q0 + 0.05)) and lot['fills'][-1][3] == 80.0
+
+
+def test_fill_price_falls_back_to_cum_quote():
+    assert E.Engine._fill_px({'avgPrice': '0', 'executedQty': '2', 'cumQuote': '160'}) == 80.0
+    assert E.Engine._fill_px({'avgPrice': '0', 'executedQty': '0'}) is None
+
+
+# ---------------------------------------------------------------- Codex r2 on 31cdbde: failure directions of the resize
+def _fail_next_stop(e):
+    real = e.trade.stop
+    def f(*a, **k):
+        e.trade.stop = real; raise BC.BinanceError(-1001, 'Internal error; unable to process your request.')
+    e.trade.stop = f
+
+
+def test_a_failed_shrink_removes_the_oversized_provisional_stop_and_retries():
+    e, _ = mk_engine(); k, q, uk, u = _sibling_and_lost_second(e)
+    second = e.trade.pos[('BTCUSDT', 'LONG')] - q
+    e.manage(e.trade.marks()); p1 = u['prov']
+    half = round(int(second / 2 / 0.001) * 0.001, 3)
+    e.trade.pos[('BTCUSDT', 'LONG')] = q + half
+    _fail_next_stop(e); e.manage(e.trade.marks())
+    assert p1 not in e.trade.stops and u['prov'] is None and u['prov_qty'] == 0.0, 'never an oversized live stop'
+    assert any('UNPROTECTED' in str(i) for i in e.health['incidents'].values())
+    e.manage(e.trade.marks())                                             # retry: protected again at the right size
+    assert u['prov'] in e.trade.stops and e.trade.stops[u['prov']][2] == pytest.approx(half)
+
+
+def test_a_failed_grow_keeps_the_smaller_provisional_stop():
+    e, _ = mk_engine(); k, q, uk, u = _sibling_and_lost_second(e)
+    second = e.trade.pos[('BTCUSDT', 'LONG')] - q
+    half = round(int(second / 2 / 0.001) * 0.001, 3)
+    e.trade.pos[('BTCUSDT', 'LONG')] = q + half
+    e.manage(e.trade.marks()); p1 = u['prov']
+    e.trade.pos[('BTCUSDT', 'LONG')] = q + second
+    _fail_next_stop(e); e.manage(e.trade.marks())
+    assert u['prov'] == p1 and e.trade.stops[p1][2] == pytest.approx(half), 'the smaller stop stays (conservative)'
+    e.manage(e.trade.marks())
+    assert e.trade.stops[u['prov']][2] == pytest.approx(second) and p1 not in e.trade.stops
+
+
+def test_a_failed_cancel_at_zero_clears_ownership_and_parks_the_stop_for_retry():
+    e, _ = mk_engine(); k, q, uk, u = _sibling_and_lost_second(e)
+    e.manage(e.trade.marks()); p1 = u['prov']
+    e.trade.pos[('BTCUSDT', 'LONG')] = q
+    real = e.trade.cancel
+    def fail_cancel(s, tag): raise BC.BinanceError(-1001, 'Internal error')
+    e.trade.cancel = fail_cancel
+    e.manage(e.trade.marks())
+    assert u['prov'] is None and ['BTCUSDT', p1] in e.state['orphans']
+    e.trade.cancel = real; e.manage(e.trade.marks())
+    assert p1 not in e.trade.stops and ['BTCUSDT', p1] not in e.state['orphans']
