@@ -1,6 +1,6 @@
 # ZackBot NEWCORE execution plan
 
-**Control plan v1 — 08 Oct 2026, Africa/Cairo**
+**Control plan v2 — 08 Oct 2026, Africa/Cairo**
 
 This is the shared execution document for the owner, Claude Code, Cowork and Codex. It converts the historical audit,
 the product roadmap and the replacement-first decision into one ordered build plan.
@@ -21,6 +21,23 @@ The target product is one engine that can:
 - support Simple, Guided and Pro interfaces plus secure mobile monitoring/control;
 - expand to TradingView, news, gold and TradFi without bypassing core risk or execution contracts.
 
+### Owner priority: engine-first mainnet candidate
+
+The primary product milestone is a **mainnet-candidate engine**, not a finished SaaS shell. Before optional product
+features take priority, the engine must have:
+
+- one optimized live/backtest/replay core;
+- credible long and short coverage across trend, range and short-horizon conditions;
+- mechanically bounded risk from conservative through explicitly high-risk modes;
+- controlled-capital, direction-bias, risk and acceptable-drawdown controls;
+- crypto plus gold and TradFi-capable asset/venue contracts, with each venue proven in paper/test mode;
+- exchange-truth execution, durable ownership, protection, accounting and explainability;
+- enough operational safety to run unattended: encrypted secrets, watchdog, kill switch, alerts and recovery.
+
+PWA, copy-product polish, broad remote controls, social features and secondary integrations follow this milestone. This
+does not grant permission to trade mainnet early; it means the engine is designed and evidenced to mainnet standards
+while the remaining product is built around it.
+
 Development remains PAPER/Binance Futures testnet until the release gate explicitly changes it. Testnet balances and
 positions are disposable. Mainnet credentials, funds and deployment remain a separate owner-approved boundary.
 
@@ -36,6 +53,10 @@ positions are disposable. Mainnet credentials, funds and deployment remain a sep
 6. **Risk only moves downward automatically.** Models, regimes and news may veto or reduce risk, never raise it above
    the user's mechanical ceiling.
 7. **Protection outranks entry.** Protect > close > reduce > reconcile > add > enter > research.
+8. **Engine completeness outranks feature count.** A new interface/integration cannot move ahead of a missing strategy,
+   risk, execution or venue contract needed by the mainnet-candidate engine.
+9. **Optimization is continuous, not a later rewrite.** Every ticket removes touched-file duplication/dead code and
+   proves performance budgets, while broad unrelated cleanup stays out of the critical build path.
 
 ## 3. Team operating model
 
@@ -89,6 +110,18 @@ Acceleration controls:
 10. Track lead time, review rounds, repeated CI minutes and escaped regressions. Optimize the workflow when coordination
     overhead grows, never by deleting a safety gate.
 
+### Continuous code-health budget
+
+Code quality is part of each ticket's acceptance, not a separate months-long refactor:
+
+- touched files receive dead-code, duplicate-path, naming/type and stale-comment cleanup in the same ticket;
+- every new TODO/deprecation/shim needs an issue, owner component and deletion condition;
+- dependency direction, cyclomatic hot spots, module size, cycle latency, allocation/memory and request counts are tracked;
+- after every three implementation tickets, Codex runs a short debt scan and may reserve the next small cleanup slot;
+- cleanup that changes behavior needs its own contract test; mechanical cleanup uses the fast path;
+- debt stops the line only when it threatens ownership, protection, causal truth, performance budgets or the next core
+  boundary. Everything else is removed opportunistically without stalling delivery.
+
 ## 4. Ticket states
 
 - **BACKLOG:** ordered but waiting on dependencies.
@@ -133,7 +166,8 @@ does not depend on implicit fields in the legacy `Engine` object.
 | B1 | AUD-07 execution/backtest truth | C11–C13 | One causal policy for time exits, maker fills, add slippage, closed-candle sampling and Cairo day boundaries. |
 | B2 | AUD-08 characterization/parity gate | C15 | Golden cases cover long/short, stop, target, partial, runner, DCA, pyramid, maker, gap, min-size, outage, restart and ambiguity. |
 | B3 | AUD-12a dependency/test injection | C21, TEST-01/04/05 | Explicit clock/client/store interfaces; fakes implement the production protocol; order-independent tests. |
-| B4 | NEWCORE architecture decision record | C14, C22, ARCH-06/07 | State/action model, module boundaries, account identity, reason codes and legacy deletion map approved. |
+| B4 | PORT-01 AUD port-damage assessment | AUD-00–05 | In parallel with B1–B3, inventory new coupling, duplicate state, test-only branches, compatibility baggage and performance cost. P0/P1 interrupts; other findings map to the owning NEWCORE ticket. |
+| B5 | NEWCORE architecture decision record | C14, C22, ARCH-06/07 | State/action model, module boundaries, account identity, reason codes and legacy deletion map approved. |
 
 **Wave B exit:** stable contract tests exist for the replacement. Every behavior difference is an accepted correction,
 not accidental replay drift.
@@ -166,7 +200,9 @@ These are new modules, not a slow rearrangement of `engine.py`.
 **Wave C exit:** NEWCORE runs a deterministic strategy on paper/testnet, recovers from crashes and manages two isolated
 simulated accounts without invoking the legacy engine.
 
-### Wave D — evidence platform and strategies
+### Wave D — engine strategies, regimes and risk controls
+
+This is the primary product wave. Optional application features remain behind it.
 
 | Order | Ticket | Deliverable | Promotion gate |
 |---:|---|---|---|
@@ -178,41 +214,66 @@ simulated accounts without invoking the legacy engine.
 | D6 | STR-04 DCA basket | Hard basket stop, bounded depth/scale and total-risk accounting. | Rebuilt causal results; otherwise remains disabled/dropped. |
 | D7 | REG-01 per-asset regime engine | Asset/timeframe trend/range/volatility and strategy preference; Manual/Recommend/Automatic. | Point-in-time stability, hysteresis and shadow evidence. |
 | D8 | MACRO-01 context | DXY, US 2Y/10Y/curve, S&P/Nasdaq, oil, gold/minerals and timestamped geopolitics/news. | Observe first; veto/reduce only after evidence. |
+| D9 | GOV-01 bounded risk grades | Conservative through high-risk/“Maniac,” mapped to explicit trade risk, leverage, exposure, DCA permission and portfolio drawdown ceilings. | No grade bypasses the risk gateway; high-risk modes are explicit and separately evaluated. |
+| D10 | GOV-02 allocator/strategy matrix | Recommend, disable or reduce strategies by asset/regime; never exceed user ceilings. | Manual, Recommend and Automatic produce auditable decisions and never force a trade. |
+| D11 | CTRL-01 engine controls | Controlled capital plus Direction Bias, Risk and Acceptable Drawdown controls, globally and optionally per asset/strategy. | Deterministic mappings, previewed consequences and no silent changes to existing positions. |
 
 Each strategy has separate performance, tail-risk, evidence-readiness and operational/copy-readiness scores. No blended
 score may hide a failed hard gate.
 
-### Wave E — risk automation and owner product
+#### Required strategy-coverage matrix
+
+The goal is useful coverage, not an unbounded pile of bots. Research must either fill or explicitly reject each relevant
+cell:
+
+| Market condition | Long | Short | Neutral/no-trade |
+|---|---|---|---|
+| Persistent trend | Momentum, breakout, pullback | Momentum, breakdown, rally-fade pullback | Exhaustion/late-entry veto |
+| Range | Lower-band/mean reversion | Upper-band/mean reversion | Volatility/spread veto |
+| Volatility expansion | Breakout with gap control | Breakdown with gap control | Whipsaw/circuit-breaker state |
+| Short horizon/scalp | Quick Bank TP + protected runner | Mirrored short scalp with independent calibration | Fees/spread/latency veto |
+| Adverse move management | Optional single bounded micro-DCA where proven | Same, independently proven | Hard stop and account-level loss halt |
+
+The Direction Bias control ranges from strongly bearish through neutral to strongly bullish. It changes permitted
+directional allocation/risk caps; it never invents a signal. The Risk control maps to tested mechanical ceilings rather
+than directly multiplying leverage. Acceptable Drawdown sets portfolio throttling/halt behavior, not a loss target.
+
+### Wave E — gold, TradFi and mainnet-candidate engine gate
 
 | Order | Ticket | Deliverable |
 |---:|---|---|
-| E1 | GOV-01 bounded risk grades | Conservative through high-risk/“Maniac,” mapped to explicit trade risk, leverage, exposure, drawdown and allowed components. |
-| E2 | GOV-02 allocator | Scores may recommend, disable or reduce; they cannot exceed user ceilings. Manual/Recommend/Automatic remain available. |
-| E3 | COPY-01 capital/follower feasibility | Owner enters controlled capital and follower minimum; UI predicts whether complete plans clear venue/follower minimums at $100/$200/$500 etc. |
-| E4 | UX-01 Simple / Guided / Pro | Simple: capital, Risk Level, Loss Tolerance. Guided: reasons/recommendations. Pro: full detail. Same engine/state. |
-| E5 | UX-02 trade audit | MFE, give-back, why held, causal earlier-exit result, close target/stop and protection freshness. |
+| E1 | VENUE-01 asset/venue contracts | Sessions, calendars, tick/lot/notional rules, fees, funding/borrow, gaps, order types and market-data freshness are adapter inputs—not strategy assumptions. |
+| E2 | GOLD-01 tokenized gold | PAXG then XAUT using the crypto venue; trend/range/breakout/scalp candidates tested separately from crypto. |
+| E3 | GOLD-02 broker gold | Paper XAUUSD with sessions, rollover, spreads, weekend gaps and broker execution semantics. |
+| E4 | TRADFI-01 indices/stocks | Paper S&P/Nasdaq instruments then liquid stocks; corporate actions, sessions, borrow/short availability and gap risk explicit. |
+| E5 | RISK-01 cross-asset portfolio | Correlation, concentration, currency, session/gap, liquidity and total wallet exposure across crypto/gold/TradFi. |
+| E6 | ENG-GATE-01 mainnet-candidate engine | Frozen strategy catalog, risk-control mappings, venue capabilities and limitations; full causal/restart/fault/performance evidence. Passing means “engineering candidate,” not permission to use real funds. |
 
-### Wave F — operations, accounts and remote control
+**Wave E exit:** the core engine can run both directions, choose or reject strategies by regime, respect owner risk/bias/
+drawdown controls and exercise crypto, gold and TradFi adapters in paper/test environments. Unsupported cells are visible,
+not silently filled with weak strategies.
 
-| Order | Ticket | Deliverable / gate |
-|---:|---|---|
-| F1 | OPS-01 VPS/service | Supervised Linux service, static IP, encrypted secrets, dead-man alerts, backup/restore and rollback. |
-| F2 | ACCT-01 multi-account | Separate credentials, state, limits, health and emergency control per account/exchange. |
-| F3 | COPY-02 intent copying | Copy risk intent, not quantity; each follower sizes/protects/reconciles independently. Off/Shadow/Testnet/Live. |
-| F4 | PWA-01 mobile monitor | Secure HTTPS read model, stale/offline state, notifications and installable PWA. |
-| F5 | PWA-02 remote controls | Pause/ack by default; flatten/risk/keys need re-auth, MFA, idempotency, expiry and audit. |
-| F6 | TV-01 TradingView | Signed/versioned webhook intents through the shared risk gateway. |
-| F7 | NEWS-01 news provider | Source, time, expiry and affected assets; observe then veto/reduce only. |
-
-### Wave G — venues and release
+### Wave F — minimum production safety and prolonged validation
 
 | Order | Ticket | Deliverable / gate |
 |---:|---|---|
-| G1 | GOLD-01 tokenized gold | PAXG, then XAUT, using crypto adapters and separate liquidity evidence. |
-| G2 | TRADFI-01 broker abstraction | XAUUSD, indices and stocks in paper mode with sessions, gaps, corporate actions and borrow rules. |
-| G3 | REL-01 hardening | AUD-13/14/15: provenance, signed artifacts, workflow trust, accounting truth, remote auth, kill switch, incident playbook. |
-| G4 | REL-02 own-account canary | Mainnet only after explicit owner approval; stepwise capital, no withdrawals, IP-restricted keys. |
-| G5 | REL-03 lead portfolios | Private/no-followers first; copy suitability and incident gates before public launch. |
+| F1 | OPS-01 minimum runtime safety | Supervised service, encrypted secrets, watchdog/dead-man, kill switch, backup/restore, rollback and incident playbook. These are engine safety, not optional product polish. |
+| F2 | VAL-01 prolonged paper/testnet program | Regime coverage, long/short opportunities, fill/slippage calibration, recovery drills and resource/request budgets across crypto/gold/TradFi. |
+| F3 | VAL-02 shadow/mainnet rehearsal | Mainnet market data and shadow decisions with no orders; compare predicted venue behavior and operational health. |
+| F4 | REL-01 own-account canary | Only after explicit owner approval: smallest bounded capital, IP-restricted keys, no withdrawals and staged scale. |
+
+### Wave G — secondary product expansion
+
+| Order | Ticket | Deliverable / gate |
+|---:|---|---|
+| G1 | UX-01 Simple / Guided / Pro polish | Simple surfaces capital, bias, risk and drawdown; Guided explains; Pro shows engine detail. Core controls already exist from D11. |
+| G2 | UX-02 trade audit views | MFE, give-back, why held, causal earlier-exit result, close target/stop and protection freshness. |
+| G3 | ACCT-01 multi-account | Separate credentials, state, limits, health and emergency control per account/exchange. |
+| G4 | COPY-01 follower feasibility/copy intent | Predict $100/$200/$500 plan feasibility; copy risk intent, not quantity; protect/reconcile each follower independently. |
+| G5 | PWA-01/02 mobile | Secure monitor first; dangerous controls require re-auth, MFA, idempotency, expiry and audit. |
+| G6 | TV-01 TradingView | Signed/versioned webhook intents through the same risk gateway. |
+| G7 | NEWS-01 news authority | Timestamped source/expiry; observe then veto/reduce only. |
+| G8 | REL-02 shareable/lead product | Signed release, private lead/no-followers rehearsal, then copy-suitability/incident gates before public launch. |
 
 ## 6. Bug interruption lane
 
@@ -271,15 +332,19 @@ controls until Codex merges an explicit amendment.
 
 1. Complete AUD-05 PR #30. Require write-ahead ownership, runtime persistence latch, secret migration, initialized-
    account marker and versioned semantic schemas.
-2. Resolve AUD-06a narrowly: merge truthful labels if useful or supersede with NEWCORE default-off policy.
-3. Open AUD-07 execution/backtest truth.
-4. Open AUD-08 characterization/parity.
-5. Add test injection and approve the NEWCORE architecture decision record.
-6. Begin NC-01 only after Wave B exits. No strategy expansion before the NEWCORE contract spine exists.
+2. Run PORT-01 in parallel so audit-port damage is mapped without stalling the active build.
+3. Resolve AUD-06a narrowly: merge truthful labels if useful or supersede with NEWCORE default-off policy.
+4. Open AUD-07 execution/backtest truth.
+5. Open AUD-08 characterization/parity and add test injection.
+6. Approve the NEWCORE architecture decision, then build NC-01 through NC-09.
+7. Move directly into the strategy/risk matrix and gold/TradFi venue work; optional app features remain behind the
+   mainnet-candidate engine gate.
 
 ## 11. Decisions already made
 
 - Replacement-first: the installed bot and testnet positions do not constrain design.
+- Engine-first: two-way strategies, risk controls, gold/TradFi support and mainnet-grade evidence precede optional
+  product features.
 - GitHub remains public during testnet at accepted owner risk; make it private and secret-scan before mainnet/release.
 - Claude implements; Cowork validates/runs research; Codex reviews, sequences and merges.
 - Routine PAPER/testnet tests, restarts, installs, canaries and merges do not wait for owner approval.

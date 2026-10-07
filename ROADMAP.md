@@ -5,6 +5,8 @@
 > **Execution control:** the replacement-first build order, three-agent responsibilities, bug/scouting interruption rules
 > and current next steps are maintained in [`docs/NEWCORE_EXECUTION_PLAN.md`](docs/NEWCORE_EXECUTION_PLAN.md). This file
 > remains the long-term product vision; the execution plan controls the near-term sequence when the two differ.
+> The owner's primary milestone is the mainnet-candidate **engine**: long/short strategy coverage, bounded risk/bias/
+> drawdown controls and crypto/gold/TradFi venue readiness precede optional product features.
 
 This plan merges:
 - the companion "ZackBot Master Roadmap & Build Vision" (32 pages, 2026-10-05);
