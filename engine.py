@@ -12,6 +12,7 @@ import pandas as pd
 
 import strategies as S
 import trade_audit as TA
+import feasibility as F
 from binance_client import Futures, MAINNET, TESTNET, BinanceError, AmbiguousOrder, ExchangeUnavailable, is_transient, new_cid, scrub, testnet_faults, testnet_read_outage
 from ai_filter import review
 import grid as GRID
@@ -520,13 +521,9 @@ class Engine:
     # ------------------------------------------------------------ exchange setup
     def connect(self):
         info = self.trade.exchange_info()
-        self.rules = {}
-        for s in info['symbols']:
-            if s.get('contractType') != 'PERPETUAL' or s.get('status') != 'TRADING': continue
-            f = {x['filterType']: x for x in s['filters']}
-            self.rules[s['symbol']] = dict(step=float(f['MARKET_LOT_SIZE']['stepSize']), min_qty=float(f['MARKET_LOT_SIZE']['minQty']),
-                                           tick=float(f['PRICE_FILTER']['tickSize']),
-                                           min_notional=float(f.get('MIN_NOTIONAL', {}).get('notional', 5)))
+        self.rules = F.rules_from_exchange_info(info)          # BT02: the one shared parser (same filters / defaults as before)
+        self.rules_meta = dict(source='exchangeInfo (live connection)', environment='mainnet' if self.live else 'testnet',
+                               fetched_at=now_utc().isoformat(timespec='seconds'), verified=True)
         missing = [s for s in self.S['UNIVERSE'] if s not in self.rules]
         if missing: log.warning(f'not tradable on this exchange, skipped: {missing}')
         if self.cfg.get('API_KEY'):
@@ -547,8 +544,7 @@ class Engine:
     # ------------------------------------------------------------ helpers
     @staticmethod
     def _rd(x, step):
-        dec = max(0, -int(math.floor(math.log10(step)))) if step < 1 else 0
-        return round(math.floor(x / step + 1e-9) * step, dec)
+        return F.round_step(x, step)                     # BT02: moved verbatim to feasibility.round_step
 
     @staticmethod
     def _fmt(x, step):
@@ -1195,8 +1191,9 @@ class Engine:
 
     def _add_qty(self, lot, q, px, why, post=None):
         r = self.rules[lot['symbol']]
-        q = self._rd(q, r['step'])
-        if q < r['min_qty'] or q * px < r['min_notional']: return False
+        d = F.size_check(q, q, px, r)                    # BT02: the shared check (floor to the step, minQty, minNotional)
+        if not d['ok']: return False
+        q = d['qty']
         if not self.dry:
             lot['last_order_t'] = t0 = time.time()
             try:
@@ -2140,24 +2137,17 @@ class Engine:
                 self.last_skip = 'DCA settings out of range (n 1-8, scale 1-3)'; return False
         px = self.trade.marks().get(sym) if not self.dry else sg['close']
         atr = sg['atr']
-        if 'dca' in g:
-            dc = g['dca']
-            lv = [px - sd * k * dc['step_atr'] * atr for k in range(dc['n'] + 1)]
-            w = [dc['scale'] ** k for k in range(dc['n'] + 1)]
-            stop = lv[-1] - sd * dc['stop_atr'] * atr
-            qty = risk_usd / sum(wk * abs(lk - stop) for wk, lk in zip(w, lv))
-            R = abs(px - stop)
-        else:
-            R = g.get('stop_atr', 2.5) * atr
-            qty = risk_usd / R
-            stop = px - sd * R
+        z = F.risk_qty(g, risk_usd, px, atr, sd)        # BT02: shared sizing (DCA basket or stop_atr), same formula as before
+        qty, stop, R = z['qty'], z['stop'], z['R']
         qty_raw = qty
         used = sum(l['qty'] * l['avg'] for l in self.state['lots'].values() if l['sleeve'] == ('MAN' if manual else sl['id']))
         qty = min(qty, max(0.0, self.S['MAX_LEVERAGE'] * sleeve_eq - used) / px)        # leverage cap applies to manual trades too
-        qty = self._rd(qty, r['step'])
-        if qty < r['min_qty'] or qty * px < r['min_notional']:
+        d = F.size_check(qty_raw, qty, px, r)            # BT02: THE shared exchange-filter check - floors to the step, never rounds up
+        qty = d['qty']
+        if not d['ok']:
             log.info(f"SKIP {sym} [{sl['id'] if sl else 'MAN'}] size {qty} below Binance minimum")
-            self.last_skip = ('leverage cap reached for this slot' if qty_raw * px >= r['min_notional'] and qty_raw >= r['min_qty']
+            # same texts as feasibility.REASON_* (kept literal here: the trade-audit reason scan reads them from this file)
+            self.last_skip = ('leverage cap reached for this slot' if d['code'] == 'leverage_cap'
                               else 'size below Binance minimum (raise capital or risk)')
             return False
         block = self.entry_block(sl, sym, side, manual, size=dict(notional=qty * px, risk=risk_usd * qty / qty_raw if qty_raw else 0), sg=sg)

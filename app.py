@@ -55,6 +55,8 @@ from engine import Engine, PRESETS, TOP40, CORE8, TF_SEC, MANUAL_MAX_RISK, save_
 from binance_client import Futures, MAINNET   # noqa: E402
 import grid as GRID             # noqa: E402
 import lab as LAB               # noqa: E402
+import feasibility as F         # noqa: E402
+import exchange_rules as XRULES  # noqa: E402
 from engine import RISK_RULE_DEFAULTS, GOV_MULT_MAX, EXCHANGE_DOWN   # noqa: E402
 from telegram_ctl import TelegramControl, clean_setting as tg_clean_setting   # noqa: E402
 
@@ -238,6 +240,38 @@ def enqueue(fn, *args):
     except queue.Full: raise ValueError('too many backtests waiting - try again when the current ones finish')
 
 
+def exchange_rules_now(e=None):
+    """BT02: the exchange rules backtests and the preflight use -> (snapshot, state, detail).
+    The connected engine's own exchangeInfo rules (this environment, read at connect) win; otherwise the snapshot file
+    data/exchange_rules_<testnet|mainnet>.json. Testnet and mainnet are never mixed."""
+    if e is None and APP is not None: e = APP.engine
+    env = 'mainnet' if e is not None and e.live else 'testnet'
+    meta = getattr(e, 'rules_meta', None) if e is not None else None
+    if e is not None and e.rules and meta and meta.get('environment') == env:
+        snap = dict(schema=F.SCHEMA, version=0, environment=env, source=meta['source'], fetched_at=meta['fetched_at'],
+                    verified=True, note='', symbols=e.rules)
+    else:
+        snap = XRULES.load(env)
+    st, detail = F.snapshot_state(snap, time.time(), env)
+    return snap, st, detail
+
+
+def feas_total(feas):
+    """BT02: per-timeframe feasibility counts -> totals (executable %, skips by reason, per symbol, per slot)."""
+    out = dict(feas, executed=0, rule_blocked=0, skipped={}, add_skipped={}, by_symbol={}, by_slot={}, unknown_symbols=[])
+    for g in feas['groups'].values():
+        out['executed'] += g.get('executed', 0); out['rule_blocked'] += g.get('rule_blocked', 0)
+        for k in ('skipped', 'add_skipped'):
+            for c, n in (g.get(k) or {}).items(): out[k][c] = out[k].get(c, 0) + n
+        for k in ('by_symbol', 'by_slot'):
+            for c, v in (g.get(k) or {}).items():
+                x = out[k].setdefault(c, dict(attempts=0, skipped=0)); x['attempts'] += v['attempts']; x['skipped'] += v['skipped']
+        out['unknown_symbols'] = sorted(set(out['unknown_symbols']) | set(g.get('unknown_symbols') or []))
+    n = out['executed'] + sum(out['skipped'].values())
+    out['executable_pct'] = round(out['executed'] / n * 100, 1) if n else None
+    return out
+
+
 def run_backtest_job(job_id, req):
     """Runs each candle-size group (4h / 1h / 15m) on its own data with its share of capital, then adds the curves.
     Mixed profiles (e.g. Boost 4h + Active 1h) are therefore simulated as side-by-side sub-accounts."""
@@ -251,6 +285,8 @@ def run_backtest_job(job_id, req):
         for sl in sleeves: groups.setdefault(sl.get('tf') or dtf, []).append(sl)
         total_share = sum(float(sl['share']) for sl in sleeves) or 1
         trs, cvs, skipped, all_syms, gaps = [], [], [], set(), {}
+        xsnap, xstate, xdetail = exchange_rules_now() if req.get('exchange_rules', 'on') != 'off' else (None, 'off', 'exchange rules off')
+        feas = dict(rules_state=xstate, rules_detail=xdetail, environment=(xsnap or {}).get('environment'), groups={})
         for gi, (tf, gs) in enumerate(sorted(groups.items())):
             syms = sorted({s for sl in gs for s in (CORE8 if sl['symbols'] == 'core8' else req['universe'] if sl['symbols'] == 'all' else sl['symbols'])} | {'BTCUSDT'})
             raw = {}
@@ -276,7 +312,9 @@ def run_backtest_job(job_id, req):
                                 **{k: sl[k] for k in ('when', 'trail_entry', 'pump_guard') if sl.get(k) is not None}))
             gstart = start * gshare / total_share if len(groups) > 1 else start
             tr, cv = BT.run(book, cfg, start=gstart, max_lev=float(req.get('max_lev', 10)), daily_halt=float(req.get('daily_halt', 0.08)),
-                            fund_per_bar=BT.FUND_PER_BAR * TF_SEC[tf] / 14400, **(req.get('run_options') or {}))
+                            fund_per_bar=BT.FUND_PER_BAR * TF_SEC[tf] / 14400, exchange_rules=xsnap, **(req.get('run_options') or {}))
+            fz = dict(cv.attrs.get('feasibility') or {}); fz['skips'] = (fz.get('skips') or [])[:100]
+            feas['groups'][tf] = fz
             if len(tr): tr = tr.assign(tf=tf)
             trs.append(tr); cvs.append(cv); all_syms |= set(raw)
         if len(cvs) == 1:
@@ -305,12 +343,41 @@ def run_backtest_job(job_id, req):
                    request=req, stats=st, skipped=skipped, years=years, engine=BT.VERSION, oos=oos, dd_curve=dd_curve,
                    gaps=gaps, period=[str(cv.index[0].date()), str(cv.index[-1].date())],
                    curve=[[str(t.date()), round(v, 2)] for t, v in cvd.items()], by_sleeve=by_sleeve, by_symbol=by_sym,
-                   symbols=sorted(all_syms), tfs=sorted(groups))
+                   symbols=sorted(all_syms), tfs=sorted(groups), feasibility=feas_total(feas))
         save_json(os.path.join(DATA, 'backtests', f'{job_id}.json'), res)
         job.update(status='done', result=res)
     except Exception as e:
         log.error('backtest failed: ' + traceback.format_exc())
         job.update(status='error', error=str(e))
+
+
+_PF_FILES = {}
+
+
+def preflight_market(e, keys):
+    """{(symbol, tf): dict(px, atr)} for the preflight: last close and a typical ATR (median ATR/price of the last 180
+    closed candles x last close). Source: the engine's candle cache, else the candle files shipped with the app."""
+    out, asof = {}, {}
+    kc = getattr(e, '_kc', None) or {}
+    for sym, tf in sorted(keys):
+        df = kc.get((sym, tf), (None,))[0]
+        src = 'engine'
+        if df is None or not len(df):
+            src = 'shipped file'
+            f = os.path.join(BUNDLE, {'4h': 'data', '1h': 'data1h'}.get(tf, 'data'), f'{sym}_{tf}.csv')
+            if not os.path.exists(f): continue
+            try:
+                ck = (f, os.path.getmtime(f))
+                if ck not in _PF_FILES: _PF_FILES[ck] = S.indicators(pd.read_csv(f, parse_dates=['t']).tail(400).reset_index(drop=True))
+                df = _PF_FILES[ck]
+            except Exception: continue
+        if 'atr' not in df or len(df) < 30: continue
+        tail = df.tail(180)
+        ratio = float((tail.atr / tail.c).median()); px = float(df.c.iloc[-1])
+        if not (ratio > 0 and px > 0): continue
+        out[(sym, tf)] = dict(px=px, atr=ratio * px)
+        asof[f'{sym} {tf}'] = f'{str(df.t.iloc[-1])[:16]} ({src})'
+    return out, asof
 
 
 def lab_book(q):
@@ -717,6 +784,36 @@ class App:
                     core8=CORE8, top40=TOP40, tradable=sorted(e.rules) if e.rules else [], manual_max_risk=MANUAL_MAX_RISK * 100,
                     risk_rule_defaults=RISK_RULE_DEFAULTS, grid_defaults=GRID.clean_cfg({}), gov_mult_max=GOV_MULT_MAX)
 
+    def preflight(self):
+        """BT02: exchange-filter preflight of every profile (and the current slots) at the current capital, through the
+        same feasibility functions the engine's entry gate and the backtester use. Prices / ATR: the engine's cached closed
+        candles when it has them, else the candle files shipped with the app (data/, data1h/) - the result says which."""
+        e = self.engine
+        snap, st, detail = exchange_rules_now(e)
+        rules = F.snapshot_rules(snap) or {}
+        try: capital = float(e.capital_info()['capital'])
+        except Exception: capital = float(e.S.get('CAPITAL_CAP') or 0)
+        if capital <= 0: capital = float(e.S.get('CAPITAL_CAP') or 500)
+        uni = [s for s in (e.S.get('UNIVERSE') or TOP40)]
+        sets = {k: v['sleeves'] for k, v in PRESETS.items()}
+        sets['__current'] = e.S.get('SLEEVES') or []
+        slots_by = {}
+        for k, sl in sets.items():
+            out = []
+            for x in sl:
+                if not x.get('enabled', True): continue
+                sy = x.get('symbols', 'all')
+                sy = CORE8 if sy == 'core8' else uni if sy == 'all' else list(sy)
+                out.append(dict(id=x.get('id'), key=x['key'], share=float(x['share']), risk=float(x['risk']), tf=x.get('tf') or '4h',
+                                symbols=list(sy), mgmt=S.merge_mgmt(x['key'], x.get('mgmt'))))
+            slots_by[k] = out
+        need = {(s_, x['tf']) for v in slots_by.values() for x in v for s_ in x['symbols']}
+        market, asof = preflight_market(e, need)
+        lev = float(e.S.get('MAX_LEVERAGE') or 10)
+        res = {k: F.preflight(v, capital, market, rules, st, detail, lev) for k, v in slots_by.items()}
+        return dict(capital=capital, rules_state=st, rules_detail=detail, environment=(snap or {}).get('environment'),
+                    rules_source=(snap or {}).get('source'), market_asof=asof, presets=res)
+
     def missed_view(self):
         e = self.engine; marks = e.marks or {}
         out = []
@@ -860,6 +957,7 @@ class H(BaseHTTPRequestHandler):
                 return self._send(404, b'', 'image/png', 'private, max-age=600', ext)
             if p == '/api/status': return self._json(APP.snapshot())
             if p == '/api/meta': return self._json(APP.meta())
+            if p == '/api/preflight': return self._json(APP.preflight())
             if p == '/api/audit_summary':     # T05a: read-only trade-audit summary (cached; no engine lock held)
                 e = APP.engine
                 return self._json(e.audit_summary() if hasattr(e, 'audit_summary') else dict(error='no audit'))
@@ -1311,7 +1409,7 @@ def selftest(path):
     try:
         import zoneinfo
         zoneinfo.ZoneInfo('Africa/Cairo')
-        for f in ('panel.html', 'research'):
+        for f in ('panel.html', 'research', os.path.join('data', 'exchange_rules_testnet.json')):
             if not os.path.exists(os.path.join(BUNDLE, f)): raise RuntimeError(f'{f} missing from the bundle')
         import lab, grid, telegram_ctl, ai_filter    # noqa: F401  (every module the app loads lazily)
         if not PRESETS or not S.STRATEGIES: raise RuntimeError('presets/strategies missing')
