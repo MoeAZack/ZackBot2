@@ -435,18 +435,45 @@ def read_json(path, kind=None):
     return obj
 
 
+def read_json_retry(path, kind=None):
+    """AUD-05 r1: read_json, with an OSError (sharing violation from antivirus / an indexer) retried on the same backoff
+    as a replace. CorruptFile and a missing file are never retried; a persistent OSError is raised."""
+    for d in SAVE_RETRY_S + (None,):
+        try:
+            return read_json(path, kind)
+        except (CorruptFile, FileNotFoundError):
+            raise
+        except OSError:
+            if d is None: raise
+            _sleep(d)
+
+
 def save_json(path, obj, backup=False):
     """Durable JSON write (AUD-05): serialised first (a bad object never touches the disk), temp file + fsync + atomic
     replace. backup=True first keeps the previous file as `<path>.bak` (also durable) - only when that previous file is
-    itself good JSON of the same top-level type, so a damaged file never replaces a good backup."""
+    itself good JSON of the same top-level type, so a damaged file never replaces a good backup. AUD-05 r1: a previous
+    file that is damaged at save time is moved aside as evidence first (never silently overwritten); its evidence path is
+    returned (else None). If it cannot be moved aside nothing is written and OSError is raised."""
     data = json.dumps(obj, indent=2, default=str)
+    evidence = None
     if backup and os.path.exists(path):
         try: prev = read_json(path, type(obj))
-        except (CorruptFile, OSError): prev = None
+        except CorruptFile:
+            prev, evidence = None, quarantine(path)
+            if not evidence: raise OSError(f'{os.path.basename(path)} is damaged and could not be moved aside - not saved over')
+        except OSError: prev = None
         if prev is not None:
             try: _write_durable(path + '.bak', json.dumps(prev, indent=2, default=str))
             except OSError as ex: log.warning(f'{os.path.basename(path)}.bak not written ({type(ex).__name__}: {ex}) - main file still saved')
     _write_durable(path, data)
+    return evidence
+
+
+def corrupt_siblings(path):
+    """AUD-05 r1: evidence files `<path>.corrupt-*` left by an earlier start-up."""
+    d, fn = os.path.split(path)
+    try: return sorted(f for f in os.listdir(d or '.') if f.startswith(os.path.basename(fn) + '.corrupt-'))
+    except OSError: return []
 
 
 def quarantine(path):
@@ -539,20 +566,24 @@ class Engine:
         if _ro: log.warning(f'TESTNET FAULT INJECTION active: non-critical status reads under {_ro[1]} answer HTTP 503 for {_ro[0]} s '
                             f'from the first one (orders and critical reads unaffected) (ZB_TESTNET_FAULTS)')
         self._boot_incidents = []                 # AUD-05: load problems found before self.health exists (reported after)
-        self._save_hold = set()                   # AUD-05: files whose damaged original could not be moved aside: never saved over
+        self._save_hold = {}                      # AUD-05: name -> why its file is never saved over ('unmovable' / 'unreadable')
         self.integrity = {}                       # AUD-05: name -> what happened to a damaged safety file at start-up
         self.load_settings()
-        if (self.integrity.get('settings') or {}).get('status') == 'failed_closed':
-            self.save_settings()                  # AUD-05: the paused defaults are durable (the damaged file is already aside)
+        if (self.integrity.get('settings') or {}).get('status'):
+            self._persist_pause()                 # AUD-05: restored or failed: the pause is durable (damaged file already aside)
         # migrate v1 files (single-strategy bot) so logs stay readable
         if os.path.exists(self.F['trades']):
             with open(self.F['trades']) as f: head = f.readline()
             if 'side' not in head: os.replace(self.F['trades'], self.F['trades'].replace('.csv', '_v1.csv'))
         self.state = dict(lots={}, day=None, day_start_equity=None, halted=False, peak_equity=None, last_cycle={})
-        st, ok = self._load_safe('state', dict)  # AUD-05: corrupt -> .bak; no good copy -> entries paused (fail closed)
+        # AUD-05: corrupt -> .bak (an OLDER copy); no good copy -> empty. Either way entries are paused, and the pause is
+        # made durable BEFORE the damaged file is moved aside (a crash in between can never come back unpaused)
+        st, status = self._load_safe('state', dict, before_aside=self._pause_or_raise)
         if st: self.state.update(st)
-        if not ok:
-            self.S['ENTRIES_PAUSED'] = True; self.save_settings()   # persisted: a restart stays paused until you resume
+        if status == 'restored':
+            for l in (self.state.get('lots') or {}).values():
+                l['restored_from_bak'] = True     # reconcile books nothing for it while entries stay paused (owner review)
+        if status != 'ok': self._persist_pause()
         self.state.setdefault('orphans', []); self.state.setdefault('last_cycle', {})
         self.state.setdefault('pending_entries', {}); self.state.setdefault('resting_entries', {})
         self.state.setdefault('unconfirmed_entries', {})           # AUD-03b: entries whose order answer was lost
@@ -625,53 +656,111 @@ class Engine:
         try: self.notify('DATA FILE PROBLEM: ' + msg)
         except Exception: pass
 
-    def _load_safe(self, name, kind):
-        """AUD-05: load a safety-relevant file (settings / state). Returns (obj | None, ok).
-        - missing (and no backup): first run -> (None, True)
-        - good: (obj, True)
-        - present but unreadable / empty / truncated / wrong type (or missing while a backup exists): the damaged file is
-          moved aside as <name>.corrupt-<UTC>; a good <name>.bak is loaded -> (bak, True) with an incident + notification;
-          no good backup -> (None, False): the caller must fail closed. If the damaged file cannot be moved aside, every
-          later save of this file is refused (the evidence is never overwritten)."""
+    def _pause_or_raise(self):
+        """Make ENTRIES_PAUSED durable now; raise if settings.json could not be written (the caller then keeps the
+        damaged file in place instead of moving it aside)."""
+        self.S['ENTRIES_PAUSED'] = True
+        if self.save_settings() is False: raise OSError('settings.json is held - the pause could not be saved')
+
+    def _persist_pause(self):
+        """Pause entries and try to persist it; never raises (a failure is one loud incident)."""
+        self.S['ENTRIES_PAUSED'] = True
+        try: self._pause_or_raise()
+        except Exception as ex:
+            self._integrity_alert('integrity|pause', f'entries paused in memory but the pause could not be saved '
+                                                     f'({type(ex).__name__}: {str(ex)[:100]}) - check the data folder')
+
+    def _load_safe(self, name, kind, before_aside=None):
+        """AUD-05: load a safety-relevant file (settings / state). Returns (obj | None, status):
+        - 'ok': good file, or a true first run (no file, no backup, no earlier evidence)
+        - 'restored': the file was damaged (or missing while a backup exists) -> the OLDER <name>.bak is returned; the
+          caller pauses entries for owner review
+        - 'failed': no usable copy (or the file stays unreadable after retries, or it is missing while an earlier
+          <name>.corrupt-* exists, i.e. an earlier recovery never finished) -> the caller fails closed (paused)
+        A damaged (unparseable / wrong type / empty / truncated) file is moved aside as <name>.corrupt-<UTC>, after
+        before_aside() has run (it persists the pause); if that fails, or the move is refused, the damaged file stays in
+        place and every later save of it is refused. A persistently UNREADABLE file (OSError) is never moved or saved over."""
         path = self.F[name]; bak = path + '.bak'; fn = os.path.basename(path)
+        hold = vars(self).setdefault('_save_hold', {})
         if not os.path.exists(path):
-            if not os.path.exists(bak): return None, True
+            ev = corrupt_siblings(path)
+            if not os.path.exists(bak):
+                if not ev: return None, 'ok'
+                return self._load_failed(name, f'missing while the damaged copy {ev[-1]} exists (an earlier recovery did '
+                                               'not finish)', 'no backup', f'damaged copy kept as {ev[-1]}', None)
             why = 'missing while its backup exists'
         else:
-            try: return read_json(path, kind), True
-            except (CorruptFile, OSError) as ex: why = f'{type(ex).__name__}: {str(ex)[:100]}'
-        aside = quarantine(path) if os.path.exists(path) else None
-        if os.path.exists(path) and not aside: self._save_hold.add(name)
+            try: return read_json_retry(path, kind), 'ok'
+            except CorruptFile as ex: why = f'damaged: {str(ex)[:100]}'
+            except OSError as ex:
+                hold[name] = 'unreadable'
+                if before_aside:
+                    try: before_aside()
+                    except Exception: pass
+                return self._load_failed(name, f'cannot be read ({type(ex).__name__}: {str(ex)[:80]})', 'not touched',
+                                         'the file is left exactly as it is and never saved over until a restart', None)
+        aside = None
+        if os.path.exists(path):
+            moved = True
+            if before_aside:
+                try: before_aside()
+                except Exception as ex:
+                    moved = False; log.warning(f'{fn}: pause not persisted ({ex}) - damaged file left in place')
+            aside = quarantine(path) if moved else None
+            if not aside: hold[name] = 'unmovable'
         kept = (f'damaged copy kept as {os.path.basename(aside)}' if aside else
-                'damaged file could NOT be moved aside - it is left in place and never saved over' if name in self._save_hold
+                'damaged file could NOT be moved aside - it is left in place and never saved over' if hold.get(name)
                 else 'no damaged file to keep')
         try:
-            obj, bwhy = read_json(bak, kind), ''
+            obj, bwhy = read_json_retry(bak, kind), ''
         except Exception as ex:
             obj, bwhy = None, ('no backup' if not os.path.exists(bak) else f'backup unreadable too ({str(ex)[:60]})')
         if obj is not None:
-            self.integrity[name] = dict(status='restored_from_backup', why=why, evidence=aside)
-            self._integrity_alert(f'integrity|{name}', f'{fn} unreadable ({why}) - restored from {fn}.bak (the previous save); '
-                                                         f'{kept}. Check open trades and settings.')
-            return obj, True
+            vars(self).setdefault('integrity', {})[name] = dict(status='restored_from_backup', why=why, evidence=aside)
+            self._integrity_alert(f'integrity|{name}', f'{fn} {why} - restored from {fn}.bak, an OLDER copy (the save before the '
+                                                         f'last) - ENTRIES PAUSED; {kept}. Check open trades and settings against '
+                                                         'Binance, then resume entries.')
+            return obj, 'restored'
         if os.path.exists(bak):
             baside = quarantine(bak)
             if baside: kept += f'; damaged backup kept as {os.path.basename(baside)}'
-        self.integrity[name] = dict(status='failed_closed', why=why, evidence=aside)
+        return self._load_failed(name, why, bwhy, kept, aside)
+
+    def _load_failed(self, name, why, bwhy, kept, aside):
+        vars(self).setdefault('integrity', {})[name] = dict(status='failed_closed', why=why, evidence=aside)
+        fn = os.path.basename(self.F[name])
         what = ('the bot does not know its own open trades: positions on Binance are reported UNTRACKED (their Binance stops '
                 'are left alone)' if name == 'state' else 'defaults loaded')
-        self._integrity_alert(f'integrity|{name}', f'{fn} unreadable ({why}) and {bwhy} - ENTRIES PAUSED; {what}; {kept}. '
+        self._integrity_alert(f'integrity|{name}', f'{fn} {why} and {bwhy} - ENTRIES PAUSED; {what}; {kept}. '
                                                      'Check the account on Binance before resuming entries.')
-        return None, False
+        return None, 'failed'
 
-    def _save_safe(self, name, obj):
-        """AUD-05: durable save of a safety file with a .bak, refused while its damaged original could not be preserved."""
-        path = self.F[name]
-        if name in self._save_hold:
-            if os.path.exists(path) and not quarantine(path):
-                raise OSError(f'{os.path.basename(path)} not saved: its damaged original could not be moved aside (evidence kept)')
-            self._save_hold.discard(name)
-        save_json(path, obj, backup=True)
+    def _save_safe(self, name, obj, strict=False):
+        """AUD-05: durable save of a safety file with a .bak. Refused while its file is held (damaged original that could
+        not be moved aside, or unreadable at start-up): reported ONCE as a keyed incident, returns False (strict=True:
+        raises, e.g. for /api/settings so memory is not changed). A file found damaged at save time is kept as evidence."""
+        path = self.F[name]; fn = os.path.basename(path)
+        why = self._save_hold.get(name)
+        if why == 'unmovable' and (not os.path.exists(path) or quarantine(path)):
+            self._save_hold.pop(name, None); why = None
+            self.resolve(f'save-held|{name}', f'{fn}: damaged original moved aside - saving again')
+        if why:
+            msg = (f'{fn} NOT saved: ' + ('its damaged original could not be moved aside (evidence kept)' if why == 'unmovable'
+                                          else 'it could not be read at start-up and is never saved over until a restart')
+                   + ' - entries stay paused; changes are kept in memory only')
+            new_inc = not (self.health.get('incidents', {}).get(f'save-held|{name}') or {}).get('open') if hasattr(self, 'health') else False
+            if hasattr(self, 'health'): self.err(msg, key=f'save-held|{name}')
+            else: log.warning(msg)
+            if new_inc:
+                try: self.notify('DATA FILE PROBLEM: ' + msg)
+                except Exception: pass
+            if strict: raise OSError(msg)
+            return False
+        ev = save_json(path, obj, backup=True)
+        if ev:
+            self._integrity_alert(f'integrity|{name}|save', f'{fn} was found damaged on disk at save time - kept as '
+                                                             f'{os.path.basename(ev)} and replaced by the current in-memory copy')
+        return True
 
     # ------------------------------------------------------------ notifications (Telegram, optional)
     def notify(self, text):
@@ -689,10 +778,10 @@ class Engine:
     # ------------------------------------------------------------ settings
     def load_settings(self):
         s = copy.deepcopy(GLOBAL_DEFAULTS)
-        got, ok = Engine._load_safe(self, 'settings', dict)   # AUD-05: corrupt -> .bak; no good copy -> defaults, ENTRIES PAUSED
-        #   (called unbound: the offline UI harness loads settings on a bare namespace)
+        got, status = Engine._load_safe(self, 'settings', dict)   # AUD-05: corrupt -> older .bak; none -> defaults; either
+        #   way ENTRIES PAUSED (called unbound: the offline UI harness loads settings on a bare namespace)
         if got: s.update(got)
-        if not ok: s['ENTRIES_PAUSED'] = True
+        if status != 'ok': s['ENTRIES_PAUSED'] = True
         if 'SLEEVES' not in s:
             s['SLEEVES'] = copy.deepcopy(PRESETS[s.get('PRESET', 'original')]['sleeves'])
         for k in ('RISK_PER_TRADE', 'MAX_POSITIONS_PER_SLEEVE', 'STOP_ATR', 'SPLIT_ST', 'SLEEVE_ST', 'SLEEVE_TSM'):
@@ -714,14 +803,14 @@ class Engine:
         return out
 
     def save_settings(self):
-        self._save_safe('settings', self.S)
+        return self._save_safe('settings', self.S)
 
     def commit_settings(self, ns):
         """AUD-05: apply a fully validated settings dict atomically: written to disk first (durable, with .bak) - a failed
         save raises and leaves memory untouched - then every changed top-level key is applied in one step under the lock
         (unchanged keys keep their objects)."""
         with self.lock:
-            self._save_safe('settings', ns)
+            self._save_safe('settings', ns, strict=True)
             for k in [k for k in self.S if k not in ns]: self.S.pop(k)
             for k, v in ns.items():
                 if k not in self.S or self.S[k] != v: self.S[k] = v
@@ -950,7 +1039,7 @@ class Engine:
     def record_equity(self, eq):
         self.equity_hist.append([int(time.time()), round(eq, 2)])
         self.equity_hist = self.equity_hist[-8000:]
-        save_json(self.F['equity'], self.equity_hist)
+        self._save_aux('equity', self.equity_hist)       # AUD-05 r1: the AUD-01 never-raise contract
 
     JOURNAL_FIELDS = ['time', 'event', 'sleeve', 'symbol', 'side', 'qty', 'price', 'stop', 'pnl', 'equity', 'note']
 
@@ -1074,7 +1163,7 @@ class Engine:
             except Exception: pass
 
     def save_state(self):
-        self._save_safe('state', self.state)
+        return self._save_safe('state', self.state)
 
     # ------------------------------------------------------------ T05: fill telemetry (observe only)
     # One record per fill the bot itself sends: expected vs actual price, slippage in bps (+ = worse for us), requested
@@ -1787,6 +1876,7 @@ class Engine:
                 tick = self.rules[lot['symbol']]['tick'] if lot['symbol'] in self.rules else 1e-8
                 ge = lambda lvl: sd * (m - lvl) >= 0           # price at/through a favourable level
                 if lot.get('pending'): continue                # waiting for the exchange to confirm an unanswered order
+                if lot.get('restored_from_bak') and lot.get('restored_mismatch'): continue   # AUD-05 r1: stale copy - owner review
                 try:                                           # T05a: excursions, path, state, online policies (observe only)
                     t_ = now_utc().isoformat(timespec='seconds')   # memory only: NO save_state / disk / network here; the
                     rs = getattr(self, '_audit_restored', set())    # tracking state rides on the normal save cadence and a
@@ -1798,7 +1888,9 @@ class Engine:
                 try:
                     if lot.get('force_close'):                 # a stop update found price already through the stop
                         self.close_lot(key, 'stop_crossed', m); changed = True; continue
-                    if lot.get('stop_dirty') or not lot.get('stop_id'):   # protection missing/outdated -> retry every pass
+                    if lot.get('restored_from_bak') and not lot.get('stop_id') and lot['symbol'] not in self._stopv_last:
+                        pass                                   # AUD-05 r1: Binance may hold its stop - the verifier reads (and
+                    elif lot.get('stop_dirty') or not lot.get('stop_id'):   # adopts) first; protection missing -> retry
                         if self._replace_stop(lot): changed = True; log.info(f"{lot['symbol']} [{lot['sleeve']}] stop restored")
                     if 'dca' in g and lot.get('levels'):
                         with self._stage(key, lot, 'safety_order', failed, add=True):
@@ -2425,6 +2517,26 @@ class Engine:
             expected = sum(st['lots'][k]['qty'] for k in keys)
             have = live.get((sym, side), 0.0)
             tol = self._qty_tol(self.rules[sym]['step']) if sym in self.rules else 1e-9
+            rest = [k for k in keys if st['lots'][k].get('restored_from_bak')]
+            if rest:                       # AUD-05 r1: lots restored from an OLDER state copy (.bak) - owner review first
+                rk = f'restored|{sym}|{side}'
+                if not self.S.get('ENTRIES_PAUSED'):                    # the owner checked Binance and resumed entries:
+                    for k in rest:                                      # normal bookkeeping from here on
+                        st['lots'][k].pop('restored_from_bak', None); st['lots'][k].pop('restored_mismatch', None)
+                    self.resolve(rk, f'{sym} {side}: entries resumed - restored trade managed normally again')
+                elif abs(have - expected) <= tol:                       # Binance holds exactly the restored size
+                    for k in rest: st['lots'][k].pop('restored_mismatch', None)
+                    self.resolve(rk, f'{sym} {side}: restored trade matches Binance')
+                    continue
+                else:                                                   # stale copy: nothing booked (no exit, no P&L)
+                    for k in rest: st['lots'][k]['restored_mismatch'] = True
+                    new_inc = not (self.health.get('incidents', {}).get(rk) or {}).get('open')
+                    msg = (f'{sym} {side}: trade(s) restored from an older state copy hold {expected:g} but Binance holds '
+                           f'{have:g} - nothing booked (no exit, no P&L, no orders for it) while entries are paused; check '
+                           'Binance, then resume entries and the bot books the difference')
+                    self.err(msg, key=rk)
+                    if new_inc: self.notify(msg)
+                    continue
             pend = [k for k in keys if st['lots'][k].get('pending')]
             if pend:                                                    # an unanswered order on this coin/side: settle it first
                 res = self._resolve_pending(pend[0], have, expected, tol, self._dust_cap(sym, (self.marks or {}).get(sym)))
