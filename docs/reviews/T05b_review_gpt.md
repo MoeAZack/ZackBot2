@@ -4,9 +4,9 @@
 
 ## Verdict
 
-**Changes requested — one confirmed P1 runtime finding. Do not merge.** Static review and the focused/full gates passed,
-but the approved exact-head testnet canary found that a process which starts during a Binance read outage cannot recover
-without another process restart.
+**Code review accepted at exact implementation head `20c00c8`; no open P1/P2 finding.** The original runtime P1 and the
+follow-up long-outage P2 are fixed with regression coverage. Final acceptance still requires the exact-head full gate and
+the repeat Windows install/start-up-outage canary described below.
 
 ### Fix review at `6a07f72` (03:22 Africa/Cairo)
 
@@ -14,12 +14,12 @@ The P1 design is now addressed: the same engine retries transient start-up failu
 the circuit's probe floor, keeps one incident open until positions and open orders were re-read, and does not retry an
 authentication refusal. The new focused Windows set passed **112/112**.
 
-**P2 — the supposedly capped retry calculation overflows after a long outage.** `_connect_failed()` evaluates
+**Resolved at `20c00c8`.** The focused Windows set now passes **113/113**. The P2 was: `_connect_failed()` evaluated
 `5.0 * 2 ** (n - 1)` before applying `min(60.0, ...)`. At `n=1025` this raises `OverflowError: int too large to convert to
 float`, confirmed directly with the exact expression. Once reached, retry scheduling itself fails and the engine can no
 longer recover automatically. At the 60–72 second cap this is reachable after roughly 17–20 hours of continuous start-up
-outage. Cap the exponent/count before exponentiation (or use a branch once the cap is reached) and add a regression test
-with a very large persisted/current retry count. Re-run the focused set; the runtime canary can wait for that small fix.
+outage. The implementation now caps the exponent before exponentiation and the regression covers counts 1,024, 1,025,
+5,000 and one billion without overflow while preserving the 60-second capped schedule.
 
 ### P1 — startup outage permanently leaves the engine disconnected
 
