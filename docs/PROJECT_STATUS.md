@@ -1,25 +1,28 @@
 # ZackBot owner overview
 
-*Last refreshed: 2026-10-07 04:55 Cairo (Africa/Cairo) by Codex, on branch `t05b-outage-resilience-v2`. This is the plain-language owner view. `ROADMAP.md` and `docs/reviews/` hold the detailed scope and evidence.*
+*Last refreshed: 2026-10-07 08:03 Cairo (Africa/Cairo) by Codex, on branch `t05a-causal-audit`. This is the plain-language owner view. `ROADMAP.md` and `docs/reviews/` hold the detailed scope and evidence.*
 
 ## Where we are now
 
 | Item | Current state |
 |---|---|
 | Environment | **Binance Futures testnet only.** Mainnet stays impossible until the roadmap and the final release audit are complete and you approve it. |
-| Is ZackBot running? | Yes, on your PC (PAPER/testnet), build `20261007-044336`: engine, exchange and circuit OK; three positions, all protected; zero errors/untracked/orphans. |
-| Installed application | **T05b installed and runtime-proven.** A 180-second startup outage recovered automatically in the same process, then a normal restart reconciled cleanly. |
-| Latest accepted commit | `master` `cb5092b` (T04d accepted and merged) |
-| Current ticket | **T05b: exchange-outage resilience** |
-| Stage | **T05b accepted; final documentation gate and protected merge are being completed.** |
-| What Claude is doing | Waiting for the T05b merge handoff. |
-| What Codex is reviewing | T05b acceptance/merge, then T05a. |
+| Is ZackBot running? | Yes, on your PC (PAPER/testnet), build `20261007-075404`: engine and exchange OK; four positions, all protected; zero open incidents or unprotected lots. |
+| Installed application | **T05a installed and runtime-proven.** The causal trade-audit endpoint/card and bounded audit file are active without changing trading decisions. |
+| Latest accepted commit | T05a reviewed head `d6f6a4d`; protected merge is the current final gate. |
+| Current ticket | **T05a: causal trade audit** |
+| Stage | **T05a accepted; acceptance documentation and protected merge are being completed.** |
+| What Claude is doing | Preparing FBL-BT01, the critical DCA intrabar-causality fix, without overlapping T05a. |
+| What Codex is reviewing | T05a acceptance/merge; next independent gate is FBL-BT01. |
 | Your action | **None.** |
 
 ## Latest test results
 
 | Where | Result |
 |---|---|
+| T05a exact-head GitHub | Fast, CodeQL, tests, both strict replay/UI slices and aggregate full **PASS** at `d6f6a4d`. |
+| T05a Windows review | Corrected focused set **152/152**; broader audit/safety/fills/outage/leverage set **503/503**. |
+| T05a runtime | Build `20261007-075404` installed; PAPER engine/exchange OK, four existing lots protected, zero unprotected/incidents; audit API/card/file active. |
 | GitHub, run #1 (push of `706fd33`) | **verify fast PASS** (3 min 20 s) |
 | GitHub, pull request | Head `8043c7e`, run #32: **verify fast PASS; verify full PASS**. |
 | Claude's cloud sandbox (Linux) | `verify fast` PASS; `verify full` PASS (215 tests passed, 1 Windows-only skip; both strict replays PASS; UI 171/171) |
@@ -49,6 +52,14 @@
 Automated test-suite results use a fake exchange. The final T03a gate used the real Binance Futures testnet account; it correctly sent no entry order because leverage was above the cap.
 
 ## What just changed
+
+### T05a — causal trade audit: accepted and installed
+
+- Records mark-sampled MFE/MAE, peak net profit, give-back, timing, causal policy comparisons, regime context and explicit unknown/partial coverage.
+- Counts missed short opportunities and segments finished trades by strategy, side, symbol, timeframe, regime, DCA depth and runner status.
+- Uses a bounded non-blocking writer; audit failures cannot alter order placement, protection, reconciliation or close behavior.
+- The installed Trades card is read-only and collapsed by default. Existing positions and stops were unchanged by installation.
+- Fable follow-ups are tracked separately: critical intrabar backtest causality (#13), exchange-minimum feasibility (#14), and copy-friendly $100/$200 follower profiles (#15).
 
 ### T04 — automatic checks: accepted and merged
 
@@ -170,7 +181,10 @@ Every ticket now ends with a **clean-up pass on the files it touched**: remove d
 |---|---|---|
 | Accepted | **T03c — automatic leverage handling** | Exact-head CI, install, exceptional-path canary, restart adoption and cleanup passed |
 | Accepted | **T05b — exchange-outage handling** | Exact-head CI, Windows tests, guarded install and same-process startup-outage recovery passed |
-| Current measurement | **T05a — causal trade audit** | Peak profit/MFE, give-back, hold/close reasons and causal earlier-exit comparisons |
+| Accepted | **T05a — causal trade audit** | Exact-head CI, Windows review, guarded install and runtime measurement checks passed |
+| Current critical fix | **FBL-BT01 — DCA intrabar causality** | Correct the backtest path before trusting DCA or preset results |
+| Next realism fix | **BT02 — Binance order-filter feasibility** | Make advertised capital/presets executable under step/minimum rules |
+| Copy product | **COPY100/COPY200** | $500 lead with $100–$200 follower targets and a UI feasibility toggle after BT01/BT02 |
 | Core | **T06–T09 — shared core** | One trading logic for live and backtest |
 | Strategy research | **T09a** | Range, short and scalp families; Quick Bank TP/runner/micro-DCA components; research/shadow first |
 | Regime and macro | **T09b** | Per-asset/timeframe regimes plus USD, US bonds/rates, equities, commodities and optional TradingView evidence |

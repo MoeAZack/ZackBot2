@@ -663,7 +663,8 @@ class App:
                     confirmed=dict(h.get('confirmed') or {}),
                     incidents=[{k: v for k, v in i.items() if k not in ('entry', 'logged')} for i in sorted(
                         [i for i in list((h.get('incidents') or {}).values()) if i.get('open')],   # snapshot: loop thread mutates
-                        key=lambda i: (i.get('key') != 'exchange-down', -ms_iso(i.get('last'))))][:20])
+                        key=lambda i: (i.get('key') != 'exchange-down', -ms_iso(i.get('last'))))][:20],
+                    audit=e.audit_summary() if hasattr(e, 'audit_summary') else None)
 
     def revs(self, e):
         hl = e.history[-1]['id'] if e.history else ''
@@ -857,6 +858,9 @@ class H(BaseHTTPRequestHandler):
                 return self._send(404, b'', 'image/png', 'private, max-age=600', ext)
             if p == '/api/status': return self._json(APP.snapshot())
             if p == '/api/meta': return self._json(APP.meta())
+            if p == '/api/audit_summary':     # T05a: read-only trade-audit summary (cached; no engine lock held)
+                e = APP.engine
+                return self._json(e.audit_summary() if hasattr(e, 'audit_summary') else dict(error='no audit'))
             if p == '/api/history': return self._json(dict(rev=APP.revs(APP.engine)['history'], history=APP.engine.history[-1500:]))
             if p == '/api/missed': return self._json(dict(rev=APP.revs(APP.engine)['missed'], missed=APP.missed_view()))
             if p == '/api/signals':
