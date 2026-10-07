@@ -1202,12 +1202,17 @@ class Engine:
         return is_transient(e) or type(e).__module__.startswith('requests')
 
     def _cancel_or_park(self, sym, tag):
-        """Cancel a stop; if Binance cannot be reached, remember it and retry later (never leave a stale stop behind)."""
-        if self.dry or not tag: return
-        try: self.trade.cancel(sym, tag)
+        """Cancel a stop; if Binance cannot be reached, remember it and retry later (never leave a stale stop behind).
+        Returns True when Binance confirmed the cancel (or that it was already gone), False when it was only parked -
+        parking is bookkeeping, not proof that the stop is gone (AUD-04 r3). Existing callers may ignore the result."""
+        if self.dry or not tag: return True
+        try:
+            self.trade.cancel(sym, tag); return True
         except Exception as e:
-            self.state.setdefault('orphans', []).append([sym, tag])
+            orph = self.state.setdefault('orphans', [])
+            if [sym, tag] not in orph: orph.append([sym, tag])
             self.err(f'cancel stop {sym} {tag} failed ({e}) - will retry')
+            return False
 
     def _replace_stop(self, lot, stop=None, owner=False):
         """Place the stop at `stop` (or the current lot stop, e.g. after a size change) FIRST, then cancel the old one.
@@ -3044,11 +3049,14 @@ class Engine:
             log.info(f"{sym} {u['side']} unconfirmed entry: lost provisional stop {tag} is not working ({st}) - placing anew")
             return True
         if time.time() - pend.get('t', 0) > PROV_PENDING_S:
-            u.pop('prov_pending', None); self.save_state()
-            self._cancel_or_park(sym, tag)                    # cancelled, or parked in orphans (retried, never adopted)
-            self.err(f"{sym} {u['side']} unconfirmed entry: status of provisional stop {tag} unknown for {PROV_PENDING_S} s - "
-                     "cancelled/parked, a new one is placed", key=f"prov|{sym}|{u['side']}")
-            return True
+            if self._cancel_or_park(sym, tag):                # r3 (Codex): ONLY a confirmed cancel unlocks a replacement
+                u.pop('prov_pending', None); self.save_state()
+                self.err(f"{sym} {u['side']} unconfirmed entry: status of provisional stop {tag} unknown for {PROV_PENDING_S} s - "
+                         "cancelled on Binance, a new one is placed", key=f"prov|{sym}|{u['side']}")
+                return True
+            self.save_state()                                 # parked in orphans too, but still pending: it may be LIVE, so
+            self.err(f"{sym} {u['side']} unconfirmed entry: provisional stop {tag} - status unknown and its cancel failed; no "
+                     "replacement until Binance confirms it gone or cancelled", key=f"prov|{sym}|{u['side']}")   # no second stop
         return False
 
     def _settle_unconfirmed(self, live):

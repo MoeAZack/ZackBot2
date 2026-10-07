@@ -1144,7 +1144,11 @@ def test_r2_an_unknown_lost_provisional_stop_is_parked_before_a_replacement(monk
     def cancel_fails(s, tag): raise BC.BinanceError(-1001, 'Internal error')
     e.trade.cancel = cancel_fails
     tick(e, clk, 8.0)
-    assert ['BTCUSDT', 'ac:zbUNK'] in e.state['orphans'] and 'prov_pending' not in u and u['prov'] in e.trade.stops
+    assert ['BTCUSDT', 'ac:zbUNK'] in e.state['orphans'] and u['prov_pending']['tag'] == 'ac:zbUNK' and not e.trade.stops, \
+        'r3: a failed cancel is not proof - still pending, no replacement'
+    e.trade.cancel = lambda s, tag: True                                    # Binance confirms the cancel (already gone)
+    tick(e, clk, 8.0)
+    assert 'prov_pending' not in u and u['prov'] in e.trade.stops and len(e.trade.stops) == 1
 
 
 def test_r2_pending_provisional_ownership_survives_a_restart(tmp_path):
@@ -1158,3 +1162,61 @@ def test_r2_pending_provisional_ownership_survives_a_restart(tmp_path):
     e2, _, _ = mk(tmp=str(tmp_path))
     (u2,) = e2.state['unconfirmed_entries'].values()
     assert u2['prov_pending']['tag'] == 'c:zbRST' and 'c:zbRST' in e2._owned_stop_tags('BTCUSDT')
+
+
+def _accepted_but_lost(e, cidv='zbACC', kind='ac'):
+    """The provisional stop IS placed on the exchange, but its answer is lost (AmbiguousOrder with its client-id tag)."""
+    real = e.trade.stop
+    def lost(s, ps, q, p):
+        e.trade.stop = real
+        tag = real(s, ps, q, p); e.trade.cids[tag] = cidv
+        raise BC.AmbiguousOrder('stop answer lost', f'{kind}:{cidv}')
+    e.trade.stop = lost
+
+
+def test_r3_unknown_status_and_failed_cancel_never_unlock_a_replacement(monkeypatch):
+    """Codex r3 P1: accepted original + status unreadable > PROV_PENDING_S + cancel fails (-1001) used to park it AND place
+    a replacement -> two live stops. Now: no replacement until a cancel is confirmed or a status read proves it gone."""
+    e, clk, _ = mk(); uk, u = _lost_entry_with_provisional(e, clk)
+    _accepted_but_lost(e)
+    e.trade.stop_status = lambda s, tag, retry=None: (_ for _ in ()).throw(TimeoutError('x'))
+    tick(e, clk, 8.0); assert u['prov_pending']['tag'] == 'ac:zbACC' and len(e.trade.stops) == 1
+    real_t = E.time.time
+    monkeypatch.setattr(E.time, 'time', lambda: real_t() + E.PROV_PENDING_S + 1)
+    real_cancel = e.trade.cancel
+    def cancel_fails(s, tag): raise BC.BinanceError(-1001, 'Internal error')
+    e.trade.cancel = cancel_fails
+    tick(e, clk, 8.0, n=4)
+    assert len(e.trade.stops) == 1, 'never two live stops'
+    assert u['prov_pending']['tag'] == 'ac:zbACC' and ['BTCUSDT', 'ac:zbACC'] in e.state['orphans']
+    assert e.state['orphans'].count(['BTCUSDT', 'ac:zbACC']) == 1, 'parked once, not once per pass'
+    # restart while pending + orphan coexist: still owned, still no replacement
+    e2, clk2, _ = mk(tmp=e.F['state'].rsplit('\\', 1)[0] if '\\' in e.F['state'] else e.F['state'].rsplit('/', 1)[0], fake=e.trade)
+    (u2,) = e2.state['unconfirmed_entries'].values()
+    assert u2['prov_pending']['tag'] == 'ac:zbACC' and ['BTCUSDT', 'ac:zbACC'] in e2.state['orphans']
+    e2.trade.cancel = cancel_fails; tick(e2, clk2, 8.0, n=2)
+    assert len(e2.trade.stops) == 1
+    # Binance answers again: the cancel goes through -> only then a replacement
+    e2.trade.cancel = real_cancel
+    def ac_cancel(s, tag):                                   # the fake knows the stop by its order id, cancel by client id
+        oid = next((k for k, c in e2.trade.cids.items() if f'ac:{c}' == tag or f'c:{c}' == tag), tag)
+        return real_cancel(s, oid)
+    e2.trade.cancel = ac_cancel
+    tick(e2, clk2, 8.0, n=2)
+    (u3,) = e2.state['unconfirmed_entries'].values()
+    assert 'prov_pending' not in u3 and len(e2.trade.stops) == 1 and u3['prov'] in e2.trade.stops
+
+
+def test_r3_a_later_status_read_proving_the_original_gone_unlocks_the_replacement(monkeypatch):
+    e, clk, _ = mk(); uk, u = _lost_entry_with_provisional(e, clk)
+    _accepted_but_lost(e, 'zbGONE', 'c')
+    st = {'v': None}
+    def status(s, tag, retry=None):
+        if st['v'] is None: raise TimeoutError('x')
+        return st['v']
+    e.trade.stop_status = status
+    tick(e, clk, 8.0)
+    original = next(iter(e.trade.stops))
+    e.trade.ext_cancel(original); st['v'] = 'CANCELED'                       # Binance now says it is gone
+    tick(e, clk, 8.0)
+    assert 'prov_pending' not in u and u['prov'] in e.trade.stops and len(e.trade.stops) == 1
