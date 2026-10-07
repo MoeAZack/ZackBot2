@@ -62,7 +62,7 @@ TESTNET = dict(BTCUSDT=dict(step=0.001, min_qty=0.001, min_notional=50.0), ETHUS
 
 def snap(rules=TESTNET, env='testnet', verified=True, fetched_at=ISO_NOW, version=1):
     return dict(schema=F.SCHEMA, version=version, environment=env, source='test', fetched_at=fetched_at, verified=verified, note='',
-                symbols=copy.deepcopy(rules))
+                provenance='fetch', symbols=copy.deepcopy(rules))
 
 
 # ---------------------------------------------------------------- 1) engine parity: identical decisions before / after
@@ -221,26 +221,16 @@ def test_snapshot_states():
     assert F.snapshot_state(snap(fetched_at='2026-09-01T00:00:00Z'), NOW, max_age_days=30)[0] == 'ok'
 
 
-def test_shipped_testnet_snapshot_is_labelled_unverified_and_mainnet_is_absent():
-    s = XR.load('testnet')
-    assert s['schema'] == F.SCHEMA and s['environment'] == 'testnet' and s['verified'] is False and s['fetched_at'] is None
-    assert 'unverified' in s['note'] and 'PLACEHOLDER' in s['source']
-    assert F.snapshot_state(s, NOW, 'testnet')[0] == 'unverified'            # never 'ok' -> never a green pass
-    assert s['symbols']['BTCUSDT']['min_notional'] == 50 and s['symbols']['ETHUSDT']['min_notional'] == 20
-    assert s['symbols']['SOLUSDT']['min_notional'] == 5
-    assert XR.load('mainnet') is None or XR.load('mainnet')['environment'] == 'mainnet'
-    with open(XR.path_for('testnet'), encoding='utf-8') as f: json.load(f)
-
-
 def test_builder_reads_exchange_info_file_and_versions(tmp_path):
     p = tmp_path / 'exchangeInfo.json'; p.write_text(json.dumps(info(TESTNET)), encoding='utf-8')
     out = str(tmp_path / 'exchange_rules_testnet.json')
-    s1, old = XR.build_file(str(p), 'testnet', out=out, fetched_at=ISO_NOW)
-    assert old is None and s1['version'] == 1 and s1['verified'] is True and s1['symbols'] == F.rules_from_exchange_info(info(TESTNET))
-    assert F.snapshot_state(XR.load('testnet', path=out), NOW, 'testnet')[0] == 'ok'
+    s1, old = XR.build_file(str(p), 'testnet', out=out, captured_at=ISO_NOW)
+    assert old is None and s1['version'] == 1 and s1['verified'] is False and s1['symbols'] == F.rules_from_exchange_info(info(TESTNET))
+    assert s1['provenance'] == 'file' and s1['fetched_at'] == ISO_NOW
+    assert F.snapshot_state(XR.load('testnet', path=out), NOW, 'testnet')[0] == 'unverified'      # an import is never trusted
     changed = copy.deepcopy(TESTNET); changed['BTCUSDT']['min_notional'] = 100.0; changed['SOLUSDT']['step'] = 1.0
     p.write_text(json.dumps(info(changed)), encoding='utf-8')
-    s2, old = XR.build_file(str(p), 'testnet', out=out, fetched_at=ISO_NOW)
+    s2, old = XR.build_file(str(p), 'testnet', out=out, captured_at=ISO_NOW)
     assert s2['version'] == 2 and old['version'] == 1
     dif = F.diff_snapshots(old, s2)
     assert dif['changed'] == {'BTCUSDT': {'min_notional': (50.0, 100.0)}, 'SOLUSDT': {'step': (0.01, 1.0)}}
@@ -389,7 +379,8 @@ def test_preflight_flags_undersized_pyramid_add():
     assert r['executable_pct'] == 100.0
     r = F.preflight(_slots(key='ema_mom', mgmt={'pyramid': {'n': 1, 'step_r': 1.5, 'frac': 0.5}}, syms=('SOLUSDT',), risk=0.0003),
                     500.0, MARKET, dict(SOLUSDT=dict(step=0.01, min_qty=0.01, min_notional=5.0)), 'ok')
-    assert r['executable_pct'] == 100.0 and len(r['add_undersized']) == 1
+    # the first order still fits, but the plan does not: never a full pass (Codex P1-B; see test_bt02_preflight_plan.py)
+    assert r['entry_executable_pct'] == 100.0 and r['executable_pct'] == 0.0 and r['status'] == 'partial' and len(r['add_undersized']) == 1
 
 
 def test_feasibility_module_is_pure():
@@ -412,9 +403,23 @@ def _csv_candles(sym, tf, days):
     return d.tail(int(days * 86400 / 14400) + 260).reset_index(drop=True)
 
 
-def test_app_backtest_reports_feasibility_with_the_snapshot(monkeypatch):
+def trusted_rules_file(root, env='testnet', rules=None):
+    """A fresh, verified, provenance 'fetch' snapshot (what `exchange_rules.py fetch` writes) for the app's RULES_ROOTS:
+    the engine-test 0.001 step / minQty for the core 8 + the old notional floors (test fixture, not real testnet data)."""
+    import time as _t, engine as E
+    rules = rules or {s: dict(step=0.001, min_qty=0.001, min_notional=B.MIN_NOTIONAL.get(s, 5.0), tick=0.01) for s in E.CORE8}
+    s = F.build_snapshot(F.exchange_info_from_rules(rules), env, 'test fetch', fetched_at=XR._iso(_t.time() - 3600),
+                         verified=True, provenance='fetch')
+    os.makedirs(str(root), exist_ok=True)
+    XR.save(s, XR.path_for(env, root=str(root)))
+    return s
+
+
+def test_app_backtest_reports_feasibility_with_the_snapshot(monkeypatch, tmp_path):
     import app as A, engine as E
-    monkeypatch.setattr(A, 'APP', None)                     # no engine: the shipped snapshot file is used
+    monkeypatch.setattr(A, 'APP', None)                     # no engine: a fetched snapshot file is used
+    monkeypatch.setattr(A, 'RULES_ROOTS', [str(tmp_path)])
+    trusted_rules_file(tmp_path)
     monkeypatch.setattr(A, 'get_candles', _csv_candles)
     jid = '20260101-000000-bt02'
     A.JOBS[jid] = dict(status='queued')
@@ -423,25 +428,28 @@ def test_app_backtest_reports_feasibility_with_the_snapshot(monkeypatch):
     j = A.JOBS.pop(jid)
     assert j['status'] == 'done', j
     f = j['result']['feasibility']
-    assert f['rules_state'] == 'unverified' and f['environment'] == 'testnet' and f['groups']['4h']['mode'] == 'rules'
+    assert f['rules_state'] == 'ok' and f['rules_applied'] is True and f['environment'] == 'testnet' and f['groups']['4h']['mode'] == 'rules'
     assert f['executable_pct'] is not None and f['executed'] + sum(f['skipped'].values()) == sum(v['attempts'] for v in f['by_slot'].values())
     assert f['by_symbol'].get('BTCUSDT', {}).get('skipped', 0) >= 1          # calm's 1% slots cannot buy 0.001 BTC at $500
 
 
-def test_app_preflight_calls_the_shared_function(monkeypatch):
+def test_app_preflight_calls_the_shared_function(monkeypatch, tmp_path):
     import app as A, test_safety as TS
+    monkeypatch.setattr(A, 'RULES_ROOTS', [str(tmp_path)])      # no rule file at all (none is shipped)
     e, _ = TS.mk_engine()
     ap = A.App.__new__(A.App); ap.engine = e
     calls = []
     real = F.preflight
     monkeypatch.setattr(F, 'preflight', lambda *a, **k: calls.append(a) or real(*a, **k))
     r = ap.preflight()
-    assert len(calls) == len(r['presets']) and '__current' in r['presets'] and 'calm' in r['presets']
+    # per profile: the primary status (latest closed candle ATR) + the separate 180-candle median planning estimate
+    assert len(calls) == 2 * len(r['presets']) and '__current' in r['presets'] and 'calm' in r['presets']
+    assert all(next(iter(c[2].values()))['atr_basis'] == 'latest_closed' for c in calls[:len(r['presets'])] if c[2])
     assert r['rules_state'] == 'ok' and 'live connection' in r['rules_detail'] and r['environment'] == 'testnet'
     assert all(v['status'] in ('ok', 'partial', 'infeasible', 'unknown') for v in r['presets'].values())
-    e.rules = {}                                            # not connected -> the unverified file snapshot -> never green
+    e.rules = {}                                            # not connected and no snapshot file -> never green
     r = ap.preflight()
-    assert r['rules_state'] == 'unverified' and all(v['status'] == 'unknown' for v in r['presets'].values())
+    assert r['rules_state'] == 'unavailable' and all(v['status'] == 'unknown' for v in r['presets'].values())
 
 
 def test_backtest_accounting_separates_risk_rule_refusals():
