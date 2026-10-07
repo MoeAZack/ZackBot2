@@ -1532,6 +1532,7 @@ _EXACT = {
     'an entry is already working on this coin': ('capacity', 'entry_working'),
     'leverage cap reached for this slot': ('capacity', 'leverage_cap'),
     'entry order unconfirmed': ('execution', 'entry_unconfirmed'),
+    'entry order not filled': ('execution', 'entry_unfilled'),            # AUD-03: final answer, nothing executed
     'stop order failed - trade closed again': ('execution', 'stop_failed'),
     'maker entry not filled (no market fallback)': ('execution', 'maker_unfilled'),
     'strategy slot removed': ('filter', 'slot_removed'),                                  # trailing entry whose slot was deleted

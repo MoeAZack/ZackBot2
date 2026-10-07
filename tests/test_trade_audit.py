@@ -598,6 +598,7 @@ REASONS = {
     'Claude review vetoed: weak trend': ('filter', 'ai_veto'),
     'could not set leverage/margin on Binance: leverage 20x refused': ('execution', 'leverage'),
     'entry order unconfirmed': ('execution', 'entry_unconfirmed'),
+    'entry order not filled': ('execution', 'entry_unfilled'),
     'stop order failed - trade closed again': ('execution', 'stop_failed'),
     'order failed': ('execution', 'order_failed'),
     'order failed: BinanceError -4028 Leverage 30 is not valid': ('execution', 'order_failed'),

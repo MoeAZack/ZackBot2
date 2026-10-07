@@ -49,6 +49,9 @@ class _InjectedBusy:
     status_code, headers = 503, {}
 
 
+FINAL_STATUS = ('FILLED', 'EXPIRED', 'CANCELED', 'REJECTED', 'EXPIRED_IN_MATCH')   # AUD-03: executedQty is final
+
+
 class AmbiguousOrder(Exception):
     """An order request may or may not have reached Binance and its status could not be confirmed.
     .tag is a cancel tag for it ('c:<clientOrderId>' or 'ac:<clientAlgoId>') when one is known."""
@@ -338,13 +341,13 @@ class Futures:
                         return self._req('POST', '/fapi/v1/order', params, signed=True, retry=False)
                     except (requests.RequestException, AmbiguousOrder) as e:
                         raise AmbiguousOrder(f'order {cid} resend unconfirmed: {e}', tag)
-                if params.get('type') == 'MARKET' and o.get('status') not in ('FILLED',):
+                if params.get('type') == 'MARKET' and o.get('status') not in FINAL_STATUS:
                     time.sleep(1)
                     try: o = self.get_order(params['symbol'], cid) or o
                     except (requests.RequestException, BinanceError, AmbiguousOrder): pass
-                    if o.get('status') != 'FILLED':
+                    if o.get('status') not in FINAL_STATUS:
                         raise AmbiguousOrder(f"market order {cid} status {o.get('status')}", tag)
-                return o
+                return o                        # AUD-03: a FINAL record (also EXPIRED / CANCELED) carries the executed qty
             raise AmbiguousOrder(f'order {cid} unconfirmed after {first}', tag)
 
     # ---------- public ----------
