@@ -1565,7 +1565,9 @@ class Engine:
             resting[(r_['symbol'], r_['side'])] = resting.get((r_['symbol'], r_['side']), 0.0) + r_['qty']
         for (sym, side), have in live.items():
             if (sym, side) not in groups and have > 0:
-                tol = self.rules[sym]['step'] if sym in self.rules else 1e-9
+                # one whole step of a position with no lot is real (e.g. 0.001 BTC = a tradable ~$120 orphan): the same sub-step
+                # tolerance as the tracked-lot path, not a whole step; dust and filled resting entries stay excluded
+                tol = self._qty_tol(self.rules[sym]['step']) if sym in self.rules else 1e-9
                 if have > tol + resting.get((sym, side), 0.0) and not dust(sym, have): untracked[(sym, side)] = have
         short_seen = st.setdefault('short_seen', {}); seen_now = set()
         for (sym, side), keys in groups.items():
