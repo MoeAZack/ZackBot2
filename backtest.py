@@ -2,6 +2,7 @@
 
 Fills: entries at next candle open; stop checked before anything else in a candle (conservative);
 targets/adds fill at their trigger price; signal exits at the candle close.
+Intrabar order (FBL-BT01): every other intrabar event is fired along ONE declared price path, see path_points().
 Costs: taker fee + slippage per side, funding cost on every open position.
 """
 import numpy as np
@@ -111,11 +112,29 @@ def _gov_step(G, mtm, peak, growth, dd):
     return float(np.clip(mult, 0.05, 2.0))
 
 
+def path_points(o, h, l, c, side, worst=False):
+    """THE intrabar price-path policy of the backtester (FBL-BT01) - one place, used for every intrabar event:
+      green candle (c > o): open -> low -> high -> close
+      red candle   (c < o): open -> high -> low -> close
+      doji (c == o), and every candle when worst=True: the worst case for THIS position's side - favourable extreme first,
+        adverse extreme last: long open -> high -> low -> close, short open -> low -> high -> close. (A target or add level
+        recomputed at the adverse extreme can then never be reached in the same candle, and a stop raised at the
+        favourable extreme is checked against the adverse one.)
+    Not part of the walk (unchanged conventions): the stop as it stood at the open is checked against the whole candle
+    first; entries fill at the next open (or on the candle path for trailing entries, which keep their own c >= o rule);
+    signal / time exits and the liquidation check use the close / the adverse extreme."""
+    if worst or c == o:
+        return (o, h, l, c) if side == 1 else (o, l, h, c)
+    return (o, l, h, c) if c > o else (o, h, l, c)
+
+
 def run(book, sleeves, start=500.0, max_lev=10.0, daily_halt=0.08, t0=None, t1=None, warmup=220, fund_per_bar=None, pessimistic='path',
         entry_order='market', fee_maker=None, maker_fallback=True, pump_guard=None, risk_rules=None, governor=None,
         maint_margin=0.005, btc1h=None):
     """pessimistic: how a stop tightened during a candle (breakeven / trailing / runner) is checked against that same candle.
-    'path' (default): infer the price path from the candle colour; 'worst': always assume the worst order; False: never (old v2).
+    'path' (default): the declared price path (path_points: candle colour, doji = worst case for the side); 'worst': the
+    worst-case path (favourable extreme first, adverse last) on every candle; False: never (old v2).
+    Since FBL-BT01 the same path orders every intrabar event (DCA fills, basket TP, pyramid adds, tp1 / ladder / tp_r).
     v3.1 options (all off by default except the liquidation check, which only fires if margin is actually exhausted):
       entry_order 'maker': limit at the signal close, filled (maker fee) if the next candle trades through it, else
                   at the next open with taker fee (maker_fallback) or skipped
@@ -271,6 +290,129 @@ def run(book, sleeves, start=500.0, max_lev=10.0, daily_halt=0.08, t0=None, t1=N
         if RR['btc_breaker'] and i <= breaker_until: return 'btc_breaker'
         return None
 
+    def ratchet(m, p, atr):
+        """Stop tightening from the best price reached so far (breakeven trigger, chandelier trail, trailing TP, runner).
+        Called at the end of every path leg; a stop raised here can only be hit by a LATER leg of the path."""
+        sd = p['side']; RUN = m.get('runner'); TTP = m.get('ttp')
+        tighten = lambda x: max(p['stop'], x) if sd == 1 else min(p['stop'], x)
+        if m.get('be_r') and sd * (p['best'] - (p['e0'] + sd * m['be_r'] * p['R'])) >= 0:
+            p['stop'] = tighten(p['avg'])
+        if m.get('trail_atr'):                               # chandelier from the best price
+            p['stop'] = tighten(p['best'] - sd * m['trail_atr'] * atr)
+        if TTP and p['R'] > 0 and sd * (p['best'] - p['e0']) / p['R'] >= TTP.get('at_r', 2.0):
+            p['stop'] = tighten(p['best'] * (1 - sd * TTP.get('dev_pct', 3.0) / 100))   # trailing take-profit
+        if RUN and p['R'] > 0:                               # runner: breakeven first, then lock profit in steps
+            bestR = sd * (p['best'] - p['e0']) / p['R']
+            if bestR >= RUN.get('be_r', 2.0):
+                p['stop'] = tighten(p['avg'] * (1 + sd * BE_BUF))
+            lock = np.floor(bestR / RUN.get('step_r', 99)) * RUN.get('step_r', 99) - RUN.get('gap_r', 99)
+            if RUN.get('giveback') and bestR >= RUN.get('gb_from', 4.0):
+                lock = max(lock, bestR * (1 - RUN['giveback']))
+            if lock > 0:
+                p['stop'] = tighten(p['e0'] + sd * lock * p['R'])
+
+    def walk_path(sl, s, p, i, o, h, l, c, atr):
+        """FBL-BT01: walk candle i along the declared price path (path_points) and fire every intrabar event in path order.
+        A level set or recomputed at some point of the path (basket TP after a safety order, next pyramid level, a raised
+        stop) can only be reached by the price moves AFTER that point. Inside one monotonic leg, levels fire in price order.
+        Returns True when the position was fully closed (the caller removes it)."""
+        nonlocal eq
+        m, cfg, sd = sl['m'], sl['cfg'], p['side']
+        RUN = m.get('runner'); TTP = m.get('ttp'); TPS = sl['tps']; py = m.get('pyramid')
+        fav_reached = lambda lvl, x: sd * (x - lvl) >= 0     # price x at / through a favourable level
+        adv_reached = lambda lvl, x: sd * (lvl - x) >= 0     # price x at / through an adverse level (safety order, stop)
+        blocked_ = dict(dca=False, add=False)                # an add refused by a gate is not retried in this candle
+
+        def adverse_leg(a_, b_, first):
+            """Price moves against the position from a_ to b_: DCA safety orders and a stop raised earlier in this candle,
+            in the order price meets them (the stop as it stood at the open was already checked against the whole candle)."""
+            nonlocal eq
+            while True:
+                cand = []
+                if 'dca' in m and not blocked_['dca'] and p['dca'] < len(p['levels']) and adv_reached(p['levels'][p['dca']], b_):
+                    cand.append((sd * p['levels'][p['dca']], 0, 'dca'))
+                if pessimistic and not first and adv_reached(p['stop'], b_):
+                    cand.append((sd * p['stop'], 1, 'stop'))
+                if not cand: return False
+                ev = max(cand)[2]                            # first level met on the way (tie: the stop - conservative)
+                if ev == 'stop':
+                    px = p['stop'] if sd * (a_ - p['stop']) >= 0 else a_       # already through it -> filled where price is
+                    close(sl, s, p, px, 1, i, 'stop'); return True
+                lvl = p['levels'][p['dca']]; q = p['q0'] * p['w'][p['dca']]
+                lvl = min(lvl, a_) if sd == 1 else max(lvl, a_)              # gapped through the level -> filled where price is
+                if RR['btc_breaker'] and i <= breaker_until:                 # same breaker policy as live
+                    pol = RR['btc_breaker'].get('dca', 'pause')
+                    if pol == 'pause': blocked_['dca'] = True; continue
+                    if pol == 'half_size': q *= 0.5
+                if halted or notional(sl, i) + q * lvl > max_lev * eq * cfg['share']: blocked_['dca'] = True; continue
+                if rule_block(s, sd, q, lvl, 0.0, i, add=True): blocked_['dca'] = True; continue   # same add gate as live
+                p['avg'] = (p['avg'] * p['qty'] + lvl * q) / (p['qty'] + q); p['qty'] += q
+                eq -= q * lvl * FEE; p['realized'] -= q * lvl * FEE; p['dca'] += 1
+                p['qmax'] = max(p['qmax'], p['qty'])
+                p['tp'] = p['avg'] + sd * m['dca']['tp_atr'] * p['atr0']     # new basket TP: reachable only by later moves
+
+        def favourable_leg(a_, b_):
+            """Price moves in favour from a_ to b_: basket TP, pyramid adds, tp1, ladder, tp_r - in price order."""
+            nonlocal eq
+            while True:
+                cand = []
+                if 'dca' in m and np.isfinite(p['tp']) and fav_reached(p['tp'], b_):
+                    cand.append((sd * p['tp'], 0, 'tp', p['tp']))
+                if py and not blocked_['add'] and p['adds'] < py['n'] and fav_reached(p['next_add'], b_):
+                    cand.append((sd * p['next_add'], 1, 'add', p['next_add']))
+                if m.get('tp1_r') and not p['tp1']:
+                    lv = p['e0'] + sd * m['tp1_r'] * p['R']
+                    if fav_reached(lv, b_): cand.append((sd * lv, 2, 'tp1', lv))
+                if TPS:                                       # take-profit ladder: the first level not yet done
+                    k = next((k for k in range(len(TPS)) if k not in p['tps_done']), None)
+                    if k is not None:
+                        lv = p['e0'] + sd * TPS[k][0] * p['R']
+                        if fav_reached(lv, b_): cand.append((sd * lv, 3, 'lad', lv, k))
+                if m.get('tp_r') and not RUN and not TTP:
+                    lv = p['e0'] + sd * m['tp_r'] * p['R']
+                    if fav_reached(lv, b_): cand.append((sd * lv, 4, 'tpr', lv))
+                if not cand: return False
+                e = min(cand); ev, lv = e[2], e[3]           # first level met on the way
+                if ev == 'tp':
+                    if RUN:      # runner: bank part at the basket target, keep the rest at breakeven
+                        if close(sl, s, p, lv, RUN.get('dca_frac', 1.0), i, 'tp' if RUN.get('dca_frac', 1.0) >= 1 else 'tp1'):
+                            return True
+                        p['tp'] = np.inf * sd; p['tp1'] = True; p['dca'] = len(p['levels'])
+                        p['stop'] = max(p['stop'], p['avg'] * (1 + BE_BUF)) if sd == 1 else min(p['stop'], p['avg'] * (1 - BE_BUF))
+                        p['e0'], p['R'] = p['avg'], max(p['R'], abs(p['avg'] - p['stop']) or p['R'])
+                    else:
+                        close(sl, s, p, lv, 1, i, 'tp'); return True
+                elif ev == 'add':
+                    q = p['q0'] * py['frac']
+                    lvl = max(lv, a_) if sd == 1 else min(lv, a_)                # gapped through the add level -> filled where price is
+                    if halted or (RR['btc_breaker'] and i <= breaker_until) or notional(sl, i) + q * lvl > max_lev * eq * cfg['share']:
+                        blocked_['add'] = True; continue
+                    if rule_block(s, sd, q, lvl, q * max(0.0, sd * (lvl - p['stop'])), i, add=True): blocked_['add'] = True; continue
+                    p['avg'] = (p['avg'] * p['qty'] + lvl * q) / (p['qty'] + q); p['qty'] += q
+                    eq -= q * lvl * FEE; p['realized'] -= q * lvl * FEE; p['adds'] += 1
+                    p['qmax'] = max(p['qmax'], p['qty'])
+                    p['next_add'] += sd * py['step_r'] * p['R']
+                elif ev == 'tp1':
+                    p['tp1'] = True
+                    if close(sl, s, p, lv, m.get('tp1_frac', 0.5), i, 'tp1'): return True
+                elif ev == 'lad':
+                    p['tps_done'].add(e[4])
+                    if close(sl, s, p, lv, min(1.0, p['qmax'] * TPS[e[4]][1] / p['qty']), i, 'tp_ladder'): return True
+                else:
+                    close(sl, s, p, lv, 1, i, 'tp'); return True
+
+        pts = path_points(o, h, l, c, sd, worst=(pessimistic == 'worst'))
+        for k in range(len(pts)):
+            a_, b_ = pts[max(0, k - 1)], pts[k]               # k = 0: the open itself (gaps through levels)
+            mv = sd * (b_ - a_)
+            if (k == 0 or mv < 0) and adverse_leg(a_, b_, k == 0): return True
+            if (k == 0 or mv > 0) and favourable_leg(a_, b_): return True
+            p['best'] = max(p['best'], b_) if sd == 1 else min(p['best'], b_)
+            # stops ratchet after each LEG of the path (a zero-length leg too, e.g. open == high), not at the bare open:
+            # a trail moved only by the fresh ATR (atr[i-1]) takes effect after the first leg, as before FBL-BT01
+            if k: ratchet(m, p, atr)
+        return False
+
     for i in idx:
         if days[i] != day:
             day, halted = days[i], False
@@ -322,95 +464,15 @@ def run(book, sleeves, start=500.0, max_lev=10.0, daily_halt=0.08, t0=None, t1=N
                 # ATR of the last CLOSED candle: candle i's own ATR contains its future high/low (the live engine cannot know it)
                 o, h, l, c, atr = a['o'][i], a['h'][i], a['l'][i], a['c'][i], a['atr'][i - 1]
                 eq -= p['qty'] * c * FPB; p['realized'] -= p['qty'] * c * FPB
-                fav, adv = (h, l) if sd == 1 else (l, h)          # favourable / adverse extreme
-                hit = lambda lvl, x: (x >= lvl) if sd == 1 else (x <= lvl)
-                stop_open = p['stop']
-                # 1) stop
+                # 1) stop as it stood at the open, against the WHOLE candle, before anything else (conservative convention,
+                #    kept: a stop and a target that both existed at the open and are both inside the candle -> the stop)
                 if (o <= p['stop']) if sd == 1 else (o >= p['stop']):
                     close(sl, s, p, o, 1, i, 'stop'); del sl['pos'][s]; continue
                 if (l <= p['stop']) if sd == 1 else (h >= p['stop']):
                     close(sl, s, p, p['stop'], 1, i, 'stop'); del sl['pos'][s]; continue
-                # 2) DCA safety orders + basket TP
-                if 'dca' in m:
-                    while p['dca'] < len(p['levels']) and ((l <= p['levels'][p['dca']]) if sd == 1 else (h >= p['levels'][p['dca']])):
-                        lvl = p['levels'][p['dca']]; q = p['q0'] * p['w'][p['dca']]
-                        lvl = min(lvl, o) if sd == 1 else max(lvl, o)              # gapped through the level -> filled at the open
-                        if RR['btc_breaker'] and i <= breaker_until:                             # same breaker policy as live
-                            pol = RR['btc_breaker'].get('dca', 'pause')
-                            if pol == 'pause': break
-                            if pol == 'half_size': q *= 0.5
-                        if halted or notional(sl, i) + q * lvl > max_lev * eq * cfg['share']: break
-                        if rule_block(s, sd, q, lvl, 0.0, i, add=True): break                  # same add gate as live
-                        p['avg'] = (p['avg'] * p['qty'] + lvl * q) / (p['qty'] + q); p['qty'] += q
-                        eq -= q * lvl * FEE; p['realized'] -= q * lvl * FEE; p['dca'] += 1
-                        p['qmax'] = max(p['qmax'], p['qty'])
-                        p['tp'] = p['avg'] + sd * m['dca']['tp_atr'] * p['atr0']
-                    if hit(p['tp'], fav):
-                        if RUN:      # runner: bank part at the basket target, keep the rest at breakeven
-                            if close(sl, s, p, p['tp'], RUN.get('dca_frac', 1.0), i, 'tp' if RUN.get('dca_frac', 1.0) >= 1 else 'tp1'):
-                                del sl['pos'][s]; continue
-                            p['tp'] = np.inf * sd; p['tp1'] = True; p['dca'] = len(p['levels'])
-                            p['stop'] = max(p['stop'], p['avg'] * (1 + BE_BUF)) if sd == 1 else min(p['stop'], p['avg'] * (1 - BE_BUF))
-                            p['e0'], p['R'] = p['avg'], max(p['R'], abs(p['avg'] - p['stop']) or p['R'])
-                        else:
-                            close(sl, s, p, p['tp'], 1, i, 'tp'); del sl['pos'][s]; continue
-                # 3) pyramiding
-                if 'pyramid' in m:
-                    py = m['pyramid']
-                    while p['adds'] < py['n'] and hit(p['next_add'], fav):
-                        q = p['q0'] * py['frac']; lvl = p['next_add']
-                        lvl = max(lvl, o) if sd == 1 else min(lvl, o)              # gapped through the add level -> filled at the open
-                        if halted or (RR['btc_breaker'] and i <= breaker_until) or notional(sl, i) + q * lvl > max_lev * eq * cfg['share']: break
-                        if rule_block(s, sd, q, lvl, q * max(0.0, sd * (lvl - p['stop'])), i, add=True): break
-                        p['avg'] = (p['avg'] * p['qty'] + lvl * q) / (p['qty'] + q); p['qty'] += q
-                        eq -= q * lvl * FEE; p['realized'] -= q * lvl * FEE; p['adds'] += 1
-                        p['qmax'] = max(p['qmax'], p['qty'])
-                        p['next_add'] += sd * py['step_r'] * p['R']
-                # 4) partial TP / breakeven / full TP
-                if m.get('tp1_r') and not p['tp1'] and hit(p['e0'] + sd * m['tp1_r'] * p['R'], fav):
-                    close(sl, s, p, p['e0'] + sd * m['tp1_r'] * p['R'], m.get('tp1_frac', 0.5), i, 'tp1'); p['tp1'] = True
-                if TPS:                                                  # take-profit ladder (fractions of the full size)
-                    gone = False
-                    for k, (r_, f_) in enumerate(TPS):
-                        if k in p['tps_done']: continue
-                        lvl = p['e0'] + sd * r_ * p['R']
-                        if not hit(lvl, fav): break
-                        p['tps_done'].add(k)
-                        if close(sl, s, p, lvl, min(1.0, p['qmax'] * f_ / p['qty']), i, 'tp_ladder'): gone = True; break
-                    if gone: del sl['pos'][s]; continue
-                if m.get('be_r') and hit(p['e0'] + sd * m['be_r'] * p['R'], fav):
-                    p['stop'] = max(p['stop'], p['avg']) if sd == 1 else min(p['stop'], p['avg'])
-                if m.get('tp_r') and not RUN and not TTP and hit(p['e0'] + sd * m['tp_r'] * p['R'], fav):
-                    close(sl, s, p, p['e0'] + sd * m['tp_r'] * p['R'], 1, i, 'tp'); del sl['pos'][s]; continue
-                # 5) trailing (chandelier from best price)
-                p['best'] = max(p['best'], h) if sd == 1 else min(p['best'], l)
-                if m.get('trail_atr'):
-                    cand = p['best'] - sd * m['trail_atr'] * atr
-                    p['stop'] = max(p['stop'], cand) if sd == 1 else min(p['stop'], cand)
-                # 5a) trailing take-profit: from at_r R on, the stop follows dev_pct % behind the best price
-                if TTP and p['R'] > 0 and sd * (p['best'] - p['e0']) / p['R'] >= TTP.get('at_r', 2.0):
-                    cand = p['best'] * (1 - sd * TTP.get('dev_pct', 3.0) / 100)
-                    p['stop'] = max(p['stop'], cand) if sd == 1 else min(p['stop'], cand)
-                # 5b) runner: ratchet the stop behind the best R reached (breakeven first, then lock profit in steps)
-                if RUN and p['R'] > 0:
-                    bestR = sd * (p['best'] - p['e0']) / p['R']
-                    if bestR >= RUN.get('be_r', 2.0):
-                        be = p['avg'] * (1 + sd * BE_BUF)
-                        p['stop'] = max(p['stop'], be) if sd == 1 else min(p['stop'], be)
-                    lock = np.floor(bestR / RUN.get('step_r', 99)) * RUN.get('step_r', 99) - RUN.get('gap_r', 99)
-                    if RUN.get('giveback') and bestR >= RUN.get('gb_from', 4.0):
-                        lock = max(lock, bestR * (1 - RUN['giveback']))
-                    if lock > 0:
-                        lv = p['e0'] + sd * lock * p['R']
-                        p['stop'] = max(p['stop'], lv) if sd == 1 else min(p['stop'], lv)
-                # 5c) a stop raised inside this candle can already have been hit by this candle's adverse extreme
-                # candle path: green = open->low->high->close, red = open->high->low->close. A stop raised at the favourable
-                # extreme is hit if the adverse extreme comes AFTER it, or if the close is already beyond it.
-                adverse_after = (c < o) if sd == 1 else (c > o)
-                crossed = ((l <= p['stop']) if sd == 1 else (h >= p['stop'])) if (pessimistic == 'worst' or adverse_after) else \
-                          ((c <= p['stop']) if sd == 1 else (c >= p['stop']))
-                if pessimistic and p['stop'] != stop_open and crossed:
-                    close(sl, s, p, p['stop'], 1, i, 'stop'); del sl['pos'][s]; continue
+                # 2-5) every intrabar event (DCA fills, basket TP, pyramid adds, tp1 / ladder / tp_r, breakeven and trailing
+                # ratchets, a stop raised inside this candle) in the order of the declared price path - see path_points()
+                if walk_path(sl, s, p, i, o, h, l, c, atr): del sl['pos'][s]; continue
                 # 6) signal / time exits at close
                 ex = sl['sigs'][s]['lx' if sd == 1 else 'sx'][i]
                 if RUN:

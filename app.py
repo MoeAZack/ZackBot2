@@ -51,7 +51,7 @@ log = logging.getLogger('zackbot')
 
 import strategies as S          # noqa: E402
 import backtest as BT           # noqa: E402
-from engine import Engine, PRESETS, TOP40, CORE8, TF_SEC, MANUAL_MAX_RISK, save_json, next_reset_utc   # noqa: E402
+from engine import Engine, PRESETS, TOP40, CORE8, TF_SEC, MANUAL_MAX_RISK, save_json, next_reset_utc, UNVERIFIED_BT01   # noqa: E402
 from binance_client import Futures, MAINNET   # noqa: E402
 import grid as GRID             # noqa: E402
 import lab as LAB               # noqa: E402
@@ -374,6 +374,8 @@ def research():
             out[name] = pd.read_csv(p).fillna('').to_dict('records')
     p = os.path.join(BUNDLE, 'research', 'lead_traders.json')
     if os.path.exists(p): out['lead_traders'] = json.load(open(p))
+    if out:   # FBL-BT01 (label only): results with a DCA slot predate the backtester's intrabar path fix
+        out['unverified'] = dict(label=UNVERIFIED_BT01, applies_to='every row that includes a DCA (dca_dip) slot')
     return out
 
 

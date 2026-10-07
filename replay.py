@@ -3,7 +3,8 @@
 The LIVE engine (engine.Engine, unchanged) is driven candle by candle against a simulated Binance; the backtester runs the
 same slots on the same candles. Every closed position is matched by (strategy, coin, side, entry candle) and compared.
 
-Intrabar path = the backtester's convention (green open->low->high->close, red open->high->low->close), walked in `steps`
+Intrabar path = the backtester's convention (backtest.path_points: green open->low->high->close, red open->high->low->close,
+doji = worst case for the side held on that coin), walked in `steps`
 small moves per leg so adds/stops trigger near their level, as the live bot does with its 8-second price checks.
 
 Metrics (release targets proposed by the independent reviewer, 2026-10-05):
@@ -121,9 +122,14 @@ def run_replay(raw, sleeves, t0, steps=6, start=500.0, tf_sec=14400, quiet=True,
             W.mark.update({s: D[s].o[i + 1] for s in syms})
             eng.cycle(tf)
             j = i + 1
-            legs = [{s: (D[s].l[j] if D[s].c[j] >= D[s].o[j] else D[s].h[j]) for s in syms},
-                    {s: (D[s].h[j] if D[s].c[j] >= D[s].o[j] else D[s].l[j]) for s in syms},
-                    {s: D[s].c[j] for s in syms}]
+            # FBL-BT01: the backtester's path policy (backtest.path_points). A doji takes the worst-case path of the side
+            # held on that coin (long: high first); with no lot, or both sides held, it keeps the green order
+            held = {}
+            for l_ in eng.state['lots'].values(): held.setdefault(l_['symbol'], set()).add(1 if l_['side'] == 'LONG' else -1)
+            pth = {s: B.path_points(D[s].o[j], D[s].h[j], D[s].l[j], D[s].c[j], next(iter(held[s])))
+                   if len(held.get(s, ())) == 1 else B.path_points(D[s].o[j], D[s].h[j], D[s].l[j], D[s].c[j], 1)
+                   if D[s].c[j] != D[s].o[j] else (D[s].o[j], D[s].l[j], D[s].h[j], D[s].c[j]) for s in syms}
+            legs = [{s: pth[s][1] for s in syms}, {s: pth[s][2] for s in syms}, {s: pth[s][3] for s in syms}]
             for li, tgt in enumerate(legs):
                 a = dict(W.mark)
                 for k in range(1, steps + 1):
