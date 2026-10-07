@@ -8,6 +8,19 @@
 but the approved exact-head testnet canary found that a process which starts during a Binance read outage cannot recover
 without another process restart.
 
+### Fix review at `6a07f72` (03:22 Africa/Cairo)
+
+The P1 design is now addressed: the same engine retries transient start-up failures with bounded jitter/backoff, observes
+the circuit's probe floor, keeps one incident open until positions and open orders were re-read, and does not retry an
+authentication refusal. The new focused Windows set passed **112/112**.
+
+**P2 — the supposedly capped retry calculation overflows after a long outage.** `_connect_failed()` evaluates
+`5.0 * 2 ** (n - 1)` before applying `min(60.0, ...)`. At `n=1025` this raises `OverflowError: int too large to convert to
+float`, confirmed directly with the exact expression. Once reached, retry scheduling itself fails and the engine can no
+longer recover automatically. At the 60–72 second cap this is reachable after roughly 17–20 hours of continuous start-up
+outage. Cap the exponent/count before exponentiation (or use a branch once the cap is reached) and add a regression test
+with a very large persisted/current retry count. Re-run the focused set; the runtime canary can wait for that small fix.
+
 ### P1 — startup outage permanently leaves the engine disconnected
 
 At 03:23:58 Africa/Cairo, installed build `20261007-031714` was restarted in PAPER mode with the exact-TESTNET-only
