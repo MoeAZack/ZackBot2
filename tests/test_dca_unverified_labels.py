@@ -1,6 +1,7 @@
 """AUD-06a (owner decision 2026-10-07): DCA profile numbers are kept but relabelled UNVERIFIED everywhere they are shown
 (profile cards, notes, research tab). They predate the FBL-BT01 backtester fix; nothing about the slots changes."""
 import os, re, shutil, subprocess, json
+import pytest
 import engine as E
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -131,3 +132,19 @@ def test_panel_unvtag_semantics_in_node():
     out = subprocess.run([node, '-e', js], capture_output=True, text=True, timeout=30)
     assert out.returncode == 0, out.stderr
     assert json.loads(out.stdout) == [True, True, True, False, False]
+
+
+@pytest.mark.parametrize('key', ['dca_dip_v2', 'DCA_dip', 'dca_dip ', 'dca', 'dca_dip2', 'renamed'])
+def test_single_strategy_rows_with_an_unknown_key_are_flagged(key):
+    """Cowork F1 (P3): results_single.csv was fail-OPEN for a renamed/variant key; unknown keys are flagged like the others."""
+    import app
+    assert app.research_uses_dca('results_single.csv', dict(key=key, name='x')) is True
+    assert app.research_uses_dca('results_single.csv', dict(key='ema_mom', name='DCA-ish name')) is False
+
+
+def test_static_research_notes_quoting_dca_figures_are_tagged():
+    """Cowork F2 (P3): the two Research note cards that quote DCA-derived figures carry the unverified tag themselves."""
+    html = open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'panel.html'), encoding='utf-8').read()
+    for head in ("Active's weak spot", 'Mixing uncorrelated slots'):
+        i = html.index(f'<b>{head}</b>')
+        assert 'unverified</span>' in html[i:i + 250], head
