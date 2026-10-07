@@ -554,16 +554,58 @@ class Futures:
 
     def open_stop_tags(self, symbol):
         """Tags of stop orders still open on the exchange for this symbol (classic + algo)."""
-        tags = set()
+        return {o['tag'] for o in self.open_stop_orders(symbol)}
+
+    def open_stop_orders(self, symbol, strict_algo=False):
+        """FBL-ENG01. Open orders of ONE symbol (classic + algo), two weight-1 reads, with the details the stop verifier
+        needs: dict(tag 'o:<orderId>'|'a:<algoId>', type, position_side, side, qty, stop_price, client_id, status).
+        Same failure contract as open_stop_tags: a failed or busy algo read RAISES (unknown is never 'no algo stops');
+        only an explicit "no such endpoint" (ALGO_UNSUPPORTED) means there are none. Missing detail fields are None
+        (a detail-less row is still a listed order: it can confirm a stop id, never be treated as a bot duplicate).
+        strict_algo=True (FBL-ENG01 review D2: the caller holds an algo stop on this symbol): an ALGO_UNSUPPORTED answer
+        raises too - "endpoint unknown" cannot prove that a known live algo stop is gone."""
+        def num(v):
+            try: return _finite_number(v, nonnegative=True)
+            except (TypeError, ValueError): return None
+        out = []
         for o in self._req('GET', '/fapi/v1/openOrders', dict(symbol=symbol), signed=True) or []:
-            tags.add(f"o:{o['orderId']}")
+            out.append(dict(tag=f"o:{o['orderId']}", type=o.get('type'), position_side=o.get('positionSide'), side=o.get('side'),
+                            qty=num(o.get('origQty')), stop_price=num(o.get('stopPrice')), client_id=o.get('clientOrderId'),
+                            status=o.get('status')))
         try:
             r = self._req('GET', '/fapi/v1/openAlgoOrders', dict(symbol=symbol), signed=True)
             for o in (r.get('orders', r) if isinstance(r, dict) else r) or []:
-                if isinstance(o, dict) and 'algoId' in o: tags.add(f"a:{o['algoId']}")
+                if isinstance(o, dict) and 'algoId' in o:
+                    out.append(dict(tag=f"a:{o['algoId']}", type=o.get('orderType'), position_side=o.get('positionSide'),
+                                    side=o.get('side'), qty=num(o.get('quantity')), stop_price=num(o.get('triggerPrice')),
+                                    client_id=o.get('clientAlgoId'), status=o.get('algoStatus')))
         except BinanceError as e:                        # unknown algo-stop state is NOT "no algo stops" (T05b review):
-            if isinstance(e, ExchangeUnavailable) or e.code not in ALGO_UNSUPPORTED: raise
-        return tags                                      # only an explicit "no such endpoint" means no algo stops
+            if strict_algo or isinstance(e, ExchangeUnavailable) or e.code not in ALGO_UNSUPPORTED: raise
+        return out                                       # only an explicit "no such endpoint" means no algo stops
+
+    def stop_status(self, symbol, tag):
+        """FBL-ENG01. Direct status lookup of ONE stop by its tag (weight 1), for the stop verifier when a recorded stop is
+        missing from the open-order list: 'o:<orderId>' / 'c:<clientOrderId>' -> GET /fapi/v1/order (status NEW, FILLED,
+        CANCELED, EXPIRED, ...); 'a:<algoId>' / 'ac:<clientAlgoId>' -> GET /fapi/v1/algoOrder (algoStatus NEW, TRIGGERING,
+        TRIGGERED, FINISHED, CANCELED, EXPIRED, ...). Returns the upper-case status, or None when Binance says the order
+        does not exist / the algo endpoint is unsupported / the answer has no status (= unknown, never 'gone').
+        Transient failures raise (the caller treats them as unknown)."""
+        kind, _, oid = (tag or '').partition(':')
+        if not oid: return None
+        try:
+            if kind in ('o', 'c'):
+                q = dict(symbol=symbol, orderId=oid) if kind == 'o' else dict(symbol=symbol, origClientOrderId=oid)
+                r = self._req('GET', '/fapi/v1/order', q, signed=True); st = r.get('status') if isinstance(r, dict) else None
+            elif kind in ('a', 'ac'):
+                q = dict(algoId=oid) if kind == 'a' else dict(clientAlgoId=oid)
+                r = self._req('GET', '/fapi/v1/algoOrder', q, signed=True); st = r.get('algoStatus') if isinstance(r, dict) else None
+            else:
+                return None
+        except BinanceError as e:
+            if isinstance(e, ExchangeUnavailable) or is_transient(e): raise
+            if e.code in (-2013,) + ALGO_UNSUPPORTED or 'not exist' in str(e.msg).lower(): return None
+            raise
+        return str(st).upper() if st else None
 
     def cancel_all(self, symbol):
         for path in ('/fapi/v1/allOpenOrders', '/fapi/v1/algoOpenOrders'):
