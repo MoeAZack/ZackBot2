@@ -1,0 +1,27 @@
+{
+  "schema": "zb-golden-ledger/1",
+  "note": "Append-only. Every entry carries prev_entry_sha = sha256(canonical(previous entry)); an expect change needs an entry with old_expect_sha / new_expect_sha.",
+  "entries": [
+    {
+      "id": "CORR-0000",
+      "type": "genesis",
+      "ticket": "AUD-07",
+      "finding": "AUD-08 design section 6",
+      "title": "Golden pack created (zb-golden/1 skeleton): first characterisation cases",
+      "cases": {
+        "G-GAP-STOP-L-01": {
+          "new_expect_sha": "b9fac1182619d5c6f201ff038c437e03632832948722ff712e43c2365ff031ad"
+        },
+        "G-STOP-L-01": {
+          "new_expect_sha": "d1589cb026b8dd55fa088a0ae67dbbe9fb52a68e626a215d8bb076ed67f9dd52"
+        }
+      },
+      "adapters_changed": [],
+      "rationale": "Runner proof: stop inside a candle (both legacy models pass) and a stop gapped at the open (backtest passes; the engine journal is a recorded known divergence, C13g).",
+      "evidence": "branch aud-07-exec-truth on b8c11c8",
+      "accepted_by": null,
+      "date_cairo": "2026-10-08",
+      "prev_entry_sha": null
+    }
+  ]
+}

@@ -1,0 +1,8 @@
+{
+  "schema": "zb-golden-manifest/1",
+  "note": "sha256 of each case's canonical expect block (goldenlib.schema.canonical). Change an entry only together with a CORRECTIONS.json entry.",
+  "cases": {
+    "G-GAP-STOP-L-01": "b9fac1182619d5c6f201ff038c437e03632832948722ff712e43c2365ff031ad",
+    "G-STOP-L-01": "d1589cb026b8dd55fa088a0ae67dbbe9fb52a68e626a215d8bb076ed67f9dd52"
+  }
+}

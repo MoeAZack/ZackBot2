@@ -1,0 +1,105 @@
+{
+  "schema": "zb-golden/1",
+  "id": "G-STOP-L-01",
+  "title": "Initial stop hit inside a red candle; exit at the stop with taker slippage (already correct in both legacy models)",
+  "behaviours": [
+    "stop"
+  ],
+  "side": "long",
+  "tf": "4h",
+  "clock": {
+    "start": "2024-01-01T00:00:00Z",
+    "entry_cycle_delay_s": 15
+  },
+  "costs": {
+    "model": "legacy",
+    "taker_fee": "0.0005",
+    "slip": "0.0002",
+    "funding_per_bar": "0"
+  },
+  "account": {
+    "equity": "500",
+    "max_leverage": 10,
+    "sizing": "legacy_replay"
+  },
+  "market": {
+    "SOLUSDT": {
+      "base": {
+        "kind": "flat",
+        "px": "100",
+        "wick": "0.5",
+        "n": 300
+      },
+      "bars": {
+        "282": [
+          "100",
+          "100.2",
+          "97.5",
+          "97.8"
+        ]
+      },
+      "atr": {
+        "kind": "computed"
+      }
+    }
+  },
+  "path_policy": "zb-path/1",
+  "slot": {
+    "id": "S1",
+    "sides": "long",
+    "risk": "0.02",
+    "share": "1",
+    "max_pos": 1,
+    "entry": {
+      "type": "market"
+    },
+    "stop": {
+      "atr": "2"
+    }
+  },
+  "signals": [
+    {
+      "bar": 279,
+      "sym": "SOLUSDT",
+      "kind": "enter_long"
+    }
+  ],
+  "faults": [],
+  "expect": {
+    "trades": [
+      {
+        "sym": "SOLUSDT",
+        "side": "LONG",
+        "i_in": 280,
+        "i_out": 282,
+        "exit": "STOP_HIT",
+        "R": "-1.0593"
+      }
+    ],
+    "final": {
+      "lots": 0
+    },
+    "tolerance": {
+      "R": "0.011",
+      "why": "the legacy engine journal books a filled exchange stop at the stop price without the 0.02 % exit slippage the exchange charges (engine.py:2284-2290, open question C13g): -1.0495 R vs -1.0593 R here"
+    }
+  },
+  "applies_to": {
+    "legacy_engine": "required",
+    "legacy_backtest": "required",
+    "newcore_sim": {
+      "status": "pending_adapter",
+      "reason": "NEWCORE NC-07/NC-08 adapter not built yet"
+    },
+    "newcore_live_sim": {
+      "status": "pending_adapter",
+      "reason": "NEWCORE NC-08 live-sim adapter not built yet"
+    }
+  },
+  "known_divergences": [],
+  "provenance": {
+    "created_at_sha": "b8c11c8",
+    "author": "AUD-07 slice 1 (Claude)",
+    "notes": "ATR = 1 exactly (flat base, wick 0.5). Entry 100.02 (open + slip), stop 98.02, qty 5 (risk 10 USDT / 2). Exit 98.02 x (1 - 0.0002); R = ((98.0004 - 100.02) x 5 - 5 x (98.0004 + 100.02) x 0.0005) / 10 = -1.0593."
+  }
+}
