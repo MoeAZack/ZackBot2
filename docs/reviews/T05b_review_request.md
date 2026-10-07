@@ -137,3 +137,65 @@
 
 - Targeted (`test_outage`, `test_t03c_t05b_interaction`, `test_leverage_auto`, `test_outage_final`): 235 passed.
 - Full suite (`tests/test_*.py`): 594 passed, 2 skipped, 1 failed (`test_verify` provenance: known, environment only).
+
+## Runtime canary finding (Codex, 2026-10-07, head 450f025) and fix
+
+**Finding (P1, confirmed by Codex's exact-head testnet canary):** a process started during a Binance read outage (`read_outage:180`) stayed disconnected forever. `App.start_engine()` caught the failed `eng.connect()` once, and `App.loop()` only runs when the engine is already connected, so no further connect, probe or reconnect was attempted.
+
+**Fix:**
+1. **Automatic start-up reconnect (`app.py`).**
+   - `_connect_failed()`: a transient failure (`Engine._exchange_down`: transient codes, 418/429/5xx, network errors, `ExchangeUnavailable`) opens the shared `exchange-down` incident (coalesced) and schedules a retry: 5 s doubling to 60 s, jitter ×0.8–1.2, never sooner than the circuit's `retry_in` (non-finite values are ignored), at most 72 s.
+   - `App.loop()` calls `_reconnect()` at the top of every pass while not connected. The retry runs the full `connect()` under the engine lock, in the same process.
+   - Non-transient failures (e.g. -2015 bad key) keep the old behaviour: error shown, no retry loop.
+   - Nothing is inferred from a failed read. Rules, positions and stops are not assumed, and the loop stays idle until connect succeeds.
+2. **The hedge-mode check no longer swallows an outage (`engine.connect`).** An unreachable Binance now fails the whole connect, which is then retried. Non-transient hedge answers are still warnings only.
+3. **Recovery requires positions AND protective orders (`engine._after_confirmed` → `_stops_reconfirmed`).**
+   - The `exchange-down` incident closes only after the reconcile re-read positions AND open orders were read once for every held symbol with a stop.
+   - If any open-orders read fails, the incident stays open and is retried next pass.
+   - A recorded stop id missing from the open orders gets a keyed `stop-unseen|SYM|SIDE` incident. Nothing is changed and no order is sent; the existing reconcile still decides fills vs resize from the position size.
+   - The recovery line now reads "... positions re-read and reconciled, stops re-confirmed".
+   - The earlier test `test_the_recovery_line_never_claims_stops_were_read` is updated to this stricter rule: with tags unreadable there is no recovery line; after they heal, the recovery line follows.
+   - Connect success alone never closes the incident.
+
+**Tests (`tests/test_t05b_startup_outage.py`, 12; 7 first, 5 more from the adversarial pass below):**
+- **Real start and loop, read_outage active:** the REAL `App.start_engine()` and REAL `App.loop()` run with the real `Futures` client, the shared circuit and the exact-TESTNET `read_outage:180` injector, on an injected transport and clock, with a lot and without one. The test checks:
+  - start-up fails safely with one incident and zero network calls;
+  - inside the window: 2–7 backed-off retries, lots unchanged, one coalesced line, no writes;
+  - after the window: automatic recovery in the same process and engine object (no restart), with rules and hedge loaded;
+  - lots identical (quantities and stop ids), no POST/DELETE at any point;
+  - positionRisk and openOrders re-read before the single recovery line ("account readable" when nothing is held).
+- Connect succeeds but positions stay unreadable → the incident stays open; lots unchanged.
+- A non-transient connect error is not retried (no exchangeInfo hammering).
+- The retry schedule is bounded, respects the circuit probe floor, ignores nan/inf/garbage, and keeps jitter bounded.
+- A hedge check outage fails the connect; a non-transient hedge answer is still a warning.
+- Recovery with a stop missing from open orders → `stop-unseen` reported, nothing changed, only the read sent; open orders unreadable → not recovered.
+
+**Internal adversarial pass on the fix (independent verifier, repros kept as tests):**
+
+| # | Finding | Fix |
+|---|---|---|
+| R1 (P2) | Settings saved while the loop was inside `_reconnect`: `start_engine` swapped the engine after the lock was released, and the loop finished that pass on the OLD (now connected) engine (reconcile/manage/equity with old keys; could save state over the new engine's file). | `_reconnect` returns if the engine was replaced while it waited for the lock, and the loop drops the old engine for the rest of the pass (`if self.engine is not e: e = None`). |
+| R2 (P3) | A non-transient open-orders failure kept `exchange-down` open with no explanation. | It now goes to the keyed `open-orders\|SYM` incident (the same key reconcile uses), and recovery still waits. |
+| R3 (P3) | An outage that ended in a refused key (-2015) left `exchange-down` open forever. | The non-transient branch closes it ("Binance answering again - connect refused: ..."). The error stays shown and nothing is retried. |
+| R4 (P3) | A lot with no stop yet made the line claim "stops re-confirmed". | The line adds "(N lot(s) still waiting for a stop - being placed)". Manage's existing retry places it. |
+| R5 | `stop-unseen` never closed. | Closed when the stop is seen among open orders again. |
+| T | One assertion always passed (`index < len`). | The test now records the call count at the moment `exchange-down` is resolved and requires an openOrders read before it. |
+
+**Not changed (noted):**
+- `_reconnect` holds the engine lock across the connect, like `start_engine`, so panel reads can wait up to one connect.
+- A 200 response with a non-JSON body (-1200) or a malformed exchangeInfo is non-transient and is not retried. That is the old behaviour.
+- During a retry the panel shows Exchange "error" with the retrying text.
+
+**Mutation proof: 15/15 caught.** The first 10:
+- loop without reconnect;
+- no retry scheduled;
+- recovery without the stop re-read;
+- hedge outage swallowed;
+- no 60 s cap;
+- no overall cap;
+- incident resolved on connect alone;
+- circuit floor ignored;
+- a stop-read failure skipped instead of blocking recovery;
+- every connect error treated as non-transient.
+
+Plus 5 for the adversarial-pass fixes: old engine kept after replacement; refused-key does not close the incident; no "waiting for a stop" note; stop-unseen never closed; a non-transient stop-read error not explained.
