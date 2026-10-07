@@ -150,3 +150,36 @@ def test_replay_with_step_1_rules_keeps_engine_and_exchange_in_step(monkeypatch)
     assert r['mismatch'] == {} and r['metrics']['trades_engine'] > 0, (r['mismatch'], r['metrics'])
     assert not [m for m in errs if 'failed' in m], errs[:3]
     assert r['metrics']['stops'] == r['metrics']['lots']
+
+
+# ---------------------------------------------------------------- Codex review (028f2ca): the no-lot / untracked boundary
+def _orphan_engine(have, mark=120_000.0, resting=0.0):
+    """No engine lot on BTC LONG; Binance holds `have` (step 0.001, min qty 0.001, min notional $5)."""
+    e, _ = mk_engine()
+    e.trade.mark['BTCUSDT'] = mark; e.marks = e.trade.marks()
+    e.trade.pos[('BTCUSDT', 'LONG')] = have
+    if resting:
+        e.state.setdefault('resting_entries', {})['r1'] = dict(symbol='BTCUSDT', side='LONG', qty=resting)
+    return e
+
+
+def test_an_orphan_of_exactly_one_step_above_min_notional_is_reported():
+    """0.001 BTC at $120,000 = a tradable $120 position with no lot and no bot stop: it must be reported as untracked."""
+    e = _orphan_engine(0.001)
+    e.reconcile(500); e.reconcile(500)                                    # the existing two observations
+    assert e.untracked.get('BTCUSDT|LONG') == pytest.approx(0.001), e.untracked
+
+
+def test_a_one_step_orphan_below_min_notional_is_dust_and_ignored():
+    e = _orphan_engine(0.001, mark=100.0)                                  # $0.10 - below the $5 minimum: dust
+    e.reconcile(500); e.reconcile(500)
+    assert not e.untracked
+
+
+def test_a_filled_one_step_resting_entry_is_not_an_orphan():
+    e = _orphan_engine(0.001, resting=0.001)                              # a maker entry filled before its lot exists
+    e.reconcile(500); e.reconcile(500)
+    assert not e.untracked
+    e.trade.pos[('BTCUSDT', 'LONG')] = 0.002                              # one step MORE than the resting order: real
+    e.reconcile(500); e.reconcile(500)
+    assert e.untracked.get('BTCUSDT|LONG') == pytest.approx(0.002)
