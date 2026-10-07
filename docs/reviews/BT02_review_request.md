@@ -2,6 +2,26 @@
 
 Local branch `bt02-exchange-filters`, base `fbl-bt01-v2` (938086f, BT01 incl. the Codex round-1 fix). Not pushed.
 
+## Codex round 1 fixes (trust gate) - supersedes the snapshot / placeholder notes below
+
+- **P1-A** `app.run_backtest_job` applies exchange rules only through `feasibility.trusted_rules(snap, state, env)`: rules
+  are passed to `backtest.run` ONLY when `snapshot_state == 'ok'` for the selected environment (testnet, or mainnet when
+  the engine is live). Any other state (missing, unverified, file import, stale, no time, invalid, wrong environment,
+  `exchange_rules: 'off'`) runs `exchange_rules=None` (legacy floor) and the result reports `rules_applied: false`,
+  `execution_realistic: false`, `rules_reason`; the panel says "Exchange rules NOT applied ... not execution-realistic"
+  with the capture command. Lab / research / study runs never load rule files (legacy floor); `replay.run_replay` takes
+  rules only as an explicit exploratory argument. Tests (`tests/test_bt02_trust.py`) prove every non-ok state gives
+  headline numbers byte-identical to the no-rules run, with a positive control (the same biting rules, trusted, change them).
+- **P1-A2** No rule data is shipped: `data/exchange_rules_testnet.json` (placeholder, materially wrong vs live testnet)
+  is deleted and removed from the installer `--add-data` list and the exe selftest. Missing file = `unavailable`.
+  Capture: connect the bot (the engine's own exchangeInfo, state ok), or `python exchange_rules.py fetch --env testnet
+  [--out %LOCALAPPDATA%\ZackBot\exchange_rules_testnet.json]` (the app looks in `%LOCALAPPDATA%\ZackBot` first, then
+  `data/` next to app.py). The preset table below was computed with the deleted placeholder and is obsolete.
+- **P2-A** `exchange_rules.build_file` (file import) is never trusted: `verified=false`, `provenance='file'`, capture time
+  = the file's `serverTime`, else `--captured-at`, else none (never the current clock); the CLI prints a stderr warning.
+  Only `fetch` (direct GET, `provenance='fetch'`) and the engine's connection (`provenance='engine'`) can be `ok`;
+  `snapshot_state` returns `unverified` for any other provenance even with `verified=true`. No override flag.
+
 ## The defect
 
 `backtest.py` sized fractional quantities and only applied a notional floor (`MIN_NOTIONAL`: BTC 50, ETH 20, LINK 20,
@@ -57,8 +77,16 @@ It never returns a quantity above its input; a rule of `None` gives `ok=None` / 
   boost 4h top 40 (852), calm 4h core 8 (265), active 1h core 8 (507): trades DataFrame and every curve point identical.
 - A symbol missing from a given snapshot also gets the legacy floor and is listed in `unknown_symbols` (the documented
   "no-op when no rule exists": synthetic test symbols keep their pre-BT02 behaviour, so causality parity is unaffected).
-- Not changed (follow-up if wanted): partial closes (tp1 / ladder / runner part) are not floored to the step in the
-  backtest; the engine floors them and closes the whole lot rather than leave dust.
+- Partial exits (Codex P1-C): with a rule for the symbol, tp1 / ladder levels / the runner's basket part go through
+  the engine's own close helpers, now shared in `feasibility.py` (`close_qty`, `remaining_qty`, `ladder_qty`, used by
+  `engine._market_close` / `_apply_close` / the ladder and by `backtest.close`): floored to the step; a partial that
+  floors to 0 closes nothing and is still marked done (engine: no order, `tp1` / `tps_done` / runner switch still set);
+  the ladder alone closes the whole remainder when the rest would be below minQty or minNotional at the trigger price
+  (dust judged on the unfloored rest, as the engine does). A partial that closes everything removes the position.
+  No rule (legacy / symbol not in the snapshot) and every full close: unchanged. Tests: `tests/test_bt02_partials.py`.
+- Not modelled, separate from engine parity: Binance exempts closing / reduce-only orders from MIN_NOTIONAL (minQty
+  and the step still apply), so a floored partial below minQty would be rejected by the venue. The engine does not
+  pre-check that and the backtest mirrors the engine. Unverified on testnet.
 
 `replay.run_replay(..., exchange_rules=None)`: with rules, the simulated exchange serves exactly these filters to the
 engine (`F.exchange_info_from_rules`) and the backtester gets the same rules. Default unchanged (step 1e-5).
@@ -86,8 +114,13 @@ engine (`F.exchange_info_from_rules`) and the backtester gets the same rules. De
   `size_check` at that capital) and **minimum risk %** at the current capital, later orders (pyramid add / safety order)
   too small, and a plain warning ("This profile cannot place any trade at 500 USDT ..." / "4 of 12 coin/slot pairs are
   below the Binance minimum order size ... Estimated capital for every pair to be tradable: about 6,504 USDT").
-  Prices: the engine's candle cache, else the candle files shipped with the app; ATR = median ATR/price of the last 180
-  candles x last close.
+  Prices: the engine's candle cache, else the candle files shipped with the app. **Codex fixes:** (P2-B) the status
+  sizes with the close / ATR of the latest closed candle (the engine's rule; still-forming candle excluded, a shipped
+  file's last row dropped), `atr_basis` / `atr_ts` / `price_ts` in the response, the 180-candle median ATR only as a
+  separate `planning_median_atr` estimate; (P1-B) a pair is fully tradable only when the first order AND every planned
+  DCA safety order / pyramid add pass: `entry_executable_pct` vs `plan_executable_pct` (`executable_pct` = plan),
+  `status` 'partial' when any add fails (never the green tag), `min_capital_all` covers every leg with
+  `min_capital_leg` / `min_capital_pair`. Tests: `tests/test_bt02_preflight_plan.py`.
 - Panel: profile cards show the status tag (green only for `ok` with verified rules), executable %, the warning and the
   top undersized coins with their minimum capital / risk. Backtest results show "Executable signals: X% (N placed, M
   skipped as below the Binance minimum order size)" and the most-skipped coins, flagged as an estimate when the rules
@@ -256,8 +289,8 @@ aggressive ~2,170, boost ~870. The difference is the rules and the ATR basis; a 
    verified file before merge.
 2. **Backtest default**: `backtest.run` keeps the legacy floor when no rules are passed (research scripts, lab, tests
    unchanged); the app's backtests pass the rules. Should `lab.py` jobs (optimizer / walk-forward) also pass them?
-3. **Partial closes** (tp1 / ladder / runner part) are not floored to the step in the backtest yet (the engine does, and
-   closes the whole lot rather than leave dust). Follow-up ticket or in BT02?
+3. **Partial closes**: done in BT02 (P1-C, above). Open: should the engine (and then the backtest) skip a partial that
+   floors below minQty instead of sending an order Binance would reject?
 4. **Preset numbers / labels**: the profile cards still quote the old research numbers; replace them with the BT01+BT02
    numbers after a verified snapshot, or add a "needs about X USDT" line from the preflight now?
 5. **Attempt counting**: per signal candle (repeated signals counted again) vs per distinct signal episode.
