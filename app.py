@@ -663,7 +663,8 @@ class App:
                     confirmed=dict(h.get('confirmed') or {}),
                     incidents=[{k: v for k, v in i.items() if k not in ('entry', 'logged')} for i in sorted(
                         [i for i in list((h.get('incidents') or {}).values()) if i.get('open')],   # snapshot: loop thread mutates
-                        key=lambda i: (i.get('key') != 'exchange-down', -ms_iso(i.get('last'))))][:20])
+                        key=lambda i: (i.get('key') != 'exchange-down', -ms_iso(i.get('last'))))][:20],
+                    audit=e.audit_summary() if hasattr(e, 'audit_summary') else None)
 
     def revs(self, e):
         hl = e.history[-1]['id'] if e.history else ''

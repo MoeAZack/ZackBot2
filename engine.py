@@ -11,6 +11,7 @@ import numpy as np
 import pandas as pd
 
 import strategies as S
+import trade_audit as TA
 from binance_client import Futures, MAINNET, TESTNET, BinanceError, AmbiguousOrder, ExchangeUnavailable, is_transient, new_cid, scrub, testnet_faults, testnet_read_outage
 from ai_filter import review
 import grid as GRID
@@ -20,6 +21,8 @@ from time import monotonic as _mono, sleep as _sleep   # T05 writer: real clock 
 FILL_QUEUE_MAX = 1000             # T05: telemetry records waiting for the writer; beyond this they are dropped (counted)
 FILL_WINDOW = 5000                # T05: the summary covers the last 5000 records written (rebuilt from disk at start)
 FILL_ROTATE_BYTES = 5_000_000     # T05: fills.jsonl -> fills.jsonl.1 above 5 MB (~16k records, so .1 always holds the window)
+AUDIT_ROTATE_LINES = 20_000       # T05a: trade_audit.jsonl -> .1 every 20k event lines (bounded files; restart reads .1 + current)
+AUDIT_ROTATE_BYTES = 16_000_000   # T05a: ... or at 16 MB, whichever comes first (checkpoint lines can be several KB each)
 
 
 _NUM_FIELDS = ('expected', 'actual', 'slip_bps', 'qty_req', 'qty_fill', 'wait_s')
@@ -44,8 +47,13 @@ class FillWriter:
     stops accepting, flushes (bounded), signals and joins; a writer that cannot be proven stopped stays registered
     (state 'closing', records dropped and counted) so a second writer is never started next to it."""
 
-    def __init__(self, path):
+    def __init__(self, path, rotate_lines=None, slim=None, rotate_bytes=None):
         self.path = path
+        self.rotate_lines = rotate_lines          # T05a: rotate by record count (the window always fits in .1 + current)
+        self.rotate_bytes = rotate_bytes          # T05a: ... and by size, whichever comes first (with rotate_lines only)
+        self.nbytes = 0                           # bytes in the current file (size at load, then per write)
+        self.slim = slim                          # T05a: keep only what the summary reads in the in-memory window
+        self.lines = 0                            # lines in the current file (counted at load, then per write)
         self.q = queue.Queue(maxsize=FILL_QUEUE_MAX)
         self.lock = threading.Lock()
         self.win = collections.deque(maxlen=FILL_WINDOW)
@@ -58,12 +66,16 @@ class FillWriter:
         for f in (self.path + '.1', self.path):
             try:
                 if not os.path.exists(f): continue
+                if f == self.path: self.nbytes = os.path.getsize(f)
                 with open(f, encoding='utf-8', errors='replace') as fh:
                     for ln in fh:
+                        if f == self.path: self.lines += 1
                         try: r = _fill_normalize(json.loads(ln))
                         except Exception: r = None
                         if r is None: self.ctr['invalid_records'] += 1
-                        else: self.win.append(r)
+                        else:
+                            w = self._slim(r)
+                            if w is not None: self.win.append(w)   # T05a: slim None = not part of the summary window
             except Exception as e:
                 log.warning(f'fill telemetry history not loaded from {f} ({e})')
 
@@ -84,9 +96,19 @@ class FillWriter:
             self.ctr['accepted'] += 1
             return True
 
+    def _slim(self, rec):
+        if self.slim is None: return rec
+        try: return self.slim(rec)
+        except Exception: return rec
+
     def write(self, rec):
-        if os.path.exists(self.path) and os.path.getsize(self.path) > FILL_ROTATE_BYTES: os.replace(self.path, self.path + '.1')
-        with open(self.path, 'a') as f: f.write(json.dumps(rec) + '\n')
+        ln = json.dumps(rec) + '\n'
+        if self.rotate_lines:
+            full = self.lines >= self.rotate_lines or (self.rotate_bytes and self.lines and self.nbytes + len(ln) > self.rotate_bytes)
+            if full and os.path.exists(self.path): os.replace(self.path, self.path + '.1'); self.lines = self.nbytes = 0
+        elif os.path.exists(self.path) and os.path.getsize(self.path) > FILL_ROTATE_BYTES: os.replace(self.path, self.path + '.1')
+        with open(self.path, 'a') as f: f.write(ln)
+        self.lines += 1; self.nbytes += len(ln)                       # json.dumps is ASCII-only: chars == bytes
 
     def _run(self):
         while True:
@@ -96,7 +118,10 @@ class FillWriter:
                 continue
             try:
                 self.write(rec)
-                with self.lock: self.win.append(rec); self.ctr['persisted'] += 1
+                w = self._slim(rec)
+                with self.lock:
+                    if w is not None: self.win.append(w)
+                    self.ctr['persisted'] += 1
             except Exception as e:
                 with self.lock: self.ctr['write_errors'] += 1
                 log.warning(f'fill telemetry not written ({e})')
@@ -145,14 +170,15 @@ class FillWriter:
 _FILL_WRITERS, _FILL_WRITERS_LOCK = {}, threading.Lock()
 
 
-def fill_writer(path):
+def fill_writer(path, rotate_lines=None, slim=None, rotate_bytes=None):
     """The process-wide writer for this telemetry file. A new one is made only when none exists or the old one has
-    provably stopped - never next to a writer that is still alive."""
+    provably stopped - never next to a writer that is still alive. rotate_lines (set on creation): rotate by record
+    count instead of FILL_ROTATE_BYTES; slim (set on creation): applied to records kept in the in-memory window."""
     path = os.path.abspath(path)
     with _FILL_WRITERS_LOCK:
         w = _FILL_WRITERS.get(path)
         if w is None or (w.closing and not w.alive()):
-            w = _FILL_WRITERS[path] = FillWriter(path)
+            w = _FILL_WRITERS[path] = FillWriter(path, rotate_lines, slim, rotate_bytes)
         return w
 
 
@@ -364,7 +390,7 @@ class Engine:
     def __init__(self, cfg, data_dir, dry=False):
         self.cfg, self.dir, self.dry = cfg, data_dir, dry
         self.F = {k: os.path.join(data_dir, f) for k, f in dict(state='state.json', trades='trades.csv', settings='settings.json', history='history.json', missed='missed.json',
-                                                                equity='equity.json', fills='fills.jsonl').items()}
+                                                                equity='equity.json', fills='fills.jsonl', audit='trade_audit.jsonl').items()}
         self.live = cfg.get('MODE') == 'live'
         self.lock = threading.RLock()
         self.trade = Futures(cfg.get('API_KEY', ''), cfg.get('API_SECRET', ''), MAINNET if self.live else TESTNET)
@@ -409,7 +435,12 @@ class Engine:
         self._lev_cool = {}                       # T03c: symbol -> time before which a refused leverage change is not re-sent
         self._brk = {}                            # T03c r1: symbol -> (fetched time, leverage bracket schedule), TTL LEV_BRACKET_TTL_S
         self._lev_exc_chk = {}                    # T03c r1: symbol -> last read-only leverage check while adds are paused
+        self._auditw = fill_writer(self.F['audit'], rotate_lines=AUDIT_ROTATE_LINES, slim=TA.slim_record, rotate_bytes=AUDIT_ROTATE_BYTES)   # T05a: audit events (same
+        #   non-blocking writer contract as T05 fills; the in-memory window keeps only slimmed final trade records)
+        self._audit_restored = set()                     # T05a: lots restored without tracking data (flagged late on first observe)
+        self._audit_start()
         self._btc1h = None; self._fund = {}; self._regime = None; self._rule_warns = []
+        self._sig_raw = {}                        # T05a: '<sleeve>|<symbol>' -> raw long/short flags before side masking
         self.health = dict(errors=collections.deque(maxlen=30), last_manage_ok=None, last_cycle_ok={}, manage_fail_streak=0,
                            last_sync=None, alerted=False, incidents={}, confirmed={})
         self.grids = GRID.GridManager(self)
@@ -658,6 +689,11 @@ class Engine:
                 if s not in al: continue
                 raw = S.signals(sl['key'], al[s], ctx[s], sl.get('params'), mask_sides=False)
                 d = al[s].iloc[-1]
+                try:                                           # T05a: RAW signals before side masking (observe only, kept apart)
+                    self._sig_raw[f"{sl['id']}|{s}"] = dict(le=bool(raw['le'][-1]), se=bool(raw['se'][-1]), sides=sl['sides'],
+                                                            le_m=bool(raw['le'][-1]) and sl['sides'] in ('long', 'both'),
+                                                            se_m=bool(raw['se'][-1]) and sl['sides'] in ('short', 'both'), time=str(d.t))
+                except Exception: pass
                 out[f"{sl['id']}|{s}"] = dict(le=bool(raw['le'][-1]) and sl['sides'] in ('long', 'both'),
                                               se=bool(raw['se'][-1]) and sl['sides'] in ('short', 'both'),
                                               lx=bool(raw['lx'][-1]), sx=bool(raw['sx'][-1]), close=float(d.c),
@@ -727,6 +763,120 @@ class Engine:
         """Per-kind counts, average/worst slippage (bps) and average wait over the last FILL_WINDOW written records, the
         10 most recent, and the telemetry's own health."""
         return self._fillw.summary()
+
+    # ------------------------------------------------------------ T05a: causal trade audit (observe only)
+    # Every audit step builds an event in memory and hands it to the non-blocking writer (put_nowait): no disk or network
+    # I/O in the mark loop or in an order path, no extra save_state(), and an audit failure is swallowed (and counted by the
+    # writer) - it can never delay or alter fills, stops, closes, reconciliation or the normal history persistence.
+    def _audit_emit(self, ev):
+        try:
+            if ev: self._auditw.emit(TA.clean(ev))
+        except Exception as e: log.debug(f'audit event not queued ({e})')
+
+    def _audit_start(self):
+        """Engine start (not the mark loop): continue each open lot's tracking from the newest excursion checkpoint when it
+        is ahead of state.json, open a restart tracking gap from the last known observation, and declare policies late
+        (coverage 'partial') for lots opened before T05a. Bounded: one pass over the two audit files. Also records, once,
+        when the audit first ran (trade_audit.jsonl.since): closed trades before it are 'legacy' in the coverage summary."""
+        try:
+            sp = self.F['audit'] + '.since'
+            if os.path.exists(sp): self._audit_since = open(sp, encoding='utf-8').read().strip()[:40] or None
+            else:
+                self._audit_since = now_utc().isoformat(timespec='seconds')
+                with open(sp, 'w', encoding='utf-8') as fh: fh.write(self._audit_since)
+        except Exception as e: log.debug(f'audit start time not recorded ({e})')
+        try:
+            lots = self.state.get('lots') or {}
+            if not lots: return
+            try: self._auditw.flush(1.0)                 # a settings restart shares the writer: let queued checkpoints land first
+            except Exception: pass
+            cks = TA.load_checkpoints((self.F['audit'] + '.1', self.F['audit']), lots.keys())
+            t = now_utc().isoformat(timespec='seconds')
+            for k, l in lots.items():
+                try:
+                    if k in cks and TA.restore_checkpoint(l, cks[k]): log.info(f'{k}: audit tracking continued from checkpoint {cks[k].get("t")}')
+                    elif k not in cks: TA.checkpoint_lost(l)     # its newest checkpoint rotated away: state.json tracking, flagged
+                    if TA.mark_restart(l) is False: self._audit_restored.add(k)
+                    if not isinstance(l.get('ap'), dict):
+                        ex = l.get('ex') if isinstance(l.get('ex'), dict) else {}
+                        d = TA.declare(l, t, late=True, why='lot open before T05a: policies declared at this restart', seq=(ex.get('n') or 0) - 0.5)
+                        if d is not None:
+                            l['ap'] = d
+                            self._audit_emit(TA.coverage_event(t, k, l, 'open lot upgraded to T05a: partial coverage'))
+                except Exception: pass
+        except Exception as e:
+            log.warning(f'audit start-up skipped ({e})')
+
+    def _audit_ctx(self):
+        """(missing, down_last) from T05b: samples are missing while the exchange-down incident is open or the trading
+        client's outage circuit is in 'outage'; down_last = that incident's last failed check (open or closed)."""
+        try:
+            inc = (self.health.get('incidents') or {}).get('exchange-down') or {}
+            missing = bool(inc.get('open')) or self.exchange_state().get('state') == 'outage'
+            return missing, inc.get('last')
+        except Exception:
+            return False, None
+
+    def _audit_fill(self, lot):
+        try:
+            key = next((k for k, v in self.state['lots'].items() if v is lot), None)
+            for ev in TA.fill_events(lot, key, FEE_EST): self._audit_emit(ev)
+        except Exception: pass
+
+    def _audit_cand(self, sl, sym, side, sg, decision, reason=None):
+        """A candidate funnel event for a signal that was taken / armed / placed as a maker order, a deferred terminal
+        outcome (maker finalize, slot removed), or a RAW signal hidden by the slot's sides (side_masked; emitted only
+        when the raw signal of this candle fired). Not-taken candidates otherwise come from miss()."""
+        try:
+            sid = sl['id'] if isinstance(sl, dict) else sl
+            raw = self._sig_raw.get(f"{sid}|{sym}")
+            if decision == 'side_masked':
+                if not (raw and raw.get('time') == sg.get('time') and (raw.get('le') or raw.get('se'))): return
+                side = 'LONG' if raw.get('le') else 'SHORT'
+            elif raw and raw.get('time') != sg.get('time'): raw = None    # a later candle's raw signal is not this candidate's
+            self._audit_emit(TA.funnel_event(now_utc().isoformat(timespec='seconds'), sid, sym, side, sg.get('time'), decision, reason, raw))
+        except Exception: pass
+
+    def _audit_opened(self, sl, sym, side, sg):
+        """After open_lot() returned True: 'taken' only if a lot exists now; a post-only maker order that is resting is
+        'order_placed' (its terminal 'taken' / 'not_taken' comes from _maker_finalize)."""
+        try:
+            placed = f"ME|{sl['id']}|{sym}|{side}" in (self.state.get('resting_entries') or {})
+            self._audit_cand(sl, sym, side, sg, 'order_placed' if placed else 'taken')
+        except Exception: pass
+
+    def _audit_hold(self, k, l, d, closing, ex, ex0):
+        try:
+            if d is None or not len(d): return
+            row = d.iloc[-1]
+            candle = dict(t=pd.Timestamp(row.t).isoformat(), h=float(row.h), l=float(row.l), c=float(row.c), tf_s=TF_SEC.get(l.get('tf')))
+            act = ('close_exit_signal' if ex else 'close_time_exit') if closing else 'hold'
+            self._audit_emit(TA.hold_eval(l, k, candle, now_utc().isoformat(timespec='seconds'), act, exit_signal=ex0,
+                                          runner_override=bool(ex0) != bool(ex), missing=self._audit_ctx()[0], fee_rate=FEE_EST))
+        except Exception: pass
+
+    def audit_summary(self):
+        """T05a: attribution over the trade-audit window (the audit writer's last FILL_WINDOW valid records, rebuilt from
+        trade_audit.jsonl(.1) at start; malformed lines are skipped and counted) plus the funnel histogram of the bounded
+        missed list. The window holds slimmed records (TA.slim_record) and the attribution is cached until the window or
+        the missed list changes, so /api/status polls stay cheap. Read-only and bounded; never raises."""
+        try:
+            w, ms, hs = self._auditw, self.missed, self.history
+            last = ms[-1] if ms else None
+            with w.lock: ctr, n, wl = dict(w.ctr), len(w.win), (w.win[-1] if w.win else None)
+            key = (ctr['invalid_records'], n, id(wl), len(ms), id(last), last.get('logged') if isinstance(last, dict) else None,
+                   len(hs), id(hs[-1]) if hs else None)
+            c = getattr(self, '_audit_cache', None)
+            if c is None or c[0] != key:                 # recomputed only when the window, missed or history changed
+                with w.lock: win = list(w.win)
+                a = TA.attribution(win + list(ms[-600:]))
+                a['coverage'] = TA.coverage(hs, win, getattr(self, '_audit_since', None))   # legacy / rotated / missing
+                c = self._audit_cache = (key, a)
+            out = dict(c[1])
+            out['telemetry'] = dict(ctr, window=FILL_WINDOW, in_window=n, queued=w.q.qsize())
+            return out
+        except Exception as e:
+            return dict(error=f'audit summary unavailable ({type(e).__name__})')
 
     @staticmethod
     def _fb_confirmed(lo):
@@ -875,6 +1025,7 @@ class Engine:
         lot['qty'] = max(0.0, self._rd(lot['qty'] - qty, r['step']))
         self.log_trade(time=now_utc().isoformat(timespec='seconds'), event=why, sleeve=lot['sleeve'], symbol=sym,
                        side=lot['side'], qty=qty, price=px, pnl=round(pnl, 4), equity=round(self.last_eq or 0, 2))
+        self._audit_fill(lot)                                      # T05a: cohort / runner events (memory + queue only)
         log.info(f"{why.upper()} {sym} {lot['side']} [{lot['sleeve']}] {qty} @ {px} pnl {pnl:+.2f}")
         return pnl
 
@@ -954,6 +1105,10 @@ class Engine:
                    move_pct=round(sd * (exit_avg - lot.get('entry0', lot['e0'])) / lot.get('entry0', lot['e0']) * 100, 2), exit_reason=why,
                    adds=lot.get('adds', 0), dca=lot.get('dca', 0), tp1=lot.get('tp1', False), manual=lot.get('manual', False),
                    fills=lot.get('fills', []))
+        try:                                             # T05a: causal trade audit record (observe only, non-blocking writer)
+            au = TA.close_record(lot, net, fee_rate=FEE_EST, path=TA.recorded_path(lot))
+            if au: au.update(kind='trade_audit', id=key, exit_reason=why, closed=rec['closed'], t=rec['closed']); self._audit_emit(au)
+        except Exception as e: log.warning(f'trade audit not recorded ({e})')
         self.history.append(rec); self.history = self.history[-3000:]
         save_json(self.F['history'], self.history)
         self.notify(f"{'✅' if net > 0 else '❌'} CLOSED {lot['side']} {lot['symbol']} [{lot['sleeve']}] {why} · PnL {net:+.2f} USDT ({rec['r']}R) · {rec['hours']}h")
@@ -965,6 +1120,11 @@ class Engine:
         rec = dict(candle=sg['time'], logged=now_utc().isoformat(timespec='seconds'), sleeve=sl['id'], strategy=sl.get('name', sl['id']),
                    symbol=sym, side=side, price=sg['close'], reason=reason)
         if kind: rec['kind'] = kind
+        try: rec.update(TA.reason_info(reason))                   # T05a funnel: stage/code(/detail), the text is unchanged
+        except Exception: pass                                   # audit never raises into a trading path
+        try: self._audit_emit(TA.funnel_event(rec['logged'], sl['id'], sym, side, sg['time'], 'warning' if kind == 'warning' else
+                                              (kind or 'not_taken'), reason, self._sig_raw.get(f"{sl['id']}|{sym}")))
+        except Exception: pass
         self.missed.append(rec)
         self.missed = self.missed[-600:]
         save_json(self.F['missed'], self.missed)
@@ -996,6 +1156,7 @@ class Engine:
         lot['fees'] = lot.get('fees', 0.0) + q * px * (FEE_EST if fee is None else fee)
         self.log_trade(time=now_utc().isoformat(timespec='seconds'), event=why, sleeve=lot['sleeve'], symbol=lot['symbol'],
                        side=lot['side'], qty=q, price=px, stop=lot['stop'], equity=round(self.last_eq or 0, 2))
+        self._audit_fill(lot)                                      # T05a: cohort event (memory + queue only)
         log.info(f"{why.upper()} {lot['symbol']} {lot['side']} [{lot['sleeve']}] +{q} @ {px} (avg {lot['avg']:.6g})")
 
     # ------------------------------------------------------------ fast loop: soft management on mark price
@@ -1031,6 +1192,7 @@ class Engine:
             if self.risk_rules_cfg()['btc_breaker']['mode'] == 'enforce':
                 try: self._breaker()                              # trips the pause (and the optional tighten) without waiting for a signal
                 except Exception as e: log.debug(f'breaker: {e}')
+            aud = self._audit_ctx()                                # T05a: T05b outage state -> missing samples
             for key in list(self.state['lots']):
                 lot = self.state['lots'].get(key)
                 if not lot: continue
@@ -1041,6 +1203,13 @@ class Engine:
                 tick = self.rules[lot['symbol']]['tick'] if lot['symbol'] in self.rules else 1e-8
                 ge = lambda lvl: sd * (m - lvl) >= 0           # price at/through a favourable level
                 if lot.get('pending'): continue                # waiting for the exchange to confirm an unanswered order
+                try:                                           # T05a: excursions, path, state, online policies (observe only)
+                    t_ = now_utc().isoformat(timespec='seconds')   # memory only: NO save_state / disk / network here; the
+                    rs = getattr(self, '_audit_restored', set())    # tracking state rides on the normal save cadence and a
+                    TA.observe(lot, m, t_, FEE_EST, restored=key in rs, missing=aud[0], down_last=aud[1])
+                    if isinstance(lot.get('ex'), dict): rs.discard(key)   # only once observe() really started tracking
+                    self._audit_emit(TA.checkpoint(lot, key, t_))  # bounded checkpoint event goes to the writer queue
+                except Exception: pass                         # audit never raises into a trading path
                 try:
                     if lot.get('force_close'):                 # a stop update found price already through the stop
                         self.close_lot(key, 'stop_crossed', m); changed = True; continue
@@ -1437,6 +1606,7 @@ class Engine:
                 sl = next((x for x in Sg['SLEEVES'] if x['id'] == l['sleeve']), None)
                 bars = (now_utc() - datetime.fromisoformat(l['opened'])).total_seconds() / TF_SEC[tf]
                 ex = sg and (sg['lx'] if l['side'] == 'LONG' else sg['sx'])
+                ex0 = bool(ex)                                         # T05a: the exit signal before the runner override
                 run = l['mgmt'].get('runner')
                 if run and d is not None and len(d):
                     sd_ = 1 if l['side'] == 'LONG' else -1; c_ = float(d.c.iloc[-1])
@@ -1446,7 +1616,9 @@ class Engine:
                         if ex: log.info(f"RUNNER {l['symbol']} [{l['sleeve']}] exit signal ignored - winning and trend still up")
                         ex = False
                     elif winning and run.get('trend_exit') and not trend_ok: ex = True
-                if ex or (l['mgmt'].get('max_bars') and not run and bars >= l['mgmt']['max_bars']) or (sl is None and False):
+                closing = ex or (l['mgmt'].get('max_bars') and not run and bars >= l['mgmt']['max_bars']) or (sl is None and False)
+                self._audit_hold(k, l, d, closing, ex, ex0)            # T05a: candle-close hold/close evaluation (observe only)
+                if closing:
                     try: self.close_lot(k, 'exit_signal' if ex else 'time_exit', sg['close'] if sg else None)
                     except Exception as e: self.err(f'exit {l["symbol"]} [{l["sleeve"]}] failed: {e} - stop stays in place, retried next cycle')
             # entries (every signal that is not taken is logged with the reason)
@@ -1456,7 +1628,9 @@ class Engine:
                 held = [l['symbol'] for l in st['lots'].values() if l['sleeve'] == sl['id']]
                 for s in self.sleeve_symbols(sl, include_off=True):
                     sg = sigs.get(f"{sl['id']}|{s}")
-                    if not sg or not (sg['le'] or sg['se']): continue
+                    if not sg or not (sg['le'] or sg['se']):
+                        if sg: self._audit_cand(sl, s, None, sg, 'side_masked')   # T05a: a raw signal the slot's sides hide
+                        continue
                     side = 'LONG' if sg['le'] else 'SHORT'
                     why = None
                     if not Sg['SYMBOLS_ON'].get(s, True): why = 'coin switched off'
@@ -1477,11 +1651,13 @@ class Engine:
                                 sg=dict(sg), tf=sl['tf'], created=time.time(),
                                 until=time.time() + int(te.get('max_bars', 3)) * TF_SEC.get(sl['tf'], 14400))
                             log.info(f"TRAIL ENTRY armed {s} {side} [{sl['id']}] rebound {te['dev_atr']} ATR from the extreme")
+                            self._audit_cand(sl, s, side, sg, 'armed_trailing')
                             held.append(s); continue
                     if why is None:
                         self.last_skip = ''
                         try:
                             if self.open_lot(sl, s, side, sg, frames.get(s), eq):
+                                self._audit_opened(sl, s, side, sg)     # T05a: 'taken', or 'order_placed' (maker)
                                 held.append(s); continue
                         except Exception as e:                     # one failed order never stops the other entries
                             self.err(f'entry {s} [{sl["id"]}] failed: {e}'); self.last_skip = f'order failed: {e}'
@@ -2001,6 +2177,10 @@ class Engine:
             lot['w'] = [g['dca']['scale'] ** k for k in range(1, g['dca']['n'] + 1)]
             lot['tp'] = fill + sd * g['dca']['tp_atr'] * atr
             lot['breaker_dca'] = self.risk_rules_cfg()['btc_breaker'].get('dca', 'pause')   # fixed for the life of this basket
+        try:                                                      # T05a: causal policies PREDECLARED at entry (observe only)
+            ap = TA.declare(lot, lot['opened'])
+            if ap is not None: lot['ap'] = ap
+        except Exception: pass
         self.state['lots'][key] = lot; self.save_state()          # recorded BEFORE the stop: a crash here can never orphan the position
         self._last_lot_key = key
         if not self._replace_stop(lot):
@@ -2250,7 +2430,10 @@ class Engine:
             def cancel(why):
                 pe.pop(k, None); log.info(f'TRAIL ENTRY {sym} {side} [{p["sleeve"]}] cancelled: {why}')
                 if sl: self.miss(sl, sym, side, sg, why)
-            if sl is None: pe.pop(k, None); changed = True; continue
+            if sl is None:
+                pe.pop(k, None); changed = True
+                self._audit_cand(p['sleeve'], sym, side, sg, 'not_taken', 'trailing entry cancelled: strategy slot removed')   # T05a
+                continue
             if time.time() > p['until']: cancel('trailing entry expired (no rebound in time)'); changed = True; continue
             blk = self.entry_block(sl, sym, side, sg=sg, skip_pending=k)
             if blk: cancel(f'trailing entry cancelled: {blk}'); changed = True; continue
@@ -2268,6 +2451,7 @@ class Engine:
             except Exception as e:
                 ok = False; self.err(f'trailing entry {sym} [{sl["id"]}] failed: {e}'); self.last_skip = f'order failed: {e}'
             if not ok: self.miss(sl, sym, side, sg, self.last_skip or 'order failed')
+            else: self._audit_opened(sl, sym, side, sg)          # T05a: terminal 'taken' (or 'order_placed' for a maker order)
         return changed
 
     # ------------------------------------------------------------ v3.1: maker (post-only) entries
@@ -2363,6 +2547,8 @@ class Engine:
             st = dict(fallback_skipped=no_fallback) if no_fallback and rem > 0 else {}   # fallback state, only from what actually happened
             ok = self._create_lot(plan, q, avg, maker_qty=q)
             lot = self.state['lots'].get(getattr(self, '_last_lot_key', None))
+            self._audit_cand(sl, rec['symbol'], rec['side'], plan['sg'], 'taken' if ok and lot else 'not_taken',   # T05a terminal
+                             None if ok and lot else (self.last_skip or 'maker lot not created'))
             if fallback and rem > 0:
                 blk = (self.entry_block(sl, rec['symbol'], rec['side'], manual=True)
                        or self._lev_exception_block(rec['symbol'], bool(plan.get('lev_exception')))) if ok and lot else None
@@ -2395,6 +2581,7 @@ class Engine:
                 except Exception as e:
                     st['fallback_failed'] = str(e)[:160]
                     if mrec: mrec.update(st)
+                    self._audit_cand(sl, rec['symbol'], rec['side'], plan['sg'], 'not_taken', f'order failed: {e}')   # T05a terminal
                     raise                                                # unchanged: the error propagates as before
                 lo = self._last_order or {}
                 if lo.get('pending'): st['fallback_pending'] = lo['pending']
@@ -2404,6 +2591,7 @@ class Engine:
                 if not ok and lo.get('rec'): st['fallback_note'] = (self.last_skip or 'lot not created')[:160]
                 if mrec: mrec.update(st)
                 if not ok: self.miss(sl, rec['symbol'], rec['side'], sg, self.last_skip or 'order failed')
+                else: self._audit_cand(sl, rec['symbol'], rec['side'], plan['sg'], 'taken')   # T05a terminal: fallback lot
             else:
                 self.miss(sl, rec['symbol'], rec['side'], sg, f'maker entry not filled; {no_fallback}' if no_fallback
                           else 'maker entry not filled (no market fallback)')

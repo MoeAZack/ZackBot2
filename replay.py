@@ -146,6 +146,8 @@ def run_replay(raw, sleeves, t0, steps=6, start=500.0, tf_sec=14400, quiet=True,
         if 'tmp' in locals():
             try: E.close_fill_writer(os.path.join(tmp, 'fills.jsonl'))   # T05: no telemetry thread left behind
             except Exception: pass
+            try: E.close_fill_writer(os.path.join(tmp, 'trade_audit.jsonl'))   # T05a: nor an audit writer thread
+            except Exception: pass
     cv = pd.Series([c for _, c in curve], index=[t for t, _ in curve])
     bk = B.Book({s: raw[s] for s in syms})
     def order(sl):   # same coin order as the live engine (sleeve_symbols) and the app's backtests: first signal in this order wins a free slot
