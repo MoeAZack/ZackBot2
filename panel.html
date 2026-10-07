@@ -487,6 +487,7 @@ tr.wrnrow td:first-child{box-shadow:inset 3px 0 0 var(--warn)}
     <div class="card"><h3>Closed trades <span class="r"><span id="dayChip"></span><span class="mute small">click a row for the fill-by-fill detail</span></span></h3>
       <div class="tbar"><span class="srch"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg><input id="trSearch" type="search" placeholder="Search coin, strategy, exit…" aria-label="Search closed trades"></span><span class="mute small" id="trCount"></span></div>
       <div class="tw" id="trTable"></div></div>
+    <div class="card" id="auditCard"><details id="auditDet"><summary><b>Trade audit</b> <span class="mute small">measurement only · failure classes, expectancy by segment, sample trades</span></summary><div id="auditBody" class="small" style="margin-top:8px"></div></details></div>
   </div>
   <div id="trOpen" style="display:none"><div class="card"><h3>Open trades</h3><div class="tw" id="openTable"></div></div></div>
   <div id="trMissed" style="display:none">
@@ -1197,7 +1198,19 @@ async function manualReview(){const s=$('m_sym').value,r=+$('m_risk').value,k=+$
 // ---------------- trades
 const sideTag=s=>`<span class="tag ${s==='LONG'?'t-long':'t-short'}">${s}</span>`;
 const rTxt=r=>r==null?'–':(r>0?'+':'')+(+r).toFixed(2).replace(/\.?0+$/,'')+'R';
-function renderTrades(){if(!D)return;const H=closedFiltered(),st=statsOf(H);
+// ---------------- T05a trade audit card (read-only; /api/status health.audit, also GET /api/audit_summary)
+const AUDF={never_green:'never green (net peak after fees never above 0)',green_to_red:'green to red (executable peak above 0, closed at a loss)',gave_back_gt_50pct_mfe:'gave back more than 50% of the peak',dca_into_trend:'DCA add against the trend',long_in_bear_regime:'long in a bear regime',short_in_bull_regime:'short in a bull regime'};
+const AUDD={strategy:'Strategy',side:'Side',symbol:'Coin',tf:'Timeframe',regime:'Regime at entry',dca:'DCA adds',runner:'Runner'};
+function renderAudit(){const el=$('auditBody');if(!el)return;const a=(D&&D.health&&D.health.audit)||null,sg=a&&a.segments;
+  if(!a||a.error||!sg){setHTML(el,`<div class="mute">${esc(a&&a.error||'No trade-audit summary yet.')}</div>`);return}
+  const n2=v=>v==null?'–':esc(String(v)),pc=v=>v==null?'–':esc((v*100).toFixed(0))+'%',ms=a.missed_short||{};
+  const fl=Object.entries(sg.flags||{}).map(([k,v])=>`<tr><td>${esc(AUDF[k]||k)}</td><td>${n2(v.n)}</td><td>${(v.samples||[]).map(x=>`<span class="tag t-mute" style="margin:1px">${esc(x)}</span>`).join('')}</td></tr>`).join('');
+  const seg=Object.entries(sg.by||{}).map(([d,rows])=>`<tr><td colspan="5"><b>${esc(AUDD[d]||d)}</b></td></tr>`+(rows||[]).slice(0,5).map(r=>`<tr><td>${esc(r.key)}</td><td>${n2(r.n)}</td><td>${pc(r.win_rate)}</td><td>${esc(susd(r.exp_usd))}</td><td>${r.exp_r==null?'–':esc(r.exp_r.toFixed(2))+'R'}</td></tr>`).join('')).join('');
+  setHTML(el,`<p class="t2">${n2(sg.trades)} audited closed trades in the audit window. Observe only: nothing here changes a trade. Expectancy = average net P&amp;L after fees per trade.</p>
+   <div class="tw"><table><thead><tr><th>Failure class</th><th>Trades</th><th>Sample audits</th></tr></thead><tbody>${fl}</tbody></table></div>
+   <p class="t2">Missed short opportunities since start: <b>${n2(ms.n)}</b>${Object.entries(ms.by_why||{}).map(([k,v])=>` · ${esc(k.replace(/_/g,' '))} ${n2(v)}`).join('')} <span class="mute">(counts only)</span></p>
+   <div class="tw"><table><thead><tr><th>Segment</th><th>Trades</th><th>Win rate</th><th>Expectancy</th><th>Avg R</th></tr></thead><tbody>${seg}</tbody></table></div>`)}
+function renderTrades(){if(!D)return;try{renderAudit()}catch(e){}const H=closedFiltered(),st=statsOf(H);
   const strat=[...new Set(CH.history.map(h=>h.sleeve).concat(D.settings.SLEEVES.map(s=>s.id)))];
   if($('trStrat').options.length!==strat.length+1){const v=$('trStrat').value;$('trStrat').innerHTML='<option value="">All strategies</option>'+strat.map(s=>`<option value="${esc(s)}">${esc(s)}${stratName(s)?' · '+esc(stratName(s)):''}</option>`).join('');$('trStrat').value=v}
   const cs=[...new Set(CH.history.map(h=>h.symbol))].sort();if($('trCoin').options.length!==cs.length+1){const v=$('trCoin').value;$('trCoin').innerHTML='<option value="">All coins</option>'+cs.map(s=>`<option value="${s}">${coin(s)}</option>`).join('');$('trCoin').value=v}
