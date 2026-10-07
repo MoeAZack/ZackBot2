@@ -380,10 +380,91 @@ def next_reset_utc():
     return (nxt - _egypt_offset(nxt)).replace(tzinfo=timezone.utc).isoformat(timespec='seconds')
 
 
-def save_json(path, obj):
-    tmp = path + '.tmp'
-    with open(tmp, 'w') as f: json.dump(obj, f, indent=2, default=str)
-    os.replace(tmp, path)
+SAVE_RETRY_S = (0.05, 0.1, 0.25, 0.5)   # AUD-05: os.replace on Windows fails with PermissionError while another process
+#                                         (antivirus, indexer, a viewer) holds the target - retried this long, then raised
+
+
+class CorruptFile(ValueError):
+    """AUD-05: a JSON file is present but empty, truncated, not JSON or of the wrong top-level type."""
+
+
+def _replace_retry(src, dst):
+    for d in SAVE_RETRY_S + (None,):
+        try:
+            os.replace(src, dst); return
+        except PermissionError:
+            if d is None: raise
+            _sleep(d)
+
+
+def _fsync_dir(d):
+    if os.name == 'nt': return                   # Windows cannot open a directory for fsync; NTFS journals the rename
+    try:
+        fd = os.open(d or '.', os.O_RDONLY)
+        try: os.fsync(fd)
+        finally: os.close(fd)
+    except OSError:
+        pass
+
+
+def _write_durable(path, data):
+    """AUD-05: write `data` to a temp file in the same folder, flush + fsync, then atomically replace `path`. A failure at any
+    point leaves the previous `path` exactly as it was (never a partially written target) and removes the temp file."""
+    tmp = f'{path}.{os.getpid()}-{threading.get_ident()}.tmp'
+    try:
+        with open(tmp, 'w', encoding='utf-8', newline='') as f:
+            f.write(data); f.flush(); os.fsync(f.fileno())
+        _replace_retry(tmp, path)
+    except BaseException:
+        try: os.remove(tmp)
+        except OSError: pass
+        raise
+    _fsync_dir(os.path.dirname(path))
+
+
+def read_json(path, kind=None):
+    """AUD-05: strict read. Raises CorruptFile for an empty / truncated / non-JSON / wrong-type file, OSError if unreadable."""
+    with open(path, 'rb') as f: raw = f.read()
+    try: txt = raw.decode('utf-8-sig')             # a BOM (Notepad) is not damage
+    except UnicodeDecodeError: raise CorruptFile('not UTF-8 text') from None
+    if not txt.strip(): raise CorruptFile('empty file')
+    try: obj = json.loads(txt)
+    except ValueError as ex: raise CorruptFile(f'not valid JSON ({str(ex)[:80]})') from None
+    if kind is not None and not isinstance(obj, kind):
+        raise CorruptFile(f'top level is {type(obj).__name__}, expected {kind.__name__}')
+    return obj
+
+
+def save_json(path, obj, backup=False):
+    """Durable JSON write (AUD-05): serialised first (a bad object never touches the disk), temp file + fsync + atomic
+    replace. backup=True first keeps the previous file as `<path>.bak` (also durable) - only when that previous file is
+    itself good JSON of the same top-level type, so a damaged file never replaces a good backup."""
+    data = json.dumps(obj, indent=2, default=str)
+    if backup and os.path.exists(path):
+        try: prev = read_json(path, type(obj))
+        except (CorruptFile, OSError): prev = None
+        if prev is not None:
+            try: _write_durable(path + '.bak', json.dumps(prev, indent=2, default=str))
+            except OSError as ex: log.warning(f'{os.path.basename(path)}.bak not written ({type(ex).__name__}: {ex}) - main file still saved')
+    _write_durable(path, data)
+
+
+def quarantine(path):
+    """AUD-05: move a damaged file aside as `<path>.corrupt-<UTC time>` (never overwritten, never deleted). Falls back to a
+    byte copy if the rename is refused. Returns the evidence path, or None if it could not be preserved."""
+    base = f"{path}.corrupt-{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}"
+    dst, n = base, 1
+    while os.path.exists(dst): n += 1; dst = f'{base}-{n}'
+    try:
+        os.rename(path, dst); return dst
+    except OSError:
+        pass
+    try:
+        with open(path, 'rb') as f: raw = f.read()
+        with open(dst, 'xb') as f: f.write(raw); f.flush(); os.fsync(f.fileno())
+        return dst
+    except OSError:
+        return None
 
 
 ORDER_FINAL = ('FILLED', 'EXPIRED', 'CANCELED', 'REJECTED', 'EXPIRED_IN_MATCH')   # AUD-03: executedQty is final in these
@@ -457,15 +538,21 @@ class Engine:
         _ro = testnet_read_outage(getattr(self.trade, 'base', None))
         if _ro: log.warning(f'TESTNET FAULT INJECTION active: non-critical status reads under {_ro[1]} answer HTTP 503 for {_ro[0]} s '
                             f'from the first one (orders and critical reads unaffected) (ZB_TESTNET_FAULTS)')
+        self._boot_incidents = []                 # AUD-05: load problems found before self.health exists (reported after)
+        self._save_hold = set()                   # AUD-05: files whose damaged original could not be moved aside: never saved over
+        self.integrity = {}                       # AUD-05: name -> what happened to a damaged safety file at start-up
         self.load_settings()
+        if (self.integrity.get('settings') or {}).get('status') == 'failed_closed':
+            self.save_settings()                  # AUD-05: the paused defaults are durable (the damaged file is already aside)
         # migrate v1 files (single-strategy bot) so logs stay readable
         if os.path.exists(self.F['trades']):
             with open(self.F['trades']) as f: head = f.readline()
             if 'side' not in head: os.replace(self.F['trades'], self.F['trades'].replace('.csv', '_v1.csv'))
         self.state = dict(lots={}, day=None, day_start_equity=None, halted=False, peak_equity=None, last_cycle={})
-        if os.path.exists(self.F['state']):
-            try: self.state.update(json.load(open(self.F['state'])))
-            except Exception: log.warning('state.json unreadable - starting empty')
+        st, ok = self._load_safe('state', dict)  # AUD-05: corrupt -> .bak; no good copy -> entries paused (fail closed)
+        if st: self.state.update(st)
+        if not ok:
+            self.S['ENTRIES_PAUSED'] = True; self.save_settings()   # persisted: a restart stays paused until you resume
         self.state.setdefault('orphans', []); self.state.setdefault('last_cycle', {})
         self.state.setdefault('pending_entries', {}); self.state.setdefault('resting_entries', {})
         self.state.setdefault('unconfirmed_entries', {})           # AUD-03b: entries whose order answer was lost
@@ -476,7 +563,7 @@ class Engine:
                 l['mgmt'] = S.merge_mgmt(l['key_strategy'], {k: v for k, v in l['mgmt'].items()})
         if not self.S.get('CAP_SINCE'):                  # first v3 start: bot capital counts closed P&L from now on
             self.S['CAP_SINCE'] = now_utc().isoformat(timespec='seconds'); self.save_settings()
-        self.equity_hist = json.load(open(self.F['equity'])) if os.path.exists(self.F['equity']) else []
+        self.equity_hist = self._load_list('equity')
         self.rules, self._cache, self._kc, self.signals, self.signals_time = {}, {}, {}, {}, None
         self.last_eq = self.last_balance = None
         self.hedge = False
@@ -506,6 +593,8 @@ class Engine:
         self._audit_mso = {}                      # T05a owner scope: missed short opportunities since start (bounded, memory)
         self.health = dict(errors=collections.deque(maxlen=30), last_manage_ok=None, last_cycle_ok={}, manage_fail_streak=0,
                            last_sync=None, alerted=False, incidents={}, confirmed={})
+        for key, msg in self._boot_incidents: self._integrity_alert(key, msg)   # AUD-05: loud, after health exists
+        self._boot_incidents = []
         self.grids = GRID.GridManager(self)
         self.clock = time.time                    # AUD-04: stop-verifier clock (replaceable in tests)
         self._stopv = {}                          # AUD-04: symbol -> time its stops are next due for verification
@@ -514,8 +603,75 @@ class Engine:
                                 owner_checks=0)
 
     def _load_list(self, k):
-        try: return json.load(open(self.F[k])) if os.path.exists(self.F[k]) else []
-        except Exception: return []
+        """Aux lists (history / missed / equity): never raise into start-up or trading (AUD-01). AUD-05: a damaged file is
+        moved aside as evidence and reported, then the list starts empty."""
+        p = self.F[k]
+        if not os.path.exists(p): return []
+        try: return read_json(p, list)
+        except Exception as ex:
+            aside = quarantine(p)
+            self._integrity_alert(f'integrity|{k}', f'{os.path.basename(p)} unreadable ({str(ex)[:100]}) - started empty; damaged '
+                                  f'copy kept as {os.path.basename(aside) if aside else "(could not be moved aside)"}; trading unaffected')
+            return []
+
+    # ------------------------------------------------------------ AUD-05: fail-closed safety files
+    def _integrity_alert(self, key, msg):
+        """Incident + Telegram for a damaged data file. Before self.health exists (start-up) it is queued and reported
+        right after. Never raises."""
+        if not hasattr(self, 'health'):
+            self._boot_incidents.append((key, msg)); return
+        try: self.err(msg, key=key)
+        except Exception: log.error(msg)
+        try: self.notify('DATA FILE PROBLEM: ' + msg)
+        except Exception: pass
+
+    def _load_safe(self, name, kind):
+        """AUD-05: load a safety-relevant file (settings / state). Returns (obj | None, ok).
+        - missing (and no backup): first run -> (None, True)
+        - good: (obj, True)
+        - present but unreadable / empty / truncated / wrong type (or missing while a backup exists): the damaged file is
+          moved aside as <name>.corrupt-<UTC>; a good <name>.bak is loaded -> (bak, True) with an incident + notification;
+          no good backup -> (None, False): the caller must fail closed. If the damaged file cannot be moved aside, every
+          later save of this file is refused (the evidence is never overwritten)."""
+        path = self.F[name]; bak = path + '.bak'; fn = os.path.basename(path)
+        if not os.path.exists(path):
+            if not os.path.exists(bak): return None, True
+            why = 'missing while its backup exists'
+        else:
+            try: return read_json(path, kind), True
+            except (CorruptFile, OSError) as ex: why = f'{type(ex).__name__}: {str(ex)[:100]}'
+        aside = quarantine(path) if os.path.exists(path) else None
+        if os.path.exists(path) and not aside: self._save_hold.add(name)
+        kept = (f'damaged copy kept as {os.path.basename(aside)}' if aside else
+                'damaged file could NOT be moved aside - it is left in place and never saved over' if name in self._save_hold
+                else 'no damaged file to keep')
+        try:
+            obj, bwhy = read_json(bak, kind), ''
+        except Exception as ex:
+            obj, bwhy = None, ('no backup' if not os.path.exists(bak) else f'backup unreadable too ({str(ex)[:60]})')
+        if obj is not None:
+            self.integrity[name] = dict(status='restored_from_backup', why=why, evidence=aside)
+            self._integrity_alert(f'integrity|{name}', f'{fn} unreadable ({why}) - restored from {fn}.bak (the previous save); '
+                                                         f'{kept}. Check open trades and settings.')
+            return obj, True
+        if os.path.exists(bak):
+            baside = quarantine(bak)
+            if baside: kept += f'; damaged backup kept as {os.path.basename(baside)}'
+        self.integrity[name] = dict(status='failed_closed', why=why, evidence=aside)
+        what = ('the bot does not know its own open trades: positions on Binance are reported UNTRACKED (their Binance stops '
+                'are left alone)' if name == 'state' else 'defaults loaded')
+        self._integrity_alert(f'integrity|{name}', f'{fn} unreadable ({why}) and {bwhy} - ENTRIES PAUSED; {what}; {kept}. '
+                                                     'Check the account on Binance before resuming entries.')
+        return None, False
+
+    def _save_safe(self, name, obj):
+        """AUD-05: durable save of a safety file with a .bak, refused while its damaged original could not be preserved."""
+        path = self.F[name]
+        if name in self._save_hold:
+            if os.path.exists(path) and not quarantine(path):
+                raise OSError(f'{os.path.basename(path)} not saved: its damaged original could not be moved aside (evidence kept)')
+            self._save_hold.discard(name)
+        save_json(path, obj, backup=True)
 
     # ------------------------------------------------------------ notifications (Telegram, optional)
     def notify(self, text):
@@ -533,9 +689,10 @@ class Engine:
     # ------------------------------------------------------------ settings
     def load_settings(self):
         s = copy.deepcopy(GLOBAL_DEFAULTS)
-        if os.path.exists(self.F['settings']):
-            try: s.update(json.load(open(self.F['settings'])))
-            except Exception: log.warning('settings.json unreadable - defaults used')
+        got, ok = Engine._load_safe(self, 'settings', dict)   # AUD-05: corrupt -> .bak; no good copy -> defaults, ENTRIES PAUSED
+        #   (called unbound: the offline UI harness loads settings on a bare namespace)
+        if got: s.update(got)
+        if not ok: s['ENTRIES_PAUSED'] = True
         if 'SLEEVES' not in s:
             s['SLEEVES'] = copy.deepcopy(PRESETS[s.get('PRESET', 'original')]['sleeves'])
         for k in ('RISK_PER_TRADE', 'MAX_POSITIONS_PER_SLEEVE', 'STOP_ATR', 'SPLIT_ST', 'SLEEVE_ST', 'SLEEVE_TSM'):
@@ -557,7 +714,17 @@ class Engine:
         return out
 
     def save_settings(self):
-        save_json(self.F['settings'], self.S)
+        self._save_safe('settings', self.S)
+
+    def commit_settings(self, ns):
+        """AUD-05: apply a fully validated settings dict atomically: written to disk first (durable, with .bak) - a failed
+        save raises and leaves memory untouched - then every changed top-level key is applied in one step under the lock
+        (unchanged keys keep their objects)."""
+        with self.lock:
+            self._save_safe('settings', ns)
+            for k in [k for k in self.S if k not in ns]: self.S.pop(k)
+            for k, v in ns.items():
+                if k not in self.S or self.S[k] != v: self.S[k] = v
 
     def apply_preset(self, name):
         with self.lock:
@@ -907,7 +1074,7 @@ class Engine:
             except Exception: pass
 
     def save_state(self):
-        save_json(self.F['state'], self.state)
+        self._save_safe('state', self.state)
 
     # ------------------------------------------------------------ T05: fill telemetry (observe only)
     # One record per fill the bot itself sends: expected vs actual price, slippage in bps (+ = worse for us), requested
