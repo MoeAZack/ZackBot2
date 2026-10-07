@@ -73,3 +73,48 @@ This confirms the single per-lot try block is an unsafe sequencing boundary.
 
 BT02 remains the immediate protected-merge dependency. Remaining C11–C30 grading will be appended before the audit is
 declared fully accepted. No mainnet authority is granted.
+
+## Phase 2 disposition — C11 through C30
+
+| ID | Codex decision | Final placement |
+|---|---|---|
+| C11 | **Accept, lower P1 → P2.** The engine uses elapsed wall-clock bars while the backtest counts entry-bar indices, so parity is wrong; this blocks published results, not current stop protection. | `AUD-07`. |
+| C12 | **Accept, lower to P2 while maker entry remains off by default.** Promote to P1 if maker becomes a default or copy-profile option before correction. | `AUD-07`. |
+| C13 | **Accept as several P2 parity tasks, not one implementation change.** Each behaviour needs its own regression and reason-code comparison. | `AUD-07`; corresponding coverage in `AUD-08`. |
+| C14 | **Accept P1 structural correctness debt.** Duplicated sizing/Kelly/governor/risk logic already disagrees and prevents trustworthy parity. Extraction must follow characterization, never precede it. | `AUD-09` after AUD-08 and test injection. |
+| C15 | **Accept P2 gate weakness.** Missing modes explain why behaviour drift survived. | `AUD-08`; move the corrected BT01 modes into the per-commit gate. |
+| C16 | **Raise P2 → P1 mainnet blocker, split UI from accounting.** Estimated commissions/funding and truncated capital history must not drive live guards, Kelly or compounding. | Accounting in `AUD-15`; truncation/presentation in `AUD-14`. |
+| C17 | **Raise P2 → P1 release blocker.** Hard-kill/provenance/secret-copy concerns do not block PAPER research but do block distributable or mainnet builds. | `AUD-13`. |
+| C18 | **Conditional P1 if reproduced; currently P2/runtime-evidence-needed.** Two engines on one account would be severe, but the Windows bind race needs an independent two-process proof. Paper→live state separation is accepted as a release requirement. | `AUD-13`; Cowork owns the Windows proof. |
+| C19 | **Accept P2 mainnet.** Chat-level authorization and optional PIN are unsuitable for real-fund remote control; thread fan-out is resilience debt. | `AUD-15`. |
+| C20 | **Lower P2 → P3 for the current single-owner testnet repository.** Before outside contributors or release, workflow trust must move outside editable PR content or require an independent protected approval. | `AUD-12` process hardening. |
+| C21 | **Accept as enabling test debt, not a product severity.** Prioritize only seams needed for AUD-01–11; do not pause safety fixes for a sweeping test rewrite. | `AUD-12`, incremental. |
+| C22 | **Accept P1, split fact from policy.** Divergent validators are confirmed. The Kelly×governor maximum is a risk-policy decision and needs one explicit combined ceiling rather than an accidental product. | Validator/risk contract in `AUD-09`; owner-visible ceiling in the same ticket. |
+| C23 | **Accept P2, split resilience from performance.** Silent worker death and invisible audit health are correctness issues; full-file rewrites are later optimization. | `AUD-14`; rewrite optimization only after correctness. |
+| C24 | **Accept P2 truthfulness for truncation/error visibility.** Lower the symbol/side escaping concern to P3 because venue-controlled values are constrained, while still fixing it as defense in depth. | `AUD-14`. |
+| C25 | **Split.** Partial-TP rounding-to-zero is **P1 testnet** and belongs with management correctness. T03c default policy, ordinary-maker leverage race and one-way mode are P2/mainnet gates. | Zero-close regression in `AUD-02`; remaining items in `AUD-15`. |
+| C26 | **Raise P2 → P1 release blocker.** Heartbeat, kill switch and incident playbook are mandatory before unattended mainnet, not before local PAPER research. | `AUD-15`. |
+| C27 | **Accept P3 cleanup.** Instruction conflict is already resolved by the owner; remove only proven dead code. | `AUD-16`. |
+| C28 | **Accept P3.** Bound memory/payload growth and synchronize shared registries when touched by their owning tickets. | `AUD-16`, or opportunistically with direct regression tests. |
+| C29 | **Accept P3.** Client error hygiene; no separate project gate. | `AUD-16`. |
+| C30 | **Accept P3 research-method debt.** Enforce labels/assumptions before strategy promotion. | T09a research gates, not engine work. |
+
+## Final deduplicated ticket spine
+
+The original 16-ticket proposal is retained as a source map but implemented through this narrower spine:
+
+1. **Drain accepted/open gates:** BT02 protected merge; finish PR #20; rebase/review PR #19; rebase/review PR #21
+   (`AUD-06a`).
+2. **Order-path safety:** `AUD-01` → `AUD-02` → `AUD-03` → `AUD-04`.
+3. **Durability:** `AUD-05`.
+4. **DCA truth:** `AUD-06b` (off by default and verified numbers; labels already in 06a).
+5. **Backtest truth and gates:** `AUD-07` → `AUD-08`.
+6. **Test seams/shared contracts:** incremental `AUD-12` prerequisites → `AUD-09`.
+7. **Responsiveness and exchange traffic:** `AUD-10` → `AUD-11a` (418/429 semantics) → `AUD-11b` (shared budget,
+   transient protection and the C05 probe decision).
+8. **Release/mainnet lane:** `AUD-13` → `AUD-14` → `AUD-15`.
+9. **Cleanup:** `AUD-16`, with C30 enforced through T09a rather than product-code churn.
+
+This ordering makes Code's implementation base safer: exchange-state truth and protection are fixed before refactoring;
+characterization precedes shared-core extraction; and Cowork receives small exact heads with explicit runtime claims to
+validate instead of being asked to reinterpret a large mixed branch.
