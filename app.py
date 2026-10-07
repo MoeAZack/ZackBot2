@@ -1250,6 +1250,7 @@ def handle(path, b):
             log.info('quit from panel (exchange stops stay active)')
             e.notify('⏹ ZackBot was closed from the app. Exchange stops stay active, but nothing manages trades until it runs again.')
             with e.lock: e.save_state()
+            if getattr(APP, 'collector', None): APP.collector.shutdown()      # release its folder lock before exiting
             threading.Timer(1.0, lambda: os._exit(0)).start(); return 'bye'
     raise ValueError('unknown request')
 
@@ -1361,6 +1362,7 @@ def main():
             else:
                 log.info('window closed - quitting (exchange stops stay active)')
                 with APP.engine.lock: APP.engine.save_state()
+                APP.collector.shutdown()
                 os._exit(0)
 
 

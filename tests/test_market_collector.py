@@ -310,11 +310,58 @@ def test_temp_files_left_by_a_killed_process_are_swept(tmp_path):
 
 def test_lock_is_single_writer_and_stale_lock_is_taken_over(tmp_path):
     clk = Clock()
-    assert MD.acquire_lock(str(tmp_path), clock=clk) and not MD.acquire_lock(str(tmp_path), clock=clk)
+    a = MD.acquire_lock(str(tmp_path), clock=clk)
+    assert a and not MD.acquire_lock(str(tmp_path), clock=clk)
     clk.t += MD.LOCK_STALE_S + 1
-    assert MD.acquire_lock(str(tmp_path), clock=clk)
-    MD.release_lock(str(tmp_path))
+    b = MD.acquire_lock(str(tmp_path), clock=clk)
+    assert b and b != a
+    MD.release_lock(str(tmp_path), b)
     assert not os.path.exists(os.path.join(tmp_path, MD.LOCK_FILE))
+
+
+def test_a_taken_over_run_never_deletes_the_new_owners_lock(tmp_path):
+    """Cowork D1: run A outlives the stale limit, B takes the lock over, then A finishes: A must not remove B's lock
+    (otherwise a third run C would write the folder at the same time as B)."""
+    clk = Clock()
+    a = MD.acquire_lock(str(tmp_path), clock=clk)
+    clk.t += MD.LOCK_STALE_S + 1
+    b = MD.acquire_lock(str(tmp_path), clock=clk)
+    assert MD.release_lock(str(tmp_path), a) is False                     # A's late release is refused
+    assert os.path.exists(os.path.join(tmp_path, MD.LOCK_FILE))
+    assert not MD.acquire_lock(str(tmp_path), clock=clk), 'C must still be kept out while B runs'
+    assert MD.release_lock(str(tmp_path), b) is True and not MD.release_lock(str(tmp_path), None)
+
+
+def test_lock_of_a_process_that_is_gone_is_taken_over_at_once(tmp_path):
+    """Cowork N1: an app that quit (os._exit) mid-run leaves its lock; the next start must not skip collection for hours."""
+    clk = Clock()
+    p = os.path.join(tmp_path, MD.LOCK_FILE)
+    with open(p, 'w', encoding='utf-8') as f: json.dump(dict(pid=424242, t=clk(), token='old'), f)
+    assert not MD.acquire_lock(str(tmp_path), clock=clk, alive=lambda pid: True)       # still running -> respected
+    tok = MD.acquire_lock(str(tmp_path), clock=clk, alive=lambda pid: False)           # gone -> taken over now
+    assert tok and MD.read_json(p)['pid'] == os.getpid()
+
+
+def test_pid_alive_is_safe_and_correct():
+    import subprocess
+    assert MD.pid_alive(os.getpid()) is True
+    assert MD.pid_alive(None) is False and MD.pid_alive('x') is False and MD.pid_alive(-5) is False
+    pr = subprocess.Popen([sys.executable, '-c', 'pass']); pr.wait()
+    assert MD.pid_alive(pr.pid) is False
+    src = open(os.path.join(ROOT, 'market_data.py'), encoding='utf-8').read()
+    body = src[src.index('def pid_alive'):src.index('def acquire_lock')]
+    assert body.index("os.name == 'nt'") < body.rindex('os.kill('), 'never os.kill on Windows (it terminates)'
+
+
+def test_app_quit_releases_the_collector_lock(tmp_path):
+    clk = Clock(); fb = FakeBinance(clk)
+    e = _engine(fb)
+    mc = _mc(e, fb, str(tmp_path), clk)
+    tok = MD.acquire_lock(str(tmp_path), clock=clk); mc._lock_token = tok          # a run is going
+    mc.shutdown()
+    assert mc._stop.is_set() and not os.path.exists(os.path.join(tmp_path, MD.LOCK_FILE))
+    src = open(os.path.join(ROOT, 'app.py'), encoding='utf-8').read()
+    assert src.count('collector.shutdown()') == 2, 'both quit paths (panel quit, window closed) release the lock'
 
 
 # ------------------------------------------------------------------ CP1252 / UTF-8
@@ -346,9 +393,10 @@ def test_cli_once_symbols_out_and_exit_codes(tmp_path):
     m = MD.read_json(os.path.join(tmp_path, 'manifest.json'))
     assert m['last_run']['symbols'] == 2 and 'mark_klines/ETHUSDT/1h' in m['series']
     assert 'run done' in open(os.path.join(tmp_path, 'collector.log'), encoding='utf-8').read()
-    assert MD.acquire_lock(str(tmp_path), clock=clk)                   # held by "another run" now
+    held = MD.acquire_lock(str(tmp_path), clock=clk)                   # held by "another run" now
+    assert held
     assert T.main(['--once', '--symbols', 'BTCUSDT', '--out', str(tmp_path)], transport=fb, sleep=clk.sleep, clock=clk) == 3
-    MD.release_lock(str(tmp_path))
+    MD.release_lock(str(tmp_path), held)
     fb.script = [MD.Banned(60)]
     assert T.main(['--once', '--symbols', 'BTCUSDT', '--out', str(tmp_path)], transport=fb, sleep=clk.sleep, clock=clk) == 3
     with pytest.raises(SystemExit): T.main(['--every', '1m'])

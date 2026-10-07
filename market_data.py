@@ -18,7 +18,7 @@ Every run back-fills what is missing and appends what is new; rows are de-duplic
 twice (or after a crash) never duplicates anything. Each file is rewritten atomically (temp file + os.replace): a
 crash mid-write leaves the previous complete file. All file I/O is UTF-8 (Windows CP1252 safe).
 """
-import csv, hashlib, json, os, random, time
+import csv, hashlib, json, os, random, time, uuid
 from datetime import datetime, timezone
 
 MAINNET = 'https://fapi.binance.com'
@@ -475,25 +475,62 @@ class Collector:
 
 
 # ------------------------------------------------------------------ single-writer lock (standalone tool vs. in-app thread)
-def acquire_lock(out, clock=time.time, stale_s=LOCK_STALE_S):
-    """True if this process now owns <out>/.collector.lock. A lock older than `stale_s` (crashed run) is taken over."""
+def pid_alive(pid):
+    """True if a process with this pid is running (False for a dead / invalid pid). Windows: OpenProcess +
+    GetExitCodeProcess - never os.kill(pid, 0), which on Windows TERMINATES the process. Unsure -> True (keep the lock)."""
+    try: pid = int(pid)
+    except (TypeError, ValueError): return False
+    if pid <= 0: return False
+    if os.name == 'nt':
+        try:
+            import ctypes
+            k = ctypes.WinDLL('kernel32', use_last_error=True)
+            h = k.OpenProcess(0x1000, False, pid)                  # PROCESS_QUERY_LIMITED_INFORMATION
+            if not h: return ctypes.get_last_error() == 5           # access denied: it exists
+            try:
+                code = ctypes.c_ulong()
+                if not k.GetExitCodeProcess(h, ctypes.byref(code)): return True
+                return code.value == 259                            # STILL_ACTIVE
+            finally:
+                k.CloseHandle(h)
+        except Exception:
+            return True
+    try:
+        os.kill(pid, 0); return True
+    except ProcessLookupError: return False
+    except PermissionError: return True
+    except OSError: return False
+
+
+def acquire_lock(out, clock=time.time, stale_s=LOCK_STALE_S, alive=pid_alive):
+    """A token (truthy) if this run now owns <out>/.collector.lock, else None. The lock records pid + a random token.
+    It is taken over when it is older than `stale_s`, or when the process that holds it is no longer running (an app
+    that quit mid-run must not block collection for hours)."""
     os.makedirs(out, exist_ok=True)
     p = os.path.join(out, LOCK_FILE)
     for _ in range(2):
         try:
             fd = os.open(p, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
-            with os.fdopen(fd, 'w', encoding='utf-8') as f: json.dump(dict(pid=os.getpid(), t=clock()), f)
-            return True
+            token = uuid.uuid4().hex
+            with os.fdopen(fd, 'w', encoding='utf-8') as f: json.dump(dict(pid=os.getpid(), t=clock(), token=token), f)
+            return token
         except FileExistsError:
             info = read_json(p, {}) or {}
             try: age = clock() - float(info.get('t', 0))
             except (TypeError, ValueError): age = stale_s + 1
-            if age <= stale_s: return False
+            pid = info.get('pid')
+            dead = pid is not None and pid != os.getpid() and not alive(pid)
+            if age <= stale_s and not dead: return None
             try: os.remove(p)
-            except OSError: return False
-    return False
+            except OSError: return None
+    return None
 
 
-def release_lock(out):
-    try: os.remove(os.path.join(out, LOCK_FILE))
-    except OSError: pass
+def release_lock(out, token):
+    """Remove the lock only if it is still ours (same token): a run that outlived the stale limit and was taken over
+    must never delete the new owner's lock."""
+    p = os.path.join(out, LOCK_FILE)
+    info = read_json(p, {}) or {}
+    if not token or info.get('token') != token: return False
+    try: os.remove(p); return True
+    except OSError: return False

@@ -90,7 +90,8 @@ def build_rules(latest_path, fetched_ms, log):
 
 def run_once(a, log, transport=None, sleep=time.sleep, clock=time.time):
     out = os.path.abspath(a.out)
-    if not MD.acquire_lock(out, clock=clock):
+    token = MD.acquire_lock(out, clock=clock)
+    if not token:
         log(f'another collector run holds {os.path.join(out, MD.LOCK_FILE)} - skipped'); return 3
     try:
         if a.testnet:
@@ -113,7 +114,7 @@ def run_once(a, log, transport=None, sleep=time.sleep, clock=time.time):
             + (f" - STOPPED: {s['stopped']}" if s['stopped'] else ''))
         return 3 if s['stopped'] else (1 if s['errors'] else 0)
     finally:
-        MD.release_lock(out)
+        MD.release_lock(out, token)
 
 
 def main(argv=None, transport=None, sleep=time.sleep, clock=time.time):

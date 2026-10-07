@@ -78,6 +78,7 @@ class MarketCollector:
         self.clock, self.transport_factory = clock, transport_factory
         self.req_health = RequestHealth()          # the collector's own - the engine's circuit is only ever read
         self._transport = None                     # created on the first run, then reused (one keep-alive session)
+        self._lock_token = None                    # the folder lock this collector holds while a run is going
         self._stop = threading.Event()
         self._run_lock = threading.Lock()          # the collector's own lock - never the engine's
         self._st_lock = threading.Lock()
@@ -118,8 +119,10 @@ class MarketCollector:
             e = self.get_engine()
             if e is None: self._skip('engine not started'); return None
             if not self.enabled(e): self._skip('MARKET_COLLECTOR off'); return None
-            if not MD.acquire_lock(self.out, clock=self.clock):
+            token = MD.acquire_lock(self.out, clock=self.clock)
+            if not token:
                 self._skip('another collector (standalone tool) is writing this folder'); return None
+            self._lock_token = token
             with self._st_lock: self._st['running'] = True
             try:
                 symbols = [s for s in list((e.S or {}).get('UNIVERSE') or MD.CORE8) if isinstance(s, str)]
@@ -129,7 +132,7 @@ class MarketCollector:
                                  max_run_s=self.MAX_RUN_S)
                 s = c.run(symbols, run_kind='in-app')
             finally:
-                MD.release_lock(self.out)
+                MD.release_lock(self.out, token); self._lock_token = None
                 with self._st_lock: self._st['running'] = False
             with self._st_lock:
                 self._st['runs'] += 1; self._st['rows_total'] += s['rows_added']; self._st['error'] = None
@@ -171,6 +174,13 @@ class MarketCollector:
 
     def stop(self):
         self._stop.set()
+
+    def shutdown(self):
+        """App quitting (os._exit follows): stop, and release the folder lock if a run holds it, so the next start does
+        not skip collection. Files are written atomically, so a run cut off here leaves complete files only."""
+        self._stop.set()
+        tok = self._lock_token
+        if tok: MD.release_lock(self.out, tok)
 
     def status(self):
         with self._st_lock: st = dict(self._st)
