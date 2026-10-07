@@ -172,3 +172,87 @@ def test_exec_of_rules():
     assert x({'status': 'PARTIALLY_FILLED', 'executedQty': '0.004'}, 0.010, 0.001) is None
     assert x({'status': 'FILLED', 'executedQty': '0.020'}, 0.010, 0.001) == pytest.approx(0.010), 'capped at the request'
     assert x({'avgPrice': '100'}, 0.010, 0.001) == pytest.approx(0.010), 'simulated answer without status: unchanged'
+
+
+# ---------------------------------------------------------------- AUD-03b: unconfirmed entries are protected and settled
+def _lost_entry(e, fill=True):
+    ambiguous_once(e, 'open', fill=fill)
+    assert not e.open_lot(SL, 'BTCUSDT', 'LONG', SG, None, e.equity()) and e.last_skip == 'entry order unconfirmed'
+    (uk, u), = e.state['unconfirmed_entries'].items()
+    assert u['cid'] == 'zbtest' and e.state['lots'] == {}
+    return uk, u
+
+
+def _later(monkeypatch, s):
+    real = E.time.time
+    monkeypatch.setattr(E.time, 'time', lambda: real() + s)
+
+
+def test_a_lost_entry_that_filled_is_protected_at_once_and_never_untracked():
+    """ENG-B04: the position of a lost entry answer used to sit with no stop until the next candle (~8 h on 4h) and was
+    alerted as UNTRACKED. Now the next pass places a provisional stop at the planned stop for exactly what shows."""
+    e, _ = mk_engine(); uk, u = _lost_entry(e)
+    held = e.trade.pos[('BTCUSDT', 'LONG')]
+    for _ in range(3): e.manage(e.trade.marks())
+    assert u['prov'] in e.trade.stops and e.trade.stops[u['prov']][2] == pytest.approx(held)
+    assert e.trade.stops[u['prov']][3] == pytest.approx(u['plan']['px'] - u['plan']['stop_dist'], abs=0.01)
+    assert e.untracked == {} and not any('UNTRACKED' in str(i) for i in e.health['incidents'].values())
+    assert e.entry_block(SL, 'BTCUSDT', 'LONG') == 'an earlier entry on this coin/side is not confirmed yet'
+    assert u['prov'] in e._owned_stop_tags('BTCUSDT')
+
+
+def test_the_order_record_books_the_lot_which_inherits_the_provisional_stop():
+    e, _ = mk_engine(); uk, u = _lost_entry(e)
+    held = e.trade.pos[('BTCUSDT', 'LONG')]
+    e.manage(e.trade.marks()); prov = u['prov']
+    e.trade.get_order = lambda s, cid: {'status': 'FILLED', 'executedQty': str(held), 'avgPrice': '100.5', 'clientOrderId': cid}
+    e.manage(e.trade.marks())
+    (k, lot), = e.state['lots'].items()
+    assert lot['qty'] == pytest.approx(held) and lot['avg'] == 100.5 and e.state['unconfirmed_entries'] == {}
+    assert prov not in e.trade.stops and list(e.trade.stops) == [lot['stop_id']], 'exactly one stop: the lot\'s own'
+
+
+def test_a_lost_entry_that_never_reached_binance_is_forgotten(monkeypatch):
+    e, _ = mk_engine(); uk, u = _lost_entry(e, fill=False)
+    e.trade.get_order = lambda s, cid: None                                    # Binance: no such order
+    e.manage(e.trade.marks())
+    assert uk in e.state['unconfirmed_entries'], 'not before the short grace period'
+    _later(monkeypatch, E.UNCONF_DROP_S + 1); e.manage(e.trade.marks())
+    assert e.state['unconfirmed_entries'] == {} and e.state['lots'] == {} and e.trade.stops == {}
+
+
+def test_a_record_with_nothing_executed_cancels_the_provisional_stop():
+    e, _ = mk_engine(); uk, u = _lost_entry(e)
+    e.manage(e.trade.marks()); prov = u['prov']
+    e.trade.pos[('BTCUSDT', 'LONG')] = 0.0                                    # (e.g. something else closed it)
+    e.trade.get_order = lambda s, cid: {'status': 'EXPIRED', 'executedQty': '0', 'clientOrderId': cid}
+    e.manage(e.trade.marks())
+    assert e.state['unconfirmed_entries'] == {} and e.state['lots'] == {} and prov not in e.trade.stops
+
+
+def test_without_any_order_record_the_position_is_adopted_after_five_minutes(monkeypatch):
+    e, _ = mk_engine(); uk, u = _lost_entry(e)                                 # the fake cannot read order records
+    held = e.trade.pos[('BTCUSDT', 'LONG')]
+    e.manage(e.trade.marks()); prov = u['prov']
+    _later(monkeypatch, E.UNCONF_ADOPT_S + 1); e.manage(e.trade.marks())
+    (k, lot), = e.state['lots'].items()
+    assert lot['qty'] == pytest.approx(held) and e.state['unconfirmed_entries'] == {}
+    assert prov not in e.trade.stops and list(e.trade.stops) == [lot['stop_id']]
+
+
+def test_flatten_reports_an_unconfirmed_entry_and_closing_a_sibling_never_takes_its_size():
+    e, _ = mk_engine(); k = opened(e); q = e.state['lots'][k]['qty']
+    sl2 = dict(SL, id='T2'); e.S['SLEEVES'] = [SL, sl2]
+    ambiguous_once(e, 'open')
+    assert not e.open_lot(sl2, 'BTCUSDT', 'LONG', SG, None, e.equity())
+    extra = e.trade.pos[('BTCUSDT', 'LONG')] - q
+    res = e.flatten()
+    assert res.get('unconfirmed') == ['BTCUSDT|LONG']
+    assert e.trade.pos[('BTCUSDT', 'LONG')] == pytest.approx(extra), 'the sibling close sent its own size only'
+
+
+def test_the_app_keeps_managing_while_an_entry_is_unconfirmed():
+    import os
+    src = open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'app.py'), encoding='utf-8').read()
+    gate = src[src.index("if (e.state['lots'] or e.state.get('grids')"):][:260]
+    assert "unconfirmed_entries" in gate and 'e.manage(marks)' in gate

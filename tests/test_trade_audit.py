@@ -599,6 +599,7 @@ REASONS = {
     'could not set leverage/margin on Binance: leverage 20x refused': ('execution', 'leverage'),
     'entry order unconfirmed': ('execution', 'entry_unconfirmed'),
     'entry order not filled': ('execution', 'entry_unfilled'),
+    'an earlier entry on this coin/side is not confirmed yet': ('execution', 'entry_unconfirmed_wait'),
     'stop order failed - trade closed again': ('execution', 'stop_failed'),
     'order failed': ('execution', 'order_failed'),
     'order failed: BinanceError -4028 Leverage 30 is not valid': ('execution', 'order_failed'),

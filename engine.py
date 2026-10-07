@@ -402,7 +402,8 @@ def _cid_of(tag):
     return tag[2:] if isinstance(tag, str) and tag.startswith('c:') else None
 
 
-ADD_RETRY_S, ADD_RETRY_TRANSIENT_S = 300, 60   # AUD-02: a failed add is retried after this (not every pass)
+ADD_RETRY_S, ADD_RETRY_TRANSIENT_S = 300, 60
+UNCONF_DROP_S, UNCONF_ADOPT_S = 20, 300        # AUD-03b: an unconfirmed entry is dropped / adopted from the position after   # AUD-02: a failed add is retried after this (not every pass)
 JOURNAL_BACKLOG_MAX = 5000            # AUD-01: trades.csv rows kept in memory while the file cannot be written
 INCIDENT_IDLE_S = 900                 # T05b: a repeat after 15 quiet minutes starts a new entry
 INCIDENT_MAX = 200                    # T05b: incidents kept (oldest dropped first, closed before open)
@@ -439,6 +440,7 @@ class Engine:
             except Exception: log.warning('state.json unreadable - starting empty')
         self.state.setdefault('orphans', []); self.state.setdefault('last_cycle', {})
         self.state.setdefault('pending_entries', {}); self.state.setdefault('resting_entries', {})
+        self.state.setdefault('unconfirmed_entries', {})           # AUD-03b: entries whose order answer was lost
         for l in self.state['lots'].values():           # lots saved by older versions may hold half-filled dca/pyramid blocks
             if l.get('key_strategy') in S.STRATEGIES and isinstance(l.get('mgmt'), dict):
                 l['mgmt'] = S.merge_mgmt(l['key_strategy'], {k: v for k, v in l['mgmt'].items()})
@@ -1367,7 +1369,8 @@ class Engine:
         """AUD-02 (Codex r1): a local entry on this coin/side may own exchange size that no lot records yet - a resting maker
         entry (its partial fills become its own lot) or a pending/trailing entry. While one exists, size beyond a closing
         lot is never swept, not even when it is dust."""
-        recs = list((self.state.get('resting_entries') or {}).values()) + list((self.state.get('pending_entries') or {}).values())
+        recs = (list((self.state.get('resting_entries') or {}).values()) + list((self.state.get('pending_entries') or {}).values())
+                + list((self.state.get('unconfirmed_entries') or {}).values()))
         return any(r.get('symbol') == sym and r.get('side') == side for r in recs if isinstance(r, dict))
 
     def _partial_zero(self, lot, name, q):
@@ -1802,6 +1805,7 @@ class Engine:
         fetched = live is None
         live = self.trade.positions() if live is None else live
         if fetched: self.health.setdefault('confirmed', {})['positions'] = now_utc().isoformat(timespec='seconds')
+        if self.state.get('unconfirmed_entries'): self._settle_unconfirmed(live)   # AUD-03b
         st = self.state
         groups = {}
         for k, l in st['lots'].items(): groups.setdefault((l['symbol'], l['side']), []).append(k)
@@ -1812,6 +1816,7 @@ class Engine:
         resting = {}                       # maker entry orders still working: their fills are not in a lot yet
         for r_ in st.get('resting_entries', {}).values():
             resting[(r_['symbol'], r_['side'])] = resting.get((r_['symbol'], r_['side']), 0.0) + r_['qty']
+        for k_, q_ in self._unconfirmed_claims().items(): resting[k_] = resting.get(k_, 0.0) + q_   # AUD-03b: not untracked
         for (sym, side), have in live.items():
             if (sym, side) not in groups and have > 0:
                 # one whole step of a position with no lot is real (e.g. 0.001 BTC = a tradable ~$120 orphan): the same sub-step
@@ -2027,6 +2032,7 @@ class Engine:
         if any(l['symbol'] == sym and l['side'] == side and l.get('stop_dirty') for l in st['lots'].values()):
             return 'an open trade on this coin is waiting for its stop to be confirmed'
         if f'{sym}|{side}' in self.untracked: return 'Binance holds an untracked position on this coin/side - resolve it first'
+        if (sym, side) in self._unconfirmed_claims(): return 'an earlier entry on this coin/side is not confirmed yet'
         if manual: return self._rules_block(sl, sym, side, size, manual=True)
         if Sg.get('ENTRIES_PAUSED'): return 'entries paused'
         if not Sg['SYMBOLS_ON'].get(sym, True): return 'coin switched off'
@@ -2479,7 +2485,8 @@ class Engine:
             o = self.trade.open(sym, side, self._fmt(plan['qty'], r['step']))
         except AmbiguousOrder as e:
             self._last_order = dict(pending=str(e)[:160])                # T05: answer lost - reconcile decides, not "failed"
-            self.err(f'ENTRY {sym} {side} unconfirmed ({e}) - reconcile will flag it if it filled')
+            self._remember_unconfirmed(plan, _cid_of(e.tag))
+            self.err(f'ENTRY {sym} {side} unconfirmed ({e}) - protected and settled from Binance as soon as it shows')
             self.last_skip = 'entry order unconfirmed'
             return False
         act = float(o.get('avgPrice') or 0) or None
@@ -2490,7 +2497,8 @@ class Engine:
                                                maker_tries=plan.get('maker_tries'), fallback_order=plan.get('fallback') or None,
                                                manual=plan.get('manual') or None, **({'outcome': 'unfilled'} if got == 0 else {})))
         if got is None:                                                   # answered, not final: like a lost answer
-            self.err(f"ENTRY {sym} {side} answered {o.get('status')} (not final) - reconcile will flag it if it filled")
+            self._remember_unconfirmed(plan, o.get('clientOrderId'))
+            self.err(f"ENTRY {sym} {side} answered {o.get('status')} (not final) - settled from Binance as soon as it shows")
             self.last_skip = 'entry order unconfirmed'
             return False
         if got <= 0:                                                      # EXPIRED / CANCELED with nothing executed
@@ -2499,7 +2507,91 @@ class Engine:
             return False
         return self._create_lot(plan, got, fill)
 
-    def _create_lot(self, plan, qty, fill, maker_qty=0.0):
+    # ------------------------------------------------------------ AUD-03b: entries whose answer was lost
+    # An entry whose order answer is lost (or not final) is remembered with its client order id. Every reconcile pass:
+    #   1. its FINAL order record decides: executed > 0 -> booked as a lot (exact qty and price), 0 -> forgotten;
+    #   2. until then, size on the exchange beyond the lots is protected AT ONCE by a provisional stop at the planned stop
+    #      price (no position waits hours for the next candle), and is never reported as untracked;
+    #   3. no record and no position after {UNCONF_DROP_S} s -> it never executed; a position but no record after
+    #      {UNCONF_ADOPT_S} s -> adopted from the position at the mark price.
+    # The lot inherits the provisional stop (_replace_stop places the real one first, then cancels it). New entries on that
+    # coin/side wait until it is settled. Engine._owned_stop_tags lists every stop the bot owns (for AUD-04's verifier).
+    def _remember_unconfirmed(self, plan, cid):
+        sl = plan.get('sl') or {}
+        k = f"UE|{'MAN' if plan.get('manual') else sl.get('id')}|{plan['sym']}|{plan['side']}|{int(time.time() * 1000)}"
+        self.state.setdefault('unconfirmed_entries', {})[k] = dict(
+            symbol=plan['sym'], side=plan['side'], cid=cid, qty=plan['qty'], t=time.time(), prov=None, prov_qty=0.0, plan=plan)
+        self.save_state()
+
+    def _owned_stop_tags(self, sym=None):
+        """Every exchange stop the bot owns: lot stops and AUD-03b provisional stops (a verifier must never cancel these)."""
+        tags = {l.get('stop_id') for l in self.state['lots'].values() if sym in (None, l['symbol'])}
+        tags |= {u.get('prov') for u in (self.state.get('unconfirmed_entries') or {}).values() if sym in (None, u['symbol'])}
+        return {t for t in tags if t}
+
+    def _unconfirmed_claims(self):
+        out = {}
+        for u in (self.state.get('unconfirmed_entries') or {}).values():
+            out[(u['symbol'], u['side'])] = out.get((u['symbol'], u['side']), 0.0) + u['qty']
+        return out
+
+    def _settle_unconfirmed(self, live):
+        ue = self.state.get('unconfirmed_entries') or {}
+        for uk, u in list(ue.items()):
+            sym, side = u['symbol'], u['side']
+            r = self.rules.get(sym)
+            if r is None: continue
+            age = time.time() - u.get('t', 0)
+            rec, found = None, None
+            if u.get('cid') and not self.dry:
+                try:
+                    o = self.trade.get_order(sym, u['cid']); found = o is not None
+                    if o and str(o.get('status') or '').upper() in ORDER_FINAL: rec = o
+                except Exception:
+                    found = None                                           # unreadable: decide nothing from it
+            plan = u['plan']
+            if rec is not None:                                            # 1. the order's final record decides
+                got = self._exec_of(rec, u['qty'], r['step'])
+                ue.pop(uk, None)
+                if got and got > 0:
+                    px = float(rec.get('avgPrice') or 0) or plan['px']
+                    log.info(f"ENTRY {sym} {side} unconfirmed -> confirmed from its order record: {got} @ {px}")
+                    self._create_lot(plan, got, px, adopt_stop=u.get('prov'))
+                else:
+                    log.info(f"ENTRY {sym} {side} unconfirmed -> its order record shows nothing executed")
+                    if u.get('prov'): self._cancel_or_park(sym, u['prov'])
+                self.save_state(); continue
+            lots_q = sum(l['qty'] for l in self.state['lots'].values() if l['symbol'] == sym and l['side'] == side)
+            rest_q = sum(x['qty'] for x in (self.state.get('resting_entries') or {}).values()
+                         if x['symbol'] == sym and x['side'] == side)
+            extra = self._rd(min(u['qty'], max(0.0, live.get((sym, side), 0.0) - lots_q - rest_q)), r['step'])
+            if extra > 0:
+                if not u.get('prov') or extra > u.get('prov_qty', 0) + 1e-12:  # 2. protect what shows, at once
+                    sd = 1 if side == 'LONG' else -1
+                    stop = self._rd(plan['px'] - sd * plan['stop_dist'], r['tick'])
+                    try:
+                        tag = self.trade.stop(sym, side, self._fmt(extra, r['step']), self._fmt(stop, r['tick']))
+                        old, u['prov'], u['prov_qty'], u['prov_stop'] = u.get('prov'), tag, extra, stop
+                        self.save_state()
+                        if old and old != tag: self._cancel_or_park(sym, old)
+                        log.info(f"ENTRY {sym} {side} unconfirmed: {extra} on Binance protected by a provisional stop at {stop}")
+                    except Exception as ex:
+                        self.err(f"{sym} {side} unconfirmed entry: provisional stop failed ({str(ex)[:120]}) - retried next pass",
+                                 key=f'prov|{uk}')
+                if age > UNCONF_ADOPT_S:                                   # 3b. no record in 5 min: adopt the position
+                    ue.pop(uk, None)
+                    px = (self.marks or {}).get(sym) or plan['px']
+                    self.err(f"ENTRY {sym} {side} could not be confirmed from its order record - adopted from the position "
+                             f"({extra} @ mark {px})")
+                    self._create_lot(plan, extra, px, adopt_stop=u.get('prov'))
+                    self.save_state()
+            elif age > (UNCONF_DROP_S if found is False or not u.get('cid') else UNCONF_ADOPT_S):   # 3a. never executed
+                ue.pop(uk, None)
+                if u.get('prov'): self._cancel_or_park(sym, u['prov'])
+                log.info(f"ENTRY {sym} {side} unconfirmed -> nothing on Binance after {int(age)} s, forgotten")
+                self.save_state()
+
+    def _create_lot(self, plan, qty, fill, maker_qty=0.0, adopt_stop=None):
         """Record a filled entry as a lot and protect it with its exchange stop (recorded BEFORE the stop is sent)."""
         sym, side, sl, manual, g, atr = plan['sym'], plan['side'], plan['sl'], plan['manual'], plan['g'], plan['atr']
         r, sd, eq, risk_usd, reason, px = self.rules[sym], (1 if side == 'LONG' else -1), plan['eq'], plan['risk_usd'], plan['reason'], plan['px']
@@ -2526,6 +2618,7 @@ class Engine:
                 ap['ctx'] = dict(entry=self._audit_entry_ctx(sym, lot['tf'], lot['opened']))   # regime known at entry
                 lot['ap'] = ap
         except Exception: pass
+        if adopt_stop: lot['stop_id'] = adopt_stop               # AUD-03b: the provisional stop is replaced (new first, then cancelled)
         self.state['lots'][key] = lot; self.save_state()          # recorded BEFORE the stop: a crash here can never orphan the position
         self._last_lot_key = key
         if not self._replace_stop(lot):
@@ -3005,6 +3098,8 @@ class Engine:
                     try: self.close_lot(k, 'flatten'); res['closed'].append(k)
                     except Exception as e: res['failed'].append([k, str(e)[:160]]); self.err(f'flatten {k}: {e}')
             self.S['ENTRIES_PAUSED'] = True; self.save_settings()
+            if self.state.get('unconfirmed_entries'):                 # AUD-03b: not a lot yet - settled + protected by reconcile
+                res['unconfirmed'] = sorted(f"{u['symbol']}|{u['side']}" for u in self.state['unconfirmed_entries'].values())
             if not self.dry:
                 try:
                     live = self.trade.positions()

@@ -689,7 +689,8 @@ class App:
                         last_manage = now
                         try:
                             marks = e.data.marks()
-                            if e.state['lots'] or e.state.get('grids') or e.state.get('pending_entries') or e.state.get('resting_entries'): e.manage(marks)
+                            if (e.state['lots'] or e.state.get('grids') or e.state.get('pending_entries') or e.state.get('resting_entries')
+                                    or e.state.get('unconfirmed_entries')): e.manage(marks)   # AUD-03b: settle + protect them
                             else: e.marks, e.marks_t = marks, now
                         except Exception as ex:                     # T05b final: Binance down -> the one exchange-down incident
                             if e._exchange_down(ex): e._manage_failed(f'mark prices: {EXCHANGE_DOWN}', key='exchange-down')
@@ -700,7 +701,7 @@ class App:
                             try:
                                 e.equity(); e.check_guards()
                                 if not (e.state['lots'] or e.state.get('grids') or e.state.get('pending_entries')
-                                        or e.state.get('resting_entries')):   # nothing to reconcile: account read = recovered
+                                        or e.state.get('resting_entries') or e.state.get('unconfirmed_entries')):   # nothing to reconcile
                                     e.resolve('exchange-down', 'Binance answering again - account readable')
                             except Exception as ex:                     # T05b: Binance down -> guards simply retry next pass
                                 if not e._exchange_down(ex): raise
