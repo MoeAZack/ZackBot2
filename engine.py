@@ -549,6 +549,20 @@ class Engine:
         return F.round_step(x, step)                     # BT02: moved verbatim to feasibility.round_step
 
     @staticmethod
+    def _qty_tol(step):
+        """Engine lots and Binance positions are both whole multiples of the step, so any difference of one step or more
+        is real (a stop fill, a partial fill, a manual close). Only float noise below one step is tolerated - never a whole
+        step per lot: with a coarse step (DOGE/1000PEPE step 1, or a 0.002 BTC lot at step 0.001) that hid full stop-outs."""
+        return 0.99 * step
+
+    def _dust_cap(self, sym, px=None):
+        """A position strictly below this size is dust: under Binance's minimum quantity or minimum notional, so it cannot be
+        traded or closed normally (0 = no rule known)."""
+        r = self.rules.get(sym)
+        if r is None: return 0.0
+        return max(r['min_qty'], r['min_notional'] / px if px else 0.0)
+
+    @staticmethod
     def _fmt(x, step):
         dec = max(0, -int(math.floor(math.log10(step)))) if step < 1 else 0
         return f'{x:.{dec}f}'
@@ -1154,11 +1168,18 @@ class Engine:
         log.info(f"{why.upper()} {sym} {lot['side']} [{lot['sleeve']}] {qty} @ {px} pnl {pnl:+.2f}")
         return pnl
 
-    def _resolve_pending(self, key, have, expected, tol):
-        """A close/add whose answer was lost: decide from the exchange position whether it filled. Returns True if resolved."""
+    def _resolve_pending(self, key, have, expected, tol, dust=0.0):
+        """A close/add whose answer was lost: decide from the exchange position whether it filled. Returns True if resolved.
+        The position may also carry dust the lots do not own (reconcile tolerates it): a match within that dust counts only
+        when the other outcome does not match too - otherwise it keeps waiting and the 5-minute resync decides."""
         l = self.state['lots'][key]; pd_ = l['pending']; age = time.time() - pd_.get('t', 0)
-        target = expected - pd_['qty'] if pd_['kind'] == 'close' else expected + pd_['qty']
-        if abs(have - target) <= tol:                                    # it filled
+        # a close of the whole position includes that dust (close_lot), and a position never goes below zero
+        target = max(0.0, expected - pd_['qty']) if pd_['kind'] == 'close' else expected + pd_['qty']
+        near = lambda d: -tol <= d <= tol                                # whole step multiples: only float noise is tolerated
+        near_dust = lambda d: near(d) or 0 < d < dust                   # ... plus dust left on the exchange
+        filled = near(have - target) or (near_dust(have - target) and not near_dust(have - expected))
+        never = not filled and (near(have - expected) or (near_dust(have - expected) and not near_dust(have - target)))
+        if filled:                                                       # it filled
             del l['pending']
             if pd_['kind'] == 'close':
                 self._apply_close(l, pd_['qty'], pd_['px'], pd_['why'])
@@ -1174,7 +1195,7 @@ class Engine:
             if fin or l['qty'] <= 0: self._finish(key, fin or pd_['why'])
             else: self._replace_stop(l)
             return True
-        if abs(have - expected) <= tol and age > 20:                       # it never filled
+        if never and age > 20:                                           # it never filled
             del l['pending']; log.info(f"{l['symbol']} [{l['sleeve']}] unconfirmed {pd_['kind']} did not fill - will retry"); return True
         if age > 300:
             del l['pending']; self.err(f"{l['symbol']} [{l['sleeve']}] could not confirm {pd_['kind']} after 5 min - resyncing to the exchange"); return False
@@ -1613,16 +1634,18 @@ class Engine:
             resting[(r_['symbol'], r_['side'])] = resting.get((r_['symbol'], r_['side']), 0.0) + r_['qty']
         for (sym, side), have in live.items():
             if (sym, side) not in groups and have > 0:
-                tol = self.rules[sym]['step'] if sym in self.rules else 1e-9
+                # one whole step of a position with no lot is real (e.g. 0.001 BTC = a tradable ~$120 orphan): the same sub-step
+                # tolerance as the tracked-lot path, not a whole step; dust and filled resting entries stay excluded
+                tol = self._qty_tol(self.rules[sym]['step']) if sym in self.rules else 1e-9
                 if have > tol + resting.get((sym, side), 0.0) and not dust(sym, have): untracked[(sym, side)] = have
         short_seen = st.setdefault('short_seen', {}); seen_now = set()
         for (sym, side), keys in groups.items():
             expected = sum(st['lots'][k]['qty'] for k in keys)
             have = live.get((sym, side), 0.0)
-            tol = self.rules[sym]['step'] * (len(keys) + 1) if sym in self.rules else 1e-9
+            tol = self._qty_tol(self.rules[sym]['step']) if sym in self.rules else 1e-9
             pend = [k for k in keys if st['lots'][k].get('pending')]
             if pend:                                                    # an unanswered order on this coin/side: settle it first
-                res = self._resolve_pending(pend[0], have, expected, tol)
+                res = self._resolve_pending(pend[0], have, expected, tol, self._dust_cap(sym, (self.marks or {}).get(sym)))
                 if res is not False: continue                           # resolved (re-checked next pass) or still waiting
                 keys = [k for k in keys if k in st['lots']]; expected = sum(st['lots'][k]['qty'] for k in keys)
             gk = f'{sym}|{side}'
@@ -1661,9 +1684,17 @@ class Engine:
                 if recent or short_seen[gk] < 2: continue
                 scale = have / expected if expected > 0 else 0
                 mk = (self.marks or {}).get(sym)
+                step = self.rules[sym]['step']
+                # each lot floored to the step, then the leftover whole steps go to the largest remainders: the resized lots
+                # add up to what the exchange holds (flooring each lot alone left up to n-1 steps that no lot owned)
+                raw = {k: st['lots'][k]['qty'] * scale for k in rest}
+                newqs = {k: self._rd(raw[k], step) for k in rest}
+                spare = int(round((self._rd(have, step) - sum(newqs.values())) / step))
+                for k in sorted(rest, key=lambda k: newqs[k] - raw[k])[:max(0, spare)]:
+                    newqs[k] = self._rd(newqs[k] + step, step)
                 for k in rest:
                     l = st['lots'][k]
-                    newq = self._rd(l['qty'] * scale, self.rules[sym]['step'])
+                    newq = newqs[k]
                     gone_q = l['qty'] - newq
                     if gone_q > 0: self._apply_close(l, gone_q, mk or l['stop'], 'resync')    # book what left at the market price
                     if l['qty'] <= 0: self._finish(k, 'resync')
@@ -1982,8 +2013,9 @@ class Engine:
             resting[k_] = resting.get(k_, 0.0) + f_
         for k_ in set(pos) | set(groups):
             have = pos.get(k_, [0.0])[0]; exp = sum(l['qty'] for l in groups.get(k_, []))
-            tol = float((self.rules.get(k_[0]) or {}).get('step', 1e-9)) * (len(groups.get(k_, [])) + 1)
-            if have < exp - tol or have > exp + tol + resting.get(k_, 0.0):
+            tol = self._qty_tol(float((self.rules.get(k_[0]) or {}).get('step', 1e-9)))
+            extra = have - exp - resting.get(k_, 0.0)                  # dust above the lots is tolerated, as reconcile() does
+            if have < exp - tol or (extra > tol and not extra < self._dust_cap(k_[0], mark_of(k_[0]))):
                 raise LevReject('reconcile', f'{k_[0]} {k_[1]}: Binance holds {have:g}, the bot expects {exp:g}')
         # ---- every lot has a confirmed exchange stop
         by_tag = {o.get('tag'): o for o in (orders or []) if isinstance(o, dict) and o.get('tag')}
@@ -2000,14 +2032,14 @@ class Engine:
                     or o.get('status') not in ('NEW', 'ACCEPTED') or o.get('close_position') is not False):
                 raise LevReject('stops', f"{nm}: stop {l['stop_id']} has the wrong type or trigger basis")
             step = float((self.rules.get(l['symbol']) or {}).get('step', 1e-9))
-            if lev_num(o.get('qty'), f'{nm} stop quantity') < l['qty'] - step:
+            if lev_num(o.get('qty'), f'{nm} stop quantity') < l['qty'] - self._qty_tol(step):
                 raise LevReject('stops', f'{nm}: stop covers less than the position')
             tick = float((self.rules.get(l['symbol']) or {}).get('tick', 1e-8))
             if abs(lev_num(o.get('stop_price'), f'{nm} stop price', pos=True) - l['stop']) > tick * 1.001 + 1e-12:
                 raise LevReject('stops', f"{nm}: stop on Binance is at {o.get('stop_price')}, the bot expects {l['stop']}")
             c_ = per_order.setdefault(l['stop_id'], [0.0, 0, step]); c_[0] += l['qty']; c_[1] += 1
         for tag, (need, n_lots, step) in per_order.items():     # one stop ORDER can protect only up to its own size
-            if need > lev_num(by_tag[tag].get('qty'), 'stop quantity') + step * n_lots:
+            if need > lev_num(by_tag[tag].get('qty'), 'stop quantity') + self._qty_tol(step):
                 raise LevReject('stops', f'stop {tag} is shared by {n_lots} lots ({need:g}) but covers only {by_tag[tag].get("qty")}')
         # ---- working orders that could add exposure: only the bot's own maker entries (reserved below)
         bot_cids = {rec.get('cid') for rec in rest if rec.get('cid')}

@@ -85,7 +85,8 @@ def test_switch_is_inert_without_the_flag():
     src = open(os.path.join(ROOT, 'app.py'), encoding='utf-8').read()
     assert src.count('--simulate-failed-launch') == 1, 'the switch must be read in exactly one place'
     i = src.index("if '--simulate-failed-launch' in sys.argv:")
-    assert src.index("if '--selftest' in sys.argv:") < i < src.index('if port_in_use():'), 'switch must sit before the port check'
+    # AUD-00: the first gate is now the exclusive panel bind (it replaced the old port_in_use() check)
+    assert src.index("if '--selftest' in sys.argv:") < i < src.index("INST.bind_exclusive(('127.0.0.1', PORT), H)"),         'switch must sit before the first gate (exclusive port bind): the drill exits before claiming anything'
 
 
 # ---------------------------------------------------------------- installer_check.ps1 (T03 review: hash failed from batch)
