@@ -1,0 +1,141 @@
+{
+  "schema": "zb-golden/1",
+  "id": "G-DCA-SLIP-L-01",
+  "title": "A DCA safety order is a taker market order: it fills at its level adverse-adjusted by the slippage, like the entry",
+  "behaviours": [
+    "dca",
+    "costs"
+  ],
+  "side": "long",
+  "tf": "4h",
+  "clock": {
+    "start": "2024-01-01T00:00:00Z",
+    "entry_cycle_delay_s": 15
+  },
+  "costs": {
+    "model": "legacy",
+    "taker_fee": "0.0005",
+    "slip": "0.0002",
+    "funding_per_bar": "0"
+  },
+  "account": {
+    "equity": "500",
+    "max_leverage": 10,
+    "sizing": "legacy_replay"
+  },
+  "market": {
+    "SOLUSDT": {
+      "base": {
+        "kind": "flat",
+        "px": "100",
+        "wick": "0.5",
+        "n": 300
+      },
+      "bars": {
+        "280": [
+          "100",
+          "100",
+          "99.0199",
+          "99.03"
+        ]
+      },
+      "atr": {
+        "kind": "computed"
+      }
+    }
+  },
+  "path_policy": "zb-path/1",
+  "slot": {
+    "id": "S1",
+    "sides": "long",
+    "risk": "0.02",
+    "share": "1",
+    "max_pos": 1,
+    "entry": {
+      "type": "market"
+    },
+    "dca": {
+      "n": 3,
+      "step_atr": "1",
+      "scale": "1.5",
+      "tp_atr": "1",
+      "stop_atr": "2"
+    }
+  },
+  "signals": [
+    {
+      "bar": 279,
+      "sym": "SOLUSDT",
+      "kind": "enter_long"
+    },
+    {
+      "bar": 281,
+      "sym": "SOLUSDT",
+      "kind": "exit_long"
+    }
+  ],
+  "faults": [],
+  "expect": {
+    "trades": [
+      {
+        "sym": "SOLUSDT",
+        "side": "LONG",
+        "i_in": 280,
+        "i_out": 281,
+        "exit": "SIGNAL_EXIT",
+        "R": "-0.053154",
+        "pnl": "-0.53154"
+      }
+    ],
+    "final": {
+      "lots": 0
+    },
+    "tolerance": {
+      "R": "0.0001",
+      "pnl": "0.001",
+      "why": "the legacy engine adds at the replay path step's mark (99.0199, one step past the 99.02 level: no event-snapped path yet) and rounds pnl to 4 dp; the slippage under test is 0.012 USDT"
+    }
+  },
+  "applies_to": {
+    "legacy_engine": "required",
+    "legacy_backtest": {
+      "status": "known_divergence",
+      "reason": "AUD-07 C13a: legacy behaviour differs from the corrected contract until the AUD-07 product fix lands"
+    },
+    "newcore_sim": {
+      "status": "pending_adapter",
+      "reason": "NEWCORE NC-07/NC-08 adapter not built yet"
+    },
+    "newcore_live_sim": {
+      "status": "pending_adapter",
+      "reason": "NEWCORE NC-08 live-sim adapter not built yet"
+    }
+  },
+  "known_divergences": [
+    {
+      "adapter": "legacy_backtest",
+      "ticket": "AUD-07",
+      "finding": "C13a",
+      "correction": null,
+      "until": "AUD-07 product fix",
+      "reason": "backtest.py:419-420 fills the DCA safety order at its level with the fee only, no slippage (entries and exits pay it)",
+      "observed": [
+        {
+          "path": "trades[0].R",
+          "expected": "-0.053154",
+          "actual": -0.051941
+        },
+        {
+          "path": "trades[0].pnl",
+          "expected": "-0.53154",
+          "actual": -0.519409
+        }
+      ]
+    }
+  ],
+  "provenance": {
+    "created_at_sha": "b8c11c8",
+    "author": "AUD-07 slice 1 (Claude)",
+    "notes": "AUD-07 C13a corrected rule: every exposure-increasing market order fills at its trigger price adverse-adjusted by the slippage. ATR 1; entry 100.02; DCA levels 99.02 / 98.02 / 97.02, basket stop 95.02; q0 = 10 / (5 + 1.5x4 + 2.25x3 + 3.375x2) = 0.408163, safety order 1 = 0.612245 at 99.02 x 1.0002 = 99.039804. Candle 280 (red) reaches 99.0199 (order 1 only; the basket TP 100.43 is behind the path). Signal exit on the close of 281 at 99.03 x 0.9998. pnl = (xp - avg) x Q - fees = -0.53154 (legacy slip-free add: -0.51941)."
+  }
+}
