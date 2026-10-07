@@ -657,6 +657,7 @@ class GridManager:
         if e.exchange_state().get('state') == 'outage': return False     # T05b: no new grid exposure while Binance is down
         if f"{g['sym']}|{side}" in e.untracked: return False
         if any(l['symbol'] == g['sym'] and l['side'] == side and l.get('stop_dirty') for l in e.state['lots'].values()): return False
+        if hasattr(e, 'stop_missing_on') and e.stop_missing_on(g['sym']): return False   # AUD-04: a stop on this coin is missing
         if e._lev_exception_block(g['sym']): return False     # T03c r1: coin traded through the above-cap leverage exception
         return True
 
