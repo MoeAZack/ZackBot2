@@ -15,20 +15,25 @@ import os, tempfile, types, logging
 import numpy as np, pandas as pd
 import backtest as B
 import engine as E
+import feasibility as F
 
 STRICT = dict(matched_pct=98.0, med_dr=0.05, p95_dr=0.25, ret_gap=3.0, dd_gap=2.0)
 LOOSE_RET_GAP = 15.0          # interim hard gate while the shared-core refactor is pending
 
 
-def run_replay(raw, sleeves, t0, steps=6, start=500.0, tf_sec=14400, quiet=True, stop_at=None):
+def run_replay(raw, sleeves, t0, steps=6, start=500.0, tf_sec=14400, quiet=True, stop_at=None, exchange_rules=None):
     """raw: {symbol: DataFrame t,o,h,l,c,v} (same length / timestamps); sleeves: engine slot dicts; t0: first bar index.
     Returns dict(engine_curve, bt_curve, engine_trades, bt_trades, matched, metrics, mismatch, stops, lots).
     stop_at=(bar, leg, step) or a list of them: stop INSIDE that candle's price path (leg 0-2, step 1..steps) and return only the engine's
-    decisions so far: dict(lots, events, history, stops) (a list -> {point: that dict}) - used by the causality test."""
+    decisions so far: dict(lots, events, history, stops) (a list -> {point: that dict}) - used by the causality test.
+    exchange_rules (BT02): a snapshot or {symbol: rule}. The simulated exchange then serves exactly these filters to the engine
+    and the backtester gets the same rules (both floor to the step and skip below the minimums through feasibility.size_check).
+    None (default): unchanged - the engine sees step 1e-5 / backtest.MIN_NOTIONAL, the backtester its legacy floor."""
     syms = list(raw)
     D = {s: raw[s].reset_index(drop=True) for s in syms}
     N = len(D[syms[0]])
     FEE, SLIP = B.FEE, B.SLIP
+    XR = F.snapshot_rules(exchange_rules)
 
     class W:
         i = None; mark = {}; cash = start; lots = []; stops = {}; n = 0
@@ -65,6 +70,9 @@ def run_replay(raw, sleeves, t0, steps=6, start=500.0, tf_sec=14400, quiet=True,
         def __init__(self, *a, **k): pass
         def sync_time(self): pass
         def exchange_info(self):
+            if XR is not None:                 # a symbol missing from the rules keeps the default filters below (backtest: legacy floor)
+                return F.exchange_info_from_rules({s: XR.get(s) or dict(step=1e-5, min_qty=1e-5, tick=1e-6, min_notional=B.MIN_NOTIONAL.get(s, 5))
+                                                   for s in syms})
             return {'symbols': [{'symbol': s, 'contractType': 'PERPETUAL', 'status': 'TRADING', 'filters': [
                 {'filterType': 'MARKET_LOT_SIZE', 'stepSize': '0.00001', 'minQty': '0.00001'}, {'filterType': 'PRICE_FILTER', 'tickSize': '0.000001'},
                 {'filterType': 'MIN_NOTIONAL', 'notional': str(B.MIN_NOTIONAL.get(s, 5))}]} for s in syms]}
@@ -161,7 +169,8 @@ def run_replay(raw, sleeves, t0, steps=6, start=500.0, tf_sec=14400, quiet=True,
         return [x for x in base if x in syms]
     cfg = [dict(key=s['key'], share=s['share'], risk=s['risk'], max_pos=s['max_pos'], symbols=order(s), sides=s['sides'], mgmt=s['mgmt'],
                 **{k: s[k] for k in ('when', 'trail_entry', 'pump_guard') if s.get(k) is not None}) for s in sleeves]
-    t2, c2 = B.run(bk, cfg, start=start, max_lev=10, t0=D[syms[0]].t[t0 + 1], fund_per_bar=B.FUND_PER_BAR * tf_sec / 14400)
+    t2, c2 = B.run(bk, cfg, start=start, max_lev=10, t0=D[syms[0]].t[t0 + 1], fund_per_bar=B.FUND_PER_BAR * tf_sec / 14400,
+                    exchange_rules=exchange_rules)
 
     # ---- trade matching
     t_index = {ts: k for k, ts in enumerate(D[syms[0]].t)}
