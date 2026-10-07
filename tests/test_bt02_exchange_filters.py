@@ -818,5 +818,5 @@ def test_check_legs_uses_the_engine_add_gate_formula():
     assert [x['code'] for x in F.check_legs(legs, _SOL['SOLUSDT'])] == ['ok', 'ok', 'leverage_plan']   # before _add_qty)
     legs[0]['cap'] = 1000.0                                                           # room under the cap: the minimum decides
     assert [x['code'] for x in F.check_legs(legs, _SOL['SOLUSDT'])] == ['ok', 'ok', 'below_min_notional']
-    src_gate = src[src.index("while lot['dca'] < len(lot['levels'])"):][:600]
+    src_gate = src[src.index("lot['dca'] < len(lot['levels'])"):][:600]
     assert src_gate.index('_add_gate(') < src_gate.index('_add_qty('), 'engine order: cap gate, then exchange minimum'

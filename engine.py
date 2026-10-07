@@ -5,7 +5,7 @@ trailing, pyramiding adds, DCA safety orders, basket take-profit) is checked eve
 Signals (entries/exits) are evaluated right after each candle close of the sleeve's timeframe.
 Hedge mode is used so longs and shorts on the same coin can coexist.
 """
-import atexit, csv, json, math, os, queue, re, time, logging, threading, copy, collections
+import atexit, contextlib, csv, json, math, os, queue, re, time, logging, threading, copy, collections
 from datetime import datetime, timezone, timedelta
 import numpy as np
 import pandas as pd
@@ -386,6 +386,7 @@ def save_json(path, obj):
     os.replace(tmp, path)
 
 
+ADD_RETRY_S, ADD_RETRY_TRANSIENT_S = 300, 60   # AUD-02: a failed add is retried after this (not every pass)
 JOURNAL_BACKLOG_MAX = 5000            # AUD-01: trades.csv rows kept in memory while the file cannot be written
 INCIDENT_IDLE_S = 900                 # T05b: a repeat after 15 quiet minutes starts a new entry
 INCIDENT_MAX = 200                    # T05b: incidents kept (oldest dropped first, closed before open)
@@ -770,6 +771,28 @@ class Engine:
         except Exception as ex:
             try: self.err(f'{name}.json cannot be written ({type(ex).__name__}) - kept in memory, saved again next time', key=f'save|{name}')
             except Exception: pass
+
+    @contextlib.contextmanager
+    def _stage(self, key, lot, name, failed, add=False):
+        """AUD-02: one management stage of one lot. An unanswered order (AmbiguousOrder) still aborts the lot's management for
+        this pass (the lot is now `pending`); any other failure is reported and the NEXT stages still run, so a rejected add
+        or exit can never starve the trailing stop, breakeven or the other exits. A failed add is cooled down."""
+        try:
+            yield
+        except AmbiguousOrder:
+            raise
+        except Exception as ex:
+            failed.append(name)
+            if add:
+                lot['add_retry_at'] = time.time() + (ADD_RETRY_TRANSIENT_S if is_transient(ex) else ADD_RETRY_S)
+                self.err(f"{lot['symbol']} [{lot['sleeve']}] {name} failed ({str(ex)[:160]}) - exits and the stop keep being managed; "
+                         f"next try in {int(lot['add_retry_at'] - time.time())} s", key=f'add|{key}')
+            else:
+                self.err(f'manage {key} {name}: {ex}', key=f'manage|{key}|{name}')
+
+    @staticmethod
+    def _add_cooling(lot):
+        return time.time() < (lot.get('add_retry_at') or 0)
 
     def _after_fill_failed(self, lot, post, why, ex):
         """AUD-01 second layer: something failed AFTER Binance executed a close / add. Mark the event done exactly like
@@ -1219,13 +1242,23 @@ class Engine:
         return float(np.clip(k.get('frac', 0.5) * f / k.get('ref', 0.1) * 2, k.get('min', 0.25), k.get('max', 2.0)))
 
     def close_lot(self, key, why, mark=None):
-        """Market-close first; the protective stop is only cancelled after the close succeeded (a failed close keeps it)."""
+        """Market-close first; the protective stop is only cancelled after the close succeeded (a failed close keeps it).
+        AUD-02: refused while an earlier order of this lot is unconfirmed (`pending`): if that order filled, closing the
+        recorded quantity would take size from a sibling lot or a resting maker fill. The size sent is this lot's own
+        quantity; what the exchange holds beyond it is swept along ONLY when it is dust (not tradable on its own) - never
+        another slot's resting-maker fill or an untracked position."""
         lot = self.state['lots'][key]
+        if lot.get('pending'):
+            raise RuntimeError(f"{lot['symbol']} [{lot['sleeve']}] close deferred: an earlier order on this lot is not confirmed yet "
+                               "- it is resolved on the next management pass, then the close can be retried")
         qty = lot['qty']
         others = [k for k, l in self.state['lots'].items() if k != key and l['symbol'] == lot['symbol'] and l['side'] == lot['side']]
-        if not others and not self.dry:            # last lot on this side: close exactly what the exchange holds (no dust)
-            try: qty = self._positions_critical().get((lot['symbol'], lot['side']), qty) or qty
-            except Exception: pass
+        if not others and not self.dry:            # last lot on this side: no dust may be left behind
+            try: held = self._positions_critical().get((lot['symbol'], lot['side']))
+            except Exception: held = None          # unreadable: send this lot's own quantity (only the READ is guarded)
+            if held:
+                extra = held - qty
+                if extra <= 0 or F.leaves_dust(extra, mark or lot['avg'], self.rules.get(lot['symbol'])): qty = held
         self._market_close(lot, qty, why, mark, post={'finish': why})    # raises on failure -> lot and its stop stay as they were
         self._finish(key, why)
         self.save_state()
@@ -1363,61 +1396,74 @@ class Engine:
                     if isinstance(lot.get('ex'), dict): rs.discard(key)   # only once observe() really started tracking
                     self._audit_emit(TA.checkpoint(lot, key, t_))  # bounded checkpoint event goes to the writer queue
                 except Exception: pass                         # audit never raises into a trading path
+                failed = []                                    # AUD-02: stages of this lot that failed this pass
                 try:
                     if lot.get('force_close'):                 # a stop update found price already through the stop
                         self.close_lot(key, 'stop_crossed', m); changed = True; continue
                     if lot.get('stop_dirty') or not lot.get('stop_id'):   # protection missing/outdated -> retry every pass
                         if self._replace_stop(lot): changed = True; log.info(f"{lot['symbol']} [{lot['sleeve']}] stop restored")
                     if 'dca' in g and lot.get('levels'):
-                        while lot['dca'] < len(lot['levels']) and sd * (lot['levels'][lot['dca']] - m) >= 0:
-                            q = lot['q0'] * lot['w'][lot['dca']] * (self._breaker_add_mult(lot) or 1.0)   # 0 -> the gate blocks it
-                            if self._add_gate(lot, q, m, 'safety_order') or not self._add_qty(lot, q, m, 'safety_order', post={'dca': lot['dca'] + 1}): break
-                            lot['dca'] += 1
-                            lot['tp'] = lot['avg'] + sd * g['dca']['tp_atr'] * lot['atr0']
-                            self._replace_stop(lot); changed = True
+                        with self._stage(key, lot, 'safety_order', failed, add=True):
+                            while (lot['dca'] < len(lot['levels']) and sd * (lot['levels'][lot['dca']] - m) >= 0
+                                   and not self._add_cooling(lot)):
+                                q = lot['q0'] * lot['w'][lot['dca']] * (self._breaker_add_mult(lot) or 1.0)   # 0 -> the gate blocks it
+                                if self._add_gate(lot, q, m, 'safety_order') or not self._add_qty(lot, q, m, 'safety_order', post={'dca': lot['dca'] + 1}): break
+                                lot['dca'] += 1
+                                lot['tp'] = lot['avg'] + sd * g['dca']['tp_atr'] * lot['atr0']
+                                self._replace_stop(lot); changed = True
+                    if 'dca' in g and lot.get('levels'):
+                      with self._stage(key, lot, 'basket_tp', failed):
                         if lot.get('tp') is not None and ge(lot['tp']):
-                            run = g.get('runner')
-                            if run and run.get('dca_frac', 1) < 1:      # runner: bank part, keep the rest at breakeven
-                                self._market_close(lot, lot['qty'] * run['dca_frac'], 'basket_tp_part', m,
-                                                   post={'tp': None, 'tp1': True, 'dca': len(lot['levels']), 'e0': lot['avg']})
-                                if lot['qty'] <= 0: self._finish(key, 'basket_tp'); changed = True; continue
-                                lot['tp'] = None; lot['tp1'] = True; lot['dca'] = len(lot['levels'])
-                                lot['e0'] = lot['avg']; changed = True
-                                be = lot['avg'] * (1 + sd * BE_BUF)
-                                if sd * (be - lot['stop']) > 0 and sd * (m - be) > 0: self._replace_stop(lot, be)
-                                else: self._replace_stop(lot)
-                                lot['R'] = max(lot['R'], abs(lot['avg'] - lot['stop']))
-                            else:
-                                self.close_lot(key, 'basket_tp', m); changed = True; continue
-                    if 'pyramid' in g and lot['adds'] < g['pyramid']['n'] and ge(lot['next_add']):
+                              run = g.get('runner')
+                              if run and run.get('dca_frac', 1) < 1:      # runner: bank part, keep the rest at breakeven
+                                  self._market_close(lot, lot['qty'] * run['dca_frac'], 'basket_tp_part', m,
+                                                     post={'tp': None, 'tp1': True, 'dca': len(lot['levels']), 'e0': lot['avg']})
+                                  if lot['qty'] <= 0: self._finish(key, 'basket_tp'); changed = True; continue
+                                  lot['tp'] = None; lot['tp1'] = True; lot['dca'] = len(lot['levels'])
+                                  lot['e0'] = lot['avg']; changed = True
+                                  be = lot['avg'] * (1 + sd * BE_BUF)
+                                  if sd * (be - lot['stop']) > 0 and sd * (m - be) > 0: self._replace_stop(lot, be)
+                                  else: self._replace_stop(lot)
+                                  lot['R'] = max(lot['R'], abs(lot['avg'] - lot['stop']))
+                              else:
+                                  self.close_lot(key, 'basket_tp', m); changed = True; continue
+                    if key not in self.state['lots']: continue   # AUD-02: finished by a stage (or its recovery)
+                    if 'pyramid' in g and lot['adds'] < g['pyramid']['n'] and ge(lot['next_add']) and not self._add_cooling(lot):
+                      with self._stage(key, lot, 'pyramid_add', failed, add=True):
                         if not self._add_gate(lot, lot['q0'] * g['pyramid']['frac'], m, 'pyramid_add'):
                             if self._add_qty(lot, lot['q0'] * g['pyramid']['frac'], m, 'pyramid_add',
                                              post={'adds': lot['adds'] + 1, 'next_add': lot['next_add'] + sd * g['pyramid']['step_r'] * lot['R']}):
                                 lot['adds'] += 1; lot['next_add'] += sd * g['pyramid']['step_r'] * lot['R']
                                 self._replace_stop(lot); changed = True
+                    if key not in self.state['lots']: continue   # AUD-02: finished by a stage (or its recovery)
                     if g.get('tp1_r') and not lot['tp1'] and ge(lot['e0'] + sd * g['tp1_r'] * lot['R']):
+                      with self._stage(key, lot, 'take_profit_1', failed):
                         self._market_close(lot, lot['qty'] * g.get('tp1_frac', 0.5), 'take_profit_1', m, post={'tp1': True})
                         lot['tp1'] = True; changed = True
                         if lot['qty'] <= 0: self._finish(key, 'take_profit_1'); continue
                         self._replace_stop(lot)
+                    if key not in self.state['lots']: continue   # AUD-02: finished by a stage (or its recovery)
                     tps = S.norm_tps(g.get('tps'))
                     if tps:                                    # take-profit ladder: each level fires once (fraction of the full size)
-                        done, fired = list(lot.get('tps_done', [])), False
-                        rr = self.rules.get(lot['symbol'], dict(min_qty=0, min_notional=0))
-                        for k_, (r_, f_) in enumerate(tps):
-                            if k_ in done: continue
-                            if not ge(lot['e0'] + sd * r_ * lot['R']): break
-                            q = min(lot['qty'], lot.get('qty_max', lot['q0']) * f_)
-                            rest = lot['qty'] - q
-                            if F.leaves_dust(rest, m, rr): q = lot['qty']   # never leave dust (shared with the backtest)
-                            done.append(k_)
-                            self._market_close(lot, q, 'take_profit_ladder', m, post={'tps_done': list(done)})
-                            lot['tps_done'] = list(done); fired = changed = True
-                            if lot['qty'] <= 0: break
-                        if lot['qty'] <= 0: self._finish(key, 'take_profit_ladder'); continue
-                        if fired: self._replace_stop(lot)
+                      with self._stage(key, lot, 'take_profit_ladder', failed):
+                          done, fired = list(lot.get('tps_done', [])), False
+                          rr = self.rules.get(lot['symbol'], dict(min_qty=0, min_notional=0))
+                          for k_, (r_, f_) in enumerate(tps):
+                              if k_ in done: continue
+                              if not ge(lot['e0'] + sd * r_ * lot['R']): break
+                              q = min(lot['qty'], lot.get('qty_max', lot['q0']) * f_)
+                              rest = lot['qty'] - q
+                              if F.leaves_dust(rest, m, rr): q = lot['qty']   # never leave dust (shared with the backtest)
+                              done.append(k_)
+                              self._market_close(lot, q, 'take_profit_ladder', m, post={'tps_done': list(done)})
+                              lot['tps_done'] = list(done); fired = changed = True
+                              if lot['qty'] <= 0: break
+                          if lot['qty'] <= 0: self._finish(key, 'take_profit_ladder'); continue
+                          if fired: self._replace_stop(lot)
                     if g.get('tp_r') and not g.get('runner') and not g.get('ttp') and ge(lot['e0'] + sd * g['tp_r'] * lot['R']):
-                        self.close_lot(key, 'take_profit', m); changed = True; continue
+                      with self._stage(key, lot, 'take_profit', failed):
+                          self.close_lot(key, 'take_profit', m); changed = True; continue
+                    if key not in self.state['lots']: continue   # AUD-02: finished by a stage (or its recovery)
                     lot['best'] = max(lot['best'], m) if sd == 1 else min(lot['best'], m)
                     # every stop tightening goes through one place: the best candidate that is still on the losing side of price
                     cands = []
@@ -1447,6 +1493,7 @@ class Engine:
                                 if run: log.info(f"RUNNER {lot['symbol']} [{lot['sleeve']}] stop raised to {lot['stop']}")
                 except Exception as e:
                     ok = False; self.err(f'manage {key}: {e}')
+                if failed: ok = False                          # AUD-02: a failed stage is still a failed pass (alerting)
             try: changed = self.grids.on_marks(marks) or changed
             except Exception as e: ok = False; self.err(f'grid: {e}')
             if ok:
