@@ -505,7 +505,7 @@ def test_preflight_partial_with_minimum_capital_and_risk():
     assert F.size_check(o['qty_raw'], o['qty'], 60000.0, TESTNET['BTCUSDT'])['ok']
     o = F.slot_order_qtys(_slots()[0], u['min_capital'] * 0.99, 60000.0, 600.0)
     assert not F.size_check(o['qty_raw'], o['qty'], 60000.0, TESTNET['BTCUSDT'])['ok']
-    assert u['min_risk_pct'] == pytest.approx(2.0 * u['min_capital'] / 500, rel=1e-3)
+    assert u['min_risk_pct'] == pytest.approx(2.0 * u['min_capital'] / 500, rel=3e-3)   # both rounded UP (capital to $1)
     assert 'below the Binance minimum' in r['warning'] and 'about' in r['warning']
 
 
@@ -662,8 +662,10 @@ def test_preflight_market_uses_the_latest_closed_candle_atr_like_the_engine():
     df = pd.DataFrame(dict(t=pd.date_range('2026-01-01', periods=n, freq='4h'), c=np.full(n, 150.0), atr=np.full(n, 1.5)))
     df.loc[n - 1, 'atr'] = 15.0                                 # volatility just exploded: latest ATR 10x the median
     e = types.SimpleNamespace(_kc={('SOLUSDT', '4h'): (df,)})
-    m, asof = A.preflight_market(e, {('SOLUSDT', '4h')})
+    fresh = df.t.iloc[-1].timestamp() + 4 * 3600 + 60          # one minute after the last candle closed
+    m, asof = A.preflight_market(e, {('SOLUSDT', '4h')}, now=fresh)
     x = m[('SOLUSDT', '4h')]
+    assert x['stale'] is False
     assert x['atr'] == 15.0 and x['atr_median'] == pytest.approx(1.5) and x['px'] == 150.0
     assert x['basis'] == 'latest closed candle' and x['t'] == str(df.t.iloc[-1])[:16] and 'engine' in asof['SOLUSDT 4h']
     # the status follows the latest ATR: 10x the ATR -> 1/10 the size -> below the minimum now, fine on the median
@@ -672,3 +674,79 @@ def test_preflight_market_uses_the_latest_closed_candle_atr_like_the_engine():
     now = F.preflight(sl, 500.0, m, rule, 'ok')
     typ = F.preflight(sl, 500.0, {k: dict(v, atr=v['atr_median']) for k, v in m.items()}, rule, 'ok')
     assert now['status'] == 'infeasible' and typ['status'] == 'ok'
+
+
+def test_preflight_never_green_on_old_prices_and_cuts_the_forming_candle():
+    """Cowork D2 + closed-candle rule: a candle that has not closed by `now` is never used, and prices more than 2 candles
+    old make the status 'unknown' (the estimate is kept, with the reason)."""
+    import app as A, types
+    n = 200
+    t = pd.date_range('2026-01-01', periods=n, freq='4h')
+    df = pd.DataFrame(dict(t=t, c=np.full(n, 150.0), atr=np.full(n, 1.5)))
+    df.loc[n - 1, ['c', 'atr']] = [999.0, 99.0]                 # the last row is still forming at `now`
+    e = types.SimpleNamespace(_kc={('SOLUSDT', '4h'): (df,)})
+    now = t[-1].timestamp() + 3600                              # 1 h into the last candle
+    m, _ = A.preflight_market(e, {('SOLUSDT', '4h')}, now=now)
+    x = m[('SOLUSDT', '4h')]
+    assert x['px'] == 150.0 and x['atr'] == 1.5 and x['t'] == str(t[-2])[:16] and x['stale'] is False
+    rule = dict(SOLUSDT=dict(step=0.01, min_qty=0.01, min_notional=5.0))
+    sl = _slots(key='ema_mom', syms=('SOLUSDT',), risk=0.0006)
+    assert F.preflight(sl, 500.0, m, rule, 'ok')['status'] == 'ok'
+    e = types.SimpleNamespace(_kc={('SOLUSDT', '4h'): (df.iloc[:-1].reset_index(drop=True),)})
+    m, _ = A.preflight_market(e, {('SOLUSDT', '4h')}, now=now + 3 * 86400)   # 3 days later, no new candles
+    assert m[('SOLUSDT', '4h')]['stale'] is True
+    r = F.preflight(sl, 500.0, m, rule, 'ok')
+    assert r['status'] == 'unknown' and r['estimate'] == 'ok' and 'old prices' in r['warning'] and len(r['stale']) == 1
+
+
+def test_adds_are_priced_on_the_side_the_slot_trades():
+    """Comparison defect A1: the engine places LONG pyramid adds ABOVE the entry (next_add = fill + step_r * R) and long DCA
+    levels below it; a long-only slot must be checked there, not at a mirrored short price."""
+    py = {'pyramid': {'n': 2, 'step_r': 1.5, 'frac': 0.5}}
+    base = _slots(key='ema_mom', mgmt=py, syms=('SOLUSDT',), risk=0.01)[0]
+    R = base['mgmt']['stop_atr'] * 1.5
+    long_ = F.slot_order_legs(dict(base, sides='long'), 500.0, 150.0, 1.5)
+    short = F.slot_order_legs(dict(base, sides='short'), 500.0, 150.0, 1.5)
+    both = F.slot_order_legs(dict(base, sides='both'), 500.0, 150.0, 1.5)
+    assert [x['px'] for x in long_[1:]] == pytest.approx([150 + 1.5 * R, 150 + 3.0 * R])
+    assert [x['px'] for x in short[1:]] == pytest.approx([150 - 1.5 * R, 150 - 3.0 * R])
+    assert [x['px'] for x in both[1:]] == [x['px'] for x in short[1:]]          # 'both': the smaller notional
+    dca = _slots(key='dca_dip', syms=('SOLUSDT',), risk=0.01)[0]
+    lv = F.risk_qty(dca['mgmt'], 5.0, 150.0, 1.5, 1)['levels']
+    assert [x['px'] for x in F.slot_order_legs(dict(dca, sides='long'), 500.0, 150.0, 1.5)[1:]] == pytest.approx(lv[1:])
+    assert [x['px'] for x in F.slot_order_legs(dict(dca, sides='short'), 500.0, 150.0, 1.5)[1:]] == pytest.approx([300 - v for v in lv[1:]])
+    # volatile coin (ATR 8 % of price): the long-only plan really needs $180; mirrored (short-side) pricing said $540
+    rule = dict(SOLUSDT=dict(step=0.01, min_qty=0.01, min_notional=5.0)); hot = {('SOLUSDT', '4h'): dict(px=150.0, atr=12.0)}
+    rl = F.preflight([dict(base, sides='long')], 200.0, hot, rule, 'ok')
+    rb = F.preflight([dict(base, sides='both')], 200.0, hot, rule, 'ok')
+    assert rl['status'] == 'ok' and rl['min_capital_all'] == 180.0 and rl['min_capital_binding']['leg'] == 'pyramid add 1'
+    assert rb['status'] == 'partial' and rb['min_capital_all'] == 540.0 and rb['min_capital_binding']['leg'] == 'pyramid add 2'
+
+
+def test_add_failures_are_never_labelled_leverage_cap_and_minimums_round_up():
+    rule = dict(SOLUSDT=dict(step=0.01, min_qty=0.01, min_notional=5.0))
+    r = F.preflight(_slots(key='ema_mom', mgmt={'pyramid': {'n': 1, 'step_r': 1.5, 'frac': 0.5}}, syms=('SOLUSDT',), risk=0.0003),
+                    500.0, MARKET, rule, 'ok')
+    assert r['add_undersized'] and all(a['code'] in ('below_min_qty', 'below_min_notional') for a in r['add_undersized'])
+    assert r['min_capital_all'] == math.ceil(r['min_capital_all'])
+    # 'ok' keeps its pre-change meaning (pairs whose FIRST order passes); the full plan is plan_ok
+    assert r['ok'] == r['entry_ok'] == 1 and r['plan_ok'] == 0
+
+
+def test_backtest_with_symbols_missing_from_trusted_rules_is_not_promotable(monkeypatch):
+    """Cowork D1: rules applied, but some coins had no rule in the snapshot (legacy floor for them) -> not execution-realistic."""
+    import app as A, engine as E
+    monkeypatch.setattr(A, 'APP', None)
+    monkeypatch.setattr(A, 'get_candles', _csv_candles)
+    real = copy.deepcopy(XR.load('testnet'))
+    real['symbols'].pop('SOLUSDT')
+    r = _app_bt(monkeypatch, A, E, real, 'ok')
+    f = r['feasibility']
+    assert f['rules_applied'] is True and 'SOLUSDT' in f['unknown_symbols']
+    assert f['execution_realistic'] is False and f['promotable'] is False
+    full = _app_bt(monkeypatch, A, E, XR.load('testnet'), 'ok')['feasibility']
+    assert full['execution_realistic'] is True and full['promotable'] is True and full['unknown_symbols'] == []
+    off = _app_bt(monkeypatch, A, E, None, 'off', rules='off')['feasibility']
+    assert off['rules_applied'] is False and off['execution_realistic'] is False
+    html = open(os.path.join(ROOT, 'panel.html'), encoding='utf-8').read()
+    assert "f.rules_applied===false)return" in html and 'switched off for this run' in html and 'No exchange rule for' in html

@@ -344,17 +344,22 @@ conflict with this section (placeholder data, preflight math, ATR basis, partial
 ### P2: a file import cannot self-certify
 - `exchange_rules.build_file` is **unverified by default** (`provenance: file_import`). The capture time is
   `--fetched-at`, else the file's own `serverTime`, else none (state `stale`). It is never "now".
-- `--trust` marks the import verified only with a stderr WARNING and `provenance: file_import_trusted`. It is refused
-  when `--source` is the other environment's URL.
+- **No trust override** (changed after the Codex comparison note, taking Cowork's stricter gate). `build --trust` is
+  refused with exit 2 and a pointer to `fetch`. `build_file` has no trust parameter.
+- `snapshot_state` returns `ok` only for trusted provenance:
+  - `direct_fetch` whose `source_url` is exactly that environment's exchangeInfo URL (`feasibility.TRUSTED_SOURCES`);
+  - `engine`, the live connection, built in memory by `app.exchange_rules_now`.
+
+  Anything else is `unverified`, whatever `verified` says, with a detail telling you to run `fetch`. A file on disk that
+  claims `engine` is demoted by `exchange_rules.load`.
 - Only `fetch` produces `direct_fetch`. Every snapshot records `raw_sha256` (the exact bytes), `source_url` and
   `server_time`.
-- Tests: `test_file_import_never_self_certifies` covers:
-  - a mainnet-URL file imported as testnet with a fresh `--fetched-at` stays unverified;
-  - no time → stale even when trusted;
-  - an old trusted file → stale;
-  - a cross-environment trust is refused.
-
-  Also `test_direct_fetch_is_verified_with_provenance`.
+- Tests:
+  - `test_file_import_never_self_certifies`: a mainnet-URL file imported as testnet with a fresh `--fetched-at` stays
+    unverified; no time means no `fetched_at`; `--trust` is refused.
+  - `test_only_a_direct_fetch_of_this_environment_or_the_live_engine_is_trusted`: wrong/foreign/empty `source_url`,
+    `file_import`, missing provenance and an `engine` claim on disk are all `unverified`.
+  - `test_app_live_engine_rules_are_trusted_and_labelled` and `test_direct_fetch_is_verified_with_provenance`.
 
 ### P2: current-capital preflight uses the latest ATR
 - `preflight_market` returns `px` and `atr` of the **latest closed candle** (the engine's signal `atr`), plus
@@ -365,25 +370,71 @@ conflict with this section (placeholder data, preflight math, ATR basis, partial
   headline is `infeasible` while the median-based planning check says `ok`.
 
 ### Preset feasibility on the VERIFIED testnet rules (replaces the placeholder table above)
-Shipped candle files, latest closed candle as of 2026-10-04 00:00–03:00 UTC, max leverage 10, every planned order.
-"entries" = the first order can be placed; "full plan" = the entry **and** every DCA / pyramid add can be placed.
+Shipped candle files, last row dropped and forming candles cut, latest closed candle 2026-10-03 20:00 to 2026-10-04
+02:00 UTC. Max leverage 10, every planned order, adds priced on each slot's own trading side.
+
+- "entries" = the first order can be placed; "full plan" = the entry **and** every DCA / pyramid add can be placed.
+- **Status in the app is `unknown` for all of these**: the shipped prices are over 2 candles old, so it is never green on
+  them. The figures are the kept estimate. The live app uses the engine's fresh candles for pairs it polls.
 
 | Profile | $100: entries / full plan | $200: entries / full plan | $500: entries / full plan | Capital for every planned order (binding order) |
 |---|---|---|---|---|
-| original | 100% / 100% ok | 100% / 100% ok | 100% / 100% ok | $70 (entry, BTC A 4h) |
-| calm | 17.0% / 17.0% | 40.9% / 40.9% | 52.3% / 52.3% | $16,566 (entry, QNT DCA 4h) |
-| balanced | 40.9% / 15.9% | 52.3% / 35.2% | 65.9% / 64.8% | $8,283 (entry, QNT DCA 4h) |
-| aggressive | 47.7% / 27.3% | 54.5% / 46.6% | 78.4% / 77.3% | $5,522 (entry, QNT DCA 4h) |
-| active | 81.2% / 81.2% | 87.5% / 87.5% | 100% / 100% ok | $273 (entry, BTC DCA1H 1h) |
-| boost_active | 47.9% / 32.3% | 58.3% / 55.2% | 86.5% / 84.4% | $4,418 (entry, QNT DCA 4h) |
-| steady_mix | 20.8% / 5.2% | 43.8% / 20.8% | 56.2% / 47.9% | $16,566 (entry, QNT DCA 4h) |
-| active_dca | 75.0% / 75.0% | 100% / 100% ok | 100% / 100% ok | $136 (entry, BTC DCA1H 1h) |
-| boost | 53.8% / 50.0% | 76.2% / 75.0% | 97.5% / 97.5% | $2,209 (entry, QNT DCA 4h) |
+| original | 100% / 100% | 100% / 100% | 100% / 100% | $75 (entry, BTC A 4h) |
+| calm | 17.0% / 17.0% | 39.8% / 39.8% | 52.3% / 52.3% | $16,504 (entry, QNT DCA 4h) |
+| balanced | 39.8% / 18.2% | 52.3% / 43.2% | 64.8% / 64.8% | $8,252 (entry, QNT DCA 4h) |
+| aggressive | 47.7% / 34.1% | 54.5% / 50.0% | 78.4% / 78.4% | $5,502 (entry, QNT DCA 4h) |
+| active | 81.2% / 81.2% | 87.5% / 87.5% | 100% / 100% | $283 (entry, BTC DCA1H 1h) |
+| boost_active | 46.9% / 40.6% | 58.3% / 57.3% | 84.4% / 83.3% | $4,401 (entry, QNT DCA 4h) |
+| steady_mix | 20.8% / 5.2% | 42.7% / 22.9% | 56.2% / 53.1% | $16,504 (entry, QNT DCA 4h) |
+| active_dca | 75.0% / 75.0% | 100% / 100% | 100% / 100% | $142 (entry, BTC DCA1H 1h) |
+| boost | 53.8% / 52.5% | 76.2% / 76.2% | 97.5% / 97.5% | $2,201 (entry, QNT DCA 4h) |
 
-These are exchange-minimum feasibility numbers only, not profitability. Per decision 4, preset cards stay unchanged until
-BT01+BT02 reruns on an accepted verified snapshot. For the $100–$200 follower range, only `original` is fully tradable
-at both amounts. `active_dca` is fully tradable from $200 and `active` from $500. The DCA-heavy profiles cannot build
-most of their planned positions.
+These are exchange-minimum feasibility estimates only, not profitability. Per decision 4, preset cards stay unchanged
+until BT01+BT02 reruns on an accepted verified snapshot. For the $100–$200 follower range, only `original` is fully
+tradable at both amounts. `active_dca` is fully tradable from $200 and `active` from $500. The DCA-heavy profiles cannot
+build most of their planned positions.
+
+### Round 2b: comparison with Cowork's parallel version (`cowork/bt02-r2@aa83084`) and what was merged
+The owner chose compare-then-pick. Codex's comparison note picked this branch as the base, with Cowork's stricter trust
+gate (above). An independent read-only comparison and cross-tests (my partial-exit and replay-parity tests also pass on
+Cowork's code) found these defects in round 2a, now fixed here:
+
+- **Pyramid / DCA add pricing (A1).** Adds were always priced on the short side (below the entry). The engine places
+  long pyramid adds **above** the entry (`next_add = fill + step_r × R`), and every pyramid strategy is long-only.
+  `slot_order_legs` now prices each add on the side(s) the slot trades (`sides`, from the slot or its strategy;
+  `both` = the smaller notional), and the app passes each slot's `sides`.
+  - Effect, volatile coin (SOL $150, ATR 12): long-only plan needs **$180** (binding "pyramid add 1"); the old mirrored
+    pricing said **$540**.
+  - Test: `test_adds_are_priced_on_the_side_the_slot_trades`.
+- **Add failure labels (A2).** An add failing only because of step rounding was labelled `leverage_cap`. Adds now always
+  report `below_min_qty` / `below_min_notional`.
+- **Rounding (A3).** `min_capital` is rounded **up** to $1 and `min_risk_pct` up to 0.01, so a quoted minimum is never
+  still too small.
+- **Unchanged field meaning (A7).** `ok` keeps its round-1 meaning (pairs whose first order passes, row and top level).
+  The full plan is the new `plan_ok`; status and `plan_executable_pct` use it.
+- **Forming candle (A4, from Cowork).** `preflight_market` drops the shipped CSV's last row (its completion is unknown
+  when written) and cuts any candle not closed by `now`, the engine's rule. The engine cache is already closed-only.
+- **Old prices never green (Cowork D2).** A pair whose latest closed candle is more than 2 candles late is marked
+  `stale`. Preflight status becomes `unknown`, keeping the estimate and saying "use old prices (latest candle …)".
+- **Partial rules coverage (Cowork D1).** A backtest with rules applied but some symbols missing from the snapshot
+  (legacy floor for them) now has `execution_realistic=false` and `promotable=false`, and the panel lists those coins.
+  This matters because testnet lacks some top-40 coins.
+- **Rules-off note (A6).** The panel now says "not applied (switched off for this run)" when the request turned rules off.
+
+Tests: `test_bt02_exchange_filters.py` **48 passed**, including the new tests named above,
+`test_preflight_never_green_on_old_prices_and_cuts_the_forming_candle` and
+`test_backtest_with_symbols_missing_from_trusted_rules_is_not_promotable`.
+
+Not taken from Cowork:
+- deleting the shipped snapshot (Codex: keep the direct fetch);
+- its rename of the engine close helpers (behaviour is identical; the shared `leaves_dust` covers the ladder rule).
+
+Cowork's open items are left for later tickets:
+- D3: hedge-mode partial close without `reduceOnly`, retried each pass if Binance refuses. Needs a testnet check, i.e.
+  Cowork runtime work.
+- D5: preflight ignores the leverage-cap add block.
+- D6: `exchange_rules:'off'` is not reachable through `/api/backtest`.
+- D7: gitignore and doc nits.
 
 ### Not done here (deliberately)
 - Distinct-signal-episode counting (decision 5, "if useful"): not added. Attempts stay per signal candle.

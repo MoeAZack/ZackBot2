@@ -197,22 +197,25 @@ def slot_order_legs(sl, capital, px, atr, max_lev=10.0, rule=None):
       entry          qty_raw = the risk-sized quantity, qty = after the leverage cap (size_check floors it)
       safety_order k q0 * scale**k at DCA level k            (q0 = the entry quantity floored to the step, the engine's lot q0)
       pyramid_add k  q0 * frac, n adds, k * step_r * R from the entry
-    An add is priced at the side where its notional is SMALLEST (DCA: the long levels below the entry; pyramid: the short
-    side, also below the entry), so the check is never optimistic for either direction."""
+    Each add is priced where the engine would place it for the side(s) this slot trades (sl['sides']: 'long' | 'short' |
+    'both'; default 'both'): long DCA levels / short pyramid adds below the entry, short DCA levels / long pyramid adds above
+    it. For 'both' the side with the SMALLER notional is used, so the check is never optimistic."""
     g = sl.get('mgmt') or {}
     sleeve_eq = capital * float(sl['share'])
     risk_usd = sleeve_eq * float(sl['risk'])
+    sds = {'long': (1,), 'short': (-1,)}.get(sl.get('sides'), (1, -1))
     z = risk_qty(g, risk_usd, px, atr, 1)
     cap = max(0.0, max_lev * sleeve_eq) / px
     q = min(z['qty'], cap)
     q0 = size_check(z['qty'], q, px, rule)['qty'] if rule is not None else q
     legs = [dict(leg='entry', k=0, qty_raw=z['qty'], qty=q, px=px)]
     for k, w in enumerate((z['weights'] or [])[1:], start=1):
-        legs.append(dict(leg='safety_order', k=k, qty_raw=q0 * w, qty=q0 * w, px=z['levels'][k]))
+        lpx = min(px + (z['levels'][k] - px) * sd for sd in sds)            # levels[k] is the long level (sd = 1)
+        legs.append(dict(leg='safety_order', k=k, qty_raw=q0 * w, qty=q0 * w, px=lpx if lpx > 0 else px))
     py = g.get('pyramid')
     if py:
         for k in range(1, int(py.get('n', 1)) + 1):
-            lpx = px - k * float(py.get('step_r', 1.5)) * z['R']
+            lpx = min(px + sd * k * float(py.get('step_r', 1.5)) * z['R'] for sd in sds)
             legs.append(dict(leg='pyramid_add', k=k, qty_raw=q0 * float(py.get('frac', 0.5)), qty=q0 * float(py.get('frac', 0.5)),
                              px=lpx if lpx > 0 else px))
     return legs
@@ -231,6 +234,8 @@ def check_legs(legs, rule):
     out = []
     for x in legs:
         d = size_check(x['qty_raw'], x['qty'], x['px'], rule)
+        if x['leg'] != 'entry' and d['code'] == 'leverage_cap':
+            d = dict(d, code='below_min_qty' if d['qty'] < float(rule.get('min_qty', 0)) else 'below_min_notional', reason=REASON_BELOW_MIN)
         out.append(dict(leg=x['leg'], k=x['k'], ok=bool(d['ok']), code=d['code'], reason=d['reason'], qty=d['qty'], px=x['px'],
                         notional=round(d['qty'] * x['px'], 4)))
     return out
@@ -266,14 +271,14 @@ def preflight(slots, capital, market, rules, rules_state='ok', rules_detail='', 
     planned order of each coin/slot pair: the entry, each DCA safety order and each pyramid add (BT02 review P1).
     slots: [dict(id, key, share, risk, tf, symbols: [..], mgmt: FULL merged management)] (symbols already resolved);
     market: {(symbol, tf): dict(px, atr)}; rules: {symbol: rule}; rules_state: snapshot_state()[0].
-    -> dict(status, estimate, entry_executable_pct, plan_executable_pct, executable_pct (= plan), pairs, ok (plan),
-            entry_ok, undersized: [...], unknown: [...], add_undersized: [... per failing later order ...],
+    -> dict(status, estimate, entry_executable_pct, plan_executable_pct, executable_pct (= plan), pairs, ok (= entry_ok,
+            pairs whose first order passes - unchanged meaning), entry_ok, plan_ok (pairs whose every order passes), undersized: [...], unknown: [...], add_undersized: [... per failing later order ...],
             min_capital_all (every order of every pair) + min_capital_binding, warning, rules_state, rules_detail)
     A pair is fully tradable only when its entry AND every later order pass. status 'ok' only then for every pair;
     'partial' when any entry or any later order fails; 'infeasible' when no entry can be placed. All of it only when
     rules_state == 'ok' and every pair had a rule and market data; otherwise 'unknown' (estimate keeps what the rules say).
     Never a green pass on unknown rules or on a plan with an order that cannot execute."""
-    rows, under, unknown, add_under = [], [], [], []
+    rows, under, unknown, add_under, stale = [], [], [], [], []
     for sl in slots:
         for sym in sl['symbols']:
             m = market.get((sym, sl.get('tf') or '4h')); r = (rules or {}).get(sym)
@@ -281,6 +286,7 @@ def preflight(slots, capital, market, rules, rules_state='ok', rules_detail='', 
             if not m or not r or not (m.get('px') or 0) > 0 or not (m.get('atr') or 0) > 0:
                 unknown.append(dict(tag, why='no exchange rule' if not r else 'no recent price / ATR')); continue
             px, atr = float(m['px']), float(m['atr'])
+            if m.get('stale'): stale.append(dict(tag, t=m.get('t')))
             legs = slot_order_legs(sl, capital, px, atr, max_lev, r)
             chk = check_legs(legs, r)
             d = chk[0]
@@ -291,13 +297,13 @@ def preflight(slots, capital, market, rules, rules_state='ok', rules_detail='', 
             min_cap, bind = _min_capital(sl, capital, px, atr, max_lev, r)
             min_risk = float(sl['risk']) * min_cap / capital if capital > 0 and math.isfinite(min_cap) else math.inf
             o = legs[0]
-            row = dict(tag, ok=plan_ok, entry_ok=entry_ok, code=d['code'], qty=d['qty'], notional=round(d['qty'] * px, 4),
+            row = dict(tag, ok=entry_ok, entry_ok=entry_ok, plan_ok=plan_ok, code=d['code'], qty=d['qty'], notional=round(d['qty'] * px, 4),
                        risk_notional=round(o['qty_raw'] * px, 4), min_notional=r['min_notional'], min_qty=r['min_qty'],
                        step=r['step'], orders=len(legs),
-                       min_capital=round(min_cap, 0) if math.isfinite(min_cap) else None,
-                       min_capital_entry=round(min_entry, 0) if math.isfinite(min_entry) else None,
+                       min_capital=float(math.ceil(min_cap)) if math.isfinite(min_cap) else None,
+                       min_capital_entry=float(math.ceil(min_entry)) if math.isfinite(min_entry) else None,
                        binding_leg=_leg_name(bind) if math.isfinite(min_cap) else None,
-                       min_risk_pct=round(min_risk * 100, 2) if math.isfinite(min_risk) else None)
+                       min_risk_pct=math.ceil(min_risk * 10000 - 1e-9) / 100 if math.isfinite(min_risk) else None)
             rows.append(row)
             if not entry_ok: under.append(dict(row, reason=d['reason']))
             for c in bad_adds:
@@ -306,11 +312,11 @@ def preflight(slots, capital, market, rules, rules_state='ok', rules_detail='', 
                                       reason=f"{_leg_name(c)} of this slot is below the Binance minimum ({c['notional']:.2f} USDT) "
                                              'and will be skipped'))
     n = len(rows)
-    n_entry = sum(1 for x in rows if x['entry_ok']); n_plan = sum(1 for x in rows if x['ok'])
+    n_entry = sum(1 for x in rows if x['entry_ok']); n_plan = sum(1 for x in rows if x['plan_ok'])
     entry_pct = round(n_entry / n * 100, 1) if n else None
     plan_pct = round(n_plan / n * 100, 1) if n else None
     est = 'infeasible' if n and not n_entry else 'partial' if n_plan < n else 'ok' if n else 'unknown'
-    status = est if rules_state == 'ok' and not unknown and n else 'unknown'
+    status = est if rules_state == 'ok' and not unknown and not stale and n else 'unknown'
     min_all = max((x['min_capital'] for x in rows if x['min_capital'] is not None), default=None)
     if any(x['min_capital'] is None for x in rows): min_all = None
     binding = max((x for x in rows if x['min_capital'] is not None), key=lambda x: x['min_capital'], default=None) if min_all else None
@@ -327,10 +333,13 @@ def preflight(slots, capital, market, rules, rules_state='ok', rules_detail='', 
                  + (f" (set by {binding['binding_leg']} on {binding['symbol']} {binding['slot']})" if binding and binding.get('binding_leg') else '')
                  + ' (or raise the risk %).')
     if status == 'unknown':
-        w.append('Exchange rules unknown or unverified (' + (rules_detail or rules_state) + ') - this check is an estimate, not a pass.'
-                 if rules_state != 'ok' else f'{len(unknown)} coin/slot pair(s) could not be checked (no rule or no recent price).')
+        if rules_state != 'ok':
+            w.append('Exchange rules unknown or unverified (' + (rules_detail or rules_state) + ') - this check is an estimate, not a pass.')
+        if unknown: w.append(f'{len(unknown)} coin/slot pair(s) could not be checked (no rule or no recent price).')
+        if stale: w.append(f'{len(stale)} coin/slot pair(s) use old prices (latest candle {min(x["t"] or "" for x in stale)}) - '
+                           'an estimate, not a pass, until fresh candles are loaded.')
     return dict(status=status, estimate=est, executable_pct=plan_pct, entry_executable_pct=entry_pct, plan_executable_pct=plan_pct,
-                pairs=n, ok=n_plan, entry_ok=n_entry, undersized=under, unknown=unknown, add_undersized=add_under,
+                pairs=n, ok=n_entry, entry_ok=n_entry, plan_ok=n_plan, undersized=under, unknown=unknown, add_undersized=add_under, stale=stale,
                 min_capital_all=min_all, min_capital_binding=(dict(symbol=binding['symbol'], slot=binding['slot'], tf=binding['tf'],
                                                                      leg=binding['binding_leg']) if binding else None),
                 warning=' '.join(w), rules_state=rules_state, rules_detail=rules_detail, capital=capital)

@@ -349,6 +349,9 @@ def run_backtest_job(job_id, req):
                    gaps=gaps, period=[str(cv.index[0].date()), str(cv.index[-1].date())],
                    curve=[[str(t.date()), round(v, 2)] for t, v in cvd.items()], by_sleeve=by_sleeve, by_symbol=by_sym,
                    symbols=sorted(all_syms), tfs=sorted(groups), feasibility=feas_total(feas))
+        fz = res['feasibility']
+        fz['execution_realistic'] = bool(fz.get('rules_applied')) and not fz.get('unknown_symbols')
+        fz['promotable'] = fz['execution_realistic']
         save_json(os.path.join(DATA, 'backtests', f'{job_id}.json'), res)
         job.update(status='done', result=res)
     except Exception as e:
@@ -359,12 +362,16 @@ def run_backtest_job(job_id, req):
 _PF_FILES = {}
 
 
-def preflight_market(e, keys):
-    """{(symbol, tf): dict(px, atr, atr_median, t, basis)} for the preflight. px / atr: the LATEST closed candle's close and
-    ATR - what the engine sizes the next signal with (signal atr = the last closed candle's d.atr). atr_median: the median
-    ATR/price of the last 180 closed candles x last close, a separate planning estimate only (BT02 review P2).
-    Source: the engine's candle cache, else the candle files shipped with the app."""
+def preflight_market(e, keys, now=None):
+    """{(symbol, tf): dict(px, atr, atr_median, t, basis, stale)} for the preflight. px / atr: the LATEST closed candle's
+    close and ATR - what the engine sizes the next signal with (signal atr = the last closed candle's d.atr). atr_median:
+    the median ATR/price of the last 180 closed candles x last close, a separate planning estimate only (BT02 review P2).
+    Source: the engine's candle cache (closed candles only), else the candle files shipped with the app - their last row
+    may have been a still-forming candle when the file was written, so it is dropped, and any candle that has not closed
+    by `now` is cut (the engine's rule). stale = the latest closed candle is more than 2 candles older than it should be:
+    the preflight then says 'unknown' (never a green pass on old prices) and keeps its estimate."""
     out, asof = {}, {}
+    now = time.time() if now is None else float(now)
     kc = getattr(e, '_kc', None) or {}
     for sym, tf in sorted(keys):
         df = kc.get((sym, tf), (None,))[0]
@@ -375,14 +382,23 @@ def preflight_market(e, keys):
             if not os.path.exists(f): continue
             try:
                 ck = (f, os.path.getmtime(f))
-                if ck not in _PF_FILES: _PF_FILES[ck] = S.indicators(pd.read_csv(f, parse_dates=['t']).tail(400).reset_index(drop=True))
+                if ck not in _PF_FILES:
+                    raw = pd.read_csv(f, parse_dates=['t'], encoding='utf-8').tail(401).reset_index(drop=True)
+                    _PF_FILES[ck] = S.indicators(raw.iloc[:-1].reset_index(drop=True))     # last row: completion unknown
                 df = _PF_FILES[ck]
             except Exception: continue
-        if 'atr' not in df or len(df) < 30: continue
+        if 'atr' not in df or not len(df): continue
+        tf_s = TF_SEC.get(tf, 14400)
+        opened = pd.to_datetime(df.t).map(lambda x: x.timestamp())                  # unit-safe (ns / us / s)
+        closed = (opened + tf_s) <= now                                             # the engine keeps only closed candles
+        if not closed.all(): df = df[closed.values].reset_index(drop=True)
+        if len(df) < 30: continue
         tail = df.tail(180)
         ratio = float((tail.atr / tail.c).median()); px = float(df.c.iloc[-1]); atr = float(df.atr.iloc[-1])
         if not (ratio > 0 and px > 0 and atr > 0): continue
-        out[(sym, tf)] = dict(px=px, atr=atr, atr_median=ratio * px, t=str(df.t.iloc[-1])[:16], basis='latest closed candle')
+        close_t = pd.Timestamp(df.t.iloc[-1]).timestamp() + tf_s
+        out[(sym, tf)] = dict(px=px, atr=atr, atr_median=ratio * px, t=str(df.t.iloc[-1])[:16], basis='latest closed candle',
+                              src=src, stale=bool(now - close_t > 2 * tf_s))
         asof[f'{sym} {tf}'] = f'{str(df.t.iloc[-1])[:16]} ({src})'
     return out, asof
 
@@ -814,7 +830,8 @@ class App:
                 sy = x.get('symbols', 'all')
                 sy = CORE8 if sy == 'core8' else uni if sy == 'all' else list(sy)
                 out.append(dict(id=x.get('id'), key=x['key'], share=float(x['share']), risk=float(x['risk']), tf=x.get('tf') or '4h',
-                                symbols=list(sy), mgmt=S.merge_mgmt(x['key'], x.get('mgmt'))))
+                                symbols=list(sy), mgmt=S.merge_mgmt(x['key'], x.get('mgmt')),
+                                sides=x.get('sides') or (S.STRATEGIES.get(x['key']) or {}).get('sides') or 'both'))
             slots_by[k] = out
         need = {(s_, x['tf']) for v in slots_by.values() for x in v for s_ in x['symbols']}
         market, asof = preflight_market(e, need)
