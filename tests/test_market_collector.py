@@ -797,14 +797,18 @@ def test_simultaneous_takeover_of_a_dead_lock_has_exactly_one_winner(tmp_path):
     p = os.path.join(tmp_path, MD.LOCK_FILE)
     for rnd in range(25):
         with open(p, 'w', encoding='utf-8') as f: json.dump(dict(pid=424242, t=clk(), token=f'dead{rnd}'), f)
-        start, wins = threading.Barrier(8), []
+        start, wins, errs = threading.Barrier(8), [], []
         def go():
-            start.wait()
-            t = MD.acquire_lock(str(tmp_path), clock=clk, alive=lambda pid: pid != 424242)
-            if t: wins.append(t)
+            try:
+                start.wait()
+                t = MD.acquire_lock(str(tmp_path), clock=clk, alive=lambda pid: pid != 424242)
+                if t: wins.append(t)
+            except BaseException as ex:                       # a worker crash must FAIL the test, not just warn
+                errs.append(repr(ex))
         th = [threading.Thread(target=go) for _ in range(8)]
         for x in th: x.start()
         for x in th: x.join(10)
+        assert not errs, (rnd, errs)
         assert len(wins) == 1, (rnd, wins)
         assert MD.read_json(p)['token'] == wins[0]
         assert not os.path.exists(p + '.takeover')
@@ -812,13 +816,17 @@ def test_simultaneous_takeover_of_a_dead_lock_has_exactly_one_winner(tmp_path):
 
 
 def test_concurrent_acquire_on_a_clean_folder_has_one_winner_and_the_lock_is_never_empty(tmp_path):
-    clk = Clock(); start, wins = threading.Barrier(16), []
+    clk = Clock(); start, wins, errs = threading.Barrier(16), [], []
     def go():
-        start.wait(); t = MD.acquire_lock(str(tmp_path), clock=clk)
-        if t: wins.append(t)
+        try:
+            start.wait(); t = MD.acquire_lock(str(tmp_path), clock=clk)
+            if t: wins.append(t)
+        except BaseException as ex:
+            errs.append(repr(ex))
     th = [threading.Thread(target=go) for _ in range(16)]
     for x in th: x.start()
     for x in th: x.join(10)
+    assert not errs, errs
     assert len(wins) == 1 and MD.read_json(os.path.join(tmp_path, MD.LOCK_FILE))['token'] == wins[0]
     assert not [f for f in os.listdir(tmp_path) if f.endswith('.tmp')], 'no temp file left behind'
 
@@ -841,3 +849,38 @@ def test_an_interrupted_takeover_marker_expires(tmp_path):
     old = time.time() - MD.TAKEOVER_STALE_S - 5; os.utime(m, (old, old))
     assert MD.acquire_lock(str(tmp_path), clock=clk, alive=lambda pid: False) is None    # stale marker cleared
     assert MD.acquire_lock(str(tmp_path), clock=clk, alive=lambda pid: False)            # next attempt takes over
+
+
+def test_windows_contention_on_the_takeover_marker_is_skip_not_crash(tmp_path, monkeypatch):
+    """Codex PR #19 P1: on Windows a contended / delete-pending .takeover marker raises PermissionError (not
+    FileExistsError). That is "someone else is taking over": skip (None), never an exception; the lock is untouched."""
+    clk = Clock(); p = os.path.join(tmp_path, MD.LOCK_FILE)
+    with open(p, 'w', encoding='utf-8') as f: json.dump(dict(pid=424242, t=clk(), token='dead'), f)
+    real = os.open
+    def contended(path, *a, **k):
+        if str(path).endswith('.takeover'): raise PermissionError(13, 'Access is denied', str(path))
+        return real(path, *a, **k)
+    monkeypatch.setattr(MD.os, 'open', contended)
+    assert MD.acquire_lock(str(tmp_path), clock=clk, alive=lambda pid: False) is None
+    assert MD.read_json(p)['token'] == 'dead'
+
+
+def test_windows_contention_on_the_lock_itself_is_taken_not_crash(tmp_path, monkeypatch):
+    """os.link / exclusive create raising PermissionError (a delete-pending lock on Windows) = the lock is taken."""
+    clk = Clock()
+    def denied(a, b): raise PermissionError(13, 'Access is denied')
+    monkeypatch.setattr(MD.os, 'link', denied)
+    assert MD._create_lock(os.path.join(tmp_path, MD.LOCK_FILE), dict(pid=1, t=0, token='x')) is False
+    assert MD.acquire_lock(str(tmp_path), clock=clk) is None
+    assert not [f for f in os.listdir(tmp_path) if f.endswith('.tmp')]
+
+
+def test_standalone_default_folder_is_the_apps_folder_outside_any_source_tree(monkeypatch, tmp_path):
+    """Codex PR #19 P1 root cause: the default --out was <repo>/data_market, inside the source tree an upgrade mirrors."""
+    import collect_market_data as T
+    monkeypatch.setenv('LOCALAPPDATA', str(tmp_path))
+    out = T.default_out()
+    assert out == os.path.join(str(tmp_path), 'ZackBot', 'market_data')
+    assert not os.path.abspath(out).startswith(os.path.abspath(ROOT))
+    src = open(os.path.join(ROOT, 'app.py'), encoding='utf-8').read()
+    assert "os.path.join(DATA, 'market_data')" in src, 'same folder (and so the same lock) as the in-app collector'

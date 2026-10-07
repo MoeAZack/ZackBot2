@@ -3,7 +3,7 @@ rem ZackBot public market-data collector (no API key, never trades). Arguments a
 rem   tools\collect_market_data.bat --once
 rem   tools\collect_market_data.bat --loop --every 4h
 rem   tools\collect_market_data.bat --testnet          (testnet exchangeInfo snapshot for the BT02 exchange rules)
-rem Default (no arguments) = --once. Output: data_market\ in the repo (manifest.json, collector.log).
+rem Default (no arguments) = --once. Output: %LOCALAPPDATA%\ZackBot\market_data (the app's folder; manifest.json, collector.log).
 rem Python: ZackBot's own build environment if present, else the "py" launcher, else "python" on PATH.
 setlocal EnableExtensions
 cd /d "%~dp0.."

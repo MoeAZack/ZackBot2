@@ -12,7 +12,9 @@ intervals, mark-price klines and exchangeInfo snapshots. Same code as the in-app
                                                                   when exchange_rules.py is present in the repo)
 
 Universe (first that applies): --symbols, the installed app's settings.json UNIVERSE (%LOCALAPPDATA%/ZackBot), engine.py
-TOP40, the built-in core 8. Output: one CSV per dataset/symbol/period under --out (default data_market/ in the repo),
+TOP40, the built-in core 8. Output: one CSV per dataset/symbol/period under --out (default: the app's own data folder
+%LOCALAPPDATA%/ZackBot/market_data - the same folder and single-writer lock as the in-app collector, and outside every
+source tree an installer upgrade mirrors, so an upgrade can never delete collected history),
 plus manifest.json (rows, first/last timestamp, last run, source) and collector.log.
 Exit code: 0 ok, 1 finished with errors, 2 bad arguments, 3 stopped (IP ban / rate limit / another run holds the lock).
 """
@@ -31,6 +33,11 @@ def parse_every(v):
     n = float(v[:-1] if mult else v) * (mult or 1)
     if not (900 <= n <= 7 * 86400): raise argparse.ArgumentTypeError('--every must be between 15m and 7 days')
     return n
+
+
+def default_out():
+    """The app's own market-data folder (app.py: DATA/market_data): never inside the repo or the installed source tree."""
+    return os.path.join(os.environ.get('LOCALAPPDATA', os.path.expanduser('~')), 'ZackBot', 'market_data')
 
 
 def top40_from_engine(root=ROOT):
@@ -124,7 +131,7 @@ def main(argv=None, transport=None, sleep=time.sleep, clock=time.time):
     mode.add_argument('--loop', action='store_true', help='keep collecting every --every (jittered)')
     ap.add_argument('--every', type=parse_every, default=4 * 3600, help='loop interval, e.g. 4h (default), 1h, 30m')
     ap.add_argument('--symbols', default='', help='comma list, e.g. BTCUSDT,ETHUSDT (default: the app universe)')
-    ap.add_argument('--out', default=os.path.join(ROOT, 'data_market'), help='data directory (default data_market/)')
+    ap.add_argument('--out', default=default_out(), help="data directory (default: %%LOCALAPPDATA%%/ZackBot/market_data, the app's folder)")
     ap.add_argument('--periods', default='1h,4h', help='periods for the period series (default 1h,4h)')
     ap.add_argument('--weight-per-min', type=float, default=1200, help='request weight budget per minute (Binance IP limit 2400)')
     ap.add_argument('--testnet', action='store_true', help='only snapshot the TESTNET exchangeInfo (BT02 exchange rules)')

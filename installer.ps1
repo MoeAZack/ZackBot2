@@ -498,7 +498,7 @@ function Invoke-Finish {
     $s = $script:S
     $s.Stopped = $false
     Start-Step 'mirror'
-    $r = Invoke-Logged 'robocopy' @($s.StageSrc, $s.Dst, '/MIR', '/XD', 'tests', '/NFL', '/NDL', '/NJH', '/NJS')
+    $r = Invoke-Logged 'robocopy' @($s.StageSrc, $s.Dst, '/MIR', '/XD', 'tests', 'data_market', '/NFL', '/NDL', '/NJH', '/NJS')
     if ($r.Code -ge 8) { $s.Warn += " [source copy in $($s.Dst) failed]"; $s.WarnList.Add("source copy in $($s.Dst) failed") }
     Complete-Step ($r.Code -lt 8) "robocopy exit $($r.Code)"
     Start-Step 'shortcuts'
