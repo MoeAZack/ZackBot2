@@ -96,6 +96,11 @@ def _lot(monkeypatch):
     return dict(e0.state['lots'][k], key=k)
 
 
+def _prot(lots):
+    """Lots without T05a's observe-only excursion record ('ex'), which the audit updates on every mark."""
+    return {k: {f: v for f, v in l.items() if f != 'ex'} for k, l in lots.items()}
+
+
 def _writes(calls): return [c for c in calls if c[0] in ('POST', 'DELETE', 'PUT')]
 
 
@@ -116,7 +121,7 @@ def test_engine_started_during_a_read_outage_recovers_in_the_same_process(monkey
     _drive(A, app, monkeypatch, clk, until=lambda x: clk.t >= T0 + 170)
     assert app.engine is eng0 and not e.connected and e.exchange_state()['state'] == 'outage'
     assert 2 <= e.connect_retry['n'] <= 7                                  # 5,10,20,40,60 s ... not every 2 s pass
-    assert e.state['lots'] == lots0 and _writes(calls) == []
+    assert _prot(e.state['lots']) == _prot(lots0) and _writes(calls) == []
     assert e.health['incidents']['exchange-down']['open'] and len(e.health['errors']) == n0   # one line, updated in place
 
     # past the window: the next retry connects, the loop re-reads positions + stops, THEN the incident closes
@@ -131,7 +136,7 @@ def test_engine_started_during_a_read_outage_recovers_in_the_same_process(monkey
     assert app.engine is eng0                                                # same process/engine: no restart
     assert e.connected and e.error is None and e.connect_retry is None and e.exchange_state()['state'] == 'ok'
     assert e.rules and 'BTCUSDT' in e.rules and e.hedge is True
-    assert e.state['lots'] == lots0                                          # identical quantities and stop ids
+    assert _prot(e.state['lots']) == _prot(lots0)                          # identical quantities and stop ids
     assert _writes(calls) == []                                              # no order, stop or cancel sent at any point
     paths = [c[1] for c in calls]
     assert '/v2/account' in paths
@@ -262,7 +267,7 @@ def test_open_orders_refused_non_transient_is_explained_and_recovery_waits(monke
     inc = e.health['incidents']
     assert e.connected and inc['exchange-down']['open']                       # stops never re-read -> not recovered
     assert inc[f"open-orders|{lot['symbol']}"]['open']                        # ...and it says why, in one keyed line
-    assert e.state['lots'][lot['key']] == lot and _writes(calls) == []
+    assert _prot({1: e.state['lots'][lot['key']]}) == _prot({1: lot}) and _writes(calls) == []
 
 
 def test_outage_that_ends_in_a_refused_key_closes_the_exchange_down_incident(monkeypatch):
