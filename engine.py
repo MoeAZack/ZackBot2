@@ -773,7 +773,8 @@ class Engine:
         """AUD-01 second layer: something failed AFTER Binance executed a close / add. Mark the event done exactly like
         _resolve_pending does: its own `post` bookkeeping (the same dict an unconfirmed order uses) is applied, and a
         requested `finish` (a full close) or a lot left at zero is finished once - so the event can never fire twice, no
-        zero-quantity ghost lot is left, and a remaining lot's stop is re-placed next pass. The exception still propagates."""
+        zero-quantity ghost lot is left, and a remaining lot's stop is re-placed next pass. The recovered state is saved at
+        once (best effort, a save failure is reported but never masks the original error). The exception still propagates."""
         try:
             post = dict(post or {})
             fin = post.pop('finish', None)                          # same semantics as _resolve_pending
@@ -789,6 +790,12 @@ class Engine:
                 self._finish(key, fin or why)             # pops the lot first: terminal bookkeeping cannot repeat
             except Exception as ex2:
                 log.warning(f"{lot['symbol']} [{lot['sleeve']}] finish after a post-fill failure incomplete: {type(ex2).__name__}: {ex2}")
+        try:                                              # durable at once: a restart must not resurrect a closed lot or
+            self.save_state()                             # replay the event (the caller's own save is skipped by the raise)
+        except Exception as ex3:                          # reported, never replaces the original post-fill exception
+            try: self.err(f"state not saved after post-fill recovery ({type(ex3).__name__}: {str(ex3)[:120]}) - saved again next pass",
+                          key='save|state')
+            except Exception: pass
 
     def save_state(self):
         save_json(self.F['state'], self.state)

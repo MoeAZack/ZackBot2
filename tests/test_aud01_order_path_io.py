@@ -149,3 +149,57 @@ def test_an_add_followed_by_a_local_failure_is_marked_done_and_the_stop_covers_i
     assert lot['adds'] == 1 and abs(e.trade.pos[('BTCUSDT', 'LONG')] - q0 * 1.5) < 0.002
     stop_q = [v[2] for v in e.trade.stops.values() if v[0] == 'BTCUSDT']
     assert stop_q and abs(stop_q[-1] - lot['qty']) < 0.002 and not lot.get('stop_dirty')
+
+
+# ---------------------------------------------------------------- Codex AUD-01 round 2: recovery must be durable at once
+def _saved_lots(e):
+    import json
+    return json.load(open(e.F['state'], encoding='utf-8'))['lots']
+
+
+def test_a_recovered_full_close_is_saved_immediately_so_a_restart_cannot_resurrect_it(monkeypatch):
+    e, tmp = mk_engine()
+    assert e.open_lot(SL, 'BTCUSDT', 'LONG', SG, None, e.equity()); e.save_state()
+    k = next(iter(e.state['lots'])); assert k in _saved_lots(e)
+    def explode(*a, **kw): raise RuntimeError('unexpected local failure after the close')
+    monkeypatch.setattr(e, '_audit_fill', explode)
+    with pytest.raises(RuntimeError, match='after the close'):
+        e.close_lot(k, 'exit_signal')
+    assert k not in _saved_lots(e), 'state.json must not still hold the closed lot'
+    monkeypatch.undo()
+    e2 = E.Engine(dict(MODE='paper', API_KEY='k' * 16, API_SECRET='s' * 16), tmp)        # "restart" from disk
+    assert k not in e2.state['lots'] and any(h['id'] == k and h['exit_reason'] == 'exit_signal' for h in e2.history)
+
+
+@pytest.mark.parametrize('kind', ['tp1', 'pyramid'])
+def test_recovered_partial_close_or_add_is_saved_immediately(monkeypatch, kind):
+    e, tmp = mk_engine()
+    mg = {'tp1_r': 1.0, 'tp1_frac': 0.5} if kind == 'tp1' else {'pyramid': {'n': 1, 'step_r': 1.0, 'frac': 0.5}}
+    sl = dict(SL, mgmt=mg); e.S['SLEEVES'] = [sl]
+    assert e.open_lot(sl, 'BTCUSDT', 'LONG', SG, None, e.equity()); e.save_state()
+    k = next(iter(e.state['lots']))
+    def explode(*a, **kw): raise RuntimeError('unexpected local failure after the fill')
+    monkeypatch.setattr(e, '_audit_fill', explode)
+    e.trade.mark['BTCUSDT'] = 120.0 if kind == 'tp1' else 106.0
+    e.manage(e.trade.marks())                                             # the per-lot handler swallows the raise
+    saved = _saved_lots(e)[k]
+    assert saved['stop_dirty'] is True
+    if kind == 'tp1': assert saved['tp1'] is True
+    else: assert saved['adds'] == 1
+    monkeypatch.undo()
+    e2 = E.Engine(dict(MODE='paper', API_KEY='k' * 16, API_SECRET='s' * 16), tmp)        # "restart" from disk
+    l2 = e2.state['lots'][k]
+    assert (l2['tp1'] is True) if kind == 'tp1' else (l2['adds'] == 1), 'a restart must not replay the event'
+
+
+def test_a_failing_recovery_save_never_masks_the_original_error(monkeypatch):
+    e, _ = mk_engine()
+    assert e.open_lot(SL, 'BTCUSDT', 'LONG', SG, None, e.equity())
+    k = next(iter(e.state['lots']))
+    def explode(*a, **kw): raise RuntimeError('original post-fill failure')
+    def no_save(): raise PermissionError(13, 'state.json locked')
+    monkeypatch.setattr(e, '_audit_fill', explode); monkeypatch.setattr(e, 'save_state', no_save)
+    with pytest.raises(RuntimeError, match='original post-fill failure'):
+        e.close_lot(k, 'exit_signal')
+    assert k not in e.state['lots']
+    assert any('state not saved' in str(i) for i in (e.health.get('incidents') or {}).values())
