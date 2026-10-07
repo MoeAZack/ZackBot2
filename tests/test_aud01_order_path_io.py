@@ -112,3 +112,40 @@ def test_journal_backlog_is_bounded():
     finally:
         builtins.open = real
     assert len(e._journal_backlog) == E.JOURNAL_BACKLOG_MAX and e.health.get('journal_dropped', 0) == 10
+
+
+def test_a_full_close_followed_by_a_local_failure_finishes_the_lot_once(monkeypatch):
+    """Codex AUD-01 review P1: Binance closed the whole position, then a local hook raised. The lot must be finished with
+    the intended reason exactly once (history written, lot gone) - no zero-quantity ghost lot, no second close order."""
+    e, _ = mk_engine()
+    assert e.open_lot(SL, 'BTCUSDT', 'LONG', SG, None, e.equity())
+    k = next(iter(e.state['lots']))
+    def explode(*a, **kw): raise RuntimeError('unexpected local failure after the close')
+    monkeypatch.setattr(e, '_audit_fill', explode)
+    with pytest.raises(RuntimeError):
+        e.close_lot(k, 'exit_signal')
+    assert k not in e.state['lots'], 'no ghost lot'
+    assert e.history and e.history[-1]['exit_reason'] == 'exit_signal' and e.history[-1]['id'] == k
+    assert e.trade.calls.count('close') == 1 and abs(e.trade.pos.get(('BTCUSDT', 'LONG'), 0.0)) < 1e-12
+    monkeypatch.undo()
+    _passes(e); e.reconcile(e.equity())
+    assert e.trade.calls.count('close') == 1 and len(e.history) == 1, 'nothing repeats on later passes'
+
+
+def test_an_add_followed_by_a_local_failure_is_marked_done_and_the_stop_covers_it(monkeypatch):
+    """The add half of the AUD-01 contract: Binance filled the pyramid add, then a local hook raised. The add is counted
+    once (adds = 1, no second buy) and the stop is re-placed for the full position."""
+    e, _ = mk_engine(); sl = dict(SL, mgmt={'pyramid': {'n': 1, 'step_r': 1.0, 'frac': 0.5}}); e.S['SLEEVES'] = [sl]
+    assert e.open_lot(sl, 'BTCUSDT', 'LONG', SG, None, e.equity())
+    lot = next(iter(e.state['lots'].values())); q0 = lot['qty']
+    boom = dict(n=0)
+    def explode(*a, **kw):
+        boom['n'] += 1
+        if boom['n'] == 1: raise RuntimeError('unexpected local failure after the add')
+    monkeypatch.setattr(e, '_audit_fill', explode)
+    e.trade.mark['BTCUSDT'] = 106.0
+    _passes(e)
+    assert e.trade.calls.count('open') == 2, e.trade.calls                 # the entry + exactly one add
+    assert lot['adds'] == 1 and abs(e.trade.pos[('BTCUSDT', 'LONG')] - q0 * 1.5) < 0.002
+    stop_q = [v[2] for v in e.trade.stops.values() if v[0] == 'BTCUSDT']
+    assert stop_q and abs(stop_q[-1] - lot['qty']) < 0.002 and not lot.get('stop_dirty')
