@@ -384,3 +384,35 @@ def test_a_failed_cancel_at_zero_clears_ownership_and_parks_the_stop_for_retry()
     assert u['prov'] is None and ['BTCUSDT', p1] in e.state['orphans']
     e.trade.cancel = real; e.manage(e.trade.marks())
     assert p1 not in e.trade.stops and ['BTCUSDT', p1] not in e.state['orphans']
+
+
+# ---------------------------------------------------------------- Cowork result on c2bccf6
+def test_a_siblings_unconfirmed_add_is_not_taken_as_the_lost_entrys_size():
+    """Cowork #28 F1: lot A has an unconfirmed +add already on Binance; a second entry's answer is lost and never executed.
+    The add's size must not get the entry's provisional stop (nor be adopted as a duplicate lot after 5 min)."""
+    e, _ = mk_engine(); k = opened(e); lot = e.state['lots'][k]; q0 = lot['qty']
+    ambiguous_once(e, 'open')                                               # the add executed, its answer was lost
+    with pytest.raises(BC.AmbiguousOrder): e._add_qty(lot, 0.5, 100.0, 'pyramid_add')
+    sl2 = dict(SL, id='T2'); e.S['SLEEVES'] = [SL, sl2]
+    ambiguous_once(e, 'open', fill=False)                                   # second entry: lost, never executed
+    assert not e.open_lot(sl2, 'BTCUSDT', 'LONG', SG, None, e.equity())
+    def unreadable(s, cid): raise TimeoutError('order lookup timed out')
+    e.trade.get_order = unreadable
+    (uk, u), = e.state['unconfirmed_entries'].items()
+    e._settle_unconfirmed(e.trade.positions())
+    assert u['prov'] is None and u.get('prov_qty', 0.0) == 0.0
+
+
+def test_the_failed_shrink_gap_is_pushed_to_the_owner():
+    e, _ = mk_engine(); k, q, uk, u = _sibling_and_lost_second(e)
+    second = e.trade.pos[('BTCUSDT', 'LONG')] - q
+    e.manage(e.trade.marks())
+    sent = []; e.notify = lambda m: sent.append(m)
+    e.trade.pos[('BTCUSDT', 'LONG')] = q + round(int(second / 2 / 0.001) * 0.001, 3)
+    _fail_next_stop(e); e.manage(e.trade.marks())
+    assert any('NO stop for a moment' in m for m in sent)
+
+
+def test_sub_step_execution_is_booked_as_nothing_and_said_so(caplog):
+    assert E.Engine._exec_of({'status': 'EXPIRED', 'executedQty': '0.0004'}, 0.010, 0.001) == 0
+    assert 'below the minimum' in caplog.text

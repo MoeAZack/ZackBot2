@@ -825,7 +825,11 @@ class Engine:
         except (TypeError, ValueError): eq = None
         if st in ORDER_FINAL:
             if eq is None: return requested if st == 'FILLED' else None
-            return min(F.round_step(eq, step), requested)
+            q = min(F.round_step(eq, step), requested)
+            if q <= 0 < eq:                       # Cowork #28 F2: below one step - not tradable, booked as nothing (said so)
+                log.warning(f'order executed only {eq} (< one step {step}): booked as nothing executed - that dust stays on '
+                            'Binance below the minimum, without a bot stop')
+            return q
         if st: return None
         if eq: return min(F.round_step(eq, step), requested)
         return requested
@@ -2596,6 +2600,8 @@ class Engine:
                 self._cancel_or_park(sym, old)                # next pass
                 self.err(f"{sym} {side} unconfirmed entry: resizing its provisional stop to {qty} failed ({str(ex)[:120]}) - the "
                          f"oversized stop was removed, {qty} is UNPROTECTED until the retry next pass", key=f'prov|{uk}')
+                self.notify(f'⚠️ {sym} {side}: {qty} of an unconfirmed entry has NO stop for a moment (the provisional stop could '
+                            'not be resized; the oversized one was removed so it cannot close another trade). Retrying now.')
             else:                                             # first placement / a grow failed: the smaller old stop (if any) stays
                 self.err(f"{sym} {side} unconfirmed entry: provisional stop for {qty} failed ({str(ex)[:120]}) - retried next pass",
                          key=f'prov|{uk}')
@@ -2628,7 +2634,11 @@ class Engine:
             lots_q = sum(l['qty'] for l in self.state['lots'].values() if l['symbol'] == sym and l['side'] == side)
             rest_q = sum(x['qty'] for x in (self.state.get('resting_entries') or {}).values()
                          if x['symbol'] == sym and x['side'] == side)
-            extra = self._rd(min(u['qty'], max(0.0, live.get((sym, side), 0.0) - lots_q - rest_q)), r['step'])
+            # Cowork #28 F1: a sibling lot's own unconfirmed ADD may already be on Binance before its lot grows - that size is
+            # the add's, never this entry's (else it would get this entry's stop and, after 5 min, be adopted twice)
+            add_q = sum((l.get('pending') or {}).get('qty', 0.0) for l in self.state['lots'].values()
+                        if l['symbol'] == sym and l['side'] == side and (l.get('pending') or {}).get('kind') == 'add')
+            extra = self._rd(min(u['qty'], max(0.0, live.get((sym, side), 0.0) - lots_q - rest_q - add_q)), r['step'])
             self._prov_set(uk, u, extra)                                   # 2. protect exactly what is unresolved
             if extra > 0:
                 if age > UNCONF_ADOPT_S:                                   # 3b. no record in 5 min: adopt the position
