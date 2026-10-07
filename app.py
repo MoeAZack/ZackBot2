@@ -471,7 +471,7 @@ RESEARCH_COMBO_SLOT_KEYS = {'MOM40': 'ema_mom', 'MOM40+PY': 'ema_mom', 'ST8': 'e
 
 def research_uses_dca(name, row):
     if name == 'results_single.csv':
-        return row.get('key') == 'dca_dip' if row.get('key') else True
+        return row.get('key') not in S.STRATEGIES or row.get('key') == 'dca_dip'   # unknown/renamed key: flagged (Cowork F1)
     if name == 'results_timeframes.csv':
         keys = [k for k, v in S.STRATEGIES.items() if v['name'] == row.get('strategy')]
         return 'dca_dip' in keys or not keys
