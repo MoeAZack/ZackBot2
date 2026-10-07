@@ -251,6 +251,8 @@ def run_backtest_job(job_id, req):
         for sl in sleeves: groups.setdefault(sl.get('tf') or dtf, []).append(sl)
         total_share = sum(float(sl['share']) for sl in sleeves) or 1
         trs, cvs, skipped, all_syms, gaps = [], [], [], set(), {}
+        dca_on = bool((req.get('run_options') or {}).get('dca_enabled', S.DCA_ENABLED_DEFAULT))   # owner decision 2026-10-07
+        dca = dict(enabled=dca_on, label=None if dca_on else S.DCA_OFF_LABEL, paused_signals=0, paused_slots=[])
         for gi, (tf, gs) in enumerate(sorted(groups.items())):
             syms = sorted({s for sl in gs for s in (CORE8 if sl['symbols'] == 'core8' else req['universe'] if sl['symbols'] == 'all' else sl['symbols'])} | {'BTCUSDT'})
             raw = {}
@@ -276,7 +278,9 @@ def run_backtest_job(job_id, req):
                                 **{k: sl[k] for k in ('when', 'trail_entry', 'pump_guard') if sl.get(k) is not None}))
             gstart = start * gshare / total_share if len(groups) > 1 else start
             tr, cv = BT.run(book, cfg, start=gstart, max_lev=float(req.get('max_lev', 10)), daily_halt=float(req.get('daily_halt', 0.08)),
-                            fund_per_bar=BT.FUND_PER_BAR * TF_SEC[tf] / 14400, **(req.get('run_options') or {}))
+                            fund_per_bar=BT.FUND_PER_BAR * TF_SEC[tf] / 14400, **dict(req.get('run_options') or {}, dca_enabled=dca_on))
+            dz = cv.attrs.get('dca') or {}
+            dca['paused_signals'] += int(dz.get('paused_signals') or 0); dca['paused_slots'] += list(dz.get('paused_slots') or [])
             if len(tr): tr = tr.assign(tf=tf)
             trs.append(tr); cvs.append(cv); all_syms |= set(raw)
         if len(cvs) == 1:
@@ -305,7 +309,7 @@ def run_backtest_job(job_id, req):
                    request=req, stats=st, skipped=skipped, years=years, engine=BT.VERSION, oos=oos, dd_curve=dd_curve,
                    gaps=gaps, period=[str(cv.index[0].date()), str(cv.index[-1].date())],
                    curve=[[str(t.date()), round(v, 2)] for t, v in cvd.items()], by_sleeve=by_sleeve, by_symbol=by_sym,
-                   symbols=sorted(all_syms), tfs=sorted(groups))
+                   symbols=sorted(all_syms), tfs=sorted(groups), dca=dca)
         save_json(os.path.join(DATA, 'backtests', f'{job_id}.json'), res)
         job.update(status='done', result=res)
     except Exception as e:
@@ -376,6 +380,8 @@ def research():
     if os.path.exists(p): out['lead_traders'] = json.load(open(p))
     if out:   # FBL-BT01 (label only): results with a DCA slot predate the backtester's intrabar path fix
         out['unverified'] = dict(label=UNVERIFIED_BT01, applies_to='every row that includes a DCA (dca_dip) slot')
+        out['dca_off'] = dict(label=S.DCA_OFF_LABEL, applies_to='every row that includes a DCA (dca_dip) slot: research only, '
+                                                                  'the bot does not open DCA trades while DCA is off')
     return out
 
 
@@ -712,7 +718,11 @@ class App:
 
     def meta(self):
         e = self.engine
-        return dict(version=VERSION, build=BUILD_ID, presets={k: dict(name=v['name'], note=v['note'], bt=v.get('bt'), sleeves=v['sleeves']) for k, v in PRESETS.items()},
+        dca_on = bool(e.S.get('DCA_ENABLED'))
+        return dict(version=VERSION, build=BUILD_ID,
+                    presets={k: dict(name=v['name'], note=v['note'], bt=v.get('bt'), sleeves=v['sleeves'], dca_slots=v.get('dca_slots', []),
+                                     dca_off=S.DCA_OFF_LABEL if v.get('dca_slots') and not dca_on else None) for k, v in PRESETS.items()},
+                    dca=dict(enabled=dca_on, label=S.DCA_OFF_LABEL),
                     library={k: dict(name=v['name'], style=v['style'], sides=v['sides'], desc=v['desc'], mgmt=v['mgmt']) for k, v in S.STRATEGIES.items()},
                     core8=CORE8, top40=TOP40, tradable=sorted(e.rules) if e.rules else [], manual_max_risk=MANUAL_MAX_RISK * 100,
                     risk_rule_defaults=RISK_RULE_DEFAULTS, grid_defaults=GRID.clean_cfg({}), gov_mult_max=GOV_MULT_MAX)
@@ -1049,6 +1059,11 @@ def handle(path, b):
                     if k == 'MAX_LEVERAGE': e._lev = {}                       # re-apply on the next entry per coin
                 elif k == 'CAPITAL_CAP': e.set_capital_base(_num(v, 0, 1e9, 'start amount'))
                 elif k in ('ENTRIES_PAUSED', 'AI_FILTER', 'RUN_IN_BACKGROUND', 'TELEGRAM_ON', 'MAKER_FALLBACK'): e.S[k] = bool(v)
+                elif k == 'DCA_ENABLED':                  # owner decision 2026-10-07: off by default; only an explicit true/false
+                    if not isinstance(v, bool): raise ValueError('DCA switch must be true or false')
+                    e.S[k] = v
+                    log.warning('DCA ' + ('ENABLED from the panel - DCA slots open baskets and add safety orders again' if v
+                                          else 'switched off - ' + S.DCA_OFF_LABEL))
                 elif k == 'ENTRY_ORDER':
                     if v not in ('market', 'maker'): raise ValueError('entry order must be market or maker')
                     e.S[k] = v
@@ -1130,7 +1145,8 @@ def handle(path, b):
                    universe=[s for s in (b.get('universe') or e.S['UNIVERSE']) if isinstance(s, str) and SYM.match(s)][:80])
         if not isinstance(b.get('sleeves'), list) or not b['sleeves']: raise ValueError('no strategies to test')
         req['sleeves'] = [validate_sleeve(x, i) for i, x in enumerate(b['sleeves'][:12])]
-        if b.get('run_options'): req['run_options'] = LAB._validate_run_options(b['run_options'])
+        req['run_options'] = LAB._validate_run_options(b.get('run_options') or {})
+        req['run_options'].setdefault('dca_enabled', bool(e.S.get('DCA_ENABLED')))   # DCA follows the bot's switch unless asked
         JOBS[jid] = dict(id=jid, status='queued')
         try: enqueue(run_backtest_job, jid, req)
         except ValueError: JOBS.pop(jid, None); raise
@@ -1149,7 +1165,8 @@ def handle(path, b):
                 JOBS[jid] = dict(id=jid, status='queued')
                 JOBS[sid]['status'] = f'{PRESETS[k]["name"]} ({n + 1}/{len(keys)})'
                 req = dict(name=f'{days // 365}y study · {PRESETS[k]["name"]}', sleeves=[validate_sleeve(dict(x), i) for i, x in enumerate(PRESETS[k]['sleeves'])],
-                           days=days, tf='4h', start=start, max_lev=e.S['MAX_LEVERAGE'], daily_halt=e.S['DAILY_LOSS_HALT'], universe=list(TOP40))
+                           days=days, tf='4h', start=start, max_lev=e.S['MAX_LEVERAGE'], daily_halt=e.S['DAILY_LOSS_HALT'], universe=list(TOP40),
+                           run_options=dict(dca_enabled=bool(e.S.get('DCA_ENABLED'))))
                 run_backtest_job(jid, req)
                 JOBS[sid]['status'] = f'{PRESETS[k]["name"]}: ' + JOBS[jid]['status'] + f' ({n + 1}/{len(keys)})'
                 JOBS[sid]['done'] = n + 1; JOBS[sid]['ids'].append(jid)
@@ -1162,6 +1179,9 @@ def handle(path, b):
         if kind not in ('optimize', 'walk_forward', 'monte_carlo', 'lookahead', 'liquidation'): raise ValueError('unknown lab test')
         req = {k: v for k, v in b.items() if k != 'kind'}
         req.setdefault('universe', e.S['UNIVERSE'])
+        if kind != 'lookahead' and isinstance(req.get('run_options') or {}, dict):   # DCA follows the bot's switch unless asked
+            ro = req.get('run_options') or {}
+            req['run_options'] = dict(ro, dca_enabled=ro.get('dca_enabled', bool(e.S.get('DCA_ENABLED'))))
         LAB.validate_lab_request(kind, req)                      # fail fast with a readable message
         jid = datetime.now().strftime('%Y%m%d-%H%M%S-') + 'lab-' + kind.replace('_', '')
         JOBS[jid] = dict(id=jid, status='queued', kind=kind, progress=0.0, cancel=False)

@@ -20,11 +20,13 @@ STRICT = dict(matched_pct=98.0, med_dr=0.05, p95_dr=0.25, ret_gap=3.0, dd_gap=2.
 LOOSE_RET_GAP = 15.0          # interim hard gate while the shared-core refactor is pending
 
 
-def run_replay(raw, sleeves, t0, steps=6, start=500.0, tf_sec=14400, quiet=True, stop_at=None):
+def run_replay(raw, sleeves, t0, steps=6, start=500.0, tf_sec=14400, quiet=True, stop_at=None, dca_enabled=True):
     """raw: {symbol: DataFrame t,o,h,l,c,v} (same length / timestamps); sleeves: engine slot dicts; t0: first bar index.
     Returns dict(engine_curve, bt_curve, engine_trades, bt_trades, matched, metrics, mismatch, stops, lots).
     stop_at=(bar, leg, step) or a list of them: stop INSIDE that candle's price path (leg 0-2, step 1..steps) and return only the engine's
-    decisions so far: dict(lots, events, history, stops) (a list -> {point: that dict}) - used by the causality test."""
+    decisions so far: dict(lots, events, history, stops) (a list -> {point: that dict}) - used by the causality test.
+    dca_enabled: this is a research / parity harness, so DCA slots run by default (True) on BOTH sides - the engine's
+    DCA_ENABLED setting and backtest.run(dca_enabled) - although the live bot's DCA is off (owner decision 2026-10-07)."""
     syms = list(raw)
     D = {s: raw[s].reset_index(drop=True) for s in syms}
     N = len(D[syms[0]])
@@ -112,6 +114,7 @@ def run_replay(raw, sleeves, t0, steps=6, start=500.0, tf_sec=14400, quiet=True,
         eng = E.Engine(dict(MODE='paper', API_KEY='x', API_SECRET='y'), tmp)
         eng.S['SLEEVES'] = sleeves; eng.S['UNIVERSE'] = syms; eng.S['SYMBOLS_ON'] = {s: True for s in syms}
         eng.S['CAPITAL_CAP'] = 0; eng.S['MAX_LEVERAGE'] = 10
+        eng.S['DCA_ENABLED'] = bool(dca_enabled)             # explicit, both sides (see the docstring)
         eng.equity_hist = []; eng.record_equity = lambda e: None
         eng.connect()
         tf = next((k for k, v in E.TF_SEC.items() if v == tf_sec), '4h')
@@ -161,7 +164,8 @@ def run_replay(raw, sleeves, t0, steps=6, start=500.0, tf_sec=14400, quiet=True,
         return [x for x in base if x in syms]
     cfg = [dict(key=s['key'], share=s['share'], risk=s['risk'], max_pos=s['max_pos'], symbols=order(s), sides=s['sides'], mgmt=s['mgmt'],
                 **{k: s[k] for k in ('when', 'trail_entry', 'pump_guard') if s.get(k) is not None}) for s in sleeves]
-    t2, c2 = B.run(bk, cfg, start=start, max_lev=10, t0=D[syms[0]].t[t0 + 1], fund_per_bar=B.FUND_PER_BAR * tf_sec / 14400)
+    t2, c2 = B.run(bk, cfg, start=start, max_lev=10, t0=D[syms[0]].t[t0 + 1], fund_per_bar=B.FUND_PER_BAR * tf_sec / 14400,
+                    dca_enabled=bool(dca_enabled))
 
     # ---- trade matching
     t_index = {ts: k for k, ts in enumerate(D[syms[0]].t)}

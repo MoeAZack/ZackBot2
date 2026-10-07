@@ -317,10 +317,16 @@ PRESETS = {
 UNVERIFIED_BT01 = 'unverified: backtest path fix pending re-validation (FBL-BT01)'
 for _p in PRESETS.values():
     if any(_s['key'] == 'dca_dip' for _s in _p['sleeves']): _p['bt']['unverified'] = UNVERIFIED_BT01
+# Owner decision 2026-10-07 (label only - presets are not edited): the DCA slots of a profile stay in it but open nothing
+# while the DCA_ENABLED setting is off (entry_block); the app shows S.DCA_OFF_LABEL on them.
+for _p in PRESETS.values():
+    _p['dca_slots'] = [_s['id'] for _s in _p['sleeves'] if S.uses_dca(_s)]
 del _p
+DCA_PAUSED = S.DCA_PAUSED_REASON
 
 GLOBAL_DEFAULTS = dict(COMPOUND=False, CAP_SINCE='', CAP_ADJ=[], CAP_CYCLES=[], TELEGRAM_ON=False, TELEGRAM_TOKEN='', TELEGRAM_CHAT='', MAX_LEVERAGE=10, DAILY_LOSS_HALT=0.08, PEAK_DD_FLATTEN=0.0, CAPITAL_CAP=500.0,
                        ENTRIES_PAUSED=False, AI_FILTER=False, PRESET='original',
+                       DCA_ENABLED=S.DCA_ENABLED_DEFAULT,   # owner decision 2026-10-07: DCA off (see strategies.DCA_OFF_LABEL)
                        UNIVERSE=list(TOP40), SYMBOLS_ON={}, RUN_IN_BACKGROUND=True,
                        # v3.1 - all off by default (risk rules only WARN: they log, never block, until set to 'enforce')
                        ENTRY_ORDER='market', MAKER_FALLBACK=True, MAKER_REPRICE=3, MAKER_WAIT_S=40, FEE_MAKER=0.0002,
@@ -486,6 +492,7 @@ class Engine:
         if not isinstance(s.get('RISK_RULES'), dict): s['RISK_RULES'] = {}
         if not isinstance(s.get('GOVERNOR'), dict): s['GOVERNOR'] = dict(mode='off', rules=[])
         s.setdefault('GRID_SLOTS', [])
+        s['DCA_ENABLED'] = s.get('DCA_ENABLED', S.DCA_ENABLED_DEFAULT) is True     # owner decision 2026-10-07: only an explicit True runs DCA
         self.S = s
 
     def risk_rules_cfg(self):
@@ -1482,6 +1489,7 @@ class Engine:
         if self.exchange_state().get('state') == 'outage': return OUTAGE_ADD     # T05b final: an add is new exposure
         if lot.get('stop_dirty'): return 'stop not confirmed yet'
         if lot.get('manual'): return 'manual trade (no adds)'
+        if lot.get('levels') and not Sg.get('DCA_ENABLED'): return 'DCA paused (owner decision)'   # open basket: stop/TP/exits keep running
         lx = self._lev_exception_block(lot['symbol'])             # T03c r1: the above-cap exception admitted the entry only
         if lx: return lx
         if self._breaker_add_mult(lot) == 0.0:
@@ -1754,6 +1762,7 @@ class Engine:
         if Sg.get('ENTRIES_PAUSED'): return 'entries paused'
         if not Sg['SYMBOLS_ON'].get(sym, True): return 'coin switched off'
         if not sl.get('enabled', True): return 'strategy slot switched off'
+        if not Sg.get('DCA_ENABLED') and S.uses_dca(sl): return 'DCA paused (owner decision)'   # = DCA_PAUSED (owner decision 2026-10-07)
         held = [l for l in st['lots'].values() if l['sleeve'] == sl['id']]
         if any(l['symbol'] == sym for l in held): return 'already in a trade on this coin'
         working = [p for k, p in st.get('pending_entries', {}).items() if p['sleeve'] == sl['id'] and k != skip_pending] + \

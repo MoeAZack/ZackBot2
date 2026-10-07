@@ -1544,6 +1544,7 @@ _PREFIX = (
     ('pump guard', 'risk_gateway', 'pump_guard'),
     ('DCA basket without a hard stop', 'config', 'dca_no_stop'),
     ('DCA settings out of range', 'config', 'dca_range'),
+    ('DCA paused', 'filter', 'dca_paused'),                  # owner decision 2026-10-07: DCA off unless DCA_ENABLED
     ('size below Binance minimum', 'execution', 'size_min'),
     ('trailing entry expired', 'trailing', 'expired'),
 )

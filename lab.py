@@ -21,7 +21,8 @@ CORE8_FALLBACK = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT', 'XRPUSDT', 'DOGEUS
 TF_SEC = {'15m': 900, '1h': 3600, '4h': 14400}
 METRICS = ('calmar', 'sharpe', 'return', 'return_dd', 'profit_factor')
 KINDS = ('optimize', 'walk_forward', 'monte_carlo', 'lookahead', 'liquidation')
-RUN_OPTION_KEYS = ('entry_order', 'maker_fallback', 'fee_maker', 'maint_margin', 'pessimistic', 'pump_guard', 'risk_rules', 'governor')
+RUN_OPTION_KEYS = ('entry_order', 'maker_fallback', 'fee_maker', 'maint_margin', 'pessimistic', 'pump_guard', 'risk_rules', 'governor',
+                   'dca_enabled')
 HOLDOUT_FRAC = 0.25
 MAX_TRIALS, MAX_WINDOWS, MAX_WF_TOTAL = 300, 30, 1500
 MAX_DIMS, MAX_VALUES = 6, 50
@@ -799,6 +800,7 @@ def validate_lab_request(kind, req):
     if kind == 'liquidation':
         out['mm'] = _num(req.get('mm', 0.005), 0, 0.05, 'maintenance margin')
     out['run_options'] = _validate_run_options(req.get('run_options') or {})
+    out['run_options'].setdefault('dca_enabled', S.DCA_ENABLED_DEFAULT)   # DCA off unless asked (the app passes its setting)
     return out
 
 
@@ -812,6 +814,9 @@ def _validate_run_options(o):
         if o['entry_order'] not in ('market', 'maker'): raise ValueError('entry order must be market or maker')
         out['entry_order'] = o['entry_order']
     if 'maker_fallback' in o: out['maker_fallback'] = bool(o['maker_fallback'])
+    if 'dca_enabled' in o:                     # owner decision 2026-10-07: DCA runs only when a research run asks for it
+        if not isinstance(o['dca_enabled'], bool): raise ValueError('dca_enabled must be true or false')
+        out['dca_enabled'] = o['dca_enabled']
     if 'fee_maker' in o: out['fee_maker'] = _num(o['fee_maker'], -0.001, 0.002, 'maker fee')
     if 'maint_margin' in o: out['maint_margin'] = _num(o['maint_margin'], 0, 0.05, 'maintenance margin')
     if 'pessimistic' in o:
@@ -868,4 +873,8 @@ def run_lab_job(kind, req, get_book, progress=None, should_stop=None):
     res['wall_s'] = round(time.time() - t_wall, 1)
     res['request'] = {k: v for k, v in q.items() if k not in ('sleeves',)}
     res['sleeves'] = q.get('sleeves')
+    if kind != 'lookahead':
+        on = bool((q.get('run_options') or {}).get('dca_enabled'))
+        res['dca'] = dict(enabled=on, label=None if on else S.DCA_OFF_LABEL,
+                          paused_slots=[x.get('id') or x.get('key') for x in (q.get('sleeves') or []) if not on and S.uses_dca(x)])
     return _js(res)

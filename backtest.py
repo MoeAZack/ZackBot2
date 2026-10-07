@@ -132,7 +132,7 @@ def path_points(o, h, l, c, side, worst=False):
 
 def run(book, sleeves, start=500.0, max_lev=10.0, daily_halt=0.08, t0=None, t1=None, warmup=220, fund_per_bar=None, pessimistic='path',
         entry_order='market', fee_maker=None, maker_fallback=True, pump_guard=None, risk_rules=None, governor=None,
-        maint_margin=0.005, btc1h=None):
+        maint_margin=0.005, btc1h=None, dca_enabled=True):
     """pessimistic: how a stop tightened during a candle (breakeven / trailing / runner) is checked against that same candle.
     'path' (default): the declared price path (path_points: candle colour, doji = worst case for the side); 'worst': the
     worst-case path (favourable extreme first, adverse last) on every candle; False: never (old v2).
@@ -146,6 +146,10 @@ def run(book, sleeves, start=500.0, max_lev=10.0, daily_halt=0.08, t0=None, t1=N
       governor    {'rules': [{'if': 'growth_gte'|'dd_gte', 'value': pct, 'then': {'risk_mult': m}, 'until': 'new_high'|'reset'|None}]}
       maint_margin cross-margin liquidation check per bar (0 = off)
       btc1h       optional BTC 1h candles (t,c) for the 'BTC moved X% in the last hour' rules on a 4h book
+      dca_enabled True (default here: this is the research API and runs the sleeves it is given, DCA included); False =
+                  the live DCA_ENABLED switch off (owner decision 2026-10-07): a DCA slot (strategies.uses_dca) takes no
+                  entry - the signal is counted in cv.attrs['blocked']['dca_paused'] and cv.attrs['dca']. The app's
+                  backtests / Lab pass the engine's DCA_ENABLED setting unless a run asks for DCA explicitly.
     sleeve extras: 'when' ('any'|'bull'|'bear'|'range'), 'trail_entry' {'dev_atr','max_bars'}, 'pump_guard', mgmt 'tps', 'ttp'."""
     FPB = FUND_PER_BAR if fund_per_bar is None else fund_per_bar
     FM = FEE_MAKER if fee_maker is None else fee_maker
@@ -175,7 +179,7 @@ def run(book, sleeves, start=500.0, max_lev=10.0, daily_halt=0.08, t0=None, t1=N
             for s in syms:
                 ap = (book.d[s].atr / book.d[s].c)
                 volr[s] = ap.rolling(180, min_periods=60).rank(pct=True).fillna(0.5).values
-        SL.append(dict(cfg=sl, m=m, syms=syms, sigs=sigs, pos={}, pend={}, tpend={}, volr=volr, hist=[],
+        SL.append(dict(cfg=sl, m=m, syms=syms, sigs=sigs, pos={}, pend={}, tpend={}, volr=volr, hist=[], dca_off=not dca_enabled and S.uses_dca(sl),
                        tps=S.norm_tps(m.get('tps')), pg=sl.get('pump_guard') or pump_guard or None))
 
     # ---- shared context for the v3.1 rules (computed only when used)
@@ -526,6 +530,7 @@ def run(book, sleeves, start=500.0, max_lev=10.0, daily_halt=0.08, t0=None, t1=N
                     if sl['volr'] and sl['volr'][s][i] > cfg['vol_max_pct']: continue
                     side = 1 if g['le'][i] else (-1 if g['se'][i] else 0)
                     if not side: continue
+                    if sl['dca_off']: blocked['dca_paused'] = blocked.get('dca_paused', 0) + 1; continue   # DCA off: like the live gate
                     if RG is not None or sl['pg'] or RR['btc_breaker']:
                         why = entry_filters(sl, s, side, i)
                         if why: blocked[why] = blocked.get(why, 0) + 1; continue
@@ -544,6 +549,8 @@ def run(book, sleeves, start=500.0, max_lev=10.0, daily_halt=0.08, t0=None, t1=N
             break
     cv = pd.Series(curve, index=pd.to_datetime(T[idx[:len(curve)]]))
     cv.attrs['liquidations'] = liqs; cv.attrs['blocked'] = blocked
+    cv.attrs['dca'] = dict(enabled=bool(dca_enabled), paused_signals=blocked.get('dca_paused', 0),
+                           paused_slots=[x['cfg'].get('id') or x['cfg']['key'] for x in SL if x['dca_off']])
     return pd.DataFrame(trades), cv
 
 

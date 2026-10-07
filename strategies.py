@@ -228,6 +228,23 @@ def merge_mgmt(key, override=None):
     return out
 
 
+# Owner decision 2026-10-07: DCA (safety-order averaging: the dca_dip strategy and any slot with a mgmt 'dca' block) is OFF
+# until a better margin strategy for short-term regimes is found. The engine / backtester DCA logic is kept: the live bot
+# runs it only with the DCA_ENABLED setting switched on; research passes dca_enabled=True explicitly (backtest.run default).
+DCA_ENABLED_DEFAULT = False
+DCA_OFF_LABEL = 'DCA off \u2014 paused pending a better short-term strategy (owner decision 2026-10-07)'
+DCA_PAUSED_REASON = 'DCA paused (owner decision)'      # the not-taken / add-blocked reason text (engine.py repeats it literally)
+
+
+def uses_dca(sl):
+    """True if a slot would open DCA baskets: the dca_dip strategy, or effective management with a 'dca' block (the same
+    test the engine's open_lot and the backtester use to build safety-order levels)."""
+    key = sl.get('key') if isinstance(sl, dict) else None
+    if key == 'dca_dip': return True
+    try: return 'dca' in merge_mgmt(key, sl.get('mgmt'))
+    except Exception: return False
+
+
 def norm_tps(tps):
     """Take-profit ladder: up to 8 [r, frac] pairs, r > 0, 0 < frac <= 1, sorted by r. Bad entries are dropped."""
     out = []
