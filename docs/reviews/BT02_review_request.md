@@ -439,3 +439,30 @@ Cowork's open items are left for later tickets:
 ### Not done here (deliberately)
 - Distinct-signal-episode counting (decision 5, "if useful"): not added. Attempts stay per signal candle.
 - COPY100 / COPY200 and the DCA-default PRs remain untouched until BT02 is accepted.
+
+### Round 2c: Codex round-2 P1 — the cumulative slot leverage gate
+Preflight now walks the plan as the engine executes it:
+- **The gate.** Every add passes the engine's cumulative slot-leverage gate, i.e. `Engine._add_block`'s own formula:
+  notional already held in the slot + this add's `q × px` must not exceed `MAX_LEVERAGE × equity × share`. The check
+  runs *before* the exchange minimum, as the engine calls `_add_gate` before `_add_qty`.
+- **Failure codes.** An add refused by the gate is `leverage_plan`, listed in the new `add_over_leverage` (kept apart
+  from `add_undersized`, i.e. exchange minimums).
+- **Sequence stop.** The engine stops a sequence at the first skipped add (DCA `break`; pyramid add k+1 needs add k).
+  Every later add of that sequence is therefore `not_reached`.
+- **No misleading capital figure.** A leverage-plan failure is structural: the cap and every order size scale with
+  capital. So `min_capital` / `min_capital_all` are `None` for that pair, with no "about $X" recommendation. The warning
+  says it cannot place every planned order at **any** capital: lower the risk %, the DCA/pyramid size, or raise max
+  leverage.
+- **Panel.** The badge adds "Over the slot leverage cap (more capital does not help): …".
+- **Assumption, stated in the code.** This coin's position is the slot's only open lot. With several lots open the slot
+  cap is shared, so fewer adds fit.
+
+Codex repro ($100, 1x, entry = the whole cap, 1-SOL DCA at $99): `partial`, entry 100%, plan 0%,
+`safety order 1: … 199.00 > 100.00 USDT`, `min_capital_all = None`. It is still refused at $1,000 and $100,000.
+
+Tests (`test_bt02_exchange_filters.py`, **52 passed**):
+- `test_dca_over_the_cumulative_slot_cap_is_never_green_and_no_capital_is_recommended`;
+- `test_dca_within_the_cumulative_slot_cap_passes`;
+- `test_multi_pyramid_stops_at_the_first_add_over_the_cap_and_later_adds_are_not_reached`, which passes at 10x;
+- `test_check_legs_uses_the_engine_add_gate_formula`: `>` not `>=`, the cap checked before the minimum, and the engine
+  source pinned.

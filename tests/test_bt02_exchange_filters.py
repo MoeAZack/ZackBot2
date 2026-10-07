@@ -750,3 +750,73 @@ def test_backtest_with_symbols_missing_from_trusted_rules_is_not_promotable(monk
     assert off['rules_applied'] is False and off['execution_realistic'] is False
     html = open(os.path.join(ROOT, 'panel.html'), encoding='utf-8').read()
     assert "f.rules_applied===false)return" in html and 'switched off for this run' in html and 'No exchange rule for' in html
+
+
+# ---------------------------------------------------------------- Codex round-2 P1: cumulative slot leverage gate
+_SOL = dict(SOLUSDT=dict(step=0.01, min_qty=0.01, min_notional=5.0))
+_M100 = {('SOLUSDT', '4h'): dict(px=100.0, atr=1.0)}
+
+
+def _dca1(risk=0.5, n=1):
+    import strategies as S
+    mg = S.merge_mgmt('dca_dip', {'dca': {'n': n, 'step_atr': 1.0, 'scale': 1.0, 'stop_atr': 2.0, 'tp_atr': 2.0}})
+    return [dict(id='D', key='dca_dip', share=1.0, risk=risk, tf='4h', symbols=['SOLUSDT'], mgmt=mg, sides='long')]
+
+
+def test_dca_over_the_cumulative_slot_cap_is_never_green_and_no_capital_is_recommended():
+    """Codex repro: $100 at 1x - the entry uses the whole $100 slot cap; the 1-SOL safety order at $99 passes the exchange
+    minimum alone, but Engine._add_block refuses it ($199 > $100). More capital only scales the same over-cap plan."""
+    r = F.preflight(_dca1(), 100.0, _M100, _SOL, 'ok', max_lev=1.0)
+    assert r['status'] == 'partial' and r['entry_executable_pct'] == 100.0 and r['plan_executable_pct'] == 0.0
+    a = r['add_over_leverage']
+    assert len(a) == 1 and a[0]['leg'] == 'safety order 1' and a[0]['code'] == 'leverage_plan' and '199.00 > 100.00' in a[0]['reason']
+    assert r['add_undersized'] == [], 'a leverage-plan failure is not an exchange-minimum failure'
+    assert r['min_capital_all'] is None and r['min_capital_binding'] is None, 'no misleading higher-capital recommendation'
+    assert 'ANY capital' in r['warning'] and 'Estimated capital' not in r['warning']
+    for cap in (1_000.0, 100_000.0):                                         # structural: still refused at any capital
+        assert F.preflight(_dca1(), cap, _M100, _SOL, 'ok', max_lev=1.0)['add_over_leverage']
+
+
+def test_dca_within_the_cumulative_slot_cap_passes():
+    r = F.preflight(_dca1(risk=0.02), 1000.0, _M100, _SOL, 'ok', max_lev=10.0)          # $1000 x 10 = $10k slot cap
+    assert r['status'] == 'ok' and r['plan_executable_pct'] == 100.0 and r['add_over_leverage'] == []
+
+
+def test_multi_pyramid_stops_at_the_first_add_over_the_cap_and_later_adds_are_not_reached():
+    """Pyramid n=3, frac 0.5 at 1x: entry 0.5 of the cap, add 1 -> 0.75... (adds priced above the entry for a long slot).
+    The first add that crosses the cumulative cap is 'leverage_plan'; every later add is 'not_reached' (the engine needs
+    add k before add k+1). Engine parity: the same sum the engine's _add_block uses (qty x price held + this add)."""
+    import strategies as S
+    py = {'pyramid': {'n': 3, 'step_r': 0.1, 'frac': 0.5}}
+    sl = [dict(id='P', key='ema_mom', share=1.0, risk=0.01, tf='4h', symbols=['SOLUSDT'], mgmt=S.merge_mgmt('ema_mom', py), sides='long')]
+    legs = F.slot_order_legs(sl[0], 200.0, 100.0, 1.0, max_lev=1.0, rule=_SOL['SOLUSDT'])
+    chk = F.check_legs(legs, _SOL['SOLUSDT'])
+    used, codes = 0.0, []
+    for x, c in zip(legs, chk):                                              # recompute the engine's running sum
+        if x['leg'] == 'entry': used = c['qty'] * x['px']; continue
+        codes.append(c['code'])
+        if c['ok']: used += c['qty'] * x['px']
+    assert codes[0] == 'ok' and 'leverage_plan' in codes, codes
+    first = codes.index('leverage_plan')
+    assert all(c == 'not_reached' for c in codes[first + 1:]), codes
+    r = F.preflight(sl, 200.0, {('SOLUSDT', '4h'): dict(px=100.0, atr=1.0)}, _SOL, 'ok', max_lev=1.0)
+    assert r['status'] == 'partial' and r['min_capital_all'] is None and len(r['add_over_leverage']) == 1
+    assert [a['code'] for a in r['add_undersized']] == ['not_reached'] * (len(codes) - first - 1)
+    ok = F.preflight(sl, 200.0, {('SOLUSDT', '4h'): dict(px=100.0, atr=1.0)}, _SOL, 'ok', max_lev=10.0)
+    assert ok['status'] == 'ok' and ok['add_over_leverage'] == [] and ok['plan_executable_pct'] == 100.0
+
+
+def test_check_legs_uses_the_engine_add_gate_formula():
+    """The leverage test is the engine's own: used + q x px > MAX_LEVERAGE x equity x share (Engine._add_block)."""
+    src = open(os.path.join(ROOT, 'engine.py'), encoding='utf-8').read()
+    assert "if used + q * px > cap: return f'slot leverage cap" in src
+    legs = [dict(leg='entry', k=0, qty_raw=1.0, qty=1.0, px=100.0, cap=150.0),
+            dict(leg='safety_order', k=1, qty_raw=0.5, qty=0.5, px=100.0),            # 100 + 50 = 150 -> allowed (not >)
+            dict(leg='safety_order', k=2, qty_raw=0.06, qty=0.06, px=100.0)]          # 6 USDT: minimum ok, but 156 > 150
+    assert [x['code'] for x in F.check_legs(legs, _SOL['SOLUSDT'])] == ['ok', 'ok', 'leverage_plan']
+    legs[2].update(qty_raw=0.01, qty=0.01)            # 1 USDT AND over the cap: the engine checks the cap first (_add_gate
+    assert [x['code'] for x in F.check_legs(legs, _SOL['SOLUSDT'])] == ['ok', 'ok', 'leverage_plan']   # before _add_qty)
+    legs[0]['cap'] = 1000.0                                                           # room under the cap: the minimum decides
+    assert [x['code'] for x in F.check_legs(legs, _SOL['SOLUSDT'])] == ['ok', 'ok', 'below_min_notional']
+    src_gate = src[src.index("while lot['dca'] < len(lot['levels'])"):][:600]
+    assert src_gate.index('_add_gate(') < src_gate.index('_add_qty('), 'engine order: cap gate, then exchange minimum'
