@@ -3,7 +3,7 @@
 Run:  python app.py            (or ZackBot.exe after building)
       python app.py --no-window  (server only; open http://localhost:8765 yourself)
 """
-import base64, csv, glob, gzip, hmac, json, logging, logging.handlers, math, os, queue, random, re, secrets, shutil, subprocess, sys, threading, time, traceback, uuid, socket
+import atexit, base64, csv, glob, gzip, hmac, json, logging, logging.handlers, math, os, queue, random, re, secrets, shutil, subprocess, sys, threading, time, traceback, uuid, socket
 from datetime import datetime, timezone
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlsplit, parse_qs
@@ -56,6 +56,7 @@ from binance_client import Futures, MAINNET   # noqa: E402
 import grid as GRID             # noqa: E402
 import lab as LAB               # noqa: E402
 import feasibility as F         # noqa: E402
+import instance as INST         # noqa: E402  (AUD-00: one process per data folder / account)
 import exchange_rules as XRULES  # noqa: E402
 from engine import RISK_RULE_DEFAULTS, GOV_MULT_MAX, EXCHANGE_DOWN   # noqa: E402
 from telegram_ctl import TelegramControl, clean_setting as tg_clean_setting   # noqa: E402
@@ -1377,6 +1378,7 @@ def handle(path, b):
             log.info('quit from panel (exchange stops stay active)')
             e.notify('⏹ ZackBot was closed from the app. Exchange stops stay active, but nothing manages trades until it runs again.')
             with e.lock: e.save_state()
+            release_owner()                                  # AUD-00: the data folder is free for the next start
             threading.Timer(1.0, lambda: os._exit(0)).start(); return 'bye'
     raise ValueError('unknown request')
 
@@ -1416,6 +1418,26 @@ def message_box(text):
         except Exception: pass
 
 
+OWNER = None        # AUD-00: this process's data-folder ownership token (instance.acquire)
+
+
+def release_owner():
+    """AUD-00: give the data folder back on a normal quit (os._exit skips atexit); a crash is reclaimed by the next start."""
+    if OWNER: INST.release(DATA, OWNER)
+
+
+def show_existing_instance(tries=10):
+    """The port or the data folder belongs to another process: open the running ZackBot if it proves it is ours (it may
+    still be starting - a simultaneous launch lost the race by milliseconds - so retry for a few seconds), else say so."""
+    tok = None
+    for i in range(tries):
+        tok = existing_instance_token()
+        if tok: break
+        time.sleep(1)
+    if tok: open_window(tok)
+    else: message_box(f'ZackBot is already running, or port {PORT} is used by another program. Close it and start ZackBot again.')
+
+
 def existing_instance_token():
     """Port already taken: only open it if it is really ZackBot (it must accept the token we saved at its launch)."""
     try:
@@ -1445,7 +1467,7 @@ def selftest(path):
         zoneinfo.ZoneInfo('Africa/Cairo')
         for f in ('panel.html', 'research', os.path.join('data', 'exchange_rules_testnet.json')):
             if not os.path.exists(os.path.join(BUNDLE, f)): raise RuntimeError(f'{f} missing from the bundle')
-        import lab, grid, telegram_ctl, ai_filter    # noqa: F401  (every module the app loads lazily)
+        import lab, grid, telegram_ctl, ai_filter, instance    # noqa: F401  (every module the app loads lazily)
         if not PRESETS or not S.STRATEGIES: raise RuntimeError('presets/strategies missing')
         res['ok'] = True
     except Exception as e:
@@ -1461,15 +1483,20 @@ def main():
     if '--simulate-failed-launch' in sys.argv:   # installer rollback drill ONLY (build_app.bat drill): fail before anything
         log.warning('simulate-failed-launch: exiting before the panel/engine start (installer rollback drill)')   # starts:
         sys.exit(3)                              # no port, no session.json, no engine, no exchange call
-    if port_in_use():                       # already running -> just show it (after verifying it is ours)
-        tok = existing_instance_token()
-        if tok: open_window(tok)
-        else: message_box(f'Port {PORT} is used by another program, not ZackBot. Close that program and start ZackBot again.')
-        return
+    # AUD-00 (C18): win BOTH gates before anything touches shared state (session.json, App(), Engine(), Telegram, exchange):
+    # 1) the control-panel port, bound exclusively (Windows SO_EXCLUSIVEADDRUSE; the old check-then-bind with
+    #    SO_REUSEADDR let a second Windows process bind the same port); 2) the data-folder ownership lock.
+    srv = INST.bind_exclusive(('127.0.0.1', PORT), H)
+    if srv is None:
+        show_existing_instance(); return          # another ZackBot (or another program) has the port: nothing touched
+    global OWNER
+    OWNER = INST.acquire(DATA)
+    if not OWNER:
+        srv.server_close(); show_existing_instance(); return    # another live ZackBot owns this data folder
+    atexit.register(INST.release, DATA, OWNER)
     save_json(SESSION_F, dict(token=TOKEN, port=PORT, pid=os.getpid(), started=datetime.now(timezone.utc).isoformat(timespec='seconds')))
     threading.Thread(target=job_worker, daemon=True).start()
     APP = App()
-    srv = ThreadingHTTPServer(('127.0.0.1', PORT), H)
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     threading.Thread(target=APP.loop, daemon=True).start()
     log.info(f'control panel at http://127.0.0.1:{PORT} (opens from the ZackBot shortcut)')
@@ -1486,6 +1513,7 @@ def main():
             else:
                 log.info('window closed - quitting (exchange stops stay active)')
                 with APP.engine.lock: APP.engine.save_state()
+                release_owner()
                 os._exit(0)
 
 
