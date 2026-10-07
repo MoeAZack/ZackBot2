@@ -311,6 +311,14 @@ PRESETS = {
                   sleeves=[sleeve('MOM', 'ema_mom', .5, .05, 8, mgmt=PY), sleeve('DCA', 'dca_dip', .5, .05, 6)]),
 }
 
+# FBL-BT01 (label only - no default, note or number changed): every profile with a DCA slot was backtested before the
+# intrabar path fix (basket TP after a safety order was tested against the same candle's earlier extreme). Its quoted
+# numbers stay as they were until they are re-validated with the fixed backtester.
+UNVERIFIED_BT01 = 'unverified: backtest path fix pending re-validation (FBL-BT01)'
+for _p in PRESETS.values():
+    if any(_s['key'] == 'dca_dip' for _s in _p['sleeves']): _p['bt']['unverified'] = UNVERIFIED_BT01
+del _p
+
 GLOBAL_DEFAULTS = dict(COMPOUND=False, CAP_SINCE='', CAP_ADJ=[], CAP_CYCLES=[], TELEGRAM_ON=False, TELEGRAM_TOKEN='', TELEGRAM_CHAT='', MAX_LEVERAGE=10, DAILY_LOSS_HALT=0.08, PEAK_DD_FLATTEN=0.0, CAPITAL_CAP=500.0,
                        ENTRIES_PAUSED=False, AI_FILTER=False, PRESET='original',
                        UNIVERSE=list(TOP40), SYMBOLS_ON={}, RUN_IN_BACKGROUND=True,
