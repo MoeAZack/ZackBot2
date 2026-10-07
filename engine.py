@@ -424,6 +424,7 @@ STOP_ALGO_UNKNOWN_MISSES = 3          # an algo stop whose status cannot be read
 STOP_GONE = ('CANCELED', 'EXPIRED', 'REJECTED', 'EXPIRED_IN_MATCH')         # the stop no longer exists and never closed
 STOP_FIRED = ('FILLED', 'PARTIALLY_FILLED', 'TRIGGERING', 'TRIGGERED', 'FINISHED')   # the stop fired: reconcile books it
 STOP_LIVE = ('NEW',)
+PROV_PENDING_S = 60          # AUD-04 r2: a provisional stop whose answer was lost: its status decides; unknown this long -> parked
 STOP_TYPES = ('STOP_MARKET', 'STOP')
 BOT_STOP_CID_RE = re.compile(r'z[ab][0-9a-f]{22}')   # exact new_cid('zb'|'za') shape of the bot's own stop client ids
 #   (classic / algo); any other client id (manual, web, other bots, malformed) is never adopted or cancelled
@@ -1936,9 +1937,11 @@ class Engine:
         def queued(r):                                                          # sweep would cancel the lot's only stop)
             cid = str(r.get('client_id') or '')                                 # nor double-cancelled here
             return r['tag'] in orph or (cid and (f'c:{cid}' in orph or f'ac:{cid}' in orph))
-        free = [r for r in rows if r['tag'] not in owned and not queued(r) and str(r.get('type') or '').upper() in STOP_TYPES]
+        free = [r for r in rows if not self._row_owned(r, owned) and not queued(r) and str(r.get('type') or '').upper() in STOP_TYPES]
         extras = [r for r in free if BOT_STOP_CID_RE.fullmatch(str(r.get('client_id') or ''))]
         foreign = [r for r in free if not BOT_STOP_CID_RE.fullmatch(str(r.get('client_id') or ''))]
+        for r in foreign:                       # AUD-04 r2 (Codex): coverage ledger for this pass - a fixed-quantity stop covers
+            r['left'] = float('inf') if r.get('close_position') is True else float(r.get('qty') or 0.0)   # at most its quantity
         for k, l in list(self.state['lots'].items()):
             if l['symbol'] != sym or l.get('pending') or k not in self.state['lots']: continue
             if not l.get('stop_id'):                              # no recorded stop: adopt a matching bot stop if one exists
@@ -1968,7 +1971,8 @@ class Engine:
                                       f"🆘 {l['side']} {sym} [{l['sleeve']}]: algo stop {l['stop_id']} cannot be confirmed on Binance - check it.")
             else: gone = l['stop_miss'] >= 2
             if not gone:
-                if l.get('stop_miss_why') == 'owner_check' and l.get('stop_foreign') in tags: why = 'owner_check'   # still there
+                if l.get('stop_miss_why') == 'owner_check' and self._take_cover(l, foreign, l.get('stop_foreign')):
+                    why = 'owner_check'                               # still there AND still covering this lot (ledger)
                 l['stop_miss_why'] = why
                 log.info(f"{sym} {l['side']} [{l['sleeve']}] stop {l['stop_id']} not listed (status {st or 'unknown'}, "
                          f"miss {l['stop_miss']}) - re-checking before any restore"); continue
@@ -1978,7 +1982,7 @@ class Engine:
         claims = self._side_entries(sym)
         if extras and clean:                                     # never two live stops: cancel bot stops nothing owns -
             for r in extras:                                     # only once every lot's own stop is listed (never 0 stops)
-                if r['tag'] in self._owned_stop_tags(sym): continue
+                if self._row_owned(r, self._owned_stop_tags(sym)): continue
                 gk = f"{sym}|{r.get('position_side')}"             # Binance holds more than the lots there (untracked, seen
                 if (gk in self.untracked or gk in self.state.get('over_seen', {})   # once, or an entry not booked yet): that
                         or r.get('position_side') in claims):      # stop may be protecting it - kept
@@ -2040,6 +2044,20 @@ class Engine:
                 return True
         return False
 
+    def _take_cover(self, l, foreign, tag=None):
+        """AUD-04 r2 (Codex): take this lot's size out of the pass's external-stop coverage ledger. A row covers the lot only
+        if it CLOSES the lot's side (_protects) and has enough quantity left (an explicit closePosition row covers the whole
+        side: unlimited); unknown / zero quantity without closePosition is not coverage (fail closed). `tag` restricts the
+        choice to that row. Returns the row used, or None."""
+        step = (self.rules.get(l['symbol']) or dict(step=1e-9))['step']
+        for x in foreign:
+            if tag is not None and x['tag'] != tag: continue
+            if not self._protects(x, l['side']): continue
+            if x.get('left', 0.0) >= l['qty'] - step / 2:
+                x['left'] = x.get('left', 0.0) - l['qty']
+                return x
+        return None
+
     def _restore_missing_stop(self, k, l, status, extras, foreign):
         """Fail closed for a recorded stop that is gone while the position may still be open: adopt a matching bot stop;
         else a stop placed OUTSIDE the bot on this side covering at least this lot's size, or the whole position (the owner
@@ -2052,9 +2070,7 @@ class Engine:
         r = self.rules.get(sym) or dict(step=1e-9)
         grp = [x for x in self.state['lots'].values() if x['symbol'] == sym and x['side'] == side and not x.get('pending')]
         expected = sum(x['qty'] for x in grp)
-        fx = next((x for x in foreign if self._protects(x, side) and (
-                   x.get('close_position') or not x.get('qty')                  # Binance-app position TP/SL: whole position
-                   or x['qty'] >= l['qty'] - r['step'] / 2)), None)          # same size or larger: it covers this lot
+        fx = self._take_cover(l, foreign)            # r2: a closing stop with quantity LEFT for this lot (ledger), or closePosition
         if fx is not None:
             l['stop_miss_why'] = 'owner_check'; l['stop_foreign'] = fx['tag']; self.stopv_stats['owner_checks'] += 1
             self._owner_alert(k, l, f"{sym} {side} [{l['sleeve']}]: stop {l['stop_id']} is gone and Binance holds a stop for the same "
@@ -2939,8 +2955,16 @@ class Engine:
     def _owned_stop_tags(self, sym=None):
         """Every exchange stop the bot owns: lot stops and AUD-03b provisional stops (a verifier must never cancel these)."""
         tags = {l.get('stop_id') for l in self.state['lots'].values() if sym in (None, l['symbol'])}
-        tags |= {u.get('prov') for u in (self.state.get('unconfirmed_entries') or {}).values() if sym in (None, u['symbol'])}
+        for u in (self.state.get('unconfirmed_entries') or {}).values():
+            if sym in (None, u['symbol']):
+                tags.add(u.get('prov')); tags.add((u.get('prov_pending') or {}).get('tag'))   # AUD-04 r2: lost answer = still ours
         return {t for t in tags if t}
+
+    @staticmethod
+    def _row_owned(r, owned):
+        """A listed stop row is owned when its tag OR its client id (c:/ac: tags of a lost answer) is in `owned`."""
+        cid = str(r.get('client_id') or '')
+        return r['tag'] in owned or bool(cid and (f'c:{cid}' in owned or f'ac:{cid}' in owned))
 
     def _unconfirmed_claims(self):
         out = {}
@@ -2955,6 +2979,7 @@ class Engine:
         alerted and retried - so a live provisional stop is never larger than what it protects and can never close a sibling
         lot's size. A failed first placement / grow keeps the smaller old stop (conservative) and retries."""
         sym, side, r, plan = u['symbol'], u['side'], self.rules[u['symbol']], u['plan']
+        if u.get('prov_pending') and not self._prov_pending_settled(sym, u): return   # r2: nothing new while it is unknown
         old = u.get('prov')
         if qty <= 0:
             if old:
@@ -2967,6 +2992,17 @@ class Engine:
         stop = self._rd(plan['px'] - sd * plan['stop_dist'], r['tick'])
         try:
             tag = self.trade.stop(sym, side, self._fmt(qty, r['step']), self._fmt(stop, r['tick']))
+        except AmbiguousOrder as ex:                          # AUD-04 r2 (Codex): it may be LIVE on Binance - keep owning it
+            if not ex.tag: raise
+            u['prov_pending'] = dict(tag=ex.tag, qty=qty, stop=stop, t=time.time())
+            if old and qty < u.get('prov_qty', 0.0):          # a shrink: the old one is oversized - removed as before
+                u['prov'], u['prov_qty'] = None, 0.0
+                self.save_state(); self._cancel_or_park(sym, old)
+            else:
+                self.save_state()
+            self.err(f"{sym} {side} unconfirmed entry: provisional stop answer lost ({ex.tag}) - owned as pending, no second stop "
+                     "until Binance shows its status", key=f'prov|{uk}')
+            return
         except Exception as ex:
             if old and qty < u.get('prov_qty', 0.0):          # Codex r2: a SHRINK failed - the old stop is now oversized and could
                 u['prov'], u['prov_qty'] = None, 0.0          # close a sibling's size: drop it at once (cancel, or park + retry),
@@ -2984,6 +3020,36 @@ class Engine:
         self.save_state()
         if old and old != tag: self._cancel_or_park(sym, old)
         log.info(f"ENTRY {sym} {side} unconfirmed: {qty} on Binance protected by a provisional stop at {stop}")
+
+    def _prov_pending_settled(self, sym, u):
+        """AUD-04 r2: a provisional stop whose placement answer was lost (c:/ac: client-id tag). Its exchange status decides:
+        working -> it becomes the provisional stop (the old one, if any, is cancelled); gone / never reached Binance ->
+        forgotten; unknown -> nothing is placed, and after PROV_PENDING_S it is cancelled or parked (orphans: retried,
+        never adopted) before a replacement is allowed. Returns True when settled (the caller may act)."""
+        pend = u['prov_pending']; tag = pend['tag']
+        try:
+            st = self.trade.stop_status(sym, tag, retry=False) if hasattr(self.trade, 'stop_status') else 'UNKNOWN'
+            known = st in STOP_LIVE or st in STOP_GONE or st in STOP_FIRED or (st is None and tag.startswith('c:'))
+        except Exception:
+            st, known = None, False
+        if known and st in STOP_LIVE:
+            old = u.get('prov')
+            u['prov'], u['prov_qty'], u['prov_stop'] = tag, pend['qty'], pend['stop']; u.pop('prov_pending', None)
+            self.save_state()
+            if old and old != tag: self._cancel_or_park(sym, old)
+            log.info(f"{sym} {u['side']} unconfirmed entry: the provisional stop {tag} whose answer was lost is working - owned")
+            return True
+        if known:
+            u.pop('prov_pending', None); self.save_state()
+            log.info(f"{sym} {u['side']} unconfirmed entry: lost provisional stop {tag} is not working ({st}) - placing anew")
+            return True
+        if time.time() - pend.get('t', 0) > PROV_PENDING_S:
+            u.pop('prov_pending', None); self.save_state()
+            self._cancel_or_park(sym, tag)                    # cancelled, or parked in orphans (retried, never adopted)
+            self.err(f"{sym} {u['side']} unconfirmed entry: status of provisional stop {tag} unknown for {PROV_PENDING_S} s - "
+                     "cancelled/parked, a new one is placed", key=f"prov|{sym}|{u['side']}")
+            return True
+        return False
 
     def _settle_unconfirmed(self, live):
         ue = self.state.get('unconfirmed_entries') or {}

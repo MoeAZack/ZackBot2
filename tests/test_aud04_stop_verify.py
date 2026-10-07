@@ -29,7 +29,7 @@ class VX(FakeX):
     def __init__(self, *a, **k):
         super().__init__(*a, **k)
         self.hidden, self.status, self.cids, self.algo = set(), {}, {}, False
-        self.sides, self.ro = {}, {}                  # per-tag order side / reduceOnly overrides (default: the closing side)
+        self.sides, self.ro, self.cp = {}, {}, {}     # per-tag order side / reduceOnly / closePosition overrides
     def stop(self, s, ps, q, p):
         tag = super().stop(s, ps, q, p)
         if self.algo:
@@ -42,7 +42,8 @@ class VX(FakeX):
     def open_stop_orders(self, s, strict_algo=False, retry=None):
         self._f('tags'); self.calls.append(('strict', strict_algo)); self.calls.append(('retry', retry))
         return [dict(tag=k, type='STOP_MARKET', position_side=v[1], side=self.sides.get(k, 'SELL' if v[1] == 'LONG' else 'BUY'),
-                     qty=v[2], stop_price=v[3], client_id=self.cids.get(k, cid(k)), status='NEW', reduce_only=self.ro.get(k, False))
+                     qty=v[2], stop_price=v[3], client_id=self.cids.get(k, cid(k)), status='NEW', reduce_only=self.ro.get(k, False),
+                     close_position=self.cp.get(k, False))
                 for k, v in self.stops.items() if v[0] == s and k not in self.hidden]
     def stop_status(self, s, tag, retry=None):
         self._f('status'); self.calls.append(('status', tag)); return self.status.get(tag)
@@ -51,9 +52,10 @@ class VX(FakeX):
         self.stops.pop(tag); self.status[tag] = status
     def trigger(self, tag, status='FILLED'):
         s, ps, q, p = self.stops.pop(tag); self.pos[(s, ps)] = self.pos.get((s, ps), 0) - q; self.status[tag] = status
-    def add_stop(self, s, ps, q, p, cid, side=None, reduce_only=False):
+    def add_stop(self, s, ps, q, p, cid, side=None, reduce_only=False, close_position=False):
         self.n += 1; tag = f'o:{self.n}'; self.stops[tag] = (s, ps, float(q), float(p)); self.cids[tag] = cid; self.status[tag] = 'NEW'
         if side: self.sides[tag] = side
+        if close_position: self.cp[tag] = True
         if reduce_only: self.ro[tag] = True
         return tag
 
@@ -892,9 +894,28 @@ def test_f3_a_binance_app_position_stop_close_position_is_the_owners_stop():
     e, clk, _ = mk(); k = lot_open(e); l = e.state['lots'][k]; tag = l['stop_id']
     tick(e, clk, 4.0)
     s_, ps, q, p = e.trade.stops[tag]
-    e.trade.ext_cancel(tag); mine = e.trade.add_stop(s_, ps, 0.0, p * 1.01, 'web_closepos')   # closePosition: origQty 0
+    e.trade.ext_cancel(tag); mine = e.trade.add_stop(s_, ps, 0.0, p * 1.01, 'web_closepos', close_position=True)   # origQty 0
     tick(e, clk, 8.0, n=12)
     assert set(e.trade.stops) == {mine} and e.stopv_stats['restored'] == 0 and l['stop_miss_why'] == 'owner_check'
+
+
+@pytest.mark.parametrize('qty', [0.0, None])
+def test_r2_unknown_or_zero_quantity_without_close_position_is_not_coverage(qty):
+    """Codex r2 P2: qty None / 0 without an explicit closePosition was treated as whole-position protection and
+    suppressed the restore. Missing detail is not evidence: the bot restores its own stop."""
+    e, clk, _ = mk(); k = lot_open(e); l = e.state['lots'][k]; tag = l['stop_id']
+    tick(e, clk, 4.0)
+    s_, ps, q, p = e.trade.stops[tag]
+    other = e.trade.add_stop(s_, ps, 0.0, p * 1.01, 'web_noqty')
+    real = e.trade.open_stop_orders
+    def rows(*a, **kw):
+        out = real(*a, **kw)
+        for r in out:
+            if r['tag'] == other: r['qty'] = qty
+        return out
+    e.trade.open_stop_orders = rows
+    e.trade.ext_cancel(tag); tick(e, clk, E.STOP_VERIFY_S * 1.25)
+    assert l.get('stop_miss_why') != 'owner_check' and e.stopv_stats['restored'] == 1 and other in e.trade.stops
 
 
 def test_f3_real_client_reports_close_position(monkeypatch):
@@ -1017,3 +1038,123 @@ def test_client_rows_carry_reduce_only():
     c._req = req
     (row,) = c.open_stop_orders('BTCUSDT')
     assert row['reduce_only'] is True and row['close_position'] is False and row['side'] == 'SELL'
+
+
+# ------------------------------------------------------------------ Codex r2 on 915892d
+def _two_lots(e, side):
+    k1 = lot_open(e, side=side)
+    sl2 = dict(SL, id='T2'); e.S['SLEEVES'] = [SL, sl2]
+    assert e.open_lot(sl2, 'BTCUSDT', side, dict(SG, close=e.trade.mark['BTCUSDT']), None, e.equity()), e.last_skip
+    k2 = next(k for k in e.state['lots'] if k != k1)
+    return e.state['lots'][k1], e.state['lots'][k2]
+
+
+@pytest.mark.parametrize('side', ['LONG', 'SHORT'])
+def test_r2_one_fixed_quantity_owner_stop_covers_only_one_lot(side):
+    """Codex r2 P1: two lots of qty q lost their bot stops; ONE owner stop of qty q was reused for both (qty 2q 'covered'
+    by q). Now the ledger gives it to one lot; the other lot's stop is restored."""
+    e, clk, _ = mk(); l1, l2 = _two_lots(e, side)
+    tick(e, clk, 4.0)
+    s_, ps, q, p = e.trade.stops[l1['stop_id']]
+    t1, t2 = l1['stop_id'], l2['stop_id']
+    mine = e.trade.add_stop(s_, ps, q, p, 'web_one')
+    e.trade.ext_cancel(t1); e.trade.ext_cancel(t2)
+    tick(e, clk, E.STOP_VERIFY_S * 1.25, n=3)
+    whys = sorted(str(l.get('stop_miss_why')) for l in (l1, l2))
+    assert whys.count('owner_check') == 1 and e.stopv_stats['restored'] == 1 and mine in e.trade.stops
+
+
+@pytest.mark.parametrize('side', ['LONG', 'SHORT'])
+def test_r2_enough_aggregate_owner_coverage_covers_both_lots(side):
+    e, clk, _ = mk(); l1, l2 = _two_lots(e, side)
+    tick(e, clk, 4.0)
+    s_, ps, q, p = e.trade.stops[l1['stop_id']]
+    big = e.trade.add_stop(s_, ps, l1['qty'] + l2['qty'], p, 'web_both')
+    e.trade.ext_cancel(l1['stop_id']); e.trade.ext_cancel(l2['stop_id'])
+    tick(e, clk, E.STOP_VERIFY_S * 1.25, n=3)
+    assert l1['stop_miss_why'] == l2['stop_miss_why'] == 'owner_check' and e.stopv_stats['restored'] == 0
+
+
+@pytest.mark.parametrize('side', ['LONG', 'SHORT'])
+def test_r2_a_close_position_owner_stop_covers_the_whole_side(side):
+    e, clk, _ = mk(); l1, l2 = _two_lots(e, side)
+    tick(e, clk, 4.0)
+    s_, ps, q, p = e.trade.stops[l1['stop_id']]
+    cpos = e.trade.add_stop(s_, ps, 0.0, p, 'web_cp', close_position=True)
+    e.trade.ext_cancel(l1['stop_id']); e.trade.ext_cancel(l2['stop_id'])
+    tick(e, clk, E.STOP_VERIFY_S * 1.25, n=3)
+    assert l1['stop_miss_why'] == l2['stop_miss_why'] == 'owner_check' and e.stopv_stats['restored'] == 0
+
+
+def _lost_entry_with_provisional(e, clk):
+    from test_safety import ambiguous_once
+    ambiguous_once(e, 'open')
+    assert not e.open_lot(SL, 'BTCUSDT', 'LONG', dict(SG, close=e.trade.mark['BTCUSDT']), None, e.equity())
+    (uk, u), = e.state['unconfirmed_entries'].items()
+    e.trade.get_order = lambda s, cid: (_ for _ in ()).throw(TimeoutError('lookup timed out'))
+    return uk, u
+
+
+@pytest.mark.parametrize('kind', ['c', 'ac'])
+def test_r2_a_lost_provisional_stop_answer_is_owned_and_never_doubled(kind):
+    """Codex r2 P1: Binance accepted the provisional stop but the answer was lost (AmbiguousOrder with its c:/ac: tag).
+    Before: the tag was dropped and the next pass placed a second stop. Now it is pending ownership: no second stop while
+    its status is unknown; once Binance shows it working it IS the provisional stop."""
+    e, clk, _ = mk(); uk, u = _lost_entry_with_provisional(e, clk)
+    real = e.trade.stop; seen = {}
+    def lost(s, ps, q, p):
+        tag = real(s, ps, q, p); cidv = f'zbS{len(seen)}'; seen[cidv] = tag
+        e.trade.cids[tag] = cidv
+        raise BC.AmbiguousOrder('stop answer lost', f'{kind}:{cidv}')
+    e.trade.stop = lost
+    status = {'v': None}
+    e.trade.stop_status = lambda s, tag, retry=None: (_ for _ in ()).throw(TimeoutError('x')) if status['v'] is None else status['v']
+    tick(e, clk, 8.0)
+    assert u['prov_pending']['tag'].startswith(f'{kind}:') and len(e.trade.stops) == 1
+    e.trade.stop = real
+    tick(e, clk, 8.0, n=3)
+    assert len(e.trade.stops) == 1, 'no second stop while the lost one is unknown'
+    status['v'] = 'NEW'; tick(e, clk, 8.0)
+    assert u['prov'] == u.get('prov') and u['prov'].startswith(f'{kind}:') and 'prov_pending' not in u and len(e.trade.stops) == 1
+    assert e.stopv_stats['extras_cancelled'] == 0
+
+
+def test_r2_a_lost_provisional_stop_that_never_reached_binance_is_replaced():
+    e, clk, _ = mk(); uk, u = _lost_entry_with_provisional(e, clk)
+    real = e.trade.stop; n = {'v': 0}
+    def lost_unsent(s, ps, q, p):
+        n['v'] += 1; e.trade.stop = real; raise BC.AmbiguousOrder('stop answer lost', 'c:zbNEVER')
+    e.trade.stop = lost_unsent
+    e.trade.stop_status = lambda s, tag, retry=None: None                    # classic: no such order
+    tick(e, clk, 8.0); assert u['prov_pending']['tag'] == 'c:zbNEVER' and not e.trade.stops
+    tick(e, clk, 8.0)
+    assert 'prov_pending' not in u and u['prov'] in e.trade.stops and len(e.trade.stops) == 1
+
+
+def test_r2_an_unknown_lost_provisional_stop_is_parked_before_a_replacement(monkeypatch):
+    e, clk, _ = mk(); uk, u = _lost_entry_with_provisional(e, clk)
+    real = e.trade.stop
+    def lost(s, ps, q, p):
+        e.trade.stop = real; raise BC.AmbiguousOrder('stop answer lost', 'ac:zbUNK')
+    e.trade.stop = lost
+    e.trade.stop_status = lambda s, tag, retry=None: (_ for _ in ()).throw(TimeoutError('x'))
+    tick(e, clk, 8.0); assert u['prov_pending']['tag'] == 'ac:zbUNK'
+    real_t = E.time.time
+    monkeypatch.setattr(E.time, 'time', lambda: real_t() + E.PROV_PENDING_S + 1)
+    def cancel_fails(s, tag): raise BC.BinanceError(-1001, 'Internal error')
+    e.trade.cancel = cancel_fails
+    tick(e, clk, 8.0)
+    assert ['BTCUSDT', 'ac:zbUNK'] in e.state['orphans'] and 'prov_pending' not in u and u['prov'] in e.trade.stops
+
+
+def test_r2_pending_provisional_ownership_survives_a_restart(tmp_path):
+    e, clk, tmp = mk(tmp=str(tmp_path)); uk, u = _lost_entry_with_provisional(e, clk)
+    real = e.trade.stop
+    def lost(s, ps, q, p):
+        e.trade.stop = real; raise BC.AmbiguousOrder('stop answer lost', 'c:zbRST')
+    e.trade.stop = lost
+    e.trade.stop_status = lambda s, tag, retry=None: (_ for _ in ()).throw(TimeoutError('x'))
+    tick(e, clk, 8.0)
+    e2, _, _ = mk(tmp=str(tmp_path))
+    (u2,) = e2.state['unconfirmed_entries'].values()
+    assert u2['prov_pending']['tag'] == 'c:zbRST' and 'c:zbRST' in e2._owned_stop_tags('BTCUSDT')
