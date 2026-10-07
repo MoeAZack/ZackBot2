@@ -122,3 +122,26 @@ The disclosed hedge-mode partial-close runtime question (D3) remains a separate 
 non-blocking follow-ups. No installer, runtime, settings or order action occurred in this review.
 
 **Verdict: CHANGES REQUESTED — one contained P1.**
+
+## Round 3 — accepted
+
+Reviewed exact fix head `e224a8bb96b6be2942244c84caa6c095bc7e057f` on 2026-10-07 (Africa/Cairo).
+
+The cumulative slot-leverage gate now follows the live engine's ordering and formula. DCA and pyramid plans are evaluated
+as ordered sequences; a structural leverage failure is separated from exchange minimums, later unreachable legs are
+identified, and the UI no longer recommends more capital for a ratio that remains over-cap at every capital level.
+
+Independent evidence:
+
+- focused BT02 suite: **52/52 passed**;
+- GitHub fast and CodeQL gates: passed on the exact implementation head;
+- the original $100 / 1x / equal-size DCA reproduction now reports `partial`, plan 0%, and no capital recommendation;
+- quick UI harness on the implementation head rendered all three viewports and the Strategies tab without JavaScript or
+  server errors. Its only failure was the unrelated Trades calendar click (162/163); the same 162/163 failure reproduced
+  twice on this head and once on unchanged `origin/master`, so BT02 did not introduce it.
+
+Non-blocking follow-ups remain: D3 hedge-mode partial-close runtime proof; D6/D7 cleanup; and repair the pre-existing T02
+calendar-day harness check. A later `not_reached` add is currently carried in `add_undersized` for detail display, so its
+aggregate warning wording can be tightened with D7; it does not affect feasibility status or capital advice.
+
+**Verdict: ACCEPTED for protected merge.** No installer, bot restart, credential, or order action was required.
