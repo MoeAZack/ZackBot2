@@ -333,7 +333,7 @@ function Invoke-Step1Stage {
     # DATA_MANIFEST.json; excluding these folders made a normal installer fail before touching the running bot. They are
     # removed from this temporary staging tree immediately after the tests and are never bundled or mirrored.
     $r = Invoke-Logged 'robocopy' @(($s.Src.TrimEnd('\') + '\.'), $s.StageSrc, '/MIR',
-        '/XD', '__pycache__', '.git', '.git_failed_*', 'dev_out',
+        '/XD', '__pycache__', '.git', '.git_failed_*', 'dev_out', 'data_market',
         '/XF', 'build_app.bat', 'rollback_drill.bat', 'installer.ps1', 'setup_git.bat', 'config.env', '*.log', 'session.json',
         '*.tmp', '*.pkl', 'build_info.py', '/NFL', '/NDL', '/NJH', '/NJS')
     if ($r.Code -ge 8) { Stop-Install 'copying the source failed' }
@@ -498,7 +498,7 @@ function Invoke-Finish {
     $s = $script:S
     $s.Stopped = $false
     Start-Step 'mirror'
-    $r = Invoke-Logged 'robocopy' @($s.StageSrc, $s.Dst, '/MIR', '/XD', 'tests', '/NFL', '/NDL', '/NJH', '/NJS')
+    $r = Invoke-Logged 'robocopy' @($s.StageSrc, $s.Dst, '/MIR', '/XD', 'tests', 'data_market', '/NFL', '/NDL', '/NJH', '/NJS')
     if ($r.Code -ge 8) { $s.Warn += " [source copy in $($s.Dst) failed]"; $s.WarnList.Add("source copy in $($s.Dst) failed") }
     Complete-Step ($r.Code -lt 8) "robocopy exit $($r.Code)"
     Start-Step 'shortcuts'

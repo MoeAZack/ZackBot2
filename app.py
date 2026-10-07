@@ -60,6 +60,7 @@ import instance as INST         # noqa: E402  (AUD-00: one process per data fold
 import exchange_rules as XRULES  # noqa: E402
 from engine import RISK_RULE_DEFAULTS, GOV_MULT_MAX, EXCHANGE_DOWN   # noqa: E402
 from telegram_ctl import TelegramControl, clean_setting as tg_clean_setting   # noqa: E402
+import market_collector as MC     # noqa: E402
 
 
 # ------------------------------------------------------------------ config (keys) - validated, atomically written, encrypted on Windows
@@ -759,7 +760,8 @@ class App:
                     incidents=[{k: v for k, v in i.items() if k not in ('entry', 'logged')} for i in sorted(
                         [i for i in list((h.get('incidents') or {}).values()) if i.get('open')],   # snapshot: loop thread mutates
                         key=lambda i: (i.get('key') != 'exchange-down', -ms_iso(i.get('last'))))][:20],
-                    audit=e.audit_summary() if hasattr(e, 'audit_summary') else None)
+                    audit=e.audit_summary() if hasattr(e, 'audit_summary') else None,
+                    market_collector=self.collector.status() if getattr(self, 'collector', None) else None)
 
     def revs(self, e):
         hl = e.history[-1]['id'] if e.history else ''
@@ -1182,6 +1184,9 @@ def handle(path, b):
                     if k == 'MAX_LEVERAGE': e._lev = {}                       # re-apply on the next entry per coin
                 elif k == 'CAPITAL_CAP': e.set_capital_base(_num(v, 0, 1e9, 'start amount'))
                 elif k in ('ENTRIES_PAUSED', 'AI_FILTER', 'RUN_IN_BACKGROUND', 'TELEGRAM_ON', 'MAKER_FALLBACK'): e.S[k] = bool(v)
+                elif k == 'MARKET_COLLECTOR':
+                    if not isinstance(v, bool): raise ValueError('market data collector switch must be true or false')
+                    e.S[k] = v
                 elif k == 'ENTRY_ORDER':
                     if v not in ('market', 'maker'): raise ValueError('entry order must be market or maker')
                     e.S[k] = v
@@ -1378,7 +1383,8 @@ def handle(path, b):
             log.info('quit from panel (exchange stops stay active)')
             e.notify('⏹ ZackBot was closed from the app. Exchange stops stay active, but nothing manages trades until it runs again.')
             with e.lock: e.save_state()
-            release_owner()                                  # AUD-00: the data folder is free for the next start
+            if getattr(APP, 'collector', None): APP.collector.shutdown()      # release its folder lock before exiting
+            release_owner()                                  # AUD-00: the data folder is free for the next start (last)
             threading.Timer(1.0, lambda: os._exit(0)).start(); return 'bye'
     raise ValueError('unknown request')
 
@@ -1467,7 +1473,7 @@ def selftest(path):
         zoneinfo.ZoneInfo('Africa/Cairo')
         for f in ('panel.html', 'research', os.path.join('data', 'exchange_rules_testnet.json')):
             if not os.path.exists(os.path.join(BUNDLE, f)): raise RuntimeError(f'{f} missing from the bundle')
-        import lab, grid, telegram_ctl, ai_filter, instance    # noqa: F401  (every module the app loads lazily)
+        import lab, grid, telegram_ctl, ai_filter, instance, market_collector, market_data    # noqa: F401  (every module the app loads lazily)
         if not PRESETS or not S.STRATEGIES: raise RuntimeError('presets/strategies missing')
         res['ok'] = True
     except Exception as e:
@@ -1499,6 +1505,8 @@ def main():
     APP = App()
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     threading.Thread(target=APP.loop, daemon=True).start()
+    APP.collector = MC.MarketCollector(lambda: APP.engine, os.path.join(DATA, 'market_data'))   # observe-only, own thread + folder
+    APP.collector.start()
     log.info(f'control panel at http://127.0.0.1:{PORT} (opens from the ZackBot shortcut)')
     APP.engine.notify(f'▶️ ZackBot {VERSION} started ({"LIVE" if APP.engine.live else "paper"}).')
     if '--no-window' in sys.argv:
@@ -1513,6 +1521,7 @@ def main():
             else:
                 log.info('window closed - quitting (exchange stops stay active)')
                 with APP.engine.lock: APP.engine.save_state()
+                APP.collector.shutdown()
                 release_owner()
                 os._exit(0)
 
