@@ -756,16 +756,25 @@ class Engine:
             except Exception: pass
 
     def _after_fill_failed(self, lot, post, why, ex):
-        """AUD-01 second layer: something failed AFTER Binance executed a partial close / add. Mark the event done (its own
-        `post` bookkeeping, the same dict an unconfirmed order uses) and flag the stop for re-placement, so the event can
-        never fire twice and the stop is re-sized to what is held. The exception still propagates to the caller."""
+        """AUD-01 second layer: something failed AFTER Binance executed a close / add. Mark the event done exactly like
+        _resolve_pending does: its own `post` bookkeeping (the same dict an unconfirmed order uses) is applied, and a
+        requested `finish` (a full close) or a lot left at zero is finished once - so the event can never fire twice, no
+        zero-quantity ghost lot is left, and a remaining lot's stop is re-placed next pass. The exception still propagates."""
         try:
-            lot.update(post or {})
+            post = dict(post or {})
+            fin = post.pop('finish', None)                          # same semantics as _resolve_pending
+            lot.update(post)
             lot['stop_dirty'] = True
             self.err(f"{lot['symbol']} [{lot['sleeve']}] {why} done on Binance but local bookkeeping failed "
                      f"({type(ex).__name__}: {str(ex)[:120]}) - marked done, stop re-placed next pass")
         except Exception:
-            pass
+            fin = None
+        key = next((k for k, l in self.state['lots'].items() if l is lot), None)
+        if key is not None and (fin or (lot.get('qty') or 0) <= 0):
+            try:
+                self._finish(key, fin or why)             # pops the lot first: terminal bookkeeping cannot repeat
+            except Exception as ex2:
+                log.warning(f"{lot['symbol']} [{lot['sleeve']}] finish after a post-fill failure incomplete: {type(ex2).__name__}: {ex2}")
 
     def save_state(self):
         save_json(self.F['state'], self.state)
