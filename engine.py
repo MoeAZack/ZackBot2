@@ -1259,9 +1259,9 @@ class Engine:
         The position may also carry dust the lots do not own (reconcile tolerates it): a match within that dust counts only
         when the other outcome does not match too - otherwise it keeps waiting and the 5-minute resync decides."""
         l = self.state['lots'][key]; pd_ = l['pending']; age = time.time() - pd_.get('t', 0)
-        rec = self._pending_record(l, pd_)
-        if rec is not None:                                              # AUD-03: Binance's own final answer decides
-            got = rec
+        fr = self._order_result(l['symbol'], pd_.get('cid'), pd_['qty'])
+        if fr['state'] == 'final':                                       # AUD-03: Binance's own final answer decides
+            got, px = fr['qty'], fr['px'] or pd_['px']
             del l['pending']
             if got <= 0:
                 log.info(f"{l['symbol']} [{l['sleeve']}] unconfirmed {pd_['kind']} did not execute (order record) - will retry")
@@ -1269,16 +1269,26 @@ class Engine:
             post = dict(pd_.get('post') or {})
             fin = post.pop('finish', None)
             if got < pd_['qty']: fin = None                              # a partial full-close finishes nothing
-            if pd_['kind'] == 'close': self._apply_close(l, got, pd_['px'], pd_['why'])
-            else: self._apply_add(l, got, pd_['px'], pd_['why'])
+            if pd_['kind'] == 'close': self._apply_close(l, got, px, pd_['why'])
+            else: self._apply_add(l, got, px, pd_['why'])
             l.update(post)
             if 'dca' in l.get('mgmt', {}) and pd_['kind'] == 'add' and l.get('tp') is not None:
                 sd = 1 if l['side'] == 'LONG' else -1
                 l['tp'] = l['avg'] + sd * l['mgmt']['dca']['tp_atr'] * l['atr0']
-            log.info(f"{l['symbol']} [{l['sleeve']}] unconfirmed {pd_['kind']} confirmed from its order record: {got} of {pd_['qty']}")
+            log.info(f"{l['symbol']} [{l['sleeve']}] unconfirmed {pd_['kind']} confirmed from its order record: {got} of {pd_['qty']} @ {px}")
             if fin or l['qty'] <= 0: self._finish(key, fin or pd_['why'])
             else: self._replace_stop(l)
             return True
+        if fr['state'] != 'nosource':                                    # AUD-03 r1: a KNOWN order is decided only by its record
+            if fr['state'] == 'notfound' and age > 20:                   # Binance has no such order: it never executed
+                del l['pending']; log.info(f"{l['symbol']} [{l['sleeve']}] unconfirmed {pd_['kind']} never reached Binance - will retry")
+                return True
+            if age > 300:                                                # no record within the evidence window: timed resync
+                del l['pending']
+                self.err(f"{l['symbol']} [{l['sleeve']}] could not read the order record of a {pd_['kind']} for 5 min "
+                         f"({fr['state']}) - resyncing to the exchange")
+                return False
+            return None                                                  # wait: the position alone could pick the wrong cause
         # a close of the whole position includes that dust (close_lot), and a position never goes below zero
         target = max(0.0, expected - pd_['qty']) if pd_['kind'] == 'close' else expected + pd_['qty']
         near = lambda d: -tol <= d <= tol                                # whole step multiples: only float noise is tolerated
@@ -1307,19 +1317,43 @@ class Engine:
             del l['pending']; self.err(f"{l['symbol']} [{l['sleeve']}] could not confirm {pd_['kind']} after 5 min - resyncing to the exchange"); return False
         return None
 
-    def _pending_record(self, lot, pd_):
-        """AUD-03: the executed quantity of a pending order from its FINAL order record (by client id), or None when that
-        is not known (no id, not found yet, not final, or the read failed) - then the position decides as before."""
-        cid = pd_.get('cid')
-        if not cid or self.dry: return None
+    @staticmethod
+    def _fill_px(o):
+        """The average price Binance reports for an order (avgPrice, else cumQuote / executedQty), or None."""
         try:
-            o = self.trade.get_order(lot['symbol'], cid)
-        except Exception:
+            px = float((o or {}).get('avgPrice') or 0)
+            if px > 0: return px
+            q, cq = float((o or {}).get('executedQty') or 0), float((o or {}).get('cumQuote') or 0)
+            return cq / q if q > 0 and cq > 0 else None
+        except (TypeError, ValueError):
             return None
-        if not o: return None
-        st = str(o.get('status') or '').upper()
-        if st not in ORDER_FINAL: return None
-        return self._exec_of(o, pd_['qty'], self.rules[lot['symbol']]['step'])
+
+    def _order_result(self, sym, cid, requested):
+        """AUD-03 (Codex r1): THE fill-result boundary for an order known by its client id. Returns
+        dict(state, qty, px, status, cid) with state:
+          'final'      - Binance's final record: qty = executed (capped at the request; 0 = nothing), px = its average
+          'pending'    - the order exists but is not final yet (NEW / PARTIALLY_FILLED)
+          'notfound'   - Binance has no such order (never reached it)
+          'unreadable' - the lookup failed (timeout, outage, error)
+          'nosource'   - no client id, or this exchange adapter cannot read order records (simulations)
+        Only 'final' is order truth; callers must not infer an outcome for a known id from anything else."""
+        res = dict(state='nosource', qty=None, px=None, status=None, cid=cid)
+        getter = getattr(self.trade, 'get_order', None)
+        if not cid or self.dry or getter is None: return res
+        try:
+            o = getter(sym, cid)
+        except Exception:
+            res['state'] = 'unreadable'; return res
+        if not o:
+            res['state'] = 'notfound'; return res
+        st = str(o.get('status') or '').upper(); res['status'] = st
+        if st not in ORDER_FINAL:
+            res['state'] = 'pending'; return res
+        q = self._exec_of(o, requested, self.rules[sym]['step'])
+        if q is None:
+            res['state'] = 'pending'; return res
+        res.update(state='final', qty=q, px=self._fill_px(o) if q > 0 else None)
+        return res
 
     def _record_r(self, lot):
         if lot.get('manual') or not lot.get('risk_usd'): return
@@ -2536,6 +2570,32 @@ class Engine:
             out[(u['symbol'], u['side'])] = out.get((u['symbol'], u['side']), 0.0) + u['qty']
         return out
 
+    def _prov_set(self, uk, u, qty):
+        """AUD-03 r1: keep an unconfirmed entry's provisional stop EXACTLY at the unresolved size on Binance: placed or resized
+        replace-first (new stop, then cancel the old), cancelled when nothing unresolved remains - never larger than what it
+        protects, so it can never close a sibling lot's size."""
+        sym, side, r, plan = u['symbol'], u['side'], self.rules[u['symbol']], u['plan']
+        old = u.get('prov')
+        if qty <= 0:
+            if old:
+                u['prov'], u['prov_qty'] = None, 0.0; self.save_state()
+                self._cancel_or_park(sym, old)
+                log.info(f"ENTRY {sym} {side} unconfirmed: nothing unresolved on Binance any more - provisional stop cancelled")
+            return
+        if old and abs(qty - u.get('prov_qty', 0.0)) < 1e-12: return
+        sd = 1 if side == 'LONG' else -1
+        stop = self._rd(plan['px'] - sd * plan['stop_dist'], r['tick'])
+        try:
+            tag = self.trade.stop(sym, side, self._fmt(qty, r['step']), self._fmt(stop, r['tick']))
+        except Exception as ex:
+            self.err(f"{sym} {side} unconfirmed entry: provisional stop for {qty} failed ({str(ex)[:120]}) - retried next pass",
+                     key=f'prov|{uk}')
+            return
+        u['prov'], u['prov_qty'], u['prov_stop'] = tag, qty, stop
+        self.save_state()
+        if old and old != tag: self._cancel_or_park(sym, old)
+        log.info(f"ENTRY {sym} {side} unconfirmed: {qty} on Binance protected by a provisional stop at {stop}")
+
     def _settle_unconfirmed(self, live):
         ue = self.state.get('unconfirmed_entries') or {}
         for uk, u in list(ue.items()):
@@ -2543,19 +2603,13 @@ class Engine:
             r = self.rules.get(sym)
             if r is None: continue
             age = time.time() - u.get('t', 0)
-            rec, found = None, None
-            if u.get('cid') and not self.dry:
-                try:
-                    o = self.trade.get_order(sym, u['cid']); found = o is not None
-                    if o and str(o.get('status') or '').upper() in ORDER_FINAL: rec = o
-                except Exception:
-                    found = None                                           # unreadable: decide nothing from it
             plan = u['plan']
-            if rec is not None:                                            # 1. the order's final record decides
-                got = self._exec_of(rec, u['qty'], r['step'])
+            fr = self._order_result(sym, u.get('cid'), u['qty'])
+            if fr['state'] == 'final':                                     # 1. the order's final record decides
+                got = fr['qty']
                 ue.pop(uk, None)
-                if got and got > 0:
-                    px = float(rec.get('avgPrice') or 0) or plan['px']
+                if got > 0:
+                    px = fr['px'] or plan['px']
                     log.info(f"ENTRY {sym} {side} unconfirmed -> confirmed from its order record: {got} @ {px}")
                     self._create_lot(plan, got, px, adopt_stop=u.get('prov'))
                 else:
@@ -2566,30 +2620,19 @@ class Engine:
             rest_q = sum(x['qty'] for x in (self.state.get('resting_entries') or {}).values()
                          if x['symbol'] == sym and x['side'] == side)
             extra = self._rd(min(u['qty'], max(0.0, live.get((sym, side), 0.0) - lots_q - rest_q)), r['step'])
+            self._prov_set(uk, u, extra)                                   # 2. protect exactly what is unresolved
             if extra > 0:
-                if not u.get('prov') or extra > u.get('prov_qty', 0) + 1e-12:  # 2. protect what shows, at once
-                    sd = 1 if side == 'LONG' else -1
-                    stop = self._rd(plan['px'] - sd * plan['stop_dist'], r['tick'])
-                    try:
-                        tag = self.trade.stop(sym, side, self._fmt(extra, r['step']), self._fmt(stop, r['tick']))
-                        old, u['prov'], u['prov_qty'], u['prov_stop'] = u.get('prov'), tag, extra, stop
-                        self.save_state()
-                        if old and old != tag: self._cancel_or_park(sym, old)
-                        log.info(f"ENTRY {sym} {side} unconfirmed: {extra} on Binance protected by a provisional stop at {stop}")
-                    except Exception as ex:
-                        self.err(f"{sym} {side} unconfirmed entry: provisional stop failed ({str(ex)[:120]}) - retried next pass",
-                                 key=f'prov|{uk}')
                 if age > UNCONF_ADOPT_S:                                   # 3b. no record in 5 min: adopt the position
                     ue.pop(uk, None)
                     px = (self.marks or {}).get(sym) or plan['px']
-                    self.err(f"ENTRY {sym} {side} could not be confirmed from its order record - adopted from the position "
-                             f"({extra} @ mark {px})")
+                    self.err(f"ENTRY {sym} {side} could not be confirmed from its order record ({fr['state']}) - adopted from "
+                             f"the position ({extra} @ mark {px})")
                     self._create_lot(plan, extra, px, adopt_stop=u.get('prov'))
                     self.save_state()
-            elif age > (UNCONF_DROP_S if found is False or not u.get('cid') else UNCONF_ADOPT_S):   # 3a. never executed
+            elif age > (UNCONF_DROP_S if fr['state'] in ('notfound', 'nosource') else UNCONF_ADOPT_S):   # 3a. never executed
                 ue.pop(uk, None)
                 if u.get('prov'): self._cancel_or_park(sym, u['prov'])
-                log.info(f"ENTRY {sym} {side} unconfirmed -> nothing on Binance after {int(age)} s, forgotten")
+                log.info(f"ENTRY {sym} {side} unconfirmed -> nothing on Binance after {int(age)} s ({fr['state']}), forgotten")
                 self.save_state()
 
     def _create_lot(self, plan, qty, fill, maker_qty=0.0, adopt_stop=None):
