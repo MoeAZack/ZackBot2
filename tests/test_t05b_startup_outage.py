@@ -97,8 +97,9 @@ def _lot(monkeypatch):
 
 
 def _prot(lots):
-    """Lots without T05a's observe-only excursion record ('ex'), which the audit updates on every mark."""
-    return {k: {f: v for f, v in l.items() if f != 'ex'} for k, l in lots.items()}
+    """Lots without T05a's observe-only excursion record ('ex'), which the audit updates on every mark, and AUD-04's
+    stop-verification timestamp ('stop_confirmed_t'), which a successful open-order read refreshes (no order involved)."""
+    return {k: {f: v for f, v in l.items() if f not in ('ex', 'stop_confirmed_t')} for k, l in lots.items()}
 
 
 def _writes(calls): return [c for c in calls if c[0] in ('POST', 'DELETE', 'PUT')]

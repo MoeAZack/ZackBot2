@@ -732,7 +732,7 @@ class App:
             m = marks.get(l['symbol']); sd = 1 if l['side'] == 'LONG' else -1
             pnl = sd * (m - l['avg']) * l['qty'] if m else None
             lots.append(dict(key=k, **{x: l.get(x) for x in ('symbol', 'side', 'sleeve', 'qty', 'avg', 'e0', 'stop', 'opened', 'adds', 'dca', 'tp1', 'manual', 'tf', 'risk_usd')},
-                             tp=l.get('tp'), protected=bool(l.get('stop_id')) and not l.get('stop_dirty'), add_blocked=l.get('add_blocked'),
+                             tp=l.get('tp'), add_blocked=l.get('add_blocked'), **_stop_view(e, l),     # AUD-04: fresh confirmation
                              exit=_safe(lambda: e.exit_plan(l)),
                              mark=m, pnl=pnl, r=(pnl / l['risk_usd']) if (pnl is not None and l.get('risk_usd')) else None,
                              risk_to_stop=sd * ((m or l['avg']) - l['stop']) * l['qty'], notional=(m or l['avg']) * l['qty']))
@@ -758,6 +758,7 @@ class App:
                     fills=e.fill_summary() if hasattr(e, 'fill_summary') else None,
                     exchange_circuit=e.exchange_state() if hasattr(e, 'exchange_state') else None,      # T05b
                     confirmed=dict(h.get('confirmed') or {}),
+                    stop_verify=dict(getattr(e, 'stopv_stats', None) or {}) or None,           # AUD-04 counters
                     incidents=[{k: v for k, v in i.items() if k not in ('entry', 'logged')} for i in sorted(
                         [i for i in list((h.get('incidents') or {}).values()) if i.get('open')],   # snapshot: loop thread mutates
                         key=lambda i: (i.get('key') != 'exchange-down', -ms_iso(i.get('last'))))][:20],
@@ -1457,6 +1458,20 @@ def existing_instance_token():
     except Exception:
         pass
     return None
+
+
+
+def _stop_view(e, l):
+    """AUD-04: 'protected' needs a recorded clean stop AND a fresh confirmation on Binance (engine.stop_view). A failing
+    view is shown as NOT protected (fail closed); an engine object without the verifier (a UI test fake) keeps the old rule."""
+    if not hasattr(e, 'stop_view'):
+        p = bool(l.get('stop_id')) and not l.get('stop_dirty')
+        return dict(protected=p, stop_state=None, stop_age_s=None, stop_note=None)
+    try: v = e.stop_view(l)
+    except Exception as ex:
+        log.debug(f'stop view: {ex}'); v = None
+    if not isinstance(v, dict): v = dict(protected=False, stop_state='unknown', stop_age_s=None, stop_note='stop state unknown')
+    return dict(protected=bool(v.get('protected')), stop_state=v.get('stop_state'), stop_age_s=v.get('stop_age_s'), stop_note=v.get('stop_note'))
 
 
 def _safe(f):

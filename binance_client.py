@@ -372,10 +372,11 @@ class Futures:
     def account(self):
         return self._req('GET', '/fapi/v2/account', signed=True)
 
-    def positions(self, critical=False):
-        """{(symbol, 'LONG'|'SHORT'): abs qty}. critical=True (sizing an order) is never skipped by the outage circuit."""
+    def positions(self, critical=False, retry=None):
+        """{(symbol, 'LONG'|'SHORT'): abs qty}. critical=True (sizing an order) is never skipped by the outage circuit.
+        retry=False (AUD-04 verifier, under the engine lock): one attempt, no backoff sleep."""
         out = {}
-        for p in self._req('GET', '/fapi/v2/positionRisk', signed=True, critical=critical):
+        for p in self._req('GET', '/fapi/v2/positionRisk', signed=True, critical=critical, retry=retry):
             amt = float(p['positionAmt'])
             if amt == 0: continue
             side = p.get('positionSide', 'BOTH')
@@ -555,18 +556,62 @@ class Futures:
         p['signature'] = hmac.new(self.secret, urllib.parse.urlencode(p).encode(), hashlib.sha256).hexdigest()
         return self.s.get(url, params=p, timeout=10).json()
 
-    def open_stop_tags(self, symbol):
+    def open_stop_tags(self, symbol, retry=None):
         """Tags of stop orders still open on the exchange for this symbol (classic + algo)."""
-        tags = set()
-        for o in self._req('GET', '/fapi/v1/openOrders', dict(symbol=symbol), signed=True) or []:
-            tags.add(f"o:{o['orderId']}")
+        return {o['tag'] for o in self.open_stop_orders(symbol, retry=retry)}
+
+    def open_stop_orders(self, symbol, strict_algo=False, retry=None):
+        """AUD-04. Open orders of ONE symbol (classic + algo), two weight-1 reads, with the details the stop verifier
+        needs: dict(tag 'o:<orderId>'|'a:<algoId>', type, position_side, side, qty, stop_price, client_id, status).
+        Same failure contract as before: a failed or busy algo read RAISES (unknown is never 'no algo stops'); only an
+        explicit "no such endpoint" (ALGO_UNSUPPORTED) means there are none. Missing detail fields are None (a
+        detail-less row still confirms a stop id, it is never treated as a bot duplicate or a foreign stop).
+        strict_algo=True (the caller holds an algo stop on this symbol): an ALGO_UNSUPPORTED answer raises too -
+        "endpoint unknown" cannot prove that a known live algo stop is gone.
+        retry=False (the verifier runs under the engine lock): one attempt, never a backoff / Retry-After sleep."""
+        def num(v):
+            try: return _finite_number(v, nonnegative=True)
+            except (TypeError, ValueError): return None
+        out = []
+        for o in self._req('GET', '/fapi/v1/openOrders', dict(symbol=symbol), signed=True, retry=retry) or []:
+            out.append(dict(tag=f"o:{o['orderId']}", type=o.get('type'), position_side=o.get('positionSide'), side=o.get('side'),
+                            qty=num(o.get('origQty')), stop_price=num(o.get('stopPrice')), client_id=o.get('clientOrderId'),
+                            status=o.get('status')))
         try:
-            r = self._req('GET', '/fapi/v1/openAlgoOrders', dict(symbol=symbol), signed=True)
+            r = self._req('GET', '/fapi/v1/openAlgoOrders', dict(symbol=symbol), signed=True, retry=retry)
             for o in (r.get('orders', r) if isinstance(r, dict) else r) or []:
-                if isinstance(o, dict) and 'algoId' in o: tags.add(f"a:{o['algoId']}")
+                if isinstance(o, dict) and 'algoId' in o:
+                    out.append(dict(tag=f"a:{o['algoId']}", type=o.get('orderType'), position_side=o.get('positionSide'),
+                                    side=o.get('side'), qty=num(o.get('quantity')), stop_price=num(o.get('triggerPrice')),
+                                    client_id=o.get('clientAlgoId'), status=o.get('algoStatus')))
         except BinanceError as e:                        # unknown algo-stop state is NOT "no algo stops" (T05b review):
-            if isinstance(e, ExchangeUnavailable) or e.code not in ALGO_UNSUPPORTED: raise
-        return tags                                      # only an explicit "no such endpoint" means no algo stops
+            if strict_algo or isinstance(e, ExchangeUnavailable) or e.code not in ALGO_UNSUPPORTED: raise
+        return out                                       # only an explicit "no such endpoint" means no algo stops
+
+    def stop_status(self, symbol, tag, retry=None):
+        """AUD-04. Direct status lookup of ONE stop by its tag (weight 1), for the stop verifier when a recorded stop is
+        missing from the open-order list: 'o:<orderId>' / 'c:<clientOrderId>' -> GET /fapi/v1/order (status NEW, FILLED,
+        CANCELED, EXPIRED, ...); 'a:<algoId>' / 'ac:<clientAlgoId>' -> GET /fapi/v1/algoOrder (algoStatus NEW, TRIGGERING,
+        TRIGGERED, FINISHED, CANCELED, EXPIRED, ...). Returns the upper-case status, or None when Binance says the order
+        does not exist / the algo endpoint is unsupported / the answer has no status (= unknown, never 'gone').
+        Transient failures raise (the caller treats them as unknown)."""
+        kind, _, oid = (tag or '').partition(':')
+        if not oid: return None
+        try:
+            if kind in ('o', 'c'):
+                q = dict(symbol=symbol, orderId=oid) if kind == 'o' else dict(symbol=symbol, origClientOrderId=oid)
+                r = self._req('GET', '/fapi/v1/order', q, signed=True, retry=retry); st = r.get('status') if isinstance(r, dict) else None
+            elif kind in ('a', 'ac'):
+                q = dict(algoId=oid) if kind == 'a' else dict(clientAlgoId=oid)
+                r = self._req('GET', '/fapi/v1/algoOrder', q, signed=True, retry=retry)
+                st = r.get('algoStatus') if isinstance(r, dict) else None
+            else:
+                return None
+        except BinanceError as e:
+            if isinstance(e, ExchangeUnavailable) or is_transient(e): raise
+            if e.code in (-2013,) + ALGO_UNSUPPORTED or 'not exist' in str(e.msg).lower(): return None
+            raise
+        return str(st).upper() if st else None
 
     def cancel_all(self, symbol):
         for path in ('/fapi/v1/allOpenOrders', '/fapi/v1/algoOpenOrders'):
