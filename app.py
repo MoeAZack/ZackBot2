@@ -490,7 +490,7 @@ class App:
             return
         r = eng.connect_retry or dict(n=0, since=now)
         r['n'] += 1
-        delay = min(self.CONNECT_RETRY_MAX, self.CONNECT_RETRY_MIN * 2 ** (r['n'] - 1)) * random.uniform(0.8, 1.2)
+        delay = min(self.CONNECT_RETRY_MAX, self.CONNECT_RETRY_MIN * 2 ** min(r['n'] - 1, 6)) * random.uniform(0.8, 1.2)  # exponent capped first: no float overflow after a long outage
         try: floor = float(getattr(ex, 'retry_in', 0) or 0)
         except (TypeError, ValueError): floor = 0.0
         r['next_t'] = now + min(self.CONNECT_RETRY_MAX * 1.2, max(delay, floor if math.isfinite(floor) else 0.0))
