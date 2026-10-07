@@ -598,6 +598,7 @@ REASONS = {
     'Claude review vetoed: weak trend': ('filter', 'ai_veto'),
     'could not set leverage/margin on Binance: leverage 20x refused': ('execution', 'leverage'),
     'entry order unconfirmed': ('execution', 'entry_unconfirmed'),
+    'entry order not filled': ('execution', 'entry_unfilled'),
     'stop order failed - trade closed again': ('execution', 'stop_failed'),
     'order failed': ('execution', 'order_failed'),
     'order failed: BinanceError -4028 Leverage 30 is not valid': ('execution', 'order_failed'),
@@ -1105,8 +1106,10 @@ def test_trending_mark_loop_saves_state_exactly_as_often_as_without_the_audit(mo
     monkeypatch.undo()
     without = _trend_scenario(monkeypatch, False)
     assert with_audit == without, (with_audit, without)
-    assert with_audit == (49, 50)       # pinned: the SAME scenario on the T05b-only branch (t05b-next db163e9) gives 49 saves /
-    #                                     50 stop orders; the previous T05a draft saved on every tick (240)
+    assert with_audit == (51, 52)       # pinned: the SAME scenario on the T05b-only branch (t05b-next db163e9) gave 49 saves /
+    #                                     50 stop orders; the previous T05a draft saved on every tick (240). FBL-ENG02 r2: +1 save
+    #                                     +1 stop order each for the direct _add_qty / _market_close (the size change marks the
+    #                                     stop dirty and manage resizes it on the next pass - before, it stayed at the old size)
 
 
 def test_mark_loop_opens_no_file_on_the_calling_thread(monkeypatch):

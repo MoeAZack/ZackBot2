@@ -237,7 +237,7 @@ def test_missing_executed_quantity_is_unknown_not_a_full_fill(qty):
     k = opened(e)
     r = [x for x in recs(e) if x['kind'] == 'entry_market'][-1]
     assert r['qty_fill'] is None and r['outcome'] == 'unknown' and r['qty_req'] > 0
-    assert e.state['lots'][k]['qty'] == r['qty_req'], 'trading unchanged: the lot still uses the requested quantity'
+    assert e.state['lots'][k]['qty'] == r['qty_req'], 'FBL-ENG02: booked from the critical position read (it moved by the full request)'
     assert summ(e)['by_kind']['entry_market']['unknown'] == 1
 
 
