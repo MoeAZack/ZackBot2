@@ -385,6 +385,7 @@ def save_json(path, obj):
     os.replace(tmp, path)
 
 
+JOURNAL_BACKLOG_MAX = 5000            # AUD-01: trades.csv rows kept in memory while the file cannot be written
 INCIDENT_IDLE_S = 900                 # T05b: a repeat after 15 quiet minutes starts a new entry
 INCIDENT_MAX = 200                    # T05b: incidents kept (oldest dropped first, closed before open)
 INCIDENT_LOCK = threading.RLock()     # T05b final: err()/resolve()/sweep run on the loop thread AND the HTTP thread
@@ -438,6 +439,7 @@ class Engine:
         self.marks, self.marks_t = {}, 0.0
         self.guard_eq = None                      # bot capital used by the safety limits and shown in the app
         self.untracked = {}                       # exchange positions the engine has no record of
+        self._journal_backlog = []                # AUD-01: trades.csv rows not written yet (file locked / disk full)
         self._lev = {}                            # leverage already set per symbol
         self.lev_refusals = {}                    # T03a: Binance leverage refusals per symbol (count, outcome, last error)
         self._fillw = fill_writer(self.F['fills'])   # T05: process-wide telemetry writer for this file (lazy thread)
@@ -727,12 +729,57 @@ class Engine:
         self.equity_hist = self.equity_hist[-8000:]
         save_json(self.F['equity'], self.equity_hist)
 
+    JOURNAL_FIELDS = ['time', 'event', 'sleeve', 'symbol', 'side', 'qty', 'price', 'stop', 'pnl', 'equity', 'note']
+
     def log_trade(self, **row):
-        new = not os.path.exists(self.F['trades'])
-        with open(self.F['trades'], 'a', newline='') as f:
-            w = csv.DictWriter(f, fieldnames=['time', 'event', 'sleeve', 'symbol', 'side', 'qty', 'price', 'stop', 'pnl', 'equity', 'note'])
-            if new: w.writeheader()
-            w.writerow({k: row.get(k, '') for k in w.fieldnames})
+        """Append a row to trades.csv. AUD-01: NEVER raises - it is called inside order paths, after Binance has already
+        executed the order. If the file cannot be written (opened in Excel, antivirus, full disk) the row is kept in memory
+        (bounded), one incident is raised, and the backlog is written first on the next successful call."""
+        bl = self.__dict__.setdefault('_journal_backlog', [])
+        rows, done = bl + [row], 0
+        try:
+            new = not os.path.exists(self.F['trades'])
+            with open(self.F['trades'], 'a', newline='') as f:
+                w = csv.DictWriter(f, fieldnames=self.JOURNAL_FIELDS)
+                if new: w.writeheader()
+                for r in rows:
+                    w.writerow({k: r.get(k, '') for k in w.fieldnames}); done += 1
+        except Exception as ex:
+            left = rows[done:]                                           # rows already written are not repeated
+            over = max(0, len(left) - JOURNAL_BACKLOG_MAX)
+            if over: self.health['journal_dropped'] = self.health.get('journal_dropped', 0) + over
+            bl[:] = left[:JOURNAL_BACKLOG_MAX]
+            try:
+                self.err(f'trade journal (trades.csv) cannot be written ({type(ex).__name__}) - {len(bl)} row(s) kept in memory '
+                         'and written when the file is free again; trading and stops are not affected', key='journal')
+            except Exception:
+                pass
+            return
+        if len(rows) > 1:
+            try: self.resolve('journal', 'trade journal (trades.csv) writable again - kept rows written')
+            except Exception: pass
+        bl.clear()
+
+    def _save_aux(self, name, obj):
+        """AUD-01: history / missed-signal files are written from order and management paths. A failed write must never
+        raise there: the in-memory list stays complete and the whole list is written again on the next save."""
+        try:
+            save_json(self.F[name], obj)
+        except Exception as ex:
+            try: self.err(f'{name}.json cannot be written ({type(ex).__name__}) - kept in memory, saved again next time', key=f'save|{name}')
+            except Exception: pass
+
+    def _after_fill_failed(self, lot, post, why, ex):
+        """AUD-01 second layer: something failed AFTER Binance executed a partial close / add. Mark the event done (its own
+        `post` bookkeeping, the same dict an unconfirmed order uses) and flag the stop for re-placement, so the event can
+        never fire twice and the stop is re-sized to what is held. The exception still propagates to the caller."""
+        try:
+            lot.update(post or {})
+            lot['stop_dirty'] = True
+            self.err(f"{lot['symbol']} [{lot['sleeve']}] {why} done on Binance but local bookkeeping failed "
+                     f"({type(ex).__name__}: {str(ex)[:120]}) - marked done, stop re-placed next pass")
+        except Exception:
+            pass
 
     def save_state(self):
         save_json(self.F['state'], self.state)
@@ -1086,7 +1133,10 @@ class Engine:
             act = float(o.get('avgPrice') or 0) or None
             self._fill('exit', sym, lot['side'], lot['side'] == 'SHORT', mark, act, qty, o.get('executedQty'), t0, reason=why)
             px = act or px
-        return self._apply_close(lot, qty, px, why)
+        try:
+            return self._apply_close(lot, qty, px, why)
+        except Exception as ex:
+            self._after_fill_failed(lot, post, why, ex); raise
 
     def _apply_close(self, lot, qty, px, why):
         sym, r = lot['symbol'], self.rules[lot['symbol']]
@@ -1190,7 +1240,7 @@ class Engine:
             if au: au.update(kind='trade_audit', id=key, exit_reason=why, closed=rec['closed'], t=rec['closed']); self._audit_emit(au)
         except Exception as e: log.warning(f'trade audit not recorded ({e})')
         self.history.append(rec); self.history = self.history[-3000:]
-        save_json(self.F['history'], self.history)
+        self._save_aux('history', self.history)
         self.notify(f"{'✅' if net > 0 else '❌'} CLOSED {lot['side']} {lot['symbol']} [{lot['sleeve']}] {why} · PnL {net:+.2f} USDT ({rec['r']}R) · {rec['hours']}h")
 
     def miss(self, sl, sym, side, sg, reason, kind=None):
@@ -1208,7 +1258,7 @@ class Engine:
         if not kind: self._audit_missed_short(sl['id'], sym, side, sg['time'], 'not_taken', self._sig_raw.get(f"{sl['id']}|{sym}"), reason)
         self.missed.append(rec)
         self.missed = self.missed[-600:]
-        save_json(self.F['missed'], self.missed)
+        self._save_aux('missed', self.missed)
 
     def _add_qty(self, lot, q, px, why, post=None):
         r = self.rules[lot['symbol']]
@@ -1226,7 +1276,10 @@ class Engine:
             self._last_order = dict(rec=self._fill(why if why in self.FILL_KINDS else 'pyramid_add', lot['symbol'], lot['side'], lot['side'] == 'LONG',
                                     px, act, q, o.get('executedQty'), t0, reason=why, fallback_order=(why == 'entry_fallback') or None))
             px = act or px
-        self._apply_add(lot, q, px, why)
+        try:
+            self._apply_add(lot, q, px, why)
+        except Exception as ex:
+            self._after_fill_failed(lot, post, why, ex); raise
         return True
 
     def _apply_add(self, lot, q, px, why, fee=None):
@@ -1540,7 +1593,7 @@ class Engine:
             rec = dict(candle=now_utc().isoformat(timespec='seconds'), logged=now_utc().isoformat(timespec='seconds'), sleeve=lot['sleeve'],
                        strategy=lot.get('key_strategy') or lot['sleeve'], symbol=lot['symbol'], side=lot['side'], price=px,
                        reason=f'{why} blocked: {reason}', kind='add_blocked')
-            self.missed.append(rec); self.missed = self.missed[-600:]; save_json(self.F['missed'], self.missed)
+            self.missed.append(rec); self.missed = self.missed[-600:]; self._save_aux('missed', self.missed)
         return True
 
     # ------------------------------------------------------------ reconcile with exchange
