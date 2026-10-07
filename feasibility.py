@@ -26,6 +26,8 @@ TRUSTED_SOURCES = {'testnet': 'https://testnet.binancefuture.com/fapi/v1/exchang
 # engine skip texts (unchanged wording - the panel and the trade history show them)
 REASON_LEV_CAP = 'leverage cap reached for this slot'
 REASON_BELOW_MIN = 'size below Binance minimum (raise capital or risk)'
+REASON_LEV_PLAN = 'the slot leverage cap is already used by the entry and earlier orders (more capital does not help)'
+REASON_NOT_REACHED = 'not reached: an earlier order of this sequence is skipped, so the engine never places this one'
 
 
 # ------------------------------------------------------------------ rounding (the engine's _rd, moved here verbatim)
@@ -208,7 +210,7 @@ def slot_order_legs(sl, capital, px, atr, max_lev=10.0, rule=None):
     cap = max(0.0, max_lev * sleeve_eq) / px
     q = min(z['qty'], cap)
     q0 = size_check(z['qty'], q, px, rule)['qty'] if rule is not None else q
-    legs = [dict(leg='entry', k=0, qty_raw=z['qty'], qty=q, px=px)]
+    legs = [dict(leg='entry', k=0, qty_raw=z['qty'], qty=q, px=px, cap=max(0.0, max_lev * sleeve_eq))]
     for k, w in enumerate((z['weights'] or [])[1:], start=1):
         lpx = min(px + (z['levels'][k] - px) * sd for sd in sds)            # levels[k] is the long level (sd = 1)
         legs.append(dict(leg='safety_order', k=k, qty_raw=q0 * w, qty=q0 * w, px=lpx if lpx > 0 else px))
@@ -230,12 +232,29 @@ def slot_order_qtys(sl, capital, px, atr, max_lev=10.0, rule=None):
 
 
 def check_legs(legs, rule):
-    """size_check of every leg at its own price -> [dict(leg, ok, code, reason, qty, notional)]."""
-    out = []
+    """The plan as the engine would execute it, in order -> [dict(leg, ok, code, reason, qty, notional)].
+    Every leg: size_check at its own price (exchange minimums, step). Every ADD also passes the engine's cumulative slot
+    leverage gate (Engine._add_block: notional already held in the slot + this add's unrounded q x px <= MAX_LEVERAGE x
+    equity x share): code 'leverage_plan'. The engine stops a sequence at the first add it skips (DCA: `break`; pyramid:
+    add k+1 needs add k), so the later legs of that sequence are 'not_reached'. This assumes this coin's position is the
+    slot's only open lot (with more lots open the slot cap is shared and fewer adds fit)."""
+    out, used, stopped = [], 0.0, set()
+    cap = legs[0].get('cap', math.inf) if legs else math.inf
     for x in legs:
         d = size_check(x['qty_raw'], x['qty'], x['px'], rule)
         if x['leg'] != 'entry' and d['code'] == 'leverage_cap':
             d = dict(d, code='below_min_qty' if d['qty'] < float(rule.get('min_qty', 0)) else 'below_min_notional', reason=REASON_BELOW_MIN)
+        if x['leg'] == 'entry':
+            if d['ok']: used = d['qty'] * x['px']
+            else: stopped.update(('safety_order', 'pyramid_add'))
+        elif x['leg'] in stopped:
+            d = dict(d, ok=False, code='not_reached', reason=REASON_NOT_REACHED)
+        elif used + x['qty'] * x['px'] > cap * (1 + 1e-9):
+            d = dict(d, ok=False, code='leverage_plan',
+                     reason=f"{REASON_LEV_PLAN}: {used + x['qty'] * x['px']:,.2f} > {cap:,.2f} USDT")
+        if x['leg'] != 'entry':
+            if d['ok']: used += d['qty'] * x['px']
+            else: stopped.add(x['leg'])
         out.append(dict(leg=x['leg'], k=x['k'], ok=bool(d['ok']), code=d['code'], reason=d['reason'], qty=d['qty'], px=x['px'],
                         notional=round(d['qty'] * x['px'], 4)))
     return out
@@ -256,6 +275,9 @@ def _min_capital(sl, capital, px, atr, max_lev, rule, upto=None):
         chk = check_legs(slot_order_legs(sl, best, px, atr, max_lev, rule)[:upto], rule)
         bad = [c for c in chk if not c['ok']]
         if not bad: return best, binding
+        lev = next((c for c in bad if c['code'] == 'leverage_plan'), None)
+        if lev:                                              # structural: more capital only scales the same over-cap plan
+            return math.inf, next(x for x in legs if x['leg'] == lev['leg'] and x['k'] == lev['k'])
         binding = next(x for x in legs if x['leg'] == bad[-1]['leg'] and x['k'] == bad[-1]['k'])
         best *= 1.002
     return math.inf, binding
@@ -278,7 +300,7 @@ def preflight(slots, capital, market, rules, rules_state='ok', rules_detail='', 
     'partial' when any entry or any later order fails; 'infeasible' when no entry can be placed. All of it only when
     rules_state == 'ok' and every pair had a rule and market data; otherwise 'unknown' (estimate keeps what the rules say).
     Never a green pass on unknown rules or on a plan with an order that cannot execute."""
-    rows, under, unknown, add_under, stale = [], [], [], [], []
+    rows, under, unknown, add_under, stale, over_lev = [], [], [], [], [], []
     for sl in slots:
         for sym in sl['symbols']:
             m = market.get((sym, sl.get('tf') or '4h')); r = (rules or {}).get(sym)
@@ -293,13 +315,14 @@ def preflight(slots, capital, market, rules, rules_state='ok', rules_detail='', 
             entry_ok = d['ok']
             bad_adds = [c for c in chk[1:] if not c['ok']] if entry_ok else []
             plan_ok = entry_ok and not bad_adds
+            lev_fail = [c for c in bad_adds if c['code'] == 'leverage_plan']
             min_entry, _ = _min_capital(sl, capital, px, atr, max_lev, r, upto=1)
-            min_cap, bind = _min_capital(sl, capital, px, atr, max_lev, r)
+            min_cap, bind = (math.inf, None) if lev_fail else _min_capital(sl, capital, px, atr, max_lev, r)
             min_risk = float(sl['risk']) * min_cap / capital if capital > 0 and math.isfinite(min_cap) else math.inf
             o = legs[0]
             row = dict(tag, ok=entry_ok, entry_ok=entry_ok, plan_ok=plan_ok, code=d['code'], qty=d['qty'], notional=round(d['qty'] * px, 4),
                        risk_notional=round(o['qty_raw'] * px, 4), min_notional=r['min_notional'], min_qty=r['min_qty'],
-                       step=r['step'], orders=len(legs),
+                       step=r['step'], orders=len(legs), leverage_plan_ok=not lev_fail,
                        min_capital=float(math.ceil(min_cap)) if math.isfinite(min_cap) else None,
                        min_capital_entry=float(math.ceil(min_entry)) if math.isfinite(min_entry) else None,
                        binding_leg=_leg_name(bind) if math.isfinite(min_cap) else None,
@@ -307,10 +330,11 @@ def preflight(slots, capital, market, rules, rules_state='ok', rules_detail='', 
             rows.append(row)
             if not entry_ok: under.append(dict(row, reason=d['reason']))
             for c in bad_adds:
-                add_under.append(dict(tag, leg=_leg_name(c), code=c['code'], qty=c['qty'], px=round(c['px'], 8), notional=c['notional'],
-                                      min_capital=row['min_capital'],
-                                      reason=f"{_leg_name(c)} of this slot is below the Binance minimum ({c['notional']:.2f} USDT) "
-                                             'and will be skipped'))
+                why = (f"{_leg_name(c)}: {c['reason']}" if c['code'] in ('leverage_plan', 'not_reached') else
+                       f"{_leg_name(c)} of this slot is below the Binance minimum ({c['notional']:.2f} USDT) and will be skipped")
+                (over_lev if c['code'] == 'leverage_plan' else add_under).append(
+                    dict(tag, leg=_leg_name(c), code=c['code'], qty=c['qty'], px=round(c['px'], 8), notional=c['notional'],
+                         min_capital=row['min_capital'], reason=why))
     n = len(rows)
     n_entry = sum(1 for x in rows if x['entry_ok']); n_plan = sum(1 for x in rows if x['plan_ok'])
     entry_pct = round(n_entry / n * 100, 1) if n else None
@@ -328,6 +352,11 @@ def preflight(slots, capital, market, rules, rules_state='ok', rules_detail='', 
         npairs = len({(x['slot'], x['symbol'], x['tf']) for x in add_under})
         w.append(f'{npairs} pair(s) can open but {len(add_under)} later order(s) (safety orders / pyramid adds) are below the Binance '
                  'minimum and will be skipped, so the position would not be built as planned.')
+    if over_lev:
+        npairs = len({(x['slot'], x['symbol'], x['tf']) for x in over_lev})
+        w.append(f'{npairs} pair(s) cannot place every planned order at ANY capital: the entry and earlier orders already use the '
+                 f'slot leverage cap ({max_lev:g}x of the slot\'s share), so {len(over_lev)} later order(s) would be refused by the '
+                 'engine. Lower the risk % or the DCA / pyramid size, or raise the max leverage - more capital does not help.')
     if min_all and (under or add_under):
         w.append(f'Estimated capital for every planned order to be tradable: about {min_all:,.0f} USDT'
                  + (f" (set by {binding['binding_leg']} on {binding['symbol']} {binding['slot']})" if binding and binding.get('binding_leg') else '')
@@ -340,6 +369,7 @@ def preflight(slots, capital, market, rules, rules_state='ok', rules_detail='', 
                            'an estimate, not a pass, until fresh candles are loaded.')
     return dict(status=status, estimate=est, executable_pct=plan_pct, entry_executable_pct=entry_pct, plan_executable_pct=plan_pct,
                 pairs=n, ok=n_entry, entry_ok=n_entry, plan_ok=n_plan, undersized=under, unknown=unknown, add_undersized=add_under, stale=stale,
+                add_over_leverage=over_lev,
                 min_capital_all=min_all, min_capital_binding=(dict(symbol=binding['symbol'], slot=binding['slot'], tf=binding['tf'],
                                                                      leg=binding['binding_leg']) if binding else None),
                 warning=' '.join(w), rules_state=rules_state, rules_detail=rules_detail, capital=capital)
