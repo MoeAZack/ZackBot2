@@ -6,3 +6,4 @@ dev_out_engine_sim*.txt
 .git_failed_*/
 dev_out_ui.txt
 verify_out/
+data_market/
