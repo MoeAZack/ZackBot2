@@ -502,35 +502,89 @@ def pid_alive(pid):
     except OSError: return False
 
 
+def _lock_info(p):
+    """The lock's JSON as a dict ({} when missing / unreadable / not an object - such a lock counts as stale)."""
+    info = read_json(p, {})
+    return info if isinstance(info, dict) else {}
+
+
+def _lock_stale(info, clock, stale_s, alive):
+    try: age = clock() - float(info.get('t'))
+    except (TypeError, ValueError): return True
+    pid = info.get('pid')
+    dead = pid is not None and pid != os.getpid() and not alive(pid)
+    return age > stale_s or dead
+
+
+def _create_lock(p, data):
+    """Create <p> only if it does not exist, with its COMPLETE content already in place (temp file + hard link, which
+    fails if the target exists), so no reader ever sees an empty or half-written lock. True if created."""
+    tmp = f'{p}.{uuid.uuid4().hex}.{os.getpid()}.tmp'           # swept by Collector.sweep_tmp if a crash leaves it
+    try:
+        with open(tmp, 'w', encoding='utf-8') as f:
+            json.dump(data, f); f.flush()
+            try: os.fsync(f.fileno())
+            except OSError: pass
+        try:
+            os.link(tmp, p); return True
+        except FileExistsError:
+            return False
+        except OSError:                                           # no hard links on this volume: exclusive create
+            try:
+                fd = os.open(p, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+            except FileExistsError:
+                return False
+            with os.fdopen(fd, 'w', encoding='utf-8') as f: json.dump(data, f)
+            return True
+    finally:
+        try: os.remove(tmp)
+        except OSError: pass
+
+
+TAKEOVER_STALE_S = 60
+
+
 def acquire_lock(out, clock=time.time, stale_s=LOCK_STALE_S, alive=pid_alive):
     """A token (truthy) if this run now owns <out>/.collector.lock, else None. The lock records pid + a random token.
     It is taken over when it is older than `stale_s`, or when the process that holds it is no longer running (an app
-    that quit mid-run must not block collection for hours)."""
+    that quit mid-run must not block collection for hours). A takeover happens under a short exclusive
+    `.collector.lock.takeover` marker and re-reads the lock inside it, so of several runs starting at once only ONE
+    replaces a dead lock (the others see the new owner and skip)."""
     os.makedirs(out, exist_ok=True)
     p = os.path.join(out, LOCK_FILE)
-    for _ in range(2):
+    token = uuid.uuid4().hex
+    mine = lambda: dict(pid=os.getpid(), t=clock(), token=token)
+    if _create_lock(p, mine()): return token
+    seen = _lock_info(p)
+    if not _lock_stale(seen, clock, stale_s, alive): return None
+    m = p + '.takeover'
+    try:
+        os.close(os.open(m, os.O_CREAT | os.O_EXCL | os.O_WRONLY))
+    except FileExistsError:                                       # another run is taking over right now
         try:
-            fd = os.open(p, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
-            token = uuid.uuid4().hex
-            with os.fdopen(fd, 'w', encoding='utf-8') as f: json.dump(dict(pid=os.getpid(), t=clock(), token=token), f)
-            return token
-        except FileExistsError:
-            info = read_json(p, {}) or {}
-            try: age = clock() - float(info.get('t', 0))
-            except (TypeError, ValueError): age = stale_s + 1
-            pid = info.get('pid')
-            dead = pid is not None and pid != os.getpid() and not alive(pid)
-            if age <= stale_s and not dead: return None
+            if time.time() - os.path.getmtime(m) > TAKEOVER_STALE_S: os.remove(m)    # its owner died mid-takeover
+        except OSError:
+            pass
+        return None
+    try:
+        cur = _lock_info(p) if os.path.exists(p) else None
+        if cur is not None and (cur != seen or not _lock_stale(cur, clock, stale_s, alive)):
+            return None                                           # someone else replaced it meanwhile
+        if cur is not None:
             try: os.remove(p)
+            except FileNotFoundError: pass
             except OSError: return None
-    return None
+        return token if _create_lock(p, mine()) else None
+    finally:
+        try: os.remove(m)
+        except OSError: pass
 
 
 def release_lock(out, token):
     """Remove the lock only if it is still ours (same token): a run that outlived the stale limit and was taken over
     must never delete the new owner's lock."""
     p = os.path.join(out, LOCK_FILE)
-    info = read_json(p, {}) or {}
+    info = _lock_info(p)
     if not token or info.get('token') != token: return False
     try: os.remove(p); return True
     except OSError: return False

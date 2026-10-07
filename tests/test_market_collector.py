@@ -789,3 +789,55 @@ def test_real_open_interest_payload_reaches_the_csv_with_circulating_supply(tmp_
     assert [r['sumOpenInterest'] for r in rows] == ['96134.66800000', '96007.33800000']
     assert [r['time_utc'] for r in rows] == ['2026-10-07T08:00:00Z', '2026-10-07T09:00:00Z']
     assert all(v != '' for r in rows for v in r.values()), 'no column may be silently blank'
+
+
+def test_simultaneous_takeover_of_a_dead_lock_has_exactly_one_winner(tmp_path):
+    """Cowork follow-up: 8 runs starting at once against a dead owner's lock -> exactly one owner, every round."""
+    clk = Clock()
+    p = os.path.join(tmp_path, MD.LOCK_FILE)
+    for rnd in range(25):
+        with open(p, 'w', encoding='utf-8') as f: json.dump(dict(pid=424242, t=clk(), token=f'dead{rnd}'), f)
+        start, wins = threading.Barrier(8), []
+        def go():
+            start.wait()
+            t = MD.acquire_lock(str(tmp_path), clock=clk, alive=lambda pid: pid != 424242)
+            if t: wins.append(t)
+        th = [threading.Thread(target=go) for _ in range(8)]
+        for x in th: x.start()
+        for x in th: x.join(10)
+        assert len(wins) == 1, (rnd, wins)
+        assert MD.read_json(p)['token'] == wins[0]
+        assert not os.path.exists(p + '.takeover')
+        os.remove(p)
+
+
+def test_concurrent_acquire_on_a_clean_folder_has_one_winner_and_the_lock_is_never_empty(tmp_path):
+    clk = Clock(); start, wins = threading.Barrier(16), []
+    def go():
+        start.wait(); t = MD.acquire_lock(str(tmp_path), clock=clk)
+        if t: wins.append(t)
+    th = [threading.Thread(target=go) for _ in range(16)]
+    for x in th: x.start()
+    for x in th: x.join(10)
+    assert len(wins) == 1 and MD.read_json(os.path.join(tmp_path, MD.LOCK_FILE))['token'] == wins[0]
+    assert not [f for f in os.listdir(tmp_path) if f.endswith('.tmp')], 'no temp file left behind'
+
+
+def test_malformed_lock_files_never_crash_and_are_reclaimed(tmp_path):
+    clk = Clock(); p = os.path.join(tmp_path, MD.LOCK_FILE)
+    for bad in ('[1, 2]', '', 'garbage', 'null', '{"pid": -1, "t": "x"}'):
+        open(p, 'w', encoding='utf-8').write(bad)
+        assert MD.release_lock(str(tmp_path), 'whatever') is False          # never raises, never deletes
+        tok = MD.acquire_lock(str(tmp_path), clock=clk)
+        assert tok, bad
+        assert MD.release_lock(str(tmp_path), tok) is True
+
+
+def test_an_interrupted_takeover_marker_expires(tmp_path):
+    clk = Clock(); p = os.path.join(tmp_path, MD.LOCK_FILE)
+    with open(p, 'w', encoding='utf-8') as f: json.dump(dict(pid=424242, t=clk(), token='dead'), f)
+    m = p + '.takeover'; open(m, 'w').close()
+    assert MD.acquire_lock(str(tmp_path), clock=clk, alive=lambda pid: False) is None    # someone is taking over
+    old = time.time() - MD.TAKEOVER_STALE_S - 5; os.utime(m, (old, old))
+    assert MD.acquire_lock(str(tmp_path), clock=clk, alive=lambda pid: False) is None    # stale marker cleared
+    assert MD.acquire_lock(str(tmp_path), clock=clk, alive=lambda pid: False)            # next attempt takes over
