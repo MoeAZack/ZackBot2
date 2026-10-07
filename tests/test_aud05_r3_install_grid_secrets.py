@@ -51,11 +51,21 @@ def test_genuine_first_run_writes_settings_state_and_marker_unpaused(tmp_path):
     assert e2.S['ENTRIES_PAUSED'] is False and not e2.integrity
 
 
+def _make_legacy(e, keep_lots):
+    """Turn a data folder into a pre-marker (unversioned) install: no install.json / .bak, no settings, v0 state."""
+    doc = json.load(open(e.F['state'])); doc.pop('schema_version', None)
+    if not keep_lots: doc['lots'] = {}
+    for p in (e.F['install'], e.F['install'] + '.bak', e.F['settings'], e.F['settings'] + '.bak', e.F['state'] + '.bak'):
+        if os.path.exists(p): os.remove(p)
+    with open(e.F['state'], 'w') as f: json.dump(doc, f)
+
+
 def test_legacy_install_without_marker_and_without_settings_is_a_first_run_for_settings():
-    e, tmp = mk_engine(); TS.opened(e); e.save_state()
-    for p in (e.F['install'], e.F['settings'], e.F['settings'] + '.bak'): os.remove(p)
+    """r4 (edited): a genuinely legacy (unversioned) folder that owns nothing is upgraded unpaused."""
+    e, tmp = mk_engine(); e.save_state()
+    _make_legacy(e, keep_lots=False)
     e2 = restart(tmp, e.trade)
-    assert e2.S['ENTRIES_PAUSED'] is False and len(e2.state['lots']) == 1 and os.path.exists(e2.F['install'])
+    assert e2.S['ENTRIES_PAUSED'] is False and os.path.exists(e2.F['install']) and os.path.exists(e2.F['install'] + '.bak')
 
 
 # ------------------------------------------------------------------ P1-2 grids
@@ -238,11 +248,12 @@ def test_account_change_never_rebinds_any_ownership_family(family):
 
 
 def test_account_change_with_no_ownership_records_the_new_account():
+    """r4 (edited; name kept): even with nothing owned the marker is NEVER rewritten without the owner's confirmation."""
     e, tmp = mk_engine()
-    _other_account(e)
+    before = _other_account(e)
     e2 = restart(tmp, e.trade)
     assert E.ownership_present(e2.state) == []
-    assert e2.S['ENTRIES_PAUSED'] is False and json.load(open(e.F['install']))['account'] == E.account_fingerprint(e2.cfg, e2.trade.base if hasattr(e2.trade, 'base') else None)
+    assert e2.S['ENTRIES_PAUSED'] is True and open(e.F['install'], 'rb').read() == before and e2.install_mismatch
 
 
 def test_owner_confirms_the_account_explicitly():

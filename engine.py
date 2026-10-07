@@ -638,6 +638,9 @@ GRID_OP_KINDS = ('open', 'add', 'red')
 _OP_ID_RE = re.compile(r'[0-9a-f]{6,32}')
 
 
+GRID_MAX_SPAN = 20.0          # hi / lo of any grid the bot builds stays far below this (pct <= 50 %: 3x)
+
+
 def _validate_grid(k, g, lots):
     """AUD-05 r3: the persisted grid contract. Quantities must be what build_grid could have produced for the grid's own
     capital (q * lo <= capital * capital_frac / max cells per side), so a tampered cell can never become an order."""
@@ -659,6 +662,19 @@ def _validate_grid(k, g, lots):
     if not isinstance(lines, list) or len(lines) != len(cells) + 1: _bad(w + '.lines', 'must have one more line than cells')
     for i, x in enumerate(lines): _num(x, f'{w}.lines[{i}]', gt=0)
     if any(lines[i] >= lines[i + 1] for i in range(len(lines) - 1)): _bad(w + '.lines', 'not strictly increasing')
+    if g['hi'] / g['lo'] > GRID_MAX_SPAN: _bad(w, f'range {g["lo"]:g}-{g["hi"]:g} wider than {GRID_MAX_SPAN:g}x')
+    if not g['lo'] < g['p0'] < g['hi']: _bad(w + '.p0', 'start price outside the range')
+    # AUD-05 r4: the executable topology is REBUILT from the grid's own parameters and compared - lines span lo..hi with
+    # the configured count and spacing, every cell sits between adjacent lines with its side, and no quantity exceeds what
+    # build_grid sizes for that cell (budget / entry reference); persisted metrics are never trusted for the budget.
+    try:
+        ref = GRID.build_grid(g['p0'], 1.0, dict(cfg, range_kind='lookback', range_value=10, mode=g['mode']), g['capital'],
+                              lo_hi=(g['lo'], g['hi']))
+    except Exception as ex:
+        _bad(w + '.cfg', f'cannot rebuild the grid ({str(ex)[:80]})')
+    if len(ref['cells']) != len(cells): _bad(w + '.cells', f"{len(cells)} cells, the configuration builds {len(ref['cells'])}")
+    tol = lambda x, y: abs(x - y) <= 1e-9 * max(abs(x), abs(y), 1e-12)
+    if not all(tol(x, y) for x, y in zip(lines, ref['lines'])): _bad(w + '.lines', 'do not match lo..hi with the configured spacing')
     n_l = sum(1 for c in cells if isinstance(c, dict) and c.get('k') == 'L')
     n_s = sum(1 for c in cells if isinstance(c, dict) and c.get('k') == 'S')
     per = g['capital'] * float(cfg.get('capital_frac', 1.0)) / max(n_l, n_s, 1)
@@ -668,7 +684,11 @@ def _validate_grid(k, g, lots):
         if not c['a'] < c['b']: _bad(wc, 'a must be below b')
         _str(c.get('k'), wc + '.k', choices=('L', 'S')); _bool(c.get('f'), wc + '.f'); _bool(c.get('init'), wc + '.init', opt=True)
         _num(c.get('q'), wc + '.q', lo=0)
-        if c['q'] * g['lo'] > per * (1 + 1e-6) + 1e-12: _bad(wc + '.q', f"{c['q']:g} exceeds the grid's own budget per cell")
+        rc = ref['cells'][i]
+        if not (tol(c['a'], lines[i]) and tol(c['b'], lines[i + 1])): _bad(wc, 'not between its adjacent lines')
+        if c.get('k') != rc['k']: _bad(wc + '.k', 'side differs from the one the configuration builds')
+        if c['q'] > rc['q'] * (1 + 1e-6) + 1e-12 or c['q'] * g['lo'] > per * (1 + 1e-6) + 1e-12:
+            _bad(wc + '.q', f"{c['q']:g} exceeds the grid's own budget for this cell")
         _num(c.get('e'), wc + '.e', gt=0, opt=True)
     for side, lk in _dict(g.get('lots'), w + '.lots').items():
         _str(side, w + '.lots.side', choices=SIDES); _str(lk, f'{w}.lots[{side}]')
@@ -689,7 +709,8 @@ def _validate_grid(k, g, lots):
         if op['qty'] > sum(cells[j]['q'] for j in idx) * (1 + 1e-6) + 1e-12: _bad(wo + '.qty', 'larger than its cells')
     _int(g.get('cycles', 0), w + '.cycles'); _num(g.get('cycle_pnl', 0.0), w + '.cycle_pnl')
     _int(g.get('trend_bars', 0), w + '.trend_bars')
-    _dict(g.get('metrics'), w + '.metrics', opt=True)
+    met = _dict(g.get('metrics'), w + '.metrics')                 # AUD-05 r4: every metric the bot USES must be there
+    _num(met.get('worst_loss_usd'), w + '.metrics.worst_loss_usd', lo=0, hi=g['capital'] * 1e3)
 
 
 def validate_install(doc):
@@ -823,20 +844,40 @@ def migrate_legacy_secrets(data_dir):
     return found
 
 
+def settings_siblings(data_dir):
+    """AUD-05 r4: every file that may hold settings bytes: settings.json, .bak, damaged-copy evidence (.corrupt-*) and
+    temp files of an interrupted write (settings.json.<pid>-<tid>.tmp, settings.json.bak.<pid>-<tid>.tmp)."""
+    try: names = os.listdir(data_dir)
+    except OSError: return []
+    out = []
+    for n in sorted(names):
+        if n in ('settings.json', 'settings.json.bak') or (n.startswith('settings.json.corrupt-')) or \
+                (n.startswith('settings.json.') and n.endswith('.tmp')):
+            p = os.path.join(data_dir, n)
+            if os.path.isfile(p): out.append(p)
+    return out
+
+
 def scrub_legacy_secrets(data_dir):
-    """Rewrite settings.json / .bak without secret material (after migrate_legacy_secrets' token reached the encrypted
-    config). A parseable file loses its secret keys; a damaged one is redacted byte-wise (the rest of the evidence stays)."""
-    for p in (os.path.join(data_dir, 'settings.json'), os.path.join(data_dir, 'settings.json.bak')):
-        if not os.path.exists(p): continue
+    """Remove legacy secret material from every settings sibling (after migrate_legacy_secrets' token reached the encrypted
+    config): a parseable file loses its secret keys; anything else is redacted byte-wise (the rest of the evidence stays).
+    Each rewrite is atomic. Returns the names that could NOT be cleaned (the caller raises an unresolved-secret incident)."""
+    failed = []
+    for p in settings_siblings(data_dir):
         try:
-            doc = read_json(p, dict)
-            if any(k in doc for k in SECRET_SETTING_KEYS): _write_durable(p, scrub_secrets(doc))
-        except (CorruptFile, OSError):
+            with open(p, 'rb') as f: raw = f.read()
             try:
+                doc = json.loads(raw.decode('utf-8-sig'))
+            except ValueError:
+                doc = None
+            if isinstance(doc, dict) and any(k in doc for k in SECRET_SETTING_KEYS):
+                _write_durable(p, scrub_secrets(doc))
                 with open(p, 'rb') as f: raw = f.read()
-                red = redact_secrets(raw)
-                if red != raw: _write_bytes_durable(p, red)
-            except Exception as ex: log.warning(f'{os.path.basename(p)}: legacy secret not redacted ({type(ex).__name__})')
+            red = redact_secrets(raw)
+            if red != raw: _write_bytes_durable(p, red)
+        except Exception as ex:
+            failed.append(f'{os.path.basename(p)} ({type(ex).__name__})')
+    return failed
 
 
 def corrupt_siblings(path):
@@ -1066,11 +1107,21 @@ class Engine:
         damaged copy exists (treated as initialized and failed closed: never silently rewritten); None = never initialized."""
         p = self.F['install']
         if not os.path.exists(p):
+            try:                                  # AUD-05 r4: the marker's own backup restores it (same content)
+                doc = validate_install(read_json_retry(p + '.bak', dict))
+                save_json(p, doc, strict=True)
+                self._integrity_alert('integrity|install-restored', 'install.json was missing - restored from install.json.bak')
+                return doc
+            except Exception:
+                pass
             ev = corrupt_siblings(p)
-            if ev:
-                self._install_bad = f'missing while its damaged copy {ev[-1]} exists'
-                self._integrity_alert('integrity|install', f'install.json {self._install_bad} - ENTRIES PAUSED until the owner '
-                                                           'confirms the account (Settings)')
+            why = (f'missing while its damaged copy {ev[-1]} exists' if ev else
+                   'missing while this data folder holds versioned (AUD-05) settings / state - it was deleted'
+                   if self._versioned_data() else None)
+            if why:
+                self._install_bad = why
+                self._integrity_alert('integrity|install', f'install.json {why} - ENTRIES PAUSED until the owner confirms the '
+                                                           'account (type THIS_ACCOUNT in Settings)')
                 return True
             return None
         try:
@@ -1083,6 +1134,21 @@ class Engine:
                                   f'{os.path.basename(aside) if aside else "(not movable, left in place)"}')
             return True
 
+    def _versioned_data(self):
+        """AUD-05 r4: evidence that this folder was initialized by a marker-writing build: a settings / state file (or its
+        backup) carrying schema_version >= 1, or AUD-05 damaged-file evidence. Unversioned files = a legacy install."""
+        for name in ('settings', 'state'):
+            path = self.F[name]
+            if corrupt_siblings(path): return True
+            for p in (path, path + '.bak'):
+                if not os.path.exists(p): continue
+                try:
+                    v = read_json(p, dict).get('schema_version', 0)
+                except Exception:
+                    return True                   # a damaged file next to a missing marker: not a clean legacy install
+                if not isinstance(v, bool) and isinstance(v, int) and v >= 1: return True
+        return False
+
     def _install_write(self, installed):
         """First start: write install.json (after the empty state and the settings are durable). Damaged / unknown marker:
         paused, nothing rewritten. Another account than recorded while the state owns anything (ownership_present): the
@@ -1093,15 +1159,22 @@ class Engine:
             self._persist_pause(); return
         if isinstance(installed, dict):
             if installed.get('account') == fp: return
-            owned = ownership_present(self.state)
-            if owned:
-                self.install_mismatch = dict(recorded=installed.get('account'), current=fp, owned=owned)
-                self._integrity_alert('integrity|install-account', 'this data folder was initialized for a different account / '
-                                      f"mode and holds {', '.join(owned)} - ENTRIES PAUSED; install.json kept unchanged until "
-                                      'the owner confirms the account')
-                self._persist_pause(); return
-            self._integrity_alert('integrity|install-account', 'this data folder was initialized for a different account / mode '
-                                  '- it owned nothing, the current account is recorded')
+            # AUD-05 r4: a different account than recorded - NEVER rebound without the owner's confirmation. What this
+            # state owned may be unknown (state restored from an older copy, or lost): that is listed too.
+            owned = ownership_present(self.state) + (['state ' + self.integrity['state']['status']]
+                                                     if (self.integrity.get('state') or {}).get('status') else [])
+            self.install_mismatch = dict(recorded=installed.get('account'), current=fp, owned=owned)
+            self._integrity_alert('integrity|install-account', 'this data folder was initialized for a different account / mode'
+                                  + (f" and holds {', '.join(owned)}" if owned else '') + ' - ENTRIES PAUSED; install.json kept '
+                                  'unchanged until the owner confirms the account (type THIS_ACCOUNT in Settings)')
+            self._persist_pause(); return
+        owned = ownership_present(self.state)
+        if installed is None and owned:           # AUD-05 r4: legacy (pre-marker) state that owns something: the account it
+            self.install_mismatch = dict(recorded=None, current=fp, owned=owned)   # belongs to is unknown - confirm first
+            self._integrity_alert('integrity|install-account', 'this data folder predates the account marker and holds '
+                                  f"{', '.join(owned)} - ENTRIES PAUSED until the owner confirms it belongs to this account "
+                                  '(type THIS_ACCOUNT in Settings)')
+            self._persist_pause(); return
         if installed is None:                     # first run: state and settings must be on disk before the marker is
             if not os.path.exists(self.F['state']) and not self.save_state(): return
             if not os.path.exists(self.F['settings']) and not self.save_settings(): return
@@ -1111,7 +1184,9 @@ class Engine:
         doc = dict(schema_version=INSTALL_SCHEMA, created=created or now_utc().isoformat(timespec='seconds'),
                    account=account_fingerprint(self.cfg, getattr(self.trade, 'base', None)))
         try:
-            save_json(self.F['install'], doc, strict=True); return True
+            save_json(self.F['install'], doc, strict=True)
+            save_json(self.F['install'] + '.bak', doc, strict=True)   # AUD-05 r4: the marker's own durable backup
+            return True
         except Exception as ex:
             self._integrity_alert('integrity|install', f'install.json not written ({type(ex).__name__})'); return False
 
@@ -1121,7 +1196,7 @@ class Engine:
         until the owner resumes them."""
         with self.lock:
             cur = self.F['install']
-            if os.path.exists(cur) and not self._installed is True and isinstance(self._installed, dict):
+            if os.path.exists(cur) and isinstance(self._installed, dict):
                 quarantine(cur)                   # the other account's marker is kept as evidence, not overwritten
             if not self._install_save(): raise OSError('install.json could not be written')
             self._installed = read_json(cur, dict); self.install_mismatch = None; self._install_bad = None
@@ -1302,8 +1377,11 @@ class Engine:
     # ------------------------------------------------------------ settings
     def load_settings(self):
         s = copy.deepcopy(GLOBAL_DEFAULTS)
-        try: scrub_legacy_secrets(os.path.dirname(self.F['settings']))   # AUD-05 r3: no legacy secret survives a load
-        except Exception: pass
+        try: bad = scrub_legacy_secrets(os.path.dirname(self.F['settings']))   # AUD-05 r3/r4: no legacy secret survives a load
+        except Exception as ex: bad = [f'scan failed ({type(ex).__name__})']
+        if bad and hasattr(self, '_integrity_alert'):
+            self._integrity_alert('secret-unresolved', 'a legacy Telegram token may still be stored in clear text in: '
+                                  + ', '.join(bad)[:150] + ' - it could not be redacted; remove these files by hand')
         got, status = Engine._load_safe(self, 'settings', dict, initialized=vars(self).get('_installed'))
         #   AUD-05: corrupt -> older .bak; none -> defaults; either way ENTRIES PAUSED; missing on an initialized install ->
         #   fail closed (called unbound: the offline UI harness loads settings on a bare namespace)

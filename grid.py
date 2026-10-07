@@ -878,6 +878,8 @@ class GridManager:
                     op = self._op(g, side, 'open', add, q, m)
                     self._open(g, op); changed = True
                 else:
+                    try: self._order_ok(g, q, m)                           # AUD-05 r4: before the op / the send
+                    except ValueError as ex: self.e.err(f"grid {g['key']} add: {ex}"); continue
                     op = self._op(g, side, 'add', add, q, m)
                     try:
                         ok = self.e._add_qty(lot, q, m, 'grid_buy' if kind == 'L' else 'grid_sell', post={'grid_ack': op['id']},
@@ -902,10 +904,27 @@ class GridManager:
             g['op'] = None; raise
         return op
 
+    def _risk(self, g):
+        """AUD-05 r4: the worst-case loss used for the lot, recomputed from the grid itself (never a persisted metric)."""
+        w = risk_metrics(g)['worst_loss_usd']
+        if not (isinstance(w, (int, float)) and math.isfinite(w) and w >= 0): raise ValueError('grid worst case not computable')
+        return w
+
+    def _order_ok(self, g, q, m):
+        """AUD-05 r4: last check before a risk-adding grid order: the mark inside the grid's stops and the order's notional
+        within the grid's own capital (x capital_frac x range span). Raises ValueError (nothing is sent)."""
+        if not (g['stop_lo'] <= m <= g['stop_hi']): raise ValueError(f"mark {m:g} outside the grid's stops - not sent")
+        cap = g['capital'] * float(g['cfg'].get('capital_frac', 1.0)) * (g['hi'] / g['lo']) * 1.05
+        if q * m > cap: raise ValueError(f"order {q:g} @ {m:g} exceeds the grid's own capital - not sent")
+
     def _open(self, g, op):
         e = self.e; sym, side, r = g['sym'], op['side'], e.rules[g['sym']]
         q = e._rd(op['qty'], r['step'])
         px = op['px']
+        try:
+            risk = self._risk(g); self._order_ok(g, q, px)                 # everything _create needs, BEFORE the send
+        except Exception as ex:
+            g['op'] = None; e.save_state(); e.err(f"grid {g['key']} first {side} order not sent: {ex}"); return
         if not e.dry:
             try:
                 o = e._send(e.trade.open, sym, side, e._fmt(q, r['step']), cid=op.get('cid'))
@@ -918,12 +937,12 @@ class GridManager:
             px = float(o.get('avgPrice') or 0) or px
             filled = float(o.get('executedQty') or 0)
             if filled > 0: q = e._rd(filled, r['step'])
-        self._create(g, op, q, px)
+        self._create(g, op, q, px, risk)
 
-    def _create(self, g, op, q, px):
+    def _create(self, g, op, q, px, risk=None):
         e = self.e; side = op['side']; sd = 1 if side == 'LONG' else -1
         stop = g['stop_lo'] if side == 'LONG' else g['stop_hi']
-        risk = g['metrics']['worst_loss_usd']
+        if risk is None: risk = self._risk(g)
         plan = dict(sl=dict(id=g['slot'], key='grid', tf=g['tf'], name=f"Grid {g['slot']}"), sym=g['sym'], side=side, qty=q,
                     stop_dist=abs(px - stop), atr=abs(g['cells'][0]['b'] - g['cells'][0]['a']), g={}, risk_usd=risk,
                     eq=e.last_eq or 0, manual=False, reason='grid', px=px, sg={})
