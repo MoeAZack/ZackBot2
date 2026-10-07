@@ -386,7 +386,24 @@ def save_json(path, obj):
     os.replace(tmp, path)
 
 
-ADD_RETRY_S, ADD_RETRY_TRANSIENT_S = 300, 60   # AUD-02: a failed add is retried after this (not every pass)
+ORDER_FINAL = ('FILLED', 'EXPIRED', 'CANCELED', 'REJECTED', 'EXPIRED_IN_MATCH')   # AUD-03: executedQty is final in these
+
+
+class UnfilledOrder(RuntimeError):
+    """AUD-03: Binance answered with a FINAL status and nothing executed (e.g. a market order EXPIRED): nothing is booked,
+    the lot, its quantity and its stop are exactly as before. The management stage reports it (an add is cooled down)."""
+
+
+class PartialClose(RuntimeError):
+    """AUD-03: a full close executed only partly - the executed part is booked, the lot keeps the rest with its stop."""
+
+
+def _cid_of(tag):
+    return tag[2:] if isinstance(tag, str) and tag.startswith('c:') else None
+
+
+ADD_RETRY_S, ADD_RETRY_TRANSIENT_S = 300, 60
+UNCONF_DROP_S, UNCONF_ADOPT_S = 20, 300        # AUD-03b: an unconfirmed entry is dropped / adopted from the position after   # AUD-02: a failed add is retried after this (not every pass)
 JOURNAL_BACKLOG_MAX = 5000            # AUD-01: trades.csv rows kept in memory while the file cannot be written
 INCIDENT_IDLE_S = 900                 # T05b: a repeat after 15 quiet minutes starts a new entry
 INCIDENT_MAX = 200                    # T05b: incidents kept (oldest dropped first, closed before open)
@@ -423,6 +440,7 @@ class Engine:
             except Exception: log.warning('state.json unreadable - starting empty')
         self.state.setdefault('orphans', []); self.state.setdefault('last_cycle', {})
         self.state.setdefault('pending_entries', {}); self.state.setdefault('resting_entries', {})
+        self.state.setdefault('unconfirmed_entries', {})           # AUD-03b: entries whose order answer was lost
         for l in self.state['lots'].values():           # lots saved by older versions may hold half-filled dca/pyramid blocks
             if l.get('key_strategy') in S.STRATEGIES and isinstance(l.get('mgmt'), dict):
                 l['mgmt'] = S.merge_mgmt(l['key_strategy'], {k: v for k, v in l['mgmt'].items()})
@@ -793,6 +811,37 @@ class Engine:
     @staticmethod
     def _add_cooling(lot):
         return time.time() < (lot.get('add_retry_at') or 0)
+
+    @staticmethod
+    def _exec_of(o, requested, step):
+        """AUD-03: how much of an order Binance REPORTS executed (exchange truth), capped at what was requested.
+        A final status (FILLED / EXPIRED / CANCELED ...) with executedQty -> that quantity (0 = nothing executed).
+        A non-final status (NEW / PARTIALLY_FILLED) -> None: unknown, handled exactly like a lost answer (pending).
+        No status at all (simulated / replay answers): a reported quantity > 0 is used, otherwise the request (a real
+        Binance RESULT answer always carries both, so this keeps only the simulated paths unchanged)."""
+        st = str((o or {}).get('status') or '').upper()
+        raw = (o or {}).get('executedQty')
+        try: eq = float(raw) if raw not in (None, '') else None
+        except (TypeError, ValueError): eq = None
+        if st in ORDER_FINAL:
+            if eq is None: return requested if st == 'FILLED' else None
+            q = min(F.round_step(eq, step), requested)
+            if q <= 0 < eq:                       # Cowork #28 F2: below one step - not tradable, booked as nothing (said so)
+                log.warning(f'order executed only {eq} (< one step {step}): booked as nothing executed - that dust stays on '
+                            'Binance below the minimum, without a bot stop')
+            return q
+        if st: return None
+        if eq: return min(F.round_step(eq, step), requested)
+        return requested
+
+    def _unknown_answer(self, lot, kind, qty, px, why, post, o):
+        """AUD-03: Binance answered but the order is not final yet: identical to a lost answer - the lot is `pending` with
+        the order's client id (reconcile reads that order's final record first) and AmbiguousOrder aborts this pass."""
+        cid = (o or {}).get('clientOrderId')
+        lot['pending'] = dict(kind=kind, qty=qty, px=px, why=why, post=post or {}, t=time.time(), cid=cid)
+        self.save_state()
+        self.err(f"{lot['symbol']} {why} answered {(o or {}).get('status')} (not final) - waiting for Binance to confirm")
+        raise AmbiguousOrder(f"{lot['symbol']} {kind} status {(o or {}).get('status')}", f'c:{cid}' if cid else None)
 
     def _after_fill_failed(self, lot, post, why, ex):
         """AUD-01 second layer: something failed AFTER Binance executed a close / add. Mark the event done exactly like
@@ -1169,15 +1218,31 @@ class Engine:
             try:
                 o = self.trade.close(sym, lot['side'], self._fmt(qty, r['step']))
             except AmbiguousOrder as e:
-                lot['pending'] = dict(kind='close', qty=qty, px=px, why=why, post=post or {}, t=time.time())
+                lot['pending'] = dict(kind='close', qty=qty, px=px, why=why, post=post or {}, t=time.time(), cid=_cid_of(e.tag))
                 self.save_state(); self.err(f'{sym} close unconfirmed ({e}) - waiting for Binance position to confirm'); raise
+            got = self._exec_of(o, qty, r['step'])                        # AUD-03: book what Binance executed
             act = float(o.get('avgPrice') or 0) or None
-            self._fill('exit', sym, lot['side'], lot['side'] == 'SHORT', mark, act, qty, o.get('executedQty'), t0, reason=why)
-            px = act or px
+            self._fill('exit', sym, lot['side'], lot['side'] == 'SHORT', mark, act, qty, o.get('executedQty'), t0, reason=why,
+                       **({'outcome': 'unfilled'} if got == 0 else {}))
+            if got is None: self._unknown_answer(lot, 'close', qty, px, why, post, o)
+            if got <= 0:
+                raise UnfilledOrder(f"{sym} {why}: Binance {o.get('status')} - nothing executed, the position is unchanged")
+            if got < qty and (post or {}).get('finish'):
+                post = {k: v for k, v in post.items() if k != 'finish'}       # a partial full-close finishes nothing
+                short = qty - got
+            else:
+                short = 0.0
+            qty, px = got, act or px
+        else:
+            short = 0.0
         try:
-            return self._apply_close(lot, qty, px, why)
+            pnl = self._apply_close(lot, qty, px, why)
         except Exception as ex:
             self._after_fill_failed(lot, post, why, ex); raise
+        if short > 0 and lot['qty'] > 0:
+            raise PartialClose(f"{sym} [{lot['sleeve']}] {why} executed {qty} of {qty + short} - {lot['qty']} kept with its stop, "
+                               "the rest is closed on a later pass")
+        return pnl
 
     def _apply_close(self, lot, qty, px, why):
         sym, r = lot['symbol'], self.rules[lot['symbol']]
@@ -1198,6 +1263,36 @@ class Engine:
         The position may also carry dust the lots do not own (reconcile tolerates it): a match within that dust counts only
         when the other outcome does not match too - otherwise it keeps waiting and the 5-minute resync decides."""
         l = self.state['lots'][key]; pd_ = l['pending']; age = time.time() - pd_.get('t', 0)
+        fr = self._order_result(l['symbol'], pd_.get('cid'), pd_['qty'])
+        if fr['state'] == 'final':                                       # AUD-03: Binance's own final answer decides
+            got, px = fr['qty'], fr['px'] or pd_['px']
+            del l['pending']
+            if got <= 0:
+                log.info(f"{l['symbol']} [{l['sleeve']}] unconfirmed {pd_['kind']} did not execute (order record) - will retry")
+                return True
+            post = dict(pd_.get('post') or {})
+            fin = post.pop('finish', None)
+            if got < pd_['qty']: fin = None                              # a partial full-close finishes nothing
+            if pd_['kind'] == 'close': self._apply_close(l, got, px, pd_['why'])
+            else: self._apply_add(l, got, px, pd_['why'])
+            l.update(post)
+            if 'dca' in l.get('mgmt', {}) and pd_['kind'] == 'add' and l.get('tp') is not None:
+                sd = 1 if l['side'] == 'LONG' else -1
+                l['tp'] = l['avg'] + sd * l['mgmt']['dca']['tp_atr'] * l['atr0']
+            log.info(f"{l['symbol']} [{l['sleeve']}] unconfirmed {pd_['kind']} confirmed from its order record: {got} of {pd_['qty']} @ {px}")
+            if fin or l['qty'] <= 0: self._finish(key, fin or pd_['why'])
+            else: self._replace_stop(l)
+            return True
+        if fr['state'] != 'nosource':                                    # AUD-03 r1: a KNOWN order is decided only by its record
+            if fr['state'] == 'notfound' and age > 20:                   # Binance has no such order: it never executed
+                del l['pending']; log.info(f"{l['symbol']} [{l['sleeve']}] unconfirmed {pd_['kind']} never reached Binance - will retry")
+                return True
+            if age > 300:                                                # no record within the evidence window: timed resync
+                del l['pending']
+                self.err(f"{l['symbol']} [{l['sleeve']}] could not read the order record of a {pd_['kind']} for 5 min "
+                         f"({fr['state']}) - resyncing to the exchange")
+                return False
+            return None                                                  # wait: the position alone could pick the wrong cause
         # a close of the whole position includes that dust (close_lot), and a position never goes below zero
         target = max(0.0, expected - pd_['qty']) if pd_['kind'] == 'close' else expected + pd_['qty']
         near = lambda d: -tol <= d <= tol                                # whole step multiples: only float noise is tolerated
@@ -1225,6 +1320,44 @@ class Engine:
         if age > 300:
             del l['pending']; self.err(f"{l['symbol']} [{l['sleeve']}] could not confirm {pd_['kind']} after 5 min - resyncing to the exchange"); return False
         return None
+
+    @staticmethod
+    def _fill_px(o):
+        """The average price Binance reports for an order (avgPrice, else cumQuote / executedQty), or None."""
+        try:
+            px = float((o or {}).get('avgPrice') or 0)
+            if px > 0: return px
+            q, cq = float((o or {}).get('executedQty') or 0), float((o or {}).get('cumQuote') or 0)
+            return cq / q if q > 0 and cq > 0 else None
+        except (TypeError, ValueError):
+            return None
+
+    def _order_result(self, sym, cid, requested):
+        """AUD-03 (Codex r1): THE fill-result boundary for an order known by its client id. Returns
+        dict(state, qty, px, status, cid) with state:
+          'final'      - Binance's final record: qty = executed (capped at the request; 0 = nothing), px = its average
+          'pending'    - the order exists but is not final yet (NEW / PARTIALLY_FILLED)
+          'notfound'   - Binance has no such order (never reached it)
+          'unreadable' - the lookup failed (timeout, outage, error)
+          'nosource'   - no client id, or this exchange adapter cannot read order records (simulations)
+        Only 'final' is order truth; callers must not infer an outcome for a known id from anything else."""
+        res = dict(state='nosource', qty=None, px=None, status=None, cid=cid)
+        getter = getattr(self.trade, 'get_order', None)
+        if not cid or self.dry or getter is None: return res
+        try:
+            o = getter(sym, cid)
+        except Exception:
+            res['state'] = 'unreadable'; return res
+        if not o:
+            res['state'] = 'notfound'; return res
+        st = str(o.get('status') or '').upper(); res['status'] = st
+        if st not in ORDER_FINAL:
+            res['state'] = 'pending'; return res
+        q = self._exec_of(o, requested, self.rules[sym]['step'])
+        if q is None:
+            res['state'] = 'pending'; return res
+        res.update(state='final', qty=q, px=self._fill_px(o) if q > 0 else None)
+        return res
 
     def _record_r(self, lot):
         if lot.get('manual') or not lot.get('risk_usd'): return
@@ -1260,7 +1393,13 @@ class Engine:
                 extra = held - qty
                 if extra <= 0 or (not self._entry_claims(lot['symbol'], lot['side'])
                                   and F.leaves_dust(extra, mark or lot['avg'], self.rules.get(lot['symbol']))): qty = held
-        self._market_close(lot, qty, why, mark, post={'finish': why})    # raises on failure -> lot and its stop stay as they were
+        try:
+            self._market_close(lot, qty, why, mark, post={'finish': why})    # raises on failure -> lot and its stop stay as they were
+        except PartialClose:
+            lot['stop_dirty'] = True                       # AUD-03: the rest stays a lot; its stop is resized to what is left
+            try: self._replace_stop(lot)
+            except Exception as ex: log.warning(f"{lot['symbol']} stop resize after a partial close failed ({ex}) - retried next pass")
+            self.save_state(); raise
         self._finish(key, why)
         self.save_state()
 
@@ -1268,7 +1407,8 @@ class Engine:
         """AUD-02 (Codex r1): a local entry on this coin/side may own exchange size that no lot records yet - a resting maker
         entry (its partial fills become its own lot) or a pending/trailing entry. While one exists, size beyond a closing
         lot is never swept, not even when it is dust."""
-        recs = list((self.state.get('resting_entries') or {}).values()) + list((self.state.get('pending_entries') or {}).values())
+        recs = (list((self.state.get('resting_entries') or {}).values()) + list((self.state.get('pending_entries') or {}).values())
+                + list((self.state.get('unconfirmed_entries') or {}).values()))
         return any(r.get('symbol') == sym and r.get('side') == side for r in recs if isinstance(r, dict))
 
     def _partial_zero(self, lot, name, q):
@@ -1277,7 +1417,8 @@ class Engine:
         evaluated again on later passes (e.g. after an add made the lot splittable), so no breakeven move, runner promotion
         or DCA completion is ever triggered by a take-profit that never happened. Reported once per lot and stage.
         The backtester applies the same rule (backtest.run: part_zero)."""
-        if self._rd(q, self.rules[lot['symbol']]['step']) > 0: return False
+        r = self.rules.get(lot['symbol'])
+        if not r or self._rd(q, r['step']) > 0: return False     # no rules (Cowork #27 note): the order path decides, never a KeyError
         seen = lot.setdefault('zero_partials', [])
         if name not in seen:
             seen.append(name)
@@ -1343,8 +1484,15 @@ class Engine:
             try:
                 o = self.trade.open(lot['symbol'], lot['side'], self._fmt(q, r['step']))
             except AmbiguousOrder as e:
-                lot['pending'] = dict(kind='add', qty=q, px=px, why=why, post=post or {}, t=time.time())
+                lot['pending'] = dict(kind='add', qty=q, px=px, why=why, post=post or {}, t=time.time(), cid=_cid_of(e.tag))
                 self.save_state(); self.err(f"{lot['symbol']} {why} unconfirmed ({e}) - waiting for Binance position to confirm"); raise
+            got = self._exec_of(o, q, r['step'])                          # AUD-03: book what Binance executed
+            if got is None: self._unknown_answer(lot, 'add', q, px, why, post, o)
+            if got <= 0:
+                self._fill(why if why in self.FILL_KINDS else 'pyramid_add', lot['symbol'], lot['side'], lot['side'] == 'LONG',
+                           px, None, q, o.get('executedQty'), t0, reason=why, outcome='unfilled')
+                raise UnfilledOrder(f"{lot['symbol']} {why}: Binance {o.get('status')} - nothing executed, the lot is unchanged")
+            q = got
             act = float(o.get('avgPrice') or 0) or None
             self._last_order = dict(rec=self._fill(why if why in self.FILL_KINDS else 'pyramid_add', lot['symbol'], lot['side'], lot['side'] == 'LONG',
                                     px, act, q, o.get('executedQty'), t0, reason=why, fallback_order=(why == 'entry_fallback') or None))
@@ -1696,6 +1844,7 @@ class Engine:
         fetched = live is None
         live = self.trade.positions() if live is None else live
         if fetched: self.health.setdefault('confirmed', {})['positions'] = now_utc().isoformat(timespec='seconds')
+        if self.state.get('unconfirmed_entries'): self._settle_unconfirmed(live)   # AUD-03b
         st = self.state
         groups = {}
         for k, l in st['lots'].items(): groups.setdefault((l['symbol'], l['side']), []).append(k)
@@ -1706,6 +1855,7 @@ class Engine:
         resting = {}                       # maker entry orders still working: their fills are not in a lot yet
         for r_ in st.get('resting_entries', {}).values():
             resting[(r_['symbol'], r_['side'])] = resting.get((r_['symbol'], r_['side']), 0.0) + r_['qty']
+        for k_, q_ in self._unconfirmed_claims().items(): resting[k_] = resting.get(k_, 0.0) + q_   # AUD-03b: not untracked
         for (sym, side), have in live.items():
             if (sym, side) not in groups and have > 0:
                 # one whole step of a position with no lot is real (e.g. 0.001 BTC = a tradable ~$120 orphan): the same sub-step
@@ -1921,6 +2071,7 @@ class Engine:
         if any(l['symbol'] == sym and l['side'] == side and l.get('stop_dirty') for l in st['lots'].values()):
             return 'an open trade on this coin is waiting for its stop to be confirmed'
         if f'{sym}|{side}' in self.untracked: return 'Binance holds an untracked position on this coin/side - resolve it first'
+        if (sym, side) in self._unconfirmed_claims(): return 'an earlier entry on this coin/side is not confirmed yet'
         if manual: return self._rules_block(sl, sym, side, size, manual=True)
         if Sg.get('ENTRIES_PAUSED'): return 'entries paused'
         if not Sg['SYMBOLS_ON'].get(sym, True): return 'coin switched off'
@@ -2373,20 +2524,137 @@ class Engine:
             o = self.trade.open(sym, side, self._fmt(plan['qty'], r['step']))
         except AmbiguousOrder as e:
             self._last_order = dict(pending=str(e)[:160])                # T05: answer lost - reconcile decides, not "failed"
-            self.err(f'ENTRY {sym} {side} unconfirmed ({e}) - reconcile will flag it if it filled')
+            self._remember_unconfirmed(plan, _cid_of(e.tag))
+            self.err(f'ENTRY {sym} {side} unconfirmed ({e}) - protected and settled from Binance as soon as it shows')
             self.last_skip = 'entry order unconfirmed'
             return False
         act = float(o.get('avgPrice') or 0) or None
         fill = act or plan['px']
-        filled = float(o.get('executedQty') or 0)
+        got = self._exec_of(o, plan['qty'], r['step'])                    # AUD-03: exchange truth, never the request
         self._last_order = dict(rec=self._fill('entry_fallback' if plan.get('fallback') else 'entry_market', sym, side, side == 'LONG',
                                                plan['px'], act, plan['qty'], o.get('executedQty'), t0, signal_px=plan.get('signal_px'),
                                                maker_tries=plan.get('maker_tries'), fallback_order=plan.get('fallback') or None,
-                                               manual=plan.get('manual') or None))
-        qty = self._rd(filled, r['step']) if filled > 0 else plan['qty']
-        return self._create_lot(plan, qty, fill)
+                                               manual=plan.get('manual') or None, **({'outcome': 'unfilled'} if got == 0 else {})))
+        if got is None:                                                   # answered, not final: like a lost answer
+            self._remember_unconfirmed(plan, o.get('clientOrderId'))
+            self.err(f"ENTRY {sym} {side} answered {o.get('status')} (not final) - settled from Binance as soon as it shows")
+            self.last_skip = 'entry order unconfirmed'
+            return False
+        if got <= 0:                                                      # EXPIRED / CANCELED with nothing executed
+            log.info(f"ENTRY {sym} {side}: Binance {o.get('status')} - nothing executed, no trade opened")
+            self.last_skip = 'entry order not filled'
+            return False
+        return self._create_lot(plan, got, fill)
 
-    def _create_lot(self, plan, qty, fill, maker_qty=0.0):
+    # ------------------------------------------------------------ AUD-03b: entries whose answer was lost
+    # An entry whose order answer is lost (or not final) is remembered with its client order id. Every reconcile pass:
+    #   1. its FINAL order record decides: executed > 0 -> booked as a lot (exact qty and price), 0 -> forgotten;
+    #   2. until then, size on the exchange beyond the lots is protected AT ONCE by a provisional stop at the planned stop
+    #      price (no position waits hours for the next candle), and is never reported as untracked;
+    #   3. no record and no position after {UNCONF_DROP_S} s -> it never executed; a position but no record after
+    #      {UNCONF_ADOPT_S} s -> adopted from the position at the mark price.
+    # The lot inherits the provisional stop (_replace_stop places the real one first, then cancels it). New entries on that
+    # coin/side wait until it is settled. Engine._owned_stop_tags lists every stop the bot owns (for AUD-04's verifier).
+    def _remember_unconfirmed(self, plan, cid):
+        sl = plan.get('sl') or {}
+        k = f"UE|{'MAN' if plan.get('manual') else sl.get('id')}|{plan['sym']}|{plan['side']}|{int(time.time() * 1000)}"
+        self.state.setdefault('unconfirmed_entries', {})[k] = dict(
+            symbol=plan['sym'], side=plan['side'], cid=cid, qty=plan['qty'], t=time.time(), prov=None, prov_qty=0.0, plan=plan)
+        self.save_state()
+
+    def _owned_stop_tags(self, sym=None):
+        """Every exchange stop the bot owns: lot stops and AUD-03b provisional stops (a verifier must never cancel these)."""
+        tags = {l.get('stop_id') for l in self.state['lots'].values() if sym in (None, l['symbol'])}
+        tags |= {u.get('prov') for u in (self.state.get('unconfirmed_entries') or {}).values() if sym in (None, u['symbol'])}
+        return {t for t in tags if t}
+
+    def _unconfirmed_claims(self):
+        out = {}
+        for u in (self.state.get('unconfirmed_entries') or {}).values():
+            out[(u['symbol'], u['side'])] = out.get((u['symbol'], u['side']), 0.0) + u['qty']
+        return out
+
+    def _prov_set(self, uk, u, qty):
+        """AUD-03 r1: keep an unconfirmed entry's provisional stop EXACTLY at the unresolved size on Binance: placed or resized
+        replace-first (new stop, then cancel the old), cancelled when nothing unresolved remains. If a SHRINK cannot be placed,
+        the oversized old stop is removed at once (cancelled, or parked for retry with its ownership cleared) and the gap is
+        alerted and retried - so a live provisional stop is never larger than what it protects and can never close a sibling
+        lot's size. A failed first placement / grow keeps the smaller old stop (conservative) and retries."""
+        sym, side, r, plan = u['symbol'], u['side'], self.rules[u['symbol']], u['plan']
+        old = u.get('prov')
+        if qty <= 0:
+            if old:
+                u['prov'], u['prov_qty'] = None, 0.0; self.save_state()
+                self._cancel_or_park(sym, old)
+                log.info(f"ENTRY {sym} {side} unconfirmed: nothing unresolved on Binance any more - provisional stop cancelled")
+            return
+        if old and abs(qty - u.get('prov_qty', 0.0)) < 1e-12: return
+        sd = 1 if side == 'LONG' else -1
+        stop = self._rd(plan['px'] - sd * plan['stop_dist'], r['tick'])
+        try:
+            tag = self.trade.stop(sym, side, self._fmt(qty, r['step']), self._fmt(stop, r['tick']))
+        except Exception as ex:
+            if old and qty < u.get('prov_qty', 0.0):          # Codex r2: a SHRINK failed - the old stop is now oversized and could
+                u['prov'], u['prov_qty'] = None, 0.0          # close a sibling's size: drop it at once (cancel, or park + retry),
+                self.save_state()                             # ownership cleared durably; the unresolved part is re-protected
+                self._cancel_or_park(sym, old)                # next pass
+                self.err(f"{sym} {side} unconfirmed entry: resizing its provisional stop to {qty} failed ({str(ex)[:120]}) - the "
+                         f"oversized stop was removed, {qty} is UNPROTECTED until the retry next pass", key=f'prov|{uk}')
+                self.notify(f'⚠️ {sym} {side}: {qty} of an unconfirmed entry has NO stop for a moment (the provisional stop could '
+                            'not be resized; the oversized one was removed so it cannot close another trade). Retrying now.')
+            else:                                             # first placement / a grow failed: the smaller old stop (if any) stays
+                self.err(f"{sym} {side} unconfirmed entry: provisional stop for {qty} failed ({str(ex)[:120]}) - retried next pass",
+                         key=f'prov|{uk}')
+            return
+        u['prov'], u['prov_qty'], u['prov_stop'] = tag, qty, stop
+        self.save_state()
+        if old and old != tag: self._cancel_or_park(sym, old)
+        log.info(f"ENTRY {sym} {side} unconfirmed: {qty} on Binance protected by a provisional stop at {stop}")
+
+    def _settle_unconfirmed(self, live):
+        ue = self.state.get('unconfirmed_entries') or {}
+        for uk, u in list(ue.items()):
+            sym, side = u['symbol'], u['side']
+            r = self.rules.get(sym)
+            if r is None: continue
+            age = time.time() - u.get('t', 0)
+            plan = u['plan']
+            fr = self._order_result(sym, u.get('cid'), u['qty'])
+            if fr['state'] == 'final':                                     # 1. the order's final record decides
+                got = fr['qty']
+                ue.pop(uk, None)
+                if got > 0:
+                    px = fr['px'] or plan['px']
+                    log.info(f"ENTRY {sym} {side} unconfirmed -> confirmed from its order record: {got} @ {px}")
+                    self._create_lot(plan, got, px, adopt_stop=u.get('prov'))
+                else:
+                    log.info(f"ENTRY {sym} {side} unconfirmed -> its order record shows nothing executed")
+                    if u.get('prov'): self._cancel_or_park(sym, u['prov'])
+                self.save_state(); continue
+            lots_q = sum(l['qty'] for l in self.state['lots'].values() if l['symbol'] == sym and l['side'] == side)
+            rest_q = sum(x['qty'] for x in (self.state.get('resting_entries') or {}).values()
+                         if x['symbol'] == sym and x['side'] == side)
+            # Cowork #28 F1: a sibling lot's own unconfirmed ADD may already be on Binance before its lot grows - that size is
+            # the add's, never this entry's (else it would get this entry's stop and, after 5 min, be adopted twice)
+            add_q = sum((l.get('pending') or {}).get('qty', 0.0) for l in self.state['lots'].values()
+                        if l['symbol'] == sym and l['side'] == side and (l.get('pending') or {}).get('kind') == 'add')
+            extra = self._rd(min(u['qty'], max(0.0, live.get((sym, side), 0.0) - lots_q - rest_q - add_q)), r['step'])
+            self._prov_set(uk, u, extra)                                   # 2. protect exactly what is unresolved
+            if extra > 0:
+                if age > UNCONF_ADOPT_S:                                   # 3b. no record in 5 min: adopt the position
+                    ue.pop(uk, None)
+                    px = (self.marks or {}).get(sym) or plan['px']
+                    self.err(f"ENTRY {sym} {side} could not be confirmed from its order record ({fr['state']}) - adopted from "
+                             f"the position ({extra} @ mark {px})")
+                    self._create_lot(plan, extra, px, adopt_stop=u.get('prov'))
+                    self.save_state()
+            elif age > (UNCONF_DROP_S if fr['state'] in ('notfound', 'nosource') else UNCONF_ADOPT_S):   # 3a. never executed
+                ue.pop(uk, None)
+                if u.get('prov'): self._cancel_or_park(sym, u['prov'])
+                log.info(f"ENTRY {sym} {side} unconfirmed -> nothing on Binance after {int(age)} s ({fr['state']}), forgotten")
+                self.save_state()
+
+    def _create_lot(self, plan, qty, fill, maker_qty=0.0, adopt_stop=None):
         """Record a filled entry as a lot and protect it with its exchange stop (recorded BEFORE the stop is sent)."""
         sym, side, sl, manual, g, atr = plan['sym'], plan['side'], plan['sl'], plan['manual'], plan['g'], plan['atr']
         r, sd, eq, risk_usd, reason, px = self.rules[sym], (1 if side == 'LONG' else -1), plan['eq'], plan['risk_usd'], plan['reason'], plan['px']
@@ -2413,6 +2681,7 @@ class Engine:
                 ap['ctx'] = dict(entry=self._audit_entry_ctx(sym, lot['tf'], lot['opened']))   # regime known at entry
                 lot['ap'] = ap
         except Exception: pass
+        if adopt_stop: lot['stop_id'] = adopt_stop               # AUD-03b: the provisional stop is replaced (new first, then cancelled)
         self.state['lots'][key] = lot; self.save_state()          # recorded BEFORE the stop: a crash here can never orphan the position
         self._last_lot_key = key
         if not self._replace_stop(lot):
@@ -2892,6 +3161,8 @@ class Engine:
                     try: self.close_lot(k, 'flatten'); res['closed'].append(k)
                     except Exception as e: res['failed'].append([k, str(e)[:160]]); self.err(f'flatten {k}: {e}')
             self.S['ENTRIES_PAUSED'] = True; self.save_settings()
+            if self.state.get('unconfirmed_entries'):                 # AUD-03b: not a lot yet - settled + protected by reconcile
+                res['unconfirmed'] = sorted(f"{u['symbol']}|{u['side']}" for u in self.state['unconfirmed_entries'].values())
             if not self.dry:
                 try:
                     live = self.trade.positions()
