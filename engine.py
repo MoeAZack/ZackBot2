@@ -1432,7 +1432,8 @@ class Engine:
         evaluated again on later passes (e.g. after an add made the lot splittable), so no breakeven move, runner promotion
         or DCA completion is ever triggered by a take-profit that never happened. Reported once per lot and stage.
         The backtester applies the same rule (backtest.run: part_zero)."""
-        if self._rd(q, self.rules[lot['symbol']]['step']) > 0: return False
+        r = self.rules.get(lot['symbol'])
+        if not r or self._rd(q, r['step']) > 0: return False     # no rules (Cowork #27 note): the order path decides, never a KeyError
         seen = lot.setdefault('zero_partials', [])
         if name not in seen:
             seen.append(name)

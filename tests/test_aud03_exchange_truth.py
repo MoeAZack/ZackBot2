@@ -256,3 +256,10 @@ def test_the_app_keeps_managing_while_an_entry_is_unconfirmed():
     src = open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'app.py'), encoding='utf-8').read()
     gate = src[src.index("if (e.state['lots'] or e.state.get('grids')"):][:260]
     assert "unconfirmed_entries" in gate and 'e.manage(marks)' in gate
+
+
+def test_partial_zero_check_never_raises_for_a_coin_without_rules():
+    """Cowork note on PR #27: a symbol missing from engine.rules made _partial_zero (outside a stage) raise KeyError."""
+    e, _ = mk_engine(); k = opened(e); lot = e.state['lots'][k]
+    e.rules.pop('BTCUSDT')
+    assert e._partial_zero(lot, 'take_profit_1', 0.0001) is False
