@@ -47,6 +47,28 @@ def test_fifteen_minute_close_on_the_four_hour_grid_is_still_a_distinct_instance
     assert key(tf='15m', close=T + 900_000).candle_close_ms == T + 900_000       # off the 4h grid, on the 15m grid
 
 
+@pytest.mark.parametrize('alias', ['v01', 'v00', 'v000', 'v001', 'v0010', 'V1', 'v', 'v-1', 'v1 ', 'v1234567'])
+def test_strategy_version_aliases_are_refused(alias):
+    """One logical version has exactly one spelling, so it has exactly one decision id (v1 never aliases v01)."""
+    with pytest.raises(InvalidRecord, match='canonical v<n>'):
+        key(version=alias)
+    bare = DecisionKey(strategy='trend_ema_mom@4h', strategy_version=alias, symbol='BTCUSDT',
+                       side=Side.LONG, candle_close_ms=T, purpose=Purpose.ENTRY)
+    with pytest.raises(InvalidRecord):                       # the grammar's check refuses an alias built around it
+        K.check_decision_key(bare)
+
+
+@pytest.mark.parametrize('version', ['v0', 'v1', 'v9', 'v10', 'v12', 'v100', 'v999999'])
+def test_canonical_versions_are_accepted(version):
+    assert key(version=version).strategy_version == version
+
+
+def test_canonical_versions_keep_the_pinned_ids():
+    assert K.derive_decision_id(ACCT, key(version='v1')) == 'dec_1b68c1f8c6cd51de38b74ff95bf3ae0d'
+    assert K.derive_intent_id(ACCT, key(version='v1')) == 'int_d4bbf9ba13b6d5a0d78481b4ca7f03b7'
+    assert K.derive_decision_id(ACCT, key(version='v0')) != K.derive_decision_id(ACCT, key(version='v1'))
+
+
 def test_bare_nc01_key_is_not_a_runner_key():
     bare = DecisionKey(strategy='trend_ema_mom', strategy_version='v1', symbol='BTCUSDT', side=Side.LONG,
                        candle_close_ms=T, purpose=Purpose.ENTRY)
