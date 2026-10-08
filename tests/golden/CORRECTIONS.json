@@ -212,22 +212,23 @@
       "id": "CORR-0007",
       "type": "correction",
       "ticket": "AUD-07",
-      "finding": "C13d",
-      "title": "C13d fixed: backtest trading day = Cairo date of the candle close, rolled over before the halt test and the signal gate",
+      "finding": "C13d + C13g",
+      "title": "C13d and C13g fixed: both G-DAY-CAIRO divergences resolved (backtest Cairo day by candle close; engine stop journalled at its fill)",
       "cases": {
         "G-DAY-CAIRO-S-01": {
           "prev_contract_sha": "fca3960fb9d2ec2c7893cb2b7f7ef70c942dda422bff174e6983b0a31cb16daa",
-          "contract_sha": "e1f362778981a123ab9b66075727ebe15d988a5b8f5205d25e76135e9cf8f5d8"
+          "contract_sha": "b6de9888fd82a25c9956472ccb900d18e7139eaa4464fa62e11c6683f0963436"
         },
         "G-DAY-CAIRO-W-01": {
           "prev_contract_sha": "625636ffef385ede68fe3123479ef767de1640469a8862662e369d191a5f497e",
-          "contract_sha": "764e3f3d1f10614514fa7345f2326c4b2758a3d6d2a33c5d1f4dc74aefd27f7a"
+          "contract_sha": "d16fd20d9a49681603f72d3332cebb2d337e31fc1b199a847dd6ec456c99ed70"
         }
       },
       "adapters_changed": [
-        "legacy_backtest (known divergence C13d resolved: G-DAY-CAIRO-W-01, G-DAY-CAIRO-S-01)"
+        "legacy_backtest (known divergence C13d resolved: G-DAY-CAIRO-W-01, G-DAY-CAIRO-S-01)",
+        "legacy_engine (known divergence C13g resolved: G-DAY-CAIRO-W-01, G-DAY-CAIRO-S-01)"
       ],
-      "rationale": "backtest.py keys the day on the Africa/Cairo date of T_i + tf (IANA zone, no fixed-offset fallback) and rolls it over at the candle close before the halt test and the signal gate, as engine.check_guards().",
+      "rationale": "backtest.py keys the day on the Africa/Cairo date of T_i + tf (IANA zone, no fixed-offset fallback) and rolls it over at the candle close before the halt test and the signal gate, as engine.check_guards(). engine.py reads the stop's fill price from the exchange (Futures.stop_fill_price; the replay sim serves the same) and books it, exit slippage and gaps included; unknown -> the stop price with a journal note. One record per case from the base contract to the current one (test_ledger rule 5 accepts a single base -> now correction per case, so the two fixes on these cases share this record).",
       "evidence": "branch aud-07-product-r2 (merged with #32 r2 b01d439); reverting the item's product lines re-breaks exactly these pairs (mutation check in the build report)",
       "accepted_by": null,
       "date_cairo": "2026-10-08",
@@ -240,14 +241,6 @@
       "finding": "C13g",
       "title": "C13g fixed: the engine journals a filled exchange stop at its fill price",
       "cases": {
-        "G-DAY-CAIRO-S-01": {
-          "prev_contract_sha": "e1f362778981a123ab9b66075727ebe15d988a5b8f5205d25e76135e9cf8f5d8",
-          "contract_sha": "b6de9888fd82a25c9956472ccb900d18e7139eaa4464fa62e11c6683f0963436"
-        },
-        "G-DAY-CAIRO-W-01": {
-          "prev_contract_sha": "764e3f3d1f10614514fa7345f2326c4b2758a3d6d2a33c5d1f4dc74aefd27f7a",
-          "contract_sha": "d16fd20d9a49681603f72d3332cebb2d337e31fc1b199a847dd6ec456c99ed70"
-        },
         "G-GAP-STOP-L-01": {
           "prev_contract_sha": "05c4909e16aba23677cf87ac441de322244fa3571e161ea4c7297ba3ef188312",
           "contract_sha": "3789461356fb7938df24b46ec89fdf94641fa8f69fd1b68c1515d73c608765e5"
@@ -258,13 +251,13 @@
         }
       },
       "adapters_changed": [
-        "legacy_engine (known divergence C13g resolved: G-STOP-L-01, G-GAP-STOP-L-01, G-DAY-CAIRO-W-01, G-DAY-CAIRO-S-01)"
+        "legacy_engine (known divergence C13g resolved: G-STOP-L-01, G-GAP-STOP-L-01)"
       ],
       "rationale": "engine.py reads the stop's fill price from the exchange (Futures.stop_fill_price; the replay sim serves the same) and books it, exit slippage and gaps included; unknown -> the stop price with a journal note.",
       "evidence": "branch aud-07-product-r2 (merged with #32 r2 b01d439); reverting the item's product lines re-breaks exactly these pairs (mutation check in the build report)",
       "accepted_by": null,
       "date_cairo": "2026-10-08",
-      "prev_entry_sha": "ff1b8d0ccebedaf023c6f8620555d817a8d7cdc95e819349fa8e4c1f4365f1a8"
+      "prev_entry_sha": "383a35913ffe6a5151552a3a290492f035bcc56c93e59280c80eafe5119276f4"
     }
   ]
 }
