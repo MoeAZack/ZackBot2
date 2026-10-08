@@ -327,3 +327,59 @@ def test_item3b_a_late_fill_decision_is_a_reconcile_about_one_intent():
         F.replace(fix, subject_id=p.lots[0].lot_id)                 # a lot is not the intent it corrects
     with pytest.raises(InvalidRecord):
         F.replace(fix, action=Action.CLOSE, authority=Authority.STRATEGY)
+
+
+# ----------------------------------------------------------------------------------------------------------- item 4
+def _resting_target(seed=350, qty=None, reason=ReasonCode.EXIT_TP1, purpose=None):
+    """A lot of 1.5 with a resting reduce-only take-profit target (WORKING) in flight."""
+    from decimal import Decimal as D
+    from newcore.domain import IntentState, OrderType, Purpose
+    p, ids = F.single_lot_portfolio(seed, stop_state='confirmed', in_flight='reduce')
+    lt = p.lots[0]
+    old = next(i for i in p.intents if i.intent_id == lt.in_flight)
+    purpose = purpose or Purpose.REDUCE
+    tgt = F.replace(old, purpose=purpose, order_type=OrderType.LIMIT_REDUCE_ONLY, price=D('112.5'), reason=reason,
+                    state=IntentState.WORKING, qty=qty or old.qty)
+    pf = F.replace(p, intents=tuple(tgt if i.intent_id == old.intent_id else i for i in p.intents))
+    return pf, ids, lt, tgt
+
+
+def test_item4_a_resting_reduce_only_target_is_a_lot_reduce_or_close():
+    from decimal import Decimal as D
+    from newcore.domain import Purpose, canonical_bytes, loads
+    pf, ids, lt, tgt = _resting_target()
+    assert tgt.reduce_only and not tgt.opening and not tgt.pullable
+    assert loads(canonical_bytes(tgt)) == tgt and loads(canonical_bytes(pf)) == pf     # codec round trips
+    F.rules().check_intent(tgt)                                                       # on the venue grid
+    whole = _resting_target(purpose=Purpose.CLOSE, qty=D('1.5'), reason=ReasonCode.EXIT_TAKE_PROFIT)[3]
+    assert loads(canonical_bytes(whole)) == whole
+    for reason in (ReasonCode.EXIT_LADDER, ReasonCode.EXIT_BASKET_TP, ReasonCode.EXIT_BASKET_TP_PART):
+        F.replace(tgt, reason=reason)
+
+
+def test_item4_resting_target_refusals():
+    from decimal import Decimal as D
+    from newcore.domain import Capability, InvalidRecord, OrderType, Purpose
+    pf, ids, lt, tgt = _resting_target()
+    acct = pf.account_id
+    cases = {
+        'an opening add': ('a lot REDUCE / CLOSE',
+                           lambda: F.intent(ids, acct, Purpose.ADD, owner_id=lt.lot_id,
+                                            order_type=OrderType.LIMIT_REDUCE_ONLY, price=D('99'))),
+        'an entry': ('a lot REDUCE / CLOSE', lambda: F.intent(ids, acct, Purpose.ENTRY, order_type=OrderType.LIMIT_REDUCE_ONLY,
+                                                              price=D('99'))),
+        'no price': ('a limit order has a price', lambda: F.replace(tgt, price=None)),
+        'a stop price': ('only a stop has a stop price', lambda: F.replace(tgt, stop_price=D('90'))),
+        'not a take-profit': ('take-profit reason', lambda: F.replace(tgt, reason=ReasonCode.EXIT_TIME)),
+        'an external close': ('take-profit reason', lambda: F.replace(tgt, reason=ReasonCode.EXIT_MANUAL,
+                                                                     state=F.IntentState.DURABLE)),
+    }
+    for name, (message, build) in cases.items():
+        with pytest.raises(InvalidRecord, match=message):
+            build()
+            raise AssertionError(name)
+    with pytest.raises(InvalidRecord, match='not a multiple of tick'):
+        F.rules().check_intent(F.replace(tgt, price=D('112.505')))
+    no_reduce_only = tuple(c for c in F.rules().capabilities if c is not Capability.REDUCE_ONLY)
+    with pytest.raises(InvalidRecord, match='resting reduce-only limit is not supported'):
+        F.rules(caps=no_reduce_only).check_intent(tgt)
