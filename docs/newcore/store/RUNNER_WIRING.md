@@ -7,8 +7,8 @@ branch (nc-02b-store) only ships the store side and this patch.
 |---|---|
 | Patch | `docs/newcore/store/RUNNER_WIRING.patch` (the same bytes are reproduced at the end of this file) |
 | Base it applies to | `origin/nc-s1-slice` **b453027** (`newcore/runner/app.py`, `tests/newcore_slice/test_run_cli.py`, `tests/newcore_slice/test_hard_hold_a24.py`) |
-| Store it needs | `newcore/store` from `nc-02b-store` **8bace5a** or later (`open_store`, `Outcome`, `VenueExchangeView`, `AccountStore.checkpoint / checkpoint_due / close`) |
-| Verified | On 2026-10-08 (Cairo), in a temp export of `origin/nc-s1-slice` b453027 plus `newcore/store` at 8bace5a. The patch passed `git apply --check`, and the full `tests/newcore_slice` gave **1165 passed, 1 skipped**. |
+| Store it needs | `newcore/store` from `nc-02b-store` **5c3896e** or later (`open_store`, `Outcome`, `VenueExchangeView`, `AccountStore.checkpoint / checkpoint_due / close`) |
+| Verified | On 2026-10-08 (Cairo), in a temp export of `origin/nc-s1-slice` b453027 plus `newcore/store` at 5c3896e (and earlier at 8bace5a). The patch passed `git apply --check`, and the full `tests/newcore_slice` gave **1165 passed, 1 skipped**. The patch does **not** apply to facd4b6 (see the status section below). |
 
 ## How to apply
 
@@ -19,6 +19,32 @@ branch (nc-02b-store) only ships the store side and this patch.
 
 If `nc-s1-slice` has moved past b453027 and the patch no longer applies, ask the Build lane to regenerate it.
 The patch is produced by a script from exact-match anchors, so regenerating it is quick.
+
+## S1 has moved past the base: facd4b6 (guard mode) - status and plan
+
+At facd4b6 S1 added three things:
+
+* the tail-loss **GUARD** (Codex ruling 13): when the store returns HOLD, `cmd_run` routes to `cmd_guard`, which
+  runs one emergency-set pass over exchange truth on an in-memory journal and then exits 4;
+* Cowork M2: a zero-byte segment means HOLD;
+* the "deleted journal while the venue holds exposure" refusal.
+
+The `open_journal` anchor changed, so **this patch does not apply to facd4b6**. Here is how the integration goes
+there. It will be regenerated when S1 settles, or S1 can apply it directly.
+
+1. `Session(cfg, enabled, guard=None)`: with `guard`, keep S1's `MemoryJournal` and `hard_hold=guard`, and do **not**
+   boot the store, because the guard never touches the store. Without `guard`, call `boot_store` exactly as below.
+2. `boot_store` keeps its mapping. HOLD and HOLD_INIT raise `StoreRefused(EXIT_STORE_HOLD)`, and facd4b6's `cmd_run`
+   already routes that to `cmd_guard`. So a store HOLD gets the guard pass and then exit 4, instead of exiting with
+   no pass at all.
+3. S1's zero-byte-segment check and its "no history while the venue holds exposure" check are both now answered by
+   the store. A journal behind its committed generation, or a lost / damaged journal member, is rule 4 HOLD. An INIT
+   against a non-flat exchange is HOLD-INIT. Keep S1's `_venue_exposure` check after boot as a second guard, but
+   close the store before raising.
+4. Several S1 tests edit `<journal dir>/<account id>/journal` directly: `test_cowork37_meds` (zero-byte),
+   `test_cowork_recheck` (deleted journal), `test_tail_loss_guard`, `test_journal_compat` and `test_run_cli`. They
+   move to `<journal dir>/data/accounts/<account id>/journal`. Their expected exit codes stay 4 (store HOLD, then the
+   guard).
 
 ## What the patch changes
 
@@ -163,7 +189,7 @@ python -m pytest -p no:cacheprovider -q tests/newcore_store
 The restart test is also a mutation guard. With `s.checkpoint()` removed from `cmd_run`, it fails, because the boot
 then needs the fold hook.
 
-Expected results: `tests/newcore_slice` 1165 passed, 1 skipped at b453027. A mutant with the per-cycle checkpoint removed fails `test_a_restart_mid_trade_manages_from_the_last_checkpoint`. `tests/newcore_store` gave 914 passed, 26 skipped.
+Expected results: `tests/newcore_slice` 1165 passed, 1 skipped at b453027. A mutant with the per-cycle checkpoint removed fails `test_a_restart_mid_trade_manages_from_the_last_checkpoint`.
 
 ## The patch (verbatim copy of RUNNER_WIRING.patch)
 
