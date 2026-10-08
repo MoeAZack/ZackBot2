@@ -1,7 +1,7 @@
 {
  "format": "zb-newcore-tnet-scenario/1",
  "name": "t08_cancel_replace_race_short",
- "description": "TNET-01 T08 cancel/replace race (fill wins, FakeVenue only): after TP1 the break-even replacement is in flight when the price falls through the OLD stop, which fills the rest; the replacement is confirmed after that, the cancel of the old stop is refused (already filled), the old stop fill is booked and the replacement is released.",
+ "description": "TNET-01 T08 cancel/replace race (fill wins, FakeVenue only): after TP1 the break-even replacement (classic refused -> algo) is in flight when the price falls through the OLD stop, which fills the rest; the replacement is confirmed after that, the cancel of the old stop is refused (already filled), the old stop fill is booked and the replacement is released.",
  "symbols": [
   "SOLUSDT"
  ],
@@ -47,6 +47,16 @@
    "qty": "2.5"
   },
   {
+   "id": "breakeven_classic",
+   "op": "stop",
+   "symbol": "SOLUSDT",
+   "side": "SHORT",
+   "qty": "2.5",
+   "trigger_offset_pct": "-0.1",
+   "from": "entry",
+   "route": "classic"
+  },
+  {
    "id": "breakeven",
    "op": "stop",
    "symbol": "SOLUSDT",
@@ -85,6 +95,9 @@
    ],
    "tp1": [
     "final"
+   ],
+   "breakeven_classic": [
+    "rejected"
    ],
    "breakeven": [
     "known"

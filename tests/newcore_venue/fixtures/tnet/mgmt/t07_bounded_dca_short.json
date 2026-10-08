@@ -1,7 +1,7 @@
 {
  "format": "zb-newcore-tnet-scenario/1",
  "name": "t07_bounded_dca_short",
- "description": "TNET-01 T07 one bounded DCA add: the add level is crossed while the algo stop is only acknowledged, so the ADD stays held; once the stop is confirmed (query) the add fires, the stop is replaced to cover the basket (old cancelled after the new one is confirmed) and the basket stop closes the position.",
+ "description": "TNET-01 T07 one bounded DCA add: the add level is crossed while the algo stop is only acknowledged, so the ADD stays held; once the stop is confirmed (query) the add fires, the stop is replaced to cover the basket (classic refused -> algo; old cancelled after the new one is confirmed) and the basket stop closes the position.",
  "symbols": [
   "SOLUSDT"
  ],
@@ -52,6 +52,16 @@
    "qty": "5"
   },
   {
+   "id": "resize_classic",
+   "op": "stop",
+   "symbol": "SOLUSDT",
+   "side": "SHORT",
+   "qty": "10",
+   "trigger_offset_pct": "2",
+   "from": "entry",
+   "route": "classic"
+  },
+  {
    "id": "resize",
    "op": "stop",
    "symbol": "SOLUSDT",
@@ -88,6 +98,9 @@
    ],
    "add": [
     "final"
+   ],
+   "resize_classic": [
+    "rejected"
    ],
    "resize": [
     "known"
