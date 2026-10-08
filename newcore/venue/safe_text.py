@@ -7,8 +7,9 @@ fragment of a key. So exception text leaves the venue lane, the TNET harness and
   at most `limit` characters). A class is listed only after EVERY one of its raise sites was checked to build the
   message from constants, internal numbers, validated ids or enumerated reasons - never from a response body, a URL,
   a header, a path or raw user input. The match is on the exact class (module + name): a subclass is NOT covered;
-- every other exception is a fixed template: its type name, an errno for OSError, and a bounded reference hash of the
-  message (8 hex of SHA-256: the same failure gives the same ref; nothing of the text can be read back from it).
+- every other exception is a fixed template: its type name, an errno for OSError, and a correlation tag (exc_ref:
+  an HMAC under a per-process random salt that is never written anywhere, 10 hex - the same failure gives the same
+  tag within one process; nothing of the text can be read back or brute-forced from it).
 
 exc_msg(ex)  -> the message alone        (where a line used to print f'{ex}')
 exc_text(ex) -> 'Name: message'          (where a line used to print f'{type(ex).__name__}: {ex}')
@@ -18,7 +19,9 @@ listed class exists and bans the raw forms in newcore/venue, newcore/tnet and to
 from __future__ import annotations
 
 import hashlib
+import hmac
 import re
+import secrets
 
 from newcore.venue.redact import REDACTED, TOKEN_RUN
 
@@ -57,10 +60,24 @@ def is_safe(ex):
     return (type(ex).__module__, type(ex).__qualname__) in SAFE_MESSAGES
 
 
+# The correlation tag: THE SAME primitive as S1's newcore/runner/redact.py::exc_tag (Codex #13 P2 on 78c0010 and
+# 6069136564 here) - an HMAC-SHA256 over the type and args under a per-process random salt, TAG_HEX hex chars. The salt
+# is never written anywhere (never logged, reported, recorded or returned), so a tag cannot be brute-forced offline
+# by dictionary (a password, a path, a symbol), and 40 bits do not collide in practice. Equal errors correlate
+# within one process only. The venue lane cannot import newcore.runner (it does not exist on nc-venue-testnet), hence
+# the copy; keep the two in step (body = qualname NUL repr(args), TAG_HEX = 10).
+_SALT = secrets.token_bytes(16)
+TAG_HEX = 10
+
+
 def exc_ref(ex):
-    """A bounded, non-reversible reference for the exception's text (8 hex of SHA-256 over type + message)."""
-    raw = f'{type(ex).__name__}\x00{_message(ex)}'.encode('utf-8', 'backslashreplace')
-    return hashlib.sha256(raw).hexdigest()[:8]
+    """A bounded correlation tag for the exception (HMAC-SHA256 under the per-process salt, TAG_HEX hex chars)."""
+    try:
+        args = repr(getattr(ex, 'args', ()))
+    except Exception:                               # noqa: BLE001 - a broken __repr__ still gets a tag
+        args = '<unprintable>'
+    body = (type(ex).__qualname__ + '\x00' + args).encode('utf-8', 'replace')
+    return hmac.new(_SALT, body, hashlib.sha256).hexdigest()[:TAG_HEX]
 
 
 def _template(ex):
