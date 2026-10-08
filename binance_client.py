@@ -494,25 +494,34 @@ class Futures:
             raise
 
     # ---------- orders (hedge mode: positionSide LONG/SHORT) ----------
-    def open(self, symbol, pos_side, qty):
+    @staticmethod
+    def _cid(params, cid):
+        """AUD-05 (write-ahead): an explicit client order id chosen (and recorded) by the caller BEFORE the send."""
+        if cid: params['newClientOrderId'] = cid
+        return params
+
+    def open(self, symbol, pos_side, qty, cid=None):
         side = 'BUY' if pos_side == 'LONG' else 'SELL'
-        return self._order(dict(symbol=symbol, side=side, positionSide=pos_side, type='MARKET', quantity=qty, newOrderRespType='RESULT'))
+        return self._order(self._cid(dict(symbol=symbol, side=side, positionSide=pos_side, type='MARKET', quantity=qty,
+                                          newOrderRespType='RESULT'), cid))
 
-    def close(self, symbol, pos_side, qty):
+    def close(self, symbol, pos_side, qty, cid=None):
         side = 'SELL' if pos_side == 'LONG' else 'BUY'
-        return self._order(dict(symbol=symbol, side=side, positionSide=pos_side, type='MARKET', quantity=qty, newOrderRespType='RESULT'))
+        return self._order(self._cid(dict(symbol=symbol, side=side, positionSide=pos_side, type='MARKET', quantity=qty,
+                                          newOrderRespType='RESULT'), cid))
 
-    def stop(self, symbol, pos_side, qty, stop_price):
-        """Exchange-side stop for qty of the given position side. Returns 'o:<id>' or 'a:<algoId>'."""
+    def stop(self, symbol, pos_side, qty, stop_price, cid=None, acid=None):
+        """Exchange-side stop for qty of the given position side. Returns 'o:<id>' or 'a:<algoId>'. cid / acid: client ids
+        (classic / algo fallback) chosen and recorded by the caller before the send (AUD-05 write-ahead)."""
         side = 'SELL' if pos_side == 'LONG' else 'BUY'
         try:
-            r = self._order(dict(symbol=symbol, side=side, positionSide=pos_side, type='STOP_MARKET',
-                                 quantity=qty, stopPrice=stop_price, workingType='MARK_PRICE'))
+            r = self._order(self._cid(dict(symbol=symbol, side=side, positionSide=pos_side, type='STOP_MARKET',
+                                           quantity=qty, stopPrice=stop_price, workingType='MARK_PRICE'), cid))
             return f"o:{r['orderId']}"
         except BinanceError as e:
             if e.code not in (-4120, -1116, -1102, -4136):
                 raise
-            acid = new_cid('za')
+            acid = acid or new_cid('za')
             try:
                 r = self._req('POST', '/fapi/v1/algoOrder', dict(algoType='CONDITIONAL', symbol=symbol, side=side, clientAlgoId=acid,
                               positionSide=pos_side, type='STOP_MARKET', quantity=qty, triggerPrice=stop_price,
