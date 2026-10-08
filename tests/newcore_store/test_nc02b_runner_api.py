@@ -7,7 +7,7 @@ import pytest
 
 from nc02a_events import ACCOUNT_ID, AGGREGATE_ID, SCENARIO
 from nc02a_memfs import FaultFs, oserror
-from nc02b_helpers import CIPHER, MEM_BASE, T, FakeExchange, account, mem, owned
+from nc02b_helpers import ACCT, CIPHER, MEM_BASE, T, FakeExchange, account, mem, owned
 from newcore.domain import EntriesMode, HoldKind, OwnershipProof, ProofKind, ReasonCode
 from newcore.store import DurabilityUnavailable, Outcome, open_store
 from newcore.store.frame import KIND_HEAD
@@ -161,7 +161,7 @@ def test_a_crash_between_an_event_and_its_checkpoint_needs_the_fold_hook():
     close(again)
 
 
-@pytest.mark.parametrize('bad', ['stale_proof', 'other_aggregate', 'raises', 'none', 'no_match'])
+@pytest.mark.parametrize('bad', ['stale_proof', 'other_aggregate', 'other_account', 'raises', 'none', 'no_match'])
 def test_a_fold_that_is_not_a_proven_view_of_this_journal_holds(bad):
     fs, ex, b = managed()
     for e in SCENARIO[:6]:
@@ -173,6 +173,8 @@ def test_a_fold_that_is_not_a_proven_view_of_this_journal_holds(bad):
             return lot_pf(through=journal.last_sequence() - 1)[0]
         if bad == 'other_aggregate':
             return dataclasses.replace(lot_pf(through=journal.last_sequence())[0], portfolio_id='pf_' + 'f' * 32)
+        if bad == 'other_account':
+            return dataclasses.replace(lot_pf(through=journal.last_sequence())[0], account_id=ACCT)
         if bad == 'raises':
             raise ValueError('cannot fold')
         if bad == 'none':
@@ -181,7 +183,14 @@ def test_a_fold_that_is_not_a_proven_view_of_this_journal_holds(bad):
         return pf
     ex_used = FakeExchange([], []) if bad == 'no_match' else ex
     r = op(fs, ex_used, fold=fold)
-    assert r.outcome is Outcome.HOLD and r.items
+    assert r.outcome is Outcome.HOLD and r.hold_kind is HoldKind.NORMAL and r.items     # never a durability HOLD
+    causes = {i.cause for i in r.items}
+    if bad == 'no_match':
+        assert 'journal_tail_unapplied' not in causes                 # the fold was accepted; the exchange disagrees
+    else:
+        assert 'journal_tail_unapplied' in causes                     # the fold itself was refused
+    assert r.store.current.provenance['trust'] == 'hold'              # A05: only a HOLD generation, never MANAGED
+    close(r)
 
 
 def test_checkpoint_guards():
