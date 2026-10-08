@@ -94,6 +94,12 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self.end_headers()                                # HTTP/1.0, no length: body runs to close
             self.wfile.write(b'[' + b'0,' * 2000 + b'0]')
             self.close_connection = True
+        elif mode == 'lying_length':
+            self.send_response(200)
+            self.send_header('Content-Length', str(50 * 1024 * 1024))   # announces 50 MiB, sends a few bytes
+            self.end_headers()
+            self.wfile.write(b'{}')
+            self.close_connection = True
         elif mode == 'redirect':
             self._reply(302, b'', {'Location': 'https://fapi.binance.com/fapi/v1/time'})
 
@@ -189,6 +195,25 @@ def test_body_size_is_bounded(stub, mode):
         s(req())
     out = transport_over(s).exchange_info()
     assert out.kind is ReadKind.UNKNOWN and out.unknown_reason == 'response_too_large'
+
+
+def test_announced_oversize_is_refused_before_reading(stub):
+    stub.mode = 'lying_length'
+    s = TestnetHttpSender(connect=plain_connect(stub), max_body_bytes=1024)
+    with pytest.raises(WireResponseTooLarge):           # not "truncated": the header alone exceeds the bound
+        s(req())
+
+
+def test_second_host_check_holds_on_its_own(monkeypatch):
+    import newcore.venue.http_sender as hs
+    monkeypatch.setattr(hs, 'check_request_url', lambda url: url)      # disable the first layer
+    calls = []
+    s = TestnetHttpSender(connect=lambda *a: calls.append(a))
+    for url in ('https://fapi.binance.com/fapi/v1/time', 'http://testnet.binancefuture.com/fapi/v1/time',
+                'https://testnet.binancefuture.com:8443/fapi/v1/time'):
+        with pytest.raises(VenueGuardError):
+            s(req(url=url))
+    assert calls == []
 
 
 def test_redirect_is_not_followed(stub):

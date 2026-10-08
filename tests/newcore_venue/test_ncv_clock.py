@@ -116,6 +116,15 @@ def test_resync_then_signed_timestamp_uses_offset():
     assert ts <= server + (local.now - 1759917600000)          # never ahead of server time
 
 
+def test_second_resync_measures_against_the_raw_local_clock():
+    local = Ticker(1_000_000, [40, 0, 40, 0])
+    oc = OffsetClock(local)
+    srv = TimeVenue(1_000_020 + 3000, 1_000_060 + 3000)      # the server stays 3 s ahead of the local midpoint
+    assert oc.resync(srv, samples=1).offset_ms == 3000
+    m = oc.resync(srv, samples=1)
+    assert m.offset_ms == 3000 and oc.offset_ms == 3000 - 20  # not 6000: the clock never measures with its own offset
+
+
 def test_not_a_timestamp_refusal():
     assert not is_timestamp_refusal(ReadOutcome(ReadKind.OK, 'x'))
     oc = OffsetClock(lambda: 1)

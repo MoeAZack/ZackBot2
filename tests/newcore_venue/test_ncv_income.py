@@ -135,6 +135,22 @@ def test_pagination_handles_ties_across_a_page_boundary():
     assert out.kind is ReadKind.OK and len(out.value) == 8 and len({r.key for r in out.value}) == 8
 
 
+def test_rows_on_window_boundaries_are_not_skipped():
+    w = DEFAULT_WINDOW_MS
+    rows = [row(1, T0), row(2, T0 + w - 1), row(3, T0 + w), row(4, T0 + 2 * w), row(5, T0 + 2 * w + 1)]
+    v = FakeIncomeVenue(rows)
+    out = income_history(v, start_ms=T0, end_ms=T0 + 2 * w + 1, page_limit=5)
+    assert out.kind is ReadKind.OK and [r.tran_id for r in out.value] == [1001, 1002, 1003, 1004, 1005]
+    assert [s for s, _, _ in v.calls] == [T0, T0 + w, T0 + 2 * w]          # windows are contiguous, no gap
+
+
+def test_full_page_inside_the_starting_millisecond_stops_at_once():
+    rows = [row(i, T0 + 1000) for i in range(7)]
+    v = FakeIncomeVenue(rows)
+    out = income_history(v, start_ms=T0 + 1000, end_ms=T0 + DAY_MS, page_limit=5)
+    assert out.unknown_reason == 'pagination_stuck' and len(v.calls) == 1
+
+
 def test_more_than_a_page_in_one_millisecond_is_unknown():
     rows = [row(i, T0 + 1000) for i in range(7)]
     out = income_history(FakeIncomeVenue(rows), start_ms=T0, end_ms=T0 + DAY_MS, page_limit=5)
