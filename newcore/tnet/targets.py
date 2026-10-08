@@ -25,7 +25,7 @@ from newcore.ports.bars import Bar
 from newcore.runner.testnet_hook import AccountReadsShim
 from newcore.venue.tnet import PreflightResult, tnet_cleanup, tnet_preflight
 
-from .seams import BoundExceeded, DeadlineExceeded, HttpFaults, PortFaults
+from .seams import BoundExceeded, DeadlineExceeded, HttpFaults, NoFaults, PortFaults
 
 TF_MS = 60_000
 FAKE_T0 = 1_759_917_600_000            # 2025-10-08 10:00 UTC, a minute boundary
@@ -130,13 +130,17 @@ class TestnetTarget:
     environment = Environment.TESTNET
 
     def __init__(self, config, *, http, sleep, local_clock=None, store=None, scrubber=None, settle_ms=1500,
-                 factory=None):
+                 factory=None, recorder=None, faults=True):
+        """recorder: callable(http) -> CassetteRecorder, wrapped OUTSIDE the fault seam (the cassette holds what the
+        transport saw, injected faults included, so a replay needs no seam). faults=False: a replay (no injection)."""
         if factory is None:
             from newcore.venue.factory import build_testnet as factory
-        self.seam = HttpFaults(http)
+        self.seam = HttpFaults(http) if faults else NoFaults(http)
+        self.recorder = recorder(self.seam) if recorder is not None else None
+        wire = self.recorder if self.recorder is not None else self.seam
         check_settle_ms(settle_ms)
         kw = {} if scrubber is None else {'scrubber': scrubber}
-        parts = factory(config, http=self.seam, local_clock=local_clock, store=store, **kw)
+        parts = factory(config, http=wire, local_clock=local_clock, store=store, **kw)
         self.config = config
         self.venue, self.reader = parts['venue'], parts['account_reader']
         self.bars, self.clock = parts['bars'], parts['clock']

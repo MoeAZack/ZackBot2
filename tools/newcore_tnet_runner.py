@@ -28,7 +28,7 @@ from decimal import Decimal, InvalidOperation
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, REPO)
 
-from newcore.tnet.driver import EXIT_PASS, EXIT_PREFLIGHT, EXIT_RESIDUE, run_suite  # noqa: E402
+from newcore.tnet.driver import EXIT_FAIL, EXIT_PASS, EXIT_PREFLIGHT, EXIT_RESIDUE, run_suite  # noqa: E402
 from newcore.tnet.rspec import (MAX_SETTLE_MS, SpecError, bundled, load_rspec, rspec_digest,  # noqa: E402
                                 validate_rspec)
 from newcore.venue.cli_args import ACCOUNT_REFUSAL, argv_refusal  # noqa: E402
@@ -60,6 +60,12 @@ def _parser():
     p.add_argument('--adopt-foreign', action='append', default=[])
     p.add_argument('--settle-ms', type=int, default=1500)
     p.add_argument('--dry-run', action='store_true', help='print the plan only: no network call, no key decrypted')
+    p.add_argument('--cassette-dir', default=None,
+                   help='testnet: where each scenario cassette + replay sidecar goes (default '
+                        '%%LOCALAPPDATA%%\\ZackBotNC\\cassettes)')
+    p.add_argument('--replay', action='append', default=[],
+                   help='re-run a recorded scenario OFFLINE through the Runner against its cassette; it must reach '
+                        'the recorded verdict (exit 0 same, 7 different)')
     p.add_argument('--gate', action='store_true', help='refuse a dirty working tree (exact-build report)')
     p.add_argument('-v', '--verbose', action='store_true')
     return p
@@ -141,7 +147,7 @@ def _print(r, out, verbose):
             out.write(f'    [{"x" if ok else " "}] {name}: {detail}\n')
 
 
-def _report(args, res, run_id, build, values, out):
+def _report(args, res, run_id, build, values, out, cassettes=None):
     scenarios = [ScenarioOutcome(f'{r.id} {r.name} [{r.verdict}]', r.verdict == 'PASS',
                                  tuple((f'{n}: {d}', ok) for n, ok, d in r.assertions)) for r in res.scenarios]
     agg = CleanupResult(clean=all(not r.residue for r in res.scenarios), attempts=sum(r.cleanup.get('attempts', 0)
@@ -160,7 +166,8 @@ def _report(args, res, run_id, build, values, out):
     detail = json.dumps([r.as_dict() for r in res.scenarios], indent=1, sort_keys=True) + '\n'
     try:
         _audit((detail,), values)                     # the per-scenario detail is leak-checked like the report
-        paths = tnet_report(run_id=run_id, scenarios=scenarios, cleanup=agg, config=config, cassette_path=None,
+        paths = tnet_report(run_id=run_id, scenarios=scenarios, cleanup=agg, config=config,
+                            cassette_path=cassettes or None,
                             fees=fees, pnl=pnl, build=build, now_ms=int(time.time() * 1000), out_dir=args.report_dir,
                             redact=values)
         with open(paths[0][:-len('.json')] + '.scenarios.json', 'w', encoding='utf-8', newline='\n') as fh:
@@ -172,7 +179,8 @@ def _report(args, res, run_id, build, values, out):
     return EXIT_PASS
 
 
-def main(argv=None, *, http=None, local_clock=None, sleep=None, store=None, out=None, git_run=None):
+def main(argv=None, *, http=None, local_clock=None, sleep=None, store=None, out=None, git_run=None,
+         monotonic=None):
     argv = list(sys.argv[1:] if argv is None else argv)
     out = out or sys.stdout
     refusal = argv_refusal(argv)
@@ -184,6 +192,8 @@ def main(argv=None, *, http=None, local_clock=None, sleep=None, store=None, out=
         args = _parser().parse_args(argv)
     except SystemExit as ex:
         return EXIT_USAGE if ex.code else EXIT_PASS
+    if args.replay:                                  # offline: no key, no network, the recorded answers only
+        return _replay(args.replay, out, args.verbose)
     try:
         specs = [load_rspec(p) for p in args.spec] if args.spec else bundled()
     except (SpecError, OSError) as ex:
@@ -240,25 +250,47 @@ def main(argv=None, *, http=None, local_clock=None, sleep=None, store=None, out=
 
     values = []
     scrubber = None
+    cassettes, cassette_errors = {}, []
     if args.target == 'fake':
         from newcore.tnet.targets import FakeTarget
         target = FakeTarget()
     else:
-        rc, target, scrubber = _testnet_target(args, specs, http, local_clock, sleep, store, out)
-        if target is None:
+        from newcore.venue.credentials import CredentialStoreError, check_root
+        try:
+            cassette_dir = check_root(args.cassette_dir or default_cassette_dir())
+            os.makedirs(cassette_dir, exist_ok=True)
+        except (CredentialStoreError, OSError) as ex:
+            out.write(f'REFUSED: cassette dir: {ex}\n')
+            return EXIT_USAGE
+        rc, make_target, scrubber = _testnet_target(args, specs, http, local_clock, sleep, store, out)
+        if make_target is None:
             return rc
         values = [v for v in scrubber.redaction_values() if isinstance(v, str)]
         scrubber.install()
     try:
         out.write(f'run {nonce}: {len(specs)} spec(s) on {args.target}\n')
-        res = run_suite(specs, target, run_nonce=nonce, min_balance=min_balance, adopt_foreign=args.adopt_foreign,
-                        on_result=lambda r: _print(r, out, args.verbose))
+        if args.target == 'fake':
+            res = run_suite(specs, target, run_nonce=nonce, min_balance=min_balance,
+                            adopt_foreign=args.adopt_foreign, on_result=lambda r: _print(r, out, args.verbose))
+        else:
+            from newcore.tnet.recording import run_recorded_suite
+            try:
+                res, pre_path, cassette_errors = run_recorded_suite(
+                    specs, make_target, run_nonce=nonce, cassette_dir=cassette_dir, redact=values,
+                    monotonic=monotonic or time.monotonic, min_balance=min_balance, adopt_foreign=args.adopt_foreign,
+                    on_result=lambda r: _print(r, out, args.verbose))
+            except _BootRefused as ex:
+                out.write(ex.text)
+                return ex.code
+            cassettes = {'preflight': pre_path, **{r.id: r.cassette for r in res.scenarios if r.cassette}}
+            for sid, why in cassette_errors:
+                out.write(f'ERROR: cassette of {sid} not written ({why}).\n')
         if res.exit_code == EXIT_PREFLIGHT:
             out.write('PREFLIGHT REFUSED:\n' + ''.join(f'  - {x}\n' for x in res.preflight.refusals))
             return EXIT_PREFLIGHT
         rc_report = EXIT_PASS
         if args.target == 'testnet' or args.report_dir:
-            rc_report = _report(args, res, 'tnet_' + nonce, build, values, out)
+            rc_report = _report(args, res, 'tnet_' + nonce, build, values, out, cassettes)
         if res.exit_code == EXIT_RESIDUE:
             out.write('CLEANUP NOT CLEAN - check these on the testnet UI:\n')
             for r in res.scenarios:
@@ -267,6 +299,8 @@ def main(argv=None, *, http=None, local_clock=None, sleep=None, store=None, out=
             return EXIT_RESIDUE
         if rc_report:
             return rc_report
+        if cassette_errors:
+            return EXIT_REPORT
         summary = {k: sum(1 for r in res.scenarios if r.verdict == k) for k in ('PASS', 'FAIL', 'INCONCLUSIVE',
                                                                                  'SKIPPED')}
         out.write(f'summary: {summary} -> exit {res.exit_code}\n')
@@ -289,25 +323,64 @@ def _testnet_target(args, specs, http, local_clock, sleep, store, out):
     except (CredentialStoreError, CredentialsUnavailable) as ex:
         out.write(f'REFUSED: {ex}\n')
         return EXIT_USAGE, None, None
-    if http is None:
-        from newcore.venue.http_sender import TestnetHttpSender
-        http = TestnetHttpSender()
     scrubber = SecretScrubber()
     try:
-        target = TestnetTarget(_TnetConfig(args.account_id, args.key_digest, symbols), http=http,
-                               sleep=sleep or time.sleep, local_clock=local_clock, store=store, scrubber=scrubber,
-                               settle_ms=args.settle_ms)
-    except BindingMismatch as ex:
-        out.write(f'BINDING MISMATCH: {ex}\n')
-        return EXIT_CREDS, None, None
+        store.load(scrubber=scrubber)                 # the redaction values, before any request is recorded
     except CredentialsUnavailable as ex:
         out.write(f'NO USABLE TESTNET KEY ({ex.reason}). Store it: python tools/newcore_keys.py set --env testnet '
                   f'--account-id {args.account_id}\n')
         return EXIT_CREDS, None, None
-    except (FactoryRefused, Exception) as ex:                           # noqa: BLE001 - hedge / rules / clock
-        out.write(f'FACTORY REFUSED: {type(ex).__name__}: {ex}\n')
-        return EXIT_PREFLIGHT, None, None
-    return EXIT_PASS, target, scrubber
+    if http is None:
+        from newcore.venue.http_sender import TestnetHttpSender
+        http = TestnetHttpSender()
+    cfg = _TnetConfig(args.account_id, args.key_digest, symbols)
+    booted = []
+
+    def make_target(recorder):
+        """A fresh factory boot per scenario (each cassette replays on its own). Only the FIRST boot's refusals are
+        CLI exit codes; a later one is that scenario's FAIL."""
+        try:
+            t = TestnetTarget(cfg, http=http, sleep=sleep or time.sleep, local_clock=local_clock, store=store,
+                              scrubber=scrubber, settle_ms=args.settle_ms, recorder=recorder)
+        except Exception as ex:                                          # noqa: BLE001
+            if booted:
+                raise
+            if isinstance(ex, BindingMismatch):
+                raise _BootRefused(EXIT_CREDS, f'BINDING MISMATCH: {ex}\n') from None
+            if isinstance(ex, CredentialsUnavailable):
+                raise _BootRefused(EXIT_CREDS, f'NO USABLE TESTNET KEY ({ex.reason}).\n') from None
+            raise _BootRefused(EXIT_PREFLIGHT, f'FACTORY REFUSED: {type(ex).__name__}: {ex}\n') from None
+        booted.append(1)
+        return t
+    return EXIT_PASS, make_target, scrubber
+
+
+class _BootRefused(Exception):
+    def __init__(self, code, text):
+        super().__init__(text)
+        self.code, self.text = code, text
+
+
+def default_cassette_dir():
+    return os.path.join(os.environ.get('LOCALAPPDATA') or os.path.expanduser('~'), 'ZackBotNC', 'cassettes')
+
+
+def _replay(paths, out, verbose):
+    from newcore.tnet.replay import ReplayError, describe, replay
+    rc = EXIT_PASS
+    for p in paths:
+        try:
+            rr = replay(p)
+        except (ReplayError, SpecError) as ex:
+            out.write(f'REFUSED: {p}: {ex}\n')
+            return EXIT_USAGE
+        out.write(describe(rr, p) + '\n')
+        if verbose:
+            for name, ok, detail in rr.replayed.assertions:
+                out.write(f'    [{"x" if ok else " "}] {name}: {detail}\n')
+        if not rr.same:
+            rc = EXIT_FAIL
+    return rc
 
 
 if __name__ == '__main__':

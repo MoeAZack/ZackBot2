@@ -163,3 +163,21 @@ class HttpFaults:
             return HttpResponse(400, {}, body)
         self._fh.arm(kind, 1)
         return self._fh(request)
+
+
+class NoFaults:
+    """A replay's seam: nothing is injected (the recorded cassette already holds the faults the transport saw); an
+    armed fault is only noted."""
+
+    def __init__(self, inner):
+        if not callable(inner):
+            raise ValueError('inner must be the http callable')
+        self._inner = inner
+        self.injected = []
+
+    def arm(self, on, kind, code=None):
+        _check(on, kind, code)
+        self.injected.append((on, kind, 'replayed'))
+
+    def __call__(self, request):
+        return self._inner(request)

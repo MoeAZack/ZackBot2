@@ -172,13 +172,14 @@ def test_a_report_leak_exits_5(tmp_path, monkeypatch):
 
 
 def test_a_secret_in_the_scenario_detail_writes_nothing_and_exits_5(tmp_path, monkeypatch):
-    real = CLI.run_suite
+    import newcore.tnet.recording as REC
+    real = REC.run_recorded_suite
 
     def leaky(*a, **k):
-        res = real(*a, **k)
+        res, pre, errs = real(*a, **k)
         res.scenarios[0].error = 'echo ' + DUMMY_SECRET                  # e.g. an exception text that echoed it
-        return res
-    monkeypatch.setattr(CLI, 'run_suite', leaky)
+        return res, pre, errs
+    monkeypatch.setattr(REC, 'run_recorded_suite', leaky)
     rc, text = _testnet(['--only', 'T01-long'], World(), tmp_path)
     assert rc == 5 and 'report not written' in text and DUMMY_SECRET not in text
     assert os.listdir(tmp_path) == []

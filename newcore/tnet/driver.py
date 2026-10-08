@@ -89,6 +89,7 @@ class ScenarioResult:
     error: str | None = None
     wall_s: float = 0.0
     cycle_times: list = field(default_factory=list)        # the candle closes the Runner cycled at (replay tape)
+    cassette: str | None = None                            # testnet: the sanitized cassette of this scenario
 
     @property
     def residue(self):
@@ -99,7 +100,7 @@ class ScenarioResult:
                 'assertions': [{'name': n, 'ok': ok, 'detail': d} for n, ok, d in self.assertions],
                 'counters': self.counters, 'orders': self.orders, 'ledger': self.ledger, 'injected': self.injected,
                 'final_truth': self.final_truth, 'cleanup': self.cleanup, 'trades': self.trades, 'error': self.error,
-                'wall_s': round(self.wall_s, 3), 'cycle_times': list(self.cycle_times)}
+                'wall_s': round(self.wall_s, 3), 'cycle_times': list(self.cycle_times), 'cassette': self.cassette}
 
 
 class _Run:
