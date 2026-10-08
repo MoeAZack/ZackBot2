@@ -395,16 +395,20 @@ class JournalGate:
         staged.commit()                     only now do sequence, decision, intent and lineage become consumed
     """
 
-    def __init__(self, account_id: str, aggregate_id: str):
+    def __init__(self, account_id: str, aggregate_id: str, *, facts=None, after_sequence: int = 0):
         self.grammar = Grammar(account_id, aggregate_id)
+        self.grammar.last_sequence = after_sequence     # the snapshot's last sequence after compaction (0 = full log)
         self._live = {}     # intent_id -> [OrderIntent, IntentState, sent_at_ms | None, final OrderResult | None]
         self._late = {}     # r3 item 3b: intent_id -> result_id of the journaled superseding (late) FINAL record
         self._late_applied = set()   # intents whose late fact a reconcile.late_fill_after_not_found decision applied
-        self._facts = FactLedger()   # PR #44: durable unique result / incident ids + consumed venue trades
+        self._facts = FactLedger(facts)   # PR #44: durable facts, seeded from the snapshot after compaction
 
     @classmethod
-    def rebuild(cls, account_id, aggregate_id, events: Iterable) -> 'JournalGate':
-        gate = cls(account_id, aggregate_id)
+    def rebuild(cls, account_id, aggregate_id, events: Iterable, *, facts=None,
+                after_sequence: int = 0) -> 'JournalGate':
+        """Replay the durable journal. After compaction pass the snapshot's FactIndex and last sequence (`facts`,
+        `after_sequence`) and only the tail events: the facts are seeded, never forgotten (Codex re-review P1)."""
+        gate = cls(account_id, aggregate_id, facts=facts, after_sequence=after_sequence)
         for ev in events:
             gate.admit(ev)
         return gate
@@ -412,7 +416,8 @@ class JournalGate:
     def stage(self, event) -> StagedEvent | None:
         """Validate `event` against the gate without changing it. None = ALREADY_APPLIED (identical re-append)."""
         try:
-            commit = self.grammar.prepare(header_of(event))      # order / identity / lineage first
+            self._facts.check(event)                             # durable facts first: they outlive compaction
+            commit = self.grammar.prepare(header_of(event))      # order / identity / lineage
             if commit is None:
                 return None
             self._content(event)                                 # then the NC-01 per-record checks
@@ -427,7 +432,6 @@ class JournalGate:
 
     def _content(self, ev):
         """NC-01 per-record checks against the current state (pure)."""
-        self._facts.check(ev)                # PR #44: the same FactLedger the domain chain applies (ruling 3)
         if isinstance(ev, IntentStateChanged) and ev.intent_id in self._live:
             it, state, _, final = self._live[ev.intent_id]
             req(ev.from_state is state, 'event.from_state', f'the intent is {state}')

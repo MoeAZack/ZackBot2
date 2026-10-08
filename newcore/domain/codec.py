@@ -210,6 +210,16 @@ class _Bad:
         self.text = text
 
 
+def _encoded_size(text):
+    """The UTF-8 size of a document (bytes as given). For str: a char is 1..4 bytes, so the cheap bounds decide
+    most inputs; only an ambiguous one is encoded (Codex re-review P2-b: bytes, never characters)."""
+    if isinstance(text, bytes):
+        return len(text)
+    if len(text) > MAX_DOCUMENT_BYTES or len(text) * 4 <= MAX_DOCUMENT_BYTES:
+        return len(text)
+    return len(text.encode('utf-8', 'surrogatepass'))
+
+
 def loads(text, *, expect=None):
     """Strict decode of JSON text (str or bytes). An unsupported version wins over any damage in the body."""
     problems = []
@@ -239,8 +249,8 @@ def loads(text, *, expect=None):
             return _Bad(s)
         return n
 
-    if isinstance(text, (bytes, str)) and len(text) > MAX_DOCUMENT_BYTES:      # chars <= bytes for str
-        raise InvalidRecord('document', f'larger than {MAX_DOCUMENT_BYTES} bytes ({len(text)})')
+    if isinstance(text, (bytes, str)) and _encoded_size(text) > MAX_DOCUMENT_BYTES:
+        raise InvalidRecord('document', f'larger than {MAX_DOCUMENT_BYTES} bytes')
     if isinstance(text, bytes):
         try:
             text = text.decode('utf-8')

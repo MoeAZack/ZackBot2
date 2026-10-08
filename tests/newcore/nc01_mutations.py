@@ -210,9 +210,6 @@ MUTATIONS = {
         "                req(owner is None, p + '.result.external_trades',", "                req(True, p + '.result.external_trades',")]),
     'Codex44 P1-a: the event chain skips the fact ledger': (D + 'events.py', [(
         "        ledger.check(ev, p)()\n", "")]),
-    'Codex44 P1-a: the journal gate skips the fact ledger': ('newcore/ports/journal.py', [
-        ("        self._facts.check(ev)                # PR #44: the same FactLedger the domain chain applies (ruling 3)\n", ""),
-        ("        self._facts.check(ev)()\n", "")]),
     'Codex44 P1-b: a result id reused for a different fact': (D + 'facts.py', [(
         "                req(known == digest, p + '.result.result_id',", "                req(True, p + '.result.result_id',")]),
     'Codex44 P1-b: a late final need not name the prior fact': (D + 'orders.py', [(
@@ -234,6 +231,24 @@ MUTATIONS = {
     'Codex44 P2-2: the chain books without its recorded decision': (D + 'events.py', [(
         "                req(r.resolved_by in decisions or r.intent_id in before, p + '.result.resolved_by',",
         "                req(True, p + '.result.resolved_by',")]),
+    'Codex44 P1-a: the journal gate skips the fact ledger': ('newcore/ports/journal.py', [
+        ("            self._facts.check(event)                             # durable facts first: they outlive compaction\n", ""),
+        ("        self._facts.check(ev)()\n", "")]),
+    'rr44 P1: the gate is not seeded from the snapshot facts': ('newcore/ports/journal.py', [(
+        "        self._facts = FactLedger(facts)", "        self._facts = FactLedger()")]),
+    'rr44 P1: the gate checks facts only after the grammar': ('newcore/ports/journal.py', [(
+        "            self._facts.check(event)                             # durable facts first: they outlive compaction\n",
+        "")]),
+    'rr44 P1: a fact index may name an unrecorded result': (D + 'facts.py', [(
+        "        req(all(t.result_id in results for t in self.trades), p + '.trades',", "        req(True, p + '.trades',")]),
+    'rr44 P2-a: venue trades keyed by the bare trade id': (D + 'facts.py', [
+        ("        return (self.venue.value, self.symbol, self.trade_id)", "        return ('', '', self.trade_id)"),
+        ("    return (trade.venue.value, trade.symbol, trade.trade_id)", "    return ('', '', trade.trade_id)")]),
+    'rr44 P2-a: an external trade of another symbol accepted': (D + 'orders.py', [(
+        "        req(all(x.symbol == intent.symbol for x in result.external_trades), p + '.external_trades',",
+        "        req(True, p + '.external_trades',")]),
+    'rr44 P2-b: the document cap counts characters': (D + 'codec.py', [(
+        "    return len(text.encode('utf-8', 'surrogatepass'))", "    return len(text)")]),
     'duplicate JSON keys': (D + 'codec.py', [("            if k in out:\n                problems.append(",
                                               "            if False:\n                problems.append(")]),
     'truncated JSON': (D + 'codec.py', [(

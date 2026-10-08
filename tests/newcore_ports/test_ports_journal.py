@@ -5,6 +5,7 @@ import pytest
 from journal_contract import BAD, GOOD, JournalContract, _flow, flow_fallback, flow_fill_and_protect
 from nc_events import ACCT, ENTRY, KEY, LOT, PF, Scenario
 from newcore.domain import IntentState, Purpose, Side
+from newcore.domain.account import Venue
 from newcore.domain.events import EVENT_TYPES
 from newcore.domain.errors import InvalidRecord
 from newcore.ports import keys as K
@@ -15,8 +16,9 @@ from newcore.ports.journal import (Admission, EventKind, JournalConflict, Journa
 class ReferenceJournal:
     """The reference JournalPort: in-memory list + JournalGate (what S1's MemoryJournal must behave like)."""
 
-    def __init__(self, account_id=ACCT, aggregate_id=PF, events=()):
-        self._gate = JournalGate.rebuild(account_id, aggregate_id, events)
+    def __init__(self, account_id=ACCT, aggregate_id=PF, events=(), *, facts=None, after_sequence=0):
+        self._gate = JournalGate.rebuild(account_id, aggregate_id, events, facts=facts, after_sequence=after_sequence)
+        self._base = after_sequence             # a compacted journal holds only the tail after the snapshot
         self._events = list(events)
         self._fail_next = False
 
@@ -37,7 +39,7 @@ class ReferenceJournal:
         self._fail_next = True
 
     def last_sequence(self):
-        return len(self._events)
+        return self._base + len(self._events)
 
     def read(self, after_sequence=0):
         return iter(self._events[after_sequence:])
@@ -240,7 +242,8 @@ def _post_hoc_close_flow(reason_override=None):
     s._event(DecisionRecorded, reason=d.reason, decision=d)
     s.intents[cid] = it
     s.record(cid)
-    trade = ExternalTrade(trade_id='777', at_ms=at, qty=it.qty, price=D('149'))
+    trade = ExternalTrade(trade_id='777', venue=Venue.BINANCE_USDM, symbol='SOLUSDT', at_ms=at, qty=it.qty,
+                          price=D('149'))
     res = OrderResult(result_id=make_id('res', 4243), intent_id=cid, account_id=ACCT, client_order_id=it.client_order_id,
                       phase=ResultPhase.FINAL, requested_qty=it.qty, observed_at_ms=at + 2000, exchange_order_id=None,
                       exchange_status=None, lookup=None, executed_qty=it.qty, avg_price=D('149'),
@@ -452,7 +455,8 @@ def _second_booking(s, trade_ids=('777',), n=4300):
     s.intents[rid] = it
     s.record(rid)
     q = D('0.5') / len(trade_ids)
-    trades = tuple(ExternalTrade(trade_id=t, at_ms=at, qty=q, price=D('149')) for t in trade_ids)
+    trades = tuple(ExternalTrade(trade_id=t, venue=Venue.BINANCE_USDM, symbol='SOLUSDT', at_ms=at, qty=q,
+                                 price=D('149')) for t in trade_ids)
     res = OrderResult(result_id=make_id('res', n + 1), intent_id=rid, account_id=ACCT, client_order_id=it.client_order_id,
                       phase=ResultPhase.FINAL, requested_qty=it.qty, observed_at_ms=at + 2000, exchange_order_id=None,
                       exchange_status=None, lookup=None, executed_qty=it.qty, avg_price=D('149'),
@@ -473,11 +477,11 @@ def test_journal_books_one_venue_trade_once_across_restarts():
         j.append(ev)
     for ev in s.events[len(booked):-1]:
         j.append(ev)
-    with pytest.raises(JournalConflict, match='venue trade 777 is already booked'):
+    with pytest.raises(JournalConflict, match='venue trade .*/777 is already booked'):
         j.append(again)
     restarted = ReferenceJournal(events=[loads(canonical_bytes(ev)) for ev in s.events[:-1]])
     assert all(restarted.append(ev) is Admission.ALREADY_APPLIED for ev in s.events[:-1])     # repeated reconcile
-    with pytest.raises(JournalConflict, match='venue trade 777 is already booked'):
+    with pytest.raises(JournalConflict, match='venue trade .*/777 is already booked'):
         restarted.append(again)
 
 
@@ -541,3 +545,38 @@ def test_journal_refuses_a_dangling_supersedes_result_id():
     with pytest.raises(JournalConflict, match='superseding'):
         j.append(replace(ev, result=replace(ev.result, supersedes_result_id=make_id('res', 31337))))
     assert isinstance(ev, ResultObserved) and j.append(ev) is Admission.APPLY
+
+
+def test_journal_rebuilt_from_a_compacted_snapshot_keeps_its_facts():
+    """Codex re-review P1 (step-0 side): after compaction the gate is rebuilt from the snapshot's FactIndex and the
+    tail only. A venue trade, a result id or an incident id from before the snapshot is still a fact: reuse with other
+    content is refused; the identical incident again is a no-op fact."""
+    from nc_events import replace
+    from newcore.domain import (Incident, IncidentRecorded, ReasonCode, ResultObserved, canonical_bytes, fold_facts,
+                                loads, make_id)
+    from newcore.domain.codec import from_json, to_json
+    from newcore.domain import FactIndex
+    s = _post_hoc_close_flow()
+    inc = Incident(incident_id=make_id('inc', 77), account_id=ACCT, kind=ReasonCode.RECONCILE_MANUAL_CLOSE,
+                   at_ms=s.events[-1].at_ms, symbol='SOLUSDT', side=Side.LONG, intent_refs=(), lot_refs=(LOT,),
+                   position_refs=(), evidence=(), detail='venue flat')
+    s._event(IncidentRecorded, reason=inc.kind, incident=inc)
+    booked = next(e for e in s.events if isinstance(e, ResultObserved) and e.result.external_trades).result
+    facts = from_json(FactIndex, to_json(fold_facts([loads(canonical_bytes(e)) for e in s.events])), 'facts')
+    n = len(s.events)
+
+    def gate():
+        return ReferenceJournal(events=(), facts=facts, after_sequence=n)      # the compacted restart
+
+    def nxt(ev):
+        return replace(ev, sequence=n + 1, event_id=make_id('evt', 10 ** 7 + 1))
+
+    reuse_trade = replace(booked, result_id=make_id('res', 8801))
+    with pytest.raises(JournalConflict, match='venue trade .*777 is already booked'):
+        gate().append(nxt(s._event(ResultObserved, reason=ReasonCode.RECONCILE_EXTERNAL_CLOSE, result=reuse_trade)))
+    reuse_id = replace(booked, avg_price=booked.external_trades[0].price, observed_at_ms=booked.observed_at_ms + 1)
+    with pytest.raises(JournalConflict, match='result id .* used for a different fact'):
+        gate().append(nxt(s._event(ResultObserved, reason=ReasonCode.RECONCILE_EXTERNAL_CLOSE, result=reuse_id)))
+    assert gate().append(nxt(s._event(IncidentRecorded, reason=inc.kind, incident=inc))) is Admission.APPLY
+    with pytest.raises(JournalConflict, match='incident id .* used for a different fact'):
+        gate().append(nxt(s._event(IncidentRecorded, reason=inc.kind, incident=replace(inc, detail='changed'))))

@@ -14,6 +14,7 @@ from newcore.domain import (Account, AccountBinding, Action, Arming, Authority, 
                             Ownership,
                             OwnershipProof, Portfolio, Position, PositionRead, ProofKind, Protection, Purpose, ReasonCode,
                             Side, StopMiss, Venue, confirmation_phrase, make_id)
+from newcore.domain import EMPTY_FACTS
 from newcore.domain.base import field_spec
 
 T0 = 1_791_400_000_000                      # 2026-10-07 UTC, integer ms
@@ -380,7 +381,7 @@ def samples(seed=5):
     dec = decision_with_intents(ids, acct, Action.ENTER, ReasonCode.ENTRY_SIGNAL)
     durable = replace(dec.intents[0], state=IntentState.DURABLE)
     return [account(acct), rules(), it, pf, dec, decision_key(), unknown_portfolio(acct), *res.values(),
-            Snapshot(account_id=acct, generation=7, last_sequence=4, written_at_ms=T0, writer_build='nc01-test',
+            Snapshot(facts=EMPTY_FACTS, account_id=acct, generation=7, last_sequence=4, written_at_ms=T0, writer_build='nc01-test',
                      portfolio=pf),
             HighWater(account_id=acct, generation=7, last_sequence=4, writer_build='nc01-test'),
             event(IntentRecorded, ids, acct, 1, intent=durable, reason=durable.reason),

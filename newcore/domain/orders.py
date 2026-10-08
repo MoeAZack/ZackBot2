@@ -25,6 +25,7 @@ from decimal import Decimal
 
 from .base import (CTX, ZERO, Record, check_ascii_text, check_client_id, check_id, check_symbol, check_text, non_negative, positive, record,
                    req)
+from .account import Venue
 from .reasons import ReasonCode
 
 NOT_FOUND_WINDOW_MS = 20_000          # a lookup earlier than this after the send proves even less (legacy window)
@@ -326,14 +327,18 @@ DECIDED_EVIDENCE = frozenset({Evidence.NOT_FOUND_CORROBORATED, Evidence.POSITION
 
 @record
 class ExternalTrade(Record):
-    """r3 DRAFT item 3: one venue trade of an external (manual) close, by the venue's own trade id."""
+    """r3 item 3a: one venue trade of an external (manual) close. Its identity is (venue, symbol, trade_id): venue trade
+    ids are symbol-scoped (Binance userTrades), so SOL trade 42 and BTC trade 42 are different trades."""
     trade_id: str
+    venue: Venue
+    symbol: str
     at_ms: int
     qty: Decimal
     price: Decimal
 
     def _validate(self, p):
         check_ascii_text(self.trade_id, p + '.trade_id', 64)
+        check_symbol(self.symbol, p + '.symbol')
         positive(self.qty, p + '.qty')
         positive(self.price, p + '.price')
 
@@ -420,7 +425,8 @@ class OrderResult(Record):
         if ev is Evidence.EXCHANGE_EXTERNAL:            # r3 DRAFT item 3 (REC-02 Q2)
             check_id(self.resolved_by, p + '.resolved_by', 'dec')
             req(len(trades) >= 1, p + '.external_trades', 'an external close names its venue trades')
-            req(len({x.trade_id for x in trades}) == len(trades), p + '.external_trades', 'duplicate trade id')
+            req(len({(x.venue, x.symbol, x.trade_id) for x in trades}) == len(trades), p + '.external_trades',
+                'duplicate trade id')
             total = ZERO
             for x in trades:
                 total = CTX.add(total, x.qty)
@@ -491,6 +497,8 @@ def check_result_for_intent(intent, result, sent_at_ms):
         req(sent_at_ms is None and result.phase is ResultPhase.FINAL
             and ev in (Evidence.EXCHANGE_EXTERNAL, Evidence.NOT_SENT), p + '.evidence',
             'a post-hoc booking is never sent and ends exchange_external (or not_sent)')
+        req(all(x.symbol == intent.symbol for x in result.external_trades), p + '.external_trades',
+            "a venue trade of another symbol than the booking intent's symbol")             # Codex re-review P2-a
         req(ev is not Evidence.EXCHANGE_EXTERNAL or result.resolved_by == intent.decision_id, p + '.resolved_by',
             'an external booking is resolved by the RECONCILE decision that booked it')       # PR #44 P2-2
         return

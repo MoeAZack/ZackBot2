@@ -128,7 +128,8 @@ def test_5_one_canonical_spelling_per_text():
         with pytest.raises(InvalidRecord, match='printable ASCII'):
             F.replace(inc, detail=f'note {text}')
     with pytest.raises(InvalidRecord, match='printable ASCII'):
-        ExternalTrade(trade_id='9٣', at_ms=F.T0, qty=D('1'), price=D('1'))       # Arabic-Indic digit
+        ExternalTrade(trade_id='9\u0663', venue=F.Venue.BINANCE_USDM, symbol='SOLUSDT', at_ms=F.T0, qty=D('1'),
+                      price=D('1'))                                       # Arabic-Indic digit
     lt = p.lots[0]
     with pytest.raises(InvalidRecord, match='NFC'):
         F.replace(F.intent(ids, p.account_id, F.Purpose.ENTRY), slot_id=nfd)
@@ -206,14 +207,14 @@ def test_p1a_one_venue_trade_is_booked_once_per_account():
     from newcore.domain import (Admission, EventCursor, InvalidRecord, admit, canonical_bytes, check_event_chain,
                                 fold_facts, loads)
     p, ids, acct, first, second = _two_bookings()
-    with pytest.raises(InvalidRecord, match='venue trade 9001 is already booked'):
+    with pytest.raises(InvalidRecord, match='venue trade .*/9001 is already booked'):
         check_event_chain(first + second)
     check_event_chain(first + _two_bookings(('9003', '9004'))[4])                 # new trades: fine
     # restart: the consumed set is a durable fact of the log - folded from the decoded bytes, then carried forward
     decoded = [loads(canonical_bytes(ev)) for ev in first]
     facts = fold_facts(decoded)
     assert '9001' in {t.trade_id for t in facts.trades} and loads_facts_roundtrip(facts) == facts
-    with pytest.raises(InvalidRecord, match='venue trade 9001 is already booked'):
+    with pytest.raises(InvalidRecord, match='venue trade .*/9001 is already booked'):
         check_event_chain(second, after_sequence=4, facts=facts)
     # a repeated reconcile pass re-delivers the identical booking: idempotent, never a second consumption
     cur = EventCursor(account_id=acct, aggregate_id=F.pf_id(acct), last_sequence=0, applied=())
@@ -298,3 +299,112 @@ def test_p1b_a_result_naming_a_prior_fact_needs_that_prior_fact():
         check_event_chain(head[:4] + [E(ResultObserved, 5, dangling.observed_at_ms, result=dangling)])
     check_event_chain(head[:4] + [E(ResultObserved, 5, dangling.observed_at_ms,
                                     result=F.replace(dangling, supersedes_result_id=None))])
+
+
+# ================================================ Codex re-review of #44 at a676019 (6065073614): repro groups
+def _compacted(second_trades=('9001', '9003')):
+    """Booking 1 (trades 9001 / 9002, seq 1-4) + an incident (seq 5) compacted into a snapshot that carries the facts;
+    `second` is booking 2 renumbered as the tail after the snapshot (seq 6-9)."""
+    from newcore.domain import IncidentRecorded, Snapshot, fold_facts
+    p, ids, acct, first, second = _two_bookings(second_trades)
+    inc = F.incident(ids, acct, p)
+    inc_ev = F.event(IncidentRecorded, ids, acct, 5, at=F.T0 + 200_000, incident=inc, reason=inc.kind)
+    prefix = first + [inc_ev]
+    snap = Snapshot(account_id=acct, generation=p.generation, last_sequence=5, written_at_ms=F.T0 + 300_000,
+                    writer_build='nc01-test', portfolio=p, facts=fold_facts(prefix))
+    snap = loads(canonical_bytes(snap))                                         # the restart reads it back
+    tail = [F.replace(ev, sequence=ev.sequence + 1) for ev in second]
+    return p, ids, acct, prefix, tail, inc, snap
+
+
+def test_rr_p1_the_snapshot_carries_the_facts_and_the_chain_is_seeded_from_it():
+    from newcore.domain import IncidentRecorded, InvalidRecord, check_event_chain, fold_facts
+    p, ids, acct, prefix, tail, inc, snap = _compacted()
+    assert snap.facts == fold_facts(prefix) and fold_facts(prefix, snap.facts) == snap.facts      # repeat: no-op
+    seed = dict(after_sequence=snap.last_sequence, facts=snap.facts)
+    with pytest.raises(InvalidRecord, match='venue trade .*9001 is already booked'):              # trade conflict
+        check_event_chain(tail, **seed)
+    check_event_chain(_compacted(('9003', '9004'))[4], **seed)                                     # new trades: fine
+    booked = prefix[2].result
+    clash = [tail[0], tail[1], F.replace(tail[2], result=F.replace(tail[2].result, result_id=booked.result_id))]
+    with pytest.raises(InvalidRecord, match='result id .* used for a different fact'):             # result conflict
+        check_event_chain(clash, **seed)
+    same = F.event(IncidentRecorded, ids, acct, 6, at=F.T0 + 400_000, incident=inc, reason=inc.kind)
+    check_event_chain([same], **seed)                                                              # incident repeat
+    with pytest.raises(InvalidRecord, match='incident id .* used for a different fact'):           # incident conflict
+        check_event_chain([F.replace(same, incident=F.replace(inc, detail='changed'))], **seed)
+
+
+def test_rr_p1_a_snapshot_without_facts_fails_closed():
+    import json
+    p, ids, acct, prefix, tail, inc, snap = _compacted()
+    doc = json.loads(canonical_bytes(snap))
+    del doc['body']['facts']                                                    # the pre-r3a snapshot shape
+    with pytest.raises(InvalidRecord, match="missing keys \\['facts'\\]"):
+        loads(json.dumps(doc))
+
+
+def test_rr_p1_a_fact_index_is_self_consistent():
+    from newcore.domain import ConsumedTrade
+    p, ids, acct, prefix, tail, inc, snap = _compacted()
+    t = snap.facts.trades[0]
+    with pytest.raises(InvalidRecord, match='names no recorded result'):
+        F.replace(snap.facts, trades=(F.replace(t, result_id=ids.id('res')),) + snap.facts.trades[1:])
+    assert isinstance(t, ConsumedTrade)
+
+
+def _trade_result(ids, acct, symbol, trade_id, venue=None):
+    from newcore.domain import Evidence, ExternalTrade, OrderResult, ResultObserved, ResultPhase
+    from newcore.domain.account import Venue
+    rid = ids.id('res')
+    trade = ExternalTrade(trade_id=trade_id, venue=venue or Venue.BINANCE_USDM, symbol=symbol, at_ms=F.T0,
+                          qty=D('1'), price=D('100'))
+    res = F.build(OrderResult, result_id=rid, intent_id=ids.id('int'), account_id=acct, client_order_id=ids.cid('c'),
+                  phase=ResultPhase.FINAL, requested_qty=D('1'), observed_at_ms=F.T0 + 1000, executed_qty=D('1'),
+                  avg_price=D('100'), evidence=Evidence.EXCHANGE_EXTERNAL, resolved_by=ids.id('dec'),
+                  external_trades=(trade,))
+    return lambda n: F.event(ResultObserved, ids, acct, n, at=F.T0 + 2000, result=res)
+
+
+def test_rr_p2a_venue_trades_are_scoped_by_venue_and_symbol():
+    """Binance userTrades ids are symbol-scoped: SOL trade 42 and BTC trade 42 are different trades; SOL 42 twice is
+    one trade - refused live, across a restart (FactIndex decoded) and after compaction (seeded chain)."""
+    from newcore.domain import fold_facts
+    from newcore.domain.codec import from_json, to_json
+    from newcore.domain import FactIndex
+    ids = F.Ids(720)
+    acct = ids.id('acct')
+    sol, btc, sol_again = (_trade_result(ids, acct, 'SOLUSDT', '42'), _trade_result(ids, acct, 'BTCUSDT', '42'),
+                           _trade_result(ids, acct, 'SOLUSDT', '42'))
+    facts = fold_facts([sol(1), btc(2)])                                        # same id, two symbols: allowed
+    assert {(t.symbol, t.trade_id) for t in facts.trades} == {('SOLUSDT', '42'), ('BTCUSDT', '42')}
+    with pytest.raises(InvalidRecord, match='venue trade .*SOLUSDT.*42 is already booked'):
+        fold_facts([sol(1), btc(2), sol_again(3)])
+    restarted = from_json(FactIndex, to_json(facts), 'facts')
+    with pytest.raises(InvalidRecord, match='venue trade .*SOLUSDT.*42 is already booked'):
+        fold_facts([sol_again(3)], restarted)
+    fold_facts([_trade_result(ids, acct, 'ETHUSDT', '42')(3)], restarted)
+
+
+def test_rr_p2a_an_external_trade_is_of_the_booking_intents_symbol():
+    from newcore.domain import check_result_for_intent
+    from test_nc01_r3 import _external_close
+    p, ids, dec, it, res = _external_close(730)
+    other = tuple(F.replace(t, symbol='BTCUSDT') for t in res.external_trades)
+    with pytest.raises(InvalidRecord, match="the booking intent's symbol"):
+        check_result_for_intent(it, F.replace(res, external_trades=other), None)
+
+
+def test_rr_p2b_the_document_cap_counts_utf8_bytes_for_text_input():
+    from newcore.domain.codec import MAX_DOCUMENT_BYTES
+    over = '"' + 'é' * (MAX_DOCUMENT_BYTES // 2) + '"'                   # ~half the chars, just over the bytes
+    assert len(over) < MAX_DOCUMENT_BYTES < len(over.encode('utf-8'))
+    for doc in (over, over.encode('utf-8')):
+        with pytest.raises(InvalidRecord, match='larger than') as ex:
+            loads(doc)
+        assert len(str(ex.value)) < 200                                         # the input is never echoed
+    at_cap = '"' + 'é' * ((MAX_DOCUMENT_BYTES - 2) // 2) + '"'           # exactly at (or just under) the cap
+    assert len(at_cap.encode('utf-8')) <= MAX_DOCUMENT_BYTES
+    with pytest.raises(InvalidRecord) as ex:
+        loads(at_cap)                                                           # admitted by the cap; not a document
+    assert 'larger than' not in str(ex.value)

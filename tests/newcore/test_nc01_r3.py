@@ -115,8 +115,9 @@ def _external_close(seed=330, qty='1.5'):
     dec = F.build(F.Decision, decision_id=dec_id, account_id=acct, at_ms=F.T0 + 90_000, action=Action.RECONCILE,
                   reason=ReasonCode.RECONCILE_EXTERNAL_CLOSE, authority=Authority.RECONCILIATION, symbol=lt.symbol,
                   side=lt.side, subject_id=lt.lot_id, intents=(it,))
-    trades = (ExternalTrade(trade_id='9001', at_ms=F.T0 + 80_000, qty=D('1'), price=D('101')),
-              ExternalTrade(trade_id='9002', at_ms=F.T0 + 81_000, qty=D(qty) - 1, price=D('102')))
+    sv = dict(venue=F.Venue.BINANCE_USDM, symbol=lt.symbol)
+    trades = (ExternalTrade(trade_id='9001', at_ms=F.T0 + 80_000, qty=D('1'), price=D('101'), **sv),
+              ExternalTrade(trade_id='9002', at_ms=F.T0 + 81_000, qty=D(qty) - 1, price=D('102'), **sv))
     res = F.build(OrderResult, result_id=ids.id('res'), intent_id=it.intent_id, account_id=acct,
                   client_order_id=it.client_order_id, phase=ResultPhase.FINAL, requested_qty=it.qty,
                   observed_at_ms=F.T0 + 95_000, executed_qty=it.qty, avg_price=D('101.25'),

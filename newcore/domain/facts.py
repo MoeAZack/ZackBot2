@@ -10,8 +10,10 @@ Some ids name FACTS that must stay unique for the whole life of an account, not 
   again, so one venue trade can never reduce ownership or book PnL twice.
 
 FactLedger is the one implementation both layers apply (ruling 3): events.check_event_chain and the step-0
-JournalGate. FactIndex is its durable, codec-encodable form: folded from the journal on restart (fold_facts), and the
-form a snapshot can carry forward (check_event_chain(..., facts=...)), so the consumed set survives compaction.
+JournalGate. FactIndex is its durable, codec-encodable form: folded from the journal (fold_facts) and carried by
+every Snapshot (Snapshot.facts, required), so the facts survive compaction. A restart seeds BOTH layers from the
+snapshot: check_event_chain(tail, after_sequence=snap.last_sequence, facts=snap.facts) and
+JournalGate.rebuild(account, aggregate, tail, facts=snap.facts, after_sequence=snap.last_sequence).
 """
 from __future__ import annotations
 
@@ -19,7 +21,8 @@ import hashlib
 import json
 import re
 
-from .base import Record, check_ascii_text, check_id, record, req
+from .account import Venue
+from .base import Record, check_ascii_text, check_id, check_symbol, record, req
 
 SHA_RE = re.compile(r'[0-9a-f]{64}')
 
@@ -43,12 +46,19 @@ class FactDigest(Record):
 
 @record
 class ConsumedTrade(Record):
+    venue: Venue                  # identity = (venue, symbol, trade_id): venue trade ids are symbol-scoped (P2-a)
+    symbol: str
     trade_id: str                 # the venue trade id (ExternalTrade.trade_id)
     result_id: str                # the EXCHANGE_EXTERNAL result that booked it
 
     def _validate(self, p):
+        check_symbol(self.symbol, p + '.symbol')
         check_ascii_text(self.trade_id, p + '.trade_id', 64)
         check_id(self.result_id, p + '.result_id', 'res')
+
+    @property
+    def key(self):
+        return (self.venue.value, self.symbol, self.trade_id)
 
 
 def _sorted_unique(values, key, path, what):
@@ -60,12 +70,15 @@ def _sorted_unique(values, key, path, what):
 class FactIndex(Record):
     results: tuple[FactDigest, ...]          # every result id ever journaled, with its digest (sorted by id)
     incidents: tuple[FactDigest, ...]        # every incident id ever journaled (sorted by id)
-    trades: tuple[ConsumedTrade, ...]        # every venue trade an external close consumed (sorted by trade id)
+    trades: tuple[ConsumedTrade, ...]        # every venue trade an external close consumed (sorted by its key)
 
     def _validate(self, p):
         _sorted_unique(self.results, lambda d: d.fact_id, p + '.results', 'result ids')
         _sorted_unique(self.incidents, lambda d: d.fact_id, p + '.incidents', 'incident ids')
-        _sorted_unique(self.trades, lambda t: t.trade_id, p + '.trades', 'trade ids')
+        _sorted_unique(self.trades, lambda t: t.key, p + '.trades', 'trades (venue, symbol, trade id)')
+        results = {d.fact_id for d in self.results}
+        req(all(t.result_id in results for t in self.trades), p + '.trades',
+            'a consumed trade names no recorded result')
 
 
 EMPTY_FACTS = FactIndex(results=(), incidents=(), trades=())
@@ -79,7 +92,7 @@ class FactLedger:
         req(isinstance(facts, FactIndex), 'facts', 'not a FactIndex')
         self.results = {d.fact_id: d.sha256 for d in facts.results}
         self.incidents = {d.fact_id: d.sha256 for d in facts.incidents}
-        self.trades = {t.trade_id: t.result_id for t in facts.trades}
+        self.trades = {t.key: t.result_id for t in facts.trades}
 
     def check(self, event, p='event'):
         from .events import IncidentRecorded, ResultObserved
@@ -91,14 +104,14 @@ class FactLedger:
                 req(known == digest, p + '.result.result_id', f'result id {r.result_id} used for a different fact')
                 return _noop                                  # the identical fact again: nothing new
             for t in r.external_trades:
-                owner = self.trades.get(t.trade_id)
+                owner = self.trades.get(_trade_key(t))
                 req(owner is None, p + '.result.external_trades',
-                    f'venue trade {t.trade_id} is already booked by {owner}')
+                    f'venue trade {t.venue.value}/{t.symbol}/{t.trade_id} is already booked by {owner}')
 
             def commit_result():
                 self.results[r.result_id] = digest
                 for t in r.external_trades:
-                    self.trades[t.trade_id] = r.result_id
+                    self.trades[_trade_key(t)] = r.result_id
             return commit_result
         if isinstance(event, IncidentRecorded):
             inc = event.incident
@@ -117,11 +130,16 @@ class FactLedger:
     def index(self):
         return FactIndex(results=tuple(FactDigest(fact_id=k, sha256=v) for k, v in sorted(self.results.items())),
                          incidents=tuple(FactDigest(fact_id=k, sha256=v) for k, v in sorted(self.incidents.items())),
-                         trades=tuple(ConsumedTrade(trade_id=k, result_id=v) for k, v in sorted(self.trades.items())))
+                         trades=tuple(ConsumedTrade(venue=Venue(k[0]), symbol=k[1], trade_id=k[2], result_id=v)
+                                      for k, v in sorted(self.trades.items())))
 
 
 def _noop():
     return None
+
+
+def _trade_key(trade):
+    return (trade.venue.value, trade.symbol, trade.trade_id)
 
 
 def fold_facts(events, facts=None):
