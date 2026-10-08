@@ -1,2 +1,5 @@
 -r requirements.txt
 pytest==9.1.1
+# NEWCORE property tests (tests/newcore): pinned, dev-only
+hypothesis==6.168.5
+sortedcontainers==2.4.0
