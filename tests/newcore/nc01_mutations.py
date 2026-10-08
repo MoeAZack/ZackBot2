@@ -132,6 +132,33 @@ MUTATIONS = {
     'r3 item 3a: a post-hoc booking may be sent': (D + 'orders.py', [(
         '    return intent.state is IntentState.DURABLE and not is_post_hoc(intent)',
         '    return intent.state is IntentState.DURABLE')]),
+    'r3 item 3b: a zero fill supersedes a corroborated not-found': (D + 'orders.py', [(
+        'new.evidence is Evidence.EXCHANGE_FINAL and new.executed_qty > 0',
+        'new.evidence is Evidence.EXCHANGE_FINAL')]),
+    'r3 item 3b: any FINAL prior is superseded': (D + 'orders.py', [(
+        '    return (prior.phase is ResultPhase.FINAL and prior.evidence is Evidence.NOT_FOUND_CORROBORATED\n',
+        '    return (prior.phase is ResultPhase.FINAL\n')]),
+    'r3 item 3b: superseding is refused (exchange evidence never wins)': (D + 'events.py', [(
+        '            if prior is not None and r.intent_id not in superseding and supersedes(prior, r):',
+        '            if False:')]),
+    'r3 item 3b: superseded more than once': (D + 'events.py', [(
+        '            if prior is not None and r.intent_id not in superseding and supersedes(prior, r):',
+        '            if prior is not None and supersedes(prior, r):')]),
+    'r3 item 3b: a late-fill reconcile without its record': (D + 'events.py', [(
+        '                req(late is not None and late.result_id in d.evidence, p + \'.decision\',',
+        '                req(True, p + \'.decision\',')]),
+    'r3 item 3b: the terminal step ignores a superseding fill': (D + 'events.py', [(
+        '                if r.intent_id in live:\n                    finals[r.intent_id] = r',
+        '                if False:\n                    finals[r.intent_id] = r')]),
+    'r3 item 3b: a late-fill decision about no intent': (D + 'decision.py', [(
+        "            req(a is Action.RECONCILE and self.subject_id is not None, p + '.reason',",
+        "            req(True, p + '.reason',")]),
+    'r3 item 3b: the journal gate lets any record follow a FINAL': ('newcore/ports/journal.py', [(
+        '                req(supersedes(final, ev.result), \'event.result\',',
+        '                req(True, \'event.result\',')]),
+    'r3 item 3b: the journal supersedes more than once': ('newcore/ports/journal.py', [(
+        '        if (k is EventKind.RESULT_RECORDED and st.final is Evidence.NOT_FOUND_CORROBORATED and not st.superseded',
+        '        if (k is EventKind.RESULT_RECORDED and st.final in (Evidence.NOT_FOUND_CORROBORATED, Evidence.EXCHANGE_FINAL)')]),
     'duplicate JSON keys': (D + 'codec.py', [("            if k in out:\n                problems.append(",
                                               "            if False:\n                problems.append(")]),
     'truncated JSON': (D + 'codec.py', [(

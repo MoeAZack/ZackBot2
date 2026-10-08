@@ -24,7 +24,11 @@ def test_item2_r3_reason_codes_exist_and_are_usable(value):
     assert len(MEANING[code]) > 10 and not code.deprecated
     ids = F.Ids(300)
     for action in R3_CODES[value]:
-        d = F.decision_with_intents(ids, ids.id('acct'), action, code)
+        if code is ReasonCode.RECONCILE_LATE_FILL:          # item 3b: a late-fill reconcile names its intent
+            d = F.build(F.Decision, decision_id=ids.id('dec'), account_id=ids.id('acct'), at_ms=F.T0, action=action,
+                        reason=code, authority=F.authority_for(action, code), subject_id=ids.id('int'))
+        else:
+            d = F.decision_with_intents(ids, ids.id('acct'), action, code)
         assert d.reason is code
 
 
@@ -194,3 +198,132 @@ def test_item3a_only_reconcile_manual_close_books():
         F.replace(dec, action=Action.CLOSE, reason=ReasonCode.EXIT_MANUAL, authority=Authority.STRATEGY)
     with pytest.raises(InvalidRecord, match='books post-hoc intents only'):
         F.replace(dec, intents=(F.replace(it, reason=ReasonCode.EXIT_TIME),))
+
+
+# ----------------------------------------------------------------------------------------------------------- item 3b
+def _late_fill(seed=340):
+    """A lot CLOSE sent at T0, lost (UNKNOWN), decided not_found_corroborated (nothing executed) - then the venue's
+    own FINAL record of that client id shows it filled. Returns the pieces and the chain up to the corroboration."""
+    from newcore.domain import (DecisionRecorded, IntentRecorded, IntentState, IntentStateChanged, ResultObserved)
+    p, ids = F.single_lot_portfolio(seed, stop_state='confirmed')
+    acct, lt = p.account_id, p.lots[0]
+    dec_id = ids.id('dec')
+    it = F.intent(ids, acct, F.Purpose.CLOSE, lt.symbol, lt.side, lt.qty, owner_id=lt.lot_id,
+                  state=IntentState.PLANNED, decision_id=dec_id, reason=ReasonCode.EXIT_TIME, created=F.T0 - 10_000)
+    dec = F.decision(ids, acct, Action.CLOSE, ReasonCode.EXIT_TIME, (it,), dec_id=dec_id, at=F.T0 - 10_000)
+    rs = F.results(ids, acct, it)
+    late = F.replace(rs['filled'], result_id=ids.id('res'), observed_at_ms=F.T0 + 60_000)
+    E = lambda cls, n, at, **kw: F.event(cls, ids, acct, n, at=at, **kw)          # noqa: E731
+    head = [E(DecisionRecorded, 1, dec.at_ms, decision=dec, reason=dec.reason),
+            E(IntentRecorded, 2, dec.at_ms, intent=F.replace(it, state=IntentState.DURABLE), reason=it.reason),
+            E(IntentStateChanged, 3, F.T0, intent_id=it.intent_id, from_state=IntentState.DURABLE,
+              to_state=IntentState.SUBMITTED),
+            E(IntentStateChanged, 4, F.T0 + 1000, intent_id=it.intent_id, from_state=IntentState.SUBMITTED,
+              to_state=IntentState.UNKNOWN),
+            E(ResultObserved, 5, F.T0 + 30_000, result=rs['corroborated'])]
+    return p, ids, acct, it, rs, late, head, E
+
+
+def _late_fill_decision(ids, acct, it, late, at=F.T0 + 61_000):
+    from newcore.domain import Authority
+    return F.build(F.Decision, decision_id=ids.id('dec'), account_id=acct, at_ms=at, action=Action.RECONCILE,
+                   reason=ReasonCode.RECONCILE_LATE_FILL, authority=Authority.RECONCILIATION, symbol=it.symbol,
+                   side=it.side, subject_id=it.intent_id, evidence=(late.result_id,))
+
+
+def test_item3b_a_final_exchange_record_supersedes_not_found_corroborated_after_close():
+    from newcore.domain import (Admission, DecisionRecorded, EventCursor, IntentState, IntentStateChanged,
+                                ResultObserved, admit, canonical_bytes, check_event_chain, loads, supersedes)
+    p, ids, acct, it, rs, late, head, E = _late_fill()
+    assert supersedes(rs['corroborated'], late)
+    closed = E(IntentStateChanged, 6, F.T0 + 30_000, intent_id=it.intent_id, from_state=IntentState.UNKNOWN,
+               to_state=IntentState.CANCELLED)                      # closed on the corroboration ("nothing executed")
+    fix = _late_fill_decision(ids, acct, it, late)
+    chain = head + [closed, E(ResultObserved, 7, late.observed_at_ms, result=late,
+                              reason=ReasonCode.RECONCILE_LATE_FILL),
+                    E(DecisionRecorded, 8, fix.at_ms, decision=fix, reason=fix.reason)]
+    assert check_event_chain(chain) == {}
+    cur = EventCursor(account_id=acct, aggregate_id=F.pf_id(acct), last_sequence=0, applied=())
+    for ev in chain:
+        cur, how = admit(cur, ev)
+        assert how is Admission.APPLY
+        assert loads(canonical_bytes(ev)) == ev
+
+
+def test_item3b_before_the_close_the_terminal_step_follows_the_fill():
+    from newcore.domain import IntentState, IntentStateChanged, InvalidRecord, ResultObserved, check_event_chain
+    p, ids, acct, it, rs, late, head, E = _late_fill()
+    sup = E(ResultObserved, 6, late.observed_at_ms, result=late)
+    filled = E(IntentStateChanged, 7, late.observed_at_ms, intent_id=it.intent_id, from_state=IntentState.UNKNOWN,
+               to_state=IntentState.FILLED)
+    assert check_event_chain(head + [sup, filled]) == {}
+    cancelled = F.replace(filled, to_state=IntentState.CANCELLED)
+    with pytest.raises(InvalidRecord, match='the final result means'):
+        check_event_chain(head + [sup, cancelled])
+
+
+def test_item3b_only_an_executed_exchange_record_of_the_same_order_supersedes():
+    from decimal import Decimal as D
+    from newcore.domain import Evidence, ExchangeStatus, ResultPhase, supersedes
+    p, ids, acct, it, rs, late, head, E = _late_fill()
+    cor = rs['corroborated']
+    assert supersedes(cor, late)
+    assert supersedes(cor, F.replace(rs['partial_cancel'], observed_at_ms=F.T0 + 60_000))     # any execution
+    not_superseding = {
+        'nothing executed': F.replace(late, executed_qty=D('0'), avg_price=None,
+                                      exchange_status=ExchangeStatus.CANCELED),
+        'a decided adoption, not exchange evidence': F.replace(rs['adopted'], observed_at_ms=F.T0 + 60_000),
+        'a refusal': F.replace(rs['refused'], observed_at_ms=F.T0 + 60_000),
+        'not final': F.replace(rs['known'], observed_at_ms=F.T0 + 60_000),
+        'older than the corroboration': F.replace(late, observed_at_ms=cor.observed_at_ms - 1),
+        'another client id': F.replace(late, client_order_id=ids.cid('c')),
+        'another intent': F.replace(late, intent_id=ids.id('int')),
+    }
+    for name, new in not_superseding.items():
+        assert not supersedes(cor, new), name
+    for prior in (rs['filled'], rs['refused'], rs['adopted'], rs['known']):
+        assert not supersedes(prior, late)                          # only a corroborated not-found is superseded
+    assert cor.phase is ResultPhase.FINAL and cor.evidence is Evidence.NOT_FOUND_CORROBORATED
+
+
+def test_item3b_refusals():
+    from newcore.domain import (DecisionRecorded, IntentState, IntentStateChanged, InvalidRecord, ResultObserved,
+                                check_event_chain)
+    p, ids, acct, it, rs, late, head, E = _late_fill()
+    closed = E(IntentStateChanged, 6, F.T0 + 30_000, intent_id=it.intent_id, from_state=IntentState.UNKNOWN,
+               to_state=IntentState.CANCELLED)
+    sup = E(ResultObserved, 7, late.observed_at_ms, result=late)
+    fix = _late_fill_decision(ids, acct, it, late)
+    fix_ev = lambda n, d=fix: E(DecisionRecorded, n, d.at_ms, decision=d, reason=d.reason)   # noqa: E731
+    again = F.replace(late, result_id=ids.id('res'), observed_at_ms=F.T0 + 62_000)
+    cases = {
+        'superseded twice': ('event after the final result',
+                             head + [closed, sup, E(ResultObserved, 8, again.observed_at_ms, result=again)]),
+        'a zero fill after the close': ('event after the final result',
+                                        head + [closed, E(ResultObserved, 7, late.observed_at_ms,
+                                                          result=F.replace(rs['refused'], result_id=ids.id('res'),
+                                                                           observed_at_ms=F.T0 + 60_000))]),
+        'late-fill decision without the record': ('names a journaled superseding', head + [closed, fix_ev(7)]),
+        'late-fill decision names another result': (
+            'names a journaled superseding',
+            head + [closed, sup, fix_ev(8, F.replace(fix, evidence=(rs['corroborated'].result_id,)))]),
+        'late fill reconciled twice': ('a late fill is reconciled once',
+                                       head + [closed, sup, fix_ev(8),
+                                               fix_ev(9, F.replace(fix, decision_id=ids.id('dec')))]),
+    }
+    for name, (message, chain) in cases.items():
+        with pytest.raises(InvalidRecord, match=message):
+            check_event_chain(chain)
+            raise AssertionError(name)
+
+
+def test_item3b_a_late_fill_decision_is_a_reconcile_about_one_intent():
+    from newcore.domain import Authority, InvalidRecord
+    p, ids, acct, it, rs, late, head, E = _late_fill()
+    fix = _late_fill_decision(ids, acct, it, late)
+    with pytest.raises(InvalidRecord, match='about one intent'):
+        F.replace(fix, subject_id=None)
+    with pytest.raises(InvalidRecord):
+        F.replace(fix, subject_id=p.lots[0].lot_id)                 # a lot is not the intent it corrects
+    with pytest.raises(InvalidRecord):
+        F.replace(fix, action=Action.CLOSE, authority=Authority.STRATEGY)
