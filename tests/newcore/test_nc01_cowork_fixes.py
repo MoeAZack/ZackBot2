@@ -123,16 +123,31 @@ def test_reducing_intents_are_bounded_net_of_each_other():
     with pytest.raises(InvalidRecord, match='exceed the lot qty'):
         _with_reduce('1', extra=(old,))()                                    # 1 + 1 > 1.5
     _with_reduce('1', extra=(lambda ids, p, lt: old(ids, p, lt, '0.5'),))()   # 1 + 0.5 = 1.5
-    orphan = lambda ids, p, lt: F.intent(ids, p.account_id, Purpose.CLOSE, lt.symbol, lt.side, D('1'),   # noqa: E731
-                                         owner_id=F.pf_id(p.account_id), owner_kind=OwnerKind.PORTFOLIO,
-                                         state=IntentState.CANCELLING)
-    with pytest.raises(InvalidRecord, match='exceed the position qty'):    # portfolio-owned close on the same side
-        _with_reduce('1', extra=(orphan,))()
-    stray = lambda ids, p, lt: F.intent(ids, p.account_id, Purpose.CLOSE, 'ETHUSDT', lt.side, D('1'),   # noqa: E731
-                                        owner_id=F.pf_id(p.account_id), owner_kind=OwnerKind.PORTFOLIO,
-                                        state=IntentState.CANCELLING)
-    with pytest.raises(InvalidRecord, match='exceed the position qty'):    # nothing held on that symbol at all
-        _with_reduce('1', extra=(stray,))()
+    # KEPT STRICT pending a Codex ruling: a cancel-replace pair on one lot (old CANCELLING close + new in-flight close)
+    # still counts together (1.5 + 1.5 > 1.5), since the cancelling order can still fill
+    old_close = lambda ids, p, lt: F.intent(ids, p.account_id, Purpose.CLOSE, lt.symbol, lt.side, lt.qty,   # noqa: E731
+                                            owner_id=lt.lot_id, state=IntentState.CANCELLING)
+    with pytest.raises(InvalidRecord, match='exceed the lot qty'):
+        _with_reduce('1.5', purpose=Purpose.CLOSE, extra=(old_close,))()
+
+
+@pytest.mark.parametrize('purpose', ['close', 'reduce'])
+@pytest.mark.parametrize('held', [True, False], ids=['with_position', 'no_position'])
+def test_orphan_reducing_cancel_work_is_representable(purpose, held):
+    """Cowork re-check of S05: a portfolio-owned (orphan) cancel-only CLOSE / REDUCE is valid with or without a position
+    on its symbol; it is not counted against any lot or position because it can only be cancelling."""
+    from decimal import Decimal as D
+    from newcore.domain import IntentState, InvalidRecord, OwnerKind, Purpose
+    p, ids = F.single_lot_portfolio(98, stop_state='confirmed')
+    lt = p.lots[0]
+    symbol = lt.symbol if held else 'LINKUSDT'
+    orphan = F.intent(ids, p.account_id, Purpose(purpose), symbol, lt.side, D('1000'), owner_id=F.pf_id(p.account_id),
+                      owner_kind=OwnerKind.PORTFOLIO, state=IntentState.CANCELLING)
+    pf = F.replace(p, intents=p.intents + (orphan,))
+    assert orphan in pf.intents and orphan.orphan
+    for state in (IntentState.DURABLE, IntentState.SUBMITTED, IntentState.WORKING, IntentState.UNKNOWN):
+        with pytest.raises(InvalidRecord, match='cancel-only'):          # never sendable: only ever cancelling
+            F.replace(orphan, state=state)
 
 
 # ----------------------------------------------------------------------------------------------------------- H05

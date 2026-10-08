@@ -93,8 +93,9 @@ MUTATIONS = {
         '        return self.owner_kind is OwnerKind.PORTFOLIO', '        return False')]),
     'S05: reducing intents not bounded by their lot': (D + 'portfolio.py', [(
         '        req(q <= lots[lot_id].qty,', '        req(True,')]),
-    'S05: reducing intents not bounded by the position': (D + 'portfolio.py', [(
-        '        req(q <= held.get(key, ZERO),', '        req(True,')]),
+    'S05 re-check: orphan cancel work counted as live reducing': (D + 'portfolio.py', [(
+        '        if it.purpose in (Purpose.REDUCE, Purpose.CLOSE) and it.owner_kind is OwnerKind.LOT:',
+        '        if it.purpose in (Purpose.REDUCE, Purpose.CLOSE) and it.owner_kind is not OwnerKind.ENTRY_INTENT:')]),
     'H05: Lot not encodable standalone': (D + 'codec.py', [("    'lot': portfolio.Lot,\n", '')]),
     'CP05: a position accepts duplicate lots': (D + 'portfolio.py', [(
         "        req(len({x.lot_id for x in self.lots}) == len(self.lots), p + '.lots',", "        req(True, p + '.lots',")]),
