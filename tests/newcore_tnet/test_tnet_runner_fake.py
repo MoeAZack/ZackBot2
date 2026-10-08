@@ -128,8 +128,9 @@ def test_a_bound_breach_fails_and_the_teardown_flattens():
     s['expect'].pop('max_orders')
     r = run(s)
     assert r.verdict == FAIL and r.error.startswith('BoundExceeded') and 'more than 2' in r.error
-    # the Runner had cancelled the stop just before the refused close: the teardown closes the position at once
-    assert r.cleanup['clean'] and r.cleanup['cancelled'] == [] and len(r.cleanup['closes']) == 1
+    # N6 (nc-s1-slice d7b987a): the close goes out while the stop is still live, so when the bound refuses the close
+    # the position is still PROTECTED; the teardown then cancels that stop and closes the position
+    assert r.cleanup['clean'] and len(r.cleanup['cancelled']) == 1 and len(r.cleanup['closes']) == 1
 
 
 def test_notional_bound_fails_before_the_entry_is_sent():

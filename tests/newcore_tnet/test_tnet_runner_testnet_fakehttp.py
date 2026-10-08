@@ -119,3 +119,17 @@ def test_testnet_account_is_the_configured_testnet_binding():
     assert r.verdict == PASS and t.journal.read()                     # the scenario's journal
     from newcore.domain import Environment
     assert t.environment is Environment.TESTNET
+
+
+def test_n6_the_signal_close_goes_out_before_the_stop_is_cancelled():
+    """nc-s1-slice d7b987a (Cowork #37 N6): close while the stop is live, cancel the stop only once flat - the T01
+    request order on the wire is entry, stop (classic refused, algo), CLOSE, then the stop cancel."""
+    w = World()
+    r = run_scenario(spec('T01-long'), w.target(), run_nonce='n6', monotonic=w.monotonic)
+    assert r.verdict == PASS
+    writes = [q for q in w.fb.requests if q.method in ('POST', 'DELETE')]
+    close_i = next(i for i, q in enumerate(writes) if q.method == 'POST' and q.url.endswith('/fapi/v1/order')
+                   and 'type=MARKET' in q.query and 'side=SELL' in q.query)
+    cancel_i = next(i for i, q in enumerate(writes) if q.method == 'DELETE')
+    assert close_i < cancel_i, [(q.method, q.url.rsplit('/', 1)[-1]) for q in writes]
+    assert w.fb.flat() and not w.fb.open_cids()
