@@ -30,7 +30,8 @@ import urllib.parse
 
 from . import cassette_allow as A
 
-from .redact import REDACTED, PatternCache, check_value, contains_values, is_sensitive_name, redact_values
+from .redact import (REDACTED, TOKEN_RUN, PatternCache, check_value, contains_values, is_sensitive_name,
+                     redact_values)
 from .wire import (API_KEY_HEADER, HttpResponse, WireConnectionError, WireNotSent, WireResponseTooLarge, WireSeamError,
                    WireTimeout)
 
@@ -74,8 +75,8 @@ def decoded_views(text):
     n = 0
     for m in _B64_RUN.finditer(text):
         n += 1
-        if n > MAX_DECODED_TOKENS:
-            break
+        if n > MAX_DECODED_TOKENS:     # NEW-R2a: never stop auditing early; too many runs is a refusal
+            raise CassetteLeak('too many encoded runs to audit; cassette not produced')
         tok = m.group(0)
         for fn in (base64.b64decode, base64.urlsafe_b64decode):
             try:
@@ -85,7 +86,7 @@ def decoded_views(text):
     for m in _HEX_RUN.finditer(text):
         n += 1
         if n > 2 * MAX_DECODED_TOKENS:
-            break
+            raise CassetteLeak('too many encoded runs to audit; cassette not produced')
         try:
             yield bytes.fromhex(m.group(0)).decode('latin-1')
         except ValueError:
@@ -198,6 +199,8 @@ class CassetteRecorder:
                 self._learn(v)
                 out.append([k, REDACTED])
             elif allowed is not None and not allowed(k) and v != '':
+                out.append([k, REDACTED])
+            elif allowed is A.header_allowed and TOKEN_RUN.search(str(v)):  # NEW-R3: a key-like header value
                 out.append([k, REDACTED])
             else:
                 out.append([k, v])
@@ -337,17 +340,26 @@ class CassetteRecorder:
                                'replaced by <redacted>. ' + self.note).strip(),
                'interactions': self.interactions}
         text = json.dumps(doc, indent=1, sort_keys=True, ensure_ascii=False)
+        try:                                         # NEW-S1: a lone surrogate (\ud800) cannot be written as UTF-8
+            text.encode('utf-8')
+        except UnicodeEncodeError:
+            raise CassetteLeak('an answer holds text that is not encodable (lone surrogate); cassette not '
+                               'produced') from None
         self._audit(text)                            # a pure check: anything left raises, nothing is repaired here
         return text
 
     def save(self, path):
         text = self.to_json()                        # raises CassetteLeak before anything touches the disk
         tmp = f'{path}.tmp{os.getpid()}'
-        with open(tmp, 'w', encoding='utf-8', newline='\n') as fh:
-            fh.write(text)
-            fh.flush()
-            os.fsync(fh.fileno())
-        os.replace(tmp, path)
+        try:
+            with open(tmp, 'w', encoding='utf-8', newline='\n') as fh:
+                fh.write(text)
+                fh.flush()
+                os.fsync(fh.fileno())
+            os.replace(tmp, path)
+        finally:                                     # never a leftover *.tmpPID file
+            if os.path.exists(tmp):
+                os.remove(tmp)
         return path
 
 

@@ -37,8 +37,8 @@ from newcore.venue.redact import scrub_tokens  # noqa: E402
 from newcore.venue.run_config import RunConfigError, default_testnet_config_path, load_testnet_config  # noqa: E402
 from newcore.venue.smoke import CORE8  # noqa: E402
 from newcore.venue.testnet_venue import TestnetAccountReader, TestnetVenue  # noqa: E402
-from newcore.venue.tnet import (ReportLeak, adopt_refusal, default_report_dir, format_cleanup,  # noqa: E402
-                                git_build, guarded, tnet_cleanup, tnet_preflight, tnet_report)
+from newcore.venue.tnet import (ReportLeak, adopt_refusal, adopted_positions, default_report_dir,  # noqa: E402
+                                format_cleanup, git_build, guarded, tnet_cleanup, tnet_preflight, tnet_report)
 from newcore.venue.tnet_exec import run_spec  # noqa: E402
 from newcore.venue.tnet_probes import ProbeAborted, probe_p1, probe_p2  # noqa: E402
 from newcore.venue.tnet_seams import DeadlineExceeded, DeadlinePort, FaultHttp, RunDeadline  # noqa: E402
@@ -161,6 +161,9 @@ def main(argv=None, *, out=None, **kw):
     out = out or sys.stdout
     try:
         return _main(argv, out=out, **kw)
+    except KeyboardInterrupt:                                        # N2: preflight / report phase
+        out.write('INTERRUPTED (Ctrl+C). Anything sent was inside the guarded run, whose teardown has run.\n')
+        return EXIT_DEADLINE
     except Exception as ex:                                          # noqa: BLE001
         out.write(f'ERROR: unexpected {type(ex).__name__} (details withheld: they may echo input). The guarded '
                   f'cleanup has run if anything was sent.\n')
@@ -187,6 +190,11 @@ def _main(argv=None, *, http=None, local_clock=None, protector=None, out=None, m
         return EXIT_USAGE
     if args.cleanup and (args.probe or args.scenario):
         out.write('REFUSED: --cleanup runs alone (no --probe / --scenario).\n')
+        return EXIT_USAGE
+    if args.cleanup and args.close_positions and any(
+            q is None for q in adopted_positions(args.adopt_foreign).values()):
+        out.write('REFUSED: with --cleanup --close-positions an adopted position must state its FOREIGN quantity: '
+                  '--adopt-foreign SYMBOL:SIDE:QTY (a NEWCORE leftover is never kept as foreign).\n')
         return EXIT_USAGE
     if args.close_positions and not args.cleanup:
         out.write('REFUSED: --close-positions goes with --cleanup.\n')
@@ -335,23 +343,29 @@ def _cleanup_only(args, venue, symbols, run_id, snooze, recorder, cassette_dir, 
             out.write(f'CLEANUP REFUSED: {sym} positions / open orders unreadable; nothing sent.\n')
             _write_cassette(recorder, cassette_dir, stamp, values, out)
             return EXIT_PREFLIGHT
+        declared = adopted_positions(args.adopt_foreign)
         for p in pos.value:
             if p.qty == 0:
                 continue
             positions.append(p)
-            if not args.close_positions or f'{p.symbol}:{p.side}' in args.adopt_foreign:
-                baseline[(p.symbol, p.side)] = p.qty         # kept: listed, never closed
+            if not args.close_positions:
+                baseline[(p.symbol, p.side)] = p.qty         # listed only, never closed
+            elif (p.symbol, p.side) in declared:            # keep ONLY the declared foreign quantity (C1)
+                baseline[(p.symbol, p.side)] = min(p.qty, declared[(p.symbol, p.side)])
         for o in oo.value:
             tag = 'NEWCORE, will be cancelled' if is_newcore_cid(o.ref.client_id) else 'foreign, left alone'
             out.write(f'  order {sym} {o.ref.client_id} {o.order_type} {o.qty}: {tag}\n')
     for p in positions:
-        kept = (p.symbol, p.side) in baseline
-        out.write(f'  position {p.symbol} {p.side} {p.qty}: {"kept (listed)" if kept else "will be closed"}\n')
-    res = tnet_cleanup(venue, symbols, run_id=run_id + '_cleanup', max_attempts=args.cleanup_attempts,
-                       baseline=baseline, confirm_reads=2, settle_s=args.settle_s, sleep=snooze)
+        keep = baseline.get((p.symbol, p.side), Decimal(0))
+        what = 'kept (listed)' if keep >= p.qty else (f'{p.qty - keep} will be closed' + (f', {keep} kept as '
+                                                                                       f'foreign' if keep else ''))
+        out.write(f'  position {p.symbol} {p.side} {p.qty}: {what}\n')
+    _, res = guarded(lambda: None, lambda: tnet_cleanup(                # C2: Ctrl+C cannot abort the teardown
+        venue, symbols, run_id=run_id + '_cleanup', max_attempts=args.cleanup_attempts, baseline=baseline,
+        confirm_reads=2, settle_s=args.settle_s, sleep=snooze))
     out.write(format_cleanup(res) + '\n')
-    left = [p for p in positions if (p.symbol, p.side) in baseline and f'{p.symbol}:{p.side}' not in
-            args.adopt_foreign]
+    declared = adopted_positions(args.adopt_foreign)
+    left = [p for p in positions if (p.symbol, p.side) in baseline and (p.symbol, p.side) not in declared]
     if left:
         out.write('POSITIONS LEFT (not adopted; add --close-positions if they are NEWCORE exposure):\n' +
                   ''.join(f'  {p.symbol} {p.side} {p.qty}\n' for p in left))
