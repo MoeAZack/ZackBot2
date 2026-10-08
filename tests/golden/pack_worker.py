@@ -1,6 +1,9 @@
 """Golden pack worker: runs every runnable case x legacy adapter ONCE and writes the canonical traces + wall times as JSON.
 
-    python tests/golden/pack_worker.py OUT.json
+    python tests/golden/pack_worker.py OUT.json [--tier core|extended]
+
+--tier runs only the cases TIERS.json puts in that tier (goldenlib.tiers; a tier manifest that does not place every case in
+exactly one tier makes the worker fail). Without --tier: the whole pack.
 
 test_golden.py starts it through goldenlib.deadline.run with the HARD_STOP_S deadline (the whole tree is killed on expiry),
 so no adapter code runs in the pytest process and a hung adapter costs at most the hard stop. Adapters only ever see
@@ -14,7 +17,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 sys.path.insert(0, os.path.dirname(os.path.dirname(HERE)))
 
-from goldenlib import REPO_ROOT, adapters, schema  # noqa: E402
+from goldenlib import REPO_ROOT, adapters, schema, tiers  # noqa: E402
 
 LEGACY = ('legacy_backtest', 'legacy_engine')
 RUNNABLE = ('required', 'known_divergence')
@@ -26,11 +29,20 @@ def _trace(ad, case):
 
 
 def main(argv):
-    out_path = argv[0]
+    import argparse
+    ap = argparse.ArgumentParser()
+    ap.add_argument('out')
+    ap.add_argument('--tier', choices=tiers.TIERS)
+    a = ap.parse_args(argv)
+    out_path = os.path.abspath(a.out)
     os.chdir(REPO_ROOT)
     t_all = time.perf_counter()
     runs = []
-    for c in schema.load_all():
+    cases = schema.load_all()
+    if a.tier:
+        tier_of = tiers.load([c['id'] for c in cases])
+        cases = [c for c in cases if tier_of[c['id']] == a.tier]
+    for c in cases:
         for ad in LEGACY:
             if schema.status(c, ad) not in RUNNABLE:
                 continue
@@ -45,7 +57,7 @@ def main(argv):
             rec['seconds'] = time.perf_counter() - t0
             runs.append(rec)
     with open(out_path, 'w', encoding='utf-8') as f:
-        json.dump(dict(runs=runs, wall=time.perf_counter() - t_all), f, default=float)
+        json.dump(dict(runs=runs, tier=a.tier, wall=time.perf_counter() - t_all), f, default=float)
     return 0
 
 

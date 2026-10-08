@@ -12,7 +12,7 @@ import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))
-PACKAGE = os.path.join(ROOT, 'newcore')
+PACKAGE = os.path.join(ROOT, 'newcore', 'domain')     # NC-01's boundary (Codex: scoped to newcore/domain)
 
 STDLIB_ALLOWED = {'__future__', 'dataclasses', 'decimal', 'enum', 'functools', 'hashlib', 'json', 're', 'types', 'typing'}
 FORBIDDEN_RUNTIME = {'socket', 'ssl', 'http', 'urllib', 'requests', 'logging', 'subprocess', 'threading', 'asyncio',

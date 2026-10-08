@@ -10,7 +10,7 @@
   "side": "long",
   "tf": "4h",
   "clock": {
-    "start": "2024-01-01T00:00:00Z",
+    "start": 1704067200000,
     "entry_cycle_delay_s": 15
   },
   "costs": {
@@ -108,20 +108,21 @@
       "reason": "AUD-07 C13a: legacy behaviour differs from the corrected contract until the AUD-07 product fix lands"
     },
     "newcore_sim": {
-      "status": "pending_adapter",
-      "reason": "NEWCORE NC-07/NC-08 adapter not built yet"
+      "status": "known_divergence",
+      "reason": "NC-07 one-add cap: this historical two-add basket is kept as legacy evidence; the NEWCORE core takes only the first safety order by design (G-GAP-DCA-ONEADD-*-01 is the NEWCORE contract)"
     },
     "newcore_live_sim": {
-      "status": "pending_adapter",
-      "reason": "NEWCORE NC-08 live-sim adapter not built yet"
+      "status": "known_divergence",
+      "reason": "NC-07 one-add cap: this historical two-add basket is kept as legacy evidence; the NEWCORE core takes only the first safety order by design (G-GAP-DCA-ONEADD-*-01 is the NEWCORE contract)"
     }
   },
   "known_divergences": [
     {
       "adapter": "legacy_backtest",
+      "divergence_id": "AUD07-C13A",
       "ticket": "AUD-07",
       "finding": "C13a",
-      "correction": "CORR-0003",
+      "correction": "CORR-0045",
       "until": "AUD-07 product fix",
       "reason": "backtest.py:419-420 fills the gapped safety orders at the open with the fee only, no slippage",
       "observed": [
@@ -134,6 +135,58 @@
           "path": "trades[0].pnl",
           "expected": "1.709147038",
           "actual": 1.709183
+        }
+      ]
+    },
+    {
+      "adapter": "newcore_live_sim",
+      "divergence_id": "NC07-ONE-ADD-CAP",
+      "ticket": "NC-07 one-add cap",
+      "finding": "the NEWCORE management core caps adds at one by design",
+      "correction": "CORR-0066",
+      "until": "never: intentional NEWCORE design (Codex ruling: historical evidence remains historical)",
+      "reason": "the NEWCORE management core places at most ONE add: only the first safety order fills at the gapped open (97.6 x 1.0002 = 97.61952); with the smaller basket the target avg + 1 ATR is reached one candle later. Observed values are the NC-07 core prediction (newcore.management.sim at nc-management 5e17446) until the NC-08 adapter runs; a different first run is re-recorded through a correction",
+      "observed": [
+        {
+          "path": "trades[0].i_out",
+          "expected": 285,
+          "actual": 286
+        },
+        {
+          "path": "trades[0].R",
+          "expected": "0.1709147038",
+          "actual": 0.089899
+        },
+        {
+          "path": "trades[0].pnl",
+          "expected": "1.709147038",
+          "actual": 0.898994
+        }
+      ]
+    },
+    {
+      "adapter": "newcore_sim",
+      "divergence_id": "NC07-ONE-ADD-CAP",
+      "ticket": "NC-07 one-add cap",
+      "finding": "the NEWCORE management core caps adds at one by design",
+      "correction": "CORR-0066",
+      "until": "never: intentional NEWCORE design (Codex ruling: historical evidence remains historical)",
+      "reason": "the NEWCORE management core places at most ONE add: only the first safety order fills at the gapped open (97.6 x 1.0002 = 97.61952); with the smaller basket the target avg + 1 ATR is reached one candle later. Observed values are the NC-07 core prediction (newcore.management.sim at nc-management 5e17446) until the NC-08 adapter runs; a different first run is re-recorded through a correction",
+      "observed": [
+        {
+          "path": "trades[0].i_out",
+          "expected": 285,
+          "actual": 286
+        },
+        {
+          "path": "trades[0].R",
+          "expected": "0.1709147038",
+          "actual": 0.089899
+        },
+        {
+          "path": "trades[0].pnl",
+          "expected": "1.709147038",
+          "actual": 0.898994
         }
       ]
     }

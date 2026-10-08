@@ -1,0 +1,79 @@
+{
+  "schema": "zb-golden-divergences/1",
+  "divergences": [
+    {
+      "id": "AUD07-C11",
+      "adapters": [
+        "legacy_backtest",
+        "legacy_engine"
+      ],
+      "ticket": "AUD-07",
+      "finding": "C11",
+      "status": "active"
+    },
+    {
+      "id": "AUD07-C13A",
+      "adapters": [
+        "legacy_backtest"
+      ],
+      "ticket": "AUD-07",
+      "finding": "C13a",
+      "status": "active"
+    },
+    {
+      "id": "AUD07-C13C",
+      "adapters": [
+        "legacy_backtest"
+      ],
+      "ticket": "AUD-07",
+      "finding": "C13c",
+      "status": "active"
+    },
+    {
+      "id": "AUD07-C13D",
+      "adapters": [
+        "legacy_backtest"
+      ],
+      "ticket": "AUD-07",
+      "finding": "C13d",
+      "status": "active"
+    },
+    {
+      "id": "AUD07-C13G",
+      "adapters": [
+        "legacy_engine"
+      ],
+      "ticket": "AUD-07",
+      "finding": "C13g",
+      "status": "active"
+    },
+    {
+      "id": "AUD07-TP-GAP-OPEN",
+      "adapters": [
+        "legacy_backtest"
+      ],
+      "ticket": "AUD-07",
+      "finding": "TP gap at the open (pre-existing, outside C13f)",
+      "status": "active"
+    },
+    {
+      "id": "AUD08-STOP-CROSSED-CODE",
+      "adapters": [
+        "legacy_backtest"
+      ],
+      "ticket": "AUD-08",
+      "finding": "STOP_CROSSED folded into stop",
+      "status": "active"
+    },
+    {
+      "id": "NC07-ONE-ADD-CAP",
+      "adapters": [
+        "newcore_live_sim",
+        "newcore_sim"
+      ],
+      "ticket": "NC-07 one-add cap",
+      "finding": "the NEWCORE management core caps adds at one by design",
+      "status": "active"
+    }
+  ]
+}
