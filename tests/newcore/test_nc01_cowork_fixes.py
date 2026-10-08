@@ -86,3 +86,49 @@ def test_no_domain_logic_parses_an_id():
                 if isinstance(node, ast.Subscript) and isinstance(node.slice, ast.Slice) and '_id' in ast.unparse(node.value):
                     hits.append(f'{fn}:{node.lineno} {ast.unparse(node)}')
     assert hits == []
+
+
+# ----------------------------------------------------------------------------------------------------------- S05
+def _with_reduce(qty, *, extra=(), purpose=None):
+    from decimal import Decimal as D
+    from newcore.domain import IntentState, Purpose
+    from nc01_factories import replace
+    p, ids = F.single_lot_portfolio(92, stop_state='confirmed')            # one lot of 1.5
+    lt = p.lots[0]
+    red = F.intent(ids, p.account_id, purpose or Purpose.REDUCE, lt.symbol, lt.side, D(qty), owner_id=lt.lot_id,
+                   state=IntentState.SUBMITTED)
+    lot = replace(lt, in_flight=red.intent_id)
+    return lambda: replace(p, positions=(replace(p.positions[0], lots=(lot,)),),
+                           intents=p.intents + (red,) + tuple(f(ids, p, lt) for f in extra))
+
+
+def test_a_reducing_intent_is_bounded_by_its_lot():
+    """S05: a lot of 1.5 with a REDUCE of 1000 built a Portfolio."""
+    from newcore.domain import InvalidRecord, Purpose
+    for qty in ('1000', '1.51'):
+        for purpose in (Purpose.REDUCE, Purpose.CLOSE):
+            with pytest.raises(InvalidRecord, match='exceed the lot qty'):
+                _with_reduce(qty, purpose=purpose)()
+    _with_reduce('1.5')()                                                     # exactly the lot: valid
+    _with_reduce('0.5')()
+
+
+def test_reducing_intents_are_bounded_net_of_each_other():
+    """An uncarried (cancelling) reduce of the same lot still counts until it is final."""
+    from decimal import Decimal as D
+    from newcore.domain import IntentState, InvalidRecord, OwnerKind, Purpose
+    old = lambda ids, p, lt, q='1': F.intent(ids, p.account_id, Purpose.REDUCE, lt.symbol, lt.side, D(q),   # noqa: E731
+                                             owner_id=lt.lot_id, state=IntentState.CANCELLING)
+    with pytest.raises(InvalidRecord, match='exceed the lot qty'):
+        _with_reduce('1', extra=(old,))()                                    # 1 + 1 > 1.5
+    _with_reduce('1', extra=(lambda ids, p, lt: old(ids, p, lt, '0.5'),))()   # 1 + 0.5 = 1.5
+    orphan = lambda ids, p, lt: F.intent(ids, p.account_id, Purpose.CLOSE, lt.symbol, lt.side, D('1'),   # noqa: E731
+                                         owner_id=F.pf_id(p.account_id), owner_kind=OwnerKind.PORTFOLIO,
+                                         state=IntentState.CANCELLING)
+    with pytest.raises(InvalidRecord, match='exceed the position qty'):    # portfolio-owned close on the same side
+        _with_reduce('1', extra=(orphan,))()
+    stray = lambda ids, p, lt: F.intent(ids, p.account_id, Purpose.CLOSE, 'ETHUSDT', lt.side, D('1'),   # noqa: E731
+                                        owner_id=F.pf_id(p.account_id), owner_kind=OwnerKind.PORTFOLIO,
+                                        state=IntentState.CANCELLING)
+    with pytest.raises(InvalidRecord, match='exceed the position qty'):    # nothing held on that symbol at all
+        _with_reduce('1', extra=(stray,))()

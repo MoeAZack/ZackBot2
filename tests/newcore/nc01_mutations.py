@@ -91,6 +91,10 @@ MUTATIONS = {
         '    if type(rtype) is not str or rtype not in RECORD_TYPES:', '    if rtype not in RECORD_TYPES:')]),
     'I05: owner_kind ignored (orphan never recognized)': (D + 'orders.py', [(
         '        return self.owner_kind is OwnerKind.PORTFOLIO', '        return False')]),
+    'S05: reducing intents not bounded by their lot': (D + 'portfolio.py', [(
+        '        req(q <= lots[lot_id].qty,', '        req(True,')]),
+    'S05: reducing intents not bounded by the position': (D + 'portfolio.py', [(
+        '        req(q <= held.get(key, ZERO),', '        req(True,')]),
     'duplicate JSON keys': (D + 'codec.py', [("            if k in out:\n                problems.append(",
                                               "            if False:\n                problems.append(")]),
     'truncated JSON': (D + 'codec.py', [(
