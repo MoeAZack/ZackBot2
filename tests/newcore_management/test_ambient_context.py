@@ -95,6 +95,7 @@ INT_ARITH = {
     ('plan.py', "return self.candle_seconds * 1000"),
     ('presets.py', "CANDLE_SECONDS = 4 * 3600"),
     ('sim.py', "n += 1"),
+    ('driver.py', "lin[key] = n + 1"),                 # the intent-id ordinal (an int)
 }
 
 

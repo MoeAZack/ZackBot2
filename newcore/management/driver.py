@@ -46,7 +46,7 @@ from ..ports.keys import client_id_for, derive_child_intent_id
 from ..ports.venue import OrderOutcome, OutcomeKind, VenueFill
 from .actions import ActionKind
 from .core import initial_state, step
-from .plan import ManagementPlan
+from .plan import ManagementError, ManagementPlan
 from .state import Cancelled, Candle, ConfirmedFill, Leg, Rejected, Stage
 
 K = ActionKind
@@ -238,7 +238,7 @@ class _W:
             return
         self.submits.append(item)
         b = Binding(leg=item.leg, intent_id=item.intent_id, client_id=item.client_id, purpose=item.purpose,
-                    qty=item.qty, stop_price=item.stop_price, trigger=getattr(item, '_trigger', None),
+                    qty=item.qty, stop_price=item.stop_price, trigger=None,
                     reason=item.reason, state=BindState.SENT, exchange_order_id=None, filled=ZERO, executed=None,
                     current=True, core_cancelled=False, replaces=None)
         self.put(self.bindings() + [b])
@@ -277,16 +277,13 @@ def _apply_actions(w, actions):
                                        leg=Leg.STOP, purpose=Purpose.PROTECT, reason=a.reason))
             w.d['held'] = tuple(h for h in w.d['held'] if not (isinstance(h, Draft) and h.leg is Leg.STOP))
         elif a.kind in (K.PLACE_TARGET, K.REPLACE_TARGET, K.PLACE_ADD):
-            w.d['triggers'] = tuple(t for t in w.d['triggers'] if t.leg is not a.leg) + (
-                Trigger(leg=a.leg, price=a.price, qty=a.qty, reason=a.reason),)
+            pass                                         # triggers mirror the core's requests (_sync_triggers)
         elif a.kind in (K.CANCEL_TARGET, K.CANCEL_ADD):
-            armed = [t for t in w.d['triggers'] if t.leg is a.leg]
-            w.d['triggers'] = tuple(t for t in w.d['triggers'] if t.leg is not a.leg)
-            if armed:
+            flying = [b for b in w.bindings() if b.leg is a.leg and b.current]
+            if not flying:
                 w.core_in.append(Cancelled(leg=a.leg))   # never sent: the cancel is confirmed at once (a later step)
-            for b in w.bindings():                       # a fired market order cannot be cancelled: its FINAL decides
-                if b.leg is a.leg and b.current:
-                    w.replace_binding(b, core_cancelled=True)
+            for b in flying:                             # a fired market order cannot be cancelled: its FINAL decides
+                w.replace_binding(b, core_cancelled=True)
         elif a.kind in (K.TIME_EXIT, K.CLOSE, K.REDUCE):
             whole = a.qty >= w.d['pos'].qty
             purpose = Purpose.CLOSE if whole else Purpose.REDUCE
@@ -295,6 +292,29 @@ def _apply_actions(w, actions):
         else:
             raise ManagementError('driver.action', f'unmapped action {a.kind}')
     _ = plan
+
+
+TRIGGER_REASON = {Leg.TP1: R.EXIT_TP1, Leg.TP2: R.EXIT_TAKE_PROFIT}
+
+
+def _sync_triggers(w):
+    """The bot-side triggers ARE the core's requested target / add orders, less what a fired market order of that leg
+    still has in flight (so a level never fires twice for the same quantity)."""
+    pos, plan, out = w.d['pos'], w.d['plan'], []
+    for leg in (Leg.TP1, Leg.TP2, Leg.ADD):
+        o = getattr(pos, leg.value)
+        if o is None:
+            continue
+        flying = ZERO
+        for b in w.bindings():
+            if b.leg is leg and b.current:
+                cap = b.qty if b.executed is None else b.executed
+                flying = CTX.add(flying, CTX.subtract(cap, b.filled))
+        q = CTX.subtract(o.qty, flying)
+        if q > 0:
+            reason = TRIGGER_REASON.get(leg) or (R.ENTRY_PYRAMID if plan.add_is_pyramid else R.ENTRY_DCA_LEVEL)
+            out.append(Trigger(leg=leg, price=o.price, qty=q, reason=reason))
+    w.d['triggers'] = tuple(out)
 
 
 def _run_core(w, confirmed=(), candle=None, close_request=None, funding=None):
@@ -306,6 +326,7 @@ def _run_core(w, confirmed=(), candle=None, close_request=None, funding=None):
         w.d['pos'] = r.state
         w.core_in = []
         _apply_actions(w, r.actions)
+        _sync_triggers(w)
         if not w.core_in:
             return
         batch, candle, close_request, funding = tuple(w.core_in), None, None, None
@@ -329,8 +350,6 @@ def _settle(w):
         elif short > 0:                                            # a fired target / add filled short
             if b.core_cancelled:
                 w.core_in.append(Cancelled(leg=b.leg))
-            elif b.trigger is not None and not any(t.leg is b.leg for t in w.d['triggers']):
-                w.d['triggers'] = w.d['triggers'] + (Trigger(leg=b.leg, price=b.trigger, qty=short, reason=b.reason),)
     _ = plan
 
 
@@ -339,8 +358,10 @@ def _release_stop_replacements(w):
     cur = [b for b in w.bindings() if b.leg is Leg.STOP and b.current and b.state is BindState.WORKING]
     if not cur:
         return
+    held = {h.intent_id for h in w.d['held'] if isinstance(h, CancelDraft)}
     for o in w.bindings():
-        if o.leg is Leg.STOP and not o.current and o.state in (BindState.SENT, BindState.WORKING):
+        if (o.leg is Leg.STOP and not o.current and o.state in (BindState.SENT, BindState.WORKING)
+                and o.intent_id not in held):
             w.send(CancelDraft(intent_id=o.intent_id, client_id=o.client_id, route=w.d['route'], leg=Leg.STOP,
                                purpose=Purpose.PROTECT, reason=R.PROTECT_REPLACE))
 
@@ -353,6 +374,7 @@ def _finish(w):
         if not w.core_in:
             break
         _run_core(w, tuple(w.core_in))
+    _sync_triggers(w)
     return Drive(state=_view(w), submits=tuple(w.submits), cancels=tuple(w.cancels), steps=tuple(w.steps),
                  reconcile=tuple(w.reconcile))
 
@@ -434,15 +456,16 @@ def on_outcome(ds, outcome, *, submit):
 def on_mark(ds, price):
     """Fire the bot-side triggers the price has crossed (targets first, then the add), as market orders."""
     w = _W(ds)
-    s = sgn(ds.plan.side)
+    long = ds.plan.side is Side.LONG
     order = {Leg.TP1: 0, Leg.TP2: 1, Leg.ADD: 2}
     for t in sorted(armed_triggers(ds), key=lambda t: order[t.leg]):
-        if t.leg is Leg.ADD:
-            crossed = (price >= t.price) if ds.plan.add_is_pyramid == (s > 0) else (price <= t.price)
+        if t.leg is Leg.ADD:                   # a DCA add triggers on the adverse side, a pyramid add on the profit side
+            up = ds.plan.add_is_pyramid == long
             purpose, op = Purpose.ADD, Op.PLACE
         else:
-            crossed = s * (price - t.price) >= 0
+            up = long
             purpose, op = Purpose.REDUCE, Op.MANAGE
+        crossed = price >= t.price if up else price <= t.price
         if not crossed:
             continue
         w.d['triggers'] = tuple(x for x in w.d['triggers'] if x is not t)
@@ -474,10 +497,6 @@ def set_mode(ds, mode, hold_kind=None):
     return _finish(w)
 
 
-def sgn(side):
-    return 1 if side is Side.LONG else -1
-
-
 # ------------------------------------------------------------------------------------------------------ restart
 def fold(plan, *, account_id, lot_id, entry_fee, events, lineage=(), route='classic'):
     """Rebuild the driver from its durable event log: ('fills', rows) / ('outcome', outcome, submit) / ('mark', price)
@@ -497,5 +516,5 @@ def fold(plan, *, account_id, lot_id, entry_fee, events, lineage=(), route='clas
         elif kind == 'mode':
             out.append(set_mode(ds, e[1], e[2]))
         else:
-            raise ManagementErrorDriver(f'unknown event {kind!r}')
+            raise ManagementError('fold.events', f'unknown event {kind!r}')
     return tuple(out)
