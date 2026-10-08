@@ -504,3 +504,144 @@ def test_item4_resting_target_refusals():
     no_reduce_only = tuple(c for c in F.rules().capabilities if c is not Capability.REDUCE_ONLY)
     with pytest.raises(InvalidRecord, match='resting reduce-only limit is not supported'):
         F.rules(caps=no_reduce_only).check_intent(tgt)
+
+
+# ----------------------------------------------------------------------------------------- r3b ruling 5 + 6 (item 4)
+def _target_chain(seed=390, side=None):
+    """A lot of 1.5 and a resting reduce-only target of 1.0 at 112.5: decided, recorded, sent, WORKING."""
+    from decimal import Decimal as D
+    from newcore.domain import (DecisionRecorded, IntentRecorded, IntentState, IntentStateChanged, OrderType,
+                                Purpose)
+    p, ids = F.single_lot_portfolio(seed, stop_state='confirmed')
+    acct, lt = p.account_id, p.lots[0]
+    dec_id = ids.id('dec')
+    tgt = F.intent(ids, acct, Purpose.REDUCE, lt.symbol, lt.side, D('1'), owner_id=lt.lot_id,
+                   state=IntentState.PLANNED, decision_id=dec_id, reason=ReasonCode.EXIT_TP1, created=F.T0 - 10_000,
+                   order_type=OrderType.LIMIT_REDUCE_ONLY, price=D('112.5'))
+    dec = F.decision(ids, acct, Action.REDUCE, ReasonCode.EXIT_TP1, (tgt,), dec_id=dec_id, at=F.T0 - 10_000)
+    E = lambda cls, n, at, **kw: F.event(cls, ids, acct, n, at=at, **kw)                    # noqa: E731
+    chain = [E(DecisionRecorded, 1, dec.at_ms, decision=dec, reason=dec.reason),
+             E(IntentRecorded, 2, dec.at_ms, intent=F.replace(tgt, state=IntentState.DURABLE), reason=tgt.reason),
+             E(IntentStateChanged, 3, F.T0, intent_id=tgt.intent_id, from_state=IntentState.DURABLE,
+               to_state=IntentState.SUBMITTED),
+             E(IntentStateChanged, 4, F.T0 + 500, intent_id=tgt.intent_id, from_state=IntentState.SUBMITTED,
+               to_state=IntentState.WORKING)]
+    return p, ids, acct, lt, tgt, chain, E
+
+
+def _target_result(ids, tgt, phase, executed, avg, status, at=F.T0 + 60_000):
+    from decimal import Decimal as D
+    from newcore.domain import Evidence, OrderResult
+    return F.build(OrderResult, result_id=ids.id('res'), intent_id=tgt.intent_id, account_id=tgt.account_id,
+                   client_order_id=tgt.client_order_id, phase=phase, requested_qty=tgt.qty, observed_at_ms=at,
+                   exchange_order_id='4401', exchange_status=status,
+                   executed_qty=None if executed is None else D(executed), avg_price=None if avg is None else D(avg),
+                   evidence=Evidence.EXCHANGE_FINAL if phase.value == 'final' else None)
+
+
+def test_ruling5_target_is_a_reduce_only_gtc_limit_not_post_only():
+    from newcore.domain import Capability, OrderType, canonical_bytes, loads
+    pf, ids, lt, tgt = _resting_target()
+    assert tgt.order_type is OrderType.LIMIT_REDUCE_ONLY and tgt.reduce_only and not tgt.pullable
+    no_post_only = tuple(c for c in F.rules().capabilities if c is not Capability.POST_ONLY)
+    F.rules(caps=no_post_only).check_intent(tgt)                    # needs reduce-only, never post-only
+    assert loads(canonical_bytes(tgt)) == tgt
+
+
+def test_ruling5_partial_fill_then_cancel_then_fallback_to_market():
+    """The target fills 0.4 and the rest is cancelled (time exit): KNOWN partial -> CANCELLING -> FINAL partial ->
+    CANCELLED; the remaining 1.1 of the lot then closes at market."""
+    from decimal import Decimal as D
+    from newcore.domain import (DecisionRecorded, ExchangeStatus, IntentRecorded, IntentState, IntentStateChanged,
+                                Purpose, ResultObserved, ResultPhase, check_event_chain, terminal_for)
+    p, ids, acct, lt, tgt, chain, E = _target_chain()
+    known = _target_result(ids, tgt, ResultPhase.KNOWN, None, None, ExchangeStatus.PARTIALLY_FILLED,
+                           at=F.T0 + 30_000)
+    final = _target_result(ids, tgt, ResultPhase.FINAL, '0.4', '112.5', ExchangeStatus.CANCELED)
+    assert terminal_for(final) is IntentState.CANCELLED and final.booked_qty == D('0.4')
+    dec_id = ids.id('dec')
+    mkt = F.intent(ids, acct, Purpose.CLOSE, lt.symbol, lt.side, D('1.1'), owner_id=lt.lot_id,
+                   state=IntentState.PLANNED, decision_id=dec_id, reason=ReasonCode.EXIT_TIME, created=F.T0 + 61_000)
+    mdec = F.decision(ids, acct, Action.CLOSE, ReasonCode.EXIT_TIME, (mkt,), dec_id=dec_id, at=F.T0 + 61_000)
+    from newcore.domain import Evidence
+    mfill = F.build(F.OrderResult, result_id=ids.id('res'), intent_id=mkt.intent_id, account_id=acct,
+                    client_order_id=mkt.client_order_id, phase=ResultPhase.FINAL, requested_qty=mkt.qty,
+                    observed_at_ms=F.T0 + 63_000, exchange_order_id='4402', exchange_status=ExchangeStatus.FILLED,
+                    executed_qty=mkt.qty, avg_price=D('108'), evidence=Evidence.EXCHANGE_FINAL)
+    full = chain + [
+        E(ResultObserved, 5, known.observed_at_ms, result=known),
+        E(IntentStateChanged, 6, F.T0 + 59_000, intent_id=tgt.intent_id, from_state=IntentState.WORKING,
+          to_state=IntentState.CANCELLING),
+        E(ResultObserved, 7, final.observed_at_ms, result=final),
+        E(IntentStateChanged, 8, final.observed_at_ms, intent_id=tgt.intent_id, from_state=IntentState.CANCELLING,
+          to_state=IntentState.CANCELLED),
+        E(DecisionRecorded, 9, mdec.at_ms, decision=mdec, reason=mdec.reason),
+        E(IntentRecorded, 10, mdec.at_ms, intent=F.replace(mkt, state=IntentState.DURABLE), reason=mkt.reason),
+        E(IntentStateChanged, 11, F.T0 + 62_000, intent_id=mkt.intent_id, from_state=IntentState.DURABLE,
+          to_state=IntentState.SUBMITTED),
+        E(ResultObserved, 12, mfill.observed_at_ms, result=mfill),
+        E(IntentStateChanged, 13, mfill.observed_at_ms, intent_id=mkt.intent_id, from_state=IntentState.SUBMITTED,
+          to_state=IntentState.FILLED)]
+    assert check_event_chain(full) == {}
+    assert final.booked_qty + mfill.booked_qty == lt.qty                          # the lot closes exactly
+
+
+def test_ruling5_cancel_replace_of_a_resting_target():
+    """A resting target is replaced through the explicit link: by a re-priced target, or by a market close
+    (fallback) - one leg for the reduce bound either way."""
+    from decimal import Decimal as D
+    from newcore.domain import IntentState, InvalidRecord, OrderType, Purpose
+    pf, ids, lt, tgt = _resting_target()
+    old = F.replace(tgt, state=IntentState.CANCELLING)
+    others = tuple(i for i in pf.intents if i.intent_id != tgt.intent_id)
+    for order_type, price, reason in ((OrderType.LIMIT_REDUCE_ONLY, D('111'), ReasonCode.EXIT_TP1),
+                                      (OrderType.MARKET, None, ReasonCode.EXIT_TIME)):
+        new = F.intent(ids, pf.account_id, Purpose.REDUCE, lt.symbol, lt.side, tgt.qty, owner_id=lt.lot_id,
+                       state=IntentState.SUBMITTED, reason=reason, order_type=order_type, price=price,
+                       replaces=tgt.intent_id)
+        lot = F.replace(lt, in_flight=new.intent_id)
+        F.portfolio(pf.account_id, (F.position(ids, [lot]),), others + (old, new))
+        with pytest.raises(InvalidRecord, match='must be CANCELLING'):         # the old target must be cancelling
+            F.portfolio(pf.account_id, (F.position(ids, [lot]),), others + (tgt, new))
+
+
+def test_ruling5_gap_through_fills_at_the_limit_or_better():
+    """Price gaps through the target: a limit fills at its price or better, never worse (both sides)."""
+    from newcore.domain import ExchangeStatus, InvalidRecord, ResultPhase, Side, check_result_for_intent
+    p, ids, acct, lt, tgt, chain, E = _target_chain()
+    for avg in ('112.5', '115.25'):                                             # long target: sells at 112.5+
+        check_result_for_intent(tgt, _target_result(ids, tgt, ResultPhase.FINAL, '1', avg, ExchangeStatus.FILLED),
+                                F.T0)
+    with pytest.raises(InvalidRecord, match='never fills worse than its limit'):
+        check_result_for_intent(tgt, _target_result(ids, tgt, ResultPhase.FINAL, '1', '112.49',
+                                                    ExchangeStatus.FILLED), F.T0)
+    from decimal import Decimal as D
+    short = F.replace(tgt, side=Side.SHORT, price=D('90'))
+    check_result_for_intent(short, _target_result(ids, short, ResultPhase.FINAL, '1', '87', ExchangeStatus.FILLED),
+                            F.T0)                                               # short target: buys at 90-
+    with pytest.raises(InvalidRecord, match='never fills worse than its limit'):
+        check_result_for_intent(short, _target_result(ids, short, ResultPhase.FINAL, '1', '90.01',
+                                                      ExchangeStatus.FILLED), F.T0)
+
+
+def test_ruling5_restart_reads_the_resting_target_back_from_bytes():
+    from newcore.domain import Admission, EventCursor, admit, canonical_bytes, check_event_chain, loads
+    p, ids, acct, lt, tgt, chain, E = _target_chain()
+    events = [loads(canonical_bytes(ev)) for ev in chain]
+    assert events == chain
+    live = check_event_chain(events)
+    it, state, sent = live[tgt.intent_id]
+    assert it.price == tgt.price and it.order_type is tgt.order_type and state.value == 'working' and sent == F.T0
+    cur = EventCursor(account_id=acct, aggregate_id=F.pf_id(acct), last_sequence=0, applied=())
+    for ev in events:
+        cur, how = admit(cur, ev)
+        assert how is Admission.APPLY
+    pf, _, _, carried = _resting_target()
+    assert loads(canonical_bytes(pf)) == pf and carried in loads(canonical_bytes(pf)).intents
+
+
+def test_ruling6_take_profit_reasons_are_route_neutral():
+    from newcore.domain import MEANING
+    for code in (ReasonCode.EXIT_TAKE_PROFIT, ReasonCode.EXIT_BASKET_TP):
+        assert 'market' not in MEANING[code]
+    assert 'basket' in MEANING[ReasonCode.EXIT_BASKET_TP]

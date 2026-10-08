@@ -79,7 +79,9 @@ class OrderType(enum.StrEnum):
     MARKET = 'market'
     LIMIT_POST_ONLY = 'limit_post_only'   # maker
     STOP_MARKET = 'stop_market'           # protective stop
-    LIMIT_REDUCE_ONLY = 'limit_reduce_only'   # r3 DRAFT item 4: a resting reduce-only take-profit target of a lot
+    LIMIT_REDUCE_ONLY = 'limit_reduce_only'   # r3b item 4: a resting reduce-only GTC limit target of a lot (NOT
+    #                                           post-only: a marketable target fills as taker; post-only may only become
+    #                                           an optional preference later - Codex ruling 5)
 
 
 LIMIT_TYPES = frozenset({OrderType.LIMIT_POST_ONLY, OrderType.LIMIT_REDUCE_ONLY})
@@ -486,6 +488,9 @@ def check_result_for_intent(intent, result, sent_at_ms):
     ev = result.evidence
     req((ev is Evidence.EXCHANGE_EXTERNAL) <= is_post_hoc(intent), p + '.evidence',
         'exchange_external only books a post-hoc (reconcile.external_close) intent')
+    if intent.order_type is OrderType.LIMIT_REDUCE_ONLY and result.avg_price is not None:
+        better = (result.avg_price >= intent.price) if intent.side is Side.LONG else (result.avg_price <= intent.price)
+        req(better, p + '.avg_price', 'a resting target never fills worse than its limit (a gap fills at it or better)')
     if is_post_hoc(intent):
         req(sent_at_ms is None and result.phase is ResultPhase.FINAL
             and ev in (Evidence.EXCHANGE_EXTERNAL, Evidence.NOT_SENT), p + '.evidence',

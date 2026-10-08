@@ -199,6 +199,11 @@ MUTATIONS = {
     'r3 item 4: the venue grid ignores the reduce-only capability': (D + 'instrument.py', [(
         "            req(self.supports(Capability.REDUCE_ONLY), p + '.order_type',",
         "            req(True, p + '.order_type',")]),
+    'r3b ruling 5: a resting target may fill worse than its limit': (D + 'orders.py', [(
+        "        req(better, p + '.avg_price',", "        req(True, p + '.avg_price',")]),
+    'r3b ruling 5: the limit side is ignored (short target checked as long)': (D + 'orders.py', [(
+        "        better = (result.avg_price >= intent.price) if intent.side is Side.LONG else (result.avg_price <= intent.price)",
+        "        better = result.avg_price >= intent.price")]),
     'duplicate JSON keys': (D + 'codec.py', [("            if k in out:\n                problems.append(",
                                               "            if False:\n                problems.append(")]),
     'truncated JSON': (D + 'codec.py', [(
