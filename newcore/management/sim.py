@@ -67,7 +67,8 @@ def _through(price, falls, x):
 def _fill(plan, st, leg, px):
     o = getattr(st, leg.value)
     fp = market_fill(px, plan.side, plan.costs.slip, opening=leg is Leg.ADD)
-    return ConfirmedFill(leg=leg, qty=o.qty, price=fp, fee=CTX.multiply(plan.costs.taker_fee, CTX.multiply(o.qty, fp)))
+    return ConfirmedFill(fill_id=f'sim-{len(st.fills)}', leg=leg, qty=o.qty, price=fp,
+                         fee=CTX.multiply(plan.costs.taker_fee, CTX.multiply(o.qty, fp)))
 
 
 def _apply(plan, st, fill, px, out_fills, out_actions, candle=None, close_request=None):
@@ -81,7 +82,8 @@ def _apply(plan, st, fill, px, out_fills, out_actions, candle=None, close_reques
         if a.kind in MARKET and st.qty > 0:
             q = min(a.qty, st.qty)
             fp = market_fill(px, plan.side, plan.costs.slip, opening=False)
-            f = ConfirmedFill(leg=Leg.CLOSE, qty=q, price=fp, fee=CTX.multiply(plan.costs.taker_fee, CTX.multiply(q, fp)))
+            f = ConfirmedFill(fill_id=f'sim-{len(st.fills)}', leg=Leg.CLOSE, qty=q, price=fp,
+                              fee=CTX.multiply(plan.costs.taker_fee, CTX.multiply(q, fp)))
             st = _apply(plan, st, f, px, out_fills, out_actions)
     return st
 

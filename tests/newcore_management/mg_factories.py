@@ -66,5 +66,20 @@ def plan(side=LONG, *, entry='100.02', qty='5', stop='98.02', cap='12', costs=GO
     return b.plan
 
 
+def net_be(p, avg, open_fees, q):
+    """Independent fee-aware net break-even (Codex ruling 8): the level where closing q (exit slippage + exit fee) covers
+    every booked opening fee; rounded away from the average."""
+    import decimal
+    from newcore.domain.instrument import Rounding
+    with decimal.localcontext() as ctx:
+        ctx.prec = 60
+        f, s = p.costs.taker_fee, p.costs.slip
+        if p.side is LONG:
+            lvl = (avg + open_fees / q) / ((1 - s) * (1 - f))
+            return p.rules.quantize_price(+lvl.quantize(D('1e-20')), Rounding.UP)
+        lvl = (avg - open_fees / q) / ((1 + s) * (1 + f))
+        return p.rules.quantize_price(+lvl.quantize(D('1e-20')), Rounding.DOWN)
+
+
 def kinds(actions):
     return [(a.kind.value, a.leg.value) for a in actions]

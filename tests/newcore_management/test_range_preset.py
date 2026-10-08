@@ -3,7 +3,7 @@ from decimal import Decimal as D
 
 import pytest
 
-from mg_factories import GOLDEN_COSTS, LONG, SHORT, T0, path, px, rules
+from mg_factories import GOLDEN_COSTS, LONG, SHORT, T0, net_be, path, px, rules
 from newcore.management import Leg, Stage, admit_entry, average, planned_risk, range_bb_mr_v1, realized_pnl, run
 from newcore.domain.instrument import Rounding
 from newcore.management.plan import market_fill
@@ -55,13 +55,16 @@ def test_preset_time_exit_at_the_12th_candle(side):
 
 
 @pytest.mark.parametrize('side', SIDES)
-def test_preset_after_add_be_is_the_basket_average(side):
+def test_preset_after_add_be_is_the_net_break_even_of_the_basket(side):
     p = preset(side).plan
     bars = {1: ('100', '100.1', '98.9', '99.0'), 2: ('99', '100.7', '98.95', '100.6'), 3: ('100.6', '100.65', '99.4', '99.5')}
     res = run(p, path(bars, 6, side))
     assert [f.leg for f in res.fills] == [Leg.ADD, Leg.TP1, Leg.STOP]
-    be = p.rules.quantize_price(average(res.state), Rounding.UP if side is LONG else Rounding.DOWN)
-    assert be == px(side, '99.53') if side is LONG else be == D('100.46')     # avg 99.529902 / 100.469902
+    st = res.state
+    raw = p.rules.quantize_price(average(st), Rounding.UP if side is LONG else Rounding.DOWN)
+    assert raw == (px(side, '99.53') if side is LONG else D('100.46'))     # avg 99.529902 / 100.469902
+    be = net_be(p, average(st), st.open_fees, D(3))
+    assert (be > raw) if side is LONG else (be < raw)                       # the fees are covered, not the raw average
     assert res.fills[-1].qty == D(3)
     assert res.fills[-1].price == market_fill(be, side, GOLDEN_COSTS.slip, opening=False)
 

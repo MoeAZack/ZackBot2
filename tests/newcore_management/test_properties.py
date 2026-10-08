@@ -7,13 +7,19 @@ from decimal import Decimal as D
 import pytest
 
 from mg_factories import GOLDEN_COSTS, H4, LONG, SHORT, T0, ZERO_COSTS, K, rules
-from newcore.domain import Side
+from newcore.domain import DomainError, Side
 from newcore.domain.instrument import Rounding
-from newcore.management import (ActionKind as AK, Candle, ConfirmedFill, Leg, PlanRefused, Rejected, Stage, Tier,
-                                build_plan, initial_state, planned_risk, realized_pnl, run, step)
+from newcore.management import (ActionKind as AK, Cancelled, Candle, ConfirmedFill, Leg, PlanRefused, Rejected, Stage,
+                                Tier, build_plan, exit_ledger, initial_state, planned_risk, realized_pnl, risk_to_stop,
+                                run, step)
 from newcore.management.actions import MARKET, sort_key
 
 SEEDS = range(250)
+
+
+def seed_of(rng):
+    """A deterministic venue fill id from the sequence's own generator."""
+    return format(rng.getrandbits(64), '016x')
 STEPS = ('0.001', '0.1', '1', '5')
 
 
@@ -61,117 +67,218 @@ def test_planned_risk_never_exceeds_the_cap(seed):
 
 
 # ------------------------------------------------------------------------------------------------ live sequences
-def check_step(p, before, r, placed_adds, seed):
-    st = r.state
+# Cowork's attack seeds on fbd618b (PR #38: m4_pure_attack.py): 285 / 6868 (retained TP1 on the loss side), 5458 / 5502 /
+# 9993 / 17317 / 18548 (stop loosened after a STOP + ADD batch). Re-run here through this generator, plus the default
+# seeds every commit and a 20,000-sequence slow run.
+COWORK_SEEDS = (285, 6868, 5458, 5502, 9993, 17317, 18548)
+OPEN_KINDS = (AK.PLACE_STOP, AK.REPLACE_STOP, AK.PLACE_TARGET, AK.REPLACE_TARGET, AK.PLACE_ADD)
+
+
+def avg_of(st):
+    return st.basket_cost / st.basket_qty
+
+
+def check_step(p, before, r, placed_adds, seed, batch):
+    st, s = r.state, 1 if p.side is LONG else -1
     assert list(r.actions) == sorted(r.actions, key=sort_key), seed
-    tiers = [a.tier for a in r.actions]
-    assert tiers == sorted(tiers), seed
     if st.stage is Stage.ACTIVE:
         sq = st.stop.qty if st.stop else D(0)
         assert st.qty - st.closing <= sq <= st.qty, seed            # the stop covers the position, never more
+    if before.stage in (Stage.EXITING, Stage.DONE):                # a terminal exit never re-opens the plan
+        assert st.stage in (Stage.EXITING, Stage.DONE), seed
+        for a in r.actions:                                        # only shrinking a still-working stop is allowed
+            assert a.kind not in OPEN_KINDS or (a.kind is AK.REPLACE_STOP and before.stop is not None
+                                                and a.qty <= before.stop.qty), seed
+    refused_stop = any(type(e) is Rejected and e.leg is Leg.STOP for e in batch)
+    if before.stop is not None and st.stop is not None and not refused_stop:
+        assert s * (st.stop.price - before.stop.price) >= 0, seed  # the stop is never loosened
+    for a in r.actions:
+        if a.kind in (AK.PLACE_STOP, AK.REPLACE_STOP) and before.stop is not None and not refused_stop:
+            assert s * (a.price - before.stop.price) >= 0, seed
     rq = p.rules
     for a in r.actions:
         if a.qty is None:
             continue
-        assert rq.on_step(a.qty), seed                             # every quantity is on the step
+        assert rq.on_step(a.qty), seed
         if a.kind is AK.PLACE_ADD:
-            assert a.qty <= p.add_qty, seed
-            assert not before.tp1_confirmed and not st.tp1_confirmed, seed
+            assert a.qty <= p.add_qty and not before.tp1_confirmed and not st.tp1_confirmed, seed
         else:
-            assert a.qty <= st.qty, seed                           # never more than the position
+            assert a.qty <= st.qty, seed
         if a.leg is Leg.TP1 and a.kind is not AK.CANCEL_TARGET and not st.tp1_confirmed:
             assert a.qty <= p.tp1_frac * (st.qty - st.closing), seed   # floor, never round up
+    live = st.qty - st.closing
+    for o in (st.tp1, st.tp2):
+        if o is not None:
+            assert s * (o.price - avg_of(st)) > 0, seed               # targets on the profitable side
+            if o.qty != live:
+                assert o.qty >= rq.min_qty and o.qty * o.price >= rq.min_notional, seed   # venue-feasible
+    if st.tp1 is not None and st.tp2 is not None:
+        assert live - st.tp1.qty == st.tp2.qty, seed
+    if any(type(e) is ConfirmedFill and e.leg is Leg.ADD for e in batch) and st.stage is Stage.ACTIVE and st.stop:
+        assert risk_to_stop(p, st, st.stop.price, live) <= p.risk_cap, seed   # never carry above-cap risk
+    if st.stage is Stage.DONE:
+        z = realized_pnl(p, st)
+        assert not (z == 0 and (z.is_signed() or str(z) != '0')), seed
+        assert exit_ledger(p, st).realized_net == z, seed
     placed_adds += sum(a.kind is AK.PLACE_ADD for a in r.actions)
     assert placed_adds <= 1, seed                                  # the add cap is one, in the core
     return placed_adds
 
 
-def random_inputs(rng, p, st, last_actions, price, i):
-    """One plausible live input batch for `st` (fills on the step and within their orders), or a closed candle."""
+def outstanding(st):
+    """(leg, max qty) of every leg that may fill now: open orders, racing allowances, a requested close."""
+    out = [(g, getattr(st, g.value).qty) for g in (Leg.STOP, Leg.ADD, Leg.TP1, Leg.TP2) if getattr(st, g.value)]
+    out += [(r.leg, r.qty) for r in st.racing if all(r.leg is not g for g, _ in out)]
+    if st.closing > 0:
+        out.append((Leg.CLOSE, st.closing))
+    return out
+
+
+def a_fill(rng, p, st, leg, cap, price):
+    n = int(cap / p.rules.step_size)
+    if n == 0:
+        return None
+    q = p.rules.step_size * rng.choice((n, n, rng.randint(1, n)))      # full fills twice as likely as partial ones
+    o = getattr(st, leg.value) if leg is not Leg.CLOSE else None
+    px = o.price if o is not None else (p.add_price if leg is Leg.ADD else price)
+    if leg is Leg.ADD and rng.random() < 0.4:                         # an adverse / gapped add fill
+        px = max(px + (1 if p.side is LONG else -1) * D(rng.randint(0, 400)) / 100, D(1))
+    fee = (p.costs.taker_fee * q * px).quantize(D('1e-10'))
+    return ConfirmedFill(fill_id=f'r{seed_of(rng)}', leg=leg, qty=q, price=px, fee=fee)
+
+
+def random_inputs(rng, p, st, last_actions, price, i, used):
+    """One live input batch for `st` (1-3 events, authorised fills, refusals, cancel confirmations, duplicates), or a
+    closed candle. Returns (batch, candle, price, expect_refusal)."""
     roll = rng.random()
-    if roll < 0.3:
-        c = price + D(rng.randint(-150, 150)) / 100
-        c = max(c, D('1'))
+    if roll < 0.25:
+        c = max(price + D(rng.randint(-150, 150)) / 100, D('1'))
         hi, lo = max(price, c) + D(rng.randint(0, 80)) / 100, min(price, c) - D(rng.randint(0, 80)) / 100
-        return (), Candle(open_ms=T0 + i * H4, open=price, high=hi, low=max(lo, D('0.5')), close=c), c
-    if roll < 0.4 and last_actions:
+        return (), Candle(open_ms=T0 + i * H4, open=price, high=hi, low=max(lo, D('0.5')), close=c), c, False
+    if roll < 0.32 and last_actions:
         legs = {a.leg for a in last_actions if a.kind not in (AK.CANCEL_ADD, AK.CANCEL_TARGET, AK.CANCEL_STOP)}
         ok = [g for g in legs if (g is Leg.CLOSE and st.closing > 0) or (g is not Leg.CLOSE and
                                                                          getattr(st, g.value) is not None)]
         if ok:
-            return (Rejected(leg=rng.choice(sorted(ok))),), None, price
-    orders = [(g, getattr(st, g.value)) for g in (Leg.STOP, Leg.ADD, Leg.TP1, Leg.TP2) if getattr(st, g.value)]
-    if st.closing > 0:
-        orders.append((Leg.CLOSE, None))
-    late = p.has_add and st.add is None and st.add_filled < p.add_qty and st.add_phase.value == 'closed'
-    if late and rng.random() < 0.1:
-        q = p.add_qty - st.add_filled
-        return (ConfirmedFill(leg=Leg.ADD, qty=q, price=p.add_price, fee=D(0)),), None, price
-    if not orders:
-        return (), None, price
-    leg, o = rng.choice(orders)
-    cap = o.qty if o is not None else st.closing
-    if leg is not Leg.ADD:
-        cap = min(cap, st.qty)
-    n = int(cap / p.rules.step_size)
-    if n == 0:
-        return (), None, price
-    q = p.rules.step_size * rng.randint(1, n)
-    fp = o.price if o is not None else price
-    return (ConfirmedFill(leg=leg, qty=q, price=fp, fee=D(0)),), None, price
+            return (Rejected(leg=rng.choice(sorted(ok))),), None, price, False
+    if roll < 0.36 and st.racing:
+        return (Cancelled(leg=rng.choice(st.racing).leg),), None, price, False
+    if roll < 0.40 and used:
+        return (rng.choice(used),), None, price, False                   # the same venue fill again: a no-op
+    if roll < 0.43:                                                      # a fill on a leg that cannot fill
+        bad = [g for g in (Leg.TP1, Leg.TP2, Leg.ADD, Leg.CLOSE) if g not in {x for x, _ in outstanding(st)}]
+        if bad:
+            leg = rng.choice(bad)
+            q = p.rules.step_size
+            return (ConfirmedFill(fill_id=f'x{seed_of(rng)}', leg=leg, qty=q, price=price, fee=D(0)),), None, price, True
+    batch, left, pos = [], dict(outstanding(st)), st.qty
+    for _ in range(rng.choice((1, 1, 2, 3))):                            # a batch only consumes what was outstanding
+        legs = [(g, q) for g, q in left.items() if q > 0]
+        if not legs:
+            break
+        leg, cap = rng.choice(legs)
+        if leg is not Leg.ADD:
+            cap = min(cap, pos)
+        f = a_fill(rng, p, st, leg, cap, price)
+        if f is None:
+            break
+        batch.append(f)
+        left[leg] -= f.qty
+        pos = pos + f.qty if leg is Leg.ADD else pos - f.qty
+        if Leg.CLOSE in left:
+            left[Leg.CLOSE] = min(left[Leg.CLOSE], pos)
+    return tuple(batch), None, price, False
 
 
-def run_live(seed):
+def run_live(seed, steps=80):
     rng = random.Random(seed)
     p = None
     while p is None:
         p = gen_plan(rng)
-    st0 = initial_state(p, D(0))
+    st0 = initial_state(p, (p.costs.taker_fee * p.entry_qty * p.entry_price).quantize(D('1e-10')))
     r = step(p, st0)
-    placed = check_step(p, st0, r, 0, seed)
-    st, price, i, last = r.state, p.entry_price, 0, r.actions
-    for _ in range(80):
-        if st.stage is Stage.DONE:
+    placed = check_step(p, st0, r, 0, seed, ())
+    st, price, i, last, used = r.state, p.entry_price, 0, r.actions, []
+    for _ in range(steps):
+        if st.stage is Stage.DONE and not st.racing:
             break
-        conf, candle, price = random_inputs(rng, p, st, last, price, i)
+        conf, candle, price, refuse = random_inputs(rng, p, st, last, price, i, used)
+        if st.stage is Stage.DONE and candle is None and not any(type(e) is ConfirmedFill and e.leg is Leg.ADD
+                                                                     for e in conf):
+            if not conf or type(conf[0]) is not Cancelled:
+                continue
         if candle is not None:
             i += 1
         before = st
+        if refuse:
+            with pytest.raises(DomainError):
+                step(p, before, conf, candle)
+            SEEN.add(('refused', conf[0].leg))
+            continue
         r = step(p, before, conf, candle)
         assert step(p, before, conf, candle) == r, seed            # deterministic
         rebuilt = type(before)(**{f.name: getattr(before, f.name) for f in dataclasses.fields(before)})
         assert step(p, rebuilt, conf, candle) == r, seed           # same inputs from a persisted copy
-        placed = check_step(p, before, r, placed, seed)
-        if before.tp1_confirmed:
-            assert r.state.stop is None or not any(a.kind is AK.PLACE_ADD for a in r.actions), seed
-        for ev in conf:
-            if type(ev) is Rejected:
-                SEEN.add(('rejected', ev.leg))
-            elif ev.leg in (Leg.ADD, Leg.TP1) and getattr(before, ev.leg.value) is not None and \
-                    ev.qty < getattr(before, ev.leg.value).qty:
-                SEEN.add(('partial', ev.leg))
-            elif ev.leg is Leg.ADD and before.add is None:
-                SEEN.add(('late', ev.leg))
-        SEEN.update(('action', a.kind) for a in r.actions)
+        placed = check_step(p, before, r, placed, seed, conf)
+        fills = tuple(e for e in conf if type(e) is ConfirmedFill)
+        if fills:
+            again = step(p, r.state, fills)                        # the same venue fills again: idempotent
+            assert again.state.qty == r.state.qty and again.state.fills == r.state.fills, seed
+        used.extend(fills)
+        _observe(before, r, conf)
         st, last = r.state, r.actions
     return p, st
+
+
+def _observe(before, r, conf):
+    legs = [e.leg for e in conf if type(e) is ConfirmedFill]
+    for e in conf:
+        if type(e) is Rejected:
+            SEEN.add(('rejected', e.leg))
+        elif type(e) is Cancelled:
+            SEEN.add(('cancelled', e.leg))
+        elif e in before.fills:
+            SEEN.add(('duplicate', e.leg))
+        elif e.leg in (Leg.ADD, Leg.TP1) and getattr(before, e.leg.value) is not None and \
+                e.qty < getattr(before, e.leg.value).qty:
+            SEEN.add(('partial', e.leg))
+        elif e.leg is Leg.ADD and before.add is None:
+            SEEN.add(('racing', e.leg))
+    if Leg.STOP in legs and Leg.ADD in legs:
+        SEEN.add(('same_batch', 'stop+add'))
+    if r.state.stage is Stage.EXITING:
+        SEEN.add(('stage', 'exiting'))
+    if any(a.kind is AK.REDUCE and a.reason.value == 'exit.flatten' for a in r.actions) and Leg.ADD in legs:
+        SEEN.add(('action', 'add_cut'))
+    SEEN.update(('action', a.kind) for a in r.actions)
 
 
 SEEN = set()
 
 
-@pytest.mark.parametrize('seed', SEEDS)
+@pytest.mark.parametrize('seed', COWORK_SEEDS + tuple(SEEDS))
 def test_live_sequences_keep_every_invariant(seed):
     run_live(seed)
 
 
-def test_live_generator_covers_partials_refusals_and_late_adds():
-    SEEN.clear()
-    for seed in SEEDS:
+@pytest.mark.slow
+def test_live_sequences_20k():
+    for seed in range(20_000):
         run_live(seed)
-    assert {('partial', Leg.ADD), ('partial', Leg.TP1), ('late', Leg.ADD), ('rejected', Leg.STOP),
-            ('rejected', Leg.ADD), ('rejected', Leg.TP1), ('rejected', Leg.CLOSE), ('action', AK.REDUCE),
-            ('action', AK.CLOSE), ('action', AK.TIME_EXIT)} <= SEEN, sorted(map(str, SEEN))
+
+
+def test_live_generator_covers_the_attack_surface():
+    SEEN.clear()
+    for seed in COWORK_SEEDS + tuple(SEEDS):
+        run_live(seed)
+    want = {('partial', Leg.ADD), ('partial', Leg.TP1), ('racing', Leg.ADD), ('rejected', Leg.STOP),
+            ('rejected', Leg.ADD), ('rejected', Leg.TP1), ('rejected', Leg.CLOSE), ('cancelled', Leg.ADD),
+            ('duplicate', Leg.TP1), ('refused', Leg.TP1), ('refused', Leg.CLOSE), ('same_batch', 'stop+add'),
+            ('stage', 'exiting'), ('action', 'add_cut'), ('action', AK.REDUCE), ('action', AK.CLOSE),
+            ('action', AK.TIME_EXIT)}
+    assert want <= SEEN, sorted(map(str, want - SEEN))
+
+
 
 
 # ------------------------------------------------------------------------------------------------ simulated paths

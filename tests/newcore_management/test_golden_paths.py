@@ -7,7 +7,7 @@ from decimal import Decimal as D
 
 import pytest
 
-from mg_factories import (GOLDEN_COSTS, LONG, SHORT, ZERO_COSTS, K, kinds, path, plan, px, rules)
+from mg_factories import (GOLDEN_COSTS, LONG, SHORT, ZERO_COSTS, K, kinds, net_be, path, plan, px, rules)
 from newcore.domain import ReasonCode as R
 from newcore.domain.instrument import Rounding
 from newcore.management import ActionKind as AK, Leg, Stage, average, realized_pnl, run
@@ -135,7 +135,8 @@ def test_tp1_fill_then_break_even(side):
     p = tp1_plan(side)
     res = run(p, path({1: ('100', '102.1', '99.9', '102.05'), 2: ('102', '102.1', '99.5', '99.6')}, 5, side))
     tp1_px = mfill(side, px(side, '102.02'), False)
-    be = px(side, '100.02')
+    be = net_be(p, p.entry_price, FEE * 5 * p.entry_price, D('2.5'))   # fee-aware: covers the entry fee + exit costs
+    assert be == (D('100.2') if side is LONG else D('99.81'))            # never the raw average 100.02 / 99.98
     be_px = mfill(side, be, False)
     assert fills_of(res) == [(Leg.TP1, D('2.5'), tp1_px), (Leg.STOP, D('2.5'), be_px)]
     rep = [a for a in res.actions if a.kind is AK.REPLACE_STOP]

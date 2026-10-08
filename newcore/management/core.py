@@ -4,26 +4,38 @@ No IO, no clock, no venue. The same inputs always give the same state and the sa
 confirmed by the venue) and sim (fills produced by `sim.py` from the zb-path/1 candle path) run the SAME transition.
 
 When the runner calls it:
-- on every batch of CONFIRMED fills / refusals, with `closed_candle=None` (protection follows a fill at once, not at
-  the next candle close), and
+- on every batch of CONFIRMED fills / refusals / cancel confirmations, with `closed_candle=None` (protection follows a
+  fill at once, not at the next candle close), and
 - at every candle close, with that CLOSED candle (time exit, trail, stop-crossed check).
 
 One step:
-1. applies the inputs in order: `ConfirmedFill` (FINAL executions only), `Rejected` (the latest request for a leg was
-   refused; the previous order still works), then `funding`;
-2. derives the DESIRED bracket from the plan + state: stop (basket stop, tightened to break-even only after a CONFIRMED
-   TP1 fill, ratcheted by the trail at candle closes; never widened; qty = the position), the ONE add (until TP1 / time
-   exit / any close / a stop refusal; never requested twice), TP1 (floor(frac x position) at the step, skipped when that
-   floors to zero) and TP2 (the remainder), both re-anchored to the current basket average; market closes (time exit,
-   stop crossed, stop failed, requested exit; a late add or an add the stop cannot cover is flattened with REDUCE);
-3. diffs desired against requested and returns the actions in the one order of `actions.ordered`
-   (protect > close > reduce > add > release).
+1. applies the inputs in order (state.py): `ConfirmedFill` (FINAL executions of an OUTSTANDING authorised leg only,
+   deduped by venue fill id), `Rejected` (the latest request for a leg was refused; the previous order still works),
+   `Cancelled` (a cancelled leg is retired), then `funding`;
+2. a TERMINAL exit dominates: once the protective stop has filled completely (or the position closed) in this batch or
+   before, a racing add fill never re-opens the plan: the residual is closed at market under the last protective state
+   (stage EXITING), no stop is re-placed and nothing is loosened;
+3. otherwise derives the DESIRED bracket from the plan + state: stop (basket stop; tightened to a fee-aware NET
+   break-even only once the TP1 leg is COMPLETE; ratcheted by the trail at candle closes; never widened; qty = the
+   position), the ONE add (until TP1 / time exit / any close / a stop refusal; never requested twice), TP1
+   (floor(frac x position) at the step) and TP2 (the remainder), re-anchored to the current basket average and only when
+   every target leg AND the remainder are venue-feasible (min qty / notional; else the partial is skipped for one single
+   exit); market closes (time exit, stop crossed, stop failed, requested exit; a late add, an add the stop cannot cover,
+   or the part of an ACTUAL add fill that puts the risk to the stop above the cap is reduced at market);
+4. diffs desired against requested and returns the actions in the one order of `actions.ordered`
+   (protect > close > reduce > add > release). A cancelled leg keeps a racing allowance until `Cancelled(leg)`.
 
 Quantities are always rounded DOWN at the step; partial fills of the add or TP1 recompute the average, the stop quantity
 and the targets from the ACTUAL fills. The stop covers the position after every step (PositionState invariant).
 
-Restart: `PositionState` is a frozen Record holding everything step needs, so the runner persists the plan, the latest
-state and, per leg, the OrderIntent ids it created from the actions (NC-08 owns that map). Equivalently the state is
+Runner contract (HOLD and confirmation stay OUTSIDE the core, Codex ruling 10): the core emits REQUESTS. The runner
+counts only CONFIRMED (WORKING) stop coverage as protection, sends no ADD until the stop that covers the position is
+confirmed, keeps an old stop until its replacement is confirmed, dedupes fills by venue fill id before calling step, and
+applies hard-HOLD (protect / close / reduce only) itself.
+
+Restart: `PositionState` is a frozen Record holding everything step needs, including the applied fill log (dedupe and
+per-leg cumulative state) and the racing allowances, so the runner persists the plan, the latest state and, per leg, the
+OrderIntent ids it created from the actions (NC-08 owns that map). Equivalently the state is
 `replay(plan, entry_fee, inputs)` over the durable input log; tests prove both give identical results.
 """
 from __future__ import annotations
@@ -33,13 +45,15 @@ from decimal import Decimal
 
 from ..domain.base import CTX, ZERO, Record, record, req
 from ..domain.instrument import Rounding
+from ..domain.orders import Side
 from ..domain.reasons import ReasonCode
 from .actions import ActionKind, ManagementAction, ordered
-from .plan import DIV, ManagementError, ManagementPlan, better, sgn, toward_loss, toward_profit
-from .state import AddPhase, Candle, ConfirmedFill, Leg, Order, PositionState, Rejected, Stage
+from .plan import DIV, ONE, ManagementError, ManagementPlan, better, market_fill, sgn, toward_loss, toward_profit
+from .state import AddPhase, Cancelled, Candle, ConfirmedFill, LegQty, Leg, Order, PositionState, Rejected, Stage
 
 R = ReasonCode
 K = ActionKind
+ORDER_LEGS = (Leg.STOP, Leg.ADD, Leg.TP1, Leg.TP2)
 
 
 @record
@@ -64,11 +78,11 @@ def initial_state(plan, entry_fee):
     req(isinstance(plan, ManagementPlan), 'initial_state.plan', 'not a ManagementPlan')
     return PositionState(stage=Stage.NEW, qty=plan.entry_qty, basket_qty=plan.entry_qty,
                          basket_cost=CTX.multiply(plan.entry_qty, plan.entry_price), exit_qty=ZERO, exit_value=ZERO,
-                         fees=entry_fee, funding=ZERO,
+                         fees=entry_fee, open_fees=entry_fee, funding=ZERO,
                          add_phase=AddPhase.PENDING if plan.has_add else AddPhase.CLOSED, add_filled=ZERO,
-                         tp1_filled=ZERO, tp1_confirmed=False, targets_off=False, stop_locked=False,
+                         tp1_filled=ZERO, tp1_confirmed=False, tp1_done=False, targets_off=False, stop_locked=False,
                          time_exit_done=False, closing=ZERO, close_reason=None, stop=None, stop_prev=None, add=None,
-                         tp1=None, tp2=None, last_candle_open_ms=None)
+                         tp1=None, tp2=None, racing=(), fills=(), last_candle_open_ms=None)
 
 
 def average(state):
@@ -76,54 +90,101 @@ def average(state):
     return DIV.divide(state.basket_cost, state.basket_qty)
 
 
+def _canonical_zero(x):
+    return ZERO if x == 0 else x
+
+
 def realized_pnl(plan, state):
-    """Net realized PnL of a FLAT position: exit value - entry cost (side-signed) - fees - funding. Exact."""
+    """Net realized PnL of a FLAT position: exit value - entry cost (side-signed) - fees - funding. Exact; zero is the
+    one canonical Decimal('0') (never -0 / 0.0)."""
     req(state.qty == 0, 'realized_pnl', 'the position is still open')
     gross = CTX.multiply(sgn(plan.side), CTX.subtract(state.exit_value, state.basket_cost))
-    return CTX.subtract(CTX.subtract(gross, state.fees), state.funding)
+    return _canonical_zero(CTX.subtract(CTX.subtract(gross, state.fees), state.funding))
+
+
+# ------------------------------------------------------------------------------------------------------- inputs
+def _set_racing(w, leg, qty):
+    rest = [r for r in w['racing'] if r.leg is not leg]
+    if qty > 0:
+        rest.append(LegQty(leg=leg, qty=qty))
+    w['racing'] = tuple(sorted(rest, key=lambda r: tuple(Leg).index(r.leg)))
+
+
+def _racing(w, leg):
+    return next((r.qty for r in w['racing'] if r.leg is leg), ZERO)
+
+
+def _consume(w, leg, q, p):
+    """An outstanding authorised leg absorbs `q`: its open order first, else its racing allowance (a cancel requested in
+    an EARLIER step and not confirmed yet). Anything else is refused."""
+    if leg is Leg.CLOSE:
+        if not (0 < q <= w['closing']):
+            raise ManagementError(p, f'a CLOSE fill of {q} with {w["closing"]} close requested')
+        w['closing'] = CTX.subtract(w['closing'], q)
+        return
+    o = w[leg.value]
+    if o is not None:
+        if q > o.qty:
+            raise ManagementError(p, f'a {leg} fill of {q} beyond its order {o.qty}')
+        w[leg.value] = Order(price=o.price, qty=CTX.subtract(o.qty, q)) if q < o.qty else None
+        return
+    left = _racing(w, leg)
+    if not (0 < q <= left):
+        raise ManagementError(p, f'a {leg} fill of {q} on a leg with no outstanding order (unrequested / retired)')
+    _set_racing(w, leg, CTX.subtract(left, q))
 
 
 def _fills(plan, w, confirmed, flags):
     rules = plan.rules
+    seen = {f.fill_id: f for f in w['fills']}
     for i, ev in enumerate(confirmed):
         p = f'step.confirmed[{i}]'
         if type(ev) is Rejected:
             _reject(w, ev.leg, p, flags)
             continue
-        req(type(ev) is ConfirmedFill, p, 'only ConfirmedFill / Rejected are inputs')
+        if type(ev) is Cancelled:
+            if ev.leg in (Leg.ADD, Leg.TP1, Leg.TP2, Leg.STOP):
+                _set_racing(w, ev.leg, ZERO)
+            continue
+        req(type(ev) is ConfirmedFill, p, 'only ConfirmedFill / Rejected / Cancelled are inputs')
+        if ev.fill_id in seen:
+            if seen[ev.fill_id] != ev:
+                raise ManagementError(p + '.fill_id', f'fill id {ev.fill_id!r} re-used with different content')
+            continue                                                  # the same venue fill again: idempotent
         q, px, leg = ev.qty, ev.price, ev.leg
         req(rules.on_step(q), p + '.qty', f'{q} is not on the step {rules.step_size}')
-        w['fees'] = CTX.add(w['fees'], ev.fee)
         if leg is Leg.ADD:
-            o = w['add']
-            if o is not None:
-                req(q <= o.qty, p + '.qty', f'an ADD fill of {q} beyond its order {o.qty}')
-                w['add'] = Order(price=o.price, qty=CTX.subtract(o.qty, q)) if q < o.qty else None
-                if w['add'] is None:
-                    w['add_phase'] = AddPhase.CLOSED
-            req(CTX.add(w['add_filled'], q) <= (plan.add_qty or ZERO), p + '.qty', 'more than the ONE planned add')
+            wanted_before = w['add'] is not None
+            _consume(w, leg, q, p)
+            if w['add'] is None:
+                w['add_phase'] = AddPhase.CLOSED
+            if CTX.add(w['add_filled'], q) > (plan.add_qty or ZERO):
+                raise ManagementError(p + '.qty', 'more than the ONE planned add')
             w['qty'] = CTX.add(w['qty'], q)
             w['basket_qty'] = CTX.add(w['basket_qty'], q)
             w['basket_cost'] = CTX.add(w['basket_cost'], CTX.multiply(q, px))
             w['add_filled'] = CTX.add(w['add_filled'], q)
-            if o is None or w['tp1_confirmed'] or w['time_exit_done'] or w['closing'] > 0 or w['stop_locked']:
+            w['open_fees'] = CTX.add(w['open_fees'], ev.fee)
+            flags['added'] = True
+            if (not wanted_before or w['tp1_confirmed'] or w['time_exit_done'] or w['closing'] > 0
+                    or w['stop_locked'] or flags['terminal']):
                 flags['flatten'] = CTX.add(flags['flatten'], q)        # a late / unwanted add never stays open
-            continue
-        req(q <= w['qty'], p + '.qty', f'a {leg} fill of {q} beyond the position {w["qty"]}')
-        w['qty'] = CTX.subtract(w['qty'], q)
-        w['exit_qty'] = CTX.add(w['exit_qty'], q)
-        w['exit_value'] = CTX.add(w['exit_value'], CTX.multiply(q, px))
-        if leg is Leg.CLOSE:
-            w['closing'] = max(ZERO, CTX.subtract(w['closing'], q))
         else:
-            o = w[leg.value]                                         # stop / tp1 / tp2 (None = raced with a cancel)
-            if o is not None:
-                req(q <= o.qty, p + '.qty', f'a {leg} fill of {q} beyond its order {o.qty}')
-                w[leg.value] = Order(price=o.price, qty=CTX.subtract(o.qty, q)) if q < o.qty else None
+            if q > w['qty']:
+                raise ManagementError(p + '.qty', f'a {leg} fill of {q} beyond the position {w["qty"]}')
+            _consume(w, leg, q, p)
+            w['qty'] = CTX.subtract(w['qty'], q)
+            w['exit_qty'] = CTX.add(w['exit_qty'], q)
+            w['exit_value'] = CTX.add(w['exit_value'], CTX.multiply(q, px))
             if leg is Leg.TP1:
                 w['tp1_filled'] = CTX.add(w['tp1_filled'], q)
                 w['tp1_confirmed'] = True
-        w['closing'] = min(w['closing'], w['qty'])
+            if (leg is Leg.STOP and w['stop'] is None) or w['qty'] == 0:
+                flags['terminal'] = True                               # the protective exit is complete
+            w['closing'] = min(w['closing'], w['qty'])
+        w['fees'] = CTX.add(w['fees'], ev.fee)
+        seen[ev.fill_id] = ev
+        w['fills'] = w['fills'] + (ev,)
 
 
 def _reject(w, leg, p, flags):
@@ -150,6 +211,25 @@ def _reject(w, leg, p, flags):
         w['closing'], w['close_reason'] = ZERO, None
 
 
+# ---------------------------------------------------------------------------------------------------- levels
+def _feasible(plan, q, px):
+    r = plan.rules
+    return q >= r.min_qty and CTX.multiply(q, px) >= r.min_notional
+
+
+def _net_break_even(plan, w, avg):
+    """The stop level at which closing the remaining position (exit fee + slippage) still covers every booked opening fee
+    and any funding paid: never the raw average. Rounded away from the average (long UP, short DOWN)."""
+    q = w['qty']
+    cover = DIV.divide(CTX.add(w['open_fees'], max(w['funding'], ZERO)), q)
+    fee, slip = plan.costs.taker_fee, plan.costs.slip
+    if plan.side is Side.LONG:
+        lvl = DIV.divide(DIV.add(avg, cover), DIV.multiply(ONE - slip, ONE - fee))
+    else:
+        lvl = DIV.divide(DIV.subtract(avg, cover), DIV.multiply(ONE + slip, ONE + fee))
+    return plan.rules.quantize_price(lvl, toward_profit(plan.side)) if lvl > 0 else None
+
+
 def _desired_stop(plan, w, candle, avg):
     if w['qty'] == 0:
         return None
@@ -158,28 +238,59 @@ def _desired_stop(plan, w, candle, avg):
         return None if o is None else Order(price=o.price, qty=min(o.qty, w['qty']))
     side, rules = plan.side, plan.rules
     price = w['stop'].price if w['stop'] is not None else plan.stop_price
-    if plan.be_after_tp1 and w['tp1_confirmed']:              # ONLY a confirmed TP1 fill moves the stop to BE
-        price = better(side, price, rules.quantize_price(avg, toward_profit(side)))
-    if candle is not None and plan.trail_offset is not None and (w['tp1_confirmed'] or plan.tp1_frac is None):
+    if plan.be_after_tp1 and w['tp1_done']:                   # ONLY a complete, confirmed TP1 leg arms break-even
+        be = _net_break_even(plan, w, avg)
+        if be is not None:
+            price = better(side, price, be)
+    if candle is not None and plan.trail_offset is not None and (w['tp1_done'] or plan.tp1_frac is None):
         lvl = CTX.subtract(candle.close, CTX.multiply(sgn(side), plan.trail_offset))
         if lvl > 0:
             price = better(side, price, rules.quantize_price(lvl, toward_loss(side)))
     return Order(price=price, qty=w['qty'])
 
 
-def _target(plan, avg, offset, qty):
+def _level(plan, avg, offset):
     lvl = CTX.add(avg, CTX.multiply(sgn(plan.side), offset))
-    if qty <= 0 or lvl <= 0:
-        return None
-    return Order(price=plan.rules.quantize_price(lvl, toward_profit(plan.side)), qty=qty)
+    return plan.rules.quantize_price(lvl, toward_profit(plan.side)) if lvl > 0 else None
 
 
+def risk_to_stop(plan, state_or_w, stop_price, q):
+    """Loss if `q` of the position closes at `stop_price` now: side x (average cost - exit) with adverse exit slippage,
+    the exit fee, plus every booked opening fee (entry + add), priced from the ACTUAL fills (Codex ruling 1). Exact while
+    nothing was reduced (q == basket_qty), otherwise at 28 significant digits."""
+    g = state_or_w.__getitem__ if isinstance(state_or_w, dict) else lambda k: getattr(state_or_w, k)
+    if q <= 0:
+        return ZERO
+    ctx = CTX if q == g('basket_qty') else DIV
+    cost = g('basket_cost') if ctx is CTX else DIV.divide(DIV.multiply(g('basket_cost'), q), g('basket_qty'))
+    ex = market_fill(stop_price, plan.side, plan.costs.slip, opening=False)
+    out_value = ctx.multiply(q, ex)
+    loss = ctx.multiply(sgn(plan.side), ctx.subtract(cost, out_value))
+    return ctx.add(ctx.add(loss, ctx.multiply(plan.costs.taker_fee, out_value)), g('open_fees'))
+
+
+def _excess_risk(plan, w, stop, live):
+    """How much of `live` must go so the risk to the stop is back within the cap (zero when it already is)."""
+    if live <= 0 or stop is None or risk_to_stop(plan, w, stop.price, live) <= plan.risk_cap:
+        return ZERO
+    step_size = plan.rules.step_size
+    unit = DIV.divide(DIV.subtract(risk_to_stop(plan, w, stop.price, live), w['open_fees']), live)
+    if unit <= 0:
+        return ZERO                     # booked fees alone: reducing the position cannot lower them
+    room = DIV.subtract(plan.risk_cap, w['open_fees'])
+    keep = min(live, plan.rules.quantize_qty(DIV.divide(room, unit), Rounding.DOWN) if room > 0 else ZERO)
+    while keep > 0 and risk_to_stop(plan, w, stop.price, keep) > plan.risk_cap:
+        keep = CTX.subtract(keep, step_size)                      # rounding guard: never keep more than the cap allows
+    return CTX.subtract(live, max(keep, ZERO))
+
+
+# --------------------------------------------------------------------------------------------------------- step
 def step(plan, state, confirmed=(), closed_candle=None, *, close_request=None, funding=None):
     """One pure transition. See the module docstring. Raises ManagementError / InvalidRecord on impossible input."""
     req(isinstance(plan, ManagementPlan) and isinstance(state, PositionState), 'step', 'needs a plan and a state')
-    req(type(confirmed) is tuple, 'step.confirmed', 'a tuple of ConfirmedFill / Rejected')
+    req(type(confirmed) is tuple, 'step.confirmed', 'a tuple of ConfirmedFill / Rejected / Cancelled')
     if state.stage is Stage.DONE:
-        req(not confirmed and close_request is None and funding is None, 'step', 'the position is done')
+        req(close_request is None and funding is None, 'step', 'the position is done')
     w = {f.name: getattr(state, f.name) for f in dataclasses.fields(state)}
     s, side = sgn(plan.side), plan.side
     candle = closed_candle
@@ -191,7 +302,8 @@ def step(plan, state, confirmed=(), closed_candle=None, *, close_request=None, f
         if w['last_candle_open_ms'] is not None and candle.open_ms <= w['last_candle_open_ms']:
             raise ManagementError('step.closed_candle', 'candles only go forward')
         w['last_candle_open_ms'] = candle.open_ms
-    flags = {'flatten': ZERO, 'close_all': None}
+    flags = {'flatten': ZERO, 'close_all': None, 'terminal': state.stage in (Stage.EXITING, Stage.DONE),
+             'added': False}
     _fills(plan, w, confirmed, flags)
     if funding is not None:
         w['funding'] = CTX.add(w['funding'], funding)
@@ -199,70 +311,108 @@ def step(plan, state, confirmed=(), closed_candle=None, *, close_request=None, f
         req(isinstance(close_request, ReasonCode) and close_request.namespace == 'exit', 'step.close_request',
             'an exit.* reason')
         flags['close_all'] = flags['close_all'] or close_request
-    if state.stage is Stage.DONE:
+    if w['tp1_confirmed'] and w['tp1'] is None and _racing(w, Leg.TP1) == 0:
+        w['tp1_done'] = True                                     # cumulative TP1 execution reached the TP1 leg
+    if state.stage is Stage.DONE and w['qty'] == 0:
         return Step(state=PositionState(**w), actions=())
 
-    avg = DIV.divide(w['basket_cost'], w['basket_qty'])
-    des_stop = _desired_stop(plan, w, candle, avg)
-    if w['qty'] > 0 and candle is not None:
-        if des_stop is not None and CTX.multiply(s, CTX.subtract(candle.close, des_stop.price)) <= 0:
-            flags['close_all'] = flags['close_all'] or R.EXIT_STOP_CROSSED     # the level is crossed at the close
-        if plan.time_exit_candles is not None and not w['time_exit_done']:
-            if (candle.open_ms - plan.entry_candle_open_ms) // plan.tf_ms + 1 >= plan.time_exit_candles:
-                w['time_exit_done'] = True
-                flags['close_all'] = flags['close_all'] or R.EXIT_TIME
-
     acts = []
-    live = CTX.subtract(w['qty'], w['closing'])
-    if w['qty'] == 0:
-        w['closing'], w['close_reason'] = ZERO, None
-    elif flags['close_all'] is not None and live > 0:
-        reason = flags['close_all']
-        acts.append(ManagementAction(kind=K.TIME_EXIT if reason is R.EXIT_TIME else K.CLOSE, leg=Leg.CLOSE, qty=live,
-                                     price=None, reason=reason))
-        w['closing'], w['close_reason'] = w['qty'], w['close_reason'] or reason
+    avg = DIV.divide(w['basket_cost'], w['basket_qty'])
+    exiting = flags['terminal'] and w['qty'] > 0
+    des_add = des_tp1 = des_tp2 = None
+    if exiting:
+        # -------------------------------------------------------------- a terminal exit dominates a racing add
+        des_stop = None if w['stop'] is None else Order(price=w['stop'].price, qty=min(w['stop'].qty, w['qty']))
+        live = CTX.subtract(w['qty'], w['closing'])
+        if live > 0:
+            acts.append(ManagementAction(kind=K.CLOSE, leg=Leg.CLOSE, qty=live, price=None, reason=R.EXIT_FLATTEN))
+            w['closing'], w['close_reason'] = w['qty'], w['close_reason'] or R.EXIT_FLATTEN
+        w['add_phase'] = AddPhase.CLOSED
     else:
-        covered = des_stop.qty if des_stop is not None else ZERO
-        cut = min(live, max(flags['flatten'], CTX.subtract(live, covered)))
-        if cut > 0:
-            reason = R.EXIT_STOP_FAILED if covered < live else R.EXIT_FLATTEN
-            acts.append(ManagementAction(kind=K.REDUCE, leg=Leg.CLOSE, qty=cut, price=None, reason=reason))
-            w['closing'], w['close_reason'] = CTX.add(w['closing'], cut), w['close_reason'] or reason
-    if w['closing'] == 0:
-        w['close_reason'] = None
-    live = CTX.subtract(w['qty'], w['closing'])
+        # -------------------------------------------------------------- TP1 leg completion (venue tolerance)
+        if w['tp1_confirmed'] and not w['tp1_done'] and w['tp1'] is not None:
+            live0 = CTX.subtract(CTX.subtract(w['qty'], w['closing']), flags['flatten'])
+            q1 = min(w['tp1'].qty, max(live0, ZERO))
+            rest = CTX.subtract(live0, q1)
+            rest_px = _level(plan, avg, plan.tp2_offset) if plan.tp2_offset is not None else avg
+            if not (q1 > 0 and _feasible(plan, q1, w['tp1'].price) and (rest <= 0 or _feasible(plan, rest, rest_px))):
+                w['tp1_done'] = True         # the rest of the TP1 leg cannot be sent alone: it merges into one exit
+        des_stop = _desired_stop(plan, w, candle, avg)
+        if w['qty'] > 0 and candle is not None:
+            if des_stop is not None and CTX.multiply(s, CTX.subtract(candle.close, des_stop.price)) <= 0:
+                flags['close_all'] = flags['close_all'] or R.EXIT_STOP_CROSSED     # the level is crossed at the close
+            if plan.time_exit_candles is not None and not w['time_exit_done']:
+                if (candle.open_ms - plan.entry_candle_open_ms) // plan.tf_ms + 1 >= plan.time_exit_candles:
+                    w['time_exit_done'] = True
+                    flags['close_all'] = flags['close_all'] or R.EXIT_TIME
+        live = CTX.subtract(w['qty'], w['closing'])
+        if w['qty'] == 0:
+            w['closing'], w['close_reason'] = ZERO, None
+        elif flags['close_all'] is not None and live > 0:
+            reason = flags['close_all']
+            acts.append(ManagementAction(kind=K.TIME_EXIT if reason is R.EXIT_TIME else K.CLOSE, leg=Leg.CLOSE,
+                                         qty=live, price=None, reason=reason))
+            w['closing'], w['close_reason'] = w['qty'], w['close_reason'] or reason
+        else:
+            covered = des_stop.qty if des_stop is not None else ZERO
+            cut = min(live, max(flags['flatten'], CTX.subtract(live, covered)))
+            over = _excess_risk(plan, w, des_stop, CTX.subtract(live, cut)) if flags['added'] else ZERO
+            if cut > 0 or over > 0:
+                reason = (R.EXIT_STOP_FAILED if covered < live else R.EXIT_FLATTEN)
+                cut = CTX.add(cut, over)
+                acts.append(ManagementAction(kind=K.REDUCE, leg=Leg.CLOSE, qty=cut, price=None, reason=reason))
+                w['closing'], w['close_reason'] = CTX.add(w['closing'], cut), w['close_reason'] or reason
+        if w['closing'] == 0:
+            w['close_reason'] = None
+        live = CTX.subtract(w['qty'], w['closing'])
 
-    # ------------------------------------------------------------------------------------------------ the add (cap 1)
-    want_add = (plan.has_add and w['add_phase'] is not AddPhase.CLOSED and not w['tp1_confirmed']
-                and not w['time_exit_done'] and w['closing'] == 0 and not w['stop_locked'] and live > 0)
-    if w['add_phase'] is AddPhase.PENDING:
-        des_add = Order(price=plan.add_price, qty=plan.add_qty) if want_add else None
-        w['add_phase'] = AddPhase.WORKING if want_add else AddPhase.CLOSED
-    elif w['add_phase'] is AddPhase.WORKING and want_add:
-        des_add = w['add']
-    else:
-        des_add, w['add_phase'] = None, AddPhase.CLOSED
+        # ------------------------------------------------------------------------------------------ the add (cap 1)
+        want_add = (plan.has_add and w['add_phase'] is not AddPhase.CLOSED and not w['tp1_confirmed']
+                    and not w['time_exit_done'] and w['closing'] == 0 and not w['stop_locked'] and live > 0)
+        if w['add_phase'] is AddPhase.PENDING:
+            des_add = Order(price=plan.add_price, qty=plan.add_qty) if want_add else None
+            w['add_phase'] = AddPhase.WORKING if want_add else AddPhase.CLOSED
+        elif w['add_phase'] is AddPhase.WORKING and want_add:
+            des_add = w['add']
+        else:
+            w['add_phase'] = AddPhase.CLOSED
 
-    # ------------------------------------------------------------------------------- targets (re-anchored to the avg)
-    des_tp1 = des_tp2 = None
-    if live > 0 and not w['targets_off']:
-        if plan.tp1_frac is not None:
-            if not w['tp1_confirmed']:
-                q = plan.rules.quantize_qty(CTX.multiply(plan.tp1_frac, live), Rounding.DOWN)
-                des_tp1 = _target(plan, avg, plan.tp1_offset, q)          # floors to zero: skipped (C25)
-            elif w['tp1'] is not None:
-                des_tp1 = Order(price=w['tp1'].price, qty=min(w['tp1'].qty, live))
-        if plan.tp2_offset is not None:
-            des_tp2 = _target(plan, avg, plan.tp2_offset, CTX.subtract(live, des_tp1.qty if des_tp1 else ZERO))
+        # -------------------------------------------- targets: re-anchored to the avg, every leg venue-feasible
+        if live > 0 and not w['targets_off']:
+            p2 = _level(plan, avg, plan.tp2_offset) if plan.tp2_offset is not None else None
+            if plan.tp1_frac is not None and not w['tp1_done']:
+                p1 = _level(plan, avg, plan.tp1_offset)
+                if not w['tp1_confirmed']:
+                    q1 = plan.rules.quantize_qty(CTX.multiply(plan.tp1_frac, live), Rounding.DOWN)
+                elif w['tp1'] is not None:                   # retained remainder: re-anchored only to the profit side
+                    q1 = min(w['tp1'].qty, live)
+                    if CTX.multiply(s, CTX.subtract(w['tp1'].price, avg)) > 0:
+                        p1 = w['tp1'].price
+                else:
+                    q1 = ZERO
+                rest = CTX.subtract(live, q1)
+                rest_px = p2 if p2 is not None else avg
+                if (q1 > 0 and p1 is not None and _feasible(plan, q1, p1)
+                        and (rest == 0 or _feasible(plan, rest, rest_px))):
+                    des_tp1 = Order(price=p1, qty=q1)
+                elif w['tp1_confirmed']:
+                    w['tp1_done'] = True     # a retained TP1 remainder merged into one exit: the leg is complete
+            if p2 is not None:
+                q2 = CTX.subtract(live, des_tp1.qty if des_tp1 else ZERO)
+                if q2 > 0 and (q2 == live or _feasible(plan, q2, p2)):   # one full exit is always allowed
+                    des_tp2 = Order(price=p2, qty=q2)
 
     # ------------------------------------------------------------------------------------------------------ the diff
     cancel_reason = (R.LIFECYCLE_ORPHAN_CANCEL if w['qty'] == 0 else w['close_reason'] or
                      (R.EXIT_TP1 if w['tp1_confirmed'] else R.LIFECYCLE_ORPHAN_CANCEL))
+    if w['qty'] == 0:
+        des_stop = None
     cur = w['stop']
     if des_stop != cur:
         if des_stop is None:
             acts.append(ManagementAction(kind=K.CANCEL_STOP, leg=Leg.STOP, qty=None, price=None,
                                          reason=R.LIFECYCLE_ORPHAN_CANCEL))
+            _set_racing(w, Leg.STOP, CTX.add(_racing(w, Leg.STOP), cur.qty))
         elif cur is None:
             acts.append(ManagementAction(kind=K.PLACE_STOP, leg=Leg.STOP, qty=des_stop.qty, price=des_stop.price,
                                          reason=R.PROTECT_PLACE))
@@ -273,6 +423,7 @@ def step(plan, state, confirmed=(), closed_candle=None, *, close_request=None, f
         w['stop'] = des_stop
     if w['add'] is not None and des_add is None:
         acts.append(ManagementAction(kind=K.CANCEL_ADD, leg=Leg.ADD, qty=None, price=None, reason=cancel_reason))
+        _set_racing(w, Leg.ADD, CTX.add(_racing(w, Leg.ADD), w['add'].qty))
     elif w['add'] is None and des_add is not None:
         acts.append(ManagementAction(kind=K.PLACE_ADD, leg=Leg.ADD, qty=des_add.qty, price=des_add.price,
                                      reason=R.ENTRY_PYRAMID if plan.add_is_pyramid else R.ENTRY_DCA_LEVEL))
@@ -283,11 +434,17 @@ def step(plan, state, confirmed=(), closed_candle=None, *, close_request=None, f
             continue
         if des is None:
             acts.append(ManagementAction(kind=K.CANCEL_TARGET, leg=leg, qty=None, price=None, reason=cancel_reason))
+            _set_racing(w, leg, CTX.add(_racing(w, leg), cur.qty))
         else:
             acts.append(ManagementAction(kind=K.PLACE_TARGET if cur is None else K.REPLACE_TARGET, leg=leg,
                                          qty=des.qty, price=des.price, reason=why))
         w[leg.value] = des
-    w['stage'] = Stage.DONE if w['qty'] == 0 else Stage.ACTIVE
+    if w['qty'] == 0:
+        w['stage'] = Stage.DONE
+    elif exiting:
+        w['stage'] = Stage.EXITING
+    else:
+        w['stage'] = Stage.ACTIVE
     return Step(state=PositionState(**w), actions=ordered(acts))
 
 
@@ -300,3 +457,65 @@ def replay(plan, entry_fee, inputs):
         out.append(r)
         st = r.state
     return tuple(out)
+
+
+# ------------------------------------------------------------------------------------------- exit accounting (R9)
+@dataclasses.dataclass(frozen=True, slots=True, kw_only=True)
+class ExitLeg:
+    """One closing fill: gross = side x (exit - average cost) x qty, its own fee and its share of the opening fees, net,
+    R = net / risk_cap, and the running totals up to it."""
+    fill_id: str
+    leg: Leg
+    qty: Decimal
+    price: Decimal
+    gross: Decimal
+    fee: Decimal
+    open_fee_share: Decimal
+    net: Decimal
+    r: Decimal
+    running_net: Decimal
+    running_r: Decimal
+
+
+@dataclasses.dataclass(frozen=True, slots=True, kw_only=True)
+class ExitLedger:
+    legs: tuple
+    realized_net: Decimal        # running net of every exit leg minus funding (== realized_pnl once flat)
+    realized_r: Decimal
+    funding: Decimal
+
+
+def exit_ledger(plan, state):
+    """Realized PnL and R per exit leg plus running totals, for an open OR flat position (average-cost accounting; the
+    leg that flattens absorbs the rounding so the flat total equals realized_pnl exactly). 1R = plan.risk_cap."""
+    s, cap = sgn(plan.side), plan.risk_cap
+    entry_fee = CTX.subtract(state.open_fees, sum((f.fee for f in state.fills if f.leg is Leg.ADD), ZERO))
+    pos, cost, pool = plan.entry_qty, CTX.multiply(plan.entry_qty, plan.entry_price), entry_fee
+    opened, exited, fees = cost, ZERO, entry_fee               # exact cumulative totals up to the current fill
+    legs, running = [], ZERO
+    for f in state.fills:
+        fees = CTX.add(fees, f.fee)
+        if f.leg is Leg.ADD:
+            pos, cost = CTX.add(pos, f.qty), CTX.add(cost, CTX.multiply(f.qty, f.price))
+            opened, pool = CTX.add(opened, CTX.multiply(f.qty, f.price)), CTX.add(pool, f.fee)
+            continue
+        exited = CTX.add(exited, CTX.multiply(f.qty, f.price))
+        if f.qty == pos:
+            cost_out, share = cost, pool
+        else:
+            cost_out, share = DIV.divide(DIV.multiply(cost, f.qty), pos), DIV.divide(DIV.multiply(pool, f.qty), pos)
+        gross = DIV.multiply(s, DIV.subtract(CTX.multiply(f.qty, f.price), cost_out))
+        pos, cost, pool = CTX.subtract(pos, f.qty), DIV.subtract(cost, cost_out), DIV.subtract(pool, share)
+        net = DIV.subtract(DIV.subtract(gross, f.fee), share)
+        if pos == 0:                     # flat here: the exact total so far; this leg absorbs the rounding
+            net = CTX.subtract(CTX.subtract(CTX.multiply(s, CTX.subtract(exited, opened)), fees), running)
+            running = CTX.add(running, net)
+        else:
+            running = DIV.add(running, net)
+        legs.append(ExitLeg(fill_id=f.fill_id, leg=f.leg, qty=f.qty, price=f.price, gross=gross, fee=f.fee,
+                            open_fee_share=share, net=_canonical_zero(net), r=_canonical_zero(DIV.divide(net, cap)),
+                            running_net=_canonical_zero(running), running_r=_canonical_zero(DIV.divide(running, cap))))
+    realized = _canonical_zero(CTX.subtract(running, state.funding) if state.qty == 0 else
+                               DIV.subtract(running, state.funding))
+    return ExitLedger(legs=tuple(legs), realized_net=realized, realized_r=_canonical_zero(DIV.divide(realized, cap)),
+                      funding=state.funding)

@@ -1,11 +1,12 @@
 """NC-07 core rules driven directly through `step` (the live path: confirmed fills / refusals, closed candles)."""
 import dataclasses
+import itertools
 from decimal import Decimal as D
 
 import pytest
 
 from mg_factories import GOLDEN_COSTS, H4, LONG, SHORT, T0, ZERO_COSTS, candle, flat, kinds, plan, px, rules
-from newcore.domain import InvalidRecord, ReasonCode as R
+from newcore.domain import DomainError, InvalidRecord, ReasonCode as R
 from newcore.management import (ActionKind as AK, AddPhase, ConfirmedFill, Leg, ManagementError, PlanNote, PlanRefused,
                                 Rejected, Stage, StepInput, Tier, admit_entry, average, build_plan, initial_state,
                                 planned_risk, realized_pnl, replay, step)
@@ -14,8 +15,11 @@ from newcore.management.plan import sgn
 SIDES = (LONG, SHORT)
 
 
-def fill(leg, qty, price, fee='0'):
-    return ConfirmedFill(leg=leg, qty=D(qty), price=D(price), fee=D(fee))
+_IDS = itertools.count()
+
+
+def fill(leg, qty, price, fee='0', fid=None):
+    return ConfirmedFill(fill_id=fid or f'f{next(_IDS)}', leg=leg, qty=D(qty), price=D(price), fee=D(fee))
 
 
 def start(p, fee='0'):
@@ -137,17 +141,19 @@ def test_partial_add_fills_recompute_average_stop_and_targets_from_actual_fills(
 
 
 @pytest.mark.parametrize('side', SIDES)
-def test_partial_tp1_fill_moves_stop_to_be_cancels_add_and_keeps_tp1_remainder(side):
+def test_partial_tp1_fill_cancels_add_keeps_remainder_and_arms_be_only_when_complete(side):
     p = add_plan(side, costs=ZERO_COSTS)
     st = start(p).state
     tp1 = st.tp1.price
     r = step(p, st, (fill(Leg.TP1, '1', tp1),))
     st = r.state
-    assert st.tp1_confirmed and st.qty == D(4) and st.tp1.qty == D('1.5') and st.tp2.qty == D('2.5')
-    assert st.stop.qty == D(4) and st.stop.price == px(side, '100.02')
+    assert st.tp1_confirmed and not st.tp1_done and st.qty == D(4) and st.tp1.qty == D('1.5') and st.tp2.qty == D('2.5')
+    assert st.stop.qty == D(4) and st.stop.price == px(side, '98.02')       # a partial TP1 does not arm break-even
     # the partly filled TP1 order keeps working with its remainder: no new target request
     assert kinds(r.actions) == [('replace_stop', 'stop'), ('cancel_add', 'add')]
-    assert r.actions[1].reason is R.EXIT_TP1 and st.add is None
+    assert r.actions[0].reason is R.PROTECT_RESIZE and r.actions[1].reason is R.EXIT_TP1 and st.add is None
+    r = step(p, st, (fill(Leg.TP1, '1.5', tp1),))
+    assert r.state.tp1_done and r.state.stop.price == px(side, '100.02') and r.state.stop.qty == D('2.5')
 
 
 @pytest.mark.parametrize('side', SIDES)
@@ -286,14 +292,14 @@ def test_bad_inputs_are_typed_failures():
     st1 = step(p, st, (), c).state
     with pytest.raises(ManagementError):
         step(p, st1, (), flat(1))                                         # candles only go forward
-    with pytest.raises(InvalidRecord):
+    with pytest.raises(DomainError):
         step(p, st, (fill(Leg.TP1, '3', '101'),))                          # beyond its order
-    with pytest.raises(InvalidRecord):
+    with pytest.raises(DomainError):
         step(p, st, (fill(Leg.ADD, '0.0005', '99'),))                       # off the step
-    with pytest.raises(InvalidRecord):
+    with pytest.raises(DomainError):
         step(p, st, (fill(Leg.STOP, '6', '98'),))                           # beyond the position
     st2 = step(p, st, (fill(Leg.ADD, '5', '99.02'),)).state
-    with pytest.raises(InvalidRecord):
+    with pytest.raises(DomainError):
         step(p, st2, (fill(Leg.ADD, '1', '99.02'),))                        # a second add: the cap is one
 
 
@@ -345,7 +351,7 @@ def test_steps_on_a_done_position_are_inert():
     st = step(p, st, (fill(Leg.STOP, '5', '98.02'),)).state
     assert st.stage is Stage.DONE
     assert step(p, st, (), flat(0)).actions == ()
-    with pytest.raises(InvalidRecord):
+    with pytest.raises(DomainError):
         step(p, st, (fill(Leg.STOP, '1', '98'),))
 
 
