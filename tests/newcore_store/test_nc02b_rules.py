@@ -297,3 +297,13 @@ def test_legacy_files_are_rejected_untouched_and_init_proceeds_nf49():          
     log = fs.read_bytes(os.path.join(MEM_BASE, 'incidents', 'boot.jsonl'))
     assert b'legacy' not in log.replace(b'legacy_rejected', b'') or b'"legacy": "' not in log   # hashes only
     assert canonical_bytes                                                       # (import kept for the module)
+
+
+def test_a_binding_mismatch_is_reported_even_while_the_exchange_is_down():          # A11 before rule 5
+    fs, ex = reconciled()
+    from nc02b_helpers import OTHER_DIGEST
+    down = FakeExchange(digest=OTHER_DIGEST)
+    down.down = True
+    r = go(fs, down, account(OTHER_DIGEST))
+    assert r.mode is Mode.HOLD and any(i.cause == 'identity' for i in r.items)
+    assert 'hold_snapshot' in r.writes                                          # durable: A05
