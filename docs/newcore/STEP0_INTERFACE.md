@@ -25,7 +25,7 @@ constructor**. The grammar refuses a keyed decision whose key it did not build.
 | Field | Rule | Example |
 |---|---|---|
 | `strategy` | `strategy_instance(name, tf)`: `[a-z0-9_]{1,24}@<tf>`, tf ∈ 1m…1d | `trend_ema_mom@4h` |
-| `strategy_version` | `v<digits>` | `v1` |
+| `strategy_version` | canonical `v<n>`: no leading zeros (`v0`, `v1`, `v12`; `v00` and `v01` are refused) | `v1` |
 | `symbol`, `side`, `purpose` | NC-01 rules and enums | `BTCUSDT`, `LONG`, `entry` |
 | `candle_close_ms` | int UTC ms on the tf grid, = signal candle `open_ms + tf_ms` (= Binance `closeTime + 1`) | `1759924800000` |
 

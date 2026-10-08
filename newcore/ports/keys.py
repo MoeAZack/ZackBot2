@@ -29,7 +29,7 @@ TIMEFRAMES = {'1m': 60_000, '3m': 180_000, '5m': 300_000, '15m': 900_000, '30m':
               '1d': 86_400_000}
 STRATEGY_NAME_RE = re.compile(r'[a-z0-9_]{1,24}')
 STRATEGY_INSTANCE_RE = re.compile(r'([a-z0-9_]{1,24})@(' + '|'.join(TIMEFRAMES) + ')')
-VERSION_RE = re.compile(r'v[0-9]{1,6}')
+VERSION_RE = re.compile(r'v(0|[1-9][0-9]{0,5})')      # canonical: no leading zeros, so v1 and v01 cannot alias
 MAX_ORDINAL = 2 ** 31 - 1
 CLIENT_ID_PREFIX = {'classic': 'zbn1o-', 'algo': 'zbn1a-'}
 CLIENT_ID_HASH_CHARS = 26           # 130 bits of base32; total length 32 <= Binance's 36
@@ -50,7 +50,8 @@ def check_decision_key(key) -> int:
     req(isinstance(key, DecisionKey), 'key', 'an NC-01 DecisionKey')
     m = STRATEGY_INSTANCE_RE.fullmatch(key.strategy)
     req(m is not None, 'DecisionKey.strategy', f'{key.strategy!r} is not a <name>@<tf> strategy instance')
-    req(VERSION_RE.fullmatch(key.strategy_version) is not None, 'DecisionKey.strategy_version', 'v<digits>')
+    req(VERSION_RE.fullmatch(key.strategy_version) is not None, 'DecisionKey.strategy_version',
+        'canonical v<n>: no leading zeros (v0, v1, v12; never v00 / v01)')
     tf_ms = TIMEFRAMES[m.group(2)]
     req(key.candle_close_ms % tf_ms == 0, 'DecisionKey.candle_close_ms', f'not on the {m.group(2)} candle grid')
     return tf_ms
