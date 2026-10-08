@@ -398,6 +398,21 @@ def samples(seed=5):
             incident_event(ids, acct, 7, pf)]
 
 
+def detail(code, **kw):
+    """An IncidentDetail of `code` with `kw` and every other field None."""
+    from newcore.domain import IncidentDetail
+    return build(IncidentDetail, code=code, **kw)
+
+
+def _details():
+    from newcore.domain import DetailCode
+    return (detail(DetailCode.VENUE_FLAT_JOURNAL_OPEN, journal_qty=D('1.5')),
+            detail(DetailCode.VENUE_SMALLER_THAN_JOURNAL, venue_qty=D('0.5'), journal_qty=D('1.5')))
+
+
+DETAIL_FLAT, DETAIL_OTHER = _details()
+
+
 def incident(ids, acct, pf=None, kind=ReasonCode.RECONCILE_MANUAL_CLOSE, **kw):
     from newcore.domain import Incident
     lt = pf.lots[0] if pf is not None else None
@@ -405,7 +420,7 @@ def incident(ids, acct, pf=None, kind=ReasonCode.RECONCILE_MANUAL_CLOSE, **kw):
                 symbol=lt.symbol if lt else None, side=lt.side if lt else None,
                 intent_refs=(lt.in_flight,) if lt is not None and lt.in_flight else (),
                 lot_refs=(lt.lot_id,) if lt else (), position_refs=(pf.positions[0].position_id,) if pf else (),
-                evidence=(ids.id('rec'),), detail='position flat on the venue, lot open in the journal')
+                evidence=(ids.id('rec'),), detail=DETAIL_FLAT)
     base.update(kw)
     return Incident(**base)
 

@@ -189,8 +189,6 @@ MUTATIONS = {
         "            pass")]),
     'PR44 c1: incident reference tuples unbounded': (D + 'incident.py', [(
         "    req(len(values) <= MAX_REFS, path, f'at most {MAX_REFS} references')", "    pass")]),
-    'PR44 c2: key-shaped tokens journaled in detail': (D + 'incident.py', [(
-        "    req(KEY_SHAPED.search(v) is None, path,", "    req(True, path,")]),
     'PR44 c3: errors echo whole values': (D + 'errors.py', [(
         "        path, msg = _bounded(path, MAX_PATH_CHARS), _bounded(msg, MAX_MSG_CHARS)", "        pass")]),
     'PR44 c4: blank detail accepted': (D + 'base.py', [(
@@ -262,6 +260,19 @@ MUTATIONS = {
     'P1-3 emergency close: allowed without the emergency flag': (D + 'modes.py', [(
         "        return (purpose, op) in EMERGENCY_SET or (emergency_close and (purpose, op) == (Purpose.CLOSE, Op.PLACE))",
         "        return (purpose, op) in EMERGENCY_SET or (purpose, op) == (Purpose.CLOSE, Op.PLACE)")]),
+    'detail-vocab: a code may carry fields it does not define': (D + 'detail.py', [(
+        "        req(present == allowed, p + '.code',", "        req(present <= allowed, p + '.code',")]),
+    'detail-vocab: a code may omit its fields': (D + 'detail.py', [(
+        "        req(present == allowed, p + '.code',", "        req(present >= allowed, p + '.code',")]),
+    'detail-vocab: count unbounded': (D + 'detail.py', [(
+        "            req(1 <= self.count <= MAX_COUNT, p + '.count', f'1..{MAX_COUNT}')", "            pass")]),
+    'detail-vocab: negative venue quantity': (D + 'detail.py', [(
+        "            non_negative(self.venue_qty, p + '.venue_qty')", "            pass")]),
+    'detail-vocab: smaller / larger relations unchecked': (D + 'detail.py', [
+        ("            req(self.venue_qty < self.journal_qty, p + '.venue_qty', 'not smaller than the journal')", "            pass"),
+        ("            req(self.venue_qty > self.journal_qty, p + '.venue_qty', 'not larger than the journal')", "            pass")]),
+    'detail-vocab: a registered code removed': (D + 'detail.py', [(
+        "    STOP_MISSING = 'stop_missing'\n", "")]),
     'duplicate JSON keys': (D + 'codec.py', [("            if k in out:\n                problems.append(",
                                               "            if False:\n                problems.append(")]),
     'truncated JSON': (D + 'codec.py', [(

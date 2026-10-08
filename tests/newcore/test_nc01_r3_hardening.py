@@ -53,12 +53,15 @@ def _incident_event_cls():
 def test_1_the_largest_valid_incident_frames_well_under_the_journal_limit():
     from newcore.domain import IncidentRecorded
     from newcore.domain.codec import MAX_DOCUMENT_BYTES
-    from newcore.domain.incident import MAX_DETAIL, MAX_REFS
+    from newcore.domain import DetailCode
+    from newcore.domain.incident import MAX_REFS
     ids, p, inc = _incident()
     big = F.replace(inc, intent_refs=tuple(ids.id('int') for _ in range(MAX_REFS)),
                     lot_refs=tuple(ids.id('lot') for _ in range(MAX_REFS)),
                     position_refs=tuple(ids.id('pos') for _ in range(MAX_REFS)),
-                    evidence=tuple(ids.id('res') for _ in range(MAX_REFS)), detail=('ab ' * MAX_DETAIL)[:MAX_DETAIL])
+                    evidence=tuple(ids.id('res') for _ in range(MAX_REFS)),
+                    detail=F.detail(DetailCode.LATE_FILL, venue_qty=D('1234567890123456789.0123456789012345678'),
+                                    price=D('9876543210987654321.012345678901234567')))
     ev = F.event(IncidentRecorded, ids, p.account_id, 1, at=F.T0 + 600, incident=big, reason=big.kind)
     raw = canonical_bytes(ev)
     assert len(raw) < 16 * 1024 < MAX_DOCUMENT_BYTES < NEWCORE_FRAME_LIMIT
@@ -75,15 +78,22 @@ def test_1_the_largest_valid_incident_frames_well_under_the_journal_limit():
     pytest.param('secret: ' + 'c2VjcmV0LXZhbHVl' + 'LXRoYXQtaXMtbG9uZw==', id='base64_secret_shape'),
 ])
 def test_2_a_secret_shaped_token_in_detail_is_refused(detail):
+    """detail-vocab: detail is never text at all - any string (secret-shaped or not) is refused by type."""
     ids, p, inc = _incident()
-    with pytest.raises(InvalidRecord, match='key-shaped token'):
+    with pytest.raises(InvalidRecord, match='not a IncidentDetail'):
         F.replace(inc, detail=detail)
 
 
-def test_2_ordinary_detail_text_is_kept_verbatim():
+@pytest.mark.parametrize('evasion', [
+    pytest.param('sk-' + 'ab cd ef gh ij kl mn op', id='separator_split_sk'),
+    pytest.param('ghp_' + 'aaaa bbbb cccc dddd eeee', id='separator_split_ghp'),
+    pytest.param('0123 4567 89ab cdef ' * 3, id='separator_split_hex'),
+    pytest.param('venue flat, journal 1.5 open', id='ordinary_text'),
+])
+def test_2_separator_evaded_and_ordinary_text_are_refused_by_construction(evasion):
     ids, p, inc = _incident()
-    text = 'venue flat, journal 1.5 open (SOLUSDT LONG); 2 trades, last 1791400081000'
-    assert F.replace(inc, detail=text).detail == text
+    with pytest.raises(InvalidRecord, match='not a IncidentDetail'):
+        F.replace(inc, detail=evasion)
 
 
 # ----------------------------------------------------------------------------------------------------------- 3
@@ -126,9 +136,13 @@ def test_5_one_canonical_spelling_per_text():
     ids, p, inc = _incident()
     nfc, nfd = 'Café', 'Café'
     homoglyph = 'pаuse'                                   # Cyrillic small a
-    for text in (nfd, nfc, homoglyph):
+    for text in (nfd, nfc, homoglyph):                                          # venue trade ids are ASCII
         with pytest.raises(InvalidRecord, match='printable ASCII'):
-            F.replace(inc, detail=f'note {text}')
+            ExternalTrade(trade_id=f'9{text}', venue=F.Venue.BINANCE_USDM, symbol='SOLUSDT', at_ms=F.T0,
+                          qty=D('1'), price=D('1'))
+    with pytest.raises(InvalidRecord, match='whitespace only'):
+        ExternalTrade(trade_id='   ', venue=F.Venue.BINANCE_USDM, symbol='SOLUSDT', at_ms=F.T0, qty=D('1'),
+                      price=D('1'))
     with pytest.raises(InvalidRecord, match='printable ASCII'):
         ExternalTrade(trade_id='9\u0663', venue=F.Venue.BINANCE_USDM, symbol='SOLUSDT', at_ms=F.T0, qty=D('1'),
                       price=D('1'))                                       # Arabic-Indic digit
@@ -148,7 +162,7 @@ def test_6_an_incident_id_is_used_once_in_the_log():
     ids, p, inc = _incident()
     a = F.event(IncidentRecorded, ids, p.account_id, 1, at=F.T0 + 600, incident=inc, reason=inc.kind)
     b = F.event(IncidentRecorded, ids, p.account_id, 2, at=F.T0 + 700,
-                incident=F.replace(inc, detail='a second observation'), reason=inc.kind)
+                incident=F.replace(inc, detail=F.DETAIL_OTHER), reason=inc.kind)
     with pytest.raises(InvalidRecord, match='incident id .* used for a different fact'):
         check_event_chain([a, b])
     check_event_chain([a, F.replace(b, incident=F.replace(b.incident, incident_id=ids.id('inc')))])
@@ -270,7 +284,7 @@ def test_p2_1_identical_incident_replay_is_a_no_op_and_a_conflict_is_refused():
     a = F.event(IncidentRecorded, ids, p.account_id, 1, at=F.T0 + 600, incident=inc, reason=inc.kind)
     same = F.event(IncidentRecorded, ids, p.account_id, 2, at=F.T0 + 700, incident=inc, reason=inc.kind)
     check_event_chain([a, same])                                                      # the identical fact again
-    other = F.replace(same, incident=F.replace(inc, detail='a different observation'))
+    other = F.replace(same, incident=F.replace(inc, detail=F.DETAIL_OTHER))
     with pytest.raises(InvalidRecord, match='incident id .* used for a different fact'):
         check_event_chain([a, other])
     with pytest.raises(InvalidRecord, match='incident id .* used for a different fact'):
@@ -334,7 +348,7 @@ def test_rr_p1_the_snapshot_carries_the_facts_and_the_chain_is_seeded_from_it():
     same = F.event(IncidentRecorded, ids, acct, 6, at=F.T0 + 400_000, incident=inc, reason=inc.kind)
     check_event_chain([same], **seed)                                                              # incident repeat
     with pytest.raises(InvalidRecord, match='incident id .* used for a different fact'):           # incident conflict
-        check_event_chain([F.replace(same, incident=F.replace(inc, detail='changed'))], **seed)
+        check_event_chain([F.replace(same, incident=F.replace(inc, detail=F.DETAIL_OTHER))], **seed)
 
 
 def test_rr_p1_a_snapshot_without_facts_fails_closed():
@@ -469,3 +483,87 @@ def test_cw_an_error_built_from_many_values_is_still_bounded():
     with pytest.raises(InvalidRecord, match='unknown keys') as ex:
         loads(json.dumps(doc))
     assert len(str(ex.value)) < 1000
+
+
+# ================================================================ detail-vocab: the closed incident detail vocabulary
+def test_dv_every_code_has_a_meaning_and_a_field_set_and_the_registry_is_append_only():
+    import os
+    from newcore.domain import DETAIL_FIELDS, DETAIL_MEANING, DetailCode
+    pinned = open(os.path.join(os.path.dirname(__file__), 'detail_codes_v1.txt'), encoding='ascii').read().split()
+    values = [c.value for c in DetailCode]
+    assert values[:len(pinned)] == pinned                                       # append-only: never renamed / removed
+    assert set(DETAIL_MEANING) == set(DETAIL_FIELDS) == set(DetailCode)
+    assert all(len(DETAIL_MEANING[c]) > 10 for c in DetailCode)
+
+
+def _full(code):
+    from newcore.domain import ExchangeStatus
+    sample = dict(venue_qty=D('0.5'), journal_qty=D('1.5'), price=D('101.25'), count=2, at_ms=F.T0,
+                  exchange_status=ExchangeStatus.CANCELED)
+    from newcore.domain import DETAIL_FIELDS
+    return {f: sample[f] for f in DETAIL_FIELDS[code]}
+
+
+def test_dv_each_code_carries_exactly_its_fields_and_round_trips():
+    from newcore.domain import DETAIL_FIELDS, DetailCode, IncidentRecorded
+    from newcore.domain.detail import VALUE_FIELDS
+    ids, p, inc = _incident()
+    for code in DetailCode:
+        kw = _full(code)
+        if code is DetailCode.VENUE_LARGER_THAN_JOURNAL:
+            kw['venue_qty'] = D('2.5')
+        d = F.detail(code, **kw)
+        ev = F.event(IncidentRecorded, ids, p.account_id, 1, at=F.T0 + 600, incident=F.replace(inc, detail=d),
+                     reason=inc.kind)
+        assert loads(canonical_bytes(ev)) == ev                                 # strict codec round trip
+        for missing in DETAIL_FIELDS[code]:
+            with pytest.raises(InvalidRecord, match='carries exactly'):
+                F.detail(code, **{k: v for k, v in kw.items() if k != missing})
+        for extra in set(VALUE_FIELDS) - DETAIL_FIELDS[code]:
+            with pytest.raises(InvalidRecord, match='carries exactly'):
+                F.detail(code, **kw, **{extra: _full_any(extra)})
+
+
+def _full_any(field):
+    from newcore.domain import ExchangeStatus
+    return dict(venue_qty=D('0.5'), journal_qty=D('1.5'), price=D('101.25'), count=2, at_ms=F.T0,
+                exchange_status=ExchangeStatus.CANCELED)[field]
+
+
+def test_dv_typed_bounded_values():
+    from newcore.domain import DetailCode
+    C = DetailCode
+    bad = {
+        'negative venue qty': ('venue_qty', lambda: F.detail(C.LATE_FILL, venue_qty=D('-1'), price=D('1'))),
+        'zero journal qty': ('journal_qty', lambda: F.detail(C.VENUE_FLAT_JOURNAL_OPEN, journal_qty=D('0'))),
+        'zero price': ('price', lambda: F.detail(C.LATE_FILL, venue_qty=D('1'), price=D('0'))),
+        'zero count': ('count', lambda: F.detail(C.FOREIGN_ORDERS, count=0)),
+        'huge count': ('count', lambda: F.detail(C.FOREIGN_ORDERS, count=10 ** 7)),
+        'float qty': ('journal_qty', lambda: F.detail(C.VENUE_FLAT_JOURNAL_OPEN, journal_qty=1.5)),
+        'bad time': ('at_ms', lambda: F.detail(C.STALE_READ, at_ms=5)),
+        'smaller is not smaller': ('venue_qty', lambda: F.detail(C.VENUE_SMALLER_THAN_JOURNAL, venue_qty=D('2'),
+                                                                 journal_qty=D('1'))),
+        'larger is not larger': ('venue_qty', lambda: F.detail(C.VENUE_LARGER_THAN_JOURNAL, venue_qty=D('1'),
+                                                               journal_qty=D('1'))),
+        'late fill of nothing': ('venue_qty', lambda: F.detail(C.LATE_FILL, venue_qty=D('0'), price=D('1'))),
+        'code as text': ('code', lambda: F.detail('stale_read', at_ms=F.T0)),
+    }
+    for name, (field, build) in bad.items():
+        with pytest.raises(InvalidRecord, match=field):
+            build()
+            raise AssertionError(name)
+
+
+def test_dv_the_codec_refuses_text_or_unknown_codes_in_detail():
+    import json
+    from newcore.domain import IncidentRecorded
+    ids, p, inc = _incident()
+    doc = json.loads(canonical_bytes(F.event(IncidentRecorded, ids, p.account_id, 1, at=F.T0 + 600, incident=inc,
+                                             reason=inc.kind)))
+    for body in ('venue flat, lot open', {'code': 'not_a_code', 'venue_qty': None, 'journal_qty': '1.5', 'price': None,
+                                         'count': None, 'at_ms': None, 'exchange_status': None},
+                 {**doc['body']['incident']['detail'], 'note': 'free text'}):
+        bad = json.loads(json.dumps(doc))
+        bad['body']['incident']['detail'] = body
+        with pytest.raises(InvalidRecord):
+            loads(json.dumps(bad))

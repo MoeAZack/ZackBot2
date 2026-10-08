@@ -1,11 +1,18 @@
 """Step-0 journal: header_of over real NC-01 events, the Grammar / JournalGate, the consumed-signal rule, and the
 JournalPort contract suite run against the reference in-memory journal (STEP0_INTERFACE.md sections 2-3)."""
+from decimal import Decimal as D
+
 import pytest
 
 from journal_contract import BAD, GOOD, JournalContract, _flow, flow_fallback, flow_fill_and_protect
 from nc_events import ACCT, ENTRY, KEY, LOT, PF, Scenario
 from newcore.domain import IntentState, Purpose, Side
 from newcore.domain.account import Venue
+from newcore.domain import DetailCode, IncidentDetail
+
+_NO = dict(venue_qty=None, journal_qty=None, price=None, count=None, at_ms=None, exchange_status=None)
+DETAIL_FLAT = IncidentDetail(**{**_NO, 'code': DetailCode.VENUE_FLAT_JOURNAL_OPEN, 'journal_qty': D('1.5')})
+DETAIL_OTHER = IncidentDetail(**{**_NO, 'code': DetailCode.FOREIGN_ORDERS, 'count': 2})
 from newcore.domain.events import EVENT_TYPES
 from newcore.domain.errors import InvalidRecord
 from newcore.ports import keys as K
@@ -423,13 +430,13 @@ def test_the_journal_refuses_a_reused_incident_id():
     s.entry_filled()
     inc = Incident(incident_id=make_id('inc', 1), account_id=ACCT, kind=ReasonCode.RECONCILE_MANUAL_CLOSE,
                    at_ms=s.events[-1].at_ms, symbol='SOLUSDT', side=Side.LONG, intent_refs=(), lot_refs=(LOT,),
-                   position_refs=(), evidence=(), detail='venue flat, lot open')
+                   position_refs=(), evidence=(), detail=DETAIL_FLAT)
     first = s._event(IncidentRecorded, reason=inc.kind, incident=inc)
     j = ReferenceJournal()
     for ev in s.events:
         j.append(ev)
     assert j.append(first) is Admission.ALREADY_APPLIED
-    again = s._event(IncidentRecorded, reason=inc.kind, incident=replace(inc, detail='seen again'))
+    again = s._event(IncidentRecorded, reason=inc.kind, incident=replace(inc, detail=DETAIL_OTHER))
     with pytest.raises(JournalConflict, match='incident id .* used for a different fact'):
         j.append(again)
     other = replace(again, incident=replace(inc, incident_id=make_id('inc', 2)))
@@ -507,11 +514,11 @@ def test_journal_keeps_result_ids_and_incident_ids_unique_and_late_finals_explic
         replace(late, result_id=prior.result_id)
     inc = Incident(incident_id=make_id('inc', 44), account_id=ACCT, kind=ReasonCode.RECONCILE_MANUAL_CLOSE,
                    at_ms=s.events[-1].at_ms, symbol='SOLUSDT', side=Side.LONG, intent_refs=(), lot_refs=(LOT,),
-                   position_refs=(), evidence=(), detail='venue flat')
+                   position_refs=(), evidence=(), detail=DETAIL_FLAT)
     j.append(s._event(IncidentRecorded, reason=inc.kind, incident=inc))
     assert j.append(s._event(IncidentRecorded, reason=inc.kind, incident=inc)) is Admission.APPLY   # identical fact
     restarted = ReferenceJournal(events=[loads(canonical_bytes(ev)) for ev in s.events])
-    conflict = s._event(IncidentRecorded, reason=inc.kind, incident=replace(inc, detail='something else'))
+    conflict = s._event(IncidentRecorded, reason=inc.kind, incident=replace(inc, detail=DETAIL_OTHER))
     with pytest.raises(JournalConflict, match='incident id .* used for a different fact'):
         restarted.append(conflict)
 
@@ -559,7 +566,7 @@ def test_journal_rebuilt_from_a_compacted_snapshot_keeps_its_facts():
     s = _post_hoc_close_flow()
     inc = Incident(incident_id=make_id('inc', 77), account_id=ACCT, kind=ReasonCode.RECONCILE_MANUAL_CLOSE,
                    at_ms=s.events[-1].at_ms, symbol='SOLUSDT', side=Side.LONG, intent_refs=(), lot_refs=(LOT,),
-                   position_refs=(), evidence=(), detail='venue flat')
+                   position_refs=(), evidence=(), detail=DETAIL_FLAT)
     s._event(IncidentRecorded, reason=inc.kind, incident=inc)
     booked = next(e for e in s.events if isinstance(e, ResultObserved) and e.result.external_trades).result
     facts = from_json(FactIndex, to_json(fold_facts([loads(canonical_bytes(e)) for e in s.events])), 'facts')
@@ -579,4 +586,4 @@ def test_journal_rebuilt_from_a_compacted_snapshot_keeps_its_facts():
         gate().append(nxt(s._event(ResultObserved, reason=ReasonCode.RECONCILE_EXTERNAL_CLOSE, result=reuse_id)))
     assert gate().append(nxt(s._event(IncidentRecorded, reason=inc.kind, incident=inc))) is Admission.APPLY
     with pytest.raises(JournalConflict, match='incident id .* used for a different fact'):
-        gate().append(nxt(s._event(IncidentRecorded, reason=inc.kind, incident=replace(inc, detail='changed'))))
+        gate().append(nxt(s._event(IncidentRecorded, reason=inc.kind, incident=replace(inc, detail=DETAIL_OTHER))))

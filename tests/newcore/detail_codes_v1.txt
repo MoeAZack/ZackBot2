@@ -1,0 +1,10 @@
+venue_flat_journal_open
+venue_smaller_than_journal
+venue_larger_than_journal
+foreign_orders
+stale_read
+late_fill
+stop_missing
+stop_unexpected_status
+emergency_close_placed
+journal_unavailable

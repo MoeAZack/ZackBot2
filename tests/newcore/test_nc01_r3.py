@@ -77,7 +77,7 @@ def test_item1_incident_kinds_and_references_are_typed():
         'evidence not an id': dict(evidence=('see the log',)),
         'side without symbol': dict(symbol=None, side=Side.LONG),
         'bad symbol': dict(symbol='sol usdt'),
-        'detail too long': dict(detail='x' * 161),
+        'detail as free text': dict(detail='x'),
         'kind as text': dict(kind='reconcile.manual_close'),
         'time in seconds': dict(at_ms=1_791_400_000),
     }
