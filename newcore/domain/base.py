@@ -86,7 +86,7 @@ def check_int(v, path):
 
 def check_ms(v, path):
     req(type(v) is int, path, f'a timestamp is integer UTC milliseconds, not {type(v).__name__}')
-    req(MIN_TS_MS <= v < MAX_TS_MS, path, f'{v} is not UTC milliseconds in [2000, 2100)')
+    req(MIN_TS_MS <= v <= MAX_TS_MS, path, f'{v} is not UTC milliseconds in [{MIN_TS_MS}, {MAX_TS_MS}]')
 
 
 def positive(v, path):
