@@ -42,13 +42,13 @@ sets `settle_ms=10_000` (one positionRisk lag window) and `max_attempts=4`.
 
 | Fold decision | Runner action (existing path) |
 |---|---|
-| `CANCEL_MISMATCHED_PROTECT` (Cowork L1; listed first, it runs first) | the owned stop whose venue order differs from its journal record: `_state(iv, CANCELLING)`, `venue.cancel(ref)`, `_apply(iv, answer)`. This is the same path `_close_lot` uses for a stop, so a lost cancel answer is re-queried and re-cancelled by `_sync`. `exposure_risk` (not reduce-only: a trigger could ADD exposure) is cancelled at once, also in hard HOLD (removing it can only reduce exposure; it is A24 drain work). `replacement_confirmed` is cancelled only after correct confirmed protection covers the side, and never in hard HOLD. Until then the fold keeps the R18 HOLD and the side's `PROTECT_ONLY` replacement. |
+| `CANCEL_MISMATCHED_PROTECT` (Cowork L1) | the owned stop whose venue order differs from its journal record. **Order (Cowork on 5bfe423):** the verdict lists the side's replacement `PROTECT_ONLY` first and this cancel **right after it**. The runner applies them in that order within one apply step: place the replacement, then cancel, so there is never a moment with neither. The replacement for an `exposure_risk` stop is placed as a NEW protect child of the lot even though the bad stop is still live: NC-01 replace-then-cancel (`Protection.replacement`; the M4 fold's `carrier` / `replacement` rule already supports it). It must not wait for the protect phase, which skips a lot that still has a live stop. The cancel itself uses `_close_lot`'s path (`_state(iv, CANCELLING)`, `venue.cancel(ref)`, `_apply(iv, answer)`), so a lost cancel answer is re-queried and re-cancelled by `_sync`. `exposure_risk` (not reduce-only: a trigger could ADD exposure) is cancelled without waiting for the replacement's confirmation, also in hard HOLD. Removing it can only reduce exposure: it never protected anything (in hedge mode it is the side's opening direction), so it is A24 drain work. `replacement_confirmed` is cancelled only after correct confirmed protection covers the side, and never in hard HOLD. Until then the fold keeps the R18 HOLD and the side's `PROTECT_ONLY` replacement. |
 | `PROTECT_ONLY` on an owned lot | **nothing here.** The protect phase owns lot protection: a pending close first, bounded `_secure` attempts, management flush. Re-securing from the fold would break the bounded-attempt rule (`test_4_stop_and_close_both_refused_is_bounded_never_recursion`). |
 | `PROTECT_ONLY` without a lot (surplus / unresolved fill) | owner item: incident + durable HOLD. Q3 is off: no journaled owner kind for that stop (NC-01 A3). |
 | `RESOLVE_*` from exchange evidence (`exchange_final`, `late_fill`, `partial_final`, `final_*`, `algo_stop_filled`) | `_apply(iv, <the snapshot's by-id answer>)`: the runner's own `result_from` records the venue record. One source of results, no second query. |
 | `RESOLVE_*` from corroboration (`not_found_corroborated`, `position_adopted`) | left to `_corroborate_entry`, which already journals the RECONCILE decision + result. |
 | `RESOLVE_FILLED supersedes_not_found_corroborated`, `ADOPT` | owner item (NC-01 A1 / A2 missing). |
-| `HOLD` / `QUARANTINE` | `_rec_owner_item`: one incident with evidence + owner actions, then `_hold([reason])`. Account-wide until NC-01 A4. Each item carries `incident_id` (Cowork L4): `inc_` + 32 hex derived from the account, the item and its evidence, never the clock. The runner dedupes on that id, not on an in-memory set. Once r3a's `IncidentRecorded` is journaled, a restart re-derives the same id, finds it in the journal and does not repeat the incident. Until then dedupe is per process. |
+| `HOLD` / `QUARANTINE` | `_rec_owner_item`: one incident with evidence + owner actions, then `_hold([reason])`. Account-wide until NC-01 A4. Each item carries `incident_id` (Cowork L4): `inc_` + 32 hex derived from the account, the item and the identity of its evidence. No time goes into it: not the clock, attempt or trigger, and not the read times inside the evidence. An outage or a stale-read run is therefore ONE incident, not one per read (Cowork on 5bfe423). The runner dedupes on that id, not on an in-memory set. Once r3a's `IncidentRecorded` is journaled, a restart re-derives the same id, finds it in the journal and does not repeat the incident. Until then dedupe is per process. |
 | `CLEAR_HOLD` | incident only ("clearable; owner resume until NC-01 A5"): `ModeChanged` to ACTIVE needs `operator.resume` today. |
 | `REREAD` | another pass in this cycle (at most `REC_PASSES_PER_CYCLE = 2`), else the next cycle / check-only tick. |
 
@@ -58,6 +58,15 @@ decision stay actionable there:
 - `PROTECT_ONLY a24_emergency`: the full venue exposure of an owned side (Cowork L2);
 - `CANCEL_MISMATCHED_PROTECT exposure_risk`.
 A side that has a duplicate-client-id item and already lists any stop gets no extra stop (Cowork L3).
+
+**Decided per A24 (Cowork on 5bfe423): an over-sized reduce-only stop in hard HOLD is flagged, not cancelled.**
+Example: an owned stop of qty 5 against a position of 1. It is reduce-only, so it cannot add exposure: the venue caps a
+reduce-only order at the position, and when triggered it closes at most the position. Cancelling it, or "cancelling
+down" its excess, would remove or replace live protection while nothing can be journaled, which A23 forbids. So in a
+hard HOLD it stays an R18 `order_mismatch` item for the owner, and the side's exposure is still covered by the A24
+full-side `PROTECT_ONLY`. A second reduce-only stop on the same side is harmless (reduce-only, capped). Outside hard
+HOLD the same stop is cancelled as `replacement_confirmed` once correct protection covers the side.
+Test: `test_L1_hard_hold_flags_an_oversized_reduce_only_stop_and_does_not_cancel_it`.
 
 ## 3. PENDING, REREAD and check-only cycles (plan gap 6)
 

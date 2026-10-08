@@ -151,16 +151,34 @@ def verdict_inputs(view, snap, *, now_ms, trigger, attempt, policy):
 
 
 INCIDENT_FIELDS = ('detail', 'symbol', 'side', 'intent_id', 'client_id', 'lot_id', 'qty', 'evidence')
+# Evidence tokens that carry a TIME (Cowork on 5bfe423): the incident id keeps the identity, never the moment.
+TIME_ONLY_TOKEN = re.compile(r'(now|sent|window_ends|after_ms|read|attempts):-?\d+')     # the whole token is a time
+READ_AT = re.compile(r'@-?\d+$')                                                     # 'read:positions:unknown@<ms>'
+CORROBORATION_READ = re.compile(r'read:-?\d+:(.+)')                                  # 'read:<at_ms>:<qty>'
+
+
+def _timeless(token):
+    """An evidence token without its time part (None: the token IS a time and is dropped)."""
+    if not isinstance(token, str):
+        return token
+    if TIME_ONLY_TOKEN.fullmatch(token):
+        return None
+    m = CORROBORATION_READ.fullmatch(token)
+    if m:
+        return 'read:' + m.group(1)
+    return READ_AT.sub('', token)
 
 
 def incident_id(account_id, kind, row, fields):
     """Cowork L4: the id of a HOLD / QUARANTINE item, 'inc_' + 32 hex (the NC-01 r3a Incident id shape): a tagged hash of
-    the account, the item (kind, row, detail, subject ids, qty) and the evidence it rests on. The clock, the attempt and
-    the trigger are NOT in it, so the same item re-derived after a restart has the same id and the runner can recognise
-    an incident it already journaled (IncidentRecorded, NC-01 r3a). Evidence that carries a read time (stale reads)
-    changes with each read, so each such item is a new incident by design."""
+    the account, the item (kind, row, detail, subject ids, qty) and the IDENTITY of the evidence it rests on. No time is
+    in it - not the clock, attempt or trigger, and not the read times inside the evidence (Cowork on 5bfe423: an outage
+    is one incident, not one per read) - so the same item re-derived after a restart or on the next read has the same
+    id, and the runner can recognise an incident it already journaled (IncidentRecorded, NC-01 r3a)."""
+    stable = dict(fields)
+    stable['evidence'] = tuple(t for t in (_timeless(x) for x in fields.get('evidence', ())) if t is not None)
     text = f'account={_c(account_id)},kind={_c(kind)},row={_c(row)},' + ','.join(
-        f'{name}={_c(fields.get(name))}' for name in INCIDENT_FIELDS)
+        f'{name}={_c(stable.get(name))}' for name in INCIDENT_FIELDS)
     return 'inc_' + hashlib.sha256(b'zackbot.newcore.reconcile.incident.v1\x00' + text.encode('utf-8', 'backslashreplace')
                                    ).hexdigest()[:32]
 

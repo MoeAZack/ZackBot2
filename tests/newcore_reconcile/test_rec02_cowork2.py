@@ -33,8 +33,9 @@ def test_L1_an_owned_stop_that_can_add_exposure_is_cancelled_first():
     v = reconcile(vw, s, now_ms=T)
     c, = cancels(v)
     assert (c.client_id, c.intent_id, c.detail) == (stop.client_id, stop.intent_id, 'exposure_risk')
-    assert v.decisions[0] is c                                    # before the replacement stop
-    assert v.of(K.PROTECT_ONLY)                                   # the replacement goes out too
+    p, = v.of(K.PROTECT_ONLY)                                     # the replacement goes out FIRST (Cowork, 5bfe423),
+    i, j = v.decisions.index(p), v.decisions.index(c)             # then the cancel right after it, same verdict, without
+    assert j == i + 1                                             # waiting for the replacement's confirmation
     hard = reconcile(view(lots=[lot(1, stop_intent=stop.intent_id)], intents=[stop], **HARD), s, now_ms=T)
     assert [d.detail for d in cancels(hard)] == ['exposure_risk']     # even in hard HOLD: it could add exposure
 
@@ -54,6 +55,18 @@ def test_L1_a_reduce_only_mismatched_stop_waits_for_a_confirmed_replacement():
     assert not v2.of(K.PROTECT_ONLY)
     hard = reconcile(view(lots=[lot(1, stop_intent=good.intent_id)], intents=[bad, good], **HARD), s2, now_ms=T)
     assert not cancels(hard)                                          # never removes protection in hard HOLD
+
+
+def test_L1_hard_hold_flags_an_oversized_reduce_only_stop_and_does_not_cancel_it():
+    """Decided per A24 (Cowork on 5bfe423): an over-sized REDUCE-ONLY stop (qty 5 vs position 1) cannot add exposure -
+    the venue caps a reduce-only order at the position - so in hard HOLD it is an R18 item only, never cancelled (no
+    protection is removed while nothing can be journaled); the side's exposure is still protected (A24 full side)."""
+    stop = fact(2, 'protect', stop='90', owner=LOT1)
+    vw = view(lots=[lot(1, stop_intent=stop.intent_id)], intents=[stop], **HARD)
+    v = reconcile(vw, snap(positions=[pos('1')], orders=[order(stop.client_id, qty='5')]), now_ms=T)
+    assert not cancels(v)
+    assert ('hold', 'R18', 'order_mismatch') in kinds(v)
+    assert [d.detail for d in v.of(K.PROTECT_ONLY)] == ['a24_emergency']
 
 
 # ------------------------------------------------------------------------------------------------ L2
@@ -85,6 +98,27 @@ def test_L3_a_duplicate_client_id_side_with_a_listed_stop_gets_no_extra_stop():
 
 
 # ------------------------------------------------------------------------------------------------ L4
+def test_L4b_an_outage_is_one_incident_not_one_per_read():
+    """Cowork on 5bfe423: the read TIME was in the incident id, so every unreadable / stale read was a new incident."""
+    from rec_helpers import ok, unknown
+    from newcore.domain.orders import PositionRead
+    from newcore.domain import Lookup
+    vw = view()
+    ids = {reconcile(vw, snap(pos_read=unknown(T + i * 1000), ord_read=ok([], T + i * 1000)), now_ms=T + i * 1000
+                     ).of(K.HOLD)[0].incident_id for i in range(5)}
+    assert len(ids) == 1                                             # 5 unreadable reads -> one incident
+    stale = {reconcile(vw, snap(at=T + i * 1000 - 60_000), now_ms=T + i * 1000, attempt=9).of(K.HOLD)[0].incident_id
+             for i in range(5)}
+    assert len(stale) == 1                                           # 5 stale reads at the last attempt -> one
+    e = fact(1, 'entry', state=IntentState.UNKNOWN, lookup=Lookup.NOT_FOUND, sent=T - 60_000)
+    waits = set()
+    for i in range(3):                                               # corroboration reads move on, the item does not
+        vw2 = view(intents=[e], corroboration=[(e.intent_id, (PositionRead(at_ms=T - 30_000 + i, qty=D(1)),))])
+        v = reconcile(vw2, snap(at=T + i, queries=[]), now_ms=T + i)
+        waits |= {d.incident_id for d in v.of(K.HOLD)}
+    assert len(waits) == 1
+
+
 def test_L4_incident_ids_are_deterministic_and_clock_free():
     stop = fact(2, 'protect', stop='90', owner=LOT1)
     vw = view(lots=[lot(1, stop_intent=stop.intent_id)], intents=[stop])

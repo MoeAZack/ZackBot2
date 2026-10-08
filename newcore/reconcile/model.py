@@ -57,11 +57,13 @@ class Trigger(enum.StrEnum):
 
 
 class DecisionKind(enum.StrEnum):
-    """Declaration order is the execution priority (exposure risk first, then protection, the HOLD lift last)."""
-    # cancel an OWNED stop that does not match its journal record: at once when it can ADD exposure (not reduce-only),
-    # else only once a correct replacement is confirmed and covers the side (never removes the last protection)
-    CANCEL_MISMATCHED_PROTECT = 'cancel_mismatched_protect'
+    """Declaration order is the execution priority (protection first, the HOLD lift last)."""
     PROTECT_ONLY = 'protect_only'                    # place reduce-only protection for uncovered qty; adopts nothing
+    # cancel an OWNED stop that does not match its journal record, RIGHT AFTER the replacement PROTECT_ONLY of the same
+    # verdict (never before it: there is never a moment with neither). When it can ADD exposure (not reduce-only) the
+    # cancel goes out without waiting for the replacement's confirmation; otherwise only once a correct replacement is
+    # confirmed and covers the side (never removes the last protection).
+    CANCEL_MISMATCHED_PROTECT = 'cancel_mismatched_protect'
     RESOLVE_FILLED = 'resolve_filled'                # an owned intent executed qty (exchange evidence)
     RESOLVE_NOT_EXECUTED = 'resolve_not_executed'    # an owned intent ended with nothing executed (exchange evidence)
     ADOPT = 'adopt'                                  # take venue truth the journal lacks (external reduction, Q2)
