@@ -609,7 +609,9 @@ class Runner:
         if not lots:
             return mem
         read = getattr(self.venue, 'trades', None)
-        since = min(x.entry.intent.created_at_ms for x in lots)
+        since = self._lots_since(symbol, side, lots)                      # the earliest proven fill of the lots
+        if since is None:
+            return None                                                   # an entry's fills unproven: UNKNOWN
         tr = read(symbol, side, since) if read is not None else None
         rows, why = rows_of(tr, symbol=symbol, now=self.now, side=side, since=since,
                             expect=self._known_fills(lots)) if tr is not None else (None, 'no trades read')
@@ -642,6 +644,22 @@ class Runner:
             if c > 0 and self._is_emergency_order(symbol, side, eoid, c):
                 return True
         return False
+
+    def _lots_since(self, symbol, side, lots):
+        """Where the trades window of these lots starts: the earliest of each entry intent's creation and its order's
+        PROVEN fills (a recovered / adopted entry is recorded after it filled - its intent is younger than its fill).
+        None when an entry's fills are not proven."""
+        since = min(x.entry.intent.created_at_ms for x in lots)
+        for x in lots:
+            e = x.entry.final
+            if e is None or not e.exchange_order_id or not e.executed_qty:
+                continue
+            rows, _ = rows_of(self.venue.fills(symbol, e.exchange_order_id), symbol=symbol, now=self.now,
+                              eoid=e.exchange_order_id, side=side, expect={e.exchange_order_id: e.executed_qty})
+            if rows is None or not rows:
+                return None
+            since = min(since, min(f.at_ms for f in rows))
+        return since
 
     def _known_fills(self, lots):
         """{exchange order id: executed} of every fill the journal already holds for these lots (entry, adds, exits):
