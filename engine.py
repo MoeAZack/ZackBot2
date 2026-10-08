@@ -2383,7 +2383,9 @@ class Engine:
                 if d is not None: l['atr_now'] = float(d.atr.iloc[-1])
                 sg = sigs.get(f"{l['sleeve']}|{l['symbol']}")
                 sl = next((x for x in Sg['SLEEVES'] if x['id'] == l['sleeve']), None)
-                bars = (now_utc() - datetime.fromisoformat(l['opened'])).total_seconds() / TF_SEC[tf]
+                # AUD-07 C11: candles opened since the candle that holds the fill, counting the fill candle (candle index,
+                # not elapsed seconds), so "time exit after N candles" holds exactly N candles whatever the cycle latency
+                bars = math.floor(now_utc().timestamp() / TF_SEC[tf]) - math.floor(datetime.fromisoformat(l['opened']).timestamp() / TF_SEC[tf])
                 ex = sg and (sg['lx'] if l['side'] == 'LONG' else sg['sx'])
                 ex0 = bool(ex)                                         # T05a: the exit signal before the runner override
                 run = l['mgmt'].get('runner')
