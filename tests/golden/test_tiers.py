@@ -92,6 +92,8 @@ def test_a_broken_tier_manifest_is_an_unmarked_failing_param(monkeypatch):
     monkeypatch.setattr(tiers, 'load', broken)
     params = TG._params()
     assert [p.id for p in params] == ['tiers-invalid'] and not params[0].marks
+    with pytest.raises(pytest.fail.Exception, match='tier manifest is invalid'):
+        TG.test_golden_case(*params[0].values)
 
 
 def test_budget_constants_are_pinned():

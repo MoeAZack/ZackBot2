@@ -131,6 +131,8 @@ def pack_trace(case_id, adapter):
 def test_golden_case(case, adapter):
     if isinstance(case, schema.CaseError):
         pytest.fail(f'golden pack does not load: {case}')
+    if isinstance(case, tiers.TierError):
+        pytest.fail(f'golden tier manifest is invalid: {case}')
     rec = pack_trace(case['id'], adapter)
     trace = adapters.Trace(trades=rec['trace']['trades'], final=rec['trace']['final'])
     mism = compare.compare(case, trace, adapter)
