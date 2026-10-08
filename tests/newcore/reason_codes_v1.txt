@@ -99,3 +99,4 @@ operator.halt
 operator.flatten
 operator.one_shot
 operator.adopt
+risk_gateway.cost_to_stop
