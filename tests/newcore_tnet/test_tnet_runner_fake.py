@@ -105,6 +105,23 @@ def test_each_expectation_can_fail(key, value):
     assert run(s).verdict == FAIL
 
 
+@pytest.mark.parametrize('skew', ['qty', 'price'])
+def test_fills_that_disagree_with_the_final_result_fail(monkeypatch, skew):
+    import dataclasses
+
+    from newcore.adapters import FakeVenue
+    orig = FakeVenue.fills
+
+    def fills(self, symbol, eoid):
+        r = orig(self, symbol, eoid)
+        bump = {'qty': {'qty': r.value[0].qty + D('0.01')}, 'price': {'price': r.value[0].price + D('0.02')}}[skew]
+        return dataclasses.replace(r, value=(dataclasses.replace(r.value[0], **bump),) + r.value[1:])
+    monkeypatch.setattr(FakeVenue, 'fills', fills)
+    r = run(spec('T03'))
+    bad = [a for a in r.assertions if not a[1]]
+    assert r.verdict == FAIL and bad and bad[0][0].startswith('fills match FINAL') and 'vs FINAL' in bad[0][2]
+
+
 def test_a_bound_breach_fails_and_the_teardown_flattens():
     s = spec('T01-long')
     s['bound']['max_orders'] = 2                                      # the close is the 3rd order
