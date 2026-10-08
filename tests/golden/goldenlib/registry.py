@@ -11,6 +11,19 @@ a reorder, a removal or a version swap fails against the base. A base tree witho
 introduces the registry) and is the only case that skips; the local pin in test_vocabulary stays as defence in depth.
 Why base-derived and not a MANIFEST digest + ledger record: the base tree is immutable evidence the change cannot rewrite, and
 the check needs no new record type; a digest in MANIFEST.json would only move the question to "who may write the record".
+
+DIVERGENCES.json (zb-golden-divergences/1, fix 2): the append-only registry of recorded legacy defects
+[{id, adapters, ticket, finding, status}], status active | retired. One defect per ID and one ID per defect: IDs are unique
+across the whole file (retired entries included) and so is the (ticket, finding) meaning. schema.validate() requires every
+case known divergence to name an ACTIVE entry, with its adapter in the entry's scope and the entry's exact ticket / finding.
+Base-derived rules (extends_divergences, applied by test_ledger to the base tree's copy): every base entry stays at its
+position with the same id, adapters, ticket and finding; the only change it may take is active -> retired; new entries are
+only appended. So a rename (the base entry's id edited), a semantic rebinding (same id, other ticket / finding / scope), a
+removal, a reorder, an un-retirement and a re-append of a retired id (duplicate) all fail; a retired id is a permanent
+tombstone. A case's divergence that the base case already carried on an adapter keeps its divergence_id while it exists
+(test_ledger rule 10), so a consistent rename through a ledgered correction fails even with a freshly appended ID.
+Registry changes need no ledger record: the registry holds no case outcome, every case-visible change (divergence_id, ticket,
+finding are inside contract_sha) is already ledgered, and the registry itself is checked against the immutable base.
 """
 import json, os, re
 
@@ -21,6 +34,13 @@ BEHAVIOURS_REL = 'tests/golden/BEHAVIOURS.json'
 BEHAVIOURS_SCHEMA = 'zb-golden-behaviours/1'
 BEHAVIOUR_ID = re.compile(r'[a-z][a-z0-9_]*')
 MEANING_MIN = 20
+DIVERGENCES_PATH = os.path.join(GOLDEN_DIR, 'DIVERGENCES.json')
+DIVERGENCES_REL = 'tests/golden/DIVERGENCES.json'
+DIVERGENCES_SCHEMA = 'zb-golden-divergences/1'
+# Stable identity of a recorded legacy defect (Codex golden r3 residual ruling point 2), e.g. AUD07-C11, AUD07-TP-GAP-OPEN.
+DIVERGENCE_ID = re.compile(r'[A-Z0-9]+(-[A-Z0-9]+)+')
+DIVERGENCE_KEYS = ('id', 'adapters', 'ticket', 'finding', 'status')
+DIVERGENCE_STATUS = ('active', 'retired')
 
 
 class RegistryError(ValueError):
@@ -105,3 +125,53 @@ def extends_behaviours(base_doc, now_doc):
          'published with (append a new ID instead)')
     lost = {k: v for k, v in bdep.items() if ndep.get(k) != v}
     _req(not lost, 'BEHAVIOURS.json', f'base deprecations {lost} were removed or re-pointed (a deprecation is permanent)')
+
+
+# ------------------------------------------------------------------ divergences
+def parse_divergences(doc, adapters, what='DIVERGENCES.json'):
+    """-> tuple of entries in registry order; RegistryError when malformed. adapters: the adapter names a scope may hold."""
+    _req(isinstance(doc, dict) and set(doc) == {'schema', 'divergences'}, what, 'exactly the keys schema, divergences')
+    _req(doc['schema'] == DIVERGENCES_SCHEMA, what, f"schema {doc['schema']!r} is not {DIVERGENCES_SCHEMA!r}")
+    ents = doc['divergences']
+    _req(isinstance(ents, list), what, 'divergences: an ordered list')
+    ids, meanings = {}, {}
+    for k, e in enumerate(ents):
+        _req(isinstance(e, dict) and set(e) == set(DIVERGENCE_KEYS), what, f'divergences[{k}]: exactly the keys {DIVERGENCE_KEYS}')
+        i = e['id']
+        _req(isinstance(i, str) and DIVERGENCE_ID.fullmatch(i), what, f'divergences[{k}]: id {i!r} must match {DIVERGENCE_ID.pattern}')
+        _req(i not in ids, what, f'divergences[{k}]: id {i!r} is already divergences[{ids.get(i)}] - an ID is never reused (a '
+             'retired ID is a permanent tombstone)')
+        ids[i] = k
+        sc = e['adapters']
+        _req(isinstance(sc, list) and sc and all(isinstance(a, str) for a in sc) and sc == sorted(set(sc)) and set(sc) <= set(adapters),
+             what, f'divergences[{k}] ({i}): adapters = a non-empty sorted list of distinct adapters from {tuple(adapters)}')
+        for f in ('ticket', 'finding'):
+            _req(isinstance(e[f], str) and e[f].strip() and e[f] == e[f].strip(), what,
+                 f'divergences[{k}] ({i}): {f} is a non-empty string without outer whitespace')
+        m = (e['ticket'], e['finding'])
+        _req(m not in meanings, what, f'divergences[{k}] ({i}): ticket/finding {m} is already recorded as {meanings.get(m)} - one '
+             'ID per recorded defect (a second ID for the same defect is a rename)')
+        meanings[m] = i
+        _req(e['status'] in DIVERGENCE_STATUS, what, f'divergences[{k}] ({i}): status must be one of {DIVERGENCE_STATUS}')
+    return tuple(ents)
+
+
+def load_divergences(adapters, path=DIVERGENCES_PATH):
+    return parse_divergences(read(path), adapters, os.path.basename(path))
+
+
+def extends_divergences(base_doc, now_doc, adapters):
+    """Fix 2 (pure): the current divergence registry extends the base one. RegistryError names the first violation."""
+    base = parse_divergences(base_doc, adapters, 'base DIVERGENCES.json')
+    now = parse_divergences(now_doc, adapters, 'DIVERGENCES.json')
+    _req(len(now) >= len(base), 'DIVERGENCES.json', f'{len(base) - len(now)} base entries were removed (retire an ID instead)')
+    for k, b in enumerate(base):
+        n = now[k]
+        _req(n['id'] == b['id'], 'DIVERGENCES.json', f"divergences[{k}] is {n['id']!r} but the base has {b['id']!r} there: a "
+             'base entry is never renamed, removed or reordered (new IDs are appended)')
+        moved = [f for f in ('adapters', 'ticket', 'finding') if n[f] != b[f]]
+        _req(not moved, 'DIVERGENCES.json', f"{b['id']}: {moved} differ from the base - an ID is never rebound to another "
+             'defect or scope (append a new ID instead)')
+        _req(n['status'] == b['status'] or (b['status'], n['status']) == ('active', 'retired'), 'DIVERGENCES.json',
+             f"{b['id']}: status {b['status']} -> {n['status']}: the only allowed change is active -> retired (a retired ID is "
+             'never reused)')

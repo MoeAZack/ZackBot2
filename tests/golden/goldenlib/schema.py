@@ -5,8 +5,8 @@ adapters it binds (`applies_to`), the recorded legacy behaviour (`known_divergen
 slot, costs, clock, account, faults, adapter_options, ...) AND the `behaviours` ID list (registry IDs that drive the per-commit
 tier gate; Codex golden r3 residual ruling point 1). Only the descriptive text (title, provenance, notes) is outside it. Any
 new top-level key is protected automatically (validate() rejects keys it does not know). Every known divergence carries a
-stable `divergence_id` (point 2): tier coverage keys on adapter + divergence_id; ticket / finding stay descriptive evidence
-(still inside the hash)."""
+stable `divergence_id` (point 2): tier coverage keys on adapter + divergence_id; ticket / finding must equal the ID's entry in
+the append-only registry DIVERGENCES.json (Codex golden r5 ruling #2; still inside the hash)."""
 import glob, hashlib, json, math, numbers, os, re
 
 from . import CASES_DIR, registry
@@ -69,7 +69,10 @@ DESCRIPTIVE = ('title', 'provenance', 'notes')     # the only keys outside the c
 CORR_ID = re.compile(r'CORR-\d{4}')
 # Stable identity of a recorded legacy defect (Codex golden r3 residual ruling point 2), e.g. AUD07-C11, AUD07-TP-GAP-OPEN.
 # Unique per adapter within a case; the same ID on several cases (or on both adapters) names the same recorded defect.
-DIVERGENCE_ID = re.compile(r'[A-Z0-9]+(-[A-Z0-9]+)+')
+# Every ID is an ACTIVE entry of the append-only registry tests/golden/DIVERGENCES.json (Codex golden r5 ruling #2) and a case
+# carries that entry's exact ticket / finding on an adapter inside its scope; test_ledger anchors the registry in the base.
+DIVERGENCE_ID = registry.DIVERGENCE_ID
+DIVERGENCE_REGISTRY = {e['id']: e for e in registry.load_divergences(ADAPTERS)}
 KD_KEYS = ('adapter', 'divergence_id', 'ticket', 'finding', 'reason', 'observed', 'correction')
 TOL_MAX = 0.001                                      # largest per-trade tolerance (path / rounding artefacts only)
 REQUIRED_TOP = ('schema', 'id', 'title', 'behaviours', 'side', 'tf', 'clock', 'account', 'market', 'path_policy', 'slot',
@@ -220,6 +223,7 @@ def validate(case, path=None):
             _req(k in d, cid, f'known_divergences: {k!r} missing in {d}')
         _req(isinstance(d['divergence_id'], str) and DIVERGENCE_ID.fullmatch(d['divergence_id']), cid,
              f"known_divergences: divergence_id {d['divergence_id']!r} must match {DIVERGENCE_ID.pattern} (e.g. AUD07-C11)")
+        _validate_divergence_ref(d, cid)
         _req(isinstance(d['correction'], str) and CORR_ID.fullmatch(d['correction']), cid,
              f"known_divergences: 'correction' must name the ledger entry that recorded it (CORR-nnnn), got {d['correction']!r}")
         _req(status(case, d['adapter']) == 'known_divergence', cid, f"known divergence for {d['adapter']} but applies_to is not known_divergence")
@@ -261,6 +265,23 @@ def _validate_behaviours(case, cid):
                            'new behaviour is appended there with its one meaning)')
     dup = sorted({x for x in b if b.count(x) > 1})
     _req(not dup, cid, f'behaviours: listed more than once {dup}')
+
+
+def _validate_divergence_ref(d, cid, reg=None):
+    """A known divergence names an ACTIVE DIVERGENCES.json entry, on an adapter in its scope, with its exact ticket / finding
+    (one meaning per ID: the registry, not the case, owns what the ID means)."""
+    reg = DIVERGENCE_REGISTRY if reg is None else reg
+    i = d['divergence_id']
+    e = reg.get(i)
+    _req(e is not None, cid, f'known_divergences: divergence_id {i!r} is not registered in tests/golden/DIVERGENCES.json (append '
+                             'it there with its adapters, ticket and finding)')
+    _req(e['status'] == 'active', cid, f'known_divergences: divergence_id {i!r} is retired - a retired ID is a tombstone and is '
+                                       'never used again (append a new ID)')
+    _req(d['adapter'] in e['adapters'], cid, f"known_divergences: divergence_id {i!r} is not registered for {d['adapter']} "
+                                             f"(scope {e['adapters']})")
+    _req((d['ticket'], d['finding']) == (e['ticket'], e['finding']), cid,
+         f"known_divergences: divergence_id {i!r} carries ticket/finding {(d['ticket'], d['finding'])} but the registry binds it "
+         f"to {(e['ticket'], e['finding'])} - an ID keeps its one meaning (append a new ID for another defect)")
 
 
 def _validate_faults(case, cid, n):

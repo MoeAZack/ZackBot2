@@ -34,6 +34,13 @@ Against the base (P1-1; the base is required evidence, never optional):
 8. Registry anchor (Codex golden r5 ruling #1): BEHAVIOURS.json extends the base tree's copy (goldenlib.registry
    .extends_behaviours: same version, base IDs and meanings unchanged at their positions, appends only). The only skip is a
    base tree without the file (the bootstrap: the change that introduces it), decided by listing the base tree.
+9. Divergence registry anchor (Codex golden r5 ruling #2): DIVERGENCES.json extends the base tree's copy
+   (registry.extends_divergences: base entries keep position, id, adapters, ticket and finding; only active -> retired;
+   appends only; IDs and (ticket, finding) unique across the file, so a retired ID is never reused). Same bootstrap skip.
+   No ledger record for a registry change: it holds no case outcome, and every case-visible change moves contract_sha.
+10. Divergence ID stability: a known divergence the BASE case already carried on an adapter (with a divergence_id) keeps that
+   divergence_id while the case still records a divergence on that adapter - a consistent rename through a ledgered
+   correction fails even when the new ID is registered. A different defect there means retiring the case and adding a new one.
 """
 import json, os, re, subprocess, sys
 
@@ -43,7 +50,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from goldenlib import LEDGER_PATH, MANIFEST_PATH, REPO_ROOT, registry, schema  # noqa: E402
 
 MAN_REL, LED_REL = 'tests/golden/MANIFEST.json', 'tests/golden/CORRECTIONS.json'
-REGISTRY_RELS = (registry.BEHAVIOURS_REL,)
+REGISTRY_RELS = (registry.BEHAVIOURS_REL, registry.DIVERGENCES_REL)
 MANIFEST_SCHEMA = 'zb-golden-manifest/2'
 # P1-2 anchor: the genesis entry, and the last entry of the bootstrap prefix (it transitively pins CORR-0000..0003 through the
 # prev_entry_sha links). Entries appended after it are protected by the base-prefix rule (5). Never edit these constants.
@@ -290,6 +297,49 @@ def test_behaviour_registry_extends_the_base():
         pytest.skip(f'bootstrap: base {ref} ({sha[:12]}) has no {registry.BEHAVIOURS_REL} - this change introduces the registry '
                     '(the local pin in test_vocabulary still applies)')
     registry.extends_behaviours(base, registry.read(registry.BEHAVIOURS_PATH))
+
+
+def test_divergence_registry_extends_the_base():
+    """Rule 9 (Codex golden r5 ruling #2): divergence IDs are an append-only registry anchored in the immutable base tree."""
+    ref, sha = golden_base()
+    base = base_registry(sha, registry.DIVERGENCES_REL)
+    if base is None:
+        pytest.skip(f'bootstrap: base {ref} ({sha[:12]}) has no {registry.DIVERGENCES_REL} - this change introduces the registry')
+    registry.extends_divergences(base, registry.read(registry.DIVERGENCES_PATH), schema.ADAPTERS)
+
+
+def check_divergence_id_stability(now_cases, base_cases_):
+    """Rule 10 (pure). base_cases_: {id: case} at the base ({} on the bootstrap)."""
+    for cid, c in now_cases.items():
+        old = {d.get('adapter'): d.get('divergence_id') for d in (base_cases_.get(cid) or {}).get('known_divergences') or []}
+        for d in c['known_divergences']:
+            was = old.get(d['adapter'])
+            assert was is None or d['divergence_id'] == was, \
+                (f"{cid} [{d['adapter']}]: divergence_id {was} at the base is now {d['divergence_id']} - a recorded divergence keeps "
+                 'its ID (no rename, even ledgered and registered; a different defect here means retiring the case and adding '
+                 'a new one)')
+
+
+def test_divergence_ids_are_stable_against_the_base():
+    ref, sha = golden_base()
+    check_divergence_id_stability({c['id']: c for c in schema.load_all()}, base_cases(sha) if base_pack(sha) else {})
+
+
+def test_divergence_id_stability_unit():
+    """Rule 10 on synthetic data: a consistent rename (every case, both adapters) fails; keeping the ID, dropping the
+    divergence, a new divergence on another adapter and a base case without IDs (the pre-ID bootstrap) pass."""
+    kd = lambda a, i: dict(adapter=a, divergence_id=i)
+    base = {'X': dict(known_divergences=[kd('legacy_engine', 'AUD07-C11'), kd('legacy_backtest', 'AUD07-C11')]),
+            'Y': dict(known_divergences=[dict(adapter='legacy_backtest')])}
+    now = lambda x, y=(): {'X': dict(known_divergences=list(x)), 'Y': dict(known_divergences=list(y))}
+    check_divergence_id_stability(now([kd('legacy_engine', 'AUD07-C11'), kd('legacy_backtest', 'AUD07-C11')]), base)
+    check_divergence_id_stability(now([kd('legacy_engine', 'AUD07-C11')]), base)                      # backtest fixed
+    check_divergence_id_stability(now([], [kd('legacy_backtest', 'AUD07-C13A'), kd('legacy_engine', 'AUD07-C13G')]), base)
+    check_divergence_id_stability(now([kd('legacy_engine', 'AUD07-C11B')]), {})                         # bootstrap
+    for x in ([kd('legacy_engine', 'AUD07-C11B'), kd('legacy_backtest', 'AUD07-C11B')],                 # consistent rename
+              [kd('legacy_engine', 'AUD07-C11'), kd('legacy_backtest', 'AUD07-C13A')]):                 # rebound on one adapter
+        with pytest.raises(AssertionError, match='keeps its ID'):
+            check_divergence_id_stability(now(x), base)
 
 
 def check_divergence_binding(now_cases, ents, base_cases_, n_base_entries):
