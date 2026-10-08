@@ -131,6 +131,32 @@
       "accepted_by": null,
       "date_cairo": "2026-10-08",
       "prev_entry_sha": "3a7e712994b964720f6d55a51f5a4e671429d131a9955d3fcbd869946604babf"
+    },
+    {
+      "id": "CORR-0004",
+      "type": "correction",
+      "ticket": "AUD-07",
+      "finding": "C11",
+      "title": "C11 fixed: time exit after exactly N candles in the backtest and the engine",
+      "cases": {
+        "G-TIME-L-01": {
+          "prev_contract_sha": "bef61661cc4d8af58066ef1dd3c6d181c4180d5dce44689481308f0b6a3ab2c7",
+          "contract_sha": "2575f540486081503a593bf0723733612604d8af35bf21fc5c16b334063c467f"
+        },
+        "G-TIME-L-02": {
+          "prev_contract_sha": "a16e753f862b696b06e36a0e298854c41b277da46b5f1106317755e982ec963c",
+          "contract_sha": "cf75a1a6b2e6373450ce87c25cf1bbe90a36bb30465c9f8f622c8fc6d4584f92"
+        }
+      },
+      "adapters_changed": [
+        "legacy_backtest (known divergence C11 resolved: G-TIME-L-01, G-TIME-L-02)",
+        "legacy_engine (known divergence C11 resolved: G-TIME-L-02)"
+      ],
+      "rationale": "Both models now count candles by index with the fill candle as candle 1 (floor(t/tf) - floor(t_fill/tf) >= N): backtest.py held N+1, engine.py counted wall-clock seconds and exited a candle late with a slower entry cycle.",
+      "evidence": "branch aud-07-product-r2 (merged with #32 r2 b01d439); reverting the item's product lines re-breaks exactly these pairs (mutation check in the build report)",
+      "accepted_by": null,
+      "date_cairo": "2026-10-08",
+      "prev_entry_sha": "ecc4599182a43d528ad4c3efe03445d7bd3997b0f32eb43a0a93a513c486db7f"
     }
   ]
 }
