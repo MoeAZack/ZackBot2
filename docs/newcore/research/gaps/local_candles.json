@@ -1,0 +1,3388 @@
+{
+ "files": [
+  {
+   "dataset": "klines_last",
+   "file": "data/1000PEPEUSDT_4h.csv",
+   "first": {
+    "cairo": "2024-09-14 07:00:00 +0300",
+    "ts_ms": 1726286400000,
+    "utc": "2024-09-14 04:00:00 UTC"
+   },
+   "interval": "4h",
+   "last": {
+    "cairo": "2026-10-04 03:00:00 +0300",
+    "ts_ms": 1791072000000,
+    "utc": "2026-10-04 00:00:00 UTC"
+   },
+   "root": "data",
+   "rows": 4500,
+   "sha256": "dbdef6b41d6a9e6d831832b4027cffef4535f1796166d86b2c18c8f2768b0035",
+   "symbol": "1000PEPEUSDT"
+  },
+  {
+   "dataset": "klines_last",
+   "file": "data/AAVEUSDT_4h.csv",
+   "first": {
+    "cairo": "2024-09-14 07:00:00 +0300",
+    "ts_ms": 1726286400000,
+    "utc": "2024-09-14 04:00:00 UTC"
+   },
+   "interval": "4h",
+   "last": {
+    "cairo": "2026-10-04 03:00:00 +0300",
+    "ts_ms": 1791072000000,
+    "utc": "2026-10-04 00:00:00 UTC"
+   },
+   "root": "data",
+   "rows": 4500,
+   "sha256": "3f2f92fa05aa3b5202eb53bd51df4858cf5ab373ed0fff57e55b6ba98f388d11",
+   "symbol": "AAVEUSDT"
+  },
+  {
+   "dataset": "klines_last",
+   "file": "data/ADAUSDT_4h.csv",
+   "first": {
+    "cairo": "2024-09-14 07:00:00 +0300",
+    "ts_ms": 1726286400000,
+    "utc": "2024-09-14 04:00:00 UTC"
+   },
+   "interval": "4h",
+   "last": {
+    "cairo": "2026-10-04 03:00:00 +0300",
+    "ts_ms": 1791072000000,
+    "utc": "2026-10-04 00:00:00 UTC"
+   },
+   "root": "data",
+   "rows": 4500,
+   "sha256": "ebc417339d80ca639f049407902f0567f5d0bed0607d97647c8f37de912d788f",
+   "symbol": "ADAUSDT"
+  },
+  {
+   "dataset": "klines_last",
+   "file": "data/APTUSDT_4h.csv",
+   "first": {
+    "cairo": "2024-09-14 07:00:00 +0300",
+    "ts_ms": 1726286400000,
+    "utc": "2024-09-14 04:00:00 UTC"
+   },
+   "interval": "4h",
+   "last": {
+    "cairo": "2026-10-04 03:00:00 +0300",
+    "ts_ms": 1791072000000,
+    "utc": "2026-10-04 00:00:00 UTC"
+   },
+   "root": "data",
+   "rows": 4500,
+   "sha256": "befffbfc04f0425ce9bacc0f4c6a6c0924e632a1686732d08c6810b30be1a8a2",
+   "symbol": "APTUSDT"
+  },
+  {
+   "dataset": "klines_last",
+   "file": "data/ARBUSDT_4h.csv",
+   "first": {
+    "cairo": "2024-09-14 07:00:00 +0300",
+    "ts_ms": 1726286400000,
+    "utc": "2024-09-14 04:00:00 UTC"
+   },
+   "interval": "4h",
+   "last": {
+    "cairo": "2026-10-04 03:00:00 +0300",
+    "ts_ms": 1791072000000,
+    "utc": "2026-10-04 00:00:00 UTC"
+   },
+   "root": "data",
+   "rows": 4500,
+   "sha256": "f331a44dcd2a7b340e33f31b31e59705c2054784a95a2d90bc239b7d02900409",
+   "symbol": "ARBUSDT"
+  },
+  {
+   "dataset": "klines_last",
+   "file": "data/ARKUSDT_4h.csv",
+   "first": {
+    "cairo": "2024-09-14 07:00:00 +0300",
+    "ts_ms": 1726286400000,
+    "utc": "2024-09-14 04:00:00 UTC"
+   },
+   "interval": "4h",
+   "last": {
+    "cairo": "2026-10-04 03:00:00 +0300",
+    "ts_ms": 1791072000000,
+    "utc": "2026-10-04 00:00:00 UTC"
+   },
+   "root": "data",
+   "rows": 4500,
+   "sha256": "974927bcaafaa9f4300457bfcf72c48176620b18f7c43e5853c4c05c355a9421",
+   "symbol": "ARKUSDT"
+  },
+  {
+   "dataset": "klines_last",
+   "file": "data/AVAXUSDT_4h.csv",
+   "first": {
+    "cairo": "2024-09-14 07:00:00 +0300",
+    "ts_ms": 1726286400000,
+    "utc": "2024-09-14 04:00:00 UTC"
+   },
+   "interval": "4h",
+   "last": {
+    "cairo": "2026-10-04 03:00:00 +0300",
+    "ts_ms": 1791072000000,
+    "utc": "2026-10-04 00:00:00 UTC"
+   },
+   "root": "data",
+   "rows": 4500,
+   "sha256": "bea92c41efdf8322e7567f959e484d4c97ba1f5e0d572250367c412d4a5abe80",
+   "symbol": "AVAXUSDT"
+  },
+  {
+   "dataset": "klines_last",
+   "file": "data/BCHUSDT_4h.csv",
+   "first": {
+    "cairo": "2024-09-14 07:00:00 +0300",
+    "ts_ms": 1726286400000,
+    "utc": "2024-09-14 04:00:00 UTC"
+   },
+   "interval": "4h",
+   "last": {
+    "cairo": "2026-10-04 03:00:00 +0300",
+    "ts_ms": 1791072000000,
+    "utc": "2026-10-04 00:00:00 UTC"
+   },
+   "root": "data",
+   "rows": 4500,
+   "sha256": "992162e6c7baca11f1fa822c5a14d32379f76e576e5602bff06e370692290d10",
+   "symbol": "BCHUSDT"
+  },
+  {
+   "dataset": "klines_last",
+   "file": "data/BNBUSDT_4h.csv",
+   "first": {
+    "cairo": "2024-09-14 07:00:00 +0300",
+    "ts_ms": 1726286400000,
+    "utc": "2024-09-14 04:00:00 UTC"
+   },
+   "interval": "4h",
+   "last": {
+    "cairo": "2026-10-04 03:00:00 +0300",
+    "ts_ms": 1791072000000,
+    "utc": "2026-10-04 00:00:00 UTC"
+   },
+   "root": "data",
+   "rows": 4500,
+   "sha256": "7a4ef13d9326d2411b7054ba52ffb23455fb65bb60f53d306c3edafb78185e60",
+   "symbol": "BNBUSDT"
+  },
+  {
+   "dataset": "klines_last",
+   "file": "data/BTCUSDT_4h.csv",
+   "first": {
+    "cairo": "2024-09-14 07:00:00 +0300",
+    "ts_ms": 1726286400000,
+    "utc": "2024-09-14 04:00:00 UTC"
+   },
+   "interval": "4h",
+   "last": {
+    "cairo": "2026-10-04 03:00:00 +0300",
+    "ts_ms": 1791072000000,
+    "utc": "2026-10-04 00:00:00 UTC"
+   },
+   "root": "data",
+   "rows": 4500,
+   "sha256": "49184cbb761b757e61c3f8f729e68ca5ee93ef6f943767a446bda87675379e73",
+   "symbol": "BTCUSDT"
+  },
+  {
+   "dataset": "klines_last",
+   "file": "data/DOGEUSDT_4h.csv",
+   "first": {
+    "cairo": "2024-09-14 07:00:00 +0300",
+    "ts_ms": 1726286400000,
+    "utc": "2024-09-14 04:00:00 UTC"
+   },
+   "interval": "4h",
+   "last": {
+    "cairo": "2026-10-04 03:00:00 +0300",
+    "ts_ms": 1791072000000,
+    "utc": "2026-10-04 00:00:00 UTC"
+   },
+   "root": "data",
+   "rows": 4500,
+   "sha256": "8038ce8031675bdc081a0174bc8105c26ed6512e8eb072b49669b844d62f2e76",
+   "symbol": "DOGEUSDT"
+  },
+  {
+   "dataset": "klines_last",
+   "file": "data/DOTUSDT_4h.csv",
+   "first": {
+    "cairo": "2024-09-14 07:00:00 +0300",
+    "ts_ms": 1726286400000,
+    "utc": "2024-09-14 04:00:00 UTC"
+   },
+   "interval": "4h",
+   "last": {
+    "cairo": "2026-10-04 03:00:00 +0300",
+    "ts_ms": 1791072000000,
+    "utc": "2026-10-04 00:00:00 UTC"
+   },
+   "root": "data",
+   "rows": 4500,
+   "sha256": "c9a1499b88760cb27e9ecbc43bf8ff67817d81f6b8f8324368d61dd41aa7919a",
+   "symbol": "DOTUSDT"
+  },
+  {
+   "dataset": "klines_last",
+   "file": "data/ENAUSDT_4h.csv",
+   "first": {
+    "cairo": "2024-09-14 07:00:00 +0300",
+    "ts_ms": 1726286400000,
+    "utc": "2024-09-14 04:00:00 UTC"
+   },
+   "interval": "4h",
+   "last": {
+    "cairo": "2026-10-04 03:00:00 +0300",
+    "ts_ms": 1791072000000,
+    "utc": "2026-10-04 00:00:00 UTC"
+   },
+   "root": "data",
+   "rows": 4500,
+   "sha256": "9ad4aaa3652eda1e73ae2bccbb4166a50e7f8869a1f12a604b1f6f33ea2c2e41",
+   "symbol": "ENAUSDT"
+  },
+  {
+   "dataset": "klines_last",
+   "file": "data/ENJUSDT_4h.csv",
+   "first": {
+    "cairo": "2024-09-14 07:00:00 +0300",
+    "ts_ms": 1726286400000,
+    "utc": "2024-09-14 04:00:00 UTC"
+   },
+   "interval": "4h",
+   "last": {
+    "cairo": "2026-10-04 03:00:00 +0300",
+    "ts_ms": 1791072000000,
+    "utc": "2026-10-04 00:00:00 UTC"
+   },
+   "root": "data",
+   "rows": 4500,
+   "sha256": "551d00d2fe3f5b9532cf2d746e886761cd6c0a74bf4140504d8d9cf2e819275a",
+   "symbol": "ENJUSDT"
+  },
+  {
+   "dataset": "klines_last",
+   "file": "data/ETCUSDT_4h.csv",
+   "first": {
+    "cairo": "2024-09-14 07:00:00 +0300",
+    "ts_ms": 1726286400000,
+    "utc": "2024-09-14 04:00:00 UTC"
+   },
+   "interval": "4h",
+   "last": {
+    "cairo": "2026-10-04 03:00:00 +0300",
+    "ts_ms": 1791072000000,
+    "utc": "2026-10-04 00:00:00 UTC"
+   },
+   "root": "data",
+   "rows": 4500,
+   "sha256": "9e970e910631aafe0859e6ed469045d3d72e9d40e8c6f2da4af6d11aa57123bf",
+   "symbol": "ETCUSDT"
+  },
+  {
+   "dataset": "klines_last",
+   "file": "data/ETHUSDT_4h.csv",
+   "first": {
+    "cairo": "2024-09-14 07:00:00 +0300",
+    "ts_ms": 1726286400000,
+    "utc": "2024-09-14 04:00:00 UTC"
+   },
+   "interval": "4h",
+   "last": {
+    "cairo": "2026-10-04 03:00:00 +0300",
+    "ts_ms": 1791072000000,
+    "utc": "2026-10-04 00:00:00 UTC"
+   },
+   "root": "data",
+   "rows": 4500,
+   "sha256": "643db850c17a128c4a44ca78273ebd3028fe526fff63dac6e7e7669d0f11c225",
+   "symbol": "ETHUSDT"
+  },
+  {
+   "dataset": "klines_last",
+   "file": "data/FETUSDT_4h.csv",
+   "first": {
+    "cairo": "2024-09-14 07:00:00 +0300",
+    "ts_ms": 1726286400000,
+    "utc": "2024-09-14 04:00:00 UTC"
+   },
+   "interval": "4h",
+   "last": {
+    "cairo": "2026-10-04 03:00:00 +0300",
+    "ts_ms": 1791072000000,
+    "utc": "2026-10-04 00:00:00 UTC"
+   },
+   "root": "data",
+   "rows": 4500,
+   "sha256": "351cd3b0e4b0e5ad798f1a9c6994bc2e02070929ea525863d93664a7e029b69c",
+   "symbol": "FETUSDT"
+  },
+  {
+   "dataset": "klines_last",
+   "file": "data/FILUSDT_4h.csv",
+   "first": {
+    "cairo": "2024-09-14 07:00:00 +0300",
+    "ts_ms": 1726286400000,
+    "utc": "2024-09-14 04:00:00 UTC"
+   },
+   "interval": "4h",
+   "last": {
+    "cairo": "2026-10-04 03:00:00 +0300",
+    "ts_ms": 1791072000000,
+    "utc": "2026-10-04 00:00:00 UTC"
+   },
+   "root": "data",
+   "rows": 4500,
+   "sha256": "ba83d8993efb68beb0359809a2bb4187addad5add0d3229d087675d3ca0ad13c",
+   "symbol": "FILUSDT"
+  },
+  {
+   "dataset": "klines_last",
+   "file": "data/GALAUSDT_4h.csv",
+   "first": {
+    "cairo": "2024-09-14 07:00:00 +0300",
+    "ts_ms": 1726286400000,
+    "utc": "2024-09-14 04:00:00 UTC"
+   },
+   "interval": "4h",
+   "last": {
+    "cairo": "2026-10-04 03:00:00 +0300",
+    "ts_ms": 1791072000000,
+    "utc": "2026-10-04 00:00:00 UTC"
+   },
+   "root": "data",
+   "rows": 4500,
+   "sha256": "bd84f44848893b4bce29c3751be383aed0896414cf3577b261def6d5a98b19f7",
+   "symbol": "GALAUSDT"
+  },
+  {
+   "dataset": "klines_last",
+   "file": "data/INJUSDT_4h.csv",
+   "first": {
+    "cairo": "2024-09-14 07:00:00 +0300",
+    "ts_ms": 1726286400000,
+    "utc": "2024-09-14 04:00:00 UTC"
+   },
+   "interval": "4h",
+   "last": {
+    "cairo": "2026-10-04 03:00:00 +0300",
+    "ts_ms": 1791072000000,
+    "utc": "2026-10-04 00:00:00 UTC"
+   },
+   "root": "data",
+   "rows": 4500,
+   "sha256": "358ceddeeef981a4bb5efaa352458ab9a0d389c909740210fec58d817abd05c2",
+   "symbol": "INJUSDT"
+  },
+  {
+   "dataset": "klines_last",
+   "file": "data/LINKUSDT_4h.csv",
+   "first": {
+    "cairo": "2024-09-14 07:00:00 +0300",
+    "ts_ms": 1726286400000,
+    "utc": "2024-09-14 04:00:00 UTC"
+   },
+   "interval": "4h",
+   "last": {
+    "cairo": "2026-10-04 03:00:00 +0300",
+    "ts_ms": 1791072000000,
+    "utc": "2026-10-04 00:00:00 UTC"
+   },
+   "root": "data",
+   "rows": 4500,
+   "sha256": "798f35e9137dd9e23ff1b607aa4c534d74eba1232cd84f9c982351402c17764d",
+   "symbol": "LINKUSDT"
+  },
+  {
+   "dataset": "klines_last",
+   "file": "data/LTCUSDT_4h.csv",
+   "first": {
+    "cairo": "2024-09-14 07:00:00 +0300",
+    "ts_ms": 1726286400000,
+    "utc": "2024-09-14 04:00:00 UTC"
+   },
+   "interval": "4h",
+   "last": {
+    "cairo": "2026-10-04 03:00:00 +0300",
+    "ts_ms": 1791072000000,
+    "utc": "2026-10-04 00:00:00 UTC"
+   },
+   "root": "data",
+   "rows": 4500,
+   "sha256": "07a8cb94377890135268c6154904981df26673ea710eaafbd9a6106d3a5f0744",
+   "symbol": "LTCUSDT"
+  },
+  {
+   "dataset": "klines_last",
+   "file": "data/MANAUSDT_4h.csv",
+   "first": {
+    "cairo": "2024-09-14 07:00:00 +0300",
+    "ts_ms": 1726286400000,
+    "utc": "2024-09-14 04:00:00 UTC"
+   },
+   "interval": "4h",
+   "last": {
+    "cairo": "2026-10-04 03:00:00 +0300",
+    "ts_ms": 1791072000000,
+    "utc": "2026-10-04 00:00:00 UTC"
+   },
+   "root": "data",
+   "rows": 4500,
+   "sha256": "baaf5b15d7cf2cb9fa022940fc1313b7bcd0150a815f64e9939c93c6b92674c4",
+   "symbol": "MANAUSDT"
+  },
+  {
+   "dataset": "klines_last",
+   "file": "data/MOVRUSDT_4h.csv",
+   "first": {
+    "cairo": "2024-09-14 07:00:00 +0300",
+    "ts_ms": 1726286400000,
+    "utc": "2024-09-14 04:00:00 UTC"
+   },
+   "interval": "4h",
+   "last": {
+    "cairo": "2026-10-04 03:00:00 +0300",
+    "ts_ms": 1791072000000,
+    "utc": "2026-10-04 00:00:00 UTC"
+   },
+   "root": "data",
+   "rows": 4500,
+   "sha256": "1fa3f33f4a6e9c36c0587be154ba9ab14846131cd16bdcc4f8f04012a6819860",
+   "symbol": "MOVRUSDT"
+  },
+  {
+   "dataset": "klines_last",
+   "file": "data/NEARUSDT_4h.csv",
+   "first": {
+    "cairo": "2024-09-14 07:00:00 +0300",
+    "ts_ms": 1726286400000,
+    "utc": "2024-09-14 04:00:00 UTC"
+   },
+   "interval": "4h",
+   "last": {
+    "cairo": "2026-10-04 03:00:00 +0300",
+    "ts_ms": 1791072000000,
+    "utc": "2026-10-04 00:00:00 UTC"
+   },
+   "root": "data",
+   "rows": 4500,
+   "sha256": "199849ef47f964c4089429299d9ec65ead9056f6e6ee588d5e39186983df0e91",
+   "symbol": "NEARUSDT"
+  },
+  {
+   "dataset": "klines_last",
+   "file": "data/ONDOUSDT_4h.csv",
+   "first": {
+    "cairo": "2024-09-14 07:00:00 +0300",
+    "ts_ms": 1726286400000,
+    "utc": "2024-09-14 04:00:00 UTC"
+   },
+   "interval": "4h",
+   "last": {
+    "cairo": "2026-10-04 03:00:00 +0300",
+    "ts_ms": 1791072000000,
+    "utc": "2026-10-04 00:00:00 UTC"
+   },
+   "root": "data",
+   "rows": 4500,
+   "sha256": "f67bf80900bb8075b1a56acc2b71734130389d6ac5383617d87cbcd7407d1096",
+   "symbol": "ONDOUSDT"
+  },
+  {
+   "dataset": "klines_last",
+   "file": "data/ONEUSDT_4h.csv",
+   "first": {
+    "cairo": "2024-09-14 07:00:00 +0300",
+    "ts_ms": 1726286400000,
+    "utc": "2024-09-14 04:00:00 UTC"
+   },
+   "interval": "4h",
+   "last": {
+    "cairo": "2026-10-04 03:00:00 +0300",
+    "ts_ms": 1791072000000,
+    "utc": "2026-10-04 00:00:00 UTC"
+   },
+   "root": "data",
+   "rows": 4500,
+   "sha256": "5b23ce5835caf0a6aa346bd3586b91c450f3bb967abd5b1bb6697a37793dd5e5",
+   "symbol": "ONEUSDT"
+  },
+  {
+   "dataset": "klines_last",
+   "file": "data/QNTUSDT_4h.csv",
+   "first": {
+    "cairo": "2024-09-14 07:00:00 +0300",
+    "ts_ms": 1726286400000,
+    "utc": "2024-09-14 04:00:00 UTC"
+   },
+   "interval": "4h",
+   "last": {
+    "cairo": "2026-10-04 03:00:00 +0300",
+    "ts_ms": 1791072000000,
+    "utc": "2026-10-04 00:00:00 UTC"
+   },
+   "root": "data",
+   "rows": 4500,
+   "sha256": "f6a6ec8fef964bde613a27c33c3e15b8db93419eb27f967db826a76bc1936609",
+   "symbol": "QNTUSDT"
+  },
+  {
+   "dataset": "klines_last",
+   "file": "data/SANDUSDT_4h.csv",
+   "first": {
+    "cairo": "2024-09-14 07:00:00 +0300",
+    "ts_ms": 1726286400000,
+    "utc": "2024-09-14 04:00:00 UTC"
+   },
+   "interval": "4h",
+   "last": {
+    "cairo": "2026-10-04 03:00:00 +0300",
+    "ts_ms": 1791072000000,
+    "utc": "2026-10-04 00:00:00 UTC"
+   },
+   "root": "data",
+   "rows": 4500,
+   "sha256": "6bb42ce61716f0e085f8e7ad34ed1a4dab4fdf70b0fa89f718954afd14778c92",
+   "symbol": "SANDUSDT"
+  },
+  {
+   "dataset": "klines_last",
+   "file": "data/SOLUSDT_4h.csv",
+   "first": {
+    "cairo": "2024-09-14 07:00:00 +0300",
+    "ts_ms": 1726286400000,
+    "utc": "2024-09-14 04:00:00 UTC"
+   },
+   "interval": "4h",
+   "last": {
+    "cairo": "2026-10-04 03:00:00 +0300",
+    "ts_ms": 1791072000000,
+    "utc": "2026-10-04 00:00:00 UTC"
+   },
+   "root": "data",
+   "rows": 4500,
+   "sha256": "6eaea59a03fc04b6c1661de7ed003e6a6bc58d5c007a74a98adf8b1fde20306a",
+   "symbol": "SOLUSDT"
+  },
+  {
+   "dataset": "klines_last",
+   "file": "data/STRKUSDT_4h.csv",
+   "first": {
+    "cairo": "2024-09-14 07:00:00 +0300",
+    "ts_ms": 1726286400000,
+    "utc": "2024-09-14 04:00:00 UTC"
+   },
+   "interval": "4h",
+   "last": {
+    "cairo": "2026-10-04 03:00:00 +0300",
+    "ts_ms": 1791072000000,
+    "utc": "2026-10-04 00:00:00 UTC"
+   },
+   "root": "data",
+   "rows": 4500,
+   "sha256": "e037777e837f94bfec8767ef7a304a62041b13d800a8f37b92c80b38d79e98ae",
+   "symbol": "STRKUSDT"
+  },
+  {
+   "dataset": "klines_last",
+   "file": "data/SUIUSDT_4h.csv",
+   "first": {
+    "cairo": "2024-09-14 07:00:00 +0300",
+    "ts_ms": 1726286400000,
+    "utc": "2024-09-14 04:00:00 UTC"
+   },
+   "interval": "4h",
+   "last": {
+    "cairo": "2026-10-04 03:00:00 +0300",
+    "ts_ms": 1791072000000,
+    "utc": "2026-10-04 00:00:00 UTC"
+   },
+   "root": "data",
+   "rows": 4500,
+   "sha256": "3e318ffc469eb5766054364e8f8f3a22376c64b7b95ca786ffaec5fba2754447",
+   "symbol": "SUIUSDT"
+  },
+  {
+   "dataset": "klines_last",
+   "file": "data/SUPERUSDT_4h.csv",
+   "first": {
+    "cairo": "2024-09-14 07:00:00 +0300",
+    "ts_ms": 1726286400000,
+    "utc": "2024-09-14 04:00:00 UTC"
+   },
+   "interval": "4h",
+   "last": {
+    "cairo": "2026-10-04 03:00:00 +0300",
+    "ts_ms": 1791072000000,
+    "utc": "2026-10-04 00:00:00 UTC"
+   },
+   "root": "data",
+   "rows": 4500,
+   "sha256": "91b446e8771eb521df43a7589971ca8d868115aef8f6c82b282ed45ffe9ce309",
+   "symbol": "SUPERUSDT"
+  },
+  {
+   "dataset": "klines_last",
+   "file": "data/TAOUSDT_4h.csv",
+   "first": {
+    "cairo": "2024-09-14 07:00:00 +0300",
+    "ts_ms": 1726286400000,
+    "utc": "2024-09-14 04:00:00 UTC"
+   },
+   "interval": "4h",
+   "last": {
+    "cairo": "2026-10-04 03:00:00 +0300",
+    "ts_ms": 1791072000000,
+    "utc": "2026-10-04 00:00:00 UTC"
+   },
+   "root": "data",
+   "rows": 4500,
+   "sha256": "6d1ba1223920881491b816d282ce53377a8d9b7425f77f6bf393394e121f9e8a",
+   "symbol": "TAOUSDT"
+  },
+  {
+   "dataset": "klines_last",
+   "file": "data/UNIUSDT_4h.csv",
+   "first": {
+    "cairo": "2024-09-14 07:00:00 +0300",
+    "ts_ms": 1726286400000,
+    "utc": "2024-09-14 04:00:00 UTC"
+   },
+   "interval": "4h",
+   "last": {
+    "cairo": "2026-10-04 03:00:00 +0300",
+    "ts_ms": 1791072000000,
+    "utc": "2026-10-04 00:00:00 UTC"
+   },
+   "root": "data",
+   "rows": 4500,
+   "sha256": "471fa5c6e1c9dec5aa17de31c59b24ec1ef7be5de0695f76ac444f95e9448566",
+   "symbol": "UNIUSDT"
+  },
+  {
+   "dataset": "klines_last",
+   "file": "data/WLDUSDT_4h.csv",
+   "first": {
+    "cairo": "2024-09-14 07:00:00 +0300",
+    "ts_ms": 1726286400000,
+    "utc": "2024-09-14 04:00:00 UTC"
+   },
+   "interval": "4h",
+   "last": {
+    "cairo": "2026-10-04 03:00:00 +0300",
+    "ts_ms": 1791072000000,
+    "utc": "2026-10-04 00:00:00 UTC"
+   },
+   "root": "data",
+   "rows": 4500,
+   "sha256": "e3c05f8638b76208e65167968897ff6d372900dffeac9044c9f08f4ce735ece7",
+   "symbol": "WLDUSDT"
+  },
+  {
+   "dataset": "klines_last",
+   "file": "data/XLMUSDT_4h.csv",
+   "first": {
+    "cairo": "2024-09-14 07:00:00 +0300",
+    "ts_ms": 1726286400000,
+    "utc": "2024-09-14 04:00:00 UTC"
+   },
+   "interval": "4h",
+   "last": {
+    "cairo": "2026-10-04 03:00:00 +0300",
+    "ts_ms": 1791072000000,
+    "utc": "2026-10-04 00:00:00 UTC"
+   },
+   "root": "data",
+   "rows": 4500,
+   "sha256": "418114ce55e951d40ade72ecb97eea7b79d33e403fa11cf3c069757a9fdd8083",
+   "symbol": "XLMUSDT"
+  },
+  {
+   "dataset": "klines_last",
+   "file": "data/XRPUSDT_4h.csv",
+   "first": {
+    "cairo": "2024-09-14 07:00:00 +0300",
+    "ts_ms": 1726286400000,
+    "utc": "2024-09-14 04:00:00 UTC"
+   },
+   "interval": "4h",
+   "last": {
+    "cairo": "2026-10-04 03:00:00 +0300",
+    "ts_ms": 1791072000000,
+    "utc": "2026-10-04 00:00:00 UTC"
+   },
+   "root": "data",
+   "rows": 4500,
+   "sha256": "55a4f3bbe184665cff741a3cd641c0a09137fe5829cac8e4721a5724d148cd78",
+   "symbol": "XRPUSDT"
+  },
+  {
+   "dataset": "klines_last",
+   "file": "data/ZECUSDT_4h.csv",
+   "first": {
+    "cairo": "2024-09-14 07:00:00 +0300",
+    "ts_ms": 1726286400000,
+    "utc": "2024-09-14 04:00:00 UTC"
+   },
+   "interval": "4h",
+   "last": {
+    "cairo": "2026-10-04 03:00:00 +0300",
+    "ts_ms": 1791072000000,
+    "utc": "2026-10-04 00:00:00 UTC"
+   },
+   "root": "data",
+   "rows": 4500,
+   "sha256": "942b7022a201696aea1d6f86c622f9d59da1d5b24f55a8edeb76a22546d03dda",
+   "symbol": "ZECUSDT"
+  },
+  {
+   "dataset": "klines_last",
+   "file": "data/ZROUSDT_4h.csv",
+   "first": {
+    "cairo": "2024-09-14 07:00:00 +0300",
+    "ts_ms": 1726286400000,
+    "utc": "2024-09-14 04:00:00 UTC"
+   },
+   "interval": "4h",
+   "last": {
+    "cairo": "2026-10-04 03:00:00 +0300",
+    "ts_ms": 1791072000000,
+    "utc": "2026-10-04 00:00:00 UTC"
+   },
+   "root": "data",
+   "rows": 4500,
+   "sha256": "4d4229c57d2d9f9e65eea64b2a327a395e359b002305e9952825946c79828021",
+   "symbol": "ZROUSDT"
+  },
+  {
+   "dataset": "klines_last",
+   "file": "data1h/AVAXUSDT_1h.csv",
+   "first": {
+    "cairo": "2026-03-30 18:00:00 +0200",
+    "ts_ms": 1774886400000,
+    "utc": "2026-03-30 16:00:00 UTC"
+   },
+   "interval": "1h",
+   "last": {
+    "cairo": "2026-10-04 06:00:00 +0300",
+    "ts_ms": 1791082800000,
+    "utc": "2026-10-04 03:00:00 UTC"
+   },
+   "root": "data1h",
+   "rows": 4499,
+   "sha256": "8926d4e211627fdfdc95b31425ae2e728162fff474cf14686a814ec9e6eb886c",
+   "symbol": "AVAXUSDT"
+  },
+  {
+   "dataset": "klines_last",
+   "file": "data1h/BNBUSDT_1h.csv",
+   "first": {
+    "cairo": "2026-03-30 18:00:00 +0200",
+    "ts_ms": 1774886400000,
+    "utc": "2026-03-30 16:00:00 UTC"
+   },
+   "interval": "1h",
+   "last": {
+    "cairo": "2026-10-04 06:00:00 +0300",
+    "ts_ms": 1791082800000,
+    "utc": "2026-10-04 03:00:00 UTC"
+   },
+   "root": "data1h",
+   "rows": 4499,
+   "sha256": "ff27f307572e395478f3aff86f6be3493231a29fd2a9da7736f4ec6763fc00a5",
+   "symbol": "BNBUSDT"
+  },
+  {
+   "dataset": "klines_last",
+   "file": "data1h/BTCUSDT_1h.csv",
+   "first": {
+    "cairo": "2026-03-30 18:00:00 +0200",
+    "ts_ms": 1774886400000,
+    "utc": "2026-03-30 16:00:00 UTC"
+   },
+   "interval": "1h",
+   "last": {
+    "cairo": "2026-10-04 06:00:00 +0300",
+    "ts_ms": 1791082800000,
+    "utc": "2026-10-04 03:00:00 UTC"
+   },
+   "root": "data1h",
+   "rows": 4499,
+   "sha256": "d0b0d28ddcc5e862657e2dac833e28e4239f4f09a774c176341f0eeca19f1e8e",
+   "symbol": "BTCUSDT"
+  },
+  {
+   "dataset": "klines_last",
+   "file": "data1h/DOGEUSDT_1h.csv",
+   "first": {
+    "cairo": "2026-03-30 18:00:00 +0200",
+    "ts_ms": 1774886400000,
+    "utc": "2026-03-30 16:00:00 UTC"
+   },
+   "interval": "1h",
+   "last": {
+    "cairo": "2026-10-04 06:00:00 +0300",
+    "ts_ms": 1791082800000,
+    "utc": "2026-10-04 03:00:00 UTC"
+   },
+   "root": "data1h",
+   "rows": 4499,
+   "sha256": "3cef2cad9eebdbfb48b0fd74df8ccbb1eab1a6f9f73294ef7cbc36b0def5cc79",
+   "symbol": "DOGEUSDT"
+  },
+  {
+   "dataset": "klines_last",
+   "file": "data1h/ETHUSDT_1h.csv",
+   "first": {
+    "cairo": "2026-03-30 18:00:00 +0200",
+    "ts_ms": 1774886400000,
+    "utc": "2026-03-30 16:00:00 UTC"
+   },
+   "interval": "1h",
+   "last": {
+    "cairo": "2026-10-04 06:00:00 +0300",
+    "ts_ms": 1791082800000,
+    "utc": "2026-10-04 03:00:00 UTC"
+   },
+   "root": "data1h",
+   "rows": 4499,
+   "sha256": "5c3a6cf2ab4095b5ff78288cc82910b8b423e337a09cdc05e47a7808f0585ff8",
+   "symbol": "ETHUSDT"
+  },
+  {
+   "dataset": "klines_last",
+   "file": "data1h/LINKUSDT_1h.csv",
+   "first": {
+    "cairo": "2026-03-30 18:00:00 +0200",
+    "ts_ms": 1774886400000,
+    "utc": "2026-03-30 16:00:00 UTC"
+   },
+   "interval": "1h",
+   "last": {
+    "cairo": "2026-10-04 06:00:00 +0300",
+    "ts_ms": 1791082800000,
+    "utc": "2026-10-04 03:00:00 UTC"
+   },
+   "root": "data1h",
+   "rows": 4499,
+   "sha256": "aebc7406a4de273d25d1740e1ddc33192426a0306965e5c6b4f7a4bf3e9ca08e",
+   "symbol": "LINKUSDT"
+  },
+  {
+   "dataset": "klines_last",
+   "file": "data1h/SOLUSDT_1h.csv",
+   "first": {
+    "cairo": "2026-03-30 18:00:00 +0200",
+    "ts_ms": 1774886400000,
+    "utc": "2026-03-30 16:00:00 UTC"
+   },
+   "interval": "1h",
+   "last": {
+    "cairo": "2026-10-04 06:00:00 +0300",
+    "ts_ms": 1791082800000,
+    "utc": "2026-10-04 03:00:00 UTC"
+   },
+   "root": "data1h",
+   "rows": 4499,
+   "sha256": "ce7adc888270f37d831e305a23e88a79ce3cf4936a2f69efe345db192599d089",
+   "symbol": "SOLUSDT"
+  },
+  {
+   "dataset": "klines_last",
+   "file": "data1h/XRPUSDT_1h.csv",
+   "first": {
+    "cairo": "2026-03-30 18:00:00 +0200",
+    "ts_ms": 1774886400000,
+    "utc": "2026-03-30 16:00:00 UTC"
+   },
+   "interval": "1h",
+   "last": {
+    "cairo": "2026-10-04 06:00:00 +0300",
+    "ts_ms": 1791082800000,
+    "utc": "2026-10-04 03:00:00 UTC"
+   },
+   "root": "data1h",
+   "rows": 4499,
+   "sha256": "f0abb05a52d054cd45f049bc31c40eb5d0de84a7ce0abb632a87c0afa801c4dc",
+   "symbol": "XRPUSDT"
+  },
+  {
+   "dataset": "klines_last",
+   "file": "data_long/1h/AVAXUSDT_1h.csv",
+   "first": {
+    "cairo": "2022-08-26 08:00:00 +0200",
+    "ts_ms": 1661493600000,
+    "utc": "2022-08-26 06:00:00 UTC"
+   },
+   "interval": "1h",
+   "last": {
+    "cairo": "2026-10-04 07:00:00 +0300",
+    "ts_ms": 1791086400000,
+    "utc": "2026-10-04 04:00:00 UTC"
+   },
+   "root": "data_long",
+   "rows": 35999,
+   "sha256": "0a151f1c3383a0535fb5296e7f8da695ac0b00c9c86537241eda306f7a707ca1",
+   "symbol": "AVAXUSDT"
+  },
+  {
+   "dataset": "klines_last",
+   "file": "data_long/1h/BNBUSDT_1h.csv",
+   "first": {
+    "cairo": "2022-08-26 08:00:00 +0200",
+    "ts_ms": 1661493600000,
+    "utc": "2022-08-26 06:00:00 UTC"
+   },
+   "interval": "1h",
+   "last": {
+    "cairo": "2026-10-04 07:00:00 +0300",
+    "ts_ms": 1791086400000,
+    "utc": "2026-10-04 04:00:00 UTC"
+   },
+   "root": "data_long",
+   "rows": 35999,
+   "sha256": "52d287320443bb8e835da669f128e1215daf44b008d0144c68b58f81941f2f85",
+   "symbol": "BNBUSDT"
+  },
+  {
+   "dataset": "klines_last",
+   "file": "data_long/1h/BTCUSDT_1h.csv",
+   "first": {
+    "cairo": "2022-08-26 08:00:00 +0200",
+    "ts_ms": 1661493600000,
+    "utc": "2022-08-26 06:00:00 UTC"
+   },
+   "interval": "1h",
+   "last": {
+    "cairo": "2026-10-04 07:00:00 +0300",
+    "ts_ms": 1791086400000,
+    "utc": "2026-10-04 04:00:00 UTC"
+   },
+   "root": "data_long",
+   "rows": 35999,
+   "sha256": "05717edafd19982d332ae85dfe00e4e588457ab2f59474644b25a0379761e368",
+   "symbol": "BTCUSDT"
+  },
+  {
+   "dataset": "klines_last",
+   "file": "data_long/1h/DOGEUSDT_1h.csv",
+   "first": {
+    "cairo": "2022-08-26 08:00:00 +0200",
+    "ts_ms": 1661493600000,
+    "utc": "2022-08-26 06:00:00 UTC"
+   },
+   "interval": "1h",
+   "last": {
+    "cairo": "2026-10-04 07:00:00 +0300",
+    "ts_ms": 1791086400000,
+    "utc": "2026-10-04 04:00:00 UTC"
+   },
+   "root": "data_long",
+   "rows": 35999,
+   "sha256": "1ff2d7dc5cef172afe8c503c56b191c7a8c020a2c95bbc88bb25c1c064a82a70",
+   "symbol": "DOGEUSDT"
+  },
+  {
+   "dataset": "klines_last",
+   "file": "data_long/1h/ETHUSDT_1h.csv",
+   "first": {
+    "cairo": "2022-08-26 08:00:00 +0200",
+    "ts_ms": 1661493600000,
+    "utc": "2022-08-26 06:00:00 UTC"
+   },
+   "interval": "1h",
+   "last": {
+    "cairo": "2026-10-04 07:00:00 +0300",
+    "ts_ms": 1791086400000,
+    "utc": "2026-10-04 04:00:00 UTC"
+   },
+   "root": "data_long",
+   "rows": 35999,
+   "sha256": "86b2d57897601f5a530a929c2d094f448641a6bfec0fa2e33084f4d7f9734a9c",
+   "symbol": "ETHUSDT"
+  },
+  {
+   "dataset": "klines_last",
+   "file": "data_long/1h/LINKUSDT_1h.csv",
+   "first": {
+    "cairo": "2022-08-26 08:00:00 +0200",
+    "ts_ms": 1661493600000,
+    "utc": "2022-08-26 06:00:00 UTC"
+   },
+   "interval": "1h",
+   "last": {
+    "cairo": "2026-10-04 07:00:00 +0300",
+    "ts_ms": 1791086400000,
+    "utc": "2026-10-04 04:00:00 UTC"
+   },
+   "root": "data_long",
+   "rows": 35999,
+   "sha256": "9536ea5dea36e345aa41e7419ec3be3aedc7c2bb580327bd4437407f4c8bda5d",
+   "symbol": "LINKUSDT"
+  },
+  {
+   "dataset": "klines_last",
+   "file": "data_long/1h/SOLUSDT_1h.csv",
+   "first": {
+    "cairo": "2022-08-26 08:00:00 +0200",
+    "ts_ms": 1661493600000,
+    "utc": "2022-08-26 06:00:00 UTC"
+   },
+   "interval": "1h",
+   "last": {
+    "cairo": "2026-10-04 07:00:00 +0300",
+    "ts_ms": 1791086400000,
+    "utc": "2026-10-04 04:00:00 UTC"
+   },
+   "root": "data_long",
+   "rows": 35999,
+   "sha256": "53ef0e063a65eb27471fed665d73bd01610cfef3a379b4799f7723088148ee30",
+   "symbol": "SOLUSDT"
+  },
+  {
+   "dataset": "klines_last",
+   "file": "data_long/1h/XRPUSDT_1h.csv",
+   "first": {
+    "cairo": "2022-08-26 08:00:00 +0200",
+    "ts_ms": 1661493600000,
+    "utc": "2022-08-26 06:00:00 UTC"
+   },
+   "interval": "1h",
+   "last": {
+    "cairo": "2026-10-04 07:00:00 +0300",
+    "ts_ms": 1791086400000,
+    "utc": "2026-10-04 04:00:00 UTC"
+   },
+   "root": "data_long",
+   "rows": 35999,
+   "sha256": "88840ca8ca6e03a39fb81e42372854ef88d00715195093a8879d88b4c130bfbc",
+   "symbol": "XRPUSDT"
+  },
+  {
+   "dataset": "klines_last",
+   "file": "data_long/4h/AVAXUSDT_4h.csv",
+   "first": {
+    "cairo": "2021-12-19 10:00:00 +0200",
+    "ts_ms": 1639900800000,
+    "utc": "2021-12-19 08:00:00 UTC"
+   },
+   "interval": "4h",
+   "last": {
+    "cairo": "2026-10-04 03:00:00 +0300",
+    "ts_ms": 1791072000000,
+    "utc": "2026-10-04 00:00:00 UTC"
+   },
+   "root": "data_long",
+   "rows": 10499,
+   "sha256": "96e34b44cd53f137625c7cb7ccd42f67905cd978291a44904386b631782cd1ba",
+   "symbol": "AVAXUSDT"
+  },
+  {
+   "dataset": "klines_last",
+   "file": "data_long/4h/BNBUSDT_4h.csv",
+   "first": {
+    "cairo": "2021-12-19 10:00:00 +0200",
+    "ts_ms": 1639900800000,
+    "utc": "2021-12-19 08:00:00 UTC"
+   },
+   "interval": "4h",
+   "last": {
+    "cairo": "2026-10-04 03:00:00 +0300",
+    "ts_ms": 1791072000000,
+    "utc": "2026-10-04 00:00:00 UTC"
+   },
+   "root": "data_long",
+   "rows": 10499,
+   "sha256": "a54474e67eab0a26222a63851c9e443e7ad5c07f807abc44bc28601e026d9d2b",
+   "symbol": "BNBUSDT"
+  },
+  {
+   "dataset": "klines_last",
+   "file": "data_long/4h/BTCUSDT_4h.csv",
+   "first": {
+    "cairo": "2021-12-19 10:00:00 +0200",
+    "ts_ms": 1639900800000,
+    "utc": "2021-12-19 08:00:00 UTC"
+   },
+   "interval": "4h",
+   "last": {
+    "cairo": "2026-10-04 03:00:00 +0300",
+    "ts_ms": 1791072000000,
+    "utc": "2026-10-04 00:00:00 UTC"
+   },
+   "root": "data_long",
+   "rows": 10499,
+   "sha256": "469420592551c251ed5e48edc4e9e3568ee4a40b185adfcb423cf6d33024848d",
+   "symbol": "BTCUSDT"
+  },
+  {
+   "dataset": "klines_last",
+   "file": "data_long/4h/DOGEUSDT_4h.csv",
+   "first": {
+    "cairo": "2021-12-19 10:00:00 +0200",
+    "ts_ms": 1639900800000,
+    "utc": "2021-12-19 08:00:00 UTC"
+   },
+   "interval": "4h",
+   "last": {
+    "cairo": "2026-10-04 03:00:00 +0300",
+    "ts_ms": 1791072000000,
+    "utc": "2026-10-04 00:00:00 UTC"
+   },
+   "root": "data_long",
+   "rows": 10499,
+   "sha256": "aac668cc4e4f5210a54923bf4280b43816572d27c65fae63d9af3dd96e5112a2",
+   "symbol": "DOGEUSDT"
+  },
+  {
+   "dataset": "klines_last",
+   "file": "data_long/4h/ETHUSDT_4h.csv",
+   "first": {
+    "cairo": "2021-12-19 10:00:00 +0200",
+    "ts_ms": 1639900800000,
+    "utc": "2021-12-19 08:00:00 UTC"
+   },
+   "interval": "4h",
+   "last": {
+    "cairo": "2026-10-04 03:00:00 +0300",
+    "ts_ms": 1791072000000,
+    "utc": "2026-10-04 00:00:00 UTC"
+   },
+   "root": "data_long",
+   "rows": 10499,
+   "sha256": "d250487771d802728edddf778079cb790f9975ad55d635cdde7ea906576425b8",
+   "symbol": "ETHUSDT"
+  },
+  {
+   "dataset": "klines_last",
+   "file": "data_long/4h/LINKUSDT_4h.csv",
+   "first": {
+    "cairo": "2021-12-19 10:00:00 +0200",
+    "ts_ms": 1639900800000,
+    "utc": "2021-12-19 08:00:00 UTC"
+   },
+   "interval": "4h",
+   "last": {
+    "cairo": "2026-10-04 03:00:00 +0300",
+    "ts_ms": 1791072000000,
+    "utc": "2026-10-04 00:00:00 UTC"
+   },
+   "root": "data_long",
+   "rows": 10499,
+   "sha256": "669a6c7af684cccd5c08bdfd6c621423c609dbf3437ad208eac23f57d6418484",
+   "symbol": "LINKUSDT"
+  },
+  {
+   "dataset": "klines_last",
+   "file": "data_long/4h/SOLUSDT_4h.csv",
+   "first": {
+    "cairo": "2021-12-19 10:00:00 +0200",
+    "ts_ms": 1639900800000,
+    "utc": "2021-12-19 08:00:00 UTC"
+   },
+   "interval": "4h",
+   "last": {
+    "cairo": "2026-10-04 03:00:00 +0300",
+    "ts_ms": 1791072000000,
+    "utc": "2026-10-04 00:00:00 UTC"
+   },
+   "root": "data_long",
+   "rows": 10499,
+   "sha256": "f726dfd5adb3f29c240058b0417c2793d1738b91fb2feeedf23ac9928ad939a3",
+   "symbol": "SOLUSDT"
+  },
+  {
+   "dataset": "klines_last",
+   "file": "data_long/4h/XRPUSDT_4h.csv",
+   "first": {
+    "cairo": "2021-12-19 10:00:00 +0200",
+    "ts_ms": 1639900800000,
+    "utc": "2021-12-19 08:00:00 UTC"
+   },
+   "interval": "4h",
+   "last": {
+    "cairo": "2026-10-04 03:00:00 +0300",
+    "ts_ms": 1791072000000,
+    "utc": "2026-10-04 00:00:00 UTC"
+   },
+   "root": "data_long",
+   "rows": 10499,
+   "sha256": "68b6e8ebd302d5606f5c4b62eeb3045e4fd36996ed334a5dbbe9c7c8d740b1f6",
+   "symbol": "XRPUSDT"
+  }
+ ],
+ "findings": [
+  {
+   "class": "X1",
+   "count": 1,
+   "dataset": "klines_last",
+   "detail": "1 of 4500 shared bars differ from data_long/4h/AVAXUSDT_4h.csv",
+   "disposition": "report; the sources must be reconciled before either is used in a manifest",
+   "examples": [
+    {
+     "a": [
+      "11.12",
+      "11.14",
+      "11.063",
+      "11.063",
+      "342543.0"
+     ],
+     "b": [
+      "11.12",
+      "11.14",
+      "11.029",
+      "11.038",
+      "771623.0"
+     ],
+     "cairo": "2026-10-04 03:00:00 +0300",
+     "ts_ms": 1791072000000,
+     "utc": "2026-10-04 00:00:00 UTC"
+    }
+   ],
+   "file": "data/AVAXUSDT_4h.csv",
+   "from": {
+    "cairo": "2026-10-04 03:00:00 +0300",
+    "ts_ms": 1791072000000,
+    "utc": "2026-10-04 00:00:00 UTC"
+   },
+   "interval": "4h",
+   "other_file": "data_long/4h/AVAXUSDT_4h.csv",
+   "severity": "error",
+   "shared": 4500,
+   "symbol": "AVAXUSDT",
+   "to": {
+    "cairo": "2026-10-04 03:00:00 +0300",
+    "ts_ms": 1791072000000,
+    "utc": "2026-10-04 00:00:00 UTC"
+   }
+  },
+  {
+   "checked": 4500,
+   "class": "X2",
+   "count": 2,
+   "dataset": "klines_last",
+   "detail": "2 of 4500 bars differ from the aggregate of data_long/1h/AVAXUSDT_1h.csv",
+   "disposition": "the coarse bar is rejected (a partial / open candle or a bad resample); rebuild it from the finer bars",
+   "examples": [
+    {
+     "aggregate": [
+      "25.855",
+      "26.522",
+      "25.824",
+      "26.252",
+      "913112.0"
+     ],
+     "bar": [
+      "25.99",
+      "26.522",
+      "25.956",
+      "26.252",
+      "890358.0"
+     ],
+     "cairo": "2024-10-28 23:00:00 +0300",
+     "ts_ms": 1730145600000,
+     "utc": "2024-10-28 20:00:00 UTC"
+    },
+    {
+     "aggregate": [
+      "11.12",
+      "11.14",
+      "11.029",
+      "11.038",
+      "771623.0"
+     ],
+     "bar": [
+      "11.12",
+      "11.14",
+      "11.063",
+      "11.063",
+      "342543.0"
+     ],
+     "cairo": "2026-10-04 03:00:00 +0300",
+     "ts_ms": 1791072000000,
+     "utc": "2026-10-04 00:00:00 UTC"
+    }
+   ],
+   "file": "data/AVAXUSDT_4h.csv",
+   "from": {
+    "cairo": "2024-10-28 23:00:00 +0300",
+    "ts_ms": 1730145600000,
+    "utc": "2024-10-28 20:00:00 UTC"
+   },
+   "interval": "4h",
+   "other_file": "data_long/1h/AVAXUSDT_1h.csv",
+   "severity": "error",
+   "symbol": "AVAXUSDT",
+   "to": {
+    "cairo": "2026-10-04 03:00:00 +0300",
+    "ts_ms": 1791072000000,
+    "utc": "2026-10-04 00:00:00 UTC"
+   }
+  },
+  {
+   "checked": 1124,
+   "class": "X2",
+   "count": 1,
+   "dataset": "klines_last",
+   "detail": "1 of 1124 bars differ from the aggregate of data1h/AVAXUSDT_1h.csv",
+   "disposition": "the coarse bar is rejected (a partial / open candle or a bad resample); rebuild it from the finer bars",
+   "examples": [
+    {
+     "aggregate": [
+      "11.12",
+      "11.14",
+      "11.029",
+      "11.038",
+      "771623.0"
+     ],
+     "bar": [
+      "11.12",
+      "11.14",
+      "11.063",
+      "11.063",
+      "342543.0"
+     ],
+     "cairo": "2026-10-04 03:00:00 +0300",
+     "ts_ms": 1791072000000,
+     "utc": "2026-10-04 00:00:00 UTC"
+    }
+   ],
+   "file": "data/AVAXUSDT_4h.csv",
+   "from": {
+    "cairo": "2026-10-04 03:00:00 +0300",
+    "ts_ms": 1791072000000,
+    "utc": "2026-10-04 00:00:00 UTC"
+   },
+   "interval": "4h",
+   "other_file": "data1h/AVAXUSDT_1h.csv",
+   "severity": "error",
+   "symbol": "AVAXUSDT",
+   "to": {
+    "cairo": "2026-10-04 03:00:00 +0300",
+    "ts_ms": 1791072000000,
+    "utc": "2026-10-04 00:00:00 UTC"
+   }
+  },
+  {
+   "class": "X1",
+   "count": 1,
+   "dataset": "klines_last",
+   "detail": "1 of 4500 shared bars differ from data_long/4h/BNBUSDT_4h.csv",
+   "disposition": "report; the sources must be reconciled before either is used in a manifest",
+   "examples": [
+    {
+     "a": [
+      "787.42",
+      "788.22",
+      "783.46",
+      "783.64",
+      "21368.74"
+     ],
+     "b": [
+      "787.42",
+      "788.22",
+      "782.45",
+      "784.95",
+      "51420.51"
+     ],
+     "cairo": "2026-10-04 03:00:00 +0300",
+     "ts_ms": 1791072000000,
+     "utc": "2026-10-04 00:00:00 UTC"
+    }
+   ],
+   "file": "data/BNBUSDT_4h.csv",
+   "from": {
+    "cairo": "2026-10-04 03:00:00 +0300",
+    "ts_ms": 1791072000000,
+    "utc": "2026-10-04 00:00:00 UTC"
+   },
+   "interval": "4h",
+   "other_file": "data_long/4h/BNBUSDT_4h.csv",
+   "severity": "error",
+   "shared": 4500,
+   "symbol": "BNBUSDT",
+   "to": {
+    "cairo": "2026-10-04 03:00:00 +0300",
+    "ts_ms": 1791072000000,
+    "utc": "2026-10-04 00:00:00 UTC"
+   }
+  },
+  {
+   "checked": 4500,
+   "class": "X2",
+   "count": 2,
+   "dataset": "klines_last",
+   "detail": "2 of 4500 bars differ from the aggregate of data_long/1h/BNBUSDT_1h.csv",
+   "disposition": "the coarse bar is rejected (a partial / open candle or a bad resample); rebuild it from the finer bars",
+   "examples": [
+    {
+     "aggregate": [
+      "596.57",
+      "605.0",
+      "596.46",
+      "601.37",
+      "91588.25"
+     ],
+     "bar": [
+      "598.66",
+      "605.0",
+      "598.4",
+      "601.37",
+      "95399.54"
+     ],
+     "cairo": "2024-10-28 23:00:00 +0300",
+     "ts_ms": 1730145600000,
+     "utc": "2024-10-28 20:00:00 UTC"
+    },
+    {
+     "aggregate": [
+      "787.42",
+      "788.22",
+      "782.45",
+      "784.95",
+      "51420.51"
+     ],
+     "bar": [
+      "787.42",
+      "788.22",
+      "783.46",
+      "783.64",
+      "21368.74"
+     ],
+     "cairo": "2026-10-04 03:00:00 +0300",
+     "ts_ms": 1791072000000,
+     "utc": "2026-10-04 00:00:00 UTC"
+    }
+   ],
+   "file": "data/BNBUSDT_4h.csv",
+   "from": {
+    "cairo": "2024-10-28 23:00:00 +0300",
+    "ts_ms": 1730145600000,
+    "utc": "2024-10-28 20:00:00 UTC"
+   },
+   "interval": "4h",
+   "other_file": "data_long/1h/BNBUSDT_1h.csv",
+   "severity": "error",
+   "symbol": "BNBUSDT",
+   "to": {
+    "cairo": "2026-10-04 03:00:00 +0300",
+    "ts_ms": 1791072000000,
+    "utc": "2026-10-04 00:00:00 UTC"
+   }
+  },
+  {
+   "checked": 1124,
+   "class": "X2",
+   "count": 1,
+   "dataset": "klines_last",
+   "detail": "1 of 1124 bars differ from the aggregate of data1h/BNBUSDT_1h.csv",
+   "disposition": "the coarse bar is rejected (a partial / open candle or a bad resample); rebuild it from the finer bars",
+   "examples": [
+    {
+     "aggregate": [
+      "787.42",
+      "788.22",
+      "782.45",
+      "784.95",
+      "51420.51"
+     ],
+     "bar": [
+      "787.42",
+      "788.22",
+      "783.46",
+      "783.64",
+      "21368.74"
+     ],
+     "cairo": "2026-10-04 03:00:00 +0300",
+     "ts_ms": 1791072000000,
+     "utc": "2026-10-04 00:00:00 UTC"
+    }
+   ],
+   "file": "data/BNBUSDT_4h.csv",
+   "from": {
+    "cairo": "2026-10-04 03:00:00 +0300",
+    "ts_ms": 1791072000000,
+    "utc": "2026-10-04 00:00:00 UTC"
+   },
+   "interval": "4h",
+   "other_file": "data1h/BNBUSDT_1h.csv",
+   "severity": "error",
+   "symbol": "BNBUSDT",
+   "to": {
+    "cairo": "2026-10-04 03:00:00 +0300",
+    "ts_ms": 1791072000000,
+    "utc": "2026-10-04 00:00:00 UTC"
+   }
+  },
+  {
+   "class": "X1",
+   "count": 1,
+   "dataset": "klines_last",
+   "detail": "1 of 4500 shared bars differ from data_long/4h/BTCUSDT_4h.csv",
+   "disposition": "report; the sources must be reconciled before either is used in a manifest",
+   "examples": [
+    {
+     "a": [
+      "84710.5",
+      "84839.3",
+      "84710.5",
+      "84744.0",
+      "2217.609"
+     ],
+     "b": [
+      "84710.5",
+      "84853.4",
+      "84677.3",
+      "84799.9",
+      "4265.852"
+     ],
+     "cairo": "2026-10-04 03:00:00 +0300",
+     "ts_ms": 1791072000000,
+     "utc": "2026-10-04 00:00:00 UTC"
+    }
+   ],
+   "file": "data/BTCUSDT_4h.csv",
+   "from": {
+    "cairo": "2026-10-04 03:00:00 +0300",
+    "ts_ms": 1791072000000,
+    "utc": "2026-10-04 00:00:00 UTC"
+   },
+   "interval": "4h",
+   "other_file": "data_long/4h/BTCUSDT_4h.csv",
+   "severity": "error",
+   "shared": 4500,
+   "symbol": "BTCUSDT",
+   "to": {
+    "cairo": "2026-10-04 03:00:00 +0300",
+    "ts_ms": 1791072000000,
+    "utc": "2026-10-04 00:00:00 UTC"
+   }
+  },
+  {
+   "checked": 4500,
+   "class": "X2",
+   "count": 2,
+   "dataset": "klines_last",
+   "detail": "2 of 4500 bars differ from the aggregate of data_long/1h/BTCUSDT_1h.csv",
+   "disposition": "the coarse bar is rejected (a partial / open candle or a bad resample); rebuild it from the finer bars",
+   "examples": [
+    {
+     "aggregate": [
+      "69605.8",
+      "70331.0",
+      "69389.0",
+      "69940.0",
+      "34481.841"
+     ],
+     "bar": [
+      "69650.0",
+      "70331.0",
+      "69480.3",
+      "69940.0",
+      "31542.185"
+     ],
+     "cairo": "2024-10-28 23:00:00 +0300",
+     "ts_ms": 1730145600000,
+     "utc": "2024-10-28 20:00:00 UTC"
+    },
+    {
+     "aggregate": [
+      "84710.5",
+      "84853.4",
+      "84677.3",
+      "84799.9",
+      "4265.852"
+     ],
+     "bar": [
+      "84710.5",
+      "84839.3",
+      "84710.5",
+      "84744.0",
+      "2217.609"
+     ],
+     "cairo": "2026-10-04 03:00:00 +0300",
+     "ts_ms": 1791072000000,
+     "utc": "2026-10-04 00:00:00 UTC"
+    }
+   ],
+   "file": "data/BTCUSDT_4h.csv",
+   "from": {
+    "cairo": "2024-10-28 23:00:00 +0300",
+    "ts_ms": 1730145600000,
+    "utc": "2024-10-28 20:00:00 UTC"
+   },
+   "interval": "4h",
+   "other_file": "data_long/1h/BTCUSDT_1h.csv",
+   "severity": "error",
+   "symbol": "BTCUSDT",
+   "to": {
+    "cairo": "2026-10-04 03:00:00 +0300",
+    "ts_ms": 1791072000000,
+    "utc": "2026-10-04 00:00:00 UTC"
+   }
+  },
+  {
+   "checked": 1124,
+   "class": "X2",
+   "count": 1,
+   "dataset": "klines_last",
+   "detail": "1 of 1124 bars differ from the aggregate of data1h/BTCUSDT_1h.csv",
+   "disposition": "the coarse bar is rejected (a partial / open candle or a bad resample); rebuild it from the finer bars",
+   "examples": [
+    {
+     "aggregate": [
+      "84710.5",
+      "84853.4",
+      "84677.3",
+      "84799.9",
+      "4265.852"
+     ],
+     "bar": [
+      "84710.5",
+      "84839.3",
+      "84710.5",
+      "84744.0",
+      "2217.609"
+     ],
+     "cairo": "2026-10-04 03:00:00 +0300",
+     "ts_ms": 1791072000000,
+     "utc": "2026-10-04 00:00:00 UTC"
+    }
+   ],
+   "file": "data/BTCUSDT_4h.csv",
+   "from": {
+    "cairo": "2026-10-04 03:00:00 +0300",
+    "ts_ms": 1791072000000,
+    "utc": "2026-10-04 00:00:00 UTC"
+   },
+   "interval": "4h",
+   "other_file": "data1h/BTCUSDT_1h.csv",
+   "severity": "error",
+   "symbol": "BTCUSDT",
+   "to": {
+    "cairo": "2026-10-04 03:00:00 +0300",
+    "ts_ms": 1791072000000,
+    "utc": "2026-10-04 00:00:00 UTC"
+   }
+  },
+  {
+   "class": "X1",
+   "count": 1,
+   "dataset": "klines_last",
+   "detail": "1 of 4500 shared bars differ from data_long/4h/DOGEUSDT_4h.csv",
+   "disposition": "report; the sources must be reconciled before either is used in a manifest",
+   "examples": [
+    {
+     "a": [
+      "0.09276",
+      "0.09312",
+      "0.09268",
+      "0.09268",
+      "113574449.0"
+     ],
+     "b": [
+      "0.09276",
+      "0.09312",
+      "0.09246",
+      "0.0926",
+      "327332259.0"
+     ],
+     "cairo": "2026-10-04 03:00:00 +0300",
+     "ts_ms": 1791072000000,
+     "utc": "2026-10-04 00:00:00 UTC"
+    }
+   ],
+   "file": "data/DOGEUSDT_4h.csv",
+   "from": {
+    "cairo": "2026-10-04 03:00:00 +0300",
+    "ts_ms": 1791072000000,
+    "utc": "2026-10-04 00:00:00 UTC"
+   },
+   "interval": "4h",
+   "other_file": "data_long/4h/DOGEUSDT_4h.csv",
+   "severity": "error",
+   "shared": 4500,
+   "symbol": "DOGEUSDT",
+   "to": {
+    "cairo": "2026-10-04 03:00:00 +0300",
+    "ts_ms": 1791072000000,
+    "utc": "2026-10-04 00:00:00 UTC"
+   }
+  },
+  {
+   "checked": 4500,
+   "class": "X2",
+   "count": 2,
+   "dataset": "klines_last",
+   "detail": "2 of 4500 bars differ from the aggregate of data_long/1h/DOGEUSDT_1h.csv",
+   "disposition": "the coarse bar is rejected (a partial / open candle or a bad resample); rebuild it from the finer bars",
+   "examples": [
+    {
+     "aggregate": [
+      "0.15836",
+      "0.16263",
+      "0.15654",
+      "0.1614",
+      "2438351650.0"
+     ],
+     "bar": [
+      "0.15929",
+      "0.16263",
+      "0.15716",
+      "0.1614",
+      "2077679478.0"
+     ],
+     "cairo": "2024-10-28 23:00:00 +0300",
+     "ts_ms": 1730145600000,
+     "utc": "2024-10-28 20:00:00 UTC"
+    },
+    {
+     "aggregate": [
+      "0.09276",
+      "0.09312",
+      "0.09246",
+      "0.0926",
+      "327332259.0"
+     ],
+     "bar": [
+      "0.09276",
+      "0.09312",
+      "0.09268",
+      "0.09268",
+      "113574449.0"
+     ],
+     "cairo": "2026-10-04 03:00:00 +0300",
+     "ts_ms": 1791072000000,
+     "utc": "2026-10-04 00:00:00 UTC"
+    }
+   ],
+   "file": "data/DOGEUSDT_4h.csv",
+   "from": {
+    "cairo": "2024-10-28 23:00:00 +0300",
+    "ts_ms": 1730145600000,
+    "utc": "2024-10-28 20:00:00 UTC"
+   },
+   "interval": "4h",
+   "other_file": "data_long/1h/DOGEUSDT_1h.csv",
+   "severity": "error",
+   "symbol": "DOGEUSDT",
+   "to": {
+    "cairo": "2026-10-04 03:00:00 +0300",
+    "ts_ms": 1791072000000,
+    "utc": "2026-10-04 00:00:00 UTC"
+   }
+  },
+  {
+   "checked": 1124,
+   "class": "X2",
+   "count": 1,
+   "dataset": "klines_last",
+   "detail": "1 of 1124 bars differ from the aggregate of data1h/DOGEUSDT_1h.csv",
+   "disposition": "the coarse bar is rejected (a partial / open candle or a bad resample); rebuild it from the finer bars",
+   "examples": [
+    {
+     "aggregate": [
+      "0.09276",
+      "0.09312",
+      "0.09246",
+      "0.0926",
+      "327332259.0"
+     ],
+     "bar": [
+      "0.09276",
+      "0.09312",
+      "0.09268",
+      "0.09268",
+      "113574449.0"
+     ],
+     "cairo": "2026-10-04 03:00:00 +0300",
+     "ts_ms": 1791072000000,
+     "utc": "2026-10-04 00:00:00 UTC"
+    }
+   ],
+   "file": "data/DOGEUSDT_4h.csv",
+   "from": {
+    "cairo": "2026-10-04 03:00:00 +0300",
+    "ts_ms": 1791072000000,
+    "utc": "2026-10-04 00:00:00 UTC"
+   },
+   "interval": "4h",
+   "other_file": "data1h/DOGEUSDT_1h.csv",
+   "severity": "error",
+   "symbol": "DOGEUSDT",
+   "to": {
+    "cairo": "2026-10-04 03:00:00 +0300",
+    "ts_ms": 1791072000000,
+    "utc": "2026-10-04 00:00:00 UTC"
+   }
+  },
+  {
+   "class": "X1",
+   "count": 1,
+   "dataset": "klines_last",
+   "detail": "1 of 4500 shared bars differ from data_long/4h/ETHUSDT_4h.csv",
+   "disposition": "report; the sources must be reconciled before either is used in a manifest",
+   "examples": [
+    {
+     "a": [
+      "2686.01",
+      "2694.39",
+      "2685.15",
+      "2690.28",
+      "45873.457"
+     ],
+     "b": [
+      "2686.01",
+      "2696.0",
+      "2685.15",
+      "2693.29",
+      "123966.971"
+     ],
+     "cairo": "2026-10-04 03:00:00 +0300",
+     "ts_ms": 1791072000000,
+     "utc": "2026-10-04 00:00:00 UTC"
+    }
+   ],
+   "file": "data/ETHUSDT_4h.csv",
+   "from": {
+    "cairo": "2026-10-04 03:00:00 +0300",
+    "ts_ms": 1791072000000,
+    "utc": "2026-10-04 00:00:00 UTC"
+   },
+   "interval": "4h",
+   "other_file": "data_long/4h/ETHUSDT_4h.csv",
+   "severity": "error",
+   "shared": 4500,
+   "symbol": "ETHUSDT",
+   "to": {
+    "cairo": "2026-10-04 03:00:00 +0300",
+    "ts_ms": 1791072000000,
+    "utc": "2026-10-04 00:00:00 UTC"
+   }
+  },
+  {
+   "checked": 4500,
+   "class": "X2",
+   "count": 2,
+   "dataset": "klines_last",
+   "detail": "2 of 4500 bars differ from the aggregate of data_long/1h/ETHUSDT_1h.csv",
+   "disposition": "the coarse bar is rejected (a partial / open candle or a bad resample); rebuild it from the finer bars",
+   "examples": [
+    {
+     "aggregate": [
+      "2505.93",
+      "2590.78",
+      "2504.13",
+      "2566.49",
+      "480176.291"
+     ],
+     "bar": [
+      "2518.92",
+      "2590.78",
+      "2516.54",
+      "2566.49",
+      "559286.798"
+     ],
+     "cairo": "2024-10-28 23:00:00 +0300",
+     "ts_ms": 1730145600000,
+     "utc": "2024-10-28 20:00:00 UTC"
+    },
+    {
+     "aggregate": [
+      "2686.01",
+      "2696.0",
+      "2685.15",
+      "2693.29",
+      "123966.971"
+     ],
+     "bar": [
+      "2686.01",
+      "2694.39",
+      "2685.15",
+      "2690.28",
+      "45873.457"
+     ],
+     "cairo": "2026-10-04 03:00:00 +0300",
+     "ts_ms": 1791072000000,
+     "utc": "2026-10-04 00:00:00 UTC"
+    }
+   ],
+   "file": "data/ETHUSDT_4h.csv",
+   "from": {
+    "cairo": "2024-10-28 23:00:00 +0300",
+    "ts_ms": 1730145600000,
+    "utc": "2024-10-28 20:00:00 UTC"
+   },
+   "interval": "4h",
+   "other_file": "data_long/1h/ETHUSDT_1h.csv",
+   "severity": "error",
+   "symbol": "ETHUSDT",
+   "to": {
+    "cairo": "2026-10-04 03:00:00 +0300",
+    "ts_ms": 1791072000000,
+    "utc": "2026-10-04 00:00:00 UTC"
+   }
+  },
+  {
+   "checked": 1124,
+   "class": "X2",
+   "count": 1,
+   "dataset": "klines_last",
+   "detail": "1 of 1124 bars differ from the aggregate of data1h/ETHUSDT_1h.csv",
+   "disposition": "the coarse bar is rejected (a partial / open candle or a bad resample); rebuild it from the finer bars",
+   "examples": [
+    {
+     "aggregate": [
+      "2686.01",
+      "2696.0",
+      "2685.15",
+      "2693.29",
+      "123966.971"
+     ],
+     "bar": [
+      "2686.01",
+      "2694.39",
+      "2685.15",
+      "2690.28",
+      "45873.457"
+     ],
+     "cairo": "2026-10-04 03:00:00 +0300",
+     "ts_ms": 1791072000000,
+     "utc": "2026-10-04 00:00:00 UTC"
+    }
+   ],
+   "file": "data/ETHUSDT_4h.csv",
+   "from": {
+    "cairo": "2026-10-04 03:00:00 +0300",
+    "ts_ms": 1791072000000,
+    "utc": "2026-10-04 00:00:00 UTC"
+   },
+   "interval": "4h",
+   "other_file": "data1h/ETHUSDT_1h.csv",
+   "severity": "error",
+   "symbol": "ETHUSDT",
+   "to": {
+    "cairo": "2026-10-04 03:00:00 +0300",
+    "ts_ms": 1791072000000,
+    "utc": "2026-10-04 00:00:00 UTC"
+   }
+  },
+  {
+   "class": "X1",
+   "count": 1,
+   "dataset": "klines_last",
+   "detail": "1 of 4500 shared bars differ from data_long/4h/LINKUSDT_4h.csv",
+   "disposition": "report; the sources must be reconciled before either is used in a manifest",
+   "examples": [
+    {
+     "a": [
+      "14.108",
+      "14.231",
+      "14.096",
+      "14.099",
+      "483130.35"
+     ],
+     "b": [
+      "14.108",
+      "14.231",
+      "13.99",
+      "14.016",
+      "1200261.5"
+     ],
+     "cairo": "2026-10-04 03:00:00 +0300",
+     "ts_ms": 1791072000000,
+     "utc": "2026-10-04 00:00:00 UTC"
+    }
+   ],
+   "file": "data/LINKUSDT_4h.csv",
+   "from": {
+    "cairo": "2026-10-04 03:00:00 +0300",
+    "ts_ms": 1791072000000,
+    "utc": "2026-10-04 00:00:00 UTC"
+   },
+   "interval": "4h",
+   "other_file": "data_long/4h/LINKUSDT_4h.csv",
+   "severity": "error",
+   "shared": 4500,
+   "symbol": "LINKUSDT",
+   "to": {
+    "cairo": "2026-10-04 03:00:00 +0300",
+    "ts_ms": 1791072000000,
+    "utc": "2026-10-04 00:00:00 UTC"
+   }
+  },
+  {
+   "checked": 4500,
+   "class": "X2",
+   "count": 2,
+   "dataset": "klines_last",
+   "detail": "2 of 4500 bars differ from the aggregate of data_long/1h/LINKUSDT_1h.csv",
+   "disposition": "the coarse bar is rejected (a partial / open candle or a bad resample); rebuild it from the finer bars",
+   "examples": [
+    {
+     "aggregate": [
+      "10.995",
+      "11.258",
+      "10.964",
+      "11.179",
+      "1598108.53"
+     ],
+     "bar": [
+      "11.039",
+      "11.258",
+      "11.014",
+      "11.179",
+      "1412301.45"
+     ],
+     "cairo": "2024-10-28 23:00:00 +0300",
+     "ts_ms": 1730145600000,
+     "utc": "2024-10-28 20:00:00 UTC"
+    },
+    {
+     "aggregate": [
+      "14.108",
+      "14.231",
+      "13.99",
+      "14.016",
+      "1200261.50"
+     ],
+     "bar": [
+      "14.108",
+      "14.231",
+      "14.096",
+      "14.099",
+      "483130.35"
+     ],
+     "cairo": "2026-10-04 03:00:00 +0300",
+     "ts_ms": 1791072000000,
+     "utc": "2026-10-04 00:00:00 UTC"
+    }
+   ],
+   "file": "data/LINKUSDT_4h.csv",
+   "from": {
+    "cairo": "2024-10-28 23:00:00 +0300",
+    "ts_ms": 1730145600000,
+    "utc": "2024-10-28 20:00:00 UTC"
+   },
+   "interval": "4h",
+   "other_file": "data_long/1h/LINKUSDT_1h.csv",
+   "severity": "error",
+   "symbol": "LINKUSDT",
+   "to": {
+    "cairo": "2026-10-04 03:00:00 +0300",
+    "ts_ms": 1791072000000,
+    "utc": "2026-10-04 00:00:00 UTC"
+   }
+  },
+  {
+   "checked": 1124,
+   "class": "X2",
+   "count": 1,
+   "dataset": "klines_last",
+   "detail": "1 of 1124 bars differ from the aggregate of data1h/LINKUSDT_1h.csv",
+   "disposition": "the coarse bar is rejected (a partial / open candle or a bad resample); rebuild it from the finer bars",
+   "examples": [
+    {
+     "aggregate": [
+      "14.108",
+      "14.231",
+      "13.99",
+      "14.016",
+      "1200261.50"
+     ],
+     "bar": [
+      "14.108",
+      "14.231",
+      "14.096",
+      "14.099",
+      "483130.35"
+     ],
+     "cairo": "2026-10-04 03:00:00 +0300",
+     "ts_ms": 1791072000000,
+     "utc": "2026-10-04 00:00:00 UTC"
+    }
+   ],
+   "file": "data/LINKUSDT_4h.csv",
+   "from": {
+    "cairo": "2026-10-04 03:00:00 +0300",
+    "ts_ms": 1791072000000,
+    "utc": "2026-10-04 00:00:00 UTC"
+   },
+   "interval": "4h",
+   "other_file": "data1h/LINKUSDT_1h.csv",
+   "severity": "error",
+   "symbol": "LINKUSDT",
+   "to": {
+    "cairo": "2026-10-04 03:00:00 +0300",
+    "ts_ms": 1791072000000,
+    "utc": "2026-10-04 00:00:00 UTC"
+   }
+  },
+  {
+   "class": "X1",
+   "count": 1,
+   "dataset": "klines_last",
+   "detail": "1 of 4500 shared bars differ from data_long/4h/SOLUSDT_4h.csv",
+   "disposition": "report; the sources must be reconciled before either is used in a manifest",
+   "examples": [
+    {
+     "a": [
+      "119.54",
+      "120.3",
+      "119.54",
+      "120.11",
+      "369264.02"
+     ],
+     "b": [
+      "119.54",
+      "121.25",
+      "119.54",
+      "120.72",
+      "1541437.87"
+     ],
+     "cairo": "2026-10-04 03:00:00 +0300",
+     "ts_ms": 1791072000000,
+     "utc": "2026-10-04 00:00:00 UTC"
+    }
+   ],
+   "file": "data/SOLUSDT_4h.csv",
+   "from": {
+    "cairo": "2026-10-04 03:00:00 +0300",
+    "ts_ms": 1791072000000,
+    "utc": "2026-10-04 00:00:00 UTC"
+   },
+   "interval": "4h",
+   "other_file": "data_long/4h/SOLUSDT_4h.csv",
+   "severity": "error",
+   "shared": 4500,
+   "symbol": "SOLUSDT",
+   "to": {
+    "cairo": "2026-10-04 03:00:00 +0300",
+    "ts_ms": 1791072000000,
+    "utc": "2026-10-04 00:00:00 UTC"
+   }
+  },
+  {
+   "checked": 4500,
+   "class": "X2",
+   "count": 2,
+   "dataset": "klines_last",
+   "detail": "2 of 4500 bars differ from the aggregate of data_long/1h/SOLUSDT_1h.csv",
+   "disposition": "the coarse bar is rejected (a partial / open candle or a bad resample); rebuild it from the finer bars",
+   "examples": [
+    {
+     "aggregate": [
+      "176.35",
+      "179.8",
+      "175.63",
+      "178.2",
+      "2808961.0"
+     ],
+     "bar": [
+      "176.56",
+      "179.8",
+      "176.22",
+      "178.2",
+      "2694276.0"
+     ],
+     "cairo": "2024-10-28 23:00:00 +0300",
+     "ts_ms": 1730145600000,
+     "utc": "2024-10-28 20:00:00 UTC"
+    },
+    {
+     "aggregate": [
+      "119.54",
+      "121.25",
+      "119.54",
+      "120.72",
+      "1541437.87"
+     ],
+     "bar": [
+      "119.54",
+      "120.3",
+      "119.54",
+      "120.11",
+      "369264.02"
+     ],
+     "cairo": "2026-10-04 03:00:00 +0300",
+     "ts_ms": 1791072000000,
+     "utc": "2026-10-04 00:00:00 UTC"
+    }
+   ],
+   "file": "data/SOLUSDT_4h.csv",
+   "from": {
+    "cairo": "2024-10-28 23:00:00 +0300",
+    "ts_ms": 1730145600000,
+    "utc": "2024-10-28 20:00:00 UTC"
+   },
+   "interval": "4h",
+   "other_file": "data_long/1h/SOLUSDT_1h.csv",
+   "severity": "error",
+   "symbol": "SOLUSDT",
+   "to": {
+    "cairo": "2026-10-04 03:00:00 +0300",
+    "ts_ms": 1791072000000,
+    "utc": "2026-10-04 00:00:00 UTC"
+   }
+  },
+  {
+   "checked": 1124,
+   "class": "X2",
+   "count": 1,
+   "dataset": "klines_last",
+   "detail": "1 of 1124 bars differ from the aggregate of data1h/SOLUSDT_1h.csv",
+   "disposition": "the coarse bar is rejected (a partial / open candle or a bad resample); rebuild it from the finer bars",
+   "examples": [
+    {
+     "aggregate": [
+      "119.54",
+      "121.25",
+      "119.54",
+      "120.72",
+      "1541437.87"
+     ],
+     "bar": [
+      "119.54",
+      "120.3",
+      "119.54",
+      "120.11",
+      "369264.02"
+     ],
+     "cairo": "2026-10-04 03:00:00 +0300",
+     "ts_ms": 1791072000000,
+     "utc": "2026-10-04 00:00:00 UTC"
+    }
+   ],
+   "file": "data/SOLUSDT_4h.csv",
+   "from": {
+    "cairo": "2026-10-04 03:00:00 +0300",
+    "ts_ms": 1791072000000,
+    "utc": "2026-10-04 00:00:00 UTC"
+   },
+   "interval": "4h",
+   "other_file": "data1h/SOLUSDT_1h.csv",
+   "severity": "error",
+   "symbol": "SOLUSDT",
+   "to": {
+    "cairo": "2026-10-04 03:00:00 +0300",
+    "ts_ms": 1791072000000,
+    "utc": "2026-10-04 00:00:00 UTC"
+   }
+  },
+  {
+   "class": "X1",
+   "count": 1,
+   "dataset": "klines_last",
+   "detail": "1 of 4500 shared bars differ from data_long/4h/XRPUSDT_4h.csv",
+   "disposition": "report; the sources must be reconciled before either is used in a manifest",
+   "examples": [
+    {
+     "a": [
+      "1.4856",
+      "1.4905",
+      "1.4847",
+      "1.4867",
+      "14275848.5"
+     ],
+     "b": [
+      "1.4856",
+      "1.4913",
+      "1.4847",
+      "1.4891",
+      "31521247.6"
+     ],
+     "cairo": "2026-10-04 03:00:00 +0300",
+     "ts_ms": 1791072000000,
+     "utc": "2026-10-04 00:00:00 UTC"
+    }
+   ],
+   "file": "data/XRPUSDT_4h.csv",
+   "from": {
+    "cairo": "2026-10-04 03:00:00 +0300",
+    "ts_ms": 1791072000000,
+    "utc": "2026-10-04 00:00:00 UTC"
+   },
+   "interval": "4h",
+   "other_file": "data_long/4h/XRPUSDT_4h.csv",
+   "severity": "error",
+   "shared": 4500,
+   "symbol": "XRPUSDT",
+   "to": {
+    "cairo": "2026-10-04 03:00:00 +0300",
+    "ts_ms": 1791072000000,
+    "utc": "2026-10-04 00:00:00 UTC"
+   }
+  },
+  {
+   "checked": 4500,
+   "class": "X2",
+   "count": 2,
+   "dataset": "klines_last",
+   "detail": "2 of 4500 bars differ from the aggregate of data_long/1h/XRPUSDT_1h.csv",
+   "disposition": "the coarse bar is rejected (a partial / open candle or a bad resample); rebuild it from the finer bars",
+   "examples": [
+    {
+     "aggregate": [
+      "0.5174",
+      "0.5213",
+      "0.517",
+      "0.5192",
+      "51137374.4"
+     ],
+     "bar": [
+      "0.5172",
+      "0.5213",
+      "0.516",
+      "0.5192",
+      "47601826.7"
+     ],
+     "cairo": "2024-10-28 23:00:00 +0300",
+     "ts_ms": 1730145600000,
+     "utc": "2024-10-28 20:00:00 UTC"
+    },
+    {
+     "aggregate": [
+      "1.4856",
+      "1.4913",
+      "1.4847",
+      "1.4891",
+      "31521247.6"
+     ],
+     "bar": [
+      "1.4856",
+      "1.4905",
+      "1.4847",
+      "1.4867",
+      "14275848.5"
+     ],
+     "cairo": "2026-10-04 03:00:00 +0300",
+     "ts_ms": 1791072000000,
+     "utc": "2026-10-04 00:00:00 UTC"
+    }
+   ],
+   "file": "data/XRPUSDT_4h.csv",
+   "from": {
+    "cairo": "2024-10-28 23:00:00 +0300",
+    "ts_ms": 1730145600000,
+    "utc": "2024-10-28 20:00:00 UTC"
+   },
+   "interval": "4h",
+   "other_file": "data_long/1h/XRPUSDT_1h.csv",
+   "severity": "error",
+   "symbol": "XRPUSDT",
+   "to": {
+    "cairo": "2026-10-04 03:00:00 +0300",
+    "ts_ms": 1791072000000,
+    "utc": "2026-10-04 00:00:00 UTC"
+   }
+  },
+  {
+   "checked": 1124,
+   "class": "X2",
+   "count": 1,
+   "dataset": "klines_last",
+   "detail": "1 of 1124 bars differ from the aggregate of data1h/XRPUSDT_1h.csv",
+   "disposition": "the coarse bar is rejected (a partial / open candle or a bad resample); rebuild it from the finer bars",
+   "examples": [
+    {
+     "aggregate": [
+      "1.4856",
+      "1.4913",
+      "1.4847",
+      "1.4891",
+      "31521247.6"
+     ],
+     "bar": [
+      "1.4856",
+      "1.4905",
+      "1.4847",
+      "1.4867",
+      "14275848.5"
+     ],
+     "cairo": "2026-10-04 03:00:00 +0300",
+     "ts_ms": 1791072000000,
+     "utc": "2026-10-04 00:00:00 UTC"
+    }
+   ],
+   "file": "data/XRPUSDT_4h.csv",
+   "from": {
+    "cairo": "2026-10-04 03:00:00 +0300",
+    "ts_ms": 1791072000000,
+    "utc": "2026-10-04 00:00:00 UTC"
+   },
+   "interval": "4h",
+   "other_file": "data1h/XRPUSDT_1h.csv",
+   "severity": "error",
+   "symbol": "XRPUSDT",
+   "to": {
+    "cairo": "2026-10-04 03:00:00 +0300",
+    "ts_ms": 1791072000000,
+    "utc": "2026-10-04 00:00:00 UTC"
+   }
+  },
+  {
+   "class": "G1",
+   "count": 1,
+   "dataset": "klines_last",
+   "detail": "1 missing 1h bar(s) between 2026-08-02 15:00:00 UTC and 2026-08-02 17:00:00 UTC",
+   "disposition": "no fill; signals whose lookback crosses it are not evaluated; positions across it are gap_exposed",
+   "file": "data1h/AVAXUSDT_1h.csv",
+   "from": {
+    "cairo": "2026-08-02 19:00:00 +0300",
+    "ts_ms": 1785686400000,
+    "utc": "2026-08-02 16:00:00 UTC"
+   },
+   "interval": "1h",
+   "missing": [
+    {
+     "cairo": "2026-08-02 19:00:00 +0300",
+     "ts_ms": 1785686400000,
+     "utc": "2026-08-02 16:00:00 UTC"
+    }
+   ],
+   "severity": "error",
+   "symbol": "AVAXUSDT",
+   "to": {
+    "cairo": "2026-08-02 19:00:00 +0300",
+    "ts_ms": 1785686400000,
+    "utc": "2026-08-02 16:00:00 UTC"
+   }
+  },
+  {
+   "class": "S1",
+   "count": 1,
+   "dataset": "klines_last",
+   "detail": "ends 1 1h bar(s) before the newest 1h file (2026-10-04 04:00:00 UTC)",
+   "disposition": "the window end is cut to the last fresh row",
+   "file": "data1h/AVAXUSDT_1h.csv",
+   "from": {
+    "cairo": "2026-10-04 06:00:00 +0300",
+    "ts_ms": 1791082800000,
+    "utc": "2026-10-04 03:00:00 UTC"
+   },
+   "interval": "1h",
+   "severity": "warning",
+   "symbol": "AVAXUSDT",
+   "to": {
+    "cairo": "2026-10-04 07:00:00 +0300",
+    "ts_ms": 1791086400000,
+    "utc": "2026-10-04 04:00:00 UTC"
+   }
+  },
+  {
+   "class": "G1",
+   "count": 1,
+   "dataset": "klines_last",
+   "detail": "1 missing 1h bar(s) between 2026-08-02 15:00:00 UTC and 2026-08-02 17:00:00 UTC",
+   "disposition": "no fill; signals whose lookback crosses it are not evaluated; positions across it are gap_exposed",
+   "file": "data1h/BNBUSDT_1h.csv",
+   "from": {
+    "cairo": "2026-08-02 19:00:00 +0300",
+    "ts_ms": 1785686400000,
+    "utc": "2026-08-02 16:00:00 UTC"
+   },
+   "interval": "1h",
+   "missing": [
+    {
+     "cairo": "2026-08-02 19:00:00 +0300",
+     "ts_ms": 1785686400000,
+     "utc": "2026-08-02 16:00:00 UTC"
+    }
+   ],
+   "severity": "error",
+   "symbol": "BNBUSDT",
+   "to": {
+    "cairo": "2026-08-02 19:00:00 +0300",
+    "ts_ms": 1785686400000,
+    "utc": "2026-08-02 16:00:00 UTC"
+   }
+  },
+  {
+   "class": "S1",
+   "count": 1,
+   "dataset": "klines_last",
+   "detail": "ends 1 1h bar(s) before the newest 1h file (2026-10-04 04:00:00 UTC)",
+   "disposition": "the window end is cut to the last fresh row",
+   "file": "data1h/BNBUSDT_1h.csv",
+   "from": {
+    "cairo": "2026-10-04 06:00:00 +0300",
+    "ts_ms": 1791082800000,
+    "utc": "2026-10-04 03:00:00 UTC"
+   },
+   "interval": "1h",
+   "severity": "warning",
+   "symbol": "BNBUSDT",
+   "to": {
+    "cairo": "2026-10-04 07:00:00 +0300",
+    "ts_ms": 1791086400000,
+    "utc": "2026-10-04 04:00:00 UTC"
+   }
+  },
+  {
+   "class": "G1",
+   "count": 1,
+   "dataset": "klines_last",
+   "detail": "1 missing 1h bar(s) between 2026-08-02 15:00:00 UTC and 2026-08-02 17:00:00 UTC",
+   "disposition": "no fill; signals whose lookback crosses it are not evaluated; positions across it are gap_exposed",
+   "file": "data1h/BTCUSDT_1h.csv",
+   "from": {
+    "cairo": "2026-08-02 19:00:00 +0300",
+    "ts_ms": 1785686400000,
+    "utc": "2026-08-02 16:00:00 UTC"
+   },
+   "interval": "1h",
+   "missing": [
+    {
+     "cairo": "2026-08-02 19:00:00 +0300",
+     "ts_ms": 1785686400000,
+     "utc": "2026-08-02 16:00:00 UTC"
+    }
+   ],
+   "severity": "error",
+   "symbol": "BTCUSDT",
+   "to": {
+    "cairo": "2026-08-02 19:00:00 +0300",
+    "ts_ms": 1785686400000,
+    "utc": "2026-08-02 16:00:00 UTC"
+   }
+  },
+  {
+   "class": "S1",
+   "count": 1,
+   "dataset": "klines_last",
+   "detail": "ends 1 1h bar(s) before the newest 1h file (2026-10-04 04:00:00 UTC)",
+   "disposition": "the window end is cut to the last fresh row",
+   "file": "data1h/BTCUSDT_1h.csv",
+   "from": {
+    "cairo": "2026-10-04 06:00:00 +0300",
+    "ts_ms": 1791082800000,
+    "utc": "2026-10-04 03:00:00 UTC"
+   },
+   "interval": "1h",
+   "severity": "warning",
+   "symbol": "BTCUSDT",
+   "to": {
+    "cairo": "2026-10-04 07:00:00 +0300",
+    "ts_ms": 1791086400000,
+    "utc": "2026-10-04 04:00:00 UTC"
+   }
+  },
+  {
+   "class": "G1",
+   "count": 1,
+   "dataset": "klines_last",
+   "detail": "1 missing 1h bar(s) between 2026-08-02 15:00:00 UTC and 2026-08-02 17:00:00 UTC",
+   "disposition": "no fill; signals whose lookback crosses it are not evaluated; positions across it are gap_exposed",
+   "file": "data1h/DOGEUSDT_1h.csv",
+   "from": {
+    "cairo": "2026-08-02 19:00:00 +0300",
+    "ts_ms": 1785686400000,
+    "utc": "2026-08-02 16:00:00 UTC"
+   },
+   "interval": "1h",
+   "missing": [
+    {
+     "cairo": "2026-08-02 19:00:00 +0300",
+     "ts_ms": 1785686400000,
+     "utc": "2026-08-02 16:00:00 UTC"
+    }
+   ],
+   "severity": "error",
+   "symbol": "DOGEUSDT",
+   "to": {
+    "cairo": "2026-08-02 19:00:00 +0300",
+    "ts_ms": 1785686400000,
+    "utc": "2026-08-02 16:00:00 UTC"
+   }
+  },
+  {
+   "class": "S1",
+   "count": 1,
+   "dataset": "klines_last",
+   "detail": "ends 1 1h bar(s) before the newest 1h file (2026-10-04 04:00:00 UTC)",
+   "disposition": "the window end is cut to the last fresh row",
+   "file": "data1h/DOGEUSDT_1h.csv",
+   "from": {
+    "cairo": "2026-10-04 06:00:00 +0300",
+    "ts_ms": 1791082800000,
+    "utc": "2026-10-04 03:00:00 UTC"
+   },
+   "interval": "1h",
+   "severity": "warning",
+   "symbol": "DOGEUSDT",
+   "to": {
+    "cairo": "2026-10-04 07:00:00 +0300",
+    "ts_ms": 1791086400000,
+    "utc": "2026-10-04 04:00:00 UTC"
+   }
+  },
+  {
+   "class": "G1",
+   "count": 1,
+   "dataset": "klines_last",
+   "detail": "1 missing 1h bar(s) between 2026-08-02 15:00:00 UTC and 2026-08-02 17:00:00 UTC",
+   "disposition": "no fill; signals whose lookback crosses it are not evaluated; positions across it are gap_exposed",
+   "file": "data1h/ETHUSDT_1h.csv",
+   "from": {
+    "cairo": "2026-08-02 19:00:00 +0300",
+    "ts_ms": 1785686400000,
+    "utc": "2026-08-02 16:00:00 UTC"
+   },
+   "interval": "1h",
+   "missing": [
+    {
+     "cairo": "2026-08-02 19:00:00 +0300",
+     "ts_ms": 1785686400000,
+     "utc": "2026-08-02 16:00:00 UTC"
+    }
+   ],
+   "severity": "error",
+   "symbol": "ETHUSDT",
+   "to": {
+    "cairo": "2026-08-02 19:00:00 +0300",
+    "ts_ms": 1785686400000,
+    "utc": "2026-08-02 16:00:00 UTC"
+   }
+  },
+  {
+   "class": "S1",
+   "count": 1,
+   "dataset": "klines_last",
+   "detail": "ends 1 1h bar(s) before the newest 1h file (2026-10-04 04:00:00 UTC)",
+   "disposition": "the window end is cut to the last fresh row",
+   "file": "data1h/ETHUSDT_1h.csv",
+   "from": {
+    "cairo": "2026-10-04 06:00:00 +0300",
+    "ts_ms": 1791082800000,
+    "utc": "2026-10-04 03:00:00 UTC"
+   },
+   "interval": "1h",
+   "severity": "warning",
+   "symbol": "ETHUSDT",
+   "to": {
+    "cairo": "2026-10-04 07:00:00 +0300",
+    "ts_ms": 1791086400000,
+    "utc": "2026-10-04 04:00:00 UTC"
+   }
+  },
+  {
+   "class": "G1",
+   "count": 1,
+   "dataset": "klines_last",
+   "detail": "1 missing 1h bar(s) between 2026-08-02 15:00:00 UTC and 2026-08-02 17:00:00 UTC",
+   "disposition": "no fill; signals whose lookback crosses it are not evaluated; positions across it are gap_exposed",
+   "file": "data1h/LINKUSDT_1h.csv",
+   "from": {
+    "cairo": "2026-08-02 19:00:00 +0300",
+    "ts_ms": 1785686400000,
+    "utc": "2026-08-02 16:00:00 UTC"
+   },
+   "interval": "1h",
+   "missing": [
+    {
+     "cairo": "2026-08-02 19:00:00 +0300",
+     "ts_ms": 1785686400000,
+     "utc": "2026-08-02 16:00:00 UTC"
+    }
+   ],
+   "severity": "error",
+   "symbol": "LINKUSDT",
+   "to": {
+    "cairo": "2026-08-02 19:00:00 +0300",
+    "ts_ms": 1785686400000,
+    "utc": "2026-08-02 16:00:00 UTC"
+   }
+  },
+  {
+   "class": "S1",
+   "count": 1,
+   "dataset": "klines_last",
+   "detail": "ends 1 1h bar(s) before the newest 1h file (2026-10-04 04:00:00 UTC)",
+   "disposition": "the window end is cut to the last fresh row",
+   "file": "data1h/LINKUSDT_1h.csv",
+   "from": {
+    "cairo": "2026-10-04 06:00:00 +0300",
+    "ts_ms": 1791082800000,
+    "utc": "2026-10-04 03:00:00 UTC"
+   },
+   "interval": "1h",
+   "severity": "warning",
+   "symbol": "LINKUSDT",
+   "to": {
+    "cairo": "2026-10-04 07:00:00 +0300",
+    "ts_ms": 1791086400000,
+    "utc": "2026-10-04 04:00:00 UTC"
+   }
+  },
+  {
+   "class": "G1",
+   "count": 1,
+   "dataset": "klines_last",
+   "detail": "1 missing 1h bar(s) between 2026-08-02 15:00:00 UTC and 2026-08-02 17:00:00 UTC",
+   "disposition": "no fill; signals whose lookback crosses it are not evaluated; positions across it are gap_exposed",
+   "file": "data1h/SOLUSDT_1h.csv",
+   "from": {
+    "cairo": "2026-08-02 19:00:00 +0300",
+    "ts_ms": 1785686400000,
+    "utc": "2026-08-02 16:00:00 UTC"
+   },
+   "interval": "1h",
+   "missing": [
+    {
+     "cairo": "2026-08-02 19:00:00 +0300",
+     "ts_ms": 1785686400000,
+     "utc": "2026-08-02 16:00:00 UTC"
+    }
+   ],
+   "severity": "error",
+   "symbol": "SOLUSDT",
+   "to": {
+    "cairo": "2026-08-02 19:00:00 +0300",
+    "ts_ms": 1785686400000,
+    "utc": "2026-08-02 16:00:00 UTC"
+   }
+  },
+  {
+   "class": "S1",
+   "count": 1,
+   "dataset": "klines_last",
+   "detail": "ends 1 1h bar(s) before the newest 1h file (2026-10-04 04:00:00 UTC)",
+   "disposition": "the window end is cut to the last fresh row",
+   "file": "data1h/SOLUSDT_1h.csv",
+   "from": {
+    "cairo": "2026-10-04 06:00:00 +0300",
+    "ts_ms": 1791082800000,
+    "utc": "2026-10-04 03:00:00 UTC"
+   },
+   "interval": "1h",
+   "severity": "warning",
+   "symbol": "SOLUSDT",
+   "to": {
+    "cairo": "2026-10-04 07:00:00 +0300",
+    "ts_ms": 1791086400000,
+    "utc": "2026-10-04 04:00:00 UTC"
+   }
+  },
+  {
+   "class": "G1",
+   "count": 1,
+   "dataset": "klines_last",
+   "detail": "1 missing 1h bar(s) between 2026-08-02 15:00:00 UTC and 2026-08-02 17:00:00 UTC",
+   "disposition": "no fill; signals whose lookback crosses it are not evaluated; positions across it are gap_exposed",
+   "file": "data1h/XRPUSDT_1h.csv",
+   "from": {
+    "cairo": "2026-08-02 19:00:00 +0300",
+    "ts_ms": 1785686400000,
+    "utc": "2026-08-02 16:00:00 UTC"
+   },
+   "interval": "1h",
+   "missing": [
+    {
+     "cairo": "2026-08-02 19:00:00 +0300",
+     "ts_ms": 1785686400000,
+     "utc": "2026-08-02 16:00:00 UTC"
+    }
+   ],
+   "severity": "error",
+   "symbol": "XRPUSDT",
+   "to": {
+    "cairo": "2026-08-02 19:00:00 +0300",
+    "ts_ms": 1785686400000,
+    "utc": "2026-08-02 16:00:00 UTC"
+   }
+  },
+  {
+   "class": "S1",
+   "count": 1,
+   "dataset": "klines_last",
+   "detail": "ends 1 1h bar(s) before the newest 1h file (2026-10-04 04:00:00 UTC)",
+   "disposition": "the window end is cut to the last fresh row",
+   "file": "data1h/XRPUSDT_1h.csv",
+   "from": {
+    "cairo": "2026-10-04 06:00:00 +0300",
+    "ts_ms": 1791082800000,
+    "utc": "2026-10-04 03:00:00 UTC"
+   },
+   "interval": "1h",
+   "severity": "warning",
+   "symbol": "XRPUSDT",
+   "to": {
+    "cairo": "2026-10-04 07:00:00 +0300",
+    "ts_ms": 1791086400000,
+    "utc": "2026-10-04 04:00:00 UTC"
+   }
+  },
+  {
+   "checked": 8999,
+   "class": "X2",
+   "count": 2,
+   "dataset": "klines_last",
+   "detail": "2 of 8999 bars differ from the aggregate of data_long/1h/AVAXUSDT_1h.csv",
+   "disposition": "the coarse bar is rejected (a partial / open candle or a bad resample); rebuild it from the finer bars",
+   "examples": [
+    {
+     "aggregate": [
+      "13.394",
+      "13.518",
+      "12.869",
+      "13.315",
+      "4469239.0"
+     ],
+     "bar": [
+      "13.394",
+      "13.518",
+      "12.869",
+      "13.171",
+      "3797651.0"
+     ],
+     "cairo": "2023-11-10 14:00:00 +0200",
+     "ts_ms": 1699617600000,
+     "utc": "2023-11-10 12:00:00 UTC"
+    },
+    {
+     "aggregate": [
+      "25.855",
+      "26.522",
+      "25.824",
+      "26.252",
+      "913112.0"
+     ],
+     "bar": [
+      "25.99",
+      "26.522",
+      "25.956",
+      "26.252",
+      "890358.0"
+     ],
+     "cairo": "2024-10-28 23:00:00 +0300",
+     "ts_ms": 1730145600000,
+     "utc": "2024-10-28 20:00:00 UTC"
+    }
+   ],
+   "file": "data_long/4h/AVAXUSDT_4h.csv",
+   "from": {
+    "cairo": "2023-11-10 14:00:00 +0200",
+    "ts_ms": 1699617600000,
+    "utc": "2023-11-10 12:00:00 UTC"
+   },
+   "interval": "4h",
+   "other_file": "data_long/1h/AVAXUSDT_1h.csv",
+   "severity": "error",
+   "symbol": "AVAXUSDT",
+   "to": {
+    "cairo": "2024-10-28 23:00:00 +0300",
+    "ts_ms": 1730145600000,
+    "utc": "2024-10-28 20:00:00 UTC"
+   }
+  },
+  {
+   "checked": 8999,
+   "class": "X2",
+   "count": 3,
+   "dataset": "klines_last",
+   "detail": "3 of 8999 bars differ from the aggregate of data_long/1h/BNBUSDT_1h.csv",
+   "disposition": "the coarse bar is rejected (a partial / open candle or a bad resample); rebuild it from the finer bars",
+   "examples": [
+    {
+     "aggregate": [
+      "251.7",
+      "253.8",
+      "249.53",
+      "253.12",
+      "198587.28"
+     ],
+     "bar": [
+      "251.7",
+      "253.8",
+      "249.53",
+      "253.12",
+      "197666.68"
+     ],
+     "cairo": "2023-11-10 10:00:00 +0200",
+     "ts_ms": 1699603200000,
+     "utc": "2023-11-10 08:00:00 UTC"
+    },
+    {
+     "aggregate": [
+      "253.13",
+      "253.28",
+      "248.05",
+      "249.05",
+      "323963.18"
+     ],
+     "bar": [
+      "253.13",
+      "253.28",
+      "248.05",
+      "249.05",
+      "265290.88"
+     ],
+     "cairo": "2023-11-10 14:00:00 +0200",
+     "ts_ms": 1699617600000,
+     "utc": "2023-11-10 12:00:00 UTC"
+    },
+    {
+     "aggregate": [
+      "596.57",
+      "605.0",
+      "596.46",
+      "601.37",
+      "91588.25"
+     ],
+     "bar": [
+      "598.66",
+      "605.0",
+      "598.4",
+      "601.37",
+      "95399.54"
+     ],
+     "cairo": "2024-10-28 23:00:00 +0300",
+     "ts_ms": 1730145600000,
+     "utc": "2024-10-28 20:00:00 UTC"
+    }
+   ],
+   "file": "data_long/4h/BNBUSDT_4h.csv",
+   "from": {
+    "cairo": "2023-11-10 10:00:00 +0200",
+    "ts_ms": 1699603200000,
+    "utc": "2023-11-10 08:00:00 UTC"
+   },
+   "interval": "4h",
+   "other_file": "data_long/1h/BNBUSDT_1h.csv",
+   "severity": "error",
+   "symbol": "BNBUSDT",
+   "to": {
+    "cairo": "2024-10-28 23:00:00 +0300",
+    "ts_ms": 1730145600000,
+    "utc": "2024-10-28 20:00:00 UTC"
+   }
+  },
+  {
+   "checked": 8999,
+   "class": "X2",
+   "count": 2,
+   "dataset": "klines_last",
+   "detail": "2 of 8999 bars differ from the aggregate of data_long/1h/BTCUSDT_1h.csv",
+   "disposition": "the coarse bar is rejected (a partial / open candle or a bad resample); rebuild it from the finer bars",
+   "examples": [
+    {
+     "aggregate": [
+      "37098.9",
+      "37276.0",
+      "36821.2",
+      "37092.6",
+      "80360.473"
+     ],
+     "bar": [
+      "37098.9",
+      "37276.0",
+      "36821.2",
+      "37118.4",
+      "68307.178"
+     ],
+     "cairo": "2023-11-10 14:00:00 +0200",
+     "ts_ms": 1699617600000,
+     "utc": "2023-11-10 12:00:00 UTC"
+    },
+    {
+     "aggregate": [
+      "69605.8",
+      "70331.0",
+      "69389.0",
+      "69940.0",
+      "34481.841"
+     ],
+     "bar": [
+      "69650.0",
+      "70331.0",
+      "69480.3",
+      "69940.0",
+      "31542.185"
+     ],
+     "cairo": "2024-10-28 23:00:00 +0300",
+     "ts_ms": 1730145600000,
+     "utc": "2024-10-28 20:00:00 UTC"
+    }
+   ],
+   "file": "data_long/4h/BTCUSDT_4h.csv",
+   "from": {
+    "cairo": "2023-11-10 14:00:00 +0200",
+    "ts_ms": 1699617600000,
+    "utc": "2023-11-10 12:00:00 UTC"
+   },
+   "interval": "4h",
+   "other_file": "data_long/1h/BTCUSDT_1h.csv",
+   "severity": "error",
+   "symbol": "BTCUSDT",
+   "to": {
+    "cairo": "2024-10-28 23:00:00 +0300",
+    "ts_ms": 1730145600000,
+    "utc": "2024-10-28 20:00:00 UTC"
+   }
+  },
+  {
+   "checked": 8999,
+   "class": "X2",
+   "count": 2,
+   "dataset": "klines_last",
+   "detail": "2 of 8999 bars differ from the aggregate of data_long/1h/DOGEUSDT_1h.csv",
+   "disposition": "the coarse bar is rejected (a partial / open candle or a bad resample); rebuild it from the finer bars",
+   "examples": [
+    {
+     "aggregate": [
+      "0.07462",
+      "0.07464",
+      "0.0724",
+      "0.0733",
+      "1392644739.0"
+     ],
+     "bar": [
+      "0.07462",
+      "0.07464",
+      "0.0724",
+      "0.07332",
+      "1170003058.0"
+     ],
+     "cairo": "2023-11-10 14:00:00 +0200",
+     "ts_ms": 1699617600000,
+     "utc": "2023-11-10 12:00:00 UTC"
+    },
+    {
+     "aggregate": [
+      "0.15836",
+      "0.16263",
+      "0.15654",
+      "0.1614",
+      "2438351650.0"
+     ],
+     "bar": [
+      "0.15929",
+      "0.16263",
+      "0.15716",
+      "0.1614",
+      "2077679478.0"
+     ],
+     "cairo": "2024-10-28 23:00:00 +0300",
+     "ts_ms": 1730145600000,
+     "utc": "2024-10-28 20:00:00 UTC"
+    }
+   ],
+   "file": "data_long/4h/DOGEUSDT_4h.csv",
+   "from": {
+    "cairo": "2023-11-10 14:00:00 +0200",
+    "ts_ms": 1699617600000,
+    "utc": "2023-11-10 12:00:00 UTC"
+   },
+   "interval": "4h",
+   "other_file": "data_long/1h/DOGEUSDT_1h.csv",
+   "severity": "error",
+   "symbol": "DOGEUSDT",
+   "to": {
+    "cairo": "2024-10-28 23:00:00 +0300",
+    "ts_ms": 1730145600000,
+    "utc": "2024-10-28 20:00:00 UTC"
+   }
+  },
+  {
+   "checked": 8999,
+   "class": "X2",
+   "count": 2,
+   "dataset": "klines_last",
+   "detail": "2 of 8999 bars differ from the aggregate of data_long/1h/ETHUSDT_1h.csv",
+   "disposition": "the coarse bar is rejected (a partial / open candle or a bad resample); rebuild it from the finer bars",
+   "examples": [
+    {
+     "aggregate": [
+      "2098.14",
+      "2100.7",
+      "2066.0",
+      "2091.11",
+      "823012.559"
+     ],
+     "bar": [
+      "2098.14",
+      "2100.7",
+      "2066.0",
+      "2085.32",
+      "687986.329"
+     ],
+     "cairo": "2023-11-10 14:00:00 +0200",
+     "ts_ms": 1699617600000,
+     "utc": "2023-11-10 12:00:00 UTC"
+    },
+    {
+     "aggregate": [
+      "2505.93",
+      "2590.78",
+      "2504.13",
+      "2566.49",
+      "480176.291"
+     ],
+     "bar": [
+      "2518.92",
+      "2590.78",
+      "2516.54",
+      "2566.49",
+      "559286.798"
+     ],
+     "cairo": "2024-10-28 23:00:00 +0300",
+     "ts_ms": 1730145600000,
+     "utc": "2024-10-28 20:00:00 UTC"
+    }
+   ],
+   "file": "data_long/4h/ETHUSDT_4h.csv",
+   "from": {
+    "cairo": "2023-11-10 14:00:00 +0200",
+    "ts_ms": 1699617600000,
+    "utc": "2023-11-10 12:00:00 UTC"
+   },
+   "interval": "4h",
+   "other_file": "data_long/1h/ETHUSDT_1h.csv",
+   "severity": "error",
+   "symbol": "ETHUSDT",
+   "to": {
+    "cairo": "2024-10-28 23:00:00 +0300",
+    "ts_ms": 1730145600000,
+    "utc": "2024-10-28 20:00:00 UTC"
+   }
+  },
+  {
+   "checked": 8999,
+   "class": "X2",
+   "count": 2,
+   "dataset": "klines_last",
+   "detail": "2 of 8999 bars differ from the aggregate of data_long/1h/LINKUSDT_1h.csv",
+   "disposition": "the coarse bar is rejected (a partial / open candle or a bad resample); rebuild it from the finer bars",
+   "examples": [
+    {
+     "aggregate": [
+      "14.732",
+      "15.338",
+      "14.421",
+      "15.066",
+      "16975159.23"
+     ],
+     "bar": [
+      "14.732",
+      "15.338",
+      "14.421",
+      "15.175",
+      "14435382.45"
+     ],
+     "cairo": "2023-11-10 14:00:00 +0200",
+     "ts_ms": 1699617600000,
+     "utc": "2023-11-10 12:00:00 UTC"
+    },
+    {
+     "aggregate": [
+      "10.995",
+      "11.258",
+      "10.964",
+      "11.179",
+      "1598108.53"
+     ],
+     "bar": [
+      "11.039",
+      "11.258",
+      "11.014",
+      "11.179",
+      "1412301.45"
+     ],
+     "cairo": "2024-10-28 23:00:00 +0300",
+     "ts_ms": 1730145600000,
+     "utc": "2024-10-28 20:00:00 UTC"
+    }
+   ],
+   "file": "data_long/4h/LINKUSDT_4h.csv",
+   "from": {
+    "cairo": "2023-11-10 14:00:00 +0200",
+    "ts_ms": 1699617600000,
+    "utc": "2023-11-10 12:00:00 UTC"
+   },
+   "interval": "4h",
+   "other_file": "data_long/1h/LINKUSDT_1h.csv",
+   "severity": "error",
+   "symbol": "LINKUSDT",
+   "to": {
+    "cairo": "2024-10-28 23:00:00 +0300",
+    "ts_ms": 1730145600000,
+    "utc": "2024-10-28 20:00:00 UTC"
+   }
+  },
+  {
+   "checked": 8999,
+   "class": "X2",
+   "count": 3,
+   "dataset": "klines_last",
+   "detail": "3 of 8999 bars differ from the aggregate of data_long/1h/SOLUSDT_1h.csv",
+   "disposition": "the coarse bar is rejected (a partial / open candle or a bad resample); rebuild it from the finer bars",
+   "examples": [
+    {
+     "aggregate": [
+      "47.601",
+      "51.3",
+      "46.6",
+      "50.735",
+      "14948773.0"
+     ],
+     "bar": [
+      "47.601",
+      "51.3",
+      "46.6",
+      "50.735",
+      "14943105.0"
+     ],
+     "cairo": "2023-11-10 10:00:00 +0200",
+     "ts_ms": 1699603200000,
+     "utc": "2023-11-10 08:00:00 UTC"
+    },
+    {
+     "aggregate": [
+      "50.735",
+      "52.026",
+      "48.646",
+      "50.914",
+      "16999635.0"
+     ],
+     "bar": [
+      "50.735",
+      "52.026",
+      "48.646",
+      "51.151",
+      "14513306.0"
+     ],
+     "cairo": "2023-11-10 14:00:00 +0200",
+     "ts_ms": 1699617600000,
+     "utc": "2023-11-10 12:00:00 UTC"
+    },
+    {
+     "aggregate": [
+      "176.35",
+      "179.8",
+      "175.63",
+      "178.2",
+      "2808961.0"
+     ],
+     "bar": [
+      "176.56",
+      "179.8",
+      "176.22",
+      "178.2",
+      "2694276.0"
+     ],
+     "cairo": "2024-10-28 23:00:00 +0300",
+     "ts_ms": 1730145600000,
+     "utc": "2024-10-28 20:00:00 UTC"
+    }
+   ],
+   "file": "data_long/4h/SOLUSDT_4h.csv",
+   "from": {
+    "cairo": "2023-11-10 10:00:00 +0200",
+    "ts_ms": 1699603200000,
+    "utc": "2023-11-10 08:00:00 UTC"
+   },
+   "interval": "4h",
+   "other_file": "data_long/1h/SOLUSDT_1h.csv",
+   "severity": "error",
+   "symbol": "SOLUSDT",
+   "to": {
+    "cairo": "2024-10-28 23:00:00 +0300",
+    "ts_ms": 1730145600000,
+    "utc": "2024-10-28 20:00:00 UTC"
+   }
+  },
+  {
+   "checked": 8999,
+   "class": "X2",
+   "count": 2,
+   "dataset": "klines_last",
+   "detail": "2 of 8999 bars differ from the aggregate of data_long/1h/XRPUSDT_1h.csv",
+   "disposition": "the coarse bar is rejected (a partial / open candle or a bad resample); rebuild it from the finer bars",
+   "examples": [
+    {
+     "aggregate": [
+      "0.6616",
+      "0.6617",
+      "0.6344",
+      "0.6474",
+      "310648670.6"
+     ],
+     "bar": [
+      "0.6616",
+      "0.6617",
+      "0.6344",
+      "0.6453",
+      "266162033.7"
+     ],
+     "cairo": "2023-11-10 14:00:00 +0200",
+     "ts_ms": 1699617600000,
+     "utc": "2023-11-10 12:00:00 UTC"
+    },
+    {
+     "aggregate": [
+      "0.5174",
+      "0.5213",
+      "0.517",
+      "0.5192",
+      "51137374.4"
+     ],
+     "bar": [
+      "0.5172",
+      "0.5213",
+      "0.516",
+      "0.5192",
+      "47601826.7"
+     ],
+     "cairo": "2024-10-28 23:00:00 +0300",
+     "ts_ms": 1730145600000,
+     "utc": "2024-10-28 20:00:00 UTC"
+    }
+   ],
+   "file": "data_long/4h/XRPUSDT_4h.csv",
+   "from": {
+    "cairo": "2023-11-10 14:00:00 +0200",
+    "ts_ms": 1699617600000,
+    "utc": "2023-11-10 12:00:00 UTC"
+   },
+   "interval": "4h",
+   "other_file": "data_long/1h/XRPUSDT_1h.csv",
+   "severity": "error",
+   "symbol": "XRPUSDT",
+   "to": {
+    "cairo": "2024-10-28 23:00:00 +0300",
+    "ts_ms": 1730145600000,
+    "utc": "2024-10-28 20:00:00 UTC"
+   }
+  }
+ ],
+ "format": "zb-data-gaps/1",
+ "manifest": "DATA_MANIFEST.json",
+ "not_checked": {
+  "F1": "funding cadence (no funding data in these roots)",
+  "G5": "venue maintenance windows (needs venue_sessions)"
+ },
+ "roots": [
+  "data",
+  "data1h",
+  "data_long"
+ ],
+ "summary": {
+  "by_class": {
+   "G1": 8,
+   "S1": 8,
+   "X1": 8,
+   "X2": 24
+  },
+  "errors": 40,
+  "files": 64,
+  "missing_bars": 8,
+  "rows": 587976,
+  "warnings": 8
+ }
+}
