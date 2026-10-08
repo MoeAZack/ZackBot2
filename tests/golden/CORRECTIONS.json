@@ -1355,6 +1355,32 @@
       "accepted_by": null,
       "date_cairo": "2026-10-08",
       "prev_entry_sha": "a69dda43513b3d84ceef1020f101b2efe5b501e3f5be71aeb7f3ebf4caea4911"
+    },
+    {
+      "id": "CORR-0066",
+      "type": "correction",
+      "ticket": "NC-07 one-add cap",
+      "finding": "the NEWCORE management core caps adds at one by design",
+      "title": "G-GAP-DCA-L-01 / G-GAP-DCA-S-01: NEWCORE adapters record the one-add cap (NC07-ONE-ADD-CAP); the historical two-add contract is unchanged",
+      "cases": {
+        "G-GAP-DCA-L-01": {
+          "prev_contract_sha": "2d4f0d0ca46ecb924bac8ce34ea60a7bc8222acf1dac3635fe9f66f1637b8975",
+          "contract_sha": "b0d1e7f2937723f760963d8328505209fb69f25604e45e658f66ccd7d640ad51"
+        },
+        "G-GAP-DCA-S-01": {
+          "prev_contract_sha": "85dfade7e6c1a096d88292fffe278a85d587d0ad495412c3bed31ecfeb5a0938",
+          "contract_sha": "d8dafb94771b94126c9e86f7d23a328370180726ed7af67828d6e8d2ada122ff"
+        }
+      },
+      "adapters_changed": [
+        "newcore_live_sim",
+        "newcore_sim"
+      ],
+      "rationale": "Codex ruling (NC-07 golden follow-up): keep the historical two-add golden cases, do not retire or rewrite them, and record a stable NEWCORE-incompatible divergence for the intentionally one-add core. The NC-07 management core enforces a single bounded add in the core (its planned risk reserves exactly one add), so on these three-level DCA baskets it takes only the first safety order. Both NEWCORE adapters move from pending_adapter to known_divergence with the new registry ID NC07-ONE-ADD-CAP; the expectation, the market, the slot, the legacy adapters and the legacy_backtest AUD07-C13A divergence (still bound to its own record) are unchanged. The observed lists are the NC-07 core prediction until the NC-08 adapter runs. The NEWCORE contract for the same gap-through-the-add path is the separate one-add case G-GAP-DCA-ONEADD-L-01 / -S-01.",
+      "evidence": "scratchpad oneadd/compute.py: newcore.management.run on an export of nc-management 5e17446 (Decimal; q0 = 0.408163265306, q1 = floor(1.5 x q0) at 1e-12): LONG exit candle 286, pnl 0.898994187, R 0.089899; SHORT exit candle 286, pnl 0.896924800, R 0.089692",
+      "accepted_by": null,
+      "date_cairo": "2026-10-08",
+      "prev_entry_sha": "ed6e89521431f61d673e8030f002bf050bf78ce7186125801bf6d7a38fef1557"
     }
   ]
 }
