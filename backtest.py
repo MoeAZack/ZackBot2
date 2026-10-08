@@ -13,6 +13,9 @@ import feasibility as F
 
 FEE, SLIP, FUND_PER_BAR = 0.0005, 0.0002, 0.00005
 FEE_MAKER = 0.0002    # maker fee (post-only limit entries)
+# AUD-07 C12 label: the backtest posts the limit at the previous close for the whole candle (filled on the path after its
+# first touch); live posts at bid/ask for MAKER_WAIT_S then falls back to market. Fill rate / price are not calibrated (BT-08).
+MAKER_MODEL = 'prev_close_full_candle (uncalibrated)'
 BE_BUF = 0.0015
 VERSION = 'v3.1'        # breakeven stop sits just past entry so fees are covered     # 0.01%/8h on 4h candles
 MIN_NOTIONAL = {'BTCUSDT': 50, 'ETHUSDT': 20, 'LINKUSDT': 20}    # legacy floor (pre-BT02): notional only, no step / minQty
@@ -159,7 +162,8 @@ def run(book, sleeves, start=500.0, max_lev=10.0, daily_halt=0.08, t0=None, t1=N
     worst-case path (favourable extreme first, adverse last) on every candle; False: never (old v2).
     Since FBL-BT01 the same path orders every intrabar event (DCA fills, basket TP, pyramid adds, tp1 / ladder / tp_r).
     v3.1 options (all off by default except the liquidation check, which only fires if margin is actually exhausted):
-      entry_order 'maker': limit at the signal close, filled (maker fee) if the next candle trades through it, else
+      entry_order 'maker': limit at the signal close, filled (maker fee) if the next candle trades through it (AUD-07 C12: that
+                  candle is then walked only from the first touch of the limit on its path; labelled uncalibrated), else
                   at the next open with taker fee (maker_fallback) or skipped
       pump_guard  {'max_candle_atr', 'btc_1h_pct'} global (a sleeve's own 'pump_guard' wins)
       risk_rules  engine RISK_RULES dict; rules in mode 'enforce' are applied (coin_cap, open_risk_cap, correlated_cap,
@@ -223,6 +227,8 @@ def run(book, sleeves, start=500.0, max_lev=10.0, daily_halt=0.08, t0=None, t1=N
                 add_skipped={}, skips=[], unknown_symbols=sorted(s for s in syms_all if XR is not None and s not in XR))
     add_seen = set()
     FEAS['zero_partials'] = {}                            # AUD-02 / C25: partial exits that floored to 0 (once per position+event)
+    if entry_order == 'maker':                            # AUD-07 C12: fill model not calibrated against live fills (BT-08)
+        FEAS['maker_midcandle_fills'] = 0; FEAS['maker_model'] = MAKER_MODEL
     zero_seen = set()
 
     def part_zero(sl, s, p, frac, ev):
@@ -398,7 +404,12 @@ def run(book, sleeves, start=500.0, max_lev=10.0, daily_halt=0.08, t0=None, t1=N
         adv_reached = lambda lvl, x: sd * (lvl - x) >= 0     # price x at / through an adverse level (safety order, stop)
         blocked_ = dict(dca=False, add=False, tp=False, tp1=False, lad=False)   # gate-refused / C25 zero part: not retried this candle
         stop_open = p['stop']
-        stop_in_candle = adv_reached(stop_open, l if sd == 1 else h)   # the candle WILL end at a stop: no exits at targets
+        pts = path_points(o, h, l, c, sd, worst=(pessimistic == 'worst'))
+        wf = p.get('walk_from')
+        if wf is not None and wf[0] == i:                # AUD-07 C12: filled INSIDE this candle at wf[1] (a maker limit): only
+            k0 = next((k for k in range(1, len(pts)) if adv_reached(wf[1], pts[k])), None)   # the path after its first touch
+            if k0 is not None: pts = (wf[1],) + tuple(pts[k0:])
+        stop_in_candle = adv_reached(stop_open, min(pts) if sd == 1 else max(pts))   # the candle WILL end at a stop: no exits at targets
 
         def adverse_leg(a_, b_, first):
             """Price moves against the position from a_ to b_: DCA safety orders and the stop, in the order price meets
@@ -495,7 +506,6 @@ def run(book, sleeves, start=500.0, max_lev=10.0, daily_halt=0.08, t0=None, t1=N
                 else:
                     close(sl, s, p, lv, 1, i, 'tp'); return True
 
-        pts = path_points(o, h, l, c, sd, worst=(pessimistic == 'worst'))
         for k in range(len(pts)):
             a_, b_ = pts[max(0, k - 1)], pts[k]               # k = 0: the open itself (gaps through levels)
             mv = sd * (b_ - a_)
@@ -515,17 +525,21 @@ def run(book, sleeves, start=500.0, max_lev=10.0, daily_halt=0.08, t0=None, t1=N
             for s, side in list(sl['pend'].items()):
                 if len(sl['pos']) >= cfg['max_pos'] or halted: break
                 a = book.arr[s]; atr = a['atr'][i - 1]
+                mid = False
                 if entry_order == 'maker':
                     lim = a['c'][i - 1]
                     if (a['l'][i] < lim) if side == 1 else (a['h'][i] > lim):
                         px, fee = (min(lim, a['o'][i]) if side == 1 else max(lim, a['o'][i])), FM
+                        mid = side * (a['o'][i] - lim) > 0      # AUD-07 C12: the open is not through the limit -> filled mid-candle
                     elif maker_fallback:
                         px, fee = a['o'][i] * (1 + side * SLIP), FEE
                     else:
                         continue
                 else:
                     px, fee = a['o'][i] * (1 + side * SLIP), FEE
-                open_pos(sl, s, side, px, atr, i, sl_eq, fee)
+                p = open_pos(sl, s, side, px, atr, i, sl_eq, fee)
+                if p is not None and mid:                       # AUD-07 C12: this candle is walked from the first touch of px
+                    p['walk_from'] = (i, px); FEAS['maker_midcandle_fills'] += 1
             sl['pend'] = {}
             # trailing entries: enter when price rebounds dev_atr ATR from the extreme since the signal (candle path)
             for s, te in list(sl['tpend'].items()):
@@ -555,9 +569,11 @@ def run(book, sleeves, start=500.0, max_lev=10.0, daily_halt=0.08, t0=None, t1=N
                 # ATR of the last CLOSED candle: candle i's own ATR contains its future high/low (the live engine cannot know it)
                 o, h, l, c, atr = a['o'][i], a['h'][i], a['l'][i], a['c'][i], a['atr'][i - 1]
                 eq -= p['qty'] * c * FPB; p['realized'] -= p['qty'] * c * FPB
-                # 1) gap at the open already through the stop: filled at the open, nothing else (no adds)
-                if (o <= p['stop']) if sd == 1 else (o >= p['stop']):
-                    close(sl, s, p, o, 1, i, 'stop'); del sl['pos'][s]; continue
+                # 1) gap at the open already through the stop: filled at the open, nothing else (no adds). AUD-07 C12: a position
+                # filled mid-candle starts at its fill point, not at the open
+                o_ = p['walk_from'][1] if p.get('walk_from') is not None and p['walk_from'][0] == i else o
+                if (o_ <= p['stop']) if sd == 1 else (o_ >= p['stop']):
+                    close(sl, s, p, o_, 1, i, 'stop'); del sl['pos'][s]; continue
                 # 2-5) every intrabar event (stop, DCA fills, basket TP, pyramid adds, tp1 / ladder / tp_r, breakeven and
                 # trailing ratchets) in the order of the declared price path - see path_points() and walk_path()
                 if walk_path(sl, s, p, i, o, h, l, c, atr): del sl['pos'][s]; continue
@@ -634,6 +650,7 @@ def run(book, sleeves, start=500.0, max_lev=10.0, daily_halt=0.08, t0=None, t1=N
     n_feas = FEAS['executed'] + sum(FEAS['skipped'].values())
     FEAS['executable_pct'] = round(FEAS['executed'] / n_feas * 100, 1) if n_feas else None
     cv.attrs['feasibility'] = FEAS
+    if entry_order == 'maker': cv.attrs['maker_model'] = MAKER_MODEL
     return pd.DataFrame(trades), cv
 
 
