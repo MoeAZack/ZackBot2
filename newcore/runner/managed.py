@@ -59,6 +59,7 @@ MG = 'mg '                                   # every management decision's detai
 TICK = 'mg tick'
 TICK_REASON = ReasonCode.PROTECT_CHECKING    # no management-tick code in the NC-01 registry (reported)
 MAX_FLUSH = 32
+MAX_REFUSALS = 2                             # refused management submits per lot per cycle, then HOLD (bounded)
 ACTIONS = {Purpose.PROTECT: Action.PROTECT, Purpose.ADD: Action.ADD, Purpose.REDUCE: Action.REDUCE,
            Purpose.CLOSE: Action.CLOSE}
 PROTECTIVE_EXITS = frozenset({ReasonCode.EXIT_STOP_CROSSED, ReasonCode.EXIT_STOP_FAILED, ReasonCode.EXIT_FLATTEN})
@@ -164,6 +165,7 @@ class ManagementMixin:
         self._cancel_reason = {}             # intent id -> reason of the driver's cancel
         self._items = []                     # (lot id, reconcile items) not handled yet
         self._mg_mode = (EntriesMode.ACTIVE, None)
+        self._refused = {}                   # lot id -> (cycle ms, refused submits this cycle)
         super().__init__(config, **kw)
         if self.mgmt.enabled:                # restart: fold the journal through the driver (same function as live)
             for ev in self.journal.read():
@@ -181,7 +183,7 @@ class ManagementMixin:
         if isinstance(ev, ModeChanged):
             self._mg_mode = (ev.to_mode, ev.to_hold)
             for lot_id, ds in list(self.mg.items()):
-                self._mg_drive(lot_id, DR.set_mode(ds, ev.to_mode, ev.to_hold))
+                self._mg_drive(lot_id, DR.set_mode, ds, ev.to_mode, ev.to_hold)
         elif isinstance(ev, DecisionRecorded):
             d = ev.decision
             if d.action is Action.WAIT and d.detail.startswith(TICK + ' ') and d.subject_id in self.mg:
@@ -201,7 +203,7 @@ class ManagementMixin:
             if conv is None:
                 return
             out, submit = conv
-            self._mg_drive(lot_id, DR.on_outcome(ds, out, submit=submit))
+            self._mg_drive(lot_id, DR.on_outcome, ds, out, submit=submit)
             if out.kind is OutcomeKind.FINAL and out.executed_qty > 0:
                 self._mg_fills(lot_id, iv.intent.symbol, out.exchange_order_id)
 
@@ -213,7 +215,10 @@ class ManagementMixin:
                                 status=str(r.exchange_status), exchange_order_id=r.exchange_order_id), False
         if r.phase is not ResultPhase.FINAL:
             return None                                                   # UNKNOWN: the runner's sync resolves it
-        if r.evidence in (Evidence.EXCHANGE_REFUSED, Evidence.NOT_SENT):
+        if r.evidence is Evidence.POSITION_ADOPTED:                       # a lost add found in the position:
+            self._items.append((iv.intent.owner_id, (('adopted_add', iv.intent_id),)))    # no fills to book: HOLD
+            return None
+        if r.evidence in (Evidence.EXCHANGE_REFUSED, Evidence.NOT_SENT, Evidence.NOT_FOUND_CORROBORATED):
             return OrderOutcome(kind=OutcomeKind.REJECTED, ref=ref, observed_at_ms=r.observed_at_ms,
                                 error_code=0), True                       # the code is not journaled
         if r.exchange_order_id is None or r.exchange_status is None:
@@ -225,18 +230,30 @@ class ManagementMixin:
     def _mg_fills(self, lot_id, symbol, eoid):
         r = self.venue.fills(symbol, eoid)
         if r.kind is ReadKind.OK and r.value:
-            self._mg_drive(lot_id, DR.on_fills(self.mg[lot_id], tuple(r.value)))
+            self._mg_drive(lot_id, DR.on_fills, self.mg[lot_id], tuple(r.value))
             return True
         return False                                                      # re-read at the next flush
 
-    def _mg_drive(self, lot_id, drive):
-        self.mg[lot_id] = drive.state
+    def _mg_drive(self, lid, fn, /, *args, **kw):
+        """One driver call. A driver refusal (ManagementError / an invalid record: e.g. a late answer for a position
+        the driver already closed) changes nothing and becomes a reconcile item (incident + HOLD): never a crash of
+        the cycle. Deterministic, so a restart folds the same refusal at the same event."""
+        try:
+            drive = fn(*args, **kw)
+        except (ManagementError, DomainError) as ex:
+            if lid in self.mg:
+                self._items.append((lid, (('driver_refused', f'{fn.__name__}: {type(ex).__name__}: {ex}'[:200]),)))
+            else:
+                self._incident(f'management {lid}: driver refused {fn.__name__}: {ex}')
+                self.unmanaged.add(lid)
+            return
+        self.mg[lid] = drive.state
         for d in drive.submits:
             self._drafts[d.intent_id] = d
         for c in drive.cancels:
             self._cancel_reason[c.intent_id] = c.reason
         if drive.reconcile:
-            self._items.append((lot_id, drive.reconcile))
+            self._items.append((lid, drive.reconcile))
 
     def _mg_eligible(self, lot_id):
         """No unmanaged (runner) child of the lot in the journal (a lot opened before management was enabled stays
@@ -275,8 +292,8 @@ class ManagementMixin:
             self._incident(f'management {lot_id}: entry fills unreadable; the plan books a zero entry fee')
         self.plans[lot_id] = plan
         mode, hold = self._mg_mode
-        self._mg_drive(lot_id, DR.start(plan, account_id=self.acct, lot_id=lot_id, entry_fee=fee, mode=mode,
-                                        hold_kind=hold))
+        self._mg_drive(lot_id, DR.start, plan, account_id=self.acct, lot_id=lot_id, entry_fee=fee, mode=mode,
+                       hold_kind=hold)
 
     def _mg_candle(self, symbol, open_ms):
         r = self.bars.closed_bars(symbol, self.cfg.tf_ms, as_of_ms=open_ms + self.cfg.tf_ms, limit=1)
@@ -291,11 +308,11 @@ class ManagementMixin:
         candle = self._mg_candle(d.symbol, int(open_ms))
         ds = self.mg[lot_id]
         if ds.pos.stage is not Stage.DONE:
-            self._mg_drive(lot_id, DR.on_candle(ds, candle, close_request=None if request == '-'
-                                                else ReasonCode(request)))
+            self._mg_drive(lot_id, DR.on_candle, ds, candle,
+                           close_request=None if request == '-' else ReasonCode(request))
         ds = self.mg[lot_id]
         if ds.pos.stage is not Stage.DONE:
-            self._mg_drive(lot_id, DR.on_mark(ds, candle.close))
+            self._mg_drive(lot_id, DR.on_mark, ds, candle.close)
 
     # ----------------------------------------------------------------------------------------------- driver -> venue
     def _mg_active(self, lot_id):
@@ -335,7 +352,16 @@ class ManagementMixin:
                 continue
             if not self._permits(d.purpose, d.op):
                 continue                                                  # held at the runner until permitted
-            self._mg_send_draft(lot_id, d)
+            at, n = self._refused.get(lot_id, (None, 0))
+            if at == self.now and n >= MAX_REFUSALS:
+                return False                                              # bounded: retried next cycle (in HOLD)
+            iv = self._mg_send_draft(lot_id, d)
+            if iv.final is not None and iv.final.evidence is Evidence.EXCHANGE_REFUSED:
+                n = (n if at == self.now else 0) + 1
+                self._refused[lot_id] = (self.now, n)
+                if n >= MAX_REFUSALS:
+                    self._incident(f'management {lot_id}: {n} submits refused this cycle; HOLD')
+                    self._hold([ReasonCode.EXEC_ORDER_FAILED], reason=ReasonCode.EXEC_ORDER_FAILED)
             return True
         for b in ds.bindings:                                             # cancels the driver asked for
             if b.state is DR.BindState.CANCELLING:
@@ -358,7 +384,9 @@ class ManagementMixin:
             self._decision(decision_id=did, action=ACTIONS[d.purpose], reason=d.reason, authority=authority, key=None,
                            symbol=d.symbol, side=str(d.side), intents=(planned,), subject_id=lot_id,
                            detail=f'{MG}{d.leg} {d.qty}{px}')
-        self._mg_send(self._record_durable(planned))
+        iv = self._record_durable(planned)
+        self._mg_send(iv)
+        return iv
 
     def _mg_send(self, iv):
         p = iv.purpose
@@ -396,6 +424,27 @@ class ManagementMixin:
                 self._close_lot(lot, reason=d.reason, key=d.key)
             self._secure(lot.lot_id)
         self._mg_flush_all()
+        for lot in self.fold.open_lots():
+            if lot.lot_id in self.mg and lot.live_stop is None and lot.in_flight is None:
+                self._mg_detach(lot)
+
+    def _mg_detach(self, lot):
+        """Safety net (Cowork M4 HIGHs): an open managed lot with NO live stop and nothing closing it after the
+        driver ran (its stop was cancelled / expired outside the bot, a partial stop fill left a remainder, the driver
+        refused an input) is handed back to the runner, which secures it at once (stop at the plan's latest level,
+        else a reduce-only close, else HOLD). The hand-back is durable: the runner's own PROTECT child of the lot is
+        what a restart reads (_mg_eligible), so the lot boots unmanaged."""
+        self._incident(f'management {lot.lot_id}: no live stop after the driver ran; the runner protects the lot')
+        self.mg.pop(lot.lot_id)
+        self.unmanaged.add(lot.lot_id)
+        self._hold([ReasonCode.PROTECT_RESTORING], reason=ReasonCode.PROTECT_RESTORING)
+        self._secure(lot.lot_id)
+
+    def _protect_price(self, lot):
+        mg = [p for p in lot.protects if self.fold.decisions[p.intent.decision_id].detail.startswith(MG)]
+        if mg:
+            return mg[-1].intent.stop_price          # handed back: the plan's latest level (break-even / trail)
+        return super()._protect_price(lot)
 
     def _secure(self, lot_id):
         if lot_id in self.mg:

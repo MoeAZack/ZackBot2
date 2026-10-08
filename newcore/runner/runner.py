@@ -475,7 +475,7 @@ class Runner:
                 if self._not_found(iv):
                     if iv.purpose in REDUCE_ONLY:
                         self._resend(iv)
-                    elif iv.purpose is Purpose.ENTRY:
+                    elif iv.purpose in OPENING_PURPOSES:                 # an entry or a lineage add
                         self._corroborate_entry(iv)
             elif iv.state is IntentState.DURABLE:
                 self._send_durable(iv)
@@ -490,9 +490,9 @@ class Runner:
         deterministic client id. Idempotent: if an earlier send did land, the venue refuses the duplicate id and the
         refusal is read as "exists" (_apply). No new journal 'sent': one intent, one route, the same order."""
         it = iv.intent
-        lot = next((x for x in self.fold.open_lots() if x.lot_id == it.owner_id), None)
-        if lot is None:
-            return                                                        # nothing left to protect / close
+        # also when the lot is closed meanwhile (M4: a lost reduce after the stop filled): a reduce-only order can never
+        # add exposure, and the venue's refusal (nothing to reduce) is what finally resolves the intent - left alone it
+        # would stay UNKNOWN for ever, owned by a lot that no longer exists
         self.counters.resends += 1
         if it.purpose is Purpose.PROTECT:
             out = self.venue.submit_stop(StopOrder(ref=self._ref(iv), position_side=str(it.side), qty=it.qty,
@@ -721,7 +721,7 @@ class Runner:
         if prior is not None:                                             # crash gap: decided, intent not recorded
             planned = prior.decision.intents[0]
         else:
-            price = self.stop_price_of(lot)
+            price = self._protect_price(lot)
             route = self._next_route(lot)
             reason = ReasonCode.PROTECT_PLACE if n == 0 or route == 'algo' else ReasonCode.PROTECT_RESTORING
             planned = planned_intent(intent_id=iid, account_id=self.acct, decision_id=did, purpose='protect',
@@ -731,6 +731,10 @@ class Runner:
                            key=None, symbol=lot.symbol, side=lot.side, intents=(planned,), subject_id=lot.lot_id,
                            evidence=(lot.entry.intent_id,), detail=f'stop {price} x {lot.qty}')
         self._send_stop(self._record_durable(planned))
+
+    def _protect_price(self, lot):
+        """The level a runner stop protects the lot at (hook: a lot management handed back keeps its plan's level)."""
+        return self.stop_price_of(lot)
 
     def _send_stop(self, iv):
         self._state(iv, IntentState.SUBMITTED)
