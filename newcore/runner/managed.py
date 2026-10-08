@@ -52,6 +52,7 @@ from newcore.domain.errors import DomainError
 from newcore.management import Candle, CostModel, ManagementError, PlanRefused, Stage, build_plan, range_bb_mr_v1
 from newcore.management import driver as DR
 from newcore.management.presets import CANDLE_SECONDS, STOP_ATR
+from newcore.ports.journal import JournalUnavailable
 from newcore.ports.keys import route_of
 from newcore.ports.venue import MarketOrder, OrderOutcome, OutcomeKind, ReadKind
 
@@ -63,6 +64,7 @@ from .signals import CLOSE
 ZERO = Decimal(0)
 MG = 'mg '                                   # every management decision's detail starts with it
 TICK = 'mg tick'
+MARK = 'mg mark'                             # an intra-candle mark that fired a trigger (made durable first)
 FALLBACK = 'mg fallback'                     # route marker: the refused classic stop goes to the algo route (G6)
 REFUSED = 'mg refused'                       # route marker: the refusal goes to the driver (Rejected)
 # driver reconcile tokens that stop new risk (incident + HOLD); every other token is an incident only, and the transient
@@ -210,6 +212,10 @@ class ManagementMixin:
             if d.action is Action.WAIT and d.subject_id in self.mg:
                 if d.detail.startswith(TICK + ' '):
                     self._mg_apply_tick(d)
+                elif d.detail.startswith(MARK + ' '):
+                    ds = self.mg[d.subject_id]
+                    if ds.pos.stage is not Stage.DONE:
+                        self._mg_drive(d.subject_id, DR.on_mark, ds, Decimal(d.detail.split(' ')[2]))
                 elif d.detail.startswith((FALLBACK + ' ', REFUSED + ' ')):
                     self._mg_apply_marker(d)
         elif isinstance(ev, ResultObserved):
@@ -548,6 +554,68 @@ class ManagementMixin:
                            key=None, symbol=plan.symbol, side=str(plan.side), subject_id=lot_id,
                            detail=f'{TICK} {bar.open_ms} {close_reason or "-"}')
         self._mg_flush(lot_id)
+
+    # ----------------------------------------------------------------------------------------------- intra-candle marks
+    def mark_side(self, symbol):
+        """The position side of the first managed open lot of `symbol` (the zb-path doji order), else None."""
+        lots = [x for x in self.fold.open_lots() if x.symbol == symbol and x.lot_id in self.mg]
+        return lots[0].side if lots else None
+
+    def mark_levels(self, symbol):
+        """The bot-side trigger levels the drivers would fire now: ((leg, price, falls, lot side), ...); `falls` = it
+        triggers when the price falls to / below it (a long target rises, a long DCA add falls)."""
+        out = []
+        for x in self.fold.open_lots():
+            ds = self.mg.get(x.lot_id)
+            if x.symbol != symbol or ds is None or ds.pos.stage is Stage.DONE:
+                continue
+            long = ds.plan.side is Side.LONG
+            for t in DR.armed_triggers(ds):
+                falls = (long != ds.plan.add_is_pyramid) if t.leg.value == 'add' else not long
+                out.append((t.leg.value, t.price, falls, x.side))
+        return tuple(out)
+
+    def _mark_guard(self, at_ms):
+        if self.hard_hold is not None:
+            return False
+        if self.now is not None and at_ms < self.now:
+            raise ValueError('the runner clock never goes back')
+        self.now = at_ms
+        return True
+
+    def mark(self, symbol, price, at_ms):
+        """A mark price between candle closes (replay: intrabar.play_candle; testnet: each poll). Every managed lot of
+        `symbol` whose driver would fire a trigger at `price` gets a durable 'mg mark <price>' decision (the driver
+        input, journal first) and is flushed: the market order goes out now. Returns whether anything fired."""
+        if not self._mark_guard(at_ms):
+            return False
+        fired = False
+        try:
+            for x in list(self.fold.open_lots()):
+                ds = self.mg.get(x.lot_id)
+                if x.symbol != symbol or ds is None or ds.pos.stage is Stage.DONE:
+                    continue
+                if not DR.on_mark(ds, price).submits:
+                    continue
+                self._decision(decision_id=ids.mark_decision_id(x.lot_id, at_ms, self.fold.last_sequence),
+                               action=Action.WAIT, reason=TICK_REASON, authority=Authority.STRATEGY, key=None,
+                               symbol=symbol, side=x.side, subject_id=x.lot_id, detail=f'{MARK} {price}')
+                self._mg_flush(x.lot_id)
+                fired = True
+        except JournalUnavailable as ex:
+            self._enter_hard_hold(ex)
+        return fired
+
+    def intrabar_sync(self, at_ms):
+        """A venue event between candle closes (a stop triggered): read the owned orders now and let the drivers
+        react (a flat lot releases its other stops, a partial one is re-protected)."""
+        if not self._mark_guard(at_ms):
+            return
+        try:
+            self._sync()
+            self._mg_flush_all()
+        except JournalUnavailable as ex:
+            self._enter_hard_hold(ex)
 
     def _exit(self, symbol, s):
         if self._mg_managed(symbol, s.side):

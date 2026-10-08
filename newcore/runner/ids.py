@@ -30,7 +30,8 @@ from newcore.ports.keys import (client_id_for, decision_key, derive_child_intent
 __all__ = ['client_id_for', 'decision_key', 'derive_child_intent_id', 'derive_decision_id', 'derive_intent_id',
            'derive_lot_id', 'is_newcore_client_id', 'event_id', 'result_id', 'position_id', 'child_decision_id',
            'reconciliation_id', 'operator_decision_id', 'risk_decision_id', 'resolution_decision_id',
-           'emergency_stop_client_id', 'is_emergency_client_id', 'tick_decision_id', 'marker_decision_id']
+           'emergency_stop_client_id', 'is_emergency_client_id', 'tick_decision_id', 'marker_decision_id',
+           'mark_decision_id']
 
 
 def _hex(tag, *parts):
@@ -104,3 +105,8 @@ def tick_decision_id(lot_id, candle_open_ms):
 def marker_decision_id(kind, intent_id):
     """A management route marker of one refused classic stop ('mg fallback' / 'mg refused'): at most one per intent."""
     return 'dec_' + _hex('marker_decision_id', kind, intent_id)
+
+
+def mark_decision_id(lot_id, at_ms, sequence):
+    """An intra-candle mark that fired a trigger of the lot (the journal sequence it was decided after: unique)."""
+    return 'dec_' + _hex('mark_decision_id', lot_id, at_ms, sequence)

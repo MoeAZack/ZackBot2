@@ -22,6 +22,7 @@
     [cycle]
     cadence_s = 0                        # pause between cycles in a loop (seconds); 0 = back to back
     delay_s = 15                         # testnet: seconds after the candle close before the cycle runs
+    mark_poll_s = 10                     # testnet + management: mark-price polls between candle closes (0 = off)
     [management]                         # M4 position management (NC-07 driver); OFF by default
     enabled = false
     plan = "range_bb_mr_v1"              # the only plan: a DISABLED mechanics fixture (4h), no edge claimed
@@ -60,7 +61,7 @@ SECTIONS = {
     'journal': {'dir'},
     'strategy': {'rule', 'enabled', 'mirrored_short', 'symbols', 'tf'},
     'book': {'risk_pct', 'max_positions', 'max_leverage', 'cap_gap_buffer', 'daily_loss_pct', 'kill_drawdown_pct'},
-    'cycle': {'cadence_s', 'delay_s'},
+    'cycle': {'cadence_s', 'delay_s', 'mark_poll_s'},
     'account': {'name', 'id', 'portfolio_id', 'equity', 'key_digest'},
     'output': {'dir'},
     'management': {'enabled', 'plan', 'cap_mult'},
@@ -104,6 +105,7 @@ class RunConfig:
     mg_enabled: bool = False                       # [management] enabled: position management OFF unless true
     mg_plan: str = 'range_bb_mr_v1'
     mg_cap_mult: Decimal = Decimal('2.5')
+    mark_poll_s: float = 10.0                      # [cycle] testnet + management: mark polls between closes (0 = off)
     tnet_enabled: bool = False                     # [tnet] the TNET-01 harness hooks (TESTNET + testnet venue only)
     tnet_raw_qty: Decimal | None = None            # H2: unsized entry quantity (T10b venue min-qty refusal)
 
@@ -231,7 +233,7 @@ def validate(doc, *, source='', environ=None):
     digest = a.get('key_digest', '0123456789abcdef')
     if not re.fullmatch(r'[0-9a-f]{16}', digest):
         raise ConfigError('account.key_digest: the 16-hex NON-secret binding digest')
-    for k in ('cadence_s', 'delay_s'):
+    for k in ('cadence_s', 'delay_s', 'mark_poll_s'):
         if not isinstance(c.get(k, 0), (int, float)) or isinstance(c.get(k, 0), bool) or c.get(k, 0) < 0:
             raise ConfigError(f'cycle.{k}: seconds >= 0')
     m = doc.get('management', {})
@@ -251,7 +253,7 @@ def validate(doc, *, source='', environ=None):
     if raw is not None and not tn.get('enabled', False):
         raise ConfigError('tnet.raw_qty needs tnet.enabled = true (an explicit TESTNET-only override)')
     return RunConfig(
-        tnet_enabled=tn.get('enabled', False), tnet_raw_qty=raw,
+        tnet_enabled=tn.get('enabled', False), tnet_raw_qty=raw, mark_poll_s=float(c.get('mark_poll_s', 10)),
         mg_enabled=m.get('enabled', False), mg_plan=mg_plan,
         mg_cap_mult=_dec(m.get('cap_mult', '2.5'), 'management.cap_mult', lo=1, hi=10),
         mode=mode, venue_kind=kind, factory=factory, data_root=v.get('data_root', '.'), start=v.get('start') or None,
