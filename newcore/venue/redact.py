@@ -50,19 +50,38 @@ def value_pattern(value):
     return re.compile('|'.join(alts), re.IGNORECASE)
 
 
-def redact_values(text, values):
+class PatternCache:
+    """Compiled value_pattern per value, owned by ONE redactor (a CassetteRecorder, a SecretScrubber): compiling
+    the separator-tolerant pattern dominated recording time (a pattern per value per text). Not module-global, so
+    secret-derived patterns live exactly as long as their owner. Values are checked like value_pattern does."""
+
+    def __init__(self):
+        self._p = {}
+
+    def get(self, value):
+        p = self._p.get(value)
+        if p is None:
+            p = self._p[value] = value_pattern(value)
+        return p
+
+    def __repr__(self):
+        return f'PatternCache(<{len(self._p)}>)'
+
+
+def redact_values(text, values, cache=None):
     text = str(text)
+    pattern = value_pattern if cache is None else cache.get
     for v in sorted(values, key=len, reverse=True):
-        text = value_pattern(v).sub(REDACTED, text)
+        text = pattern(v).sub(REDACTED, text)
     return text
 
 
-def contains_values(text, values):
+def contains_values(text, values, cache=None):
     """True if any value is present in text, or in its percent-decoded form."""
     text = str(text)
     forms = (text, urllib.parse.unquote(text), urllib.parse.unquote_plus(text))
     for v in values:
-        p = value_pattern(v)
+        p = value_pattern(v) if cache is None else cache.get(v)
         if any(p.search(f) for f in forms):
             return True
     return False
