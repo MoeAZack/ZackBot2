@@ -356,9 +356,13 @@ class CredentialStore:
             raise CredentialsUnavailable('the decrypted credential record is inconsistent', 'corrupt')
         return rec
 
-    def load(self):
-        """-> StoredCredentials (a CredentialSource). Raises CredentialsUnavailable(reason) on any problem."""
+    def load(self, scrubber=None):
+        """-> StoredCredentials (a CredentialSource). Raises CredentialsUnavailable(reason) on any problem.
+        scrubber: a SecretScrubber to register the key AND secret with, so a caller can redact both without ever
+        handling the secret itself."""
         rec = self._read_record()
+        if scrubber is not None:
+            scrubber.register(rec['api_key'], rec['api_secret'])
         return StoredCredentials(rec['api_key'], rec['api_secret'], account_id=rec['account_id'],
                                  environment=rec['environment'], created_ms=rec['created_ms'])
 
@@ -462,6 +466,11 @@ class SecretScrubber:
             if isinstance(v, str) and len(v) >= 4 and v not in self._values:
                 self._values.append(v)
         self._values.sort(key=len, reverse=True)
+
+    def redaction_values(self):
+        """The registered values, for an in-process redactor/leak check only (e.g. CassetteRecorder(redact=...)).
+        Never log or print the result."""
+        return tuple(self._values)
 
     def scrub(self, text):
         text = str(text)
