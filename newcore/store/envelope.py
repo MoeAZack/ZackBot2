@@ -23,7 +23,8 @@ import os
 from dataclasses import dataclass
 
 from .cipher import default_cipher
-from .frame import FILE_HEADER, KIND_EVIDENCE, RT_END, RT_EVIDENCE_BODY, RT_HEADER, file_header, frame, record_at
+from .frame import (FILE_HEADER, KIND_EVIDENCE, RT_END, RT_EVIDENCE_BODY, RT_HEADER, file_header, frame, record_at,
+                    resync_records)
 from .header import HeaderError, VersionVerdict, canonical_json, check_version, strict_json
 
 EVIDENCE_DIR = 'evidence'
@@ -62,10 +63,12 @@ def ensure_evidence_dir(fs, account_dir):
     k = fs.kind(ed)
     if k == 'missing':
         fs.mkdir(ed)
-        fs.set_private_acl(ed)
-        fs.fsync_dir(account_dir)
     elif k != 'dir':
         raise OSError(errno.ENOTDIR, 'the evidence path is not a directory')
+    # Every time, not only after our own mkdir (HIGH-1 carry-over, Codex #43): an earlier attempt may have created the
+    # directory and then failed its ACL or its parent flush; both are idempotent.
+    fs.set_private_acl(ed)
+    fs.fsync_dir(account_dir)
     return ed
 
 
@@ -79,7 +82,16 @@ def peek_version(raw):
     if len(raw) >= FILE_HEADER.size and raw[:4] == b'ZBNC' and (raw[5] != 1 or raw[6:8] != b'\0\0'):
         return VersionVerdict.UNKNOWN
     r = record_at(raw, FILE_HEADER.size) if len(raw) >= FILE_HEADER.size else None
-    if r is None or r.rtype != RT_HEADER:
+    if r is None or r.rtype != RT_HEADER:                 # HIGH-2: a damaged envelope is swept for a future header
+        for x in resync_records(bytes(raw), FILE_HEADER.size if len(raw) >= FILE_HEADER.size else 0):
+            if x.rtype == RT_HEADER:
+                try:
+                    doc, _ = strict_json(x.payload)
+                except HeaderError:
+                    continue
+                v = check_version(doc)
+                if v is not VersionVerdict.OK:
+                    return v
         return VersionVerdict.OK
     try:
         doc, _ = strict_json(r.payload)
@@ -141,9 +153,11 @@ def write_envelope(fs, account_dir, account_id, data, *, source, rel_path, offse
     if k == 'file':
         try:
             read_envelope(fs.read_bytes(p), cipher, account_id)
-            return ref, False                                     # V-idempotent: already copied and verified
         except EnvelopeError:
             fs.unlink_own_partial(p)                              # D4: our own unindexed partial from a crash
+        else:                                                     # V-idempotent: already copied and verified, but
+            _make_durable(fs, p, ed, cipher, account_id)          # HIGH-1: identical bytes are not yet durable ones
+            return ref, False
     elif k != 'missing':
         raise OSError(errno.EEXIST, 'a non-file at an evidence path')
     content = envelope_bytes(meta, cipher.seal(data, account_id))
@@ -167,6 +181,22 @@ def write_envelope(fs, account_dir, account_id, data, *, source, rel_path, offse
         _drop(fs, p)
         raise OSError(errno.EIO, 'evidence read-back does not verify') from None
     return ref, created
+
+
+def _make_durable(fs, p, ed, cipher, account_id):
+    """Before an existing verified envelope is reused (an earlier attempt wrote it, then a flush failed): fsync the
+    file, read it back and verify it again, flush its directory. Only then may the caller seal what it preserves.
+    Raises OSError (the caller maps it to DurabilityUnavailable)."""
+    h = fs.open_append(p)
+    try:
+        fs.fsync(h)
+    finally:
+        _close(fs, h)
+    try:
+        read_envelope(fs.read_bytes(p), cipher, account_id)
+    except EnvelopeError:
+        raise OSError(errno.EIO, 'evidence read-back does not verify') from None
+    fs.fsync_dir(ed)
 
 
 def _close(fs, h):

@@ -32,7 +32,7 @@ from newcore.ports.journal import JournalConflict
 from .errors import DurabilityUnavailable
 from .envelope import EvidenceRef, write_evidence
 from .fold import Folder
-from .frame import KIND_SEGMENT, MAX_RECORD, RT_EVENT, RT_HEADER, HeaderState, scan
+from .frame import KIND_SEGMENT, MAX_RECORD, RT_EVENT, RT_HEADER, HeaderState, resync_records, scan
 from .fs import RealFs
 from .header import (EMPTY_SHA, HeaderError, Seal, SegmentHeader, VersionVerdict, check_version, decode_header,
                      header_frame_max, strict_json)
@@ -162,6 +162,29 @@ class _Plan:
     voids: list
     findings: list
 
+def _future_frames(name, recs):
+    """Rule-1 findings among records found past the first invalid one (HIGH-2, Codex #43): a CRC-valid header record
+    of a future / unknown version or a CRC-valid event of an unsupported schema anywhere in the file forces ABORT_RO
+    before any DAMAGED verdict. Anything that does not even parse is left to the damage verdict."""
+    out = []
+    for r in recs:
+        if r.rtype == RT_HEADER:
+            try:
+                doc, _ = strict_json(r.payload)
+            except HeaderError:
+                continue
+            v = check_version(doc)
+            if v is not VersionVerdict.OK:
+                out.append(Finding('future_format' if v is VersionVerdict.FUTURE else 'unknown_format', name, r.offset,
+                                   'header version (after corruption)'))
+        elif r.rtype == RT_EVENT:
+            res = decode_result(r.payload)
+            if res.outcome is Outcome.UNSUPPORTED_VERSION:
+                out.append(Finding('future_event', name, r.offset,
+                                   f'event schema {res.error.direction} (after corruption)'))
+    return out
+
+
 def _read_only(fs, account_dir, account_id, aggregate_id):
     jd = os.path.join(account_dir, JOURNAL_DIR)
     try:
@@ -202,6 +225,9 @@ def _read_only(fs, account_dir, account_id, aggregate_id):
         if sc.header is HeaderState.UNKNOWN_FORMAT:
             future.append(Finding('unknown_format', n, 0, f'frame version {sc.frame_version} / reserved bits'))
             continue
+        if not sc.clean:                                      # HIGH-2: rule 1 also behind corruption
+            start = sc.good_end if sc.header is HeaderState.OK else 0
+            future.extend(_future_frames(n, resync_records(data, start)))
         if sc.header is not HeaderState.OK:
             continue
         recs = sc.records

@@ -88,6 +88,23 @@ def record_at(data, off, max_len=MAX_EVIDENCE_BODY):
     return Rec(off, rtype, flags, payload)
 
 
+def resync_records(data, start=0, max_len=MAX_EVIDENCE_BODY):
+    """Every independently CRC-valid, complete record at or after `start`, found by scanning for the frame sync bytes
+    (HIGH-2, Codex #43: rule 1 must see a future format even behind corruption). Read-only and bounded by the file
+    size: every candidate offset is tried at most once and a found record is skipped whole."""
+    data = bytes(data)
+    out = []
+    i = data.find(SYNC_BYTES, max(start, 0))
+    while i != -1:
+        r = record_at(data, i, max_len)
+        if r is not None:
+            out.append(r)
+            i = data.find(SYNC_BYTES, r.end)
+        else:
+            i = data.find(SYNC_BYTES, i + 1)
+    return tuple(out)
+
+
 def _valid_record_after(data, off):
     i = data.find(SYNC_BYTES, off + 1)
     while i != -1:

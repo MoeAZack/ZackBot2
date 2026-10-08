@@ -23,7 +23,7 @@ from newcore.domain import canonical_bytes, decode_result
 from newcore.domain.codec import Outcome
 
 from .frame import (FILE_HEADER, KIND_SNAPSHOT, RT_BINDING, RT_END, RT_HEADER, RT_PROVENANCE, RT_SETTINGS, RT_SNAPSHOT,
-                    file_header, frame, record_at)
+                    file_header, frame, record_at, resync_records)
 from .header import HeaderError, canonical_json, strict_json
 from .records import (FORMAT_SNAPSHOT, RecordError, is_count, settings_doc, sha256_hex, validate_provenance,
                       validate_settings)
@@ -95,8 +95,36 @@ def _version(doc, reader_format, reader_seq):
     return 'older' if fv < reader_format else 'ok'
 
 
+def _future_anywhere(raw, reader):
+    """HIGH-2 carry-over (Codex #43): rule 1 over EVERY independently CRC-valid record of a damaged snapshot (resync on
+    the sync bytes, read-only, bounded by the file size): a future header / settings version or a future NC-01 schema
+    anywhere makes the file a future member (ABORT_RO), never damage."""
+    for r in resync_records(raw, 0, max_len=64 * 1024 * 1024):
+        if r.rtype in (RT_HEADER, RT_SETTINGS):
+            try:
+                doc, _ = strict_json(r.payload)
+            except HeaderError:
+                continue
+            if type(doc) is dict and 'format_version' in doc and \
+                    _version(doc, reader.snapshot_format if r.rtype == RT_HEADER else 1, reader.writer_seq) == 'future':
+                return True
+        elif r.rtype in (RT_BINDING, RT_SNAPSHOT):
+            res = decode_result(r.payload, expect='account' if r.rtype == RT_BINDING else 'snapshot')
+            if res.outcome is Outcome.UNSUPPORTED_VERSION:
+                return True
+    return False
+
+
 def peek(raw, reader):
-    """Rule 1 on the file header and the header record only: 'ok' | 'future' | 'older' | 'damage'."""
+    """Rule 1 on the file header and the header record: 'ok' | 'future' | 'older' | 'damage'; a damaged file is
+    swept for a future record anywhere first (HIGH-2)."""
+    v = _peek(raw, reader)
+    if v == 'damage' and _future_anywhere(bytes(raw), reader):
+        return 'future'
+    return v
+
+
+def _peek(raw, reader):
     raw = bytes(raw)
     if len(raw) >= FILE_HEADER.size and raw[:4] == b'ZBNC' and raw[4] == KIND_SNAPSHOT and (
             raw[5] != 1 or raw[6:8] != b'\0\0'):
@@ -126,8 +154,18 @@ def _nc01(payload, expect):
 
 def decode_snapshot(raw, reader, *, account_id, migrate=True):
     """SnapFile, or SnapFuture / SnapOlder / SnapDamage. An older format with a migrator is decoded by the migrator
-    (which returns a SnapFile in the current shape); the caller then commits it as a new MIGRATION generation."""
+    (which returns a SnapFile in the current shape); the caller then commits it as a new MIGRATION generation.
+    Rule 1 wins over damage: a future record anywhere in a damaged file is SnapFuture (HIGH-2)."""
     raw = bytes(raw)
+    try:
+        return _decode_snapshot(raw, reader, account_id=account_id, migrate=migrate)
+    except SnapDamage:
+        if _future_anywhere(raw, reader):
+            raise SnapFuture('a future record behind damage') from None
+        raise
+
+
+def _decode_snapshot(raw, reader, *, account_id, migrate):
     v = peek(raw, reader)
     if v == 'future':
         raise SnapFuture('snapshot header version')

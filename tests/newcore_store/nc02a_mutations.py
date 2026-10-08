@@ -22,6 +22,11 @@ SUITE = ['tests/newcore_store', 'tests/newcore_ports/test_nc02a_file_journal_con
 
 # name -> (file, [(exact source text, replacement)]); each anchor must occur exactly once
 MUTATIONS = {
+    'reused evidence not made durable (HIGH-1)': (S + 'envelope.py', [('            _make_durable(fs, p, ed, cipher, account_id)', '            pass  # ')]),
+    'evidence dir entry not flushed when the dir exists (HIGH-1)': (S + 'envelope.py', [('    fs.set_private_acl(ed)\n    fs.fsync_dir(account_dir)\n', '    fs.set_private_acl(ed)\n')]),
+    'a future snapshot record behind damage read as damage (HIGH-2, 02b)': (S + 'snapfile.py', [('        if _future_anywhere(raw, reader):\n            raise SnapFuture', '        if False:\n            raise SnapFuture')]),
+    'no rule-1 sweep behind corruption (HIGH-2)': (S + 'recovery.py', [('            future.extend(_future_frames(n, resync_records(data, start)))', '            pass')]),
+    'lock I/O error read as contention (N1)': (S + 'fs.py', [('            if ex.errno in _CONTENDED:\n', '            if True:\n')]),
     'append without fsync': (S + 'journal.py', [('            self._fs.fsync(self._h)\n', '            pass\n')]),
     'segment create without file fsync': (S + 'journal.py', [('        fs.fsync(h)\n    finally:\n        _close_quiet',
                                                               '        pass\n    finally:\n        _close_quiet')]),
