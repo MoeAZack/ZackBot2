@@ -192,10 +192,12 @@ def test_fills_parse():
     assert fills[0].order_id == 4000000100 and fills[0].maker is False and fills[0].position_side == 'LONG'
 
 
-def test_fills_duplicate_id_refused():
+def test_fills_identical_duplicate_is_kept_once_and_counted_conflicting_is_refused():   # Cowork 6068372233
     t = body('user_trades')
+    rows = R.parse_fills([t[0], t[0]])
+    assert len(rows) == 1 and rows.raw == 2 and rows.duplicates == 1      # a page is FULL by raw, never by len()
     with pytest.raises(R.MalformedResponse):
-        R.parse_fills([t[0], t[0]])
+        R.parse_fills([t[0], dict(t[0], qty='999')])
 
 
 def test_dual_side_and_server_time():

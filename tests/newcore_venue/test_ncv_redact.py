@@ -46,7 +46,7 @@ def test_ordinary_names_are_not_sensitive(name):
 @pytest.mark.parametrize('disguise', [
     DUMMY_SECRET, DUMMY_SECRET.lower(), DUMMY_SECRET.upper(),
     '-'.join(chunks(DUMMY_SECRET, 4)), '_'.join(chunks(DUMMY_SECRET)), ' '.join(chunks(DUMMY_SECRET, 2)),
-])
+], ids=['as-is', 'lower', 'upper', 'dash-4', 'underscore', 'space-2'])          # no secret in a node id (#44)
 def test_value_found_case_and_separator_insensitive(disguise):
     text = f'error: bad {disguise} here'
     assert contains_values(text, [DUMMY_SECRET])
@@ -55,7 +55,8 @@ def test_value_found_case_and_separator_insensitive(disguise):
 
 
 @pytest.mark.parametrize('enc', [urllib.parse.quote(ODD_KEY, safe=''), urllib.parse.quote(ODD_KEY, safe='').lower(),
-                                 urllib.parse.quote_plus(ODD_KEY), urllib.parse.quote(ODD_KEY, safe='/')])
+                                 urllib.parse.quote_plus(ODD_KEY), urllib.parse.quote(ODD_KEY, safe='/')],
+                         ids=['quote', 'quote-lower', 'quote-plus', 'quote-keep-slash'])   # no secret in an id
 def test_value_found_percent_encoded(enc):
     assert '%2' in enc.upper()
     out = redact_values(f'key={enc}&x=1', [ODD_KEY])
@@ -127,7 +128,8 @@ def transport(http, scrubber=None, key=DUMMY_KEY):
 
 
 @pytest.mark.parametrize('echo', [DUMMY_KEY.lower(), '-'.join(chunks(DUMMY_KEY, 4)), ' '.join(chunks(DUMMY_KEY, 4)),
-                                  urllib.parse.quote(DUMMY_KEY)])
+                                  urllib.parse.quote(DUMMY_KEY)],
+                         ids=['lower', 'dash-4', 'space-4', 'quote'])        # no secret in a node id (#44)
 def test_venue_error_never_carries_the_key_in_any_disguise(echo):
     body = ('{"code": -2015, "msg": "Invalid API-key %s"}' % echo).encode()
     out = transport(FakeHttp(raw(400, body))).place_market('SOLUSDT', 'BUY', 'LONG', D('1'), 'zb-a',

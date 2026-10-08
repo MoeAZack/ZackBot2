@@ -497,8 +497,23 @@ class Fill:
     time_ms: int
 
 
+class FillRows(tuple):
+    """parse_fills' answer: the page's fills, an IDENTICAL repeated row kept once. raw = the rows Binance sent (a page
+    is FULL by this count, never by the deduped length); duplicates = raw - len(self)."""
+    raw: int = 0
+    duplicates: int = 0
+
+
+def _fill_rows(fills, raw):
+    rows = FillRows(fills)
+    rows.raw, rows.duplicates = raw, raw - len(fills)
+    return rows
+
+
 def parse_fills(data):
-    out, seen = [], set()
+    """An identical repeated row (same trade id, same fields) is kept once and counted (Cowork 6068372233); the same
+    trade id with different fields is malformed (which one is true cannot be known)."""
+    out, seen, raw = [], {}, 0
     for t in as_list(data, 'userTrades'):
         f = Fill(trade_id=integer(t, 'id', positive=True), order_id=integer(t, 'orderId', positive=True),
                  symbol=text(t, 'symbol'), side=text(t, 'side', allowed=SIDES),
@@ -507,11 +522,14 @@ def parse_fills(data):
                  quote_qty=dec(t, 'quoteQty', nonneg=True), commission=dec(t, 'commission'),
                  commission_asset=text(t, 'commissionAsset'), realized_pnl=dec(t, 'realizedPnl'),
                  maker=flag(t, 'maker'), buyer=flag(t, 'buyer'), time_ms=integer(t, 'time', positive=True))
+        raw += 1
         if f.trade_id in seen:
-            raise MalformedResponse('duplicate trade id')
-        seen.add(f.trade_id)
+            if seen[f.trade_id] != f:
+                raise MalformedResponse('conflicting duplicate trade id')
+            continue
+        seen[f.trade_id] = f
         out.append(f)
-    return tuple(out)
+    return _fill_rows(out, raw)
 
 
 # ---------- income (funding / commission / realized pnl) ----------
