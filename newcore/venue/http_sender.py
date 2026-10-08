@@ -19,6 +19,8 @@ import http.client
 import re
 import socket
 import ssl
+import threading
+import time
 import urllib.parse
 
 from .guard import TESTNET_BASE_URL, VenueGuardError, check_request_url
@@ -91,38 +93,120 @@ class TestnetHttpSender:
         if isinstance(timeout, bool) or not isinstance(timeout, (int, float)) or not 0 < timeout <= 60:
             raise VenueGuardError('timeout_s must be in (0, 60]')
         headers = self._headers(request)
+        deadline = time.monotonic() + timeout
+        dog = _Watchdog()
         conn = None
         try:
             conn = self._connect(TESTNET_HOST, timeout, self._ctx)
-            conn.request(request.method, target, headers=headers)
-            resp = conn.getresponse()
-            length = resp.getheader('Content-Length')
-            if length is not None and length.strip().isdigit() and int(length) > self._max:
-                raise WireResponseTooLarge('response larger than the bound')
-            body = resp.read(self._max + 1)
-            if len(body) > self._max:
-                raise WireResponseTooLarge('response larger than the bound')
-            if length is not None and length.strip().isdigit() and len(body) != int(length):
-                raise WireConnectionError('truncated response body')
-            hdrs = {}
-            for k, v in resp.getheaders():
-                hdrs[k] = v if k not in hdrs else hdrs[k] + ', ' + v
-            return HttpResponse(resp.status, hdrs, body)
-        except (WireTimeout, WireConnectionError):
+            dog.arm(conn, deadline)
+            result = self._exchange(conn, request.method, target, headers, deadline, dog)
+            if dog.fired:                      # the stream may LOOK complete after the deadline cut it: unknown
+                raise WireTimeout('timed out')
+            return result
+        except (WireTimeout, WireConnectionError) as ex:
+            if dog.fired and not isinstance(ex, WireTimeout):
+                raise WireTimeout('timed out') from None
             raise
-        except (TimeoutError, socket.timeout):
-            raise WireTimeout('timed out') from None
-        except socket.gaierror:
-            raise WireConnectionError('name resolution failed') from None
-        except ssl.SSLError:
-            raise WireConnectionError('TLS failure') from None
-        except http.client.IncompleteRead:
-            raise WireConnectionError('truncated response body') from None
-        except (http.client.HTTPException, ConnectionError, OSError):
-            raise WireConnectionError('connection failed') from None
+        except Exception as ex:
+            if dog.fired or time.monotonic() >= deadline:
+                raise WireTimeout('timed out') from None
+            raise _map_error(ex) from None
         finally:
+            dog.cancel()
             if conn is not None:
                 try:
                     conn.close()
                 except Exception:
                     pass
+
+    def _exchange(self, conn, method, target, headers, deadline, dog):
+        conn.connect()                         # TCP + TLS; the watchdog can cut a slow handshake too
+        dog.track(conn.sock)
+        _set_timeout(conn.sock, deadline)
+        conn.request(method, target, headers=headers)
+        resp = conn.getresponse()              # a slow status line / header drip is cut by the watchdog
+        length = resp.getheader('Content-Length')
+        if length is not None and length.strip().isdigit() and int(length) > self._max:
+            raise WireResponseTooLarge('response larger than the bound')
+        chunks, total = [], 0
+        while True:                            # TOTAL deadline: checked between chunks, and each read is bounded
+            if dog.fired or time.monotonic() >= deadline:
+                raise WireTimeout('timed out')
+            _set_timeout(dog.sock, deadline)
+            chunk = resp.read1(65536)
+            if not chunk:
+                break
+            total += len(chunk)
+            if total > self._max:
+                raise WireResponseTooLarge('response larger than the bound')
+            chunks.append(chunk)
+        body = b''.join(chunks)
+        if length is not None and length.strip().isdigit() and len(body) != int(length):
+            raise WireConnectionError('truncated response body')
+        hdrs = {}
+        for k, v in resp.getheaders():
+            hdrs[k] = v if k not in hdrs else hdrs[k] + ', ' + v
+        return HttpResponse(resp.status, hdrs, body)
+
+
+def _set_timeout(sock, deadline):
+    if sock is not None:
+        try:
+            sock.settimeout(max(0.001, deadline - time.monotonic()))
+        except OSError:
+            pass
+
+
+def _map_error(ex):
+    if isinstance(ex, (TimeoutError, socket.timeout)):
+        return WireTimeout('timed out')
+    if isinstance(ex, socket.gaierror):
+        return WireConnectionError('name resolution failed')
+    if isinstance(ex, ssl.SSLError):
+        return WireConnectionError('TLS failure')
+    if isinstance(ex, http.client.IncompleteRead):
+        return WireConnectionError('truncated response body')
+    if isinstance(ex, (http.client.HTTPException, ConnectionError, OSError)):
+        return WireConnectionError('connection failed')
+    return WireConnectionError('connection failed')
+
+
+class _Watchdog:
+    """Wall-clock deadline for the WHOLE request (Cowork finding 2). A per-read socket timeout alone lets a server
+    that drips one byte per interval keep a call alive forever; at the deadline this shuts the socket down, which
+    makes any blocked connect / TLS / send / read in the request thread fail at once. Name resolution cannot be
+    interrupted (getaddrinfo); the deadline is still enforced as soon as it returns."""
+
+    def __init__(self):
+        self.fired, self.sock, self._conn, self._timer = False, None, None, None
+        self._lock = threading.Lock()
+
+    def arm(self, conn, deadline):
+        self._conn = conn
+        self._timer = threading.Timer(max(0.0, deadline - time.monotonic()), self._fire)
+        self._timer.daemon = True
+        self._timer.start()
+
+    def track(self, sock):
+        with self._lock:
+            self.sock = sock
+            if self.fired:
+                _shutdown(sock)
+
+    def _fire(self):
+        with self._lock:
+            self.fired = True
+            _shutdown(self.sock if self.sock is not None else getattr(self._conn, 'sock', None))
+
+    def cancel(self):
+        if self._timer is not None:
+            self._timer.cancel()
+
+
+def _shutdown(sock):
+    if sock is None:
+        return
+    try:
+        sock.shutdown(socket.SHUT_RDWR)
+    except OSError:
+        pass

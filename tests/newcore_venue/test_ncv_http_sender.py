@@ -94,6 +94,29 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self.end_headers()                                # HTTP/1.0, no length: body runs to close
             self.wfile.write(b'[' + b'0,' * 2000 + b'0]')
             self.close_connection = True
+        elif mode == 'drip_body':                     # slowloris: 1 byte every 0.25 s, 20 bytes = 5 s
+            body = b'{"serverTime": 12345}'[:20]
+            self.send_response(200)
+            self.send_header('Content-Length', str(len(body)))
+            self.end_headers()
+            self.wfile.flush()
+            for i in range(len(body)):
+                time.sleep(0.25)
+                try:
+                    self.wfile.write(body[i:i + 1])
+                    self.wfile.flush()
+                except OSError:
+                    return
+        elif mode == 'drip_headers':                  # slowloris in the status line / headers
+            head = b'HTTP/1.0 200 OK\r\nContent-Length: 2\r\nX-Pad: ' + b'a' * 40 + b'\r\n\r\n{}'
+            for i in range(len(head)):
+                time.sleep(0.1)
+                try:
+                    self.wfile.write(head[i:i + 1])
+                    self.wfile.flush()
+                except OSError:
+                    return
+            self.close_connection = True
         elif mode == 'lying_length':
             self.send_response(200)
             self.send_header('Content-Length', str(50 * 1024 * 1024))   # announces 50 MiB, sends a few bytes
@@ -159,6 +182,31 @@ def test_slow_response_times_out_to_unknown(stub):
     assert str(ei.value) == 'timed out'
     out = transport_over(s, timeout=0.2).place_market('SOLUSDT', 'BUY', 'LONG', D('1'), 'zb-a', reduce_only=False)
     assert out.kind is K.UNKNOWN and out.unknown_reason == 'timeout'
+
+
+@pytest.mark.parametrize('mode', ['drip_body', 'drip_headers'])
+def test_slowloris_hits_the_total_deadline(stub, mode):
+    """Cowork finding 2: each byte arrives well inside the per-read timeout, but the whole request must still end at
+    timeout_s (the drip would take ~5 s)."""
+    stub.mode = mode
+    s = TestnetHttpSender(connect=plain_connect(stub))
+    t0 = time.monotonic()
+    with pytest.raises(WireTimeout):
+        s(req(timeout=1.0))
+    assert time.monotonic() - t0 < 2.0
+
+
+def test_slowloris_through_transport_is_unknown_timeout(stub):
+    stub.mode = 'drip_body'
+    t0 = time.monotonic()
+    out = transport_over(TestnetHttpSender(connect=plain_connect(stub)), timeout=1.0).cancel_order('SOLUSDT', 'zb-a')
+    assert out.kind is K.UNKNOWN and out.unknown_reason == 'timeout' and time.monotonic() - t0 < 2.0
+
+
+def test_fast_answer_inside_deadline_is_not_cut(stub):
+    s = TestnetHttpSender(connect=plain_connect(stub))
+    for _ in range(5):
+        assert s(req(timeout=1.0)).status == 200
 
 
 def test_connection_reset_to_unknown(stub):
