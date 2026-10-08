@@ -215,3 +215,40 @@ def test_parity_main_gates_on_a_mismatch_and_refuses_a_missing_root(tmp_path, mo
     monkeypatch.setattr(P, 'cmd_single', lambda a: {'kind': 'single', 'costs': 'zero', 'symbols': {'BTCUSDT': dict(
         longs=1, shorts=1, paired=1, same_exit_qty=1, r_equal=1, only_long=[], only_short=[], diffs=[])}})
     assert P.main(['single', '--root', '.', '--symbols', 'BTCUSDT', '--out', str(out)]) == 0
+
+
+@pytest.mark.parametrize('side', SIDES)
+def test_f3_ruling_the_fallback_is_beyond_the_current_mark_and_marked_degraded(side):
+    from newcore.runner.reports import health_line
+    crash = ('80', '80.2', '79.8', '80') if side == 'LONG' else ('120', '120.2', '119.8', '120')
+    w = World(flat_bars(20, overrides={7: crash}), sig(side), strict=False)
+    w.run(6)
+    lot, = w.runner.fold.open_lots()
+    w.venue.external_cancel(lot.live_stop.intent.client_order_id)
+    w.journal.fail_writes(10 ** 9)
+    w.runner.store_unavailable('test: ENOSPC')
+    w.run(7)
+    mark = w.venue.mark_price(SYM).value[0]                        # the mark the fallback is placed against
+    w.run(8)
+    em = [o for o in w.venue.orders_submitted() if ids.is_emergency_client_id(o.ref.client_id)
+          and o.order_type == 'STOP_MARKET']
+    assert em and all((o.stop_price < mark) if side == 'LONG' else (o.stop_price > mark) for o in em)
+    assert position(w, side) == 0 or sum((o.qty for o in stops_resting(w, side)), D(0)) >= position(w, side)
+    assert f'degraded={SYM}:{side}:fallback_stop' in health_line(w.runner)
+    assert any('DEGRADED protection' in t for _, t in w.runner.incidents)
+
+
+@pytest.mark.parametrize('side', SIDES)
+def test_f3_ruling_no_safe_stop_escalates_to_a_reduce_only_close(side):
+    from newcore.runner.reports import health_line
+    crash = ('80', '80.2', '79.8', '80') if side == 'LONG' else ('120', '120.2', '119.8', '120')
+    w = World(flat_bars(20, overrides={7: crash}), sig(side), strict=False)
+    w.run(6)
+    lot, = w.runner.fold.open_lots()
+    w.venue.external_cancel(lot.live_stop.intent.client_order_id)
+    w.journal.fail_writes(10 ** 9)
+    w.runner.store_unavailable('test: ENOSPC')
+    w.port.refuse('stop', -2021)                                   # every stop would trigger: no safe stop exists
+    w.run(9)
+    assert position(w, side) == 0                                  # the reduce-only emergency close took it
+    assert f'degraded={SYM}:{side}:emergency_close' in health_line(w.runner)

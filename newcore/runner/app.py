@@ -191,9 +191,10 @@ class Session:
                             sides=sides_for(cfg), strict=False,
                             raw_qty=cfg.tnet_raw_qty if cfg.tnet_enabled else None)
         self.runner = ManagedBookRunner(rcfg, policy=policy_for(cfg), journal=self.journal, venue=port,
-                                        bars=self.bars, signals=signals_for(cfg, enabled) if not guard else NoSignals(),
+                                        bars=self.bars, signals=signals_for(cfg, enabled or bool(guard)),
                                         account_reads=reads, management=management_for(cfg),
                                         hard_hold=guard)
+        self.runner.guard = bool(guard)          # the guard re-derives signals only to PROVE own entries by id
 
     def _venue_exposure(self, port):
         """Cowork 6062740390 GUARD: a journal that is missing / empty is a fresh start only when the venue has no
@@ -265,7 +266,7 @@ class Session:
 # ---------------------------------------------------------------------------------------------------- commands
 def cmd_guard(cfg, out, reason):
     """The store refused the journal (HOLD verdict): one guard pass over exchange truth, then exit 4."""
-    s = Session(cfg, False, guard=reason)
+    s = Session(cfg, cfg.enabled, guard=reason)
     try:
         t = s.next_close() if s.venue is not None else int(time.time() * 1000)
         if t is not None:

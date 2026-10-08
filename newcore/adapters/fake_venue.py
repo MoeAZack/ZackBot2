@@ -516,6 +516,13 @@ class FakeVenue:
         return tuple(o for o in sorted(self._orders.values(), key=lambda o: o.seq)
                      if symbol is None or o.ref.symbol == symbol)
 
+    def mark_price(self, symbol):
+        """The current mark: the price a market order would execute at now (the next open, or the intra-candle mark)."""
+        m = self._next_open(symbol)
+        if m is None:
+            return ReadOutcome(kind=ReadKind.UNKNOWN, observed_at_ms=self.now_ms, detail='no_market')
+        return ReadOutcome(kind=ReadKind.OK, observed_at_ms=self.now_ms, value=(m,))
+
     def bar(self, symbol, open_ms) -> Bar | None:
         i = self._idx.get(symbol, {}).get(open_ms)
         return None if i is None else self._bars[symbol][i]
