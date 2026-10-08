@@ -26,7 +26,7 @@ from .base import CTX, ZERO, Record, check_id, check_symbol, check_text, non_neg
 from .errors import OwnershipUnknown
 from .modes import EntriesMode, HoldKind, Op, Permission, permitted
 from .orders import LIVE, IntentState, OrderIntent, OrderType, OwnerFamily, Purpose, Side
-from .protection import PROTECTING, Protection, active_coverage, check_protection, protection_status
+from .protection import PROTECTING, Protection, check_protection, protection_status, target_coverage
 from .reasons import ReasonCode
 
 
@@ -320,11 +320,11 @@ def _check_known(pf, p):
         if st.miss is not None and st.miss.foreign_order_id is not None:
             req(st.miss.foreign_order_id not in cids, sp + '.miss.foreign_order_id', 'an owned client id is never foreign')
         key = (symbol, side)
-        coverage[key] = CTX.add(coverage.get(key, ZERO), active_coverage(st, intents))
+        coverage[key] = CTX.add(coverage.get(key, ZERO), target_coverage(st, intents))
         exposure[key] = CTX.add(exposure.get(key, ZERO), exp)
     for key, cov in coverage.items():                 # aggregate bound per symbol / side (contract invariant 11)
         req(cov <= exposure[key], f'{p}.protection[{key[0]}|{key[1]}]',
-            f'active protective coverage {cov} exceeds the exposure {exposure[key]}')
+            f'target protective coverage {cov} exceeds the exposure {exposure[key]}')
     for it in intents.values():
         if it.family is not OwnerFamily.ENTRY and it.intent_id not in carried:
             req(it.state is IntentState.CANCELLING, f'{p}.intent[{it.intent_id}].state',

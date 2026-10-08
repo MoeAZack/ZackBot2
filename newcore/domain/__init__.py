@@ -37,6 +37,7 @@ from .orders import (Arming, Evidence, ExchangeStatus, IntentState, Lookup, Orde
 from .portfolio import (Fill, Lot, LotSource, Ownership, OwnershipProof, Portfolio, Position, ProofKind,
                         check_account_portfolio, check_flat_snapshot_fresh, entry_blocking_protections,
                         owned_client_ids, ownership_families)
-from .protection import MissPhase, Protection, ProtectionStatus, StopMiss, active_coverage, protection_status
+from .protection import (MissPhase, Protection, ProtectionStatus, StopMiss, confirmed_coverage, pending_coverage,
+                         promote_replacement, protection_status, target_coverage)
 from .reasons import GOLDEN_EXIT, GOLDEN_EXIT_CODES, GOLDEN_SIGNAL, MEANING, ReasonCode
 from .snapshot import GenerationVerdict, HighWater, Snapshot, check_generation
