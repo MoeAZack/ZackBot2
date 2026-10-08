@@ -6,6 +6,7 @@ from decimal import Decimal as D
 import pytest
 
 import nc01_factories as F
+from newcore.domain import EMPTY_FACTS
 from nc01_factories import T0, replace
 from newcore.domain import (Account, AccountBinding, Action, Arming, Authority, BindingChanged, BindingConfirmation,
                             BindingState, Capability, EntriesMode, Environment, Evidence, ExchangeStatus,
@@ -310,11 +311,11 @@ CASES = {
                                                                          from_state=BindingState.RECONCILING,
                                                                          to_state=BindingState.CONFIRMED, binding=B),
                                                   'reconciliation_id'),
-    'snapshot of another account': (lambda: Snapshot(account_id=OTHER, generation=PF.generation, last_sequence=5, written_at_ms=T0,
+    'snapshot of another account': (lambda: Snapshot(facts=EMPTY_FACTS, account_id=OTHER, generation=PF.generation, last_sequence=5, written_at_ms=T0,
                                                      writer_build='b', portfolio=PF), 'portfolio'),
-    'snapshot generation differs': (lambda: Snapshot(account_id=PF.account_id, generation=PF.generation + 1, last_sequence=5,
+    'snapshot generation differs': (lambda: Snapshot(facts=EMPTY_FACTS, account_id=PF.account_id, generation=PF.generation + 1, last_sequence=5,
                                                      written_at_ms=T0, writer_build='b', portfolio=PF), 'generation'),
-    'journal proof beyond snapshot': (lambda: Snapshot(account_id=PF.account_id, generation=PF.generation, last_sequence=0,
+    'journal proof beyond snapshot': (lambda: Snapshot(facts=EMPTY_FACTS, account_id=PF.account_id, generation=PF.generation, last_sequence=0,
                                                        written_at_ms=T0, writer_build='b', portfolio=PF), 'proof'),
 }
 
