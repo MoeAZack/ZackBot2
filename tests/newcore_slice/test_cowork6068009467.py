@@ -72,13 +72,18 @@ def test_h4a_a_final_entry_is_owned_by_its_executed_quantity_whatever_the_fills_
     for b in (6, 7, 8):
         w.run(b)
     sent = new_orders(w, n)
-    assert [o.qty for o in sent if o.order_type == 'STOP_MARKET'] == [D('2')]   # exactly ours: never 0, never 4 / 7
+    stop_qty = [o.qty for o in sent if o.order_type == 'STOP_MARKET']
+    if fault in UNPROVEN:                                                # fills disagree with the executed qty:
+        assert stop_qty == []                                            # UNKNOWN, nothing sized (6068372233 #3)
+        assert any('fills disagree with executed qty' in t for _, t in w.runner.incidents)
+    else:
+        assert stop_qty == [D('2')]                                      # exactly ours: never 0, never 4 / 7
     assert not [o for o in sent if o.order_type == 'MARKET'] and position(w, side) == D('4')
 
 
 @pytest.mark.parametrize('side', SIDES)
 @pytest.mark.parametrize('fault', ('ok',) + FAULTS)
-def test_h4bd_a_working_entry_is_owned_only_by_proven_deduplicated_fills(side, fault):
+def test_h4bd_a_working_entry_is_never_sized_from_its_fills_alone(side, fault):
     w = resting_entry_hard_hold(side, D('3'), final=False)
     w.venue.fills = faulty(w.venue.fills, fault)
     n = len(w.venue.orders_submitted())
@@ -88,15 +93,10 @@ def test_h4bd_a_working_entry_is_owned_only_by_proven_deduplicated_fills(side, f
     sent = new_orders(w, n)
     stop_qty = sum((o.qty for o in sent if o.order_type == 'STOP_MARKET'), D(0))
     assert not [o for o in sent if o.order_type == 'MARKET']             # never a close (foreign 2 is there)
-    # a WORKING order's rows cannot be checked against an executed quantity (the port carries it on FINAL only):
-    # always loud, a lower bound at most - empty / trunc under-claim, never widen; unreadable rows add nothing
-    assert any('UNREADABLE' in t for _, t in w.runner.incidents)
-    if fault in ('trunc',):
-        assert stop_qty == D('1.5')                                      # the proven half row, never more
-    elif fault in UNPROVEN:
-        assert stop_qty == 0                                             # unknown / empty: nothing new
-    else:
-        assert stop_qty == D('3')                                        # ok / dup / duplast: exactly ours
+    # a WORKING order's fills cannot be checked against an executed quantity (the port carries it on FINAL only):
+    # nothing is sized from fills alone (6068372233 #3) - UNKNOWN and loud whatever the read, until it is FINAL
+    assert stop_qty == 0
+    assert any("working order's fills cannot be checked" in t for _, t in w.runner.incidents)
     assert position(w, side) == D('5')
 
 
@@ -229,3 +229,33 @@ def test_h7_the_structured_state_reports_the_effective_hold(side):
     assert r.mode is EntriesMode.HOLD and r.hold is HoldKind.DURABILITY_UNAVAILABLE
     assert pf.entries_mode is EntriesMode.HOLD and pf.hold_kind is HoldKind.DURABILITY_UNAVAILABLE
     assert r.fold.mode is EntriesMode.ACTIVE                             # the journal's durable view (documented)
+
+
+# ------------------------------------------------------------------------- 6068372233 #2 / #5: full page, fee
+@pytest.mark.parametrize('side', SIDES)
+def test_a_full_page_has_no_proven_end_and_is_unknown(side, monkeypatch):
+    """A page with as many rows as the venue page holds may continue: its end is not proven -> UNKNOWN (the port has
+    no continuation marker yet). PAGE_LIMIT is lowered so the one true row fills a page."""
+    from newcore.runner import fill_evidence as FE
+    monkeypatch.setattr(FE, 'PAGE_LIMIT', 1)
+    w = resting_entry_hard_hold(side, D('2'), final=True)
+    n = len(w.venue.orders_submitted())
+    for b in (6, 7):
+        w.run(b)
+    assert not [o for o in new_orders(w, n) if o.order_type == 'STOP_MARKET']
+    assert any('full page' in t for _, t in w.runner.incidents)
+
+
+@pytest.mark.parametrize('side', SIDES)
+@pytest.mark.parametrize('fault', UNPROVEN)
+def test_a_projection_fee_is_pending_never_zero_and_never_a_breach(side, fault):
+    """_fee never returns ZERO for unproven rows: the projection is PENDING (an incident once), and a strict run does
+    not breach on it."""
+    from newcore.runner.fill_evidence import EvidencePending
+    w = World(flat_bars(20), InjectedSignals({(SYM, at(5)): (('enter', side),)}, stop_atr=D('2')), strict=True)
+    w.run(6)
+    w.venue.fills = faulty(w.venue.fills, fault)
+    with pytest.raises(EvidencePending):
+        w.runner.portfolio()
+    w.run(9)                                                             # strict: no InvariantBreach
+    assert sum(1 for _, t in w.runner.incidents if t.startswith('projection pending')) >= 1

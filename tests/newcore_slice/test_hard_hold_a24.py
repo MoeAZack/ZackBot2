@@ -87,19 +87,20 @@ def test_m45_confirmed_protection_is_left_unchanged():
     assert emergency_stops(w) == [] and w.runner.incidents
 
 
-def test_m46_uncovered_quantity_is_topped_up_and_old_protection_never_cancelled():
-    """The owned side grows in hard HOLD (race fills of our resting entry whose drain cancels never land): the
-    uncovered quantity is topped up, the earlier protection is never cancelled. (A foreign add on the side is NOT
-    ours and is never covered: Cowork 6065286201 #1, A22.)"""
+def test_m46_uncovered_quantity_is_topped_up_and_old_protection_never_cancelled(monkeypatch):
+    """The PROVEN owned side grows in hard HOLD: the uncovered quantity is topped up, the earlier protection is never
+    cancelled. (The growth is stubbed: race fills of a WORKING entry no longer size anything - Cowork 6068372233 #3 -
+    and a foreign add on the side is never ours: 6065286201 #1, A22.)"""
+    from newcore.runner.runner import Runner
     w, entry = resting_world()
     store_down(w)
-    w.port.lose('cancel')
-    w.venue.fill_resting(entry.intent.client_order_id, D('2'))
+    w.venue.fill_resting(entry.intent.client_order_id, D('2'))      # race fill; the drain makes the entry FINAL 2
     w.run(6)
     old, = emergency_stops(w)
     assert old.qty == D('2') == position(w)
-    w.port.lose('cancel')
-    w.venue.fill_resting(entry.intent.client_order_id, D('1'))      # the owned side grew again
+    real = Runner._owned_exposure
+    monkeypatch.setattr(Runner, '_owned_exposure', lambda self, s, sd: (real(self, s, sd)[0] + D('1'), True))
+    w.venue.inject_position(SYM, 'LONG', D('1'), D('100'))          # the owned side grew again (stubbed proof)
     w.run(7)
     assert sorted(o.qty for o in emergency_stops(w)) == [D('1'), D('2')] and covered(w) == position(w) == D('3')
     assert w.venue._orders[old.ref.client_id].status == 'NEW'      # the old stop was never cancelled

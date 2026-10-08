@@ -77,7 +77,7 @@ from . import ids
 from .fold import Fold, OPEN_STATES
 from .outcome import summarize, trade_outcome
 from .records import not_sent_result, planned_intent, result_from
-from .fill_evidence import rows_of
+from .fill_evidence import EvidencePending, rows_of
 from .redact import describe, exc_tag
 from .signals import CLOSE, ENTER
 from .sizing import SizingPolicy, size_entry
@@ -286,6 +286,7 @@ class Runner:
         self._em_sent = {}                                                # (symbol, side) -> {(zbn1e cid, route)} sent
         self._own_unknown = set()                                         # lots whose ownership evidence is unreadable
         self._pending_trades = set()                                      # closed lots not bookable yet (h6)
+        self._pending_evidence = set()                                    # projection evidence pending (incident once)
         self._boot_hard_hold = hard_hold is not None                      # a previous process may have sent zbn1e
         self._first_now = None                                            # this process's first cycle (candle close)
         self._reads = {}                                                  # lost entry -> agreeing position reads
@@ -574,18 +575,22 @@ class Runner:
                 q = self.venue.query(self._ref(iv))
                 if q.kind is OutcomeKind.NOT_FOUND or (q.kind is OutcomeKind.FINAL and not q.executed_qty):
                     continue                                              # never reached the venue / filled nothing
-                if q.kind is OutcomeKind.FINAL:
-                    owned += q.executed_qty                               # the venue's own order record (h4 a)
+                if q.kind is OutcomeKind.FINAL:                           # Cowork 6068372233 #3: the order record
+                    rows, why = rows_of(self.venue.fills(symbol, q.exchange_order_id), symbol=symbol, now=self.now,
+                                        eoid=q.exchange_order_id, side=side,
+                                        expect={q.exchange_order_id: q.executed_qty})
+                    if rows is not None:                                  # and its fills AGREE: proven
+                        owned += q.executed_qty
+                    else:                                                 # disagree in either direction: UNKNOWN
+                        complete = False
+                        self._incident(f'hard HOLD: {iv.intent_id}: fills disagree with executed qty '
+                                       f'{q.executed_qty} ({why}): UNKNOWN, nothing sized from it')
                     continue
-                rows, why = (rows_of(self.venue.fills(symbol, q.exchange_order_id), symbol=symbol, now=self.now,
-                                     eoid=q.exchange_order_id, side=side) if q.kind is OutcomeKind.KNOWN
-                             and q.exchange_order_id else (None, f'{q.kind}'))
-                if rows is not None:
-                    owned += sum((f.qty for f in rows), ZERO)             # our race / partial fills, de-duplicated
-                # a WORKING order carries no executed quantity on the port (FINAL only), so its rows cannot be
-                # checked for completeness (an empty / short page looks the same): a lower bound at most, never the
-                # whole - always incomplete (the loud incident), whatever the read; UNKNOWN rows add nothing
+                # a WORKING order carries no executed quantity on the port (FINAL only): its fills cannot be checked,
+                # so nothing is sized from fills alone - UNKNOWN until it is FINAL (the drain makes it so)
                 complete = False
+                self._incident(f'hard HOLD: {iv.intent_id}: a working order\'s fills cannot be checked against an '
+                               'executed qty: UNKNOWN, nothing sized from them')
         return max(owned, ZERO), complete
 
     def _emergency_filled(self, symbol, side):
@@ -1928,6 +1933,10 @@ class Runner:
         pf = None
         try:
             pf = self.portfolio(rec)
+        except EvidencePending as ex:                                     # not a breach: evidence pending
+            if str(ex) not in self._pending_evidence:
+                self._pending_evidence.add(str(ex))
+                self._incident(f'projection pending: {ex} (never a zero fee)')
         except Exception as ex:                                           # NC-01 invariant refused the state
             problems.append(f'I3 {describe(ex, (ValueError,))}')           # NC-01 constructors over OUR records
         if rec.positions is not None and rec.orders is not None:
@@ -1979,10 +1988,14 @@ class Runner:
         return problems
 
     # ----------------------------------------------------------------------------------------------- projections
-    def _fee(self, symbol, eoid):
-        """The I3 projection's fill fee (NOT a booking: trades.csv / management book only validated rows)."""
-        rows, _ = rows_of(self.venue.fills(symbol, eoid), symbol=symbol, eoid=eoid)
-        return sum((f.fee for f in rows), ZERO) if rows is not None else ZERO
+    def _fee(self, symbol, eoid, qty=None):
+        """A fill fee of the projection, from PROVEN rows only (Cowork 6068372233 #5): unproven -> EvidencePending
+        (the projection is pending, with an incident), never ZERO."""
+        rows, why = rows_of(self.venue.fills(symbol, eoid), symbol=symbol, now=self.now, eoid=eoid,
+                            expect=None if qty is None else {eoid: qty})
+        if rows is None:
+            raise EvidencePending(f'fee of order {eoid}: {why}')
+        return sum((f.fee for f in rows), ZERO)
 
     def portfolio(self, rec=None):
         """The NC-01 Portfolio this fold + reconciliation proves (constructing it runs every NC-01 invariant)."""
@@ -2028,12 +2041,16 @@ class Runner:
                               confirmed_at_ms=confirmed, miss=None)
             e = lot.entry.final
             fills = [Fill(at_ms=lot.opened_at_ms, reason=lot.entry.intent.reason, qty=lot.initial_qty,
-                          price=lot.entry_price, fee=self._fee(lot.symbol, e.exchange_order_id), result_id=e.result_id,
+                          price=lot.entry_price, fee=self._fee(lot.symbol, e.exchange_order_id, e.executed_qty),
+                          result_id=e.result_id,
                           decision_id=None)]
+            per_order = {}
+            for c, _ in lot.ledger():
+                per_order[c.exchange_order_id] = per_order.get(c.exchange_order_id, ZERO) + c.qty
             for c, _ in lot.ledger():                                     # adds (opening) and closings, time order
                 fills.append(Fill(at_ms=c.at_ms, reason=c.reason, qty=c.qty, price=c.price,
-                                  fee=self._fee(lot.symbol, c.exchange_order_id), result_id=c.result_id,
-                                  decision_id=None))
+                                  fee=self._fee(lot.symbol, c.exchange_order_id, per_order[c.exchange_order_id]),
+                                  result_id=c.result_id, decision_id=None))
             dist = abs(lot.entry_price - self.stop_price_of(lot))
             flying = lot.in_flight
             rec_lot = Lot(lot_id=lot.lot_id, account_id=self.acct, symbol=lot.symbol, side=Side(lot.side),

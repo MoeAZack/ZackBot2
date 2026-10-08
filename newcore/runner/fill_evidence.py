@@ -8,6 +8,8 @@ Codex #13 P1). Every runner decision that sizes, attributes or books from fill r
   - DUP / DUPLAST: the same trade id twice                     -> de-duplicated (identical rows); conflicting -> UNKNOWN
   - EMPTY / TRUNC: rows of an order that do not add up to the quantity the venue's own order record executed
                                                                -> UNKNOWN (never a partial sum, never zero)
+  - a FULL page (as many rows as one venue page holds) with no proven end -> UNKNOWN (the port carries no
+    continuation marker yet: Cowork 6068372233 #2; the testnet adapter pages to a known end itself)
 Unknown evidence is never zero and never widens ownership; callers record an incident and HOLD / stay pending.
 """
 from __future__ import annotations
@@ -17,6 +19,11 @@ from decimal import Decimal
 from newcore.ports.venue import ReadKind
 
 ZERO = Decimal(0)
+PAGE_LIMIT = 1000                     # one venue page of fills / userTrades (Binance max limit): full = end not proven
+
+
+class EvidencePending(LookupError):
+    """A projection that needs evidence the venue did not prove (a fee, a fill): pending, never a zero."""
 
 
 def rows_of(read, *, symbol, now=None, eoid=None, side=None, since=None, expect=None):
@@ -26,6 +33,8 @@ def rows_of(read, *, symbol, now=None, eoid=None, side=None, since=None, expect=
         return None, f'read {getattr(read, "kind", "absent")}'
     if now is not None and read.observed_at_ms < now:
         return None, f'stale read (observed {read.observed_at_ms} < {now})'
+    if len(read.value) >= PAGE_LIMIT:
+        return None, f'a full page of {len(read.value)} rows: its end is not proven'
     seen = {}
     for f in read.value:
         if f.symbol != symbol or (eoid is not None and f.exchange_order_id != eoid) or \
