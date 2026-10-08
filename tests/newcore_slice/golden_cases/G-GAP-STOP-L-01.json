@@ -1,0 +1,128 @@
+{
+  "schema": "zb-golden/1",
+  "id": "G-GAP-STOP-L-01",
+  "title": "The next candle OPENS through the stop: filled at the open with slippage, no adds",
+  "behaviours": [
+    "gap",
+    "stop"
+  ],
+  "side": "long",
+  "tf": "4h",
+  "clock": {
+    "start": 1704067200000,
+    "entry_cycle_delay_s": 15
+  },
+  "costs": {
+    "model": "legacy",
+    "taker_fee": "0.0005",
+    "slip": "0.0002",
+    "funding_per_bar": "0"
+  },
+  "account": {
+    "equity": "500",
+    "max_leverage": 10,
+    "sizing": "legacy_replay"
+  },
+  "market": {
+    "SOLUSDT": {
+      "base": {
+        "kind": "flat",
+        "px": "100",
+        "wick": "0.5",
+        "n": 300
+      },
+      "bars": {
+        "282": [
+          "95",
+          "95.2",
+          "94.8",
+          "95"
+        ]
+      },
+      "atr": {
+        "kind": "computed"
+      }
+    }
+  },
+  "path_policy": "zb-path/1",
+  "slot": {
+    "id": "S1",
+    "sides": "long",
+    "risk": "0.02",
+    "share": "1",
+    "max_pos": 1,
+    "entry": {
+      "type": "market"
+    },
+    "stop": {
+      "atr": "2"
+    }
+  },
+  "signals": [
+    {
+      "bar": 279,
+      "sym": "SOLUSDT",
+      "kind": "enter_long"
+    }
+  ],
+  "faults": [],
+  "expect": {
+    "trades": [
+      {
+        "sym": "SOLUSDT",
+        "side": "LONG",
+        "i_in": 280,
+        "i_out": 282,
+        "exit": "STOP_HIT",
+        "R": "-2.56825025",
+        "pnl": "-25.6825025"
+      }
+    ],
+    "final": {
+      "lots": 0
+    }
+  },
+  "applies_to": {
+    "legacy_engine": {
+      "status": "known_divergence",
+      "reason": "AUD-07 C13g: the engine journal books a gapped exchange stop at the stop price, not the fill"
+    },
+    "legacy_backtest": "required",
+    "newcore_sim": {
+      "status": "pending_adapter",
+      "reason": "NEWCORE NC-07/NC-08 adapter not built yet"
+    },
+    "newcore_live_sim": {
+      "status": "pending_adapter",
+      "reason": "NEWCORE NC-08 live-sim adapter not built yet"
+    }
+  },
+  "known_divergences": [
+    {
+      "adapter": "legacy_engine",
+      "divergence_id": "AUD07-C13G",
+      "ticket": "AUD-07",
+      "finding": "C13g",
+      "correction": "CORR-0047",
+      "until": "AUD-07 product fix",
+      "reason": "engine.py:2284-2290 books an exchange stop that filled (stop gone) at the STOP price, not the fill price: a stop gapped at the open shows -1.05 R in the bot journal while the account lost -2.57 R (the replay equity curve now shows the real loss since the C13f fix)",
+      "observed": [
+        {
+          "path": "trades[0].R",
+          "expected": "-2.56825025",
+          "actual": -1.04951
+        },
+        {
+          "path": "trades[0].pnl",
+          "expected": "-25.6825025",
+          "actual": -10.4951
+        }
+      ]
+    }
+  ],
+  "provenance": {
+    "created_at_sha": "b8c11c8",
+    "author": "AUD-07 slice 1 (Claude)",
+    "notes": "Stop 98.02; candle 282 opens at 95. Exchange stop-market fills at the open: 95 x (1 - 0.0002) = 94.981; R = ((94.981 - 100.02) x 5 - 5 x (94.981 + 100.02) x 0.0005) / 10 = -2.5682. The replay sim fills here since the C13f fix (open applied through move())."
+  }
+}

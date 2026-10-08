@@ -7,5 +7,6 @@
 The durable file journal (NC-02a) and the testnet venue are separate adapters of the same ports (S3 / S5).
 """
 from .csv_bars import CsvBarSource, parse_utc_ms, read_csv
+from .exchange_rules import load_rules
 from .fake_venue import CostModel, FakeVenue, path_points
 from .memory_journal import MemoryJournal, header_of, port_key
