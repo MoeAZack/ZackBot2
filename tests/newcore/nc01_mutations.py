@@ -186,8 +186,6 @@ MUTATIONS = {
     'r3a ruling 4: the gate applies a late fill twice': ('newcore/ports/journal.py', [(
         "            req(d.subject_id not in self._late_applied, 'event.decision', 'a late fill is reconciled once')",
         "            pass")]),
-        '        if (k is EventKind.RESULT_RECORDED and st.final is Evidence.NOT_FOUND_CORROBORATED and not st.superseded',
-        '        if (k is EventKind.RESULT_RECORDED and st.final in (Evidence.NOT_FOUND_CORROBORATED, Evidence.EXCHANGE_FINAL)')]),
     'r3 item 4: a resting target may open risk': (D + 'orders.py', [(
         "            req(u in (Purpose.REDUCE, Purpose.CLOSE) and self.owner_kind is OwnerKind.LOT, p + '.order_type',\n"
         "                'a resting reduce-only target is a lot REDUCE / CLOSE')",
