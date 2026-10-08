@@ -37,7 +37,8 @@ from .fs import RealFs
 from .header import (EMPTY_SHA, HeaderError, Seal, SegmentHeader, VersionVerdict, check_version, decode_header,
                      header_frame_max, strict_json)
 from .hold import Verdict, directive_for
-from .journal import JOURNAL_DIR, SEG_RE, WRITER_BUILD, FileJournal, _check_ids, seg_name, write_segment
+from .journal import (JOURNAL_DIR, SEG_RE, WRITER_BUILD, FileJournal, ReadOnlyJournal, _check_ids, seg_name,
+                      write_segment)
 
 
 @dataclass(frozen=True, slots=True)
@@ -56,6 +57,7 @@ class Recovery:
     findings: tuple
     evidence: tuple
     created: tuple                    # files this recovery created (relative names)
+    view: ReadOnlyJournal | None = None   # DURABILITY_UNAVAILABLE: read-only events / gate / state, appends refused
 
     @property
     def directive(self):
@@ -247,7 +249,8 @@ def _finish(fs, account_dir, account_id, plan, writer_build):
         try:
             h = fs.open_append(path)
         except OSError:
-            return Recovery(Verdict.DURABILITY_UNAVAILABLE, None, folder.state(), tuple(plan.findings), (), ())
+            return Recovery(Verdict.DURABILITY_UNAVAILABLE, None, folder.state(), tuple(plan.findings), (), (),
+                            ReadOnlyJournal(folder, 'the segment cannot be opened for writing'))
         j = FileJournal(fs, account_dir, folder, m, h, plan.header.seals, len(plan.blobs[m]), writer_build)
         return Recovery(Verdict.CLEAN, j, folder.state(),
                         tuple(plan.findings), (), ())
@@ -281,7 +284,7 @@ def _finish(fs, account_dir, account_id, plan, writer_build):
         h = fs.open_append(os.path.join(jd, seg_name(new_no)))
     except OSError:
         return Recovery(Verdict.DURABILITY_UNAVAILABLE, None, folder.state(), tuple(plan.findings), tuple(evidence),
-                        tuple(created))
+                        tuple(created), ReadOnlyJournal(folder, 'the torn tail cannot be sealed'))
     j = FileJournal(fs, account_dir, folder, new_no, h, tuple(seals), seg_len, writer_build)
     return Recovery(Verdict.REPAIRED, j, folder.state(), tuple(plan.findings), tuple(evidence), tuple(created))
 

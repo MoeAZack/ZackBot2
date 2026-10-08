@@ -18,10 +18,11 @@ from .errors import DurabilityUnavailable, JournalExists, SequenceConflict
 from .fold import Folder, IntentRecovery, IntentView, JournalState, fold
 from .fs import FsSeam, RealFs
 from .hold import StoreDirective, StoreOutcome, Verdict, directive_for, durability_hold, hard_hold_permits
-from .journal import FileJournal, create_journal
+from .journal import FileJournal, ReadOnlyJournal, create_journal
 from .recovery import EvidenceRef, Finding, Recovery, recover_journal
 
 __all__ = ['DurabilityUnavailable', 'JournalExists', 'SequenceConflict', 'Folder', 'IntentRecovery', 'IntentView',
            'JournalState', 'fold', 'FsSeam', 'RealFs', 'StoreDirective', 'StoreOutcome', 'Verdict', 'directive_for',
-           'durability_hold', 'hard_hold_permits', 'FileJournal', 'create_journal', 'EvidenceRef',
+           'durability_hold', 'hard_hold_permits', 'FileJournal', 'ReadOnlyJournal', 'create_journal',
+           'EvidenceRef',
            'Finding', 'Recovery', 'recover_journal']
