@@ -87,6 +87,10 @@ def test_compact_then_restart_keeps_every_fact_exactly_once():
         full.stage(bad)
     with pytest.raises(JournalConflict):                                  # the compacted prefix's fact still binds
         seeded.stage(bad)
+    with pytest.raises(JournalConflict):                                  # in the step-0 gate itself ...
+        seeded.gate.stage(bad)
+    with pytest.raises(DomainError):                                      # ... and in the Folder's chain tripwire
+        seeded._chain(list(seeded.events) + [bad])
     with pytest.raises(DomainError):                                      # ... in the NC-01 chain layer too
         check_event_chain([bad], after_sequence=K, facts=facts_k)
     unseeded = Folder.replay(ACCOUNT_ID, AGGREGATE_ID, [], after_sequence=K)
