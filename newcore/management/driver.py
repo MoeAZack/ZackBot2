@@ -115,6 +115,7 @@ class Binding:
     core_cancelled: bool         # the core cancelled it: its Cancelled(leg) goes back to the core
     replaces: str | None         # the stop intent this one replaces (cancelled once this one is confirmed)
     status: str | None           # the venue status of its FINAL answer
+    route: str                   # classic | algo (the venue endpoint its client id was derived for)
 
 
 @dataclasses.dataclass(frozen=True, slots=True, kw_only=True)
@@ -221,16 +222,16 @@ class _W:
         self.d['lineage'] = tuple(sorted((o, p, c) for (o, p), c in lin.items()))
         return derive_child_intent_id(self.d['account_id'], self.d['lot_id'], purpose, n)
 
-    def draft(self, leg, purpose, order_type, qty, reason, op, stop_price=None):
+    def draft(self, leg, purpose, order_type, qty, reason, op, stop_price=None, route=None):
         """A draft WITHOUT identity: its intent id (lineage ordinal) is taken only when it is sent."""
-        return Draft(intent_id=None, client_id=None, route=self.d['route'], account_id=self.d['account_id'],
+        return Draft(intent_id=None, client_id=None, route=route or self.d['route'], account_id=self.d['account_id'],
                      symbol=self.d['plan'].symbol, leg=leg, purpose=purpose, owner_kind=OwnerKind.LOT,
                      owner_id=self.d['lot_id'], order_type=order_type, side=self.d['plan'].side, qty=qty,
                      stop_price=stop_price, reduce_only=purpose is not Purpose.ADD, reason=reason, op=op)
 
     def stamp(self, d):
         iid = self.next_id(d.purpose)
-        return dataclasses.replace(d, intent_id=iid, client_id=client_id_for(iid, self.d['route']))
+        return dataclasses.replace(d, intent_id=iid, client_id=client_id_for(iid, d.route))
 
     # bindings -------------------------------------------------------------------------------------------------
     def bindings(self):
@@ -249,7 +250,7 @@ class _W:
         b = Binding(leg=d.leg, intent_id=d.intent_id, client_id=d.client_id, purpose=d.purpose, qty=d.qty,
                     stop_price=d.stop_price, trigger=trigger, reason=d.reason, state=BindState.SENT,
                     exchange_order_id=None, filled=ZERO, executed=None, current=True, core_cancelled=False,
-                    replaces=None, status=None)
+                    replaces=None, status=None, route=d.route)
         self.put([*self.bindings(), b])
 
     # sending through the mode table ---------------------------------------------------------------------------
@@ -338,7 +339,7 @@ def _apply_actions(w, actions):
             for b in w.bindings():
                 if b.leg is Leg.STOP and b.state in (BindState.SENT, BindState.WORKING):
                     w.replace_binding(b, core_cancelled=b.current)
-                    w.send(CancelDraft(intent_id=b.intent_id, client_id=b.client_id, route=w.d['route'],
+                    w.send(CancelDraft(intent_id=b.intent_id, client_id=b.client_id, route=b.route,
                                        leg=Leg.STOP, purpose=Purpose.PROTECT, reason=a.reason))
         elif a.kind in (K.PLACE_TARGET, K.REPLACE_TARGET, K.PLACE_ADD):
             pass                                         # triggers mirror the core's requests (_sync_triggers)
@@ -474,7 +475,7 @@ def _release_stop_replacements(w):
     for o in w.bindings():
         if (o.leg is Leg.STOP and not o.current and o.state in (BindState.SENT, BindState.WORKING)
                 and o.intent_id not in held):
-            w.send(CancelDraft(intent_id=o.intent_id, client_id=o.client_id, route=w.d['route'], leg=Leg.STOP,
+            w.send(CancelDraft(intent_id=o.intent_id, client_id=o.client_id, route=o.route, leg=Leg.STOP,
                                purpose=Purpose.PROTECT, reason=R.PROTECT_REPLACE))
 
 
@@ -621,6 +622,10 @@ def on_outcome(ds, outcome, *, submit):
         if outcome.status in CANCELLED_STATUSES and b.leg is Leg.STOP and b.current and not b.core_cancelled:
             w.reconcile.append(('stop_ended_outside', b.intent_id, outcome.status))   # incident: not our cancel
     elif k is OutcomeKind.REJECTED:
+        if (submit and b.leg is Leg.STOP and b.route == 'classic' and b.current and not b.core_cancelled
+                and _needs_algo(outcome)):
+            _fallback_to_algo(w, b)                  # never reaches the core: the stop request stays alive
+            return _finish(w)
         if submit:
             # only a refusal of what the core STILL requests goes back to it; a refused order the core already
             # cancelled / superseded (e.g. a stop replacement refused after the position closed) is simply retired
@@ -646,6 +651,40 @@ def on_outcome(ds, outcome, *, submit):
                 _run_core(w, tuple(w.core_in), close_request=R.EXIT_STOP_FAILED if w.lost_stop else None)
     elif k in (OutcomeKind.UNKNOWN, OutcomeKind.NOT_FOUND):
         w.reconcile.append((k.value, outcome.ref.client_id))      # books nothing: a NOT_FOUND is never "never filled"
+    return _finish(w)
+
+
+ALGO_ROUTE_CODES = frozenset({-4120, -1116, -1102, -4136})     # the venue wants the algo (conditional) endpoint
+
+
+def _needs_algo(outcome):
+    return outcome.detail == 'algo_route' or outcome.error_code in ALGO_ROUTE_CODES
+
+
+def _fallback_to_algo(w, b):
+    """Journal rule G6: the classic stop closed REJECTED; the SAME protection (price, qty) goes out as a NEW child
+    intent on the algo route. The core never sees a refusal: its stop request stays alive, and the old stop it
+    replaces (if any) keeps working until this one is confirmed."""
+    w.drop_binding(b)
+    d = w.send(w.draft(Leg.STOP, Purpose.PROTECT, OrderType.STOP_MARKET, b.qty, b.reason, Op.PLACE, b.stop_price,
+                       route='algo'))
+    for x in w.bindings():
+        if d is not None and x.intent_id == d.intent_id:
+            w.replace_binding(x, current=b.current, core_cancelled=b.core_cancelled, replaces=b.replaces)
+    w.reconcile.append(('route_fallback', b.intent_id, None if d is None else d.intent_id))
+
+
+def route_fallback(ds, refused_intent_id):
+    """The runner resolved a classic stop as refused (journal G6) - e.g. after a lost answer was resolved: place the
+    same protection on the algo route as a new child intent. Deterministic; fold() replays it as
+    ('route_fallback', intent_id). A stop that is not an unresolved classic PROTECT is refused (reported), so both
+    routes are never live at once."""
+    w = _W(ds)
+    b = next((x for x in w.bindings() if x.intent_id == refused_intent_id), None)
+    if b is None or b.leg is not Leg.STOP or b.route != 'classic' or b.state is not BindState.SENT:
+        w.reconcile.append(('route_fallback_refused', refused_intent_id))
+        return _finish(w)
+    _fallback_to_algo(w, b)
     return _finish(w)
 
 
@@ -747,6 +786,8 @@ def fold(plan, *, account_id, lot_id, entry_fee, events, lineage=(), route='clas
             out.append(on_candle(ds, e[1], close_request=e[2], funding=e[3]))
         elif kind == 'mode':
             out.append(set_mode(ds, e[1], e[2]))
+        elif kind == 'route_fallback':
+            out.append(route_fallback(ds, e[1]))
         else:
             raise ManagementError('fold.events', f'unknown event {kind!r}')
     return tuple(out)

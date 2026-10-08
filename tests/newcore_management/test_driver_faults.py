@@ -119,6 +119,9 @@ class FaultVenue:
             self.answer(cid, self.outcome(cid, OutcomeKind.UNKNOWN), True)
             self.pending.append(('outcome', self.outcome(cid, OutcomeKind.NOT_FOUND, error_code=-2013), False, cid))
             return
+        if stop and d.route == 'classic' and self.chance(0.6):     # -4120: this venue wants the algo route (TNET-01)
+            self.answer(cid, self.outcome(cid, OutcomeKind.REJECTED, error_code=-4120), True)
+            return
         replacing = stop and any(x['kind'] == 'stop' and x['live'] for x in self.orders.values())
         if replacing and self.chance(0.4):                    # -2021: the replacement would trigger immediately
             self.answer(cid, self.outcome(cid, OutcomeKind.REJECTED, error_code=-2021), True)
