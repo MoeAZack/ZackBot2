@@ -251,6 +251,7 @@ def cmd_replay(cfg, args, out, stop):
         if args.memory_journal:
             journal = MemoryJournal(cfg.account_id, cfg.portfolio_id)
         else:
+            os.makedirs(cfg.journal_dir, exist_ok=True)
             d = os.path.join(cfg.journal_dir, f'replay-{sym}')
             if os.path.exists(d):
                 raise C.ConfigError(f'{d} exists: a replay writes a fresh journal (remove it or pick another dir)')
