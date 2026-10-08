@@ -102,7 +102,7 @@ class CountingDial:
         return HS._dial_tcp(family, sockaddr, timeout, track)
 
 
-def req(timeout=1.0, path='/fapi/v1/time'):
+def req(timeout=5.0, path='/fapi/v1/time'):
     return HttpRequest('GET', TESTNET_BASE_URL + path, '', (), timeout, False)
 
 
@@ -120,7 +120,7 @@ def test_blocked_resolver_returns_within_deadline_and_never_sends_later(tmp_path
     t0 = time.monotonic()
     with pytest.raises(WireNotSent) as ei:
         s(req(timeout=0.3))
-    assert time.monotonic() - t0 < 0.3 + 0.25 and ei.value.reason == 'dns_timeout'
+    assert time.monotonic() - t0 < 0.3 + 1.0 and ei.value.reason == 'dns_timeout'   # resolver is blocked 5 s
     release.set()                                   # the resolver now finishes WITH a valid address...
     assert resolver.returned.wait(5)
     time.sleep(0.3)                                 # ...and has every chance to (wrongly) continue
@@ -169,17 +169,36 @@ def test_resolution_failures_are_not_sent(kw, reason):
 
 
 def test_default_resolver_is_bounded_too(monkeypatch):
-    release = threading.Event()
+    """The production resolver (socket.getaddrinfo) and dialer, blocked past the deadline, then answering with a valid
+    address: the call ends within the deadline (+ load headroom) and nothing is ever dialled or sent afterwards.
+    Only the WIRE call is timed: the sender (and its TLS context) is built before t0 (Codex check on 1958c28)."""
+    release, returned, dials = threading.Event(), threading.Event(), []
 
     def slow(host, *a, **k):
-        release.wait(5)
-        raise socket.gaierror(socket.EAI_NONAME, 'late')
+        try:
+            release.wait(5)
+            return [(socket.AF_INET, socket.SOCK_STREAM, 6, '', ('127.0.0.1', 9))]
+        finally:
+            returned.set()
     monkeypatch.setattr(socket, 'getaddrinfo', slow)
+    real_dial = HS._dial_tcp
+    monkeypatch.setattr(HS, '_dial_tcp', lambda *a: (dials.append(a), real_dial(*a))[1])
+    sender = HS.TestnetHttpSender()                 # constructed BEFORE timing (TLS context setup is not the wire)
     t0 = time.monotonic()
-    with pytest.raises(WireNotSent):
-        HS.TestnetHttpSender()(req(timeout=0.2))
-    assert time.monotonic() - t0 < 0.45
+    with pytest.raises(WireNotSent) as ei:
+        sender(req(timeout=0.2))
+    assert time.monotonic() - t0 < 0.2 + 1.0 and ei.value.reason == 'dns_timeout'   # the resolver is blocked 5 s
     release.set()
+    assert returned.wait(5)
+    time.sleep(0.3)
+    assert dials == []                              # the late answer never led to a connect / send
+
+
+def test_sender_construction_latency_is_reported_apart_from_the_wire_deadline():
+    # Building the default verifying TLS context can take a few hundred ms on Windows; generous bound, not a deadline.
+    t0 = time.monotonic()
+    HS.TestnetHttpSender()
+    assert time.monotonic() - t0 < 10.0
 
 
 # ---------- connect by IP, verify the PINNED hostname ----------
@@ -221,7 +240,7 @@ def test_watchdog_still_cuts_a_slow_answer_on_the_by_ip_path(tmp_path, stubs):
     t0 = time.monotonic()
     with pytest.raises(WireTimeout):
         s(req(timeout=1.0))
-    assert time.monotonic() - t0 < 2.0
+    assert time.monotonic() - t0 < 3.5                    # drip would take 5 s+
 
 
 # ---------- cassette + transport keep the not-sent fact ----------

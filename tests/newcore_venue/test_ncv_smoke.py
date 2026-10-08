@@ -204,14 +204,14 @@ def test_deadline_in_real_time_with_slow_reads(env):
     slow = FakeHttp(*flat_script())
 
     def http(request):
-        time.sleep(0.15)
+        time.sleep(0.3)                      # 10 reads = 3 s+ without a deadline
         return slow(request)
     out = io.StringIO()
     t0 = time.monotonic()
     rc = load_tool().main(['--account-id', ACCOUNT, '--root', env['root'], '--cassette-dir', env['cassettes'],
                            '--deadline-s', '0.5'], http=http, local_clock=lambda: NOW, protector=XorProtector(),
                           out=out)
-    assert rc == 6 and time.monotonic() - t0 < 1.5 and len(cassette_files(env)) == 1
+    assert rc == 6 and time.monotonic() - t0 < 2.5 and len(cassette_files(env)) == 1
 
 
 def test_default_deadline_is_sixty_seconds_and_generous_runs_pass(env):

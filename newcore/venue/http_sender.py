@@ -181,7 +181,9 @@ class TestnetHttpSender:
             else:
                 conn = self._open(deadline, dog)
             result = self._exchange(conn, request.method, target, headers, deadline, dog)
-            if dog.fired:                      # the stream may LOOK complete after the deadline cut it: unknown
+            # A stream may LOOK complete after the deadline cut it. Judge by the clock too: under CPU load the
+            # watchdog thread can run late, and its flag alone would then miss the overrun.
+            if dog.fired or time.monotonic() > deadline:
                 raise WireTimeout('timed out')
             return result
         except WireNotSent:

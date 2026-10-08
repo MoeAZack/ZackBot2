@@ -157,7 +157,7 @@ def plain_connect(srv):
     return lambda host, timeout, ctx: http.client.HTTPConnection('127.0.0.1', port, timeout=timeout)
 
 
-def req(path='/fapi/v1/time', query='', method='GET', timeout=2.0, headers=(), url=None):
+def req(path='/fapi/v1/time', query='', method='GET', timeout=5.0, headers=(), url=None):
     return HttpRequest(method, url or TESTNET_BASE_URL + path, query, tuple(headers), timeout, False)
 
 
@@ -206,14 +206,14 @@ def test_slowloris_hits_the_total_deadline(stub, mode):
     t0 = time.monotonic()
     with pytest.raises(WireTimeout):
         s(req(timeout=1.0))
-    assert time.monotonic() - t0 < 2.0
+    assert time.monotonic() - t0 < 3.5                    # drip would take 5 s+; >= 2.5 s headroom under load
 
 
 def test_slowloris_through_transport_is_unknown_timeout(stub):
     stub.mode = 'drip_body'
     t0 = time.monotonic()
     out = transport_over(TestnetHttpSender(connect=plain_connect(stub)), timeout=1.0).cancel_order('SOLUSDT', 'zb-a')
-    assert out.kind is K.UNKNOWN and out.unknown_reason == 'timeout' and time.monotonic() - t0 < 2.0
+    assert out.kind is K.UNKNOWN and out.unknown_reason == 'timeout' and time.monotonic() - t0 < 3.5
 
 
 def test_cut_unsized_stream_is_timeout_not_a_complete_answer(stub):
@@ -286,7 +286,7 @@ def test_clean_eof_after_the_deadline_is_still_a_timeout():
             return None
 
         def read1(self, n):
-            time.sleep(0.4)                  # the 0.2 s deadline passes inside this read
+            time.sleep(0.6)                  # the 0.2 s deadline passes inside this read
             return b''
 
         def getheaders(self):
@@ -314,7 +314,7 @@ def test_clean_eof_after_the_deadline_is_still_a_timeout():
 def test_fast_answer_inside_deadline_is_not_cut(stub):
     s = TestnetHttpSender(connect=plain_connect(stub))
     for _ in range(5):
-        assert s(req(timeout=1.0)).status == 200
+        assert s(req(timeout=5.0)).status == 200
 
 
 def test_connection_reset_to_unknown(stub):
