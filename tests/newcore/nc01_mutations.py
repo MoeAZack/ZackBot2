@@ -179,6 +179,16 @@ MUTATIONS = {
     'r3 item 5: a management tick under any authority': (D + 'decision.py', [(
         "            req(a is Action.WAIT and self.authority is Authority.STRATEGY and self.subject_id is not None, p + '.reason',",
         "            req(a is Action.WAIT and self.subject_id is not None, p + '.reason',")]),
+    'r3 item 6: an ENTRY may omit its stop distance': (D + 'orders.py', [(
+        "            req(self.stop_distance is not None, p + '.stop_distance', 'an ENTRY carries its planned stop distance')\n"
+        "            positive(self.stop_distance, p + '.stop_distance')",
+        "            pass")]),
+    'r3 item 6: any intent may carry a stop distance': (D + 'orders.py', [(
+        "            req(self.stop_distance is None, p + '.stop_distance', 'only an ENTRY plans a stop distance')",
+        "            pass")]),
+    'r3 item 6: a non-positive stop distance': (D + 'orders.py', [(
+        "            positive(self.stop_distance, p + '.stop_distance')\n        else:",
+        "            pass\n        else:")]),
     'duplicate JSON keys': (D + 'codec.py', [("            if k in out:\n                problems.append(",
                                               "            if False:\n                problems.append(")]),
     'truncated JSON': (D + 'codec.py', [(

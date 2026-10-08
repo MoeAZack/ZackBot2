@@ -171,6 +171,7 @@ class OrderIntent(Record):
     seen_qty: Decimal | None  # unresolved size seen on the position for a market ENTRY (never booked)
     authorized_by: str | None  # dec_ of an audited operator one-shot authorization (opening risk while paused)
     replaces_intent_id: str | None  # REDUCE / CLOSE cancel-replace: the CANCELLING predecessor this intent replaces
+    stop_distance: Decimal | None   # r3 DRAFT item 6: an ENTRY's planned stop distance (price units), fixed at decision
 
     def _validate(self, p):
         p = f'{p}[{self.intent_id}]'
@@ -228,6 +229,11 @@ class OrderIntent(Record):
                 p + '.reason', 'exit.manual books an external reduce / close of a lot')
             req(self.state in POST_HOC_STATES, p + '.state', f'a post-hoc booking is never {self.state}')
             req(self.replaces_intent_id is None, p + '.replaces_intent_id', 'a post-hoc booking replaces nothing')
+        if u is Purpose.ENTRY:                           # r3 DRAFT item 6 (TNET H1): never recomputed from candles
+            req(self.stop_distance is not None, p + '.stop_distance', 'an ENTRY carries its planned stop distance')
+            positive(self.stop_distance, p + '.stop_distance')
+        else:
+            req(self.stop_distance is None, p + '.stop_distance', 'only an ENTRY plans a stop distance')
         if self.replaces_intent_id is not None:          # the explicit cancel-replace link (Codex P1 on af4e5f3)
             req(u in (Purpose.REDUCE, Purpose.CLOSE) and self.owner_kind is OwnerKind.LOT, p + '.replaces_intent_id',
                 'only a lot REDUCE / CLOSE replaces a predecessor')

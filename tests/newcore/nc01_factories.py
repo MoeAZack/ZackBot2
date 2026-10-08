@@ -87,7 +87,7 @@ DEFAULT_REASON = {Purpose.ENTRY: ReasonCode.ENTRY_SIGNAL, Purpose.ADD: ReasonCod
 def intent(ids, acct, purpose, symbol='SOLUSDT', side=Side.LONG, qty=D('1.5'), *, state=IntentState.SUBMITTED,
            order_type=OrderType.MARKET, owner_id=None, price=None, stop_price=None, arm=None, seen_qty=None,
            created=T0, decision_id=None, slot_id=None, reason=None, authorized_by=None, alt=None, owner_kind=None,
-           replaces=None):
+           replaces=None, stop_distance=None):
     reason = reason or DEFAULT_REASON[purpose]
     if owner_id is None:
         owner_kind = None
@@ -102,7 +102,8 @@ def intent(ids, acct, purpose, symbol='SOLUSDT', side=Side.LONG, qty=D('1.5'), *
                        symbol=symbol, side=side, qty=qty, reason=reason, created_at_ms=created, owner_id=owner_id,
                        owner_kind=owner_kind,
                        slot_id=slot_id, price=price, stop_price=stop_price, arm=arm, alt_client_order_id=alt,
-                       seen_qty=seen_qty, authorized_by=authorized_by, replaces_intent_id=replaces)
+                       seen_qty=seen_qty, authorized_by=authorized_by, replaces_intent_id=replaces,
+                       stop_distance=(stop_distance or D('5')) if purpose is Purpose.ENTRY else stop_distance)
 
 
 def stop_level(side, price):

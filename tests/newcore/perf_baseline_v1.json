@@ -2,7 +2,7 @@
   "note": "NC-01 performance baseline, recorded BEFORE the regression budget was set (contract 6.6). Median microseconds per call over 7 repeats on the build lane PC, measured on the contract-r2 code; the budget in test_nc01_perf.py is a multiple of these numbers.",
   "recorded": "2026-10-08 Africa/Cairo",
   "machine": "Windows 11, Python 3.14.6 (owner PC, build lane)",
-  "portfolio": "nc01_factories.typical_portfolio(42): 8 positions, 11 lots, 16 open intents, 19182 bytes canonical JSON (owner_kind and replaces_intent_id added after the timings were taken)",
+  "portfolio": "nc01_factories.typical_portfolio(42): 8 positions, 11 lots, 16 open intents, 19516 bytes canonical JSON (owner_kind, replaces_intent_id and the r3-draft stop_distance added after the timings were taken)",
   "validate_us": 100,
   "encode_us": 675,
   "decode_us": 2340

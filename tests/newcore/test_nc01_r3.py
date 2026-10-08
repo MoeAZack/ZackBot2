@@ -425,3 +425,49 @@ def test_item5_manage_tick_refusals():
         with pytest.raises(InvalidRecord, match=message):
             _tick(ids, acct, lot_id, **kw)
             raise AssertionError(name)
+
+
+# ----------------------------------------------------------------------------------------------------------- item 6
+def test_item6_an_entry_carries_its_planned_stop_distance_through_a_restart():
+    """TNET H1: the planned stop distance is journaled with the ENTRY intent (decision, write-ahead record and every
+    snapshot that still holds it), so a restart reads it back exactly instead of recomputing it from candles."""
+    from decimal import Decimal as D
+    from newcore.domain import DecisionRecorded, IntentRecorded, IntentState, canonical_bytes, loads
+    ids = F.Ids(370)
+    acct = ids.id('acct')
+    dec_id = ids.id('dec')
+    it = F.intent(ids, acct, F.Purpose.ENTRY, state=IntentState.PLANNED, decision_id=dec_id,
+                  stop_distance=D('7.3125'))
+    dec = F.decision(ids, acct, Action.ENTER, ReasonCode.ENTRY_SIGNAL, (it,), dec_id=dec_id)
+    dur = F.replace(it, state=IntentState.DURABLE)
+    for rec in (it, dec, F.event(DecisionRecorded, ids, acct, 1, decision=dec, reason=dec.reason),
+                F.event(IntentRecorded, ids, acct, 2, intent=dur, reason=dur.reason),
+                F.portfolio(acct, intents=(F.replace(it, state=IntentState.WORKING, order_type=F.OrderType.MARKET),))):
+        back = loads(canonical_bytes(rec))
+        assert back == rec
+    assert loads(canonical_bytes(dur)).stop_distance == D('7.3125')
+
+
+def test_item6_stop_distance_refusals():
+    from decimal import Decimal as D
+    from newcore.domain import InvalidRecord
+    ids = F.Ids(371)
+    acct = ids.id('acct')
+    entry = F.intent(ids, acct, F.Purpose.ENTRY)
+    lot_id = ids.id('lot')
+    cases = {
+        'an entry without it': ('carries its planned stop distance', lambda: F.replace(entry, stop_distance=None)),
+        'zero': ('stop_distance', lambda: F.replace(entry, stop_distance=D('0'))),
+        'negative': ('stop_distance', lambda: F.replace(entry, stop_distance=D('-1'))),
+        'a float': ('stop_distance', lambda: F.replace(entry, stop_distance=1.5)),
+        'on an add': ('only an ENTRY plans', lambda: F.intent(ids, acct, F.Purpose.ADD, owner_id=lot_id,
+                                                              stop_distance=D('5'))),
+        'on a close': ('only an ENTRY plans', lambda: F.intent(ids, acct, F.Purpose.CLOSE, owner_id=lot_id,
+                                                               stop_distance=D('5'))),
+        'on a stop': ('only an ENTRY plans', lambda: F.intent(ids, acct, F.Purpose.PROTECT, owner_id=lot_id,
+                                                              stop_price=D('95'), stop_distance=D('5'))),
+    }
+    for name, (message, build) in cases.items():
+        with pytest.raises(InvalidRecord, match=message):
+            build()
+            raise AssertionError(name)
