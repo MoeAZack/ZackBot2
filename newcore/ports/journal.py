@@ -36,8 +36,8 @@ from dataclasses import dataclass
 from typing import Iterable, Protocol, runtime_checkable
 
 from newcore.domain import (BindingChanged, DecisionKey, DecisionRecorded, Evidence, IncidentRecorded, IntentRecorded,
-                            IntentState, IntentStateChanged, Lookup, ModeChanged, OwnerKind, Purpose, ResultObserved,
-                            ResultPhase)
+                            IntentState, IntentStateChanged, Lookup, ModeChanged, OwnerKind, Purpose, ReasonCode,
+                            ResultObserved, ResultPhase)
 from newcore.domain.codec import contract_sha256
 from newcore.domain.errors import DomainError
 from newcore.domain.events import EVENT_TYPES
@@ -263,8 +263,8 @@ class Grammar:
             return lambda: None
         st = self._intents.get(h.intent_id)
         req_g(st is not None, p, f'{k} before the intent was recorded')
-        if (k is EventKind.RESULT_RECORDED and st.final is Evidence.NOT_FOUND_CORROBORATED and not st.superseded
-                and h.outcome is ResultOutcome.FINAL and h.evidence is Evidence.EXCHANGE_FINAL):
+        if (k is EventKind.RESULT_RECORDED and st.closed is not None and st.final is Evidence.NOT_FOUND_CORROBORATED
+                and not st.superseded and h.outcome is ResultOutcome.FINAL and h.evidence is Evidence.EXCHANGE_FINAL):
             req_g(h.client_ids == (st.client_id,), p + '.client_ids', "G9: the result names another intent's order")
 
             def commit_superseded():          # r3 draft item 3b: exchange evidence wins over the corroboration, once
@@ -396,6 +396,8 @@ class JournalGate:
     def __init__(self, account_id: str, aggregate_id: str):
         self.grammar = Grammar(account_id, aggregate_id)
         self._live = {}     # intent_id -> [OrderIntent, IntentState, sent_at_ms | None, final OrderResult | None]
+        self._late = {}     # r3 item 3b: intent_id -> result_id of the journaled superseding (late) FINAL record
+        self._late_applied = set()   # intents whose late fact a reconcile.late_fill_after_not_found decision applied
 
     @classmethod
     def rebuild(cls, account_id, aggregate_id, events: Iterable) -> 'JournalGate':
@@ -430,6 +432,11 @@ class JournalGate:
             if ev.to_state in TERMINAL:
                 req(final is not None and terminal_for(final) is ev.to_state, 'event.to_state',
                     'the terminal step must be terminal_for(final result)')
+        elif isinstance(ev, DecisionRecorded) and ev.decision.reason is ReasonCode.RECONCILE_LATE_FILL:
+            d = ev.decision                  # r3 item 3b (ruling 4): the late fact is applied once, after it is journaled
+            req(self._late.get(d.subject_id) in d.evidence, 'event.decision',
+                'a late-fill reconcile names a journaled superseding FINAL record (subject + evidence)')
+            req(d.subject_id not in self._late_applied, 'event.decision', 'a late fill is reconciled once')
         elif isinstance(ev, ResultObserved) and ev.result.intent_id in self._live:
             it, _, sent_at, final = self._live[ev.result.intent_id]
             if final is not None:     # r3 draft item 3b: only a superseding exchange record follows a FINAL result
@@ -446,7 +453,12 @@ class JournalGate:
             if ev.to_state is IntentState.SUBMITTED and st[2] is None:
                 st[2] = ev.at_ms
         elif isinstance(ev, ResultObserved) and ev.result.phase is ResultPhase.FINAL:
-            self._live[ev.result.intent_id][3] = ev.result
+            st = self._live[ev.result.intent_id]
+            if st[3] is not None:            # admitted after a FINAL: only a superseding record gets here
+                self._late[ev.result.intent_id] = ev.result.result_id
+            st[3] = ev.result
+        elif isinstance(ev, DecisionRecorded) and ev.decision.reason is ReasonCode.RECONCILE_LATE_FILL:
+            self._late_applied.add(ev.decision.subject_id)
 
 
 # ---------------------------------------------------------------------------------------------- consumed-signal rule

@@ -139,17 +139,14 @@ MUTATIONS = {
         '    return (prior.phase is ResultPhase.FINAL and prior.evidence is Evidence.NOT_FOUND_CORROBORATED\n',
         '    return (prior.phase is ResultPhase.FINAL\n')]),
     'r3 item 3b: superseding is refused (exchange evidence never wins)': (D + 'events.py', [(
-        '            if prior is not None and r.intent_id not in superseding and supersedes(prior, r):',
+        '            if r.intent_id in closed and r.intent_id not in superseding and supersedes(finals[r.intent_id], r):',
         '            if False:')]),
     'r3 item 3b: superseded more than once': (D + 'events.py', [(
-        '            if prior is not None and r.intent_id not in superseding and supersedes(prior, r):',
-        '            if prior is not None and supersedes(prior, r):')]),
+        '            if r.intent_id in closed and r.intent_id not in superseding and supersedes(finals[r.intent_id], r):',
+        '            if r.intent_id in closed and supersedes(finals[r.intent_id], r):')]),
     'r3 item 3b: a late-fill reconcile without its record': (D + 'events.py', [(
         '                req(late is not None and late.result_id in d.evidence, p + \'.decision\',',
         '                req(True, p + \'.decision\',')]),
-    'r3 item 3b: the terminal step ignores a superseding fill': (D + 'events.py', [(
-        '                if r.intent_id in live:\n                    finals[r.intent_id] = r',
-        '                if False:\n                    finals[r.intent_id] = r')]),
     'r3 item 3b: a late-fill decision about no intent': (D + 'decision.py', [(
         "            req(a is Action.RECONCILE and self.subject_id is not None, p + '.reason',",
         "            req(True, p + '.reason',")]),
@@ -157,8 +154,10 @@ MUTATIONS = {
         '                req(supersedes(final, ev.result), \'event.result\',',
         '                req(True, \'event.result\',')]),
     'r3 item 3b: the journal supersedes more than once': ('newcore/ports/journal.py', [(
-        '        if (k is EventKind.RESULT_RECORDED and st.final is Evidence.NOT_FOUND_CORROBORATED and not st.superseded',
-        '        if (k is EventKind.RESULT_RECORDED and st.final in (Evidence.NOT_FOUND_CORROBORATED, Evidence.EXCHANGE_FINAL)')]),
+        '        if (k is EventKind.RESULT_RECORDED and st.closed is not None and st.final is Evidence.NOT_FOUND_CORROBORATED\n'
+        '                and not st.superseded and h.outcome',
+        '        if (k is EventKind.RESULT_RECORDED and st.closed is not None\n'
+        '                and st.final in (Evidence.NOT_FOUND_CORROBORATED, Evidence.EXCHANGE_FINAL) and h.outcome')]),
     'r3a ruling 2: the event chain lets a booking be sent': (D + 'events.py', [(
         "            req(booking_step_ok(it, ev.to_state), p + '.to_state', 'a post-hoc booking is never sent')",
         "            pass")]),
@@ -173,6 +172,20 @@ MUTATIONS = {
     'r3a ruling 1: a quarantine decision may close / book': (D + 'decision.py', [(
         "        req(self.reason not in QUARANTINE_REASONS or all(i.purpose is Purpose.PROTECT for i in self.intents),",
         "        req(True,")]),
+    'r3a ruling 4: the chain takes a late record before the intent is terminal': (D + 'events.py', [(
+        '            if r.intent_id in closed and r.intent_id not in superseding and supersedes(finals[r.intent_id], r):\n'
+        '                it, sent = closed[r.intent_id]',
+        '            if r.intent_id in finals and r.intent_id not in superseding and supersedes(finals[r.intent_id], r):\n'
+        '                it, sent = closed[r.intent_id] if r.intent_id in closed else (live[r.intent_id][0], live[r.intent_id][2])')]),
+    'r3a ruling 4: the journal takes a late record before the intent is terminal': ('newcore/ports/journal.py', [(
+        '        if (k is EventKind.RESULT_RECORDED and st.closed is not None and st.final is Evidence.NOT_FOUND_CORROBORATED',
+        '        if (k is EventKind.RESULT_RECORDED and st.final is Evidence.NOT_FOUND_CORROBORATED')]),
+    'r3a ruling 4: the gate applies a late fill nobody journaled': ('newcore/ports/journal.py', [(
+        "            req(self._late.get(d.subject_id) in d.evidence, 'event.decision',",
+        "            req(True, 'event.decision',")]),
+    'r3a ruling 4: the gate applies a late fill twice': ('newcore/ports/journal.py', [(
+        "            req(d.subject_id not in self._late_applied, 'event.decision', 'a late fill is reconciled once')",
+        "            pass")]),
     'duplicate JSON keys': (D + 'codec.py', [("            if k in out:\n                problems.append(",
                                               "            if False:\n                problems.append(")]),
     'truncated JSON': (D + 'codec.py', [(

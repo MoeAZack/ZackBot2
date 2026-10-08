@@ -257,16 +257,49 @@ def test_item3b_a_final_exchange_record_supersedes_not_found_corroborated_after_
         assert loads(canonical_bytes(ev)) == ev
 
 
-def test_item3b_before_the_close_the_terminal_step_follows_the_fill():
+def test_item3b_the_original_intent_stays_terminal():
+    """Ruling 4: the late record is a reconciliation fact about a TERMINAL intent. Before the intent closes on its
+    corroborated final it is refused (the terminal step comes first); after, the intent stays CANCELLED and the late
+    fill is never turned into a lifecycle step."""
     from newcore.domain import IntentState, IntentStateChanged, InvalidRecord, ResultObserved, check_event_chain
     p, ids, acct, it, rs, late, head, E = _late_fill()
-    sup = E(ResultObserved, 6, late.observed_at_ms, result=late)
-    filled = E(IntentStateChanged, 7, late.observed_at_ms, intent_id=it.intent_id, from_state=IntentState.UNKNOWN,
-               to_state=IntentState.FILLED)
-    assert check_event_chain(head + [sup, filled]) == {}
-    cancelled = F.replace(filled, to_state=IntentState.CANCELLED)
-    with pytest.raises(InvalidRecord, match='the final result means'):
-        check_event_chain(head + [sup, cancelled])
+    early = E(ResultObserved, 6, late.observed_at_ms, result=late)
+    with pytest.raises(InvalidRecord, match='event after the final result'):
+        check_event_chain(head + [early])
+    closed = E(IntentStateChanged, 6, F.T0 + 30_000, intent_id=it.intent_id, from_state=IntentState.UNKNOWN,
+               to_state=IntentState.CANCELLED)
+    sup = E(ResultObserved, 7, late.observed_at_ms, result=late)
+    for to in (IntentState.FILLED, IntentState.CANCELLED):
+        with pytest.raises(InvalidRecord, match='is not a lifecycle step'):     # terminal never moves
+            check_event_chain(head + [closed, sup, E(IntentStateChanged, 8, late.observed_at_ms,
+                                                     intent_id=it.intent_id, from_state=IntentState.CANCELLED,
+                                                     to_state=to)])
+
+
+def test_item3b_the_same_journal_bytes_fold_identically_and_apply_once():
+    """Ruling 4: replaying the journal (decoded from its bytes, any number of times) folds to the same result, and a
+    re-delivered event is ALREADY_APPLIED - the late fill is never applied twice."""
+    from newcore.domain import (Admission, DecisionRecorded, EventCursor, IntentState, IntentStateChanged,
+                                ResultObserved, admit, canonical_bytes, check_event_chain, loads)
+    p, ids, acct, it, rs, late, head, E = _late_fill()
+    fix = _late_fill_decision(ids, acct, it, late)
+    chain = head + [E(IntentStateChanged, 6, F.T0 + 30_000, intent_id=it.intent_id, from_state=IntentState.UNKNOWN,
+                      to_state=IntentState.CANCELLED),
+                    E(ResultObserved, 7, late.observed_at_ms, result=late, reason=ReasonCode.RECONCILE_LATE_FILL),
+                    E(DecisionRecorded, 8, fix.at_ms, decision=fix, reason=fix.reason)]
+    blob = [canonical_bytes(ev) for ev in chain]
+    folds = []
+    for _ in range(2):                                                          # two restarts from the same bytes
+        events = [loads(b) for b in blob]
+        assert check_event_chain(events) == check_event_chain(chain) == {}
+        cur = EventCursor(account_id=acct, aggregate_id=F.pf_id(acct), last_sequence=0, applied=())
+        for ev in events:
+            cur, how = admit(cur, ev)
+            assert how is Admission.APPLY
+        for ev in events:                                                       # a repeated reconcile pass
+            assert admit(cur, ev) == (cur, Admission.ALREADY_APPLIED)
+        folds.append(cur)
+    assert folds[0] == folds[1]
 
 
 def test_item3b_only_an_executed_exchange_record_of_the_same_order_supersedes():

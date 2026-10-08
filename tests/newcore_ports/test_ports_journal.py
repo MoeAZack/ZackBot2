@@ -339,3 +339,71 @@ def test_the_journal_refuses_to_send_a_post_hoc_booking():
 def replace_seq(ev, n):
     from nc_events import replace
     return replace(ev, sequence=n)
+
+
+def _late_fill_decision_event(s, sid, late, dec_n=9004):
+    from newcore.domain import Action, Authority, Decision, DecisionRecorded, ReasonCode, Side, make_id
+    d = Decision(decision_id=make_id('dec', dec_n), account_id=ACCT, at_ms=late.observed_at_ms + 1000,
+                 action=Action.RECONCILE, reason=ReasonCode.RECONCILE_LATE_FILL, authority=Authority.RECONCILIATION,
+                 key=None, evidence=(late.result_id,), symbol='SOLUSDT', side=Side.LONG, subject_id=sid, detail='',
+                 intents=(), policy_version='step0-test')
+    return s._event(DecisionRecorded, reason=d.reason, decision=d)
+
+
+def test_late_fill_crash_before_the_journal_write_leaves_nothing_applied():
+    """r3 item 3b ruling 4: the write fails (crash before durable) -> the gate never saw the late record; the retry
+    is admitted exactly once, and the reconcile then applies it once."""
+    from newcore.domain import ReasonCode, ResultObserved
+    s, sid, late = _late_fill_flow()
+    j = ReferenceJournal()
+    for ev in s.events:
+        j.append(ev)
+    rec = s._event(ResultObserved, reason=ReasonCode.RECONCILE_LATE_FILL, result=late)
+    j.inject_write_failure()
+    with pytest.raises(JournalUnavailable):
+        j.append(rec)
+    dec = _late_fill_decision_event(s, sid, late)
+    with pytest.raises(JournalConflict, match='journaled superseding FINAL record'):
+        j.append(replace_seq(dec, rec.sequence))                 # nothing to apply: the late record is not durable
+    assert j.append(rec) is Admission.APPLY                       # the retry
+    assert j.append(dec) is Admission.APPLY
+
+
+def test_late_fill_crash_after_the_journal_write_restart_and_repeated_reconcile_apply_once():
+    """r3 item 3b ruling 4: the late record and its reconcile are durable; after a restart (gate rebuilt from the
+    decoded journal bytes) a repeated reconcile pass re-delivers the same events -> ALREADY_APPLIED, and any second
+    application (another decision id, another late record) is refused. Two rebuilds fold identically."""
+    from newcore.domain import ReasonCode, ResultObserved, canonical_bytes, loads, make_id
+    from nc_events import replace
+    s, sid, late = _late_fill_flow()
+    rec = s._event(ResultObserved, reason=ReasonCode.RECONCILE_LATE_FILL, result=late)
+    dec = _late_fill_decision_event(s, sid, late)
+    blob = [canonical_bytes(ev) for ev in s.events]
+    journals = [ReferenceJournal(events=[loads(b) for b in blob]) for _ in range(2)]      # two restarts
+    for j in journals:
+        assert j.last_sequence() == len(blob)
+        assert j.append(rec) is Admission.ALREADY_APPLIED and j.append(dec) is Admission.ALREADY_APPLIED
+        again = replace(dec, event_id=make_id('evt', 777), sequence=len(blob) + 1,
+                        decision=replace(dec.decision, decision_id=make_id('dec', 9005)))
+        with pytest.raises(JournalConflict, match='reconciled once'):
+            j.append(again)
+        late2 = replace(rec, event_id=make_id('evt', 778), sequence=len(blob) + 1,
+                        result=replace(late, result_id=make_id('res', 9006)))
+        with pytest.raises(JournalConflict, match='G10'):
+            j.append(late2)
+        assert j.last_sequence() == len(blob)
+    assert [canonical_bytes(e) for e in journals[0]._events] == [canonical_bytes(e) for e in journals[1]._events]
+
+
+def test_late_fill_before_the_terminal_step_is_refused_by_the_journal():
+    """r3 item 3b ruling 4 (cross-layer twin of test_item3b_the_original_intent_stays_terminal): the intent closes on
+    its corroborated final first; a late record before that step is 'a result after the final result' (G9)."""
+    from newcore.domain import ReasonCode, ResultObserved
+    s, sid, late = _late_fill_flow()
+    events = s.events[:-1]                                   # without the UNKNOWN -> CANCELLED step
+    j = ReferenceJournal()
+    for ev in events:
+        j.append(ev)
+    rec = replace_seq(s._event(ResultObserved, reason=ReasonCode.RECONCILE_LATE_FILL, result=late), len(events) + 1)
+    with pytest.raises(JournalConflict, match='G9: a result after the final result'):
+        j.append(rec)

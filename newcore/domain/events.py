@@ -197,10 +197,11 @@ def check_event_chain(events, *, after_sequence=0, known_intents=None):
     terminal step without a durable FINAL result (applied before recorded) or not matching it, any event after a terminal
     state, a reused id or client id, and a one-shot authorization that is missing or used twice.
 
-    r3 DRAFT item 3b: the one exception to "nothing after the final result" - a FINAL exchange record that supersedes
-    a corroborated not-found (orders.supersedes) is accepted once, even after the intent closed; a RECONCILE decision
-    with reason reconcile.late_fill_after_not_found must then name that intent (subject_id) and that result (evidence),
-    once, and only after the superseding record is journaled."""
+    r3 item 3b (ruling 4: a durable exactly-once reconciliation fact): the one exception to "nothing after the final
+    result" - once the intent is TERMINAL on a corroborated not-found, a FINAL exchange record that supersedes it
+    (orders.supersedes) is journaled once; the intent stays terminal. A RECONCILE decision with reason
+    reconcile.late_fill_after_not_found then applies it: it names that intent (subject_id) and that record (evidence),
+    once, and only after the record is journaled. The step-0 JournalGate enforces the same."""
     live = dict(known_intents or {})
     cids = {c for it, _, _ in live.values() for c in it.client_ids}
     finals, ended, decisions, one_shots, used_auth = {}, set(), set(), set(), set()
@@ -255,16 +256,10 @@ def check_event_chain(events, *, after_sequence=0, known_intents=None):
             live[ev.intent_id] = (it, ev.to_state, sent)
         elif isinstance(ev, ResultObserved):
             r = ev.result
-            prior = finals.get(r.intent_id)
-            if prior is not None and r.intent_id not in superseding and supersedes(prior, r):
-                if r.intent_id in closed:
-                    it, sent = closed[r.intent_id]
-                else:
-                    it, _st, sent = live[r.intent_id]
+            if r.intent_id in closed and r.intent_id not in superseding and supersedes(finals[r.intent_id], r):
+                it, sent = closed[r.intent_id]
                 check_result_for_intent(it, r, sent)
-                superseding[r.intent_id] = r                    # exchange evidence wins over the corroboration
-                if r.intent_id in live:
-                    finals[r.intent_id] = r                     # not closed yet: the terminal step follows the fill
+                superseding[r.intent_id] = r        # the late fact, journaled once; the intent stays terminal
                 continue
             req(r.intent_id not in ended and r.intent_id not in finals, p, 'event after the final result')
             req(r.intent_id in live, p, 'a result for an intent that was never made durable')
