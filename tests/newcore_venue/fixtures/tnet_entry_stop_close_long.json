@@ -1,0 +1,24 @@
+{
+ "format": "zb-newcore-tnet-scenario/1",
+ "name": "entry_stop_close_long",
+ "description": "Minimum-size LONG round trip with a reduce-only algo stop; the entry answer is lost once and must be resolved by a client-id query.",
+ "symbols": ["SOLUSDT"],
+ "account": {"min_balance": "100", "adopt_foreign": []},
+ "steps": [
+  {"id": "entry", "op": "market", "symbol": "SOLUSDT", "side": "LONG", "reduce": false, "qty": "min"},
+  {"id": "entry_check", "op": "query", "ref": "entry"},
+  {"id": "protect", "op": "stop", "symbol": "SOLUSDT", "side": "LONG", "qty": "filled:entry",
+   "trigger_offset_pct": "-5", "from": "entry", "route": "algo"},
+  {"id": "verify", "op": "query", "ref": "protect"},
+  {"id": "unstop", "op": "cancel", "ref": "protect"},
+  {"id": "close", "op": "market", "symbol": "SOLUSDT", "side": "LONG", "reduce": true, "qty": "filled:entry"},
+  {"id": "settle", "op": "wait", "seconds": 2}
+ ],
+ "faults": [{"at": "entry", "kind": "lost_response", "times": 1}],
+ "expect": {
+  "outcomes": {"entry": ["unknown"], "entry_check": ["final"], "protect": ["known"], "verify": ["known"],
+               "unstop": ["acknowledged", "final"], "close": ["final"]},
+  "end_state": {"flat": true, "open_newcore_orders": 0},
+  "max_duration_s": 120
+ }
+}

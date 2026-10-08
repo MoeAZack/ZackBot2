@@ -9,25 +9,31 @@ applies_to per adapter:
                        then removes the divergence entry and sets the adapter `required`; both are part of the contract
                        hash, so that PR appends a `correction` record to CORRECTIONS.json (test_ledger.py);
 - not_applicable / pending_adapter -> the reason is mandatory (schema) and the pair is reported as skipped.
-No `slow` marker: the pack runs per commit in `verify fast`. Budget: test_pack_runtime_target (60 s) and
-test_pack_runtime_hard_stop (120 s), measured on the whole pack whatever the selection or order.
-Hard stop (P2 on b01d439): the adapters never run in the pytest process. pack() runs pack_worker.py ONCE per session under
-goldenlib.deadline (HARD_STOP_S wall clock, the whole process tree killed on expiry) and every test reads that run, so a hung
-adapter fails the session after HARD_STOP_S instead of holding verify-fast to the job timeout. The adapters only see
-adapters.blind(case) (Cowork r2 (a)): a trace that equals the golden was produced without the expectation.
+Tiers (Codex call on 0ef7402; goldenlib/tiers.py, TIERS.json - a checked manifest, every case in exactly one tier):
+- core     -> runs per commit in `verify fast` (-m "not slow"); budget test_core_runtime_target (CORE_TARGET_S, 30 s);
+- extended -> its params are marked `slow` FROM TIERS.json, so it runs in `verify full` (every test) at the accepted exact
+              head; budget test_extended_runtime_target (EXTENDED_TARGET_S, 90 s);
+- both tiers together: test_pack_runtime_hard_stop (HARD_STOP_S, 120 s), whatever the selection or order.
+A broken tier manifest is one failing, UNMARKED test param ('tiers-invalid'), so it fails verify fast too.
+Hard stop (P2 on b01d439): the adapters never run in the pytest process. pack(tier) runs pack_worker.py ONCE per tier per
+session under goldenlib.deadline (the whole process tree killed on expiry) and every test of that tier reads that run. The
+deadline of a tier run is what is left of HARD_STOP_S after the tiers already run this session, so the hard stop holds for the
+whole pack, not per tier. The adapters only see adapters.blind(case) (Cowork r2 (a)): a trace that equals the golden was
+produced without the expectation.
 """
 import json, os, sys
 
 import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from goldenlib import REPO_ROOT, adapters, compare, deadline, schema  # noqa: E402
+from goldenlib import REPO_ROOT, adapters, compare, deadline, schema, tiers  # noqa: E402
 
 LEGACY = ('legacy_backtest', 'legacy_engine')
-TARGET_S = 60.0                      # design budget for the whole pack per commit (AUD-08 section 7)
-HARD_STOP_S = 120.0                  # the pack may never cost more than this, whatever else is decided
+CORE_TARGET_S = tiers.CORE_TARGET_S             # per-commit core tier (verify fast)
+EXTENDED_TARGET_S = tiers.EXTENDED_TARGET_S     # extended tier (verify full, accepted exact head)
+HARD_STOP_S = tiers.HARD_STOP_S                 # both tiers together may never cost more than this
 WORKER = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'pack_worker.py')
-_PACK = {}                           # the session's single pack run (pack())
+_PACK = {}                           # tier -> the session's single run of that tier (pack(tier))
 
 
 class KnownDivergence(AssertionError):
@@ -39,15 +45,19 @@ def _params():
         cases = schema.load_all()
     except schema.CaseError as e:                         # P3: one failing test naming the file, never a collection crash
         return [pytest.param(e, None, id='pack-invalid')]
+    try:
+        tier_of = tiers.load([c['id'] for c in cases])
+    except tiers.TierError as e:                          # unmarked: fails verify fast AND verify full
+        return [pytest.param(e, None, id='tiers-invalid')]
     out = []
     for c in cases:
         for ad in LEGACY:
             st = schema.status(c, ad)
-            marks = []
+            marks = [pytest.mark.slow] if tier_of[c['id']] == 'extended' else []
             if st == 'known_divergence':
                 kd = next(d for d in c['known_divergences'] if d['adapter'] == ad)
                 marks.append(pytest.mark.xfail(strict=True, raises=KnownDivergence,
-                                               reason=f"{kd['ticket']} {kd['finding']}: {kd['reason']}"))
+                                               reason=f"{kd['divergence_id']} ({kd['ticket']} {kd['finding']}): {kd['reason']}"))
             elif st != 'required':
                 v = c['applies_to'][ad]
                 marks.append(pytest.mark.skip(reason=f"{st}: {v['reason']}"))
@@ -55,13 +65,14 @@ def _params():
     return out
 
 
-def run_pack(hard_stop_s, worker=WORKER):
-    """Run the whole pack in a deadline-bounded child -> dict(timed_out, elapsed, runs={(id, adapter): rec}, error)."""
+def run_pack(hard_stop_s, worker=WORKER, tier=None):
+    """Run the pack (one tier, or all of it) in a deadline-bounded child -> dict(timed_out, elapsed, runs={(id, adapter): rec},
+    error)."""
     import tempfile
     fd, out = tempfile.mkstemp(prefix='golden_pack_', suffix='.json')
     os.close(fd)
     try:
-        r = deadline.run([sys.executable, worker, out], hard_stop_s, cwd=REPO_ROOT)
+        r = deadline.run([sys.executable, worker, out] + (['--tier', tier] if tier else []), hard_stop_s, cwd=REPO_ROOT)
         res = dict(timed_out=r.timed_out, elapsed=r.elapsed, runs={}, error=None)
         if r.timed_out:
             res['error'] = (f'golden pack hit the {hard_stop_s:g} s HARD STOP and was killed after {r.elapsed:.2f} s '
@@ -80,18 +91,32 @@ def run_pack(hard_stop_s, worker=WORKER):
             pass
 
 
-def pack():
-    if not _PACK:
-        _PACK.update(run_pack(HARD_STOP_S))
-        slow = sorted(_PACK['runs'].values(), key=lambda x: -x['seconds'])[:3]
-        print(f"\ngolden pack: {len(_PACK['runs'])} runs, {_PACK['elapsed']:.1f} s wall incl. worker start (target "
-              f"{TARGET_S:.0f} s, hard stop {HARD_STOP_S:.0f} s); slowest "
+TIER_TARGET_S = {'core': CORE_TARGET_S, 'extended': EXTENDED_TARGET_S}
+
+
+def pack(tier):
+    """The session's run of one tier. Its deadline is HARD_STOP_S minus the tiers already run (the hard stop is overall)."""
+    assert tier in tiers.TIERS, tier
+    if tier not in _PACK:
+        left = HARD_STOP_S - sum(p['elapsed'] for p in _PACK.values())
+        p = run_pack(max(left, 0.01), tier=tier)
+        if p['timed_out']:
+            p['error'] = (f'{tier} tier: ' + p['error'] + f' (the {HARD_STOP_S:g} s hard stop covers both tiers; '
+                          f'{HARD_STOP_S - left:.1f} s were already spent by {sorted(_PACK)})')
+        _PACK[tier] = p
+        slow = sorted(p['runs'].values(), key=lambda x: -x['seconds'])[:3]
+        print(f"\ngolden pack [{tier}]: {len(p['runs'])} runs, {p['elapsed']:.1f} s wall incl. worker start (target "
+              f"{TIER_TARGET_S[tier]:.0f} s, hard stop {HARD_STOP_S:.0f} s for both tiers); slowest "
               f"{[(x['id'], x['adapter'], round(x['seconds'], 1)) for x in slow]}")
-    return _PACK
+    return _PACK[tier]
+
+
+def tier_of(case_id):
+    return tiers.load()[case_id]
 
 
 def pack_trace(case_id, adapter):
-    p = pack()
+    p = pack(tier_of(case_id))
     if p['error']:
         pytest.fail(p['error'])
     rec = p['runs'].get((case_id, adapter))
@@ -106,6 +131,8 @@ def pack_trace(case_id, adapter):
 def test_golden_case(case, adapter):
     if isinstance(case, schema.CaseError):
         pytest.fail(f'golden pack does not load: {case}')
+    if isinstance(case, tiers.TierError):
+        pytest.fail(f'golden tier manifest is invalid: {case}')
     rec = pack_trace(case['id'], adapter)
     trace = adapters.Trace(trades=rec['trace']['trades'], final=rec['trace']['final'])
     mism = compare.compare(case, trace, adapter)
@@ -115,7 +142,8 @@ def test_golden_case(case, adapter):
             return                                        # fixed -> strict XPASS -> fails the run until the entry is removed
         assert compare.same_mismatches(case, kd['observed'], mism), \
             'DRIFT inside a known divergence (not the recorded mismatch):\n' + compare.report(case, adapter, mism, trace)
-        raise KnownDivergence(f"{kd['ticket']} {kd['finding']} reproduced: " + compare.report(case, adapter, mism, trace))
+        raise KnownDivergence(f"{kd['divergence_id']} ({kd['ticket']} {kd['finding']}) reproduced: "
+                              + compare.report(case, adapter, mism, trace))
     assert not mism, compare.report(case, adapter, mism, trace)
 
 
@@ -127,34 +155,70 @@ def test_every_case_names_every_adapter_and_validates():
 
 
 def test_the_pack_has_a_passing_case_on_each_legacy_adapter():
-    """The runner is proven on cases that already pass, not only on known divergences."""
+    """The runner is proven on cases that already pass, not only on known divergences - in the per-commit core tier."""
+    tier = tiers.load()
     for ad in LEGACY:
-        assert any(schema.status(c, ad) == 'required' for c in schema.load_all()), ad
+        assert any(schema.status(c, ad) == 'required' and tier[c['id']] == 'core' for c in schema.load_all()), ad
 
 
-def test_pack_runtime_hard_stop():
-    """The whole pack (every runnable pair, whatever the selection) ran inside the HARD_STOP_S deadline."""
-    p = pack()
+TIER_PARAMS = [pytest.param('core', id='core'), pytest.param('extended', id='extended', marks=pytest.mark.slow)]
+
+
+def _want(tier):
+    t = tiers.load()
+    return {(c['id'], ad) for c in schema.load_all() for ad in LEGACY
+            if t[c['id']] == tier and schema.status(c, ad) in ('required', 'known_divergence')}
+
+
+@pytest.mark.parametrize('tier', TIER_PARAMS)
+def test_tier_runs_complete(tier):
+    """The tier's worker ran every runnable pair of that tier (and nothing else) inside its share of the hard stop."""
+    p = pack(tier)
     assert not p['timed_out'], p['error']
     assert p['error'] is None, p['error']
-    want = {(c['id'], ad) for c in schema.load_all() for ad in LEGACY if schema.status(c, ad) in ('required', 'known_divergence')}
-    assert set(p['runs']) == want, f"the pack run is incomplete: missing {sorted(want - set(p['runs']))}"
-    assert p['elapsed'] <= HARD_STOP_S, f"golden pack took {p['elapsed']:.1f} s > {HARD_STOP_S:.0f} s hard stop"
+    want = _want(tier)
+    assert set(p['runs']) == want, (f"the {tier} run is not exactly its tier: missing {sorted(want - set(p['runs']))}, extra "
+                                    f"{sorted(set(p['runs']) - want)}")
 
 
-def test_pack_runtime_target():
-    p = pack()
+def test_core_runtime_target():
+    p = pack('core')
     assert p['error'] is None, p['error']
-    assert p['elapsed'] <= TARGET_S, (f"golden pack took {p['elapsed']:.1f} s > the {TARGET_S:.0f} s per-commit target: speed "
-                                      'the slow cases up or move them out of verify fast with a recorded decision')
+    assert p['elapsed'] <= CORE_TARGET_S, (f"golden core tier took {p['elapsed']:.1f} s > the {CORE_TARGET_S:.0f} s per-commit "
+                                           'target: speed the slow cases up or move one to extended in TIERS.json (reviewed)')
 
 
-def test_adapters_never_read_the_expectation():
+@pytest.mark.slow
+def test_extended_runtime_target():
+    p = pack('extended')
+    assert p['error'] is None, p['error']
+    assert p['elapsed'] <= EXTENDED_TARGET_S, (f"golden extended tier took {p['elapsed']:.1f} s > the {EXTENDED_TARGET_S:.0f} s "
+                                               'full-gate target')
+
+
+@pytest.mark.slow
+def test_pack_runtime_hard_stop():
+    """The whole pack (both tiers, every runnable pair, whatever the selection or order) ran inside HARD_STOP_S."""
+    runs = {}
+    for tier in tiers.TIERS:
+        p = pack(tier)
+        assert not p['timed_out'], p['error']
+        assert p['error'] is None, p['error']
+        runs.update(p['runs'])
+    want = {(c['id'], ad) for c in schema.load_all() for ad in LEGACY if schema.status(c, ad) in ('required', 'known_divergence')}
+    assert set(runs) == want, f"the pack run is incomplete: missing {sorted(want - set(runs))}"
+    total = sum(_PACK[t]['elapsed'] for t in tiers.TIERS)
+    assert total <= HARD_STOP_S, f"golden pack took {total:.1f} s (both tiers) > {HARD_STOP_S:.0f} s hard stop"
+
+
+@pytest.mark.parametrize('tier', TIER_PARAMS)
+def test_adapters_never_read_the_expectation(tier):
     """Cowork r2 (a): legacy_backtest on the full case and on blind(case) (expect poisoned, known divergences removed) gives
     identical traces for every case; legacy_engine only ever runs blind, so its golden comparison is the same proof."""
     n = 0
+    t = tiers.load()
     for c in schema.load_all():
-        if schema.status(c, 'legacy_backtest') in ('required', 'known_divergence'):
+        if t[c['id']] == tier and schema.status(c, 'legacy_backtest') in ('required', 'known_divergence'):
             rec = pack_trace(c['id'], 'legacy_backtest')
             assert rec['trace'] == rec['trace_full'], f"{c['id']}: legacy_backtest trace depends on expect / known_divergences"
             n += 1

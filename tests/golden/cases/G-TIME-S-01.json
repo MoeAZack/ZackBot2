@@ -1,0 +1,120 @@
+{
+  "schema": "zb-golden/1",
+  "id": "G-TIME-S-01",
+  "title": "Short: time exit after exactly N=4 candles counted from the entry candle (entry and exit cycles both at close + 15 s)",
+  "behaviours": [
+    "time_exit",
+    "short_side"
+  ],
+  "side": "short",
+  "tf": "4h",
+  "clock": {
+    "start": 1704067200000,
+    "entry_cycle_delay_s": 15
+  },
+  "costs": {
+    "model": "legacy",
+    "taker_fee": "0.0005",
+    "slip": "0.0002",
+    "funding_per_bar": "0"
+  },
+  "account": {
+    "equity": "500",
+    "max_leverage": 10,
+    "sizing": "legacy_replay"
+  },
+  "market": {
+    "SOLUSDT": {
+      "base": {
+        "kind": "flat",
+        "px": "100",
+        "wick": "0.5",
+        "n": 300
+      },
+      "bars": {},
+      "atr": {
+        "kind": "computed"
+      }
+    }
+  },
+  "path_policy": "zb-path/1",
+  "slot": {
+    "id": "S1",
+    "sides": "short",
+    "risk": "0.02",
+    "share": "1",
+    "max_pos": 1,
+    "entry": {
+      "type": "market"
+    },
+    "stop": {
+      "atr": "30"
+    },
+    "time_exit": {
+      "bars": 4
+    }
+  },
+  "signals": [
+    {
+      "bar": 279,
+      "sym": "SOLUSDT",
+      "kind": "enter_short"
+    }
+  ],
+  "faults": [],
+  "expect": {
+    "trades": [
+      {
+        "sym": "SOLUSDT",
+        "side": "SHORT",
+        "i_in": 280,
+        "i_out": 283,
+        "exit": "TIME_EXIT",
+        "R": "-0.004666666667",
+        "pnl": "-0.046666666667"
+      }
+    ],
+    "final": {
+      "lots": 0
+    }
+  },
+  "applies_to": {
+    "legacy_engine": "required",
+    "legacy_backtest": {
+      "status": "known_divergence",
+      "reason": "AUD-07 C11: legacy behaviour differs from the corrected contract until the AUD-07 product fix lands"
+    },
+    "newcore_sim": {
+      "status": "pending_adapter",
+      "reason": "NEWCORE NC-07/NC-08 adapter not built yet"
+    },
+    "newcore_live_sim": {
+      "status": "pending_adapter",
+      "reason": "NEWCORE NC-08 live-sim adapter not built yet"
+    }
+  },
+  "known_divergences": [
+    {
+      "adapter": "legacy_backtest",
+      "divergence_id": "AUD07-C11",
+      "ticket": "AUD-07",
+      "finding": "C11",
+      "correction": "CORR-0061",
+      "until": "AUD-07 product fix",
+      "reason": "backtest.py:559 exits when i - i_in >= N, i.e. at the close of candle i_in + N: it holds N + 1 candles",
+      "observed": [
+        {
+          "path": "trades[0].i_out",
+          "expected": 283,
+          "actual": 284
+        }
+      ]
+    }
+  ],
+  "provenance": {
+    "created_at_sha": "cff3f88",
+    "author": "NC-01 golden short mirrors (Claude)",
+    "mirror_of": "G-TIME-L-01",
+    "notes": "Short mirror of G-TIME-L-01: market reflected around the base price, signals and side flipped. AUD-07 C11 corrected rule: exit at the close of candle i_in + N - 1 = 283 for every entry/exit cycle delay (here 15 s). Entry 99.98, exit 100 x 1.0002 = 100.02, qty 10/30; R = ((99.98 - 100.02) - (99.98 + 100.02) x 0.0005) / 30 = -0.0046667 (flat market: the same number as the long)."
+  }
+}
