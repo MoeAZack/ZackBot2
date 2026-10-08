@@ -256,6 +256,12 @@ MUTATIONS = {
     'cw2: an incident may cite itself as evidence': (D + 'incident.py', [(
         "        req(self.incident_id not in self.evidence, p + '.evidence', 'an incident is never its own evidence')",
         "        pass")]),
+    'P1-3 emergency close: widened to every close / reduce action in hard HOLD': (D + 'modes.py', [(
+        "        return (purpose, op) in EMERGENCY_SET or (emergency_close and (purpose, op) == (Purpose.CLOSE, Op.PLACE))",
+        "        return (purpose, op) in EMERGENCY_SET or (emergency_close and purpose in (Purpose.CLOSE, Purpose.REDUCE))")]),
+    'P1-3 emergency close: allowed without the emergency flag': (D + 'modes.py', [(
+        "        return (purpose, op) in EMERGENCY_SET or (emergency_close and (purpose, op) == (Purpose.CLOSE, Op.PLACE))",
+        "        return (purpose, op) in EMERGENCY_SET or (purpose, op) == (Purpose.CLOSE, Op.PLACE)")]),
     'duplicate JSON keys': (D + 'codec.py', [("            if k in out:\n                problems.append(",
                                               "            if False:\n                problems.append(")]),
     'truncated JSON': (D + 'codec.py', [(
