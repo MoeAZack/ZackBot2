@@ -1,6 +1,6 @@
 # ZackBot NEWCORE execution plan
 
-**Control plan v3 — 08 Oct 2026, Africa/Cairo**
+**Control plan v3.1 — 08 Oct 2026, Africa/Cairo**
 
 This is the shared execution document for the owner, Claude Code, Cowork and Codex. It converts the historical audit,
 the product roadmap and the replacement-first decision into one ordered build plan.
@@ -57,6 +57,10 @@ positions are disposable. Mainnet credentials, funds and deployment remain a sep
    risk, execution or venue contract needed by the mainnet-candidate engine.
 9. **Optimization is continuous, not a later rewrite.** Every ticket removes touched-file duplication/dead code and
    proves performance budgets, while broad unrelated cleanup stays out of the critical build path.
+10. **The legacy engine is mechanically frozen and disposable.** Audit failures become regression fixtures and NEWCORE
+    contracts, not a second legacy repair program. Legacy code changes only when a defect prevents trustworthy data/
+    contract collection, blocks NEWCORE validation, or can affect anything outside the confirmed testnet boundary. Every
+    exception needs Codex scope, reports the `engine.py` line-count/top-level-definition delta and adds no product behavior.
 
 ## 3. Team operating model
 
@@ -186,6 +190,9 @@ does not depend on implicit fields in the legacy `Engine` object.
 | B3 | AUD-12a dependency/test injection | C21, TEST-01/04/05 | Explicit clock/client/store interfaces; fakes implement the production protocol; order-independent tests. |
 | B4 | PORT-01 AUD port-damage assessment | AUD-00–05 | In parallel with B1–B3, inventory new coupling, duplicate state, test-only branches, compatibility baggage and performance cost. P0/P1 interrupts; other findings map to the owning NEWCORE ticket. |
 | B5 | NEWCORE architecture decision record | C14, C22, ARCH-06/07 | State/action model, module boundaries, account identity, reason codes and legacy deletion map approved. |
+| B6 | REC-01 recovery regression contract | Fable Audit2 NEW-ENG-01/NEW-DATA-01 | Preserve the two reproduced failures as fixtures for NC-02: a missing/corrupt primary and backup can never become an empty managed account; a future schema aborts without modifying either file; current-schema damage preserves forensic evidence and requires explicit reconciliation. No legacy repair is required. |
+| B7 | OPS-UI-01 account/incident UX contract | Fable Audit2 NEW-APP-01/02 | Specify NC-04/NC-09 and the replacement UI: mode/account binding, state generation, last reconciliation and actionable incidents. Typed confirmation leaves entries paused. Do not retrofit the old panel. |
+| B8 | ORD-REC-01 order/recovery regression contract | Fable Audit2 NEW-ENG-02/03/04/11 | Turn the lock, pending, false-not-found and resting-maker repros into NC-03/NC-05/NC-07 tests: no network retries under state locks; durable result phases; position-corroborated not-found; pause/halt/flatten drains entries and handles late fills. Do not repair the legacy execution path. |
 
 **Wave B exit:** stable contract tests exist for the replacement. Every behavior difference is an accepted correction,
 not accidental replay drift.
@@ -244,16 +251,18 @@ symbol/year concentration checks and gap/funding/slippage stress. More strategie
 | Order | Ticket | Deliverable | Promotion gate |
 |---:|---|---|---|
 | D1 | DATA-01 market-data integrity | Point-in-time candles, funding, mark, OI, taker and long/short data with freshness/provenance. | Frozen manifest, gap report, survivorship policy. |
+| D1a | DATA-01a execution-grade datasets | 1m/5m plus trade/book/spread/latency inputs where required; point-in-time listing/rules, funding/index/mark and venue-session histories. | Venue-specific manifest, exact query/window, source version, Cairo access time, lawful content hash/archive reference and revalidation date. |
 | D2 | RES-01 research harness | Walk-forward/holdout, Monte Carlo, sensitivity, regimes, costs and follower feasibility. | Reproducible clean-checkout report. |
 | D3 | STR-01 trend long + short | Independently calibrated long and short trend strategies. | Adequate samples, untouched holdout; no forced symmetry. |
 | D4 | STR-02 range/mean reversion | Sideways-market entries/exits with volatility/spread guards. | Regime advantage after costs and gaps. |
 | D5 | STR-03 Quick Bank scalp | Early TP, protected runner and optional one small bounded DCA layer. | Green-after-cost measured honestly; tail/gap and follower-minimum stress; no “always positive” promise. |
-| D6 | STR-04 DCA basket | Hard basket stop, bounded depth/scale and total-risk accounting. | Rebuilt causal results; otherwise remains disabled/dropped. |
+| D6 | STR-04 DCA basket | Legacy DCA-1h curves are historical/unverified and excluded from the candidate catalog. Any replacement starts as a new bounded candidate with hard basket stop, bounded depth/scale and total-risk accounting. | Rebuilt causal results on execution-grade data; otherwise remains disabled/dropped. A single micro-DCA scalp experiment is separate and optional. |
 | D7 | REG-01 per-asset regime engine | Asset/timeframe trend/range/volatility and strategy preference; Manual/Recommend/Automatic. | Point-in-time stability, hysteresis and shadow evidence. |
 | D8 | MACRO-01 context | DXY, US 2Y/10Y/curve, S&P/Nasdaq, oil, gold/minerals and timestamped geopolitics/news. | Observe first; veto/reduce only after evidence. |
 | D9 | GOV-01 bounded risk grades | Conservative through high-risk/“Maniac,” mapped to explicit trade risk, leverage, exposure, DCA permission and portfolio drawdown ceilings. | No grade bypasses the risk gateway; high-risk modes are explicit and separately evaluated. |
 | D10 | GOV-02 allocator/strategy matrix | Recommend, disable or reduce strategies by asset/regime; never exceed user ceilings. | Manual, Recommend and Automatic produce auditable decisions and never force a trade. |
 | D11 | CTRL-01 engine controls | Controlled capital plus Direction Bias, Risk and Acceptable Drawdown controls, globally and optionally per asset/strategy. | Deterministic mappings, previewed consequences and no silent changes to existing positions. |
+| D12 | EDGE-00 evidence checkpoint | Compare promoted candidates against simple after-cost baselines and each other before adding more strategy families. | Freeze winners/losers by regime, concentration, tail risk and operational feasibility; park candidates with no distinct edge. |
 
 Each strategy has separate performance, tail-risk, evidence-readiness and operational/copy-readiness scores. No blended
 score may hide a failed hard gate.
@@ -277,24 +286,29 @@ than directly multiplying leverage. Acceptable Drawdown sets portfolio throttlin
 
 ### Wave E — gold, TradFi and mainnet-candidate engine gate
 
+Before E6 can pass, the minimum OPS-01 mechanisms must already exist: supervised service, encrypted secrets,
+watchdog/dead-man, kill switch, graceful stop, backup/restore and incident playbook. NC-02/NC-08 must also reconcile
+exchange fees, funding and realized PnL and prove a deterministic ledger rebuild. Full prolonged operational validation
+remains in Wave F; tax and profit-share reporting do not block the engine candidate.
+
 | Order | Ticket | Deliverable |
 |---:|---|---|
 | E1 | VENUE-01 asset/venue contracts | Sessions, calendars, tick/lot/notional rules, fees, funding/borrow, gaps, order types and market-data freshness are adapter inputs—not strategy assumptions. |
-| E2 | GOLD-01 tokenized gold | PAXG then XAUT using the crypto venue; trend/range/breakout/scalp candidates tested separately from crypto. |
+| E2 | GOLD-01 exchange-traded gold | Validate Binance XAUUSDT TradFi perpetual first where account/region availability permits, including funding, index, sessions and liquidity; test PAXG/XAUT only as explicit fallback venues. Gold candidates remain separate from crypto. |
 | E3 | GOLD-02 broker gold | Paper XAUUSD with sessions, rollover, spreads, weekend gaps and broker execution semantics. |
 | E4 | TRADFI-01 indices/stocks | Paper S&P/Nasdaq instruments then liquid stocks; corporate actions, sessions, borrow/short availability and gap risk explicit. |
 | E5 | RISK-01 cross-asset portfolio | Correlation, concentration, currency, session/gap, liquidity and total wallet exposure across crypto/gold/TradFi. |
-| E6 | ENG-GATE-01 mainnet-candidate engine | Frozen strategy catalog, risk-control mappings, venue capabilities and limitations; full causal/restart/fault/performance evidence. Passing means “engineering candidate,” not permission to use real funds. |
+| E6 | ENG-GATE-01 numeric mainnet-candidate engine | Frozen strategy catalog, risk-control mappings and venue limitations; versioned numeric pass/fail limits for ownership/protection ambiguity, replay/parity, restart/fault recovery, data freshness/gaps, management latency, request-budget headroom, and strategy holdout/tail/sample evidence. Thresholds are baselined from ZackBot evidence, not copied from generic audit targets. Passing means “engineering candidate,” not permission to use real funds. |
 
 **Wave E exit:** the core engine can run both directions, choose or reject strategies by regime, respect owner risk/bias/
 drawdown controls and exercise crypto, gold and TradFi adapters in paper/test environments. Unsupported cells are visible,
 not silently filled with weak strategies.
 
-### Wave F — minimum production safety and prolonged validation
+### Wave F — prolonged validation and live boundary
 
 | Order | Ticket | Deliverable / gate |
 |---:|---|---|
-| F1 | OPS-01 minimum runtime safety | Supervised service, encrypted secrets, watchdog/dead-man, kill switch, backup/restore, rollback and incident playbook. These are engine safety, not optional product polish. |
+| F1 | OPS-01 completion/drills | The minimum runtime mechanisms are already required before E6; here they undergo prolonged unattended, restore, rollback, kill-switch and incident-response drills. |
 | F2 | VAL-01 prolonged paper/testnet program | Regime coverage, long/short opportunities, fill/slippage calibration, recovery drills and resource/request budgets across crypto/gold/TradFi. |
 | F3 | VAL-02 shadow/mainnet rehearsal | Mainnet market data and shadow decisions with no orders; compare predicted venue behavior and operational health. |
 | F4 | REL-01 own-account canary | Only after explicit owner approval: smallest bounded capital, IP-restricted keys, no withdrawals and staged scale. |
@@ -368,15 +382,18 @@ controls until Codex merges an explicit amendment.
 
 ## 10. Immediate queue
 
-1. Complete AUD-05 PR #30. Require write-ahead ownership, runtime persistence latch, secret migration, initialized-
-   account marker and versioned semantic schemas.
-2. Run PORT-01 in parallel so audit-port damage is mapped without stalling the active build.
-3. Resolve AUD-06a narrowly: merge truthful labels if useful or supersede with NEWCORE default-off policy.
-4. Open AUD-07 execution/backtest truth.
-5. Open AUD-08 characterization/parity and add test injection.
-6. Approve the NEWCORE architecture decision, then build NC-01 through NC-09.
-7. Move directly into the strategy/risk matrix and gold/TradFi venue work; optional app features remain behind the
-   mainnet-candidate engine gate.
+1. Close the active AUD-07 product/C12 handoff as reusable evidence: merge only contract/test material that directly
+   protects NEWCORE and does not grow the legacy product; otherwise supersede it without further legacy repair rounds.
+2. Convert Fable Audit2 B6–B8 into frozen failing fixtures and replacement acceptance contracts. Implement the fixes in
+   NC-02/03/04/05/07/09 and the replacement UI, not in `engine.py` or the old panel.
+3. Complete AUD-08 characterization/parity and dependency injection, expanding the golden matrix before NC-01.
+4. Approve B5 architecture plus numeric ENG-GATE-01 and the source-provenance contract.
+5. Build NC-01 through NC-09. Legacy `engine.py` remains frozen except for the narrow boundary exceptions in rule 10.
+6. Run DATA-01/DATA-01a and STRAT-00 research in parallel; the legacy DCA-1h evidence is retired, not tuned into
+   acceptance. Run EDGE-00 before expanding the candidate count.
+7. Validate Binance XAUUSDT venue suitability first, with regional/account availability explicit; keep PAXG/XAUT and
+   broker XAUUSD as separate fallback/venue studies.
+8. Require the minimum OPS-01 mechanisms and numeric ENG-GATE-01 before declaring the engine a mainnet candidate.
 
 ## 11. Decisions already made
 

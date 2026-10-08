@@ -374,10 +374,10 @@ A high score **never** changes settings automatically.
 | T05a | Causal trade audit: MFE/MAE, peak profit and give-back, hold/close reasons, earlier-exit counterfactuals, runner/side/regime attribution | Observe/research | ⬜ Planned in PR #8; follows T05 |
 | BT01 | Causal intrabar OHLC path shared by engine replay and backtest | Backtest realism | ✅ Done 2026-10-07 (PR #16 merged as `ef6abc0`) |
 | BT02 | Binance step/minimum feasibility, full-plan leverage simulation and truthful capital guidance | Backtest/UI realism | ✅ Accepted 2026-10-07 at `e224a8b`; protected merge pending. Follow-ups: hedge partial-close runtime proof, small API/docs cleanup, and the pre-existing T02 calendar-day harness repair |
-| T06 | Shared-core contracts, reason codes and `AccountContext` spec | No behaviour change | ⬜ |
-| T07 | Extract costs, rounding and sizing | Refactor, zero replay change | ⬜ |
-| T08 | Extract management levels | Refactor | ⬜ |
-| T09 | Pure trade state transition | Refactor, parity maintained | ⬜ |
+| T06 | Superseded by NEWCORE B5/NC-01 | Replacement-first; no legacy extraction sequence | ⛔ Superseded |
+| T07 | Superseded by NEWCORE NC-06/NC-08 | Sizing/cost contracts move into the replacement | ⛔ Superseded |
+| T08 | Superseded by NEWCORE NC-07 | Management transitions move into the replacement | ⛔ Superseded |
+| T09 | Superseded by NEWCORE NC-07/NC-08 | State/replay parity moves into the replacement | ⛔ Superseded |
 | T10 | Per-account order budget and priority queue | E-class, burst tests | ⬜ |
 | T11 | SQLite trade-event store | Feature Off | ⬜ |
 | T12 | Entry/close reason records + "Why?" view | Observe | ⬜ |
@@ -386,7 +386,7 @@ A high score **never** changes settings automatically.
 | T15 | Multi-account workers + internal copy (shadow) | Off/Shadow | ⬜ |
 | T16 | ML dataset builder (leakage checks, manifests) | Research | ⬜ |
 
-**Order agreed 2026-10-05, with the approved measurement/CI inserts:** T03 → T04/T04b → T03a/T03b → T05 → T04d/T05a → T06–T09 core extraction, and only then large features (more exchanges, copy trading, stocks/gold, mobile control). No broad clean-up is mixed into tickets; refactors never carry new strategy behaviour. GitHub is currently public by the owner's testnet-only decision and protected by required checks; it must return to private before mainnet credentials or release work. Keys, `config.env`, session tokens, account data, logs, market data, executables and evidence remain excluded.
+**Current controlling order:** `docs/NEWCORE_EXECUTION_PLAN.md` supersedes the old T06–T09 extraction sequence. The legacy engine is mechanically frozen and disposable: confirmed failures become NEWCORE regression contracts, not a legacy repair/cleanup program. NEWCORE owns replacement, strategy/risk work and the numeric engine gate. GitHub is currently public by the owner's testnet-only decision and protected by required checks; it must return to private before mainnet credentials or release work. Keys, `config.env`, session tokens, account data, logs, market data, executables and evidence remain excluded.
 
 **Ticket rules:** one ticket at a time, in this order. A ticket is marked ✅ (with the date) only when its acceptance checks pass **and** the other assistant's review has no open findings. ◐ = implemented, review or Windows run pending.
 
