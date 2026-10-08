@@ -68,6 +68,7 @@ from newcore.domain import Evidence, Lookup, OrderResult
 from newcore.domain.orders import NOT_FOUND_WINDOW_MS, REDUCE_ONLY, PositionRead, terminal_for
 from newcore.domain.portfolio import Fill
 from newcore.ports.journal import JournalUnavailable
+from newcore.domain import Incident, IncidentRecorded
 from newcore.domain.errors import DomainError
 from newcore.store.hold import durability_hold, hard_hold_permits
 from newcore.ports.keys import check_decision_key, route_of
@@ -691,6 +692,10 @@ class Runner:
                         self._incident(f'{sym} {side}: lots {total} but the venue holds {venue[(sym, side)]} and our '
                                        'emergency fills cannot be read (trades unknown): ownership UNKNOWN - no new '
                                        'stop / close / resize for these lots, resting protection kept; HOLD, owner')
+                        self._durable_incident(ReasonCode.RECONCILE_UNRECONCILED,
+                                               f'ownership unknown: lots {total}, venue {venue[(sym, side)]}, our '
+                                               'emergency fills unreadable; nothing new sent, owner resolves',
+                                               key=','.join(sorted(new)), symbol=sym, side=side, lots=sorted(new))
                     self._hold([ReasonCode.RECONCILE_UNRECONCILED])
                 continue
             self._own_unknown.difference_update(x.lot_id for x in lots)
@@ -707,6 +712,9 @@ class Runner:
                                           f'journal): lots {total}, ours left {left}; owner resolves')
                     self._incident(f'{lot.lot_id}: our emergency orders filled {ef} of {sym} {side} during the hard '
                                    f'HOLD (lots {total}, ours left {left}): owner item, HOLD')
+                    self._durable_incident(ReasonCode.RECOVERY_DURABILITY_UNAVAILABLE,
+                                           f'emergency fills {ef} during a hard HOLD: lots {total}, ours left {left}',
+                                           key=lot.lot_id, symbol=sym, side=side, lots=(lot.lot_id,))
             self._hold([ReasonCode.RECONCILE_UNRECONCILED])
             self._em_left[(sym, side)] = left
             if left <= 0:
@@ -714,6 +722,20 @@ class Runner:
             elif len(lots) == 1:
                 self._ext_partial[lots[0].lot_id] = min(left, self._ext_partial.get(lots[0].lot_id, left))
                 self._resize_down(lots[0].lot_id, self._ext_partial[lots[0].lot_id])
+
+    def _durable_incident(self, kind, detail, *, key, symbol=None, side=None, lots=(), intents=()):
+        """Journal an incident (NC-01 r3a IncidentRecorded) once per (kind, key) - only while the store can write (a
+        hard HOLD's incidents stay in-process: nothing can be journaled then). `detail` is a fixed template with counts
+        and symbols only (never an id, a venue payload or exception text: the record refuses key-shaped text)."""
+        if self.hard_hold is not None:
+            return
+        iid = ids.incident_id(self.acct, str(kind), key)
+        if iid in self.fold.incident_ids:
+            return
+        inc = Incident(incident_id=iid, account_id=self.acct, kind=kind, at_ms=self.now, symbol=symbol,
+                       side=None if side is None else Side(side), intent_refs=tuple(intents), lot_refs=tuple(lots),
+                       position_refs=(), evidence=(), detail=detail[:160])
+        self._emit(IncidentRecorded, reason=kind, incident=inc)
 
     def _venue_raised(self, name, args, ex):
         at = self.now if self.now is not None else int(time.time() * 1000)
@@ -1733,6 +1755,8 @@ class Runner:
                            authority=Authority.RECONCILIATION, key=None, symbol=symbol, side=side, subject_id=lot_id,
                            detail=f'external close suspected: venue flat, lot {lot_id} open; owner resolves')
         self._suspended_lots.add(lot_id)
+        self._durable_incident(ReasonCode.RECONCILE_MANUAL_CLOSE, 'external close suspected: venue flat, lot open; '
+                               'no more sends, owner resolves', key=lot_id, symbol=symbol, side=side, lots=(lot_id,))
         self._incident(f'{lot_id}: external close suspected (venue flat on {symbol} {side}, '
                        f'{self._reduce_refused.get(lot_id, 0)} reduce-only sends refused): owner item, no more sends')
         self._hold([ReasonCode.RECONCILE_UNRECONCILED])
@@ -1824,6 +1848,10 @@ class Runner:
                                           f'{lot.lot_id} {lot.qty}; owner resolves')
                     self._incident(f'{lot.lot_id}: external partial close suspected (venue {sym} {side} {v} < our '
                                    f'lots {total}, no fill of ours): owner item, protection re-sized down')
+                    self._durable_incident(ReasonCode.RECONCILE_MANUAL_CLOSE,
+                                           f'external partial close suspected: venue {v} < lots {total}; protection '
+                                           're-sized down, owner resolves', key=lot.lot_id + '/partial', symbol=sym,
+                                           side=side, lots=(lot.lot_id,))
             self._hold([ReasonCode.RECONCILE_UNRECONCILED])
             if len(lots) == 1:
                 self._ext_partial[lots[0].lot_id] = v

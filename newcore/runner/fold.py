@@ -14,7 +14,8 @@ import dataclasses
 from dataclasses import dataclass, field
 from decimal import Context, Decimal
 
-from newcore.domain import (Action, DecisionRecorded, EntriesMode, IntentRecorded, IntentState, IntentStateChanged,
+from newcore.domain import (Action, DecisionRecorded, EntriesMode, IncidentRecorded, IntentRecorded, IntentState,
+                            IntentStateChanged,
                             ModeChanged, OrderIntent, OrderResult, Purpose, ReasonCode, ResultObserved, ResultPhase)
 from newcore.domain.orders import TERMINAL
 
@@ -152,6 +153,7 @@ class Fold:
     def __init__(self, account_id, portfolio_id):
         self.account_id, self.portfolio_id = account_id, portfolio_id
         self.decisions = {}
+        self.incident_ids = set()                                         # journaled IncidentRecorded (r3a)
         self.pending_closes = {}                # lot id -> CLOSE decision whose intent is not recorded yet
         self.intents = {}
         self.by_client_id = {}
@@ -201,6 +203,8 @@ class Fold:
                 iv.final = ev.result
         elif isinstance(ev, ModeChanged):
             self.mode, self.hold, self.mode_reasons, self.mode_since_ms = ev.to_mode, ev.to_hold, ev.reasons, ev.at_ms
+        elif isinstance(ev, IncidentRecorded):
+            self.incident_ids.add(ev.incident.incident_id)                # no ownership / intent / mode effect
         self.last_sequence = ev.sequence
 
     # ------------------------------------------------------------------------------------------------ derived

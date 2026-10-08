@@ -105,6 +105,11 @@ def tick_decision_id(lot_id, candle_open_ms):
     return 'dec_' + _hex('tick_decision_id', lot_id, candle_open_ms)
 
 
+def incident_id(account_id, kind, *parts):
+    """A durable incident (NC-01 r3a IncidentRecorded): one per (kind, the records it concerns) - restart-stable."""
+    return 'inc_' + _hex('incident_id', account_id, kind, *parts)
+
+
 def marker_decision_id(kind, intent_id):
     """A management route marker of one refused classic stop ('mg fallback' / 'mg refused'): at most one per intent."""
     return 'dec_' + _hex('marker_decision_id', kind, intent_id)

@@ -259,3 +259,21 @@ def test_a_projection_fee_is_pending_never_zero_and_never_a_breach(side, fault):
         w.runner.portfolio()
     w.run(9)                                                             # strict: no InvariantBreach
     assert sum(1 for _, t in w.runner.incidents if t.startswith('projection pending')) >= 1
+
+
+def test_the_adapters_completeness_marker_lifts_the_full_page_rule():
+    """TestnetVenue (nc-venue-testnet 5f0c959) pages fills / userTrades to a PROVEN end and says so in the OK read's
+    detail ('complete pages=P dups=N'): a long complete answer is accepted; without the marker a full page is UNKNOWN."""
+    from newcore.ports.venue import ReadKind, ReadOutcome, VenueFill
+    from newcore.runner.fill_evidence import PAGE_LIMIT, rows_of
+    rows = tuple(VenueFill(trade_id=str(i), exchange_order_id='7', symbol=SYM, position_side='LONG', qty=D('1'),
+                           price=D('100'), fee=D('0.01'), fee_asset='USDT', realized_pnl=D('0'), maker=False,
+                           at_ms=T0 + i) for i in range(PAGE_LIMIT + 5))
+    marked = ReadOutcome(kind=ReadKind.OK, observed_at_ms=T0 + 10 ** 6, value=rows, detail='complete pages=2 dups=0')
+    plain = ReadOutcome(kind=ReadKind.OK, observed_at_ms=T0 + 10 ** 6, value=rows)
+    got, why = rows_of(marked, symbol=SYM, side='LONG', expect={'7': D(PAGE_LIMIT + 5)})
+    assert why is None and len(got) == PAGE_LIMIT + 5
+    got, why = rows_of(plain, symbol=SYM, side='LONG')
+    assert got is None and 'full page' in why
+    forged = ReadOutcome(kind=ReadKind.OK, observed_at_ms=T0 + 10 ** 6, value=rows, detail='complete-ish')
+    assert rows_of(forged, symbol=SYM, side='LONG')[0] is None             # only the exact marker counts

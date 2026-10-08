@@ -105,6 +105,15 @@ def test_p1_b_store_back_with_trades_unreadable_never_protects_the_foreign_rest(
         assert sent_since(w, n) == [] and position(w, side) == D('2')
     r = w.runner
     assert r.mode is EntriesMode.HOLD and any('ownership UNKNOWN' in t for _, t in r.incidents)
+    # NC-01 r3a: the store is writable again, so the ownership-unknown incident is journaled - once, across a restart
+    from newcore.domain import IncidentRecorded, ReasonCode
+    incs = [e for e in w.journal.read() if isinstance(e, IncidentRecorded)]
+    assert [e.incident.kind for e in incs] == [ReasonCode.RECONCILE_UNRECONCILED]
+    assert incs[0].incident.lot_refs and incs[0].incident.symbol == 'SOLUSDT'
+    w.restart()
+    w.venue.trades = unknown_read(w)
+    w.run(13)
+    assert len([e for e in w.journal.read() if isinstance(e, IncidentRecorded)]) == 1
 
 
 # ------------------------------------------------------------------- ruling 3: the ONLY PROTECT cancels in HOLD
