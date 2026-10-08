@@ -172,6 +172,86 @@ def test_missing_core_symbols_warn(env):
     assert rc == 1 and 'no usable rules on testnet for: ETHUSDT, BNBUSDT' in out
 
 
+# ---------- Cowork round 2: overall smoke deadline ----------
+
+class Ticking:
+    """A monotonic clock that advances by `step` seconds on every read (each transport call reads it twice)."""
+
+    def __init__(self, step):
+        self.t, self.step = 1000.0, step
+
+    def __call__(self):
+        self.t += self.step
+        return self.t
+
+
+def test_deadline_aborts_with_exit_six_and_saves_the_cassette(env):
+    http = FakeHttp(*flat_script())
+    out = io.StringIO()
+    rc = load_tool().main(['--account-id', ACCOUNT, '--root', env['root'], '--cassette-dir', env['cassettes'],
+                           '--deadline-s', '1'], http=http, local_clock=lambda: NOW, protector=XorProtector(),
+                          out=out, monotonic=Ticking(0.3))
+    text = out.getvalue()
+    assert rc == 6 and 'SMOKE DEADLINE - smoke deadline of 1 s exceeded' in text and 'nothing was retried' in text
+    assert len(http.requests) < 10                                   # stopped early, did not finish the reads
+    (path,) = cassette_files(env)
+    saved = open(path, encoding='utf-8').read()
+    assert DUMMY_KEY not in saved and DUMMY_SECRET not in saved
+
+
+def test_deadline_in_real_time_with_slow_reads(env):
+    import time
+    slow = FakeHttp(*flat_script())
+
+    def http(request):
+        time.sleep(0.15)
+        return slow(request)
+    out = io.StringIO()
+    t0 = time.monotonic()
+    rc = load_tool().main(['--account-id', ACCOUNT, '--root', env['root'], '--cassette-dir', env['cassettes'],
+                           '--deadline-s', '0.5'], http=http, local_clock=lambda: NOW, protector=XorProtector(),
+                          out=out)
+    assert rc == 6 and time.monotonic() - t0 < 1.5 and len(cassette_files(env)) == 1
+
+
+def test_default_deadline_is_sixty_seconds_and_generous_runs_pass(env):
+    assert smoke_mod.DEFAULT_DEADLINE_S == 60.0
+    rc, out, _ = run(env, flat_script())
+    assert rc == 0, out
+
+
+@pytest.mark.parametrize('bad', ['0', '-1', '3601', 'nan', 'abc'])
+def test_bad_deadline_refused(env, bad):
+    rc, out, http = run(env, [], ['--deadline-s', bad])
+    assert rc == 2 and http.requests == []
+
+
+def test_run_smoke_deadline_covers_income_pages_and_calibration():
+    calls = []
+
+    class SlowVenue:
+        def __getattr__(self, name):
+            def f(*a, **k):
+                calls.append(name)
+                raise AssertionError('must not be reached')
+            return f
+    oc_calls = []
+
+    class OC:
+        def resync(self, transport, samples):
+            oc_calls.append(1)
+            return transport.server_time()
+    with pytest.raises(smoke_mod.SmokeDeadlineExceeded) as ei:
+        smoke_mod.run_smoke(SlowVenue(), OC(), deadline_s=1, monotonic=Ticking(5.0))
+    assert calls == [] and 'before server_time' in ei.value.describe()
+
+
+@pytest.mark.parametrize('bad', [0, -1, 3601, True, '60'])
+def test_run_smoke_validates_deadline(bad):
+    with pytest.raises(ValueError):
+        smoke_mod.run_smoke(object(), object(), deadline_s=bad)
+
+
 # ---------- typed failures: message, non-zero exit, no retry ----------
 
 def test_unknown_read_stops_with_exit_four_and_no_retry(env):

@@ -10,7 +10,8 @@ re-checked after writing and removed if any of them is found).
 
 Exit codes: 0 all reads OK, flat, hedge mode; 1 all reads OK but with warnings (not flat / not hedge / missing
 symbols); 2 refused usage; 3 no usable credentials; 4 a read failed (UNKNOWN or REJECTED) - nothing is retried;
-5 the cassette could not be written or failed the leak check.
+5 the cassette could not be written or failed the leak check; 6 the overall smoke deadline (--deadline-s, default
+60 s) was exceeded - the run stops, nothing is retried, the sanitized cassette is still saved.
 """
 import argparse
 import os
@@ -24,7 +25,8 @@ from newcore.venue.clock import OffsetClock, system_clock_ms  # noqa: E402
 from newcore.venue.credentials import (CredentialsUnavailable, CredentialStore, CredentialStoreError,  # noqa: E402
                                        SecretScrubber, check_root)
 from newcore.venue.guard import VenueGuardError  # noqa: E402
-from newcore.venue.smoke import SmokeReadFailed, format_report, run_smoke  # noqa: E402
+from newcore.venue.smoke import (DEFAULT_DEADLINE_S, SmokeDeadlineExceeded, SmokeReadFailed,  # noqa: E402
+                                 format_report, run_smoke)
 from newcore.venue.transport import BinanceTestnetTransport, PositionMode  # noqa: E402
 from newcore.venue.wire import WireSeamError  # noqa: E402
 
@@ -46,6 +48,8 @@ def _parser():
     p.add_argument('--root', default=None, help='credential folder (default %%LOCALAPPDATA%%\\ZackBotNC\\secrets)')
     p.add_argument('--cassette-dir', default=None,
                    help='cassette folder (default %%LOCALAPPDATA%%\\ZackBotNC\\cassettes)')
+    p.add_argument('--deadline-s', type=float, default=DEFAULT_DEADLINE_S,
+                   help='overall wall-clock cap for the whole smoke in seconds (default 60, max 3600)')
     return p
 
 
@@ -70,7 +74,7 @@ def _write_cassette(recorder, directory, stamp_ms, values, out):
     return path, 0
 
 
-def main(argv=None, *, http=None, local_clock=None, protector=None, out=None):
+def main(argv=None, *, http=None, local_clock=None, protector=None, out=None, monotonic=None):
     argv = list(sys.argv[1:] if argv is None else argv)
     out = out or sys.stdout
     if any(isinstance(a, str) and (_SECRET_FLAG.match(a) or (not any(c in a for c in '\\/:')
@@ -81,6 +85,9 @@ def main(argv=None, *, http=None, local_clock=None, protector=None, out=None):
         args = _parser().parse_args(argv)
     except SystemExit as ex:
         return 2 if ex.code else 0
+    if not 0 < args.deadline_s <= 3600:
+        out.write('REFUSED: --deadline-s must be in (0, 3600].\n')
+        return 2
     clock = local_clock or system_clock_ms
     scrubber = SecretScrubber()
     try:
@@ -108,10 +115,15 @@ def main(argv=None, *, http=None, local_clock=None, protector=None, out=None):
         recorder = CassetteRecorder(http, redact=values, note='S5 read-only smoke')
         oc = OffsetClock(clock)
         transport = BinanceTestnetTransport(environment='testnet', http=recorder, clock=oc,
-                                            position_mode=PositionMode.HEDGE, credentials=creds, scrubber=scrubber)
+                                            position_mode=PositionMode.HEDGE, credentials=creds, scrubber=scrubber,
+                                            timeout_s=min(10.0, args.deadline_s))
         rc, report = 0, None
         try:
-            report = run_smoke(transport, oc)
+            report = run_smoke(transport, oc, deadline_s=args.deadline_s, monotonic=monotonic)
+        except SmokeDeadlineExceeded as ex:
+            out.write(f'SMOKE DEADLINE - {ex.describe()}. The run was stopped; nothing was retried. '
+                      f'The sanitized cassette is saved as evidence. {READ_ONLY_NOTE}\n')
+            rc = 6
         except SmokeReadFailed as ex:
             out.write(f'READ FAILED - {ex.describe()}\nNothing was retried. {READ_ONLY_NOTE}\n')
             rc = 4

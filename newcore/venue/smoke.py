@@ -57,7 +57,48 @@ class SmokeReport:
         return not self.positions and not self.open_orders and not self.open_algo_orders
 
 
-def run_smoke(transport, offset_clock, *, symbols=CORE8, income_days=7, calibration_samples=3):
+DEFAULT_DEADLINE_S = 60.0
+
+
+class SmokeDeadlineExceeded(SmokeReadFailed):
+    """The whole smoke ran past its overall deadline. Nothing is retried; the cassette is still saved."""
+
+    def describe(self):
+        return f'smoke deadline of {self.detail:g} s exceeded at {self.step}'
+
+
+class _DeadlineTransport:
+    """Wraps the transport so EVERY call (including the pages inside income_history and the clock calibration reads)
+    first checks the overall deadline, and a call that returns after it aborts the run. The worst-case overrun is
+    one request, itself bounded by the transport/sender total deadline."""
+
+    def __init__(self, transport, deadline_at, deadline_s, monotonic):
+        self._t, self._at, self._s, self._now = transport, deadline_at, deadline_s, monotonic
+
+    def __getattr__(self, name):
+        attr = getattr(self._t, name)
+        if not callable(attr):
+            return attr
+
+        def call(*a, **k):
+            if self._now() >= self._at:
+                raise SmokeDeadlineExceeded(f'before {name}', None, self._s)
+            out = attr(*a, **k)
+            if self._now() > self._at:
+                raise SmokeDeadlineExceeded(name, None, self._s)
+            return out
+        return call
+
+
+def run_smoke(transport, offset_clock, *, symbols=CORE8, income_days=7, calibration_samples=3,
+              deadline_s=DEFAULT_DEADLINE_S, monotonic=None):
+    """deadline_s: overall wall-clock cap for the whole smoke (Cowork round 2), default 60 s."""
+    if isinstance(deadline_s, bool) or not isinstance(deadline_s, (int, float)) or not 0 < deadline_s <= 3600:
+        raise ValueError('deadline_s must be a number in (0, 3600]')
+    if monotonic is None:
+        import time
+        monotonic = time.monotonic
+    transport = _DeadlineTransport(transport, monotonic() + deadline_s, deadline_s, monotonic)
     rep = SmokeReport()
     weights = []
 
