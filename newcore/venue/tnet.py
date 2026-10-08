@@ -277,6 +277,38 @@ def format_cleanup(res):
     return '\n'.join(lines)
 
 
+class EvidenceInterrupt:
+    """Interrupts absorbed while committing evidence (the caller maps a set flag to exit 6 AFTER the files exist)."""
+
+    def __init__(self):
+        self.hit = False
+
+
+def commit_evidence(write, flag=None):
+    """Run write() (a report / cassette commit) with SIGINT DEFERRED: a Ctrl+C that arrives meanwhile is held and
+    only noted after the files are complete. An interrupt raised INSIDE the write (e.g. from a blocked I/O call)
+    gets ONE retry from the same in-memory result. Returns write()'s value; flag.hit is set when any interrupt was
+    absorbed. A second interrupt inside the retry propagates (nothing else can be promised)."""
+    pending = []
+    try:
+        prev = signal.getsignal(signal.SIGINT)
+        signal.signal(signal.SIGINT, lambda signum, frame: pending.append(signum))
+    except ValueError:                                  # not the main thread: no handler to swap
+        prev = None
+    try:
+        try:
+            value = write()
+        except KeyboardInterrupt:
+            pending.append('raised')
+            value = write()
+    finally:
+        if prev is not None:
+            signal.signal(signal.SIGINT, prev)
+    if pending and flag is not None:
+        flag.hit = True
+    return value
+
+
 def guarded(run, cleanup):
     """run() then ALWAYS cleanup(): in finally, also on Ctrl+C (SIGINT). While the teardown runs, SIGINT is ignored so a
     second Ctrl+C cannot abort it. Returns (run result or None, cleanup result); re-raises run's exception after the
@@ -408,10 +440,14 @@ def tnet_report(*, run_id, scenarios, cleanup, config, cassette_path, fees, pnl,
     for ext, text in (('json', text_json), ('md', text_md)):
         path = os.path.join(directory, f'tnet-{int(now_ms)}.{ext}')
         tmp = f'{path}.tmp{os.getpid()}'
-        with open(tmp, 'w', encoding='utf-8', newline='\n') as fh:
-            fh.write(text)
-            fh.flush()
-            os.fsync(fh.fileno())
-        os.replace(tmp, path)
+        try:
+            with open(tmp, 'w', encoding='utf-8', newline='\n') as fh:
+                fh.write(text)
+                fh.flush()
+                os.fsync(fh.fileno())
+            os.replace(tmp, path)
+        finally:                                        # never a leftover *.tmpPID file
+            if os.path.exists(tmp):
+                os.remove(tmp)
         paths.append(path)
     return tuple(paths)

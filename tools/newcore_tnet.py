@@ -16,6 +16,12 @@ clean | 2 usage / config refused (also a dirty tree with --gate) | 3 no usable c
 / not hedge / foreign orders / reads not OK) | 5 report or cassette not written, or a leak | 6 run deadline exceeded or
 Ctrl+C (cleanup ran, clean) | 7 a scenario FAILED or a probe aborted (cleanup clean) | 8 cleanup NOT clean: exposure or an
 order of this run MAY be left (client ids printed).
+
+Ctrl+C, what is guaranteed: inside the guarded run the teardown runs (a second Ctrl+C cannot abort it). While the
+report / cassette are committed SIGINT is deferred, and an interrupt raised inside a write gets ONE retry from the
+in-memory result: the files are complete and no *.tmp is left (exit 6 unless residue (8) or a failure (7) wins).
+Ctrl+C before anything was sent (argument checks, preflight reads) stops with exit 6 and may write no report. Two
+interrupts inside the same evidence write propagate (exit 6, that file may be missing; no *.tmp is left).
 """
 import argparse
 import hashlib
@@ -37,8 +43,9 @@ from newcore.venue.redact import scrub_path, scrub_tokens  # noqa: E402
 from newcore.venue.run_config import RunConfigError, default_testnet_config_path, load_testnet_config  # noqa: E402
 from newcore.venue.smoke import CORE8  # noqa: E402
 from newcore.venue.testnet_venue import TestnetAccountReader, TestnetVenue  # noqa: E402
-from newcore.venue.tnet import (ReportLeak, adopt_refusal, adopted_positions, default_report_dir,  # noqa: E402
-                                format_cleanup, git_build, guarded, tnet_cleanup, tnet_preflight, tnet_report)
+from newcore.venue.tnet import (EvidenceInterrupt, ReportLeak, adopt_refusal, adopted_positions,  # noqa: E402
+                                commit_evidence, default_report_dir, format_cleanup, git_build, guarded,
+                                tnet_cleanup, tnet_preflight, tnet_report)
 from newcore.venue.tnet_exec import run_spec  # noqa: E402
 from newcore.venue.tnet_probes import ProbeAborted, probe_p1, probe_p2  # noqa: E402
 from newcore.venue.tnet_seams import DeadlineExceeded, DeadlinePort, FaultHttp, RunDeadline  # noqa: E402
@@ -143,10 +150,13 @@ def _plan(args, specs, symbols, cassette_dir, report_dir, stored):
     return '\n'.join(lines)
 
 
+EVIDENCE = EvidenceInterrupt()                          # interrupts absorbed while committing evidence
+
+
 def _write_cassette(recorder, directory, stamp, values, out):
     try:
         os.makedirs(check_root(directory), exist_ok=True)
-        path = recorder.save(os.path.join(directory, f'tnet-{stamp}.json'))
+        path = commit_evidence(lambda: recorder.save(os.path.join(directory, f'tnet-{stamp}.json')), EVIDENCE)
     except (CassetteLeak, CredentialStoreError, OSError) as ex:
         out.write(f'ERROR: cassette not written ({type(ex).__name__}).\n')
         return None
@@ -162,8 +172,13 @@ def main(argv=None, *, out=None, **kw):
     """Typed exit codes only: an unexpected exception is EXIT_FAIL (7) with its type, never a traceback with exit 1
     (= INCONCLUSIVE). Sends happen only inside the guarded body, whose teardown has run by then."""
     out = out or sys.stdout
+    EVIDENCE.hit = False
     try:
-        return _main(argv, out=out, **kw)
+        rc = _main(argv, out=out, **kw)
+        if EVIDENCE.hit and rc in (EXIT_PASS, EXIT_INCONCLUSIVE):    # Ctrl+C while the evidence was committed:
+            out.write('INTERRUPTED (Ctrl+C) while the report / cassette were written; they are complete.\n')
+            return EXIT_DEADLINE                                     # the files exist; residue / failure win
+        return rc
     except KeyboardInterrupt:                                        # N2: preflight / report phase
         out.write('INTERRUPTED (Ctrl+C). Nothing more will be sent. Check the lines above: if orders were sent, the '
                   'CLEANUP line shows what the teardown did; if none is there, run: python tools\\newcore_tnet.py '
@@ -396,9 +411,10 @@ def _cleanup_only(args, venue, symbols, run_id, snooze, recorder, cassette_dir, 
     try:
         config = {'mode': 'cleanup', 'account_id': args.account_id, 'symbols': symbols,
                   'close_positions': bool(args.close_positions), 'adopt_foreign': list(args.adopt_foreign)}
-        paths = tnet_report(run_id=run_id + '_cleanup', scenarios=[], cleanup=res, config=config,
-                            cassette_path=cassette, fees=Decimal(0), pnl=Decimal(0), build=build, now_ms=clock(),
-                            out_dir=report_dir, redact=values)
+        now = clock()
+        paths = commit_evidence(lambda: tnet_report(
+            run_id=run_id + '_cleanup', scenarios=[], cleanup=res, config=config, cassette_path=cassette,
+            fees=Decimal(0), pnl=Decimal(0), build=build, now_ms=now, out_dir=report_dir, redact=values), EVIDENCE)
         out.write(f'report: {scrub_path(paths[0])}\n')
     except (ReportLeak, CredentialStoreError, OSError) as ex:
         out.write(f'ERROR: report not written ({type(ex).__name__}).\n')
@@ -526,9 +542,11 @@ def _run(args, specs, symbols, min_balance, creds, scrubber, http, clock, mono, 
                   'symbols': symbols, 'probes': args.probe, 'stop_route': args.stop_route,
                   'min_balance': str(min_balance), 'specs': [spec_digest(s) for _, s in specs],
                   'adopt_foreign': list(args.adopt_foreign)}
-        paths = tnet_report(run_id=run_id, scenarios=state['scenarios'], cleanup=cleanup, config=config,
-                            cassette_path=cassette, fees=fees, pnl=pnl, build=build, now_ms=clock(), out_dir=report_dir,
-                            redact=values, probes=state['probes'])
+        now = clock()
+        paths = commit_evidence(lambda: tnet_report(
+            run_id=run_id, scenarios=state['scenarios'], cleanup=cleanup, config=config, cassette_path=cassette,
+            fees=fees, pnl=pnl, build=build, now_ms=now, out_dir=report_dir, redact=values,
+            probes=state['probes']), EVIDENCE)
         out.write(f'report: {scrub_path(paths[0])}\n')
     except (ReportLeak, CredentialStoreError, OSError) as ex:
         out.write(f'ERROR: report not written ({type(ex).__name__}: {ex}).\n')
