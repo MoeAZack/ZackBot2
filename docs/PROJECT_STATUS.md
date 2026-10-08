@@ -2,14 +2,16 @@
 
 > **08 Oct 2026 roadmap alignment:** the shared replacement-first execution spine is in
 > [`NEWCORE_EXECUTION_PLAN.md`](NEWCORE_EXECUTION_PLAN.md). Claude Code implements, Cowork independently validates and
-> runs evidence/research, and Codex owns scope, review, ordering and protected merge. AUD-05 durable state and AUD-06a
-> truthful DCA labels are merged; AUD-07 golden execution contracts are in review. The
+> runs evidence/research, and Codex owns scope, review, ordering and protected merge. AUD-05 durable state, AUD-06a
+> truthful DCA labels and the AUD-07 golden execution gate are merged. Fable Audit2 has now been triaged into bounded
+> NEWCORE recovery/operations regression contracts, a mechanical legacy freeze, stronger data/provenance requirements and a
+> numeric mainnet-candidate gate. The
 > primary milestone is a mainnet-candidate engine with long/short strategy coverage,
 > bounded bias/risk/drawdown controls and crypto/gold/TradFi venue readiness; optional product features follow it.
 > Cowork's evidence scope is Linux/sandbox research and adversarial validation; Windows, native UI, installer and connected
 > testnet claims come from Claude Code/Codex Windows runs. STRAT-00 research can run beside core work without changing runtime.
 
-*Last refreshed: 2026-10-08 04:06 Cairo (Africa/Cairo) by Codex, on branch `roadmap/newcore-execution-plan`. This is the plain-language owner view. `ROADMAP.md` and `docs/reviews/` hold the detailed scope and evidence.*
+*Last refreshed: 2026-10-08 10:10 Cairo (Africa/Cairo) by Codex, on branch `contract/nc01-domain`. This is the plain-language owner view. `ROADMAP.md` and `docs/reviews/` hold the detailed scope and evidence.*
 
 ## Where we are now
 
@@ -18,12 +20,12 @@
 | Environment | **Binance Futures testnet only.** Mainnet stays impossible until the roadmap and the final release audit are complete and you approve it. |
 | Is ZackBot running? | Yes, on your PC (PAPER/testnet), build `20261007-075404`: engine and exchange OK; four positions, all protected; zero open incidents or unprotected lots. |
 | Installed application | **T05a installed and runtime-proven.** The causal trade-audit endpoint/card and bounded audit file are active without changing trading decisions. |
-| Latest accepted commit | AUD-06a merged on protected master at `5edc149`; its corrected Research-tab labels and responsive fix passed every exact-head gate. |
-| Current ticket | **AUD-07 execution golden contracts** |
-| Stage | **AUD-07 r2 gate hardening in progress; controlling NEWCORE roadmap ready for its refreshed docs-only checks.** |
-| What Claude is doing | Building AUD-07 r2 and the separate product-fix stack, including C13g journal truth. |
-| What Cowork is doing | Preparing the AUD-07 ledger attack and product-divergence replay probes. |
-| What Codex is reviewing | This roadmap integration, then AUD-07 r2. |
+| Latest accepted commit | Fable Audit2 NEWCORE roadmap merged on protected master at `1a24e70`; test-log isolation merged immediately before it at `5225734`. |
+| Current ticket | **NC-01 domain model/reason-code contract and AUD-08 golden expansion** |
+| Stage | **Legacy work is frozen. NC-01 contract r2 incorporates Cowork's adversarial findings and is ready for re-check; NC-02 fixtures remain evidence-only prep.** |
+| What Claude is doing | Implementing the pure NC-01 domain package locally and preparing the golden short/fault/time-contract expansion. |
+| What Cowork is doing | Attacking NC-02 recovery/HOLD matrices and the golden tier, clock and reason-code evidence. |
+| What Codex is reviewing | PR #35's final full gate and Cowork's re-check of the revised exact NC-01 contract. |
 | Your action | **None.** |
 
 ## Latest test results
@@ -203,11 +205,14 @@ Every ticket now ends with a **clean-up pass on the files it touched**: remove d
 | Accepted | **BT02 — Binance order-filter feasibility** | PR #18 merged as master `3fa11e5`; full-plan exchange minimum and cumulative leverage truthfulness accepted |
 | Accepted; merge pending | **QTY tolerance / orphan boundary** | PR #25 fixes missed few-step stop-outs and reports a tradable orphan of exactly one exchange step |
 | Copy product | **COPY100/COPY200** | $500 lead with $100–$200 follower targets and a UI feasibility toggle after BT01/BT02 |
-| Core | **T06–T09 — shared core** | One trading logic for live and backtest |
+| Contracts | **REC-01 / OPS-UI-01 / ORD-REC-01** | Freeze the legacy failures as NEWCORE acceptance tests; fixes land only in replacement components/UI |
+| Core | **B5 + NC-01–NC-09 — NEWCORE** | Replacement-first shared live/replay/backtest logic; old T06–T09 extraction is superseded |
 | Strategy research | **T09a** | Range, short and scalp families; Quick Bank TP/runner/micro-DCA components; research/shadow first |
 | Regime and macro | **T09b** | Per-asset/timeframe regimes plus USD, US bonds/rates, equities, commodities and optional TradingView evidence |
 | Scale and control | **T10–T13a** | Order budgets, trade records, scorecards, bounded risk grades and Manual/Recommend/Automatic authority |
-| Product expansion | **T14–T16 and Phases 8–12** | VPS, multi-account/copy, PWA, TradingView/news, gold and TradFi after the safety foundation |
+| Data/research | **DATA-01/01a + EDGE-00** | Execution-grade venue data, pinned provenance and a stop/go edge checkpoint before strategy sprawl |
+| Engine gate | **OPS-01 minimum mechanisms + numeric ENG-GATE-01** | Must pass before “mainnet candidate”; this is not permission to trade live |
+| Product expansion | **T14–T16 and Phases 8–12** | Multi-account/copy, PWA and TradingView/news after the engine milestone; gold/TradFi venue work remains part of the engine milestone |
 | Final gate | Release audit + your explicit mainnet approval | |
 
 ## Scouting: ideas from other bots and from Claude/Codex (proposed, not started)

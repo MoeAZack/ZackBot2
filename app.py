@@ -43,10 +43,29 @@ class Scrub(logging.Filter):
         return True
 
 
-_h = [logging.handlers.RotatingFileHandler(LOG_F, maxBytes=5_000_000, backupCount=3, encoding='utf-8')]
-if sys.stdout is not None: _h.append(logging.StreamHandler(sys.stdout))        # windowed exe has no console
-for h_ in _h: h_.addFilter(Scrub())
-logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(message)s', handlers=_h)
+_LOG_TAG = '_zackbot_app_handler'      # marks the handlers configure_logging() owns (so a repeat call replaces, never duplicates)
+
+
+def configure_logging(data=None):
+    """Attach bot.log (rotating, secret-scrubbed) + console to the root logger. Called by main() - NEVER at import:
+    importing app (tests, harnesses, tools) must not open or append to any data folder's bot.log. Idempotent: a repeat
+    call replaces this function's own handlers instead of adding more. Returns the file handler."""
+    path = os.path.join(data or DATA, 'bot.log')
+    root = logging.getLogger()
+    for h in list(root.handlers):
+        if getattr(h, _LOG_TAG, False):
+            root.removeHandler(h)
+            try: h.close()
+            except Exception: pass
+    hs = [logging.handlers.RotatingFileHandler(path, maxBytes=5_000_000, backupCount=3, encoding='utf-8')]
+    if sys.stdout is not None: hs.append(logging.StreamHandler(sys.stdout))        # windowed exe has no console
+    fmt = logging.Formatter('%(asctime)s %(levelname)s %(message)s')
+    for h in hs:
+        h.addFilter(Scrub()); h.setFormatter(fmt); setattr(h, _LOG_TAG, True); root.addHandler(h)
+    root.setLevel(logging.INFO)
+    return hs[0]
+
+
 log = logging.getLogger('zackbot')
 
 import strategies as S          # noqa: E402
@@ -1562,6 +1581,7 @@ def selftest(path):
 
 def main():
     global APP
+    configure_logging()                          # bot.log in this data folder - only the real startup path attaches it
     if '--selftest' in sys.argv:
         i = sys.argv.index('--selftest')
         selftest(sys.argv[i + 1] if i + 1 < len(sys.argv) else os.path.join(DATA, 'selftest.json')); return
