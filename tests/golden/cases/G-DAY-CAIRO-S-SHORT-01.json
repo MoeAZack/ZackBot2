@@ -1,15 +1,16 @@
 {
   "schema": "zb-golden/1",
-  "id": "G-DAY-CAIRO-W-01",
-  "title": "Daily-loss halt on Cairo day D does not block a signal whose 4h candle CLOSES after Cairo midnight (winter, Cairo = UTC+2)",
+  "id": "G-DAY-CAIRO-S-SHORT-01",
+  "title": "Short: daily-loss halt on Cairo day D does not block a signal whose 4h candle CLOSES after Cairo midnight (summer DST, Cairo = UTC+3)",
   "behaviours": [
     "cairo_day",
-    "daily_halt"
+    "daily_halt",
+    "short_side"
   ],
-  "side": "long",
+  "side": "short",
   "tf": "4h",
   "clock": {
-    "start": 1704067200000,
+    "start": 1717200000000,
     "entry_cycle_delay_s": 15
   },
   "costs": {
@@ -34,9 +35,9 @@
       "bars": {
         "284": [
           "100",
-          "100.1",
-          "90",
-          "92"
+          "110",
+          "99.9",
+          "108"
         ]
       },
       "atr": {
@@ -59,7 +60,7 @@
   "path_policy": "zb-path/1",
   "slot": {
     "id": "S1",
-    "sides": "long",
+    "sides": "short",
     "risk": "0.10",
     "share": "1",
     "max_pos": 2,
@@ -78,17 +79,17 @@
     {
       "bar": 283,
       "sym": "SOLUSDT",
-      "kind": "enter_long"
+      "kind": "enter_short"
     },
     {
       "bar": 287,
       "sym": "XRPUSDT",
-      "kind": "enter_long"
+      "kind": "enter_short"
     },
     {
       "bar": 290,
       "sym": "XRPUSDT",
-      "kind": "exit_long"
+      "kind": "exit_short"
     }
   ],
   "faults": [],
@@ -96,16 +97,16 @@
     "trades": [
       {
         "sym": "SOLUSDT",
-        "side": "LONG",
+        "side": "SHORT",
         "i_in": 284,
         "i_out": 284,
         "exit": "STOP_HIT",
-        "R": "-1.059307099",
-        "pnl": "-52.96535495"
+        "R": "-1.060693099",
+        "pnl": "-53.03465495"
       },
       {
         "sym": "XRPUSDT",
-        "side": "LONG",
+        "side": "SHORT",
         "i_in": 288,
         "i_out": 290,
         "exit": "SIGNAL_EXIT",
@@ -140,7 +141,7 @@
       "divergence_id": "AUD07-C13D",
       "ticket": "AUD-07",
       "finding": "C13d",
-      "correction": "CORR-0041",
+      "correction": "CORR-0040",
       "until": "AUD-07 product fix",
       "reason": "backtest.py:240-242 keys the trading day by the Cairo date of the bar OPEN, so the day-D halt still gates the signal of a candle that closes on day D+1",
       "observed": [
@@ -149,16 +150,16 @@
           "expected": [
             {
               "sym": "SOLUSDT",
-              "side": "LONG",
+              "side": "SHORT",
               "i_in": 284,
               "i_out": 284,
               "exit": "STOP_HIT",
-              "R": "-1.059307099",
-              "pnl": "-52.96535495"
+              "R": "-1.060693099",
+              "pnl": "-53.03465495"
             },
             {
               "sym": "XRPUSDT",
-              "side": "LONG",
+              "side": "SHORT",
               "i_in": 288,
               "i_out": 290,
               "exit": "SIGNAL_EXIT",
@@ -168,12 +169,12 @@
           "actual": [
             {
               "sym": "SOLUSDT",
-              "side": "LONG",
+              "side": "SHORT",
               "i_in": 284,
               "i_out": 284,
               "exit": "STOP_HIT",
-              "R": -1.059307,
-              "pnl": -52.965355
+              "R": -1.060693,
+              "pnl": -53.034655
             }
           ]
         }
@@ -184,26 +185,27 @@
       "divergence_id": "AUD07-C13G",
       "ticket": "AUD-07",
       "finding": "C13g",
-      "correction": "CORR-0041",
+      "correction": "CORR-0040",
       "until": "AUD-07 product fix",
-      "reason": "engine.py:2284-2290 books an exchange stop that filled (stop gone) at the STOP price, not the fill price: the journal omits the exit slippage the exchange charged (-1.04951 R booked vs -1.05931 R paid on a 98.02 stop)",
+      "reason": "engine.py:2284-2290 books an exchange stop that filled (stop gone) at the STOP price, not the fill price - mirrored on the short side: the journal books the 101.98 buy stop without the exit slippage the exchange charged (-1.05049 R booked vs -1.06069 R paid)",
       "observed": [
         {
           "path": "trades[0].R",
-          "expected": "-1.059307099",
-          "actual": -1.04951
+          "expected": "-1.060693099",
+          "actual": -1.05049
         },
         {
           "path": "trades[0].pnl",
-          "expected": "-52.96535495",
-          "actual": -52.4755
+          "expected": "-53.03465495",
+          "actual": -52.5245
         }
       ]
     }
   ],
   "provenance": {
-    "created_at_sha": "b8c11c8",
-    "author": "AUD-07 slice 1 (Claude)",
-    "notes": "AUD-07 C13d corrected rule: the trading day of a decision is the Africa/Cairo date at the decision time, i.e. the candle CLOSE for a candle-close decision; the rollover happens before that decision's halt test. SOL (risk 10 %) is stopped on candle 284 (08:00 UTC, Cairo day D) for -1.06 R = -10.6 % > the 8 % daily halt. XRP signals on candle 287, which opens 20:00 UTC (Cairo day D) and closes 00:00 UTC = Cairo day D+1, so the halt of day D no longer applies: XRP enters at the open of 288. XRP: ATR 2 (wick 1), stop 4; R = ((199.96 - 200.04) - (199.96 + 200.04) x 0.0005) / 4 = -0.0700. XRP pnl is not asserted: its risk is 10 % of the account after the SOL loss (sizing basis BT-C8a). The engine C13g divergence must reproduce exactly (SOL R and pnl only), so the XRP trade - C13d - stays strict on the engine."
+    "created_at_sha": "cff3f88",
+    "author": "NC-01 golden short mirrors (Claude)",
+    "mirror_of": "G-DAY-CAIRO-S-01",
+    "notes": "Short mirror of G-DAY-CAIRO-S-01: market reflected around the base price, signals and side flipped. AUD-07 C13d corrected rule (trading day = Africa/Cairo date at the decision time, the candle CLOSE). SOL short (risk 10 %: qty 25, stop 101.98) is stopped in candle 284 (green, o->l->h->c up to 110) at 101.98 x 1.0002 for -1.0607 R = -10.6 % > the 8 % daily halt. XRP signals short on candle 287 (closes at Cairo midnight, day D+1), enters at the open of 288 at 199.96 and exits on the signal of 290 at 200.04: R = ((199.96 - 200.04) - 400 x 0.0005) / 4 = -0.07. XRP pnl not asserted (sizing basis BT-C8a), as in the long."
   }
 }

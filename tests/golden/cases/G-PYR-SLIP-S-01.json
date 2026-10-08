@@ -1,12 +1,13 @@
 {
   "schema": "zb-golden/1",
-  "id": "G-PYR-SLIP-L-01",
-  "title": "A pyramid add is a taker market order: it fills at its level adverse-adjusted by the slippage, like the entry",
+  "id": "G-PYR-SLIP-S-01",
+  "title": "Short: a pyramid add is a taker market sell: it fills at its level adverse-adjusted by the slippage (lower), like the entry",
   "behaviours": [
     "pyramid",
-    "costs"
+    "costs",
+    "short_side"
   ],
-  "side": "long",
+  "side": "short",
   "tf": "4h",
   "clock": {
     "start": 1704067200000,
@@ -34,9 +35,9 @@
       "bars": {
         "281": [
           "100",
-          "102.0201",
-          "99.9",
-          "102"
+          "100.1",
+          "97.9799",
+          "98"
         ]
       },
       "atr": {
@@ -47,7 +48,7 @@
   "path_policy": "zb-path/1",
   "slot": {
     "id": "S1",
-    "sides": "long",
+    "sides": "short",
     "risk": "0.02",
     "share": "1",
     "max_pos": 1,
@@ -67,12 +68,12 @@
     {
       "bar": 279,
       "sym": "SOLUSDT",
-      "kind": "enter_long"
+      "kind": "enter_short"
     },
     {
       "bar": 283,
       "sym": "SOLUSDT",
-      "kind": "exit_long"
+      "kind": "exit_short"
     }
   ],
   "faults": [],
@@ -80,12 +81,12 @@
     "trades": [
       {
         "sym": "SOLUSDT",
-        "side": "LONG",
+        "side": "SHORT",
         "i_in": 280,
         "i_out": 283,
         "exit": "SIGNAL_EXIT",
-        "R": "0.8885965995",
-        "pnl": "8.885965995",
+        "R": "0.8914035995",
+        "pnl": "8.914035995",
         "tol": {
           "R": "0.00003",
           "pnl": "0.0003",
@@ -121,26 +122,27 @@
       "divergence_id": "AUD07-C13A",
       "ticket": "AUD-07",
       "finding": "C13a",
-      "correction": "CORR-0052",
+      "correction": "CORR-0053",
       "until": "AUD-07 product fix",
-      "reason": "backtest.py:458-468 fills the pyramid add at its level with the fee only, no slippage (entries and exits pay it)",
+      "reason": "backtest.py:458-468 fills the short pyramid add (a sell) at its level with the fee only, no slippage (entries and exits pay it)",
       "observed": [
         {
           "path": "trades[0].R",
-          "expected": "0.8885965995",
-          "actual": 0.8937
+          "expected": "0.8914035995",
+          "actual": 0.8963
         },
         {
           "path": "trades[0].pnl",
-          "expected": "8.885965995",
-          "actual": 8.937002
+          "expected": "8.914035995",
+          "actual": 8.963002
         }
       ]
     }
   ],
   "provenance": {
-    "created_at_sha": "4e03152",
-    "author": "AUD-07 review fixes (Claude)",
-    "notes": "AUD-07 C13a corrected rule (pyramid side, matching G-DCA-SLIP-L-01): every exposure-increasing market order fills at its trigger price adverse-adjusted by the slippage. ATR 1; entry 100.02, stop 98.02, R 2, qty 5. Add 1 of 1 at 100.02 + 1 R = 102.02, frac 0.5 -> 2.5 at 102.02 x 1.0002 = 102.040404 (green candle 281 reaches 102.0201). Signal exit on the close of 283 at 102 x 0.9998 = 101.9796. pnl = 5 x (101.9796 - 100.02) + 2.5 x (101.9796 - 102.040404) - fees = 8.885966 (legacy slip-free add: 8.937002)."
+    "created_at_sha": "cff3f88",
+    "author": "NC-01 golden short mirrors (Claude)",
+    "mirror_of": "G-PYR-SLIP-L-01",
+    "notes": "Short mirror of G-PYR-SLIP-L-01: market reflected around the base price, signals and side flipped. ATR 1; entry 99.98, stop 101.98, R 2, qty 5. Add 1 of 1 at 99.98 - 1 R = 97.98, frac 0.5 -> 2.5 sold at 97.98 x 0.9998 = 97.960404 (red candle 281 reaches 97.9799). Signal exit on the close of 283 at 98 x 1.0002 = 98.0196. pnl = 5 x (99.98 - 98.0196) + 2.5 x (97.960404 - 98.0196) - fees = 8.914036."
   }
 }
