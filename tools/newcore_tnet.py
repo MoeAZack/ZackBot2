@@ -165,7 +165,9 @@ def main(argv=None, *, out=None, **kw):
     try:
         return _main(argv, out=out, **kw)
     except KeyboardInterrupt:                                        # N2: preflight / report phase
-        out.write('INTERRUPTED (Ctrl+C). Anything sent was inside the guarded run, whose teardown has run.\n')
+        out.write('INTERRUPTED (Ctrl+C). Nothing more will be sent. Check the lines above: if orders were sent, the '
+                  'CLEANUP line shows what the teardown did; if none is there, run: python tools\\newcore_tnet.py '
+                  '--cleanup\n')
         return EXIT_DEADLINE
     except Exception as ex:                                          # noqa: BLE001
         out.write(f'ERROR: unexpected {type(ex).__name__} (details withheld: they may echo input). The guarded '
@@ -345,7 +347,7 @@ def _cleanup_only(args, venue, symbols, run_id, snooze, recorder, cassette_dir, 
         out.write('CLEANUP REFUSED: the account is not readable in hedge mode.\n')
         _write_cassette(recorder, cassette_dir, stamp, values, out)
         return EXIT_PREFLIGHT
-    baseline, positions = {}, []
+    baseline, positions, over = {}, [], []
     for sym in symbols:
         pos = venue.positions(sym)
         oo = venue.open_orders(sym)
@@ -361,10 +363,18 @@ def _cleanup_only(args, venue, symbols, run_id, snooze, recorder, cassette_dir, 
             if not args.close_positions:
                 baseline[(p.symbol, p.side)] = p.qty         # listed only, never closed
             elif (p.symbol, p.side) in declared:            # keep ONLY the declared foreign quantity (C1)
+                if declared[(p.symbol, p.side)] > p.qty:     # C1b: cannot be checked; it would hide a leftover
+                    over.append(f'{p.symbol}:{p.side} declares {declared[(p.symbol, p.side)]} but holds {p.qty}')
                 baseline[(p.symbol, p.side)] = min(p.qty, declared[(p.symbol, p.side)])
         for o in oo.value:
             tag = 'NEWCORE, will be cancelled' if is_newcore_cid(o.ref.client_id) else 'foreign, left alone'
             out.write(f'  order {sym} {o.ref.client_id} {o.order_type} {o.qty}: {tag}\n')
+    if over:
+        out.write('CLEANUP REFUSED (nothing sent): an adopted quantity is above the position, so a NEWCORE leftover '
+                  'could not be told apart. Re-check the testnet UI and declare the foreign quantity exactly:\n'
+                  + ''.join(f'  {x}\n' for x in over))
+        _write_cassette(recorder, cassette_dir, stamp, values, out)
+        return EXIT_PREFLIGHT
     for p in positions:
         keep = baseline.get((p.symbol, p.side), Decimal(0))
         what = 'kept (listed)' if keep >= p.qty else (f'{p.qty - keep} will be closed' + (f', {keep} kept as '
