@@ -1,0 +1,104 @@
+{
+  "schema": "zb-golden/1",
+  "id": "G-FIELD-EXIT-L-01",
+  "title": "Exit reason alone: a signal exit and a time exit on the same candle close -> SIGNAL_EXIT (same candle, price, R)",
+  "behaviours": [
+    "signal_exit",
+    "time_exit"
+  ],
+  "side": "long",
+  "tf": "4h",
+  "clock": {
+    "start": "2024-01-01T00:00:00Z",
+    "entry_cycle_delay_s": 15
+  },
+  "costs": {
+    "model": "legacy",
+    "taker_fee": "0.0005",
+    "slip": "0.0002",
+    "funding_per_bar": "0"
+  },
+  "account": {
+    "equity": "500",
+    "max_leverage": 10,
+    "sizing": "legacy_replay"
+  },
+  "market": {
+    "SOLUSDT": {
+      "base": {
+        "kind": "flat",
+        "px": "100",
+        "wick": "0.5",
+        "n": 300
+      },
+      "bars": {},
+      "atr": {
+        "kind": "computed"
+      }
+    }
+  },
+  "path_policy": "zb-path/1",
+  "slot": {
+    "id": "S1",
+    "sides": "long",
+    "risk": "0.02",
+    "share": "1",
+    "max_pos": 1,
+    "entry": {
+      "type": "market"
+    },
+    "stop": {
+      "atr": "30"
+    },
+    "time_exit": {
+      "bars": 2
+    }
+  },
+  "signals": [
+    {
+      "bar": 279,
+      "sym": "SOLUSDT",
+      "kind": "enter_long"
+    },
+    {
+      "bar": 281,
+      "sym": "SOLUSDT",
+      "kind": "exit_long"
+    }
+  ],
+  "faults": [],
+  "expect": {
+    "trades": [
+      {
+        "sym": "SOLUSDT",
+        "side": "LONG",
+        "i_in": 280,
+        "i_out": 281,
+        "exit": "SIGNAL_EXIT",
+        "R": "-0.004666666667",
+        "pnl": "-0.04666666667"
+      }
+    ],
+    "final": {
+      "lots": 0
+    }
+  },
+  "applies_to": {
+    "legacy_engine": "required",
+    "legacy_backtest": "required",
+    "newcore_sim": {
+      "status": "pending_adapter",
+      "reason": "NEWCORE NC-07/NC-08 adapter not built yet"
+    },
+    "newcore_live_sim": {
+      "status": "pending_adapter",
+      "reason": "NEWCORE NC-08 live-sim adapter not built yet"
+    }
+  },
+  "known_divergences": [],
+  "provenance": {
+    "created_at_sha": "768150f",
+    "author": "AUD-07 product slice (Claude)",
+    "notes": "One case per compared field (#32 r3 deferred item): only `exit` separates the right answer from the wrong one. N=2 time exit and an exit signal both fire at the close of 281 (i_in + N - 1); both models give the exit signal priority (engine cycle(): exit_signal if ex; backtest: signal if ex). Same exit price 100 x 0.9998, so a model that booked TIME_EXIT would differ in `exit` only. R / pnl as G-TIME-L-01 (flat tape, fees + slippage)."
+  }
+}

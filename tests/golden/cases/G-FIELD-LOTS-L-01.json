@@ -1,0 +1,85 @@
+{
+  "schema": "zb-golden/1",
+  "id": "G-FIELD-LOTS-L-01",
+  "title": "final.lots alone: a position still open at the end of the tape -> no closed trade, one open lot",
+  "behaviours": [
+    "open_at_end"
+  ],
+  "side": "long",
+  "tf": "4h",
+  "clock": {
+    "start": "2024-01-01T00:00:00Z",
+    "entry_cycle_delay_s": 15
+  },
+  "costs": {
+    "model": "legacy",
+    "taker_fee": "0.0005",
+    "slip": "0.0002",
+    "funding_per_bar": "0"
+  },
+  "account": {
+    "equity": "500",
+    "max_leverage": 10,
+    "sizing": "legacy_replay"
+  },
+  "market": {
+    "SOLUSDT": {
+      "base": {
+        "kind": "flat",
+        "px": "100",
+        "wick": "0.5",
+        "n": 300
+      },
+      "bars": {},
+      "atr": {
+        "kind": "computed"
+      }
+    }
+  },
+  "path_policy": "zb-path/1",
+  "slot": {
+    "id": "S1",
+    "sides": "long",
+    "risk": "0.02",
+    "share": "1",
+    "max_pos": 1,
+    "entry": {
+      "type": "market"
+    },
+    "stop": {
+      "atr": "30"
+    }
+  },
+  "signals": [
+    {
+      "bar": 279,
+      "sym": "SOLUSDT",
+      "kind": "enter_long"
+    }
+  ],
+  "faults": [],
+  "expect": {
+    "trades": [],
+    "final": {
+      "lots": 1
+    }
+  },
+  "applies_to": {
+    "legacy_engine": "required",
+    "legacy_backtest": "required",
+    "newcore_sim": {
+      "status": "pending_adapter",
+      "reason": "NEWCORE NC-07/NC-08 adapter not built yet"
+    },
+    "newcore_live_sim": {
+      "status": "pending_adapter",
+      "reason": "NEWCORE NC-08 live-sim adapter not built yet"
+    }
+  },
+  "known_divergences": [],
+  "provenance": {
+    "created_at_sha": "768150f",
+    "author": "AUD-07 product slice (Claude)",
+    "notes": "One case per compared field (#32 r3 deferred item): only `final.lots` separates the right answer from the wrong one. Long entry at the open of 280, stop 30 ATR away and no time exit on a flat tape: nothing closes, so the trade list is empty either way and a model that lost (or never opened) the lot differs in final.lots only. final is reported by the engine adapter (the backtester exposes no open-position list)."
+  }
+}

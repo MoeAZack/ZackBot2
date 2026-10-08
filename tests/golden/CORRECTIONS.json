@@ -258,6 +258,33 @@
       "accepted_by": null,
       "date_cairo": "2026-10-08",
       "prev_entry_sha": "383a35913ffe6a5151552a3a290492f035bcc56c93e59280c80eafe5119276f4"
+    },
+    {
+      "id": "CORR-0009",
+      "type": "add",
+      "ticket": "AUD-07",
+      "finding": "#32 r3 deferred: one case per compared field",
+      "title": "Field cases: exit reason alone, side alone, final.lots alone",
+      "cases": {
+        "G-FIELD-EXIT-L-01": {
+          "prev_contract_sha": null,
+          "contract_sha": "f99c19a9e0d0303b6e29ca1910c6e5f29d5f6ed753b088c4531ed9bd968ed9b0"
+        },
+        "G-FIELD-LOTS-L-01": {
+          "prev_contract_sha": null,
+          "contract_sha": "62798f80a5ff6eaa036329783d195a3988d706517db02ea650296045fced1966"
+        },
+        "G-FIELD-SIDE-S-01": {
+          "prev_contract_sha": null,
+          "contract_sha": "ad15d3269183986fe5a245855313da4e61ba283cfbf417fc797c44ff97bee08e"
+        }
+      },
+      "adapters_changed": [],
+      "rationale": "Each compared field gets a case in which it is the only field that separates the correct result from a plausible wrong one (exit priority on a shared candle close, the long/short mirror on a flat tape, a lot still open at the end), so a comparer or adapter that drops that field cannot pass the pack. Both legacy models are required on all three; expectations are exact.",
+      "evidence": "branch aud-07-product-r2 after merging #32 r3 (132f18d); single-field trace mutation probe in the build report",
+      "accepted_by": null,
+      "date_cairo": "2026-10-08",
+      "prev_entry_sha": "e8574cc374c30ebf7ab068742c4c018f8bf1a608279ed54328bcd94bc720ee2a"
     }
   ]
 }

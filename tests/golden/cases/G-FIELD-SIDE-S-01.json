@@ -1,0 +1,98 @@
+{
+  "schema": "zb-golden/1",
+  "id": "G-FIELD-SIDE-S-01",
+  "title": "Side alone: a short time exit on a flat tape has exactly the R / pnl of the long one -> only `side` tells them apart",
+  "behaviours": [
+    "time_exit"
+  ],
+  "side": "short",
+  "tf": "4h",
+  "clock": {
+    "start": "2024-01-01T00:00:00Z",
+    "entry_cycle_delay_s": 15
+  },
+  "costs": {
+    "model": "legacy",
+    "taker_fee": "0.0005",
+    "slip": "0.0002",
+    "funding_per_bar": "0"
+  },
+  "account": {
+    "equity": "500",
+    "max_leverage": 10,
+    "sizing": "legacy_replay"
+  },
+  "market": {
+    "SOLUSDT": {
+      "base": {
+        "kind": "flat",
+        "px": "100",
+        "wick": "0.5",
+        "n": 300
+      },
+      "bars": {},
+      "atr": {
+        "kind": "computed"
+      }
+    }
+  },
+  "path_policy": "zb-path/1",
+  "slot": {
+    "id": "S1",
+    "sides": "short",
+    "risk": "0.02",
+    "share": "1",
+    "max_pos": 1,
+    "entry": {
+      "type": "market"
+    },
+    "stop": {
+      "atr": "30"
+    },
+    "time_exit": {
+      "bars": 2
+    }
+  },
+  "signals": [
+    {
+      "bar": 279,
+      "sym": "SOLUSDT",
+      "kind": "enter_short"
+    }
+  ],
+  "faults": [],
+  "expect": {
+    "trades": [
+      {
+        "sym": "SOLUSDT",
+        "side": "SHORT",
+        "i_in": 280,
+        "i_out": 281,
+        "exit": "TIME_EXIT",
+        "R": "-0.004666666667",
+        "pnl": "-0.04666666667"
+      }
+    ],
+    "final": {
+      "lots": 0
+    }
+  },
+  "applies_to": {
+    "legacy_engine": "required",
+    "legacy_backtest": "required",
+    "newcore_sim": {
+      "status": "pending_adapter",
+      "reason": "NEWCORE NC-07/NC-08 adapter not built yet"
+    },
+    "newcore_live_sim": {
+      "status": "pending_adapter",
+      "reason": "NEWCORE NC-08 live-sim adapter not built yet"
+    }
+  },
+  "known_divergences": [],
+  "provenance": {
+    "created_at_sha": "768150f",
+    "author": "AUD-07 product slice (Claude)",
+    "notes": "One case per compared field (#32 r3 deferred item): only `side` separates the right answer from the wrong one. Short entry 100 x 0.9998 = 99.98, exit 100 x 1.0002 = 100.02, qty 10/30: R = ((99.98 - 100.02) - (99.98 + 100.02) x 0.0005) / 30, identical to the long mirror, so a model that opened the wrong side would differ in `side` only."
+  }
+}
