@@ -3,7 +3,7 @@
 Run:  python app.py            (or ZackBot.exe after building)
       python app.py --no-window  (server only; open http://localhost:8765 yourself)
 """
-import atexit, base64, csv, glob, gzip, hmac, json, logging, logging.handlers, math, os, queue, random, re, secrets, shutil, subprocess, sys, threading, time, traceback, uuid, socket
+import atexit, base64, copy, csv, glob, gzip, hmac, json, logging, logging.handlers, math, os, queue, random, re, secrets, shutil, subprocess, sys, threading, time, traceback, uuid, socket
 from datetime import datetime, timezone
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlsplit, parse_qs
@@ -61,6 +61,7 @@ import exchange_rules as XRULES  # noqa: E402
 from engine import RISK_RULE_DEFAULTS, GOV_MULT_MAX, EXCHANGE_DOWN   # noqa: E402
 from telegram_ctl import TelegramControl, clean_setting as tg_clean_setting   # noqa: E402
 import market_collector as MC     # noqa: E402
+import engine as ENG              # noqa: E402
 
 
 # ------------------------------------------------------------------ config (keys) - validated, atomically written, encrypted on Windows
@@ -531,6 +532,20 @@ def coin_icon(sym):
 
 
 # ------------------------------------------------------------------ app state
+def migrate_settings_secrets(cfg, data_dir=None):
+    """AUD-05 r2: v2 kept the Telegram token in settings.json. Move it into the encrypted config, then rewrite settings.json
+    and its .bak without it - before any Engine is created, so no engine save (init, pause, recovery) can persist it. If
+    the config cannot be written the token is still removed from settings (re-enter it in Settings) - never kept in clear."""
+    data_dir = data_dir or DATA
+    tok = ENG.migrate_legacy_secrets(data_dir)
+    if tok and set(tok) != {'•'} and not cfg.get('TELEGRAM_TOKEN'):
+        try:
+            write_cfg({'TELEGRAM_TOKEN': tok}); cfg['TELEGRAM_TOKEN'] = tok
+        except Exception as ex:
+            log.warning(f'Telegram token not migrated ({type(ex).__name__}) - re-enter it in Settings')
+    ENG.redact_settings_files(data_dir)
+
+
 class App:
     def __init__(self):
         self.engine = None
@@ -551,14 +566,8 @@ class App:
                 try: write_cfg({}); log.info('API keys are now stored encrypted (Windows DPAPI)')
                 except Exception as e: log.warning(f'could not encrypt stored keys: {e}')
             self.cfg = cfg
+            migrate_settings_secrets(cfg)                    # AUD-05 r2: BEFORE the engine exists (it never sees a secret)
             eng = Engine(cfg, DATA)
-            tok = eng.S.get('TELEGRAM_TOKEN', '')            # v2 kept the Telegram token in settings.json -> move to the encrypted config
-            if tok and set(tok) != {'•'}:
-                try:
-                    if not cfg.get('TELEGRAM_TOKEN'): write_cfg({'TELEGRAM_TOKEN': tok}); cfg['TELEGRAM_TOKEN'] = tok
-                    eng.S.pop('TELEGRAM_TOKEN', None); eng.save_settings()
-                except Exception as ex:
-                    log.warning(f'Telegram token not migrated ({ex}) - re-enter it in Settings')
             try:
                 eng.connect()
             except Exception as e:
@@ -1176,61 +1185,91 @@ def validate_sleeve(sl, i):
     return out
 
 
+def settings_update(e, b):
+    """AUD-05: validate a whole /api/settings update against a deep copy of the settings (same rules and messages as
+    before). Returns (new settings, [(label, side effect to run after the commit)]). Raises on the first invalid key -
+    the live settings and settings.json are untouched. Call under e.lock."""
+    if not isinstance(b, dict): raise ValueError('bad settings')
+    ns, after = copy.deepcopy(e.S), []
+    for k, v in b.items():
+        if k in LIMITS:
+            ns[k] = _num(v, *LIMITS[k], k)
+            if k == 'MAX_LEVERAGE': after.append(('leverage reset', lambda: setattr(e, '_lev', {})))   # re-applied next entry
+        elif k == 'CAPITAL_CAP':
+            cap = _num(v, 0, 1e9, 'start amount')
+            after.append(('start amount', lambda cap=cap: e.set_capital_base(cap)))     # shifts the guards + saves itself
+        elif k == 'ENTRIES_PAUSED':
+            if not bool(v) and e.install_block():          # AUD-05 r5: resuming never bypasses the account confirmation
+                raise ValueError('cannot resume entries: ' + e.install_block())
+            ns[k] = bool(v)
+        elif k in ('AI_FILTER', 'RUN_IN_BACKGROUND', 'TELEGRAM_ON', 'MAKER_FALLBACK'): ns[k] = bool(v)
+        elif k == 'MARKET_COLLECTOR':
+            if not isinstance(v, bool): raise ValueError('market data collector switch must be true or false')
+            ns[k] = v
+        elif k == 'ENTRY_ORDER':
+            if v not in ('market', 'maker'): raise ValueError('entry order must be market or maker')
+            ns[k] = v
+        elif k == 'MAKER_REPRICE': ns[k] = int(_num(v, 0, 10, 'maker re-prices'))
+        elif k == 'MAKER_WAIT_S': ns[k] = int(_num(v, 5, 300, 'maker wait seconds'))
+        elif k == 'FEE_MAKER': ns[k] = _num(v, -0.001, 0.002, 'maker fee')
+        elif k == 'PUMP_GUARD': ns[k] = clean_pump(v)
+        elif k == 'RISK_RULES': ns[k] = clean_risk_rules(v)
+        elif k == 'GOVERNOR': ns[k] = clean_governor(v)
+        elif k in ('TELEGRAM_CONTROL', 'TELEGRAM_PIN'):
+            nv = tg_clean_setting(k, v, ns.get(k)); ns[k] = nv if nv is not None else ns.get(k, '')
+        elif k == 'TELEGRAM_TOKEN':
+            v = str(v).strip()
+            if v and set(v) != {'•'}:
+                if not cfg_value_ok('TELEGRAM_TOKEN', v): raise ValueError('that does not look like a Telegram bot token (123456:ABC...)')
+                def _tok(v=v):
+                    write_cfg({'TELEGRAM_TOKEN': v}); e.cfg['TELEGRAM_TOKEN'] = v; APP.cfg['TELEGRAM_TOKEN'] = v
+                after.append(('Telegram token', _tok))
+        elif k == 'TELEGRAM_CHAT':
+            v = str(v).strip()
+            if v and not re.fullmatch(r'-?\d{3,20}|@[A-Za-z0-9_]{4,40}', v): raise ValueError('chat id is a number like 123456789 or -100..., or @channelname')
+            ns[k] = v
+        elif k == 'SYMBOLS_ON':
+            if not isinstance(v, dict): raise ValueError('bad coin switches')
+            ns['SYMBOLS_ON'].update({s: bool(x) for s, x in v.items() if s in ns['UNIVERSE']})
+        elif k == 'ADD_SYMBOL':
+            s = str(v).strip().upper(); s = s if s.endswith('USDT') else s + 'USDT'
+            if not SYM.match(s): raise ValueError('coin names are letters/digits, e.g. HYPE or 1000PEPE')
+            if not e.rules: raise ValueError('not connected to Binance - cannot check that coin right now')
+            if s not in e.rules: raise ValueError(f'{s} is not a Binance USDT perpetual')
+            if s not in ns['UNIVERSE']: ns['UNIVERSE'].append(s); ns['SYMBOLS_ON'][s] = True
+        elif k == 'REMOVE_SYMBOL':
+            if v in ns['UNIVERSE']: ns['UNIVERSE'].remove(v); ns['SYMBOLS_ON'].pop(v, None)
+        elif k == 'UNIVERSE':
+            if not isinstance(v, list) or not e.rules: raise ValueError('cannot replace the coin list right now')
+            ns['UNIVERSE'] = [s for s in v if isinstance(s, str) and SYM.match(s) and s in e.rules][:120]
+            ns['SYMBOLS_ON'] = {s: ns['SYMBOLS_ON'].get(s, True) for s in ns['UNIVERSE']}
+        else:
+            raise ValueError(f'unknown setting {str(k)[:30]}')
+    return ns, after
+
+
 def handle(path, b):
     e = APP.engine
     if path == '/api/settings':
         with e.lock:
-            for k, v in b.items():
-                if k in LIMITS:
-                    e.S[k] = _num(v, *LIMITS[k], k)
-                    if k == 'MAX_LEVERAGE': e._lev = {}                       # re-apply on the next entry per coin
-                elif k == 'CAPITAL_CAP': e.set_capital_base(_num(v, 0, 1e9, 'start amount'))
-                elif k in ('ENTRIES_PAUSED', 'AI_FILTER', 'RUN_IN_BACKGROUND', 'TELEGRAM_ON', 'MAKER_FALLBACK'): e.S[k] = bool(v)
-                elif k == 'MARKET_COLLECTOR':
-                    if not isinstance(v, bool): raise ValueError('market data collector switch must be true or false')
-                    e.S[k] = v
-                elif k == 'ENTRY_ORDER':
-                    if v not in ('market', 'maker'): raise ValueError('entry order must be market or maker')
-                    e.S[k] = v
-                elif k == 'MAKER_REPRICE': e.S[k] = int(_num(v, 0, 10, 'maker re-prices'))
-                elif k == 'MAKER_WAIT_S': e.S[k] = int(_num(v, 5, 300, 'maker wait seconds'))
-                elif k == 'FEE_MAKER': e.S[k] = _num(v, -0.001, 0.002, 'maker fee')
-                elif k == 'PUMP_GUARD': e.S[k] = clean_pump(v)
-                elif k == 'RISK_RULES': e.S[k] = clean_risk_rules(v)
-                elif k == 'GOVERNOR': e.S[k] = clean_governor(v)
-                elif k in ('TELEGRAM_CONTROL', 'TELEGRAM_PIN'):
-                    nv = tg_clean_setting(k, v, e.S.get(k)); e.S[k] = nv if nv is not None else e.S.get(k, '')
-                elif k == 'TELEGRAM_TOKEN':
-                    v = str(v).strip()
-                    if v and set(v) != {'•'}:
-                        if not cfg_value_ok('TELEGRAM_TOKEN', v): raise ValueError('that does not look like a Telegram bot token (123456:ABC...)')
-                        write_cfg({'TELEGRAM_TOKEN': v}); e.cfg['TELEGRAM_TOKEN'] = v; APP.cfg['TELEGRAM_TOKEN'] = v
-                elif k == 'TELEGRAM_CHAT':
-                    v = str(v).strip()
-                    if v and not re.fullmatch(r'-?\d{3,20}|@[A-Za-z0-9_]{4,40}', v): raise ValueError('chat id is a number like 123456789 or -100..., or @channelname')
-                    e.S[k] = v
-                elif k == 'SYMBOLS_ON':
-                    if not isinstance(v, dict): raise ValueError('bad coin switches')
-                    e.S['SYMBOLS_ON'].update({s: bool(x) for s, x in v.items() if s in e.S['UNIVERSE']})
-                elif k == 'ADD_SYMBOL':
-                    s = str(v).strip().upper(); s = s if s.endswith('USDT') else s + 'USDT'
-                    if not SYM.match(s): raise ValueError('coin names are letters/digits, e.g. HYPE or 1000PEPE')
-                    if not e.rules: raise ValueError('not connected to Binance - cannot check that coin right now')
-                    if s not in e.rules: raise ValueError(f'{s} is not a Binance USDT perpetual')
-                    if s not in e.S['UNIVERSE']: e.S['UNIVERSE'].append(s); e.S['SYMBOLS_ON'][s] = True
-                elif k == 'REMOVE_SYMBOL':
-                    if v in e.S['UNIVERSE']: e.S['UNIVERSE'].remove(v); e.S['SYMBOLS_ON'].pop(v, None)
-                elif k == 'UNIVERSE':
-                    if not isinstance(v, list) or not e.rules: raise ValueError('cannot replace the coin list right now')
-                    e.S['UNIVERSE'] = [s for s in v if isinstance(s, str) and SYM.match(s) and s in e.rules][:120]
-                    e.S['SYMBOLS_ON'] = {s: e.S['SYMBOLS_ON'].get(s, True) for s in e.S['UNIVERSE']}
-                else:
-                    raise ValueError(f'unknown setting {str(k)[:30]}')
-            e.save_settings()
+            ns, after = settings_update(e, b)      # AUD-05: EVERY key validated on a copy - any error: nothing applied or saved
+            e.commit_settings(ns)                  # one durable save, then memory (both or neither)
+            failed = []
+            for what, fn in after:                 # side effects only after the commit; a failure is reported, the saved
+                try: fn()                          # settings stay as committed
+                except Exception as ex: failed.append(f'{what} failed ({str(ex)[:120]})')
         log.info('settings changed from panel: ' + ', '.join(str(k) for k in b.keys()))
         if any(str(k).startswith('TELEGRAM') for k in b) and getattr(APP, 'tg', None): APP.tg.restart()
         APP.preview()
+        if failed:
+            msg = 'settings saved, but ' + '; '.join(failed)
+            try: e.err(msg, key='settings|after')
+            except Exception: pass
+            raise ValueError(msg)
         return 'saved'
+    if path == '/api/install/confirm':                    # AUD-05 r3: the owner confirms the account of this data folder
+        if b.get('CONFIRM') != 'THIS_ACCOUNT': raise ValueError('type THIS_ACCOUNT to confirm the account of this data folder')
+        return e.confirm_install()
     if path == '/api/sleeves':
         if not isinstance(b.get('sleeves'), list) or len(b['sleeves']) > 12: raise ValueError('1-12 strategy slots')
         sl = [validate_sleeve(x, i) for i, x in enumerate(b['sleeves'])]

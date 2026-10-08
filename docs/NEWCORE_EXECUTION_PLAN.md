@@ -76,6 +76,8 @@ positions are disposable. Mainnet credentials, funds and deployment remain a sep
 5. Codex reviews the diff, reproduces important risks and returns prioritized findings.
 6. Revisions use fast/focused checks. The expensive full suite runs once on the accepted exact head.
 7. Codex advances `full-ready`, verifies protection, merges and assigns the next ticket.
+8. Every handoff or review marker ends with a `LANES:` line naming the current Build, Evidence and Integration work. An
+   idle lane must name its next task.
 
 GitHub commits and PR comments are the message bus. Five-minute polling is only a connection fallback.
 
@@ -94,21 +96,37 @@ Three lanes should remain active whenever useful work exists:
 
 Acceleration controls:
 
-1. Keep a **ready queue of the next three bounded tickets** so completion never waits for scope writing.
-2. While Claude fixes review findings, Cowork validates unaffected contracts and Codex prepares the next direct dependency.
-3. Use a **fast path** for docs-only, test-only, labels and isolated pure functions: focused checks plus normal review; do
+1. **Never idle on a wait.** Whenever a background agent or job finishes, a handoff marker is posted, or a review or CI
+   wait starts, each agent confirms its lane has a running task. If not, it immediately starts the next useful,
+   non-conflicting ready-queue item: next-ticket preparation, repros, contract drafts, harnesses, test-only slices or review.
+2. **Submit as soon as ready.** Post handoffs, evidence, drafts and findings as soon as they exist, in pieces rather than
+   batching them.
+3. **Pre-stage the other agents.** Claude posts draft contracts, repros and interfaces ahead of each ticket; Codex
+   publishes the next contract and records file/state independence promptly; Cowork builds the next head's adversarial
+   harness before it lands.
+4. **Auto-ping.** Each agent proactively tells the other two on GitHub what it thinks should happen next or can safely run
+   in parallel. Write agent names without `@` so the GitHub Codex bot is not triggered accidentally.
+5. End every marker comment with a `LANES:` line naming what Build, Evidence and Integration are doing. An idle lane must
+   name its next task so a stall is immediately visible.
+6. Keep a **ready queue of the next three bounded tickets** so completion never waits for scope writing.
+7. While Claude fixes review findings, Cowork validates unaffected contracts and Codex prepares the next direct dependency.
+8. Use a **fast path** for docs-only, test-only, labels and isolated pure functions: focused checks plus normal review; do
    not request the full matrix unless branch protection or risk class requires it.
-4. Run fast/focused tests on each revision; run full CI/replay/UI once on the accepted exact head.
-5. Queue long tests and continue non-conflicting work. Do not poll or sleep when another useful task is ready.
-6. Data collection, scouting, research-harness preparation and UI design may run beside core work when they consume a
+9. Run fast/focused tests on each revision; run full CI/replay/UI once on the accepted exact head.
+10. Queue long tests and continue non-conflicting work. Do not poll or sleep when another useful task is ready.
+11. Data collection, scouting, research-harness preparation and UI design may run beside core work when they consume a
    frozen interface/dataset and cannot change the active contract.
-7. Two implementation branches may proceed only when Codex records that their files, state, migrations and acceptance
+12. Two implementation branches may proceed only when Codex records that their files, state, migrations and acceptance
    evidence are independent. Otherwise keep one product-code integration branch.
-8. A proven P0/P1 uses the **expedite lane**: pause conflicting merges, publish a minimal contract/repro, fix and validate;
+13. A proven P0/P1 uses the **expedite lane**: pause conflicting merges, publish a minimal contract/repro, fix and validate;
    unrelated evidence/scouting work continues in parallel.
-9. Time-box speculative work. If a scout or optimization cannot state a falsifiable experiment and stop condition, park it.
-10. Track lead time, review rounds, repeated CI minutes and escaped regressions. Optimize the workflow when coordination
+14. Time-box speculative work. If a scout or optimization cannot state a falsifiable experiment and stop condition, park it.
+15. Track lead time, review rounds, repeated CI minutes and escaped regressions. Optimize the workflow when coordination
     overhead grows, never by deleting a safety gate.
+
+These acceleration rules do not weaken the safety gates: no self-acceptance, no parallel edits to the same files or
+shared state, one integration owner per branch, one full suite on the accepted exact head, and explicit protection for
+mainnet, funds and credentials.
 
 ### Continuous code-health budget
 
@@ -342,6 +360,7 @@ Fast CI runs during review. Full CI/replay/UI runs once after exact-head accepta
 - **Evidence:** focused, Cowork, Windows and CI results;
 - **Roadmap:** next three tickets/dependencies;
 - **Scouting:** promoted, parked and rejected ideas;
+- **Lanes:** the current Build, Evidence and Integration task, including the next task for any temporarily idle lane;
 - **Your action:** normally none; only material product/mainnet decisions.
 
 This document owns near-term order. `ROADMAP.md` remains the long-term product vision. If they disagree, this plan

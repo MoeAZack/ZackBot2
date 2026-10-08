@@ -1548,6 +1548,9 @@ _PREFIX = (
     ('DCA settings out of range', 'config', 'dca_range'),
     ('size below Binance minimum', 'execution', 'size_min'),
     ('trailing entry expired', 'trailing', 'expired'),
+    ('data file not saved', 'risk_gateway', 'state_untrusted'),
+    ('account not confirmed for this data folder', 'risk_gateway', 'account_unconfirmed'),    # AUD-05 r5                 # AUD-05 r2: safety file write failed
+    ('entry not sent: its write-ahead record', 'execution', 'write_ahead_failed'),   # AUD-05 r2
 )
 # wrappers: (prefix, stage, code or None = the inner gate's code, inner is a gate text)
 _WRAP = (

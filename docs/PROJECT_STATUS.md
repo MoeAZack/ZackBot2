@@ -2,13 +2,14 @@
 
 > **08 Oct 2026 roadmap alignment:** the shared replacement-first execution spine is in
 > [`NEWCORE_EXECUTION_PLAN.md`](NEWCORE_EXECUTION_PLAN.md). Claude Code implements, Cowork independently validates and
-> runs evidence/research, and Codex owns scope, review, ordering and protected merge. Active work is AUD-05 durable state
-> and restart truth (PR #30). The primary milestone is a mainnet-candidate engine with long/short strategy coverage,
+> runs evidence/research, and Codex owns scope, review, ordering and protected merge. AUD-05 durable state is merged;
+> AUD-06a truthful DCA labels are at the protected final gate and AUD-07 golden execution contracts are in review. The
+> primary milestone is a mainnet-candidate engine with long/short strategy coverage,
 > bounded bias/risk/drawdown controls and crypto/gold/TradFi venue readiness; optional product features follow it.
 > Cowork's evidence scope is Linux/sandbox research and adversarial validation; Windows, native UI, installer and connected
 > testnet claims come from Claude Code/Codex Windows runs. STRAT-00 research can run beside core work without changing runtime.
 
-*Last refreshed: 2026-10-08 01:12 Cairo (Africa/Cairo) by Codex, on branch `roadmap/newcore-execution-plan`. This is the plain-language owner view. `ROADMAP.md` and `docs/reviews/` hold the detailed scope and evidence.*
+*Last refreshed: 2026-10-08 03:53 Cairo (Africa/Cairo) by Codex, on branch `roadmap/newcore-execution-plan`. This is the plain-language owner view. `ROADMAP.md` and `docs/reviews/` hold the detailed scope and evidence.*
 
 ## Where we are now
 
@@ -17,17 +18,20 @@
 | Environment | **Binance Futures testnet only.** Mainnet stays impossible until the roadmap and the final release audit are complete and you approve it. |
 | Is ZackBot running? | Yes, on your PC (PAPER/testnet), build `20261007-075404`: engine and exchange OK; four positions, all protected; zero open incidents or unprotected lots. |
 | Installed application | **T05a installed and runtime-proven.** The causal trade-audit endpoint/card and bounded audit file are active without changing trading decisions. |
-| Latest accepted commit | BT02 implementation `e224a8b`; acceptance/status documentation is being added before protected merge. |
-| Current ticket | **BT02: exchange-filter and full-plan feasibility** |
-| Stage | **BT02 accepted after three review rounds; protected merge pending.** |
-| What Claude is doing | Fixing the separate one-step quantity/orphan safety ticket on PR #20. |
-| What Codex is reviewing | BT02 acceptance/merge, then PR #20 and the remaining runtime gates. |
+| Latest accepted commit | AUD-05 merged on protected master at `a262a82`; AUD-06a implementation accepted at `82e0561`, with documentation head `d09725a` in the final gate. |
+| Current ticket | **AUD-06a truthful DCA labels / AUD-07 execution golden contracts** |
+| Stage | **AUD-06a protected full gate running; AUD-07 r2 gate hardening in progress.** |
+| What Claude is doing | Building AUD-07 r2 and the separate product-fix stack, including C13g journal truth. |
+| What Cowork is doing | Preparing the AUD-07 ledger attack and product-divergence replay probes. |
+| What Codex is reviewing | AUD-06a final gate/merge, this roadmap integration, then AUD-07 r2. |
 | Your action | **None.** |
 
 ## Latest test results
 
 | Where | Result |
 |---|---|
+| AUD-05 r5 Codex Windows review | Exact implementation head `75238d5`: focused r1-r5 suites **204/204 passed**; adversarial account, grid and secret regressions passed; diff clean. |
+| AUD-05 r5 GitHub | CodeQL action and Python analyses passed; fast/full protected gates tracked on PR #30. |
 | BT02 focused Windows review | **52/52 passed** at `e224a8b`. |
 | BT02 GitHub | Fast and CodeQL gates passed on the implementation head. |
 | BT02 full suite reported by Claude | **875 passed**, 0 failed. |

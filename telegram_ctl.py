@@ -521,6 +521,8 @@ class TelegramControl:
         with e.lock:
             if e.state.get('halted'):
                 return 'Cannot resume: the daily loss halt is active until midnight Cairo time.'
+            blk = e.install_block() if hasattr(e, 'install_block') else None
+            if blk: return f'Cannot resume: {blk}.'                    # AUD-05 r5: the owner confirms the account in the app
             was = e.S.get('ENTRIES_PAUSED')
             e.S['ENTRIES_PAUSED'] = False; e.save_settings()
         log.info('telegram control: entries resumed')
