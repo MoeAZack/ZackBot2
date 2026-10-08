@@ -89,7 +89,9 @@ class ScenarioResult:
     trades: list = field(default_factory=list)
     error: str | None = None
     wall_s: float = 0.0
-    interrupted: bool = False                              # Ctrl+C / SystemExit (N2)
+    interrupted: bool = False                              # the scenario ITSELF was stopped (Ctrl+C / SystemExit)
+    evidence_interrupted: bool = False                     # only its post-result evidence commit was interrupted:
+                                                           # the result is complete (a FAIL stays a genuine FAIL)
     attempts: int = 1                                      # bracket scenarios: runs until observed (spec attempts)
     degraded: dict = field(default_factory=dict)           # 'SYMBOL:SIDE' -> how (Runner F3 / guard degraded protection)
     cycle_times: list = field(default_factory=list)        # the candle closes the Runner cycled at (replay tape)
@@ -105,7 +107,8 @@ class ScenarioResult:
                 'counters': self.counters, 'orders': self.orders, 'ledger': self.ledger, 'injected': self.injected,
                 'final_truth': self.final_truth, 'cleanup': self.cleanup, 'trades': self.trades, 'error': self.error,
                 'wall_s': round(self.wall_s, 3), 'cycle_times': list(self.cycle_times), 'cassette': self.cassette,
-                'degraded': dict(self.degraded)}
+                'degraded': dict(self.degraded), 'interrupted': self.interrupted,
+                'evidence_interrupted': self.evidence_interrupted}
 
 
 class _Run:
@@ -466,24 +469,26 @@ class SuiteResult:
     preflight: object
     scenarios: list
     exit_code: int
-    interrupted: bool = False                              # Ctrl+C outside a scenario body (preflight / boot)
+    interrupted: bool = False                              # a Ctrl+C was absorbed anywhere in the suite
 
 
 def _stopped(r):
     return r.interrupted or bool(r.error and r.error.startswith('DeadlineExceeded'))
 
 
-def suite_exit_code(results, preflight_ok=True):
+def suite_exit_code(results, preflight_ok=True, interrupted=False):
     """Precedence (as the venue CLI): 8 residue > 7 a genuine FAIL > 4 preflight > 6 interrupted / deadline >
     2 nothing ran > 1 inconclusive > 0. A scenario stopped by Ctrl+C or its deadline is FAIL-by-stop, not a genuine
-    FAIL; the CLI adds 5 (evidence not written) between 8 and 7."""
+    FAIL; a COMPLETED result whose evidence commit was interrupted keeps its verdict (a FAIL stays 7). The CLI adds
+    5 (evidence not written) between 8 and 7. interrupted: a Ctrl+C absorbed outside any result (between
+    scenarios, boot, preflight) - it replaces only 2 / 1 / 0."""
     if not preflight_ok:
         return EXIT_PREFLIGHT
     if any(r.residue for r in results):
         return EXIT_RESIDUE
     if any(r.verdict == FAIL and not _stopped(r) for r in results):
         return EXIT_FAIL
-    if any(_stopped(r) for r in results):
+    if interrupted or any(_stopped(r) or r.evidence_interrupted for r in results):
         return EXIT_DEADLINE                                         # Ctrl+C or a deadline
     if not results or all(r.verdict == SKIPPED for r in results):
         return EXIT_NOTHING_RAN                                      # N5: SKIPPED is never a pass

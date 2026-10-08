@@ -30,7 +30,9 @@ send once an interrupt is pending (closes, stops and cancels still go). SystemEx
 
 Exit-code precedence (the same in the venue CLI tools/newcore_tnet.py): 8 residue > 5 evidence not written >
 7 a genuine FAIL > 4 / 3 / 2 refused (nothing sent) > 6 interrupted or deadline > 1 inconclusive > 0. So an
-absorbed interrupt replaces only 0 and 1; a scenario stopped by Ctrl+C or its deadline counts as 6, not as 7.
+absorbed interrupt replaces only 0 and 1; a scenario stopped by Ctrl+C or its deadline counts as 6, not as 7, while a
+COMPLETED result whose cassette / sidecar commit was interrupted keeps its verdict (a genuine FAIL stays 7), and a
+refused preflight stays 4 even if its cassette commit was interrupted (the output says no scenario ran).
 """
 import argparse
 import json
@@ -220,6 +222,10 @@ def _write_text(path, text):
     return path
 
 
+NO_SCENARIO_INTERRUPT = ('INTERRUPTED (Ctrl+C) before any scenario started: no scenario ran, nothing was sent and no '
+                         'teardown was needed.\n')
+
+
 def main(argv=None, *, out=None, **kw):
     """Typed exit codes only: an unexpected exception is exit 7 with its type (never exit 1 = INCONCLUSIVE, never
     its message: it may echo input). Ctrl+C: see the module docstring for exactly what is guaranteed."""
@@ -232,7 +238,8 @@ def main(argv=None, *, out=None, **kw):
             return 6
         return rc
     except (KeyboardInterrupt, SystemExit):                          # N2: preflight / boot / report phase
-        out.write('INTERRUPTED (Ctrl+C). A scenario that had sent orders ran its teardown.\n')
+        out.write('INTERRUPTED (Ctrl+C). Any scenario that had sent orders ran its teardown (none had started if no '
+                  'scenario line is printed above: then nothing was sent).\n')
         return 6
     except Exception as ex:                                          # noqa: BLE001
         out.write(f'ERROR: unexpected {type(ex).__name__} (details withheld). Any scenario that sent orders ran '
@@ -389,14 +396,21 @@ def _main(argv=None, *, http=None, local_clock=None, sleep=None, store=None, out
             return EXIT_USAGE
         if res.exit_code == EXIT_PREFLIGHT and res.preflight is not None:
             out.write('PREFLIGHT REFUSED:\n' + ''.join(f'  - {x}\n' for x in res.preflight.refusals))
-            return EXIT_PREFLIGHT
+            if getattr(res, 'interrupted', False):
+                out.write(NO_SCENARIO_INTERRUPT)
+            return EXIT_PREFLIGHT                                    # Codex P2: the refusal (4) wins over 6
         rc_report = EXIT_PASS
         if args.target == 'testnet' or args.report_dir:
             rc_report = _report(args, res, 'tnet_' + nonce, build, values, out, cassettes)
+        if getattr(res, 'interrupted', False) and not res.scenarios:
+            out.write(NO_SCENARIO_INTERRUPT)
+            return rc_report or 6
         if getattr(res, 'interrupted', False) and res.exit_code not in (EXIT_RESIDUE, 7):   # 8 / 5 / 7 win
             out.write('INTERRUPTED (Ctrl+C): the report above has every scenario so far; a scenario that had sent '
                       'orders ran its teardown.\n')
             return rc_report or 6
+        if getattr(res, 'interrupted', False):
+            out.write('INTERRUPTED (Ctrl+C) after the results below were complete; the exit code reports them.\n')
         if res.exit_code == EXIT_RESIDUE:
             out.write('CLEANUP NOT CLEAN - check these on the testnet UI:\n')
             for r in res.scenarios:
