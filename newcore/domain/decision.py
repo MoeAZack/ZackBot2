@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import enum
 
-from .base import ID_PREFIXES, Record, check_id, check_symbol, check_text, record, req
+from .base import ID_PREFIXES, Record, check_id, check_nfc, check_symbol, check_text, record, req
 from .orders import IntentState, OrderIntent, Purpose, Side
 from .reasons import GATE_NAMESPACES, NAMESPACES, ReasonCode
 
@@ -124,7 +124,9 @@ class Decision(Record):
         if self.subject_id is not None:
             check_id(self.subject_id, p + '.subject_id', 'lot', 'int')
         req(len(self.detail) <= 160 and self.detail.isprintable(), p + '.detail', 'at most 160 printable characters')
+        check_nfc(self.detail, p + '.detail')
         req(len(self.policy_version) <= 32 and self.policy_version.isprintable(), p + '.policy_version', '<= 32 chars')
+        check_nfc(self.policy_version, p + '.policy_version')
         a = self.action
         req(self.reason.namespace in ACTION_NAMESPACES[a], p + '.reason', f'{self.reason} is not a reason for {a}')
         operator = self.reason.namespace == 'operator' or self.reason in OPERATOR_REASONS or a is Action.RESUME

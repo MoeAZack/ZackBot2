@@ -23,7 +23,7 @@ from __future__ import annotations
 import enum
 from decimal import Decimal
 
-from .base import (CTX, ZERO, Record, check_client_id, check_id, check_symbol, check_text, non_negative, positive, record,
+from .base import (CTX, ZERO, Record, check_ascii_text, check_client_id, check_id, check_symbol, check_text, non_negative, positive, record,
                    req)
 from .reasons import ReasonCode
 
@@ -333,7 +333,7 @@ class ExternalTrade(Record):
     price: Decimal
 
     def _validate(self, p):
-        check_text(self.trade_id, p + '.trade_id', 64)
+        check_ascii_text(self.trade_id, p + '.trade_id', 64)
         positive(self.qty, p + '.qty')
         positive(self.price, p + '.price')
 

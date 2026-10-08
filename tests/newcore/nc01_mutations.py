@@ -186,6 +186,31 @@ MUTATIONS = {
     'r3a ruling 4: the gate applies a late fill twice': ('newcore/ports/journal.py', [(
         "            req(d.subject_id not in self._late_applied, 'event.decision', 'a late fill is reconciled once')",
         "            pass")]),
+    'PR44 c1: incident reference tuples unbounded': (D + 'incident.py', [(
+        "    req(len(values) <= MAX_REFS, path, f'at most {MAX_REFS} references')", "    pass")]),
+    'PR44 c1: no document size cap': (D + 'codec.py', [(
+        "    if isinstance(text, (bytes, str)) and len(text) > MAX_DOCUMENT_BYTES:", "    if False:")]),
+    'PR44 c2: key-shaped tokens journaled in detail': (D + 'incident.py', [(
+        "    req(KEY_SHAPED.search(v) is None, path,", "    req(True, path,")]),
+    'PR44 c3: errors echo whole values': (D + 'errors.py', [(
+        "        path, msg = _bounded(path, MAX_PATH_CHARS), _bounded(msg, MAX_MSG_CHARS)", "        pass")]),
+    'PR44 c4: blank detail accepted': (D + 'base.py', [(
+        "        f'1..{n} printable ASCII characters')\n"
+        "    req(v.strip() != '', path, 'whitespace only (an absent value is None, never blank text)')",
+        "        f'1..{n} printable ASCII characters')")]),
+    'PR44 c5: NFD text accepted': (D + 'base.py', [(
+        "    req(unicodedata.is_normalized('NFC', v), path,", "    req(True, path,")]),
+    'PR44 c5: non-ASCII incident text accepted': (D + 'base.py', [(
+        "ASCII_TEXT_RE = re.compile(r'[ -~]+')", "ASCII_TEXT_RE = re.compile(r'[^\\x00-\\x1f]+')")]),
+    'PR44 c6: a reused incident id in the chain': (D + 'events.py', [(
+        "            req(ev.incident.incident_id not in incidents, p + '.incident.incident_id', 'incident id used twice')",
+        "            pass")]),
+    'PR44 c6: a reused incident id in the journal gate': ('newcore/ports/journal.py', [(
+        "            req(ev.incident.incident_id not in self._incidents, 'event.incident.incident_id', 'incident id used twice')",
+        "            pass")]),
+    'PR44 c6: evidence of any id family': (D + 'incident.py', [(
+        "EVIDENCE_PREFIXES = ('res', 'rec', 'dec', 'evt', 'inc')",
+        "EVIDENCE_PREFIXES = ('res', 'rec', 'dec', 'evt', 'inc', 'acct', 'pos')")]),
     'duplicate JSON keys': (D + 'codec.py', [("            if k in out:\n                problems.append(",
                                               "            if False:\n                problems.append(")]),
     'truncated JSON': (D + 'codec.py', [(

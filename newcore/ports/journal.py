@@ -398,6 +398,7 @@ class JournalGate:
         self._live = {}     # intent_id -> [OrderIntent, IntentState, sent_at_ms | None, final OrderResult | None]
         self._late = {}     # r3 item 3b: intent_id -> result_id of the journaled superseding (late) FINAL record
         self._late_applied = set()   # intents whose late fact a reconcile.late_fill_after_not_found decision applied
+        self._incidents = set()      # PR #44 (Cowork 6): incident ids already journaled
 
     @classmethod
     def rebuild(cls, account_id, aggregate_id, events: Iterable) -> 'JournalGate':
@@ -432,6 +433,8 @@ class JournalGate:
             if ev.to_state in TERMINAL:
                 req(final is not None and terminal_for(final) is ev.to_state, 'event.to_state',
                     'the terminal step must be terminal_for(final result)')
+        elif isinstance(ev, IncidentRecorded):
+            req(ev.incident.incident_id not in self._incidents, 'event.incident.incident_id', 'incident id used twice')
         elif isinstance(ev, DecisionRecorded) and ev.decision.reason is ReasonCode.RECONCILE_LATE_FILL:
             d = ev.decision                  # r3 item 3b (ruling 4): the late fact is applied once, after it is journaled
             req(self._late.get(d.subject_id) in d.evidence, 'event.decision',
@@ -459,6 +462,8 @@ class JournalGate:
             st[3] = ev.result
         elif isinstance(ev, DecisionRecorded) and ev.decision.reason is ReasonCode.RECONCILE_LATE_FILL:
             self._late_applied.add(ev.decision.subject_id)
+        elif isinstance(ev, IncidentRecorded):
+            self._incidents.add(ev.incident.incident_id)
 
 
 # ---------------------------------------------------------------------------------------------- consumed-signal rule

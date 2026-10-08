@@ -206,6 +206,7 @@ def check_event_chain(events, *, after_sequence=0, known_intents=None):
     cids = {c for it, _, _ in live.values() for c in it.client_ids}
     finals, ended, decisions, one_shots, used_auth = {}, set(), set(), set(), set()
     closed, superseding, applied_late = {}, {}, set()       # r3 item 3b: ended intents, late FINAL records, decisions
+    incidents = set()                                       # PR #44 (Cowork 6): an incident id is used once
     owner = None
     for n, ev in enumerate(events):
         p = f'events[{n}]'
@@ -214,6 +215,9 @@ def check_event_chain(events, *, after_sequence=0, known_intents=None):
             f'expected sequence {after_sequence + n + 1} (gap, reorder or rollback)')
         owner = owner or (ev.account_id, ev.aggregate_id)
         req((ev.account_id, ev.aggregate_id) == owner, p + '.account_id', 'event of another account / aggregate in this log')
+        if isinstance(ev, IncidentRecorded):
+            req(ev.incident.incident_id not in incidents, p + '.incident.incident_id', 'incident id used twice')
+            incidents.add(ev.incident.incident_id)
         if isinstance(ev, DecisionRecorded):
             d = ev.decision
             req(d.decision_id not in decisions, p, 'decision recorded twice')

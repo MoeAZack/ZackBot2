@@ -66,7 +66,7 @@ def test_item1_incident_kinds_and_references_are_typed():
     for kind in (ReasonCode.RECOVERY_DURABILITY_UNAVAILABLE, ReasonCode.OWNERSHIP_UNTRACKED_POSITION,
                  ReasonCode.RECONCILE_FOREIGN_QUARANTINE, ReasonCode.PROTECT_RESTORING, ReasonCode.RISK_DAILY_HALT):
         F.replace(inc, kind=kind)
-    F.replace(inc, symbol=None, side=None, intent_refs=(), lot_refs=(), position_refs=(), evidence=(), detail='')
+    F.replace(inc, symbol=None, side=None, intent_refs=(), lot_refs=(), position_refs=(), evidence=(), detail=None)
     bad = {
         'entry reason as kind': dict(kind=ReasonCode.ENTRY_SIGNAL),
         'exit reason as kind': dict(kind=ReasonCode.EXIT_STOP),

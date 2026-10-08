@@ -32,7 +32,7 @@ import typing
 from decimal import Decimal
 
 from . import account, decision, events, instrument, orders, portfolio, protection, snapshot
-from .base import INT64, Record, canonical_decimal, dec_str, field_spec, req
+from .base import INT64, Record, canonical_decimal, dec_str, field_spec, req, show
 from .errors import DomainError, ForeignDocument, FutureSchema, InvalidRecord, OlderSchema, UnknownSchema, \
     UnsupportedVersion
 
@@ -41,6 +41,7 @@ SCHEMA_VERSION = 1
 ENVELOPE = frozenset({'format', 'schema_version', 'record_type', 'body'})
 DECIMAL_RE = re.compile(r'-?(0|[1-9][0-9]*)(\.[0-9]+)?')    # contract invariant 2, ASCII digits only
 DECIMAL_MAX_CHARS = 64                     # 38 significant digits within |adjusted exponent| <= 18 fit in 59
+MAX_DOCUMENT_BYTES = 4 * 1024 * 1024       # PR #44 (Cowork 1): far under the NC-02a 16 MiB frame; typical portfolio 19 KB
 
 RECORD_TYPES = {
     'account': account.Account,
@@ -131,7 +132,7 @@ def _decoder(tp):
         def dec_enum(v, path):
             m = members.get(v) if type(v) is str else None
             if m is None:
-                _bad(path, f'{v!r} is not a {tp.__name__}')
+                _bad(path, f'{show(v)} is not a {tp.__name__}')
             return m
         return dec_enum
     if tp is Decimal:
@@ -164,7 +165,7 @@ def from_json(cls, d, path):
     spec, names = _record_decoder(cls)
     if d.keys() != names:
         extra, missing = set(d) - names, names - set(d)
-        _bad(path, f'unknown keys {sorted(map(repr, extra))}' if extra else f'missing keys {sorted(missing)}')
+        _bad(path, f'unknown keys {sorted(map(show, extra))}' if extra else f'missing keys {sorted(missing)}')
     kw = {name: dec(d[name], f'{path}.{name}') for name, dec in spec}
     try:
         return cls(**kw)
@@ -238,6 +239,8 @@ def loads(text, *, expect=None):
             return _Bad(s)
         return n
 
+    if isinstance(text, (bytes, str)) and len(text) > MAX_DOCUMENT_BYTES:      # chars <= bytes for str
+        raise InvalidRecord('document', f'larger than {MAX_DOCUMENT_BYTES} bytes ({len(text)})')
     if isinstance(text, bytes):
         try:
             text = text.decode('utf-8')

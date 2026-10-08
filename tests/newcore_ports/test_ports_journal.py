@@ -213,7 +213,7 @@ def test_an_incident_is_journaled_in_sequence_without_effect():
     s = _flow(flow_fill_and_protect)
     inc = Incident(incident_id=make_id('inc', 1), account_id=ACCT, kind=ReasonCode.RECONCILE_MANUAL_CLOSE,
                    at_ms=s.events[-1].at_ms, symbol='SOLUSDT', side=Side.LONG, intent_refs=(ENTRY,), lot_refs=(LOT,),
-                   position_refs=(), evidence=(), detail='')
+                   position_refs=(), evidence=(), detail=None)
     ev = IncidentRecorded(event_id=make_id('evt', 10 ** 6), account_id=ACCT, aggregate_id=PF,
                           sequence=len(s.events) + 1, at_ms=inc.at_ms, reason=inc.kind, incident=inc)
     j = ReferenceJournal()
@@ -407,3 +407,25 @@ def test_late_fill_before_the_terminal_step_is_refused_by_the_journal():
     rec = replace_seq(s._event(ResultObserved, reason=ReasonCode.RECONCILE_LATE_FILL, result=late), len(events) + 1)
     with pytest.raises(JournalConflict, match='G9: a result after the final result'):
         j.append(rec)
+
+
+def test_the_journal_refuses_a_reused_incident_id():
+    """PR #44 (Cowork 6), the step-0 twin of test_6_an_incident_id_is_used_once_in_the_log: the gate refuses a second
+    IncidentRecorded with an incident id already journaled; re-delivering the SAME event stays idempotent."""
+    from nc_events import replace
+    from newcore.domain import Incident, IncidentRecorded, ReasonCode, make_id
+    s = Scenario()
+    s.entry_filled()
+    inc = Incident(incident_id=make_id('inc', 1), account_id=ACCT, kind=ReasonCode.RECONCILE_MANUAL_CLOSE,
+                   at_ms=s.events[-1].at_ms, symbol='SOLUSDT', side=Side.LONG, intent_refs=(), lot_refs=(LOT,),
+                   position_refs=(), evidence=(), detail='venue flat, lot open')
+    first = s._event(IncidentRecorded, reason=inc.kind, incident=inc)
+    j = ReferenceJournal()
+    for ev in s.events:
+        j.append(ev)
+    assert j.append(first) is Admission.ALREADY_APPLIED
+    again = s._event(IncidentRecorded, reason=inc.kind, incident=replace(inc, detail='seen again'))
+    with pytest.raises(JournalConflict, match='incident id used twice'):
+        j.append(again)
+    other = replace(again, incident=replace(inc, incident_id=make_id('inc', 2)))
+    assert j.append(other) is Admission.APPLY
