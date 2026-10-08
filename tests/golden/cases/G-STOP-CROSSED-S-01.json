@@ -141,9 +141,10 @@
   "known_divergences": [
     {
       "adapter": "legacy_backtest",
+      "divergence_id": "AUD08-STOP-CROSSED-CODE",
       "ticket": "AUD-08",
       "finding": "STOP_CROSSED folded into stop",
-      "correction": "CORR-0028",
+      "correction": "CORR-0056",
       "until": "NEWCORE (the legacy backtester is disposable)",
       "reason": "backtest.py walk_path/adverse_leg: a stop ratcheted after the first leg to a level the price is already through is closed where the price is (px = a_) with why='stop' - the same fill and bar as the bot, but the trade row cannot say that it was a bot market close and not an exchange stop fill",
       "observed": [

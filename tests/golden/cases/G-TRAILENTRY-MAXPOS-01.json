@@ -146,9 +146,10 @@
   "known_divergences": [
     {
       "adapter": "legacy_backtest",
+      "divergence_id": "AUD07-C13C",
       "ticket": "AUD-07",
       "finding": "C13c",
-      "correction": "CORR-0002",
+      "correction": "CORR-0064",
       "until": "AUD-07 product fix",
       "reason": "backtest.py:598-601 arms trailing entries without a slot check and checks max_pos only at the fill, so XRP (rebounds first, in candle 280) takes the slot and SOL (armed first, rebounds in 281) is dropped",
       "observed": [

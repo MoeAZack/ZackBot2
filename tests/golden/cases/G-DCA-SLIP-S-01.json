@@ -118,9 +118,10 @@
   "known_divergences": [
     {
       "adapter": "legacy_backtest",
+      "divergence_id": "AUD07-C13A",
       "ticket": "AUD-07",
       "finding": "C13a",
-      "correction": "CORR-0016",
+      "correction": "CORR-0044",
       "until": "AUD-07 product fix",
       "reason": "backtest.py:419-420 fills the short DCA safety order (a sell) at its level with the fee only, no slippage (entries and exits pay it)",
       "observed": [

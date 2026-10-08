@@ -96,9 +96,10 @@
   "known_divergences": [
     {
       "adapter": "legacy_backtest",
+      "divergence_id": "AUD07-C11",
       "ticket": "AUD-07",
       "finding": "C11",
-      "correction": "CORR-0033",
+      "correction": "CORR-0061",
       "until": "AUD-07 product fix",
       "reason": "backtest.py:559 exits when i - i_in >= N, i.e. at the close of candle i_in + N: it holds N + 1 candles",
       "observed": [

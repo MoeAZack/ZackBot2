@@ -98,9 +98,10 @@
   "known_divergences": [
     {
       "adapter": "legacy_backtest",
+      "divergence_id": "AUD07-C11",
       "ticket": "AUD-07",
       "finding": "C11",
-      "correction": "CORR-0002",
+      "correction": "CORR-0060",
       "until": "AUD-07 product fix",
       "reason": "backtest.py:559 exits when i - i_in >= N, i.e. at the close of candle i_in + N: it holds N + 1 candles",
       "observed": [
@@ -113,9 +114,10 @@
     },
     {
       "adapter": "legacy_engine",
+      "divergence_id": "AUD07-C11",
       "ticket": "AUD-07",
       "finding": "C11",
-      "correction": "CORR-0002",
+      "correction": "CORR-0060",
       "until": "AUD-07 product fix",
       "reason": "engine.py:2386 counts wall-clock seconds since the fill; with the entry cycle 30 s slower than the exit cycle the lot is 3.998 candles old at the close of candle i_in + 3, so it exits one candle late (4.998 candles)",
       "observed": [

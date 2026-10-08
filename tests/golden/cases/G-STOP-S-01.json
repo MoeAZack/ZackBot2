@@ -100,9 +100,10 @@
   "known_divergences": [
     {
       "adapter": "legacy_engine",
+      "divergence_id": "AUD07-C13G",
       "ticket": "AUD-07",
       "finding": "C13g",
-      "correction": "CORR-0030",
+      "correction": "CORR-0058",
       "until": "AUD-07 product fix",
       "reason": "engine.py:2284-2290 books an exchange stop that filled (stop gone) at the STOP price, not the fill price - mirrored on the short side: the journal books the 101.98 buy stop without the exit slippage the exchange charged (-1.05049 R booked vs -1.06069 R paid)",
       "observed": [

@@ -119,9 +119,10 @@
   "known_divergences": [
     {
       "adapter": "legacy_backtest",
+      "divergence_id": "AUD07-C13A",
       "ticket": "AUD-07",
       "finding": "C13a",
-      "correction": "CORR-0003",
+      "correction": "CORR-0045",
       "until": "AUD-07 product fix",
       "reason": "backtest.py:419-420 fills the gapped safety orders at the open with the fee only, no slippage",
       "observed": [

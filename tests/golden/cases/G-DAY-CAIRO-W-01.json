@@ -137,9 +137,10 @@
   "known_divergences": [
     {
       "adapter": "legacy_backtest",
+      "divergence_id": "AUD07-C13D",
       "ticket": "AUD-07",
       "finding": "C13d",
-      "correction": "CORR-0002",
+      "correction": "CORR-0041",
       "until": "AUD-07 product fix",
       "reason": "backtest.py:240-242 keys the trading day by the Cairo date of the bar OPEN, so the day-D halt still gates the signal of a candle that closes on day D+1",
       "observed": [
@@ -180,9 +181,10 @@
     },
     {
       "adapter": "legacy_engine",
+      "divergence_id": "AUD07-C13G",
       "ticket": "AUD-07",
       "finding": "C13g",
-      "correction": "CORR-0002",
+      "correction": "CORR-0041",
       "until": "AUD-07 product fix",
       "reason": "engine.py:2284-2290 books an exchange stop that filled (stop gone) at the STOP price, not the fill price: the journal omits the exit slippage the exchange charged (-1.04951 R booked vs -1.05931 R paid on a 98.02 stop)",
       "observed": [

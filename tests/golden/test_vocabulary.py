@@ -145,3 +145,51 @@ def test_schema_rejects_behaviours_outside_the_registry(mutation):
                        'not_a_string': b + [None], 'case_variant': [b[0].upper()] + b[1:]}[mutation]
     with pytest.raises(schema.CaseError, match='behaviours'):
         schema.validate(c)
+
+
+# ------------------------------------------------------------------ divergence identity (Codex golden r3 residual ruling, 2)
+def _kd_case(cid='G-TIME-L-02'):
+    return copy.deepcopy(schema.load(os.path.join(os.path.dirname(schema.case_paths()[0]), cid + '.json')))
+
+
+def test_every_known_divergence_has_a_stable_id():
+    ids = {}
+    for c in schema.load_all():
+        for d in c['known_divergences']:
+            assert schema.DIVERGENCE_ID.fullmatch(d['divergence_id']), (c['id'], d['divergence_id'])
+            ids.setdefault(d['divergence_id'], set()).add((d['ticket'], d['finding']))
+    assert ids, 'the pack records known divergences'
+    # one meaning per ID across the pack: every occurrence of an ID carries the same recorded defect (ticket, finding)
+    many = {i: sorted(v) for i, v in ids.items() if len(v) > 1}
+    assert not many, f'a divergence_id names more than one recorded defect (ticket, finding): {many}'
+
+
+@pytest.mark.parametrize('did', [None, '', 'aud07-c11', 'AUD07', 'AUD07_C11', 'AUD07-C11 ', '-C11', 'AUD07--C11', 'AUD07-', 7])
+def test_schema_rejects_a_malformed_divergence_id(did):
+    c = _kd_case()
+    c['known_divergences'][0]['divergence_id'] = did
+    with pytest.raises(schema.CaseError, match='divergence_id'):
+        schema.validate(c)
+
+
+def test_schema_rejects_a_missing_divergence_id():
+    c = _kd_case()
+    c['known_divergences'][0].pop('divergence_id')
+    with pytest.raises(schema.CaseError, match='divergence_id'):
+        schema.validate(c)
+
+
+def test_schema_rejects_a_duplicate_divergence_id_on_one_adapter():
+    """The uniqueness rule names the duplicate (it runs before the one-entry-per-adapter rule)."""
+    c = _kd_case()
+    c['known_divergences'].append(copy.deepcopy(c['known_divergences'][0]))
+    with pytest.raises(schema.CaseError, match='divergence_id listed more than once on one adapter'):
+        schema.validate(c)
+
+
+def test_the_same_divergence_id_on_two_adapters_is_valid():
+    """G-TIME-L-02: AUD07-C11 is recorded on both legacy adapters - unique per adapter, not per case."""
+    c = _kd_case()
+    assert sorted((d['adapter'], d['divergence_id']) for d in c['known_divergences']) == \
+        [('legacy_backtest', 'AUD07-C11'), ('legacy_engine', 'AUD07-C11')]
+    schema.validate(c)

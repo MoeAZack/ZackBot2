@@ -101,9 +101,10 @@
   "known_divergences": [
     {
       "adapter": "legacy_engine",
+      "divergence_id": "AUD07-C13G",
       "ticket": "AUD-07",
       "finding": "C13g",
-      "correction": "CORR-0020",
+      "correction": "CORR-0048",
       "until": "AUD-07 product fix",
       "reason": "engine.py:2284-2290 books an exchange stop that filled (stop gone) at the STOP price, not the fill price - mirrored on the short side: the journal books the 101.98 buy stop without the exit slippage the exchange charged: a stop gapped at the open (105) shows -1.05 R in the bot journal while the account lost -2.57 R",
       "observed": [

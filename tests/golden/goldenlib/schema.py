@@ -2,8 +2,11 @@
 
 contract_sha(case) = sha256(canonical(case minus DESCRIPTIVE)): the expectation (`expect`, incl. per-trade tolerances), which
 adapters it binds (`applies_to`), the recorded legacy behaviour (`known_divergences`) AND every causal input (market, signals,
-slot, costs, clock, account, faults, adapter_options, ...). Only the descriptive text (title, behaviours, provenance, notes)
-is outside it. Any new top-level key is protected automatically (validate() rejects keys it does not know)."""
+slot, costs, clock, account, faults, adapter_options, ...) AND the `behaviours` ID list (registry IDs that drive the per-commit
+tier gate; Codex golden r3 residual ruling point 1). Only the descriptive text (title, provenance, notes) is outside it. Any
+new top-level key is protected automatically (validate() rejects keys it does not know). Every known divergence carries a
+stable `divergence_id` (point 2): tier coverage keys on adapter + divergence_id; ticket / finding stay descriptive evidence
+(still inside the hash)."""
 import glob, hashlib, json, math, numbers, os, re
 
 from . import CASES_DIR
@@ -86,8 +89,12 @@ TRADE_KEYS = ('sym', 'side', 'i_in', 'i_out', 'exit', 'R', 'pnl', 'tol')
 TOL_KEYS = ('R', 'pnl', 'adapters', 'why')          # per-trade tolerance: a stated reason and the adapters it applies to
 FINAL_KEYS = ('lots',)                              # expect.final keys an adapter may declare (adapters.CAPS); others = typo
 COST_KEYS = ('model', 'taker_fee', 'slip', 'funding_per_bar')
-DESCRIPTIVE = ('title', 'behaviours', 'provenance', 'notes')     # the only keys outside the contract hash
+DESCRIPTIVE = ('title', 'provenance', 'notes')     # the only keys outside the contract hash (behaviours is IN it since AUD-08 vocab)
 CORR_ID = re.compile(r'CORR-\d{4}')
+# Stable identity of a recorded legacy defect (Codex golden r3 residual ruling point 2), e.g. AUD07-C11, AUD07-TP-GAP-OPEN.
+# Unique per adapter within a case; the same ID on several cases (or on both adapters) names the same recorded defect.
+DIVERGENCE_ID = re.compile(r'[A-Z0-9]+(-[A-Z0-9]+)+')
+KD_KEYS = ('adapter', 'divergence_id', 'ticket', 'finding', 'reason', 'observed', 'correction')
 TOL_MAX = 0.001                                      # largest per-trade tolerance (path / rounding artefacts only)
 REQUIRED_TOP = ('schema', 'id', 'title', 'behaviours', 'side', 'tf', 'clock', 'account', 'market', 'path_policy', 'slot',
                 'signals', 'faults', 'expect', 'applies_to', 'known_divergences', 'provenance')
@@ -233,8 +240,10 @@ def validate(case, path=None):
         _req(st == 'required' or (isinstance(v, dict) and v.get('reason')), cid, f'applies_to.{a}: a reason is mandatory for {st}')
     kd = case['known_divergences']
     for d in kd:
-        for k in ('adapter', 'ticket', 'finding', 'reason', 'observed', 'correction'):
+        for k in KD_KEYS:
             _req(k in d, cid, f'known_divergences: {k!r} missing in {d}')
+        _req(isinstance(d['divergence_id'], str) and DIVERGENCE_ID.fullmatch(d['divergence_id']), cid,
+             f"known_divergences: divergence_id {d['divergence_id']!r} must match {DIVERGENCE_ID.pattern} (e.g. AUD07-C11)")
         _req(isinstance(d['correction'], str) and CORR_ID.fullmatch(d['correction']), cid,
              f"known_divergences: 'correction' must name the ledger entry that recorded it (CORR-nnnn), got {d['correction']!r}")
         _req(status(case, d['adapter']) == 'known_divergence', cid, f"known divergence for {d['adapter']} but applies_to is not known_divergence")
@@ -245,6 +254,9 @@ def validate(case, path=None):
             if f in ('R', 'pnl'):
                 _req(all(o.get(k) is None or _is_finite(o[k]) for k in ('expected', 'actual')), cid,
                      f'known_divergences.observed {o}: R / pnl values must be finite numbers')
+    pairs = [(d['adapter'], d['divergence_id']) for d in kd]
+    dup = sorted({p for p in pairs if pairs.count(p) > 1})
+    _req(not dup, cid, f'known_divergences: divergence_id listed more than once on one adapter {dup}')
     for a in ADAPTERS:
         if status(case, a) == 'known_divergence':
             _req(sum(d['adapter'] == a for d in kd) == 1, cid, f'applies_to.{a} = known_divergence needs exactly one known_divergences entry')
