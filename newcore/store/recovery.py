@@ -32,12 +32,13 @@ from newcore.ports.journal import JournalConflict
 from .errors import DurabilityUnavailable
 from .evidence import EvidenceRef, evidence_bytes, write_evidence
 from .fold import Folder
-from .frame import KIND_SEGMENT, MAX_RECORD, RT_EVENT, RT_HEADER, HeaderState, scan
+from .frame import KIND_SEGMENT, MAX_RECORD, RT_EVENT, RT_HEADER, HeaderState, resync_records, scan
 from .fs import RealFs
 from .header import (EMPTY_SHA, HeaderError, Seal, SegmentHeader, VersionVerdict, check_version, decode_header,
                      header_frame_max, strict_json)
 from .hold import Verdict, directive_for
-from .journal import JOURNAL_DIR, SEG_RE, WRITER_BUILD, FileJournal, _check_ids, seg_name, write_segment
+from .journal import (JOURNAL_DIR, LOCK_NAME, SEG_RE, WRITER_BUILD, FileJournal, ReadOnlyJournal, _check_ids,
+                      acquire_lock, seg_name, write_segment)
 
 
 @dataclass(frozen=True, slots=True)
@@ -56,6 +57,7 @@ class Recovery:
     findings: tuple
     evidence: tuple
     created: tuple                    # files this recovery created (relative names)
+    view: ReadOnlyJournal | None = None   # DURABILITY_UNAVAILABLE: read-only events / gate / state, appends refused
 
     @property
     def directive(self):
@@ -69,13 +71,39 @@ class _Out(Exception):
         self.verdict, self.findings = verdict, tuple(findings)
 
 def recover_journal(account_dir, account_id, aggregate_id, *, fs=None, writer_build=WRITER_BUILD):
+    """Raises JournalLocked when another writer holds the journal (the read-only verdicts never take the lock, so an
+    ABORT_RO / DAMAGED / UNREADABLE / MISSING journal is never written to, not even by the lock file)."""
     _check_ids(account_id, aggregate_id)
     fs = fs or RealFs()
     try:
-        plan = _read_only(fs, account_dir, account_id, aggregate_id)
+        plan = _read_only_safe(fs, account_dir, account_id, aggregate_id)
     except _Out as out:
         return Recovery(out.verdict, None, None, out.findings, (), ())
-    return _finish(fs, account_dir, account_id, plan, writer_build)
+    jd = os.path.join(account_dir, JOURNAL_DIR)
+    try:
+        lock = acquire_lock(fs, jd)
+    except OSError:
+        return Recovery(Verdict.DURABILITY_UNAVAILABLE, None, plan.folder.state(), tuple(plan.findings), (), (),
+                        ReadOnlyJournal(plan.folder, 'the writer lock cannot be taken'))
+    try:
+        plan = _read_only_safe(fs, account_dir, account_id, aggregate_id)     # re-read under the lock
+    except _Out as out:
+        fs.unlock(lock)
+        return Recovery(out.verdict, None, None, out.findings, (), ())
+    rec = _finish(fs, account_dir, account_id, plan, writer_build, lock)
+    if rec.journal is None:
+        fs.unlock(lock)
+    return rec
+
+
+def _read_only_safe(fs, account_dir, account_id, aggregate_id):
+    """_read_only, with any unexpected exception on hostile bytes turned into DAMAGED (never raised: finding 2)."""
+    try:
+        return _read_only(fs, account_dir, account_id, aggregate_id)
+    except _Out:
+        raise
+    except (IndexError, KeyError, TypeError, ValueError, AttributeError, OverflowError) as ex:
+        raise _Out(Verdict.DAMAGED, [Finding('damage', None, None, f'internal: {type(ex).__name__}')]) from None
 
 # ---------------------------------------------------------------------------------------------------- read-only phase
 @dataclass
@@ -88,6 +116,29 @@ class _Plan:
     active_scan: object | None
     voids: list
     findings: list
+
+def _future_frames(name, recs):
+    """Rule-1 findings among records found past the first invalid one (HIGH-2, Codex #43): a CRC-valid header record
+    of a future / unknown version or a CRC-valid event of an unsupported schema anywhere in the file forces ABORT_RO
+    before any DAMAGED verdict. Anything that does not even parse is left to the damage verdict."""
+    out = []
+    for r in recs:
+        if r.rtype == RT_HEADER:
+            try:
+                doc, _ = strict_json(r.payload)
+            except HeaderError:
+                continue
+            v = check_version(doc)
+            if v is not VersionVerdict.OK:
+                out.append(Finding('future_format' if v is VersionVerdict.FUTURE else 'unknown_format', name, r.offset,
+                                   'header version (after corruption)'))
+        elif r.rtype == RT_EVENT:
+            res = decode_result(r.payload)
+            if res.outcome is Outcome.UNSUPPORTED_VERSION:
+                out.append(Finding('future_event', name, r.offset,
+                                   f'event schema {res.error.direction} (after corruption)'))
+    return out
+
 
 def _read_only(fs, account_dir, account_id, aggregate_id):
     jd = os.path.join(account_dir, JOURNAL_DIR)
@@ -106,8 +157,8 @@ def _read_only(fs, account_dir, account_id, aggregate_id):
         mt = SEG_RE.fullmatch(n)
         if mt and int(mt.group(1)) >= 1:
             names[int(mt.group(1))] = n
-        else:
-            damage.append(Finding('unexpected_file', n, None, 'not a journal segment'))
+        elif n != LOCK_NAME:                                  # Cowork finding 7: reported, ignored, never damage
+            findings.append(Finding('stray_file', n, None, 'not a journal segment: ignored'))
     blobs = {}
     for no, n in sorted(names.items()):
         p = os.path.join(jd, n)
@@ -129,6 +180,9 @@ def _read_only(fs, account_dir, account_id, aggregate_id):
         if sc.header is HeaderState.UNKNOWN_FORMAT:
             future.append(Finding('unknown_format', n, 0, f'frame version {sc.frame_version} / reserved bits'))
             continue
+        if not sc.clean:                                      # HIGH-2: rule 1 also behind corruption
+            start = sc.good_end if sc.header is HeaderState.OK else 0
+            future.extend(_future_frames(n, resync_records(data, start)))
         if sc.header is not HeaderState.OK:
             continue
         recs = sc.records
@@ -140,7 +194,7 @@ def _read_only(fs, account_dir, account_id, aggregate_id):
                     future.append(Finding('future_format' if v is VersionVerdict.FUTURE else 'unknown_format', n, 8,
                                           'segment header version'))
                 else:
-                    headers[no] = decode_header(doc, problems)
+                    headers[no] = decode_header(doc, problems, recs[0].payload)
             except HeaderError as ex:
                 headers[no] = ex
         for r in recs:
@@ -181,8 +235,10 @@ def _read_only(fs, account_dir, account_id, aggregate_id):
             damage.append(Finding('damage', names[no], sc.damage[0] if sc.damage else 0, why))
     seq_segments = []                                         # (no, records after the header)
     if hdr is not None:
-        if (hdr.account_id, hdr.aggregate_id) != (account_id, aggregate_id) or hdr.segment_no != m:
-            damage.append(Finding('foreign', names[m], 8, 'the journal names another account / aggregate / segment'))
+        if (hdr.account_id, hdr.aggregate_id) != (account_id, aggregate_id) or hdr.segment_no != m \
+                or len(hdr.seals) != m - 1:                    # Cowork finding 2: stop here, never index past it
+            raise _Out(Verdict.DAMAGED, damage + [Finding('foreign', names[m], 8,
+                                                          'the journal names another account / aggregate / segment')])
         for j in range(1, m):
             seal, data = hdr.seals[j - 1], blobs[j]
             if seal.sealed_len > len(data) or _sha(data[:seal.sealed_len]) != seal.sha256:
@@ -238,7 +294,7 @@ def _read_only(fs, account_dir, account_id, aggregate_id):
     return _Plan(folder, names, blobs, m, hdr, active, voids, findings)
 
 # ---------------------------------------------------------------------------------------------------- write phase
-def _finish(fs, account_dir, account_id, plan, writer_build):
+def _finish(fs, account_dir, account_id, plan, writer_build, lock=None):
     jd = os.path.join(account_dir, JOURNAL_DIR)
     folder, m = plan.folder, plan.m
     torn = plan.active_scan is not None and plan.active_scan.tail_offset is not None
@@ -247,8 +303,9 @@ def _finish(fs, account_dir, account_id, plan, writer_build):
         try:
             h = fs.open_append(path)
         except OSError:
-            return Recovery(Verdict.DURABILITY_UNAVAILABLE, None, folder.state(), tuple(plan.findings), (), ())
-        j = FileJournal(fs, account_dir, folder, m, h, plan.header.seals, len(plan.blobs[m]), writer_build)
+            return Recovery(Verdict.DURABILITY_UNAVAILABLE, None, folder.state(), tuple(plan.findings), (), (),
+                            ReadOnlyJournal(folder, 'the segment cannot be opened for writing'))
+        j = FileJournal(fs, account_dir, folder, m, h, plan.header.seals, len(plan.blobs[m]), writer_build, lock)
         return Recovery(Verdict.CLEAN, j, folder.state(),
                         tuple(plan.findings), (), ())
 
@@ -281,8 +338,8 @@ def _finish(fs, account_dir, account_id, plan, writer_build):
         h = fs.open_append(os.path.join(jd, seg_name(new_no)))
     except OSError:
         return Recovery(Verdict.DURABILITY_UNAVAILABLE, None, folder.state(), tuple(plan.findings), tuple(evidence),
-                        tuple(created))
-    j = FileJournal(fs, account_dir, folder, new_no, h, tuple(seals), seg_len, writer_build)
+                        tuple(created), ReadOnlyJournal(folder, 'the torn tail cannot be sealed'))
+    j = FileJournal(fs, account_dir, folder, new_no, h, tuple(seals), seg_len, writer_build, lock)
     return Recovery(Verdict.REPAIRED, j, folder.state(), tuple(plan.findings), tuple(evidence), tuple(created))
 
 

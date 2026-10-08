@@ -35,16 +35,19 @@ from newcore.domain.codec import Outcome
 from newcore.domain.events import EVENT_TYPES
 from newcore.ports.journal import Admission, JournalConflict
 
-from .errors import DurabilityUnavailable, JournalExists
+from .errors import DurabilityUnavailable, JournalExists, JournalLocked
 from .evidence import write_evidence
 from .fold import Folder
 from .frame import KIND_SEGMENT, MAX_RECORD, RT_EVENT, RT_HEADER, file_header, frame
 from .fs import RealFs
-from .header import EMPTY_SHA, ID_RE, Seal, SegmentHeader, encode_header
+from .header import EMPTY_SHA, Seal, SegmentHeader, encode_header
 
 JOURNAL_DIR = 'journal'
+LOCK_NAME = '.lock'                      # interim NC-02a writer fence (Cowork finding 3)
 SEG_RE = re.compile(r'seg-([0-9]{6})\.seg')
 WRITER_BUILD = 'nc-02a'
+ACCT_RE = re.compile(r'acct_[0-9a-f]{32}')
+PF_RE = re.compile(r'pf_[0-9a-f]{32}')
 
 
 def seg_name(n):
@@ -56,6 +59,22 @@ def _close_quiet(fs, h):
         fs.close(h)
     except OSError:
         pass
+
+
+def acquire_lock(fs, journal_dir):
+    """The exclusive writer lock journal/.lock (held for the writer's lifetime). Raises JournalLocked when another
+    writer holds it and OSError when it cannot be created or locked (an unwritable store, an I/O error, a non-file at
+    the lock path).
+
+    Lifecycle (N1): the .lock FILE is permanent. It is created once and never unlinked by the store - not by close(),
+    not by recovery, not after a crash - so the store can never delete a lock another writer holds. Release = the OS
+    lock is dropped (close(), or the process dying). A stale .lock after a crash is therefore harmless and must not be
+    removed by hand while a writer may run (on POSIX that would let a second writer lock a fresh file; RealFs detects
+    a path swapped between its open and its lock and refuses it). Recovery ignores .lock in the journal listing."""
+    lock = fs.lock_exclusive(os.path.join(journal_dir, LOCK_NAME))
+    if lock is None:
+        raise JournalLocked('another writer holds this journal')
+    return lock
 
 
 def write_segment(fs, journal_dir, hdr):
@@ -76,13 +95,16 @@ def write_segment(fs, journal_dir, hdr):
 class FileJournal:
     """Use create_journal (new) or recover_journal (existing); never construct directly."""
 
-    def __init__(self, fs, account_dir, folder, segment_no, handle, seals, seg_len, writer_build=WRITER_BUILD):
+    def __init__(self, fs, account_dir, folder, segment_no, handle, seals, seg_len, writer_build=WRITER_BUILD,
+                 lock=None):
         self._fs, self.account_dir, self._folder = fs, account_dir, folder
         self._jd = os.path.join(account_dir, JOURNAL_DIR)
         self.segment_no, self._h = segment_no, handle
         self._seals, self._seg_len, self._build = tuple(seals), seg_len, writer_build
         self._needs_roll = None           # the op that failed; the next append rolls before writing
         self._closed = False
+        self._lock = lock                 # journal/.lock, released by close()
+        self._fenced = None               # set when the segment changed under this writer: every append refused
         self.rolls = ()                   # (EvidenceRef | None, new segment name) of every in-process roll
 
     @property
@@ -105,6 +127,8 @@ class FileJournal:
     def append(self, event):
         if self._closed:
             raise DurabilityUnavailable('append refused: journal closed', self._path())
+        if self._fenced is not None:
+            raise DurabilityUnavailable(f'append refused: {self._fenced}', self._path())
         if isinstance(event, EVENT_TYPES):                        # anything else: the gate gives the one refusal
             payload = canonical_bytes(event)
             if len(payload) > MAX_RECORD:
@@ -118,6 +142,14 @@ class FileJournal:
         if self._needs_roll is not None:
             self._roll()                                          # raises DurabilityUnavailable if it cannot
         rec = frame(RT_EVENT, payload)
+        try:
+            size = self._fs.size(self._path())
+        except OSError as ex:
+            self._failed('size')
+            raise DurabilityUnavailable('size', self._path(), ex) from None
+        if size != self._seg_len:                                 # Cowork finding 3: someone else wrote here
+            self._fenced = 'the segment changed under this writer (another writer?)'
+            raise DurabilityUnavailable(f'append refused: {self._fenced}', self._path())
         self._fs.mark('C-E1')                                     # before the write: nothing on disk
         try:
             self._fs.write(self._h, rec)
@@ -161,6 +193,12 @@ class FileJournal:
         if self._h is not None:
             h, self._h = self._h, None
             _close_quiet(self._fs, h)
+        if self._lock is not None:
+            lock, self._lock = self._lock, None
+            try:
+                self._fs.unlock(lock)
+            except OSError:
+                pass
 
     # ------------------------------------------------------------------------------------------------ failure path
     def _failed(self, op):
@@ -217,10 +255,54 @@ class FileJournal:
         self.rolls += ((ref, seg_name(new.segment_no)),)
 
 
+class ReadOnlyJournal:
+    """A read-only view of a journal whose store cannot be written (recover_journal verdict DURABILITY_UNAVAILABLE).
+
+    It holds the events up to the last verified record (a torn tail is NOT included and stays unsealed on disk), the
+    rebuilt JournalGate, the decisions and the folded JournalState, so a runner booting into hard HOLD can fold its
+    state and price the A23 / A24 emergency set. It has no write handle: every append raises DurabilityUnavailable
+    and nothing is ever written."""
+    readonly = True
+
+    def __init__(self, folder, why):
+        self._folder, self._why = folder, why
+
+    @property
+    def account_id(self):
+        return self._folder.account_id
+
+    @property
+    def aggregate_id(self):
+        return self._folder.aggregate_id
+
+    def append(self, event):
+        raise DurabilityUnavailable(f'append refused: read-only journal view ({self._why})', '')
+
+    def last_sequence(self):
+        return self._folder.last_sequence
+
+    def read(self, after_sequence=0):
+        if type(after_sequence) is not int or after_sequence < 0:
+            raise ValueError('after_sequence must be an int >= 0')
+        return tuple(self._folder.events[after_sequence:])
+
+    def find_decision(self, decision_id):
+        return self._folder.decisions.get(decision_id)
+
+    def gate(self):
+        return self._folder.gate
+
+    def state(self):
+        return self._folder.state()
+
+    def close(self):
+        pass
+
+
 def _check_ids(account_id, aggregate_id):
-    if not (type(account_id) is str and ID_RE.fullmatch(account_id) and account_id.startswith('acct_')):
+    if not (type(account_id) is str and ACCT_RE.fullmatch(account_id)):
         raise ValueError('account_id is not an acct_ id')
-    if not (type(aggregate_id) is str and ID_RE.fullmatch(aggregate_id) and aggregate_id.startswith('pf_')):
+    if not (type(aggregate_id) is str and PF_RE.fullmatch(aggregate_id)):
         raise ValueError('aggregate_id is not a pf_ id')
 
 
@@ -249,12 +331,18 @@ def create_journal(account_dir, account_id, aggregate_id, *, fs=None, writer_bui
             fs.fsync_dir(account_dir)
         elif k != 'dir':
             raise DurabilityUnavailable('create (the journal path is not a directory)', jd)
-        elif fs.listdir(jd):
+        elif any(SEG_RE.fullmatch(n) for n in fs.listdir(jd)):
             raise JournalExists('the journal already has segments: open it with recover_journal')
+        step = 'lock'
+        lock = acquire_lock(fs, jd)
+    except OSError as ex:
+        raise DurabilityUnavailable(step, at, ex) from None
+    try:
         step, at = 'segment create', os.path.join(jd, seg_name(1))
         _, n = write_segment(fs, jd, SegmentHeader(account_id, aggregate_id, 1, 0, (), writer_build))
         step = 'open'
         h = fs.open_append(at)
     except OSError as ex:
+        fs.unlock(lock)
         raise DurabilityUnavailable(step, at, ex) from None
-    return FileJournal(fs, account_dir, Folder(account_id, aggregate_id), 1, h, (), n, writer_build)
+    return FileJournal(fs, account_dir, Folder(account_id, aggregate_id), 1, h, (), n, writer_build, lock)

@@ -160,7 +160,13 @@ def test_crash_at_every_write_and_fsync_boundary(drill, i, when):
             assert crashed
             fs = fs0.crash(model, pending)
             ctx = (drill, i, when, model, pending, f.trace[i])
-            r = recover(fs)
+            g0 = FaultFs(fs)
+            r = recover(g0)
+            if r.verdict is Verdict.DAMAGED:
+                # Cowork finding 1 (fail closed): a zero-filled, complete-length last frame is damage, never a tail;
+                # only the NUL-fill power-loss model produces it, and recovery then writes nothing at all (HOLD).
+                assert pending == 'zero' and g0.trace == [], (ctx, r.findings)
+                continue
             if not st['created']:
                 assert r.verdict in (Verdict.MISSING, Verdict.REPAIRED, Verdict.CLEAN), ctx
                 if r.verdict is Verdict.MISSING:
@@ -193,7 +199,7 @@ def test_crash_at_every_write_and_fsync_boundary(drill, i, when):
             before = fs.snapshot()
             g = FaultFs(fs)
             r3 = recover(g)
-            assert r3.verdict is Verdict.CLEAN and [op for _, op, _ in g.trace] == ['open_append'], ctx
+            assert r3.verdict is Verdict.CLEAN and [op for _, op, _ in g.trace] == ['lock', 'open_append'], ctx
             r3.journal.close()
             assert fs.snapshot() == before
 

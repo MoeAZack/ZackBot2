@@ -10,6 +10,7 @@ ever appended to.
 """
 from __future__ import annotations
 
+import errno
 import os
 import stat
 import sys
@@ -60,6 +61,18 @@ class FsSeam(Protocol):
         """No-op crash-point label (crash_matrix.md names); the fault seam records it."""
         ...
 
+    def size(self, p) -> int:
+        """Current size of the file at p (read-only; the writer's fence before each append)."""
+        ...
+
+    def lock_exclusive(self, p):
+        """Create p if missing and take a non-blocking exclusive OS lock on it for this handle's lifetime. Returns the
+        lock handle, or None when another handle (this process or another) holds it. Raises OSError on I/O failure."""
+        ...
+
+    def unlock(self, lock) -> None:
+        ...
+
 
 class _Handle:
     __slots__ = ('fd', 'path')
@@ -69,6 +82,25 @@ class _Handle:
 
 
 _BINARY = getattr(os, 'O_BINARY', 0)
+# errnos that mean "another handle holds the lock" (msvcrt.locking: EACCES / EDEADLOCK; flock: EWOULDBLOCK / EAGAIN,
+# EACCES on some systems). Anything else while locking is an I/O failure.
+_CONTENDED = frozenset({errno.EACCES, errno.EAGAIN, errno.EWOULDBLOCK, errno.EDEADLK,
+                        getattr(errno, 'EDEADLOCK', errno.EDEADLK)})
+
+
+def _lstat_or_none(p):
+    try:
+        return os.lstat(p)
+    except FileNotFoundError:
+        return None
+
+
+def _regular(st):
+    return stat.S_ISREG(st.st_mode) and not (getattr(st, 'st_file_attributes', 0) & FILE_ATTRIBUTE_REPARSE_POINT)
+
+
+def _same_file(a, b):
+    return (a.st_dev, a.st_ino) == (b.st_dev, b.st_ino)
 
 
 class RealFs:
@@ -141,6 +173,59 @@ class RealFs:
 
     def mark(self, label):
         pass
+
+    def size(self, p):
+        return os.lstat(p).st_size
+
+    def lock_exclusive(self, p):
+        """N1 (Cowork, PR #43): the lock FILE is permanent - nothing in the store ever unlinks it (not on release, not
+        after a crash), so the store can never delete a lock another writer holds. A stale file left by a crashed
+        writer is harmless: the OS lock dies with its process. Only contention returns None; any other failure while
+        locking is an OSError (the caller types it). A lock path that is not a regular file (a directory, a link, a
+        reparse point) is refused, never followed. A lock whose path no longer names the locked file (unlinked and
+        recreated by someone else between open and lock; POSIX only, Windows refuses to delete an open file) is not
+        held: it is released and reported as contention."""
+        st = _lstat_or_none(p)
+        if st is not None and not _regular(st):
+            raise OSError(errno.EISDIR if stat.S_ISDIR(st.st_mode) else errno.ELOOP,
+                          'the lock path is not a regular file')
+        fd = os.open(p, os.O_RDWR | os.O_CREAT | _BINARY | getattr(os, 'O_NOFOLLOW', 0), 0o600)
+        try:
+            if sys.platform == 'win32':
+                import msvcrt
+                os.lseek(fd, 0, os.SEEK_SET)
+                msvcrt.locking(fd, msvcrt.LK_NBLCK, 1)
+            else:
+                import fcntl
+                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError as ex:
+            os.close(fd)
+            if ex.errno in _CONTENDED:
+                return None
+            raise
+        h = _Handle(fd, p)
+        try:
+            now = _lstat_or_none(p)
+            same = now is not None and _regular(now) and _same_file(os.fstat(fd), now)
+        except OSError:
+            self.unlock(h)
+            raise
+        if not same:
+            self.unlock(h)
+            return None
+        return h
+
+    def unlock(self, lock):
+        try:
+            if sys.platform == 'win32':
+                import msvcrt
+                os.lseek(lock.fd, 0, os.SEEK_SET)
+                msvcrt.locking(lock.fd, msvcrt.LK_UNLCK, 1)
+            else:
+                import fcntl
+                fcntl.flock(lock.fd, fcntl.LOCK_UN)
+        finally:
+            os.close(lock.fd)
 
 
 def _flush_dir_windows(p):

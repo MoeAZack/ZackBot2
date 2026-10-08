@@ -13,7 +13,7 @@ raise an injected OSError (ENOSPC, EROFS, EACCES...). Reads can be failed per pa
 import errno
 import os
 
-MUTATING = ('mkdir', 'open_new', 'open_append', 'write', 'fsync', 'fsync_dir')
+MUTATING = ('mkdir', 'open_new', 'open_append', 'write', 'fsync', 'fsync_dir', 'lock')
 PENDING = ('drop', 'all', 'half', 'one', 'minus1', 'zero')
 
 
@@ -41,7 +41,7 @@ class _H:
 
 class MemFs:
     def __init__(self, *dirs):
-        self.files, self.dirs, self.clock = {}, {}, 0
+        self.files, self.dirs, self.clock, self.locks = {}, {}, 0, set()
         for d in dirs:
             d = os.path.normpath(d)
             while d not in self.dirs:
@@ -124,6 +124,26 @@ class MemFs:
 
     def mark(self, label):
         pass
+
+    def size(self, p):
+        p = self._n(p)
+        if p not in self.files:
+            raise oserror(errno.ENOENT)
+        return len(self.files[p].current)
+
+    def lock_exclusive(self, p):
+        p = self._n(p)
+        if p not in self.files:
+            self._need_parent(p)
+            self.clock += 1
+            self.files[p] = _F(mtime=self.clock)
+        if p in self.locks:
+            return None
+        self.locks.add(p)
+        return _H(p)
+
+    def unlock(self, lock):
+        self.locks.discard(lock.path)
 
     # ------------------------------------------------------------------------------------------------ test helpers
     def snapshot(self):
@@ -224,6 +244,15 @@ class FaultFs:
 
     def close(self, h):
         return self.inner.close(h)
+
+    def size(self, p):
+        return self._read('size', p, lambda: self.inner.size(p))
+
+    def lock_exclusive(self, p):
+        return self._mut('lock', p, lambda: self.inner.lock_exclusive(p))
+
+    def unlock(self, lock):
+        return self.inner.unlock(lock)
 
     def mark(self, label):
         self.marks.append((self.n, label))
