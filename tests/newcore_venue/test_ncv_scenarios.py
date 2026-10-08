@@ -58,10 +58,30 @@ def test_unused_scripted_answers_fail_the_scenario():
 def test_replay_of_a_tampered_cassette_is_caught():
     report = S.run_scenario(S.DUPLICATE)
     doc = json.loads(report.cassette)
+    # avg price is not in the step's expectations: only the replay-equals-recording comparison can catch this.
     doc['interactions'][1]['response']['body_text'] = doc['interactions'][1]['response']['body_text'].replace(
-        '"FILLED"', '"NEW"')
+        '"210.5"', '"999.5"')
     with pytest.raises(S.ScenarioFailed):
         S.replay_cassette(S.DUPLICATE, json.dumps(doc), [r.outcome for r in report.steps])
+
+
+def test_replay_that_leaves_interactions_unplayed_is_caught():
+    report = S.run_scenario(S.DUPLICATE)
+    doc = json.loads(report.cassette)
+    doc['interactions'].append(doc['interactions'][-1])
+    with pytest.raises(Exception) as ei:
+        S.replay_cassette(S.DUPLICATE, json.dumps(doc))
+    assert 'not replayed' in str(ei.value)
+
+
+def test_requests_are_attributed_to_their_own_step():
+    # Step 1 is scripted with 2 answers but sends 1; step 2 is scripted with 0 but sends 1: totals match, steps do not.
+    steps = [S.Step('one query', lambda v: v.query(S.ENTRY_REF),
+                    (S.error(-2013, 'Order does not exist.'), S.error(-2013, 'Order does not exist.'))),
+             S.Step('another query', lambda v: v.query(S.ENTRY_REF), ())]
+    with pytest.raises(S.ScenarioFailed) as ei:
+        S.run_scenario(S.Scenario('bad', 'x', steps))
+    assert 'one query' in str(ei.value)
 
 
 def test_run_all():

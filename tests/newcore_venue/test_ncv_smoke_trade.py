@@ -140,7 +140,9 @@ def test_read_only_default_places_nothing(env):
 
 def test_not_flat_refuses_the_trade(env):
     rc, out, http = run(env, flat_script(positions='position_risk_hedge') + [S.dual(True)], ['--trade'])
-    assert rc == 7 and 'not flat' in out and not [r for r in http.requests if r.method != 'GET']
+    assert rc == 7 and 'refused: the account is not flat' in out
+    assert not [r for r in http.requests if r.method != 'GET']
+    assert not sent(http, 'GET', '/fapi/v1/klines')                       # refused before even pricing
 
 
 def test_one_way_account_refuses_the_trade(env):
@@ -201,6 +203,29 @@ def test_not_flat_after_close_is_possible_exposure(env):
     rc, out, _ = run(env, flat_script() + trade_script(positions=raw(200, json.dumps(rows).encode()),
                                                          fills_entry=None, fills_close=None), ['--trade'])
     assert rc == 8 and 'NOT FLAT after the close' in out
+
+
+def test_close_that_executed_nothing_is_possible_exposure(env):
+    rc, out, _ = run(env, flat_script() + trade_script(
+        close=S.order(IDS.close, status='EXPIRED', side='SELL', qty='1', executed='0', order_id=8002),
+        positions=None, oo=None, algo=None, fills_entry=None, fills_close=None), ['--trade'])
+    assert rc == 8 and 'CLOSE NOT CONFIRMED' in out
+
+
+def test_only_a_forming_candle_refuses_to_price(env):
+    rows = [[NOW - 30_000, '219', '221', '218', '220', '1', NOW + 29_999, '220', 1, '1', '220', '0']]   # still open
+    rc, out, http = run(env, flat_script() + trade_script(
+        price=raw(200, json.dumps(rows).encode()), entry=None, stop=None, verify=None, cancel=None, confirm=None,
+        close=None, positions=None, oo=None, algo=None, fills_entry=None, fills_close=None), ['--trade'])
+    assert rc == 7 and 'no closed candle' in out and not [r for r in http.requests if r.method != 'GET']
+
+
+def test_trade_phase_refuses_a_one_way_read_report_on_its_own():
+    class Report:
+        hedge, flat, rules = False, True, {}
+    with pytest.raises(ST.TradeAborted) as ei:
+        ST.run_trade_smoke(None, None, Report(), symbol='SOLUSDT', ids=IDS, clock=lambda: NOW)
+    assert 'hedge mode' in str(ei.value) and not ei.value.exposure_possible
 
 
 # ---------- ids and sizing ----------
