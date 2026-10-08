@@ -30,7 +30,7 @@ from newcore.domain.events import EVENT_TYPES
 from newcore.ports.journal import JournalConflict
 
 from .errors import DurabilityUnavailable
-from .evidence import EvidenceRef, evidence_bytes, write_evidence
+from .envelope import EvidenceRef, write_evidence
 from .fold import Folder
 from .frame import KIND_SEGMENT, MAX_RECORD, RT_EVENT, RT_HEADER, HeaderState, scan
 from .fs import RealFs
@@ -68,14 +68,57 @@ class _Out(Exception):
     def __init__(self, verdict, findings):
         self.verdict, self.findings = verdict, tuple(findings)
 
-def recover_journal(account_dir, account_id, aggregate_id, *, fs=None, writer_build=WRITER_BUILD):
+def recover_journal(account_dir, account_id, aggregate_id, *, fs=None, writer_build=WRITER_BUILD, cipher=None):
+    """Inspect (read-only) and, for CLEAN / a torn tail, open the journal. `cipher` seals torn bytes (None = DPAPI)."""
+    insp = inspect_journal(account_dir, account_id, aggregate_id, fs=fs)
+    return open_journal(insp, writer_build=writer_build, cipher=cipher)
+
+
+@dataclass(frozen=True)
+class Inspection:
+    """The read-only verdict of a journal (NC-02b boot runs rule 1 over every member before any write)."""
+    fs: object
+    account_dir: str
+    account_id: str
+    verdict: Verdict                   # CLEAN (incl. a torn tail to repair) or the zero-write outcome
+    findings: tuple
+    plan: object | None
+
+    @property
+    def needs_repair(self):
+        p = self.plan
+        return p is not None and (bool(p.voids) or (p.active_scan is not None and p.active_scan.tail_offset is not None))
+
+    @property
+    def state(self):
+        return None if self.plan is None else self.plan.folder.state()
+
+    @property
+    def last_sequence(self):
+        return 0 if self.plan is None else self.plan.folder.last_sequence
+
+    @property
+    def events(self):
+        return () if self.plan is None else tuple(self.plan.folder.events)
+
+
+def inspect_journal(account_dir, account_id, aggregate_id, *, fs=None):
+    """Read-only phase only: never writes. verdict is CLEAN when the journal can be opened (maybe after a repair)."""
     _check_ids(account_id, aggregate_id)
     fs = fs or RealFs()
     try:
         plan = _read_only(fs, account_dir, account_id, aggregate_id)
     except _Out as out:
-        return Recovery(out.verdict, None, None, out.findings, (), ())
-    return _finish(fs, account_dir, account_id, plan, writer_build)
+        return Inspection(fs, account_dir, account_id, out.verdict, out.findings, None)
+    return Inspection(fs, account_dir, account_id, Verdict.CLEAN, tuple(plan.findings), plan)
+
+
+def open_journal(insp, *, writer_build=WRITER_BUILD, cipher=None):
+    """Write phase of an inspection: repair a torn tail (evidence envelope, seal, roll) and open for appending."""
+    if insp.plan is None:
+        return Recovery(insp.verdict, None, None, insp.findings, (), ())
+    return _finish(insp.fs, insp.account_dir, insp.account_id, insp.plan, writer_build, cipher)
+
 
 # ---------------------------------------------------------------------------------------------------- read-only phase
 @dataclass
@@ -238,7 +281,7 @@ def _read_only(fs, account_dir, account_id, aggregate_id):
     return _Plan(folder, names, blobs, m, hdr, active, voids, findings)
 
 # ---------------------------------------------------------------------------------------------------- write phase
-def _finish(fs, account_dir, account_id, plan, writer_build):
+def _finish(fs, account_dir, account_id, plan, writer_build, cipher):
     jd = os.path.join(account_dir, JOURNAL_DIR)
     folder, m = plan.folder, plan.m
     torn = plan.active_scan is not None and plan.active_scan.tail_offset is not None
@@ -248,7 +291,7 @@ def _finish(fs, account_dir, account_id, plan, writer_build):
             h = fs.open_append(path)
         except OSError:
             return Recovery(Verdict.DURABILITY_UNAVAILABLE, None, folder.state(), tuple(plan.findings), (), ())
-        j = FileJournal(fs, account_dir, folder, m, h, plan.header.seals, len(plan.blobs[m]), writer_build)
+        j = FileJournal(fs, account_dir, folder, m, h, plan.header.seals, len(plan.blobs[m]), writer_build, cipher)
         return Recovery(Verdict.CLEAN, j, folder.state(),
                         tuple(plan.findings), (), ())
 
@@ -269,7 +312,8 @@ def _finish(fs, account_dir, account_id, plan, writer_build):
     try:
         for no, off, data in pieces:
             fs.mark('C-T0')
-            ref, new = write_evidence(fs, account_dir, account_id, plan.names[no], off, data)
+            src = 'torn_tail' if no == m else 'void_segment'
+            ref, new = write_evidence(fs, account_dir, account_id, plan.names[no], off, data, src, cipher)
             evidence.append(ref)
             if new:
                 created.append(ref.name)
@@ -282,8 +326,9 @@ def _finish(fs, account_dir, account_id, plan, writer_build):
     except OSError:
         return Recovery(Verdict.DURABILITY_UNAVAILABLE, None, folder.state(), tuple(plan.findings), tuple(evidence),
                         tuple(created))
-    j = FileJournal(fs, account_dir, folder, new_no, h, tuple(seals), seg_len, writer_build)
+    j = FileJournal(fs, account_dir, folder, new_no, h, tuple(seals), seg_len, writer_build, cipher)
     return Recovery(Verdict.REPAIRED, j, folder.state(), tuple(plan.findings), tuple(evidence), tuple(created))
 
 
-__all__ = ['Recovery', 'Finding', 'EvidenceRef', 'Verdict', 'recover_journal', 'evidence_bytes', 'DurabilityUnavailable']
+__all__ = ['Recovery', 'Finding', 'EvidenceRef', 'Verdict', 'Inspection', 'inspect_journal', 'open_journal',
+           'recover_journal', 'DurabilityUnavailable']

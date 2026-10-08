@@ -7,11 +7,19 @@ import stat
 from nc02a_events import ACCOUNT_ID, AGGREGATE_ID, SCENARIO
 from nc02a_memfs import MemFs
 from newcore.store import create_journal, recover_journal
+from newcore.store.cipher import InsecureTestCipher
+from newcore.store.envelope import read_envelope
 from newcore.store.frame import FILE_HEADER, KIND_SEGMENT, RT_EVENT, RT_HEADER, file_header, frame, scan
 from newcore.store.header import canonical_json
 
 MEM_ROOT = os.path.join(os.path.abspath(os.sep), 'nc02a-mem')
 ACCT_DIR = os.path.join(MEM_ROOT, 'accounts', ACCOUNT_ID)
+TEST_CIPHER = InsecureTestCipher(test_only=True)          # in-memory drills only; real-FS tests use DPAPI
+
+
+def opened(fs, ref, acct_dir=ACCT_DIR):
+    """(metadata, plaintext) of the evidence envelope ref, verified with the test cipher."""
+    return read_envelope(fs.read_bytes(os.path.join(acct_dir, *ref.name.split('/'))), TEST_CIPHER, ACCOUNT_ID)
 
 
 def seg(n, acct_dir=ACCT_DIR):
@@ -21,7 +29,7 @@ def seg(n, acct_dir=ACCT_DIR):
 def mem_journal(events=SCENARIO, fs=None):
     """A MemFs holding a journal with `events` appended; the journal handle is closed."""
     fs = fs or MemFs(os.path.dirname(ACCT_DIR))
-    j = create_journal(ACCT_DIR, ACCOUNT_ID, AGGREGATE_ID, fs=fs)
+    j = create_journal(ACCT_DIR, ACCOUNT_ID, AGGREGATE_ID, fs=fs, cipher=TEST_CIPHER)
     for e in events:
         j.append(e)
     j.close()
@@ -29,7 +37,7 @@ def mem_journal(events=SCENARIO, fs=None):
 
 
 def recover(fs, acct_dir=ACCT_DIR):
-    return recover_journal(acct_dir, ACCOUNT_ID, AGGREGATE_ID, fs=fs)
+    return recover_journal(acct_dir, ACCOUNT_ID, AGGREGATE_ID, fs=fs, cipher=TEST_CIPHER)
 
 
 def records(data):
@@ -66,5 +74,5 @@ def tree(root):
     return out
 
 
-__all__ = ['MEM_ROOT', 'ACCT_DIR', 'seg', 'mem_journal', 'recover', 'records', 'rebuild', 'header_doc', 'tree',
+__all__ = ['MEM_ROOT', 'ACCT_DIR', 'TEST_CIPHER', 'opened', 'seg', 'mem_journal', 'recover', 'records', 'rebuild', 'header_doc', 'tree',
            'file_header', 'frame', 'KIND_SEGMENT', 'RT_EVENT', 'RT_HEADER']

@@ -36,7 +36,7 @@ from newcore.domain.events import EVENT_TYPES
 from newcore.ports.journal import Admission, JournalConflict
 
 from .errors import DurabilityUnavailable, JournalExists
-from .evidence import write_evidence
+from .envelope import write_evidence
 from .fold import Folder
 from .frame import KIND_SEGMENT, MAX_RECORD, RT_EVENT, RT_HEADER, file_header, frame
 from .fs import RealFs
@@ -78,12 +78,14 @@ def write_segment(fs, journal_dir, hdr):
 class FileJournal:
     """Use create_journal (new) or recover_journal (existing); never construct directly."""
 
-    def __init__(self, fs, account_dir, folder, segment_no, handle, seals, seg_len, writer_build=WRITER_BUILD):
+    def __init__(self, fs, account_dir, folder, segment_no, handle, seals, seg_len, writer_build=WRITER_BUILD,
+                 cipher=None):
         self._fs, self.account_dir, self._folder = fs, account_dir, folder
         self._jd = os.path.join(account_dir, JOURNAL_DIR)
         self.segment_no, self._h = segment_no, handle
         self._seals, self._seg_len, self._build = tuple(seals), seg_len, writer_build
         self._needs_roll = None           # the op that failed; the next append rolls before writing
+        self._cipher = cipher             # evidence envelope cipher (None = the platform default, DPAPI)
         self._closed = False
         self.rolls = ()                   # (EvidenceRef | None, new segment name) of every in-process roll
 
@@ -194,7 +196,7 @@ class FileJournal:
             step = 'roll evidence'
             fs.mark('C-F1')
             ref, _ = write_evidence(fs, self.account_dir, self.account_id, seg_name(self.segment_no), self._seg_len,
-                                    extra, source='failed_append')
+                                    extra, source='failed_append', cipher=self._cipher)
             good_sha = hashlib.sha256(data[:self._seg_len]).hexdigest()
             seals = self._seals + (Seal(self.segment_no, self._seg_len, good_sha),)
             used = [int(m.group(1)) for m in map(SEG_RE.fullmatch, fs.listdir(self._jd)) if m]
@@ -204,7 +206,7 @@ class FileJournal:
                     junk = fs.read_bytes(self._path(left))
                     if junk:
                         write_evidence(fs, self.account_dir, self.account_id, seg_name(left), 0, junk,
-                                       source='failed_append')
+                                       source='void_segment', cipher=self._cipher)
                 seals += (Seal(left, 0, EMPTY_SHA),)
             new = SegmentHeader(self.account_id, self.aggregate_id, len(seals) + 1, self._folder.last_sequence, seals,
                                 self._build)
@@ -226,7 +228,7 @@ def _check_ids(account_id, aggregate_id):
         raise ValueError('aggregate_id is not a pf_ id')
 
 
-def create_journal(account_dir, account_id, aggregate_id, *, fs=None, writer_build=WRITER_BUILD):
+def create_journal(account_dir, account_id, aggregate_id, *, fs=None, writer_build=WRITER_BUILD, cipher=None):
     """Create a new, empty journal (first run of an account; NC-02b's INIT will call this). Raises JournalExists if
     segments are already there (open those with recover_journal) and DurabilityUnavailable if the store cannot write.
     An interrupted create leaves either nothing, an empty journal dir (create again) or a torn first segment
@@ -259,4 +261,4 @@ def create_journal(account_dir, account_id, aggregate_id, *, fs=None, writer_bui
         h = fs.open_append(at)
     except OSError as ex:
         raise DurabilityUnavailable(step, at, ex) from None
-    return FileJournal(fs, account_dir, Folder(account_id, aggregate_id), 1, h, (), n, writer_build)
+    return FileJournal(fs, account_dir, Folder(account_id, aggregate_id), 1, h, (), n, writer_build, cipher)

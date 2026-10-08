@@ -134,7 +134,7 @@ def test_a_one_shot_failure_is_sealed_off_at_once_so_every_restart_equals_the_in
     assert j.segment_no == (2 if landed else 1)
     if landed:
         ev_ref, new_seg = j.rolls[-1]
-        assert ev_ref.name.startswith('evidence/failed-seg-000001-') and new_seg == 'seg-000002.seg'
+        assert (ev_ref.source, ev_ref.rel_path, new_seg) == ('failed_append', 'journal/seg-000001.seg', 'seg-000002.seg')
     r = recover(fs.crash(model, pending))                            # the process dies right after the failure
     assert r.verdict is Verdict.CLEAN and r.journal.read() == tuple(SCENARIO[:5])   # never the failed event
     assert j.append(SCENARIO[5]) is Admission.APPLY                  # the in-process retry lands exactly once

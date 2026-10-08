@@ -23,18 +23,27 @@ from dataclasses import dataclass
 
 MAGIC = b'ZBNC'
 FRAME_VERSION = 1
+KIND_SNAPSHOT = 1
 KIND_SEGMENT = 2
-KIND_EVIDENCE = 5
+KIND_HEAD = 3
+KIND_ANCHOR = 4
+KIND_EVIDENCE = 6                          # design 3.1: 5 = evidence index (unused), 6 = envelope
 FILE_HEADER = struct.Struct('<4sBBH')
 REC = struct.Struct('<HBBII')
 SYNC = 0xB25A
 SYNC_BYTES = struct.pack('<H', SYNC)
 RT_HEADER = 1
 RT_EVENT = 10
+RT_BINDING, RT_SETTINGS, RT_SNAPSHOT, RT_PROVENANCE = 2, 3, 4, 5
+RT_SLOT = 20
 RT_EVIDENCE_BODY = 30
-KNOWN_RTYPES = frozenset({RT_HEADER, RT_EVENT, RT_EVIDENCE_BODY})
+RT_END = 255
+KNOWN_RTYPES = frozenset({RT_HEADER, RT_BINDING, RT_SETTINGS, RT_SNAPSHOT, RT_PROVENANCE, RT_EVENT, RT_SLOT,
+                          RT_EVIDENCE_BODY, RT_END})
 MAX_RECORD = 16 * 1024 * 1024                # one event / header record
-MAX_EVIDENCE_BODY = MAX_RECORD + 2 * REC.size   # a torn tail is at most one frame
+MAX_TAIL = MAX_RECORD + 2 * REC.size           # a torn tail is at most one frame
+MAX_SNAPSHOT = 64 * 1024 * 1024              # one snapshot record (design 3.1)
+MAX_EVIDENCE_BODY = 96 * 1024 * 1024         # ciphertext of a preserved member (<= MAX_SNAPSHOT + cipher overhead)
 
 
 def file_header(kind):
@@ -46,7 +55,8 @@ def _crc(rtype, flags, payload):
 
 
 def frame(rtype, payload):
-    if not (isinstance(payload, bytes) and len(payload) <= (MAX_EVIDENCE_BODY if rtype == RT_EVIDENCE_BODY else MAX_RECORD)):
+    limit = {RT_EVIDENCE_BODY: MAX_EVIDENCE_BODY, RT_SNAPSHOT: MAX_SNAPSHOT}.get(rtype, MAX_RECORD)
+    if not (isinstance(payload, bytes) and len(payload) <= limit):
         raise ValueError('frame payload too large or not bytes')
     return REC.pack(SYNC, rtype, 0, len(payload), _crc(rtype, 0, payload)) + payload
 
@@ -131,7 +141,7 @@ def scan(data, kind):
             later = _valid_record_after(data, off)
             if later is not None:
                 return Scan(HeaderState.OK, fver, tuple(recs), off, None, (off, f'invalid record before a valid one at {later}'))
-            if len(data) - off > MAX_EVIDENCE_BODY:
+            if len(data) - off > MAX_TAIL:
                 return Scan(HeaderState.OK, fver, tuple(recs), off, None, (off, 'invalid tail longer than one frame'))
             return Scan(HeaderState.OK, fver, tuple(recs), off, off, None)
         if r.flags != 0 or r.rtype not in KNOWN_RTYPES:

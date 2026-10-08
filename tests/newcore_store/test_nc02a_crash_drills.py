@@ -22,12 +22,11 @@ import pytest
 
 from nc02a_events import ACCOUNT_ID, AGGREGATE_ID, INTENT_IDS, SCENARIO, expected_recovery
 from nc02a_memfs import PENDING, FaultFs, MemFs, SimulatedCrash
-from nc02a_util import ACCT_DIR, mem_journal, recover, seg
+from nc02a_util import ACCT_DIR, mem_journal, opened, recover, seg
 from newcore.domain import canonical_bytes
 from newcore.ports.journal import Admission
 from newcore.store import DurabilityUnavailable, Verdict, create_journal
 from newcore.store.frame import RT_EVENT, frame
-from newcore.store.recovery import evidence_bytes
 
 MODELS = ('ntfs', 'posix')
 B_START = 6
@@ -180,8 +179,9 @@ def test_crash_at_every_write_and_fsync_boundary(drill, i, when):
             if torn_seg1 is not None:
                 assert fs.read_bytes(seg(1)) == torn_seg1, ctx                     # sealed bytes never change
             for ref in r.evidence:
-                blob = fs.read_bytes(os.path.join(ACCT_DIR, *ref.name.split('/')))
-                assert blob == evidence_bytes(ACCOUNT_ID, ref.segment, ref.offset, blob[-ref.size:]), ctx
+                meta, plain = opened(fs, ref)                                       # verifies + opens
+                src = fs.read_bytes(os.path.join(ACCT_DIR, *ref.rel_path.split('/')))
+                assert plain == src[ref.offset:ref.offset + ref.size], ctx
             adm = [j.append(e) for e in SCENARIO[acked:]]
             assert adm == [Admission.ALREADY_APPLIED] * (k - acked) + [Admission.APPLY] * (len(SCENARIO) - k), ctx
             assert j.read() == tuple(SCENARIO)

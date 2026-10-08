@@ -6,15 +6,13 @@ import os
 import pytest
 
 from nc02a_events import ACCOUNT_ID, AGGREGATE_ID, SCENARIO
-from nc02a_memfs import FaultFs, MemFs, oserror
-from nc02a_util import ACCT_DIR, header_doc, mem_journal, rebuild, records, recover, seg, tree
+from nc02a_memfs import PRIVATE, FaultFs, MemFs, oserror
+from nc02a_util import ACCT_DIR, header_doc, mem_journal, opened, rebuild, records, recover, seg, tree
 from newcore.domain import HoldKind, ReasonCode, canonical_bytes
 from newcore.ports.journal import Admission
 from newcore.store import StoreOutcome, Verdict, recover_journal
-from newcore.store.frame import (FILE_HEADER, KIND_EVIDENCE, KIND_SEGMENT, RT_EVENT, RT_EVIDENCE_BODY, RT_HEADER,
-                                 frame, scan)
+from newcore.store.frame import FILE_HEADER, KIND_EVIDENCE, RT_EVENT, frame
 from newcore.store.header import EMPTY_SHA, header_frame_max
-from newcore.store.recovery import evidence_bytes
 
 N = 6                                            # events durably in the journal before the fault
 TORN_FRAME = frame(RT_EVENT, canonical_bytes(SCENARIO[N]))
@@ -56,11 +54,12 @@ def test_torn_tail_is_copied_to_evidence_then_sealed_and_rolled_never_truncated(
     assert fs.read_bytes(seg(1)) == good + TAILS[tail]                 # never truncated: the torn bytes stay
     (ev,) = r.evidence
     assert (ev.segment, ev.offset, ev.size) == ('seg-000001.seg', len(good), len(TAILS[tail]))
+    meta, plain = opened(fs, ev)                                      # the envelope verifies and opens
+    assert plain == TAILS[tail] and meta['sha256'] == ev.sha256 and meta['source'] == 'torn_tail'
+    assert (meta['rel_path'], meta['offset']) == ('journal/seg-000001.seg', len(good))
     blob = fs.read_bytes(os.path.join(ACCT_DIR, *ev.name.split('/')))
-    assert blob == evidence_bytes(ACCOUNT_ID, 'seg-000001.seg', len(good), TAILS[tail])
-    body = scan(blob, KIND_EVIDENCE).records
-    assert [x.rtype for x in body] == [RT_HEADER, RT_EVIDENCE_BODY] and body[1].payload == TAILS[tail]
-    assert json.loads(body[0].payload)['sha256'] == ev.sha256
+    assert TAILS[tail] not in blob or len(TAILS[tail]) < 4             # only ciphertext, never the bytes in clear
+    assert fs.read_acl(os.path.join(ACCT_DIR, 'evidence')) == PRIVATE
     doc = header_doc(fs.read_bytes(seg(2)))
     assert doc['segment_no'] == 2 and doc['lsn_base'] == N
     assert doc['seals'] == [{'segment_no': 1, 'sealed_len': len(good),
@@ -90,22 +89,22 @@ def test_a_second_torn_tail_in_the_rolled_segment_rolls_again_and_keeps_every_se
     assert r.journal.read() == tuple(SCENARIO[:N + 1])
 
 
-def test_existing_identical_evidence_is_reused_and_a_partial_one_is_kept_not_trusted():
+def test_existing_identical_evidence_is_reused_and_our_own_partial_is_replaced():      # D4
     fs = mem_journal(SCENARIO[:N])
     good = fs.read_bytes(seg(1))
-    tail = TAILS['half_frame']
-    put(fs, seg(1), good + tail)
-    sha = __import__('hashlib').sha256(tail).hexdigest()
-    stem = os.path.join(ACCT_DIR, 'evidence', f'torn-seg-000001-o{len(good):010d}-{sha[:16]}')
-    full = evidence_bytes(ACCOUNT_ID, 'seg-000001.seg', len(good), tail)
-    put(fs, stem + '.ev', full[:10])                                  # a crashed earlier copy: partial
-    r = recover(fs)
-    assert r.evidence[0].name.endswith('-a1.ev') and fs.read_bytes(stem + '.ev') == full[:10]
-    fs2 = mem_journal(SCENARIO[:N])
-    put(fs2, seg(1), good + tail)
-    put(fs2, stem + '.ev', full)                                      # a complete earlier copy: reused
-    r2 = recover(fs2)
-    assert r2.evidence[0].name.endswith(f'{sha[:16]}.ev') and r2.created == ('journal/seg-000002.seg',)
+    put(fs, seg(1), good + TAILS['half_frame'])
+    probe = fs.crash('ntfs', 'all')
+    ref = recover(probe).evidence[0]
+    p = os.path.join(ACCT_DIR, *ref.name.split('/'))
+    full = probe.read_bytes(p)
+    partial = fs.crash('ntfs', 'all')
+    put(partial, p, full[:40])                                        # a crashed earlier copy of ours: partial
+    r = recover(partial)
+    assert r.evidence[0].name == ref.name and partial.read_bytes(p) == full and ref.name in r.created
+    reused = fs.crash('ntfs', 'all')
+    put(reused, p, full)                                              # a complete, verifying earlier copy
+    r2 = recover(reused)
+    assert r2.evidence[0].name == ref.name and r2.created == ('journal/seg-000002.seg',)
 
 
 # ------------------------------------------------------------------------------------------- interrupted create
