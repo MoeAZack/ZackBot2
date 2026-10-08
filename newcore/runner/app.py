@@ -37,6 +37,7 @@ from newcore.store import Verdict, create_journal, recover_journal
 from newcore.strategy import Params
 
 from . import config as C
+from . import ids
 from .compare import compare
 from .intrabar import play_candle
 from .managed import ManagedBookRunner, ManagedRunner, ManagementConfig, RangeFixturePlans
@@ -181,6 +182,9 @@ class Session:
             port, self.bars, reads, venue_rules = build(cfg)
             self.reads = reads
             self.venue, self.last_close = None, None
+        if not guard and self.journal.last_sequence() == 0 and self._venue_exposure(port):
+            raise StoreRefused(EXIT_STORE_HOLD, 'no journal history (deleted / never written) while the venue holds a '
+                                                'position or our orders: a fresh start would disown it, HOLD')
         rcfg = RunnerConfig(account=account(cfg), portfolio_id=cfg.portfolio_id, symbols=cfg.symbols,
                             tf_ms=self.tf_ms, timeframe=cfg.tf, rules=venue_rules or rules_for(cfg, cfg.symbols),
                             sizing=SizingPolicy(cfg.risk_pct, cfg.max_leverage, cfg.cap_gap_buffer),
@@ -190,6 +194,15 @@ class Session:
                                         bars=self.bars, signals=signals_for(cfg, enabled) if not guard else NoSignals(),
                                         account_reads=reads, management=management_for(cfg),
                                         hard_hold=guard)
+
+    def _venue_exposure(self, port):
+        """Cowork 6062740390 GUARD: a journal that is missing / empty is a fresh start only when the venue has no
+        position on our symbols and none of our (zbn1) orders; otherwise the history was lost and the run is a guard."""
+        pos, oo = port.positions(), port.open_orders()
+        if pos.kind is not ReadKind.OK or oo.kind is not ReadKind.OK:
+            return True                                                   # cannot tell: never a blind fresh start
+        return any(p.qty > 0 and p.symbol in self.cfg.symbols for p in pos.value) or \
+            any(ids.is_newcore_client_id(o.ref.client_id) for o in oo.value)
 
     def next_close(self, wall_ms=None):
         """The candle close of the next cycle, or None when the fake data is exhausted."""
