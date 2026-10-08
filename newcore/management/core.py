@@ -123,23 +123,36 @@ def _racing(w, leg):
 
 
 def _consume(w, leg, q, p):
-    """An outstanding authorised leg absorbs `q`: its open order first, else its racing allowance (a cancel requested in
-    an EARLIER step and not confirmed yet). Anything else is refused."""
+    """An outstanding authorised leg absorbs `q`: its open order first, then its racing allowance for the rest (what a
+    cancelled order, or the larger order a replacement shrank, may still execute until the venue confirms the cancel -
+    requested in an EARLIER step). Anything beyond both is refused."""
     if leg is Leg.CLOSE:
-        if not (0 < q <= w['closing']):
+        # authorised while a close is requested; a reduce-only close of an EARLIER request (retried after a short
+        # fill) may execute more than the current request - bounded by the position (checked by the caller)
+        if not (q > 0 and (w['closing'] > 0 or _racing(w, Leg.CLOSE) > 0)):
             raise ManagementError(p, f'a CLOSE fill of {q} with {w["closing"]} close requested')
-        w['closing'] = CTX.subtract(w['closing'], q)
+        w['closing'] = max(ZERO, CTX.subtract(w['closing'], q))     # (CLOSE racing: cleared by Cancelled only)
         return
-    o = w[leg.value]
+    o, left = w[leg.value], _racing(w, leg)
+    have = o.qty if o is not None else ZERO
+    if leg is Leg.STOP and q > 0 and (o is not None or left > 0):
+        # protective stops are reduce-only and an old stop stays live until its replacement is confirmed, so the old
+        # AND the new stop may both execute: bounded by the position (checked by the caller), not by one order
+        # (a stop's racing allowance is an authorisation that an older stop may still execute: only Cancelled(STOP),
+        # the venue's confirmation that no older stop remains, clears it - every trade of that order is accepted)
+        take = min(q, have)
+        if o is not None:
+            w[leg.value] = Order(price=o.price, qty=CTX.subtract(o.qty, take)) if take < o.qty else None
+        return
+    if not (0 < q <= CTX.add(have, left)):
+        what = f'beyond its order {have} (+ racing {left})' if o is not None else \
+            'on a leg with no outstanding order (unrequested / retired)'
+        raise ManagementError(p, f'a {leg} fill of {q} {what}')
+    take = min(q, have)
     if o is not None:
-        if q > o.qty:
-            raise ManagementError(p, f'a {leg} fill of {q} beyond its order {o.qty}')
-        w[leg.value] = Order(price=o.price, qty=CTX.subtract(o.qty, q)) if q < o.qty else None
-        return
-    left = _racing(w, leg)
-    if not (0 < q <= left):
-        raise ManagementError(p, f'a {leg} fill of {q} on a leg with no outstanding order (unrequested / retired)')
-    _set_racing(w, leg, CTX.subtract(left, q))
+        w[leg.value] = Order(price=o.price, qty=CTX.subtract(o.qty, take)) if take < o.qty else None
+    if q > take:
+        _set_racing(w, leg, CTX.subtract(left, CTX.subtract(q, take)))
 
 
 def _fills(plan, w, confirmed, flags):
@@ -148,10 +161,10 @@ def _fills(plan, w, confirmed, flags):
     for i, ev in enumerate(confirmed):
         p = f'step.confirmed[{i}]'
         if type(ev) is Rejected:
-            _reject(w, ev.leg, p, flags)
+            _reject(w, ev.leg, p, flags, ev.qty)
             continue
         if type(ev) is Cancelled:
-            if ev.leg in (Leg.ADD, Leg.TP1, Leg.TP2, Leg.STOP):
+            if ev.leg in (Leg.ADD, Leg.TP1, Leg.TP2, Leg.STOP, Leg.CLOSE):
                 _set_racing(w, ev.leg, ZERO)
             continue
         req(type(ev) is ConfirmedFill, p, 'only ConfirmedFill / Rejected / Cancelled are inputs')
@@ -189,13 +202,15 @@ def _fills(plan, w, confirmed, flags):
                 w['tp1_confirmed'] = True
             if (leg is Leg.STOP and w['stop'] is None) or w['qty'] == 0:
                 flags['terminal'] = True                               # the protective exit is complete
-            w['closing'] = min(w['closing'], w['qty'])
+            if w['closing'] > w['qty']:           # requested closes now exceed the position: the orders may still
+                _set_racing(w, Leg.CLOSE, CTX.add(_racing(w, Leg.CLOSE), CTX.subtract(w['closing'], w['qty'])))
+                w['closing'] = w['qty']        # execute: that part races until Cancelled(CLOSE)
         w['fees'] = CTX.add(w['fees'], ev.fee)
         seen[ev.fill_id] = ev
         w['fills'] = w['fills'] + (ev,)
 
 
-def _reject(w, leg, p, flags):
+def _reject(w, leg, p, flags, dead_qty=None):
     if leg is Leg.STOP:
         cur, prev = w['stop'], w['stop_prev']
         req(cur is not None, p, 'a stop refusal with no stop requested')
@@ -213,10 +228,19 @@ def _reject(w, leg, p, flags):
     elif leg in (Leg.TP1, Leg.TP2):
         req(w[leg.value] is not None, p, f'a {leg} refusal with no {leg} requested')
         w[leg.value], w['targets_off'] = None, True
-    else:                                                 # a refused market close: retry it now
+    else:                                                 # a refused / short market close: retry ONLY what died
         req(w['closing'] > 0, p, 'a close refusal with no close requested')
-        flags['close_all'] = flags['close_all'] or w['close_reason']
-        w['closing'], w['close_reason'] = ZERO, None
+        dead = w['closing'] if dead_qty is None else min(dead_qty, w['closing'])
+        whole = w['closing'] >= w['qty']                  # the close in flight covered the whole position
+        reason = w['close_reason']
+        w['closing'] = CTX.subtract(w['closing'], dead)   # other close orders still in flight keep their part
+        if w['closing'] == 0:
+            w['close_reason'] = None
+        if whole and w['closing'] == 0:                   # close it all again
+            flags['close_all'] = flags['close_all'] or reason
+        else:                                             # a partial REDUCE (flatten / cap / stop failed): only its rest
+            flags['retry'] = CTX.add(flags['retry'], dead)
+            flags['retry_reason'] = flags['retry_reason'] or reason
 
 
 # ---------------------------------------------------------------------------------------------------- levels
@@ -310,7 +334,8 @@ def step(plan, state, confirmed=(), closed_candle=None, *, close_request=None, f
         if w['last_candle_open_ms'] is not None and candle.open_ms <= w['last_candle_open_ms']:
             raise ManagementError('step.closed_candle', 'candles only go forward')
         w['last_candle_open_ms'] = candle.open_ms
-    flags = {'flatten': ZERO, 'close_all': None, 'terminal': state.stage in (Stage.EXITING, Stage.DONE),
+    flags = {'flatten': ZERO, 'close_all': None, 'retry': ZERO, 'retry_reason': None,
+             'terminal': state.stage in (Stage.EXITING, Stage.DONE),
              'added': False}
     _fills(plan, w, confirmed, flags)
     if funding is not None:
@@ -363,10 +388,10 @@ def step(plan, state, confirmed=(), closed_candle=None, *, close_request=None, f
             w['closing'], w['close_reason'] = w['qty'], w['close_reason'] or reason
         else:
             covered = des_stop.qty if des_stop is not None else ZERO
-            cut = min(live, max(flags['flatten'], CTX.subtract(live, covered)))
+            cut = min(live, max(flags['flatten'], CTX.subtract(live, covered), flags['retry']))
             over = _excess_risk(plan, w, des_stop, CTX.subtract(live, cut)) if flags['added'] else ZERO
             if cut > 0 or over > 0:
-                reason = (R.EXIT_STOP_FAILED if covered < live else R.EXIT_FLATTEN)
+                reason = (R.EXIT_STOP_FAILED if covered < live else flags['retry_reason'] or R.EXIT_FLATTEN)
                 cut = CTX.add(cut, over)
                 acts.append(ManagementAction(kind=K.REDUCE, leg=Leg.CLOSE, qty=cut, price=None, reason=reason))
                 w['closing'], w['close_reason'] = CTX.add(w['closing'], cut), w['close_reason'] or reason
@@ -427,6 +452,9 @@ def step(plan, state, confirmed=(), closed_candle=None, *, close_request=None, f
         else:
             acts.append(ManagementAction(kind=K.REPLACE_STOP, leg=Leg.STOP, qty=des_stop.qty, price=des_stop.price,
                                          reason=R.PROTECT_RESIZE if des_stop.price == cur.price else R.PROTECT_REPLACE))
+            # the old stop stays live until the replacement is confirmed and may execute too: it races until
+            # Cancelled(STOP) (bounded by the position, see _consume)
+            _set_racing(w, Leg.STOP, CTX.add(_racing(w, Leg.STOP), cur.qty))
         w['stop_prev'] = cur if des_stop is not None else None
         w['stop'] = des_stop
     if w['add'] is not None and des_add is None:
@@ -446,6 +474,8 @@ def step(plan, state, confirmed=(), closed_candle=None, *, close_request=None, f
         else:
             acts.append(ManagementAction(kind=K.PLACE_TARGET if cur is None else K.REPLACE_TARGET, leg=leg,
                                          qty=des.qty, price=des.price, reason=why))
+            if cur is not None and cur.qty > des.qty:    # the old, larger target may still execute the difference
+                _set_racing(w, leg, CTX.add(_racing(w, leg), CTX.subtract(cur.qty, des.qty)))
         w[leg.value] = des
     if w['qty'] == 0:
         w['stage'] = Stage.DONE

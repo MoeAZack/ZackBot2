@@ -77,7 +77,6 @@ class LegQty(Record):
 
     def _validate(self, p):
         positive(self.qty, p + '.qty')
-        req(self.leg is not Leg.CLOSE, p + '.leg', 'a market close is never cancelled')
 
 
 @record
@@ -97,7 +96,15 @@ class ConfirmedFill(Record):
 
 @record
 class Rejected(Record):
+    """The venue refused the latest request for `leg`. For a market CLOSE / REDUCE, `qty` is the part that will NOT
+    execute (a refused order: its whole size; a short fill: what expired); None = all of the close in flight."""
     leg: Leg
+    qty: Decimal | None = None
+
+    def _validate(self, p):
+        if self.qty is not None:
+            positive(self.qty, p + '.qty')
+            req(self.leg is Leg.CLOSE, p + '.qty', 'only a market close names the part that will not execute')
 
 
 @record

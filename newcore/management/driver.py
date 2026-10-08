@@ -115,6 +115,13 @@ class Binding:
 
 
 @dataclasses.dataclass(frozen=True, slots=True, kw_only=True)
+class PendingFill:
+    """A venue fill matched to the order (intent) it executed, waiting to be booked by the core."""
+    fill: ConfirmedFill
+    intent_id: str
+
+
+@dataclasses.dataclass(frozen=True, slots=True, kw_only=True)
 class Trigger:
     leg: Leg                     # TP1 / TP2 (REDUCE) or ADD
     price: Decimal
@@ -134,6 +141,7 @@ class DriverState:
     held: tuple                  # Draft / CancelDraft withheld by the mode table, in order
     lineage: tuple               # ((owner_id, purpose value, next ordinal), ...)
     trade_ids: tuple
+    deferred: tuple              # PendingFill the core cannot book yet (e.g. a stop fill before the add it closes)
     mode: EntriesMode
     hold_kind: object            # HoldKind | None
 
@@ -149,9 +157,15 @@ class Drive:
 
 # ------------------------------------------------------------------------------------------------------- queries
 def confirmed_coverage(ds):
-    """Quantity a CONFIRMED (WORKING) stop covers. A requested / sent stop counts for nothing."""
+    """Quantity CONFIRMED protection covers: the largest WORKING stop, plus what a stop the venue reported FINAL has
+    executed and is not booked yet (that part of the position is already closed at the venue). A requested / sent stop
+    counts for nothing."""
     q = [b.qty for b in ds.bindings if b.leg is Leg.STOP and b.state is BindState.WORKING]
-    return max(q) if q else ZERO
+    out = max(q) if q else ZERO
+    for b in ds.bindings:
+        if b.leg is Leg.STOP and b.state is BindState.FINAL and b.executed is not None:
+            out = CTX.add(out, max(CTX.subtract(b.executed, b.filled), ZERO))
+    return out
 
 
 def protected(ds):
@@ -190,6 +204,7 @@ class _W:
         self.ds = ds
         self.d = {f.name: getattr(ds, f.name) for f in dataclasses.fields(ds)}
         self.submits, self.cancels, self.steps, self.reconcile, self.core_in = [], [], [], [], []
+        self.lost_stop = False
 
     # identity -------------------------------------------------------------------------------------------------
     def next_id(self, purpose):
@@ -250,7 +265,7 @@ def _view(w):
 
 def _new_state(plan, account_id, lot_id, route, pos, lineage, mode, hold_kind):
     return DriverState(plan=plan, account_id=account_id, lot_id=lot_id, route=route, pos=pos, bindings=(), triggers=(),
-                       held=(), lineage=tuple(sorted(lineage)), trade_ids=(), mode=EntriesMode(mode),
+                       held=(), lineage=tuple(sorted(lineage)), trade_ids=(), deferred=(), mode=EntriesMode(mode),
                        hold_kind=hold_kind)
 
 
@@ -279,11 +294,9 @@ def _apply_actions(w, actions):
         elif a.kind in (K.PLACE_TARGET, K.REPLACE_TARGET, K.PLACE_ADD):
             pass                                         # triggers mirror the core's requests (_sync_triggers)
         elif a.kind in (K.CANCEL_TARGET, K.CANCEL_ADD):
-            flying = [b for b in w.bindings() if b.leg is a.leg and b.current]
-            if not flying:
-                w.core_in.append(Cancelled(leg=a.leg))   # never sent: the cancel is confirmed at once (a later step)
-            for b in flying:                             # a fired market order cannot be cancelled: its FINAL decides
-                w.replace_binding(b, core_cancelled=True)
+            for b in w.bindings():                       # a fired market order cannot be cancelled: its FINAL decides
+                if b.leg is a.leg and b.current:
+                    w.replace_binding(b, core_cancelled=True)
         elif a.kind in (K.TIME_EXIT, K.CLOSE, K.REDUCE):
             whole = a.qty >= w.d['pos'].qty
             purpose = Purpose.CLOSE if whole else Purpose.REDUCE
@@ -317,6 +330,22 @@ def _sync_triggers(w):
     w.d['triggers'] = tuple(out)
 
 
+def _retire_racing(w):
+    """Tell the core a cancelled / shrunk leg can no longer race (Cancelled(leg), a LATER step) once nothing at the
+    venue can still execute for it: no fired market order of that target / add, and no stop order other than the
+    core's current request."""
+    pos = w.d['pos']
+    for r in pos.racing:
+        if r.leg is Leg.STOP:
+            sources = [b for b in w.bindings() if b.leg is Leg.STOP and not (b.current and pos.stop is not None)]
+        elif r.leg is Leg.CLOSE:                        # any market close order still unsettled may execute
+            sources = [b for b in w.bindings() if b.leg is Leg.CLOSE]
+        else:
+            sources = [b for b in w.bindings() if b.leg is r.leg]
+        if not sources and not any(pf.fill.leg is r.leg for pf in w.d['deferred']):   # a deferred fill needs it
+            w.core_in.append(Cancelled(leg=r.leg))
+
+
 def _run_core(w, confirmed=(), candle=None, close_request=None, funding=None):
     """step() with the inputs, then every queued trigger-cancel confirmation in a LATER step, until quiet."""
     batch = tuple(confirmed)
@@ -326,6 +355,7 @@ def _run_core(w, confirmed=(), candle=None, close_request=None, funding=None):
         w.d['pos'] = r.state
         w.core_in = []
         _apply_actions(w, r.actions)
+        _retire_racing(w)
         _sync_triggers(w)
         if not w.core_in:
             return
@@ -341,15 +371,12 @@ def _settle(w):
             continue
         w.drop_binding(b)
         short = CTX.subtract(b.qty, b.executed)
-        if b.leg is Leg.STOP:
-            if b.core_cancelled and short > 0:
-                w.core_in.append(Cancelled(leg=Leg.STOP))
-        elif b.leg is Leg.CLOSE:
-            if short > 0 and w.d['pos'].closing > 0:
-                w.core_in.append(Rejected(leg=Leg.CLOSE))          # the core re-requests the rest
-        elif short > 0:                                            # a fired target / add filled short
-            if b.core_cancelled:
-                w.core_in.append(Cancelled(leg=b.leg))
+        if b.leg is Leg.CLOSE and short > 0 and w.d['pos'].closing > 0:
+            if b.executed > 0:
+                w.core_in.append(Rejected(leg=Leg.CLOSE, qty=short))   # a partial close: re-request the part that died
+            else:                                                  # a reduce-only close found NOTHING to reduce:
+                w.reconcile.append(('close_found_nothing', b.intent_id))   # the venue is flatter than booked
+        # a cancelled / shrunk / short-filled stop, target or add: _retire_racing clears its racing allowance
     _ = plan
 
 
@@ -371,6 +398,7 @@ def _finish(w):
     for _ in range(MAX_LOOPS):
         w.core_in = []
         _settle(w)
+        _retire_racing(w)
         if not w.core_in:
             break
         _run_core(w, tuple(w.core_in))
@@ -404,14 +432,41 @@ def on_fills(ds, fills):
             w.reconcile.append(('unmatched_fill', f.trade_id))
             continue
         seen.add(f.trade_id)
-        conf.append(ConfirmedFill(fill_id=f.trade_id, leg=b.leg, qty=f.qty, price=f.price, fee=max(f.fee, ZERO)))
-        cur = next(x for x in w.bindings() if x.intent_id == b.intent_id)
-        w.replace_binding(cur, filled=CTX.add(cur.filled, f.qty))
-        by_xid[f.exchange_order_id] = next(x for x in w.bindings() if x.intent_id == b.intent_id)
+        conf.append(PendingFill(fill=ConfirmedFill(fill_id=f.trade_id, leg=b.leg, qty=f.qty, price=f.price,
+                                                   fee=max(f.fee, ZERO)), intent_id=b.intent_id))
     w.d['trade_ids'] = tuple(sorted(seen))
-    if conf:
-        _run_core(w, tuple(conf))
+    if conf or w.d['deferred']:
+        _apply_fills(w, conf)
     return _finish(w)
+
+
+def _apply_fills(w, conf):
+    """Apply venue fills in an order the core accepts: opening (ADD) fills first, then the reducing fills one by one in
+    the order the venue reported them. A reducing fill the core refuses only because an earlier venue event is not
+    booked yet (a stop / close fill beyond the booked position while an add's fill is still on its way) is DEFERRED in
+    the state together with every reducing fill after it (a FIFO barrier: reductions are never booked out of venue
+    order) and retried with the next fills - never dropped, never forced. Deferred fills are reported for reconcile."""
+    queue = [*w.d['deferred'], *conf]
+    order = [*(x for x in queue if x.fill.leg is Leg.ADD), *(x for x in queue if x.fill.leg is not Leg.ADD)]
+    kept, blocked = [], False
+    for k, pf in enumerate(order, 1):
+        # every fill not applied yet counts as deferred while the others run (it still needs its leg's allowance)
+        w.d['deferred'] = tuple([*kept, *order[k:]])
+        opening = pf.fill.leg is Leg.ADD
+        if blocked and not opening:
+            kept.append(pf)
+            continue
+        try:
+            _run_core(w, (pf.fill,))
+        except ManagementError:
+            kept.append(pf)
+            blocked = blocked or not opening
+            continue
+        for b in w.bindings():                 # a binding counts a fill only once the core has BOOKED it
+            if b.intent_id == pf.intent_id:
+                w.replace_binding(b, filled=CTX.add(b.filled, pf.fill.qty))
+    w.d['deferred'] = tuple(kept)
+    w.reconcile.extend(('deferred_fill', pf.fill.fill_id) for pf in kept)
 
 
 def on_outcome(ds, outcome, *, submit):
@@ -433,21 +488,26 @@ def on_outcome(ds, outcome, *, submit):
                           executed=outcome.executed_qty)
     elif k is OutcomeKind.REJECTED:
         if submit:
+            # only a refusal of what the core STILL requests goes back to it; a refused order the core already
+            # cancelled / superseded (e.g. a stop replacement refused after the position closed) is simply retired
             w.drop_binding(b)
+            pos = ds.pos
             if b.leg is Leg.STOP:
-                if b.current:                              # the venue keeps the previous stop: it is current again
-                    prev = [o for o in w.bindings() if o.leg is Leg.STOP and o.intent_id == b.replaces]
-                    for o in prev:
+                if b.current and pos.stop is not None and not b.core_cancelled:
+                    prev = [o for o in w.bindings() if o.leg is Leg.STOP and o.intent_id == b.replaces
+                            and o.state in (BindState.SENT, BindState.WORKING)]
+                    for o in prev:                     # the venue keeps the previous stop: it is current again
                         w.replace_binding(o, current=True)
                     w.core_in.append(Rejected(leg=Leg.STOP))
+                    if not prev:                       # ... unless it already executed / is gone: nothing protects
+                        w.lost_stop = True             # the rest -> the core closes it (stop failed)
             elif b.leg is Leg.CLOSE:
-                if ds.pos.closing > 0:
-                    w.core_in.append(Rejected(leg=Leg.CLOSE))
-            elif b.core_cancelled:
-                w.core_in.append(Cancelled(leg=b.leg))
-            else:
+                if pos.closing > 0:
+                    w.core_in.append(Rejected(leg=Leg.CLOSE, qty=b.qty))
+            elif not b.core_cancelled and getattr(pos, b.leg.value) is not None:
                 w.core_in.append(Rejected(leg=b.leg))
-            _run_core(w, tuple(w.core_in))
+            if w.core_in:
+                _run_core(w, tuple(w.core_in), close_request=R.EXIT_STOP_FAILED if w.lost_stop else None)
     elif k in (OutcomeKind.UNKNOWN, OutcomeKind.NOT_FOUND):
         w.reconcile.append((k.value, outcome.ref.client_id))      # books nothing: a NOT_FOUND is never "never filled"
     return _finish(w)
