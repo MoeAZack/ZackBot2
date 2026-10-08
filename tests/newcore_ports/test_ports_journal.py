@@ -8,8 +8,8 @@ from newcore.domain import IntentState, Purpose, Side
 from newcore.domain.events import EVENT_TYPES
 from newcore.domain.errors import InvalidRecord
 from newcore.ports import keys as K
-from newcore.ports.journal import (Admission, EventKind, JournalConflict, JournalGate, ResultOutcome, claim_signal,
-                                   header_of)
+from newcore.ports.journal import (Admission, EventKind, JournalConflict, JournalGate, JournalUnavailable,
+                                   ResultOutcome, claim_signal, header_of)
 
 
 class ReferenceJournal:
@@ -18,12 +18,23 @@ class ReferenceJournal:
     def __init__(self, account_id=ACCT, aggregate_id=PF, events=()):
         self._gate = JournalGate.rebuild(account_id, aggregate_id, events)
         self._events = list(events)
+        self._fail_next = False
 
     def append(self, event):
-        adm = self._gate.admit(event)
-        if adm is Admission.APPLY:
-            self._events.append(event)              # the durable write (fsync in a real store) happens here
-        return adm
+        staged = self._gate.stage(event)            # 1. validate only
+        if staged is None:
+            return Admission.ALREADY_APPLIED
+        self._write(event)                          # 2. durable (raises JournalUnavailable: the gate never saw it)
+        return staged.commit()                      # 3. only now consumed
+
+    def _write(self, event):
+        if self._fail_next:
+            self._fail_next = False
+            raise JournalUnavailable('injected write failure')
+        self._events.append(event)                  # the durable write (write + fsync in a real store)
+
+    def inject_write_failure(self):
+        self._fail_next = True
 
     def last_sequence(self):
         return len(self._events)
@@ -47,6 +58,10 @@ class TestReferenceJournal(JournalContract):
     @pytest.fixture
     def reopen(self):
         return lambda j: ReferenceJournal(events=list(j.read()))        # a restart = rebuild from the durable events
+
+    @pytest.fixture
+    def fail_next_write(self):
+        return lambda j: j.inject_write_failure()
 
 
 # ------------------------------------------------------------------------------------------------ header_of
@@ -81,6 +96,30 @@ def test_not_found_projects_to_not_found():
 
 
 # ------------------------------------------------------------------------------------------------ gate behaviour
+def test_stage_changes_nothing_until_commit():
+    s = _flow(flow_fill_and_protect)
+    g = JournalGate(ACCT, PF)
+    for ev in s.events:
+        staged = g.stage(ev)
+        assert g.grammar.last_sequence == ev.sequence - 1                 # staged, not consumed
+        assert not g.grammar.is_consumed(KEY) or ev.sequence > 1
+        assert g.stage(ev) is not None                                    # still new: no ALREADY_APPLIED yet
+        assert staged.commit() is Admission.APPLY
+    assert g.stage(s.events[0]) is None                                  # committed -> identical re-append
+
+
+def test_staged_event_commits_once_and_never_after_the_gate_moved():
+    s = _flow(flow_fill_and_protect)
+    g = JournalGate(ACCT, PF)
+    first, twin = g.stage(s.events[0]), g.stage(s.events[0])
+    first.commit()
+    with pytest.raises(InvalidRecord, match='already committed'):
+        first.commit()
+    with pytest.raises(InvalidRecord, match='the gate moved'):
+        twin.commit()                                                     # a stale stage can never double-consume
+    assert g.grammar.last_sequence == 1
+
+
 def test_refused_event_leaves_the_gate_unchanged_and_the_right_event_still_applies():
     s = _flow(flow_fill_and_protect)
     g = JournalGate(ACCT, PF)

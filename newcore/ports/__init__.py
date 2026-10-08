@@ -9,7 +9,7 @@ value types. No adapters, no IO, no clock, no randomness, no legacy imports; NC-
 """
 from .bars import Bar, BarSource, check_closed_bars
 from .journal import (Admission, EventHeader, EventKind, Grammar, GrammarError, JournalConflict, JournalGate,
-                      JournalPort, JournalUnavailable, ResultOutcome, SignalClaim, claim_signal, header_of)
+                      JournalPort, JournalUnavailable, ResultOutcome, SignalClaim, StagedEvent, claim_signal, header_of)
 from .keys import (check_decision_key, client_id_for, decision_key, derive_child_intent_id, derive_decision_id,
                    derive_intent_id, derive_lot_id, is_newcore_client_id, route_of, strategy_instance)
 from .values import PortValueError

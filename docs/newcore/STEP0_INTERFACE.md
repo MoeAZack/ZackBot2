@@ -1,6 +1,6 @@
 # NEWCORE step 0: the shared interface frozen before parallel slice work
 
-**State:** r2 for Codex re-review (PR #37), 08 Oct 2026, Africa/Cairo.
+**State:** r3 for Codex re-review (PR #37), 08 Oct 2026, Africa/Cairo. r3 adds the staged journal admission (store atomicity).
 - **Branch:** `master` @ `ccd9601` merged with NC-01 `nc-01-domain` @ `cd721c5` (PR #38). This branch is stacked on
   NC-01.
 - **Code:** `newcore/ports/`: Protocols, the one journal gate and small value types; no adapters.
@@ -25,7 +25,7 @@ constructor**. The grammar refuses a keyed decision whose key it did not build.
 | Field | Rule | Example |
 |---|---|---|
 | `strategy` | `strategy_instance(name, tf)`: `[a-z0-9_]{1,24}@<tf>`, tf ∈ 1m…1d | `trend_ema_mom@4h` |
-| `strategy_version` | `v<digits>` | `v1` |
+| `strategy_version` | canonical `v<n>`: no leading zeros (`v0`, `v1`, `v12`; `v00` and `v01` are refused) | `v1` |
 | `symbol`, `side`, `purpose` | NC-01 rules and enums | `BTCUSDT`, `LONG`, `entry` |
 | `candle_close_ms` | int UTC ms on the tf grid, = signal candle `open_ms + tf_ms` (= Binance `closeTime + 1`) | `1759924800000` |
 
@@ -69,8 +69,14 @@ characters. These are pure functions with pinned test vectors.
 ## 3. JournalPort, header_of, and the one gate
 
 **JournalPort methods:**
-- `append(event) -> Admission`: runs `JournalGate.admit` and is durable before it returns `APPLY`. `ALREADY_APPLIED`
-  writes nothing. It raises `JournalConflict` (nothing written) or `JournalUnavailable`.
+- `append(event) -> Admission` follows a fixed store-atomicity order (r3):
+  1. `staged = gate().stage(event)`: validate only. It raises `JournalConflict`, and `None` means `ALREADY_APPLIED`
+     (write nothing).
+  2. Write and fsync the event. On failure, raise `JournalUnavailable` and drop `staged`. Nothing is durable and the
+     gate is unchanged, so the same event can be appended later, exactly once.
+  3. `staged.commit()` returns `APPLY`. Only now are the sequence, decision, intent and lineage consumed.
+  - `StagedEvent.commit()` runs once and refuses if the gate moved after staging.
+  - `JournalGate.admit` (stage plus commit) is only for events that are already durable, at rebuild or replay.
 - `last_sequence()`, `read(after)`, `find_decision(id)`.
 - `gate()`: the admission state that `claim_signal` and `next_child_intent_id` read.
 
@@ -81,7 +87,8 @@ DomainEvent. It then runs `Grammar` (G1–G10). Last come NC-01's per-record che
 - `check_result_for_intent`;
 - the terminal step is `terminal_for(final result)`.
 
-A refused event changes nothing. After a restart, `JournalGate.rebuild(durable events)` restores the state.
+A refused event and a failed write both change nothing. After a restart, `JournalGate.rebuild(durable events)` restores
+the state.
 
 | Kind | NC-01 event | Header fields |
 |---|---|---|
@@ -130,8 +137,16 @@ own events.
   closes at market or goes to HOLD.
 
 **Contract suite** (`tests/newcore_ports/journal_contract.py`, class `JournalContract`):
-- An implementation subclasses it and provides two fixtures: `make_journal` and `reopen`. The test file must sit in
-  `tests/newcore_ports/` so that `journal_contract` and `nc_events` can be imported.
+- An implementation subclasses it and provides three fixtures: `make_journal`, `reopen`, and `fail_next_write`. The
+  last is the failure-injection hook: the journal's next durable write (write, fsync or replace) fails once. The test
+  file must sit in `tests/newcore_ports/` so that `journal_contract` and `nc_events` can be imported.
+- Store atomicity is tested at six failure points: the keyed decision, the entry intent, the fill, the protect lineage,
+  the algo route and a result. At each one the suite proves that:
+  - the durable stream is unchanged;
+  - nothing is consumed: sequence, decision, lineage, signal claim or `find_decision`;
+  - restart state equals in-process state;
+  - the same event then appends exactly once and the flow completes.
+  A failure, then a restart, then an append is covered too.
 - Every event is a real NC-01 record built by `nc_events.Scenario`.
 - It covers 4 good journals, each cross-checked with NC-01 `check_event_chain` and `ledger.admit`.
 - It covers 27 refused events, and each asserts its exact refusal reason.
@@ -175,10 +190,14 @@ own events.
    - The algo fallback is a new protect intent with `client_id_for(id, 'algo')`, allowed only after a sent classic
      attempt closed `rejected`.
 5. **Journal implementations:**
-   - S1's MemoryJournal and NC-02a's file journal admit through `JournalGate`, expose `gate()`, and pass
-     `JournalContract`.
-   - NC-02a rebuilds the gate from the durable events at boot.
-   - If a write fails after admission, the result is `JournalUnavailable` and a hard HOLD.
+   - S1's MemoryJournal and NC-02a's file journal expose `gate()` and pass `JournalContract`, including the new
+     `fail_next_write` fixture.
+   - **r3:** `append` must be `gate().stage(event)`, then write and fsync, then `staged.commit()`. Never call
+     `gate().admit()` before the write.
+   - NC-02a rebuilds the gate with `JournalGate.rebuild` from the durable events at boot.
+   - A failed write raises `JournalUnavailable` with nothing durable and nothing consumed. A retry of the same event
+     must then append exactly once, so NC-02a has to reopen or roll the segment if its handle is poisoned. The
+     account-level hard HOLD policy stays with NC-02.
 6. **Journal kinds:** `incident_recorded` is gone. Incidents wait for an NC-01/NC-02 record type.
 
 ## 7. Open for Codex, and conflicts
