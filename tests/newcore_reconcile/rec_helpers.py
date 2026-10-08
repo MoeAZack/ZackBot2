@@ -112,11 +112,24 @@ def signals(side='LONG', entry=ENTRY_BAR, exit_=None, more=None):
     return InjectedSignals(sig, stop_atr=D('2'))
 
 
+def fault_world(candles, sigs, **kw):
+    """A World whose runner talks to FaultVenue(FakeVenue) through the slice's ScriptedVenue (crash / blind hooks);
+    world_snapshot reads through the same FaultVenue, so the fold sees what the runner sees."""
+    from newcore.reconcile.testing import FaultVenue
+    from slice_helpers import ScriptedVenue, World
+    w = World(candles, sigs, **kw)
+    w.fault = FaultVenue(w.venue)
+    w.port = ScriptedVenue(w.fault)
+    w.runner = w.new_runner()
+    return w
+
+
 def world_snapshot(w, v, *, trades=True, orders_extra=(), transform=None):
-    """Fresh reads of the World's FakeVenue at its clock: positions, open orders, a by-id query for every id
-    plan_reads asks for, the fills of every order id those answers name, and a userTrades window per side."""
-    venue = w.venue
-    now = venue.now_ms
+    """Fresh reads of the World's venue at its clock: positions, open orders, a by-id query for every id
+    plan_reads asks for, the fills of every order id those answers name, and a userTrades window per side.
+    Reads go through w.fault (FaultVenue) when the world has one."""
+    venue = getattr(w, 'fault', w.venue)
+    now = w.venue.now_ms
     routes = {f.client_id: (f.symbol, f.route) for f in v.intents}
     queries, eoids = [], set()
     for c in plan_reads(v, now_ms=now).queries:
@@ -131,11 +144,16 @@ def world_snapshot(w, v, *, trades=True, orders_extra=(), transform=None):
     oo = ReadOutcome(kind=oo.kind, observed_at_ms=oo.observed_at_ms, value=oo.value + tuple(orders_extra))
     tw = []
     if trades:
-        sides = {(p.symbol, p.side) for p in pos_read.value} | {(x.symbol, x.side) for x in v.lots}
+        sides = {(p.symbol, p.side) for p in w.venue.positions().value if p.qty > 0} | \
+            {(x.symbol, x.side) for x in v.lots}
         for k in sorted(sides):
             since = min((x.opened_at_ms for x in v.lots if (x.symbol, x.side) == k), default=0)
-            rows = tuple(f for f in venue._fills if (f.symbol, f.position_side) == k and f.at_ms >= since)
-            tw.append((k, TradeWindow(from_ms=since, read=ok(rows, now))))
+            if hasattr(w, 'fault'):
+                read = w.fault.trades(k[0], k[1], since)
+            else:
+                read = ok(tuple(f for f in w.venue._fills if (f.symbol, f.position_side) == k and f.at_ms >= since),
+                          now)
+            tw.append((k, TradeWindow(from_ms=since, read=read)))
     s = VenueSnapshot(positions=pos_read, orders=oo, queries=tuple(queries), fills=tuple(fills), trades=tuple(tw))
     return transform(s) if transform else s
 
