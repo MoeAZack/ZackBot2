@@ -7,6 +7,7 @@
     "G-GAP-STOP-L-01": "protection: a stop gapped through at the open fills at the open, never at the stop price",
     "G-STOP-CROSSED-S-01": "protection: a trail level already crossed is a bot taker close (STOP_CROSSED), never an exchange fill",
     "G-TIME-L-01": "ownership of the holding clock: TIME_EXIT at the candle-close decision (the engine's required case)",
+    "G-TIME-L-02": "known divergence guard: pins the legacy ENGINE's recorded C11 holding-clock defect per commit (wall-clock seconds, slow entry cycle; G-TIME-S-02 is its extended mirror)",
     "G-GAP-TP-S-01": "take-profit gapped through at the open: the market close fills at the gapped open (TP_FULL, short path)",
     "G-GAP-DCA-L-01": "DCA basket: safety orders gapped at the open fill at the open, then the whole basket closes at its target (TP_BASKET)",
     "G-PYR-SLIP-L-01": "pyramid add is a taker market order with the entry slippage; the strategy exit closes the whole position",
@@ -28,7 +29,6 @@
     "G-GAP-TP-L-01",
     "G-PYR-SLIP-S-01",
     "G-STOP-CROSSED-L-01",
-    "G-TIME-L-02",
     "G-TIME-S-01",
     "G-TIME-S-02",
     "G-TRAILENTRY-MAXPOS-01"

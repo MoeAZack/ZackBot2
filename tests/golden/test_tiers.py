@@ -59,7 +59,7 @@ def test_a_new_case_without_a_tier_fails():
 
 def test_core_keeps_every_coverage_class():
     """Core keeps representative long and short paths and a required case on each legacy adapter, and one case per exit code,
-    fault kind, slot feature and entry type the pack exercises anywhere."""
+    fault kind, slot feature, entry type, behaviour tag and recorded known divergence the pack exercises anywhere."""
     cases = schema.load_all()
     gaps = tiers.core_gaps(cases, tiers.load([c['id'] for c in cases]))
     assert not gaps, f'classes only the extended tier exercises (move a representative case to core): {gaps}'
@@ -71,6 +71,49 @@ def test_core_gaps_detects_a_moved_representative():
     moved = dict(tier_of, **{'G-GAP-DCA-L-01': 'extended', 'G-OUTAGE-STOP-L-01': 'extended'})
     gaps = tiers.core_gaps(cases, moved)
     assert 'exit:TP_BASKET' in gaps and 'fault:exchange_outage' in gaps, gaps
+
+
+def test_behaviours_and_known_divergences_are_coverage_classes():
+    """Codex pre-review of 3f4abea #2: every `behaviours` tag and every recorded known divergence (adapter, ticket, finding) is
+    a class derived from the case file, so core must keep a representative of each."""
+    cases = {c['id']: c for c in schema.load_all()}
+    for c in cases.values():
+        k = tiers.classes(c)
+        assert {f'behaviour:{b}' for b in c['behaviours']} <= k, c['id']
+        assert {tiers.divergence_class(d) for d in c['known_divergences']} <= k, c['id']
+    assert 'divergence:legacy_engine:AUD-07:C11' in tiers.classes(cases['G-TIME-L-02'])
+
+
+def test_core_gaps_detects_a_new_behaviour_placed_only_in_extended():
+    """A future causal behaviour whose only case sits in extended fails the per-commit coverage contract."""
+    cases = copy.deepcopy(schema.load_all())
+    tier_of = tiers.load([c['id'] for c in cases])
+    ext = next(c for c in cases if tier_of[c['id']] == 'extended')
+    ext['behaviours'].append('new_causal_behaviour')
+    assert tiers.core_gaps(cases, tier_of) == ['behaviour:new_causal_behaviour']
+
+
+def test_core_gaps_detects_a_moved_sole_behaviour_and_divergence_guard():
+    """G-DAY-CAIRO-W-01 is the only core case for cairo_day / daily_halt and for the backtester's C13d divergence; moved to
+    extended it opens ONLY behaviour / divergence gaps (the exit / fault / slot / entry / adapter classes stay covered)."""
+    cases = schema.load_all()
+    tier_of = tiers.load([c['id'] for c in cases])
+    gaps = tiers.core_gaps(cases, dict(tier_of, **{'G-DAY-CAIRO-W-01': 'extended'}))
+    assert gaps == ['behaviour:cairo_day', 'behaviour:daily_halt', 'divergence:legacy_backtest:AUD-07:C13d'], gaps
+
+
+@pytest.mark.parametrize('moved,gaps', [
+    (('G-TIME-L-02',), ['divergence:legacy_engine:AUD-07:C11']),       # the engine's C11 guard (its mirror S-02 is extended)
+    (('G-TIME-L-01', 'G-TIME-L-02'), ['divergence:legacy_backtest:AUD-07:C11', 'divergence:legacy_engine:AUD-07:C11']),
+    (('G-GAP-TP-S-01',), ['divergence:legacy_backtest:AUD-07:TP gap at the open (pre-existing, outside C13f)']),
+])
+def test_core_gaps_detects_a_moved_sole_divergence_guard(moved, gaps):
+    """A case that is the only core guard of a recorded defect (known divergence by adapter, ticket and finding) cannot leave
+    core: moving it opens exactly that divergence class."""
+    cases = schema.load_all()
+    tier_of = tiers.load([c['id'] for c in cases])
+    assert all(tier_of[m] == 'core' for m in moved)
+    assert tiers.core_gaps(cases, dict(tier_of, **{m: 'extended' for m in moved})) == gaps
 
 
 def test_extended_params_are_slow_and_core_params_are_not():
