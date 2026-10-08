@@ -7,7 +7,7 @@ tier gate; Codex golden r3 residual ruling point 1). Only the descriptive text (
 new top-level key is protected automatically (validate() rejects keys it does not know). Every known divergence carries a
 stable `divergence_id` (point 2): tier coverage keys on adapter + divergence_id; ticket / finding must equal the ID's entry in
 the append-only registry DIVERGENCES.json (Codex golden r5 ruling #2; still inside the hash)."""
-import glob, hashlib, json, math, numbers, os, re
+import decimal, glob, hashlib, json, math, numbers, os, re
 
 from . import CASES_DIR, registry
 
@@ -187,6 +187,7 @@ def validate(case, path=None):
         _req(g.get('kind') in SIGNAL_KINDS and g.get('sym') in mk and 0 <= int(g['bar']) < n, cid, f'bad signal {g}')
     _validate_faults(case, cid, n)
     _validate_instruments(case, cid)
+    _validate_dca(case, cid)
     # expect
     ex = case['expect']
     _req(isinstance(ex.get('trades'), list), cid, 'expect.trades: list')
@@ -319,6 +320,29 @@ def _validate_instruments(case, cid):
         for k in INSTRUMENT_KEYS:
             _req(_is_finite(r[k]) and float(r[k]) >= 0 and (float(r[k]) > 0 or k in ('min_qty', 'min_notional')), cid,
                  f'instruments.{s}.{k}={r[k]!r}: a finite decimal (step / tick > 0)')
+
+
+DCA_KEYS = ('n', 'step_atr', 'scale', 'tp_atr', 'stop_atr')
+DCA_MAX_N = 10                                       # legacy dca_dip ladders use 1..3 levels; NEWCORE caps adds at one
+DCA_MAX_MULT = 100                                   # an ATR multiple / scale above this is a typo, never a strategy
+DECIMAL_TEXT = re.compile(r'(0|[1-9][0-9]*)(\.[0-9]+)?')
+
+
+def _validate_dca(case, cid):
+    """slot.dca (Cowork review of #40): exactly DCA_KEYS; n an int (never bool / float / str) in 1..DCA_MAX_N; step_atr,
+    scale, tp_atr and stop_atr plain positive decimal STRINGS (no float, bool, exponent, sign, NaN or inf) <= DCA_MAX_MULT."""
+    d = case['slot'].get('dca')
+    if d is None:
+        return
+    _req(isinstance(d, dict) and set(d) == set(DCA_KEYS), cid, f'slot.dca: exactly the keys {DCA_KEYS}')
+    n = d['n']
+    _req(type(n) is int and 1 <= n <= DCA_MAX_N, cid,
+         f'slot.dca.n={n!r}: an int in 1..{DCA_MAX_N} (never a bool, float or string)')
+    for k in DCA_KEYS[1:]:
+        v = d[k]
+        _req(type(v) is str and DECIMAL_TEXT.fullmatch(v) is not None, cid,
+             f'slot.dca.{k}={v!r}: a plain decimal string (never a float, bool, exponent, sign, NaN or inf)')
+        _req(0 < decimal.Decimal(v) <= DCA_MAX_MULT, cid, f'slot.dca.{k}={v!r}: must be > 0 and <= {DCA_MAX_MULT}')
 
 
 def _is_finite(x):
