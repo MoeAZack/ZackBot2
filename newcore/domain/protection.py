@@ -15,7 +15,7 @@ from __future__ import annotations
 import enum
 from decimal import Decimal
 
-from .base import Record, check_id, check_text, positive, record, req
+from .base import ZERO, Record, check_id, check_text, positive, record, req
 from .orders import IntentState, OrderType, Purpose
 
 
@@ -48,7 +48,7 @@ class StopMiss(Record):
     phase: MissPhase
     count: int
     since_ms: int
-    foreign_order_id: str | None = None      # the covering foreign order (OWNER_CHECK only)
+    foreign_order_id: str | None      # the covering foreign order (OWNER_CHECK only)
 
     def _validate(self, p):
         req(self.count >= 1, p + '.count', 'a miss counts from 1')
@@ -62,10 +62,10 @@ class Protection(Record):
     owner_id: str                    # lot_ (a lot's stop) or int_ (provisional stop of an unconfirmed market ENTRY)
     price: Decimal                   # level of the carrying order (or of the placement to make)
     qty: Decimal                     # size of the carrying order (or of the placement to make)
-    order: str | None = None         # int_ of the PROTECT intent carrying it now
-    replacement: str | None = None   # int_ of the PROTECT intent that will replace it
-    confirmed_at_ms: int | None = None
-    miss: StopMiss | None = None
+    order: str | None         # int_ of the PROTECT intent carrying it now
+    replacement: str | None   # int_ of the PROTECT intent that will replace it
+    confirmed_at_ms: int | None
+    miss: StopMiss | None
 
     def _validate(self, p):
         p = f'{p}[{self.owner_id}]'
@@ -98,6 +98,16 @@ def protection_status(prot, intents_by_id, exposure):
     if prot.qty < exposure:
         return ProtectionStatus.UNDERSIZED
     return ProtectionStatus.OWNED_CONFIRMED if prot.confirmed_at_ms is not None else ProtectionStatus.OWNED_UNVERIFIED
+
+
+def active_coverage(prot, intents_by_id):
+    """The quantity this protection is establishing on the exchange: the replacement while one is in flight (the old order
+    is superseded and capped by reduce-only), otherwise the carrying order unless it is being cancelled."""
+    if prot.replacement is not None:
+        return intents_by_id[prot.replacement].qty
+    if prot.order is not None and intents_by_id[prot.order].state is not IntentState.CANCELLING:
+        return prot.qty
+    return ZERO
 
 
 def _carrier(intents_by_id, iid, prot, side, symbol, path):

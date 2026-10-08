@@ -1,16 +1,17 @@
-"""Venue quantization rules for one symbol (ruling 2).
+"""Instrument identity and venue quantization rules (contract 2, invariant 2; ruling 2).
 
 Hot math (indicators, sizing) may compute in float; a value becomes a record field only through these helpers, which
-quantize onto the exchange's tick/step grid with an EXPLICIT rounding direction. There is no default rounding, so a
-caller always states whether it rounds a quantity down (never more than intended) or a price up/down.
+quantize onto the exchange's tick/step grid with an EXPLICIT rounding direction and exact integer arithmetic. There is no
+default rounding, so a caller always states whether it rounds a quantity down (never more than intended) or a price
+up/down. The rules are validation input supplied by the caller (NC-03 reads them from the venue), never fetched here.
 """
 from __future__ import annotations
 
 import enum
-from decimal import ROUND_CEILING, ROUND_FLOOR, ROUND_HALF_EVEN, Decimal
+from decimal import Decimal
 
-from .base import MAX_ABS, Record, check_decimal, check_symbol, positive, record, req
-from .account import VENUE_RE
+from .account import Venue
+from .base import CTX, Record, canonical_decimal, check_symbol, positive, record, req
 from .orders import OrderType
 
 
@@ -20,23 +21,36 @@ class Rounding(enum.StrEnum):
     NEAREST = 'nearest'    # half-even
 
 
-_MODE = {Rounding.DOWN: ROUND_FLOOR, Rounding.UP: ROUND_CEILING, Rounding.NEAREST: ROUND_HALF_EVEN}
-
-
 def to_decimal(x, path='value'):
-    """Decimal from a Decimal, an int or a float computed by hot math (via its shortest repr). bool/NaN/Inf rejected."""
+    """Bounded canonical Decimal from a Decimal, an int or a float computed by hot math (via its shortest repr).
+    bool / NaN / Infinity / out-of-bounds values are rejected."""
     req(type(x) in (Decimal, int, float), path, f'not a number ({type(x).__name__})')
-    d = x if type(x) is Decimal else Decimal(repr(x)) if type(x) is float else Decimal(x)
-    req(d.is_finite(), path, 'not finite')
-    return d
+    if type(x) is float:
+        req(x == x and x not in (float('inf'), float('-inf')), path, 'not finite')
+        x = Decimal(repr(x))
+    elif type(x) is int:
+        x = Decimal(x)
+    return canonical_decimal(x, path)
 
 
 def _quantize(x, unit, rounding, path):
     req(isinstance(rounding, Rounding), path, 'rounding must be an explicit Rounding')
     d = to_decimal(x, path)
-    req(abs(d) < MAX_ABS, path, f'|{d}| is not below 1e15')
-    q =(d / unit).to_integral_value(rounding=_MODE[rounding]) * unit
-    return q.quantize(unit) if q else Decimal(0).quantize(unit)
+    n = CTX.divide_int(d, unit)                      # truncated toward zero, exact
+    rem = CTX.subtract(d, CTX.multiply(n, unit))     # exact remainder, same sign as d
+    if rounding is Rounding.DOWN and rem < 0:
+        n = CTX.subtract(n, 1)
+    elif rounding is Rounding.UP and rem > 0:
+        n = CTX.add(n, 1)
+    elif rounding is Rounding.NEAREST and rem:
+        twice = CTX.multiply(CTX.abs(rem), 2)
+        if twice > unit or (twice == unit and CTX.remainder(n, 2)):
+            n = CTX.add(n, 1 if rem > 0 else -1)
+    return canonical_decimal(CTX.multiply(n, unit), path)
+
+
+def on_grid(v, unit):
+    return CTX.remainder(v, unit) == 0
 
 
 class Capability(enum.StrEnum):
@@ -49,11 +63,10 @@ class Capability(enum.StrEnum):
 
 @record
 class InstrumentId(Record):
-    venue: str
+    venue: Venue
     symbol: str
 
     def _validate(self, p):
-        req(VENUE_RE.fullmatch(self.venue) is not None, p + '.venue', f'{self.venue!r}')
         check_symbol(self.symbol, p + '.symbol')
 
 
@@ -92,21 +105,21 @@ class InstrumentRules(Record):
         return _quantize(x, self.tick_size, rounding, f'{self.symbol}.price')
 
     def on_step(self, q):
-        return q % self.step_size == 0
+        return on_grid(q, self.step_size)
 
     def on_tick(self, px):
-        return px % self.tick_size == 0
+        return on_grid(px, self.tick_size)
 
     def check_qty(self, q, path='qty', *, reduce_only=False):
         """A quantity the exchange accepts: a whole number of steps, <= max_qty, and >= min_qty unless reduce-only."""
-        check_decimal(q, path)
+        canonical_decimal(q, path)
         positive(q, path)
         req(self.on_step(q), path, f'{q} is not a multiple of step {self.step_size}')
         req(q <= self.max_qty, path, f'{q} above the venue maximum {self.max_qty}')
         req(reduce_only or q >= self.min_qty, path, f'{q} below the venue minimum {self.min_qty}')
 
     def check_price(self, px, path='price'):
-        check_decimal(px, path)
+        canonical_decimal(px, path)
         positive(px, path)
         req(self.on_tick(px), path, f'{px} is not a multiple of tick {self.tick_size}')
 
@@ -121,6 +134,7 @@ class InstrumentRules(Record):
             req(self.supports(Capability.STOP_MARKET), p + '.order_type', 'stop-market is not supported')
         if intent.price is not None:
             self.check_price(intent.price, p + '.price')
-            req(intent.reduce_only or intent.price * intent.qty >= self.min_notional, p + '.qty', 'below min notional')
+            req(intent.reduce_only or CTX.multiply(intent.price, intent.qty) >= self.min_notional, p + '.qty',
+                'below min notional')
         if intent.stop_price is not None:
             self.check_price(intent.stop_price, p + '.stop_price')

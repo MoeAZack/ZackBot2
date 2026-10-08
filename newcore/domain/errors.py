@@ -40,3 +40,8 @@ class OlderSchema(UnsupportedVersion):
 
 class OwnershipUnknown(DomainError):
     """Asked for owned items of a portfolio whose ownership is UNKNOWN. Unknown is never iterated as empty."""
+
+
+class EventOrderError(InvalidRecord):
+    """An event that cannot be admitted: a sequence gap, an already-used sequence, an event id re-used with different
+    canonical bytes, or another aggregate's event (contract invariant 12)."""

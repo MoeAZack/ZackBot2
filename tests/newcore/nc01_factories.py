@@ -1,29 +1,47 @@
-"""Deterministic builders of VALID NC-01 records for the tests. Every id comes from a seeded random.Random, so a seed
-reproduces the exact records (recorded seeds; no wall clock, no uuid4)."""
+"""Deterministic builders of VALID NC-01 records for the tests (stdlib only; no Hypothesis, contract r2 6.2).
+
+Every id comes from a seeded random.Random, so a seed reproduces the exact records; nothing reads a clock or uuid4.
+The domain has NO field defaults (one strict dialect); `build()` is a TEST-ONLY convenience that passes an explicit
+None / () / False / 0 for optional fields a builder leaves out, so the factories stay readable."""
 import dataclasses
 import random
+import typing
 from decimal import Decimal as D
-
-from hypothesis import HealthCheck, settings
 
 from newcore.domain import (Account, AccountBinding, Action, Arming, Authority, BindingConfirmation, BindingState,
                             Capability, Decision, EntriesMode, Environment, Fill, HoldKind, InstrumentId, InstrumentRules,
-                            IntentState, Lot, LotSource, MissPhase, OrderIntent, OrderType, Ownership, OwnershipProof,
-                            Portfolio, Position, ProofKind, Protection, Purpose, ReasonCode, Side, StopMiss,
-                            confirmation_phrase, make_id, protect_key)
-
-# Hypothesis is pinned (requirements-dev.txt) and deterministic here: every property carries an explicit @seed, the
-# example database is off (nothing is written to the repo) and there is no wall-clock deadline. Registered in this module
-# rather than a tests/newcore/conftest.py, which would shadow the top-level tests/conftest.py module name.
-settings.register_profile('nc01', database=None, deadline=None, max_examples=150, print_blob=True,
-                          suppress_health_check=(HealthCheck.too_slow,))
-settings.load_profile('nc01')
+                            IntentState, Lot, LotSource, MissPhase, OrderIntent, OrderResult, OrderType, Ownership,
+                            OwnershipProof, Portfolio, Position, PositionRead, ProofKind, Protection, Purpose, ReasonCode,
+                            Side, StopMiss, Venue, confirmation_phrase, make_id)
+from newcore.domain.base import field_spec
 
 T0 = 1_791_400_000_000                      # 2026-10-07 UTC, integer ms
 DIGEST = '0123456789abcdef'
 SYMBOLS = ('SOLUSDT', 'XRPUSDT', 'ETHUSDT', 'BTCUSDT', 'DOGEUSDT', 'ADAUSDT', 'LINKUSDT', 'AVAXUSDT')
 STOP_STATES = ('none', 'pending', 'unverified', 'confirmed', 'releasing', 'checking', 'restoring', 'owner_check',
                'replacing')
+_EMPTY = {bool: False, int: 0}
+
+
+def build(cls, **kw):
+    """TEST-ONLY: construct `cls` with an explicit empty value for every optional / collection / flag field left out."""
+    for name, tp, _ in field_spec(cls):
+        if name in kw:
+            continue
+        args = typing.get_args(tp)
+        if type(None) in args:
+            kw[name] = None
+        elif typing.get_origin(tp) is tuple:
+            kw[name] = ()
+        elif tp in _EMPTY and name in ('tp1_done', 'adds_done', 'hedge_mode'):
+            kw[name] = _EMPTY[tp]
+        elif tp is str and name in ('detail', 'policy_version'):
+            kw[name] = ''
+    return cls(**kw)
+
+
+def replace(rec, **kw):
+    return dataclasses.replace(rec, **kw)
 
 
 class Ids:
@@ -37,22 +55,25 @@ class Ids:
         return f'z{kind}{self.rng.getrandbits(88):022x}'
 
 
+def pf_id(acct):
+    return make_id('pf', int(acct[5:], 16))
+
+
 def binding(digest=DIGEST, env=Environment.TESTNET):
-    return AccountBinding(venue='binance-usdm', environment=env, settlement_asset='USDT',
-                          base_url='https://testnet.binancefuture.com', key_digest=digest)
+    return build(AccountBinding, venue=Venue.BINANCE_USDM, environment=env, settlement_asset='USDT', key_digest=digest)
 
 
 def account(acct, digest=DIGEST, state=BindingState.CONFIRMED):
     conf = None if state is BindingState.UNCONFIRMED else BindingConfirmation(
         account_id=acct, old_key_digest=None, new_key_digest=digest, typed_phrase=confirmation_phrase(acct, digest),
         confirmed_at_ms=T0)
-    return Account(account_id=acct, label='testnet main', hedge_mode=True, binding=binding(digest), binding_state=state,
-                   confirmation=conf)
+    return build(Account, account_id=acct, label='testnet main', hedge_mode=True, binding=binding(digest),
+                 binding_state=state, confirmation=conf)
 
 
 def rules(symbol='SOLUSDT', caps=(Capability.HEDGE_MODE, Capability.POST_ONLY, Capability.STOP_MARKET,
                                   Capability.REDUCE_ONLY)):
-    return InstrumentRules(instrument=InstrumentId(venue='binance-usdm', symbol=symbol), tick_size=D('0.01'),
+    return InstrumentRules(instrument=InstrumentId(venue=Venue.BINANCE_USDM, symbol=symbol), tick_size=D('0.01'),
                            step_size=D('0.01'), min_qty=D('0.01'), max_qty=D('10000'), min_notional=D('5'),
                            capabilities=tuple(caps))
 
@@ -66,21 +87,23 @@ def intent(ids, acct, purpose, symbol='SOLUSDT', side=Side.LONG, qty=D('1.5'), *
            order_type=OrderType.MARKET, owner_id=None, price=None, stop_price=None, arm=None, seen_qty=None,
            created=T0, decision_id=None, slot_id=None, reason=None, authorized_by=None, alt=None):
     reason = reason or DEFAULT_REASON[purpose]
-    key = None
     if purpose is Purpose.PROTECT:
         order_type = OrderType.STOP_MARKET
-        key = protect_key(acct, owner_id, side, qty, stop_price)
     if purpose is Purpose.ENTRY and slot_id is None and reason is ReasonCode.ENTRY_SIGNAL:
         slot_id = 'S1'
     return OrderIntent(intent_id=ids.id('int'), account_id=acct, decision_id=decision_id or ids.id('dec'),
                        client_order_id=ids.cid(purpose.value[0]), purpose=purpose, order_type=order_type, state=state,
                        symbol=symbol, side=side, qty=qty, reason=reason, created_at_ms=created, owner_id=owner_id,
-                       slot_id=slot_id, price=price, stop_price=stop_price, arm=arm, idempotency_key=key,
-                       alt_client_order_id=alt, seen_qty=seen_qty, authorized_by=authorized_by)
+                       slot_id=slot_id, price=price, stop_price=stop_price, arm=arm, alt_client_order_id=alt,
+                       seen_qty=seen_qty, authorized_by=authorized_by)
 
 
 def stop_level(side, price):
     return max((price * D('0.95') if side is Side.LONG else price * D('1.05')).quantize(D('0.01')), D('0.01'))
+
+
+def miss(phase, count=1, foreign=None):
+    return StopMiss(phase=phase, count=count, since_ms=T0 + 1000, foreign_order_id=foreign)
 
 
 def protection(ids, acct, owner_id, symbol, side, qty, price, stop_state):
@@ -99,13 +122,15 @@ def protection(ids, acct, owner_id, symbol, side, qty, price, stop_state):
                      stop_price=level + D('0.01'), reason=ReasonCode.PROTECT_REPLACE)
         extra.append(new)
         repl = new.intent_id
-    miss = {'checking': StopMiss(phase=MissPhase.CHECKING, count=1, since_ms=T0 + 1000),
-            'restoring': StopMiss(phase=MissPhase.RESTORING, count=2, since_ms=T0 + 1000),
-            'owner_check': StopMiss(phase=MissPhase.OWNER_CHECK, count=3, since_ms=T0 + 1000,
-                                    foreign_order_id='8123456789')}.get(stop_state)
+    m = {'checking': miss(MissPhase.CHECKING), 'restoring': miss(MissPhase.RESTORING, 2),
+         'owner_check': miss(MissPhase.OWNER_CHECK, 3, '8123456789')}.get(stop_state)
     prot = Protection(owner_id=owner_id, price=level, qty=qty, order=order, replacement=repl,
-                      confirmed_at_ms=T0 + 2000 if stop_state in ('confirmed', 'replacing') else None, miss=miss)
+                      confirmed_at_ms=T0 + 2000 if stop_state in ('confirmed', 'replacing') else None, miss=m)
     return prot, extra
+
+
+def fill(reason, qty, price, *, at=T0, result_id=None, decision_id=None, fee=D('0.075')):
+    return Fill(at_ms=at, reason=reason, qty=qty, price=price, fee=fee, result_id=result_id, decision_id=decision_id)
 
 
 def lot(ids, acct, symbol='SOLUSDT', side=Side.LONG, qty=D('1.5'), price=D('100'), *, stop_state='confirmed',
@@ -115,11 +140,11 @@ def lot(ids, acct, symbol='SOLUSDT', side=Side.LONG, qty=D('1.5'), price=D('100'
     lot_id = ids.id('lot')
     adopted = ids.id('dec') if source is LotSource.ADOPTED else None
     open_qty = qty + (partial_close or 0)
-    fills = [Fill(at_ms=T0, reason=ReasonCode.ENTRY_ADOPTED if adopted else ReasonCode.ENTRY_SIGNAL, qty=open_qty,
-                  price=price, fee=D('0.075'), result_id=None if adopted else ids.id('res'), decision_id=adopted)]
+    fills = [fill(ReasonCode.ENTRY_ADOPTED if adopted else ReasonCode.ENTRY_SIGNAL, open_qty, price,
+                  result_id=None if adopted else ids.id('res'), decision_id=adopted)]
     if partial_close:
-        fills.append(Fill(at_ms=T0 + 60_000, reason=ReasonCode.EXIT_TP1, qty=partial_close, price=price + 1, fee=D('0.07'),
-                          result_id=ids.id('res')))
+        fills.append(fill(ReasonCode.EXIT_TP1, partial_close, price + 1, at=T0 + 60_000, result_id=ids.id('res'),
+                          fee=D('0.07')))
     prot, extra = protection(ids, acct, lot_id, symbol, side, qty, price, stop_state)
     flight = None
     if in_flight:
@@ -129,10 +154,10 @@ def lot(ids, acct, symbol='SOLUSDT', side=Side.LONG, qty=D('1.5'), price=D('100'
         extra.append(fl)
         flight = fl.intent_id
     strategy = source is LotSource.STRATEGY
-    lt = Lot(lot_id=lot_id, account_id=acct, symbol=symbol, side=side, source=source,
-             slot_id='S1' if strategy else None, timeframe='4h' if strategy else None, opened_at_ms=T0, qty=qty,
-             avg_price=price, initial_qty=open_qty, max_qty=open_qty, risk_distance=D('5'), risk_usd=D('7.5'), stop=prot,
-             fills=tuple(fills), in_flight=flight, adopted_by=adopted)
+    lt = build(Lot, lot_id=lot_id, account_id=acct, symbol=symbol, side=side, source=source,
+               slot_id='S1' if strategy else None, timeframe='4h' if strategy else None, opened_at_ms=T0, qty=qty,
+               avg_price=price, initial_qty=open_qty, max_qty=open_qty, risk_distance=D('5'), risk_usd=D('7.5'),
+               stop=prot, fills=tuple(fills), in_flight=flight, adopted_by=adopted)
     return lt, extra
 
 
@@ -143,16 +168,16 @@ def position(ids, lots):
 def proof(kind=ProofKind.JOURNAL, ids=None, digest=DIGEST):
     ids = ids or Ids(0)
     if kind is ProofKind.JOURNAL:
-        return OwnershipProof(kind=kind, at_ms=T0, through_seq=1)
+        return build(OwnershipProof, kind=kind, at_ms=T0, through_sequence=1)
     if kind is ProofKind.OWNER_ADOPTED:
-        return OwnershipProof(kind=kind, at_ms=T0, decision_id=ids.id('dec'))
+        return build(OwnershipProof, kind=kind, at_ms=T0, decision_id=ids.id('dec'))
     if kind is ProofKind.FLAT_SNAPSHOT:
-        return OwnershipProof(kind=kind, at_ms=T0, reconciliation_id=ids.id('rec'), key_digest=digest)
-    return OwnershipProof(kind=kind, at_ms=T0, reconciliation_id=ids.id('rec'))
+        return build(OwnershipProof, kind=kind, at_ms=T0, reconciliation_id=ids.id('rec'), key_digest=digest)
+    return build(OwnershipProof, kind=kind, at_ms=T0, reconciliation_id=ids.id('rec'))
 
 
 def portfolio(acct, positions=(), intents=(), *, entry_stops=(), mode=EntriesMode.ACTIVE, hold_kind=None, reasons=None,
-              generation=7, prf=None, since=T0 + 10_000, pf_id=None):
+              generation=7, prf=None, since=T0 + 10_000):
     if reasons is None:
         reasons = () if mode is EntriesMode.ACTIVE else (ReasonCode.OPERATOR_PAUSE,)
     if mode is EntriesMode.HOLD and hold_kind is None:
@@ -162,19 +187,18 @@ def portfolio(acct, positions=(), intents=(), *, entry_stops=(), mode=EntriesMod
     empty = not (positions or intents or entry_stops)
     own = Ownership.KNOWN_EMPTY if empty else Ownership.KNOWN
     prf = prf or proof(ProofKind.FLAT_SNAPSHOT if empty else ProofKind.JOURNAL)
-    return Portfolio(portfolio_id=pf_id or make_id('pf', int(acct[5:], 16)), account_id=acct, generation=generation,
-                     ownership=own, proof=prf, entries_mode=mode, mode_since_ms=since, pause_reasons=tuple(reasons),
-                     positions=tuple(positions), intents=tuple(intents), entry_stops=tuple(entry_stops),
-                     hold_kind=hold_kind)
+    return Portfolio(portfolio_id=pf_id(acct), account_id=acct, generation=generation, ownership=own, proof=prf,
+                     entries_mode=mode, mode_since_ms=since, pause_reasons=tuple(reasons), positions=tuple(positions),
+                     intents=tuple(intents), entry_stops=tuple(entry_stops), hold_kind=hold_kind)
 
 
 def unknown_portfolio(acct, hold_kind=HoldKind.NORMAL):
     reasons = (ReasonCode.RECOVERY_SCHEMA_INVALID,)
     if hold_kind is HoldKind.DURABILITY_UNAVAILABLE:
         reasons += (ReasonCode.RECOVERY_DURABILITY_UNAVAILABLE,)
-    return Portfolio(portfolio_id=make_id('pf', int(acct[5:], 16)), account_id=acct, generation=3,
-                     ownership=Ownership.UNKNOWN, proof=None, entries_mode=EntriesMode.HOLD, mode_since_ms=T0,
-                     pause_reasons=reasons, positions=None, intents=None, entry_stops=None, hold_kind=hold_kind)
+    return Portfolio(portfolio_id=pf_id(acct), account_id=acct, generation=3, ownership=Ownership.UNKNOWN, proof=None,
+                     entries_mode=EntriesMode.HOLD, mode_since_ms=T0, pause_reasons=reasons, positions=None, intents=None,
+                     entry_stops=None, hold_kind=hold_kind)
 
 
 def single_lot_portfolio(seed=1, **kw):
@@ -200,9 +224,15 @@ def market_entry(ids, acct, symbol='DOGEUSDT', state=IntentState.UNKNOWN, seen=D
                   reason=reason, authorized_by=authorized_by)
 
 
+def orphan_stop(ids, acct, symbol='LINKUSDT', side=Side.SHORT):
+    """Cancel-only work: an owned stop whose lot is gone, re-owned by the portfolio aggregate."""
+    return intent(ids, acct, Purpose.PROTECT, symbol, side, D('1'), state=IntentState.CANCELLING, owner_id=pf_id(acct),
+                  stop_price=D('9.5'), reason=ReasonCode.PROTECT_RESIZE)
+
+
 # ----------------------------------------------------------------------------------------------------------- random
 def gen_portfolio(rng, *, max_positions=6):
-    """A random VALID portfolio from a random.Random (seeded fixtures) or Hypothesis' st.randoms()."""
+    """A random VALID portfolio from a seeded random.Random."""
     ids = Ids(rng.getrandbits(64))
     acct = ids.id('acct')
     positions, intents, entry_stops = [], [], []
@@ -237,10 +267,8 @@ def gen_portfolio(rng, *, max_positions=6):
                                          rng.choice(('pending', 'confirmed', 'none')))
                 entry_stops.append(prov)
                 intents += extra
-    for _ in range(rng.randint(0, 2)):          # orphan cancels: owned stop orders no record carries any more
-        intents.append(intent(ids, acct, Purpose.PROTECT, rng.choice(SYMBOLS), rng.choice(tuple(Side)), D('1'),
-                              state=IntentState.CANCELLING, owner_id=ids.id('lot'), stop_price=D('9.5'),
-                              reason=ReasonCode.PROTECT_RESIZE))
+    for _ in range(rng.randint(0, 2)):
+        intents.append(orphan_stop(ids, acct, rng.choice(SYMBOLS), rng.choice(tuple(Side))))
     rng.shuffle(intents)
     hold = rng.choice(tuple(HoldKind)) if mode is EntriesMode.HOLD else None
     return portfolio(acct, positions, intents, entry_stops=entry_stops, mode=mode, hold_kind=hold,
@@ -248,7 +276,7 @@ def gen_portfolio(rng, *, max_positions=6):
 
 
 def typical_portfolio(seed=42):
-    """A representative live portfolio: 8 positions, 11 lots, ~22 open intents."""
+    """A representative live portfolio: 8 positions, 11 lots, ~18 open intents."""
     ids = Ids(seed)
     acct = ids.id('acct')
     positions, intents = [], []
@@ -275,6 +303,11 @@ def authority_for(action, reason):
     return AUTHORITY_OF.get(reason.namespace, Authority.STRATEGY)
 
 
+def decision(ids, acct, action, reason, intents=(), *, dec_id=None, at=T0):
+    return build(Decision, decision_id=dec_id or ids.id('dec'), account_id=acct, at_ms=at, action=action, reason=reason,
+                 authority=authority_for(action, reason), intents=tuple(intents))
+
+
 def decision_with_intents(ids, acct, action, reason):
     """A decision of `action` with the minimal PLANNED intent set it needs (ids / timestamps wired)."""
     dec_id = ids.id('dec')
@@ -288,39 +321,36 @@ def decision_with_intents(ids, acct, action, reason):
         Action.ADD: lambda: [intent(ids, acct, Purpose.ADD, owner_id=lot_id, reason=reason, **kw)],
         Action.ENTER: lambda: [intent(ids, acct, Purpose.ENTRY, reason=reason, slot_id='S1', **kw)],
     }.get(action, lambda: [])
-    return Decision(decision_id=dec_id, account_id=acct, at_ms=T0, action=action, reason=reason,
-                    authority=authority_for(action, reason), intents=tuple(mk()))
-
-
-def replace(rec, **kw):
-    return dataclasses.replace(rec, **kw)
+    return decision(ids, acct, action, reason, mk(), dec_id=dec_id)
 
 
 def results(ids, acct, it):
     """A FINAL / KNOWN / UNKNOWN result for each evidence family, all valid for intent `it` (submitted at T0)."""
-    from newcore.domain import Evidence, ExchangeStatus, Lookup, OrderResult, PositionRead, ResultPhase
+    from newcore.domain import Evidence, ExchangeStatus, Lookup, ResultPhase
     base = dict(intent_id=it.intent_id, account_id=acct, client_order_id=it.client_order_id, requested_qty=it.qty,
                 observed_at_ms=T0 + 30_000)
     reads = (PositionRead(at_ms=T0 + 25_000, qty=it.qty), PositionRead(at_ms=T0 + 26_000, qty=it.qty))
+    R = lambda **kw: build(OrderResult, result_id=ids.id('res'), **base, **kw)        # noqa: E731
     return {
-        'unknown': OrderResult(result_id=ids.id('res'), phase=ResultPhase.UNKNOWN, **base),
-        'not_found': OrderResult(result_id=ids.id('res'), phase=ResultPhase.UNKNOWN, lookup=Lookup.NOT_FOUND, **base),
-        'known': OrderResult(result_id=ids.id('res'), phase=ResultPhase.KNOWN, exchange_order_id='991',
-                             exchange_status=ExchangeStatus.PARTIALLY_FILLED, **base),
-        'filled': OrderResult(result_id=ids.id('res'), phase=ResultPhase.FINAL, exchange_order_id='991',
-                              exchange_status=ExchangeStatus.FILLED, executed_qty=it.qty, avg_price=D('100.5'),
-                              evidence=Evidence.EXCHANGE_FINAL, **base),
-        'partial_cancel': OrderResult(result_id=ids.id('res'), phase=ResultPhase.FINAL, exchange_order_id='991',
-                                      exchange_status=ExchangeStatus.CANCELED, executed_qty=(it.qty / 3).quantize(D('0.01')),
-                                      avg_price=D('100.5'), evidence=Evidence.EXCHANGE_FINAL, **base),
-        'refused': OrderResult(result_id=ids.id('res'), phase=ResultPhase.FINAL, executed_qty=D('0'),
-                               evidence=Evidence.EXCHANGE_REFUSED, **base),
-        'corroborated': OrderResult(result_id=ids.id('res'), phase=ResultPhase.FINAL, executed_qty=D('0'),
-                                    evidence=Evidence.NOT_FOUND_CORROBORATED, corroboration=reads,
-                                    resolved_by=ids.id('dec'), **base),
-        'adopted': OrderResult(result_id=ids.id('res'), phase=ResultPhase.FINAL, executed_qty=it.qty, avg_price=D('100'),
-                               evidence=Evidence.POSITION_ADOPTED, corroboration=reads, resolved_by=ids.id('dec'), **base),
+        'unknown': R(phase=ResultPhase.UNKNOWN),
+        'not_found': R(phase=ResultPhase.UNKNOWN, lookup=Lookup.NOT_FOUND),
+        'known': R(phase=ResultPhase.KNOWN, exchange_order_id='991', exchange_status=ExchangeStatus.PARTIALLY_FILLED),
+        'filled': R(phase=ResultPhase.FINAL, exchange_order_id='991', exchange_status=ExchangeStatus.FILLED,
+                    executed_qty=it.qty, avg_price=D('100.5'), evidence=Evidence.EXCHANGE_FINAL),
+        'partial_cancel': R(phase=ResultPhase.FINAL, exchange_order_id='991', exchange_status=ExchangeStatus.CANCELED,
+                            executed_qty=(it.qty / 3).quantize(D('0.01')), avg_price=D('100.5'),
+                            evidence=Evidence.EXCHANGE_FINAL),
+        'refused': R(phase=ResultPhase.FINAL, executed_qty=D('0'), evidence=Evidence.EXCHANGE_REFUSED),
+        'corroborated': R(phase=ResultPhase.FINAL, executed_qty=D('0'), evidence=Evidence.NOT_FOUND_CORROBORATED,
+                          corroboration=reads, resolved_by=ids.id('dec')),
+        'adopted': R(phase=ResultPhase.FINAL, executed_qty=it.qty, avg_price=D('100'), evidence=Evidence.POSITION_ADOPTED,
+                     corroboration=reads, resolved_by=ids.id('dec')),
     }
+
+
+def event(cls, ids, acct, sequence, *, at=T0, reason=ReasonCode.LIFECYCLE_DRAIN, aggregate=None, event_id=None, **kw):
+    return build(cls, event_id=event_id or ids.id('evt'), account_id=acct, aggregate_id=aggregate or pf_id(acct),
+                 sequence=sequence, at_ms=at, reason=reason, **kw)
 
 
 def samples(seed=5):
@@ -333,20 +363,21 @@ def samples(seed=5):
     it = market_entry(ids, acct)
     res = results(ids, acct, it)
     dec = decision_with_intents(ids, acct, Action.ENTER, ReasonCode.ENTRY_SIGNAL)
-    out = [account(acct), rules(), it, pf, dec, unknown_portfolio(acct), *res.values(),
-           Snapshot(account_id=acct, generation=7, last_seq=4, written_at_ms=T0, writer_build='nc01-test', portfolio=pf),
-           HighWater(account_id=acct, generation=7, last_seq=4, writer_build='nc01-test'),
-           IntentRecorded(seq=1, account_id=acct, at_ms=T0, intent=replace(dec.intents[0], state=IntentState.DURABLE)),
-           IntentStateChanged(seq=2, account_id=acct, at_ms=T0 + 1, intent_id=it.intent_id,
-                              from_state=IntentState.DURABLE, to_state=IntentState.SUBMITTED),
-           ResultObserved(seq=3, account_id=acct, at_ms=T0 + 2, result=res['filled']),
-           DecisionRecorded(seq=4, account_id=acct, at_ms=T0, decision=dec),
-           ModeChanged(seq=5, account_id=acct, at_ms=T0, from_mode=EntriesMode.ACTIVE, to_mode=EntriesMode.HOLD,
-                       reasons=(ReasonCode.RECOVERY_DURABILITY_UNAVAILABLE,), to_hold=HoldKind.DURABILITY_UNAVAILABLE),
-           BindingChanged(seq=6, account_id=acct, at_ms=T0, from_state=BindingState.UNCONFIRMED,
-                          to_state=BindingState.CONFIRMED, binding=binding(),
-                          confirmation=account(acct).confirmation)]
-    return out
+    durable = replace(dec.intents[0], state=IntentState.DURABLE)
+    return [account(acct), rules(), it, pf, dec, unknown_portfolio(acct), *res.values(),
+            Snapshot(account_id=acct, generation=7, last_sequence=4, written_at_ms=T0, writer_build='nc01-test',
+                     portfolio=pf),
+            HighWater(account_id=acct, generation=7, last_sequence=4, writer_build='nc01-test'),
+            event(IntentRecorded, ids, acct, 1, intent=durable, reason=durable.reason),
+            event(IntentStateChanged, ids, acct, 2, at=T0 + 1, intent_id=it.intent_id, from_state=IntentState.DURABLE,
+                  to_state=IntentState.SUBMITTED),
+            event(ResultObserved, ids, acct, 3, at=T0 + 2, result=res['filled']),
+            event(DecisionRecorded, ids, acct, 4, decision=dec, reason=dec.reason),
+            event(ModeChanged, ids, acct, 5, from_mode=EntriesMode.ACTIVE, to_mode=EntriesMode.HOLD,
+                  reasons=(ReasonCode.RECOVERY_DURABILITY_UNAVAILABLE,), to_hold=HoldKind.DURABILITY_UNAVAILABLE,
+                  reason=ReasonCode.RECOVERY_DURABILITY_UNAVAILABLE),
+            event(BindingChanged, ids, acct, 6, from_state=BindingState.UNCONFIRMED, to_state=BindingState.CONFIRMED,
+                  binding=binding(), confirmation=account(acct).confirmation, reason=ReasonCode.BINDING_UNCONFIRMED)]
 
 
 SNAPSHOT_FILE = 'fixtures/nc01_samples_v1.jsonl'

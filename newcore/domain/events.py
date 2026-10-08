@@ -1,7 +1,11 @@
-"""Append-only events (ruling 1; contract invariant 6). NC-02 stores them; NC-01 defines them and the pure chain check.
+"""DomainEvent records (contract 2, invariants 6 and 12; ruling 1). NC-02 stores them; NC-01 defines them, the pure
+chain check here and the sequence / idempotency admission in `ledger`.
 
-Durability order: IntentRecorded (the intent in state DURABLE) is appended BEFORE the send, and ResultObserved is
-appended BEFORE the result is applied (the intent's terminal step), for every purpose including stops and closes.
+Every event carries `event_id` (evt_, caller-supplied), `account_id`, `aggregate_id` (the portfolio's pf_ id), an
+integer `sequence` (1, 2, 3, ... per aggregate: THE replay ordering key; a timestamp never breaks ties), `at_ms` (integer
+UTC-ms evidence time) and one `reason`. Durability order: IntentRecorded (the intent in state DURABLE) is appended
+BEFORE the send, and ResultObserved is appended BEFORE the result is applied (the intent's terminal step), for every
+purpose including stops and closes.
 """
 from __future__ import annotations
 
@@ -14,13 +18,15 @@ from .orders import (INTENT_TRANSITIONS, TERMINAL, IntentState, OrderIntent, Ord
 from .reasons import ReasonCode
 
 
-class Event(Record):
-    """Common fields: `seq` (1, 2, 3, ... per account, no gaps), `account_id`, `at_ms`."""
+class DomainEvent(Record):
+    """Common fields (declared on every concrete event): event_id, account_id, aggregate_id, sequence, at_ms, reason."""
     __slots__ = ()
 
     def _validate(self, p):
-        req(self.seq >= 1, p + '.seq', '>= 1')
+        check_id(self.event_id, p + '.event_id', 'evt')
         check_id(self.account_id, p + '.account_id', 'acct')
+        check_id(self.aggregate_id, p + '.aggregate_id', 'pf')
+        req(self.sequence >= 1, p + '.sequence', '>= 1')
         self._check(p)
 
     def _check(self, p):
@@ -28,23 +34,30 @@ class Event(Record):
 
 
 @record
-class IntentRecorded(Event):
-    seq: int
+class IntentRecorded(DomainEvent):
+    event_id: str
     account_id: str
+    aggregate_id: str
+    sequence: int
     at_ms: int
+    reason: ReasonCode
     intent: OrderIntent
 
     def _check(self, p):
         req(self.intent.account_id == self.account_id, p + '.intent', 'intent of another account')
         req(self.intent.state is IntentState.DURABLE, p + '.intent.state', 'the write-ahead record of an unsent intent')
         req(self.at_ms >= self.intent.created_at_ms, p + '.at_ms', 'recorded before it was created')
+        req(self.reason is self.intent.reason, p + '.reason', 'the event carries its intent\'s reason')
 
 
 @record
-class IntentStateChanged(Event):
-    seq: int
+class IntentStateChanged(DomainEvent):
+    event_id: str
     account_id: str
+    aggregate_id: str
+    sequence: int
     at_ms: int
+    reason: ReasonCode
     intent_id: str
     from_state: IntentState
     to_state: IntentState
@@ -56,10 +69,13 @@ class IntentStateChanged(Event):
 
 
 @record
-class ResultObserved(Event):
-    seq: int
+class ResultObserved(DomainEvent):
+    event_id: str
     account_id: str
+    aggregate_id: str
+    sequence: int
     at_ms: int
+    reason: ReasonCode
     result: OrderResult
 
     def _check(self, p):
@@ -67,34 +83,43 @@ class ResultObserved(Event):
 
 
 @record
-class DecisionRecorded(Event):
-    seq: int
+class DecisionRecorded(DomainEvent):
+    event_id: str
     account_id: str
+    aggregate_id: str
+    sequence: int
     at_ms: int
+    reason: ReasonCode
     decision: Decision
 
     def _check(self, p):
         req(self.decision.account_id == self.account_id, p + '.decision', 'decision of another account')
+        req(self.reason is self.decision.reason, p + '.reason', 'the event carries its decision\'s reason')
 
 
 @record
-class ModeChanged(Event):
-    seq: int
+class ModeChanged(DomainEvent):
+    event_id: str
     account_id: str
+    aggregate_id: str
+    sequence: int
     at_ms: int
+    reason: ReasonCode
     from_mode: EntriesMode
     to_mode: EntriesMode
     reasons: tuple[ReasonCode, ...]
-    from_hold: HoldKind | None = None
-    to_hold: HoldKind | None = None
-    decision_id: str | None = None           # the operator decision (required to resume)
-    reconciliation_id: str | None = None     # rec_: required to leave HOLD
+    from_hold: HoldKind | None
+    to_hold: HoldKind | None
+    decision_id: str | None           # the operator decision (required to resume)
+    reconciliation_id: str | None     # rec_: required to leave HOLD
 
     def _check(self, p):
         req((self.from_hold is not None) == (self.from_mode is EntriesMode.HOLD), p + '.from_hold', 'set exactly in HOLD')
         req((self.to_hold is not None) == (self.to_mode is EntriesMode.HOLD), p + '.to_hold', 'set exactly in HOLD')
         req((self.from_mode, self.from_hold) != (self.to_mode, self.to_hold), p + '.to_mode', 'not a change')
         req((len(self.reasons) == 0) == (self.to_mode is EntriesMode.ACTIVE), p + '.reasons', 'non-empty unless ACTIVE')
+        req(self.reason in self.reasons if self.reasons else self.reason is ReasonCode.OPERATOR_RESUME, p + '.reason',
+            'the change names one of its reasons (operator.resume to resume)')
         if self.to_hold is HoldKind.DURABILITY_UNAVAILABLE:
             req(ReasonCode.RECOVERY_DURABILITY_UNAVAILABLE in self.reasons, p + '.reasons', 'hard HOLD names its cause')
         if self.decision_id is not None:
@@ -108,15 +133,18 @@ class ModeChanged(Event):
 
 
 @record
-class BindingChanged(Event):
-    seq: int
+class BindingChanged(DomainEvent):
+    event_id: str
     account_id: str
+    aggregate_id: str
+    sequence: int
     at_ms: int
+    reason: ReasonCode
     from_state: BindingState
     to_state: BindingState
     binding: AccountBinding                  # the account's binding AFTER the change
-    confirmation: BindingConfirmation | None = None
-    reconciliation_id: str | None = None
+    confirmation: BindingConfirmation | None
+    reconciliation_id: str | None
 
     def _check(self, p):
         req(self.to_state in BINDING_TRANSITIONS[self.from_state], p + '.to_state',
@@ -140,24 +168,26 @@ class BindingChanged(Event):
 EVENT_TYPES = (IntentRecorded, IntentStateChanged, ResultObserved, DecisionRecorded, ModeChanged, BindingChanged)
 
 
-def check_event_chain(events, *, after_seq=0, known_intents=None):
-    """Validate an ordered event list. `after_seq` is the snapshot's last_seq. `known_intents` maps intent_id ->
+def check_event_chain(events, *, after_sequence=0, known_intents=None):
+    """Validate an ordered event list of one aggregate. `after_sequence` is the snapshot's last_sequence.
+    `known_intents` maps intent_id ->
     (OrderIntent, state, submitted_at_ms or None) for intents live in that snapshot. Returns the live intents after the
     chain in the same shape. Raises InvalidRecord naming the event.
 
-    Detects: a sequence gap / reorder, another account's event, a result for an intent that was never made durable, a
+    Detects: a sequence gap / reorder, another account's or aggregate's event, a result for an intent that was never made durable, a
     terminal step without a durable FINAL result (applied before recorded) or not matching it, any event after a terminal
     state, a reused id or client id, and a one-shot authorization that is missing or used twice."""
     live = dict(known_intents or {})
     cids = {c for it, _, _ in live.values() for c in it.client_ids}
     finals, ended, decisions, one_shots, used_auth = {}, set(), set(), set(), set()
-    account = None
+    owner = None
     for n, ev in enumerate(events):
         p = f'events[{n}]'
         req(isinstance(ev, EVENT_TYPES), p, 'not an event')
-        req(ev.seq == after_seq + n + 1, p + '.seq', f'expected seq {after_seq + n + 1} (gap, reorder or rollback)')
-        account = account or ev.account_id
-        req(ev.account_id == account, p + '.account_id', 'event of another account in this log')
+        req(ev.sequence == after_sequence + n + 1, p + '.sequence',
+            f'expected sequence {after_sequence + n + 1} (gap, reorder or rollback)')
+        owner = owner or (ev.account_id, ev.aggregate_id)
+        req((ev.account_id, ev.aggregate_id) == owner, p + '.account_id', 'event of another account / aggregate in this log')
         if isinstance(ev, DecisionRecorded):
             d = ev.decision
             req(d.decision_id not in decisions, p, 'decision recorded twice')

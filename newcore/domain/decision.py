@@ -83,13 +83,13 @@ class Decision(Record):
     action: Action
     reason: ReasonCode
     authority: Authority
-    evidence: tuple[str, ...] = ()           # opaque ids of the inputs / evidence it used (rec_, res_, int_, lot_, ...)
-    symbol: str | None = None
-    side: Side | None = None
-    subject_id: str | None = None            # lot_ / int_ the decision is about
-    detail: str = ''
-    intents: tuple[OrderIntent, ...] = ()
-    policy_version: str = ''
+    evidence: tuple[str, ...]           # opaque ids of the inputs / evidence it used (rec_, res_, int_, lot_, ...)
+    symbol: str | None
+    side: Side | None
+    subject_id: str | None            # lot_ / int_ the decision is about
+    detail: str
+    intents: tuple[OrderIntent, ...]
+    policy_version: str
 
     def _validate(self, p):
         p = f'{p}[{self.decision_id}]'

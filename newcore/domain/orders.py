@@ -2,7 +2,8 @@
 
 OrderIntent covers every purpose (ENTRY, ADD, REDUCE, CLOSE, PROTECT). There is no EntryIntent and no side queue: an
 unconfirmed market entry, a resting maker, an armed trailing entry and an orphan cancel are all OrderIntents in some
-lifecycle state. Lifecycle:
+lifecycle state. An orphan cancel (an owned order whose lot / entry is gone) is re-owned by the portfolio aggregate
+(owner_id = the portfolio's pf_ id) and may only be CANCELLING: no reference ever dangles. Lifecycle:
 
     PLANNED -> DURABLE -> SUBMITTED -> WORKING / UNKNOWN -> CANCELLING -> terminal (FILLED, CANCELLED, REJECTED, NOT_SENT)
 
@@ -20,8 +21,7 @@ from __future__ import annotations
 import enum
 from decimal import Decimal
 
-from .base import (Record, check_client_id, check_id, check_symbol, check_text, dec_str, idempotency_key, non_negative,
-                   positive, record, req)
+from .base import Record, check_client_id, check_id, check_symbol, check_text, non_negative, positive, record, req
 from .reasons import ReasonCode
 
 NOT_FOUND_WINDOW_MS = 20_000          # a lookup earlier than this after the send proves even less (legacy window)
@@ -80,6 +80,7 @@ class IntentState(enum.StrEnum):
 TERMINAL = frozenset({IntentState.FILLED, IntentState.CANCELLED, IntentState.REJECTED, IntentState.NOT_SENT})
 LIVE = frozenset({IntentState.DURABLE, IntentState.SUBMITTED, IntentState.WORKING, IntentState.UNKNOWN,
                   IntentState.CANCELLING})     # the states an intent may have inside a Portfolio
+CANCEL_ONLY = TERMINAL | {IntentState.CANCELLING}
 _S = IntentState
 INTENT_TRANSITIONS = {
     _S.PLANNED: frozenset({_S.DURABLE, _S.NOT_SENT}),
@@ -103,11 +104,6 @@ def may_send(intent):
     return intent.state is IntentState.DURABLE
 
 
-def protect_key(account_id, owner_id, side, qty, stop_price):
-    """Deterministic idempotency key of a protective stop: the same protection request always has the same key."""
-    return idempotency_key('protect', account_id, owner_id, side, dec_str(qty), dec_str(stop_price))
-
-
 @record
 class Arming(Record):
     """Trailing-entry trigger: send at market when price reaches `trigger_price` before `expires_at_ms`."""
@@ -123,7 +119,7 @@ class OrderIntent(Record):
     intent_id: str
     account_id: str
     decision_id: str                 # the Decision that created it (authority + audit chain)
-    client_order_id: str             # REQUIRED and opaque (the venue adapter formats it)
+    client_order_id: str             # REQUIRED, opaque, caller-supplied (NC-03 derives it from the intent id)
     purpose: Purpose
     order_type: OrderType
     state: IntentState
@@ -132,15 +128,15 @@ class OrderIntent(Record):
     qty: Decimal
     reason: ReasonCode
     created_at_ms: int
-    owner_id: str | None = None      # lot_ (ADD/REDUCE/CLOSE/PROTECT) or int_ (PROTECT of an unconfirmed entry); None for ENTRY
-    slot_id: str | None = None       # strategy slot of an ENTRY; None for manual / one-shot
-    price: Decimal | None = None     # limit price (maker only)
-    stop_price: Decimal | None = None
-    arm: Arming | None = None        # trailing entry trigger
-    idempotency_key: str | None = None        # PROTECT: protect_key(...) - a retry is the same order
-    alt_client_order_id: str | None = None    # PROTECT: algo-order fallback id (owned from the write-ahead record on)
-    seen_qty: Decimal | None = None  # unresolved size seen on the position for a market ENTRY (never booked)
-    authorized_by: str | None = None  # dec_ of an audited operator one-shot authorization (opening risk while paused)
+    owner_id: str | None             # lot_ (ADD/REDUCE/CLOSE/PROTECT), int_ (PROTECT of an unconfirmed entry), pf_ (orphan
+    #                                  cancel owned by the portfolio aggregate); None for ENTRY
+    slot_id: str | None       # strategy slot of an ENTRY; None for manual / one-shot
+    price: Decimal | None     # limit price (maker only)
+    stop_price: Decimal | None
+    arm: Arming | None        # trailing entry trigger
+    alt_client_order_id: str | None    # PROTECT: algo-order fallback id (owned from the write-ahead record on)
+    seen_qty: Decimal | None  # unresolved size seen on the position for a market ENTRY (never booked)
+    authorized_by: str | None  # dec_ of an audited operator one-shot authorization (opening risk while paused)
 
     def _validate(self, p):
         p = f'{p}[{self.intent_id}]'
@@ -155,9 +151,11 @@ class OrderIntent(Record):
         if u is Purpose.ENTRY:
             req(self.owner_id is None, p + '.owner_id', 'an ENTRY owns itself (its result creates the lot)')
         elif u is Purpose.PROTECT:
-            check_id(self.owner_id, p + '.owner_id', 'lot', 'int')
+            check_id(self.owner_id, p + '.owner_id', 'lot', 'int', 'pf')
         else:
-            check_id(self.owner_id, p + '.owner_id', 'lot')
+            check_id(self.owner_id, p + '.owner_id', 'lot', 'pf')
+        if self.orphan:
+            req(self.state in CANCEL_ONLY, p + '.state', 'an orphan (portfolio-owned) order is cancel-only work')
         req(u is Purpose.ENTRY or self.slot_id is None, p + '.slot_id', 'only an ENTRY names a strategy slot')
         if self.slot_id is not None:
             check_text(self.slot_id, p + '.slot_id', 32)
@@ -171,14 +169,11 @@ class OrderIntent(Record):
         if t is OrderType.STOP_MARKET:
             req(self.stop_price is not None, p + '.stop_price', 'a stop has a stop price')
             positive(self.stop_price, p + '.stop_price')
-            req(self.idempotency_key == protect_key(self.account_id, self.owner_id, self.side, self.qty, self.stop_price),
-                p + '.idempotency_key', 'a protective stop carries its deterministic key')
             if self.alt_client_order_id is not None:
                 check_client_id(self.alt_client_order_id, p + '.alt_client_order_id')
                 req(self.alt_client_order_id != self.client_order_id, p + '.alt_client_order_id', 'equals the primary id')
         else:
             req(self.stop_price is None, p + '.stop_price', 'only a stop has a stop price')
-            req(self.idempotency_key is None, p + '.idempotency_key', 'only a protective stop has one')
             req(self.alt_client_order_id is None, p + '.alt_client_order_id', 'only a stop has an algo fallback id')
         if self.arm is not None:
             req(u is Purpose.ENTRY and t is OrderType.MARKET, p + '.arm', 'only a market ENTRY can be armed (trailing)')
@@ -192,8 +187,13 @@ class OrderIntent(Record):
             check_id(self.authorized_by, p + '.authorized_by', 'dec')
 
     @property
+    def orphan(self):
+        """Owned by the portfolio aggregate because its lot / entry is gone: only cancel work remains."""
+        return self.owner_id is not None and self.owner_id.startswith('pf_')
+
+    @property
     def family(self):
-        return FAMILY[self.purpose]
+        return OwnerFamily.ORPHAN if self.orphan else FAMILY[self.purpose]
 
     @property
     def reduce_only(self):
@@ -292,14 +292,14 @@ class OrderResult(Record):
     phase: ResultPhase
     requested_qty: Decimal
     observed_at_ms: int
-    exchange_order_id: str | None = None
-    exchange_status: ExchangeStatus | None = None
-    lookup: Lookup | None = None
-    executed_qty: Decimal | None = None      # FINAL only
-    avg_price: Decimal | None = None
-    evidence: Evidence | None = None         # FINAL only
-    corroboration: tuple[PositionRead, ...] = ()
-    resolved_by: str | None = None           # dec_ of the explicit resolution / adoption
+    exchange_order_id: str | None
+    exchange_status: ExchangeStatus | None
+    lookup: Lookup | None
+    executed_qty: Decimal | None      # FINAL only
+    avg_price: Decimal | None
+    evidence: Evidence | None         # FINAL only
+    corroboration: tuple[PositionRead, ...]
+    resolved_by: str | None           # dec_ of the explicit resolution / adoption
 
     def _validate(self, p):
         p = f'{p}[{self.result_id}]'

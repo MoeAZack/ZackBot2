@@ -11,16 +11,20 @@ Decoding order (each step before any later one is attempted):
    int, never a bool or float; a timestamp is an int, never an ISO string), then the record constructors run every
    invariant, cross-record references included.
 
-`loads` parses text leniently only to reach step 2 first: duplicate keys, NaN / Infinity, any JSON float and integers
-beyond int64 are recorded and rejected as damage after the version check. `decode_result` returns a typed outcome
-instead of raising (OK / INVALID / UNSUPPORTED_VERSION / FOREIGN). `dumps` is canonical: sorted keys, no whitespace,
-ASCII, canonical decimals, so equal records give identical bytes.
+`loads` (text or bytes) parses leniently only to reach step 2 first: duplicate keys, NaN / Infinity, any JSON float and
+integers beyond int64 are recorded and rejected as damage after the version check; truncated input is a typed failure.
+`decode_result` returns a typed outcome instead of raising (OK / INVALID / UNSUPPORTED_VERSION / FOREIGN).
+
+Canonical bytes (contract section 5): `canonical_bytes(record)` is the ONE serialization used for identity and hashing
+(UTF-8 JSON, sorted keys, no insignificant whitespace, ASCII escapes, canonical decimals), and `contract_sha256(record)`
+is the lowercase hex SHA-256 over exactly those bytes. Equal records give identical bytes.
 """
 from __future__ import annotations
 
 import dataclasses
 import enum
 import functools
+import hashlib
 import json
 import re
 import types
@@ -28,14 +32,15 @@ import typing
 from decimal import Decimal
 
 from . import account, decision, events, instrument, orders, portfolio, snapshot
-from .base import INT64, Record, dec_str, field_spec, req
+from .base import INT64, Record, canonical_decimal, dec_str, field_spec, req
 from .errors import DomainError, ForeignDocument, FutureSchema, InvalidRecord, OlderSchema, UnknownSchema, \
     UnsupportedVersion
 
 FORMAT = 'zackbot.newcore'
 SCHEMA_VERSION = 1
 ENVELOPE = frozenset({'format', 'schema_version', 'record_type', 'body'})
-DECIMAL_RE = re.compile(r'-?(0|[1-9][0-9]{0,14})(\.[0-9]{1,12})?')
+DECIMAL_RE = re.compile(r'-?(0|[1-9][0-9]*)(\.[0-9]+)?')    # contract invariant 2, ASCII digits only
+DECIMAL_MAX_CHARS = 64                     # 38 significant digits within |adjusted exponent| <= 18 fit in 59
 
 RECORD_TYPES = {
     'account': account.Account,
@@ -81,6 +86,16 @@ def dumps(obj):
     return json.dumps(encode_document(obj), sort_keys=True, separators=(',', ':'), ensure_ascii=True, allow_nan=False)
 
 
+def canonical_bytes(obj):
+    """The single canonical serialization of a document record (envelope included)."""
+    return dumps(obj).encode('utf-8')
+
+
+def contract_sha256(obj):
+    """Lowercase hex SHA-256 of canonical_bytes(obj): the only domain hash input."""
+    return hashlib.sha256(canonical_bytes(obj)).hexdigest()
+
+
 # ----------------------------------------------------------------------------------------------------------- decode
 def _bad(path, msg):
     raise InvalidRecord(path, msg)
@@ -113,11 +128,11 @@ def _decoder(tp):
         return dec_enum
     if tp is Decimal:
         def dec_decimal(v, path):
-            if type(v) is not str or DECIMAL_RE.fullmatch(v) is None:
+            if type(v) is not str or len(v) > DECIMAL_MAX_CHARS or DECIMAL_RE.fullmatch(v) is None:
                 _bad(path, f'{v!r:.40} is not a canonical bounded decimal string (a JSON number is never accepted)')
-            d = Decimal(v)
-            if dec_str(d) != v:
-                _bad(path, f'{v!r} is not canonical (trailing zeros / negative zero)')
+            d = canonical_decimal(Decimal(v), path)
+            if format(d, 'f') != v:
+                _bad(path, f'{v!r} is not the canonical spelling (trailing zeroes / negative zero)')
             return d
         return dec_decimal
     if tp in (int, str, bool):

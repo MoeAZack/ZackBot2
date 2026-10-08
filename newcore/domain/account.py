@@ -1,16 +1,20 @@
-"""Account identity (ruling 5).
+"""Account identity (contract 2 and invariant 13, ruling 5).
 
-`account_id` (acct_<uuid>) is the stable identity, assigned once at creation and carried by every record. It is NOT derived
-from the API key. `AccountBinding` is separate, non-secret evidence of which exchange account the keys reach (venue,
-environment, settlement asset, base URL, PBKDF2 key digest, exchange uid when known). Position equality never proves identity.
+`account_id` (acct_<id>) is the stable identity, assigned once at creation and carried by every record. It is NOT derived
+from the API key. `AccountBinding` is separate, non-secret evidence of which exchange account the keys reach: a closed
+venue enum, a closed environment enum, the settlement asset, the PBKDF2 key digest and the exchange uid when known. It
+holds no URL and no secret. Position equality never proves identity.
+
+Environment boundary: NC-03 must prove the configured endpoint belongs to the binding's environment; the domain side of
+that check is `require_environment(binding, configured)`, which refuses e.g. a testnet identity on mainnet configuration.
 
 A key rotation changes the binding of the SAME account_id and walks a typed state machine:
 
     CONFIRMED --observe other binding--> MISMATCH --owner says "rotation"--> ROTATION_PENDING
     CONFIRMED --owner proposes---------> ROTATION_PENDING --typed confirmation--> RECONCILING --reconciliation--> CONFIRMED
 
-Every state except CONFIRMED keeps entries non-active (Portfolio check in `check_account_portfolio`). The environment is
-part of the binding and can never change through a rotation (testnet can never become mainnet here).
+Every state except CONFIRMED keeps entries non-active (`check_account_portfolio`). Venue, environment and settlement
+asset never change through a rotation.
 """
 from __future__ import annotations
 
@@ -22,11 +26,12 @@ from .errors import InvalidRecord
 from .reasons import ReasonCode
 
 DIGEST_RE = re.compile(r'[0-9a-f]{16}')
-VENUE_RE = re.compile(r'[a-z0-9][a-z0-9-]{1,31}')
-# https only, no userinfo, query or fragment: a binding can never carry a credential
-BASE_URL_RE = re.compile(r'https://[a-z0-9.-]+(:[0-9]{1,5})?(/[A-Za-z0-9._/-]*)?')
 UID_RE = re.compile(r'[0-9A-Za-z_-]{1,64}')
 ASSET_RE = re.compile(r'[A-Z0-9]{2,10}')
+
+
+class Venue(enum.StrEnum):
+    BINANCE_USDM = 'binance_usdm'
 
 
 class Environment(enum.StrEnum):
@@ -55,26 +60,31 @@ BINDING_TRANSITIONS = {
 
 @record
 class AccountBinding(Record):
-    venue: str                       # e.g. 'binance-usdm'
+    venue: Venue
     environment: Environment
     settlement_asset: str            # e.g. 'USDT'
-    base_url: str
     key_digest: str                  # 16-hex PBKDF2 digest of the API key (legacy account_fingerprint formula)
-    exchange_uid: str | None = None
+    exchange_uid: str | None
 
     def _validate(self, p):
-        req(VENUE_RE.fullmatch(self.venue) is not None, p + '.venue', f'{self.venue!r}')
         req(ASSET_RE.fullmatch(self.settlement_asset) is not None, p + '.settlement_asset', 'e.g. USDT')
-        req(BASE_URL_RE.fullmatch(self.base_url) is not None, p + '.base_url', 'https URL without credentials / query')
         req(DIGEST_RE.fullmatch(self.key_digest) is not None, p + '.key_digest', 'not 16 lowercase hex')
         req(self.exchange_uid is None or UID_RE.fullmatch(self.exchange_uid) is not None, p + '.exchange_uid', 'bad uid')
 
     def same_account_as(self, other):
         """True only when every identifying field agrees (uid compared when both sides know it)."""
-        if (self.venue, self.environment, self.settlement_asset, self.base_url, self.key_digest) != \
-                (other.venue, other.environment, other.settlement_asset, other.base_url, other.key_digest):
+        if (self.venue, self.environment, self.settlement_asset, self.key_digest) != \
+                (other.venue, other.environment, other.settlement_asset, other.key_digest):
             return False
         return self.exchange_uid is None or other.exchange_uid is None or self.exchange_uid == other.exchange_uid
+
+
+def require_environment(binding, configured):
+    """The domain side of the endpoint check (NC-03 maps endpoints to environments): the configuration a binding runs
+    under must be of the binding's own environment. Raises InvalidRecord, e.g. for testnet identity + mainnet config."""
+    req(isinstance(configured, Environment), 'configured', 'not an Environment')
+    req(binding.environment is configured, 'AccountBinding.environment',
+        f'a {binding.environment} binding cannot run under {configured} configuration')
 
 
 def confirmation_phrase(account_id, key_digest):
@@ -109,8 +119,8 @@ class Account(Record):
     hedge_mode: bool
     binding: AccountBinding
     binding_state: BindingState
-    proposed_binding: AccountBinding | None = None   # MISMATCH: what was observed; ROTATION_PENDING: what was proposed
-    confirmation: BindingConfirmation | None = None  # the confirmation of `binding` (None only while UNCONFIRMED)
+    proposed_binding: AccountBinding | None      # MISMATCH: what was observed; ROTATION_PENDING: what was proposed
+    confirmation: BindingConfirmation | None     # the confirmation of `binding` (None only while UNCONFIRMED)
 
     def _validate(self, p):
         check_id(self.account_id, p + '.account_id', 'acct')
