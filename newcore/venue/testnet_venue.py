@@ -52,6 +52,8 @@ ROUTE_CHAR = {'classic': 'zbn1o-', 'algo': 'zbn1a-'}
 USER_TRADES_LIMIT = 1000
 FILL_WINDOW_MS = 7 * 24 * 3600 * 1000 - 1    # one userTrades time window (Binance: at most 7 days)
 FILL_WINDOW_PAGES = 20                       # all pages of one fills(start, end) read
+TRADES_MAX_PAGES = 64                        # all pages of one trades(symbol, side, from_ms) read: ~48
+                                             # 7-day windows = S1's 2000-candle 4h search, + full pages
 MARK_MAX_AGE_MS = 30_000                     # a mark older than this (server clock) is stale
 MARK_MAX_AHEAD_MS = 5_000                    # a mark further ahead of the server clock is not believed
 
@@ -292,13 +294,47 @@ class TestnetVenue:
     def _fills_window(self, symbol, start_ms, end_ms):
         req(type(start_ms) is int and type(end_ms) is int and 0 < start_ms <= end_ms, 'fills',
             'start_ms <= end_ms, both int ms')
+        got = self._window_rows(symbol, start_ms, end_ms, FILL_WINDOW_PAGES)
+        if isinstance(got, P.ReadOutcome):
+            return got
+        rows, pages, dups = got
+        return P.ReadOutcome(kind=P.ReadKind.OK, observed_at_ms=self._now(), value=tuple(_trade_fill(f) for f in rows),
+                             detail=evidence(pages, dups))
+
+    def trades(self, symbol, side, from_ms):
+        """userTrades of one (symbol, position side) since from_ms (inclusive) up to the venue clock now: port VenueFill
+        rows, oldest first - the read S1's ownership / provenance checks use (FakeVenue.trades has the same shape).
+        OK = complete (every 7-day window read to a SHORT page by its raw row count, or past its end; repeated rows
+        deduped by trade id and counted in detail); a conflicting repeat, an unseen older row, a one-way (BOTH) row,
+        an error on any page or more than TRADES_MAX_PAGES pages -> UNKNOWN, never a partial list. WEIGHT: userTrades
+        costs 5 per request; a deep search (from_ms a year back) is up to ~48 window requests (boot only, S1)."""
+        req(side in ('LONG', 'SHORT'), 'trades.side', 'LONG or SHORT (a hedge position side)')
+        req(type(from_ms) is int and from_ms > 0, 'trades.from_ms', 'a positive int ms')
+        now = self._now()
+        if from_ms > now:
+            return P.ReadOutcome(kind=P.ReadKind.OK, observed_at_ms=now, value=(), detail=evidence(0, 0))
+        got = self._window_rows(symbol, from_ms, now, TRADES_MAX_PAGES)
+        if isinstance(got, P.ReadOutcome):
+            return got
+        rows, pages, dups = got
+        if any(r.position_side not in ('LONG', 'SHORT') for r in rows):
+            return P.ReadOutcome(kind=P.ReadKind.UNKNOWN, observed_at_ms=self._now(), detail='one_way_row')
+        mine = tuple(_fill(r) for r in rows if r.position_side == side)
+        return P.ReadOutcome(kind=P.ReadKind.OK, observed_at_ms=self._now(), value=mine, detail=evidence(pages, dups))
+
+    def _window_rows(self, symbol, start_ms, end_ms, max_pages):
+        """Every userTrades row of `symbol` with start_ms <= time <= end_ms, walked in 7-day windows (Binance's span
+        limit) and fromId pages: -> (rows oldest first, pages read, repeated rows dropped), or a typed ReadOutcome
+        (REJECTED / UNKNOWN as the page answered; UNKNOWN out_of_order / conflicting_trade / paging_bound).
+        A page is FULL by the RAW row count Binance sent (a dedupe never makes it look short); a window is complete at
+        a short page or a row past its end (Cowork 6068372233)."""
         out, seen, pages, dups, w0 = {}, {}, 0, 0, start_ms
         while w0 <= end_ms:
             w1 = min(end_ms, w0 + FILL_WINDOW_MS)
             from_id = None
             while True:
                 pages += 1
-                if pages > FILL_WINDOW_PAGES:
+                if pages > max_pages:
                     return P.ReadOutcome(kind=P.ReadKind.UNKNOWN, observed_at_ms=self._now(), detail='paging_bound')
                 if from_id is None:
                     t = self._t.user_trades(symbol, start_ms=w0, end_ms=w1, limit=USER_TRADES_LIMIT)
@@ -327,9 +363,7 @@ class TestnetVenue:
                     break                                         # complete: a SHORT page (raw) or past the end
                 from_id = rows[-1].trade_id + 1
             w0 = w1 + 1
-        fills = sorted(out.values(), key=lambda f: (f.time_ms, f.trade_id))
-        return P.ReadOutcome(kind=P.ReadKind.OK, observed_at_ms=self._now(), value=tuple(_trade_fill(f) for f in fills),
-                             detail=evidence(pages, dups))
+        return sorted(out.values(), key=lambda f: (f.time_ms, f.trade_id)), pages, dups
 
 
 @dataclass(frozen=True)
