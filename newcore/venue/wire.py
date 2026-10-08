@@ -18,6 +18,16 @@ class WireConnectionError(Exception):
     """Connection refused / reset / dropped. If it happened after the request was written, it may have been executed."""
 
 
+class WireNotSent(WireConnectionError):
+    """The request was provably NOT written: it failed before any byte of it could leave (e.g. name resolution did not
+    finish within the deadline, or failed). reason is a stable token ('dns_timeout', 'dns_failed'). The transport maps
+    it to UNKNOWN 'not_sent_<reason>': safe to resend under the same client id."""
+
+    def __init__(self, message, reason):
+        super().__init__(message)
+        self.reason = reason
+
+
 class WireResponseTooLarge(WireConnectionError):
     """The answer exceeded the sender's size bound and was not read in full: its content is unknown."""
 

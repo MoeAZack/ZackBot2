@@ -25,7 +25,7 @@ from .guard import TESTNET_BASE_URL, VenueGuardError, check_binding, check_reque
 from .outcomes import OrderOutcome, OrderOutcomeKind, ReadKind, ReadOutcome
 from .signing import check_ms, check_recv_window, encode_params, signed_query
 from .wire import (API_KEY_HEADER, HttpRequest, HttpResponse, RateLimitUsage, WireConnectionError,
-                   WireResponseTooLarge, WireSeamError, WireTimeout, parse_rate_limits)
+                   WireNotSent, WireResponseTooLarge, WireSeamError, WireTimeout, parse_rate_limits)
 
 log = logging.getLogger('newcore.venue.transport')
 
@@ -203,6 +203,8 @@ class BinanceTestnetTransport:
             raise                              # the seam refused before sending / a broken harness: not venue data
         except WireTimeout:
             return 'unknown', ('timeout', None), None, RateLimitUsage()
+        except WireNotSent as ex:                # provably never written: safe to resend under the same client id
+            return 'unknown', ('not_sent_' + _token(ex.reason), None), None, RateLimitUsage()
         except WireResponseTooLarge:
             return 'unknown', ('response_too_large', None), None, RateLimitUsage()
         except WireConnectionError:
@@ -511,3 +513,9 @@ def _code(data):
     if isinstance(c, str) and re.fullmatch(r'^-?[0-9]+$', c):
         return int(c)
     return c
+
+
+def _token(reason):
+    """A short stable token for an outcome reason (letters, digits, underscore; at most 20 characters)."""
+    s = re.sub(r'[^a-z0-9_]', '_', str(reason).lower())[:20]
+    return s or 'unspecified'

@@ -27,11 +27,12 @@ import re
 import urllib.parse
 
 from .redact import REDACTED, check_value, contains_values, is_sensitive_name, redact_values
-from .wire import API_KEY_HEADER, HttpResponse, WireConnectionError, WireResponseTooLarge, WireSeamError, WireTimeout
+from .wire import (API_KEY_HEADER, HttpResponse, WireConnectionError, WireNotSent, WireResponseTooLarge, WireSeamError,
+                   WireTimeout)
 
 CASSETTE_FORMAT = 'zb-newcore-cassette/1'
 VOLATILE_PARAMS = ('timestamp',)
-_ERRORS = {'WireTimeout': WireTimeout, 'WireResponseTooLarge': WireResponseTooLarge,
+_ERRORS = {'WireTimeout': WireTimeout, 'WireNotSent': WireNotSent, 'WireResponseTooLarge': WireResponseTooLarge,
            'WireConnectionError': WireConnectionError}
 _CLEARED = (REDACTED, '', None)
 
@@ -50,7 +51,7 @@ class CassetteLeak(WireSeamError):
 
 
 def _error_name(ex):
-    for name in ('WireTimeout', 'WireResponseTooLarge', 'WireConnectionError'):
+    for name in ('WireTimeout', 'WireNotSent', 'WireResponseTooLarge', 'WireConnectionError'):
         if isinstance(ex, _ERRORS[name]):
             return name
     return None
@@ -186,7 +187,10 @@ class CassetteRecorder:
         except Exception as ex:
             name = _error_name(ex)
             if name is not None:
-                self.interactions.append({'request': req, 'error': name})
+                rec = {'request': req, 'error': name}
+                if isinstance(ex, WireNotSent):
+                    rec['reason'] = str(ex.reason)[:20]
+                self.interactions.append(rec)
             raise
         headers = dict(self._clean_pairs([(str(k), str(v)) for k, v in dict(resp.headers).items()]))
         raw = bytes(resp.body)
@@ -301,6 +305,8 @@ class CassettePlayer:
                 raise CassetteMismatch(f'request {i}: a signed request must carry a key header and a signature')
         self._next += 1
         if 'error' in rec:
+            if rec['error'] == 'WireNotSent':
+                raise WireNotSent('replayed WireNotSent', str(rec.get('reason', 'unspecified')))
             raise _ERRORS[rec['error']]('replayed ' + rec['error'])
         r = rec['response']
         body = r['body_text'].encode('utf-8') if 'body_text' in r else base64.b64decode(r['body_b64'])

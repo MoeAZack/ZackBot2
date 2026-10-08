@@ -415,7 +415,7 @@ def test_dns_failure_on_default_connect_is_unknown():
         s(req())
     assert str(ei.value) == 'name resolution failed'
     out = transport_over(s).account()
-    assert out.kind is ReadKind.UNKNOWN and out.unknown_reason == 'connection'
+    assert out.kind is ReadKind.UNKNOWN and out.unknown_reason == 'not_sent_dns_failed'      # provably not sent
 
 
 def test_refused_connection_is_unknown():
