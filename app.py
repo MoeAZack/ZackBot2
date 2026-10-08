@@ -461,12 +461,36 @@ def list_backtests():
     return out
 
 
+# FBL-BT01 / AUD-06a: which research rows contain a DCA (dca_dip) slot, decided structurally (strategy key,
+# combo slot ids, preset sleeves) rather than by display text. Slot ids mirror research_combos.SLV (kept in
+# sync by tests/test_dca_unverified_labels.py); an unknown id or profile is flagged (fail-safe).
+RESEARCH_COMBO_SLOT_KEYS = {'MOM40': 'ema_mom', 'MOM40+PY': 'ema_mom', 'ST8': 'ema_st', 'ST8+PY': 'ema_st',
+                            'DCA40': 'dca_dip', 'BRK8': 'breakout_pyramid', 'BEAR40': 'bear_breakdown',
+                            'ROT40': 'rotation', 'SQZ40b': 'squeeze_tp'}
+
+
+def research_uses_dca(name, row):
+    if name == 'results_single.csv':
+        return row.get('key') not in S.STRATEGIES or row.get('key') == 'dca_dip'   # unknown/renamed key: flagged (Cowork F1)
+    if name == 'results_timeframes.csv':
+        keys = [k for k, v in S.STRATEGIES.items() if v['name'] == row.get('strategy')]
+        return 'dca_dip' in keys or not keys
+    if name == 'results_combos.csv':
+        keys = [RESEARCH_COMBO_SLOT_KEYS.get(t.strip()) for t in str(row.get('combo', '')).split(' + ')]
+        return 'dca_dip' in keys or None in keys
+    if name == 'results_runner.csv':
+        ps = [p for p in PRESETS.values() if p['name'] == row.get('profile')]
+        return any(sl['key'] == 'dca_dip' for p in ps for sl in p['sleeves']) or not ps
+    return True
+
+
 def research():
     out = {}
     for name in ('results_single.csv', 'results_combos.csv', 'results_timeframes.csv', 'results_runner.csv'):
         p = os.path.join(BUNDLE, 'research', name)
         if os.path.exists(p):
-            out[name] = pd.read_csv(p).fillna('').to_dict('records')
+            out[name] = [dict(r, uses_dca=bool(research_uses_dca(name, r)))
+                         for r in pd.read_csv(p).fillna('').to_dict('records')]
     p = os.path.join(BUNDLE, 'research', 'lead_traders.json')
     if os.path.exists(p): out['lead_traders'] = json.load(open(p))
     if out:   # FBL-BT01 (label only): results with a DCA slot predate the backtester's intrabar path fix
