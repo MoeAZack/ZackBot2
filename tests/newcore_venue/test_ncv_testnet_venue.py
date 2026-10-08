@@ -157,6 +157,36 @@ def test_algo_cancel_ack_and_algo_states():
     assert canceled.kind is P.OutcomeKind.FINAL and canceled.executed_qty == D('0')
 
 
+def test_canceled_record_with_zero_avg_price_is_final_zero_without_price():
+    # Binance sends avgPrice "0.00000" on an unfilled order; the port requires no price when nothing executed.
+    v, _ = venue(body_with('order_cancel_canceled', clientOrderId=CID, avgPrice='0.00000'))
+    out = v.cancel(REF)
+    assert out.kind is P.OutcomeKind.FINAL and out.executed_qty == D('0') and out.avg_price is None
+
+
+@pytest.mark.parametrize('status', ['TRIGGERED', 'TRIGGERING', 'FINISHED'])
+def test_triggered_algo_without_child_id_is_unknown_never_final(status):
+    v, _ = venue(body_with('algo_order_finished', clientAlgoId=ACID, algoStatus=status, actualOrderId=None))
+    out = v.query(AREF)
+    assert out.kind is P.OutcomeKind.UNKNOWN and out.detail == 'algo_triggered_no_child' and out.executed_qty is None
+
+
+def test_unrepresentable_answer_is_unknown_not_an_exception():
+    long_status = body_with('order_market_filled', clientOrderId=CID)
+    v, _ = venue(long_status)
+    import newcore.venue.testnet_venue as tv
+    orig = tv.map_order_outcome
+
+    def boom(*a, **k):
+        raise PortValueError('x', 'unrepresentable')
+    tv.map_order_outcome = boom
+    try:
+        out = v.submit_market(market())
+    finally:
+        tv.map_order_outcome = orig
+    assert out.kind is P.OutcomeKind.UNKNOWN and out.detail == 'unrepresentable'
+
+
 # ---------- client ids ----------
 
 def test_submit_requires_a_newcore_client_id_of_its_route():
@@ -225,11 +255,21 @@ def test_open_orders_classic_and_algo():
     assert algo.ref.route == 'algo' and algo.ref.client_id == 'zb-es-QQQQRRRRSSSSTTTTUUUU' and algo.qty == D('10')
 
 
-@pytest.mark.parametrize('algo_answer', [WireTimeout(), 'err_path_invalid', 'open_algo_orders_bad_shape'])
-def test_open_orders_partial_read_is_unknown(algo_answer):
+@pytest.mark.parametrize('algo_answer,detail', [(WireTimeout(), 'timeout'),
+                                                ('err_path_invalid', 'algo_read_endpoint_unsupporte'),
+                                                ('open_algo_orders_bad_shape', 'malformed')])
+def test_open_orders_partial_read_is_unknown(algo_answer, detail):
     v, _ = venue('open_orders', algo_answer)
     out = v.open_orders()
-    assert out.kind is P.ReadKind.UNKNOWN and out.value is None
+    assert out.kind is P.ReadKind.UNKNOWN and out.value is None and out.detail.startswith(detail)
+
+
+def test_a_full_page_of_fills_is_unknown_not_complete():
+    row = json.loads(fixture('user_trades').body)[0]
+    rows = [dict(row, id=1000 + i, time=1759917000045 + i) for i in range(1000)]
+    v, _ = venue(raw(200, json.dumps(rows).encode()))
+    out = v.fills('SOLUSDT', '4000000100')
+    assert out.kind is P.ReadKind.UNKNOWN and out.detail == 'fills_truncated'
 
 
 def test_open_orders_classic_rejected_is_rejected():

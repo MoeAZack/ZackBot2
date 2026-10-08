@@ -94,6 +94,15 @@ def map_order_outcome(t, ref, observed_at_ms):
                           executed_qty=executed, avg_price=avg, **base)
 
 
+def _safe_map(t, ref, observed_at_ms):
+    """The port never raises for a venue answer: an answer the port values cannot represent is UNKNOWN."""
+    try:
+        return map_order_outcome(t, ref, observed_at_ms)
+    except (PortValueError, ValueError, TypeError):
+        return P.OrderOutcome(kind=P.OutcomeKind.UNKNOWN, ref=ref, observed_at_ms=observed_at_ms,
+                              detail='unrepresentable')
+
+
 def map_read_outcome(t, observed_at_ms, convert):
     """Transport ReadOutcome -> port ReadOutcome; convert(value) -> tuple or raises (-> UNKNOWN 'malformed')."""
     if t.kind is TR.OK:
@@ -184,26 +193,26 @@ class TestnetVenue:
         ps = order.position_side
         side = CLOSING_SIDE[ps] if order.reduce else OPENING_SIDE[ps]
         t = self._t.place_market(order.ref.symbol, side, ps, order.qty, order.ref.client_id, reduce_only=order.reduce)
-        return map_order_outcome(t, order.ref, self._now())
+        return _safe_map(t, order.ref, self._now())
 
     def submit_stop(self, order):
         req(isinstance(order, P.StopOrder), 'order', 'a StopOrder')
         self._owned(order.ref)
         t = self._t.place_stop_market(order.ref.symbol, order.position_side, order.qty, order.stop_price,
                                       order.ref.client_id, route=StopRoute(order.ref.route))
-        return map_order_outcome(t, order.ref, self._now())
+        return _safe_map(t, order.ref, self._now())
 
     def cancel(self, ref):
         self._owned(ref)
         t = (self._t.cancel_algo_order(ref.client_id) if ref.route == 'algo'
              else self._t.cancel_order(ref.symbol, ref.client_id))
-        return map_order_outcome(t, ref, self._now())
+        return _safe_map(t, ref, self._now())
 
     def query(self, ref):
         req(isinstance(ref, P.OrderRef), 'ref', 'an OrderRef')
         t = (self._t.query_algo_order(ref.client_id) if ref.route == 'algo'
              else self._t.query_order(ref.symbol, ref.client_id))
-        return map_order_outcome(t, ref, self._now())
+        return _safe_map(t, ref, self._now())
 
     # ---- reads
     def positions(self, symbol=None):
