@@ -107,3 +107,4 @@ reconcile.manual_close
 reconcile.manual_add
 reconcile.stale_read
 reconcile.late_fill_after_not_found
+reconcile.external_close

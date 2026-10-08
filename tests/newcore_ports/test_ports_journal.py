@@ -232,9 +232,10 @@ def _post_hoc_close_flow(reason_override=None):
     at = s.events[-1].at_ms + 1000
     dec_id = make_id('dec', 4242)
     it = s._intent(cid, Purpose.CLOSE, dec_id, at, owner=LOT)
-    it = it.__class__(**{**{f: getattr(it, f) for f in it.__dataclass_fields__}, 'reason': ReasonCode.EXIT_MANUAL})
+    it = it.__class__(**{**{f: getattr(it, f) for f in it.__dataclass_fields__},
+                         'reason': ReasonCode.RECONCILE_EXTERNAL_CLOSE})
     d = Decision(decision_id=dec_id, account_id=ACCT, at_ms=at, action=Action.RECONCILE,
-                 reason=ReasonCode.RECONCILE_MANUAL_CLOSE, authority=Authority.RECONCILIATION, key=None, evidence=(),
+                 reason=ReasonCode.RECONCILE_EXTERNAL_CLOSE, authority=Authority.RECONCILIATION, key=None, evidence=(),
                  symbol='SOLUSDT', side=Side.LONG, subject_id=LOT, detail='', intents=(it,), policy_version='step0-test')
     s._event(DecisionRecorded, reason=d.reason, decision=d)
     s.intents[cid] = it
@@ -245,7 +246,7 @@ def _post_hoc_close_flow(reason_override=None):
                       exchange_status=None, lookup=None, executed_qty=it.qty, avg_price=D('149'),
                       evidence=Evidence.EXCHANGE_EXTERNAL, corroboration=(), resolved_by=dec_id,
                       external_trades=(trade,))
-    s._event(ResultObserved, reason=ReasonCode.RECONCILE_MANUAL_CLOSE, result=res)
+    s._event(ResultObserved, reason=ReasonCode.RECONCILE_EXTERNAL_CLOSE, result=res)
     s.step(cid, IntentState.DURABLE, IntentState.FILLED)
     return s
 
@@ -318,3 +319,23 @@ def test_only_an_executed_exchange_record_supersedes_in_the_journal():
     zero = replace(late, executed_qty=D('0'), avg_price=None, exchange_status=ExchangeStatus.CANCELED)
     with pytest.raises(JournalConflict, match='superseding not_found_corroborated'):
         j.append(s._event(ResultObserved, reason=ReasonCode.RECONCILE_LATE_FILL, result=zero))
+
+
+def test_the_journal_refuses_to_send_a_post_hoc_booking():
+    """r3a ruling 2 / 3 (cross-layer): the step-0 journal gate applies the same rule as the domain event chain - a
+    reconcile.external_close booking is never sent, so its SENT step is refused before it is durable."""
+    s = _post_hoc_close_flow()
+    j = ReferenceJournal()
+    events = s.events[:-2]                       # decision + record (before the external result / FILLED step)
+    for ev in events:
+        j.append(ev)
+    cid = s.events[-1].intent_id
+    send = s.step(cid, IntentState.DURABLE, IntentState.SUBMITTED)
+    with pytest.raises(JournalConflict, match='a post-hoc booking is never sent'):
+        j.append(replace_seq(send, len(events) + 1))
+    assert j.last_sequence() == len(events)
+
+
+def replace_seq(ev, n):
+    from nc_events import replace
+    return replace(ev, sequence=n)

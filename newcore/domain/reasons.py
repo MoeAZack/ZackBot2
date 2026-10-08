@@ -141,6 +141,7 @@ class ReasonCode(enum.StrEnum):
     RECONCILE_MANUAL_ADD = 'reconcile.manual_add'
     RECONCILE_STALE_READ = 'reconcile.stale_read'
     RECONCILE_LATE_FILL = 'reconcile.late_fill_after_not_found'
+    RECONCILE_EXTERNAL_CLOSE = 'reconcile.external_close'      # r3a ruling 2: the booking reason, never a send
 
     @property
     def namespace(self):
@@ -210,7 +211,7 @@ MEANING = {
     R.EXIT_FLATTEN: 'bot market close on an owner / safety flatten command',
     R.EXIT_RESYNC: 'the position was gone / smaller on the exchange with no recorded cause (booked only from evidence)',
     R.EXIT_STOP_FAILED: 'the protective stop could not be placed after entry, so the position was closed at market',
-    R.EXIT_MANUAL: 'the owner closed the position outside the bot',
+    R.EXIT_MANUAL: 'an operator-requested bot close: the bot sends the reduce / close on the owner\'s command',
     R.ENTRY_SIGNAL: 'strategy entry signal',
     R.ENTRY_MANUAL: 'owner-requested entry (never bypasses pause / HOLD)',
     R.ENTRY_DCA_LEVEL: 'a DCA safety level add',
@@ -257,10 +258,12 @@ MEANING = {
     R.RISK_DRAWDOWN_KILL: 'risk rule: the account drawdown kill switch stopped all new risk',
     R.RISK_DAILY_HALT: 'risk rule: the daily loss limit halted new risk for the rest of the trading day',
     R.RECONCILE_FOREIGN_QUARANTINE: 'a foreign order / position is quarantined (left untouched) until the owner acts',
-    R.RECONCILE_MANUAL_CLOSE: 'an owned position was closed / reduced outside the bot; booked from venue trade evidence',
+    R.RECONCILE_MANUAL_CLOSE: 'reconciliation found an owned position closed / reduced outside the bot (booked by reconcile.external_close)',
     R.RECONCILE_MANUAL_ADD: 'the venue holds more than is owned (a manual add); never adopted without the owner',
     R.RECONCILE_STALE_READ: 'a venue read older than the newest recorded result: re-read, never compared',
     R.RECONCILE_LATE_FILL: 'a FINAL record of an owned order supersedes its earlier corroborated not-found',
+    R.RECONCILE_EXTERNAL_CLOSE: 'books a reduce / close that already happened on the venue outside the bot (a historical '
+                                'fact from venue trades; never permission to send)',
 }
 del R
 
@@ -291,7 +294,7 @@ GOLDEN_EXIT = {
     ReasonCode.EXIT_FLATTEN: 'FLATTEN',
     ReasonCode.EXIT_RESYNC: 'RESYNC',
     ReasonCode.EXIT_STOP_FAILED: 'STOP_FAILED',
-    ReasonCode.EXIT_MANUAL: None,           # the owner closed outside the bot: no zb-golden/1 code
+    ReasonCode.EXIT_MANUAL: None,           # an operator-requested bot close: no zb-golden/1 code
 }
 
 # zb-golden/1 signal (decision) kinds -> (reason, position side)

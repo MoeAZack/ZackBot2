@@ -159,6 +159,20 @@ MUTATIONS = {
     'r3 item 3b: the journal supersedes more than once': ('newcore/ports/journal.py', [(
         '        if (k is EventKind.RESULT_RECORDED and st.final is Evidence.NOT_FOUND_CORROBORATED and not st.superseded',
         '        if (k is EventKind.RESULT_RECORDED and st.final in (Evidence.NOT_FOUND_CORROBORATED, Evidence.EXCHANGE_FINAL)')]),
+    'r3a ruling 2: the event chain lets a booking be sent': (D + 'events.py', [(
+        "            req(booking_step_ok(it, ev.to_state), p + '.to_state', 'a post-hoc booking is never sent')",
+        "            pass")]),
+    'r3a ruling 2: the journal gate lets a booking be sent': ('newcore/ports/journal.py', [(
+        "            req(booking_step_ok(it, ev.to_state), 'event.to_state', 'a post-hoc booking is never sent')",
+        "            pass")]),
+    'r3a ruling 2: exit.manual is not an operator reason': (D + 'decision.py', [(
+        "                              ReasonCode.EXIT_MANUAL})", "                              })")]),
+    'r3a ruling 1: an external add may be booked': (D + 'orders.py', [(
+        "BOOKED_PURPOSES = frozenset({Purpose.REDUCE, Purpose.CLOSE})",
+        "BOOKED_PURPOSES = frozenset({Purpose.REDUCE, Purpose.CLOSE, Purpose.ADD})")]),
+    'r3a ruling 1: a quarantine decision may close / book': (D + 'decision.py', [(
+        "        req(self.reason not in QUARANTINE_REASONS or all(i.purpose is Purpose.PROTECT for i in self.intents),",
+        "        req(True,")]),
     'duplicate JSON keys': (D + 'codec.py', [("            if k in out:\n                problems.append(",
                                               "            if False:\n                problems.append(")]),
     'truncated JSON': (D + 'codec.py', [(

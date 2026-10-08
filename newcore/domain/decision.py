@@ -93,7 +93,9 @@ class Authority(enum.StrEnum):
     OPERATOR = 'operator'
 
 
-OPERATOR_REASONS = frozenset({ReasonCode.ENTRY_MANUAL, ReasonCode.ENTRY_ONE_SHOT})
+OPERATOR_REASONS = frozenset({ReasonCode.ENTRY_MANUAL, ReasonCode.ENTRY_ONE_SHOT,
+                              ReasonCode.EXIT_MANUAL})        # r3a ruling 2: exit.manual = operator-requested bot close
+QUARANTINE_REASONS = frozenset({ReasonCode.RECONCILE_MANUAL_ADD, ReasonCode.RECONCILE_FOREIGN_QUARANTINE})
 
 
 @record
@@ -141,11 +143,14 @@ class Decision(Record):
             req(i.decision_id == self.decision_id and i.created_at_ms == self.at_ms, ip + '.decision_id',
                 'created by another decision')
             req(i.state is IntentState.PLANNED, ip + '.state', 'a decision creates PLANNED intents only')
-        post_hoc = [i for i in self.intents if i.reason is ReasonCode.EXIT_MANUAL]
-        req(not post_hoc or (a is Action.RECONCILE and self.reason is ReasonCode.RECONCILE_MANUAL_CLOSE), p + '.intents',
-            'a post-hoc (exit.manual) booking comes only from a RECONCILE reconcile.manual_close decision')
-        req(self.reason is not ReasonCode.RECONCILE_MANUAL_CLOSE or len(post_hoc) == len(self.intents), p + '.intents',
-            'a reconcile.manual_close decision books post-hoc intents only')
+        post_hoc = [i for i in self.intents if i.reason is ReasonCode.RECONCILE_EXTERNAL_CLOSE]
+        req(not post_hoc or (a is Action.RECONCILE and self.reason is ReasonCode.RECONCILE_EXTERNAL_CLOSE),
+            p + '.intents', 'a post-hoc booking comes only from a RECONCILE reconcile.external_close decision')
+        req(self.reason is not ReasonCode.RECONCILE_EXTERNAL_CLOSE
+            or (post_hoc and len(post_hoc) == len(self.intents)), p + '.intents',   # RECONCILE: rule above
+            'a reconcile.external_close decision is a RECONCILE that books post-hoc intents only (at least one)')
+        req(self.reason not in QUARANTINE_REASONS or all(i.purpose is Purpose.PROTECT for i in self.intents),
+            p + '.intents', 'an external increase is quarantined: protect-only, never booked (ruling 1)')
         if self.reason is ReasonCode.RECONCILE_LATE_FILL:   # r3 draft item 3b: names the intent it corrects
             req(a is Action.RECONCILE and self.subject_id is not None, p + '.reason',
                 'a late fill after not-found is a RECONCILE decision about one intent')

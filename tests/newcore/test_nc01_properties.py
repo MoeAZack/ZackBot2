@@ -206,9 +206,10 @@ def test_reason_namespace_fits_the_action_exhaustively(action):
             built = True
         except InvalidRecord:
             built = False
-        booking_only = reason is ReasonCode.EXIT_MANUAL and action in (Action.CLOSE, Action.REDUCE, Action.FLATTEN)
-        late_fill = reason is ReasonCode.RECONCILE_LATE_FILL      # r3 item 3b: only a RECONCILE naming its intent
-        assert built is (reason.namespace in ALLOWED[action] and not booking_only and not late_fill), (action, reason)   # r3: exit.manual books, never sends
+        # r3a: reconcile.external_close only from a RECONCILE that books post-hoc intents (never a send); a late-fill
+        # reconcile names its intent. The generic builder gives neither, so neither builds here.
+        special = reason in (ReasonCode.RECONCILE_EXTERNAL_CLOSE, ReasonCode.RECONCILE_LATE_FILL)
+        assert built is (reason.namespace in ALLOWED[action] and not special), (action, reason)
 
 
 # ----------------------------------------------------------------------------------------------------------- numbers

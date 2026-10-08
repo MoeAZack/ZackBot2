@@ -99,6 +99,7 @@ LIVE = frozenset({IntentState.DURABLE, IntentState.SUBMITTED, IntentState.WORKIN
                   IntentState.CANCELLING})     # the states an intent may have inside a Portfolio
 CANCEL_ONLY = TERMINAL | {IntentState.CANCELLING}
 POST_HOC_STATES = frozenset({IntentState.PLANNED, IntentState.DURABLE, IntentState.FILLED, IntentState.NOT_SENT})
+BOOKED_PURPOSES = frozenset({Purpose.REDUCE, Purpose.CLOSE})   # ruling 1: only an external reduce / close is booked
 _S = IntentState
 INTENT_TRANSITIONS = {
     _S.PLANNED: frozenset({_S.DURABLE, _S.NOT_SENT}),
@@ -117,10 +118,22 @@ def can_transition(a, b):
     return IntentState(b) in INTENT_TRANSITIONS[IntentState(a)]
 
 
+POST_HOC_REASON = ReasonCode.RECONCILE_EXTERNAL_CLOSE
+
+
 def is_post_hoc(intent):
-    """r3 DRAFT item 3: a REDUCE / CLOSE with reason exit.manual books a close that happened OUTSIDE the bot (REC-02 Q2).
-    It is created by a RECONCILE decision, is never sent, and ends only by EXCHANGE_EXTERNAL (or NOT_SENT)."""
-    return intent.reason is ReasonCode.EXIT_MANUAL
+    """r3 item 3a: a lot REDUCE / CLOSE with reason reconcile.external_close books a reduce / close that already
+    happened OUTSIDE the bot (REC-02 Q2). It is created by a RECONCILE decision, is never sent, and ends only by
+    EXCHANGE_EXTERNAL (or NOT_SENT). Ruling 2: the reason is reconciliation-only - it never reads as permission to send
+    (exit.manual is an operator-requested bot close and sends normally). Ruling 1: an external INCREASE is never
+    booked (no post-hoc ENTRY / ADD): it stays quarantined and protect-only."""
+    return intent.reason is POST_HOC_REASON
+
+
+def booking_step_ok(intent, to_state):
+    """A post-hoc booking only ever moves inside POST_HOC_STATES (never SUBMITTED / WORKING / UNKNOWN / CANCELLING):
+    the one lifecycle rule the event chain AND the step-0 journal gate both apply."""
+    return not is_post_hoc(intent) or IntentState(to_state) in POST_HOC_STATES
 
 
 def may_send(intent):
@@ -173,7 +186,8 @@ class OrderIntent(Record):
         check_symbol(self.symbol, p + '.symbol')
         positive(self.qty, p + '.qty')
         u, t = self.purpose, self.order_type
-        req(self.reason.namespace == REASON_NAMESPACE[u], p + '.reason', f'a {u} intent needs a {REASON_NAMESPACE[u]}.* reason')
+        req(self.reason.namespace == REASON_NAMESPACE[u] or (self.reason is POST_HOC_REASON and u in BOOKED_PURPOSES),
+            p + '.reason', f'a {u} intent needs a {REASON_NAMESPACE[u]}.* reason')
         if u is Purpose.ENTRY:
             req(self.owner_id is None and self.owner_kind is None, p + '.owner_id',
                 'an ENTRY owns itself (its result creates the lot)')
@@ -212,8 +226,8 @@ class OrderIntent(Record):
             req(u in OPENING, p + '.authorized_by', 'only opening intents need a one-shot authorization')
             check_id(self.authorized_by, p + '.authorized_by', 'dec')
         if is_post_hoc(self):                            # r3 DRAFT item 3: an external close booked, never sent
-            req(u in (Purpose.REDUCE, Purpose.CLOSE) and self.owner_kind is OwnerKind.LOT and t is OrderType.MARKET,
-                p + '.reason', 'exit.manual books an external reduce / close of a lot')
+            req(u in BOOKED_PURPOSES and self.owner_kind is OwnerKind.LOT and t is OrderType.MARKET,
+                p + '.reason', 'reconcile.external_close books an external reduce / close of a lot')
             req(self.state in POST_HOC_STATES, p + '.state', f'a post-hoc booking is never {self.state}')
             req(self.replaces_intent_id is None, p + '.replaces_intent_id', 'a post-hoc booking replaces nothing')
         if self.replaces_intent_id is not None:          # the explicit cancel-replace link (Codex P1 on af4e5f3)
@@ -461,7 +475,7 @@ def check_result_for_intent(intent, result, sent_at_ms):
     req(result.observed_at_ms >= intent.created_at_ms, p + '.observed_at_ms', 'observed before the intent existed')
     ev = result.evidence
     req((ev is Evidence.EXCHANGE_EXTERNAL) <= is_post_hoc(intent), p + '.evidence',
-        'exchange_external only books a post-hoc (exit.manual) intent')
+        'exchange_external only books a post-hoc (reconcile.external_close) intent')
     if is_post_hoc(intent):
         req(sent_at_ms is None and result.phase is ResultPhase.FINAL
             and ev in (Evidence.EXCHANGE_EXTERNAL, Evidence.NOT_SENT), p + '.evidence',

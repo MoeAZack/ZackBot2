@@ -15,7 +15,7 @@ from .decision import Decision
 from .incident import Incident
 from .modes import EntriesMode, HoldKind
 from .orders import (INTENT_TRANSITIONS, TERMINAL, IntentState, OrderIntent, OrderResult, ResultPhase,
-                     check_result_for_intent, supersedes, terminal_for)
+                     booking_step_ok, check_result_for_intent, supersedes, terminal_for)
 from .reasons import ReasonCode
 
 
@@ -240,6 +240,7 @@ def check_event_chain(events, *, after_sequence=0, known_intents=None):
             req(ev.intent_id in live, p, 'state change of an intent that was never made durable')
             it, st, sent = live[ev.intent_id]
             req(ev.from_state is st, p + '.from_state', f'the intent is {st}')
+            req(booking_step_ok(it, ev.to_state), p + '.to_state', 'a post-hoc booking is never sent')
             fin = finals.get(ev.intent_id)
             if ev.to_state in TERMINAL:
                 req(fin is not None, p + '.to_state', 'a terminal step needs a durable FINAL result first')

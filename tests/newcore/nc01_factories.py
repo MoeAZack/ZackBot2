@@ -305,7 +305,8 @@ AUTHORITY_OF = {'operator': Authority.OPERATOR, 'protect': Authority.PROTECTION,
 
 
 def authority_for(action, reason):
-    if reason.namespace == 'operator' or reason in (ReasonCode.ENTRY_MANUAL, ReasonCode.ENTRY_ONE_SHOT) \
+    if reason.namespace == 'operator' or reason in (ReasonCode.ENTRY_MANUAL, ReasonCode.ENTRY_ONE_SHOT,
+                                                     ReasonCode.EXIT_MANUAL) \
             or action is Action.RESUME:
         return Authority.OPERATOR
     return AUTHORITY_OF.get(reason.namespace, Authority.STRATEGY)

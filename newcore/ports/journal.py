@@ -42,7 +42,8 @@ from newcore.domain.codec import contract_sha256
 from newcore.domain.errors import DomainError
 from newcore.domain.events import EVENT_TYPES
 from newcore.domain.ledger import Admission
-from newcore.domain.orders import TERMINAL, can_transition, check_result_for_intent, supersedes, terminal_for
+from newcore.domain.orders import (TERMINAL, booking_step_ok, can_transition, check_result_for_intent, supersedes,
+                                   terminal_for)
 
 from .keys import (check_decision_key, derive_child_intent_id, derive_decision_id, derive_intent_id, derive_lot_id,
                    route_of)
@@ -425,6 +426,7 @@ class JournalGate:
             it, state, _, final = self._live[ev.intent_id]
             req(ev.from_state is state, 'event.from_state', f'the intent is {state}')
             req(can_transition(state, ev.to_state), 'event.to_state', f'{state} -> {ev.to_state} is no lifecycle step')
+            req(booking_step_ok(it, ev.to_state), 'event.to_state', 'a post-hoc booking is never sent')
             if ev.to_state in TERMINAL:
                 req(final is not None and terminal_for(final) is ev.to_state, 'event.to_state',
                     'the terminal step must be terminal_for(final result)')

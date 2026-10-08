@@ -35,7 +35,8 @@ def test_item2_r3_reason_codes_exist_and_are_usable(value):
 def test_item2_r3_codes_are_appended_after_v1():
     order = [r.value for r in ReasonCode]
     assert order.index('risk_gateway.cost_to_stop') < min(order.index(v) for v in R3_CODES)
-    assert order[-len(R3_CODES):] == ['risk_gateway.drawdown_kill', 'risk_gateway.daily_halt',
+    start = order.index('risk_gateway.cost_to_stop') + 1                  # later r3 codes append after these
+    assert order[start:start + len(R3_CODES)] == ['risk_gateway.drawdown_kill', 'risk_gateway.daily_halt',
                                       'reconcile.foreign_quarantine', 'reconcile.manual_close', 'reconcile.manual_add',
                                       'reconcile.stale_read', 'reconcile.late_fill_after_not_found']
 
@@ -102,7 +103,7 @@ def test_item1_step0_journal_maps_incidents():
 
 # ----------------------------------------------------------------------------------------------------------- item 3a
 def _external_close(seed=330, qty='1.5'):
-    """A lot of 1.5 closed OUTSIDE the bot: a RECONCILE (reconcile.manual_close) decision books a post-hoc CLOSE
+    """A lot of 1.5 closed OUTSIDE the bot: a RECONCILE (reconcile.external_close) decision books a post-hoc CLOSE
     (exit.manual), recorded DURABLE, ended by a FINAL exchange_external result built from the venue trades."""
     from decimal import Decimal as D
     from newcore.domain import Authority, Evidence, ExternalTrade, IntentState, OrderResult, Purpose, ResultPhase
@@ -110,9 +111,9 @@ def _external_close(seed=330, qty='1.5'):
     acct, lt = p.account_id, p.lots[0]
     dec_id = ids.id('dec')
     it = F.intent(ids, acct, Purpose.CLOSE, lt.symbol, lt.side, D(qty), owner_id=lt.lot_id, state=IntentState.PLANNED,
-                  decision_id=dec_id, reason=ReasonCode.EXIT_MANUAL, created=F.T0 + 90_000)
+                  decision_id=dec_id, reason=ReasonCode.RECONCILE_EXTERNAL_CLOSE, created=F.T0 + 90_000)
     dec = F.build(F.Decision, decision_id=dec_id, account_id=acct, at_ms=F.T0 + 90_000, action=Action.RECONCILE,
-                  reason=ReasonCode.RECONCILE_MANUAL_CLOSE, authority=Authority.RECONCILIATION, symbol=lt.symbol,
+                  reason=ReasonCode.RECONCILE_EXTERNAL_CLOSE, authority=Authority.RECONCILIATION, symbol=lt.symbol,
                   side=lt.side, subject_id=lt.lot_id, intents=(it,))
     trades = (ExternalTrade(trade_id='9001', at_ms=F.T0 + 80_000, qty=D('1'), price=D('101')),
               ExternalTrade(trade_id='9002', at_ms=F.T0 + 81_000, qty=D(qty) - 1, price=D('102')))
@@ -130,7 +131,7 @@ def _booking_chain(p, ids, dec, it, res):
     return [F.event(DecisionRecorded, ids, acct, 1, at=dec.at_ms, decision=dec, reason=dec.reason),
             F.event(IntentRecorded, ids, acct, 2, at=dec.at_ms, intent=dur, reason=dur.reason),
             F.event(ResultObserved, ids, acct, 3, at=res.observed_at_ms, result=res,
-                    reason=ReasonCode.RECONCILE_MANUAL_CLOSE),
+                    reason=ReasonCode.RECONCILE_EXTERNAL_CLOSE),
             F.event(IntentStateChanged, ids, acct, 4, at=res.observed_at_ms, intent_id=it.intent_id,
                     from_state=IntentState.DURABLE, to_state=IntentState.FILLED)]
 
@@ -193,13 +194,17 @@ def test_item3a_external_evidence_rules():
         check_event_chain(chain[:2] + [sent, F.replace(chain[2], sequence=4)])
 
 
-def test_item3a_only_reconcile_manual_close_books():
+def test_item3a_only_reconcile_external_close_books():
     from newcore.domain import Authority, InvalidRecord
     p, ids, dec, it, res = _external_close()
-    with pytest.raises(InvalidRecord, match='only from a RECONCILE reconcile.manual_close'):
-        F.replace(dec, action=Action.CLOSE, reason=ReasonCode.EXIT_MANUAL, authority=Authority.STRATEGY)
+    with pytest.raises(InvalidRecord, match='only from a RECONCILE reconcile.external_close'):
+        F.replace(dec, action=Action.CLOSE, reason=ReasonCode.EXIT_MANUAL, authority=Authority.OPERATOR)
     with pytest.raises(InvalidRecord, match='books post-hoc intents only'):
         F.replace(dec, intents=(F.replace(it, reason=ReasonCode.EXIT_TIME),))
+    with pytest.raises(InvalidRecord, match='books post-hoc intents only'):
+        F.replace(dec, intents=())                                               # a booking books something
+    with pytest.raises(InvalidRecord, match='books post-hoc intents only'):
+        F.replace(dec, action=Action.PAUSE, intents=(), authority=Authority.RECONCILIATION)
 
 
 # ----------------------------------------------------------------------------------------------------------- item 3b
@@ -329,3 +334,86 @@ def test_item3b_a_late_fill_decision_is_a_reconcile_about_one_intent():
         F.replace(fix, subject_id=p.lots[0].lot_id)                 # a lot is not the intent it corrects
     with pytest.raises(InvalidRecord):
         F.replace(fix, action=Action.CLOSE, authority=Authority.STRATEGY)
+
+
+# --------------------------------------------------------------------------------- r3a rulings 1 + 2 (Codex on #13)
+def test_ruling2_reconcile_external_close_never_authorizes_a_send():
+    """A historical exchange fact can never be read as permission to send: the booking reason is accepted ONLY by a
+    RECONCILE reconcile.external_close decision (exhaustively over every action x reason), may_send is False, and the
+    event chain refuses the send step itself (the step-0 journal gate does the same: test_ports_journal)."""
+    from newcore.domain import (Authority, IntentState, IntentStateChanged, InvalidRecord, check_event_chain,
+                                may_send)
+    p, ids, dec, it, res = _external_close()
+    accepted = []
+    for action in Action:
+        for reason in ReasonCode:
+            try:
+                F.build(F.Decision, decision_id=dec.decision_id, account_id=dec.account_id, at_ms=dec.at_ms,
+                        action=action, reason=reason, authority=F.authority_for(action, reason), symbol=dec.symbol,
+                        side=dec.side, subject_id=dec.subject_id, intents=(it,))
+                accepted.append((action, reason))
+            except InvalidRecord:
+                pass
+    assert accepted == [(Action.RECONCILE, ReasonCode.RECONCILE_EXTERNAL_CLOSE)]
+    dur = F.replace(it, state=IntentState.DURABLE)
+    assert not may_send(dur)
+    chain = _booking_chain(p, ids, dec, it, res)
+    send = F.replace(chain[3], to_state=IntentState.SUBMITTED, sequence=3)
+    with pytest.raises(InvalidRecord, match='a post-hoc booking is never sent'):
+        check_event_chain(chain[:2] + [send])                                   # refused at the send step itself
+    drop = F.replace(chain[3], to_state=IntentState.CANCELLING, sequence=3)
+    with pytest.raises(InvalidRecord, match='a post-hoc booking is never sent'):
+        check_event_chain(chain[:2] + [drop])
+    for purpose, reason in ((F.Purpose.ADD, ReasonCode.RECONCILE_EXTERNAL_CLOSE),
+                            (F.Purpose.ENTRY, ReasonCode.RECONCILE_EXTERNAL_CLOSE)):
+        with pytest.raises(InvalidRecord, match='intent needs a entry.* reason'):
+            F.intent(ids, p.account_id, purpose, owner_id=p.lots[0].lot_id if purpose is F.Purpose.ADD else None,
+                     reason=reason)
+    assert Authority.RECONCILIATION is dec.authority
+
+
+def test_ruling2_exit_manual_is_an_operator_requested_bot_close():
+    from newcore.domain import (Authority, Evidence, IntentState, InvalidRecord, MEANING, check_result_for_intent,
+                                may_send)
+    assert 'operator-requested bot close' in MEANING[ReasonCode.EXIT_MANUAL]
+    p, ids, dec, it, res = _external_close()
+    lt = p.lots[0]
+    dec_id = ids.id('dec')
+    close = F.intent(ids, p.account_id, F.Purpose.CLOSE, lt.symbol, lt.side, lt.qty, owner_id=lt.lot_id,
+                     state=IntentState.PLANNED, decision_id=dec_id, reason=ReasonCode.EXIT_MANUAL)
+    d = F.decision(ids, p.account_id, Action.CLOSE, ReasonCode.EXIT_MANUAL, (close,), dec_id=dec_id)
+    assert d.authority is Authority.OPERATOR                                    # the owner's command
+    assert may_send(F.replace(close, state=IntentState.DURABLE))               # the bot sends it
+    with pytest.raises(InvalidRecord, match='operator reasons'):
+        F.replace(d, authority=Authority.STRATEGY)
+    booked = F.replace(res, intent_id=close.intent_id, client_order_id=close.client_order_id)
+    assert booked.evidence is Evidence.EXCHANGE_EXTERNAL
+    with pytest.raises(InvalidRecord, match='only books a post-hoc'):         # never a booking
+        check_result_for_intent(close, booked, None)
+
+
+def test_ruling1_an_external_increase_is_quarantined_protect_only():
+    """3a books an external REDUCE / CLOSE only. A venue position LARGER than owned (manual add / foreign) stays in
+    quarantine: its RECONCILE decision may only protect, never book or close."""
+    from decimal import Decimal as D
+    from newcore.domain import Authority, IntentState, InvalidRecord
+    p, ids, dec, it, res = _external_close()
+    lt = p.lots[0]
+    for reason in (ReasonCode.RECONCILE_MANUAL_ADD, ReasonCode.RECONCILE_FOREIGN_QUARANTINE):
+        dec_id = ids.id('dec')
+        stop = F.intent(ids, p.account_id, F.Purpose.PROTECT, lt.symbol, lt.side, lt.qty, owner_id=lt.lot_id,
+                        state=IntentState.PLANNED, decision_id=dec_id, stop_price=D('95'), created=F.T0)
+        ok = F.build(F.Decision, decision_id=dec_id, account_id=p.account_id, at_ms=F.T0, action=Action.RECONCILE,
+                     reason=reason, authority=Authority.RECONCILIATION, intents=(stop,))
+        assert ok.intents == (stop,)
+        for purpose, r in ((F.Purpose.CLOSE, ReasonCode.EXIT_TIME), (F.Purpose.REDUCE, ReasonCode.EXIT_TP1),
+                           (F.Purpose.CLOSE, ReasonCode.RECONCILE_EXTERNAL_CLOSE)):
+            other = F.intent(ids, p.account_id, purpose, lt.symbol, lt.side, D('0.5'), owner_id=lt.lot_id,
+                             state=IntentState.PLANNED, decision_id=dec_id, reason=r, created=F.T0)
+            with pytest.raises(InvalidRecord):
+                F.replace(ok, intents=(stop, other))
+                raise AssertionError((reason, purpose, r))
+        with pytest.raises(InvalidRecord, match='protect-only, never booked'):
+            F.replace(ok, intents=(stop, F.intent(ids, p.account_id, F.Purpose.CLOSE, lt.symbol, lt.side, D('0.5'),
+                                                  owner_id=lt.lot_id, state=IntentState.PLANNED, decision_id=dec_id,
+                                                  reason=ReasonCode.EXIT_TIME, created=F.T0)))
