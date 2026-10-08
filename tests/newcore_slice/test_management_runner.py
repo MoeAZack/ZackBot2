@@ -244,8 +244,10 @@ def test_hold_suppresses_add_targets_and_time_exit_until_resume(side):
 
 @pytest.mark.parametrize('side', SIDES)
 def test_hold_lets_protection_and_a_protective_close_through(side):
-    """HOLD: the trailing stop is still replaced (protection is never held), the old stop is NOT cancelled (a cancel of
-    protection is held), and when the next trail move is refused the protective stop-failed close goes through."""
+    """HOLD (Cowork MED-2, deliberate update): a lot covered by a CONFIRMED stop keeps it - the trail move is not sent
+    and no second stop appears (it used to be placed with the old one kept: a pile of stops). Protection itself is
+    never held: when the stop vanishes, its restore is sent at once; when the venue refuses it, the protective
+    stop-failed close goes through. On resume nothing is left resting."""
     plans = SyntheticPlans(costs=ZERO_COSTS, add_r=None, tp1_r=None, tp2_r=None, be_after_tp1=False,
                            time_exit_candles=None, trail_r=D('0.5'))
     bars = {6: (100, 101.2, 99.9, 101), 7: (101, 102.2, 100.9, 102)}
@@ -254,21 +256,21 @@ def test_hold_lets_protection_and_a_protective_close_through(side):
     def hold(w):
         w.runner._hold([ReasonCode.RECONCILE_UNRECONCILED])
 
-    def refuse(w):
-        w.port.refuse('stop', -2021)
+    def vanish_and_refuse(w):
+        lot, = w.runner.fold.open_lots()
+        w.venue.external_cancel(lot.carrier.intent.client_order_id)     # the stop is gone at the venue ...
+        w.port.refuse('stop', -2021)                                     # ... and its restore is refused
     run_safely(w, 6, {6: hold})
     r = w.runner
-    s0, s1 = intents_of(r, Purpose.PROTECT)
-    assert s0.state is IntentState.WORKING and s1.state is IntentState.WORKING          # placed in HOLD, old kept
-    assert protected(r) and r.fold.mode is EntriesMode.HOLD
-    run_safely(w, 7, {7: refuse})
+    s0, = intents_of(r, Purpose.PROTECT)                                 # the trail move was NOT sent in HOLD
+    assert s0.state is IntentState.WORKING and protected(r) and r.fold.mode is EntriesMode.HOLD
+    run_safely(w, 7, {7: vanish_and_refuse})
     r = w.runner
     close, = intents_of(r, Purpose.CLOSE)
     assert close.intent.reason is ReasonCode.EXIT_STOP_FAILED and close.executed > 0
     assert all(p.qty == 0 for p in w.venue.positions().value) and r.fold.mode is EntriesMode.HOLD
-    assert r.counters.unprotected_cycles == 0
     w.port._refuse.clear()
-    assert r.resume(w.close_ms(7))                                    # released: the old stops are cancelled
+    assert r.resume(w.close_ms(7))
     run_safely(w, 9)
     assert flat(w)
 

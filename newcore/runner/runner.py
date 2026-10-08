@@ -93,6 +93,8 @@ ALGO_FALLBACK_CODES = (-4120, -1116, -1102, -4136)   # newcore.venue.errors (tra
 SECURE_ROUNDS = 2                     # per lot per cycle: stop attempt, then (if refused) one reduce-only close
 EMERGENCY_GENERATIONS = 16            # hard HOLD: cover generations per (symbol, side, gap size)
 ESCALATE_AFTER = 2                    # cycles with an unconfirmed stop before the reduce-only close (Cowork NEW-4)
+REDUCE_REFUSALS = 2                   # refused reduce-only sends of a lot before the venue position is read (MED-3)
+EXTERNAL_CLOSE_CODES = (-2022, -4061)  # reduce only rejected / position side does not match: nothing to reduce
 E_WOULD_TRIGGER = -2021               # Binance "Order would immediately trigger"
 # Cowork F3 (ruling proposed): a hard-HOLD emergency stop refused as 'would trigger' (the market is already through the
 # level). 'fallback_stop' (default): re-place it at a feasible level F3_BUFFER beyond the last closed candle (still a
@@ -218,6 +220,9 @@ class Runner:
         self._refusals = {}                                               # stop intent -> venue refusal code
         self._orphans_checked = set()                                     # ENTER decisions asked about (289)
         self._unconfirmed = {}                                            # lot -> (cycle, cycles without a stop)
+        self._reduce_refused = {}                                         # lot -> consecutive 'nothing to reduce'
+        self._suspended_lots = set()                                      # lots with an external-close owner item
+        self._listed = None                                               # this sync's listed client ids (LOW-6)
         if config.raw_qty is not None and (config.account.binding.environment is not Environment.TESTNET
                                            or not config.raw_qty > 0):
             raise ValueError('raw_qty (H2) is a TESTNET-only override of a positive quantity: refused for '
@@ -536,9 +541,16 @@ class Runner:
     # ----------------------------------------------------------------------------------------------- 1. sync
     def _sync(self):
         self._orphan_entry_decisions()
+        self._listed = None
         for iv in list(self.fold.live_intents()):
             if iv.state in OPEN_STATES:
                 out = self.venue.query(self._ref(iv))
+                if out.kind is OutcomeKind.NOT_FOUND and iv.purpose is Purpose.PROTECT and self._is_listed(iv):
+                    # LOW-6: the venue LISTS it in its open orders - a lagging by-id lookup proves nothing; the listing
+                    # is the venue's own record of a working order
+                    o = self._listed[iv.intent.client_order_id]
+                    out = OrderOutcome(kind=OutcomeKind.KNOWN, ref=out.ref, observed_at_ms=out.observed_at_ms,
+                                       status=o.status, exchange_order_id=o.exchange_order_id)
                 self._apply(iv, out, submit=False)
                 if iv.state is IntentState.CANCELLING and out.kind is OutcomeKind.KNOWN:
                     self._apply(iv, self.venue.cancel(self._ref(iv)), submit=False)    # the cancel never reached it
@@ -550,6 +562,13 @@ class Runner:
             elif iv.state is IntentState.DURABLE:
                 self._send_durable(iv)
         self._release_closed_lot_stops()                                 # after every close this sync resolved
+
+    def _is_listed(self, iv):
+        """The order's client id is in the venue's open orders right now (read once per sync)."""
+        if self._listed is None:
+            oo = self.venue.open_orders()
+            self._listed = {o.ref.client_id: o for o in oo.value} if oo.kind is ReadKind.OK else {}
+        return iv.intent.client_order_id in self._listed
 
     @staticmethod
     def _not_found(iv):
@@ -728,6 +747,8 @@ class Runner:
     # ----------------------------------------------------------------------------------------------- 3. protect
     def _protect_all(self):
         for lot in self.fold.open_lots():
+            if self._suspended(lot.lot_id):
+                continue
             d = self.fold.pending_closes.get(lot.lot_id)
             if d is not None and lot.closing is None:                     # a decided close a crash interrupted:
                 self._close_lot(lot, reason=d.reason, key=d.key)          # finish it (never a fresh stop first)
@@ -740,7 +761,7 @@ class Runner:
         the stop staying live meanwhile (ruling 13). Outside hard HOLD only (no journal: A24 forbids the close)."""
         seen = set()
         for lot in self.fold.open_lots():
-            if not self._runner_owns(lot.lot_id):
+            if not self._runner_owns(lot.lot_id) or self._suspended(lot.lot_id):
                 continue
             stop = lot.live_stop
             if stop is None or stop.state is IntentState.WORKING or lot.closing is not None:
@@ -761,6 +782,11 @@ class Runner:
         return next((x for x in self.fold.open_lots() if x.lot_id == lot_id), None)
 
     def _secure(self, lot_id):
+        if self._suspended(lot_id):
+            return                                                        # MED-3: the owner resolves it
+        self._secure_lot(lot_id)
+
+    def _secure_lot(self, lot_id):
         """Make an open lot protected or closing, with BOUNDED attempts (never recursion): up to SECURE_ROUNDS x
         (one stop attempt; if the venue refuses it, one reduce-only market close). Still neither -> durable HOLD and an
         incident; the next cycle tries again under the same bound."""
@@ -890,6 +916,7 @@ class Runner:
                                                stop_price=it.stop_price))
         self._note_refusal(iv, out)
         self._apply(iv, out, submit=True)
+        self._count_reduce_refusal(iv, out)
         self._resolve(iv)                                                 # a refused stop is handled by _secure
 
     def _note_refusal(self, iv, out):
@@ -1039,6 +1066,46 @@ class Runner:
         self._send_close(self._record_durable(planned))                   # the stop stays live meanwhile
         self._release_closed_lot_stops()
 
+    def _count_reduce_refusal(self, iv, out):
+        """MED-3: a lot whose reduce-only sends keep being refused as 'nothing to reduce' may have been closed OUTSIDE
+        the bot. After REDUCE_REFUSALS in a row the venue position is read: flat on that side -> one durable owner item
+        ('external close suspected') + HOLD, and the lot gets no more sends (until the owner / REC-02 resolves it)."""
+        lot_id = iv.intent.owner_id
+        if lot_id is None:
+            return
+        if out.kind is OutcomeKind.REJECTED and out.error_code in EXTERNAL_CLOSE_CODES:
+            n = self._reduce_refused.get(lot_id, 0) + 1
+            self._reduce_refused[lot_id] = n
+            if n >= REDUCE_REFUSALS:
+                self._check_external_close(lot_id, iv.intent.symbol, str(iv.intent.side))
+        elif out.kind in (OutcomeKind.KNOWN, OutcomeKind.FINAL):
+            self._reduce_refused.pop(lot_id, None)
+
+    def _check_external_close(self, lot_id, symbol, side):
+        if self._suspended(lot_id):
+            return
+        r = self.venue.positions(symbol)
+        if r.kind is not ReadKind.OK or any(p.side == side and p.qty > 0 for p in r.value):
+            return                                                        # not proven flat: the normal paths go on
+        did = ids.marker_decision_id('external_close', lot_id)
+        if self.journal.find_decision(did) is None:
+            self._decision(decision_id=did, action=Action.WAIT, reason=ReasonCode.RECONCILE_UNRECONCILED,
+                           authority=Authority.RECONCILIATION, key=None, symbol=symbol, side=side, subject_id=lot_id,
+                           detail=f'external close suspected: venue flat, lot {lot_id} open; owner resolves')
+        self._suspended_lots.add(lot_id)
+        self._incident(f'{lot_id}: external close suspected (venue flat on {symbol} {side}, '
+                       f'{self._reduce_refused.get(lot_id, 0)} reduce-only sends refused): owner item, no more sends')
+        self._hold([ReasonCode.RECONCILE_UNRECONCILED])
+
+    def _suspended(self, lot_id):
+        """A lot with a durable external-close owner item: no stop / close is sent for it any more."""
+        if lot_id in self._suspended_lots:
+            return True
+        if self.journal.find_decision(ids.marker_decision_id('external_close', lot_id)) is not None:
+            self._suspended_lots.add(lot_id)
+            return True
+        return False
+
     def _runner_owns(self, lot_id):
         """True when the runner itself manages the lot's protection (hook: a management driver owns its own lots)."""
         return True
@@ -1064,6 +1131,7 @@ class Runner:
         out = self.venue.submit_market(MarketOrder(ref=self._ref(iv), position_side=str(it.side), qty=it.qty,
                                                    reduce=True))
         self._apply(iv, out, submit=True)
+        self._count_reduce_refusal(iv, out)
         if iv.live:
             self._hold([ReasonCode.EXEC_ORDER_FAILED], reason=ReasonCode.EXEC_ORDER_FAILED)
             self._resolve(iv)                                             # a refused close is handled by _secure
