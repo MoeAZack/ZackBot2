@@ -148,3 +148,11 @@ def test_static_research_notes_quoting_dca_figures_are_tagged():
     for head in ("Active's weak spot", 'Mixing uncorrelated slots'):
         i = html.index(f'<b>{head}</b>')
         assert 'unverified</span>' in html[i:i + 250], head
+
+
+def test_runner_profile_buttons_wrap_at_every_width():
+    """Protected gate (tablet 768px): the unverified tags on the runner profile buttons widened the Research tab by 80px.
+    The profile group must wrap at every width, not only below 640px."""
+    html = open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'panel.html'), encoding='utf-8').read()
+    m = re.search(r'#runP\{([^}]*)\}', html)
+    assert m and 'flex-wrap:wrap' in m.group(1) and 'max-width:100%' in m.group(1)
