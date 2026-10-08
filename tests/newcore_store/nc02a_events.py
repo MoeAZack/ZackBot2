@@ -64,7 +64,8 @@ def result(intent, n, at, **kw):
     base = dict(result_id=result_id(intent.intent_id, n), intent_id=intent.intent_id, account_id=ACCOUNT_ID,
                 client_order_id=intent.client_order_id, requested_qty=intent.qty, observed_at_ms=at,
                 exchange_order_id=None, exchange_status=None, lookup=None, executed_qty=None, avg_price=None,
-                evidence=None, corroboration=(), resolved_by=None)
+                evidence=None, corroboration=(), resolved_by=None,
+                external_trades=(), supersedes_result_id=None)    # NC-01 r3a (#44): required, not an external close
     base.update(kw)
     return OrderResult(**base)
 

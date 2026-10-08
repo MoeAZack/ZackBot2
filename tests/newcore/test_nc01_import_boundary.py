@@ -14,7 +14,8 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))
 PACKAGE = os.path.join(ROOT, 'newcore', 'domain')     # NC-01's boundary (Codex: scoped to newcore/domain)
 
-STDLIB_ALLOWED = {'__future__', 'dataclasses', 'decimal', 'enum', 'functools', 'hashlib', 'json', 're', 'types', 'typing'}
+STDLIB_ALLOWED = {'__future__', 'dataclasses', 'decimal', 'enum', 'functools', 'hashlib', 'json', 're', 'types', 'typing',
+                  'unicodedata'}                     # unicodedata: the NFC text check (PR #44, Cowork 5)
 FORBIDDEN_RUNTIME = {'socket', 'ssl', 'http', 'urllib', 'requests', 'logging', 'subprocess', 'threading', 'asyncio',
                      'sqlite3', 'pickle', 'shelve', 'tempfile', 'shutil', 'pathlib', 'random', 'secrets', 'uuid', 'time',
                      'datetime', 'zoneinfo', 'pandas', 'numpy', 'binance_client', 'multiprocessing', 'concurrent'}
@@ -90,4 +91,4 @@ def test_runtime_import_loads_nothing_impure():
     tops = {m.split('.')[0] for m in rep['new']}
     assert not (tops & FORBIDDEN_RUNTIME), sorted(tops & FORBIDDEN_RUNTIME)
     assert not (tops & legacy_modules()), sorted(tops & legacy_modules())
-    assert 'newcore' in tops and len(rep['types']) == 20
+    assert 'newcore' in tops and len(rep['types']) == 21

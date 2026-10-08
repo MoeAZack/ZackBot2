@@ -1145,7 +1145,7 @@ class Runner:
                           requested_qty=it.qty, observed_at_ms=self.now, exchange_order_id=None, exchange_status=None,
                           lookup=None, executed_qty=surplus, avg_price=pos.entry_price if adopted else None,
                           evidence=Evidence.POSITION_ADOPTED if adopted else Evidence.NOT_FOUND_CORROBORATED,
-                          corroboration=tuple(reads), resolved_by=did)
+                          corroboration=tuple(reads), resolved_by=did, external_trades=(), supersedes_result_id=None)
         self._emit(ResultObserved, reason=it.reason, result=res)
         self._state(iv, terminal_for(res))
         self._reads.pop(iv.intent_id, None)

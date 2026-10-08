@@ -23,7 +23,10 @@ from __future__ import annotations
 import enum
 from decimal import Decimal
 
-from .base import Record, check_client_id, check_id, check_symbol, check_text, non_negative, positive, record, req
+from .base import tag
+from .base import (CTX, ZERO, Record, check_ascii_text, check_client_id, check_id, check_symbol, check_text, non_negative, positive, record,
+                   req)
+from .account import Venue
 from .reasons import ReasonCode
 
 NOT_FOUND_WINDOW_MS = 20_000          # a lookup earlier than this after the send proves even less (legacy window)
@@ -97,10 +100,12 @@ TERMINAL = frozenset({IntentState.FILLED, IntentState.CANCELLED, IntentState.REJ
 LIVE = frozenset({IntentState.DURABLE, IntentState.SUBMITTED, IntentState.WORKING, IntentState.UNKNOWN,
                   IntentState.CANCELLING})     # the states an intent may have inside a Portfolio
 CANCEL_ONLY = TERMINAL | {IntentState.CANCELLING}
+POST_HOC_STATES = frozenset({IntentState.PLANNED, IntentState.DURABLE, IntentState.FILLED, IntentState.NOT_SENT})
+BOOKED_PURPOSES = frozenset({Purpose.REDUCE, Purpose.CLOSE})   # ruling 1: only an external reduce / close is booked
 _S = IntentState
 INTENT_TRANSITIONS = {
     _S.PLANNED: frozenset({_S.DURABLE, _S.NOT_SENT}),
-    _S.DURABLE: frozenset({_S.SUBMITTED, _S.CANCELLING, _S.NOT_SENT}),
+    _S.DURABLE: frozenset({_S.SUBMITTED, _S.CANCELLING, _S.NOT_SENT, _S.FILLED}),   # FILLED: a post-hoc booking only
     _S.SUBMITTED: frozenset({_S.WORKING, _S.UNKNOWN, _S.CANCELLING, _S.FILLED, _S.CANCELLED, _S.REJECTED}),
     _S.WORKING: frozenset({_S.UNKNOWN, _S.CANCELLING, _S.FILLED, _S.CANCELLED}),
     _S.UNKNOWN: frozenset({_S.WORKING, _S.CANCELLING, _S.FILLED, _S.CANCELLED, _S.REJECTED}),
@@ -115,9 +120,28 @@ def can_transition(a, b):
     return IntentState(b) in INTENT_TRANSITIONS[IntentState(a)]
 
 
+POST_HOC_REASON = ReasonCode.RECONCILE_EXTERNAL_CLOSE
+
+
+def is_post_hoc(intent):
+    """r3 item 3a: a lot REDUCE / CLOSE with reason reconcile.external_close books a reduce / close that already
+    happened OUTSIDE the bot (REC-02 Q2). It is created by a RECONCILE decision, is never sent, and ends only by
+    EXCHANGE_EXTERNAL (or NOT_SENT). Ruling 2: the reason is reconciliation-only - it never reads as permission to send
+    (exit.manual is an operator-requested bot close and sends normally). Ruling 1: an external INCREASE is never
+    booked (no post-hoc ENTRY / ADD): it stays quarantined and protect-only."""
+    return intent.reason is POST_HOC_REASON
+
+
+def booking_step_ok(intent, to_state):
+    """A post-hoc booking only ever moves inside POST_HOC_STATES (never SUBMITTED / WORKING / UNKNOWN / CANCELLING):
+    the one lifecycle rule the event chain AND the step-0 journal gate both apply."""
+    return not is_post_hoc(intent) or IntentState(to_state) in POST_HOC_STATES
+
+
 def may_send(intent):
-    """Durability phase gate: only a DURABLE intent may be sent (and only a durable one exists outside a Decision)."""
-    return intent.state is IntentState.DURABLE
+    """Durability phase gate: only a DURABLE intent may be sent (and only a durable one exists outside a Decision);
+    a post-hoc booking is never sent."""
+    return intent.state is IntentState.DURABLE and not is_post_hoc(intent)
 
 
 @record
@@ -156,7 +180,7 @@ class OrderIntent(Record):
     replaces_intent_id: str | None  # REDUCE / CLOSE cancel-replace: the CANCELLING predecessor this intent replaces
 
     def _validate(self, p):
-        p = f'{p}[{self.intent_id}]'
+        p = f'{p}[{tag(self.intent_id)}]'
         check_id(self.intent_id, p + '.intent_id', 'int')
         check_id(self.account_id, p + '.account_id', 'acct')
         check_id(self.decision_id, p + '.decision_id', 'dec')
@@ -164,7 +188,8 @@ class OrderIntent(Record):
         check_symbol(self.symbol, p + '.symbol')
         positive(self.qty, p + '.qty')
         u, t = self.purpose, self.order_type
-        req(self.reason.namespace == REASON_NAMESPACE[u], p + '.reason', f'a {u} intent needs a {REASON_NAMESPACE[u]}.* reason')
+        req(self.reason.namespace == REASON_NAMESPACE[u] or (self.reason is POST_HOC_REASON and u in BOOKED_PURPOSES),
+            p + '.reason', f'a {u} intent needs a {REASON_NAMESPACE[u]}.* reason')
         if u is Purpose.ENTRY:
             req(self.owner_id is None and self.owner_kind is None, p + '.owner_id',
                 'an ENTRY owns itself (its result creates the lot)')
@@ -202,6 +227,11 @@ class OrderIntent(Record):
         if self.authorized_by is not None:
             req(u in OPENING, p + '.authorized_by', 'only opening intents need a one-shot authorization')
             check_id(self.authorized_by, p + '.authorized_by', 'dec')
+        if is_post_hoc(self):                            # r3 DRAFT item 3: an external close booked, never sent
+            req(u in BOOKED_PURPOSES and self.owner_kind is OwnerKind.LOT and t is OrderType.MARKET,
+                p + '.reason', 'reconcile.external_close books an external reduce / close of a lot')
+            req(self.state in POST_HOC_STATES, p + '.state', f'a post-hoc booking is never {self.state}')
+            req(self.replaces_intent_id is None, p + '.replaces_intent_id', 'a post-hoc booking replaces nothing')
         if self.replaces_intent_id is not None:          # the explicit cancel-replace link (Codex P1 on af4e5f3)
             req(u in (Purpose.REDUCE, Purpose.CLOSE) and self.owner_kind is OwnerKind.LOT, p + '.replaces_intent_id',
                 'only a lot REDUCE / CLOSE replaces a predecessor')
@@ -289,10 +319,29 @@ class Evidence(enum.StrEnum):
     NOT_SENT = 'not_sent'                               # never left the process: nothing reached the exchange
     NOT_FOUND_CORROBORATED = 'not_found_corroborated'   # decided "nothing executed": not found + agreeing position reads
     POSITION_ADOPTED = 'position_adopted'               # decided "this quantity executed": adoption + agreeing reads
+    EXCHANGE_EXTERNAL = 'exchange_external'             # r3 DRAFT: an external close, venue trade ids as corroboration
 
 
-EXECUTING_EVIDENCE = frozenset({Evidence.EXCHANGE_FINAL, Evidence.POSITION_ADOPTED})
+EXECUTING_EVIDENCE = frozenset({Evidence.EXCHANGE_FINAL, Evidence.POSITION_ADOPTED, Evidence.EXCHANGE_EXTERNAL})
 DECIDED_EVIDENCE = frozenset({Evidence.NOT_FOUND_CORROBORATED, Evidence.POSITION_ADOPTED})
+
+
+@record
+class ExternalTrade(Record):
+    """r3 item 3a: one venue trade of an external (manual) close. Its identity is (venue, symbol, trade_id): venue trade
+    ids are symbol-scoped (Binance userTrades), so SOL trade 42 and BTC trade 42 are different trades."""
+    trade_id: str
+    venue: Venue
+    symbol: str
+    at_ms: int
+    qty: Decimal
+    price: Decimal
+
+    def _validate(self, p):
+        check_ascii_text(self.trade_id, p + '.trade_id', 64)
+        check_symbol(self.symbol, p + '.symbol')
+        positive(self.qty, p + '.qty')
+        positive(self.price, p + '.price')
 
 
 @record
@@ -322,9 +371,11 @@ class OrderResult(Record):
     evidence: Evidence | None         # FINAL only
     corroboration: tuple[PositionRead, ...]
     resolved_by: str | None           # dec_ of the explicit resolution / adoption
+    external_trades: tuple[ExternalTrade, ...]   # EXCHANGE_EXTERNAL only: the venue trades of the external close
+    supersedes_result_id: str | None  # PR #44 P1-b: a late executed FINAL names the not_found_corroborated it supersedes
 
     def _validate(self, p):
-        p = f'{p}[{self.result_id}]'
+        p = f'{p}[{tag(self.result_id)}]'
         check_id(self.result_id, p + '.result_id', 'res')
         check_id(self.intent_id, p + '.intent_id', 'int')
         check_id(self.account_id, p + '.account_id', 'acct')
@@ -336,6 +387,8 @@ class OrderResult(Record):
         if ph is not ResultPhase.FINAL:
             req(self.executed_qty is None and self.avg_price is None and ev is None and not self.corroboration
                 and self.resolved_by is None, p, f'a {ph} result books nothing (no executed qty / price / evidence)')
+            req(self.supersedes_result_id is None, p + '.supersedes_result_id',
+                'only an executed FINAL exchange record supersedes a prior result')
             if ph is ResultPhase.UNKNOWN:
                 req(st is None, p + '.exchange_status', 'an UNKNOWN result has no exchange status')
             else:
@@ -345,6 +398,11 @@ class OrderResult(Record):
             return
         req(self.lookup is None, p + '.lookup', 'a final result is not a lookup failure')
         req(ev is not None, p + '.evidence', 'a final result names its evidence')
+        if self.supersedes_result_id is not None:        # PR #44 P1-b: a NEW fact that names the prior one
+            check_id(self.supersedes_result_id, p + '.supersedes_result_id', 'res')
+            req(self.supersedes_result_id != self.result_id, p + '.supersedes_result_id', 'a result never supersedes itself')
+            req(ev is Evidence.EXCHANGE_FINAL and self.executed_qty is not None and self.executed_qty > 0,
+                p + '.supersedes_result_id', 'only an executed FINAL exchange record supersedes a prior result')
         req(self.executed_qty is not None, p + '.executed_qty', 'a final result decides the executed qty')
         non_negative(self.executed_qty, p + '.executed_qty')
         req(self.executed_qty <= self.requested_qty, p + '.executed_qty', 'more than requested')
@@ -364,6 +422,23 @@ class OrderResult(Record):
             req(st is None and self.exchange_order_id is None, p + '.exchange_status', f'{ev}: no exchange order record')
         if ev in (Evidence.EXCHANGE_REFUSED, Evidence.NOT_SENT, Evidence.NOT_FOUND_CORROBORATED):
             req(self.executed_qty == 0, p + '.executed_qty', f'{ev} executes nothing')
+        trades = self.external_trades
+        if ev is Evidence.EXCHANGE_EXTERNAL:            # r3 DRAFT item 3 (REC-02 Q2)
+            check_id(self.resolved_by, p + '.resolved_by', 'dec')
+            req(len(trades) >= 1, p + '.external_trades', 'an external close names its venue trades')
+            req(len({(x.venue, x.symbol, x.trade_id) for x in trades}) == len(trades), p + '.external_trades',
+                'duplicate trade id')
+            total = ZERO
+            for x in trades:
+                total = CTX.add(total, x.qty)
+            req(total == self.executed_qty == self.requested_qty, p + '.executed_qty',
+                'the booking is exactly the sum of its venue trades')
+            req(min(x.price for x in trades) <= self.avg_price <= max(x.price for x in trades), p + '.avg_price',
+                'outside the venue trade prices')
+            req(all(x.at_ms <= self.observed_at_ms for x in trades), p + '.external_trades', 'a trade after the observation')
+            req(not self.corroboration, p + '.corroboration', 'the venue trades are the corroboration')
+            return
+        req(not trades, p + '.external_trades', 'only an external close carries venue trades')
         reads = self.corroboration
         if ev in DECIDED_EVIDENCE:
             check_id(self.resolved_by, p + '.resolved_by', 'dec')
@@ -395,6 +470,18 @@ def terminal_for(result):
     return IntentState.CANCELLED
 
 
+def supersedes(prior, new):
+    """r3 DRAFT item 3b (REC-02 Q2 / R08): exchange evidence wins. A FINAL exchange record of the same owned order that
+    shows an execution supersedes an earlier corroborated not-found ("nothing executed") of that intent. Pure.
+    (An execution is guaranteed by the record itself: only an executed FINAL exchange record may carry
+    supersedes_result_id, and the late record must name the prior one.)"""
+    return (prior.phase is ResultPhase.FINAL and prior.evidence is Evidence.NOT_FOUND_CORROBORATED
+            and new.phase is ResultPhase.FINAL and new.evidence is Evidence.EXCHANGE_FINAL
+            and new.intent_id == prior.intent_id and new.client_order_id == prior.client_order_id
+            and new.account_id == prior.account_id and new.observed_at_ms >= prior.observed_at_ms
+            and new.supersedes_result_id == prior.result_id and new.result_id != prior.result_id)   # PR #44 P1-b
+
+
 def check_result_for_intent(intent, result, sent_at_ms):
     """Cross-record rules of a result against its durable intent. `sent_at_ms` is when it was submitted (None = never).
     Raises InvalidRecord."""
@@ -405,6 +492,17 @@ def check_result_for_intent(intent, result, sent_at_ms):
     req(result.requested_qty == intent.qty, p + '.requested_qty', 'differs from the intent qty')
     req(result.observed_at_ms >= intent.created_at_ms, p + '.observed_at_ms', 'observed before the intent existed')
     ev = result.evidence
+    req((ev is Evidence.EXCHANGE_EXTERNAL) <= is_post_hoc(intent), p + '.evidence',
+        'exchange_external only books a post-hoc (reconcile.external_close) intent')
+    if is_post_hoc(intent):
+        req(sent_at_ms is None and result.phase is ResultPhase.FINAL
+            and ev in (Evidence.EXCHANGE_EXTERNAL, Evidence.NOT_SENT), p + '.evidence',
+            'a post-hoc booking is never sent and ends exchange_external (or not_sent)')
+        req(all(x.symbol == intent.symbol for x in result.external_trades), p + '.external_trades',
+            "a venue trade of another symbol than the booking intent's symbol")             # Codex re-review P2-a
+        req(ev is not Evidence.EXCHANGE_EXTERNAL or result.resolved_by == intent.decision_id, p + '.resolved_by',
+            'an external booking is resolved by the RECONCILE decision that booked it')       # PR #44 P2-2
+        return
     if sent_at_ms is None:
         req(result.phase is ResultPhase.FINAL and ev is Evidence.NOT_SENT, p + '.evidence',
             'an intent that was never submitted can only end NOT_SENT')

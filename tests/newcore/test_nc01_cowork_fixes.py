@@ -172,7 +172,7 @@ def test_the_standalone_set_is_pinned():
     assert set(RECORD_TYPES) == {
         'account', 'instrument_rules', 'order_intent', 'order_result', 'portfolio', 'decision', 'decision_key',
         'snapshot', 'high_water', 'event_intent_recorded', 'event_intent_state_changed', 'event_result_observed',
-        'event_decision_recorded', 'event_mode_changed', 'event_binding_changed',
+        'event_decision_recorded', 'event_mode_changed', 'event_binding_changed', 'event_incident_recorded',
         'account_binding', 'instrument_id', 'protection', 'lot', 'position'}
 
 

@@ -9,6 +9,7 @@ from __future__ import annotations
 import enum
 
 from .base import Record, check_id, record, req
+from .facts import FactIndex
 from .portfolio import Portfolio, ProofKind
 
 
@@ -31,6 +32,7 @@ class Snapshot(Record):
     written_at_ms: int
     writer_build: str
     portfolio: Portfolio
+    facts: FactIndex                          # PR #44 re-review P1: the account's durable facts through last_sequence
 
     def _validate(self, p):
         check_id(self.account_id, p + '.account_id', 'acct')

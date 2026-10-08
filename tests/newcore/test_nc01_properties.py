@@ -206,7 +206,10 @@ def test_reason_namespace_fits_the_action_exhaustively(action):
             built = True
         except InvalidRecord:
             built = False
-        assert built is (reason.namespace in ALLOWED[action]), (action, reason)
+        # r3a: reconcile.external_close only from a RECONCILE that books post-hoc intents (never a send); a late-fill
+        # reconcile names its intent. The generic builder gives neither, so neither builds here.
+        special = reason in (ReasonCode.RECONCILE_EXTERNAL_CLOSE, ReasonCode.RECONCILE_LATE_FILL)
+        assert built is (reason.namespace in ALLOWED[action] and not special), (action, reason)
 
 
 # ----------------------------------------------------------------------------------------------------------- numbers

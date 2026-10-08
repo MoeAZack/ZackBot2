@@ -19,7 +19,7 @@ S = IntentState
 # The pinned table (written out independently of the implementation): state -> allowed next states
 EXPECTED = {
     S.PLANNED: {S.DURABLE, S.NOT_SENT},
-    S.DURABLE: {S.SUBMITTED, S.CANCELLING, S.NOT_SENT},
+    S.DURABLE: {S.SUBMITTED, S.CANCELLING, S.NOT_SENT, S.FILLED},     # FILLED: r3 post-hoc booking (exchange_external)
     S.SUBMITTED: {S.WORKING, S.UNKNOWN, S.CANCELLING, S.FILLED, S.CANCELLED, S.REJECTED},
     S.WORKING: {S.UNKNOWN, S.CANCELLING, S.FILLED, S.CANCELLED},
     S.UNKNOWN: {S.WORKING, S.CANCELLING, S.FILLED, S.CANCELLED, S.REJECTED},

@@ -37,7 +37,7 @@ def _result(intent, rid, at_ms, **kw):
     base = dict(result_id=rid, intent_id=intent.intent_id, account_id=intent.account_id,
                 client_order_id=intent.client_order_id, requested_qty=intent.qty, observed_at_ms=at_ms,
                 exchange_order_id=None, exchange_status=None, lookup=None, executed_qty=None, avg_price=None,
-                evidence=None, corroboration=(), resolved_by=None)
+                evidence=None, corroboration=(), resolved_by=None, external_trades=(), supersedes_result_id=None)
     base.update(kw)
     return OrderResult(**base)
 

@@ -20,9 +20,11 @@ from __future__ import annotations
 import dataclasses
 import enum
 import functools
+import hashlib
 import re
 import types
 import typing
+import unicodedata
 from decimal import Context, Decimal, Inexact, InvalidOperation, Overflow, Rounded
 
 from .errors import InvalidRecord
@@ -39,7 +41,23 @@ CTX = Context(prec=80, Emin=-999, Emax=999, traps=[InvalidOperation, Overflow, I
 SYMBOL_RE = re.compile(r'[A-Z0-9]{2,30}')
 CLIENT_ID_RE = re.compile(r'[A-Za-z0-9._:/-]{1,36}')   # opaque; the venue adapter chooses the format
 ID_RE = re.compile(r'([a-z]{2,4})_[0-9a-f]{32}')
-ID_PREFIXES = frozenset({'acct', 'pf', 'pos', 'lot', 'int', 'res', 'dec', 'rec', 'evt'})
+ID_PREFIXES = frozenset({'acct', 'pf', 'pos', 'lot', 'int', 'res', 'dec', 'rec', 'evt', 'inc'})
+
+
+def show(v, n=40):
+    """A safe rendering of a rejected value for an error message (PR #44, Cowork). Text is NEVER echoed - a short
+    secret pasted into the wrong field (symbol, an id, a ref) must not reach a log - only its type, length and a short
+    hash prefix (enough to correlate two errors). Other values are shown, bounded to n characters."""
+    if isinstance(v, (str, bytes)):
+        raw = v.encode('utf-8', 'surrogatepass') if isinstance(v, str) else v
+        return f'<{type(v).__name__} len={len(v)} sha256:{hashlib.sha256(raw).hexdigest()[:8]}>'
+    r = repr(v)
+    return r if len(r) <= n else f'{r[:n]}...<{type(v).__name__}>'
+
+
+def tag(v):
+    """A record's own id in an error path: shown when it is a well-formed id, otherwise summarized (show)."""
+    return v if type(v) is str and ID_RE.fullmatch(v) is not None else show(v)
 
 
 def req(cond, path, msg):
@@ -86,33 +104,51 @@ def check_int(v, path):
 
 def check_ms(v, path):
     req(type(v) is int, path, f'a timestamp is integer UTC milliseconds, not {type(v).__name__}')
-    req(MIN_TS_MS <= v <= MAX_TS_MS, path, f'{v} is not UTC milliseconds in [{MIN_TS_MS}, {MAX_TS_MS}]')
+    req(MIN_TS_MS <= v <= MAX_TS_MS, path, f'{show(v)} is not UTC milliseconds in [{MIN_TS_MS}, {MAX_TS_MS}]')
 
 
 def positive(v, path):
-    req(v > 0, path, f'{v} must be > 0')
+    req(v > 0, path, f'{show(v)} must be > 0')
 
 
 def non_negative(v, path):
-    req(v >= 0, path, f'{v} must be >= 0')
+    req(v >= 0, path, f'{show(v)} must be >= 0')
 
 
 def check_id(v, path, *prefixes):
     m = ID_RE.fullmatch(v) if type(v) is str else None
-    req(m is not None and m.group(1) in prefixes, path, f'{v!r} is not a {"/".join(prefixes)}_<32 hex> id')
+    req(m is not None and m.group(1) in prefixes, path, f'{show(v)} is not a {"/".join(prefixes)}_<32 hex> id')
 
 
 def check_client_id(v, path):
-    req(type(v) is str and CLIENT_ID_RE.fullmatch(v) is not None, path, f'{v!r} is not a client order id')
+    req(type(v) is str and CLIENT_ID_RE.fullmatch(v) is not None, path, f'{show(v)} is not a client order id')
 
 
 def check_symbol(v, path):
-    req(type(v) is str and SYMBOL_RE.fullmatch(v) is not None, path, f'{v!r} is not a symbol')
+    req(type(v) is str and SYMBOL_RE.fullmatch(v) is not None, path, f'{show(v)} is not a symbol')
 
 
 def check_text(v, path, n):
     """Bounded printable text that is never blank: an absent value is None, never '' or whitespace (Codex ruling 2)."""
     req(type(v) is str and 0 < len(v) <= n and v.isprintable(), path, f'1..{n} printable characters')
+    req(v.strip() != '', path, 'whitespace only (an absent value is None, never blank text)')
+    check_nfc(v, path)
+
+
+def check_nfc(v, path):
+    """PR #44 (Cowork 5): free text has ONE canonical spelling - Unicode NFC. A decomposed (NFD) spelling of the same
+    visible text is refused, never silently normalized (normalizing would change the caller's bytes)."""
+    req(unicodedata.is_normalized('NFC', v), path, 'text must be Unicode NFC (one canonical spelling)')
+
+
+ASCII_TEXT_RE = re.compile(r'[ -~]+')              # printable ASCII
+
+
+def check_ascii_text(v, path, n):
+    """Identifier-like / incident text: 1..n printable ASCII characters, never blank. ASCII has one spelling per
+    visible value (no NFC / NFD forms, no homoglyphs)."""
+    req(type(v) is str and 0 < len(v) <= n and ASCII_TEXT_RE.fullmatch(v) is not None, path,
+        f'1..{n} printable ASCII characters')
     req(v.strip() != '', path, 'whitespace only (an absent value is None, never blank text)')
 
 
@@ -150,7 +186,7 @@ def _checker(tp, name):
     if tp is str:
         return lambda v, p: req(type(v) is str, p, f'not a str ({type(v).__name__})')
     if isinstance(tp, type) and issubclass(tp, enum.Enum):
-        return lambda v, p: req(isinstance(v, tp), p, f'{v!r} is not a {tp.__name__}')
+        return lambda v, p: req(isinstance(v, tp), p, f'{show(v)} is not a {tp.__name__}')
     if isinstance(tp, type) and issubclass(tp, Record):
         return lambda v, p: req(isinstance(v, tp), p, f'not a {tp.__name__} ({type(v).__name__})')
     raise TypeError(f'{name}: unsupported field type {tp!r}')
