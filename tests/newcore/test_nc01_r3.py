@@ -173,6 +173,8 @@ def test_item3a_external_evidence_rules():
         with pytest.raises(InvalidRecord):
             F.replace(res, **kw)
             raise AssertionError(name)
+    with pytest.raises(InvalidRecord, match='exactly the sum of its venue trades'):      # price in range: only the sum
+        F.replace(res, external_trades=res.external_trades[:1], avg_price=res.external_trades[0].price)
     with pytest.raises(InvalidRecord, match='only an external close carries venue trades'):
         F.replace(F.results(ids, p.account_id, it)['filled'], external_trades=res.external_trades)
     normal = F.replace(it, reason=ReasonCode.EXIT_TIME)
