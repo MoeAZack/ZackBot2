@@ -2,6 +2,8 @@
 redacted exact-build report. Testnet only (the transport is hard-pinned). The OWNER runs it with the key stored by
 tools/newcore_keys.py.
 
+    python tools/newcore_tnet.py --probe P1 --dry-run       account / binding / symbols from the run config (READ only):
+                                                            --config, default %LOCALAPPDATA%\\ZackBotNC\\config\\testnet.toml
     python tools/newcore_tnet.py --account-id <id> --probe P1 --dry-run        print the plan: NO network, no key read
     python tools/newcore_tnet.py --account-id <id> --probe P1 [--probe P2]
     python tools/newcore_tnet.py --account-id <id> --scenario spec.json [--adopt-foreign web_x --adopt-foreign SOLUSDT:SHORT]
@@ -29,8 +31,9 @@ from newcore.venue.cassette import CassetteLeak, CassetteRecorder  # noqa: E402
 from newcore.venue.cli_args import ACCOUNT_REFUSAL, argv_refusal  # noqa: E402
 from newcore.venue.clock import OffsetClock, system_clock_ms  # noqa: E402
 from newcore.venue.credentials import (CredentialsUnavailable, CredentialStore, CredentialStoreError,  # noqa: E402
-                                       SecretScrubber, check_root)
+                                       SecretScrubber, binding_digest, check_root)
 from newcore.venue.outcomes import ReadKind as TR  # noqa: E402  (transport-level reads)
+from newcore.venue.run_config import RunConfigError, default_testnet_config_path, load_testnet_config  # noqa: E402
 from newcore.venue.smoke import CORE8  # noqa: E402
 from newcore.venue.testnet_venue import TestnetAccountReader, TestnetVenue  # noqa: E402
 from newcore.venue.tnet import (ReportLeak, default_report_dir, format_cleanup, git_build, guarded,  # noqa: E402
@@ -54,7 +57,11 @@ def _cassette_dir():
 
 def _parser():
     p = argparse.ArgumentParser(prog='newcore_tnet', description='TNET-01 venue harness (testnet only).')
-    p.add_argument('--account-id', required=True)
+    p.add_argument('--account-id', default=None, help='default: the --config account')
+    p.add_argument('--config', default=None,
+                   help='TESTNET run config, READ only (never written): account, binding digest (checked against the '
+                        'stored key) and symbols. Default %%LOCALAPPDATA%%\\ZackBotNC\\config\\testnet.toml when it '
+                        'exists and no --account-id is given')
     p.add_argument('--root', default=None, help='credential folder (default %%LOCALAPPDATA%%\\ZackBotNC\\secrets)')
     p.add_argument('--cassette-dir', default=None)
     p.add_argument('--report-dir', default=None)
@@ -63,7 +70,8 @@ def _parser():
     p.add_argument('--scenario', action='append', default=[], help='a zb-newcore-tnet-scenario/1 JSON file')
     p.add_argument('--adopt-foreign', action='append', default=[],
                    help='a foreign client id or SYMBOL:SIDE position the preflight may accept (cleanup keeps it)')
-    p.add_argument('--symbol', default='SOLUSDT', choices=CORE8, help='probe symbol (default SOLUSDT)')
+    p.add_argument('--symbol', default=None, choices=CORE8,
+                   help='probe symbol (default: the first config symbol, else SOLUSDT)')
     p.add_argument('--stop-route', default='algo', choices=('algo', 'classic'))
     p.add_argument('--min-balance', default='100')
     p.add_argument('--p2-samples', type=int, default=3)
@@ -159,6 +167,29 @@ def main(argv=None, *, http=None, local_clock=None, protector=None, out=None, mo
     except (InvalidOperation, SpecError, OSError) as ex:
         out.write(f'REFUSED: {type(ex).__name__}: {ex}\n')
         return EXIT_USAGE
+    run_cfg = None
+    if args.config is None and args.account_id is None and os.path.isfile(default_testnet_config_path()):
+        args.config = default_testnet_config_path()
+    if args.config is not None:
+        try:
+            run_cfg = load_testnet_config(args.config)          # READ only: the file is never written
+        except RunConfigError as ex:
+            out.write(f'REFUSED: config {args.config}: {ex}\n')
+            return EXIT_USAGE
+        if args.account_id is not None and args.account_id != run_cfg.account_id:
+            out.write(f'REFUSED: --account-id {args.account_id} disagrees with the config ({run_cfg.account_id}).\n')
+            return EXIT_USAGE
+        if args.symbol is not None and args.symbol not in run_cfg.symbols:
+            out.write(f'REFUSED: --symbol {args.symbol} is not in the config symbols {list(run_cfg.symbols)}.\n')
+            return EXIT_USAGE
+        args.account_id = run_cfg.account_id
+        args.symbol = args.symbol or run_cfg.symbols[0]
+        out.write(f'config {args.config}: account {run_cfg.account_id}, binding {run_cfg.key_digest}, symbols '
+                  f'{", ".join(run_cfg.symbols)}\n')
+    if args.account_id is None:
+        out.write('REFUSED: give --config (default %LOCALAPPDATA%\\ZackBotNC\\config\\testnet.toml) or --account-id.\n')
+        return EXIT_USAGE
+    args.symbol = args.symbol or 'SOLUSDT'
     symbols = sorted(({args.symbol} if args.probe else set()) | {s for _, sp in specs for s in sp['symbols']})
     import time as _time
     clock = local_clock or system_clock_ms
@@ -186,6 +217,16 @@ def main(argv=None, *, http=None, local_clock=None, protector=None, out=None, mo
         out.write(f'NO USABLE TESTNET KEY ({ex.reason}). Store it: python tools/newcore_keys.py set --env testnet '
                   f'--account-id {args.account_id}\n')
         return EXIT_CREDS
+    if run_cfg is not None:
+        try:
+            digest = binding_digest(creds.api_key())
+        except ValueError:
+            out.write('NO USABLE TESTNET KEY (corrupt).\n')
+            return EXIT_CREDS
+        if digest != run_cfg.key_digest:
+            out.write(f'BINDING MISMATCH: the stored key of {args.account_id} has binding {digest}, the config says '
+                      f'{run_cfg.key_digest}: confirm the binding (rotation) first.\n')
+            return EXIT_CREDS
     scrubber.install()
     try:
         return _run(args, specs, symbols, min_balance, creds, scrubber, http, clock, mono, snooze, build, cassette_dir,
@@ -285,7 +326,8 @@ def _run(args, specs, symbols, min_balance, creds, scrubber, http, clock, mono, 
     cassette = _write_cassette(recorder, cassette_dir, stamp, values, out)
     rc_report = EXIT_PASS
     try:
-        config = {'account_id': args.account_id, 'symbols': symbols, 'probes': args.probe, 'stop_route': args.stop_route,
+        config = {'config': args.config, 'account_id': args.account_id, 'symbols': symbols, 'probes': args.probe,
+                  'stop_route': args.stop_route,
                   'min_balance': str(min_balance), 'specs': [spec_digest(s) for _, s in specs],
                   'adopt_foreign': list(args.adopt_foreign)}
         paths = tnet_report(run_id=run_id, scenarios=state['scenarios'], cleanup=cleanup, config=config,
