@@ -51,6 +51,9 @@ jobs:
         run: python verify_ci.py reused --before "$ZB_BEFORE" --head "$GITHUB_SHA" --out verify_out
       - name: push fast
         if: steps.plan.outputs.reuse != 'true'
+        env:
+          # Golden-pack ledger base (tests/golden/test_ledger.py): the previous master commit (full history is checked out).
+          ZB_GOLDEN_BASE: ${{ github.event.before }}
         run: python verify.py fast --out verify_out
       - name: Upload summary
         if: always()

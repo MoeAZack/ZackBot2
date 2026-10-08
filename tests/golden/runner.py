@@ -36,7 +36,7 @@ def main(argv=None):
                 print(f"{c['id']:<26} {ad:<16} n/a"); continue
             t0 = time.perf_counter()
             tr = adapters.get(ad).run(c)
-            mm = compare.compare(c, tr)
+            mm = compare.compare(c, tr, ad)
             kd = next((d for d in c['known_divergences'] if d['adapter'] == ad), None)
             if not mm:
                 verdict = 'PASS' if st == 'required' else 'XPASS (known divergence fixed: remove it + ledger entry)'

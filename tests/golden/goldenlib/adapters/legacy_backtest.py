@@ -14,7 +14,8 @@ class LegacyBacktest:
     name = 'legacy_backtest'
 
     def run(self, case):
-        check_costs(case)
+        from . import CAPS
+        check_costs(case, funding=CAPS[self.name]['funding'])
         raw = market.build(case)
         key, mg, extras = legacy_slot(case)
         syms = symbols(case)
@@ -37,6 +38,6 @@ class LegacyBacktest:
             trades.append(dict(sym=r['sym'], side=side_code(int(r['side'])), i_in=int(r['i_in']), i_out=int(r['i_out']), exit=code,
                                R=float(r['R']), pnl=float(r['pnl'])))
         trades.sort(key=lambda x: (x['i_in'], x['sym']))
-        # final: the backtester exposes no open-position list at the end of the run, so it reports no `final` keys and
-        # `expect.final` is compared on the engine only (compare.py compares the keys an adapter reports)
+        # final: the backtester exposes no open-position list at the end of the run, so it declares no `final` capability
+        # (adapters.CAPS) and `expect.final` is compared on the engine only
         return Trace(trades=trades, final={}, raw=dict(attrs=dict(getattr(cv, 'attrs', {}))))

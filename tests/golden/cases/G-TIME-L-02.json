@@ -69,15 +69,12 @@
         "i_in": 280,
         "i_out": 283,
         "exit": "TIME_EXIT",
-        "R": "-0.0047"
+        "R": "-0.004666666667",
+        "pnl": "-0.04666666667"
       }
     ],
     "final": {
       "lots": 0
-    },
-    "tolerance": {
-      "R": "0.0005",
-      "why": "flat tape: R is fees + slippage only; R is not what this case tests"
     }
   },
   "applies_to": {
@@ -103,7 +100,7 @@
       "adapter": "legacy_backtest",
       "ticket": "AUD-07",
       "finding": "C11",
-      "correction": null,
+      "correction": "CORR-0002",
       "until": "AUD-07 product fix",
       "reason": "backtest.py:559 exits when i - i_in >= N, i.e. at the close of candle i_in + N: it holds N + 1 candles",
       "observed": [
@@ -118,7 +115,7 @@
       "adapter": "legacy_engine",
       "ticket": "AUD-07",
       "finding": "C11",
-      "correction": null,
+      "correction": "CORR-0002",
       "until": "AUD-07 product fix",
       "reason": "engine.py:2386 counts wall-clock seconds since the fill; with the entry cycle 30 s slower than the exit cycle the lot is 3.998 candles old at the close of candle i_in + 3, so it exits one candle late (4.998 candles)",
       "observed": [

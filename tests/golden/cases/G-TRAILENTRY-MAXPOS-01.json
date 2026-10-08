@@ -1,7 +1,7 @@
 {
   "schema": "zb-golden/1",
   "id": "G-TRAILENTRY-MAXPOS-01",
-  "title": "An armed trailing entry occupies a max_pos slot from arming until it fills or expires",
+  "title": "An armed trailing entry occupies a max_pos slot from arming until it fills: the first armed coin trades, the second is blocked",
   "behaviours": [
     "trail_entry",
     "max_pos"
@@ -33,34 +33,16 @@
       },
       "bars": {
         "280": [
-          "100.0000",
-          "100.0000",
-          "99.0000",
-          "99.0000"
+          "100",
+          "100",
+          "99",
+          "99"
         ],
         "281": [
-          "99.0000",
-          "99.0000",
-          "98.0100",
-          "98.0100"
-        ],
-        "282": [
-          "98.0100",
-          "98.0100",
-          "97.0299",
-          "97.0299"
-        ],
-        "283": [
-          "97.0299",
-          "97.0299",
-          "96.0596",
-          "96.0596"
-        ],
-        "284": [
-          "96.0596",
-          "96.0596",
-          "95.0990",
-          "95.0990"
+          "99",
+          "99.5",
+          "99",
+          "99.5"
         ]
       },
       "atr": {
@@ -120,13 +102,28 @@
     },
     {
       "bar": 290,
+      "sym": "SOLUSDT",
+      "kind": "exit_long"
+    },
+    {
+      "bar": 290,
       "sym": "XRPUSDT",
       "kind": "exit_long"
     }
   ],
   "faults": [],
   "expect": {
-    "trades": [],
+    "trades": [
+      {
+        "sym": "SOLUSDT",
+        "side": "LONG",
+        "i_in": 281,
+        "i_out": 290,
+        "exit": "SIGNAL_EXIT",
+        "R": "-0.004643333333",
+        "pnl": "-0.04643333333"
+      }
+    ],
     "final": {
       "lots": 0
     }
@@ -151,24 +148,29 @@
       "adapter": "legacy_backtest",
       "ticket": "AUD-07",
       "finding": "C13c",
-      "correction": null,
+      "correction": "CORR-0002",
       "until": "AUD-07 product fix",
-      "reason": "backtest.py:598-601 arms trailing entries without a slot check and checks max_pos only at the fill, so the coin that rebounds first takes the slot",
+      "reason": "backtest.py:598-601 arms trailing entries without a slot check and checks max_pos only at the fill, so XRP (rebounds first, in candle 280) takes the slot and SOL (armed first, rebounds in 281) is dropped",
       "observed": [
         {
-          "path": "trades",
-          "expected": [],
-          "actual": [
-            {
-              "sym": "XRPUSDT",
-              "side": "LONG",
-              "i_in": 280,
-              "i_out": 290,
-              "exit": "SIGNAL_EXIT",
-              "R": 0.045298,
-              "pnl": 0.452983
-            }
-          ]
+          "path": "trades[0].sym",
+          "expected": "SOLUSDT",
+          "actual": "XRPUSDT"
+        },
+        {
+          "path": "trades[0].i_in",
+          "expected": 281,
+          "actual": 280
+        },
+        {
+          "path": "trades[0].R",
+          "expected": "-0.004643333333",
+          "actual": 0.045298
+        },
+        {
+          "path": "trades[0].pnl",
+          "expected": "-0.04643333333",
+          "actual": 0.452983
         }
       ]
     }
@@ -176,6 +178,6 @@
   "provenance": {
     "created_at_sha": "b8c11c8",
     "author": "AUD-07 slice 1 (Claude)",
-    "notes": "AUD-07 C13c: max_pos=1; SOL (first in slot order) and XRP both arm on the close of 279. SOL arms first and holds the only slot; it falls in monotone red candles (no rebound) and its trailing entry expires after 3 bars. XRP rebounds 2 % (>> 0.5 ATR) in candle 280 but finds the slot taken at arming: no trade at all. Slot check = len(open) + len(armed) + len(resting) >= max_pos at arming."
+    "notes": "AUD-07 C13c: max_pos=1; SOL (first in slot order) and XRP both arm on the close of 279. SOL arms first and holds the only slot, so XRP is blocked at arming (slot check = len(open) + len(armed) + len(resting) >= max_pos). XRP rebounds 2 % in candle 280 but has no armed entry. SOL falls to 99 in the red candle 280 (no rebound), then rebounds 0.5 ATR to 99.5 in 281 (the leg end): it fills at 99.5 x 1.0002 = 99.5199, qty 10/30, and exits on the signal of 290 at 99.5 x 0.9998. R = (-0.0398 - 199 x 0.0005) / 30 = -0.0046433. Redesigned after the Codex review on 4e03152 (P1-3): the old expectation (no trades) also passed when both signals were ignored."
   }
 }

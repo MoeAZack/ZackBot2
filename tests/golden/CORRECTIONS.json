@@ -1,6 +1,6 @@
 {
   "schema": "zb-golden-ledger/1",
-  "note": "Append-only. Every entry carries prev_entry_sha = sha256(canonical(previous entry)); an expect change needs an entry with old_expect_sha / new_expect_sha.",
+  "note": "Append-only hash chain: every entry carries prev_entry_sha = sha256(canonical(previous entry)); CORR-0000 (genesis) and CORR-0003 (end of the bootstrap prefix) are pinned in test_ledger.py. From CORR-0002 on, a case record is {prev_contract_sha, contract_sha} (retire: prev_contract_sha only) over the case CONTRACT (schema.contract_sha: everything but title / behaviours / provenance / notes); the latest record of every case equals its MANIFEST.json entry.",
   "entries": [
     {
       "id": "CORR-0000",
@@ -55,6 +55,82 @@
       "accepted_by": null,
       "date_cairo": "2026-10-08",
       "prev_entry_sha": "811ba5a38f2f3331b5e9733f82d4d17ea9de7de915ea5629852ac53564eceacd"
+    },
+    {
+      "id": "CORR-0002",
+      "type": "correction",
+      "ticket": "AUD-07",
+      "finding": "Codex review on 4e03152: P1-2, P1-3, P2-2 (+ Windows adversarial review)",
+      "title": "Contract hash replaces the expect-only hash; exact expectations; C13g engine divergences; observable trailing-entry case",
+      "cases": {
+        "G-DAY-CAIRO-S-01": {
+          "prev_contract_sha": null,
+          "contract_sha": "fca3960fb9d2ec2c7893cb2b7f7ef70c942dda422bff174e6983b0a31cb16daa"
+        },
+        "G-DAY-CAIRO-W-01": {
+          "prev_contract_sha": null,
+          "contract_sha": "625636ffef385ede68fe3123479ef767de1640469a8862662e369d191a5f497e"
+        },
+        "G-DCA-SLIP-L-01": {
+          "prev_contract_sha": null,
+          "contract_sha": "cae327721f1e4b0f910b4153fcd7b9fc25422dc6a5b2011dc11b200591c74d12"
+        },
+        "G-GAP-STOP-L-01": {
+          "prev_contract_sha": null,
+          "contract_sha": "05c4909e16aba23677cf87ac441de322244fa3571e161ea4c7297ba3ef188312"
+        },
+        "G-STOP-L-01": {
+          "prev_contract_sha": null,
+          "contract_sha": "e5c3dc4a78b4fae5f32c5ab59f9ca76fef7a14788338245d810df84b92ff33b5"
+        },
+        "G-TIME-L-01": {
+          "prev_contract_sha": null,
+          "contract_sha": "bef61661cc4d8af58066ef1dd3c6d181c4180d5dce44689481308f0b6a3ab2c7"
+        },
+        "G-TIME-L-02": {
+          "prev_contract_sha": null,
+          "contract_sha": "a16e753f862b696b06e36a0e298854c41b277da46b5f1106317755e982ec963c"
+        },
+        "G-TRAILENTRY-MAXPOS-01": {
+          "prev_contract_sha": null,
+          "contract_sha": "bbd6723458fb7242f504e9f4a00c4a2463d272b9a6e12b1ade676bc62949838d"
+        }
+      },
+      "adapters_changed": [
+        "legacy_engine (applies_to: C13g known divergence in G-STOP-L-01, G-DAY-CAIRO-S-01, G-DAY-CAIRO-W-01)"
+      ],
+      "rationale": "P1-2: the protected hash now covers the whole case contract (expect, applies_to, known_divergences and every causal input), not only expect; prev_contract_sha is null because no contract hash existed before (the CORR-0000/0001 records carry expect-only hashes). P2-2: no case-wide tolerance - expectations are exact (R and pnl to 1e-9; the engine journal adds its stated 4 dp resolution), path-step artefacts are per-trade tolerances naming the engine with a reason, and the C13g journal slippage is an explicit strict-xfail engine divergence instead of a 0.011 R tolerance. P1-3: G-TRAILENTRY-MAXPOS-01 redesigned so the first armed coin fills and closes while the second stays blocked (the old no-trade expectation passed with both signals ignored). Every known divergence names its ledger entry.",
+      "evidence": "branch aud-07-exec-truth on 4e03152 + this commit; mutation probes in the PR report",
+      "accepted_by": null,
+      "date_cairo": "2026-10-08",
+      "prev_entry_sha": "d69ba69d3437af709ed33cc242c9e219dcd0c40abd8ca8322d4b575a28ed18ac"
+    },
+    {
+      "id": "CORR-0003",
+      "type": "add",
+      "ticket": "AUD-07",
+      "finding": "C13a (pyramid side, P2-4) / gap at the open on the target and safety-order side (P2-5)",
+      "title": "Pyramid-add slippage, take-profit gapped at the open, DCA safety orders gapped at the open",
+      "cases": {
+        "G-GAP-DCA-L-01": {
+          "prev_contract_sha": null,
+          "contract_sha": "d35a102f110651a31f34fc67fd68708b4282585ca5d5aa4a3d4d722b97a9d4e2"
+        },
+        "G-GAP-TP-L-01": {
+          "prev_contract_sha": null,
+          "contract_sha": "5ecaab378af0a312a70c4c8c839fa93c35fb423f37d848bb0c59c09b850f9ab9"
+        },
+        "G-PYR-SLIP-L-01": {
+          "prev_contract_sha": null,
+          "contract_sha": "452e09046814dc25f929ef72d8d0f2cb4feb3267e9d9e6ca86cca6f12fd9972f"
+        }
+      },
+      "adapters_changed": [],
+      "rationale": "Corrected causal expectations. legacy_backtest is a recorded strict-xfail divergence in all three (C13a: adds without slippage; TP gap: books the level, not the gapped open); legacy_engine is required. The DCA-gap probe difference (0.212 R vs 0.167 R) was the replay 8-step path overshooting the basket target, not a model gap.",
+      "evidence": "scratch gapprobe.py (Windows adversarial review) and the AUD-07 contract draft",
+      "accepted_by": null,
+      "date_cairo": "2026-10-08",
+      "prev_entry_sha": "3a7e712994b964720f6d55a51f5a4e671429d131a9955d3fcbd869946604babf"
     }
   ]
 }

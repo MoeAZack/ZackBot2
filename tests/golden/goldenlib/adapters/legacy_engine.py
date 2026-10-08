@@ -8,7 +8,10 @@ Known v1 limits (recorded, not hidden):
 - no event-snapped path yet: fills inside a candle happen at the replay's path step, so cases that compare prices put the
   level on the last step of a leg (the leg's extreme) or declare a tolerance with a reason;
 - the replay's own sizing basis (CAPITAL_CAP=0: totalMarginBalance incl. open P&L) is unchanged (BT-C8a, out of scope);
-- trades are read from the engine's own trade history (its journal), i.e. the R the bot reports.
+- trades are read from the engine's own trade history (its journal), i.e. the R the bot reports. The journal stores pnl
+  rounded to 4 dp (engine.py:2403) and risk_usd to 2 dp (engine.py:4107); every trade carries that resolution as `_res`
+  (R: (1e-4 + |R| x 0.005) / risk_usd, pnl: 1e-4) - an output-precision bound, not a behaviour tolerance (0.01 R on a 10 USDT
+  risk is 1000x larger).
 """
 import copy
 from datetime import timedelta
@@ -26,6 +29,8 @@ REASON = {'stop': 'STOP_HIT', 'stop_crossed': 'STOP_HIT', 'time_exit': 'TIME_EXI
 CYCLE_REASONS = {'time_exit', 'exit_signal'}     # decided at a candle close: the replay books them in the next cycle
 T0 = 260
 STEPS = 8
+JOURNAL_PNL_RES = 1e-4          # pnl = round(net, 4) of a gross and fees each rounded to 4 dp: |error| <= 1e-4
+JOURNAL_RISK_RES = 0.005        # risk_usd = round(risk, 2): |error| <= 0.005
 
 
 class LegacyEngine:
@@ -36,7 +41,8 @@ class LegacyEngine:
         import strategies as S
         from replay import run_replay
 
-        check_costs(case)
+        from . import CAPS
+        check_costs(case, funding=CAPS[self.name]['funding'])
         raw = market.build(case)
         key, mg, extras = legacy_slot(case)
         syms = symbols(case)
@@ -94,8 +100,10 @@ class LegacyEngine:
         for h in r['history']:
             why = h['exit_reason']
             i_out = bar(h['closed']) - (1 if why in CYCLE_REASONS else 0)
+            risk, pnl = float(h['risk_usd']), float(h['pnl'])
             trades.append(dict(sym=h['symbol'], side=side_code(h['side']), i_in=bar(h['opened']), i_out=i_out,
-                               exit=REASON.get(why, f'UNMAPPED:{why}'), R=float(h['pnl']) / float(h['risk_usd']), pnl=float(h['pnl'])))
+                               exit=REASON.get(why, f'UNMAPPED:{why}'), R=pnl / risk, pnl=pnl,
+                               _res=dict(R=(JOURNAL_PNL_RES + abs(pnl / risk) * JOURNAL_RISK_RES) / risk, pnl=JOURNAL_PNL_RES)))
         trades.sort(key=lambda x: (x['i_in'], x['sym']))
         m = r['metrics']
         return Trace(trades=trades, final=dict(lots=int(m['lots'])),
