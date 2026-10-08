@@ -121,10 +121,7 @@
       "status": "known_divergence",
       "reason": "AUD-07 C13g: the engine journal books a filled exchange stop without its exit slippage"
     },
-    "legacy_backtest": {
-      "status": "known_divergence",
-      "reason": "AUD-07 C13d: legacy behaviour differs from the corrected contract until the AUD-07 product fix lands"
-    },
+    "legacy_backtest": "required",
     "newcore_sim": {
       "status": "pending_adapter",
       "reason": "NEWCORE NC-07/NC-08 adapter not built yet"
@@ -135,49 +132,6 @@
     }
   },
   "known_divergences": [
-    {
-      "adapter": "legacy_backtest",
-      "ticket": "AUD-07",
-      "finding": "C13d",
-      "correction": "CORR-0002",
-      "until": "AUD-07 product fix",
-      "reason": "backtest.py:240-242 keys the trading day by the Cairo date of the bar OPEN, so the day-D halt still gates the signal of a candle that closes on day D+1",
-      "observed": [
-        {
-          "path": "trades",
-          "expected": [
-            {
-              "sym": "SOLUSDT",
-              "side": "LONG",
-              "i_in": 284,
-              "i_out": 284,
-              "exit": "STOP_HIT",
-              "R": "-1.059307099",
-              "pnl": "-52.96535495"
-            },
-            {
-              "sym": "XRPUSDT",
-              "side": "LONG",
-              "i_in": 288,
-              "i_out": 290,
-              "exit": "SIGNAL_EXIT",
-              "R": "-0.07"
-            }
-          ],
-          "actual": [
-            {
-              "sym": "SOLUSDT",
-              "side": "LONG",
-              "i_in": 284,
-              "i_out": 284,
-              "exit": "STOP_HIT",
-              "R": -1.059307,
-              "pnl": -52.965355
-            }
-          ]
-        }
-      ]
-    },
     {
       "adapter": "legacy_engine",
       "ticket": "AUD-07",
