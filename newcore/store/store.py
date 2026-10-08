@@ -326,7 +326,12 @@ class AccountStore:
 
         Trust: MANAGED only while the store is MANAGE and the portfolio's ownership is proven and not in HOLD; anything
         else is a HOLD generation (A05: a save in HOLD never produces a store the next start trusts). The portfolio
-        must name this account / aggregate, and a JOURNAL proof may not reach past the journal (NC-01 Snapshot)."""
+        must name this account / aggregate, and a JOURNAL proof may not reach past the journal (NC-01 Snapshot).
+
+        A failed write raises DurabilityUnavailable and leaves the store in hard HOLD (D11 marker best-effort, as a
+        failed promotion does); every later checkpoint is refused the same way until a restart reconciles (A08)."""
+        if self.hold_kind is HoldKind.DURABILITY_UNAVAILABLE:
+            raise DurabilityUnavailable('checkpoint (hard HOLD)', None)
         if portfolio.account_id != self.account_id or portfolio.portfolio_id != self.aggregate_id:
             raise ValueError('the checkpoint portfolio belongs to another account / aggregate')
         managed = (self.mode is Mode.MANAGE and portfolio.ownership is not Ownership.UNKNOWN
@@ -336,7 +341,18 @@ class AccountStore:
         items = () if managed else ({'scope': 'account', 'cause': 'checkpoint_in_hold', 'ref': ''},)
         prov = provenance(kind, trust, from_generation=self.current.generation if self.current else None,
                           incident_ids=self.current.provenance['incident_ids'] if self.current else (), items=items)
-        return self.commit(portfolio, prov, now_ms, write_class='checkpoint')
+        try:
+            return self.commit(portfolio, prov, now_ms, write_class='checkpoint')
+        except DurabilityUnavailable:
+            self.mode, self.hold_kind = Mode.HOLD, HoldKind.DURABILITY_UNAVAILABLE
+            self.mark_hard_hold(now_ms)
+            raise
+
+    def close(self):
+        """Release the journal (its writer lock). Idempotent; the store writes nothing after it."""
+        j, self.journal = self.journal, None
+        if j is not None:
+            j.close()
 
     def tail_after(self, lsn):
         if self.journal is None:

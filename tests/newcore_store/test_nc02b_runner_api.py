@@ -9,7 +9,7 @@ from nc02a_events import ACCOUNT_ID, AGGREGATE_ID, SCENARIO
 from nc02a_memfs import FaultFs, oserror
 from nc02b_helpers import CIPHER, MEM_BASE, T, FakeExchange, account, mem, owned
 from newcore.domain import EntriesMode, HoldKind, OwnershipProof, ProofKind, ReasonCode
-from newcore.store import Outcome, open_store
+from newcore.store import DurabilityUnavailable, Outcome, open_store
 from newcore.store.frame import KIND_HEAD
 from newcore.store.slots import read_pair, write_slot
 from newcore.store.store import Paths
@@ -196,3 +196,41 @@ def test_checkpoint_guards():
     assert sf.provenance['trust'] == 'hold'
     close(b)
     assert op(fs, ex).outcome is Outcome.HOLD
+
+
+def test_a_failed_checkpoint_is_hard_hold_marked_and_refuses_every_later_one():
+    """A checkpoint that cannot be made durable: DurabilityUnavailable, the store is in hard HOLD (as a failed promotion
+    is), the D11 marker is written outside the data folder, and the next start lands in HOLD even with a writable disk."""
+    fs = mem()
+    broken = [False]
+    snap = os.path.normpath(P.snap)
+    f = FaultFs(fs, fail=lambda o, p, i: oserror(28) if broken[0] and os.path.normpath(p).startswith(snap) else None)
+    _, ex, b = managed(f)
+    st = b.store
+    for e in SCENARIO[:3]:
+        b.journal.append(e)
+    broken[0] = True
+    before = st.current.generation
+    with pytest.raises(DurabilityUnavailable):
+        st.checkpoint(lot_pf(through=3)[0], T + 1)
+    assert st.mode.value == 'hold' and st.hold_kind is HoldKind.DURABILITY_UNAVAILABLE
+    assert st.anchor['hard_hold'] and st.current.generation == before
+    broken[0] = False                                                            # the disk is back: still refused
+    with pytest.raises(DurabilityUnavailable):
+        st.checkpoint(lot_pf(through=3)[0], T + 2)
+    assert st.current.generation == before
+    st.close()
+    r = op(fs, ex)
+    assert r.outcome is Outcome.HOLD and not r.may_open_risk                     # D11: only A08 leaves it
+    close(r)
+
+
+def test_close_releases_the_writer_lock_and_is_idempotent():
+    fs, ex, b = managed()
+    assert op(fs, ex).outcome is Outcome.REJECT                                  # b holds the account
+    b.store.close()
+    b.store.close()
+    assert b.store.journal is None and not b.store.checkpoint_due
+    r = op(fs, ex)
+    assert r.outcome is Outcome.MANAGE
+    close(r)
