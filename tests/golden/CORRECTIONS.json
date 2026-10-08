@@ -86,6 +86,30 @@
       "accepted_by": null,
       "date_cairo": "2026-10-08",
       "prev_entry_sha": "d69ba69d3437af709ed33cc242c9e219dcd0c40abd8ca8322d4b575a28ed18ac"
+    },
+    {
+      "id": "CORR-0003",
+      "type": "correction",
+      "ticket": "AUD-07",
+      "finding": "C13a",
+      "title": "C13a fixed: backtest DCA safety orders and pyramid adds pay taker slippage",
+      "cases": {
+        "G-DCA-SLIP-L-01": {
+          "old_expect_sha": "f808dd6df07741b78215e0821119ae102e5f92f42ec0fe1c91a6ab555ab5358c",
+          "new_expect_sha": "f808dd6df07741b78215e0821119ae102e5f92f42ec0fe1c91a6ab555ab5358c"
+        }
+      },
+      "adapters_changed": [
+        "legacy_backtest"
+      ],
+      "resolved_divergences": [
+        "G-DCA-SLIP-L-01:legacy_backtest"
+      ],
+      "rationale": "backtest.py filled DCA safety orders and pyramid adds at their level with the fee only, while the engine sends them as taker MARKET orders (the replay sim charges slippage on every open). Every exposure-increasing backtest fill now pays px x (1 + side x SLIP), the same model as entries; the slipped price feeds the average, the fee, the notional cap and the add gates. The expect block is unchanged; only the known divergence is removed.",
+      "evidence": "branch aud-07-product: G-DCA-SLIP-L-01 legacy_backtest XPASS with the fix; reverting the fix re-breaks exactly it",
+      "accepted_by": null,
+      "date_cairo": "2026-10-08",
+      "prev_entry_sha": "1aa5f37c4e883ebe0e34f9978287cf35bb99e80b18eaece72f5fae0704772279"
     }
   ]
 }
