@@ -82,10 +82,7 @@
     }
   },
   "applies_to": {
-    "legacy_engine": {
-      "status": "known_divergence",
-      "reason": "AUD-07 C13g: the engine journal books a filled exchange stop without its exit slippage"
-    },
+    "legacy_engine": "required",
     "legacy_backtest": "required",
     "newcore_sim": {
       "status": "pending_adapter",
@@ -96,28 +93,7 @@
       "reason": "NEWCORE NC-08 live-sim adapter not built yet"
     }
   },
-  "known_divergences": [
-    {
-      "adapter": "legacy_engine",
-      "ticket": "AUD-07",
-      "finding": "C13g",
-      "correction": "CORR-0002",
-      "until": "AUD-07 product fix",
-      "reason": "engine.py:2284-2290 books an exchange stop that filled (stop gone) at the STOP price, not the fill price: the journal omits the exit slippage the exchange charged (-1.04951 R booked vs -1.05931 R paid on a 98.02 stop)",
-      "observed": [
-        {
-          "path": "trades[0].R",
-          "expected": "-1.059307099",
-          "actual": -1.04951
-        },
-        {
-          "path": "trades[0].pnl",
-          "expected": "-10.59307099",
-          "actual": -10.4951
-        }
-      ]
-    }
-  ],
+  "known_divergences": [],
   "provenance": {
     "created_at_sha": "b8c11c8",
     "author": "AUD-07 slice 1 (Claude)",

@@ -232,6 +232,39 @@
       "accepted_by": null,
       "date_cairo": "2026-10-08",
       "prev_entry_sha": "3948b31d1e26d32325a9598ccbcfbe86eb12e29bf779c91b9ee3c54943190460"
+    },
+    {
+      "id": "CORR-0008",
+      "type": "correction",
+      "ticket": "AUD-07",
+      "finding": "C13g",
+      "title": "C13g fixed: the engine journals a filled exchange stop at its fill price",
+      "cases": {
+        "G-DAY-CAIRO-S-01": {
+          "prev_contract_sha": "e1f362778981a123ab9b66075727ebe15d988a5b8f5205d25e76135e9cf8f5d8",
+          "contract_sha": "b6de9888fd82a25c9956472ccb900d18e7139eaa4464fa62e11c6683f0963436"
+        },
+        "G-DAY-CAIRO-W-01": {
+          "prev_contract_sha": "764e3f3d1f10614514fa7345f2326c4b2758a3d6d2a33c5d1f4dc74aefd27f7a",
+          "contract_sha": "d16fd20d9a49681603f72d3332cebb2d337e31fc1b199a847dd6ec456c99ed70"
+        },
+        "G-GAP-STOP-L-01": {
+          "prev_contract_sha": "05c4909e16aba23677cf87ac441de322244fa3571e161ea4c7297ba3ef188312",
+          "contract_sha": "3789461356fb7938df24b46ec89fdf94641fa8f69fd1b68c1515d73c608765e5"
+        },
+        "G-STOP-L-01": {
+          "prev_contract_sha": "e5c3dc4a78b4fae5f32c5ab59f9ca76fef7a14788338245d810df84b92ff33b5",
+          "contract_sha": "9b55b0e23f48f2640ce9b1a01e2c4909eadb2fb1cfaf9d8ad36066ab7b7c54ea"
+        }
+      },
+      "adapters_changed": [
+        "legacy_engine (known divergence C13g resolved: G-STOP-L-01, G-GAP-STOP-L-01, G-DAY-CAIRO-W-01, G-DAY-CAIRO-S-01)"
+      ],
+      "rationale": "engine.py reads the stop's fill price from the exchange (Futures.stop_fill_price; the replay sim serves the same) and books it, exit slippage and gaps included; unknown -> the stop price with a journal note.",
+      "evidence": "branch aud-07-product-r2 (merged with #32 r2 b01d439); reverting the item's product lines re-breaks exactly these pairs (mutation check in the build report)",
+      "accepted_by": null,
+      "date_cairo": "2026-10-08",
+      "prev_entry_sha": "ff1b8d0ccebedaf023c6f8620555d817a8d7cdc95e819349fa8e4c1f4365f1a8"
     }
   ]
 }

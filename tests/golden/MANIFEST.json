@@ -2,14 +2,14 @@
   "schema": "zb-golden-manifest/2",
   "note": "sha256 of each case CONTRACT (goldenlib.schema.contract_sha: the case minus title / behaviours / provenance / notes). Change an entry only together with an appended CORRECTIONS.json record carrying the same contract_sha.",
   "cases": {
-    "G-DAY-CAIRO-S-01": "e1f362778981a123ab9b66075727ebe15d988a5b8f5205d25e76135e9cf8f5d8",
-    "G-DAY-CAIRO-W-01": "764e3f3d1f10614514fa7345f2326c4b2758a3d6d2a33c5d1f4dc74aefd27f7a",
+    "G-DAY-CAIRO-S-01": "b6de9888fd82a25c9956472ccb900d18e7139eaa4464fa62e11c6683f0963436",
+    "G-DAY-CAIRO-W-01": "d16fd20d9a49681603f72d3332cebb2d337e31fc1b199a847dd6ec456c99ed70",
     "G-DCA-SLIP-L-01": "838e2540dfe3dcc03410c42539e7053da976dc2492e0937ededc5873349d7376",
     "G-GAP-DCA-L-01": "01f2678c8a75cc118c4310448f15ae7f8a4f982204dbd6f46b643aef9e1af914",
-    "G-GAP-STOP-L-01": "05c4909e16aba23677cf87ac441de322244fa3571e161ea4c7297ba3ef188312",
+    "G-GAP-STOP-L-01": "3789461356fb7938df24b46ec89fdf94641fa8f69fd1b68c1515d73c608765e5",
     "G-GAP-TP-L-01": "5ecaab378af0a312a70c4c8c839fa93c35fb423f37d848bb0c59c09b850f9ab9",
     "G-PYR-SLIP-L-01": "d3132082acee2a05d3eaacfaa1e7853ca4444e9ef844c949454c4f5d93d0868b",
-    "G-STOP-L-01": "e5c3dc4a78b4fae5f32c5ab59f9ca76fef7a14788338245d810df84b92ff33b5",
+    "G-STOP-L-01": "9b55b0e23f48f2640ce9b1a01e2c4909eadb2fb1cfaf9d8ad36066ab7b7c54ea",
     "G-TIME-L-01": "2575f540486081503a593bf0723733612604d8af35bf21fc5c16b334063c467f",
     "G-TIME-L-02": "cf75a1a6b2e6373450ce87c25cf1bbe90a36bb30465c9f8f622c8fc6d4584f92",
     "G-TRAILENTRY-MAXPOS-01": "73ae90dbf63bbe90e7b21957e848d3db0e947ac2b2d9b32694fbac63f64a6974"
