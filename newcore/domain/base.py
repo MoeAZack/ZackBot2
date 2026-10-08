@@ -39,7 +39,7 @@ CTX = Context(prec=80, Emin=-999, Emax=999, traps=[InvalidOperation, Overflow, I
 SYMBOL_RE = re.compile(r'[A-Z0-9]{2,30}')
 CLIENT_ID_RE = re.compile(r'[A-Za-z0-9._:/-]{1,36}')   # opaque; the venue adapter chooses the format
 ID_RE = re.compile(r'([a-z]{2,4})_[0-9a-f]{32}')
-ID_PREFIXES = frozenset({'acct', 'pf', 'pos', 'lot', 'int', 'res', 'dec', 'rec', 'evt'})
+ID_PREFIXES = frozenset({'acct', 'pf', 'pos', 'lot', 'int', 'res', 'dec', 'rec', 'evt', 'inc'})
 
 
 def req(cond, path, msg):

@@ -35,8 +35,9 @@ import re
 from dataclasses import dataclass
 from typing import Iterable, Protocol, runtime_checkable
 
-from newcore.domain import (DecisionKey, DecisionRecorded, Evidence, IntentRecorded, IntentState, IntentStateChanged,
-                            Lookup, ModeChanged, OwnerKind, Purpose, ResultObserved, ResultPhase)
+from newcore.domain import (BindingChanged, DecisionKey, DecisionRecorded, Evidence, IncidentRecorded, IntentRecorded,
+                            IntentState, IntentStateChanged, Lookup, ModeChanged, OwnerKind, Purpose, ResultObserved,
+                            ResultPhase)
 from newcore.domain.codec import contract_sha256
 from newcore.domain.errors import DomainError
 from newcore.domain.events import EVENT_TYPES
@@ -61,6 +62,7 @@ class EventKind(enum.StrEnum):
     INTENT_CLOSED = 'intent_closed'            # IntentStateChanged -> filled / cancelled / rejected / not_sent
     MODE_CHANGED = 'mode_changed'              # ModeChanged (HOLD in / out, halt, pause, resume)
     BINDING_CHANGED = 'binding_changed'        # BindingChanged (the binding confirmation the risk gate requires)
+    INCIDENT_RECORDED = 'incident_recorded'    # IncidentRecorded (NC-01 r3 draft: S3 incidents, hard-HOLD actions)
 
 
 class ResultOutcome(enum.StrEnum):
@@ -167,7 +169,11 @@ def header_of(event) -> EventHeader:
                            client_ids=(r.client_order_id,), **base)
     if isinstance(event, ModeChanged):
         return EventHeader(kind=EventKind.MODE_CHANGED, **base)
-    return EventHeader(kind=EventKind.BINDING_CHANGED, **base)         # BindingChanged: the rest of EVENT_TYPES
+    if isinstance(event, BindingChanged):
+        return EventHeader(kind=EventKind.BINDING_CHANGED, **base)
+    if isinstance(event, IncidentRecorded):                              # sequence only: no intent / mode effect
+        return EventHeader(kind=EventKind.INCIDENT_RECORDED, **base)
+    req(False, 'event', f'{type(event).__name__} has no journal grammar kind')   # never a silent fallback
 
 
 @dataclass(slots=True)
