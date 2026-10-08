@@ -19,8 +19,10 @@ from dataclasses import dataclass
 from decimal import Decimal
 from typing import Protocol, runtime_checkable
 
-from .values import (ROUTES, SIDES, check_choice, check_client_id, check_decimal, check_ms, check_symbol, check_text,
-                     plain, req)
+from newcore.domain import Side
+
+from .values import (ROUTES, check_choice, check_client_id, check_decimal, check_ms, check_symbol, check_text, plain,
+                     req)
 
 
 class OutcomeKind(enum.StrEnum):        # values equal newcore.venue.outcomes.OrderOutcomeKind
@@ -36,6 +38,9 @@ class ReadKind(enum.StrEnum):           # values equal newcore.venue.outcomes.Re
     OK = 'ok'
     REJECTED = 'rejected'
     UNKNOWN = 'unknown'
+
+
+SIDES = tuple(s.value for s in Side)        # NC-01 position sides
 
 
 def _side(obj, name='position_side'):

@@ -1,5 +1,5 @@
-"""Step-0 import boundary: newcore.ports is pure stdlib, imports no legacy module, no adapter, no unmerged NEWCORE
-package (newcore.domain / newcore.venue / newcore.strategy) and performs no IO, clock, randomness or environment access."""
+"""Step-0 import boundary: newcore.ports imports only the stdlib and the merged NC-01 package newcore.domain (no legacy
+module, no adapter, no newcore.venue / newcore.strategy) and performs no IO, clock, randomness or environment access."""
 import ast
 import importlib
 import os
@@ -9,6 +9,7 @@ import pytest
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 PORTS = os.path.join(ROOT, 'newcore', 'ports')
 FILES = sorted(f for f in os.listdir(PORTS) if f.endswith('.py'))
+NC01 = 'newcore.domain'
 ALLOWED = {'__future__', 'base64', 'dataclasses', 'decimal', 'enum', 'hashlib', 'json', 're', 'typing'}
 FORBIDDEN_CALLS = {'open', 'exec', 'eval', 'compile', '__import__', 'input', 'print'}
 FORBIDDEN_ATTRS = {'environ', 'getenv', 'time', 'time_ns', 'monotonic', 'perf_counter', 'now', 'utcnow', 'today',
@@ -35,7 +36,8 @@ def test_only_allowed_stdlib_and_relative_imports(name):
             if node.level:                                      # relative: only siblings inside newcore.ports
                 assert node.level == 1, f'{name}: from {"." * node.level}{node.module}'
             else:
-                assert node.module.split('.')[0] in ALLOWED, f'{name}: from {node.module}'
+                ok = node.module.split('.')[0] in ALLOWED or node.module == NC01 or node.module.startswith(NC01 + '.')
+                assert ok, f'{name}: from {node.module}'
 
 
 @pytest.mark.parametrize('name', FILES)
@@ -54,5 +56,5 @@ def test_runtime_import_pulls_in_no_forbidden_module():
     for sub in ('bars', 'journal', 'keys', 'values', 'venue'):
         m = importlib.import_module(f'newcore.ports.{sub}')
         names = {getattr(v, '__name__', '') for v in vars(m).values() if type(v).__name__ == 'module'}
-        assert all(n.split('.')[0] in ALLOWED or n.startswith('newcore.ports') for n in names), (sub, names)
-    assert mod.DecisionKey.__module__ == 'newcore.ports.keys'
+        assert all(n.split('.')[0] in ALLOWED or n.startswith(('newcore.ports', NC01)) for n in names), (sub, names)
+    assert mod.decision_key('x', 'v1', '4h', 'BTCUSDT', 'LONG', 1759924800000, 'entry').__module__ == NC01 + '.decision'
