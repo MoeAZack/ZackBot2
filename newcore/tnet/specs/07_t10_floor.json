@@ -1,0 +1,41 @@
+{
+  "format": "zb-newcore-tnet-runner/1",
+  "id": "T10-floor",
+  "name": "size_floor_skip",
+  "description": "Minimum-size failure: the risk sizes below the venue minimum -> SKIP execution.size_min, nothing is sent.",
+  "targets": [
+    "fake",
+    "testnet"
+  ],
+  "symbol": "SOLUSDT",
+  "side": "LONG",
+  "sizing": {
+    "risk_pct": "0.0000001",
+    "max_leverage": "3"
+  },
+  "stop": {
+    "pct": "1"
+  },
+  "steps": [
+    {
+      "op": "enter"
+    },
+    {
+      "op": "tick",
+      "n": 1
+    }
+  ],
+  "expect": {
+    "entries": 0,
+    "skips": 1,
+    "skip_reason": "execution.size_min",
+    "max_orders": 0,
+    "final": "flat"
+  },
+  "bound": {
+    "max_ticks": 10,
+    "max_orders": 0,
+    "max_notional_usdt": "2000",
+    "max_wall_s": 900
+  }
+}

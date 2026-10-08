@@ -1,0 +1,50 @@
+{
+  "format": "zb-newcore-tnet-runner/1",
+  "id": "T04-algo",
+  "name": "stop_exit_algo",
+  "description": "Stop exit on the ALGO route: the classic stop is refused (-4120), the algo stop works and fills; booked as STOP_HIT. Testnet: bracket wait, INCONCLUSIVE if the market never reaches the stop within the bound.",
+  "targets": [
+    "fake",
+    "testnet"
+  ],
+  "symbol": "SOLUSDT",
+  "side": "LONG",
+  "sizing": {
+    "risk_pct": "0.0005",
+    "max_leverage": "3"
+  },
+  "stop": {
+    "pct": "0.25"
+  },
+  "fake": {
+    "classic_stops": "refuse"
+  },
+  "steps": [
+    {
+      "op": "enter"
+    },
+    {
+      "op": "await_exit",
+      "max_ticks": 30,
+      "fake_gap_pct": "-3"
+    }
+  ],
+  "expect": {
+    "entries": 1,
+    "trades": [
+      "STOP_HIT"
+    ],
+    "stop_route": "algo",
+    "fills_match": true,
+    "final": "flat"
+  },
+  "expect_testnet": {
+    "stop_route": "any"
+  },
+  "bound": {
+    "max_ticks": 31,
+    "max_orders": 4,
+    "max_notional_usdt": "2000",
+    "max_wall_s": 2400
+  }
+}

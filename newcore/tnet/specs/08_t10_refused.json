@@ -1,0 +1,49 @@
+{
+  "format": "zb-newcore-tnet-runner/1",
+  "id": "T10-refused",
+  "name": "entry_refused",
+  "description": "Venue refusal of the entry (-4164 notional; on testnet a SYNTHETIC refusal at the HTTP seam, nothing sent - hook request H2): the entry ends REJECTED, no lot, no HOLD.",
+  "targets": [
+    "fake",
+    "testnet"
+  ],
+  "symbol": "SOLUSDT",
+  "side": "LONG",
+  "sizing": {
+    "risk_pct": "0.002",
+    "max_leverage": "3"
+  },
+  "stop": {
+    "pct": "1"
+  },
+  "steps": [
+    {
+      "op": "fault",
+      "on": "entry",
+      "kind": "refuse",
+      "code": -4164
+    },
+    {
+      "op": "enter"
+    },
+    {
+      "op": "tick",
+      "n": 1
+    }
+  ],
+  "expect": {
+    "entries": 1,
+    "entry_state": "rejected",
+    "trades": [],
+    "hold_seen": false,
+    "mode_end": "active",
+    "max_orders": 1,
+    "final": "flat"
+  },
+  "bound": {
+    "max_ticks": 10,
+    "max_orders": 4,
+    "max_notional_usdt": "2000",
+    "max_wall_s": 900
+  }
+}

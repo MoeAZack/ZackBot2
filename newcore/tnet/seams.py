@@ -1,0 +1,152 @@
+"""Seams of the runner-driven harness.
+
+BoundedPort   the VenuePort the Runner talks to: every submit is checked against the scenario's bound (max orders,
+              max opening notional at the last closed price) and its client id is appended to the run ledger BEFORE it
+              is sent. A breach raises BoundExceeded (the scenario FAILs, cleanup runs). Reads pass through.
+PortFaults    FakeVenue-side faults on the next matching effect (entry / close / stop / cancel).
+HttpFaults    the same faults on the testnet target, at the HTTP seam UNDER the transport (newcore.venue.tnet_seams.
+              FaultHttp semantics), matched on the request: entry / close = POST /fapi/v1/order MARKET opening /
+              closing (hedge mode: side vs positionSide), stop = POST STOP_MARKET or /fapi/v1/algoOrder, cancel =
+              DELETE order / algoOrder. 'refuse' answers a SYNTHETIC Binance error without sending anything.
+"""
+import json
+from decimal import Decimal
+from urllib.parse import parse_qsl
+
+from newcore.ports import venue as P
+from newcore.venue.tnet_seams import FaultHttp
+from newcore.venue.wire import HttpResponse
+
+KINDS = ('lost_response', 'timeout', 'refuse')
+ON = ('entry', 'close', 'stop', 'cancel')
+
+
+class BoundExceeded(Exception):
+    """The harness refused a submit: the scenario's order / notional bound would be exceeded (runaway guard)."""
+
+
+class BoundedPort:
+    def __init__(self, inner, *, max_orders, max_notional, price_of, ledger=None):
+        self.inner, self.max_orders, self.max_notional = inner, max_orders, Decimal(max_notional)
+        self.price_of = price_of                       # symbol -> Decimal | None (the last closed candle's close)
+        self.ledger = ledger if ledger is not None else []
+        self.submits = 0
+
+    def __getattr__(self, name):
+        return getattr(self.inner, name)
+
+    def _admit(self, kind, order, opening):
+        if self.submits + 1 > self.max_orders:
+            raise BoundExceeded(f'{kind} {order.ref.client_id}: more than {self.max_orders} orders')
+        if opening:
+            px = self.price_of(order.ref.symbol)
+            if px is None:
+                raise BoundExceeded(f'{kind} {order.ref.client_id}: no reference price for the notional bound')
+            if order.qty * px > self.max_notional:
+                raise BoundExceeded(f'{kind} {order.ref.client_id}: notional {order.qty * px} > {self.max_notional}')
+        self.submits += 1
+        self.ledger.append({'kind': kind, 'symbol': order.ref.symbol, 'client_id': order.ref.client_id,
+                            'route': order.ref.route, 'side': order.position_side, 'qty': str(order.qty)})
+
+    def submit_market(self, order):
+        self._admit('close' if order.reduce else 'entry', order, not order.reduce)
+        return self.inner.submit_market(order)
+
+    def submit_stop(self, order):
+        self._admit('stop', order, False)
+        return self.inner.submit_stop(order)
+
+
+def _check(on, kind, code):
+    if on not in ON or kind not in KINDS:
+        raise ValueError(f'bad fault {on!r} / {kind!r}')
+    if (kind == 'refuse') != (code is not None):
+        raise ValueError('code goes with (and only with) refuse')
+
+
+class PortFaults:
+    """FakeVenue port wrapper: arm(on, kind, code) applies once, to the next effect of that kind."""
+
+    def __init__(self, inner):
+        self.inner = inner
+        self._armed = {}
+        self.injected = []                             # (on, kind, client id)
+
+    def __getattr__(self, name):
+        return getattr(self.inner, name)
+
+    def arm(self, on, kind, code=None):
+        _check(on, kind, code)
+        self._armed[on] = (kind, code)
+
+    def _effect(self, on, ref, call):
+        f = self._armed.pop(on, None)
+        if f is None:
+            return call()
+        kind, code = f
+        self.injected.append((on, kind, ref.client_id))
+        now = self.inner.now_ms
+        if kind == 'refuse':
+            return P.OrderOutcome(kind=P.OutcomeKind.REJECTED, ref=ref, observed_at_ms=now, error_code=code,
+                                  detail='tnet_injected')
+        if kind == 'lost_response':
+            call()
+        return P.OrderOutcome(kind=P.OutcomeKind.UNKNOWN, ref=ref, observed_at_ms=now, detail='timeout')
+
+    def submit_market(self, order):
+        return self._effect('close' if order.reduce else 'entry', order.ref, lambda: self.inner.submit_market(order))
+
+    def submit_stop(self, order):
+        return self._effect('stop', order.ref, lambda: self.inner.submit_stop(order))
+
+    def cancel(self, ref):
+        return self._effect('cancel', ref, lambda: self.inner.cancel(ref))
+
+
+def classify(request):
+    """'entry' | 'close' | 'stop' | 'cancel' | None for one HttpRequest (hedge mode)."""
+    path = request.url.split('binancefuture.com', 1)[-1].rstrip('/')
+    q = dict(parse_qsl(request.query or ''))
+    if request.method == 'DELETE' and path in ('/fapi/v1/order', '/fapi/v1/algoOrder'):
+        return 'cancel'
+    if request.method != 'POST':
+        return None
+    if path == '/fapi/v1/algoOrder':
+        return 'stop'
+    if path != '/fapi/v1/order':
+        return None
+    if q.get('type') == 'STOP_MARKET':
+        return 'stop'
+    if q.get('type') == 'MARKET':
+        closing = (q.get('positionSide') == 'LONG') == (q.get('side') == 'SELL')
+        return 'close' if closing else 'entry'
+    return None
+
+
+class HttpFaults:
+    """The testnet target's seam: wrap the http callable (the sender, or a recorder around it)."""
+
+    def __init__(self, inner):
+        if not callable(inner):
+            raise ValueError('inner must be the http callable')
+        self._fh = FaultHttp(inner)
+        self._inner = inner
+        self._armed = {}
+        self.injected = []                             # (on, kind, path)
+
+    def arm(self, on, kind, code=None):
+        _check(on, kind, code)
+        self._armed[on] = (kind, code)
+
+    def __call__(self, request):
+        on = classify(request) if self._armed else None
+        f = self._armed.pop(on, None) if on is not None else None
+        if f is None:
+            return self._inner(request)
+        kind, code = f
+        self.injected.append((on, kind, request.url.split('binancefuture.com', 1)[-1]))
+        if kind == 'refuse':
+            body = json.dumps({'code': code, 'msg': 'tnet synthetic refusal (not sent)'}).encode()
+            return HttpResponse(400, {}, body)
+        self._fh.arm(kind, 1)
+        return self._fh(request)

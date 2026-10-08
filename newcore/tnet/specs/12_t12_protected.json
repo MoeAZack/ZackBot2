@@ -1,0 +1,39 @@
+{
+  "format": "zb-newcore-tnet-runner/1",
+  "id": "T12-protected",
+  "name": "final_truth_protected",
+  "description": "Final exchange truth with the position still open: protected (stop WORKING and listed) AND reconciled; the harness cleanup then flattens it.",
+  "targets": [
+    "fake",
+    "testnet"
+  ],
+  "symbol": "SOLUSDT",
+  "side": "LONG",
+  "sizing": {
+    "risk_pct": "0.002",
+    "max_leverage": "3"
+  },
+  "stop": {
+    "pct": "1"
+  },
+  "steps": [
+    {
+      "op": "enter"
+    },
+    {
+      "op": "tick",
+      "n": 1
+    }
+  ],
+  "expect": {
+    "entries": 1,
+    "trades": [],
+    "final": "protected_reconciled"
+  },
+  "bound": {
+    "max_ticks": 10,
+    "max_orders": 4,
+    "max_notional_usdt": "2000",
+    "max_wall_s": 900
+  }
+}

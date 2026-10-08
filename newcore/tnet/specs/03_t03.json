@@ -1,0 +1,53 @@
+{
+  "format": "zb-newcore-tnet-runner/1",
+  "id": "T03",
+  "name": "confirmed_entry",
+  "description": "Confirmed entry: the FINAL executed quantity / average price equal the venue fills (and the close too); the lot is protected and reconciled right after the entry cycle.",
+  "targets": [
+    "fake",
+    "testnet"
+  ],
+  "symbol": "SOLUSDT",
+  "side": "LONG",
+  "sizing": {
+    "risk_pct": "0.002",
+    "max_leverage": "3"
+  },
+  "stop": {
+    "pct": "1"
+  },
+  "steps": [
+    {
+      "op": "enter"
+    },
+    {
+      "op": "check",
+      "what": "protected_reconciled"
+    },
+    {
+      "op": "close"
+    },
+    {
+      "op": "tick",
+      "n": 1
+    }
+  ],
+  "expect": {
+    "entries": 1,
+    "entry_phases": [
+      "final"
+    ],
+    "entry_state": "filled",
+    "fills_match": true,
+    "trades": [
+      "SIGNAL_EXIT"
+    ],
+    "final": "flat"
+  },
+  "bound": {
+    "max_ticks": 10,
+    "max_orders": 4,
+    "max_notional_usdt": "2000",
+    "max_wall_s": 900
+  }
+}

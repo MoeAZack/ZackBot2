@@ -1,0 +1,64 @@
+{
+  "format": "zb-newcore-tnet-runner/1",
+  "id": "T09",
+  "name": "lost_answer_reconciled",
+  "description": "Lost entry answer: the order executes but the answer is lost (UNKNOWN), the Runner holds entries, resolves it by query (FINAL), protects it in the same cycle; the close is allowed in HOLD; RESUME after a clean reconciliation.",
+  "targets": [
+    "fake",
+    "testnet"
+  ],
+  "symbol": "SOLUSDT",
+  "side": "LONG",
+  "sizing": {
+    "risk_pct": "0.002",
+    "max_leverage": "3"
+  },
+  "stop": {
+    "pct": "1"
+  },
+  "steps": [
+    {
+      "op": "fault",
+      "on": "entry",
+      "kind": "lost_response"
+    },
+    {
+      "op": "enter"
+    },
+    {
+      "op": "tick",
+      "n": 1
+    },
+    {
+      "op": "close"
+    },
+    {
+      "op": "resume"
+    },
+    {
+      "op": "tick",
+      "n": 1
+    }
+  ],
+  "expect": {
+    "entries": 1,
+    "entry_phases": [
+      "unknown",
+      "final"
+    ],
+    "entry_state": "filled",
+    "hold_seen": true,
+    "mode_end": "active",
+    "trades": [
+      "SIGNAL_EXIT"
+    ],
+    "max_orders": 3,
+    "final": "flat"
+  },
+  "bound": {
+    "max_ticks": 10,
+    "max_orders": 4,
+    "max_notional_usdt": "2000",
+    "max_wall_s": 900
+  }
+}

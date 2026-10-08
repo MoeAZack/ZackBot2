@@ -1,0 +1,47 @@
+{
+  "format": "zb-newcore-tnet-runner/1",
+  "id": "T10-stop-refused",
+  "name": "stop_refused_closed",
+  "description": "The protective stop is refused (-2021 would trigger): the lot is closed at market in the same cycle (STOP_FAILED); never left unprotected.",
+  "targets": [
+    "fake"
+  ],
+  "symbol": "SOLUSDT",
+  "side": "LONG",
+  "sizing": {
+    "risk_pct": "0.002",
+    "max_leverage": "3"
+  },
+  "stop": {
+    "pct": "1"
+  },
+  "steps": [
+    {
+      "op": "fault",
+      "on": "stop",
+      "kind": "refuse",
+      "code": -2021
+    },
+    {
+      "op": "enter"
+    },
+    {
+      "op": "tick",
+      "n": 1
+    }
+  ],
+  "expect": {
+    "entries": 1,
+    "trades": [
+      "STOP_FAILED"
+    ],
+    "max_orders": 3,
+    "final": "flat"
+  },
+  "bound": {
+    "max_ticks": 10,
+    "max_orders": 4,
+    "max_notional_usdt": "2000",
+    "max_wall_s": 900
+  }
+}
