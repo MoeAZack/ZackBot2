@@ -220,3 +220,41 @@ def test_an_incident_is_journaled_in_sequence_without_effect():
     for e in s.events + [ev]:
         j.append(e)
     assert header_of(ev).kind is EventKind.INCIDENT_RECORDED and j.last_sequence() == len(s.events) + 1
+
+
+def _post_hoc_close_flow(reason_override=None):
+    from decimal import Decimal as D
+    from newcore.domain import (Action, Authority, Decision, DecisionRecorded, Evidence, ExternalTrade, OrderResult,
+                                ReasonCode, ResultObserved, ResultPhase, make_id)
+    s = Scenario()
+    s.entry_filled()
+    cid = K.derive_child_intent_id(ACCT, LOT, Purpose.CLOSE, 0)
+    at = s.events[-1].at_ms + 1000
+    dec_id = make_id('dec', 4242)
+    it = s._intent(cid, Purpose.CLOSE, dec_id, at, owner=LOT)
+    it = it.__class__(**{**{f: getattr(it, f) for f in it.__dataclass_fields__}, 'reason': ReasonCode.EXIT_MANUAL})
+    d = Decision(decision_id=dec_id, account_id=ACCT, at_ms=at, action=Action.RECONCILE,
+                 reason=ReasonCode.RECONCILE_MANUAL_CLOSE, authority=Authority.RECONCILIATION, key=None, evidence=(),
+                 symbol='SOLUSDT', side=Side.LONG, subject_id=LOT, detail='', intents=(it,), policy_version='step0-test')
+    s._event(DecisionRecorded, reason=d.reason, decision=d)
+    s.intents[cid] = it
+    s.record(cid)
+    trade = ExternalTrade(trade_id='777', at_ms=at, qty=it.qty, price=D('149'))
+    res = OrderResult(result_id=make_id('res', 4243), intent_id=cid, account_id=ACCT, client_order_id=it.client_order_id,
+                      phase=ResultPhase.FINAL, requested_qty=it.qty, observed_at_ms=at + 2000, exchange_order_id=None,
+                      exchange_status=None, lookup=None, executed_qty=it.qty, avg_price=D('149'),
+                      evidence=Evidence.EXCHANGE_EXTERNAL, corroboration=(), resolved_by=dec_id,
+                      external_trades=(trade,))
+    s._event(ResultObserved, reason=ReasonCode.RECONCILE_MANUAL_CLOSE, result=res)
+    s.step(cid, IntentState.DURABLE, IntentState.FILLED)
+    return s
+
+
+def test_an_external_close_is_journaled_as_a_post_hoc_booking():
+    """NC-01 r3 draft item 3a: a RECONCILE decision books an external close; the never-sent intent ends with a final
+    exchange_external result (G9) and closes FILLED."""
+    s = _post_hoc_close_flow()
+    j = ReferenceJournal()
+    for ev in s.events:
+        j.append(ev)
+    assert j.last_sequence() == len(s.events)

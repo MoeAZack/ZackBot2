@@ -124,6 +124,14 @@ MUTATIONS = {
     'P2: portfolio collections not canonical': (D + 'portfolio.py', [(
         "            _canonical(self, 'positions', lambda x: (x.symbol, x.side.value))\n"
         "            _canonical(self, 'intents', lambda x: x.intent_id)", '            pass')]),
+    'r3 item 3a: exchange_external accepted on a normal close': (D + 'orders.py', [(
+        "    req((ev is Evidence.EXCHANGE_EXTERNAL) <= is_post_hoc(intent), p + '.evidence',", "    req(True, p + '.evidence',")]),
+    'r3 item 3a: external trades need not sum to the booking': (D + 'orders.py', [(
+        "            req(total == self.executed_qty == self.requested_qty, p + '.executed_qty',",
+        "            req(True, p + '.executed_qty',")]),
+    'r3 item 3a: a post-hoc booking may be sent': (D + 'orders.py', [(
+        '    return intent.state is IntentState.DURABLE and not is_post_hoc(intent)',
+        '    return intent.state is IntentState.DURABLE')]),
     'duplicate JSON keys': (D + 'codec.py', [("            if k in out:\n                problems.append(",
                                               "            if False:\n                problems.append(")]),
     'truncated JSON': (D + 'codec.py', [(

@@ -93,7 +93,7 @@ class Scenario:
         it = self.intents[intent_id]
         common = dict(result_id=make_id('res', self.n + 1), intent_id=intent_id, account_id=self.acct,
                       client_order_id=it.client_order_id, requested_qty=it.qty, observed_at_ms=T0 + 1000 * (self.n + 1),
-                      corroboration=(), resolved_by=None)
+                      corroboration=(), resolved_by=None, external_trades=())
         none = dict(exchange_order_id=None, exchange_status=None, lookup=None, executed_qty=None, avg_price=None,
                     evidence=None)
         r = {'filled': dict(phase=ResultPhase.FINAL, exchange_order_id='1001', exchange_status=ExchangeStatus.FILLED,

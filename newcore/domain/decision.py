@@ -56,7 +56,7 @@ ACTION_PURPOSES = {
     Action.FLATTEN: frozenset({Purpose.CLOSE}),
     Action.CLOSE: frozenset({Purpose.CLOSE}),
     Action.REDUCE: frozenset({Purpose.REDUCE}),
-    Action.RECONCILE: frozenset({Purpose.PROTECT, Purpose.CLOSE}),
+    Action.RECONCILE: frozenset({Purpose.PROTECT, Purpose.CLOSE, Purpose.REDUCE}),   # REDUCE: r3 post-hoc booking
     Action.ADD: frozenset({Purpose.ADD}),
     Action.ENTER: frozenset({Purpose.ENTRY}),
 }
@@ -141,6 +141,11 @@ class Decision(Record):
             req(i.decision_id == self.decision_id and i.created_at_ms == self.at_ms, ip + '.decision_id',
                 'created by another decision')
             req(i.state is IntentState.PLANNED, ip + '.state', 'a decision creates PLANNED intents only')
+        post_hoc = [i for i in self.intents if i.reason is ReasonCode.EXIT_MANUAL]
+        req(not post_hoc or (a is Action.RECONCILE and self.reason is ReasonCode.RECONCILE_MANUAL_CLOSE), p + '.intents',
+            'a post-hoc (exit.manual) booking comes only from a RECONCILE reconcile.manual_close decision')
+        req(self.reason is not ReasonCode.RECONCILE_MANUAL_CLOSE or len(post_hoc) == len(self.intents), p + '.intents',
+            'a reconcile.manual_close decision books post-hoc intents only')
         if self.key is not None:
             k = self.key
             req((self.symbol, self.side) == (k.symbol, k.side), p + '.key', 'the decision names another symbol / side')

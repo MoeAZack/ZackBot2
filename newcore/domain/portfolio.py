@@ -393,7 +393,8 @@ def _check_known(pf, p):
             if it.pullable:
                 req(it.state is IntentState.CANCELLING, ip + '.state',
                     f'a resting / armed opening intent must be cancelling while entries are {pf.entries_mode}')
-            elif it.created_at_ms > pf.mode_since_ms and it.state is not IntentState.CANCELLING:
+            elif it.created_at_ms > pf.mode_since_ms and it.state is not IntentState.CANCELLING and \
+                    it.reason is not ReasonCode.EXIT_MANUAL:     # a post-hoc booking places nothing
                 req(pf.permits(it.purpose, Op.PLACE, one_shot=it.authorized_by is not None), ip,
                     f'a {it.purpose} intent created after entries became {pf.entries_mode} is not permitted')
 
