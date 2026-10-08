@@ -117,6 +117,12 @@ MUTATIONS = {
     'P2: portfolio collections not canonical': (D + 'portfolio.py', [(
         "            _canonical(self, 'positions', lambda x: (x.symbol, x.side.value))\n"
         "            _canonical(self, 'intents', lambda x: x.intent_id)", '            pass')]),
+    'P1-3 emergency close: widened to every close / reduce action in hard HOLD': (D + 'modes.py', [(
+        "        return (purpose, op) in EMERGENCY_SET or (emergency_close and (purpose, op) == (Purpose.CLOSE, Op.PLACE))",
+        "        return (purpose, op) in EMERGENCY_SET or (emergency_close and purpose in (Purpose.CLOSE, Purpose.REDUCE))")]),
+    'P1-3 emergency close: allowed without the emergency flag': (D + 'modes.py', [(
+        "        return (purpose, op) in EMERGENCY_SET or (emergency_close and (purpose, op) == (Purpose.CLOSE, Op.PLACE))",
+        "        return (purpose, op) in EMERGENCY_SET or (purpose, op) == (Purpose.CLOSE, Op.PLACE)")]),
     'duplicate JSON keys': (D + 'codec.py', [("            if k in out:\n                problems.append(",
                                               "            if False:\n                problems.append(")]),
     'truncated JSON': (D + 'codec.py', [(
