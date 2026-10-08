@@ -60,7 +60,7 @@ class Scenario:
                            owner_kind=owner_kind,
                            slot_id='S1' if purpose is Purpose.ENTRY else None, price=None,
                            stop_price=(stop_price or D('140')) if protect else None, arm=None,
-                           alt_client_order_id=None, seen_qty=None, authorized_by=None)
+                           alt_client_order_id=None, seen_qty=None, authorized_by=None, replaces_intent_id=None)
 
     def decision(self, *, key=None, purpose=None, intent_ids=(), owner=None, owner_kind=None, route='classic',
                  dec_id=None):
