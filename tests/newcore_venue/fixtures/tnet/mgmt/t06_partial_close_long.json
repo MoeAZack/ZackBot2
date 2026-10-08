@@ -1,0 +1,148 @@
+{
+ "format": "zb-newcore-tnet-scenario/1",
+ "name": "t06_partial_close_long",
+ "description": "TNET-01 T06 partial close: TP1 (50%) fills only 2 of 2.5, the stop is resized (replace, then cancel the old one once the new one is confirmed), the rest of TP1 fires on the next mark, break-even (net of fees) replaces the stop, TP2 closes the rest and the stop is released.",
+ "symbols": [
+  "SOLUSDT"
+ ],
+ "account": {
+  "min_balance": "100",
+  "adopt_foreign": []
+ },
+ "steps": [
+  {
+   "id": "entry",
+   "op": "market",
+   "symbol": "SOLUSDT",
+   "side": "LONG",
+   "reduce": false,
+   "qty": "5"
+  },
+  {
+   "id": "protect",
+   "op": "stop",
+   "symbol": "SOLUSDT",
+   "side": "LONG",
+   "qty": "filled:entry",
+   "trigger_offset_pct": "-2",
+   "from": "entry",
+   "route": "classic"
+  },
+  {
+   "id": "protect_algo",
+   "op": "stop",
+   "symbol": "SOLUSDT",
+   "side": "LONG",
+   "qty": "filled:entry",
+   "trigger_offset_pct": "-2",
+   "from": "entry",
+   "route": "algo"
+  },
+  {
+   "id": "tp1",
+   "op": "market",
+   "symbol": "SOLUSDT",
+   "side": "LONG",
+   "reduce": true,
+   "qty": "2.5"
+  },
+  {
+   "id": "resize",
+   "op": "stop",
+   "symbol": "SOLUSDT",
+   "side": "LONG",
+   "qty": "3",
+   "trigger_offset_pct": "-2",
+   "from": "entry",
+   "route": "algo"
+  },
+  {
+   "id": "unstop_a",
+   "op": "cancel",
+   "ref": "protect_algo"
+  },
+  {
+   "id": "tp1_rest",
+   "op": "market",
+   "symbol": "SOLUSDT",
+   "side": "LONG",
+   "reduce": true,
+   "qty": "0.5"
+  },
+  {
+   "id": "breakeven",
+   "op": "stop",
+   "symbol": "SOLUSDT",
+   "side": "LONG",
+   "qty": "2.5",
+   "trigger_offset_pct": "0.1",
+   "from": "entry",
+   "route": "algo"
+  },
+  {
+   "id": "unstop_b",
+   "op": "cancel",
+   "ref": "resize"
+  },
+  {
+   "id": "target",
+   "op": "market",
+   "symbol": "SOLUSDT",
+   "side": "LONG",
+   "reduce": true,
+   "qty": "2.5"
+  },
+  {
+   "id": "unstop_c",
+   "op": "cancel",
+   "ref": "breakeven"
+  },
+  {
+   "id": "settle",
+   "op": "wait",
+   "seconds": 2
+  }
+ ],
+ "expect": {
+  "outcomes": {
+   "entry": [
+    "final"
+   ],
+   "protect": [
+    "rejected"
+   ],
+   "protect_algo": [
+    "known"
+   ],
+   "tp1": [
+    "final"
+   ],
+   "resize": [
+    "known"
+   ],
+   "unstop_a": [
+    "final"
+   ],
+   "tp1_rest": [
+    "final"
+   ],
+   "breakeven": [
+    "known"
+   ],
+   "unstop_b": [
+    "final"
+   ],
+   "target": [
+    "final"
+   ],
+   "unstop_c": [
+    "final"
+   ]
+  },
+  "end_state": {
+   "flat": true,
+   "open_newcore_orders": 0
+  },
+  "max_duration_s": 600
+ }
+}

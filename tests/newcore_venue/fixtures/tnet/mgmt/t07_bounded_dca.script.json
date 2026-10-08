@@ -1,0 +1,39 @@
+{
+ "format": "zb-newcore-tnet-mgmt/1",
+ "scenario": "t07_bounded_dca",
+ "note": "Driver-level script for the FakeVenue executor (tests/newcore_management/test_tnet_mgmt.py). Prices in the LONG frame around 100 (the short run mirrors them around 200). The venue refuses classic stops with -4120 (algo route required), like Binance testnet.",
+ "plan": {
+  "stop": "2",
+  "add": "1",
+  "scale": "1",
+  "tp2": "2",
+  "cap": "20"
+ },
+ "venue": {
+  "classic_stops": "algo_only",
+  "acknowledge_only": [
+   "protect_algo"
+  ]
+ },
+ "path": [
+  {
+   "mark": "98.9"
+  },
+  {
+   "confirm": "protect_algo"
+  },
+  {
+   "mark": "98.9"
+  },
+  {
+   "mark": "97.9"
+  }
+ ],
+ "end": {
+  "stage": "done",
+  "legs": [
+   "add",
+   "stop"
+  ]
+ }
+}

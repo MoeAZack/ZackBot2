@@ -1,0 +1,85 @@
+{
+ "format": "zb-newcore-tnet-scenario/1",
+ "name": "t05_target_exit_long",
+ "description": "TNET-01 T05 target exit through the ManagementDriver: the classic stop is refused (-4120) and goes out on the algo route; the bot-side target fires a MARKET REDUCE of the whole position; the stop is released once flat.",
+ "symbols": [
+  "SOLUSDT"
+ ],
+ "account": {
+  "min_balance": "100",
+  "adopt_foreign": []
+ },
+ "steps": [
+  {
+   "id": "entry",
+   "op": "market",
+   "symbol": "SOLUSDT",
+   "side": "LONG",
+   "reduce": false,
+   "qty": "5"
+  },
+  {
+   "id": "protect",
+   "op": "stop",
+   "symbol": "SOLUSDT",
+   "side": "LONG",
+   "qty": "filled:entry",
+   "trigger_offset_pct": "-2",
+   "from": "entry",
+   "route": "classic"
+  },
+  {
+   "id": "protect_algo",
+   "op": "stop",
+   "symbol": "SOLUSDT",
+   "side": "LONG",
+   "qty": "filled:entry",
+   "trigger_offset_pct": "-2",
+   "from": "entry",
+   "route": "algo"
+  },
+  {
+   "id": "target",
+   "op": "market",
+   "symbol": "SOLUSDT",
+   "side": "LONG",
+   "reduce": true,
+   "qty": "filled:entry"
+  },
+  {
+   "id": "unstop",
+   "op": "cancel",
+   "ref": "protect_algo"
+  },
+  {
+   "id": "settle",
+   "op": "wait",
+   "seconds": 2
+  }
+ ],
+ "expect": {
+  "outcomes": {
+   "entry": [
+    "final"
+   ],
+   "protect": [
+    "rejected"
+   ],
+   "protect_algo": [
+    "known"
+   ],
+   "target": [
+    "final"
+   ],
+   "unstop": [
+    "final",
+    "acknowledged"
+   ]
+  },
+  "end_state": {
+   "flat": true,
+   "open_newcore_orders": 0
+  },
+  "max_duration_s": 600
+ }
+}
