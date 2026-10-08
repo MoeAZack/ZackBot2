@@ -12,9 +12,11 @@ from __future__ import annotations
 from .account import BINDING_TRANSITIONS, AccountBinding, BindingConfirmation, BindingState
 from .base import Record, check_id, record, req
 from .decision import Decision
+from .facts import FactLedger
+from .incident import Incident
 from .modes import EntriesMode, HoldKind
-from .orders import (INTENT_TRANSITIONS, TERMINAL, IntentState, OrderIntent, OrderResult, ResultPhase,
-                     check_result_for_intent, terminal_for)
+from .orders import (INTENT_TRANSITIONS, TERMINAL, Evidence, IntentState, OrderIntent, OrderResult, ResultPhase,
+                     booking_step_ok, check_result_for_intent, supersedes, terminal_for)
 from .reasons import ReasonCode
 
 
@@ -165,10 +167,28 @@ class BindingChanged(DomainEvent):
             check_id(self.reconciliation_id, p + '.reconciliation_id', 'rec')
 
 
-EVENT_TYPES = (IntentRecorded, IntentStateChanged, ResultObserved, DecisionRecorded, ModeChanged, BindingChanged)
+@record
+class IncidentRecorded(DomainEvent):
+    """r3 DRAFT item 1: an Incident journaled in sequence (no effect on ownership, intents or modes)."""
+    event_id: str
+    account_id: str
+    aggregate_id: str
+    sequence: int
+    at_ms: int
+    reason: ReasonCode
+    incident: Incident
+
+    def _check(self, p):
+        req(self.incident.account_id == self.account_id, p + '.incident', 'incident of another account')
+        req(self.reason is self.incident.kind, p + '.reason', "the event carries its incident's kind")
+        req(self.at_ms >= self.incident.at_ms, p + '.at_ms', 'journaled before it was observed')
 
 
-def check_event_chain(events, *, after_sequence=0, known_intents=None):
+EVENT_TYPES = (IntentRecorded, IntentStateChanged, ResultObserved, DecisionRecorded, ModeChanged, BindingChanged,
+               IncidentRecorded)
+
+
+def check_event_chain(events, *, after_sequence=0, known_intents=None, facts=None):
     """Validate an ordered event list of one aggregate. `after_sequence` is the snapshot's last_sequence.
     `known_intents` maps intent_id ->
     (OrderIntent, state, submitted_at_ms or None) for intents live in that snapshot. Returns the live intents after the
@@ -176,10 +196,23 @@ def check_event_chain(events, *, after_sequence=0, known_intents=None):
 
     Detects: a sequence gap / reorder, another account's or aggregate's event, a result for an intent that was never made durable, a
     terminal step without a durable FINAL result (applied before recorded) or not matching it, any event after a terminal
-    state, a reused id or client id, and a one-shot authorization that is missing or used twice."""
+    state, a reused id or client id, and a one-shot authorization that is missing or used twice.
+
+    r3 item 3b (ruling 4: a durable exactly-once reconciliation fact): the one exception to "nothing after the final
+    result" - once the intent is TERMINAL on a corroborated not-found, a FINAL exchange record that supersedes it
+    (orders.supersedes) is journaled once; the intent stays terminal. A RECONCILE decision with reason
+    reconcile.late_fill_after_not_found then applies it: it names that intent (subject_id) and that record (evidence),
+    once, and only after the record is journaled. The step-0 JournalGate enforces the same.
+
+    PR #44: `facts` is the durable FactIndex of everything before after_sequence (facts.fold_facts): result ids and
+    incident ids are unique facts for the account's whole life, and a venue trade booked by an external close is
+    consumed once. An external booking must also be resolved by its RECONCILE decision recorded in this log."""
     live = dict(known_intents or {})
     cids = {c for it, _, _ in live.values() for c in it.client_ids}
     finals, ended, decisions, one_shots, used_auth = {}, set(), set(), set(), set()
+    closed, superseding, applied_late = {}, {}, set()       # r3 item 3b: ended intents, late FINAL records, decisions
+    ledger = FactLedger(facts)                              # PR #44: durable unique facts (shared with the gate)
+    before = set(live)                                      # intents made durable before after_sequence
     owner = None
     for n, ev in enumerate(events):
         p = f'events[{n}]'
@@ -188,12 +221,19 @@ def check_event_chain(events, *, after_sequence=0, known_intents=None):
             f'expected sequence {after_sequence + n + 1} (gap, reorder or rollback)')
         owner = owner or (ev.account_id, ev.aggregate_id)
         req((ev.account_id, ev.aggregate_id) == owner, p + '.account_id', 'event of another account / aggregate in this log')
+        ledger.check(ev, p)()
         if isinstance(ev, DecisionRecorded):
             d = ev.decision
             req(d.decision_id not in decisions, p, 'decision recorded twice')
             decisions.add(d.decision_id)
             if d.reason is ReasonCode.OPERATOR_ONE_SHOT:
                 one_shots.add(d.decision_id)
+            if d.reason is ReasonCode.RECONCILE_LATE_FILL:
+                late = superseding.get(d.subject_id)
+                req(late is not None and late.result_id in d.evidence, p + '.decision',
+                    'a late-fill reconcile names a journaled superseding FINAL record (subject + evidence)')
+                req(d.subject_id not in applied_late, p + '.decision', 'a late fill is reconciled once')
+                applied_late.add(d.subject_id)
         elif isinstance(ev, IntentRecorded):
             it = ev.intent
             req(it.intent_id not in live and it.intent_id not in ended, p, 'intent recorded twice')
@@ -209,11 +249,13 @@ def check_event_chain(events, *, after_sequence=0, known_intents=None):
             req(ev.intent_id in live, p, 'state change of an intent that was never made durable')
             it, st, sent = live[ev.intent_id]
             req(ev.from_state is st, p + '.from_state', f'the intent is {st}')
+            req(booking_step_ok(it, ev.to_state), p + '.to_state', 'a post-hoc booking is never sent')
             fin = finals.get(ev.intent_id)
             if ev.to_state in TERMINAL:
                 req(fin is not None, p + '.to_state', 'a terminal step needs a durable FINAL result first')
                 req(terminal_for(fin) is ev.to_state, p + '.to_state', f'the final result means {terminal_for(fin)}')
                 ended.add(ev.intent_id)
+                closed[ev.intent_id] = (it, sent)
                 del live[ev.intent_id]
                 continue
             req(fin is None, p + '.to_state', 'after a FINAL result only its terminal step may follow')
@@ -222,10 +264,20 @@ def check_event_chain(events, *, after_sequence=0, known_intents=None):
             live[ev.intent_id] = (it, ev.to_state, sent)
         elif isinstance(ev, ResultObserved):
             r = ev.result
+            if r.intent_id in closed and r.intent_id not in superseding and supersedes(finals[r.intent_id], r):
+                it, sent = closed[r.intent_id]
+                check_result_for_intent(it, r, sent)
+                superseding[r.intent_id] = r        # the late fact, journaled once; the intent stays terminal
+                continue
             req(r.intent_id not in ended and r.intent_id not in finals, p, 'event after the final result')
             req(r.intent_id in live, p, 'a result for an intent that was never made durable')
+            req(r.supersedes_result_id is None, p + '.result.supersedes_result_id',
+                'names a prior result it does not supersede')
             it, st, sent = live[r.intent_id]
             check_result_for_intent(it, r, sent)
+            if r.evidence is Evidence.EXCHANGE_EXTERNAL:                               # PR #44 P2-2
+                req(r.resolved_by in decisions or r.intent_id in before, p + '.result.resolved_by',
+                    'the authorising RECONCILE decision is not in the log')
             if r.phase is ResultPhase.FINAL:
                 finals[r.intent_id] = r
     return live
