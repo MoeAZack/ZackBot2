@@ -9,6 +9,8 @@ Design (NC-01 invariant 13, slice plan 1.3):
   attribute or a bad path join cannot leave the testnet host).
 """
 
+import re
+
 TESTNET_BASE_URL = 'https://testnet.binancefuture.com'
 TESTNET_ENVIRONMENT = 'testnet'
 
@@ -34,12 +36,16 @@ def check_binding(environment, base_url):
     return environment, base_url
 
 
+_CANONICAL_PATH = re.compile(r'v[0-9]{1,2}(/[A-Za-z]{1,40}){1,3}')
+
+
 def check_request_url(url):
-    """Every request URL must be <pinned host>/fapi/<path> with no query string, fragment or user-info tricks."""
+    """Every request URL must be exactly <pinned host>/fapi/v<N>/<letters>[/<letters>...]: a canonical path made of
+    ASCII letters only (Cowork finding 4). Percent-escapes (%2e%2e), ';', '..', '//', '?', '#', '@', spaces and any
+    control / CR / LF character are refused."""
     prefix = TESTNET_BASE_URL + '/fapi/'
     if type(url) is not str or not url.startswith(prefix):
         raise VenueGuardError('request URL is outside the pinned testnet host')
-    rest = url[len(prefix):]
-    if not rest or rest.startswith('/') or any(ch in rest for ch in '?#@\\ ') or '..' in rest or '//' in rest:
-        raise VenueGuardError('request URL path is not a plain /fapi/ path')
+    if not _CANONICAL_PATH.fullmatch(url[len(prefix):]):
+        raise VenueGuardError('request URL path is not a canonical /fapi/v<N>/<name> path')
     return url

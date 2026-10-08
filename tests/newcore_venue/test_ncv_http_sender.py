@@ -204,6 +204,33 @@ def test_announced_oversize_is_refused_before_reading(stub):
         s(req())
 
 
+@pytest.mark.parametrize('kw', [
+    dict(path='/fapi/v1/%2e%2e/order'), dict(path='/fapi/v1/order;x=1'), dict(path='/fapi/v1/order%0d%0aHost:x'),
+    dict(query='symbol=SOLUSDT\r\nHost: evil'), dict(query='a=1 2'), dict(query='a=%zz'), dict(query='a=1#frag'),
+    dict(query='a=\x00'), dict(headers=(('Host', 'fapi.binance.com'),)), dict(headers=(('host', 'x'),)),
+    dict(headers=(('Cookie', 'a=b'),)), dict(headers=(('X-Forwarded-Host', 'x'),)),
+    dict(headers=(('X-MBX-APIKEY', 'key\r\nHost: evil'),)), dict(headers=(('X-MBX-APIKEY', 'with space'),)),
+    dict(headers=(('X-MBX-APIKEY', ''),)),
+])
+def test_sender_refuses_odd_path_query_and_headers_before_connecting(kw):
+    calls = []
+    s = TestnetHttpSender(connect=lambda *a: calls.append(a))
+    with pytest.raises(VenueGuardError):
+        s(req(**kw))
+    assert calls == []
+
+
+def test_sender_path_check_holds_without_the_guard(monkeypatch):
+    import newcore.venue.http_sender as hs
+    monkeypatch.setattr(hs, 'check_request_url', lambda url: url)
+    calls = []
+    s = TestnetHttpSender(connect=lambda *a: calls.append(a))
+    for path in ('/fapi/v1/%2e%2e/x', '/fapi/v1/order;x', '/fapi/v1/order%0d%0a'):
+        with pytest.raises(VenueGuardError):
+            s(req(path))
+    assert calls == []
+
+
 def test_second_host_check_holds_on_its_own(monkeypatch):
     import newcore.venue.http_sender as hs
     monkeypatch.setattr(hs, 'check_request_url', lambda url: url)      # disable the first layer

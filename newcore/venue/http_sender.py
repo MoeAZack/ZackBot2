@@ -16,6 +16,7 @@ messages are fixed strings, never the URL (the query holds the signature) and ne
   transport maps it to UNKNOWN).
 """
 import http.client
+import re
 import socket
 import ssl
 import urllib.parse
@@ -27,6 +28,10 @@ TESTNET_HOST = urllib.parse.urlsplit(TESTNET_BASE_URL).hostname
 DEFAULT_MAX_BODY = 8 * 1024 * 1024        # exchangeInfo is the largest slice answer (a few MB on mainnet)
 _METHODS = ('GET', 'POST', 'DELETE')
 USER_AGENT = 'zackbot-newcore-venue/1'
+_PATH = re.compile(r'/fapi/v[0-9]{1,2}(/[A-Za-z]{1,40}){1,3}')
+_QUERY = re.compile(r'(?:[A-Za-z0-9._~*+=&-]|%[0-9A-Fa-f]{2})*')     # urlencode() output only: no raw control chars
+_CALLER_HEADERS = ('x-mbx-apikey',)
+_HEADER_VALUE = re.compile(r'[\x21-\x7e]{1,256}')
 
 
 def _verifying(ctx):
@@ -59,20 +64,33 @@ class TestnetHttpSender:
         if (parts.scheme != 'https' or parts.hostname != TESTNET_HOST or parts.port not in (None, 443)
                 or parts.username is not None or parts.password is not None or parts.query or parts.fragment):
             raise VenueGuardError('sender refuses any target other than the https testnet host')
+        if not _PATH.fullmatch(parts.path):
+            raise VenueGuardError('sender refuses a non-canonical path')
         if request.method not in _METHODS:
             raise VenueGuardError('sender refuses this HTTP method')
-        if not isinstance(request.query, str) or '#' in request.query:
-            raise VenueGuardError('malformed query')
+        if not isinstance(request.query, str) or not _QUERY.fullmatch(request.query):
+            raise VenueGuardError('sender refuses a query with characters outside the urlencoded set')
         return parts.path + ('?' + request.query if request.query else '')
+
+    @staticmethod
+    def _headers(request):
+        """Only the API-key header may come from the caller (Host, cookies, anything else is refused), and header
+        values must be printable ASCII without spaces, CR or LF (Cowork finding 4)."""
+        headers = {'User-Agent': USER_AGENT, 'Accept': 'application/json'}
+        for k, v in request.wire_headers():
+            if not isinstance(k, str) or k.lower() not in _CALLER_HEADERS:
+                raise VenueGuardError('sender refuses a caller-supplied header other than the API key')
+            if not isinstance(v, str) or not _HEADER_VALUE.fullmatch(v):
+                raise VenueGuardError('sender refuses a header value with control or non-printable characters')
+            headers[k] = v
+        return headers
 
     def __call__(self, request):
         target = self._target(request)
         timeout = request.timeout_s
         if isinstance(timeout, bool) or not isinstance(timeout, (int, float)) or not 0 < timeout <= 60:
             raise VenueGuardError('timeout_s must be in (0, 60]')
-        headers = {'User-Agent': USER_AGENT, 'Accept': 'application/json'}
-        for k, v in request.wire_headers():
-            headers[k] = v
+        headers = self._headers(request)
         conn = None
         try:
             conn = self._connect(TESTNET_HOST, timeout, self._ctx)
