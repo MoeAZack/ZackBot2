@@ -60,6 +60,10 @@ python tools\newcore_tnet_runner.py --target testnet --dry-run
 
 Expected: each prints a PLAN and exits 0. The last two show `config ... account acct_be53... binding 7d9bfb85502ca3be`.
 
+The last two use your `testnet.toml` (step 0's config path). It must contain `mode = "TESTNET"`, and yours already
+does. If either prints a `REFUSED: --config` line, stop and send the output; do not edit the
+file yourself. The tools only read it.
+
 ## 3. Read-only smoke (under 1 minute; sends NO orders)
 
 ```powershell
@@ -161,6 +165,23 @@ open position is refused too. Nothing is sent in either case.
 
 - `PASS` / `FAIL` / `INCONCLUSIVE` is the verdict.
 - `degraded=SYMBOL:SIDE:how` means the bot could not place its normal protective stop and used a fallback: either a stop placed further from the current price, or a reduce-only market close. It only happens when the bot cannot trust its own records (a "hard hold"), which these tests do not set up, so it should not appear. If it does, send that report even when the line says PASS.
+
+## Run notes: what this build does NOT do yet
+
+- **The first run is steps 1-4 plus 5a, nothing else.** T04-algo is optional and separate; the management brackets
+  (5b) and REC-02 come in a later run.
+- **Position management is OFF** in every first-run scenario: no targets, partial exits, adds or trailing.
+- **Funding in hedge mode:** Binance's funding rows do not say which side (LONG or SHORT) they belong to. If both sides
+  of one symbol were open at once, the bot would count all of that symbol's funding against the side it asks about.
+  The first-run scenarios open one side per symbol at a time, so this does not change any verdict.
+- **Old journals are refused:** a journal written by a NEWCORE build from before the record freeze is not migrated.
+  The bot refuses it and only guards its own proven exposure. The first run starts every scenario with a fresh
+  journal, so you will not see this.
+- **No fresh mark price:** if the mark price cannot be read, or is older than 30 seconds by Binance's clock, the
+  bot does not use a stale price for a fallback stop. It closes with a reduce-only market order instead, and the line
+  shows `degraded=` (see above).
+- **More S1 limits may be listed here** before Claude Code gives you the SHA: the S1 work is still closing items.
+  Use the version of this file at that SHA.
 
 ## What to send back
 

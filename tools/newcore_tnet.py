@@ -540,18 +540,24 @@ def _run(args, specs, symbols, min_balance, creds, scrubber, http, clock, mono, 
     out.write(format_cleanup(cleanup) + '\n')
 
     fees = pnl = Decimal(0)
-    for sym, eoid in venue.filled:
-        f = venue.fills(sym, eoid)
-        if f.kind is P.ReadKind.OK:
-            fees += sum((x.fee for x in f.value), Decimal(0))
-            pnl += sum((x.realized_pnl for x in f.value), Decimal(0))
+    fees_complete = True
+    try:                                               # read-only; a Ctrl+C here stops the reads, never the report
+        for sym, eoid in venue.filled:
+            f = venue.fills(sym, eoid)
+            if f.kind is P.ReadKind.OK:
+                fees += sum((x.fee for x in f.value), Decimal(0))
+                pnl += sum((x.realized_pnl for x in f.value), Decimal(0))
+            else:
+                fees_complete = False
+    except (KeyboardInterrupt, SystemExit):            # Cowork 6065286201 #2: after the cleanup, nothing is sent
+        interrupted, fees_complete = True, False
     cassette = _write_cassette(recorder, cassette_dir, stamp, values, out)
     rc_report = EXIT_PASS
     try:
         config = {'config': scrub_path(args.config) if args.config else None, 'account_id': args.account_id,
                   'symbols': symbols, 'probes': args.probe, 'stop_route': args.stop_route,
                   'min_balance': str(min_balance), 'specs': [spec_digest(s) for _, s in specs],
-                  'adopt_foreign': list(args.adopt_foreign)}
+                  'adopt_foreign': list(args.adopt_foreign), 'fees_complete': fees_complete}
         now = clock()
         paths = commit_evidence(lambda: tnet_report(
             run_id=run_id, scenarios=state['scenarios'], cleanup=cleanup, config=config, cassette_path=cassette,
@@ -561,6 +567,14 @@ def _run(args, specs, symbols, min_balance, creds, scrubber, http, clock, mono, 
     except (ReportLeak, CredentialStoreError, OSError) as ex:
         out.write(f'ERROR: report not written ({type(ex).__name__}: {ex}).\n')
         rc_report = EXIT_REPORT
+    if interrupted:                                    # the message states the ACTUAL cleanup state
+        if cleanup.clean:
+            out.write('INTERRUPTED (Ctrl+C). The cleanup above is CLEAN: nothing is left and nothing more will be '
+                      'sent.' + ('' if rc_report or cassette is None else ' The report is written.')
+                      + ('' if fees_complete else ' The fee / PnL totals in it may be incomplete.') + '\n')
+        else:
+            out.write('INTERRUPTED (Ctrl+C). The cleanup above is NOT clean: run python tools\\newcore_tnet.py '
+                      '--cleanup\n')
     if not cleanup.clean:
         return EXIT_RESIDUE
     if cassette is None or rc_report:

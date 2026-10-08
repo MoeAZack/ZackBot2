@@ -35,3 +35,6 @@ def test_the_guide_keeps_the_first_run_rules_the_cleanup_recipe_and_the_key_advi
     assert '--cleanup --close-positions --adopt-foreign BTCUSDT:LONG:0.002' in GUIDE
     assert 'REC-02 is **not used**' in GUIDE and '5b) are **deferred**' in GUIDE
     assert RUNNER + ' --target testnet --only T04-algo' in GUIDE
+    assert 'mode = "TESTNET"' in GUIDE and 'uses your `testnet.toml`' in GUIDE.replace('The last two use', 'uses')
+    notes = GUIDE.split('## Run notes', 1)[1].split('## What to send back', 1)[0]
+    assert 'steps 1-4 plus 5a' in notes and 'management is OFF' in notes and 'More S1 limits' in notes

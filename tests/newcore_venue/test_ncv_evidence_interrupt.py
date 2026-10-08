@@ -143,3 +143,33 @@ def test_an_absorbed_interrupt_never_hides_a_more_specific_exit(env, monkeypatch
     once = arm(monkeypatch, C, 'rename')                       # the cassette write of a REFUSED preflight
     rc, out = run(env, ['--probe', 'P1'], http=FakeBinance(dual=False))
     assert once.fired and rc == 4                              # preflight refused (4) wins over the interrupt (6)
+
+
+# ---------------------------------------------------------------------------------------------- Cowork 6065286201 #2
+PROBES = {'P1': ['--probe', 'P1'], 'P2': ['--probe', 'P2', '--p2-samples', '1']}
+
+
+@pytest.mark.parametrize('exc', [KeyboardInterrupt, SystemExit])
+@pytest.mark.parametrize('probe', sorted(PROBES))
+def test_every_request_of_each_probe_reports_and_states_the_real_cleanup_state(env, probe, exc):  # noqa: F811
+    """Once preflight OK is printed (orders may follow) a report is ALWAYS written, also for an interrupt in the
+    post-cleanup userTrades reads; after CLEANUP CLEAN the output never tells the owner to run --cleanup."""
+    fb0 = FakeBinance()
+    run(env, PROBES[probe], http=fb0)
+    n = len(fb0.requests)
+    trades = [k for k, q in enumerate(fb0.requests) if 'userTrades' in q.url]
+    assert trades                                                    # the post-cleanup reads are in the sweep
+    for k in range(n):
+        for d in (env['reports'], env['cassettes']):
+            for f in os.listdir(d) if os.path.isdir(d) else ():
+                os.remove(os.path.join(d, f))
+        fb = ExitAt(k, exc)
+        rc, out = run(env, PROBES[probe], http=fb)
+        assert rc in (6, 8) and 'Traceback' not in out, (k, rc, out)
+        assert fb.flat() and not fb.open_cids(), (k, out)
+        if 'preflight OK' in out:
+            assert 'report:' in out, (k, out)                        # the evidence is written
+        if 'CLEANUP CLEAN' in out:
+            assert rc == 6 and '--cleanup' not in out.split('CLEANUP CLEAN', 1)[1], (k, out)
+        if k in trades:
+            assert 'CLEANUP CLEAN' in out and 'INTERRUPTED' in out and 'report:' in out, (k, out)
