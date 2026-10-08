@@ -9,7 +9,7 @@
   "symbol": "SOLUSDT",
   "side": "LONG",
   "sizing": {
-    "risk_pct": "0.002",
+    "risk_pct": "0.0005",
     "max_leverage": "3"
   },
   "stop": {

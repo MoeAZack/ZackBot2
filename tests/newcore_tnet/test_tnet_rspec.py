@@ -38,7 +38,7 @@ def test_expectations_merge_the_testnet_override_only_on_testnet():
 
 def test_floats_are_refused():
     with pytest.raises(SpecError, match='floats'):
-        parse_rspec(json.dumps(base()).replace('"0.002"', '0.002'))
+        parse_rspec(json.dumps(base()).replace('"0.0005"', '0.0005'))
 
 
 def test_not_json_is_refused():

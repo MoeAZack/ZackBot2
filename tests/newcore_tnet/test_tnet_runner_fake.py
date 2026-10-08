@@ -38,7 +38,7 @@ def test_t01_books_entry_stop_and_close_with_fills():
     assert [(o['purpose'], o['state']) for o in r.orders] == [('entry', 'filled'), ('protect', 'cancelled'),
                                                               ('close', 'filled')]
     t, = r.trades
-    assert (t['side'], t['exit_code'], t['qty']) == ('LONG', 'SIGNAL_EXIT', '10')      # 10 USDT risk / 1.0 distance
+    assert (t['side'], t['exit_code'], t['qty']) == ('LONG', 'SIGNAL_EXIT', '2.5')     # 2.5 USDT risk / 1.0 distance
     assert [x['kind'] for x in r.ledger] == ['entry', 'stop', 'close']
     assert r.final_truth['outcome'] == 'flat' and r.final_truth['reconciled']
 
@@ -117,7 +117,7 @@ def test_a_bound_breach_fails_and_the_teardown_flattens():
 
 def test_notional_bound_fails_before_the_entry_is_sent():
     s = spec('T01-long')
-    s['bound']['max_notional_usdt'] = '999'
+    s['bound']['max_notional_usdt'] = '249'
     r = run(s)
     assert r.verdict == FAIL and 'notional' in r.error and r.ledger == []
 
@@ -183,7 +183,7 @@ def test_suite_exit_codes_and_residue_stops_the_suite(monkeypatch):
     bad = spec('T01-long')
     bad['expect']['entries'] = 3
     assert run_suite([bad, s], FakeTarget(), run_nonce='s3').exit_code == DR.EXIT_FAIL
-    dirty = CleanupResult(clean=False, attempts=3, remaining_positions=[('SOLUSDT', 'LONG', '10')])
+    dirty = CleanupResult(clean=False, attempts=3, remaining_positions=[('SOLUSDT', 'LONG', '2.5')])
     monkeypatch.setattr(FakeTarget, 'cleanup', lambda self, *a, **k: dirty)
     res = run_suite([spec('T12-protected'), spec('T01-long')], FakeTarget(), run_nonce='s4')
     assert res.exit_code == DR.EXIT_RESIDUE and len(res.scenarios) == 1               # nothing more ran
