@@ -22,6 +22,11 @@ SUITE = ['tests/newcore_store', 'tests/newcore_ports/test_nc02a_file_journal_con
 
 # name -> (file, [(exact source text, replacement)]); each anchor must occur exactly once
 MUTATIONS = {
+    'a stray file in snap/ read as damage (N4)': (S + 'store.py', [("            seen.findings.append(f'stray file in snap/: {n} (not a generation: reported, ignored, kept)')", "            seen.damage.append('unexpected file in snap/')")]),
+    'a malformed by-binding entry ignored (N7)': (S + 'store.py', [("    if state == 'bad':\n        return 'identity'", "    if False:\n        return 'identity'")]),
+    'promotion ignores the by-binding index (N7)': (S + 'store.py', [('        bp = _binding_problem(self.fs, self.paths, account)', '        bp = None  # ')]),
+    'bind() accepts any existing entry (N7)': (S + 'store.py', [("            if state != 'absent':\n                return state == 'ok' and owner == self.account_id\n", "            if False:\n                return True\n")]),
+    'a failing kind() escapes boot (N3)': (S + 'store.py', [("    except OSError:\n        return 'unreadable'\n", "    except KeyError:\n        return 'unreadable'\n")]),
     'reused evidence not made durable (HIGH-1)': (S + 'envelope.py', [('            _make_durable(fs, p, ed, cipher, account_id)', '            pass  # ')]),
     'evidence dir entry not flushed when the dir exists (HIGH-1)': (S + 'envelope.py', [('    fs.set_private_acl(ed)\n    fs.fsync_dir(account_dir)\n', '    fs.set_private_acl(ed)\n')]),
     'a future snapshot record behind damage read as damage (HIGH-2, 02b)': (S + 'snapfile.py', [('        if _future_anywhere(raw, reader):\n            raise SnapFuture', '        if False:\n            raise SnapFuture')]),

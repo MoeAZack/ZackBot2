@@ -20,7 +20,7 @@ boot() applies the rules in order (first match wins, rule 0 always runs):
     newer one: HOLD (rollback). The D11 hard-HOLD marker in the anchor forces HOLD too.
   3 an unreadable member or a non-file at a member path: HOLD with no write at all (D6: soft; the cause is re-derived).
   4 damage (A17 / A18 rejections, a missing member, a journal behind its snapshot, HEAD lost while generations exist,
-    unexpected files): evidence copied into the envelope (A04), a HOLD generation committed (A05), the newest intact
+    unexpected members; a stray file in snap/ is only reported, N4): evidence copied into the envelope (A04), a HOLD generation committed (A05), the newest intact
     generation offered as candidate (A07), never managed.
   5 the exchange is down: HOLD (INIT waits with nothing written).
   6 trust MANAGED + the configured binding confirmed and equal + no unapplied journal tail + a fresh MATCH: MANAGE.
@@ -55,7 +55,7 @@ from .errors import DurabilityUnavailable
 from .frame import KIND_ANCHOR, KIND_HEAD
 from .header import VersionVerdict, canonical_json, strict_json, HeaderError
 from .incidents import append_incident
-from .journal import JOURNAL_DIR, create_journal
+from .journal import ACCT_RE, JOURNAL_DIR, create_journal
 from .legacy import scan_legacy
 from .reconcile import ExchangeDown, HoldItem, verdict, VerdictKind
 from .records import (ProvenanceKind, Reader, SNAP_NAME_RE, Trust, derive_hex, incident_id, provenance,
@@ -289,19 +289,34 @@ class AccountStore:
         return self._write_anchor(now_ms, hard_hold=True)
 
     def bind(self, now_ms):
-        """anchors/by-binding/<digest>: written once (O_EXCL); an existing entry naming another account is identity."""
+        """anchors/by-binding/<digest>: written once (O_EXCL), never overwritten. True when the entry names this account
+        (written now or already there); False when it cannot be written or names / holds anything else (N7).
+        The one exception to "written once": a torn entry of THIS account's own interrupted bind (a prefix of its exact
+        canonical bytes, possibly NUL-filled) is completed in place - never an entry naming anything else."""
         fs, paths = self.fs, self.paths
         p = os.path.join(paths.by_binding, self.account.binding.key_digest)
+        own = _own_entry(self.account)
         try:
             for d, parent in ((paths.anchors, paths.base), (paths.by_binding, paths.anchors)):
                 if fs.kind(d) == 'missing':
                     fs.mkdir(d)
                     fs.fsync_dir(parent)
+            state, owner = _by_binding(fs, paths, self.account)
+            if state == 'torn':
+                h = fs.open_slot(p)
+                try:
+                    fs.write_at(h, own, 0)
+                    fs.fsync(h)
+                finally:
+                    fs.close(h)
+                fs.fsync_dir(paths.by_binding)
+                return fs.read_bytes(p) == own
+            if state != 'absent':
+                return state == 'ok' and owner == self.account_id
             if fs.kind(p) == 'missing':
                 h = fs.open_new(p)
                 try:
-                    fs.write(h, canonical_json({'account_id': self.account_id,
-                                                'binding_digest': self.account.binding.key_digest}))
+                    fs.write(h, own)
                     fs.fsync(h)
                 finally:
                     fs.close(h)
@@ -372,6 +387,9 @@ class AccountStore:
             items.append(HoldItem('account', 'journal_tail_unapplied', f'after {cand_lsn}'))
         if account.binding_state is not BindingState.CONFIRMED:
             items.append(HoldItem('account', 'identity', 'binding not confirmed'))
+        bp = _binding_problem(self.fs, self.paths, account)       # N7: never adopt a key bound to another account
+        if bp is not None:
+            items.append(HoldItem('account', 'identity', bp[1]))
         identity_change = account.binding.key_digest != self.account.binding.key_digest or any(
             i['cause'] == 'identity' for i in (self.current.provenance['items'] if self.current else ()))
         empty = cand_pf is not None and cand_pf.ownership is Ownership.KNOWN_EMPTY
@@ -484,6 +502,9 @@ def boot(base, account, *, exchange, now_ms, fs=None, reader=None, cipher=None, 
 
     try:
         exists = _read_only(fs, paths, account, reader, store, seen)
+    except OSError as ex:                                         # N3: never a raw OSError; never INIT on it either
+        seen.unreadable.append(f'read error during the scan ({type(ex).__name__})')
+        exists = True
     except _Abort as ab:
         incident('abort_ro', 'rule_1', {'findings': list(ab.findings)})
         return result(Mode.ABORT_RO, reason=ReasonCode.RECOVERY_SCHEMA_FUTURE, findings=ab.findings,
@@ -629,10 +650,14 @@ def _empty_proven(sf, tail):
 
 def _read_only(fs, paths, account, reader, store, seen):
     """Rule 1 over every member, then rules 2 / 3 / 4 classification. Never writes. Returns whether a store exists."""
-    acct_exists = fs.kind(paths.account) != 'missing'
+    acct_kind = _kind(fs, paths.account)                         # N3: a failing kind() is unreadable, typed
+    acct_exists = acct_kind != 'missing'
     # anchor + by-binding (outside data\)
+    anchors_kind = _kind(fs, paths.anchors)
+    if anchors_kind == 'unreadable':
+        seen.unreadable.append('anchors directory')
     anchor = read_pair(fs, paths.anchors, account.account_id, KIND_ANCHOR, validate_anchor) \
-        if fs.kind(paths.anchors) == 'dir' else None
+        if anchors_kind == 'dir' else None
     if anchor is not None:
         if anchor.state is PairState.FUTURE:
             seen.future.append('anchor slot')
@@ -644,13 +669,14 @@ def _read_only(fs, paths, account, reader, store, seen):
             seen.unreadable.append('anchor')
         elif anchor.state is PairState.DAMAGE:
             seen.damage.append('anchor slots')
-    owner = _by_binding(fs, paths, account)
-    if owner is not None and owner != account.account_id:
-        seen.identity.append('the binding belongs to another account')
+    bp = _binding_problem(fs, paths, account)                    # N7: the index is used at every boot
+    if bp is not None:
+        (seen.identity if bp[0] == 'identity' else seen.unreadable).append(bp[1])
     head = None
     if acct_exists:
-        if fs.kind(paths.account) != 'dir':
-            seen.unreadable.append('account path is not a directory')
+        if acct_kind != 'dir':
+            seen.unreadable.append('account path unreadable' if acct_kind == 'unreadable'
+                                   else 'account path is not a directory')
         else:
             head = read_pair(fs, paths.account, 'HEAD', KIND_HEAD, validate_head)
             if head.state is PairState.FUTURE:
@@ -718,17 +744,59 @@ def _read_only(fs, paths, account, reader, store, seen):
     return True
 
 
+def _kind(fs, p):
+    """fs.kind(p), or 'unreadable' when the OS cannot say (N3: never a raw OSError out of boot)."""
+    try:
+        return fs.kind(p)
+    except OSError:
+        return 'unreadable'
+
+
 def _by_binding(fs, paths, account):
+    """N7: the anchors/by-binding/<key digest> index entry of this account's configured key, as (state, value):
+    ('absent', None) | ('torn', None) | ('ok', owner account id) | ('bad', why) | ('unreadable', why). 'torn' is this
+    account's own interrupted bind() (a prefix of its exact canonical bytes, maybe NUL-filled): treated as absent and
+    completed by the next bind(). An entry is 'ok' only when it is
+    the exact canonical document the store writes ({account_id, binding_digest}) for THIS digest."""
     p = os.path.join(paths.by_binding, account.binding.key_digest)
     try:
-        if fs.kind(p) != 'file':
-            return None
-        doc, problems = strict_json(fs.read_bytes(p))
-    except (OSError, HeaderError):
-        return None
-    if problems or type(doc) is not dict or type(doc.get('account_id')) is not str:
-        return None
-    return doc['account_id']
+        k = fs.kind(p)
+        if k == 'missing':
+            return 'absent', None
+        if k != 'file':
+            return 'bad', f'a {k} at the entry path'
+        raw = fs.read_bytes(p)
+    except OSError as ex:
+        return 'unreadable', type(ex).__name__
+    own = _own_entry(account)
+    if raw != own and len(raw) <= len(own) and own.startswith(raw.rstrip(b'\0')):
+        return 'torn', None                                       # this account's own interrupted bind()
+    try:
+        doc, problems = strict_json(raw)
+    except HeaderError:
+        return 'bad', 'not JSON'
+    if (problems or type(doc) is not dict or set(doc) != {'account_id', 'binding_digest'}
+            or type(doc['account_id']) is not str or not ACCT_RE.fullmatch(doc['account_id'])
+            or doc['binding_digest'] != account.binding.key_digest or raw != canonical_json(doc)):
+        return 'bad', 'not the canonical entry for this key'
+    return 'ok', doc['account_id']
+
+
+def _own_entry(account):
+    return canonical_json({'account_id': account.account_id, 'binding_digest': account.binding.key_digest})
+
+
+def _binding_problem(fs, paths, account):
+    """(cause, why) when the by-binding index forbids this account on its configured key, else None. 'absent' is fine
+    (a first run, or an index entry a failed best-effort bind() never wrote)."""
+    state, v = _by_binding(fs, paths, account)
+    if state == 'ok' and v != account.account_id:
+        return 'identity', 'the binding belongs to another account'
+    if state == 'bad':
+        return 'identity', f'by-binding entry unusable ({v}): identity unprovable'
+    if state == 'unreadable':
+        return 'unreadable', f'by-binding entry unreadable ({v})'
+    return None
 
 
 def _journal_files(fs, paths):
@@ -748,7 +816,10 @@ def _scan_snapshots(fs, paths, reader, store, seen):
             named[r['name']] = ('retained', r)
     quarantined = {q['name'] for q in hd['quarantined']} if hd else set()
     retired = set(hd['retired']) if hd else set()
-    k = fs.kind(paths.snap)
+    k = _kind(fs, paths.snap)
+    if k == 'unreadable':
+        seen.unreadable.append('snap directory')
+        return
     if k == 'missing':
         names = []
     elif k != 'dir':
@@ -764,7 +835,7 @@ def _scan_snapshots(fs, paths, reader, store, seen):
     for n in names:
         m = SNAP_NAME_RE.fullmatch(n)
         if m is None:
-            seen.damage.append('unexpected file in snap/')
+            seen.findings.append(f'stray file in snap/: {n} (not a generation: reported, ignored, kept)')   # N4
             continue
         store.max_seen = max(store.max_seen, int(m.group(1)))
         p = os.path.join(paths.snap, n)
@@ -858,6 +929,8 @@ def _interrupted_init(store, insp):
     try:
         names = fs.listdir(paths.snap) if fs.kind(paths.snap) == 'dir' else []
         for n in names:
+            if SNAP_NAME_RE.fullmatch(n) is None:             # N4: a stray file is not a generation
+                continue
             raw = fs.read_bytes(os.path.join(paths.snap, n))
             sf = _try_decode(raw, store.reader, store)
             if sf is None:
@@ -958,11 +1031,10 @@ def _init(store, exchange, now_ms, incident, result, findings):
         snap = exchange.snapshot()
     except ExchangeDown:
         return result(Mode.INIT_WAIT, findings=findings, writes=frozenset())
-    owner = _by_binding(fs, paths, account)
-    if owner is not None and owner != account.account_id:
+    bp = _binding_problem(fs, paths, account)                    # N7: INIT never claims a key it cannot prove
+    if bp is not None:
         return result(Mode.HOLD, hold_kind=HoldKind.NORMAL, reason=ReasonCode.BINDING_MISMATCH,
-                      items=(HoldItem('account', 'identity', 'the binding belongs to another account'),),
-                      findings=findings, store=None)
+                      items=(HoldItem('account', 'identity', bp[1]),), findings=findings, store=None)
     flat_ok = snap.flat and account.binding_state is BindingState.CONFIRMED and snap.key_digest == \
         account.binding.key_digest
     try:

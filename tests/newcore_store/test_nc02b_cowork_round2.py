@@ -80,10 +80,12 @@ def _managed_fs():
 
 
 @pytest.mark.parametrize('mode', ['read', 'mut'])
-def test_no_raw_exception_leaves_open_store_on_an_existing_store(mode):
+@pytest.mark.parametrize('exchange', ['match', 'mismatch'])            # MANAGE, and HOLD (commits a HOLD generation)
+def test_no_raw_exception_leaves_open_store_on_an_existing_store(mode, exchange):
     _, pos, orders = owned()
-    raw, n = _sweep(_managed_fs, lambda: FakeExchange(pos, orders), mode)
-    assert n > 5 and raw == []
+    ex = (lambda: FakeExchange(pos, orders)) if exchange == 'match' else (lambda: FakeExchange([], []))
+    raw, n = _sweep(_managed_fs, ex, mode)
+    assert n > (5 if mode == 'read' else 1) and raw == []          # a MANAGE boot makes few writes
 
 
 @pytest.mark.parametrize('mode', ['read', 'mut'])
@@ -91,7 +93,7 @@ def test_no_raw_exception_leaves_open_store_on_an_existing_store(mode):
 def test_no_raw_exception_leaves_open_store_at_init(mode, flat):
     _, pos, orders = owned()
     raw, n = _sweep(mem, (lambda: FakeExchange()) if flat else (lambda: FakeExchange(pos, orders)), mode)
-    assert n > 5 and raw == []
+    assert n > (5 if mode == 'read' else 1) and raw == []          # a MANAGE boot makes few writes
 
 
 # ---------------------------------------------------------------------------------------------------- N4
@@ -212,3 +214,34 @@ def test_the_nf_fixture_passes_are_not_skipped_off_windows():
     marks = getattr(nf, 'pytestmark', [])
     marks = marks if isinstance(marks, list) else [marks]
     assert not any(m.name == 'skipif' for m in marks), 'the NF fixture passes must run on every OS (portable cipher)'
+
+
+OWN = canonical_json({'account_id': ACCT, 'binding_digest': DIGEST})
+
+
+@pytest.mark.parametrize('torn', ['empty', 'prefix', 'prefix_nul_filled'])
+def test_a_torn_own_entry_is_an_interrupted_bind_completed_in_place(torn):
+    """A crash inside this account's own bind() leaves a prefix of its canonical entry (NUL-filled under the zero model):
+    not an identity problem - boot proceeds and the next bind() completes the entry (it never touches anything else)."""
+    fs, ex, _ = managed_with_lot()
+    p = os.path.join(P.by_binding, DIGEST)
+    fs.files.pop(os.path.normpath(p))
+    raw = {'empty': b'', 'prefix': OWN[:17], 'prefix_nul_filled': OWN[:17] + bytes(len(OWN) - 17)}[torn]
+    _put(fs, p, raw)
+    r = go(fs, ex)
+    assert r.mode is Mode.MANAGE, r.items
+    assert r.store.bind(T) is True and fs.read_bytes(p) == OWN
+    _close(r)
+
+
+def test_a_prefix_that_diverges_from_the_own_entry_is_not_torn():
+    fs, ex, _ = managed_with_lot()
+    p = os.path.join(P.by_binding, DIGEST)
+    fs.files.pop(os.path.normpath(p))
+    other = canonical_json({'account_id': OTHER_ACCT, 'binding_digest': DIGEST})
+    _put(fs, p, other[:30])
+    assert other[:30] != OWN[:30]
+    r = go(fs, ex)
+    assert r.mode is Mode.HOLD and any(i.cause == 'identity' for i in r.items)
+    assert r.store.bind(T) is False and fs.read_bytes(p) == other[:30]
+    _close(r)

@@ -1,6 +1,8 @@
 """NF fixtures for NC-02b (prep/nc02-negative-fixtures @ a6364de; fixture_runner_skeleton.py, acceptance draft r4 5.1).
 
-Two passes on the REAL file system (tmp dirs only; the production DPAPI cipher and DACL):
+Two passes on the REAL file system (tmp dirs only). N6 (Cowork): they run on every OS - with the production DPAPI
+cipher and DACL on Windows, and with the portable test cipher (and POSIX 0700) elsewhere, since nothing in the
+fixture logic depends on the cipher; the DPAPI / DACL specifics are pinned Windows-only in test_nc02b_envelope.py.
 
 a. REJECT (5.1a, every fixture except the installer rows NF-18..20): the fixture's legacy file names sit in data\\ (with
    its layout: NF-33's state.json is a directory; and its inject: NF-13 read error, NF-34 ENOSPC, NF-35 EROFS on every
@@ -33,9 +35,21 @@ from newcore.store.frame import FILE_HEADER, RT_BINDING, RT_SETTINGS, frame, rec
 from newcore.store.header import canonical_json
 from newcore.store.reconcile import ExOrder, ExPosition
 from newcore.store.records import provenance, snap_name
-from newcore.store.store import Mode, boot
+from newcore.store.cipher import InsecureTestCipher
+from newcore.store.store import Mode
+from newcore.store.store import boot as _boot
 
-pytestmark = pytest.mark.skipif(sys.platform != 'win32', reason='the production evidence cipher is DPAPI (Windows)')
+# Windows: None = the production default (DPAPI). Elsewhere: the portable test cipher (DPAPI does not exist there).
+# NC02B_PORTABLE_CIPHER=1 runs the portable path on Windows too.
+PORTABLE = sys.platform != 'win32' or bool(os.environ.get('NC02B_PORTABLE_CIPHER'))
+CIPHER = InsecureTestCipher(test_only=True) if PORTABLE else None
+
+
+def boot(*a, **kw):
+    kw.setdefault('cipher', CIPHER)
+    return _boot(*a, **kw)
+
+
 DEC = 'dec_' + '7' * 32
 INSTALLER = ('NF-18', 'NF-19', 'NF-20')
 
@@ -290,7 +304,7 @@ def b_g_missing_evidence_present(base):                 # NF-38: crash after a c
     reconciled(base)
     raw = _rd(snapp(base, 3))
     write_envelope(RealFs(), acct_dir(base), ACCT, raw, source='damaged_member', rel_path=f'snap/{snap_name(3)}',
-                   incident_id='inc-legacy-move-aside')
+                   incident_id='inc-legacy-move-aside', cipher=CIPHER)
     os.remove(snapp(base, 3))
 
 
