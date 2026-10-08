@@ -238,7 +238,8 @@ class ManagementMixin:
             d = ev.decision
             if d.action is Action.WAIT and d.detail.startswith(START + ' '):
                 self._mg_apply_start(d)
-            elif d.action is Action.WAIT and d.detail.startswith('external close suspected') and d.subject_id in self.mg:
+            elif d.action is Action.WAIT and d.subject_id in self.mg and d.detail.startswith(
+                    ('external close suspected', 'external partial close suspected')):
                 self.mg.pop(d.subject_id)                                 # Cowork p3: the lot leaves management
                 self.plans.pop(d.subject_id, None)
                 self.unmanaged.add(d.subject_id)

@@ -102,9 +102,10 @@ def test_contract_an_unprovable_position_is_a_surfaced_hold(side):
 def test_new3_a_hard_hold_emergency_stop_is_cancelled_once_the_side_is_flat(side):
     w = World(flat_bars(20), sig(side))
     w.run(6)
-    w.journal.fail_writes(10 ** 9)
+    lot, = w.runner.fold.open_lots()
+    w.venue.external_cancel(lot.live_stop.intent.client_order_id)  # our stop is gone (6065286201 #1: a foreign add
+    w.journal.fail_writes(10 ** 9)                                 # would rightly stay uncovered, A22)
     w.runner.store_unavailable('test: ENOSPC')
-    w.venue.inject_position(SYM, side, D('3'), D('100'))
     w.run(7)
     assert [o for o in w.venue.open_orders().value if ids.is_emergency_client_id(o.ref.client_id)]
     w.venue._positions.pop((SYM, side), None)                      # flattened by hand while the store is down

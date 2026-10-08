@@ -86,35 +86,45 @@ def test_new1_crash_between_the_reconcile_decision_and_its_result_never_wedges(s
     assert protected_end(w, side) and (bool(r.fold.open_lots()) == filled)
 
 
+def racing_entry(side):
+    """Cowork F1's scenario: our entry rests, the store goes down, every drain cancel answer is lost (the entry keeps
+    resting) and its race fills arrive in hard HOLD - OUR growing exposure (6065286201 #1: a foreign inject would
+    rightly stay unprotected, A22)."""
+    w = World(flat_bars(20), sig(side))
+    w.venue.rest_next_entries(1)
+    w.run(5)
+    cid = _entry_cid(w, side)
+    w.journal.fail_writes(10 ** 9)
+    w.runner.store_unavailable('test: ENOSPC')
+    return w, cid
+
+
+def race_fill(w, cid, qty, bar):
+    w.port.lose('cancel')                                          # the drain cancel never lands
+    w.venue.fill_resting(cid, qty)
+    w.run(bar)
+
+
 # ------------------------------------------------------------------------------------------------------- F1
 @pytest.mark.parametrize('side', SIDES)
 def test_f1_a_second_equal_gap_in_hard_hold_gets_its_own_emergency_stop(side):
-    w = World(flat_bars(20), sig(side))
-    w.run(6)
-    w.journal.fail_writes(10 ** 9)
-    w.runner.store_unavailable('test: ENOSPC')
-    w.venue.inject_position(SYM, side, D('3'), D('100'))           # +3: the first gap
-    w.run(7)
-    assert position(w, side) == covered(w, side) == D('8')
-    w.venue.inject_position(SYM, side, D('3'), D('100'))           # +3 again: the same-size gap
-    w.run(8)
-    assert covered(w, side) >= position(w, side) == D('11')
-    w.run(9)                                                       # idempotent: no duplicate, still covered
-    assert covered(w, side) == D('11')
+    w, cid = racing_entry(side)
+    race_fill(w, cid, D('1'), 6)                                   # 1: the first gap
+    assert position(w, side) == covered(w, side) == D('1')
+    race_fill(w, cid, D('1'), 7)                                   # 1 again: the same-size gap
+    assert covered(w, side) >= position(w, side) == D('2')
+    w.run(8)                                                       # idempotent: no duplicate, still covered
+    assert covered(w, side) == D('2')
 
 
 @pytest.mark.parametrize('side', SIDES)
 def test_f2_a_cancelled_emergency_stop_id_is_not_reused_a_new_generation_covers(side):
-    w = World(flat_bars(20), sig(side))
-    w.run(6)
-    w.journal.fail_writes(10 ** 9)
-    w.runner.store_unavailable('test: ENOSPC')
-    w.venue.inject_position(SYM, side, D('3'), D('100'))
-    w.run(7)
+    w, cid = racing_entry(side)
+    race_fill(w, cid, D('3'), 6)
     em = [o for o in w.venue.open_orders().value if ids.is_emergency_client_id(o.ref.client_id)]
     w.venue.external_cancel(em[0].ref.client_id)                    # the emergency stop vanishes at the venue
-    w.run(8)
-    assert covered(w, side) >= position(w, side) == D('8')
+    w.run(7)
+    assert covered(w, side) >= position(w, side) == D('3')
 
 
 # ------------------------------------------------------------------------------------------------------- the 289

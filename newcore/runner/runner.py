@@ -95,6 +95,7 @@ EMERGENCY_GENERATIONS = 16            # hard HOLD: cover generations per (symbol
 ESCALATE_AFTER = 2                    # cycles with an unconfirmed stop before the reduce-only close (Cowork NEW-4)
 LOST_ENTRY_LOOKBACK = 3               # (superseded by GUARD_ENTRY_LOOKBACK for the search: Cowork NEW A)
 GUARD_ENTRY_LOOKBACK = 60             # the guard (no journal): candles back an own entry is proven by its client id
+MAX_LOST_TAIL_CANDLES = 2000          # runtime lost-tail search: hard bound (4h: ~333 days)
 GUARD_CHILDREN = 32                   # the guard: lineage ordinals per purpose probed for our own exits / adds
 GUARD_CHILD_MISSES = 4                # ... until this many consecutive unknown ordinals (unsent ones leave gaps)
 REDUCE_REFUSALS = 2                   # refused reduce-only sends of a lot before the venue position is read (MED-3)
@@ -228,6 +229,7 @@ class Runner:
         self._n_rec = 0
         self.hard_hold = None                                             # durability-unavailable HOLD (process)
         self.incidents = []                                               # (at_ms, text): surfaced, not journaled
+        self._ext_partial = {}                                            # lot -> venue qty after an external partial
         self._reads = {}                                                  # lost entry -> agreeing position reads
         self._refusals = {}                                               # stop intent -> venue refusal code
         self._orphans_checked = set()                                     # ENTER decisions asked about (289)
@@ -235,6 +237,9 @@ class Runner:
         self._reduce_refused = {}                                         # lot -> consecutive 'nothing to reduce'
         self._suspended_lots = set()                                      # lots with an external-close owner item
         self._lost_checked = set()                                        # (symbol, side, candle) asked (289)
+        last = journal.last_sequence()                                    # the journal's last DURABLE state at boot
+        tail = tuple(journal.read(after_sequence=last - 1)) if last else ()
+        self._boot_last_at = tail[-1].at_ms if tail else None             # anchors the lost-tail search (NEW A)
         self.guard = False                                                # app guard: no trusted journal at all
         self.degraded = {}                                                # (symbol, side) -> degraded protection
         self._listed = None                                               # this sync's listed client ids (LOW-6)
@@ -459,7 +464,14 @@ class Runner:
             covered = sum((o.qty for o in oo.value if o.reduce and o.order_type == 'STOP_MARKET'
                            and (o.ref.symbol, o.position_side) == (p.symbol, p.side)
                            and self._owned_order(o.ref.client_id)), ZERO)
-            exposed = p.qty if proven is None else min(proven[0], p.qty)  # at most the proven residual
+            if proven is not None:
+                exposed = min(proven[0], p.qty)                           # at most the proven residual (P1-1)
+            else:                                                         # Cowork 6065286201 #1 (A22): our owned
+                owned = self._owned_exposure(p.symbol, p.side)            # quantity, never a foreign add
+                if owned is None:                                         # our own fills unreadable: never leave
+                    self._incident(f'hard HOLD: {p.symbol} {p.side}: own race fills unreadable; the whole position '
+                                   f'{p.qty} is covered this cycle')      # them naked
+                exposed = p.qty if owned is None else min(p.qty, owned)
             if covered >= exposed:
                 continue                                                  # M45: covered: no change
             if proven is not None and proven[1] is None:                  # proven ours, no safe level: escalate
@@ -474,6 +486,25 @@ class Runner:
                 out = self.venue.cancel(o.ref)                            # is exchange cleanup, never protection
                 self._incident(f'hard HOLD: {o.ref.client_id} {o.ref.symbol} {o.position_side} flat: cancelled '
                                f'-> {out.kind}')
+
+    def _owned_exposure(self, symbol, side):
+        """Hard HOLD: the quantity of (symbol, side) that is OURS - the journaled open lots plus the venue's fills of our
+        own live opening intents (ENTRY / ADD race or partial fills, not yet journaled; read from the order's trades).
+        Foreign quantity on the same side is never in it (A22). None = our own fills cannot be read (unknown)."""
+        owned = sum((x.qty for x in self.fold.open_lots() if (x.symbol, x.side) == (symbol, side)), ZERO)
+        for iv in self.fold.live_intents():
+            if iv.purpose in OPENING_PURPOSES and (iv.intent.symbol, str(iv.intent.side)) == (symbol, side):
+                q = self.venue.query(self._ref(iv))
+                if q.kind is OutcomeKind.NOT_FOUND or (q.kind is OutcomeKind.FINAL and not q.executed_qty):
+                    continue                                              # never reached the venue / filled nothing
+                fr = self.venue.fills(symbol, q.exchange_order_id) if q.exchange_order_id else None
+                if fr is not None and fr.kind is ReadKind.OK:
+                    owned += sum((f.qty for f in fr.value), ZERO)         # our race / partial fills (userTrades)
+                elif q.kind is OutcomeKind.FINAL:
+                    owned += q.executed_qty
+                else:
+                    return None                                           # our own fills unreadable: unknown
+        return owned
 
     def _drain(self, iv):
         it = iv.intent
@@ -495,7 +526,9 @@ class Runner:
         fill must belong to an order of ours - the entry, the lot's lineage children (protect / close / reduce / add,
         both routes) or a strategy close re-derived by its key - and the net (opening minus closing) is the proven
         residual. Returns None (no own entry: not ours), ('ambiguous', why) (a trade we cannot attribute, no trades
-        read, nothing left of ours) or (residual qty, emergency level | None)."""
+        read, nothing left of ours) or (residual qty, emergency level | None).
+        DISCLOSED LIMIT (Cowork 6065286201 #4): our lot mixed with a foreign same-side add since the entry is
+        'ambiguous' - the guard protects nothing on that side (a loud HOLD for the owner), by design (Codex P1-1)."""
         found = self._guard_proven_entry(p)
         if found is None:
             return None
@@ -938,13 +971,27 @@ class Runner:
             if p.symbol not in self.cfg.symbols or p.side not in self.cfg.sides or \
                     p.qty <= owned.get((p.symbol, p.side), ZERO) or self.fold.live_entries(p.symbol, p.side):
                 continue
-            for k in range(GUARD_ENTRY_LOOKBACK + 1):                     # Cowork NEW A: the guard's window
-                c = self.now - k * self.cfg.tf_ms
+            for k in range(self._lost_tail_candles() + 1):                # Cowork NEW A: back to the last
+                c = self.now - k * self.cfg.tf_ms                         # durable state (at least the guard's)
                 if (p.symbol, p.side, c) in self._lost_checked:
                     continue
                 self._lost_checked.add((p.symbol, p.side, c))
                 if self._recover_entry_at(p.symbol, p.side, c):
                     break
+
+    def _lost_tail_candles(self):
+        """How far back a lost entry can be (Cowork NEW A, beyond 60): a lost tail is a SUFFIX of the journal, so an entry
+        whose every record was lost was decided after the journal's last durable event at boot. The search reaches that
+        event's candle (+1 candle margin), at least GUARD_ENTRY_LOOKBACK, at most MAX_LOST_TAIL_CANDLES (beyond: an
+        incident; the untracked-position HOLD stays for the owner). Bounded by the lost tail, not by wall-clock time."""
+        if self._boot_last_at is None or self.now is None:
+            return GUARD_ENTRY_LOOKBACK
+        n = max(GUARD_ENTRY_LOOKBACK, -(-(self.now - self._boot_last_at) // self.cfg.tf_ms) + 1)
+        if n > MAX_LOST_TAIL_CANDLES:
+            self._incident(f'lost-tail search: the last durable event is {n} candles back, beyond '
+                           f'MAX_LOST_TAIL_CANDLES={MAX_LOST_TAIL_CANDLES}: searched that far only (owner item)')
+            n = MAX_LOST_TAIL_CANDLES
+        return n
 
     def _recover_entry_at(self, symbol, side, close_ms):
         r = self.bars.closed_bars(symbol, self.cfg.tf_ms, as_of_ms=close_ms, limit=self.signals.window)
@@ -1164,8 +1211,8 @@ class Runner:
         code = self._refusals.get(prev.intent_id, 'unknown')
         return 'algo' if code in ('unknown', ALGO_ROUTE) else 'classic'
 
-    def _protect(self, lot):
-        if not lot.open or lot.live_stop is not None or lot.closing is not None:
+    def _protect(self, lot, *, replacing=False):
+        if not lot.open or (lot.live_stop is not None and not replacing) or lot.closing is not None:
             return
         if not self._permits(Purpose.PROTECT, Op.PLACE):
             return
@@ -1179,12 +1226,13 @@ class Runner:
             price = self._protect_price(lot)
             route = self._next_route(lot)
             reason = ReasonCode.PROTECT_PLACE if n == 0 or route == 'algo' else ReasonCode.PROTECT_RESTORING
+            qty = self._protect_qty(lot)
             planned = planned_intent(intent_id=iid, account_id=self.acct, decision_id=did, purpose='protect',
-                                     symbol=lot.symbol, side=lot.side, qty=lot.qty, reason=reason, at_ms=self.now,
+                                     symbol=lot.symbol, side=lot.side, qty=qty, reason=reason, at_ms=self.now,
                                      owner_id=lot.lot_id, stop_price=price, route=route)
             self._decision(decision_id=did, action=Action.PROTECT, reason=reason, authority=Authority.PROTECTION,
                            key=None, symbol=lot.symbol, side=lot.side, intents=(planned,), subject_id=lot.lot_id,
-                           evidence=(lot.entry.intent_id,), detail=f'stop {price} x {lot.qty}')
+                           evidence=(lot.entry.intent_id,), detail=f'stop {price} x {qty}')
         self._send_stop(self._record_durable(planned))
 
     def _protect_price(self, lot):
@@ -1384,6 +1432,11 @@ class Runner:
             return
         listed = {p.symbol for p in rec.positions}
         qty = {(p.symbol, p.side): p.qty for p in rec.positions}
+        for lot in list(self.fold.open_lots()):                           # Cowork 6065286201 #2: an external-close
+            if self._suspended(lot.lot_id) and lot.symbol in listed \
+                    and qty.get((lot.symbol, lot.side), ZERO) == 0 and any(p.live for p in lot.protects):
+                self._release_flat_side(lot)                              # lot keeps no stop resting on a flat side
+        self._detect_external_partials(listed, qty)
         resting = {o.ref.client_id for o in (rec.orders or ()) if o.status in OPEN_EXCHANGE_STATUSES}
         for lot in list(self.fold.open_lots()):
             if lot.symbol not in listed or qty.get((lot.symbol, lot.side), ZERO) > 0 or self._suspended(lot.lot_id):
@@ -1416,6 +1469,105 @@ class Runner:
         self._incident(f'{lot_id}: external close suspected (venue flat on {symbol} {side}, '
                        f'{self._reduce_refused.get(lot_id, 0)} reduce-only sends refused): owner item, no more sends')
         self._hold([ReasonCode.RECONCILE_UNRECONCILED])
+        lot = self._lot(lot_id)
+        if lot is not None:
+            self._release_flat_side(lot)
+
+    # The two narrow cases in which the runner cancels a PROTECT order of its own while HOLD (NORMAL) - which the
+    # central table otherwise forbids (modes: protective orders are kept). Neither removes protection from exposure:
+    #   flat_side  the venue side was just re-read FLAT (Cowork NEW-3 / 6065286201 #2): the stop protects nothing;
+    #   replaced   a smaller replacement stop of the same lot is confirmed WORKING first (6065286201 #3: re-sized
+    #              down after an external partial close).
+    # Codified here only; the central cell is a proposed NC-01 / NC-02a change (same pattern as P1-3).
+    def _release_flat_side(self, lot):
+        r = self.venue.positions(lot.symbol)
+        if r.kind is not ReadKind.OK or any(p.side == lot.side and p.qty > 0 for p in r.value):
+            return                                                        # not proven flat: protection is kept
+        for stop in [p for p in lot.protects if p.live]:
+            self._release_stop(stop, f'venue {lot.symbol} {lot.side} flat (external close)')
+
+    def _release_stop(self, stop, why):
+        if stop.state is not IntentState.CANCELLING:
+            self._state(stop, IntentState.CANCELLING, ReasonCode.LIFECYCLE_ORPHAN_CANCEL)
+        out = self.venue.cancel(self._ref(stop))
+        self._apply(stop, out, submit=False)
+        if stop.live:
+            self._apply(stop, self.venue.query(self._ref(stop)), submit=False)
+        self._incident(f'{stop.intent_id}: our stop {stop.intent.client_order_id} released ({why}) -> '
+                       f'{"cancelled" if not stop.live else stop.state}')
+
+    def _detect_external_partials(self, listed, qty):
+        """Cowork 6065286201 #3: the venue holds LESS than our open lots of a side with no fill of ours in flight (the
+        lot's live orders are re-read first, so our own reduce / stop fill is booked) -> a durable 'external partial
+        close suspected' owner item, HOLD, and the lot's protection re-sized DOWN to the venue quantity (one lot per
+        side; with several the attribution is ambiguous: the item and HOLD only, protection unchanged)."""
+        sides = {}
+        for lot in self.fold.open_lots():
+            if not self._suspended(lot.lot_id):
+                sides.setdefault((lot.symbol, lot.side), []).append(lot)
+        for (sym, side), lots in sides.items():
+            v = qty.get((sym, side), ZERO)
+            if sym not in listed or v <= 0 or v >= sum((x.qty for x in lots), ZERO):
+                continue
+            for lot in lots:
+                for iv in [x for x in self.fold.live_intents() if x.intent.owner_id == lot.lot_id]:
+                    self._apply(iv, self.venue.query(self._ref(iv)), submit=False)
+            lots = [x for x in self.fold.open_lots() if (x.symbol, x.side) == (sym, side)]
+            if not lots or any(iv.purpose is not Purpose.PROTECT for iv in self.fold.live_intents()
+                               if iv.intent.owner_id in {x.lot_id for x in lots}):
+                continue                                                  # ours in flight: re-checked next cycle
+            r = self.venue.positions(sym)
+            if r.kind is not ReadKind.OK:
+                continue
+            v = sum((p.qty for p in r.value if p.side == side), ZERO)
+            total = sum((x.qty for x in lots), ZERO)
+            if v <= 0 or v >= total:
+                continue
+            for lot in lots:
+                did = ids.marker_decision_id('external_partial', lot.lot_id)
+                if self.journal.find_decision(did) is None:
+                    self._decision(decision_id=did, action=Action.WAIT, reason=ReasonCode.RECONCILE_UNRECONCILED,
+                                   authority=Authority.RECONCILIATION, key=None, symbol=sym, side=side,
+                                   subject_id=lot.lot_id,
+                                   detail=f'external partial close suspected: venue {v} < lots {total}, lot '
+                                          f'{lot.lot_id} {lot.qty}; owner resolves')
+                    self._incident(f'{lot.lot_id}: external partial close suspected (venue {sym} {side} {v} < our '
+                                   f'lots {total}, no fill of ours): owner item, protection re-sized down')
+            self._hold([ReasonCode.RECONCILE_UNRECONCILED])
+            if len(lots) == 1:
+                self._ext_partial[lots[0].lot_id] = v
+                self._resize_down(lots[0].lot_id, v)
+            else:
+                self._incident(f'{sym} {side}: external partial close over {len(lots)} lots: attribution ambiguous, '
+                               'protection unchanged (owner resolves)')
+
+    def _protect_qty(self, lot):
+        """The quantity a runner stop protects: the lot, or less after an external partial close (never above it)."""
+        v = self._ext_partial.get(lot.lot_id)
+        return lot.qty if v is None else min(lot.qty, v)
+
+    def _resize_down(self, lot_id, target):
+        """Replace the lot's stop by one of `target` (< its qty): the smaller stop is placed and confirmed WORKING
+        BEFORE the old one is released; a refused / unconfirmed replacement leaves the old stop in place."""
+        lot = self._lot(lot_id)
+        if lot is None or lot.closing is not None:
+            return
+        live = [p for p in lot.protects if p.live]
+        if not live:
+            return                                                        # _secure protects at _protect_qty
+        keep = next((p for p in reversed(live) if p.intent.qty == target and p.state is IntentState.WORKING), None)
+        if keep is None:
+            if any(p.intent.qty == target for p in live):
+                return                                                    # the replacement is unconfirmed yet
+            self._protect(lot, replacing=True)
+            lot = self._lot(lot_id)
+            keep = next((p for p in lot.protects if p.live and p.intent.qty == target
+                         and p.state is IntentState.WORKING), None)
+            if keep is None:
+                return                                                    # old stop kept: retried next cycle
+        for stop in [p for p in self._lot(lot_id).protects if p.live and p is not keep
+                     and p.intent_id != keep.intent_id]:
+            self._release_stop(stop, f'replaced by {keep.intent.client_order_id} x {target} (external partial close)')
 
     def _suspended(self, lot_id):
         """A lot with a durable external-close owner item: no stop / close is sent for it any more."""

@@ -37,5 +37,7 @@ def test_the_guide_keeps_the_first_run_rules_the_cleanup_recipe_and_the_key_advi
     assert RUNNER + ' --target testnet --only T04-algo' in GUIDE
     assert 'mode = "TESTNET"' in GUIDE and 'uses your `testnet.toml`' in GUIDE.replace('The last two use', 'uses')
     notes = GUIDE.split('## Run notes', 1)[1].split('## What to send back', 1)[0]
-    assert 'NEW A' in notes and '60 candles' in notes and 'HOLD' in notes
+    assert 'NEW A' in notes and 'at most 2000' in notes and 'HOLD' in notes
+    from newcore.runner.runner import MAX_LOST_TAIL_CANDLES
+    assert f'at most {MAX_LOST_TAIL_CANDLES}' in notes                # the note follows the code's bound
     assert 'steps 1-4 plus 5a' in notes and 'management is OFF' in notes and 'More S1 limits' in notes
