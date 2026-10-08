@@ -1,0 +1,128 @@
+{
+  "schema": "zb-golden/1",
+  "id": "G-STOP-S-01",
+  "title": "Short: initial stop hit inside a green candle; exit at the stop with taker slippage (buy-back above the stop)",
+  "behaviours": [
+    "stop",
+    "short_side"
+  ],
+  "side": "short",
+  "tf": "4h",
+  "clock": {
+    "start": "2024-01-01T00:00:00Z",
+    "entry_cycle_delay_s": 15
+  },
+  "costs": {
+    "model": "legacy",
+    "taker_fee": "0.0005",
+    "slip": "0.0002",
+    "funding_per_bar": "0"
+  },
+  "account": {
+    "equity": "500",
+    "max_leverage": 10,
+    "sizing": "legacy_replay"
+  },
+  "market": {
+    "SOLUSDT": {
+      "base": {
+        "kind": "flat",
+        "px": "100",
+        "wick": "0.5",
+        "n": 300
+      },
+      "bars": {
+        "282": [
+          "100",
+          "102.5",
+          "99.8",
+          "102.2"
+        ]
+      },
+      "atr": {
+        "kind": "computed"
+      }
+    }
+  },
+  "path_policy": "zb-path/1",
+  "slot": {
+    "id": "S1",
+    "sides": "short",
+    "risk": "0.02",
+    "share": "1",
+    "max_pos": 1,
+    "entry": {
+      "type": "market"
+    },
+    "stop": {
+      "atr": "2"
+    }
+  },
+  "signals": [
+    {
+      "bar": 279,
+      "sym": "SOLUSDT",
+      "kind": "enter_short"
+    }
+  ],
+  "faults": [],
+  "expect": {
+    "trades": [
+      {
+        "sym": "SOLUSDT",
+        "side": "SHORT",
+        "i_in": 280,
+        "i_out": 282,
+        "exit": "STOP_HIT",
+        "R": "-1.060693099",
+        "pnl": "-10.60693099"
+      }
+    ],
+    "final": {
+      "lots": 0
+    }
+  },
+  "applies_to": {
+    "legacy_engine": {
+      "status": "known_divergence",
+      "reason": "AUD-07 C13g: the engine journal books a filled exchange stop without its exit slippage"
+    },
+    "legacy_backtest": "required",
+    "newcore_sim": {
+      "status": "pending_adapter",
+      "reason": "NEWCORE NC-07/NC-08 adapter not built yet"
+    },
+    "newcore_live_sim": {
+      "status": "pending_adapter",
+      "reason": "NEWCORE NC-08 live-sim adapter not built yet"
+    }
+  },
+  "known_divergences": [
+    {
+      "adapter": "legacy_engine",
+      "ticket": "AUD-07",
+      "finding": "C13g",
+      "correction": "CORR-0004",
+      "until": "AUD-07 product fix",
+      "reason": "engine.py:2284-2290 books an exchange stop that filled (stop gone) at the STOP price, not the fill price - mirrored on the short side: the journal books the 101.98 buy stop without the exit slippage the exchange charged (-1.05049 R booked vs -1.06069 R paid)",
+      "observed": [
+        {
+          "path": "trades[0].R",
+          "expected": "-1.060693099",
+          "actual": -1.05049
+        },
+        {
+          "path": "trades[0].pnl",
+          "expected": "-10.60693099",
+          "actual": -10.5049
+        }
+      ]
+    }
+  ],
+  "provenance": {
+    "created_at_sha": "cff3f88",
+    "author": "NC-01 golden short mirrors (Claude)",
+    "mirror_of": "G-STOP-L-01",
+    "notes": "Short mirror of G-STOP-L-01: market reflected around the base price, signals and side flipped. ATR 1. Entry 100 x 0.9998 = 99.98, stop 101.98, qty 5 (risk 10 / 2). Candle 282 (green, o->l->h->c) reaches 102.5. Exchange stop-market buy fills at 101.98 x 1.0002 = 102.000396; R = ((99.98 - 102.000396) x 5 - 5 x (99.98 + 102.000396) x 0.0005) / 10 = -1.060693. Fees are on the notional, so the short loses slightly more than the long (-1.059307): mirrored prices are not mirrored notionals."
+  }
+}

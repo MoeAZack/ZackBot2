@@ -1,0 +1,148 @@
+{
+  "schema": "zb-golden/1",
+  "id": "G-GAP-DCA-S-01",
+  "title": "Short: two DCA safety orders gapped at the open: both fill at the open (with slippage), then the basket target is reached",
+  "behaviours": [
+    "dca",
+    "gap",
+    "costs",
+    "short_side"
+  ],
+  "side": "short",
+  "tf": "4h",
+  "clock": {
+    "start": "2024-01-01T00:00:00Z",
+    "entry_cycle_delay_s": 15
+  },
+  "costs": {
+    "model": "legacy",
+    "taker_fee": "0.0005",
+    "slip": "0.0002",
+    "funding_per_bar": "0"
+  },
+  "account": {
+    "equity": "500",
+    "max_leverage": 10,
+    "sizing": "legacy_replay"
+  },
+  "market": {
+    "SOLUSDT": {
+      "base": {
+        "kind": "flat",
+        "px": "100",
+        "wick": "0.5",
+        "n": 300
+      },
+      "bars": {
+        "282": [
+          "102.4",
+          "102.45",
+          "102.4",
+          "102.45"
+        ],
+        "285": [
+          "102.45",
+          "102.5",
+          "100.8743",
+          "100.9"
+        ]
+      },
+      "atr": {
+        "kind": "computed"
+      }
+    }
+  },
+  "path_policy": "zb-path/1",
+  "slot": {
+    "id": "S1",
+    "sides": "short",
+    "risk": "0.02",
+    "share": "1",
+    "max_pos": 1,
+    "entry": {
+      "type": "market"
+    },
+    "dca": {
+      "n": 3,
+      "step_atr": "1",
+      "scale": "1.5",
+      "tp_atr": "1",
+      "stop_atr": "2"
+    }
+  },
+  "signals": [
+    {
+      "bar": 279,
+      "sym": "SOLUSDT",
+      "kind": "enter_short"
+    }
+  ],
+  "faults": [],
+  "expect": {
+    "trades": [
+      {
+        "sym": "SOLUSDT",
+        "side": "SHORT",
+        "i_in": 280,
+        "i_out": 285,
+        "exit": "TP_BASKET",
+        "R": "0.1703099284",
+        "pnl": "1.7030992835",
+        "tol": {
+          "R": "0.00002",
+          "pnl": "0.0002",
+          "adapters": [
+            "legacy_engine"
+          ],
+          "why": "the replay closes at the path step mark 100.8743 (the leg end just past the 100.874358 basket target: no event-snapped path in v1): 1.9388 x 0.000058 = 0.00011 USDT"
+        }
+      }
+    ],
+    "final": {
+      "lots": 0
+    }
+  },
+  "applies_to": {
+    "legacy_engine": "required",
+    "legacy_backtest": {
+      "status": "known_divergence",
+      "reason": "AUD-07 C13a: legacy behaviour differs from the corrected contract until the AUD-07 product fix lands"
+    },
+    "newcore_sim": {
+      "status": "pending_adapter",
+      "reason": "NEWCORE NC-07/NC-08 adapter not built yet"
+    },
+    "newcore_live_sim": {
+      "status": "pending_adapter",
+      "reason": "NEWCORE NC-08 live-sim adapter not built yet"
+    }
+  },
+  "known_divergences": [
+    {
+      "adapter": "legacy_backtest",
+      "ticket": "AUD-07",
+      "finding": "C13a",
+      "correction": "CORR-0004",
+      "until": "AUD-07 product fix",
+      "reason": "backtest.py:419-420 fills the gapped short safety orders at the open with the fee only, no slippage",
+      "observed": [
+        {
+          "path": "trades[0].R",
+          "expected": "0.1703099284",
+          "actual": 0.170306
+        },
+        {
+          "path": "trades[0].pnl",
+          "expected": "1.7030992835",
+          "actual": 1.703062
+        }
+      ]
+    }
+  ],
+  "provenance": {
+    "created_at_sha": "cff3f88",
+    "author": "NC-01 golden short mirrors (Claude)",
+    "mirror_of": "G-GAP-DCA-L-01",
+    "notes": "Short mirror of G-GAP-DCA-L-01: market reflected around the base price, signals and side flipped. DCA levels 100.98 / 101.98 / 102.98 (ATR 1), basket stop 104.98. Candle 282 opens at 102.4 (= its low, green: the first path point is the open), through two levels: both safety orders sell at the open, 102.4 x 0.9998 = 102.37952, q = 0.612245 + 0.918367. avg 101.874358, basket target avg - 1 ATR = 100.874358, reached in candle 285 (red, low 100.8743 - shaped so the leg ends just past the target, as the long ends at 99.125 past 99.124884); exit at the target x 1.0002. The flat candles after 282 stay below the third level (high 102.95)."
+  }
+}

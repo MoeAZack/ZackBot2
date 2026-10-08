@@ -1,0 +1,146 @@
+{
+  "schema": "zb-golden/1",
+  "id": "G-DCA-SLIP-S-01",
+  "title": "Short: a DCA safety order is a taker market sell: it fills at its level adverse-adjusted by the slippage (lower), like the entry",
+  "behaviours": [
+    "dca",
+    "costs",
+    "short_side"
+  ],
+  "side": "short",
+  "tf": "4h",
+  "clock": {
+    "start": "2024-01-01T00:00:00Z",
+    "entry_cycle_delay_s": 15
+  },
+  "costs": {
+    "model": "legacy",
+    "taker_fee": "0.0005",
+    "slip": "0.0002",
+    "funding_per_bar": "0"
+  },
+  "account": {
+    "equity": "500",
+    "max_leverage": 10,
+    "sizing": "legacy_replay"
+  },
+  "market": {
+    "SOLUSDT": {
+      "base": {
+        "kind": "flat",
+        "px": "100",
+        "wick": "0.5",
+        "n": 300
+      },
+      "bars": {
+        "280": [
+          "100",
+          "100.9801",
+          "100",
+          "100.97"
+        ]
+      },
+      "atr": {
+        "kind": "computed"
+      }
+    }
+  },
+  "path_policy": "zb-path/1",
+  "slot": {
+    "id": "S1",
+    "sides": "short",
+    "risk": "0.02",
+    "share": "1",
+    "max_pos": 1,
+    "entry": {
+      "type": "market"
+    },
+    "dca": {
+      "n": 3,
+      "step_atr": "1",
+      "scale": "1.5",
+      "tp_atr": "1",
+      "stop_atr": "2"
+    }
+  },
+  "signals": [
+    {
+      "bar": 279,
+      "sym": "SOLUSDT",
+      "kind": "enter_short"
+    },
+    {
+      "bar": 281,
+      "sym": "SOLUSDT",
+      "kind": "exit_short"
+    }
+  ],
+  "faults": [],
+  "expect": {
+    "trades": [
+      {
+        "sym": "SOLUSDT",
+        "side": "SHORT",
+        "i_in": 280,
+        "i_out": 281,
+        "exit": "SIGNAL_EXIT",
+        "R": "-0.0533765957",
+        "pnl": "-0.5337659573",
+        "tol": {
+          "R": "0.00001",
+          "pnl": "0.0001",
+          "adapters": [
+            "legacy_engine"
+          ],
+          "why": "the replay adds at the path step mark 99.0199 (the leg end one tick past the 99.02 level: no event-snapped path in v1): 0.6122 x 0.0001 = 0.00006 USDT; the slippage under test is 0.012 USDT"
+        }
+      }
+    ],
+    "final": {
+      "lots": 0
+    }
+  },
+  "applies_to": {
+    "legacy_engine": "required",
+    "legacy_backtest": {
+      "status": "known_divergence",
+      "reason": "AUD-07 C13a: legacy behaviour differs from the corrected contract until the AUD-07 product fix lands"
+    },
+    "newcore_sim": {
+      "status": "pending_adapter",
+      "reason": "NEWCORE NC-07/NC-08 adapter not built yet"
+    },
+    "newcore_live_sim": {
+      "status": "pending_adapter",
+      "reason": "NEWCORE NC-08 live-sim adapter not built yet"
+    }
+  },
+  "known_divergences": [
+    {
+      "adapter": "legacy_backtest",
+      "ticket": "AUD-07",
+      "finding": "C13a",
+      "correction": "CORR-0004",
+      "until": "AUD-07 product fix",
+      "reason": "backtest.py:419-420 fills the short DCA safety order (a sell) at its level with the fee only, no slippage (entries and exits pay it)",
+      "observed": [
+        {
+          "path": "trades[0].R",
+          "expected": "-0.0533765957",
+          "actual": -0.052141
+        },
+        {
+          "path": "trades[0].pnl",
+          "expected": "-0.5337659573",
+          "actual": -0.521407
+        }
+      ]
+    }
+  ],
+  "provenance": {
+    "created_at_sha": "cff3f88",
+    "author": "NC-01 golden short mirrors (Claude)",
+    "mirror_of": "G-DCA-SLIP-L-01",
+    "notes": "Short mirror of G-DCA-SLIP-L-01: market reflected around the base price, signals and side flipped. ATR 1; entry 99.98; DCA levels 100.98 / 101.98 / 102.98, basket stop 104.98; q0 = 10 / 24.5 = 0.408163, safety order 1 = 0.612245 sold at 100.98 x 0.9998 = 100.959804. Candle 280 (green, o->l->h->c) reaches 100.9801 (order 1 only; the basket TP avg - 1 = 99.567882 is behind the path). Signal exit on the close of 281 at 100.97 x 1.0002 = 100.990194. pnl = -0.533766. Engine tolerance: the replay sells at the path step mark 100.9801 (one tick past the level, no event-snapped path in v1): +0.000061 USDT."
+  }
+}

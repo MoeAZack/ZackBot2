@@ -1,0 +1,132 @@
+{
+  "schema": "zb-golden/1",
+  "id": "G-GAP-TP-S-01",
+  "title": "Short: the next candle OPENS through the take-profit level: the market close fills at the gapped open (with slippage), not at the level",
+  "behaviours": [
+    "target",
+    "gap",
+    "short_side"
+  ],
+  "side": "short",
+  "tf": "4h",
+  "clock": {
+    "start": "2024-01-01T00:00:00Z",
+    "entry_cycle_delay_s": 15
+  },
+  "costs": {
+    "model": "legacy",
+    "taker_fee": "0.0005",
+    "slip": "0.0002",
+    "funding_per_bar": "0"
+  },
+  "account": {
+    "equity": "500",
+    "max_leverage": 10,
+    "sizing": "legacy_replay"
+  },
+  "market": {
+    "SOLUSDT": {
+      "base": {
+        "kind": "flat",
+        "px": "100",
+        "wick": "0.5",
+        "n": 300
+      },
+      "bars": {
+        "282": [
+          "94",
+          "94.2",
+          "94",
+          "94.1"
+        ]
+      },
+      "atr": {
+        "kind": "computed"
+      }
+    }
+  },
+  "path_policy": "zb-path/1",
+  "slot": {
+    "id": "S1",
+    "sides": "short",
+    "risk": "0.02",
+    "share": "1",
+    "max_pos": 1,
+    "entry": {
+      "type": "market"
+    },
+    "stop": {
+      "atr": "2"
+    },
+    "target": {
+      "r": "2"
+    }
+  },
+  "signals": [
+    {
+      "bar": 279,
+      "sym": "SOLUSDT",
+      "kind": "enter_short"
+    }
+  ],
+  "faults": [],
+  "expect": {
+    "trades": [
+      {
+        "sym": "SOLUSDT",
+        "side": "SHORT",
+        "i_in": 280,
+        "i_out": 282,
+        "exit": "TP_FULL",
+        "R": "2.9321003",
+        "pnl": "29.321003"
+      }
+    ],
+    "final": {
+      "lots": 0
+    }
+  },
+  "applies_to": {
+    "legacy_engine": "required",
+    "legacy_backtest": {
+      "status": "known_divergence",
+      "reason": "AUD-07: legacy behaviour differs from the corrected contract (gap at the open on the target side)"
+    },
+    "newcore_sim": {
+      "status": "pending_adapter",
+      "reason": "NEWCORE NC-07/NC-08 adapter not built yet"
+    },
+    "newcore_live_sim": {
+      "status": "pending_adapter",
+      "reason": "NEWCORE NC-08 live-sim adapter not built yet"
+    }
+  },
+  "known_divergences": [
+    {
+      "adapter": "legacy_backtest",
+      "ticket": "AUD-07",
+      "finding": "TP gap at the open (pre-existing, outside C13f)",
+      "correction": "CORR-0004",
+      "until": "AUD-07 product fix",
+      "reason": "backtest.py favourable_leg books the tp_r exit at the LEVEL (95.98) even when the candle opened beyond it (94) - mirrored on the short side; the bot buys back with a market order where the price is",
+      "observed": [
+        {
+          "path": "trades[0].R",
+          "expected": "2.9321003",
+          "actual": 1.941407
+        },
+        {
+          "path": "trades[0].pnl",
+          "expected": "29.321003",
+          "actual": 19.414072
+        }
+      ]
+    }
+  ],
+  "provenance": {
+    "created_at_sha": "cff3f88",
+    "author": "NC-01 golden short mirrors (Claude)",
+    "mirror_of": "G-GAP-TP-L-01",
+    "notes": "Short mirror of G-GAP-TP-L-01: market reflected around the base price, signals and side flipped. Entry 99.98, stop 101.98, R 2, target 2 R = 95.98. Candle 282 opens at 94 (= its low, green: o->l->h->c, the first path point is the open). The take-profit is a market buy at the mark: 94 x 1.0002 = 94.0188; pnl = 5 x (99.98 - 94.0188) - 5 x (99.98 + 94.0188) x 0.0005 = 29.321003. The legacy backtest books the level 95.98 x 1.0002 (the mirrored long TP-gap divergence)."
+  }
+}

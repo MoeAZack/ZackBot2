@@ -131,6 +131,65 @@
       "accepted_by": null,
       "date_cairo": "2026-10-08",
       "prev_entry_sha": "3a7e712994b964720f6d55a51f5a4e671429d131a9955d3fcbd869946604babf"
+    },
+    {
+      "id": "CORR-0004",
+      "type": "add",
+      "ticket": "NC-01 golden",
+      "finding": "short-side coverage of the AUD-07 long cases (C11 / C13a / C13c / C13d / C13g / TP gap)",
+      "title": "Short-side mirrors of every long case: NEWCORE acceptance expectations for the SHORT side",
+      "cases": {
+        "G-DAY-CAIRO-S-SHORT-01": {
+          "prev_contract_sha": null,
+          "contract_sha": "d79957b02efe2af2484dd0c1736032513f2d27e2058cdf7750eaf5a25401337e"
+        },
+        "G-DAY-CAIRO-W-SHORT-01": {
+          "prev_contract_sha": null,
+          "contract_sha": "8506db6ec341e4c7947a8c845ad5d695c80b11d6d3f3ac7f0898449b5b848211"
+        },
+        "G-DCA-SLIP-S-01": {
+          "prev_contract_sha": null,
+          "contract_sha": "a05afa1a6d5eaff45b7225417cd4b44d23720a48c034867003b15f628821b8f7"
+        },
+        "G-GAP-DCA-S-01": {
+          "prev_contract_sha": null,
+          "contract_sha": "7c5b45636da2fb470ce74621ec8c4972d76c7e370f3a1d54fde993940b54c3a7"
+        },
+        "G-GAP-STOP-S-01": {
+          "prev_contract_sha": null,
+          "contract_sha": "86a06cb6092a0d0813396dd9e5065a4bfd96e6026767e28d3af28565c3166689"
+        },
+        "G-GAP-TP-S-01": {
+          "prev_contract_sha": null,
+          "contract_sha": "301f416d74d812b3faa2e0e00ae43acd9c3f6e84a1fa9b745af6a5b2fafbf558"
+        },
+        "G-PYR-SLIP-S-01": {
+          "prev_contract_sha": null,
+          "contract_sha": "751b827e3c13de94c98900a437ecc9d753614cb4d7513cd15eef993be0c98bcb"
+        },
+        "G-STOP-S-01": {
+          "prev_contract_sha": null,
+          "contract_sha": "1612b8de396a2ca8635b7641e703b0d147b17b86f2cd1077a0f9d24f39e41f0b"
+        },
+        "G-TIME-S-01": {
+          "prev_contract_sha": null,
+          "contract_sha": "ca855d0387660f52677868aa8f546151b74a7793304665750ce332a5445da837"
+        },
+        "G-TIME-S-02": {
+          "prev_contract_sha": null,
+          "contract_sha": "e76d2b83f6ddbac4a44d9d533292c773446f215c8784c91cdba6ae9d85734a07"
+        },
+        "G-TRAILENTRY-MAXPOS-SHORT-01": {
+          "prev_contract_sha": null,
+          "contract_sha": "354b413941697caf62fe65a36d14b3e7b531d512a5dcbbe2140e476884130b51"
+        }
+      },
+      "adapters_changed": [],
+      "rationale": "Every long case is mirrored to the short side: each symbol's market reflected around its own flat base price (a candle [o,h,l,c] becomes [2P-o, 2P-l, 2P-h, 2P-c], so the declared path relative to the position and the ATR are unchanged), signals and side flipped. Expectations are the CORRECT causal NEWCORE outcome computed from first principles (scratch calc.py, Decimal arithmetic), not from an adapter: fees are on the notional and slippage is multiplicative, so mirrored prices do not give mirrored R and every number was recomputed. The legacy rules that are not fixed (C11, C13a, C13c, C13d, C13g, the backtest TP gap) reproduce on the short side exactly as the mirror of the long; each is recorded as a strict-xfail known divergence bound to this record, with the observed mismatch list from a blind run checked by hand against the mirrored legacy rule. G-GAP-DCA-S-01 moves the candle-285 low to 100.8743 so the leg ends just past the recomputed short basket target 100.874358 (the long's 99.125 vs 99.124884), with a per-trade engine path-step tolerance of 0.0002 USDT.",
+      "evidence": "branch golden-short-mirrors on cff3f88; blind probe of both legacy adapters on every new case (scratch probe.py)",
+      "accepted_by": null,
+      "date_cairo": "2026-10-08",
+      "prev_entry_sha": "ecc4599182a43d528ad4c3efe03445d7bd3997b0f32eb43a0a93a513c486db7f"
     }
   ]
 }

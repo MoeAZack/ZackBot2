@@ -1,0 +1,185 @@
+{
+  "schema": "zb-golden/1",
+  "id": "G-TRAILENTRY-MAXPOS-SHORT-01",
+  "title": "Short: an armed trailing entry occupies a max_pos slot from arming until it fills: the first armed coin trades, the second is blocked",
+  "behaviours": [
+    "trail_entry",
+    "max_pos",
+    "short_side"
+  ],
+  "side": "short",
+  "tf": "4h",
+  "clock": {
+    "start": "2024-01-01T00:00:00Z",
+    "entry_cycle_delay_s": 15
+  },
+  "costs": {
+    "model": "legacy",
+    "taker_fee": "0.0005",
+    "slip": "0.0002",
+    "funding_per_bar": "0"
+  },
+  "account": {
+    "equity": "500",
+    "max_leverage": 10,
+    "sizing": "legacy_replay"
+  },
+  "market": {
+    "SOLUSDT": {
+      "base": {
+        "kind": "flat",
+        "px": "100",
+        "wick": "0.5",
+        "n": 300
+      },
+      "bars": {
+        "280": [
+          "100",
+          "101",
+          "100",
+          "101"
+        ],
+        "281": [
+          "101",
+          "101",
+          "100.5",
+          "100.5"
+        ]
+      },
+      "atr": {
+        "kind": "computed"
+      }
+    },
+    "XRPUSDT": {
+      "base": {
+        "kind": "flat",
+        "px": "200",
+        "wick": "1",
+        "n": 300
+      },
+      "bars": {
+        "280": [
+          "200",
+          "201",
+          "196",
+          "197"
+        ]
+      },
+      "atr": {
+        "kind": "computed"
+      }
+    }
+  },
+  "path_policy": "zb-path/1",
+  "slot": {
+    "id": "S1",
+    "sides": "short",
+    "risk": "0.02",
+    "share": "1",
+    "max_pos": 1,
+    "symbols": [
+      "SOLUSDT",
+      "XRPUSDT"
+    ],
+    "entry": {
+      "type": "trail",
+      "dev_atr": "0.5",
+      "max_bars": 3
+    },
+    "stop": {
+      "atr": "30"
+    }
+  },
+  "signals": [
+    {
+      "bar": 279,
+      "sym": "SOLUSDT",
+      "kind": "enter_short"
+    },
+    {
+      "bar": 279,
+      "sym": "XRPUSDT",
+      "kind": "enter_short"
+    },
+    {
+      "bar": 290,
+      "sym": "SOLUSDT",
+      "kind": "exit_short"
+    },
+    {
+      "bar": 290,
+      "sym": "XRPUSDT",
+      "kind": "exit_short"
+    }
+  ],
+  "faults": [],
+  "expect": {
+    "trades": [
+      {
+        "sym": "SOLUSDT",
+        "side": "SHORT",
+        "i_in": 281,
+        "i_out": 290,
+        "exit": "SIGNAL_EXIT",
+        "R": "-0.00469",
+        "pnl": "-0.0469"
+      }
+    ],
+    "final": {
+      "lots": 0
+    }
+  },
+  "applies_to": {
+    "legacy_engine": "required",
+    "legacy_backtest": {
+      "status": "known_divergence",
+      "reason": "AUD-07 C13c: legacy behaviour differs from the corrected contract until the AUD-07 product fix lands"
+    },
+    "newcore_sim": {
+      "status": "pending_adapter",
+      "reason": "NEWCORE NC-07/NC-08 adapter not built yet"
+    },
+    "newcore_live_sim": {
+      "status": "pending_adapter",
+      "reason": "NEWCORE NC-08 live-sim adapter not built yet"
+    }
+  },
+  "known_divergences": [
+    {
+      "adapter": "legacy_backtest",
+      "ticket": "AUD-07",
+      "finding": "C13c",
+      "correction": "CORR-0004",
+      "until": "AUD-07 product fix",
+      "reason": "backtest.py:598-601 arms trailing entries without a slot check and checks max_pos only at the fill, so XRP (drops 0.5 ATR first, in candle 280) takes the slot and SOL (armed first, drops in 281) is dropped",
+      "observed": [
+        {
+          "path": "trades[0].sym",
+          "expected": "SOLUSDT",
+          "actual": "XRPUSDT"
+        },
+        {
+          "path": "trades[0].i_in",
+          "expected": 281,
+          "actual": 280
+        },
+        {
+          "path": "trades[0].R",
+          "expected": "-0.00469",
+          "actual": 0.045368
+        },
+        {
+          "path": "trades[0].pnl",
+          "expected": "-0.0469",
+          "actual": 0.453683
+        }
+      ]
+    }
+  ],
+  "provenance": {
+    "created_at_sha": "cff3f88",
+    "author": "NC-01 golden short mirrors (Claude)",
+    "mirror_of": "G-TRAILENTRY-MAXPOS-01",
+    "notes": "Short mirror of G-TRAILENTRY-MAXPOS-01: market reflected around the base price, signals and side flipped. Each coin mirrored around its own base (SOL 100, XRP 200). max_pos=1; SOL and XRP both arm short on the close of 279; SOL arms first and holds the only slot, XRP is blocked at arming. XRP drops 0.5 ATR from its extreme 201 in candle 280 but has no armed entry. SOL rises to 101 in the green candle 280 (no 0.5 ATR drop from the extreme), then drops 0.5 ATR to 100.5 in 281 (the leg end): it sells at 100.5 x 0.9998 = 100.4799, qty 10/30, and exits on the signal of 290 at 100.5 x 1.0002. R = (-0.0402 - 201 x 0.0005) / 30 = -0.00469."
+  }
+}
