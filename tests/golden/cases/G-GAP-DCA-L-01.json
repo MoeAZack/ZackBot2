@@ -1,0 +1,146 @@
+{
+  "schema": "zb-golden/1",
+  "id": "G-GAP-DCA-L-01",
+  "title": "Two DCA safety orders gapped at the open: both fill at the open (with slippage), then the basket target is reached",
+  "behaviours": [
+    "dca",
+    "gap",
+    "costs"
+  ],
+  "side": "long",
+  "tf": "4h",
+  "clock": {
+    "start": "2024-01-01T00:00:00Z",
+    "entry_cycle_delay_s": 15
+  },
+  "costs": {
+    "model": "legacy",
+    "taker_fee": "0.0005",
+    "slip": "0.0002",
+    "funding_per_bar": "0"
+  },
+  "account": {
+    "equity": "500",
+    "max_leverage": 10,
+    "sizing": "legacy_replay"
+  },
+  "market": {
+    "SOLUSDT": {
+      "base": {
+        "kind": "flat",
+        "px": "100",
+        "wick": "0.5",
+        "n": 300
+      },
+      "bars": {
+        "282": [
+          "97.6",
+          "97.6",
+          "97.55",
+          "97.55"
+        ],
+        "285": [
+          "97.55",
+          "99.125",
+          "97.5",
+          "99.1"
+        ]
+      },
+      "atr": {
+        "kind": "computed"
+      }
+    }
+  },
+  "path_policy": "zb-path/1",
+  "slot": {
+    "id": "S1",
+    "sides": "long",
+    "risk": "0.02",
+    "share": "1",
+    "max_pos": 1,
+    "entry": {
+      "type": "market"
+    },
+    "dca": {
+      "n": 3,
+      "step_atr": "1",
+      "scale": "1.5",
+      "tp_atr": "1",
+      "stop_atr": "2"
+    }
+  },
+  "signals": [
+    {
+      "bar": 279,
+      "sym": "SOLUSDT",
+      "kind": "enter_long"
+    }
+  ],
+  "faults": [],
+  "expect": {
+    "trades": [
+      {
+        "sym": "SOLUSDT",
+        "side": "LONG",
+        "i_in": 280,
+        "i_out": 285,
+        "exit": "TP_BASKET",
+        "R": "0.1709147038",
+        "pnl": "1.709147038",
+        "tol": {
+          "R": "0.00003",
+          "pnl": "0.0003",
+          "adapters": [
+            "legacy_engine"
+          ],
+          "why": "the replay closes at the path step mark 99.125 (the leg end just past the 99.124884 basket target: no event-snapped path in v1): 1.9388 x 0.000116 = 0.00023 USDT"
+        }
+      }
+    ],
+    "final": {
+      "lots": 0
+    }
+  },
+  "applies_to": {
+    "legacy_engine": "required",
+    "legacy_backtest": {
+      "status": "known_divergence",
+      "reason": "AUD-07 C13a: legacy behaviour differs from the corrected contract until the AUD-07 product fix lands"
+    },
+    "newcore_sim": {
+      "status": "pending_adapter",
+      "reason": "NEWCORE NC-07/NC-08 adapter not built yet"
+    },
+    "newcore_live_sim": {
+      "status": "pending_adapter",
+      "reason": "NEWCORE NC-08 live-sim adapter not built yet"
+    }
+  },
+  "known_divergences": [
+    {
+      "adapter": "legacy_backtest",
+      "ticket": "AUD-07",
+      "finding": "C13a",
+      "correction": "CORR-0003",
+      "until": "AUD-07 product fix",
+      "reason": "backtest.py:419-420 fills the gapped safety orders at the open with the fee only, no slippage",
+      "observed": [
+        {
+          "path": "trades[0].R",
+          "expected": "0.1709147038",
+          "actual": 0.170918
+        },
+        {
+          "path": "trades[0].pnl",
+          "expected": "1.709147038",
+          "actual": 1.709183
+        }
+      ]
+    }
+  ],
+  "provenance": {
+    "created_at_sha": "4e03152",
+    "author": "AUD-07 review fixes (Claude)",
+    "notes": "Gap rule, safety-order side: DCA levels 99.02 / 98.02 / 97.02 (ATR 1, step 1 ATR), basket stop 95.02. Candle 282 opens at 97.6 (= its high: the first path point is the open), through two levels: both safety orders fill at the open, 97.6 x 1.0002 = 97.61952 (not at their levels), q = 0.612245 + 0.918367. avg 98.124884, basket target avg + 1 ATR = 99.124884, reached in candle 285 (high 99.125); exit at the target x 0.9998. The flat candles after 282 stay above the third level (low 97.05). The Windows probe's 0.212 R (engine) vs 0.167 R (backtest) was the replay's 8-step path, not a model gap: the engine booked the basket target at the step mark 99.375, 0.25 past the level. Shaped here so both legs end on the levels."
+  }
+}

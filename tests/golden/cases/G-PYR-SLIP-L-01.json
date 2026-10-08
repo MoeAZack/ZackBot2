@@ -1,0 +1,145 @@
+{
+  "schema": "zb-golden/1",
+  "id": "G-PYR-SLIP-L-01",
+  "title": "A pyramid add is a taker market order: it fills at its level adverse-adjusted by the slippage, like the entry",
+  "behaviours": [
+    "pyramid",
+    "costs"
+  ],
+  "side": "long",
+  "tf": "4h",
+  "clock": {
+    "start": "2024-01-01T00:00:00Z",
+    "entry_cycle_delay_s": 15
+  },
+  "costs": {
+    "model": "legacy",
+    "taker_fee": "0.0005",
+    "slip": "0.0002",
+    "funding_per_bar": "0"
+  },
+  "account": {
+    "equity": "500",
+    "max_leverage": 10,
+    "sizing": "legacy_replay"
+  },
+  "market": {
+    "SOLUSDT": {
+      "base": {
+        "kind": "flat",
+        "px": "100",
+        "wick": "0.5",
+        "n": 300
+      },
+      "bars": {
+        "281": [
+          "100",
+          "102.0201",
+          "99.9",
+          "102"
+        ]
+      },
+      "atr": {
+        "kind": "computed"
+      }
+    }
+  },
+  "path_policy": "zb-path/1",
+  "slot": {
+    "id": "S1",
+    "sides": "long",
+    "risk": "0.02",
+    "share": "1",
+    "max_pos": 1,
+    "entry": {
+      "type": "market"
+    },
+    "stop": {
+      "atr": "2"
+    },
+    "pyramid": {
+      "n": 1,
+      "step_r": "1",
+      "frac": "0.5"
+    }
+  },
+  "signals": [
+    {
+      "bar": 279,
+      "sym": "SOLUSDT",
+      "kind": "enter_long"
+    },
+    {
+      "bar": 283,
+      "sym": "SOLUSDT",
+      "kind": "exit_long"
+    }
+  ],
+  "faults": [],
+  "expect": {
+    "trades": [
+      {
+        "sym": "SOLUSDT",
+        "side": "LONG",
+        "i_in": 280,
+        "i_out": 283,
+        "exit": "SIGNAL_EXIT",
+        "R": "0.8885965995",
+        "pnl": "8.885965995",
+        "tol": {
+          "R": "0.00003",
+          "pnl": "0.0003",
+          "adapters": [
+            "legacy_engine"
+          ],
+          "why": "the replay adds at the path step mark 102.0201 (the leg end one tick past the 102.02 level: no event-snapped path in v1): 2.5 x 0.0001 = 0.00025 USDT; the slippage under test is 0.051 USDT"
+        }
+      }
+    ],
+    "final": {
+      "lots": 0
+    }
+  },
+  "applies_to": {
+    "legacy_engine": "required",
+    "legacy_backtest": {
+      "status": "known_divergence",
+      "reason": "AUD-07 C13a: legacy behaviour differs from the corrected contract until the AUD-07 product fix lands"
+    },
+    "newcore_sim": {
+      "status": "pending_adapter",
+      "reason": "NEWCORE NC-07/NC-08 adapter not built yet"
+    },
+    "newcore_live_sim": {
+      "status": "pending_adapter",
+      "reason": "NEWCORE NC-08 live-sim adapter not built yet"
+    }
+  },
+  "known_divergences": [
+    {
+      "adapter": "legacy_backtest",
+      "ticket": "AUD-07",
+      "finding": "C13a",
+      "correction": "CORR-0003",
+      "until": "AUD-07 product fix",
+      "reason": "backtest.py:458-468 fills the pyramid add at its level with the fee only, no slippage (entries and exits pay it)",
+      "observed": [
+        {
+          "path": "trades[0].R",
+          "expected": "0.8885965995",
+          "actual": 0.8937
+        },
+        {
+          "path": "trades[0].pnl",
+          "expected": "8.885965995",
+          "actual": 8.937002
+        }
+      ]
+    }
+  ],
+  "provenance": {
+    "created_at_sha": "4e03152",
+    "author": "AUD-07 review fixes (Claude)",
+    "notes": "AUD-07 C13a corrected rule (pyramid side, matching G-DCA-SLIP-L-01): every exposure-increasing market order fills at its trigger price adverse-adjusted by the slippage. ATR 1; entry 100.02, stop 98.02, R 2, qty 5. Add 1 of 1 at 100.02 + 1 R = 102.02, frac 0.5 -> 2.5 at 102.02 x 1.0002 = 102.040404 (green candle 281 reaches 102.0201). Signal exit on the close of 283 at 102 x 0.9998 = 101.9796. pnl = 5 x (101.9796 - 100.02) + 2.5 x (101.9796 - 102.040404) - fees = 8.885966 (legacy slip-free add: 8.937002)."
+  }
+}

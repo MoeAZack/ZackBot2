@@ -1,0 +1,220 @@
+"""Load and validate zb-golden/1 cases (stdlib only); canonical JSON and the case's protected CONTRACT hash.
+
+contract_sha(case) = sha256(canonical(case minus DESCRIPTIVE)): the expectation (`expect`, incl. per-trade tolerances), which
+adapters it binds (`applies_to`), the recorded legacy behaviour (`known_divergences`) AND every causal input (market, signals,
+slot, costs, clock, account, faults, adapter_options, ...). Only the descriptive text (title, behaviours, provenance, notes)
+is outside it. Any new top-level key is protected automatically (validate() rejects keys it does not know)."""
+import glob, hashlib, json, math, numbers, os, re
+
+from . import CASES_DIR
+
+SCHEMA = 'zb-golden/1'
+ADAPTERS = ('legacy_engine', 'legacy_backtest', 'newcore_sim', 'newcore_live_sim')
+APPLIES = ('required', 'not_applicable', 'known_divergence', 'pending_adapter')
+SIDES = ('long', 'short', 'both', 'n/a')
+TFS = {'4h': 14400, '1h': 3600}
+SIGNAL_KINDS = {'enter_long': 'le', 'enter_short': 'se', 'exit_long': 'lx', 'exit_short': 'sx'}
+EXIT_CODES = ('STOP_HIT', 'TIME_EXIT', 'SIGNAL_EXIT', 'TP_FULL', 'TP_BASKET', 'TP_PARTIAL', 'TP_LADDER', 'LIQUIDATED', 'FLATTEN')
+SLOT_KEYS = ('id', 'sides', 'risk', 'share', 'max_pos', 'symbols', 'entry', 'stop', 'trail', 'target', 'tp1', 'ladder', 'runner',
+             'dca', 'pyramid', 'time_exit')
+TRADE_KEYS = ('sym', 'side', 'i_in', 'i_out', 'exit', 'R', 'pnl', 'tol')
+TOL_KEYS = ('R', 'pnl', 'adapters', 'why')          # per-trade tolerance: a stated reason and the adapters it applies to
+FINAL_KEYS = ('lots',)                              # expect.final keys an adapter may declare (adapters.CAPS); others = typo
+COST_KEYS = ('model', 'taker_fee', 'slip', 'funding_per_bar')
+DESCRIPTIVE = ('title', 'behaviours', 'provenance', 'notes')     # the only keys outside the contract hash
+CORR_ID = re.compile(r'CORR-\d{4}')
+TOL_MAX = 0.001                                      # largest per-trade tolerance (path / rounding artefacts only)
+REQUIRED_TOP = ('schema', 'id', 'title', 'behaviours', 'side', 'tf', 'clock', 'account', 'market', 'path_policy', 'slot',
+                'signals', 'faults', 'expect', 'applies_to', 'known_divergences', 'provenance')
+
+
+class CaseError(ValueError):
+    """A fixture that does not follow zb-golden/1. Always a hard failure, never a skip."""
+
+
+class NumberError(ValueError):
+    """A non-finite, boolean or malformed number where a finite decimal is required (P1 on b01d439: NaN made
+    abs(expected - actual) > tol false, so a NaN expectation, actual or resolution passed every comparison)."""
+
+
+DECIMAL = re.compile(r'-?(0|[1-9][0-9]*)(\.[0-9]+)?([eE][-+]?[0-9]+)?')
+
+
+def finite(x, what):
+    """float(x) for a finite, non-boolean number: an int / float (numpy floats included), or a JSON decimal string. NaN,
+    +-Infinity, bool, None, '1_0', ' 1', 'nan', 'inf' and overflow to inf ('1e999') all raise NumberError."""
+    if isinstance(x, bool) or not (isinstance(x, numbers.Real) or isinstance(x, str)):
+        raise NumberError(f'{what}: {x!r} is not a finite number')
+    if isinstance(x, str) and not DECIMAL.fullmatch(x):
+        raise NumberError(f'{what}: {x!r} is not a decimal number')
+    v = float(x)
+    if not math.isfinite(v):
+        raise NumberError(f'{what}: {x!r} is not finite')
+    return v
+
+
+def _no_constant(name):
+    raise ValueError(f'JSON constant {name} is not allowed (NaN / Infinity are never a golden value)')
+
+
+def _finite_float(s):
+    v = float(s)
+    if not math.isfinite(v):
+        raise ValueError(f'JSON number {s} overflows to {v}')
+    return v
+
+
+def strict_loads(text):
+    """json.loads that REJECTS NaN / Infinity / -Infinity and numbers that overflow to inf (never canonicalises them)."""
+    return json.loads(text, parse_constant=_no_constant, parse_float=_finite_float)
+
+
+def canonical(obj):
+    """Canonical JSON: sorted keys, no whitespace, UTF-8. Numbers keep their JSON spelling (cases use decimal strings)."""
+    return json.dumps(obj, sort_keys=True, separators=(',', ':'), ensure_ascii=False)
+
+
+def sha256(obj):
+    return hashlib.sha256(canonical(obj).encode('utf-8')).hexdigest()
+
+
+def contract_sha(case):
+    """The protected contract of a case: everything except DESCRIPTIVE (see the module docstring)."""
+    return sha256({k: v for k, v in case.items() if k not in DESCRIPTIVE})
+
+
+def _req(cond, case_id, msg):
+    if not cond:
+        raise CaseError(f'{case_id}: {msg}')
+
+
+def validate(case, path=None):
+    cid = case.get('id', path or '?')
+    for k in REQUIRED_TOP:
+        _req(k in case, cid, f'missing top-level key {k!r}')
+    unknown = set(case) - set(REQUIRED_TOP) - {'costs', 'instruments', 'adapter_options', 'notes'}
+    _req(not unknown, cid, f'unknown top-level keys {sorted(unknown)}')
+    _req(case['schema'] == SCHEMA, cid, f"schema must be {SCHEMA!r}")
+    if path:
+        _req(os.path.basename(path) == f"{case['id']}.json", cid, 'file name must be <id>.json')
+    _req(case['side'] in SIDES, cid, f"side must be one of {SIDES}")
+    _req(case['tf'] in TFS, cid, f"tf must be one of {sorted(TFS)}")
+    _req(isinstance(case['behaviours'], list) and case['behaviours'], cid, 'behaviours: non-empty list')
+    _req(case['path_policy'] == 'zb-path/1', cid, "path_policy must be 'zb-path/1'")
+    _req('start' in case['clock'], cid, 'clock.start required')
+    _req(int(case['clock'].get('entry_cycle_delay_s', 15)) >= 15, cid, 'clock.entry_cycle_delay_s must be >= 15 (the replay cycle runs at close + 15 s)')
+    _req('equity' in case['account'], cid, 'account.equity required')
+    co = case.get('costs') or {}
+    _req(not (set(co) - set(COST_KEYS)), cid, f'costs: unknown keys {sorted(set(co) - set(COST_KEYS))} (a misspelt cost is never ignored)')
+    _req(co.get('model', 'legacy') == 'legacy', cid, "costs.model: only 'legacy' in v1")
+    # market
+    mk = case['market']
+    _req(isinstance(mk, dict) and mk, cid, 'market: at least one symbol')
+    n = None
+    for s, spec in mk.items():
+        b = spec.get('base') or {}
+        _req(b.get('kind') == 'flat', cid, f'market.{s}.base.kind: only "flat" is implemented in v1')
+        _req(n is None or int(b['n']) == n, cid, 'every symbol must have the same bar count')
+        n = int(b['n'])
+        for k, row in (spec.get('bars') or {}).items():
+            _req(0 <= int(k) < n and len(row) == 4, cid, f'market.{s}.bars[{k}]: [o, h, l, c] inside the series')
+            o, h, l, c = map(float, row)
+            _req(h >= max(o, c) and l <= min(o, c), cid, f'market.{s}.bars[{k}]: h/l must contain o and c')
+        _req((spec.get('atr') or {'kind': 'computed'}).get('kind') == 'computed', cid,
+             f'market.{s}.atr: only "computed" in v1 (the legacy engine computes ATR from candles; flat bases give an exact ATR)')
+    # slot
+    sl = case['slot']
+    _req(not (set(sl) - set(SLOT_KEYS)), cid, f'slot: unknown keys {sorted(set(sl) - set(SLOT_KEYS))}')
+    _req(sl.get('sides') in ('long', 'short', 'both'), cid, 'slot.sides')
+    for s in sl.get('symbols') or list(mk):
+        _req(s in mk, cid, f'slot.symbols: {s} has no market')
+    # signals
+    for g in case['signals']:
+        _req(g.get('kind') in SIGNAL_KINDS and g.get('sym') in mk and 0 <= int(g['bar']) < n, cid, f'bad signal {g}')
+    _req(case['faults'] == [], cid, 'faults: not implemented in v1 (outage/restart/ambiguity twins come with the fault-capable fake)')
+    # expect
+    ex = case['expect']
+    _req(isinstance(ex.get('trades'), list), cid, 'expect.trades: list')
+    _req(not (set(ex) - {'trades', 'final'}), cid,
+         f"expect: unknown keys {sorted(set(ex) - {'trades', 'final'})} (a case-wide tolerance is not allowed: give a per-trade "
+         "`tol` with the adapters it applies to and a reason)")
+    for t in ex['trades']:
+        _req(set(t) <= set(TRADE_KEYS) and {'sym', 'side', 'i_in', 'i_out', 'exit', 'R'} <= set(t), cid, f'expect trade keys {sorted(t)}')
+        _req(t['exit'] in EXIT_CODES and t['side'] in ('LONG', 'SHORT'), cid, f'expect trade codes {t}')
+        for k in ('R', 'pnl'):
+            if k in t:
+                _req(_is_finite(t[k]), cid, f'expect trade {k}={t[k]!r}: a finite decimal (never NaN / Infinity / bool)')
+        tol = t.get('tol')
+        if tol is not None:
+            _req(isinstance(tol, dict) and not (set(tol) - set(TOL_KEYS)) and (set(tol) & {'R', 'pnl'}) and tol.get('why'), cid,
+                 f'expect trade tol {tol}: R and/or pnl, plus a mandatory "why"')
+            _req(isinstance(tol.get('adapters'), list) and tol['adapters'] and set(tol['adapters']) <= set(ADAPTERS), cid,
+                 f'expect trade tol {tol}: "adapters" = the adapters the tolerance applies to (never implicit)')
+            _req(all(_is_finite(tol[k]) and 0 <= float(tol[k]) <= TOL_MAX for k in ('R', 'pnl') if k in tol), cid,
+                 f'expect trade tol {tol}: a finite number in [0, {TOL_MAX}] (a path / rounding artefact, never a behaviour difference)')
+    fin = ex.get('final') or {}
+    _req(isinstance(fin, dict) and not (set(fin) - set(FINAL_KEYS)), cid,
+         f'expect.final: unknown keys {sorted(set(fin) - set(FINAL_KEYS))} (known: {FINAL_KEYS})')
+    # applies_to / known divergences
+    ap = case['applies_to']
+    _req(set(ap) == set(ADAPTERS), cid, f'applies_to must name every adapter {ADAPTERS} (a missing adapter is an error, never a skip)')
+    for a, v in ap.items():
+        st = v if isinstance(v, str) else v.get('status')
+        _req(st in APPLIES, cid, f'applies_to.{a}: {v}')
+        _req(st == 'required' or (isinstance(v, dict) and v.get('reason')), cid, f'applies_to.{a}: a reason is mandatory for {st}')
+    kd = case['known_divergences']
+    for d in kd:
+        for k in ('adapter', 'ticket', 'finding', 'reason', 'observed', 'correction'):
+            _req(k in d, cid, f'known_divergences: {k!r} missing in {d}')
+        _req(isinstance(d['correction'], str) and CORR_ID.fullmatch(d['correction']), cid,
+             f"known_divergences: 'correction' must name the ledger entry that recorded it (CORR-nnnn), got {d['correction']!r}")
+        _req(status(case, d['adapter']) == 'known_divergence', cid, f"known divergence for {d['adapter']} but applies_to is not known_divergence")
+        _req(isinstance(d['observed'], list) and d['observed'], cid, 'known_divergences.observed: the exact mismatch list')
+        for o in d['observed']:
+            f = str(o.get('path', '')).rsplit('.', 1)[-1] if isinstance(o, dict) else None
+            _req(isinstance(o, dict) and f is not None, cid, f'known_divergences.observed: {o!r} is not a mismatch record')
+            if f in ('R', 'pnl'):
+                _req(all(o.get(k) is None or _is_finite(o[k]) for k in ('expected', 'actual')), cid,
+                     f'known_divergences.observed {o}: R / pnl values must be finite numbers')
+    for a in ADAPTERS:
+        if status(case, a) == 'known_divergence':
+            _req(sum(d['adapter'] == a for d in kd) == 1, cid, f'applies_to.{a} = known_divergence needs exactly one known_divergences entry')
+    return case
+
+
+def _is_finite(x):
+    try:
+        finite(x, 'x')
+        return True
+    except NumberError:
+        return False
+
+
+def status(case, adapter):
+    v = case['applies_to'][adapter]
+    return v if isinstance(v, str) else v['status']
+
+
+def load(path):
+    """utf-8-sig: a UTF-8 BOM (Windows editors) is accepted - the hash is over the parsed content, so it cannot hide a change.
+    NaN / Infinity are rejected at parse time (strict_loads). Anything unreadable is a CaseError naming the file."""
+    try:
+        with open(path, encoding='utf-8-sig') as f:
+            case = strict_loads(f.read())
+    except (OSError, UnicodeDecodeError, ValueError) as e:
+        raise CaseError(f'{os.path.basename(path)}: not a readable UTF-8 JSON case ({type(e).__name__}: {e})') from None
+    if not isinstance(case, dict):
+        raise CaseError(f'{os.path.basename(path)}: a case is a JSON object')
+    return validate(case, path)
+
+
+def case_paths():
+    return sorted(glob.glob(os.path.join(CASES_DIR, '*.json')))
+
+
+def load_all():
+    cases = [load(p) for p in case_paths()]
+    ids = [c['id'] for c in cases]
+    if len(ids) != len(set(ids)):
+        raise CaseError(f'duplicate case ids: {sorted(i for i in ids if ids.count(i) > 1)}')
+    return cases

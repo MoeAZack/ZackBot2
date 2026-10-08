@@ -1,0 +1,126 @@
+{
+  "schema": "zb-golden/1",
+  "id": "G-STOP-L-01",
+  "title": "Initial stop hit inside a red candle; exit at the stop with taker slippage",
+  "behaviours": [
+    "stop"
+  ],
+  "side": "long",
+  "tf": "4h",
+  "clock": {
+    "start": "2024-01-01T00:00:00Z",
+    "entry_cycle_delay_s": 15
+  },
+  "costs": {
+    "model": "legacy",
+    "taker_fee": "0.0005",
+    "slip": "0.0002",
+    "funding_per_bar": "0"
+  },
+  "account": {
+    "equity": "500",
+    "max_leverage": 10,
+    "sizing": "legacy_replay"
+  },
+  "market": {
+    "SOLUSDT": {
+      "base": {
+        "kind": "flat",
+        "px": "100",
+        "wick": "0.5",
+        "n": 300
+      },
+      "bars": {
+        "282": [
+          "100",
+          "100.2",
+          "97.5",
+          "97.8"
+        ]
+      },
+      "atr": {
+        "kind": "computed"
+      }
+    }
+  },
+  "path_policy": "zb-path/1",
+  "slot": {
+    "id": "S1",
+    "sides": "long",
+    "risk": "0.02",
+    "share": "1",
+    "max_pos": 1,
+    "entry": {
+      "type": "market"
+    },
+    "stop": {
+      "atr": "2"
+    }
+  },
+  "signals": [
+    {
+      "bar": 279,
+      "sym": "SOLUSDT",
+      "kind": "enter_long"
+    }
+  ],
+  "faults": [],
+  "expect": {
+    "trades": [
+      {
+        "sym": "SOLUSDT",
+        "side": "LONG",
+        "i_in": 280,
+        "i_out": 282,
+        "exit": "STOP_HIT",
+        "R": "-1.059307099",
+        "pnl": "-10.59307099"
+      }
+    ],
+    "final": {
+      "lots": 0
+    }
+  },
+  "applies_to": {
+    "legacy_engine": {
+      "status": "known_divergence",
+      "reason": "AUD-07 C13g: the engine journal books a filled exchange stop without its exit slippage"
+    },
+    "legacy_backtest": "required",
+    "newcore_sim": {
+      "status": "pending_adapter",
+      "reason": "NEWCORE NC-07/NC-08 adapter not built yet"
+    },
+    "newcore_live_sim": {
+      "status": "pending_adapter",
+      "reason": "NEWCORE NC-08 live-sim adapter not built yet"
+    }
+  },
+  "known_divergences": [
+    {
+      "adapter": "legacy_engine",
+      "ticket": "AUD-07",
+      "finding": "C13g",
+      "correction": "CORR-0002",
+      "until": "AUD-07 product fix",
+      "reason": "engine.py:2284-2290 books an exchange stop that filled (stop gone) at the STOP price, not the fill price: the journal omits the exit slippage the exchange charged (-1.04951 R booked vs -1.05931 R paid on a 98.02 stop)",
+      "observed": [
+        {
+          "path": "trades[0].R",
+          "expected": "-1.059307099",
+          "actual": -1.04951
+        },
+        {
+          "path": "trades[0].pnl",
+          "expected": "-10.59307099",
+          "actual": -10.4951
+        }
+      ]
+    }
+  ],
+  "provenance": {
+    "created_at_sha": "b8c11c8",
+    "author": "AUD-07 slice 1 (Claude)",
+    "notes": "ATR = 1 exactly (flat base, wick 0.5). Entry 100.02 (open + slip), stop 98.02, qty 5 (risk 10 USDT / 2). Exit 98.02 x (1 - 0.0002); R = ((98.0004 - 100.02) x 5 - 5 x (98.0004 + 100.02) x 0.0005) / 10 = -1.0593. Exact since the Codex review on 4e03152 (P2-2): no case-wide tolerance; C13g is an explicit engine known divergence."
+  }
+}

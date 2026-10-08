@@ -1,0 +1,130 @@
+{
+  "schema": "zb-golden/1",
+  "id": "G-GAP-TP-L-01",
+  "title": "The next candle OPENS through the take-profit level: the market close fills at the gapped open (with slippage), not at the level",
+  "behaviours": [
+    "target",
+    "gap"
+  ],
+  "side": "long",
+  "tf": "4h",
+  "clock": {
+    "start": "2024-01-01T00:00:00Z",
+    "entry_cycle_delay_s": 15
+  },
+  "costs": {
+    "model": "legacy",
+    "taker_fee": "0.0005",
+    "slip": "0.0002",
+    "funding_per_bar": "0"
+  },
+  "account": {
+    "equity": "500",
+    "max_leverage": 10,
+    "sizing": "legacy_replay"
+  },
+  "market": {
+    "SOLUSDT": {
+      "base": {
+        "kind": "flat",
+        "px": "100",
+        "wick": "0.5",
+        "n": 300
+      },
+      "bars": {
+        "282": [
+          "106",
+          "106",
+          "105.8",
+          "105.9"
+        ]
+      },
+      "atr": {
+        "kind": "computed"
+      }
+    }
+  },
+  "path_policy": "zb-path/1",
+  "slot": {
+    "id": "S1",
+    "sides": "long",
+    "risk": "0.02",
+    "share": "1",
+    "max_pos": 1,
+    "entry": {
+      "type": "market"
+    },
+    "stop": {
+      "atr": "2"
+    },
+    "target": {
+      "r": "2"
+    }
+  },
+  "signals": [
+    {
+      "bar": 279,
+      "sym": "SOLUSDT",
+      "kind": "enter_long"
+    }
+  ],
+  "faults": [],
+  "expect": {
+    "trades": [
+      {
+        "sym": "SOLUSDT",
+        "side": "LONG",
+        "i_in": 280,
+        "i_out": 282,
+        "exit": "TP_FULL",
+        "R": "2.9279003",
+        "pnl": "29.279003"
+      }
+    ],
+    "final": {
+      "lots": 0
+    }
+  },
+  "applies_to": {
+    "legacy_engine": "required",
+    "legacy_backtest": {
+      "status": "known_divergence",
+      "reason": "AUD-07: legacy behaviour differs from the corrected contract (gap at the open on the target side)"
+    },
+    "newcore_sim": {
+      "status": "pending_adapter",
+      "reason": "NEWCORE NC-07/NC-08 adapter not built yet"
+    },
+    "newcore_live_sim": {
+      "status": "pending_adapter",
+      "reason": "NEWCORE NC-08 live-sim adapter not built yet"
+    }
+  },
+  "known_divergences": [
+    {
+      "adapter": "legacy_backtest",
+      "ticket": "AUD-07",
+      "finding": "TP gap at the open (pre-existing, outside C13f)",
+      "correction": "CORR-0003",
+      "until": "AUD-07 product fix",
+      "reason": "backtest.py favourable_leg books the tp_r exit at the LEVEL (104.02) even when the candle opened beyond it (106); the bot closes with a market order where the price is. Pyramid adds already use max(level, open)",
+      "observed": [
+        {
+          "path": "trades[0].R",
+          "expected": "2.9279003",
+          "actual": 1.938593
+        },
+        {
+          "path": "trades[0].pnl",
+          "expected": "29.279003",
+          "actual": 19.385932
+        }
+      ]
+    }
+  ],
+  "provenance": {
+    "created_at_sha": "4e03152",
+    "author": "AUD-07 review fixes (Claude)",
+    "notes": "Gap rule, target side: the engine's take-profit is a market close sent when the mark is at/through the level, so a candle that opens through it fills at the open, adverse-adjusted by the slippage (same as the stop side, G-GAP-STOP-L-01). ATR 1; entry 100.02, stop 98.02, R 2, target 2 R = 104.02. Candle 282 opens at 106 (= its high, red: the first path point is the open). Exit 106 x 0.9998 = 105.9788; pnl = 5 x (105.9788 - 100.02) - 5 x (105.9788 + 100.02) x 0.0005 = 29.279003. The legacy backtest books 104.02 x 0.9998: 19.385932 (-1.0 R). Found by gapprobe.py (Windows adversarial review)."
+  }
+}

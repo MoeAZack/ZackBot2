@@ -1,0 +1,183 @@
+{
+  "schema": "zb-golden/1",
+  "id": "G-TRAILENTRY-MAXPOS-01",
+  "title": "An armed trailing entry occupies a max_pos slot from arming until it fills: the first armed coin trades, the second is blocked",
+  "behaviours": [
+    "trail_entry",
+    "max_pos"
+  ],
+  "side": "long",
+  "tf": "4h",
+  "clock": {
+    "start": "2024-01-01T00:00:00Z",
+    "entry_cycle_delay_s": 15
+  },
+  "costs": {
+    "model": "legacy",
+    "taker_fee": "0.0005",
+    "slip": "0.0002",
+    "funding_per_bar": "0"
+  },
+  "account": {
+    "equity": "500",
+    "max_leverage": 10,
+    "sizing": "legacy_replay"
+  },
+  "market": {
+    "SOLUSDT": {
+      "base": {
+        "kind": "flat",
+        "px": "100",
+        "wick": "0.5",
+        "n": 300
+      },
+      "bars": {
+        "280": [
+          "100",
+          "100",
+          "99",
+          "99"
+        ],
+        "281": [
+          "99",
+          "99.5",
+          "99",
+          "99.5"
+        ]
+      },
+      "atr": {
+        "kind": "computed"
+      }
+    },
+    "XRPUSDT": {
+      "base": {
+        "kind": "flat",
+        "px": "200",
+        "wick": "1",
+        "n": 300
+      },
+      "bars": {
+        "280": [
+          "200",
+          "204",
+          "199",
+          "203"
+        ]
+      },
+      "atr": {
+        "kind": "computed"
+      }
+    }
+  },
+  "path_policy": "zb-path/1",
+  "slot": {
+    "id": "S1",
+    "sides": "long",
+    "risk": "0.02",
+    "share": "1",
+    "max_pos": 1,
+    "symbols": [
+      "SOLUSDT",
+      "XRPUSDT"
+    ],
+    "entry": {
+      "type": "trail",
+      "dev_atr": "0.5",
+      "max_bars": 3
+    },
+    "stop": {
+      "atr": "30"
+    }
+  },
+  "signals": [
+    {
+      "bar": 279,
+      "sym": "SOLUSDT",
+      "kind": "enter_long"
+    },
+    {
+      "bar": 279,
+      "sym": "XRPUSDT",
+      "kind": "enter_long"
+    },
+    {
+      "bar": 290,
+      "sym": "SOLUSDT",
+      "kind": "exit_long"
+    },
+    {
+      "bar": 290,
+      "sym": "XRPUSDT",
+      "kind": "exit_long"
+    }
+  ],
+  "faults": [],
+  "expect": {
+    "trades": [
+      {
+        "sym": "SOLUSDT",
+        "side": "LONG",
+        "i_in": 281,
+        "i_out": 290,
+        "exit": "SIGNAL_EXIT",
+        "R": "-0.004643333333",
+        "pnl": "-0.04643333333"
+      }
+    ],
+    "final": {
+      "lots": 0
+    }
+  },
+  "applies_to": {
+    "legacy_engine": "required",
+    "legacy_backtest": {
+      "status": "known_divergence",
+      "reason": "AUD-07 C13c: legacy behaviour differs from the corrected contract until the AUD-07 product fix lands"
+    },
+    "newcore_sim": {
+      "status": "pending_adapter",
+      "reason": "NEWCORE NC-07/NC-08 adapter not built yet"
+    },
+    "newcore_live_sim": {
+      "status": "pending_adapter",
+      "reason": "NEWCORE NC-08 live-sim adapter not built yet"
+    }
+  },
+  "known_divergences": [
+    {
+      "adapter": "legacy_backtest",
+      "ticket": "AUD-07",
+      "finding": "C13c",
+      "correction": "CORR-0002",
+      "until": "AUD-07 product fix",
+      "reason": "backtest.py:598-601 arms trailing entries without a slot check and checks max_pos only at the fill, so XRP (rebounds first, in candle 280) takes the slot and SOL (armed first, rebounds in 281) is dropped",
+      "observed": [
+        {
+          "path": "trades[0].sym",
+          "expected": "SOLUSDT",
+          "actual": "XRPUSDT"
+        },
+        {
+          "path": "trades[0].i_in",
+          "expected": 281,
+          "actual": 280
+        },
+        {
+          "path": "trades[0].R",
+          "expected": "-0.004643333333",
+          "actual": 0.045298
+        },
+        {
+          "path": "trades[0].pnl",
+          "expected": "-0.04643333333",
+          "actual": 0.452983
+        }
+      ]
+    }
+  ],
+  "provenance": {
+    "created_at_sha": "b8c11c8",
+    "author": "AUD-07 slice 1 (Claude)",
+    "notes": "AUD-07 C13c: max_pos=1; SOL (first in slot order) and XRP both arm on the close of 279. SOL arms first and holds the only slot, so XRP is blocked at arming (slot check = len(open) + len(armed) + len(resting) >= max_pos). XRP rebounds 2 % in candle 280 but has no armed entry. SOL falls to 99 in the red candle 280 (no rebound), then rebounds 0.5 ATR to 99.5 in 281 (the leg end): it fills at 99.5 x 1.0002 = 99.5199, qty 10/30, and exits on the signal of 290 at 99.5 x 0.9998. R = (-0.0398 - 199 x 0.0005) / 30 = -0.0046433. Redesigned after the Codex review on 4e03152 (P1-3): the old expectation (no trades) also passed when both signals were ignored."
+  }
+}

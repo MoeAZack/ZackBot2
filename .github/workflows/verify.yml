@@ -32,6 +32,9 @@ env:
   TZ: Africa/Cairo
   ZB_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
   ZB_LABEL: ${{ github.event.label.name }}
+  # Golden-pack ledger base (tests/golden/test_ledger.py): the immutable PR base, fetched explicitly in every slice. The test
+  # FAILS when it is missing or not fetched.
+  ZB_GOLDEN_BASE: ${{ github.event.pull_request.base.sha }}
 
 jobs:
   full-part:
@@ -54,6 +57,11 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha }}
       - name: Checked-out commit is exactly the PR head
         run: python verify_ci.py guard --expected "$ZB_HEAD_SHA"
+      - name: Fetch the PR base commit (golden-pack append-only check)
+        run: |
+          [[ "$ZB_GOLDEN_BASE" =~ ^[0-9a-f]{40}$ ]] || { echo "PR base sha missing or malformed: '$ZB_GOLDEN_BASE'"; exit 1; }
+          git fetch --no-tags --depth=1 origin "$ZB_GOLDEN_BASE"
+          git cat-file -e "$ZB_GOLDEN_BASE^{commit}"
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: '3.14'
