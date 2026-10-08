@@ -43,6 +43,22 @@ MUTATIONS = {
     'cross-record quantity agreement': (D + 'protection.py', [(
         "        req((it.qty, it.stop_price) == (prot.qty, prot.price), path + '.order',",
         "        req(True, path + '.order',")]),
+    'parity: bool accepted as int': (D + 'base.py', [(
+        "    req(type(v) is int, path, f'not an int ({type(v).__name__})')",
+        "    req(isinstance(v, int), path, f'not an int ({type(v).__name__})')")]),
+    'parity: enum text accepted in memory': (D + 'base.py', [(
+        "        return lambda v, p: req(isinstance(v, tp), p, f'{v!r} is not a {tp.__name__}')",
+        "        return lambda v, p: req(isinstance(v, tp) or v in {m.value for m in tp}, p, 'x')")]),
+    'fresh snapshot age': (D + 'portfolio.py', [(
+        "    req(age <= max_age_ms, 'Portfolio.proof.at_ms',", "    req(True, 'Portfolio.proof.at_ms',")]),
+    'protection carried by a non-PROTECT intent': (D + 'protection.py', [(
+        "    req(it.purpose is Purpose.PROTECT and it.order_type is OrderType.STOP_MARKET and it.owner_id == prot.owner_id,",
+        "    req(it.owner_id == prot.owner_id,")]),
+    'client id collision': (D + 'portfolio.py', [(
+        "            req(c not in cids, ip + '.client_order_id', 'duplicate client order id')", "            pass")]),
+    'binding confirmation phrase': (D + 'account.py', [(
+        "        req(self.typed_phrase == confirmation_phrase(self.account_id, self.new_key_digest), p + '.typed_phrase',",
+        "        req(True, p + '.typed_phrase',")]),
     'manual pause bypass': (D + 'portfolio.py', [(
         '                req(pf.permits(it.purpose, Op.PLACE, one_shot=it.authorized_by is not None), ip,',
         '                req(True, ip,')]),
