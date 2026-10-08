@@ -435,9 +435,10 @@ def test_aggregate_protective_coverage_is_bounded_by_exposure():
     pos2 = replace(POS, lots=(LOT, lt2))
     ok = replace(PF, positions=(pos2,), intents=PF.intents + tuple(extra))
     assert ok.positions[0].qty == D('3.5')
-    from newcore.domain import active_coverage
+    from newcore.domain import confirmed_coverage, target_coverage
     intents = ok.intents_by_id()
-    assert sum(active_coverage(x.stop, intents) for x in ok.lots) == D('3.5')
+    assert sum(target_coverage(x.stop, intents) for x in ok.lots) == D('3.5')
+    assert sum(confirmed_coverage(x.stop, intents) for x in ok.lots) == D('3.5')
     # an entry stop larger than the seen size breaks the bound for its symbol / side as well
     with pytest.raises(InvalidRecord):
         _entry_stop(D('400.01'))
