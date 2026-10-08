@@ -75,7 +75,11 @@ def _dec(v, path, *, positive=False, lo=None, hi=None):
 
 def validate_spec(doc):
     """Return the spec document if valid; raise SpecError(path, reason) otherwise."""
-    _keys(doc, '$', {'format', 'name', 'symbols', 'steps', 'expect'}, {'description', 'account', 'faults'})
+    _keys(doc, '$', {'format', 'name', 'symbols', 'steps', 'expect'}, {'description', 'account', 'faults', 'targets'})
+    if 'targets' in doc:
+        t = doc['targets']
+        _req(isinstance(t, list) and t and all(isinstance(x, str) and x in ('fake', 'testnet') for x in t)
+             and len(set(t)) == len(t), '$.targets', 'a non-empty list of fake / testnet')
     _req(doc['format'] == FORMAT, '$.format', f'must be {FORMAT}')
     _req(isinstance(doc['name'], str) and NAME_RE.fullmatch(doc['name']), '$.name', '[a-z0-9_]{3,48}')
     if 'description' in doc:
@@ -152,6 +156,16 @@ def validate_spec(doc):
 
 
 def load_spec(path):
+    """Every malformed file is a SpecError (bad UTF-8, too deep, wrong JSON types), never an untyped crash."""
+    try:
+        return _load_spec(path)
+    except (UnicodeDecodeError, RecursionError, TypeError, AttributeError, ValueError) as ex:
+        if isinstance(ex, SpecError):
+            raise
+        raise SpecError('$', f'malformed spec ({type(ex).__name__})') from None
+
+
+def _load_spec(path):
     with open(path, encoding='utf-8') as fh:
         try:
             doc = json.load(fh, parse_float=lambda s: (_ for _ in ()).throw(SpecError('$', 'JSON floats are refused '

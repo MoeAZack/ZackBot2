@@ -10,6 +10,7 @@ A registered value shorter than MIN_SECRET_LEN is REFUSED (ValueError), never si
 redacted safely, and silently skipping it was exactly the leak.
 """
 import re
+import unicodedata
 import urllib.parse
 
 REDACTED = '<redacted>'
@@ -22,8 +23,10 @@ TOKEN_RUN = re.compile(r'[A-Za-z0-9_\-+/=]{32,}')
 
 
 def normalize_name(name):
-    n = urllib.parse.unquote_plus(str(name)).lower()
-    return re.sub(r'[-_.\s]', '', n)
+    """Percent-decoded, NFKC-normalised (fullwidth 'ｓｉｇｎａｔｕｒｅ' -> 'signature'), case-folded, and every
+    character that is not a letter or digit dropped (separators, zero-width and format characters included)."""
+    n = unicodedata.normalize('NFKC', urllib.parse.unquote_plus(str(name))).casefold()
+    return ''.join(ch for ch in n if ch.isalnum())
 
 
 def is_sensitive_name(name):
