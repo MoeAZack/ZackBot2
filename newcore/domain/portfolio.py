@@ -295,21 +295,16 @@ def _check_known(pf, p):
                 'only an unresolved market ENTRY owns a provisional stop')
         req((owner.symbol, owner.side) == (it.symbol, it.side), ip, 'owner of another symbol / side')
     # reducing intents never exceed what they could reduce (Cowork S05): per lot, all live REDUCE / CLOSE intents of
-    # that lot together <= the lot qty; per symbol / side, those plus portfolio-owned ones <= the position qty
-    per_lot, per_side = {}, {}
+    # that lot together (the carried one and any still cancelling, which can still fill) <= the lot qty. That also
+    # bounds every symbol / side, since a lot-owned intent has its lot's symbol / side. Portfolio-owned orphans are
+    # left out: they are cancel-only by construction (OrderIntent: CANCELLING or terminal; Portfolio: live only),
+    # never sendable, and their lot may be gone (Cowork re-check of S05).
+    per_lot = {}
     for it in intents.values():
-        if it.purpose not in (Purpose.REDUCE, Purpose.CLOSE):
-            continue
-        if it.owner_kind is OwnerKind.LOT:
+        if it.purpose in (Purpose.REDUCE, Purpose.CLOSE) and it.owner_kind is OwnerKind.LOT:
             per_lot[it.owner_id] = CTX.add(per_lot.get(it.owner_id, ZERO), it.qty)
-        key = (it.symbol, it.side)
-        per_side[key] = CTX.add(per_side.get(key, ZERO), it.qty)
     for lot_id, q in per_lot.items():
         req(q <= lots[lot_id].qty, f'{p}.lot[{lot_id}]', f'live reducing intents {q} exceed the lot qty {lots[lot_id].qty}')
-    held = {(x.symbol, x.side): x.qty for x in pf.positions}
-    for key, q in per_side.items():
-        req(q <= held.get(key, ZERO), f'{p}.position[{key[0]}|{key[1]}]',
-            f'live reducing intents {q} exceed the position qty {held.get(key, ZERO)}')
     # carried: which intents a record carries; anything else (not an entry) is cancel-only work
     carried = set()
     for x in lots.values():

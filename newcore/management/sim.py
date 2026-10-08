@@ -24,7 +24,7 @@ from ..domain.orders import Side
 from .actions import MARKET, ManagementAction
 from .core import initial_state, step
 from .plan import market_fill
-from .state import Candle, ConfirmedFill, Leg, PositionState, Stage
+from .state import Cancelled, Candle, ConfirmedFill, Leg, PositionState, Stage
 
 PRIORITY = (Leg.STOP, Leg.TP1, Leg.TP2, Leg.ADD)
 MAX_EVENTS = 64
@@ -77,8 +77,13 @@ def _apply(plan, st, fill, px, out_fills, out_actions, candle=None, close_reques
     if fill is not None:
         out_fills.append(fill)
     out_actions.extend(r.actions)
-    st = r.state
-    for a in r.actions:
+    st, acts = r.state, list(r.actions)
+    if st.racing:                       # the simulated venue confirms every cancel / replacement at once
+        r = step(plan, st, tuple(Cancelled(leg=x.leg) for x in st.racing))
+        out_actions.extend(r.actions)
+        st = r.state
+        acts.extend(r.actions)
+    for a in acts:
         if a.kind in MARKET and st.qty > 0:
             q = min(a.qty, st.qty)
             fp = market_fill(px, plan.side, plan.costs.slip, opening=False)

@@ -170,7 +170,8 @@ class Session:
         rcfg = RunnerConfig(account=account(cfg), portfolio_id=cfg.portfolio_id, symbols=cfg.symbols,
                             tf_ms=self.tf_ms, timeframe=cfg.tf, rules=venue_rules or rules_for(cfg, cfg.symbols),
                             sizing=SizingPolicy(cfg.risk_pct, cfg.max_leverage, cfg.cap_gap_buffer),
-                            sides=sides_for(cfg), strict=False)
+                            sides=sides_for(cfg), strict=False,
+                            raw_qty=cfg.tnet_raw_qty if cfg.tnet_enabled else None)
         self.runner = ManagedBookRunner(rcfg, policy=policy_for(cfg), journal=self.journal, venue=port,
                                         bars=self.bars, signals=signals_for(cfg, enabled), account_reads=reads,
                                         management=management_for(cfg))

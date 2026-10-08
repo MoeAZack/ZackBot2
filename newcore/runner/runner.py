@@ -52,10 +52,11 @@ Runner boundary (Codex ruling): ENTER and ADD decisions are keyed (keys.decision
 from __future__ import annotations
 
 import dataclasses
+import re
 from dataclasses import dataclass, field
 from decimal import Context, Decimal
 
-from newcore.domain import (Account, Action, Authority, Decision, DecisionRecorded, EntriesMode, HoldKind,
+from newcore.domain import (Account, Action, Authority, Decision, DecisionRecorded, EntriesMode, Environment, HoldKind,
                             InstrumentRules, IntentRecorded, IntentState, IntentStateChanged, Lot, LotSource,
                             ModeChanged, Op, Ownership, OwnershipProof, Portfolio, Position, ProofKind, Protection,
                             Purpose, ReasonCode, ResultObserved, ResultPhase, Rounding, Side, check_account_portfolio,
@@ -99,6 +100,20 @@ OPEN_EXCHANGE_STATUSES = ('NEW', 'PARTIALLY_FILLED')
 RCTX = Context(prec=34)
 
 
+DIST_TOKEN = re.compile(r'(?:^| )dist ([0-9]+(?:\.[0-9]+)?(?:E[+-]?[0-9]+)?)(?: |$)')
+
+
+def journaled_distance(decision):
+    """H1: the planned stop distance an ENTER decision recorded ('dist <Decimal>' in its detail, exact text), or None."""
+    if decision is None or decision.action is not Action.ENTER:
+        return None
+    m = DIST_TOKEN.search(decision.detail)
+    if m is None:
+        return None
+    d = Decimal(m.group(1))
+    return d if d > 0 else None
+
+
 def _is_duplicate(out):
     """The order EXISTS: the raw -4116 refusal, or TestnetVenue's UNKNOWN 'duplicate_client_id' form."""
     return (out.kind is OutcomeKind.REJECTED and out.error_code == DUPLICATE_CLIENT_ID) or \
@@ -132,6 +147,9 @@ class RunnerConfig:
     slot_id: str = 'S1'
     policy_version: str = 'nc-s1'
     strict: bool = True                        # raise InvariantBreach outside HOLD
+    raw_qty: Decimal | None = None             # H2 (TNET-01 T10b only): send THIS entry quantity unsized and unfiltered,
+                                               # so the venue's own min-qty / min-notional refusal is exercised;
+                                               # refused unless the account is bound to TESTNET
 
 
 @dataclass(frozen=True)
@@ -188,6 +206,10 @@ class Runner:
         self.incidents = []                                               # (at_ms, text): surfaced, not journaled
         self._reads = {}                                                  # lost entry -> agreeing position reads
         self._refusals = {}                                               # stop intent -> venue refusal code
+        if config.raw_qty is not None and (config.account.binding.environment is not Environment.TESTNET
+                                           or not config.raw_qty > 0):
+            raise ValueError('raw_qty (H2) is a TESTNET-only override of a positive quantity: refused for '
+                             f'{config.account.binding.environment}')
         if hard_hold is not None:                                         # boot directive: the store cannot write
             self.store_unavailable(hard_hold)
 
@@ -643,9 +665,15 @@ class Runner:
             self._hold([ReasonCode.EXEC_STOP_FAILED], reason=ReasonCode.EXEC_STOP_FAILED)
 
     def _entry_distance(self, entry_iv):
-        """The stop distance of an entry: cached, or re-derived from the klines at its key candle (exchange truth)."""
+        """The stop distance of an entry: cached; else the JOURNALED planned distance (H1: the ENTER decision's
+        'dist <d>' token, durable since S1 - no NC-01 field carries it, proposed for r3); else re-derived from the
+        klines at its key candle (exchange truth: an adopted fill / an older journal)."""
         d = self._dist.get(entry_iv.intent_id)
         if d is not None:
+            return d
+        d = journaled_distance(self.fold.decisions.get(entry_iv.intent.decision_id))
+        if d is not None:
+            self._dist[entry_iv.intent_id] = d
             return d
         key = self.fold.entry_key(entry_iv)
         sym, side = entry_iv.intent.symbol, str(entry_iv.intent.side)
@@ -809,6 +837,8 @@ class Runner:
                 sz = size_entry(equity=eq.value[0], stop_distance=s.stop_distance, ref_price=ref_price,
                                 rules=self.cfg.rules[symbol], policy=self.cfg.sizing, open_notional=notional)
                 gate = sz.reason
+                if self.cfg.raw_qty is not None:                          # H2: the venue, not the sizer, refuses
+                    gate = None
         if gate is not None:
             self.counters.skips += 1
             self._decision(decision_id=did, action=Action.SKIP, reason=gate, authority=Authority.STRATEGY, key=key,
@@ -816,10 +846,12 @@ class Runner:
             return
         iid = ids.derive_intent_id(self.acct, key)
         planned = planned_intent(intent_id=iid, account_id=self.acct, decision_id=did, purpose='entry', symbol=symbol,
-                                 side=s.side, qty=sz.qty, reason=s.reason, at_ms=self.now, slot_id=self.cfg.slot_id)
+                                 side=s.side, qty=sz.qty if self.cfg.raw_qty is None else self.cfg.raw_qty,
+                                 reason=s.reason, at_ms=self.now, slot_id=self.cfg.slot_id)
+        raw = '' if self.cfg.raw_qty is None else f' raw_qty {self.cfg.raw_qty}'
         self._decision(decision_id=did, action=Action.ENTER, reason=s.reason, authority=Authority.STRATEGY, key=key,
                        symbol=symbol, side=s.side, intents=(planned,),
-                       detail=f'risk {sz.risk_usd:.8f} dist {s.stop_distance} capped {sz.capped}')
+                       detail=f'risk {sz.risk_usd:.8f} dist {s.stop_distance} capped {sz.capped}{raw}')
         self._dist[iid] = s.stop_distance
         self.counters.entries += 1
         self._send_entry(self._record_durable(planned))
@@ -1049,4 +1081,16 @@ class Runner:
         return summarize(self.trades(), equity_end=eq.value[0] if eq.kind is ReadKind.OK else None,
                          open_lots=len(self.fold.open_lots()), ownership=own,
                          mode=str(self.fold.mode) if self.hard_hold is None else 'hold(durability_unavailable)',
-                         counters=dataclasses.asdict(self.counters))
+                         counters=dataclasses.asdict(self.counters), stop_routes=self.stop_routes_text())
+
+    def stop_routes(self):
+        """H4: (symbol, side, route) of every open lot's carrying stop (classic | algo; 'none' when unprotected)."""
+        out = []
+        for lot in self.fold.open_lots():
+            c = lot.carrier
+            route = 'none' if c is None else (route_of(c.intent_id, c.intent.client_order_id) or 'classic')
+            out.append((lot.symbol, lot.side, route))
+        return tuple(sorted(out))
+
+    def stop_routes_text(self):
+        return ','.join(f'{s}:{sd}:{r}' for s, sd, r in self.stop_routes()) or '-'

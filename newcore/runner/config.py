@@ -26,6 +26,9 @@
     enabled = false
     plan = "range_bb_mr_v1"              # the only plan: a DISABLED mechanics fixture (4h), no edge claimed
     cap_mult = "2.5"                     # plan risk cap = cap_mult x the entry's risk to its stop (reserved add)
+    [tnet]                               # TNET-01 harness hooks: TESTNET + venue.kind testnet ONLY (refused otherwise)
+    enabled = false
+    raw_qty = ""                         # H2: send this entry qty unsized (the venue's min-qty refusal, T10b)
     [account]
     name = "nc-smoke"                   # account / portfolio ids derive from it (or give id / portfolio_id)
     equity = "10000"                     # fake / replay starting equity
@@ -52,7 +55,7 @@ ALLOWED_KEY_NAMES = {'key_digest'}                 # the binding's non-secret di
 TIMEFRAMES = ('1h', '4h')
 RULES = ('trend_ema_mom.v1',)
 SECTIONS = {
-    '': {'mode', 'venue', 'journal', 'strategy', 'book', 'cycle', 'account', 'output', 'management'},
+    '': {'mode', 'venue', 'journal', 'strategy', 'book', 'cycle', 'account', 'output', 'management', 'tnet'},
     'venue': {'kind', 'factory', 'data_root', 'start', 'end'},
     'journal': {'dir'},
     'strategy': {'rule', 'enabled', 'mirrored_short', 'symbols', 'tf'},
@@ -61,6 +64,7 @@ SECTIONS = {
     'account': {'name', 'id', 'portfolio_id', 'equity', 'key_digest'},
     'output': {'dir'},
     'management': {'enabled', 'plan', 'cap_mult'},
+    'tnet': {'enabled', 'raw_qty'},
 }
 PLANS = ('range_bb_mr_v1',)
 
@@ -100,6 +104,8 @@ class RunConfig:
     mg_enabled: bool = False                       # [management] enabled: position management OFF unless true
     mg_plan: str = 'range_bb_mr_v1'
     mg_cap_mult: Decimal = Decimal('2.5')
+    tnet_enabled: bool = False                     # [tnet] the TNET-01 harness hooks (TESTNET + testnet venue only)
+    tnet_raw_qty: Decimal | None = None            # H2: unsized entry quantity (T10b venue min-qty refusal)
 
 
 def _scan(node, path=''):
@@ -236,7 +242,16 @@ def validate(doc, *, source='', environ=None):
         raise ConfigError(f'management.plan={mg_plan!r}: only {PLANS} (a disabled mechanics fixture)')
     if m.get('enabled', False) and tf != '4h':
         raise ConfigError(f'management.plan={mg_plan!r} is a 4h plan; strategy.tf is {tf!r}')
+    tn = doc.get('tnet', {})
+    if type(tn.get('enabled', False)) is not bool:
+        raise ConfigError('tnet.enabled must be true / false')
+    if tn.get('enabled', False) and (mode != 'TESTNET' or kind != 'testnet'):
+        raise ConfigError(f'[tnet] is the TNET-01 harness: TESTNET + venue.kind testnet only (got {mode} / {kind})')
+    raw = _dec(tn.get('raw_qty'), 'tnet.raw_qty', lo=Decimal('1E-12'), optional=True)
+    if raw is not None and not tn.get('enabled', False):
+        raise ConfigError('tnet.raw_qty needs tnet.enabled = true (an explicit TESTNET-only override)')
     return RunConfig(
+        tnet_enabled=tn.get('enabled', False), tnet_raw_qty=raw,
         mg_enabled=m.get('enabled', False), mg_plan=mg_plan,
         mg_cap_mult=_dec(m.get('cap_mult', '2.5'), 'management.cap_mult', lo=1, hi=10),
         mode=mode, venue_kind=kind, factory=factory, data_root=v.get('data_root', '.'), start=v.get('start') or None,
