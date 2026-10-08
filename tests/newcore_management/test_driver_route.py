@@ -116,3 +116,25 @@ def test_restart_between_the_routes_folds_to_the_same_state(side):
     replay2 = DR.fold(p2, account_id=ACCT, lot_id=LOT, entry_fee=D(0), events=log2)
     assert [d.route for d in stops(replay2[-1])] == ['algo']
     _ = px
+
+
+@pytest.mark.parametrize('side', SIDES)
+def test_after_one_algo_fallback_every_later_stop_goes_algo_directly(side):
+    """The venue said classic stops need the algo route: a later replacement never tries classic again."""
+    p = plan(side, costs=ZERO_COSTS, tp1_frac='0.5', tp1_off='1', tp2_off='2')
+    drv = DR.start(p, account_id=ACCT, lot_id=LOT, entry_fee=D(0))
+    r = DR.on_outcome(drv.state, refused(p, stops(drv)[0]), submit=True)
+    algo = stops(r)[0]
+    ds = DR.on_outcome(r.state, known(p, algo), submit=True).state
+    assert ds.stop_route == 'algo'
+    r = DR.on_mark(ds, ds.pos.tp1.price)                              # TP1 fires (a market reduce)
+    tp = next(d for d in r.submits if d.purpose is Purpose.REDUCE)
+    fin = OrderOutcome(kind=OutcomeKind.FINAL, ref=ref(p, tp), observed_at_ms=T0, status='FILLED',
+                       exchange_order_id='x77', executed_qty=tp.qty, avg_price=ds.pos.tp1.price)
+    r = DR.on_outcome(r.state, fin, submit=True)
+    from newcore.ports.venue import VenueFill
+    f = VenueFill(trade_id='t77', exchange_order_id='x77', symbol=p.symbol, position_side=p.side.value, qty=tp.qty,
+                  price=ds.pos.tp1.price, fee=D(0), fee_asset='USDT', realized_pnl=D(0), maker=False, at_ms=T0)
+    r = DR.on_fills(r.state, (f,))
+    resized = stops(r)
+    assert resized and all(d.route == 'algo' for d in resized)

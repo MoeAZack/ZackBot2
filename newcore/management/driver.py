@@ -151,6 +151,7 @@ class DriverState:
     waiting: tuple               # market CLOSE / REDUCE drafts waiting for in-flight reduce orders to settle
     quote_asset: str             # fees in this asset are booked as they are
     fee_rates: tuple             # ((asset, rate in quote), ...) for fees charged in another asset
+    stop_route: str              # the route new stops go out on (algo once the venue refused a classic stop)
 
 
 @dataclasses.dataclass(frozen=True, slots=True, kw_only=True)
@@ -313,7 +314,7 @@ def _new_state(plan, account_id, lot_id, route, pos, lineage, mode, hold_kind, q
     return DriverState(plan=plan, account_id=account_id, lot_id=lot_id, route=route, pos=pos, bindings=(), triggers=(),
                        held=(), lineage=_check_lineage(tuple(lineage), lot_id), trade_ids=(), deferred=(),
                        mode=EntriesMode(mode), hold_kind=hold_kind, waiting=(), quote_asset=quote_asset,
-                       fee_rates=tuple(sorted(fee_rates)))
+                       fee_rates=tuple(sorted(fee_rates)), stop_route=route)
 
 
 # --------------------------------------------------------------------------------------------------- core actions
@@ -331,7 +332,8 @@ def _apply_actions(w, actions):
                 w.replace_binding(b, current=True)
                 continue
             old = [b for b in w.bindings() if b.leg is Leg.STOP and b.state in (BindState.SENT, BindState.WORKING)]
-            d = w.send(w.draft(Leg.STOP, Purpose.PROTECT, OrderType.STOP_MARKET, a.qty, a.reason, Op.PLACE, a.price))
+            d = w.send(w.draft(Leg.STOP, Purpose.PROTECT, OrderType.STOP_MARKET, a.qty, a.reason, Op.PLACE, a.price,
+                               route=w.d['stop_route']))
             for b in w.bindings():
                 if d is not None and b.intent_id == d.intent_id:
                     w.replace_binding(b, replaces=old[-1].intent_id if old else None)
@@ -445,7 +447,7 @@ def _restore_stop(w, b):
         return
     w.reconcile.append(('stop_lost', b.intent_id, b.status))
     d = w.send(w.draft(Leg.STOP, Purpose.PROTECT, OrderType.STOP_MARKET, pos.stop.qty, R.PROTECT_RESTORING, Op.PLACE,
-                       pos.stop.price))
+                       pos.stop.price, route=w.d['stop_route']))
     _ = d
 
 
@@ -666,6 +668,7 @@ def _fallback_to_algo(w, b):
     intent on the algo route. The core never sees a refusal: its stop request stays alive, and the old stop it
     replaces (if any) keeps working until this one is confirmed."""
     w.drop_binding(b)
+    w.d['stop_route'] = 'algo'                     # this venue wants stops on the algo route: every later one too
     d = w.send(w.draft(Leg.STOP, Purpose.PROTECT, OrderType.STOP_MARKET, b.qty, b.reason, Op.PLACE, b.stop_price,
                        route='algo'))
     for x in w.bindings():
