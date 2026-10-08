@@ -347,12 +347,16 @@ def _main(argv=None, *, http=None, local_clock=None, sleep=None, store=None, out
                                                                          for r in res.scenarios):
             out.write('NOTHING RAN: every selected scenario was SKIPPED on this target (not a pass).\n')
             return EXIT_USAGE
-        if res.exit_code == EXIT_PREFLIGHT:
+        if res.exit_code == EXIT_PREFLIGHT and res.preflight is not None:
             out.write('PREFLIGHT REFUSED:\n' + ''.join(f'  - {x}\n' for x in res.preflight.refusals))
             return EXIT_PREFLIGHT
         rc_report = EXIT_PASS
         if args.target == 'testnet' or args.report_dir:
             rc_report = _report(args, res, 'tnet_' + nonce, build, values, out, cassettes)
+        if getattr(res, 'interrupted', False) and res.exit_code != EXIT_RESIDUE:
+            out.write('INTERRUPTED (Ctrl+C): the report above has every scenario so far; a scenario that had sent '
+                      'orders ran its teardown.\n')
+            return rc_report or 6
         if res.exit_code == EXIT_RESIDUE:
             out.write('CLEANUP NOT CLEAN - check these on the testnet UI:\n')
             for r in res.scenarios:

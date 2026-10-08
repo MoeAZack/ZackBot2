@@ -64,7 +64,7 @@ def test_t08_end_check_fails_when_any_order_is_left(monkeypatch):
     monkeypatch.setattr(FakeVenue, 'open_orders', with_leftover)
     r = run_scenario(s, FakeTarget(), run_nonce='mg5')
     assert r.verdict == FAIL
-    assert any(name.startswith('open orders at the end') and not ok for name, ok, _ in r.assertions)
+    assert any(name.startswith('open NEWCORE orders at the end') and not ok for name, ok, _ in r.assertions)
 
 
 def test_move_is_fake_only_and_the_plan_is_validated():

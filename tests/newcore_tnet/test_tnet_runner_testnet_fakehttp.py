@@ -147,3 +147,15 @@ def test_a_bracket_on_a_market_that_never_moves_is_inconclusive_after_its_attemp
     assert res.exit_code == DR.EXIT_INCONCLUSIVE and w.fb.flat() and not w.fb.open_cids()
     entries = {x['client_id'] for x in r.ledger if x['kind'] == 'entry'}
     assert len(entries) == 1                                            # the last attempt's ledger: its own ids
+
+
+def test_an_adopted_foreign_order_neither_fails_nor_counts_in_the_end_order_check():
+    """Cowork 6063794395 LOW: T05-T07 checked 'open orders == 0' over ALL orders; an adopted foreign order made them
+    FAIL. The check counts NEWCORE orders only (the bracket ends INCONCLUSIVE on the static fake, never FAIL)."""
+    w = World(foreign_orders=('web_manual1',))
+    res = run_suite([spec('T05-tn-long')], w.target(), run_nonce='adf', monotonic=w.monotonic,
+                    adopt_foreign=('web_manual1',))
+    r, = res.scenarios
+    assert r.verdict == INCONCLUSIVE, [a for a in r.assertions if not a[1]]
+    assert ('open NEWCORE orders at the end == 0', True, '0') in r.assertions
+    assert w.fb.orders['web_manual1']['status'] == 'NEW'

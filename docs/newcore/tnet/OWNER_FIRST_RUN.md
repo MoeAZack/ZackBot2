@@ -17,6 +17,8 @@ Your account and config (both already set up and not secret):
 
 Before you start, check that the testnet account is in **Hedge mode** and holds **at least 100 USDT** of testnet funds.
 
+The testnet API key you store should have **read** and **futures trading** permission only. Do **not** enable withdrawals or any other permission: the tools never need them.
+
 ---
 
 ## 0. Get the exact code (once)
@@ -121,6 +123,11 @@ This cancels NEWCORE orders only and lists any positions it finds. It never touc
 2. Run `python tools\newcore_tnet.py --cleanup`.
 3. If NEWCORE positions are still open, run `python tools\newcore_tnet.py --cleanup --close-positions`. This closes every position on BTCUSDT and ETHUSDT. To keep a position of your OWN (not NEWCORE), add it with its quantity: `--adopt-foreign SYMBOL:SIDE:QTY`, for example `--adopt-foreign BTCUSDT:LONG:0.002` keeps 0.002 BTC long and closes only the rest.
 4. Repeat step 2 until it exits 0.
+
+**What to look for on a scenario line:**
+
+- `PASS` / `FAIL` / `INCONCLUSIVE` is the verdict.
+- `degraded=SYMBOL:SIDE:how` means the bot could not place its normal protective stop and used a fallback: either a stop placed further from the current price, or a reduce-only market close. It only happens when the bot cannot trust its own records (a "hard hold"), which these tests do not set up, so it should not appear. If it does, send that report even when the line says PASS.
 
 ## What to send back
 

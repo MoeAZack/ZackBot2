@@ -18,7 +18,7 @@ import os
 from newcore.venue.cassette import CassetteLeak, CassetteRecorder
 from newcore.venue.tnet import _audit
 
-from .driver import (EXIT_PREFLIGHT, FAIL, INCONCLUSIVE, ScenarioResult, SuiteResult, adopted_orders,
+from .driver import (EXIT_DEADLINE, EXIT_PREFLIGHT, FAIL, INCONCLUSIVE, ScenarioResult, SuiteResult, adopted_orders,
                      attempt_nonce, run_scenario, suite_exit_code)
 
 REPLAY_FORMAT = 'zb-newcore-tnet-replay/1'
@@ -59,25 +59,39 @@ def replay_meta(spec, result, *, run_nonce, account_id, symbols, settle_ms, base
 def run_recorded_suite(specs, make_target, *, run_nonce, cassette_dir, redact, monotonic, min_balance=None,
                        adopt_foreign=(), on_result=None, note='TNET-01 runner scenario'):
     """make_target(recorder_factory) -> TestnetTarget. Returns (SuiteResult, preflight cassette path | None,
-    cassette errors [(scenario id, reason)])."""
+    cassette errors [(scenario id, reason)]). Ctrl+C in the boot / preflight / between scenarios keeps the results
+    so far (SuiteResult.interrupted): the CLI still writes the report."""
+    st = {'pre': None, 'pre_path': None, 'results': [], 'errors': []}
+    try:
+        return _recorded_suite(st, specs, make_target, run_nonce=run_nonce, cassette_dir=cassette_dir,
+                               redact=redact, monotonic=monotonic, min_balance=min_balance,
+                               adopt_foreign=adopt_foreign, on_result=on_result, note=note)
+    except KeyboardInterrupt:
+        res = st['results']
+        code = suite_exit_code(res) if any(r.residue for r in res) else EXIT_DEADLINE
+        return SuiteResult(st['pre'], res, code, interrupted=True), st['pre_path'], st['errors']
+
+
+def _recorded_suite(st, specs, make_target, *, run_nonce, cassette_dir, redact, monotonic, min_balance,
+                    adopt_foreign, on_result, note):
     redact = tuple(v for v in redact if isinstance(v, str))
-    errors = []
+    errors = st['errors']
 
     def recorder(inner):
         return CassetteRecorder(inner, redact=redact, note=note)
     pre_t = make_target(recorder)
     symbols = sorted({s['symbol'] for s in specs if 'testnet' in s['targets']})
     kw = {} if min_balance is None else {'min_balance': min_balance}
-    pre = pre_t.preflight(symbols, adopt_foreign=adopt_foreign, **kw)
+    pre = st['pre'] = pre_t.preflight(symbols, adopt_foreign=adopt_foreign, **kw)
     pre_path = None
     try:
         text = pre_t.recorder.to_json()
-        pre_path = _write(bundle_base(cassette_dir, run_nonce, 'preflight') + '.json', text)
+        pre_path = st['pre_path'] = _write(bundle_base(cassette_dir, run_nonce, 'preflight') + '.json', text)
     except (CassetteLeak, OSError) as ex:
         errors.append(('preflight', type(ex).__name__))
     if not pre.ok:
         return SuiteResult(pre, [], EXIT_PREFLIGHT), pre_path, errors
-    results = []
+    results = st['results']
     for spec in specs:
         if 'testnet' not in spec['targets']:
             r = run_scenario(spec, pre_t, run_nonce=run_nonce, monotonic=monotonic)      # SKIPPED, sends nothing

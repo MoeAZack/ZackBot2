@@ -329,9 +329,10 @@ def _evaluate(run, exp, truth):
             n = sum(1 for iv in r.fold.intents.values() if iv.purpose is purpose and iv.executed > 0)
             out.append((f'{key} filled == {exp[key]}', n == exp[key], str(n)))
     if 'open_orders_end' in exp:                  # T08: NO stop / order of any kind may be left on the venue
-        oo = run.target.raw.open_orders(run.sym)
-        n = len(oo.value) if oo.kind is P.ReadKind.OK else None
-        out.append((f'open orders at the end == {exp["open_orders_end"]}', n == exp['open_orders_end'], str(n)))
+        oo = run.target.raw.open_orders(run.sym)      # NEWCORE orders only: an adopted foreign order is not ours
+        n = sum(1 for o in oo.value if is_newcore_cid(o.ref.client_id)) if oo.kind is P.ReadKind.OK else None
+        out.append((f'open NEWCORE orders at the end == {exp["open_orders_end"]}', n == exp['open_orders_end'],
+                    str(n)))
     return out
 
 
@@ -365,7 +366,16 @@ def run_scenario(spec, target, *, run_nonce, monotonic=time.monotonic, baseline=
             return None
         return target.cleanup([run.sym], 'tnet_' + nonce, baseline=baseline)
 
-    _, cleanup = guarded(body, clean)
+    try:
+        _, cleanup = guarded(body, clean)
+    except KeyboardInterrupt:                      # raised INSIDE the teardown (an I/O call): it did not finish
+        state['interrupted'] = True                # run it ONCE more (SIGINT ignored meanwhile); still not clean -> 8
+        try:
+            _, cleanup = guarded(lambda: None, clean)
+        except KeyboardInterrupt:
+            from newcore.venue.tnet import CleanupResult
+            cleanup = CleanupResult(clean=False, attempts=0, notes=['the teardown was interrupted twice'])
+        state.setdefault('error', 'Interrupted (KeyboardInterrupt) during the teardown; it was run again')
     res.wall_s = monotonic() - run.t0
     res.ledger = list(run.ledger)
     res.cycle_times = list(run.cycle_times)
@@ -453,6 +463,7 @@ class SuiteResult:
     preflight: object
     scenarios: list
     exit_code: int
+    interrupted: bool = False                              # Ctrl+C outside a scenario body (preflight / boot)
 
 
 def suite_exit_code(results, preflight_ok=True):
@@ -479,10 +490,13 @@ def run_suite(specs, target, *, run_nonce, monotonic=time.monotonic, min_balance
     leaves residue stops the suite (nothing else may run on an account that may hold exposure)."""
     symbols = sorted({s['symbol'] for s in specs if target.kind in s['targets']})
     kw = {} if min_balance is None else {'min_balance': min_balance}
-    pre = target.preflight(symbols, adopt_foreign=adopt_foreign, **kw)
+    results, pre = [], None
+    try:
+        pre = target.preflight(symbols, adopt_foreign=adopt_foreign, **kw)
+    except KeyboardInterrupt:
+        return SuiteResult(None, [], EXIT_DEADLINE, interrupted=True)
     if not pre.ok:
         return SuiteResult(pre, [], EXIT_PREFLIGHT)
-    results = []
     for spec in specs:
         for attempt in range(1, spec.get('attempts', 1) + 1):
             r = run_scenario(spec, target, run_nonce=attempt_nonce(run_nonce, attempt), monotonic=monotonic,
