@@ -100,3 +100,11 @@ operator.flatten
 operator.one_shot
 operator.adopt
 risk_gateway.cost_to_stop
+risk_gateway.drawdown_kill
+risk_gateway.daily_halt
+reconcile.foreign_quarantine
+reconcile.manual_close
+reconcile.manual_add
+reconcile.stale_read
+reconcile.late_fill_after_not_found
+reconcile.external_close

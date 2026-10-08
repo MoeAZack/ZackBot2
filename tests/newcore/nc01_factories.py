@@ -14,6 +14,7 @@ from newcore.domain import (Account, AccountBinding, Action, Arming, Authority, 
                             Ownership,
                             OwnershipProof, Portfolio, Position, PositionRead, ProofKind, Protection, Purpose, ReasonCode,
                             Side, StopMiss, Venue, confirmation_phrase, make_id)
+from newcore.domain import EMPTY_FACTS
 from newcore.domain.base import field_spec
 
 T0 = 1_791_400_000_000                      # 2026-10-07 UTC, integer ms
@@ -305,7 +306,8 @@ AUTHORITY_OF = {'operator': Authority.OPERATOR, 'protect': Authority.PROTECTION,
 
 
 def authority_for(action, reason):
-    if reason.namespace == 'operator' or reason in (ReasonCode.ENTRY_MANUAL, ReasonCode.ENTRY_ONE_SHOT) \
+    if reason.namespace == 'operator' or reason in (ReasonCode.ENTRY_MANUAL, ReasonCode.ENTRY_ONE_SHOT,
+                                                     ReasonCode.EXIT_MANUAL) \
             or action is Action.RESUME:
         return Authority.OPERATOR
     return AUTHORITY_OF.get(reason.namespace, Authority.STRATEGY)
@@ -379,7 +381,7 @@ def samples(seed=5):
     dec = decision_with_intents(ids, acct, Action.ENTER, ReasonCode.ENTRY_SIGNAL)
     durable = replace(dec.intents[0], state=IntentState.DURABLE)
     return [account(acct), rules(), it, pf, dec, decision_key(), unknown_portfolio(acct), *res.values(),
-            Snapshot(account_id=acct, generation=7, last_sequence=4, written_at_ms=T0, writer_build='nc01-test',
+            Snapshot(facts=EMPTY_FACTS, account_id=acct, generation=7, last_sequence=4, written_at_ms=T0, writer_build='nc01-test',
                      portfolio=pf),
             HighWater(account_id=acct, generation=7, last_sequence=4, writer_build='nc01-test'),
             event(IntentRecorded, ids, acct, 1, intent=durable, reason=durable.reason),
@@ -392,7 +394,26 @@ def samples(seed=5):
                   reason=ReasonCode.RECOVERY_DURABILITY_UNAVAILABLE),
             event(BindingChanged, ids, acct, 6, from_state=BindingState.UNCONFIRMED, to_state=BindingState.CONFIRMED,
                   binding=binding(), confirmation=account(acct).confirmation, reason=ReasonCode.BINDING_UNCONFIRMED),
-            *standalone_samples(ids, pf, res)]
+            *standalone_samples(ids, pf, res),
+            incident_event(ids, acct, 7, pf)]
+
+
+def incident(ids, acct, pf=None, kind=ReasonCode.RECONCILE_MANUAL_CLOSE, **kw):
+    from newcore.domain import Incident
+    lt = pf.lots[0] if pf is not None else None
+    base = dict(incident_id=ids.id('inc'), account_id=acct, kind=kind, at_ms=T0 + 500,
+                symbol=lt.symbol if lt else None, side=lt.side if lt else None,
+                intent_refs=(lt.in_flight,) if lt is not None and lt.in_flight else (),
+                lot_refs=(lt.lot_id,) if lt else (), position_refs=(pf.positions[0].position_id,) if pf else (),
+                evidence=(ids.id('rec'),), detail='position flat on the venue, lot open in the journal')
+    base.update(kw)
+    return Incident(**base)
+
+
+def incident_event(ids, acct, sequence, pf=None, **kw):
+    from newcore.domain import IncidentRecorded
+    inc = incident(ids, acct, pf, **kw)
+    return event(IncidentRecorded, ids, acct, sequence, at=T0 + 600, incident=inc, reason=inc.kind)
 
 
 def standalone_samples(ids, pf, res):
