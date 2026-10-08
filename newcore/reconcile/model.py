@@ -57,7 +57,10 @@ class Trigger(enum.StrEnum):
 
 
 class DecisionKind(enum.StrEnum):
-    """Declaration order is the execution priority (protection first, the HOLD lift last)."""
+    """Declaration order is the execution priority (exposure risk first, then protection, the HOLD lift last)."""
+    # cancel an OWNED stop that does not match its journal record: at once when it can ADD exposure (not reduce-only),
+    # else only once a correct replacement is confirmed and covers the side (never removes the last protection)
+    CANCEL_MISMATCHED_PROTECT = 'cancel_mismatched_protect'
     PROTECT_ONLY = 'protect_only'                    # place reduce-only protection for uncovered qty; adopts nothing
     RESOLVE_FILLED = 'resolve_filled'                # an owned intent executed qty (exchange evidence)
     RESOLVE_NOT_EXECUTED = 'resolve_not_executed'    # an owned intent ended with nothing executed (exchange evidence)
@@ -216,6 +219,10 @@ class RecDecision:
     reasons: tuple = ()                    # ReasonCode, ...
     evidence: tuple = ()                   # stable tokens: 'order:<id>', 'trade:<id>', 'read:positions@<ms>', ...
     owner_actions: tuple = ()              # non-empty on HOLD / QUARANTINE
+    # HOLD / QUARANTINE only: inc_ + 32 hex, a pure function of (account, kind, row, detail, subject ids, evidence) -
+    # never of the clock, attempt or trigger - so the same item after a restart has the same id and a journaled
+    # Incident (NC-01 r3a IncidentRecorded) is recognised as a duplicate. '' on every other kind.
+    incident_id: str = ''
 
     def key(self):
         return (RANK[self.kind], self.symbol or '', self.side or '', self.intent_id or '', self.client_id or '',

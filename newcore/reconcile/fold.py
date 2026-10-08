@@ -78,7 +78,8 @@ MAX_DIGITS = 38
 OPEN_STATES = frozenset({IntentState.SUBMITTED, IntentState.WORKING, IntentState.UNKNOWN, IntentState.CANCELLING})
 COVER_STATES = OPEN_STATES                 # a listed owned stop protects whatever its journal answer still says
 HOLD_KINDS = frozenset({K.HOLD, K.QUARANTINE})
-ACTION_KINDS = frozenset({K.PROTECT_ONLY, K.RESOLVE_FILLED, K.RESOLVE_NOT_EXECUTED, K.ADOPT})
+ACTION_KINDS = frozenset({K.CANCEL_MISMATCHED_PROTECT, K.PROTECT_ONLY, K.RESOLVE_FILLED, K.RESOLVE_NOT_EXECUTED,
+                          K.ADOPT})
 ADVISORY_IN_HARD_HOLD = frozenset({K.RESOLVE_FILLED, K.RESOLVE_NOT_EXECUTED, K.ADOPT, K.CLEAR_HOLD})
 
 
@@ -147,6 +148,21 @@ def verdict_inputs(view, snap, *, now_ms, trigger, attempt, policy):
         f'policy={_c(policy)}', f'trigger={_c(trigger)}', f'attempt={_c(attempt)}', f'now_ms={_c(now_ms)}',
     ]
     return '\n'.join(parts)
+
+
+INCIDENT_FIELDS = ('detail', 'symbol', 'side', 'intent_id', 'client_id', 'lot_id', 'qty', 'evidence')
+
+
+def incident_id(account_id, kind, row, fields):
+    """Cowork L4: the id of a HOLD / QUARANTINE item, 'inc_' + 32 hex (the NC-01 r3a Incident id shape): a tagged hash of
+    the account, the item (kind, row, detail, subject ids, qty) and the evidence it rests on. The clock, the attempt and
+    the trigger are NOT in it, so the same item re-derived after a restart has the same id and the runner can recognise
+    an incident it already journaled (IncidentRecorded, NC-01 r3a). Evidence that carries a read time (stale reads)
+    changes with each read, so each such item is a new incident by design."""
+    text = f'account={_c(account_id)},kind={_c(kind)},row={_c(row)},' + ','.join(
+        f'{name}={_c(fields.get(name))}' for name in INCIDENT_FIELDS)
+    return 'inc_' + hashlib.sha256(b'zackbot.newcore.reconcile.incident.v1\x00' + text.encode('utf-8', 'backslashreplace')
+                                   ).hexdigest()[:32]
 
 
 def reconciliation_id(view, snap, *, now_ms, trigger, attempt, policy):
@@ -281,9 +297,14 @@ class _Pass:
         self.t_map, self.bad_trades = unique_by_key(snap.trades)
         self.contested = {}               # intent id -> evidence keys another owned intent also claims (P1-1)
         self.reported = set()
+        self.mismatched = []              # (intent, venue order, mismatch tokens, evidence) of owned stops (L1)
+        self.dup_sides = set()            # sides carrying a duplicate-client-id item (L3)
+        self.owned_sides = set(self.lots_by_side) | {(f.symbol, f.side) for f in self.intents if f.live}
 
     # ------------------------------------------------------------------------------------------------ helpers
     def add(self, kind, row, **kw):
+        if kind in HOLD_KINDS:
+            kw['incident_id'] = incident_id(self.v.account_id, kind, row, kw)
         self.out.append(RecDecision(kind=kind, row=row, **kw))
 
     def stale(self, r):
@@ -438,6 +459,7 @@ class _Pass:
         for cid in sorted(self.dup_cids):
             self.add(K.HOLD, 'R10', client_id=cid, detail='duplicate_client_id', reasons=(R.RECONCILE_UNRECONCILED,),
                      evidence=(f'journal:client_id:{cid}',), owner_actions=('investigate_journal',))
+            self.dup_sides.update((f.symbol, f.side) for f in self.intents if f.client_id == cid)
         groups = {}
         for o in self.s.orders.value:
             groups.setdefault(o.ref.client_id, []).append(o)
@@ -447,6 +469,7 @@ class _Pass:
                 self.listed[cid] = os_[0]
                 continue
             k = (os_[0].ref.symbol, os_[0].position_side)                     # C4: never last-wins
+            self.dup_sides.update((o.ref.symbol, o.position_side) for o in os_)
             self.add(K.HOLD, 'R10', symbol=k[0], side=k[1], client_id=cid, detail='duplicate_listed_client_id',
                      reasons=(R.PROTECT_OWNER_CHECK,), evidence=tuple(f'order:{o.exchange_order_id}' for o in os_),
                      owner_actions=('investigate_venue_orders',))
@@ -491,13 +514,34 @@ class _Pass:
                              evidence=ev + (f'owner:{f.owner_id}',),
                              owner_actions=(f'cancel_order:{cid}',) if last else ())
                 elif bad:                                                     # C6: an R18 item, never cover
-                    self.add(K.HOLD, 'R18', symbol=f.symbol, side=f.side, client_id=cid, intent_id=f.intent_id,
-                             detail='order_mismatch', reasons=(R.PROTECT_OWNER_CHECK,),
-                             evidence=ev + tuple(f'mismatch:{b}' for b in bad) + (
-                                 f'journal_qty:{f.qty}', f'journal_stop:{f.stop_price}', f'venue_stop:{o.stop_price}'),
-                             owner_actions=('replace_stop_to_journal',))
+                    self.mismatched.append((f, o, bad, ev))                   # decided once all cover is known (L1)
                 elif f.state in COVER_STATES:                                 # C3: listed = it rests and protects
                     self.cover[k] = QCTX.add(self.cover.get(k, ZERO), o.qty)
+        self.decide_mismatched()
+
+    def decide_mismatched(self):
+        """Cowork L1: an owned stop that differs from its journal record.
+          - it can ADD exposure (neither reduce-only nor closePosition: a trigger would open or grow a position): cancel
+            it FIRST, in every mode - hard HOLD included, because removing it can only reduce exposure (it is the A24
+            drain of risk-adding work, not a removal of protection); the replacement stop goes out as PROTECT_ONLY;
+          - otherwise it still reduces (or protects nothing): cancel it only once correct, confirmed protection covers
+            its side (the replacement is confirmed), and never in hard HOLD (A23: no protection is removed there).
+        Until then it is an R18 HOLD item and its replacement is the side's PROTECT_ONLY."""
+        for f, o, bad, ev in self.mismatched:
+            k = (f.symbol, f.side)
+            ev = ev + tuple(f'mismatch:{b}' for b in bad) + (
+                f'journal_qty:{f.qty}', f'journal_stop:{f.stop_price}', f'venue_stop:{o.stop_price}')
+            risk = not (o.reduce or o.close_position)
+            covered = self.cover.get(k, ZERO) >= self.pos_qty.get(k, ZERO)
+            if risk or (covered and not self.hard):
+                self.add(K.CANCEL_MISMATCHED_PROTECT, 'R18', symbol=o.ref.symbol, side=o.position_side,
+                         client_id=o.ref.client_id, intent_id=f.intent_id,
+                         detail='exposure_risk' if risk else 'replacement_confirmed', reasons=(R.PROTECT_OWNER_CHECK,),
+                         evidence=ev + (f'confirmed_cover:{self.cover.get(k, ZERO)}',))
+            if risk or not covered or self.hard:
+                self.add(K.HOLD, 'R18', symbol=f.symbol, side=f.side, client_id=o.ref.client_id, intent_id=f.intent_id,
+                         detail='order_mismatch', reasons=(R.PROTECT_OWNER_CHECK,), evidence=ev,
+                         owner_actions=('replace_stop_to_journal',))
 
     @staticmethod
     def protect_shape(f, o):
@@ -852,8 +896,13 @@ class _Pass:
             gap = _sub(P, self.cover.get(k, ZERO))
             if gap <= 0:
                 continue
+            if k in self.dup_sides and self.listed_stop_on(k):
+                continue                    # L3: a duplicate-client-id side with a stop listed: no stacking (HOLD has it)
             unowned = self.surplus.get(k, ZERO)
             allowed = gap if (unowned == 0 or self.p.protect_surplus) else max(ZERO, _sub(gap, unowned))
+            a24 = self.hard and k in self.owned_sides
+            if a24:
+                allowed = gap               # L2: hard HOLD protects the FULL venue exposure of an owned side (A24)
             level, lot_id = self.level(k)
             if k in self.restored:
                 row = 'R09'
@@ -863,7 +912,8 @@ class _Pass:
                 row = 'R07'
             else:
                 row = 'R16'
-            ev = (f'venue_qty:{P}', f'confirmed_cover:{self.cover.get(k, ZERO)}', f'unowned:{unowned}')
+            ev = (f'venue_qty:{P}', f'confirmed_cover:{self.cover.get(k, ZERO)}', f'unowned:{unowned}') + (
+                ('a24:full_side_exposure',) if a24 else ())
             if level is not None and allowed > 0:
                 self.add(K.PROTECT_ONLY, row, symbol=k[0], side=k[1], lot_id=lot_id, qty=allowed, price=level,
                          detail='restore' if row == 'R09' else 'cover_gap', reasons=(R.PROTECT_RESTORING,),
@@ -873,18 +923,25 @@ class _Pass:
                          detail='unprotected', reasons=(R.PROTECT_CHECKING,), evidence=ev + (f'level:{level}',),
                          owner_actions=('set_stop_level', 'close'))
 
+    def listed_stop_on(self, k):
+        """Any stop order the venue lists on side k (owned or not, duplicate client ids included)."""
+        return any((o.ref.symbol, o.position_side) == k and o.order_type == 'STOP_MARKET' for o in self.s.orders.value)
+
     # ------------------------------------------------------------------------------------------------ 6. outcome
     def advisory(self):
-        """C7: hard HOLD. Nothing can be journaled, so no resolution / adoption / clear is an action; protection of an
-        OWNED lot is the A24 emergency set (deterministic id, reduce-only) and stays; everything else is evidence."""
+        """C7: hard HOLD. Nothing can be journaled, so no resolution / adoption / clear is an action. What stays is the
+        NC-02 A24 emergency set: protection of an OWNED side's full venue exposure (L2, deterministic id, reduce-only;
+        the conservative reading of A24's "owned exposure" - flagged for Codex) and the cancel of an owned stop that
+        could ADD exposure (L1). Everything else is evidence on the durability item."""
         kept, advised = [], []
         for d in self.out:
-            if d.kind in ADVISORY_IN_HARD_HOLD or (d.kind is K.PROTECT_ONLY and d.lot_id is None):
-                advised.append(d)
-            elif d.kind is K.PROTECT_ONLY:
+            if d.kind is K.PROTECT_ONLY and 'a24:full_side_exposure' in d.evidence:
                 kept.append(RecDecision(kind=d.kind, row=d.row, symbol=d.symbol, side=d.side, lot_id=d.lot_id,
                                         qty=d.qty, price=d.price, detail='a24_emergency', reasons=d.reasons,
                                         evidence=d.evidence))
+            elif d.kind is K.PROTECT_ONLY or d.kind in ADVISORY_IN_HARD_HOLD or (
+                    d.kind is K.CANCEL_MISMATCHED_PROTECT and d.detail != 'exposure_risk'):
+                advised.append(d)
             else:
                 kept.append(d)
         self.out = kept

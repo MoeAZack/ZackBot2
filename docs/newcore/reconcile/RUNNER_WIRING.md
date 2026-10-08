@@ -14,6 +14,13 @@ wiring. Nothing here is applied on any branch yet.
   reconcile v0, byte for byte; the evidence is in section 5.
 - **Tests:** `tests/newcore_reconcile/test_rec02_wiring.py` (W1-W10) is already on `nc-rec02`. It skips itself until
   `RunnerConfig` has `rec02`, then runs unchanged.
+- **Status (later rounds):**
+  - S1 applied an earlier version (`8156744`) and reverted it (`ae764e5`) when Codex raised three P1s in the pure fold;
+    those P1s are fixed.
+  - Since then the fold gained `CANCEL_MISMATCHED_PROTECT`, deterministic incident ids, and the hard-HOLD full-side
+    rule (Cowork L1-L4). Sections 2 and 4 describe how the runner must handle them.
+  - The patch file below predates these changes and no longer applies to the current `nc-s1-slice`. It is regenerated
+    after the S1 HIGHs.
 
 ---
 
@@ -35,17 +42,22 @@ sets `settle_ms=10_000` (one positionRisk lag window) and `max_attempts=4`.
 
 | Fold decision | Runner action (existing path) |
 |---|---|
+| `CANCEL_MISMATCHED_PROTECT` (Cowork L1; listed first, it runs first) | the owned stop whose venue order differs from its journal record: `_state(iv, CANCELLING)`, `venue.cancel(ref)`, `_apply(iv, answer)`. This is the same path `_close_lot` uses for a stop, so a lost cancel answer is re-queried and re-cancelled by `_sync`. `exposure_risk` (not reduce-only: a trigger could ADD exposure) is cancelled at once, also in hard HOLD (removing it can only reduce exposure; it is A24 drain work). `replacement_confirmed` is cancelled only after correct confirmed protection covers the side, and never in hard HOLD. Until then the fold keeps the R18 HOLD and the side's `PROTECT_ONLY` replacement. |
 | `PROTECT_ONLY` on an owned lot | **nothing here.** The protect phase owns lot protection: a pending close first, bounded `_secure` attempts, management flush. Re-securing from the fold would break the bounded-attempt rule (`test_4_stop_and_close_both_refused_is_bounded_never_recursion`). |
 | `PROTECT_ONLY` without a lot (surplus / unresolved fill) | owner item: incident + durable HOLD. Q3 is off: no journaled owner kind for that stop (NC-01 A3). |
 | `RESOLVE_*` from exchange evidence (`exchange_final`, `late_fill`, `partial_final`, `final_*`, `algo_stop_filled`) | `_apply(iv, <the snapshot's by-id answer>)`: the runner's own `result_from` records the venue record. One source of results, no second query. |
 | `RESOLVE_*` from corroboration (`not_found_corroborated`, `position_adopted`) | left to `_corroborate_entry`, which already journals the RECONCILE decision + result. |
 | `RESOLVE_FILLED supersedes_not_found_corroborated`, `ADOPT` | owner item (NC-01 A1 / A2 missing). |
-| `HOLD` / `QUARANTINE` | `_rec_owner_item`: one deduplicated incident with evidence + owner actions, then `_hold([reason])`. Account-wide until NC-01 A4. |
+| `HOLD` / `QUARANTINE` | `_rec_owner_item`: one incident with evidence + owner actions, then `_hold([reason])`. Account-wide until NC-01 A4. Each item carries `incident_id` (Cowork L4): `inc_` + 32 hex derived from the account, the item and its evidence, never the clock. The runner dedupes on that id, not on an in-memory set. Once r3a's `IncidentRecorded` is journaled, a restart re-derives the same id, finds it in the journal and does not repeat the incident. Until then dedupe is per process. |
 | `CLEAR_HOLD` | incident only ("clearable; owner resume until NC-01 A5"): `ModeChanged` to ACTIVE needs `operator.resume` today. |
 | `REREAD` | another pass in this cycle (at most `REC_PASSES_PER_CYCLE = 2`), else the next cycle / check-only tick. |
 
 **Hard HOLD** (store down) keeps the existing `_hard_hold_cycle`: the A24 emergency set and reconcile v0. REC-02 runs
-only when the journal can record its decisions. Its own verdict in a hard HOLD is advisory anyway (Cowork C7).
+only when the journal can record its decisions. Its own verdict in a hard HOLD is advisory (Cowork C7). Two kinds of
+decision stay actionable there:
+- `PROTECT_ONLY a24_emergency`: the full venue exposure of an owned side (Cowork L2);
+- `CANCEL_MISMATCHED_PROTECT exposure_risk`.
+A side that has a duplicate-client-id item and already lists any stop gets no extra stop (Cowork L3).
 
 ## 3. PENDING, REREAD and check-only cycles (plan gap 6)
 
@@ -87,6 +99,17 @@ only when the journal can record its decisions. Its own verdict in a hard HOLD i
 | A6 | A08 "a reconciliation record" | `rec_` ids exist but no record. Proposal: `ReconciliationRecorded(reconciliation_id, trigger, outcome, digest, item tokens)`; the REC-02 `snapshot_digest` is that digest. Or rule that `IncidentRecorded` + decision evidence is enough |
 | A7 | REC-02 vocabulary not in r3 | `reconcile.fill_mismatch` (R17), `reconcile.unjournaled_order` (R05), `reconcile.duplicate_listed_order` (C4), `reconcile.value_out_of_range` (C10), `reconcile.settling` (R14 b). Today these use `reconcile.unreconciled` / `protect.owner_check` |
 | A8 | `Incident.evidence` | It accepts only `ID_PREFIXES` ids, so venue trade / order ids cannot be cited. Proposal: a separate `venue_refs` tuple (opaque, bounded), as A1(3) |
+| A9 | Cowork L4: restart-stable incident dedupe | The fold derives `incident_id` (`inc_` + 32 hex, r3's `Incident.incident_id` shape) from the item and its evidence. It needs r3a's `Incident` + `IncidentRecorded` merged, so the runner can journal the item and find it again after a restart. Codex to confirm that a deterministic, content-derived incident id is acceptable, and that the ledger treats a second `IncidentRecorded` with the same id as a duplicate. |
+
+**For Codex: the A24 reading (Cowork L2).** In a hard HOLD with lot 1 and venue 3 on the same side, A24(2) says
+"protection for owned positions". The fold takes the **conservative reading**: "owned exposure" is the whole venue
+exposure of a side the account owns (a lot or a live owned intent on it). So it protects all 3, not only the lot's 1.
+Reasons:
+- an unprotected surplus on a side the bot trades is the larger risk;
+- a reduce-only stop can never add exposure;
+- the side's stop level is the account's own.
+A side the account never owned stays untouched (A22). The narrow reading (protect only the lot) is a one-line change
+(`a24 = self.hard and k in self.owned_sides`). Ruling requested.
 
 Interface items for the transport lane:
 - `trades(symbol, side, from_ms)`: userTrades by time window. FaultVenue has it; TestnetVenue does not. Without it the

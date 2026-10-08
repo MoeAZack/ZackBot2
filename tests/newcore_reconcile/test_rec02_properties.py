@@ -51,7 +51,8 @@ def scenario(seed, *, force_stale=False):
             positions.append(pos(str(pq), side=side, symbol=sym))
         if rnd.random() < 0.75:
             orders.append(order(st.client_id, side=side, qty=str(q) if rnd.random() < 0.9 else '0.5',
-                                stop=lvl if rnd.random() < 0.9 else '95', symbol=sym, eoid=str(7000 + n)))
+                                stop=lvl if rnd.random() < 0.9 else '95', symbol=sym, eoid=str(7000 + n),
+                                reduce=rnd.random() < 0.93))
         r = rnd.random()
         if r < 0.25:
             queries.append((st.client_id, final(n + 1, '0', eoid=str(7000 + n), symbol=sym,
@@ -176,6 +177,30 @@ def test_P4_no_decision_cancels_or_loosens_protection(seed):
     for d in v.decisions:
         if d.kind in (K.HOLD, K.QUARANTINE):
             assert d.owner_actions
+    # L1: an owned stop is cancelled only when it could ADD exposure, or when confirmed correct protection already
+    # covers its side (never in hard HOLD): a cancel never leaves a side less protected than the venue exposure
+    listed = {}
+    for o in (s.orders.value or ()):
+        listed.setdefault(o.ref.client_id, []).append(o)
+    lots = {x.lot_id for x in vw.lots}
+    valid = {}
+    for c, os_ in listed.items():
+        f = by_cid.get(c)
+        if len(os_) != 1 or f is None or f.purpose.value != 'protect' or not f.live or f.owner_id not in lots:
+            continue
+        o = os_[0]
+        if (o.order_type, o.ref.symbol, o.position_side, o.qty, o.stop_price) == \
+                ('STOP_MARKET', f.symbol, f.side, f.qty, f.stop_price) and (o.reduce or o.close_position):
+            valid[(f.symbol, f.side)] = valid.get((f.symbol, f.side), D(0)) + o.qty
+    hard = vw.hold_kind is not None and vw.hold_kind.value == 'durability_unavailable'
+    for d in v.of(K.CANCEL_MISMATCHED_PROTECT):
+        o, = listed[d.client_id]
+        f = by_cid[d.client_id]
+        assert f.purpose.value == 'protect'
+        if d.detail == 'exposure_risk':
+            assert not (o.reduce or o.close_position)
+        else:
+            assert not hard and valid.get((f.symbol, f.side), D(0)) >= venue_qty.get((f.symbol, f.side), D(0))
 
 
 @pytest.mark.parametrize('seed', SEEDS)
@@ -251,5 +276,6 @@ def test_scenarios_cover_every_outcome_and_decision_kind():
         seen_out.add(v.outcome)
         seen_kind |= {d.kind for d in v.decisions}
     assert seen_out == set(Outcome)
-    assert seen_kind >= {K.PROTECT_ONLY, K.RESOLVE_FILLED, K.RESOLVE_NOT_EXECUTED, K.QUARANTINE, K.HOLD, K.REREAD,
+    assert seen_kind >= {K.CANCEL_MISMATCHED_PROTECT, K.PROTECT_ONLY, K.RESOLVE_FILLED, K.RESOLVE_NOT_EXECUTED,
+                         K.QUARANTINE, K.HOLD, K.REREAD,
                          K.CLEAR_HOLD}
