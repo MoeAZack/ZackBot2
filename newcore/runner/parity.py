@@ -194,6 +194,8 @@ def main(argv=None):
     p.add_argument('--parts', nargs='*', default=())
     a = p.parse_args(argv)
     a.symbols = tuple(a.symbols.split(','))
+    if a.work:
+        os.makedirs(a.work, exist_ok=True)                                # create_journal makes one level only
     if a.command == 'report':
         cmd_report(a)
         return 0
