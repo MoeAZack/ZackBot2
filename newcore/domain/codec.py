@@ -31,7 +31,7 @@ import types
 import typing
 from decimal import Decimal
 
-from . import account, decision, events, instrument, orders, portfolio, snapshot
+from . import account, decision, events, instrument, orders, portfolio, protection, snapshot
 from .base import INT64, Record, canonical_decimal, dec_str, field_spec, req
 from .errors import DomainError, ForeignDocument, FutureSchema, InvalidRecord, OlderSchema, UnknownSchema, \
     UnsupportedVersion
@@ -58,6 +58,20 @@ RECORD_TYPES = {
     'event_decision_recorded': events.DecisionRecorded,
     'event_mode_changed': events.ModeChanged,
     'event_binding_changed': events.BindingChanged,
+    # every other record type is encodable standalone too (Cowork H05; contract 5: round-trip every required type)
+    'account_binding': account.AccountBinding,
+    'binding_confirmation': account.BindingConfirmation,
+    'instrument_id': instrument.InstrumentId,
+    'arming': orders.Arming,
+    'position_read': orders.PositionRead,
+    'stop_miss': protection.StopMiss,
+    'protection': protection.Protection,
+    'fill': portfolio.Fill,
+    'lot': portfolio.Lot,
+    'position': portfolio.Position,
+    'ownership_proof': portfolio.OwnershipProof,
+    'event_digest': events.EventDigest,
+    'event_cursor': events.EventCursor,
 }
 TYPE_OF = {cls: k for k, cls in RECORD_TYPES.items()}
 

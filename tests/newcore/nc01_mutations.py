@@ -95,6 +95,7 @@ MUTATIONS = {
         '        req(q <= lots[lot_id].qty,', '        req(True,')]),
     'S05: reducing intents not bounded by the position': (D + 'portfolio.py', [(
         '        req(q <= held.get(key, ZERO),', '        req(True,')]),
+    'H05: Lot not encodable standalone': (D + 'codec.py', [("    'lot': portfolio.Lot,\n", '')]),
     'duplicate JSON keys': (D + 'codec.py', [("            if k in out:\n                problems.append(",
                                               "            if False:\n                problems.append(")]),
     'truncated JSON': (D + 'codec.py', [(

@@ -9,6 +9,8 @@ purpose including stops and closes.
 """
 from __future__ import annotations
 
+import re
+
 from .account import BINDING_TRANSITIONS, AccountBinding, BindingConfirmation, BindingState
 from .base import Record, check_id, record, req
 from .decision import Decision
@@ -229,3 +231,35 @@ def check_event_chain(events, *, after_sequence=0, known_intents=None):
             if r.phase is ResultPhase.FINAL:
                 finals[r.intent_id] = r
     return live
+
+
+# ------------------------------------------------------------------------------------------------ admission cursor
+SHA_RE = re.compile(r'[0-9a-f]{64}')
+
+
+@record
+class EventDigest(Record):
+    event_id: str
+    sequence: int
+    sha256: str
+
+    def _validate(self, p):
+        check_id(self.event_id, p + '.event_id', 'evt')
+        req(self.sequence >= 1, p + '.sequence', '>= 1')
+        req(SHA_RE.fullmatch(self.sha256) is not None, p + '.sha256', 'lowercase hex SHA-256')
+
+
+@record
+class EventCursor(Record):
+    account_id: str
+    aggregate_id: str
+    last_sequence: int
+    applied: tuple[EventDigest, ...]          # applied[i] has sequence i + 1
+
+    def _validate(self, p):
+        check_id(self.account_id, p + '.account_id', 'acct')
+        check_id(self.aggregate_id, p + '.aggregate_id', 'pf')
+        req(self.last_sequence == len(self.applied), p + '.last_sequence', 'one digest per applied sequence')
+        req(all(d.sequence == i + 1 for i, d in enumerate(self.applied)), p + '.applied', 'digests out of sequence')
+        ids = [d.event_id for d in self.applied]
+        req(len(ids) == len(set(ids)), p + '.applied', 'an event id applied twice')

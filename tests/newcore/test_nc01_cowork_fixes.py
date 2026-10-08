@@ -132,3 +132,29 @@ def test_reducing_intents_are_bounded_net_of_each_other():
                                         state=IntentState.CANCELLING)
     with pytest.raises(InvalidRecord, match='exceed the position qty'):    # nothing held on that symbol at all
         _with_reduce('1', extra=(stray,))()
+
+
+# ----------------------------------------------------------------------------------------------------------- H05
+def test_every_required_type_round_trips_standalone():
+    """H05: Lot, Position, Protection, AccountBinding, InstrumentId and Fill raised "not a document record type"."""
+    from newcore.domain import canonical_bytes, contract_sha256
+    p, _ = F.single_lot_portfolio(93, stop_state='confirmed')
+    lt = p.lots[0]
+    for rec in (lt, p.positions[0], lt.stop, F.binding(), F.rules().instrument, lt.fills[0]):
+        b = canonical_bytes(rec)
+        back = loads(b)
+        assert back == rec and type(back) is type(rec) and canonical_bytes(back) == b
+        assert len(contract_sha256(rec)) == 64
+
+
+def test_every_record_class_is_a_document_type():
+    """No record type is nested-only: each dataclass Record of the package has a record_type (compared by name)."""
+    import dataclasses
+    import inspect
+    import newcore.domain as D
+    from newcore.domain.base import Record
+    from newcore.domain.codec import RECORD_TYPES
+    mods = [m for _, m in inspect.getmembers(D, inspect.ismodule) if m.__name__.startswith('newcore.domain.')]
+    records = {name for m in mods for name, c in inspect.getmembers(m, inspect.isclass)
+               if issubclass(c, Record) and dataclasses.is_dataclass(c) and c.__module__ == m.__name__}
+    assert records == {c.__name__ for c in RECORD_TYPES.values()}

@@ -9,51 +9,22 @@ applied event. `admit(cursor, event)`:
 - EventOrderError (a typed hard failure) for anything else: the same event_id with different bytes, another event at an
   already-used sequence, a gap, or an event of another account / aggregate.
 The digest is codec.contract_sha256 of the event, so "identical" means identical canonical bytes, never equal-looking.
+The EventDigest / EventCursor records live in `events` so the codec can encode them standalone.
 """
 from __future__ import annotations
 
 import enum
-import re
 
-from .base import Record, check_id, record, req
+from .base import req
 from .codec import contract_sha256
 from .errors import EventOrderError
-from .events import EVENT_TYPES
+from .events import EVENT_TYPES, EventCursor, EventDigest
 
-SHA_RE = re.compile(r'[0-9a-f]{64}')
 
 
 class Admission(enum.StrEnum):
     APPLY = 'apply'
     ALREADY_APPLIED = 'already_applied'
-
-
-@record
-class EventDigest(Record):
-    event_id: str
-    sequence: int
-    sha256: str
-
-    def _validate(self, p):
-        check_id(self.event_id, p + '.event_id', 'evt')
-        req(self.sequence >= 1, p + '.sequence', '>= 1')
-        req(SHA_RE.fullmatch(self.sha256) is not None, p + '.sha256', 'lowercase hex SHA-256')
-
-
-@record
-class EventCursor(Record):
-    account_id: str
-    aggregate_id: str
-    last_sequence: int
-    applied: tuple[EventDigest, ...]          # applied[i] has sequence i + 1
-
-    def _validate(self, p):
-        check_id(self.account_id, p + '.account_id', 'acct')
-        check_id(self.aggregate_id, p + '.aggregate_id', 'pf')
-        req(self.last_sequence == len(self.applied), p + '.last_sequence', 'one digest per applied sequence')
-        req(all(d.sequence == i + 1 for i, d in enumerate(self.applied)), p + '.applied', 'digests out of sequence')
-        ids = [d.event_id for d in self.applied]
-        req(len(ids) == len(set(ids)), p + '.applied', 'an event id applied twice')
 
 
 def admit(cursor, event):
