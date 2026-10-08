@@ -750,6 +750,8 @@ def test_app_starts_the_collector_after_the_engine_and_selftest_imports_it():
     assert 'signed=True' not in col
 
 
+@pytest.mark.skipif(not os.path.exists(os.path.join(ROOT, 'installer.ps1')),
+                    reason='staging copy: installer.ps1 is not copied into the installer staging folder (same rule as test_installer)')
 def test_installer_keeps_collected_data_out_of_the_build():
     import re
     src = open(os.path.join(ROOT, 'installer.ps1'), encoding='utf-8').read()
