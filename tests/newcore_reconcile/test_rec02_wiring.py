@@ -119,6 +119,82 @@ def test_W6_first_pass_after_a_restart_is_a_startup_reconciliation():
     assert w.runner.last_verdict.outcome is Outcome.PROTECTED
 
 
+def holds_in(w):
+    from newcore.domain import ModeChanged
+    return [e for e in w.journal.read() if isinstance(e, ModeChanged) and e.to_mode is EntriesMode.HOLD]
+
+
+def manual_close_world():
+    w = wired(fault_world(flat_bars(20), signals()))
+    w.run(ENTRY_BAR + 1)
+    lot, = w.runner.fold.open_lots()
+    w.fault.manual_close(SYM, 'LONG', lot.qty)
+    return w
+
+
+@pytest.mark.parametrize('k', range(0, 6))
+def test_W8_crash_at_each_journal_write_of_a_reconcile_cycle_then_restart(k):
+    """The process dies at the k-th journal write of the cycle in which REC-02 finds the manual close (its HOLD, or
+    any write before it). After the restart the same HOLD is recorded exactly once, nothing is sent twice, ids stay
+    unique and nothing is left naked."""
+    from slice_helpers import Crash
+    ref = manual_close_world()
+    ref.run(ENTRY_BAR + 4)
+    w = manual_close_world()
+    sent = len(w.venue.orders_submitted())
+    w.journal.fail_writes(1, after=k, error=Crash)
+    crashed = False
+    try:
+        w.run(ENTRY_BAR + 2)
+    except Crash:
+        crashed = True
+        w.restart()
+    if k < 1:
+        assert crashed                                               # the HOLD write itself is the first write
+    w.run(ENTRY_BAR + 4)
+    assert len(holds_in(w)) == len(holds_in(ref)) == 1
+    assert w.runner.fold.mode_reasons == ref.runner.fold.mode_reasons
+    assert len(w.venue.orders_submitted()) == sent == len(ref.venue.orders_submitted())   # no order from REC-02
+    cids = w.runner.fold.client_ids_recorded
+    assert len(cids) == len(set(cids)) and w.runner.counters.unprotected_cycles == 0
+
+
+def test_W9_repeated_reconcile_is_idempotent():
+    w = manual_close_world()
+    w.run(ENTRY_BAR + 2)
+    events, incidents = len(w.journal.read()), len(w.runner.incidents)
+    first = w.runner.last_verdict
+    for _ in range(5):
+        w.runner.rec02(Trigger.OPERATOR)
+    assert len(w.journal.read()) == events and len(w.runner.incidents) == incidents
+    assert w.runner.last_verdict.decisions == first.decisions
+
+
+def test_W10_a_stop_fill_landing_during_the_reconcile_is_booked_not_adopted():
+    """The venue fills the stop between the by-id answers (stop resting) and the position read (flat): the fold
+    re-queries in its second pass and the runner books the FINAL; no adoption, no HOLD, no extra order."""
+    w = wired(fault_world(flat_bars(20), signals()))
+    w.run(ENTRY_BAR + 1)
+    lot, = w.runner.fold.open_lots()
+    stop_cid = lot.live_stop.intent.client_order_id
+    inner, orig = w.venue, w.fault.positions
+    calls = {'n': 0}
+
+    def positions(symbol=None):
+        calls['n'] += 1
+        if calls['n'] == 1:                                         # the first read of the REC-02 pass
+            o = inner._orders[stop_cid]
+            inner._execute(o, o.qty, o.stop_price, at_ms=inner.now_ms)
+        return orig(symbol)
+    w.fault.positions = positions
+    sent = len(w.venue.orders_submitted())
+    w.runner.tick(w.venue.now_ms)
+    assert w.runner.fold.open_lots() == [] and w.runner.fold.mode is EntriesMode.ACTIVE
+    assert not [t for _, t in w.runner.incidents if 'rec02' in t]
+    assert len(w.venue.orders_submitted()) == sent
+    assert w.runner.last_verdict.outcome in (Outcome.FLAT, Outcome.PENDING)
+
+
 def test_W7_config_parses_rec02_and_tick_s():
     from newcore.runner import config as C
     base = {'mode': 'PAPER'}

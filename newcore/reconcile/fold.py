@@ -378,9 +378,14 @@ class _Pass:
                 self.owned_eoids.add(o.exchange_order_id)
                 bad = self.protect_shape(f, o)
                 if f.owner_id not in self.open_lot_ids:
-                    self.add(K.HOLD, 'R10', symbol=k[0], side=k[1], client_id=cid, intent_id=f.intent_id,
-                             detail='protect_without_lot', reasons=(R.LIFECYCLE_ORPHAN_CANCEL,),
-                             evidence=ev + (f'owner:{f.owner_id}',), owner_actions=(f'cancel_order:{cid}',))
+                    # the lot closed, its stop's cancel is the runner's pending cancel-only work (a crash between the
+                    # close and the cancel): wait for it while attempts remain, then it is an owner item
+                    last = self.attempt + 1 >= self.p.max_attempts
+                    self.add(K.HOLD if last else K.REREAD, 'R10', symbol=k[0], side=k[1], client_id=cid,
+                             intent_id=f.intent_id, detail='protect_without_lot',
+                             reasons=(R.LIFECYCLE_ORPHAN_CANCEL,) if last else (),
+                             evidence=ev + (f'owner:{f.owner_id}',),
+                             owner_actions=(f'cancel_order:{cid}',) if last else ())
                 elif bad:                                                     # C6: an R18 item, never cover
                     self.add(K.HOLD, 'R18', symbol=f.symbol, side=f.side, client_id=cid, intent_id=f.intent_id,
                              detail='order_mismatch', reasons=(R.PROTECT_OWNER_CHECK,),

@@ -380,8 +380,12 @@ def test_R10_orphan_and_duplicate_owned_orders_are_owner_items_never_cancelled_h
     v2 = reconcile(view(lots=[lot(1, stop_intent=stop.intent_id)], intents=[e, stop, dup]),
                    snap(positions=[pos('1')], orders=[order(stop.client_id)]), now_ms=T)
     assert ('hold', 'R10', 'duplicate_client_id') in kinds(v2)
+    # a live stop whose lot closed is the runner's pending cancel-only work: wait, then an owner item
     gone = reconcile(view(intents=[e, stop]), snap(orders=[order(stop.client_id)]), now_ms=T)
-    assert ('hold', 'R10', 'protect_without_lot') in kinds(gone) and gone.outcome is not Outcome.FLAT
+    assert ('reread', 'R10', 'protect_without_lot') in kinds(gone) and gone.outcome is Outcome.PENDING
+    late = reconcile(view(intents=[e, stop]), snap(orders=[order(stop.client_id)]), now_ms=T,
+                     attempt=RecPolicy().max_attempts - 1)
+    assert ('hold', 'R10', 'protect_without_lot') in kinds(late) and late.outcome is Outcome.HOLD
 
 
 def test_R11_manual_partial_close_is_adopted_and_the_rest_stays_protected():
