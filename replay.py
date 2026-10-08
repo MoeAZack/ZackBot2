@@ -36,7 +36,7 @@ def run_replay(raw, sleeves, t0, steps=6, start=500.0, tf_sec=14400, quiet=True,
     XR = F.snapshot_rules(exchange_rules)
 
     class W:
-        i = None; mark = {}; cash = start; lots = []; stops = {}; n = 0
+        i = None; mark = {}; cash = start; lots = []; stops = {}; n = 0; fills = {}
 
     def merge(s, ps):
         ls = [l for l in W.lots if l['s'] == s and l['ps'] == ps]
@@ -68,7 +68,8 @@ def run_replay(raw, sleeves, t0, steps=6, start=500.0, tf_sec=14400, quiet=True,
                 if sd * (p - st['p']) <= 0:
                     have = sum(l['q'] for l in W.lots if l['s'] == s and l['ps'] == st['ps'])
                     q = min(st['q'], have)
-                    if q > 0: reduce(s, st['ps'], q, (p if at_open else st['p']) * (1 - sd * SLIP))
+                    fpx = (p if at_open else st['p']) * (1 - sd * SLIP)
+                    if q > 0: reduce(s, st['ps'], q, fpx); W.fills[tag] = fpx     # AUD-07 C13g: the stop's avgPrice
                     W.stops.pop(tag)
 
     class Fake:
@@ -107,6 +108,7 @@ def run_replay(raw, sleeves, t0, steps=6, start=500.0, tf_sec=14400, quiet=True,
             W.n += 1; tag = f'o:{W.n}'; W.stops[tag] = dict(s=s, ps=ps, q=float(qty), p=float(price)); return tag
         def cancel(self, s, tag): W.stops.pop(tag, None)
         def open_stop_tags(self, s): return {k for k, v in W.stops.items() if v['s'] == s}
+        def stop_fill_price(self, s, tag): return W.fills.get(tag)          # AUD-07 C13g: as Futures.stop_fill_price
         def leverage_max(self, s): return 50
         def cancel_all(self, s):
             for k in [k for k, v in W.stops.items() if v['s'] == s]: W.stops.pop(k)

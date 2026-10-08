@@ -626,6 +626,33 @@ class Futures:
             raise
         return str(st).upper() if st else None
 
+    def stop_fill_price(self, symbol, tag, retry=None):
+        """AUD-07 C13g. Average fill price of a stop that has left the open-order list (weight 1-2): 'o:' / 'c:' ->
+        GET /fapi/v1/order avgPrice; 'a:' / 'ac:' -> GET /fapi/v1/algoOrder actualPrice, else the triggered order
+        (actualOrderId) avgPrice. Returns a positive float, or None when there is no fill to read (unknown, not filled,
+        order not found). Failures raise; the caller then books the stop price and says so."""
+        kind, _, oid = (tag or '').partition(':')
+        if not oid: return None
+
+        def px(v):
+            try: v = _finite_number(v, nonnegative=True)
+            except (TypeError, ValueError): return None
+            return v if v and v > 0 else None
+        if kind in ('o', 'c'):
+            q = dict(symbol=symbol, orderId=oid) if kind == 'o' else dict(symbol=symbol, origClientOrderId=oid)
+            r = self._req('GET', '/fapi/v1/order', q, signed=True, retry=retry)
+            return px(r.get('avgPrice')) if isinstance(r, dict) else None
+        if kind in ('a', 'ac'):
+            q = dict(algoId=oid) if kind == 'a' else dict(clientAlgoId=oid)
+            r = self._req('GET', '/fapi/v1/algoOrder', q, signed=True, retry=retry)
+            if not isinstance(r, dict): return None
+            p = px(r.get('actualPrice'))
+            if p is None and r.get('actualOrderId'):
+                o = self._req('GET', '/fapi/v1/order', dict(symbol=symbol, orderId=r['actualOrderId']), signed=True, retry=retry)
+                p = px(o.get('avgPrice')) if isinstance(o, dict) else None
+            return p
+        return None
+
     def cancel_all(self, symbol):
         for path in ('/fapi/v1/allOpenOrders', '/fapi/v1/algoOpenOrders'):
             try: self._req('DELETE', path, dict(symbol=symbol), signed=True)

@@ -2712,6 +2712,21 @@ class Engine:
         if var or 'retry' in ps: kw['retry'] = False
         return fn(*a, **kw)
 
+    def _stop_fill_px(self, sym, l):
+        """AUD-07 C13g: the price a filled exchange stop actually got (a stop-market fills where the market is: a gap or a
+        fast move fills past the stop, with slippage). Read from the exchange by the stop's tag, one attempt (the caller
+        holds the engine lock). Unknown -> the stop price, and the journal note says the fill is unconfirmed.
+        Returns (price, note)."""
+        fn = getattr(self.trade, 'stop_fill_price', None)
+        if fn is not None and l.get('stop_id'):
+            try:
+                px = self._fast(fn, sym, l['stop_id'])
+                if px is not None and math.isfinite(float(px)) and float(px) > 0:
+                    return float(px), ''
+            except Exception as e:
+                log.warning(f"{sym} [{l['sleeve']}] stop fill price unreadable ({e}) - booked at the stop price")
+        return l['stop'], 'fill price unconfirmed: booked at the stop price'
+
     def _stops_seen(self, sym, tags, push=False):
         """Positive evidence from ANY successful open-order read of `sym` (verifier, reconcile, T05b recovery): every lot
         whose recorded stop is listed is confirmed now (miss state cleared, its stop-missing incident closed).
@@ -3219,15 +3234,16 @@ class Engine:
             gone.sort(key=lambda k: -sd * st['lots'][k]['stop'])       # highest long stop triggers first
             for k in gone:
                 l = st['lots'][k]
-                pnl = sd * (l['stop'] - l['avg']) * l['qty']
-                log.info(f"STOPPED {sym} {side} [{l['sleeve']}] stop {l['stop']} ~pnl {pnl:+.2f}")
+                px, note = self._stop_fill_px(sym, l)                   # AUD-07 C13g: book the exchange's fill, not the stop
+                pnl = sd * (px - l['avg']) * l['qty']
+                log.info(f"STOPPED {sym} {side} [{l['sleeve']}] stop {l['stop']} filled {px} ~pnl {pnl:+.2f}")
                 self.log_trade(time=now_utc().isoformat(timespec='seconds'), event='stop', sleeve=l['sleeve'], symbol=sym,
-                               side=side, qty=l['qty'], price=l['stop'], pnl=round(pnl, 4), equity=round(eq, 2))
+                               side=side, qty=l['qty'], price=px, stop=l['stop'], pnl=round(pnl, 4), equity=round(eq, 2), note=note)
                 l['realized'] = l.get('realized', 0.0) + pnl
-                l.setdefault('fills', []).append([now_utc().isoformat(timespec='seconds'), 'stop', l['qty'], l['stop']])
-                l['fees'] = l.get('fees', 0.0) + l['qty'] * l['stop'] * FEE_EST
+                l.setdefault('fills', []).append([now_utc().isoformat(timespec='seconds'), 'stop', l['qty'], px])
+                l['fees'] = l.get('fees', 0.0) + l['qty'] * px * FEE_EST
                 expected -= l['qty']; self._finish(k, 'stop')
-                self.notify(f"🛑 STOP {side} {sym} [{l['sleeve']}] at {l['stop']}")
+                self.notify(f"🛑 STOP {side} {sym} [{l['sleeve']}] at {px}" + ('' if px == l['stop'] else f" (stop {l['stop']})"))
                 if have >= expected - tol: break
             rest = [k for k in keys if k in st['lots']]
             if rest and have < expected - tol:
