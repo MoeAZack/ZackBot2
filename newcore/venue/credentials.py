@@ -31,6 +31,8 @@ import re
 from dataclasses import dataclass
 from typing import Protocol, runtime_checkable
 
+from .redact import check_value, redact_values
+
 KEY_DIGEST_PREFIX = 'zbk1:'
 _DIGEST_DOMAIN = b'zackbot/newcore/venue/key-digest/v1\x00'
 _REDACTED = '<redacted>'
@@ -353,8 +355,8 @@ class CredentialStore:
         if rec['environment'] not in STORABLE_ENVIRONMENTS:
             raise CredentialsUnavailable('the credential file is not for testnet', 'environment_refused')
         try:
-            _check_token(rec['api_key'], 'api_key')
-            _check_token(rec['api_secret'], 'api_secret')
+            check_value(_check_token(rec['api_key'], 'api_key'))
+            check_value(_check_token(rec['api_secret'], 'api_secret'))
         except ValueError:
             raise CredentialsUnavailable('the decrypted credential record is not valid', 'corrupt') from None
         if rec['key_digest'] != key_digest(rec['api_key']) or type(rec['created_ms']) is not int:
@@ -391,8 +393,8 @@ class CredentialStore:
         if environment not in STORABLE_ENVIRONMENTS:
             raise CredentialStoreError('environment must be "testnet"')
         try:
-            _check_token(api_key, 'api_key')
-            _check_token(api_secret, 'api_secret')
+            check_value(_check_token(api_key, 'api_key'))
+            check_value(_check_token(api_secret, 'api_secret'))
         except ValueError as ex:
             raise CredentialStoreError(str(ex)) from None
         if type(now_ms) is not int or now_ms <= 0:
@@ -467,8 +469,12 @@ class SecretScrubber:
         return f'SecretScrubber(values=<{len(self._values)} redacted>)'
 
     def register(self, *values):
+        """Register secret values. A value shorter than redact.MIN_SECRET_LEN (or not a str) is REFUSED with
+        ValueError, never silently dropped (Cowork finding 1)."""
         for v in values:
-            if isinstance(v, str) and len(v) >= 4 and v not in self._values:
+            check_value(v)
+        for v in values:
+            if v not in self._values:
                 self._values.append(v)
         self._values.sort(key=len, reverse=True)
 
@@ -478,10 +484,8 @@ class SecretScrubber:
         return tuple(self._values)
 
     def scrub(self, text):
-        text = str(text)
-        for v in self._values:
-            text = text.replace(v, _REDACTED)
-        return text
+        """Case-insensitive, percent-encoding and separator tolerant (redact.redact_values)."""
+        return redact_values(str(text), self._values)
 
     def scrub_record(self, record):
         import logging

@@ -108,7 +108,7 @@ def main(argv=None, *, http=None, local_clock=None, protector=None, out=None):
         recorder = CassetteRecorder(http, redact=values, note='S5 read-only smoke')
         oc = OffsetClock(clock)
         transport = BinanceTestnetTransport(environment='testnet', http=recorder, clock=oc,
-                                            position_mode=PositionMode.HEDGE, credentials=creds)
+                                            position_mode=PositionMode.HEDGE, credentials=creds, scrubber=scrubber)
         rc, report = 0, None
         try:
             report = run_smoke(transport, oc)

@@ -130,6 +130,11 @@ def main(argv=None, *, prompt=None, out=None, now_ms=None, scrubber=None, protec
     scrub = scrubber or SecretScrubber()
     key = ask('Testnet API key (input hidden): ').strip()
     secret = ask('Testnet API secret (input hidden): ').strip()
+    if len(key) < 8 or len(secret) < 8:
+        key = secret = None
+        out.write('REFUSED: the key and the secret must each be at least 8 characters (Binance keys are 64). '
+                  'Nothing was stored.\n')
+        return 2
     scrub.register(key, secret)
     scrub.install()
     try:

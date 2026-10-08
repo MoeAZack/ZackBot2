@@ -210,7 +210,7 @@ def _modules():
 
 
 TRANSPORT_CORE = {'__init__.py', 'guard.py', 'signing.py', 'wire.py', 'errors.py', 'records.py', 'outcomes.py',
-                  'income.py', 'transport.py'}
+                  'income.py', 'transport.py', 'redact.py'}
 
 
 @pytest.mark.parametrize('fname', sorted(TRANSPORT_CORE))

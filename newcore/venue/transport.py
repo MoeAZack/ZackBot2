@@ -104,10 +104,16 @@ def _pairs(*items):
 
 
 class BinanceTestnetTransport:
-    __slots__ = ('_environment', '_base_url', '_http', '_clock', '_credentials', '_mode', '_recv_window', '_timeout')
+    __slots__ = ('_environment', '_base_url', '_http', '_clock', '_credentials', '_mode', '_recv_window', '_timeout',
+                 '_scrubber')
 
     def __init__(self, *, environment, http, clock, position_mode, credentials=None,
-                 base_url=TESTNET_BASE_URL, recv_window_ms=5000, timeout_s=10.0):
+                 base_url=TESTNET_BASE_URL, recv_window_ms=5000, timeout_s=10.0, scrubber=None):
+        """scrubber: optional object with scrub(text) -> str (e.g. the SecretScrubber holding the key and secret);
+        venue-provided error text passes through it, and the API key in use is always redacted by value."""
+        if scrubber is not None and not callable(getattr(scrubber, 'scrub', None)):
+            raise VenueInputError('scrubber must provide scrub(text) -> str')
+        self._scrubber = scrubber
         self._environment, self._base_url = check_binding(environment, base_url)     # raises VenueGuardError
         if not callable(http):
             raise VenueInputError('http must be callable(HttpRequest) -> HttpResponse')
@@ -215,7 +221,7 @@ class BinanceTestnetTransport:
             data = R.MalformedResponse
         if 400 <= st < 500:
             if isinstance(data, dict) and _code(data) is not None and isinstance(_code(data), int) and _code(data) < 0:
-                err = _venue_error(st, _code(data), data.get('msg', ''))
+                err = self._venue_error(st, _code(data), data.get('msg', ''))
                 if err.category is ErrorCategory.AMBIGUOUS:
                     return 'unknown', ('ambiguous_code', err), st, rate
                 return 'error', err, st, rate
@@ -232,22 +238,36 @@ class BinanceTestnetTransport:
             if c in (0, 200):
                 return 'ok', data, st, rate
             if isinstance(c, int) and c < 0:
-                err = _venue_error(st, c, data.get('msg', ''))
+                err = self._venue_error(st, c, data.get('msg', ''))
                 if err.category is ErrorCategory.AMBIGUOUS:
                     return 'unknown', ('ambiguous_code', err), st, rate
                 return 'error', err, st, rate
             return 'unknown', ('unexpected_code', None), st, rate
         return 'ok', data, st, rate
 
-    @staticmethod
-    def _error_from(status, body):
+    def _error_from(self, status, body):
         try:
             data = R.decode_json(body) if body else None
         except R.MalformedResponse:
             return None
         if isinstance(data, dict) and isinstance(_code(data), int):
-            return _venue_error(status, _code(data), data.get('msg', ''))
+            return self._venue_error(status, _code(data), data.get('msg', ''))
         return None
+
+    def _venue_error(self, status, code, msg):
+        """A VenueError whose message is scrubbed by value (the API key in use, case / percent / separator
+        insensitive), by the optional scrubber, and by token shape."""
+        values = ()
+        if self._credentials is not None:
+            try:
+                key = self._credentials.api_key()
+                if isinstance(key, str) and len(key) >= 8:
+                    values = (key,)
+            except Exception:
+                values = ()
+        name, cat = categorize(code)
+        text = scrub_text(msg if isinstance(msg, str) else '', values, self._scrubber)
+        return VenueError(status, code, name, cat, text)
 
     def _read(self, op, method, path, pairs, signed, parser):
         verdict, payload, st, rate = self._exchange(method, path, pairs, signed)
@@ -474,8 +494,3 @@ def _code(data):
     if isinstance(c, str) and re.fullmatch(r'^-?[0-9]+$', c):
         return int(c)
     return c
-
-
-def _venue_error(status, code, msg):
-    name, cat = categorize(code)
-    return VenueError(status, code, name, cat, scrub_text(msg if isinstance(msg, str) else ''))

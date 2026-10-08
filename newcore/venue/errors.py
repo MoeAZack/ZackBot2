@@ -13,9 +13,10 @@ behaviour only (never imported):
 - Legacy cancel() also treated -4120 as "already gone". That is NOT ported: a stop that must be handled by the algo
   service is not proven gone. Here -4120 is always ALGO_REQUIRED.
 """
-import re
 from dataclasses import dataclass
 from enum import Enum
+
+from .redact import redact_values, scrub_tokens
 
 
 class ErrorCategory(Enum):
@@ -83,13 +84,17 @@ ERROR_CODES = {
 # Codes on which legacy binance_client.stop() switched a classic STOP_MARKET to POST /fapi/v1/algoOrder.
 ALGO_FALLBACK_CODES = (-4120, -1116, -1102, -4136)
 
-_SCRUB = re.compile(r'[A-Za-z0-9]{32,}')
 MSG_MAX = 240
 
 
-def scrub_text(text):
-    """Venue-provided text is shortened and long token-like runs (keys, signatures) are blanked."""
-    return _SCRUB.sub('<redacted>', str(text))[:MSG_MAX]
+def scrub_text(text, values=(), scrubber=None):
+    """Venue-provided text: registered secret values are redacted (case-insensitive, percent-encoded, with '-', '_'
+    or spaces inserted), then an optional scrubber runs, then long token-like runs are blanked INCLUDING runs split by
+    '_', '-', '+', '/', '=' (Cowork finding 3), and the result is shortened. Redaction happens before truncation."""
+    text = redact_values(str(text), values)
+    if scrubber is not None:
+        text = str(scrubber.scrub(text))
+    return scrub_tokens(text)[:MSG_MAX]
 
 
 def categorize(code):
