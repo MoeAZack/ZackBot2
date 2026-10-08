@@ -98,12 +98,12 @@ GUARD_ENTRY_LOOKBACK = 60             # the guard (no journal): candles back an 
 REDUCE_REFUSALS = 2                   # refused reduce-only sends of a lot before the venue position is read (MED-3)
 EXTERNAL_CLOSE_CODES = (-2022, -4061)  # reduce only rejected / position side does not match: nothing to reduce
 E_WOULD_TRIGGER = -2021               # Binance "Order would immediately trigger"
-# Cowork F3 (ruling proposed): a hard-HOLD emergency stop refused as 'would trigger' (the market is already through the
-# level). 'fallback_stop' (default): re-place it at a feasible level F3_BUFFER beyond the last closed candle (still a
-# reduce-only stop, the only action A24 permits); 'none': incident only. The alternative - a reduce-only market close as
-# a protection-outranks exception to A24 - needs an NC-02 ruling and is not implemented.
+# Cowork F3, Codex ruling (accepted as an EMERGENCY route only): a hard-HOLD emergency stop refused as 'would trigger'
+# is re-placed EMERGENCY_FALLBACK_BUFFER beyond the protective side of the CURRENT MARK (and of the last close), on the
+# tick, inside the price filter; it is DEGRADED protection (incident + health line). When no safe stop can be confirmed
+# (no mark, no valid level, refused again) the exposure escalates to a deterministic reduce-only market close.
 F3_POLICY = 'fallback_stop'
-F3_BUFFER = Decimal('0.005')
+EMERGENCY_FALLBACK_BUFFER = Decimal('0.005')   # a bounded emergency constant (never a strategy parameter)
 OPENING_PURPOSES = frozenset({Purpose.ENTRY, Purpose.ADD})
 
 
@@ -226,6 +226,7 @@ class Runner:
         self._suspended_lots = set()                                      # lots with an external-close owner item
         self._lost_checked = set()                                        # (symbol, side, candle) asked (289)
         self.guard = False                                                # app guard: no trusted journal at all
+        self.degraded = {}                                                # (symbol, side) -> degraded protection
         self._listed = None                                               # this sync's listed client ids (LOW-6)
         if config.raw_qty is not None and (config.account.binding.environment is not Environment.TESTNET
                                            or not config.raw_qty > 0):
@@ -441,6 +442,9 @@ class Runner:
                            and self._owned_order(o.ref.client_id)), ZERO)
             if covered >= p.qty:
                 continue                                                  # M45: covered: no change
+            if proven == 'close':                                         # proven ours, no safe level: escalate
+                self._emergency_close(p, p.qty - covered)
+                continue
             self._emergency_stop(p, p.qty - covered, price=proven)
         if self.guard:
             return                                                        # the guard never cancels anything
@@ -468,8 +472,11 @@ class Runner:
     def _guard_proven_entry(self, p):
         """The guard (no trusted journal, Codex tail-loss contract: protect KNOWN exposure): a position is known to be
         ours when the venue confirms one of our deterministic ENTRY client ids - the strategy's own ENTER signals of
-        the last GUARD_ENTRY_LOOKBACK candles give them. Returns the protective level: that signal's stop distance from
-        the confirmed entry fill (never tighter: floor / ceil to the tick), or None (nothing proves it ours)."""
+        the last GUARD_ENTRY_LOOKBACK candles give them (the signals only PROVE the id; no strategy stop is
+        recomputed: the journal that held the original stop distance is not trustworthy). Returns the protective level
+        - Codex ruling: the bounded emergency fallback distance from the confirmed entry fill, on the protective side
+        of the current mark (_feasible_level; DEGRADED protection) - or None (nothing proves it ours / no safe level:
+        the caller then escalates to a reduce-only close for a proven position)."""
         if p.symbol not in self.cfg.rules or p.side not in self.cfg.sides or self.now is None:
             return None
         for k in range(GUARD_ENTRY_LOOKBACK + 1):
@@ -483,14 +490,11 @@ class Runner:
                 iid = ids.derive_intent_id(self.acct, self._key(p.symbol, s, Purpose.ENTRY))
                 out = self.venue.query(OrderRef(symbol=p.symbol, client_id=ids.client_id_for(iid, 'classic')))
                 if out.kind is OutcomeKind.FINAL and out.executed_qty and out.avg_price:
-                    rules = self.cfg.rules[p.symbol]
-                    if p.side == 'LONG':
-                        level = rules.quantize_price(out.avg_price - s.stop_distance, Rounding.DOWN)
-                    else:
-                        level = rules.quantize_price(out.avg_price + s.stop_distance, Rounding.UP)
+                    level = self._feasible_level(p, anchor=out.avg_price)
+                    self._degrade(p, 'guard_fallback_stop')
                     self._incident(f'guard: {p.symbol} {p.side} proven ours by {out.ref.client_id} (entry '
-                                   f'{out.avg_price}); emergency level {level}')
-                    return level
+                                   f'{out.avg_price}); DEGRADED protection: emergency fallback level {level}')
+                    return level if level is not None else 'close'
         return None
 
     def _emergency_stop(self, p, gap, price=None):
@@ -525,22 +529,66 @@ class Runner:
         if out.kind is OutcomeKind.REJECTED and out.error_code == E_WOULD_TRIGGER and F3_POLICY == 'fallback_stop':
             level = self._feasible_level(p)
             if level is not None:
-                self._incident(f'hard HOLD: {cid} @ {price} would trigger; fallback level {level} (F3)')
+                self._degrade(p, 'fallback_stop')
+                self._incident(f'hard HOLD: {cid} @ {price} would trigger; DEGRADED protection: fallback stop {level} '
+                               f'(F3, {EMERGENCY_FALLBACK_BUFFER} beyond the current mark)')
                 price = level
                 out = self.venue.submit_stop(StopOrder(ref=ref, position_side=p.side, qty=qty, stop_price=price))
+            if out.kind is not OutcomeKind.KNOWN:                          # no safe stop confirmed: escalate
+                self._emergency_close(p, qty)
+                return
         self.counters.emergency_stops += out.kind is OutcomeKind.KNOWN
         self._incident(f'hard HOLD emergency stop {cid} {p.symbol} {p.side} {qty} @ {price} -> {out.kind}')
 
-    def _feasible_level(self, p):
-        """F3: a stop level the market has not passed - F3_BUFFER beyond the last closed candle's close (away from the
-        position: below for a LONG, above for a SHORT), on the tick."""
-        r = self.bars.closed_bars(p.symbol, self.cfg.tf_ms, as_of_ms=self.now, limit=1)
-        if r.kind is not ReadKind.OK or not r.value:
+    def _degrade(self, p, how):
+        self.degraded[(p.symbol, p.side)] = how
+
+    def _emergency_close(self, p, qty):
+        """Codex F3 ruling: no safe emergency stop could be confirmed - a deterministic reduce-only market close of the
+        uncovered quantity (zbn1e id: exchange truth, idempotent; a duplicate means it was already sent)."""
+        cid = ids.emergency_stop_client_id(self.acct, p.symbol, p.side, qty, 'close')
+        ref = OrderRef(symbol=p.symbol, client_id=cid)
+        out = self.venue.submit_market(MarketOrder(ref=ref, position_side=p.side, qty=qty, reduce=True))
+        if _is_duplicate(out):
+            out = self.venue.query(ref)
+        self._degrade(p, 'emergency_close')
+        self._incident(f'hard HOLD: DEGRADED protection: no safe stop for {p.symbol} {p.side} {qty}: reduce-only '
+                       f'emergency close {cid} -> {out.kind}')
+
+    def _current_mark(self, symbol):
+        """The venue's current mark (a duck-typed `mark_price(symbol)` read on the venue or the account reads; FakeVenue
+        and the testnet adapter have one). None when it cannot be read: no level is then 'safe'."""
+        for src in (self.venue, self.reads):
+            read = getattr(src, 'mark_price', None)
+            if read is not None:
+                r = read(symbol)
+                if r.kind is ReadKind.OK and r.value and r.value[0] and r.value[0] > 0:
+                    return r.value[0]
+        return None
+
+    def _feasible_level(self, p, anchor=None):
+        """F3 / guard (Codex rulings): a stop level on the protective side of the CURRENT MARK - the mark, the last
+        close and `anchor` (an entry fill) whichever is most adverse-side, EMERGENCY_FALLBACK_BUFFER beyond it (below
+        for a LONG, above for a SHORT), on the tick and inside the price filter. None when there is no mark."""
+        mark = self._current_mark(p.symbol)
+        if mark is None:
             return None
-        c, rules = r.value[-1].close, self.cfg.rules[p.symbol]
+        refs = [mark]
+        r = self.bars.closed_bars(p.symbol, self.cfg.tf_ms, as_of_ms=self.now, limit=1)
+        if r.kind is ReadKind.OK and r.value:
+            refs.append(r.value[-1].close)
+        if anchor is not None:
+            refs.append(anchor)
+        rules = self.cfg.rules[p.symbol]
         if p.side == 'LONG':
-            return rules.quantize_price(RCTX.multiply(c, 1 - F3_BUFFER), Rounding.DOWN)
-        return rules.quantize_price(RCTX.multiply(c, 1 + F3_BUFFER), Rounding.UP)
+            level = rules.quantize_price(RCTX.multiply(min(refs), 1 - EMERGENCY_FALLBACK_BUFFER), Rounding.DOWN)
+        else:
+            level = rules.quantize_price(RCTX.multiply(max(refs), 1 + EMERGENCY_FALLBACK_BUFFER), Rounding.UP)
+        try:
+            rules.check_price(level, 'emergency_level')
+        except Exception:                                                 # outside the price filter: not safe
+            return None
+        return level
 
     def _emergency_stop_price(self, p):
         """The owned stop level of that side: the lot's stop; for an adopted race fill with no lot, the entry's stop

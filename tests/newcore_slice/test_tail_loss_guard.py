@@ -67,17 +67,25 @@ def _emergency(d):
 
 def test_the_guard_protects_a_venue_confirmed_own_entry_whose_stop_is_gone_once(tmp_path):
     """Damaged journal + our stop gone: no order of ours rests any more, but the venue still confirms our
-    deterministic ENTRY client id -> known exposure: ONE emergency stop at the entry signal's stop distance from the
-    confirmed entry fill (= the lost stop's level), idempotent across guard runs, nothing cancelled."""
+    deterministic ENTRY client id -> known exposure: ONE emergency stop, idempotent across guard runs, nothing
+    cancelled. Codex ruling: the journal that held the original stop distance is not trusted, so the level is the
+    bounded emergency fallback (EMERGENCY_FALLBACK_BUFFER) beyond the most adverse of the confirmed entry fill, the
+    current mark and the last close - DEGRADED protection, said so in the incident and the health line."""
+    from newcore.runner.runner import EMERGENCY_FALLBACK_BUFFER as B
+
     def stop_gone(st, stop):
         stop['status'] = 'CANCELED'
     cfg, d, stop = _damaged_with(tmp_path, stop_gone)
+    fill = next(D(o['avg']) for o in json.loads((d / A.STATE_FILE).read_text())['orders'] if o['type'] == 'MARKET')
     for k in range(2):                                                  # repeated guard runs: idempotent
         code, out = run(['run', '--config', cfg, '--cycles', '5', '--enable-candidate'])
         assert code == A.EXIT_STORE_HOLD and ('proven ours' in out) == (k == 0)   # then our emergency stop proves it
+        first = out if k == 0 else first
         em, st = _emergency(d)
         pos = sum((D(p[2]) for p in st['positions'] if p[1] == 'LONG'), D(0))
-        assert [(D(o['qty']), D(o['stop'])) for o in em] == [(pos, D(stop['stop']))]
+        (qty, level), = [(D(o['qty']), D(o['stop'])) for o in em]
+        assert qty == pos and level <= fill * (1 - B) and level != D(stop['stop'])      # not the strategy stop
+    assert 'degraded=BTCUSDT:LONG:guard_fallback_stop' in first and 'DEGRADED protection' in first
     assert not [o for o in st['orders'] if o['status'] == 'CANCELED' and o['client_id'] != stop['client_id']]
 
 

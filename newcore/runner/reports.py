@@ -123,4 +123,6 @@ def health_line(runner) -> str:
     when = cairo_text(runner.now) if runner.now is not None else '-'
     return (f'HEALTH {when} mode={mode} hold={hold} positions={",".join(positions) or "flat"} '
             f'protected={protected} equity={equity} trades={sum(1 for x in f.lots() if not x.open)} '
-            f'cycles={c.cycles} incidents={c.incidents} stops={runner.stop_routes_text()}')
+            f'cycles={c.cycles} incidents={c.incidents} stops={runner.stop_routes_text()}'
+            + (' degraded=' + ','.join(f'{s}:{sd}:{how}' for (s, sd), how in sorted(runner.degraded.items()))
+               if getattr(runner, 'degraded', None) else ''))

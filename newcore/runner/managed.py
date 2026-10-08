@@ -212,13 +212,15 @@ class ManagementMixin:
         self._mg_mode = (EntriesMode.ACTIVE, None)
         self._refused = {}                   # lot id -> (cycle ms, refused submits this cycle)
         self._pending_start = set()          # lots whose entry filled; the 'mg start' input is not journaled yet
+        self._malformed = []                 # (lot, decision, error): unreadable management records -> HOLD
         super().__init__(config, **kw)
         if self.mgmt.enabled:                # restart: fold the journal through the driver (same function as live)
             for ev in self.journal.read():   # journal bytes only: no bars / venue read (Codex P1)
                 self._mg_observe(ev)
             self._items = []                 # handled by the process that saw them (the HOLD is durable)
             self._pending_start = {x.lot_id for x in self.fold.open_lots()
-                                   if x.lot_id not in self.mg and self._mg_eligible(x.lot_id)}
+                                   if x.lot_id not in self.mg and x.lot_id not in self.unmanaged
+                                   and self._mg_eligible(x.lot_id)}
 
     # ----------------------------------------------------------------------------------------------- journal -> driver
     def _emit(self, cls, *, reason, **fields):
@@ -237,16 +239,10 @@ class ManagementMixin:
             if d.action is Action.WAIT and d.detail.startswith(START + ' '):
                 self._mg_apply_start(d)
             elif d.action is Action.WAIT and d.subject_id in self.mg:
-                if d.detail.startswith(TICK + ' '):
-                    self._mg_apply_tick(d)
-                elif d.detail.startswith(MARK + ' '):
-                    ds = self.mg[d.subject_id]
-                    if ds.pos.stage is not Stage.DONE:
-                        self._mg_drive(d.subject_id, DR.on_mark, ds, Decimal(d.detail.split(' ')[2]))
-                elif d.detail.startswith((FALLBACK + ' ', REFUSED + ' ')):
-                    self._mg_apply_marker(d)
-                elif d.detail.startswith(FILL + ' '):
-                    self._mg_apply_fill(d)
+                try:
+                    self._mg_apply_input(d)
+                except (ValueError, ArithmeticError, IndexError, KeyError, DomainError) as ex:
+                    self._mg_malformed(d, ex)
         elif isinstance(ev, ResultObserved):
             r = ev.result
             iv = self.fold.intents[r.intent_id]
@@ -437,12 +433,48 @@ class ManagementMixin:
         self._mg_drive(lot_id, DR.start, plan, account_id=self.acct, lot_id=lot_id, entry_fee=Decimal(fee), mode=mode,
                        hold_kind=hold, quote_asset=self.mgmt.quote_asset, fee_rates=tuple(self.mgmt.fee_rates))
 
+    def _mg_apply_input(self, d):
+        """One durable management input record. Accepted shapes are VERSIONED by their token count (Codex ruling on
+        the journal change): a tick is 'mg tick <open> <o> <h> <l> <c> <request>' (35cb80c, v2) or the same with an
+        ATR before the request (v3); anything else - including the pre-35cb80c 'mg tick <open> <request>' (it needs a
+        bars read, which a restart never does) - is malformed: never a crash, never a reinterpretation (_mg_malformed)."""
+        if d.detail.startswith(TICK + ' '):
+            self._mg_apply_tick(d)
+        elif d.detail.startswith(MARK + ' '):
+            parts = d.detail.split(' ')
+            if len(parts) != 3:
+                raise ValueError(f'mark record with {len(parts)} tokens')
+            price = Decimal(parts[2])
+            if not price.is_finite() or price <= 0:
+                raise ValueError(f'mark price {parts[2]}')
+            ds = self.mg[d.subject_id]
+            if ds.pos.stage is not Stage.DONE:
+                self._mg_drive(d.subject_id, DR.on_mark, ds, price)
+        elif d.detail.startswith((FALLBACK + ' ', REFUSED + ' ')):
+            self._mg_apply_marker(d)
+        elif d.detail.startswith(FILL + ' '):
+            self._mg_apply_fill(d)
+
+    def _mg_malformed(self, d, ex):
+        """A management input record this build cannot read exactly: the lot leaves management (the runner protects it
+        with its own stop; the driver's orders already resting stay), an incident, and a durable HOLD at the next
+        cycle - the owner resolves it. Deterministic: every restart detaches the lot at the same record."""
+        lot_id = d.subject_id
+        self.mg.pop(lot_id, None)
+        self.plans.pop(lot_id, None)
+        self.unmanaged.add(lot_id)
+        self._malformed.append((lot_id, d.decision_id, f'{type(ex).__name__}: {ex}'[:120]))
+
     def _mg_apply_tick(self, d):
         lot_id = d.subject_id
         parts = d.detail[len(TICK) + 1:].split(' ')
-        if len(parts) == 6:                                               # 35cb80c records: no ATR field
+        if len(parts) == 6:                                               # v2 (35cb80c): no ATR field
             parts.insert(5, '-')
+        if len(parts) != 7:
+            raise ValueError(f'tick record with {len(parts)} values (v2: 6, v3: 7)')
         open_ms, o, h, lo, c, atr, request = parts
+        if not open_ms.isdigit():
+            raise ValueError(f'tick open {open_ms!r}')
         candle = Candle(open_ms=int(open_ms), open=Decimal(o), high=Decimal(h), low=Decimal(lo), close=Decimal(c),
                         atr=None if atr == '-' else Decimal(atr))
         ds = self.mg[lot_id]
@@ -609,6 +641,11 @@ class ManagementMixin:
 
     # ----------------------------------------------------------------------------------------------- runner hooks
     def _protect_all(self):
+        if self._malformed:                                               # unreadable management input: fail closed
+            for lot_id, did, why in self._malformed:
+                self._incident(f'management {lot_id}: record {did} unreadable ({why}); detached, HOLD')
+            self._malformed = []
+            self._hold([ReasonCode.RECOVERY_SCHEMA_INVALID], reason=ReasonCode.RECOVERY_SCHEMA_INVALID)
         for lot in self.fold.open_lots():
             if lot.lot_id in self._pending_start:
                 self._secure(lot.lot_id)                                  # start it (or leave it to the runner)
