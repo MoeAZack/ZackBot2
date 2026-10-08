@@ -210,16 +210,22 @@ def test_not_found_alone_is_still_unknown():
     _assert_one_entry_one_stop(w)
 
 
-def test_not_found_with_nothing_executed_stays_unknown_and_sends_nothing_more():
+def test_not_found_with_nothing_executed_is_unknown_until_corroborated_and_never_resent():
+    """NOT_FOUND alone proves nothing: the entry stays UNKNOWN (owned work, HOLD) and is never re-sent; only two
+    agreeing position reads after the visibility window + an explicit reconciliation decision resolve it."""
     w = World(flat_bars(20), signals(exit_=None, more={(SYM, flat_bars(1)[0].open_ms + 9 * H4): (('enter', 'LONG'),)}))
     w.run(ENTRY_BAR - 1)
     w.venue.lose_next_market_answer('not_filled')
-    w.run(12)
+    w.run(ENTRY_BAR)
     f = w.runner.fold
     entry = next(iv for iv in f.intents.values() if iv.purpose is Purpose.ENTRY)
-    assert entry.state is IntentState.UNKNOWN and entry.final is None
-    assert w.venue.orders_submitted() == () and f.mode is EntriesMode.HOLD
+    assert entry.state is IntentState.UNKNOWN and entry.final is None and f.mode is EntriesMode.HOLD
     assert w.runner.portfolio().ownership is Ownership.KNOWN                # the unknown entry is still owned work
+    w.run(ENTRY_BAR + 1)                                                    # one read past the window: not enough
+    assert entry.state is IntentState.UNKNOWN
+    w.run(12)
+    assert entry.state is IntentState.CANCELLED and str(entry.final.evidence) == 'not_found_corroborated'
+    assert w.venue.orders_submitted() == () and f.mode is EntriesMode.HOLD    # nothing sent; HOLD until resume
 
 
 def test_reconciliation_mismatch_holds_and_stops_entries():

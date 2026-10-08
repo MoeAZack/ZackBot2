@@ -20,8 +20,9 @@ from slice_helpers import ACCOUNT_ID, H4, PORTFOLIO_ID, sim_account
 
 CORE8 = ('BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT', 'XRPUSDT', 'DOGEUSDT', 'AVAXUSDT', 'LINKUSDT')
 FIXTURE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'fixtures', 'ema_mom_long_book_trades.csv')
-RESEARCH = BookPolicy(max_positions=None, daily_loss_pct=None, kill_drawdown_pct=None)       # the research book
-RESEARCH_MAXPOS4 = BookPolicy(max_positions=4, daily_loss_pct=None, kill_drawdown_pct=None)
+RESEARCH = BookPolicy(max_positions=None, daily_loss_pct=None, kill_drawdown_pct=None,     # the research book:
+                      cap_gap_buffer=Decimal(0))                                         # cap on the price as research
+RESEARCH_MAXPOS4 = BookPolicy(max_positions=4, daily_loss_pct=None, kill_drawdown_pct=None, cap_gap_buffer=Decimal(0))
 CANARY = BookPolicy()                                                                         # 4 / 3x / 3% / 10%
 
 

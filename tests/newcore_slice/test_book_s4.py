@@ -142,10 +142,11 @@ def test_a_closed_lot_frees_its_slot_for_a_later_signal():
 
 def test_leverage_cap_trims_then_refuses_on_shared_equity():
     sig = {(s, 5): E for s in SYMS[:4]}
-    b = Book(sig, policy=dataclass_replace(LOOSE, max_leverage=D('3')))   # each wants 5 x 100 = 1 x equity
+    b = Book(sig, policy=dataclass_replace(LOOSE, max_leverage=D('3'), cap_gap_buffer=D(0)))  # each 5 x 100 = 1x
     b.run(6)
     lots = {x.symbol: x.qty for x in b.runner.fold.open_lots()}
-    assert lots == {'AAAUSDT': D('5'), 'BBBUSDT': D('5'), 'CCCUSDT': D('5')}  # 3 x 500 notional, then no room
+    # 3 x 500 = 1500: A, B at 5 each (500.1 at their fills), C trimmed to the room left at the fill prices
+    assert lots == {'AAAUSDT': D('5'), 'BBBUSDT': D('5'), 'CCCUSDT': D('4.998')}
     skip, = b.decisions('DDDUSDT', Action.SKIP)
     assert skip.reason is ReasonCode.EXEC_SIZE_MIN
 

@@ -122,7 +122,7 @@ def run_case(case):
     if book:                       # S4: one book, max_pos, the legacy 8% Cairo-day halt (backtest.run default), no kill
         runner = BookRunner(cfg, policy=BookPolicy(risk_pct=risk_pct, max_positions=int(sl['max_pos']),
                                                    max_leverage=max_lev, daily_loss_pct=LEGACY_DAILY_HALT,
-                                                   kill_drawdown_pct=None), **kw)
+                                                   kill_drawdown_pct=None, cap_gap_buffer=Decimal(0)), **kw)
     else:
         runner = Runner(cfg, **kw)
     runner = run_replay(runner, venue, start_ms=t0, end_ms=bars[-1].close_ms, tf_ms=tf)

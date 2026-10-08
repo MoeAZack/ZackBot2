@@ -55,6 +55,63 @@ def sim_account(confirmed_at_ms=T0 - 1):
                    binding_state=BindingState.CONFIRMED, proposed_binding=None, confirmation=conf)
 
 
+class Crash(Exception):
+    """The process dies here (not a venue answer, not a journal failure): nothing after this point ran."""
+
+
+class ScriptedVenue:
+    """A VenuePort wrapper over FakeVenue for crash / refusal injection (Cowork crash-safety matrix).
+
+    Effects = submit_market, submit_stop, cancel, counted from 1. crash(n, 'before'): the process dies just before the
+    n-th effect reaches the venue (its 'sent' / 'cancelling' is already journaled); crash(n, 'after'): the venue executes
+    it, then the process dies before the answer is journaled. refuse(kind, code): every such call answers REJECTED
+    (kind 'stop' | 'reduce' | 'entry'). Reads are passed through."""
+
+    def __init__(self, venue):
+        self.inner = venue
+        self.effects = []
+        self._crash = None
+        self._refuse = {}
+
+    def __getattr__(self, name):
+        return getattr(self.inner, name)
+
+    def crash(self, n, when):
+        self._crash = (n, when)
+
+    def disarm(self):
+        self._crash = None
+
+    def refuse(self, kind, code=-2022):
+        self._refuse[kind] = code
+
+    def _effect(self, name, call, ref, kind):
+        self.effects.append(name)
+        n = len(self.effects)
+        if self._crash == (n, 'before'):
+            self._crash = None
+            raise Crash(f'before effect {n} ({name})')
+        if kind in self._refuse:
+            from newcore.ports.venue import OrderOutcome, OutcomeKind
+            return OrderOutcome(kind=OutcomeKind.REJECTED, ref=ref, observed_at_ms=self.inner.now_ms,
+                                error_code=self._refuse[kind], detail='scripted')
+        out = call()
+        if self._crash == (n, 'after'):
+            self._crash = None
+            raise Crash(f'after effect {n} ({name})')
+        return out
+
+    def submit_market(self, order):
+        kind = 'reduce' if order.reduce else 'entry'
+        return self._effect('market_' + kind, lambda: self.inner.submit_market(order), order.ref, kind)
+
+    def submit_stop(self, order):
+        return self._effect('stop', lambda: self.inner.submit_stop(order), order.ref, 'stop')
+
+    def cancel(self, ref):
+        return self._effect('cancel', lambda: self.inner.cancel(ref), ref, 'cancel')
+
+
 class World:
     """FakeVenue + MemoryJournal + CsvBarSource over the same candles, and a Runner factory (restart = new_runner)."""
 
@@ -64,6 +121,7 @@ class World:
         self.candles = tuple(candles)
         self.t0 = self.candles[0].open_ms
         self.venue = FakeVenue({symbol: self.candles}, H4, costs=costs, equity=Decimal(equity))
+        self.port = ScriptedVenue(self.venue)                          # what the Runner talks to
         self.journal = MemoryJournal(ACCOUNT_ID, PORTFOLIO_ID)
         self.bars = CsvBarSource({symbol: self.candles}, H4)
         self.signals = signals
@@ -81,7 +139,8 @@ class World:
         return self.runner
 
     def new_runner(self):
-        return Runner(self.config, journal=self.journal, venue=self.venue, bars=self.bars, signals=self.signals)
+        return Runner(self.config, journal=self.journal, venue=self.port, bars=self.bars, signals=self.signals,
+                      account_reads=self.venue)
 
     def close_ms(self, i):
         return self.candles[i].close_ms

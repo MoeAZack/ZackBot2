@@ -11,6 +11,7 @@ same rule (a pure function of journaled data, no clock, no randomness):
     reconciliation_id  the n-th reconciliation snapshot at at_ms (NC-02 owns the record)
     operator_decision_id  an operator decision (RESUME) at at_ms
     risk_decision_id   a risk-authority decision (HALT / kill) at at_ms
+    resolution_decision_id  the reconciliation decision resolving a lost intent from position reads
 
     H(tag, parts...) = sha256(b'zackbot.newcore.slice.' + tag + b'.v1' + (b'\\x00' + part)...), first 32 hex
 Reported as an interface item: these belong in newcore.ports.keys (with pinned vectors) once Codex rules on them.
@@ -24,7 +25,7 @@ from newcore.ports.keys import (client_id_for, decision_key, derive_child_intent
 
 __all__ = ['client_id_for', 'decision_key', 'derive_child_intent_id', 'derive_decision_id', 'derive_intent_id',
            'derive_lot_id', 'is_newcore_client_id', 'event_id', 'result_id', 'position_id', 'child_decision_id',
-           'reconciliation_id', 'operator_decision_id', 'risk_decision_id']
+           'reconciliation_id', 'operator_decision_id', 'risk_decision_id', 'resolution_decision_id']
 
 
 def _hex(tag, *parts):
@@ -63,3 +64,8 @@ def operator_decision_id(account_id, action, at_ms):
 
 def risk_decision_id(account_id, action, at_ms):
     return 'dec_' + _hex('risk_decision_id', account_id, action, at_ms)
+
+
+def resolution_decision_id(intent_id):
+    """The explicit reconciliation decision that resolves a lost (UNKNOWN + NOT_FOUND) intent from position reads."""
+    return 'dec_' + _hex('resolution_decision_id', intent_id)

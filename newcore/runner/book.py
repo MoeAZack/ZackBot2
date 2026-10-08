@@ -33,7 +33,8 @@ KILL_REASON = ReasonCode.FILTER_HALT          # no drawdown-kill code in the NC-
 
 class BookRunner(Runner):
     def __init__(self, config, *, policy: BookPolicy = BookPolicy(), **kw):
-        config = dataclasses.replace(config, sizing=SizingPolicy(policy.risk_pct, policy.max_leverage))
+        config = dataclasses.replace(config, sizing=SizingPolicy(policy.risk_pct, policy.max_leverage,
+                                                                 policy.cap_gap_buffer))
         super().__init__(config, **kw)
         self.policy = policy
         self.risk = BookRisk(policy)
@@ -65,6 +66,8 @@ class BookRunner(Runner):
                 for sig in sigs[s]:
                     if sig.action == ENTER and sig.side in self.cfg.sides:
                         self._enter(s, sig, bars[s][-1].close)
+            snap = self._eq_snapshot
+            self._check_cap_at_fill(snap.value[0] if snap.kind is ReadKind.OK else None)
         finally:
             self._eq_snapshot = None
 
@@ -130,7 +133,18 @@ class BookRunner(Runner):
         return self._eq_snapshot if self._eq_snapshot is not None else self.reads.equity()
 
     def _open_notional(self):
-        return sum((lot.qty * self._close.get(lot.symbol, lot.avg_price) for lot in self.fold.open_lots()), ZERO)
+        """Open notional at this cycle's closes; a lot filled in THIS cycle counts at its fill (a gapped open)."""
+        return sum((lot.qty * (lot.avg_price if lot.opened_at_ms == self.now else
+                               self._close.get(lot.symbol, lot.avg_price)) for lot in self.fold.open_lots()), ZERO)
+
+    def _check_cap_at_fill(self, equity):
+        """Post-fill check: a gap beyond cap_gap_buffer can still push the book past the cap; surface it."""
+        if equity is None or not any(lot.opened_at_ms == self.now for lot in self.fold.open_lots()):
+            return                                         # no fill this cycle: later price drift is not a fill breach
+        gross = self._open_notional()
+        if gross > self.policy.max_leverage * equity:
+            self.counters.cap_exceeded += 1
+            self._incident(f'gross notional {gross} > {self.policy.max_leverage} x equity {equity} at the fill')
 
     # ----------------------------------------------------------------------------------------------- operator
     def resume(self, now_ms):

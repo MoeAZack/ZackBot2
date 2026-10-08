@@ -6,10 +6,18 @@ Ports: JournalPort (MemoryJournal now, NC-02a later), VenuePort (FakeVenue now, 
 cycle(now_ms), called once per closed candle (now_ms = that candle's close = the next candle's open):
   1. sync        query every sent, non-terminal owned intent by client id; record what changed (FINAL / KNOWN /
                  UNKNOWN / NOT_FOUND). A durable never-sent intent is sent (protect / close) or, for an entry outside its
-                 candle window, closed NOT_SENT.
+                 candle window, closed NOT_SENT. Emergency set (runs in HOLD too):
+                   - a REDUCE-ONLY intent (stop / close) that is UNKNOWN + NOT_FOUND is re-sent under the SAME client
+                     id (the crash fell between 'sent' and the venue call, or the answer was lost and it never
+                     landed). Idempotent: a duplicate-id refusal means the order exists and is read by its client id.
+                   - an ENTRY that is UNKNOWN + NOT_FOUND is never assumed unfilled and never re-sent: >= 2 agreeing
+                     position reads after NOT_FOUND_WINDOW_MS + a RECONCILE decision resolve it (not_found_corroborated
+                     or position_adopted); until then HOLD.
   2. reconcile   fresh venue positions + open orders vs the fold. Any difference -> HOLD (durable ModeChanged); new
                  entries stop. Nothing owned + a flat snapshot is the only way to KNOWN_EMPTY.
-  3. protect     every open lot without a live stop (and no close in flight) gets one (restore after a cancel / failure).
+  3. protect     every open lot without a live stop (and no close in flight) is SECURED with bounded attempts: a stop;
+                 if the venue refuses it, a reduce-only close; at most SECURE_ROUNDS rounds per lot per cycle (never
+                 recursion), then a durable HOLD + incident. Runs in HOLD too.
   4. decide      strategy signals on the closed candles: CLOSE first (cancel the stop, reduce-only market close), then
                  ENTER (decision -> sizing -> intent -> market -> result -> stop intent -> stop -> result).
   5. reconcile + invariants (end of cycle).
@@ -22,7 +30,8 @@ signal (restart, re-run cycle, replay) finds its decision with JournalPort.find_
 exception is the crash gap "decision recorded, intent not": the entry's derived intent (from the recorded decision) is
 recorded and sent only while the cycle is still the signal candle's (now_ms == candle_close_ms); later it is spent.
 
-Invariants asserted at the end of every cycle (InvariantBreach when entries are not in HOLD; counted while in HOLD):
+Invariants checked at the end of every cycle. A naked position (I1) outside HOLD first moves to a durable HOLD with an
+incident (never ACTIVE while naked), then raises InvariantBreach when the config is strict (tests); counted in HOLD:
   I1 protection  every venue position is covered by NC-01 confirmed_coverage (WORKING carriers only) of its lots,
                  each carrier listed on the venue now; the covered quantity
                  equals the position. Bounded window: exposure may exist without a confirmed stop only INSIDE one cycle
@@ -52,7 +61,8 @@ from newcore.domain import (Account, Action, Authority, Decision, DecisionRecord
                             Purpose, ReasonCode, ResultObserved, ResultPhase, Rounding, Side, check_account_portfolio,
                             check_flat_snapshot_fresh, confirmed_coverage, permitted)
 from newcore.domain.modes import Permission
-from newcore.domain.orders import terminal_for
+from newcore.domain import Evidence, Lookup, OrderResult
+from newcore.domain.orders import NOT_FOUND_WINDOW_MS, REDUCE_ONLY, PositionRead, terminal_for
 from newcore.domain.portfolio import Fill
 from newcore.ports.journal import JournalUnavailable
 from newcore.ports.keys import check_decision_key
@@ -75,6 +85,8 @@ ITEM_REASON = {'position': ReasonCode.OWNERSHIP_UNTRACKED_POSITION, 'foreign_ord
 
 
 OPENING_ACTIONS = {Action.ENTER: Purpose.ENTRY, Action.ADD: Purpose.ADD}
+DUPLICATE_CLIENT_ID = -4116           # Binance "ClientOrderId is duplicated": the order EXISTS (step-0 has no kind for it)
+SECURE_ROUNDS = 2                     # per lot per cycle: stop attempt, then (if refused) one reduce-only close
 
 
 class UnkeyedOpeningDecision(ValueError):
@@ -131,6 +143,9 @@ class Counters:
     reconciliations: int = 0
     hard_holds: int = 0
     hard_hold_cycles: int = 0
+    resends: int = 0
+    incidents: int = 0
+    cap_exceeded: int = 0
 
 
 class Runner:
@@ -147,6 +162,8 @@ class Runner:
         self._dist = {}                                                   # entry intent id -> stop distance (cache)
         self._n_rec = 0
         self.hard_hold = None                                             # durability-unavailable HOLD (process)
+        self.incidents = []                                               # (at_ms, text): surfaced, not journaled
+        self._reads = {}                                                  # lost entry -> agreeing position reads
 
     # =============================================================================================== journal plumbing
     def _emit(self, cls, *, reason, **fields):
@@ -192,6 +209,10 @@ class Runner:
         if iv.final is not None:                                          # crash after the durable FINAL result:
             self._state(iv, terminal_for(iv.final))                       # only its terminal step is missing
             return
+        if submit and out.kind is OutcomeKind.REJECTED and out.error_code == DUPLICATE_CLIENT_ID:
+            # a duplicate-id refusal proves the order EXISTS (an earlier send of this same intent landed): never
+            # "refused, nothing executed"; read it by its client id and record what the venue holds
+            out, submit = self.venue.query(self._ref(iv)), False
         res = result_from(out, iv.intent, ids.result_id(iv.intent_id, len(iv.results)), submit=submit)
         if res is None:
             return
@@ -280,8 +301,79 @@ class Runner:
                 self._apply(iv, out, submit=False)
                 if iv.state is IntentState.CANCELLING and out.kind is OutcomeKind.KNOWN:
                     self._apply(iv, self.venue.cancel(self._ref(iv)), submit=False)    # the cancel never reached it
+                if self._not_found(iv):
+                    if iv.purpose in REDUCE_ONLY:
+                        self._resend(iv)
+                    elif iv.purpose is Purpose.ENTRY:
+                        self._corroborate_entry(iv)
             elif iv.state is IntentState.DURABLE:
                 self._send_durable(iv)
+
+    @staticmethod
+    def _not_found(iv):
+        return iv.live and iv.state is IntentState.UNKNOWN and iv.results and \
+            iv.results[-1].lookup is Lookup.NOT_FOUND
+
+    def _resend(self, iv):
+        """Emergency set (also in HOLD): a reduce-only intent the venue does not know is sent again under the SAME
+        deterministic client id. Idempotent: if an earlier send did land, the venue refuses the duplicate id and the
+        refusal is read as "exists" (_apply). No new journal 'sent': one intent, one route, the same order."""
+        it = iv.intent
+        lot = next((x for x in self.fold.open_lots() if x.lot_id == it.owner_id), None)
+        if lot is None:
+            return                                                        # nothing left to protect / close
+        self.counters.resends += 1
+        if it.purpose is Purpose.PROTECT:
+            out = self.venue.submit_stop(StopOrder(ref=self._ref(iv), position_side=str(it.side), qty=it.qty,
+                                                   stop_price=it.stop_price))
+        else:
+            out = self.venue.submit_market(MarketOrder(ref=self._ref(iv), position_side=str(it.side), qty=it.qty,
+                                                       reduce=True))
+        self._apply(iv, out, submit=True)
+
+    def _corroborate_entry(self, iv):
+        """An entry the venue does not know is NEVER assumed unfilled (NC-01). It is resolved only by >= 2 agreeing
+        position reads taken after the visibility window (sent + NOT_FOUND_WINDOW_MS) and an explicit reconciliation
+        decision: nothing beyond the owned lots -> NOT_FOUND_CORROBORATED (nothing executed); a surplus within the
+        request -> POSITION_ADOPTED (the race / lost fill is owned and then protected). Anything else stays unknown."""
+        it = iv.intent
+        if iv.sent_at_ms is None or self.now < iv.sent_at_ms + NOT_FOUND_WINDOW_MS:
+            return
+        r = self.venue.positions(it.symbol)
+        if r.kind is not ReadKind.OK:
+            return
+        pos = next((p for p in r.value if p.side == str(it.side)), None)
+        qty = pos.qty if pos is not None else ZERO
+        reads = self._reads.setdefault(iv.intent_id, [])
+        if reads and reads[-1].qty != qty:
+            reads.clear()                                                 # the position moved: start agreeing again
+        if not reads or reads[-1].at_ms < self.now:
+            reads.append(PositionRead(at_ms=self.now, qty=qty))
+        if len(reads) < 2:
+            return
+        owned = sum((x.qty for x in self.fold.open_lots() if x.symbol == it.symbol and x.side == str(it.side)), ZERO)
+        surplus = qty - owned
+        if surplus < 0 or surplus > it.qty:
+            self._incident(f'{iv.intent_id}: position {qty} vs owned {owned}: cannot attribute the lost entry')
+            return
+        did = ids.resolution_decision_id(iv.intent_id)
+        self._decision(decision_id=did, action=Action.RECONCILE, reason=ReasonCode.RECONCILE_MATCH,
+                       authority=Authority.RECONCILIATION, key=None, symbol=it.symbol, side=str(it.side),
+                       subject_id=iv.intent_id, detail=f'lost entry: {len(reads)} reads, surplus {surplus}')
+        adopted = surplus > 0
+        res = OrderResult(result_id=ids.result_id(iv.intent_id, len(iv.results)), intent_id=iv.intent_id,
+                          account_id=self.acct, client_order_id=it.client_order_id, phase=ResultPhase.FINAL,
+                          requested_qty=it.qty, observed_at_ms=self.now, exchange_order_id=None, exchange_status=None,
+                          lookup=None, executed_qty=surplus, avg_price=pos.entry_price if adopted else None,
+                          evidence=Evidence.POSITION_ADOPTED if adopted else Evidence.NOT_FOUND_CORROBORATED,
+                          corroboration=tuple(reads), resolved_by=did)
+        self._emit(ResultObserved, reason=it.reason, result=res)
+        self._state(iv, terminal_for(res))
+        self._reads.pop(iv.intent_id, None)
+
+    def _incident(self, what):
+        self.incidents.append((self.now, what))
+        self.counters.incidents += 1
 
     def _send_durable(self, iv):
         """A durable intent that was never sent (crash between intent_recorded and sent)."""
@@ -348,8 +440,31 @@ class Runner:
             d = self.fold.pending_closes.get(lot.lot_id)
             if d is not None and lot.closing is None:                     # a decided close a crash interrupted:
                 self._close_lot(lot, reason=d.reason, key=d.key)          # finish it (never a fresh stop first)
-            else:
-                self._protect(lot)
+            self._secure(lot.lot_id)
+
+    def _lot(self, lot_id):
+        return next((x for x in self.fold.open_lots() if x.lot_id == lot_id), None)
+
+    def _secure(self, lot_id):
+        """Make an open lot protected or closing, with BOUNDED attempts (never recursion): up to SECURE_ROUNDS x
+        (one stop attempt; if the venue refuses it, one reduce-only market close). Still neither -> durable HOLD and an
+        incident; the next cycle tries again under the same bound."""
+        for _ in range(SECURE_ROUNDS):
+            lot = self._lot(lot_id)
+            if lot is None or lot.live_stop is not None or lot.closing is not None:
+                return
+            n = len(lot.protects)
+            self._protect(lot)
+            lot = self._lot(lot_id)
+            if lot is None or lot.live_stop is not None or lot.closing is not None:
+                return
+            if len(lot.protects) == n or lot.protects[-1].state is not IntentState.REJECTED:
+                return                                                    # nothing was attempted (not permitted)
+            self._close_lot(lot, reason=ReasonCode.EXIT_STOP_FAILED, key=None)    # the stop was refused
+        lot = self._lot(lot_id)
+        if lot is not None and lot.live_stop is None and lot.closing is None:
+            self._incident(f'{lot_id}: stop and close refused {SECURE_ROUNDS} times this cycle')
+            self._hold([ReasonCode.EXEC_STOP_FAILED], reason=ReasonCode.EXEC_STOP_FAILED)
 
     def _stop_distance(self, lot):
         d = self._dist.get(lot.entry.intent_id)
@@ -401,11 +516,7 @@ class Runner:
         out = self.venue.submit_stop(StopOrder(ref=self._ref(iv), position_side=str(it.side), qty=it.qty,
                                                stop_price=it.stop_price))
         self._apply(iv, out, submit=True)
-        self._resolve(iv)
-        if iv.state is IntentState.REJECTED:                              # stop failed: close at market
-            lot = next((x for x in self.fold.open_lots() if x.lot_id == it.owner_id), None)
-            if lot is not None:
-                self._close_lot(lot, reason=ReasonCode.EXIT_STOP_FAILED, key=None)
+        self._resolve(iv)                                                 # a refused stop is handled by _secure
 
     # ----------------------------------------------------------------------------------------------- 4. decide
     def _decide_all(self):
@@ -500,8 +611,7 @@ class Runner:
             self._hold([ReasonCode.EXEC_ENTRY_UNCONFIRMED], reason=ReasonCode.EXEC_ENTRY_UNCONFIRMED)
             self._resolve(iv)
         if iv.final is not None and iv.executed > 0:
-            lot = next(x for x in self.fold.open_lots() if x.entry.intent_id == iv.intent_id)
-            self._protect(lot)
+            self._secure(ids.derive_lot_id(self.acct, iv.intent_id))
 
     def _exit(self, symbol, s):
         lot = next((x for x in self.fold.open_lots() if x.symbol == symbol and x.side == s.side), None)
@@ -513,6 +623,7 @@ class Runner:
             if ids.derive_intent_id(self.acct, key) in self.fold.intents:
                 return                                                    # already recorded: sync owns it
         self._close_lot(lot, reason=s.reason, key=key)                    # (re)entered: a crash gap resumes here
+        self._secure(lot.lot_id)                                          # the close failed: re-protect at once
 
     def _close_lot(self, lot, *, reason, key):
         """Cancel the stop, then a reduce-only market close of the whole lot. key=None: an unkeyed (protection) close."""
@@ -560,10 +671,7 @@ class Runner:
         self._apply(iv, out, submit=True)
         if iv.live:
             self._hold([ReasonCode.EXEC_ORDER_FAILED], reason=ReasonCode.EXEC_ORDER_FAILED)
-            self._resolve(iv)
-        lot = next((x for x in self.fold.open_lots() if x.lot_id == it.owner_id), None)
-        if lot is not None and lot.closing is None:
-            self._protect(lot)                                            # the close failed: re-protect at once
+            self._resolve(iv)                                             # a refused close is handled by _secure
 
     # ----------------------------------------------------------------------------------------------- operator
     def resume(self, now_ms):
@@ -612,10 +720,14 @@ class Runner:
         if len(keys) != len(set(keys)):
             problems.append('I2 two entry intents for one DecisionKey')
         if problems:
-            if self.fold.mode is EntriesMode.HOLD or self.hard_hold is not None or not self.cfg.strict:
-                self.counters.unprotected_cycles += any(p.startswith('I1') for p in problems)
-            else:
-                raise InvariantBreach('; '.join(problems))
+            naked = any(p.startswith('I1') for p in problems)
+            self.counters.unprotected_cycles += naked
+            if self.fold.mode is not EntriesMode.HOLD and self.hard_hold is None:
+                if naked:                                  # never ACTIVE while naked: stop new risk at once (durable)
+                    self._incident('; '.join(problems))
+                    self._hold([ReasonCode.PROTECT_CHECKING], reason=ReasonCode.PROTECT_CHECKING)
+                if self.cfg.strict:
+                    raise InvariantBreach('; '.join(problems))
         return problems
 
     # ----------------------------------------------------------------------------------------------- projections

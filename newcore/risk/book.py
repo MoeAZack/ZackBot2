@@ -2,7 +2,9 @@
 
     risk_pct            fixed-fractional risk per trade on the cycle's equity snapshot (1%)
     max_positions       open lots + working entries across the book (4; None = no cap)
-    max_leverage        gross notional cap: open notional + the new size <= max_leverage x equity (3x)
+    max_leverage        gross notional cap: open notional + the new size <= max_leverage x equity (3x), sized on
+                        signal close x (1 + cap_gap_buffer) so a gap up to the buffer still fits at the fill; a
+                        larger gap is surfaced as an incident after the fill (counter cap_exceeded)
     daily_loss_pct      Cairo-day halt (3%): MTM equity <= (1 - pct) x the day's start MTM -> no new entries for the
                         rest of that Cairo day. The day is cairo_day(decision time = candle close); it rolls BEFORE the
                         halt test, so a candle that closes after Cairo midnight belongs to the new day (C13d).
@@ -26,6 +28,7 @@ class BookPolicy:
     risk_pct: Decimal = Decimal('0.01')
     max_positions: int | None = 4
     max_leverage: Decimal = Decimal('3')
+    cap_gap_buffer: Decimal = Decimal('0.10')         # the cap is sized for a gap up to 10% at the fill
     daily_loss_pct: Decimal | None = Decimal('0.03')
     kill_drawdown_pct: Decimal | None = Decimal('0.10')
 
