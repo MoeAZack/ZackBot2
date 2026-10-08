@@ -67,7 +67,7 @@ def test_testnet_wait_is_never_slept_past_the_deadline_and_nothing_is_sent():
     w = World()
     r = run_scenario(spec('T01-long', max_wall_s=30), w.target(), run_nonce='dl4', monotonic=w.monotonic)
     assert r.verdict == FAIL and 'only 30.0 s of the scenario deadline are left' in r.error
-    assert w.slept == [] and r.ledger == []
+    assert w.slept == [2.0] and r.ledger == []            # no candle wait; only the teardown's confirmation re-read
     assert not [q for q in w.fb.requests if q.method in ('POST', 'DELETE')]
     assert r.cleanup['clean']
 
@@ -76,7 +76,7 @@ def test_testnet_deadline_mid_scenario_stops_before_the_next_wait_and_the_teardo
     w = World()
     r = run_scenario(spec('T01-long', max_wall_s=100), w.target(), run_nonce='dl5', monotonic=w.monotonic)
     assert r.verdict == FAIL and r.error.startswith('DeadlineExceeded')
-    assert sum(w.slept) <= 100 and len(r.cycle_times) == 1                         # one 61.5 s wait, no second
+    assert w.slept[0] == 61.5 and len(r.cycle_times) == 1                          # one candle wait, no second
     assert [x['kind'] for x in r.ledger] == ['entry', 'stop', 'stop']               # classic refused -> algo
     assert r.cleanup['clean'] and len(r.cleanup['closes']) == 1 and w.fb.flat() and not w.fb.open_cids()
 

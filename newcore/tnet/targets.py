@@ -32,6 +32,7 @@ FAKE_T0 = 1_759_917_600_000            # 2025-10-08 10:00 UTC, a minute boundary
 WARMUP = 20                            # candles before the first cycle (ATR14 needs 15)
 SLACK = 6                              # candles after the last planned cycle (cleanup closes need a next open)
 from .rspec import MAX_SETTLE_MS  # noqa: E402  (the bounded testnet wait after a candle close)
+CLEANUP_SETTLE_S = 2.0                 # testnet teardown: a clean read is re-read this much later before CLEAN
 D = Decimal
 
 
@@ -181,4 +182,6 @@ class TestnetTarget:
         return self.journal
 
     def cleanup(self, symbols, run_id, baseline=None):
-        return tnet_cleanup(self.raw, symbols, run_id=run_id, baseline=baseline)
+        """A clean read must be confirmed CLEANUP_SETTLE_S later (venue read lag); not bounded by the deadline."""
+        return tnet_cleanup(self.raw, symbols, run_id=run_id, baseline=baseline, confirm_reads=2,
+                            settle_s=CLEANUP_SETTLE_S, sleep=self.sleep)
