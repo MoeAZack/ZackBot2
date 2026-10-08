@@ -227,6 +227,9 @@ class Portfolio(Record):
         req((len(self.pause_reasons) == 0) == (self.entries_mode is EntriesMode.ACTIVE), p + '.pause_reasons',
             'non-empty exactly when entries are not ACTIVE')
         req(len(set(self.pause_reasons)) == len(self.pause_reasons), p + '.pause_reasons', 'duplicate reason')
+        if self.positions is not None:                  # Codex P2: one canonical order (UNKNOWN stays None)
+            _canonical(self, 'positions', lambda x: (x.symbol, x.side.value))
+            _canonical(self, 'intents', lambda x: x.intent_id)
         req((self.hold_kind is HoldKind.DURABILITY_UNAVAILABLE) <= (ReasonCode.RECOVERY_DURABILITY_UNAVAILABLE in
                                                                     self.pause_reasons), p + '.pause_reasons',
             'a hard HOLD names its cause')
@@ -254,6 +257,13 @@ class Portfolio(Record):
 
     def permits(self, purpose, op, *, one_shot=False):
         return permitted(self.entries_mode, self.hold_kind, purpose, op, one_shot=one_shot) is Permission.ALLOWED
+
+
+def _canonical(rec, name, key):
+    """Sort a known collection by its stable domain key (duplicates are still refused by _check_known)."""
+    ordered = tuple(sorted(getattr(rec, name), key=key))
+    if ordered != getattr(rec, name):
+        object.__setattr__(rec, name, ordered)
 
 
 def _check_known(pf, p):
@@ -294,15 +304,46 @@ def _check_known(pf, p):
             req(owner.purpose is Purpose.ENTRY and owner.order_type is OrderType.MARKET, ip,
                 'only an unresolved market ENTRY owns a provisional stop')
         req((owner.symbol, owner.side) == (it.symbol, it.side), ip, 'owner of another symbol / side')
-    # reducing intents never exceed what they could reduce (Cowork S05): per lot, all live REDUCE / CLOSE intents of
-    # that lot together (the carried one and any still cancelling, which can still fill) <= the lot qty. That also
-    # bounds every symbol / side, since a lot-owned intent has its lot's symbol / side. Portfolio-owned orphans are
-    # left out: they are cancel-only by construction (OrderIntent: CANCELLING or terminal; Portfolio: live only),
-    # never sendable, and their lot may be gone (Cowork re-check of S05).
+    # cancel-replace links (Codex P1 on af4e5f3): a REDUCE / CLOSE successor names its predecessor explicitly by
+    # replaces_intent_id - never inferred from decisions or order. Exactly one link per lot: same account / symbol /
+    # side / lot, both reduce / close, the predecessor CANCELLING and not itself a successor, the successor live.
+    preds, linked_lots = {}, set()
+    for it in intents.values():
+        old_id = it.replaces_intent_id
+        if old_id is None:
+            continue
+        ip = f'{p}.intent[{it.intent_id}].replaces_intent_id'
+        old = intents.get(old_id)
+        req(old is not None, ip, 'names no live predecessor of this portfolio')
+        req(old.purpose in (Purpose.REDUCE, Purpose.CLOSE) and old.owner_kind is OwnerKind.LOT, ip,
+            'the predecessor is not a lot reduce / close')
+        req((old.account_id, old.symbol, old.side, old.owner_id) == (it.account_id, it.symbol, it.side, it.owner_id), ip,
+            'the predecessor belongs to another account / instrument / side / lot')
+        req(old.state is IntentState.CANCELLING, ip, 'the predecessor of a cancel-replace must be CANCELLING')
+        req(it.state is not IntentState.CANCELLING, ip, 'the successor of a cancel-replace must be live, not cancelling')
+        req(old.replaces_intent_id is None, ip, 'one link only: the predecessor is itself a successor')
+        req(old_id not in preds and it.owner_id not in linked_lots, ip, 'at most one cancel-replace link per lot')
+        preds[old_id] = it.intent_id
+        linked_lots.add(it.owner_id)
+    # reducing intents never exceed what they could reduce (Cowork S05): per lot, the live REDUCE / CLOSE legs together
+    # <= the lot qty. A linked pair is ONE leg (its successor; the CANCELLING predecessor is superseded). A cancelling
+    # leg - it can still fill - counts, at most the lot qty (reduce-only: it cannot reduce more than the lot). A live
+    # leg larger than its lot (the survivor after part of the lot closed) must be retired: CANCELLING, or replaced.
+    # Cumulative fills of both legs stay bounded by the lot: the fill ledger refuses closing more than is held, and
+    # when the lot closes its remaining intents become portfolio-owned cancel-only work. Portfolio-owned orphans are
+    # left out (cancel-only by construction; Cowork re-check of S05).
     per_lot = {}
     for it in intents.values():
-        if it.purpose in (Purpose.REDUCE, Purpose.CLOSE) and it.owner_kind is OwnerKind.LOT:
-            per_lot[it.owner_id] = CTX.add(per_lot.get(it.owner_id, ZERO), it.qty)
+        if it.purpose not in (Purpose.REDUCE, Purpose.CLOSE) or it.owner_kind is not OwnerKind.LOT or it.intent_id in preds:
+            continue
+        held = lots[it.owner_id].qty
+        if it.state is IntentState.CANCELLING:
+            leg = min(it.qty, held)
+        else:
+            req(it.qty <= held, f'{p}.intent[{it.intent_id}].qty',
+                f'a live reduce of {it.qty} exceeds its lot ({held}): retire it (CANCELLING) or replace it')
+            leg = it.qty
+        per_lot[it.owner_id] = CTX.add(per_lot.get(it.owner_id, ZERO), leg)
     for lot_id, q in per_lot.items():
         req(q <= lots[lot_id].qty, f'{p}.lot[{lot_id}]', f'live reducing intents {q} exceed the lot qty {lots[lot_id].qty}')
     # carried: which intents a record carries; anything else (not an entry) is cancel-only work

@@ -108,7 +108,7 @@ def test_a_reducing_intent_is_bounded_by_its_lot():
     from newcore.domain import InvalidRecord, Purpose
     for qty in ('1000', '1.51'):
         for purpose in (Purpose.REDUCE, Purpose.CLOSE):
-            with pytest.raises(InvalidRecord, match='exceed the lot qty'):
+            with pytest.raises(InvalidRecord, match='exceeds its lot|exceed the lot qty'):
                 _with_reduce(qty, purpose=purpose)()
     _with_reduce('1.5')()                                                     # exactly the lot: valid
     _with_reduce('0.5')()
@@ -123,8 +123,8 @@ def test_reducing_intents_are_bounded_net_of_each_other():
     with pytest.raises(InvalidRecord, match='exceed the lot qty'):
         _with_reduce('1', extra=(old,))()                                    # 1 + 1 > 1.5
     _with_reduce('1', extra=(lambda ids, p, lt: old(ids, p, lt, '0.5'),))()   # 1 + 0.5 = 1.5
-    # KEPT STRICT pending a Codex ruling: a cancel-replace pair on one lot (old CANCELLING close + new in-flight close)
-    # still counts together (1.5 + 1.5 > 1.5), since the cancelling order can still fill
+    # an UNLINKED old close + new close on one lot stays invalid (1.5 + 1.5 > 1.5); the explicitly linked cancel-replace
+    # pair is the one representable overlap - see test_nc01_cancel_replace.py (Codex P1 on af4e5f3)
     old_close = lambda ids, p, lt: F.intent(ids, p.account_id, Purpose.CLOSE, lt.symbol, lt.side, lt.qty,   # noqa: E731
                                             owner_id=lt.lot_id, state=IntentState.CANCELLING)
     with pytest.raises(InvalidRecord, match='exceed the lot qty'):
@@ -241,3 +241,29 @@ def test_ruling_4_position_lots_have_one_canonical_order():
     assert [x.lot_id for x in built[0].lots] == sorted(x.lot_id for x in lots)
     assert len({canonical_bytes(b) for b in built}) == 1                  # one encoding
     assert loads(canonical_bytes(built[1])).lots == built[0].lots       # replay from bytes: same order
+
+
+def test_p2_portfolio_collections_are_canonical():
+    """Codex P2 on af4e5f3: positions and intents keep one canonical order (symbol / side, intent id) whatever order
+    they are given in, at construction and on decode, so bytes and hashes are permutation-free. UNKNOWN stays None."""
+    import random
+    from newcore.domain import canonical_bytes, contract_sha256, decode_document, encode_document
+    p = F.typical_portfolio()
+    variants = []
+    for seed in range(5):
+        rng = random.Random(seed)
+        pos, its = list(p.positions), list(p.intents)
+        rng.shuffle(pos)
+        rng.shuffle(its)
+        variants.append(F.replace(p, positions=tuple(pos), intents=tuple(its)))
+    assert all(v == p for v in variants)
+    assert {canonical_bytes(v) for v in variants} == {canonical_bytes(p)}
+    assert {contract_sha256(v) for v in variants} == {contract_sha256(p)}
+    doc = encode_document(p)
+    doc['body']['positions'].reverse()
+    doc['body']['intents'].reverse()
+    assert decode_document(doc) == p                                        # on decode too
+    assert [x.intent_id for x in p.intents] == sorted(x.intent_id for x in p.intents)
+    assert [(x.symbol, x.side.value) for x in p.positions] == sorted((x.symbol, x.side.value) for x in p.positions)
+    u = F.unknown_portfolio(F.Ids(7).id('acct'))
+    assert u.positions is None and u.intents is None
