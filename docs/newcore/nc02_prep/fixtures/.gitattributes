@@ -1,0 +1,2 @@
+# NC-02 fixtures are byte-exact (sha256 contracts): never convert line endings on checkout.
+* -text
