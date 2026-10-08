@@ -1,8 +1,9 @@
-# NC-02 recovery/state acceptance - DRAFT r3 (REC-01 retargeted)
+# NC-02 recovery/state acceptance - DRAFT r4 (REC-01 retargeted)
 
-Status: draft r3 for Codex (Integration). r1 prepared 2026-10-08 (Cairo) by Claude Code, read-only, on master `cff3f88`;
+Status: draft r4 for Codex (Integration). r1 prepared 2026-10-08 (Cairo) by Claude Code, read-only, on master `cff3f88`;
 r2 applies Cowork's cross-check and Codex's eight accepted rulings on it; r3 adds Codex's ruling on open question 4
-(emergency protection with an unwritable store, A23). See section 9, changelog.
+(emergency protection with an unwritable store, A23); r4 adds Codex's follow-up ruling on what hard HOLD may still do
+(the emergency set, A24). See section 9, changelog.
 Owner decision (#13): the legacy bot gets no repair. REC-01's direction moves into NEWCORE **NC-02 (state/event store)**.
 The legacy behaviour is kept only as **frozen fixtures** (`fixtures/NF-01..49`: 45 negative, 4 positive controls).
 This draft proposes no change to legacy code.
@@ -37,7 +38,7 @@ re-derives ownership or results from file shapes or position deltas.
 | **Match** (R-MATCH) | All of: (1) the snapshot's account equals the store's account binding, and the binding itself is confirmed (not mismatched, not unconfirmed); (2) the snapshot is younger than `MATCH_MAX_AGE_MS` (proposal: 5 000 ms, Codex to set) when the verdict is computed **and again at promotion**; (3) for every symbol/side the aggregate owned quantity (sum of all lots) equals the exchange quantity within the venue step tolerance (`abs(diff) < step/2`); several lots per symbol/side are compared in aggregate and must also each fit their protective orders; (4) every owned order/stop id in the candidate exists on the exchange with the expected lifecycle state (working/triggered/filled), and the protective quantity covers the position; (5) no unowned position and no unowned open order exists. Promotion re-checks (1)-(5) atomically against a fresh snapshot; any change aborts promotion and stays HOLD. |
 | Trivially-empty candidate | A candidate with no positions, entries or intents whose emptiness is not proven by R-KNOWN-EMPTY (proven first run + flat exchange, or a journaled result chain from the last non-empty generation). Its ownership is `Ownership.UNKNOWN`. |
 | Evidence envelope | Forensic bytes of damaged or rejected members, kept bit-for-bit inside an encrypted, access-restricted envelope outside the live store paths. Only the sha256, size, original path, mtime and the incident id are exposed to logs, UI and reports. |
-| Outcomes | **ABORT-RO**: refuse to start this account; no byte of the store is written (no rename, no rotation, no "persist the pause"); report through the exit code and a boot incident log *outside* the store. **HOLD**: the account is loaded into a quarantine view. No new risk from any source. Non-protective open intents are cancelled or drained through the priority queue; a late or partial fill is adopted and protected and stays blocked from new risk until reconciled; protective orders are kept. Durable local append-only intent/result/incident events are allowed. No promotion and no reconciliation claim; only the reconciliation flow (A08) leaves HOLD. **HOLD-INIT**: HOLD for a store that has never completed INIT. **MANAGE**: normal operation. **INIT**: first-run initialization. **REJECT**: a legacy file is reported and ignored: never read as state, never written, bytes and mtime unchanged. |
+| Outcomes | **ABORT-RO**: refuse to start this account; no byte of the store is written (no rename, no rotation, no "persist the pause"); report through the exit code and a boot incident log *outside* the store. **HOLD**: the account is loaded into a quarantine view. No new risk from any source. Non-protective open intents are cancelled or drained through the priority queue; a late or partial fill is adopted and protected and stays blocked from new risk until reconciled; protective orders are kept. Durable local append-only intent/result/incident events are allowed. No promotion and no reconciliation claim; only the reconciliation flow (A08) leaves HOLD. **Hard HOLD** (r4): HOLD entered while the store is unwritable (A21/A23). Nothing can be journaled, so the only exchange actions are A23's emergency protective stop and the A24 emergency set; everything else waits for exchange adoption/reconciliation (A08, which needs a writable store). **HOLD-INIT**: HOLD for a store that has never completed INIT. **MANAGE**: normal operation. **INIT**: first-run initialization. **REJECT**: a legacy file is reported and ignored: never read as state, never written, bytes and mtime unchanged. |
 
 ## 2. Acceptance list
 
@@ -65,10 +66,11 @@ NC-02 must not regress) are listed in their own column and are never counted as 
 | NC02-A17 | **Strict, bounded parsing; controlled failure.** (new) Duplicate object keys, NaN/Infinity, numbers outside declared ranges (quantity above the venue maximum, integers outside int64), bytes after the document (NUL padding included) and all-NUL files are damage (rule 4), never a valid document and never an uncaught exception. | NF-27, 28, 30, 31, 32 | |
 | NC02-A18 | **The writer validates like the reader.** (new) Every record is validated with the reader schema before commit. An order intent needs kind, client id, `created_ms` (integer UTC ms) and a quantity > 0, a whole number of venue steps and <= the venue maximum; any other shape is refused at write time (nothing is sent) and is damage at read time. | NF-40, 41, 42, 31 | |
 | NC02-A19 | **Results come from evidence, not deltas.** (new) Ownership changes only through a durable result record (NC-01 `OrderResult` with `ResultPhase.FINAL` and `Evidence`). A bare not-found never resolves an intent (`not_found_corroborated` needs the NC-01 window); reconcile never books a stop/resync/close at a guessed price from a position delta; an unexplained delta is a HOLD item. | NF-36, 41, 45, 47 | |
-| NC02-A20 | **HOLD drains, never abandons.** (new, Codex ruling 3) Entering HOLD cancels or drains non-protective open intents (resting maker entries, pending adds, grid cells) through the priority queue; protective orders stay. A late or partial fill that lands during HOLD is adopted as an owned position, protected, recorded as a HOLD item, and blocked from new risk until reconciled. | covered by matrix rows M30-M31 (no legacy fixture: the fake exchange has no resting orders) | |
-| NC02-A21 | **Store I/O faults block sends.** (new) ENOSPC, EROFS, permission or a non-file at a store path means no intent can be made durable, so nothing is sent (protective orders already on the exchange stay); it is reported out-of-band; no partial generation or evidence is left. (r3: the only exception is the emergency protective stop of A23.) | NF-33, 34 | NF-35 |
+| NC02-A20 | **HOLD drains, never abandons.** (new, Codex ruling 3) Entering HOLD cancels or drains non-protective open intents (resting maker entries, pending adds, grid cells) through the priority queue; protective orders stay. A late or partial fill that lands during HOLD is adopted as an owned position, protected, recorded as a HOLD item, and blocked from new risk until reconciled. (r4: with the store unwritable the drain cannot be journaled first; A24 governs it.) | covered by matrix rows M30-M31 (no legacy fixture: the fake exchange has no resting orders) | |
+| NC02-A21 | **Store I/O faults block sends.** (new) ENOSPC, EROFS, permission or a non-file at a store path means no intent can be made durable, so nothing is sent (protective orders already on the exchange stay); it is reported out-of-band; no partial generation or evidence is left. (r3: the only exception is the emergency protective stop of A23. r4: A23's single companion exception, the A24 hard-HOLD emergency set, is the only other; nothing else is sent.) | NF-33, 34 | NF-35 |
 | NC02-A22 | **Foreign orders are never auto-handled.** (new) An unknown position or a foreign order is never cancelled, closed or adopted automatically; it is a per-item owner decision while HOLD. | NF-44 | |
-| NC02-A23 | **Protection outranks persistence.** (r3, Codex ruling on open question 4) When the durable journal is unavailable (A21: ENOSPC, EROFS, permission, a non-file at a store path), NEWCORE may place or repair a **reduce-only protective stop with a deterministic client id** for an **owned** position, as the single exception to "an intent is durable before it is sent". Conditions: it never removes confirmed protection before the replacement is confirmed on the exchange (place new, confirm, only then cancel old); it never increases exposure (reduce-only, quantity <= the owned position). It then immediately enters **hard HOLD**, emits an external incident best-effort (outside the store), and requires exchange adoption/reconciliation before **any other action**. No entry, add or ordinary management action (trailing, target moves, grid/maker work) gets this exception; they are refused. Protection that is already confirmed is left unchanged. | matrix rows M43-M46 (no legacy negative: legacy sends nothing at all) | NF-35 (protection already confirmed: no change, HOLD; required behaviour corrected in section 5b) |
+| NC02-A23 | **Protection outranks persistence.** (r3, Codex ruling on open question 4) When the durable journal is unavailable (A21: ENOSPC, EROFS, permission, a non-file at a store path), NEWCORE may place or repair a **reduce-only protective stop with a deterministic client id** for an **owned** position, as the single exception to "an intent is durable before it is sent". Conditions: it never removes confirmed protection before the replacement is confirmed on the exchange (place new, confirm, only then cancel old); it never increases exposure (reduce-only, quantity <= the owned position). It then immediately enters **hard HOLD**, emits an external incident best-effort (outside the store), and requires exchange adoption/reconciliation before any action outside the **A24 emergency set**, which is this item's only companion exception (r4; r3 said "before any other action"). No entry, add or ordinary management action (trailing, target moves, grid/maker work) gets this exception; they are refused. Protection that is already confirmed and still covers the owned position is left unchanged. | matrix rows M43-M46 (no legacy negative: legacy sends nothing at all) | NF-35 (protection already confirmed: no change, HOLD; required behaviour corrected in section 5b) |
+| NC02-A24 | **Hard-HOLD emergency set.** (r4, Codex follow-up ruling) The only companion exception to A23. "Before any other action" in A23 means no ordinary lifecycle action, not "leave future exposure resting". While the durable journal is unavailable, hard HOLD may perform **only** these five actions: (1) query the exchange narrowly enough to identify already-owned protective and risk-adding intents (by deterministic client id / owned order id; reads only, foreign orders stay A22 items); (2) place and confirm any needed deterministic-client-id, reduce-only protection **before** removing old protection (A23); (3) cancel/drain resting ENTRY/ADD intents idempotently by their deterministic client id - a cancel that succeeds or finds the order already gone is done, a cancel that times out or returns an unknown result is re-queried (never assumed either way) while HOLD continues; (4) adopt any race or partial fill from exchange truth and protect it without increasing exposure (reduce-only, quantity <= the adopted position), and remain HOLD; (5) emit the external incident best-effort. **Forbidden** in hard HOLD: cancelling a protective order merely because the store is unavailable (old protection is cancelled only after a covering replacement is confirmed, A23); repricing an entry or any fallback (re-post, maker-to-taker, chase); ordinary management (trailing, target or break-even moves, grid/maker work, closing at market); resuming risk or sending any entry/add. Nothing done here is a durable result or a reconciliation claim (A19): every restart repeats the reconciliation safely from exchange truth, and deterministic client ids make re-cancel and re-protect idempotent (no duplicate stop, no exposure increase). Leaving hard HOLD needs a writable store and A08. | matrix rows M47-M53 (no legacy negative: legacy sends nothing; the fake exchange has no resting orders) | |
 
 ## 3. Rollback/reconciliation matrix (NEWCORE reader rules)
 
@@ -143,14 +145,23 @@ Rows M06/M07 moved to the installer table (section 4, rows I01/I02) in r2; their
 | M40 | N | F=R | intact | identical positions, binding names another account | HOLD (7, A08/A11); binding confirmation **and** fresh reconciliation required | one confirm re-opened entries (NF-46) |
 | M41 | N | F=R | committed close intent, lookup answers bare not-found | position changed | HOLD for that symbol/side; result UNKNOWN until final record or NC-01 corroboration (A19) | pending dropped as "never reached", resync booked at market (NF-47) |
 | M42 | N | F=R (rolled back) | whole store replaced by an older valid generation | diff | HOLD (2 if `high_water` survived, else 7 via the diff) | loads clean, 0.5 untracked, entries open (NF-48) |
-| M43 | N | F=R | store unwritable (ENOSPC / EROFS / permission / non-file at a member path) | owned position, **no** confirmed protective stop | emergency reduce-only stop with a deterministic client id (quantity <= the owned position), then hard HOLD + external incident best-effort; exchange adoption/reconciliation before any other action (3, A21, A23) | n/a (legacy sends nothing; no fixture: NF-35's exchange already holds the stop) |
+| M43 | N | F=R | store unwritable (ENOSPC / EROFS / permission / non-file at a member path) | owned position, **no** confirmed protective stop | emergency reduce-only stop with a deterministic client id (quantity <= the owned position), then hard HOLD + external incident best-effort; exchange adoption/reconciliation before any action outside the A24 emergency set (3, A21, A23, A24) | n/a (legacy sends nothing; no fixture: NF-35's exchange already holds the stop) |
 | M44 | N | F=R | store unwritable | an entry or add is wanted (any source: auto, manual, Telegram, UI, grid, maker) | refused, nothing sent; hard HOLD + incident (3, A21, A23) | persist_block refuses auto and manual entries (positive control NF-35) |
-| M45 | N | F=R | store unwritable | owned position, protection already confirmed and covering it | no exchange change; hard HOLD + incident (3, A23) | nothing sent, new risk blocked (positive control NF-35) |
+| M45 | N | F=R | store unwritable | owned position, protection already confirmed and covering it | no change to the protection; hard HOLD + incident (3, A23); r4: resting ENTRY/ADD intents, if any, are still drained per A24 (rows M47-M53), so "no exchange write" holds only when none rest | nothing sent, new risk blocked (positive control NF-35) |
 | M46 | N | F=R | store unwritable | confirmed protective stop needs replacement (e.g. no longer covers the owned quantity) | place the new reduce-only stop (deterministic client id) first; cancel the old one only after the replacement is confirmed on the exchange; if the replacement is not confirmed, the old stop stays; never increases exposure; hard HOLD + incident (3, A23) | n/a |
+| M47 | N | F=R | store unwritable | owned resting ENTRY/ADD intent working; the cancel succeeds | hard HOLD; narrow query (A24.1), cancel by deterministic client id (A24.3), the re-query confirms it cancelled; no reprice, no fallback; protection untouched; incident (3, A24) | n/a (fake exchange has no resting orders) |
+| M48 | N | F=R | store unwritable | owned resting ENTRY/ADD intent; the cancel answers "already gone" | the cancel counts as done (idempotent, no retry storm); positions and the order are re-queried by deterministic id: a fill that shows is adopted and protected (M50/M51), otherwise the intent's result stays UNKNOWN (a bare not-found proves nothing, A19); hard HOLD (3, A24) | n/a |
+| M49 | N | F=R | store unwritable | owned resting ENTRY/ADD intent; the cancel times out or its result is unknown | assume neither success nor failure; re-query by deterministic id (re-cancel only while it still shows working); never re-sent as a new entry; if still unresolved, the result stays UNKNOWN and hard HOLD persists (3, A24) | n/a |
+| M50 | N | F=R | store unwritable | owned resting ENTRY/ADD partially filled before the cancel | cancel the remainder (never re-posted); adopt the filled quantity from exchange truth; protect exactly the adopted position reduce-only with a deterministic client id (new covering stop confirmed before any old stop is cancelled, A23); exposure never increases; hard HOLD (3, A23, A24) | n/a |
+| M51 | N | F=R | store unwritable | owned resting ENTRY/ADD fills after the cancel was sent (the cancel lost the race) | the exchange fill wins over the cancel answer; adopt it from exchange truth and protect it as in M50; no close at market, no management; hard HOLD (3, A23, A24) | n/a |
+| M52 | N | F=R | store unwritable | an owned protective order is working while ENTRY/ADD intents are drained | the protective order stays: never cancelled because the store is unavailable; it is replaced only per A23/M46 (e.g. it no longer covers after an adopted fill: new covering stop confirmed first, then the old one cancelled); hard HOLD (3, A23, A24) | n/a |
+| M53 | N | F=R | store unwritable; the process restarts mid-drain | any of M47-M52 half done | nothing was journaled, so nothing from the earlier process is trusted: hard HOLD again (3, A21) and the A24 set repeats from exchange truth; deterministic client ids make it idempotent (already-gone cancels are no-ops, an existing stop with the same client id is confirmed, not duplicated); no exposure increase. If the store is writable again on restart, the normal HOLD path (A20, A08) applies and results come only from exchange evidence (A19) | n/a |
 
 **Cross-cutting for every HOLD row:** MANUAL, Telegram and UI entries are refused, and resuming entries does not clear HOLD.
 Legacy breaks both: the manual path skips the pause (engine.py:3415), and resume consults only `install_block`.
-Rows M43-M46 are **hard HOLD** (A23): after the emergency stop, no exchange action of any kind until adoption/reconciliation.
+Rows M43-M53 are **hard HOLD** (A23/A24): outside A23's emergency stop and the A24 emergency set, no exchange action until
+adoption/reconciliation. (r4 correction: r3 said "no exchange action of any kind", which would have left resting
+ENTRY/ADD exposure working; Codex's follow-up ruling replaced that reading.)
 
 ## 4. Installer/rollback interaction (installer rules, separate from section 3)
 
@@ -185,9 +196,9 @@ with a simulated pre-NEWCORE reader.
    b. **Scenario check:** the runner builds the equivalent NEWCORE store with the store's own test writer from
       `nc02_scenario` (v2 fixtures) or the table in section 5a (NF-01..21), applies the same damage, starts NC-02 and
       asserts the outcome (`nc02_outcome`, or section 5a), the `nc02_required` ids, no AccountContext for ABORT-RO, no
-      exchange writes other than HOLD draining (A20) and the A23 emergency protective stop, and the same outcome after
-      a restart.
-2. **Matrix runner.** It parametrizes M01-M46 (minus M06/M07) from a table (reader x F x damage x exchange) and checks the
+      exchange writes other than HOLD draining (A20), the A23 emergency protective stop and the A24 emergency set, and
+      the same outcome after a restart.
+2. **Matrix runner.** It parametrizes M01-M53 (minus M06/M07) from a table (reader x F x damage x exchange) and checks the
    outcome and the "no write" set.
 3. **Gate tests.** In HOLD, every entry source (auto, manual, Telegram, trailing, grid, maker) is refused, and
    resume/confirm do not clear HOLD (A08).
@@ -240,7 +251,7 @@ are not edited.
 
 | Fixture | Frozen scenario / outcome | Required NC-02 behaviour now | Source |
 |---|---|---|---|
-| NF-35 | intact reconciled store, store directory read-only (EROFS) / `HOLD`; `R-IO-FAULT` says "nothing is sent" | **emergency protection + hard HOLD** (A23): an owned position without confirmed protection gets a deterministic-client-id, reduce-only stop; confirmed protection is never removed before its replacement is confirmed; exposure never increases; then hard HOLD, an external incident best-effort, and exchange adoption/reconciliation before any other action. NF-35's own exchange already holds a confirmed stop covering the 1.0 BTCUSDT LONG, so for this fixture the assertion is: no exchange write, hard HOLD, incident emitted (row M45). Entries/adds stay refused (row M44). | Codex ruling on open question 4 (r3) |
+| NF-35 | intact reconciled store, store directory read-only (EROFS) / `HOLD`; `R-IO-FAULT` says "nothing is sent" | **emergency protection + hard HOLD** (A23): an owned position without confirmed protection gets a deterministic-client-id, reduce-only stop; confirmed protection is never removed before its replacement is confirmed; exposure never increases; then hard HOLD, an external incident best-effort, and exchange adoption/reconciliation before any action outside the A24 emergency set (narrow query, protect-before-remove, idempotent drain of resting ENTRY/ADD intents, adopt and protect race/partial fills, incident). NF-35's own exchange already holds a confirmed stop covering the 1.0 BTCUSDT LONG and has no resting ENTRY/ADD order, so the drain set is empty and the assertion is unchanged: no exchange write (A24 reads allowed), the stop not cancelled, hard HOLD, incident emitted (row M45). Entries/adds stay refused (row M44). r4: `R-HOLD`'s "drained through the priority queue" is read through A24 when the store is unwritable (the drain cannot be journaled first). | Codex ruling on open question 4 (r3); follow-up ruling on the hard-HOLD emergency set (r4) |
 
 ## 6. Reusing the golden/ledger approach
 
@@ -270,6 +281,10 @@ are not edited.
    confirmed protection before replacement is confirmed and never increases exposure. Immediately enter hard HOLD, emit an
    external incident best-effort, and require exchange adoption/reconciliation before any other action. No entry/add/ordinary
    management action gets this exception." Incorporated as A23, rows M43-M46, and the NF-35 correction (section 5b).
+   r4 follow-up ruling: "before any other action" means no ordinary lifecycle action, not "leave future exposure
+   resting"; hard HOLD may perform only the five-step emergency set (narrow query, protect before removing, idempotent
+   ENTRY/ADD drain, adopt and protect race/partial fills, incident) and every restart repeats reconciliation from exchange
+   truth. Incorporated as A24 (A23's only companion exception) and rows M47-M53.
 5. Symlinks/reparse points at store paths (Cowork C02/C03): proposal - treat any non-regular file at a member path as rule 3
    (HOLD, never followed). No fixture (section 8).
 
@@ -286,7 +301,7 @@ are not edited.
 | C01 state.json is a directory | NF-33 | `layout` |
 | C02/C03 symlinks | **skipped** | not portable: git on Windows stores links as text files unless `core.symlinks`, and creating one here fails with WinError 1314 (no privilege), so no legacy run could be observed; covered by open question 5 |
 | C05 ENOSPC | NF-34 | `inject` |
-| C06/C07 EROFS | NF-35 | positive control (legacy blocked new risk); required NC-02 behaviour corrected by A23 (section 5b) |
+| C06/C07 EROFS | NF-35 | positive control (legacy blocked new risk); required NC-02 behaviour corrected by A23/A24 (section 5b) |
 | D01-D04 crash points | NF-36, NF-37 (positive control), NF-38, NF-39 | D-mapping is Claude's: D01 orphan complete temp, D02 torn temp, D03 crash after move-aside, D04 interrupted first run |
 | E01/E05/E10 qty-only + save accepts | NF-40 | |
 | E02 qty 0 | NF-41 | |
@@ -297,9 +312,30 @@ are not edited.
 | Codex: bare not-found | NF-47 | |
 | Codex: generation rollback attack | NF-48 | |
 | review 8 / ruling 10: legacy import | NF-49 | REJECT |
-| review 3: resting maker fills during HOLD | none | the fake exchange has no resting orders; rows M30/M31 |
+| review 3: resting maker fills during HOLD | none | the fake exchange has no resting orders; rows M30/M31 (store writable) and M47-M53 (store unwritable, A24) |
 
 ## 9. Changelog
+
+**r4 (2026-10-08, Cairo) - Codex follow-up ruling: the hard-HOLD emergency set:**
+
+- Correction: r3 read A23's "before any other action" literally, so hard HOLD allowed "no exchange action of any kind"
+  after the emergency stop (section 3b cross-cutting note). That would leave resting ENTRY/ADD exposure working. Codex
+  ruled for the safer reading: it means no ordinary lifecycle action. The note is rewritten.
+- New item NC02-A24 "Hard-HOLD emergency set", the only companion exception to A23: (1) narrow query for owned protective
+  and risk-adding intents; (2) place/confirm deterministic-client-id reduce-only protection before removing old
+  protection; (3) cancel/drain resting ENTRY/ADD intents idempotently; (4) adopt race/partial fills and protect them
+  without increasing exposure, staying HOLD; (5) external incident best-effort. Forbidden: cancelling protection because
+  the store is unavailable, repricing/fallback of an entry, ordinary management, resuming risk. Every restart repeats
+  reconciliation from exchange truth.
+- A21 and A23 now reference A24; A20 notes that A24 governs the drain when the store is unwritable; section 1 defines
+  **Hard HOLD**. A01-A23 keep their numbers.
+- New matrix rows M47-M53 under an unwritable store: cancel succeeds (M47), already gone (M48), timeout/unknown with
+  re-query and HOLD (M49), partial fill before the cancel (M50), fill after the cancel (M51), protective order stays
+  (M52), restart mid-drain (M53). M43 and M45 updated (M45: "no exchange write" only when no ENTRY/ADD rests).
+  M01-M46 keep their numbers.
+- Section 5b NF-35 note updated: the drain set is empty for NF-35 (no resting ENTRY/ADD), so its assertion is unchanged.
+  NF-35's frozen files and MANIFEST are unchanged. The fixture runner (5.1b) also allows the A24 set; the matrix runner
+  (5.2) covers M01-M53. Open question 4 records the follow-up ruling.
 
 **r3 (2026-10-08, Cairo) - Codex ruling on open question 4 (NF-35):**
 
