@@ -22,6 +22,8 @@ SUITE = ['tests/newcore_store', 'tests/newcore_ports/test_nc02a_file_journal_con
 
 # name -> (file, [(exact source text, replacement)]); each anchor must occur exactly once
 MUTATIONS = {
+    'hard_hold_permits drops the emergency_close flag (P1-3)': (S + 'hold.py', [(
+        'purpose, op, emergency_close=emergency_close)', 'purpose, op, emergency_close=False)')]),
     'reused evidence not made durable (HIGH-1)': (S + 'evidence.py', [('                _make_durable(fs, p, content, ed)', '                pass')]),
     'evidence dir entry not flushed when the dir exists (HIGH-1)': (S + 'evidence.py', [('    fs.fsync_dir(account_dir)               # HIGH-1', '    pass  # HIGH-1')]),
     'no rule-1 sweep behind corruption (HIGH-2)': (S + 'recovery.py', [('            future.extend(_future_frames(n, resync_records(data, start)))', '            pass')]),
