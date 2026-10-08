@@ -151,25 +151,5 @@ def test_fuzz289_an_executed_entry_whose_last_journal_events_were_lost_is_owned_
     assert covered(w, side) >= D('5')
 
 
-@pytest.mark.parametrize('side', SIDES)
-def test_contract_every_record_of_the_entry_lost_is_a_surfaced_hold_not_silence(side):
-    """Beyond the store contract (the ENTER decision itself lost - three acknowledged writes gone): the runner cannot
-    own the venue's position (that is REC-02 adopt, NC-01 A1 / A3, owner-resolved). It never goes ACTIVE over it: the
-    untracked position is a reconciliation item and a durable HOLD from the first cycle after the restart."""
-    w = World(flat_bars(20), sig(side), strict=False)
-    w.run(4)
-    w.port.crash(1, 'after')
-    t5 = w.close_ms(5)
-    w.venue.advance_to(t5)
-    with pytest.raises(Crash):
-        w.runner.cycle(t5)
-    w.port.disarm()
-    keep = w.journal.read()[:-3]
-    w.journal = MemoryJournal(ACCOUNT_ID, PORTFOLIO_ID)
-    for e in keep:
-        w.journal.append(e)
-    w.runner = w.new_runner()
-    w.run(7)
-    r = w.runner
-    assert r.fold.mode is EntriesMode.HOLD and not r.fold.open_lots() and position(w, side) == D('5')
-    assert any(k == 'position' for k, _ in r.last_rec.items)
+# The former 'every record lost -> surfaced HOLD' contract case is superseded by the recovery of Cowork 6062740390
+# (test_cowork_recheck.py: lost 3 is owned and protected; only a position nothing proves ours stays an owner HOLD).

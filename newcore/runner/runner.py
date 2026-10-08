@@ -93,6 +93,7 @@ ALGO_FALLBACK_CODES = (-4120, -1116, -1102, -4136)   # newcore.venue.errors (tra
 SECURE_ROUNDS = 2                     # per lot per cycle: stop attempt, then (if refused) one reduce-only close
 EMERGENCY_GENERATIONS = 16            # hard HOLD: cover generations per (symbol, side, gap size)
 ESCALATE_AFTER = 2                    # cycles with an unconfirmed stop before the reduce-only close (Cowork NEW-4)
+LOST_ENTRY_LOOKBACK = 3               # candles back a lost entry's signal is looked for (Cowork 289)
 REDUCE_REFUSALS = 2                   # refused reduce-only sends of a lot before the venue position is read (MED-3)
 EXTERNAL_CLOSE_CODES = (-2022, -4061)  # reduce only rejected / position side does not match: nothing to reduce
 E_WOULD_TRIGGER = -2021               # Binance "Order would immediately trigger"
@@ -222,6 +223,7 @@ class Runner:
         self._unconfirmed = {}                                            # lot -> (cycle, cycles without a stop)
         self._reduce_refused = {}                                         # lot -> consecutive 'nothing to reduce'
         self._suspended_lots = set()                                      # lots with an external-close owner item
+        self._lost_checked = set()                                        # (symbol, side, candle) asked (289)
         self._listed = None                                               # this sync's listed client ids (LOW-6)
         if config.raw_qty is not None and (config.account.binding.environment is not Environment.TESTNET
                                            or not config.raw_qty > 0):
@@ -435,6 +437,12 @@ class Runner:
             if covered >= p.qty:
                 continue                                                  # M45: covered: no change
             self._emergency_stop(p, p.qty - covered)
+        flat = {(p.symbol, p.side) for p in pos.value if p.qty == 0}
+        for o in oo.value:                                                # Cowork NEW-3: an emergency stop of a side
+            if ids.is_emergency_client_id(o.ref.client_id) and (o.ref.symbol, o.position_side) in flat:   # now flat
+                out = self.venue.cancel(o.ref)                            # is exchange cleanup, never protection
+                self._incident(f'hard HOLD: {o.ref.client_id} {o.ref.symbol} {o.position_side} flat: cancelled '
+                               f'-> {out.kind}')
 
     def _drain(self, iv):
         it = iv.intent
@@ -541,6 +549,7 @@ class Runner:
     # ----------------------------------------------------------------------------------------------- 1. sync
     def _sync(self):
         self._orphan_entry_decisions()
+        self._recover_lost_entries()
         self._listed = None
         for iv in list(self.fold.live_intents()):
             if iv.state in OPEN_STATES:
@@ -679,17 +688,18 @@ class Runner:
         return True
 
     def _orphan_entry_decisions(self):
-        """The 20k fuzz 289, intent lost too: an ENTER decision whose derived intent is not recorded and whose candle
-        has passed (inside its candle, _enter re-sends it). If the venue has the derived client id, the order was sent:
-        record the intent, its send and the venue's answer. Asked once per decision per process (NOT_FOUND a cycle
-        after the decision is not a lag any more)."""
+        """The 20k fuzz 289, intent lost too: an ENTER decision whose derived intent is not recorded. If the venue has
+        the derived client id, the order was sent: record the intent, its send and the venue's answer - before the
+        reconciliation (Cowork 6062740390 item 6: no HOLD for a position the journal can own). Not found inside its
+        candle: _enter re-sends it; after it: asked once per decision per process (NOT_FOUND a cycle later is no lag)."""
         for d in list(self.fold.decisions.values()):
             if d.action is not Action.ENTER or not d.intents or d.decision_id in self._orphans_checked:
                 continue
             planned = d.intents[0]
-            if planned.intent_id in self.fold.intents or d.key is None or d.key.candle_close_ms >= self.now:
+            if planned.intent_id in self.fold.intents or d.key is None:
                 continue
-            self._orphans_checked.add(d.decision_id)
+            if d.key.candle_close_ms < self.now:
+                self._orphans_checked.add(d.decision_id)
             ref = OrderRef(symbol=planned.symbol, client_id=planned.client_order_id,
                            route=route_of(planned.intent_id, planned.client_order_id) or 'classic')
             out = self.venue.query(ref)
@@ -698,6 +708,62 @@ class Runner:
                                f'{planned.client_order_id}: recorded now')
                 iv = self._record_durable(planned)
                 self._adopt_sent(iv)
+
+    def _recover_lost_entries(self):
+        """The 20k fuzz 289 with EVERY record of the entry lost (lazy store, 3 events): a venue position the journal
+        cannot explain on a side this runner trades. The strategy's own ENTER signals of the last LOST_ENTRY_LOOKBACK
+        candles give the deterministic client ids it would have used; if the venue has one of them, the order is
+        ours (exchange truth, not inference): its decision, intent, send and result are recorded and the lot is owned
+        and protected like any other. Checked on the first cycle of a process and after a position mismatch; each
+        candidate once per process. Nothing matches -> the reconciliation's untracked-position HOLD (owner item)."""
+        if not (self.counters.cycles == 1 or (self.last_rec is not None and
+                                                any(k == 'position' for k, _ in self.last_rec.items))):
+            return
+        pos = self.venue.positions()
+        if pos.kind is not ReadKind.OK:
+            return
+        owned = {}
+        for x in self.fold.open_lots():
+            owned[(x.symbol, x.side)] = owned.get((x.symbol, x.side), ZERO) + x.qty
+        for p in pos.value:
+            if p.symbol not in self.cfg.symbols or p.side not in self.cfg.sides or \
+                    p.qty <= owned.get((p.symbol, p.side), ZERO) or self.fold.live_entries(p.symbol, p.side):
+                continue
+            for k in range(LOST_ENTRY_LOOKBACK + 1):
+                c = self.now - k * self.cfg.tf_ms
+                if (p.symbol, p.side, c) in self._lost_checked:
+                    continue
+                self._lost_checked.add((p.symbol, p.side, c))
+                if self._recover_entry_at(p.symbol, p.side, c):
+                    break
+
+    def _recover_entry_at(self, symbol, side, close_ms):
+        r = self.bars.closed_bars(symbol, self.cfg.tf_ms, as_of_ms=close_ms, limit=self.signals.window)
+        if r.kind is not ReadKind.OK or not r.value or r.value[-1].close_ms != close_ms:
+            return False
+        for s in self.signals.decide(symbol, r.value, close_ms):
+            if s.action != ENTER or s.side != side:
+                continue
+            key = self._key(symbol, s, Purpose.ENTRY)
+            did = ids.derive_decision_id(self.acct, key)
+            if self.journal.find_decision(did) is not None:
+                return False                                              # its decision survived: the orphan path
+            iid = ids.derive_intent_id(self.acct, key)
+            ref = OrderRef(symbol=symbol, client_id=ids.client_id_for(iid, 'classic'))
+            out = self.venue.query(ref)
+            if out.kind is not OutcomeKind.FINAL or not out.executed_qty:
+                continue
+            self._incident(f'{iid}: every record lost but the venue has {ref.client_id} (executed '
+                           f'{out.executed_qty}): decision, intent and result recorded now')
+            planned = planned_intent(intent_id=iid, account_id=self.acct, decision_id=did, purpose='entry',
+                                     symbol=symbol, side=side, qty=out.executed_qty, reason=s.reason, at_ms=self.now,
+                                     slot_id=self.cfg.slot_id)
+            self._decision(decision_id=did, action=Action.ENTER, reason=s.reason, authority=Authority.STRATEGY,
+                           key=key, symbol=symbol, side=side, intents=(planned,),
+                           detail=f'recovered after a lost journal tail dist {s.stop_distance}')
+            self._dist[iid] = s.stop_distance
+            return self._adopt_sent(self._record_durable(planned))
+        return False
 
     # ----------------------------------------------------------------------------------------------- 2. reconcile
     def reconcile(self):
