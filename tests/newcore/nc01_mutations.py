@@ -98,6 +98,8 @@ MUTATIONS = {
     'H05: Lot not encodable standalone': (D + 'codec.py', [("    'lot': portfolio.Lot,\n", '')]),
     'CP05: a position accepts duplicate lots': (D + 'portfolio.py', [(
         "        req(len({x.lot_id for x in self.lots}) == len(self.lots), p + '.lots',", "        req(True, p + '.lots',")]),
+    'ruling 1: Decision.symbol unvalidated': (D + 'decision.py', [(
+        "            check_symbol(self.symbol, p + '.symbol')", '            pass')]),
     'duplicate JSON keys': (D + 'codec.py', [("            if k in out:\n                problems.append(",
                                               "            if False:\n                problems.append(")]),
     'truncated JSON': (D + 'codec.py', [(

@@ -171,3 +171,23 @@ def test_a_bare_position_rejects_duplicate_lots():
     twin = F.replace(lt, stop=F.replace(lt.stop, order=None, confirmed_at_ms=None))      # same id, other content
     with pytest.raises(InvalidRecord, match='duplicate lot id'):
         Position(position_id=ids.id('pos'), symbol=lt.symbol, side=lt.side, lots=(lt, twin))
+
+
+# ----------------------------------------------------------------------------------------------------------- Codex rulings
+@pytest.mark.parametrize('bad', ['', ' ', 'solusdt', 'SOL USDT', 'SOL/USDT', 'S', 'X' * 31, 'SOLUSDT\n'], ids=repr)
+def test_ruling_1_decision_symbol_uses_the_canonical_validator(bad):
+    from newcore.domain import Action, InvalidRecord, ReasonCode
+    ids = F.Ids(95)
+    d = F.decision(ids, ids.id('acct'), Action.WAIT, ReasonCode.FILTER_HOURS)
+    assert F.replace(d, symbol='SOLUSDT').symbol == 'SOLUSDT' and d.symbol is None   # present: valid; absent: None
+    with pytest.raises(InvalidRecord, match='symbol'):
+        F.replace(d, symbol=bad)
+
+
+def test_ruling_3_binding_confirmation_stays_on_the_account():
+    """No boolean on AccountBinding: confirmation is Account.binding_state + BindingConfirmation (Codex ruling 3)."""
+    from newcore.domain import Account, AccountBinding
+    from newcore.domain.base import field_spec
+    assert [n for n, _, _ in field_spec(AccountBinding)] == ['venue', 'environment', 'settlement_asset', 'key_digest',
+                                                             'exchange_uid']
+    assert {'binding_state', 'confirmation'} <= {n for n, _, _ in field_spec(Account)}
