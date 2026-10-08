@@ -21,7 +21,7 @@ import pandas as pd
 
 from .. import market
 from ..schema import TFS
-from .base import Trace, check_costs, legacy_slot, symbols, side_code
+from .base import Trace, check_costs, check_unsupported, legacy_slot, symbols, side_code
 
 # engine journal exit_reason -> golden code (schema.EXIT_CODE_MEANING). One code per engine reason: 'stop' is the exchange stop
 # fill found by reconcile (STOP_HIT), 'stop_crossed' the bot's own market close of a level price had already crossed
@@ -48,6 +48,7 @@ class LegacyEngine:
 
         from . import CAPS
         check_costs(case, funding=CAPS[self.name]['funding'])
+        check_unsupported(case)
         raw = market.build(case)
         key, mg, extras = legacy_slot(case)
         syms = symbols(case)

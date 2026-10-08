@@ -3,7 +3,7 @@ import backtest as B
 
 from .. import market
 from ..schema import TFS
-from .base import Trace, check_costs, legacy_slot, symbols, side_code
+from .base import Trace, check_costs, check_unsupported, legacy_slot, symbols, side_code
 
 # backtest trade `why` -> golden code ('tp' is TP_FULL or TP_BASKET by the slot, below). The backtester has ONE stop reason:
 # 'stop' covers both an exchange stop fill and what the live bot books as stop_crossed (a ratcheted stop that the price is
@@ -23,6 +23,7 @@ class LegacyBacktest:
     def run(self, case):
         from . import CAPS
         check_costs(case, funding=CAPS[self.name]['funding'])
+        check_unsupported(case)
         raw = market.build(case)
         key, mg, extras = legacy_slot(case)
         syms = symbols(case)

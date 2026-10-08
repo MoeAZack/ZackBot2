@@ -5,6 +5,7 @@ adapters it binds (`applies_to`), the recorded legacy behaviour (`known_divergen
 slot, costs, clock, account, faults, adapter_options, ...). Only the descriptive text (title, behaviours, provenance, notes)
 is outside it. Any new top-level key is protected automatically (validate() rejects keys it does not know)."""
 import glob, hashlib, json, math, numbers, os, re
+from datetime import datetime, timezone
 
 from . import CASES_DIR
 
@@ -39,6 +40,15 @@ EXIT_CODE_MEANING = {
 }
 EXIT_CODES = tuple(EXIT_CODE_MEANING)
 DEPRECATED_EXIT_CODES = {}                          # code -> replacement code; a deprecated code stays in EXIT_CODES
+# AUD-08 fault vocabulary (smallest slices; the fault-capable fake comes with NC-03 / NC-08). Times are integer UTC ms.
+FAULT_KINDS = {
+    'exchange_outage': ('from_ms', 'to_ms'),        # the bot can neither read nor send; orders resting ON the exchange still work
+    'restart': ('at_ms', 'down_ms'),                # the bot process stops at at_ms and starts from its persisted state down_ms later
+    'lost_response': ('order', 'nth', 'truth'),     # the nth such order reaches the exchange (truth) but its answer is lost
+}
+FAULT_ORDERS = ('entry',)
+FAULT_TRUTH = ('filled', 'not_filled')
+INSTRUMENT_KEYS = ('step', 'min_qty', 'min_notional', 'tick')      # exchange filters (feasibility.size_check vocabulary)
 SLOT_KEYS = ('id', 'sides', 'risk', 'share', 'max_pos', 'symbols', 'entry', 'stop', 'trail', 'target', 'tp1', 'ladder', 'runner',
              'dca', 'pyramid', 'time_exit')
 TRADE_KEYS = ('sym', 'side', 'i_in', 'i_out', 'exit', 'R', 'pnl', 'tol')
@@ -155,7 +165,8 @@ def validate(case, path=None):
     # signals
     for g in case['signals']:
         _req(g.get('kind') in SIGNAL_KINDS and g.get('sym') in mk and 0 <= int(g['bar']) < n, cid, f'bad signal {g}')
-    _req(case['faults'] == [], cid, 'faults: not implemented in v1 (outage/restart/ambiguity twins come with the fault-capable fake)')
+    _validate_faults(case, cid, n)
+    _validate_instruments(case, cid)
     # expect
     ex = case['expect']
     _req(isinstance(ex.get('trades'), list), cid, 'expect.trades: list')
@@ -204,6 +215,56 @@ def validate(case, path=None):
         if status(case, a) == 'known_divergence':
             _req(sum(d['adapter'] == a for d in kd) == 1, cid, f'applies_to.{a} = known_divergence needs exactly one known_divergences entry')
     return case
+
+
+def clock_ms(case):
+    """clock.start (ISO 8601; 'Z' or an offset; naive = UTC) -> integer UTC milliseconds."""
+    s = str(case['clock']['start']).replace('Z', '+00:00')
+    t = datetime.fromisoformat(s)
+    if t.tzinfo is None:
+        t = t.replace(tzinfo=timezone.utc)
+    return int(round(t.timestamp() * 1000))
+
+
+def _is_ms(x):
+    return isinstance(x, int) and not isinstance(x, bool)
+
+
+def _validate_faults(case, cid, n):
+    """AUD-08 fault vocabulary (FAULT_KINDS). Every time is an integer UTC millisecond inside the case's market; every fault
+    records its `seed` explicitly (None = fully deterministic, nothing random)."""
+    fl = case['faults']
+    _req(isinstance(fl, list), cid, 'faults: a list')
+    t0 = clock_ms(case)
+    t1 = t0 + n * TFS[case['tf']] * 1000
+    for k, f in enumerate(fl):
+        _req(isinstance(f, dict) and f.get('kind') in FAULT_KINDS, cid, f'faults[{k}]: kind must be one of {sorted(FAULT_KINDS)}')
+        want = set(FAULT_KINDS[f['kind']]) | {'kind', 'seed'}
+        _req(set(f) == want, cid, f"faults[{k}] ({f['kind']}): exactly the keys {sorted(want)}, got {sorted(f)}")
+        _req(f['seed'] is None or _is_ms(f['seed']), cid, f'faults[{k}].seed: an integer, or null for a deterministic fault')
+        for key in FAULT_KINDS[f['kind']]:
+            if key.endswith('_ms'):
+                _req(_is_ms(f[key]) and f[key] >= 0, cid, f'faults[{k}].{key}: integer UTC milliseconds (never a string / float)')
+        if f['kind'] == 'exchange_outage':
+            _req(t0 <= f['from_ms'] < f['to_ms'] <= t1, cid, f'faults[{k}]: t0 <= from_ms < to_ms <= end of the market')
+        elif f['kind'] == 'restart':
+            _req(t0 <= f['at_ms'] and f['at_ms'] + f['down_ms'] <= t1, cid, f'faults[{k}]: the restart lies inside the market')
+        elif f['kind'] == 'lost_response':
+            _req(f['order'] in FAULT_ORDERS and f['truth'] in FAULT_TRUTH and _is_ms(f['nth']) and f['nth'] >= 1, cid,
+                 f'faults[{k}]: order in {FAULT_ORDERS}, truth in {FAULT_TRUTH}, nth >= 1')
+
+
+def _validate_instruments(case, cid):
+    ins = case.get('instruments')
+    if ins is None:
+        return
+    _req(isinstance(ins, dict) and ins, cid, 'instruments: {symbol: {step, min_qty, min_notional, tick}}')
+    for s, r in ins.items():
+        _req(s in case['market'], cid, f'instruments.{s}: no market for it')
+        _req(isinstance(r, dict) and set(r) == set(INSTRUMENT_KEYS), cid, f'instruments.{s}: exactly {INSTRUMENT_KEYS}')
+        for k in INSTRUMENT_KEYS:
+            _req(_is_finite(r[k]) and float(r[k]) >= 0 and (float(r[k]) > 0 or k in ('min_qty', 'min_notional')), cid,
+                 f'instruments.{s}.{k}={r[k]!r}: a finite decimal (step / tick > 0)')
 
 
 def _is_finite(x):
