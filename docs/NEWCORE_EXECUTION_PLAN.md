@@ -168,8 +168,8 @@ Purpose: extract the invariants NEWCORE must honor without polishing the old app
 | A2 | AUD-02 isolated management stages/close ownership | MERGED | A rejected stage cannot starve protection; pending/resting quantities belong to the correct lot. |
 | A3 | AUD-03 exchange-truth fills/ambiguous entries | MERGED | Executed quantities/prices, bounded CID resolution and provisional protection. |
 | A4 | AUD-04 routine stop verification | MERGED | Fresh exchange confirmation, closing-side/quantity validation and duplicate-safe repair. |
-| **A5** | **AUD-05 durable state/restart truth** | **BUILDING — PR #30** | Write-ahead ownership, atomic versioned state, fail-closed missing/corrupt state, no plaintext secrets, restart/fault/concurrency tests. |
-| A6 | AUD-06 truth policy | BACKLOG | Merge only narrow useful truth labels. NEWCORE ships every unverified strategy disabled until new evidence exists. Do not spend a broad compatibility cycle on the legacy UI. |
+| **A5** | **AUD-05 durable state/restart truth** | **MERGED** | Write-ahead ownership, atomic versioned state, fail-closed missing/corrupt state, no plaintext secrets, restart/fault/concurrency tests. |
+| A6 | AUD-06 truth policy | MERGED / legacy frozen | Truth labels landed; NEWCORE ships every unverified strategy disabled until new evidence exists. No compatibility cycle is spent on the legacy UI. |
 
 **Wave A exit:** crash recovery and exchange ownership are explicit, durable and independently reproducible. New code
 does not depend on implicit fields in the legacy `Engine` object.
@@ -190,9 +190,9 @@ does not depend on implicit fields in the legacy `Engine` object.
 | B3 | AUD-12a dependency/test injection | C21, TEST-01/04/05 | Explicit clock/client/store interfaces; fakes implement the production protocol; order-independent tests. |
 | B4 | PORT-01 AUD port-damage assessment | AUD-00–05 | In parallel with B1–B3, inventory new coupling, duplicate state, test-only branches, compatibility baggage and performance cost. P0/P1 interrupts; other findings map to the owning NEWCORE ticket. |
 | B5 | NEWCORE architecture decision record | C14, C22, ARCH-06/07 | State/action model, module boundaries, account identity, reason codes and legacy deletion map approved. |
-| B6 | REC-01 recovery regression contract | Fable Audit2 NEW-ENG-01/NEW-DATA-01 | Preserve the two reproduced failures as fixtures for NC-02: a missing/corrupt primary and backup can never become an empty managed account; a future schema aborts without modifying either file; current-schema damage preserves forensic evidence and requires explicit reconciliation. No legacy repair is required. |
+| B6 | REC-01 recovery regression contract | Fable Audit2 NEW-ENG-01/NEW-DATA-01 | NC-01 supplies UNKNOWN/HOLD, binding and result-evidence types; NC-02 consumes the frozen fixtures. A missing/corrupt primary and backup can never become an empty managed account; a future schema aborts without modifying either file; current-schema damage preserves forensic evidence and requires explicit reconciliation. No legacy repair is required. |
 | B7 | OPS-UI-01 account/incident UX contract | Fable Audit2 NEW-APP-01/02 | Specify NC-04/NC-09 and the replacement UI: mode/account binding, state generation, last reconciliation and actionable incidents. Typed confirmation leaves entries paused. Do not retrofit the old panel. |
-| B8 | ORD-REC-01 order/recovery regression contract | Fable Audit2 NEW-ENG-02/03/04/11 | Turn the lock, pending, false-not-found and resting-maker repros into NC-03/NC-05/NC-07 tests: no network retries under state locks; durable result phases; position-corroborated not-found; pause/halt/flatten drains entries and handles late fills. Do not repair the legacy execution path. |
+| B8 | ORD-REC-01 order/recovery regression contract | Fable Audit2 NEW-ENG-02/03/04/11 | NC-01 defines unified intent/result ownership and ambiguous not-found; NC-03/NC-05/NC-07 consume the lock, pending, false-not-found and resting-maker repros. Require no network retries under state locks, durable result phases, position-corroborated resolution and pause/halt/flatten drain/late-fill handling. Do not repair the legacy execution path. |
 
 **Wave B exit:** stable contract tests exist for the replacement. Every behavior difference is an accepted correction,
 not accidental replay drift.
@@ -203,7 +203,7 @@ These are new modules, not a slow rearrangement of `engine.py`.
 
 | Order | Ticket | Deliverable | Required proof |
 |---:|---|---|---|
-| C1 | NC-01 domain model/reason codes | Typed Account, Portfolio, Position, Lot, OrderIntent, OrderResult, Protection and Decision records. | Schema/property tests; invalid states rejected. |
+| C1 | NC-01 domain model/reason codes | Contract: `docs/newcore/NC01_CONTRACT.md`. Typed Account, Portfolio, Position, Lot, unified OrderIntent, OrderResult, Protection and Decision records with UNKNOWN/HOLD ownership and stable reasons. | Schema/property/import-boundary/mutation tests; invalid states rejected; no legacy dependencies. |
 | C2 | NC-02 state/event store | Account-keyed snapshots plus append-only intent/result events; atomic migration/recovery. | Crash matrix at every write boundary; deterministic replay; no secrets. |
 | C3 | NC-03 exchange adapter/order state machine | Idempotent submit/query/cancel; classic/algo normalization; known/unknown/final outcomes. | Lost answer, late/partial fill, duplicate CID, restart and malformed-response tests. |
 | C4 | NC-04 AccountContext/order budget | Isolated account workers; priority queue and shared weight/418/429 policy. | Two simulated accounts; one outage/ban never delays the other's protection. |

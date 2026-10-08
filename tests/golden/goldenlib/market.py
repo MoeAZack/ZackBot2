@@ -8,13 +8,12 @@ the same shape as tests/test_bt_intrabar_path.py.
 import numpy as np
 import pandas as pd
 
-from .schema import TFS
+from .schema import TFS, clock_ms
 
 
 def build(case):
     tf = TFS[case['tf']]
-    start = pd.Timestamp(case['clock']['start']).tz_localize(None) if pd.Timestamp(case['clock']['start']).tzinfo is None \
-        else pd.Timestamp(case['clock']['start']).tz_convert('UTC').tz_localize(None)
+    start = pd.Timestamp(clock_ms(case), unit='ms')          # integer UTC ms -> naive UTC timestamp (what the legacy models use)
     out = {}
     for sym, spec in case['market'].items():
         b = spec['base']

@@ -1,0 +1,148 @@
+{
+  "schema": "zb-golden/1",
+  "id": "G-PYR-SLIP-S-01",
+  "title": "Short: a pyramid add is a taker market sell: it fills at its level adverse-adjusted by the slippage (lower), like the entry",
+  "behaviours": [
+    "pyramid",
+    "costs",
+    "short_side"
+  ],
+  "side": "short",
+  "tf": "4h",
+  "clock": {
+    "start": 1704067200000,
+    "entry_cycle_delay_s": 15
+  },
+  "costs": {
+    "model": "legacy",
+    "taker_fee": "0.0005",
+    "slip": "0.0002",
+    "funding_per_bar": "0"
+  },
+  "account": {
+    "equity": "500",
+    "max_leverage": 10,
+    "sizing": "legacy_replay"
+  },
+  "market": {
+    "SOLUSDT": {
+      "base": {
+        "kind": "flat",
+        "px": "100",
+        "wick": "0.5",
+        "n": 300
+      },
+      "bars": {
+        "281": [
+          "100",
+          "100.1",
+          "97.9799",
+          "98"
+        ]
+      },
+      "atr": {
+        "kind": "computed"
+      }
+    }
+  },
+  "path_policy": "zb-path/1",
+  "slot": {
+    "id": "S1",
+    "sides": "short",
+    "risk": "0.02",
+    "share": "1",
+    "max_pos": 1,
+    "entry": {
+      "type": "market"
+    },
+    "stop": {
+      "atr": "2"
+    },
+    "pyramid": {
+      "n": 1,
+      "step_r": "1",
+      "frac": "0.5"
+    }
+  },
+  "signals": [
+    {
+      "bar": 279,
+      "sym": "SOLUSDT",
+      "kind": "enter_short"
+    },
+    {
+      "bar": 283,
+      "sym": "SOLUSDT",
+      "kind": "exit_short"
+    }
+  ],
+  "faults": [],
+  "expect": {
+    "trades": [
+      {
+        "sym": "SOLUSDT",
+        "side": "SHORT",
+        "i_in": 280,
+        "i_out": 283,
+        "exit": "SIGNAL_EXIT",
+        "R": "0.8914035995",
+        "pnl": "8.914035995",
+        "tol": {
+          "R": "0.00003",
+          "pnl": "0.0003",
+          "adapters": [
+            "legacy_engine"
+          ],
+          "why": "the replay adds at the path step mark 102.0201 (the leg end one tick past the 102.02 level: no event-snapped path in v1): 2.5 x 0.0001 = 0.00025 USDT; the slippage under test is 0.051 USDT"
+        }
+      }
+    ],
+    "final": {
+      "lots": 0
+    }
+  },
+  "applies_to": {
+    "legacy_engine": "required",
+    "legacy_backtest": {
+      "status": "known_divergence",
+      "reason": "AUD-07 C13a: legacy behaviour differs from the corrected contract until the AUD-07 product fix lands"
+    },
+    "newcore_sim": {
+      "status": "pending_adapter",
+      "reason": "NEWCORE NC-07/NC-08 adapter not built yet"
+    },
+    "newcore_live_sim": {
+      "status": "pending_adapter",
+      "reason": "NEWCORE NC-08 live-sim adapter not built yet"
+    }
+  },
+  "known_divergences": [
+    {
+      "adapter": "legacy_backtest",
+      "divergence_id": "AUD07-C13A",
+      "ticket": "AUD-07",
+      "finding": "C13a",
+      "correction": "CORR-0053",
+      "until": "AUD-07 product fix",
+      "reason": "backtest.py:458-468 fills the short pyramid add (a sell) at its level with the fee only, no slippage (entries and exits pay it)",
+      "observed": [
+        {
+          "path": "trades[0].R",
+          "expected": "0.8914035995",
+          "actual": 0.8963
+        },
+        {
+          "path": "trades[0].pnl",
+          "expected": "8.914035995",
+          "actual": 8.963002
+        }
+      ]
+    }
+  ],
+  "provenance": {
+    "created_at_sha": "cff3f88",
+    "author": "NC-01 golden short mirrors (Claude)",
+    "mirror_of": "G-PYR-SLIP-L-01",
+    "notes": "Short mirror of G-PYR-SLIP-L-01: market reflected around the base price, signals and side flipped. ATR 1; entry 99.98, stop 101.98, R 2, qty 5. Add 1 of 1 at 99.98 - 1 R = 97.98, frac 0.5 -> 2.5 sold at 97.98 x 0.9998 = 97.960404 (red candle 281 reaches 97.9799). Signal exit on the close of 283 at 98 x 1.0002 = 98.0196. pnl = 5 x (99.98 - 98.0196) + 2.5 x (97.960404 - 98.0196) - fees = 8.914036."
+  }
+}

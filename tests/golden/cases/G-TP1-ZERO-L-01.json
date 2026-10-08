@@ -1,0 +1,132 @@
+{
+  "schema": "zb-golden/1",
+  "id": "G-TP1-ZERO-L-01",
+  "title": "A tp1 partial whose part floors to zero at the exchange step sends nothing and marks nothing done: the whole position runs to the full target (C25)",
+  "behaviours": [
+    "partial",
+    "tp1",
+    "min_size",
+    "target"
+  ],
+  "side": "long",
+  "tf": "4h",
+  "clock": {
+    "start": 1704067200000,
+    "entry_cycle_delay_s": 15
+  },
+  "costs": {
+    "model": "legacy",
+    "taker_fee": "0.0005",
+    "slip": "0.0002",
+    "funding_per_bar": "0"
+  },
+  "account": {
+    "equity": "500",
+    "max_leverage": 10,
+    "sizing": "legacy_replay"
+  },
+  "market": {
+    "SOLUSDT": {
+      "base": {
+        "kind": "flat",
+        "px": "100",
+        "wick": "0.5",
+        "n": 300
+      },
+      "bars": {
+        "281": [
+          "100",
+          "102.02",
+          "100",
+          "102"
+        ],
+        "282": [
+          "102",
+          "104.02",
+          "101.9",
+          "104"
+        ]
+      },
+      "atr": {
+        "kind": "computed"
+      }
+    }
+  },
+  "path_policy": "zb-path/1",
+  "slot": {
+    "id": "S1",
+    "sides": "long",
+    "risk": "0.02",
+    "share": "1",
+    "max_pos": 1,
+    "entry": {
+      "type": "market"
+    },
+    "stop": {
+      "atr": "2"
+    },
+    "tp1": {
+      "r": "1",
+      "frac": "0.5"
+    },
+    "target": {
+      "r": "2"
+    }
+  },
+  "signals": [
+    {
+      "bar": 279,
+      "sym": "SOLUSDT",
+      "kind": "enter_long"
+    }
+  ],
+  "faults": [],
+  "expect": {
+    "trades": [
+      {
+        "sym": "SOLUSDT",
+        "side": "LONG",
+        "i_in": 280,
+        "i_out": 282,
+        "exit": "TP_FULL",
+        "R": "1.9385932",
+        "pnl": "19.385932"
+      }
+    ],
+    "final": {
+      "lots": 0
+    }
+  },
+  "applies_to": {
+    "legacy_engine": {
+      "status": "not_applicable",
+      "reason": "NotExpressible: slot.tp1 is refused by the legacy mapping (P2-3b, a partial would be folded into the one-row trace) and instruments are not wired into the legacy adapters; cross-checked outside the pack (scratch xcheck_tp1.py: replay and backtester with these exchange rules both give TP_FULL 19.385932 / 1.9385932 R and one zero partial)"
+    },
+    "legacy_backtest": {
+      "status": "not_applicable",
+      "reason": "NotExpressible: slot.tp1 is refused by the legacy mapping (P2-3b, a partial would be folded into the one-row trace) and instruments are not wired into the legacy adapters; cross-checked outside the pack (scratch xcheck_tp1.py: replay and backtester with these exchange rules both give TP_FULL 19.385932 / 1.9385932 R and one zero partial)"
+    },
+    "newcore_sim": {
+      "status": "pending_adapter",
+      "reason": "NEWCORE NC-07/NC-08 adapter not built yet"
+    },
+    "newcore_live_sim": {
+      "status": "pending_adapter",
+      "reason": "NEWCORE NC-08 live-sim adapter not built yet"
+    }
+  },
+  "known_divergences": [],
+  "provenance": {
+    "created_at_sha": "cda8f58",
+    "author": "AUD-08 smallest slices (Claude)",
+    "notes": "Smallest expressible partial-exit slice: real partial fills need the AUD-08 event trace (the v1 trace is one row per position), but a partial that floors to zero produces no partial fill, so its correct outcome is one row. AUD-02 C25 (accepted rule, both legacy models implement it): a PARTIAL take-profit whose quantity floors to 0 at the step sends nothing and marks nothing done (no breakeven, no tp1 flag); the level is evaluated again later. Step 5: qty 10 / 2 = 5 (one step), tp1 = 0.5 x 5 = 2.5 -> 0. Candle 281 (green) reaches tp1 = 1 R = 102.02 at its leg end: nothing happens. Candle 282 (green, low 101.9 > the 98.02 stop) reaches the 2 R target 104.02 at its leg end: the whole 5 close at 104.02 x 0.9998 = 103.999196; pnl = 5 x (103.999196 - 100.02) - 5 x (100.02 + 103.999196) x 0.0005 = 19.385932, R = 1.9385932. Deterministic: no seed."
+  },
+  "instruments": {
+    "SOLUSDT": {
+      "step": "5",
+      "min_qty": "5",
+      "min_notional": "5",
+      "tick": "0.01"
+    }
+  }
+}
