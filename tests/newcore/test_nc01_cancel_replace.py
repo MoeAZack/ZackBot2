@@ -116,20 +116,32 @@ def test_restart_round_trips_the_link():
     assert succ.replaces_intent_id in {i.intent_id for i in back.intents}
 
 
+def _chain(t):
+    """A <- B <- C: the middle link would have to be cancelling (as a predecessor) and live (as a successor)."""
+    ids, acct, lt = t['ids'], t['acct'], t['lot']
+    a = F.intent(ids, acct, Purpose.CLOSE, lt.symbol, lt.side, D('1.5'), owner_id=lt.lot_id, state=S.CANCELLING)
+    b = replace(t['pred'], replaces_intent_id=a.intent_id)
+    return t['build']((a, b, t['succ']))
+
+
 def test_invalid_links():
     t = pair()
     ids, acct, lt = t['ids'], t['acct'], t['lot']
     other_lot, other_extra = F.lot(ids, acct, lt.symbol, lt.side, D('1'), stop_state='none')
-    cases = {
-        'predecessor missing': lambda: t['build']((replace(t['succ'], replaces_intent_id=ids.id('int')),)),
-        'predecessor not cancelling': lambda: t['build']((replace(t['pred'], state=S.WORKING), t['succ'])),
-        'successor cancelling': lambda: t['build']((t['pred'], replace(t['succ'], state=S.CANCELLING))),
-        'predecessor is an add': lambda: t['build']((replace(t['pred'], purpose=Purpose.ADD,
-                                                             reason=ReasonCode.ENTRY_PYRAMID), t['succ'])),
-        'chain of links': lambda: t['build']((replace(t['pred'], replaces_intent_id=ids.id('int')), t['succ'])),
+    cases = {     # each refused by its own rule (asserted by message, so no other rule can mask it)
+        'predecessor missing': ('names no live predecessor',
+                                lambda: t['build']((replace(t['succ'], replaces_intent_id=ids.id('int')),))),
+        'predecessor not cancelling': ('must be CANCELLING',
+                                       lambda: t['build']((replace(t['pred'], state=S.WORKING), t['succ']))),
+        'successor cancelling': ('must be live, not cancelling',
+                                 lambda: t['build']((t['pred'], replace(t['succ'], state=S.CANCELLING)))),
+        'predecessor is an add': ('not a lot reduce / close',
+                                  lambda: t['build']((replace(t['pred'], purpose=Purpose.ADD,
+                                                              reason=ReasonCode.ENTRY_PYRAMID), t['succ']))),
+        'chain of links': ('must be live, not cancelling', lambda: _chain(t)),
     }
-    for name, build in cases.items():
-        with pytest.raises(InvalidRecord):
+    for name, (message, build) in cases.items():
+        with pytest.raises(InvalidRecord, match=message):
             build()
             raise AssertionError(name)
     # the predecessor belongs to another lot of the same position

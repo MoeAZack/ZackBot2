@@ -306,7 +306,8 @@ def _check_known(pf, p):
         req((owner.symbol, owner.side) == (it.symbol, it.side), ip, 'owner of another symbol / side')
     # cancel-replace links (Codex P1 on af4e5f3): a REDUCE / CLOSE successor names its predecessor explicitly by
     # replaces_intent_id - never inferred from decisions or order. Exactly one link per lot: same account / symbol /
-    # side / lot, both reduce / close, the predecessor CANCELLING and not itself a successor, the successor live.
+    # side / lot, both reduce / close, the predecessor CANCELLING, the successor live (so no chain can form: a middle
+    # link would have to be both cancelling and live).
     preds, linked_lots = {}, set()
     for it in intents.values():
         old_id = it.replaces_intent_id
@@ -321,7 +322,6 @@ def _check_known(pf, p):
             'the predecessor belongs to another account / instrument / side / lot')
         req(old.state is IntentState.CANCELLING, ip, 'the predecessor of a cancel-replace must be CANCELLING')
         req(it.state is not IntentState.CANCELLING, ip, 'the successor of a cancel-replace must be live, not cancelling')
-        req(old.replaces_intent_id is None, ip, 'one link only: the predecessor is itself a successor')
         req(old_id not in preds and it.owner_id not in linked_lots, ip, 'at most one cancel-replace link per lot')
         preds[old_id] = it.intent_id
         linked_lots.add(it.owner_id)
