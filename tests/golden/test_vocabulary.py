@@ -3,7 +3,9 @@
 Registry rules (schema.EXIT_CODE_MEANING): append-only within a schema version - a code is never removed, renamed, reordered
 or reused for another meaning; it is deprecated instead (schema.DEPRECATED_EXIT_CODES) and stays valid. Free text (titles,
 reasons, notes) is display only and never compared. Mutations that must fail here: drop / rename / reorder a pinned code,
-fold stop_crossed back into STOP_HIT, add an engine.py / backtest.py exit reason without mapping it."""
+fold stop_crossed back into STOP_HIT, add an engine.py / backtest.py exit reason without mapping it.
+Behaviour registry (schema.BEHAVIOUR_MEANING, Codex golden r3 residual ruling point 1): the same append-only rule, with the
+meanings pinned too; a case whose `behaviours` holds an unknown or duplicated ID is a CaseError."""
 import copy, os, re, sys
 
 import pytest
@@ -17,6 +19,14 @@ from goldenlib.adapters import legacy_backtest, legacy_engine  # noqa: E402
 PINNED_V1 = ('STOP_HIT', 'TIME_EXIT', 'SIGNAL_EXIT', 'TP_FULL', 'TP_BASKET', 'TP_PARTIAL', 'TP_LADDER', 'LIQUIDATED', 'FLATTEN',
              'STOP_CROSSED', 'RESYNC', 'STOP_FAILED', 'BASKET_TP_PART')
 CODE = re.compile(r'[A-Z][A-Z0-9_]*')
+# Behaviour registry zb-golden-behaviours/1 as published (Codex golden r3 residual ruling, point 1): the ordered IDs AND the
+# sha256 of their [id, meaning] pairs. Append new IDs to schema.BEHAVIOUR_MEANING; never edit this prefix or its meanings.
+PINNED_BEHAVIOURS_VERSION = 'zb-golden-behaviours/1'
+PINNED_BEHAVIOURS_V1 = ('stop', 'gap', 'target', 'time_exit', 'cairo_day', 'daily_halt', 'dca', 'costs', 'pyramid', 'trail',
+                        'trail_entry', 'max_pos', 'short_side', 'exit_codes', 'partial', 'tp1', 'min_size', 'outage', 'restart',
+                        'ambiguity', 'entry')
+PINNED_BEHAVIOURS_V1_SHA = '9142440f1f09df2bda3ea1b341dd591bb712d68bc3972d8a62118de9c6a0b8ec'
+BEHAVIOUR_ID = re.compile(r'[a-z][a-z0-9_]*')
 
 
 def _src(name):
@@ -99,4 +109,39 @@ def test_schema_rejects_codes_outside_the_registry(code):
     c = copy.deepcopy(schema.load(schema.case_paths()[0]))
     c['expect']['trades'][0]['exit'] = code
     with pytest.raises(schema.CaseError):
+        schema.validate(c)
+
+
+# ------------------------------------------------------------------ behaviour registry (Codex golden r3 residual ruling, 1)
+def test_behaviour_registry_is_versioned_and_append_only():
+    """One meaning per ID: the published prefix (IDs, order AND meanings) is pinned; an ID is deprecated, never removed,
+    renamed, reordered or re-worded into another meaning."""
+    assert schema.BEHAVIOURS_VERSION == PINNED_BEHAVIOURS_VERSION, 'a new registry version starts a new pinned prefix'
+    assert schema.BEHAVIOURS[:len(PINNED_BEHAVIOURS_V1)] == PINNED_BEHAVIOURS_V1, \
+        'the behaviour registry is append-only: a pinned ID was removed, renamed or reordered (deprecate it instead)'
+    pairs = [[b, schema.BEHAVIOUR_MEANING[b]] for b in PINNED_BEHAVIOURS_V1]
+    assert schema.sha256(pairs) == PINNED_BEHAVIOURS_V1_SHA, \
+        'the meaning of a pinned behaviour ID changed: an ID keeps its one meaning (append a new ID instead)'
+    assert len(set(schema.BEHAVIOURS)) == len(schema.BEHAVIOURS)
+    for b in schema.BEHAVIOURS:
+        assert BEHAVIOUR_ID.fullmatch(b), b
+        assert len(schema.BEHAVIOUR_MEANING[b].strip()) >= 20, f'{b}: every behaviour ID states its meaning'
+    for old, new in schema.DEPRECATED_BEHAVIOURS.items():
+        assert old in schema.BEHAVIOURS and new in schema.BEHAVIOURS and new not in schema.DEPRECATED_BEHAVIOURS, (old, new)
+
+
+def test_every_registered_behaviour_is_used_by_the_pack():
+    """The registry is the pack's vocabulary, not a wish list: an ID no case uses is either deprecated or a typo'd addition."""
+    used = {b for c in schema.load_all() for b in c['behaviours']}
+    assert set(schema.BEHAVIOURS) - set(schema.DEPRECATED_BEHAVIOURS) <= used, \
+        sorted(set(schema.BEHAVIOURS) - set(schema.DEPRECATED_BEHAVIOURS) - used)
+
+
+@pytest.mark.parametrize('mutation', ['unknown', 'duplicate', 'empty', 'not_a_list', 'not_a_string', 'case_variant'])
+def test_schema_rejects_behaviours_outside_the_registry(mutation):
+    c = copy.deepcopy(schema.load(schema.case_paths()[0]))
+    b = c['behaviours']
+    c['behaviours'] = {'unknown': b + ['new_causal_behaviour'], 'duplicate': b + [b[0]], 'empty': [], 'not_a_list': b[0],
+                       'not_a_string': b + [None], 'case_variant': [b[0].upper()] + b[1:]}[mutation]
+    with pytest.raises(schema.CaseError, match='behaviours'):
         schema.validate(c)

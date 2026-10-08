@@ -39,6 +39,38 @@ EXIT_CODE_MEANING = {
 }
 EXIT_CODES = tuple(EXIT_CODE_MEANING)
 DEPRECATED_EXIT_CODES = {}                          # code -> replacement code; a deprecated code stays in EXIT_CODES
+# Behaviour REGISTRY (Codex golden r3 residual ruling, point 1): `behaviours` is a compact ID vocabulary that drives a structural
+# per-commit gate (tiers.classes: core keeps one case per behaviour), so it is a versioned registry with ONE meaning per ID,
+# not free text. validate() rejects an unknown or duplicated ID. Append-only within BEHAVIOURS_VERSION: an ID is never reused
+# for another meaning, renamed, reordered or deleted - it is deprecated (DEPRECATED_BEHAVIOURS: id -> replacement) and stays
+# valid. test_vocabulary.py pins the ordered IDs AND their meanings, so a re-worded meaning fails too.
+BEHAVIOURS_VERSION = 'zb-golden-behaviours/1'
+BEHAVIOUR_MEANING = {
+    'stop': 'the protective stop of the position (where it rests, how it fills, how it is booked) decides the outcome',
+    'gap': 'a candle OPENS through a resting level (stop, target, safety order): the fill is at the gapped open, never the level',
+    'target': 'the full take-profit target (slot.target) closes the position',
+    'time_exit': 'the holding-time limit (slot.time_exit.bars, candles counted from the entry candle) closes the position',
+    'cairo_day': 'the trading day is the Africa/Cairo calendar day (DST-aware) of the decision candle CLOSE, not its open',
+    'daily_halt': 'the daily-loss halt: a realised loss beyond the daily limit blocks new entries for the rest of that trading day',
+    'dca': 'DCA safety orders add to the position at preset adverse levels and the whole basket closes at its target',
+    'costs': 'the taker fee and slippage of every market fill (entry, add, exit) are what the expected R / pnl assert',
+    'pyramid': 'pyramid adds grow the position in the trade direction at preset favourable levels',
+    'trail': 'a trailing / ratcheting protective level recomputed at candle closes (slot.trail)',
+    'trail_entry': 'a trailing ENTRY (entry.type trail): armed at the signal, it fills only after the set rebound / drop',
+    'max_pos': "the slot's max_pos limit on positions open or armed at the same time",
+    'short_side': 'the SHORT mirror of a path: a sell entry with every price, slippage and comparison inverted',
+    'exit_codes': 'the machine exit code itself (EXIT_CODE_MEANING) is the asserted distinction, beyond the fill price',
+    'partial': 'part of the position is closed before the final exit',
+    'tp1': 'the first partial take-profit level (slot.tp1)',
+    'min_size': 'the exchange filters (instruments: step, min_qty, min_notional) decide whether an order can be sent at all',
+    'outage': 'exchange_outage fault: the bot can neither read nor send while orders resting on the exchange still work',
+    'restart': 'restart fault: the bot process stops and comes back from its persisted state, keeping the position clock',
+    'ambiguity': "lost_response fault: an order reached the exchange but its answer was lost; the bot resolves it from the "
+                 'order record (no phantom, no duplicate)',
+    'entry': 'the entry order itself (sending, filling and booking it) is the asserted path',
+}
+BEHAVIOURS = tuple(BEHAVIOUR_MEANING)
+DEPRECATED_BEHAVIOURS = {}                          # id -> replacement id; a deprecated id stays in BEHAVIOURS
 # AUD-08 fault vocabulary (smallest slices; the fault-capable fake comes with NC-03 / NC-08). Times are integer UTC ms.
 FAULT_KINDS = {
     'exchange_outage': ('from_ms', 'to_ms'),        # the bot can neither read nor send; orders resting ON the exchange still work
@@ -132,7 +164,7 @@ def validate(case, path=None):
         _req(os.path.basename(path) == f"{case['id']}.json", cid, 'file name must be <id>.json')
     _req(case['side'] in SIDES, cid, f"side must be one of {SIDES}")
     _req(case['tf'] in TFS, cid, f"tf must be one of {sorted(TFS)}")
-    _req(isinstance(case['behaviours'], list) and case['behaviours'], cid, 'behaviours: non-empty list')
+    _validate_behaviours(case, cid)
     _req(case['path_policy'] == 'zb-path/1', cid, "path_policy must be 'zb-path/1'")
     _req(isinstance(case['clock'], dict) and 'start' in case['clock'], cid, 'clock.start required')
     _req(_is_ms(case['clock']['start']) and case['clock']['start'] >= 0, cid,
@@ -230,6 +262,17 @@ def clock_ms(case):
 
 def _is_ms(x):
     return isinstance(x, int) and not isinstance(x, bool)
+
+
+def _validate_behaviours(case, cid):
+    """`behaviours`: a non-empty list of registry IDs (BEHAVIOUR_MEANING), each at most once."""
+    b = case['behaviours']
+    _req(isinstance(b, list) and b and all(isinstance(x, str) for x in b), cid, 'behaviours: a non-empty list of behaviour IDs')
+    unknown = sorted(set(b) - set(BEHAVIOURS))
+    _req(not unknown, cid, f'behaviours: unknown IDs {unknown} (registry {BEHAVIOURS_VERSION}: schema.BEHAVIOUR_MEANING; a new '
+                           'behaviour is appended there with its one meaning)')
+    dup = sorted({x for x in b if b.count(x) > 1})
+    _req(not dup, cid, f'behaviours: listed more than once {dup}')
 
 
 def _validate_faults(case, cid, n):
