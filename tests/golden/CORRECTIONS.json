@@ -163,6 +163,30 @@
       "accepted_by": null,
       "date_cairo": "2026-10-08",
       "prev_entry_sha": "2b16f40effec7ea8f228e8602ffca8843ff19bbe9b553650eb5abef60ca1d01a"
+    },
+    {
+      "id": "CORR-0006",
+      "type": "correction",
+      "ticket": "AUD-07",
+      "finding": "C13g (proposed)",
+      "title": "C13g fixed: the engine journals a filled exchange stop at its fill price",
+      "cases": {
+        "G-GAP-STOP-L-01": {
+          "old_expect_sha": "b9fac1182619d5c6f201ff038c437e03632832948722ff712e43c2365ff031ad",
+          "new_expect_sha": "b9fac1182619d5c6f201ff038c437e03632832948722ff712e43c2365ff031ad"
+        }
+      },
+      "adapters_changed": [
+        "legacy_engine"
+      ],
+      "resolved_divergences": [
+        "G-GAP-STOP-L-01:legacy_engine"
+      ],
+      "rationale": "engine.py booked an exchange-filled stop at the stop price, so a stop gapped at the open showed -1.05 R in the journal while the account lost -2.57 R. The engine now reads the stop's fill price from the exchange (Futures.stop_fill_price; the replay sim serves the same) and books it, slippage included. Codex moved C13g into AUD-07. The expect block is unchanged; only the known divergence is removed.",
+      "evidence": "branch aud-07-product-r2: G-GAP-STOP-L-01 legacy_engine XPASS with the fix; reverting engine.py re-breaks exactly it",
+      "accepted_by": null,
+      "date_cairo": "2026-10-08",
+      "prev_entry_sha": "7aa1316f4e85b0827292b4659c25c014ae659ca3a5e925bcb1b6900408a48aea"
     }
   ]
 }

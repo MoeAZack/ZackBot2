@@ -86,10 +86,7 @@
     }
   },
   "applies_to": {
-    "legacy_engine": {
-      "status": "known_divergence",
-      "reason": "AUD-07 C13g (proposed): legacy behaviour differs from the corrected contract until the AUD-07 product fix lands"
-    },
+    "legacy_engine": "required",
     "legacy_backtest": "required",
     "newcore_sim": {
       "status": "pending_adapter",
@@ -100,23 +97,7 @@
       "reason": "NEWCORE NC-08 live-sim adapter not built yet"
     }
   },
-  "known_divergences": [
-    {
-      "adapter": "legacy_engine",
-      "ticket": "AUD-07",
-      "finding": "C13g (proposed)",
-      "correction": null,
-      "until": "AUD-07 product fix",
-      "reason": "engine.py:2284-2290 books an exchange stop that filled (stop gone) at the STOP price, not the fill price: a stop gapped at the open shows -1.05 R in the bot journal while the account lost -2.57 R (the replay equity curve now shows the real loss since the C13f fix)",
-      "observed": [
-        {
-          "path": "trades[0].R",
-          "expected": "-2.5682",
-          "actual": -1.04951
-        }
-      ]
-    }
-  ],
+  "known_divergences": [],
   "provenance": {
     "created_at_sha": "b8c11c8",
     "author": "AUD-07 slice 1 (Claude)",
