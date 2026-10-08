@@ -75,8 +75,11 @@ MUTATIONS = {
 
 
 def export_head(dst):
-    blob = subprocess.run(['git', '-C', ROOT, 'archive', '--format=tar', 'HEAD', 'newcore', 'tests', 'engine.py',
-                           'trade_audit.py', 'pytest.ini'], capture_output=True, check=True).stdout
+    root_py = subprocess.run(['git', '-C', ROOT, 'ls-files', '--', '*.py'], capture_output=True, text=True,
+                             check=True).stdout.split()
+    root_py = [f for f in root_py if '/' not in f]          # every root legacy module (the boundary test lists them)
+    blob = subprocess.run(['git', '-C', ROOT, 'archive', '--format=tar', 'HEAD', 'newcore', 'tests', 'pytest.ini',
+                           *root_py], capture_output=True, check=True).stdout
     with tarfile.open(fileobj=io.BytesIO(blob)) as tar:
         tar.extractall(dst, filter='data')
 
