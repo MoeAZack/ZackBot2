@@ -35,6 +35,14 @@ MUTATIONS = {
                                                  '    _S.FILLED: frozenset({_S.WORKING}), _S.CANCELLED')]),
     'protection bound': (D + 'protection.py', [('    req(prot.qty <= exposure or prot.replacement is not None,',
                                                 '    req(True,')]),
+    'unconfirmed replacement counted as confirmed coverage': (D + 'protection.py', [(
+        '    unpromoted replacement is never counted here, whatever its state."""\n',
+        '    unpromoted replacement is never counted here, whatever its state."""\n'
+        '    if prot.replacement is not None:\n        return intents_by_id[prot.replacement].qty\n')]),
+    'replacing status hides an undersized stop': (D + 'protection.py', [(
+        '    if confirmed_coverage(prot, intents_by_id) < exposure:\n',
+        '    if prot.replacement is not None:\n        return ProtectionStatus.REPLACING\n'
+        '    if confirmed_coverage(prot, intents_by_id) < exposure:\n')]),
     'cross-record symbol/side agreement': (D + 'portfolio.py', [(
         "        req((owner.symbol, owner.side) == (it.symbol, it.side), ip, 'owner of another symbol / side')",
         "        req(True, ip, 'owner of another symbol / side')")]),
