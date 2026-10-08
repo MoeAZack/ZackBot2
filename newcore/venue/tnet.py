@@ -133,6 +133,8 @@ def tnet_preflight(venue, account_reader, symbols, *, min_balance=DEFAULT_MIN_BA
                     refusals.append(f'not_flat:{key}')
                 elif declared is not None and p.qty > declared:      # more than the declared foreign quantity
                     refusals.append(f'not_flat:{key}:{p.qty}>{declared}')
+                elif declared is not None and p.qty < declared:      # NEW-C1b: an over-declaration would hide a
+                    refusals.append(f'adopted_qty_above_position:{key}:{p.qty}<{declared}')   # leftover later
                 else:
                     baseline[(p.symbol, p.side)] = p.qty if declared is None else declared
         oo = _read(venue.open_orders, sym)

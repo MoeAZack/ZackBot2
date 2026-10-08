@@ -200,3 +200,28 @@ def test_r3_unicode_names_in_a_non_json_body_are_redacted(name):
     rec = CassetteRecorder(FakeHttp(ok(f'<p>{name}={v}</p>')))
     rec(req())
     assert v not in rec.to_json()
+
+
+# ---------------------------------------------------------------------------------------------- 6063794395
+def test_c1b_an_over_declared_foreign_quantity_is_refused_in_the_cleanup(env):  # noqa: F811
+    fb = stranded_with_foreign()                                      # holds 3 = foreign 2 + NEWCORE leftover 1
+    rc, out = run(env, ['--cleanup', '--close-positions', '--adopt-foreign', 'SOLUSDT:LONG:5'], http=fb)
+    assert rc == 4 and 'declares 5 but holds 3' in out and 'CLEANUP CLEAN' not in out
+    assert fb.pos[('SOLUSDT', 'LONG')] == D('3') and not [q for q in fb.requests if q.method in ('POST', 'DELETE')]
+
+
+def test_c1b_an_over_declared_foreign_quantity_is_refused_at_preflight(env):  # noqa: F811
+    fb = stranded_with_foreign()
+    fb.orders.clear()
+    rc, out = run(env, ['--probe', 'P1', '--adopt-foreign', 'SOLUSDT:LONG:5'], http=fb)
+    assert rc == 4 and 'adopted_qty_above_position:SOLUSDT:LONG:3<5' in out
+
+
+def test_n2b_ctrl_c_during_the_cleanup_listing_is_truthful(env):  # noqa: F811
+    class CtrlCList(FakeBinance):
+        def _get_fapi_v1_openOrders(self, q):
+            raise KeyboardInterrupt
+    fb = CtrlCList()
+    rc, out = run(env, ['--cleanup'], http=fb)
+    assert rc == 6 and 'teardown has run' not in out and '--cleanup' in out
+    assert not [q for q in fb.requests if q.method in ('POST', 'DELETE')]
