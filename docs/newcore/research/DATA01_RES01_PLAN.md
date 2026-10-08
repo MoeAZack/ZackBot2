@@ -1,4 +1,4 @@
-# DATA-01 / RES-01 scoping plan r2 (Claude Code, 09 Oct 2026 Cairo; applies Codex ruling 6070934398)
+# DATA-01 / RES-01 scoping plan r3 (Claude Code, 09 Oct 2026 Cairo; applies ruling 6070934398 + clarifications 6071140643)
 
 Scope: owner alignment on issue 13 (comment 6070651161) makes strategy evidence the primary lane once the three safety
 blockers (two S1 P1s, #47 target-orphan) close. This plan is the short, buildable cut of the full contract draft
@@ -25,7 +25,9 @@ evidence until the rules below are executable in R1-R3.
 - Eligibility comes from **all historically listed** USD-M USDT perpetuals, including delisted contracts (archive
   listing), never current `exchangeInfo`. Contract identity is preserved across renames.
 - Weekly ranking at **Monday 00:00 UTC** using only rows with `available_ms` <= that instant: top 40 by trailing 30-day
-  quote volume, listing age >= 30 days **plus the strategy's warm-up**.
+  quote volume. Two **independent** PIT eligibility tests, both required: (a) listing age >= 30 days at the ranking
+  instant; (b) the strategy's own warm-up (its lookback in closed bars) is fully available before its first decision.
+  Neither substitutes for the other.
 - Delist veto starts only at a **timestamped** announcement/status observation available at that time. Exit uses the
   settlement or last reliable mark plus stress; never future delist knowledge.
 - Rules (tick, step, min qty, min notional) before the first genuinely observed snapshot are labelled
@@ -40,14 +42,18 @@ evidence until the rules below are executable in R1-R3.
 - **Funding:** signed actual rate x mark notional at each `fundingTime` the position spans (longs pay positive, shorts
   receive). The legacy flat 0.005%/bar stays only as a reproduction row.
 - **Slippage (frozen formula, `slip-v1`):** per side, in bps of fill price,
-  `slip_bps = max(2, c x 10^4 x ATR14 / close)` on the signal timeframe's closed bars (lookback 14), coefficient `c`
-  fitted once on a PIT calibration sample fixed in the prereg (first 6 months of the manifest, before any split it is
-  evaluated on) and then frozen in the manifest-linked config. Gap/stop fills at the bar open when price opens through
-  the stop. Unspecified `k x ATR proxy` is not accepted.
+  `slip_bps = max(2, c x 10^4 x ATR14 / close)` on the signal timeframe's closed bars (lookback 14). Gap/stop fills at
+  the bar open when price opens through the stop. Unspecified `k x ATR proxy` is not accepted.
+- **Calibration config `slip-cal-v1` (fully frozen, hashed, cited by digest):** names the observed target (per-side
+  fill-vs-reference bps), the source series, the estimator and loss, symbol pooling, the fallback when execution-grade
+  observations are absent, and **one** deterministic primary limit-touch rule (touch = no fill; price-through = maker
+  fill). Fitted once on its calibration interval, which is **excluded from all evaluated evidence**; never refitted per
+  candidate or per holdout. No-fill and taker treatments of a limit target are **named stress rows**, never a
+  post-result analyst choice.
 - **Filters:** from the rules snapshot valid at decision time; a size that rounds below minimum is a counted refusal
   (reuse `exchange_rules.py` / `feasibility.py`); `RULES-BACKFILLED` periods per section 1a.
-- **Stress rows (always reported):** fees+slippage x2, funding x2 (sign kept), slippage x5 on gap/stop fills, limit
-  target as taker, flat-funding legacy row.
+- **Stress rows (always reported):** fees+slippage x2, funding x2 (sign kept), slippage x5 on gap/stop fills,
+  `limit-no-fill`, `limit-as-taker`, flat-funding legacy row.
 
 ### 2a. Intrabar resolution
 
@@ -78,30 +84,45 @@ Built inside the existing NEWCORE research path, not beside it:
 
 ## 4. Splits, preregistration and contamination ledger
 
+- **Finite ex-ante horizon:** every prereg freezes a hard maximum holding / time-exit horizon. A candidate with an
+  uncapped runner cannot open a sealed split.
 - **Immutable UTC splits:** every prereg names fixed UTC train, walk-forward and holdout boundaries (timestamps, not
-  "last 12 months"). Each boundary is purged by at least `max(strategy lookback, max holding horizon)` and embargoed
-  by one decision interval; an episode belongs wholly to one split.
+  "last 12 months"). Each boundary is purged by at least `max(strategy lookback, declared max holding horizon)` - the
+  **declared cap, never realised durations** - and embargoed by one decision interval; an episode belongs wholly to one
+  split.
 - **Preregistration (`zb-prereg/1`, committed before any run):** `candidate_id`, hypothesis family id, mechanism (why,
   which side, which regime), universe rule, manifest digest, timeframe, primary parameter set, neighbour grid (+/- one
   step), primary endpoint (episode-clustered mean net R), baselines and the paired p-value definition, rejection
   criteria (EDGE-00 rows), the split boundaries, slippage calibration sample, stop condition, author, Cairo date.
-- **Holdout guard:** the harness refuses a holdout run without a prior committed prereg matching digest/parameters, and
-  refuses a second look.
+- **Atomic family-wide holdout reveal:** the first sealed-holdout access is one preregistered atomic evaluation of the
+  candidate plus every declared baseline and stress row. Its completion spends that window for every descendant,
+  rename or variant of the economic family. Only a deterministic rerun of the identical run digest may reproduce it
+  (no code / config / seed change, no new decision). The harness refuses a holdout run without a prior committed
+  prereg matching digest/parameters. Ledger kinds `holdout_reveal` / `holdout_rerun` enforce this (R1 status below).
 - **Hypothesis-family contamination ledger:** append-only `ledger/<family>.jsonl` records every data access, variant,
   grid point and baseline choice per **economic-hypothesis family** (not only per candidate/prereg id), with the
   window touched. `n_trials` and the Holm family are read from it. **CI check:** the ledger file's Git history must be
   append-only (every commit's version is a prefix of its successor along the ancestry); a rewrite fails CI.
-- **Spent windows:** `trend_ema_mom` and the legacy-derived short-breakdown family have already seen 2025-2026. For
-  them that period is **development evidence only**; an untouched claim needs post-freeze forward data. The rejected
-  short family is not retuned against the spent window. Both are pre-entered in the ledger with that window marked spent.
+- **Spent windows:** all three legacy-derived families have seen the **whole legacy window (2021-12-19 -> 2026-10-04)**,
+  not only 2025-26. It is development evidence only; an untouched claim needs post-freeze forward data; the rejected
+  short family is not retuned against it. Each is pre-entered as `window_spent` in
+  `docs/newcore/research/ledger/<family>.jsonl` with its evidence.
+
+### 4a. Contamination inventory (grep of legacy code, results and issue 13; 09 Oct 2026)
+
+| Family | Evidence the 2025-26 data was already viewed |
+|---|---|
+| `range_bb_mr` (`RANGE-BB-MR.v1`) | Issue 13 comment 6056630665 (M4, 08 Oct): in-sample 2022-24 -0.110R **and holdout 2025-26 +0.009R** computed; mirrored short run on both. Comment 6056676612 (Codex): BB-family 2025-26 holdout spent. The legacy `strategies.regime()` range flag (`strategies.py:243-283`, 4h ADX + BB-width percentile) gates `grid.py` (`need_range`, lines 21/82/308) over the same data. Its prereg `range_research/PREREG.md` was never committed. **No historical holdout is untouched for this family.** |
+| `trend_ema_mom` | `research/long_all.csv` rows 13-14 (`strat:ema_mom` 4h from 2022-01-25, 1h from 2022-09-04, to 2026-10-04, y2025/y2026 columns); `research/results_single.csv` (`data/` 2024-09-14 -> 2026-10-04); `research_long2.py` `bull()` regime gating; M3 pack. |
+| `short_breakdown` | `research/long_all.csv` rows 25-26, 35, 45, 55 (`bear_breakdown`, 2022-01-25 -> 2026-10-04); `research/results_single.csv`. |
 
 ## 5. EDGE-00 gate (promote only if every row passes; else PARK/REJECT as stated)
 
 | Row | Rule |
 |---|---|
-| Sample | >= **60** independent episodes total, >= **30** sealed-holdout episodes, >= **6** independent calendar-month blocks; else PARK. |
+| Sample | >= **60** independent episodes total, >= **30** sealed-holdout episodes, >= **6** non-overlapping eligible calendar-month blocks; else PARK. |
 | Expectancy | **Sealed-holdout-only** lower 95% episode-clustered CI of net R > 0; walk-forward mean > 0 checked separately, never pooled to rescue the holdout. |
-| Baselines | Paired candidate-minus-baseline episode distributions (B0-B3); Holm-corrected lower CI > 0 per baseline, valid paired p-values defined in the prereg. Not raw mean/median comparisons. |
+| Baselines | Pairing units predeclared: **episode-paired** where matched entries permit it (B0); **same non-overlapping calendar blocks, equal-risk returns** for continuous hold (B1/B2); cash (B3) reduces to the expectancy test. Pass = Holm-adjusted paired p-value < 0.05 per baseline with ordinary effect CIs reported, or explicitly inverted simultaneous CIs. An ordinary interval is never called "Holm-corrected". Not raw mean/median comparisons. |
 | Multiplicity | Holm family = every variant, grid point and baseline choice in the family ledger. |
 | PIT | The PIT-universe result itself passes the expectancy row; retaining the survivor-only sign is insufficient. |
 | Robustness | Leave-one-symbol-out and leave-one-year/block-out mean > 0 (replaces net-PnL-share gates). |
@@ -145,6 +166,23 @@ Built inside the existing NEWCORE research path, not beside it:
 | R6 | DATA-01a + `quick_bank.v1` | ~400 LOC + report |
 | R7 | EDGE-00 table across the four; recommendations for Codex | ~200 LOC + report |
 
+## R1 status (source + fixture preparation only; no sealed or evidence run)
+
+- `tools/research/manifest.py`: `zb-data-manifest/1` build / validate / verify / write-once, canonical-JSON SHA-256
+  digest. Committed `manifests/legacy-unverified-v1.json` (64 files = `DATA_MANIFEST.json`, digest `5354a611...`).
+- `tools/research/ledger.py`: `zb-ledger/1` hash-chained JSONL, append-only byte check, Git-ancestry check, holdout
+  reveal / rerun rules, `n_trials`. Tests: `tests/test_res01_manifest_ledger.py`.
+- **Data gaps (nothing downloaded).** Local data is klines only (`t,o,h,l,c,v`, survivor-only;
+  `data/exchange_rules_testnet.json` is a testnet snapshot). Missing, all public, each archive with a `.CHECKSUM`:
+  1. All-listed incl. delisted USD-M symbols + onboard / delivery dates: the `data.binance.vision` listing of
+     `data/futures/um/monthly/klines/` (historically listed symbols) plus `fapi/v1/exchangeInfo`
+     `onboardDate` / `deliveryDate` / `status` for the current set.
+  2. Timestamped delist announcements: Binance announcement "Delisting" category (no archive API; record fetch time).
+  3. Mark-price klines: `data/futures/um/monthly/markPriceKlines/`.
+  4. Signed funding: `data/futures/um/monthly/fundingRate/` (+ `fapi/v1/fundingRate` tail).
+  5. 1m klines for intrabar resolution: `data/futures/um/monthly/klines/<SYMBOL>/1m/`.
+  6. Historical rules snapshots: no public history before our own first snapshot, hence `RULES-BACKFILLED`.
+
 ## Ruling 6070934398 applied
 
 - [x] 1 Immutable UTC splits, purge/embargo, one split per episode -> section 4
@@ -166,3 +204,11 @@ Built inside the existing NEWCORE research path, not beside it:
 - [x] 5 Archive primary after verification, raw + checksum bytes, object/hash/loader version, REST tail-only -> section 1
 - [x] 5 Signed funding at timestamp, closed-bar availability, period semantics recorded -> section 1
 - [x] Verdict: R1-R3 first; R4-R7 claim no evidence until executable -> header, section 8
+
+## Clarifications 6071140643 applied
+
+- [x] 1 Atomic family-wide holdout reveal, deterministic rerun only; `RANGE-BB-MR` inventory -> sections 4, 4a; ledger kinds
+- [x] 2 Finite ex-ante horizon; purge uses the declared cap -> section 4
+- [x] 3 Fully frozen, hashed slippage calibration; no-fill / taker as named stress rows -> section 2
+- [x] 4 Pairing units, Holm wording, non-overlapping month blocks -> section 5
+- [x] Listing age and warm-up are two independent PIT tests -> section 1a
