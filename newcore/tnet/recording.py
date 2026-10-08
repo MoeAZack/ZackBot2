@@ -72,7 +72,7 @@ def run_recorded_suite(specs, make_target, *, run_nonce, cassette_dir, redact, m
         return _recorded_suite(st, specs, make_target, run_nonce=run_nonce, cassette_dir=cassette_dir,
                                redact=redact, monotonic=monotonic, min_balance=min_balance,
                                adopt_foreign=adopt_foreign, on_result=on_result, note=note)
-    except KeyboardInterrupt:
+    except (KeyboardInterrupt, SystemExit):
         res = st['results']
         code = suite_exit_code(res) if any(r.residue for r in res) else EXIT_DEADLINE
         return SuiteResult(st['pre'], res, code, interrupted=True), st['pre_path'], st['errors']
@@ -96,6 +96,8 @@ def _recorded_suite(st, specs, make_target, *, run_nonce, cassette_dir, redact, 
             lambda: _write(bundle_base(cassette_dir, run_nonce, 'preflight') + '.json', text), st['evidence'])
     except (CassetteLeak, OSError) as ex:
         errors.append(('preflight', type(ex).__name__))
+    if st['evidence'].hit:                            # Codex P1: a Ctrl+C absorbed while the preflight cassette was
+        return SuiteResult(pre, [], EXIT_DEADLINE, interrupted=True), pre_path, errors   # written: no scenario
     if not pre.ok:
         return SuiteResult(pre, [], EXIT_PREFLIGHT), pre_path, errors
     results = st['results']
@@ -115,7 +117,7 @@ def _recorded_suite(st, specs, make_target, *, run_nonce, cassette_dir, redact, 
                     booted = False
                     break
                 r = run_scenario(spec, t, run_nonce=nonce, monotonic=monotonic, baseline=pre.baseline,
-                                 adopted=adopted_orders(pre))
+                                 adopted=adopted_orders(pre), interrupt_pending=lambda: st['evidence'].hit)
                 r.attempts = attempt
                 meta = replay_meta(spec, r, run_nonce=nonce, account_id=t.config.account_id,
                                    symbols=t.config.symbols, settle_ms=t.settle_ms, baseline=pre.baseline)
@@ -124,6 +126,8 @@ def _recorded_suite(st, specs, make_target, *, run_nonce, cassette_dir, redact, 
                     r.cassette = save_bundle(t.recorder, base, meta, redact, st['evidence'])
                 except Exception as ex:                              # noqa: BLE001 - leak / disk: exit 5, no file
                     errors.append((spec['id'], type(ex).__name__))
+                if st['evidence'].hit:                    # Codex P1: Ctrl+C during this scenario's evidence
+                    r.interrupted = True                  # commit: keep its result, stop before any later send
                 if r.verdict != INCONCLUSIVE or r.residue or r.interrupted:
                     break
             if not booted:

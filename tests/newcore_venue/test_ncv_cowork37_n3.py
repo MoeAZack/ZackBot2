@@ -2,6 +2,8 @@
 --cleanup is the entry point that removes the stranded NEWCORE state. Fake HTTP, DUMMY keys."""
 from decimal import Decimal as D
 
+import pytest
+
 from fake_binance import FakeBinance
 from test_ncv_tnet_harness import env, run  # noqa: F401  (env is a fixture)
 
@@ -100,3 +102,27 @@ def test_cleanup_report_failure_is_exit_5(env, monkeypatch):  # noqa: F811
     monkeypatch.setattr(mod, 'tnet_report', leak)
     rc, out = run(env, ['--cleanup', '--close-positions'], http=stranded(), mod=mod)
     assert rc == 5 and 'report not written' in out
+
+
+class StopAtFirstRead(FakeBinance):
+    def __init__(self, exc, **kw):
+        super().__init__(**kw)
+        self.exc = exc
+
+    def __call__(self, request):
+        if request.signed and not any(q.signed for q in self.requests):
+            self.requests.append(request)
+            raise self.exc()
+        return super().__call__(request)
+
+
+@pytest.mark.parametrize('exc', [KeyboardInterrupt, SystemExit])
+def test_ctrl_c_while_cleanup_is_listing_sends_nothing_and_exits_6(env, exc):  # noqa: F811
+    """Cowork LOW (6064553738): the guide's exit-6 row must be truthful - a Ctrl+C while --cleanup still lists the
+    account sends nothing and cleans nothing; the output says to run --cleanup again."""
+    fb = StopAtFirstRead(exc)
+    fb._rest_classic(STOP, 'SOLUSDT', 'SELL', 'LONG', D('1'), D('150'))
+    rc, out = run(env, ['--cleanup', '--close-positions'], http=fb)
+    assert rc == 6 and '--cleanup' in out.split('INTERRUPTED', 1)[1]
+    assert not [q for q in fb.requests if q.method in ('POST', 'DELETE')]
+    assert fb.orders[STOP]['status'] == 'NEW'

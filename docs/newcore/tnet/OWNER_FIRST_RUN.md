@@ -79,6 +79,8 @@ Expected: `preflight OK`, then `P1: conclusive` (and `P2: conclusive`), `CLEANUP
 
 - **Before any order was sent** (start-up checks): it simply stops with exit 6. There may be no report, because nothing happened.
 - **After an order was sent:** the cleanup still runs (a second Ctrl+C cannot stop it). The report is written in full, and the exit code is 6, or 8 if something may be left.
+- **While a report or cassette file is being saved:** the file is finished first, then the run stops. No further scenario starts and no further order is sent. Exit 6 (or 8).
+- **During `--cleanup`** (step 6): if you press Ctrl+C while it is still listing the account, nothing has been sent and nothing was cleaned. Run `--cleanup` again.
 
 **5a. Core scenarios (about 35-45 minutes). This, with the probes, is the whole first run.**
 
@@ -121,7 +123,7 @@ This cancels NEWCORE orders only and lists any positions it finds. It never touc
 | 3 | No usable key, or the key does not match the binding | Step 1 |
 | 4 | Preflight refused (not flat / not hedge mode / foreign orders / low balance) or a read failed; nothing was sent | Fix it in the testnet UI, or send the output |
 | 5 | The report or cassette could not be written | Send the output |
-| 6 | Stopped by time limit or Ctrl+C; if orders had been sent, the cleanup ran and the report was written | Send the output and report paths |
+| 6 | Stopped by time limit or Ctrl+C. If orders had been sent, the cleanup ran and the report was written. If it was stopped before anything was sent (start-up checks, or `--cleanup` while it was still listing the account), nothing was sent and nothing was cleaned | Send the output and report paths (if any). After a stopped `--cleanup`, run it again |
 | 7 | A scenario FAILED; the cleanup ran | Send the report paths |
 | 8 | **Something MAY be left on the testnet account** | See below |
 

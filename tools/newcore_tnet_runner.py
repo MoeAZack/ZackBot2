@@ -23,6 +23,14 @@ ignored (an interrupt raised inside it re-runs it once); while evidence files ar
 interrupt raised inside a write gets one retry from the in-memory result, so the files are complete and no *.tmp is
 left; the suite keeps every result so far and the report is written; exit 6 unless residue (8) wins. Before any
 scenario started (argument checks, boot, preflight) a Ctrl+C stops with exit 6; a report, if written, lists no scenario.
+An interrupt absorbed while a cassette / sidecar was committed (Codex P1, test_tnet_interrupt_stops_sends.py) stops
+the suite BEFORE any later send: in the preflight cassette no scenario runs (exit 6, nothing sent); in a scenario's
+cassette / sidecar that scenario's result is kept and no later scenario runs. BoundedPort also refuses any opening
+send once an interrupt is pending (closes, stops and cancels still go). SystemExit is handled like Ctrl+C.
+
+Exit-code precedence (the same in the venue CLI tools/newcore_tnet.py): 8 residue > 5 evidence not written >
+7 a genuine FAIL > 4 / 3 / 2 refused (nothing sent) > 6 interrupted or deadline > 1 inconclusive > 0. So an
+absorbed interrupt replaces only 0 and 1; a scenario stopped by Ctrl+C or its deadline counts as 6, not as 7.
 """
 import argparse
 import json
@@ -223,7 +231,7 @@ def main(argv=None, *, out=None, **kw):
             out.write('INTERRUPTED (Ctrl+C) while the report was written; it is complete.\n')
             return 6
         return rc
-    except KeyboardInterrupt:                                        # N2: preflight / boot / report phase
+    except (KeyboardInterrupt, SystemExit):                          # N2: preflight / boot / report phase
         out.write('INTERRUPTED (Ctrl+C). A scenario that had sent orders ran its teardown.\n')
         return 6
     except Exception as ex:                                          # noqa: BLE001
@@ -385,7 +393,7 @@ def _main(argv=None, *, http=None, local_clock=None, sleep=None, store=None, out
         rc_report = EXIT_PASS
         if args.target == 'testnet' or args.report_dir:
             rc_report = _report(args, res, 'tnet_' + nonce, build, values, out, cassettes)
-        if getattr(res, 'interrupted', False) and res.exit_code != EXIT_RESIDUE:
+        if getattr(res, 'interrupted', False) and res.exit_code not in (EXIT_RESIDUE, 7):   # 8 / 5 / 7 win
             out.write('INTERRUPTED (Ctrl+C): the report above has every scenario so far; a scenario that had sent '
                       'orders ran its teardown.\n')
             return rc_report or 6

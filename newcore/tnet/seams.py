@@ -34,7 +34,9 @@ class DeadlineExceeded(Exception):
 
 
 class BoundedPort:
-    def __init__(self, inner, *, max_orders, max_notional, price_of, ledger=None, expired=None):
+    def __init__(self, inner, *, max_orders, max_notional, price_of, ledger=None, expired=None,
+                 interrupt_pending=None):
+        self.interrupt_pending = interrupt_pending     # () -> bool: a Ctrl+C was absorbed (evidence commit)
         self.inner, self.max_orders, self.max_notional = inner, max_orders, Decimal(max_notional)
         self.price_of = price_of                       # symbol -> Decimal | None (the last closed candle's close)
         self.ledger = ledger if ledger is not None else []
@@ -45,6 +47,8 @@ class BoundedPort:
         return getattr(self.inner, name)
 
     def _admit(self, kind, order, opening):
+        if opening and self.interrupt_pending is not None and self.interrupt_pending():
+            raise KeyboardInterrupt                   # Codex P1: never an opening send after a pending Ctrl+C
         late = self.expired is not None and self.expired()
         if late and opening:                           # second deadline layer, checked before EVERY send
             raise DeadlineExceeded(f'{kind} {order.ref.client_id}: the scenario deadline has passed')

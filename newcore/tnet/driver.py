@@ -111,7 +111,8 @@ class ScenarioResult:
 class _Run:
     """The state of one scenario run (one Runner at a time; a restart swaps it)."""
 
-    def __init__(self, spec, target, nonce, monotonic, baseline=None, adopted=()):
+    def __init__(self, spec, target, nonce, monotonic, baseline=None, adopted=(), interrupt_pending=None):
+        self.interrupt_pending = interrupt_pending
         self.baseline, self.adopted = dict(baseline or {}), tuple(adopted)
         self.spec, self.target, self.nonce = spec, target, nonce
         self.sym, self.side = spec['symbol'], spec['side']
@@ -143,7 +144,8 @@ class _Run:
             if (self.baseline or self.adopted) else t.raw
         self.port = BoundedPort(t_port, max_orders=self.bound['max_orders'],
                                 max_notional=Decimal(self.bound['max_notional_usdt']),
-                                price_of=self.signals.last_close.get, ledger=self.ledger, expired=self.expired)
+                                price_of=self.signals.last_close.get, ledger=self.ledger, expired=self.expired,
+                                interrupt_pending=self.interrupt_pending)
         sz = self.spec['sizing']
         self.config = RunnerConfig(account=self.account, portfolio_id=self.portfolio_id, symbols=(self.sym,),
                                    tf_ms=TF_MS, timeframe='1m', rules=dict(t.rules),
@@ -336,14 +338,15 @@ def _evaluate(run, exp, truth):
     return out
 
 
-def run_scenario(spec, target, *, run_nonce, monotonic=time.monotonic, baseline=None, adopted=()):
+def run_scenario(spec, target, *, run_nonce, monotonic=time.monotonic, baseline=None, adopted=(),
+                 interrupt_pending=None):
     spec = validate_rspec(spec)
     res = ScenarioResult(spec['id'], spec['name'], target.kind, SKIPPED)
     if target.kind not in spec['targets']:
         res.error = f'not a {target.kind} scenario'
         return res
     nonce = scenario_nonce(run_nonce, spec['id'])
-    run = _Run(spec, target, nonce, monotonic, baseline, adopted)
+    run = _Run(spec, target, nonce, monotonic, baseline, adopted, interrupt_pending)
     state = {}
 
     def body():
@@ -368,14 +371,14 @@ def run_scenario(spec, target, *, run_nonce, monotonic=time.monotonic, baseline=
 
     try:
         _, cleanup = guarded(body, clean)
-    except KeyboardInterrupt:                      # raised INSIDE the teardown (an I/O call): it did not finish
+    except (KeyboardInterrupt, SystemExit):        # raised INSIDE the teardown (an I/O call): it did not finish
         state['interrupted'] = True                # run it ONCE more (SIGINT ignored meanwhile); still not clean -> 8
         try:
             _, cleanup = guarded(lambda: None, clean)
-        except KeyboardInterrupt:
+        except (KeyboardInterrupt, SystemExit):
             from newcore.venue.tnet import CleanupResult
             cleanup = CleanupResult(clean=False, attempts=0, notes=['the teardown was interrupted twice'])
-        state.setdefault('error', 'Interrupted (KeyboardInterrupt) during the teardown; it was run again')
+        state.setdefault('error', 'Interrupted during the teardown; it was run again')
     res.wall_s = monotonic() - run.t0
     res.ledger = list(run.ledger)
     res.cycle_times = list(run.cycle_times)
@@ -466,19 +469,24 @@ class SuiteResult:
     interrupted: bool = False                              # Ctrl+C outside a scenario body (preflight / boot)
 
 
+def _stopped(r):
+    return r.interrupted or bool(r.error and r.error.startswith('DeadlineExceeded'))
+
+
 def suite_exit_code(results, preflight_ok=True):
+    """Precedence (as the venue CLI): 8 residue > 7 a genuine FAIL > 4 preflight > 6 interrupted / deadline >
+    2 nothing ran > 1 inconclusive > 0. A scenario stopped by Ctrl+C or its deadline is FAIL-by-stop, not a genuine
+    FAIL; the CLI adds 5 (evidence not written) between 8 and 7."""
     if not preflight_ok:
         return EXIT_PREFLIGHT
     if any(r.residue for r in results):
         return EXIT_RESIDUE
-    if any(r.interrupted for r in results):
-        return EXIT_DEADLINE                                         # as the venue CLI's Ctrl+C
+    if any(r.verdict == FAIL and not _stopped(r) for r in results):
+        return EXIT_FAIL
+    if any(_stopped(r) for r in results):
+        return EXIT_DEADLINE                                         # Ctrl+C or a deadline
     if not results or all(r.verdict == SKIPPED for r in results):
         return EXIT_NOTHING_RAN                                      # N5: SKIPPED is never a pass
-    if any(r.error and r.error.startswith('DeadlineExceeded') for r in results):
-        return EXIT_DEADLINE
-    if any(r.verdict == FAIL for r in results):
-        return EXIT_FAIL
     if any(r.verdict == INCONCLUSIVE for r in results):
         return EXIT_INCONCLUSIVE
     return EXIT_PASS
@@ -493,7 +501,7 @@ def run_suite(specs, target, *, run_nonce, monotonic=time.monotonic, min_balance
     results, pre = [], None
     try:
         pre = target.preflight(symbols, adopt_foreign=adopt_foreign, **kw)
-    except KeyboardInterrupt:
+    except (KeyboardInterrupt, SystemExit):
         return SuiteResult(None, [], EXIT_DEADLINE, interrupted=True)
     if not pre.ok:
         return SuiteResult(pre, [], EXIT_PREFLIGHT)

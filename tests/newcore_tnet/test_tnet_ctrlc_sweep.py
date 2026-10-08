@@ -25,14 +25,14 @@ MOD = cli()
 
 
 class CtrlCAt(FakeBinance):
-    def __init__(self, k, **kw):
+    def __init__(self, k, exc=KeyboardInterrupt, **kw):
         super().__init__(**kw)
-        self.k = k
+        self.k, self.exc = k, exc
 
     def __call__(self, request):
         if len(self.requests) == self.k:
             self.requests.append(request)
-            raise KeyboardInterrupt
+            raise self.exc()
         return super().__call__(request)
 
 
@@ -55,10 +55,11 @@ def _requests():
 N = _requests()
 
 
+@pytest.mark.parametrize('exc', [KeyboardInterrupt, SystemExit])
 @pytest.mark.parametrize('k', range(N))
-def test_ctrl_c_at_every_request_is_exit_6_with_a_report_and_a_flat_account(tmp_path, k):
+def test_ctrl_c_at_every_request_is_exit_6_with_a_report_and_a_flat_account(tmp_path, k, exc):
     w = World()
-    w.fb = CtrlCAt(k)
+    w.fb = CtrlCAt(k, exc)
     w.fb.now = w.t
     rc, out = run(w.fb, w, tmp_path, f'sw{k}')
     assert rc == 6, out
