@@ -18,6 +18,9 @@ def _state(tmp_path, cfg):
 
 
 def test_a_damaged_journal_boots_a_guard_that_covers_proven_exposure_and_trades_nothing(tmp_path):
+    """Codex #13 P1-1 (supersedes the ruling-13 top-up): the +3 has no trade of ours behind it, so the guard proves only
+    our lot (its entry fill, no exit since) - already covered by its resting stop - and adds NOTHING for the +3; the
+    position-level top-up of a side that merely has a stop of ours resting is gone in the guard."""
     cfg = cfg_file(tmp_path)
     assert run(['run', '--config', cfg, '--cycles', '27', '--enable-candidate'])[0] == 0      # a BTC LONG lot is open
     d, acct = _state(tmp_path, cfg)
@@ -39,7 +42,9 @@ def test_a_damaged_journal_boots_a_guard_that_covers_proven_exposure_and_trades_
     assert {p.name: p.read_bytes() for p in (d / 'journal').iterdir()} == before          # never written
     st2 = json.loads((d / A.STATE_FILE).read_text())
     em = [o for o in st2['orders'] if ids.is_emergency_client_id(o['client_id']) and o['status'] == 'NEW']
-    assert [(D(o['qty']), D(o['stop'])) for o in em] == [(D('3'), D(stops[0]['stop']))]   # the gap, at our level
+    assert em == []                                                     # the unproven +3 is never touched
+    assert [o for o in st2['orders'] if o['type'] == 'STOP_MARKET' and o['status'] == 'NEW'] == stops   # ours kept
+    assert 'surviving net' in out
     assert not [o for o in st2['orders'] if o['type'] == 'MARKET' and o not in st['orders']]   # nothing traded
     assert len(st2['fills']) == len(st['fills'])
 
@@ -79,7 +84,7 @@ def test_the_guard_protects_a_venue_confirmed_own_entry_whose_stop_is_gone_once(
     fill = next(D(o['avg']) for o in json.loads((d / A.STATE_FILE).read_text())['orders'] if o['type'] == 'MARKET')
     for k in range(2):                                                  # repeated guard runs: idempotent
         code, out = run(['run', '--config', cfg, '--cycles', '5', '--enable-candidate'])
-        assert code == A.EXIT_STORE_HOLD and ('proven ours' in out) == (k == 0)   # then our emergency stop proves it
+        assert code == A.EXIT_STORE_HOLD and 'proven ours' in out          # the venue's trades prove it each run
         first = out if k == 0 else first
         em, st = _emergency(d)
         pos = sum((D(p[2]) for p in st['positions'] if p[1] == 'LONG'), D(0))

@@ -4,6 +4,10 @@
 
 **What this is:** these steps check the new bot against the Binance Futures **testnet** only.
 
+**The first run is exactly: steps 1-4 (key check, dry runs, read-only smoke, probes P1 and P2) and step 5a.**
+Position management stays **OFF**, REC-02 is **not used**, T04-algo is optional and run separately, and the
+management brackets (5b) are **deferred** to a later run.
+
 - **Testnet only.** Every command talks only to `testnet.binancefuture.com`. That address is hard-coded in the code and cannot be changed by any option.
 - **Mainnet is impossible.** These tools cannot reach mainnet. Mainnet keys are refused when you store them.
 - **Disposable funds.** Testnet money is not real. Your MT5 account, Bybit and the old ZackBot are never touched.
@@ -17,7 +21,7 @@ Your account and config (both already set up and not secret):
 
 Before you start, check that the testnet account is in **Hedge mode** and holds **at least 100 USDT** of testnet funds.
 
-The testnet API key you store should have **read** and **futures trading** permission only. Do **not** enable withdrawals or any other permission: the tools never need them.
+The testnet API key you store should have **read** and **futures trading** permission only. **Withdrawals must stay disabled**, and so must every other permission (transfers, margin, options): the tools never need them. If the testnet site offers an IP restriction, you may set it to your PC's address. Never use a mainnet key (it is refused anyway).
 
 ---
 
@@ -93,6 +97,9 @@ python tools\newcore_tnet_runner.py --target testnet --only T01-long --only T02-
 
 Expected: one `PASS` line per scenario, a `report:` line, and exit 0.
 
+**Always copy the command exactly, with every `--only`.** Running `--target testnet` without `--only` would also run
+T04-algo and the management brackets (5b), which are NOT part of the first run.
+
 **Optional, separate, only when Claude Code says so: T04-algo stop-exit bracket (30 minutes up to about 1.5 hours).**
 
 This one is transport-only: no management. It waits for the market to hit a tight stop and tries up to 3 times. `INCONCLUSIVE` only means the market did not move far enough.
@@ -111,6 +118,22 @@ python tools\newcore_tnet.py --cleanup
 
 This cancels NEWCORE orders only and lists any positions it finds. It never touches orders you placed yourself.
 
+If it lists NEWCORE positions that are still open, close them with:
+
+```powershell
+python tools\newcore_tnet.py --cleanup --close-positions
+```
+
+This closes every position on BTCUSDT and ETHUSDT. If you hold a position of your OWN there that must stay, name it
+with its exact quantity (`SYMBOL:SIDE:QTY`); only the rest is closed:
+
+```powershell
+python tools\newcore_tnet.py --cleanup --close-positions --adopt-foreign BTCUSDT:LONG:0.002
+```
+
+Without the `:QTY` part, `--close-positions` refuses to run when a position is adopted, and a QTY larger than the
+open position is refused too. Nothing is sent in either case.
+
 ---
 
 ## Exit codes (smoke, newcore_tnet, newcore_tnet_runner)
@@ -121,10 +144,10 @@ This cancels NEWCORE orders only and lists any positions it finds. It never touc
 | 1 | Inconclusive or warnings; safe | Send the report paths |
 | 2 | Wrong command or option; nothing was sent | Check the command, or send the output |
 | 3 | No usable key, or the key does not match the binding | Step 1 |
-| 4 | Preflight refused (not flat / not hedge mode / foreign orders / low balance) or a read failed; nothing was sent | Fix it in the testnet UI, or send the output |
+| 4 | Preflight refused (not flat / not hedge mode / foreign orders / low balance) or a read failed; nothing was sent (also when Ctrl+C was pressed at the same time) | Fix it in the testnet UI, or send the output |
 | 5 | The report or cassette could not be written | Send the output |
 | 6 | Stopped by time limit or Ctrl+C. If orders had been sent, the cleanup ran and the report was written. If it was stopped before anything was sent (start-up checks, or `--cleanup` while it was still listing the account), nothing was sent and nothing was cleaned | Send the output and report paths (if any). After a stopped `--cleanup`, run it again |
-| 7 | A scenario FAILED; the cleanup ran | Send the report paths |
+| 7 | A scenario FAILED; the cleanup ran (also when Ctrl+C was pressed after that scenario had finished: the failure is what counts) | Send the report paths |
 | 8 | **Something MAY be left on the testnet account** | See below |
 
 **On exit 8:**

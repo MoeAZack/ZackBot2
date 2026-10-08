@@ -1,6 +1,6 @@
 """nc-s1-slice facd4b6 (F3 degraded fallback, guard known-exposure): the Runner reads a current mark through
 `mark_price(symbol)` (value[0] = the Decimal mark). On the testnet target the harness provides it from
-TestnetAccountReader (MarkedReads); any degraded protection the Runner used is surfaced per scenario."""
+TestnetAccountReader (the production AccountReadsShim.mark_price, S1 c3a809d); any degraded protection the Runner used is surfaced per scenario."""
 import json
 from decimal import Decimal as D
 
@@ -28,6 +28,21 @@ def test_the_testnet_target_gives_the_runner_a_decimal_mark():
     r = t.reads.mark_price('SOLUSDT')
     assert r.kind is P.ReadKind.OK and r.value == (D('221.5'),)
     assert t.reads.equity().kind is P.ReadKind.OK                       # the shim's reads still pass through
+    from newcore.runner.testnet_hook import AccountReadsShim
+    assert type(t.reads) is AccountReadsShim                            # ONE mark path: the production shim
+
+
+def test_a_stale_mark_is_unknown_on_the_testnet_target():
+    class OldMark(WithMark):
+        def _get_fapi_v1_premiumIndex(self, q):
+            return ok({'symbol': q['symbol'], 'markPrice': '221.5', 'indexPrice': '221.4', 'estimatedSettlePrice': '0',
+                       'lastFundingRate': '0', 'interestRate': '0', 'nextFundingTime': self.now + 1,
+                       'time': self.now - 120_000})                   # the quote is two minutes old (server time)
+    w = World()
+    w.fb = OldMark()
+    w.fb.now = w.t
+    r = w.target().reads.mark_price('SOLUSDT')
+    assert r.kind is P.ReadKind.UNKNOWN and r.detail == 'stale_mark', r   # never a stale level for the fallback
 
 
 def test_an_unreadable_mark_stays_typed():

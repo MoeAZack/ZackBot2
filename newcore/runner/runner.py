@@ -93,8 +93,10 @@ ALGO_FALLBACK_CODES = (-4120, -1116, -1102, -4136)   # newcore.venue.errors (tra
 SECURE_ROUNDS = 2                     # per lot per cycle: stop attempt, then (if refused) one reduce-only close
 EMERGENCY_GENERATIONS = 16            # hard HOLD: cover generations per (symbol, side, gap size)
 ESCALATE_AFTER = 2                    # cycles with an unconfirmed stop before the reduce-only close (Cowork NEW-4)
-LOST_ENTRY_LOOKBACK = 3               # candles back a lost entry's signal is looked for (Cowork 289)
+LOST_ENTRY_LOOKBACK = 3               # (superseded by GUARD_ENTRY_LOOKBACK for the search: Cowork NEW A)
 GUARD_ENTRY_LOOKBACK = 60             # the guard (no journal): candles back an own entry is proven by its client id
+GUARD_CHILDREN = 32                   # the guard: lineage ordinals per purpose probed for our own exits / adds
+GUARD_CHILD_MISSES = 4                # ... until this many consecutive unknown ordinals (unsent ones leave gaps)
 REDUCE_REFUSALS = 2                   # refused reduce-only sends of a lot before the venue position is read (MED-3)
 EXTERNAL_CLOSE_CODES = (-2022, -4061)  # reduce only rejected / position side does not match: nothing to reduce
 E_WOULD_TRIGGER = -2021               # Binance "Order would immediately trigger"
@@ -201,6 +203,14 @@ class Counters:
     cap_exceeded: int = 0
     drains: int = 0
     emergency_stops: int = 0
+
+
+class _Side:
+    """(symbol, side) with the attribute names the provenance helpers read."""
+    __slots__ = ('symbol', 'side')
+
+    def __init__(self, symbol, side):
+        self.symbol, self.side = symbol, side
 
 
 class Runner:
@@ -427,30 +437,40 @@ class Runner:
         if pos.kind is not ReadKind.OK or oo.kind is not ReadKind.OK:
             self._incident('hard HOLD: positions / open orders unreadable; the emergency set retries next cycle')
             return
-        sides = {(x.symbol, x.side) for x in self.fold.open_lots()}
-        sides |= {(iv.intent.symbol, str(iv.intent.side)) for iv in self.fold.intents.values()
-                  if iv.purpose in OPENING_PURPOSES}
-        sides |= {(o.ref.symbol, o.position_side) for o in oo.value if self._owned_order(o.ref.client_id)}
+        journaled = {(x.symbol, x.side) for x in self.fold.open_lots()}
+        journaled |= {(iv.intent.symbol, str(iv.intent.side)) for iv in self.fold.intents.values()
+                      if iv.purpose in OPENING_PURPOSES}
+        stopped = {(o.ref.symbol, o.position_side) for o in oo.value if self._owned_order(o.ref.client_id)}
+        sides = journaled | stopped
         for p in pos.value:
             proven = None
-            if p.qty > 0 and (p.symbol, p.side) not in sides and self.guard:
-                proven = self._guard_proven_entry(p)                      # an own entry the venue confirms by id
+            if p.qty > 0 and (p.symbol, p.side) not in journaled and self.guard:
+                # Codex P1-1: with no trusted journal neither an old entry id NOR a resting own stop proves today's
+                # position ours; only the surviving net of our own orders (venue trades) does, and at most that
+                proven = self._guard_proven(p)
+                if proven is None or proven[0] == 'ambiguous':
+                    why = proven[1] if proven else 'no own entry of this side in the lookback'
+                    if proven is not None or (p.symbol, p.side) in stopped:
+                        self._incident(f'guard: {p.symbol} {p.side} {p.qty}: provenance not proven ({why}): '
+                                       'nothing added (resting protection kept), HOLD - owner resolves (ambiguous)')
+                    continue
             if p.qty <= 0 or ((p.symbol, p.side) not in sides and proven is None):
                 continue                                                  # flat, or foreign (A22: an item, untouched)
             covered = sum((o.qty for o in oo.value if o.reduce and o.order_type == 'STOP_MARKET'
                            and (o.ref.symbol, o.position_side) == (p.symbol, p.side)
                            and self._owned_order(o.ref.client_id)), ZERO)
-            if covered >= p.qty:
+            exposed = p.qty if proven is None else min(proven[0], p.qty)  # at most the proven residual
+            if covered >= exposed:
                 continue                                                  # M45: covered: no change
-            if proven == 'close':                                         # proven ours, no safe level: escalate
-                self._emergency_close(p, p.qty - covered)
+            if proven is not None and proven[1] is None:                  # proven ours, no safe level: escalate
+                self._emergency_close(p, exposed - covered)
                 continue
-            self._emergency_stop(p, p.qty - covered, price=proven)
-        if self.guard:
-            return                                                        # the guard never cancels anything
+            self._emergency_stop(p, exposed - covered, price=None if proven is None else proven[1])
         flat = {(p.symbol, p.side) for p in pos.value if p.qty == 0}
-        for o in oo.value:                                                # Cowork NEW-3: an emergency stop of a side
-            if ids.is_emergency_client_id(o.ref.client_id) and (o.ref.symbol, o.position_side) in flat:   # now flat
+        for o in oo.value:                    # Cowork NEW-3 / G3: OUR stop of a side the venue shows flat (the guard: any
+            ours = (self._owned_order(o.ref.client_id) and o.reduce and o.order_type == 'STOP_MARKET') if self.guard \
+                else ids.is_emergency_client_id(o.ref.client_id)          # zbn1 stop; else our emergency stops) is
+            if ours and (o.ref.symbol, o.position_side) in flat:          # cleanup - never exposed, never foreign
                 out = self.venue.cancel(o.ref)                            # is exchange cleanup, never protection
                 self._incident(f'hard HOLD: {o.ref.client_id} {o.ref.symbol} {o.position_side} flat: cancelled '
                                f'-> {out.kind}')
@@ -469,14 +489,112 @@ class Runner:
         self._incident(f'hard HOLD drain {it.intent_id} ({it.client_order_id}): cancel -> {out.kind}'
                        f'{"" if out.executed_qty is None else f", executed {out.executed_qty}"}')
 
+    def _guard_proven(self, p):
+        """Codex P1-1: the surviving net of OUR orders on (symbol, side), from venue facts only. The latest own entry
+        the venue confirms by its deterministic client id anchors it; every venue trade of that side since the entry
+        fill must belong to an order of ours - the entry, the lot's lineage children (protect / close / reduce / add,
+        both routes) or a strategy close re-derived by its key - and the net (opening minus closing) is the proven
+        residual. Returns None (no own entry: not ours), ('ambiguous', why) (a trade we cannot attribute, no trades
+        read, nothing left of ours) or (residual qty, emergency level | None)."""
+        found = self._guard_proven_entry(p)
+        if found is None:
+            return None
+        iid, out, key = found
+        net, why = self._surviving_net(p.symbol, p.side, iid, out, key)
+        if why is not None:
+            return ('ambiguous', why)
+        level = self._feasible_level(p, anchor=out.avg_price)
+        self._degrade(p, 'guard_fallback_stop' if level is not None else 'emergency_close')
+        self._incident(f'guard: {p.symbol} {p.side} proven ours by {out.ref.client_id}: surviving net {net} of '
+                       f'{p.qty}; DEGRADED protection: emergency fallback level {level}')
+        return (min(net, p.qty), level)
+
+    def _surviving_net(self, symbol, side, iid, out, key):
+        """Codex P1-1 / Cowork NEW A: how much of our entry `iid` (venue outcome `out`, decision key `key`) the venue's
+        own trades prove still held -> (net, None), or (None, why) when it cannot be correlated: no trades read, the
+        entry fills unreadable, a trade of that side since the entry fill that is not ours, or nothing left (net <= 0).
+        Ours = the entry, the lot's lineage children (PROTECT / CLOSE / REDUCE / ADD, classic + algo, by deterministic
+        id), the keyed strategy closes since the entry, and our zbn1e- emergency orders."""
+        p = _Side(symbol, side)
+        read = getattr(self.venue, 'trades', None)
+        if read is None:
+            return None, 'the venue has no trades read'
+        fr = self.venue.fills(symbol, out.exchange_order_id)
+        if fr.kind is not ReadKind.OK or not fr.value:
+            return None, 'the entry fills are unreadable'
+        since = min(f.at_ms for f in fr.value)
+        tr = read(symbol, side, since)
+        if tr.kind is not ReadKind.OK:
+            return None, 'trades unreadable'
+        own = {out.exchange_order_id: 1}
+        lot = ids.derive_lot_id(self.acct, iid)
+        for purpose in (Purpose.PROTECT, Purpose.CLOSE, Purpose.REDUCE, Purpose.ADD):
+            misses = 0
+            for n in range(GUARD_CHILDREN):
+                child = ids.derive_child_intent_id(self.acct, lot, purpose, n)
+                hit = False
+                for route in ('classic', 'algo'):
+                    q = self.venue.query(OrderRef(symbol=p.symbol, client_id=ids.client_id_for(child, route),
+                                                  route=route))
+                    if q.kind in (OutcomeKind.KNOWN, OutcomeKind.FINAL) and q.exchange_order_id:
+                        own[q.exchange_order_id] = 1 if purpose is Purpose.ADD else -1
+                        hit = True
+                misses = 0 if hit else misses + 1
+                if misses >= GUARD_CHILD_MISSES:                          # past the lineage (gaps: unsent ordinals)
+                    break
+        for c in range(key.candle_close_ms + self.cfg.tf_ms, self.now + 1, self.cfg.tf_ms):
+            r = self.bars.closed_bars(p.symbol, self.cfg.tf_ms, as_of_ms=c, limit=self.signals.window)
+            if r.kind is not ReadKind.OK or not r.value or r.value[-1].close_ms != c:
+                continue
+            for s in self.signals.decide(p.symbol, r.value, c):
+                if s.action == CLOSE and s.side == p.side:
+                    ck = ids.derive_intent_id(self.acct, self._key(p.symbol, s, Purpose.CLOSE))
+                    q = self.venue.query(OrderRef(symbol=p.symbol, client_id=ids.client_id_for(ck, 'classic')))
+                    if q.kind in (OutcomeKind.KNOWN, OutcomeKind.FINAL) and q.exchange_order_id:
+                        own[q.exchange_order_id] = -1
+        net = ZERO
+        for t in tr.value:
+            sign = own.get(t.exchange_order_id)
+            if sign is None and self._emergency_order_of(p, t):
+                sign = -1                                                 # our A23 emergency stop / close filled
+            if sign is None:
+                return None, f'trade {t.trade_id} of order {t.exchange_order_id} is not attributable to us'
+            net = net + t.qty if sign > 0 else net - t.qty
+        if net <= 0:
+            return None, f'our entry {out.ref.client_id} is fully exited (net {net}): the position is not ours'
+        return net, None
+
+    def _emergency_order_of(self, p, t):
+        """True when trade t filled one of our emergency orders (zbn1e-: a pure function of symbol, side, qty and a
+        generation / 'close'): re-derived for the trade's quantity and confirmed by the venue's own order id."""
+        def ours(cid, routes):
+            known = False
+            for route in routes:
+                q = self.venue.query(OrderRef(symbol=p.symbol, client_id=cid, route=route))
+                if q.kind in (OutcomeKind.KNOWN, OutcomeKind.FINAL):
+                    if q.exchange_order_id == t.exchange_order_id:
+                        return True, True
+                    known = True
+            return False, known
+        hit, _ = ours(ids.emergency_stop_client_id(self.acct, p.symbol, p.side, t.qty, 'close'), ('classic',))
+        if hit:
+            return True
+        for gen in range(EMERGENCY_GENERATIONS):                          # generations are used in order
+            hit, known = ours(ids.emergency_stop_client_id(self.acct, p.symbol, p.side, t.qty, gen),
+                              ('classic', 'algo'))
+            if hit:
+                return True
+            if not known:
+                break
+        return False
+
     def _guard_proven_entry(self, p):
-        """The guard (no trusted journal, Codex tail-loss contract: protect KNOWN exposure): a position is known to be
-        ours when the venue confirms one of our deterministic ENTRY client ids - the strategy's own ENTER signals of
-        the last GUARD_ENTRY_LOOKBACK candles give them (the signals only PROVE the id; no strategy stop is
-        recomputed: the journal that held the original stop distance is not trustworthy). Returns the protective level
-        - Codex ruling: the bounded emergency fallback distance from the confirmed entry fill, on the protective side
-        of the current mark (_feasible_level; DEGRADED protection) - or None (nothing proves it ours / no safe level:
-        the caller then escalates to a reduce-only close for a proven position)."""
+        """The guard (no trusted journal, Codex tail-loss contract): the LATEST own ENTRY of this side the venue
+        confirms FINAL + executed by its deterministic client id - the strategy's own ENTER signals of the last
+        GUARD_ENTRY_LOOKBACK candles give the ids (the signals only PROVE the id; no strategy stop is recomputed: the
+        journal that held the original stop distance is not trustworthy). Returns (intent id, its query outcome, its
+        decision key) or None. It proves only that the entry happened; _guard_proven establishes how much of it
+        SURVIVES (Codex P1-1)."""
         if p.symbol not in self.cfg.rules or p.side not in self.cfg.sides or self.now is None:
             return None
         for k in range(GUARD_ENTRY_LOOKBACK + 1):
@@ -490,11 +608,7 @@ class Runner:
                 iid = ids.derive_intent_id(self.acct, self._key(p.symbol, s, Purpose.ENTRY))
                 out = self.venue.query(OrderRef(symbol=p.symbol, client_id=ids.client_id_for(iid, 'classic')))
                 if out.kind is OutcomeKind.FINAL and out.executed_qty and out.avg_price:
-                    level = self._feasible_level(p, anchor=out.avg_price)
-                    self._degrade(p, 'guard_fallback_stop')
-                    self._incident(f'guard: {p.symbol} {p.side} proven ours by {out.ref.client_id} (entry '
-                                   f'{out.avg_price}); DEGRADED protection: emergency fallback level {level}')
-                    return level if level is not None else 'close'
+                    return iid, out, self._key(p.symbol, s, Purpose.ENTRY)       # the LATEST own entry
         return None
 
     def _emergency_stop(self, p, gap, price=None):
@@ -534,11 +648,19 @@ class Runner:
                                f'(F3, {EMERGENCY_FALLBACK_BUFFER} beyond the current mark)')
                 price = level
                 out = self.venue.submit_stop(StopOrder(ref=ref, position_side=p.side, qty=qty, stop_price=price))
-            if out.kind is not OutcomeKind.KNOWN:                          # no safe stop confirmed: escalate
-                self._emergency_close(p, qty)
-                return
-        self.counters.emergency_stops += out.kind is OutcomeKind.KNOWN
-        self._incident(f'hard HOLD emergency stop {cid} {p.symbol} {p.side} {qty} @ {price} -> {out.kind}')
+        if out.kind is OutcomeKind.KNOWN:
+            self.counters.emergency_stops += 1
+            self._incident(f'hard HOLD emergency stop {cid} {p.symbol} {p.side} {qty} @ {price} -> {out.kind}')
+            return
+        if out.kind in (OutcomeKind.UNKNOWN, OutcomeKind.ACKNOWLEDGED):   # not terminal: queried / re-sent next cycle
+            self._incident(f'hard HOLD emergency stop {cid} {p.symbol} {p.side} {qty} @ {price}: unconfirmed '
+                           f'({out.kind}), retried by its id')
+            return
+        # Codex P1-2: after duplicate / algo routing, EVERY terminal refusal (any code) or a FINAL that is no protection
+        # escalates: no emergency stop can be confirmed for this exposed quantity
+        self._incident(f'hard HOLD emergency stop {cid} {p.symbol} {p.side} {qty} @ {price} -> {out.kind} '
+                       f'{out.error_code}: no protection confirmed')
+        self._emergency_close(p, qty)
 
     def _degrade(self, p, how):
         self.degraded[(p.symbol, p.side)] = how
@@ -546,6 +668,10 @@ class Runner:
     def _emergency_close(self, p, qty):
         """Codex F3 ruling: no safe emergency stop could be confirmed - a deterministic reduce-only market close of the
         uncovered quantity (zbn1e id: exchange truth, idempotent; a duplicate means it was already sent)."""
+        if hard_hold_permits(Purpose.CLOSE, Op.PLACE, emergency_close=True) is not Permission.ALLOWED:
+            self._incident(f'hard HOLD: emergency close of {p.symbol} {p.side} {qty} forbidden by the hard-HOLD table: '
+                           'UNPROTECTED, operator needed')
+            return
         cid = ids.emergency_stop_client_id(self.acct, p.symbol, p.side, qty, 'close')
         ref = OrderRef(symbol=p.symbol, client_id=cid)
         out = self.venue.submit_market(MarketOrder(ref=ref, position_side=p.side, qty=qty, reduce=True))
@@ -794,7 +920,7 @@ class Runner:
 
     def _recover_lost_entries(self):
         """The 20k fuzz 289 with EVERY record of the entry lost (lazy store, 3 events): a venue position the journal
-        cannot explain on a side this runner trades. The strategy's own ENTER signals of the last LOST_ENTRY_LOOKBACK
+        cannot explain on a side this runner trades. The strategy's own ENTER signals of the last GUARD_ENTRY_LOOKBACK
         candles give the deterministic client ids it would have used; if the venue has one of them, the order is
         ours (exchange truth, not inference): its decision, intent, send and result are recorded and the lot is owned
         and protected like any other. Checked on the first cycle of a process and after a position mismatch; each
@@ -812,7 +938,7 @@ class Runner:
             if p.symbol not in self.cfg.symbols or p.side not in self.cfg.sides or \
                     p.qty <= owned.get((p.symbol, p.side), ZERO) or self.fold.live_entries(p.symbol, p.side):
                 continue
-            for k in range(LOST_ENTRY_LOOKBACK + 1):
+            for k in range(GUARD_ENTRY_LOOKBACK + 1):                     # Cowork NEW A: the guard's window
                 c = self.now - k * self.cfg.tf_ms
                 if (p.symbol, p.side, c) in self._lost_checked:
                     continue
@@ -836,6 +962,12 @@ class Runner:
             out = self.venue.query(ref)
             if out.kind is not OutcomeKind.FINAL or not out.executed_qty:
                 continue
+            net, why = self._surviving_net(symbol, side, iid, out, key)     # Codex P1-1 / Cowork NEW A + B
+            if why is not None or net != out.executed_qty:
+                self._incident(f'{iid}: the venue has our entry {ref.client_id} (executed {out.executed_qty}) but its '
+                               f'survival is not proven ({why or f"surviving net {net}"}): nothing adopted, HOLD - '
+                               'owner resolves (ambiguous)')
+                return True                                               # the latest own entry decides: no older one
             self._incident(f'{iid}: every record lost but the venue has {ref.client_id} (executed '
                            f'{out.executed_qty}): decision, intent and result recorded now')
             planned = planned_intent(intent_id=iid, account_id=self.acct, decision_id=did, purpose='entry',
@@ -895,6 +1027,7 @@ class Runner:
 
     # ----------------------------------------------------------------------------------------------- 3. protect
     def _protect_all(self):
+        self._detect_external_flats()
         for lot in self.fold.open_lots():
             if self._suspended(lot.lot_id):
                 continue
@@ -1096,13 +1229,25 @@ class Runner:
         bars = self._bars_now(symbol)
         if bars is None:
             return
-        for s in self.signals.decide(symbol, bars, self.now):
+        for s in self._signals_now(symbol, bars):
             if s.side not in self.cfg.sides:
                 continue
             if s.action == CLOSE:
                 self._exit(symbol, s)
             elif s.action == ENTER:
                 self._enter(symbol, s, bars[-1].close)
+
+    def _signals_now(self, symbol, bars):
+        """The strategy's signals for the candle that JUST closed (Cowork LOW, strategy contract: decide() has no
+        freshness check of its own). A signal of any other candle is ignored with an incident, never acted on."""
+        out = []
+        for s in self.signals.decide(symbol, bars, self.now):
+            if s.candle_close_ms != self.now:
+                self._incident(f'stale signal ignored: {symbol} {s.action} {s.side} for candle {s.candle_close_ms}, '
+                               f'now {self.now}')
+                continue
+            out.append(s)
+        return tuple(out)
 
     def _key(self, symbol, s, purpose):
         """The one runner-boundary key constructor (step 0 r2): strategy = '<name>@<tf>', version v<n>."""
@@ -1229,6 +1374,32 @@ class Runner:
                 self._check_external_close(lot_id, iv.intent.symbol, str(iv.intent.side))
         elif out.kind in (OutcomeKind.KNOWN, OutcomeKind.FINAL):
             self._reduce_refused.pop(lot_id, None)
+
+    def _detect_external_flats(self):
+        """Cowork p3: an open lot whose side the venue reads FLAT (this cycle's reconciliation) was closed outside the
+        bot - unless a fill of our own is in flight: the lot's live orders are re-read first, so our own stop / close
+        fill is booked. Still open and flat -> the external-close owner item, before anything is sent for the lot."""
+        rec = self.last_rec
+        if rec is None or rec.positions is None or self.hard_hold is not None:
+            return
+        listed = {p.symbol for p in rec.positions}
+        qty = {(p.symbol, p.side): p.qty for p in rec.positions}
+        resting = {o.ref.client_id for o in (rec.orders or ()) if o.status in OPEN_EXCHANGE_STATUSES}
+        for lot in list(self.fold.open_lots()):
+            if lot.symbol not in listed or qty.get((lot.symbol, lot.side), ZERO) > 0 or self._suspended(lot.lot_id):
+                continue
+            for iv in [x for x in self.fold.live_intents() if x.intent.owner_id == lot.lot_id]:
+                self._apply(iv, self.venue.query(self._ref(iv)), submit=False)
+            if self._lot(lot.lot_id) is None:
+                continue                                                  # our own fill explained it
+            # an order of ours that may still deliver the fill (a triggered algo stop whose child is not readable yet,
+            # an unknown answer, a close in flight) explains the flat side for now: re-checked next cycle. Only a stop
+            # still RESTING untriggered (it did not fire) or no live order at all is an external close.
+            if any(not (iv.purpose is Purpose.PROTECT and iv.state is IntentState.WORKING
+                        and iv.intent.client_order_id in resting)
+                   for iv in self.fold.live_intents() if iv.intent.owner_id == lot.lot_id):
+                continue
+            self._check_external_close(lot.lot_id, lot.symbol, lot.side)
 
     def _check_external_close(self, lot_id, symbol, side):
         if self._suspended(lot_id):

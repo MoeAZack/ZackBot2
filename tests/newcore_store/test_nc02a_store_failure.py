@@ -74,6 +74,9 @@ def test_after_a_failed_append_a_restart_finds_the_event_absent_or_complete_neve
         j.append(SCENARIO[5])
     after = fs.crash('ntfs', pending)
     r = recover(after)
+    if pending == 'zero' and op_name == 'fsync':
+        assert r.verdict is Verdict.DAMAGED                          # a zero-filled complete frame: fail closed
+        return
     assert r.verdict in (Verdict.CLEAN, Verdict.REPAIRED)
     got = r.journal.read()
     assert got in (tuple(SCENARIO[:5]), tuple(SCENARIO[:6]))

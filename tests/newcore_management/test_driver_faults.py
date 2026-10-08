@@ -10,6 +10,12 @@ Invariants after every driver call:
   reported for reconcile;
 - never above the risk cap after an add fill;
 - no duplicate client id; no venue trade booked twice; a stop request is never loosened (outside a refused replace);
+- stop_loosened (the definition Cowork's metric uses): no stop is SENT looser than a stop LIVE at the venue (SENT /
+  WORKING before the call or sent earlier in it, and still live after it). A stop sent at the core's held level after a
+  TIGHTER request was refused (the locked fallback, incl. its restore) is not loosening: the refused level never
+  existed at the venue and nothing tighter is live;
+- Cowork 11: no second same-price stop is sent beside a live or in-flight stop that covers it (while the stop is locked,
+  and on a restore): the existing one is rebound and its answer awaited;
 - journal rule G6 (stop_route_policy per_attempt, the default): an algo stop is only ever the refused classic stop
   re-sent, in the drive answering that refusal;
 - fold(log) == the live state;
@@ -298,9 +304,22 @@ def check(v, before, ev, drv):
     for d in drv.submits:                      # Cowork 11: no second same-price stop beside a confirmed one covering it
         if ds.pos.stop_locked or d.reason.value == 'protect.restoring':   # (a normal resize may shrink in place)
             if d.leg is Leg.STOP and d.route == 'classic' and any(
-                    b.leg is Leg.STOP and b.state is DR.BindState.WORKING and b.intent_id != d.intent_id
-                    and b.stop_price == d.stop_price and b.qty >= d.qty for b in ds.bindings):
-                raise Violation('a duplicate same-price stop beside a working one (Cowork 11)')
+                    b.leg is Leg.STOP and b.state in (DR.BindState.SENT, DR.BindState.WORKING)
+                    and b.intent_id != d.intent_id and b.stop_price == d.stop_price and b.qty >= d.qty
+                    for b in ds.bindings):
+                raise Violation('a duplicate same-price stop beside a live / in-flight one (Cowork 11)')
+    s = 1 if v.long else -1
+    live_ids = {b.intent_id for b in before.bindings if b.state in (DR.BindState.SENT, DR.BindState.WORKING)}
+    for d in drv.submits:
+        # stop_loosened, as defined for Cowork's metric: a new stop is never looser than a stop that is LIVE at the
+        # venue when it is sent - live before this driver call, or sent earlier in it - and still live after it.
+        # Comparing with a tighter request the venue REFUSED (it never existed) is not loosening: the locked fallback
+        # re-protects at the core's held level when nothing tighter is live.
+        if d.leg is Leg.STOP and any(b.leg is Leg.STOP and b.state in (DR.BindState.SENT, DR.BindState.WORKING)
+                                     and b.intent_id in live_ids and s * (b.stop_price - d.stop_price) > 0
+                                     for b in ds.bindings):
+            raise Violation(f'a stop looser than a live stop: {d.stop_price} ({d.reason.value})')
+        live_ids.add(d.intent_id)
     pos = ds.pos
     if any(b.leg is Leg.STOP and b.state is DR.BindState.WORKING for b in ds.bindings):
         v.ever_confirmed = True

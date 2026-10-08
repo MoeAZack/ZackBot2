@@ -37,5 +37,10 @@ class SequenceConflict(JournalConflict):
     invariant 12). The journal is unchanged; the event is never retried as it is."""
 
 
+class JournalLocked(Exception):
+    """Another writer holds journal/.lock: this process must not open the journal (refuse start; not a HOLD).
+    Interim NC-02a writer fence (Cowork finding 3); NC-02b's run lock supersedes it."""
+
+
 class JournalExists(Exception):
     """create_journal on a directory that already holds segments: open it with recover_journal instead."""

@@ -28,11 +28,12 @@ def fill(p, xid, tid, q, price):
                      price=price, fee=D(0), fee_asset='USDT', realized_pnl=D(0), maker=False, at_ms=T0)
 
 
-def refused_breakeven(side):
+def refused_breakeven(side, confirm_first=True):
     p = plan(side, tp1_frac='0.5', tp1_off='1', tp2_off='2', be=True, costs=ZERO_COSTS)
     r = DR.start(p, account_id=ACCT, lot_id=LOT, entry_fee=D(0))
     s0 = r.submits[0]
-    r = DR.on_outcome(r.state, out(p, s0, OutcomeKind.KNOWN, status='NEW', exchange_order_id='x0'), submit=True)
+    if confirm_first:
+        r = DR.on_outcome(r.state, out(p, s0, OutcomeKind.KNOWN, status='NEW', exchange_order_id='x0'), submit=True)
     r = DR.on_mark(r.state, px(side, '101.1'))
     tp = r.submits[0]
     r = DR.on_outcome(r.state, out(p, tp, OutcomeKind.FINAL, status='FILLED', exchange_order_id='x1',
@@ -82,3 +83,30 @@ def test_the_old_stop_firing_instead_of_the_close_is_booked_once(side):
     assert r.state.pos.stage is Stage.DONE and r.state.pos.qty == 0
     assert sum(f.qty for f in r.state.pos.fills if f.leg is Leg.STOP) == D('2.5')
     assert not [b for b in r.state.bindings if b.state in (DR.BindState.SENT, DR.BindState.WORKING)]
+
+
+@pytest.mark.parametrize('answer', ('known', 'unknown_then_known', 'rejected'))
+@pytest.mark.parametrize('side', SIDES)
+def test_an_unconfirmed_old_stop_is_waited_for_not_duplicated(side, answer):
+    """Cowork INFO (fuzz seed 99): the ORIGINAL stop is still in flight (SENT, or its answer lost) when the tighter
+    replacement is refused. No second same-price stop is sent beside it: the driver waits for its resolution."""
+    p, s0, r = refused_breakeven(side, confirm_first=False)
+    assert not [d for d in r.submits if d.purpose is Purpose.PROTECT]
+    (cur,) = [b for b in r.state.bindings if b.leg is Leg.STOP and b.current]
+    assert cur.client_id == s0.client_id and cur.state is DR.BindState.SENT
+    if answer == 'unknown_then_known':
+        r = DR.on_outcome(r.state, out(p, s0, OutcomeKind.UNKNOWN), submit=True)
+        assert not r.submits
+    if answer == 'rejected':        # it never existed: nothing protects the rest -> ONE new stop (not a duplicate: the
+        r = DR.on_outcome(r.state, out(p, s0, OutcomeKind.REJECTED, error_code=-2021), submit=True)   # only one live)
+        (s2,) = [d for d in r.submits if d.purpose is Purpose.PROTECT]
+        assert (s2.stop_price, s2.qty) == (px(side, '98.02'), D('2.5'))
+        live = [b for b in r.state.bindings if b.leg is Leg.STOP and b.state in (DR.BindState.SENT,
+                                                                                  DR.BindState.WORKING)]
+        assert [b.client_id for b in live] == [s2.client_id]
+        assert r.state.pos.closing == r.state.pos.qty                     # and the rest is still being closed
+    else:
+        r = DR.on_outcome(r.state, out(p, s0, OutcomeKind.KNOWN, status='NEW', exchange_order_id='x0'), submit=True)
+        assert not r.submits and DR.protected(r.state)
+        live = [b for b in r.state.bindings if b.leg is Leg.STOP and b.state is DR.BindState.WORKING]
+        assert [b.client_id for b in live] == [s0.client_id]

@@ -16,7 +16,7 @@ STORE = os.path.join(ROOT, 'newcore', 'store')
 FILES = sorted(os.path.basename(p) for p in glob.glob(os.path.join(STORE, '*.py')))
 PURE_STDLIB = {'__future__', 'dataclasses', 'decimal', 'enum', 'errno', 'hashlib', 'json', 're', 'struct', 'typing',
                'zlib', 'os'}
-SEAM_STDLIB = PURE_STDLIB | {'stat', 'sys', 'ctypes'}
+SEAM_STDLIB = PURE_STDLIB | {'stat', 'sys', 'ctypes', 'msvcrt', 'fcntl'}
 FORBIDDEN_CALLS = {'open', 'print', 'input', 'eval', 'exec', 'compile', '__import__', 'breakpoint', 'globals'}
 FORBIDDEN_ATTRS = {'environ', 'getenv', 'time', 'time_ns', 'monotonic', 'perf_counter', 'now', 'utcnow', 'today',
                    'random', 'urandom', 'uuid4', 'system', 'popen', 'read_text', 'write_text', 'read_bytes_',

@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import os
 import signal
 import sys
@@ -34,6 +35,7 @@ from newcore.domain import (Account, AccountBinding, BindingConfirmation, Bindin
                             confirmation_phrase)
 from newcore.risk import BookPolicy
 from newcore.store import Verdict, create_journal, recover_journal
+from newcore.store.errors import JournalLocked
 from newcore.strategy import Params
 
 from . import config as C
@@ -49,6 +51,7 @@ from .sizing import SizingPolicy
 
 BASE_COSTS = CostModel(taker_fee=Decimal('0.0005'), slip=Decimal('0.0002'), funding_per_bar=Decimal('0.00005'))
 STATE_FILE = 'fake_venue.json'
+SEGMENT = re.compile(r'seg-\d+\.seg')                                  # a journal segment file (NC-02a)
 EXIT_CONFIG, EXIT_STORE_DOWN, EXIT_STORE_HOLD, EXIT_ABORT_RO = 2, 3, 4, 5
 
 
@@ -98,11 +101,11 @@ def account(cfg):
 def open_journal(account_dir, cfg):
     """FileJournal of the account: created on the first run, recovered (CLEAN / REPAIRED) on every later one."""
     jd = os.path.join(account_dir, 'journal')
-    if os.path.isdir(jd):
-        empty = sorted(n for n in os.listdir(jd) if os.path.getsize(os.path.join(jd, n)) == 0)
-        if empty:                                                         # Cowork M2: never a silent fresh journal
-            raise StoreRefused(EXIT_STORE_HOLD, f'zero-byte journal segment(s) {empty}: the history is gone, HOLD')
-    if not os.path.isdir(jd) or not os.listdir(jd):
+    segs = sorted(n for n in os.listdir(jd) if SEGMENT.fullmatch(n)) if os.path.isdir(jd) else []
+    empty = [n for n in segs if os.path.getsize(os.path.join(jd, n)) == 0]   # (the store's .lock file is not one)
+    if empty:                                                             # Cowork M2: never a silent fresh journal
+        raise StoreRefused(EXIT_STORE_HOLD, f'zero-byte journal segment(s) {empty}: the history is gone, HOLD')
+    if not segs:
         return create_journal(account_dir, cfg.account_id, cfg.portfolio_id)
     r = recover_journal(account_dir, cfg.account_id, cfg.portfolio_id)
     if r.verdict in (Verdict.CLEAN, Verdict.REPAIRED):
@@ -164,6 +167,13 @@ class Session:
         os.makedirs(cfg.journal_dir, exist_ok=True)
         self.guard = guard
         self.journal = MemoryJournal(cfg.account_id, cfg.portfolio_id) if guard else open_journal(self.account_dir, cfg)
+        try:
+            self._build(cfg, enabled, guard)
+        except BaseException:                                             # never leave the writer lock held
+            self.close()
+            raise
+
+    def _build(self, cfg, enabled, guard):
         if cfg.venue_kind == 'fake':
             self.bars = data_source(cfg, cfg.symbols)
             candles = {s: self.bars.all_bars(s) for s in cfg.symbols}
@@ -419,7 +429,7 @@ def main(argv=None, *, out=None, stop=None):
     except C.ConfigError as ex:
         print(f'CONFIG REFUSED: {ex}', file=out)
         return EXIT_CONFIG
-    except (NotADirectoryError, FileExistsError, PermissionError) as ex:  # the journal / output dir cannot be used
+    except (NotADirectoryError, FileExistsError, PermissionError, JournalLocked) as ex:   # journal / output dir
         print(f'STORE: {type(ex).__name__}: {ex}', file=out)
         return EXIT_STORE_DOWN
     except (OSError, KeyError, ValueError) as ex:                         # data root, symbols, rules: typed refusal

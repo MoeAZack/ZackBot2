@@ -329,7 +329,7 @@ def test_nf_fixture_analogue(fid, tmp_path):
         if case.unchanged == 'all' or run == 'restart':
             assert after == before, fid
             if case.fail is None:                                                       # attempts that failed wrote nothing
-                assert [op for _, op, _ in fs.trace if op != 'open_append'] == [], fid
+                assert [op for _, op, _ in fs.trace if op not in ('open_append', 'lock')] == [], fid
         else:
             assert {k: v for k, v in after.items() if k in before} == before, fid      # existing bytes + mtimes kept
     if fid == 'NF-47':

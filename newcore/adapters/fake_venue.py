@@ -516,6 +516,11 @@ class FakeVenue:
         return tuple(o for o in sorted(self._orders.values(), key=lambda o: o.seq)
                      if symbol is None or o.ref.symbol == symbol)
 
+    def trades(self, symbol, side, from_ms):
+        """userTrades of one (symbol, position side) since from_ms (inclusive): VenueFill rows, oldest first."""
+        rows = tuple(f for f in self._fills if (f.symbol, f.position_side) == (symbol, side) and f.at_ms >= from_ms)
+        return ReadOutcome(kind=ReadKind.OK, observed_at_ms=self.now_ms, value=rows)
+
     def mark_price(self, symbol):
         """The current mark: the price a market order would execute at now (the next open, or the intra-candle mark)."""
         m = self._next_open(symbol)
