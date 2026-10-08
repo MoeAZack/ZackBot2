@@ -90,6 +90,14 @@ def average(state):
     return DIV.divide(state.basket_cost, state.basket_qty)
 
 
+def _csum(values):
+    """Exact sum in the explicit context (builtin sum() would round in the AMBIENT decimal context)."""
+    out = ZERO
+    for v in values:
+        out = CTX.add(out, v)
+    return out
+
+
 def _canonical_zero(x):
     return ZERO if x == 0 else x
 
@@ -224,9 +232,9 @@ def _net_break_even(plan, w, avg):
     cover = DIV.divide(CTX.add(w['open_fees'], max(w['funding'], ZERO)), q)
     fee, slip = plan.costs.taker_fee, plan.costs.slip
     if plan.side is Side.LONG:
-        lvl = DIV.divide(DIV.add(avg, cover), DIV.multiply(ONE - slip, ONE - fee))
+        lvl = DIV.divide(DIV.add(avg, cover), DIV.multiply(DIV.subtract(ONE, slip), DIV.subtract(ONE, fee)))
     else:
-        lvl = DIV.divide(DIV.subtract(avg, cover), DIV.multiply(ONE + slip, ONE + fee))
+        lvl = DIV.divide(DIV.subtract(avg, cover), DIV.multiply(DIV.add(ONE, slip), DIV.add(ONE, fee)))
     return plan.rules.quantize_price(lvl, toward_profit(plan.side)) if lvl > 0 else None
 
 
@@ -489,7 +497,7 @@ def exit_ledger(plan, state):
     """Realized PnL and R per exit leg plus running totals, for an open OR flat position (average-cost accounting; the
     leg that flattens absorbs the rounding so the flat total equals realized_pnl exactly). 1R = plan.risk_cap."""
     s, cap = sgn(plan.side), plan.risk_cap
-    entry_fee = CTX.subtract(state.open_fees, sum((f.fee for f in state.fills if f.leg is Leg.ADD), ZERO))
+    entry_fee = CTX.subtract(state.open_fees, _csum(f.fee for f in state.fills if f.leg is Leg.ADD))
     pos, cost, pool = plan.entry_qty, CTX.multiply(plan.entry_qty, plan.entry_price), entry_fee
     opened, exited, fees = cost, ZERO, entry_fee               # exact cumulative totals up to the current fill
     legs, running = [], ZERO
