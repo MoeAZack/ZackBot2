@@ -23,6 +23,7 @@ import re
 
 from newcore.domain import canonical_bytes, decode_result
 from newcore.domain.codec import Outcome
+from newcore.domain.events import EVENT_TYPES
 from newcore.ports.journal import Admission, JournalConflict
 
 from .errors import DurabilityUnavailable, JournalExists
@@ -89,16 +90,15 @@ class FileJournal:
             raise DurabilityUnavailable(f'append refused: journal poisoned by an earlier {self._poisoned}', self._path)
         if self._h is None:
             raise DurabilityUnavailable('append refused: journal closed', self._path)
-        try:
+        payload = None
+        if isinstance(event, EVENT_TYPES):                        # anything else: the gate gives the one refusal
             payload = canonical_bytes(event)
-        except Exception:                                         # noqa: BLE001 - any non-record is a conflict
-            raise JournalConflict('not an NC-01 document record') from None
-        if len(payload) > MAX_RECORD:
-            raise JournalConflict(f'event of {len(payload)} bytes exceeds the {MAX_RECORD}-byte record bound')
-        back = decode_result(payload)                             # A18: the writer validates like the reader
-        if back.outcome is not Outcome.OK or canonical_bytes(back.record) != payload:
-            raise JournalConflict(f'event does not round-trip through the NC-01 codec ({back.outcome})')
-        p = self._folder.prepare(event)
+            if len(payload) > MAX_RECORD:
+                raise JournalConflict(f'event of {len(payload)} bytes exceeds the {MAX_RECORD}-byte record bound')
+            back = decode_result(payload)                         # A18: the writer validates like the reader
+            if back.outcome is not Outcome.OK or canonical_bytes(back.record) != payload:
+                raise JournalConflict(f'event does not round-trip through the NC-01 codec ({back.outcome})')
+        p = self._folder.prepare(event)                           # JournalGate.admit (+ chain tripwire)
         if p is Admission.ALREADY_APPLIED:
             return Admission.ALREADY_APPLIED
         rec = frame(RT_EVENT, payload)
@@ -128,6 +128,11 @@ class FileJournal:
 
     def find_decision(self, decision_id):
         return self._folder.decisions.get(decision_id)
+
+    def gate(self):
+        """The JournalGate after the last durable event (rebuilt by replay at boot). Read it, never admit through it:
+        appends go through `append` only."""
+        return self._folder.gate
 
     # ------------------------------------------------------------------------------------------------ extras
     def state(self):

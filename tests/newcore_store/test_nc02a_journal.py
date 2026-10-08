@@ -9,8 +9,8 @@ from nc02a_events import ACCOUNT_ID, AGGREGATE_ID, ENTRY_DEC, INTENTS, SCENARIO,
 from nc02a_memfs import FaultFs, MemFs
 from nc02a_util import ACCT_DIR, mem_journal, records, recover, seg, tree
 from newcore.domain import IntentState, IntentStateChanged, canonical_bytes, contract_sha256
-from newcore.ports.journal import Admission, JournalConflict, JournalPort, JournalUnavailable, replay
-from newcore.store import (FileJournal, JournalExists, SequenceConflict, Verdict, create_journal, header_of,
+from newcore.ports.journal import Admission, JournalConflict, JournalGate, JournalPort, JournalUnavailable
+from newcore.store import (FileJournal, JournalExists, SequenceConflict, Verdict, create_journal,
                            recover_journal)
 from newcore.store.frame import FILE_HEADER, KIND_SEGMENT, MAGIC, RT_EVENT, RT_HEADER, scan
 from newcore.store.header import FORMAT, FORMAT_VERSION
@@ -37,7 +37,7 @@ def test_full_scenario_appends_reads_and_finds_decisions():
     assert st.intents == () and [i for i, _ in st.closed] == [INTENTS[k].intent_id for k in ('entry', 'close', 'stop')]
     assert str(st.ownership) == 'unknown'                  # the journal alone never proves ownership
     assert st.booked == ((('SOLUSDT', 'LONG'), 0),)
-    replay(ACCOUNT_ID, AGGREGATE_ID, [header_of(e) for e in SCENARIO])   # the step-0 grammar agrees
+    JournalGate.rebuild(ACCOUNT_ID, AGGREGATE_ID, SCENARIO)               # the step-0 gate agrees
 
 
 def test_on_disk_format_is_magic_version_header_then_canonical_crc_framed_events():

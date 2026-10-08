@@ -10,7 +10,8 @@ Read-only phase (no byte written until the verdict is CLEAN or REPAIRED):
      sealed bytes); every sealed prefix scans clean; segments after m may only be interrupted creates (VOID: no valid
      record, NUL or a prefix of a header, never longer than a header frame); the header names this account / aggregate
      and the right lsn_base. Anything else is DAMAGED.
-  P5 decode every event strictly (NC-01 codec, canonical bytes only) and fold it (fold.Folder: chain, ledger, grammar).
+  P5 decode every event strictly (NC-01 codec, canonical bytes only) and rebuild the JournalGate by replaying them
+     (fold.Folder.replay: the step-0 gate, then one NC-01 chain check).
      Any refusal, or a record twice, is DAMAGED (never skipped, never truncated).
   P6 the active segment m: bytes after its last valid record with no valid record after them are a TORN tail.
 Write phase (only for a torn tail / void segments): copy each torn byte range into evidence/ (O_EXCL, fsync, dir flush;
@@ -27,7 +28,7 @@ from dataclasses import dataclass
 from newcore.domain import canonical_bytes, decode_result
 from newcore.domain.codec import Outcome
 from newcore.domain.events import EVENT_TYPES
-from newcore.ports.journal import Admission, JournalConflict
+from newcore.ports.journal import JournalConflict
 
 from .errors import DurabilityUnavailable
 from .fold import Folder
@@ -223,11 +224,11 @@ def _read_only(fs, account_dir, account_id, aggregate_id):
         raise _Out(Verdict.DAMAGED, damage)
 
     # P5 decode and fold ------------------------------------------------------------------------------------------
-    folder = Folder(account_id, aggregate_id)
+    events = []
     for j, hj, recs in seq_segments:
         n = names[j]
-        if hj.lsn_base != folder.last_sequence:
-            raise _Out(Verdict.DAMAGED, [Finding('damage', n, 8, f'lsn_base {hj.lsn_base} != {folder.last_sequence}')])
+        if hj.lsn_base != len(events):
+            raise _Out(Verdict.DAMAGED, [Finding('damage', n, 8, f'lsn_base {hj.lsn_base} != {len(events)}')])
         for r in recs:
             if r.rtype != RT_EVENT or len(r.payload) > MAX_RECORD:
                 raise _Out(Verdict.DAMAGED, [Finding('damage', n, r.offset, f'record type {r.rtype} in a segment')])
@@ -238,11 +239,11 @@ def _read_only(fs, account_dir, account_id, aggregate_id):
             ev = res.record
             if not isinstance(ev, EVENT_TYPES) or canonical_bytes(ev) != r.payload:
                 raise _Out(Verdict.DAMAGED, [Finding('damage', n, r.offset, 'not a canonical NC-01 event record')])
-            try:
-                if folder.admit(ev) is not Admission.APPLY:
-                    raise JournalConflict(f'event {ev.sequence} is stored twice')
-            except JournalConflict as ex:
-                raise _Out(Verdict.DAMAGED, [Finding('damage', n, r.offset, f'chain: {ex}')]) from None
+            events.append(ev)
+    try:                                                      # boot: rebuild the gate by replaying the durable events
+        folder = Folder.replay(account_id, aggregate_id, events)
+    except JournalConflict as ex:
+        raise _Out(Verdict.DAMAGED, [Finding('damage', None, None, f'gate replay: {ex}')]) from None
 
     # P6 torn tail ------------------------------------------------------------------------------------------------
     active = scans[m] if m else None

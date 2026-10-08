@@ -1,12 +1,12 @@
 """The journal fold: admission of one event at a time, and the recovered state of the journal (pure, no IO).
 
-Every event passes, in this order, before it is written (append) or accepted (replay):
-  1. the step-0 projection `header_of` and the event-id / sequence identity (G2 / G3);
-  2. NC-01 `check_event_chain` over the whole chain (record content, the lifecycle table, client-id reuse, one-shots);
-  3. NC-01 `ledger.admit` (sequence admission + idempotent re-apply, invariant 12);
-  4. the step-0 Grammar G1-G9 (order and idempotence across the lanes).
-Nothing changes before all four pass; a refused event leaves the Folder unchanged (the Grammar only advances when it
-admits, and a caller whose write then fails poisons itself, so it never reads the Grammar again).
+Admission (STEP0_INTERFACE.md r2 section 3): every event goes through the ONE step-0 `JournalGate` (header_of ->
+Grammar G1-G10 -> NC-01 per-record checks) before it is written; its refusal (JournalConflict, with the gate's exact
+reason) changes nothing. G2 / G3 refusals (gap, used sequence, reused id with other bytes) are re-raised as the typed
+`SequenceConflict` (a JournalConflict with the same message). As a tripwire, NC-01 `check_event_chain` then runs over
+the whole chain; if it ever refused what the gate admitted, the gate is rebuilt from the durable events and the event
+is refused (a gate gap to report, never a silent write). At boot the gate is rebuilt by replaying the durable events
+(`Folder.replay`), with one chain check over the whole journal.
 
 The recovered state is what NC-01 can say from the chain alone:
 - ownership is always UNKNOWN: the journal never proves an exchange position (NC-01 invariant 1; reconciliation does);
@@ -23,17 +23,15 @@ import enum
 from dataclasses import dataclass
 from decimal import Decimal
 
-from newcore.domain import (DecisionRecorded, EntriesMode, EventCursor, HoldKind, IntentRecorded, IntentState,
-                            IntentStateChanged, ModeChanged, Ownership, ResultObserved, admit, check_event_chain,
-                            contract_sha256)
-from newcore.domain.errors import DomainError, EventOrderError
-from newcore.domain.ledger import Admission as LedgerAdmission
+from newcore.domain import (DecisionRecorded, EntriesMode, HoldKind, IntentRecorded, IntentState, IntentStateChanged,
+                            ModeChanged, Ownership, ResultObserved, check_event_chain)
+from newcore.domain.errors import DomainError
 from newcore.domain.orders import TERMINAL, ResultPhase
-from newcore.ports.journal import Admission, Grammar, JournalConflict
-from newcore.ports.values import PortValueError
+from newcore.ports.journal import Admission, JournalConflict, JournalGate
 
 from .errors import SequenceConflict
-from .projection import header_of
+
+_SEQUENCE_REASONS = ('G2:', 'G3:')
 
 
 class IntentRecovery(enum.StrEnum):
@@ -87,9 +85,19 @@ class JournalState:
 @dataclass(frozen=True, slots=True)
 class Prepared:
     event: object
-    digest: str
-    cursor: object
     live: dict
+
+
+def _gate_admit(gate, ev):
+    try:
+        return gate.admit(ev)
+    except SequenceConflict:
+        raise
+    except JournalConflict as ex:
+        msg = str(ex)
+        if any(r in msg for r in _SEQUENCE_REASONS):
+            raise SequenceConflict(msg) from ex
+        raise
 
 
 class Folder:
@@ -97,10 +105,8 @@ class Folder:
 
     def __init__(self, account_id, aggregate_id):
         self.account_id, self.aggregate_id = account_id, aggregate_id
-        self.cursor = EventCursor(account_id=account_id, aggregate_id=aggregate_id, last_sequence=0, applied=())
-        self.grammar = Grammar(account_id, aggregate_id)
+        self.gate = JournalGate(account_id, aggregate_id)
         self.events = []
-        self.ids = {}                 # event_id -> (sequence, digest)
         self.live = {}
         self.recorded = {}            # intent_id -> OrderIntent
         self.results = {}             # intent_id -> (last OrderResult, final OrderResult | None)
@@ -114,44 +120,26 @@ class Folder:
         return len(self.events)
 
     def prepare(self, ev):
-        """Validate `ev` against the chain. Returns Admission.ALREADY_APPLIED (identical re-append) or a Prepared to
-        commit once the event is durable. Raises JournalConflict / SequenceConflict and changes nothing."""
-        try:
-            digest = contract_sha256(ev)
-            h = header_of(ev, digest)
-        except (PortValueError, DomainError, AttributeError, TypeError) as ex:
-            raise JournalConflict(f'not a journal event: {type(ex).__name__}') from None
-        if (h.account_id, h.aggregate_id) != (self.account_id, self.aggregate_id):
-            raise JournalConflict('G1: event of another account / aggregate')
-        seen = self.ids.get(h.event_id)
-        if seen is not None:
-            if seen == (h.sequence, digest):
-                return Admission.ALREADY_APPLIED
-            raise SequenceConflict(f'G3: event id re-used with another sequence or other bytes (sequence {h.sequence})')
-        if h.sequence != self.last_sequence + 1:
-            what = 'already used by another event' if h.sequence <= self.last_sequence else 'a gap'
-            raise SequenceConflict(f'G2: sequence {h.sequence} is {what}; expected {self.last_sequence + 1}')
+        """Admit `ev` through the gate. Returns Admission.ALREADY_APPLIED (identical re-append, nothing changed) or a
+        Prepared to commit once the event is durable. Raises JournalConflict / SequenceConflict and changes nothing.
+        After an APPLY the gate is ahead of `events` until commit(): a caller whose write fails must poison itself."""
+        adm = _gate_admit(self.gate, ev)
+        if adm is Admission.ALREADY_APPLIED:
+            return adm
         try:
             live = check_event_chain(self.events + [ev])
         except DomainError as ex:
-            raise JournalConflict(f'NC-01 chain: {ex.path}: {ex.msg}') from None
-        try:
-            cursor, adm = admit(self.cursor, ev)
-        except EventOrderError as ex:
-            raise SequenceConflict(f'NC-01 admission: {ex.msg}') from None
-        if adm is not LedgerAdmission.APPLY:
-            raise SequenceConflict('NC-01 admission disagrees with the journal index')
-        try:
-            self.grammar.admit(h)
-        except PortValueError as ex:
-            raise JournalConflict(str(ex)) from None
-        return Prepared(ev, digest, cursor, live)
+            self.gate = JournalGate.rebuild(self.account_id, self.aggregate_id, self.events)
+            raise JournalConflict(f'NC-01 chain refuses what the gate admitted ({ex.path}: {ex.msg})') from None
+        return Prepared(ev, live)
 
     def commit(self, p):
         ev = p.event
         self.events.append(ev)
-        self.ids[ev.event_id] = (ev.sequence, p.digest)
-        self.cursor, self.live = p.cursor, p.live
+        self.live = p.live
+        self._index(ev)
+
+    def _index(self, ev):
         if isinstance(ev, DecisionRecorded):
             self.decisions[ev.decision.decision_id] = ev
         elif isinstance(ev, IntentRecorded):
@@ -176,6 +164,22 @@ class Folder:
         self.commit(p)
         return Admission.APPLY
 
+    @classmethod
+    def replay(cls, account_id, aggregate_id, events):
+        """Boot: rebuild the gate by replaying the durable events, then one NC-01 chain check over all of them.
+        Raises JournalConflict (incl. an event stored twice) on the first refusal."""
+        f = cls(account_id, aggregate_id)
+        for ev in events:
+            if _gate_admit(f.gate, ev) is not Admission.APPLY:
+                raise SequenceConflict(f'event {ev.sequence} is stored twice')
+            f.events.append(ev)
+            f._index(ev)
+        try:
+            f.live = check_event_chain(f.events)
+        except DomainError as ex:
+            raise JournalConflict(f'NC-01 chain: {ex.path}: {ex.msg}') from None
+        return f
+
     def state(self):
         views = []
         for iid, (it, st, sent) in self.live.items():
@@ -193,9 +197,5 @@ class Folder:
 
 
 def fold(account_id, aggregate_id, events):
-    """Replay events into a fresh Folder (what recovery does). Raises on the first refused event."""
-    f = Folder(account_id, aggregate_id)
-    for ev in events:
-        if f.admit(ev) is not Admission.APPLY:
-            raise SequenceConflict(f'event {ev.sequence} appears twice in the journal')
-    return f
+    """Replay events into a fresh Folder (what recovery does)."""
+    return Folder.replay(account_id, aggregate_id, events)

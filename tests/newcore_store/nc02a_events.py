@@ -9,15 +9,16 @@ import dataclasses
 import hashlib
 from decimal import Decimal as D
 
-from newcore.domain import (Action, Authority, Decision, DecisionKey, DecisionRecorded, EntriesMode, Evidence,
+from newcore.domain import (Action, Authority, Decision, DecisionRecorded, EntriesMode, Evidence,
                             ExchangeStatus, HoldKind, IntentRecorded, IntentState, IntentStateChanged, Lookup,
                             ModeChanged, OrderIntent, OrderResult, OrderType, Purpose, ReasonCode, ResultObserved,
                             ResultPhase, Side)
-from newcore.ports.keys import client_id_for, derive_child_intent_id, derive_decision_id, derive_intent_id
+from newcore.ports.keys import (client_id_for, decision_key, derive_child_intent_id, derive_decision_id,
+                                derive_intent_id, derive_lot_id)
 
 ACCOUNT_ID = 'acct_' + 'a1' * 16
 AGGREGATE_ID = 'pf_' + 'b2' * 16
-T0 = 1_791_400_000_000
+T0 = 1_759_924_800_000                # a 4h candle close (on the step-0 key grid)
 SYMBOL = 'SOLUSDT'
 
 
@@ -36,16 +37,15 @@ def result_id(intent_id, n):
     return 'res_' + _h('result', intent_id, n)
 
 
-LOT_ID = 'lot_' + _h('lot', 'entry')
-ENTRY_KEY = DecisionKey(strategy='trend_ema_mom@4h', strategy_version='v1', symbol=SYMBOL, side=Side.LONG,
-                        candle_close_ms=T0, purpose=Purpose.ENTRY)
-CLOSE_KEY = dataclasses.replace(ENTRY_KEY, candle_close_ms=T0 + 4 * 14_400_000, purpose=Purpose.CLOSE)
+ENTRY_KEY = decision_key('trend_ema_mom', 'v1', '4h', SYMBOL, Side.LONG, T0, Purpose.ENTRY)
+CLOSE_KEY = decision_key('trend_ema_mom', 'v1', '4h', SYMBOL, Side.LONG, T0 + 4 * 14_400_000, Purpose.CLOSE)
 ENTRY_DEC = derive_decision_id(ACCOUNT_ID, ENTRY_KEY)
-ENTRY_INT = derive_intent_id(ACCOUNT_ID, ENTRY_KEY, 0)
-STOP_INT = derive_child_intent_id(ACCOUNT_ID, ENTRY_INT, 'protect', 0)
+ENTRY_INT = derive_intent_id(ACCOUNT_ID, ENTRY_KEY)
+LOT_ID = derive_lot_id(ACCOUNT_ID, ENTRY_INT)
+STOP_INT = derive_child_intent_id(ACCOUNT_ID, LOT_ID, Purpose.PROTECT, 0)
 STOP_DEC = 'dec_' + _h('child_decision', STOP_INT)
 CLOSE_DEC = derive_decision_id(ACCOUNT_ID, CLOSE_KEY)
-CLOSE_INT = derive_intent_id(ACCOUNT_ID, CLOSE_KEY, 0)
+CLOSE_INT = derive_intent_id(ACCOUNT_ID, CLOSE_KEY)
 QTY = D('5')
 
 
