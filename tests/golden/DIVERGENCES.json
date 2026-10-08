@@ -64,6 +64,16 @@
       "ticket": "AUD-08",
       "finding": "STOP_CROSSED folded into stop",
       "status": "active"
+    },
+    {
+      "id": "NC07-ONE-ADD-CAP",
+      "adapters": [
+        "newcore_live_sim",
+        "newcore_sim"
+      ],
+      "ticket": "NC-07 one-add cap",
+      "finding": "the NEWCORE management core caps adds at one by design",
+      "status": "active"
     }
   ]
 }

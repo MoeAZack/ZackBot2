@@ -89,7 +89,7 @@ def require_environment(binding, configured):
 
 def confirmation_phrase(account_id, key_digest):
     """What the owner must type to bind `key_digest` to `account_id`."""
-    return f'BIND {account_id[-8:]} {key_digest[:8]}'
+    return f'BIND {account_id} {key_digest}'          # full opaque values: an id is never sliced or parsed
 
 
 @record

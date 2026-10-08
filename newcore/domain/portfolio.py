@@ -25,8 +25,8 @@ from decimal import Decimal
 from .base import CTX, ZERO, Record, check_id, check_symbol, check_text, non_negative, positive, record, req
 from .errors import OwnershipUnknown
 from .modes import EntriesMode, HoldKind, Op, Permission, permitted
-from .orders import LIVE, IntentState, OrderIntent, OrderType, OwnerFamily, Purpose, Side
-from .protection import PROTECTING, Protection, active_coverage, check_protection, protection_status
+from .orders import LIVE, IntentState, OrderIntent, OrderType, OwnerFamily, OwnerKind, Purpose, Side
+from .protection import PROTECTING, Protection, check_protection, protection_status, target_coverage
 from .reasons import ReasonCode
 
 
@@ -146,6 +146,10 @@ class Position(Record):
         check_id(self.position_id, p + '.position_id', 'pos')
         check_symbol(self.symbol, p + '.symbol')
         req(len(self.lots) > 0, p + '.lots', 'an empty position is not stored')
+        req(len({x.lot_id for x in self.lots}) == len(self.lots), p + '.lots', 'duplicate lot id (qty would double count)')
+        ordered = tuple(sorted(self.lots, key=lambda x: x.lot_id))     # Codex ruling 4: one canonical lot order
+        if ordered != self.lots:
+            object.__setattr__(self, 'lots', ordered)
         req(all(x.symbol == self.symbol and x.side is self.side for x in self.lots), p + '.lots', 'lot of another symbol / side')
 
     @property
@@ -223,6 +227,9 @@ class Portfolio(Record):
         req((len(self.pause_reasons) == 0) == (self.entries_mode is EntriesMode.ACTIVE), p + '.pause_reasons',
             'non-empty exactly when entries are not ACTIVE')
         req(len(set(self.pause_reasons)) == len(self.pause_reasons), p + '.pause_reasons', 'duplicate reason')
+        if self.positions is not None:                  # Codex P2: one canonical order (UNKNOWN stays None)
+            _canonical(self, 'positions', lambda x: (x.symbol, x.side.value))
+            _canonical(self, 'intents', lambda x: x.intent_id)
         req((self.hold_kind is HoldKind.DURABILITY_UNAVAILABLE) <= (ReasonCode.RECOVERY_DURABILITY_UNAVAILABLE in
                                                                     self.pause_reasons), p + '.pause_reasons',
             'a hard HOLD names its cause')
@@ -250,6 +257,13 @@ class Portfolio(Record):
 
     def permits(self, purpose, op, *, one_shot=False):
         return permitted(self.entries_mode, self.hold_kind, purpose, op, one_shot=one_shot) is Permission.ALLOWED
+
+
+def _canonical(rec, name, key):
+    """Sort a known collection by its stable domain key (duplicates are still refused by _check_known)."""
+    ordered = tuple(sorted(getattr(rec, name), key=key))
+    if ordered != getattr(rec, name):
+        object.__setattr__(rec, name, ordered)
 
 
 def _check_known(pf, p):
@@ -283,12 +297,55 @@ def _check_known(pf, p):
         if it.orphan:
             req(own == pf.portfolio_id, ip, 'an orphan cancel is owned by this portfolio aggregate')
             continue
-        owner = lots.get(own) if own.startswith('lot_') else intents.get(own)
+        by_lot = it.owner_kind is OwnerKind.LOT
+        owner = lots.get(own) if by_lot else intents.get(own)
         req(owner is not None, ip, 'names no lot / entry of this portfolio (a KNOWN portfolio has no orphan reference)')
-        if not own.startswith('lot_'):
+        if not by_lot:
             req(owner.purpose is Purpose.ENTRY and owner.order_type is OrderType.MARKET, ip,
                 'only an unresolved market ENTRY owns a provisional stop')
         req((owner.symbol, owner.side) == (it.symbol, it.side), ip, 'owner of another symbol / side')
+    # cancel-replace links (Codex P1 on af4e5f3): a REDUCE / CLOSE successor names its predecessor explicitly by
+    # replaces_intent_id - never inferred from decisions or order. Exactly one link per lot: same account / symbol /
+    # side / lot, both reduce / close, the predecessor CANCELLING, the successor live (so no chain can form: a middle
+    # link would have to be both cancelling and live).
+    preds, linked_lots = {}, set()
+    for it in intents.values():
+        old_id = it.replaces_intent_id
+        if old_id is None:
+            continue
+        ip = f'{p}.intent[{it.intent_id}].replaces_intent_id'
+        old = intents.get(old_id)
+        req(old is not None, ip, 'names no live predecessor of this portfolio')
+        req(old.purpose in (Purpose.REDUCE, Purpose.CLOSE) and old.owner_kind is OwnerKind.LOT, ip,
+            'the predecessor is not a lot reduce / close')
+        req((old.account_id, old.symbol, old.side, old.owner_id) == (it.account_id, it.symbol, it.side, it.owner_id), ip,
+            'the predecessor belongs to another account / instrument / side / lot')
+        req(old.state is IntentState.CANCELLING, ip, 'the predecessor of a cancel-replace must be CANCELLING')
+        req(it.state is not IntentState.CANCELLING, ip, 'the successor of a cancel-replace must be live, not cancelling')
+        req(old_id not in preds and it.owner_id not in linked_lots, ip, 'at most one cancel-replace link per lot')
+        preds[old_id] = it.intent_id
+        linked_lots.add(it.owner_id)
+    # reducing intents never exceed what they could reduce (Cowork S05): per lot, the live REDUCE / CLOSE legs together
+    # <= the lot qty. A linked pair is ONE leg (its successor; the CANCELLING predecessor is superseded). A cancelling
+    # leg - it can still fill - counts, at most the lot qty (reduce-only: it cannot reduce more than the lot). A live
+    # leg larger than its lot (the survivor after part of the lot closed) must be retired: CANCELLING, or replaced.
+    # Cumulative fills of both legs stay bounded by the lot: the fill ledger refuses closing more than is held, and
+    # when the lot closes its remaining intents become portfolio-owned cancel-only work. Portfolio-owned orphans are
+    # left out (cancel-only by construction; Cowork re-check of S05).
+    per_lot = {}
+    for it in intents.values():
+        if it.purpose not in (Purpose.REDUCE, Purpose.CLOSE) or it.owner_kind is not OwnerKind.LOT or it.intent_id in preds:
+            continue
+        held = lots[it.owner_id].qty
+        if it.state is IntentState.CANCELLING:
+            leg = min(it.qty, held)
+        else:
+            req(it.qty <= held, f'{p}.intent[{it.intent_id}].qty',
+                f'a live reduce of {it.qty} exceeds its lot ({held}): retire it (CANCELLING) or replace it')
+            leg = it.qty
+        per_lot[it.owner_id] = CTX.add(per_lot.get(it.owner_id, ZERO), leg)
+    for lot_id, q in per_lot.items():
+        req(q <= lots[lot_id].qty, f'{p}.lot[{lot_id}]', f'live reducing intents {q} exceed the lot qty {lots[lot_id].qty}')
     # carried: which intents a record carries; anything else (not an entry) is cancel-only work
     carried = set()
     for x in lots.values():
@@ -320,11 +377,11 @@ def _check_known(pf, p):
         if st.miss is not None and st.miss.foreign_order_id is not None:
             req(st.miss.foreign_order_id not in cids, sp + '.miss.foreign_order_id', 'an owned client id is never foreign')
         key = (symbol, side)
-        coverage[key] = CTX.add(coverage.get(key, ZERO), active_coverage(st, intents))
+        coverage[key] = CTX.add(coverage.get(key, ZERO), target_coverage(st, intents))
         exposure[key] = CTX.add(exposure.get(key, ZERO), exp)
     for key, cov in coverage.items():                 # aggregate bound per symbol / side (contract invariant 11)
         req(cov <= exposure[key], f'{p}.protection[{key[0]}|{key[1]}]',
-            f'active protective coverage {cov} exceeds the exposure {exposure[key]}')
+            f'target protective coverage {cov} exceeds the exposure {exposure[key]}')
     for it in intents.values():
         if it.family is not OwnerFamily.ENTRY and it.intent_id not in carried:
             req(it.state is IntentState.CANCELLING, f'{p}.intent[{it.intent_id}].state',

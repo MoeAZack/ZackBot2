@@ -36,7 +36,7 @@ from dataclasses import dataclass
 from typing import Iterable, Protocol, runtime_checkable
 
 from newcore.domain import (DecisionKey, DecisionRecorded, Evidence, IntentRecorded, IntentState, IntentStateChanged,
-                            Lookup, ModeChanged, Purpose, ResultObserved, ResultPhase)
+                            Lookup, ModeChanged, OwnerKind, Purpose, ResultObserved, ResultPhase)
 from newcore.domain.codec import contract_sha256
 from newcore.domain.errors import DomainError
 from newcore.domain.events import EVENT_TYPES
@@ -102,7 +102,8 @@ class EventHeader:
     authorized: tuple[str, ...] = ()        # decision_recorded: the exact intent ids it authorizes
     intent_id: str | None = None            # every intent kind
     purpose: Purpose | None = None          # intent_recorded
-    owner_id: str | None = None             # intent_recorded: the int_ / lot_ it works for (lineage parent)
+    owner_id: str | None = None             # intent_recorded: the entry intent / lot it works for (lineage parent)
+    owner_kind: OwnerKind | None = None     # intent_recorded: what owner_id is (NC-01 OrderIntent.owner_kind)
     client_ids: tuple[str, ...] = ()        # intent_recorded (exactly one in step 0); result_recorded (the result's)
     to_state: IntentState | None = None     # state_changed / intent_closed
     outcome: ResultOutcome | None = None    # result_recorded
@@ -128,6 +129,7 @@ class EventHeader:
         req(self.decision_key is None or k is EventKind.DECISION_RECORDED, p + '.decision_key', 'decisions only')
         req(not self.authorized or k is EventKind.DECISION_RECORDED, p + '.authorized', 'decisions only')
         req(self.owner_id is None or k is EventKind.INTENT_RECORDED, p + '.owner_id', 'intent_recorded only')
+        req((self.owner_kind is None) == (self.owner_id is None), p + '.owner_kind', 'set exactly with owner_id')
         req(len(self.client_ids) <= 1, p + '.client_ids', 'one client id per intent (no alt id in step 0)')
         for c in self.client_ids:
             check_client_id(c, p + '.client_ids')
@@ -149,7 +151,8 @@ def header_of(event) -> EventHeader:
     if isinstance(event, IntentRecorded):
         i = event.intent
         return EventHeader(kind=EventKind.INTENT_RECORDED, decision_id=i.decision_id, intent_id=i.intent_id,
-                           purpose=i.purpose, owner_id=i.owner_id, client_ids=i.client_ids, **base)
+                           purpose=i.purpose, owner_id=i.owner_id, owner_kind=i.owner_kind, client_ids=i.client_ids,
+                           **base)
     if isinstance(event, IntentStateChanged):
         to = event.to_state
         if to is IntentState.SUBMITTED:
@@ -305,8 +308,9 @@ class Grammar:
         key, authorized = dec
         req_g(h.intent_id in authorized, p + '.intent_id', 'G4/G5: not in its decision\'s authorized intent set')
         owner = h.owner_id
-        if owner is not None:
-            if owner.startswith('int_'):
+        if owner is not None:                   # resolved by the intent's typed owner_kind, never by the id's prefix
+            # (a PORTFOLIO owner cannot reach here: NC-01 makes a portfolio-owned intent cancel-only, never DURABLE)
+            if h.owner_kind is OwnerKind.ENTRY_INTENT:
                 o = self._intents.get(owner)
                 req_g(o is not None and o.purpose is Purpose.ENTRY, p + '.owner_id', 'G5: owner is no recorded entry')
             else:

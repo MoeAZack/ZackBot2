@@ -1,8 +1,8 @@
 """NC-01 mutation evidence (contract r2 6.7). A script, not a pytest module.
 
 For each mutation it exports the committed HEAD (git archive) into a fresh temp folder, removes or weakens ONE domain
-rule there, runs tests/newcore, and requires the suite to FAIL - naming the failing tests. The working tree is never
-touched. Usage (one run at a time):
+rule there, runs tests/newcore + tests/newcore_ports, and requires the suite to FAIL - naming the failing tests. The
+working tree is never touched. Usage (one run at a time):
 
     python tests/newcore/nc01_mutations.py            # all mutations
     python tests/newcore/nc01_mutations.py NAME ...   # selected ones
@@ -35,6 +35,14 @@ MUTATIONS = {
                                                  '    _S.FILLED: frozenset({_S.WORKING}), _S.CANCELLED')]),
     'protection bound': (D + 'protection.py', [('    req(prot.qty <= exposure or prot.replacement is not None,',
                                                 '    req(True,')]),
+    'unconfirmed replacement counted as confirmed coverage': (D + 'protection.py', [(
+        '    unpromoted replacement is never counted here, whatever its state."""\n',
+        '    unpromoted replacement is never counted here, whatever its state."""\n'
+        '    if prot.replacement is not None:\n        return intents_by_id[prot.replacement].qty\n')]),
+    'replacing status hides an undersized stop': (D + 'protection.py', [(
+        '    if confirmed_coverage(prot, intents_by_id) < exposure:\n',
+        '    if prot.replacement is not None:\n        return ProtectionStatus.REPLACING\n'
+        '    if confirmed_coverage(prot, intents_by_id) < exposure:\n')]),
     'cross-record symbol/side agreement': (D + 'portfolio.py', [(
         "        req((owner.symbol, owner.side) == (it.symbol, it.side), ip, 'owner of another symbol / side')",
         "        req(True, ip, 'owner of another symbol / side')")]),
@@ -79,6 +87,36 @@ MUTATIONS = {
         "    check_header(doc)\n    if problems:\n        raise InvalidRecord('document', f'hostile JSON: {problems[0]}')\n",
         "    if problems:\n        raise InvalidRecord('document', f'hostile JSON: {problems[0]}')\n    check_header(doc)\n")]),
     'drain resting maker': (D + 'portfolio.py', [('            if it.pullable:', '            if False:')]),
+    'E07: record_type looked up before its type is checked': (D + 'codec.py', [(
+        '    if type(rtype) is not str or rtype not in RECORD_TYPES:', '    if rtype not in RECORD_TYPES:')]),
+    'I05: owner_kind ignored (orphan never recognized)': (D + 'orders.py', [(
+        '        return self.owner_kind is OwnerKind.PORTFOLIO', '        return False')]),
+    'S05: reducing intents not bounded by their lot': (D + 'portfolio.py', [(
+        '        req(q <= lots[lot_id].qty,', '        req(True,')]),
+    'S05 re-check: orphan cancel work counted as live reducing': (D + 'portfolio.py', [(
+        '        if it.purpose not in (Purpose.REDUCE, Purpose.CLOSE) or it.owner_kind is not OwnerKind.LOT or it.intent_id in preds:',
+        '        if it.purpose not in (Purpose.REDUCE, Purpose.CLOSE) or it.owner_kind is OwnerKind.ENTRY_INTENT or it.intent_id in preds:')]),
+    'H05: Lot not encodable standalone': (D + 'codec.py', [("    'lot': portfolio.Lot,\n", '')]),
+    'CP05: a position accepts duplicate lots': (D + 'portfolio.py', [(
+        "        req(len({x.lot_id for x in self.lots}) == len(self.lots), p + '.lots',", "        req(True, p + '.lots',")]),
+    'ruling 1: Decision.symbol unvalidated': (D + 'decision.py', [(
+        "            check_symbol(self.symbol, p + '.symbol')", '            pass')]),
+    'ruling 2: whitespace-only text accepted': (D + 'base.py', [("    req(v.strip() != '', path,", '    req(True, path,')]),
+    'ruling 4: position lots keep their given order': (D + 'portfolio.py', [(
+        "        if ordered != self.lots:\n            object.__setattr__(self, 'lots', ordered)", '        pass')]),
+    'ports: journal ignores owner_kind (every owner treated as a lot)': ('newcore/ports/journal.py', [(
+        '            if h.owner_kind is OwnerKind.ENTRY_INTENT:', '            if False:')]),
+    'P1: cancel-replace link not checked (predecessor need not be cancelling)': (D + 'portfolio.py', [(
+        "        req(old.state is IntentState.CANCELLING, ip, 'the predecessor of a cancel-replace must be CANCELLING')",
+        '        pass')]),
+    'P1: cancel-replace lot mismatch accepted': (D + 'portfolio.py', [(
+        '        req((old.account_id, old.symbol, old.side, old.owner_id) == (it.account_id, it.symbol, it.side, it.owner_id), ip,',
+        '        req((old.account_id, old.symbol, old.side) == (it.account_id, it.symbol, it.side), ip,')]),
+    'P1: cumulative fills unbounded (ledger closes past the lot)': (D + 'portfolio.py', [(
+        "            req(run > 0, f'{p}.fills[{i}]',", "            req(True, f'{p}.fills[{i}]',")]),
+    'P2: portfolio collections not canonical': (D + 'portfolio.py', [(
+        "            _canonical(self, 'positions', lambda x: (x.symbol, x.side.value))\n"
+        "            _canonical(self, 'intents', lambda x: x.intent_id)", '            pass')]),
     'duplicate JSON keys': (D + 'codec.py', [("            if k in out:\n                problems.append(",
                                               "            if False:\n                problems.append(")]),
     'truncated JSON': (D + 'codec.py', [(
@@ -106,7 +144,7 @@ def export_head(dst):
 
 def run_suite(cwd):
     out = subprocess.run([sys.executable, '-m', 'pytest', '-p', 'no:cacheprovider', '-q', '-o', 'addopts=',
-                          'tests/newcore', '--ignore=tests/newcore/test_nc01_perf.py'],
+                          'tests/newcore', 'tests/newcore_ports', '--ignore=tests/newcore/test_nc01_perf.py'],
                          cwd=cwd, capture_output=True, text=True, timeout=900)
     failed = sorted(set(re.findall(r'^FAILED (.+?)(?: - .*)?$', out.stdout, re.M)))
     summary = (out.stdout.strip().splitlines() or [''])[-1]

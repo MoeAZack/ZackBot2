@@ -183,12 +183,12 @@ def test_a_lot_in_flight_order_is_never_a_protect_or_entry_intent():
 
 def test_provisional_stops_belong_only_to_unresolved_market_entries():
     maker = F.maker_entry(IDS, PF.account_id)
-    prov = F.intent(IDS, PF.account_id, Purpose.PROTECT, maker.symbol, maker.side, D('1'), owner_id=maker.intent_id,
+    prov = F.intent(IDS, PF.account_id, Purpose.PROTECT, maker.symbol, maker.side, D('1'), owner_id=maker.intent_id, owner_kind=F.OwnerKind.ENTRY_INTENT,
                     stop_price=D('1.9'), state=IntentState.CANCELLING)
     with pytest.raises(InvalidRecord, match='only an unresolved market ENTRY'):
         replace(PF, intents=PF.intents + (maker, prov))
     me = F.market_entry(IDS, PF.account_id)
-    stop = F.intent(IDS, PF.account_id, Purpose.PROTECT, me.symbol, me.side, D('400'), owner_id=me.intent_id,
+    stop = F.intent(IDS, PF.account_id, Purpose.PROTECT, me.symbol, me.side, D('400'), owner_id=me.intent_id, owner_kind=F.OwnerKind.ENTRY_INTENT,
                     stop_price=D('0.1'))
     with pytest.raises(InvalidRecord, match='cancel-only'):               # a working provisional stop nobody carries
         replace(PF, intents=PF.intents + (me, stop))

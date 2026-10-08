@@ -10,7 +10,8 @@ from decimal import Decimal as D
 
 from newcore.domain import (Account, AccountBinding, Action, Arming, Authority, BindingConfirmation, BindingState,
                             Capability, Decision, EntriesMode, Environment, Fill, HoldKind, InstrumentId, InstrumentRules,
-                            IntentState, Lot, LotSource, MissPhase, OrderIntent, OrderResult, OrderType, Ownership,
+                            IntentState, Lot, LotSource, MissPhase, OrderIntent, OrderResult, OrderType, OwnerKind,
+                            Ownership,
                             OwnershipProof, Portfolio, Position, PositionRead, ProofKind, Protection, Purpose, ReasonCode,
                             Side, StopMiss, Venue, confirmation_phrase, make_id)
 from newcore.domain.base import field_spec
@@ -85,8 +86,13 @@ DEFAULT_REASON = {Purpose.ENTRY: ReasonCode.ENTRY_SIGNAL, Purpose.ADD: ReasonCod
 
 def intent(ids, acct, purpose, symbol='SOLUSDT', side=Side.LONG, qty=D('1.5'), *, state=IntentState.SUBMITTED,
            order_type=OrderType.MARKET, owner_id=None, price=None, stop_price=None, arm=None, seen_qty=None,
-           created=T0, decision_id=None, slot_id=None, reason=None, authorized_by=None, alt=None):
+           created=T0, decision_id=None, slot_id=None, reason=None, authorized_by=None, alt=None, owner_kind=None,
+           replaces=None):
     reason = reason or DEFAULT_REASON[purpose]
+    if owner_id is None:
+        owner_kind = None
+    elif owner_kind is None:
+        owner_kind = OwnerKind.LOT                  # the explicit kind; tests pass ENTRY_INTENT / PORTFOLIO when meant
     if purpose is Purpose.PROTECT:
         order_type = OrderType.STOP_MARKET
     if purpose is Purpose.ENTRY and slot_id is None and reason is ReasonCode.ENTRY_SIGNAL:
@@ -94,8 +100,9 @@ def intent(ids, acct, purpose, symbol='SOLUSDT', side=Side.LONG, qty=D('1.5'), *
     return OrderIntent(intent_id=ids.id('int'), account_id=acct, decision_id=decision_id or ids.id('dec'),
                        client_order_id=ids.cid(purpose.value[0]), purpose=purpose, order_type=order_type, state=state,
                        symbol=symbol, side=side, qty=qty, reason=reason, created_at_ms=created, owner_id=owner_id,
+                       owner_kind=owner_kind,
                        slot_id=slot_id, price=price, stop_price=stop_price, arm=arm, alt_client_order_id=alt,
-                       seen_qty=seen_qty, authorized_by=authorized_by)
+                       seen_qty=seen_qty, authorized_by=authorized_by, replaces_intent_id=replaces)
 
 
 def stop_level(side, price):
@@ -106,7 +113,7 @@ def miss(phase, count=1, foreign=None):
     return StopMiss(phase=phase, count=count, since_ms=T0 + 1000, foreign_order_id=foreign)
 
 
-def protection(ids, acct, owner_id, symbol, side, qty, price, stop_state):
+def protection(ids, acct, owner_id, symbol, side, qty, price, stop_state, owner_kind=OwnerKind.LOT):
     """(Protection, [its PROTECT intents]) for one of STOP_STATES."""
     level = stop_level(side, price)
     order_state = {'pending': IntentState.SUBMITTED, 'unverified': IntentState.WORKING, 'confirmed': IntentState.WORKING,
@@ -114,12 +121,13 @@ def protection(ids, acct, owner_id, symbol, side, qty, price, stop_state):
                    'replacing': IntentState.WORKING}.get(stop_state)
     extra, order, repl = [], None, None
     if order_state is not None:
-        it = intent(ids, acct, Purpose.PROTECT, symbol, side, qty, state=order_state, owner_id=owner_id, stop_price=level)
+        it = intent(ids, acct, Purpose.PROTECT, symbol, side, qty, state=order_state, owner_id=owner_id, stop_price=level,
+                    owner_kind=owner_kind)
         extra.append(it)
         order = it.intent_id
     if stop_state == 'replacing':
         new = intent(ids, acct, Purpose.PROTECT, symbol, side, qty, state=IntentState.SUBMITTED, owner_id=owner_id,
-                     stop_price=level + D('0.01'), reason=ReasonCode.PROTECT_REPLACE)
+                     stop_price=level + D('0.01'), reason=ReasonCode.PROTECT_REPLACE, owner_kind=owner_kind)
         extra.append(new)
         repl = new.intent_id
     m = {'checking': miss(MissPhase.CHECKING), 'restoring': miss(MissPhase.RESTORING, 2),
@@ -227,7 +235,7 @@ def market_entry(ids, acct, symbol='DOGEUSDT', state=IntentState.UNKNOWN, seen=D
 def orphan_stop(ids, acct, symbol='LINKUSDT', side=Side.SHORT):
     """Cancel-only work: an owned stop whose lot is gone, re-owned by the portfolio aggregate."""
     return intent(ids, acct, Purpose.PROTECT, symbol, side, D('1'), state=IntentState.CANCELLING, owner_id=pf_id(acct),
-                  stop_price=D('9.5'), reason=ReasonCode.PROTECT_RESIZE)
+                  stop_price=D('9.5'), reason=ReasonCode.PROTECT_RESIZE, owner_kind=OwnerKind.PORTFOLIO)
 
 
 # ----------------------------------------------------------------------------------------------------------- random
@@ -264,7 +272,7 @@ def gen_portfolio(rng, *, max_positions=6):
             intents.append(me)
             if seen > 0 and rng.random() < 0.5:
                 prov, extra = protection(ids, acct, me.intent_id, me.symbol, me.side, seen, D('0.12'),
-                                         rng.choice(('pending', 'confirmed', 'none')))
+                                         rng.choice(('pending', 'confirmed', 'none')), OwnerKind.ENTRY_INTENT)
                 entry_stops.append(prov)
                 intents += extra
     for _ in range(rng.randint(0, 2)):
@@ -383,7 +391,14 @@ def samples(seed=5):
                   reasons=(ReasonCode.RECOVERY_DURABILITY_UNAVAILABLE,), to_hold=HoldKind.DURABILITY_UNAVAILABLE,
                   reason=ReasonCode.RECOVERY_DURABILITY_UNAVAILABLE),
             event(BindingChanged, ids, acct, 6, from_state=BindingState.UNCONFIRMED, to_state=BindingState.CONFIRMED,
-                  binding=binding(), confirmation=account(acct).confirmation, reason=ReasonCode.BINDING_UNCONFIRMED)]
+                  binding=binding(), confirmation=account(acct).confirmation, reason=ReasonCode.BINDING_UNCONFIRMED),
+            *standalone_samples(ids, pf, res)]
+
+
+def standalone_samples(ids, pf, res):
+    """The contract-2 required types that are otherwise nested (Cowork H05; Codex ruling: exactly these five)."""
+    lt = pf.lots[0]
+    return [binding(), rules().instrument, lt.stop, lt, pf.positions[0]]
 
 
 SNAPSHOT_FILE = 'fixtures/nc01_samples_v1.jsonl'
