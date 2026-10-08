@@ -404,6 +404,46 @@ class FakeVenue:
         out = tuple(r for r in self._funding if r.symbol == symbol and r.side == side and from_ms < r.at_ms <= to_ms)
         return ReadOutcome(kind=ReadKind.OK, observed_at_ms=self.now_ms, value=out)
 
+    # ------------------------------------------------------------------------------------------------ persistence
+    def to_state(self) -> dict:
+        """Everything the venue holds besides its candles, as JSON-able data (Decimals as text), so a `fake` run can
+        stop and restart next to its journal. Fault hooks are not state (they are test instruments)."""
+        s = str
+        return {
+            'schema': 'zackbot.newcore.fake_venue/1', 'now_ms': self.now_ms, 'wallet': s(self._wallet),
+            'seq': self._seq, 'trade_seq': self._trade_seq,
+            'positions': [[sym, side, s(q), s(a)] for (sym, side), (q, a) in sorted(self._positions.items())],
+            'orders': [{'symbol': o.ref.symbol, 'client_id': o.ref.client_id, 'route': o.ref.route, 'type': o.order_type,
+                        'side': o.position_side, 'qty': s(o.qty), 'reduce': o.reduce,
+                        'stop': None if o.stop_price is None else s(o.stop_price), 'eoid': o.exchange_order_id,
+                        'seq': o.seq, 'status': o.status, 'executed': s(o.executed),
+                        'avg': None if o.avg_price is None else s(o.avg_price)}
+                       for o in sorted(self._orders.values(), key=lambda o: o.seq)],
+            'fills': [[f.trade_id, f.exchange_order_id, f.symbol, f.position_side, s(f.qty), s(f.price), s(f.fee),
+                       f.fee_asset, s(f.realized_pnl), f.maker, f.at_ms] for f in self._fills],
+            'funding': [[r.symbol, r.side, r.at_ms, s(r.amount)] for r in self._funding],
+        }
+
+    @classmethod
+    def from_state(cls, candles, tf_ms, state, *, costs=CostModel()):
+        if state.get('schema') != 'zackbot.newcore.fake_venue/1':
+            raise ValueError('not a fake venue state')
+        D = Decimal
+        v = cls(candles, tf_ms, costs=costs, equity=D(state['wallet']), start_ms=state['now_ms'])
+        v._seq, v._trade_seq = state['seq'], state['trade_seq']
+        v._positions = {(sym, side): [D(q), D(a)] for sym, side, q, a in state['positions']}
+        for o in state['orders']:
+            ref = OrderRef(symbol=o['symbol'], client_id=o['client_id'], route=o['route'])
+            v._orders[o['client_id']] = _Order(
+                ref=ref, order_type=o['type'], position_side=o['side'], qty=D(o['qty']), reduce=o['reduce'],
+                stop_price=None if o['stop'] is None else D(o['stop']), exchange_order_id=o['eoid'], seq=o['seq'],
+                status=o['status'], executed=D(o['executed']), avg_price=None if o['avg'] is None else D(o['avg']))
+        v._fills = [VenueFill(trade_id=t, exchange_order_id=e, symbol=sym, position_side=side, qty=D(q), price=D(p),
+                              fee=D(fee), fee_asset=asset, realized_pnl=D(r), maker=m, at_ms=at)
+                    for t, e, sym, side, q, p, fee, asset, r, m, at in state['fills']]
+        v._funding = [FundingRow(sym, side, at, D(a)) for sym, side, at, a in state['funding']]
+        return v
+
     # ------------------------------------------------------------------------------------------------ inspection
     def orders_submitted(self, symbol=None):
         """Every order the venue accepted, oldest first (duplicate checks in tests)."""
