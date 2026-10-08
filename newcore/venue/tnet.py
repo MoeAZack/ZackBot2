@@ -128,7 +128,8 @@ def tnet_preflight(venue, account_reader, symbols, *, min_balance=DEFAULT_MIN_BA
                 orders.append(o)
                 cid = o.ref.client_id
                 if is_newcore_cid(cid):
-                    refusals.append(f'leftover_newcore_order:{sym}:{cid}')      # run tnet_cleanup first
+                    refusals.append(f'leftover_newcore_order:{sym}:{cid} (run: python tools/newcore_tnet.py '
+                                    f'--cleanup)')
                 elif cid not in adopt:
                     refusals.append(f'foreign_order:{sym}:{cid}')
     return PreflightResult(not refusals, tuple(refusals), balance, tuple(positions), tuple(orders), baseline)

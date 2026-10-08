@@ -81,6 +81,12 @@ def _parser():
     p.add_argument('--settle-s', type=float, default=2.0,
                    help='the cleanup confirms a clean read this long later (venue read lag); 0..10')
     p.add_argument('--gate', action='store_true', help='refuse a dirty working tree (exact-build report)')
+    p.add_argument('--cleanup', action='store_true',
+                   help='after a crash / kill -9: cancel every open NEWCORE order (zbn1o- / zbn1a- / zbn1e-) on the '
+                        'symbols, list every position; never touches a foreign order')
+    p.add_argument('--close-positions', action='store_true',
+                   help='with --cleanup: also close every position above its --adopt-foreign baseline with a '
+                        'reduce-only market order (you assert they are NEWCORE exposure)')
     return p
 
 
@@ -179,8 +185,14 @@ def _main(argv=None, *, http=None, local_clock=None, protector=None, out=None, m
     if not 0 < args.deadline_s <= 7200:
         out.write('REFUSED: --deadline-s must be in (0, 7200].\n')
         return EXIT_USAGE
-    if not args.probe and not args.scenario:
-        out.write('REFUSED: give at least one --probe or --scenario.\n')
+    if args.cleanup and (args.probe or args.scenario):
+        out.write('REFUSED: --cleanup runs alone (no --probe / --scenario).\n')
+        return EXIT_USAGE
+    if args.close_positions and not args.cleanup:
+        out.write('REFUSED: --close-positions goes with --cleanup.\n')
+        return EXIT_USAGE
+    if not args.probe and not args.scenario and not args.cleanup:
+        out.write('REFUSED: give at least one --probe or --scenario (or --cleanup).\n')
         return EXIT_USAGE
     for flag, v, lo, hi in (('--p2-samples', args.p2_samples, 1, 10),
                             ('--cleanup-attempts', args.cleanup_attempts, 1, 10)):
@@ -249,6 +261,8 @@ def _main(argv=None, *, http=None, local_clock=None, protector=None, out=None, m
         return EXIT_USAGE
     args.symbol = args.symbol or 'SOLUSDT'
     symbols = sorted(({args.symbol} if args.probe else set()) | {s for _, sp in specs for s in sp['symbols']})
+    if args.cleanup:
+        symbols = sorted(set(run_cfg.symbols if run_cfg is not None else ()) | {args.symbol})
     import time as _time
     clock = local_clock or system_clock_ms
     mono = monotonic or _time.monotonic
@@ -265,6 +279,15 @@ def _main(argv=None, *, http=None, local_clock=None, protector=None, out=None, m
         out.write('REFUSED: --gate needs a clean, committed tree (exact-build report).\n')
         return EXIT_USAGE
     if args.dry_run:
+        if args.cleanup:
+            out.write('TNET-01 cleanup - PLAN (dry run: no network call, no key decrypted)\n'
+                      f'  account {args.account_id}; symbols {", ".join(symbols)}\n'
+                      '  1. read positions + open orders (classic and algo) on the symbols\n'
+                      '  2. cancel every open NEWCORE order (foreign orders are never touched)\n'
+                      + ('  3. close every position above its --adopt-foreign baseline (reduce-only market)\n'
+                         if args.close_positions else '  3. list positions only (add --close-positions to close)\n')
+                      + f'  4. confirm with a second read {args.settle_s:g} s later; report\n')
+            return EXIT_PASS
         out.write(_plan(args, specs, symbols, cassette_dir, report_dir, store.exists()) + '\n')
         return EXIT_PASS
 
@@ -293,6 +316,48 @@ def _main(argv=None, *, http=None, local_clock=None, protector=None, out=None, m
         scrubber.uninstall()
 
 
+def _cleanup_only(args, venue, symbols, run_id, snooze, recorder, cassette_dir, stamp, values, out):
+    """N3: the standalone teardown. Foreign orders are never cancelled; positions are closed only with
+    --close-positions (above the --adopt-foreign baseline), else listed. Exit 0 clean / 4 unreadable / 8 left."""
+    from newcore.venue.tnet import is_newcore_cid
+    try:
+        venue.check_hedge_mode()
+    except Exception:                                            # noqa: BLE001 - one-way / unreadable
+        out.write('CLEANUP REFUSED: the account is not readable in hedge mode.\n')
+        _write_cassette(recorder, cassette_dir, stamp, values, out)
+        return EXIT_PREFLIGHT
+    baseline, positions = {}, []
+    for sym in symbols:
+        pos = venue.positions(sym)
+        oo = venue.open_orders(sym)
+        if pos.kind is not P.ReadKind.OK or oo.kind is not P.ReadKind.OK:
+            out.write(f'CLEANUP REFUSED: {sym} positions / open orders unreadable; nothing sent.\n')
+            _write_cassette(recorder, cassette_dir, stamp, values, out)
+            return EXIT_PREFLIGHT
+        for p in pos.value:
+            if p.qty == 0:
+                continue
+            positions.append(p)
+            if not args.close_positions or f'{p.symbol}:{p.side}' in args.adopt_foreign:
+                baseline[(p.symbol, p.side)] = p.qty         # kept: listed, never closed
+        for o in oo.value:
+            tag = 'NEWCORE, will be cancelled' if is_newcore_cid(o.ref.client_id) else 'foreign, left alone'
+            out.write(f'  order {sym} {o.ref.client_id} {o.order_type} {o.qty}: {tag}\n')
+    for p in positions:
+        kept = (p.symbol, p.side) in baseline
+        out.write(f'  position {p.symbol} {p.side} {p.qty}: {"kept (listed)" if kept else "will be closed"}\n')
+    res = tnet_cleanup(venue, symbols, run_id=run_id + '_cleanup', max_attempts=args.cleanup_attempts,
+                       baseline=baseline, confirm_reads=2, settle_s=args.settle_s, sleep=snooze)
+    out.write(format_cleanup(res) + '\n')
+    _write_cassette(recorder, cassette_dir, stamp, values, out)
+    left = [p for p in positions if (p.symbol, p.side) in baseline and f'{p.symbol}:{p.side}' not in
+            args.adopt_foreign]
+    if left:
+        out.write('POSITIONS LEFT (not adopted; add --close-positions if they are NEWCORE exposure):\n' +
+                  ''.join(f'  {p.symbol} {p.side} {p.qty}\n' for p in left))
+    return EXIT_PASS if res.clean and not left else EXIT_RESIDUE
+
+
 def _run(args, specs, symbols, min_balance, creds, scrubber, http, clock, mono, snooze, build, cassette_dir,
          report_dir, out):
     if http is None:
@@ -312,6 +377,8 @@ def _run(args, specs, symbols, min_balance, creds, scrubber, http, clock, mono, 
         return EXIT_PREFLIGHT
     venue = _Recording(TestnetVenue(transport, oc))
     reader = TestnetAccountReader(transport, oc)
+    if args.cleanup:
+        return _cleanup_only(args, venue, symbols, run_id, snooze, recorder, cassette_dir, stamp, values, out)
     pre = tnet_preflight(venue, reader, symbols, min_balance=min_balance, adopt_foreign=args.adopt_foreign)
     state_baseline = pre.baseline
     info = transport.exchange_info()
