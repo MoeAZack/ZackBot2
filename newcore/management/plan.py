@@ -41,6 +41,14 @@ class PlanRefused(ManagementError):
     """The entry alone already breaks the risk cap: no plan (the runner closes the entry under its own reason)."""
 
 
+class TrailMode(enum.StrEnum):
+    """How the ratcheting trail (`trail_offset`) computes its level at a candle close (G-STOP-CROSSED, pending a Codex
+    ruling). Both only ever tighten the stop."""
+    CLOSE_OFFSET = 'close_offset'            # close -/+ trail_offset (price units) - the default
+    HIGHEST_HIGH_ATR = 'highest_high_atr'    # legacy chandelier: highest high since entry (short: lowest low) -/+
+    #                                          trail_offset x the CURRENT ATR (Candle.atr, supplied per candle)
+
+
 def sgn(side):
     return 1 if side is Side.LONG else -1
 
@@ -106,6 +114,7 @@ class ManagementPlan(Record):
     costs: CostModel
     disabled_by_default: bool
     mechanics_only: bool               # a mechanics fixture: no edge is claimed
+    trail_mode: TrailMode = TrailMode.CLOSE_OFFSET   # highest_high_atr: trail_offset is the ATR multiple
 
     def _validate(self, p):
         r = self.rules
@@ -142,6 +151,8 @@ class ManagementPlan(Record):
             req(self.time_exit_candles >= 1, p + '.time_exit_candles', 'at least one candle')
         if self.trail_offset is not None:
             positive(self.trail_offset, p + '.trail_offset')
+        req(self.trail_mode is TrailMode.CLOSE_OFFSET or self.trail_offset is not None, p + '.trail_mode',
+            'a highest_high_atr trail needs trail_offset (the ATR multiple)')
         positive(self.risk_cap, p + '.risk_cap')
         risk = planned_risk(self)
         req(risk <= self.risk_cap, p + '.risk_cap', f'planned risk {risk} (add reserved) above the cap {self.risk_cap}')
@@ -197,13 +208,14 @@ class PlanBuild(Record):
 
 def build_plan(*, rules, side, entry_price, entry_qty, entry_candle_open_ms, candle_seconds, stop_price, risk_cap, costs,
                add_price=None, add_scale=None, tp1_frac=None, tp1_offset=None, tp2_offset=None, be_after_tp1=False,
-               time_exit_candles=None, trail_offset=None, disabled_by_default=True, mechanics_only=True):
+               time_exit_candles=None, trail_offset=None, disabled_by_default=True, mechanics_only=True,
+               trail_mode=TrailMode.CLOSE_OFFSET):
     """The plan at the confirmed entry fill. Pure; raises PlanRefused when the entry alone is above the cap."""
     base = dict(rules=rules, side=side, entry_price=entry_price, entry_qty=entry_qty,
                 entry_candle_open_ms=entry_candle_open_ms, candle_seconds=candle_seconds, stop_price=stop_price,
                 tp1_frac=tp1_frac, tp1_offset=tp1_offset, tp2_offset=tp2_offset, be_after_tp1=be_after_tp1,
                 time_exit_candles=time_exit_candles, trail_offset=trail_offset, risk_cap=risk_cap, costs=costs,
-                disabled_by_default=disabled_by_default, mechanics_only=mechanics_only)
+                disabled_by_default=disabled_by_default, mechanics_only=mechanics_only, trail_mode=TrailMode(trail_mode))
     entry_risk = _risk(side, costs, stop_price, [(entry_qty, entry_price)])
     if entry_risk > risk_cap:
         raise PlanRefused('ManagementPlan.risk_cap', f'the entry alone risks {entry_risk} > cap {risk_cap}')
