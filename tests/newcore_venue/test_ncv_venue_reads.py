@@ -198,3 +198,15 @@ def test_the_by_order_read_is_unchanged():
     out = v.fills('SOLUSDT', '5000')
     assert out.kind is P.ReadKind.OK and isinstance(out.value[0], P.VenueFill)
     assert dict(query_pairs(http.last))['orderId'] == '5000'
+
+
+@pytest.mark.parametrize('t,detail', [(NOW_MS - 31_000, 'stale_mark'), (NOW_MS + 6_000, 'future_mark')])
+def test_m1_a_stale_or_future_mark_is_unknown(t, detail):
+    r, _ = reader(ok(premium(t=t)))
+    out = r.mark_price('SOLUSDT')
+    assert out.kind is P.ReadKind.UNKNOWN and out.detail == detail
+
+
+def test_m1_a_mark_within_bounds_is_ok():
+    r, _ = reader(ok(premium(t=NOW_MS - 29_000)))
+    assert r.mark_price('SOLUSDT').kind is P.ReadKind.OK

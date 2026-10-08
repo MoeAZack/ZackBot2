@@ -46,6 +46,19 @@ _HEX_RUN = re.compile(r'(?:[0-9a-fA-F]{2}){8,}')
 MAX_DECODED_TOKENS = 20000
 
 
+def _strings(obj):
+    """Every string leaf (iterative: no recursion limit)."""
+    stack = [obj]
+    while stack:
+        o = stack.pop()
+        if isinstance(o, str):
+            yield o
+        elif isinstance(o, dict):
+            stack.extend(o.values())
+        elif isinstance(o, (list, tuple)):
+            stack.extend(o)
+
+
 def decoded_views(text):
     """Text forms a registered secret could hide in (Cowork #37 R2): NFKC, unicode-escape decoded, and every
     base64 / hex run decoded. Bounded: at most MAX_DECODED_TOKENS runs per text."""
@@ -206,10 +219,10 @@ class CassetteRecorder:
                 'signed': bool(request.signed), 'query': query, 'headers': headers}
 
     def _occurs(self, values, interactions):
-        """Does any newly learned value occur in the already stored interactions (raw text or a binary body)? Only
-        then is the full rescrub needed (a per-request signature never does: it did not exist before)."""
-        text = json.dumps(interactions, ensure_ascii=False)
-        if contains_values(text, values, self._cache):
+        """Does any newly learned value occur in the already stored interactions? Matched on the RAW strings (V1:
+        a JSON dump escapes quotes, backslashes and control characters, so a value containing one would be missed)
+        and in binary bodies. Only then is the full rescrub needed (a per-request signature never is)."""
+        if any(contains_values(s, values, self._cache) for s in _strings(interactions)):
             return True
         for it in interactions:
             b64 = it.get('response', {}).get('body_b64')
@@ -288,7 +301,8 @@ class CassetteRecorder:
         values = sorted(self._values)
         if self._unproducible:
             raise CassetteLeak(f'{self._unproducible}; cassette not produced')
-        if contains_values(text, values, self._cache):
+        if contains_values(text, values, self._cache) or \
+                any(contains_values(s, values, self._cache) for s in _strings(self.interactions)):
             raise CassetteLeak('a secret value is still present; cassette not produced')
         if values and any(contains_values(view, values, self._cache) for view in decoded_views(text)):
             raise CassetteLeak('a secret value is present in an encoded form; cassette not produced')
