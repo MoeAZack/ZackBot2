@@ -77,17 +77,19 @@ _SLOT_PLAIN = ('id', 'sides', 'risk', 'share', 'symbols', 'stop', 'entry', 'max_
 
 
 def divergence_class(d):
-    """The stable class of one recorded known divergence: the adapter it binds plus its ticket and finding id (the recorded
-    defect). The case that carries it is that defect's xfail(strict) guard on that adapter."""
-    return f"divergence:{d['adapter']}:{d['ticket']}:{d['finding']}"
+    """The stable class of one recorded known divergence: the adapter it binds plus its `divergence_id` (Codex golden r3
+    residual ruling point 2 - never the ticket / finding prose, which is descriptive evidence). The case that carries it is
+    that defect's xfail(strict) guard on that adapter."""
+    return f"divergence:{d['adapter']}:{d['divergence_id']}"
 
 
 def classes(case):
     """The coverage classes a case exercises, derived from the case file (never hand-listed): every expected exit code, every
     fault kind, every non-trivial slot feature, the entry type, per legacy adapter the side it runs (runnable only), every
     `behaviours` tag (Codex pre-review of 3f4abea #2: a new causal behaviour placed only in extended fails the per-commit
-    coverage contract) and every recorded known divergence (adapter, ticket, finding): a case that is the ONLY guard of a
-    recorded defect on an adapter must run per commit."""
+    coverage contract) and every recorded known divergence (adapter, divergence_id): a case that is the ONLY guard of a
+    recorded defect on an adapter must run per commit. Every input here is inside the case contract hash (behaviours since
+    the AUD-08 golden vocab records), so no class can change without a ledger record."""
     out = {f'exit:{t["exit"]}' for t in case['expect']['trades']}
     out |= {f'fault:{f["kind"]}' for f in case['faults']}
     out |= {f'slot:{k}' for k in case['slot'] if k not in _SLOT_PLAIN}
@@ -105,7 +107,7 @@ def classes(case):
 def core_gaps(cases, tier_of):
     """Classes the pack exercises somewhere but the core tier does not (must be empty): core keeps representative long and
     short paths on each legacy adapter, a required (passing) case per legacy adapter, and one case per exit code, fault kind,
-    slot feature, entry type, behaviour tag and recorded known divergence (adapter, ticket, finding)."""
+    slot feature, entry type, behaviour ID and recorded known divergence (adapter, divergence_id)."""
     every, core = set(), set()
     for c in cases:
         k = classes(c)

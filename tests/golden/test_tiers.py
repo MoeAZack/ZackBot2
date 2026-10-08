@@ -74,14 +74,14 @@ def test_core_gaps_detects_a_moved_representative():
 
 
 def test_behaviours_and_known_divergences_are_coverage_classes():
-    """Codex pre-review of 3f4abea #2: every `behaviours` tag and every recorded known divergence (adapter, ticket, finding) is
+    """Codex pre-review of 3f4abea #2: every `behaviours` tag and every recorded known divergence (adapter, divergence_id) is
     a class derived from the case file, so core must keep a representative of each."""
     cases = {c['id']: c for c in schema.load_all()}
     for c in cases.values():
         k = tiers.classes(c)
         assert {f'behaviour:{b}' for b in c['behaviours']} <= k, c['id']
         assert {tiers.divergence_class(d) for d in c['known_divergences']} <= k, c['id']
-    assert 'divergence:legacy_engine:AUD-07:C11' in tiers.classes(cases['G-TIME-L-02'])
+    assert 'divergence:legacy_engine:AUD07-C11' in tiers.classes(cases['G-TIME-L-02'])
 
 
 def test_core_gaps_detects_a_new_behaviour_placed_only_in_extended():
@@ -99,21 +99,44 @@ def test_core_gaps_detects_a_moved_sole_behaviour_and_divergence_guard():
     cases = schema.load_all()
     tier_of = tiers.load([c['id'] for c in cases])
     gaps = tiers.core_gaps(cases, dict(tier_of, **{'G-DAY-CAIRO-W-01': 'extended'}))
-    assert gaps == ['behaviour:cairo_day', 'behaviour:daily_halt', 'divergence:legacy_backtest:AUD-07:C13d'], gaps
+    assert gaps == ['behaviour:cairo_day', 'behaviour:daily_halt', 'divergence:legacy_backtest:AUD07-C13D'], gaps
 
 
 @pytest.mark.parametrize('moved,gaps', [
-    (('G-TIME-L-02',), ['divergence:legacy_engine:AUD-07:C11']),       # the engine's C11 guard (its mirror S-02 is extended)
-    (('G-TIME-L-01', 'G-TIME-L-02'), ['divergence:legacy_backtest:AUD-07:C11', 'divergence:legacy_engine:AUD-07:C11']),
-    (('G-GAP-TP-S-01',), ['divergence:legacy_backtest:AUD-07:TP gap at the open (pre-existing, outside C13f)']),
+    (('G-TIME-L-02',), ['divergence:legacy_engine:AUD07-C11']),       # the engine's C11 guard (its mirror S-02 is extended)
+    (('G-TIME-L-01', 'G-TIME-L-02'), ['divergence:legacy_backtest:AUD07-C11', 'divergence:legacy_engine:AUD07-C11']),
+    (('G-GAP-TP-S-01',), ['divergence:legacy_backtest:AUD07-TP-GAP-OPEN']),
 ])
 def test_core_gaps_detects_a_moved_sole_divergence_guard(moved, gaps):
-    """A case that is the only core guard of a recorded defect (known divergence by adapter, ticket and finding) cannot leave
+    """A case that is the only core guard of a recorded defect (known divergence by adapter and divergence_id) cannot leave
     core: moving it opens exactly that divergence class."""
     cases = schema.load_all()
     tier_of = tiers.load([c['id'] for c in cases])
     assert all(tier_of[m] == 'core' for m in moved)
     assert tiers.core_gaps(cases, dict(tier_of, **{m: 'extended' for m in moved})) == gaps
+
+
+def test_divergence_classes_key_on_the_id_not_the_prose():
+    """Codex golden r3 residual ruling point 2: re-wording ticket / finding (descriptive evidence) leaves every coverage class
+    as it was; only the divergence_id is identity. (The re-wording itself is a contract change: test_ledger catches it.)"""
+    cases = copy.deepcopy(schema.load_all())
+    tier_of = tiers.load([c['id'] for c in cases])
+    before = [sorted(tiers.classes(c)) for c in cases]
+    for c in cases:
+        for d in c['known_divergences']:
+            d['ticket'], d['finding'] = 'AUD-99', 'reworded: ' + d['finding']
+    assert [sorted(tiers.classes(c)) for c in cases] == before
+    assert tiers.core_gaps(cases, tier_of) == []
+
+
+def test_core_gaps_detects_a_divergence_id_only_in_extended():
+    """A divergence_id that only an extended case carries on an adapter is a core gap (renaming the core guard's ID does it)."""
+    cases = copy.deepcopy(schema.load_all())
+    tier_of = tiers.load([c['id'] for c in cases])
+    ext = next(c for c in cases if c['id'] == 'G-TIME-S-02')
+    assert tier_of['G-TIME-S-02'] == 'extended'
+    next(d for d in ext['known_divergences'] if d['adapter'] == 'legacy_engine')['divergence_id'] = 'AUD07-C11-RENAMED'
+    assert tiers.core_gaps(cases, tier_of) == ['divergence:legacy_engine:AUD07-C11-RENAMED']
 
 
 def test_extended_params_are_slow_and_core_params_are_not():

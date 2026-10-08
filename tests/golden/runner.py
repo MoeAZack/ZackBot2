@@ -51,7 +51,7 @@ def main(argv=None):
             if not mm:
                 verdict = 'PASS' if st == 'required' else 'XPASS (known divergence fixed: remove it + ledger entry)'
             elif kd and compare.same_mismatches(c, kd['observed'], mm):
-                verdict = f"KNOWN {kd['ticket']}/{kd['finding']}"
+                verdict = f"KNOWN {kd['divergence_id']}"
             else:
                 verdict = 'FAIL'
             bad += verdict.startswith(('FAIL', 'XPASS'))

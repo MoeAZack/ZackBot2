@@ -57,7 +57,7 @@ def _params():
             if st == 'known_divergence':
                 kd = next(d for d in c['known_divergences'] if d['adapter'] == ad)
                 marks.append(pytest.mark.xfail(strict=True, raises=KnownDivergence,
-                                               reason=f"{kd['ticket']} {kd['finding']}: {kd['reason']}"))
+                                               reason=f"{kd['divergence_id']} ({kd['ticket']} {kd['finding']}): {kd['reason']}"))
             elif st != 'required':
                 v = c['applies_to'][ad]
                 marks.append(pytest.mark.skip(reason=f"{st}: {v['reason']}"))
@@ -142,7 +142,8 @@ def test_golden_case(case, adapter):
             return                                        # fixed -> strict XPASS -> fails the run until the entry is removed
         assert compare.same_mismatches(case, kd['observed'], mism), \
             'DRIFT inside a known divergence (not the recorded mismatch):\n' + compare.report(case, adapter, mism, trace)
-        raise KnownDivergence(f"{kd['ticket']} {kd['finding']} reproduced: " + compare.report(case, adapter, mism, trace))
+        raise KnownDivergence(f"{kd['divergence_id']} ({kd['ticket']} {kd['finding']}) reproduced: "
+                              + compare.report(case, adapter, mism, trace))
     assert not mism, compare.report(case, adapter, mism, trace)
 
 
