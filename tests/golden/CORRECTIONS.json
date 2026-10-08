@@ -134,6 +134,35 @@
       "accepted_by": null,
       "date_cairo": "2026-10-08",
       "prev_entry_sha": "62e97e8917504faeb05e70285c2fb1d2ae8e80b159aa0edb11fe78a5a98a2d47"
+    },
+    {
+      "id": "CORR-0005",
+      "type": "correction",
+      "ticket": "AUD-07",
+      "finding": "C13d",
+      "title": "C13d fixed: backtest trading day = Cairo date of the candle close; day rolls over before the halt test and the signal gate",
+      "cases": {
+        "G-DAY-CAIRO-S-01": {
+          "old_expect_sha": "b18221fc562fc8096433002c4787ce48b33442ffd4e7fb10d974e75b9d776d0f",
+          "new_expect_sha": "b18221fc562fc8096433002c4787ce48b33442ffd4e7fb10d974e75b9d776d0f"
+        },
+        "G-DAY-CAIRO-W-01": {
+          "old_expect_sha": "b18221fc562fc8096433002c4787ce48b33442ffd4e7fb10d974e75b9d776d0f",
+          "new_expect_sha": "b18221fc562fc8096433002c4787ce48b33442ffd4e7fb10d974e75b9d776d0f"
+        }
+      },
+      "adapters_changed": [
+        "legacy_backtest"
+      ],
+      "resolved_divergences": [
+        "G-DAY-CAIRO-S-01:legacy_backtest",
+        "G-DAY-CAIRO-W-01:legacy_backtest"
+      ],
+      "rationale": "backtest.py keyed the day on the Cairo date of the candle OPEN (fixed +3 h fallback, wrong in winter) and rolled it over at the top of the next candle, after the previous close's signal gate, so a signal on the candle closing after Cairo midnight was blocked by the previous day's halt. The engine's check_guards() rolls the day over at the start of the cycle (the candle close), then tests the halt, then takes entries. The backtest now keys the day on the Cairo date of T_i + tf via the IANA zone (no fixed-offset fallback; a missing tz database raises) and rolls over at the close before the halt test and the signal gate, with day-start = equity + open P&L at the close. The expect blocks are unchanged; only the known divergences are removed.",
+      "evidence": "branch aud-07-product: G-DAY-CAIRO-W-01 and G-DAY-CAIRO-S-01 legacy_backtest XPASS with the fix; reverting the fix re-breaks exactly these",
+      "accepted_by": null,
+      "date_cairo": "2026-10-08",
+      "prev_entry_sha": "2b16f40effec7ea8f228e8602ffca8843ff19bbe9b553650eb5abef60ca1d01a"
     }
   ]
 }
