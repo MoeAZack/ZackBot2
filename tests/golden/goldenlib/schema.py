@@ -5,7 +5,6 @@ adapters it binds (`applies_to`), the recorded legacy behaviour (`known_divergen
 slot, costs, clock, account, faults, adapter_options, ...). Only the descriptive text (title, behaviours, provenance, notes)
 is outside it. Any new top-level key is protected automatically (validate() rejects keys it does not know)."""
 import glob, hashlib, json, math, numbers, os, re
-from datetime import datetime, timezone
 
 from . import CASES_DIR
 
@@ -135,7 +134,10 @@ def validate(case, path=None):
     _req(case['tf'] in TFS, cid, f"tf must be one of {sorted(TFS)}")
     _req(isinstance(case['behaviours'], list) and case['behaviours'], cid, 'behaviours: non-empty list')
     _req(case['path_policy'] == 'zb-path/1', cid, "path_policy must be 'zb-path/1'")
-    _req('start' in case['clock'], cid, 'clock.start required')
+    _req(isinstance(case['clock'], dict) and 'start' in case['clock'], cid, 'clock.start required')
+    _req(_is_ms(case['clock']['start']) and case['clock']['start'] >= 0, cid,
+         f"clock.start={case['clock']['start']!r}: integer UTC milliseconds (an ISO string, float, bool or negative value is "
+         'rejected; AUD-08 golden clock-ms)')
     _req(int(case['clock'].get('entry_cycle_delay_s', 15)) >= 15, cid, 'clock.entry_cycle_delay_s must be >= 15 (the replay cycle runs at close + 15 s)')
     _req('equity' in case['account'], cid, 'account.equity required')
     co = case.get('costs') or {}
@@ -218,12 +220,12 @@ def validate(case, path=None):
 
 
 def clock_ms(case):
-    """clock.start (ISO 8601; 'Z' or an offset; naive = UTC) -> integer UTC milliseconds."""
-    s = str(case['clock']['start']).replace('Z', '+00:00')
-    t = datetime.fromisoformat(s)
-    if t.tzinfo is None:
-        t = t.replace(tzinfo=timezone.utc)
-    return int(round(t.timestamp() * 1000))
+    """clock.start: integer UTC milliseconds (AUD-08 golden clock-ms; an ISO string is never parsed). Anything else is a
+    CaseError, so no consumer (market.build, the fault window check) can reinterpret it."""
+    v = case['clock']['start']
+    if not (_is_ms(v) and v >= 0):
+        raise CaseError(f"{case.get('id', '?')}: clock.start={v!r} is not integer UTC milliseconds")
+    return v
 
 
 def _is_ms(x):

@@ -10,7 +10,7 @@
   "side": "short",
   "tf": "4h",
   "clock": {
-    "start": "2024-01-01T00:00:00Z",
+    "start": 1704067200000,
     "entry_cycle_delay_s": 15
   },
   "costs": {
@@ -149,7 +149,7 @@
       "adapter": "legacy_backtest",
       "ticket": "AUD-07",
       "finding": "C13c",
-      "correction": "CORR-0004",
+      "correction": "CORR-0037",
       "until": "AUD-07 product fix",
       "reason": "backtest.py:598-601 arms trailing entries without a slot check and checks max_pos only at the fill, so XRP (drops 0.5 ATR first, in candle 280) takes the slot and SOL (armed first, drops in 281) is dropped",
       "observed": [

@@ -16,7 +16,8 @@ Git-independent rules (always run, also in a checkout without history):
    (TICKET_REF) in `ticket` (Cowork r2 (e)); CORR-0000..0003 are pinned and untouched.
 Against the base (P1-1; the base is required evidence, never optional):
 5. The base ledger is a prefix of this ledger (append-only). A case new against the base needs an appended `add` record, a
-   changed contract an appended `correction` record from the base hash to the current one, a removed case a `retire` record.
+   changed contract an appended `correction` record from the base hash, a removed case a `retire` record; the appended records
+   of a case form one linked chain (corrections after the first record) ending at its current contract.
    Base = $ZB_GOLDEN_BASE (CI: the PR base sha / the push's previous commit, fetched explicitly), locally origin/master. An
    unavailable base FAILS; the only skip is a base tree that has no golden pack at all (the bootstrap, i.e. this first pack),
    decided by listing the base tree.
@@ -283,12 +284,28 @@ def check_against_base(base_man, base_led, ents, now):
     assert ents[:len(old)] == old, 'CORRECTIONS.json is append-only: base entries were edited, reordered or removed'
     new = ents[len(old):]
     recs = lambda cid, typ: [e['cases'][cid] for e in new if e['type'] == typ and cid in e['cases']]
+    # A case may be added and then corrected inside one change (AUD-08 golden clock-ms: one correction per changed case on
+    # cases added after the base): the appended records of a case form ONE linked chain (each prev_contract_sha is the previous
+    # record's contract_sha) that starts at the base (an `add` from nothing, or a correction from the base hash) and ENDS at
+    # the case's current contract; every record after the first is a correction.
+    chain = lambda cid: [(e['type'], e['cases'][cid]) for e in new if cid in e['cases']]
     for cid, sha in now.items():
         if cid not in base_man['cases']:
-            assert any(r['contract_sha'] == sha for r in recs(cid, 'add')), f'{cid}: new case without an appended `add` record'
+            ch = chain(cid)
+            assert ch and ch[0][0] == 'add' and ch[0][1].get('prev_contract_sha') is None, \
+                f'{cid}: new case without an appended `add` record'
+            assert ch[-1][1].get('contract_sha') == sha, f'{cid}: new case: its last appended record is not its current contract'
         elif base_man['cases'][cid] != sha:
-            assert any(r['prev_contract_sha'] == base_man['cases'][cid] and r['contract_sha'] == sha for r in recs(cid, 'correction')), \
+            ch = chain(cid)
+            assert ch and ch[0][0] == 'correction' and ch[0][1].get('prev_contract_sha') == base_man['cases'][cid] \
+                and ch[-1][1].get('contract_sha') == sha, \
                 f"{cid}: contract changed ({base_man['cases'][cid][:12]} -> {sha[:12]}) without an appended correction record"
+        else:
+            continue
+        assert all(t == 'correction' for t, _ in ch[1:]), f'{cid}: only correction records may follow the first appended record'
+        for (_, r0), (_, r1) in zip(ch, ch[1:]):
+            assert r1.get('prev_contract_sha') == r0.get('contract_sha'), \
+                f"{cid}: appended records do not chain ({str(r0.get('contract_sha'))[:12]} -> prev {str(r1.get('prev_contract_sha'))[:12]})"
     for cid, sha in base_man['cases'].items():
         if cid not in now:
             assert any(r['prev_contract_sha'] == sha for r in recs(cid, 'retire')), f'{cid} removed without an appended `retire` record'
@@ -329,6 +346,19 @@ def test_base_rule_unit():
             check_against_base(base_man, base_led, ents, now)
     with pytest.raises(AssertionError):                                                      # old-format base
         check_against_base(dict(base_man, schema='zb-golden-manifest/1'), base_led, [g], {'X': a})
+    # AUD-08 golden clock-ms: add-then-correct and correct-twice inside one change are a linked chain to the current contract
+    add_y = dict(id='CORR-0001', type='add', cases={'Y': dict(prev_contract_sha=None, contract_sha=b)})
+    fix_y = dict(id='CORR-0002', type='correction', cases={'Y': dict(prev_contract_sha=b, contract_sha=c)})
+    check_against_base(base_man, base_led, [g, add_y, fix_y], {'X': a, 'Y': c})
+    fix_x2 = dict(id='CORR-0002', type='correction', cases={'X': dict(prev_contract_sha=b, contract_sha=c)})
+    check_against_base(base_man, base_led, [g, corr, fix_x2], {'X': c})
+    for ents, now in (([g, add_y], {'X': a, 'Y': c}),                                        # add, then changed unrecorded
+                      ([g, add_y, dict(fix_y, cases={'Y': dict(prev_contract_sha=a, contract_sha=c)})], {'X': a, 'Y': c}),  # broken link
+                      ([g, add_y, dict(fix_y, type='add')], {'X': a, 'Y': c}),               # a second add
+                      ([g, corr, dict(fix_x2, cases={'X': dict(prev_contract_sha=a, contract_sha=c)})], {'X': c}),  # broken link
+                      ([g, corr], {'X': c})):                                                # last record != current
+        with pytest.raises(AssertionError):
+            check_against_base(base_man, base_led, ents, now)
 
 
 def test_history_rule_unit():

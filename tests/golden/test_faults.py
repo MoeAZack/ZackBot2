@@ -29,9 +29,29 @@ GOOD = [dict(kind='exchange_outage', from_ms=T0 + 282 * H4, to_ms=T0 + 284 * H4,
 
 
 def test_clock_ms_is_integer_utc_milliseconds():
-    assert schema.clock_ms({'clock': {'start': '2024-01-01T00:00:00Z'}}) == T0
-    assert schema.clock_ms({'clock': {'start': '2024-01-01T02:00:00+02:00'}}) == T0
-    assert schema.clock_ms({'clock': {'start': '2024-01-01T00:00:00'}}) == T0
+    assert schema.clock_ms({'clock': {'start': T0}}) == T0
+    assert all(type(c['clock']['start']) is int for c in schema.load_all()), 'every case carries integer UTC ms'
+
+
+@pytest.mark.parametrize('bad', ['2024-01-01T00:00:00Z', '2024-01-01T02:00:00+02:00', '2024-01-01T00:00:00', str(T0),
+                                 float(T0), T0 + 0.5, True, None, -1, [T0], {'ms': T0}])
+def test_clock_start_must_be_integer_utc_ms(bad):
+    """AUD-08 golden clock-ms: an ISO string (or any non-integer / negative value) is rejected by the schema, and clock_ms
+    never parses one."""
+    c = _base()
+    c['clock']['start'] = bad
+    with pytest.raises(schema.CaseError, match='clock.start'):
+        schema.validate(c)
+    with pytest.raises(schema.CaseError):
+        schema.clock_ms(c)
+
+
+def test_market_starts_at_the_clock_ms():
+    from goldenlib import market
+    c = _base()
+    raw = market.build(c)
+    t = next(iter(raw.values()))['t']
+    assert int(t.iloc[0].value // 10 ** 6) == T0 and t.iloc[0].tzinfo is None
 
 
 @pytest.mark.parametrize('f', GOOD)

@@ -10,7 +10,7 @@
   "side": "short",
   "tf": "4h",
   "clock": {
-    "start": "2024-01-01T00:00:00Z",
+    "start": 1704067200000,
     "entry_cycle_delay_s": 15
   },
   "costs": {
@@ -106,7 +106,7 @@
       "adapter": "legacy_backtest",
       "ticket": "AUD-07",
       "finding": "TP gap at the open (pre-existing, outside C13f)",
-      "correction": "CORR-0004",
+      "correction": "CORR-0022",
       "until": "AUD-07 product fix",
       "reason": "backtest.py favourable_leg books the tp_r exit at the LEVEL (95.98) even when the candle opened beyond it (94) - mirrored on the short side; the bot buys back with a market order where the price is",
       "observed": [

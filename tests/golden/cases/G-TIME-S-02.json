@@ -9,7 +9,7 @@
   "side": "short",
   "tf": "4h",
   "clock": {
-    "start": "2024-01-01T00:00:00Z",
+    "start": 1704067200000,
     "entry_cycle_delay_s": 45
   },
   "costs": {
@@ -101,7 +101,7 @@
       "adapter": "legacy_backtest",
       "ticket": "AUD-07",
       "finding": "C11",
-      "correction": "CORR-0004",
+      "correction": "CORR-0034",
       "until": "AUD-07 product fix",
       "reason": "backtest.py:559 exits when i - i_in >= N, i.e. at the close of candle i_in + N: it holds N + 1 candles",
       "observed": [
@@ -116,7 +116,7 @@
       "adapter": "legacy_engine",
       "ticket": "AUD-07",
       "finding": "C11",
-      "correction": "CORR-0004",
+      "correction": "CORR-0034",
       "until": "AUD-07 product fix",
       "reason": "engine.py:2386 counts wall-clock seconds since the fill; with the entry cycle 30 s slower than the exit cycle the lot is 3.998 candles old at the close of candle i_in + 3, so it exits one candle late (4.998 candles)",
       "observed": [

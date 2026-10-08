@@ -11,7 +11,7 @@
   "side": "short",
   "tf": "4h",
   "clock": {
-    "start": "2024-01-01T00:00:00Z",
+    "start": 1704067200000,
     "entry_cycle_delay_s": 15
   },
   "costs": {
@@ -122,7 +122,7 @@
       "adapter": "legacy_backtest",
       "ticket": "AUD-07",
       "finding": "C13a",
-      "correction": "CORR-0004",
+      "correction": "CORR-0018",
       "until": "AUD-07 product fix",
       "reason": "backtest.py:419-420 fills the gapped short safety orders at the open with the fee only, no slippage",
       "observed": [

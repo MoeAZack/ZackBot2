@@ -11,7 +11,7 @@
   "side": "short",
   "tf": "4h",
   "clock": {
-    "start": "2024-01-01T00:00:00Z",
+    "start": 1704067200000,
     "entry_cycle_delay_s": 15
   },
   "costs": {
@@ -143,7 +143,7 @@
       "adapter": "legacy_backtest",
       "ticket": "AUD-08",
       "finding": "STOP_CROSSED folded into stop",
-      "correction": "CORR-0005",
+      "correction": "CORR-0028",
       "until": "NEWCORE (the legacy backtester is disposable)",
       "reason": "backtest.py walk_path/adverse_leg: a stop ratcheted after the first leg to a level the price is already through is closed where the price is (px = a_) with why='stop' - the same fill and bar as the bot, but the trade row cannot say that it was a bot market close and not an exchange stop fill",
       "observed": [

@@ -10,7 +10,7 @@
   "side": "short",
   "tf": "4h",
   "clock": {
-    "start": "2024-01-01T00:00:00Z",
+    "start": 1704067200000,
     "entry_cycle_delay_s": 15
   },
   "costs": {
@@ -103,7 +103,7 @@
       "adapter": "legacy_engine",
       "ticket": "AUD-07",
       "finding": "C13g",
-      "correction": "CORR-0004",
+      "correction": "CORR-0020",
       "until": "AUD-07 product fix",
       "reason": "engine.py:2284-2290 books an exchange stop that filled (stop gone) at the STOP price, not the fill price - mirrored on the short side: the journal books the 101.98 buy stop without the exit slippage the exchange charged: a stop gapped at the open (105) shows -1.05 R in the bot journal while the account lost -2.57 R",
       "observed": [

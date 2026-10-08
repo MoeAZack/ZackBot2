@@ -9,7 +9,7 @@
   "side": "long",
   "tf": "4h",
   "clock": {
-    "start": "2024-06-01T00:00:00Z",
+    "start": 1717200000000,
     "entry_cycle_delay_s": 15
   },
   "costs": {

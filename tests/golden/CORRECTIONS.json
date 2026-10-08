@@ -291,6 +291,538 @@
       "accepted_by": null,
       "date_cairo": "2026-10-08",
       "prev_entry_sha": "4b5376a7b9897f3852711fa07041d72c4768f2450792736a5e840172b070718d"
+    },
+    {
+      "id": "CORR-0010",
+      "type": "correction",
+      "ticket": "AUD-08 golden clock-ms",
+      "finding": "AUD-08 golden clock-ms (Codex call 2 on 0ef7402)",
+      "title": "G-AMBIG-ENTRY-L-01: clock.start 2024-01-01T00:00:00Z -> 1704067200000 (integer UTC ms)",
+      "cases": {
+        "G-AMBIG-ENTRY-L-01": {
+          "prev_contract_sha": "4333831277bb5d5cdb61a9386173f19cee36dc844a1705a1fc34025542e2daa5",
+          "contract_sha": "6b5d917b425460da42430b50f4964778ae597c91d3936b147d9768f4f2cee964"
+        }
+      },
+      "adapters_changed": [],
+      "rationale": "Mechanical re-encoding before NC-01 builds on the contract: clock.start '2024-01-01T00:00:00Z' becomes the same instant as integer UTC milliseconds (1704067200000); the schema now rejects an ISO string. Market timestamps, signals, faults, expectations and every adapter trace are unchanged; only the contract hash moves.",
+      "evidence": "gen: scratchpad gold/clock_ms.py (self-checking: ms == old schema.clock_ms(ISO); only clock.start and rule-6 pointers differ); legacy traces of the whole pack identical before / after",
+      "accepted_by": null,
+      "date_cairo": "2026-10-08",
+      "prev_entry_sha": "06875a201d8986822ccb15026aa5e3063908ed5168396fa591d9ffa2914e5176"
+    },
+    {
+      "id": "CORR-0011",
+      "type": "correction",
+      "ticket": "AUD-08 golden clock-ms",
+      "finding": "AUD-08 golden clock-ms (Codex call 2 on 0ef7402)",
+      "title": "G-DAY-CAIRO-S-01: clock.start 2024-06-01T00:00:00Z -> 1717200000000 (integer UTC ms)",
+      "cases": {
+        "G-DAY-CAIRO-S-01": {
+          "prev_contract_sha": "fca3960fb9d2ec2c7893cb2b7f7ef70c942dda422bff174e6983b0a31cb16daa",
+          "contract_sha": "52d0aba07364bf8632b5674b9e178bc64fd884d81a6fa108bdecfd3da437b740"
+        }
+      },
+      "adapters_changed": [],
+      "rationale": "Mechanical re-encoding before NC-01 builds on the contract: clock.start '2024-06-01T00:00:00Z' becomes the same instant as integer UTC milliseconds (1717200000000); the schema now rejects an ISO string. Market timestamps, signals, faults, expectations and every adapter trace are unchanged; only the contract hash moves.",
+      "evidence": "gen: scratchpad gold/clock_ms.py (self-checking: ms == old schema.clock_ms(ISO); only clock.start and rule-6 pointers differ); legacy traces of the whole pack identical before / after",
+      "accepted_by": null,
+      "date_cairo": "2026-10-08",
+      "prev_entry_sha": "fa4cd1671fd97af4dcb84e174a6e8f4f5da0471af7c55812015d913b35d7bdc2"
+    },
+    {
+      "id": "CORR-0012",
+      "type": "correction",
+      "ticket": "AUD-08 golden clock-ms",
+      "finding": "AUD-08 golden clock-ms (Codex call 2 on 0ef7402)",
+      "title": "G-DAY-CAIRO-S-SHORT-01: clock.start 2024-06-01T00:00:00Z -> 1717200000000 (integer UTC ms)",
+      "cases": {
+        "G-DAY-CAIRO-S-SHORT-01": {
+          "prev_contract_sha": "d79957b02efe2af2484dd0c1736032513f2d27e2058cdf7750eaf5a25401337e",
+          "contract_sha": "615d28e0bf70f2b8e71494defc336fd9882f3aac8212cfc26247b65724f0af8b"
+        }
+      },
+      "adapters_changed": [],
+      "rationale": "Mechanical re-encoding before NC-01 builds on the contract: clock.start '2024-06-01T00:00:00Z' becomes the same instant as integer UTC milliseconds (1717200000000); the schema now rejects an ISO string. Market timestamps, signals, faults, expectations and every adapter trace are unchanged; only the contract hash moves. Its known divergence(s) legacy_backtest (was CORR-0004), legacy_engine (was CORR-0004) are new against the base cff3f88, so test_ledger rule 6 binds them to the record carrying the current contract: they now name CORR-0012; observed mismatch lists unchanged.",
+      "evidence": "gen: scratchpad gold/clock_ms.py (self-checking: ms == old schema.clock_ms(ISO); only clock.start and rule-6 pointers differ); legacy traces of the whole pack identical before / after",
+      "accepted_by": null,
+      "date_cairo": "2026-10-08",
+      "prev_entry_sha": "dd16e539f009d85eefa8fb77d28d8eaf73d5f59fafe4290648af00ed07af3a72"
+    },
+    {
+      "id": "CORR-0013",
+      "type": "correction",
+      "ticket": "AUD-08 golden clock-ms",
+      "finding": "AUD-08 golden clock-ms (Codex call 2 on 0ef7402)",
+      "title": "G-DAY-CAIRO-W-01: clock.start 2024-01-01T00:00:00Z -> 1704067200000 (integer UTC ms)",
+      "cases": {
+        "G-DAY-CAIRO-W-01": {
+          "prev_contract_sha": "625636ffef385ede68fe3123479ef767de1640469a8862662e369d191a5f497e",
+          "contract_sha": "36c8a046c1e87fd74a5d1444027be26ca5d5a8718146fb5e2f97ad9874052fe5"
+        }
+      },
+      "adapters_changed": [],
+      "rationale": "Mechanical re-encoding before NC-01 builds on the contract: clock.start '2024-01-01T00:00:00Z' becomes the same instant as integer UTC milliseconds (1704067200000); the schema now rejects an ISO string. Market timestamps, signals, faults, expectations and every adapter trace are unchanged; only the contract hash moves.",
+      "evidence": "gen: scratchpad gold/clock_ms.py (self-checking: ms == old schema.clock_ms(ISO); only clock.start and rule-6 pointers differ); legacy traces of the whole pack identical before / after",
+      "accepted_by": null,
+      "date_cairo": "2026-10-08",
+      "prev_entry_sha": "e2b1aaa42fda0f40c1ddc8aa7acb9f8f2c2aa1424cf6a8a1270875ef71872060"
+    },
+    {
+      "id": "CORR-0014",
+      "type": "correction",
+      "ticket": "AUD-08 golden clock-ms",
+      "finding": "AUD-08 golden clock-ms (Codex call 2 on 0ef7402)",
+      "title": "G-DAY-CAIRO-W-SHORT-01: clock.start 2024-01-01T00:00:00Z -> 1704067200000 (integer UTC ms)",
+      "cases": {
+        "G-DAY-CAIRO-W-SHORT-01": {
+          "prev_contract_sha": "8506db6ec341e4c7947a8c845ad5d695c80b11d6d3f3ac7f0898449b5b848211",
+          "contract_sha": "882d569f77bc30b5f2c4d31358b697be3598cf3156b0aaf1bcbee4de3e704c3c"
+        }
+      },
+      "adapters_changed": [],
+      "rationale": "Mechanical re-encoding before NC-01 builds on the contract: clock.start '2024-01-01T00:00:00Z' becomes the same instant as integer UTC milliseconds (1704067200000); the schema now rejects an ISO string. Market timestamps, signals, faults, expectations and every adapter trace are unchanged; only the contract hash moves. Its known divergence(s) legacy_backtest (was CORR-0004), legacy_engine (was CORR-0004) are new against the base cff3f88, so test_ledger rule 6 binds them to the record carrying the current contract: they now name CORR-0014; observed mismatch lists unchanged.",
+      "evidence": "gen: scratchpad gold/clock_ms.py (self-checking: ms == old schema.clock_ms(ISO); only clock.start and rule-6 pointers differ); legacy traces of the whole pack identical before / after",
+      "accepted_by": null,
+      "date_cairo": "2026-10-08",
+      "prev_entry_sha": "11c291015195d737b8c580743baeb5d049f9940fd8f5d779050ebeed6e8f90d2"
+    },
+    {
+      "id": "CORR-0015",
+      "type": "correction",
+      "ticket": "AUD-08 golden clock-ms",
+      "finding": "AUD-08 golden clock-ms (Codex call 2 on 0ef7402)",
+      "title": "G-DCA-SLIP-L-01: clock.start 2024-01-01T00:00:00Z -> 1704067200000 (integer UTC ms)",
+      "cases": {
+        "G-DCA-SLIP-L-01": {
+          "prev_contract_sha": "cae327721f1e4b0f910b4153fcd7b9fc25422dc6a5b2011dc11b200591c74d12",
+          "contract_sha": "a8580f3cbb3d19ce0a4eeaef9ff4254c48a1e0f18e28f9909955a0a8acf9a4f0"
+        }
+      },
+      "adapters_changed": [],
+      "rationale": "Mechanical re-encoding before NC-01 builds on the contract: clock.start '2024-01-01T00:00:00Z' becomes the same instant as integer UTC milliseconds (1704067200000); the schema now rejects an ISO string. Market timestamps, signals, faults, expectations and every adapter trace are unchanged; only the contract hash moves.",
+      "evidence": "gen: scratchpad gold/clock_ms.py (self-checking: ms == old schema.clock_ms(ISO); only clock.start and rule-6 pointers differ); legacy traces of the whole pack identical before / after",
+      "accepted_by": null,
+      "date_cairo": "2026-10-08",
+      "prev_entry_sha": "69d73700fac4dc931ac11d59eafb5633d70506cbc48aa717f4bbd92c11957264"
+    },
+    {
+      "id": "CORR-0016",
+      "type": "correction",
+      "ticket": "AUD-08 golden clock-ms",
+      "finding": "AUD-08 golden clock-ms (Codex call 2 on 0ef7402)",
+      "title": "G-DCA-SLIP-S-01: clock.start 2024-01-01T00:00:00Z -> 1704067200000 (integer UTC ms)",
+      "cases": {
+        "G-DCA-SLIP-S-01": {
+          "prev_contract_sha": "a05afa1a6d5eaff45b7225417cd4b44d23720a48c034867003b15f628821b8f7",
+          "contract_sha": "473aafc7380d25609b46a9dbc48a45e41dfb8b04de03e9f7d684b2baebbbed7e"
+        }
+      },
+      "adapters_changed": [],
+      "rationale": "Mechanical re-encoding before NC-01 builds on the contract: clock.start '2024-01-01T00:00:00Z' becomes the same instant as integer UTC milliseconds (1704067200000); the schema now rejects an ISO string. Market timestamps, signals, faults, expectations and every adapter trace are unchanged; only the contract hash moves. Its known divergence(s) legacy_backtest (was CORR-0004) are new against the base cff3f88, so test_ledger rule 6 binds them to the record carrying the current contract: they now name CORR-0016; observed mismatch lists unchanged.",
+      "evidence": "gen: scratchpad gold/clock_ms.py (self-checking: ms == old schema.clock_ms(ISO); only clock.start and rule-6 pointers differ); legacy traces of the whole pack identical before / after",
+      "accepted_by": null,
+      "date_cairo": "2026-10-08",
+      "prev_entry_sha": "99f758b39809758724b317d6d7e3553d2f9edc11259936e7017be04af8e35ed3"
+    },
+    {
+      "id": "CORR-0017",
+      "type": "correction",
+      "ticket": "AUD-08 golden clock-ms",
+      "finding": "AUD-08 golden clock-ms (Codex call 2 on 0ef7402)",
+      "title": "G-GAP-DCA-L-01: clock.start 2024-01-01T00:00:00Z -> 1704067200000 (integer UTC ms)",
+      "cases": {
+        "G-GAP-DCA-L-01": {
+          "prev_contract_sha": "d35a102f110651a31f34fc67fd68708b4282585ca5d5aa4a3d4d722b97a9d4e2",
+          "contract_sha": "0f680caf9b0f4cb1652c10964ee2559b88a663861ceb57f4a51d0721bfbc227d"
+        }
+      },
+      "adapters_changed": [],
+      "rationale": "Mechanical re-encoding before NC-01 builds on the contract: clock.start '2024-01-01T00:00:00Z' becomes the same instant as integer UTC milliseconds (1704067200000); the schema now rejects an ISO string. Market timestamps, signals, faults, expectations and every adapter trace are unchanged; only the contract hash moves.",
+      "evidence": "gen: scratchpad gold/clock_ms.py (self-checking: ms == old schema.clock_ms(ISO); only clock.start and rule-6 pointers differ); legacy traces of the whole pack identical before / after",
+      "accepted_by": null,
+      "date_cairo": "2026-10-08",
+      "prev_entry_sha": "700ad839149d5027837335c6366377be0c8272a53e7280d013a67b76b49d01f1"
+    },
+    {
+      "id": "CORR-0018",
+      "type": "correction",
+      "ticket": "AUD-08 golden clock-ms",
+      "finding": "AUD-08 golden clock-ms (Codex call 2 on 0ef7402)",
+      "title": "G-GAP-DCA-S-01: clock.start 2024-01-01T00:00:00Z -> 1704067200000 (integer UTC ms)",
+      "cases": {
+        "G-GAP-DCA-S-01": {
+          "prev_contract_sha": "7c5b45636da2fb470ce74621ec8c4972d76c7e370f3a1d54fde993940b54c3a7",
+          "contract_sha": "3c90f6177765fac179dc35a0257ab2f24a2d1cf8fc35351f88c647846b5ffa04"
+        }
+      },
+      "adapters_changed": [],
+      "rationale": "Mechanical re-encoding before NC-01 builds on the contract: clock.start '2024-01-01T00:00:00Z' becomes the same instant as integer UTC milliseconds (1704067200000); the schema now rejects an ISO string. Market timestamps, signals, faults, expectations and every adapter trace are unchanged; only the contract hash moves. Its known divergence(s) legacy_backtest (was CORR-0004) are new against the base cff3f88, so test_ledger rule 6 binds them to the record carrying the current contract: they now name CORR-0018; observed mismatch lists unchanged.",
+      "evidence": "gen: scratchpad gold/clock_ms.py (self-checking: ms == old schema.clock_ms(ISO); only clock.start and rule-6 pointers differ); legacy traces of the whole pack identical before / after",
+      "accepted_by": null,
+      "date_cairo": "2026-10-08",
+      "prev_entry_sha": "1ab802302bc6ca95f3b6e0f3e60843f5174c7ad77320503b45994ada86b81b2f"
+    },
+    {
+      "id": "CORR-0019",
+      "type": "correction",
+      "ticket": "AUD-08 golden clock-ms",
+      "finding": "AUD-08 golden clock-ms (Codex call 2 on 0ef7402)",
+      "title": "G-GAP-STOP-L-01: clock.start 2024-01-01T00:00:00Z -> 1704067200000 (integer UTC ms)",
+      "cases": {
+        "G-GAP-STOP-L-01": {
+          "prev_contract_sha": "05c4909e16aba23677cf87ac441de322244fa3571e161ea4c7297ba3ef188312",
+          "contract_sha": "c4cafd5cc8674055e8caf09cda353059470a6a8ce2d05047cb84ceff0210dfa6"
+        }
+      },
+      "adapters_changed": [],
+      "rationale": "Mechanical re-encoding before NC-01 builds on the contract: clock.start '2024-01-01T00:00:00Z' becomes the same instant as integer UTC milliseconds (1704067200000); the schema now rejects an ISO string. Market timestamps, signals, faults, expectations and every adapter trace are unchanged; only the contract hash moves.",
+      "evidence": "gen: scratchpad gold/clock_ms.py (self-checking: ms == old schema.clock_ms(ISO); only clock.start and rule-6 pointers differ); legacy traces of the whole pack identical before / after",
+      "accepted_by": null,
+      "date_cairo": "2026-10-08",
+      "prev_entry_sha": "d89171722f9ca0166a0730408858c4cb6473fee1b2ede07e8a8e75656c723e43"
+    },
+    {
+      "id": "CORR-0020",
+      "type": "correction",
+      "ticket": "AUD-08 golden clock-ms",
+      "finding": "AUD-08 golden clock-ms (Codex call 2 on 0ef7402)",
+      "title": "G-GAP-STOP-S-01: clock.start 2024-01-01T00:00:00Z -> 1704067200000 (integer UTC ms)",
+      "cases": {
+        "G-GAP-STOP-S-01": {
+          "prev_contract_sha": "86a06cb6092a0d0813396dd9e5065a4bfd96e6026767e28d3af28565c3166689",
+          "contract_sha": "6ac5ed008ca901dabe2e9d3500116e517801003f4ce9b1c3dfed8121818d5b32"
+        }
+      },
+      "adapters_changed": [],
+      "rationale": "Mechanical re-encoding before NC-01 builds on the contract: clock.start '2024-01-01T00:00:00Z' becomes the same instant as integer UTC milliseconds (1704067200000); the schema now rejects an ISO string. Market timestamps, signals, faults, expectations and every adapter trace are unchanged; only the contract hash moves. Its known divergence(s) legacy_engine (was CORR-0004) are new against the base cff3f88, so test_ledger rule 6 binds them to the record carrying the current contract: they now name CORR-0020; observed mismatch lists unchanged.",
+      "evidence": "gen: scratchpad gold/clock_ms.py (self-checking: ms == old schema.clock_ms(ISO); only clock.start and rule-6 pointers differ); legacy traces of the whole pack identical before / after",
+      "accepted_by": null,
+      "date_cairo": "2026-10-08",
+      "prev_entry_sha": "6269ba8cc97c52fb53142e46db3a3fdd0ee5f2f00ec9ee3ed25db05fc5ff7e20"
+    },
+    {
+      "id": "CORR-0021",
+      "type": "correction",
+      "ticket": "AUD-08 golden clock-ms",
+      "finding": "AUD-08 golden clock-ms (Codex call 2 on 0ef7402)",
+      "title": "G-GAP-TP-L-01: clock.start 2024-01-01T00:00:00Z -> 1704067200000 (integer UTC ms)",
+      "cases": {
+        "G-GAP-TP-L-01": {
+          "prev_contract_sha": "5ecaab378af0a312a70c4c8c839fa93c35fb423f37d848bb0c59c09b850f9ab9",
+          "contract_sha": "c3da4b223f9a936cb75b6b5a6f7648bff7976bced78d50421d5c7cf70728f363"
+        }
+      },
+      "adapters_changed": [],
+      "rationale": "Mechanical re-encoding before NC-01 builds on the contract: clock.start '2024-01-01T00:00:00Z' becomes the same instant as integer UTC milliseconds (1704067200000); the schema now rejects an ISO string. Market timestamps, signals, faults, expectations and every adapter trace are unchanged; only the contract hash moves.",
+      "evidence": "gen: scratchpad gold/clock_ms.py (self-checking: ms == old schema.clock_ms(ISO); only clock.start and rule-6 pointers differ); legacy traces of the whole pack identical before / after",
+      "accepted_by": null,
+      "date_cairo": "2026-10-08",
+      "prev_entry_sha": "8cf44012f9109f712cab2a26ec4d291cc66893690ff753e3581d9db48dd3de7f"
+    },
+    {
+      "id": "CORR-0022",
+      "type": "correction",
+      "ticket": "AUD-08 golden clock-ms",
+      "finding": "AUD-08 golden clock-ms (Codex call 2 on 0ef7402)",
+      "title": "G-GAP-TP-S-01: clock.start 2024-01-01T00:00:00Z -> 1704067200000 (integer UTC ms)",
+      "cases": {
+        "G-GAP-TP-S-01": {
+          "prev_contract_sha": "301f416d74d812b3faa2e0e00ae43acd9c3f6e84a1fa9b745af6a5b2fafbf558",
+          "contract_sha": "a7f41743c56e5571e024cb324c924b9db6b7efe266790ca3a4df1bfb438aedbb"
+        }
+      },
+      "adapters_changed": [],
+      "rationale": "Mechanical re-encoding before NC-01 builds on the contract: clock.start '2024-01-01T00:00:00Z' becomes the same instant as integer UTC milliseconds (1704067200000); the schema now rejects an ISO string. Market timestamps, signals, faults, expectations and every adapter trace are unchanged; only the contract hash moves. Its known divergence(s) legacy_backtest (was CORR-0004) are new against the base cff3f88, so test_ledger rule 6 binds them to the record carrying the current contract: they now name CORR-0022; observed mismatch lists unchanged.",
+      "evidence": "gen: scratchpad gold/clock_ms.py (self-checking: ms == old schema.clock_ms(ISO); only clock.start and rule-6 pointers differ); legacy traces of the whole pack identical before / after",
+      "accepted_by": null,
+      "date_cairo": "2026-10-08",
+      "prev_entry_sha": "0817429520416b01a43e6095bb30eeab583c2a5c123b087adb5053e84441add8"
+    },
+    {
+      "id": "CORR-0023",
+      "type": "correction",
+      "ticket": "AUD-08 golden clock-ms",
+      "finding": "AUD-08 golden clock-ms (Codex call 2 on 0ef7402)",
+      "title": "G-OUTAGE-STOP-L-01: clock.start 2024-01-01T00:00:00Z -> 1704067200000 (integer UTC ms)",
+      "cases": {
+        "G-OUTAGE-STOP-L-01": {
+          "prev_contract_sha": "ae6adb38075cf9f733a9632d74ae1f02fed03a48309b494eaf62245c759566d9",
+          "contract_sha": "414e7bdd7cf71ee4cd2294786256b2c0e0ec489cdcefbc6783f15d0f3d019f99"
+        }
+      },
+      "adapters_changed": [],
+      "rationale": "Mechanical re-encoding before NC-01 builds on the contract: clock.start '2024-01-01T00:00:00Z' becomes the same instant as integer UTC milliseconds (1704067200000); the schema now rejects an ISO string. Market timestamps, signals, faults, expectations and every adapter trace are unchanged; only the contract hash moves.",
+      "evidence": "gen: scratchpad gold/clock_ms.py (self-checking: ms == old schema.clock_ms(ISO); only clock.start and rule-6 pointers differ); legacy traces of the whole pack identical before / after",
+      "accepted_by": null,
+      "date_cairo": "2026-10-08",
+      "prev_entry_sha": "b3dda65958677e47233b6933d96c60f32c9510d702ccce3f7d4501c104b2ac41"
+    },
+    {
+      "id": "CORR-0024",
+      "type": "correction",
+      "ticket": "AUD-08 golden clock-ms",
+      "finding": "AUD-08 golden clock-ms (Codex call 2 on 0ef7402)",
+      "title": "G-PYR-SLIP-L-01: clock.start 2024-01-01T00:00:00Z -> 1704067200000 (integer UTC ms)",
+      "cases": {
+        "G-PYR-SLIP-L-01": {
+          "prev_contract_sha": "452e09046814dc25f929ef72d8d0f2cb4feb3267e9d9e6ca86cca6f12fd9972f",
+          "contract_sha": "bd08340590bc8e1440c556b0ac561ff395c0d039afa059dc7c41a4838e8c4682"
+        }
+      },
+      "adapters_changed": [],
+      "rationale": "Mechanical re-encoding before NC-01 builds on the contract: clock.start '2024-01-01T00:00:00Z' becomes the same instant as integer UTC milliseconds (1704067200000); the schema now rejects an ISO string. Market timestamps, signals, faults, expectations and every adapter trace are unchanged; only the contract hash moves.",
+      "evidence": "gen: scratchpad gold/clock_ms.py (self-checking: ms == old schema.clock_ms(ISO); only clock.start and rule-6 pointers differ); legacy traces of the whole pack identical before / after",
+      "accepted_by": null,
+      "date_cairo": "2026-10-08",
+      "prev_entry_sha": "9809cf660fc01233b492e411f4783bf37ba0f3b17344c974ae98997c30e97288"
+    },
+    {
+      "id": "CORR-0025",
+      "type": "correction",
+      "ticket": "AUD-08 golden clock-ms",
+      "finding": "AUD-08 golden clock-ms (Codex call 2 on 0ef7402)",
+      "title": "G-PYR-SLIP-S-01: clock.start 2024-01-01T00:00:00Z -> 1704067200000 (integer UTC ms)",
+      "cases": {
+        "G-PYR-SLIP-S-01": {
+          "prev_contract_sha": "751b827e3c13de94c98900a437ecc9d753614cb4d7513cd15eef993be0c98bcb",
+          "contract_sha": "7b4a09a5865019dc3e2e29ca2a27a459c3edc1d30440447c23bf7a7ccf5d620d"
+        }
+      },
+      "adapters_changed": [],
+      "rationale": "Mechanical re-encoding before NC-01 builds on the contract: clock.start '2024-01-01T00:00:00Z' becomes the same instant as integer UTC milliseconds (1704067200000); the schema now rejects an ISO string. Market timestamps, signals, faults, expectations and every adapter trace are unchanged; only the contract hash moves. Its known divergence(s) legacy_backtest (was CORR-0004) are new against the base cff3f88, so test_ledger rule 6 binds them to the record carrying the current contract: they now name CORR-0025; observed mismatch lists unchanged.",
+      "evidence": "gen: scratchpad gold/clock_ms.py (self-checking: ms == old schema.clock_ms(ISO); only clock.start and rule-6 pointers differ); legacy traces of the whole pack identical before / after",
+      "accepted_by": null,
+      "date_cairo": "2026-10-08",
+      "prev_entry_sha": "a46dc91b96d77a3145810af02d76ddbfbee0720037afa07df4ed06582fa7a436"
+    },
+    {
+      "id": "CORR-0026",
+      "type": "correction",
+      "ticket": "AUD-08 golden clock-ms",
+      "finding": "AUD-08 golden clock-ms (Codex call 2 on 0ef7402)",
+      "title": "G-RESTART-TIME-L-01: clock.start 2024-01-01T00:00:00Z -> 1704067200000 (integer UTC ms)",
+      "cases": {
+        "G-RESTART-TIME-L-01": {
+          "prev_contract_sha": "2bcc2ff58f237b220757a9fa229dae4604b64dca8cc3118c410ed599cb1bb4b6",
+          "contract_sha": "b55d700838e505563a9c8f1f699f01d13af91107233687e446f1ac4ab0da8218"
+        }
+      },
+      "adapters_changed": [],
+      "rationale": "Mechanical re-encoding before NC-01 builds on the contract: clock.start '2024-01-01T00:00:00Z' becomes the same instant as integer UTC milliseconds (1704067200000); the schema now rejects an ISO string. Market timestamps, signals, faults, expectations and every adapter trace are unchanged; only the contract hash moves.",
+      "evidence": "gen: scratchpad gold/clock_ms.py (self-checking: ms == old schema.clock_ms(ISO); only clock.start and rule-6 pointers differ); legacy traces of the whole pack identical before / after",
+      "accepted_by": null,
+      "date_cairo": "2026-10-08",
+      "prev_entry_sha": "ceacf27e1eac4ded590f77d203e75d7a444ca5c22fd59517fed2c1f53bfeb2d7"
+    },
+    {
+      "id": "CORR-0027",
+      "type": "correction",
+      "ticket": "AUD-08 golden clock-ms",
+      "finding": "AUD-08 golden clock-ms (Codex call 2 on 0ef7402)",
+      "title": "G-STOP-CROSSED-L-01: clock.start 2024-01-01T00:00:00Z -> 1704067200000 (integer UTC ms)",
+      "cases": {
+        "G-STOP-CROSSED-L-01": {
+          "prev_contract_sha": "6dce4656365ef16322df02ec0fe893607182dbad7783f369e3fcdd65d410bd5f",
+          "contract_sha": "a9d60489d3d1f69a16ce08e9587d654552b15aaf920b27ea71a08695d333987a"
+        }
+      },
+      "adapters_changed": [],
+      "rationale": "Mechanical re-encoding before NC-01 builds on the contract: clock.start '2024-01-01T00:00:00Z' becomes the same instant as integer UTC milliseconds (1704067200000); the schema now rejects an ISO string. Market timestamps, signals, faults, expectations and every adapter trace are unchanged; only the contract hash moves. Its known divergence(s) legacy_backtest (was CORR-0005) are new against the base cff3f88, so test_ledger rule 6 binds them to the record carrying the current contract: they now name CORR-0027; observed mismatch lists unchanged.",
+      "evidence": "gen: scratchpad gold/clock_ms.py (self-checking: ms == old schema.clock_ms(ISO); only clock.start and rule-6 pointers differ); legacy traces of the whole pack identical before / after",
+      "accepted_by": null,
+      "date_cairo": "2026-10-08",
+      "prev_entry_sha": "bd4f2132d8ae5cef48ab9188efda75de110ee5b4f2fa42f7e72dbe1ed10051b1"
+    },
+    {
+      "id": "CORR-0028",
+      "type": "correction",
+      "ticket": "AUD-08 golden clock-ms",
+      "finding": "AUD-08 golden clock-ms (Codex call 2 on 0ef7402)",
+      "title": "G-STOP-CROSSED-S-01: clock.start 2024-01-01T00:00:00Z -> 1704067200000 (integer UTC ms)",
+      "cases": {
+        "G-STOP-CROSSED-S-01": {
+          "prev_contract_sha": "3366cfb06e6aa13587d8f3135d3393309eb64475ecbbee59b8dcd80838ed72ab",
+          "contract_sha": "2e758a49d405c9905d06936e4924c844fb84d1521cfceeeed21c405b113054e3"
+        }
+      },
+      "adapters_changed": [],
+      "rationale": "Mechanical re-encoding before NC-01 builds on the contract: clock.start '2024-01-01T00:00:00Z' becomes the same instant as integer UTC milliseconds (1704067200000); the schema now rejects an ISO string. Market timestamps, signals, faults, expectations and every adapter trace are unchanged; only the contract hash moves. Its known divergence(s) legacy_backtest (was CORR-0005) are new against the base cff3f88, so test_ledger rule 6 binds them to the record carrying the current contract: they now name CORR-0028; observed mismatch lists unchanged.",
+      "evidence": "gen: scratchpad gold/clock_ms.py (self-checking: ms == old schema.clock_ms(ISO); only clock.start and rule-6 pointers differ); legacy traces of the whole pack identical before / after",
+      "accepted_by": null,
+      "date_cairo": "2026-10-08",
+      "prev_entry_sha": "2c667ba746610a79eebe90c1a9a18c0c267c9d26372f37bee941750b53534c8c"
+    },
+    {
+      "id": "CORR-0029",
+      "type": "correction",
+      "ticket": "AUD-08 golden clock-ms",
+      "finding": "AUD-08 golden clock-ms (Codex call 2 on 0ef7402)",
+      "title": "G-STOP-L-01: clock.start 2024-01-01T00:00:00Z -> 1704067200000 (integer UTC ms)",
+      "cases": {
+        "G-STOP-L-01": {
+          "prev_contract_sha": "e5c3dc4a78b4fae5f32c5ab59f9ca76fef7a14788338245d810df84b92ff33b5",
+          "contract_sha": "58e7b338219cacec22e00879f61ffa64adeebf3e212c99f2b5eeab7391e3c840"
+        }
+      },
+      "adapters_changed": [],
+      "rationale": "Mechanical re-encoding before NC-01 builds on the contract: clock.start '2024-01-01T00:00:00Z' becomes the same instant as integer UTC milliseconds (1704067200000); the schema now rejects an ISO string. Market timestamps, signals, faults, expectations and every adapter trace are unchanged; only the contract hash moves.",
+      "evidence": "gen: scratchpad gold/clock_ms.py (self-checking: ms == old schema.clock_ms(ISO); only clock.start and rule-6 pointers differ); legacy traces of the whole pack identical before / after",
+      "accepted_by": null,
+      "date_cairo": "2026-10-08",
+      "prev_entry_sha": "a4e049e8f752014556b4af3d5a7b27ca950aa48711dd09245164d2ff834cd04f"
+    },
+    {
+      "id": "CORR-0030",
+      "type": "correction",
+      "ticket": "AUD-08 golden clock-ms",
+      "finding": "AUD-08 golden clock-ms (Codex call 2 on 0ef7402)",
+      "title": "G-STOP-S-01: clock.start 2024-01-01T00:00:00Z -> 1704067200000 (integer UTC ms)",
+      "cases": {
+        "G-STOP-S-01": {
+          "prev_contract_sha": "1612b8de396a2ca8635b7641e703b0d147b17b86f2cd1077a0f9d24f39e41f0b",
+          "contract_sha": "7dd2f5b7bf3729a90b0bd685635513afdb77c4d86fad1029c0165c1e57dfd3e8"
+        }
+      },
+      "adapters_changed": [],
+      "rationale": "Mechanical re-encoding before NC-01 builds on the contract: clock.start '2024-01-01T00:00:00Z' becomes the same instant as integer UTC milliseconds (1704067200000); the schema now rejects an ISO string. Market timestamps, signals, faults, expectations and every adapter trace are unchanged; only the contract hash moves. Its known divergence(s) legacy_engine (was CORR-0004) are new against the base cff3f88, so test_ledger rule 6 binds them to the record carrying the current contract: they now name CORR-0030; observed mismatch lists unchanged.",
+      "evidence": "gen: scratchpad gold/clock_ms.py (self-checking: ms == old schema.clock_ms(ISO); only clock.start and rule-6 pointers differ); legacy traces of the whole pack identical before / after",
+      "accepted_by": null,
+      "date_cairo": "2026-10-08",
+      "prev_entry_sha": "efdae47fac02c515465430e3a6a8960a589b07b2cf1cb53f49c56f461d07d50a"
+    },
+    {
+      "id": "CORR-0031",
+      "type": "correction",
+      "ticket": "AUD-08 golden clock-ms",
+      "finding": "AUD-08 golden clock-ms (Codex call 2 on 0ef7402)",
+      "title": "G-TIME-L-01: clock.start 2024-01-01T00:00:00Z -> 1704067200000 (integer UTC ms)",
+      "cases": {
+        "G-TIME-L-01": {
+          "prev_contract_sha": "bef61661cc4d8af58066ef1dd3c6d181c4180d5dce44689481308f0b6a3ab2c7",
+          "contract_sha": "5971056fdf6669e9bf80a65ca957c1987a77cda850790d4800f398d267659ed1"
+        }
+      },
+      "adapters_changed": [],
+      "rationale": "Mechanical re-encoding before NC-01 builds on the contract: clock.start '2024-01-01T00:00:00Z' becomes the same instant as integer UTC milliseconds (1704067200000); the schema now rejects an ISO string. Market timestamps, signals, faults, expectations and every adapter trace are unchanged; only the contract hash moves.",
+      "evidence": "gen: scratchpad gold/clock_ms.py (self-checking: ms == old schema.clock_ms(ISO); only clock.start and rule-6 pointers differ); legacy traces of the whole pack identical before / after",
+      "accepted_by": null,
+      "date_cairo": "2026-10-08",
+      "prev_entry_sha": "43a5f79ba81e923c532157fafe6250814888605ddd98b886480945dbb1efeedc"
+    },
+    {
+      "id": "CORR-0032",
+      "type": "correction",
+      "ticket": "AUD-08 golden clock-ms",
+      "finding": "AUD-08 golden clock-ms (Codex call 2 on 0ef7402)",
+      "title": "G-TIME-L-02: clock.start 2024-01-01T00:00:00Z -> 1704067200000 (integer UTC ms)",
+      "cases": {
+        "G-TIME-L-02": {
+          "prev_contract_sha": "a16e753f862b696b06e36a0e298854c41b277da46b5f1106317755e982ec963c",
+          "contract_sha": "dc73451f17d4d97d975d66da398e25acfd911d95139310b269c4a09f57a7b9ef"
+        }
+      },
+      "adapters_changed": [],
+      "rationale": "Mechanical re-encoding before NC-01 builds on the contract: clock.start '2024-01-01T00:00:00Z' becomes the same instant as integer UTC milliseconds (1704067200000); the schema now rejects an ISO string. Market timestamps, signals, faults, expectations and every adapter trace are unchanged; only the contract hash moves.",
+      "evidence": "gen: scratchpad gold/clock_ms.py (self-checking: ms == old schema.clock_ms(ISO); only clock.start and rule-6 pointers differ); legacy traces of the whole pack identical before / after",
+      "accepted_by": null,
+      "date_cairo": "2026-10-08",
+      "prev_entry_sha": "b0cf9eff2c84589fff7e66254ec2124e1ae786dd204c7849c6d59bafd19c6260"
+    },
+    {
+      "id": "CORR-0033",
+      "type": "correction",
+      "ticket": "AUD-08 golden clock-ms",
+      "finding": "AUD-08 golden clock-ms (Codex call 2 on 0ef7402)",
+      "title": "G-TIME-S-01: clock.start 2024-01-01T00:00:00Z -> 1704067200000 (integer UTC ms)",
+      "cases": {
+        "G-TIME-S-01": {
+          "prev_contract_sha": "ca855d0387660f52677868aa8f546151b74a7793304665750ce332a5445da837",
+          "contract_sha": "fbd0c871feee616d0f7026ffc4de26f4a011512092572f9bab47e3c97448781a"
+        }
+      },
+      "adapters_changed": [],
+      "rationale": "Mechanical re-encoding before NC-01 builds on the contract: clock.start '2024-01-01T00:00:00Z' becomes the same instant as integer UTC milliseconds (1704067200000); the schema now rejects an ISO string. Market timestamps, signals, faults, expectations and every adapter trace are unchanged; only the contract hash moves. Its known divergence(s) legacy_backtest (was CORR-0004) are new against the base cff3f88, so test_ledger rule 6 binds them to the record carrying the current contract: they now name CORR-0033; observed mismatch lists unchanged.",
+      "evidence": "gen: scratchpad gold/clock_ms.py (self-checking: ms == old schema.clock_ms(ISO); only clock.start and rule-6 pointers differ); legacy traces of the whole pack identical before / after",
+      "accepted_by": null,
+      "date_cairo": "2026-10-08",
+      "prev_entry_sha": "db471935d17432fa1dcd2121e226e4fe71de4a3f53e863069a099309d960fc87"
+    },
+    {
+      "id": "CORR-0034",
+      "type": "correction",
+      "ticket": "AUD-08 golden clock-ms",
+      "finding": "AUD-08 golden clock-ms (Codex call 2 on 0ef7402)",
+      "title": "G-TIME-S-02: clock.start 2024-01-01T00:00:00Z -> 1704067200000 (integer UTC ms)",
+      "cases": {
+        "G-TIME-S-02": {
+          "prev_contract_sha": "e76d2b83f6ddbac4a44d9d533292c773446f215c8784c91cdba6ae9d85734a07",
+          "contract_sha": "6d5fc00daa96521a2dcc439cf3115b6fc3415d3fc9c36fca81bf93e400406771"
+        }
+      },
+      "adapters_changed": [],
+      "rationale": "Mechanical re-encoding before NC-01 builds on the contract: clock.start '2024-01-01T00:00:00Z' becomes the same instant as integer UTC milliseconds (1704067200000); the schema now rejects an ISO string. Market timestamps, signals, faults, expectations and every adapter trace are unchanged; only the contract hash moves. Its known divergence(s) legacy_backtest (was CORR-0004), legacy_engine (was CORR-0004) are new against the base cff3f88, so test_ledger rule 6 binds them to the record carrying the current contract: they now name CORR-0034; observed mismatch lists unchanged.",
+      "evidence": "gen: scratchpad gold/clock_ms.py (self-checking: ms == old schema.clock_ms(ISO); only clock.start and rule-6 pointers differ); legacy traces of the whole pack identical before / after",
+      "accepted_by": null,
+      "date_cairo": "2026-10-08",
+      "prev_entry_sha": "6e83c657e846383a5a82151db6fd92662f7a538eca7f4524d6239444095bde86"
+    },
+    {
+      "id": "CORR-0035",
+      "type": "correction",
+      "ticket": "AUD-08 golden clock-ms",
+      "finding": "AUD-08 golden clock-ms (Codex call 2 on 0ef7402)",
+      "title": "G-TP1-ZERO-L-01: clock.start 2024-01-01T00:00:00Z -> 1704067200000 (integer UTC ms)",
+      "cases": {
+        "G-TP1-ZERO-L-01": {
+          "prev_contract_sha": "539122734cebc7be831f1c4f513814b27b12e47a20ddda749afa8b00a8f2a1d0",
+          "contract_sha": "d12a52a788f65ba98bae0ad65e7e0970170b8926f86e685821daf81a89e2e796"
+        }
+      },
+      "adapters_changed": [],
+      "rationale": "Mechanical re-encoding before NC-01 builds on the contract: clock.start '2024-01-01T00:00:00Z' becomes the same instant as integer UTC milliseconds (1704067200000); the schema now rejects an ISO string. Market timestamps, signals, faults, expectations and every adapter trace are unchanged; only the contract hash moves.",
+      "evidence": "gen: scratchpad gold/clock_ms.py (self-checking: ms == old schema.clock_ms(ISO); only clock.start and rule-6 pointers differ); legacy traces of the whole pack identical before / after",
+      "accepted_by": null,
+      "date_cairo": "2026-10-08",
+      "prev_entry_sha": "0587ee4cf6989982531212422b5064bdf04e7ccf5acc29d6c4b916cb987d4bc9"
+    },
+    {
+      "id": "CORR-0036",
+      "type": "correction",
+      "ticket": "AUD-08 golden clock-ms",
+      "finding": "AUD-08 golden clock-ms (Codex call 2 on 0ef7402)",
+      "title": "G-TRAILENTRY-MAXPOS-01: clock.start 2024-01-01T00:00:00Z -> 1704067200000 (integer UTC ms)",
+      "cases": {
+        "G-TRAILENTRY-MAXPOS-01": {
+          "prev_contract_sha": "bbd6723458fb7242f504e9f4a00c4a2463d272b9a6e12b1ade676bc62949838d",
+          "contract_sha": "25d31bd95cfac970716375d4c445e31fb49eb5dc418398709ef7512743a21292"
+        }
+      },
+      "adapters_changed": [],
+      "rationale": "Mechanical re-encoding before NC-01 builds on the contract: clock.start '2024-01-01T00:00:00Z' becomes the same instant as integer UTC milliseconds (1704067200000); the schema now rejects an ISO string. Market timestamps, signals, faults, expectations and every adapter trace are unchanged; only the contract hash moves.",
+      "evidence": "gen: scratchpad gold/clock_ms.py (self-checking: ms == old schema.clock_ms(ISO); only clock.start and rule-6 pointers differ); legacy traces of the whole pack identical before / after",
+      "accepted_by": null,
+      "date_cairo": "2026-10-08",
+      "prev_entry_sha": "4d0b43138794cec7a8543ce669bd69f4ed36dda6c3b1e8963def4ddd8dea335d"
+    },
+    {
+      "id": "CORR-0037",
+      "type": "correction",
+      "ticket": "AUD-08 golden clock-ms",
+      "finding": "AUD-08 golden clock-ms (Codex call 2 on 0ef7402)",
+      "title": "G-TRAILENTRY-MAXPOS-SHORT-01: clock.start 2024-01-01T00:00:00Z -> 1704067200000 (integer UTC ms)",
+      "cases": {
+        "G-TRAILENTRY-MAXPOS-SHORT-01": {
+          "prev_contract_sha": "354b413941697caf62fe65a36d14b3e7b531d512a5dcbbe2140e476884130b51",
+          "contract_sha": "beaf6b364d65983bd42e6f2394c6b0cc4b469ef5ed651fea6a787a364b1010ae"
+        }
+      },
+      "adapters_changed": [],
+      "rationale": "Mechanical re-encoding before NC-01 builds on the contract: clock.start '2024-01-01T00:00:00Z' becomes the same instant as integer UTC milliseconds (1704067200000); the schema now rejects an ISO string. Market timestamps, signals, faults, expectations and every adapter trace are unchanged; only the contract hash moves. Its known divergence(s) legacy_backtest (was CORR-0004) are new against the base cff3f88, so test_ledger rule 6 binds them to the record carrying the current contract: they now name CORR-0037; observed mismatch lists unchanged.",
+      "evidence": "gen: scratchpad gold/clock_ms.py (self-checking: ms == old schema.clock_ms(ISO); only clock.start and rule-6 pointers differ); legacy traces of the whole pack identical before / after",
+      "accepted_by": null,
+      "date_cairo": "2026-10-08",
+      "prev_entry_sha": "a421f4ba2ff941fee905f388218160009cf8c01fab5cb8b571f58d865c5c9114"
     }
   ]
 }
