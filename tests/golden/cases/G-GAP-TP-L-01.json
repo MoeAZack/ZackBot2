@@ -1,9 +1,10 @@
 {
   "schema": "zb-golden/1",
-  "id": "G-STOP-L-01",
-  "title": "Initial stop hit inside a red candle; exit at the stop with taker slippage",
+  "id": "G-GAP-TP-L-01",
+  "title": "The next candle OPENS through the take-profit level: the market close fills at the gapped open (with slippage), not at the level",
   "behaviours": [
-    "stop"
+    "target",
+    "gap"
   ],
   "side": "long",
   "tf": "4h",
@@ -32,10 +33,10 @@
       },
       "bars": {
         "282": [
-          "100",
-          "100.2",
-          "97.5",
-          "97.8"
+          "106",
+          "106",
+          "105.8",
+          "105.9"
         ]
       },
       "atr": {
@@ -55,6 +56,9 @@
     },
     "stop": {
       "atr": "2"
+    },
+    "target": {
+      "r": "2"
     }
   },
   "signals": [
@@ -72,9 +76,9 @@
         "side": "LONG",
         "i_in": 280,
         "i_out": 282,
-        "exit": "STOP_HIT",
-        "R": "-1.059307099",
-        "pnl": "-10.59307099"
+        "exit": "TP_FULL",
+        "R": "2.9279003",
+        "pnl": "29.279003"
       }
     ],
     "final": {
@@ -82,11 +86,11 @@
     }
   },
   "applies_to": {
-    "legacy_engine": {
+    "legacy_engine": "required",
+    "legacy_backtest": {
       "status": "known_divergence",
-      "reason": "AUD-07 C13g: the engine journal books a filled exchange stop without its exit slippage"
+      "reason": "AUD-07: legacy behaviour differs from the corrected contract (gap at the open on the target side)"
     },
-    "legacy_backtest": "required",
     "newcore_sim": {
       "status": "pending_adapter",
       "reason": "NEWCORE NC-07/NC-08 adapter not built yet"
@@ -98,29 +102,29 @@
   },
   "known_divergences": [
     {
-      "adapter": "legacy_engine",
+      "adapter": "legacy_backtest",
       "ticket": "AUD-07",
-      "finding": "C13g",
-      "correction": "CORR-0002",
+      "finding": "TP gap at the open (pre-existing, outside C13f)",
+      "correction": "CORR-0003",
       "until": "AUD-07 product fix",
-      "reason": "engine.py:2284-2290 books an exchange stop that filled (stop gone) at the STOP price, not the fill price: the journal omits the exit slippage the exchange charged (-1.04951 R booked vs -1.05931 R paid on a 98.02 stop)",
+      "reason": "backtest.py favourable_leg books the tp_r exit at the LEVEL (104.02) even when the candle opened beyond it (106); the bot closes with a market order where the price is. Pyramid adds already use max(level, open)",
       "observed": [
         {
           "path": "trades[0].R",
-          "expected": "-1.059307099",
-          "actual": -1.04951
+          "expected": "2.9279003",
+          "actual": 1.938593
         },
         {
           "path": "trades[0].pnl",
-          "expected": "-10.59307099",
-          "actual": -10.4951
+          "expected": "29.279003",
+          "actual": 19.385932
         }
       ]
     }
   ],
   "provenance": {
-    "created_at_sha": "b8c11c8",
-    "author": "AUD-07 slice 1 (Claude)",
-    "notes": "ATR = 1 exactly (flat base, wick 0.5). Entry 100.02 (open + slip), stop 98.02, qty 5 (risk 10 USDT / 2). Exit 98.02 x (1 - 0.0002); R = ((98.0004 - 100.02) x 5 - 5 x (98.0004 + 100.02) x 0.0005) / 10 = -1.0593. Exact since the Codex review on 4e03152 (P2-2): no case-wide tolerance; C13g is an explicit engine known divergence."
+    "created_at_sha": "4e03152",
+    "author": "AUD-07 review fixes (Claude)",
+    "notes": "Gap rule, target side: the engine's take-profit is a market close sent when the mark is at/through the level, so a candle that opens through it fills at the open, adverse-adjusted by the slippage (same as the stop side, G-GAP-STOP-L-01). ATR 1; entry 100.02, stop 98.02, R 2, target 2 R = 104.02. Candle 282 opens at 106 (= its high, red: the first path point is the open). Exit 106 x 0.9998 = 105.9788; pnl = 5 x (105.9788 - 100.02) - 5 x (105.9788 + 100.02) x 0.0005 = 29.279003. The legacy backtest books 104.02 x 0.9998: 19.385932 (-1.0 R). Found by gapprobe.py (Windows adversarial review)."
   }
 }

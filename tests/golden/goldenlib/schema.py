@@ -1,5 +1,10 @@
-"""Load and validate zb-golden/1 cases (stdlib only); canonical JSON and sha256 of a case's `expect` block."""
-import glob, hashlib, json, os
+"""Load and validate zb-golden/1 cases (stdlib only); canonical JSON and the case's protected CONTRACT hash.
+
+contract_sha(case) = sha256(canonical(case minus DESCRIPTIVE)): the expectation (`expect`, incl. per-trade tolerances), which
+adapters it binds (`applies_to`), the recorded legacy behaviour (`known_divergences`) AND every causal input (market, signals,
+slot, costs, clock, account, faults, adapter_options, ...). Only the descriptive text (title, behaviours, provenance, notes)
+is outside it. Any new top-level key is protected automatically (validate() rejects keys it does not know)."""
+import glob, hashlib, json, os, re
 
 from . import CASES_DIR
 
@@ -12,7 +17,12 @@ SIGNAL_KINDS = {'enter_long': 'le', 'enter_short': 'se', 'exit_long': 'lx', 'exi
 EXIT_CODES = ('STOP_HIT', 'TIME_EXIT', 'SIGNAL_EXIT', 'TP_FULL', 'TP_BASKET', 'TP_PARTIAL', 'TP_LADDER', 'LIQUIDATED', 'FLATTEN')
 SLOT_KEYS = ('id', 'sides', 'risk', 'share', 'max_pos', 'symbols', 'entry', 'stop', 'trail', 'target', 'tp1', 'ladder', 'runner',
              'dca', 'pyramid', 'time_exit')
-TRADE_KEYS = ('sym', 'side', 'i_in', 'i_out', 'exit', 'R', 'pnl')
+TRADE_KEYS = ('sym', 'side', 'i_in', 'i_out', 'exit', 'R', 'pnl', 'tol')
+TOL_KEYS = ('R', 'pnl', 'adapters', 'why')          # per-trade tolerance: a stated reason and the adapters it applies to
+FINAL_KEYS = ('lots',)                              # expect.final keys an adapter may declare (adapters.CAPS); others = typo
+COST_KEYS = ('model', 'taker_fee', 'slip', 'funding_per_bar')
+DESCRIPTIVE = ('title', 'behaviours', 'provenance', 'notes')     # the only keys outside the contract hash
+CORR_ID = re.compile(r'CORR-\d{4}')
 REQUIRED_TOP = ('schema', 'id', 'title', 'behaviours', 'side', 'tf', 'clock', 'account', 'market', 'path_policy', 'slot',
                 'signals', 'faults', 'expect', 'applies_to', 'known_divergences', 'provenance')
 
@@ -30,8 +40,9 @@ def sha256(obj):
     return hashlib.sha256(canonical(obj).encode('utf-8')).hexdigest()
 
 
-def expect_sha(case):
-    return sha256(case['expect'])
+def contract_sha(case):
+    """The protected contract of a case: everything except DESCRIPTIVE (see the module docstring)."""
+    return sha256({k: v for k, v in case.items() if k not in DESCRIPTIVE})
 
 
 def _req(cond, case_id, msg):
@@ -55,6 +66,9 @@ def validate(case, path=None):
     _req('start' in case['clock'], cid, 'clock.start required')
     _req(int(case['clock'].get('entry_cycle_delay_s', 15)) >= 15, cid, 'clock.entry_cycle_delay_s must be >= 15 (the replay cycle runs at close + 15 s)')
     _req('equity' in case['account'], cid, 'account.equity required')
+    co = case.get('costs') or {}
+    _req(not (set(co) - set(COST_KEYS)), cid, f'costs: unknown keys {sorted(set(co) - set(COST_KEYS))} (a misspelt cost is never ignored)')
+    _req(co.get('model', 'legacy') == 'legacy', cid, "costs.model: only 'legacy' in v1")
     # market
     mk = case['market']
     _req(isinstance(mk, dict) and mk, cid, 'market: at least one symbol')
@@ -83,12 +97,23 @@ def validate(case, path=None):
     # expect
     ex = case['expect']
     _req(isinstance(ex.get('trades'), list), cid, 'expect.trades: list')
+    _req(not (set(ex) - {'trades', 'final'}), cid,
+         f"expect: unknown keys {sorted(set(ex) - {'trades', 'final'})} (a case-wide tolerance is not allowed: give a per-trade "
+         "`tol` with the adapters it applies to and a reason)")
     for t in ex['trades']:
         _req(set(t) <= set(TRADE_KEYS) and {'sym', 'side', 'i_in', 'i_out', 'exit', 'R'} <= set(t), cid, f'expect trade keys {sorted(t)}')
         _req(t['exit'] in EXIT_CODES and t['side'] in ('LONG', 'SHORT'), cid, f'expect trade codes {t}')
-    tol = ex.get('tolerance') or {}
-    _req(not (set(tol) - {'R', 'pnl', 'why'}) and (not (set(tol) - {'why'}) or tol.get('why')), cid,
-         'expect.tolerance: only R / pnl, and a "why" is mandatory when any tolerance is declared')
+        tol = t.get('tol')
+        if tol is not None:
+            _req(isinstance(tol, dict) and not (set(tol) - set(TOL_KEYS)) and (set(tol) & {'R', 'pnl'}) and tol.get('why'), cid,
+                 f'expect trade tol {tol}: R and/or pnl, plus a mandatory "why"')
+            _req(isinstance(tol.get('adapters'), list) and tol['adapters'] and set(tol['adapters']) <= set(ADAPTERS), cid,
+                 f'expect trade tol {tol}: "adapters" = the adapters the tolerance applies to (never implicit)')
+            _req(all(0 <= float(tol[k]) <= 0.001 for k in ('R', 'pnl') if k in tol), cid,
+                 f'expect trade tol {tol}: at most 0.001 (a path / rounding artefact, never a behaviour difference)')
+    fin = ex.get('final') or {}
+    _req(isinstance(fin, dict) and not (set(fin) - set(FINAL_KEYS)), cid,
+         f'expect.final: unknown keys {sorted(set(fin) - set(FINAL_KEYS))} (known: {FINAL_KEYS})')
     # applies_to / known divergences
     ap = case['applies_to']
     _req(set(ap) == set(ADAPTERS), cid, f'applies_to must name every adapter {ADAPTERS} (a missing adapter is an error, never a skip)')
@@ -98,8 +123,10 @@ def validate(case, path=None):
         _req(st == 'required' or (isinstance(v, dict) and v.get('reason')), cid, f'applies_to.{a}: a reason is mandatory for {st}')
     kd = case['known_divergences']
     for d in kd:
-        for k in ('adapter', 'ticket', 'finding', 'reason', 'observed'):
+        for k in ('adapter', 'ticket', 'finding', 'reason', 'observed', 'correction'):
             _req(k in d, cid, f'known_divergences: {k!r} missing in {d}')
+        _req(isinstance(d['correction'], str) and CORR_ID.fullmatch(d['correction']), cid,
+             f"known_divergences: 'correction' must name the ledger entry that recorded it (CORR-nnnn), got {d['correction']!r}")
         _req(status(case, d['adapter']) == 'known_divergence', cid, f"known divergence for {d['adapter']} but applies_to is not known_divergence")
         _req(isinstance(d['observed'], list) and d['observed'], cid, 'known_divergences.observed: the exact mismatch list')
     for a in ADAPTERS:
@@ -114,8 +141,15 @@ def status(case, adapter):
 
 
 def load(path):
-    with open(path, encoding='utf-8') as f:
-        case = json.load(f)
+    """utf-8-sig: a UTF-8 BOM (Windows editors) is accepted - the hash is over the parsed content, so it cannot hide a change.
+    Anything unreadable is a CaseError naming the file."""
+    try:
+        with open(path, encoding='utf-8-sig') as f:
+            case = json.load(f)
+    except (OSError, UnicodeDecodeError, ValueError) as e:
+        raise CaseError(f'{os.path.basename(path)}: not a readable UTF-8 JSON case ({type(e).__name__}: {e})') from None
+    if not isinstance(case, dict):
+        raise CaseError(f'{os.path.basename(path)}: a case is a JSON object')
     return validate(case, path)
 
 

@@ -1,14 +1,17 @@
 {
-  "schema": "zb-golden-manifest/1",
-  "note": "sha256 of each case's canonical expect block (goldenlib.schema.canonical). Change an entry only together with a CORRECTIONS.json entry.",
+  "schema": "zb-golden-manifest/2",
+  "note": "sha256 of each case CONTRACT (goldenlib.schema.contract_sha: the case minus title / behaviours / provenance / notes). Change an entry only together with an appended CORRECTIONS.json record carrying the same contract_sha.",
   "cases": {
-    "G-DAY-CAIRO-S-01": "b18221fc562fc8096433002c4787ce48b33442ffd4e7fb10d974e75b9d776d0f",
-    "G-DAY-CAIRO-W-01": "b18221fc562fc8096433002c4787ce48b33442ffd4e7fb10d974e75b9d776d0f",
-    "G-DCA-SLIP-L-01": "f808dd6df07741b78215e0821119ae102e5f92f42ec0fe1c91a6ab555ab5358c",
-    "G-GAP-STOP-L-01": "b9fac1182619d5c6f201ff038c437e03632832948722ff712e43c2365ff031ad",
-    "G-STOP-L-01": "d1589cb026b8dd55fa088a0ae67dbbe9fb52a68e626a215d8bb076ed67f9dd52",
-    "G-TIME-L-01": "30288d2971abaafe2c816a109ad7cade89b28018f33df420ba15d434adc985c3",
-    "G-TIME-L-02": "30288d2971abaafe2c816a109ad7cade89b28018f33df420ba15d434adc985c3",
-    "G-TRAILENTRY-MAXPOS-01": "b3fca282b79ac3f85774bc37b1929c2b669a17d6fbf1126074275bb22f219217"
+    "G-DAY-CAIRO-S-01": "fca3960fb9d2ec2c7893cb2b7f7ef70c942dda422bff174e6983b0a31cb16daa",
+    "G-DAY-CAIRO-W-01": "625636ffef385ede68fe3123479ef767de1640469a8862662e369d191a5f497e",
+    "G-DCA-SLIP-L-01": "cae327721f1e4b0f910b4153fcd7b9fc25422dc6a5b2011dc11b200591c74d12",
+    "G-GAP-DCA-L-01": "d35a102f110651a31f34fc67fd68708b4282585ca5d5aa4a3d4d722b97a9d4e2",
+    "G-GAP-STOP-L-01": "05c4909e16aba23677cf87ac441de322244fa3571e161ea4c7297ba3ef188312",
+    "G-GAP-TP-L-01": "5ecaab378af0a312a70c4c8c839fa93c35fb423f37d848bb0c59c09b850f9ab9",
+    "G-PYR-SLIP-L-01": "452e09046814dc25f929ef72d8d0f2cb4feb3267e9d9e6ca86cca6f12fd9972f",
+    "G-STOP-L-01": "e5c3dc4a78b4fae5f32c5ab59f9ca76fef7a14788338245d810df84b92ff33b5",
+    "G-TIME-L-01": "bef61661cc4d8af58066ef1dd3c6d181c4180d5dce44689481308f0b6a3ab2c7",
+    "G-TIME-L-02": "a16e753f862b696b06e36a0e298854c41b277da46b5f1106317755e982ec963c",
+    "G-TRAILENTRY-MAXPOS-01": "bbd6723458fb7242f504e9f4a00c4a2463d272b9a6e12b1ade676bc62949838d"
   }
 }

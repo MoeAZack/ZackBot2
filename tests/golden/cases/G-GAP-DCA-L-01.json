@@ -1,9 +1,10 @@
 {
   "schema": "zb-golden/1",
-  "id": "G-DCA-SLIP-L-01",
-  "title": "A DCA safety order is a taker market order: it fills at its level adverse-adjusted by the slippage, like the entry",
+  "id": "G-GAP-DCA-L-01",
+  "title": "Two DCA safety orders gapped at the open: both fill at the open (with slippage), then the basket target is reached",
   "behaviours": [
     "dca",
+    "gap",
     "costs"
   ],
   "side": "long",
@@ -32,11 +33,17 @@
         "n": 300
       },
       "bars": {
-        "280": [
-          "100",
-          "100",
-          "99.0199",
-          "99.03"
+        "282": [
+          "97.6",
+          "97.6",
+          "97.55",
+          "97.55"
+        ],
+        "285": [
+          "97.55",
+          "99.125",
+          "97.5",
+          "99.1"
         ]
       },
       "atr": {
@@ -67,11 +74,6 @@
       "bar": 279,
       "sym": "SOLUSDT",
       "kind": "enter_long"
-    },
-    {
-      "bar": 281,
-      "sym": "SOLUSDT",
-      "kind": "exit_long"
     }
   ],
   "faults": [],
@@ -81,17 +83,17 @@
         "sym": "SOLUSDT",
         "side": "LONG",
         "i_in": 280,
-        "i_out": 281,
-        "exit": "SIGNAL_EXIT",
-        "R": "-0.0531540243",
-        "pnl": "-0.531540243",
+        "i_out": 285,
+        "exit": "TP_BASKET",
+        "R": "0.1709147038",
+        "pnl": "1.709147038",
         "tol": {
-          "R": "0.00001",
-          "pnl": "0.0001",
+          "R": "0.00003",
+          "pnl": "0.0003",
           "adapters": [
             "legacy_engine"
           ],
-          "why": "the replay adds at the path step mark 99.0199 (the leg end one tick past the 99.02 level: no event-snapped path in v1): 0.6122 x 0.0001 = 0.00006 USDT; the slippage under test is 0.012 USDT"
+          "why": "the replay closes at the path step mark 99.125 (the leg end just past the 99.124884 basket target: no event-snapped path in v1): 1.9388 x 0.000116 = 0.00023 USDT"
         }
       }
     ],
@@ -119,26 +121,26 @@
       "adapter": "legacy_backtest",
       "ticket": "AUD-07",
       "finding": "C13a",
-      "correction": "CORR-0002",
+      "correction": "CORR-0003",
       "until": "AUD-07 product fix",
-      "reason": "backtest.py:419-420 fills the DCA safety order at its level with the fee only, no slippage (entries and exits pay it)",
+      "reason": "backtest.py:419-420 fills the gapped safety orders at the open with the fee only, no slippage",
       "observed": [
         {
           "path": "trades[0].R",
-          "expected": "-0.0531540243",
-          "actual": -0.051941
+          "expected": "0.1709147038",
+          "actual": 0.170918
         },
         {
           "path": "trades[0].pnl",
-          "expected": "-0.531540243",
-          "actual": -0.519409
+          "expected": "1.709147038",
+          "actual": 1.709183
         }
       ]
     }
   ],
   "provenance": {
-    "created_at_sha": "b8c11c8",
-    "author": "AUD-07 slice 1 (Claude)",
-    "notes": "AUD-07 C13a corrected rule: every exposure-increasing market order fills at its trigger price adverse-adjusted by the slippage. ATR 1; entry 100.02; DCA levels 99.02 / 98.02 / 97.02, basket stop 95.02; q0 = 10 / (5 + 1.5x4 + 2.25x3 + 3.375x2) = 0.408163, safety order 1 = 0.612245 at 99.02 x 1.0002 = 99.039804. Candle 280 (red) reaches 99.0199 (order 1 only; the basket TP 100.43 is behind the path). Signal exit on the close of 281 at 99.03 x 0.9998. pnl = (xp - avg) x Q - fees = -0.53154 (legacy slip-free add: -0.51941)."
+    "created_at_sha": "4e03152",
+    "author": "AUD-07 review fixes (Claude)",
+    "notes": "Gap rule, safety-order side: DCA levels 99.02 / 98.02 / 97.02 (ATR 1, step 1 ATR), basket stop 95.02. Candle 282 opens at 97.6 (= its high: the first path point is the open), through two levels: both safety orders fill at the open, 97.6 x 1.0002 = 97.61952 (not at their levels), q = 0.612245 + 0.918367. avg 98.124884, basket target avg + 1 ATR = 99.124884, reached in candle 285 (high 99.125); exit at the target x 0.9998. The flat candles after 282 stay above the third level (low 97.05). The Windows probe's 0.212 R (engine) vs 0.167 R (backtest) was the replay's 8-step path, not a model gap: the engine booked the basket target at the step mark 99.375, 0.25 past the level. Shaped here so both legs end on the levels."
   }
 }

@@ -69,20 +69,20 @@
         "i_in": 280,
         "i_out": 283,
         "exit": "TIME_EXIT",
-        "R": "-0.0047"
+        "R": "-0.004666666667",
+        "pnl": "-0.04666666667"
       }
     ],
     "final": {
       "lots": 0
-    },
-    "tolerance": {
-      "R": "0.0005",
-      "why": "flat tape: R is fees + slippage only; R is not what this case tests"
     }
   },
   "applies_to": {
     "legacy_engine": "required",
-    "legacy_backtest": "required",
+    "legacy_backtest": {
+      "status": "known_divergence",
+      "reason": "AUD-07 C11: legacy behaviour differs from the corrected contract until the AUD-07 product fix lands"
+    },
     "newcore_sim": {
       "status": "pending_adapter",
       "reason": "NEWCORE NC-07/NC-08 adapter not built yet"
@@ -92,7 +92,23 @@
       "reason": "NEWCORE NC-08 live-sim adapter not built yet"
     }
   },
-  "known_divergences": [],
+  "known_divergences": [
+    {
+      "adapter": "legacy_backtest",
+      "ticket": "AUD-07",
+      "finding": "C11",
+      "correction": "CORR-0002",
+      "until": "AUD-07 product fix",
+      "reason": "backtest.py:559 exits when i - i_in >= N, i.e. at the close of candle i_in + N: it holds N + 1 candles",
+      "observed": [
+        {
+          "path": "trades[0].i_out",
+          "expected": 283,
+          "actual": 284
+        }
+      ]
+    }
+  ],
   "provenance": {
     "created_at_sha": "b8c11c8",
     "author": "AUD-07 slice 1 (Claude)",
