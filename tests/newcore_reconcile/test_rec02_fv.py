@@ -46,14 +46,17 @@ def entry_of(w):
 def test_R02_fv_close_lost_before_it_reached_the_venue_holds_for_the_resend_and_protects():
     w, lot = opened(exit_=EXIT_BAR)
     w.run(EXIT_BAR - 1)
-    w.port.crash(4, 'before')                      # effects: entry, stop, stop cancel, CLOSE <- dies before it
+    # Codex ruling 13 (TNET N6): the close goes out BEFORE the stop is cancelled, so the effects are entry, stop,
+    # CLOSE <- dies before it, (stop cancel). The stop is still live: the fold holds for the lost close only and has
+    # nothing to re-protect (the pre-N6 order died with the stop already cancelled: PROTECT_ONLY then).
+    w.port.crash(3, 'before')
     with pytest.raises(Crash):
         w.run(EXIT_BAR)
     w.restart()
     v, *_ = world_rec(w)
     assert ('hold', 'R02', 'reduce_only_not_found') in kinds(v)
-    p, = v.of(K.PROTECT_ONLY)                      # the stop was already cancelled: the open lot is protected again
-    assert (p.qty, p.price) == (lot.qty, lot.protects[0].intent.stop_price)
+    assert not v.of(K.PROTECT_ONLY) and lot.protects[0].intent.client_order_id in {
+        o.ref.client_id for o in w.venue.open_orders().value}
     assert v.outcome is Outcome.HOLD
     w.runner.cycle(w.venue.now_ms, decide=False)   # the runner re-sends the close under the SAME client id
     v2, *_ = world_rec(w)

@@ -239,15 +239,29 @@ def main(argv=None):
     p.add_argument('--kill', default='on', choices=('on', 'off'), help='book: the 10%% drawdown kill')
     a = p.parse_args(argv)
     a.symbols = tuple(a.symbols.split(','))
-    if a.work:
-        os.makedirs(a.work, exist_ok=True)                                # create_journal makes one level only
-    if a.command == 'report':
-        cmd_report(a)
-        return 0
-    res = (cmd_single if a.command == 'single' else cmd_book)(a)
+    try:
+        if a.work:
+            os.makedirs(a.work, exist_ok=True)                            # create_journal makes one level only
+        if a.command == 'report':
+            cmd_report(a)
+            return 0
+        res = (cmd_single if a.command == 'single' else cmd_book)(a)
+    except (OSError, ValueError, KeyError) as ex:                         # e.g. no data under --root: a clean refusal
+        print(f'parity: {type(ex).__name__}: {ex}', file=sys.stderr)
+        return 2
     with open(a.out, 'w', encoding='utf-8') as fh:
         json.dump(res, fh, indent=1, sort_keys=True)
-    return 0
+    return 1 if mismatch(res, a.costs) else 0
+
+
+def mismatch(res, costs):
+    """The CI gate (Cowork M2): at ZERO costs the mirror must be exact - every trade paired, the same exit and qty,
+    R equal. With costs the asymmetry is measured, not gated (fees / funding scale with the price level)."""
+    if costs != 'zero':
+        return False
+    rows = list(res['symbols'].values()) if res['kind'] == 'single' else [res['book']]
+    return any(r['only_long'] or r['only_short'] or r['diffs'] or r['same_exit_qty'] != r['paired']
+               or r['r_equal'] != r['paired'] or r['longs'] != r['shorts'] for r in rows)
 
 
 if __name__ == '__main__':
