@@ -1,0 +1,634 @@
+"""The S1 Runner: ONE loop, used for replay now and for live later (only the injected ports differ).
+
+Ports: JournalPort (MemoryJournal now, NC-02a later), VenuePort (FakeVenue now, TestnetVenue later), BarSource
+(CsvBarSource now, klines later), a SignalSource, and AccountReads (equity + funding; not in step 0, see below).
+
+cycle(now_ms), called once per closed candle (now_ms = that candle's close = the next candle's open):
+  1. sync        query every sent, non-terminal owned intent by client id; record what changed (FINAL / KNOWN /
+                 UNKNOWN / NOT_FOUND). A durable never-sent intent is sent (protect / close) or, for an entry outside its
+                 candle window, closed NOT_SENT.
+  2. reconcile   fresh venue positions + open orders vs the fold. Any difference -> HOLD (durable ModeChanged); new
+                 entries stop. Nothing owned + a flat snapshot is the only way to KNOWN_EMPTY.
+  3. protect     every open lot without a live stop (and no close in flight) gets one (restore after a cancel / failure).
+  4. decide      strategy signals on the closed candles: CLOSE first (cancel the stop, reduce-only market close), then
+                 ENTER (decision -> sizing -> intent -> market -> result -> stop intent -> stop -> result).
+  5. reconcile + invariants (end of cycle).
+Journal order for every order: decision_recorded -> intent_recorded (DURABLE) -> sent -> [venue call] ->
+result_recorded -> state change / intent_closed. Nothing is sent before its intent is durable; nothing is applied before
+its result is durable.
+
+Consumed signal (STEP0 section 2): a DecisionKey is consumed by its decision_recorded (ENTER, SKIP alike). A re-delivered
+signal (restart, re-run cycle, replay) finds its decision with JournalPort.find_decision and creates nothing new. The one
+exception is the crash gap "decision recorded, intent not": the entry's derived intent (from the recorded decision) is
+recorded and sent only while the cycle is still the signal candle's (now_ms == candle_close_ms); later it is spent.
+
+Invariants asserted at the end of every cycle (InvariantBreach when entries are not in HOLD; counted while in HOLD):
+  I1 protection  every venue position has owned, WORKING reduce-only stop orders listed on the venue whose quantity
+                 equals the position. Bounded window: exposure may exist without a confirmed stop only INSIDE one cycle
+                 (between the entry's FINAL result and the stop's KNOWN result; between the stop cancel and the close
+                 result), i.e. for zero candle-path time in replay and one cycle of venue calls live.
+  I2 identity    no client id recorded twice; at most one ENTRY intent per entry DecisionKey; every listed owned order's
+                 client id maps to exactly one intent.
+  I3 domain      the NC-01 Portfolio built from the fold constructs (all its cross-record invariants) and passes
+                 check_account_portfolio; KNOWN_EMPTY also passes check_flat_snapshot_fresh at this cycle.
+HOLD is sticky: only `resume()` (an operator RESUME decision + a clean reconciliation) leaves it.
+
+AccountReads (equity(), funding(symbol, side, from, to)) is not part of step 0 (section 7 defers equity / income); it
+is duck-typed here and reported as an interface gap. A JournalUnavailable propagates (nothing more is sent; the S3
+hard-HOLD path owns that case).
+"""
+from __future__ import annotations
+
+import dataclasses
+from dataclasses import dataclass, field
+from decimal import Decimal
+
+from newcore.domain import (Account, Action, Authority, Decision, DecisionKey, DecisionRecorded, EntriesMode, HoldKind,
+                            InstrumentRules, IntentRecorded, IntentState, IntentStateChanged, Lot, LotSource,
+                            ModeChanged, Op, Ownership, OwnershipProof, Portfolio, Position, ProofKind, Protection,
+                            Purpose, ReasonCode, ResultObserved, ResultPhase, Rounding, Side, check_account_portfolio,
+                            check_flat_snapshot_fresh, permitted)
+from newcore.domain.modes import Permission
+from newcore.domain.orders import terminal_for
+from newcore.domain.portfolio import Fill
+from newcore.ports.venue import MarketOrder, OrderRef, OutcomeKind, ReadKind, StopOrder
+
+from . import ids
+from .fold import Fold, OPEN_STATES
+from .outcome import summarize, trade_outcome
+from .records import not_sent_result, planned_intent, result_from
+from .signals import CLOSE, ENTER
+from .sizing import SizingPolicy, size_entry
+
+ZERO = Decimal(0)
+GATE_REASON = {EntriesMode.HOLD: ReasonCode.RECONCILE_UNRECONCILED, EntriesMode.PAUSED: ReasonCode.FILTER_PAUSED,
+               EntriesMode.HALTED: ReasonCode.FILTER_HALT, EntriesMode.FLATTENING: ReasonCode.FILTER_PAUSED}
+ITEM_REASON = {'position': ReasonCode.OWNERSHIP_UNTRACKED_POSITION, 'foreign_order': ReasonCode.OWNERSHIP_FOREIGN_ORDER,
+               'orphan_order': ReasonCode.LIFECYCLE_ORPHAN_CANCEL, 'order_mismatch': ReasonCode.PROTECT_OWNER_CHECK,
+               'stop_missing': ReasonCode.PROTECT_CHECKING, 'ambiguous': ReasonCode.EXEC_ENTRY_UNCONFIRMED,
+               'unreadable': ReasonCode.CONNECTIVITY_EXCHANGE_OUTAGE}
+
+
+class InvariantBreach(AssertionError):
+    """A per-cycle safety invariant failed outside HOLD: the run stops."""
+
+
+@dataclass(frozen=True)
+class RunnerConfig:
+    account: Account
+    portfolio_id: str
+    symbols: tuple
+    tf_ms: int
+    timeframe: str
+    rules: dict                                # symbol -> InstrumentRules
+    sizing: SizingPolicy = SizingPolicy()
+    sides: tuple = ('LONG', 'SHORT')
+    slot_id: str = 'S1'
+    policy_version: str = 'nc-s1'
+    strict: bool = True                        # raise InvariantBreach outside HOLD
+
+
+@dataclass(frozen=True)
+class Reconciliation:
+    at_ms: int
+    reconciliation_id: str
+    items: tuple                               # ((kind, detail), ...): empty = match
+    positions: tuple | None
+    orders: tuple | None
+
+    @property
+    def ok(self):
+        return not self.items
+
+    @property
+    def flat(self):
+        return self.positions is not None and self.orders is not None and \
+            all(p.qty == 0 for p in self.positions) and not self.orders
+
+
+@dataclass
+class Counters:
+    cycles: int = 0
+    entries: int = 0
+    skips: int = 0
+    redelivered: int = 0
+    holds: int = 0
+    mismatch_cycles: int = 0
+    unprotected_cycles: int = 0
+    reconciliations: int = 0
+
+
+class Runner:
+    def __init__(self, config: RunnerConfig, *, journal, venue, bars, signals, account_reads=None):
+        self.cfg = config
+        self.acct = config.account.account_id
+        self.pf = config.portfolio_id
+        self.journal, self.venue, self.bars, self.signals = journal, venue, bars, signals
+        self.reads = account_reads if account_reads is not None else venue
+        self.fold = Fold.replay(self.acct, self.pf, journal.read())      # restart = fold the journal
+        self.now = None
+        self.counters = Counters()
+        self.last_rec = None
+        self._dist = {}                                                   # entry intent id -> stop distance (cache)
+        self._n_rec = 0
+
+    # =============================================================================================== journal plumbing
+    def _emit(self, cls, *, reason, **fields):
+        if self.fold.last_sequence != self.journal.last_sequence():
+            raise RuntimeError('journal moved under the runner (single-writer rule)')
+        seq = self.journal.last_sequence() + 1
+        ev = cls(event_id=ids.event_id(self.pf, seq), account_id=self.acct, aggregate_id=self.pf, sequence=seq,
+                 at_ms=self.now, reason=reason, **fields)
+        self.journal.append(ev)
+        self.fold.apply(ev)
+        return ev
+
+    def _decision(self, *, decision_id, action, reason, authority, key, symbol, side, intents=(), subject_id=None,
+                  detail='', evidence=()):
+        d = Decision(decision_id=decision_id, account_id=self.acct, at_ms=self.now, action=action, reason=reason,
+                     authority=authority, key=key, evidence=tuple(evidence), symbol=symbol,
+                     side=None if side is None else Side(side), subject_id=subject_id, detail=detail[:160],
+                     intents=tuple(intents), policy_version=self.cfg.policy_version)
+        self._emit(DecisionRecorded, reason=reason, decision=d)
+        return d
+
+    def _state(self, iv, to, reason=None):
+        self._emit(IntentStateChanged, reason=reason or iv.intent.reason, intent_id=iv.intent_id, from_state=iv.state,
+                   to_state=to)
+
+    def _record_durable(self, planned):
+        self._emit(IntentRecorded, reason=planned.reason, intent=dataclasses.replace(planned, state=IntentState.DURABLE))
+        return self.fold.intents[planned.intent_id]
+
+    def _ref(self, iv):
+        return OrderRef(symbol=iv.intent.symbol, client_id=iv.intent.client_order_id)
+
+    def _apply(self, iv, out, *, submit):
+        """Record what a venue answer proves about one intent (and nothing when it proves nothing new)."""
+        if not iv.live:
+            return
+        if iv.final is not None:                                          # crash after the durable FINAL result:
+            self._state(iv, terminal_for(iv.final))                       # only its terminal step is missing
+            return
+        res = result_from(out, iv.intent, ids.result_id(iv.intent_id, len(iv.results)), submit=submit)
+        if res is None:
+            return
+        st = iv.state
+        if res.phase is ResultPhase.FINAL:
+            self._emit(ResultObserved, reason=iv.intent.reason, result=res)
+            self._state(iv, terminal_for(res))
+        elif res.phase is ResultPhase.KNOWN:
+            if st in (IntentState.SUBMITTED, IntentState.UNKNOWN):
+                self._emit(ResultObserved, reason=iv.intent.reason, result=res)
+                self._state(iv, IntentState.WORKING)
+        else:
+            last = iv.results[-1] if iv.results else None
+            if st is IntentState.UNKNOWN and last is not None and last.phase is ResultPhase.UNKNOWN and \
+                    last.lookup == res.lookup:
+                return                                                    # nothing new
+            self._emit(ResultObserved, reason=iv.intent.reason, result=res)
+            if st in (IntentState.SUBMITTED, IntentState.WORKING):
+                self._state(iv, IntentState.UNKNOWN)
+
+    def _resolve(self, iv):
+        """One query for an intent whose answer was lost or acknowledged only."""
+        if iv.live and iv.state in (IntentState.SUBMITTED, IntentState.UNKNOWN):
+            self._apply(iv, self.venue.query(self._ref(iv)), submit=False)
+
+    def _hold(self, reasons, *, reason=ReasonCode.RECONCILE_UNRECONCILED):
+        reasons = tuple(dict.fromkeys((reason,) + tuple(reasons)))
+        if self.fold.mode is EntriesMode.HOLD:
+            return
+        self.counters.holds += 1
+        self._emit(ModeChanged, reason=reason, from_mode=self.fold.mode, to_mode=EntriesMode.HOLD, reasons=reasons,
+                   from_hold=self.fold.hold, to_hold=HoldKind.NORMAL, decision_id=None, reconciliation_id=None)
+
+    def _permits(self, purpose, op):
+        return permitted(self.fold.mode, self.fold.hold, purpose, op) is Permission.ALLOWED
+
+    # =============================================================================================== the cycle
+    def cycle(self, now_ms, *, decide=True):
+        if self.now is not None and now_ms < self.now:
+            raise ValueError('the runner clock never goes back')
+        self.now = now_ms
+        self.counters.cycles += 1
+        self._sync()
+        rec = self.reconcile()
+        if not rec.ok:
+            self._hold([ITEM_REASON[k] for k, _ in rec.items])
+        self._protect_all()
+        if decide:
+            for sym in self.cfg.symbols:
+                self._decide(sym)
+        rec = self.reconcile()
+        if not rec.ok:
+            self.counters.mismatch_cycles += 1
+            self._hold([ITEM_REASON[k] for k, _ in rec.items])
+        self.check_invariants(rec)
+        return rec
+
+    # ----------------------------------------------------------------------------------------------- 1. sync
+    def _sync(self):
+        for iv in list(self.fold.live_intents()):
+            if iv.state in OPEN_STATES:
+                out = self.venue.query(self._ref(iv))
+                self._apply(iv, out, submit=False)
+                if iv.state is IntentState.CANCELLING and out.kind is OutcomeKind.KNOWN:
+                    self._apply(iv, self.venue.cancel(self._ref(iv)), submit=False)    # the cancel never reached it
+            elif iv.state is IntentState.DURABLE:
+                self._send_durable(iv)
+
+    def _send_durable(self, iv):
+        """A durable intent that was never sent (crash between intent_recorded and sent)."""
+        p = iv.purpose
+        if p is Purpose.ENTRY:
+            key = self.fold.entry_key(iv)
+            if self.now == key.candle_close_ms and self.fold.mode is EntriesMode.ACTIVE:
+                self._send_entry(iv)
+            else:
+                self._emit(ResultObserved, reason=ReasonCode.LIFECYCLE_NOT_DURABLE,
+                           result=not_sent_result(iv.intent, ids.result_id(iv.intent_id, len(iv.results)), self.now))
+                self._state(iv, IntentState.NOT_SENT)
+        elif p is Purpose.PROTECT:
+            self._send_stop(iv)
+        else:
+            self._send_close(iv)
+
+    # ----------------------------------------------------------------------------------------------- 2. reconcile
+    def reconcile(self):
+        """A fresh venue snapshot vs the fold. Returns the Reconciliation (items empty = match)."""
+        self.counters.reconciliations += 1
+        rid = ids.reconciliation_id(self.acct, self.now, self._n_rec)
+        self._n_rec += 1
+        pos, oo = self.venue.positions(), self.venue.open_orders()
+        if pos.kind is not ReadKind.OK or oo.kind is not ReadKind.OK:
+            rec = Reconciliation(self.now, rid, (('unreadable', 'positions / open orders'),), None, None)
+            self.last_rec = rec
+            return rec
+        items = []
+        expected, ambiguous = {}, set()
+        for lot in self.fold.open_lots():
+            k = (lot.symbol, lot.side)
+            expected[k] = expected.get(k, ZERO) + lot.qty
+        for iv in self.fold.live_intents():
+            if iv.purpose in (Purpose.ENTRY, Purpose.CLOSE, Purpose.REDUCE) and iv.state in OPEN_STATES:
+                ambiguous.add((iv.intent.symbol, str(iv.intent.side)))
+        for p in pos.value:
+            k = (p.symbol, p.side)
+            if k in ambiguous:
+                items.append(('ambiguous', f'{k[0]} {k[1]}: an order outcome is not known'))
+            elif p.qty != expected.get(k, ZERO):
+                items.append(('position', f'{k[0]} {k[1]}: venue {p.qty}, owned {expected.get(k, ZERO)}'))
+        listed = {}
+        for o in oo.value:
+            listed[o.ref.client_id] = o
+            iv = self.fold.by_client_id.get(o.ref.client_id)
+            if iv is None:
+                items.append(('foreign_order', o.ref.client_id))
+            elif not iv.live:
+                items.append(('orphan_order', o.ref.client_id))
+            elif (o.qty, o.stop_price) != (iv.intent.qty, iv.intent.stop_price):
+                items.append(('order_mismatch', o.ref.client_id))
+        for iv in self.fold.live_intents():
+            if iv.purpose is Purpose.PROTECT and iv.state is IntentState.WORKING and \
+                    iv.intent.client_order_id not in listed:
+                items.append(('stop_missing', iv.intent.client_order_id))
+        rec = Reconciliation(self.now, rid, tuple(items), pos.value, oo.value)
+        self.last_rec = rec
+        return rec
+
+    # ----------------------------------------------------------------------------------------------- 3. protect
+    def _protect_all(self):
+        for lot in self.fold.open_lots():
+            d = self.fold.pending_closes.get(lot.lot_id)
+            if d is not None and lot.closing is None:                     # a decided close a crash interrupted:
+                self._close_lot(lot, reason=d.reason, key=d.key)          # finish it (never a fresh stop first)
+            else:
+                self._protect(lot)
+
+    def _stop_distance(self, lot):
+        d = self._dist.get(lot.entry.intent_id)
+        if d is not None:
+            return d
+        key = self.fold.entry_key(lot.entry)                  # restart: re-derive from the klines (exchange truth)
+        r = self.bars.closed_bars(lot.symbol, self.cfg.tf_ms, as_of_ms=key.candle_close_ms, limit=self.signals.window)
+        if r.kind is ReadKind.OK:
+            for s in self.signals.decide(lot.symbol, r.value, key.candle_close_ms):
+                if s.action == ENTER and s.side == lot.side and s.candle_close_ms == key.candle_close_ms:
+                    self._dist[lot.entry.intent_id] = s.stop_distance
+                    return s.stop_distance
+        raise LookupError(f'{lot.lot_id}: the entry signal cannot be re-derived from the bars')
+
+    def stop_price_of(self, lot):
+        if lot.protects:
+            return lot.protects[0].intent.stop_price
+        rules = self.cfg.rules[lot.symbol]
+        d = self._stop_distance(lot)
+        if lot.side == 'LONG':
+            return rules.quantize_price(lot.avg_price - d, Rounding.DOWN)       # never tighter than the R
+        return rules.quantize_price(lot.avg_price + d, Rounding.UP)
+
+    def _protect(self, lot):
+        if not lot.open or lot.live_stop is not None or lot.closing is not None:
+            return
+        if not self._permits(Purpose.PROTECT, Op.PLACE):
+            return
+        n = len(lot.protects)
+        iid = ids.derive_child_intent_id(self.acct, lot.entry.intent_id, 'protect', n)
+        did = ids.child_decision_id(iid)
+        prior = self.journal.find_decision(did)
+        if prior is not None:                                             # crash gap: decided, intent not recorded
+            planned = prior.decision.intents[0]
+        else:
+            price = self.stop_price_of(lot)
+            reason = ReasonCode.PROTECT_PLACE if n == 0 else ReasonCode.PROTECT_RESTORING
+            planned = planned_intent(intent_id=iid, account_id=self.acct, decision_id=did, purpose='protect',
+                                     symbol=lot.symbol, side=lot.side, qty=lot.qty, reason=reason, at_ms=self.now,
+                                     owner_id=lot.lot_id, stop_price=price)
+            self._decision(decision_id=did, action=Action.PROTECT, reason=reason, authority=Authority.PROTECTION,
+                           key=None, symbol=lot.symbol, side=lot.side, intents=(planned,), subject_id=lot.lot_id,
+                           evidence=(lot.entry.intent_id,), detail=f'stop {price} x {lot.qty}')
+        self._send_stop(self._record_durable(planned))
+
+    def _send_stop(self, iv):
+        self._state(iv, IntentState.SUBMITTED)
+        it = iv.intent
+        out = self.venue.submit_stop(StopOrder(ref=self._ref(iv), position_side=str(it.side), qty=it.qty,
+                                               stop_price=it.stop_price))
+        self._apply(iv, out, submit=True)
+        self._resolve(iv)
+        if iv.state is IntentState.REJECTED:                              # stop failed: close at market
+            lot = next((x for x in self.fold.open_lots() if x.lot_id == it.owner_id), None)
+            if lot is not None:
+                self._close_lot(lot, reason=ReasonCode.EXIT_STOP_FAILED, key=None)
+
+    # ----------------------------------------------------------------------------------------------- 4. decide
+    def _decide(self, symbol):
+        r = self.bars.closed_bars(symbol, self.cfg.tf_ms, as_of_ms=self.now, limit=self.signals.window)
+        if r.kind is not ReadKind.OK or not r.value or r.value[-1].close_ms != self.now:
+            return                                                        # no fresh closed candle: no decision
+        for s in self.signals.decide(symbol, r.value, self.now):
+            if s.side not in self.cfg.sides:
+                continue
+            if s.action == CLOSE:
+                self._exit(symbol, s)
+            elif s.action == ENTER:
+                self._enter(symbol, s, r.value[-1].close)
+
+    def _key(self, symbol, s, purpose):
+        return DecisionKey(strategy=self.signals.strategy, strategy_version=self.signals.version, symbol=symbol,
+                           side=Side(s.side), candle_close_ms=s.candle_close_ms, purpose=purpose)
+
+    def _enter(self, symbol, s, ref_price):
+        key = self._key(symbol, s, Purpose.ENTRY)
+        did = ids.derive_decision_id(self.acct, key)
+        prior = self.journal.find_decision(did)
+        if prior is not None:                                             # consumed: never decided again
+            self.counters.redelivered += 1
+            d = prior.decision
+            if d.action is Action.ENTER and d.intents and d.intents[0].intent_id not in self.fold.intents and \
+                    self.now == key.candle_close_ms and self.fold.mode is EntriesMode.ACTIVE:
+                self._dist[d.intents[0].intent_id] = s.stop_distance      # crash gap: derived intent, still in window
+                self._send_entry(self._record_durable(d.intents[0]))
+            return
+        gate = self._entry_gate(symbol, s.side)
+        sz = None
+        if gate is None:
+            eq = self.reads.equity()
+            if eq.kind is not ReadKind.OK:
+                gate = ReasonCode.CONNECTIVITY_EXCHANGE_OUTAGE
+            else:
+                notional = sum((x.qty * x.avg_price for x in self.fold.open_lots()), ZERO)
+                sz = size_entry(equity=eq.value[0], stop_distance=s.stop_distance, ref_price=ref_price,
+                                rules=self.cfg.rules[symbol], policy=self.cfg.sizing, open_notional=notional)
+                gate = sz.reason
+        if gate is not None:
+            self.counters.skips += 1
+            self._decision(decision_id=did, action=Action.SKIP, reason=gate, authority=Authority.STRATEGY, key=key,
+                           symbol=symbol, side=s.side, detail=f'skip {gate}')
+            return
+        iid = ids.derive_intent_id(self.acct, key, 0)
+        planned = planned_intent(intent_id=iid, account_id=self.acct, decision_id=did, purpose='entry', symbol=symbol,
+                                 side=s.side, qty=sz.qty, reason=s.reason, at_ms=self.now, slot_id=self.cfg.slot_id)
+        self._decision(decision_id=did, action=Action.ENTER, reason=s.reason, authority=Authority.STRATEGY, key=key,
+                       symbol=symbol, side=s.side, intents=(planned,),
+                       detail=f'risk {sz.risk_usd:.8f} dist {s.stop_distance} capped {sz.capped}')
+        self._dist[iid] = s.stop_distance
+        self.counters.entries += 1
+        self._send_entry(self._record_durable(planned))
+
+    def _entry_gate(self, symbol, side):
+        if self.fold.mode is not EntriesMode.ACTIVE:
+            return GATE_REASON[self.fold.mode]
+        if any(x.symbol == symbol and x.side == side for x in self.fold.open_lots()):
+            return ReasonCode.CAPACITY_IN_TRADE
+        if self.fold.live_entries(symbol, side):
+            return ReasonCode.CAPACITY_ENTRY_WORKING
+        return None
+
+    def _send_entry(self, iv):
+        self._state(iv, IntentState.SUBMITTED)
+        it = iv.intent
+        out = self.venue.submit_market(MarketOrder(ref=self._ref(iv), position_side=str(it.side), qty=it.qty,
+                                                   reduce=False))
+        self._apply(iv, out, submit=True)
+        if iv.live:                                                       # lost / acknowledged answer: HOLD, resolve
+            self._hold([ReasonCode.EXEC_ENTRY_UNCONFIRMED], reason=ReasonCode.EXEC_ENTRY_UNCONFIRMED)
+            self._resolve(iv)
+        if iv.final is not None and iv.executed > 0:
+            lot = next(x for x in self.fold.open_lots() if x.entry.intent_id == iv.intent_id)
+            self._protect(lot)
+
+    def _exit(self, symbol, s):
+        lot = next((x for x in self.fold.open_lots() if x.symbol == symbol and x.side == s.side), None)
+        if lot is None or lot.closing is not None:
+            return                                                        # nothing to close: not a decision
+        key = self._key(symbol, s, Purpose.CLOSE)
+        if self.journal.find_decision(ids.derive_decision_id(self.acct, key)) is not None:
+            self.counters.redelivered += 1
+            if ids.derive_intent_id(self.acct, key, 0) in self.fold.intents:
+                return                                                    # already recorded: sync owns it
+        self._close_lot(lot, reason=s.reason, key=key)                    # (re)entered: a crash gap resumes here
+
+    def _close_lot(self, lot, *, reason, key):
+        """Cancel the stop, then a reduce-only market close of the whole lot. key=None: an unkeyed (protection) close."""
+        if key is not None:
+            did = ids.derive_decision_id(self.acct, key)
+            iid = ids.derive_intent_id(self.acct, key, 0)
+            authority = Authority.STRATEGY
+        else:
+            iid = ids.derive_child_intent_id(self.acct, lot.entry.intent_id, 'close', len(lot.closes))
+            did = ids.child_decision_id(iid)
+            authority = Authority.PROTECTION
+        prior = self.journal.find_decision(did)
+        if prior is not None:                                             # crash gap: decided, intent not recorded
+            planned = prior.decision.intents[0]
+        else:
+            planned = planned_intent(intent_id=iid, account_id=self.acct, decision_id=did, purpose='close',
+                                     symbol=lot.symbol, side=lot.side, qty=lot.qty, reason=reason, at_ms=self.now,
+                                     owner_id=lot.lot_id)
+            self._decision(decision_id=did, action=Action.CLOSE, reason=reason, authority=authority, key=key,
+                           symbol=lot.symbol, side=lot.side, intents=(planned,), subject_id=lot.lot_id,
+                           detail=f'close {lot.qty}')
+        if planned.intent_id in self.fold.intents:
+            return
+        stop = lot.live_stop
+        if stop is not None:
+            if stop.state is not IntentState.CANCELLING:
+                self._state(stop, IntentState.CANCELLING, reason)
+            out = self.venue.cancel(self._ref(stop))
+            self._apply(stop, out, submit=False)
+            if stop.live:
+                self._apply(stop, self.venue.query(self._ref(stop)), submit=False)
+            if stop.live:                                                 # stop state unknown: do not close blind
+                self._hold([ReasonCode.PROTECT_CHECKING])
+                return
+        lot = next((x for x in self.fold.open_lots() if x.lot_id == lot.lot_id), None)
+        if lot is None:
+            return                                                        # the stop filled first: nothing to close
+        self._send_close(self._record_durable(planned))
+
+    def _send_close(self, iv):
+        self._state(iv, IntentState.SUBMITTED)
+        it = iv.intent
+        out = self.venue.submit_market(MarketOrder(ref=self._ref(iv), position_side=str(it.side), qty=it.qty,
+                                                   reduce=True))
+        self._apply(iv, out, submit=True)
+        if iv.live:
+            self._hold([ReasonCode.EXEC_ORDER_FAILED], reason=ReasonCode.EXEC_ORDER_FAILED)
+            self._resolve(iv)
+        lot = next((x for x in self.fold.open_lots() if x.lot_id == it.owner_id), None)
+        if lot is not None and lot.closing is None:
+            self._protect(lot)                                            # the close failed: re-protect at once
+
+    # ----------------------------------------------------------------------------------------------- operator
+    def resume(self, now_ms):
+        """Leave HOLD: needs a clean fresh reconciliation and records an operator RESUME decision."""
+        self.now = max(self.now or now_ms, now_ms)
+        if self.fold.mode is EntriesMode.ACTIVE:
+            return True
+        rec = self.reconcile()
+        if not rec.ok:
+            return False
+        did = ids.operator_decision_id(self.acct, 'resume', self.now)
+        self._decision(decision_id=did, action=Action.RESUME, reason=ReasonCode.OPERATOR_RESUME,
+                       authority=Authority.OPERATOR, key=None, symbol=None, side=None, evidence=(), detail='resume')
+        self._emit(ModeChanged, reason=ReasonCode.OPERATOR_RESUME, from_mode=self.fold.mode, to_mode=EntriesMode.ACTIVE,
+                   reasons=(), from_hold=self.fold.hold, to_hold=None, decision_id=did,
+                   reconciliation_id=rec.reconciliation_id)
+        return True
+
+    # ----------------------------------------------------------------------------------------------- 5. invariants
+    def check_invariants(self, rec):
+        problems = []
+        if rec.positions is not None and rec.orders is not None:
+            for p in rec.positions:
+                if p.qty == 0:
+                    continue
+                cover = ZERO
+                for o in rec.orders:
+                    iv = self.fold.by_client_id.get(o.ref.client_id)
+                    if iv is not None and iv.purpose is Purpose.PROTECT and iv.state is IntentState.WORKING and \
+                            (o.ref.symbol, o.position_side) == (p.symbol, p.side) and o.reduce:
+                        cover += o.qty
+                if cover != p.qty:
+                    problems.append(f'I1 {p.symbol} {p.side}: position {p.qty}, confirmed stop {cover}')
+        cids = self.fold.client_ids_recorded
+        if len(cids) != len(set(cids)):
+            problems.append('I2 a client id was recorded twice')
+        keys = [self.fold.entry_key(iv) for iv in self.fold.intents.values() if iv.purpose is Purpose.ENTRY]
+        if len(keys) != len(set(keys)):
+            problems.append('I2 two entry intents for one DecisionKey')
+        try:
+            self.portfolio(rec)
+        except Exception as ex:                                           # NC-01 invariant refused the state
+            problems.append(f'I3 {type(ex).__name__}: {ex}')
+        if problems:
+            if self.fold.mode is EntriesMode.HOLD or not self.cfg.strict:
+                self.counters.unprotected_cycles += any(p.startswith('I1') for p in problems)
+            else:
+                raise InvariantBreach('; '.join(problems))
+        return problems
+
+    # ----------------------------------------------------------------------------------------------- projections
+    def _fee(self, symbol, eoid):
+        r = self.venue.fills(symbol, eoid)
+        return sum((f.fee for f in r.value), ZERO) if r.kind is ReadKind.OK else ZERO
+
+    def portfolio(self, rec=None):
+        """The NC-01 Portfolio this fold + reconciliation proves (constructing it runs every NC-01 invariant)."""
+        rec = rec or self.last_rec
+        f = self.fold
+        mode, hold = f.mode, f.hold
+        reasons = f.mode_reasons if mode is not EntriesMode.ACTIVE else ()
+        since = f.mode_since_ms if f.mode_since_ms is not None else (f.first_at_ms or self.now)
+        common = dict(portfolio_id=self.pf, account_id=self.acct, generation=f.last_sequence, entries_mode=mode,
+                      mode_since_ms=since, pause_reasons=reasons, hold_kind=hold)
+        lots = f.open_lots()
+        live = f.live_intents()
+        if not lots and not live:
+            if rec is not None and rec.ok and rec.flat:
+                proof = OwnershipProof(kind=ProofKind.FLAT_SNAPSHOT, at_ms=rec.at_ms,
+                                       reconciliation_id=rec.reconciliation_id,
+                                       key_digest=self.cfg.account.binding.key_digest, decision_id=None,
+                                       through_sequence=None)
+                pf = Portfolio(ownership=Ownership.KNOWN_EMPTY, proof=proof, positions=(), intents=(), entry_stops=(),
+                               **common)
+                check_flat_snapshot_fresh(self.cfg.account, pf, self.now, 0)
+                return pf
+            if mode is EntriesMode.HOLD:
+                return Portfolio(ownership=Ownership.UNKNOWN, proof=None, positions=None, intents=None,
+                                 entry_stops=None, **common)
+            raise ValueError('nothing owned but no fresh flat snapshot: KNOWN_EMPTY is not proven')
+        listed = {o.ref.client_id for o in (rec.orders or ())} if rec is not None else set()
+        by_pos = {}
+        for lot in lots:
+            stop_iv = lot.live_stop
+            price = stop_iv.intent.stop_price if stop_iv is not None else self.stop_price_of(lot)
+            qty = stop_iv.intent.qty if stop_iv is not None else lot.qty
+            confirmed = rec.at_ms if (stop_iv is not None and stop_iv.state is IntentState.WORKING and
+                                      stop_iv.intent.client_order_id in listed) else None
+            prot = Protection(owner_id=lot.lot_id, price=price, qty=qty,
+                              order=None if stop_iv is None else stop_iv.intent_id, replacement=None,
+                              confirmed_at_ms=confirmed, miss=None)
+            e = lot.entry.final
+            fills = [Fill(at_ms=lot.opened_at_ms, reason=lot.entry.intent.reason, qty=lot.initial_qty,
+                          price=lot.avg_price, fee=self._fee(lot.symbol, e.exchange_order_id), result_id=e.result_id,
+                          decision_id=None)]
+            for c in lot.closings:
+                fills.append(Fill(at_ms=c.at_ms, reason=c.reason, qty=c.qty, price=c.price,
+                                  fee=self._fee(lot.symbol, c.exchange_order_id), result_id=c.result_id,
+                                  decision_id=None))
+            dist = abs(lot.avg_price - self.stop_price_of(lot))
+            closing = lot.closing
+            rec_lot = Lot(lot_id=lot.lot_id, account_id=self.acct, symbol=lot.symbol, side=Side(lot.side),
+                          source=LotSource.STRATEGY, slot_id=self.cfg.slot_id, timeframe=self.cfg.timeframe,
+                          opened_at_ms=lot.opened_at_ms, qty=lot.qty, avg_price=lot.avg_price,
+                          initial_qty=lot.initial_qty, max_qty=lot.initial_qty, risk_distance=dist,
+                          risk_usd=lot.initial_qty * dist, stop=prot, fills=tuple(fills),
+                          in_flight=None if closing is None else closing.intent_id, adopted_by=None, tp1_done=False,
+                          ladder_done=(), adds_done=0)
+            by_pos.setdefault((lot.symbol, lot.side), []).append(rec_lot)
+        positions = tuple(Position(position_id=ids.position_id(self.acct, s, sd), symbol=s, side=Side(sd),
+                                   lots=tuple(v)) for (s, sd), v in sorted(by_pos.items()))
+        proof = OwnershipProof(kind=ProofKind.JOURNAL, at_ms=self.now, reconciliation_id=None, key_digest=None,
+                               decision_id=None, through_sequence=f.last_sequence)
+        pf = Portfolio(ownership=Ownership.KNOWN, proof=proof, positions=positions,
+                       intents=tuple(iv.current() for iv in live), entry_stops=(), **common)
+        check_account_portfolio(self.cfg.account, pf)
+        return pf
+
+    def trades(self):
+        """TradeOutcome of every closed lot, in entry order."""
+        return [trade_outcome(self.fold, lot, self.venue, self.reads, self.cfg.tf_ms, self.stop_price_of(lot))
+                for lot in self.fold.lots() if not lot.open]
+
+    def summary(self):
+        eq = self.reads.equity()
+        try:
+            own = str(self.portfolio().ownership)
+        except Exception:
+            own = None
+        return summarize(self.trades(), equity_end=eq.value[0] if eq.kind is ReadKind.OK else None,
+                         open_lots=len(self.fold.open_lots()), ownership=own, mode=str(self.fold.mode),
+                         counters=dataclasses.asdict(self.counters))

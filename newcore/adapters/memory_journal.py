@@ -79,14 +79,17 @@ class MemoryJournal:
         self._decisions = {}
         self._ids = set()
         self._fail = 0
+        self._fail_after = 0
 
-    def fail_writes(self, n=1):
-        """Fault hook: the next n appends raise JournalUnavailable (nothing lands)."""
+    def fail_writes(self, n=1, *, after=0):
+        """Fault hook: after `after` more successful appends, the next n appends raise JournalUnavailable (nothing
+        lands). With after > 0 it is a crash point between two journal boundaries."""
         self._fail += n
+        self._fail_after = after
 
     # ------------------------------------------------------------------------------------------------ JournalPort
     def append(self, event) -> Admission:
-        if self._fail > 0:
+        if self._fail > 0 and self._fail_after == 0:
             self._fail -= 1
             raise JournalUnavailable('memory journal: injected store failure')
         try:
@@ -106,6 +109,8 @@ class MemoryJournal:
         if adm is Admission.APPLY:
             self._events.append(event)
             self._ids.add(h.event_id)
+            if self._fail > 0 and self._fail_after > 0:
+                self._fail_after -= 1
             if isinstance(event, DecisionRecorded):
                 self._decisions[event.decision.decision_id] = event
         return adm
