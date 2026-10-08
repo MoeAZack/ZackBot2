@@ -91,8 +91,8 @@ def _opt_ms(v, what):
         return None
     try:
         return str(check_ms(v, what))
-    except ValueError as ex:
-        raise VenueInputError(str(ex)) from None
+    except ValueError:
+        raise VenueInputError(f'{what} must be a positive int of milliseconds') from None
 
 
 def _opt_limit(v, hi):
@@ -130,8 +130,8 @@ class BinanceTestnetTransport:
             raise VenueInputError('credentials must implement CredentialSource (api_key(), sign(bytes))')
         try:
             check_recv_window(recv_window_ms)
-        except ValueError as ex:
-            raise VenueInputError(str(ex)) from None
+        except ValueError:
+            raise VenueInputError('recv_window_ms is out of range') from None
         if isinstance(timeout_s, bool) or not isinstance(timeout_s, (int, float)) or not 0 < timeout_s <= 60:
             raise VenueInputError('timeout_s must be a number in (0, 60]')
         self._http, self._clock, self._credentials = http, clock, credentials
@@ -189,8 +189,9 @@ class BinanceTestnetTransport:
             query, sig = signed_query(pairs, now, self._recv_window, sign)
         except CredentialsUnavailable:
             raise
-        except ValueError as ex:
-            raise VenueInputError(str(ex)) from None
+        except ValueError:
+            raise VenueInputError('the signed query could not be built (a signer-only parameter was given, or the '
+                                  'signature is malformed)') from None
         # The raw key is NOT put into the request: the sender fetches it from the provider at send time (finding 5).
         return HttpRequest(method, url, query + '&signature=' + sig, ((API_KEY_HEADER, '<redacted>'),), self._timeout,
                            True, key_provider=self._api_key)

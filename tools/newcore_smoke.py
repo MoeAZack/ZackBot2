@@ -39,6 +39,7 @@ from newcore.venue.smoke_trade import (TradeAborted, format_plan, format_trade_r
 from newcore.venue.testnet_venue import HedgeModeRequired, TestnetVenue, VenueBootUnknown  # noqa: E402
 from newcore.venue.transport import BinanceTestnetTransport, PositionMode  # noqa: E402
 from newcore.venue.wire import WireSeamError  # noqa: E402
+from newcore.venue.safe_text import exc_msg, exc_text  # noqa: E402
 
 READ_ONLY_NOTE = 'READ-ONLY smoke: no order was placed or cancelled and no setting was changed.'
 
@@ -75,7 +76,7 @@ def _write_cassette(recorder, directory, stamp_ms, values, out):
         out.write('ERROR: the cassette failed the leak check before writing; nothing was written.\n')
         return None, 5
     except (CredentialStoreError, OSError) as ex:
-        out.write(f'ERROR: cassette not written ({type(ex).__name__}: {ex}).\n')
+        out.write(f'ERROR: cassette not written ({exc_text(ex)}).\n')
         return None, 5
     with open(path, 'rb') as fh:
         data = fh.read()
@@ -94,14 +95,14 @@ def _trade(args, transport, oc, report, clock, out):
         venue.check_hedge_mode()
         rep = run_trade_smoke(venue, transport, report, symbol=args.symbol, ids=ids, clock=oc)
     except (HedgeModeRequired, VenueBootUnknown) as ex:
-        out.write(f'TRADE REFUSED: {ex}. No order was placed.\n')
+        out.write(f'TRADE REFUSED: {exc_msg(ex)}. No order was placed.\n')
         return 7
     except TradeAborted as ex:
         if ex.exposure_possible:
-            out.write(f'TRADE STOPPED - POSITION MAY BE OPEN ON TESTNET: {ex}\n'
+            out.write(f'TRADE STOPPED - POSITION MAY BE OPEN ON TESTNET: {exc_msg(ex)}\n'
                       f'Check the testnet UI for these client ids and close manually if needed.\n')
             return 8
-        out.write(f'TRADE STOPPED (no exposure left): {ex}\n')
+        out.write(f'TRADE STOPPED (no exposure left): {exc_msg(ex)}\n')
         return 7
     out.write(format_trade_report(rep) + '\n')
     out.write('TRADE phase done on TESTNET: one minimum-size round trip, protective stop placed, verified and '
@@ -131,7 +132,7 @@ def main(argv=None, *, http=None, local_clock=None, protector=None, out=None, mo
         cassette_dir = check_root(args.cassette_dir or default_cassette_dir())       # legacy folder / repo refused
         store = CredentialStore(args.account_id, root=args.root, protector=protector, harden_acl=False)
     except (CredentialStoreError, CredentialsUnavailable) as ex:
-        out.write(f'REFUSED: {ex}\n')
+        out.write(f'REFUSED: {exc_msg(ex)}\n')
         return 2
     if args.dry_run:                       # the plan only: no sender is built, nothing is decrypted or sent
         stamp = clock()
@@ -145,11 +146,11 @@ def main(argv=None, *, http=None, local_clock=None, protector=None, out=None, mo
             creds = store.load(scrubber=scrubber)
             info = store.info()
         except CredentialsUnavailable as ex:
-            out.write(f'NO USABLE TESTNET KEY ({ex.reason}): {ex}\n'
+            out.write(f'NO USABLE TESTNET KEY ({ex.reason}): {exc_msg(ex)}\n'
                       f'Enter it first:  python tools/newcore_keys.py set --env testnet --account-id {args.account_id}\n')
             return 3
         except CredentialStoreError as ex:
-            out.write(f'REFUSED: {ex}\n')
+            out.write(f'REFUSED: {exc_msg(ex)}\n')
             return 2
         scrubber.install()
         if http is None:
@@ -173,7 +174,7 @@ def main(argv=None, *, http=None, local_clock=None, protector=None, out=None, mo
             out.write(f'READ FAILED - {ex.describe()}\nNothing was retried. {READ_ONLY_NOTE}\n')
             rc = 4
         except (VenueGuardError, WireSeamError) as ex:
-            out.write(f'READ FAILED - seam refused: {type(ex).__name__}: {scrubber.scrub(ex)}\n')
+            out.write(f'READ FAILED - seam refused: {exc_text(ex)}\n')
             rc = 4
         if report is not None:
             out.write(format_report(report, environment=info.environment, masked_key=info.masked_key,

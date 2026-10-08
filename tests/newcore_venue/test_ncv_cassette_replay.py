@@ -96,8 +96,9 @@ def test_unsupported_endpoint_fails(tmp_path):
     doc = json.loads(S.run_scenario(S.DUPLICATE).cassette)
     doc['interactions'][1]['request']['url'] = 'https://testnet.binancefuture.com/fapi/v1/listenKey'
     results = replay_report(doc)
-    assert results[0].status == 'PASS' and results[1].status == 'FAIL' and 'not a replayable endpoint' in \
-        results[1].detail
+    assert results[0].status == 'PASS' and results[1].status == 'FAIL'
+    assert results[1].label.endswith('GET /fapi/v1/listenKey')                       # the label names the endpoint
+    assert results[1].detail.startswith('UnsupportedInteraction (detail withheld, ref ')   # never raw text (Codex)
 
 
 def test_leak_audit_finding_fails_the_cli(smoke_cassette, tmp_path):

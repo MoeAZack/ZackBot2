@@ -39,8 +39,9 @@ from newcore.venue.clock import OffsetClock, system_clock_ms  # noqa: E402
 from newcore.venue.credentials import (CredentialsUnavailable, CredentialStore, CredentialStoreError,  # noqa: E402
                                        SecretScrubber, binding_digest, check_root)
 from newcore.venue.outcomes import ReadKind as TR  # noqa: E402  (transport-level reads)
-from newcore.venue.redact import scrub_path, scrub_tokens  # noqa: E402
+from newcore.venue.redact import scrub_path  # noqa: E402
 from newcore.venue.run_config import RunConfigError, default_testnet_config_path, load_testnet_config  # noqa: E402
+from newcore.venue.safe_text import exc_msg, exc_text  # noqa: E402
 from newcore.venue.smoke import CORE8  # noqa: E402
 from newcore.venue.testnet_venue import TestnetAccountReader, TestnetVenue  # noqa: E402
 from newcore.venue.tnet import (EvidenceInterrupt, ReportLeak, adopt_refusal, adopted_positions,  # noqa: E402
@@ -243,7 +244,7 @@ def _main(argv=None, *, http=None, local_clock=None, protector=None, out=None, m
         try:
             specs.append((p, load_spec(p)))
         except SpecError as ex:
-            out.write(f'REFUSED: --scenario #{i + 1}: {scrub_tokens(str(ex))[:200]}\n')   # no path, no raw keys
+            out.write(f'REFUSED: --scenario #{i + 1}: {exc_msg(ex)}\n')   # no path, no raw keys
             return EXIT_USAGE
         except OSError as ex:
             out.write(f'REFUSED: --scenario #{i + 1}: cannot read it ({type(ex).__name__})\n')
@@ -283,7 +284,7 @@ def _main(argv=None, *, http=None, local_clock=None, protector=None, out=None, m
         try:
             run_cfg = load_testnet_config(args.config)          # READ only: the file is never written
         except RunConfigError as ex:
-            out.write(f'REFUSED: --config: {ex}\n')
+            out.write(f'REFUSED: --config: {exc_msg(ex)}\n')
             return EXIT_USAGE
         if args.account_id is not None and args.account_id != run_cfg.account_id:
             out.write(f'REFUSED: --account-id {args.account_id} disagrees with the config ({run_cfg.account_id}).\n')
@@ -312,7 +313,7 @@ def _main(argv=None, *, http=None, local_clock=None, protector=None, out=None, m
         report_dir = check_root(args.report_dir or default_report_dir())
         store = CredentialStore(args.account_id, root=args.root, protector=protector, harden_acl=False)
     except (CredentialStoreError, CredentialsUnavailable) as ex:
-        out.write(f'REFUSED: {ex}\n')
+        out.write(f'REFUSED: {exc_msg(ex)}\n')
         return EXIT_USAGE
     build = git_build(REPO, run=git_run)
     if args.gate and build['dirty']:
@@ -503,7 +504,7 @@ def _run(args, specs, symbols, min_balance, creds, scrubber, http, clock, mono, 
             _body()
         except DeadlineExceeded as ex:
             state['deadline'] = True
-            out.write(f'DEADLINE: {ex}\n')
+            out.write(f'DEADLINE: {exc_msg(ex)}\n')
         except Exception as ex:                          # noqa: BLE001 - typed: a FAIL, the teardown runs
             state['aborted'], state['exposure'] = f'unexpected {type(ex).__name__}', True
 
@@ -524,7 +525,7 @@ def _run(args, specs, symbols, min_balance, creds, scrubber, http, clock, mono, 
                     state['probes']['P2_read_lag'] = r.as_dict()
                 out.write(f'{pr}: {"conclusive" if r.conclusive else "INCONCLUSIVE"}\n')
             except ProbeAborted as ex:
-                state['aborted'], state['exposure'] = f'{pr}: {ex}', ex.exposure_possible
+                state['aborted'], state['exposure'] = f'{pr}: {exc_msg(ex)}', ex.exposure_possible
                 return
         for _, spec in specs:
             if dl.expired():
@@ -582,7 +583,7 @@ def _run(args, specs, symbols, min_balance, creds, scrubber, http, clock, mono, 
             probes=state['probes']), EVIDENCE)
         out.write(f'report: {scrub_path(paths[0])}\n')
     except (ReportLeak, CredentialStoreError, OSError) as ex:
-        out.write(f'ERROR: report not written ({type(ex).__name__}: {ex}).\n')
+        out.write(f'ERROR: report not written ({exc_text(ex)}).\n')
         rc_report = EXIT_REPORT
     if interrupted:                                    # the message states the ACTUAL cleanup state
         if cleanup.clean:

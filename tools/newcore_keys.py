@@ -22,6 +22,7 @@ import time
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from newcore.venue.cli_args import ACCOUNT_REFUSAL, argv_refusal  # noqa: E402
+from newcore.venue.safe_text import exc_msg  # noqa: E402
 from newcore.venue.credentials import (CredentialsUnavailable, CredentialStore, CredentialStoreError,  # noqa: E402
                                        MainnetCredentialRefused, SecretScrubber)
 
@@ -91,14 +92,14 @@ def main(argv=None, *, prompt=None, out=None, now_ms=None, scrubber=None, protec
     try:
         store = CredentialStore(args.account_id, root=args.root, protector=protector, harden_acl=harden_acl)
     except (CredentialStoreError, CredentialsUnavailable) as ex:
-        out.write(f'REFUSED: {ex}\n')
+        out.write(f'REFUSED: {exc_msg(ex)}\n')
         return 2
 
     if args.cmd == 'status':
         try:
             info = store.info()
         except CredentialsUnavailable as ex:
-            out.write(f'NO USABLE CREDENTIALS ({ex.reason}): {ex}\n')
+            out.write(f'NO USABLE CREDENTIALS ({ex.reason}): {exc_msg(ex)}\n')
             return 4
         _print_info(info, out)
         out.write(NOT_TRADING + '\n')
@@ -111,7 +112,7 @@ def main(argv=None, *, prompt=None, out=None, now_ms=None, scrubber=None, protec
         try:
             removed = store.clear()
         except CredentialStoreError as ex:
-            out.write(f'ERROR: {ex}\n')
+            out.write(f'ERROR: {exc_msg(ex)}\n')
             return 5
         out.write('removed\n' if removed else 'nothing stored\n')
         return 0
@@ -137,10 +138,10 @@ def main(argv=None, *, prompt=None, out=None, now_ms=None, scrubber=None, protec
     try:
         info = store.save('testnet', key, secret, now_ms=now_ms if now_ms is not None else int(time.time() * 1000))
     except MainnetCredentialRefused as ex:
-        out.write(f'REFUSED: {ex}\n')
+        out.write(f'REFUSED: {exc_msg(ex)}\n')
         return 3
     except CredentialStoreError as ex:
-        out.write(f'ERROR: {scrub.scrub(ex)}\n')
+        out.write(f'ERROR: {exc_msg(ex)}\n')
         return 5
     finally:
         key = secret = None

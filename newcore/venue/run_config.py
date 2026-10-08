@@ -56,7 +56,7 @@ def _scan(root):
     while stack:
         node, path, depth = stack.pop()
         if depth > MAX_DEPTH:
-            raise RunConfigError(f'{path or "$"}: nested deeper than {MAX_DEPTH} levels')
+            raise RunConfigError(f'the config is nested deeper than {MAX_DEPTH} levels')   # no key path echoed
         if isinstance(node, dict):
             for k, v in node.items():
                 if is_sensitive_name(str(k)) and k != 'key_digest':

@@ -40,6 +40,7 @@ from newcore.ports.keys import route_of
 from newcore.runner import Runner, RunnerConfig, SizingPolicy
 from newcore.runner.runner import InvariantBreach
 from newcore.venue.tnet import guarded, is_newcore_cid
+from newcore.venue.safe_text import exc_text
 
 from .rspec import expectations, validate_rspec
 from .seams import AdoptedView, BoundedPort, BoundExceeded, DeadlineExceeded  # noqa: F401  (re-exported)
@@ -360,9 +361,9 @@ def run_scenario(spec, target, *, run_nonce, monotonic=time.monotonic, baseline=
                     break
             state['truth'] = final_truth(run.runner, run.truth_venue, run.sym)
         except (BoundExceeded, DeadlineExceeded, InvariantBreach) as ex:
-            state['error'] = f'{type(ex).__name__}: {ex}'
+            state['error'] = exc_text(ex)
         except Exception as ex:                                       # noqa: BLE001 - a FAIL, never a crash
-            state['error'] = f'{type(ex).__name__}: {ex}'
+            state['error'] = exc_text(ex)                             # never raw text (Codex): type + ref
         except (KeyboardInterrupt, SystemExit) as ex:                 # N2: stop here; the teardown still runs
             state['error'] = f'Interrupted ({type(ex).__name__})'
             state['interrupted'] = True
@@ -416,7 +417,7 @@ def run_scenario(spec, target, *, run_nonce, monotonic=time.monotonic, baseline=
         try:
             res.assertions += _evaluate(run, expectations(spec, target.kind), res.final_truth)
         except Exception as ex:                                       # noqa: BLE001 - e.g. a fills read that fails
-            res.error = f'{type(ex).__name__}: {ex}'
+            res.error = exc_text(ex)
             res.assertions.append(('expectations evaluated', False, res.error))
         res.verdict = PASS if all(ok for _, ok, _ in res.assertions) else FAIL
         missed = _unobserved(run, expectations(spec, target.kind).get('observe')) if res.verdict == PASS else []

@@ -411,7 +411,8 @@ class CredentialStore:
             check_value(_check_token(api_key, 'api_key'))
             check_value(_check_token(api_secret, 'api_secret'))
         except ValueError as ex:
-            raise CredentialStoreError(str(ex)) from None
+            raise CredentialStoreError('the API key and secret must be printable ASCII without whitespace, at least '
+                                       '8 characters each') from None
         if type(now_ms) is not int or now_ms <= 0:
             raise CredentialStoreError('now_ms must be a positive int')
         digest = key_digest(api_key)

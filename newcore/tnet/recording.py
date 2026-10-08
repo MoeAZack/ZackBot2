@@ -16,6 +16,7 @@ import json
 import os
 
 from newcore.venue.cassette import CassetteLeak, CassetteRecorder
+from newcore.venue.safe_text import exc_text
 from newcore.venue.tnet import EvidenceInterrupt, _audit, commit_evidence
 
 from .driver import (EXIT_DEADLINE, EXIT_PREFLIGHT, FAIL, INCONCLUSIVE, ScenarioResult, SuiteResult, adopted_orders,
@@ -112,7 +113,7 @@ def _recorded_suite(st, specs, make_target, *, run_nonce, cassette_dir, redact, 
                     t = make_target(recorder)
                 except Exception as ex:                              # noqa: BLE001 - a refused boot is a FAIL
                     r = ScenarioResult(spec['id'], spec['name'], 'testnet', FAIL,
-                                       error=f'boot: {type(ex).__name__}: {ex}')
+                                       error=f'boot: {exc_text(ex)}')
                     r.assertions.append(('target boot', False, r.error))
                     booted = False
                     break

@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from decimal import Decimal
 
 from .cassette import CASSETTE_FORMAT, CassetteLeak, CassettePlayer, CassetteRecorder
+from newcore.venue.safe_text import exc_msg, exc_text
 from .scenarios import REPLAY_KEY, REPLAY_SECRET, T0, Scenario, Step, _venue
 from .transport import CLOSING_SIDE, StopRoute
 
@@ -94,7 +95,7 @@ def leak_audit(doc):
     try:
         rec._audit(json.dumps(doc, ensure_ascii=False))
     except CassetteLeak as ex:
-        return str(ex)
+        return exc_msg(ex)
     return None
 
 
@@ -133,7 +134,7 @@ def replay_report(doc):
             results.append(InteractionResult(i, label, 'PASS', _outcome_text(out)))
         except Exception as ex:                # unsupported / mismatch / seam error: this interaction fails
             failed = True
-            results.append(InteractionResult(i, label, 'FAIL', f'{type(ex).__name__}: {ex}'[:200]))
+            results.append(InteractionResult(i, label, 'FAIL', exc_text(ex)))
     if not failed and player.remaining:
         results.append(InteractionResult(len(items), 'end', 'FAIL', f'{player.remaining} interaction(s) not replayed'))
     return results

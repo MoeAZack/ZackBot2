@@ -51,6 +51,7 @@ from newcore.tnet.rspec import (MAX_SETTLE_MS, SpecError, bundled, load_rspec, r
                                 validate_rspec)
 from newcore.venue.cli_args import ACCOUNT_REFUSAL, argv_refusal  # noqa: E402
 from newcore.venue.redact import scrub_path, scrub_tokens  # noqa: E402
+from newcore.venue.safe_text import exc_msg, exc_text  # noqa: E402
 from newcore.venue.tnet import (CleanupResult, EvidenceInterrupt, ScenarioOutcome, _audit,  # noqa: E402
                                 adopt_refusal, commit_evidence, git_build, tnet_report)
 
@@ -114,7 +115,7 @@ def _apply_config(args, out):
     try:
         cfg = load(args.config)
     except ConfigError as ex:                        # messages may quote values: key-like runs are redacted
-        out.write(f'REFUSED: --config: {scrub_tokens(str(ex))[:200]}\n')
+        out.write(f'REFUSED: --config: {exc_msg(ex)}\n')
         return EXIT_USAGE
     except Exception as ex:                                          # noqa: BLE001 - OSError / nesting / types
         out.write(f'REFUSED: --config: not a usable config ({type(ex).__name__})\n')
@@ -138,9 +139,9 @@ def retarget(specs, symbol, allowed, out):
     config's first symbol. Every moved spec is re-validated."""
     if symbol is not None:
         if not re.fullmatch(r'[A-Z0-9]{2,30}', symbol):
-            raise ValueError(f'--symbol {symbol!r} is not a symbol')
+            raise SpecError('--symbol', 'not a symbol (2-30 upper-case letters / digits)')   # no echo
         if allowed is not None and symbol not in allowed:
-            raise ValueError(f'--symbol {symbol} is not in the config symbols {list(allowed)}')
+            raise SpecError('--symbol', f'{symbol} is not in the config symbols {list(allowed)}')   # validated
     out_specs = []
     for s in specs:
         want = symbol or (allowed[0] if allowed is not None and s['symbol'] not in allowed else None)
@@ -202,7 +203,7 @@ def _report(args, res, run_id, build, values, out, cassettes=None):
             return ps
         paths = commit_evidence(commit, EVIDENCE)
     except Exception as ex:                                              # noqa: BLE001 - reported as exit 5
-        out.write(f'ERROR: report not written ({type(ex).__name__}: {ex}).\n')
+        out.write(f'ERROR: report not written ({exc_text(ex)}).\n')
         return EXIT_REPORT
     out.write(f'report: {scrub_path(paths[0])}\n')
     return EXIT_PASS
@@ -271,7 +272,7 @@ def _main(argv=None, *, http=None, local_clock=None, sleep=None, store=None, out
         try:
             specs.append(load_rspec(p))
         except SpecError as ex:
-            out.write(f'REFUSED: --spec #{i + 1}: {scrub_tokens(str(ex))[:200]}\n')
+            out.write(f'REFUSED: --spec #{i + 1}: {exc_msg(ex)}\n')
             return EXIT_USAGE
         except Exception as ex:                                      # noqa: BLE001 - bad UTF-8 / nesting / types
             out.write(f'REFUSED: --spec #{i + 1}: not a usable spec ({type(ex).__name__})\n')
@@ -330,7 +331,7 @@ def _main(argv=None, *, http=None, local_clock=None, sleep=None, store=None, out
     try:
         specs = retarget(specs, args.symbol, allowed, out)
     except (SpecError, ValueError) as ex:
-        out.write(f'REFUSED: {ex}\n')
+        out.write(f'REFUSED: {exc_msg(ex)}\n')
         return EXIT_USAGE
     build = git_build(REPO, run=git_run)
     if args.gate and build['dirty']:
@@ -441,7 +442,7 @@ def _testnet_target(args, specs, http, local_clock, sleep, store, out):
     try:
         store = store or CredentialStore(args.account_id, root=args.root)
     except (CredentialStoreError, CredentialsUnavailable) as ex:
-        out.write(f'REFUSED: {ex}\n')
+        out.write(f'REFUSED: {exc_msg(ex)}\n')
         return EXIT_USAGE, None, None
     scrubber = SecretScrubber()
     try:
@@ -466,7 +467,7 @@ def _testnet_target(args, specs, http, local_clock, sleep, store, out):
             if booted:
                 raise
             if isinstance(ex, BindingMismatch):
-                raise _BootRefused(EXIT_CREDS, f'BINDING MISMATCH: {ex}\n') from None
+                raise _BootRefused(EXIT_CREDS, f'BINDING MISMATCH: {exc_msg(ex)}\n') from None
             if isinstance(ex, CredentialsUnavailable):
                 raise _BootRefused(EXIT_CREDS, f'NO USABLE TESTNET KEY ({ex.reason}).\n') from None
             if isinstance(ex, BOOT_REFUSALS):
