@@ -332,6 +332,10 @@ class BinanceTestnetTransport:
             if ev_type is not None:
                 ev = NotFoundEvidence(ev_type, endpoint, op_kind, lookup, cid, err.code, matched_by, err.msg)
                 return OrderOutcome(OrderOutcomeKind.NOT_FOUND, error=err, not_found=ev, **base)
+        if base['operation'].startswith('place') and _is_duplicate_client_id(err):
+            # The venue refused THIS send because an order with this client id already EXISTS: whatever it did is
+            # unknown here, so it is never "rejected, nothing executed". Resolve by querying the client id.
+            return OrderOutcome(OrderOutcomeKind.UNKNOWN, error=err, unknown_reason='duplicate_client_id', **base)
         if algo_route_hint and err.code in ALGO_FALLBACK_CODES:
             err = VenueError(err.http_status, err.code, err.name, err.category, err.msg, suggests_algo_route=True)
         return OrderOutcome(OrderOutcomeKind.REJECTED, error=err, **base)
@@ -477,6 +481,17 @@ class BinanceTestnetTransport:
                                 nf_types={-2011: NotFoundEvidenceType.ALGO_CANCEL_NOT_FOUND,
                                           -2013: NotFoundEvidenceType.ALGO_CANCEL_NOT_FOUND,
                                           'message': NotFoundEvidenceType.ALGO_CANCEL_NOT_FOUND})
+
+
+_DUPLICATE_TEXT = re.compile(r'duplicat', re.IGNORECASE)
+
+
+def _is_duplicate_client_id(err):
+    """-4116, or (for codes this table does not know) a message saying the client order id is duplicated."""
+    if err.category is ErrorCategory.DUPLICATE_CLIENT_ID:
+        return True
+    return err.category in (ErrorCategory.UNMAPPED, ErrorCategory.VENUE_RULE, ErrorCategory.ORDER_REJECTED) and \
+        bool(_DUPLICATE_TEXT.search(err.msg or ''))
 
 
 def pairs_symbol(pairs):

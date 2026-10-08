@@ -34,6 +34,7 @@ class ErrorCategory(Enum):
     NO_CHANGE = 'no_change'                       # setting already in place
     POSITION_MODE = 'position_mode'               # positionSide does not match the account's hedge/one-way mode
     ALGO_REQUIRED = 'algo_required'               # -4120: use the Algo Order API for conditional orders
+    DUPLICATE_CLIENT_ID = 'duplicate_client_id'   # -4116: an order with this client id EXISTS (never "nothing done")
     NOT_FOUND = 'not_found'                       # -2011 / -2013 (see NotFoundEvidence)
     ENDPOINT_UNSUPPORTED = 'endpoint_unsupported' # -5000 / HTTP 404: the path does not exist here
     VENUE_RULE = 'venue_rule'                     # another -4xxx order rule
@@ -75,6 +76,7 @@ ERROR_CODES = {
     -4046: ('NO_NEED_TO_CHANGE_MARGIN_TYPE', ErrorCategory.NO_CHANGE),
     -4059: ('NO_NEED_TO_CHANGE_POSITION_SIDE', ErrorCategory.NO_CHANGE),
     -4061: ('POSITION_SIDE_NOT_MATCH', ErrorCategory.POSITION_MODE),
+    -4116: ('DUPLICATED_CLIENT_ORDER_ID', ErrorCategory.DUPLICATE_CLIENT_ID),
     -4120: ('STOP_ORDER_SWITCH_ALGO', ErrorCategory.ALGO_REQUIRED),
     -4136: ('TARGET_STRATEGY_INVALID', ErrorCategory.BAD_REQUEST),
     -4164: ('MIN_NOTIONAL', ErrorCategory.FILTER),

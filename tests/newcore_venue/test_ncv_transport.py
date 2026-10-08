@@ -635,3 +635,27 @@ def test_trailing_newline_refused(call):
     with pytest.raises(VenueInputError):
         call(t)
     assert http.requests == []
+
+
+# ---------- a duplicate client id means the order EXISTS (Step 0 / Cowork): UNKNOWN, never REJECTED ----------
+
+DUP = raw(400, b'{"code": -4116, "msg": "ClientOrderId is duplicated."}')
+DUP_TEXT = raw(400, b'{"code": -2010, "msg": "Duplicate order sent."}')
+
+
+@pytest.mark.parametrize('answer', [DUP, DUP_TEXT])
+@pytest.mark.parametrize('call', [
+    lambda t: t.place_market('SOLUSDT', 'BUY', 'LONG', D('1'), CID, reduce_only=False),
+    lambda t: t.place_stop_market('SOLUSDT', 'LONG', D('1'), D('2'), SCID, route=StopRoute.CLASSIC),
+    lambda t: t.place_stop_market('SOLUSDT', 'LONG', D('1'), D('2'), ACID, route=StopRoute.ALGO),
+])
+def test_duplicate_client_id_on_place_is_unknown(answer, call):
+    t, http = make(answer)
+    out = call(t)
+    assert out.kind is K.UNKNOWN and out.unknown_reason == 'duplicate_client_id' and out.executed_qty is None
+    assert out.error is not None and len(http.requests) == 1
+
+
+def test_duplicate_text_on_cancel_stays_a_refusal():
+    t, _ = make(DUP)
+    assert t.cancel_order('SOLUSDT', SCID).kind is K.REJECTED
