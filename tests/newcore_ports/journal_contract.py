@@ -9,6 +9,13 @@
         @pytest.fixture
         def reopen(self):                                  # -> (journal) -> the same journal after a process restart
             ...
+        @pytest.fixture
+        def fail_next_write(self):                         # -> (journal) -> None: the journal's NEXT durable write
+            ...                                            #    (write / fsync / replace) fails; append must then raise
+                                                           #    JournalUnavailable. One-shot: later writes succeed.
+
+append() must follow the store-atomicity order: gate().stage(event) -> write + fsync -> staged.commit(). The suite
+proves it through fail_next_write: a failed write leaves the durable stream AND the gate untouched.
 
 Every event is a real NC-01 DomainEvent (nc_events.Scenario); nothing builds a header by hand."""
 import pytest
@@ -16,7 +23,7 @@ import pytest
 from nc_events import ACCT, ENTRY, KEY, LOT, PF, Scenario, replace
 from newcore.domain import EventCursor, IntentState, Purpose, admit, check_event_chain, make_id
 from newcore.ports import keys as K
-from newcore.ports.journal import Admission, JournalConflict, JournalPort, claim_signal
+from newcore.ports.journal import Admission, JournalConflict, JournalPort, JournalUnavailable, claim_signal
 
 S, D, W, U, C = (IntentState.SUBMITTED, IntentState.DURABLE, IntentState.WORKING, IntentState.UNKNOWN,
                  IntentState.CANCELLING)
@@ -341,3 +348,52 @@ class JournalContract:
         for jj in (j, reopen(j)):
             claim = claim_signal(jj.gate().grammar, KEY)
             assert not claim.fresh and claim.intent_ids == () and claim.decision_id == K.derive_decision_id(ACCT, KEY)
+
+    # ------------------------------------------------------------------------------------------- store atomicity
+    # flow_fallback: 0 keyed decision, 1 entry intent, 2 sent, 3 fill, 4 close, 5 protect decision, 6 classic
+    # attempt (lineage ordinal 0), 7 sent, 8 refused, 9 closed, 10 algo decision, 11 algo attempt, 12 sent, 13 result
+    FAIL_AT = {'keyed_decision': 0, 'entry_intent': 1, 'entry_fill': 3, 'protect_lineage': 6, 'algo_route': 11,
+               'result': 13}
+
+    @pytest.mark.parametrize('point', sorted(FAIL_AT))
+    def test_failed_write_consumes_nothing_and_the_event_appends_exactly_once(self, make_journal, reopen,
+                                                                             fail_next_write, point):
+        i, s = self.FAIL_AT[point], _flow(flow_fallback)
+        j = make_journal()
+        for ev in s.events[:i]:
+            assert j.append(ev) is Admission.APPLY
+        before = observe(j)
+        fail_next_write(j)
+        with pytest.raises(JournalUnavailable):
+            j.append(s.events[i])
+        assert list(j.read()) == s.events[:i] and j.last_sequence() == i      # durable stream unchanged
+        assert observe(j) == before                                        # nothing consumed
+        assert observe(reopen(j)) == before                                    # restart state == in-process state
+        assert j.append(s.events[i]) is Admission.APPLY                        # the same event, exactly once
+        assert j.append(s.events[i]) is Admission.ALREADY_APPLIED
+        assert list(j.read()) == s.events[:i + 1]
+        assert [j.append(ev) for ev in s.events[i + 1:]] == [Admission.APPLY] * (len(s.events) - i - 1)
+        r = reopen(j)
+        assert list(r.read()) == s.events and observe(r) == observe(j)
+        check_event_chain(list(r.read()))
+
+    def test_failed_write_then_restart_then_append(self, make_journal, reopen, fail_next_write):
+        s = _flow(flow_fallback)
+        j = make_journal()
+        for ev in s.events[:6]:
+            j.append(ev)
+        fail_next_write(j)
+        with pytest.raises(JournalUnavailable):
+            j.append(s.events[6])
+        r = reopen(j)                                                          # the process died after the failure
+        assert [r.append(ev) for ev in s.events[6:]] == [Admission.APPLY] * (len(s.events) - 6)
+        assert list(r.read()) == s.events
+
+
+def observe(j):
+    """Everything later logic reads from a journal: its durable length and the gate's consumed identity."""
+    g = j.gate().grammar
+    dec = K.derive_decision_id(ACCT, KEY)
+    return (j.last_sequence(), g.last_sequence, g.is_consumed(KEY), g.intents_of(dec), claim_signal(g, KEY),
+            g.next_child_intent_id(LOT, Purpose.PROTECT), g.next_child_intent_id(ENTRY, Purpose.PROTECT),
+            j.find_decision(dec) is not None)
