@@ -27,8 +27,9 @@ from .decision import Action, Authority, Decision, DecisionKey
 from .errors import (DomainError, EventOrderError, ForeignDocument, FutureSchema, InvalidRecord, OlderSchema,
                      OwnershipUnknown, UnknownSchema, UnsupportedVersion)
 from .events import (BindingChanged, DecisionRecorded, DomainEvent, IncidentRecorded, IntentRecorded,
-                     IntentStateChanged, ModeChanged, ResultObserved, check_event_chain)
+                     IntentStateChanged, ManagementInputRecorded, ModeChanged, ResultObserved, check_event_chain)
 from .incident import Incident
+from .manage_input import CandleInput, FillObservation, ManagementInput
 from .instrument import Capability, InstrumentId, InstrumentRules, Rounding
 from .ledger import Admission, EventCursor, EventDigest, admit
 from .modes import EntriesMode, HoldKind, Op, Permission, permitted

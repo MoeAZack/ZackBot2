@@ -394,7 +394,8 @@ def samples(seed=5):
             event(BindingChanged, ids, acct, 6, from_state=BindingState.UNCONFIRMED, to_state=BindingState.CONFIRMED,
                   binding=binding(), confirmation=account(acct).confirmation, reason=ReasonCode.BINDING_UNCONFIRMED),
             *standalone_samples(ids, pf, res),
-            incident_event(ids, acct, 7, pf)]
+            incident_event(ids, acct, 7, pf),
+            management_input_event(ids, acct, 8, pf)]
 
 
 def incident(ids, acct, pf=None, kind=ReasonCode.RECONCILE_MANUAL_CLOSE, **kw):
@@ -413,6 +414,34 @@ def incident_event(ids, acct, sequence, pf=None, **kw):
     from newcore.domain import IncidentRecorded
     inc = incident(ids, acct, pf, **kw)
     return event(IncidentRecorded, ids, acct, sequence, at=T0 + 600, incident=inc, reason=inc.kind)
+
+
+def candle_input(open_ms=T0, o='100', h='104', lo='98.5', c='103.25'):
+    from newcore.domain import CandleInput
+    return CandleInput(open_ms=open_ms, open=D(o), high=D(h), low=D(lo), close=D(c))
+
+
+def fill_observation(trade_id='5001', at=T0 + 3_600_000, qty='0.75', price='103.5', fee='0.0388', asset='USDT',
+                     xid='88001'):
+    from newcore.domain import FillObservation
+    return FillObservation(trade_id=trade_id, exchange_order_id=xid, at_ms=at, qty=D(qty), price=D(price), fee=D(fee),
+                           fee_asset=asset)
+
+
+def management_input(ids, acct, lot, decision_id=None, **kw):
+    """A closed-candle tick of `lot` with one execution observed (r3 draft item 7)."""
+    from newcore.domain import ManagementInput
+    base = dict(account_id=acct, lot_id=lot.lot_id, decision_id=decision_id or ids.id('dec'), symbol=lot.symbol,
+                side=lot.side, candle=candle_input(), close_request=ReasonCode.EXIT_SIGNAL, mark_price=None,
+                fills=(fill_observation(),))
+    base.update(kw)
+    return ManagementInput(**base)
+
+
+def management_input_event(ids, acct, sequence, pf, at=T0 + 4 * 3_600_000, **kw):
+    from newcore.domain import ManagementInputRecorded
+    x = management_input(ids, acct, pf.lots[0], **kw)
+    return event(ManagementInputRecorded, ids, acct, sequence, at=at, input=x, reason=ReasonCode.MANAGE_TICK)
 
 
 def standalone_samples(ids, pf, res):

@@ -13,6 +13,7 @@ from .account import BINDING_TRANSITIONS, AccountBinding, BindingConfirmation, B
 from .base import Record, check_id, record, req
 from .decision import Decision
 from .incident import Incident
+from .manage_input import ManagementInput
 from .modes import EntriesMode, HoldKind
 from .orders import (INTENT_TRANSITIONS, TERMINAL, IntentState, OrderIntent, OrderResult, ResultPhase,
                      check_result_for_intent, supersedes, terminal_for)
@@ -183,8 +184,26 @@ class IncidentRecorded(DomainEvent):
         req(self.at_ms >= self.incident.at_ms, p + '.at_ms', 'journaled before it was observed')
 
 
+@record
+class ManagementInputRecorded(DomainEvent):
+    """r3 DRAFT item 7: one lot's management input journaled in sequence (management replay reads only these bytes)."""
+    event_id: str
+    account_id: str
+    aggregate_id: str
+    sequence: int
+    at_ms: int
+    reason: ReasonCode
+    input: ManagementInput
+
+    def _check(self, p):
+        req(self.input.account_id == self.account_id, p + '.input', 'input of another account')
+        req(self.reason is ReasonCode.MANAGE_TICK, p + '.reason', 'a management input is journaled as manage.tick')
+        latest = self.input.latest_ms
+        req(latest is None or self.at_ms >= latest, p + '.at_ms', 'journaled before its candle / fills existed')
+
+
 EVENT_TYPES = (IntentRecorded, IntentStateChanged, ResultObserved, DecisionRecorded, ModeChanged, BindingChanged,
-               IncidentRecorded)
+               IncidentRecorded, ManagementInputRecorded)
 
 
 def check_event_chain(events, *, after_sequence=0, known_intents=None):
@@ -205,6 +224,7 @@ def check_event_chain(events, *, after_sequence=0, known_intents=None):
     cids = {c for it, _, _ in live.values() for c in it.client_ids}
     finals, ended, decisions, one_shots, used_auth = {}, set(), set(), set(), set()
     closed, superseding, applied_late = {}, {}, set()       # r3 item 3b: ended intents, late FINAL records, decisions
+    ticks, fed = {}, set()                                  # r3 item 7: manage.tick decisions, the inputs that fed them
     owner = None
     for n, ev in enumerate(events):
         p = f'events[{n}]'
@@ -219,12 +239,23 @@ def check_event_chain(events, *, after_sequence=0, known_intents=None):
             decisions.add(d.decision_id)
             if d.reason is ReasonCode.OPERATOR_ONE_SHOT:
                 one_shots.add(d.decision_id)
+            if d.reason is ReasonCode.MANAGE_TICK:
+                ticks[d.decision_id] = d
             if d.reason is ReasonCode.RECONCILE_LATE_FILL:
                 late = superseding.get(d.subject_id)
                 req(late is not None and late.result_id in d.evidence, p + '.decision',
                     'a late-fill reconcile names a journaled superseding FINAL record (subject + evidence)')
                 req(d.subject_id not in applied_late, p + '.decision', 'a late fill is reconciled once')
                 applied_late.add(d.subject_id)
+        elif isinstance(ev, ManagementInputRecorded):
+            x = ev.input
+            if x.decision_id is not None:
+                d = ticks.get(x.decision_id)
+                req(d is not None, p + '.input.decision_id', 'feeds no manage.tick decision recorded before it')
+                req((d.subject_id, d.symbol, d.side) == (x.lot_id, x.symbol, x.side), p + '.input',
+                    'the tick decision is about another lot / symbol / side')
+                req(x.decision_id not in fed, p + '.input.decision_id', 'a tick decision takes one input')
+                fed.add(x.decision_id)
         elif isinstance(ev, IntentRecorded):
             it = ev.intent
             req(it.intent_id not in live and it.intent_id not in ended, p, 'intent recorded twice')

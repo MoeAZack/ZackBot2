@@ -59,6 +59,7 @@ RECORD_TYPES = {
     'event_mode_changed': events.ModeChanged,
     'event_binding_changed': events.BindingChanged,
     'event_incident_recorded': events.IncidentRecorded,       # r3 DRAFT item 1 (the Incident itself stays nested)
+    'event_management_input_recorded': events.ManagementInputRecorded,   # r3 DRAFT item 7 (its input stays nested)
     # the contract-2 required types that are otherwise nested, encodable standalone (Cowork H05, Codex ruling: exactly these)
     'account_binding': account.AccountBinding,
     'instrument_id': instrument.InstrumentId,

@@ -40,7 +40,7 @@ from newcore.domain import (BindingChanged, DecisionKey, DecisionRecorded, Evide
                             ResultPhase)
 from newcore.domain.codec import contract_sha256
 from newcore.domain.errors import DomainError
-from newcore.domain.events import EVENT_TYPES
+from newcore.domain.events import EVENT_TYPES, ManagementInputRecorded
 from newcore.domain.ledger import Admission
 from newcore.domain.orders import TERMINAL, can_transition, check_result_for_intent, supersedes, terminal_for
 
@@ -63,6 +63,7 @@ class EventKind(enum.StrEnum):
     MODE_CHANGED = 'mode_changed'              # ModeChanged (HOLD in / out, halt, pause, resume)
     BINDING_CHANGED = 'binding_changed'        # BindingChanged (the binding confirmation the risk gate requires)
     INCIDENT_RECORDED = 'incident_recorded'    # IncidentRecorded (NC-01 r3 draft: S3 incidents, hard-HOLD actions)
+    MANAGEMENT_INPUT = 'management_input'      # ManagementInputRecorded (NC-01 r3 draft item 7: management replay input)
 
 
 class ResultOutcome(enum.StrEnum):
@@ -125,9 +126,11 @@ class EventHeader:
               EventKind.SENT: ('intent_id',), EventKind.STATE_CHANGED: ('intent_id', 'to_state'),
               EventKind.INTENT_CLOSED: ('intent_id', 'to_state'),
               EventKind.RESULT_RECORDED: ('intent_id', 'outcome', 'client_ids')}.get(k, ())
+        maybe = ('decision_id',) if k is EventKind.MANAGEMENT_INPUT else ()   # r3 draft item 7: a fills-only input
         for name in ('decision_id', 'intent_id', 'purpose', 'client_ids', 'to_state', 'outcome'):
             v = getattr(self, name)
-            req((v not in (None, ())) == (name in on), f'{p}.{name}', f'set exactly when {k} needs it')
+            if name not in maybe:
+                req((v not in (None, ())) == (name in on), f'{p}.{name}', f'set exactly when {k} needs it')
         req(self.decision_key is None or k is EventKind.DECISION_RECORDED, p + '.decision_key', 'decisions only')
         req(not self.authorized or k is EventKind.DECISION_RECORDED, p + '.authorized', 'decisions only')
         req(self.owner_id is None or k is EventKind.INTENT_RECORDED, p + '.owner_id', 'intent_recorded only')
@@ -173,6 +176,8 @@ def header_of(event) -> EventHeader:
         return EventHeader(kind=EventKind.BINDING_CHANGED, **base)
     if isinstance(event, IncidentRecorded):                              # sequence only: no intent / mode effect
         return EventHeader(kind=EventKind.INCIDENT_RECORDED, **base)
+    if isinstance(event, ManagementInputRecorded):                       # r3 draft item 7: names its tick decision
+        return EventHeader(kind=EventKind.MANAGEMENT_INPUT, decision_id=event.input.decision_id, **base)
     req(False, 'event', f'{type(event).__name__} has no journal grammar kind')   # never a silent fallback
 
 
@@ -207,6 +212,7 @@ class Grammar:
         self._intents: dict[str, _Intent] = {}
         self._client_ids: set[str] = set()
         self._lineage: dict[tuple[str, Purpose], int] = {}
+        self._fed: set[str] = set()              # r3 draft item 7: tick decisions that already took their input
         self._last_protect: dict[str, str] = {}
         self._lots: set[str] = set()
 
@@ -258,6 +264,10 @@ class Grammar:
             return self._check_decision(h, p)
         if k is EventKind.INTENT_RECORDED:
             return self._check_intent(h, p)
+        if k is EventKind.MANAGEMENT_INPUT and h.decision_id is not None:    # r3 draft item 7
+            req_g(h.decision_id in self._decisions, p + '.decision_id', 'a management input before its tick decision')
+            req_g(h.decision_id not in self._fed, p + '.decision_id', 'a tick decision takes one management input')
+            return lambda: self._fed.add(h.decision_id)
         if k not in _INTENT_KINDS:
             return lambda: None
         st = self._intents.get(h.intent_id)

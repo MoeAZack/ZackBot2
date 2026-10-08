@@ -90,4 +90,4 @@ def test_runtime_import_loads_nothing_impure():
     tops = {m.split('.')[0] for m in rep['new']}
     assert not (tops & FORBIDDEN_RUNTIME), sorted(tops & FORBIDDEN_RUNTIME)
     assert not (tops & legacy_modules()), sorted(tops & legacy_modules())
-    assert 'newcore' in tops and len(rep['types']) == 21
+    assert 'newcore' in tops and len(rep['types']) == 22                 # + r3 draft item 7's event

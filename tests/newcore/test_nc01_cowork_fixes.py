@@ -173,6 +173,7 @@ def test_the_standalone_set_is_pinned():
         'account', 'instrument_rules', 'order_intent', 'order_result', 'portfolio', 'decision', 'decision_key',
         'snapshot', 'high_water', 'event_intent_recorded', 'event_intent_state_changed', 'event_result_observed',
         'event_decision_recorded', 'event_mode_changed', 'event_binding_changed', 'event_incident_recorded',
+        'event_management_input_recorded',                                   # r3 draft item 7
         'account_binding', 'instrument_id', 'protection', 'lot', 'position'}
 
 

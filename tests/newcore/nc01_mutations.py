@@ -189,6 +189,36 @@ MUTATIONS = {
     'r3 item 6: a non-positive stop distance': (D + 'orders.py', [(
         "            positive(self.stop_distance, p + '.stop_distance')\n        else:",
         "            pass\n        else:")]),
+    'r3 item 7: a candle tick and a mark at once': (D + 'manage_input.py', [(
+        "        req(self.candle is None or self.mark_price is None, p + '.mark_price',",
+        "        req(True, p + '.mark_price',")]),
+    'r3 item 7: a close request without its candle': (D + 'manage_input.py', [(
+        "            req(self.candle is not None, p + '.close_request',", "            req(True, p + '.close_request',")]),
+    'r3 item 7: fills in any order': (D + 'manage_input.py', [(
+        "        req(all(a < b for a, b in zip(keys, keys[1:])), p + '.fills',", "        req(True, p + '.fills',")]),
+    'r3 item 7: a fills-only input names a decision': (D + 'manage_input.py', [(
+        "            req(self.decision_id is None, p + '.decision_id',", "            req(True, p + '.decision_id',")]),
+    'r3 item 7: any fee asset spelling': (D + 'manage_input.py', [(
+        "        req(self.fee_asset.isascii() and self.fee_asset.isalnum() and self.fee_asset.isupper(), p + '.fee_asset',",
+        "        req(True, p + '.fee_asset',")]),
+    'r3 item 7: the event under any reason': (D + 'events.py', [(
+        "        req(self.reason is ReasonCode.MANAGE_TICK, p + '.reason',", "        req(True, p + '.reason',")]),
+    'r3 item 7: journaled before its inputs existed': (D + 'events.py', [(
+        "        req(latest is None or self.at_ms >= latest, p + '.at_ms',", "        req(True, p + '.at_ms',")]),
+    'r3 item 7: an input without its tick decision': (D + 'events.py', [(
+        "                req(d is not None, p + '.input.decision_id', 'feeds no manage.tick decision recorded before it')\n"
+        "                req((d.subject_id, d.symbol, d.side) == (x.lot_id, x.symbol, x.side), p + '.input',",
+        "                req(d is None or (d.subject_id, d.symbol, d.side) == (x.lot_id, x.symbol, x.side), p + '.input',")]),
+    'r3 item 7: an input for another lot': (D + 'events.py', [(
+        "                req((d.subject_id, d.symbol, d.side) == (x.lot_id, x.symbol, x.side), p + '.input',",
+        "                req(True, p + '.input',")]),
+    'r3 item 7: a tick takes many inputs': (D + 'events.py', [(
+        "                req(x.decision_id not in fed, p + '.input.decision_id', 'a tick decision takes one input')",
+        "                req(True, p + '.input.decision_id', 'a tick decision takes one input')")]),
+    'r3 item 7: the journal takes an input before its decision': ('newcore/ports/journal.py', [(
+        "            req_g(h.decision_id in self._decisions, p + '.decision_id',", "            req_g(True, p + '.decision_id',")]),
+    'r3 item 7: the journal takes two inputs per tick': ('newcore/ports/journal.py', [(
+        "            req_g(h.decision_id not in self._fed, p + '.decision_id',", "            req_g(True, p + '.decision_id',")]),
     'duplicate JSON keys': (D + 'codec.py', [("            if k in out:\n                problems.append(",
                                               "            if False:\n                problems.append(")]),
     'truncated JSON': (D + 'codec.py', [(

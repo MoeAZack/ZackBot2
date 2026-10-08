@@ -72,7 +72,7 @@ def test_header_of_maps_every_nc01_event_type():
     assert kinds[:5] == [EventKind.DECISION_RECORDED, EventKind.INTENT_RECORDED, EventKind.SENT,
                          EventKind.RESULT_RECORDED, EventKind.INTENT_CLOSED]
     assert kinds[-1] is EventKind.MODE_CHANGED and EventKind.STATE_CHANGED in kinds
-    assert len(EVENT_TYPES) == 7 and len(EventKind) == 9      # a new NC-01 event type must be mapped here first
+    assert len(EVENT_TYPES) == 8 and len(EventKind) == 10      # a new NC-01 event type must be mapped here first
 
 
 def test_header_of_projects_identity_and_lineage():
@@ -318,3 +318,38 @@ def test_only_an_executed_exchange_record_supersedes_in_the_journal():
     zero = replace(late, executed_qty=D('0'), avg_price=None, exchange_status=ExchangeStatus.CANCELED)
     with pytest.raises(JournalConflict, match='superseding not_found_corroborated'):
         j.append(s._event(ResultObserved, reason=ReasonCode.RECONCILE_LATE_FILL, result=zero))
+
+
+def test_a_management_input_follows_its_tick_decision_once():
+    """NC-01 r3 draft item 7: a ManagementInputRecorded names its manage.tick decision (G-order: decision first) and a
+    tick takes one input; a fills-only observation names none."""
+    from decimal import Decimal as D
+    from nc_events import T0, replace
+    from newcore.domain import (Action, Authority, CandleInput, Decision, DecisionRecorded, FillObservation,
+                                ManagementInput, ManagementInputRecorded, ReasonCode, Side, make_id)
+    s = Scenario()
+    s.entry_filled()
+    tick = Decision(decision_id=make_id('dec', 7001), account_id=ACCT, at_ms=T0 + 60_000, action=Action.WAIT,
+                    reason=ReasonCode.MANAGE_TICK, authority=Authority.STRATEGY, key=None, evidence=(),
+                    symbol='SOLUSDT', side=Side.LONG, subject_id=LOT, detail='', intents=(), policy_version='step0-test')
+    fill = FillObservation(trade_id='9', exchange_order_id='1001', at_ms=T0, qty=D('1.5'), price=D('150'),
+                           fee=D('0.1'), fee_asset='USDT')
+    x = ManagementInput(account_id=ACCT, lot_id=LOT, decision_id=tick.decision_id, symbol='SOLUSDT', side=Side.LONG,
+                        candle=CandleInput(open_ms=T0, open=D('150'), high=D('152'), low=D('149'), close=D('151')),
+                        close_request=None, mark_price=None, fills=())
+    j = ReferenceJournal()
+    for ev in s.events:
+        j.append(ev)
+    early = s._event(ManagementInputRecorded, reason=ReasonCode.MANAGE_TICK, input=x)
+    assert header_of(early).kind is EventKind.MANAGEMENT_INPUT
+    with pytest.raises(JournalConflict, match='before its tick decision'):
+        j.append(early)
+    s.events.pop()
+    s.n -= 1
+    for ev in (s._event(DecisionRecorded, reason=tick.reason, decision=tick),
+               s._event(ManagementInputRecorded, reason=ReasonCode.MANAGE_TICK, input=x),
+               s._event(ManagementInputRecorded, reason=ReasonCode.MANAGE_TICK,
+                        input=replace(x, decision_id=None, candle=None, fills=(fill,)))):
+        j.append(ev)
+    with pytest.raises(JournalConflict, match='takes one management input'):
+        j.append(s._event(ManagementInputRecorded, reason=ReasonCode.MANAGE_TICK, input=x))

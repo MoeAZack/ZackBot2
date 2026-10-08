@@ -471,3 +471,104 @@ def test_item6_stop_distance_refusals():
         with pytest.raises(InvalidRecord, match=message):
             build()
             raise AssertionError(name)
+
+
+# ----------------------------------------------------------------------------------------------------------- item 7
+def _mg_setup(seed=380):
+    p, ids = F.single_lot_portfolio(seed, stop_state='confirmed')
+    acct, lt = p.account_id, p.lots[0]
+    tick = _tick(ids, acct, lt.lot_id, symbol=lt.symbol, side=lt.side)
+    x = F.management_input(ids, acct, lt, decision_id=tick.decision_id)
+    return p, ids, acct, lt, tick, x
+
+
+def test_item7_management_inputs_round_trip_and_replay_from_journal_bytes():
+    """Everything a management step folds - the closed candle + close request, an intra-candle mark, the venue
+    executions - is a journal record; replay decodes exactly these bytes."""
+    from decimal import Decimal as D
+    from newcore.domain import (Admission, DecisionRecorded, EventCursor, ManagementInputRecorded, admit,
+                                canonical_bytes, check_event_chain, loads)
+    p, ids, acct, lt, tick, x = _mg_setup()
+    mark_tick = _tick(ids, acct, lt.lot_id, symbol=lt.symbol, side=lt.side, at_ms=tick.at_ms + 600_000)
+    mark = F.replace(x, decision_id=mark_tick.decision_id, candle=None, close_request=None, mark_price=D('104.75'),
+                     fills=())
+    only_fills = F.replace(x, decision_id=None, candle=None, close_request=None,
+                           fills=(F.fill_observation('5002', at=F.T0 + 4_000_000, fee='-0.01', asset='BNB'),
+                                  F.fill_observation('5003', at=F.T0 + 4_000_000)))
+    at = F.T0 + 5 * 3_600_000
+    E = lambda cls, n, **kw: F.event(cls, ids, acct, n, at=at, **kw)                        # noqa: E731
+    chain = [E(DecisionRecorded, 1, decision=tick, reason=tick.reason),
+             E(ManagementInputRecorded, 2, input=x, reason=ReasonCode.MANAGE_TICK),
+             E(DecisionRecorded, 3, decision=mark_tick, reason=mark_tick.reason),
+             E(ManagementInputRecorded, 4, input=mark, reason=ReasonCode.MANAGE_TICK),
+             E(ManagementInputRecorded, 5, input=only_fills, reason=ReasonCode.MANAGE_TICK)]
+    assert check_event_chain(chain) == {}
+    cur = EventCursor(account_id=acct, aggregate_id=F.pf_id(acct), last_sequence=0, applied=())
+    for ev in chain:
+        back = loads(canonical_bytes(ev))
+        assert back == ev and canonical_bytes(back) == canonical_bytes(ev)
+        cur, how = admit(cur, ev)
+        assert how is Admission.APPLY
+    back = loads(canonical_bytes(chain[1])).input                  # the nested parts come back exactly
+    assert back.candle == x.candle and back.fills == x.fills and back.close_request is ReasonCode.EXIT_SIGNAL
+    assert loads(canonical_bytes(chain[4])).input.fills[0].fee == D('-0.01')     # a rebate keeps its sign
+
+
+def test_item7_management_input_refusals():
+    from decimal import Decimal as D
+    from newcore.domain import InvalidRecord
+    p, ids, acct, lt, tick, x = _mg_setup()
+    f1 = x.fills[0]
+    cases = {
+        'candle and mark': ('a candle tick or a mark', dict(mark_price=D('101'))),
+        'close request without candle': ('comes with its closed candle', dict(candle=None, mark_price=D('101'))),
+        'an entry reason as close request': ('an exit.* reason', dict(close_request=ReasonCode.ENTRY_SIGNAL)),
+        'nothing at all': ('a candle, a mark or fills', dict(candle=None, close_request=None, fills=(),
+                                                              decision_id=None)),
+        'a tick without its decision': ('decision_id', dict(decision_id=None)),
+        'fills-only names a decision': ('feeds no tick decision', dict(candle=None, close_request=None)),
+        'fills out of order': (r'\(at_ms, trade_id\) order', dict(fills=(F.replace(f1, trade_id='6', at_ms=f1.at_ms + 1),
+                                                                     f1))),
+        'duplicate trade id': ('duplicate trade id', dict(fills=(f1, F.replace(f1, at_ms=f1.at_ms + 1)))),
+        'an intent as the lot': ('lot_id', dict(lot_id=ids.id('int'))),
+        'a zero mark': ('mark_price', dict(candle=None, close_request=None, mark_price=D('0'))),
+    }
+    for name, (message, kw) in cases.items():
+        with pytest.raises(InvalidRecord, match=message):
+            F.replace(x, **kw)
+            raise AssertionError(name)
+    bad_parts = {
+        'close above the high': ('high-low range', lambda: F.candle_input(c='105')),
+        'zero low': ('low', lambda: F.candle_input(lo='0', o='1', c='1')),
+        'zero qty': ('qty', lambda: F.fill_observation(qty='0')),
+        'lower-case fee asset': ('upper-case asset code', lambda: F.fill_observation(asset='usdt')),
+        'empty trade id': ('trade_id', lambda: F.fill_observation(trade_id='')),
+    }
+    for name, (message, build) in bad_parts.items():
+        with pytest.raises(InvalidRecord, match=message):
+            build()
+            raise AssertionError(name)
+
+
+def test_item7_the_event_and_the_chain_bind_an_input_to_its_tick():
+    from newcore.domain import DecisionRecorded, InvalidRecord, ManagementInputRecorded, check_event_chain
+    p, ids, acct, lt, tick, x = _mg_setup()
+    at = F.T0 + 5 * 3_600_000
+    E = lambda cls, n, **kw: F.event(cls, ids, acct, n, at=kw.pop('at', at), **kw)          # noqa: E731
+    dec = E(DecisionRecorded, 1, decision=tick, reason=tick.reason)
+    inp = lambda n, y=x: E(ManagementInputRecorded, n, input=y, reason=ReasonCode.MANAGE_TICK)   # noqa: E731
+    with pytest.raises(InvalidRecord, match='journaled as manage.tick'):
+        E(ManagementInputRecorded, 2, input=x, reason=ReasonCode.PROTECT_CHECKING)
+    with pytest.raises(InvalidRecord, match='before its candle / fills existed'):
+        E(ManagementInputRecorded, 2, input=x, reason=ReasonCode.MANAGE_TICK, at=x.fills[0].at_ms - 1)
+    other_lot = F.replace(x, lot_id=ids.id('lot'))
+    cases = {
+        'no tick decision before it': ('feeds no manage.tick decision', [inp(1)]),
+        'input before its decision': ('feeds no manage.tick decision', [inp(1), F.replace(dec, sequence=2)]),
+        'another lot': ('another lot / symbol / side', [dec, inp(2, other_lot)]),
+        'two inputs for one tick': ('takes one input', [dec, inp(2), inp(3)]),
+    }
+    for name, (message, chain) in cases.items():
+        with pytest.raises(InvalidRecord, match=message):
+            check_event_chain(chain)
+            raise AssertionError(name)
