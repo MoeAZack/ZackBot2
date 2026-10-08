@@ -26,14 +26,17 @@ from .codec import (DecodeResult, Outcome, canonical_bytes, contract_sha256, dec
 from .decision import Action, Authority, Decision, DecisionKey
 from .errors import (DomainError, EventOrderError, ForeignDocument, FutureSchema, InvalidRecord, OlderSchema,
                      OwnershipUnknown, UnknownSchema, UnsupportedVersion)
-from .events import (BindingChanged, DecisionRecorded, DomainEvent, IntentRecorded, IntentStateChanged, ModeChanged,
-                     ResultObserved, check_event_chain)
+from .events import (BindingChanged, DecisionRecorded, DomainEvent, IncidentRecorded, IntentRecorded,
+                     IntentStateChanged, ModeChanged, ResultObserved, check_event_chain)
+from .facts import EMPTY_FACTS, ConsumedTrade, FactDigest, FactIndex, FactLedger, fold_facts
+from .incident import Incident
 from .instrument import Capability, InstrumentId, InstrumentRules, Rounding
 from .ledger import Admission, EventCursor, EventDigest, admit
 from .modes import EntriesMode, HoldKind, Op, Permission, permitted
-from .orders import (Arming, Evidence, ExchangeStatus, IntentState, Lookup, OrderIntent, OrderResult, OrderType,
+from .orders import (Arming, Evidence, ExchangeStatus, ExternalTrade, IntentState, Lookup, OrderIntent, OrderResult,
+                     OrderType,
                      OwnerFamily, OwnerKind, PositionRead, Purpose, ResultPhase, ResultStage, Side, check_result_for_intent,
-                     may_apply, may_send, terminal_for)
+                     booking_step_ok, is_post_hoc, may_apply, may_send, supersedes, terminal_for)
 from .portfolio import (Fill, Lot, LotSource, Ownership, OwnershipProof, Portfolio, Position, ProofKind,
                         check_account_portfolio, check_flat_snapshot_fresh, entry_blocking_protections,
                         owned_client_ids, ownership_families)

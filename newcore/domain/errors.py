@@ -1,10 +1,21 @@
 """Typed domain failures. Every rejection is a DomainError whose `.path` names the field."""
 
 
+MAX_PATH_CHARS = 240        # PR #44 (Cowork 3): an error never echoes a huge value - path and message are bounded
+MAX_MSG_CHARS = 400
+
+
+def _bounded(text, n):
+    text = str(text)
+    return text if len(text) <= n else f'{text[:n - 40]}...<{len(text)} chars>'
+
+
 class DomainError(ValueError):
-    """Base class. `.path` is a dotted field path such as 'Lot[lot_..].qty' or 'portfolio.positions[0].lots[1].qty'."""
+    """Base class. `.path` is a dotted field path such as 'Lot[lot_..].qty' or 'portfolio.positions[0].lots[1].qty'.
+    Both `.path` and `.msg` are bounded (MAX_PATH_CHARS / MAX_MSG_CHARS): a hostile value never sizes the error."""
 
     def __init__(self, path, msg):
+        path, msg = _bounded(path, MAX_PATH_CHARS), _bounded(msg, MAX_MSG_CHARS)
         super().__init__(f'{path}: {msg}')
         self.path = path
         self.msg = msg
