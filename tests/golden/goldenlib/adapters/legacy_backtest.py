@@ -5,6 +5,13 @@ from .. import market
 from ..schema import TFS
 from .base import Trace, check_costs, legacy_slot, symbols, side_code
 
+# backtest trade `why` -> golden code ('tp' is TP_FULL or TP_BASKET by the slot, below). The backtester has ONE stop reason:
+# 'stop' covers both an exchange stop fill and what the live bot books as stop_crossed (a ratcheted stop that the price is
+# already through, closed where the price is - backtest.py adverse_leg). The adapter cannot tell them apart from the trade row,
+# so it reports STOP_HIT; a case whose correct outcome is STOP_CROSSED records that as a known divergence
+# (G-STOP-CROSSED-L-01 / -S-01). The backtester has no flatten / resync / stop_failed events, and its runner basket part is
+# written as 'tp1' (unreachable in v1: runner slots are NotExpressible). test_vocabulary.py checks every `why` literal of
+# backtest.close() is mapped.
 WHY = {'stop': 'STOP_HIT', 'time': 'TIME_EXIT', 'signal': 'SIGNAL_EXIT', 'tp1': 'TP_PARTIAL', 'tp_ladder': 'TP_LADDER',
        'liquidated': 'LIQUIDATED'}
 T0 = 260            # first decision bar of the engine replay; the backtest starts at the next bar like replay.run_replay

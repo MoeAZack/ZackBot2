@@ -14,7 +14,31 @@ APPLIES = ('required', 'not_applicable', 'known_divergence', 'pending_adapter')
 SIDES = ('long', 'short', 'both', 'n/a')
 TFS = {'4h': 14400, '1h': 3600}
 SIGNAL_KINDS = {'enter_long': 'le', 'enter_short': 'se', 'exit_long': 'lx', 'exit_short': 'sx'}
-EXIT_CODES = ('STOP_HIT', 'TIME_EXIT', 'SIGNAL_EXIT', 'TP_FULL', 'TP_BASKET', 'TP_PARTIAL', 'TP_LADDER', 'LIQUIDATED', 'FLATTEN')
+# Exit-code REGISTRY (machine codes; any free text next to them is display only). Append-only within a schema version: a code
+# is never reused for another meaning and never deleted - it is deprecated (DEPRECATED_EXIT_CODES: code -> what replaces it)
+# and stays valid. test_vocabulary.py pins the order, so an insertion, removal or rename fails.
+EXIT_CODE_MEANING = {
+    'STOP_HIT': 'the protective stop order RESTING ON THE EXCHANGE filled (exchange stop-market; at the stop, or at the open '
+                'when the candle gapped through it)',
+    'TIME_EXIT': 'bot market close: the holding-time limit was reached at a candle-close decision',
+    'SIGNAL_EXIT': 'bot market close: the strategy exit signal at a candle-close decision',
+    'TP_FULL': 'bot market close of the whole position at the take-profit level',
+    'TP_BASKET': 'bot market close of the whole DCA basket at the basket target',
+    'TP_PARTIAL': 'the first partial take-profit (tp1) closed the rest of the position',
+    'TP_LADDER': 'a take-profit ladder level closed the rest of the position',
+    'LIQUIDATED': 'the exchange liquidated the position',
+    'FLATTEN': 'bot market close of every position on an owner / safety flatten command',
+    # appended by AUD-08 (vocabulary alignment with the legacy engine journal)
+    'STOP_CROSSED': 'BOT market close because the protective level it had just computed (trail / breakeven / ratchet) was '
+                    'already crossed by the price, so no stop order could rest there - a taker close at the mark, never an '
+                    'exchange stop fill',
+    'RESYNC': 'the bot found the position gone (or smaller) on the exchange without a recorded cause and booked what left at '
+              'the market price',
+    'STOP_FAILED': 'the protective stop could not be placed right after the entry, so the bot closed the position again at market',
+    'BASKET_TP_PART': 'the runner part of a DCA basket target (dca_frac) closed the rest of the position',
+}
+EXIT_CODES = tuple(EXIT_CODE_MEANING)
+DEPRECATED_EXIT_CODES = {}                          # code -> replacement code; a deprecated code stays in EXIT_CODES
 SLOT_KEYS = ('id', 'sides', 'risk', 'share', 'max_pos', 'symbols', 'entry', 'stop', 'trail', 'target', 'tp1', 'ladder', 'runner',
              'dca', 'pyramid', 'time_exit')
 TRADE_KEYS = ('sym', 'side', 'i_in', 'i_out', 'exit', 'R', 'pnl', 'tol')
