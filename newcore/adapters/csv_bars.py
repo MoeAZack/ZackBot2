@@ -71,9 +71,10 @@ def sha256_file(path):
 
 
 class CsvBarSource:
-    def __init__(self, bars_by_symbol, tf_ms):
+    def __init__(self, bars_by_symbol, tf_ms, *, recheck=False):
         """bars_by_symbol: {symbol: tuple[Bar, ...]} already validated (see read_csv / from_data_long)."""
         self.tf_ms = tf_ms
+        self.recheck = recheck
         self._bars = {s: tuple(b) for s, b in bars_by_symbol.items()}
         self._close = {s: [b.close_ms for b in bs] for s, bs in self._bars.items()}
         for s, bs in self._bars.items():
@@ -110,4 +111,8 @@ class CsvBarSource:
             raise ValueError(f'this source holds {sorted(self._bars)} at {self.tf_ms} ms, not {symbol} at {tf_ms}')
         end = bisect.bisect_right(self._close[symbol], as_of_ms)
         bars = self._bars[symbol][max(0, end - limit):end]
-        return ReadOutcome(kind=ReadKind.OK, observed_at_ms=as_of_ms, value=check_closed_bars(bars, tf_ms, as_of_ms))
+        # the whole series passed check_closed_bars at load (aligned, contiguous, oldest first) and bisect keeps only
+        # close_ms <= as_of_ms, so every slice satisfies it by construction; the O(limit) re-check is opt-in
+        if self.recheck:
+            check_closed_bars(bars, tf_ms, as_of_ms)
+        return ReadOutcome(kind=ReadKind.OK, observed_at_ms=as_of_ms, value=bars)

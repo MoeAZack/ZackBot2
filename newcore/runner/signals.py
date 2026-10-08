@@ -48,17 +48,26 @@ class _FloatCache:
     """Bar -> float OHLC, converted once per candle (the hot path re-reads the same window every cycle)."""
 
     def __init__(self):
-        self._c = {}
+        self._s = {}           # symbol -> (pos {open_ms: i}, t, o, h, l, c) for a contiguous run of candles
 
     def series(self, symbol, bars):
-        out = []
-        for b in bars:
-            k = (symbol, b.open_ms)
-            v = self._c.get(k)
-            if v is None:
-                v = self._c[k] = (float(b.open), float(b.high), float(b.low), float(b.close))
-            out.append(v)
-        return tuple(b.open_ms for b in bars), tuple(zip(*out)) if out else ((), (), (), ())
+        """(open times, (o, h, l, c)) of a BarSource window (contiguous by the port), as float tuples."""
+        if not bars:
+            return (), ((), (), (), ())
+        st = self._s.get(symbol)
+        if st is None or bars[0].open_ms not in st[0]:
+            st = self._s[symbol] = ({}, [], [], [], [], [])            # (re)start the run at this window
+        pos, t, o, h, l, c = st
+        for b in bars[len(t) - pos[bars[0].open_ms]:] if t else bars:  # only the candles not converted yet
+            pos[b.open_ms] = len(t)
+            t.append(b.open_ms)
+            o.append(float(b.open)), h.append(float(b.high)), l.append(float(b.low)), c.append(float(b.close))
+        i0 = pos[bars[0].open_ms]
+        i1 = i0 + len(bars)
+        if t[i1 - 1] != bars[-1].open_ms:                              # not one run (should not happen): no cache
+            return tuple(b.open_ms for b in bars), tuple(tuple(float(getattr(b, f)) for b in bars)
+                                                         for f in ('open', 'high', 'low', 'close'))
+        return tuple(t[i0:i1]), (tuple(o[i0:i1]), tuple(h[i0:i1]), tuple(l[i0:i1]), tuple(c[i0:i1]))
 
 
 @dataclass
