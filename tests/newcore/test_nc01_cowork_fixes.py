@@ -36,3 +36,53 @@ def test_every_damaged_envelope_field_is_a_typed_failure(field, value):
 def test_non_dict_documents_and_non_text_keys_are_typed_failures(doc):
     with pytest.raises(DomainError):
         decode_document(doc)
+
+
+# ----------------------------------------------------------------------------------------------------------- I05
+def test_owner_kind_is_explicit_and_drives_ownership():
+    """I05: what owns an intent is the typed owner_kind field; the id is opaque."""
+    from decimal import Decimal as D
+    from newcore.domain import InvalidRecord, IntentState, OwnerFamily, OwnerKind, Purpose
+    from nc01_factories import replace
+    p, ids = F.single_lot_portfolio(91, stop_state='confirmed', in_flight='add')
+    acct, lt = p.account_id, p.lots[0]
+    add = next(i for i in p.intents if i.purpose is Purpose.ADD)
+    assert add.owner_kind is OwnerKind.LOT and add.family is OwnerFamily.LOT
+    orphan = F.orphan_stop(ids, acct)
+    assert orphan.owner_kind is OwnerKind.PORTFOLIO and orphan.family is OwnerFamily.ORPHAN and orphan.orphan
+    with pytest.raises(InvalidRecord, match='cancel-only'):          # portfolio-owned work may only be cancelling
+        replace(orphan, state=IntentState.WORKING)
+    for bad in (dict(owner_kind=None),                                # an owner id without its kind
+                dict(owner_kind=OwnerKind.ENTRY_INTENT),              # an add is never owned by an entry
+                dict(owner_kind=OwnerKind.PORTFOLIO)):                # kind and id family disagree (lot id, pf kind)
+        with pytest.raises(InvalidRecord):
+            replace(add, **bad)
+    entry = F.market_entry(ids, acct)
+    with pytest.raises(InvalidRecord):                                # an ENTRY owns itself: no kind
+        replace(entry, owner_kind=OwnerKind.LOT)
+    stop = F.intent(ids, acct, Purpose.PROTECT, entry.symbol, entry.side, D('1'), owner_id=entry.intent_id,
+                    owner_kind=OwnerKind.ENTRY_INTENT, stop_price=D('0.1'), state=IntentState.CANCELLING)
+    replace(p, intents=p.intents + (entry, stop))                     # resolved by kind: the entry intent
+    with pytest.raises(InvalidRecord):
+        replace(p, intents=p.intents + (entry, replace(stop, owner_kind=OwnerKind.LOT)))
+
+
+def test_no_domain_logic_parses_an_id():
+    """I05: no newcore source slices or prefix-tests an id string (startswith / endswith / split / [:n] on *_id)."""
+    import ast
+    import os
+    root = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'newcore')
+    hits = []
+    for dp, _, fns in os.walk(root):
+        for fn in fns:
+            if not fn.endswith('.py'):
+                continue
+            path = os.path.join(dp, fn)
+            for node in ast.walk(ast.parse(open(path, encoding='utf-8').read())):
+                if isinstance(node, ast.Attribute) and node.attr in ('startswith', 'endswith', 'partition', 'split'):
+                    target = ast.unparse(node.value)
+                    if 'id' in target:
+                        hits.append(f'{fn}:{node.lineno} {target}.{node.attr}')
+                if isinstance(node, ast.Subscript) and isinstance(node.slice, ast.Slice) and '_id' in ast.unparse(node.value):
+                    hits.append(f'{fn}:{node.lineno} {ast.unparse(node)}')
+    assert hits == []

@@ -25,7 +25,7 @@ from decimal import Decimal
 from .base import CTX, ZERO, Record, check_id, check_symbol, check_text, non_negative, positive, record, req
 from .errors import OwnershipUnknown
 from .modes import EntriesMode, HoldKind, Op, Permission, permitted
-from .orders import LIVE, IntentState, OrderIntent, OrderType, OwnerFamily, Purpose, Side
+from .orders import LIVE, IntentState, OrderIntent, OrderType, OwnerFamily, OwnerKind, Purpose, Side
 from .protection import PROTECTING, Protection, check_protection, protection_status, target_coverage
 from .reasons import ReasonCode
 
@@ -283,9 +283,10 @@ def _check_known(pf, p):
         if it.orphan:
             req(own == pf.portfolio_id, ip, 'an orphan cancel is owned by this portfolio aggregate')
             continue
-        owner = lots.get(own) if own.startswith('lot_') else intents.get(own)
+        by_lot = it.owner_kind is OwnerKind.LOT
+        owner = lots.get(own) if by_lot else intents.get(own)
         req(owner is not None, ip, 'names no lot / entry of this portfolio (a KNOWN portfolio has no orphan reference)')
-        if not own.startswith('lot_'):
+        if not by_lot:
             req(owner.purpose is Purpose.ENTRY and owner.order_type is OrderType.MARKET, ip,
                 'only an unresolved market ENTRY owns a provisional stop')
         req((owner.symbol, owner.side) == (it.symbol, it.side), ip, 'owner of another symbol / side')

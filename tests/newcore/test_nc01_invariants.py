@@ -114,8 +114,8 @@ CASES = {
     'market with price': (lambda: replace(ENTRY, price=D('1')), 'price'),
     'stop without stop price': (lambda: replace(STOP, stop_price=None), 'stop_price'),
     'stop price on market': (lambda: replace(ENTRY, stop_price=D('1')), 'stop_price'),
-    'orphan intent still working': (lambda: replace(STOP, owner_id=F.pf_id(ACCT)), 'state'),
-    'orphan add submitted': (lambda: replace(ADD, owner_id=F.pf_id(ACCT)), 'state'),
+    'orphan intent still working': (lambda: replace(STOP, owner_id=F.pf_id(ACCT), owner_kind=F.OwnerKind.PORTFOLIO), 'state'),
+    'orphan add submitted': (lambda: replace(ADD, owner_id=F.pf_id(ACCT), owner_kind=F.OwnerKind.PORTFOLIO), 'state'),
     'algo id on an entry': (lambda: replace(ENTRY, alt_client_order_id='zz1'), 'alt_client_order_id'),
     'algo id equals primary': (lambda: replace(STOP, alt_client_order_id=STOP.client_order_id), 'alt_client_order_id'),
     'armed maker': (lambda: replace(MAKER, arm=Arming(trigger_price=D('1'), expires_at_ms=T0 + 1)), 'arm'),
@@ -414,9 +414,9 @@ def test_a_known_portfolio_has_no_dangling_owner_reference():
                      owner_id=ids.id('lot'), stop_price=D('9'))
     with pytest.raises(InvalidRecord, match='no orphan reference'):
         with_intents(ghost)
-    with_intents(replace(ghost, owner_id=F.pf_id(acct)))                       # re-owned by the aggregate: valid
+    with_intents(replace(ghost, owner_id=F.pf_id(acct), owner_kind=F.OwnerKind.PORTFOLIO))                       # re-owned by the aggregate: valid
     with pytest.raises(InvalidRecord, match='owned by this portfolio'):
-        with_intents(replace(ghost, owner_id=F.pf_id(OTHER)))
+        with_intents(replace(ghost, owner_id=F.pf_id(OTHER), owner_kind=F.OwnerKind.PORTFOLIO))
 
 
 def test_owner_symbol_and_side_agree():
