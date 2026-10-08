@@ -12,9 +12,12 @@ tests/newcore_slice/test_testnet_semantics.py):
   - a classic stop refused because conditional orders need the algo service is REJECTED detail 'algo_route' -> the
     classic -> algo fallback (also keyed on the transport's codes);
   - a triggered / finished algo stop is KNOWN detail 'algo_triggered' with the CHILD order id; fill truth = fills(child).
-Equity and funding are not on the port: TestnetAccountReader gives equity() -> (Equity(asset, wallet_balance,
-margin_balance, available_balance, unrealized_profit),) and funding(start_ms=, end_ms=, symbol=) -> FundingPayment(
-symbol, asset, income (signed: negative = paid), time_ms, tran_id). AccountReadsShim maps them onto the Runner's reads.
+Equity and funding are not on the port: TestnetAccountReader (nc-venue-testnet c872c6b, newcore/venue/testnet_venue.py)
+gives equity() -> (Equity(asset, wallet_balance, margin_balance, available_balance, unrealized_pnl),) and
+funding(start_ms=, end_ms=, symbol=) -> FundingPayment(symbol (None for an account-level row), asset, amount (signed:
+negative = paid), at_ms, tran_id), rows in [start_ms, end_ms]. The field names the shim reads are pinned in
+EQUITY_FIELDS / FUNDING_FIELDS and checked against the real dataclasses by tests/newcore_slice/test_testnet_semantics.py
+(a drift fails there, not on the first testnet cycle). AccountReadsShim maps them onto the Runner's reads.
 """
 from __future__ import annotations
 
@@ -23,13 +26,18 @@ import importlib
 from newcore.adapters.fake_venue import FundingRow
 from newcore.ports.venue import ReadKind, ReadOutcome
 
+# the real field layout (nc-venue-testnet c872c6b); the shim reads only the starred ones
+EQUITY_FIELDS = ('asset', 'wallet_balance', 'margin_balance', 'available_balance', 'unrealized_pnl')   # *wallet_balance
+FUNDING_FIELDS = ('symbol', 'asset', 'amount', 'at_ms', 'tran_id')                                   # *symbol *amount *at_ms
+
 
 class AccountReadsShim:
     """Runner AccountReads over a TestnetAccountReader-shaped reader.
 
     equity()                         -> (wallet_balance,): the closed equity the sizing risks a fraction of
-    funding(symbol, side, from, to)  -> FundingRow(symbol, side, at_ms, amount): amount = -income (paid > 0), rows with
-                                        from < time_ms <= to. Binance income rows carry no position side: in hedge mode
+    funding(symbol, side, from, to)  -> FundingRow(symbol, side, at_ms, amount): amount = -payment.amount (paid > 0),
+                                        rows of that symbol with from < at_ms <= to (account-level rows, symbol None, are
+                                        not a position's funding). Binance income rows carry no position side: in hedge mode
                                         with both sides of a symbol open the attribution is ambiguous, and the rows are
                                         attributed to the side asked (reported limitation; one side per symbol in S1/S4).
     A read that is not OK is passed through unchanged (unknown is never zero)."""
@@ -47,8 +55,8 @@ class AccountReadsShim:
         r = self.reader.funding(start_ms=from_ms + 1, end_ms=to_ms, symbol=symbol)
         if r.kind is not ReadKind.OK:
             return r
-        rows = tuple(FundingRow(symbol, side, p.time_ms, -p.income) for p in r.value
-                     if p.symbol == symbol and from_ms < p.time_ms <= to_ms)
+        rows = tuple(FundingRow(symbol, side, p.at_ms, -p.amount) for p in r.value
+                     if p.symbol == symbol and from_ms < p.at_ms <= to_ms)
         return ReadOutcome(kind=ReadKind.OK, observed_at_ms=r.observed_at_ms, value=rows)
 
 
@@ -58,10 +66,11 @@ def load_factory(spec):
 
 
 def build(config):
-    """(venue, bars, account_reads) from the configured factory."""
+    """(venue, bars, account_reads, instrument_rules or None) from the configured factory (newcore.venue.factory:
+    build_testnet on nc-venue-testnet returns venue, bars, account_reader and the venue's own instrument_rules)."""
     parts = load_factory(config.factory)(config)
     missing = {'venue', 'bars'} - set(parts)
     if missing or not ({'account_reader', 'account_reads'} & set(parts)):
         raise ValueError(f'the testnet factory must return venue, bars and account_reader / account_reads ({parts!r})')
     reads = parts.get('account_reads') or AccountReadsShim(parts['account_reader'])
-    return parts['venue'], parts['bars'], reads
+    return parts['venue'], parts['bars'], reads, parts.get('instrument_rules')

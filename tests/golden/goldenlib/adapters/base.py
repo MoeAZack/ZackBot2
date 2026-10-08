@@ -103,3 +103,15 @@ def symbols(case):
 
 def side_code(sd):
     return 'LONG' if sd in (1, 'LONG') else 'SHORT'
+
+
+def check_unsupported(case):
+    """AUD-08 inputs the legacy adapters cannot run: a case that declares them must mark the legacy adapters not_applicable.
+    Never silently dropped - a fault the replay does not inject, or exchange filters it does not apply, would make the
+    legacy trace look like the faulted / filtered one."""
+    if case.get('faults'):
+        raise NotExpressible(f"faults {[f.get('kind') for f in case['faults']]}: the legacy replay / backtester cannot inject "
+                             'outages, restarts or lost order answers (the fault-capable fake comes with NC-03 / NC-08)')
+    if case.get('instruments') is not None:
+        raise NotExpressible('instruments: exchange filters are not wired into the legacy adapters in v1 (replay / backtest '
+                             'exchange_rules); a case with its own step / minimums is not expressible there')

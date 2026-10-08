@@ -1,0 +1,163 @@
+{
+  "schema": "zb-golden/1",
+  "id": "G-STOP-CROSSED-L-01",
+  "title": "Long: the trailing level recomputed at a candle close (the ATR shrank) is already through the price: the BOT closes at market (STOP_CROSSED), no exchange stop fills",
+  "behaviours": [
+    "trail",
+    "stop",
+    "exit_codes"
+  ],
+  "side": "long",
+  "tf": "4h",
+  "clock": {
+    "start": 1704067200000,
+    "entry_cycle_delay_s": 15
+  },
+  "costs": {
+    "model": "legacy",
+    "taker_fee": "0.0005",
+    "slip": "0.0002",
+    "funding_per_bar": "0"
+  },
+  "account": {
+    "equity": "500",
+    "max_leverage": 10,
+    "sizing": "legacy_replay"
+  },
+  "market": {
+    "SOLUSDT": {
+      "base": {
+        "kind": "flat",
+        "px": "100",
+        "wick": "0.5",
+        "n": 300
+      },
+      "bars": {
+        "280": [
+          "100",
+          "101.5",
+          "100",
+          "100"
+        ],
+        "281": [
+          "100",
+          "100",
+          "100",
+          "100"
+        ],
+        "282": [
+          "100",
+          "100",
+          "100",
+          "100"
+        ],
+        "283": [
+          "100",
+          "100",
+          "100",
+          "100"
+        ],
+        "284": [
+          "100",
+          "100",
+          "100",
+          "100"
+        ],
+        "285": [
+          "100",
+          "100",
+          "100",
+          "100"
+        ],
+        "286": [
+          "100",
+          "100",
+          "99.9",
+          "99.9"
+        ]
+      },
+      "atr": {
+        "kind": "computed"
+      }
+    }
+  },
+  "path_policy": "zb-path/1",
+  "slot": {
+    "id": "S1",
+    "sides": "long",
+    "risk": "0.02",
+    "share": "1",
+    "max_pos": 1,
+    "entry": {
+      "type": "market"
+    },
+    "stop": {
+      "atr": "2"
+    },
+    "trail": {
+      "atr": "2"
+    }
+  },
+  "signals": [
+    {
+      "bar": 279,
+      "sym": "SOLUSDT",
+      "kind": "enter_long"
+    }
+  ],
+  "faults": [],
+  "expect": {
+    "trades": [
+      {
+        "sym": "SOLUSDT",
+        "side": "LONG",
+        "i_in": 280,
+        "i_out": 286,
+        "exit": "STOP_CROSSED",
+        "R": "-0.07",
+        "pnl": "-0.7"
+      }
+    ],
+    "final": {
+      "lots": 0
+    }
+  },
+  "applies_to": {
+    "legacy_engine": "required",
+    "legacy_backtest": {
+      "status": "known_divergence",
+      "reason": "AUD-08: the backtester has one stop reason; it books the market close of a crossed ratcheted stop as `stop` (STOP_HIT)"
+    },
+    "newcore_sim": {
+      "status": "pending_adapter",
+      "reason": "NEWCORE NC-07/NC-08 adapter not built yet"
+    },
+    "newcore_live_sim": {
+      "status": "pending_adapter",
+      "reason": "NEWCORE NC-08 live-sim adapter not built yet"
+    }
+  },
+  "known_divergences": [
+    {
+      "adapter": "legacy_backtest",
+      "divergence_id": "AUD08-STOP-CROSSED-CODE",
+      "ticket": "AUD-08",
+      "finding": "STOP_CROSSED folded into stop",
+      "correction": "CORR-0055",
+      "until": "NEWCORE (the legacy backtester is disposable)",
+      "reason": "backtest.py walk_path/adverse_leg: a stop ratcheted after the first leg to a level the price is already through is closed where the price is (px = a_) with why='stop' - the same fill and bar as the bot, but the trade row cannot say that it was a bot market close and not an exchange stop fill",
+      "observed": [
+        {
+          "path": "trades[0].exit",
+          "expected": "STOP_CROSSED",
+          "actual": "STOP_HIT"
+        }
+      ]
+    }
+  ],
+  "provenance": {
+    "created_at_sha": "bc948d9",
+    "author": "AUD-08 exit-code vocabulary (Claude)",
+    "notes": "ATR (Wilder, alpha 1/14) is 1 on the flat base. Entry 100.02, initial stop 2 ATR, trail 2 ATR from the best price. Candle 280 (doji: the worst-case path for the side, favourable extreme first) reaches 101.5: the trail moves the stop to 99.5000000 (best -/+ 2 x ATR(279) = 1); TR 1.5 lifts ATR(280) to 1.0357143. Candles 281-285 have zero range (TR 0), so the ATR of each closed candle shrinks by 1/14 and the level 2 ATR from the best rises (falls, short) at every candle-close decision: 99.4285714 (kept, behind the stop), 99.5765306 (kept: moves less than the 0.1 ATR minimum step), 99.7139213, 99.8414983, 99.9599627 (stop moved; price 100 still on the safe side), then with ATR(285) = 0.7150173 the level is 100.0699654: already THROUGH the price 100. No stop order can rest there (the exchange rejects it, -2021), so the bot closes at market at the next decision: the open of candle 286 (= its high, so the first path point is the open), 100 x 0.9998 = 99.98; the resting stop at 99.9599627 was never touched. i_out = 286, the candle of the fill (the trigger is the close of 285, the execution is a mark-time market order, not a candle-close exit). pnl = 5 x (-0.04) - 5 x 200 x 0.0005 = -0.7, R = -0.07. Code STOP_CROSSED: a taker close the BOT sent, not the exchange stop fill (STOP_HIT); the legacy backtester books the same price and bar as `stop`. No randomness: no seed is involved."
+  }
+}

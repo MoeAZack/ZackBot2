@@ -153,13 +153,13 @@ class Session:
             else:
                 start = parse_utc_ms(cfg.start) if cfg.start else max(b[0].open_ms for b in candles.values())
                 self.venue = FakeVenue(candles, self.tf_ms, costs=BASE_COSTS, equity=cfg.equity, start_ms=start)
-            reads, port = self.venue, self.venue
+            reads, port, venue_rules = self.venue, self.venue, None
         else:
             from .testnet_hook import build
-            port, self.bars, reads = build(cfg)
+            port, self.bars, reads, venue_rules = build(cfg)
             self.venue, self.last_close = None, None
         rcfg = RunnerConfig(account=account(cfg), portfolio_id=cfg.portfolio_id, symbols=cfg.symbols,
-                            tf_ms=self.tf_ms, timeframe=cfg.tf, rules=rules_for(cfg, cfg.symbols),
+                            tf_ms=self.tf_ms, timeframe=cfg.tf, rules=venue_rules or rules_for(cfg, cfg.symbols),
                             sizing=SizingPolicy(cfg.risk_pct, cfg.max_leverage, cfg.cap_gap_buffer),
                             sides=sides_for(cfg), strict=False)
         self.runner = BookRunner(rcfg, policy=policy_for(cfg), journal=self.journal, venue=port, bars=self.bars,

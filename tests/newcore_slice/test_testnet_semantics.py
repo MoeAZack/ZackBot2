@@ -111,22 +111,36 @@ def test_3_triggered_algo_stop_is_booked_from_the_child_fills(no_child_first):
 
 
 # ------------------------------------------------------------------------------------------------ account shim
-@dataclasses.dataclass
+# VERBATIM mirrors of nc-venue-testnet c872c6b newcore/venue/testnet_venue.py (Equity, FundingPayment): the branch is
+# not merged here. test_shim_field_contract pins their field names to the shim's (and, once the venue package is on
+# the branch, to the real classes), so a rename on either side fails a test instead of the first testnet cycle.
+@dataclasses.dataclass(frozen=True)
 class Equity:
     asset: str
     wallet_balance: D
     margin_balance: D
     available_balance: D
-    unrealized_profit: D
+    unrealized_pnl: D
 
 
-@dataclasses.dataclass
+@dataclasses.dataclass(frozen=True)
 class FundingPayment:
-    symbol: str
+    symbol: object               # str, or None for an account-level row
     asset: str
-    income: D
-    time_ms: int
+    amount: D                    # signed: negative = paid
+    at_ms: int
     tran_id: int
+
+
+def test_shim_field_contract():
+    from newcore.runner.testnet_hook import EQUITY_FIELDS, FUNDING_FIELDS
+    names = lambda cls: tuple(f.name for f in dataclasses.fields(cls))
+    assert names(Equity) == EQUITY_FIELDS and names(FundingPayment) == FUNDING_FIELDS
+    try:
+        from newcore.venue import testnet_venue as real
+    except ImportError:
+        pytest.skip('newcore.venue is not merged on this branch: the mirrors above are pinned from c872c6b')
+    assert names(real.Equity) == EQUITY_FIELDS and names(real.FundingPayment) == FUNDING_FIELDS
 
 
 class FakeReader:
@@ -140,6 +154,7 @@ class FakeReader:
     def funding(self, *, start_ms, end_ms, symbol=None):
         self.calls.append((start_ms, end_ms, symbol))
         rows = (FundingPayment('SOLUSDT', 'USDT', D('-0.25'), 1_700_000_000_000, 1),
+                FundingPayment(None, 'USDT', D('-9'), 1_700_000_000_000, 3),           # account-level row
                 FundingPayment('SOLUSDT', 'USDT', D('0.10'), 1_700_000_100_000, 2))
         return ReadOutcome(kind=ReadKind.OK, observed_at_ms=end_ms, value=rows)
 
