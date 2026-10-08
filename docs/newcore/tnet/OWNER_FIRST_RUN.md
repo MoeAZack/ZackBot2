@@ -88,7 +88,7 @@ Expected: `preflight OK`, then `P1: conclusive` (and `P2: conclusive`), `CLEANUP
 - **Before any order was sent** (start-up checks): it simply stops with exit 6. There may be no report, because nothing happened.
 - **After an order was sent:** the cleanup still runs (a second Ctrl+C cannot stop it). The report is written in full, and the exit code is 6, or 8 if something may be left.
 - **While a report or cassette file is being saved:** the file is finished first, then the run stops. No further scenario starts and no further order is sent. Exit 6 (or 8).
-- **During `--cleanup`** (step 6): if you press Ctrl+C while it is still listing the account, nothing has been sent and nothing was cleaned. Run `--cleanup` again.
+- **During `--cleanup`** (step 6): if you press Ctrl+C while it is still listing the account, nothing has been sent and nothing was cleaned. Run `--cleanup` again. If you press it while the cleanup itself runs, the cleanup finishes first and its `CLEANUP` line tells you the result: `CLEANUP CLEAN` means nothing is left (exit 6), `NOT CLEAN` means run `--cleanup` again (exit 8).
 
 **5a. Core scenarios (about 35-45 minutes). This, with the probes, is the whole first run.**
 
@@ -180,6 +180,11 @@ open position is refused too. Nothing is sent in either case.
 - **No fresh mark price:** if the mark price cannot be read, or is older than 30 seconds by Binance's clock, the
   bot does not use a stale price for a fallback stop. It closes with a reduce-only market order instead, and the line
   shows `degraded=` (see above).
+- **Restart long after a lost entry (NEW A):** if the last records of the bot's journal are lost right after an entry
+  (for example a crash or a power cut) and it is restarted more than 60 candles later, it may not be able to prove that
+  entry is its own. The position may then be left without a stop,
+  in a loud HOLD with an incident; the bot does not guess. Nothing in the first run restarts that late. If you ever
+  see such a HOLD, close the position in the testnet UI and send the output.
 - **More S1 limits may be listed here** before Claude Code gives you the SHA: the S1 work is still closing items.
   Use the version of this file at that SHA.
 

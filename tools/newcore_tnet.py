@@ -400,9 +400,20 @@ def _cleanup_only(args, venue, symbols, run_id, snooze, recorder, cassette_dir, 
         what = 'kept (listed)' if keep >= p.qty else (f'{p.qty - keep} will be closed' + (f', {keep} kept as '
                                                                                        f'foreign' if keep else ''))
         out.write(f'  position {p.symbol} {p.side} {p.qty}: {what}\n')
-    _, res = guarded(lambda: None, lambda: tnet_cleanup(                # C2: Ctrl+C cannot abort the teardown
-        venue, symbols, run_id=run_id + '_cleanup', max_attempts=args.cleanup_attempts, baseline=baseline,
-        confirm_reads=2, settle_s=args.settle_s, sleep=snooze))
+    def teardown(attempts):
+        return guarded(lambda: None, lambda: tnet_cleanup(              # C2: Ctrl+C cannot abort the teardown
+            venue, symbols, run_id=run_id + '_cleanup', max_attempts=attempts, baseline=baseline,
+            confirm_reads=2, settle_s=args.settle_s, sleep=snooze))[1]
+    interrupted = False
+    try:
+        res = teardown(args.cleanup_attempts)
+    except (KeyboardInterrupt, SystemExit):           # raised INSIDE the teardown (an I/O call): confirm once more
+        interrupted = True
+        try:
+            res = teardown(1)
+        except (KeyboardInterrupt, SystemExit):
+            from newcore.venue.tnet import CleanupResult
+            res = CleanupResult(clean=False, attempts=0, notes=['the cleanup was interrupted twice'])
     out.write(format_cleanup(res) + '\n')
     declared = adopted_positions(args.adopt_foreign)
     left = [p for p in positions if (p.symbol, p.side) in baseline and (p.symbol, p.side) not in declared]
@@ -424,11 +435,17 @@ def _cleanup_only(args, venue, symbols, run_id, snooze, recorder, cassette_dir, 
     except (ReportLeak, CredentialStoreError, OSError) as ex:
         out.write(f'ERROR: report not written ({type(ex).__name__}).\n')
         rc_report = EXIT_REPORT
+    if interrupted:                                    # the message states the ACTUAL cleanup state
+        if res.clean and not left:
+            out.write('INTERRUPTED (Ctrl+C). The cleanup above is CLEAN: nothing is left; no need to run it again.\n')
+        else:
+            out.write('INTERRUPTED (Ctrl+C). The cleanup above is NOT clean: run python tools\\newcore_tnet.py '
+                      '--cleanup again.\n')
     if not res.clean or left:
         return EXIT_RESIDUE
     if cassette is None or rc_report:
         return EXIT_REPORT
-    return EXIT_PASS
+    return EXIT_DEADLINE if interrupted else EXIT_PASS
 
 
 def _run(args, specs, symbols, min_balance, creds, scrubber, http, clock, mono, snooze, build, cassette_dir,

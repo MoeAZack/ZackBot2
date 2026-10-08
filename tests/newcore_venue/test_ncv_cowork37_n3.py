@@ -1,5 +1,6 @@
 """Cowork #37 N3: after kill -9 / power loss the next run refuses (leftover NEWCORE order / not flat); the venue CLI's
 --cleanup is the entry point that removes the stranded NEWCORE state. Fake HTTP, DUMMY keys."""
+import re
 from decimal import Decimal as D
 
 import pytest
@@ -126,3 +127,54 @@ def test_ctrl_c_while_cleanup_is_listing_sends_nothing_and_exits_6(env, exc):  #
     assert rc == 6 and '--cleanup' in out.split('INTERRUPTED', 1)[1]
     assert not [q for q in fb.requests if q.method in ('POST', 'DELETE')]
     assert fb.orders[STOP]['status'] == 'NEW'
+
+
+class ExitAtK(FakeBinance):
+    def __init__(self, k, exc, **kw):
+        super().__init__(**kw)
+        self.k, self.exc = k, exc
+
+    def __call__(self, request):
+        if len(self.requests) == self.k:
+            self.requests.append(request)
+            raise self.exc()
+        return super().__call__(request)
+
+
+def _flat():
+    return FakeBinance()
+
+
+def _stranded_k(k, exc):
+    fb = ExitAtK(k, exc)
+    fb._rest_classic(STOP, 'SOLUSDT', 'SELL', 'LONG', D('1'), D('150'))
+    fb.pos[('SOLUSDT', 'LONG')] = D('1')
+    fb.visible_pos[('SOLUSDT', 'LONG')] = D('1')
+    return fb
+
+
+@pytest.mark.parametrize('exc', [KeyboardInterrupt, SystemExit])
+@pytest.mark.parametrize('account', ['flat', 'stranded'])
+def test_cleanup_interrupted_at_every_request_states_the_actual_cleanup_state(env, account, exc):  # noqa: F811
+    """Cowork 6065757215: --cleanup interrupted inside its teardown (points 16-21 on a flat account) printed no
+    CLEANUP line and said to re-run --cleanup. Once the teardown started, the CLEANUP line, the report and the
+    actual state are printed; after CLEANUP CLEAN the output never asks for another --cleanup."""
+    argv = ['--cleanup', '--close-positions']
+    base = _flat() if account == 'flat' else stranded()
+    run(env, argv, http=base)
+    hit_teardown = 0
+    for k in range(len(base.requests)):
+        fb = ExitAtK(k, exc) if account == 'flat' else _stranded_k(k, exc)
+        rc, out = run(env, argv, http=fb)
+        assert rc in (6, 8) and 'Traceback' not in out, (k, rc, out)
+        sent = [q for q in fb.requests if q.method in ('POST', 'DELETE')]
+        if not re.search(r'^CLEANUP (CLEAN|NOT CLEAN) after', out, re.M):
+            assert not sent and '--cleanup' in out, (k, out)                 # stopped while listing: nothing sent
+            continue
+        hit_teardown += 1
+        assert 'report:' in out and 'INTERRUPTED' in out, (k, out)
+        if 'CLEANUP CLEAN' in out:
+            assert rc == 6 and fb.flat() and '--cleanup' not in out.split('CLEANUP CLEAN', 1)[1], (k, out)
+        else:
+            assert rc == 8 and 'NOT clean' in out, (k, out)
+    assert hit_teardown                                                      # the sweep reaches the teardown
