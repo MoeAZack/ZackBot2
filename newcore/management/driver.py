@@ -481,6 +481,19 @@ def _release_stop_replacements(w):
                                purpose=Purpose.PROTECT, reason=R.PROTECT_REPLACE))
 
 
+def _cancel_flat_stops(w):
+    """A flat lot keeps no stop. When the OLD stop fills the rest while its replacement is in flight (TNET-01 T08),
+    the core books that fill as its stop leg and has nothing left to cancel: every stop still working at the venue
+    is cancelled here (one still in flight is cancelled once the venue confirms it)."""
+    if w.d['pos'].qty != 0:
+        return
+    held = {h.intent_id for h in w.d['held'] if isinstance(h, CancelDraft)}
+    for b in w.bindings():
+        if b.leg is Leg.STOP and b.state is BindState.WORKING and b.intent_id not in held:
+            w.send(CancelDraft(intent_id=b.intent_id, client_id=b.client_id, route=b.route, leg=Leg.STOP,
+                               purpose=Purpose.PROTECT, reason=R.LIFECYCLE_ORPHAN_CANCEL))
+
+
 def _release_waiting(w):
     """Send a waiting market close / reduce once no other reduce is in flight, sized to what the core still asks
     for (never more than the position): two reduces never race for one position (Cowork 6)."""
@@ -507,6 +520,7 @@ def _finish(w):
         if not w.core_in:
             break
         _run_core(w, tuple(w.core_in))
+    _cancel_flat_stops(w)
     _release_waiting(w)
     _sync_triggers(w)
     for b in w.bindings():                                       # an execution the venue reported, not booked yet
