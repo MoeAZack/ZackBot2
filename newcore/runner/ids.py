@@ -20,6 +20,7 @@ Reported as an interface item: these belong in newcore.ports.keys (with pinned v
 from __future__ import annotations
 
 import hashlib
+import re
 
 from newcore.domain.base import dec_str
 
@@ -76,6 +77,7 @@ def resolution_decision_id(intent_id):
 
 
 EMERGENCY_PREFIX = 'zbn1e-'
+EMERGENCY_CID_RE = re.compile(r'zbn1e-[a-z2-7]{26}')
 
 
 def emergency_stop_client_id(account_id, symbol, side, qty):
@@ -89,4 +91,5 @@ def emergency_stop_client_id(account_id, symbol, side, qty):
 
 
 def is_emergency_client_id(client_id):
-    return isinstance(client_id, str) and client_id.startswith(EMERGENCY_PREFIX) and len(client_id) == 32
+    """Shape test only (owned-vs-foreign triage), a full match like ports.is_newcore_client_id: never parsed."""
+    return isinstance(client_id, str) and EMERGENCY_CID_RE.fullmatch(client_id) is not None
