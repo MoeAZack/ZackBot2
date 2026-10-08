@@ -253,6 +253,25 @@
       "accepted_by": null,
       "date_cairo": "2026-10-08",
       "prev_entry_sha": "dd7b7c2c48f1aa37ce85b612c14b04f41c53cb204edcfa7b334c6a44298420f7"
+    },
+    {
+      "id": "CORR-0008",
+      "type": "add",
+      "ticket": "AUD-08",
+      "finding": "B2 coverage: restart (smallest slice: restart between entry and time exit)",
+      "title": "Bot restart mid-trade does not reset the C11 holding clock: time exit still at the close of i_in + N - 1",
+      "cases": {
+        "G-RESTART-TIME-L-01": {
+          "prev_contract_sha": null,
+          "contract_sha": "2bcc2ff58f237b220757a9fa229dae4604b64dca8cc3118c410ed599cb1bb4b6"
+        }
+      },
+      "adapters_changed": [],
+      "rationale": "Smallest restart slice: a 5-minute process restart 1 minute after the open of candle 281 (integer UTC ms, seed null), with no candle close inside the downtime. With durable state (AUD-05) the lot is restored with its fill time, and the AUD-07 C11 rule counts candles from the fill candle, so the correct outcome equals the fault-free twin G-TIME-L-01: TIME_EXIT at the close of 283, R -0.004666666667. A restart that resets or re-derives the clock from the process start fails it. Legacy adapters not_applicable (no restart injection in the replay).",
+      "evidence": "branch golden-short-mirrors on 717c8d7; twin G-TIME-L-01",
+      "accepted_by": null,
+      "date_cairo": "2026-10-08",
+      "prev_entry_sha": "6d7dfb05fe6f4507da3207d64ba757371850606a5b86648b5ebebf9ac6fbd52e"
     }
   ]
 }

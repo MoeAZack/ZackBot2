@@ -1,0 +1,112 @@
+{
+  "schema": "zb-golden/1",
+  "id": "G-RESTART-TIME-L-01",
+  "title": "A bot restart between the entry and the time exit does not reset the holding clock: still exits after exactly N=4 candles counted from the entry candle",
+  "behaviours": [
+    "restart",
+    "time_exit"
+  ],
+  "side": "long",
+  "tf": "4h",
+  "clock": {
+    "start": "2024-01-01T00:00:00Z",
+    "entry_cycle_delay_s": 15
+  },
+  "costs": {
+    "model": "legacy",
+    "taker_fee": "0.0005",
+    "slip": "0.0002",
+    "funding_per_bar": "0"
+  },
+  "account": {
+    "equity": "500",
+    "max_leverage": 10,
+    "sizing": "legacy_replay"
+  },
+  "market": {
+    "SOLUSDT": {
+      "base": {
+        "kind": "flat",
+        "px": "100",
+        "wick": "0.5",
+        "n": 300
+      },
+      "bars": {},
+      "atr": {
+        "kind": "computed"
+      }
+    }
+  },
+  "path_policy": "zb-path/1",
+  "slot": {
+    "id": "S1",
+    "sides": "long",
+    "risk": "0.02",
+    "share": "1",
+    "max_pos": 1,
+    "entry": {
+      "type": "market"
+    },
+    "stop": {
+      "atr": "30"
+    },
+    "time_exit": {
+      "bars": 4
+    }
+  },
+  "signals": [
+    {
+      "bar": 279,
+      "sym": "SOLUSDT",
+      "kind": "enter_long"
+    }
+  ],
+  "faults": [
+    {
+      "kind": "restart",
+      "at_ms": 1708113660000,
+      "down_ms": 300000,
+      "seed": null
+    }
+  ],
+  "expect": {
+    "trades": [
+      {
+        "sym": "SOLUSDT",
+        "side": "LONG",
+        "i_in": 280,
+        "i_out": 283,
+        "exit": "TIME_EXIT",
+        "R": "-0.004666666667",
+        "pnl": "-0.04666666667"
+      }
+    ],
+    "final": {
+      "lots": 0
+    }
+  },
+  "applies_to": {
+    "legacy_engine": {
+      "status": "not_applicable",
+      "reason": "NotExpressible (adapters.base.check_unsupported): the legacy replay / backtester cannot inject this fault; the fault-capable fake comes with NC-03 / NC-08"
+    },
+    "legacy_backtest": {
+      "status": "not_applicable",
+      "reason": "NotExpressible (adapters.base.check_unsupported): the legacy replay / backtester cannot inject this fault; the fault-capable fake comes with NC-03 / NC-08"
+    },
+    "newcore_sim": {
+      "status": "pending_adapter",
+      "reason": "NEWCORE NC-07/NC-08 adapter not built yet"
+    },
+    "newcore_live_sim": {
+      "status": "pending_adapter",
+      "reason": "NEWCORE NC-08 live-sim adapter not built yet"
+    }
+  },
+  "known_divergences": [],
+  "provenance": {
+    "created_at_sha": "cda8f58",
+    "author": "AUD-08 smallest slices (Claude)",
+    "notes": "Fault-free twin: G-TIME-L-01. The bot process stops 1 min after the open of candle 281 (UTC ms 1708113660000) and starts from its persisted state 5 min later (AUD-05 durable state): no candle close falls inside the downtime, the exchange stop stays in place and the lot is restored with its fill time. The C11 rule counts candles from the FILL candle (280), not from the process start, so the time exit is still decided at the close of 283: entry 100.02, exit 100 x 0.9998 = 99.98, qty 10/30, R -0.004666666667 (the twin's numbers). A restart that reset the clock would exit at 284 or later. Deterministic: seed null."
+  }
+}
