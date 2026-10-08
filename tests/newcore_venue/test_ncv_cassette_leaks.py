@@ -50,7 +50,8 @@ def test_listenkey_in_request_query_is_redacted():
 
 
 @pytest.mark.parametrize('echo', [DUMMY_KEY.lower(), DUMMY_KEY.upper(), '-'.join(DUMMY_KEY[i:i + 4] for i in
-                                                                               range(0, 64, 4))])
+                                                                               range(0, 64, 4))],
+                         ids=['lower', 'upper', 'dash-split'])               # no secret in a node id (#44)
 def test_key_echoed_in_another_case_or_split(echo):
     _, text = recorded(raw(400, ('{"code": -2015, "msg": "bad key %s"}' % echo).encode()),
                        requests=[req('a=1', (('X-MBX-APIKEY', DUMMY_KEY),), signed=True)])
@@ -58,7 +59,8 @@ def test_key_echoed_in_another_case_or_split(echo):
 
 
 @pytest.mark.parametrize('enc', [urllib.parse.quote(ODD_KEY, safe=''), urllib.parse.quote(ODD_KEY, safe='').lower(),
-                                 urllib.parse.quote_plus(ODD_KEY)])
+                                 urllib.parse.quote_plus(ODD_KEY)],
+                         ids=['quote', 'quote-lower', 'quote-plus'])         # no secret in a node id (#44)
 def test_key_echoed_percent_encoded(enc):
     assert '%2' in enc.upper()
     _, text = recorded(raw(400, ('{"code": -2015, "msg": "key=%s"}' % enc).encode()),

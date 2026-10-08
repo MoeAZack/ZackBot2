@@ -29,7 +29,9 @@ def test_dashed_uuid_account_ids_pass(value):
 
 
 @pytest.mark.parametrize('value', ['abcdefghijklmnopqrstuvwxyz0123', 'A' * 24, 'nc-acct-1', DUMMY_KEY,
-                                   UUID.replace('-', ''), UUID + 'x', ' ' + UUID, UUID + '\n', ''])
+                                   UUID.replace('-', ''), UUID + 'x', ' ' + UUID, UUID + '\n', ''],
+                         ids=['alnum30', 'A24', 'short-name', 'dummy-key', 'uuid-no-dashes', 'uuid-plus-x',
+                              'uuid-lead-space', 'uuid-newline', 'empty'])   # no secret in a node id (#44)
 def test_non_uuid_account_ids_get_the_account_message(value):
     assert argv_refusal(['status', '--account-id', value]) == ACCOUNT_REFUSAL
     assert argv_refusal(['status', f'--account-id={value}']) == ACCOUNT_REFUSAL
