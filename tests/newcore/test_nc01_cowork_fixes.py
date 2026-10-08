@@ -68,10 +68,11 @@ def test_owner_kind_is_explicit_and_drives_ownership():
 
 
 def test_no_domain_logic_parses_an_id():
-    """I05: no newcore source slices or prefix-tests an id string (startswith / endswith / split / [:n] on *_id)."""
+    """I05: no newcore/domain source slices or prefix-tests an id string (startswith / endswith / split / [:n] on *_id).
+    Scoped to the NC-01 domain (Codex ruling); newcore/ports derives ids and is checked by its own tests."""
     import ast
     import os
-    root = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'newcore')
+    root = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'newcore', 'domain')
     hits = []
     for dp, _, fns in os.walk(root):
         for fn in fns:
@@ -107,7 +108,7 @@ def test_a_reducing_intent_is_bounded_by_its_lot():
     from newcore.domain import InvalidRecord, Purpose
     for qty in ('1000', '1.51'):
         for purpose in (Purpose.REDUCE, Purpose.CLOSE):
-            with pytest.raises(InvalidRecord, match='exceed the lot qty'):
+            with pytest.raises(InvalidRecord, match='exceeds its lot|exceed the lot qty'):
                 _with_reduce(qty, purpose=purpose)()
     _with_reduce('1.5')()                                                     # exactly the lot: valid
     _with_reduce('0.5')()
@@ -122,16 +123,31 @@ def test_reducing_intents_are_bounded_net_of_each_other():
     with pytest.raises(InvalidRecord, match='exceed the lot qty'):
         _with_reduce('1', extra=(old,))()                                    # 1 + 1 > 1.5
     _with_reduce('1', extra=(lambda ids, p, lt: old(ids, p, lt, '0.5'),))()   # 1 + 0.5 = 1.5
-    orphan = lambda ids, p, lt: F.intent(ids, p.account_id, Purpose.CLOSE, lt.symbol, lt.side, D('1'),   # noqa: E731
-                                         owner_id=F.pf_id(p.account_id), owner_kind=OwnerKind.PORTFOLIO,
-                                         state=IntentState.CANCELLING)
-    with pytest.raises(InvalidRecord, match='exceed the position qty'):    # portfolio-owned close on the same side
-        _with_reduce('1', extra=(orphan,))()
-    stray = lambda ids, p, lt: F.intent(ids, p.account_id, Purpose.CLOSE, 'ETHUSDT', lt.side, D('1'),   # noqa: E731
-                                        owner_id=F.pf_id(p.account_id), owner_kind=OwnerKind.PORTFOLIO,
-                                        state=IntentState.CANCELLING)
-    with pytest.raises(InvalidRecord, match='exceed the position qty'):    # nothing held on that symbol at all
-        _with_reduce('1', extra=(stray,))()
+    # an UNLINKED old close + new close on one lot stays invalid (1.5 + 1.5 > 1.5); the explicitly linked cancel-replace
+    # pair is the one representable overlap - see test_nc01_cancel_replace.py (Codex P1 on af4e5f3)
+    old_close = lambda ids, p, lt: F.intent(ids, p.account_id, Purpose.CLOSE, lt.symbol, lt.side, lt.qty,   # noqa: E731
+                                            owner_id=lt.lot_id, state=IntentState.CANCELLING)
+    with pytest.raises(InvalidRecord, match='exceed the lot qty'):
+        _with_reduce('1.5', purpose=Purpose.CLOSE, extra=(old_close,))()
+
+
+@pytest.mark.parametrize('purpose', ['close', 'reduce'])
+@pytest.mark.parametrize('held', [True, False], ids=['with_position', 'no_position'])
+def test_orphan_reducing_cancel_work_is_representable(purpose, held):
+    """Cowork re-check of S05: a portfolio-owned (orphan) cancel-only CLOSE / REDUCE is valid with or without a position
+    on its symbol; it is not counted against any lot or position because it can only be cancelling."""
+    from decimal import Decimal as D
+    from newcore.domain import IntentState, InvalidRecord, OwnerKind, Purpose
+    p, ids = F.single_lot_portfolio(98, stop_state='confirmed')
+    lt = p.lots[0]
+    symbol = lt.symbol if held else 'LINKUSDT'
+    orphan = F.intent(ids, p.account_id, Purpose(purpose), symbol, lt.side, D('1000'), owner_id=F.pf_id(p.account_id),
+                      owner_kind=OwnerKind.PORTFOLIO, state=IntentState.CANCELLING)
+    pf = F.replace(p, intents=p.intents + (orphan,))
+    assert orphan in pf.intents and orphan.orphan
+    for state in (IntentState.DURABLE, IntentState.SUBMITTED, IntentState.WORKING, IntentState.UNKNOWN):
+        with pytest.raises(InvalidRecord, match='cancel-only'):          # never sendable: only ever cancelling
+            F.replace(orphan, state=state)
 
 
 # ----------------------------------------------------------------------------------------------------------- H05
@@ -225,3 +241,29 @@ def test_ruling_4_position_lots_have_one_canonical_order():
     assert [x.lot_id for x in built[0].lots] == sorted(x.lot_id for x in lots)
     assert len({canonical_bytes(b) for b in built}) == 1                  # one encoding
     assert loads(canonical_bytes(built[1])).lots == built[0].lots       # replay from bytes: same order
+
+
+def test_p2_portfolio_collections_are_canonical():
+    """Codex P2 on af4e5f3: positions and intents keep one canonical order (symbol / side, intent id) whatever order
+    they are given in, at construction and on decode, so bytes and hashes are permutation-free. UNKNOWN stays None."""
+    import random
+    from newcore.domain import canonical_bytes, contract_sha256, decode_document, encode_document
+    p = F.typical_portfolio()
+    variants = []
+    for seed in range(5):
+        rng = random.Random(seed)
+        pos, its = list(p.positions), list(p.intents)
+        rng.shuffle(pos)
+        rng.shuffle(its)
+        variants.append(F.replace(p, positions=tuple(pos), intents=tuple(its)))
+    assert all(v == p for v in variants)
+    assert {canonical_bytes(v) for v in variants} == {canonical_bytes(p)}
+    assert {contract_sha256(v) for v in variants} == {contract_sha256(p)}
+    doc = encode_document(p)
+    doc['body']['positions'].reverse()
+    doc['body']['intents'].reverse()
+    assert decode_document(doc) == p                                        # on decode too
+    assert [x.intent_id for x in p.intents] == sorted(x.intent_id for x in p.intents)
+    assert [(x.symbol, x.side.value) for x in p.positions] == sorted((x.symbol, x.side.value) for x in p.positions)
+    u = F.unknown_portfolio(F.Ids(7).id('acct'))
+    assert u.positions is None and u.intents is None

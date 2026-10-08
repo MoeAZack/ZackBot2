@@ -21,11 +21,16 @@ import pandas as pd
 
 from .. import market
 from ..schema import TFS
-from .base import Trace, check_costs, legacy_slot, symbols, side_code
+from .base import Trace, check_costs, check_unsupported, legacy_slot, symbols, side_code
 
-REASON = {'stop': 'STOP_HIT', 'stop_crossed': 'STOP_HIT', 'time_exit': 'TIME_EXIT', 'exit_signal': 'SIGNAL_EXIT',
+# engine journal exit_reason -> golden code (schema.EXIT_CODE_MEANING). One code per engine reason: 'stop' is the exchange stop
+# fill found by reconcile (STOP_HIT), 'stop_crossed' the bot's own market close of a level price had already crossed
+# (STOP_CROSSED - it was folded into STOP_HIT before AUD-08). test_vocabulary.py checks that every reason literal engine.py
+# can journal is mapped here (none may surface as UNMAPPED:<reason>).
+REASON = {'stop': 'STOP_HIT', 'stop_crossed': 'STOP_CROSSED', 'time_exit': 'TIME_EXIT', 'exit_signal': 'SIGNAL_EXIT',
           'take_profit': 'TP_FULL', 'basket_tp': 'TP_BASKET', 'take_profit_1': 'TP_PARTIAL', 'take_profit_ladder': 'TP_LADDER',
-          'liquidated': 'LIQUIDATED'}
+          'liquidated': 'LIQUIDATED', 'flatten': 'FLATTEN', 'resync': 'RESYNC', 'stop_failed': 'STOP_FAILED',
+          'basket_tp_part': 'BASKET_TP_PART'}
 CYCLE_REASONS = {'time_exit', 'exit_signal'}     # decided at a candle close: the replay books them in the next cycle
 T0 = 260
 STEPS = 8
@@ -43,6 +48,7 @@ class LegacyEngine:
 
         from . import CAPS
         check_costs(case, funding=CAPS[self.name]['funding'])
+        check_unsupported(case)
         raw = market.build(case)
         key, mg, extras = legacy_slot(case)
         syms = symbols(case)

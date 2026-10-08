@@ -212,6 +212,8 @@ These are new modules, not a slow rearrangement of `engine.py`.
 | C7 | NC-07 management transition core | Pure stop, BE, target, partial, runner, trail, time exit and bounded DCA/pyramid actions. | Same inputs produce same live/sim actions; gap/path stress. |
 | C8 | NC-08 simulator/replay | Live and backtest adapters translate the same action objects; versioned datasets. | Strict live/replay/backtest parity and causal fixtures. |
 | C9 | NC-09 observability contract | Structured incidents, fill/slippage, MFE/MAE, peak give-back and why-held/closed events. | Audit failure cannot block protection; every decision has a stable reason. |
+| C10 | REC-02 integrated exchange-truth reconciliation | One account-level fold compares durable intent/result state with Binance positions, open orders, fills and protection after startup, timeout, manual exchange changes and every uncertain answer. It adopts or quarantines external state; it never guesses an empty account. | Automated matrix for local-only and venue-only orders/positions, partial and late fills, missing/duplicate orders, manual close/add, stop filled while offline, stale answers, unknown status and restart. Every result ends flat, protected, or in an explicit fail-closed HOLD with actionable evidence. |
+| C11 | TNET-01 automated testnet scenario harness | A bounded, repeatable harness drives the complete NEWCORE vertical slice against Binance Futures testnet and emits one redacted exact-build report. It owns setup, assertions and cleanup; testnet funds/P&L are disposable. | Complete long and short cycles; confirmed entry, stop, target, partial close, one bounded DCA, cancel/replace race, lost answer + reconciliation, refusal/minimum failure, and restart with an open position. Final exchange truth must be flat or explicitly protected and reconciled. |
 
 ### Checkpoint C — BASE-CLEAN and deletion
 
@@ -222,8 +224,9 @@ These are new modules, not a slow rearrangement of `engine.py`.
 5. Measure cycle latency, UI snapshot latency, memory and request budgets.
 6. Do not port Grid/COMBO, the old AI filter or unverified DCA unless later research earns promotion.
 
-**Wave C exit:** NEWCORE runs a deterministic strategy on paper/testnet, recovers from crashes and manages two isolated
-simulated accounts without invoking the legacy engine.
+**Wave C exit:** NEWCORE runs the complete vertical slice without invoking the legacy engine; REC-02 proves exchange
+truth after ambiguity/restart; TNET-01 proves at least one complete long and one complete short testnet lifecycle; and
+two isolated simulated accounts survive independently. Wave D runtime promotion is blocked until this gate passes.
 
 ### Wave D — engine strategies, regimes and risk controls
 
@@ -232,7 +235,8 @@ This is the primary product wave. Optional application features remain behind it
 #### Strategy research starts in parallel before Wave D implementation
 
 `STRAT-00` is a research-only lane and may start while Waves A-C build the trustworthy engine. It cannot promote a
-strategy or change runtime behavior. Its purpose is to make the later implementation faster and harder to fool:
+strategy, enable one in PAPER/testnet, or change runtime behavior until the Wave C REC-02/TNET-01 gate passes. Its
+purpose is to make the later implementation faster and harder to fool:
 
 | Owner | Starts now | Output |
 |---|---|---|
@@ -388,8 +392,10 @@ controls until Codex merges an explicit amendment.
    NC-02/03/04/05/07/09 and the replacement UI, not in `engine.py` or the old panel.
 3. Complete AUD-08 characterization/parity and dependency injection, expanding the golden matrix before NC-01.
 4. Approve B5 architecture plus numeric ENG-GATE-01 and the source-provenance contract.
-5. Build NC-01 through NC-09. Legacy `engine.py` remains frozen except for the narrow boundary exceptions in rule 10.
-6. Run DATA-01/DATA-01a and STRAT-00 research in parallel; the legacy DCA-1h evidence is retired, not tuned into
+5. Build NC-01 through NC-09, then complete REC-02 integrated reconciliation and the TNET-01 automated long/short
+   testnet harness. Legacy `engine.py` remains frozen except for the narrow boundary exceptions in rule 10.
+6. Run DATA-01/DATA-01a and STRAT-00 research in parallel, but do not promote or enable a strategy until REC-02 and
+   TNET-01 pass; the legacy DCA-1h evidence is retired, not tuned into
    acceptance. Run EDGE-00 before expanding the candidate count.
 7. Validate Binance XAUUSDT venue suitability first, with regional/account availability explicit; keep PAXG/XAUT and
    broker XAUUSD as separate fallback/venue studies.

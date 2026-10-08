@@ -9,7 +9,7 @@
   "side": "long",
   "tf": "4h",
   "clock": {
-    "start": "2024-01-01T00:00:00Z",
+    "start": 1704067200000,
     "entry_cycle_delay_s": 15
   },
   "costs": {
@@ -103,9 +103,10 @@
   "known_divergences": [
     {
       "adapter": "legacy_backtest",
+      "divergence_id": "AUD07-TP-GAP-OPEN",
       "ticket": "AUD-07",
       "finding": "TP gap at the open (pre-existing, outside C13f)",
-      "correction": "CORR-0003",
+      "correction": "CORR-0049",
       "until": "AUD-07 product fix",
       "reason": "backtest.py favourable_leg books the tp_r exit at the LEVEL (104.02) even when the candle opened beyond it (106); the bot closes with a market order where the price is. Pyramid adds already use max(level, open)",
       "observed": [

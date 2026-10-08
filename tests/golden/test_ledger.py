@@ -16,7 +16,11 @@ Git-independent rules (always run, also in a checkout without history):
    (TICKET_REF) in `ticket` (Cowork r2 (e)); CORR-0000..0003 are pinned and untouched.
 Against the base (P1-1; the base is required evidence, never optional):
 5. The base ledger is a prefix of this ledger (append-only). A case new against the base needs an appended `add` record, a
-   changed contract an appended `correction` record from the base hash to the current one, a removed case a `retire` record.
+   changed contract an appended `correction` record from the base hash, a removed case a `retire` record; the appended records
+   of EVERY case (still present, removed, or added and retired inside the change) form one linked chain (check_case_chain):
+   it starts at the base (an `add` from nothing, or a correction / retire from the base hash), each later record is a linked
+   correction or retire, a retire is the single last record (nothing after it) and is present exactly when the case is gone,
+   otherwise the chain ends at the current contract; an unchanged case has no stray record.
    Base = $ZB_GOLDEN_BASE (CI: the PR base sha / the push's previous commit, fetched explicitly), locally origin/master. An
    unavailable base FAILS; the only skip is a base tree that has no golden pack at all (the bootstrap, i.e. this first pack),
    decided by listing the base tree.
@@ -25,17 +29,28 @@ Against the base (P1-1; the base is required evidence, never optional):
    current contract_sha, i.e. the record whose contract first introduced it. A divergence identical to the base's (pointer
    included) was bound when it was introduced and keeps its pointer through later unrelated corrections of the case. On the
    bootstrap base every divergence is new.
-7. ZB_GOLDEN_BASE may not resolve to HEAD when HEAD itself changes the pack against its parent (Cowork r2 (d)): that base
-   would make every change in HEAD look already-ledgered.
+7. ZB_GOLDEN_BASE may not resolve to HEAD when HEAD itself changes the pack (or a registry) against its parent (Cowork r2
+   (d)): that base would make every change in HEAD look already-ledgered.
+8. Registry anchor (Codex golden r5 ruling #1): BEHAVIOURS.json extends the base tree's copy (goldenlib.registry
+   .extends_behaviours: same version, base IDs and meanings unchanged at their positions, appends only). The only skip is a
+   base tree without the file (the bootstrap: the change that introduces it), decided by listing the base tree.
+9. Divergence registry anchor (Codex golden r5 ruling #2): DIVERGENCES.json extends the base tree's copy
+   (registry.extends_divergences: base entries keep position, id, adapters, ticket and finding; only active -> retired;
+   appends only; IDs and (ticket, finding) unique across the file, so a retired ID is never reused). Same bootstrap skip.
+   No ledger record for a registry change: it holds no case outcome, and every case-visible change moves contract_sha.
+10. Divergence ID stability: a known divergence the BASE case already carried on an adapter (with a divergence_id) keeps that
+   divergence_id while the case still records a divergence on that adapter - a consistent rename through a ledgered
+   correction fails even when the new ID is registered. A different defect there means retiring the case and adding a new one.
 """
 import json, os, re, subprocess, sys
 
 import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from goldenlib import LEDGER_PATH, MANIFEST_PATH, REPO_ROOT, schema  # noqa: E402
+from goldenlib import LEDGER_PATH, MANIFEST_PATH, REPO_ROOT, registry, schema  # noqa: E402
 
 MAN_REL, LED_REL = 'tests/golden/MANIFEST.json', 'tests/golden/CORRECTIONS.json'
+REGISTRY_RELS = (registry.BEHAVIOURS_REL, registry.DIVERGENCES_REL)
 MANIFEST_SCHEMA = 'zb-golden-manifest/2'
 # P1-2 anchor: the genesis entry, and the last entry of the bootstrap prefix (it transitively pins CORR-0000..0003 through the
 # prev_entry_sha links). Entries appended after it are protected by the base-prefix rule (5). Never edit these constants.
@@ -187,7 +202,7 @@ def _head_changes_pack():
     if _git('rev-parse', '--verify', '--quiet', 'HEAD^{commit}').returncode != 0 or \
             _git('rev-parse', '--verify', '--quiet', 'HEAD^1^{commit}').returncode != 0:
         return None                                   # root commit or shallow checkout: no parent to diff against
-    r = _git('diff', '--quiet', 'HEAD^1', 'HEAD', '--', MAN_REL, LED_REL, CASES_REL)
+    r = _git('diff', '--quiet', 'HEAD^1', 'HEAD', '--', MAN_REL, LED_REL, CASES_REL, *REGISTRY_RELS)
     return {0: False, 1: True}.get(r.returncode)
 
 
@@ -260,6 +275,73 @@ def base_cases(sha):
     return out
 
 
+def base_registry(sha, rel):
+    """The parsed registry `rel` of the base tree (data via `git show`, never imported code), or None when the base tree has
+    no such file (the bootstrap)."""
+    r = _git('ls-tree', '--name-only', sha, '--', rel)
+    if r.returncode != 0:
+        pytest.fail(f'cannot list {rel} in base {sha[:12]}: {r.stderr.strip()[:300]}')
+    if not r.stdout.strip():
+        return None
+    s = _git('show', f'{sha}:{rel}')
+    if s.returncode != 0:
+        pytest.fail(f'cannot read {rel} at base {sha[:12]}: {s.stderr.strip()[:300]}')
+    return registry.loads(s.stdout, f'base {rel}')
+
+
+def test_behaviour_registry_extends_the_base():
+    """Rule 8 (Codex golden r5 ruling #1): the behaviour IDs and meanings are anchored in the immutable base tree."""
+    ref, sha = golden_base()
+    base = base_registry(sha, registry.BEHAVIOURS_REL)
+    if base is None:
+        pytest.skip(f'bootstrap: base {ref} ({sha[:12]}) has no {registry.BEHAVIOURS_REL} - this change introduces the registry '
+                    '(the local pin in test_vocabulary still applies)')
+    registry.extends_behaviours(base, registry.read(registry.BEHAVIOURS_PATH))
+
+
+def test_divergence_registry_extends_the_base():
+    """Rule 9 (Codex golden r5 ruling #2): divergence IDs are an append-only registry anchored in the immutable base tree."""
+    ref, sha = golden_base()
+    base = base_registry(sha, registry.DIVERGENCES_REL)
+    if base is None:
+        pytest.skip(f'bootstrap: base {ref} ({sha[:12]}) has no {registry.DIVERGENCES_REL} - this change introduces the registry')
+    registry.extends_divergences(base, registry.read(registry.DIVERGENCES_PATH), schema.ADAPTERS)
+
+
+def check_divergence_id_stability(now_cases, base_cases_):
+    """Rule 10 (pure). base_cases_: {id: case} at the base ({} on the bootstrap)."""
+    for cid, c in now_cases.items():
+        old = {d.get('adapter'): d.get('divergence_id') for d in (base_cases_.get(cid) or {}).get('known_divergences') or []}
+        for d in c['known_divergences']:
+            was = old.get(d['adapter'])
+            assert was is None or d['divergence_id'] == was, \
+                (f"{cid} [{d['adapter']}]: divergence_id {was} at the base is now {d['divergence_id']} - a recorded divergence keeps "
+                 'its ID (no rename, even ledgered and registered; a different defect here means retiring the case and adding '
+                 'a new one)')
+
+
+def test_divergence_ids_are_stable_against_the_base():
+    ref, sha = golden_base()
+    check_divergence_id_stability({c['id']: c for c in schema.load_all()}, base_cases(sha) if base_pack(sha) else {})
+
+
+def test_divergence_id_stability_unit():
+    """Rule 10 on synthetic data: a consistent rename (every case, both adapters) fails; keeping the ID, dropping the
+    divergence, a new divergence on another adapter and a base case without IDs (the pre-ID bootstrap) pass."""
+    kd = lambda a, i: dict(adapter=a, divergence_id=i)
+    base = {'X': dict(known_divergences=[kd('legacy_engine', 'AUD07-C11'), kd('legacy_backtest', 'AUD07-C11')]),
+            'Y': dict(known_divergences=[dict(adapter='legacy_backtest')])}
+    now = lambda x, y=(): {'X': dict(known_divergences=list(x)), 'Y': dict(known_divergences=list(y))}
+    check_divergence_id_stability(now([kd('legacy_engine', 'AUD07-C11'), kd('legacy_backtest', 'AUD07-C11')]), base)
+    check_divergence_id_stability(now([kd('legacy_engine', 'AUD07-C11')]), base)                      # backtest fixed
+    check_divergence_id_stability(now([], [kd('legacy_backtest', 'AUD07-C13A'), kd('legacy_engine', 'AUD07-C13G')]), base)
+    check_divergence_id_stability(now([kd('legacy_engine', 'AUD07-C11B')]), {})                         # bootstrap
+    for x in ([kd('legacy_engine', 'AUD07-C11B'), kd('legacy_backtest', 'AUD07-C11B')],                 # consistent rename
+              [kd('legacy_engine', 'AUD07-C11'), kd('legacy_backtest', 'AUD07-C13A')]):                 # rebound on one adapter
+        with pytest.raises(AssertionError, match='keeps its ID'):
+            check_divergence_id_stability(now(x), base)
+
+
 def check_divergence_binding(now_cases, ents, base_cases_, n_base_entries):
     """Rule 6 (pure). base_cases_: {id: case} at the base ({} on the bootstrap); n_base_entries: ledger length at the base."""
     appended = {e['id']: e for e in ents[n_base_entries:]}
@@ -282,16 +364,49 @@ def check_against_base(base_man, base_led, ents, now):
     old = base_led['entries']
     assert ents[:len(old)] == old, 'CORRECTIONS.json is append-only: base entries were edited, reordered or removed'
     new = ents[len(old):]
-    recs = lambda cid, typ: [e['cases'][cid] for e in new if e['type'] == typ and cid in e['cases']]
-    for cid, sha in now.items():
-        if cid not in base_man['cases']:
-            assert any(r['contract_sha'] == sha for r in recs(cid, 'add')), f'{cid}: new case without an appended `add` record'
-        elif base_man['cases'][cid] != sha:
-            assert any(r['prev_contract_sha'] == base_man['cases'][cid] and r['contract_sha'] == sha for r in recs(cid, 'correction')), \
-                f"{cid}: contract changed ({base_man['cases'][cid][:12]} -> {sha[:12]}) without an appended correction record"
-    for cid, sha in base_man['cases'].items():
-        if cid not in now:
-            assert any(r['prev_contract_sha'] == sha for r in recs(cid, 'retire')), f'{cid} removed without an appended `retire` record'
+    chain = lambda cid: [(e['id'], e['type'], e['cases'][cid]) for e in new if cid in e['cases']]
+    touched = {cid for e in new for cid in (e.get('cases') or {})}
+    for cid in sorted(set(base_man['cases']) | set(now) | touched):
+        check_case_chain(cid, base_man['cases'].get(cid), now.get(cid), chain(cid))
+
+
+def check_case_chain(cid, start, end, ch):
+    """Rule 5 for one case (Codex pre-review of 3f4abea #1: the same chain rule for a case that still exists and for a removed
+    one). start: the base contract hash (None: not in the base); end: the current contract hash (None: removed / never here);
+    ch: the case's appended records [(entry id, type, record)] in ledger order. The appended records form ONE linked chain:
+    - it starts at the base: an `add` from nothing when the case is not in the base, else a `correction` or `retire` whose
+      prev_contract_sha is the base hash;
+    - each later record is a `correction` or `retire` whose prev_contract_sha is the previous record's contract_sha;
+    - a `retire` is the LAST record (exactly one, nothing after it) and is required exactly when the case is gone now;
+    - otherwise the chain ends at the case's current contract.
+    No appended record: the case must be unchanged against the base."""
+    if not ch:
+        assert start is not None or end is None, f'{cid}: new case without an appended `add` record'
+        assert end is not None, f'{cid} removed without an appended `retire` record'
+        assert start == end, f'{cid}: contract changed ({start[:12]} -> {end[:12]}) without an appended correction record'
+        return
+    eid0, t0, r0 = ch[0]
+    if start is None:
+        assert t0 == 'add' and r0.get('prev_contract_sha') is None, \
+            f'{cid}: new case without an appended `add` record (first appended record is {eid0} {t0})'
+    else:
+        assert t0 in ('correction', 'retire') and r0.get('prev_contract_sha') == start, \
+            (f'{cid}: the first appended record {eid0} ({t0}, prev {str(r0.get("prev_contract_sha"))[:12]}) is not a correction '
+             f'or retire from the base contract {start[:12]}')
+    for (e0, _, p), (e1, t1, r1) in zip(ch, ch[1:]):
+        assert t1 in ('correction', 'retire'), f'{cid}: {e1} is a {t1}; only correction / retire records may follow the first'
+        assert r1.get('prev_contract_sha') == p.get('contract_sha'), \
+            (f"{cid}: appended records do not chain: {e1} prev {str(r1.get('prev_contract_sha'))[:12]} is not {e0}'s contract "
+             f"{str(p.get('contract_sha'))[:12]}")
+    retires = [e for e, t, _ in ch if t == 'retire']
+    assert len(retires) <= 1, f'{cid}: retired more than once ({retires})'
+    assert not retires or ch[-1][1] == 'retire', f'{cid}: records follow its retirement {retires[0]}: {[e for e, *_ in ch]}'
+    if end is None:
+        assert retires, f'{cid} removed without an appended `retire` record (its chain ends at {ch[-1][0]} {ch[-1][1]})'
+    else:
+        assert not retires, f'{cid} is retired by {retires[0]} but is still in the pack'
+        assert ch[-1][2].get('contract_sha') == end, \
+            f'{cid}: its last appended record {ch[-1][0]} is not its current contract {end[:12]}'
 
 
 def test_changes_against_the_base_are_ledgered():
@@ -329,6 +444,71 @@ def test_base_rule_unit():
             check_against_base(base_man, base_led, ents, now)
     with pytest.raises(AssertionError):                                                      # old-format base
         check_against_base(dict(base_man, schema='zb-golden-manifest/1'), base_led, [g], {'X': a})
+    # AUD-08 golden clock-ms: add-then-correct and correct-twice inside one change are a linked chain to the current contract
+    add_y = dict(id='CORR-0001', type='add', cases={'Y': dict(prev_contract_sha=None, contract_sha=b)})
+    fix_y = dict(id='CORR-0002', type='correction', cases={'Y': dict(prev_contract_sha=b, contract_sha=c)})
+    check_against_base(base_man, base_led, [g, add_y, fix_y], {'X': a, 'Y': c})
+    fix_x2 = dict(id='CORR-0002', type='correction', cases={'X': dict(prev_contract_sha=b, contract_sha=c)})
+    check_against_base(base_man, base_led, [g, corr, fix_x2], {'X': c})
+    for ents, now in (([g, add_y], {'X': a, 'Y': c}),                                        # add, then changed unrecorded
+                      ([g, add_y, dict(fix_y, cases={'Y': dict(prev_contract_sha=a, contract_sha=c)})], {'X': a, 'Y': c}),  # broken link
+                      ([g, add_y, dict(fix_y, type='add')], {'X': a, 'Y': c}),               # a second add
+                      ([g, corr, dict(fix_x2, cases={'X': dict(prev_contract_sha=a, contract_sha=c)})], {'X': c}),  # broken link
+                      ([g, corr], {'X': c})):                                                # last record != current
+        with pytest.raises(AssertionError):
+            check_against_base(base_man, base_led, ents, now)
+
+
+def _retire_fixture():
+    a, b, c, d = 'a' * 64, 'b' * 64, 'c' * 64, 'd' * 64
+    g = dict(id='CORR-0000', type='genesis', cases={'X': {'new_expect_sha': a}})
+    E = lambda i, t, cid, prev, new=None: dict(id=f'CORR-{i:04d}', type=t, cases={cid: (
+        dict(prev_contract_sha=prev) if t == 'retire' else dict(prev_contract_sha=prev, contract_sha=new))})
+    return a, b, c, d, g, E, dict(schema=MANIFEST_SCHEMA, cases={'X': a}), dict(entries=[g])
+
+
+def test_base_rule_retire_positive_controls():
+    """Codex pre-review of 3f4abea #1: valid retirement chains pass."""
+    a, b, c, d, g, E, base_man, base_led = _retire_fixture()
+    check_against_base(base_man, base_led, [g, E(1, 'retire', 'X', a)], {})                                   # plain retire
+    check_against_base(base_man, base_led, [g, E(1, 'correction', 'X', a, b), E(2, 'retire', 'X', b)], {})     # correction, retire
+    check_against_base(base_man, base_led, [g, E(1, 'correction', 'X', a, b), E(2, 'correction', 'X', b, c),
+                                            E(3, 'retire', 'X', c)], {})                                       # two corrections
+    check_against_base(base_man, base_led, [g, E(1, 'add', 'Y', None, b), E(2, 'retire', 'Y', b)], {'X': a})   # add, retire
+    check_against_base(base_man, base_led, [g, E(1, 'add', 'Y', None, b), E(2, 'correction', 'Y', b, c),
+                                            E(3, 'retire', 'Y', c)], {'X': a})                                 # add, fix, retire
+    check_against_base(base_man, base_led, [g, E(1, 'correction', 'X', a, b), E(2, 'correction', 'X', b, a)],
+                       {'X': a})                                                                               # changed and back
+
+
+@pytest.mark.parametrize('mutation', ['broken_link_retire', 'unlinked_correction_then_retire', 'retire_from_wrong_hash',
+                                      'duplicate_retire', 'correction_after_retire', 'add_after_retire', 'retire_still_present',
+                                      'add_retire_broken_link', 'add_then_retire_then_correct', 'stray_record_unchanged',
+                                      'retire_first_on_new_case', 'correction_after_retire_of_corrected'])
+def test_base_rule_retire_chain_mutations(mutation):
+    """Codex pre-review of 3f4abea #1: a removed case's appended records are ONE linked chain from the base (or its add) that
+    ends in exactly one retire whose prev is the last contract, with nothing after it. At 3f4abea rule 5 accepted 10 of these
+    12 (only retire_from_wrong_hash and correction_after_retire_of_corrected failed there) and REJECTED the valid
+    correction-then-retire control above."""
+    a, b, c, d, g, E, base_man, base_led = _retire_fixture()
+    ents, now = {
+        'broken_link_retire': ([g, E(1, 'correction', 'X', a, b), E(2, 'retire', 'X', a)], {}),               # retire skips b
+        'unlinked_correction_then_retire': ([g, E(1, 'correction', 'X', c, d), E(2, 'retire', 'X', a)], {}),
+        'retire_from_wrong_hash': ([g, E(1, 'retire', 'X', c)], {}),
+        'duplicate_retire': ([g, E(1, 'retire', 'X', a), E(2, 'retire', 'X', a)], {}),
+        'correction_after_retire': ([g, E(1, 'retire', 'X', a), E(2, 'correction', 'X', a, b)], {}),
+        'add_after_retire': ([g, E(1, 'retire', 'X', a), E(2, 'add', 'X', None, b)], {}),
+        'retire_still_present': ([g, E(1, 'retire', 'X', a)], {'X': a}),
+        'add_retire_broken_link': ([g, E(1, 'add', 'Y', None, b), E(2, 'retire', 'Y', c)], {'X': a}),
+        'add_then_retire_then_correct': ([g, E(1, 'add', 'Y', None, b), E(2, 'retire', 'Y', b),
+                                          E(3, 'correction', 'Y', b, c)], {'X': a}),
+        'stray_record_unchanged': ([g, E(1, 'correction', 'X', c, d)], {'X': a}),
+        'retire_first_on_new_case': ([g, E(1, 'retire', 'Y', None)], {'X': a}),
+        'correction_after_retire_of_corrected': ([g, E(1, 'correction', 'X', a, b), E(2, 'retire', 'X', b),
+                                                  E(3, 'correction', 'X', b, c)], {}),
+    }[mutation]
+    with pytest.raises(AssertionError):
+        check_against_base(base_man, base_led, ents, now)
 
 
 def test_history_rule_unit():
