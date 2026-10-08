@@ -104,3 +104,31 @@ def test_new_a_an_entry_already_exited_never_proves_a_later_position(side):
     r = w.runner
     assert not r.fold.open_lots() and r.fold.mode is EntriesMode.HOLD
     assert len(w.venue.orders_submitted()) == n
+
+
+@pytest.mark.parametrize('side', SIDES)
+@pytest.mark.parametrize('restart', (70, 90))
+def test_new_a_beyond_60_candles_the_search_is_anchored_to_the_last_durable_event(side, restart):
+    """Cowork (c4eb46d run): a restart 70+ candles after a lost 3-event tail (crash after the entry) left the position
+    naked in HOLD - the search stopped at GUARD_ENTRY_LOOKBACK=60 from now. It now reaches back to the journal's last
+    durable event at boot (the lost tail is a suffix), so the entry is found, owned and protected."""
+    sig = InjectedSignals({(SYM, at(1)): (('enter', side),), (SYM, at(3)): (('close', side),),
+                           (SYM, at(6)): (('enter', side),)}, stop_atr=D('2'))
+    w = World(flat_bars(restart + 10), sig, strict=False)
+    w.run(5)
+    w.port.crash(len(w.port.effects) + 1, 'after')
+    w.venue.advance_to(w.close_ms(6))
+    with pytest.raises(Crash):
+        w.runner.cycle(w.close_ms(6))
+    w.port.disarm()
+    evs = w.journal.read()
+    w.journal = MemoryJournal(ACCOUNT_ID, PORTFOLIO_ID)
+    for e in evs[:len(evs) - 3]:
+        w.journal.append(e)
+    w.venue.advance_to(w.close_ms(restart - 1))
+    w.runner = w.new_runner()
+    w.run(restart + 2, from_bar=restart)
+    r, pos = w.runner, position(w, side)
+    lot, = r.fold.open_lots()
+    assert pos > 0 and lot.qty == pos and lot.live_stop is not None and lot.live_stop.state is IntentState.WORKING
+    assert covered(w, side) == pos and r.fold.mode is EntriesMode.ACTIVE

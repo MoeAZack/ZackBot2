@@ -95,6 +95,7 @@ EMERGENCY_GENERATIONS = 16            # hard HOLD: cover generations per (symbol
 ESCALATE_AFTER = 2                    # cycles with an unconfirmed stop before the reduce-only close (Cowork NEW-4)
 LOST_ENTRY_LOOKBACK = 3               # (superseded by GUARD_ENTRY_LOOKBACK for the search: Cowork NEW A)
 GUARD_ENTRY_LOOKBACK = 60             # the guard (no journal): candles back an own entry is proven by its client id
+MAX_LOST_TAIL_CANDLES = 2000          # runtime lost-tail search: hard bound (4h: ~333 days)
 GUARD_CHILDREN = 32                   # the guard: lineage ordinals per purpose probed for our own exits / adds
 GUARD_CHILD_MISSES = 4                # ... until this many consecutive unknown ordinals (unsent ones leave gaps)
 REDUCE_REFUSALS = 2                   # refused reduce-only sends of a lot before the venue position is read (MED-3)
@@ -236,6 +237,9 @@ class Runner:
         self._reduce_refused = {}                                         # lot -> consecutive 'nothing to reduce'
         self._suspended_lots = set()                                      # lots with an external-close owner item
         self._lost_checked = set()                                        # (symbol, side, candle) asked (289)
+        last = journal.last_sequence()                                    # the journal's last DURABLE state at boot
+        tail = tuple(journal.read(after_sequence=last - 1)) if last else ()
+        self._boot_last_at = tail[-1].at_ms if tail else None             # anchors the lost-tail search (NEW A)
         self.guard = False                                                # app guard: no trusted journal at all
         self.degraded = {}                                                # (symbol, side) -> degraded protection
         self._listed = None                                               # this sync's listed client ids (LOW-6)
@@ -967,13 +971,27 @@ class Runner:
             if p.symbol not in self.cfg.symbols or p.side not in self.cfg.sides or \
                     p.qty <= owned.get((p.symbol, p.side), ZERO) or self.fold.live_entries(p.symbol, p.side):
                 continue
-            for k in range(GUARD_ENTRY_LOOKBACK + 1):                     # Cowork NEW A: the guard's window
-                c = self.now - k * self.cfg.tf_ms
+            for k in range(self._lost_tail_candles() + 1):                # Cowork NEW A: back to the last
+                c = self.now - k * self.cfg.tf_ms                         # durable state (at least the guard's)
                 if (p.symbol, p.side, c) in self._lost_checked:
                     continue
                 self._lost_checked.add((p.symbol, p.side, c))
                 if self._recover_entry_at(p.symbol, p.side, c):
                     break
+
+    def _lost_tail_candles(self):
+        """How far back a lost entry can be (Cowork NEW A, beyond 60): a lost tail is a SUFFIX of the journal, so an entry
+        whose every record was lost was decided after the journal's last durable event at boot. The search reaches that
+        event's candle (+1 candle margin), at least GUARD_ENTRY_LOOKBACK, at most MAX_LOST_TAIL_CANDLES (beyond: an
+        incident; the untracked-position HOLD stays for the owner). Bounded by the lost tail, not by wall-clock time."""
+        if self._boot_last_at is None or self.now is None:
+            return GUARD_ENTRY_LOOKBACK
+        n = max(GUARD_ENTRY_LOOKBACK, -(-(self.now - self._boot_last_at) // self.cfg.tf_ms) + 1)
+        if n > MAX_LOST_TAIL_CANDLES:
+            self._incident(f'lost-tail search: the last durable event is {n} candles back, beyond '
+                           f'MAX_LOST_TAIL_CANDLES={MAX_LOST_TAIL_CANDLES}: searched that far only (owner item)')
+            n = MAX_LOST_TAIL_CANDLES
+        return n
 
     def _recover_entry_at(self, symbol, side, close_ms):
         r = self.bars.closed_bars(symbol, self.cfg.tf_ms, as_of_ms=close_ms, limit=self.signals.window)
