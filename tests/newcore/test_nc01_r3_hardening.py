@@ -67,10 +67,12 @@ def test_1_the_largest_valid_incident_frames_well_under_the_journal_limit():
 
 # ----------------------------------------------------------------------------------------------------------- 2
 @pytest.mark.parametrize('detail', [
-    # assembled at run time so the tree holds no key-like literal (verify.py's static secret scan)
-    'binance apiKey=' + 'vmPUZE6mv9SD5VNHk4HlWFsOr6aKE2zv' + 'sw0MuIgwCIPy6utIco14y7Ju91duEh8A',
-    'telegram ' + '123456789' + ':AA' + 'HdqTcvCH1vGWJxfSeofSAs0K5PALDsaw0',
-    'secret: c2VjcmV0LXZhbHVlLXRoYXQtaXMtbG9uZw==',
+    # assembled at run time so the tree holds no key-like literal (verify.py's static secret scan), and given an
+    # explicit safe id so pytest never writes the value into a node id / JUnit report (#44 full gate)
+    pytest.param('binance apiKey=' + 'vmPUZE6mv9SD5VNHk4HlWFsOr6aKE2zv' + 'sw0MuIgwCIPy6utIco14y7Ju91duEh8A',
+                 id='binance_apikey_shape'),
+    pytest.param('telegram ' + '123456789' + ':AA' + 'HdqTcvCH1vGWJxfSeofSAs0K5PALDsaw0', id='telegram_token_shape'),
+    pytest.param('secret: ' + 'c2VjcmV0LXZhbHVl' + 'LXRoYXQtaXMtbG9uZw==', id='base64_secret_shape'),
 ])
 def test_2_a_secret_shaped_token_in_detail_is_refused(detail):
     ids, p, inc = _incident()
