@@ -54,6 +54,7 @@ from __future__ import annotations
 
 import dataclasses
 import re
+import time
 from dataclasses import dataclass, field
 from decimal import Context, Decimal
 
@@ -69,7 +70,7 @@ from newcore.domain.portfolio import Fill
 from newcore.ports.journal import JournalUnavailable
 from newcore.store.hold import durability_hold, hard_hold_permits
 from newcore.ports.keys import check_decision_key, route_of
-from newcore.ports.venue import MarketOrder, OrderOutcome, OrderRef, OutcomeKind, ReadKind, StopOrder
+from newcore.ports.venue import MarketOrder, OrderOutcome, OrderRef, OutcomeKind, ReadKind, ReadOutcome, StopOrder
 
 from . import ids
 from .fold import Fold, OPEN_STATES
@@ -206,6 +207,33 @@ class Counters:
     emergency_stops: int = 0
 
 
+_ORDER_CALLS = frozenset({'submit_market', 'submit_stop', 'cancel', 'query'})
+_READ_CALLS = frozenset({'positions', 'open_orders', 'fills', 'trades', 'mark_price'})
+
+
+class _SafeVenue:
+    """The Runner's view of the VenuePort (Cowork adv6, EXC class): a venue call that RAISES instead of answering breaks
+    the typed-outcome contract; it is taken as an UNKNOWN answer (order calls) / an UNKNOWN read, with an incident, so
+    the cycle goes on (every other lot is still protected) and the unknown-stop escalation and the durable HOLD run as
+    for a lost answer. BaseExceptions (KeyboardInterrupt, SystemExit, a test's simulated process death) still stop it.
+    Attributes the adapter does not have stay absent (duck-typed reads such as trades / mark_price)."""
+
+    def __init__(self, inner, runner):
+        self._inner, self._runner = inner, runner
+
+    def __getattr__(self, name):
+        attr = getattr(self._inner, name)
+        if not callable(attr) or name not in _ORDER_CALLS | _READ_CALLS:
+            return attr
+
+        def call(*args, **kwargs):
+            try:
+                return attr(*args, **kwargs)
+            except Exception as ex:                                       # noqa: BLE001 - the contract break itself
+                return self._runner._venue_raised(name, args, ex)
+        return call
+
+
 class _Side:
     """(symbol, side) with the attribute names the provenance helpers read."""
     __slots__ = ('symbol', 'side')
@@ -215,6 +243,14 @@ class _Side:
 
 
 class Runner:
+    @property
+    def venue(self):
+        return self._venue
+
+    @venue.setter
+    def venue(self, v):                                                   # adv6: always behind the raising guard
+        self._venue = v if isinstance(v, _SafeVenue) else _SafeVenue(v, self)
+
     def __init__(self, config: RunnerConfig, *, journal, venue, bars, signals, account_reads=None, hard_hold=None):
         self.cfg = config
         self.acct = config.account.account_id
@@ -230,6 +266,7 @@ class Runner:
         self.hard_hold = None                                             # durability-unavailable HOLD (process)
         self.incidents = []                                               # (at_ms, text): surfaced, not journaled
         self._ext_partial = {}                                            # lot -> venue qty after an external partial
+        self._em_filled, self._em_closed_ids, self._em_left = {}, set(), {}   # hard-HOLD emergency fills (in process)
         self._reads = {}                                                  # lost entry -> agreeing position reads
         self._refusals = {}                                               # stop intent -> venue refusal code
         self._orphans_checked = set()                                     # ENTER decisions asked about (289)
@@ -492,6 +529,7 @@ class Runner:
         own live opening intents (ENTRY / ADD race or partial fills, not yet journaled; read from the order's trades).
         Foreign quantity on the same side is never in it (A22). None = our own fills cannot be read (unknown)."""
         owned = sum((x.qty for x in self.fold.open_lots() if (x.symbol, x.side) == (symbol, side)), ZERO)
+        owned -= self._emergency_filled(symbol, side)                     # Cowork 6066239886 #1: already closed
         for iv in self.fold.live_intents():
             if iv.purpose in OPENING_PURPOSES and (iv.intent.symbol, str(iv.intent.side)) == (symbol, side):
                 q = self.venue.query(self._ref(iv))
@@ -504,7 +542,91 @@ class Runner:
                     owned += q.executed_qty
                 else:
                     return None                                           # our own fills unreadable: unknown
-        return owned
+        return max(owned, ZERO)
+
+    def _emergency_filled(self, symbol, side):
+        """What OUR emergency orders (zbn1e stops / closes, never journaled) filled on (symbol, side) since the earliest
+        open lot's entry: from the venue's trades, each order matched by its exchange order id to an emergency client
+        id re-derived for that order's filled quantity (so it survives a restart); this process's own FINAL emergency
+        results are the floor when the trades cannot be read."""
+        mem = self._em_filled.get((symbol, side), ZERO)
+        lots = [x for x in self.fold.open_lots() if (x.symbol, x.side) == (symbol, side)]
+        read = getattr(self.venue, 'trades', None)
+        if not lots or read is None:
+            return mem
+        tr = read(symbol, side, min(x.entry.intent.created_at_ms for x in lots))
+        if tr.kind is not ReadKind.OK:
+            return mem
+        orders = {}
+        for t in tr.value:
+            orders[t.exchange_order_id] = orders.get(t.exchange_order_id, ZERO) + t.qty
+        total = sum((q for eoid, q in orders.items() if self._is_emergency_order(symbol, side, eoid, q)), ZERO)
+        return max(total, mem)
+
+    def _is_emergency_order(self, symbol, side, eoid, qty):
+        def matches(cid, routes):
+            known = False
+            for route in routes:
+                q = self.venue.query(OrderRef(symbol=symbol, client_id=cid, route=route))
+                if q.kind in (OutcomeKind.KNOWN, OutcomeKind.FINAL):
+                    if q.exchange_order_id == eoid:
+                        return True, True
+                    known = True
+            return False, known
+        if matches(ids.emergency_stop_client_id(self.acct, symbol, side, qty, 'close'), ('classic',))[0]:
+            return True
+        for gen in range(EMERGENCY_GENERATIONS):
+            hit, known = matches(ids.emergency_stop_client_id(self.acct, symbol, side, qty, gen), ('classic', 'algo'))
+            if hit:
+                return True
+            if not known:
+                return False
+        return False
+
+    def _account_emergency_fills(self):
+        """Store back (Cowork 6066239886 #1): fills of our emergency orders during a hard HOLD reduced a lot OUTSIDE
+        the journal (a zbn1e id cannot be booked as the lot's close). Journaled now as a durable owner item per lot,
+        HOLD; the lot's protection is limited to what is still ours (all of it gone: the lot is suspended - no stop /
+        close is sent for it; some left: protected at that quantity, never the foreign rest). Checked on the first
+        cycle and while the reconciliation shows a position item."""
+        if self.hard_hold is not None or not (self.counters.cycles == 1 or (
+                self.last_rec is not None and any(k == 'position' for k, _ in self.last_rec.items))):
+            return
+        sides = {}
+        for lot in self.fold.open_lots():
+            sides.setdefault((lot.symbol, lot.side), []).append(lot)
+        for (sym, side), lots in sides.items():
+            ef = self._emergency_filled(sym, side)
+            if ef <= 0:
+                continue
+            total = sum((x.qty for x in lots), ZERO)
+            left = max(total - ef, ZERO)
+            for lot in lots:
+                did = ids.marker_decision_id('emergency_fill', lot.lot_id)
+                if self.journal.find_decision(did) is None:
+                    self._decision(decision_id=did, action=Action.WAIT, reason=ReasonCode.RECONCILE_UNRECONCILED,
+                                   authority=Authority.RECONCILIATION, key=None, symbol=sym, side=side,
+                                   subject_id=lot.lot_id,
+                                   detail=f'emergency fills {ef} of {sym} {side} during a hard HOLD (outside the '
+                                          f'journal): lots {total}, ours left {left}; owner resolves')
+                    self._incident(f'{lot.lot_id}: our emergency orders filled {ef} of {sym} {side} during the hard '
+                                   f'HOLD (lots {total}, ours left {left}): owner item, HOLD')
+            self._hold([ReasonCode.RECONCILE_UNRECONCILED])
+            self._em_left[(sym, side)] = left
+            if left <= 0:
+                self._suspended_lots.update(x.lot_id for x in lots)
+            elif len(lots) == 1:
+                self._ext_partial[lots[0].lot_id] = min(left, self._ext_partial.get(lots[0].lot_id, left))
+                self._resize_down(lots[0].lot_id, self._ext_partial[lots[0].lot_id])
+
+    def _venue_raised(self, name, args, ex):
+        at = self.now if self.now is not None else int(time.time() * 1000)
+        self._incident(f'venue {name} raised {type(ex).__name__}: {ex} - taken as UNKNOWN (adapter contract break)')
+        if name in _ORDER_CALLS:
+            first = args[0] if args else None
+            ref = first if isinstance(first, OrderRef) else getattr(first, 'ref', None)
+            return OrderOutcome(kind=OutcomeKind.UNKNOWN, ref=ref, observed_at_ms=at, detail='raised')
+        return ReadOutcome(kind=ReadKind.UNKNOWN, observed_at_ms=at, detail='raised')
 
     def _drain(self, iv):
         it = iv.intent
@@ -710,6 +832,10 @@ class Runner:
         out = self.venue.submit_market(MarketOrder(ref=ref, position_side=p.side, qty=qty, reduce=True))
         if _is_duplicate(out):
             out = self.venue.query(ref)
+        if out.kind is OutcomeKind.FINAL and out.executed_qty and cid not in self._em_closed_ids:
+            self._em_closed_ids.add(cid)                                  # the in-process floor of the ledger
+            k = (p.symbol, p.side)
+            self._em_filled[k] = self._em_filled.get(k, ZERO) + out.executed_qty
         self._degrade(p, 'emergency_close')
         self._incident(f'hard HOLD: DEGRADED protection: no safe stop for {p.symbol} {p.side} {qty}: reduce-only '
                        f'emergency close {cid} -> {out.kind}')
@@ -1427,6 +1553,7 @@ class Runner:
         """Cowork p3: an open lot whose side the venue reads FLAT (this cycle's reconciliation) was closed outside the
         bot - unless a fill of our own is in flight: the lot's live orders are re-read first, so our own stop / close
         fill is booked. Still open and flat -> the external-close owner item, before anything is sent for the lot."""
+        self._account_emergency_fills()
         rec = self.last_rec
         if rec is None or rec.positions is None or self.hard_hold is not None:
             return
@@ -1484,9 +1611,32 @@ class Runner:
         if r.kind is not ReadKind.OK or any(p.side == lot.side and p.qty > 0 for p in r.value):
             return                                                        # not proven flat: protection is kept
         for stop in [p for p in lot.protects if p.live]:
-            self._release_stop(stop, f'venue {lot.symbol} {lot.side} flat (external close)')
+            self._release_stop(stop, f'venue {lot.symbol} {lot.side} flat (external close)', 'flat_side')
 
-    def _release_stop(self, stop, why):
+    def protect_cancel_in_hold(self, kind, stop):
+        """THE single check for cancelling a PROTECT order of ours while the central table forbids it (HOLD NORMAL:
+        protective orders are kept). Allowed in exactly two cases, each re-proven here from venue truth:
+          'flat_side'  the venue side of the stop's lot is re-read FLAT now: the stop protects nothing
+                       (Cowork NEW-3 / 6065286201 #2, an external flat close);
+          'replaced'   a smaller replacement stop of the same lot is WORKING (Cowork 6065286201 #3, re-sized down after
+                       an external partial close): protection is never removed before its replacement is confirmed.
+        Pending Codex's ruling (asked on #13) this is where the central NC-01 / NC-02a cell gets wired in."""
+        if self._permits(Purpose.PROTECT, Op.CANCEL):
+            return True                                                   # the table allows it (not HOLD)
+        it = stop.intent
+        if kind == 'flat_side':
+            r = self.venue.positions(it.symbol)
+            return r.kind is ReadKind.OK and not any(p.side == str(it.side) and p.qty > 0 for p in r.value)
+        if kind == 'replaced':
+            lot = self._lot(it.owner_id)
+            return lot is not None and any(p.live and p.intent_id != stop.intent_id and p.intent.qty < it.qty
+                                           and p.state is IntentState.WORKING for p in lot.protects)
+        return False
+
+    def _release_stop(self, stop, why, kind):
+        if not self.protect_cancel_in_hold(kind, stop):
+            self._incident(f'{stop.intent_id}: release ({why}) not permitted ({kind}): protection kept')
+            return
         if stop.state is not IntentState.CANCELLING:
             self._state(stop, IntentState.CANCELLING, ReasonCode.LIFECYCLE_ORPHAN_CANCEL)
         out = self.venue.cancel(self._ref(stop))
@@ -1507,7 +1657,8 @@ class Runner:
                 sides.setdefault((lot.symbol, lot.side), []).append(lot)
         for (sym, side), lots in sides.items():
             v = qty.get((sym, side), ZERO)
-            if sym not in listed or v <= 0 or v >= sum((x.qty for x in lots), ZERO):
+            ours = sum((x.qty for x in lots), ZERO) - self._em_filled_known(sym, side)
+            if sym not in listed or v <= 0 or v >= ours:
                 continue
             for lot in lots:
                 for iv in [x for x in self.fold.live_intents() if x.intent.owner_id == lot.lot_id]:
@@ -1520,7 +1671,7 @@ class Runner:
             if r.kind is not ReadKind.OK:
                 continue
             v = sum((p.qty for p in r.value if p.side == side), ZERO)
-            total = sum((x.qty for x in lots), ZERO)
+            total = sum((x.qty for x in lots), ZERO) - self._em_filled_known(sym, side)
             if v <= 0 or v >= total:
                 continue
             for lot in lots:
@@ -1540,6 +1691,13 @@ class Runner:
             else:
                 self._incident(f'{sym} {side}: external partial close over {len(lots)} lots: attribution ambiguous, '
                                'protection unchanged (owner resolves)')
+
+    def _em_filled_known(self, symbol, side):
+        """Our emergency fills already accounted this process (store back) - no venue read."""
+        left = self._em_left.get((symbol, side))
+        if left is None:
+            return self._em_filled.get((symbol, side), ZERO)
+        return sum((x.qty for x in self.fold.open_lots() if (x.symbol, x.side) == (symbol, side)), ZERO) - left
 
     def _protect_qty(self, lot):
         """The quantity a runner stop protects: the lot, or less after an external partial close (never above it)."""
@@ -1567,7 +1725,8 @@ class Runner:
                 return                                                    # old stop kept: retried next cycle
         for stop in [p for p in self._lot(lot_id).protects if p.live and p is not keep
                      and p.intent_id != keep.intent_id]:
-            self._release_stop(stop, f'replaced by {keep.intent.client_order_id} x {target} (external partial close)')
+            self._release_stop(stop, f'replaced by {keep.intent.client_order_id} x {target} (external partial close)',
+                               'replaced')
 
     def _suspended(self, lot_id):
         """A lot with a durable external-close owner item: no stop / close is sent for it any more."""
