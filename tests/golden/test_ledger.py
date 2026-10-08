@@ -29,17 +29,21 @@ Against the base (P1-1; the base is required evidence, never optional):
    current contract_sha, i.e. the record whose contract first introduced it. A divergence identical to the base's (pointer
    included) was bound when it was introduced and keeps its pointer through later unrelated corrections of the case. On the
    bootstrap base every divergence is new.
-7. ZB_GOLDEN_BASE may not resolve to HEAD when HEAD itself changes the pack against its parent (Cowork r2 (d)): that base
-   would make every change in HEAD look already-ledgered.
+7. ZB_GOLDEN_BASE may not resolve to HEAD when HEAD itself changes the pack (or a registry) against its parent (Cowork r2
+   (d)): that base would make every change in HEAD look already-ledgered.
+8. Registry anchor (Codex golden r5 ruling #1): BEHAVIOURS.json extends the base tree's copy (goldenlib.registry
+   .extends_behaviours: same version, base IDs and meanings unchanged at their positions, appends only). The only skip is a
+   base tree without the file (the bootstrap: the change that introduces it), decided by listing the base tree.
 """
 import json, os, re, subprocess, sys
 
 import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from goldenlib import LEDGER_PATH, MANIFEST_PATH, REPO_ROOT, schema  # noqa: E402
+from goldenlib import LEDGER_PATH, MANIFEST_PATH, REPO_ROOT, registry, schema  # noqa: E402
 
 MAN_REL, LED_REL = 'tests/golden/MANIFEST.json', 'tests/golden/CORRECTIONS.json'
+REGISTRY_RELS = (registry.BEHAVIOURS_REL,)
 MANIFEST_SCHEMA = 'zb-golden-manifest/2'
 # P1-2 anchor: the genesis entry, and the last entry of the bootstrap prefix (it transitively pins CORR-0000..0003 through the
 # prev_entry_sha links). Entries appended after it are protected by the base-prefix rule (5). Never edit these constants.
@@ -191,7 +195,7 @@ def _head_changes_pack():
     if _git('rev-parse', '--verify', '--quiet', 'HEAD^{commit}').returncode != 0 or \
             _git('rev-parse', '--verify', '--quiet', 'HEAD^1^{commit}').returncode != 0:
         return None                                   # root commit or shallow checkout: no parent to diff against
-    r = _git('diff', '--quiet', 'HEAD^1', 'HEAD', '--', MAN_REL, LED_REL, CASES_REL)
+    r = _git('diff', '--quiet', 'HEAD^1', 'HEAD', '--', MAN_REL, LED_REL, CASES_REL, *REGISTRY_RELS)
     return {0: False, 1: True}.get(r.returncode)
 
 
@@ -262,6 +266,30 @@ def base_cases(sha):
         c = schema.strict_loads(s.stdout.lstrip('﻿'))
         out[c.get('id', name[:-5])] = c
     return out
+
+
+def base_registry(sha, rel):
+    """The parsed registry `rel` of the base tree (data via `git show`, never imported code), or None when the base tree has
+    no such file (the bootstrap)."""
+    r = _git('ls-tree', '--name-only', sha, '--', rel)
+    if r.returncode != 0:
+        pytest.fail(f'cannot list {rel} in base {sha[:12]}: {r.stderr.strip()[:300]}')
+    if not r.stdout.strip():
+        return None
+    s = _git('show', f'{sha}:{rel}')
+    if s.returncode != 0:
+        pytest.fail(f'cannot read {rel} at base {sha[:12]}: {s.stderr.strip()[:300]}')
+    return registry.loads(s.stdout, f'base {rel}')
+
+
+def test_behaviour_registry_extends_the_base():
+    """Rule 8 (Codex golden r5 ruling #1): the behaviour IDs and meanings are anchored in the immutable base tree."""
+    ref, sha = golden_base()
+    base = base_registry(sha, registry.BEHAVIOURS_REL)
+    if base is None:
+        pytest.skip(f'bootstrap: base {ref} ({sha[:12]}) has no {registry.BEHAVIOURS_REL} - this change introduces the registry '
+                    '(the local pin in test_vocabulary still applies)')
+    registry.extends_behaviours(base, registry.read(registry.BEHAVIOURS_PATH))
 
 
 def check_divergence_binding(now_cases, ents, base_cases_, n_base_entries):

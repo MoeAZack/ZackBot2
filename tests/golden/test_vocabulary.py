@@ -5,14 +5,16 @@ or reused for another meaning; it is deprecated instead (schema.DEPRECATED_EXIT_
 reasons, notes) is display only and never compared. Mutations that must fail here: drop / rename / reorder a pinned code,
 fold stop_crossed back into STOP_HIT, add an engine.py / backtest.py exit reason without mapping it.
 Behaviour registry (schema.BEHAVIOUR_MEANING, Codex golden r3 residual ruling point 1): the same append-only rule, with the
-meanings pinned too; a case whose `behaviours` holds an unknown or duplicated ID is a CaseError."""
+meanings pinned too; a case whose `behaviours` holds an unknown or duplicated ID is a CaseError. The registry is data
+(BEHAVIOURS.json, Codex golden r5 ruling #1) and its real anchor is the base tree (test_ledger rule 8); the extension rule is
+unit-tested here on synthetic registries."""
 import copy, os, re, sys
 
 import pytest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
-from goldenlib import REPO_ROOT, schema  # noqa: E402
+from goldenlib import REPO_ROOT, registry, schema  # noqa: E402
 from goldenlib.adapters import legacy_backtest, legacy_engine  # noqa: E402
 
 # zb-golden/1 registry as published. Append new codes to schema.EXIT_CODE_MEANING (and here); never edit this prefix.
@@ -20,13 +22,14 @@ PINNED_V1 = ('STOP_HIT', 'TIME_EXIT', 'SIGNAL_EXIT', 'TP_FULL', 'TP_BASKET', 'TP
              'STOP_CROSSED', 'RESYNC', 'STOP_FAILED', 'BASKET_TP_PART')
 CODE = re.compile(r'[A-Z][A-Z0-9_]*')
 # Behaviour registry zb-golden-behaviours/1 as published (Codex golden r3 residual ruling, point 1): the ordered IDs AND the
-# sha256 of their [id, meaning] pairs. Append new IDs to schema.BEHAVIOUR_MEANING; never edit this prefix or its meanings.
+# sha256 of their [id, meaning] pairs. Append new IDs to tests/golden/BEHAVIOURS.json; never edit this prefix or its meanings.
+# Defence in depth only: this pin lives in a mutable file, so the anchor is the base tree's BEHAVIOURS.json (test_ledger rule 8).
 PINNED_BEHAVIOURS_VERSION = 'zb-golden-behaviours/1'
 PINNED_BEHAVIOURS_V1 = ('stop', 'gap', 'target', 'time_exit', 'cairo_day', 'daily_halt', 'dca', 'costs', 'pyramid', 'trail',
                         'trail_entry', 'max_pos', 'short_side', 'exit_codes', 'partial', 'tp1', 'min_size', 'outage', 'restart',
                         'ambiguity', 'entry')
 PINNED_BEHAVIOURS_V1_SHA = '9142440f1f09df2bda3ea1b341dd591bb712d68bc3972d8a62118de9c6a0b8ec'
-BEHAVIOUR_ID = re.compile(r'[a-z][a-z0-9_]*')
+BEHAVIOUR_ID = registry.BEHAVIOUR_ID
 
 
 def _src(name):
@@ -128,6 +131,71 @@ def test_behaviour_registry_is_versioned_and_append_only():
         assert len(schema.BEHAVIOUR_MEANING[b].strip()) >= 20, f'{b}: every behaviour ID states its meaning'
     for old, new in schema.DEPRECATED_BEHAVIOURS.items():
         assert old in schema.BEHAVIOURS and new in schema.BEHAVIOURS and new not in schema.DEPRECATED_BEHAVIOURS, (old, new)
+
+
+def test_the_registry_file_is_what_schema_serves():
+    """schema.BEHAVIOUR_MEANING is read from BEHAVIOURS.json (no second in-code copy that could drift from the anchored file)."""
+    doc = registry.read(registry.BEHAVIOURS_PATH)
+    assert doc['schema'] == schema.BEHAVIOURS_VERSION
+    assert [(e['id'], e['meaning']) for e in doc['behaviours']] == list(schema.BEHAVIOUR_MEANING.items())
+    assert doc['deprecated'] == schema.DEPRECATED_BEHAVIOURS
+
+
+def _beh_base():
+    return copy.deepcopy(registry.read(registry.BEHAVIOURS_PATH))
+
+
+def test_behaviour_registry_extension_controls():
+    """Codex golden r5 ruling #1, positive controls: an unchanged registry, an appended ID with its meaning, and an appended
+    deprecation extend the base."""
+    base = _beh_base()
+    registry.extends_behaviours(base, copy.deepcopy(base))
+    now = copy.deepcopy(base)
+    now['behaviours'].append({'id': 'new_causal_behaviour', 'meaning': 'a new behaviour appended with its one meaning'})
+    registry.extends_behaviours(base, now)
+    now['deprecated'] = {'entry': 'new_causal_behaviour'}
+    registry.extends_behaviours(base, now)
+
+
+@pytest.mark.parametrize('mutation', ['meaning_changed', 'meaning_whitespace', 'reordered', 'removed', 'renamed', 'inserted',
+                                      'version', 'deprecation_dropped', 'duplicate_id', 'duplicate_json_key', 'short_meaning',
+                                      'extra_key'])
+def test_behaviour_registry_extension_mutations(mutation):
+    """Codex golden r5 ruling #1: against the base registry (a synthetic stand-in for the base tree's copy), a changed
+    meaning - whatever the local pin says - a reorder, a removal, a rename, an insertion before a base ID, a version swap or a
+    dropped deprecation fails."""
+    base = _beh_base()
+    base['deprecated'] = {'entry': 'stop'}
+    now = copy.deepcopy(base)
+    bs = now['behaviours']
+    if mutation == 'meaning_changed':
+        bs[0]['meaning'] = 'the stop of the position, reworded into another meaning entirely'
+    elif mutation == 'meaning_whitespace':
+        bs[3]['meaning'] += ' '
+    elif mutation == 'reordered':
+        bs[0], bs[1] = bs[1], bs[0]
+    elif mutation == 'removed':
+        bs.pop(5)
+    elif mutation == 'renamed':
+        bs[2]['id'] = 'take_profit'
+    elif mutation == 'inserted':
+        bs.insert(0, {'id': 'new_causal_behaviour', 'meaning': 'a new behaviour inserted before the base prefix'})
+    elif mutation == 'version':
+        now['schema'] = 'zb-golden-behaviours/2'
+    elif mutation == 'deprecation_dropped':
+        now['deprecated'] = {}
+    elif mutation == 'duplicate_id':
+        bs.append(copy.deepcopy(bs[0]))
+    elif mutation == 'short_meaning':
+        bs.append({'id': 'new_causal_behaviour', 'meaning': 'too short'})
+    elif mutation == 'extra_key':
+        bs.append({'id': 'new_causal_behaviour', 'meaning': 'a new behaviour with an unknown key', 'note': 'x'})
+    if mutation == 'duplicate_json_key':
+        with pytest.raises(registry.RegistryError, match='duplicate JSON keys'):
+            registry.loads('{"schema": "zb-golden-behaviours/1", "schema": "zb-golden-behaviours/1"}')
+        return
+    with pytest.raises(registry.RegistryError):
+        registry.extends_behaviours(base, now)
 
 
 def test_every_registered_behaviour_is_used_by_the_pack():
