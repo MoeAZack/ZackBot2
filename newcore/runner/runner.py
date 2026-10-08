@@ -23,7 +23,8 @@ exception is the crash gap "decision recorded, intent not": the entry's derived 
 recorded and sent only while the cycle is still the signal candle's (now_ms == candle_close_ms); later it is spent.
 
 Invariants asserted at the end of every cycle (InvariantBreach when entries are not in HOLD; counted while in HOLD):
-  I1 protection  every venue position has owned, WORKING reduce-only stop orders listed on the venue whose quantity
+  I1 protection  every venue position is covered by NC-01 confirmed_coverage (WORKING carriers only) of its lots,
+                 each carrier listed on the venue now; the covered quantity
                  equals the position. Bounded window: exposure may exist without a confirmed stop only INSIDE one cycle
                  (between the entry's FINAL result and the stop's KNOWN result; between the stop cancel and the close
                  result), i.e. for zero candle-path time in replay and one cycle of venue calls live.
@@ -47,7 +48,7 @@ from newcore.domain import (Account, Action, Authority, Decision, DecisionRecord
                             InstrumentRules, IntentRecorded, IntentState, IntentStateChanged, Lot, LotSource,
                             ModeChanged, Op, Ownership, OwnershipProof, Portfolio, Position, ProofKind, Protection,
                             Purpose, ReasonCode, ResultObserved, ResultPhase, Rounding, Side, check_account_portfolio,
-                            check_flat_snapshot_fresh, permitted)
+                            check_flat_snapshot_fresh, confirmed_coverage, permitted)
 from newcore.domain.modes import Permission
 from newcore.domain.orders import terminal_for
 from newcore.domain.portfolio import Fill
@@ -218,8 +219,7 @@ class Runner:
             self._hold([ITEM_REASON[k] for k, _ in rec.items])
         self._protect_all()
         if decide:
-            for sym in self.cfg.symbols:
-                self._decide(sym)
+            self._decide_all()
         rec = self.reconcile()
         if not rec.ok:
             self.counters.mismatch_cycles += 1
@@ -363,17 +363,35 @@ class Runner:
                 self._close_lot(lot, reason=ReasonCode.EXIT_STOP_FAILED, key=None)
 
     # ----------------------------------------------------------------------------------------------- 4. decide
-    def _decide(self, symbol):
+    def _decide_all(self):
+        """Decide phase (overridden by the multi-symbol book: all closes first, then entries in priority order)."""
+        for sym in self.cfg.symbols:
+            self._decide(sym)
+
+    def _bars_now(self, symbol):
         r = self.bars.closed_bars(symbol, self.cfg.tf_ms, as_of_ms=self.now, limit=self.signals.window)
         if r.kind is not ReadKind.OK or not r.value or r.value[-1].close_ms != self.now:
-            return                                                        # no fresh closed candle: no decision
-        for s in self.signals.decide(symbol, r.value, self.now):
+            return None                                                   # no fresh closed candle: no decision
+        return r.value
+
+    def _sizing_equity(self):
+        """The equity entries are sized on (a ReadOutcome); the book snapshots it once per cycle."""
+        return self.reads.equity()
+
+    def _open_notional(self):
+        return sum((x.qty * x.avg_price for x in self.fold.open_lots()), ZERO)
+
+    def _decide(self, symbol):
+        bars = self._bars_now(symbol)
+        if bars is None:
+            return
+        for s in self.signals.decide(symbol, bars, self.now):
             if s.side not in self.cfg.sides:
                 continue
             if s.action == CLOSE:
                 self._exit(symbol, s)
             elif s.action == ENTER:
-                self._enter(symbol, s, r.value[-1].close)
+                self._enter(symbol, s, bars[-1].close)
 
     def _key(self, symbol, s, purpose):
         """The one runner-boundary key constructor (step 0 r2): strategy = '<name>@<tf>', version v<n>."""
@@ -395,11 +413,11 @@ class Runner:
         gate = self._entry_gate(symbol, s.side)
         sz = None
         if gate is None:
-            eq = self.reads.equity()
+            eq = self._sizing_equity()
             if eq.kind is not ReadKind.OK:
                 gate = ReasonCode.CONNECTIVITY_EXCHANGE_OUTAGE
             else:
-                notional = sum((x.qty * x.avg_price for x in self.fold.open_lots()), ZERO)
+                notional = self._open_notional()
                 sz = size_entry(equity=eq.value[0], stop_distance=s.stop_distance, ref_price=ref_price,
                                 rules=self.cfg.rules[symbol], policy=self.cfg.sizing, open_notional=notional)
                 gate = sz.reason
@@ -522,28 +540,32 @@ class Runner:
     # ----------------------------------------------------------------------------------------------- 5. invariants
     def check_invariants(self, rec):
         problems = []
+        pf = None
+        try:
+            pf = self.portfolio(rec)
+        except Exception as ex:                                           # NC-01 invariant refused the state
+            problems.append(f'I3 {type(ex).__name__}: {ex}')
         if rec.positions is not None and rec.orders is not None:
+            # I1: NC-01 confirmed_coverage (only a WORKING carrier counts; an unpromoted replacement never does) of
+            # the lots of each (symbol, side), and every counted carrier must be listed on the venue right now
+            listed = {o.ref.client_id for o in rec.orders if o.reduce}
+            cover = {}
+            if pf is not None and pf.ownership is Ownership.KNOWN:
+                live = pf.intents_by_id()
+                for lot in pf.lots:
+                    c = confirmed_coverage(lot.stop, live)
+                    if c and live[lot.stop.order].client_order_id in listed:
+                        cover[(lot.symbol, str(lot.side))] = cover.get((lot.symbol, str(lot.side)), ZERO) + c
             for p in rec.positions:
-                if p.qty == 0:
-                    continue
-                cover = ZERO
-                for o in rec.orders:
-                    iv = self.fold.by_client_id.get(o.ref.client_id)
-                    if iv is not None and iv.purpose is Purpose.PROTECT and iv.state is IntentState.WORKING and \
-                            (o.ref.symbol, o.position_side) == (p.symbol, p.side) and o.reduce:
-                        cover += o.qty
-                if cover != p.qty:
-                    problems.append(f'I1 {p.symbol} {p.side}: position {p.qty}, confirmed stop {cover}')
+                if p.qty != 0 and cover.get((p.symbol, p.side), ZERO) != p.qty:
+                    problems.append(f'I1 {p.symbol} {p.side}: position {p.qty}, confirmed stop '
+                                    f'{cover.get((p.symbol, p.side), ZERO)}')
         cids = self.fold.client_ids_recorded
         if len(cids) != len(set(cids)):
             problems.append('I2 a client id was recorded twice')
         keys = [self.fold.entry_key(iv) for iv in self.fold.intents.values() if iv.purpose is Purpose.ENTRY]
         if len(keys) != len(set(keys)):
             problems.append('I2 two entry intents for one DecisionKey')
-        try:
-            self.portfolio(rec)
-        except Exception as ex:                                           # NC-01 invariant refused the state
-            problems.append(f'I3 {type(ex).__name__}: {ex}')
         if problems:
             if self.fold.mode is EntriesMode.HOLD or not self.cfg.strict:
                 self.counters.unprotected_cycles += any(p.startswith('I1') for p in problems)
