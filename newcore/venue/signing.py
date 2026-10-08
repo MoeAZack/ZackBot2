@@ -9,7 +9,9 @@ import hashlib
 import hmac
 import urllib.parse
 
-RECV_WINDOW_MAX_MS = 60000          # Binance's documented upper bound for recvWindow
+BINANCE_RECV_WINDOW_MAX_MS = 60000  # Binance's documented upper bound for recvWindow
+RECV_WINDOW_MAX_MS = 10000          # NEWCORE policy cap (Cowork): a stale signed request must not stay valid for a minute
+_RESERVED = ('timestamp', 'recvwindow', 'signature')
 
 
 def hmac_sha256_hex(secret, payload):
@@ -45,9 +47,9 @@ def signed_query(pairs, now_ms, recv_window_ms, sign):
     sign: callable(bytes) -> hex str (the CredentialSource's sign; the secret never passes through here)."""
     check_ms(now_ms, 'timestamp')
     check_recv_window(recv_window_ms)
-    names = [n for n, _ in pairs]
-    if 'timestamp' in names or 'recvWindow' in names or 'signature' in names:
-        raise ValueError('timestamp / recvWindow / signature are set by the signer only')
+    for n, _ in pairs:                 # case-insensitive and percent-decoded: Signature, SIGNATURE, TimeStamp, ...
+        if isinstance(n, str) and urllib.parse.unquote(n).strip().lower() in _RESERVED:
+            raise ValueError('timestamp / recvWindow / signature are set by the signer only')
     full = list(pairs) + [('timestamp', str(now_ms)), ('recvWindow', str(recv_window_ms))]
     query = encode_params(full)
     signature = sign(query.encode('ascii'))

@@ -65,7 +65,7 @@ def test_mutated_base_url_cannot_leave_testnet():
 
 
 @pytest.mark.parametrize('kw', [dict(position_mode='hedge'), dict(http=None), dict(clock=5),
-                                dict(recv_window_ms=0), dict(recv_window_ms=70000), dict(timeout_s=0),
+                                dict(recv_window_ms=0), dict(recv_window_ms=70000), dict(recv_window_ms=60000), dict(timeout_s=0),
                                 dict(timeout_s=True), dict(credentials=object())])
 def test_constructor_validates(kw):
     args = dict(environment='testnet', http=FakeHttp(), clock=lambda: NOW_MS, position_mode=PositionMode.HEDGE)

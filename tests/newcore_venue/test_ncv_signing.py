@@ -79,6 +79,21 @@ def test_bad_recv_window_refused(rw):
         signed_query([('symbol', 'SOLUSDT')], 1700000000000, rw, lambda b: '0' * 64)
 
 
+@pytest.mark.parametrize('rw', [10001, 59999, 60000])
+def test_recv_window_policy_cap(rw):
+    # Cowork: Binance allows up to 60000; NEWCORE caps at 10000 so a stale signed request cannot linger.
+    with pytest.raises(ValueError):
+        signed_query([('symbol', 'SOLUSDT')], 1700000000000, rw, lambda b: '0' * 64)
+    assert signed_query([('symbol', 'SOLUSDT')], 1700000000000, 10000, lambda b: '0' * 64)
+
+
+@pytest.mark.parametrize('name', ['Signature', 'SIGNATURE', 'TimeStamp', 'TIMESTAMP', 'recvwindow', 'RECVWINDOW',
+                                  '%73ignature', 'sign%61ture', ' signature'])
+def test_reserved_names_refused_in_any_case(name):
+    with pytest.raises(ValueError):
+        signed_query([(name, '1')], 1700000000000, 5000, lambda b: '0' * 64)
+
+
 @pytest.mark.parametrize('name', ['timestamp', 'recvWindow', 'signature'])
 def test_caller_cannot_inject_signer_fields(name):
     with pytest.raises(ValueError):
