@@ -179,13 +179,29 @@ def _truth(venue, symbols, baseline):
     return known and not orders and not positions, orders, positions, notes
 
 
-def tnet_cleanup(venue, symbols, *, run_id, max_attempts=3, baseline=None):
+def tnet_cleanup(venue, symbols, *, run_id, max_attempts=3, baseline=None, confirm_reads=1, settle_s=0.0,
+                 sleep=None):
+    """confirm_reads > 1 (plan 6.4 c): a clean read is only CLEAN after confirm_reads - 1 further clean reads, each
+    settle_s apart (venue read lag, P2): a single lagging read must not declare an account flat. The teardown's own
+    sleeps are deliberately NOT bounded by the run deadline (the teardown must finish)."""
+    if type(confirm_reads) is not int or not 1 <= confirm_reads <= 5:
+        raise ValueError('confirm_reads must be an int in 1..5')
+    if confirm_reads > 1 and sleep is None:
+        raise ValueError('confirm_reads > 1 needs a sleep')
     baseline = dict(baseline or {})
     res = CleanupResult(clean=False, attempts=0)
     for attempt in range(1, max_attempts + 1):
         res.attempts = attempt
         clean, orders, positions, notes = _truth(venue, symbols, baseline)
         res.notes += [f'attempt {attempt}: {n}' for n in notes]
+        for k in range(confirm_reads - 1):
+            if not clean:
+                break
+            sleep(settle_s)
+            clean, orders, positions, notes = _truth(venue, symbols, baseline)
+            res.notes += [f'attempt {attempt} confirm {k + 1}: {n}' for n in notes]
+            if not clean:
+                res.notes.append(f'attempt {attempt}: a clean read was NOT confirmed {settle_s:g} s later (read lag)')
         if clean:
             res.clean = True
             break

@@ -40,7 +40,7 @@ from newcore.venue.tnet import (ReportLeak, default_report_dir, format_cleanup, 
                                 tnet_cleanup, tnet_preflight, tnet_report)
 from newcore.venue.tnet_exec import run_spec  # noqa: E402
 from newcore.venue.tnet_probes import ProbeAborted, probe_p1, probe_p2  # noqa: E402
-from newcore.venue.tnet_seams import FaultHttp  # noqa: E402
+from newcore.venue.tnet_seams import DeadlineExceeded, DeadlinePort, FaultHttp, RunDeadline  # noqa: E402
 from newcore.venue.tnet_spec import SpecError, load_spec, spec_digest  # noqa: E402
 from newcore.venue.transport import BinanceTestnetTransport, PositionMode  # noqa: E402
 
@@ -77,6 +77,8 @@ def _parser():
     p.add_argument('--p2-samples', type=int, default=3)
     p.add_argument('--deadline-s', type=float, default=900.0)
     p.add_argument('--cleanup-attempts', type=int, default=3)
+    p.add_argument('--settle-s', type=float, default=2.0,
+                   help='the cleanup confirms a clean read this long later (venue read lag); 0..10')
     p.add_argument('--gate', action='store_true', help='refuse a dirty working tree (exact-build report)')
     return p
 
@@ -158,6 +160,12 @@ def main(argv=None, *, http=None, local_clock=None, protector=None, out=None, mo
         args = _parser().parse_args(argv)
     except SystemExit as ex:
         return EXIT_USAGE if ex.code else EXIT_PASS
+    if not 0 <= args.settle_s <= 10:
+        out.write('REFUSED: --settle-s must be in 0..10.\n')
+        return EXIT_USAGE
+    if not 0 < args.deadline_s <= 7200:
+        out.write('REFUSED: --deadline-s must be in (0, 7200].\n')
+        return EXIT_USAGE
     if not args.probe and not args.scenario:
         out.write('REFUSED: give at least one --probe or --scenario.\n')
         return EXIT_USAGE
@@ -277,44 +285,54 @@ def _run(args, specs, symbols, min_balance, creds, scrubber, http, clock, mono, 
         return EXIT_PREFLIGHT
     out.write(f'preflight OK (run {run_id}, available {pre.available_balance} USDT)\n')
 
-    deadline = mono() + args.deadline_s
+    dl = RunDeadline(args.deadline_s, mono)
+    pv, bounded_sleep = DeadlinePort(venue, dl), dl.bounded(snooze)       # every send and every wait is bounded
     state = dict(probes={}, scenarios=[], aborted=None, exposure=False, deadline=False)
 
     def body():
+        try:
+            _body()
+        except DeadlineExceeded as ex:
+            state['deadline'] = True
+            out.write(f'DEADLINE: {ex}\n')
+
+    def _body():
         for pr in args.probe:
-            if mono() > deadline:
+            if dl.expired():
                 state['deadline'] = True
                 return
             try:
                 if pr == 'P1':
-                    r = probe_p1(venue, symbol=args.symbol, rules=rules[args.symbol], price=prices[args.symbol],
+                    r = probe_p1(pv, symbol=args.symbol, rules=rules[args.symbol], price=prices[args.symbol],
                                  run_id=run_id, route=args.stop_route)
                     state['probes']['P1_client_id_reuse'] = r.as_dict()
                 else:
-                    r = probe_p2(venue, symbol=args.symbol, rules=rules[args.symbol], price=prices[args.symbol],
+                    r = probe_p2(pv, symbol=args.symbol, rules=rules[args.symbol], price=prices[args.symbol],
                                  run_id=run_id, route=args.stop_route, samples=args.p2_samples, monotonic=mono,
-                                 sleep=snooze)
+                                 sleep=bounded_sleep)
                     state['probes']['P2_read_lag'] = r.as_dict()
                 out.write(f'{pr}: {"conclusive" if r.conclusive else "INCONCLUSIVE"}\n')
             except ProbeAborted as ex:
                 state['aborted'], state['exposure'] = f'{pr}: {ex}', ex.exposure_possible
                 return
         for _, spec in specs:
-            if mono() > deadline:
+            if dl.expired():
                 state['deadline'] = True
                 return
-            outcome, _ = run_spec(spec, venue, rules_by_symbol=rules, price_by_symbol=prices, run_id=run_id,
-                                  seam=seam, sleep=snooze)
+            outcome, _ = run_spec(spec, pv, rules_by_symbol=rules, price_by_symbol=prices, run_id=run_id,
+                                  seam=seam, sleep=bounded_sleep)
             state['scenarios'].append(outcome)
             out.write(f'scenario {outcome.name}: {"PASS" if outcome.passed else "FAIL"}\n')
 
     interrupted = False
     try:
         _, cleanup = guarded(body, lambda: tnet_cleanup(venue, symbols, run_id=run_id,
-                                                        max_attempts=args.cleanup_attempts, baseline=pre.baseline))
+                                                        max_attempts=args.cleanup_attempts, baseline=pre.baseline,
+                                                        confirm_reads=2, settle_s=args.settle_s, sleep=snooze))
     except KeyboardInterrupt:
         interrupted = True
-        cleanup = tnet_cleanup(venue, symbols, run_id=run_id, max_attempts=1, baseline=pre.baseline)
+        cleanup = tnet_cleanup(venue, symbols, run_id=run_id, max_attempts=1, baseline=pre.baseline,
+                               confirm_reads=2, settle_s=args.settle_s, sleep=snooze)
     out.write(format_cleanup(cleanup) + '\n')
 
     fees = pnl = Decimal(0)
