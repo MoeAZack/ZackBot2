@@ -1,0 +1,130 @@
+"""NC-07 mutation evidence. A script, not a pytest module.
+
+For each mutation it exports the committed HEAD (git archive) into a fresh temp folder, weakens ONE management rule
+there, runs tests/newcore_management, and requires the suite to FAIL - naming the failing tests. The working tree is
+never touched. Usage (one run at a time):
+
+    python tests/newcore_management/nc07_mutations.py            # all mutations
+    python tests/newcore_management/nc07_mutations.py NAME ...   # selected ones
+"""
+import io
+import os
+import re
+import shutil
+import subprocess
+import sys
+import tarfile
+import tempfile
+
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+M = 'newcore/management/'
+
+# name -> [(file, exact source text, replacement), ...]; each anchor must occur exactly once in its file
+MUTATIONS = {
+    'break-even on a touch': [(M + 'core.py',
+        "    if plan.be_after_tp1 and w['tp1_confirmed']:",
+        "    if plan.be_after_tp1 and (w['tp1_confirmed'] or (candle is not None and w['tp1'] is not None and (\n"
+        "            candle.high >= w['tp1'].price if side is plan.side.LONG else candle.low <= w['tp1'].price))):")],
+    'add cap removed': [
+        (M + 'core.py', "            req(CTX.add(w['add_filled'], q) <= (plan.add_qty or ZERO), p + '.qty',",
+                        "            req(True, p + '.qty',"),
+        (M + 'core.py', "                if w['add'] is None:\n                    w['add_phase'] = AddPhase.CLOSED",
+                        "                if w['add'] is None:\n                    w['add_phase'] = AddPhase.PENDING")],
+    'add risk not reserved in the plan': [(M + 'plan.py',
+        "                 [(plan.entry_qty, plan.entry_price)] +\n"
+        "                 ([(plan.add_qty, market_fill(plan.add_price, plan.side, plan.costs.slip, opening=True))]\n"
+        "                  if plan.add_price is not None else []))",
+        "                 [(plan.entry_qty, plan.entry_price)])")],
+    'tp1 split rounds up': [(M + 'core.py',
+        "                q = plan.rules.quantize_qty(CTX.multiply(plan.tp1_frac, live), Rounding.DOWN)",
+        "                q = plan.rules.quantize_qty(CTX.multiply(plan.tp1_frac, live), Rounding.UP)")],
+    'add size rounds up': [
+        (M + 'plan.py', "            req(self.add_qty == r.quantize_qty(CTX.multiply(self.add_scale, self.entry_qty), Rounding.DOWN),",
+                        "            req(self.add_qty == r.quantize_qty(CTX.multiply(self.add_scale, self.entry_qty), Rounding.UP),"),
+        (M + 'plan.py', "        q = rules.quantize_qty(CTX.multiply(add_scale, entry_qty), Rounding.DOWN)",
+                        "        q = rules.quantize_qty(CTX.multiply(add_scale, entry_qty), Rounding.UP)")],
+    'protection after targets': [(M + 'actions.py',
+        'TIER = {K.PLACE_STOP: Tier.PROTECT, K.REPLACE_STOP: Tier.PROTECT,',
+        'TIER = {K.PLACE_STOP: Tier.ADD, K.REPLACE_STOP: Tier.ADD,')],
+    'stop not resized to the position': [(M + 'core.py',
+        "    return Order(price=price, qty=w['qty'])",
+        "    return Order(price=price, qty=w['stop'].qty if w['stop'] is not None else w['qty'])")],
+    'add kept after TP1': [(M + 'core.py',
+        "    want_add = (plan.has_add and w['add_phase'] is not AddPhase.CLOSED and not w['tp1_confirmed']",
+        "    want_add = (plan.has_add and w['add_phase'] is not AddPhase.CLOSED")],
+    'gap fills at the level': [(M + 'sim.py',
+        "            hit = next(((g, x) for g in PRIORITY for leg, p, falls in lv",
+        "            hit = next(((g, p) for g in PRIORITY for leg, p, falls in lv")],
+    'stop-first ambiguity removed': [(M + 'sim.py',
+        '    blocked = st.stop is not None and candle.low <= st.stop.price <= candle.high',
+        '    blocked = False')],
+    'time exit off by one': [(M + 'core.py',
+        '            if (candle.open_ms - plan.entry_candle_open_ms) // plan.tf_ms + 1 >= plan.time_exit_candles:',
+        '            if (candle.open_ms - plan.entry_candle_open_ms) // plan.tf_ms >= plan.time_exit_candles:')],
+    'cost veto disabled': [(M + 'plan.py', '    ok = cost <= CTX.multiply(max_cost_r, dist)', '    ok = True')],
+    'late add kept open': [(M + 'core.py',
+        "                flags['flatten'] = CTX.add(flags['flatten'], q)",
+        "                pass")],
+}
+
+
+def export_head(dst):
+    root_py = subprocess.run(['git', '-C', ROOT, 'ls-files', '--', '*.py'], capture_output=True, text=True,
+                             check=True).stdout.split()
+    root_py = [f for f in root_py if '/' not in f]
+    blob = subprocess.run(['git', '-C', ROOT, 'archive', '--format=tar', 'HEAD', 'newcore', 'tests', 'pytest.ini',
+                           *root_py], capture_output=True, check=True).stdout
+    with tarfile.open(fileobj=io.BytesIO(blob)) as tar:
+        tar.extractall(dst, filter='data')
+
+
+def run_suite(cwd):
+    out = subprocess.run([sys.executable, '-m', 'pytest', '-p', 'no:cacheprovider', '-q', '-o', 'addopts=',
+                          'tests/newcore_management'], cwd=cwd, capture_output=True, text=True, timeout=900)
+    failed = sorted(set(re.findall(r'^FAILED (.+?)(?: - .*)?$', out.stdout, re.M)))
+    summary = (out.stdout.strip().splitlines() or [''])[-1]
+    return out.returncode, failed, summary
+
+
+def main(names):
+    tmp = tempfile.mkdtemp(prefix='nc07_mut_')
+    try:
+        base = os.path.join(tmp, 'base')
+        export_head(base)
+        rc, failed, summary = run_suite(base)
+        print(f'unmutated HEAD: rc={rc} {summary}')
+        if rc != 0:
+            print('  baseline must pass first:', failed)
+            return 2
+        survivors = []
+        for name in names:
+            work = os.path.join(tmp, re.sub(r'\W+', '_', name))
+            shutil.copytree(base, work)
+            ok = True
+            for path, old, new in MUTATIONS[name]:
+                src = open(os.path.join(work, path), encoding='utf-8').read()
+                if src.count(old) != 1:
+                    print(f'[{name}] mutation anchor not found exactly once in {path}: {old[:60]!r}')
+                    ok = False
+                    break
+                with open(os.path.join(work, path), 'w', encoding='utf-8', newline='\n') as f:
+                    f.write(src.replace(old, new))
+            if not ok:
+                survivors.append(name)
+                continue
+            rc, failed, summary = run_suite(work)
+            killed = rc != 0
+            print(f'[{name}] {"KILLED" if killed else "SURVIVED"} ({summary}); {len(failed)} failing tests')
+            for t in failed[:5]:
+                print(f'    {t}')
+            if not killed:
+                survivors.append(name)
+            shutil.rmtree(work, ignore_errors=True)
+        print('survivors:', survivors or 'none')
+        return 1 if survivors else 0
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv[1:] or list(MUTATIONS)))
