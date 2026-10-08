@@ -1,0 +1,61 @@
+{
+  "id": "NF-24",
+  "title": "state.json schema_version 1.0 (float), state.json.bak current",
+  "contract": "v2",
+  "kind": "negative",
+  "cowork_ref": "A08",
+  "reader_build": "N",
+  "source_repro": "repro_e_nc02_ext.py (log: repro/out_e.txt, section \"=== NF-24\")",
+  "input_files": {
+    "install.json": "5bf14af4a726ea5f5df53b42a1e2be7c4c384f62dde5de62bafe5673f50beca0",
+    "install.json.bak": "5bf14af4a726ea5f5df53b42a1e2be7c4c384f62dde5de62bafe5673f50beca0",
+    "settings.json": "ebba4e873b72d3d72e4b7e48aef5abb38a6dcb9b573982a39ea548d11b5a45d2",
+    "settings.json.bak": "ebba4e873b72d3d72e4b7e48aef5abb38a6dcb9b573982a39ea548d11b5a45d2",
+    "state.json": "da052ea84293ebb9673335994a85ce7f93c09d76be914abdc7cb5c94f48a2404",
+    "state.json.bak": "5fbbd9dc2a69aad26813034d398350c6c7c7f7a08c445cfd79b3e8f4cb091384"
+  },
+  "input_mtimes_ms": {
+    "install.json": 1791400000000,
+    "install.json.bak": 1791400000000,
+    "settings.json": 1791400000000,
+    "settings.json.bak": 1791400000000,
+    "state.json": 1791400000000,
+    "state.json.bak": 1791400000000
+  },
+  "layout": {},
+  "inject": null,
+  "exchange": {
+    "positions": [
+      {
+        "symbol": "BTCUSDT",
+        "side": "LONG",
+        "qty": 1.0
+      }
+    ],
+    "protective_orders": [
+      {
+        "tag": "o:1",
+        "symbol": "BTCUSDT",
+        "side": "LONG",
+        "qty": 1.0,
+        "stop": 95.0
+      }
+    ]
+  },
+  "legacy_observed": {
+    "build": "cff3f88",
+    "behaviour": "float 1.0 rejected as damage (engine.py:549, 1262); primary moved aside and the OLDER .bak promoted to managed lots (engine.py:1283-1292, restored_from_backup); a new automatic ETHUSDT entry was SENT after resume. resume allowed by the app/telegram gate that checks install_block only (app.py:1225-1227, telegram_ctl.py:524); MANUAL entries pass while paused (engine.py:3415); untracked only after 2 reconcile passes (engine.py:3268-3272)"
+  },
+  "violates": [
+    "D1 future schema: abort, state+backup byte-identical",
+    "D4 explicit exchange/state reconciliation before management resumes"
+  ],
+  "nc02_scenario": "primary header version is the float 1.0, backup is current",
+  "nc02_outcome": "ABORT-RO",
+  "nc02_required": {
+    "R-VERSION-TYPE": "a format/version header that is not a JSON integer >= 0 (string, float, bool, null, negative) is an UNKNOWN format and is handled like a future one (rule 1, ABORT-RO): the reader cannot prove it is older",
+    "R-ABORT-RO": "start-up aborts before ANY write to the store: every input file byte-identical after the attempt (sha256 equal), no rename, no .bak rotation, no settings write; the refusal is reported out-of-band (process exit code + boot incident log outside the store)",
+    "R-BACKUP-CANDIDATE": "an older generation (backup) is offered as a reconciliation CANDIDATE, never silently promoted to managed state; it becomes managed only after R-RECON-GATE passes against the exchange"
+  },
+  "contract_sha": "08f61e17eaa403f7f5a901dd7a89c5189f8ae4aea78551d98e12a6b9ecff7fe8"
+}

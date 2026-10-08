@@ -1,0 +1,61 @@
+{
+  "id": "NF-46",
+  "title": "intact store whose install.json (+.bak) names ANOTHER account; exchange positions equal the state",
+  "contract": "v2",
+  "kind": "negative",
+  "cowork_ref": "review-1 identity",
+  "reader_build": "N",
+  "source_repro": "repro_e_nc02_ext.py (log: repro/out_e.txt, section \"=== NF-46\")",
+  "input_files": {
+    "install.json": "e19955c3544277646d5fca757c5cdfc483bbcce582cbc4dab8c005fa7b4dfeee",
+    "install.json.bak": "e19955c3544277646d5fca757c5cdfc483bbcce582cbc4dab8c005fa7b4dfeee",
+    "settings.json": "fca131aa4e888f786ef9334f725b7fd6fe1d2a61715470cb55611eeed08cfcef",
+    "settings.json.bak": "fca131aa4e888f786ef9334f725b7fd6fe1d2a61715470cb55611eeed08cfcef",
+    "state.json": "97974acaa6cb37f015cfdfa3a680b650e54d8ffd5dbdc4a8d87b3cb574fd4de1",
+    "state.json.bak": "97974acaa6cb37f015cfdfa3a680b650e54d8ffd5dbdc4a8d87b3cb574fd4de1"
+  },
+  "input_mtimes_ms": {
+    "install.json": 1791400000000,
+    "install.json.bak": 1791400000000,
+    "settings.json": 1791400000000,
+    "settings.json.bak": 1791400000000,
+    "state.json": 1791400000000,
+    "state.json.bak": 1791400000000
+  },
+  "layout": {},
+  "inject": null,
+  "exchange": {
+    "positions": [
+      {
+        "symbol": "BTCUSDT",
+        "side": "LONG",
+        "qty": 1.0
+      }
+    ],
+    "protective_orders": [
+      {
+        "tag": "o:1",
+        "symbol": "BTCUSDT",
+        "side": "LONG",
+        "qty": 1.0,
+        "stop": 95.0
+      }
+    ]
+  },
+  "legacy_observed": {
+    "build": "cff3f88",
+    "behaviour": "install_mismatch -> paused (engine.py:1180-1190) - correct; one confirm_install (engine.py:1211-1224) re-binds and re-opens entries; no reconciliation record or snapshot-age check is required, position equality is taken as enough; a new automatic ETHUSDT entry was SENT after resume. resume allowed by the app/telegram gate that checks install_block only (app.py:1225-1227, telegram_ctl.py:524); MANUAL entries pass while paused (engine.py:3415); untracked only after 2 reconcile passes (engine.py:3268-3272)"
+  },
+  "violates": [
+    "D4 explicit exchange/state reconciliation before management resumes"
+  ],
+  "nc02_scenario": "marker binds ANOTHER account; positions equal the state (same-position / different-account attack)",
+  "nc02_outcome": "HOLD",
+  "nc02_required": {
+    "R-IDENTITY": "account binding is verified before any match; position equality never proves identity; an identity mismatch stays HOLD until the owner confirms the binding AND a fresh reconciliation record exists",
+    "R-MATCH": "\"match\" = same account binding + snapshot younger than the max age + per symbol/side aggregate quantity equal within the venue step tolerance + every owned order/stop id present with the expected lifecycle state + no unowned position or order; re-checked atomically at promotion",
+    "R-RECON-GATE": "management (and every new-risk path, MANUAL included) stays blocked until a reconciliation record binds state generation G to an exchange snapshot that matches it (positions, open orders, protective orders) or the owner adopts/flattens each difference explicitly; resuming entries alone never clears it",
+    "R-HOLD": "HOLD (Codex rulings 3 and 6): no new risk from any source (auto, manual, Telegram, UI, grid, maker); non-protective open intents are cancelled or drained through the priority queue; a late or partial fill is adopted and protected and stays blocked from new risk until reconciled; protective orders are kept; durable local append-only intent/result/incident events are allowed; no promotion and no reconciliation claim"
+  },
+  "contract_sha": "e64e28287703a1c43d8f9243ec521ee088ec2098c0432fe3b68f48055028bd7e"
+}

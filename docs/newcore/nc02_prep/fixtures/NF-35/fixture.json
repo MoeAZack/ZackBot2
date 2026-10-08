@@ -1,0 +1,57 @@
+{
+  "id": "NF-35",
+  "title": "intact current store, data folder read-only (EROFS on every write/rename)",
+  "contract": "v2",
+  "kind": "positive-control",
+  "cowork_ref": "C06/C07",
+  "reader_build": "N",
+  "source_repro": "repro_e_nc02_ext.py (log: repro/out_e.txt, section \"=== NF-35\")",
+  "input_files": {
+    "install.json": "bbd8b9a6e30346507466732244a22b3c609edd58ecb2ffef00c928c93efd45eb",
+    "install.json.bak": "bbd8b9a6e30346507466732244a22b3c609edd58ecb2ffef00c928c93efd45eb",
+    "settings.json": "273c49c800679c9e137f8cb2743d8fad76f057f8eeb094d09f04888150cfac6b",
+    "settings.json.bak": "273c49c800679c9e137f8cb2743d8fad76f057f8eeb094d09f04888150cfac6b",
+    "state.json": "d4d59d486956cb11570ac25a5996c409d2354ed00e35726d25c8dc9695515173",
+    "state.json.bak": "d4d59d486956cb11570ac25a5996c409d2354ed00e35726d25c8dc9695515173"
+  },
+  "input_mtimes_ms": {
+    "install.json": 1791400000000,
+    "install.json.bak": 1791400000000,
+    "settings.json": 1791400000000,
+    "settings.json.bak": 1791400000000,
+    "state.json": 1791400000000,
+    "state.json.bak": 1791400000000
+  },
+  "layout": {},
+  "inject": "every write, create, rename and replace in the data folder raises OSError(EROFS)",
+  "exchange": {
+    "positions": [
+      {
+        "symbol": "BTCUSDT",
+        "side": "LONG",
+        "qty": 1.0
+      }
+    ],
+    "protective_orders": [
+      {
+        "tag": "o:1",
+        "symbol": "BTCUSDT",
+        "side": "LONG",
+        "qty": 1.0,
+        "stop": 95.0
+      }
+    ]
+  },
+  "legacy_observed": {
+    "build": "cff3f88",
+    "behaviour": "start-up needs no write; the first save fails -> state_untrusted -> persist_block refuses automatic AND manual entries (engine.py:1366-1372) - CORRECT (no intent can be made durable, nothing sent)"
+  },
+  "violates": [],
+  "nc02_scenario": "intact reconciled store, the store directory is read-only",
+  "nc02_outcome": "HOLD",
+  "nc02_required": {
+    "R-IO-FAULT": "an I/O fault on the store (ENOSPC, EROFS, a directory or other non-file at a store path, permission) means no intent can be made durable, so nothing is sent; it is reported out-of-band; no partial generation and no partial evidence is left behind",
+    "R-HOLD": "HOLD (Codex rulings 3 and 6): no new risk from any source (auto, manual, Telegram, UI, grid, maker); non-protective open intents are cancelled or drained through the priority queue; a late or partial fill is adopted and protected and stays blocked from new risk until reconciled; protective orders are kept; durable local append-only intent/result/incident events are allowed; no promotion and no reconciliation claim"
+  },
+  "contract_sha": "bfb0459d8a2926ed19fe3a3dea5404985dfff019cd93dd901f43eba9c709d47e"
+}

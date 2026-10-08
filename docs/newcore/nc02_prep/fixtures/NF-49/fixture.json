@@ -1,0 +1,60 @@
+{
+  "id": "NF-49",
+  "title": "a complete, intact, reconciled legacy (cff3f88) data folder offered to NEWCORE (legacy import attempt); exchange =state",
+  "contract": "v2",
+  "kind": "negative",
+  "cowork_ref": "review-8 / ruling 10 legacy import",
+  "reader_build": "N",
+  "source_repro": "repro_e_nc02_ext.py (log: repro/out_e.txt, section \"=== NF-49\")",
+  "input_files": {
+    "install.json": "a9d5c8c614e2ac72987eb6d99d8af2be71338ea84d0f2d2e719006ddec7460ca",
+    "install.json.bak": "a9d5c8c614e2ac72987eb6d99d8af2be71338ea84d0f2d2e719006ddec7460ca",
+    "settings.json": "e271315791dc16e32fa9edf7680f9ccc0711c86748f54cc027833bd23af6d6d3",
+    "settings.json.bak": "e271315791dc16e32fa9edf7680f9ccc0711c86748f54cc027833bd23af6d6d3",
+    "state.json": "d179a050ee353aa11d97519f5d3ebec810ffc83bc865647d368c6bc19a4dd2b3",
+    "state.json.bak": "d179a050ee353aa11d97519f5d3ebec810ffc83bc865647d368c6bc19a4dd2b3"
+  },
+  "input_mtimes_ms": {
+    "install.json": 1791400000000,
+    "install.json.bak": 1791400000000,
+    "settings.json": 1791400000000,
+    "settings.json.bak": 1791400000000,
+    "state.json": 1791400000000,
+    "state.json.bak": 1791400000000
+  },
+  "layout": {},
+  "inject": null,
+  "exchange": {
+    "positions": [
+      {
+        "symbol": "BTCUSDT",
+        "side": "LONG",
+        "qty": 1.0
+      }
+    ],
+    "protective_orders": [
+      {
+        "tag": "o:1",
+        "symbol": "BTCUSDT",
+        "side": "LONG",
+        "qty": 1.0,
+        "stop": 95.0
+      }
+    ]
+  },
+  "legacy_observed": {
+    "build": "cff3f88",
+    "behaviour": "legacy reads its own folder and manages it (MANAGE, entries open) - the behaviour NEWCORE must NOT inherit: under Codex ruling 10 these bytes are never imported"
+  },
+  "violates": [
+    "D4 explicit exchange/state reconciliation before management resumes"
+  ],
+  "nc02_scenario": "a complete legacy data folder is present where NEWCORE starts (legacy import attempt); exchange non-flat",
+  "nc02_outcome": "HOLD-INIT",
+  "nc02_required": {
+    "R-NO-LEGACY-IMPORT": "NEWCORE never reads legacy state/settings/install files as state (Codex ruling 10): their presence is reported, their bytes stay identical, and NEWCORE starts with INIT on testnet (flat exchange -> MANAGE empty; non-flat -> HOLD-INIT)",
+    "R-FIRST-RUN-FLAT": "first-run initialization requires a successful exchange snapshot; a non-flat account blocks initialization until the owner adopts or closes each position/order explicitly",
+    "R-HOLD": "HOLD (Codex rulings 3 and 6): no new risk from any source (auto, manual, Telegram, UI, grid, maker); non-protective open intents are cancelled or drained through the priority queue; a late or partial fill is adopted and protected and stays blocked from new risk until reconciled; protective orders are kept; durable local append-only intent/result/incident events are allowed; no promotion and no reconciliation claim"
+  },
+  "contract_sha": "abc9a2ca59f742a6504716002d2f3703d90b852ca99e95517bf4bc690c43ed1e"
+}

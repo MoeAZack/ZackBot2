@@ -1,0 +1,64 @@
+{
+  "id": "NF-40",
+  "title": "lot.pending written by the legacy SAVE with only a qty (no kind/t) - save accepts what load rejects",
+  "contract": "v2",
+  "kind": "negative",
+  "cowork_ref": "E01/E05/E10",
+  "reader_build": "N",
+  "source_repro": "repro_e_nc02_ext.py (log: repro/out_e.txt, section \"=== NF-40\")",
+  "input_files": {
+    "install.json": "bbd8b9a6e30346507466732244a22b3c609edd58ecb2ffef00c928c93efd45eb",
+    "install.json.bak": "bbd8b9a6e30346507466732244a22b3c609edd58ecb2ffef00c928c93efd45eb",
+    "settings.json": "273c49c800679c9e137f8cb2743d8fad76f057f8eeb094d09f04888150cfac6b",
+    "settings.json.bak": "273c49c800679c9e137f8cb2743d8fad76f057f8eeb094d09f04888150cfac6b",
+    "state.json": "66f90fce7e176cef5f871424b990614cd7f91559da6d470248805cdf0b4821bc",
+    "state.json.bak": "66f90fce7e176cef5f871424b990614cd7f91559da6d470248805cdf0b4821bc"
+  },
+  "input_mtimes_ms": {
+    "install.json": 1791400000000,
+    "install.json.bak": 1791400000000,
+    "settings.json": 1791400000000,
+    "settings.json.bak": 1791400000000,
+    "state.json": 1791400000000,
+    "state.json.bak": 1791400000000
+  },
+  "layout": {},
+  "inject": null,
+  "exchange": {
+    "positions": [
+      {
+        "symbol": "BTCUSDT",
+        "side": "LONG",
+        "qty": 1.0
+      }
+    ],
+    "protective_orders": [
+      {
+        "tag": "o:1",
+        "symbol": "BTCUSDT",
+        "side": "LONG",
+        "qty": 1.0,
+        "stop": 95.0
+      }
+    ]
+  },
+  "legacy_observed": {
+    "build": "cff3f88",
+    "behaviour": "save_state() accepted the qty-only pending record twice (no validation on write, engine.py:1806-1807 -> 1332), so primary AND .bak hold it; the reader rejects both (engine.py:582-585) -> both moved aside, failed_closed with ZERO lots; a new automatic ETHUSDT entry was SENT after resume. resume allowed by the app/telegram gate that checks install_block only (app.py:1225-1227, telegram_ctl.py:524); MANUAL entries pass while paused (engine.py:3415); untracked only after 2 reconcile passes (engine.py:3268-3272)"
+  },
+  "violates": [
+    "D2 current damage: fail closed, keep evidence",
+    "D3 never an empty managed account",
+    "D4 explicit exchange/state reconciliation before management resumes"
+  ],
+  "nc02_scenario": "the committed snapshot holds an intent with only a quantity",
+  "nc02_outcome": "HOLD",
+  "nc02_required": {
+    "R-WRITE-VALIDATES": "every record is validated with the reader schema BEFORE commit; a record the reader would reject is never committed (the intent is refused and nothing is sent)",
+    "R-INTENT-SHAPE": "an order intent carries kind, client id, created_ms (integer UTC ms) and a quantity that is > 0, a whole number of venue steps and <= the venue maximum; any other shape is refused at write time and is damage at read time",
+    "R-NO-EMPTY": "an initialized account (marker or any store generation or evidence present) can never load as an empty portfolio; an empty portfolio is only legal for a first run whose exchange snapshot is flat (no positions, no open orders) or after an explicit owner adoption record",
+    "R-RECON-GATE": "management (and every new-risk path, MANUAL included) stays blocked until a reconciliation record binds state generation G to an exchange snapshot that matches it (positions, open orders, protective orders) or the owner adopts/flattens each difference explicitly; resuming entries alone never clears it",
+    "R-HOLD": "HOLD (Codex rulings 3 and 6): no new risk from any source (auto, manual, Telegram, UI, grid, maker); non-protective open intents are cancelled or drained through the priority queue; a late or partial fill is adopted and protected and stays blocked from new risk until reconciled; protective orders are kept; durable local append-only intent/result/incident events are allowed; no promotion and no reconciliation claim"
+  },
+  "contract_sha": "f566ab2ae8966c74e9a5a3e7f18b198064bcd6f14a5910d37beb3bff365337e9"
+}

@@ -1,0 +1,73 @@
+{
+  "id": "NF-44",
+  "title": "intact reconciled store; exchange ALSO holds an unknown ETHUSDT SHORT 0.5 and a foreign stop o:99",
+  "contract": "v2",
+  "kind": "negative",
+  "cowork_ref": "review-8 exchange shape",
+  "reader_build": "N",
+  "source_repro": "repro_e_nc02_ext.py (log: repro/out_e.txt, section \"=== NF-44\")",
+  "input_files": {
+    "install.json": "7eba05f75520d9b2dc5c250678fc809edbdb88bad26c60896b6157bd8dbaaf10",
+    "install.json.bak": "7eba05f75520d9b2dc5c250678fc809edbdb88bad26c60896b6157bd8dbaaf10",
+    "settings.json": "fca131aa4e888f786ef9334f725b7fd6fe1d2a61715470cb55611eeed08cfcef",
+    "settings.json.bak": "fca131aa4e888f786ef9334f725b7fd6fe1d2a61715470cb55611eeed08cfcef",
+    "state.json": "e03f11f862cf6c45516ac607205334c7c11f36513977a1f458b8bcd86c325690",
+    "state.json.bak": "e03f11f862cf6c45516ac607205334c7c11f36513977a1f458b8bcd86c325690"
+  },
+  "input_mtimes_ms": {
+    "install.json": 1791400000000,
+    "install.json.bak": 1791400000000,
+    "settings.json": 1791400000000,
+    "settings.json.bak": 1791400000000,
+    "state.json": 1791400000000,
+    "state.json.bak": 1791400000000
+  },
+  "layout": {},
+  "inject": null,
+  "exchange": {
+    "positions": [
+      {
+        "symbol": "BTCUSDT",
+        "side": "LONG",
+        "qty": 1.0
+      },
+      {
+        "symbol": "ETHUSDT",
+        "side": "SHORT",
+        "qty": 0.5
+      }
+    ],
+    "protective_orders": [
+      {
+        "tag": "o:1",
+        "symbol": "BTCUSDT",
+        "side": "LONG",
+        "qty": 1.0,
+        "stop": 95.0
+      },
+      {
+        "tag": "o:99",
+        "symbol": "ETHUSDT",
+        "side": "SHORT",
+        "qty": 0.5,
+        "stop": 60.0
+      }
+    ]
+  },
+  "legacy_observed": {
+    "build": "cff3f88",
+    "behaviour": "store loads clean, entries OPEN; ETHUSDT SHORT untracked only after pass 2 (engine.py:3268-3272); the foreign stop is left alone (verify_stops: reads only) - good; a new automatic ETHUSDT entry was SENT after resume. resume allowed by the app/telegram gate that checks install_block only (app.py:1225-1227, telegram_ctl.py:524); MANUAL entries pass while paused (engine.py:3415); untracked only after 2 reconcile passes (engine.py:3268-3272)"
+  },
+  "violates": [
+    "D4 explicit exchange/state reconciliation before management resumes"
+  ],
+  "nc02_scenario": "intact reconciled store; exchange additionally holds an unknown ETHUSDT SHORT 0.5 and a foreign stop o:99",
+  "nc02_outcome": "HOLD",
+  "nc02_required": {
+    "R-MATCH": "\"match\" = same account binding + snapshot younger than the max age + per symbol/side aggregate quantity equal within the venue step tolerance + every owned order/stop id present with the expected lifecycle state + no unowned position or order; re-checked atomically at promotion",
+    "R-NO-AUTO-CANCEL-FOREIGN": "an unknown/foreign order or position is never cancelled, closed or adopted automatically; it is a per-item owner decision while the account is HOLD",
+    "R-RECON-GATE": "management (and every new-risk path, MANUAL included) stays blocked until a reconciliation record binds state generation G to an exchange snapshot that matches it (positions, open orders, protective orders) or the owner adopts/flattens each difference explicitly; resuming entries alone never clears it",
+    "R-HOLD": "HOLD (Codex rulings 3 and 6): no new risk from any source (auto, manual, Telegram, UI, grid, maker); non-protective open intents are cancelled or drained through the priority queue; a late or partial fill is adopted and protected and stays blocked from new risk until reconciled; protective orders are kept; durable local append-only intent/result/incident events are allowed; no promotion and no reconciliation claim"
+  },
+  "contract_sha": "4b48cbb827832b8ba9b09d5006d2ba1d80d5baab6737c046f4d80293cc4111a6"
+}

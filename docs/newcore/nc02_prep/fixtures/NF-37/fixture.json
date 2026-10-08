@@ -1,0 +1,58 @@
+{
+  "id": "NF-37",
+  "title": "crash mid-write of the temp file: torn state.json.4242-1111.tmp next to an intact current store (POSITIVE control)",
+  "contract": "v2",
+  "kind": "positive-control",
+  "cowork_ref": "D02",
+  "reader_build": "N",
+  "source_repro": "repro_e_nc02_ext.py (log: repro/out_e.txt, section \"=== NF-37\")",
+  "input_files": {
+    "install.json": "bbd8b9a6e30346507466732244a22b3c609edd58ecb2ffef00c928c93efd45eb",
+    "install.json.bak": "bbd8b9a6e30346507466732244a22b3c609edd58ecb2ffef00c928c93efd45eb",
+    "settings.json": "273c49c800679c9e137f8cb2743d8fad76f057f8eeb094d09f04888150cfac6b",
+    "settings.json.bak": "273c49c800679c9e137f8cb2743d8fad76f057f8eeb094d09f04888150cfac6b",
+    "state.json": "cc4b4eded8bc4c26edb62348716e0bfb4436eefb56412df35ec8d1b572df178e",
+    "state.json.4242-1111.tmp": "cb5c66c1409a57fb1c932bfe32b360388db45973664c687aeb6864dffb653fe2",
+    "state.json.bak": "cc4b4eded8bc4c26edb62348716e0bfb4436eefb56412df35ec8d1b572df178e"
+  },
+  "input_mtimes_ms": {
+    "install.json": 1791400000000,
+    "install.json.bak": 1791400000000,
+    "settings.json": 1791400000000,
+    "settings.json.bak": 1791400000000,
+    "state.json": 1791400000000,
+    "state.json.4242-1111.tmp": 1791400001000,
+    "state.json.bak": 1791400000000
+  },
+  "layout": {},
+  "inject": null,
+  "exchange": {
+    "positions": [
+      {
+        "symbol": "BTCUSDT",
+        "side": "LONG",
+        "qty": 1.0
+      }
+    ],
+    "protective_orders": [
+      {
+        "tag": "o:1",
+        "symbol": "BTCUSDT",
+        "side": "LONG",
+        "qty": 1.0,
+        "stop": 95.0
+      }
+    ]
+  },
+  "legacy_observed": {
+    "build": "cff3f88",
+    "behaviour": "the torn temp is ignored; the intact store is managed normally - CORRECT for the outcome (the temp is not reported either, which NC-02 must add)"
+  },
+  "violates": [],
+  "nc02_scenario": "intact reconciled store + a torn uncommitted temp",
+  "nc02_outcome": "MANAGE",
+  "nc02_required": {
+    "R-UNCOMMITTED": "files that are not part of a committed generation (temp, partial, orphan) are never read as state and never silently deleted; they are reported and kept as evidence. A torn uncommitted temp alone does not block MANAGE"
+  },
+  "contract_sha": "e6cd97f40ff8eb5857449b3f4f7ba7f0c1daddb9c9987a934e7dee8f7d3929ec"
+}

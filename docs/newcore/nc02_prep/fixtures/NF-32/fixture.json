@@ -1,0 +1,62 @@
+{
+  "id": "NF-32",
+  "title": "state.json lot qty = 10**400 (integer literal beyond float range)",
+  "contract": "v2",
+  "kind": "negative",
+  "cowork_ref": "B15",
+  "reader_build": "N",
+  "source_repro": "repro_e_nc02_ext.py (log: repro/out_e.txt, section \"=== NF-32\")",
+  "input_files": {
+    "install.json": "bbd8b9a6e30346507466732244a22b3c609edd58ecb2ffef00c928c93efd45eb",
+    "install.json.bak": "bbd8b9a6e30346507466732244a22b3c609edd58ecb2ffef00c928c93efd45eb",
+    "settings.json": "273c49c800679c9e137f8cb2743d8fad76f057f8eeb094d09f04888150cfac6b",
+    "settings.json.bak": "273c49c800679c9e137f8cb2743d8fad76f057f8eeb094d09f04888150cfac6b",
+    "state.json": "04919f064a44f191072b35cb94eb2549d110ad9d3171e0fd6f131e36c43adafd",
+    "state.json.bak": "28217e78b35b16e371b566cb7c53d17b777e985322e3515cac5a61892bb35d1e"
+  },
+  "input_mtimes_ms": {
+    "install.json": 1791400000000,
+    "install.json.bak": 1791400000000,
+    "settings.json": 1791400000000,
+    "settings.json.bak": 1791400000000,
+    "state.json": 1791400000000,
+    "state.json.bak": 1791400000000
+  },
+  "layout": {},
+  "inject": null,
+  "exchange": {
+    "positions": [
+      {
+        "symbol": "BTCUSDT",
+        "side": "LONG",
+        "qty": 1.0
+      }
+    ],
+    "protective_orders": [
+      {
+        "tag": "o:1",
+        "symbol": "BTCUSDT",
+        "side": "LONG",
+        "qty": 1.0,
+        "stop": 95.0
+      }
+    ]
+  },
+  "legacy_observed": {
+    "build": "cff3f88",
+    "behaviour": "start-up RAISES an uncaught OverflowError at engine.py:518 (math.isfinite on a huge int inside _num); no incident, no evidence, no file written - an accidental, uncontrolled abort that repeats on every start"
+  },
+  "violates": [
+    "D2 current damage: fail closed, keep evidence",
+    "D4 explicit exchange/state reconciliation before management resumes"
+  ],
+  "nc02_scenario": "snapshot G has a quantity integer of 401 digits",
+  "nc02_outcome": "HOLD",
+  "nc02_required": {
+    "R-STRICT-PARSE": "the store parser treats as DAMAGE (rule 4, HOLD with evidence) - never as a valid document and never as an uncaught exception: duplicate object keys, NaN/Infinity tokens, numbers outside the declared range (quantities above the venue maximum, integers outside int64), any bytes after the document (NUL padding included), and a document that is all NUL",
+    "R-BACKUP-CANDIDATE": "an older generation (backup) is offered as a reconciliation CANDIDATE, never silently promoted to managed state; it becomes managed only after R-RECON-GATE passes against the exchange",
+    "R-RECON-GATE": "management (and every new-risk path, MANUAL included) stays blocked until a reconciliation record binds state generation G to an exchange snapshot that matches it (positions, open orders, protective orders) or the owner adopts/flattens each difference explicitly; resuming entries alone never clears it",
+    "R-HOLD": "HOLD (Codex rulings 3 and 6): no new risk from any source (auto, manual, Telegram, UI, grid, maker); non-protective open intents are cancelled or drained through the priority queue; a late or partial fill is adopted and protected and stays blocked from new risk until reconciled; protective orders are kept; durable local append-only intent/result/incident events are allowed; no promotion and no reconciliation claim"
+  },
+  "contract_sha": "05193ecafb7f578f4de50c861895c8b18396dde46824f28986c8e370e2f92d16"
+}

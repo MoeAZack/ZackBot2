@@ -1,0 +1,61 @@
+{
+  "id": "NF-25",
+  "title": "state.json schema_version null, state.json.bak schema_version -1",
+  "contract": "v2",
+  "kind": "negative",
+  "cowork_ref": "A08",
+  "reader_build": "N",
+  "source_repro": "repro_e_nc02_ext.py (log: repro/out_e.txt, section \"=== NF-25\")",
+  "input_files": {
+    "install.json": "6898d3d335288b7f9bd27f74559442a69aa4a209223c46e8e018da4830f8727e",
+    "install.json.bak": "6898d3d335288b7f9bd27f74559442a69aa4a209223c46e8e018da4830f8727e",
+    "settings.json": "c8916a4b3a633533d9f0627881e0473b612d118a562db7adecbbb0b9ce1537f1",
+    "settings.json.bak": "c8916a4b3a633533d9f0627881e0473b612d118a562db7adecbbb0b9ce1537f1",
+    "state.json": "f888a3bc531f49415603d6690f834ac76df9bff092ca44a940625108de8086ea",
+    "state.json.bak": "c84ebe908237f29999d50e76ec8b8a4c56198fe8014be0054b3a5b0df612fdd3"
+  },
+  "input_mtimes_ms": {
+    "install.json": 1791400000000,
+    "install.json.bak": 1791400000000,
+    "settings.json": 1791400000000,
+    "settings.json.bak": 1791400000000,
+    "state.json": 1791400000000,
+    "state.json.bak": 1791400000000
+  },
+  "layout": {},
+  "inject": null,
+  "exchange": {
+    "positions": [
+      {
+        "symbol": "BTCUSDT",
+        "side": "LONG",
+        "qty": 1.0
+      }
+    ],
+    "protective_orders": [
+      {
+        "tag": "o:1",
+        "symbol": "BTCUSDT",
+        "side": "LONG",
+        "qty": 1.0,
+        "stop": 95.0
+      }
+    ]
+  },
+  "legacy_observed": {
+    "build": "cff3f88",
+    "behaviour": "both rejected as damage (engine.py:549), both moved aside, failed_closed with ZERO lots; a new automatic ETHUSDT entry was SENT after resume. resume allowed by the app/telegram gate that checks install_block only (app.py:1225-1227, telegram_ctl.py:524); MANUAL entries pass while paused (engine.py:3415); untracked only after 2 reconcile passes (engine.py:3268-3272)"
+  },
+  "violates": [
+    "D1 future schema: abort, state+backup byte-identical",
+    "D3 never an empty managed account"
+  ],
+  "nc02_scenario": "primary version null, backup version -1",
+  "nc02_outcome": "ABORT-RO",
+  "nc02_required": {
+    "R-VERSION-TYPE": "a format/version header that is not a JSON integer >= 0 (string, float, bool, null, negative) is an UNKNOWN format and is handled like a future one (rule 1, ABORT-RO): the reader cannot prove it is older",
+    "R-ABORT-RO": "start-up aborts before ANY write to the store: every input file byte-identical after the attempt (sha256 equal), no rename, no .bak rotation, no settings write; the refusal is reported out-of-band (process exit code + boot incident log outside the store)",
+    "R-NO-MANAGE": "no AccountContext is created for the account: no order, cancel, stop repair, reconcile booking or journal write is issued; protective orders already on the exchange are left untouched"
+  },
+  "contract_sha": "bff26d7d96e2f37fb1f8325e638ad0a20c39865928a59bdbcd2da5b8cd73713a"
+}

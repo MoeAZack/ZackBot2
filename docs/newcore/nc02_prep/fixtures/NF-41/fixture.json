@@ -1,0 +1,61 @@
+{
+  "id": "NF-41",
+  "title": "lot.pending close with qty 0 (passes the legacy schema)",
+  "contract": "v2",
+  "kind": "negative",
+  "cowork_ref": "E02",
+  "reader_build": "N",
+  "source_repro": "repro_e_nc02_ext.py (log: repro/out_e.txt, section \"=== NF-41\")",
+  "input_files": {
+    "install.json": "7eba05f75520d9b2dc5c250678fc809edbdb88bad26c60896b6157bd8dbaaf10",
+    "install.json.bak": "7eba05f75520d9b2dc5c250678fc809edbdb88bad26c60896b6157bd8dbaaf10",
+    "settings.json": "fca131aa4e888f786ef9334f725b7fd6fe1d2a61715470cb55611eeed08cfcef",
+    "settings.json.bak": "fca131aa4e888f786ef9334f725b7fd6fe1d2a61715470cb55611eeed08cfcef",
+    "state.json": "dc51476a4ea5e61ca364acd7b1e5c52447a7ad93efe76874abaf2236cdfd6e20",
+    "state.json.bak": "dc51476a4ea5e61ca364acd7b1e5c52447a7ad93efe76874abaf2236cdfd6e20"
+  },
+  "input_mtimes_ms": {
+    "install.json": 1791400000000,
+    "install.json.bak": 1791400000000,
+    "settings.json": 1791400000000,
+    "settings.json.bak": 1791400000000,
+    "state.json": 1791400000000,
+    "state.json.bak": 1791400000000
+  },
+  "layout": {},
+  "inject": null,
+  "exchange": {
+    "positions": [
+      {
+        "symbol": "BTCUSDT",
+        "side": "LONG",
+        "qty": 1.0
+      }
+    ],
+    "protective_orders": [
+      {
+        "tag": "o:1",
+        "symbol": "BTCUSDT",
+        "side": "LONG",
+        "qty": 1.0,
+        "stop": 95.0
+      }
+    ]
+  },
+  "legacy_observed": {
+    "build": "cff3f88",
+    "behaviour": "qty 0 passes the schema (lo=0, engine.py:584); _resolve_pending treats it as FILLED from the position (engine.py:2259-2266): books a 0-qty \"tp\" exit and replaces the protective stop (stop + cancel sent, engine.py:2277)"
+  },
+  "violates": [
+    "D4 explicit exchange/state reconciliation before management resumes"
+  ],
+  "nc02_scenario": "the committed snapshot holds a close intent with quantity 0",
+  "nc02_outcome": "HOLD",
+  "nc02_required": {
+    "R-INTENT-SHAPE": "an order intent carries kind, client id, created_ms (integer UTC ms) and a quantity that is > 0, a whole number of venue steps and <= the venue maximum; any other shape is refused at write time and is damage at read time",
+    "R-WRITE-VALIDATES": "every record is validated with the reader schema BEFORE commit; a record the reader would reject is never committed (the intent is refused and nothing is sent)",
+    "R-RESULT-BEFORE-APPLY": "ownership changes only from a durable result record; reconcile never books an exit (stop, resync, close) at a guessed price from a position delta; an unexplained delta is a HOLD item",
+    "R-HOLD": "HOLD (Codex rulings 3 and 6): no new risk from any source (auto, manual, Telegram, UI, grid, maker); non-protective open intents are cancelled or drained through the priority queue; a late or partial fill is adopted and protected and stays blocked from new risk until reconciled; protective orders are kept; durable local append-only intent/result/incident events are allowed; no promotion and no reconciliation claim"
+  },
+  "contract_sha": "4aeb9cd03f23141899725d6555043a70732063e8ee287b1b2632124988e10b12"
+}

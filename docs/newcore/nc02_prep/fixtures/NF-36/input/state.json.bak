@@ -1,0 +1,142 @@
+{
+  "day": null,
+  "day_start_equity": null,
+  "halted": false,
+  "last_cycle": {},
+  "lots": {
+    "T|BTCUSDT|LONG|1791439331": {
+      "R": 5.0,
+      "adds": 0,
+      "ap": {
+        "coverage": "full",
+        "ctx": {
+          "entry": {
+            "btc": {
+              "decision_at": "2026-10-08T06:02:11+00:00",
+              "status": "unknown",
+              "why": "no closed-candle snapshot for this symbol / timeframe"
+            },
+            "btc_basis": "BTCUSDT 4h (4h not cached)",
+            "label": "unknown",
+            "rule": "bear: symbol close < EMA200 (lot tf) AND BTC close < EMA200 (btc_basis); bull mirrored; else mixed / unknown",
+            "symbol": {
+              "decision_at": "2026-10-08T06:02:11+00:00",
+              "status": "unknown",
+              "why": "no closed-candle snapshot for this symbol / timeframe"
+            }
+          }
+        },
+        "declared_at": "2026-10-08T06:02:11+00:00",
+        "policies": {
+          "breakeven": {
+            "params": {
+              "R": 5.0,
+              "arm_r": 1.0,
+              "e0": 100.0,
+              "fill": "the observed mark that crossed it (never improved)",
+              "level": "net P&L after fees paid and the estimated exit fee = 0, with the lot state at each observation"
+            },
+            "rule": "breakeven after costs: once +arm_r x R in favour, close when the net P&L after fees falls back to zero",
+            "v": 1
+          },
+          "regime_exit": {
+            "params": {
+              "against": "LONG: close < EMA200 and EMA20 < EMA50 (SHORT mirrored) on the last CLOSED candle of the lot tf",
+              "fill": "the first mark sample at/after the candle-close decision",
+              "tf": "4h"
+            },
+            "rule": "regime exit: close at the first mark after a closed candle of the lot tf with the trend against the position",
+            "v": 1
+          },
+          "runner": {
+            "params": {
+              "cohorts": "FIFO",
+              "price": "that partial close fill",
+              "qty": "open quantity right after the first partial take-profit"
+            },
+            "rule": "close the runner quantity at its activation",
+            "v": 1
+          },
+          "target": {
+            "params": {
+              "fill": "at the target level (resting order), modelled slippage",
+              "level": "the lot target valid at each observation (tp, else e0 + tp_r x R)"
+            },
+            "rule": "close the remainder at the planned target",
+            "v": 1
+          },
+          "time_cap": {
+            "params": {
+              "bars": 48,
+              "cap_t": "2026-10-16T06:02:11+00:00",
+              "tf_s": 14400
+            },
+            "rule": "time cap: close at the first observation at/after entry + 48 bars",
+            "v": 1
+          },
+          "trailing": {
+            "params": {
+              "atr": 2.0,
+              "atr_src": "atr0",
+              "best_from": 100.0,
+              "fill": "the observed mark that crossed the stop (never improved)",
+              "k": 2.0,
+              "k_src": "default"
+            },
+            "rule": "trailing stop k x ATR from the running best since entry",
+            "v": 1
+          }
+        },
+        "seq": -1,
+        "v": 2,
+        "why": null
+      },
+      "atr0": 2.0,
+      "atr_now": 2.0,
+      "avg": 100.0,
+      "best": 100.0,
+      "dca": 0,
+      "e0": 100.0,
+      "entry0": 100.0,
+      "eq_at_entry": 500.0,
+      "fees": 0.05,
+      "fills": [
+        [
+          "2026-10-08T06:02:11+00:00",
+          "entry",
+          1.0,
+          100.0
+        ]
+      ],
+      "key_strategy": "ema_mom",
+      "last_order_t": 1791439331.3919232,
+      "manual": false,
+      "mgmt": {
+        "stop_atr": 2.5
+      },
+      "opened": "2026-10-08T06:02:11+00:00",
+      "q0": 1.0,
+      "qty": 1.0,
+      "qty_max": 1.0,
+      "risk_usd": 5.0,
+      "share": 0.5,
+      "side": "LONG",
+      "sleeve": "T",
+      "stop": 95.0,
+      "stop_confirmed_t": 1791439331.3919244,
+      "stop_dirty": false,
+      "stop_id": "o:1",
+      "stop_miss": 0,
+      "stop_placed_t": 1791439331.3919244,
+      "symbol": "BTCUSDT",
+      "tf": "4h",
+      "tp1": false
+    }
+  },
+  "orphans": [],
+  "peak_equity": null,
+  "pending_entries": {},
+  "resting_entries": {},
+  "schema_version": 1,
+  "unconfirmed_entries": {}
+}

@@ -1,0 +1,61 @@
+{
+  "id": "NF-48",
+  "title": "generation rollback: state.json AND .bak replaced by an OLDER valid generation (lot 0.5) while the exchange and its stop hold 1.0",
+  "contract": "v2",
+  "kind": "negative",
+  "cowork_ref": "Codex: generation rollback",
+  "reader_build": "N",
+  "source_repro": "repro_e_nc02_ext.py (log: repro/out_e.txt, section \"=== NF-48\")",
+  "input_files": {
+    "install.json": "a9d5c8c614e2ac72987eb6d99d8af2be71338ea84d0f2d2e719006ddec7460ca",
+    "install.json.bak": "a9d5c8c614e2ac72987eb6d99d8af2be71338ea84d0f2d2e719006ddec7460ca",
+    "settings.json": "e271315791dc16e32fa9edf7680f9ccc0711c86748f54cc027833bd23af6d6d3",
+    "settings.json.bak": "e271315791dc16e32fa9edf7680f9ccc0711c86748f54cc027833bd23af6d6d3",
+    "state.json": "8507240b2df451796272e4330dda2f1f4b9d158c08c82474aa4e7c905f546f7d",
+    "state.json.bak": "8507240b2df451796272e4330dda2f1f4b9d158c08c82474aa4e7c905f546f7d"
+  },
+  "input_mtimes_ms": {
+    "install.json": 1791400000000,
+    "install.json.bak": 1791400000000,
+    "settings.json": 1791400000000,
+    "settings.json.bak": 1791400000000,
+    "state.json": 1791400000000,
+    "state.json.bak": 1791400000000
+  },
+  "layout": {},
+  "inject": null,
+  "exchange": {
+    "positions": [
+      {
+        "symbol": "BTCUSDT",
+        "side": "LONG",
+        "qty": 1.0
+      }
+    ],
+    "protective_orders": [
+      {
+        "tag": "o:1",
+        "symbol": "BTCUSDT",
+        "side": "LONG",
+        "qty": 1.0,
+        "stop": 95.0
+      }
+    ]
+  },
+  "legacy_observed": {
+    "build": "cff3f88",
+    "behaviour": "no rollback detection: loads clean, entries OPEN; the 0.5 difference is only \"untracked\" after pass 2 (engine.py:3268-3272) while the stop still protects 1.0; a new automatic ETHUSDT entry was SENT after resume. resume allowed by the app/telegram gate that checks install_block only (app.py:1225-1227, telegram_ctl.py:524); MANUAL entries pass while paused (engine.py:3415); untracked only after 2 reconcile passes (engine.py:3268-3272)"
+  },
+  "violates": [
+    "D4 explicit exchange/state reconciliation before management resumes"
+  ],
+  "nc02_scenario": "whole store replaced by an older valid generation (lot 0.5) while the exchange and its stop hold 1.0",
+  "nc02_outcome": "HOLD",
+  "nc02_required": {
+    "R-ROLLBACK-DETECT": "a readable generation lower than the high-water (or than what the exchange history proves) is HOLD, never MANAGE; with no surviving high-water, the exchange difference alone must still yield HOLD",
+    "R-GEN-MONOTONIC": "every store write carries (generation, writer_build, format_version, min_reader_version); a reader that sees a generation written by a newer build, or a lower generation than the highest it has seen (rollback/stale copy), aborts read-only (R-ABORT-RO)",
+    "R-RECON-GATE": "management (and every new-risk path, MANUAL included) stays blocked until a reconciliation record binds state generation G to an exchange snapshot that matches it (positions, open orders, protective orders) or the owner adopts/flattens each difference explicitly; resuming entries alone never clears it",
+    "R-HOLD": "HOLD (Codex rulings 3 and 6): no new risk from any source (auto, manual, Telegram, UI, grid, maker); non-protective open intents are cancelled or drained through the priority queue; a late or partial fill is adopted and protected and stays blocked from new risk until reconciled; protective orders are kept; durable local append-only intent/result/incident events are allowed; no promotion and no reconciliation claim"
+  },
+  "contract_sha": "85aaad65e64efd33595e5c35e3c4c3c5b7ef09729ffbe9e79ff57794188ed58f"
+}

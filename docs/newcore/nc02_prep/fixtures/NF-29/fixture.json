@@ -1,0 +1,62 @@
+{
+  "id": "NF-29",
+  "title": "state.json truncated (damaged), state.json.bak FUTURE (v99)",
+  "contract": "v2",
+  "kind": "negative",
+  "cowork_ref": "B08",
+  "reader_build": "N",
+  "source_repro": "repro_e_nc02_ext.py (log: repro/out_e.txt, section \"=== NF-29\")",
+  "input_files": {
+    "install.json": "6898d3d335288b7f9bd27f74559442a69aa4a209223c46e8e018da4830f8727e",
+    "install.json.bak": "6898d3d335288b7f9bd27f74559442a69aa4a209223c46e8e018da4830f8727e",
+    "settings.json": "c8916a4b3a633533d9f0627881e0473b612d118a562db7adecbbb0b9ce1537f1",
+    "settings.json.bak": "c8916a4b3a633533d9f0627881e0473b612d118a562db7adecbbb0b9ce1537f1",
+    "state.json": "080c951120aa78ffdb03e9d7d9310105bd0f915b75b5c8b90acdb92f7201ad41",
+    "state.json.bak": "e0ad9c526991b9a6e5d76a00e9f82420aa6f33605f068e116e3127362cb4b1af"
+  },
+  "input_mtimes_ms": {
+    "install.json": 1791400000000,
+    "install.json.bak": 1791400000000,
+    "settings.json": 1791400000000,
+    "settings.json.bak": 1791400000000,
+    "state.json": 1791400000000,
+    "state.json.bak": 1791400000000
+  },
+  "layout": {},
+  "inject": null,
+  "exchange": {
+    "positions": [
+      {
+        "symbol": "BTCUSDT",
+        "side": "LONG",
+        "qty": 1.0
+      }
+    ],
+    "protective_orders": [
+      {
+        "tag": "o:1",
+        "symbol": "BTCUSDT",
+        "side": "LONG",
+        "qty": 1.0,
+        "stop": 95.0
+      }
+    ]
+  },
+  "legacy_observed": {
+    "build": "cff3f88",
+    "behaviour": "primary moved aside as damage, then the FUTURE .bak is rejected (engine.py:549) and moved aside too (engine.py:1294) - the newer-writer evidence is renamed away; failed_closed with ZERO lots; a new automatic ETHUSDT entry was SENT after resume. resume allowed by the app/telegram gate that checks install_block only (app.py:1225-1227, telegram_ctl.py:524); MANUAL entries pass while paused (engine.py:3415); untracked only after 2 reconcile passes (engine.py:3268-3272)"
+  },
+  "violates": [
+    "D1 future schema: abort, state+backup byte-identical",
+    "D2 current damage: fail closed, keep evidence",
+    "D3 never an empty managed account"
+  ],
+  "nc02_scenario": "snapshot G damaged (truncated) and G-1 has format_version > R: rule 1 wins over damage",
+  "nc02_outcome": "ABORT-RO",
+  "nc02_required": {
+    "R-ABORT-RO": "start-up aborts before ANY write to the store: every input file byte-identical after the attempt (sha256 equal), no rename, no .bak rotation, no settings write; the refusal is reported out-of-band (process exit code + boot incident log outside the store)",
+    "R-NO-MANAGE": "no AccountContext is created for the account: no order, cancel, stop repair, reconcile booking or journal write is issued; protective orders already on the exchange are left untouched",
+    "R-GEN-MONOTONIC": "every store write carries (generation, writer_build, format_version, min_reader_version); a reader that sees a generation written by a newer build, or a lower generation than the highest it has seen (rollback/stale copy), aborts read-only (R-ABORT-RO)"
+  },
+  "contract_sha": "f75e1ae2abd2f9efab2cc716645f4a5c68c4c917bb515ddffab4e2cb900c4635"
+}

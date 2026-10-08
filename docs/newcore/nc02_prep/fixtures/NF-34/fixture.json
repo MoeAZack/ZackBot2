@@ -1,0 +1,62 @@
+{
+  "id": "NF-34",
+  "title": "state.json truncated, good .bak, and every write/rename in the data folder fails ENOSPC",
+  "contract": "v2",
+  "kind": "negative",
+  "cowork_ref": "C05",
+  "reader_build": "N",
+  "source_repro": "repro_e_nc02_ext.py (log: repro/out_e.txt, section \"=== NF-34\")",
+  "input_files": {
+    "install.json": "bbd8b9a6e30346507466732244a22b3c609edd58ecb2ffef00c928c93efd45eb",
+    "install.json.bak": "bbd8b9a6e30346507466732244a22b3c609edd58ecb2ffef00c928c93efd45eb",
+    "settings.json": "273c49c800679c9e137f8cb2743d8fad76f057f8eeb094d09f04888150cfac6b",
+    "settings.json.bak": "273c49c800679c9e137f8cb2743d8fad76f057f8eeb094d09f04888150cfac6b",
+    "state.json": "080c951120aa78ffdb03e9d7d9310105bd0f915b75b5c8b90acdb92f7201ad41",
+    "state.json.bak": "60600dc96bcd5a548e5ad0f40d1a10483bd8cbfadc1c08a059cc430b9687a460"
+  },
+  "input_mtimes_ms": {
+    "install.json": 1791400000000,
+    "install.json.bak": 1791400000000,
+    "settings.json": 1791400000000,
+    "settings.json.bak": 1791400000000,
+    "state.json": 1791400000000,
+    "state.json.bak": 1791400000000
+  },
+  "layout": {},
+  "inject": "every write, create, rename and replace in the data folder raises OSError(ENOSPC)",
+  "exchange": {
+    "positions": [
+      {
+        "symbol": "BTCUSDT",
+        "side": "LONG",
+        "qty": 1.0
+      }
+    ],
+    "protective_orders": [
+      {
+        "tag": "o:1",
+        "symbol": "BTCUSDT",
+        "side": "LONG",
+        "qty": 1.0,
+        "stop": 95.0
+      }
+    ]
+  },
+  "legacy_observed": {
+    "build": "cff3f88",
+    "behaviour": "pause could not be persisted, damaged file left in place (save_hold unmovable, engine.py:1272-1279); the OLDER .bak is promoted to managed lots in memory (engine.py:1283-1292); new risk blocked only by persist_block (state_untrusted, engine.py:1366-1372); no durable incident record"
+  },
+  "violates": [
+    "D4 explicit exchange/state reconciliation before management resumes"
+  ],
+  "nc02_scenario": "snapshot G truncated, G-1 intact, every store write/rename fails ENOSPC",
+  "nc02_outcome": "HOLD",
+  "nc02_required": {
+    "R-IO-FAULT": "an I/O fault on the store (ENOSPC, EROFS, a directory or other non-file at a store path, permission) means no intent can be made durable, so nothing is sent; it is reported out-of-band; no partial generation and no partial evidence is left behind",
+    "R-EVIDENCE": "the damaged bytes are preserved bit-for-bit (copy-then-mark, never move-then-rewrite) and linked from a durable incident record that survives restarts",
+    "R-BACKUP-CANDIDATE": "an older generation (backup) is offered as a reconciliation CANDIDATE, never silently promoted to managed state; it becomes managed only after R-RECON-GATE passes against the exchange",
+    "R-RECON-GATE": "management (and every new-risk path, MANUAL included) stays blocked until a reconciliation record binds state generation G to an exchange snapshot that matches it (positions, open orders, protective orders) or the owner adopts/flattens each difference explicitly; resuming entries alone never clears it",
+    "R-HOLD": "HOLD (Codex rulings 3 and 6): no new risk from any source (auto, manual, Telegram, UI, grid, maker); non-protective open intents are cancelled or drained through the priority queue; a late or partial fill is adopted and protected and stays blocked from new risk until reconciled; protective orders are kept; durable local append-only intent/result/incident events are allowed; no promotion and no reconciliation claim"
+  },
+  "contract_sha": "6fdb6cd60e91c499d278e338908cd5b02abf52d249cd9167a5c7b59f4740d0a7"
+}

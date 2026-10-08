@@ -1,0 +1,61 @@
+{
+  "id": "NF-42",
+  "title": "lot.pending add with qty 1e300 (finite, passes the legacy schema)",
+  "contract": "v2",
+  "kind": "negative",
+  "cowork_ref": "E03",
+  "reader_build": "N",
+  "source_repro": "repro_e_nc02_ext.py (log: repro/out_e.txt, section \"=== NF-42\")",
+  "input_files": {
+    "install.json": "7eba05f75520d9b2dc5c250678fc809edbdb88bad26c60896b6157bd8dbaaf10",
+    "install.json.bak": "7eba05f75520d9b2dc5c250678fc809edbdb88bad26c60896b6157bd8dbaaf10",
+    "settings.json": "fca131aa4e888f786ef9334f725b7fd6fe1d2a61715470cb55611eeed08cfcef",
+    "settings.json.bak": "fca131aa4e888f786ef9334f725b7fd6fe1d2a61715470cb55611eeed08cfcef",
+    "state.json": "1bc84a99dfabfc33e94aba07ff406b694a48b4807260286ee99da94e36d6e70c",
+    "state.json.bak": "1bc84a99dfabfc33e94aba07ff406b694a48b4807260286ee99da94e36d6e70c"
+  },
+  "input_mtimes_ms": {
+    "install.json": 1791400000000,
+    "install.json.bak": 1791400000000,
+    "settings.json": 1791400000000,
+    "settings.json.bak": 1791400000000,
+    "state.json": 1791400000000,
+    "state.json.bak": 1791400000000
+  },
+  "layout": {},
+  "inject": null,
+  "exchange": {
+    "positions": [
+      {
+        "symbol": "BTCUSDT",
+        "side": "LONG",
+        "qty": 1.0
+      }
+    ],
+    "protective_orders": [
+      {
+        "tag": "o:1",
+        "symbol": "BTCUSDT",
+        "side": "LONG",
+        "qty": 1.0,
+        "stop": 95.0
+      }
+    ]
+  },
+  "legacy_observed": {
+    "build": "cff3f88",
+    "behaviour": "qty 1e300 passes the schema (finite, engine.py:584); saved and reloaded unchanged; the pending is dropped as \"did not fill\" by the position check (engine.py:2279-2280) - an impossible intent was persisted and acted on instead of being refused"
+  },
+  "violates": [
+    "D4 explicit exchange/state reconciliation before management resumes"
+  ],
+  "nc02_scenario": "the committed snapshot holds an add intent with quantity 1e300",
+  "nc02_outcome": "HOLD",
+  "nc02_required": {
+    "R-INTENT-SHAPE": "an order intent carries kind, client id, created_ms (integer UTC ms) and a quantity that is > 0, a whole number of venue steps and <= the venue maximum; any other shape is refused at write time and is damage at read time",
+    "R-WRITE-VALIDATES": "every record is validated with the reader schema BEFORE commit; a record the reader would reject is never committed (the intent is refused and nothing is sent)",
+    "R-STRICT-PARSE": "the store parser treats as DAMAGE (rule 4, HOLD with evidence) - never as a valid document and never as an uncaught exception: duplicate object keys, NaN/Infinity tokens, numbers outside the declared range (quantities above the venue maximum, integers outside int64), any bytes after the document (NUL padding included), and a document that is all NUL",
+    "R-HOLD": "HOLD (Codex rulings 3 and 6): no new risk from any source (auto, manual, Telegram, UI, grid, maker); non-protective open intents are cancelled or drained through the priority queue; a late or partial fill is adopted and protected and stays blocked from new risk until reconciled; protective orders are kept; durable local append-only intent/result/incident events are allowed; no promotion and no reconciliation claim"
+  },
+  "contract_sha": "81d791df56fd83d9b9af351f2c3929fcc23b487ca6579af5e593d715da4ad12c"
+}

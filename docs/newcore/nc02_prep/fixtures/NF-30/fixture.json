@@ -1,0 +1,63 @@
+{
+  "id": "NF-30",
+  "title": "state.json has a duplicate \"lots\" key, the LAST one empty (json.loads keeps the last)",
+  "contract": "v2",
+  "kind": "negative",
+  "cowork_ref": "B13",
+  "reader_build": "N",
+  "source_repro": "repro_e_nc02_ext.py (log: repro/out_e.txt, section \"=== NF-30\")",
+  "input_files": {
+    "install.json": "6898d3d335288b7f9bd27f74559442a69aa4a209223c46e8e018da4830f8727e",
+    "install.json.bak": "6898d3d335288b7f9bd27f74559442a69aa4a209223c46e8e018da4830f8727e",
+    "settings.json": "c8916a4b3a633533d9f0627881e0473b612d118a562db7adecbbb0b9ce1537f1",
+    "settings.json.bak": "c8916a4b3a633533d9f0627881e0473b612d118a562db7adecbbb0b9ce1537f1",
+    "state.json": "2992d8a511b64f2a59ecc2b89eeba5b34d09cbef5ed1e172c4f46b4adff0941a",
+    "state.json.bak": "fa4920afcd72c7d366d538eb653f4c7b5eb040a752cc9e61ef6b62456147ed55"
+  },
+  "input_mtimes_ms": {
+    "install.json": 1791400000000,
+    "install.json.bak": 1791400000000,
+    "settings.json": 1791400000000,
+    "settings.json.bak": 1791400000000,
+    "state.json": 1791400000000,
+    "state.json.bak": 1791400000000
+  },
+  "layout": {},
+  "inject": null,
+  "exchange": {
+    "positions": [
+      {
+        "symbol": "BTCUSDT",
+        "side": "LONG",
+        "qty": 1.0
+      }
+    ],
+    "protective_orders": [
+      {
+        "tag": "o:1",
+        "symbol": "BTCUSDT",
+        "side": "LONG",
+        "qty": 1.0,
+        "stop": 95.0
+      }
+    ]
+  },
+  "legacy_observed": {
+    "build": "cff3f88",
+    "behaviour": "json.loads keeps the LAST duplicate (engine.py:444): an EMPTY portfolio loads with integrity={} and entries OPEN, no incident at all; the exchange position becomes untracked after pass 2; after two saves the .bak that still held the lot is overwritten (save_json engine.py:483-487); a new automatic ETHUSDT entry was SENT after resume. resume allowed by the app/telegram gate that checks install_block only (app.py:1225-1227, telegram_ctl.py:524); MANUAL entries pass while paused (engine.py:3415); untracked only after 2 reconcile passes (engine.py:3268-3272)"
+  },
+  "violates": [
+    "D2 current damage: fail closed, keep evidence",
+    "D3 never an empty managed account",
+    "D4 explicit exchange/state reconciliation before management resumes"
+  ],
+  "nc02_scenario": "snapshot G carries two \"lots\" members, the last one empty",
+  "nc02_outcome": "HOLD",
+  "nc02_required": {
+    "R-STRICT-PARSE": "the store parser treats as DAMAGE (rule 4, HOLD with evidence) - never as a valid document and never as an uncaught exception: duplicate object keys, NaN/Infinity tokens, numbers outside the declared range (quantities above the venue maximum, integers outside int64), any bytes after the document (NUL padding included), and a document that is all NUL",
+    "R-BACKUP-CANDIDATE": "an older generation (backup) is offered as a reconciliation CANDIDATE, never silently promoted to managed state; it becomes managed only after R-RECON-GATE passes against the exchange",
+    "R-RECON-GATE": "management (and every new-risk path, MANUAL included) stays blocked until a reconciliation record binds state generation G to an exchange snapshot that matches it (positions, open orders, protective orders) or the owner adopts/flattens each difference explicitly; resuming entries alone never clears it",
+    "R-HOLD": "HOLD (Codex rulings 3 and 6): no new risk from any source (auto, manual, Telegram, UI, grid, maker); non-protective open intents are cancelled or drained through the priority queue; a late or partial fill is adopted and protected and stays blocked from new risk until reconciled; protective orders are kept; durable local append-only intent/result/incident events are allowed; no promotion and no reconciliation claim"
+  },
+  "contract_sha": "90167953d9fb0d70493a494a0918cac7b59a3bf904bdf4996d77b8eb8ffaac1c"
+}

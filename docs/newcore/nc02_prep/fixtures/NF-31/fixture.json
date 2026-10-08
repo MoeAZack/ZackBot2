@@ -1,0 +1,62 @@
+{
+  "id": "NF-31",
+  "title": "state.json lot field R = NaN (a field the legacy schema does not validate)",
+  "contract": "v2",
+  "kind": "negative",
+  "cowork_ref": "B14",
+  "reader_build": "N",
+  "source_repro": "repro_e_nc02_ext.py (log: repro/out_e.txt, section \"=== NF-31\")",
+  "input_files": {
+    "install.json": "6898d3d335288b7f9bd27f74559442a69aa4a209223c46e8e018da4830f8727e",
+    "install.json.bak": "6898d3d335288b7f9bd27f74559442a69aa4a209223c46e8e018da4830f8727e",
+    "settings.json": "c8916a4b3a633533d9f0627881e0473b612d118a562db7adecbbb0b9ce1537f1",
+    "settings.json.bak": "c8916a4b3a633533d9f0627881e0473b612d118a562db7adecbbb0b9ce1537f1",
+    "state.json": "136aab1e7f54f14029b69598e1e0b209a554b76d1dddfcdb944a67f484ad42f7",
+    "state.json.bak": "f7878db0627a4d5214017aca8980b51528e3abf17117e578e2ca3da3fb64726e"
+  },
+  "input_mtimes_ms": {
+    "install.json": 1791400000000,
+    "install.json.bak": 1791400000000,
+    "settings.json": 1791400000000,
+    "settings.json.bak": 1791400000000,
+    "state.json": 1791400000000,
+    "state.json.bak": 1791400000000
+  },
+  "layout": {},
+  "inject": null,
+  "exchange": {
+    "positions": [
+      {
+        "symbol": "BTCUSDT",
+        "side": "LONG",
+        "qty": 1.0
+      }
+    ],
+    "protective_orders": [
+      {
+        "tag": "o:1",
+        "symbol": "BTCUSDT",
+        "side": "LONG",
+        "qty": 1.0,
+        "stop": 95.0
+      }
+    ]
+  },
+  "legacy_observed": {
+    "build": "cff3f88",
+    "behaviour": "json.loads accepts NaN (engine.py:444) and lot.R is not validated (_validate_lot engine.py:568-590): loads clean, integrity={}, entries OPEN, the lot is managed with R=NaN; every later save fails because the strict writer refuses NaN (engine.py:418, _save_safe engine.py:1332-1336) -> state_untrusted, the entry is not sent (write-ahead refused), state.json is never saved again"
+  },
+  "violates": [
+    "D2 current damage: fail closed, keep evidence",
+    "D4 explicit exchange/state reconciliation before management resumes"
+  ],
+  "nc02_scenario": "snapshot G has a NaN number in a lot field",
+  "nc02_outcome": "HOLD",
+  "nc02_required": {
+    "R-STRICT-PARSE": "the store parser treats as DAMAGE (rule 4, HOLD with evidence) - never as a valid document and never as an uncaught exception: duplicate object keys, NaN/Infinity tokens, numbers outside the declared range (quantities above the venue maximum, integers outside int64), any bytes after the document (NUL padding included), and a document that is all NUL",
+    "R-WRITE-VALIDATES": "every record is validated with the reader schema BEFORE commit; a record the reader would reject is never committed (the intent is refused and nothing is sent)",
+    "R-BACKUP-CANDIDATE": "an older generation (backup) is offered as a reconciliation CANDIDATE, never silently promoted to managed state; it becomes managed only after R-RECON-GATE passes against the exchange",
+    "R-HOLD": "HOLD (Codex rulings 3 and 6): no new risk from any source (auto, manual, Telegram, UI, grid, maker); non-protective open intents are cancelled or drained through the priority queue; a late or partial fill is adopted and protected and stays blocked from new risk until reconciled; protective orders are kept; durable local append-only intent/result/incident events are allowed; no promotion and no reconciliation claim"
+  },
+  "contract_sha": "bd92e55f7a1ee15ffd24f6925fcfa1968c259dfbe64e0190aae798f627f46810"
+}

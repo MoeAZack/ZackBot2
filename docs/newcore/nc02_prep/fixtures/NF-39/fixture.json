@@ -1,0 +1,46 @@
+{
+  "id": "NF-39",
+  "title": "first run interrupted before install.json: empty v1 state + settings, no marker; exchange holds an UNKNOWN ETHUSDT SHORT 0.5 with no stop (owner opened it by hand)",
+  "contract": "v2",
+  "kind": "negative",
+  "cowork_ref": "D04",
+  "reader_build": "N",
+  "source_repro": "repro_e_nc02_ext.py (log: repro/out_e.txt, section \"=== NF-39\")",
+  "input_files": {
+    "settings.json": "273c49c800679c9e137f8cb2743d8fad76f057f8eeb094d09f04888150cfac6b",
+    "state.json": "85264a9e3447c5cc3a5ae69f54b2dc27a405d15a84fc99563d2b01cd3a554bd6"
+  },
+  "input_mtimes_ms": {
+    "settings.json": 1791400000000,
+    "state.json": 1791400000000
+  },
+  "layout": {},
+  "inject": null,
+  "exchange": {
+    "positions": [
+      {
+        "symbol": "ETHUSDT",
+        "side": "SHORT",
+        "qty": 0.5
+      }
+    ],
+    "protective_orders": []
+  },
+  "legacy_observed": {
+    "build": "cff3f88",
+    "behaviour": "versioned settings without a marker -> install_block (engine.py:1136-1144) - correct so far; but confirm_install (engine.py:1211-1224) alone re-opens entries with an EMPTY portfolio while ETHUSDT SHORT 0.5 stays untracked; a new automatic ETHUSDT entry was SENT after resume. resume allowed by the app/telegram gate that checks install_block only (app.py:1225-1227, telegram_ctl.py:524); MANUAL entries pass while paused (engine.py:3415); untracked only after 2 reconcile passes (engine.py:3268-3272)"
+  },
+  "violates": [
+    "D3 never an empty managed account",
+    "D4 explicit exchange/state reconciliation before management resumes"
+  ],
+  "nc02_scenario": "first run never completed (no marker); exchange holds an unknown ETHUSDT SHORT 0.5 without a stop",
+  "nc02_outcome": "HOLD-INIT",
+  "nc02_required": {
+    "R-FIRST-RUN-FLAT": "first-run initialization requires a successful exchange snapshot; a non-flat account blocks initialization until the owner adopts or closes each position/order explicitly",
+    "R-KNOWN-EMPTY": "an empty portfolio is KNOWN empty only after a proven first run with a flat exchange, or through a journaled chain of results from the last non-empty generation; otherwise ownership is unknown (None, never []) and can never auto-match a flat exchange",
+    "R-IDENTITY": "account binding is verified before any match; position equality never proves identity; an identity mismatch stays HOLD until the owner confirms the binding AND a fresh reconciliation record exists",
+    "R-HOLD": "HOLD (Codex rulings 3 and 6): no new risk from any source (auto, manual, Telegram, UI, grid, maker); non-protective open intents are cancelled or drained through the priority queue; a late or partial fill is adopted and protected and stays blocked from new risk until reconciled; protective orders are kept; durable local append-only intent/result/incident events are allowed; no promotion and no reconciliation claim"
+  },
+  "contract_sha": "36d3ba20e74831da9d2cf6701d59c617c6751a4ca27dd7a80a8fd0a043c60ee7"
+}
