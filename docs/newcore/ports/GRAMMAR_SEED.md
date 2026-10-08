@@ -1,6 +1,6 @@
 # Step-0 journal: the grammar seed (contract DRAFT for Codex review)
 
-Status: **DRAFT r1, contract only, no implementation on this branch yet.** Codex confirmed the approach on #13
+Status: **DRAFT r2, contract only, no implementation on this branch yet.** Codex confirmed the approach on #13
 (6069341639). This file is for reviewing the CONTRACT before the code lands on `nc-ports-gate-seed`.
 **Compaction stays DISABLED** until the parity suite below and Cowork's attack pass are green.
 
@@ -43,22 +43,27 @@ stored twice. Every tuple is in canonical order (by id / key), so one gate state
 Nobody builds a seed by hand or from parallel lists. The only consumer is
 `JournalGate.rebuild(account, aggregate, tail, grammar_seed=seed)`.
 
-## 4. Fail-closed rules (each raises a typed error; the gate is never built half-seeded)
+## 4. Fail-closed rules (the gate is never built half-seeded)
 
-1. `seed_version != GRAMMAR_SEED_VERSION` -> refused (unsupported version, no migration).
-2. Another account / aggregate than the rebuild's -> refused.
-3. Prefix coverage: `events` holds exactly sequences 1..`last_sequence` (no gap, no duplicate event id), and against the
+Exact outcome: `rebuild(..., grammar_seed=)` raises `GrammarSeedRefused(GrammarError)` carrying `code` (S1..S6 below)
+and the field path; no gate object is returned, nothing is admitted, and NC-02 must stop the restart (no fallback to a
+facts-only rebuild, no partial seed). A seed that fails its own codec (`Record` decode) raises the codec error, same
+effect. `FactIndex` has no sequence of its own: the seed-to-facts binding is the snapshot pair (S3).
+
+1. **S1** `seed_version != GRAMMAR_SEED_VERSION` -> refused (unknown / unsupported version, no migration, no best-effort read).
+2. **S2** Another account / aggregate than the rebuild's -> refused.
+3. **S3** Prefix coverage: `events` holds exactly sequences 1..`last_sequence` (no gap, no duplicate event id), and against the
    snapshot it is restored with, `seed.last_sequence == snapshot.last_sequence` and `seed.facts == snapshot.facts`
    (`check_seed_for_snapshot(seed, snapshot)`). Any mismatch -> refused.
-4. Owner / lifecycle completeness: every intent's decision is in `decisions` and authorizes it; every lot-owned intent's
+4. **S4** Owner / lifecycle completeness: every intent's decision is in `decisions` and authorizes it; every lot-owned intent's
    owner is in `lots`, and every entry-owned intent's owner is a seeded ENTRY intent; `lineage` ordinals cover each
    (owner, purpose) group; client ids are unique.
-5. Impossible state -> refused: a `state` the intent's purpose / post-hoc rule cannot reach; `sent_at_ms` set without a
+5. **S5** Impossible state -> refused: a `state` the intent's purpose / post-hoc rule cannot reach; `sent_at_ms` set without a
    sent step (or missing on a sent state); a terminal `state` that is not `terminal_for(final)`; `final` that is not
-   FINAL, does not belong to the intent (check_result_for_intent), or exists for a still-sent-free intent wrongly;
+   FINAL, does not belong to the intent (check_result_for_intent), or is set on an intent that was never sent;
    `superseded` without a superseding final; `late_applied` without `late_result_id`; facts that do not contain a seeded
    final result's id.
-6. `grammar_seed=` together with `facts=` / `after_sequence=` -> refused: the seed is the one source.
+6. **S6** `grammar_seed=` together with `facts=` / `after_sequence=` -> refused: the seed is the one source.
 
 ## 5. Parity (the acceptance suite; compaction stays off until it and Cowork's attacks pass)
 
@@ -71,6 +76,11 @@ trades, incidents and an empty tail, for EVERY cut k = 0..N:
 - the same probe events get the same accept / refuse answer from the restored gate and from the full-log gate: reused
   decision / intent / client / result / venue-trade / incident ids, an event id re-used with other bytes, invalid
   lifecycle transitions, results after the final one, and the valid next event.
+
+- Binding harness: the NC-02b every-cut fixtures (`tests/newcore_store/nc02b_parity_fixtures.py`, commit 30b1055 on
+  `nc-02b-store`). Acceptance = `run_parity(seed_rebuild, CASES) == []` over every scenario and every k = 0..N,
+  which retires `test_the_two_recorded_gaps_today` (mid-cut `rebuild` refusals and the re-append conflict at the cut,
+  closed by the `events` digests in the seed). S1..S6 each get one negative test that asserts the exact `code`.
 
 ## 6. Boundaries
 
