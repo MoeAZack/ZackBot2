@@ -1,107 +1,71 @@
-"""DecisionKey and the restart-stable id derivations (STEP0_INTERFACE.md sections 1-2).
+"""Restart-stable identity over the NC-01 DecisionKey (STEP0_INTERFACE.md sections 1-2).
 
-DecisionKey = strategy / version + symbol + side + candle close + purpose. Its canonical bytes are byte-identical to
-NC-01's `codec.canonical_bytes(DecisionKey)` (same envelope, sorted keys, no whitespace, ASCII), so the binding to
-newcore.domain.DecisionKey when NC-01 lands changes no derived id.
+The key is newcore.domain.DecisionKey itself and its bytes are NC-01 codec.canonical_bytes(key): no mirror type.
+`decision_key()` is the ONE runner-boundary constructor: it builds `strategy` as the canonical strategy instance
+'<name>@<tf>' (the timeframe is part of the identity) and refuses a candle close that is not on the timeframe grid.
 
 Derivations (pure, deterministic, no clock / randomness / environment):
     decision_id  = 'dec_' + H('decision_id', account_id, key_bytes)[:32 hex]
-    intent_id    = 'int_' + H('intent_id', account_id, key_bytes, leg)[:32 hex]            leg 0..MAX_LEGS-1
-    child intent = 'int_' + H('child_intent_id', account_id, parent_intent_id, purpose, ordinal)[:32 hex]
+    intent_id    = 'int_' + H('intent_id', account_id, key_bytes, '0')[:32 hex]          one intent per keyed decision
+    lot_id       = 'lot_' + H('lot_id', account_id, entry_intent_id)[:32 hex]
+    child intent = 'int_' + H('child_intent_id', account_id, owner_id, purpose, ordinal)[:32 hex]
+                   owner_id = the int_ entry or lot_ the intent works for; ordinal = how many intents of that
+                   (owner, purpose) the journal already holds (the journal, not the caller, decides it)
     client id    = 'zbn1' + ('o' classic | 'a' algo) + '-' + base32(H('client_id', intent_id, route))[:26]   (32 chars)
 H(tag, *parts) = sha256(b'zackbot.newcore.' + tag + b'.v1' + (b'\\x00' + part)...); no part can contain NUL.
 """
 from __future__ import annotations
 
-import base64
 import hashlib
-import json
 import re
-from dataclasses import dataclass
 
-from .values import (PURPOSES, ROUTES, SIDES, PortValueError, check_choice, check_id, check_int, check_ms, check_symbol,
-                     check_text, plain, req)
+from newcore.domain import DecisionKey, Purpose, Side
+from newcore.domain.codec import canonical_bytes
 
-FORMAT = 'zackbot.newcore'          # NC-01 codec.FORMAT
-SCHEMA_VERSION = 1                  # NC-01 codec.SCHEMA_VERSION
-RECORD_TYPE = 'decision_key'        # NC-01 codec.RECORD_TYPES key
-KEY_FIELDS = ('candle_close_ms', 'purpose', 'side', 'strategy', 'strategy_version', 'symbol')
-MAX_LEGS = 16                       # intents one keyed decision may create (VS-01 uses leg 0 only)
+from .values import ROUTES, check_choice, check_id, check_int, check_ms, plain, req
+
+TIMEFRAMES = {'1m': 60_000, '3m': 180_000, '5m': 300_000, '15m': 900_000, '30m': 1_800_000, '1h': 3_600_000,
+              '2h': 7_200_000, '4h': 14_400_000, '6h': 21_600_000, '8h': 28_800_000, '12h': 43_200_000,
+              '1d': 86_400_000}
+STRATEGY_NAME_RE = re.compile(r'[a-z0-9_]{1,24}')
+STRATEGY_INSTANCE_RE = re.compile(r'([a-z0-9_]{1,24})@(' + '|'.join(TIMEFRAMES) + ')')
+VERSION_RE = re.compile(r'v[0-9]{1,6}')
 MAX_ORDINAL = 2 ** 31 - 1
 CLIENT_ID_PREFIX = {'classic': 'zbn1o-', 'algo': 'zbn1a-'}
 CLIENT_ID_HASH_CHARS = 26           # 130 bits of base32; total length 32 <= Binance's 36
+B32 = 'abcdefghijklmnopqrstuvwxyz234567'
 NEWCORE_CLIENT_ID_RE = re.compile(r'zbn1[oa]-[a-z2-7]{26}')
 
 
-@dataclass(frozen=True, slots=True, kw_only=True)
-class DecisionKey:
-    """The canonical key of one strategy decision. Bound to newcore.domain.DecisionKey when NC-01 lands.
-
-    candle_close_ms = the signal candle's open_ms + tf_ms (exclusive end; Binance kline closeTime + 1).
-    strategy names the strategy INSTANCE including its timeframe (e.g. 'trend_ema_mom@4h'); strategy_version the rule."""
-    strategy: str
-    strategy_version: str
-    symbol: str
-    side: str
-    candle_close_ms: int
-    purpose: str
-
-    def __post_init__(self):
-        for name in ('strategy', 'strategy_version', 'side', 'purpose', 'symbol'):
-            object.__setattr__(self, name, plain(getattr(self, name)))
-        check_text(self.strategy, 'DecisionKey.strategy', 32)
-        check_text(self.strategy_version, 'DecisionKey.strategy_version', 32)
-        check_symbol(self.symbol, 'DecisionKey.symbol')
-        check_choice(self.side, 'DecisionKey.side', SIDES)
-        check_ms(self.candle_close_ms, 'DecisionKey.candle_close_ms')
-        check_choice(self.purpose, 'DecisionKey.purpose', PURPOSES)
-
-    def canonical_bytes(self) -> bytes:
-        body = {f: getattr(self, f) for f in KEY_FIELDS}
-        doc = {'format': FORMAT, 'schema_version': SCHEMA_VERSION, 'record_type': RECORD_TYPE, 'body': body}
-        return json.dumps(doc, sort_keys=True, separators=(',', ':'), ensure_ascii=True, allow_nan=False).encode('ascii')
-
-    def sha256(self) -> str:
-        """Lowercase hex SHA-256 of canonical_bytes (equals NC-01 contract_sha256(key))."""
-        return hashlib.sha256(self.canonical_bytes()).hexdigest()
-
-    @classmethod
-    def from_canonical(cls, data) -> 'DecisionKey':
-        """Strict decode: exact envelope and body keys, no duplicate keys, ints never bools / floats, and the input must
-        be the canonical spelling (re-encoding gives the identical bytes)."""
-        raw = data.encode('utf-8') if isinstance(data, str) else data
-        req(isinstance(raw, (bytes, bytearray)), 'DecisionKey', 'bytes or text')
-        try:
-            doc = json.loads(bytes(raw).decode('ascii'), object_pairs_hook=_no_duplicates,
-                             parse_float=_refuse, parse_constant=_refuse)
-        except (UnicodeDecodeError, ValueError) as ex:
-            raise PortValueError('DecisionKey', f'not canonical ASCII JSON ({type(ex).__name__})') from None
-        req(type(doc) is dict and set(doc) == {'format', 'schema_version', 'record_type', 'body'}, 'DecisionKey',
-            'envelope keys')
-        req(doc['format'] == FORMAT and doc['record_type'] == RECORD_TYPE, 'DecisionKey', 'not a decision_key document')
-        req(type(doc['schema_version']) is int and doc['schema_version'] == SCHEMA_VERSION, 'DecisionKey.schema_version',
-            f'only version {SCHEMA_VERSION}')
-        body = doc['body']
-        req(type(body) is dict and set(body) == set(KEY_FIELDS), 'DecisionKey.body', f'exactly {KEY_FIELDS}')
-        req(all(type(body[f]) is str for f in KEY_FIELDS if f != 'candle_close_ms'), 'DecisionKey.body', 'text fields')
-        key = cls(**body)
-        req(key.canonical_bytes() == bytes(raw), 'DecisionKey', 'not the canonical spelling')
-        return key
+# ---------------------------------------------------------------------------------------------- the decision key
+def strategy_instance(name: str, tf: str) -> str:
+    """The canonical strategy-instance name '<rule name>@<timeframe>', e.g. strategy_instance('trend_ema_mom', '4h')."""
+    req(isinstance(name, str) and STRATEGY_NAME_RE.fullmatch(name) is not None, 'strategy.name', '[a-z0-9_]{1,24}')
+    check_choice(tf, 'strategy.tf', tuple(TIMEFRAMES))
+    return f'{name}@{tf}'
 
 
-def _no_duplicates(pairs):
-    out = {}
-    for k, v in pairs:
-        if k in out:
-            raise ValueError('duplicate key')
-        out[k] = v
-    return out
+def check_decision_key(key) -> int:
+    """A keyed decision's key must come from decision_key(): instance name, version, on-grid close. Returns tf_ms."""
+    req(isinstance(key, DecisionKey), 'key', 'an NC-01 DecisionKey')
+    m = STRATEGY_INSTANCE_RE.fullmatch(key.strategy)
+    req(m is not None, 'DecisionKey.strategy', f'{key.strategy!r} is not a <name>@<tf> strategy instance')
+    req(VERSION_RE.fullmatch(key.strategy_version) is not None, 'DecisionKey.strategy_version', 'v<digits>')
+    tf_ms = TIMEFRAMES[m.group(2)]
+    req(key.candle_close_ms % tf_ms == 0, 'DecisionKey.candle_close_ms', f'not on the {m.group(2)} candle grid')
+    return tf_ms
 
 
-def _refuse(text):
-    raise ValueError(f'float / constant {text!r}')
+def decision_key(name: str, version: str, tf: str, symbol: str, side, candle_close_ms: int, purpose) -> DecisionKey:
+    """The one runner-boundary constructor of a strategy DecisionKey."""
+    check_ms(candle_close_ms, 'candle_close_ms')
+    key = DecisionKey(strategy=strategy_instance(name, tf), strategy_version=version, symbol=symbol,
+                      side=Side(plain(side)), candle_close_ms=candle_close_ms, purpose=Purpose(plain(purpose)))
+    check_decision_key(key)
+    return key
 
 
+# ---------------------------------------------------------------------------------------------- derivations
 def _h(tag, *parts):
     h = hashlib.sha256(b'zackbot.newcore.' + tag.encode('ascii') + b'.v1')
     for part in parts:
@@ -109,44 +73,64 @@ def _h(tag, *parts):
     return h.digest()
 
 
-def _check_key(key):
-    req(isinstance(key, DecisionKey) or hasattr(key, 'candle_close_ms'), 'key', 'a DecisionKey')
-    return key if isinstance(key, DecisionKey) else DecisionKey(**{f: getattr(key, f) for f in KEY_FIELDS})
+def _key_bytes(key):
+    req(isinstance(key, DecisionKey), 'key', 'an NC-01 DecisionKey')
+    return canonical_bytes(key)
 
 
 def derive_decision_id(account_id: str, key: DecisionKey) -> str:
-    """The restart-stable decision id of a keyed (strategy) decision. One per (account, key): the consumed-signal rule."""
+    """One decision per (account, key): the consumed-signal rule."""
     check_id(account_id, 'account_id', 'acct')
-    return 'dec_' + _h('decision_id', account_id.encode('ascii'), _check_key(key).canonical_bytes()).hex()[:32]
+    return 'dec_' + _h('decision_id', account_id.encode('ascii'), _key_bytes(key)).hex()[:32]
 
 
-def derive_intent_id(account_id: str, key: DecisionKey, leg: int = 0) -> str:
-    """The restart-stable id of intent number `leg` created by the keyed decision."""
+def _derive_leg(account_id, key, leg):
+    """Leg-n id (the hash keeps a leg slot so a later multi-intent decision can be added under a new contract)."""
     check_id(account_id, 'account_id', 'acct')
-    check_int(leg, 'leg', 0, MAX_LEGS - 1)
-    k = _check_key(key).canonical_bytes()
-    return 'int_' + _h('intent_id', account_id.encode('ascii'), k, str(leg).encode('ascii')).hex()[:32]
+    check_int(leg, 'leg', 0, 15)
+    return 'int_' + _h('intent_id', account_id.encode('ascii'), _key_bytes(key), str(leg).encode('ascii')).hex()[:32]
 
 
-def derive_child_intent_id(account_id: str, parent_intent_id: str, purpose: str, ordinal: int) -> str:
-    """Restart-stable id of a follow-up intent that no candle decision keys (the protective stop of an entry, its
-    replacements, a drain). ordinal = how many `purpose` intents of this parent the journal already recorded."""
+def derive_intent_id(account_id: str, key: DecisionKey) -> str:
+    """The one intent a keyed decision may authorize."""
+    return _derive_leg(account_id, key, 0)
+
+
+def derive_lot_id(account_id: str, entry_intent_id: str) -> str:
+    """The lot opened by an entry intent's fill."""
     check_id(account_id, 'account_id', 'acct')
-    check_id(parent_intent_id, 'parent_intent_id', 'int')
-    purpose = plain(purpose)
-    check_choice(purpose, 'purpose', PURPOSES)
+    check_id(entry_intent_id, 'entry_intent_id', 'int')
+    return 'lot_' + _h('lot_id', account_id.encode('ascii'), entry_intent_id.encode('ascii')).hex()[:32]
+
+
+def derive_child_intent_id(account_id: str, owner_id: str, purpose, ordinal: int) -> str:
+    """Id of a follow-up intent no candle keys (the protective stop, its route fallback / replacements, a reduce or
+    close of a lot). ordinal = the journal's count of earlier intents of this (owner, purpose)."""
+    check_id(account_id, 'account_id', 'acct')
+    check_id(owner_id, 'owner_id', 'int', 'lot')
+    purpose = Purpose(plain(purpose))
     check_int(ordinal, 'ordinal', 0, MAX_ORDINAL)
-    return 'int_' + _h('child_intent_id', account_id.encode('ascii'), parent_intent_id.encode('ascii'),
-                       purpose.encode('ascii'), str(ordinal).encode('ascii')).hex()[:32]
+    return 'int_' + _h('child_intent_id', account_id.encode('ascii'), owner_id.encode('ascii'),
+                       purpose.value.encode('ascii'), str(ordinal).encode('ascii')).hex()[:32]
 
 
 def client_id_for(intent_id: str, route: str = 'classic') -> str:
-    """The venue client id (newClientOrderId / clientAlgoId) of an intent: one per (intent, route), never reused."""
+    """The venue client id (newClientOrderId / clientAlgoId) of an intent on its one route."""
     check_id(intent_id, 'intent_id', 'int')
     route = plain(route)
     check_choice(route, 'route', ROUTES)
-    b32 = base64.b32encode(_h('client_id', intent_id.encode('ascii'), route.encode('ascii'))).decode('ascii')
-    return CLIENT_ID_PREFIX[route] + b32.lower()[:CLIENT_ID_HASH_CHARS]
+    return CLIENT_ID_PREFIX[route] + _base32(_h('client_id', intent_id.encode('ascii'), route.encode('ascii')))
+
+
+def _base32(digest):
+    """The first 26 RFC 4648 base32 characters of a 32-byte digest, lower case (NC-01's allow-list has no base64)."""
+    n, bits = int.from_bytes(digest, 'big'), 8 * len(digest)
+    return ''.join(B32[(n >> (bits - 5 * (i + 1))) & 31] for i in range(CLIENT_ID_HASH_CHARS))
+
+
+def route_of(intent_id: str, client_id: str):
+    """'classic' / 'algo' when client_id is that route's derived id for intent_id, else None."""
+    return next((r for r in ROUTES if client_id_for(intent_id, r) == client_id), None)
 
 
 def is_newcore_client_id(client_id) -> bool:

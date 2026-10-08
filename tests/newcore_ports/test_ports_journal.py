@@ -1,203 +1,147 @@
-"""Step-0 JournalPort grammar (G1-G9) and the consumed-signal rule (STEP0_INTERFACE.md sections 2-3)."""
-import dataclasses
-import hashlib
-
+"""Step-0 journal: header_of over real NC-01 events, the Grammar / JournalGate, the consumed-signal rule, and the
+JournalPort contract suite run against the reference in-memory journal (STEP0_INTERFACE.md sections 2-3)."""
 import pytest
 
-from newcore.ports import journal as J
+from journal_contract import BAD, GOOD, JournalContract, _flow, flow_fallback, flow_fill_and_protect
+from nc_events import ACCT, ENTRY, KEY, LOT, PF, Scenario
+from newcore.domain import IntentState, Purpose, Side
+from newcore.domain.events import EVENT_TYPES
+from newcore.domain.errors import InvalidRecord
 from newcore.ports import keys as K
-from newcore.ports.journal import Admission, EventHeader, EventKind as E, GrammarError, ResultOutcome as R
-from newcore.ports.values import PortValueError
-
-ACCT = 'acct_' + '1' * 32
-PF = 'pf_' + '2' * 32
-KEY = K.DecisionKey(strategy='trend_ema_mom@4h', strategy_version='v1', symbol='SOLUSDT', side='LONG',
-                    candle_close_ms=1759924800000, purpose='entry')
-DEC = K.derive_decision_id(ACCT, KEY)
-ENTRY = K.derive_intent_id(ACCT, KEY)
-STOP = K.derive_child_intent_id(ACCT, ENTRY, 'protect', 0)
-MGMT_DEC = 'dec_' + '3' * 32          # an unkeyed (management) decision: caller-supplied id
+from newcore.ports.journal import (Admission, EventKind, JournalConflict, JournalGate, ResultOutcome, claim_signal,
+                                   header_of)
 
 
-class Log:
-    """Builds a header stream with consecutive sequences and distinct event ids / digests."""
+class ReferenceJournal:
+    """The reference JournalPort: in-memory list + JournalGate (what S1's MemoryJournal must behave like)."""
 
-    def __init__(self):
-        self.headers = []
+    def __init__(self, account_id=ACCT, aggregate_id=PF, events=()):
+        self._gate = JournalGate.rebuild(account_id, aggregate_id, events)
+        self._events = list(events)
 
-    def add(self, kind, **kw):
-        n = len(self.headers) + 1
-        h = EventHeader(kind=kind, event_id=f'evt_{n:032x}', account_id=ACCT, aggregate_id=PF, sequence=n,
-                        at_ms=1759924800000 + n, digest=hashlib.sha256(f'{n}{kind}{kw}'.encode()).hexdigest(), **kw)
-        self.headers.append(h)
-        return self
+    def append(self, event):
+        adm = self._gate.admit(event)
+        if adm is Admission.APPLY:
+            self._events.append(event)              # the durable write (fsync in a real store) happens here
+        return adm
 
-    def entry_round_trip(self):
-        return (self.add(E.DECISION_RECORDED, decision_id=DEC, decision_key=KEY)
-                .add(E.INTENT_RECORDED, decision_id=DEC, intent_id=ENTRY, purpose='entry',
-                     client_ids=(K.client_id_for(ENTRY),))
-                .add(E.SENT, intent_id=ENTRY)
-                .add(E.RESULT_RECORDED, intent_id=ENTRY, outcome=R.FINAL, evidence='exchange_final')
-                .add(E.INTENT_CLOSED, intent_id=ENTRY, to_state='filled')
-                .add(E.DECISION_RECORDED, decision_id=MGMT_DEC)
-                .add(E.INTENT_RECORDED, decision_id=MGMT_DEC, intent_id=STOP, purpose='protect',
-                     client_ids=(K.client_id_for(STOP), K.client_id_for(STOP, 'algo')))
-                .add(E.SENT, intent_id=STOP)
-                .add(E.STATE_CHANGED, intent_id=STOP, to_state='working'))
+    def last_sequence(self):
+        return len(self._events)
 
+    def read(self, after_sequence=0):
+        return iter(self._events[after_sequence:])
 
-def replay(headers):
-    return J.replay(ACCT, PF, headers)
+    def find_decision(self, decision_id):
+        return next((e for e in self._events if getattr(getattr(e, 'decision', None), 'decision_id', None)
+                     == decision_id), None)
+
+    def gate(self):
+        return self._gate
 
 
-def with_(h, **kw):
-    return dataclasses.replace(h, **kw)
+class TestReferenceJournal(JournalContract):
+    @pytest.fixture
+    def make_journal(self):
+        return ReferenceJournal
+
+    @pytest.fixture
+    def reopen(self):
+        return lambda j: ReferenceJournal(events=list(j.read()))        # a restart = rebuild from the durable events
 
 
-# ------------------------------------------------------------------------------------------------ good sequences
-def test_entry_fill_then_protect_is_accepted():
-    g = replay(Log().entry_round_trip().headers)
-    assert g.last_sequence == 9 and g.is_consumed(KEY)
+# ------------------------------------------------------------------------------------------------ header_of
+def test_header_of_maps_every_nc01_event_type():
+    s = _flow(flow_fallback)
+    s.hold()
+    kinds = [header_of(ev).kind for ev in s.events]
+    assert kinds[:5] == [EventKind.DECISION_RECORDED, EventKind.INTENT_RECORDED, EventKind.SENT,
+                         EventKind.RESULT_RECORDED, EventKind.INTENT_CLOSED]
+    assert kinds[-1] is EventKind.MODE_CHANGED and EventKind.STATE_CHANGED in kinds
+    assert len(EVENT_TYPES) == 6 and len(EventKind) == 8      # a new NC-01 event type must be mapped here first
 
 
-def test_lost_answer_unknown_not_found_then_final_is_accepted():
-    log = Log().add(E.DECISION_RECORDED, decision_id=DEC, decision_key=KEY).add(
-        E.INTENT_RECORDED, decision_id=DEC, intent_id=ENTRY, purpose='entry', client_ids=(K.client_id_for(ENTRY),))
-    log.add(E.SENT, intent_id=ENTRY).add(E.RESULT_RECORDED, intent_id=ENTRY, outcome=R.UNKNOWN)
-    log.add(E.STATE_CHANGED, intent_id=ENTRY, to_state='unknown')
-    log.add(E.RESULT_RECORDED, intent_id=ENTRY, outcome=R.NOT_FOUND)
-    log.add(E.MODE_CHANGED).add(E.INCIDENT_RECORDED)
-    log.add(E.RESULT_RECORDED, intent_id=ENTRY, outcome=R.FINAL, evidence='not_found_corroborated')
-    log.add(E.INTENT_CLOSED, intent_id=ENTRY, to_state='cancelled').add(E.BINDING_CHANGED)
-    assert replay(log.headers).last_sequence == 11
+def test_header_of_projects_identity_and_lineage():
+    s = _flow(flow_fill_and_protect)
+    dec, rec, sent, res = (header_of(e) for e in s.events[:4])
+    assert dec.decision_key == KEY and dec.authorized == (ENTRY,)
+    assert rec.owner_id is None and rec.client_ids == (K.client_id_for(ENTRY),) and rec.purpose is Purpose.ENTRY
+    assert res.outcome is ResultOutcome.FINAL and res.client_ids == rec.client_ids
+    stop = header_of(s.events[6])
+    assert stop.owner_id == LOT and stop.intent_id == K.derive_child_intent_id(ACCT, LOT, Purpose.PROTECT, 0)
+    with pytest.raises(InvalidRecord):
+        header_of(object())
 
 
-def test_never_sent_intent_ends_not_sent():
-    log = Log().add(E.DECISION_RECORDED, decision_id=DEC, decision_key=KEY).add(
-        E.INTENT_RECORDED, decision_id=DEC, intent_id=ENTRY, purpose='entry', client_ids=(K.client_id_for(ENTRY),))
-    log.add(E.STATE_CHANGED, intent_id=ENTRY, to_state='cancelling')
-    log.add(E.RESULT_RECORDED, intent_id=ENTRY, outcome=R.FINAL, evidence='not_sent')
-    log.add(E.INTENT_CLOSED, intent_id=ENTRY, to_state='not_sent')
-    replay(log.headers)
+def test_not_found_projects_to_not_found():
+    s = Scenario()
+    s.entry_filled()
+    sid = s.protect_attempt(0)
+    assert header_of(s.result(sid, 'not_found')).outcome is ResultOutcome.NOT_FOUND
+    assert header_of(s.result(sid, 'unknown')).outcome is ResultOutcome.UNKNOWN
 
 
-def test_idempotent_reapply_is_a_no_op():
-    hs = Log().entry_round_trip().headers
-    g = replay(hs)
-    for h in hs:
-        assert g.admit(h) is Admission.ALREADY_APPLIED
-    assert g.last_sequence == len(hs)
+# ------------------------------------------------------------------------------------------------ gate behaviour
+def test_refused_event_leaves_the_gate_unchanged_and_the_right_event_still_applies():
+    s = _flow(flow_fill_and_protect)
+    g = JournalGate(ACCT, PF)
+    for ev in s.events[:3]:
+        g.admit(ev)
+    with pytest.raises(JournalConflict):
+        g.admit(s.events[4])                       # gap
+    assert g.grammar.last_sequence == 3 and g.admit(s.events[3]) is Admission.APPLY
 
 
-# ------------------------------------------------------------------------------------------------ bad sequences
-def bad(headers, match):
-    with pytest.raises(GrammarError, match=match):
-        replay(headers)
-
-
-def test_out_of_order_and_gap_are_rejected():
-    hs = Log().entry_round_trip().headers
-    bad([hs[1], hs[0]] + hs[2:], 'G2')                 # reorder
-    bad(hs[:2] + hs[3:], 'G2')                          # gap
-    bad(hs[:3] + [with_(hs[3], event_id='evt_' + 'f' * 32, sequence=3)], 'G2')   # sequence reused by another event
-
-
-def test_duplicate_event_id_with_other_bytes_is_a_conflict():
-    hs = Log().entry_round_trip().headers
-    g = replay(hs)
-    with pytest.raises(GrammarError, match='G3'):
-        g.admit(with_(hs[2], digest='0' * 64))
-    with pytest.raises(GrammarError, match='G3'):
-        g.admit(with_(hs[2], sequence=len(hs) + 1))
-
-
-def test_other_aggregate_is_rejected():
-    hs = Log().entry_round_trip().headers
-    bad([with_(hs[0], aggregate_id='pf_' + '9' * 32)], 'G1')
-
-
-def test_result_before_intent_and_before_sent():
-    hs = Log().entry_round_trip().headers
-    bad([hs[0], with_(hs[3], sequence=2)], 'before the intent was recorded')
-    bad(hs[:2] + [with_(hs[3], sequence=3)], 'never-sent')
-    bad(hs[:2] + [with_(hs[2], kind=E.STATE_CHANGED, to_state='working')], 'G7')
-
-
-def test_close_before_final_and_events_after_close():
-    hs = Log().entry_round_trip().headers
-    bad(hs[:3] + [with_(hs[4], sequence=4)], 'G9: closed before')
-    bad(hs[:5] + [with_(hs[2], event_id='evt_' + 'e' * 32, sequence=6)], 'after the intent closed')
-    bad(hs[:4] + [with_(hs[3], event_id='evt_' + 'e' * 32, sequence=5)], 'G8')   # a second final result
-    bad(hs[:4] + [with_(hs[4], to_state='not_sent')], 'not_sent')
-
-
-def test_intent_records_are_never_duplicated_or_orphaned():
-    hs = Log().entry_round_trip().headers
-    bad(hs[:2] + [with_(hs[1], event_id='evt_' + 'e' * 32, sequence=3)], 'G5: intent recorded twice')
-    bad([with_(hs[1], sequence=1)], 'before its decision')
-
-
-def test_keyed_ids_and_client_ids_must_be_the_derived_ones():
-    hs = Log().entry_round_trip().headers
-    other = 'int_' + '4' * 32
-    bad([with_(hs[0], decision_id='dec_' + '5' * 32)], 'derive_decision_id')
-    bad(hs[:1] + [with_(hs[1], intent_id=other, client_ids=(K.client_id_for(other),))], 'derive_intent_id')
-    bad(hs[:1] + [with_(hs[1], client_ids=('zbn1o-' + 'a' * 26,))], 'client_id_for')
-    bad(hs[:1] + [with_(hs[1], client_ids=(K.client_id_for(ENTRY), K.client_id_for(ENTRY, 'algo')))], 'only protect')
-    bad(hs[:1] + [with_(hs[1], purpose='close')], 'purpose differs')
-
-
-def test_refused_event_leaves_the_grammar_unchanged():
-    hs = Log().entry_round_trip().headers
-    g = replay(hs[:2])
-    with pytest.raises(GrammarError):
-        g.admit(with_(hs[3], sequence=3))            # result before sent
-    assert g.last_sequence == 2
-    assert g.admit(hs[2]) is Admission.APPLY         # the correct next event still applies
-
-
-@pytest.mark.parametrize('kw', [
-    dict(kind=E.SENT),                                                       # intent kind without intent_id
-    dict(kind=E.MODE_CHANGED, intent_id=ENTRY),                              # non-intent kind with one
-    dict(kind=E.RESULT_RECORDED, intent_id=ENTRY, outcome=R.NOT_FOUND, evidence='exchange_final'),
-    dict(kind=E.RESULT_RECORDED, intent_id=ENTRY, outcome=R.FINAL),          # final without evidence
-    dict(kind=E.STATE_CHANGED, intent_id=ENTRY, to_state='filled'),          # terminal is intent_closed
-    dict(kind=E.INTENT_CLOSED, intent_id=ENTRY, to_state='working'),
-    dict(kind=E.INTENT_RECORDED, intent_id=ENTRY, decision_id=DEC, purpose='entry', client_ids=()),
-    dict(kind=E.DECISION_RECORDED, decision_id=DEC, decision_key='not a key'),
-    dict(kind=E.SENT, intent_id=ENTRY, digest='XYZ'),
-])
-def test_header_shape_is_strict(kw):
-    base = dict(event_id='evt_' + '0' * 32, account_id=ACCT, aggregate_id=PF, sequence=1, at_ms=1759924800000,
-                digest='a' * 64)
-    with pytest.raises(PortValueError):
-        EventHeader(**{**base, **kw})
+def test_good_and_bad_catalogues_are_complete():
+    assert set(GOOD) == {'fill_and_protect', 'fallback', 'unknown_then_found', 'never_sent'}
+    must = {'reused_sequence', 'wrong_parent', 'wrong_ordinal', 'wrong_id', 'fallback_after_unknown',
+            'duplicate_route_send',
+            'second_algo_after_algo_rejected', 'decision_authorizes_leg1', 'leg1_after_leg0_completed',
+            'unauthorized_intent', 'signal_decided_twice', 'result_before_intent', 'reorder', 'gap'}
+    assert must <= set(BAD)
 
 
 # ------------------------------------------------------------------------------------------------ consumed signal
-def test_consumed_signal_is_idempotent_across_restart():
-    log = Log()
-    g = replay(log.headers)
-    first = J.claim_signal(g, KEY)
-    assert first.fresh and first.decision_id == DEC and first.intent_ids == (ENTRY,)
-    log.add(E.DECISION_RECORDED, decision_id=DEC, decision_key=KEY).add(
-        E.INTENT_RECORDED, decision_id=DEC, intent_id=ENTRY, purpose='entry', client_ids=(K.client_id_for(ENTRY),))
-    for g2 in (replay(log.headers), replay(log.headers)):             # restart = replay the durable journal
-        again = J.claim_signal(g2, K.DecisionKey.from_canonical(KEY.canonical_bytes()))
-        assert not again.fresh and again.decision_id == DEC and again.intent_ids == (ENTRY,)
-    bad(log.headers + [with_(log.headers[0], event_id='evt_' + 'd' * 32, sequence=3)], 'G4')
+def test_claim_is_fresh_then_spent():
+    g = JournalGate(ACCT, PF)
+    first = claim_signal(g.grammar, KEY)
+    assert first.fresh and first.intent_ids == (ENTRY,) and first.decision_id == K.derive_decision_id(ACCT, KEY)
+    for ev in _flow(lambda s: s.entry_filled()).events:
+        g.admit(ev)
+    again = claim_signal(g.grammar, K.decision_key('trend_ema_mom', 'v1', '4h', 'SOLUSDT', Side.LONG,
+                                                   KEY.candle_close_ms,
+                                                   Purpose.ENTRY))
+    assert not again.fresh and again.intent_ids == (ENTRY,)
 
 
-def test_crash_between_decision_and_intent_keeps_the_same_ids():
-    log = Log().add(E.DECISION_RECORDED, decision_id=DEC, decision_key=KEY)
-    claim = J.claim_signal(replay(log.headers), KEY)
-    assert not claim.fresh and claim.intent_ids == ()                   # consumed; no new decision, no new id
-    log.add(E.INTENT_RECORDED, decision_id=DEC, intent_id=ENTRY, purpose='entry', client_ids=(K.client_id_for(ENTRY),))
-    replay(log.headers)                                                  # only the derived id can still be recorded
+def test_four_hour_and_fifteen_minute_keys_on_the_same_close_never_collide():
+    k4 = K.decision_key('trend_ema_mom', 'v1', '4h', 'SOLUSDT', Side.LONG, KEY.candle_close_ms, Purpose.ENTRY)
+    k15 = K.decision_key('trend_ema_mom', 'v1', '15m', 'SOLUSDT', Side.LONG, KEY.candle_close_ms, Purpose.ENTRY)
+    assert k4 != k15 and K.derive_decision_id(ACCT, k4) != K.derive_decision_id(ACCT, k15)
+    assert K.derive_intent_id(ACCT, k4) != K.derive_intent_id(ACCT, k15)
+    g = JournalGate(ACCT, PF)
+    for ev in _flow(lambda s: s.entry_filled(k4)).events:
+        g.admit(ev)
+    assert not claim_signal(g.grammar, k4).fresh and claim_signal(g.grammar, k15).fresh
+    s = Scenario()
+    s.n = g.grammar.last_sequence
+    s.entry_filled(k15)
+    assert [g.admit(ev) for ev in s.events] == [Admission.APPLY] * 5
 
 
-def test_other_candle_or_account_is_a_fresh_signal():
-    g = replay(Log().entry_round_trip().headers)
-    assert J.claim_signal(g, dataclasses.replace(KEY, candle_close_ms=KEY.candle_close_ms + 14_400_000)).fresh
-    g2 = J.Grammar('acct_' + '8' * 32, PF)
-    assert J.claim_signal(g2, KEY).fresh and J.claim_signal(g2, KEY).decision_id != DEC
+def test_a_key_not_built_by_decision_key_is_refused():
+    from newcore.domain import DecisionKey
+    bare = DecisionKey(strategy='trend_ema_mom', strategy_version='v1', symbol='SOLUSDT', side=Side.LONG,
+                       candle_close_ms=KEY.candle_close_ms, purpose=Purpose.ENTRY)
+    with pytest.raises(InvalidRecord):
+        claim_signal(JournalGate(ACCT, PF).grammar, bare)
+    s = Scenario()
+    with pytest.raises(JournalConflict):
+        JournalGate(ACCT, PF).admit(s.decision(key=bare, intent_ids=(K.derive_intent_id(ACCT, bare),)))
+
+
+def test_lineage_ordinal_follows_the_journal():
+    s = _flow(flow_fallback)
+    g = JournalGate.rebuild(ACCT, PF, s.events).grammar
+    assert g.next_child_intent_id(LOT, Purpose.PROTECT) == K.derive_child_intent_id(ACCT, LOT, Purpose.PROTECT, 2)
+    assert g.next_child_intent_id(LOT, Purpose.CLOSE) == K.derive_child_intent_id(ACCT, LOT, Purpose.CLOSE, 0)
+    assert IntentState.REJECTED in {header_of(e).to_state for e in s.events}

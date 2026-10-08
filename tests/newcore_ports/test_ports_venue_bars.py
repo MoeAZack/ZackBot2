@@ -157,24 +157,6 @@ class StubVenue:
         return V.ReadOutcome(kind='rejected', observed_at_ms=T, error_code=-1121)
 
 
-class StubJournal:
-    def __init__(self):
-        self.events = []
-
-    def append(self, event):
-        self.events.append(event)
-        return J.Admission.APPLY
-
-    def last_sequence(self):
-        return len(self.events)
-
-    def read(self, after_sequence=0):
-        return iter(self.events[after_sequence:])
-
-    def find_decision(self, decision_id):
-        return None
-
-
 class StubBars:
     def closed_bars(self, symbol, tf_ms, *, as_of_ms, limit):
         B.check_request(symbol, tf_ms, as_of_ms, limit)
@@ -188,11 +170,10 @@ class Incomplete:
 
 
 def test_trivial_stubs_conform_to_the_ports():
-    v, j, b = StubVenue(), StubJournal(), StubBars()
-    assert isinstance(v, V.VenuePort) and isinstance(j, J.JournalPort) and isinstance(b, B.BarSource)
-    assert not isinstance(Incomplete(), V.VenuePort) and not isinstance(v, J.JournalPort)
+    v, b = StubVenue(), StubBars()
+    assert isinstance(v, V.VenuePort) and isinstance(b, B.BarSource) and not isinstance(Incomplete(), V.VenuePort)
+    assert not isinstance(v, J.JournalPort)                        # the journal has its own contract suite
     order = V.MarketOrder(ref=REF, position_side='LONG', qty=D('1'), reduce=False)
     assert v.submit_market(order).executed_qty == D('1')
     assert v.cancel(REF).executed_qty is None and v.open_orders().value is None
-    assert j.append('event') is J.Admission.APPLY and j.last_sequence() == 1
     assert b.closed_bars('SOLUSDT', H4, as_of_ms=T, limit=1).value[0].close_ms == T
