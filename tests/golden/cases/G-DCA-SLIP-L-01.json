@@ -9,7 +9,7 @@
   "side": "long",
   "tf": "4h",
   "clock": {
-    "start": "2024-01-01T00:00:00Z",
+    "start": 1704067200000,
     "entry_cycle_delay_s": 15
   },
   "costs": {
@@ -117,9 +117,10 @@
   "known_divergences": [
     {
       "adapter": "legacy_backtest",
+      "divergence_id": "AUD07-C13A",
       "ticket": "AUD-07",
       "finding": "C13a",
-      "correction": "CORR-0002",
+      "correction": "CORR-0043",
       "until": "AUD-07 product fix",
       "reason": "backtest.py:419-420 fills the DCA safety order at its level with the fee only, no slippage (entries and exits pay it)",
       "observed": [

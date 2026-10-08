@@ -1,0 +1,90 @@
+{
+  "schema": "zb-golden-behaviours/1",
+  "behaviours": [
+    {
+      "id": "stop",
+      "meaning": "the protective stop of the position (where it rests, how it fills, how it is booked) decides the outcome"
+    },
+    {
+      "id": "gap",
+      "meaning": "a candle OPENS through a resting level (stop, target, safety order): the fill is at the gapped open, never the level"
+    },
+    {
+      "id": "target",
+      "meaning": "the full take-profit target (slot.target) closes the position"
+    },
+    {
+      "id": "time_exit",
+      "meaning": "the holding-time limit (slot.time_exit.bars, candles counted from the entry candle) closes the position"
+    },
+    {
+      "id": "cairo_day",
+      "meaning": "the trading day is the Africa/Cairo calendar day (DST-aware) of the decision candle CLOSE, not its open"
+    },
+    {
+      "id": "daily_halt",
+      "meaning": "the daily-loss halt: a realised loss beyond the daily limit blocks new entries for the rest of that trading day"
+    },
+    {
+      "id": "dca",
+      "meaning": "DCA safety orders add to the position at preset adverse levels and the whole basket closes at its target"
+    },
+    {
+      "id": "costs",
+      "meaning": "the taker fee and slippage of every market fill (entry, add, exit) are what the expected R / pnl assert"
+    },
+    {
+      "id": "pyramid",
+      "meaning": "pyramid adds grow the position in the trade direction at preset favourable levels"
+    },
+    {
+      "id": "trail",
+      "meaning": "a trailing / ratcheting protective level recomputed at candle closes (slot.trail)"
+    },
+    {
+      "id": "trail_entry",
+      "meaning": "a trailing ENTRY (entry.type trail): armed at the signal, it fills only after the set rebound / drop"
+    },
+    {
+      "id": "max_pos",
+      "meaning": "the slot's max_pos limit on positions open or armed at the same time"
+    },
+    {
+      "id": "short_side",
+      "meaning": "the SHORT mirror of a path: a sell entry with every price, slippage and comparison inverted"
+    },
+    {
+      "id": "exit_codes",
+      "meaning": "the machine exit code itself (EXIT_CODE_MEANING) is the asserted distinction, beyond the fill price"
+    },
+    {
+      "id": "partial",
+      "meaning": "part of the position is closed before the final exit"
+    },
+    {
+      "id": "tp1",
+      "meaning": "the first partial take-profit level (slot.tp1)"
+    },
+    {
+      "id": "min_size",
+      "meaning": "the exchange filters (instruments: step, min_qty, min_notional) decide whether an order can be sent at all"
+    },
+    {
+      "id": "outage",
+      "meaning": "exchange_outage fault: the bot can neither read nor send while orders resting on the exchange still work"
+    },
+    {
+      "id": "restart",
+      "meaning": "restart fault: the bot process stops and comes back from its persisted state, keeping the position clock"
+    },
+    {
+      "id": "ambiguity",
+      "meaning": "lost_response fault: an order reached the exchange but its answer was lost; the bot resolves it from the order record (no phantom, no duplicate)"
+    },
+    {
+      "id": "entry",
+      "meaning": "the entry order itself (sending, filling and booking it) is the asserted path"
+    }
+  ],
+  "deprecated": {}
+}

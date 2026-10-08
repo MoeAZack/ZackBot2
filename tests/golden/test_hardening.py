@@ -132,7 +132,7 @@ def test_pack_hard_stop_is_enforced_on_the_real_worker(tmp_path):
 
 
 def test_hard_stop_constants_are_pinned():
-    assert (TG.TARGET_S, TG.HARD_STOP_S) == (60.0, 120.0)
+    assert (TG.CORE_TARGET_S, TG.EXTENDED_TARGET_S, TG.HARD_STOP_S) == (30.0, 90.0, 120.0)
 
 
 # ------------------------------------------------------------------ P2: the runner rejects unknown / empty selections

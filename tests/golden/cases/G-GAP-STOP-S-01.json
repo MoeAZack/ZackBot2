@@ -1,12 +1,13 @@
 {
   "schema": "zb-golden/1",
-  "id": "G-GAP-STOP-L-01",
-  "title": "The next candle OPENS through the stop: filled at the open with slippage, no adds",
+  "id": "G-GAP-STOP-S-01",
+  "title": "Short: the next candle OPENS through the stop: filled at the open with slippage, no adds",
   "behaviours": [
     "gap",
-    "stop"
+    "stop",
+    "short_side"
   ],
-  "side": "long",
+  "side": "short",
   "tf": "4h",
   "clock": {
     "start": 1704067200000,
@@ -33,10 +34,10 @@
       },
       "bars": {
         "282": [
-          "95",
-          "95.2",
-          "94.8",
-          "95"
+          "105",
+          "105.2",
+          "104.8",
+          "105"
         ]
       },
       "atr": {
@@ -47,7 +48,7 @@
   "path_policy": "zb-path/1",
   "slot": {
     "id": "S1",
-    "sides": "long",
+    "sides": "short",
     "risk": "0.02",
     "share": "1",
     "max_pos": 1,
@@ -62,7 +63,7 @@
     {
       "bar": 279,
       "sym": "SOLUSDT",
-      "kind": "enter_long"
+      "kind": "enter_short"
     }
   ],
   "faults": [],
@@ -70,12 +71,12 @@
     "trades": [
       {
         "sym": "SOLUSDT",
-        "side": "LONG",
+        "side": "SHORT",
         "i_in": 280,
         "i_out": 282,
         "exit": "STOP_HIT",
-        "R": "-2.56825025",
-        "pnl": "-25.6825025"
+        "R": "-2.57175025",
+        "pnl": "-25.7175025"
       }
     ],
     "final": {
@@ -103,26 +104,27 @@
       "divergence_id": "AUD07-C13G",
       "ticket": "AUD-07",
       "finding": "C13g",
-      "correction": "CORR-0047",
+      "correction": "CORR-0048",
       "until": "AUD-07 product fix",
-      "reason": "engine.py:2284-2290 books an exchange stop that filled (stop gone) at the STOP price, not the fill price: a stop gapped at the open shows -1.05 R in the bot journal while the account lost -2.57 R (the replay equity curve now shows the real loss since the C13f fix)",
+      "reason": "engine.py:2284-2290 books an exchange stop that filled (stop gone) at the STOP price, not the fill price - mirrored on the short side: the journal books the 101.98 buy stop without the exit slippage the exchange charged: a stop gapped at the open (105) shows -1.05 R in the bot journal while the account lost -2.57 R",
       "observed": [
         {
           "path": "trades[0].R",
-          "expected": "-2.56825025",
-          "actual": -1.04951
+          "expected": "-2.57175025",
+          "actual": -1.05049
         },
         {
           "path": "trades[0].pnl",
-          "expected": "-25.6825025",
-          "actual": -10.4951
+          "expected": "-25.7175025",
+          "actual": -10.5049
         }
       ]
     }
   ],
   "provenance": {
-    "created_at_sha": "b8c11c8",
-    "author": "AUD-07 slice 1 (Claude)",
-    "notes": "Stop 98.02; candle 282 opens at 95. Exchange stop-market fills at the open: 95 x (1 - 0.0002) = 94.981; R = ((94.981 - 100.02) x 5 - 5 x (94.981 + 100.02) x 0.0005) / 10 = -2.5682. The replay sim fills here since the C13f fix (open applied through move())."
+    "created_at_sha": "cff3f88",
+    "author": "NC-01 golden short mirrors (Claude)",
+    "mirror_of": "G-GAP-STOP-L-01",
+    "notes": "Short mirror of G-GAP-STOP-L-01: market reflected around the base price, signals and side flipped. Stop 101.98; candle 282 opens at 105. The stop-market buy fills at the open: 105 x 1.0002 = 105.021; R = ((99.98 - 105.021) x 5 - 5 x (99.98 + 105.021) x 0.0005) / 10 = -2.571750."
   }
 }

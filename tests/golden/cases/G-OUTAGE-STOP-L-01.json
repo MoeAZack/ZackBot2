@@ -1,8 +1,9 @@
 {
   "schema": "zb-golden/1",
-  "id": "G-STOP-L-01",
-  "title": "Initial stop hit inside a red candle; exit at the stop with taker slippage",
+  "id": "G-OUTAGE-STOP-L-01",
+  "title": "The stop fills ON THE EXCHANGE during a bot outage: booked as STOP_HIT in the candle of the fill (from the exchange record), not at the recovery",
   "behaviours": [
+    "outage",
     "stop"
   ],
   "side": "long",
@@ -64,7 +65,14 @@
       "kind": "enter_long"
     }
   ],
-  "faults": [],
+  "faults": [
+    {
+      "kind": "exchange_outage",
+      "from_ms": 1708113660000,
+      "to_ms": 1708156800000,
+      "seed": null
+    }
+  ],
   "expect": {
     "trades": [
       {
@@ -83,10 +91,13 @@
   },
   "applies_to": {
     "legacy_engine": {
-      "status": "known_divergence",
-      "reason": "AUD-07 C13g: the engine journal books a filled exchange stop without its exit slippage"
+      "status": "not_applicable",
+      "reason": "NotExpressible (adapters.base.check_unsupported): the legacy replay / backtester cannot inject this fault; the fault-capable fake comes with NC-03 / NC-08"
     },
-    "legacy_backtest": "required",
+    "legacy_backtest": {
+      "status": "not_applicable",
+      "reason": "NotExpressible (adapters.base.check_unsupported): the legacy replay / backtester cannot inject this fault; the fault-capable fake comes with NC-03 / NC-08"
+    },
     "newcore_sim": {
       "status": "pending_adapter",
       "reason": "NEWCORE NC-07/NC-08 adapter not built yet"
@@ -96,32 +107,10 @@
       "reason": "NEWCORE NC-08 live-sim adapter not built yet"
     }
   },
-  "known_divergences": [
-    {
-      "adapter": "legacy_engine",
-      "divergence_id": "AUD07-C13G",
-      "ticket": "AUD-07",
-      "finding": "C13g",
-      "correction": "CORR-0057",
-      "until": "AUD-07 product fix",
-      "reason": "engine.py:2284-2290 books an exchange stop that filled (stop gone) at the STOP price, not the fill price: the journal omits the exit slippage the exchange charged (-1.04951 R booked vs -1.05931 R paid on a 98.02 stop)",
-      "observed": [
-        {
-          "path": "trades[0].R",
-          "expected": "-1.059307099",
-          "actual": -1.04951
-        },
-        {
-          "path": "trades[0].pnl",
-          "expected": "-10.59307099",
-          "actual": -10.4951
-        }
-      ]
-    }
-  ],
+  "known_divergences": [],
   "provenance": {
-    "created_at_sha": "b8c11c8",
-    "author": "AUD-07 slice 1 (Claude)",
-    "notes": "ATR = 1 exactly (flat base, wick 0.5). Entry 100.02 (open + slip), stop 98.02, qty 5 (risk 10 USDT / 2). Exit 98.02 x (1 - 0.0002); R = ((98.0004 - 100.02) x 5 - 5 x (98.0004 + 100.02) x 0.0005) / 10 = -1.0593. Exact since the Codex review on 4e03152 (P2-2): no case-wide tolerance; C13g is an explicit engine known divergence."
+    "created_at_sha": "cda8f58",
+    "author": "AUD-08 smallest slices (Claude)",
+    "notes": "Fault-free twin: G-STOP-L-01 (same market, slot and signal). The bot loses the exchange from 1 min after the open of candle 281 (UTC ms 1708113660000) until the open of 284 (1708156800000): it cannot read or send anything, so it takes no decision. The protective stop-market at 98.02 rests ON THE EXCHANGE and fills there in candle 282 at 98.02 x 0.9998 = 98.000396, exactly as in the twin. After recovery the bot learns the fill from the exchange order record (AUD-03: only the final order record is truth) and books it with the exchange time: i_out 282, STOP_HIT, R -1.059307099 - never at the recovery candle 284, never as a bot close or resync, and no second close order. Deterministic: seed null."
   }
 }

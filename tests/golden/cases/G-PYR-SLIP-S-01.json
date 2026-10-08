@@ -1,13 +1,13 @@
 {
   "schema": "zb-golden/1",
-  "id": "G-GAP-DCA-L-01",
-  "title": "Two DCA safety orders gapped at the open: both fill at the open (with slippage), then the basket target is reached",
+  "id": "G-PYR-SLIP-S-01",
+  "title": "Short: a pyramid add is a taker market sell: it fills at its level adverse-adjusted by the slippage (lower), like the entry",
   "behaviours": [
-    "dca",
-    "gap",
-    "costs"
+    "pyramid",
+    "costs",
+    "short_side"
   ],
-  "side": "long",
+  "side": "short",
   "tf": "4h",
   "clock": {
     "start": 1704067200000,
@@ -33,17 +33,11 @@
         "n": 300
       },
       "bars": {
-        "282": [
-          "97.6",
-          "97.6",
-          "97.55",
-          "97.55"
-        ],
-        "285": [
-          "97.55",
-          "99.125",
-          "97.5",
-          "99.1"
+        "281": [
+          "100",
+          "100.1",
+          "97.9799",
+          "98"
         ]
       },
       "atr": {
@@ -54,26 +48,32 @@
   "path_policy": "zb-path/1",
   "slot": {
     "id": "S1",
-    "sides": "long",
+    "sides": "short",
     "risk": "0.02",
     "share": "1",
     "max_pos": 1,
     "entry": {
       "type": "market"
     },
-    "dca": {
-      "n": 3,
-      "step_atr": "1",
-      "scale": "1.5",
-      "tp_atr": "1",
-      "stop_atr": "2"
+    "stop": {
+      "atr": "2"
+    },
+    "pyramid": {
+      "n": 1,
+      "step_r": "1",
+      "frac": "0.5"
     }
   },
   "signals": [
     {
       "bar": 279,
       "sym": "SOLUSDT",
-      "kind": "enter_long"
+      "kind": "enter_short"
+    },
+    {
+      "bar": 283,
+      "sym": "SOLUSDT",
+      "kind": "exit_short"
     }
   ],
   "faults": [],
@@ -81,19 +81,19 @@
     "trades": [
       {
         "sym": "SOLUSDT",
-        "side": "LONG",
+        "side": "SHORT",
         "i_in": 280,
-        "i_out": 285,
-        "exit": "TP_BASKET",
-        "R": "0.1709147038",
-        "pnl": "1.709147038",
+        "i_out": 283,
+        "exit": "SIGNAL_EXIT",
+        "R": "0.8914035995",
+        "pnl": "8.914035995",
         "tol": {
           "R": "0.00003",
           "pnl": "0.0003",
           "adapters": [
             "legacy_engine"
           ],
-          "why": "the replay closes at the path step mark 99.125 (the leg end just past the 99.124884 basket target: no event-snapped path in v1): 1.9388 x 0.000116 = 0.00023 USDT"
+          "why": "the replay adds at the path step mark 102.0201 (the leg end one tick past the 102.02 level: no event-snapped path in v1): 2.5 x 0.0001 = 0.00025 USDT; the slippage under test is 0.051 USDT"
         }
       }
     ],
@@ -122,26 +122,27 @@
       "divergence_id": "AUD07-C13A",
       "ticket": "AUD-07",
       "finding": "C13a",
-      "correction": "CORR-0045",
+      "correction": "CORR-0053",
       "until": "AUD-07 product fix",
-      "reason": "backtest.py:419-420 fills the gapped safety orders at the open with the fee only, no slippage",
+      "reason": "backtest.py:458-468 fills the short pyramid add (a sell) at its level with the fee only, no slippage (entries and exits pay it)",
       "observed": [
         {
           "path": "trades[0].R",
-          "expected": "0.1709147038",
-          "actual": 0.170918
+          "expected": "0.8914035995",
+          "actual": 0.8963
         },
         {
           "path": "trades[0].pnl",
-          "expected": "1.709147038",
-          "actual": 1.709183
+          "expected": "8.914035995",
+          "actual": 8.963002
         }
       ]
     }
   ],
   "provenance": {
-    "created_at_sha": "4e03152",
-    "author": "AUD-07 review fixes (Claude)",
-    "notes": "Gap rule, safety-order side: DCA levels 99.02 / 98.02 / 97.02 (ATR 1, step 1 ATR), basket stop 95.02. Candle 282 opens at 97.6 (= its high: the first path point is the open), through two levels: both safety orders fill at the open, 97.6 x 1.0002 = 97.61952 (not at their levels), q = 0.612245 + 0.918367. avg 98.124884, basket target avg + 1 ATR = 99.124884, reached in candle 285 (high 99.125); exit at the target x 0.9998. The flat candles after 282 stay above the third level (low 97.05). The Windows probe's 0.212 R (engine) vs 0.167 R (backtest) was the replay's 8-step path, not a model gap: the engine booked the basket target at the step mark 99.375, 0.25 past the level. Shaped here so both legs end on the levels."
+    "created_at_sha": "cff3f88",
+    "author": "NC-01 golden short mirrors (Claude)",
+    "mirror_of": "G-PYR-SLIP-L-01",
+    "notes": "Short mirror of G-PYR-SLIP-L-01: market reflected around the base price, signals and side flipped. ATR 1; entry 99.98, stop 101.98, R 2, qty 5. Add 1 of 1 at 99.98 - 1 R = 97.98, frac 0.5 -> 2.5 sold at 97.98 x 0.9998 = 97.960404 (red candle 281 reaches 97.9799). Signal exit on the close of 283 at 98 x 1.0002 = 98.0196. pnl = 5 x (99.98 - 98.0196) + 2.5 x (97.960404 - 98.0196) - fees = 8.914036."
   }
 }
