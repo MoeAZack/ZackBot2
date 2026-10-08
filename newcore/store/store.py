@@ -121,6 +121,7 @@ class BootResult:
     incidents: tuple = ()
     writes: frozenset = frozenset()
     store: object | None = None
+    view: object | None = None               # hard HOLD: read-only journal view (events, gate, state; appends refused)
 
     @property
     def account_context(self):
@@ -178,6 +179,7 @@ class AccountStore:
         self.hold_kind = None
         self.writes = set()
         self.max_seen = 0
+        self.view = None
 
     # ---------------------------------------------------------------------------------------------- commit protocol
     def next_generation(self):
@@ -474,6 +476,7 @@ def boot(base, account, *, exchange, now_ms, fs=None, reader=None, cipher=None, 
     # ---- the journal (repair a torn tail now that rule 1 / 2 / 3 / 4 passed)
     rec = open_journal(store._insp, cipher=cipher)
     if rec.journal is None:
+        store.view = rec.view
         return _hard_hold(store, now_ms, incident, result, findings, 'journal not writable')
     store.journal = rec.journal
     if rec.evidence:
@@ -878,7 +881,7 @@ def _hard_hold(store, now_ms, incident, result, findings, why, items=()):
     return result(Mode.HOLD, hold_kind=HoldKind.DURABILITY_UNAVAILABLE, reason=ReasonCode.RECOVERY_DURABILITY_UNAVAILABLE,
                   portfolio=None, candidate=store.candidate.portfolio if store.candidate else None,
                   candidate_kind=_cand_kind(store), items=tuple(items) + (HoldItem('account', 'store_unwritable'),),
-                  findings=findings, store=store)
+                  findings=findings, store=store, view=getattr(store, 'view', None))
 
 
 def _init(store, exchange, now_ms, incident, result, findings):
@@ -935,6 +938,9 @@ def _init(store, exchange, now_ms, incident, result, findings):
         store.commit(pf, prov, now_ms, lsn_upto=0, write_class='init_commit')
         store.bind(now_ms)
     except (OSError, DurabilityUnavailable):
+        if store.journal is not None:                               # INIT did not commit: release the writer
+            store.journal.close()
+            store.journal = None
         if snap.flat:
             return result(Mode.INIT_WAIT, findings=findings + ('store not writable: INIT cannot commit',))
         store.mode, store.hold_kind = Mode.HOLD_INIT, HoldKind.DURABILITY_UNAVAILABLE
