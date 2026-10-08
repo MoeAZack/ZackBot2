@@ -68,10 +68,11 @@ def test_owner_kind_is_explicit_and_drives_ownership():
 
 
 def test_no_domain_logic_parses_an_id():
-    """I05: no newcore source slices or prefix-tests an id string (startswith / endswith / split / [:n] on *_id)."""
+    """I05: no newcore/domain source slices or prefix-tests an id string (startswith / endswith / split / [:n] on *_id).
+    Scoped to the NC-01 domain (Codex ruling); newcore/ports derives ids and is checked by its own tests."""
     import ast
     import os
-    root = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'newcore')
+    root = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'newcore', 'domain')
     hits = []
     for dp, _, fns in os.walk(root):
         for fn in fns:

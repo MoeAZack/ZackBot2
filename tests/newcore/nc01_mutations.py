@@ -1,8 +1,8 @@
 """NC-01 mutation evidence (contract r2 6.7). A script, not a pytest module.
 
 For each mutation it exports the committed HEAD (git archive) into a fresh temp folder, removes or weakens ONE domain
-rule there, runs tests/newcore, and requires the suite to FAIL - naming the failing tests. The working tree is never
-touched. Usage (one run at a time):
+rule there, runs tests/newcore + tests/newcore_ports, and requires the suite to FAIL - naming the failing tests. The
+working tree is never touched. Usage (one run at a time):
 
     python tests/newcore/nc01_mutations.py            # all mutations
     python tests/newcore/nc01_mutations.py NAME ...   # selected ones
@@ -103,6 +103,8 @@ MUTATIONS = {
     'ruling 2: whitespace-only text accepted': (D + 'base.py', [("    req(v.strip() != '', path,", '    req(True, path,')]),
     'ruling 4: position lots keep their given order': (D + 'portfolio.py', [(
         "        if ordered != self.lots:\n            object.__setattr__(self, 'lots', ordered)", '        pass')]),
+    'ports: journal ignores owner_kind (every owner treated as a lot)': ('newcore/ports/journal.py', [(
+        '            if h.owner_kind is OwnerKind.ENTRY_INTENT:', '            if False:')]),
     'duplicate JSON keys': (D + 'codec.py', [("            if k in out:\n                problems.append(",
                                               "            if False:\n                problems.append(")]),
     'truncated JSON': (D + 'codec.py', [(
@@ -130,7 +132,7 @@ def export_head(dst):
 
 def run_suite(cwd):
     out = subprocess.run([sys.executable, '-m', 'pytest', '-p', 'no:cacheprovider', '-q', '-o', 'addopts=',
-                          'tests/newcore', '--ignore=tests/newcore/test_nc01_perf.py'],
+                          'tests/newcore', 'tests/newcore_ports', '--ignore=tests/newcore/test_nc01_perf.py'],
                          cwd=cwd, capture_output=True, text=True, timeout=900)
     failed = sorted(set(re.findall(r'^FAILED (.+?)(?: - .*)?$', out.stdout, re.M)))
     summary = (out.stdout.strip().splitlines() or [''])[-1]
