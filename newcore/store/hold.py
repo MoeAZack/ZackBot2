@@ -10,7 +10,10 @@ Store-failure contract (A21 / A23 / A24; the Runner's reaction is S1's, not impl
        ModeChanged itself cannot be journaled: nothing can;
     3. act only inside the NC-01 emergency set, `hard_hold_permits(purpose, op)` (= modes.permitted for that hold kind):
        narrow query, place reduce-only protection before any old one is removed, drain resting ENTRY / ADD, adopt
-       race / partial fills; never an entry, add, reprice, fallback, management or resume;
+       race / partial fills; never an entry, add, reprice, fallback, management or resume. ONE narrow exception
+       (Codex ruling, F3 / P1-3): when no emergency stop can be confirmed for exposed quantity, a deterministic
+       reduce-only EMERGENCY close of that quantity - `hard_hold_permits(CLOSE, PLACE, emergency_close=True)`; an
+       ordinary close or any management close stays forbidden;
     4. stay in hard HOLD even if a later append succeeds: the journal accepts a retry (the same event lands exactly
        once, r3), but leaving hard HOLD is reconciliation's job (A08), never a successful write. The store does not
        decide HOLD; the Runner (S1) does, from this contract.
@@ -84,6 +87,7 @@ def directive_for(verdict):
     return durability_hold() if verdict is Verdict.DURABILITY_UNAVAILABLE else _BY_VERDICT[verdict]
 
 
-def hard_hold_permits(purpose, op):
-    """The A23 / A24 emergency set, straight from NC-01: modes.permitted(HOLD, DURABILITY_UNAVAILABLE, ...)."""
-    return permitted(EntriesMode.HOLD, HoldKind.DURABILITY_UNAVAILABLE, purpose, op)
+def hard_hold_permits(purpose, op, *, emergency_close=False):
+    """The A23 / A24 emergency set, straight from NC-01: modes.permitted(HOLD, DURABILITY_UNAVAILABLE, ...);
+    `emergency_close=True` asks for the one protection-failure exception (CLOSE, PLACE) and nothing else."""
+    return permitted(EntriesMode.HOLD, HoldKind.DURABILITY_UNAVAILABLE, purpose, op, emergency_close=emergency_close)
