@@ -55,8 +55,15 @@ class _FileJournalContract(JournalContract):
 
     @pytest.fixture
     def reopen(self):
+        live = []
+
         def again(j):
+            for x in [j] + live:                                       # the restarted process: the old writers'
+                if x._lock is not None:                                # locks died with them (the suite keeps
+                    x._fs.unlock(x._lock)                              # using the old object, as a test does)
+                    x._lock = None
             r = recover_journal(j.account_dir, ACCT, PF)
+            live.append(r.journal)
             assert r.verdict is Verdict.CLEAN, r.findings              # never a torn tail: failures were sealed off
             assert list(r.journal.read()) == list(j.read())
             return r.journal

@@ -14,14 +14,14 @@
 NC-02b (later, not here): snapshots + generations, dual-slot HEAD, anchors / rollback, migration, the DPAPI evidence
 envelope + ACL, GC, INIT and reconciliation / promotion.
 """
-from .errors import DurabilityUnavailable, JournalExists, SequenceConflict
+from .errors import DurabilityUnavailable, JournalExists, JournalLocked, SequenceConflict
 from .fold import Folder, IntentRecovery, IntentView, JournalState, fold
 from .fs import FsSeam, RealFs
 from .hold import StoreDirective, StoreOutcome, Verdict, directive_for, durability_hold, hard_hold_permits
 from .journal import FileJournal, ReadOnlyJournal, create_journal
 from .recovery import EvidenceRef, Finding, Recovery, recover_journal
 
-__all__ = ['DurabilityUnavailable', 'JournalExists', 'SequenceConflict', 'Folder', 'IntentRecovery', 'IntentView',
+__all__ = ['DurabilityUnavailable', 'JournalExists', 'JournalLocked', 'SequenceConflict', 'Folder', 'IntentRecovery', 'IntentView',
            'JournalState', 'fold', 'FsSeam', 'RealFs', 'StoreDirective', 'StoreOutcome', 'Verdict', 'directive_for',
            'durability_hold', 'hard_hold_permits', 'FileJournal', 'ReadOnlyJournal', 'create_journal',
            'EvidenceRef',

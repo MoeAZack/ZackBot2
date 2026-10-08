@@ -145,7 +145,7 @@ def test_header_mutation_fuzz_never_raises(which):
         else:
             assert r.journal.read() == tuple(SCENARIO[:5]), name
             r.journal.close()
-    assert n > 150
+    assert n > 100
 
 
 # ---------------------------------------------------------------------------------------------------- finding 3

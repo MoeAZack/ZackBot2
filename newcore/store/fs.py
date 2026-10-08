@@ -60,6 +60,18 @@ class FsSeam(Protocol):
         """No-op crash-point label (crash_matrix.md names); the fault seam records it."""
         ...
 
+    def size(self, p) -> int:
+        """Current size of the file at p (read-only; the writer's fence before each append)."""
+        ...
+
+    def lock_exclusive(self, p):
+        """Create p if missing and take a non-blocking exclusive OS lock on it for this handle's lifetime. Returns the
+        lock handle, or None when another handle (this process or another) holds it. Raises OSError on I/O failure."""
+        ...
+
+    def unlock(self, lock) -> None:
+        ...
+
 
 class _Handle:
     __slots__ = ('fd', 'path')
@@ -141,6 +153,36 @@ class RealFs:
 
     def mark(self, label):
         pass
+
+    def size(self, p):
+        return os.lstat(p).st_size
+
+    def lock_exclusive(self, p):
+        fd = os.open(p, os.O_RDWR | os.O_CREAT | _BINARY, 0o600)
+        try:
+            if sys.platform == 'win32':
+                import msvcrt
+                os.lseek(fd, 0, os.SEEK_SET)
+                msvcrt.locking(fd, msvcrt.LK_NBLCK, 1)
+            else:
+                import fcntl
+                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError:
+            os.close(fd)
+            return None
+        return _Handle(fd, p)
+
+    def unlock(self, lock):
+        try:
+            if sys.platform == 'win32':
+                import msvcrt
+                os.lseek(lock.fd, 0, os.SEEK_SET)
+                msvcrt.locking(lock.fd, msvcrt.LK_UNLCK, 1)
+            else:
+                import fcntl
+                fcntl.flock(lock.fd, fcntl.LOCK_UN)
+        finally:
+            os.close(lock.fd)
 
 
 def _flush_dir_windows(p):

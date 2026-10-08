@@ -6,10 +6,12 @@
 
 `scan` walks a file from the header and classifies what follows the last valid record:
 - nothing: clean;
-- a TORN tail: the first invalid / incomplete record (or zero fill) with NO valid record anywhere after it, at most
-  one frame long (only one frame is ever in flight);
-- DAMAGE: an invalid record followed by a valid one later (mid-file damage, never a tail), a CRC-valid record with
-  flags or an rtype this reader does not write, or a "tail" longer than one frame.
+- a TORN tail: an INCOMPLETE last record only (a short record header, or a length past EOF whose bytes are not a
+  complete record with a corrupted length field), with NO valid record anywhere after it, at most one frame long;
+- DAMAGE (fail closed, Cowork finding 1): an invalid record followed by a valid one later, a COMPLETE-length record
+  that fails its sync / CRC / flags check even at the very end (a bit flip in the last acknowledged record must never
+  drop it), a CRC-valid record with flags or an rtype this reader does not write, or a "tail" longer than one frame.
+  An all-NUL complete frame counts as a tail only behind the pinned ZERO_FILL_IS_TAIL relaxation (OFF).
 The file header decides first: an unknown frame_version / reserved bits is an UNKNOWN format (rule 1, ABORT-RO); a
 wrong magic is damage, except a file that is entirely a torn header (shorter than a header frame and either NUL or a
 prefix of the expected header), which the segment logic may treat as an interrupted create.
@@ -34,7 +36,8 @@ RT_EVENT = 10
 RT_EVIDENCE_BODY = 30
 KNOWN_RTYPES = frozenset({RT_HEADER, RT_EVENT, RT_EVIDENCE_BODY})
 MAX_RECORD = 16 * 1024 * 1024                # one event / header record
-MAX_EVIDENCE_BODY = MAX_RECORD + 2 * REC.size   # a torn tail is at most one frame
+MAX_TAIL = MAX_RECORD + 2 * REC.size            # a torn tail is at most one frame
+MAX_EVIDENCE_BODY = MAX_TAIL
 
 
 def file_header(kind):
@@ -108,7 +111,34 @@ class Scan:
         return self.header is HeaderState.OK and self.tail_offset is None and self.damage is None
 
 
-def scan(data, kind):
+ZERO_FILL_IS_TAIL = False         # pinned relaxation (Cowork finding 1): OFF = an all-NUL complete frame is damage
+
+
+def classify_invalid(data, off, zero_fill_is_tail=False):
+    """Why the bytes at `off` (the first invalid record, with no valid record after it) are not a record:
+    (is_tail, reason). Fail closed (Cowork finding 1, PR #38): only an INCOMPLETE frame is a torn tail - a header shorter
+    than 12 bytes, or a length that runs past EOF while the bytes present are NOT the record's complete payload (a
+    single flip in the length field of a complete last record is recognised by its CRC and is damage). A complete-length
+    frame that fails its sync / CRC / flags check is DAMAGE; with the pinned zero_fill_is_tail relaxation only, a
+    frame whose bytes from `off` to EOF are all NUL counts as a tail."""
+    rest = len(data) - off
+    if rest < REC.size:
+        return True, 'short record header'
+    sync, rtype, flags, length, crc = REC.unpack_from(data, off)
+    if zero_fill_is_tail and data.count(0, off) == rest:
+        return True, 'zero fill (pinned relaxation)'
+    if off + REC.size + length <= len(data):
+        return False, 'a complete-length record fails its check'
+    payload = bytes(data[off + REC.size:])
+    if _crc(rtype, flags, payload) == crc:
+        return False, 'a complete record with a corrupted length field'
+    if rest > MAX_TAIL:
+        return False, 'invalid tail longer than one frame'
+    return True, 'incomplete record'
+
+
+def scan(data, kind, zero_fill_is_tail=None):
+    zero_fill_is_tail = ZERO_FILL_IS_TAIL if zero_fill_is_tail is None else zero_fill_is_tail
     data = bytes(data)
     want = file_header(kind)
     if len(data) < FILE_HEADER.size:
@@ -131,8 +161,9 @@ def scan(data, kind):
             later = _valid_record_after(data, off)
             if later is not None:
                 return Scan(HeaderState.OK, fver, tuple(recs), off, None, (off, f'invalid record before a valid one at {later}'))
-            if len(data) - off > MAX_EVIDENCE_BODY:
-                return Scan(HeaderState.OK, fver, tuple(recs), off, None, (off, 'invalid tail longer than one frame'))
+            tail, why = classify_invalid(data, off, zero_fill_is_tail)
+            if not tail:
+                return Scan(HeaderState.OK, fver, tuple(recs), off, None, (off, why))
             return Scan(HeaderState.OK, fver, tuple(recs), off, off, None)
         if r.flags != 0 or r.rtype not in KNOWN_RTYPES:
             return Scan(HeaderState.OK, fver, tuple(recs), off, None, (off, f'record type {r.rtype} / flags {r.flags}'))

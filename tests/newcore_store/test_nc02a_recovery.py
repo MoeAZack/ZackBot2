@@ -39,10 +39,24 @@ TAILS = {
     'half_frame': TORN_FRAME[:len(TORN_FRAME) // 2],
     'header_only': TORN_FRAME[:7],
     'all_but_one_byte': TORN_FRAME[:-1],
-    'zero_fill': b'\0' * len(TORN_FRAME),
     'frame_then_zero_fill': TORN_FRAME[:20] + b'\0' * 40,
+}
+# Cowork finding 1 (fail closed): a COMPLETE-length frame that fails its check is damage, even at the very end
+NOT_TAILS = {
+    'zero_fill': b'\0' * len(TORN_FRAME),
     'complete_frame_bad_crc': TORN_FRAME[:-1] + bytes([TORN_FRAME[-1] ^ 0xFF]),
 }
+
+
+@pytest.mark.parametrize('tail', sorted(NOT_TAILS))
+def test_a_complete_length_bad_frame_at_the_end_is_damage_not_a_tail(tail):
+    fs = mem_journal(SCENARIO[:N])
+    fs.put(seg(1), fs.read_bytes(seg(1)) + NOT_TAILS[tail])
+    f = FaultFs(fs)
+    before = fs.snapshot()
+    r = recover(f)
+    assert r.verdict is Verdict.DAMAGED and r.journal is None
+    assert f.trace == [] and fs.snapshot() == before
 
 
 @pytest.mark.parametrize('tail', sorted(TAILS))
@@ -82,7 +96,7 @@ def test_a_second_torn_tail_in_the_rolled_segment_rolls_again_and_keeps_every_se
     j = recover(fs).journal
     j.append(SCENARIO[N])
     j.close()
-    put(fs, seg(2), fs.read_bytes(seg(2)) + b'\0' * 30)
+    put(fs, seg(2), fs.read_bytes(seg(2)) + TORN_FRAME[:30])
     r = recover(fs)
     assert r.verdict is Verdict.REPAIRED and r.journal.segment_no == 3
     seals = header_doc(fs.read_bytes(seg(3)))['seals']
@@ -239,7 +253,7 @@ STRUCT = {
     'sealed_bytes_changed': lambda fs: put(fs, seg(1), _flip(fs.read_bytes(seg(1)), 40)),
     'sealed_segment_deleted': lambda fs: fs.files.pop(os.path.normpath(seg(1))),
     'seal_length_beyond_file': lambda fs: put(fs, seg(1), fs.read_bytes(seg(1))[:100]),
-    'unexpected_file': lambda fs: put(fs, os.path.join(ACCT_DIR, 'journal', 'state.json'), b'{}'),
+    'garbage_magic_segment': lambda fs: put(fs, seg(3), b'garbage!'),
     'garbage_segment_after': lambda fs: put(fs, seg(3), b'garbage!' * 200),
     'foreign_account_header': lambda fs: put(fs, seg(2), rebuild(
         fs.read_bytes(seg(2)), header_doc={**header_doc(fs.read_bytes(seg(2))), 'account_id': 'acct_' + 'f' * 32})),
@@ -414,7 +428,7 @@ def test_torn_tail_on_a_real_file_system(tmp_path):
     r.journal.close()
     with open(p, 'rb') as fh:
         assert fh.read() == torn
-    assert sorted(os.listdir(os.path.join(acct, 'journal'))) == ['seg-000001.seg', 'seg-000002.seg']
+    assert sorted(os.listdir(os.path.join(acct, 'journal'))) == ['.lock', 'seg-000001.seg', 'seg-000002.seg']
     assert len(os.listdir(os.path.join(acct, 'evidence'))) == 1
     r2 = recover_journal(acct, ACCOUNT_ID, AGGREGATE_ID)
     assert r2.verdict is Verdict.CLEAN and r2.journal.read() == tuple(SCENARIO)
