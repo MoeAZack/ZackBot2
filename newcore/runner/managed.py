@@ -194,16 +194,9 @@ class RangeFixturePlans:
 
 
 def draft_intent(d, *, decision_id, at_ms):
-    """The NC-01 OrderIntent (PLANNED) a driver draft stands for: driver.to_order_intent's mapping, plus the NC-01
-    freeze's (dfd6b03) required replaces_intent_id - None: a management draft is a new child intent, never an NC-01
-    cancel-replace of a REDUCE / CLOSE (interface item for the management lane: to_order_intent needs the field)."""
-    from newcore.domain import IntentState, OrderIntent
-    return OrderIntent(intent_id=d.intent_id, account_id=d.account_id, decision_id=decision_id,
-                       client_order_id=d.client_id, purpose=d.purpose, order_type=d.order_type,
-                       state=IntentState.PLANNED, symbol=d.symbol, side=d.side, qty=d.qty, reason=d.reason,
-                       created_at_ms=at_ms, owner_id=d.owner_id, owner_kind=d.owner_kind, slot_id=None, price=None,
-                       stop_price=d.stop_price, arm=None, alt_client_order_id=None, seen_qty=None, authorized_by=None,
-                       replaces_intent_id=None)
+    """The NC-01 OrderIntent (PLANNED) a driver draft stands for: the driver's own to_order_intent (83c39da: it sets
+    the frozen NC-01 replaces_intent_id from the draft's `replaces` for a lot REDUCE / CLOSE, None otherwise)."""
+    return DR.to_order_intent(d, decision_id=decision_id, at_ms=at_ms)
 
 
 # ------------------------------------------------------------------------------------------------------- the mixin
