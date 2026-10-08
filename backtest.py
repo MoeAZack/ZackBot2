@@ -600,6 +600,9 @@ def run(book, sleeves, start=500.0, max_lev=10.0, daily_halt=0.08, t0=None, t1=N
                         if why: blocked[why] = blocked.get(why, 0) + 1; continue
                     te = cfg.get('trail_entry')
                     if te and te.get('dev_atr'):
+                        # AUD-07 C13c: an armed trailing entry holds a max_pos slot from arming (engine: held.append + entry_block)
+                        if len(sl['pos']) + len(sl['tpend']) >= cfg['max_pos']:
+                            blocked['max_pos'] = blocked.get('max_pos', 0) + 1; continue
                         sl['tpend'][s] = dict(side=side, ext=book.arr[s]['c'][i], atr=book.arr[s]['atr'][i],
                                               dev=te['dev_atr'], until=i + int(te.get('max_bars', 3)))
                     else:
