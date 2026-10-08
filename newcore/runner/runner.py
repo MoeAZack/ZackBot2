@@ -94,6 +94,7 @@ SECURE_ROUNDS = 2                     # per lot per cycle: stop attempt, then (i
 EMERGENCY_GENERATIONS = 16            # hard HOLD: cover generations per (symbol, side, gap size)
 ESCALATE_AFTER = 2                    # cycles with an unconfirmed stop before the reduce-only close (Cowork NEW-4)
 LOST_ENTRY_LOOKBACK = 3               # candles back a lost entry's signal is looked for (Cowork 289)
+GUARD_ENTRY_LOOKBACK = 60             # the guard (no journal): candles back an own entry is proven by its client id
 REDUCE_REFUSALS = 2                   # refused reduce-only sends of a lot before the venue position is read (MED-3)
 EXTERNAL_CLOSE_CODES = (-2022, -4061)  # reduce only rejected / position side does not match: nothing to reduce
 E_WOULD_TRIGGER = -2021               # Binance "Order would immediately trigger"
@@ -224,6 +225,7 @@ class Runner:
         self._reduce_refused = {}                                         # lot -> consecutive 'nothing to reduce'
         self._suspended_lots = set()                                      # lots with an external-close owner item
         self._lost_checked = set()                                        # (symbol, side, candle) asked (289)
+        self.guard = False                                                # app guard: no trusted journal at all
         self._listed = None                                               # this sync's listed client ids (LOW-6)
         if config.raw_qty is not None and (config.account.binding.environment is not Environment.TESTNET
                                            or not config.raw_qty > 0):
@@ -397,7 +399,7 @@ class Runner:
         """Ours: a journaled client id, an A23 emergency stop, or - when the journal cannot be trusted (a guard) - any
         NEWCORE client id (the zbn1 namespace proves the order was ours)."""
         return (client_id in self.fold.by_client_id or ids.is_emergency_client_id(client_id)
-                or (self.fold.last_sequence == 0 and self.hard_hold is not None and ids.is_newcore_client_id(client_id)))
+                or (self.guard and ids.is_newcore_client_id(client_id)))
 
     def _emergency_set(self):
         """NC-02 A23 / A24, exactly the NC-01 permitted set for HOLD + DURABILITY_UNAVAILABLE (hard_hold_permits).
@@ -429,14 +431,19 @@ class Runner:
                   if iv.purpose in OPENING_PURPOSES}
         sides |= {(o.ref.symbol, o.position_side) for o in oo.value if self._owned_order(o.ref.client_id)}
         for p in pos.value:
-            if p.qty <= 0 or (p.symbol, p.side) not in sides:
+            proven = None
+            if p.qty > 0 and (p.symbol, p.side) not in sides and self.guard:
+                proven = self._guard_proven_entry(p)                      # an own entry the venue confirms by id
+            if p.qty <= 0 or ((p.symbol, p.side) not in sides and proven is None):
                 continue                                                  # flat, or foreign (A22: an item, untouched)
             covered = sum((o.qty for o in oo.value if o.reduce and o.order_type == 'STOP_MARKET'
                            and (o.ref.symbol, o.position_side) == (p.symbol, p.side)
                            and self._owned_order(o.ref.client_id)), ZERO)
             if covered >= p.qty:
                 continue                                                  # M45: covered: no change
-            self._emergency_stop(p, p.qty - covered)
+            self._emergency_stop(p, p.qty - covered, price=proven)
+        if self.guard:
+            return                                                        # the guard never cancels anything
         flat = {(p.symbol, p.side) for p in pos.value if p.qty == 0}
         for o in oo.value:                                                # Cowork NEW-3: an emergency stop of a side
             if ids.is_emergency_client_id(o.ref.client_id) and (o.ref.symbol, o.position_side) in flat:   # now flat
@@ -458,12 +465,40 @@ class Runner:
         self._incident(f'hard HOLD drain {it.intent_id} ({it.client_order_id}): cancel -> {out.kind}'
                        f'{"" if out.executed_qty is None else f", executed {out.executed_qty}"}')
 
-    def _emergency_stop(self, p, gap):
+    def _guard_proven_entry(self, p):
+        """The guard (no trusted journal, Codex tail-loss contract: protect KNOWN exposure): a position is known to be
+        ours when the venue confirms one of our deterministic ENTRY client ids - the strategy's own ENTER signals of
+        the last GUARD_ENTRY_LOOKBACK candles give them. Returns the protective level: that signal's stop distance from
+        the confirmed entry fill (never tighter: floor / ceil to the tick), or None (nothing proves it ours)."""
+        if p.symbol not in self.cfg.rules or p.side not in self.cfg.sides or self.now is None:
+            return None
+        for k in range(GUARD_ENTRY_LOOKBACK + 1):
+            c = self.now - k * self.cfg.tf_ms
+            r = self.bars.closed_bars(p.symbol, self.cfg.tf_ms, as_of_ms=c, limit=self.signals.window)
+            if r.kind is not ReadKind.OK or not r.value or r.value[-1].close_ms != c:
+                continue
+            for s in self.signals.decide(p.symbol, r.value, c):
+                if s.action != ENTER or s.side != p.side or not s.stop_distance:
+                    continue
+                iid = ids.derive_intent_id(self.acct, self._key(p.symbol, s, Purpose.ENTRY))
+                out = self.venue.query(OrderRef(symbol=p.symbol, client_id=ids.client_id_for(iid, 'classic')))
+                if out.kind is OutcomeKind.FINAL and out.executed_qty and out.avg_price:
+                    rules = self.cfg.rules[p.symbol]
+                    if p.side == 'LONG':
+                        level = rules.quantize_price(out.avg_price - s.stop_distance, Rounding.DOWN)
+                    else:
+                        level = rules.quantize_price(out.avg_price + s.stop_distance, Rounding.UP)
+                    self._incident(f'guard: {p.symbol} {p.side} proven ours by {out.ref.client_id} (entry '
+                                   f'{out.avg_price}); emergency level {level}')
+                    return level
+        return None
+
+    def _emergency_stop(self, p, gap, price=None):
         rules = self.cfg.rules[p.symbol]
         qty = min(rules.quantize_qty(gap, Rounding.DOWN), p.qty)
         if qty <= 0:
             return
-        price = self._emergency_stop_price(p)
+        price = price if price is not None else self._emergency_stop_price(p)
         if price is None:
             self._incident(f'hard HOLD: no stop level for {p.symbol} {p.side} {qty}: unprotected, operator needed')
             return
