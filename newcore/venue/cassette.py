@@ -21,10 +21,14 @@ replay signs with its own clock and dummy key). A signed replay request must sti
 signature. A mismatch or an exhausted cassette raises CassetteMismatch, a WireSeamError the transport re-raises.
 """
 import base64
+import binascii
 import json
 import os
 import re
+import unicodedata
 import urllib.parse
+
+from . import cassette_allow as A
 
 from .redact import REDACTED, PatternCache, check_value, contains_values, is_sensitive_name, redact_values
 from .wire import (API_KEY_HEADER, HttpResponse, WireConnectionError, WireNotSent, WireResponseTooLarge, WireSeamError,
@@ -35,11 +39,51 @@ VOLATILE_PARAMS = ('timestamp',)
 _ERRORS = {'WireTimeout': WireTimeout, 'WireNotSent': WireNotSent, 'WireResponseTooLarge': WireResponseTooLarge,
            'WireConnectionError': WireConnectionError}
 _CLEARED = (REDACTED, '', None)
+MAX_RECORD_BODY = 8 * 1024 * 1024           # a larger answer is not stored (the cassette becomes unproducible)
+_REASON_RE = re.compile(r'[a-z_]{1,20}')
+_B64_RUN = re.compile(r'[A-Za-z0-9+/_-]{16,}={0,2}')
+_HEX_RUN = re.compile(r'(?:[0-9a-fA-F]{2}){8,}')
+MAX_DECODED_TOKENS = 20000
+
+
+def decoded_views(text):
+    """Text forms a registered secret could hide in (Cowork #37 R2): NFKC, unicode-escape decoded, and every
+    base64 / hex run decoded. Bounded: at most MAX_DECODED_TOKENS runs per text."""
+    yield unicodedata.normalize('NFKC', text)
+    cur = text
+    for _ in range(3):                         # nested escaping (a JSON string inside a JSON document inside ...)
+        try:
+            cur = cur.encode('latin-1', 'backslashreplace').decode('unicode_escape')
+        except (UnicodeDecodeError, ValueError):
+            break
+        yield cur
+        yield unicodedata.normalize('NFKC', cur)
+    n = 0
+    for m in _B64_RUN.finditer(text):
+        n += 1
+        if n > MAX_DECODED_TOKENS:
+            break
+        tok = m.group(0)
+        for fn in (base64.b64decode, base64.urlsafe_b64decode):
+            try:
+                yield fn(tok + '=' * (-len(tok) % 4)).decode('latin-1')
+            except (binascii.Error, ValueError):
+                pass
+    for m in _HEX_RUN.finditer(text):
+        n += 1
+        if n > 2 * MAX_DECODED_TOKENS:
+            break
+        try:
+            yield bytes.fromhex(m.group(0)).decode('latin-1')
+        except ValueError:
+            pass
 
 # "key": value  (string, number, bool, null) -- value is replaced only when the key is sensitive.
 _JSON_PAIR = re.compile(r'"((?:[^"\\]|\\.)*)"(\s*:\s*)("(?:[^"\\]|\\.)*"|-?[0-9][0-9.eE+-]*|true|false|null)')
 # name=value in query strings, form bodies, cookies and free text.
-_FORM_PAIR = re.compile(r'(?<![A-Za-z0-9%_.\-])([A-Za-z0-9%_.\-]+)=([^&\s;,"\'<>]*)')
+# Unicode names too (R3): \w covers fullwidth / other scripts; soft hyphen and zero-width characters join a name
+_NAME_CH = r'[\w%.\-­​-‏⁠﻿]'
+_FORM_PAIR = re.compile(r'(?<!' + _NAME_CH + r')(' + _NAME_CH + r'+)=([^&\s;,"\'<>]*)')
 
 
 class CassetteMismatch(WireSeamError):
@@ -99,6 +143,7 @@ class CassetteRecorder:
         self._values = set()
         self._cache = PatternCache()                # compiled patterns, owned here
         self._last_response = None
+        self._unproducible = None              # set: to_json fails closed
         self.interactions = []
         self.note = str(note)
         for v in redact:
@@ -132,11 +177,14 @@ class CassetteRecorder:
         text = _FORM_PAIR.sub(form_sub, text)
         return redact_values(text, self._values, self._cache)
 
-    def _clean_pairs(self, pairs):
+    def _clean_pairs(self, pairs, allowed=None):
+        """allowed(name): the allow-list; a value under any other name is stored as <redacted> (fail closed)."""
         out = []
         for k, v in pairs:
             if is_sensitive_name(k):
                 self._learn(v)
+                out.append([k, REDACTED])
+            elif allowed is not None and not allowed(k) and v != '':
                 out.append([k, REDACTED])
             else:
                 out.append([k, v])
@@ -152,8 +200,8 @@ class CassetteRecorder:
                     from None
             self._values.add(key)
         pairs = urllib.parse.parse_qsl(request.query, keep_blank_values=True)
-        query = self._clean_pairs(pairs)
-        headers = self._clean_pairs(list(request.headers))
+        query = self._clean_pairs(pairs, A.param_allowed)
+        headers = self._clean_pairs(list(request.headers), A.header_allowed)
         return {'method': request.method, 'url': redact_values(request.url, self._values, self._cache),
                 'signed': bool(request.signed), 'query': query, 'headers': headers}
 
@@ -202,14 +250,32 @@ class CassetteRecorder:
             name = _error_name(ex)
             if name is not None:
                 rec = {'request': req, 'error': name}
-                if isinstance(ex, WireNotSent):
-                    rec['reason'] = str(ex.reason)[:20]
+                if isinstance(ex, WireNotSent):          # a token, never free text (it could carry anything)
+                    reason = str(ex.reason)
+                    rec['reason'] = reason if _REASON_RE.fullmatch(reason) else 'unspecified'
                 self.interactions.append(rec)
             raise
-        headers = dict(self._clean_pairs([(str(k), str(v)) for k, v in dict(resp.headers).items()]))
+        headers = dict(self._clean_pairs([(str(k), str(v)) for k, v in dict(resp.headers).items()],
+                                         A.header_allowed))
         raw = bytes(resp.body)
+        if len(raw) > MAX_RECORD_BODY:
+            self._unproducible = 'an answer larger than the recordable maximum'
+            payload = {'body_omitted': 'too_large'}
+            self.interactions.append({'request': req, 'response': dict(status=resp.status, headers=headers,
+                                                                     **payload)})
+            self._last_response = resp
+            return
         try:
-            payload = {'body_text': self._clean_text(raw.decode('utf-8'))}
+            text = raw.decode('utf-8')
+            try:
+                allowed = A.sanitize_json(text, self._learn)
+            except A.TooDeep:
+                self._unproducible = 'an answer nested deeper than the recordable maximum'
+                allowed, text = None, ''
+                payload = {'body_omitted': 'too_deep'}
+            else:
+                payload = {'body_text': redact_values(allowed, self._values, self._cache) if allowed is not None
+                           else self._clean_text(text)}
         except UnicodeDecodeError:
             cleaned = self._clean_text(raw.decode('latin-1')).encode('latin-1')
             payload = {'body_b64': base64.b64encode(cleaned).decode('ascii')}
@@ -220,8 +286,12 @@ class CassetteRecorder:
 
     def _audit(self, text):
         values = sorted(self._values)
+        if self._unproducible:
+            raise CassetteLeak(f'{self._unproducible}; cassette not produced')
         if contains_values(text, values, self._cache):
             raise CassetteLeak('a secret value is still present; cassette not produced')
+        if values and any(contains_values(view, values, self._cache) for view in decoded_views(text)):
+            raise CassetteLeak('a secret value is present in an encoded form; cassette not produced')
         for n, it in enumerate(self.interactions):
             req = it['request']
             resp = it.get('response', {})
@@ -267,10 +337,10 @@ class CassetteRecorder:
         return path
 
 
-def _split_pairs(pairs):
-    """(stable value-compared pairs, sorted names of sensitive pairs compared by presence)."""
-    stable = [(k, v) for k, v in pairs if k not in VOLATILE_PARAMS and not is_sensitive_name(k)]
-    sensitive = sorted(k for k, _ in pairs if is_sensitive_name(k))
+def _split_pairs(pairs, hidden=frozenset()):
+    """(stable value-compared pairs, sorted names of sensitive / hidden pairs compared by presence)."""
+    stable = [(k, v) for k, v in pairs if k not in VOLATILE_PARAMS and not is_sensitive_name(k) and k not in hidden]
+    sensitive = sorted(k for k, _ in pairs if is_sensitive_name(k) or k in hidden)
     return stable, sensitive
 
 
@@ -307,8 +377,9 @@ class CassettePlayer:
         if (request.method, request.url, bool(request.signed)) != (want['method'], want['url'], want['signed']):
             raise CassetteMismatch(f'request {i}: expected {want["method"]} {want["url"]}, '
                                    f'got {request.method} {request.url}')
-        got_pairs, got_sens = _split_pairs(urllib.parse.parse_qsl(request.query, keep_blank_values=True))
-        want_pairs, want_sens = _split_pairs([tuple(p) for p in want['query']])
+        hidden = {k for k, v in want['query'] if v == REDACTED}      # allow-list redactions: presence only
+        got_pairs, got_sens = _split_pairs(urllib.parse.parse_qsl(request.query, keep_blank_values=True), hidden)
+        want_pairs, want_sens = _split_pairs([tuple(p) for p in want['query']], hidden)
         if got_pairs != want_pairs or got_sens != want_sens:
             names = sorted(({k for k, _ in got_pairs} ^ {k for k, _ in want_pairs}) | (set(got_sens) ^ set(want_sens))) \
                 or sorted({k for (k, v), (k2, v2) in zip(got_pairs, want_pairs) if (k, v) != (k2, v2)})

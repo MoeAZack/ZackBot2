@@ -41,7 +41,7 @@ def test_patterns_compile_once_per_value_and_signatures_do_not_trigger_rescrubs(
 
 
 def test_a_value_learned_later_is_still_removed_from_earlier_interactions():
-    answers = iter([HttpResponse(200, {}, b'{"note": "LATERSECRETabcdef1234"}'),
+    answers = iter([HttpResponse(200, {}, b'{"msg": "LATERSECRETabcdef1234"}'),
                     HttpResponse(200, {}, b'{"listenKey": "LATERSECRETabcdef1234"}')])
     rec = CassetteRecorder(lambda r: next(answers))
     rec(req(1))

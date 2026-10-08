@@ -16,7 +16,10 @@ import urllib.parse
 REDACTED = '<redacted>'
 MIN_SECRET_LEN = 8
 SENSITIVE_FRAGMENTS = ('listenkey', 'signature', 'apikey', 'secret', 'token', 'cookie', 'password', 'passwd',
-                       'authorization', 'privatekey')
+                       'authorization', 'privatekey',
+                       # Cowork #37 R1 verbatim names (checked against every allow-listed Binance name: no clash)
+                       'key', 'sig', 'jwt', 'bearer', 'session', 'credential', 'passphrase', 'mnemonic', 'hmac',
+                       'pwd', 'auth', 'seed', 'otp')
 _SEP = '[-_ ]?'
 # Long token-like runs, separators included (finding 3: a secret split by '_' or '-' must not slip through).
 TOKEN_RUN = re.compile(r'[A-Za-z0-9_\-+/=]{32,}')
