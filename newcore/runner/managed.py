@@ -31,10 +31,15 @@ of an unmanaged lot, ENTER) -> reconcile + invariants (I1 counts only CONFIRMED 
 unpromoted replacement).
 
 Identity: every management intent is a lineage child of the lot (Grammar G5: derive_child_intent_id(account, lot,
-purpose, journal ordinal)) and the driver counts the same ordinals, so the journal order is the driver's order. The add
-is the one unkeyed opening decision (Runner._lineage_add; G4 forbids a keyed decision from authorizing a lineage id).
-Route: the driver uses ONE route for every draft and G6 allows 'algo' only as a protect fallback, so driver stops are
-classic only (interface item: a venue that refuses classic stops refuses the plan's stop -> the core closes the lot).
+purpose, journal ordinal)) and the driver counts the same ordinals (stamped when a draft is SENT), so the journal order
+is the driver's order. The add is the one unkeyed opening decision (Runner._lineage_add; G4 forbids a keyed decision
+from authorizing a lineage id).
+Route (TNET-01): every draft carries its route and is sent on it (the client id is client_id_for(intent, route), so
+`_ref` and the venue follow it). A REFUSED classic plan stop is never handed to the driver as a plain venue answer: the
+refusal code is not journaled, so the runner first journals a route marker (WAIT 'mg fallback <intent>' when the venue
+named the algo service - or the code is unknown after a restart: protection outranks, as Runner._next_route - else
+'mg refused <intent>'), and the marker is the driver input: route_fallback() -> a NEW algo PROTECT child (G6), or
+on_outcome(REJECTED). Lost answers resolved to a refusal take the same path, so fold / replay stay identical.
 """
 from __future__ import annotations
 
@@ -47,16 +52,24 @@ from newcore.domain.errors import DomainError
 from newcore.management import Candle, CostModel, ManagementError, PlanRefused, Stage, build_plan, range_bb_mr_v1
 from newcore.management import driver as DR
 from newcore.management.presets import CANDLE_SECONDS, STOP_ATR
+from newcore.ports.keys import route_of
 from newcore.ports.venue import MarketOrder, OrderOutcome, OutcomeKind, ReadKind
 
 from . import ids
 from .book import BookRunner
-from .runner import Runner
+from .runner import ALGO_ROUTE, Runner
 from .signals import CLOSE
 
 ZERO = Decimal(0)
 MG = 'mg '                                   # every management decision's detail starts with it
 TICK = 'mg tick'
+FALLBACK = 'mg fallback'                     # route marker: the refused classic stop goes to the algo route (G6)
+REFUSED = 'mg refused'                       # route marker: the refusal goes to the driver (Rejected)
+# driver reconcile tokens that stop new risk (incident + HOLD); every other token is an incident only, and the transient
+# fill bookkeeping tokens are not reported at all (a persistent gap shows in the runner's reconciliation)
+HOLD_ITEMS = frozenset({'unmatched_fill', 'unknown_order', 'close_found_nothing', 'fill_refused', 'core_refused',
+                        'core_loop', 'route_fallback_refused', 'driver_refused', 'adopted_add'})
+QUIET_ITEMS = frozenset({'fill_gap', 'deferred_fill'})
 TICK_REASON = ReasonCode.PROTECT_CHECKING    # no management-tick code in the NC-01 registry (reported)
 MAX_FLUSH = 32
 MAX_REFUSALS = 2                             # refused management submits per lot per cycle, then HOLD (bounded)
@@ -82,11 +95,17 @@ class EntryInfo:
 
 
 def hold_reconciler(runner, lot_id, items):
-    """Stub for the REC-02 fold: every driver reconcile item is an incident and a durable HOLD (entries stop, protect /
-    close still pass); the operator / REC-02 resolves it."""
-    for token, detail in items:
-        runner._incident(f'management {lot_id}: {token} {detail}')
-    runner._hold([ReasonCode.RECONCILE_UNRECONCILED])
+    """Stub for the REC-02 fold: a driver reconcile item that can mean unowned / unbooked exposure is an incident and a
+    durable HOLD (entries stop, protect / close still pass); informational items are incidents only."""
+    hold = False
+    for item in items:
+        token = item[0]
+        if token in QUIET_ITEMS:
+            continue
+        runner._incident(f'management {lot_id}: ' + ' '.join(str(x) for x in item))
+        hold = hold or token in HOLD_ITEMS
+    if hold:
+        runner._hold([ReasonCode.RECONCILE_UNRECONCILED])
 
 
 @dataclass(frozen=True)
@@ -94,6 +113,8 @@ class ManagementConfig:
     enabled: bool = False                    # default OFF: management is opt-in per run
     plans: object = None                     # callable(EntryInfo) -> ManagementPlan | None (None: unmanaged lot)
     reconciler: object = hold_reconciler     # callable(runner, lot_id, items): the REC-02 slot
+    quote_asset: str = 'USDT'                # fees in this asset are booked as they are
+    fee_rates: tuple = ()                    # ((asset, Decimal rate in quote), ...) for fees in another asset
 
 
 def _away(side):
@@ -186,8 +207,11 @@ class ManagementMixin:
                 self._mg_drive(lot_id, DR.set_mode, ds, ev.to_mode, ev.to_hold)
         elif isinstance(ev, DecisionRecorded):
             d = ev.decision
-            if d.action is Action.WAIT and d.detail.startswith(TICK + ' ') and d.subject_id in self.mg:
-                self._mg_apply_tick(d)
+            if d.action is Action.WAIT and d.subject_id in self.mg:
+                if d.detail.startswith(TICK + ' '):
+                    self._mg_apply_tick(d)
+                elif d.detail.startswith((FALLBACK + ' ', REFUSED + ' ')):
+                    self._mg_apply_marker(d)
         elif isinstance(ev, ResultObserved):
             r = ev.result
             iv = self.fold.intents[r.intent_id]
@@ -199,6 +223,8 @@ class ManagementMixin:
             ds = self.mg.get(lot_id)
             if ds is None or not any(b.intent_id == iv.intent_id for b in ds.bindings):
                 return
+            if self._mg_classic_stop_refused(iv, r):
+                return                                                    # the route marker carries it (see doc)
             conv = self._mg_outcome(iv, r)
             if conv is None:
                 return
@@ -206,6 +232,22 @@ class ManagementMixin:
             self._mg_drive(lot_id, DR.on_outcome, ds, out, submit=submit)
             if out.kind is OutcomeKind.FINAL and out.executed_qty > 0:
                 self._mg_fills(lot_id, iv.intent.symbol, out.exchange_order_id)
+
+    @staticmethod
+    def _mg_classic_stop_refused(iv, r):
+        return (iv.purpose is Purpose.PROTECT and r.phase is ResultPhase.FINAL and r.evidence is Evidence.EXCHANGE_REFUSED
+                and route_of(iv.intent_id, iv.intent.client_order_id) == 'classic')
+
+    def _mg_apply_marker(self, d):
+        lot_id = d.subject_id
+        kind, iid = d.detail[len(MG):].split(' ')[:2]
+        ds = self.mg[lot_id]
+        if kind == 'fallback':
+            self._mg_drive(lot_id, DR.route_fallback, ds, iid)
+            return
+        iv = self.fold.intents[iid]
+        out = OrderOutcome(kind=OutcomeKind.REJECTED, ref=self._ref(iv), observed_at_ms=d.at_ms, error_code=0)
+        self._mg_drive(lot_id, DR.on_outcome, ds, out, submit=True)
 
     def _mg_outcome(self, iv, r):
         """The journaled OrderResult as the venue outcome the driver maps (None: nothing for the driver)."""
@@ -293,7 +335,7 @@ class ManagementMixin:
         self.plans[lot_id] = plan
         mode, hold = self._mg_mode
         self._mg_drive(lot_id, DR.start, plan, account_id=self.acct, lot_id=lot_id, entry_fee=fee, mode=mode,
-                       hold_kind=hold)
+                       hold_kind=hold, quote_asset=self.mgmt.quote_asset, fee_rates=tuple(self.mgmt.fee_rates))
 
     def _mg_candle(self, symbol, open_ms):
         r = self.bars.closed_bars(symbol, self.cfg.tf_ms, as_of_ms=open_ms + self.cfg.tf_ms, limit=1)
@@ -343,6 +385,12 @@ class ManagementMixin:
                 if self._mg_fills(lot_id, self.plans[lot_id].symbol, b.exchange_order_id) and \
                         self.mg[lot_id] != before:
                     return True
+        for b in ds.bindings:                                             # a refused classic stop: route marker
+            iv = self.fold.intents.get(b.intent_id)
+            if (b.leg.value == 'stop' and b.route == 'classic' and b.state is DR.BindState.SENT and iv is not None
+                    and iv.final is not None and iv.final.evidence is Evidence.EXCHANGE_REFUSED):
+                self._mg_marker(lot_id, iv)
+                return True
         for b in ds.bindings:                                             # drafts not journaled yet, in order
             if b.intent_id in self.fold.intents:
                 continue
@@ -370,6 +418,20 @@ class ManagementMixin:
                     self._mg_cancel(iv, self._cancel_reason.get(b.intent_id, ReasonCode.PROTECT_REPLACE))
                     return True
         return False
+
+    def _mg_marker(self, lot_id, iv):
+        """Journal the route marker of a refused classic plan stop BEFORE the driver sees the refusal (the refusal code
+        lives only in this process: after a restart it is unknown and protection outranks -> the algo route)."""
+        code = self._refusals.get(iv.intent_id, 'unknown')
+        kind = FALLBACK if code in ('unknown', ALGO_ROUTE) else REFUSED
+        did = ids.marker_decision_id(kind, iv.intent_id)
+        if self.journal.find_decision(did) is not None:
+            return
+        plan = self.plans[lot_id]
+        self._decision(decision_id=did, action=Action.WAIT,
+                       reason=ReasonCode.PROTECT_RESTORING if kind == FALLBACK else ReasonCode.EXEC_STOP_FAILED,
+                       authority=Authority.PROTECTION, key=None, symbol=plan.symbol, side=str(plan.side),
+                       subject_id=lot_id, evidence=(iv.intent_id,), detail=f'{kind} {iv.intent_id} {code}')
 
     def _mg_send_draft(self, lot_id, d):
         did = ids.child_decision_id(d.intent_id)
