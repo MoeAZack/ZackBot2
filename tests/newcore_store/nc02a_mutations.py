@@ -98,7 +98,7 @@ MUTATIONS = {
     'HOLD entered without copying the evidence (A04)': (S + 'store.py', [(
         '        refs, incs = _copy_evidence(store, seen, now_ms)\n', '        refs, incs = [], []\n')]),
     'a checkpoint in HOLD is trusted (A05)': (S + 'store.py', [(
-        '        trust = Trust.MANAGED if self.mode is Mode.MANAGE else Trust.HOLD\n',
+        '        trust = Trust.MANAGED if managed else Trust.HOLD\n',
         '        trust = Trust.MANAGED\n')]),
     'any KNOWN_EMPTY counts as proven (R-KNOWN-EMPTY)': (S + 'store.py', [(
         "    return (prov['kind'] in (ProvenanceKind.INIT_FLAT, ProvenanceKind.PROMOTION) and r is not None\n",
@@ -114,6 +114,19 @@ MUTATIONS = {
         "        return PairRead(PairState.DAMAGE, None, None, states, 'torn first write')\n")]),
     'sent intent classified as never sent': (S + 'fold.py', [('            elif sent is None:\n',
                                                               '            elif True:\n')]),
+    'uncovered journal tail ignored at boot (item 6)': (S + 'store.py', [(
+        '    if any(_ownership_changing(e) for e in tail):\n', '    if False:\n')]),
+    'fold proof not tied to the journal (item 6)': (S + 'store.py', [(
+        '    if proof is None or proof.kind is not ProofKind.JOURNAL or proof.through_sequence != '
+        'store.journal.last_sequence():\n', '    if proof is None:\n')]),
+    'fold of another account / aggregate accepted (item 6)': (S + 'store.py', [(
+        '    if pf is None or pf.account_id != store.account_id or pf.portfolio_id != store.aggregate_id:\n',
+        '    if pf is None:\n')]),
+    'a failed checkpoint leaves the store writable': (S + 'store.py', [(
+        '            self.mode, self.hold_kind = Mode.HOLD, HoldKind.DURABILITY_UNAVAILABLE\n'
+        '            self.mark_hard_hold(now_ms)\n            raise\n', '            raise\n')]),
+    'store close keeps the writer lock': (S + 'store.py', [(
+        '        if j is not None:\n            j.close()\n', '        pass\n')]),
 }
 
 
