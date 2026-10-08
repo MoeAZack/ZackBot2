@@ -117,8 +117,9 @@ MUTATIONS = {
         '    if not 0 <= age < max_age_ms:\n', '    if False:\n')]),
     'quantity tolerance ignored (R-MATCH 3)': (S + 'reconcile.py', [(
         '        elif abs(o - e) * 2 >= step:\n', '        elif False:\n')]),
-    'a future settings record read as current (NF-03)': (S + 'snapfile.py', [(
-        "        raise SnapFuture('settings record version')", "        pass  # raise SnapFuture('settings record version')")]),
+    'a future settings record read as current (NF-03)': (S + 'snapfile.py', [(      # both guards (HIGH-2 sweep too)
+        "        raise SnapFuture('settings record version')", "        pass  # raise SnapFuture('settings record version')"),
+        ('        if r.rtype in (RT_HEADER, RT_SETTINGS):\n', '        if r.rtype in (RT_HEADER,):\n')]),
     'a torn first slot read as damage (drill finding)': (S + 'slots.py', [(
         "        return PairRead(PairState.ABSENT, None, None, states, 'torn first write')\n",
         "        return PairRead(PairState.DAMAGE, None, None, states, 'torn first write')\n")]),

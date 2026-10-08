@@ -245,3 +245,17 @@ def test_a_prefix_that_diverges_from_the_own_entry_is_not_torn():
     assert r.mode is Mode.HOLD and any(i.cause == 'identity' for i in r.items)
     assert r.store.bind(T) is False and fs.read_bytes(p) == other[:30]
     _close(r)
+
+
+@pytest.mark.parametrize('where,item', [('anchors', 'anchors directory'), ('snap', 'snap directory'),
+                                        ('account', 'account path unreadable')])
+def test_a_failing_kind_names_the_member_it_could_not_read(where, item):
+    """N3, precise: the failing path is named in the rule-3 item (not only caught by the read-phase net)."""
+    fs, ex, _ = managed_with_lot()
+    target = os.path.normcase(os.path.normpath({'anchors': P.anchors, 'snap': P.snap, 'account': P.account}[where]))
+    f = FaultFs(fs, read_fail=lambda op, q: oserror(errno.EIO)
+                if op == 'kind' and os.path.normcase(os.path.normpath(q)) == target else None)
+    r = boot(MEM_BASE, account(), exchange=ex, now_ms=T, fs=f, cipher=CIPHER)
+    assert r.mode is Mode.HOLD and r.writes == frozenset()                 # rule 3: no write at all
+    assert any(i.cause == 'unreadable' and item in i.ref for i in r.items), r.items
+    _close(r)
