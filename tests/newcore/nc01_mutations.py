@@ -117,6 +117,8 @@ MUTATIONS = {
     'P2: portfolio collections not canonical': (D + 'portfolio.py', [(
         "            _canonical(self, 'positions', lambda x: (x.symbol, x.side.value))\n"
         "            _canonical(self, 'intents', lambda x: x.intent_id)", '            pass')]),
+    'r3 item 2: daily_halt missing from the registry': (D + 'reasons.py', [(
+        "    RISK_DAILY_HALT = 'risk_gateway.daily_halt'\n", '')]),
     'duplicate JSON keys': (D + 'codec.py', [("            if k in out:\n                problems.append(",
                                               "            if False:\n                problems.append(")]),
     'truncated JSON': (D + 'codec.py', [(

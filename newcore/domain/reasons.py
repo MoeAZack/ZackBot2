@@ -133,6 +133,14 @@ class ReasonCode(enum.StrEnum):
     OPERATOR_ADOPT = 'operator.adopt'
     # ---- appended after v1 publication (append-only: new codes go at the end)
     RISK_COST_TO_STOP = 'risk_gateway.cost_to_stop'
+    # ---- r3 draft: S4 risk halts and the REC-02 reconcile vocabulary (append-only)
+    RISK_DRAWDOWN_KILL = 'risk_gateway.drawdown_kill'
+    RISK_DAILY_HALT = 'risk_gateway.daily_halt'
+    RECONCILE_FOREIGN_QUARANTINE = 'reconcile.foreign_quarantine'
+    RECONCILE_MANUAL_CLOSE = 'reconcile.manual_close'
+    RECONCILE_MANUAL_ADD = 'reconcile.manual_add'
+    RECONCILE_STALE_READ = 'reconcile.stale_read'
+    RECONCILE_LATE_FILL = 'reconcile.late_fill_after_not_found'
 
     @property
     def namespace(self):
@@ -246,6 +254,13 @@ MEANING = {
     R.OPERATOR_ONE_SHOT: 'the owner authorized exactly one opening intent while paused',
     R.OPERATOR_ADOPT: 'the owner adopted an exchange position / fill as owned',
     R.RISK_COST_TO_STOP: 'risk rule: the round-trip trading cost is too large a share of the distance to the stop',
+    R.RISK_DRAWDOWN_KILL: 'risk rule: the account drawdown kill switch stopped all new risk',
+    R.RISK_DAILY_HALT: 'risk rule: the daily loss limit halted new risk for the rest of the trading day',
+    R.RECONCILE_FOREIGN_QUARANTINE: 'a foreign order / position is quarantined (left untouched) until the owner acts',
+    R.RECONCILE_MANUAL_CLOSE: 'an owned position was closed / reduced outside the bot; booked from venue trade evidence',
+    R.RECONCILE_MANUAL_ADD: 'the venue holds more than is owned (a manual add); never adopted without the owner',
+    R.RECONCILE_STALE_READ: 'a venue read older than the newest recorded result: re-read, never compared',
+    R.RECONCILE_LATE_FILL: 'a FINAL record of an owned order supersedes its earlier corroborated not-found',
 }
 del R
 
