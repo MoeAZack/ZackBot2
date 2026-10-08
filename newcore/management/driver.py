@@ -84,6 +84,7 @@ class Draft:
     reduce_only: bool
     reason: ReasonCode
     op: Op
+    replaces: str | None = None  # NC-01 cancel-replace link: the CANCELLING lot REDUCE / CLOSE intent this one replaces
 
 
 @dataclasses.dataclass(frozen=True, slots=True, kw_only=True)
@@ -187,12 +188,20 @@ def armed_triggers(ds):
 
 
 def to_order_intent(d, *, decision_id, at_ms):
-    """The NC-01 OrderIntent (PLANNED) a draft stands for; the runner makes it durable before it sends anything."""
+    """The NC-01 OrderIntent (PLANNED) a draft stands for; the runner makes it durable before it sends anything.
+    `replaces_intent_id` (frozen NC-01, Codex P1) is the explicit cancel-replace link and NC-01 allows it only on a lot
+    REDUCE / CLOSE: it is set from the draft's `replaces` for those purposes and is None for everything else. A stop
+    replacement (PROTECT) keeps its predecessor link inside the driver (Binding.replaces: the old stop is cancelled
+    once the new one is confirmed) and never on the intent. The driver's market reduces / closes never cancel-replace
+    (a fired market order cannot be cancelled; a second reduce waits for the first to settle), so today every intent
+    it produces carries None."""
+    link = d.replaces if d.purpose in (Purpose.REDUCE, Purpose.CLOSE) else None
     return OrderIntent(intent_id=d.intent_id, account_id=d.account_id, decision_id=decision_id,
                        client_order_id=d.client_id, purpose=d.purpose, order_type=d.order_type,
                        state=IntentState.PLANNED, symbol=d.symbol, side=d.side, qty=d.qty, reason=d.reason,
                        created_at_ms=at_ms, owner_id=d.owner_id, owner_kind=d.owner_kind, slot_id=None, price=None,
-                       stop_price=d.stop_price, arm=None, alt_client_order_id=None, seen_qty=None, authorized_by=None)
+                       stop_price=d.stop_price, arm=None, alt_client_order_id=None, seen_qty=None, authorized_by=None,
+                       replaces_intent_id=link)
 
 
 # ------------------------------------------------------------------------------------------------------- helpers
