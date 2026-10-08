@@ -200,6 +200,23 @@ def test_post_hoc_injected_sensitive_header_or_param_fails_closed():
         rec.to_json()
 
 
+def test_post_hoc_injected_sensitive_text_pair_fails_closed():
+    # Not JSON, no registered value: only the raw-text name scan can see it.
+    rec = CassetteRecorder(FakeHttp(ok('plain text')))
+    rec(req())
+    rec.interactions[0]['response']['body_text'] = 'note listenKey=abcdefghij end'
+    with pytest.raises(CassetteLeak):
+        rec.to_json()
+
+
+def test_replay_signed_request_needs_the_key_header():
+    _, text = recorded(ok('{}'), requests=[req('a=1&signature=' + SIG, (('X-MBX-APIKEY', DUMMY_KEY),),
+                                               signed=True)])
+    p = CassettePlayer(json.loads(text))
+    with pytest.raises(CassetteMismatch):
+        p(req('a=1&signature=' + SIG, (), signed=True))         # signature present, key header missing
+
+
 def test_post_hoc_injected_value_in_binary_body_fails_closed():
     rec = CassetteRecorder(FakeHttp(HttpResponse(200, {}, b'\xff\x00ok')), redact=(DUMMY_SECRET,))
     rec(req())

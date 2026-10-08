@@ -263,6 +263,20 @@ def test_read_loop_checks_the_deadline_between_chunks(monkeypatch):
         s(req(timeout=5.0))
 
 
+def test_plain_socket_timeout_before_the_deadline_is_a_timeout():
+    class Conn:
+        sock = None
+
+        def connect(self):
+            raise socket.timeout('connect timed out')
+
+        def close(self):
+            pass
+    s = TestnetHttpSender(connect=lambda h, t, c: Conn())
+    with pytest.raises(WireTimeout):
+        s(req(timeout=5.0))
+
+
 def test_clean_eof_after_the_deadline_is_still_a_timeout():
     """A read that returns a clean EOF after the watchdog fired must not be taken as a complete answer."""
     class Resp:
