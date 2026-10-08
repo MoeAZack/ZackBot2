@@ -110,6 +110,30 @@
       "accepted_by": null,
       "date_cairo": "2026-10-08",
       "prev_entry_sha": "1aa5f37c4e883ebe0e34f9978287cf35bb99e80b18eaece72f5fae0704772279"
+    },
+    {
+      "id": "CORR-0004",
+      "type": "correction",
+      "ticket": "AUD-07",
+      "finding": "C13c",
+      "title": "C13c fixed: an armed backtest trailing entry holds a max_pos slot from arming",
+      "cases": {
+        "G-TRAILENTRY-MAXPOS-01": {
+          "old_expect_sha": "b3fca282b79ac3f85774bc37b1929c2b669a17d6fbf1126074275bb22f219217",
+          "new_expect_sha": "b3fca282b79ac3f85774bc37b1929c2b669a17d6fbf1126074275bb22f219217"
+        }
+      },
+      "adapters_changed": [
+        "legacy_backtest"
+      ],
+      "resolved_divergences": [
+        "G-TRAILENTRY-MAXPOS-01:legacy_backtest"
+      ],
+      "rationale": "backtest.py armed trailing entries with no slot check and checked max_pos only at the fill, so a second armed coin could take the slot; the engine holds the slot from arming (held.append, entry_block counts working entries). The backtest now refuses to arm when len(open) + len(armed) >= max_pos, in slot symbol order, and counts it as blocked['max_pos']. The expect block is unchanged; only the known divergence is removed.",
+      "evidence": "branch aud-07-product: G-TRAILENTRY-MAXPOS-01 legacy_backtest XPASS with the fix; reverting the fix re-breaks exactly it",
+      "accepted_by": null,
+      "date_cairo": "2026-10-08",
+      "prev_entry_sha": "62e97e8917504faeb05e70285c2fb1d2ae8e80b159aa0edb11fe78a5a98a2d47"
     }
   ]
 }
