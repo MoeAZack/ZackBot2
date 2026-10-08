@@ -90,6 +90,7 @@ class ScenarioResult:
     error: str | None = None
     wall_s: float = 0.0
     interrupted: bool = False                              # Ctrl+C / SystemExit (N2)
+    attempts: int = 1                                      # bracket scenarios: runs until observed (spec attempts)
     cycle_times: list = field(default_factory=list)        # the candle closes the Runner cycled at (replay tape)
     cassette: str | None = None                            # testnet: the sanitized cassette of this scenario
 
@@ -399,11 +400,37 @@ def run_scenario(spec, target, *, run_nonce, monotonic=time.monotonic, baseline=
             res.error = f'{type(ex).__name__}: {ex}'
             res.assertions.append(('expectations evaluated', False, res.error))
         res.verdict = PASS if all(ok for _, ok, _ in res.assertions) else FAIL
+        missed = _unobserved(run, expectations(spec, target.kind).get('observe')) if res.verdict == PASS else []
+        if missed:                                    # a market event that did not happen: not a safety failure
+            res.verdict = INCONCLUSIVE
+            res.error = 'not observed: ' + '; '.join(missed)
     if cleanup is not None:
         res.assertions.append(('cleanup clean', cleanup.clean, f'attempts {cleanup.attempts}'))
         if not cleanup.clean:
             res.verdict = FAIL
     return res
+
+
+def _unobserved(run, observe):
+    """The 'observe' conditions (testnet price brackets) the market did not deliver this attempt."""
+    if not observe:
+        return []
+    r, out = run.runner, []
+    if 'trades_in' in observe:
+        codes = [t.exit_code for t in _safe_trades(r)]
+        if not codes or any(c not in observe['trades_in'] for c in codes):
+            out.append(f'exits {codes} not in {observe["trades_in"]}')
+    for key, purpose in (('reduces_min', Purpose.REDUCE), ('adds_min', Purpose.ADD)):
+        if key in observe:
+            n = sum(1 for iv in r.fold.intents.values() if iv.purpose is purpose and iv.executed > 0)
+            if n < observe[key]:
+                out.append(f'{key[:-4]} filled {n} < {observe[key]}')
+    return out
+
+
+def attempt_nonce(run_nonce, attempt):
+    """Attempt 1 keeps the run nonce; a retry gets its own (fresh decision keys, fresh client ids)."""
+    return run_nonce if attempt == 1 else f'{run_nonce}r{attempt}'
 
 
 def _safe_trades(runner):
@@ -454,8 +481,12 @@ def run_suite(specs, target, *, run_nonce, monotonic=time.monotonic, min_balance
         return SuiteResult(pre, [], EXIT_PREFLIGHT)
     results = []
     for spec in specs:
-        r = run_scenario(spec, target, run_nonce=run_nonce, monotonic=monotonic, baseline=pre.baseline,
-                         adopted=adopted_orders(pre))
+        for attempt in range(1, spec.get('attempts', 1) + 1):
+            r = run_scenario(spec, target, run_nonce=attempt_nonce(run_nonce, attempt), monotonic=monotonic,
+                             baseline=pre.baseline, adopted=adopted_orders(pre))
+            r.attempts = attempt
+            if r.verdict != INCONCLUSIVE or r.residue or r.interrupted:
+                break
         results.append(r)
         if on_result is not None:
             on_result(r)

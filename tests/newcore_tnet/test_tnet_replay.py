@@ -41,12 +41,14 @@ def test_every_testnet_scenario_has_a_clean_cassette_and_sidecar(recorded):
     by = {r.id: r for r in res.scenarios}
     for s in TESTNET:
         r = by[s['id']]
-        assert r.cassette and os.path.basename(r.cassette) == f'tnet-rp1-{s["id"].lower()}.json'
+        suffix = '' if r.attempts == 1 else f'-a{r.attempts}'
+        assert r.cassette and os.path.basename(r.cassette) == f'tnet-rp1-{s["id"].lower()}{suffix}.json'
         text = open(r.cassette, encoding='utf-8').read() + open(r.cassette[:-5] + '.meta.json', encoding='utf-8').read()
         assert DUMMY_KEY not in text and DUMMY_SECRET not in text and '<redacted>' in text
         meta = json.load(open(r.cassette[:-5] + '.meta.json', encoding='utf-8'))
         assert meta['format'] == REPLAY_FORMAT and meta['verdict'] == r.verdict and meta['spec'] == s
-        assert meta['cycle_times'] == r.cycle_times and meta['run_nonce'] == 'rp1'
+        assert meta['cycle_times'] == r.cycle_times and meta['run_nonce'] == ('rp1' if r.attempts == 1 else
+                                                                             f'rp1r{r.attempts}')
     assert not [r for r in res.scenarios if r.verdict == 'SKIPPED' and r.cassette]
 
 

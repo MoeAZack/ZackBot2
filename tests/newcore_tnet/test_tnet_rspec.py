@@ -9,7 +9,8 @@ from newcore.tnet.rspec import SpecError, bundled, expectations, parse_rspec, va
 
 WANTED = {'T01-long', 'T02-short', 'T03', 'T04-algo', 'T04-classic', 'T09', 'T10-floor', 'T10-refused',
           'T10-stop-refused', 'T11', 'T12-flat', 'T12-protected'} | \
-    {f'T0{n}-{side}' for n in (5, 6, 7, 8) for side in ('long', 'short')}
+    {f'T0{n}-{side}' for n in (5, 6, 7, 8) for side in ('long', 'short')} | \
+    {f'T0{n}-tn-{side}' for n in (5, 6, 7) for side in ('long', 'short')}
 
 
 def base():
@@ -21,7 +22,10 @@ def test_bundled_specs_cover_t01_to_t12():
     assert {s['id'] for s in specs} == WANTED
     assert len({s['name'] for s in specs}) == len(specs)
     mg = [s for s in specs if s['id'][:3] in ('T05', 'T06', 'T07', 'T08')]
-    assert len(mg) == 8 and all(s['management']['enabled'] and s['targets'] == ['fake'] for s in mg)
+    assert len(mg) == 14 and all(s['management']['enabled'] for s in mg)
+    assert sum(s['targets'] == ['fake'] for s in mg) == 8                    # FakeVenue (move steps)
+    tn = [s for s in mg if s['targets'] == ['testnet']]
+    assert len(tn) == 6 and all(s['attempts'] == 3 and 'observe' in s['expect'] for s in tn)   # brackets
     assert not any('management' in s for s in specs if s not in mg)
     for s in specs:
         assert validate_rspec(s) is s

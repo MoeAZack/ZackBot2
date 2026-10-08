@@ -18,8 +18,8 @@ import os
 from newcore.venue.cassette import CassetteLeak, CassetteRecorder
 from newcore.venue.tnet import _audit
 
-from .driver import (EXIT_PREFLIGHT, FAIL, ScenarioResult, SuiteResult, adopted_orders, run_scenario,
-                     suite_exit_code)
+from .driver import (EXIT_PREFLIGHT, FAIL, INCONCLUSIVE, ScenarioResult, SuiteResult, adopted_orders,
+                     attempt_nonce, run_scenario, suite_exit_code)
 
 REPLAY_FORMAT = 'zb-newcore-tnet-replay/1'
 
@@ -82,21 +82,32 @@ def run_recorded_suite(specs, make_target, *, run_nonce, cassette_dir, redact, m
         if 'testnet' not in spec['targets']:
             r = run_scenario(spec, pre_t, run_nonce=run_nonce, monotonic=monotonic)      # SKIPPED, sends nothing
         else:
-            try:
-                t = make_target(recorder)
-            except Exception as ex:                                  # noqa: BLE001 - a refused boot is a FAIL
-                r = ScenarioResult(spec['id'], spec['name'], 'testnet', FAIL, error=f'boot: {type(ex).__name__}: {ex}')
-                r.assertions.append(('target boot', False, r.error))
+            r, booted = None, True
+            for attempt in range(1, spec.get('attempts', 1) + 1):      # a bracket retries while INCONCLUSIVE
+                nonce = attempt_nonce(run_nonce, attempt)
+                try:
+                    t = make_target(recorder)
+                except Exception as ex:                              # noqa: BLE001 - a refused boot is a FAIL
+                    r = ScenarioResult(spec['id'], spec['name'], 'testnet', FAIL,
+                                       error=f'boot: {type(ex).__name__}: {ex}')
+                    r.assertions.append(('target boot', False, r.error))
+                    booted = False
+                    break
+                r = run_scenario(spec, t, run_nonce=nonce, monotonic=monotonic, baseline=pre.baseline,
+                                 adopted=adopted_orders(pre))
+                r.attempts = attempt
+                meta = replay_meta(spec, r, run_nonce=nonce, account_id=t.config.account_id,
+                                   symbols=t.config.symbols, settle_ms=t.settle_ms, baseline=pre.baseline)
+                base = bundle_base(cassette_dir, run_nonce, spec['id'] + ('' if attempt == 1 else f'-a{attempt}'))
+                try:
+                    r.cassette = save_bundle(t.recorder, base, meta, redact)
+                except Exception as ex:                              # noqa: BLE001 - leak / disk: exit 5, no file
+                    errors.append((spec['id'], type(ex).__name__))
+                if r.verdict != INCONCLUSIVE or r.residue or r.interrupted:
+                    break
+            if not booted:
                 results.append(r)
                 break
-            r = run_scenario(spec, t, run_nonce=run_nonce, monotonic=monotonic, baseline=pre.baseline,
-                             adopted=adopted_orders(pre))
-            meta = replay_meta(spec, r, run_nonce=run_nonce, account_id=t.config.account_id,
-                               symbols=t.config.symbols, settle_ms=t.settle_ms, baseline=pre.baseline)
-            try:
-                r.cassette = save_bundle(t.recorder, bundle_base(cassette_dir, run_nonce, spec['id']), meta, redact)
-            except Exception as ex:                                  # noqa: BLE001 - leak / disk: exit 5, no file
-                errors.append((spec['id'], type(ex).__name__))
         results.append(r)
         if on_result is not None:
             on_result(r)

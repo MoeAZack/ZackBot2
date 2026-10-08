@@ -62,7 +62,8 @@ STEPS = {
 }
 EXPECT_KEYS = {'entries', 'skips', 'skip_reason', 'trades', 'entry_phases', 'entry_state', 'hold_seen', 'mode_end',
                'max_orders', 'fills_match', 'stop_route', 'final', 'incidents', 'adds', 'reduces',
-               'open_orders_end'}
+               'open_orders_end', 'observe'}
+OBSERVE_KEYS = {'trades_in', 'reduces_min', 'adds_min'}
 PLAN_DECIMALS = ('add_r', 'add_scale', 'tp1_r', 'tp1_frac', 'tp2_r', 'cap_mult')
 PLAN_KEYS = set(PLAN_DECIMALS) | {'be_after_tp1', 'time_exit_candles'}
 SPEC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'specs')
@@ -100,12 +101,25 @@ def _expect(e, path):
         _req(e['stop_route'] in ('classic', 'algo', 'any'), f'{path}.stop_route', 'classic / algo / any')
     if 'final' in e:
         _req(e['final'] in CHECKS, f'{path}.final', ' / '.join(CHECKS))
+    if 'observe' in e:
+        o = e['observe']
+        _keys(o, f'{path}.observe', set(), OBSERVE_KEYS)
+        _req(bool(o), f'{path}.observe', 'at least one market event to observe')
+        if 'trades_in' in o:
+            _req(isinstance(o['trades_in'], list) and o['trades_in'] and all(isinstance(x, str) and 0 < len(x) <= 32
+                                                                            for x in o['trades_in']),
+                 f'{path}.observe.trades_in', 'a non-empty list of exit codes')
+        for k in ('reduces_min', 'adds_min'):
+            if k in o:
+                _int(o[k], f'{path}.observe.{k}', 1, 10)
 
 
 def validate_rspec(doc):
     """Return the spec document if valid; raise SpecError(path, reason) otherwise."""
     _keys(doc, '$', {'format', 'id', 'name', 'targets', 'symbol', 'side', 'sizing', 'stop', 'steps', 'expect', 'bound'},
-          {'description', 'fake', 'expect_testnet', 'management'})
+          {'description', 'fake', 'expect_testnet', 'management', 'attempts'})
+    if 'attempts' in doc:
+        _int(doc['attempts'], '$.attempts', 1, 6)
     _req(doc['format'] == FORMAT, '$.format', f'must be {FORMAT}')
     _req(isinstance(doc['id'], str) and ID_RE.fullmatch(doc['id']) is not None, '$.id', 'T<2 digits>[-suffix[-suffix]]')
     _req(isinstance(doc['name'], str) and NAME_RE.fullmatch(doc['name']) is not None, '$.name', '[a-z0-9_]{3,48}')

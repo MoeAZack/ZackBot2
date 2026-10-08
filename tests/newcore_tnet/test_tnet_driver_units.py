@@ -114,3 +114,42 @@ def test_restart_reopens_the_journal(monkeypatch):
     monkeypatch.setattr(FakeTarget, 'reopen_journal', reopen)
     r = run_scenario(spec('T11'), FakeTarget(), run_nonce='u2')
     assert r.verdict == 'PASS' and calls == [1]
+
+
+def test_a_bracket_retries_while_inconclusive_with_fresh_ids(monkeypatch):
+    calls = []
+    real = DR._unobserved
+
+    def flaky(run, observe):
+        calls.append(1)
+        return ['synthetic: not yet'] if len(calls) == 1 else real(run, observe)
+    monkeypatch.setattr(DR, '_unobserved', flaky)
+    s = spec('T01-long')
+    s['attempts'] = 3
+    s['expect']['observe'] = {'trades_in': ['SIGNAL_EXIT']}
+    res = DR.run_suite([s], FakeTarget(), run_nonce='att')
+    r, = res.scenarios
+    assert r.verdict == 'PASS' and r.attempts == 2 and len(calls) == 2
+
+
+def test_an_unobserved_event_is_inconclusive_never_a_fail_and_safety_still_fails():
+    s = spec('T01-long')
+    s['expect']['observe'] = {'trades_in': ['TP_FULL']}
+    r = run_scenario(s, FakeTarget(), run_nonce='obs')
+    assert r.verdict == DR.INCONCLUSIVE and "not in ['TP_FULL']" in r.error
+    s['expect']['entries'] = 9                                          # a real assertion failure stays a FAIL
+    assert run_scenario(s, FakeTarget(), run_nonce='obs2').verdict == FAIL
+
+
+@pytest.mark.parametrize('bad', [{'attempts': 0}, {'attempts': 7}, {'expect_observe': {}},
+                                 {'expect_observe': {'trades_in': []}}, {'expect_observe': {'adds_min': 0}},
+                                 {'expect_observe': {'nope': 1}}])
+def test_attempts_and_observe_are_validated(bad):
+    from newcore.tnet.rspec import SpecError, validate_rspec
+    s = spec('T01-long')
+    if 'attempts' in bad:
+        s['attempts'] = bad['attempts']
+    else:
+        s['expect']['observe'] = bad['expect_observe']
+    with pytest.raises(SpecError):
+        validate_rspec(s)

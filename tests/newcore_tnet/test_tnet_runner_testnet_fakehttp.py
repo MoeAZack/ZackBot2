@@ -10,7 +10,7 @@ from newcore.venue.factory import BindingMismatch
 
 from tnet_support import Cfg, World, spec
 
-TESTNET = [s for s in bundled() if 'testnet' in s['targets'] and s['id'] != 'T04-algo']
+TESTNET = [s for s in bundled() if 'testnet' in s['targets'] and 'observe' not in s['expect']]   # not brackets
 
 
 @pytest.mark.parametrize('s', TESTNET, ids=[s['id'] for s in TESTNET])
@@ -26,6 +26,8 @@ def test_the_whole_suite_is_pass_plus_one_inconclusive_bracket():
     res = run_suite(bundled(), w.target(), run_nonce='suite1', monotonic=w.monotonic)
     v = {r.id: r.verdict for r in res.scenarios}
     assert v.pop('T04-algo') == INCONCLUSIVE                          # the fake never triggers a stop: bounded wait
+    for k in [k for k in v if '-tn-' in k]:
+        assert v.pop(k) == INCONCLUSIVE                               # brackets: the static fake price never moves
     assert v.pop('T04-classic') == v.pop('T10-stop-refused') == SKIPPED
     for k in [k for k in v if k[:3] in ('T05', 'T06', 'T07', 'T08')]:
         assert v.pop(k) == SKIPPED                                    # management scenarios: FakeVenue only
@@ -133,3 +135,15 @@ def test_n6_the_signal_close_goes_out_before_the_stop_is_cancelled():
     cancel_i = next(i for i, q in enumerate(writes) if q.method == 'DELETE')
     assert close_i < cancel_i, [(q.method, q.url.rsplit('/', 1)[-1]) for q in writes]
     assert w.fb.flat() and not w.fb.open_cids()
+
+
+@pytest.mark.parametrize('sid', ['T05-tn-long', 'T06-tn-short', 'T07-tn-long'])
+def test_a_bracket_on_a_market_that_never_moves_is_inconclusive_after_its_attempts_and_flat(sid):
+    w = World()
+    res = run_suite([spec(sid)], w.target(), run_nonce='br', monotonic=w.monotonic)
+    r, = res.scenarios
+    assert r.verdict == INCONCLUSIVE and r.attempts == 3 and r.error.startswith('not observed')
+    assert [t['exit_code'] for t in r.trades] == ['TIME_EXIT']           # the plan's time exit closed it
+    assert res.exit_code == DR.EXIT_INCONCLUSIVE and w.fb.flat() and not w.fb.open_cids()
+    entries = {x['client_id'] for x in r.ledger if x['kind'] == 'entry'}
+    assert len(entries) == 1                                            # the last attempt's ledger: its own ids

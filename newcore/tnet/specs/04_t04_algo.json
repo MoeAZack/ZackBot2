@@ -36,7 +36,12 @@
     ],
     "stop_route": "algo",
     "fills_match": true,
-    "final": "flat"
+    "final": "flat",
+    "observe": {
+      "trades_in": [
+        "STOP_HIT"
+      ]
+    }
   },
   "expect_testnet": {
     "stop_route": "any"
@@ -46,5 +51,6 @@
     "max_orders": 4,
     "max_notional_usdt": "2000",
     "max_wall_s": 2400
-  }
+  },
+  "attempts": 3
 }

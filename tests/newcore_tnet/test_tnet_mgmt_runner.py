@@ -8,7 +8,7 @@ from newcore.tnet.driver import FAIL, PASS, run_scenario
 from newcore.tnet.rspec import SpecError, bundled, validate_rspec
 from newcore.tnet.targets import FakeTarget
 
-MG = [s for s in bundled() if s['id'][:3] in ('T05', 'T06', 'T07', 'T08')]
+MG = [s for s in bundled() if s['id'][:3] in ('T05', 'T06', 'T07', 'T08') and 'fake' in s['targets']]
 
 
 def spec(id_):

@@ -1,0 +1,53 @@
+{
+  "format": "zb-newcore-tnet-runner/1",
+  "id": "T06-tn-long",
+  "name": "t06_partial_bracket_long",
+  "description": "Testnet bracket for T06: TP1 half at 0.5 R then net break-even, TP2 at 1 R; INCONCLUSIVE (retried) unless a partial reduce filled.",
+  "targets": [
+    "testnet"
+  ],
+  "symbol": "SOLUSDT",
+  "side": "LONG",
+  "sizing": {
+    "risk_pct": "0.000075",
+    "max_leverage": "3"
+  },
+  "stop": {
+    "pct": "0.15"
+  },
+  "steps": [
+    {
+      "op": "enter"
+    },
+    {
+      "op": "await_exit",
+      "max_ticks": 30
+    }
+  ],
+  "expect": {
+    "entries": 1,
+    "final": "flat",
+    "open_orders_end": 0,
+    "observe": {
+      "reduces_min": 1
+    }
+  },
+  "bound": {
+    "max_ticks": 31,
+    "max_orders": 12,
+    "max_notional_usdt": "2000",
+    "max_wall_s": 2400
+  },
+  "management": {
+    "enabled": true,
+    "plan": {
+      "add_r": null,
+      "tp1_r": "0.5",
+      "tp1_frac": "0.5",
+      "tp2_r": "1",
+      "be_after_tp1": true,
+      "time_exit_candles": 25
+    }
+  },
+  "attempts": 3
+}
