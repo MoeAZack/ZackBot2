@@ -128,6 +128,24 @@ def test_key_is_fetched_from_the_source_at_send_time():
     assert key == DUMMY_KEY and after == before + 1               # resolved inside the send, not stored earlier
 
 
+def test_key_failure_at_send_time_is_credentials_unavailable_not_unknown():
+    calls = []
+
+    class FailsLater(StaticCredentials):
+        __slots__ = ()
+
+        def api_key(self):
+            calls.append(1)
+            if len(calls) > 1:
+                raise OSError('vault locked')
+            return super().api_key()
+    t = BinanceTestnetTransport(environment='testnet', clock=lambda: NOW_MS, position_mode=PositionMode.HEDGE,
+                                credentials=FailsLater(DUMMY_KEY, DUMMY_SECRET),
+                                http=lambda r: (r.wire_headers(), raw(200, b'{}'))[1])     # a sender reads it here
+    with pytest.raises(CredentialsUnavailable):
+        t.account()
+
+
 def test_missing_key_provider_is_a_seam_error_not_unknown():
     from newcore.venue.wire import WireSeamError
     req = HttpRequest('GET', 'https://testnet.binancefuture.com/fapi/v2/account', '', (('X-MBX-APIKEY', '<redacted>'),),

@@ -246,6 +246,22 @@ def test_run_smoke_deadline_covers_income_pages_and_calibration():
     assert calls == [] and 'before server_time' in ei.value.describe()
 
 
+def test_a_single_call_returning_after_the_deadline_aborts():
+    clock = iter([0.0, 0.1, 5.0])                    # deadline base, before server_time, after server_time
+
+    class OneRead:
+        def server_time(self):
+            return 'answer'
+
+    class OC:
+        def resync(self, transport, samples):
+            transport.server_time()
+            raise AssertionError('the late answer must not be used')
+    with pytest.raises(smoke_mod.SmokeDeadlineExceeded) as ei:
+        smoke_mod.run_smoke(OneRead(), OC(), deadline_s=1, monotonic=lambda: next(clock))
+    assert ei.value.step == 'server_time' and 'exceeded at server_time' in ei.value.describe()
+
+
 @pytest.mark.parametrize('bad', [0, -1, 3601, True, '60'])
 def test_run_smoke_validates_deadline(bad):
     with pytest.raises(ValueError):

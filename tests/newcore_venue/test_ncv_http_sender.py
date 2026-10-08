@@ -107,6 +107,19 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     self.wfile.flush()
                 except OSError:
                     return
+        elif mode == 'drip_unsized':                  # HTTP/1.0, no Content-Length: a cut stream LOOKS complete
+            self.send_response(200)
+            self.end_headers()
+            self.wfile.write(b'{"a": 1')
+            self.wfile.flush()
+            for _ in range(20):
+                time.sleep(0.25)
+                try:
+                    self.wfile.write(b' ')
+                    self.wfile.flush()
+                except OSError:
+                    return
+            self.close_connection = True
         elif mode == 'drip_headers':                  # slowloris in the status line / headers
             head = b'HTTP/1.0 200 OK\r\nContent-Length: 2\r\nX-Pad: ' + b'a' * 40 + b'\r\n\r\n{}'
             for i in range(len(head)):
@@ -201,6 +214,87 @@ def test_slowloris_through_transport_is_unknown_timeout(stub):
     t0 = time.monotonic()
     out = transport_over(TestnetHttpSender(connect=plain_connect(stub)), timeout=1.0).cancel_order('SOLUSDT', 'zb-a')
     assert out.kind is K.UNKNOWN and out.unknown_reason == 'timeout' and time.monotonic() - t0 < 2.0
+
+
+def test_cut_unsized_stream_is_timeout_not_a_complete_answer(stub):
+    stub.mode = 'drip_unsized'
+    s = TestnetHttpSender(connect=plain_connect(stub))
+    with pytest.raises(WireTimeout):
+        s(req(timeout=0.6))
+
+
+def test_read_loop_checks_the_deadline_between_chunks(monkeypatch):
+    """Even if the watchdog never fires (here: a fake connection without a socket), the loop stops at the deadline."""
+    import newcore.venue.http_sender as hs
+    ticks = iter(range(0, 10_000, 1))
+    monkeypatch.setattr(hs.time, 'monotonic', lambda: next(ticks))
+
+    class Resp:
+        status, n = 200, 0
+
+        def getheader(self, name):
+            return None
+
+        def read1(self, n):
+            Resp.n += 1
+            if Resp.n > 50:
+                raise AssertionError('the deadline was not enforced between chunks')
+            return b'x'
+
+        def getheaders(self):
+            return []
+
+    class Conn:
+        sock = None
+
+        def connect(self):
+            pass
+
+        def request(self, *a, **k):
+            pass
+
+        def getresponse(self):
+            return Resp()
+
+        def close(self):
+            pass
+    s = TestnetHttpSender(connect=lambda h, t, c: Conn())
+    with pytest.raises(WireTimeout):
+        s(req(timeout=5.0))
+
+
+def test_clean_eof_after_the_deadline_is_still_a_timeout():
+    """A read that returns a clean EOF after the watchdog fired must not be taken as a complete answer."""
+    class Resp:
+        status = 200
+
+        def getheader(self, name):
+            return None
+
+        def read1(self, n):
+            time.sleep(0.4)                  # the 0.2 s deadline passes inside this read
+            return b''
+
+        def getheaders(self):
+            return []
+
+    class Conn:
+        sock = None
+
+        def connect(self):
+            pass
+
+        def request(self, *a, **k):
+            pass
+
+        def getresponse(self):
+            return Resp()
+
+        def close(self):
+            pass
+    s = TestnetHttpSender(connect=lambda h, t, c: Conn())
+    with pytest.raises(WireTimeout):
+        s(req(timeout=0.2))
 
 
 def test_fast_answer_inside_deadline_is_not_cut(stub):

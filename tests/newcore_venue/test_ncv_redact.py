@@ -62,6 +62,14 @@ def test_value_found_percent_encoded(enc):
     assert not contains_values(out, [ODD_KEY]) and out.endswith('&x=1')
 
 
+def test_value_found_when_every_character_is_percent_encoded():
+    # Not one of the quote() variants: only the decoded-form check can see it (mutation-pass regression).
+    every = ''.join(f'%{ord(c):02X}' for c in DUMMY_SECRET)
+    assert contains_values(f'x={every}', [DUMMY_SECRET])
+    mixed = ODD_KEY.replace('/', '%2F')                  # '+' raw, '/' encoded: also no quote() variant
+    assert contains_values(f'k={mixed}', [ODD_KEY])
+
+
 @pytest.mark.parametrize('short', ['', 'abc', '1234567', None, 12345678])
 def test_short_or_non_text_values_refused_not_dropped(short):
     with pytest.raises(ValueError):

@@ -60,10 +60,10 @@ def redact_values(text, values):
 def contains_values(text, values):
     """True if any value is present in text, or in its percent-decoded form."""
     text = str(text)
-    decoded = urllib.parse.unquote_plus(text)
+    forms = (text, urllib.parse.unquote(text), urllib.parse.unquote_plus(text))
     for v in values:
         p = value_pattern(v)
-        if p.search(text) or p.search(decoded):
+        if any(p.search(f) for f in forms):
             return True
     return False
 
