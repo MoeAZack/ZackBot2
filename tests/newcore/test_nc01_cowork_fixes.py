@@ -208,3 +208,20 @@ def test_ruling_2_slot_id_and_exchange_order_id_are_never_blank(blank):
     known = F.results(ids, acct, entry)['known']
     with pytest.raises(InvalidRecord, match='exchange_order_id'):
         F.replace(known, exchange_order_id=blank)
+
+
+def test_ruling_4_position_lots_have_one_canonical_order():
+    """Lots are kept in stable lot-id order whatever order they were given in, so snapshot bytes and replay are
+    deterministic; duplicate ids are refused at construction (also CP05)."""
+    from decimal import Decimal as D
+    from newcore.domain import Position, canonical_bytes, loads
+    ids = F.Ids(97)
+    acct = ids.id('acct')
+    lots = [F.lot(ids, acct, 'SOLUSDT', qty=D(q), stop_state='none')[0] for q in ('1', '2', '3')]
+    pid = ids.id('pos')
+    orders = [lots, lots[::-1], [lots[1], lots[2], lots[0]]]
+    built = [Position(position_id=pid, symbol='SOLUSDT', side=lots[0].side, lots=tuple(o)) for o in orders]
+    assert all(b == built[0] for b in built)
+    assert [x.lot_id for x in built[0].lots] == sorted(x.lot_id for x in lots)
+    assert len({canonical_bytes(b) for b in built}) == 1                  # one encoding
+    assert loads(canonical_bytes(built[1])).lots == built[0].lots       # replay from bytes: same order

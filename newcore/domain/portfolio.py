@@ -147,6 +147,9 @@ class Position(Record):
         check_symbol(self.symbol, p + '.symbol')
         req(len(self.lots) > 0, p + '.lots', 'an empty position is not stored')
         req(len({x.lot_id for x in self.lots}) == len(self.lots), p + '.lots', 'duplicate lot id (qty would double count)')
+        ordered = tuple(sorted(self.lots, key=lambda x: x.lot_id))     # Codex ruling 4: one canonical lot order
+        if ordered != self.lots:
+            object.__setattr__(self, 'lots', ordered)
         req(all(x.symbol == self.symbol and x.side is self.side for x in self.lots), p + '.lots', 'lot of another symbol / side')
 
     @property
