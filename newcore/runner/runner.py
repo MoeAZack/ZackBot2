@@ -93,7 +93,7 @@ ALGO_FALLBACK_CODES = (-4120, -1116, -1102, -4136)   # newcore.venue.errors (tra
 SECURE_ROUNDS = 2                     # per lot per cycle: stop attempt, then (if refused) one reduce-only close
 EMERGENCY_GENERATIONS = 16            # hard HOLD: cover generations per (symbol, side, gap size)
 ESCALATE_AFTER = 2                    # cycles with an unconfirmed stop before the reduce-only close (Cowork NEW-4)
-LOST_ENTRY_LOOKBACK = 3               # candles back a lost entry's signal is looked for (Cowork 289)
+LOST_ENTRY_LOOKBACK = 3               # (superseded by GUARD_ENTRY_LOOKBACK for the search: Cowork NEW A)
 GUARD_ENTRY_LOOKBACK = 60             # the guard (no journal): candles back an own entry is proven by its client id
 GUARD_CHILDREN = 32                   # the guard: lineage ordinals per purpose probed for our own exits / adds
 GUARD_CHILD_MISSES = 4                # ... until this many consecutive unknown ordinals (unsent ones leave gaps)
@@ -203,6 +203,14 @@ class Counters:
     cap_exceeded: int = 0
     drains: int = 0
     emergency_stops: int = 0
+
+
+class _Side:
+    """(symbol, side) with the attribute names the provenance helpers read."""
+    __slots__ = ('symbol', 'side')
+
+    def __init__(self, symbol, side):
+        self.symbol, self.side = symbol, side
 
 
 class Runner:
@@ -492,16 +500,32 @@ class Runner:
         if found is None:
             return None
         iid, out, key = found
+        net, why = self._surviving_net(p.symbol, p.side, iid, out, key)
+        if why is not None:
+            return ('ambiguous', why)
+        level = self._feasible_level(p, anchor=out.avg_price)
+        self._degrade(p, 'guard_fallback_stop' if level is not None else 'emergency_close')
+        self._incident(f'guard: {p.symbol} {p.side} proven ours by {out.ref.client_id}: surviving net {net} of '
+                       f'{p.qty}; DEGRADED protection: emergency fallback level {level}')
+        return (min(net, p.qty), level)
+
+    def _surviving_net(self, symbol, side, iid, out, key):
+        """Codex P1-1 / Cowork NEW A: how much of our entry `iid` (venue outcome `out`, decision key `key`) the venue's
+        own trades prove still held -> (net, None), or (None, why) when it cannot be correlated: no trades read, the
+        entry fills unreadable, a trade of that side since the entry fill that is not ours, or nothing left (net <= 0).
+        Ours = the entry, the lot's lineage children (PROTECT / CLOSE / REDUCE / ADD, classic + algo, by deterministic
+        id), the keyed strategy closes since the entry, and our zbn1e- emergency orders."""
+        p = _Side(symbol, side)
         read = getattr(self.venue, 'trades', None)
         if read is None:
-            return ('ambiguous', 'the venue has no trades read')
-        fr = self.venue.fills(p.symbol, out.exchange_order_id)
+            return None, 'the venue has no trades read'
+        fr = self.venue.fills(symbol, out.exchange_order_id)
         if fr.kind is not ReadKind.OK or not fr.value:
-            return ('ambiguous', 'the entry fills are unreadable')
+            return None, 'the entry fills are unreadable'
         since = min(f.at_ms for f in fr.value)
-        tr = read(p.symbol, p.side, since)
+        tr = read(symbol, side, since)
         if tr.kind is not ReadKind.OK:
-            return ('ambiguous', 'trades unreadable')
+            return None, 'trades unreadable'
         own = {out.exchange_order_id: 1}
         lot = ids.derive_lot_id(self.acct, iid)
         for purpose in (Purpose.PROTECT, Purpose.CLOSE, Purpose.REDUCE, Purpose.ADD):
@@ -534,15 +558,11 @@ class Runner:
             if sign is None and self._emergency_order_of(p, t):
                 sign = -1                                                 # our A23 emergency stop / close filled
             if sign is None:
-                return ('ambiguous', f'trade {t.trade_id} of order {t.exchange_order_id} is not attributable to us')
+                return None, f'trade {t.trade_id} of order {t.exchange_order_id} is not attributable to us'
             net = net + t.qty if sign > 0 else net - t.qty
         if net <= 0:
-            return ('ambiguous', f'our entry {out.ref.client_id} is fully exited (net {net}): the position is not ours')
-        level = self._feasible_level(p, anchor=out.avg_price)
-        self._degrade(p, 'guard_fallback_stop' if level is not None else 'emergency_close')
-        self._incident(f'guard: {p.symbol} {p.side} proven ours by {out.ref.client_id}: surviving net {net} of '
-                       f'{p.qty}; DEGRADED protection: emergency fallback level {level}')
-        return (min(net, p.qty), level)
+            return None, f'our entry {out.ref.client_id} is fully exited (net {net}): the position is not ours'
+        return net, None
 
     def _emergency_order_of(self, p, t):
         """True when trade t filled one of our emergency orders (zbn1e-: a pure function of symbol, side, qty and a
@@ -900,7 +920,7 @@ class Runner:
 
     def _recover_lost_entries(self):
         """The 20k fuzz 289 with EVERY record of the entry lost (lazy store, 3 events): a venue position the journal
-        cannot explain on a side this runner trades. The strategy's own ENTER signals of the last LOST_ENTRY_LOOKBACK
+        cannot explain on a side this runner trades. The strategy's own ENTER signals of the last GUARD_ENTRY_LOOKBACK
         candles give the deterministic client ids it would have used; if the venue has one of them, the order is
         ours (exchange truth, not inference): its decision, intent, send and result are recorded and the lot is owned
         and protected like any other. Checked on the first cycle of a process and after a position mismatch; each
@@ -918,7 +938,7 @@ class Runner:
             if p.symbol not in self.cfg.symbols or p.side not in self.cfg.sides or \
                     p.qty <= owned.get((p.symbol, p.side), ZERO) or self.fold.live_entries(p.symbol, p.side):
                 continue
-            for k in range(LOST_ENTRY_LOOKBACK + 1):
+            for k in range(GUARD_ENTRY_LOOKBACK + 1):                     # Cowork NEW A: the guard's window
                 c = self.now - k * self.cfg.tf_ms
                 if (p.symbol, p.side, c) in self._lost_checked:
                     continue
@@ -942,6 +962,12 @@ class Runner:
             out = self.venue.query(ref)
             if out.kind is not OutcomeKind.FINAL or not out.executed_qty:
                 continue
+            net, why = self._surviving_net(symbol, side, iid, out, key)     # Codex P1-1 / Cowork NEW A + B
+            if why is not None or net != out.executed_qty:
+                self._incident(f'{iid}: the venue has our entry {ref.client_id} (executed {out.executed_qty}) but its '
+                               f'survival is not proven ({why or f"surviving net {net}"}): nothing adopted, HOLD - '
+                               'owner resolves (ambiguous)')
+                return True                                               # the latest own entry decides: no older one
             self._incident(f'{iid}: every record lost but the venue has {ref.client_id} (executed '
                            f'{out.executed_qty}): decision, intent and result recorded now')
             planned = planned_intent(intent_id=iid, account_id=self.acct, decision_id=did, purpose='entry',
