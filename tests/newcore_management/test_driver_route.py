@@ -118,15 +118,13 @@ def test_restart_between_the_routes_folds_to_the_same_state(side):
     _ = px
 
 
-@pytest.mark.parametrize('side', SIDES)
-def test_after_one_algo_fallback_every_later_stop_goes_algo_directly(side):
-    """The venue said classic stops need the algo route: a later replacement never tries classic again."""
+def _resize_after_fallback(side, policy):
+    """Classic refused -> algo confirmed -> TP1 fills -> the core resizes the stop: the drafts of that resize."""
     p = plan(side, costs=ZERO_COSTS, tp1_frac='0.5', tp1_off='1', tp2_off='2')
-    drv = DR.start(p, account_id=ACCT, lot_id=LOT, entry_fee=D(0))
+    drv = DR.start(p, account_id=ACCT, lot_id=LOT, entry_fee=D(0), stop_route_policy=policy)
     r = DR.on_outcome(drv.state, refused(p, stops(drv)[0]), submit=True)
     algo = stops(r)[0]
     ds = DR.on_outcome(r.state, known(p, algo), submit=True).state
-    assert ds.stop_route == 'algo'
     r = DR.on_mark(ds, ds.pos.tp1.price)                              # TP1 fires (a market reduce)
     tp = next(d for d in r.submits if d.purpose is Purpose.REDUCE)
     fin = OrderOutcome(kind=OutcomeKind.FINAL, ref=ref(p, tp), observed_at_ms=T0, status='FILLED',
@@ -135,6 +133,33 @@ def test_after_one_algo_fallback_every_later_stop_goes_algo_directly(side):
     from newcore.ports.venue import VenueFill
     f = VenueFill(trade_id='t77', exchange_order_id='x77', symbol=p.symbol, position_side=p.side.value, qty=tp.qty,
                   price=ds.pos.tp1.price, fee=D(0), fee_asset='USDT', realized_pnl=D(0), maker=False, at_ms=T0)
-    r = DR.on_fills(r.state, (f,))
+    return p, ds, DR.on_fills(r.state, (f,))
+
+
+@pytest.mark.parametrize('side', SIDES)
+def test_sticky_policy_sends_every_later_stop_algo_directly(side):
+    """stop_route_policy='sticky_after_refusal' (only if Codex amends G6): after one refusal a later replacement
+    never tries classic again."""
+    _, ds, r = _resize_after_fallback(side, 'sticky_after_refusal')
+    assert ds.stop_route == 'algo' and ds.stop_route_policy == 'sticky_after_refusal'
     resized = stops(r)
     assert resized and all(d.route == 'algo' for d in resized)
+
+
+@pytest.mark.parametrize('side', SIDES)
+def test_per_attempt_policy_is_the_default_and_tries_classic_first_again(side):
+    """The default (journal rule G6): every NEW stop is tried classic first; algo only after THAT attempt is refused."""
+    p, ds, r = _resize_after_fallback(side, 'per_attempt')
+    assert ds.stop_route == 'classic' and ds.stop_route_policy == 'per_attempt'
+    (resized,) = stops(r)
+    assert resized.route == 'classic'
+    r2 = DR.on_outcome(r.state, refused(p, resized), submit=True)
+    (algo,) = stops(r2)
+    assert algo.route == 'algo' and (algo.stop_price, algo.qty) == (resized.stop_price, resized.qty)
+    assert DR.start(p, account_id=ACCT, lot_id=LOT, entry_fee=D(0)).state.stop_route_policy == 'per_attempt'
+
+
+def test_unknown_policy_is_refused():
+    p = plan(LONG, costs=ZERO_COSTS)
+    with pytest.raises(Exception):
+        DR.start(p, account_id=ACCT, lot_id=LOT, entry_fee=D(0), stop_route_policy='always_algo')

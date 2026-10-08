@@ -48,7 +48,8 @@ from ..domain.instrument import Rounding
 from ..domain.orders import Side
 from ..domain.reasons import ReasonCode
 from .actions import ActionKind, ManagementAction, ordered
-from .plan import DIV, ONE, ManagementError, ManagementPlan, better, market_fill, sgn, toward_loss, toward_profit
+from .plan import (DIV, ONE, ManagementError, ManagementPlan, TrailMode, better, market_fill, sgn, toward_loss,
+                   toward_profit)
 from .state import AddPhase, Cancelled, Candle, ConfirmedFill, LegQty, Leg, Order, PositionState, Rejected, Stage
 
 R = ReasonCode
@@ -275,8 +276,12 @@ def _desired_stop(plan, w, candle, avg):
         if be is not None:
             price = better(side, price, be)
     if candle is not None and plan.trail_offset is not None and (w['tp1_done'] or plan.tp1_frac is None):
-        lvl = CTX.subtract(candle.close, CTX.multiply(sgn(side), plan.trail_offset))
-        if lvl > 0:
+        if plan.trail_mode is TrailMode.HIGHEST_HIGH_ATR:     # no ATR at this close: the trail holds (never guessed)
+            lvl = (None if candle.atr is None or w['trail_extreme'] is None else
+                   CTX.subtract(w['trail_extreme'], CTX.multiply(sgn(side), CTX.multiply(plan.trail_offset, candle.atr))))
+        else:
+            lvl = CTX.subtract(candle.close, CTX.multiply(sgn(side), plan.trail_offset))
+        if lvl is not None and lvl > 0:
             price = better(side, price, rules.quantize_price(lvl, toward_loss(side)))
     return Order(price=price, qty=w['qty'])
 
@@ -334,6 +339,9 @@ def step(plan, state, confirmed=(), closed_candle=None, *, close_request=None, f
         if w['last_candle_open_ms'] is not None and candle.open_ms <= w['last_candle_open_ms']:
             raise ManagementError('step.closed_candle', 'candles only go forward')
         w['last_candle_open_ms'] = candle.open_ms
+        if plan.trail_mode is TrailMode.HIGHEST_HIGH_ATR and w['qty'] > 0:   # the chandelier's best price since entry
+            best = w['trail_extreme'] if w['trail_extreme'] is not None else plan.entry_price
+            w['trail_extreme'] = better(side, best, candle.high if side is Side.LONG else candle.low)
     flags = {'flatten': ZERO, 'close_all': None, 'retry': ZERO, 'retry_reason': None,
              'terminal': state.stage in (Stage.EXITING, Stage.DONE),
              'added': False}

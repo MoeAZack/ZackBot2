@@ -10,6 +10,8 @@ Invariants after every driver call:
   reported for reconcile;
 - never above the risk cap after an add fill;
 - no duplicate client id; no venue trade booked twice; a stop request is never loosened (outside a refused replace);
+- journal rule G6 (stop_route_policy per_attempt, the default): an algo stop is only ever the refused classic stop
+  re-sent, in the drive answering that refusal;
 - fold(log) == the live state;
 - at the end, after the venue delivered everything: the core's position equals the venue's, and the result is flat,
   protected, or reported for reconcile - never silently wrong.
@@ -30,6 +32,7 @@ from newcore.ports.venue import OrderOutcome, OrderRef, OutcomeKind, VenueFill
 
 ACCT = make_id('acct', 3)
 LOT = make_id('lot', 5)
+DEC = make_id('dec', 7)
 H4 = 14_400_000
 FAST_SEEDS = range(500)
 
@@ -111,6 +114,9 @@ class FaultVenue:
         cid = d.client_id
         assert cid not in self.client_ids, f'duplicate client id {cid}'
         self.client_ids.append(cid)
+        it = DR.to_order_intent(d, decision_id=DEC, at_ms=T0)      # every order sent is a valid frozen NC-01 intent
+        if it.replaces_intent_id is not None:                      # the driver never cancel-replaces a reduce / close
+            raise Violation(f'unexpected cancel-replace link on {d.purpose}')
         stop = d.stop_price is not None
         o = dict(kind='stop' if stop else 'market', qty=d.qty, price=d.stop_price, xid=self.nid('x'), filled=D(0),
                  live=True, reduce=d.reduce_only, leg=d.leg)
@@ -266,8 +272,35 @@ def coverage_ok(v, ds):
     return bool(v.reported)                                  # a lost answer is out for reconcile
 
 
+def g6_drive_ok(before, ev, drv):
+    """Per drive: an algo stop draft appears ONLY in the drive answering the -4120 refusal of a classic stop for the
+    same protection (price, qty) - never on its own."""
+    algo = [d for d in drv.submits if d.leg is Leg.STOP and d.route == 'algo']
+    if not algo:
+        return
+    if len(algo) != 1:
+        raise Violation('two algo stops from one refusal')
+    if ev[0] == 'route_fallback':                       # the runner resolved the classic attempt as refused
+        refused = next((b for b in before.bindings if b.intent_id == ev[1]), None)
+    elif ev[0] == 'outcome' and ev[1].kind is OutcomeKind.REJECTED and ev[2]:
+        refused = next((b for b in before.bindings if b.client_id == ev[1].ref.client_id), None)
+    else:
+        raise Violation(f'G6: an algo stop without a refused classic attempt ({ev[0]})')
+    if (refused is None or refused.leg is not Leg.STOP or refused.route != 'classic'
+            or (refused.stop_price, refused.qty) != (algo[0].stop_price, algo[0].qty)):
+        raise Violation('G6: the algo stop is not the refused classic stop re-sent')
+
+
 def check(v, before, ev, drv):
     ds = drv.state
+    if ds.stop_route_policy == 'per_attempt':
+        g6_drive_ok(before, ev, drv)
+    for d in drv.submits:                      # Cowork 11: no second same-price stop beside a confirmed one covering it
+        if ds.pos.stop_locked or d.reason.value == 'protect.restoring':   # (a normal resize may shrink in place)
+            if d.leg is Leg.STOP and d.route == 'classic' and any(
+                    b.leg is Leg.STOP and b.state is DR.BindState.WORKING and b.intent_id != d.intent_id
+                    and b.stop_price == d.stop_price and b.qty >= d.qty for b in ds.bindings):
+                raise Violation('a duplicate same-price stop beside a working one (Cowork 11)')
     pos = ds.pos
     if any(b.leg is Leg.STOP and b.state is DR.BindState.WORKING for b in ds.bindings):
         v.ever_confirmed = True

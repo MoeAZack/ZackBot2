@@ -93,6 +93,7 @@ def test_a_close_fill_of_an_earlier_request_is_booked_while_a_close_is_requested
 # ------------------------------------------------------------------------------------------- driver scenarios
 # seed -> the rule it exposed (fixed in newcore/management/driver.py unless noted)
 FUZZ_SEEDS = {
+    19807: 'Cowork 11: a lost stop is not restored by a second same-price stop when a working one covers it',
     1: 'confirmed_coverage counts what a FINAL stop executed and is not booked yet',
     7: 'core: a shrunk target keeps the old size racing (the fired market fills its full size)',
     25: 'a refused stop replacement is forwarded only while the core still requests that stop',
