@@ -40,11 +40,22 @@ Rules, in order (each decision names its REC-02 matrix row):
              are all auto-clearable (Q4); otherwise the HOLD is restated with the owner action. In a hard HOLD
              (DURABILITY_UNAVAILABLE) the verdict is advisory: no resolution, adoption or clear (nothing can be made
              durable); only owned-lot protection, the NC-02 A24 emergency set, stays as an action.
+Evidence integrity (Codex P1s on e3c0e2f):
+  - keyed evidence (by-id answers, fill reads, trade windows) is looked up only through unique_by_key: identical
+    duplicates collapse once, a key with two different values is a HOLD (conflicting_duplicate_evidence) and is never
+    looked up - nothing is last-wins, nothing depends on input order;
+  - before anything resolves, every owned intent's claim on venue evidence is scanned (the order id of its FINAL /
+    triggered record, the trade ids under it, its client id): an id two intents claim explains neither (HOLD
+    shared_venue_evidence for every claimant), so no fill is ever counted twice;
+  - the reconciliation id hashes verdict_inputs(): a tagged canonical text of every input (each view / record field by
+    name, the snapshot, every policy field, the trigger, the attempt, the clock). The same id implies the same verdict.
 Ownership is never guessed: KNOWN_EMPTY only with a FLAT outcome from fresh OK reads.
 """
 from __future__ import annotations
 
 import hashlib
+import dataclasses
+import enum
 import re
 from decimal import Decimal
 
@@ -54,7 +65,7 @@ from newcore.ports.keys import is_newcore_client_id
 from newcore.ports.venue import OutcomeKind, ReadKind
 
 from .model import (PCTX, QCTX, ZERO, AccountView, DecisionKind, Outcome, ReadPlan, RecDecision, RecPolicy, Trigger,
-                    Verdict, VenueSnapshot)
+                    Verdict, VenueSnapshot, unique_by_key)
 
 K = DecisionKind
 R = ReasonCode
@@ -79,41 +90,69 @@ def is_emergency_client_id(cid):
     return isinstance(cid, str) and EMERGENCY_CID_RE.fullmatch(cid) is not None
 
 
-def _canon(x):
-    """A canonical text of a frozen input value (order-independent for the tuples that carry no order)."""
-    return repr(x)
+def _c(x):
+    """A TAGGED canonical text of one input value (Codex P1-2): every value names its type and every record field its
+    name, so two inputs that differ in any role-bearing field never share a text. Nested tuples keep their order."""
+    if x is None:
+        return 'N'
+    if isinstance(x, bool):
+        return 'b1' if x else 'b0'
+    if isinstance(x, enum.Enum):
+        return f'e:{type(x).__name__}.{x.value}'
+    if isinstance(x, int):
+        return f'i:{x}'
+    if isinstance(x, Decimal):
+        return f'd:{x}'
+    if isinstance(x, str):
+        return 's:' + repr(x)
+    if dataclasses.is_dataclass(x) and not isinstance(x, type):
+        return f'{type(x).__name__}(' + ','.join(f'{f.name}={_c(getattr(x, f.name))}'
+                                                  for f in dataclasses.fields(x)) + ')'
+    if isinstance(x, (frozenset, set)):
+        return '{' + ','.join(sorted(_c(i) for i in x)) + '}'
+    if isinstance(x, (tuple, list)):
+        return '[' + ','.join(_c(i) for i in x) + ']'
+    return f'?{type(x).__name__}:{x!r}'
 
 
-def snapshot_digest(view, snap):
-    """sha256 over a canonical, order-independent text of the view and the snapshot (C9: the reconciliation id is a
-    function of what was reconciled, not only of the clock)."""
-    h = hashlib.sha256(b'zackbot.newcore.reconcile.digest.v1')
-
-    def put(tag, items):
-        h.update(b'\x01' + tag.encode('ascii'))
-        for s in sorted(_canon(i) for i in items):
-            h.update(b'\x00' + s.encode('utf-8', 'backslashreplace'))
-    put('view', [view.account_id, view.binding_confirmed, view.has_history, view.mode, view.hold_kind,
-                 view.hold_reasons, view.newest_result_ms])
-    put('lots', view.lots)
-    put('intents', view.intents)
-    put('corroboration', view.corroboration)
-    put('hints', view.stop_hints)
-    for tag, r in (('positions', snap.positions), ('orders', snap.orders)):
-        put(tag + ':read', [r.kind, r.observed_at_ms, r.error_code, r.detail])
-        put(tag, r.value or ())
-    put('queries', snap.queries)
-    put('fills', [(e, r.kind, r.observed_at_ms, tuple(sorted(_canon(x) for x in (r.value or ())))) for e, r in snap.fills])
-    put('trades', [(k, w.from_ms, w.read.kind, w.read.observed_at_ms, tuple(sorted(_canon(x) for x in (w.read.value or ()))))
-                   for k, w in snap.trades])
-    return h.hexdigest()
+def _bag(items):
+    """An order-free MULTISET (duplicates count): for the collections the fold reads without order."""
+    return '<' + ','.join(sorted(_c(i) for i in items)) + '>'
 
 
-def reconciliation_id(account_id, now_ms, attempt, trigger, digest=''):
-    h = hashlib.sha256(b'zackbot.newcore.reconcile.v2')
-    for p in (account_id, now_ms, attempt, trigger, digest):
-        h.update(b'\x00' + str(p).encode('ascii'))
-    return 'rec_' + h.hexdigest()[:32]
+def _read(r):
+    value = 'N' if r.value is None else _bag(r.value)
+    return f'Read(kind={_c(r.kind)},at={_c(r.observed_at_ms)},error={_c(r.error_code)},detail={_c(r.detail)},' \
+           f'value={value})'
+
+
+def _keyed(pairs, show):
+    """Keyed evidence as the fold uses it: identical duplicates collapse once (unique_by_key), conflicts stay."""
+    return '{' + ','.join(sorted({f'{_c(k)}:{show(v)}' for k, v in pairs})) + '}'
+
+
+def verdict_inputs(view, snap, *, now_ms, trigger, attempt, policy):
+    """The tagged canonical text of EVERY verdict input: the view (each field by name), the snapshot, the policy (each
+    field), the trigger, the attempt and the clock. The same text implies the same verdict."""
+    v = view
+    parts = [
+        f'view(account_id={_c(v.account_id)},binding_confirmed={_c(v.binding_confirmed)},'
+        f'has_history={_c(v.has_history)},mode={_c(v.mode)},hold_kind={_c(v.hold_kind)},'
+        f'hold_reasons={_c(tuple(v.hold_reasons))},newest_result_ms={_c(v.newest_result_ms)},'
+        f'lots={_bag(v.lots)},intents={_bag(v.intents)},corroboration={_bag(v.corroboration)},'
+        f'stop_hints={_bag(v.stop_hints)})',
+        f'snap(positions={_read(snap.positions)},orders={_read(snap.orders)},'
+        f'queries={_keyed(snap.queries, _c)},fills={_keyed(snap.fills, _read)},'
+        f'trades={_keyed(snap.trades, lambda w: f"Window(from_ms={_c(w.from_ms)},read={_read(w.read)})")})',
+        f'policy={_c(policy)}', f'trigger={_c(trigger)}', f'attempt={_c(attempt)}', f'now_ms={_c(now_ms)}',
+    ]
+    return '\n'.join(parts)
+
+
+def reconciliation_id(view, snap, *, now_ms, trigger, attempt, policy):
+    text = verdict_inputs(view, snap, now_ms=now_ms, trigger=trigger, attempt=attempt, policy=policy)
+    return 'rec_' + hashlib.sha256(b'zackbot.newcore.reconcile.v3\x00' + text.encode('utf-8', 'backslashreplace')
+                                   ).hexdigest()[:32]
 
 
 def _in_range(v):
@@ -236,6 +275,12 @@ class _Pass:
         self.surplus = {}
         self.listed = {}
         self.hard = view.mode is EntriesMode.HOLD and view.hold_kind is HoldKind.DURABILITY_UNAVAILABLE
+        # keyed evidence (Codex P1-3): identical duplicates collapse once, conflicting duplicates are never looked up
+        self.q_map, self.bad_queries = unique_by_key(snap.queries)
+        self.f_map, self.bad_fills = unique_by_key(snap.fills)
+        self.t_map, self.bad_trades = unique_by_key(snap.trades)
+        self.contested = {}               # intent id -> evidence keys another owned intent also claims (P1-1)
+        self.reported = set()
 
     # ------------------------------------------------------------------------------------------------ helpers
     def add(self, kind, row, **kw):
@@ -247,12 +292,74 @@ class _Pass:
                 or (newest is not None and r.observed_at_ms < newest))
 
     def fresh_query(self, cid):
-        q = self.s.query(cid)
+        q = self.q_map.get(cid)                             # a conflicting duplicate answer is never looked up
         if q is None or self.stale(q):
             return None
         if q.exchange_order_id is not None:
             self.owned_eoids.add(q.exchange_order_id)       # an owned order id this pass learned (C1 / C2)
         return q
+
+    def fills_read(self, eoid):
+        return None if eoid in self.bad_fills else self.f_map.get(eoid)
+
+    # ---------------------------------------------------------------- P1-1 / P1-3: shared and conflicting evidence
+    def conflicts(self):
+        """Conflicting duplicate keyed evidence: one typed HOLD per key; the sides it concerns stay unjudged."""
+        for kind, bad in (('query', self.bad_queries), ('fills', self.bad_fills), ('trades', self.bad_trades)):
+            for key in sorted(bad, key=_c):
+                symbol = side = cid = intent = None
+                if kind == 'query':
+                    f = self.by_cid.get(key)
+                    cid = key
+                    if f is not None:
+                        symbol, side, intent = f.symbol, f.side, f.intent_id
+                elif kind == 'trades':
+                    symbol, side = key
+                if symbol is not None:
+                    self.ambiguous.add((symbol, side))
+                self.add(K.HOLD, 'R15', symbol=symbol, side=side, client_id=cid, intent_id=intent,
+                         detail='conflicting_duplicate_evidence', reasons=(R.RECONCILE_UNRECONCILED,),
+                         evidence=(f'{kind}:{_c(key)}', f'values:{len(bad[key])}'),
+                         owner_actions=('reread', 'investigate_venue_answers'))
+
+    def scan_claims(self):
+        """Every owned intent's claim on venue evidence (the order id of its FINAL / triggered record and the trade ids
+        under it), BEFORE anything is resolved: an order or trade id two intents claim explains neither (order-free)."""
+        by_key = {}
+        for f in self.intents:
+            if f.client_id in self.dup_cids:
+                by_key.setdefault(f'client_id:{f.client_id}', set()).add(f.intent_id)
+            candidate = (f.live and f.state is not IntentState.DURABLE) or (
+                f.opening and f.final_evidence is Evidence.NOT_FOUND_CORROBORATED)
+            q = self.q_map.get(f.client_id) if candidate else None
+            if q is None or self.stale(q) or q.exchange_order_id is None:
+                continue
+            if not (q.kind is OutcomeKind.FINAL or (q.kind is OutcomeKind.KNOWN and q.detail == 'algo_triggered')):
+                continue
+            eoid = q.exchange_order_id
+            by_key.setdefault(f'order:{eoid}', set()).add(f.intent_id)
+            fr = self.fills_read(eoid)
+            if fr is not None and fr.kind is ReadKind.OK:
+                for x in fr.value:
+                    if x.exchange_order_id == eoid:
+                        by_key.setdefault(f'trade:{x.trade_id}', set()).add(f.intent_id)
+        for key, ids in by_key.items():
+            if len(ids) > 1:
+                for i in ids:
+                    self.contested.setdefault(i, set()).add(key)
+
+    def blocked(self, f):
+        """A contested intent never resolves: one typed HOLD (shared_venue_evidence), its side stays unjudged."""
+        keys = self.contested.get(f.intent_id)
+        if not keys:
+            return False
+        self.ambiguous.add((f.symbol, f.side))
+        if f.intent_id not in self.reported:
+            self.reported.add(f.intent_id)
+            self.add(K.HOLD, 'R10', symbol=f.symbol, side=f.side, intent_id=f.intent_id, client_id=f.client_id,
+                     detail='shared_venue_evidence', reasons=(R.RECONCILE_UNRECONCILED,),
+                     evidence=tuple(sorted(keys)), owner_actions=('investigate_shared_evidence',))
+        return True
 
     def bump(self, k, qty):
         self.delta[k] = QCTX.add(self.delta.get(k, ZERO), qty)
@@ -291,12 +398,9 @@ class _Pass:
                 ownership = Ownership.KNOWN
             else:
                 ownership = Ownership.UNKNOWN
-        try:
-            digest = snapshot_digest(self.v, self.s)
-        except Exception:                                    # a digest never decides anything: fall back to the clock
-            digest = 'undigestible'
-        return Verdict(reconciliation_id=reconciliation_id(self.v.account_id, self.now, self.attempt, self.trigger,
-                                                           digest),
+        rid = reconciliation_id(self.v, self.s, now_ms=self.now, trigger=self.trigger, attempt=self.attempt,
+                                policy=self.p)
+        return Verdict(reconciliation_id=rid,
                        at_ms=self.now, trigger=self.trigger, attempt=self.attempt, outcome=outcome,
                        ownership=ownership, decisions=decisions,
                        hold_reasons=tuple(reasons) if outcome is Outcome.HOLD else (),
@@ -415,7 +519,7 @@ class _Pass:
     # ------------------------------------------------------------------------------------------------ 3. intents
     def fills_check(self, f, eoid, executed, avg):
         """FINAL with executed > 0: the fills must add up (R17). Returns (ok, evidence) or None (re-read needed)."""
-        fr = self.s.fills_of(eoid)
+        fr = self.fills_read(eoid)                          # conflicting reads are not readable (P1-3): re-read
         if fr is None or fr.kind is not ReadKind.OK or self.stale(fr):
             self.needs_f.add(eoid)
             return None
@@ -434,6 +538,8 @@ class _Pass:
         return True, ev
 
     def resolve_final(self, f, q, row_default):
+        if self.blocked(f):
+            return
         k = (f.symbol, f.side)
         ex = q.executed_qty
         ev = (f'order:{q.exchange_order_id}', f'status:{q.status}', f'evidence:{Evidence.EXCHANGE_FINAL}')
@@ -480,7 +586,9 @@ class _Pass:
         if q.kind is OutcomeKind.FINAL:
             self.resolve_final(f, q, 'R13' if q.executed_qty > 0 else 'R09')
         elif q.kind is OutcomeKind.KNOWN and q.detail == 'algo_triggered':
-            fr = self.s.fills_of(q.exchange_order_id)
+            if self.blocked(f):
+                return
+            fr = self.fills_read(q.exchange_order_id)
             if fr is None or fr.kind is not ReadKind.OK or self.stale(fr) or not fr.value:
                 self.needs_f.add(q.exchange_order_id)
                 self.ambiguous.add(k)
@@ -581,6 +689,8 @@ class _Pass:
             if f.state is IntentState.DURABLE:
                 self.ambiguous.add(k)                # never sent: the runner sends or closes it NOT_SENT
                 continue
+            if self.blocked(f):                      # shared / duplicate evidence: no claimant resolves (P1-1)
+                continue
             if f.purpose is Purpose.PROTECT:
                 self.settle_protect(f)
                 continue
@@ -628,6 +738,8 @@ class _Pass:
             return
         q = self.fresh_query(f.client_id)
         if q is None or q.kind is not OutcomeKind.FINAL or not q.executed_qty:
+            return
+        if self.blocked(f):
             return
         k = (f.symbol, f.side)
         if not self.p.adopt_external_change:
@@ -695,7 +807,9 @@ class _Pass:
         row = 'R03' if P == 0 else 'R11'
         lots = self.lots_by_side.get(k, ())
         since = min((x.opened_at_ms for x in lots), default=0)
-        tw = self.s.trades_of(k)
+        if k in self.bad_trades:                            # conflicting windows: a HOLD item already (P1-3)
+            return
+        tw = self.t_map.get(k)
         if tw is None or self.stale(tw.read):
             self.needs_t.add((k[0], k[1], since))
             return
@@ -792,6 +906,8 @@ class _Pass:
                 self.pos_qty[k] = QCTX.add(self.pos_qty.get(k, ZERO), p.qty)
                 self.entry_price[k] = p.entry_price
         self.classify_orders()
+        self.conflicts()
+        self.scan_claims()
         self.settle_intents()
         self.compare_sides()
         self.protect()

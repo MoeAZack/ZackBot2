@@ -143,6 +143,23 @@ class TradeWindow:
     read: ReadOutcome
 
 
+class DuplicateEvidence(ValueError):
+    """One key carries two DIFFERENT pieces of evidence (two by-id answers for one client id, two fill reads for one
+    order id, two trade windows for one side): never resolved by input order (Codex P1-3)."""
+
+
+def unique_by_key(pairs):
+    """({key: value} where identical duplicates collapse once, {key: (value, ...)} of the CONFLICTING keys).
+    Never last-wins: the result does not depend on the order of `pairs`."""
+    seen = {}
+    for key, value in pairs:
+        vals = seen.setdefault(key, [])
+        if value not in vals:
+            vals.append(value)
+    return ({k: v[0] for k, v in seen.items() if len(v) == 1},
+            {k: tuple(v) for k, v in seen.items() if len(v) > 1})
+
+
 @dataclass(frozen=True, slots=True, kw_only=True)
 class VenueSnapshot:
     positions: ReadOutcome
@@ -151,14 +168,21 @@ class VenueSnapshot:
     fills: tuple = ()                      # ((exchange_order_id, ReadOutcome), ...) VenueFill tuples
     trades: tuple = ()                     # (((symbol, side), TradeWindow), ...)
 
+    @staticmethod
+    def _one(pairs, key):
+        good, bad = unique_by_key(pairs)
+        if key in bad:
+            raise DuplicateEvidence(f'{key!r}: {len(bad[key])} different values')
+        return good.get(key)
+
     def query(self, cid) -> OrderOutcome | None:
-        return dict(self.queries).get(cid)
+        return self._one(self.queries, cid)
 
     def fills_of(self, eoid) -> ReadOutcome | None:
-        return dict(self.fills).get(eoid)
+        return self._one(self.fills, eoid)
 
     def trades_of(self, key) -> TradeWindow | None:
-        return dict(self.trades).get(key)
+        return self._one(self.trades, key)
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -226,7 +250,8 @@ class Verdict:
         return tuple(sorted({d.row for d in self.decisions}))
 
 
-__all__ = ['AUTO_CLEARABLE', 'AccountView', 'DecisionKind', 'IntentFact', 'LotFact', 'Outcome', 'PCTX',
+__all__ = ['AUTO_CLEARABLE', 'AccountView', 'DecisionKind', 'DuplicateEvidence', 'IntentFact', 'LotFact', 'Outcome',
+           'PCTX', 'unique_by_key',
            'PositionRead', 'QCTX', 'Q1_QUARANTINE_PER_SIDE', 'Q2_ADOPT_EXTERNAL_CHANGE', 'Q3_PROTECT_SURPLUS',
            'Q4_AUTO_CLEAR_HOLD', 'RANK', 'ReadPlan', 'RecDecision', 'RecPolicy', 'TradeWindow', 'Trigger',
            'VenueSnapshot', 'Verdict', 'ZERO']

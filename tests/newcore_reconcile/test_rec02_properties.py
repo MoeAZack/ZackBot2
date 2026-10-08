@@ -211,6 +211,39 @@ def test_P7_no_ambient_decimal_context_is_consulted(seed):
         assert reconcile(vw, s, now_ms=T) == ref
 
 
+def with_duplicates(s, seed):
+    """Duplicate some keyed evidence: identical copies, and (sometimes) a conflicting answer for the same key."""
+    from dataclasses import replace
+    rnd = random.Random(seed ^ 0xD0B1)
+    qs = list(s.queries)
+    if qs:
+        qs.append(rnd.choice(qs))                                       # an identical duplicate
+        if rnd.random() < 0.5:
+            c, q = rnd.choice(qs)
+            qs.append((c, not_found(0) if q.kind.value != 'not_found' else final(0, '0', eoid='1')))
+    fs = list(s.fills) + list(s.fills[:1])
+    return replace(s, queries=tuple(qs), fills=tuple(fs))
+
+
+@pytest.mark.parametrize('seed', SEEDS)
+def test_P8_duplicate_keyed_evidence_never_depends_on_order(seed):
+    vw, s = scenario(seed)
+    s = with_duplicates(s, seed)
+    a = reconcile(vw, s, now_ms=T)
+    assert a == reconcile(*shuffled(vw, s, seed), now_ms=T)
+
+
+def test_P9_one_reconciliation_id_one_verdict():
+    seen = {}
+    for seed in SEEDS:
+        vw, s = scenario(seed)
+        for pol in (RecPolicy(), RecPolicy(protect_surplus=False), RecPolicy(settle_ms=5_000),
+                    RecPolicy(adopt_external_change=False)):
+            for attempt in (0, 2):
+                v = reconcile(vw, s, now_ms=T, policy=pol, attempt=attempt)
+                assert seen.setdefault(v.reconciliation_id, v) == v
+
+
 def test_scenarios_cover_every_outcome_and_decision_kind():
     seen_out, seen_kind = set(), set()
     for seed in SEEDS:
