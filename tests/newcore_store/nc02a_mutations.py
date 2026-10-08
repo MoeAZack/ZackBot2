@@ -89,6 +89,23 @@ def export_head(dst):
                            *root_py], capture_output=True, check=True).stdout
     with tarfile.open(fileobj=io.BytesIO(blob)) as tar:
         tar.extractall(dst, filter='data')
+    _shim_step0_builder(dst)
+
+
+def _shim_step0_builder(dst):
+    """In the TEMP export only: until step 0's tests/newcore_ports/nc_events.py adopts NC-01 440bfbd's required
+    OrderIntent.owner_kind, give its builder the field so the shared contract suite can run. The repo is not touched."""
+    p = os.path.join(dst, 'tests', 'newcore_ports', 'nc_events.py')
+    with open(p, encoding='utf-8') as fh:
+        src = fh.read()
+    if 'owner_kind' in src:
+        return
+    old = 'created_at_ms=at, owner_id=owner,'
+    new = ("created_at_ms=at, owner_id=owner, owner_kind=None if owner is None else __import__('newcore.domain', "
+           "fromlist=['OwnerKind']).OwnerKind('entry_intent' if owner in self.intents else 'lot'),")
+    if src.count(old) == 1:
+        with open(p, 'w', encoding='utf-8') as fh:
+            fh.write(src.replace(old, new))
 
 
 def run_suite(cwd):
