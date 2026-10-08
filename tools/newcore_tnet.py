@@ -316,7 +316,8 @@ def _main(argv=None, *, http=None, local_clock=None, protector=None, out=None, m
         scrubber.uninstall()
 
 
-def _cleanup_only(args, venue, symbols, run_id, snooze, recorder, cassette_dir, stamp, values, out):
+def _cleanup_only(args, venue, symbols, run_id, snooze, recorder, cassette_dir, stamp, values, out, *, build,
+                  report_dir, clock):
     """N3: the standalone teardown. Foreign orders are never cancelled; positions are closed only with
     --close-positions (above the --adopt-foreign baseline), else listed. Exit 0 clean / 4 unreadable / 8 left."""
     from newcore.venue.tnet import is_newcore_cid
@@ -349,13 +350,30 @@ def _cleanup_only(args, venue, symbols, run_id, snooze, recorder, cassette_dir, 
     res = tnet_cleanup(venue, symbols, run_id=run_id + '_cleanup', max_attempts=args.cleanup_attempts,
                        baseline=baseline, confirm_reads=2, settle_s=args.settle_s, sleep=snooze)
     out.write(format_cleanup(res) + '\n')
-    _write_cassette(recorder, cassette_dir, stamp, values, out)
     left = [p for p in positions if (p.symbol, p.side) in baseline and f'{p.symbol}:{p.side}' not in
             args.adopt_foreign]
     if left:
         out.write('POSITIONS LEFT (not adopted; add --close-positions if they are NEWCORE exposure):\n' +
                   ''.join(f'  {p.symbol} {p.side} {p.qty}\n' for p in left))
-    return EXIT_PASS if res.clean and not left else EXIT_RESIDUE
+    cassette = _write_cassette(recorder, cassette_dir, stamp, values, out)   # every request of the teardown
+    if cassette is not None:
+        out.write(f'cassette: {scrub_tokens(cassette)}\n')
+    rc_report = EXIT_PASS
+    try:
+        config = {'mode': 'cleanup', 'account_id': args.account_id, 'symbols': symbols,
+                  'close_positions': bool(args.close_positions), 'adopt_foreign': list(args.adopt_foreign)}
+        paths = tnet_report(run_id=run_id + '_cleanup', scenarios=[], cleanup=res, config=config,
+                            cassette_path=cassette, fees=Decimal(0), pnl=Decimal(0), build=build, now_ms=clock(),
+                            out_dir=report_dir, redact=values)
+        out.write(f'report: {scrub_tokens(paths[0])}\n')
+    except (ReportLeak, CredentialStoreError, OSError) as ex:
+        out.write(f'ERROR: report not written ({type(ex).__name__}).\n')
+        rc_report = EXIT_REPORT
+    if not res.clean or left:
+        return EXIT_RESIDUE
+    if cassette is None or rc_report:
+        return EXIT_REPORT
+    return EXIT_PASS
 
 
 def _run(args, specs, symbols, min_balance, creds, scrubber, http, clock, mono, snooze, build, cassette_dir,
@@ -378,7 +396,8 @@ def _run(args, specs, symbols, min_balance, creds, scrubber, http, clock, mono, 
     venue = _Recording(TestnetVenue(transport, oc))
     reader = TestnetAccountReader(transport, oc)
     if args.cleanup:
-        return _cleanup_only(args, venue, symbols, run_id, snooze, recorder, cassette_dir, stamp, values, out)
+        return _cleanup_only(args, venue, symbols, run_id, snooze, recorder, cassette_dir, stamp, values, out,
+                             build=build, report_dir=report_dir, clock=clock)
     pre = tnet_preflight(venue, reader, symbols, min_balance=min_balance, adopt_foreign=args.adopt_foreign)
     state_baseline = pre.baseline
     info = transport.exchange_info()

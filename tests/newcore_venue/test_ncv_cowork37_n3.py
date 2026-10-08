@@ -63,3 +63,40 @@ def test_cleanup_on_a_one_way_account_is_refused_without_sending(env):  # noqa: 
     fb = FakeBinance(dual=False)
     rc, out = run(env, ['--cleanup', '--close-positions'], http=fb)
     assert rc == 4 and not [q for q in fb.requests if q.method in ('POST', 'DELETE')]
+
+
+def test_cleanup_writes_a_cassette_that_replays_and_a_report(env):  # noqa: F811
+    import importlib.util
+    import io
+    import json
+    import os
+
+    from ncv_support import DUMMY_KEY, DUMMY_SECRET
+    fb = stranded(foreign=True)
+    rc, out = run(env, ['--cleanup', '--close-positions'], http=fb)
+    assert rc == 0 and 'cassette: ' in out and 'report: ' in out
+    (cas,) = [os.path.join(env['cassettes'], n) for n in os.listdir(env['cassettes'])]
+    reps = [os.path.join(env['reports'], n) for n in os.listdir(env['reports']) if n.endswith('.json')]
+    doc = json.load(open(reps[0], encoding='utf-8'))
+    assert doc['final_exchange_truth']['clean'] and doc['cassette'] == cas
+    text = open(cas, encoding='utf-8').read() + open(reps[0], encoding='utf-8').read()
+    assert DUMMY_KEY not in text and DUMMY_SECRET not in text
+    here = os.path.dirname(os.path.abspath(__file__))
+    sp = importlib.util.spec_from_file_location('rp_cleanup', os.path.join(os.path.dirname(os.path.dirname(here)),
+                                                                           'tools', 'newcore_replay_cassette.py'))
+    mod = importlib.util.module_from_spec(sp)
+    sp.loader.exec_module(mod)
+    o = io.StringIO()
+    assert mod.main([cas], out=o) == 0, o.getvalue()          # every recorded teardown request replays
+
+
+def test_cleanup_report_failure_is_exit_5(env, monkeypatch):  # noqa: F811
+    from test_ncv_tnet_harness import tool
+    mod = tool()
+    import newcore.venue.tnet as T
+
+    def leak(*a, **k):
+        raise T.ReportLeak('synthetic')
+    monkeypatch.setattr(mod, 'tnet_report', leak)
+    rc, out = run(env, ['--cleanup', '--close-positions'], http=stranded(), mod=mod)
+    assert rc == 5 and 'report not written' in out
