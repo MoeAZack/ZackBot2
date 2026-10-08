@@ -325,6 +325,9 @@ def end_state(v):
         raise Violation(f'fills the driver could not book: {unmatched}')
     if pos.qty != v.pos:
         raise Violation(f'core position {pos.qty} != venue position {v.pos} after full delivery')
+    stray = [cid for cid, o in v.orders.items() if o['kind'] == 'stop' and o['live']]
+    if pos.qty == 0 and stray:                                   # TNET-01 T08: a flat lot keeps no stop at the venue
+        raise Violation(f'flat with stops still live at the venue: {stray}')
     if pos.stage is Stage.DONE or DR.protected(v.ds) or v.reported or pos.closing >= pos.qty:
         return
     if any(b.state is DR.BindState.SENT for b in v.ds.bindings):
