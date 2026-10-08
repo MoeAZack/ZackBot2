@@ -99,6 +99,49 @@ def test_short_api_key_on_the_wire_is_refused():
         rec(req('a=1', (('X-MBX-APIKEY', 'short'),), signed=True))
 
 
+# ---------- Cowork round 2: UNREGISTERED values under sensitive NAMES are blanked (fixed list, any case) ----------
+
+UNREG = 'unregisteredValue0123456789XYZ'
+BODY_QUERY_NAMES = ['apiKey', 'listenKey', 'secretKey', 'token', 'Authorization', 'api_secret', 'password',
+                    'X-MBX-APIKEY', 'APIKEY', 'Listen_Key', 'SECRETKEY', 'Password']
+HEADER_NAMES = ['Set-Cookie', 'Authorization', 'X-Api-Key', 'Proxy-Authorization', 'set-cookie', 'X-MBX-APIKEY',
+                'Cookie']
+
+
+@pytest.mark.parametrize('name', BODY_QUERY_NAMES)
+def test_unregistered_value_under_sensitive_json_key_any_depth(name):
+    body = json.dumps({'a': 1, 'outer': [{'inner': {name: UNREG}}], name: UNREG})
+    _, text = recorded(ok(body))
+    assert UNREG not in text
+
+
+@pytest.mark.parametrize('name', BODY_QUERY_NAMES)
+def test_unregistered_value_under_sensitive_query_name(name):
+    q = urllib.parse.urlencode([('symbol', 'SOLUSDT'), (name, UNREG)])
+    _, text = recorded(ok('{}'), requests=[req(q)])
+    assert UNREG not in text
+
+
+@pytest.mark.parametrize('name', BODY_QUERY_NAMES)
+def test_unregistered_value_under_sensitive_form_name(name):
+    _, text = recorded(ok(f'ok=1&{urllib.parse.quote(name)}={UNREG}&x=2'))
+    assert UNREG not in text
+
+
+@pytest.mark.parametrize('name', HEADER_NAMES)
+def test_unregistered_value_under_sensitive_response_header(name):
+    _, text = recorded(ok('{}', {name: f'Bearer {UNREG}', 'X-MBX-USED-WEIGHT-1M': '3'}))
+    assert UNREG not in text and '"X-MBX-USED-WEIGHT-1M": "3"' in text
+
+
+def test_sensitive_value_that_cannot_be_blanked_fails_closed():
+    # A sensitive key holding a structure (not a scalar) cannot be blanked in place: refuse the whole cassette.
+    rec = CassetteRecorder(FakeHttp(ok(json.dumps({'token': [UNREG, {'x': UNREG}]}))))
+    rec(req())
+    with pytest.raises(CassetteLeak):
+        rec.to_json()
+
+
 # ---------- learning + back-propagation ----------
 
 def test_value_learned_later_is_removed_from_earlier_interactions():
