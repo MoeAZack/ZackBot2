@@ -55,6 +55,37 @@
       "accepted_by": null,
       "date_cairo": "2026-10-08",
       "prev_entry_sha": "811ba5a38f2f3331b5e9733f82d4d17ea9de7de915ea5629852ac53564eceacd"
+    },
+    {
+      "id": "CORR-0002",
+      "type": "correction",
+      "ticket": "AUD-07",
+      "finding": "C11",
+      "title": "C11 fixed: time exit after exactly N candles (candle index) in the engine and the backtest",
+      "cases": {
+        "G-TIME-L-01": {
+          "old_expect_sha": "30288d2971abaafe2c816a109ad7cade89b28018f33df420ba15d434adc985c3",
+          "new_expect_sha": "30288d2971abaafe2c816a109ad7cade89b28018f33df420ba15d434adc985c3"
+        },
+        "G-TIME-L-02": {
+          "old_expect_sha": "30288d2971abaafe2c816a109ad7cade89b28018f33df420ba15d434adc985c3",
+          "new_expect_sha": "30288d2971abaafe2c816a109ad7cade89b28018f33df420ba15d434adc985c3"
+        }
+      },
+      "adapters_changed": [
+        "legacy_backtest",
+        "legacy_engine"
+      ],
+      "resolved_divergences": [
+        "G-TIME-L-01:legacy_backtest",
+        "G-TIME-L-02:legacy_backtest",
+        "G-TIME-L-02:legacy_engine"
+      ],
+      "rationale": "engine.py cycle() counted elapsed seconds since the fill (exit one candle late when the entry cycle ran slower than the exit cycle) and backtest.py held N + 1 candles (i - i_in >= N). Both now use floor(t/tf) - floor(t_fill/tf) >= N with the fill candle counted, the UI text 'time exit after N candles'. The expect blocks are unchanged; only the known divergences are removed.",
+      "evidence": "branch aud-07-product (stacked on #32 c055910): G-TIME-L-01 legacy_backtest, G-TIME-L-02 legacy_backtest + legacy_engine XPASS with the fix; reverting the fix re-breaks exactly these",
+      "accepted_by": null,
+      "date_cairo": "2026-10-08",
+      "prev_entry_sha": "d69ba69d3437af709ed33cc242c9e219dcd0c40abd8ca8322d4b575a28ed18ac"
     }
   ]
 }
