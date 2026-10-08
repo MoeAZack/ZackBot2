@@ -75,6 +75,20 @@ def _rules_on(rules, name):
     return r if r.get('mode') == 'enforce' else None
 
 
+CAIRO_TZ = 'Africa/Cairo'
+
+
+def cairo_close_days(T, bar_sec):
+    """AUD-07 C13d: the trading day of candle i's close decision = the Africa/Cairo date at the candle CLOSE (T_i + bar),
+    DST-aware through the IANA zone, like engine.trading_day() at that cycle. No fixed-offset fallback: a wrong offset
+    silently moves the daily-loss halt by an hour, so a missing tz database is an error."""
+    try:
+        return (pd.to_datetime(T) + pd.Timedelta(seconds=bar_sec)).tz_localize('UTC').tz_convert(CAIRO_TZ).date
+    except Exception as e:
+        raise RuntimeError(f'backtest: cannot convert candle close times to {CAIRO_TZ} ({e!r}); the daily-loss halt needs '
+                           'the Cairo trading day - install tzdata instead of guessing a UTC offset') from e
+
+
 def _btc_move_1h(book, btc, bar_sec, btc1h=None):
     """|% close-to-close move of BTC over the last closed hour| at each bar's close.
     1h (or finer) books use their own candles; a 4h book uses btc1h (DataFrame t,c) when given, else a proxy:
@@ -238,8 +252,7 @@ def run(book, sleeves, start=500.0, max_lev=10.0, daily_halt=0.08, t0=None, t1=N
 
     eq, trades, curve = start, [], []
     day, day_start, halted = None, eq, False
-    try: days = pd.to_datetime(T).tz_localize('UTC').tz_convert('Africa/Cairo').date      # trading day = Cairo day, like live
-    except Exception: days = (pd.to_datetime(T) + pd.Timedelta(hours=3)).date
+    days = cairo_close_days(T, bar_sec)               # trading day = Cairo day of each candle-close decision, like live
 
     def close(sl, s, p, px, frac, i, why):
         """Close frac of the position at px. BT02 engine parity (_market_close / _apply_close): a PARTIAL close is floored
@@ -495,9 +508,6 @@ def run(book, sleeves, start=500.0, max_lev=10.0, daily_halt=0.08, t0=None, t1=N
         return False
 
     for i in idx:
-        if days[i] != day:
-            day, halted = days[i], False
-            day_start = eq + sum(p['side'] * (book.arr[s]['c'][i - 1] - p['avg']) * p['qty'] for sl in SL for s, p in sl['pos'].items())
         # ---- fills of pending entries
         for sl in SL:
             m, cfg = sl['m'], sl['cfg']
@@ -574,6 +584,11 @@ def run(book, sleeves, start=500.0, max_lev=10.0, daily_halt=0.08, t0=None, t1=N
                         close(sl, s, p, adv_px[id(p)], 1, i, 'liquidated'); del sl['pos'][s]
                     halted = True
         up_now = sum(p['side'] * (book.arr[s]['c'][i] - p['avg']) * p['qty'] for sl in SL for s, p in sl['pos'].items())
+        # AUD-07 C13d: the close of candle i is the decision time. As engine.check_guards() at the start of that cycle, the
+        # Cairo day rolls over first (new day-start equity incl. open P&L, halt cleared), then the halt test, then signals
+        if days[i] != day:
+            day, halted = days[i], False
+            day_start = eq + up_now
         if (eq + up_now) / day_start - 1 <= -daily_halt: halted = True                 # same rule as live: includes open P&L
         # ---- BTC circuit breaker (enforce): pause entries for `hours`, optionally move winners to breakeven
         if RR['btc_breaker'] and MV is not None and MV[i] > RR['btc_breaker'].get('pct', 5.0):
