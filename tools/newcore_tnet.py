@@ -170,7 +170,12 @@ def _write_cassette(recorder, directory, stamp, values, out):
 
 def main(argv=None, *, out=None, **kw):
     """Typed exit codes only: an unexpected exception is EXIT_FAIL (7) with its type, never a traceback with exit 1
-    (= INCONCLUSIVE). Sends happen only inside the guarded body, whose teardown has run by then."""
+    (= INCONCLUSIVE). Sends happen only inside the guarded body, whose teardown has run by then.
+
+    Exit-code precedence for an interrupt (Ctrl+C or SystemExit) absorbed while evidence was committed: it never
+    hides a more specific outcome. 8 residue > 5 evidence not written > 7 failed > 4 / 3 / 2 refused (nothing
+    sent) > 6 interrupted > 1 inconclusive > 0: so it replaces only 0 and 1. (This CLI writes its evidence only
+    after every send of the run, so an absorbed interrupt can never be followed by an order.)"""
     out = out or sys.stdout
     EVIDENCE.hit = False
     try:
@@ -179,7 +184,7 @@ def main(argv=None, *, out=None, **kw):
             out.write('INTERRUPTED (Ctrl+C) while the report / cassette were written; they are complete.\n')
             return EXIT_DEADLINE                                     # the files exist; residue / failure win
         return rc
-    except KeyboardInterrupt:                                        # N2: preflight / report phase
+    except (KeyboardInterrupt, SystemExit):                          # N2: preflight / report phase
         out.write('INTERRUPTED (Ctrl+C). Nothing more will be sent. Check the lines above: if orders were sent, the '
                   'CLEANUP line shows what the teardown did; if none is there, run: python tools\\newcore_tnet.py '
                   '--cleanup\n')
@@ -523,10 +528,15 @@ def _run(args, specs, symbols, min_balance, creds, scrubber, http, clock, mono, 
         _, cleanup = guarded(body, lambda: tnet_cleanup(venue, symbols, run_id=run_id,
                                                         max_attempts=args.cleanup_attempts, baseline=pre.baseline,
                                                         confirm_reads=2, settle_s=args.settle_s, sleep=snooze))
-    except KeyboardInterrupt:
+    except (KeyboardInterrupt, SystemExit):            # the guarded run re-raised after its teardown
         interrupted = True
-        cleanup = tnet_cleanup(venue, symbols, run_id=run_id, max_attempts=1, baseline=pre.baseline,
-                               confirm_reads=2, settle_s=args.settle_s, sleep=snooze)
+        try:                                           # confirm once more, Ctrl+C ignored meanwhile
+            _, cleanup = guarded(lambda: None, lambda: tnet_cleanup(
+                venue, symbols, run_id=run_id, max_attempts=1, baseline=pre.baseline, confirm_reads=2,
+                settle_s=args.settle_s, sleep=snooze))
+        except (KeyboardInterrupt, SystemExit):
+            from newcore.venue.tnet import CleanupResult
+            cleanup = CleanupResult(clean=False, attempts=0, notes=['the teardown confirmation was interrupted'])
     out.write(format_cleanup(cleanup) + '\n')
 
     fees = pnl = Decimal(0)

@@ -298,7 +298,7 @@ def commit_evidence(write, flag=None):
     try:
         try:
             value = write()
-        except KeyboardInterrupt:
+        except (KeyboardInterrupt, SystemExit):      # SystemExit: treated as Ctrl+C
             pending.append('raised')
             value = write()
     finally:
