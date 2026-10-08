@@ -349,10 +349,12 @@ def _apply_actions(w, actions):
                 continue
             if w.d['pos'].stop_locked:
                 # Cowork 11: a tighter replacement was refused, the venue keeps the previous stop and the core locks it
-                # (shrunk to what is left). A CONFIRMED stop at that price that covers the quantity is already the
-                # protection: rebind it, never send a second same-price stop beside it (the rest is being closed).
-                cover = [b for b in w.bindings() if b.leg is Leg.STOP and b.state is BindState.WORKING
+                # (shrunk to what is left). A stop at that price that covers the quantity - CONFIRMED, or still in
+                # flight (SENT / answer lost: its resolution is awaited) - is already the protection: rebind it, never
+                # send a second same-price stop beside it (the rest is being closed). A confirmed one is preferred.
+                cover = [b for b in w.bindings() if b.leg is Leg.STOP and b.state in (BindState.SENT, BindState.WORKING)
                          and b.stop_price == a.price and b.qty >= a.qty]
+                cover.sort(key=lambda b: b.state is BindState.WORKING)
                 if cover:
                     b = next(x for x in w.bindings() if x.intent_id == cover[-1].intent_id)
                     w.replace_binding(b, current=True)
@@ -472,9 +474,10 @@ def _restore_stop(w, b):
     if live:
         return
     w.reconcile.append(('stop_lost', b.intent_id, b.status))
-    cover = [x for x in w.bindings() if x.leg is Leg.STOP and x.state is BindState.WORKING
+    cover = [x for x in w.bindings() if x.leg is Leg.STOP and x.state in (BindState.SENT, BindState.WORKING)
              and x.stop_price == pos.stop.price and x.qty >= pos.stop.qty]
-    if cover:                     # Cowork 11: a confirmed stop at that price already covers it - rebind, never a duplicate
+    cover.sort(key=lambda x: x.state is BindState.WORKING)
+    if cover:     # Cowork 11: a stop at that price (confirmed, or in flight: awaited) covers it - rebind, never a duplicate
         w.replace_binding(next(x for x in w.bindings() if x.intent_id == cover[-1].intent_id), current=True)
         return
     d = w.send(w.draft(Leg.STOP, Purpose.PROTECT, OrderType.STOP_MARKET, pos.stop.qty, R.PROTECT_RESTORING, Op.PLACE,
