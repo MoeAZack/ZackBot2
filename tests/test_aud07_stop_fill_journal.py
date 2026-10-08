@@ -28,6 +28,21 @@ def test_gapped_stop_is_journalled_at_the_fill_not_the_stop(side):
 
 
 @pytest.mark.parametrize('side', [1, -1])
+@pytest.mark.parametrize('gap_open', [60.0, 20.0])
+def test_large_gap_is_journalled_at_the_fill(side, gap_open):
+    """Cowork: the old journal stayed at about -1.05 R whatever the gap (-10.5 vs -100.7 at a gap of 80). Here the open
+    gaps 40 / 80 below the stop distance of 2: the journal must follow the account, about -20 R / -40 R."""
+    r = _run(side, (gap_open, gap_open + 0.2, gap_open - 0.2, gap_open))
+    h = _journal(r)
+    eng_r = float(h['pnl']) / float(h['risk_usd'])
+    bt_r = r['bt_trades'].R.iloc[0]
+    assert bt_r < -15, bt_r
+    assert eng_r == pytest.approx(bt_r, rel=0.01), f'engine journal R {eng_r:.3f} vs backtest {bt_r:.3f}'
+    fill = (gap_open if side == 1 else 200 - gap_open) * (1 - side * 0.0002)
+    assert float(h['exit']) == pytest.approx(fill, rel=1e-9), h
+
+
+@pytest.mark.parametrize('side', [1, -1])
 def test_stop_inside_the_candle_is_journalled_with_its_exit_slippage(side):
     r = _run(side, (100.0, 100.2, 97.5, 97.8))
     h = _journal(r)
