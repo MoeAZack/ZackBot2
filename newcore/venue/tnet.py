@@ -310,6 +310,12 @@ def _markdown(doc):
         lines += [f"- [{'x' if ok else ' '}] {text}" for text, ok in s['assertions']]
         lines.append('')
     t = doc['final_exchange_truth']
+    if doc.get('probes'):
+        lines += ['## Probes', '']
+        for name, p in doc['probes'].items():
+            lines.append(f"### {name} ({'conclusive' if p.get('conclusive') else 'INCONCLUSIVE'})")
+            lines += [f'- {k}: {v}' for k, v in p.items() if k not in ('steps', 'conclusive')]
+            lines.append('')
     lines += ['## Final exchange truth', '', f"- clean: {t['clean']} (cleanup attempts {t['attempts']})"]
     lines += [f'- position {p}' for p in t['remaining_positions']] + [f'- order {o}' for o in t['remaining_orders']]
     lines += ['', '## Fees / PnL (disposable testnet)', '', f"- fees: {doc['fees']}", f"- realized pnl: {doc['pnl']}", '']
@@ -325,12 +331,16 @@ def _audit(texts, values):
 
 
 def tnet_report(*, run_id, scenarios, cleanup, config, cassette_path, fees, pnl, build, now_ms, out_dir=None,
-                redact=()):
-    """Write tnet-<now_ms>.json and .md (atomically) after a fail-closed leak audit. Returns (json path, md path)."""
+                redact=(), probes=None):
+    """Write tnet-<now_ms>.json and .md (atomically) after a fail-closed leak audit. Returns (json path, md path).
+    probes: optional {name: dict} (tnet_probes P1Result / P2Result .as_dict()); a probe counts as passed when conclusive."""
+    probes = dict(probes or {})
     doc = {'format': 'zb-newcore-tnet-report/1', 'run_id': str(run_id), 'generated_ms': int(now_ms),
            'build': {'sha': build.get('sha'), 'dirty': bool(build.get('dirty'))},
            'config_digest': config_digest(config), 'cassette': cassette_path,
-           'passed': bool(scenarios) and all(s.passed for s in scenarios) and cleanup.clean,
+           'passed': bool(scenarios or probes) and all(s.passed for s in scenarios) and cleanup.clean
+           and all(p.get('conclusive') for p in probes.values()),
+           'probes': probes,
            'scenarios': [{'name': s.name, 'passed': bool(s.passed),
                           'assertions': [[str(t), bool(ok)] for t, ok in s.assertions]} for s in scenarios],
            'final_exchange_truth': {'clean': cleanup.clean, 'attempts': cleanup.attempts,
