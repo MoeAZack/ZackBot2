@@ -69,10 +69,10 @@ def test_W3_manual_close_is_one_owner_hold_and_blocks_new_risk():
     w.run(ENTRY_BAR + 4)
     f = w.runner.fold
     assert f.mode is EntriesMode.HOLD and ReasonCode.OWNERSHIP_UNTRACKED_POSITION in f.mode_reasons
-    # the runner keeps Q2 off until NC-01 A1: the manual close is an owner item naming the venue trade, raised once
+    # a full manual close is never adopted (flat venue, Cowork C8): an owner item naming the venue trade, raised once
     texts = [t for _, t in w.runner.incidents if 'R03' in t]
-    assert len(texts) == 1 and 'unexplained_deficit' in texts[0] and 'order:880001' in texts[0]
-    assert 'actions=confirm_external_close,flatten' in texts[0]
+    assert len(texts) == 1 and 'external_close_explained' in texts[0] and 'order:880001' in texts[0]
+    assert 'actions=confirm_external_close,cancel_left_protection' in texts[0]
     w.run(14)
     assert not [d for d in f.decisions.values() if str(d.action) == 'enter' and d.at_ms > w.close_ms(ENTRY_BAR)]
 

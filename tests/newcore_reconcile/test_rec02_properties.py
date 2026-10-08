@@ -190,6 +190,27 @@ def test_P5_never_guesses_an_empty_account(seed):
         assert v.ownership is Ownership.KNOWN_EMPTY
 
 
+@pytest.mark.parametrize('seed', SEEDS)
+def test_P6_one_venue_trade_explains_at_most_one_thing(seed):
+    vw, s = scenario(seed)
+    v = reconcile(vw, s, now_ms=T)
+    seen = []
+    for d in v.decisions:
+        if d.kind in (K.RESOLVE_FILLED, K.ADOPT):
+            seen += [e.split(':')[1] for e in d.evidence if e.startswith('trade:')]
+    assert len(seen) == len(set(seen))
+
+
+@pytest.mark.parametrize('seed', SEEDS)
+def test_P7_no_ambient_decimal_context_is_consulted(seed):
+    import decimal
+    vw, s = scenario(seed)
+    ref = reconcile(vw, s, now_ms=T)
+    with decimal.localcontext() as ctx:
+        ctx.prec, ctx.traps[decimal.Inexact], ctx.traps[decimal.Rounded] = 3, True, True
+        assert reconcile(vw, s, now_ms=T) == ref
+
+
 def test_scenarios_cover_every_outcome_and_decision_kind():
     seen_out, seen_kind = set(), set()
     for seed in SEEDS:

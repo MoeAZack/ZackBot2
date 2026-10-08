@@ -264,16 +264,18 @@ def _manual_reduce(w, qty):
     w.venue._apply_fill(SYM, 'LONG', qty, px, reduce=True, eoid='880001', at_ms=w.venue.now_ms, fee=D(0))
 
 
-def test_R03_manual_full_close_is_adopted_from_user_trades_and_the_left_stop_is_an_owner_item():
+def test_R03_manual_full_close_is_explained_from_user_trades_for_the_owner_never_adopted():
+    """Cowork C8: with the venue flat there is no exposure left to adopt against: the userTrades evidence explains the
+    history and the owner confirms it (and cancels the stop left on the flat side)."""
     w, lot_ = opened()
     w.run(ENTRY_BAR + 1)
     _manual_reduce(w, lot_.qty)
     v, *_ = world_rec(w)
-    a, = v.of(K.ADOPT)
-    assert (a.row, a.detail, a.qty) == ('R03', 'external_reduce', lot_.qty)
-    assert any('order:880001' in e for e in a.evidence)
+    assert not v.of(K.ADOPT)
     h, = v.of(K.HOLD)
-    assert h.detail == 'protection_left_on_flat_side' and h.owner_actions[0].startswith('cancel_order:')
+    assert (h.row, h.detail, h.qty) == ('R03', 'external_close_explained', lot_.qty)
+    assert any('order:880001' in e for e in h.evidence)
+    assert h.owner_actions == ('confirm_external_close', 'cancel_left_protection')
     assert v.outcome is Outcome.HOLD
 
 
@@ -284,7 +286,7 @@ def test_R03_deficit_without_trades_asks_for_them_and_without_q2_is_an_owner_hol
     v, *_ = world_rec(w, trades=False)
     assert v.outcome is Outcome.PENDING and v.needs.trades and not v.of(K.ADOPT)
     v2, *_ = world_rec(w, policy=RecPolicy(adopt_external_change=False))
-    assert ('hold', 'R03', 'unexplained_deficit') in kinds(v2) and not v2.of(K.ADOPT)
+    assert ('hold', 'R03', 'external_close_explained') in kinds(v2) and not v2.of(K.ADOPT)
 
 
 def test_R04_foreign_order_is_quarantined_per_side_never_touched():

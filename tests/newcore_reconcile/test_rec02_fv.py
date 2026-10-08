@@ -129,15 +129,15 @@ def test_R10_fv_a_wrong_cancel_ack_leaves_an_orphan_stop_the_owner_must_cancel()
 
 
 # ------------------------------------------------------------------------------------------------ R03 / R11
-def test_R03_fv_manual_full_close_is_adopted_from_user_trades():
+def test_R03_fv_manual_full_close_is_explained_from_user_trades_never_adopted():
     w, lot = opened()
     w.run(ENTRY_BAR + 1)
     eoid = w.fault.manual_close(SYM, 'LONG', lot.qty)
     v, *_ = world_rec(w)
-    a, = v.of(K.ADOPT)
-    assert (a.row, a.detail, a.qty) == ('R03', 'external_reduce', lot.qty)
-    assert any(f'order:{eoid}' in x for x in a.evidence)
-    assert [d.detail for d in v.of(K.HOLD)] == ['protection_left_on_flat_side']
+    assert not v.of(K.ADOPT)
+    h, = v.of(K.HOLD)
+    assert (h.row, h.detail, h.qty) == ('R03', 'external_close_explained', lot.qty)
+    assert any(f'order:{eoid}' in x for x in h.evidence)
 
 
 def test_R11_fv_manual_partial_close_is_adopted_and_the_rest_stays_protected():
