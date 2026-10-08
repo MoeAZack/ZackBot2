@@ -48,12 +48,14 @@ def run(bk, key='dca_dip', side=1, mgmt=None, **kw):
 
 # DCA dip defaults: 3 safety orders 1 ATR apart (1x, 1.5x, 2.25x, 3.375x), basket TP +1 ATR from the average, stop 2 ATR past the last
 E_LONG = 100 * (1 + B.SLIP)                  # 100.02
-L1_LONG = E_LONG - 1.0                       # first safety order 99.02
-AVG1_LONG = (E_LONG + 1.5 * L1_LONG) / 2.5   # 99.42
-TP1_LONG = AVG1_LONG + 1.0                   # basket TP after one safety order: 100.42 (was 101.02 before it)
+L1_LONG = E_LONG - 1.0                       # first safety order level 99.02
+L1F_LONG = L1_LONG * (1 + B.SLIP)            # AUD-07 C13a: the safety order is a taker market order -> fills at 99.039804
+AVG1_LONG = (E_LONG + 1.5 * L1F_LONG) / 2.5  # 99.431882
+TP1_LONG = AVG1_LONG + 1.0                   # basket TP after one safety order: 100.431882 (was 101.02 before it)
 E_SHORT = 100 * (1 - B.SLIP)                 # 99.98
 L1_SHORT = E_SHORT + 1.0                     # 100.98
-TP1_SHORT = (E_SHORT + 1.5 * L1_SHORT) / 2.5 - 1.0   # 99.58
+L1F_SHORT = L1_SHORT * (1 - B.SLIP)          # AUD-07 C13a: fills at 100.959804
+TP1_SHORT = (E_SHORT + 1.5 * L1F_SHORT) / 2.5 - 1.0   # 99.567882
 
 
 def test_path_points_policy():
@@ -83,7 +85,7 @@ def test_green_candle_dca_long_does_hit_the_basket_tp_after_the_fill():
     q0 = 10.0 / (1 * 5 + 1.5 * 4 + 2.25 * 3 + 3.375 * 2)          # risk $10 over the 4 orders down to the stop at 95.02
     q = 2.5 * q0
     px = TP1_LONG * (1 - B.SLIP)
-    want = (px - AVG1_LONG) * q - q * px * B.FEE - q0 * E_LONG * B.FEE - 1.5 * q0 * L1_LONG * B.FEE \
+    want = (px - AVG1_LONG) * q - q * px * B.FEE - q0 * E_LONG * B.FEE - 1.5 * q0 * L1F_LONG * B.FEE \
         - q0 * 100.0 * B.FUND_PER_BAR - q0 * 100.5 * B.FUND_PER_BAR       # funding is charged before the candle's events
     assert tr.pnl[0] == pytest.approx(want, rel=1e-9)
 
@@ -126,7 +128,7 @@ def test_pyramid_add_fires_in_price_order_with_tp1():
     tr = run(bk, key='ema_mom', mgmt=copy.deepcopy(PYR))
     assert len(tr) == 1 and tr.why[0] == 'signal' and tr.i_out[0] == 13, tr
     q0 = 10.0 / 2.0                                         # risk $10, stop 2 ATR
-    tp1 = E_LONG + 2.0; add = E_LONG + 3.0
+    tp1 = E_LONG + 2.0; add = (E_LONG + 3.0) * (1 + B.SLIP)       # AUD-07 C13a: the add is a taker market order (pays slippage)
     fees = q0 * E_LONG * B.FEE + 0.5 * q0 * add * B.FEE
     # tp1 first: half of q0 at tp1, then the add, then the rest (q0) out at the close of candle 13 (103.2)
     p1 = tp1 * (1 - B.SLIP); px = 103.2 * (1 - B.SLIP)
@@ -142,7 +144,7 @@ def test_pyramid_red_candle_add_then_raised_stop_hit_by_the_later_low():
     m = {'stop_atr': 2.0, 'trail_atr': 1.0, 'pyramid': {'n': 1, 'step_r': 1.0, 'frac': 0.5}}
     tr = run(book({12: (100.0, 103.0, 101.0, 101.5)}), key='ema_mom', mgmt=m)
     assert len(tr) == 1 and tr.why[0] == 'stop' and tr.i_out[0] == 12, tr
-    q0 = 5.0; add = E_LONG + 2.0; stop = 103.0 - 1.0
+    q0 = 5.0; add = (E_LONG + 2.0) * (1 + B.SLIP); stop = 103.0 - 1.0     # AUD-07 C13a: the add pays slippage
     avg = (q0 * E_LONG + 0.5 * q0 * add) / (1.5 * q0); q = 1.5 * q0; px = stop * (1 - B.SLIP)
     want = (px - avg) * q - q * px * B.FEE - q0 * E_LONG * B.FEE - 0.5 * q0 * add * B.FEE \
         - q0 * 100.0 * B.FUND_PER_BAR - q0 * 101.5 * B.FUND_PER_BAR
@@ -190,8 +192,10 @@ W = (1.0, 1.5, 2.25, 3.375)
 
 
 def _basket_stop_pnl(side, fills, stop, c_fill_candle):
-    """P&L of a DCA basket whose orders `fills` (prices, entry first) all filled and that was then stopped at `stop`.
+    """P&L of a DCA basket whose orders `fills` (entry FILL price first, then the safety-order LEVELS) all filled and that
+    was then stopped at `stop`. AUD-07 C13a: each safety order is a taker market order and fills at level x (1 + side x SLIP).
     Funding: candle 11 (flat, q0 at 100) and the fill candle (charged on q0 before its events)."""
+    fills = [fills[0]] + [f * (1 + side * B.SLIP) for f in fills[1:]]
     q = Q0 * sum(W[:len(fills)]); avg = Q0 * sum(w * f for w, f in zip(W, fills)) / q
     px = stop * (1 - side * B.SLIP)
     return side * (px - avg) * q - q * px * B.FEE - sum(Q0 * w * f * B.FEE for w, f in zip(W, fills)) \
@@ -240,7 +244,7 @@ def test_safety_level_exactly_at_the_stop_fills_first_then_the_stop():
     tr = run(book({12: (100.0, 100.2, 96.0, 99.0)}), mgmt=m)
     assert len(tr) == 1 and tr.why[0] == 'stop', tr
     q0 = 10.0 / (1 * 3 + 1.5 * 2 + 2.25 * 1)                  # distances to the stop at 97.02: 3, 2, 1, 0
-    q = q0 * sum(W); fills = [E_LONG, 99.02, 98.02, 97.02]
+    q = q0 * sum(W); fills = [E_LONG] + [f * (1 + B.SLIP) for f in (99.02, 98.02, 97.02)]   # AUD-07 C13a: adds pay slippage
     avg = q0 * sum(w * f for w, f in zip(W, fills)) / q; px = 97.02 * (1 - B.SLIP)
     want = (px - avg) * q - q * px * B.FEE - sum(q0 * w * f * B.FEE for w, f in zip(W, fills)) \
         - q0 * 100.0 * B.FUND_PER_BAR - q0 * 99.0 * B.FUND_PER_BAR
@@ -272,7 +276,7 @@ def test_pyramid_add_before_the_stop_on_a_red_candle_and_not_on_a_green_one():
     m = {'stop_atr': 2.0, 'pyramid': {'n': 1, 'step_r': 1.0, 'frac': 0.5}}
     tr = run(book({12: (100.0, 102.5, 97.5, 98.0)}), key='ema_mom', mgmt=m)
     assert len(tr) == 1 and tr.why[0] == 'stop' and tr.i_out[0] == 12, tr
-    q0 = 5.0; add = E_LONG + 2.0; q = 1.5 * q0; avg = (q0 * E_LONG + 0.5 * q0 * add) / q; px = (E_LONG - 2.0) * (1 - B.SLIP)
+    q0 = 5.0; add = (E_LONG + 2.0) * (1 + B.SLIP); q = 1.5 * q0; avg = (q0 * E_LONG + 0.5 * q0 * add) / q; px = (E_LONG - 2.0) * (1 - B.SLIP)
     want = (px - avg) * q - q * px * B.FEE - q0 * E_LONG * B.FEE - 0.5 * q0 * add * B.FEE \
         - q0 * 100.0 * B.FUND_PER_BAR - q0 * 98.0 * B.FUND_PER_BAR
     assert tr.pnl[0] == pytest.approx(want, rel=1e-9)
