@@ -32,7 +32,7 @@ from newcore.tnet.driver import EXIT_FAIL, EXIT_PASS, EXIT_PREFLIGHT, EXIT_RESID
 from newcore.tnet.rspec import (MAX_SETTLE_MS, SpecError, bundled, load_rspec, rspec_digest,  # noqa: E402
                                 validate_rspec)
 from newcore.venue.cli_args import ACCOUNT_REFUSAL, argv_refusal  # noqa: E402
-from newcore.venue.redact import scrub_tokens  # noqa: E402
+from newcore.venue.redact import scrub_path, scrub_tokens  # noqa: E402
 from newcore.venue.tnet import (CleanupResult, ScenarioOutcome, _audit, adopt_refusal, git_build,  # noqa: E402
                                 tnet_report)
 
@@ -60,6 +60,7 @@ def _parser():
                                                          'no report unless given')
     p.add_argument('--min-balance', default=None)
     p.add_argument('--adopt-foreign', action='append', default=[])
+    p.add_argument('--adopt-file', default=None, help='one --adopt-foreign item per line (long client ids)')
     p.add_argument('--settle-ms', type=int, default=1500)
     p.add_argument('--dry-run', action='store_true', help='print the plan only: no network call, no key decrypted')
     p.add_argument('--cassette-dir', default=None,
@@ -107,7 +108,7 @@ def _apply_config(args, out):
             out.write(f'REFUSED: --{flag.replace("_", "-")} disagrees with the config ({mine}).\n')
             return EXIT_USAGE
     args.account_id, args.key_digest, args.config_symbols = cfg.account_id, cfg.key_digest, tuple(cfg.symbols)
-    out.write(f'config {scrub_tokens(args.config)}: account {cfg.account_id}, binding {cfg.key_digest}, symbols '
+    out.write(f'config {scrub_path(args.config)}: account {cfg.account_id}, binding {cfg.key_digest}, symbols '
               f'{", ".join(cfg.symbols)}\n')
     return None
 
@@ -179,7 +180,7 @@ def _report(args, res, run_id, build, values, out, cassettes=None):
     except Exception as ex:                                              # noqa: BLE001 - reported as exit 5
         out.write(f'ERROR: report not written ({type(ex).__name__}: {ex}).\n')
         return EXIT_REPORT
-    out.write(f'report: {paths[0]}\n')
+    out.write(f'report: {scrub_path(paths[0])}\n')
     return EXIT_PASS
 
 
@@ -189,6 +190,9 @@ def main(argv=None, *, out=None, **kw):
     out = out or sys.stdout
     try:
         return _main(argv, out=out, **kw)
+    except KeyboardInterrupt:                                        # N2: preflight / boot / report phase
+        out.write('INTERRUPTED (Ctrl+C). A scenario that had sent orders ran its teardown.\n')
+        return 6
     except Exception as ex:                                          # noqa: BLE001
         out.write(f'ERROR: unexpected {type(ex).__name__} (details withheld). Any scenario that sent orders ran '
                   f'its teardown.\n')
@@ -226,6 +230,13 @@ def _main(argv=None, *, http=None, local_clock=None, sleep=None, store=None, out
             return EXIT_USAGE
     if not args.spec:
         specs = bundled()
+    if args.adopt_file is not None:                  # X1: long foreign client ids never travel in argv
+        try:
+            with open(args.adopt_file, encoding='utf-8') as fh:
+                args.adopt_foreign += [ln.strip() for ln in fh.read(64 * 1024).splitlines() if ln.strip()]
+        except (OSError, UnicodeDecodeError) as ex:
+            out.write(f'REFUSED: --adopt-file cannot be read ({type(ex).__name__}).\n')
+            return EXIT_USAGE
     for a in args.adopt_foreign:
         why = adopt_refusal(a)
         if why is not None:

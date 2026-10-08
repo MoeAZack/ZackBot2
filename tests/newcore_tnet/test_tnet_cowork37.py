@@ -217,3 +217,36 @@ def test_replay_output_is_sanitised(tmp_path):
     rc = cli().main(['--replay', path], out=out)
     text = out.getvalue()
     assert rc == 7 and '\x1b' not in text and not [ln for ln in text.splitlines() if ln.startswith('SAME      forged')]
+
+
+# ---------------------------------------------------------------------------------------------- re-check
+def test_n2_ctrl_c_in_the_boot_or_preflight_is_typed(tmp_path):
+    class CtrlCBoot(FakeBinance):
+        def _get_fapi_v1_positionSide_dual(self, q):
+            raise KeyboardInterrupt
+    w = World()
+    w.fb = CtrlCBoot()
+    w.fb.now = w.t
+    rc, out = tn(['--only', 'T01-long'], w, tmp_path, 'n2b')
+    assert rc == 6 and 'INTERRUPTED' in out and not [q for q in w.fb.requests if q.method in ('POST', 'DELETE')]
+
+
+def test_n2_ctrl_c_in_the_report_phase_is_typed(tmp_path, monkeypatch):
+    mod = cli()
+
+    def interrupt(*a, **k):
+        raise KeyboardInterrupt
+    monkeypatch.setattr(mod, 'tnet_report', interrupt)
+    w = World()
+    rc, out = tn(['--only', 'T10-floor'], w, tmp_path, 'n2c', mod=mod)
+    assert rc == 6 and 'INTERRUPTED' in out
+
+
+def test_x1_long_foreign_ids_through_an_adopt_file(tmp_path):
+    long_id = 'web_' + 'a' * 32
+    w = World(foreign_orders=(long_id,))
+    f = tmp_path / 'adopt.txt'
+    f.write_text(long_id + '\n', encoding='utf-8')
+    rc, out = tn(['--only', 'T10-floor', '--adopt-file', str(f)], w, tmp_path, 'x1')
+    assert rc == 0, out
+    assert w.fb.orders[long_id]['status'] == 'NEW'

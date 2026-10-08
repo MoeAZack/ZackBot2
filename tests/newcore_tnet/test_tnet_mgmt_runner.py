@@ -91,3 +91,13 @@ def test_management_disabled_runs_the_plain_runner():
     s['bound']['max_ticks'] += 1
     r = run_scenario(s, FakeTarget(), run_nonce='mg6')
     assert r.verdict == PASS and not [o for o in r.orders if o['purpose'] in ('reduce', 'add')]
+
+
+@pytest.mark.parametrize('n', ['T05', 'T06', 'T07'])
+def test_the_testnet_bracket_order_cap_covers_per_attempt_routing(n):
+    """Driver 83c39da: every resize / break-even stop pays one refused classic request on testnet. The FakeVenue run
+    with classic stops refused is the same order sequence; plus one plan time-exit close it must fit the bracket cap."""
+    fake = run_scenario(spec(f'{n}-long'), FakeTarget(), run_nonce='cap')
+    worst = len(fake.ledger) + 1
+    for side in ('long', 'short'):
+        assert worst <= spec(f'{n}-tn-{side}')['bound']['max_orders'], (n, worst)
