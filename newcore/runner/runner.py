@@ -96,6 +96,9 @@ OPENING_ACTIONS = {Action.ENTER: Purpose.ENTRY, Action.ADD: Purpose.ADD}
 DUPLICATE_CLIENT_ID = -4116           # Binance "ClientOrderId is duplicated": the order EXISTS (step-0 has no kind for it)
 ALGO_FALLBACK_CODES = (-4120, -1116, -1102, -4136)   # newcore.venue.errors (transport): use the algo service
 SECURE_ROUNDS = 2                     # per lot per cycle: stop attempt, then (if refused) one reduce-only close
+RECOVERED_DETAIL = 'recovered after a lost journal tail'   # the decision detail marking a recovered entry
+EMERGENCY_CONFLICT_CANDIDATES = 8      # Cowork 6070885320 #4: distinct quantities tried per reused-id check
+EMERGENCY_QUERY_BUDGET = 96            # emergency-attribution queries per cycle (beyond: UNKNOWN, loud)
 EMERGENCY_GENERATIONS = 16            # hard HOLD: cover generations per (symbol, side, gap size)
 ESCALATE_AFTER = 2                    # cycles with an unconfirmed stop before the reduce-only close (Cowork NEW-4)
 LOST_ENTRY_LOOKBACK = 3               # the lost-entry search after the boot search (mid-run mismatches)
@@ -285,6 +288,7 @@ class Runner:
         self._ext_partial = {}                                            # lot -> venue qty after an external partial
         self._em_filled, self._em_closed_ids, self._em_left = {}, set(), {}   # hard-HOLD emergency fills (in process)
         self._em_sent = {}                                                # (symbol, side) -> {(zbn1e cid, route)} sent
+        self._emq = [None, 0]                                             # (cycle now, emergency queries)
         self._own_unknown = set()                                         # lots whose ownership evidence is unreadable
         self._pending_trades = set()                                      # closed lots not bookable yet (h6)
         self._pending_evidence = set()                                    # projection evidence pending (incident once)
@@ -618,48 +622,82 @@ class Runner:
         if rows is None:                                                  # Cowork 6069221337 (Codex ruling 3 + P1):
             return None                                                   # unproven trades -> ownership UNKNOWN
         groups = {}
-        for t in rows:
-            groups.setdefault(t.exchange_order_id, []).append(t)
+        own = self._known_fills(lots)                                     # journaled orders of ours (their rows add
+        for t in rows:                                                    # up exactly - rows_of expect): never an
+            if t.exchange_order_id not in own:                            # emergency order, never queried (#4)
+                groups.setdefault(t.exchange_order_id, []).append(t)
         total = ZERO
+        cap = sum((x.qty for x in lots), ZERO)                            # an emergency order closes at most the lots
         for eoid, grp in groups.items():
             q = sum((t.qty for t in grp), ZERO)
-            if self._is_emergency_order(symbol, side, eoid, q):
+            hit = self._is_emergency_order(symbol, side, eoid, q) if q <= cap else False
+            if hit is None:                                               # Codex #13 6070474485: attribution
+                self._incident(f'hard HOLD: {symbol} {side}: order {eoid} ({q}) - an emergency id query answered '
+                               'UNKNOWN: emergency fills UNKNOWN, nothing sized from them')
+                return None                                               # unknown is never "foreign"
+            if hit:
                 total += q
-            elif self._emergency_conflict(symbol, side, eoid, grp, q):
-                return None                                               # h8 A1c: an id reused - UNKNOWN
+                continue
+            conflict = self._emergency_conflict(symbol, side, eoid, grp, q, cap)
+            if conflict is None or conflict:
+                return None                                               # h8 A1c: an id reused / unknown - UNKNOWN
         if total < mem:
             return None                                                   # the trades miss a fill we saw: UNKNOWN
         return total
 
-    def _emergency_conflict(self, symbol, side, eoid, grp, qty):
+    def _emergency_conflict(self, symbol, side, eoid, grp, qty, cap):
         """Cowork h8 A1c: rows of ONE of our emergency orders that do not add up to it (an exchange order id reused
-        by another trade, a row too many): the order is found by an id re-derived for one row's quantity or a running
-        total, but its venue record executed a different quantity than the rows say -> conflicting evidence."""
-        cands, run = set(), ZERO
-        for t in grp:
-            run += t.qty
-            cands.update((t.qty, run))
-        cands.discard(qty)
+        by another trade, a row too many): the order is found by an id re-derived for one row's quantity or for the
+        rows less one, but its venue record executed a different quantity than the rows say -> conflicting evidence.
+        True / False / None (unknown). Cowork 6070885320 #4: the candidates are the DISTINCT values of those two
+        families within the lots (an emergency order never exceeds them), at most EMERGENCY_CONFLICT_CANDIDATES - more
+        is UNKNOWN (never an unbounded query fan-out)."""
+        vals = {t.qty for t in grp}
+        cands = {c for c in vals | {qty - v for v in vals} if ZERO < c <= cap and c != qty}
+        if len(cands) > EMERGENCY_CONFLICT_CANDIDATES:
+            self._incident(f'hard HOLD: {symbol} {side}: order {eoid} has {len(grp)} rows of {len(vals)} distinct '
+                           'quantities: emergency attribution not checked (bounded): UNKNOWN')
+            return None
         for c in sorted(cands):
-            if c > 0 and self._is_emergency_order(symbol, side, eoid, c):
-                return True
+            hit = self._is_emergency_order(symbol, side, eoid, c)
+            if hit is None or hit:
+                return hit                                                # None: unknown - never proven clean
         return False
 
     def _lots_since(self, symbol, side, lots):
-        """Where the trades window of these lots starts: the earliest of each entry intent's creation and its order's
-        PROVEN fills (a recovered / adopted entry is recorded after it filled - its intent is younger than its fill).
-        None when an entry's fills are not proven."""
+        """Where the trades window of these lots starts. An ordinary entry: its intent's creation (it is recorded before
+        it is sent - a safe lower bound; the complete trades read then proves its quantity, no fills read is needed).
+        Codex #13 6070594544: only a RECOVERED entry (_recovered_entry: recorded after it filled) is widened, to its
+        order's PROVEN fills; when those are not proven the window is UNKNOWN (None) - loud, nothing sized from it."""
         since = min(x.entry.intent.created_at_ms for x in lots)
         for x in lots:
-            e = x.entry.final
-            if e is None or not e.exchange_order_id or not e.executed_qty:
+            if not self._recovered_entry(x.entry):
                 continue
-            rows, _ = rows_of(self.venue.fills(symbol, e.exchange_order_id), symbol=symbol, now=self.now,
-                              eoid=e.exchange_order_id, side=side, expect={e.exchange_order_id: e.executed_qty})
+            e = x.entry.final
+            rows, why = (None, 'no executed entry order') if e is None or not e.exchange_order_id or                 not e.executed_qty else rows_of(self.venue.fills(symbol, e.exchange_order_id), symbol=symbol,
+                                                now=self.now, eoid=e.exchange_order_id, side=side,
+                                                expect={e.exchange_order_id: e.executed_qty})
             if rows is None or not rows:
+                self._incident(f'hard HOLD: {x.lot_id}: recovered entry {x.entry.intent_id}: its fills are not proven '
+                               f'({why or "no rows"}): the trades window is UNKNOWN, nothing sized from it')
+                self._durable_incident(ReasonCode.RECONCILE_UNRECONCILED,   # once, while the store can write
+                                       f'{symbol} {side}: a recovered entry: fills unproven: trades window and '
+                                       'ownership unknown, nothing new sent, owner resolves',
+                                       key='recovered_fills:' + x.lot_id, symbol=symbol, side=side, lots=[x.lot_id])
                 return None
             since = min(since, min(f.at_ms for f in rows))
         return since
+
+    def _recovered_entry(self, entry_iv):
+        """Explicit: an entry recorded AFTER it filled - recovered from a lost journal tail (its decision carries
+        RECOVERED_DETAIL), or any entry intent recorded after its own candle's close (an ordinary entry is recorded at
+        it, before it is sent)."""
+        d = self.fold.decisions.get(entry_iv.intent.decision_id)
+        if d is None:
+            return True                                                   # no decision: nothing bounds it
+        if d.detail.startswith(RECOVERED_DETAIL):
+            return True
+        return d.key is not None and entry_iv.intent.created_at_ms > d.key.candle_close_ms
 
     def _known_fills(self, lots):
         """{exchange order id: executed} of every fill the journal already holds for these lots (entry, adds, exits):
@@ -674,24 +712,38 @@ class Runner:
         return out
 
     def _is_emergency_order(self, symbol, side, eoid, qty):
+        """Is exchange order `eoid` (`qty` filled) one of OUR emergency orders? Tri-state (Codex #13 6070474485):
+        True = an emergency id's venue record IS this order; False = PROVEN not ours (every id asked answered NOT_FOUND
+        or a record of another order); None = UNKNOWN (an id that could be this order answered anything else -
+        UNKNOWN / ACKNOWLEDGED / REJECTED / malformed): never taken as foreign, never as ours."""
         def matches(cid, routes):
-            known = False
+            known = unknown = False
             for route in routes:
+                if self._emq[0] != self.now:
+                    self._emq = [self.now, 0]
+                if self._emq[1] >= EMERGENCY_QUERY_BUDGET:                # Cowork 6070885320 #4: bounded per cycle
+                    return False, False, True                             # not asked: UNKNOWN
+                self._emq[1] += 1
                 q = self.venue.query(OrderRef(symbol=symbol, client_id=cid, route=route))
-                if q.kind in (OutcomeKind.KNOWN, OutcomeKind.FINAL):
+                if q.kind in (OutcomeKind.KNOWN, OutcomeKind.FINAL) and q.exchange_order_id:
                     if q.exchange_order_id == eoid:
-                        return True, True
+                        return True, True, False
                     known = True
-            return False, known
-        if matches(ids.emergency_stop_client_id(self.acct, symbol, side, qty, 'close'), ('classic',))[0]:
+                elif q.kind is not OutcomeKind.NOT_FOUND:
+                    unknown = True
+            return False, known, unknown
+        hit, _, unknown = matches(ids.emergency_stop_client_id(self.acct, symbol, side, qty, 'close'), ('classic',))
+        if hit:
             return True
         for gen in range(EMERGENCY_GENERATIONS):
-            hit, known = matches(ids.emergency_stop_client_id(self.acct, symbol, side, qty, gen), ('classic', 'algo'))
-            if hit:
+            g_hit, known, g_unknown = matches(ids.emergency_stop_client_id(self.acct, symbol, side, qty, gen),
+                                              ('classic', 'algo'))
+            if g_hit:
                 return True
-            if not known:
-                return False
-        return False
+            unknown = unknown or g_unknown
+            if not known and not g_unknown:
+                break                                                     # proven: no later generation was sent
+        return None if unknown else False
 
     def _account_emergency_fills(self):
         """Store back (Cowork 6066239886 #1): fills of our emergency orders during a hard HOLD reduced a lot OUTSIDE
@@ -699,8 +751,8 @@ class Runner:
         HOLD; the lot's protection is limited to what is still ours (all of it gone: the lot is suspended - no stop /
         close is sent for it; some left: protected at that quantity, never the foreign rest). Checked on the first
         cycle and while the reconciliation shows a position item."""
-        if self.hard_hold is not None or not (self.counters.cycles == 1 or (
-                self.last_rec is not None and any(k == 'position' for k, _ in self.last_rec.items))):
+        if self.hard_hold is not None or not (self.counters.cycles == 1 or self._own_unknown or (   # Cowork
+                self.last_rec is not None and any(k == 'position' for k, _ in self.last_rec.items))):  # 6070885320 #3
             return
         sides = {}
         for lot in self.fold.open_lots():
@@ -709,19 +761,19 @@ class Runner:
         for (sym, side), lots in sides.items():
             ef = self._emergency_filled(sym, side)
             total = sum((x.qty for x in lots), ZERO)
-            if ef is None:                                                # Codex #13 P1: unknown is not zero
-                if venue.get((sym, side), total) != total:                # and the venue disagrees with the lots
-                    new = {x.lot_id for x in lots} - self._own_unknown
-                    self._own_unknown.update(x.lot_id for x in lots)
-                    if new:
-                        self._incident(f'{sym} {side}: lots {total} but the venue holds {venue[(sym, side)]} and our '
-                                       'emergency fills cannot be read (trades unknown): ownership UNKNOWN - no new '
-                                       'stop / close / resize for these lots, resting protection kept; HOLD, owner')
-                        self._durable_incident(ReasonCode.RECONCILE_UNRECONCILED,
-                                               f'ownership unknown: lots {total}, venue {venue[(sym, side)]}, our '
-                                               'emergency fills unreadable; nothing new sent, owner resolves',
-                                               key=','.join(sorted(new)), symbol=sym, side=side, lots=sorted(new))
-                    self._hold([ReasonCode.RECONCILE_UNRECONCILED])
+            if ef is None:                                                # Codex #13 P1: unknown is not zero -
+                v = venue.get((sym, side))                                # Cowork 6070885320 #1: whatever the venue
+                new = {x.lot_id for x in lots} - self._own_unknown        # holds (an equal quantity can mask an
+                self._own_unknown.update(x.lot_id for x in lots)          # emergency close + a foreign add)
+                self._incident(f'{sym} {side}: lots {total}, venue {v}: our emergency fills cannot be proven (trades '
+                               'unknown): ownership UNKNOWN - no new stop / close / resize for these lots, resting '
+                               'protection kept; HOLD, owner')
+                if new:
+                    self._durable_incident(ReasonCode.RECONCILE_UNRECONCILED,
+                                           f'ownership unknown: lots {total}, venue {v}, our emergency fills '
+                                           'unreadable; nothing new sent, owner resolves',
+                                           key=','.join(sorted(new)), symbol=sym, side=side, lots=sorted(new))
+                self._hold([ReasonCode.RECONCILE_UNRECONCILED])
                 continue
             self._own_unknown.difference_update(x.lot_id for x in lots)
             if ef <= 0:
@@ -1333,7 +1385,7 @@ class Runner:
                                      slot_id=self.cfg.slot_id)
             self._decision(decision_id=did, action=Action.ENTER, reason=s.reason, authority=Authority.STRATEGY,
                            key=key, symbol=symbol, side=side, intents=(planned,),
-                           detail=f'recovered after a lost journal tail dist {s.stop_distance}')
+                           detail=f'{RECOVERED_DETAIL} dist {s.stop_distance}')
             self._dist[iid] = s.stop_distance
             return self._adopt_sent(self._record_durable(planned))
         return False
@@ -1696,6 +1748,13 @@ class Runner:
         cannot over-fill). The leftover stop is cancelled only once the close's FINAL result proves the lot flat
         (_release_closed_lot_stops, also at every sync, so a crash in between is finished by the next cycle).
         key=None: an unkeyed (protection) close."""
+        if lot.lot_id in self._own_unknown:                               # Cowork 6070885320 #2: ownership UNKNOWN
+            # the proven own lower bound of a lot whose emergency fills are unknown is 0 (as for the hard-HOLD
+            # emergency close, _owned_exposure): no close of the journaled quantity - it may be foreign now
+            self._incident(f'{lot.lot_id}: close of {lot.symbol} {lot.side} {lot.qty} NOT sent: ownership UNKNOWN '
+                           '(our emergency fills cannot be proven) - proven own 0, nothing closed; HOLD, owner')
+            self._hold([ReasonCode.RECONCILE_UNRECONCILED])
+            return
         if key is not None:
             did = ids.derive_decision_id(self.acct, key)
             iid = ids.derive_intent_id(self.acct, key)

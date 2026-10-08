@@ -23,7 +23,8 @@ from newcore.ports.venue import ReadKind
 ZERO = Decimal(0)
 
 
-COMPLETE = re.compile(r'complete pages=\d+ dups=\d+')
+COMPLETE = re.compile(r'complete pages=([1-9][0-9]*) dups=(0|[1-9][0-9]*)', re.ASCII)
+MAX_PAGES = 10_000                     # Cowork 6070885320: a sane bound on the adapter's page count
 
 
 class EvidencePending(LookupError):
@@ -33,8 +34,19 @@ class EvidencePending(LookupError):
 def proven_complete(read):
     """The adapter's own completeness evidence on an OK read (TestnetVenue fills / trades, nc-venue-testnet 5f0c959:
     ReadOutcome.detail 'complete pages=P dups=N' - every page read to a short page by its raw row count; FakeVenue
-    emits 'complete pages=1 dups=0'). Absent -> the read is not proven complete -> UNKNOWN (fail-closed)."""
-    return isinstance(getattr(read, 'detail', None), str) and COMPLETE.fullmatch(read.detail) is not None
+    emits 'complete pages=1 dups=0'). Absent -> the read is not proven complete -> UNKNOWN (fail-closed).
+    Cowork 6070885320: canonical ASCII digits only (no leading zeros, no Unicode digits), 1 <= pages <= MAX_PAGES and
+    dups <= the rows returned; anything else is not evidence."""
+    detail = getattr(read, 'detail', None)
+    m = COMPLETE.fullmatch(detail) if isinstance(detail, str) else None
+    if m is None:
+        return False
+    pages, dups = int(m.group(1)), int(m.group(2))
+    try:
+        rows = len(read.value)
+    except TypeError:
+        return False
+    return 1 <= pages <= MAX_PAGES and dups <= rows
 
 
 def rows_of(read, *, symbol, now=None, eoid=None, side=None, since=None, expect=None):
