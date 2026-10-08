@@ -347,6 +347,16 @@ def _apply_actions(w, actions):
                 b = next(x for x in w.bindings() if x.intent_id == same[-1].intent_id)
                 w.replace_binding(b, current=True)
                 continue
+            if w.d['pos'].stop_locked:
+                # Cowork 11: a tighter replacement was refused, the venue keeps the previous stop and the core locks it
+                # (shrunk to what is left). A CONFIRMED stop at that price that covers the quantity is already the
+                # protection: rebind it, never send a second same-price stop beside it (the rest is being closed).
+                cover = [b for b in w.bindings() if b.leg is Leg.STOP and b.state is BindState.WORKING
+                         and b.stop_price == a.price and b.qty >= a.qty]
+                if cover:
+                    b = next(x for x in w.bindings() if x.intent_id == cover[-1].intent_id)
+                    w.replace_binding(b, current=True)
+                    continue
             old = [b for b in w.bindings() if b.leg is Leg.STOP and b.state in (BindState.SENT, BindState.WORKING)]
             d = w.send(w.draft(Leg.STOP, Purpose.PROTECT, OrderType.STOP_MARKET, a.qty, a.reason, Op.PLACE, a.price,
                                route=w.d['stop_route']))
