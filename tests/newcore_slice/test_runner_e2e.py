@@ -7,7 +7,7 @@ import pytest
 from newcore.ports import header_of
 from newcore.domain import (EntriesMode, IntentState, Lookup, ModeChanged, Ownership, Purpose, ReasonCode, ResultObserved,
                             ResultPhase)
-from newcore.ports import EventKind, JournalUnavailable
+from newcore.ports import EventKind
 from newcore.runner import InjectedSignals, NoSignals
 from slice_helpers import H4, World, flat_bars
 
@@ -90,8 +90,8 @@ def test_restart_mid_entry_cycle_no_duplicate_entry_or_stop(after):
     w = World(flat_bars(20), signals())
     w.run(ENTRY_BAR - 1)
     w.journal.fail_writes(1, after=after)
-    with pytest.raises(JournalUnavailable):
-        w.run(ENTRY_BAR)
+    w.run(ENTRY_BAR)
+    assert w.runner.hard_hold is not None                  # store failed: hard HOLD, nothing more sent
     w.restart()                                                   # restart: fold the journal
     w.runner.cycle(w.close_ms(ENTRY_BAR))                        # the same candle is re-delivered
     _assert_one_entry_one_stop(w)
@@ -112,8 +112,8 @@ def test_restart_mid_exit_cycle_finishes_the_close_without_a_fresh_stop(after):
     w = World(flat_bars(20), signals())
     w.run(EXIT_BAR - 1)
     w.journal.fail_writes(1, after=after)
-    with pytest.raises(JournalUnavailable):
-        w.run(EXIT_BAR)
+    w.run(EXIT_BAR)
+    assert w.runner.hard_hold is not None                  # store failed: hard HOLD, nothing more sent
     w.restart()
     w.runner.cycle(w.close_ms(EXIT_BAR))
     w.run(15)
@@ -144,16 +144,16 @@ def test_crash_between_decision_and_intent_resumes_only_inside_the_candle():
     w = World(flat_bars(20), signals())
     w.run(ENTRY_BAR - 1)
     w.journal.fail_writes(1, after=1)                            # the decision lands, its intent does not
-    with pytest.raises(JournalUnavailable):
-        w.run(ENTRY_BAR)
+    w.run(ENTRY_BAR)
+    assert w.runner.hard_hold is not None                  # store failed: hard HOLD, nothing more sent
     w.restart()
     w.runner.cycle(w.close_ms(ENTRY_BAR))                        # same candle: the derived intent is recorded + sent
     _assert_one_entry_one_stop(w)
     late = World(flat_bars(20), signals())
     late.run(ENTRY_BAR - 1)
     late.journal.fail_writes(1, after=1)
-    with pytest.raises(JournalUnavailable):
-        late.run(ENTRY_BAR)
+    late.run(ENTRY_BAR)
+    assert late.runner.hard_hold is not None                  # store failed: hard HOLD, nothing more sent
     late.restart()
     late.run(12)                                                 # next candle: the signal is spent (fail closed)
     assert late.venue.orders_submitted() == ()

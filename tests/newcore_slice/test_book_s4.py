@@ -6,7 +6,7 @@ import pytest
 
 from newcore.adapters import CostModel, CsvBarSource, FakeVenue, MemoryJournal
 from newcore.domain import Action, EntriesMode, ReasonCode
-from newcore.ports import JournalUnavailable, header_of
+from newcore.ports import header_of
 from newcore.risk import BookPolicy, BookRisk, cairo_day, cairo_offset_hours
 from newcore.runner import InjectedSignals, RunnerConfig
 from newcore.runner.book import BookRunner
@@ -232,8 +232,8 @@ def test_crash_inside_a_multi_entry_cycle_then_restart(after):
     b = several_open()
     b.run(4)
     b.journal.fail_writes(1, after=after)
-    with pytest.raises(JournalUnavailable):
-        b.run(5)
+    b.run(5)
+    assert b.runner.hard_hold is not None                  # store failed: hard HOLD, nothing more sent
     b.restart()
     b.runner.cycle(b.t0 + 6 * H4)                                      # the crashed candle is re-delivered
     b.run(20)

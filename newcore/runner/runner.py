@@ -35,8 +35,10 @@ Invariants asserted at the end of every cycle (InvariantBreach when entries are 
 HOLD is sticky: only `resume()` (an operator RESUME decision + a clean reconciliation) leaves it.
 
 AccountReads (equity(), funding(symbol, side, from, to)) is not part of step 0 (section 7 defers equity / income); it
-is duck-typed here and reported as an interface gap. A JournalUnavailable propagates (nothing more is sent; the S3
-hard-HOLD path owns that case).
+is duck-typed here and reported as an interface gap. A JournalUnavailable (store failure) puts the process in a hard HOLD:
+no decision, send or journal write until a restart; cycles only reconcile and count the invariants (S3 adds the
+emergency protection set).
+Runner boundary (Codex ruling): ENTER and ADD decisions are keyed (keys.decision_key) or refused (UnkeyedOpeningDecision).
 """
 from __future__ import annotations
 
@@ -52,6 +54,8 @@ from newcore.domain import (Account, Action, Authority, Decision, DecisionRecord
 from newcore.domain.modes import Permission
 from newcore.domain.orders import terminal_for
 from newcore.domain.portfolio import Fill
+from newcore.ports.journal import JournalUnavailable
+from newcore.ports.keys import check_decision_key
 from newcore.ports.venue import MarketOrder, OrderRef, OutcomeKind, ReadKind, StopOrder
 
 from . import ids
@@ -68,6 +72,14 @@ ITEM_REASON = {'position': ReasonCode.OWNERSHIP_UNTRACKED_POSITION, 'foreign_ord
                'orphan_order': ReasonCode.LIFECYCLE_ORPHAN_CANCEL, 'order_mismatch': ReasonCode.PROTECT_OWNER_CHECK,
                'stop_missing': ReasonCode.PROTECT_CHECKING, 'ambiguous': ReasonCode.EXEC_ENTRY_UNCONFIRMED,
                'unreadable': ReasonCode.CONNECTIVITY_EXCHANGE_OUTAGE}
+
+
+OPENING_ACTIONS = {Action.ENTER: Purpose.ENTRY, Action.ADD: Purpose.ADD}
+
+
+class UnkeyedOpeningDecision(ValueError):
+    """Runner boundary (Codex ruling): an ENTER or ADD is only ever a keyed strategy decision (keys.decision_key:
+    candle + timeframe identity), so a duplicate candle / re-delivered signal is consumed once. Never an unkeyed one."""
 
 
 class InvariantBreach(AssertionError):
@@ -117,6 +129,8 @@ class Counters:
     mismatch_cycles: int = 0
     unprotected_cycles: int = 0
     reconciliations: int = 0
+    hard_holds: int = 0
+    hard_hold_cycles: int = 0
 
 
 class Runner:
@@ -132,6 +146,7 @@ class Runner:
         self.last_rec = None
         self._dist = {}                                                   # entry intent id -> stop distance (cache)
         self._n_rec = 0
+        self.hard_hold = None                                             # durability-unavailable HOLD (process)
 
     # =============================================================================================== journal plumbing
     def _emit(self, cls, *, reason, **fields):
@@ -146,6 +161,12 @@ class Runner:
 
     def _decision(self, *, decision_id, action, reason, authority, key, symbol, side, intents=(), subject_id=None,
                   detail='', evidence=()):
+        if action in OPENING_ACTIONS:                                     # Codex ruling: opening risk is keyed
+            if key is None:
+                raise UnkeyedOpeningDecision(f'{action}: an opening decision needs a keys.decision_key key')
+            check_decision_key(key)
+            if key.purpose is not OPENING_ACTIONS[action] or decision_id != ids.derive_decision_id(self.acct, key):
+                raise UnkeyedOpeningDecision(f'{action}: key purpose / decision id do not match the key')
         d = Decision(decision_id=decision_id, account_id=self.acct, at_ms=self.now, action=action, reason=reason,
                      authority=authority, key=key, evidence=tuple(evidence), symbol=symbol,
                      side=None if side is None else Side(side), subject_id=subject_id, detail=detail[:160],
@@ -213,6 +234,30 @@ class Runner:
             raise ValueError('the runner clock never goes back')
         self.now = now_ms
         self.counters.cycles += 1
+        if self.hard_hold is not None:
+            return self._hard_hold_cycle()
+        try:
+            return self._cycle(decide)
+        except JournalUnavailable as ex:
+            self._enter_hard_hold(ex)
+            return self._hard_hold_cycle()
+
+    def _enter_hard_hold(self, ex):
+        """The store cannot make anything durable (NC-02 A21): nothing more may be sent. The HOLD itself cannot be
+        journaled, so it lives in this process: no decisions, no sends, no journal writes until a restart (which folds
+        the journal and reconciles). Surfaced through `hard_hold`, the counters and the summary. The S3 emergency set
+        (deterministic-cid reduce-only protection while the store is down) is not built yet."""
+        self.hard_hold = f'{ReasonCode.RECOVERY_DURABILITY_UNAVAILABLE}: {ex}'
+        self.counters.hard_holds += 1
+
+    def _hard_hold_cycle(self):
+        """Read-only: a fresh reconciliation and the invariants (counted, never raised) so the exposure is visible."""
+        self.counters.hard_hold_cycles += 1
+        rec = self.reconcile()
+        self.check_invariants(rec)
+        return rec
+
+    def _cycle(self, decide):
         self._sync()
         rec = self.reconcile()
         if not rec.ok:
@@ -567,7 +612,7 @@ class Runner:
         if len(keys) != len(set(keys)):
             problems.append('I2 two entry intents for one DecisionKey')
         if problems:
-            if self.fold.mode is EntriesMode.HOLD or not self.cfg.strict:
+            if self.fold.mode is EntriesMode.HOLD or self.hard_hold is not None or not self.cfg.strict:
                 self.counters.unprotected_cycles += any(p.startswith('I1') for p in problems)
             else:
                 raise InvariantBreach('; '.join(problems))
@@ -653,5 +698,6 @@ class Runner:
         except Exception:
             own = None
         return summarize(self.trades(), equity_end=eq.value[0] if eq.kind is ReadKind.OK else None,
-                         open_lots=len(self.fold.open_lots()), ownership=own, mode=str(self.fold.mode),
+                         open_lots=len(self.fold.open_lots()), ownership=own,
+                         mode=str(self.fold.mode) if self.hard_hold is None else 'hold(durability_unavailable)',
                          counters=dataclasses.asdict(self.counters))

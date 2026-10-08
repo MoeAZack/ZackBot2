@@ -15,3 +15,7 @@ class TestMemoryJournal(JournalContract):
     @pytest.fixture
     def reopen(self):
         return lambda j: j.reopen()                       # a restart: the gate is rebuilt from the durable events
+
+    @pytest.fixture
+    def fail_next_write(self):
+        return lambda j: j.fail_next_write()              # the next durable write fails (after the stage)
