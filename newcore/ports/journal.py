@@ -275,8 +275,9 @@ class Grammar:
         if k is EventKind.RESULT_RECORDED:
             req_g(st.final is None, p, 'G9: a result after the final result')
             req_g(h.client_ids == (st.client_id,), p + '.client_ids', "G9: the result names another intent's order")
-            if not st.sent:
-                req_g(h.evidence is Evidence.NOT_SENT, p, 'G9: a never-sent intent only takes a final not_sent result')
+            if not st.sent:      # r3 DRAFT item 3: a post-hoc booking ends exchange_external (the domain checks it)
+                req_g(h.evidence in (Evidence.NOT_SENT, Evidence.EXCHANGE_EXTERNAL), p,
+                      'G9: a never-sent intent only takes a final not_sent (or post-hoc exchange_external) result')
             else:
                 req_g(h.evidence is not Evidence.NOT_SENT, p, 'G9: the intent was sent; not_sent is impossible')
             if h.outcome is not ResultOutcome.FINAL:

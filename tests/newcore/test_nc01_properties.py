@@ -206,7 +206,8 @@ def test_reason_namespace_fits_the_action_exhaustively(action):
             built = True
         except InvalidRecord:
             built = False
-        assert built is (reason.namespace in ALLOWED[action]), (action, reason)
+        booking_only = reason is ReasonCode.EXIT_MANUAL and action in (Action.CLOSE, Action.REDUCE, Action.FLATTEN)
+        assert built is (reason.namespace in ALLOWED[action] and not booking_only), (action, reason)   # r3: exit.manual books, never sends
 
 
 # ----------------------------------------------------------------------------------------------------------- numbers
