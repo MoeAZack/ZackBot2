@@ -12,6 +12,7 @@ from __future__ import annotations
 from .account import BINDING_TRANSITIONS, AccountBinding, BindingConfirmation, BindingState
 from .base import Record, check_id, record, req
 from .decision import Decision
+from .incident import Incident
 from .modes import EntriesMode, HoldKind
 from .orders import (INTENT_TRANSITIONS, TERMINAL, IntentState, OrderIntent, OrderResult, ResultPhase,
                      check_result_for_intent, terminal_for)
@@ -165,7 +166,25 @@ class BindingChanged(DomainEvent):
             check_id(self.reconciliation_id, p + '.reconciliation_id', 'rec')
 
 
-EVENT_TYPES = (IntentRecorded, IntentStateChanged, ResultObserved, DecisionRecorded, ModeChanged, BindingChanged)
+@record
+class IncidentRecorded(DomainEvent):
+    """r3 DRAFT item 1: an Incident journaled in sequence (no effect on ownership, intents or modes)."""
+    event_id: str
+    account_id: str
+    aggregate_id: str
+    sequence: int
+    at_ms: int
+    reason: ReasonCode
+    incident: Incident
+
+    def _check(self, p):
+        req(self.incident.account_id == self.account_id, p + '.incident', 'incident of another account')
+        req(self.reason is self.incident.kind, p + '.reason', "the event carries its incident's kind")
+        req(self.at_ms >= self.incident.at_ms, p + '.at_ms', 'journaled before it was observed')
+
+
+EVENT_TYPES = (IntentRecorded, IntentStateChanged, ResultObserved, DecisionRecorded, ModeChanged, BindingChanged,
+               IncidentRecorded)
 
 
 def check_event_chain(events, *, after_sequence=0, known_intents=None):

@@ -72,7 +72,7 @@ def test_header_of_maps_every_nc01_event_type():
     assert kinds[:5] == [EventKind.DECISION_RECORDED, EventKind.INTENT_RECORDED, EventKind.SENT,
                          EventKind.RESULT_RECORDED, EventKind.INTENT_CLOSED]
     assert kinds[-1] is EventKind.MODE_CHANGED and EventKind.STATE_CHANGED in kinds
-    assert len(EVENT_TYPES) == 6 and len(EventKind) == 8      # a new NC-01 event type must be mapped here first
+    assert len(EVENT_TYPES) == 7 and len(EventKind) == 9      # a new NC-01 event type must be mapped here first
 
 
 def test_header_of_projects_identity_and_lineage():
@@ -205,3 +205,18 @@ def test_lineage_owner_is_resolved_by_owner_kind():
     assert j.last_sequence() == len(s.events)
     with pytest.raises(InvalidRecord):                 # the kind must fit the id family: an entry id is no lot
         s._intent(sid, Purpose.PROTECT, rec.intent.decision_id, rec.at_ms, owner=ENTRY, owner_kind=OwnerKind.LOT)
+
+
+def test_an_incident_is_journaled_in_sequence_without_effect():
+    """NC-01 r3 draft item 1: IncidentRecorded maps to incident_recorded and only advances the sequence."""
+    from newcore.domain import Incident, IncidentRecorded, ReasonCode, make_id
+    s = _flow(flow_fill_and_protect)
+    inc = Incident(incident_id=make_id('inc', 1), account_id=ACCT, kind=ReasonCode.RECONCILE_MANUAL_CLOSE,
+                   at_ms=s.events[-1].at_ms, symbol='SOLUSDT', side=Side.LONG, intent_refs=(ENTRY,), lot_refs=(LOT,),
+                   position_refs=(), evidence=(), detail='')
+    ev = IncidentRecorded(event_id=make_id('evt', 10 ** 6), account_id=ACCT, aggregate_id=PF,
+                          sequence=len(s.events) + 1, at_ms=inc.at_ms, reason=inc.kind, incident=inc)
+    j = ReferenceJournal()
+    for e in s.events + [ev]:
+        j.append(e)
+    assert header_of(ev).kind is EventKind.INCIDENT_RECORDED and j.last_sequence() == len(s.events) + 1

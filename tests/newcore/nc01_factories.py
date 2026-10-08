@@ -392,7 +392,26 @@ def samples(seed=5):
                   reason=ReasonCode.RECOVERY_DURABILITY_UNAVAILABLE),
             event(BindingChanged, ids, acct, 6, from_state=BindingState.UNCONFIRMED, to_state=BindingState.CONFIRMED,
                   binding=binding(), confirmation=account(acct).confirmation, reason=ReasonCode.BINDING_UNCONFIRMED),
-            *standalone_samples(ids, pf, res)]
+            *standalone_samples(ids, pf, res),
+            incident_event(ids, acct, 7, pf)]
+
+
+def incident(ids, acct, pf=None, kind=ReasonCode.RECONCILE_MANUAL_CLOSE, **kw):
+    from newcore.domain import Incident
+    lt = pf.lots[0] if pf is not None else None
+    base = dict(incident_id=ids.id('inc'), account_id=acct, kind=kind, at_ms=T0 + 500,
+                symbol=lt.symbol if lt else None, side=lt.side if lt else None,
+                intent_refs=(lt.in_flight,) if lt is not None and lt.in_flight else (),
+                lot_refs=(lt.lot_id,) if lt else (), position_refs=(pf.positions[0].position_id,) if pf else (),
+                evidence=(ids.id('rec'),), detail='position flat on the venue, lot open in the journal')
+    base.update(kw)
+    return Incident(**base)
+
+
+def incident_event(ids, acct, sequence, pf=None, **kw):
+    from newcore.domain import IncidentRecorded
+    inc = incident(ids, acct, pf, **kw)
+    return event(IncidentRecorded, ids, acct, sequence, at=T0 + 600, incident=inc, reason=inc.kind)
 
 
 def standalone_samples(ids, pf, res):

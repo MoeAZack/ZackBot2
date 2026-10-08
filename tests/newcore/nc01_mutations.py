@@ -119,6 +119,11 @@ MUTATIONS = {
         "            _canonical(self, 'intents', lambda x: x.intent_id)", '            pass')]),
     'r3 item 2: daily_halt missing from the registry': (D + 'reasons.py', [(
         "    RISK_DAILY_HALT = 'risk_gateway.daily_halt'\n", '')]),
+    'r3 item 1: an entry / exit reason accepted as incident kind': (D + 'incident.py', [(
+        "        req(self.kind.namespace not in NOT_INCIDENT_KINDS,", '        req(True,')]),
+    'r3 item 1: incident journaled under another kind': ('newcore/ports/journal.py', [(
+        '        return EventHeader(kind=EventKind.INCIDENT_RECORDED, **base)',
+        '        return EventHeader(kind=EventKind.BINDING_CHANGED, **base)')]),
     'duplicate JSON keys': (D + 'codec.py', [("            if k in out:\n                problems.append(",
                                               "            if False:\n                problems.append(")]),
     'truncated JSON': (D + 'codec.py', [(
