@@ -27,6 +27,8 @@ def test_the_whole_suite_is_pass_plus_one_inconclusive_bracket():
     v = {r.id: r.verdict for r in res.scenarios}
     assert v.pop('T04-algo') == INCONCLUSIVE                          # the fake never triggers a stop: bounded wait
     assert v.pop('T04-classic') == v.pop('T10-stop-refused') == SKIPPED
+    for k in [k for k in v if k[:3] in ('T05', 'T06', 'T07', 'T08')]:
+        assert v.pop(k) == SKIPPED                                    # management scenarios: FakeVenue only
     assert set(v.values()) == {PASS}
     assert res.exit_code == DR.EXIT_INCONCLUSIVE
     assert w.fb.flat() and not w.fb.open_cids()

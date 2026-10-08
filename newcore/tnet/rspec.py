@@ -58,9 +58,13 @@ STEPS = {
     'resume': (set(), set()),
     'await_exit': ({'max_ticks'}, {'fake_gap_pct'}),
     'check': ({'what'}, set()),
+    'move': ({'pct'}, set()),                      # FakeVenue only: the market gaps by pct (see targets.py)
 }
 EXPECT_KEYS = {'entries', 'skips', 'skip_reason', 'trades', 'entry_phases', 'entry_state', 'hold_seen', 'mode_end',
-               'max_orders', 'fills_match', 'stop_route', 'final', 'incidents'}
+               'max_orders', 'fills_match', 'stop_route', 'final', 'incidents', 'adds', 'reduces',
+               'open_orders_end'}
+PLAN_DECIMALS = ('add_r', 'add_scale', 'tp1_r', 'tp1_frac', 'tp2_r', 'cap_mult')
+PLAN_KEYS = set(PLAN_DECIMALS) | {'be_after_tp1', 'time_exit_candles'}
 SPEC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'specs')
 
 
@@ -71,7 +75,7 @@ def _int(v, path, lo, hi):
 
 def _expect(e, path):
     _keys(e, path, set(), EXPECT_KEYS)
-    for k in ('entries', 'skips', 'max_orders', 'incidents'):
+    for k in ('entries', 'skips', 'max_orders', 'incidents', 'adds', 'reduces', 'open_orders_end'):
         if k in e:
             _int(e[k], f'{path}.{k}', 0, 100)
     for k in ('hold_seen', 'fills_match'):
@@ -101,7 +105,7 @@ def _expect(e, path):
 def validate_rspec(doc):
     """Return the spec document if valid; raise SpecError(path, reason) otherwise."""
     _keys(doc, '$', {'format', 'id', 'name', 'targets', 'symbol', 'side', 'sizing', 'stop', 'steps', 'expect', 'bound'},
-          {'description', 'fake', 'expect_testnet'})
+          {'description', 'fake', 'expect_testnet', 'management'})
     _req(doc['format'] == FORMAT, '$.format', f'must be {FORMAT}')
     _req(isinstance(doc['id'], str) and ID_RE.fullmatch(doc['id']) is not None, '$.id', 'T<2 digits>[-suffix[-suffix]]')
     _req(isinstance(doc['name'], str) and NAME_RE.fullmatch(doc['name']) is not None, '$.name', '[a-z0-9_]{3,48}')
@@ -128,6 +132,19 @@ def validate_rspec(doc):
             _dec(f['equity'], '$.fake.equity', positive=True)
         if 'classic_stops' in f:
             _req(f['classic_stops'] in ('accept', 'refuse'), '$.fake.classic_stops', 'accept / refuse')
+    if 'management' in doc:
+        m = doc['management']
+        _keys(m, '$.management', {'enabled', 'plan'})
+        _req(type(m['enabled']) is bool, '$.management.enabled', 'a boolean')
+        _keys(m['plan'], '$.management.plan', set(), PLAN_KEYS)
+        for k in PLAN_DECIMALS:
+            if m['plan'].get(k) is not None:
+                _dec(m['plan'][k], f'$.management.plan.{k}', positive=True, hi=Decimal('20'))
+        if 'be_after_tp1' in m['plan']:
+            _req(type(m['plan']['be_after_tp1']) is bool, '$.management.plan.be_after_tp1', 'a boolean')
+        t_ex = m['plan'].get('time_exit_candles')
+        if t_ex is not None:
+            _int(t_ex, '$.management.plan.time_exit_candles', 1, 500)
     b = doc['bound']
     _keys(b, '$.bound', {'max_ticks', 'max_orders', 'max_notional_usdt', 'max_wall_s'}, {'settle_ms'})
     _int(b['max_ticks'], '$.bound.max_ticks', 1, 240)
@@ -163,6 +180,9 @@ def validate_rspec(doc):
                 _int(st['code'], p + '.code', -9999, -1)
         elif op == 'check':
             _req(st['what'] in CHECKS, p + '.what', ' / '.join(CHECKS))
+        elif op == 'move':
+            _dec(st['pct'], p + '.pct', lo=Decimal('-30'), hi=Decimal('30'))
+            _req(t == ['fake'], p + '.op', 'move is FakeVenue only: the spec must target only fake')
     _req(ticks <= b['max_ticks'], '$.bound.max_ticks', f'the steps need up to {ticks} cycles')
     _expect(doc['expect'], '$.expect')
     if 'expect_testnet' in doc:

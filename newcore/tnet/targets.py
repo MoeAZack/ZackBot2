@@ -56,6 +56,8 @@ def plan_ticks(spec):
             if 'fake_gap_pct' in st:
                 gaps[WARMUP + k] = D(st['fake_gap_pct'])
             k += st['max_ticks']
+        elif op == 'move':                       # the candle the SECOND following cycle closes opens moved by pct
+            gaps[WARMUP + k] = gaps.get(WARMUP + k, D(0)) + D(st['pct'])
     return k, gaps
 
 

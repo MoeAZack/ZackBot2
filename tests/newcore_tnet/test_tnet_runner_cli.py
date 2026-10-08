@@ -45,7 +45,7 @@ def no_network(*a, **k):
 def test_fake_default_runs_every_bundled_spec_and_passes():
     rc, text = main(['--run-nonce', 'cli1'])
     assert rc == 0, text
-    assert text.count('PASS ') == 12 and 'summary:' in text and 'report:' not in text
+    assert text.count('PASS ') == 20 and 'summary:' in text and 'report:' not in text
 
 
 def test_only_and_verbose():

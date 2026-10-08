@@ -150,6 +150,15 @@ class _Run:
         self.runner = self.new_runner()
 
     def new_runner(self):
+        m = self.spec.get('management')
+        if m is not None and m['enabled']:                  # T05-T08: the ManagedRunner (management.enabled)
+            from newcore.management import CostModel as MgCosts
+            from newcore.runner.managed import ManagedRunner, ManagementConfig, SyntheticPlans
+            kw = {k: (Decimal(v) if isinstance(v, str) else v) for k, v in m['plan'].items()}
+            plans = SyntheticPlans(costs=MgCosts(taker_fee=Decimal('0.0005'), slip=Decimal('0.0002')), **kw)
+            return ManagedRunner(self.config, journal=self.target.journal, venue=self.port, bars=self.target.bars,
+                                 signals=self.signals, account_reads=self.target.reads,
+                                 management=ManagementConfig(enabled=True, plans=plans))
         return Runner(self.config, journal=self.target.journal, venue=self.port, bars=self.target.bars,
                       signals=self.signals, account_reads=self.target.reads)
 
@@ -199,6 +208,8 @@ class _Run:
                     return True
             self.inconclusive.append(f'no exit within {st["max_ticks"]} cycles')
             return False
+        elif op == 'move':
+            pass                                                      # applied to the fake market up front
         elif op == 'check':
             truth = final_truth(self.runner, self.truth_venue, self.sym)
             self.checks.append((f'check_{st["what"]}@cycle{self.ticks}', truth['outcome'] == st['what'],
@@ -310,6 +321,14 @@ def _evaluate(run, exp, truth):
         out.append((f'stop route {want}', ok, str(routes)))
     if 'final' in exp:
         out.append((f'final truth {exp["final"]}', truth.get('outcome') == exp['final'], truth.get('outcome')))
+    for key, purpose in (('adds', Purpose.ADD), ('reduces', Purpose.REDUCE)):
+        if key in exp:
+            n = sum(1 for iv in r.fold.intents.values() if iv.purpose is purpose and iv.executed > 0)
+            out.append((f'{key} filled == {exp[key]}', n == exp[key], str(n)))
+    if 'open_orders_end' in exp:                  # T08: NO stop / order of any kind may be left on the venue
+        oo = run.target.raw.open_orders(run.sym)
+        n = len(oo.value) if oo.kind is P.ReadKind.OK else None
+        out.append((f'open orders at the end == {exp["open_orders_end"]}', n == exp['open_orders_end'], str(n)))
     return out
 
 

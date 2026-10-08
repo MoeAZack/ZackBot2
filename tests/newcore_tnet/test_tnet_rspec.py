@@ -8,18 +8,21 @@ from newcore.tnet import rspec as R
 from newcore.tnet.rspec import SpecError, bundled, expectations, parse_rspec, validate_rspec
 
 WANTED = {'T01-long', 'T02-short', 'T03', 'T04-algo', 'T04-classic', 'T09', 'T10-floor', 'T10-refused',
-          'T10-stop-refused', 'T11', 'T12-flat', 'T12-protected'}
+          'T10-stop-refused', 'T11', 'T12-flat', 'T12-protected'} | \
+    {f'T0{n}-{side}' for n in (5, 6, 7, 8) for side in ('long', 'short')}
 
 
 def base():
     return copy.deepcopy(next(s for s in bundled() if s['id'] == 'T01-long'))
 
 
-def test_bundled_specs_cover_the_runner_scenarios_without_management():
+def test_bundled_specs_cover_t01_to_t12():
     specs = bundled()
     assert {s['id'] for s in specs} == WANTED
     assert len({s['name'] for s in specs}) == len(specs)
-    assert not any(s['id'][:3] in ('T05', 'T06', 'T07', 'T08') for s in specs)      # those need management
+    mg = [s for s in specs if s['id'][:3] in ('T05', 'T06', 'T07', 'T08')]
+    assert len(mg) == 8 and all(s['management']['enabled'] and s['targets'] == ['fake'] for s in mg)
+    assert not any('management' in s for s in specs if s not in mg)
     for s in specs:
         assert validate_rspec(s) is s
 

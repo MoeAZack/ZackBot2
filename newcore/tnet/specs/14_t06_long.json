@@ -1,0 +1,69 @@
+{
+  "format": "zb-newcore-tnet-runner/1",
+  "id": "T06-long",
+  "name": "t06_partial_close_long",
+  "description": "Partial close: TP1 (1 R) reduces half, the stop is re-placed for the rest at net break-even, TP2 (2 R) closes the rest.",
+  "targets": [
+    "fake"
+  ],
+  "symbol": "SOLUSDT",
+  "side": "LONG",
+  "sizing": {
+    "risk_pct": "0.0005",
+    "max_leverage": "3"
+  },
+  "stop": {
+    "pct": "1"
+  },
+  "fake": {
+    "classic_stops": "refuse"
+  },
+  "steps": [
+    {
+      "op": "enter"
+    },
+    {
+      "op": "move",
+      "pct": "1.2"
+    },
+    {
+      "op": "tick",
+      "n": 3
+    },
+    {
+      "op": "move",
+      "pct": "1.3"
+    },
+    {
+      "op": "tick",
+      "n": 4
+    }
+  ],
+  "expect": {
+    "entries": 1,
+    "trades": [
+      "TP_FULL"
+    ],
+    "reduces": 2,
+    "adds": 0,
+    "final": "flat",
+    "open_orders_end": 0
+  },
+  "bound": {
+    "max_ticks": 20,
+    "max_orders": 10,
+    "max_notional_usdt": "2000",
+    "max_wall_s": 900
+  },
+  "management": {
+    "enabled": true,
+    "plan": {
+      "add_r": null,
+      "tp1_r": "1",
+      "tp1_frac": "0.5",
+      "tp2_r": "2",
+      "be_after_tp1": true,
+      "time_exit_candles": 50
+    }
+  }
+}
