@@ -33,7 +33,7 @@ from newcore.venue.clock import OffsetClock, system_clock_ms  # noqa: E402
 from newcore.venue.credentials import (CredentialsUnavailable, CredentialStore, CredentialStoreError,  # noqa: E402
                                        SecretScrubber, binding_digest, check_root)
 from newcore.venue.outcomes import ReadKind as TR  # noqa: E402  (transport-level reads)
-from newcore.venue.redact import scrub_tokens  # noqa: E402
+from newcore.venue.redact import scrub_path, scrub_tokens  # noqa: E402
 from newcore.venue.run_config import RunConfigError, default_testnet_config_path, load_testnet_config  # noqa: E402
 from newcore.venue.smoke import CORE8  # noqa: E402
 from newcore.venue.testnet_venue import TestnetAccountReader, TestnetVenue  # noqa: E402
@@ -69,6 +69,9 @@ def _parser():
     p.add_argument('--dry-run', action='store_true', help='print the plan only: no network call, no key decrypted')
     p.add_argument('--probe', action='append', default=[], choices=('P1', 'P2'))
     p.add_argument('--scenario', action='append', default=[], help='a zb-newcore-tnet-scenario/1 JSON file')
+    p.add_argument('--adopt-file', default=None,
+                   help='a text file with one --adopt-foreign item per line (for long client ids, which are '
+                        'refused on the command line as key-shaped)')
     p.add_argument('--adopt-foreign', action='append', default=[],
                    help='a foreign client id or SYMBOL:SIDE position the preflight may accept (cleanup keeps it)')
     p.add_argument('--symbol', default=None, choices=CORE8,
@@ -114,8 +117,8 @@ class _Recording:
 def _plan(args, specs, symbols, cassette_dir, report_dir, stored):
     lines = ['TNET-01 venue harness - PLAN (dry run: no network call, no key decrypted)',
              f'  account {args.account_id} (stored testnet key: {"yes" if stored else "NO"}); testnet host only',
-             f'  symbols {", ".join(symbols)}; cassette dir {scrub_tokens(cassette_dir)}; report dir '
-             f'{scrub_tokens(report_dir)}', '',
+             f'  symbols {", ".join(symbols)}; cassette dir {scrub_path(cassette_dir)}; report dir '
+             f'{scrub_path(report_dir)}', '',
              '1. preflight: testnet host, hedge mode, available balance >= ' + args.min_balance +
              ' USDT, flat + no open orders on the symbols' + (f' (adopting {args.adopt_foreign})' if args.adopt_foreign
                                                               else '')]
@@ -129,7 +132,7 @@ def _plan(args, specs, symbols, cassette_dir, report_dir, stored):
                          f'stop, poll open orders, cancel, close, poll flat)')
         n += 1
     for path, spec in specs:
-        lines.append(f'{n}. scenario {spec["name"]} ({scrub_tokens(path)}, digest {spec_digest(spec)[:12]}):')
+        lines.append(f'{n}. scenario {spec["name"]} ({scrub_path(path)}, digest {spec_digest(spec)[:12]}):')
         lines += [f'     - {st["id"]}: {st["op"]} ' + ', '.join(f'{k}={v}' for k, v in st.items()
                                                                  if k not in ('id', 'op')) for st in spec['steps']]
         lines += [f'     ! fault {f["kind"]} x{f.get("times", 1)} at {f["at"]}' for f in spec.get('faults', [])]
@@ -191,11 +194,6 @@ def _main(argv=None, *, http=None, local_clock=None, protector=None, out=None, m
     if args.cleanup and (args.probe or args.scenario):
         out.write('REFUSED: --cleanup runs alone (no --probe / --scenario).\n')
         return EXIT_USAGE
-    if args.cleanup and args.close_positions and any(
-            q is None for q in adopted_positions(args.adopt_foreign).values()):
-        out.write('REFUSED: with --cleanup --close-positions an adopted position must state its FOREIGN quantity: '
-                  '--adopt-foreign SYMBOL:SIDE:QTY (a NEWCORE leftover is never kept as foreign).\n')
-        return EXIT_USAGE
     if args.close_positions and not args.cleanup:
         out.write('REFUSED: --close-positions goes with --cleanup.\n')
         return EXIT_USAGE
@@ -223,7 +221,7 @@ def _main(argv=None, *, http=None, local_clock=None, protector=None, out=None, m
         try:
             specs.append((p, load_spec(p)))
         except SpecError as ex:
-            out.write(f'REFUSED: --scenario #{i + 1}: {ex}\n')                 # the path is not echoed
+            out.write(f'REFUSED: --scenario #{i + 1}: {scrub_tokens(str(ex))[:200]}\n')   # no path, no raw keys
             return EXIT_USAGE
         except OSError as ex:
             out.write(f'REFUSED: --scenario #{i + 1}: cannot read it ({type(ex).__name__})\n')
@@ -233,6 +231,13 @@ def _main(argv=None, *, http=None, local_clock=None, protector=None, out=None, m
                       f'(targets {specs[-1][1]["targets"]}).\n')
             return EXIT_USAGE
     adopt = list(args.adopt_foreign)
+    if args.adopt_file is not None:                   # X1: long foreign client ids never travel in argv
+        try:
+            with open(args.adopt_file, encoding='utf-8') as fh:
+                adopt += [ln.strip() for ln in fh.read(64 * 1024).splitlines() if ln.strip()]
+        except (OSError, UnicodeDecodeError) as ex:
+            out.write(f'REFUSED: --adopt-file cannot be read ({type(ex).__name__}).\n')
+            return EXIT_USAGE
     for _, sp in specs:                              # the spec's own account section is honoured (T3)
         acc = sp.get('account', {})
         if 'min_balance' in acc:
@@ -244,6 +249,11 @@ def _main(argv=None, *, http=None, local_clock=None, protector=None, out=None, m
             out.write(f'REFUSED: --adopt-foreign item: {why}.\n')
             return EXIT_USAGE
     args.adopt_foreign = adopt
+    if args.cleanup and args.close_positions and any(
+            q is None for q in adopted_positions(args.adopt_foreign).values()):
+        out.write('REFUSED: with --cleanup --close-positions an adopted position must state its FOREIGN quantity: '
+                  '--adopt-foreign SYMBOL:SIDE:QTY (a NEWCORE leftover is never kept as foreign).\n')
+        return EXIT_USAGE
     run_cfg = None
     if args.config is None and args.account_id is None and os.path.isfile(default_testnet_config_path()):
         args.config = default_testnet_config_path()
@@ -261,7 +271,7 @@ def _main(argv=None, *, http=None, local_clock=None, protector=None, out=None, m
             return EXIT_USAGE
         args.account_id = run_cfg.account_id
         args.symbol = args.symbol or run_cfg.symbols[0]
-        out.write(f'config {scrub_tokens(args.config)}: account {run_cfg.account_id}, binding {run_cfg.key_digest}, '
+        out.write(f'config {scrub_path(args.config)}: account {run_cfg.account_id}, binding {run_cfg.key_digest}, '
                   f'symbols '
                   f'{", ".join(run_cfg.symbols)}\n')
     if args.account_id is None:
@@ -371,7 +381,7 @@ def _cleanup_only(args, venue, symbols, run_id, snooze, recorder, cassette_dir, 
                   ''.join(f'  {p.symbol} {p.side} {p.qty}\n' for p in left))
     cassette = _write_cassette(recorder, cassette_dir, stamp, values, out)   # every request of the teardown
     if cassette is not None:
-        out.write(f'cassette: {scrub_tokens(cassette)}\n')
+        out.write(f'cassette: {scrub_path(cassette)}\n')
     rc_report = EXIT_PASS
     try:
         config = {'mode': 'cleanup', 'account_id': args.account_id, 'symbols': symbols,
@@ -379,7 +389,7 @@ def _cleanup_only(args, venue, symbols, run_id, snooze, recorder, cassette_dir, 
         paths = tnet_report(run_id=run_id + '_cleanup', scenarios=[], cleanup=res, config=config,
                             cassette_path=cassette, fees=Decimal(0), pnl=Decimal(0), build=build, now_ms=clock(),
                             out_dir=report_dir, redact=values)
-        out.write(f'report: {scrub_tokens(paths[0])}\n')
+        out.write(f'report: {scrub_path(paths[0])}\n')
     except (ReportLeak, CredentialStoreError, OSError) as ex:
         out.write(f'ERROR: report not written ({type(ex).__name__}).\n')
         rc_report = EXIT_REPORT
@@ -502,14 +512,14 @@ def _run(args, specs, symbols, min_balance, creds, scrubber, http, clock, mono, 
     cassette = _write_cassette(recorder, cassette_dir, stamp, values, out)
     rc_report = EXIT_PASS
     try:
-        config = {'config': scrub_tokens(args.config) if args.config else None, 'account_id': args.account_id,
+        config = {'config': scrub_path(args.config) if args.config else None, 'account_id': args.account_id,
                   'symbols': symbols, 'probes': args.probe, 'stop_route': args.stop_route,
                   'min_balance': str(min_balance), 'specs': [spec_digest(s) for _, s in specs],
                   'adopt_foreign': list(args.adopt_foreign)}
         paths = tnet_report(run_id=run_id, scenarios=state['scenarios'], cleanup=cleanup, config=config,
                             cassette_path=cassette, fees=fees, pnl=pnl, build=build, now_ms=clock(), out_dir=report_dir,
                             redact=values, probes=state['probes'])
-        out.write(f'report: {scrub_tokens(paths[0])}\n')
+        out.write(f'report: {scrub_path(paths[0])}\n')
     except (ReportLeak, CredentialStoreError, OSError) as ex:
         out.write(f'ERROR: report not written ({type(ex).__name__}: {ex}).\n')
         rc_report = EXIT_REPORT

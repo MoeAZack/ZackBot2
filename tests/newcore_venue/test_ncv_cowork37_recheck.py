@@ -126,3 +126,77 @@ def test_mark_times_far_from_the_server_clock_are_unknown(t, detail):
     out = r.mark_price('SOLUSDT')
     assert out.kind is P.ReadKind.UNKNOWN and out.detail == detail
     assert NOW_MS
+
+
+# ---------------------------------------------------------------------------------------------- NEW-P1
+@pytest.mark.parametrize('body', [
+    '&'.join(f'token{i}=v{i}abcdefgh' for i in range(300000)),
+    json.dumps({'rows': [{'secret': f'v{i}abcdefgh'} for i in range(200000)]}),
+], ids=['form', 'json'])
+def test_p1_a_body_teaching_too_many_secrets_fails_closed_fast(body):
+    import time
+    t0 = time.monotonic()
+    rec = CassetteRecorder(FakeHttp(ok(body)), redact=(DUMMY_KEY, DUMMY_SECRET))
+    rec(req())
+    with pytest.raises(CassetteLeak, match='too many distinct secret values'):
+        rec.to_json()
+    assert time.monotonic() - t0 < 30
+
+
+# ---------------------------------------------------------------------------------------------- lows
+def test_finding4_a_stray_key_beside_a_valid_answer_fails_the_replay():
+    from newcore.venue.cassette import CassetteMismatch, CassettePlayer
+    from newcore.venue.wire import HttpRequest
+    base = {'request': {'method': 'GET', 'url': 'https://testnet.binancefuture.com/fapi/v1/time', 'signed': False,
+                        'query': [], 'headers': []},
+            'response': {'status': 200, 'headers': {}, 'body_text': '{"serverTime": 1}'}}
+    for stray in ({'error': 'WireTimeout'}, {'response': dict(base['response'], body_b64='e30=')}):
+        doc = {'format': 'zb-newcore-cassette/1', 'interactions': [dict(base, **stray)]}
+        with pytest.raises(CassetteMismatch, match='malformed'):
+            CassettePlayer(doc)(HttpRequest('GET', 'https://testnet.binancefuture.com/fapi/v1/time', '', (), 10.0, False))
+
+
+def test_finding5_paths_are_scrubbed_per_component():
+    from newcore.venue.redact import scrub_path
+    p = '/home/owner/.local/share/ZackBotNC/reports/tnet-1759917600000.json'
+    assert scrub_path(p) == p                                        # a normal POSIX path stays readable
+    assert DUMMY_KEY not in scrub_path('/tmp/' + DUMMY_KEY + '/x.json')
+    win = chr(92).join(['C:', 'Users', 'owner', 'AppData', 'Local', 'ZackBotNC', 'reports', 'r.json'])
+    assert scrub_path(win) == win
+
+
+def test_x1_a_long_foreign_client_id_is_adopted_through_a_file(env, tmp_path):  # noqa: F811
+    long_id = 'web_' + 'a' * 32
+    fb = FakeBinance(foreign_orders=(long_id,))
+    rc, out = run(env, ['--probe', 'P1', '--adopt-foreign', long_id], http=fb)
+    assert rc == 2                                                   # key-shaped on the command line: refused
+    f = tmp_path / 'adopt.txt'
+    f.write_text(long_id + '\n\n', encoding='utf-8')
+    rc, out = run(env, ['--probe', 'P1', '--adopt-file', str(f)], http=fb)
+    assert rc == 0 and fb.orders[long_id]['status'] == 'NEW'
+
+
+def test_x1_an_adopt_file_position_still_needs_its_quantity_for_cleanup(env, tmp_path):  # noqa: F811
+    f = tmp_path / 'adopt.txt'
+    f.write_text('SOLUSDT:LONG\n', encoding='utf-8')
+    fb = stranded_with_foreign()
+    rc, out = run(env, ['--cleanup', '--close-positions', '--adopt-file', str(f)], http=fb)
+    assert rc == 2 and 'SYMBOL:SIDE:QTY' in out and fb.requests == []
+
+
+def test_unknown_spec_keys_are_echoed_scrubbed(env, tmp_path):  # noqa: F811
+    from test_ncv_tnet_harness import EXAMPLE
+    s = json.load(open(EXAMPLE, encoding='utf-8'))
+    s[DUMMY_KEY] = 1
+    p = tmp_path / 's.json'
+    p.write_text(json.dumps(s), encoding='utf-8')
+    rc, out = run(env, ['--scenario', str(p)], http=FakeBinance())
+    assert rc == 2 and DUMMY_KEY not in out
+
+
+@pytest.mark.parametrize('name', ['\uff53\uff49\uff47\uff4e\uff41\uff54\uff55\uff52\uff45', 'api\u200bkey'])
+def test_r3_unicode_names_in_a_non_json_body_are_redacted(name):
+    v = 'z' * 24
+    rec = CassetteRecorder(FakeHttp(ok(f'<p>{name}={v}</p>')))
+    rec(req())
+    assert v not in rec.to_json()

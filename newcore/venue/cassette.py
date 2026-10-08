@@ -45,6 +45,7 @@ _REASON_RE = re.compile(r'[a-z_]{1,20}')
 _B64_RUN = re.compile(r'[A-Za-z0-9+/_-]{16,}={0,2}')
 _HEX_RUN = re.compile(r'(?:[0-9a-fA-F]{2}){8,}')
 MAX_DECODED_TOKENS = 20000
+MAX_LEARNED_VALUES = 4096                  # distinct secret values one recorder will scrub (beyond: fail closed)
 
 
 def _strings(obj):
@@ -168,7 +169,10 @@ class CassetteRecorder:
         return f'CassetteRecorder(interactions={len(self.interactions)}, redactions=<{len(self._values)}>)'
 
     def _learn(self, value):
-        if isinstance(value, str) and len(value) >= 8 and value != REDACTED:
+        if isinstance(value, str) and len(value) >= 8 and value != REDACTED and value not in self._values:
+            if len(self._values) >= MAX_LEARNED_VALUES:      # NEW-P1: N values x every text is quadratic
+                self._unproducible = 'too many distinct secret values to redact'
+                return                                       # the name-based blank already happened; fail closed
             self._values.add(value)
 
     # ---- sanitizing ----
@@ -189,6 +193,8 @@ class CassetteRecorder:
             return m.group(0)
         text = _JSON_PAIR.sub(json_sub, str(text))
         text = _FORM_PAIR.sub(form_sub, text)
+        if self._unproducible:                       # failing closed anyway: no N x size value scrub (NEW-P1)
+            return text
         return redact_values(text, self._values, self._cache)
 
     def _clean_pairs(self, pairs, allowed=None):
@@ -290,8 +296,12 @@ class CassetteRecorder:
                 allowed, text = None, ''
                 payload = {'body_omitted': 'too_deep'}
             else:
-                payload = {'body_text': redact_values(allowed, self._values, self._cache) if allowed is not None
-                           else self._clean_text(text)}
+                if allowed is None:
+                    payload = {'body_text': self._clean_text(text)}
+                elif self._unproducible:               # failing closed anyway: skip the N x size scrub (NEW-P1)
+                    payload = {'body_text': allowed}
+                else:
+                    payload = {'body_text': redact_values(allowed, self._values, self._cache)}
         except UnicodeDecodeError:
             cleaned = self._clean_text(raw.decode('latin-1')).encode('latin-1')
             payload = {'body_b64': base64.b64encode(cleaned).decode('ascii')}
@@ -415,6 +425,10 @@ class CassettePlayer:
             if not has_sig or not request.wire_header(API_KEY_HEADER):
                 raise CassetteMismatch(f'request {i}: a signed request must carry a key header and a signature')
         self._next += 1
+        resp = rec.get('response')                   # finding 4: exactly one outcome, exactly one body form
+        if ('error' in rec) == (resp is not None) or (isinstance(resp, dict) and
+                                                     sum(k in resp for k in ('body_text', 'body_b64')) != 1):
+            raise CassetteMismatch(f'request {i}: malformed recorded interaction')
         if 'error' in rec:
             if rec['error'] not in _ERRORS:
                 raise CassetteMismatch(f'request {i}: unknown recorded error')
