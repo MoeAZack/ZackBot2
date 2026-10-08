@@ -16,7 +16,9 @@ owns identity, durability and the venue:
                         ResultObserved of a driver intent           -> on_outcome (KNOWN / FINAL / refused = REJECTED)
                         'mg fill <trade> <order> <qty> <px> <fee> <asset> <ms>' (WAIT, one per venue fill)
                                                                     -> on_fills((that row,))
-                        'mg tick <open> <o> <h> <l> <c> <request>' (WAIT) -> on_candle(that candle, request), on_mark(c)
+                        'mg tick <open> <o> <h> <l> <c> <atr> <request>' (WAIT) -> on_candle(that candle incl. its
+                                                                       ATR, request), on_mark(c); the ATR is recorded
+                                                                       only for a highest_high_atr trail plan
                         'mg mark <price>' (WAIT)                    -> on_mark(price)
                         ModeChanged                                 -> set_mode (HOLD / PAUSED / ... table)
                       A venue read that fails (fills UNKNOWN) is never booked as a zero: the input stays pending (a
@@ -58,7 +60,10 @@ from newcore.domain.base import CTX
 from newcore.domain.errors import DomainError
 from newcore.management import Candle, CostModel, ManagementError, PlanRefused, Stage, build_plan, range_bb_mr_v1
 from newcore.management import driver as DR
+from newcore.management.plan import TrailMode
 from newcore.management.presets import CANDLE_SECONDS, STOP_ATR
+from newcore.strategy import indicators as IND
+from newcore.strategy.ema_mom import to_decimal
 from newcore.ports.journal import JournalUnavailable
 from newcore.ports.keys import route_of
 from newcore.ports.venue import MarketOrder, OrderOutcome, OutcomeKind, ReadKind, VenueFill
@@ -70,7 +75,7 @@ from .signals import CLOSE
 
 ZERO = Decimal(0)
 MG = 'mg '                                   # every management decision's detail starts with it
-TICK = 'mg tick'                             # 'mg tick <open_ms> <open> <high> <low> <close> <close_request|->'
+TICK = 'mg tick'                             # 'mg tick <open_ms> <open> <high> <low> <close> <atr|-> <request|->'
 START = 'mg start'                           # 'mg start <entry intent> <entry fee> <stop distance|->'
 FILL = 'mg fill'                             # 'mg fill <trade id> <order id> <qty> <price> <fee> <fee asset> <at_ms>'
 MARK = 'mg mark'                             # an intra-candle mark that fired a trigger (made durable first)
@@ -438,8 +443,12 @@ class ManagementMixin:
 
     def _mg_apply_tick(self, d):
         lot_id = d.subject_id
-        open_ms, o, h, lo, c, request = d.detail[len(TICK) + 1:].split(' ')
-        candle = Candle(open_ms=int(open_ms), open=Decimal(o), high=Decimal(h), low=Decimal(lo), close=Decimal(c))
+        parts = d.detail[len(TICK) + 1:].split(' ')
+        if len(parts) == 6:                                               # 35cb80c records: no ATR field
+            parts.insert(5, '-')
+        open_ms, o, h, lo, c, atr, request = parts
+        candle = Candle(open_ms=int(open_ms), open=Decimal(o), high=Decimal(h), low=Decimal(lo), close=Decimal(c),
+                        atr=None if atr == '-' else Decimal(atr))
         ds = self.mg[lot_id]
         if ds.pos.stage is not Stage.DONE:
             self._mg_drive(lot_id, DR.on_candle, ds, candle,
@@ -627,10 +636,22 @@ class ManagementMixin:
                         closes.setdefault(s.side, s.reason)
                 for side in ('LONG', 'SHORT'):
                     for lot_id in self._mg_managed(sym, side):
-                        self._mg_tick(lot_id, bars[-1], closes.get(side))
+                        self._mg_tick(lot_id, bars, closes.get(side))
         super()._decide_all()
 
-    def _mg_tick(self, lot_id, bar, close_reason):
+    def _mg_atr(self, plan, bars):
+        """The CURRENT ATR at this close (Wilder, the signal's length), for a highest_high_atr trail plan only (else
+        None: the candle input stays as before). Read live, recorded in the tick, never re-read on replay."""
+        if plan.trail_mode is not TrailMode.HIGHEST_HIGH_ATR or len(bars) < 2:
+            return None
+        n = getattr(self.signals, 'atr_len', 14)
+        atr = IND.wilder_atr([float(b.high) for b in bars], [float(b.low) for b in bars],
+                             [float(b.close) for b in bars], n)[-1]
+        d = to_decimal(atr)
+        return d if d > 0 else None
+
+    def _mg_tick(self, lot_id, bars, close_reason):
+        bar = bars[-1]
         ds, plan = self.mg[lot_id], self.plans[lot_id]
         if ds.pos.stage is Stage.DONE or bar.open_ms < plan.entry_candle_open_ms:
             return
@@ -639,7 +660,9 @@ class ManagementMixin:
             return
         did = ids.tick_decision_id(lot_id, bar.open_ms)
         if self.journal.find_decision(did) is None:
-            detail = f'{TICK} {bar.open_ms} {bar.open} {bar.high} {bar.low} {bar.close} {close_reason or "-"}'
+            atr = self._mg_atr(plan, bars)
+            detail = (f'{TICK} {bar.open_ms} {bar.open} {bar.high} {bar.low} {bar.close} {"-" if atr is None else atr} '
+                      f'{close_reason or "-"}')
             if len(detail) > 160:                                         # never applied unrecorded
                 self._items.append((lot_id, (('tick_not_journalable', bar.open_ms),)))
                 self._mg_flush(lot_id)

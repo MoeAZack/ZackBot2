@@ -113,7 +113,7 @@ def test_codex_repro_restart_with_offline_or_changed_ports_is_identical(side, ho
     new = boot(w, h, bars)
     assert new.mg == old.mg and new.plans == old.plans
     ticks = [d for d in new.fold.decisions.values() if d.action is Action.WAIT and d.detail.startswith('mg tick ')]
-    assert len(ticks) >= 2 and all(len(d.detail.split(' ')) == 8 for d in ticks)     # the whole candle is recorded
+    assert len(ticks) >= 2 and all(len(d.detail.split(' ')) == 9 for d in ticks)     # the whole candle is recorded
 
 
 @pytest.mark.parametrize('side', SIDES)
