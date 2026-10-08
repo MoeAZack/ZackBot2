@@ -93,7 +93,7 @@ def test_request_url_outside_pin_refused(url):
 @pytest.mark.parametrize('path', ['v1/%2e%2e/sapi', 'v1/order%2e', 'v1/order;jsessionid=1', 'v1/order%0d%0aHost:x',
                                   'v1/order\r\nHost: evil', 'v1/order\n', 'v1/order\x00', 'v1/ord er', 'v1/order/',
                                   'v1/order.json', 'v1/order-x', 'v1/./order', 'x1/order', 'v1', 'v1/ordér',
-                                  'v1/order\t'])
+                                  'v1/order\t', 'v1/‥/order', 'v1/order‥', '‥‥/v1/order'])
 def test_non_canonical_paths_refused(path):
     with pytest.raises(VenueGuardError):
         check_request_url(TESTNET_BASE_URL + '/fapi/' + path)

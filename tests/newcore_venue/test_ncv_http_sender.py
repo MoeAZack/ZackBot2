@@ -258,7 +258,8 @@ def test_announced_oversize_is_refused_before_reading(stub):
     dict(query='a=\x00'), dict(headers=(('Host', 'fapi.binance.com'),)), dict(headers=(('host', 'x'),)),
     dict(headers=(('Cookie', 'a=b'),)), dict(headers=(('X-Forwarded-Host', 'x'),)),
     dict(headers=(('X-MBX-APIKEY', 'key\r\nHost: evil'),)), dict(headers=(('X-MBX-APIKEY', 'with space'),)),
-    dict(headers=(('X-MBX-APIKEY', ''),)), dict(path='/fapi/v1/2025/order'), dict(query='a=2025'),
+    dict(headers=(('X-MBX-APIKEY', ''),)), dict(path='/fapi/v1/‥/order'), dict(query='a=‥'),
+    dict(path='/fapi/v1/order‥'),
 ])
 def test_sender_refuses_odd_path_query_and_headers_before_connecting(kw):
     calls = []
