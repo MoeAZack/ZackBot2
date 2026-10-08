@@ -654,3 +654,96 @@ def test_ruling6_take_profit_reasons_are_route_neutral():
     for code in (ReasonCode.EXIT_TAKE_PROFIT, ReasonCode.EXIT_BASKET_TP):
         assert 'market' not in MEANING[code]
     assert 'basket' in MEANING[ReasonCode.EXIT_BASKET_TP]
+
+
+# ------------------------------------------------------------------- Codex P1 on 02493b6: the resting target's orphan
+def _orphaned_target(how, seed=360):
+    """The lot of a WORKING resting target disappears while the target is being cancelled: by a stop fill, an external
+    close, or a side flip. The target is re-owned by the portfolio aggregate as cancel-only work (the generic orphan
+    form: owner_kind PORTFOLIO, owner_id the portfolio id, CANCELLING). Returns (portfolio, ids, orphan target)."""
+    from decimal import Decimal as D
+    from newcore.domain import IntentState, OwnerKind, Side
+    pf, ids, lt, tgt = _resting_target(seed)
+    acct = pf.account_id
+    orphan = lambda i: F.replace(i, owner_id=F.pf_id(acct), owner_kind=OwnerKind.PORTFOLIO,       # noqa: E731
+                                 state=IntentState.CANCELLING)
+    target = orphan(tgt)
+    rest = tuple(i for i in pf.intents if i.intent_id != tgt.intent_id)
+    positions = ()
+    if how == 'stop_fill':                       # the stop filled: the lot and its stop are gone, the target remains
+        rest = ()
+    elif how == 'external_close':                # closed outside the bot: every owned order is cancel-only work
+        rest = tuple(orphan(i) for i in rest)
+    elif how == 'side_flip':                     # closed and re-opened the other way: a new lot, the old work orphaned
+        rest = tuple(orphan(i) for i in rest)
+        flip = Side.SHORT if lt.side is Side.LONG else Side.LONG
+        new_lot, carried = F.lot(ids, acct, lt.symbol, flip, D('2'))
+        positions = (F.position(ids, [new_lot]),)
+        rest += tuple(carried)
+    else:
+        raise AssertionError(how)
+    return F.portfolio(acct, positions, rest + (target,)), ids, target
+
+
+HOW = ('stop_fill', 'external_close', 'side_flip')
+
+
+@pytest.mark.parametrize('how', HOW)
+def test_p1_a_resting_target_whose_lot_is_gone_is_retained_as_a_cancel_only_orphan(how):
+    from newcore.domain import OrderType, OwnerFamily, OwnerKind
+    pf, ids, target = _orphaned_target(how)
+    assert target in pf.intents
+    assert target.order_type is OrderType.LIMIT_REDUCE_ONLY and target.reduce_only and target.price is not None
+    assert target.orphan and target.owner_kind is OwnerKind.PORTFOLIO and target.owner_id == pf.portfolio_id
+    assert target.family is OwnerFamily.ORPHAN and target.state.value == 'cancelling'
+    from newcore.domain.portfolio import owned_client_ids
+    assert target.client_order_id in owned_client_ids(pf)                    # still owned: never dropped
+
+
+@pytest.mark.parametrize('how', HOW)
+def test_p1_the_orphan_target_survives_snapshot_journal_bytes_and_a_restart(how):
+    from newcore.domain import (Admission, EventCursor, IntentState, IntentStateChanged, OwnerKind, Snapshot, admit,
+                                canonical_bytes, fold_facts, loads)
+    p, ids, acct, lt, tgt, chain, E = _target_chain(seed=391)
+    chain = chain + [E(IntentStateChanged, 5, F.T0 + 30_000, intent_id=tgt.intent_id,
+                       from_state=IntentState.WORKING, to_state=IntentState.CANCELLING)]   # cancel requested
+    events = [loads(canonical_bytes(ev)) for ev in chain]
+    assert events == chain
+    cur = EventCursor(account_id=acct, aggregate_id=F.pf_id(acct), last_sequence=0, applied=())
+    for ev in events:
+        cur, how_ = admit(cur, ev)
+        assert how_ is Admission.APPLY
+    pf, _, target = _orphaned_target(how)
+    snap = Snapshot(account_id=pf.account_id, generation=pf.generation, last_sequence=len(chain),
+                    written_at_ms=F.T0 + 90_000, writer_build='nc01-test', portfolio=pf, facts=fold_facts([]))
+    back = loads(canonical_bytes(snap))                                       # restart: the snapshot read from bytes
+    assert back == snap and target in back.portfolio.intents
+    kept = next(i for i in back.portfolio.intents if i.intent_id == target.intent_id)
+    assert kept.owner_kind is OwnerKind.PORTFOLIO and kept.owner_id == back.portfolio.portfolio_id
+    assert kept.state is IntentState.CANCELLING and kept.price == target.price
+    assert loads(canonical_bytes(target)) == target                           # the intent record alone round trips
+
+
+def test_p1_a_portfolio_owned_target_must_be_cancelling_and_owned_by_this_portfolio():
+    from newcore.domain import IntentState, InvalidRecord, OwnerKind
+    from newcore.domain.orders import CANCEL_ONLY
+    pf, ids, target = _orphaned_target('external_close')
+    others = tuple(i for i in pf.intents if i.intent_id != target.intent_id)
+    for state in IntentState:
+        if state in CANCEL_ONLY:
+            continue
+        with pytest.raises(InvalidRecord, match='cancel-only'):              # still sendable: refused on the record
+            F.replace(target, state=state)
+            raise AssertionError(state)
+    for state in CANCEL_ONLY - {IntentState.CANCELLING}:                     # terminal: never owned by a portfolio
+        with pytest.raises(InvalidRecord, match='not a live state'):
+            F.replace(pf, intents=others + (F.replace(target, state=state),))
+            raise AssertionError(state)
+    stranger = F.Ids(999).id('acct')
+    wrong = F.replace(target, owner_id=F.pf_id(stranger))
+    with pytest.raises(InvalidRecord, match='owned by this portfolio aggregate'):
+        F.replace(pf, intents=others + (wrong,))
+    with pytest.raises(InvalidRecord):                                       # a lot id under the portfolio kind
+        F.replace(target, owner_id=F.Ids(6).id('lot'))
+    with pytest.raises(InvalidRecord, match='not owned by entry_intent'):    # an entry-owned target stays refused
+        F.replace(target, owner_kind=OwnerKind.ENTRY_INTENT, owner_id=F.Ids(5).id('int'), state=IntentState.WORKING)

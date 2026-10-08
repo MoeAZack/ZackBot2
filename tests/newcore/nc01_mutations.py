@@ -263,9 +263,12 @@ MUTATIONS = {
         "        return (purpose, op) in EMERGENCY_SET or (emergency_close and (purpose, op) == (Purpose.CLOSE, Op.PLACE))",
         "        return (purpose, op) in EMERGENCY_SET or (purpose, op) == (Purpose.CLOSE, Op.PLACE)")]),
     'r3 item 4: a resting target may open risk': (D + 'orders.py', [(
-        "            req(u in (Purpose.REDUCE, Purpose.CLOSE) and self.owner_kind is OwnerKind.LOT, p + '.order_type',\n"
-        "                'a resting reduce-only target is a lot REDUCE / CLOSE')",
+        "            req(u in (Purpose.REDUCE, Purpose.CLOSE) and (self.owner_kind is OwnerKind.LOT or self.orphan),\n"
+        "                p + '.order_type', 'a resting reduce-only target is a lot REDUCE / CLOSE (or its orphan cancel)')",
         '            pass')]),
+    'P1 on 02493b6: a resting target has no portfolio-owned orphan cancel form': (D + 'orders.py', [(
+        "            req(u in (Purpose.REDUCE, Purpose.CLOSE) and (self.owner_kind is OwnerKind.LOT or self.orphan),",
+        "            req(u in (Purpose.REDUCE, Purpose.CLOSE) and self.owner_kind is OwnerKind.LOT,")]),
     'r3 item 4: a resting target on any exit reason': (D + 'orders.py', [(
         "            req(self.reason in TARGET_REASONS, p + '.reason',", "            req(True, p + '.reason',")]),
     'r3 item 4: a resting target needs no price': (D + 'orders.py', [(

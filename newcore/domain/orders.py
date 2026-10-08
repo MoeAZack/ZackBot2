@@ -212,8 +212,11 @@ class OrderIntent(Record):
         req((t is OrderType.STOP_MARKET) == (u is Purpose.PROTECT), p + '.order_type', 'PROTECT <=> stop_market')
         req(t is not OrderType.LIMIT_POST_ONLY or u in OPENING, p + '.order_type', 'only ENTRY / ADD may rest as a maker')
         if t is OrderType.LIMIT_REDUCE_ONLY:            # r3 DRAFT item 4: the resting target order kind
-            req(u in (Purpose.REDUCE, Purpose.CLOSE) and self.owner_kind is OwnerKind.LOT, p + '.order_type',
-                'a resting reduce-only target is a lot REDUCE / CLOSE')
+            # Codex P1 on 02493b6: lot-owned, or - once its lot is gone (stop fill / external close / side flip)
+            # while it is being cancelled - the generic orphan form above (PORTFOLIO-owned, cancel-only; the
+            # portfolio checks owner_id == its own id). Never ENTRY_INTENT-owned.
+            req(u in (Purpose.REDUCE, Purpose.CLOSE) and (self.owner_kind is OwnerKind.LOT or self.orphan),
+                p + '.order_type', 'a resting reduce-only target is a lot REDUCE / CLOSE (or its orphan cancel)')
             req(self.reason in TARGET_REASONS, p + '.reason', 'a resting target exits on a take-profit reason')
         if t in LIMIT_TYPES:
             req(self.price is not None, p + '.price', 'a limit order has a price')
