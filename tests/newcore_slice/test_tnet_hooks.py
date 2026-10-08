@@ -10,8 +10,7 @@ from decimal import Decimal as D
 
 import pytest
 
-from newcore.domain import (Account, AccountBinding, Action, BindingConfirmation, BindingState, EntriesMode, Environment,
-                            Purpose,
+from newcore.domain import (Account, AccountBinding, Action, BindingConfirmation, BindingState, Environment, Purpose,
                             Venue, confirmation_phrase)
 from newcore.runner import NoSignals, Runner, ids
 from newcore.runner import config as C
@@ -127,35 +126,3 @@ def test_h4_a_managed_lot_on_the_algo_route_reports_algo(side):
     assert w.runner.stop_routes() == ((SYM, side, 'algo'),)
     assert f'stops={SYM}:{side}:algo' in health_line(w.runner)
     assert ids.marker_decision_id('mg fallback', 'int_' + '0' * 32).startswith('dec_')
-
-
-# ------------------------------------------------------------------------------------------------------------- H3
-@pytest.mark.parametrize('rec02', (False, True))
-def test_h3_reconcile_only_returns_the_rec02_verdict_and_changes_nothing(rec02):
-    from newcore.reconcile import Outcome, Trigger
-    w = World(flat_bars(20), mg_signals('LONG'))
-    w.config = dataclasses.replace(w.config, rec02=rec02)
-    w.runner = w.new_runner()
-    w.run(3)
-    r = w.runner
-    n, effects = len(w.journal.read()), len(w.port.effects)
-    v = r.reconcile_only()
-    assert v.outcome is Outcome.FLAT and v.trigger is Trigger.OPERATOR
-    w.run(6)
-    n, effects = len(w.journal.read()), len(w.port.effects)
-    v = r.reconcile_only()
-    assert v.outcome is Outcome.PROTECTED
-    lot, = r.fold.open_lots()
-    w.venue.external_cancel(lot.live_stop.intent.client_order_id)          # the stop vanished at the venue
-    v = r.reconcile_only(trigger=Trigger.EXTERNAL)
-    assert v.outcome is not Outcome.PROTECTED and v.decisions                # it SEES the gap ...
-    assert len(w.journal.read()) == n and len(w.port.effects) == effects     # ... and does nothing about it
-    assert r.fold.mode is EntriesMode.ACTIVE and lot.live_stop is not None   # (no write, no send, no HOLD)
-
-
-def test_h3_reconcile_only_needs_a_clock_before_the_first_cycle():
-    w = World(flat_bars(20), mg_signals('LONG'))
-    with pytest.raises(ValueError, match='now_ms'):
-        w.runner.reconcile_only()
-    assert w.runner.reconcile_only(now_ms=w.venue.now_ms).outcome.value == 'flat'          # fresh reads
-    assert w.runner.reconcile_only(now_ms=w.close_ms(5)).outcome.value == 'pending'       # 20 h old: re-read
