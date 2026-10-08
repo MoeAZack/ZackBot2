@@ -176,7 +176,7 @@ class PositionState(Record):
         if self.stage in (Stage.ACTIVE, Stage.EXITING):
             req(stop_q <= self.qty, p + '.stop', f'stop {stop_q} exceeds the position {self.qty}')
             req(stop_q >= live, p + '.stop', f'stop {stop_q} does not cover the position {live} not being closed')
-        tq = sum((o.qty for o in (self.tp1, self.tp2) if o is not None), ZERO)
+        tq = CTX.add(self.tp1.qty if self.tp1 is not None else ZERO, self.tp2.qty if self.tp2 is not None else ZERO)
         req(tq <= live, p + '.tp1', f'targets {tq} above the position {live} not being closed')
 
     def racing_qty(self, leg):

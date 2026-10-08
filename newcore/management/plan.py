@@ -45,6 +45,11 @@ def sgn(side):
     return 1 if side is Side.LONG else -1
 
 
+def beyond(side, a, b):
+    """`a` lies strictly on the profit side of `b` for `side` (a comparison: no ambient-context arithmetic)."""
+    return a > b if side is Side.LONG else a < b
+
+
 def better(side, a, b):
     """The tighter (more protective) of two stop levels for `side`."""
     return max(a, b) if side is Side.LONG else min(a, b)
@@ -103,11 +108,11 @@ class ManagementPlan(Record):
     mechanics_only: bool               # a mechanics fixture: no edge is claimed
 
     def _validate(self, p):
-        r, s = self.rules, sgn(self.side)
+        r = self.rules
         r.check_qty(self.entry_qty, p + '.entry_qty')
         positive(self.entry_price, p + '.entry_price')
         r.check_price(self.stop_price, p + '.stop_price')
-        req(s * (self.entry_price - self.stop_price) > 0, p + '.stop_price', 'on the wrong side of the entry')
+        req(beyond(self.side, self.entry_price, self.stop_price), p + '.stop_price', 'on the wrong side of the entry')
         req(self.candle_seconds >= 60, p + '.candle_seconds', 'at least one minute')
         add = (self.add_price, self.add_scale, self.add_qty)
         req(all(x is None for x in add) or all(x is not None for x in add), p + '.add_price',
@@ -115,7 +120,7 @@ class ManagementPlan(Record):
         total = self.entry_qty
         if self.add_price is not None:
             r.check_price(self.add_price, p + '.add_price')
-            req(s * (self.add_price - self.stop_price) > 0, p + '.add_price', 'at or beyond the stop')
+            req(beyond(self.side, self.add_price, self.stop_price), p + '.add_price', 'at or beyond the stop')
             req(self.add_price != self.entry_price, p + '.add_price', 'at the entry price')
             positive(self.add_scale, p + '.add_scale')
             req(self.add_qty == r.quantize_qty(CTX.multiply(self.add_scale, self.entry_qty), Rounding.DOWN),
@@ -151,7 +156,7 @@ class ManagementPlan(Record):
 
     @property
     def add_is_pyramid(self):
-        return self.has_add and sgn(self.side) * (self.add_price - self.entry_price) > 0
+        return self.has_add and beyond(self.side, self.add_price, self.entry_price)
 
     @property
     def tf_ms(self):

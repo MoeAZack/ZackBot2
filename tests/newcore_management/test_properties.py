@@ -190,7 +190,7 @@ def random_inputs(rng, p, st, last_actions, price, i, used):
     return tuple(batch), None, price, False
 
 
-def run_live(seed, steps=80):
+def run_live(seed, steps=80, record=None):
     rng = random.Random(seed)
     p = None
     while p is None:
@@ -216,6 +216,8 @@ def run_live(seed, steps=80):
             SEEN.add(('refused', conf[0].leg))
             continue
         r = step(p, before, conf, candle)
+        if record is not None:
+            record.append((p, before, conf, candle, r))
         assert step(p, before, conf, candle) == r, seed            # deterministic
         rebuilt = type(before)(**{f.name: getattr(before, f.name) for f in dataclasses.fields(before)})
         assert step(p, rebuilt, conf, candle) == r, seed           # same inputs from a persisted copy

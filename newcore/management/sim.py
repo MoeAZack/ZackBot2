@@ -104,7 +104,7 @@ def simulate_candle(plan, state, candle, *, close_request=None):
             lv = _levels(plan, st, blocked)
             hit = next(((g, x) for g in PRIORITY for leg, p, falls in lv if leg is g and _through(p, falls, x)), None)
             if hit is None:
-                cand = [(abs(p - x), PRIORITY.index(leg), leg, p) for leg, p, falls in lv
+                cand = [(CTX.abs(CTX.subtract(p, x)), PRIORITY.index(leg), leg, p) for leg, p, falls in lv
                         if (falls and y <= p < x) or (not falls and x < p <= y)]
                 if not cand:
                     break
