@@ -214,7 +214,7 @@ def test_transport_has_no_secret_attribute():
 # ---------- import boundary ----------
 
 ALLOWED_STDLIB = {'__future__', 'dataclasses', 'decimal', 'enum', 'hashlib', 'hmac', 'json', 'logging', 're',
-                  'typing', 'urllib', 'urllib.parse'}
+                  'typing', 'unicodedata', 'urllib', 'urllib.parse'}
 FORBIDDEN = {'socket', 'ssl', 'http', 'http.client', 'urllib.request', 'requests', 'urllib3', 'aiohttp', 'httpx',
              'os', 'time', 'datetime', 'random', 'uuid', 'subprocess', 'threading'}
 LEGACY = {'binance_client', 'engine', 'app', 'backtest', 'strategies', 'grid', 'exchange_rules', 'market_data',

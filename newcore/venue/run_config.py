@@ -47,16 +47,24 @@ def default_testnet_config_path(environ=None):
     return os.path.join(env.get('LOCALAPPDATA') or os.path.expanduser('~'), 'ZackBotNC', 'config', 'testnet.toml')
 
 
-def _scan(node, path=''):
-    if isinstance(node, dict):
-        for k, v in node.items():
-            if is_sensitive_name(str(k)) and k != 'key_digest':
-                raise RunConfigError(f'{path}{k}: a credential-like field in a run config is refused (keys live in '
-                                     f'the DPAPI store only)')
-            _scan(v, f'{path}{k}.')
-    elif isinstance(node, list):
-        for v in node:
-            _scan(v, path)
+MAX_DEPTH = 16
+
+
+def _scan(root):
+    """Iterative (no recursion: a deeply nested file is refused, never a RecursionError). Names only are echoed."""
+    stack = [(root, '', 0)]
+    while stack:
+        node, path, depth = stack.pop()
+        if depth > MAX_DEPTH:
+            raise RunConfigError(f'{path or "$"}: nested deeper than {MAX_DEPTH} levels')
+        if isinstance(node, dict):
+            for k, v in node.items():
+                if is_sensitive_name(str(k)) and k != 'key_digest':
+                    raise RunConfigError('a credential-like field name in a run config is refused (keys live in '
+                                         'the DPAPI store only)')
+                stack.append((v, f'{path}{k}.' if isinstance(k, str) and len(k) <= 40 else f'{path}?.', depth + 1))
+        elif isinstance(node, list):
+            stack.extend((v, path, depth + 1) for v in node)
 
 
 def parse_testnet_config(doc, source=''):
@@ -68,10 +76,9 @@ def parse_testnet_config(doc, source=''):
         raise RunConfigError('venue / strategy / account must be tables')
     v, s, a = sections['venue'], sections['strategy'], sections['account']
     if doc.get('mode') != 'TESTNET':
-        raise RunConfigError(f'mode={doc.get("mode")!r}: a TESTNET config is required')
+        raise RunConfigError('mode: a TESTNET config is required')
     if v.get('kind', 'testnet') != 'testnet' or v.get('factory') != FACTORY:
-        raise RunConfigError(f'venue.kind must be testnet and venue.factory {FACTORY} (got {v.get("kind")!r} / '
-                             f'{v.get("factory")!r})')
+        raise RunConfigError(f'venue.kind must be testnet and venue.factory {FACTORY}')
     acct, digest = a.get('id'), a.get('key_digest')
     if not (isinstance(acct, str) and ACCOUNT_RE.fullmatch(acct)):
         raise RunConfigError('account.id: an explicit acct_ + 32 hex is required')
@@ -81,8 +88,8 @@ def parse_testnet_config(doc, source=''):
     if pf is not None and not (isinstance(pf, str) and PORTFOLIO_RE.fullmatch(pf)):
         raise RunConfigError('account.portfolio_id: pf_ + 32 hex')
     symbols = s.get('symbols', ['BTCUSDT'])
-    if not (isinstance(symbols, list) and symbols and len(set(symbols)) == len(symbols) and
-            all(isinstance(x, str) and SYMBOL_RE.fullmatch(x) for x in symbols)):
+    if not (isinstance(symbols, list) and symbols and all(isinstance(x, str) and SYMBOL_RE.fullmatch(x)
+                                                           for x in symbols) and len(set(symbols)) == len(symbols)):
         raise RunConfigError('strategy.symbols: a non-empty list of distinct symbols')
     return TestnetRunConfig(source=source, account_id=acct, key_digest=digest, symbols=tuple(symbols), portfolio_id=pf)
 
@@ -93,13 +100,13 @@ def load_testnet_config(path):
         with open(path, 'rb') as fh:
             raw = fh.read()
     except OSError as ex:
-        raise RunConfigError(f'cannot read {path}: {type(ex).__name__}') from None
+        raise RunConfigError(f'cannot read the config ({type(ex).__name__})') from None
     try:
         if str(path).lower().endswith('.toml'):
             import tomllib
             doc = tomllib.loads(raw.decode('utf-8'))
         else:
             doc = json.loads(raw.decode('utf-8'))
-    except (ValueError, UnicodeDecodeError) as ex:
-        raise RunConfigError(f'{path} is not valid TOML / JSON ({type(ex).__name__})') from None
+    except (ValueError, UnicodeDecodeError, RecursionError) as ex:
+        raise RunConfigError(f'not valid TOML / JSON ({type(ex).__name__})') from None
     return parse_testnet_config(doc, source=str(path))

@@ -41,6 +41,21 @@ PREFLIGHT_REFUSED = 10
 DEFAULT_MIN_BALANCE = Decimal('100')
 
 
+ADOPT_POSITION_RE = re.compile(r'[A-Z0-9]{2,30}:(LONG|SHORT)')
+ADOPT_CID_RE = re.compile(r'[A-Za-z0-9_.-]{1,36}')
+
+
+def adopt_refusal(value):
+    """None if `value` is a valid --adopt-foreign item (SYMBOL:LONG / SYMBOL:SHORT, or a client id), else why."""
+    if not isinstance(value, str) or not value:
+        return 'empty'
+    if ':' in value:
+        return None if ADOPT_POSITION_RE.fullmatch(value) else 'a position is SYMBOL:LONG or SYMBOL:SHORT'
+    if is_newcore_cid(value):
+        return 'a NEWCORE order is never adopted (run the cleanup)'
+    return None if ADOPT_CID_RE.fullmatch(value) else 'a client id is [A-Za-z0-9_.-]{1,36}'
+
+
 def is_newcore_cid(cid):
     return isinstance(cid, str) and NEWCORE_CID_RE.fullmatch(cid) is not None
 
@@ -113,7 +128,8 @@ def tnet_preflight(venue, account_reader, symbols, *, min_balance=DEFAULT_MIN_BA
                 orders.append(o)
                 cid = o.ref.client_id
                 if is_newcore_cid(cid):
-                    refusals.append(f'leftover_newcore_order:{sym}:{cid}')      # run tnet_cleanup first
+                    refusals.append(f'leftover_newcore_order:{sym}:{cid} (run: python tools/newcore_tnet.py '
+                                    f'--cleanup)')
                 elif cid not in adopt:
                     refusals.append(f'foreign_order:{sym}:{cid}')
     return PreflightResult(not refusals, tuple(refusals), balance, tuple(positions), tuple(orders), baseline)

@@ -38,11 +38,15 @@ def decode_json(body):
         return json.loads(text, parse_float=Decimal, parse_constant=_bad_constant, object_pairs_hook=_no_dup_pairs)
     except MalformedResponse:
         raise
-    except (UnicodeDecodeError, ValueError, RecursionError) as ex:
+    except (UnicodeDecodeError, ValueError, RecursionError, ArithmeticError) as ex:     # 1E+99999999999999999999
         raise MalformedResponse(f'body is not JSON ({type(ex).__name__})') from None
 
 
 _NUM = re.compile(r'^-?[0-9]+(\.[0-9]+)?$')
+MAX_NUM_TEXT = 64                  # a venue number longer than this is malformed (no 1 MB digit strings)
+MAX_ADJUSTED = 40                  # |exponent| cap: 1e999999999 is refused before any arithmetic (no OOM)
+MAX_INT = 2 ** 63
+MS_MIN, MS_MAX = 946_684_800_000, 4_102_444_799_999      # 2000-01-01 .. 2099-12-31 UTC
 
 
 def dec(row, key, *, nonneg=False, positive=False, optional=False):
@@ -61,15 +65,25 @@ def dec(row, key, *, nonneg=False, positive=False, optional=False):
         if not v.is_finite():
             raise MalformedResponse(f'{key}: non-finite')
         d = v
-    elif isinstance(v, str) and _NUM.fullmatch(v):
+    elif isinstance(v, str) and len(v) <= MAX_NUM_TEXT and _NUM.fullmatch(v):
         d = Decimal(v)
     else:
         raise MalformedResponse(f'{key}: not a decimal number')
+    if d and not -MAX_ADJUSTED <= d.adjusted() <= MAX_ADJUSTED or len(d.as_tuple().digits) > MAX_NUM_TEXT:
+        raise MalformedResponse(f'{key}: out of range')
     if positive and d <= 0:
         raise MalformedResponse(f'{key}: must be > 0')
     if nonneg and d < 0:
         raise MalformedResponse(f'{key}: must be >= 0')
     return d
+
+
+def server_ms(row, key):
+    """A venue timestamp in UTC ms, 2000..2099 (1e20 / 1e300 / 2.5e14 are malformed, never OSError later)."""
+    v = integer(row, key, positive=True)
+    if not MS_MIN <= v <= MS_MAX:
+        raise MalformedResponse(f'{key}: not a UTC ms timestamp in 2000..2099')
+    return v
 
 
 def integer(row, key, *, optional=False, positive=False, nonneg=False):
@@ -82,10 +96,12 @@ def integer(row, key, *, optional=False, positive=False, nonneg=False):
     v = row[key]
     if isinstance(v, bool):
         raise MalformedResponse(f'{key}: boolean is not an integer')
-    if isinstance(v, str) and re.fullmatch(r'^-?[0-9]+$', v):
+    if isinstance(v, str) and len(v) <= MAX_NUM_TEXT and re.fullmatch(r'^-?[0-9]+$', v):
         v = int(v)
     if not isinstance(v, int):
         raise MalformedResponse(f'{key}: not an integer')
+    if not -MAX_INT < v < MAX_INT:
+        raise MalformedResponse(f'{key}: out of range')
     if positive and v <= 0:
         raise MalformedResponse(f'{key}: must be > 0')
     if nonneg and v < 0:
@@ -218,7 +234,7 @@ def parse_exchange_info(data):
         if rules.symbol in symbols:
             raise MalformedResponse('duplicate symbol in exchangeInfo')
         symbols[rules.symbol] = rules
-    return ExchangeInfo(server_time_ms=integer(data, 'serverTime', positive=True), rate_limits=tuple(limits),
+    return ExchangeInfo(server_time_ms=server_ms(data, 'serverTime'), rate_limits=tuple(limits),
                         symbols=symbols, unparseable=tuple(bad))
 
 
@@ -566,4 +582,4 @@ def parse_premium_index(data):
 
 
 def parse_server_time(data):
-    return integer(as_obj(data, 'time'), 'serverTime', positive=True)
+    return server_ms(as_obj(data, 'time'), 'serverTime')

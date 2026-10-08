@@ -59,7 +59,12 @@ class TestnetBarSource:
         if tf_ms not in INTERVALS:
             raise PortValueError('tf_ms', f'no Binance interval for {tf_ms} ms')
         self.last_gaps = ()
-        now = self._clock()
+        try:
+            now = self._clock()
+            if type(now) is not int or now <= 0:
+                raise ValueError('clock')
+        except Exception:                                 # noqa: BLE001 - an unusable clock is an UNKNOWN read
+            return P.ReadOutcome(kind=P.ReadKind.UNKNOWN, observed_at_ms=1_000_000_000_000, detail='clock')
         cutoff = min(as_of_ms, now)                     # a future as_of can never admit the forming candle
         interval = INTERVALS[tf_ms]
         by_open = {}
@@ -99,6 +104,8 @@ class TestnetBarSource:
         if gaps:
             self.last_gaps = gaps
             return self._unknown(now, 'gap')
+        if not bars or bars[-1].close_ms != cutoff // tf_ms * tf_ms:
+            return self._unknown(now, 'stale')        # the newest CLOSED candle must be the one just before cutoff
         try:
             B.check_closed_bars(bars, tf_ms, cutoff)
         except PortValueError:

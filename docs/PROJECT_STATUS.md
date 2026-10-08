@@ -207,6 +207,8 @@ Every ticket now ends with a **clean-up pass on the files it touched**: remove d
 | Copy product | **COPY100/COPY200** | $500 lead with $100–$200 follower targets and a UI feasibility toggle after BT01/BT02 |
 | Contracts | **REC-01 / OPS-UI-01 / ORD-REC-01** | Freeze the legacy failures as NEWCORE acceptance tests; fixes land only in replacement components/UI |
 | Core | **B5 + NC-01–NC-09 — NEWCORE** | Replacement-first shared live/replay/backtest logic; old T06–T09 extraction is superseded |
+| Integrated recovery gate | **REC-02** | One exchange-truth reconciliation matrix across restart, ambiguity, partial/late fills, manual changes, orphans and protection; every result flat, protected or explicit HOLD |
+| Automated testnet gate | **TNET-01** | Complete long and short NEWCORE lifecycles plus stop/target, partial close, bounded DCA, cancel/replace, lost answer and restart; required before strategy runtime promotion |
 | Strategy research | **T09a** | Range, short and scalp families; Quick Bank TP/runner/micro-DCA components; research/shadow first |
 | Regime and macro | **T09b** | Per-asset/timeframe regimes plus USD, US bonds/rates, equities, commodities and optional TradingView evidence |
 | Scale and control | **T10–T13a** | Order budgets, trade records, scorecards, bounded risk grades and Manual/Recommend/Automatic authority |
@@ -262,6 +264,10 @@ How scouting works: Claude and Codex look at what leading bots do (3Commas, Cryp
 
 GitHub is the message channel. Claude pushes a ticket's commit and posts **READY FOR CODEX** on the pull request; Codex reviews the exact commit and replies there; Claude fixes and posts **FIXED FOR CODEX**; this repeats until Codex accepts. Then this page is refreshed, the pull request is merged under the branch rules, and the next ticket starts. You do not need to carry messages.
 
-## Safety boundaries (unchanged)
+## Current safety boundaries
 
-Testnet only. No mainnet keys, no live orders, no withdrawal permissions. Existing testnet positions are disposable test data and do not block bounded automated tests. You are still asked first before an installer run, rollback drill, deliberate bot stop/restart, credential change, repository visibility change, or anything that could reach mainnet.
+Testnet only. No mainnet keys, no live orders and no withdrawal permissions. Existing testnet positions and P&L are
+disposable test data and do not block bounded automated tests. Routine PAPER/testnet installs, rollback drills,
+stops/restarts, canaries, test orders and non-protected branch/merge work are pre-approved and do not wait for the owner.
+Stop only for mainnet or real-funds reach, credentials/secrets, an environment that cannot be confirmed as testnet, a
+repository-visibility change, an unrelated destructive action, or an unavoidable product confirmation.

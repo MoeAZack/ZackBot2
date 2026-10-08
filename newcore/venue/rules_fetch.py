@@ -135,7 +135,15 @@ def fetch_rules(http, *, symbols, clock, environment='testnet'):
     if out.kind is not ReadKind.OK:
         reason = out.unknown_reason if out.kind is ReadKind.UNKNOWN else f'rejected_{out.error.code}'
         raise RulesUnavailable(f'exchangeInfo not readable ({out.kind.value})', reason or 'unknown')
-    info = out.value
+    try:
+        return _snapshot(out.value, symbols, capture, clock, environment)
+    except (ArithmeticError, OverflowError, OSError, ValueError, TypeError) as ex:   # typed, never a crash
+        if isinstance(ex, SymbolRefused):
+            raise
+        raise RulesUnavailable(f'exchangeInfo did not build a snapshot ({type(ex).__name__})', 'malformed') from None
+
+
+def _snapshot(info, symbols, capture, clock, environment):
     rows = {}
     for s in symbols:
         if s in info.unparseable:

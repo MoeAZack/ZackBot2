@@ -115,6 +115,56 @@ def test_schema_rejects_codes_outside_the_registry(code):
         schema.validate(c)
 
 
+# ------------------------------------------------------------------ slot.dca values (Cowork review of #40)
+def _dca_case():
+    return copy.deepcopy(schema.load(os.path.join(schema.CASES_DIR, 'G-GAP-DCA-ONEADD-L-01.json')))
+
+
+def test_every_dca_case_in_the_pack_validates():
+    dca = [c for c in schema.load_all() if 'dca' in c['slot']]
+    assert {c['id'] for c in dca} >= {'G-GAP-DCA-L-01', 'G-GAP-DCA-ONEADD-L-01', 'G-DCA-SLIP-L-01'}
+    for c in dca:
+        schema.validate(c)
+
+
+@pytest.mark.parametrize('n', [0, -1, 11, 10 ** 9, 1.5, 1.0, True, False, '1', 'nan', None])
+def test_schema_rejects_a_bad_dca_n(n):
+    c = _dca_case()
+    c['slot']['dca']['n'] = n
+    with pytest.raises(schema.CaseError, match='slot.dca.n'):
+        schema.validate(c)
+
+
+@pytest.mark.parametrize('key', ['step_atr', 'scale', 'tp_atr', 'stop_atr'])
+@pytest.mark.parametrize('v', ['0', '0.0', '-1', '101', '1e9', '1E2', 'inf', 'Infinity', 'nan', '+1', ' 1', '1.', '.5',
+                               '01', '', 1, 1.5, 0.5, True, None])
+def test_schema_rejects_a_bad_dca_multiple(key, v):
+    c = _dca_case()
+    c['slot']['dca'][key] = v
+    with pytest.raises(schema.CaseError, match=f'slot.dca.{key}'):
+        schema.validate(c)
+
+
+@pytest.mark.parametrize('mutation', ['missing', 'extra', 'not_a_dict'])
+def test_schema_rejects_a_malformed_dca_block(mutation):
+    c = _dca_case()
+    if mutation == 'missing':
+        del c['slot']['dca']['tp_atr']
+    elif mutation == 'extra':
+        c['slot']['dca']['frac'] = '0.5'
+    else:
+        c['slot']['dca'] = [1, '1', '1', '1', '1']
+    with pytest.raises(schema.CaseError, match='slot.dca'):
+        schema.validate(c)
+
+
+@pytest.mark.parametrize('n,v', [(1, '1'), (3, '1.5'), (10, '100'), (1, '0.25')])
+def test_schema_accepts_valid_dca_values(n, v):
+    c = _dca_case()
+    c['slot']['dca'].update(n=n, scale=v)
+    schema.validate(c)
+
+
 # ------------------------------------------------------------------ behaviour registry (Codex golden r3 residual ruling, 1)
 def test_behaviour_registry_is_versioned_and_append_only():
     """One meaning per ID: the published prefix (IDs, order AND meanings) is pinned; an ID is deprecated, never removed,

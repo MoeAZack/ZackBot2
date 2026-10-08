@@ -10,20 +10,26 @@ A registered value shorter than MIN_SECRET_LEN is REFUSED (ValueError), never si
 redacted safely, and silently skipping it was exactly the leak.
 """
 import re
+import unicodedata
 import urllib.parse
 
 REDACTED = '<redacted>'
 MIN_SECRET_LEN = 8
 SENSITIVE_FRAGMENTS = ('listenkey', 'signature', 'apikey', 'secret', 'token', 'cookie', 'password', 'passwd',
-                       'authorization', 'privatekey')
+                       'authorization', 'privatekey',
+                       # Cowork #37 R1 verbatim names (checked against every allow-listed Binance name: no clash)
+                       'key', 'sig', 'jwt', 'bearer', 'session', 'credential', 'passphrase', 'mnemonic', 'hmac',
+                       'pwd', 'auth', 'seed', 'otp')
 _SEP = '[-_ ]?'
 # Long token-like runs, separators included (finding 3: a secret split by '_' or '-' must not slip through).
 TOKEN_RUN = re.compile(r'[A-Za-z0-9_\-+/=]{32,}')
 
 
 def normalize_name(name):
-    n = urllib.parse.unquote_plus(str(name)).lower()
-    return re.sub(r'[-_.\s]', '', n)
+    """Percent-decoded, NFKC-normalised (fullwidth 'ｓｉｇｎａｔｕｒｅ' -> 'signature'), case-folded, and every
+    character that is not a letter or digit dropped (separators, zero-width and format characters included)."""
+    n = unicodedata.normalize('NFKC', urllib.parse.unquote_plus(str(name))).casefold()
+    return ''.join(ch for ch in n if ch.isalnum())
 
 
 def is_sensitive_name(name):

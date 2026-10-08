@@ -98,6 +98,9 @@ def leak_audit(doc):
     return None
 
 
+STRICT_FAIL_REASONS = ('malformed', 'unrepresentable')     # a renamed field / bogus status is NOT a pass
+
+
 def _outcome_text(out):
     kind = getattr(getattr(out, 'kind', None), 'value', None)
     reason = getattr(out, 'unknown_reason', None)
@@ -123,6 +126,10 @@ def replay_report(doc):
             label, call = _call_for(req)
             label = f'#{i} {label}'
             out = call(venue.transport)
+            if getattr(out, 'unknown_reason', None) in STRICT_FAIL_REASONS:   # the answer did not parse
+                failed = True
+                results.append(InteractionResult(i, label, 'FAIL', _outcome_text(out)))
+                continue
             results.append(InteractionResult(i, label, 'PASS', _outcome_text(out)))
         except Exception as ex:                # unsupported / mismatch / seam error: this interaction fails
             failed = True

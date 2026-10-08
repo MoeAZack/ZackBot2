@@ -39,8 +39,8 @@ def recorded(*answers, requests=None, redact=()):
 
 def test_listenkey_in_response_body_is_redacted_and_learned():
     rec, text = recorded(ok(json.dumps({'listenKey': LK})))
-    assert LK not in text and json.loads(text)['interactions'][0]['response']['body_text'] == \
-        '{"listenKey": "<redacted>"}'
+    assert LK not in text and json.loads(json.loads(text)['interactions'][0]['response']['body_text']) == \
+        {'listenKey': '<redacted>'}
 
 
 def test_listenkey_in_request_query_is_redacted():
@@ -83,7 +83,9 @@ def test_secret_in_set_cookie_and_cookie_headers():
                        requests=[req('a=1', (('Cookie', f'session={DUMMY_SECRET}'),))])
     assert DUMMY_SECRET not in text
     it = json.loads(text)['interactions'][0]
-    assert it['response']['headers']['Set-Cookie'] == '<redacted>' and it['response']['headers']['X-Other'] == 'fine'
+    # allow-list (R1): an unknown header keeps its name, never its value
+    assert it['response']['headers']['Set-Cookie'] == '<redacted>' and \
+        it['response']['headers']['X-Other'] == '<redacted>'
     assert ['Cookie', '<redacted>'] in it['request']['headers']
 
 
@@ -134,12 +136,13 @@ def test_unregistered_value_under_sensitive_response_header(name):
     assert UNREG not in text and '"X-MBX-USED-WEIGHT-1M": "3"' in text
 
 
-def test_sensitive_value_that_cannot_be_blanked_fails_closed():
-    # A sensitive key holding a structure (not a scalar) cannot be blanked in place: refuse the whole cassette.
+def test_a_sensitive_key_holding_a_structure_is_blanked_whole():
+    # JSON bodies are walked structurally (R1): the whole value of a sensitive / unknown key becomes <redacted>.
     rec = CassetteRecorder(FakeHttp(ok(json.dumps({'token': [UNREG, {'x': UNREG}]}))))
     rec(req())
-    with pytest.raises(CassetteLeak):
-        rec.to_json()
+    text = rec.to_json()
+    assert UNREG not in text
+    assert json.loads(json.loads(text)['interactions'][0]['response']['body_text']) == {'token': '<redacted>'}
 
 
 # ---------- learning + back-propagation ----------
@@ -169,11 +172,11 @@ def test_binary_body_by_name_and_value():
 
 # ---------- fail closed ----------
 
-def test_nested_sensitive_object_fails_closed():
-    rec = CassetteRecorder(FakeHttp(ok(json.dumps({'data': {'secret': {'value': 'x'}}}))))
+def test_nested_unknown_object_is_blanked_whole():
+    rec = CassetteRecorder(FakeHttp(ok(json.dumps({'data': {'secret': {'value': 'xxxxxxxxxxxx'}}}))))
     rec(req())
-    with pytest.raises(CassetteLeak):
-        rec.to_json()
+    text = rec.to_json()
+    assert json.loads(json.loads(text)['interactions'][0]['response']['body_text']) == {'data': '<redacted>'}
 
 
 def test_post_hoc_injected_value_fails_closed(tmp_path):
@@ -230,7 +233,8 @@ def test_ordinary_answers_are_untouched():
                        'msg': 'Signature for this request is not valid.'})
     _, text = recorded(ok(body, {'X-MBX-USED-WEIGHT-1M': '5'}))
     it = json.loads(text)['interactions'][0]
-    assert it['response']['body_text'] == body and it['response']['headers'] == {'X-MBX-USED-WEIGHT-1M': '5'}
+    assert json.loads(it['response']['body_text']) == json.loads(body)
+    assert it['response']['headers'] == {'X-MBX-USED-WEIGHT-1M': '5'}
 
 
 # ---------- replay compares sensitive params by presence ----------

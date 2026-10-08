@@ -33,11 +33,12 @@ from newcore.venue.clock import OffsetClock, system_clock_ms  # noqa: E402
 from newcore.venue.credentials import (CredentialsUnavailable, CredentialStore, CredentialStoreError,  # noqa: E402
                                        SecretScrubber, binding_digest, check_root)
 from newcore.venue.outcomes import ReadKind as TR  # noqa: E402  (transport-level reads)
+from newcore.venue.redact import scrub_tokens  # noqa: E402
 from newcore.venue.run_config import RunConfigError, default_testnet_config_path, load_testnet_config  # noqa: E402
 from newcore.venue.smoke import CORE8  # noqa: E402
 from newcore.venue.testnet_venue import TestnetAccountReader, TestnetVenue  # noqa: E402
-from newcore.venue.tnet import (ReportLeak, default_report_dir, format_cleanup, git_build, guarded,  # noqa: E402
-                                tnet_cleanup, tnet_preflight, tnet_report)
+from newcore.venue.tnet import (ReportLeak, adopt_refusal, default_report_dir, format_cleanup,  # noqa: E402
+                                git_build, guarded, tnet_cleanup, tnet_preflight, tnet_report)
 from newcore.venue.tnet_exec import run_spec  # noqa: E402
 from newcore.venue.tnet_probes import ProbeAborted, probe_p1, probe_p2  # noqa: E402
 from newcore.venue.tnet_seams import DeadlineExceeded, DeadlinePort, FaultHttp, RunDeadline  # noqa: E402
@@ -80,6 +81,12 @@ def _parser():
     p.add_argument('--settle-s', type=float, default=2.0,
                    help='the cleanup confirms a clean read this long later (venue read lag); 0..10')
     p.add_argument('--gate', action='store_true', help='refuse a dirty working tree (exact-build report)')
+    p.add_argument('--cleanup', action='store_true',
+                   help='after a crash / kill -9: cancel every open NEWCORE order (zbn1o- / zbn1a- / zbn1e-) on the '
+                        'symbols, list every position; never touches a foreign order')
+    p.add_argument('--close-positions', action='store_true',
+                   help='with --cleanup: also close every position above its --adopt-foreign baseline with a '
+                        'reduce-only market order (you assert they are NEWCORE exposure)')
     return p
 
 
@@ -107,7 +114,8 @@ class _Recording:
 def _plan(args, specs, symbols, cassette_dir, report_dir, stored):
     lines = ['TNET-01 venue harness - PLAN (dry run: no network call, no key decrypted)',
              f'  account {args.account_id} (stored testnet key: {"yes" if stored else "NO"}); testnet host only',
-             f'  symbols {", ".join(symbols)}; cassette dir {cassette_dir}; report dir {report_dir}', '',
+             f'  symbols {", ".join(symbols)}; cassette dir {scrub_tokens(cassette_dir)}; report dir '
+             f'{scrub_tokens(report_dir)}', '',
              '1. preflight: testnet host, hedge mode, available balance >= ' + args.min_balance +
              ' USDT, flat + no open orders on the symbols' + (f' (adopting {args.adopt_foreign})' if args.adopt_foreign
                                                               else '')]
@@ -121,7 +129,7 @@ def _plan(args, specs, symbols, cassette_dir, report_dir, stored):
                          f'stop, poll open orders, cancel, close, poll flat)')
         n += 1
     for path, spec in specs:
-        lines.append(f'{n}. scenario {spec["name"]} ({path}, digest {spec_digest(spec)[:12]}):')
+        lines.append(f'{n}. scenario {spec["name"]} ({scrub_tokens(path)}, digest {spec_digest(spec)[:12]}):')
         lines += [f'     - {st["id"]}: {st["op"]} ' + ', '.join(f'{k}={v}' for k, v in st.items()
                                                                  if k not in ('id', 'op')) for st in spec['steps']]
         lines += [f'     ! fault {f["kind"]} x{f.get("times", 1)} at {f["at"]}' for f in spec.get('faults', [])]
@@ -147,10 +155,21 @@ def _write_cassette(recorder, directory, stamp, values, out):
     return path
 
 
-def main(argv=None, *, http=None, local_clock=None, protector=None, out=None, monotonic=None, sleep=None,
-         git_run=None):
-    argv = list(sys.argv[1:] if argv is None else argv)
+def main(argv=None, *, out=None, **kw):
+    """Typed exit codes only: an unexpected exception is EXIT_FAIL (7) with its type, never a traceback with exit 1
+    (= INCONCLUSIVE). Sends happen only inside the guarded body, whose teardown has run by then."""
     out = out or sys.stdout
+    try:
+        return _main(argv, out=out, **kw)
+    except Exception as ex:                                          # noqa: BLE001
+        out.write(f'ERROR: unexpected {type(ex).__name__} (details withheld: they may echo input). The guarded '
+                  f'cleanup has run if anything was sent.\n')
+        return EXIT_FAIL
+
+
+def _main(argv=None, *, http=None, local_clock=None, protector=None, out=None, monotonic=None, sleep=None,
+          git_run=None):
+    argv = list(sys.argv[1:] if argv is None else argv)
     refusal = argv_refusal(argv)
     if refusal is not None:
         why = ACCOUNT_REFUSAL if refusal == ACCOUNT_REFUSAL else 'keys are never passed on the command line'
@@ -166,15 +185,57 @@ def main(argv=None, *, http=None, local_clock=None, protector=None, out=None, mo
     if not 0 < args.deadline_s <= 7200:
         out.write('REFUSED: --deadline-s must be in (0, 7200].\n')
         return EXIT_USAGE
-    if not args.probe and not args.scenario:
-        out.write('REFUSED: give at least one --probe or --scenario.\n')
+    if args.cleanup and (args.probe or args.scenario):
+        out.write('REFUSED: --cleanup runs alone (no --probe / --scenario).\n')
         return EXIT_USAGE
+    if args.close_positions and not args.cleanup:
+        out.write('REFUSED: --close-positions goes with --cleanup.\n')
+        return EXIT_USAGE
+    if not args.probe and not args.scenario and not args.cleanup:
+        out.write('REFUSED: give at least one --probe or --scenario (or --cleanup).\n')
+        return EXIT_USAGE
+    for flag, v, lo, hi in (('--p2-samples', args.p2_samples, 1, 10),
+                            ('--cleanup-attempts', args.cleanup_attempts, 1, 10)):
+        if not lo <= v <= hi:
+            out.write(f'REFUSED: {flag} must be in {lo}..{hi}.\n')
+            return EXIT_USAGE
     try:
         min_balance = Decimal(args.min_balance)
-        specs = [(p, load_spec(p)) for p in args.scenario]
-    except (InvalidOperation, SpecError, OSError) as ex:
-        out.write(f'REFUSED: {type(ex).__name__}: {ex}\n')
+        if not min_balance.is_finite() or min_balance < 0:
+            raise InvalidOperation
+    except InvalidOperation:
+        out.write('REFUSED: --min-balance must be a finite decimal >= 0.\n')
         return EXIT_USAGE
+    for d, flag in ((args.report_dir, '--report-dir'), (args.cassette_dir, '--cassette-dir')):
+        if d is not None and os.path.exists(d) and not os.path.isdir(d):
+            out.write(f'REFUSED: {flag} is not a directory.\n')
+            return EXIT_USAGE
+    specs = []
+    for i, p in enumerate(args.scenario):
+        try:
+            specs.append((p, load_spec(p)))
+        except SpecError as ex:
+            out.write(f'REFUSED: --scenario #{i + 1}: {ex}\n')                 # the path is not echoed
+            return EXIT_USAGE
+        except OSError as ex:
+            out.write(f'REFUSED: --scenario #{i + 1}: cannot read it ({type(ex).__name__})\n')
+            return EXIT_USAGE
+        if 'testnet' not in specs[-1][1].get('targets', ['testnet']):
+            out.write(f'REFUSED: --scenario #{i + 1} ({specs[-1][1]["name"]}) is not a testnet scenario '
+                      f'(targets {specs[-1][1]["targets"]}).\n')
+            return EXIT_USAGE
+    adopt = list(args.adopt_foreign)
+    for _, sp in specs:                              # the spec's own account section is honoured (T3)
+        acc = sp.get('account', {})
+        if 'min_balance' in acc:
+            min_balance = max(min_balance, Decimal(acc['min_balance']))
+        adopt += [a for a in acc.get('adopt_foreign', []) if a not in adopt]
+    for a in adopt:
+        why = adopt_refusal(a)
+        if why is not None:
+            out.write(f'REFUSED: --adopt-foreign item: {why}.\n')
+            return EXIT_USAGE
+    args.adopt_foreign = adopt
     run_cfg = None
     if args.config is None and args.account_id is None and os.path.isfile(default_testnet_config_path()):
         args.config = default_testnet_config_path()
@@ -182,7 +243,7 @@ def main(argv=None, *, http=None, local_clock=None, protector=None, out=None, mo
         try:
             run_cfg = load_testnet_config(args.config)          # READ only: the file is never written
         except RunConfigError as ex:
-            out.write(f'REFUSED: config {args.config}: {ex}\n')
+            out.write(f'REFUSED: --config: {ex}\n')
             return EXIT_USAGE
         if args.account_id is not None and args.account_id != run_cfg.account_id:
             out.write(f'REFUSED: --account-id {args.account_id} disagrees with the config ({run_cfg.account_id}).\n')
@@ -192,13 +253,16 @@ def main(argv=None, *, http=None, local_clock=None, protector=None, out=None, mo
             return EXIT_USAGE
         args.account_id = run_cfg.account_id
         args.symbol = args.symbol or run_cfg.symbols[0]
-        out.write(f'config {args.config}: account {run_cfg.account_id}, binding {run_cfg.key_digest}, symbols '
+        out.write(f'config {scrub_tokens(args.config)}: account {run_cfg.account_id}, binding {run_cfg.key_digest}, '
+                  f'symbols '
                   f'{", ".join(run_cfg.symbols)}\n')
     if args.account_id is None:
         out.write('REFUSED: give --config (default %LOCALAPPDATA%\\ZackBotNC\\config\\testnet.toml) or --account-id.\n')
         return EXIT_USAGE
     args.symbol = args.symbol or 'SOLUSDT'
     symbols = sorted(({args.symbol} if args.probe else set()) | {s for _, sp in specs for s in sp['symbols']})
+    if args.cleanup:
+        symbols = sorted(set(run_cfg.symbols if run_cfg is not None else ()) | {args.symbol})
     import time as _time
     clock = local_clock or system_clock_ms
     mono = monotonic or _time.monotonic
@@ -215,6 +279,15 @@ def main(argv=None, *, http=None, local_clock=None, protector=None, out=None, mo
         out.write('REFUSED: --gate needs a clean, committed tree (exact-build report).\n')
         return EXIT_USAGE
     if args.dry_run:
+        if args.cleanup:
+            out.write('TNET-01 cleanup - PLAN (dry run: no network call, no key decrypted)\n'
+                      f'  account {args.account_id}; symbols {", ".join(symbols)}\n'
+                      '  1. read positions + open orders (classic and algo) on the symbols\n'
+                      '  2. cancel every open NEWCORE order (foreign orders are never touched)\n'
+                      + ('  3. close every position above its --adopt-foreign baseline (reduce-only market)\n'
+                         if args.close_positions else '  3. list positions only (add --close-positions to close)\n')
+                      + f'  4. confirm with a second read {args.settle_s:g} s later; report\n')
+            return EXIT_PASS
         out.write(_plan(args, specs, symbols, cassette_dir, report_dir, store.exists()) + '\n')
         return EXIT_PASS
 
@@ -243,6 +316,48 @@ def main(argv=None, *, http=None, local_clock=None, protector=None, out=None, mo
         scrubber.uninstall()
 
 
+def _cleanup_only(args, venue, symbols, run_id, snooze, recorder, cassette_dir, stamp, values, out):
+    """N3: the standalone teardown. Foreign orders are never cancelled; positions are closed only with
+    --close-positions (above the --adopt-foreign baseline), else listed. Exit 0 clean / 4 unreadable / 8 left."""
+    from newcore.venue.tnet import is_newcore_cid
+    try:
+        venue.check_hedge_mode()
+    except Exception:                                            # noqa: BLE001 - one-way / unreadable
+        out.write('CLEANUP REFUSED: the account is not readable in hedge mode.\n')
+        _write_cassette(recorder, cassette_dir, stamp, values, out)
+        return EXIT_PREFLIGHT
+    baseline, positions = {}, []
+    for sym in symbols:
+        pos = venue.positions(sym)
+        oo = venue.open_orders(sym)
+        if pos.kind is not P.ReadKind.OK or oo.kind is not P.ReadKind.OK:
+            out.write(f'CLEANUP REFUSED: {sym} positions / open orders unreadable; nothing sent.\n')
+            _write_cassette(recorder, cassette_dir, stamp, values, out)
+            return EXIT_PREFLIGHT
+        for p in pos.value:
+            if p.qty == 0:
+                continue
+            positions.append(p)
+            if not args.close_positions or f'{p.symbol}:{p.side}' in args.adopt_foreign:
+                baseline[(p.symbol, p.side)] = p.qty         # kept: listed, never closed
+        for o in oo.value:
+            tag = 'NEWCORE, will be cancelled' if is_newcore_cid(o.ref.client_id) else 'foreign, left alone'
+            out.write(f'  order {sym} {o.ref.client_id} {o.order_type} {o.qty}: {tag}\n')
+    for p in positions:
+        kept = (p.symbol, p.side) in baseline
+        out.write(f'  position {p.symbol} {p.side} {p.qty}: {"kept (listed)" if kept else "will be closed"}\n')
+    res = tnet_cleanup(venue, symbols, run_id=run_id + '_cleanup', max_attempts=args.cleanup_attempts,
+                       baseline=baseline, confirm_reads=2, settle_s=args.settle_s, sleep=snooze)
+    out.write(format_cleanup(res) + '\n')
+    _write_cassette(recorder, cassette_dir, stamp, values, out)
+    left = [p for p in positions if (p.symbol, p.side) in baseline and f'{p.symbol}:{p.side}' not in
+            args.adopt_foreign]
+    if left:
+        out.write('POSITIONS LEFT (not adopted; add --close-positions if they are NEWCORE exposure):\n' +
+                  ''.join(f'  {p.symbol} {p.side} {p.qty}\n' for p in left))
+    return EXIT_PASS if res.clean and not left else EXIT_RESIDUE
+
+
 def _run(args, specs, symbols, min_balance, creds, scrubber, http, clock, mono, snooze, build, cassette_dir,
          report_dir, out):
     if http is None:
@@ -262,7 +377,10 @@ def _run(args, specs, symbols, min_balance, creds, scrubber, http, clock, mono, 
         return EXIT_PREFLIGHT
     venue = _Recording(TestnetVenue(transport, oc))
     reader = TestnetAccountReader(transport, oc)
+    if args.cleanup:
+        return _cleanup_only(args, venue, symbols, run_id, snooze, recorder, cassette_dir, stamp, values, out)
     pre = tnet_preflight(venue, reader, symbols, min_balance=min_balance, adopt_foreign=args.adopt_foreign)
+    state_baseline = pre.baseline
     info = transport.exchange_info()
     rules, prices, refusals = {}, {}, list(pre.refusals)
     if info.kind is not TR.OK:
@@ -295,6 +413,8 @@ def _run(args, specs, symbols, min_balance, creds, scrubber, http, clock, mono, 
         except DeadlineExceeded as ex:
             state['deadline'] = True
             out.write(f'DEADLINE: {ex}\n')
+        except Exception as ex:                          # noqa: BLE001 - typed: a FAIL, the teardown runs
+            state['aborted'], state['exposure'] = f'unexpected {type(ex).__name__}', True
 
     def _body():
         for pr in args.probe:
@@ -319,8 +439,13 @@ def _run(args, specs, symbols, min_balance, creds, scrubber, http, clock, mono, 
             if dl.expired():
                 state['deadline'] = True
                 return
-            outcome, _ = run_spec(spec, pv, rules_by_symbol=rules, price_by_symbol=prices, run_id=run_id,
-                                  seam=seam, sleep=bounded_sleep)
+            left = dl.remaining()                          # T3: the spec's own max_duration_s bounds it too
+            sdl = RunDeadline(min(spec['expect'].get('max_duration_s', 3600), left), mono) if left > 0 else None
+            if sdl is None:
+                state['deadline'] = True
+                return
+            outcome, _ = run_spec(spec, DeadlinePort(venue, sdl), rules_by_symbol=rules, price_by_symbol=prices,
+                                  run_id=run_id, seam=seam, sleep=sdl.bounded(snooze), baseline=state_baseline)
             state['scenarios'].append(outcome)
             out.write(f'scenario {outcome.name}: {"PASS" if outcome.passed else "FAIL"}\n')
 
@@ -344,14 +469,14 @@ def _run(args, specs, symbols, min_balance, creds, scrubber, http, clock, mono, 
     cassette = _write_cassette(recorder, cassette_dir, stamp, values, out)
     rc_report = EXIT_PASS
     try:
-        config = {'config': args.config, 'account_id': args.account_id, 'symbols': symbols, 'probes': args.probe,
-                  'stop_route': args.stop_route,
+        config = {'config': scrub_tokens(args.config) if args.config else None, 'account_id': args.account_id,
+                  'symbols': symbols, 'probes': args.probe, 'stop_route': args.stop_route,
                   'min_balance': str(min_balance), 'specs': [spec_digest(s) for _, s in specs],
                   'adopt_foreign': list(args.adopt_foreign)}
         paths = tnet_report(run_id=run_id, scenarios=state['scenarios'], cleanup=cleanup, config=config,
                             cassette_path=cassette, fees=fees, pnl=pnl, build=build, now_ms=clock(), out_dir=report_dir,
                             redact=values, probes=state['probes'])
-        out.write(f'report: {paths[0]}\n')
+        out.write(f'report: {scrub_tokens(paths[0])}\n')
     except (ReportLeak, CredentialStoreError, OSError) as ex:
         out.write(f'ERROR: report not written ({type(ex).__name__}: {ex}).\n')
         rc_report = EXIT_REPORT

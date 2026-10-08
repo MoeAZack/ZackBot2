@@ -33,7 +33,7 @@ class StepRecord:
     ref: object = None
 
 
-def run_spec(spec, venue, *, rules_by_symbol, price_by_symbol, run_id, seam=None, sleep=None):
+def run_spec(spec, venue, *, rules_by_symbol, price_by_symbol, run_id, seam=None, sleep=None, baseline=None):
     """-> (ScenarioOutcome, [StepRecord]). Never raises for a venue answer; a bad spec raises before anything is sent."""
     records, by_id, assertions = [], {}, []
     faults = {}
@@ -68,7 +68,7 @@ def run_spec(spec, venue, *, rules_by_symbol, price_by_symbol, run_id, seam=None
         if allowed is not None:
             assertions.append((f'{sid}: outcome {rec.outcome} in {allowed}', rec.outcome in allowed))
     end = expect['end_state']
-    flat, orders_left = _end_state(venue, spec['symbols'])
+    flat, orders_left = _end_state(venue, spec['symbols'], baseline or {})
     assertions.append((f'end state flat == {end["flat"]} (observed {flat})', flat == end['flat']))
     assertions.append((f'open NEWCORE orders == {end["open_newcore_orders"]} (observed {orders_left})',
                        orders_left == end['open_newcore_orders']))
@@ -106,11 +106,13 @@ def _do(st, venue, by_id, rules_by_symbol, price_by_symbol, run_id, name):
     return venue.submit_stop(P.StopOrder(ref=ref, position_side=st['side'], qty=qty, stop_price=trigger))
 
 
-def _end_state(venue, symbols):
+def _end_state(venue, symbols, baseline):
+    """flat = no position above its adopted baseline (an adopted foreign position is not the spec's)."""
     flat, orders = True, 0
     for sym in symbols:
         pos = venue.positions(sym)
-        if pos.kind is not P.ReadKind.OK or any(p.qty != 0 for p in pos.value):
+        if pos.kind is not P.ReadKind.OK or any(p.qty != baseline.get((p.symbol, p.side), Decimal(0))
+                                                for p in pos.value):
             flat = False
         oo = venue.open_orders(sym)
         if oo.kind is not P.ReadKind.OK:

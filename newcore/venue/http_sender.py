@@ -55,11 +55,20 @@ def _system_getaddrinfo(host, port, family=0, type_=0):
     return socket.getaddrinfo(host, port, family, type_)
 
 
+MAX_DNS_THREADS = 2                        # resolver threads still blocked in getaddrinfo, process-wide
+_dns_lock = threading.Lock()
+_dns_inflight = [0]
+
+
 def _resolve_within(getaddrinfo, host, port, deadline):
     """Name resolution bounded by the deadline (Codex #13). A daemon thread ONLY calls getaddrinfo and stores the
     result in a box the caller owns; it never connects or sends. The caller waits with the remaining time; on timeout
     the box is abandoned (a late result is discarded) and WireNotSent('dns_timeout') is raised: nothing was sent."""
     box, done = {}, threading.Event()
+    with _dns_lock:                        # a hung resolver cannot pile up threads (Cowork #37 item 9)
+        if _dns_inflight[0] >= MAX_DNS_THREADS:
+            raise WireNotSent('name resolution busy (earlier lookups still pending)', 'dns_busy')
+        _dns_inflight[0] += 1
 
     def work():
         try:
@@ -67,8 +76,15 @@ def _resolve_within(getaddrinfo, host, port, deadline):
         except BaseException:              # stored as a fact only; never re-raised in this thread
             box['failed'] = True
         finally:
+            with _dns_lock:
+                _dns_inflight[0] -= 1
             done.set()
-    threading.Thread(target=work, name='newcore-dns', daemon=True).start()
+    try:
+        threading.Thread(target=work, name='newcore-dns', daemon=True).start()
+    except RuntimeError:
+        with _dns_lock:
+            _dns_inflight[0] -= 1
+        raise WireNotSent('name resolution thread could not start', 'dns_failed') from None
     if not done.wait(max(0.0, deadline - time.monotonic())):
         raise WireNotSent('name resolution timed out', 'dns_timeout')
     if box.get('failed') or not box.get('addrs'):

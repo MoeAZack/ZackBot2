@@ -94,8 +94,8 @@ MUTATIONS = {
     'S05: reducing intents not bounded by their lot': (D + 'portfolio.py', [(
         '        req(q <= lots[lot_id].qty,', '        req(True,')]),
     'S05 re-check: orphan cancel work counted as live reducing': (D + 'portfolio.py', [(
-        '        if it.purpose in (Purpose.REDUCE, Purpose.CLOSE) and it.owner_kind is OwnerKind.LOT:',
-        '        if it.purpose in (Purpose.REDUCE, Purpose.CLOSE) and it.owner_kind is not OwnerKind.ENTRY_INTENT:')]),
+        '        if it.purpose not in (Purpose.REDUCE, Purpose.CLOSE) or it.owner_kind is not OwnerKind.LOT or it.intent_id in preds:',
+        '        if it.purpose not in (Purpose.REDUCE, Purpose.CLOSE) or it.owner_kind is OwnerKind.ENTRY_INTENT or it.intent_id in preds:')]),
     'H05: Lot not encodable standalone': (D + 'codec.py', [("    'lot': portfolio.Lot,\n", '')]),
     'CP05: a position accepts duplicate lots': (D + 'portfolio.py', [(
         "        req(len({x.lot_id for x in self.lots}) == len(self.lots), p + '.lots',", "        req(True, p + '.lots',")]),
@@ -106,6 +106,17 @@ MUTATIONS = {
         "        if ordered != self.lots:\n            object.__setattr__(self, 'lots', ordered)", '        pass')]),
     'ports: journal ignores owner_kind (every owner treated as a lot)': ('newcore/ports/journal.py', [(
         '            if h.owner_kind is OwnerKind.ENTRY_INTENT:', '            if False:')]),
+    'P1: cancel-replace link not checked (predecessor need not be cancelling)': (D + 'portfolio.py', [(
+        "        req(old.state is IntentState.CANCELLING, ip, 'the predecessor of a cancel-replace must be CANCELLING')",
+        '        pass')]),
+    'P1: cancel-replace lot mismatch accepted': (D + 'portfolio.py', [(
+        '        req((old.account_id, old.symbol, old.side, old.owner_id) == (it.account_id, it.symbol, it.side, it.owner_id), ip,',
+        '        req((old.account_id, old.symbol, old.side) == (it.account_id, it.symbol, it.side), ip,')]),
+    'P1: cumulative fills unbounded (ledger closes past the lot)': (D + 'portfolio.py', [(
+        "            req(run > 0, f'{p}.fills[{i}]',", "            req(True, f'{p}.fills[{i}]',")]),
+    'P2: portfolio collections not canonical': (D + 'portfolio.py', [(
+        "            _canonical(self, 'positions', lambda x: (x.symbol, x.side.value))\n"
+        "            _canonical(self, 'intents', lambda x: x.intent_id)", '            pass')]),
     'duplicate JSON keys': (D + 'codec.py', [("            if k in out:\n                problems.append(",
                                               "            if False:\n                problems.append(")]),
     'truncated JSON': (D + 'codec.py', [(
