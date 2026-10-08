@@ -57,7 +57,7 @@ def planned(intent_id, decision_id, purpose, at, *, owner=None, stop=None, reaso
                        symbol=SYMBOL, side=Side.LONG, qty=QTY, reason=reason, created_at_ms=at, owner_id=owner,
                        owner_kind=None if owner is None else OwnerKind.LOT,
                        slot_id=slot, price=None, stop_price=stop, arm=None, alt_client_order_id=None, seen_qty=None,
-                       authorized_by=None)
+                       authorized_by=None, replaces_intent_id=None)
 
 
 def result(intent, n, at, **kw):
