@@ -14,6 +14,6 @@ All DCA/martingale research profiles, runner rows, presets and strategy cards ar
 - Panel inline JavaScript parses; `git diff --check` is clean.
 - GitHub fast and CodeQL checks passed on the implementation head.
 
-## Non-blocking follow-up
+## Final responsive follow-up
 
-Two P3 hardening items remain for a small follow-up: classify any unknown non-empty single-strategy key as unverified, and add an inline badge to two static DCA-derived note cards that already sit beneath the visible red warning banner. Current repository data uses known keys, so neither item makes the current screen misleading.
+The first protected full run exposed a real tablet overflow from the new runner-profile badges. Final head `82e0561` makes that group wrap at every width, flags unknown/renamed strategy keys fail-safe, and adds inline badges to the two static DCA-derived note cards. Codex's focused rerun passed **17/17**; Cowork independently reproduced the original Linux overflow and measured zero overflow at desktop, tablet and mobile widths on the fix. The protected full gate must still pass on this final head before merge.
