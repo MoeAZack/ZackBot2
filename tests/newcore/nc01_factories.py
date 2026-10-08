@@ -285,3 +285,75 @@ def decision_with_intents(ids, acct, action, reason):
 
 def replace(rec, **kw):
     return dataclasses.replace(rec, **kw)
+
+
+def results(ids, acct, it):
+    """A FINAL / KNOWN / UNKNOWN result for each evidence family, all valid for intent `it` (submitted at T0)."""
+    from newcore.domain import Evidence, ExchangeStatus, Lookup, OrderResult, PositionRead, ResultPhase
+    base = dict(intent_id=it.intent_id, account_id=acct, client_order_id=it.client_order_id, requested_qty=it.qty,
+                observed_at_ms=T0 + 30_000)
+    reads = (PositionRead(at_ms=T0 + 25_000, qty=it.qty), PositionRead(at_ms=T0 + 26_000, qty=it.qty))
+    return {
+        'unknown': OrderResult(result_id=ids.id('res'), phase=ResultPhase.UNKNOWN, **base),
+        'not_found': OrderResult(result_id=ids.id('res'), phase=ResultPhase.UNKNOWN, lookup=Lookup.NOT_FOUND, **base),
+        'known': OrderResult(result_id=ids.id('res'), phase=ResultPhase.KNOWN, exchange_order_id='991',
+                             exchange_status=ExchangeStatus.PARTIALLY_FILLED, **base),
+        'filled': OrderResult(result_id=ids.id('res'), phase=ResultPhase.FINAL, exchange_order_id='991',
+                              exchange_status=ExchangeStatus.FILLED, executed_qty=it.qty, avg_price=D('100.5'),
+                              evidence=Evidence.EXCHANGE_FINAL, **base),
+        'partial_cancel': OrderResult(result_id=ids.id('res'), phase=ResultPhase.FINAL, exchange_order_id='991',
+                                      exchange_status=ExchangeStatus.CANCELED, executed_qty=(it.qty / 3).quantize(D('0.01')),
+                                      avg_price=D('100.5'), evidence=Evidence.EXCHANGE_FINAL, **base),
+        'refused': OrderResult(result_id=ids.id('res'), phase=ResultPhase.FINAL, executed_qty=D('0'),
+                               evidence=Evidence.EXCHANGE_REFUSED, **base),
+        'corroborated': OrderResult(result_id=ids.id('res'), phase=ResultPhase.FINAL, executed_qty=D('0'),
+                                    evidence=Evidence.NOT_FOUND_CORROBORATED, corroboration=reads,
+                                    resolved_by=ids.id('dec'), **base),
+        'adopted': OrderResult(result_id=ids.id('res'), phase=ResultPhase.FINAL, executed_qty=it.qty, avg_price=D('100'),
+                               evidence=Evidence.POSITION_ADOPTED, corroboration=reads, resolved_by=ids.id('dec'), **base),
+    }
+
+
+def samples(seed=5):
+    """One valid instance of every document record type (codec round trips / snapshots)."""
+    from newcore.domain import (BindingChanged, DecisionRecorded, HighWater, IntentRecorded, IntentStateChanged,
+                                ModeChanged, ResultObserved, Snapshot)
+    ids = Ids(seed)
+    pf = typical_portfolio(seed)
+    acct = pf.account_id
+    it = market_entry(ids, acct)
+    res = results(ids, acct, it)
+    dec = decision_with_intents(ids, acct, Action.ENTER, ReasonCode.ENTRY_SIGNAL)
+    out = [account(acct), rules(), it, pf, dec, unknown_portfolio(acct), *res.values(),
+           Snapshot(account_id=acct, generation=7, last_seq=4, written_at_ms=T0, writer_build='nc01-test', portfolio=pf),
+           HighWater(account_id=acct, generation=7, last_seq=4, writer_build='nc01-test'),
+           IntentRecorded(seq=1, account_id=acct, at_ms=T0, intent=replace(dec.intents[0], state=IntentState.DURABLE)),
+           IntentStateChanged(seq=2, account_id=acct, at_ms=T0 + 1, intent_id=it.intent_id,
+                              from_state=IntentState.DURABLE, to_state=IntentState.SUBMITTED),
+           ResultObserved(seq=3, account_id=acct, at_ms=T0 + 2, result=res['filled']),
+           DecisionRecorded(seq=4, account_id=acct, at_ms=T0, decision=dec),
+           ModeChanged(seq=5, account_id=acct, at_ms=T0, from_mode=EntriesMode.ACTIVE, to_mode=EntriesMode.HOLD,
+                       reasons=(ReasonCode.RECOVERY_DURABILITY_UNAVAILABLE,), to_hold=HoldKind.DURABILITY_UNAVAILABLE),
+           BindingChanged(seq=6, account_id=acct, at_ms=T0, from_state=BindingState.UNCONFIRMED,
+                          to_state=BindingState.CONFIRMED, binding=binding(),
+                          confirmation=account(acct).confirmation)]
+    return out
+
+
+SNAPSHOT_FILE = 'fixtures/nc01_samples_v1.jsonl'
+
+
+def snapshot_lines():
+    """The deterministic serialization snapshot: one canonical document per sample, in samples() order.
+    Regenerate (only for an intended, reviewed format change) with:
+        python -c "import sys; sys.path[:0]=['.','tests/newcore']; import nc01_factories as F; F.write_snapshot()"
+    """
+    from newcore.domain import dumps
+    return [dumps(s) for s in samples()]
+
+
+def write_snapshot():
+    import os
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), SNAPSHOT_FILE)
+    with open(path, 'w', encoding='ascii', newline='\n') as f:
+        f.write('\n'.join(snapshot_lines()) + '\n')
