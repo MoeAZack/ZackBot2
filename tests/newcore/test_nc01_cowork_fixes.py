@@ -136,28 +136,28 @@ def test_reducing_intents_are_bounded_net_of_each_other():
 
 # ----------------------------------------------------------------------------------------------------------- H05
 def test_every_required_type_round_trips_standalone():
-    """H05: Lot, Position, Protection, AccountBinding, InstrumentId and Fill raised "not a document record type"."""
+    """H05: Lot, Position, Protection, AccountBinding and InstrumentId raised "not a document record type". Fill was
+    listed by Cowork too, but it is not a contract-2 required type, so (Codex ruling) it stays nested-only."""
     from newcore.domain import canonical_bytes, contract_sha256
     p, _ = F.single_lot_portfolio(93, stop_state='confirmed')
     lt = p.lots[0]
-    for rec in (lt, p.positions[0], lt.stop, F.binding(), F.rules().instrument, lt.fills[0]):
+    for rec in (lt, p.positions[0], lt.stop, F.binding(), F.rules().instrument):
         b = canonical_bytes(rec)
         back = loads(b)
         assert back == rec and type(back) is type(rec) and canonical_bytes(back) == b
         assert len(contract_sha256(rec)) == 64
+    with pytest.raises(DomainError, match='not a document record type'):     # not a universal root serializer
+        canonical_bytes(lt.fills[0])
 
 
-def test_every_record_class_is_a_document_type():
-    """No record type is nested-only: each dataclass Record of the package has a record_type (compared by name)."""
-    import dataclasses
-    import inspect
-    import newcore.domain as D
-    from newcore.domain.base import Record
+def test_the_standalone_set_is_pinned():
+    """Codex ruling on H05: the contract's required types plus the document types of cd721c5 - nothing more."""
     from newcore.domain.codec import RECORD_TYPES
-    mods = [m for _, m in inspect.getmembers(D, inspect.ismodule) if m.__name__.startswith('newcore.domain.')]
-    records = {name for m in mods for name, c in inspect.getmembers(m, inspect.isclass)
-               if issubclass(c, Record) and dataclasses.is_dataclass(c) and c.__module__ == m.__name__}
-    assert records == {c.__name__ for c in RECORD_TYPES.values()}
+    assert set(RECORD_TYPES) == {
+        'account', 'instrument_rules', 'order_intent', 'order_result', 'portfolio', 'decision', 'decision_key',
+        'snapshot', 'high_water', 'event_intent_recorded', 'event_intent_state_changed', 'event_result_observed',
+        'event_decision_recorded', 'event_mode_changed', 'event_binding_changed',
+        'account_binding', 'instrument_id', 'protection', 'lot', 'position'}
 
 
 # ----------------------------------------------------------------------------------------------------------- CP05 / I03

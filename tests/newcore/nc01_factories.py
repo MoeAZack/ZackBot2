@@ -395,14 +395,9 @@ def samples(seed=5):
 
 
 def standalone_samples(ids, pf, res):
-    """One instance of every record type that is usually nested (Cowork H05: each is encodable on its own)."""
-    from newcore.domain import EventCursor, EventDigest
+    """The contract-2 required types that are otherwise nested (Cowork H05; Codex ruling: exactly these five)."""
     lt = pf.lots[0]
-    digest = EventDigest(event_id=ids.id('evt'), sequence=1, sha256='0123456789abcdef' * 4)
-    return [binding(), account(pf.account_id).confirmation, rules().instrument,
-            trailing_entry(ids, pf.account_id).arm, res['corroborated'].corroboration[0], miss(MissPhase.OWNER_CHECK, 2, '77'),
-            lt.stop, lt.fills[0], lt, pf.positions[0], pf.proof,
-            digest, EventCursor(account_id=pf.account_id, aggregate_id=pf.portfolio_id, last_sequence=1, applied=(digest,))]
+    return [binding(), rules().instrument, lt.stop, lt, pf.positions[0]]
 
 
 SNAPSHOT_FILE = 'fixtures/nc01_samples_v1.jsonl'
