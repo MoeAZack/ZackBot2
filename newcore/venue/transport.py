@@ -21,10 +21,11 @@ from . import records as R
 from .credentials import CredentialsUnavailable, key_digest as _key_digest
 from .errors import (ALGO_FALLBACK_CODES, ErrorCategory, NotFoundEvidence, NotFoundEvidenceType, VenueError,
                      categorize, scrub_text)
-from .guard import TESTNET_BASE_URL, check_binding, check_request_url
+from .guard import TESTNET_BASE_URL, VenueGuardError, check_binding, check_request_url
 from .outcomes import OrderOutcome, OrderOutcomeKind, ReadKind, ReadOutcome
 from .signing import check_ms, check_recv_window, encode_params, signed_query
-from .wire import HttpRequest, HttpResponse, RateLimitUsage, WireConnectionError, WireTimeout, parse_rate_limits
+from .wire import (HttpRequest, HttpResponse, RateLimitUsage, WireConnectionError, WireResponseTooLarge, WireSeamError,
+                   WireTimeout, parse_rate_limits)
 
 log = logging.getLogger('newcore.venue.transport')
 
@@ -188,8 +189,12 @@ class BinanceTestnetTransport:
         req = self._build(method, path, pairs, signed)
         try:
             resp = self._http(req)
+        except (VenueGuardError, WireSeamError):
+            raise                              # the seam refused before sending / a broken harness: not venue data
         except WireTimeout:
             return 'unknown', ('timeout', None), None, RateLimitUsage()
+        except WireResponseTooLarge:
+            return 'unknown', ('response_too_large', None), None, RateLimitUsage()
         except WireConnectionError:
             return 'unknown', ('connection', None), None, RateLimitUsage()
         except Exception:                      # message deliberately dropped: it may contain the signed URL

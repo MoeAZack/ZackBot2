@@ -153,6 +153,10 @@ def test_transport_core_imports_only_stdlib_allowlist(fname):
             assert n.split('.')[0] not in LEGACY and n not in FORBIDDEN, f'{fname} imports {n}'
 
 
+NETWORK_ALLOWED = {'http_sender.py'}          # the ONLY module that may open a socket (S5 sender)
+NETWORK_MODULES = ('socket', 'ssl', 'requests', 'urllib.request', 'http.client', 'http', 'urllib3')
+
+
 def test_no_module_imports_legacy_or_network():
     for fname, tree in _modules():
         for node in ast.walk(tree):
@@ -160,18 +164,25 @@ def test_no_module_imports_legacy_or_network():
                 names = [a.name for a in node.names] if isinstance(node, ast.Import) else [node.module or '']
                 for n in names:
                     assert n.split('.')[0] not in LEGACY, f'{fname} imports legacy {n}'
-                    assert n not in ('socket', 'requests', 'urllib.request', 'http.client', 'urllib3'), \
-                        f'{fname} imports network module {n}'
+                    if fname not in NETWORK_ALLOWED:
+                        assert n not in NETWORK_MODULES, f'{fname} imports network module {n}'
+                    if node.__class__ is ast.ImportFrom and node.level and n == 'http_sender':
+                        raise AssertionError(f'{fname} imports the network sender')
+
+
+def test_only_the_sender_is_network_capable():
+    assert NETWORK_ALLOWED <= {f for f, _ in _modules()}
 
 
 def test_import_needs_no_credentials_and_touches_nothing():
-    """Fresh interpreter: importing every module neither needs credentials nor imports network modules."""
+    """Fresh interpreter: importing every non-sender module neither needs credentials nor imports a network module,
+    and nothing pulls in the sender implicitly."""
     root = os.path.dirname(os.path.dirname(PKG))
-    mods = [n[:-3] for n in os.listdir(PKG) if n.endswith('.py') and n != '__init__.py']
+    mods = [n[:-3] for n in os.listdir(PKG) if n.endswith('.py') and n != '__init__.py' and n not in NETWORK_ALLOWED]
     code = ('import sys; sys.path.insert(0, sys.argv[1]); '
             + '; '.join(f'import newcore.venue.{m}' for m in mods)
-            + "; bad=[m for m in ('socket','requests','urllib.request','http.client','binance_client','engine')"
-              " if m in sys.modules]; print('BAD' if bad else 'CLEAN', bad)")
+            + "; bad=[m for m in ('socket','ssl','requests','urllib.request','http.client','binance_client','engine',"
+              "'newcore.venue.http_sender') if m in sys.modules]; print('BAD' if bad else 'CLEAN', bad)")
     env = {k: v for k, v in os.environ.items() if 'KEY' not in k.upper() and 'SECRET' not in k.upper()}
     r = subprocess.run([sys.executable, '-I', '-c', code, root], cwd=root, capture_output=True, text=True,
                        encoding='utf-8', env=env, timeout=60)

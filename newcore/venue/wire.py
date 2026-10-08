@@ -18,6 +18,15 @@ class WireConnectionError(Exception):
     """Connection refused / reset / dropped. If it happened after the request was written, it may have been executed."""
 
 
+class WireResponseTooLarge(WireConnectionError):
+    """The answer exceeded the sender's size bound and was not read in full: its content is unknown."""
+
+
+class WireSeamError(Exception):
+    """A setup/programming fault in the injected HTTP seam itself (e.g. a cassette that does not match the request).
+    The transport re-raises it instead of mapping it to UNKNOWN, so a broken harness can never look like venue data."""
+
+
 @dataclass(frozen=True)
 class HttpRequest:
     """One request. url has no query string; query is the full encoded query (signature included for SIGNED calls).
