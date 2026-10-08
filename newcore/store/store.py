@@ -136,7 +136,7 @@ class BootResult:
 
 def aggregate_for(account_id):
     """The portfolio aggregate id of an account (journal aggregate, Portfolio.portfolio_id)."""
-    return 'pf_' + derive_hex('aggregate_id', account_id)[:32]
+    return 'pf_' + derive_hex('aggregate_id', account_id, n=32)
 
 
 def _ownership_changing(ev):

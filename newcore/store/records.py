@@ -74,20 +74,20 @@ def snap_name(generation):
     return f'g{generation:020d}.snap'
 
 
-def derive_hex(tag, *parts):
+def derive_hex(tag, *parts, n=64):
     h = hashlib.sha256(b'zackbot.newcore.store.' + tag.encode('ascii') + b'.v1')
     for p in parts:
         h.update(b'\0' + str(p).encode('ascii'))
-    return h.hexdigest()
+    return h.hexdigest()[:n]
 
 
 def reconciliation_id(account_id, taken_ms, generation):
     """rec_ id of the reconciliation that proves `generation` (NC-01 id shape; never parsed)."""
-    return 'rec_' + derive_hex('reconciliation_id', account_id, taken_ms, generation)[:32]
+    return 'rec_' + derive_hex('reconciliation_id', account_id, taken_ms, generation, n=32)
 
 
 def incident_id(account_id, member, sha256):
-    return 'inc-' + derive_hex('incident_id', account_id, member, sha256)[:24]
+    return 'inc-' + derive_hex('incident_id', account_id, member, sha256, n=24)
 
 
 # ---------------------------------------------------------------------------------------------------- settings (D13)
