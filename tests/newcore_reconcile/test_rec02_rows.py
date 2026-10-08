@@ -193,3 +193,273 @@ def test_R19_first_run_against_a_non_flat_account_is_quarantined_never_empty():
     assert ('quarantine', 'R19', 'init_non_flat') in kinds(v) and ('hold', 'R19', 'unprotected') in kinds(v)
     assert v.outcome is Outcome.HOLD and v.ownership is Ownership.UNKNOWN and v.quarantined == ((SYM, 'LONG'),)
     assert_terminal_or_pending(v)
+
+
+# ================================================================================================ group 2
+def _lost_entry(truth):
+    """The entry's answer is lost and its client id stays NOT_FOUND: the runner holds it UNKNOWN (never re-sent)."""
+    w = World(flat_bars(20), signals())
+    w.run(ENTRY_BAR - 1)
+    w.venue.lose_next_market_answer(truth)
+    orig = w.venue.submit_market
+
+    def submit(order):
+        w.venue.not_found(order.ref.client_id, times=50)
+        return orig(order)
+    w.venue.submit_market = submit
+    w.run(ENTRY_BAR)
+    entry = next(iv for iv in w.runner.fold.intents.values() if iv.purpose.value == 'entry')
+    assert entry.state is IntentState.UNKNOWN and w.runner.fold.mode is EntriesMode.HOLD
+    return w, entry
+
+
+def test_R01_lost_entry_inside_the_visibility_window_proves_nothing():
+    w, entry = _lost_entry('not_filled')
+    v, *_ = world_rec(w)
+    assert ('hold', 'R01', 'within_visibility_window') in kinds(v) and v.outcome is Outcome.HOLD
+    assert not v.of(K.RESOLVE_NOT_EXECUTED)
+
+
+def test_R01_lost_entry_needs_two_agreeing_reads_then_resolves_not_executed():
+    from newcore.domain import PositionRead
+    w, entry = _lost_entry('not_filled')
+    w.venue.advance_to(w.close_ms(ENTRY_BAR + 1))           # past the window; the runner did not cycle
+    one, *_ = world_rec(w)
+    assert ('hold', 'R01', 'awaiting_corroboration') in kinds(one) and not one.of(K.RESOLVE_NOT_EXECUTED)
+    start = entry.sent_at_ms + RecPolicy().visibility_ms
+    v, *_ = world_rec(w, corroboration={entry.intent_id: (PositionRead(at_ms=start, qty=D(0)),)})
+    r, = v.of(K.RESOLVE_NOT_EXECUTED)
+    assert (r.row, r.detail, r.intent_id) == ('R01', 'not_found_corroborated', entry.intent_id)
+    assert v.outcome is Outcome.PENDING
+
+
+def test_R01_lost_entry_that_did_fill_is_adopted_from_agreeing_reads_and_protected():
+    from newcore.domain import PositionRead
+    w, entry = _lost_entry('filled')
+    w.venue.advance_to(w.close_ms(ENTRY_BAR + 1))
+    qty = w.venue.positions(SYM).value[0].qty
+    start = entry.sent_at_ms + RecPolicy().visibility_ms
+    v, *_ = world_rec(w, corroboration={entry.intent_id: (PositionRead(at_ms=start, qty=qty),)},
+                      stop_hints={(SYM, 'LONG'): D('98')})
+    r, = v.of(K.RESOLVE_FILLED)
+    assert (r.row, r.detail, r.qty) == ('R01', 'position_adopted', qty)
+    p, = v.of(K.PROTECT_ONLY)
+    assert (p.qty, p.price) == (qty, D('98'))
+
+
+def test_R02_reduce_only_order_unknown_to_the_venue_holds_for_the_same_id_resend():
+    close = fact(3, 'close', state=IntentState.SUBMITTED, owner='lot_' + f'{1:032x}')
+    stop = fact(2, 'protect', stop='90', owner='lot_' + f'{1:032x}')
+    vw = view(lots=[lot(1, stop_intent=stop.intent_id)], intents=[stop, close])
+    from rec_helpers import not_found, order, pos
+    v = reconcile(vw, snap(positions=[pos('1')], orders=[order(stop.client_id)],
+                           queries=[(close.client_id, not_found(3))]), now_ms=T)
+    assert kinds(v) == [('hold', 'R02', 'reduce_only_not_found')]
+    assert v.of(K.HOLD)[0].owner_actions == ('resend_same_client_id',) and v.outcome is Outcome.HOLD
+
+
+def _manual_reduce(w, qty):
+    """A manual close on the exchange (the owner, outside the bot): FakeVenue's own fill bookkeeping."""
+    px = w.venue.bar(SYM, w.venue.now_ms).open
+    w.venue._apply_fill(SYM, 'LONG', qty, px, reduce=True, eoid='880001', at_ms=w.venue.now_ms, fee=D(0))
+
+
+def test_R03_manual_full_close_is_adopted_from_user_trades_and_the_left_stop_is_an_owner_item():
+    w, lot_ = opened()
+    w.run(ENTRY_BAR + 1)
+    _manual_reduce(w, lot_.qty)
+    v, *_ = world_rec(w)
+    a, = v.of(K.ADOPT)
+    assert (a.row, a.detail, a.qty) == ('R03', 'external_reduce', lot_.qty)
+    assert any('order:880001' in e for e in a.evidence)
+    h, = v.of(K.HOLD)
+    assert h.detail == 'protection_left_on_flat_side' and h.owner_actions[0].startswith('cancel_order:')
+    assert v.outcome is Outcome.HOLD
+
+
+def test_R03_deficit_without_trades_asks_for_them_and_without_q2_is_an_owner_hold():
+    w, lot_ = opened()
+    w.run(ENTRY_BAR + 1)
+    _manual_reduce(w, lot_.qty)
+    v, *_ = world_rec(w, trades=False)
+    assert v.outcome is Outcome.PENDING and v.needs.trades and not v.of(K.ADOPT)
+    v2, *_ = world_rec(w, policy=RecPolicy(adopt_external_change=False))
+    assert ('hold', 'R03', 'unexplained_deficit') in kinds(v2) and not v2.of(K.ADOPT)
+
+
+def test_R04_foreign_order_is_quarantined_per_side_never_touched():
+    from rec_helpers import order
+    w, lot_ = opened()
+    foreign = order('web_manual_1', reduce=False, type_='LIMIT', stop=None, eoid='990001')
+    v, *_ = world_rec(w, orders_extra=(foreign,))
+    q, = v.of(K.QUARANTINE)
+    assert (q.row, q.detail, q.client_id) == ('R04', 'foreign_order', 'web_manual_1')
+    assert v.quarantined == ((SYM, 'LONG'),) and v.outcome is Outcome.HOLD and not v.of(K.PROTECT_ONLY)
+    whole, *_ = world_rec(w, orders_extra=(foreign,), policy=RecPolicy(quarantine_per_side=False))
+    assert whole.quarantined == ((None, None),)
+
+
+def test_R05_unjournaled_newcore_order_and_emergency_stop_are_owner_items():
+    from newcore.ports.keys import client_id_for
+    from rec_helpers import order
+    w, lot_ = opened()
+    ghost = order(client_id_for('int_' + 'f' * 32), reduce=False, type_='LIMIT', stop=None, eoid='990002')
+    emergency = order('zbn1e-' + 'a' * 26, qty=str(lot_.qty), stop='97', eoid='990003')
+    v, *_ = world_rec(w, orders_extra=(ghost, emergency))
+    assert ('quarantine', 'R05', 'unjournaled_newcore') in kinds(v)
+    assert ('hold', 'R05', 'emergency_stop') in kinds(v)
+    assert not v.of(K.PROTECT_ONLY) and v.outcome is Outcome.HOLD
+
+
+def test_R06_foreign_position_is_quarantined_and_flagged_unprotectable():
+    w, lot_ = opened()
+    w.venue.inject_position(SYM, 'SHORT', D('2'), D('100'))
+    v, *_ = world_rec(w)
+    assert ('quarantine', 'R06', 'foreign_position') in kinds(v) and ('hold', 'R06', 'unprotected') in kinds(v)
+    assert v.quarantined == ((SYM, 'SHORT'),) and v.outcome is Outcome.HOLD
+    assert not [d for d in v.of(K.PROTECT_ONLY) if d.side == 'SHORT']        # no owned stop level on that side
+
+
+def test_R07_partial_fill_of_a_working_entry_holds_and_protects_the_filled_part():
+    w = World(flat_bars(20), signals())
+    w.run(ENTRY_BAR - 1)
+    w.venue.rest_next_entries(1)
+    w.run(ENTRY_BAR)
+    entry = next(iv for iv in w.runner.fold.intents.values() if iv.purpose.value == 'entry')
+    assert entry.state is IntentState.WORKING
+    w.venue.fill_resting(entry.intent.client_order_id, D('1'))
+    v, *_ = world_rec(w, stop_hints={(SYM, 'LONG'): D('98')})
+    assert ('hold', 'R07', 'partial_working') in kinds(v)
+    p, = v.of(K.PROTECT_ONLY)
+    assert (p.row, p.qty, p.price) == ('R07', D('1'), D('98'))
+    bare, *_ = world_rec(w)
+    assert ('hold', 'R07', 'unprotected') in kinds(bare) and not bare.of(K.PROTECT_ONLY)
+
+
+def test_R07_partial_final_entry_books_only_the_executed_quantity():
+    from rec_helpers import fill, pos
+    e = fact(1, 'entry', qty='3', state=IntentState.SUBMITTED)
+    s = snap(positions=[pos('1')], queries=[(e.client_id, final(1, '1', status='EXPIRED', eoid='6001'))],
+             fills=[('6001', ok([fill('6001', '1')]))])
+    v = reconcile(view(intents=[e], hints=[((SYM, 'LONG'), D('90'))]), s, now_ms=T)
+    r, = v.of(K.RESOLVE_FILLED)
+    assert (r.row, r.detail, r.qty) == ('R07', 'partial_final', D('1'))
+    assert v.of(K.PROTECT_ONLY)[0].qty == D('1')
+
+
+def test_R08_late_fill_supersedes_a_corroborated_not_found_under_q2():
+    from newcore.domain.orders import Evidence
+    from rec_helpers import fill, pos
+    e = fact(1, 'entry', state=IntentState.CANCELLED, executed='0', evidence=Evidence.NOT_FOUND_CORROBORATED,
+             final_at=T - 60_000)
+    s = snap(positions=[pos('1')], queries=[(e.client_id, final(1, '1', eoid='6001'))],
+             fills=[('6001', ok([fill('6001', '1')]))])
+    vw = view(intents=[e], hints=[((SYM, 'LONG'), D('90'))])
+    from newcore.reconcile import plan_reads
+    assert plan_reads(vw, now_ms=T).queries == (e.client_id,)
+    v = reconcile(vw, s, now_ms=T)
+    r, = v.of(K.RESOLVE_FILLED)
+    assert (r.row, r.detail, r.qty) == ('R08', 'supersedes_not_found_corroborated', D('1'))
+    assert not v.of(K.QUARANTINE)                                  # explained, not foreign
+    off = reconcile(vw, s, now_ms=T, policy=RecPolicy(adopt_external_change=False))
+    assert ('hold', 'R08', 'late_fill_after_corroboration') in kinds(off) and not off.of(K.RESOLVE_FILLED)
+
+
+def test_R10_orphan_and_duplicate_owned_orders_are_owner_items_never_cancelled_here():
+    from dataclasses import replace
+    from rec_helpers import order, pos
+    e = fact(1, 'entry', state=IntentState.FILLED, executed='1')
+    stop = fact(2, 'protect', stop='90', owner='lot_' + f'{1:032x}')
+    vw = view(lots=[lot(1, stop_intent=stop.intent_id)], intents=[e, stop])
+    listed = [order(stop.client_id), order(e.client_id, reduce=False, type_='MARKET', stop=None, eoid='6001')]
+    v = reconcile(vw, snap(positions=[pos('1')], orders=listed), now_ms=T)
+    assert kinds(v) == [('hold', 'R10', 'orphan_owned')] and v.outcome is Outcome.HOLD
+    dup = replace(fact(3, 'close', state=IntentState.FILLED, executed='0'), client_id=stop.client_id)
+    v2 = reconcile(view(lots=[lot(1, stop_intent=stop.intent_id)], intents=[e, stop, dup]),
+                   snap(positions=[pos('1')], orders=[order(stop.client_id)]), now_ms=T)
+    assert ('hold', 'R10', 'duplicate_client_id') in kinds(v2)
+    gone = reconcile(view(intents=[e, stop]), snap(orders=[order(stop.client_id)]), now_ms=T)
+    assert ('hold', 'R10', 'protect_without_lot') in kinds(gone) and gone.outcome is not Outcome.FLAT
+
+
+def test_R11_manual_partial_close_is_adopted_and_the_rest_stays_protected():
+    w, lot_ = opened()
+    w.run(ENTRY_BAR + 1)
+    _manual_reduce(w, D('1'))
+    v, *_ = world_rec(w)
+    a, = v.of(K.ADOPT)
+    assert (a.row, a.detail, a.qty) == ('R11', 'external_reduce', D('1'))
+    assert not v.of(K.HOLD) and not v.of(K.PROTECT_ONLY)            # the old stop still covers (over-covers)
+    assert v.outcome is Outcome.PENDING
+
+
+def test_R11_external_fills_that_do_not_add_up_to_the_deficit_are_never_adopted():
+    from newcore.reconcile import TradeWindow
+    from rec_helpers import fill, order, pos
+    stop = fact(2, 'protect', qty='2', stop='90', owner='lot_' + f'{1:032x}')
+    vw = view(lots=[lot(1, qty='2', stop_intent=stop.intent_id)], intents=[stop])
+    tw = TradeWindow(from_ms=T - 10, read=ok([fill('880001', '0.5', trade='m1')]))
+    v = reconcile(vw, snap(positions=[pos('1')], orders=[order(stop.client_id, qty='2')],
+                           trades=[((SYM, 'LONG'), tw)]), now_ms=T)
+    assert ('hold', 'R11', 'unexplained_deficit') in kinds(v) and not v.of(K.ADOPT)
+
+
+def test_R12_manual_add_is_quarantined_and_its_surplus_protected_at_the_owned_level_q3():
+    w, lot_ = opened()
+    w.venue.inject_position(SYM, 'LONG', D('1'), D('100'))
+    v, *_ = world_rec(w)
+    q, = v.of(K.QUARANTINE)
+    assert (q.row, q.detail, q.qty) == ('R12', 'manual_add', D('1'))
+    p, = v.of(K.PROTECT_ONLY)
+    assert (p.row, p.qty, p.price) == ('R12', D('1'), lot_.protects[0].intent.stop_price)
+    off, *_ = world_rec(w, policy=RecPolicy(protect_surplus=False))
+    assert not off.of(K.PROTECT_ONLY) and ('hold', 'R12', 'unprotected') in kinds(off)
+
+
+def test_R14_stale_read_rereads_then_holds_and_never_clears():
+    from dataclasses import replace
+    from newcore.ports.venue import ReadOutcome
+    w = World(flat_bars(20), signals())
+    w.run(ENTRY_BAR - 1)
+    w.venue.lose_next_market_answer('filled')
+    w.run(ENTRY_BAR)                                     # HOLD (auto-clearable reason), position protected
+
+    def lag(s):
+        p = s.positions
+        return replace(s, positions=ReadOutcome(kind=p.kind, observed_at_ms=p.observed_at_ms - 1, value=p.value))
+    v, *_ = world_rec(w, transform=lag)
+    assert kinds(v) == [('reread', 'R14', 'stale_read')] and v.outcome is Outcome.PENDING
+    v2, *_ = world_rec(w, transform=lag, attempt=2)
+    assert kinds(v2) == [('hold', 'R14', 'stale_read')] and v2.outcome is Outcome.HOLD
+    fresh, *_ = world_rec(w)
+    assert fresh.of(K.CLEAR_HOLD)                        # the same account with a fresh read does clear
+
+
+def test_R17_fills_that_disagree_with_the_final_record_hold_and_book_nothing():
+    from dataclasses import replace
+    from rec_helpers import fill
+    w, lot_ = opened(bars=stop_market())
+    w.venue.advance_to(w.close_ms(STOP_BAR))
+    w.restart()
+
+    def skew(s):
+        return replace(s, fills=tuple((e, ok([fill(e, '0.001', '98', trade='t')], r.observed_at_ms))
+                                      for e, r in s.fills))
+    v, *_ = world_rec(w, transform=skew)
+    assert ('hold', 'R17', 'fill_mismatch') in kinds(v) and not v.of(K.RESOLVE_FILLED)
+    assert v.outcome is Outcome.HOLD
+
+
+def test_R18_stop_that_differs_from_the_journal_is_not_counted_and_is_an_owner_item():
+    from dataclasses import replace
+    from newcore.ports.venue import ReadOutcome
+    w, lot_ = opened()
+
+    def loosen(s):
+        o = s.orders
+        moved = tuple(replace(x, stop_price=x.stop_price - 5) for x in o.value)
+        return replace(s, orders=ReadOutcome(kind=o.kind, observed_at_ms=o.observed_at_ms, value=moved))
+    v, *_ = world_rec(w, transform=loosen)
+    assert ('hold', 'R18', 'order_mismatch') in kinds(v)
+    p, = v.of(K.PROTECT_ONLY)                            # not counted as cover: protection at the journaled level
+    assert (p.qty, p.price) == (lot_.qty, lot_.protects[0].intent.stop_price)

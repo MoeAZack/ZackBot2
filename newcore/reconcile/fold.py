@@ -128,6 +128,7 @@ class _Pass:
             k = (lot.symbol, lot.side)
             self.owned[k] = QCTX.add(self.owned.get(k, ZERO), lot.qty)
             self.lots_by_side.setdefault(k, []).append(lot)
+        self.open_lot_ids = {lot.lot_id for lot in view.lots}
         self.owned_eoids = {f.exchange_order_id for f in view.intents if f.exchange_order_id is not None}
         self.restored = set()             # sides where a stop ended unexecuted this pass (R09 restore)
         self.partial = set()
@@ -242,7 +243,11 @@ class _Pass:
                          evidence=ev + (f'journal:{f.state}',), owner_actions=(f'cancel_orphan:{cid}',))
                 continue
             if f.purpose is Purpose.PROTECT:
-                if (o.qty, o.stop_price) != (f.qty, f.stop_price):
+                if f.owner_id not in self.open_lot_ids:
+                    self.add(K.HOLD, 'R10', symbol=k[0], side=k[1], client_id=cid, intent_id=f.intent_id,
+                             detail='protect_without_lot', reasons=(R.LIFECYCLE_ORPHAN_CANCEL,),
+                             evidence=ev + (f'owner:{f.owner_id}',), owner_actions=(f'cancel_order:{cid}',))
+                elif (o.qty, o.stop_price) != (f.qty, f.stop_price):
                     self.add(K.HOLD, 'R18', symbol=k[0], side=k[1], client_id=cid, intent_id=f.intent_id,
                              detail='order_mismatch', reasons=(R.PROTECT_OWNER_CHECK,),
                              evidence=ev + (f'journal_qty:{f.qty}', f'journal_stop:{f.stop_price}',
