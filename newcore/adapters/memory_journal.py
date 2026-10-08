@@ -24,17 +24,19 @@ class MemoryJournal:
         self._decisions = {e.decision.decision_id: e for e in self._events if hasattr(e, 'decision')}
         self._fail = 0
         self._fail_after = 0
+        self._fail_error = None
 
     def reopen(self) -> 'MemoryJournal':
         """The same journal after a process restart: the gate is rebuilt from the durable events."""
         return MemoryJournal(self.account_id, self.aggregate_id, self._events)
 
-    def fail_writes(self, n=1, *, after=0):
+    def fail_writes(self, n=1, *, after=0, error=None):
         """Fault hook: after `after` more successful WRITES, the next n writes fail (append raises
         JournalUnavailable). The failure is at the write step: the event was staged (valid) but never became durable,
         so neither the stream nor the gate changes. A refused event (JournalConflict) never reaches the write."""
         self._fail += n
         self._fail_after = after
+        self._fail_error = error         # a test crash type (the process dies at this boundary); default: store down
 
     def fail_next_write(self):
         """The contract fixture: the next durable write fails (one-shot)."""
@@ -44,7 +46,7 @@ class MemoryJournal:
         if self._fail > 0:
             if self._fail_after == 0:
                 self._fail -= 1
-                raise JournalUnavailable('memory journal: injected store failure')
+                raise (self._fail_error or JournalUnavailable)('memory journal: injected store failure')
             self._fail_after -= 1
         self._events.append(event)                       # the durable write (fsync in a real store)
 

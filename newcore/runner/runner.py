@@ -65,6 +65,7 @@ from newcore.domain import Evidence, Lookup, OrderResult
 from newcore.domain.orders import NOT_FOUND_WINDOW_MS, REDUCE_ONLY, PositionRead, terminal_for
 from newcore.domain.portfolio import Fill
 from newcore.ports.journal import JournalUnavailable
+from newcore.store.hold import durability_hold, hard_hold_permits
 from newcore.ports.keys import check_decision_key
 from newcore.ports.venue import MarketOrder, OrderRef, OutcomeKind, ReadKind, StopOrder
 
@@ -81,12 +82,13 @@ GATE_REASON = {EntriesMode.HOLD: ReasonCode.RECONCILE_UNRECONCILED, EntriesMode.
 ITEM_REASON = {'position': ReasonCode.OWNERSHIP_UNTRACKED_POSITION, 'foreign_order': ReasonCode.OWNERSHIP_FOREIGN_ORDER,
                'orphan_order': ReasonCode.LIFECYCLE_ORPHAN_CANCEL, 'order_mismatch': ReasonCode.PROTECT_OWNER_CHECK,
                'stop_missing': ReasonCode.PROTECT_CHECKING, 'ambiguous': ReasonCode.EXEC_ENTRY_UNCONFIRMED,
-               'unreadable': ReasonCode.CONNECTIVITY_EXCHANGE_OUTAGE}
+               'unreadable': ReasonCode.CONNECTIVITY_EXCHANGE_OUTAGE, 'emergency_stop': ReasonCode.PROTECT_RESTORING}
 
 
 OPENING_ACTIONS = {Action.ENTER: Purpose.ENTRY, Action.ADD: Purpose.ADD}
 DUPLICATE_CLIENT_ID = -4116           # Binance "ClientOrderId is duplicated": the order EXISTS (step-0 has no kind for it)
 SECURE_ROUNDS = 2                     # per lot per cycle: stop attempt, then (if refused) one reduce-only close
+OPENING_PURPOSES = frozenset({Purpose.ENTRY, Purpose.ADD})
 
 
 class UnkeyedOpeningDecision(ValueError):
@@ -146,10 +148,12 @@ class Counters:
     resends: int = 0
     incidents: int = 0
     cap_exceeded: int = 0
+    drains: int = 0
+    emergency_stops: int = 0
 
 
 class Runner:
-    def __init__(self, config: RunnerConfig, *, journal, venue, bars, signals, account_reads=None):
+    def __init__(self, config: RunnerConfig, *, journal, venue, bars, signals, account_reads=None, hard_hold=None):
         self.cfg = config
         self.acct = config.account.account_id
         self.pf = config.portfolio_id
@@ -164,6 +168,8 @@ class Runner:
         self.hard_hold = None                                             # durability-unavailable HOLD (process)
         self.incidents = []                                               # (at_ms, text): surfaced, not journaled
         self._reads = {}                                                  # lost entry -> agreeing position reads
+        if hard_hold is not None:                                         # boot directive: the store cannot write
+            self.store_unavailable(hard_hold)
 
     # =============================================================================================== journal plumbing
     def _emit(self, cls, *, reason, **fields):
@@ -263,20 +269,123 @@ class Runner:
             self._enter_hard_hold(ex)
             return self._hard_hold_cycle()
 
+    def store_unavailable(self, ex):
+        """The store reports it cannot write (a failed append, a boot verdict DURABILITY_UNAVAILABLE, a health probe):
+        hard HOLD now (newcore.store.hold.durability_hold())."""
+        if self.hard_hold is None:
+            self._enter_hard_hold(ex)
+
     def _enter_hard_hold(self, ex):
-        """The store cannot make anything durable (NC-02 A21): nothing more may be sent. The HOLD itself cannot be
-        journaled, so it lives in this process: no decisions, no sends, no journal writes until a restart (which folds
-        the journal and reconciles). Surfaced through `hard_hold`, the counters and the summary. The S3 emergency set
-        (deterministic-cid reduce-only protection while the store is down) is not built yet."""
-        self.hard_hold = f'{ReasonCode.RECOVERY_DURABILITY_UNAVAILABLE}: {ex}'
+        """The store cannot make anything durable (NC-02 A21). The HOLD (EntriesMode.HOLD + DURABILITY_UNAVAILABLE)
+        cannot be journaled, so it lives in this process and is never left in-process (only a restart with a writable
+        store and a reconciliation, A08). Only the A23 / A24 emergency set runs (_emergency_set). Surfaced through
+        `hard_hold`, the incidents and the summary."""
+        d = durability_hold()
+        self.hard_hold = f'{d.reason}: {ex}'
         self.counters.hard_holds += 1
+        self._incident(f'hard HOLD ({d.hold_kind}): {ex}')
 
     def _hard_hold_cycle(self):
-        """Read-only: a fresh reconciliation and the invariants (counted, never raised) so the exposure is visible."""
+        """The A24 emergency set from exchange truth, then a fresh reconciliation and the invariants (counted)."""
         self.counters.hard_hold_cycles += 1
+        self._emergency_set()
         rec = self.reconcile()
         self.check_invariants(rec)
         return rec
+
+    # ----------------------------------------------------------------------------------------------- A23 / A24
+    def _owned_order(self, client_id):
+        return client_id in self.fold.by_client_id or ids.is_emergency_client_id(client_id)
+
+    def _emergency_set(self):
+        """NC-02 A23 / A24, exactly the NC-01 permitted set for HOLD + DURABILITY_UNAVAILABLE (hard_hold_permits).
+        Nothing here is journaled (nothing can be) or claimed as a result: every cycle and every restart re-derives it
+        from exchange truth, and deterministic client ids make it idempotent.
+          (1) narrow query: every owned risk-adding intent (ENTRY / ADD) by its client id;
+          (3) drain: cancel it by client id while the venue shows it working; 'gone' is done; an unknown cancel is
+              re-queried next cycle (re-cancelled only while it still shows working); never re-sent, repriced or
+              fallen back;
+          (4) adopt race / partial fills from exchange truth: the position itself is what (2) protects;
+          (2) protection: each owned position's uncovered quantity gets ONE reduce-only stop with the emergency
+              client id (exchange truth: account, symbol, side, quantity): found by that id -> confirmed, never
+              duplicated. Existing protection is never cancelled (it is topped up, so nothing is removed before a
+              replacement is confirmed); exposure never increases (reduce-only, quantity <= the position);
+          (5) an incident per action (best-effort, outside the store).
+        Forbidden and never done here: entries / adds, cancelling protection, repricing / fallback, management,
+        market closes, resuming."""
+        for iv in list(self.fold.live_intents()):
+            if iv.purpose in OPENING_PURPOSES:
+                self._drain(iv)
+        if hard_hold_permits(Purpose.PROTECT, Op.PLACE) is not Permission.ALLOWED:
+            return
+        pos, oo = self.venue.positions(), self.venue.open_orders()
+        if pos.kind is not ReadKind.OK or oo.kind is not ReadKind.OK:
+            self._incident('hard HOLD: positions / open orders unreadable; the emergency set retries next cycle')
+            return
+        sides = {(x.symbol, x.side) for x in self.fold.open_lots()}
+        sides |= {(iv.intent.symbol, str(iv.intent.side)) for iv in self.fold.intents.values()
+                  if iv.purpose in OPENING_PURPOSES}
+        sides |= {(o.ref.symbol, o.position_side) for o in oo.value if self._owned_order(o.ref.client_id)}
+        for p in pos.value:
+            if p.qty <= 0 or (p.symbol, p.side) not in sides:
+                continue                                                  # flat, or foreign (A22: an item, untouched)
+            covered = sum((o.qty for o in oo.value if o.reduce and o.order_type == 'STOP_MARKET'
+                           and (o.ref.symbol, o.position_side) == (p.symbol, p.side)
+                           and self._owned_order(o.ref.client_id)), ZERO)
+            if covered >= p.qty:
+                continue                                                  # M45: covered: no change
+            self._emergency_stop(p, p.qty - covered)
+
+    def _drain(self, iv):
+        it = iv.intent
+        if hard_hold_permits(it.purpose, Op.CANCEL) is not Permission.ALLOWED:
+            return
+        q = self.venue.query(self._ref(iv))
+        if q.kind is not OutcomeKind.KNOWN:
+            return            # FINAL: nothing rests (a fill is protected by (2)); NOT_FOUND / UNKNOWN: re-query later
+        self.counters.drains += 1
+        out = self.venue.cancel(self._ref(iv))
+        if out.kind is OutcomeKind.REJECTED:                              # not open: a fill won the race (M51)
+            out = self.venue.query(self._ref(iv))
+        self._incident(f'hard HOLD drain {it.intent_id} ({it.client_order_id}): cancel -> {out.kind}'
+                       f'{"" if out.executed_qty is None else f", executed {out.executed_qty}"}')
+
+    def _emergency_stop(self, p, gap):
+        rules = self.cfg.rules[p.symbol]
+        qty = min(rules.quantize_qty(gap, Rounding.DOWN), p.qty)
+        if qty <= 0:
+            return
+        price = self._emergency_stop_price(p)
+        if price is None:
+            self._incident(f'hard HOLD: no stop level for {p.symbol} {p.side} {qty}: unprotected, operator needed')
+            return
+        cid = ids.emergency_stop_client_id(self.acct, p.symbol, p.side, qty)
+        ref = OrderRef(symbol=p.symbol, client_id=cid)
+        found = self.venue.query(ref)                                     # (1) narrow query by the deterministic id
+        if found.kind is OutcomeKind.KNOWN:
+            return                                                        # already resting: confirmed, not duplicated
+        out = self.venue.submit_stop(StopOrder(ref=ref, position_side=p.side, qty=qty, stop_price=price))
+        if out.kind is OutcomeKind.REJECTED and out.error_code == DUPLICATE_CLIENT_ID:
+            out = self.venue.query(ref)
+        self.counters.emergency_stops += out.kind is OutcomeKind.KNOWN
+        self._incident(f'hard HOLD emergency stop {cid} {p.symbol} {p.side} {qty} @ {price} -> {out.kind}')
+
+    def _emergency_stop_price(self, p):
+        """The owned stop level of that side: the lot's stop; for an adopted race fill with no lot, the entry's stop
+        distance re-derived from the klines, from the venue's entry price (never tighter: floor / ceil to the tick)."""
+        for lot in self.fold.open_lots():
+            if (lot.symbol, lot.side) == (p.symbol, p.side):
+                return self.stop_price_of(lot)
+        rules = self.cfg.rules[p.symbol]
+        for iv in reversed(list(self.fold.intents.values())):
+            if iv.purpose in OPENING_PURPOSES and (iv.intent.symbol, str(iv.intent.side)) == (p.symbol, p.side):
+                d = self._entry_distance(iv)
+                if d is None:
+                    return None
+                if p.side == 'LONG':
+                    return rules.quantize_price(p.entry_price - d, Rounding.DOWN)
+                return rules.quantize_price(p.entry_price + d, Rounding.UP)
+        return None
 
     def _cycle(self, decide):
         self._sync()
@@ -284,6 +393,7 @@ class Runner:
         if not rec.ok:
             self._hold([ITEM_REASON[k] for k, _ in rec.items])
         self._protect_all()
+        self._handover_emergency()
         if decide:
             self._decide_all()
         rec = self.reconcile()
@@ -420,7 +530,9 @@ class Runner:
         for o in oo.value:
             listed[o.ref.client_id] = o
             iv = self.fold.by_client_id.get(o.ref.client_id)
-            if iv is None:
+            if iv is None and ids.is_emergency_client_id(o.ref.client_id):
+                items.append(('emergency_stop', o.ref.client_id))     # A23 stop: adopted only by reconciliation (A08)
+            elif iv is None:
                 items.append(('foreign_order', o.ref.client_id))
             elif not iv.live:
                 items.append(('orphan_order', o.ref.client_id))
@@ -466,18 +578,26 @@ class Runner:
             self._incident(f'{lot_id}: stop and close refused {SECURE_ROUNDS} times this cycle')
             self._hold([ReasonCode.EXEC_STOP_FAILED], reason=ReasonCode.EXEC_STOP_FAILED)
 
-    def _stop_distance(self, lot):
-        d = self._dist.get(lot.entry.intent_id)
+    def _entry_distance(self, entry_iv):
+        """The stop distance of an entry: cached, or re-derived from the klines at its key candle (exchange truth)."""
+        d = self._dist.get(entry_iv.intent_id)
         if d is not None:
             return d
-        key = self.fold.entry_key(lot.entry)                  # restart: re-derive from the klines (exchange truth)
-        r = self.bars.closed_bars(lot.symbol, self.cfg.tf_ms, as_of_ms=key.candle_close_ms, limit=self.signals.window)
+        key = self.fold.entry_key(entry_iv)
+        sym, side = entry_iv.intent.symbol, str(entry_iv.intent.side)
+        r = self.bars.closed_bars(sym, self.cfg.tf_ms, as_of_ms=key.candle_close_ms, limit=self.signals.window)
         if r.kind is ReadKind.OK:
-            for s in self.signals.decide(lot.symbol, r.value, key.candle_close_ms):
-                if s.action == ENTER and s.side == lot.side and s.candle_close_ms == key.candle_close_ms:
-                    self._dist[lot.entry.intent_id] = s.stop_distance
+            for s in self.signals.decide(sym, r.value, key.candle_close_ms):
+                if s.action == ENTER and s.side == side and s.candle_close_ms == key.candle_close_ms:
+                    self._dist[entry_iv.intent_id] = s.stop_distance
                     return s.stop_distance
-        raise LookupError(f'{lot.lot_id}: the entry signal cannot be re-derived from the bars')
+        return None
+
+    def _stop_distance(self, lot):
+        d = self._entry_distance(lot.entry)
+        if d is None:
+            raise LookupError(f'{lot.lot_id}: the entry signal cannot be re-derived from the bars')
+        return d
 
     def stop_price_of(self, lot):
         if lot.protects:
@@ -487,6 +607,30 @@ class Runner:
         if lot.side == 'LONG':
             return rules.quantize_price(lot.avg_price - d, Rounding.DOWN)       # never tighter than the R
         return rules.quantize_price(lot.avg_price + d, Rounding.UP)
+
+    def _handover_emergency(self):
+        """Store writable again (after a restart): an A23 emergency stop left on the venue is retired only AFTER the
+        journaled protection of that side is confirmed WORKING and covers the position (place, confirm, then cancel
+        the old one), or when that side is flat (an orphan reduce-only order: cancel-only work). It was never
+        journaled, so its cancel is exchange cleanup, reported as an incident; reconciliation then sees no item."""
+        rec = self.last_rec
+        if rec is None or rec.orders is None or not any(ids.is_emergency_client_id(o.ref.client_id)
+                                                         for o in rec.orders):
+            return
+        pos, oo = self.venue.positions(), self.venue.open_orders()
+        if pos.kind is not ReadKind.OK or oo.kind is not ReadKind.OK:
+            return
+        qty = {(p.symbol, p.side): p.qty for p in pos.value}
+        for o in oo.value:
+            if not (o.reduce and ids.is_emergency_client_id(o.ref.client_id)):
+                continue
+            k = (o.ref.symbol, o.position_side)
+            journaled = sum((x.live_stop.intent.qty for x in self.fold.open_lots()
+                             if (x.symbol, x.side) == k and x.live_stop is not None
+                             and x.live_stop.state is IntentState.WORKING), ZERO)
+            if qty.get(k, ZERO) == 0 or journaled >= qty[k]:
+                out = self.venue.cancel(o.ref)
+                self._incident(f'emergency stop {o.ref.client_id} retired after handover -> {out.kind}')
 
     def _protect(self, lot):
         if not lot.open or lot.live_stop is not None or lot.closing is not None:
@@ -709,8 +853,11 @@ class Runner:
                     c = confirmed_coverage(lot.stop, live)
                     if c and live[lot.stop.order].client_order_id in listed:
                         cover[(lot.symbol, str(lot.side))] = cover.get((lot.symbol, str(lot.side)), ZERO) + c
+            for o in rec.orders:                                  # an A23 emergency stop is owned protection too
+                if o.reduce and ids.is_emergency_client_id(o.ref.client_id):
+                    cover[(o.ref.symbol, o.position_side)] = cover.get((o.ref.symbol, o.position_side), ZERO) + o.qty
             for p in rec.positions:
-                if p.qty != 0 and cover.get((p.symbol, p.side), ZERO) != p.qty:
+                if p.qty != 0 and cover.get((p.symbol, p.side), ZERO) < p.qty:       # under-covered = naked
                     problems.append(f'I1 {p.symbol} {p.side}: position {p.qty}, confirmed stop '
                                     f'{cover.get((p.symbol, p.side), ZERO)}')
         cids = self.fold.client_ids_recorded

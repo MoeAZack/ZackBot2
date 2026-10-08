@@ -132,15 +132,17 @@ class World:
                                    sides=sides, strict=strict)
         self.runner = self.new_runner()
 
-    def restart(self):
+    def restart(self, hard_hold=None):
         """A process restart: the journal is reopened (gate rebuilt from durable events), the Runner folds it."""
         self.journal = self.journal.reopen()
-        self.runner = self.new_runner()
+        if hard_hold is not None:                                      # the store is still down at boot
+            self.journal.fail_writes(10 ** 9)
+        self.runner = self.new_runner(hard_hold)
         return self.runner
 
-    def new_runner(self):
+    def new_runner(self, hard_hold=None):
         return Runner(self.config, journal=self.journal, venue=self.port, bars=self.bars, signals=self.signals,
-                      account_reads=self.venue)
+                      account_reads=self.venue, hard_hold=hard_hold)
 
     def close_ms(self, i):
         return self.candles[i].close_ms

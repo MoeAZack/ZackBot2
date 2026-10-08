@@ -33,27 +33,28 @@ def entries(w):
 
 # ------------------------------------------------------------------------------------------------ hard HOLD
 @pytest.mark.parametrize('after', [1, 4, 6])
-def test_store_failure_is_a_hard_hold_that_sends_nothing_more(after):
-    """after=1: decision only; 4: entry filled, result not durable; 6: entry closed, the stop never decided."""
+def test_store_failure_is_a_hard_hold_that_sends_only_the_emergency_set(after):
+    """after=1: decision only (nothing sent); 4: entry filled, result not durable; 6: entry closed, the stop never
+    decided. With a naked fill, the A23 emergency stop is the ONLY exchange write; nothing is journaled; enter12 is not
+    acted on; a restart with a writable store hands over to journaled protection (test_hard_hold_a24.py)."""
     w = World(flat_bars(20), sig(enter5='LONG', enter12='LONG'))
     w.run(4)
-    w.journal.fail_writes(1, after=after)
+    w.journal.fail_writes(10 ** 9, after=after)                    # the store goes down and stays down
     w.run(5)
     r = w.runner
     assert r.hard_hold is not None and r.hard_hold.startswith('recovery.durability_unavailable')
-    n_events, n_orders = len(w.journal.read()), len(w.venue.orders_submitted())
-    w.run(14)                                                      # the enter12 signal is NOT acted on
-    assert len(w.journal.read()) == n_events and len(w.venue.orders_submitted()) == n_orders
+    n_events = len(w.journal.read())
+    w.run(14)
+    assert len(w.journal.read()) == n_events
+    stops = [o for o in w.venue.orders_submitted() if o.order_type == 'STOP_MARKET']
+    assert [ids.is_emergency_client_id(o.ref.client_id) for o in stops] == ([True] if after >= 4 else [])
+    assert len(entries(w)) == (1 if after >= 4 else 0)            # enter12 refused
     s = r.summary()
     assert s.mode == 'hold(durability_unavailable)' and s.counters['hard_holds'] == 1
-    assert s.counters['hard_hold_cycles'] == 10
-    if after >= 4:                                                 # filled but unprotected: visible, not raised
-        assert s.counters['unprotected_cycles'] == 10
+    assert s.counters['hard_hold_cycles'] == 10 and s.counters['unprotected_cycles'] == 0
     w.restart()                                                    # leaving hard HOLD = a restart (fold + reconcile)
     w.runner.cycle(w.close_ms(14))
     assert w.runner.hard_hold is None
-    stops = [o for o in w.venue.orders_submitted() if o.order_type == 'STOP_MARKET']
-    assert len(stops) == (1 if after >= 4 else 0) and len(entries(w)) <= 1
 
 
 # ------------------------------------------------------------------------------------------------ keyed opening risk

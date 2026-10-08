@@ -12,6 +12,7 @@ same rule (a pure function of journaled data, no clock, no randomness):
     operator_decision_id  an operator decision (RESUME) at at_ms
     risk_decision_id   a risk-authority decision (HALT / kill) at at_ms
     resolution_decision_id  the reconciliation decision resolving a lost intent from position reads
+    emergency_stop_client_id  the A23 hard-HOLD emergency stop (exchange truth only: never journaled)
 
     H(tag, parts...) = sha256(b'zackbot.newcore.slice.' + tag + b'.v1' + (b'\\x00' + part)...), first 32 hex
 Reported as an interface item: these belong in newcore.ports.keys (with pinned vectors) once Codex rules on them.
@@ -20,12 +21,15 @@ from __future__ import annotations
 
 import hashlib
 
+from newcore.domain.base import dec_str
+
 from newcore.ports.keys import (client_id_for, decision_key, derive_child_intent_id, derive_decision_id,
                                 derive_intent_id, derive_lot_id, is_newcore_client_id)
 
 __all__ = ['client_id_for', 'decision_key', 'derive_child_intent_id', 'derive_decision_id', 'derive_intent_id',
            'derive_lot_id', 'is_newcore_client_id', 'event_id', 'result_id', 'position_id', 'child_decision_id',
-           'reconciliation_id', 'operator_decision_id', 'risk_decision_id', 'resolution_decision_id']
+           'reconciliation_id', 'operator_decision_id', 'risk_decision_id', 'resolution_decision_id',
+           'emergency_stop_client_id', 'is_emergency_client_id']
 
 
 def _hex(tag, *parts):
@@ -69,3 +73,20 @@ def risk_decision_id(account_id, action, at_ms):
 def resolution_decision_id(intent_id):
     """The explicit reconciliation decision that resolves a lost (UNKNOWN + NOT_FOUND) intent from position reads."""
     return 'dec_' + _hex('resolution_decision_id', intent_id)
+
+
+EMERGENCY_PREFIX = 'zbn1e-'
+
+
+def emergency_stop_client_id(account_id, symbol, side, qty):
+    """A23 emergency stop placed while the store cannot journal anything: its id is a pure function of EXCHANGE
+    truth (account, symbol, side, the uncovered quantity it protects), so a restart that re-derives the same gap finds
+    the stop by this id instead of duplicating it (M53). 32 chars, `zbn1e-` + 26 base32 (STEP0 section 6 item 6)."""
+    digest = hashlib.sha256(b'zackbot.newcore.slice.emergency_stop.v1' + b''.join(
+        b'\x00' + str(p).encode('ascii') for p in (account_id, symbol, side, dec_str(qty)))).digest()
+    n, b32 = int.from_bytes(digest, 'big'), 'abcdefghijklmnopqrstuvwxyz234567'
+    return EMERGENCY_PREFIX + ''.join(b32[(n >> (256 - 5 * (i + 1))) & 31] for i in range(26))
+
+
+def is_emergency_client_id(client_id):
+    return isinstance(client_id, str) and client_id.startswith(EMERGENCY_PREFIX) and len(client_id) == 32

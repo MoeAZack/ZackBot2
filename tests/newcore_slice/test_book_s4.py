@@ -10,7 +10,7 @@ from newcore.ports import header_of
 from newcore.risk import BookPolicy, BookRisk, cairo_day, cairo_offset_hours
 from newcore.runner import InjectedSignals, RunnerConfig
 from newcore.runner.book import BookRunner
-from slice_helpers import ACCOUNT_ID, PORTFOLIO_ID, fine_rules, flat_bars, sim_account
+from slice_helpers import Crash, ACCOUNT_ID, PORTFOLIO_ID, fine_rules, flat_bars, sim_account
 
 H1 = 3_600_000
 H4 = 14_400_000
@@ -232,9 +232,9 @@ def test_crash_inside_a_multi_entry_cycle_then_restart(after):
     ref.run(20)
     b = several_open()
     b.run(4)
-    b.journal.fail_writes(1, after=after)
-    b.run(5)
-    assert b.runner.hard_hold is not None                  # store failed: hard HOLD, nothing more sent
+    b.journal.fail_writes(1, after=after, error=Crash)
+    with pytest.raises(Crash):                                   # the process dies here
+        b.run(5)
     b.restart()
     b.runner.cycle(b.t0 + 6 * H4)                                      # the crashed candle is re-delivered
     b.run(20)

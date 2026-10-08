@@ -123,6 +123,10 @@ class FakeVenue:
         self._lose_market = None
         self._not_found = {}
         self._unknown_reads = 0
+        self._rest = 0                   # next n opening market orders rest unfilled (a working risk-adding order)
+        self._fill_on_cancel = set()     # client ids whose remainder fills when the cancel arrives (cancel loses)
+        self._lose_cancel = {}           # client id -> 'cancelled' | 'working': the cancel's answer is lost
+        self._refuse_classic_stop = None  # error code: classic-route STOP_MARKET refused (the algo route is accepted)
         self.calls = {'submit_market': 0, 'submit_stop': 0, 'cancel': 0, 'query': 0, 'positions': 0, 'open_orders': 0,
                       'fills': 0}
 
@@ -137,6 +141,32 @@ class FakeVenue:
 
     def unknown_reads(self, times=1):
         self._unknown_reads += times
+
+    def rest_next_entries(self, n=1):
+        """The next n opening market orders are accepted but rest unfilled (NEW): a working ENTRY / ADD."""
+        self._rest += n
+
+    def fill_resting(self, client_id, qty):
+        """Execute `qty` of a resting order at the current candle's open (a partial or full fill)."""
+        o = self._orders[client_id]
+        if o.status != 'NEW' or o.order_type != 'MARKET':
+            raise ValueError('not a resting market order')
+        opn = self._next_open(o.ref.symbol)
+        px = self._slipped(opn, buy=_buy(o.position_side, o.reduce))
+        self._execute_part(o, qty, px, at_ms=self.now_ms)
+
+    def fill_when_cancelled(self, client_id):
+        """Race: when the cancel arrives, the remainder has just filled; the cancel answers 'not open'."""
+        self._fill_on_cancel.add(client_id)
+
+    def lose_next_cancel_answer(self, client_id, truth='cancelled'):
+        """The next cancel of this order reaches the venue (truth 'cancelled': it is cancelled; 'working': it is not
+        processed) but its answer is lost: UNKNOWN."""
+        self._lose_cancel[client_id] = truth
+
+    def refuse_classic_stops(self, code=-4120):
+        """Classic /fapi/v1/order STOP_MARKET is refused with `code` (Binance -4120: use the algo service)."""
+        self._refuse_classic_stop = code
 
     def external_cancel(self, client_id):
         """The order disappears outside the bot (an operator / the exchange cancelled it)."""
@@ -235,10 +265,24 @@ class FakeVenue:
         o.executed, o.avg_price = q, px
         o.status = 'FILLED' if q == o.qty else 'CANCELED'
 
+    def _execute_part(self, o, q, px, *, at_ms):
+        """A fill of part (or the rest) of a resting order; it stays NEW until fully executed."""
+        q = min(q, o.qty - o.executed)
+        fee = VCTX.multiply(VCTX.multiply(q, px), self.costs.taker_fee)
+        self._apply_fill(o.ref.symbol, o.position_side, q, px, reduce=o.reduce, eoid=o.exchange_order_id, at_ms=at_ms,
+                         fee=fee)
+        total = VCTX.add(o.executed, q)
+        o.avg_price = px if not o.executed else DCTX.divide(
+            VCTX.add(VCTX.multiply(o.avg_price, o.executed), VCTX.multiply(px, q)), total)
+        o.executed = total
+        if total == o.qty:
+            o.status = 'FILLED'
+
     def _outcome(self, o):
         """The order's record as the venue reports it now."""
         if o.status == 'NEW':
-            return OrderOutcome(kind=OutcomeKind.KNOWN, ref=o.ref, observed_at_ms=self.now_ms, status='NEW',
+            return OrderOutcome(kind=OutcomeKind.KNOWN, ref=o.ref, observed_at_ms=self.now_ms,
+                                status='PARTIALLY_FILLED' if o.executed > 0 else 'NEW',
                                 exchange_order_id=o.exchange_order_id)
         return OrderOutcome(kind=OutcomeKind.FINAL, ref=o.ref, observed_at_ms=self.now_ms, status=o.status,
                             exchange_order_id=o.exchange_order_id, executed_qty=o.executed,
@@ -266,6 +310,9 @@ class FakeVenue:
         if order.reduce and order.qty > self._pos_qty(ref.symbol, order.position_side):
             return self._rejected(ref, E_REDUCE_ONLY, 'reduce_only')
         o = self._new_order(ref, 'MARKET', order.position_side, order.qty, order.reduce, None)
+        if not order.reduce and self._rest > 0:                     # accepted, resting unfilled
+            self._rest -= 1
+            return self._outcome(o)
         self._execute(o, order.qty, self._slipped(opn, buy=_buy(order.position_side, order.reduce)), at_ms=self.now_ms)
         if lose == 'filled':
             return OrderOutcome(kind=OutcomeKind.UNKNOWN, ref=ref, observed_at_ms=self.now_ms, detail='timeout')
@@ -276,6 +323,8 @@ class FakeVenue:
         ref = order.ref
         if ref.client_id in self._orders:
             return self._rejected(ref, E_DUPLICATE_ID, 'duplicate_client_id')
+        if ref.route == 'classic' and self._refuse_classic_stop is not None:
+            return self._rejected(ref, self._refuse_classic_stop, 'algo_required')
         if order.qty > self._pos_qty(ref.symbol, order.position_side):
             return self._rejected(ref, E_REDUCE_ONLY, 'reduce_only')
         mark = self._next_open(ref.symbol)
@@ -293,7 +342,15 @@ class FakeVenue:
                                 error_code=E_UNKNOWN_ORDER)
         if o.status != 'NEW':
             return self._rejected(ref, E_UNKNOWN_ORDER, 'not_open')
-        o.status = 'CANCELED'
+        if ref.client_id in self._fill_on_cancel:                  # the fill wins the race
+            self._fill_on_cancel.discard(ref.client_id)
+            self.fill_resting(ref.client_id, o.qty - o.executed)
+            return self._rejected(ref, E_UNKNOWN_ORDER, 'not_open')
+        lost = self._lose_cancel.pop(ref.client_id, None)
+        if lost != 'working':
+            o.status = 'CANCELED'
+        if lost is not None:
+            return OrderOutcome(kind=OutcomeKind.UNKNOWN, ref=ref, observed_at_ms=self.now_ms, detail='timeout')
         return self._outcome(o)
 
     def query(self, ref: OrderRef) -> OrderOutcome:
