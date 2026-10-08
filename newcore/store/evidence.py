@@ -41,15 +41,32 @@ def evidence_bytes(account_id, segment, offset, data, source='torn_tail'):
     return file_header(KIND_EVIDENCE) + frame(RT_HEADER, meta) + frame(RT_EVIDENCE_BODY, bytes(data))
 
 
+def _make_durable(fs, p, content, ed):
+    """Before an existing byte-identical evidence file is reused (an earlier attempt wrote it, then its fsync or a
+    directory flush failed): fsync the file, read it back and verify it, flush its directory. Only then may the caller
+    seal the segment whose tail it preserves. Raises OSError (the caller maps it to DurabilityUnavailable)."""
+    h = fs.open_append(p)
+    try:
+        fs.fsync(h)
+    finally:
+        try:
+            fs.close(h)
+        except OSError:
+            pass
+    if fs.read_bytes(p) != content:
+        raise OSError(errno.EIO, 'evidence read-back differs')
+    fs.fsync_dir(ed)
+
+
 def write_evidence(fs, account_dir, account_id, segment, offset, data, source='torn_tail'):
     """(EvidenceRef, created). Raises OSError (the caller maps it to DurabilityUnavailable)."""
     ed = os.path.join(account_dir, EVIDENCE_DIR)
     k = fs.kind(ed)
     if k == 'missing':
         fs.mkdir(ed)
-        fs.fsync_dir(account_dir)
     elif k != 'dir':
         raise OSError(errno.ENOTDIR, 'the evidence path is not a directory')
+    fs.fsync_dir(account_dir)               # HIGH-1: also when an earlier attempt made the dir and its flush failed
     content = evidence_bytes(account_id, segment, offset, data, source)
     sha = _sha(data)
     stem = f'{"torn" if source == "torn_tail" else "failed"}-{segment[:-4]}-o{offset:010d}-{sha[:16]}'
@@ -60,6 +77,7 @@ def write_evidence(fs, account_dir, account_id, segment, offset, data, source='t
         kk = fs.kind(p)
         if kk == 'file':
             if fs.read_bytes(p) == content:
+                _make_durable(fs, p, content, ed)   # HIGH-1 (Codex #43): identical bytes are not yet durable bytes
                 return ref, False
             continue
         if kk != 'missing':
