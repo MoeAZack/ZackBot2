@@ -31,7 +31,7 @@ import re
 from dataclasses import dataclass
 from typing import Protocol, runtime_checkable
 
-from .redact import check_value, redact_values
+from .redact import PatternCache, check_value, redact_values
 
 KEY_DIGEST_PREFIX = 'zbk1:'
 _DIGEST_DOMAIN = b'zackbot/newcore/venue/key-digest/v1\x00'
@@ -478,6 +478,7 @@ class SecretScrubber:
 
     def __init__(self):
         self._values = []
+        self._cache = PatternCache()         # compiled patterns, owned here
         self._installed = None
 
     def __repr__(self):
@@ -500,7 +501,7 @@ class SecretScrubber:
 
     def scrub(self, text):
         """Case-insensitive, percent-encoding and separator tolerant (redact.redact_values)."""
-        return redact_values(str(text), self._values)
+        return redact_values(str(text), self._values, self._cache)
 
     def scrub_record(self, record):
         import logging

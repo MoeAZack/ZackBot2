@@ -26,7 +26,7 @@ import os
 import re
 import urllib.parse
 
-from .redact import REDACTED, check_value, contains_values, is_sensitive_name, redact_values
+from .redact import REDACTED, PatternCache, check_value, contains_values, is_sensitive_name, redact_values
 from .wire import (API_KEY_HEADER, HttpResponse, WireConnectionError, WireNotSent, WireResponseTooLarge, WireSeamError,
                    WireTimeout)
 
@@ -97,6 +97,7 @@ class CassetteRecorder:
             raise ValueError('inner must be the http callable to record')
         self._inner = inner
         self._values = set()
+        self._cache = PatternCache()                # compiled patterns, owned here
         self._last_response = None
         self.interactions = []
         self.note = str(note)
@@ -129,7 +130,7 @@ class CassetteRecorder:
             return m.group(0)
         text = _JSON_PAIR.sub(json_sub, str(text))
         text = _FORM_PAIR.sub(form_sub, text)
-        return redact_values(text, self._values)
+        return redact_values(text, self._values, self._cache)
 
     def _clean_pairs(self, pairs):
         out = []
@@ -139,7 +140,7 @@ class CassetteRecorder:
                 out.append([k, REDACTED])
             else:
                 out.append([k, v])
-        return [[k, redact_values(v, self._values) if v != REDACTED else v] for k, v in out]
+        return [[k, redact_values(v, self._values, self._cache) if v != REDACTED else v] for k, v in out]
 
     def _request_record(self, request):
         key = request.wire_header(API_KEY_HEADER)
@@ -153,8 +154,20 @@ class CassetteRecorder:
         pairs = urllib.parse.parse_qsl(request.query, keep_blank_values=True)
         query = self._clean_pairs(pairs)
         headers = self._clean_pairs(list(request.headers))
-        return {'method': request.method, 'url': redact_values(request.url, self._values),
+        return {'method': request.method, 'url': redact_values(request.url, self._values, self._cache),
                 'signed': bool(request.signed), 'query': query, 'headers': headers}
+
+    def _occurs(self, values, interactions):
+        """Does any newly learned value occur in the already stored interactions (raw text or a binary body)? Only
+        then is the full rescrub needed (a per-request signature never does: it did not exist before)."""
+        text = json.dumps(interactions, ensure_ascii=False)
+        if contains_values(text, values, self._cache):
+            return True
+        for it in interactions:
+            b64 = it.get('response', {}).get('body_b64')
+            if b64 and contains_values(base64.b64decode(b64).decode('latin-1'), values, self._cache):
+                return True
+        return False
 
     def _rescrub(self, obj, key=None):
         """Re-apply value redaction to already stored interactions (a value learned later, e.g. a listenKey first
@@ -166,16 +179,17 @@ class CassetteRecorder:
         if isinstance(obj, str):
             if key == 'body_b64':
                 b = base64.b64decode(obj).decode('latin-1')
-                return base64.b64encode(redact_values(b, self._values).encode('latin-1')).decode('ascii')
-            return redact_values(obj, self._values)
+                return base64.b64encode(redact_values(b, self._values, self._cache).encode('latin-1')).decode('ascii')
+            return redact_values(obj, self._values, self._cache)
         return obj
 
     def __call__(self, request):
-        known = len(self._values)
+        known = set(self._values)
         try:
             self._record(request)
         finally:
-            if len(self._values) != known and self.interactions:
+            new = self._values - known
+            if new and len(self.interactions) > 1 and self._occurs(new, self.interactions[:-1]):
                 self.interactions = self._rescrub(self.interactions)
         return self._last_response
 
@@ -206,7 +220,7 @@ class CassetteRecorder:
 
     def _audit(self, text):
         values = sorted(self._values)
-        if contains_values(text, values):
+        if contains_values(text, values, self._cache):
             raise CassetteLeak('a secret value is still present; cassette not produced')
         for n, it in enumerate(self.interactions):
             req = it['request']
@@ -225,7 +239,7 @@ class CassetteRecorder:
                     raise CassetteLeak(f'interaction {n}: a sensitive JSON field still has a value')
             if 'body_b64' in resp:
                 b = base64.b64decode(resp['body_b64']).decode('latin-1')
-                if contains_values(b, values):
+                if contains_values(b, values, self._cache):
                     raise CassetteLeak(f'interaction {n}: a secret value is still present in a binary body')
                 bodies.append(b)
             for b in bodies:

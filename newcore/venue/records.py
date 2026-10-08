@@ -550,5 +550,20 @@ def parse_income(data):
     return tuple(out)
 
 
+@dataclass(frozen=True)
+class MarkPrice:
+    symbol: str
+    mark_price: Decimal
+    index_price: Decimal
+    time_ms: int                  # Binance server time of the mark
+
+
+def parse_premium_index(data):
+    """/fapi/v1/premiumIndex?symbol=X (one object). A list (no symbol sent) is refused as malformed."""
+    o = as_obj(data, 'premiumIndex')
+    return MarkPrice(symbol=text(o, 'symbol'), mark_price=dec(o, 'markPrice', positive=True),
+                     index_price=dec(o, 'indexPrice', nonneg=True), time_ms=integer(o, 'time', positive=True))
+
+
 def parse_server_time(data):
     return integer(as_obj(data, 'time'), 'serverTime', positive=True)
