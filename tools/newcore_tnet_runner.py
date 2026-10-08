@@ -14,7 +14,15 @@ scenario (also on Ctrl+C). The redacted report (JSON + Markdown) goes to %LOCALA
 
 Exit codes (plan 6.6): 0 all PASS, cleanup clean | 1 an INCONCLUSIVE (a bounded wait elapsed) | 2 usage / config
 refused (also a dirty tree with --gate) | 3 no usable credentials / binding mismatch | 4 preflight or factory refused |
-5 report not written / leak | 6 a scenario deadline | 7 a scenario FAILED | 8 cleanup NOT clean (exposure MAY be left).
+5 report not written / leak | 6 a scenario deadline or Ctrl+C | 7 a scenario FAILED | 8 cleanup NOT clean (exposure
+MAY be left).
+
+Ctrl+C, what is guaranteed (tests: test_tnet_ctrlc_sweep.py at every HTTP request, test_tnet_evidence_interrupt.py at
+every report / detail / cassette / sidecar filesystem write boundary): inside a scenario the teardown runs with SIGINT
+ignored (an interrupt raised inside it re-runs it once); while evidence files are committed SIGINT is deferred and an
+interrupt raised inside a write gets one retry from the in-memory result, so the files are complete and no *.tmp is
+left; the suite keeps every result so far and the report is written; exit 6 unless residue (8) wins. Before any
+scenario started (argument checks, boot, preflight) a Ctrl+C stops with exit 6; a report, if written, lists no scenario.
 """
 import argparse
 import json
@@ -33,8 +41,10 @@ from newcore.tnet.rspec import (MAX_SETTLE_MS, SpecError, bundled, load_rspec, r
                                 validate_rspec)
 from newcore.venue.cli_args import ACCOUNT_REFUSAL, argv_refusal  # noqa: E402
 from newcore.venue.redact import scrub_path, scrub_tokens  # noqa: E402
-from newcore.venue.tnet import (CleanupResult, ScenarioOutcome, _audit, adopt_refusal, git_build,  # noqa: E402
-                                tnet_report)
+from newcore.venue.tnet import (CleanupResult, EvidenceInterrupt, ScenarioOutcome, _audit,  # noqa: E402
+                                adopt_refusal, commit_evidence, git_build, tnet_report)
+
+EVIDENCE = EvidenceInterrupt()                          # interrupts absorbed while committing the report
 
 EXIT_USAGE, EXIT_CREDS, EXIT_REPORT = 2, 3, 5
 DIGEST_RE = re.compile(r'[0-9a-f]{16}')
@@ -172,12 +182,15 @@ def _report(args, res, run_id, build, values, out, cassettes=None):
     detail = json.dumps([r.as_dict() for r in res.scenarios], indent=1, sort_keys=True) + '\n'
     try:
         _audit((detail,), values)                     # the per-scenario detail is leak-checked like the report
-        paths = tnet_report(run_id=run_id, scenarios=scenarios, cleanup=agg, config=config,
-                            cassette_path=cassettes or None,
-                            fees=fees, pnl=pnl, build=build, now_ms=int(time.time() * 1000), out_dir=args.report_dir,
-                            redact=values)
-        with open(paths[0][:-len('.json')] + '.scenarios.json', 'w', encoding='utf-8', newline='\n') as fh:
-            fh.write(detail)                          # orders, ledger, injected faults, final truth, cleanup
+        now = int(time.time() * 1000)
+
+        def commit():                                 # SIGINT deferred, one retry (tnet.commit_evidence)
+            ps = tnet_report(run_id=run_id, scenarios=scenarios, cleanup=agg, config=config,
+                             cassette_path=cassettes or None, fees=fees, pnl=pnl, build=build, now_ms=now,
+                             out_dir=args.report_dir, redact=values)
+            _write_text(ps[0][:-len('.json')] + '.scenarios.json', detail)   # orders, ledger, truth, cleanup
+            return ps
+        paths = commit_evidence(commit, EVIDENCE)
     except Exception as ex:                                              # noqa: BLE001 - reported as exit 5
         out.write(f'ERROR: report not written ({type(ex).__name__}: {ex}).\n')
         return EXIT_REPORT
@@ -185,12 +198,31 @@ def _report(args, res, run_id, build, values, out, cassettes=None):
     return EXIT_PASS
 
 
+def _write_text(path, text):
+    tmp = f'{path}.tmp{os.getpid()}'
+    try:
+        with open(tmp, 'w', encoding='utf-8', newline='\n') as fh:
+            fh.write(text)
+            fh.flush()
+            os.fsync(fh.fileno())
+        os.replace(tmp, path)
+    finally:
+        if os.path.exists(tmp):
+            os.remove(tmp)
+    return path
+
+
 def main(argv=None, *, out=None, **kw):
     """Typed exit codes only: an unexpected exception is exit 7 with its type (never exit 1 = INCONCLUSIVE, never
-    its message: it may echo input). Ctrl+C inside a scenario is handled there (teardown, report, exit 6)."""
+    its message: it may echo input). Ctrl+C: see the module docstring for exactly what is guaranteed."""
     out = out or sys.stdout
+    EVIDENCE.hit = False
     try:
-        return _main(argv, out=out, **kw)
+        rc = _main(argv, out=out, **kw)
+        if EVIDENCE.hit and rc in (0, 1):                             # Ctrl+C while the report was committed
+            out.write('INTERRUPTED (Ctrl+C) while the report was written; it is complete.\n')
+            return 6
+        return rc
     except KeyboardInterrupt:                                        # N2: preflight / boot / report phase
         out.write('INTERRUPTED (Ctrl+C). A scenario that had sent orders ran its teardown.\n')
         return 6

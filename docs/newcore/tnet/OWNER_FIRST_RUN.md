@@ -73,11 +73,17 @@ python tools\newcore_tnet.py --probe P2
 
 Expected: `preflight OK`, then `P1: conclusive` (and `P2: conclusive`), `CLEANUP CLEAN`, a `report:` line, and exit 0.
 
-## 5. Runner scenarios
+## 5. Runner scenarios: the first run is 5a ONLY
 
-Both parts below are safe to stop with **Ctrl+C**. On Ctrl+C the cleanup still runs, the report is still written, and the exit code is 6.
+**What Ctrl+C does.** You can stop any step with Ctrl+C.
 
-**5a. Core scenarios (about 35-45 minutes).**
+- **Before any order was sent** (start-up checks): it simply stops with exit 6. There may be no report, because nothing happened.
+- **After an order was sent:** the cleanup still runs (a second Ctrl+C cannot stop it). The report is written in full, and the exit code is 6, or 8 if something may be left.
+
+**5a. Core scenarios (about 35-45 minutes). This, with the probes, is the whole first run.**
+
+- Management: **OFF**. None of these scenarios uses position management.
+- REC-02: **not used**.
 
 ```powershell
 python tools\newcore_tnet_runner.py --target testnet --only T01-long --only T02-short --only T03 --only T09 --only T10-floor --only T10-refused --only T11 --only T12-flat --only T12-protected
@@ -85,13 +91,15 @@ python tools\newcore_tnet_runner.py --target testnet --only T01-long --only T02-
 
 Expected: one `PASS` line per scenario, a `report:` line, and exit 0.
 
-**5b. Price brackets (from about 30 minutes up to several hours, depending on the market).**
+**Optional, separate, only when Claude Code says so: T04-algo stop-exit bracket (30 minutes up to about 1.5 hours).**
+
+This one is transport-only: no management. It waits for the market to hit a tight stop and tries up to 3 times. `INCONCLUSIVE` only means the market did not move far enough.
 
 ```powershell
-python tools\newcore_tnet_runner.py --target testnet --only T04-algo --only T05-tn-long --only T05-tn-short --only T06-tn-long --only T06-tn-short --only T07-tn-long --only T07-tn-short
+python tools\newcore_tnet_runner.py --target testnet --only T04-algo
 ```
 
-Each bracket waits up to about 31 minutes for the market to reach its levels, and tries up to 3 times. `INCONCLUSIVE` only means the market did not move far enough. It is not a failure.
+**5b. Management brackets (T05 / T06 / T07): NOT part of the first run.** They turn position management on, and they come in a later run after the REC-02 work. Do not run them now.
 
 ## 6. Only if something was left: cleanup
 
@@ -113,7 +121,7 @@ This cancels NEWCORE orders only and lists any positions it finds. It never touc
 | 3 | No usable key, or the key does not match the binding | Step 1 |
 | 4 | Preflight refused (not flat / not hedge mode / foreign orders / low balance) or a read failed; nothing was sent | Fix it in the testnet UI, or send the output |
 | 5 | The report or cassette could not be written | Send the output |
-| 6 | Stopped by time limit or Ctrl+C; the cleanup ran | Send the output and report paths |
+| 6 | Stopped by time limit or Ctrl+C; if orders had been sent, the cleanup ran and the report was written | Send the output and report paths |
 | 7 | A scenario FAILED; the cleanup ran | Send the report paths |
 | 8 | **Something MAY be left on the testnet account** | See below |
 

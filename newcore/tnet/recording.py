@@ -16,7 +16,7 @@ import json
 import os
 
 from newcore.venue.cassette import CassetteLeak, CassetteRecorder
-from newcore.venue.tnet import _audit
+from newcore.venue.tnet import EvidenceInterrupt, _audit, commit_evidence
 
 from .driver import (EXIT_DEADLINE, EXIT_PREFLIGHT, FAIL, INCONCLUSIVE, ScenarioResult, SuiteResult, adopted_orders,
                      attempt_nonce, run_scenario, suite_exit_code)
@@ -30,22 +30,28 @@ def bundle_base(cassette_dir, run_nonce, scenario_id):
 
 def _write(path, text):
     tmp = f'{path}.tmp{os.getpid()}'
-    with open(tmp, 'w', encoding='utf-8', newline='\n') as fh:
-        fh.write(text)
-        fh.flush()
-        os.fsync(fh.fileno())
-    os.replace(tmp, path)
+    try:
+        with open(tmp, 'w', encoding='utf-8', newline='\n') as fh:
+            fh.write(text)
+            fh.flush()
+            os.fsync(fh.fileno())
+        os.replace(tmp, path)
+    finally:                                          # never a leftover *.tmpPID file
+        if os.path.exists(tmp):
+            os.remove(tmp)
     return path
 
 
-def save_bundle(recorder, base, meta, redact):
+def save_bundle(recorder, base, meta, redact, flag=None):
     """Audit both texts first (CassetteLeak / ReportLeak: nothing is written), then write the cassette and its meta."""
     text = recorder.to_json()
     meta_text = json.dumps(meta, indent=1, sort_keys=True) + '\n'
     _audit((meta_text,), [v for v in redact if isinstance(v, str)])
-    path = _write(base + '.json', text)
-    _write(base + '.meta.json', meta_text)
-    return path
+    def commit():                                     # SIGINT deferred, one retry (tnet.commit_evidence)
+        p = _write(base + '.json', text)
+        _write(base + '.meta.json', meta_text)
+        return p
+    return commit_evidence(commit, flag)
 
 
 def replay_meta(spec, result, *, run_nonce, account_id, symbols, settle_ms, baseline):
@@ -61,7 +67,7 @@ def run_recorded_suite(specs, make_target, *, run_nonce, cassette_dir, redact, m
     """make_target(recorder_factory) -> TestnetTarget. Returns (SuiteResult, preflight cassette path | None,
     cassette errors [(scenario id, reason)]). Ctrl+C in the boot / preflight / between scenarios keeps the results
     so far (SuiteResult.interrupted): the CLI still writes the report."""
-    st = {'pre': None, 'pre_path': None, 'results': [], 'errors': []}
+    st = {'pre': None, 'pre_path': None, 'results': [], 'errors': [], 'evidence': EvidenceInterrupt()}
     try:
         return _recorded_suite(st, specs, make_target, run_nonce=run_nonce, cassette_dir=cassette_dir,
                                redact=redact, monotonic=monotonic, min_balance=min_balance,
@@ -86,7 +92,8 @@ def _recorded_suite(st, specs, make_target, *, run_nonce, cassette_dir, redact, 
     pre_path = None
     try:
         text = pre_t.recorder.to_json()
-        pre_path = st['pre_path'] = _write(bundle_base(cassette_dir, run_nonce, 'preflight') + '.json', text)
+        pre_path = st['pre_path'] = commit_evidence(
+            lambda: _write(bundle_base(cassette_dir, run_nonce, 'preflight') + '.json', text), st['evidence'])
     except (CassetteLeak, OSError) as ex:
         errors.append(('preflight', type(ex).__name__))
     if not pre.ok:
@@ -114,7 +121,7 @@ def _recorded_suite(st, specs, make_target, *, run_nonce, cassette_dir, redact, 
                                    symbols=t.config.symbols, settle_ms=t.settle_ms, baseline=pre.baseline)
                 base = bundle_base(cassette_dir, run_nonce, spec['id'] + ('' if attempt == 1 else f'-a{attempt}'))
                 try:
-                    r.cassette = save_bundle(t.recorder, base, meta, redact)
+                    r.cassette = save_bundle(t.recorder, base, meta, redact, st['evidence'])
                 except Exception as ex:                              # noqa: BLE001 - leak / disk: exit 5, no file
                     errors.append((spec['id'], type(ex).__name__))
                 if r.verdict != INCONCLUSIVE or r.residue or r.interrupted:
@@ -127,4 +134,4 @@ def _recorded_suite(st, specs, make_target, *, run_nonce, cassette_dir, redact, 
             on_result(r)
         if r.residue or r.interrupted:
             break
-    return SuiteResult(pre, results, suite_exit_code(results)), pre_path, errors
+    return SuiteResult(pre, results, suite_exit_code(results), interrupted=st['evidence'].hit), pre_path, errors

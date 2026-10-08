@@ -1,6 +1,7 @@
 """Cowork 6063794395: Ctrl+C at EVERY request of a runner-target run (boot, preflight, cycles, final truth, teardown,
 report) ends typed: exit 6 with the report written, and the account flat with no NEWCORE order (an interrupt inside
-the teardown re-runs it once)."""
+the teardown re-runs it once). Interrupts at the filesystem boundaries of the evidence writes themselves are covered by
+test_tnet_evidence_interrupt.py."""
 import importlib.util
 import io
 import os
