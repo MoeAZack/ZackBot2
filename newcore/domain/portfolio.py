@@ -146,6 +146,7 @@ class Position(Record):
         check_id(self.position_id, p + '.position_id', 'pos')
         check_symbol(self.symbol, p + '.symbol')
         req(len(self.lots) > 0, p + '.lots', 'an empty position is not stored')
+        req(len({x.lot_id for x in self.lots}) == len(self.lots), p + '.lots', 'duplicate lot id (qty would double count)')
         req(all(x.symbol == self.symbol and x.side is self.side for x in self.lots), p + '.lots', 'lot of another symbol / side')
 
     @property

@@ -158,3 +158,16 @@ def test_every_record_class_is_a_document_type():
     records = {name for m in mods for name, c in inspect.getmembers(m, inspect.isclass)
                if issubclass(c, Record) and dataclasses.is_dataclass(c) and c.__module__ == m.__name__}
     assert records == {c.__name__ for c in RECORD_TYPES.values()}
+
+
+# ----------------------------------------------------------------------------------------------------------- CP05 / I03
+def test_a_bare_position_rejects_duplicate_lots():
+    """CP05/I03: Position(lots=(l, l)) built on its own and Position.qty double counted."""
+    from newcore.domain import InvalidRecord, Position
+    p, ids = F.single_lot_portfolio(94)
+    lt = p.lots[0]
+    with pytest.raises(InvalidRecord, match='duplicate lot id'):
+        Position(position_id=ids.id('pos'), symbol=lt.symbol, side=lt.side, lots=(lt, lt))
+    twin = F.replace(lt, stop=F.replace(lt.stop, order=None, confirmed_at_ms=None))      # same id, other content
+    with pytest.raises(InvalidRecord, match='duplicate lot id'):
+        Position(position_id=ids.id('pos'), symbol=lt.symbol, side=lt.side, lots=(lt, twin))
