@@ -377,6 +377,18 @@ class BinanceTestnetTransport:
             raise VenueInputError('start_ms..end_ms must be ordered and at most 7 days apart')
         return self._read('user_trades', 'GET', '/fapi/v1/userTrades', pairs, True, R.parse_fills)
 
+    def income(self, *, symbol=None, income_type=None, start_ms=None, end_ms=None, limit=None):
+        """One page of /fapi/v1/income (funding fees, commission, realized pnl, ...). Paginate with
+        newcore.venue.income.income_history, which walks time windows and never returns a partial history as whole."""
+        if income_type is not None and (type(income_type) is not str or not R.INCOME_TYPE_RE.match(income_type)):
+            raise VenueInputError('income_type must be an upper-case Binance income type')
+        pairs = _pairs(('symbol', _symbol(symbol) if symbol is not None else None), ('incomeType', income_type),
+                       ('startTime', _opt_ms(start_ms, 'start_ms')), ('endTime', _opt_ms(end_ms, 'end_ms')),
+                       ('limit', _opt_limit(limit, 1000)))
+        if start_ms is not None and end_ms is not None and end_ms < start_ms:
+            raise VenueInputError('end_ms before start_ms')
+        return self._read('income', 'GET', '/fapi/v1/income', pairs, True, R.parse_income)
+
     # ---------- orders ----------
 
     def place_market(self, symbol, side, position_side, quantity, client_id, *, reduce_only):

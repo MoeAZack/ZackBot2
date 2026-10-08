@@ -172,6 +172,20 @@
      "orderId": 4000000100, "price": "222.30", "qty": "5", "quoteQty": "1111.50", "realizedPnl": "0",
      "side": "BUY", "positionSide": "LONG", "symbol": "SOLUSDT", "time": 1759917000046}]},
 
+  "income_mixed": {"status": 200, "headers": {"X-MBX-USED-WEIGHT-1M": "60"}, "body": [
+    {"symbol": "SOLUSDT", "incomeType": "COMMISSION", "income": "-0.55575000", "asset": "USDT", "info": "COMMISSION",
+     "time": 1759917000045, "tranId": 9689322392, "tradeId": "698759"},
+    {"symbol": "SOLUSDT", "incomeType": "COMMISSION", "income": "-0.55575000", "asset": "USDT", "info": "COMMISSION",
+     "time": 1759917000046, "tranId": 9689322393, "tradeId": "698760"},
+    {"symbol": "SOLUSDT", "incomeType": "FUNDING_FEE", "income": "-0.11055000", "asset": "USDT", "info": "FUNDING_FEE",
+     "time": 1759939200000, "tranId": 9689400001, "tradeId": ""},
+    {"symbol": "BTCUSDT", "incomeType": "FUNDING_FEE", "income": "0.04200000", "asset": "USDT", "info": "FUNDING_FEE",
+     "time": 1759939200000, "tranId": 9689400002, "tradeId": ""},
+    {"symbol": "SOLUSDT", "incomeType": "REALIZED_PNL", "income": "-12.50000000", "asset": "USDT", "info": "REALIZED_PNL",
+     "time": 1759950000000, "tranId": 9689500001, "tradeId": "698900"},
+    {"symbol": "", "incomeType": "TRANSFER", "income": "100.00000000", "asset": "USDT", "info": "TRANSFER",
+     "time": 1759951000000, "tranId": 9689600001, "tradeId": ""}]},
+
   "err_timestamp": {"status": 400, "headers": {}, "body": {"code": -1021, "msg": "Timestamp for this request is outside of the recvWindow."}},
   "err_signature": {"status": 400, "headers": {}, "body": {"code": -1022, "msg": "Signature for this request is not valid."}},
   "err_cancel_unknown": {"status": 400, "headers": {}, "body": {"code": -2011, "msg": "Unknown order sent."}},

@@ -498,5 +498,57 @@ def parse_fills(data):
     return tuple(out)
 
 
+# ---------- income (funding / commission / realized pnl) ----------
+
+INCOME_TYPE_RE = re.compile(r'^[A-Z][A-Z_]{1,39}$')
+
+
+@dataclass(frozen=True)
+class IncomeRow:
+    """One /fapi/v1/income row. income is SIGNED as Binance reports it: negative = paid by the account (commission,
+    funding paid), positive = received. symbol is None for account-level rows (e.g. TRANSFER). trade_id is None when
+    Binance sends "" (funding, transfers). Unknown income types are kept (Binance adds types); summaries file them
+    under their own name, never under funding/commission/pnl."""
+    symbol: object
+    income_type: str
+    income: Decimal
+    asset: str
+    info: str
+    time_ms: int
+    tran_id: int
+    trade_id: object
+
+    @property
+    def key(self):
+        return (self.tran_id, self.income_type, self.asset)
+
+
+def parse_income(data):
+    out, seen = [], set()
+    for r in as_list(data, 'income'):
+        r = as_obj(r, 'income row')
+        sym = r.get('symbol')
+        if sym not in ('', None) and not isinstance(sym, str):
+            raise MalformedResponse('symbol: not text')
+        trade = r.get('tradeId')
+        if isinstance(trade, bool) or not isinstance(trade, (str, int, type(None))):
+            raise MalformedResponse('tradeId: unexpected type')
+        info = r.get('info', '')
+        if not isinstance(info, str):
+            raise MalformedResponse('info: not text')
+        itype = text(r, 'incomeType')
+        if not INCOME_TYPE_RE.match(itype):
+            raise MalformedResponse('incomeType: unexpected value')
+        row = IncomeRow(symbol=sym or None, income_type=itype, income=dec(r, 'income'), asset=text(r, 'asset'),
+                        info=info, time_ms=integer(r, 'time', positive=True),
+                        tran_id=integer(r, 'tranId', positive=True),
+                        trade_id=None if trade in ('', None) else str(trade))
+        if row.key in seen:
+            raise MalformedResponse('duplicate income row')
+        seen.add(row.key)
+        out.append(row)
+    return tuple(out)
+
+
 def parse_server_time(data):
     return integer(as_obj(data, 'time'), 'serverTime', positive=True)

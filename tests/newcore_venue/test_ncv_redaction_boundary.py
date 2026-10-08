@@ -131,7 +131,7 @@ def _modules():
             yield name, ast.parse(open(os.path.join(PKG, name), encoding='utf-8').read())
 
 
-TRANSPORT_CORE = {'__init__.py', 'guard.py', 'signing.py', 'wire.py', 'errors.py', 'records.py', 'outcomes.py',
+TRANSPORT_CORE = {'__init__.py', 'guard.py', 'signing.py', 'wire.py', 'errors.py', 'records.py', 'outcomes.py', 'income.py',
                   'transport.py'}
 
 
