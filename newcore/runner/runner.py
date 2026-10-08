@@ -446,11 +446,11 @@ class Runner:
                 self._emergency_close(p, p.qty - covered)
                 continue
             self._emergency_stop(p, p.qty - covered, price=proven)
-        if self.guard:
-            return                                                        # the guard never cancels anything
         flat = {(p.symbol, p.side) for p in pos.value if p.qty == 0}
-        for o in oo.value:                                                # Cowork NEW-3: an emergency stop of a side
-            if ids.is_emergency_client_id(o.ref.client_id) and (o.ref.symbol, o.position_side) in flat:   # now flat
+        for o in oo.value:                    # Cowork NEW-3 / G3: OUR stop of a side the venue shows flat (the guard: any
+            ours = (self._owned_order(o.ref.client_id) and o.reduce and o.order_type == 'STOP_MARKET') if self.guard \
+                else ids.is_emergency_client_id(o.ref.client_id)          # zbn1 stop; else our emergency stops) is
+            if ours and (o.ref.symbol, o.position_side) in flat:          # cleanup - never exposed, never foreign
                 out = self.venue.cancel(o.ref)                            # is exchange cleanup, never protection
                 self._incident(f'hard HOLD: {o.ref.client_id} {o.ref.symbol} {o.position_side} flat: cancelled '
                                f'-> {out.kind}')
@@ -895,6 +895,7 @@ class Runner:
 
     # ----------------------------------------------------------------------------------------------- 3. protect
     def _protect_all(self):
+        self._detect_external_flats()
         for lot in self.fold.open_lots():
             if self._suspended(lot.lot_id):
                 continue
@@ -1096,13 +1097,25 @@ class Runner:
         bars = self._bars_now(symbol)
         if bars is None:
             return
-        for s in self.signals.decide(symbol, bars, self.now):
+        for s in self._signals_now(symbol, bars):
             if s.side not in self.cfg.sides:
                 continue
             if s.action == CLOSE:
                 self._exit(symbol, s)
             elif s.action == ENTER:
                 self._enter(symbol, s, bars[-1].close)
+
+    def _signals_now(self, symbol, bars):
+        """The strategy's signals for the candle that JUST closed (Cowork LOW, strategy contract: decide() has no
+        freshness check of its own). A signal of any other candle is ignored with an incident, never acted on."""
+        out = []
+        for s in self.signals.decide(symbol, bars, self.now):
+            if s.candle_close_ms != self.now:
+                self._incident(f'stale signal ignored: {symbol} {s.action} {s.side} for candle {s.candle_close_ms}, '
+                               f'now {self.now}')
+                continue
+            out.append(s)
+        return tuple(out)
 
     def _key(self, symbol, s, purpose):
         """The one runner-boundary key constructor (step 0 r2): strategy = '<name>@<tf>', version v<n>."""
@@ -1229,6 +1242,32 @@ class Runner:
                 self._check_external_close(lot_id, iv.intent.symbol, str(iv.intent.side))
         elif out.kind in (OutcomeKind.KNOWN, OutcomeKind.FINAL):
             self._reduce_refused.pop(lot_id, None)
+
+    def _detect_external_flats(self):
+        """Cowork p3: an open lot whose side the venue reads FLAT (this cycle's reconciliation) was closed outside the
+        bot - unless a fill of our own is in flight: the lot's live orders are re-read first, so our own stop / close
+        fill is booked. Still open and flat -> the external-close owner item, before anything is sent for the lot."""
+        rec = self.last_rec
+        if rec is None or rec.positions is None or self.hard_hold is not None:
+            return
+        listed = {p.symbol for p in rec.positions}
+        qty = {(p.symbol, p.side): p.qty for p in rec.positions}
+        resting = {o.ref.client_id for o in (rec.orders or ()) if o.status in OPEN_EXCHANGE_STATUSES}
+        for lot in list(self.fold.open_lots()):
+            if lot.symbol not in listed or qty.get((lot.symbol, lot.side), ZERO) > 0 or self._suspended(lot.lot_id):
+                continue
+            for iv in [x for x in self.fold.live_intents() if x.intent.owner_id == lot.lot_id]:
+                self._apply(iv, self.venue.query(self._ref(iv)), submit=False)
+            if self._lot(lot.lot_id) is None:
+                continue                                                  # our own fill explained it
+            # an order of ours that may still deliver the fill (a triggered algo stop whose child is not readable yet,
+            # an unknown answer, a close in flight) explains the flat side for now: re-checked next cycle. Only a stop
+            # still RESTING untriggered (it did not fire) or no live order at all is an external close.
+            if any(not (iv.purpose is Purpose.PROTECT and iv.state is IntentState.WORKING
+                        and iv.intent.client_order_id in resting)
+                   for iv in self.fold.live_intents() if iv.intent.owner_id == lot.lot_id):
+                continue
+            self._check_external_close(lot.lot_id, lot.symbol, lot.side)
 
     def _check_external_close(self, lot_id, symbol, side):
         if self._suspended(lot_id):

@@ -238,6 +238,10 @@ class ManagementMixin:
             d = ev.decision
             if d.action is Action.WAIT and d.detail.startswith(START + ' '):
                 self._mg_apply_start(d)
+            elif d.action is Action.WAIT and d.detail.startswith('external close suspected') and d.subject_id in self.mg:
+                self.mg.pop(d.subject_id)                                 # Cowork p3: the lot leaves management
+                self.plans.pop(d.subject_id, None)
+                self.unmanaged.add(d.subject_id)
             elif d.action is Action.WAIT and d.subject_id in self.mg:
                 try:
                     self._mg_apply_input(d)
@@ -641,6 +645,7 @@ class ManagementMixin:
 
     # ----------------------------------------------------------------------------------------------- runner hooks
     def _protect_all(self):
+        self._detect_external_flats()
         if self._malformed:                                               # unreadable management input: fail closed
             for lot_id, did, why in self._malformed:
                 self._incident(f'management {lot_id}: record {did} unreadable ({why}); detached, HOLD')
@@ -704,7 +709,7 @@ class ManagementMixin:
                 if bars is None:
                     continue
                 closes = {}
-                for s in self.signals.decide(sym, bars, self.now):
+                for s in self._signals_now(sym, bars):
                     if s.action == CLOSE and s.side in self.cfg.sides:
                         closes.setdefault(s.side, s.reason)
                 for side in ('LONG', 'SHORT'):

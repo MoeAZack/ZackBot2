@@ -289,6 +289,6 @@ def test_the_file_parameter_really_runs_the_nc02a_file_journal(journal_kind):
     if journal_kind == "file":
         from file_journal_harness import FileJournalProxy
         assert isinstance(w.journal, FileJournalProxy)
-        segs = os.listdir(os.path.join(w.journal._j.account_dir, 'journal'))
-        assert segs and all(s.endswith('.seg') for s in segs)
+        segs = [s for s in os.listdir(os.path.join(w.journal._j.account_dir, 'journal')) if s != '.lock']
+        assert segs and all(s.endswith('.seg') for s in segs)             # (+ the NC-02a writer lock file)
         assert len(w.journal.reopen().read()) == len(w.journal.read()) > 0

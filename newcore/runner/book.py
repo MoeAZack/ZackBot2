@@ -55,7 +55,7 @@ class BookRunner(Runner):
             if b is not None:
                 self._close[s] = b[-1].close
         self._observe_risk()
-        sigs = {s: (self.signals.decide(s, b, self.now) if b is not None else ()) for s, b in bars.items()}
+        sigs = {s: (self._signals_now(s, b) if b is not None else ()) for s, b in bars.items()}
         for s in self.cfg.symbols:
             for sig in sigs[s]:
                 if sig.action == CLOSE and sig.side in self.cfg.sides:

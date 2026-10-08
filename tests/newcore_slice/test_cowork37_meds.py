@@ -202,7 +202,7 @@ def test_m2_a_zero_byte_segment_is_a_store_hold_not_a_fresh_journal(tmp_path):
     seg.write_bytes(b'')
     code, out = run(['run', '--config', cfg, '--cycles', '3', '--enable-candidate'])
     assert code == A.EXIT_STORE_HOLD and 'zero-byte' in out
-    assert sorted(p.name for p in d.iterdir()) == [seg.name]        # nothing new written next to it
+    assert sorted(p.name for p in d.iterdir() if p.name.endswith('.seg')) == [seg.name]   # nothing new beside it
 
 
 def test_parity_main_gates_on_a_mismatch_and_refuses_a_missing_root(tmp_path, monkeypatch):

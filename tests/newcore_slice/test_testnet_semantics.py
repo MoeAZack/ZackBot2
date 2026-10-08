@@ -100,10 +100,11 @@ def test_3_triggered_algo_stop_is_booked_from_the_child_fills(no_child_first):
     if no_child_first:
         w.port.no_child_once.add(algo.intent.client_order_id)
     w.run(8)                                                       # the candle gaps through the stop
-    if no_child_first:
-        assert w.runner.fold.open_lots() and algo.state is not IntentState.FILLED    # nothing booked yet
-        w.run(9)
-    assert w.runner.fold.open_lots() == []
+    # the first answer names no child: nothing is booked from it; the side reads flat, so the external-close check
+    # (Cowork p3) re-reads the lot's own orders in the SAME cycle and books the child's fill - never an external close
+    # (deliberate timing update: v0 used to book it one cycle later)
+    assert w.runner.fold.open_lots() == [] and algo.state is IntentState.FILLED
+    assert not [d for d in w.runner.fold.decisions.values() if 'external close' in d.detail]
     t, = w.runner.trades()
     assert algo.final.exchange_order_id.startswith('child-') and algo.state is IntentState.FILLED
     assert t.exit_code == 'STOP_HIT' and t.exit_price == D('95') * D('0.9998')    # the child's fill price
