@@ -9,6 +9,16 @@ Bounds: coverage is reduce-only and side-correct (the carrying order has the pos
 exceeds the exposure: a replacement is at most the exposure, and the active order is at most the exposure unless a
 replacement (resize) is in flight. A replacement keeps the old order: the old one may be cancelled only after the new one
 is confirmed, so a REPLACING protection never has its old order CANCELLING.
+
+Coverage is reported three ways, never mixed (Codex P1 on PR #38):
+- `confirmed_coverage`: KNOWN exchange protection - the carrying order's quantity while the exchange has it WORKING. A
+  replacement never counts, whatever its state, until `promote_replacement` makes it the carrier.
+- `pending_coverage`: the replacement target in flight (DURABLE / SUBMITTED / UNKNOWN / WORKING-not-yet-promoted).
+- `target_coverage`: what the protection is establishing (the replacement once one is in flight); this is the quantity
+  the aggregate "never above exposure" bound applies to.
+The derived status compares CONFIRMED coverage with the exposure: a resize-up shows UNDERSIZED (entries blocked) until the
+bigger replacement is promoted; a resize-down shows REPLACING while the old, larger stop and the new one overlap - the
+overlap is allowed operationally and visible as confirmed_coverage > exposure.
 """
 from __future__ import annotations
 
@@ -93,21 +103,48 @@ def protection_status(prot, intents_by_id, exposure):
         return ProtectionStatus.RELEASING
     if st is not IntentState.WORKING:
         return ProtectionStatus.PLACEMENT_PENDING
+    if confirmed_coverage(prot, intents_by_id) < exposure:
+        return ProtectionStatus.UNDERSIZED       # known protection is short, whatever replacement is in flight
     if prot.replacement is not None:
         return ProtectionStatus.REPLACING
-    if prot.qty < exposure:
-        return ProtectionStatus.UNDERSIZED
     return ProtectionStatus.OWNED_CONFIRMED if prot.confirmed_at_ms is not None else ProtectionStatus.OWNED_UNVERIFIED
 
 
-def active_coverage(prot, intents_by_id):
-    """The quantity this protection is establishing on the exchange: the replacement while one is in flight (the old order
-    is superseded and capped by reduce-only), otherwise the carrying order unless it is being cancelled."""
+def confirmed_coverage(prot, intents_by_id):
+    """KNOWN exchange protection: the carrying order's quantity while the exchange has it WORKING, else zero. An
+    unpromoted replacement is never counted here, whatever its state."""
+    if prot.order is not None and intents_by_id[prot.order].state is IntentState.WORKING:
+        return prot.qty
+    return ZERO
+
+
+def pending_coverage(prot, intents_by_id):
+    """The replacement target still in flight (zero when there is none). Never confirmed coverage."""
+    return intents_by_id[prot.replacement].qty if prot.replacement is not None else ZERO
+
+
+def target_coverage(prot, intents_by_id):
+    """What this protection is establishing: the replacement target while one is in flight, otherwise the carrying order
+    unless it is being cancelled. The aggregate bound (never above exposure) applies to this quantity."""
     if prot.replacement is not None:
-        return intents_by_id[prot.replacement].qty
+        return pending_coverage(prot, intents_by_id)
     if prot.order is not None and intents_by_id[prot.order].state is not IntentState.CANCELLING:
         return prot.qty
     return ZERO
+
+
+def promote_replacement(prot, intents_by_id, confirmed_at_ms):
+    """Pure transition: the exchange has the replacement WORKING, so it becomes the carrier in one step. The returned
+    Protection carries the replacement; the caller applies it in the SAME portfolio transition that moves the old carrier
+    intent to CANCELLING (the Portfolio invariant refuses an uncarried stop that is still live). Only then is the old
+    stop retired. Raises InvalidRecord for anything but a WORKING replacement."""
+    req(prot.replacement is not None, 'Protection.replacement', 'nothing to promote')
+    new = intents_by_id.get(prot.replacement)
+    req(new is not None, 'Protection.replacement', 'names no open intent')
+    req(new.state is IntentState.WORKING, 'Protection.replacement',
+        f'a {new.state} replacement is not exchange protection yet; only a WORKING one is promoted')
+    return Protection(owner_id=prot.owner_id, price=new.stop_price, qty=new.qty, order=new.intent_id, replacement=None,
+                      confirmed_at_ms=confirmed_at_ms, miss=None)
 
 
 def _carrier(intents_by_id, iid, prot, side, symbol, path):

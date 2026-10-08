@@ -32,11 +32,12 @@ from .instrument import Capability, InstrumentId, InstrumentRules, Rounding
 from .ledger import Admission, EventCursor, EventDigest, admit
 from .modes import EntriesMode, HoldKind, Op, Permission, permitted
 from .orders import (Arming, Evidence, ExchangeStatus, IntentState, Lookup, OrderIntent, OrderResult, OrderType,
-                     OwnerFamily, PositionRead, Purpose, ResultPhase, ResultStage, Side, check_result_for_intent,
+                     OwnerFamily, OwnerKind, PositionRead, Purpose, ResultPhase, ResultStage, Side, check_result_for_intent,
                      may_apply, may_send, terminal_for)
 from .portfolio import (Fill, Lot, LotSource, Ownership, OwnershipProof, Portfolio, Position, ProofKind,
                         check_account_portfolio, check_flat_snapshot_fresh, entry_blocking_protections,
                         owned_client_ids, ownership_families)
-from .protection import MissPhase, Protection, ProtectionStatus, StopMiss, active_coverage, protection_status
+from .protection import (MissPhase, Protection, ProtectionStatus, StopMiss, confirmed_coverage, pending_coverage,
+                         promote_replacement, protection_status, target_coverage)
 from .reasons import GOLDEN_EXIT, GOLDEN_EXIT_CODES, GOLDEN_SIGNAL, MEANING, ReasonCode
 from .snapshot import GenerationVerdict, HighWater, Snapshot, check_generation

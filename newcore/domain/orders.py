@@ -3,7 +3,9 @@
 OrderIntent covers every purpose (ENTRY, ADD, REDUCE, CLOSE, PROTECT). There is no EntryIntent and no side queue: an
 unconfirmed market entry, a resting maker, an armed trailing entry and an orphan cancel are all OrderIntents in some
 lifecycle state. An orphan cancel (an owned order whose lot / entry is gone) is re-owned by the portfolio aggregate
-(owner_id = the portfolio's pf_ id) and may only be CANCELLING: no reference ever dangles. Lifecycle:
+(owner_kind PORTFOLIO, owner_id = the portfolio id) and may only be CANCELLING: no reference ever dangles. What owns an
+intent is the explicit `owner_kind`; ids are opaque and no logic ever reads an id's prefix (contract section 2).
+Lifecycle:
 
     PLANNED -> DURABLE -> SUBMITTED -> WORKING / UNKNOWN -> CANCELLING -> terminal (FILLED, CANCELLED, REJECTED, NOT_SENT)
 
@@ -43,6 +45,20 @@ class Purpose(enum.StrEnum):
 
 OPENING = frozenset({Purpose.ENTRY, Purpose.ADD})
 REDUCE_ONLY = frozenset({Purpose.REDUCE, Purpose.CLOSE, Purpose.PROTECT})
+
+
+class OwnerKind(enum.StrEnum):
+    """What `OrderIntent.owner_id` refers to (explicit, never inferred from the id)."""
+    LOT = 'lot'                    # a lot of this portfolio (ADD / REDUCE / CLOSE / its PROTECT)
+    ENTRY_INTENT = 'entry_intent'  # an unresolved market ENTRY intent (its provisional PROTECT)
+    PORTFOLIO = 'portfolio'        # the portfolio aggregate itself: orphan cancel work
+
+
+OWNER_KINDS = {Purpose.ADD: frozenset({OwnerKind.LOT, OwnerKind.PORTFOLIO}),
+               Purpose.REDUCE: frozenset({OwnerKind.LOT, OwnerKind.PORTFOLIO}),
+               Purpose.CLOSE: frozenset({OwnerKind.LOT, OwnerKind.PORTFOLIO}),
+               Purpose.PROTECT: frozenset(OwnerKind)}
+_ID_FAMILY = {OwnerKind.LOT: 'lot', OwnerKind.ENTRY_INTENT: 'int', OwnerKind.PORTFOLIO: 'pf'}
 
 
 class OwnerFamily(enum.StrEnum):
@@ -128,8 +144,8 @@ class OrderIntent(Record):
     qty: Decimal
     reason: ReasonCode
     created_at_ms: int
-    owner_id: str | None             # lot_ (ADD/REDUCE/CLOSE/PROTECT), int_ (PROTECT of an unconfirmed entry), pf_ (orphan
-    #                                  cancel owned by the portfolio aggregate); None for ENTRY
+    owner_id: str | None             # the owning lot / ENTRY intent / portfolio id; None for ENTRY (owns itself)
+    owner_kind: OwnerKind | None     # what owner_id refers to; None exactly when owner_id is None
     slot_id: str | None       # strategy slot of an ENTRY; None for manual / one-shot
     price: Decimal | None     # limit price (maker only)
     stop_price: Decimal | None
@@ -137,6 +153,7 @@ class OrderIntent(Record):
     alt_client_order_id: str | None    # PROTECT: algo-order fallback id (owned from the write-ahead record on)
     seen_qty: Decimal | None  # unresolved size seen on the position for a market ENTRY (never booked)
     authorized_by: str | None  # dec_ of an audited operator one-shot authorization (opening risk while paused)
+    replaces_intent_id: str | None  # REDUCE / CLOSE cancel-replace: the CANCELLING predecessor this intent replaces
 
     def _validate(self, p):
         p = f'{p}[{self.intent_id}]'
@@ -149,11 +166,11 @@ class OrderIntent(Record):
         u, t = self.purpose, self.order_type
         req(self.reason.namespace == REASON_NAMESPACE[u], p + '.reason', f'a {u} intent needs a {REASON_NAMESPACE[u]}.* reason')
         if u is Purpose.ENTRY:
-            req(self.owner_id is None, p + '.owner_id', 'an ENTRY owns itself (its result creates the lot)')
-        elif u is Purpose.PROTECT:
-            check_id(self.owner_id, p + '.owner_id', 'lot', 'int', 'pf')
+            req(self.owner_id is None and self.owner_kind is None, p + '.owner_id',
+                'an ENTRY owns itself (its result creates the lot)')
         else:
-            check_id(self.owner_id, p + '.owner_id', 'lot', 'pf')
+            req(self.owner_kind in OWNER_KINDS[u], p + '.owner_kind', f'a {u} intent is not owned by {self.owner_kind}')
+            check_id(self.owner_id, p + '.owner_id', _ID_FAMILY[self.owner_kind])   # format of the declared kind
         if self.orphan:
             req(self.state in CANCEL_ONLY, p + '.state', 'an orphan (portfolio-owned) order is cancel-only work')
         req(u is Purpose.ENTRY or self.slot_id is None, p + '.slot_id', 'only an ENTRY names a strategy slot')
@@ -185,11 +202,16 @@ class OrderIntent(Record):
         if self.authorized_by is not None:
             req(u in OPENING, p + '.authorized_by', 'only opening intents need a one-shot authorization')
             check_id(self.authorized_by, p + '.authorized_by', 'dec')
+        if self.replaces_intent_id is not None:          # the explicit cancel-replace link (Codex P1 on af4e5f3)
+            req(u in (Purpose.REDUCE, Purpose.CLOSE) and self.owner_kind is OwnerKind.LOT, p + '.replaces_intent_id',
+                'only a lot REDUCE / CLOSE replaces a predecessor')
+            check_id(self.replaces_intent_id, p + '.replaces_intent_id', 'int')
+            req(self.replaces_intent_id != self.intent_id, p + '.replaces_intent_id', 'replaces itself')
 
     @property
     def orphan(self):
         """Owned by the portfolio aggregate because its lot / entry is gone: only cancel work remains."""
-        return self.owner_id is not None and self.owner_id.startswith('pf_')
+        return self.owner_kind is OwnerKind.PORTFOLIO
 
     @property
     def family(self):

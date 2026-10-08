@@ -7,7 +7,8 @@ from decimal import Decimal as D
 
 from newcore.domain import (Action, Authority, Decision, DecisionRecorded, EntriesMode, Evidence, ExchangeStatus,
                             HoldKind, IntentRecorded, IntentState, IntentStateChanged, Lookup, ModeChanged, OrderIntent,
-                            OrderResult, OrderType, Purpose, ReasonCode, ResultObserved, ResultPhase, Side, make_id)
+                            OrderResult, OrderType, OwnerKind, Purpose, ReasonCode, ResultObserved, ResultPhase, Side,
+                            make_id)
 from newcore.ports import keys as K
 
 ACCT = 'acct_' + '0123456789abcdef' * 2
@@ -45,24 +46,31 @@ class Scenario:
         self.events.append(ev)
         return ev
 
-    def _intent(self, intent_id, purpose, dec_id, at, *, owner=None, route='classic', stop_price=None, qty=QTY,
-                symbol='SOLUSDT', side=Side.LONG):
+    def _intent(self, intent_id, purpose, dec_id, at, *, owner=None, owner_kind=None, route='classic', stop_price=None,
+                qty=QTY, symbol='SOLUSDT', side=Side.LONG):
         protect = purpose is Purpose.PROTECT
+        if owner is None:
+            owner_kind = None
+        elif owner_kind is None:
+            owner_kind = OwnerKind.LOT          # every step-0 lineage owner here is a lot unless a case says otherwise
         return OrderIntent(intent_id=intent_id, account_id=self.acct, decision_id=dec_id,
                            client_order_id=K.client_id_for(intent_id, route), purpose=purpose,
                            order_type=OrderType.STOP_MARKET if protect else OrderType.MARKET, state=IntentState.PLANNED,
                            symbol=symbol, side=side, qty=qty, reason=REASON[purpose], created_at_ms=at, owner_id=owner,
+                           owner_kind=owner_kind,
                            slot_id='S1' if purpose is Purpose.ENTRY else None, price=None,
                            stop_price=(stop_price or D('140')) if protect else None, arm=None,
-                           alt_client_order_id=None, seen_qty=None, authorized_by=None)
+                           alt_client_order_id=None, seen_qty=None, authorized_by=None, replaces_intent_id=None)
 
-    def decision(self, *, key=None, purpose=None, intent_ids=(), owner=None, route='classic', dec_id=None):
+    def decision(self, *, key=None, purpose=None, intent_ids=(), owner=None, owner_kind=None, route='classic',
+                 dec_id=None):
         """A DecisionRecorded authorizing `intent_ids` (keyed: the strategy key; else a lineage decision)."""
         purpose = key.purpose if key is not None else purpose
         at = T0 + 1000 * (self.n + 1)
         if dec_id is None:
             dec_id = K.derive_decision_id(self.acct, key) if key is not None else make_id('dec', 10 ** 6 + self.n)
-        its = tuple(self._intent(i, purpose, dec_id, at, owner=owner, route=route) for i in intent_ids)
+        its = tuple(self._intent(i, purpose, dec_id, at, owner=owner, owner_kind=owner_kind, route=route)
+                    for i in intent_ids)
         for it in its:
             self.intents[it.intent_id] = it
         action, reason, authority = ACTION[purpose], REASON[purpose], AUTHORITY[purpose]

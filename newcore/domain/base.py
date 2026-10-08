@@ -111,7 +111,9 @@ def check_symbol(v, path):
 
 
 def check_text(v, path, n):
+    """Bounded printable text that is never blank: an absent value is None, never '' or whitespace (Codex ruling 2)."""
     req(type(v) is str and 0 < len(v) <= n and v.isprintable(), path, f'1..{n} printable characters')
+    req(v.strip() != '', path, 'whitespace only (an absent value is None, never blank text)')
 
 
 def make_id(prefix, n):
