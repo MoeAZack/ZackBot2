@@ -114,3 +114,16 @@ FUZZ_SEEDS = {
 @pytest.mark.parametrize('seed', sorted(FUZZ_SEEDS))
 def test_fuzz_regression(seed):
     F.run_faults(seed)
+
+
+@pytest.mark.parametrize('side', SIDES)
+def test_a_short_close_re_requests_only_the_part_that_died(side):
+    """seed 4555: Rejected(CLOSE, qty=2) after a short fill: the other 3 in flight keep their request."""
+    p = plan(side, add='99.02', cap='20', costs=ZERO_COSTS, tp2_off='3')
+    st = start(p)
+    st = step(p, st, (fill(Leg.ADD, '5', px(side, '99.02')),)).state
+    st = step(p, st, (Rejected(leg=Leg.STOP),)).state                          # REDUCE 5 requested
+    r = step(p, st, (Rejected(leg=Leg.CLOSE, qty=D(2)),))
+    assert r.state.closing == D(5)                                           # 3 still in flight + 2 re-requested
+    again = [a for a in r.actions if a.kind is AK.REDUCE]
+    assert len(again) == 1 and again[0].qty == D(2)
