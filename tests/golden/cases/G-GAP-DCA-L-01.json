@@ -103,10 +103,7 @@
   },
   "applies_to": {
     "legacy_engine": "required",
-    "legacy_backtest": {
-      "status": "known_divergence",
-      "reason": "AUD-07 C13a: legacy behaviour differs from the corrected contract until the AUD-07 product fix lands"
-    },
+    "legacy_backtest": "required",
     "newcore_sim": {
       "status": "pending_adapter",
       "reason": "NEWCORE NC-07/NC-08 adapter not built yet"
@@ -116,28 +113,7 @@
       "reason": "NEWCORE NC-08 live-sim adapter not built yet"
     }
   },
-  "known_divergences": [
-    {
-      "adapter": "legacy_backtest",
-      "ticket": "AUD-07",
-      "finding": "C13a",
-      "correction": "CORR-0003",
-      "until": "AUD-07 product fix",
-      "reason": "backtest.py:419-420 fills the gapped safety orders at the open with the fee only, no slippage",
-      "observed": [
-        {
-          "path": "trades[0].R",
-          "expected": "0.1709147038",
-          "actual": 0.170918
-        },
-        {
-          "path": "trades[0].pnl",
-          "expected": "1.709147038",
-          "actual": 1.709183
-        }
-      ]
-    }
-  ],
+  "known_divergences": [],
   "provenance": {
     "created_at_sha": "4e03152",
     "author": "AUD-07 review fixes (Claude)",

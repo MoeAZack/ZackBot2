@@ -157,6 +157,35 @@
       "accepted_by": null,
       "date_cairo": "2026-10-08",
       "prev_entry_sha": "ecc4599182a43d528ad4c3efe03445d7bd3997b0f32eb43a0a93a513c486db7f"
+    },
+    {
+      "id": "CORR-0005",
+      "type": "correction",
+      "ticket": "AUD-07",
+      "finding": "C13a",
+      "title": "C13a fixed: backtest DCA safety orders and pyramid adds pay taker slippage",
+      "cases": {
+        "G-DCA-SLIP-L-01": {
+          "prev_contract_sha": "cae327721f1e4b0f910b4153fcd7b9fc25422dc6a5b2011dc11b200591c74d12",
+          "contract_sha": "838e2540dfe3dcc03410c42539e7053da976dc2492e0937ededc5873349d7376"
+        },
+        "G-GAP-DCA-L-01": {
+          "prev_contract_sha": "d35a102f110651a31f34fc67fd68708b4282585ca5d5aa4a3d4d722b97a9d4e2",
+          "contract_sha": "01f2678c8a75cc118c4310448f15ae7f8a4f982204dbd6f46b643aef9e1af914"
+        },
+        "G-PYR-SLIP-L-01": {
+          "prev_contract_sha": "452e09046814dc25f929ef72d8d0f2cb4feb3267e9d9e6ca86cca6f12fd9972f",
+          "contract_sha": "d3132082acee2a05d3eaacfaa1e7853ca4444e9ef844c949454c4f5d93d0868b"
+        }
+      },
+      "adapters_changed": [
+        "legacy_backtest (known divergence C13a resolved: G-DCA-SLIP-L-01, G-PYR-SLIP-L-01, G-GAP-DCA-L-01)"
+      ],
+      "rationale": "Every exposure-increasing backtest fill now pays px x (1 + side x SLIP), as the engine's taker MARKET adds do (the replay sim charges it on every open); also at a gapped level.",
+      "evidence": "branch aud-07-product-r2 (merged with #32 r2 b01d439); reverting the item's product lines re-breaks exactly these pairs (mutation check in the build report)",
+      "accepted_by": null,
+      "date_cairo": "2026-10-08",
+      "prev_entry_sha": "38ad164476eff4928f6d5c8591827cc71781b39f9660d7c6b81b895dc78d391b"
     }
   ]
 }
