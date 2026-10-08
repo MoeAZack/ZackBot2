@@ -144,7 +144,8 @@ def cmd_report(a):
         for y, s in st['years'].items():
             L.append(f"| {y} | {s['n']} | {s['ep']} | {fmt(s['exp'])} | [{fmt(s['clo'])}, {fmt(s['chi'])}] | "
                      f"{s['exp'] * s['n']:+.2f} | {s['net']:+,.0f} |")
-        L += ['', f"Risk events: {p['events'] or 'none'}; entries refused (positions / halt / kill / size): {p['skips']};"
+        ev = ', '.join(f'{k} {d} ({float(c):+.2%})' for k, d, c in p['events']) or 'none'
+        L += ['', f"Risk events (Cairo day, change): {ev}; entries refused (positions / halt / kill / size): {p['skips']};"
                   f" final mode {p['mode']}; unprotected cycles {p['unprotected']}.", '']
     L += ['## Reading (honest)', '',
           '- Where an episode-clustered CI includes 0, the expectancy is **not distinguishable from zero** at 95% '
