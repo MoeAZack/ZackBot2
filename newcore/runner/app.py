@@ -36,11 +36,11 @@ from newcore.store import Verdict, create_journal, recover_journal
 from newcore.strategy import Params
 
 from . import config as C
-from .book import BookRunner
 from .compare import compare
+from .managed import ManagedBookRunner, ManagedRunner, ManagementConfig, RangeFixturePlans
 from .replay import run_replay
 from .reports import health_line, write_reports
-from .runner import Runner, RunnerConfig
+from .runner import RunnerConfig
 from .signals import EmaMomSignals, NoSignals
 from .sizing import SizingPolicy
 
@@ -125,6 +125,15 @@ def policy_for(cfg):
                       kill_drawdown_pct=cfg.kill_drawdown_pct)
 
 
+def management_for(cfg):
+    """[management]: OFF by default (the runner is then exactly the unmanaged one). The only plan is RANGE-BB-MR.v1, a
+    disabled mechanics fixture costed like the replay venue."""
+    from newcore.management import CostModel as PlanCosts
+    plans = RangeFixturePlans(costs=PlanCosts(taker_fee=BASE_COSTS.taker_fee, slip=BASE_COSTS.slip),
+                              cap_mult=cfg.mg_cap_mult)
+    return ManagementConfig(enabled=cfg.mg_enabled, plans=plans)
+
+
 def data_source(cfg, symbols):
     return CsvBarSource.from_data_long(cfg.data_root, list(symbols), cfg.tf)
 
@@ -162,8 +171,9 @@ class Session:
                             tf_ms=self.tf_ms, timeframe=cfg.tf, rules=venue_rules or rules_for(cfg, cfg.symbols),
                             sizing=SizingPolicy(cfg.risk_pct, cfg.max_leverage, cfg.cap_gap_buffer),
                             sides=sides_for(cfg), strict=False)
-        self.runner = BookRunner(rcfg, policy=policy_for(cfg), journal=self.journal, venue=port, bars=self.bars,
-                                 signals=signals_for(cfg, enabled), account_reads=reads)
+        self.runner = ManagedBookRunner(rcfg, policy=policy_for(cfg), journal=self.journal, venue=port,
+                                        bars=self.bars, signals=signals_for(cfg, enabled), account_reads=reads,
+                                        management=management_for(cfg))
 
     def next_close(self, wall_ms=None):
         """The candle close of the next cycle, or None when the fake data is exhausted."""
@@ -259,7 +269,8 @@ def cmd_replay(cfg, args, out, stop):
         rcfg = RunnerConfig(account=account(cfg), portfolio_id=cfg.portfolio_id, symbols=(sym,), tf_ms=TF_MS[cfg.tf],
                             timeframe=cfg.tf, rules=rules_for(cfg, [sym]),
                             sizing=SizingPolicy(cfg.risk_pct, cfg.max_leverage, Decimal(0)), sides=sides_for(cfg))
-        runner = Runner(rcfg, journal=journal, venue=venue, bars=src, signals=signals_for(cfg, enabled))
+        runner = ManagedRunner(rcfg, journal=journal, venue=venue, bars=src, signals=signals_for(cfg, enabled),
+                               management=management_for(cfg))
         runner = run_replay(runner, venue, start_ms=start, end_ms=end, tf_ms=TF_MS[cfg.tf])
         write_reports(runner, os.path.join(cfg.output_dir, f'replay-{sym}'))
         s = runner.summary()

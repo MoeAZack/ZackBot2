@@ -4,14 +4,15 @@ Nothing here is stored outside the journal. Every view is derived from NC-01 eve
   decisions   decision_id -> Decision
   intents     intent_id -> IntentView (the durable OrderIntent, its current state, results, final result)
   mode        EntriesMode / HoldKind / reasons from the last ModeChanged (ACTIVE before any)
-  lots        one per ENTRY intent whose FINAL result executed > 0 (lot id = derive_lot_id(account, entry)); closing fills
+  lots        one per ENTRY intent whose FINAL result executed > 0 (lot id = derive_lot_id(account, entry)); ADD fills
+              (the FINAL executions of the lot's ADD intents) increase it (qty, blended average, peak); closing fills
               are the FINAL executions of the lot's PROTECT / CLOSE / REDUCE intents (owner_id = the lot)
 """
 from __future__ import annotations
 
 import dataclasses
 from dataclasses import dataclass, field
-from decimal import Decimal
+from decimal import Context, Decimal
 
 from newcore.domain import (Action, DecisionRecorded, EntriesMode, IntentRecorded, IntentState, IntentStateChanged,
                             ModeChanged, OrderIntent, OrderResult, Purpose, ReasonCode, ResultObserved, ResultPhase)
@@ -20,6 +21,7 @@ from newcore.domain.orders import TERMINAL
 from . import ids
 
 ZERO = Decimal(0)
+ACTX = Context(prec=34)                 # the blended average after an add (Lot.avg_price precision)
 OPEN_STATES = frozenset({IntentState.SUBMITTED, IntentState.WORKING, IntentState.UNKNOWN, IntentState.CANCELLING})
 
 
@@ -53,7 +55,7 @@ class IntentView:
 
 
 @dataclass(frozen=True, slots=True)
-class ClosingFill:
+class ClosingFill:                            # also an ADD (opening) fill of the lot: same facts, see LotView.add_fills
     intent_id: str
     qty: Decimal
     price: Decimal
@@ -71,17 +73,36 @@ class LotView:
     side: str
     opened_at_ms: int
     initial_qty: Decimal
-    avg_price: Decimal
+    entry_price: Decimal                                      # the entry fill's average (the R anchor)
+    avg_price: Decimal                                        # blended over the entry and every ADD fill
     closings: list = field(default_factory=list)              # ClosingFill
+    add_fills: list = field(default_factory=list)             # ClosingFill of the ADD intents (opening fills)
     protects: list = field(default_factory=list)              # IntentView (PROTECT, recorded order)
     closes: list = field(default_factory=list)                # IntentView (CLOSE / REDUCE, recorded order)
+    adds: list = field(default_factory=list)                  # IntentView (ADD, recorded order)
 
     @property
     def qty(self):
         q = self.initial_qty
+        for a in self.add_fills:
+            q += a.qty
         for c in self.closings:
             q -= c.qty
         return q
+
+    @property
+    def max_qty(self):
+        """The fill-ledger peak (entry, adds and closings in time order)."""
+        run = top = self.initial_qty
+        for f, opening in self.ledger():
+            run = run + f.qty if opening else run - f.qty
+            top = max(top, run)
+        return top
+
+    def ledger(self):
+        """Every fill after the entry, time-ordered (ties keep the record order): (fill, opening)."""
+        out = [(a, True) for a in self.add_fills] + [(c, False) for c in self.closings]
+        return sorted(out, key=lambda x: x[0].at_ms)
 
     @property
     def open(self):
@@ -93,9 +114,34 @@ class LotView:
         return live[-1] if live else None
 
     @property
+    def carrier(self):
+        """The PROTECT intent carrying the lot's stop (NC-01 Protection.order). With one live stop: that stop (the S1
+        rule). With a replacement in flight (management): the OLDEST working, not-cancelling stop, so an old stop keeps
+        carrying until the new one is confirmed and the old one's cancel is sent."""
+        live = [p for p in self.protects if p.live]
+        if len(live) <= 1:
+            return live[0] if live else None
+        active = [p for p in live if p.state is not IntentState.CANCELLING]
+        working = [p for p in active if p.state is IntentState.WORKING]
+        return working[0] if working else (active[0] if active else live[-1])
+
+    @property
+    def replacement(self):
+        """The newer live, not-cancelling stop that will replace the carrier (NC-01 Protection.replacement)."""
+        c = self.carrier
+        later = [p for p in self.protects if p.live and p is not c and p.state is not IntentState.CANCELLING]
+        return later[-1] if later else None
+
+    @property
     def closing(self):
         live = [c for c in self.closes if c.live]
         return live[-1] if live else None
+
+    @property
+    def in_flight(self):
+        """The ONE open add / reduce / close intent of the lot (NC-01 Lot.in_flight)."""
+        live = [a for a in self.adds if a.live]
+        return live[-1] if live else self.closing
 
     @property
     def closed_at_ms(self):
@@ -165,21 +211,30 @@ class Fold:
             if iv.purpose is Purpose.ENTRY and iv.final is not None and iv.executed > 0:
                 lot = LotView(lot_id=ids.derive_lot_id(self.account_id, iv.intent_id), entry=iv, symbol=iv.intent.symbol,
                               side=str(iv.intent.side), opened_at_ms=iv.final.observed_at_ms, initial_qty=iv.executed,
-                              avg_price=iv.final.avg_price)
+                              entry_price=iv.final.avg_price, avg_price=iv.final.avg_price)
                 out.append(lot)
                 by_id[lot.lot_id] = lot
         for iv in self.intents.values():
             lot = by_id.get(iv.intent.owner_id or '')
             if lot is None:
                 continue
-            (lot.protects if iv.purpose is Purpose.PROTECT else lot.closes).append(iv)
+            add = iv.purpose is Purpose.ADD
+            (lot.protects if iv.purpose is Purpose.PROTECT else lot.adds if add else lot.closes).append(iv)
             if iv.final is not None and iv.executed > 0:
                 reason = ReasonCode.EXIT_STOP if iv.purpose is Purpose.PROTECT else iv.intent.reason
-                lot.closings.append(ClosingFill(intent_id=iv.intent_id, qty=iv.executed, price=iv.final.avg_price,
-                                                at_ms=iv.final.observed_at_ms, result_id=iv.final.result_id,
-                                                exchange_order_id=iv.final.exchange_order_id, reason=reason))
+                f = ClosingFill(intent_id=iv.intent_id, qty=iv.executed, price=iv.final.avg_price,
+                                at_ms=iv.final.observed_at_ms, result_id=iv.final.result_id,
+                                exchange_order_id=iv.final.exchange_order_id, reason=reason)
+                (lot.add_fills if add else lot.closings).append(f)
         for lot in out:
             lot.closings.sort(key=lambda c: c.at_ms)
+            if lot.add_fills:
+                q = lot.initial_qty
+                cost = ACTX.multiply(q, lot.entry_price)
+                for a in lot.add_fills:
+                    q += a.qty
+                    cost = ACTX.add(cost, ACTX.multiply(a.qty, a.price))
+                lot.avg_price = ACTX.divide(cost, q)
         return out
 
     def open_lots(self):
