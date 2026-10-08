@@ -203,6 +203,16 @@ A high score **never** changes settings automatically.
 
 **Exit gate:** scores reproduce from frozen manifests, and the UI cannot confuse readiness with profitability.
 
+**High-risk DCA / martingale mode (owner decision 2026-10-07; later, not now).**
+- What it is: an opt-in recovery mode (DCA ladder / martingale-style sizing).
+- When it is built: only after the verified backtests with the future strategies are done, and only through the normal
+  realism, cost, causality, risk and testnet gates.
+- Safety rules:
+  - Whenever it is enabled, the panel shows a persistent, prominent **HIGH RISK** bar.
+  - It is never on by default.
+  - Its backtest numbers stay labelled "unverified" until they pass the BT01+BT02 re-validation.
+- Until then, the existing DCA profiles keep their old numbers but are labelled **UNVERIFIED** everywhere (AUD-06a).
+
 ### Phase 4 — 24/7 operations (new phase; required before any live master)
 
 - **VPS:**
