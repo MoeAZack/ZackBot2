@@ -119,8 +119,7 @@ This cancels NEWCORE orders only and lists any positions it finds. It never touc
 
 1. Open the testnet site, go to Positions and Open Orders, and look for the client ids that were printed (they start with `zbn1`).
 2. Run `python tools\newcore_tnet.py --cleanup`.
-3. If NEWCORE positions are still open, run `python tools
-ewcore_tnet.py --cleanup --close-positions`. This closes every position on BTCUSDT and ETHUSDT. To keep a position of your OWN (not NEWCORE), add it with its quantity: `--adopt-foreign SYMBOL:SIDE:QTY`, for example `--adopt-foreign BTCUSDT:LONG:0.002` keeps 0.002 BTC long and closes only the rest.
+3. If NEWCORE positions are still open, run `python tools\newcore_tnet.py --cleanup --close-positions`. This closes every position on BTCUSDT and ETHUSDT. To keep a position of your OWN (not NEWCORE), add it with its quantity: `--adopt-foreign SYMBOL:SIDE:QTY`, for example `--adopt-foreign BTCUSDT:LONG:0.002` keeps 0.002 BTC long and closes only the rest.
 4. Repeat step 2 until it exits 0.
 
 ## What to send back
