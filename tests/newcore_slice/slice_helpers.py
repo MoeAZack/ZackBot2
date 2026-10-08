@@ -85,12 +85,30 @@ class ScriptedVenue:
     def refuse(self, kind, code=-2022):
         self._refuse[kind] = code
 
+    def lose(self, kind):
+        """The next call of `kind` never reaches the venue and its answer is lost: UNKNOWN (timeout)."""
+        self._lose = getattr(self, '_lose', set()) | {kind}
+
+    def blind(self, client_id):
+        """Every query of this client id answers UNKNOWN (the venue cannot be read for it)."""
+        self._blind = getattr(self, '_blind', set()) | {client_id}
+
+    def query(self, ref):
+        if ref.client_id in getattr(self, '_blind', ()):
+            from newcore.ports.venue import OrderOutcome, OutcomeKind
+            return OrderOutcome(kind=OutcomeKind.UNKNOWN, ref=ref, observed_at_ms=self.inner.now_ms, detail='scripted')
+        return self.inner.query(ref)
+
     def _effect(self, name, call, ref, kind):
         self.effects.append(name)
         n = len(self.effects)
         if self._crash == (n, 'before'):
             self._crash = None
             raise Crash(f'before effect {n} ({name})')
+        if kind in getattr(self, '_lose', ()):
+            self._lose = self._lose - {kind}
+            from newcore.ports.venue import OrderOutcome, OutcomeKind
+            return OrderOutcome(kind=OutcomeKind.UNKNOWN, ref=ref, observed_at_ms=self.inner.now_ms, detail='timeout')
         if kind in self._refuse:
             from newcore.ports.venue import OrderOutcome, OutcomeKind
             return OrderOutcome(kind=OutcomeKind.REJECTED, ref=ref, observed_at_ms=self.inner.now_ms,

@@ -21,11 +21,11 @@ from .ids import client_id_for
 
 
 def planned_intent(*, intent_id, account_id, decision_id, purpose, symbol, side, qty, reason, at_ms, owner_id=None,
-                   stop_price=None, slot_id=None, owner_kind=None):
+                   stop_price=None, slot_id=None, owner_kind=None, route='classic'):
     purpose = Purpose(purpose)
     protect = purpose is Purpose.PROTECT
     return OrderIntent(intent_id=intent_id, account_id=account_id, decision_id=decision_id,
-                       client_order_id=client_id_for(intent_id, 'classic'), purpose=purpose,
+                       client_order_id=client_id_for(intent_id, route), purpose=purpose,
                        order_type=OrderType.STOP_MARKET if protect else OrderType.MARKET, state=IntentState.PLANNED,
                        symbol=symbol, side=Side(side), qty=qty, reason=reason, created_at_ms=at_ms, owner_id=owner_id,
                        owner_kind=None if owner_id is None else (owner_kind or OwnerKind.LOT),

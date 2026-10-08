@@ -66,7 +66,7 @@ from newcore.domain.orders import NOT_FOUND_WINDOW_MS, REDUCE_ONLY, PositionRead
 from newcore.domain.portfolio import Fill
 from newcore.ports.journal import JournalUnavailable
 from newcore.store.hold import durability_hold, hard_hold_permits
-from newcore.ports.keys import check_decision_key
+from newcore.ports.keys import check_decision_key, route_of
 from newcore.ports.venue import MarketOrder, OrderRef, OutcomeKind, ReadKind, StopOrder
 
 from . import ids
@@ -87,6 +87,7 @@ ITEM_REASON = {'position': ReasonCode.OWNERSHIP_UNTRACKED_POSITION, 'foreign_ord
 
 OPENING_ACTIONS = {Action.ENTER: Purpose.ENTRY, Action.ADD: Purpose.ADD}
 DUPLICATE_CLIENT_ID = -4116           # Binance "ClientOrderId is duplicated": the order EXISTS (step-0 has no kind for it)
+ALGO_FALLBACK_CODES = (-4120, -1116, -1102, -4136)   # newcore.venue.errors (transport): use the algo service
 SECURE_ROUNDS = 2                     # per lot per cycle: stop attempt, then (if refused) one reduce-only close
 OPENING_PURPOSES = frozenset({Purpose.ENTRY, Purpose.ADD})
 
@@ -168,6 +169,7 @@ class Runner:
         self.hard_hold = None                                             # durability-unavailable HOLD (process)
         self.incidents = []                                               # (at_ms, text): surfaced, not journaled
         self._reads = {}                                                  # lost entry -> agreeing position reads
+        self._refusals = {}                                               # stop intent -> venue refusal code
         if hard_hold is not None:                                         # boot directive: the store cannot write
             self.store_unavailable(hard_hold)
 
@@ -206,7 +208,8 @@ class Runner:
         return self.fold.intents[planned.intent_id]
 
     def _ref(self, iv):
-        return OrderRef(symbol=iv.intent.symbol, client_id=iv.intent.client_order_id)
+        cid = iv.intent.client_order_id
+        return OrderRef(symbol=iv.intent.symbol, client_id=cid, route=route_of(iv.intent_id, cid) or 'classic')
 
     def _apply(self, iv, out, *, submit):
         """Record what a venue answer proves about one intent (and nothing when it proves nothing new)."""
@@ -243,6 +246,8 @@ class Runner:
         """One query for an intent whose answer was lost or acknowledged only."""
         if iv.live and iv.state in (IntentState.SUBMITTED, IntentState.UNKNOWN):
             self._apply(iv, self.venue.query(self._ref(iv)), submit=False)
+            if self._not_found(iv) and iv.purpose in REDUCE_ONLY:
+                self._resend(iv)                                          # never landed: same id, same route
 
     def _hold(self, reasons, *, reason=ReasonCode.RECONCILE_UNRECONCILED):
         reasons = tuple(dict.fromkeys((reason,) + tuple(reasons)))
@@ -365,6 +370,9 @@ class Runner:
         if found.kind is OutcomeKind.KNOWN:
             return                                                        # already resting: confirmed, not duplicated
         out = self.venue.submit_stop(StopOrder(ref=ref, position_side=p.side, qty=qty, stop_price=price))
+        if out.kind is OutcomeKind.REJECTED and out.error_code in ALGO_FALLBACK_CODES:    # same id, the algo route
+            ref = OrderRef(symbol=p.symbol, client_id=cid, route='algo')
+            out = self.venue.submit_stop(StopOrder(ref=ref, position_side=p.side, qty=qty, stop_price=price))
         if out.kind is OutcomeKind.REJECTED and out.error_code == DUPLICATE_CLIENT_ID:
             out = self.venue.query(ref)
         self.counters.emergency_stops += out.kind is OutcomeKind.KNOWN
@@ -436,6 +444,7 @@ class Runner:
         if it.purpose is Purpose.PROTECT:
             out = self.venue.submit_stop(StopOrder(ref=self._ref(iv), position_side=str(it.side), qty=it.qty,
                                                    stop_price=it.stop_price))
+            self._note_refusal(iv, out)
         else:
             out = self.venue.submit_market(MarketOrder(ref=self._ref(iv), position_side=str(it.side), qty=it.qty,
                                                        reduce=True))
@@ -572,6 +581,8 @@ class Runner:
                 return
             if len(lot.protects) == n or lot.protects[-1].state is not IntentState.REJECTED:
                 return                                                    # nothing was attempted (not permitted)
+            if self._next_route(lot) == 'algo':
+                continue                                                  # the refusal names the algo route
             self._close_lot(lot, reason=ReasonCode.EXIT_STOP_FAILED, key=None)    # the stop was refused
         lot = self._lot(lot_id)
         if lot is not None and lot.live_stop is None and lot.closing is None:
@@ -632,6 +643,19 @@ class Runner:
                 out = self.venue.cancel(o.ref)
                 self._incident(f'emergency stop {o.ref.client_id} retired after handover -> {out.kind}')
 
+    def _next_route(self, lot):
+        """Step 0 r2 route attempts: 'algo' only right after a CLASSIC protect attempt of this lot that closed
+        REJECTED with a code that names the algo service (ALGO_FALLBACK_CODES), or with an unknown code (a restart
+        between the routes lost it: protection outranks, so the algo route is tried once). Never after an UNKNOWN
+        attempt (that one is resolved by query / same-id re-send first) and never twice (G6)."""
+        if not lot.protects:
+            return 'classic'
+        prev = lot.protects[-1]
+        if prev.state is not IntentState.REJECTED or route_of(prev.intent_id, prev.intent.client_order_id) != 'classic':
+            return 'classic'
+        code = self._refusals.get(prev.intent_id, 'unknown')
+        return 'algo' if code == 'unknown' or code in ALGO_FALLBACK_CODES else 'classic'
+
     def _protect(self, lot):
         if not lot.open or lot.live_stop is not None or lot.closing is not None:
             return
@@ -645,10 +669,11 @@ class Runner:
             planned = prior.decision.intents[0]
         else:
             price = self.stop_price_of(lot)
-            reason = ReasonCode.PROTECT_PLACE if n == 0 else ReasonCode.PROTECT_RESTORING
+            route = self._next_route(lot)
+            reason = ReasonCode.PROTECT_PLACE if n == 0 or route == 'algo' else ReasonCode.PROTECT_RESTORING
             planned = planned_intent(intent_id=iid, account_id=self.acct, decision_id=did, purpose='protect',
                                      symbol=lot.symbol, side=lot.side, qty=lot.qty, reason=reason, at_ms=self.now,
-                                     owner_id=lot.lot_id, stop_price=price)
+                                     owner_id=lot.lot_id, stop_price=price, route=route)
             self._decision(decision_id=did, action=Action.PROTECT, reason=reason, authority=Authority.PROTECTION,
                            key=None, symbol=lot.symbol, side=lot.side, intents=(planned,), subject_id=lot.lot_id,
                            evidence=(lot.entry.intent_id,), detail=f'stop {price} x {lot.qty}')
@@ -659,8 +684,14 @@ class Runner:
         it = iv.intent
         out = self.venue.submit_stop(StopOrder(ref=self._ref(iv), position_side=str(it.side), qty=it.qty,
                                                stop_price=it.stop_price))
+        self._note_refusal(iv, out)
         self._apply(iv, out, submit=True)
         self._resolve(iv)                                                 # a refused stop is handled by _secure
+
+    def _note_refusal(self, iv, out):
+        """The venue's refusal code of a stop attempt (in memory: NC-01 results carry no error code)."""
+        if out.kind is OutcomeKind.REJECTED and out.error_code != DUPLICATE_CLIENT_ID:
+            self._refusals[iv.intent_id] = out.error_code
 
     # ----------------------------------------------------------------------------------------------- 4. decide
     def _decide_all(self):
