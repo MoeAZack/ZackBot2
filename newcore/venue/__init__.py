@@ -15,6 +15,10 @@ Modules (import from them directly; this file deliberately imports nothing):
 - records      strict Decimal parsers for exchangeInfo, klines, account, positions, orders, algo orders, fills
 - outcomes     OrderOutcome / ReadOutcome
 - transport    BinanceTestnetTransport (the endpoints)
+- income       /fapi/v1/income time-window pagination + funding / commission / realized-pnl accounting read
+- clock        server-time offset (bounded sample) and OffsetClock; -1021 marks resync, never auto-retries
+- cassette     sanitized record / replay seam for the S5 smoke (CassetteRecorder, CassettePlayer)
+- http_sender  TestnetHttpSender: the ONLY network-capable module (stdlib TLS, host-pinned); never imported implicitly
 
 Safety: the base URL is hard-pinned to the Binance Futures TESTNET host (see guard.py). Credentials are reached only
 through an injected CredentialSource; the transport never holds the secret.
