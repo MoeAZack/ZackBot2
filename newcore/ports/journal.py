@@ -255,7 +255,10 @@ class Grammar:
         req_g(st.closed is None, p, f'G10: {k} after the intent closed')
         if k is EventKind.SENT:
             req_g(not st.sent and st.final is None, p, 'G7: sent twice or after its final result')
-            return lambda: setattr(st, 'sent', True)
+
+            def commit_sent():
+                st.sent = True
+            return commit_sent
         if k is EventKind.STATE_CHANGED:
             req_g(st.final is None, p, 'G8: after a final result only intent_closed may follow')
             req_g(st.sent or h.to_state is IntentState.CANCELLING, p, f'G8: {h.to_state} before sent')
@@ -278,7 +281,10 @@ class Grammar:
                     self._lots.add(lot)
             return commit_final
         req_g(st.final is not None, p, 'G10: closed before its final result was recorded')
-        return lambda: setattr(st, 'closed', h.to_state)
+
+        def commit_closed():
+            st.closed = h.to_state
+        return commit_closed
 
     def _check_decision(self, h, p):
         req_g(h.decision_id not in self._decisions, p, 'G4: decision recorded twice (a consumed signal is spent)')

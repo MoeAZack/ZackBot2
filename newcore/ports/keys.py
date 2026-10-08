@@ -16,7 +16,6 @@ H(tag, *parts) = sha256(b'zackbot.newcore.' + tag + b'.v1' + (b'\\x00' + part)..
 """
 from __future__ import annotations
 
-import base64
 import hashlib
 import re
 
@@ -34,6 +33,7 @@ VERSION_RE = re.compile(r'v[0-9]{1,6}')
 MAX_ORDINAL = 2 ** 31 - 1
 CLIENT_ID_PREFIX = {'classic': 'zbn1o-', 'algo': 'zbn1a-'}
 CLIENT_ID_HASH_CHARS = 26           # 130 bits of base32; total length 32 <= Binance's 36
+B32 = 'abcdefghijklmnopqrstuvwxyz234567'
 NEWCORE_CLIENT_ID_RE = re.compile(r'zbn1[oa]-[a-z2-7]{26}')
 
 
@@ -119,8 +119,13 @@ def client_id_for(intent_id: str, route: str = 'classic') -> str:
     check_id(intent_id, 'intent_id', 'int')
     route = plain(route)
     check_choice(route, 'route', ROUTES)
-    b32 = base64.b32encode(_h('client_id', intent_id.encode('ascii'), route.encode('ascii'))).decode('ascii')
-    return CLIENT_ID_PREFIX[route] + b32.lower()[:CLIENT_ID_HASH_CHARS]
+    return CLIENT_ID_PREFIX[route] + _base32(_h('client_id', intent_id.encode('ascii'), route.encode('ascii')))
+
+
+def _base32(digest):
+    """The first 26 RFC 4648 base32 characters of a 32-byte digest, lower case (NC-01's allow-list has no base64)."""
+    n, bits = int.from_bytes(digest, 'big'), 8 * len(digest)
+    return ''.join(B32[(n >> (bits - 5 * (i + 1))) & 31] for i in range(CLIENT_ID_HASH_CHARS))
 
 
 def route_of(intent_id: str, client_id: str):

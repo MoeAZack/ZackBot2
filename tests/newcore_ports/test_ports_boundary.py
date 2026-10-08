@@ -10,8 +10,8 @@ ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 PORTS = os.path.join(ROOT, 'newcore', 'ports')
 FILES = sorted(f for f in os.listdir(PORTS) if f.endswith('.py'))
 NC01 = 'newcore.domain'
-ALLOWED = {'__future__', 'base64', 'dataclasses', 'decimal', 'enum', 'hashlib', 'json', 're', 'typing'}
-FORBIDDEN_CALLS = {'open', 'exec', 'eval', 'compile', '__import__', 'input', 'print'}
+ALLOWED = {'__future__', 'dataclasses', 'decimal', 'enum', 'hashlib', 'json', 're', 'typing'}
+FORBIDDEN_CALLS = {'open', 'exec', 'eval', 'compile', '__import__', 'input', 'print', 'breakpoint', 'globals', 'setattr'}
 FORBIDDEN_ATTRS = {'environ', 'getenv', 'time', 'time_ns', 'monotonic', 'perf_counter', 'now', 'utcnow', 'today',
                    'random', 'urandom', 'uuid4', 'uuid1', 'system', 'popen', 'read_text', 'write_text', 'read_bytes',
                    'write_bytes'}
