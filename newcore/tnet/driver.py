@@ -40,7 +40,7 @@ from newcore.ports.keys import route_of
 from newcore.runner import Runner, RunnerConfig, SizingPolicy
 from newcore.runner.runner import InvariantBreach
 from newcore.venue.tnet import guarded, is_newcore_cid
-from newcore.venue.safe_text import exc_text
+from newcore.venue.safe_text import exc_msg, exc_text
 
 from .rspec import expectations, validate_rspec
 from .seams import AdoptedView, BoundedPort, BoundExceeded, DeadlineExceeded  # noqa: F401  (re-exported)
@@ -390,7 +390,7 @@ def run_scenario(spec, target, *, run_nonce, monotonic=time.monotonic, baseline=
     if cleanup is not None:
         res.cleanup = {'clean': cleanup.clean, 'attempts': cleanup.attempts,
                        'cancelled': [list(x) for x in cleanup.cancelled],
-                       'closes': [[s, side, str(q), cid, k, None if e is None else str(e)]
+                       'closes': [[s, side, str(q), cid, k, _executed_text(e)]
                                   for s, side, q, cid, k, e in cleanup.closes],
                        'remaining_positions': [list(x) for x in cleanup.remaining_positions],
                        'remaining_orders': [list(x) for x in cleanup.remaining_orders]}
@@ -471,6 +471,19 @@ class SuiteResult:
     scenarios: list
     exit_code: int
     interrupted: bool = False                              # a Ctrl+C was absorbed anywhere in the suite
+
+
+def _executed_text(e):
+    """A cleanup close's executed quantity for the report (Cowork 6068833115): a number as text, None as None; an
+    exception (never expected here) only through safe_text, anything else only by its type name."""
+    from decimal import Decimal as _D
+    if e is None:
+        return None
+    if isinstance(e, (_D, int)) and not isinstance(e, bool):
+        return str(e)
+    if isinstance(e, BaseException):
+        return exc_msg(e)
+    return f'<{type(e).__name__}>'
 
 
 def _stopped(r):
