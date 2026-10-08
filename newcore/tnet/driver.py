@@ -304,8 +304,8 @@ def run_scenario(spec, target, *, run_nonce, monotonic=time.monotonic, baseline=
     state = {}
 
     def body():
-        run.build()
         try:
+            run.build()
             for st in spec['steps']:
                 if not run.step(st):
                     break

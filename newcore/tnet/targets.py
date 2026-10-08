@@ -120,11 +120,13 @@ class TestnetTarget:
     kind = 'testnet'
     environment = Environment.TESTNET
 
-    def __init__(self, config, *, http, sleep, local_clock=None, store=None, settle_ms=1500, factory=None):
+    def __init__(self, config, *, http, sleep, local_clock=None, store=None, scrubber=None, settle_ms=1500,
+                 factory=None):
         if factory is None:
             from newcore.venue.factory import build_testnet as factory
         self.seam = HttpFaults(http)
-        parts = factory(config, http=self.seam, local_clock=local_clock, store=store)
+        kw = {} if scrubber is None else {'scrubber': scrubber}
+        parts = factory(config, http=self.seam, local_clock=local_clock, store=store, **kw)
         self.config = config
         self.venue, self.reader = parts['venue'], parts['account_reader']
         self.bars, self.clock = parts['bars'], parts['clock']

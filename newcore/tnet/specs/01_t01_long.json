@@ -47,6 +47,9 @@
     "max_orders": 3,
     "final": "flat"
   },
+  "expect_testnet": {
+    "max_orders": 4
+  },
   "bound": {
     "max_ticks": 10,
     "max_orders": 4,
