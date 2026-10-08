@@ -92,6 +92,14 @@ DUPLICATE_CLIENT_ID = -4116           # Binance "ClientOrderId is duplicated": t
 ALGO_FALLBACK_CODES = (-4120, -1116, -1102, -4136)   # newcore.venue.errors (transport): use the algo service
 SECURE_ROUNDS = 2                     # per lot per cycle: stop attempt, then (if refused) one reduce-only close
 EMERGENCY_GENERATIONS = 16            # hard HOLD: cover generations per (symbol, side, gap size)
+ESCALATE_AFTER = 2                    # cycles with an unconfirmed stop before the reduce-only close (Cowork NEW-4)
+E_WOULD_TRIGGER = -2021               # Binance "Order would immediately trigger"
+# Cowork F3 (ruling proposed): a hard-HOLD emergency stop refused as 'would trigger' (the market is already through the
+# level). 'fallback_stop' (default): re-place it at a feasible level F3_BUFFER beyond the last closed candle (still a
+# reduce-only stop, the only action A24 permits); 'none': incident only. The alternative - a reduce-only market close as
+# a protection-outranks exception to A24 - needs an NC-02 ruling and is not implemented.
+F3_POLICY = 'fallback_stop'
+F3_BUFFER = Decimal('0.005')
 OPENING_PURPOSES = frozenset({Purpose.ENTRY, Purpose.ADD})
 
 
@@ -209,6 +217,7 @@ class Runner:
         self._reads = {}                                                  # lost entry -> agreeing position reads
         self._refusals = {}                                               # stop intent -> venue refusal code
         self._orphans_checked = set()                                     # ENTER decisions asked about (289)
+        self._unconfirmed = {}                                            # lot -> (cycle, cycles without a stop)
         if config.raw_qty is not None and (config.account.binding.environment is not Environment.TESTNET
                                            or not config.raw_qty > 0):
             raise ValueError('raw_qty (H2) is a TESTNET-only override of a positive quantity: refused for '
@@ -465,8 +474,25 @@ class Runner:
             out = self.venue.submit_stop(StopOrder(ref=ref, position_side=p.side, qty=qty, stop_price=price))
         if _is_duplicate(out):
             out = self.venue.query(ref)
+        if out.kind is OutcomeKind.REJECTED and out.error_code == E_WOULD_TRIGGER and F3_POLICY == 'fallback_stop':
+            level = self._feasible_level(p)
+            if level is not None:
+                self._incident(f'hard HOLD: {cid} @ {price} would trigger; fallback level {level} (F3)')
+                price = level
+                out = self.venue.submit_stop(StopOrder(ref=ref, position_side=p.side, qty=qty, stop_price=price))
         self.counters.emergency_stops += out.kind is OutcomeKind.KNOWN
         self._incident(f'hard HOLD emergency stop {cid} {p.symbol} {p.side} {qty} @ {price} -> {out.kind}')
+
+    def _feasible_level(self, p):
+        """F3: a stop level the market has not passed - F3_BUFFER beyond the last closed candle's close (away from the
+        position: below for a LONG, above for a SHORT), on the tick."""
+        r = self.bars.closed_bars(p.symbol, self.cfg.tf_ms, as_of_ms=self.now, limit=1)
+        if r.kind is not ReadKind.OK or not r.value:
+            return None
+        c, rules = r.value[-1].close, self.cfg.rules[p.symbol]
+        if p.side == 'LONG':
+            return rules.quantize_price(RCTX.multiply(c, 1 - F3_BUFFER), Rounding.DOWN)
+        return rules.quantize_price(RCTX.multiply(c, 1 + F3_BUFFER), Rounding.UP)
 
     def _emergency_stop_price(self, p):
         """The owned stop level of that side: the lot's stop; for an adopted race fill with no lot, the entry's stop
@@ -542,11 +568,19 @@ class Runner:
         if it.purpose is Purpose.PROTECT:
             out = self.venue.submit_stop(StopOrder(ref=self._ref(iv), position_side=str(it.side), qty=it.qty,
                                                    stop_price=it.stop_price))
-            self._note_refusal(iv, out)
         else:
             out = self.venue.submit_market(MarketOrder(ref=self._ref(iv), position_side=str(it.side), qty=it.qty,
                                                        reduce=True))
-        self._apply(iv, out, submit=True)
+        submit = True
+        if out.kind is OutcomeKind.REJECTED and not _is_duplicate(out):
+            # Cowork NEW-3: a refusal of the RE-send proves nothing about the first send (the venue may check the
+            # price / position before the id): read the order by its client id before booking anything
+            q = self.venue.query(self._ref(iv))
+            if q.kind in (OutcomeKind.KNOWN, OutcomeKind.FINAL):
+                out, submit = q, False
+        if it.purpose is Purpose.PROTECT and submit:
+            self._note_refusal(iv, out)
+        self._apply(iv, out, submit=submit)
 
     def _corroborate_entry(self, iv):
         """An entry the venue does not know is NEVER assumed unfilled (NC-01). It is resolved only by >= 2 agreeing
@@ -698,6 +732,30 @@ class Runner:
             if d is not None and lot.closing is None:                     # a decided close a crash interrupted:
                 self._close_lot(lot, reason=d.reason, key=d.key)          # finish it (never a fresh stop first)
             self._secure(lot.lot_id)
+        self._escalate_unconfirmed()
+
+    def _escalate_unconfirmed(self):
+        """Cowork NEW-4: a stop that stays unconfirmed (sent, its answer unknown / never landing) for ESCALATE_AFTER
+        consecutive cycles is not protection: the lot is closed with a reduce-only market order (exit.stop_failed),
+        the stop staying live meanwhile (ruling 13). Outside hard HOLD only (no journal: A24 forbids the close)."""
+        seen = set()
+        for lot in self.fold.open_lots():
+            if not self._runner_owns(lot.lot_id):
+                continue
+            stop = lot.live_stop
+            if stop is None or stop.state is IntentState.WORKING or lot.closing is not None:
+                self._unconfirmed.pop(lot.lot_id, None)
+                continue
+            seen.add(lot.lot_id)
+            at, n = self._unconfirmed.get(lot.lot_id, (None, 0))
+            if at != self.now:
+                n += 1
+                self._unconfirmed[lot.lot_id] = (self.now, n)
+            if n >= ESCALATE_AFTER and self.hard_hold is None:
+                self._incident(f'{lot.lot_id}: stop {stop.intent_id} unconfirmed for {n} cycles: reduce-only close')
+                self._close_lot(lot, reason=ReasonCode.EXIT_STOP_FAILED, key=None)
+        for k in [k for k in self._unconfirmed if k not in seen]:
+            self._unconfirmed.pop(k, None)
 
     def _lot(self, lot_id):
         return next((x for x in self.fold.open_lots() if x.lot_id == lot_id), None)
@@ -1012,7 +1070,10 @@ class Runner:
 
     # ----------------------------------------------------------------------------------------------- operator
     def resume(self, now_ms):
-        """Leave HOLD: needs a clean fresh reconciliation and records an operator RESUME decision."""
+        """Leave HOLD: needs a clean fresh reconciliation and records an operator RESUME decision. Never from a hard
+        HOLD (Cowork F4): only a restart with a writable store leaves it."""
+        if self.hard_hold is not None:
+            return False
         self.now = max(self.now or now_ms, now_ms)
         if self.fold.mode is EntriesMode.ACTIVE:
             return True
@@ -1065,13 +1126,21 @@ class Runner:
         if len(keys) != len(set(keys)):
             problems.append('I2 two entry intents for one DecisionKey')
         if problems:
-            naked = any(p.startswith('I1') for p in problems)
+            i1 = [p for p in problems if p.startswith('I1')]
+            naked = bool(i1)
             self.counters.unprotected_cycles += naked
+            if naked:                                      # an incident on EVERY naked cycle (Cowork NEW-4)
+                self._incident('; '.join(i1))
             if self.fold.mode is not EntriesMode.HOLD and self.hard_hold is None:
                 if naked:                                  # never ACTIVE while naked: stop new risk at once (durable)
-                    self._incident('; '.join(problems))
                     self._hold([ReasonCode.PROTECT_CHECKING], reason=ReasonCode.PROTECT_CHECKING)
-                if self.cfg.strict:
+                # strict: a breach - except a naked side whose stop is IN FLIGHT (sent, answer unknown) now that the
+                # HOLD is durable: the bounded window the protect / escalation path is closing (Cowork LOW)
+                inflight = {(x.symbol, x.side) for x in self.fold.open_lots() if x.live_stop is not None
+                            and x.live_stop.state in (IntentState.SUBMITTED, IntentState.UNKNOWN)}
+                excused = naked and len(i1) == len(problems) and self.fold.mode is EntriesMode.HOLD and all(
+                    any(f'I1 {s} {sd}:' in p for s, sd in inflight) for p in i1)
+                if self.cfg.strict and not excused:
                     raise InvariantBreach('; '.join(problems))
         return problems
 

@@ -589,6 +589,7 @@ class ManagementMixin:
             if d is not None and lot.closing is None:
                 self._close_lot(lot, reason=d.reason, key=d.key)
             self._secure(lot.lot_id)
+        self._escalate_unconfirmed()                                      # unmanaged lots (_runner_owns)
         self._mg_flush_all()
         for lot in self.fold.open_lots():
             if lot.lot_id in self.mg and lot.live_stop is None and lot.in_flight is None:
