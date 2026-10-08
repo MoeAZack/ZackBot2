@@ -219,7 +219,8 @@ def _late_fill(seed=340):
                   state=IntentState.PLANNED, decision_id=dec_id, reason=ReasonCode.EXIT_TIME, created=F.T0 - 10_000)
     dec = F.decision(ids, acct, Action.CLOSE, ReasonCode.EXIT_TIME, (it,), dec_id=dec_id, at=F.T0 - 10_000)
     rs = F.results(ids, acct, it)
-    late = F.replace(rs['filled'], result_id=ids.id('res'), observed_at_ms=F.T0 + 60_000)
+    late = F.replace(rs['filled'], result_id=ids.id('res'), observed_at_ms=F.T0 + 60_000,
+                     supersedes_result_id=rs['corroborated'].result_id)          # PR #44 P1-b: names the prior fact
     E = lambda cls, n, at, **kw: F.event(cls, ids, acct, n, at=at, **kw)          # noqa: E731
     head = [E(DecisionRecorded, 1, dec.at_ms, decision=dec, reason=dec.reason),
             E(IntentRecorded, 2, dec.at_ms, intent=F.replace(it, state=IntentState.DURABLE), reason=it.reason),
@@ -308,9 +309,10 @@ def test_item3b_only_an_executed_exchange_record_of_the_same_order_supersedes():
     p, ids, acct, it, rs, late, head, E = _late_fill()
     cor = rs['corroborated']
     assert supersedes(cor, late)
-    assert supersedes(cor, F.replace(rs['partial_cancel'], observed_at_ms=F.T0 + 60_000))     # any execution
+    assert supersedes(cor, F.replace(rs['partial_cancel'], observed_at_ms=F.T0 + 60_000,
+                                     supersedes_result_id=cor.result_id))                 # any execution
     not_superseding = {
-        'nothing executed': F.replace(late, executed_qty=D('0'), avg_price=None,
+        'nothing executed': F.replace(late, executed_qty=D('0'), avg_price=None, supersedes_result_id=None,
                                       exchange_status=ExchangeStatus.CANCELED),
         'a decided adoption, not exchange evidence': F.replace(rs['adopted'], observed_at_ms=F.T0 + 60_000),
         'a refusal': F.replace(rs['refused'], observed_at_ms=F.T0 + 60_000),

@@ -101,7 +101,11 @@ MUTATIONS = {
         "        req(len({x.lot_id for x in self.lots}) == len(self.lots), p + '.lots',", "        req(True, p + '.lots',")]),
     'ruling 1: Decision.symbol unvalidated': (D + 'decision.py', [(
         "            check_symbol(self.symbol, p + '.symbol')", '            pass')]),
-    'ruling 2: whitespace-only text accepted': (D + 'base.py', [("    req(v.strip() != '', path,", '    req(True, path,')]),
+    'ruling 2: whitespace-only text accepted': (D + 'base.py', [(
+        "    req(type(v) is str and 0 < len(v) <= n and v.isprintable(), path, f'1..{n} printable characters')\n"
+        "    req(v.strip() != '', path,",
+        "    req(type(v) is str and 0 < len(v) <= n and v.isprintable(), path, f'1..{n} printable characters')\n"
+        "    req(True, path,")]),
     'ruling 4: position lots keep their given order': (D + 'portfolio.py', [(
         "        if ordered != self.lots:\n            object.__setattr__(self, 'lots', ordered)", '        pass')]),
     'ports: journal ignores owner_kind (every owner treated as a lot)': ('newcore/ports/journal.py', [(
@@ -202,15 +206,37 @@ MUTATIONS = {
         "    req(unicodedata.is_normalized('NFC', v), path,", "    req(True, path,")]),
     'PR44 c5: non-ASCII incident text accepted': (D + 'base.py', [(
         "ASCII_TEXT_RE = re.compile(r'[ -~]+')", "ASCII_TEXT_RE = re.compile(r'[^\\x00-\\x1f]+')")]),
-    'PR44 c6: a reused incident id in the chain': (D + 'events.py', [(
-        "            req(ev.incident.incident_id not in incidents, p + '.incident.incident_id', 'incident id used twice')",
-        "            pass")]),
-    'PR44 c6: a reused incident id in the journal gate': ('newcore/ports/journal.py', [(
-        "            req(ev.incident.incident_id not in self._incidents, 'event.incident.incident_id', 'incident id used twice')",
-        "            pass")]),
     'PR44 c6: evidence of any id family': (D + 'incident.py', [(
         "EVIDENCE_PREFIXES = ('res', 'rec', 'dec', 'evt', 'inc')",
         "EVIDENCE_PREFIXES = ('res', 'rec', 'dec', 'evt', 'inc', 'acct', 'pos')")]),
+    'Codex44 P1-a: a venue trade booked twice': (D + 'facts.py', [(
+        "                req(owner is None, p + '.result.external_trades',", "                req(True, p + '.result.external_trades',")]),
+    'Codex44 P1-a: the event chain skips the fact ledger': (D + 'events.py', [(
+        "        ledger.check(ev, p)()\n", "")]),
+    'Codex44 P1-a: the journal gate skips the fact ledger': ('newcore/ports/journal.py', [
+        ("        self._facts.check(ev)                # PR #44: the same FactLedger the domain chain applies (ruling 3)\n", ""),
+        ("        self._facts.check(ev)()\n", "")]),
+    'Codex44 P1-b: a result id reused for a different fact': (D + 'facts.py', [(
+        "                req(known == digest, p + '.result.result_id',", "                req(True, p + '.result.result_id',")]),
+    'Codex44 P1-b: a late final need not name the prior fact': (D + 'orders.py', [(
+        "            and new.supersedes_result_id == prior.result_id and new.result_id != prior.result_id)   # PR #44 P1-b",
+        "            )")]),
+    'Codex44 P1-b: a result may supersede itself': (D + 'orders.py', [(
+        "            req(self.supersedes_result_id != self.result_id, p + '.supersedes_result_id', 'a result never supersedes itself')",
+        "            pass")]),
+    'Codex44 P1-b: the chain accepts a dangling supersedes_result_id': (D + 'events.py', [(
+        "            req(r.supersedes_result_id is None, p + '.result.supersedes_result_id',",
+        "            req(True, p + '.result.supersedes_result_id',")]),
+    'Codex44 P1-b: the gate accepts a dangling supersedes_result_id': ('newcore/ports/journal.py', [(
+        "            if final is not None or r.supersedes_result_id is not None:", "            if final is not None:")]),
+    'Codex44 P2-1: an incident id reused for a different fact': (D + 'facts.py', [(
+        "                req(known == digest, p + '.incident.incident_id',", "                req(True, p + '.incident.incident_id',")]),
+    'Codex44 P2-2: an external booking resolved by any decision': (D + 'orders.py', [(
+        "        req(ev is not Evidence.EXCHANGE_EXTERNAL or result.resolved_by == intent.decision_id, p + '.resolved_by',",
+        "        req(True, p + '.resolved_by',")]),
+    'Codex44 P2-2: the chain books without its recorded decision': (D + 'events.py', [(
+        "                req(r.resolved_by in decisions or r.intent_id in before, p + '.result.resolved_by',",
+        "                req(True, p + '.result.resolved_by',")]),
     'duplicate JSON keys': (D + 'codec.py', [("            if k in out:\n                problems.append(",
                                               "            if False:\n                problems.append(")]),
     'truncated JSON': (D + 'codec.py', [(

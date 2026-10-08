@@ -245,7 +245,7 @@ def _post_hoc_close_flow(reason_override=None):
                       phase=ResultPhase.FINAL, requested_qty=it.qty, observed_at_ms=at + 2000, exchange_order_id=None,
                       exchange_status=None, lookup=None, executed_qty=it.qty, avg_price=D('149'),
                       evidence=Evidence.EXCHANGE_EXTERNAL, corroboration=(), resolved_by=dec_id,
-                      external_trades=(trade,))
+                      external_trades=(trade,), supersedes_result_id=None)
     s._event(ResultObserved, reason=ReasonCode.RECONCILE_EXTERNAL_CLOSE, result=res)
     s.step(cid, IntentState.DURABLE, IntentState.FILLED)
     return s
@@ -277,13 +277,14 @@ def _late_fill_flow():
                       phase=ResultPhase.FINAL, requested_qty=it.qty, observed_at_ms=T0 + 62_000, exchange_order_id=None,
                       exchange_status=None, lookup=None, executed_qty=D('0'), avg_price=None,
                       evidence=Evidence.NOT_FOUND_CORROBORATED, corroboration=reads, resolved_by=make_id('dec', 9002),
-                      external_trades=())
+                      external_trades=(), supersedes_result_id=None)
     s._event(ResultObserved, reason=ReasonCode.RECONCILE_LATE_FILL, result=cor)
     s.step(sid, IntentState.UNKNOWN, IntentState.CANCELLED)
     filled = s.result(sid, 'filled').result
     s.events.pop()
     s.n -= 1
-    late = replace(filled, result_id=make_id('res', 9003), observed_at_ms=T0 + 90_000)
+    late = replace(filled, result_id=make_id('res', 9003), observed_at_ms=T0 + 90_000,
+                   supersedes_result_id=cor.result_id)                    # PR #44 P1-b: a new fact naming the prior
     return s, sid, late
 
 
@@ -316,7 +317,8 @@ def test_only_an_executed_exchange_record_supersedes_in_the_journal():
     j = ReferenceJournal()
     for ev in s.events:
         j.append(ev)
-    zero = replace(late, executed_qty=D('0'), avg_price=None, exchange_status=ExchangeStatus.CANCELED)
+    zero = replace(late, executed_qty=D('0'), avg_price=None, exchange_status=ExchangeStatus.CANCELED,
+                   supersedes_result_id=None)
     with pytest.raises(JournalConflict, match='superseding not_found_corroborated'):
         j.append(s._event(ResultObserved, reason=ReasonCode.RECONCILE_LATE_FILL, result=zero))
 
@@ -425,7 +427,101 @@ def test_the_journal_refuses_a_reused_incident_id():
         j.append(ev)
     assert j.append(first) is Admission.ALREADY_APPLIED
     again = s._event(IncidentRecorded, reason=inc.kind, incident=replace(inc, detail='seen again'))
-    with pytest.raises(JournalConflict, match='incident id used twice'):
+    with pytest.raises(JournalConflict, match='incident id .* used for a different fact'):
         j.append(again)
     other = replace(again, incident=replace(inc, incident_id=make_id('inc', 2)))
     assert j.append(other) is Admission.APPLY
+
+
+# ================================================== Codex review of #44: the step-0 journal twins (ruling 3)
+def _second_booking(s, trade_ids=('777',), n=4300):
+    """Append a second external-close booking (a REDUCE of 0.5) citing `trade_ids` to scenario `s`."""
+    from decimal import Decimal as D
+    from nc_events import replace
+    from newcore.domain import (Action, Authority, Decision, DecisionRecorded, Evidence, ExternalTrade, OrderResult,
+                                ReasonCode, ResultObserved, ResultPhase, make_id)
+    rid = K.derive_child_intent_id(ACCT, LOT, Purpose.REDUCE, 0)
+    at = s.events[-1].at_ms + 1000
+    dec_id = make_id('dec', n)
+    it = replace(s._intent(rid, Purpose.REDUCE, dec_id, at, owner=LOT, qty=D('0.5')),
+                 reason=ReasonCode.RECONCILE_EXTERNAL_CLOSE)
+    d = Decision(decision_id=dec_id, account_id=ACCT, at_ms=at, action=Action.RECONCILE,
+                 reason=ReasonCode.RECONCILE_EXTERNAL_CLOSE, authority=Authority.RECONCILIATION, key=None, evidence=(),
+                 symbol='SOLUSDT', side=Side.LONG, subject_id=LOT, detail='', intents=(it,), policy_version='step0-test')
+    s._event(DecisionRecorded, reason=d.reason, decision=d)
+    s.intents[rid] = it
+    s.record(rid)
+    q = D('0.5') / len(trade_ids)
+    trades = tuple(ExternalTrade(trade_id=t, at_ms=at, qty=q, price=D('149')) for t in trade_ids)
+    res = OrderResult(result_id=make_id('res', n + 1), intent_id=rid, account_id=ACCT, client_order_id=it.client_order_id,
+                      phase=ResultPhase.FINAL, requested_qty=it.qty, observed_at_ms=at + 2000, exchange_order_id=None,
+                      exchange_status=None, lookup=None, executed_qty=it.qty, avg_price=D('149'),
+                      evidence=Evidence.EXCHANGE_EXTERNAL, corroboration=(), resolved_by=dec_id, external_trades=trades,
+                      supersedes_result_id=None)
+    return s._event(ResultObserved, reason=ReasonCode.RECONCILE_EXTERNAL_CLOSE, result=res)
+
+
+def test_journal_books_one_venue_trade_once_across_restarts():
+    """P1-a twin: trade 777 booked by the first external close cannot be booked again - not in the live journal and
+    not after a restart rebuilt from the decoded bytes; a repeated reconcile pass of the same events is idempotent."""
+    from newcore.domain import canonical_bytes, loads
+    s = _post_hoc_close_flow()
+    booked = list(s.events)
+    again = _second_booking(s, ('777',))
+    j = ReferenceJournal()
+    for ev in booked:
+        j.append(ev)
+    for ev in s.events[len(booked):-1]:
+        j.append(ev)
+    with pytest.raises(JournalConflict, match='venue trade 777 is already booked'):
+        j.append(again)
+    restarted = ReferenceJournal(events=[loads(canonical_bytes(ev)) for ev in s.events[:-1]])
+    assert all(restarted.append(ev) is Admission.ALREADY_APPLIED for ev in s.events[:-1])     # repeated reconcile
+    with pytest.raises(JournalConflict, match='venue trade 777 is already booked'):
+        restarted.append(again)
+
+
+def test_journal_keeps_result_ids_and_incident_ids_unique_and_late_finals_explicit():
+    """P1-b / P2-1 twins: a late final reusing the prior result id, or not naming it, is refused; an incident id
+    reused for different content is refused even after a restart; the identical incident again is a no-op."""
+    from nc_events import replace
+    from newcore.domain import Incident, IncidentRecorded, ReasonCode, ResultObserved, canonical_bytes, loads, make_id
+    s, sid, late = _late_fill_flow()
+    j = ReferenceJournal()
+    for ev in s.events:
+        j.append(ev)
+    prior = [e for e in s.events if isinstance(e, ResultObserved)][-1].result
+    reused = replace(late, result_id=prior.result_id, supersedes_result_id=None)    # the prior fact's own id
+    for bad, why in ((reused, 'different fact'), (replace(late, supersedes_result_id=None), 'superseding')):
+        ev = replace_seq(s._event(ResultObserved, reason=ReasonCode.RECONCILE_LATE_FILL, result=bad),
+                         len(s.events))
+        s.events.pop()
+        s.n -= 1
+        with pytest.raises(JournalConflict, match=why):
+            j.append(ev)
+    with pytest.raises(InvalidRecord, match='supersedes itself'):                    # cannot even be built
+        replace(late, result_id=prior.result_id)
+    inc = Incident(incident_id=make_id('inc', 44), account_id=ACCT, kind=ReasonCode.RECONCILE_MANUAL_CLOSE,
+                   at_ms=s.events[-1].at_ms, symbol='SOLUSDT', side=Side.LONG, intent_refs=(), lot_refs=(LOT,),
+                   position_refs=(), evidence=(), detail='venue flat')
+    j.append(s._event(IncidentRecorded, reason=inc.kind, incident=inc))
+    assert j.append(s._event(IncidentRecorded, reason=inc.kind, incident=inc)) is Admission.APPLY   # identical fact
+    restarted = ReferenceJournal(events=[loads(canonical_bytes(ev)) for ev in s.events])
+    conflict = s._event(IncidentRecorded, reason=inc.kind, incident=replace(inc, detail='something else'))
+    with pytest.raises(JournalConflict, match='incident id .* used for a different fact'):
+        restarted.append(conflict)
+
+
+def test_journal_refuses_an_external_booking_resolved_by_another_decision():
+    """P2-2 twin: the gate's content check requires resolved_by == the booking intent's own RECONCILE decision."""
+    from nc_events import replace
+    from newcore.domain import ResultObserved, make_id
+    s = _post_hoc_close_flow()
+    j = ReferenceJournal()
+    for ev in s.events[:-2]:
+        j.append(ev)
+    res_ev = s.events[-2]
+    assert isinstance(res_ev, ResultObserved)
+    bad = replace(res_ev, result=replace(res_ev.result, resolved_by=make_id('dec', 999_999)))
+    with pytest.raises(JournalConflict, match='resolved by the RECONCILE decision that booked it'):
+        j.append(bad)

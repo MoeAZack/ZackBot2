@@ -28,6 +28,7 @@ from .errors import (DomainError, EventOrderError, ForeignDocument, FutureSchema
                      OwnershipUnknown, UnknownSchema, UnsupportedVersion)
 from .events import (BindingChanged, DecisionRecorded, DomainEvent, IncidentRecorded, IntentRecorded,
                      IntentStateChanged, ModeChanged, ResultObserved, check_event_chain)
+from .facts import ConsumedTrade, FactDigest, FactIndex, FactLedger, fold_facts
 from .incident import Incident
 from .instrument import Capability, InstrumentId, InstrumentRules, Rounding
 from .ledger import Admission, EventCursor, EventDigest, admit

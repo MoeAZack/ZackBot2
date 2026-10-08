@@ -42,6 +42,7 @@ from newcore.domain.codec import contract_sha256
 from newcore.domain.errors import DomainError
 from newcore.domain.events import EVENT_TYPES
 from newcore.domain.ledger import Admission
+from newcore.domain.facts import FactLedger
 from newcore.domain.orders import (TERMINAL, booking_step_ok, can_transition, check_result_for_intent, supersedes,
                                    terminal_for)
 
@@ -208,6 +209,7 @@ class Grammar:
         self._intents: dict[str, _Intent] = {}
         self._client_ids: set[str] = set()
         self._lineage: dict[tuple[str, Purpose], int] = {}
+        self.decision_ids = self._decisions.keys()   # read-only view: the decisions journaled so far
         self._last_protect: dict[str, str] = {}
         self._lots: set[str] = set()
 
@@ -398,7 +400,7 @@ class JournalGate:
         self._live = {}     # intent_id -> [OrderIntent, IntentState, sent_at_ms | None, final OrderResult | None]
         self._late = {}     # r3 item 3b: intent_id -> result_id of the journaled superseding (late) FINAL record
         self._late_applied = set()   # intents whose late fact a reconcile.late_fill_after_not_found decision applied
-        self._incidents = set()      # PR #44 (Cowork 6): incident ids already journaled
+        self._facts = FactLedger()   # PR #44: durable unique result / incident ids + consumed venue trades
 
     @classmethod
     def rebuild(cls, account_id, aggregate_id, events: Iterable) -> 'JournalGate':
@@ -425,6 +427,7 @@ class JournalGate:
 
     def _content(self, ev):
         """NC-01 per-record checks against the current state (pure)."""
+        self._facts.check(ev)                # PR #44: the same FactLedger the domain chain applies (ruling 3)
         if isinstance(ev, IntentStateChanged) and ev.intent_id in self._live:
             it, state, _, final = self._live[ev.intent_id]
             req(ev.from_state is state, 'event.from_state', f'the intent is {state}')
@@ -433,8 +436,6 @@ class JournalGate:
             if ev.to_state in TERMINAL:
                 req(final is not None and terminal_for(final) is ev.to_state, 'event.to_state',
                     'the terminal step must be terminal_for(final result)')
-        elif isinstance(ev, IncidentRecorded):
-            req(ev.incident.incident_id not in self._incidents, 'event.incident.incident_id', 'incident id used twice')
         elif isinstance(ev, DecisionRecorded) and ev.decision.reason is ReasonCode.RECONCILE_LATE_FILL:
             d = ev.decision                  # r3 item 3b (ruling 4): the late fact is applied once, after it is journaled
             req(self._late.get(d.subject_id) in d.evidence, 'event.decision',
@@ -442,12 +443,17 @@ class JournalGate:
             req(d.subject_id not in self._late_applied, 'event.decision', 'a late fill is reconciled once')
         elif isinstance(ev, ResultObserved) and ev.result.intent_id in self._live:
             it, _, sent_at, final = self._live[ev.result.intent_id]
-            if final is not None:     # r3 draft item 3b: only a superseding exchange record follows a FINAL result
-                req(supersedes(final, ev.result), 'event.result',
+            r = ev.result
+            if final is not None or r.supersedes_result_id is not None:   # 3b: only a superseding record after FINAL
+                req(final is not None and supersedes(final, r), 'event.result',
                     'after a FINAL result only an executed exchange record superseding not_found_corroborated')
-            check_result_for_intent(it, ev.result, sent_at)
+            check_result_for_intent(it, r, sent_at)
+            if r.evidence is Evidence.EXCHANGE_EXTERNAL:                     # PR #44 P2-2
+                req(r.resolved_by in self.grammar.decision_ids, 'event.result.resolved_by',
+                    'the authorising RECONCILE decision is not in the log')
 
     def _apply(self, ev):
+        self._facts.check(ev)()
         if isinstance(ev, IntentRecorded):
             self._live[ev.intent.intent_id] = [ev.intent, ev.intent.state, None, None]
         elif isinstance(ev, IntentStateChanged):
@@ -462,8 +468,7 @@ class JournalGate:
             st[3] = ev.result
         elif isinstance(ev, DecisionRecorded) and ev.decision.reason is ReasonCode.RECONCILE_LATE_FILL:
             self._late_applied.add(ev.decision.subject_id)
-        elif isinstance(ev, IncidentRecorded):
-            self._incidents.add(ev.incident.incident_id)
+
 
 
 # ---------------------------------------------------------------------------------------------- consumed-signal rule

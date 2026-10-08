@@ -366,6 +366,7 @@ class OrderResult(Record):
     corroboration: tuple[PositionRead, ...]
     resolved_by: str | None           # dec_ of the explicit resolution / adoption
     external_trades: tuple[ExternalTrade, ...]   # EXCHANGE_EXTERNAL only: the venue trades of the external close
+    supersedes_result_id: str | None  # PR #44 P1-b: a late executed FINAL names the not_found_corroborated it supersedes
 
     def _validate(self, p):
         p = f'{p}[{self.result_id}]'
@@ -380,6 +381,8 @@ class OrderResult(Record):
         if ph is not ResultPhase.FINAL:
             req(self.executed_qty is None and self.avg_price is None and ev is None and not self.corroboration
                 and self.resolved_by is None, p, f'a {ph} result books nothing (no executed qty / price / evidence)')
+            req(self.supersedes_result_id is None, p + '.supersedes_result_id',
+                'only an executed FINAL exchange record supersedes a prior result')
             if ph is ResultPhase.UNKNOWN:
                 req(st is None, p + '.exchange_status', 'an UNKNOWN result has no exchange status')
             else:
@@ -389,6 +392,11 @@ class OrderResult(Record):
             return
         req(self.lookup is None, p + '.lookup', 'a final result is not a lookup failure')
         req(ev is not None, p + '.evidence', 'a final result names its evidence')
+        if self.supersedes_result_id is not None:        # PR #44 P1-b: a NEW fact that names the prior one
+            check_id(self.supersedes_result_id, p + '.supersedes_result_id', 'res')
+            req(self.supersedes_result_id != self.result_id, p + '.supersedes_result_id', 'a result never supersedes itself')
+            req(ev is Evidence.EXCHANGE_FINAL and self.executed_qty is not None and self.executed_qty > 0,
+                p + '.supersedes_result_id', 'only an executed FINAL exchange record supersedes a prior result')
         req(self.executed_qty is not None, p + '.executed_qty', 'a final result decides the executed qty')
         non_negative(self.executed_qty, p + '.executed_qty')
         req(self.executed_qty <= self.requested_qty, p + '.executed_qty', 'more than requested')
@@ -461,7 +469,8 @@ def supersedes(prior, new):
     return (prior.phase is ResultPhase.FINAL and prior.evidence is Evidence.NOT_FOUND_CORROBORATED
             and new.phase is ResultPhase.FINAL and new.evidence is Evidence.EXCHANGE_FINAL and new.executed_qty > 0
             and new.intent_id == prior.intent_id and new.client_order_id == prior.client_order_id
-            and new.account_id == prior.account_id and new.observed_at_ms >= prior.observed_at_ms)
+            and new.account_id == prior.account_id and new.observed_at_ms >= prior.observed_at_ms
+            and new.supersedes_result_id == prior.result_id and new.result_id != prior.result_id)   # PR #44 P1-b
 
 
 def check_result_for_intent(intent, result, sent_at_ms):
@@ -480,6 +489,8 @@ def check_result_for_intent(intent, result, sent_at_ms):
         req(sent_at_ms is None and result.phase is ResultPhase.FINAL
             and ev in (Evidence.EXCHANGE_EXTERNAL, Evidence.NOT_SENT), p + '.evidence',
             'a post-hoc booking is never sent and ends exchange_external (or not_sent)')
+        req(ev is not Evidence.EXCHANGE_EXTERNAL or result.resolved_by == intent.decision_id, p + '.resolved_by',
+            'an external booking is resolved by the RECONCILE decision that booked it')       # PR #44 P2-2
         return
     if sent_at_ms is None:
         req(result.phase is ResultPhase.FINAL and ev is Evidence.NOT_SENT, p + '.evidence',
