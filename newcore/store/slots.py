@@ -147,6 +147,10 @@ def read_pair(fs, directory, stem, kind, validate=None):
         return PairRead(PairState.OK, doc, which, states)
     if states == (SlotState.ABSENT, SlotState.ABSENT):
         return PairRead(PairState.ABSENT, None, None, states)
+    if sorted(states) == sorted((SlotState.INVALID, SlotState.ABSENT)):
+        # the very first write of the pair was cut short (C-S6 / C-S8 on a first commit): never committed, so the
+        # pair is ABSENT; the caller decides (interrupted INIT, or a HEAD lost while generations exist = damage)
+        return PairRead(PairState.ABSENT, None, None, states, 'torn first write')
     return PairRead(PairState.DAMAGE, None, None, states, 'no valid slot')
 
 
