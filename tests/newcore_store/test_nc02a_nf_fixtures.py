@@ -341,4 +341,5 @@ def test_nf_fixture_analogue(fid, tmp_path):
 
 @pytest.mark.parametrize('fid', sorted(DEFERRED))
 def test_deferred_fixture(fid):
-    pytest.skip(DEFERRED[fid])
+    where = 'installer drill (section 4)' if fid in ('NF-18', 'NF-19', 'NF-20') else 'test_nc02b_nf_fixtures.py'
+    pytest.skip(f'journal level: {DEFERRED[fid]}; answered in {where}')

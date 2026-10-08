@@ -68,6 +68,8 @@ def tree(root):
             rel = os.path.relpath(p, root).replace(os.sep, '/')
             if stat.S_ISDIR(st.st_mode):
                 out[rel] = ('d',)
+            elif n == ".lock":                                   # byte-range locked by a live writer: metadata only
+                out[rel] = ("lock", st.st_size)
             else:
                 with open(p, 'rb') as fh:
                     out[rel] = ('f', hashlib.sha256(fh.read()).hexdigest(), st.st_size, st.st_mtime_ns)
