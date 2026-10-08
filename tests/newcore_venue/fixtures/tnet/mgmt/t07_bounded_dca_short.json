@@ -1,0 +1,105 @@
+{
+ "format": "zb-newcore-tnet-scenario/1",
+ "name": "t07_bounded_dca_short",
+ "description": "TNET-01 T07 one bounded DCA add: the add level is crossed while the algo stop is only acknowledged, so the ADD stays held; once the stop is confirmed (query) the add fires, the stop is replaced to cover the basket (old cancelled after the new one is confirmed) and the basket stop closes the position.",
+ "symbols": [
+  "SOLUSDT"
+ ],
+ "account": {
+  "min_balance": "100",
+  "adopt_foreign": []
+ },
+ "steps": [
+  {
+   "id": "entry",
+   "op": "market",
+   "symbol": "SOLUSDT",
+   "side": "SHORT",
+   "reduce": false,
+   "qty": "5"
+  },
+  {
+   "id": "protect",
+   "op": "stop",
+   "symbol": "SOLUSDT",
+   "side": "SHORT",
+   "qty": "filled:entry",
+   "trigger_offset_pct": "2",
+   "from": "entry",
+   "route": "classic"
+  },
+  {
+   "id": "protect_algo",
+   "op": "stop",
+   "symbol": "SOLUSDT",
+   "side": "SHORT",
+   "qty": "filled:entry",
+   "trigger_offset_pct": "2",
+   "from": "entry",
+   "route": "algo"
+  },
+  {
+   "id": "verify",
+   "op": "query",
+   "ref": "protect_algo"
+  },
+  {
+   "id": "add",
+   "op": "market",
+   "symbol": "SOLUSDT",
+   "side": "SHORT",
+   "reduce": false,
+   "qty": "5"
+  },
+  {
+   "id": "resize",
+   "op": "stop",
+   "symbol": "SOLUSDT",
+   "side": "SHORT",
+   "qty": "10",
+   "trigger_offset_pct": "2",
+   "from": "entry",
+   "route": "algo"
+  },
+  {
+   "id": "unstop",
+   "op": "cancel",
+   "ref": "protect_algo"
+  },
+  {
+   "id": "settle",
+   "op": "wait",
+   "seconds": 2
+  }
+ ],
+ "expect": {
+  "outcomes": {
+   "entry": [
+    "final"
+   ],
+   "protect": [
+    "rejected"
+   ],
+   "protect_algo": [
+    "acknowledged"
+   ],
+   "verify": [
+    "known"
+   ],
+   "add": [
+    "final"
+   ],
+   "resize": [
+    "known"
+   ],
+   "unstop": [
+    "final"
+   ]
+  },
+  "end_state": {
+   "flat": true,
+   "open_newcore_orders": 0
+  },
+  "max_duration_s": 600
+ }
+}
