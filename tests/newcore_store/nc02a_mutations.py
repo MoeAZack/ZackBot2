@@ -55,19 +55,21 @@ MUTATIONS = {
     'gate bypassed on append': (S + 'fold.py', [(
         '        staged = _seq_typed(lambda: self.gate.stage(ev))\n',
         "        staged = type('B', (), {'event': ev, 'commit': lambda self: None})()\n")]),
-    'complete-length bad frame treated as a tail (finding 1)': (S + 'frame.py', [(
+    'complete-length bad frame treated as a tail (finding 1, Codex ruling)': (S + 'frame.py', [(
         "        return False, 'a complete-length record fails its check'\n",
         "        return True, 'a complete-length record fails its check'\n")]),
     'corrupted length of a complete record treated as a tail (finding 1)': (S + 'frame.py', [(
         "        return False, 'a complete record with a corrupted length field'\n",
         "        return True, 'a complete record with a corrupted length field'\n")]),
-    'header segment mismatch not stopped (finding 2)': (S + 'recovery.py', [(
+    'header segment mismatch not stopped and no exception net (finding 2)': (S + 'recovery.py', [(
         "            raise _Out(Verdict.DAMAGED, damage + [Finding('foreign', names[m], 8,\n",
         "            damage.append(Finding('foreign', names[m], 8,\n"), (
         "                                                          'the journal names another account / aggregate / "
         "segment')])\n",
         "                                                          'the journal names another account / aggregate / "
-        "segment'))\n")]),
+        "segment'))\n"), (
+        "    except (IndexError, KeyError, TypeError, ValueError, AttributeError, OverflowError) as ex:\n",
+        "    except ZeroDivisionError as ex:\n")]),
     'no writer lock (finding 3)': (S + 'journal.py', [(
         "    lock = fs.lock_exclusive(os.path.join(journal_dir, LOCK_NAME))\n    if lock is None:\n",
         "    lock = fs.lock_exclusive(os.path.join(journal_dir, LOCK_NAME))\n    if False:\n")]),

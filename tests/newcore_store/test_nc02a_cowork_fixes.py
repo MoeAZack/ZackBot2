@@ -28,7 +28,7 @@ SENT_AT = 3                       # SCENARIO[2] is the entry's `sent` (sequence 
 
 def _flips(data, start, end):
     for i in range(start, end):
-        for bit in (0x01, 0x80):
+        for bit in (0x01, 0x80, 0xFF):
             yield i, bit, data[:i] + bytes([data[i] ^ bit]) + data[i + 1:]
 
 
@@ -69,18 +69,17 @@ def test_a_sent_intent_never_becomes_durable_not_sent_through_recovery():
         assert r.state.intent(entry).recovery is IntentRecovery.UNKNOWN_NEEDS_QUERY
 
 
-def test_the_zero_fill_relaxation_is_pinned_and_off_by_default():
+def test_a_zero_filled_complete_frame_is_damage_and_no_relaxation_exists():          # Codex ruling (final)
     fs = mem_journal(SCENARIO[:SENT_AT])
     data = fs.read_bytes(seg(1))
     zeroed = data + b'\0' * 300
-    assert frame_mod.ZERO_FILL_IS_TAIL is False
+    assert not hasattr(frame_mod, 'ZERO_FILL_IS_TAIL')
     sc = scan(zeroed, KIND_SEGMENT)
-    assert sc.damage is not None and sc.tail_offset is None                       # default: fail closed
-    sc2 = scan(zeroed, KIND_SEGMENT, zero_fill_is_tail=True)
-    assert sc2.damage is None and sc2.tail_offset == len(data)                    # the pinned relaxation
+    assert sc.damage is not None and sc.tail_offset is None
     g = MemFs(os.path.dirname(ACCT_DIR))
     g.put(seg(1), zeroed)
-    assert recover(g).verdict is Verdict.DAMAGED
+    f = FaultFs(g)
+    assert recover(f).verdict is Verdict.DAMAGED and f.trace == []
 
 
 # ---------------------------------------------------------------------------------------------------- finding 2
