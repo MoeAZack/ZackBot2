@@ -39,6 +39,7 @@ import enum
 from decimal import Decimal
 
 from ..domain.base import CTX, ZERO, req
+from ..domain.errors import DomainError
 from ..domain.modes import EntriesMode, Op, Permission, permitted
 from ..domain.orders import IntentState, OrderIntent, OrderType, OwnerKind, Purpose, Side
 from ..domain.reasons import ReasonCode
@@ -46,12 +47,13 @@ from ..ports.keys import client_id_for, derive_child_intent_id
 from ..ports.venue import OrderOutcome, OutcomeKind, VenueFill
 from .actions import ActionKind
 from .core import initial_state, step
-from .plan import ManagementError, ManagementPlan
+from .plan import DIV, ManagementError, ManagementPlan
 from .state import Cancelled, Candle, ConfirmedFill, Leg, Rejected, Stage
 
 K = ActionKind
 R = ReasonCode
-MANAGE_REASONS = frozenset({R.EXIT_TIME, R.EXIT_SIGNAL, R.EXIT_TAKE_PROFIT, R.EXIT_TP1})
+MANAGE_REASONS = frozenset({R.EXIT_TIME, R.EXIT_SIGNAL, R.EXIT_TAKE_PROFIT, R.EXIT_TP1, R.EXIT_BASKET_TP, R.EXIT_LADDER,
+                            R.EXIT_BASKET_TP_PART})
 CANCELLED_STATUSES = frozenset({'CANCELED', 'EXPIRED', 'EXPIRED_IN_MATCH'})
 MAX_LOOPS = 8
 
@@ -66,8 +68,8 @@ class BindState(enum.StrEnum):
 @dataclasses.dataclass(frozen=True, slots=True, kw_only=True)
 class Draft:
     """One order the runner makes durable and sends (an NC-01 OrderIntent once `to_order_intent` stamps it)."""
-    intent_id: str
-    client_id: str
+    intent_id: str | None         # assigned when the draft is SENT (a held draft consumes no lineage ordinal)
+    client_id: str | None
     route: str
     account_id: str
     symbol: str
@@ -112,6 +114,7 @@ class Binding:
     current: bool                # the core's current request for the leg (False: superseded by a replacement)
     core_cancelled: bool         # the core cancelled it: its Cancelled(leg) goes back to the core
     replaces: str | None         # the stop intent this one replaces (cancelled once this one is confirmed)
+    status: str | None           # the venue status of its FINAL answer
 
 
 @dataclasses.dataclass(frozen=True, slots=True, kw_only=True)
@@ -144,6 +147,9 @@ class DriverState:
     deferred: tuple              # PendingFill the core cannot book yet (e.g. a stop fill before the add it closes)
     mode: EntriesMode
     hold_kind: object            # HoldKind | None
+    waiting: tuple               # market CLOSE / REDUCE drafts waiting for in-flight reduce orders to settle
+    quote_asset: str             # fees in this asset are booked as they are
+    fee_rates: tuple             # ((asset, rate in quote), ...) for fees charged in another asset
 
 
 @dataclasses.dataclass(frozen=True, slots=True, kw_only=True)
@@ -216,12 +222,15 @@ class _W:
         return derive_child_intent_id(self.d['account_id'], self.d['lot_id'], purpose, n)
 
     def draft(self, leg, purpose, order_type, qty, reason, op, stop_price=None):
-        iid = self.next_id(purpose)
-        return Draft(intent_id=iid, client_id=client_id_for(iid, self.d['route']), route=self.d['route'],
-                     account_id=self.d['account_id'], symbol=self.d['plan'].symbol, leg=leg, purpose=purpose,
-                     owner_kind=OwnerKind.LOT, owner_id=self.d['lot_id'], order_type=order_type,
-                     side=self.d['plan'].side, qty=qty, stop_price=stop_price, reduce_only=purpose is not Purpose.ADD,
-                     reason=reason, op=op)
+        """A draft WITHOUT identity: its intent id (lineage ordinal) is taken only when it is sent."""
+        return Draft(intent_id=None, client_id=None, route=self.d['route'], account_id=self.d['account_id'],
+                     symbol=self.d['plan'].symbol, leg=leg, purpose=purpose, owner_kind=OwnerKind.LOT,
+                     owner_id=self.d['lot_id'], order_type=order_type, side=self.d['plan'].side, qty=qty,
+                     stop_price=stop_price, reduce_only=purpose is not Purpose.ADD, reason=reason, op=op)
+
+    def stamp(self, d):
+        iid = self.next_id(d.purpose)
+        return dataclasses.replace(d, intent_id=iid, client_id=client_id_for(iid, self.d['route']))
 
     # bindings -------------------------------------------------------------------------------------------------
     def bindings(self):
@@ -236,53 +245,94 @@ class _W:
     def drop_binding(self, old):
         self.put([b for b in self.bindings() if b is not old])
 
+    def bind(self, d, trigger=None):
+        b = Binding(leg=d.leg, intent_id=d.intent_id, client_id=d.client_id, purpose=d.purpose, qty=d.qty,
+                    stop_price=d.stop_price, trigger=trigger, reason=d.reason, state=BindState.SENT,
+                    exchange_order_id=None, filled=ZERO, executed=None, current=True, core_cancelled=False,
+                    replaces=None, status=None)
+        self.put([*self.bindings(), b])
+
     # sending through the mode table ---------------------------------------------------------------------------
     def send(self, item):
-        purpose, op = (item.purpose, item.op) if isinstance(item, Draft) else (item.purpose, Op.CANCEL)
-        if not _allowed(_view(self), purpose, op):
-            self.d['held'] = self.d['held'] + (item,)
-            return
-        self._dispatch(item)
-
-    def _dispatch(self, item):
+        """Send now, or hold it (mode table) / let it wait (an overlapping reduce). Returns the sent draft or None."""
+        pos = self.d['pos']
         if isinstance(item, CancelDraft):
+            flat_stop = item.purpose is Purpose.PROTECT and pos.qty == 0      # nothing left to protect (Cowork 7)
+            if not flat_stop and not _allowed(_view(self), item.purpose, Op.CANCEL):
+                self.d['held'] = (*self.d['held'], item)
+                return None
             self.cancels.append(item)
             for b in self.bindings():
                 if b.intent_id == item.intent_id:
                     self.replace_binding(b, state=BindState.CANCELLING)
-            return
-        self.submits.append(item)
-        b = Binding(leg=item.leg, intent_id=item.intent_id, client_id=item.client_id, purpose=item.purpose,
-                    qty=item.qty, stop_price=item.stop_price, trigger=None,
-                    reason=item.reason, state=BindState.SENT, exchange_order_id=None, filled=ZERO, executed=None,
-                    current=True, core_cancelled=False, replaces=None)
-        self.put(self.bindings() + [b])
+            return None
+        if not _allowed(_view(self), item.purpose, item.op):
+            self.d['held'] = (*self.d['held'], item)
+            return None
+        if item.order_type is OrderType.MARKET and item.reduce_only and _reducing_in_flight(self):
+            self.d['waiting'] = (*self.d['waiting'], item)          # never two reduces racing for one position
+            return None
+        d = self.stamp(item)
+        self.submits.append(d)
+        self.bind(d)
+        return d
+
+
+def _reducing_in_flight(w):
+    """A market reduce order (target / close) that may still execute: sent, or FINAL with fills to come."""
+    return any(b.leg in (Leg.TP1, Leg.TP2, Leg.CLOSE) and (b.state is BindState.SENT or
+                                                          (b.state is BindState.FINAL and b.executed is not None
+                                                           and b.filled < b.executed))
+               for b in w.bindings())
 
 
 def _view(w):
     return DriverState(**w.d)
 
 
-def _new_state(plan, account_id, lot_id, route, pos, lineage, mode, hold_kind):
+def _check_lineage(lineage, lot_id):
+    """The lineage the runner seeds from its journal: ((lot_id, purpose value, next ordinal), ...) - this lot only, a
+    known purpose, a non-negative int ordinal, one entry per purpose (Cowork 10)."""
+    seen = set()
+    for i, e in enumerate(lineage):
+        req(type(e) is tuple and len(e) == 3, f'lineage[{i}]', '(owner_id, purpose, next ordinal)')
+        owner, purpose, n = e
+        req(owner == lot_id, f'lineage[{i}].owner', 'another lot: the driver keys only its own lot')
+        req(purpose in {p.value for p in Purpose}, f'lineage[{i}].purpose', f'unknown purpose {purpose!r}')
+        req(type(n) is int and n >= 0, f'lineage[{i}].ordinal', 'a non-negative int')
+        req(purpose not in seen, f'lineage[{i}]', 'one entry per purpose')
+        seen.add(purpose)
+    return tuple(sorted(lineage))
+
+
+def _new_state(plan, account_id, lot_id, route, pos, lineage, mode, hold_kind, quote_asset, fee_rates):
+    for i, e in enumerate(fee_rates):
+        req(type(e) is tuple and len(e) == 2 and type(e[0]) is str and type(e[1]) is Decimal and e[1] > 0,
+            f'fee_rates[{i}]', '(asset, positive Decimal rate in the quote asset)')
     return DriverState(plan=plan, account_id=account_id, lot_id=lot_id, route=route, pos=pos, bindings=(), triggers=(),
-                       held=(), lineage=tuple(sorted(lineage)), trade_ids=(), deferred=(), mode=EntriesMode(mode),
-                       hold_kind=hold_kind)
+                       held=(), lineage=_check_lineage(tuple(lineage), lot_id), trade_ids=(), deferred=(),
+                       mode=EntriesMode(mode), hold_kind=hold_kind, waiting=(), quote_asset=quote_asset,
+                       fee_rates=tuple(sorted(fee_rates)))
 
 
 # --------------------------------------------------------------------------------------------------- core actions
 def _apply_actions(w, actions):
-    plan = w.d['plan']
     for a in actions:
         if a.kind in (K.PLACE_STOP, K.REPLACE_STOP):
             # (PROTECT, PLACE) is permitted in every mode, so a stop placement is never held. The old stop keeps
             # working (current=False) until the new one is CONFIRMED (_release_stop_replacements).
-            old = [b for b in w.bindings() if b.leg is Leg.STOP and b.current]
-            for b in old:
+            same = [b for b in w.bindings() if b.leg is Leg.STOP and b.state in (BindState.SENT, BindState.WORKING)
+                    and (b.stop_price, b.qty) == (a.price, a.qty)]
+            for b in [x for x in w.bindings() if x.leg is Leg.STOP and x.current]:
                 w.replace_binding(b, current=False)
-            d = w.draft(Leg.STOP, Purpose.PROTECT, OrderType.STOP_MARKET, a.qty, a.reason, Op.PLACE, a.price)
-            w.send(d)
+            if same:                                 # that exact stop is already bound: never a duplicate (Cowork 11)
+                b = next(x for x in w.bindings() if x.intent_id == same[-1].intent_id)
+                w.replace_binding(b, current=True)
+                continue
+            old = [b for b in w.bindings() if b.leg is Leg.STOP and b.state in (BindState.SENT, BindState.WORKING)]
+            d = w.send(w.draft(Leg.STOP, Purpose.PROTECT, OrderType.STOP_MARKET, a.qty, a.reason, Op.PLACE, a.price))
             for b in w.bindings():
-                if b.intent_id == d.intent_id:
+                if d is not None and b.intent_id == d.intent_id:
                     w.replace_binding(b, replaces=old[-1].intent_id if old else None)
         elif a.kind is K.CANCEL_STOP:
             for b in w.bindings():
@@ -290,7 +340,6 @@ def _apply_actions(w, actions):
                     w.replace_binding(b, core_cancelled=b.current)
                     w.send(CancelDraft(intent_id=b.intent_id, client_id=b.client_id, route=w.d['route'],
                                        leg=Leg.STOP, purpose=Purpose.PROTECT, reason=a.reason))
-            w.d['held'] = tuple(h for h in w.d['held'] if not (isinstance(h, Draft) and h.leg is Leg.STOP))
         elif a.kind in (K.PLACE_TARGET, K.REPLACE_TARGET, K.PLACE_ADD):
             pass                                         # triggers mirror the core's requests (_sync_triggers)
         elif a.kind in (K.CANCEL_TARGET, K.CANCEL_ADD):
@@ -304,7 +353,6 @@ def _apply_actions(w, actions):
             w.send(w.draft(Leg.CLOSE, purpose, OrderType.MARKET, a.qty, a.reason, op))
         else:
             raise ManagementError('driver.action', f'unmapped action {a.kind}')
-    _ = plan
 
 
 TRIGGER_REASON = {Leg.TP1: R.EXIT_TP1, Leg.TP2: R.EXIT_TAKE_PROFIT}
@@ -346,26 +394,62 @@ def _retire_racing(w):
             w.core_in.append(Cancelled(leg=r.leg))
 
 
+def _step_into(w, batch, candle=None, close_request=None, funding=None):
+    """One core step; True on success. The core is never handed an input it refuses: a venue-derived input the core
+    cannot apply (a late / irrelevant refusal or confirmation) is reported for reconcile and skipped - one by one, so
+    the rest of the batch still applies (Cowork 3: the fold of any journal is total)."""
+    try:
+        r = step(w.d['plan'], w.d['pos'], batch, candle, close_request=close_request, funding=funding)
+    except DomainError as ex:
+        if len(batch) > 1:
+            ok = False
+            for x in batch:
+                ok = _step_into(w, (x,)) or ok
+            if candle is not None or close_request is not None or funding is not None:
+                ok = _step_into(w, (), candle, close_request, funding) or ok
+            return ok
+        w.reconcile.append(('core_refused', f'{type(ex).__name__}: {ex.path}'))
+        return False
+    w.steps.append(r)
+    w.d['pos'] = r.state
+    w.core_in = []
+    _apply_actions(w, r.actions)
+    _retire_racing(w)
+    _sync_triggers(w)
+    return True
+
+
 def _run_core(w, confirmed=(), candle=None, close_request=None, funding=None):
-    """step() with the inputs, then every queued trigger-cancel confirmation in a LATER step, until quiet."""
+    """step() with the inputs, then every queued racing retirement in a LATER step, until quiet."""
     batch = tuple(confirmed)
     for _ in range(MAX_LOOPS):
-        r = step(w.d['plan'], w.d['pos'], batch, candle, close_request=close_request, funding=funding)
-        w.steps.append(r)
-        w.d['pos'] = r.state
-        w.core_in = []
-        _apply_actions(w, r.actions)
-        _retire_racing(w)
-        _sync_triggers(w)
+        if not _step_into(w, batch, candle, close_request, funding):
+            return False
         if not w.core_in:
-            return
+            return True
         batch, candle, close_request, funding = tuple(w.core_in), None, None, None
-    raise ManagementError('driver.core', 'trigger cancellations did not settle')
+    w.reconcile.append(('core_loop', 'racing retirements did not settle'))
+    return False
+
+
+def _restore_stop(w, b):
+    """A stop the core still requests is gone at the venue (cancelled / expired outside the bot, or executed only in
+    part): re-protect what the core still holds at once with a NEW child intent (Cowork 1 / 2)."""
+    pos = w.d['pos']
+    if pos.qty == 0 or pos.stop is None or pos.stage is not Stage.ACTIVE:
+        return
+    live = [x for x in w.bindings() if x.leg is Leg.STOP and x.state in (BindState.SENT, BindState.WORKING)
+            and x.current]
+    if live:
+        return
+    w.reconcile.append(('stop_lost', b.intent_id, b.status))
+    d = w.send(w.draft(Leg.STOP, Purpose.PROTECT, OrderType.STOP_MARKET, pos.stop.qty, R.PROTECT_RESTORING, Op.PLACE,
+                       pos.stop.price))
+    _ = d
 
 
 def _settle(w):
-    """Bindings whose FINAL executed quantity is fully filled are complete: retire them and tell the core."""
-    plan = w.d['plan']
+    """Bindings whose FINAL executed quantity is fully booked are complete: retire them and tell the core."""
     for b in w.bindings():
         if b.state is not BindState.FINAL or b.executed is None or b.filled < b.executed:
             continue
@@ -376,8 +460,9 @@ def _settle(w):
                 w.core_in.append(Rejected(leg=Leg.CLOSE, qty=short))   # a partial close: re-request the part that died
             else:                                                  # a reduce-only close found NOTHING to reduce:
                 w.reconcile.append(('close_found_nothing', b.intent_id))   # the venue is flatter than booked
+        elif b.leg is Leg.STOP and short > 0 and b.current and not b.core_cancelled:
+            _restore_stop(w, b)                                   # our stop died (partly) while still requested
         # a cancelled / shrunk / short-filled stop, target or add: _retire_racing clears its racing allowance
-    _ = plan
 
 
 def _release_stop_replacements(w):
@@ -393,6 +478,23 @@ def _release_stop_replacements(w):
                                purpose=Purpose.PROTECT, reason=R.PROTECT_REPLACE))
 
 
+def _release_waiting(w):
+    """Send a waiting market close / reduce once no other reduce is in flight, sized to what the core still asks
+    for (never more than the position): two reduces never race for one position (Cowork 6)."""
+    if not w.d['waiting'] or _reducing_in_flight(w):
+        return
+    pos, waiting, w.d['waiting'] = w.d['pos'], w.d['waiting'], ()
+    q = min(pos.closing, pos.qty)
+    for d in waiting:
+        if q <= 0:
+            w.reconcile.append(('close_dropped', d.reason.value))
+            continue
+        take = min(d.qty, q)
+        q = CTX.subtract(q, take)
+        purpose = Purpose.CLOSE if take >= pos.qty else Purpose.REDUCE
+        w.send(dataclasses.replace(d, qty=take, purpose=purpose))
+
+
 def _finish(w):
     _release_stop_replacements(w)
     for _ in range(MAX_LOOPS):
@@ -402,19 +504,38 @@ def _finish(w):
         if not w.core_in:
             break
         _run_core(w, tuple(w.core_in))
+    _release_waiting(w)
     _sync_triggers(w)
+    for b in w.bindings():                                       # an execution the venue reported, not booked yet
+        if b.state is BindState.FINAL and b.executed is not None and b.filled < b.executed:
+            w.reconcile.append(('fill_gap', b.intent_id, CTX.subtract(b.executed, b.filled)))
     return Drive(state=_view(w), submits=tuple(w.submits), cancels=tuple(w.cancels), steps=tuple(w.steps),
                  reconcile=tuple(w.reconcile))
 
 
 # ------------------------------------------------------------------------------------------------- entry points
 def start(plan, *, account_id, lot_id, entry_fee, lineage=(), route='classic', mode=EntriesMode.ACTIVE,
-          hold_kind=None):
-    """The confirmed entry fill opened lot `lot_id`: place the bracket (stop first; the add stays held)."""
+          hold_kind=None, quote_asset='USDT', fee_rates=()):
+    """The confirmed entry fill opened lot `lot_id`: place the bracket (stop first; the add stays held).
+    `lineage` = the journal's next ordinals of THIS lot's child intents ((lot_id, purpose value, n), ...)."""
     req(isinstance(plan, ManagementPlan), 'start.plan', 'a ManagementPlan')
-    w = _W(_new_state(plan, account_id, lot_id, route, initial_state(plan, entry_fee), lineage, mode, hold_kind))
+    w = _W(_new_state(plan, account_id, lot_id, route, initial_state(plan, entry_fee), lineage, mode, hold_kind,
+                      quote_asset, tuple(fee_rates)))
     _run_core(w)
     return _finish(w)
+
+
+def _fee_in_quote(ds, f, w):
+    """The fee in the quote asset (Cowork 5): as reported when it is the quote asset; converted at a supplied rate;
+    otherwise ESTIMATED conservatively at the plan's taker rate on the notional and reported - never booked 1:1."""
+    fee = max(f.fee, ZERO)                                       # a rebate counts as no cost (conservative)
+    if f.fee_asset == ds.quote_asset:
+        return fee
+    rate = dict(ds.fee_rates).get(f.fee_asset)
+    if rate is not None:
+        return DIV.multiply(fee, rate)
+    w.reconcile.append(('fee_asset_estimated', f.trade_id, f.fee_asset))
+    return CTX.multiply(ds.plan.costs.taker_fee, CTX.multiply(f.qty, f.price))
 
 
 def on_fills(ds, fills):
@@ -433,7 +554,7 @@ def on_fills(ds, fills):
             continue
         seen.add(f.trade_id)
         conf.append(PendingFill(fill=ConfirmedFill(fill_id=f.trade_id, leg=b.leg, qty=f.qty, price=f.price,
-                                                   fee=max(f.fee, ZERO)), intent_id=b.intent_id))
+                                                   fee=_fee_in_quote(ds, f, w)), intent_id=b.intent_id))
     w.d['trade_ids'] = tuple(sorted(seen))
     if conf or w.d['deferred']:
         _apply_fills(w, conf)
@@ -457,11 +578,22 @@ def _apply_fills(w, conf):
             kept.append(pf)
             continue
         try:
-            _run_core(w, (pf.fill,))
+            r = step(w.d['plan'], w.d['pos'], (pf.fill,))
         except ManagementError:
             kept.append(pf)
             blocked = blocked or not opening
             continue
+        except DomainError as ex:                  # malformed against the plan (e.g. off the step): never booked
+            w.reconcile.append(('fill_refused', pf.fill.fill_id, f'{type(ex).__name__}: {ex.path}'))
+            continue
+        w.steps.append(r)
+        w.d['pos'] = r.state
+        w.core_in = []
+        _apply_actions(w, r.actions)
+        _retire_racing(w)
+        _sync_triggers(w)
+        if w.core_in:
+            _run_core(w, tuple(w.core_in))
         for b in w.bindings():                 # a binding counts a fill only once the core has BOOKED it
             if b.intent_id == pf.intent_id:
                 w.replace_binding(b, filled=CTX.add(b.filled, pf.fill.qty))
@@ -470,7 +602,7 @@ def _apply_fills(w, conf):
 
 
 def on_outcome(ds, outcome, *, submit):
-    """A venue answer for one of our orders (submit / cancel / query)."""
+    """A venue answer for one of our orders (submit / cancel / query). Never raises for a venue answer."""
     req(isinstance(outcome, OrderOutcome), 'on_outcome', 'an OrderOutcome')
     w = _W(ds)
     b = next((x for x in w.bindings() if x.client_id == outcome.ref.client_id), None)
@@ -485,7 +617,9 @@ def on_outcome(ds, outcome, *, submit):
             w.replace_binding(b, exchange_order_id=outcome.exchange_order_id)
     elif k is OutcomeKind.FINAL:
         w.replace_binding(b, state=BindState.FINAL, exchange_order_id=outcome.exchange_order_id,
-                          executed=outcome.executed_qty)
+                          executed=outcome.executed_qty, status=outcome.status)
+        if outcome.status in CANCELLED_STATUSES and b.leg is Leg.STOP and b.current and not b.core_cancelled:
+            w.reconcile.append(('stop_ended_outside', b.intent_id, outcome.status))   # incident: not our cancel
     elif k is OutcomeKind.REJECTED:
         if submit:
             # only a refusal of what the core STILL requests goes back to it; a refused order the core already
@@ -493,7 +627,7 @@ def on_outcome(ds, outcome, *, submit):
             w.drop_binding(b)
             pos = ds.pos
             if b.leg is Leg.STOP:
-                if b.current and pos.stop is not None and not b.core_cancelled:
+                if b.current and pos.stop is not None and not b.core_cancelled and pos.stage is Stage.ACTIVE:
                     prev = [o for o in w.bindings() if o.leg is Leg.STOP and o.intent_id == b.replaces
                             and o.state in (BindState.SENT, BindState.WORKING)]
                     for o in prev:                     # the venue keeps the previous stop: it is current again
@@ -501,6 +635,8 @@ def on_outcome(ds, outcome, *, submit):
                     w.core_in.append(Rejected(leg=Leg.STOP))
                     if not prev:                       # ... unless it already executed / is gone: nothing protects
                         w.lost_stop = True             # the rest -> the core closes it (stop failed)
+                else:
+                    w.reconcile.append(('late_refusal', b.intent_id))
             elif b.leg is Leg.CLOSE:
                 if pos.closing > 0:
                     w.core_in.append(Rejected(leg=Leg.CLOSE, qty=b.qty))
@@ -528,13 +664,12 @@ def on_mark(ds, price):
         crossed = price >= t.price if up else price <= t.price
         if not crossed:
             continue
+        if purpose is Purpose.REDUCE and _reducing_in_flight(w):
+            continue                           # a target never races another reduce for the same position
         w.d['triggers'] = tuple(x for x in w.d['triggers'] if x is not t)
-        d = w.draft(t.leg, purpose, OrderType.MARKET, t.qty, t.reason, op)
+        d = w.stamp(w.draft(t.leg, purpose, OrderType.MARKET, t.qty, t.reason, op))
         w.submits.append(d)
-        w.put(w.bindings() + [Binding(leg=t.leg, intent_id=d.intent_id, client_id=d.client_id, purpose=purpose,
-                                      qty=t.qty, stop_price=None, trigger=t.price, reason=t.reason,
-                                      state=BindState.SENT, exchange_order_id=None, filled=ZERO, executed=None,
-                                      current=True, core_cancelled=False, replaces=None)])
+        w.bind(d, trigger=t.price)
     return _finish(w)
 
 
@@ -548,20 +683,57 @@ def on_candle(ds, candle, *, close_request=None, funding=None):
 
 
 def set_mode(ds, mode, hold_kind=None):
-    """The portfolio mode changed: release every held draft the NC-01 table now permits, in order."""
+    """The portfolio mode changed: release every held draft the NC-01 table now permits, in order - except what is
+    stale by now (Cowork 4): a close / reduce when nothing is being closed any more (sized down to what still is), a
+    cancel of an order that is no longer working."""
     w = _W(ds)
     w.d['mode'], w.d['hold_kind'] = EntriesMode(mode), hold_kind
     held, w.d['held'] = w.d['held'], ()
+    pos = w.d['pos']
+    left = min(pos.closing, pos.qty)
     for item in held:
+        if isinstance(item, CancelDraft):
+            live = [b for b in w.bindings() if b.intent_id == item.intent_id
+                    and b.state in (BindState.SENT, BindState.WORKING)]
+            if not live:
+                w.reconcile.append(('held_dropped', item.intent_id))
+                continue
+        elif item.leg is Leg.CLOSE:
+            if left <= 0:
+                w.reconcile.append(('held_dropped', item.reason.value))
+                continue
+            take = min(item.qty, left)
+            left = CTX.subtract(left, take)
+            item = dataclasses.replace(item, qty=take, purpose=Purpose.CLOSE if take >= pos.qty else Purpose.REDUCE)
         w.send(item)
     return _finish(w)
 
 
+# ------------------------------------------------------------------------------------------------------ helpers
+def lot_vs_venue(ds, venue_qty):
+    """Compare the lot's booked position with the venue's position read (VenuePosition.qty) for reconcile (Cowork 9):
+    the difference, what is still deferred / unbooked, and whether they explain it."""
+    deferred = ZERO
+    for pf in ds.deferred:
+        deferred = CTX.add(deferred, pf.fill.qty) if pf.fill.leg is Leg.ADD else CTX.subtract(deferred, pf.fill.qty)
+    unbooked = ZERO
+    for b in ds.bindings:
+        if b.state is BindState.FINAL and b.executed is not None and b.filled < b.executed:
+            gap = CTX.subtract(b.executed, b.filled)
+            unbooked = CTX.add(unbooked, gap) if b.leg is Leg.ADD else CTX.subtract(unbooked, gap)
+    diff = CTX.subtract(venue_qty, ds.pos.qty)
+    return dict(booked=ds.pos.qty, venue=venue_qty, diff=diff, deferred=deferred, unbooked=unbooked,
+                explained=diff == CTX.add(deferred, unbooked))
+
+
 # ------------------------------------------------------------------------------------------------------ restart
-def fold(plan, *, account_id, lot_id, entry_fee, events, lineage=(), route='classic'):
+def fold(plan, *, account_id, lot_id, entry_fee, events, lineage=(), route='classic', quote_asset='USDT',
+         fee_rates=()):
     """Rebuild the driver from its durable event log: ('fills', rows) / ('outcome', outcome, submit) / ('mark', price)
-    / ('candle', candle, close_request, funding) / ('mode', mode, hold_kind). Returns every Drive, in order."""
-    out = [start(plan, account_id=account_id, lot_id=lot_id, entry_fee=entry_fee, lineage=lineage, route=route)]
+    / ('candle', candle, close_request, funding) / ('mode', mode, hold_kind). Returns every Drive, in order. Total:
+    every venue-derived event folds (an input the core would refuse is reported, never raised)."""
+    out = [start(plan, account_id=account_id, lot_id=lot_id, entry_fee=entry_fee, lineage=lineage, route=route,
+                 quote_asset=quote_asset, fee_rates=fee_rates)]
     for e in events:
         ds = out[-1].state
         kind = e[0]

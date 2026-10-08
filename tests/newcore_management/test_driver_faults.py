@@ -252,6 +252,7 @@ def coverage_ok(v, ds):
         return True
     closing = sum((b.qty - b.filled for b in ds.bindings if b.leg in (Leg.CLOSE, Leg.TP1, Leg.TP2) and b.current
                    and b.state in (DR.BindState.SENT, DR.BindState.FINAL)), D(0))   # FINAL short: retried once booked
+    closing += sum((d.qty for d in ds.waiting), D(0))     # a close waiting for an in-flight reduce to settle
     adding = sum(((b.executed if b.executed is not None else b.qty) - b.filled for b in ds.bindings
                   if b.leg is Leg.ADD), D(0))
     if exposure - cov <= closing + adding:
