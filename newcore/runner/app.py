@@ -164,21 +164,32 @@ class Session:
             else:
                 start = parse_utc_ms(cfg.start) if cfg.start else max(b[0].open_ms for b in candles.values())
                 self.venue = FakeVenue(candles, self.tf_ms, costs=BASE_COSTS, equity=cfg.equity, start_ms=start)
-            reads, port, venue_rules = self.venue, self.venue, None
+            reads, port, venue_rules, clock = self.venue, self.venue, None, None
             self.reads = reads
         else:
             from .testnet_hook import build
-            port, self.bars, reads, venue_rules = build(cfg)
+            port, self.bars, reads, venue_rules, clock = build(cfg)
             self.reads = reads
             self.venue, self.last_close = None, None
         rcfg = RunnerConfig(account=account(cfg), portfolio_id=cfg.portfolio_id, symbols=cfg.symbols,
                             tf_ms=self.tf_ms, timeframe=cfg.tf, rules=venue_rules or rules_for(cfg, cfg.symbols),
                             sizing=SizingPolicy(cfg.risk_pct, cfg.max_leverage, cfg.cap_gap_buffer),
-                            sides=sides_for(cfg), strict=False,
+                            sides=sides_for(cfg), strict=False, rec02=cfg.rec02,
                             raw_qty=cfg.tnet_raw_qty if cfg.tnet_enabled else None)
         self.runner = ManagedBookRunner(rcfg, policy=policy_for(cfg), journal=self.journal, venue=port,
                                         bars=self.bars, signals=signals_for(cfg, enabled), account_reads=reads,
-                                        management=management_for(cfg))
+                                        management=management_for(cfg), clock=clock)
+        self._last_tick = 0
+
+    def tick_due(self, wall_ms):
+        """Testnet: a check-only cycle is due (REC-02 PENDING / an unknown answer / a clearable HOLD), at most every
+        cycle.tick_s; only called while the current candle is already cycled, so the next candle cycle is later."""
+        return (self.venue is None and self.cfg.tick_s > 0 and wall_ms >= self._last_tick + self.cfg.tick_s * 1000
+                and self.runner.needs_tick())
+
+    def tick(self, wall_ms):
+        self._last_tick = wall_ms
+        self.runner.tick(wall_ms)
 
     def next_close(self, wall_ms=None):
         """The candle close of the next cycle, or None when the fake data is exhausted."""
@@ -254,6 +265,11 @@ def cmd_run(cfg, args, out, stop):
                     if cfg.mark_poll_s and time.time() - polled >= cfg.mark_poll_s:
                         s.poll_marks()
                         polled = time.time()
+                    wall = int(time.time() * 1000)
+                    if t == last and s.tick_due(wall):              # REC-02 check-only cycle between candles
+                        s.tick(wall)
+                        s.save()
+                        print(health_line(s.runner), file=out, flush=True)
                     if stop.wait(1.0):
                         break
                     continue

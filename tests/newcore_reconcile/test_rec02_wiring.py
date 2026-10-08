@@ -1,5 +1,5 @@
-"""REC-02 wired into the runner (docs/newcore/reconcile/RUNNER_WIRING.md). Skipped until the S1 agent applies the
-wiring patch (RunnerConfig gains `rec02`); then these run as they are.
+"""REC-02 wired into the runner (docs/newcore/reconcile/RUNNER_WIRING.md; the wiring patch is applied on nc-s1-slice,
+so these always run).
 
   W1 a clean long / short run with rec02 on journals exactly what reconcile v0 journals (no extra event, no HOLD)
   W2 a vanished stop is restored in the next cycle; nothing held
@@ -15,15 +15,13 @@ from decimal import Decimal as D
 import pytest
 
 from newcore.domain import EntriesMode, ReasonCode
+from newcore.ports import header_of
+from newcore.reconcile import Outcome, Trigger
 from newcore.runner import runner as RUN
+from rec_helpers import ENTRY_BAR, SYM, fault_world, signals
+from slice_helpers import World, flat_bars
 
-if 'rec02' not in {f.name for f in dataclasses.fields(RUN.RunnerConfig)}:
-    pytest.skip('the REC-02 runner wiring patch is not applied yet', allow_module_level=True)
-
-from newcore.ports import header_of                                                  # noqa: E402
-from newcore.reconcile import Outcome, Trigger                                       # noqa: E402
-from rec_helpers import ENTRY_BAR, SYM, fault_world, signals                         # noqa: E402
-from slice_helpers import World, flat_bars                                           # noqa: E402
+assert 'rec02' in {f.name for f in dataclasses.fields(RUN.RunnerConfig)}      # the wiring is applied (never skipped)
 
 EXIT_BAR = 10
 
@@ -78,7 +76,7 @@ def test_W3_manual_close_is_one_owner_hold_and_blocks_new_risk():
 
 
 def test_W4_read_lag_after_the_fill_settles_where_reconcile_v0_holds():
-    v0 = fault_world(flat_bars(20), signals())
+    v0 = wired(fault_world(flat_bars(20), signals()), on=False)          # explicitly v0 (a forced-on run too)
     v0.run(ENTRY_BAR - 1)
     v0.fault.hide_position_reads(SYM, 'LONG', 1)
     v0.run(ENTRY_BAR)

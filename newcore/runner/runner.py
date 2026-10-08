@@ -68,7 +68,11 @@ from newcore.domain.portfolio import Fill
 from newcore.ports.journal import JournalUnavailable
 from newcore.store.hold import durability_hold, hard_hold_permits
 from newcore.ports.keys import check_decision_key, route_of
-from newcore.ports.venue import MarketOrder, OrderOutcome, OrderRef, OutcomeKind, ReadKind, StopOrder
+from newcore.ports.venue import MarketOrder, OrderOutcome, OrderRef, OutcomeKind, ReadKind, ReadOutcome, StopOrder
+from newcore.reconcile import DecisionKind as RK
+from newcore.reconcile import Outcome as RecOutcome
+from newcore.reconcile import (ReadPlan, RecPolicy, TradeWindow, Trigger, VenueSnapshot, plan_reads, reconcile as
+                               rec_fold, view_from_fold)
 
 from . import ids
 from .fold import Fold, OPEN_STATES
@@ -150,6 +154,20 @@ class RunnerConfig:
     raw_qty: Decimal | None = None             # H2 (TNET-01 T10b only): send THIS entry quantity unsized and unfiltered,
                                                # so the venue's own min-qty / min-notional refusal is exercised;
                                                # refused unless the account is bound to TESTNET
+    rec02: bool = False                        # REC-02 fold replaces reconcile v0 in the normal cycle
+    rec_policy: RecPolicy = None               # None -> RUNNER_REC_POLICY
+
+
+# REC-02 in the runner, until the NC-01 amendments land (docs/newcore/reconcile/RUNNER_WIRING.md section 4):
+#   Q1 per-side quarantine  -> off: the runner's HOLD is account-wide (no per-side mode record yet)
+#   Q2 adopt external       -> off: an external reduction / late fill becomes an owner item (no evidence kind yet)
+#   Q3 protect surplus      -> off: no owner kind for a stop that protects an unowned surplus
+#   Q4 auto clear           -> off: a HOLD -> ACTIVE change needs operator.resume today
+# settle_ms: one positionRisk lag window; max_attempts counts passes per episode, spread over cycles / ticks.
+RUNNER_REC_POLICY = RecPolicy(quarantine_per_side=False, adopt_external_change=False, protect_surplus=False,
+                              auto_clear_hold=False, settle_ms=10_000, max_attempts=4)
+REC_PASSES_PER_CYCLE = 2                       # in-cycle re-read passes; the rest waits for the next cycle / tick
+CORROBORATED = frozenset({'not_found_corroborated', 'position_adopted'})   # journaled by _corroborate_entry
 
 
 @dataclass(frozen=True)
@@ -190,8 +208,18 @@ class Counters:
 
 
 class Runner:
-    def __init__(self, config: RunnerConfig, *, journal, venue, bars, signals, account_reads=None, hard_hold=None):
+    def __init__(self, config: RunnerConfig, *, journal, venue, bars, signals, account_reads=None, hard_hold=None,
+                 clock=None):
         self.cfg = config
+        self.clock = clock                                                # venue-aligned ms (testnet OffsetClock)
+        self.rec_policy = config.rec_policy or RUNNER_REC_POLICY
+        self.last_verdict = None                                          # REC-02 Verdict of the last pass
+        self._rec_attempt = 0                                             # PENDING passes of the open episode
+        self._rec_symbols = {}                                            # exchange order id -> symbol (fills reads)
+        self._rec_reported = set()                                        # owner items already surfaced
+        self._started = False
+        self._rec_running = False
+        self._answers = {}                                                # client id -> (state, n results, answer)
         self.acct = config.account.account_id
         self.pf = config.portfolio_id
         self.journal, self.venue, self.bars, self.signals = journal, venue, bars, signals
@@ -320,7 +348,9 @@ class Runner:
     def _resolve(self, iv):
         """One query for an intent whose answer was lost or acknowledged only."""
         if iv.live and iv.state in (IntentState.SUBMITTED, IntentState.UNKNOWN):
-            self._apply(iv, self.venue.query(self._ref(iv)), submit=False)
+            out = self.venue.query(self._ref(iv))
+            self._apply(iv, out, submit=False)
+            self._remember(iv, out)
             if self._not_found(iv) and iv.purpose in REDUCE_ONLY:
                 self._resend(iv)                                          # never landed: same id, same route
 
@@ -341,6 +371,7 @@ class Runner:
             raise ValueError('the runner clock never goes back')
         self.now = now_ms
         self.counters.cycles += 1
+        self._answers = {}                                                # by-id answers are per cycle
         if self.hard_hold is not None:
             return self._hard_hold_cycle()
         try:
@@ -471,20 +502,223 @@ class Runner:
         return None
 
     def _cycle(self, decide):
+        trigger = Trigger.CYCLE if decide else Trigger.TICK
+        if not self._started:
+            trigger, self._started = Trigger.STARTUP, True
         self._sync()
-        rec = self.reconcile()
-        if not rec.ok:
-            self._hold([ITEM_REASON[k] for k, _ in rec.items])
+        rec = self._reconcile_step(trigger)
         self._protect_all()
         self._handover_emergency()
         if decide:
             self._decide_all()
-        rec = self.reconcile()
+        rec = self._reconcile_step(Trigger.CYCLE if decide else Trigger.TICK)
         if not rec.ok:
             self.counters.mismatch_cycles += 1
-            self._hold([ITEM_REASON[k] for k, _ in rec.items])
         self.check_invariants(rec)
         return rec
+
+    def _reconcile_step(self, trigger):
+        """Reconcile v0 (items -> HOLD), or the REC-02 fold when the config enables it (it holds by itself)."""
+        if self.cfg.rec02:
+            return self.rec02(trigger)
+        rec = self.reconcile()
+        if not rec.ok:
+            self._hold([ITEM_REASON[k] for k, _ in rec.items])
+        return rec
+
+    def tick(self, now_ms):
+        """A check-only cycle between candles (plan gap 6): sync, reconcile, protect - never a decision."""
+        return self.cycle(now_ms, decide=False)
+
+    def needs_tick(self):
+        """True while something only a re-read can settle: a PENDING REC-02 episode, a sent intent whose answer is not
+        known, or a HOLD whose reasons a fresh match could clear (the owner still resumes it until NC-01 A5)."""
+        if self.hard_hold is not None:
+            return False
+        if self.last_verdict is not None and self.last_verdict.outcome is RecOutcome.PENDING:
+            return True
+        if any(iv.state in (IntentState.SUBMITTED, IntentState.UNKNOWN) for iv in self.fold.live_intents()):
+            return True
+        return (self.rec_policy.auto_clear_hold and self.fold.mode is EntriesMode.HOLD
+                and set(self.fold.mode_reasons) <= set(self.rec_policy.auto_clearable))
+
+    # ----------------------------------------------------------------------------------------------- REC-02
+    def _rec_now(self):
+        return self.clock() if self.clock is not None else self.now
+
+    def rec02(self, trigger):
+        """REC-02 (newcore.reconcile): one account-level fold of the journal against fresh venue truth, applied through
+        the runner's own journal-first machinery. At most REC_PASSES_PER_CYCLE passes here; a PENDING episode keeps its
+        attempt count across cycles / ticks (so a read lag gets max_attempts passes spread over time, not in one burst)
+        and ends in HOLD only when the attempts are spent."""
+        if self._rec_running:                     # re-entered from an action it applied (management flush): once only
+            return self.last_rec
+        self._rec_running = True
+        try:
+            return self._rec02(trigger)
+        finally:
+            self._rec_running = False
+
+    def _rec02(self, trigger):
+        needs, verdict, snap = ReadPlan(), None, None
+        for _ in range(REC_PASSES_PER_CYCLE):
+            self.counters.reconciliations += 1
+            view = view_from_fold(self.fold, binding_confirmed=self._binding_confirmed(), corroboration=self._reads)
+            snap = self._rec_snapshot(view, needs)
+            view = view_from_fold(self.fold, binding_confirmed=self._binding_confirmed(), corroboration=self._reads,
+                                  stop_hints=dict(self._rec_stop_hints(snap)))
+            verdict = rec_fold(view, snap, now_ms=self._rec_now(), trigger=trigger,
+                               attempt=min(self._rec_attempt, self.rec_policy.max_attempts - 1), policy=self.rec_policy)
+            acted = self._rec_apply(verdict, snap)
+            if verdict.outcome is not RecOutcome.PENDING:
+                self._rec_attempt = 0
+                break
+            self._rec_attempt += 1
+            if not acted and verdict.needs == needs:
+                break                                                     # nothing new this cycle: next cycle / tick
+            needs = verdict.needs
+        self.last_verdict = verdict
+        rec = self._rec_reconciliation(verdict, snap)
+        self.last_rec = rec
+        return rec
+
+    def reconcile_only(self, now_ms=None, trigger=Trigger.OPERATOR):
+        """H3 (TNET-01 T12): the REC-02 verdict on the journal vs fresh venue truth, CHECK ONLY - reads (positions,
+        open orders, by-id queries, fills), never a send, a cancel or a journal write, never a decision; works with
+        the rec02 flag on or off. Up to REC_PASSES_PER_CYCLE passes when the fold asks for more reads. Returns the
+        newcore.reconcile Verdict (outcome FLAT / PROTECTED / HOLD / PENDING, its decisions, quarantines, needs)."""
+        at = now_ms if now_ms is not None else self._rec_now()
+        if at is None:
+            raise ValueError('reconcile_only needs now_ms before the first cycle')
+        needs, verdict = ReadPlan(), None
+        for _ in range(REC_PASSES_PER_CYCLE):
+            view = view_from_fold(self.fold, binding_confirmed=self._binding_confirmed(), corroboration=self._reads)
+            snap = self._rec_snapshot(view, needs)
+            view = view_from_fold(self.fold, binding_confirmed=self._binding_confirmed(), corroboration=self._reads,
+                                  stop_hints=dict(self._rec_stop_hints(snap)))
+            verdict = rec_fold(view, snap, now_ms=at, trigger=trigger, attempt=0, policy=self.rec_policy)
+            if verdict.outcome is not RecOutcome.PENDING or verdict.needs == needs:
+                break
+            needs = verdict.needs
+        return verdict
+
+    def _binding_confirmed(self):
+        return str(self.cfg.account.binding_state) == 'confirmed'
+
+    def _rec_snapshot(self, view, needs):
+        """The reads one pass needs: by-id queries (plan_reads + the last pass's asks), the fills of every FINAL with an
+        execution or triggered algo stop, userTrades windows the fold asked for, then positions + open orders (last,
+        so they are the newest reads)."""
+        plan = plan_reads(view, now_ms=self._rec_now(), policy=self.rec_policy)
+        queries = []
+        for c in sorted(set(plan.queries) | set(needs.queries)):
+            iv = self.fold.by_client_id.get(c)
+            if iv is None:
+                continue
+            hit = self._answers.get(c)
+            if c not in needs.queries and hit is not None and hit[:2] == (iv.state, len(iv.results)):
+                q = hit[2]                                                # this cycle's sync answer, still current
+            else:
+                q = self.venue.query(self._ref(iv))
+                self._remember(iv, q)
+            queries.append((c, q))
+            if q.exchange_order_id is not None:
+                self._rec_symbols[q.exchange_order_id] = iv.intent.symbol
+        eoids = {q.exchange_order_id for _, q in queries if q.exchange_order_id is not None and (
+            (q.kind is OutcomeKind.FINAL and q.executed_qty) or q.detail == ALGO_TRIGGERED)} | set(needs.fills)
+        fills = tuple((e, self.venue.fills(self._rec_symbols[e], e)) for e in sorted(eoids) if e in self._rec_symbols)
+        trades = tuple(((s, side), TradeWindow(from_ms=since, read=self._rec_trades(s, side, since)))
+                       for s, side, since in needs.trades)
+        return VenueSnapshot(positions=self.venue.positions(), orders=self.venue.open_orders(), queries=tuple(queries),
+                             fills=fills, trades=trades)
+
+    def _remember(self, iv, out):
+        """A by-id answer of this cycle, keyed to the intent's state + result count it was applied to (reused by
+        REC-02 only while both are unchanged: one venue query per intent per cycle, not two)."""
+        self._answers[iv.intent.client_order_id] = (iv.state, len(iv.results), out)
+
+    def _rec_trades(self, symbol, side, since):
+        """userTrades of one side since `since`: the venue's `trades` read when it has one (FaultVenue does; the
+        TestnetVenue port does not yet - interface item for the transport lane), else UNKNOWN (never empty)."""
+        read = getattr(self.venue, 'trades', None)
+        if read is None:
+            return ReadOutcome(kind=ReadKind.UNKNOWN, observed_at_ms=self._rec_now(), detail='no_trades_read')
+        return read(symbol, side, since)
+
+    def _rec_stop_hints(self, snap):
+        """Stop levels the fold cannot see in the journal: a lot with no protect intent yet (a crash between its fill and
+        its stop: the level the protect phase will use, stop_price_of) and a side with a position and no lot (an
+        unresolved / adopted opening fill: the entry's stop distance from the venue entry price, the A23 rule)."""
+        hints = {}
+        for lot in self.fold.open_lots():
+            if not lot.protects:
+                try:
+                    hints[(lot.symbol, lot.side)] = self._protect_price(lot)
+                except (LookupError, AttributeError):
+                    pass
+        if snap.positions.kind is not ReadKind.OK:
+            return tuple(sorted(hints.items()))
+        lots = {(x.symbol, x.side) for x in self.fold.open_lots()}
+        for p in snap.positions.value:
+            if p.qty > 0 and (p.symbol, p.side) not in lots and p.symbol in self.cfg.rules:
+                try:
+                    level = self._emergency_stop_price(p)
+                except (LookupError, AttributeError):
+                    level = None
+                if level is not None:
+                    hints[(p.symbol, p.side)] = level
+        return tuple(sorted(hints.items()))
+
+    def _rec_apply(self, verdict, snap):
+        """Each decision through the runner's existing paths. True when something was sent or journaled."""
+        acted = False
+        for d in verdict.decisions:
+            if d.kind is RK.PROTECT_ONLY:
+                if d.lot_id is not None and self._lot(d.lot_id) is not None:
+                    continue        # an owned lot: the protect phase owns it (pending close first, bounded attempts)
+                self._rec_owner_item(d, ReasonCode.PROTECT_CHECKING)     # Q3 off: no journaled owner for this stop
+            elif d.kind in (RK.RESOLVE_FILLED, RK.RESOLVE_NOT_EXECUTED):
+                iv = self.fold.intents.get(d.intent_id)
+                if iv is None or d.detail in CORROBORATED:
+                    continue                                              # _corroborate_entry journals these
+                if d.detail == 'supersedes_not_found_corroborated':
+                    self._rec_owner_item(d, ReasonCode.EVIDENCE_LATE_FILL_NOT_ACTIVE)    # NC-01 A2
+                elif iv.live and snap.query(iv.intent.client_order_id) is not None:
+                    self._apply(iv, snap.query(iv.intent.client_order_id), submit=False)   # the venue's own record
+                    acted = True
+            elif d.kind is RK.ADOPT:
+                self._rec_owner_item(d, ReasonCode.OWNERSHIP_UNTRACKED_POSITION)        # NC-01 A1
+            elif d.kind in (RK.HOLD, RK.QUARANTINE):
+                if d.detail != 'owner_resume_required':
+                    self._rec_owner_item(d, d.reasons[0] if d.reasons else ReasonCode.RECONCILE_UNRECONCILED)
+            elif d.kind is RK.CLEAR_HOLD:
+                self._rec_report(d, f'rec02 {verdict.reconciliation_id}: HOLD clearable by a fresh full match; '
+                                    f'owner resume until NC-01 A5')
+        return acted
+
+    def _rec_report(self, d, text):
+        key = (d.kind, d.row, d.detail, d.symbol, d.side, d.client_id, d.intent_id)
+        if key not in self._rec_reported:
+            self._rec_reported.add(key)
+            self._incident(text)
+
+    def _rec_owner_item(self, d, reason):
+        """An item only the owner can resolve: one incident (deduplicated) with its evidence and owner actions, and a
+        durable HOLD (account-wide until NC-01 A4)."""
+        self._rec_report(d, f'rec02 {d.row} {d.kind} {d.detail} {d.symbol or ""} {d.side or ""} qty={d.qty} '
+                            f'actions={",".join(d.owner_actions)} evidence={",".join(d.evidence[:6])}')
+        self._hold([reason], reason=reason)
+
+    def _rec_reconciliation(self, verdict, snap):
+        """The verdict as the runner's Reconciliation (invariants, portfolio proof, resume): items = everything that is
+        not settled (a HOLD only the owner's resume is waiting for is not an item, so resume() can pass)."""
+        items = tuple((f'{d.row}:{d.detail}', d.symbol or '') for d in verdict.decisions
+                      if d.kind in (RK.HOLD, RK.QUARANTINE, RK.REREAD) and d.detail != 'owner_resume_required')
+        if verdict.outcome is RecOutcome.PENDING and not items:
+            items = (('pending', verdict.reconciliation_id),)
+        ok = snap is not None and snap.positions.kind is ReadKind.OK and snap.orders.kind is ReadKind.OK
+        return Reconciliation(self.now, verdict.reconciliation_id, items, snap.positions.value if ok else None,
+                              snap.orders.value if ok else None)
 
     # ----------------------------------------------------------------------------------------------- 1. sync
     def _sync(self):
@@ -492,6 +726,7 @@ class Runner:
             if iv.state in OPEN_STATES:
                 out = self.venue.query(self._ref(iv))
                 self._apply(iv, out, submit=False)
+                self._remember(iv, out)
                 if iv.state is IntentState.CANCELLING and out.kind is OutcomeKind.KNOWN:
                     self._apply(iv, self.venue.cancel(self._ref(iv)), submit=False)    # the cancel never reached it
                 if self._not_found(iv):
@@ -859,6 +1094,9 @@ class Runner:
     def _entry_gate(self, symbol, side):
         if self.fold.mode is not EntriesMode.ACTIVE:
             return GATE_REASON[self.fold.mode]
+        v = self.last_verdict
+        if self.cfg.rec02 and v is not None and v.outcome is RecOutcome.PENDING and v.of(RK.REREAD):
+            return ReasonCode.RECONCILE_UNRECONCILED                      # venue truth still unverified: no new risk
         if any(x.symbol == symbol and x.side == side for x in self.fold.open_lots()):
             return ReasonCode.CAPACITY_IN_TRADE
         if self.fold.live_entries(symbol, side):

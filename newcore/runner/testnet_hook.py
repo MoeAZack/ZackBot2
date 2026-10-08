@@ -66,11 +66,12 @@ def load_factory(spec):
 
 
 def build(config):
-    """(venue, bars, account_reads, instrument_rules or None) from the configured factory (newcore.venue.factory:
-    build_testnet on nc-venue-testnet returns venue, bars, account_reader and the venue's own instrument_rules)."""
+    """(venue, bars, account_reads, instrument_rules or None, clock or None) from the configured factory
+    (newcore.venue.factory:build_testnet on nc-venue-testnet returns venue, bars, account_reader, the venue's own
+    instrument_rules and its server-aligned OffsetClock: REC-02 judges read freshness on that clock)."""
     parts = load_factory(config.factory)(config)
     missing = {'venue', 'bars'} - set(parts)
     if missing or not ({'account_reader', 'account_reads'} & set(parts)):
         raise ValueError(f'the testnet factory must return venue, bars and account_reader / account_reads ({parts!r})')
     reads = parts.get('account_reads') or AccountReadsShim(parts['account_reader'])
-    return parts['venue'], parts['bars'], reads, parts.get('instrument_rules')
+    return parts['venue'], parts['bars'], reads, parts.get('instrument_rules'), parts.get('clock')

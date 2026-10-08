@@ -89,10 +89,16 @@ def test_2_algo_route_detail_drives_the_fallback():
         [('classic', IntentState.REJECTED), ('algo', IntentState.WORKING)]
 
 
+@pytest.mark.parametrize('rec02', [False, True])
 @pytest.mark.parametrize('no_child_first', [False, True])
-def test_3_triggered_algo_stop_is_booked_from_the_child_fills(no_child_first):
+def test_3_triggered_algo_stop_is_booked_from_the_child_fills(no_child_first, rec02):
+    """The first by-id answer of a triggered algo stop may not name its child order yet. Reconcile v0 books the
+    child's fill one cycle later; REC-02 (deliberate timing change, RUNNER_WIRING.md section 5) re-queries in its
+    second pass of the SAME cycle and books it at once. Both book the child's fill price, never naked."""
     gap = {8: ('95', '95.2', '94.8', '95')}
     w = world(overrides=gap, strict=False)
+    w.config = dataclasses.replace(w.config, rec02=rec02)
+    w.runner = w.new_runner()
     w.venue.refuse_classic_stops(-4120)
     w.run(ENTRY_BAR + 1)
     lot, = w.runner.fold.open_lots()
@@ -100,9 +106,11 @@ def test_3_triggered_algo_stop_is_booked_from_the_child_fills(no_child_first):
     if no_child_first:
         w.port.no_child_once.add(algo.intent.client_order_id)
     w.run(8)                                                       # the candle gaps through the stop
-    if no_child_first:
-        assert w.runner.fold.open_lots() and algo.state is not IntentState.FILLED    # nothing booked yet
+    if no_child_first and not rec02:
+        assert w.runner.fold.open_lots() and algo.state is not IntentState.FILLED    # v0: nothing booked yet
         w.run(9)
+    elif no_child_first:
+        assert not w.runner.fold.open_lots() and algo.state is IntentState.FILLED   # REC-02: booked this cycle
     assert w.runner.fold.open_lots() == []
     t, = w.runner.trades()
     assert algo.final.exchange_order_id.startswith('child-') and algo.state is IntentState.FILLED

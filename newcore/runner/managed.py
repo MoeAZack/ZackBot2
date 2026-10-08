@@ -120,11 +120,22 @@ def hold_reconciler(runner, lot_id, items):
         runner._hold([ReasonCode.RECONCILE_UNRECONCILED])
 
 
+def rec02_reconciler(runner, lot_id, items):
+    """The REC-02 slot: a driver item that can mean unowned / unbooked exposure (HOLD_ITEMS) is an UNCERTAIN answer, so
+    the account-level fold runs now (exchange evidence, resolutions it can prove, protection gaps). The driver item
+    itself keeps the stub's handling (HOLD for HOLD_ITEMS, incident otherwise): the driver could not book it, so the
+    owner (or a later REC-02 rule) resolves it. Without rec02: the stub alone."""
+    if getattr(runner.cfg, 'rec02', False) and any(item[0] in HOLD_ITEMS for item in items):
+        from newcore.reconcile import Trigger
+        runner.rec02(Trigger.UNCERTAIN)
+    hold_reconciler(runner, lot_id, items)
+
+
 @dataclass(frozen=True)
 class ManagementConfig:
     enabled: bool = False                    # default OFF: management is opt-in per run
     plans: object = None                     # callable(EntryInfo) -> ManagementPlan | None (None: unmanaged lot)
-    reconciler: object = hold_reconciler     # callable(runner, lot_id, items): the REC-02 slot
+    reconciler: object = rec02_reconciler    # callable(runner, lot_id, items): the REC-02 slot
     quote_asset: str = 'USDT'                # fees in this asset are booked as they are
     fee_rates: tuple = ()                    # ((asset, Decimal rate in quote), ...) for fees in another asset
 
