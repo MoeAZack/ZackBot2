@@ -2,14 +2,14 @@
 
 > **08 Oct 2026 roadmap alignment:** the shared replacement-first execution spine is in
 > [`NEWCORE_EXECUTION_PLAN.md`](NEWCORE_EXECUTION_PLAN.md). Claude Code implements, Cowork independently validates and
-> runs evidence/research, and Codex owns scope, review, ordering and protected merge. AUD-05 durable state is merged;
-> AUD-06a truthful DCA labels are at the protected final gate and AUD-07 golden execution contracts are in review. The
+> runs evidence/research, and Codex owns scope, review, ordering and protected merge. AUD-05 durable state and AUD-06a
+> truthful DCA labels are merged; AUD-07 golden execution contracts are in review. The
 > primary milestone is a mainnet-candidate engine with long/short strategy coverage,
 > bounded bias/risk/drawdown controls and crypto/gold/TradFi venue readiness; optional product features follow it.
 > Cowork's evidence scope is Linux/sandbox research and adversarial validation; Windows, native UI, installer and connected
 > testnet claims come from Claude Code/Codex Windows runs. STRAT-00 research can run beside core work without changing runtime.
 
-*Last refreshed: 2026-10-08 03:53 Cairo (Africa/Cairo) by Codex, on branch `roadmap/newcore-execution-plan`. This is the plain-language owner view. `ROADMAP.md` and `docs/reviews/` hold the detailed scope and evidence.*
+*Last refreshed: 2026-10-08 04:06 Cairo (Africa/Cairo) by Codex, on branch `roadmap/newcore-execution-plan`. This is the plain-language owner view. `ROADMAP.md` and `docs/reviews/` hold the detailed scope and evidence.*
 
 ## Where we are now
 
@@ -18,12 +18,12 @@
 | Environment | **Binance Futures testnet only.** Mainnet stays impossible until the roadmap and the final release audit are complete and you approve it. |
 | Is ZackBot running? | Yes, on your PC (PAPER/testnet), build `20261007-075404`: engine and exchange OK; four positions, all protected; zero open incidents or unprotected lots. |
 | Installed application | **T05a installed and runtime-proven.** The causal trade-audit endpoint/card and bounded audit file are active without changing trading decisions. |
-| Latest accepted commit | AUD-05 merged on protected master at `a262a82`; AUD-06a implementation accepted at `82e0561`, with documentation head `d09725a` in the final gate. |
-| Current ticket | **AUD-06a truthful DCA labels / AUD-07 execution golden contracts** |
-| Stage | **AUD-06a protected full gate running; AUD-07 r2 gate hardening in progress.** |
+| Latest accepted commit | AUD-06a merged on protected master at `5edc149`; its corrected Research-tab labels and responsive fix passed every exact-head gate. |
+| Current ticket | **AUD-07 execution golden contracts** |
+| Stage | **AUD-07 r2 gate hardening in progress; controlling NEWCORE roadmap ready for its refreshed docs-only checks.** |
 | What Claude is doing | Building AUD-07 r2 and the separate product-fix stack, including C13g journal truth. |
 | What Cowork is doing | Preparing the AUD-07 ledger attack and product-divergence replay probes. |
-| What Codex is reviewing | AUD-06a final gate/merge, this roadmap integration, then AUD-07 r2. |
+| What Codex is reviewing | This roadmap integration, then AUD-07 r2. |
 | Your action | **None.** |
 
 ## Latest test results
