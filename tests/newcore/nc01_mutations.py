@@ -106,6 +106,8 @@ MUTATIONS = {
         "        if ordered != self.lots:\n            object.__setattr__(self, 'lots', ordered)", '        pass')]),
     'ports: journal ignores owner_kind (every owner treated as a lot)': ('newcore/ports/journal.py', [(
         '            if h.owner_kind is OwnerKind.ENTRY_INTENT:', '            if False:')]),
+    'r3 item 2: daily_halt missing from the registry': (D + 'reasons.py', [(
+        "    RISK_DAILY_HALT = 'risk_gateway.daily_halt'\n", '')]),
     'duplicate JSON keys': (D + 'codec.py', [("            if k in out:\n                problems.append(",
                                               "            if False:\n                problems.append(")]),
     'truncated JSON': (D + 'codec.py', [(
