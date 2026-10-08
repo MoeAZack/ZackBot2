@@ -76,6 +76,7 @@ from . import ids
 from .fold import Fold, OPEN_STATES
 from .outcome import summarize, trade_outcome
 from .records import not_sent_result, planned_intent, result_from
+from .redact import describe, exc_tag
 from .signals import CLOSE, ENTER
 from .sizing import SizingPolicy, size_entry
 
@@ -279,6 +280,10 @@ class Runner:
         self.incidents = []                                               # (at_ms, text): surfaced, not journaled
         self._ext_partial = {}                                            # lot -> venue qty after an external partial
         self._em_filled, self._em_closed_ids, self._em_left = {}, set(), {}   # hard-HOLD emergency fills (in process)
+        self._em_sent = {}                                                # (symbol, side) -> {(zbn1e cid, route)} sent
+        self._own_unknown = set()                                         # lots whose ownership evidence is unreadable
+        self._boot_hard_hold = hard_hold is not None                      # a previous process may have sent zbn1e
+        self._first_now = None                                            # this process's first cycle (candle close)
         self._reads = {}                                                  # lost entry -> agreeing position reads
         self._refusals = {}                                               # stop intent -> venue refusal code
         self._orphans_checked = set()                                     # ENTER decisions asked about (289)
@@ -427,6 +432,8 @@ class Runner:
         if self.now is not None and now_ms < self.now:
             raise ValueError('the runner clock never goes back')
         self.now = now_ms
+        if self._first_now is None:
+            self._first_now = now_ms
         self.counters.cycles += 1
         if self.hard_hold is not None:
             return self._hard_hold_cycle()
@@ -448,9 +455,10 @@ class Runner:
         store and a reconciliation, A08). Only the A23 / A24 emergency set runs (_emergency_set). Surfaced through
         `hard_hold`, the incidents and the summary."""
         d = durability_hold()
-        self.hard_hold = f'{d.reason}: {ex}'
+        why = ex if isinstance(ex, str) else describe(ex)                 # P2: never a raw exception text
+        self.hard_hold = f'{d.reason}: {why}'
         self.counters.hard_holds += 1
-        self._incident(f'hard HOLD ({d.hold_kind}): {ex}')
+        self._incident(f'hard HOLD ({d.hold_kind}): {why}')
 
     def _hard_hold_cycle(self):
         """The A24 emergency set from exchange truth, then a fresh reconciliation and the invariants (counted)."""
@@ -517,11 +525,12 @@ class Runner:
             if proven is not None:
                 exposed = min(proven[0], p.qty)                           # at most the proven residual (P1-1)
             else:                                                         # Cowork 6065286201 #1 (A22): our owned
-                owned = self._owned_exposure(p.symbol, p.side)            # quantity, never a foreign add
-                if owned is None:                                         # our own fills unreadable: never leave
-                    self._incident(f'hard HOLD: {p.symbol} {p.side}: own race fills unreadable; the whole position '
-                                   f'{p.qty} is covered this cycle')      # them naked
-                exposed = p.qty if owned is None else min(p.qty, owned)
+                owned, complete = self._owned_exposure(p.symbol, p.side)  # quantity, never a foreign add
+                if not complete:                                          # Codex #13 P1: unknown is not zero and
+                    self._incident(f'hard HOLD: {p.symbol} {p.side} {p.qty}: ownership evidence UNREADABLE (fills / '
+                                   f'trades unknown): only the proven {owned} may get new protection, nothing new '
+                                   'for the rest (it may be foreign); resting protection kept - HOLD, owner')
+                exposed = min(p.qty, owned)                               # never widens ownership
             if covered >= exposed:
                 continue                                                  # M45: covered: no change
             if proven is not None and proven[1] is None:                  # proven ours, no safe level: escalate
@@ -538,11 +547,15 @@ class Runner:
                                f'-> {out.kind}')
 
     def _owned_exposure(self, symbol, side):
-        """Hard HOLD: the quantity of (symbol, side) that is OURS - the journaled open lots plus the venue's fills of our
-        own live opening intents (ENTRY / ADD race or partial fills, not yet journaled; read from the order's trades).
-        Foreign quantity on the same side is never in it (A22). None = our own fills cannot be read (unknown)."""
-        owned = sum((x.qty for x in self.fold.open_lots() if (x.symbol, x.side) == (symbol, side)), ZERO)
-        owned -= self._emergency_filled(symbol, side)                     # Cowork 6066239886 #1: already closed
+        """Hard HOLD: (proven, complete) - the quantity of (symbol, side) PROVEN ours: the journaled open lots less what
+        our emergency orders already closed, plus the venue's fills of our own live opening intents (ENTRY / ADD race or
+        partial fills, not yet journaled). Foreign quantity is never in it (A22). Codex #13 P1 (78c0010): evidence that
+        cannot be read is UNKNOWN, never zero, and never widens ownership - an unreadable fills read adds nothing
+        (complete=False); unknown emergency fills prove none of the lots (proven 0, complete=False)."""
+        lots = sum((x.qty for x in self.fold.open_lots() if (x.symbol, x.side) == (symbol, side)), ZERO)
+        ef = self._emergency_filled(symbol, side)                         # Cowork 6066239886 #1: already closed
+        complete = ef is not None
+        owned = ZERO if ef is None else lots - ef
         for iv in self.fold.live_intents():
             if iv.purpose in OPENING_PURPOSES and (iv.intent.symbol, str(iv.intent.side)) == (symbol, side):
                 q = self.venue.query(self._ref(iv))
@@ -554,22 +567,40 @@ class Runner:
                 elif q.kind is OutcomeKind.FINAL:
                     owned += q.executed_qty
                 else:
-                    return None                                           # our own fills unreadable: unknown
-        return max(owned, ZERO)
+                    complete = False                                      # our own fills unreadable: UNKNOWN
+        return max(owned, ZERO), complete
 
     def _emergency_filled(self, symbol, side):
         """What OUR emergency orders (zbn1e stops / closes, never journaled) filled on (symbol, side) since the earliest
         open lot's entry: from the venue's trades, each order matched by its exchange order id to an emergency client
         id re-derived for that order's filled quantity (so it survives a restart); this process's own FINAL emergency
-        results are the floor when the trades cannot be read."""
+        results are the floor when the trades cannot be read.
+        Codex #13 P1: None (UNKNOWN) when it cannot be proven - the trades unreadable AND either a previous process may
+        have sent emergency orders for these lots (a lot opened before this process's first cycle, a boot in hard HOLD,
+        or a store-back accounting that could not read them) or an emergency order this process sent cannot be read back
+        by its id. Only for lots opened by THIS process is its own ledger of sent ids complete."""
         mem = self._em_filled.get((symbol, side), ZERO)
         lots = [x for x in self.fold.open_lots() if (x.symbol, x.side) == (symbol, side)]
+        if not lots:
+            return mem
         read = getattr(self.venue, 'trades', None)
-        if not lots or read is None:
-            return mem
-        tr = read(symbol, side, min(x.entry.intent.created_at_ms for x in lots))
-        if tr.kind is not ReadKind.OK:
-            return mem
+        tr = read(symbol, side, min(x.entry.intent.created_at_ms for x in lots)) if read is not None else None
+        if tr is None or tr.kind is not ReadKind.OK:
+            if self._boot_hard_hold or self._first_now is None or any(
+                    x.lot_id in self._own_unknown or x.opened_at_ms < self._first_now for x in lots):
+                return None                                               # a previous process's orders: unprovable
+            total = ZERO
+            for cid, route in sorted(self._em_sent.get((symbol, side), ())):   # this process's own, by their ids
+                q = self.venue.query(OrderRef(symbol=symbol, client_id=cid, route=route))
+                if q.kind is OutcomeKind.NOT_FOUND or q.kind is OutcomeKind.REJECTED:
+                    continue
+                if q.kind is OutcomeKind.KNOWN and route == 'classic' and not q.executed_qty:
+                    continue                                              # resting, nothing filled
+                if q.kind is OutcomeKind.FINAL and q.executed_qty is not None:
+                    total += q.executed_qty
+                    continue
+                return None                                               # unreadable / triggered algo: unknown
+            return max(total, mem)
         orders = {}
         for t in tr.value:
             orders[t.exchange_order_id] = orders.get(t.exchange_order_id, ZERO) + t.qty
@@ -608,11 +639,23 @@ class Runner:
         sides = {}
         for lot in self.fold.open_lots():
             sides.setdefault((lot.symbol, lot.side), []).append(lot)
+        venue = {(p.symbol, p.side): p.qty for p in (self.last_rec.positions or ())} if self.last_rec else {}
         for (sym, side), lots in sides.items():
             ef = self._emergency_filled(sym, side)
+            total = sum((x.qty for x in lots), ZERO)
+            if ef is None:                                                # Codex #13 P1: unknown is not zero
+                if venue.get((sym, side), total) < total:                 # and the venue holds less than the lots
+                    new = {x.lot_id for x in lots} - self._own_unknown
+                    self._own_unknown.update(x.lot_id for x in lots)
+                    if new:
+                        self._incident(f'{sym} {side}: lots {total} but the venue holds {venue[(sym, side)]} and our '
+                                       'emergency fills cannot be read (trades unknown): ownership UNKNOWN - no new '
+                                       'stop / close / resize for these lots, resting protection kept; HOLD, owner')
+                    self._hold([ReasonCode.RECONCILE_UNRECONCILED])
+                continue
+            self._own_unknown.difference_update(x.lot_id for x in lots)
             if ef <= 0:
                 continue
-            total = sum((x.qty for x in lots), ZERO)
             left = max(total - ef, ZERO)
             for lot in lots:
                 did = ids.marker_decision_id('emergency_fill', lot.lot_id)
@@ -634,7 +677,7 @@ class Runner:
 
     def _venue_raised(self, name, args, ex):
         at = self.now if self.now is not None else int(time.time() * 1000)
-        self._incident(f'venue {name} raised {type(ex).__name__}: {ex} - taken as UNKNOWN (adapter contract break)')
+        self._incident(f'venue {name} raised {exc_tag(ex)} - taken as UNKNOWN (adapter contract break)')
         if name in _ORDER_CALLS:
             first = args[0] if args else None
             ref = first if isinstance(first, OrderRef) else getattr(first, 'ref', None)
@@ -827,9 +870,11 @@ class Runner:
             self._incident(f'hard HOLD: {EMERGENCY_GENERATIONS} emergency stop ids of {p.symbol} {p.side} {qty} used; '
                            'unprotected gap, operator needed')
             return
+        self._em_sent.setdefault((p.symbol, p.side), set()).add((cid, 'classic'))
         out = self.venue.submit_stop(StopOrder(ref=ref, position_side=p.side, qty=qty, stop_price=price))
         if _suggests_algo(out):                                              # same id, the algo route
             ref = OrderRef(symbol=p.symbol, client_id=cid, route='algo')
+            self._em_sent[(p.symbol, p.side)].add((cid, 'algo'))
             out = self.venue.submit_stop(StopOrder(ref=ref, position_side=p.side, qty=qty, stop_price=price))
         if _is_duplicate(out):
             out = self.venue.query(ref)
@@ -867,6 +912,7 @@ class Runner:
             return
         cid = ids.emergency_stop_client_id(self.acct, p.symbol, p.side, qty, 'close')
         ref = OrderRef(symbol=p.symbol, client_id=cid)
+        self._em_sent.setdefault((p.symbol, p.side), set()).add((cid, 'classic'))
         out = self.venue.submit_market(MarketOrder(ref=ref, position_side=p.side, qty=qty, reduce=True))
         if _is_duplicate(out):
             out = self.venue.query(ref)
@@ -1385,6 +1431,8 @@ class Runner:
     def _protect(self, lot, *, replacing=False):
         if not lot.open or (lot.live_stop is not None and not replacing) or lot.closing is not None:
             return
+        if lot.lot_id in self._own_unknown:
+            return                                                        # Codex #13 P1: it may be foreign now
         if not self._permits(Purpose.PROTECT, Op.PLACE):
             return
         n = len(lot.protects)
@@ -1698,7 +1746,7 @@ class Runner:
         side; with several the attribution is ambiguous: the item and HOLD only, protection unchanged)."""
         sides = {}
         for lot in self.fold.open_lots():
-            if not self._suspended(lot.lot_id):
+            if not self._suspended(lot.lot_id) and lot.lot_id not in self._own_unknown:
                 sides.setdefault((lot.symbol, lot.side), []).append(lot)
         for (sym, side), lots in sides.items():
             v = qty.get((sym, side), ZERO)
@@ -1839,7 +1887,7 @@ class Runner:
         try:
             pf = self.portfolio(rec)
         except Exception as ex:                                           # NC-01 invariant refused the state
-            problems.append(f'I3 {type(ex).__name__}: {ex}')
+            problems.append(f'I3 {describe(ex, (ValueError,))}')           # NC-01 constructors over OUR records
         if rec.positions is not None and rec.orders is not None:
             # I1: NC-01 confirmed_coverage (only a WORKING carrier counts; an unpromoted replacement never does) of
             # the lots of each (symbol, side), and every counted carrier must be listed on the venue right now

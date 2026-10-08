@@ -71,6 +71,7 @@ from newcore.ports.venue import MarketOrder, OrderOutcome, OutcomeKind, ReadKind
 from . import ids
 from .book import BookRunner
 from .records import not_sent_result
+from .redact import describe
 from .runner import ALGO_ROUTE, Runner
 from .signals import CLOSE
 
@@ -352,9 +353,9 @@ class ManagementMixin:
             drive = fn(*args, **kw)
         except (ManagementError, DomainError) as ex:
             if lid in self.mg:
-                self._items.append((lid, (('driver_refused', f'{fn.__name__}: {type(ex).__name__}: {ex}'[:200]),)))
+                self._items.append((lid, (('driver_refused', f'{fn.__name__}: {describe(ex, (ValueError,))}'[:200]),)))
             else:
-                self._incident(f'management {lid}: driver refused {fn.__name__}: {ex}')
+                self._incident(f'management {lid}: driver refused {fn.__name__}: {describe(ex, (ValueError,))}')
                 self.unmanaged.add(lid)
             return
         self.mg[lid] = drive.state
@@ -388,7 +389,7 @@ class ManagementMixin:
             return self.mgmt.plans(info)
         except (PlanRefused, ManagementError, DomainError) as ex:
             if not quiet:
-                self._incident(f'management {lot_id}: no plan ({type(ex).__name__}: {ex}); the runner protects it')
+                self._incident(f'management {lot_id}: no plan ({describe(ex, (ValueError,))}); the runner protects it')
             return None
 
     def _mg_try_start(self, lot_id):
@@ -469,7 +470,8 @@ class ManagementMixin:
         self.mg.pop(lot_id, None)
         self.plans.pop(lot_id, None)
         self.unmanaged.add(lot_id)
-        self._malformed.append((lot_id, d.decision_id, f'{type(ex).__name__}: {ex}'[:120]))
+        self._malformed.append((lot_id, d.decision_id, describe(ex, (ValueError, ArithmeticError, IndexError,
+                                                                     KeyError))[:120]))
 
     def _mg_apply_tick(self, d):
         lot_id = d.subject_id
