@@ -1,6 +1,6 @@
 # ZackBot owner overview
 
-*Last refreshed: 2026-10-07 15:05 Cairo (Africa/Cairo) by Codex, on branch `bt02-exchange-filters`. This is the plain-language owner view. `ROADMAP.md` and `docs/reviews/` hold the detailed scope and evidence.*
+*Last refreshed: 2026-10-08 02:55 Cairo (Africa/Cairo) by Codex, on branch `aud-05-durable-state`. This is the plain-language owner view. `ROADMAP.md` and `docs/reviews/` hold the detailed scope and evidence.*
 
 ## Where we are now
 
@@ -10,16 +10,18 @@
 | Is ZackBot running? | Yes, on your PC (PAPER/testnet), build `20261007-075404`: engine and exchange OK; four positions, all protected; zero open incidents or unprotected lots. |
 | Installed application | **T05a installed and runtime-proven.** The causal trade-audit endpoint/card and bounded audit file are active without changing trading decisions. |
 | Latest accepted commit | BT02 implementation `e224a8b`; acceptance/status documentation is being added before protected merge. |
-| Current ticket | **BT02: exchange-filter and full-plan feasibility** |
-| Stage | **BT02 accepted after three review rounds; protected merge pending.** |
-| What Claude is doing | Fixing the separate one-step quantity/orphan safety ticket on PR #20. |
-| What Codex is reviewing | BT02 acceptance/merge, then PR #20 and the remaining runtime gates. |
+| Current ticket | **AUD-05: durable settings/state and account ownership** |
+| Stage | **AUD-05 r5 accepted by Codex; protected full gate and merge pending.** |
+| What Claude is doing | Continuing the parallel AUD-07 test-only slice and responding to remaining review lanes. |
+| What Codex is reviewing | AUD-05 final gate/merge, then AUD-06a and the replacement-first roadmap integration. |
 | Your action | **None.** |
 
 ## Latest test results
 
 | Where | Result |
 |---|---|
+| AUD-05 r5 Codex Windows review | Exact implementation head `75238d5`: focused r1-r5 suites **204/204 passed**; adversarial account, grid and secret regressions passed; diff clean. |
+| AUD-05 r5 GitHub | CodeQL action and Python analyses passed; fast/full protected gates tracked on PR #30. |
 | BT02 focused Windows review | **52/52 passed** at `e224a8b`. |
 | BT02 GitHub | Fast and CodeQL gates passed on the implementation head. |
 | BT02 full suite reported by Claude | **875 passed**, 0 failed. |

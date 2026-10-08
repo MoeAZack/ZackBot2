@@ -654,6 +654,7 @@ class GridManager:
     def _can_add(self, g, side):
         e = self.e
         if e.S.get('ENTRIES_PAUSED') or e.state.get('halted'): return False
+        if e.persist_block(): return False             # AUD-05 r2/r5: state not durable / account unresolved - no new risk
         if e.exchange_state().get('state') == 'outage': return False     # T05b: no new grid exposure while Binance is down
         if f"{g['sym']}|{side}" in e.untracked: return False
         if any(l['symbol'] == g['sym'] and l['side'] == side and l.get('stop_dirty') for l in e.state['lots'].values()): return False
@@ -782,14 +783,34 @@ class GridManager:
         return changed
 
     def _resolve_open(self, g, op):
+        """AUD-05 r3: the first order of a grid side whose answer was lost (or a crash after the send): its own order record
+        (by client id) decides; the aggregate position is only a fallback for an op without a readable record source, and
+        then only an exact match (half a step) is adopted."""
         e = self.e; sym, side = g['sym'], op['side']
+        fr = e._order_result(sym, op.get('cid'), op['qty'])
+        if fr['state'] == 'final':
+            if fr['qty'] > 0:
+                log.info(f"grid {g['key']}: first {side} order confirmed from its order record: {fr['qty']} @ {fr['px']}")
+                self._create(g, op, fr['qty'], fr['px'] or op['px'])
+            else:
+                g['op'] = None; log.info(f"grid {g['key']}: first {side} order record shows nothing executed - retried")
+            return True
+        if fr['state'] == 'notfound':
+            if time.time() - op['t'] > 20:
+                g['op'] = None; log.info(f"grid {g['key']}: first {side} order never reached Binance - retried"); return True
+            return False
+        if fr['state'] in ('pending', 'unreadable'):
+            if time.time() - op['t'] > 300:
+                e.err(f"grid {g['key']}: first {side} order record unreadable for 5 min ({fr['state']}) - nothing adopted or "
+                      'retried; check Binance', key=f"grid-op|{g['key']}")
+            return False
         try: live = e.trade.positions()
         except Exception: return False
         others = sum(l['qty'] for l in e.state['lots'].values() if l['symbol'] == sym and l['side'] == side)
         extra = live.get((sym, side), 0.0) - others - sum(r_['filled'] for r_ in e.state.get('resting_entries', {}).values()
                                                           if r_['symbol'] == sym and r_['side'] == side)
         step = e.rules[sym]['step']
-        if op['qty'] - 1.5 * step <= extra <= op['qty'] * 1.5 + step:     # exactly our order (anything else stays untracked)
+        if abs(extra - op['qty']) <= 0.5 * step:                          # exactly our order (anything else stays untracked)
             log.info(f"grid {g['key']}: unconfirmed first {side} order found on Binance - adopted")
             self._create(g, op, e._rd(extra, step), (e.marks or {}).get(sym) or op['px'])
             return True
@@ -857,9 +878,12 @@ class GridManager:
                     op = self._op(g, side, 'open', add, q, m)
                     self._open(g, op); changed = True
                 else:
+                    try: self._order_ok(g, q, m, side)                     # AUD-05 r4/r5: before the op / the send
+                    except ValueError as ex: self.e.err(f"grid {g['key']} add: {ex}"); continue
                     op = self._op(g, side, 'add', add, q, m)
                     try:
-                        ok = self.e._add_qty(lot, q, m, 'grid_buy' if kind == 'L' else 'grid_sell', post={'grid_ack': op['id']})
+                        ok = self.e._add_qty(lot, q, m, 'grid_buy' if kind == 'L' else 'grid_sell', post={'grid_ack': op['id']},
+                                             cid=op.get('cid'))
                     except Exception as ex:
                         if not _ambiguous(ex): g['op'] = None
                         self.e.err(f"grid {g['key']} add: {ex}"); return True
@@ -871,29 +895,74 @@ class GridManager:
         return changed
 
     def _op(self, g, side, kind, cells, qty, px, full=False):
-        op = dict(id=uuid.uuid4().hex[:12], side=side, kind=kind, cells=list(cells), qty=qty, px=px, t=time.time(), full=full)
-        g['op'] = op; self.e.save_state()                           # recorded BEFORE the order is sent
+        from binance_client import new_cid                          # AUD-05 r3: the order's client id is owned before the send
+        op = dict(id=uuid.uuid4().hex[:12], side=side, kind=kind, cells=list(cells), qty=qty, px=px, t=time.time(), full=full,
+                  cid=new_cid())
+        g['op'] = op
+        try: self.e._save_wal()                         # recorded BEFORE the order is sent (AUD-05 r2: durably,
+        except Exception:                                           # or it is not sent at all)
+            g['op'] = None; raise
         return op
+
+    def _risk(self, g):
+        """AUD-05 r4: the worst-case loss used for the lot, recomputed from the grid itself (never a persisted metric)."""
+        w = risk_metrics(g)['worst_loss_usd']
+        if not (isinstance(w, (int, float)) and math.isfinite(w) and w >= 0): raise ValueError('grid worst case not computable')
+        return w
+
+    def _order_ok(self, g, q, m, side=None):
+        """AUD-05 r4/r5: last check before a risk-adding grid order: no central block, the mark inside the grid's stops, the
+        order's notional within the grid's own capital (x capital_frac x range span) and - for `side` - the protective
+        stop exactly as it will be placed (rounded to the tick) is valid. Raises ValueError (nothing is sent)."""
+        pb = self.e.persist_block()
+        if pb: raise ValueError(pb)
+        if side: self._stop_ok(g, side, m)
+        if not (g['stop_lo'] <= m <= g['stop_hi']): raise ValueError(f"mark {m:g} outside the grid's stops - not sent")
+        cap = g['capital'] * float(g['cfg'].get('capital_frac', 1.0)) * (g['hi'] / g['lo']) * 1.05
+        if q * m > cap: raise ValueError(f"order {q:g} @ {m:g} exceeds the grid's own capital - not sent")
+
+    def _stop_ok(self, g, side, m):
+        """AUD-05 r5: the side's stop-out ROUNDED to the tick (what the lot's exchange stop will be) must be > 0, on the
+        protective side of the entry and of the range, and the configured stop-out within half the smallest line spacing."""
+        e = self.e; tick = e.rules[g['sym']]['tick']
+        pct = float(g['cfg'].get('stop_out_pct', GRID_DEFAULTS['stop_out_pct'])) / 100
+        lines = g['lines']; slack = max(min(lines[i + 1] - lines[i] for i in range(len(lines) - 1)) / 2, tick)
+        if side == 'LONG':
+            st, want = e._rd(g['stop_lo'], tick), g['lo'] * (1 - pct)
+            ok = 0 < st < m and st < g['lo']
+        else:
+            st, want = e._rd(g['stop_hi'], tick), g['hi'] * (1 + pct)
+            ok = st > m and st > g['hi']
+        if not (ok and math.isfinite(st) and abs(st - want) <= slack):
+            raise ValueError(f"{side} stop {st:g} is not a valid protective stop (configured {want:g}) - not sent")
+        return st
 
     def _open(self, g, op):
         e = self.e; sym, side, r = g['sym'], op['side'], e.rules[g['sym']]
         q = e._rd(op['qty'], r['step'])
         px = op['px']
+        try:
+            risk = self._risk(g); self._order_ok(g, q, px, side)           # everything _create needs, BEFORE the send
+        except Exception as ex:
+            g['op'] = None; e.save_state(); e.err(f"grid {g['key']} first {side} order not sent: {ex}"); return
         if not e.dry:
             try:
-                o = e.trade.open(sym, side, e._fmt(q, r['step']))
+                o = e._send(e.trade.open, sym, side, e._fmt(q, r['step']), cid=op.get('cid'))
             except Exception as ex:
-                if _ambiguous(ex): e.err(f"grid {g['key']} first {side} order unconfirmed ({ex}) - checking the position"); e.save_state(); return
+                if _ambiguous(ex):
+                    tag = getattr(ex, 'tag', None)
+                    if isinstance(tag, str) and tag.startswith('c:'): op['cid'] = tag[2:]
+                    e.err(f"grid {g['key']} first {side} order unconfirmed ({ex}) - settled from its order record"); e.save_state(); return
                 g['op'] = None; e.err(f"grid {g['key']} first {side} order failed: {ex}"); return
             px = float(o.get('avgPrice') or 0) or px
             filled = float(o.get('executedQty') or 0)
             if filled > 0: q = e._rd(filled, r['step'])
-        self._create(g, op, q, px)
+        self._create(g, op, q, px, risk)
 
-    def _create(self, g, op, q, px):
+    def _create(self, g, op, q, px, risk=None):
         e = self.e; side = op['side']; sd = 1 if side == 'LONG' else -1
         stop = g['stop_lo'] if side == 'LONG' else g['stop_hi']
-        risk = g['metrics']['worst_loss_usd']
+        if risk is None: risk = self._risk(g)
         plan = dict(sl=dict(id=g['slot'], key='grid', tf=g['tf'], name=f"Grid {g['slot']}"), sym=g['sym'], side=side, qty=q,
                     stop_dist=abs(px - stop), atr=abs(g['cells'][0]['b'] - g['cells'][0]['a']), g={}, risk_usd=risk,
                     eq=e.last_eq or 0, manual=False, reason='grid', px=px, sg={})
