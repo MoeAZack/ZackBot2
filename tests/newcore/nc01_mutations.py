@@ -100,6 +100,7 @@ MUTATIONS = {
         "        req(len({x.lot_id for x in self.lots}) == len(self.lots), p + '.lots',", "        req(True, p + '.lots',")]),
     'ruling 1: Decision.symbol unvalidated': (D + 'decision.py', [(
         "            check_symbol(self.symbol, p + '.symbol')", '            pass')]),
+    'ruling 2: whitespace-only text accepted': (D + 'base.py', [("    req(v.strip() != '', path,", '    req(True, path,')]),
     'duplicate JSON keys': (D + 'codec.py', [("            if k in out:\n                problems.append(",
                                               "            if False:\n                problems.append(")]),
     'truncated JSON': (D + 'codec.py', [(

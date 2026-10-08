@@ -191,3 +191,20 @@ def test_ruling_3_binding_confirmation_stays_on_the_account():
     assert [n for n, _, _ in field_spec(AccountBinding)] == ['venue', 'environment', 'settlement_asset', 'key_digest',
                                                              'exchange_uid']
     assert {'binding_state', 'confirmation'} <= {n for n, _, _ in field_spec(Account)}
+
+
+@pytest.mark.parametrize('blank', [' ', '   ', '　', ' '], ids=repr)
+def test_ruling_2_slot_id_and_exchange_order_id_are_never_blank(blank):
+    from newcore.domain import InvalidRecord
+    ids = F.Ids(96)
+    acct = ids.id('acct')
+    entry = F.market_entry(ids, acct)
+    assert F.replace(entry, slot_id=None).slot_id is None                       # absent stays None
+    with pytest.raises(InvalidRecord, match='slot_id'):
+        F.replace(entry, slot_id=blank)
+    p, _ = F.single_lot_portfolio(96)
+    with pytest.raises(InvalidRecord, match='slot_id'):
+        F.replace(p.lots[0], slot_id=blank)
+    known = F.results(ids, acct, entry)['known']
+    with pytest.raises(InvalidRecord, match='exchange_order_id'):
+        F.replace(known, exchange_order_id=blank)
