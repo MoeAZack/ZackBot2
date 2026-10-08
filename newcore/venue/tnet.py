@@ -41,7 +41,7 @@ PREFLIGHT_REFUSED = 10
 DEFAULT_MIN_BALANCE = Decimal('100')
 
 
-ADOPT_POSITION_RE = re.compile(r'[A-Z0-9]{2,30}:(LONG|SHORT)')
+ADOPT_POSITION_RE = re.compile(r'[A-Z0-9]{2,30}:(LONG|SHORT)(:[0-9]+(\.[0-9]+)?)?')   # SYMBOL:SIDE[:QTY]
 ADOPT_CID_RE = re.compile(r'[A-Za-z0-9_.-]{1,36}')
 
 
@@ -50,10 +50,21 @@ def adopt_refusal(value):
     if not isinstance(value, str) or not value:
         return 'empty'
     if ':' in value:
-        return None if ADOPT_POSITION_RE.fullmatch(value) else 'a position is SYMBOL:LONG or SYMBOL:SHORT'
+        return None if ADOPT_POSITION_RE.fullmatch(value) else \
+            'a position is SYMBOL:LONG / SYMBOL:SHORT, optionally with its foreign quantity SYMBOL:SIDE:QTY'
     if is_newcore_cid(value):
         return 'a NEWCORE order is never adopted (run the cleanup)'
     return None if ADOPT_CID_RE.fullmatch(value) else 'a client id is [A-Za-z0-9_.-]{1,36}'
+
+
+def adopted_positions(adopt_foreign):
+    """{(symbol, side): Decimal qty or None} from SYMBOL:SIDE[:QTY] items (None: the quantity seen at preflight)."""
+    out = {}
+    for a in adopt_foreign:
+        if ':' in a and ADOPT_POSITION_RE.fullmatch(a):
+            parts = a.split(':')
+            out[(parts[0], parts[1])] = Decimal(parts[2]) if len(parts) == 3 else None
+    return out
 
 
 def is_newcore_cid(cid):
@@ -88,6 +99,7 @@ def tnet_preflight(venue, account_reader, symbols, *, min_balance=DEFAULT_MIN_BA
                    adopt_foreign=()):
     refusals, positions, orders, baseline = [], [], [], {}
     adopt = set(adopt_foreign)
+    adopted = adopted_positions(adopt_foreign)
     transport = getattr(venue, 'transport', None)
     if getattr(transport, 'base_url', None) != TESTNET_BASE_URL or \
             getattr(transport, 'environment', None) != TESTNET_ENVIRONMENT:
@@ -116,10 +128,13 @@ def tnet_preflight(venue, account_reader, symbols, *, min_balance=DEFAULT_MIN_BA
                     continue
                 positions.append(p)
                 key = f'{p.symbol}:{p.side}'
-                if key in adopt:
-                    baseline[(p.symbol, p.side)] = p.qty
-                else:
+                declared = adopted.get((p.symbol, p.side), 'absent')
+                if declared == 'absent':
                     refusals.append(f'not_flat:{key}')
+                elif declared is not None and p.qty > declared:      # more than the declared foreign quantity
+                    refusals.append(f'not_flat:{key}:{p.qty}>{declared}')
+                else:
+                    baseline[(p.symbol, p.side)] = p.qty if declared is None else declared
         oo = _read(venue.open_orders, sym)
         if oo.kind is not P.ReadKind.OK:
             refusals.append(f'orders_unknown:{sym}')

@@ -95,3 +95,9 @@ def contains_values(text, values, cache=None):
 
 def scrub_tokens(text):
     return TOKEN_RUN.sub(REDACTED, str(text))
+
+
+def scrub_path(path):
+    """A path for display: each component scrubbed on its own (finding 5: on POSIX the separators are token
+    characters, so a whole long path read as one 'token' and was blanked)."""
+    return ''.join(part if part in ('/', '\\') else scrub_tokens(part) for part in re.split(r'([\\/])', str(path)))

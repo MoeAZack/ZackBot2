@@ -44,7 +44,7 @@ def test_cleanup_keeps_an_adopted_foreign_position(env):  # noqa: F811
     fb = stranded()
     fb.pos[('SOLUSDT', 'SHORT')] = D('2')
     fb.visible_pos[('SOLUSDT', 'SHORT')] = D('2')
-    rc, out = run(env, ['--cleanup', '--close-positions', '--adopt-foreign', 'SOLUSDT:SHORT'], http=fb)
+    rc, out = run(env, ['--cleanup', '--close-positions', '--adopt-foreign', 'SOLUSDT:SHORT:2'], http=fb)
     assert rc == 0 and fb.pos[('SOLUSDT', 'LONG')] == 0 and fb.pos[('SOLUSDT', 'SHORT')] == D('2')
 
 
