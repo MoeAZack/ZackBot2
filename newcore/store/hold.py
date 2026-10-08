@@ -1,8 +1,9 @@
 """What the store tells the Runner to do: pure mapping from a store outcome to NC-01 HOLD semantics.
 
 Store-failure contract (A21 / A23 / A24; the Runner's reaction is S1's, not implemented here):
-- `FileJournal.append` raises `DurabilityUnavailable` when a write or fsync fails. The event is NOT durable (it may be
-  absent, torn or complete on disk; a restart decides). The Runner must:
+- `FileJournal.append` raises `DurabilityUnavailable` when a write or fsync fails. The event is NOT durable and NOT
+  committed to the gate; whatever reached the file is sealed off at once (evidence copy + new segment), so a restart
+  reads exactly the in-process state. The Runner must:
     1. not send the intent / not apply the result the event described;
     2. enter hard HOLD at once: `durability_hold()` = EntriesMode.HOLD + HoldKind.DURABILITY_UNAVAILABLE with reason
        recovery.durability_unavailable (NC-01 ModeChanged requires exactly that reason for this hold kind). The
@@ -10,8 +11,9 @@ Store-failure contract (A21 / A23 / A24; the Runner's reaction is S1's, not impl
     3. act only inside the NC-01 emergency set, `hard_hold_permits(purpose, op)` (= modes.permitted for that hold kind):
        narrow query, place reduce-only protection before any old one is removed, drain resting ENTRY / ADD, adopt
        race / partial fills; never an entry, add, reprice, fallback, management or resume;
-    4. never retry the journal: it is poisoned for the rest of the process. Leaving hard HOLD needs a restart with a
-       writable store; recovery then lands in normal HOLD -> reconciliation (A08), never straight back to MANAGE.
+    4. stay in hard HOLD even if a later append succeeds: the journal accepts a retry (the same event lands exactly
+       once, r3), but leaving hard HOLD is reconciliation's job (A08), never a successful write. The store does not
+       decide HOLD; the Runner (S1) does, from this contract.
 - Every append before the venue call is write-ahead: IntentRecorded before the first send, `sent`
   (IntentStateChanged -> SUBMITTED) BEFORE the venue call, ResultObserved before the result is applied. Recovery relies
   on this: an intent with no `sent` record was provably never sent (DURABLE_NOT_SENT); one with `sent` and no final

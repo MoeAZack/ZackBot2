@@ -40,13 +40,21 @@ MUTATIONS = {
     'mid-segment damage treated as torn tail': (S + 'frame.py', [(
         '            later = _valid_record_after(data, off)\n', '            later = None\n')]),
     'evidence not copied before the seal': (S + 'recovery.py', [(
-        "            ref, new = _write_evidence(fs, account_dir, account_id, plan.names[no], off, data)\n"
+        "            ref, new = write_evidence(fs, account_dir, account_id, plan.names[no], off, data)\n"
         "            evidence.append(ref)\n            if new:\n                created.append(ref.name)\n",
         "            pass\n")]),
-    'failed write not poisoning the journal': (S + 'journal.py', [(
-        "            self._poison('write')\n", '')]),
-    'gate bypassed on append': (S + 'fold.py', [('        adm = _gate_admit(self.gate, ev)\n',
-                                                 '        adm = Admission.APPLY\n')]),
+    'failed fsync reopens the dirty segment instead of rolling': (S + 'journal.py', [(
+        '            if not extra:                                         # nothing of the failed append reached the file',
+        '            if True:')]),
+    'gate committed before the write': (S + 'journal.py', [(
+        "        staged = self._folder.stage(event)                        # gate().stage: validate only, nothing consumed\n",
+        "        staged = self._folder.stage(event)                        # gate().stage: validate only, nothing consumed\n"
+        "        if staged is not Admission.ALREADY_APPLIED:\n            self._folder.commit(staged)\n"), (
+        "        self._folder.commit(staged)                               # staged.commit(): only now is it consumed\n",
+        "")]),
+    'gate bypassed on append': (S + 'fold.py', [(
+        '        staged = _seq_typed(lambda: self.gate.stage(ev))\n',
+        "        staged = type('B', (), {'event': ev, 'commit': lambda self: None})()\n")]),
     'sent intent classified as never sent': (S + 'fold.py', [('            elif sent is None:\n',
                                                               '            elif True:\n')]),
 }
@@ -65,7 +73,7 @@ def export_head(dst):
 def run_suite(cwd):
     out = subprocess.run([sys.executable, '-m', 'pytest', '-p', 'no:cacheprovider', '-q', '-o', 'addopts=', *SUITE],
                          cwd=cwd, capture_output=True, text=True, timeout=1800)
-    failed = sorted(set(re.findall(r'^FAILED (.+?)(?: - .*)?$', out.stdout, re.M)))
+    failed = sorted(set(re.findall(r'^(?:FAILED|ERROR) (.+?)(?: - .*)?$', out.stdout, re.M)))
     summary = (out.stdout.strip().splitlines() or [''])[-1]
     return out.returncode, failed, summary
 

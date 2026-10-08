@@ -79,7 +79,7 @@ def test_non_identical_reappend_at_a_used_sequence_is_a_typed_conflict(how):
     with pytest.raises(SequenceConflict) as ex:
         j.append(bad)
     assert isinstance(ex.value, JournalConflict)
-    assert fs.snapshot() == before and j.last_sequence() == 4 and not j.poisoned
+    assert fs.snapshot() == before and j.last_sequence() == 4 and not j.needs_roll
     assert j.append(SCENARIO[4]) is Admission.APPLY                                  # the journal is still usable
 
 

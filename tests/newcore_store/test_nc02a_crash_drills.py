@@ -11,7 +11,8 @@ zero-filled). A fresh recovery must then show:
   - never DAMAGED or ABORT_RO; a torn tail is copied to evidence and sealed, the sealed bytes never change;
   - the scenario then completes (an already-durable in-flight event re-appends as ALREADY_APPLIED), and the next
     recovery is CLEAN and writes nothing.
-Drill A: create + the 18-event scenario. Drill B: recover a journal with a torn tail (evidence copy, seal, roll), then
+Drill A: create + the 18-event scenario. Drill C: a failed fsync, the in-process seal-and-roll, the retry and the rest.
+Drill B: recover a journal with a torn tail (evidence copy, seal, roll), then
 append the rest (crash_matrix C-T1..C-T3, C-E1..C-E8).
 """
 import os
@@ -24,7 +25,7 @@ from nc02a_memfs import PENDING, FaultFs, MemFs, SimulatedCrash
 from nc02a_util import ACCT_DIR, mem_journal, recover, seg
 from newcore.domain import canonical_bytes
 from newcore.ports.journal import Admission
-from newcore.store import Verdict, create_journal
+from newcore.store import DurabilityUnavailable, Verdict, create_journal
 from newcore.store.frame import RT_EVENT, frame
 from newcore.store.recovery import evidence_bytes
 
@@ -70,7 +71,50 @@ def drive_b(f):
     return state, False
 
 
-DRILLS = {'A': (base_a, drive_a), 'B': (base_b, drive_b)}
+class _FsyncFailsOnce:
+    """Seam wrapper: the first event fsync raises ENOSPC (its frame is in the file, not durable)."""
+
+    def __init__(self, inner):
+        self.inner, self.armed = inner, True
+
+    def __getattr__(self, name):
+        return getattr(self.inner, name)
+
+    def fsync(self, h):
+        if self.armed:
+            self.armed = False
+            raise OSError(28, 'injected ENOSPC')
+        return self.inner.fsync(h)
+
+
+def base_c():
+    return mem_journal(SCENARIO[:B_START])
+
+
+def drive_c(f):
+    """A failed fsync, the immediate roll (evidence copy of the frame, seal, new segment), then the retry and the
+    rest (crash_matrix C-E3 with D3 seal-and-roll in process)."""
+    state = {'acked': B_START, 'created': True}
+    try:
+        r = recover(f)
+        assert r.verdict is Verdict.CLEAN
+        j = r.journal
+        j._fs = _FsyncFailsOnce(f)
+        try:
+            j.append(SCENARIO[B_START])
+            raise AssertionError('the injected fsync failure did not surface')
+        except DurabilityUnavailable:
+            pass
+        assert not j.needs_roll and j.segment_no == 2
+        for e in SCENARIO[B_START:]:
+            j.append(e)
+            state['acked'] += 1
+    except SimulatedCrash:
+        return state, True
+    return state, False
+
+
+DRILLS = {'A': (base_a, drive_a), 'B': (base_b, drive_b), 'C': (base_c, drive_c)}
 
 
 def op_count(drill):

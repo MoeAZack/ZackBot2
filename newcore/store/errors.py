@@ -18,11 +18,11 @@ class DurabilityUnavailable(JournalUnavailable):
     """The store could not make a record durable: a create, write, fsync or directory flush failed.
 
     Contract (A21 / A23 / A24, hard HOLD): the record is NOT known to be durable, so whatever it described must not be
-    acted on (an intent is never sent, a result is never applied). The journal that raised it is poisoned for the rest of
-    the process (a failed fsync is never retried on the same handle: its dirty pages may already be gone). The caller
-    enters hard HOLD (`newcore.store.hold.durability_hold`) and may only use the NC-01 emergency set
-    (`modes.permitted(HOLD, DURABILITY_UNAVAILABLE, ...)`). Leaving it needs a restart with a writable store, then the
-    normal HOLD path (reconciliation)."""
+    acted on (an intent is never sent, a result is never applied), and nothing was committed to the gate (r3 store
+    atomicity). The failed handle is never reused (its dirty pages may already be gone): the journal seals off whatever
+    reached the file and rolls to a new segment, so a restart equals the in-process state and a retry of the same event
+    lands exactly once. The account-level reaction is NC-02 policy: the caller enters hard HOLD
+    (`newcore.store.hold.durability_hold`) and may only use the NC-01 emergency set until reconciliation."""
 
     def __init__(self, op, path, cause=None):
         self.op = op

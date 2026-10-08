@@ -1,12 +1,13 @@
 """The journal fold: admission of one event at a time, and the recovered state of the journal (pure, no IO).
 
-Admission (STEP0_INTERFACE.md r2 section 3): every event goes through the ONE step-0 `JournalGate` (header_of ->
-Grammar G1-G10 -> NC-01 per-record checks) before it is written; its refusal (JournalConflict, with the gate's exact
-reason) changes nothing. G2 / G3 refusals (gap, used sequence, reused id with other bytes) are re-raised as the typed
-`SequenceConflict` (a JournalConflict with the same message). As a tripwire, NC-01 `check_event_chain` then runs over
-the whole chain; if it ever refused what the gate admitted, the gate is rebuilt from the durable events and the event
-is refused (a gate gap to report, never a silent write). At boot the gate is rebuilt by replaying the durable events
-(`Folder.replay`), with one chain check over the whole journal.
+Admission (STEP0_INTERFACE.md r3 section 3, store atomicity): `stage` = the ONE step-0 `JournalGate.stage` (header_of
+-> Grammar G1-G10 -> NC-01 per-record checks), validation only; `commit` = `staged.commit()`, called by the journal
+only after the event is durable, so a failed write consumes nothing. The gate's refusal (JournalConflict, exact reason)
+changes nothing; G2 / G3 refusals (gap, used sequence, reused id with other bytes) are re-raised as the typed
+`SequenceConflict` (a JournalConflict, same message). As a tripwire NC-01 `check_event_chain` also runs over the whole
+chain before the write (pure): if it ever refused what the gate admits, the event is refused (a gate gap to report).
+At boot `replay` rebuilds the gate with `JournalGate.rebuild(durable events)` (the only use of admit), then one chain
+check over the whole journal.
 
 The recovered state is what NC-01 can say from the chain alone:
 - ownership is always UNKNOWN: the journal never proves an exchange position (NC-01 invariant 1; reconciliation does);
@@ -84,13 +85,18 @@ class JournalState:
 
 @dataclass(frozen=True, slots=True)
 class Prepared:
-    event: object
+    staged: object                 # the gate's StagedEvent: committed only after the event is durable
     live: dict
 
+    @property
+    def event(self):
+        return self.staged.event
 
-def _gate_admit(gate, ev):
+
+def _seq_typed(fn):
+    """Re-raise the gate's G2 / G3 refusals as the typed SequenceConflict (same message)."""
     try:
-        return gate.admit(ev)
+        return fn()
     except SequenceConflict:
         raise
     except JournalConflict as ex:
@@ -119,21 +125,21 @@ class Folder:
     def last_sequence(self):
         return len(self.events)
 
-    def prepare(self, ev):
-        """Admit `ev` through the gate. Returns Admission.ALREADY_APPLIED (identical re-append, nothing changed) or a
-        Prepared to commit once the event is durable. Raises JournalConflict / SequenceConflict and changes nothing.
-        After an APPLY the gate is ahead of `events` until commit(): a caller whose write fails must poison itself."""
-        adm = _gate_admit(self.gate, ev)
-        if adm is Admission.ALREADY_APPLIED:
-            return adm
+    def stage(self, ev):
+        """gate().stage(ev): validate only. Returns Admission.ALREADY_APPLIED (identical re-append) or a Prepared to
+        commit once the event is durable. Raises JournalConflict / SequenceConflict. Nothing changes here."""
+        staged = _seq_typed(lambda: self.gate.stage(ev))
+        if staged is None:
+            return Admission.ALREADY_APPLIED
         try:
-            live = check_event_chain(self.events + [ev])
+            live = check_event_chain(self.events + [ev])            # tripwire: never refuses what the gate admits
         except DomainError as ex:
-            self.gate = JournalGate.rebuild(self.account_id, self.aggregate_id, self.events)
             raise JournalConflict(f'NC-01 chain refuses what the gate admitted ({ex.path}: {ex.msg})') from None
-        return Prepared(ev, live)
+        return Prepared(staged, live)
 
     def commit(self, p):
+        """After the event is durable: staged.commit(), then the journal's own indexes."""
+        p.staged.commit()
         ev = p.event
         self.events.append(ev)
         self.live = p.live
@@ -157,27 +163,22 @@ class Folder:
         elif isinstance(ev, ModeChanged):
             self.mode, self.hold_kind = ev.to_mode, ev.to_hold
 
-    def admit(self, ev):
-        p = self.prepare(ev)
-        if p is Admission.ALREADY_APPLIED:
-            return p
-        self.commit(p)
-        return Admission.APPLY
-
     @classmethod
     def replay(cls, account_id, aggregate_id, events):
-        """Boot: rebuild the gate by replaying the durable events, then one NC-01 chain check over all of them.
-        Raises JournalConflict (incl. an event stored twice) on the first refusal."""
+        """Boot: JournalGate.rebuild from the durable events (the only use of admit), then one NC-01 chain check over
+        all of them. Raises JournalConflict (incl. an event stored twice) on the first refusal."""
+        events = list(events)
         f = cls(account_id, aggregate_id)
-        for ev in events:
-            if _gate_admit(f.gate, ev) is not Admission.APPLY:
-                raise SequenceConflict(f'event {ev.sequence} is stored twice')
-            f.events.append(ev)
-            f._index(ev)
+        f.gate = _seq_typed(lambda: JournalGate.rebuild(account_id, aggregate_id, events))
+        if f.gate.grammar.last_sequence != len(events):
+            raise SequenceConflict('an event is stored twice')
         try:
-            f.live = check_event_chain(f.events)
+            f.live = check_event_chain(events)
         except DomainError as ex:
             raise JournalConflict(f'NC-01 chain: {ex.path}: {ex.msg}') from None
+        for ev in events:
+            f.events.append(ev)
+            f._index(ev)
         return f
 
     def state(self):

@@ -20,7 +20,6 @@ segment at 0. Nothing is truncated or overwritten (design D3). An OSError here i
 """
 from __future__ import annotations
 
-import errno
 import hashlib
 import os
 from dataclasses import dataclass
@@ -31,14 +30,14 @@ from newcore.domain.events import EVENT_TYPES
 from newcore.ports.journal import JournalConflict
 
 from .errors import DurabilityUnavailable
+from .evidence import EvidenceRef, evidence_bytes, write_evidence
 from .fold import Folder
-from .frame import (KIND_EVIDENCE, KIND_SEGMENT, MAX_RECORD, RT_EVENT, RT_EVIDENCE_BODY, RT_HEADER, HeaderState,
-                    file_header, frame, scan)
+from .frame import KIND_SEGMENT, MAX_RECORD, RT_EVENT, RT_HEADER, HeaderState, scan
 from .fs import RealFs
-from .header import (EMPTY_SHA, EVIDENCE_FORMAT, HeaderError, Seal, SegmentHeader, VersionVerdict, canonical_json,
-                     check_version, decode_header, header_frame_max, strict_json)
+from .header import (EMPTY_SHA, HeaderError, Seal, SegmentHeader, VersionVerdict, check_version, decode_header,
+                     header_frame_max, strict_json)
 from .hold import Verdict, directive_for
-from .journal import EVIDENCE_DIR, JOURNAL_DIR, SEG_RE, WRITER_BUILD, FileJournal, _check_ids, seg_name, write_segment
+from .journal import JOURNAL_DIR, SEG_RE, WRITER_BUILD, FileJournal, _check_ids, seg_name, write_segment
 
 
 @dataclass(frozen=True, slots=True)
@@ -48,16 +47,6 @@ class Finding:
     name: str | None          # file name (never a full path)
     offset: int | None
     detail: str
-
-
-@dataclass(frozen=True, slots=True)
-class EvidenceRef:
-    name: str                 # relative to the account dir, '/'-separated
-    sha256: str
-    size: int
-    segment: str
-    offset: int
-
 
 @dataclass(frozen=True, slots=True)
 class Recovery:
@@ -72,15 +61,12 @@ class Recovery:
     def directive(self):
         return directive_for(self.verdict)
 
-
 def _sha(b):
     return hashlib.sha256(b).hexdigest()
-
 
 class _Out(Exception):
     def __init__(self, verdict, findings):
         self.verdict, self.findings = verdict, tuple(findings)
-
 
 def recover_journal(account_dir, account_id, aggregate_id, *, fs=None, writer_build=WRITER_BUILD):
     _check_ids(account_id, aggregate_id)
@@ -90,7 +76,6 @@ def recover_journal(account_dir, account_id, aggregate_id, *, fs=None, writer_bu
     except _Out as out:
         return Recovery(out.verdict, None, None, out.findings, (), ())
     return _finish(fs, account_dir, account_id, plan, writer_build)
-
 
 # ---------------------------------------------------------------------------------------------------- read-only phase
 @dataclass
@@ -103,7 +88,6 @@ class _Plan:
     active_scan: object | None
     voids: list
     findings: list
-
 
 def _read_only(fs, account_dir, account_id, aggregate_id):
     jd = os.path.join(account_dir, JOURNAL_DIR)
@@ -253,7 +237,6 @@ def _read_only(fs, account_dir, account_id, aggregate_id):
         findings.append(Finding('void_segment', names[v], 0, f'interrupted segment create ({len(blobs[v])} bytes)'))
     return _Plan(folder, names, blobs, m, hdr, active, voids, findings)
 
-
 # ---------------------------------------------------------------------------------------------------- write phase
 def _finish(fs, account_dir, account_id, plan, writer_build):
     jd = os.path.join(account_dir, JOURNAL_DIR)
@@ -265,7 +248,8 @@ def _finish(fs, account_dir, account_id, plan, writer_build):
             h = fs.open_append(path)
         except OSError:
             return Recovery(Verdict.DURABILITY_UNAVAILABLE, None, folder.state(), tuple(plan.findings), (), ())
-        return Recovery(Verdict.CLEAN, FileJournal(fs, account_dir, folder, m, h), folder.state(),
+        j = FileJournal(fs, account_dir, folder, m, h, plan.header.seals, len(plan.blobs[m]), writer_build)
+        return Recovery(Verdict.CLEAN, j, folder.state(),
                         tuple(plan.findings), (), ())
 
     pieces = []                                               # (segment no, offset, bytes) to preserve
@@ -285,68 +269,21 @@ def _finish(fs, account_dir, account_id, plan, writer_build):
     try:
         for no, off, data in pieces:
             fs.mark('C-T0')
-            ref, new = _write_evidence(fs, account_dir, account_id, plan.names[no], off, data)
+            ref, new = write_evidence(fs, account_dir, account_id, plan.names[no], off, data)
             evidence.append(ref)
             if new:
                 created.append(ref.name)
         fs.mark('C-T1')                                       # tail preserved, segment not yet sealed
-        write_segment(fs, jd, SegmentHeader(account_id, folder.aggregate_id, new_no, folder.last_sequence,
-                                            tuple(seals), writer_build))
+        hdr = SegmentHeader(account_id, folder.aggregate_id, new_no, folder.last_sequence, tuple(seals), writer_build)
+        _, seg_len = write_segment(fs, jd, hdr)
         created.append(f'{JOURNAL_DIR}/{seg_name(new_no)}')
         fs.mark('C-T3')                                       # sealed; nothing appended yet
         h = fs.open_append(os.path.join(jd, seg_name(new_no)))
     except OSError:
         return Recovery(Verdict.DURABILITY_UNAVAILABLE, None, folder.state(), tuple(plan.findings), tuple(evidence),
                         tuple(created))
-    return Recovery(Verdict.REPAIRED, FileJournal(fs, account_dir, folder, new_no, h), folder.state(),
-                    tuple(plan.findings), tuple(evidence), tuple(created))
-
-
-def evidence_bytes(account_id, segment, offset, data):
-    meta = canonical_json({'account_id': account_id, 'format': EVIDENCE_FORMAT, 'format_version': 1,
-                           'length': len(data), 'offset': offset, 'segment': segment, 'sha256': _sha(data),
-                           'source': 'torn_tail'})
-    return file_header(KIND_EVIDENCE) + frame(RT_HEADER, meta) + frame(RT_EVIDENCE_BODY, bytes(data))
-
-
-def _write_evidence(fs, account_dir, account_id, segment, offset, data):
-    """(EvidenceRef, created). Idempotent: a byte-identical copy from an earlier attempt is reused; a partial copy of a
-    crashed attempt is kept in place (never trusted, never deleted) and the next free name is used."""
-    ed = os.path.join(account_dir, EVIDENCE_DIR)
-    k = fs.kind(ed)
-    if k == 'missing':
-        fs.mkdir(ed)
-        fs.fsync_dir(account_dir)
-    elif k != 'dir':
-        raise OSError(errno.ENOTDIR, 'the evidence path is not a directory')
-    content = evidence_bytes(account_id, segment, offset, data)
-    sha = _sha(bytes(data))
-    stem = f'torn-{segment[:-4]}-o{offset:010d}-{sha[:16]}'
-    for attempt in range(64):
-        name = stem + (f'-a{attempt}' if attempt else '') + '.ev'
-        p = os.path.join(ed, name)
-        ref = EvidenceRef(f'{EVIDENCE_DIR}/{name}', sha, len(data), segment, offset)
-        kk = fs.kind(p)
-        if kk == 'file':
-            if fs.read_bytes(p) == content:
-                return ref, False
-            continue
-        if kk != 'missing':
-            continue
-        h = fs.open_new(p)
-        try:
-            fs.write(h, content)
-            fs.fsync(h)
-        finally:
-            try:
-                fs.close(h)
-            except OSError:
-                pass
-        fs.fsync_dir(ed)
-        if fs.read_bytes(p) != content:
-            raise OSError(errno.EIO, 'evidence read-back differs')
-        return ref, True
-    raise OSError(errno.EEXIST, 'no free evidence name')
+    j = FileJournal(fs, account_dir, folder, new_no, h, tuple(seals), seg_len, writer_build)
+    return Recovery(Verdict.REPAIRED, j, folder.state(), tuple(plan.findings), tuple(evidence), tuple(created))
 
 
 __all__ = ['Recovery', 'Finding', 'EvidenceRef', 'Verdict', 'recover_journal', 'evidence_bytes', 'DurabilityUnavailable']

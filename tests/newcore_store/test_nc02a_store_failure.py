@@ -35,21 +35,30 @@ def _fail_on(op_name, code):
 
 # ------------------------------------------------------------------------------------------------ store failure
 @pytest.mark.parametrize('op_name,code', [('write', ENOSPC), ('write', EROFS), ('fsync', ENOSPC), ('fsync', EACCES)])
-def test_failed_append_raises_durability_unavailable_and_poisons_the_journal(op_name, code):
+def test_persistently_failing_store_raises_consumes_nothing_and_a_retry_lands_once_when_writable(op_name, code):
     fs, j = _journal_with(5)
     f = FaultFs(fs, fail=_fail_on(op_name, code))
     j._fs = f
+    gate_before = j.gate().grammar.last_sequence
     with pytest.raises(DurabilityUnavailable) as ex:
         j.append(SCENARIO[5])
     assert isinstance(ex.value, JournalUnavailable) and ex.value.errno == code and ex.value.op == op_name
     assert ACCT_DIR not in str(ex.value)                              # names the file, never the path
-    assert j.poisoned and j.last_sequence() == 5 and j.read() == tuple(SCENARIO[:5])
-    assert j.find_decision(SCENARIO[5].decision.decision_id) is None  # nothing booked in memory
-    calls = len(f.trace)
-    for e in (SCENARIO[5], SCENARIO[0]):
+    assert j.needs_roll == (op_name == 'fsync')                     # a failed fsync leaves bytes to seal off
+    assert j.last_sequence() == 5 and j.read() == tuple(SCENARIO[:5])
+    assert j.gate().grammar.last_sequence == gate_before              # staged, never committed: nothing consumed
+    assert j.find_decision(SCENARIO[5].decision.decision_id) is None
+    for e in (SCENARIO[5], SCENARIO[5]):
         with pytest.raises(DurabilityUnavailable):
-            j.append(e)                                              # never retried: no further IO at all
-    assert len(f.trace) == calls
+            j.append(e)                                              # each retry first retries the roll, which fails
+    assert j.read() == tuple(SCENARIO[:5])
+    j._fs = fs                                                       # the store is writable again
+    assert j.append(SCENARIO[5]) is Admission.APPLY and not j.needs_roll
+    assert j.append(SCENARIO[5]) is Admission.ALREADY_APPLIED
+    assert [j.append(e) for e in SCENARIO[6:]] == [Admission.APPLY] * (len(SCENARIO) - 6)
+    j.close()
+    r = recover(fs)
+    assert r.verdict is Verdict.CLEAN and r.journal.read() == tuple(SCENARIO)
     d = durability_hold()
     assert (d.outcome, d.mode, d.hold_kind, d.reason) == (StoreOutcome.HARD_HOLD, EntriesMode.HOLD,
                                                           HoldKind.DURABILITY_UNAVAILABLE,
@@ -88,7 +97,50 @@ def test_a_partially_written_failed_append_is_a_torn_tail_on_restart():
     with pytest.raises(DurabilityUnavailable):
         j.append(SCENARIO[5])
     r = recover(fs.crash('ntfs', 'all'))
-    assert r.verdict is Verdict.REPAIRED and r.journal.read() == tuple(SCENARIO[:5]) and len(r.evidence) == 1
+    assert r.verdict is Verdict.REPAIRED and r.journal.read() == tuple(SCENARIO[:5]) and len(r.evidence) >= 1
+
+
+class _FailOnceFs(FaultFs):
+    def __init__(self, inner, op, partial=False):
+        super().__init__(inner)
+        self.op, self.partial, self.armed = op, partial, True
+
+    def write(self, h, data):
+        if self.armed and self.op == 'write':
+            self.armed = False
+            if self.partial:
+                self.inner.write(h, data[:len(data) // 2])
+            raise oserror(ENOSPC)
+        return super().write(h, data)
+
+    def fsync(self, h):
+        if self.armed and self.op == 'fsync':
+            self.armed = False
+            raise oserror(ENOSPC)
+        return super().fsync(h)
+
+
+@pytest.mark.parametrize('pending', PENDING)
+@pytest.mark.parametrize('model', ['ntfs', 'posix'])
+@pytest.mark.parametrize('op,partial', [('write', False), ('write', True), ('fsync', False)])
+def test_a_one_shot_failure_is_sealed_off_at_once_so_every_restart_equals_the_in_process_state(op, partial, model,
+                                                                                               pending):
+    fs, j = _journal_with(5)
+    j._fs = _FailOnceFs(fs, op, partial)
+    with pytest.raises(DurabilityUnavailable):
+        j.append(SCENARIO[5])
+    assert not j.needs_roll                                          # rolled (or reopened) inside the failed append
+    landed = op == 'fsync' or partial
+    assert j.segment_no == (2 if landed else 1)
+    if landed:
+        ev_ref, new_seg = j.rolls[-1]
+        assert ev_ref.name.startswith('evidence/failed-seg-000001-') and new_seg == 'seg-000002.seg'
+    r = recover(fs.crash(model, pending))                            # the process dies right after the failure
+    assert r.verdict is Verdict.CLEAN and r.journal.read() == tuple(SCENARIO[:5])   # never the failed event
+    assert j.append(SCENARIO[5]) is Admission.APPLY                  # the in-process retry lands exactly once
+    j.close()
+    r2 = recover(fs)
+    assert r2.verdict is Verdict.CLEAN and r2.journal.read() == tuple(SCENARIO[:6])
 
 
 @pytest.mark.parametrize('code', [ENOSPC, EROFS])
