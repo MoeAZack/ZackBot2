@@ -363,7 +363,11 @@ def run_scenario(spec, target, *, run_nonce, monotonic=time.monotonic, baseline=
                                str(run.runner.counters.unprotected_cycles)))
         res.verdict = FAIL if not all(ok for _, ok, _ in res.assertions) else INCONCLUSIVE
     else:
-        res.assertions += _evaluate(run, expectations(spec, target.kind), res.final_truth)
+        try:
+            res.assertions += _evaluate(run, expectations(spec, target.kind), res.final_truth)
+        except Exception as ex:                                       # noqa: BLE001 - e.g. a fills read that fails
+            res.error = f'{type(ex).__name__}: {ex}'
+            res.assertions.append(('expectations evaluated', False, res.error))
         res.verdict = PASS if all(ok for _, ok, _ in res.assertions) else FAIL
     if cleanup is not None:
         res.assertions.append(('cleanup clean', cleanup.clean, f'attempts {cleanup.attempts}'))
