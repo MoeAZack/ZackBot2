@@ -29,8 +29,8 @@ MUTATIONS = {
     'add cap removed': [
         (M + 'core.py', "            if CTX.add(w['add_filled'], q) > (plan.add_qty or ZERO):",
                         "            if False:"),
-        (M + 'core.py', "                if w['add'] is None:\n                    w['add_phase'] = AddPhase.CLOSED",
-                        "                if w['add'] is None:\n                    w['add_phase'] = AddPhase.PENDING")],
+        (M + 'core.py', "            if w['add'] is None:\n                w['add_phase'] = AddPhase.CLOSED",
+                        "            if w['add'] is None:\n                w['add_phase'] = AddPhase.PENDING")],
     'add risk not reserved in the plan': [(M + 'plan.py',
         "                 [(plan.entry_qty, plan.entry_price)] +\n"
         "                 ([(plan.add_qty, market_fill(plan.add_price, plan.side, plan.costs.slip, opening=True))]\n"
