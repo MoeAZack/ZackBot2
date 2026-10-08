@@ -22,11 +22,17 @@ SUITE = ['tests/newcore_store', 'tests/newcore_ports/test_nc02a_file_journal_con
 
 # name -> (file, [(exact source text, replacement)]); each anchor must occur exactly once
 MUTATIONS = {
+    'the torn check re-reads the by-binding entry (P1)': (S + 'store.py', [(
+        "    elif entry[0] == 'torn':", "    elif _by_binding(fs, paths, account)[0] == 'torn':")]),
+    'failure_reason echoes the exception message (P2)': (S + 'errors.py', [(
+        "        return 'cipher_unavailable', CIPHER_UNAVAILABLE_REASON", "        return 'cipher_unavailable', f'{CIPHER_UNAVAILABLE_REASON}: {ex}'")]),
+    'failure_reason classifies by message text (P2)': (S + 'errors.py', [(
+        "    if _cipher_unavailable(ex):", "    if _cipher_unavailable(ex) or 'CipherUnavailable' in str(ex):")]),
     'a cipher-less repair fails without a typed reason (N6)': (S + 'recovery.py', [(
         "                        tuple(plan.findings) + (Finding(kind, None, None, why),), tuple(evidence), tuple(created),",
         "                        tuple(plan.findings), tuple(evidence), tuple(created),")]),
     'a torn own by-binding entry is silent (7af893a)': (S + 'store.py', [(
-        "    elif _by_binding(fs, paths, account)[0] == 'torn':", "    elif False:")]),
+        "    elif entry[0] == 'torn':", "    elif False:")]),
     'a stray file in snap/ read as damage (N4)': (S + 'store.py', [("            seen.findings.append(f'stray file in snap/: {n} (not a generation: reported, ignored, kept)')", "            seen.damage.append('unexpected file in snap/')")]),
     'a malformed by-binding entry ignored (N7)': (S + 'store.py', [("    if state == 'bad':\n        return 'identity'", "    if False:\n        return 'identity'")]),
     'promotion ignores the by-binding index (N7)': (S + 'store.py', [('        bp = _binding_problem(self.fs, self.paths, account)', '        bp = None  # ')]),

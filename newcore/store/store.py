@@ -670,10 +670,11 @@ def _read_only(fs, paths, account, reader, store, seen):
             seen.unreadable.append('anchor')
         elif anchor.state is PairState.DAMAGE:
             seen.damage.append('anchor slots')
-    bp = _binding_problem(fs, paths, account)                    # N7: the index is used at every boot
+    entry = _by_binding(fs, paths, account)                      # N7, read ONCE (Codex P1: no second read can
+    bp = _problem_of(entry, account)                             # disagree with the first)
     if bp is not None:
         (seen.identity if bp[0] == 'identity' else seen.unreadable).append(bp[1])
-    elif _by_binding(fs, paths, account)[0] == 'torn':           # visible, outcome unchanged (Cowork, 7af893a)
+    elif entry[0] == 'torn':                                     # visible, outcome unchanged (Cowork, 7af893a)
         seen.findings.append('by-binding entry torn (empty or a prefix of this account\'s own entry: an interrupted '
                              'bind): treated as absent until the next bind() completes it')
     head = None
@@ -792,8 +793,13 @@ def _own_entry(account):
 
 def _binding_problem(fs, paths, account):
     """(cause, why) when the by-binding index forbids this account on its configured key, else None. 'absent' is fine
-    (a first run, or an index entry a failed best-effort bind() never wrote)."""
-    state, v = _by_binding(fs, paths, account)
+    (a first run, or an index entry a failed best-effort bind() never wrote). One read of the entry."""
+    return _problem_of(_by_binding(fs, paths, account), account)
+
+
+def _problem_of(entry, account):
+    """The blocking problem of ONE classified by-binding read (state, value) - see _binding_problem."""
+    state, v = entry
     if state == 'ok' and v != account.account_id:
         return 'identity', 'the binding belongs to another account'
     if state == 'bad':

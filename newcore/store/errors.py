@@ -11,7 +11,8 @@ def _os_kind(cause):
     if cause is None:
         return 'failed'
     win = getattr(cause, 'winerror', None)
-    return f'{type(cause).__name__}(errno={cause.errno}' + (f', winerror={win})' if win is not None else ')')
+    return f'{type(cause).__name__}(errno={getattr(cause, "errno", None)}' + (f', winerror={win})' if win is not None
+                                                                              else ')')
 
 
 class DurabilityUnavailable(JournalUnavailable):
@@ -29,23 +30,40 @@ class DurabilityUnavailable(JournalUnavailable):
         self.name = os.path.basename(path) if path else ''
         self.errno = getattr(cause, 'errno', None)
         self.winerror = getattr(cause, 'winerror', None)
+        self.cause_type = type(cause).__name__ if cause is not None else None      # safe fields only (A16)
+        self.cipher_unavailable = _cipher_unavailable(cause)                       # typed, never from a message
         super().__init__(f'store {op} on {self.name or "<store>"}: {_os_kind(cause)}')
 
 
-def failure_reason(ex):
-    """(kind, text) naming WHY the store could not write - never silent (Cowork N6). kind is 'cipher_unavailable' when
-    no evidence cipher exists on this platform (DPAPI off Windows: the evidence copy, and with it the repair, fails
-    closed), else 'unwritable'. The text names the operation / file name / errno only (A16)."""
+def _cipher_unavailable(ex):
+    """True when `ex` or anything on its __cause__ / __context__ chain IS a CipherUnavailable (or a DurabilityUnavailable
+    that recorded one). Classification by type only - never by matching an exception's message (Codex P2)."""
     from .cipher import CipherUnavailable
-    cause = ex
-    while cause is not None and not isinstance(cause, CipherUnavailable):
-        cause = cause.__cause__ or cause.__context__
-    if cause is not None or isinstance(ex, CipherUnavailable) or 'CipherUnavailable' in str(ex):
-        c = cause or ex
-        return 'cipher_unavailable', f'no evidence cipher on this platform: {getattr(c, "strerror", None) or c}'
+    seen, c = set(), ex
+    while c is not None and id(c) not in seen:
+        seen.add(id(c))
+        if isinstance(c, CipherUnavailable) or getattr(c, 'cipher_unavailable', None) is True:
+            return True
+        c = c.__cause__ or c.__context__
+    return False
+
+
+CIPHER_UNAVAILABLE_REASON = ('no evidence cipher on this platform (CipherUnavailable; the production cipher is DPAPI, '
+                             'Windows only): the evidence copy fails closed')
+
+
+def failure_reason(ex):
+    """(kind, text) naming WHY the store could not write - never silent (Cowork N6) and never the exception's own
+    message (Codex P2: a message can carry a full path / user name or wrapped secret-shaped text into durable findings).
+    kind: 'cipher_unavailable' (typed, from the exception or its cause chain) or 'unwritable'. text: a fixed public
+    reason plus safe fields only - the exception type, errno, winerror."""
+    if _cipher_unavailable(ex):
+        return 'cipher_unavailable', CIPHER_UNAVAILABLE_REASON
     if isinstance(ex, DurabilityUnavailable):
-        return 'unwritable', str(ex)
-    return 'unwritable', _os_kind(ex) if isinstance(ex, OSError) else type(ex).__name__
+        return 'unwritable', (f'store write failed ({ex.cause_type or "no cause"}, errno={ex.errno}, '
+                              f'winerror={ex.winerror})')
+    return 'unwritable', (f'store write failed ({type(ex).__name__}, errno={getattr(ex, "errno", None)}, '
+                          f'winerror={getattr(ex, "winerror", None)})')
 
 
 class SequenceConflict(JournalConflict):

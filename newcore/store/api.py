@@ -73,7 +73,8 @@ def open_store(base, account, *, exchange, now_ms, aggregate_id=None, fold=None,
         r = boot(base, account, exchange=exchange, now_ms=now_ms, fs=fs, reader=reader, cipher=cipher,
                  settings=settings, aggregate_id=aggregate_id, fold=fold)
     except JournalLocked as ex:
-        return StoreBoot(Outcome.REJECT, None, f'locked: {ex}', None, None, None, None, None, (), (), (), ())
+        return StoreBoot(Outcome.REJECT, None, 'locked: another process holds this account', None, None, None, None,
+                         None, (), (), (), ())
     first_run = 'init_commit' in r.writes and r.mode is Mode.MANAGE
     outcome = {Mode.MANAGE: Outcome.INIT if first_run else Outcome.MANAGE, Mode.HOLD: Outcome.HOLD,
                Mode.HOLD_INIT: Outcome.HOLD_INIT, Mode.ABORT_RO: Outcome.ABORT_RO,

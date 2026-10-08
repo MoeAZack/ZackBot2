@@ -328,7 +328,8 @@ def _read_only(fs, account_dir, account_id, aggregate_id):
     try:                                                      # boot: rebuild the gate by replaying the durable events
         folder = Folder.replay(account_id, aggregate_id, events)
     except JournalConflict as ex:
-        raise _Out(Verdict.DAMAGED, [Finding('damage', None, None, f'gate replay: {ex}')]) from None
+        raise _Out(Verdict.DAMAGED, [Finding('damage', None, None,
+                                             f'gate replay refused the journal ({type(ex).__name__})')]) from None
 
     # P6 torn tail ------------------------------------------------------------------------------------------------
     active = scans[m] if m else None
