@@ -55,14 +55,16 @@ def path(bars, n, side=LONG, base='100', wick='0.5'):
 
 
 def plan(side=LONG, *, entry='100.02', qty='5', stop='98.02', cap='12', costs=GOLDEN_COSTS, r=None, add=None,
-         scale='1', tp1_frac=None, tp1_off=None, tp2_off=None, be=False, time_exit=None, trail=None, mirror_entry=True):
+         scale='1', tp1_frac=None, tp1_off=None, tp2_off=None, be=False, time_exit=None, trail=None, mirror_entry=True,
+         trail_mode='close_offset'):
     """A plan given in the LONG frame (entry / stop / add prices), mirrored for a short."""
     b = build_plan(rules=r or rules(), side=side, entry_price=px(side, entry) if mirror_entry else D(entry),
                    entry_qty=D(qty), entry_candle_open_ms=T0, candle_seconds=4 * 3600, stop_price=px(side, stop),
                    risk_cap=D(cap), costs=costs, add_price=None if add is None else px(side, add),
                    add_scale=None if add is None else D(scale), tp1_frac=None if tp1_frac is None else D(tp1_frac),
                    tp1_offset=None if tp1_off is None else D(tp1_off), tp2_offset=None if tp2_off is None else D(tp2_off),
-                   be_after_tp1=be, time_exit_candles=time_exit, trail_offset=None if trail is None else D(trail))
+                   be_after_tp1=be, time_exit_candles=time_exit, trail_offset=None if trail is None else D(trail),
+                   trail_mode=trail_mode)
     return b.plan
 
 

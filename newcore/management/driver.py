@@ -151,6 +151,8 @@ class DriverState:
     waiting: tuple               # market CLOSE / REDUCE drafts waiting for in-flight reduce orders to settle
     quote_asset: str             # fees in this asset are booked as they are
     fee_rates: tuple             # ((asset, rate in quote), ...) for fees charged in another asset
+    stop_route: str              # the route a NEW stop is tried on first
+    stop_route_policy: str       # per_attempt (G6: classic first, algo only after its refusal) | sticky_after_refusal
 
 
 @dataclasses.dataclass(frozen=True, slots=True, kw_only=True)
@@ -306,14 +308,20 @@ def _check_lineage(lineage, lot_id):
     return tuple(sorted(lineage))
 
 
-def _new_state(plan, account_id, lot_id, route, pos, lineage, mode, hold_kind, quote_asset, fee_rates):
+STOP_ROUTE_POLICIES = ('per_attempt', 'sticky_after_refusal')
+
+
+def _new_state(plan, account_id, lot_id, route, pos, lineage, mode, hold_kind, quote_asset, fee_rates,
+               stop_route_policy='per_attempt'):
+    req(stop_route_policy in STOP_ROUTE_POLICIES, 'stop_route_policy', f'one of {STOP_ROUTE_POLICIES}')
     for i, e in enumerate(fee_rates):
         req(type(e) is tuple and len(e) == 2 and type(e[0]) is str and type(e[1]) is Decimal and e[1] > 0,
             f'fee_rates[{i}]', '(asset, positive Decimal rate in the quote asset)')
     return DriverState(plan=plan, account_id=account_id, lot_id=lot_id, route=route, pos=pos, bindings=(), triggers=(),
                        held=(), lineage=_check_lineage(tuple(lineage), lot_id), trade_ids=(), deferred=(),
                        mode=EntriesMode(mode), hold_kind=hold_kind, waiting=(), quote_asset=quote_asset,
-                       fee_rates=tuple(sorted(fee_rates)))
+                       fee_rates=tuple(sorted(fee_rates)), stop_route=route,
+                       stop_route_policy=stop_route_policy)
 
 
 # --------------------------------------------------------------------------------------------------- core actions
@@ -331,7 +339,8 @@ def _apply_actions(w, actions):
                 w.replace_binding(b, current=True)
                 continue
             old = [b for b in w.bindings() if b.leg is Leg.STOP and b.state in (BindState.SENT, BindState.WORKING)]
-            d = w.send(w.draft(Leg.STOP, Purpose.PROTECT, OrderType.STOP_MARKET, a.qty, a.reason, Op.PLACE, a.price))
+            d = w.send(w.draft(Leg.STOP, Purpose.PROTECT, OrderType.STOP_MARKET, a.qty, a.reason, Op.PLACE, a.price,
+                               route=w.d['stop_route']))
             for b in w.bindings():
                 if d is not None and b.intent_id == d.intent_id:
                     w.replace_binding(b, replaces=old[-1].intent_id if old else None)
@@ -445,7 +454,7 @@ def _restore_stop(w, b):
         return
     w.reconcile.append(('stop_lost', b.intent_id, b.status))
     d = w.send(w.draft(Leg.STOP, Purpose.PROTECT, OrderType.STOP_MARKET, pos.stop.qty, R.PROTECT_RESTORING, Op.PLACE,
-                       pos.stop.price))
+                       pos.stop.price, route=w.d['stop_route']))
     _ = d
 
 
@@ -479,6 +488,19 @@ def _release_stop_replacements(w):
                                purpose=Purpose.PROTECT, reason=R.PROTECT_REPLACE))
 
 
+def _cancel_flat_stops(w):
+    """A flat lot keeps no stop. When the OLD stop fills the rest while its replacement is in flight (TNET-01 T08),
+    the core books that fill as its stop leg and has nothing left to cancel: every stop still working at the venue
+    is cancelled here (one still in flight is cancelled once the venue confirms it)."""
+    if w.d['pos'].qty != 0:
+        return
+    held = {h.intent_id for h in w.d['held'] if isinstance(h, CancelDraft)}
+    for b in w.bindings():
+        if b.leg is Leg.STOP and b.state is BindState.WORKING and b.intent_id not in held:
+            w.send(CancelDraft(intent_id=b.intent_id, client_id=b.client_id, route=b.route, leg=Leg.STOP,
+                               purpose=Purpose.PROTECT, reason=R.LIFECYCLE_ORPHAN_CANCEL))
+
+
 def _release_waiting(w):
     """Send a waiting market close / reduce once no other reduce is in flight, sized to what the core still asks
     for (never more than the position): two reduces never race for one position (Cowork 6)."""
@@ -505,6 +527,7 @@ def _finish(w):
         if not w.core_in:
             break
         _run_core(w, tuple(w.core_in))
+    _cancel_flat_stops(w)
     _release_waiting(w)
     _sync_triggers(w)
     for b in w.bindings():                                       # an execution the venue reported, not booked yet
@@ -516,12 +539,15 @@ def _finish(w):
 
 # ------------------------------------------------------------------------------------------------- entry points
 def start(plan, *, account_id, lot_id, entry_fee, lineage=(), route='classic', mode=EntriesMode.ACTIVE,
-          hold_kind=None, quote_asset='USDT', fee_rates=()):
+          hold_kind=None, quote_asset='USDT', fee_rates=(), stop_route_policy='per_attempt'):
     """The confirmed entry fill opened lot `lot_id`: place the bracket (stop first; the add stays held).
-    `lineage` = the journal's next ordinals of THIS lot's child intents ((lot_id, purpose value, n), ...)."""
+    `lineage` = the journal's next ordinals of THIS lot's child intents ((lot_id, purpose value, n), ...).
+    `stop_route_policy`: `per_attempt` (default, journal rule G6) tries EVERY new stop on `route` first and falls
+    back to the algo route only after that attempt is refused; `sticky_after_refusal` sends every later stop on the
+    algo route after the first refusal (only if Codex amends G6 to allow a per-lot sticky algo route)."""
     req(isinstance(plan, ManagementPlan), 'start.plan', 'a ManagementPlan')
     w = _W(_new_state(plan, account_id, lot_id, route, initial_state(plan, entry_fee), lineage, mode, hold_kind,
-                      quote_asset, tuple(fee_rates)))
+                      quote_asset, tuple(fee_rates), stop_route_policy))
     _run_core(w)
     return _finish(w)
 
@@ -666,6 +692,9 @@ def _fallback_to_algo(w, b):
     intent on the algo route. The core never sees a refusal: its stop request stays alive, and the old stop it
     replaces (if any) keeps working until this one is confirmed."""
     w.drop_binding(b)
+    if w.d['stop_route_policy'] == 'sticky_after_refusal':
+        w.d['stop_route'] = 'algo'                 # every later stop goes straight to the algo route
+    # per_attempt (G6): the next stop is tried on the configured route again; its own refusal brings it here
     d = w.send(w.draft(Leg.STOP, Purpose.PROTECT, OrderType.STOP_MARKET, b.qty, b.reason, Op.PLACE, b.stop_price,
                        route='algo'))
     for x in w.bindings():
@@ -767,12 +796,12 @@ def lot_vs_venue(ds, venue_qty):
 
 # ------------------------------------------------------------------------------------------------------ restart
 def fold(plan, *, account_id, lot_id, entry_fee, events, lineage=(), route='classic', quote_asset='USDT',
-         fee_rates=()):
+         fee_rates=(), stop_route_policy='per_attempt'):
     """Rebuild the driver from its durable event log: ('fills', rows) / ('outcome', outcome, submit) / ('mark', price)
     / ('candle', candle, close_request, funding) / ('mode', mode, hold_kind). Returns every Drive, in order. Total:
     every venue-derived event folds (an input the core would refuse is reported, never raised)."""
     out = [start(plan, account_id=account_id, lot_id=lot_id, entry_fee=entry_fee, lineage=lineage, route=route,
-                 quote_asset=quote_asset, fee_rates=fee_rates)]
+                 quote_asset=quote_asset, fee_rates=fee_rates, stop_route_policy=stop_route_policy)]
     for e in events:
         ds = out[-1].state
         kind = e[0]
