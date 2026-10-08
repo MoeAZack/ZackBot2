@@ -31,7 +31,7 @@ import types
 import typing
 from decimal import Decimal
 
-from . import account, decision, events, instrument, orders, portfolio, snapshot
+from . import account, decision, events, instrument, orders, portfolio, protection, snapshot
 from .base import INT64, Record, canonical_decimal, dec_str, field_spec, req
 from .errors import DomainError, ForeignDocument, FutureSchema, InvalidRecord, OlderSchema, UnknownSchema, \
     UnsupportedVersion
@@ -58,6 +58,12 @@ RECORD_TYPES = {
     'event_decision_recorded': events.DecisionRecorded,
     'event_mode_changed': events.ModeChanged,
     'event_binding_changed': events.BindingChanged,
+    # the contract-2 required types that are otherwise nested, encodable standalone (Cowork H05, Codex ruling: exactly these)
+    'account_binding': account.AccountBinding,
+    'instrument_id': instrument.InstrumentId,
+    'protection': protection.Protection,
+    'lot': portfolio.Lot,
+    'position': portfolio.Position,
 }
 TYPE_OF = {cls: k for k, cls in RECORD_TYPES.items()}
 
@@ -157,7 +163,7 @@ def from_json(cls, d, path):
     spec, names = _record_decoder(cls)
     if d.keys() != names:
         extra, missing = set(d) - names, names - set(d)
-        _bad(path, f'unknown keys {sorted(extra)}' if extra else f'missing keys {sorted(missing)}')
+        _bad(path, f'unknown keys {sorted(map(repr, extra))}' if extra else f'missing keys {sorted(missing)}')
     kw = {name: dec(d[name], f'{path}.{name}') for name, dec in spec}
     try:
         return cls(**kw)
@@ -179,9 +185,12 @@ def check_header(doc):
         raise FutureSchema('document.schema_version', f'{v} is newer than this build ({SCHEMA_VERSION})')
     if v < SCHEMA_VERSION:
         raise OlderSchema('document.schema_version', f'{v} is older than {SCHEMA_VERSION}; migration is NC-02 policy')
-    req(set(doc) == ENVELOPE, 'document', f'envelope keys {sorted(doc)}')
-    req(doc['record_type'] in RECORD_TYPES, 'document.record_type', f'unknown record type {doc["record_type"]!r}')
-    return doc['record_type']
+    if set(doc) != ENVELOPE:
+        _bad('document', f'envelope keys {sorted(map(repr, doc))}')
+    rtype = doc['record_type']
+    if type(rtype) is not str or rtype not in RECORD_TYPES:     # type first: never hash an unhashable wire value
+        _bad('document.record_type', f'unknown record type {rtype!r:.80}')
+    return rtype
 
 
 def decode_document(doc, *, expect=None):
