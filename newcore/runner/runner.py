@@ -53,7 +53,7 @@ from __future__ import annotations
 
 import dataclasses
 from dataclasses import dataclass, field
-from decimal import Decimal
+from decimal import Context, Decimal
 
 from newcore.domain import (Account, Action, Authority, Decision, DecisionRecorded, EntriesMode, HoldKind,
                             InstrumentRules, IntentRecorded, IntentState, IntentStateChanged, Lot, LotSource,
@@ -67,7 +67,7 @@ from newcore.domain.portfolio import Fill
 from newcore.ports.journal import JournalUnavailable
 from newcore.store.hold import durability_hold, hard_hold_permits
 from newcore.ports.keys import check_decision_key, route_of
-from newcore.ports.venue import MarketOrder, OrderRef, OutcomeKind, ReadKind, StopOrder
+from newcore.ports.venue import MarketOrder, OrderOutcome, OrderRef, OutcomeKind, ReadKind, StopOrder
 
 from . import ids
 from .fold import Fold, OPEN_STATES
@@ -90,6 +90,24 @@ DUPLICATE_CLIENT_ID = -4116           # Binance "ClientOrderId is duplicated": t
 ALGO_FALLBACK_CODES = (-4120, -1116, -1102, -4136)   # newcore.venue.errors (transport): use the algo service
 SECURE_ROUNDS = 2                     # per lot per cycle: stop attempt, then (if refused) one reduce-only close
 OPENING_PURPOSES = frozenset({Purpose.ENTRY, Purpose.ADD})
+
+
+ALGO_ROUTE = 'algo_route'            # TestnetVenue detail: the refusal names the algo service (-4120 and friends)
+ALGO_TRIGGERED = 'algo_triggered'    # TestnetVenue detail: an algo stop triggered; exchange_order_id = the child order
+DUPLICATE_DETAIL = 'duplicate_client_id'   # TestnetVenue: a duplicate client id comes back UNKNOWN with this detail
+OPEN_EXCHANGE_STATUSES = ('NEW', 'PARTIALLY_FILLED')
+RCTX = Context(prec=34)
+
+
+def _is_duplicate(out):
+    """The order EXISTS: the raw -4116 refusal, or TestnetVenue's UNKNOWN 'duplicate_client_id' form."""
+    return (out.kind is OutcomeKind.REJECTED and out.error_code == DUPLICATE_CLIENT_ID) or \
+        (out.kind is OutcomeKind.UNKNOWN and out.detail == DUPLICATE_DETAIL)
+
+
+def _suggests_algo(out):
+    """A refusal that names the algo route: TestnetVenue detail 'algo_route', or one of the transport's codes."""
+    return out.kind is OutcomeKind.REJECTED and (out.detail == ALGO_ROUTE or out.error_code in ALGO_FALLBACK_CODES)
 
 
 class UnkeyedOpeningDecision(ValueError):
@@ -218,10 +236,16 @@ class Runner:
         if iv.final is not None:                                          # crash after the durable FINAL result:
             self._state(iv, terminal_for(iv.final))                       # only its terminal step is missing
             return
-        if submit and out.kind is OutcomeKind.REJECTED and out.error_code == DUPLICATE_CLIENT_ID:
+        if submit and _is_duplicate(out):
             # a duplicate-id refusal proves the order EXISTS (an earlier send of this same intent landed): never
             # "refused, nothing executed"; read it by its client id and record what the venue holds
             out, submit = self.venue.query(self._ref(iv)), False
+        if out.kind is OutcomeKind.KNOWN and out.detail == ALGO_TRIGGERED:
+            out = self._follow_child(iv, out)                             # fill truth = fills(child order id)
+            if out is None:
+                return                                                    # triggered, child not filled yet: wait
+        if out.kind is OutcomeKind.KNOWN and out.status not in OPEN_EXCHANGE_STATUSES:
+            return                                                        # no open-order record to book: re-query
         res = result_from(out, iv.intent, ids.result_id(iv.intent_id, len(iv.results)), submit=submit)
         if res is None:
             return
@@ -241,6 +265,21 @@ class Runner:
             self._emit(ResultObserved, reason=iv.intent.reason, result=res)
             if st in (IntentState.SUBMITTED, IntentState.WORKING):
                 self._state(iv, IntentState.UNKNOWN)
+
+    def _follow_child(self, iv, out):
+        """An algo stop that triggered is KNOWN with its CHILD order id (TestnetVenue 'algo_triggered'): it carries no
+        executed quantity of its own. Book it only from the child's fills: all of the intent's quantity filled ->
+        a FINAL FILLED result at the fills' VWAP under the child id; anything less -> nothing yet (re-queried)."""
+        r = self.venue.fills(iv.intent.symbol, out.exchange_order_id)
+        if r.kind is not ReadKind.OK or not r.value:
+            return None
+        qty = sum((f.qty for f in r.value), ZERO)
+        if qty != iv.intent.qty:
+            return None
+        vwap = RCTX.divide(sum((f.qty * f.price for f in r.value), ZERO), qty)
+        return OrderOutcome(kind=OutcomeKind.FINAL, ref=out.ref, observed_at_ms=out.observed_at_ms, status='FILLED',
+                            exchange_order_id=out.exchange_order_id, executed_qty=qty, avg_price=vwap,
+                            detail=ALGO_TRIGGERED)
 
     def _resolve(self, iv):
         """One query for an intent whose answer was lost or acknowledged only."""
@@ -370,10 +409,10 @@ class Runner:
         if found.kind is OutcomeKind.KNOWN:
             return                                                        # already resting: confirmed, not duplicated
         out = self.venue.submit_stop(StopOrder(ref=ref, position_side=p.side, qty=qty, stop_price=price))
-        if out.kind is OutcomeKind.REJECTED and out.error_code in ALGO_FALLBACK_CODES:    # same id, the algo route
+        if _suggests_algo(out):                                              # same id, the algo route
             ref = OrderRef(symbol=p.symbol, client_id=cid, route='algo')
             out = self.venue.submit_stop(StopOrder(ref=ref, position_side=p.side, qty=qty, stop_price=price))
-        if out.kind is OutcomeKind.REJECTED and out.error_code == DUPLICATE_CLIENT_ID:
+        if _is_duplicate(out):
             out = self.venue.query(ref)
         self.counters.emergency_stops += out.kind is OutcomeKind.KNOWN
         self._incident(f'hard HOLD emergency stop {cid} {p.symbol} {p.side} {qty} @ {price} -> {out.kind}')
@@ -654,7 +693,7 @@ class Runner:
         if prev.state is not IntentState.REJECTED or route_of(prev.intent_id, prev.intent.client_order_id) != 'classic':
             return 'classic'
         code = self._refusals.get(prev.intent_id, 'unknown')
-        return 'algo' if code == 'unknown' or code in ALGO_FALLBACK_CODES else 'classic'
+        return 'algo' if code in ('unknown', ALGO_ROUTE) else 'classic'
 
     def _protect(self, lot):
         if not lot.open or lot.live_stop is not None or lot.closing is not None:
@@ -690,8 +729,8 @@ class Runner:
 
     def _note_refusal(self, iv, out):
         """The venue's refusal code of a stop attempt (in memory: NC-01 results carry no error code)."""
-        if out.kind is OutcomeKind.REJECTED and out.error_code != DUPLICATE_CLIENT_ID:
-            self._refusals[iv.intent_id] = out.error_code
+        if out.kind is OutcomeKind.REJECTED and not _is_duplicate(out):
+            self._refusals[iv.intent_id] = ALGO_ROUTE if _suggests_algo(out) else out.error_code
 
     # ----------------------------------------------------------------------------------------------- 4. decide
     def _decide_all(self):
