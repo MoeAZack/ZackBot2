@@ -407,6 +407,7 @@ def run(book, sleeves, start=500.0, max_lev=10.0, daily_halt=0.08, t0=None, t1=N
                     close(sl, s, p, px, 1, i, 'stop'); return True
                 lvl = p['levels'][p['dca']]; q = p['q0'] * p['w'][p['dca']]
                 lvl = min(lvl, a_) if sd == 1 else max(lvl, a_)              # gapped through the level -> filled where price is
+                lvl *= 1 + sd * SLIP                                         # AUD-07 C13a: a safety order is a taker market order: pays slippage
                 if RR['btc_breaker'] and i <= breaker_until:                 # same breaker policy as live
                     pol = RR['btc_breaker'].get('dca', 'pause')
                     if pol == 'pause': blocked_['dca'] = True; continue
@@ -457,6 +458,7 @@ def run(book, sleeves, start=500.0, max_lev=10.0, daily_halt=0.08, t0=None, t1=N
                 elif ev == 'add':
                     q = p['q0'] * py['frac']
                     lvl = max(lv, a_) if sd == 1 else min(lv, a_)                # gapped through the add level -> filled where price is
+                    lvl *= 1 + sd * SLIP                                         # AUD-07 C13a: a pyramid add is a taker market order: pays slippage
                     if halted or (RR['btc_breaker'] and i <= breaker_until) or notional(sl, i) + q * lvl > max_lev * eq * cfg['share']:
                         blocked_['add'] = True; continue
                     if rule_block(s, sd, q, lvl, q * max(0.0, sd * (lvl - p['stop'])), i, add=True): blocked_['add'] = True; continue
