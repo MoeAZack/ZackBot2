@@ -336,7 +336,7 @@ def run_backtest_job(job_id, req):
             need_1h = TF_SEC[tf] > 3600 and BT.needs_btc_move(cfg, ro.get('pump_guard'), ro.get('risk_rules'))
             tr, cv = BT.run(book, cfg, start=gstart, max_lev=float(req.get('max_lev', 10)), daily_halt=float(req.get('daily_halt', 0.08)),
                             fund_per_bar=BT.FUND_PER_BAR * TF_SEC[tf] / 14400, exchange_rules=xapply,
-                            btc1h=btc1h_for_backtest(days, TF_SEC[tf]) if need_1h else None, **ro)
+                            btc1h=None, **ro)
             if cv.attrs.get('btc_move_source'): btc_src[tf] = cv.attrs['btc_move_source']
             fz = dict(cv.attrs.get('feasibility') or {}); fz['skips'] = (fz.get('skips') or [])[:100]
             feas['groups'][tf] = fz

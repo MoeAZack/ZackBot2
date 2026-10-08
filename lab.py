@@ -835,7 +835,6 @@ def run_lab_job(kind, req, get_book, progress=None, should_stop=None):
     run_kwargs = dict(q.get('run_options') or {}, start=q['start'], max_lev=q['max_lev'], daily_halt=q['daily_halt'],
                       fund_per_bar=BT.FUND_PER_BAR * TF_SEC[q['tf']] / 14400)
     btc1h = getattr(book, 'btc1h', None)                     # AUD-07 C13b: BTC 1h candles from get_book, when it loaded them
-    if btc1h is not None: run_kwargs['btc1h'] = btc1h
     T0, T1 = default_period(book, 220, q['days'])
     t0 = max(T0, pd.Timestamp(q['t0'])) if q.get('t0') else T0
     t1 = min(T1, pd.Timestamp(q['t1'])) if q.get('t1') else T1

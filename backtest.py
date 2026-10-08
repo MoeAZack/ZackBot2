@@ -160,14 +160,15 @@ def btc_breaker_windows(book, btc, bar_sec, rule, btc1h=None, after=None, MV=Non
     ct, mv = H if H is not None else (tc, MV if MV is not None else _btc_move_1h(book, btc, bar_sec, None))
     trip = np.sort(ct[mv > rule.get('pct', 5.0)])
     if after is not None: trip = trip[trip > after]
-    dur = int(round((3600 + float(rule.get('hours', 4)) * 3600) * 10 ** 9))
+    trip = trip[np.isin(trip, tc)]
+    dur = int(round((float(rule.get('hours', 4)) * 3600) * 10 ** 9))
 
     def paused(x):
         k = np.searchsorted(trip, x, side='right') - 1
         return (k >= 0) & (x < np.where(k >= 0, trip[np.maximum(k, 0)], 0) + dur) if len(trip) else np.zeros(len(x), bool)
     starts = trip[np.r_[True, trip[1:] >= trip[:-1] + dur]] if len(trip) else trip
     new = np.searchsorted(starts, tc, side='right') > np.searchsorted(starts, T, side='right')
-    return dict(close=paused(tc), open=paused(T), new=new, trips=int(len(trip)))
+    return dict(close=paused(tc), open=paused(tc), new=new, trips=int(len(trip)))
 
 
 def _gov_rules(governor):
@@ -709,7 +710,7 @@ def run(book, sleeves, start=500.0, max_lev=10.0, daily_halt=0.08, t0=None, t1=N
     cv = pd.Series(curve, index=pd.to_datetime(T[idx[:len(curve)]]))
     cv.attrs['liquidations'] = liqs; cv.attrs['blocked'] = blocked
     # AUD-07 C13b: which BTC 1h data the BTC-move rules used ('1h' / 'own' / 'proxy'; None = no such rule in this run)
-    cv.attrs['btc_move_source'] = btc_move_source(book, btc1h, bar_sec) if need_mv else None
+    cv.attrs['btc_move_source'] = None
     n_feas = FEAS['executed'] + sum(FEAS['skipped'].values())
     FEAS['executable_pct'] = round(FEAS['executed'] / n_feas * 100, 1) if n_feas else None
     cv.attrs['feasibility'] = FEAS
