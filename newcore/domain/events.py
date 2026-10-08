@@ -12,9 +12,10 @@ from __future__ import annotations
 from .account import BINDING_TRANSITIONS, AccountBinding, BindingConfirmation, BindingState
 from .base import Record, check_id, record, req
 from .decision import Decision
+from .facts import FactLedger
 from .incident import Incident
 from .modes import EntriesMode, HoldKind
-from .orders import (INTENT_TRANSITIONS, TERMINAL, IntentState, OrderIntent, OrderResult, ResultPhase,
+from .orders import (INTENT_TRANSITIONS, TERMINAL, Evidence, IntentState, OrderIntent, OrderResult, ResultPhase,
                      booking_step_ok, check_result_for_intent, supersedes, terminal_for)
 from .reasons import ReasonCode
 
@@ -187,7 +188,7 @@ EVENT_TYPES = (IntentRecorded, IntentStateChanged, ResultObserved, DecisionRecor
                IncidentRecorded)
 
 
-def check_event_chain(events, *, after_sequence=0, known_intents=None):
+def check_event_chain(events, *, after_sequence=0, known_intents=None, facts=None):
     """Validate an ordered event list of one aggregate. `after_sequence` is the snapshot's last_sequence.
     `known_intents` maps intent_id ->
     (OrderIntent, state, submitted_at_ms or None) for intents live in that snapshot. Returns the live intents after the
@@ -201,11 +202,17 @@ def check_event_chain(events, *, after_sequence=0, known_intents=None):
     result" - once the intent is TERMINAL on a corroborated not-found, a FINAL exchange record that supersedes it
     (orders.supersedes) is journaled once; the intent stays terminal. A RECONCILE decision with reason
     reconcile.late_fill_after_not_found then applies it: it names that intent (subject_id) and that record (evidence),
-    once, and only after the record is journaled. The step-0 JournalGate enforces the same."""
+    once, and only after the record is journaled. The step-0 JournalGate enforces the same.
+
+    PR #44: `facts` is the durable FactIndex of everything before after_sequence (facts.fold_facts): result ids and
+    incident ids are unique facts for the account's whole life, and a venue trade booked by an external close is
+    consumed once. An external booking must also be resolved by its RECONCILE decision recorded in this log."""
     live = dict(known_intents or {})
     cids = {c for it, _, _ in live.values() for c in it.client_ids}
     finals, ended, decisions, one_shots, used_auth = {}, set(), set(), set(), set()
     closed, superseding, applied_late = {}, {}, set()       # r3 item 3b: ended intents, late FINAL records, decisions
+    ledger = FactLedger(facts)                              # PR #44: durable unique facts (shared with the gate)
+    before = set(live)                                      # intents made durable before after_sequence
     owner = None
     for n, ev in enumerate(events):
         p = f'events[{n}]'
@@ -214,6 +221,7 @@ def check_event_chain(events, *, after_sequence=0, known_intents=None):
             f'expected sequence {after_sequence + n + 1} (gap, reorder or rollback)')
         owner = owner or (ev.account_id, ev.aggregate_id)
         req((ev.account_id, ev.aggregate_id) == owner, p + '.account_id', 'event of another account / aggregate in this log')
+        ledger.check(ev, p)()
         if isinstance(ev, DecisionRecorded):
             d = ev.decision
             req(d.decision_id not in decisions, p, 'decision recorded twice')
@@ -263,8 +271,13 @@ def check_event_chain(events, *, after_sequence=0, known_intents=None):
                 continue
             req(r.intent_id not in ended and r.intent_id not in finals, p, 'event after the final result')
             req(r.intent_id in live, p, 'a result for an intent that was never made durable')
+            req(r.supersedes_result_id is None, p + '.result.supersedes_result_id',
+                'names a prior result it does not supersede')
             it, st, sent = live[r.intent_id]
             check_result_for_intent(it, r, sent)
+            if r.evidence is Evidence.EXCHANGE_EXTERNAL:                               # PR #44 P2-2
+                req(r.resolved_by in decisions or r.intent_id in before, p + '.result.resolved_by',
+                    'the authorising RECONCILE decision is not in the log')
             if r.phase is ResultPhase.FINAL:
                 finals[r.intent_id] = r
     return live

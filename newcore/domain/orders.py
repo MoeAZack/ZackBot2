@@ -23,8 +23,10 @@ from __future__ import annotations
 import enum
 from decimal import Decimal
 
-from .base import (CTX, ZERO, Record, check_client_id, check_id, check_symbol, check_text, non_negative, positive, record,
+from .base import tag
+from .base import (CTX, ZERO, Record, check_ascii_text, check_client_id, check_id, check_symbol, check_text, non_negative, positive, record,
                    req)
+from .account import Venue
 from .reasons import ReasonCode
 
 NOT_FOUND_WINDOW_MS = 20_000          # a lookup earlier than this after the send proves even less (legacy window)
@@ -125,8 +127,6 @@ def can_transition(a, b):
 
 
 POST_HOC_REASON = ReasonCode.RECONCILE_EXTERNAL_CLOSE
-TARGET_REASONS = frozenset({ReasonCode.EXIT_TAKE_PROFIT, ReasonCode.EXIT_TP1, ReasonCode.EXIT_LADDER,
-                            ReasonCode.EXIT_BASKET_TP, ReasonCode.EXIT_BASKET_TP_PART})   # r3 DRAFT item 4
 
 
 def is_post_hoc(intent):
@@ -186,7 +186,7 @@ class OrderIntent(Record):
     replaces_intent_id: str | None  # REDUCE / CLOSE cancel-replace: the CANCELLING predecessor this intent replaces
 
     def _validate(self, p):
-        p = f'{p}[{self.intent_id}]'
+        p = f'{p}[{tag(self.intent_id)}]'
         check_id(self.intent_id, p + '.intent_id', 'int')
         check_id(self.account_id, p + '.account_id', 'acct')
         check_id(self.decision_id, p + '.decision_id', 'dec')
@@ -338,14 +338,18 @@ DECIDED_EVIDENCE = frozenset({Evidence.NOT_FOUND_CORROBORATED, Evidence.POSITION
 
 @record
 class ExternalTrade(Record):
-    """r3 DRAFT item 3: one venue trade of an external (manual) close, by the venue's own trade id."""
+    """r3 item 3a: one venue trade of an external (manual) close. Its identity is (venue, symbol, trade_id): venue trade
+    ids are symbol-scoped (Binance userTrades), so SOL trade 42 and BTC trade 42 are different trades."""
     trade_id: str
+    venue: Venue
+    symbol: str
     at_ms: int
     qty: Decimal
     price: Decimal
 
     def _validate(self, p):
-        check_text(self.trade_id, p + '.trade_id', 64)
+        check_ascii_text(self.trade_id, p + '.trade_id', 64)
+        check_symbol(self.symbol, p + '.symbol')
         positive(self.qty, p + '.qty')
         positive(self.price, p + '.price')
 
@@ -378,9 +382,10 @@ class OrderResult(Record):
     corroboration: tuple[PositionRead, ...]
     resolved_by: str | None           # dec_ of the explicit resolution / adoption
     external_trades: tuple[ExternalTrade, ...]   # EXCHANGE_EXTERNAL only: the venue trades of the external close
+    supersedes_result_id: str | None  # PR #44 P1-b: a late executed FINAL names the not_found_corroborated it supersedes
 
     def _validate(self, p):
-        p = f'{p}[{self.result_id}]'
+        p = f'{p}[{tag(self.result_id)}]'
         check_id(self.result_id, p + '.result_id', 'res')
         check_id(self.intent_id, p + '.intent_id', 'int')
         check_id(self.account_id, p + '.account_id', 'acct')
@@ -392,6 +397,8 @@ class OrderResult(Record):
         if ph is not ResultPhase.FINAL:
             req(self.executed_qty is None and self.avg_price is None and ev is None and not self.corroboration
                 and self.resolved_by is None, p, f'a {ph} result books nothing (no executed qty / price / evidence)')
+            req(self.supersedes_result_id is None, p + '.supersedes_result_id',
+                'only an executed FINAL exchange record supersedes a prior result')
             if ph is ResultPhase.UNKNOWN:
                 req(st is None, p + '.exchange_status', 'an UNKNOWN result has no exchange status')
             else:
@@ -401,6 +408,11 @@ class OrderResult(Record):
             return
         req(self.lookup is None, p + '.lookup', 'a final result is not a lookup failure')
         req(ev is not None, p + '.evidence', 'a final result names its evidence')
+        if self.supersedes_result_id is not None:        # PR #44 P1-b: a NEW fact that names the prior one
+            check_id(self.supersedes_result_id, p + '.supersedes_result_id', 'res')
+            req(self.supersedes_result_id != self.result_id, p + '.supersedes_result_id', 'a result never supersedes itself')
+            req(ev is Evidence.EXCHANGE_FINAL and self.executed_qty is not None and self.executed_qty > 0,
+                p + '.supersedes_result_id', 'only an executed FINAL exchange record supersedes a prior result')
         req(self.executed_qty is not None, p + '.executed_qty', 'a final result decides the executed qty')
         non_negative(self.executed_qty, p + '.executed_qty')
         req(self.executed_qty <= self.requested_qty, p + '.executed_qty', 'more than requested')
@@ -424,7 +436,8 @@ class OrderResult(Record):
         if ev is Evidence.EXCHANGE_EXTERNAL:            # r3 DRAFT item 3 (REC-02 Q2)
             check_id(self.resolved_by, p + '.resolved_by', 'dec')
             req(len(trades) >= 1, p + '.external_trades', 'an external close names its venue trades')
-            req(len({x.trade_id for x in trades}) == len(trades), p + '.external_trades', 'duplicate trade id')
+            req(len({(x.venue, x.symbol, x.trade_id) for x in trades}) == len(trades), p + '.external_trades',
+                'duplicate trade id')
             total = ZERO
             for x in trades:
                 total = CTX.add(total, x.qty)
@@ -469,11 +482,14 @@ def terminal_for(result):
 
 def supersedes(prior, new):
     """r3 DRAFT item 3b (REC-02 Q2 / R08): exchange evidence wins. A FINAL exchange record of the same owned order that
-    shows an execution supersedes an earlier corroborated not-found ("nothing executed") of that intent. Pure."""
+    shows an execution supersedes an earlier corroborated not-found ("nothing executed") of that intent. Pure.
+    (An execution is guaranteed by the record itself: only an executed FINAL exchange record may carry
+    supersedes_result_id, and the late record must name the prior one.)"""
     return (prior.phase is ResultPhase.FINAL and prior.evidence is Evidence.NOT_FOUND_CORROBORATED
-            and new.phase is ResultPhase.FINAL and new.evidence is Evidence.EXCHANGE_FINAL and new.executed_qty > 0
+            and new.phase is ResultPhase.FINAL and new.evidence is Evidence.EXCHANGE_FINAL
             and new.intent_id == prior.intent_id and new.client_order_id == prior.client_order_id
-            and new.account_id == prior.account_id and new.observed_at_ms >= prior.observed_at_ms)
+            and new.account_id == prior.account_id and new.observed_at_ms >= prior.observed_at_ms
+            and new.supersedes_result_id == prior.result_id and new.result_id != prior.result_id)   # PR #44 P1-b
 
 
 def check_result_for_intent(intent, result, sent_at_ms):
@@ -488,13 +504,14 @@ def check_result_for_intent(intent, result, sent_at_ms):
     ev = result.evidence
     req((ev is Evidence.EXCHANGE_EXTERNAL) <= is_post_hoc(intent), p + '.evidence',
         'exchange_external only books a post-hoc (reconcile.external_close) intent')
-    if intent.order_type is OrderType.LIMIT_REDUCE_ONLY and result.avg_price is not None:
-        better = (result.avg_price >= intent.price) if intent.side is Side.LONG else (result.avg_price <= intent.price)
-        req(better, p + '.avg_price', 'a resting target never fills worse than its limit (a gap fills at it or better)')
     if is_post_hoc(intent):
         req(sent_at_ms is None and result.phase is ResultPhase.FINAL
             and ev in (Evidence.EXCHANGE_EXTERNAL, Evidence.NOT_SENT), p + '.evidence',
             'a post-hoc booking is never sent and ends exchange_external (or not_sent)')
+        req(all(x.symbol == intent.symbol for x in result.external_trades), p + '.external_trades',
+            "a venue trade of another symbol than the booking intent's symbol")             # Codex re-review P2-a
+        req(ev is not Evidence.EXCHANGE_EXTERNAL or result.resolved_by == intent.decision_id, p + '.resolved_by',
+            'an external booking is resolved by the RECONCILE decision that booked it')       # PR #44 P2-2
         return
     if sent_at_ms is None:
         req(result.phase is ResultPhase.FINAL and ev is Evidence.NOT_SENT, p + '.evidence',

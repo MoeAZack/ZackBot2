@@ -55,7 +55,7 @@ MUTATIONS = {
         "    req(type(v) is int, path, f'not an int ({type(v).__name__})')",
         "    req(isinstance(v, int), path, f'not an int ({type(v).__name__})')")]),
     'parity: enum text accepted in memory': (D + 'base.py', [(
-        "        return lambda v, p: req(isinstance(v, tp), p, f'{v!r} is not a {tp.__name__}')",
+        "        return lambda v, p: req(isinstance(v, tp), p, f'{show(v)} is not a {tp.__name__}')",
         "        return lambda v, p: req(isinstance(v, tp) or v in {m.value for m in tp}, p, 'x')")]),
     'fresh snapshot age': (D + 'portfolio.py', [(
         "    req(age <= max_age_ms, 'Portfolio.proof.at_ms',", "    req(True, 'Portfolio.proof.at_ms',")]),
@@ -71,7 +71,7 @@ MUTATIONS = {
         '                req(pf.permits(it.purpose, Op.PLACE, one_shot=it.authorized_by is not None), ip,',
         '                req(True, ip,')]),
     'reason-code membership': (D + 'base.py', [(
-        "        return lambda v, p: req(isinstance(v, tp), p, f'{v!r} is not a {tp.__name__}')",
+        "        return lambda v, p: req(isinstance(v, tp), p, f'{show(v)} is not a {tp.__name__}')",
         '        return lambda v, p: None')]),
     'hard HOLD widened': (D + 'modes.py', [('    | {(Purpose.PROTECT, Op.PLACE)}',
                                             '    | {(Purpose.PROTECT, Op.PLACE), (Purpose.CLOSE, Op.MANAGE)}')]),
@@ -101,7 +101,11 @@ MUTATIONS = {
         "        req(len({x.lot_id for x in self.lots}) == len(self.lots), p + '.lots',", "        req(True, p + '.lots',")]),
     'ruling 1: Decision.symbol unvalidated': (D + 'decision.py', [(
         "            check_symbol(self.symbol, p + '.symbol')", '            pass')]),
-    'ruling 2: whitespace-only text accepted': (D + 'base.py', [("    req(v.strip() != '', path,", '    req(True, path,')]),
+    'ruling 2: whitespace-only text accepted': (D + 'base.py', [(
+        "    req(type(v) is str and 0 < len(v) <= n and v.isprintable(), path, f'1..{n} printable characters')\n"
+        "    req(v.strip() != '', path,",
+        "    req(type(v) is str and 0 < len(v) <= n and v.isprintable(), path, f'1..{n} printable characters')\n"
+        "    req(True, path,")]),
     'ruling 4: position lots keep their given order': (D + 'portfolio.py', [(
         "        if ordered != self.lots:\n            object.__setattr__(self, 'lots', ordered)", '        pass')]),
     'ports: journal ignores owner_kind (every owner treated as a lot)': ('newcore/ports/journal.py', [(
@@ -132,9 +136,6 @@ MUTATIONS = {
     'r3 item 3a: a post-hoc booking may be sent': (D + 'orders.py', [(
         '    return intent.state is IntentState.DURABLE and not is_post_hoc(intent)',
         '    return intent.state is IntentState.DURABLE')]),
-    'r3 item 3b: a zero fill supersedes a corroborated not-found': (D + 'orders.py', [(
-        'new.evidence is Evidence.EXCHANGE_FINAL and new.executed_qty > 0',
-        'new.evidence is Evidence.EXCHANGE_FINAL')]),
     'r3 item 3b: any FINAL prior is superseded': (D + 'orders.py', [(
         '    return (prior.phase is ResultPhase.FINAL and prior.evidence is Evidence.NOT_FOUND_CORROBORATED\n',
         '    return (prior.phase is ResultPhase.FINAL\n')]),
@@ -151,8 +152,8 @@ MUTATIONS = {
         "            req(a is Action.RECONCILE and self.subject_id is not None, p + '.reason',",
         "            req(True, p + '.reason',")]),
     'r3 item 3b: the journal gate lets any record follow a FINAL': ('newcore/ports/journal.py', [(
-        '                req(supersedes(final, ev.result), \'event.result\',',
-        '                req(True, \'event.result\',')]),
+        "                req(final is not None and supersedes(final, r), 'event.result',",
+        "                req(True, 'event.result',")]),
     'r3 item 3b: the journal supersedes more than once': ('newcore/ports/journal.py', [(
         '        if (k is EventKind.RESULT_RECORDED and st.closed is not None and st.final is Evidence.NOT_FOUND_CORROBORATED\n'
         '                and not st.superseded and h.outcome',
@@ -186,22 +187,81 @@ MUTATIONS = {
     'r3a ruling 4: the gate applies a late fill twice': ('newcore/ports/journal.py', [(
         "            req(d.subject_id not in self._late_applied, 'event.decision', 'a late fill is reconciled once')",
         "            pass")]),
-    'r3 item 4: a resting target may open risk': (D + 'orders.py', [(
-        "            req(u in (Purpose.REDUCE, Purpose.CLOSE) and self.owner_kind is OwnerKind.LOT, p + '.order_type',\n"
-        "                'a resting reduce-only target is a lot REDUCE / CLOSE')",
-        '            pass')]),
-    'r3 item 4: a resting target on any exit reason': (D + 'orders.py', [(
-        "            req(self.reason in TARGET_REASONS, p + '.reason',", "            req(True, p + '.reason',")]),
-    'r3 item 4: a resting target needs no price': (D + 'orders.py', [(
-        '        if t in LIMIT_TYPES:', '        if t is OrderType.LIMIT_POST_ONLY:')]),
-    'r3 item 4: the venue grid ignores the reduce-only capability': (D + 'instrument.py', [(
-        "            req(self.supports(Capability.REDUCE_ONLY), p + '.order_type',",
-        "            req(True, p + '.order_type',")]),
-    'r3b ruling 5: a resting target may fill worse than its limit': (D + 'orders.py', [(
-        "        req(better, p + '.avg_price',", "        req(True, p + '.avg_price',")]),
-    'r3b ruling 5: the limit side is ignored (short target checked as long)': (D + 'orders.py', [(
-        "        better = (result.avg_price >= intent.price) if intent.side is Side.LONG else (result.avg_price <= intent.price)",
-        "        better = result.avg_price >= intent.price")]),
+    'PR44 c1: incident reference tuples unbounded': (D + 'incident.py', [(
+        "    req(len(values) <= MAX_REFS, path, f'at most {MAX_REFS} references')", "    pass")]),
+    'PR44 c2: key-shaped tokens journaled in detail': (D + 'incident.py', [(
+        "    req(KEY_SHAPED.search(v) is None, path,", "    req(True, path,")]),
+    'PR44 c3: errors echo whole values': (D + 'errors.py', [(
+        "        path, msg = _bounded(path, MAX_PATH_CHARS), _bounded(msg, MAX_MSG_CHARS)", "        pass")]),
+    'PR44 c4: blank detail accepted': (D + 'base.py', [(
+        "        f'1..{n} printable ASCII characters')\n"
+        "    req(v.strip() != '', path, 'whitespace only (an absent value is None, never blank text)')",
+        "        f'1..{n} printable ASCII characters')")]),
+    'PR44 c5: NFD text accepted': (D + 'base.py', [(
+        "    req(unicodedata.is_normalized('NFC', v), path,", "    req(True, path,")]),
+    'PR44 c5: non-ASCII incident text accepted': (D + 'base.py', [(
+        "ASCII_TEXT_RE = re.compile(r'[ -~]+')", "ASCII_TEXT_RE = re.compile(r'[^\\x00-\\x1f]+')")]),
+    'PR44 c6: evidence of any id family': (D + 'incident.py', [(
+        "EVIDENCE_PREFIXES = ('res', 'rec', 'dec', 'evt', 'inc')",
+        "EVIDENCE_PREFIXES = ('res', 'rec', 'dec', 'evt', 'inc', 'acct', 'pos')")]),
+    'Codex44 P1-a: a venue trade booked twice': (D + 'facts.py', [(
+        "                req(owner is None, p + '.result.external_trades',", "                req(True, p + '.result.external_trades',")]),
+    'Codex44 P1-a: the event chain skips the fact ledger': (D + 'events.py', [(
+        "        ledger.check(ev, p)()\n", "")]),
+    'Codex44 P1-b: a result id reused for a different fact': (D + 'facts.py', [(
+        "                req(known == digest, p + '.result.result_id',", "                req(True, p + '.result.result_id',")]),
+    'Codex44 P1-b: a late final need not name the prior fact': (D + 'orders.py', [(
+        "            and new.supersedes_result_id == prior.result_id and new.result_id != prior.result_id)   # PR #44 P1-b",
+        "            )")]),
+    'Codex44 P1-b: a result may supersede itself': (D + 'orders.py', [(
+        "            req(self.supersedes_result_id != self.result_id, p + '.supersedes_result_id', 'a result never supersedes itself')",
+        "            pass")]),
+    'Codex44 P1-b: the chain accepts a dangling supersedes_result_id': (D + 'events.py', [(
+        "            req(r.supersedes_result_id is None, p + '.result.supersedes_result_id',",
+        "            req(True, p + '.result.supersedes_result_id',")]),
+    'Codex44 P1-b: the gate accepts a dangling supersedes_result_id': ('newcore/ports/journal.py', [(
+        "            if final is not None or r.supersedes_result_id is not None:", "            if final is not None:")]),
+    'Codex44 P2-1: an incident id reused for a different fact': (D + 'facts.py', [(
+        "                req(known == digest, p + '.incident.incident_id',", "                req(True, p + '.incident.incident_id',")]),
+    'Codex44 P2-2: an external booking resolved by any decision': (D + 'orders.py', [(
+        "        req(ev is not Evidence.EXCHANGE_EXTERNAL or result.resolved_by == intent.decision_id, p + '.resolved_by',",
+        "        req(True, p + '.resolved_by',")]),
+    'Codex44 P2-2: the chain books without its recorded decision': (D + 'events.py', [(
+        "                req(r.resolved_by in decisions or r.intent_id in before, p + '.result.resolved_by',",
+        "                req(True, p + '.result.resolved_by',")]),
+    'Codex44 P1-a: the journal gate skips the fact ledger': ('newcore/ports/journal.py', [
+        ("            self._facts.check(event)                             # durable facts first: they outlive compaction\n", ""),
+        ("        self._facts.check(ev)()\n", "")]),
+    'rr44 P1: the gate is not seeded from the snapshot facts': ('newcore/ports/journal.py', [(
+        "        self._facts = FactLedger(facts)", "        self._facts = FactLedger()")]),
+    'rr44 P1: the gate checks facts only after the grammar': ('newcore/ports/journal.py', [(
+        "            self._facts.check(event)                             # durable facts first: they outlive compaction\n",
+        "")]),
+    'rr44 P1: a fact index may name an unrecorded result': (D + 'facts.py', [(
+        "        req(all(t.result_id in results for t in self.trades), p + '.trades',", "        req(True, p + '.trades',")]),
+    'rr44 P2-a: venue trades keyed by the bare trade id': (D + 'facts.py', [
+        ("        return (self.venue.value, self.symbol, self.trade_id)", "        return ('', '', self.trade_id)"),
+        ("    return (trade.venue.value, trade.symbol, trade.trade_id)", "    return ('', '', trade.trade_id)")]),
+    'rr44 P2-a: an external trade of another symbol accepted': (D + 'orders.py', [(
+        "        req(all(x.symbol == intent.symbol for x in result.external_trades), p + '.external_trades',",
+        "        req(True, p + '.external_trades',")]),
+    'rr44 P2-b: the document cap counts characters': (D + 'codec.py', [(
+        "    return len(text.encode('utf-8', 'surrogatepass'))", "    return len(text)")]),
+    'PR44 c1: no document size cap': (D + 'codec.py', [(
+        "    if isinstance(text, (bytes, str)) and _encoded_size(text) > MAX_DOCUMENT_BYTES:", "    if False:")]),
+    'cw2: errors echo short text values': (D + 'base.py', [(
+        "    if isinstance(v, (str, bytes)):\n", "    if False:\n")]),
+    'cw2: a record path echoes its raw id': (D + 'base.py', [(
+        "    return v if type(v) is str and ID_RE.fullmatch(v) is not None else show(v)", "    return v")]),
+    'cw2: an incident may cite itself as evidence': (D + 'incident.py', [(
+        "        req(self.incident_id not in self.evidence, p + '.evidence', 'an incident is never its own evidence')",
+        "        pass")]),
+    'P1-3 emergency close: widened to every close / reduce action in hard HOLD': (D + 'modes.py', [(
+        "        return (purpose, op) in EMERGENCY_SET or (emergency_close and (purpose, op) == (Purpose.CLOSE, Op.PLACE))",
+        "        return (purpose, op) in EMERGENCY_SET or (emergency_close and purpose in (Purpose.CLOSE, Purpose.REDUCE))")]),
+    'P1-3 emergency close: allowed without the emergency flag': (D + 'modes.py', [(
+        "        return (purpose, op) in EMERGENCY_SET or (emergency_close and (purpose, op) == (Purpose.CLOSE, Op.PLACE))",
+        "        return (purpose, op) in EMERGENCY_SET or (purpose, op) == (Purpose.CLOSE, Op.PLACE)")]),
     'duplicate JSON keys': (D + 'codec.py', [("            if k in out:\n                problems.append(",
                                               "            if False:\n                problems.append(")]),
     'truncated JSON': (D + 'codec.py', [(

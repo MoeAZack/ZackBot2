@@ -42,6 +42,7 @@ from newcore.domain.codec import contract_sha256
 from newcore.domain.errors import DomainError
 from newcore.domain.events import EVENT_TYPES
 from newcore.domain.ledger import Admission
+from newcore.domain.facts import FactLedger
 from newcore.domain.orders import (TERMINAL, booking_step_ok, can_transition, check_result_for_intent, supersedes,
                                    terminal_for)
 
@@ -208,6 +209,7 @@ class Grammar:
         self._intents: dict[str, _Intent] = {}
         self._client_ids: set[str] = set()
         self._lineage: dict[tuple[str, Purpose], int] = {}
+        self.decision_ids = self._decisions.keys()   # read-only view: the decisions journaled so far
         self._last_protect: dict[str, str] = {}
         self._lots: set[str] = set()
 
@@ -393,15 +395,20 @@ class JournalGate:
         staged.commit()                     only now do sequence, decision, intent and lineage become consumed
     """
 
-    def __init__(self, account_id: str, aggregate_id: str):
+    def __init__(self, account_id: str, aggregate_id: str, *, facts=None, after_sequence: int = 0):
         self.grammar = Grammar(account_id, aggregate_id)
+        self.grammar.last_sequence = after_sequence     # the snapshot's last sequence after compaction (0 = full log)
         self._live = {}     # intent_id -> [OrderIntent, IntentState, sent_at_ms | None, final OrderResult | None]
         self._late = {}     # r3 item 3b: intent_id -> result_id of the journaled superseding (late) FINAL record
         self._late_applied = set()   # intents whose late fact a reconcile.late_fill_after_not_found decision applied
+        self._facts = FactLedger(facts)   # PR #44: durable facts, seeded from the snapshot after compaction
 
     @classmethod
-    def rebuild(cls, account_id, aggregate_id, events: Iterable) -> 'JournalGate':
-        gate = cls(account_id, aggregate_id)
+    def rebuild(cls, account_id, aggregate_id, events: Iterable, *, facts=None,
+                after_sequence: int = 0) -> 'JournalGate':
+        """Replay the durable journal. After compaction pass the snapshot's FactIndex and last sequence (`facts`,
+        `after_sequence`) and only the tail events: the facts are seeded, never forgotten (Codex re-review P1)."""
+        gate = cls(account_id, aggregate_id, facts=facts, after_sequence=after_sequence)
         for ev in events:
             gate.admit(ev)
         return gate
@@ -409,7 +416,8 @@ class JournalGate:
     def stage(self, event) -> StagedEvent | None:
         """Validate `event` against the gate without changing it. None = ALREADY_APPLIED (identical re-append)."""
         try:
-            commit = self.grammar.prepare(header_of(event))      # order / identity / lineage first
+            self._facts.check(event)                             # durable facts first: they outlive compaction
+            commit = self.grammar.prepare(header_of(event))      # order / identity / lineage
             if commit is None:
                 return None
             self._content(event)                                 # then the NC-01 per-record checks
@@ -439,12 +447,17 @@ class JournalGate:
             req(d.subject_id not in self._late_applied, 'event.decision', 'a late fill is reconciled once')
         elif isinstance(ev, ResultObserved) and ev.result.intent_id in self._live:
             it, _, sent_at, final = self._live[ev.result.intent_id]
-            if final is not None:     # r3 draft item 3b: only a superseding exchange record follows a FINAL result
-                req(supersedes(final, ev.result), 'event.result',
+            r = ev.result
+            if final is not None or r.supersedes_result_id is not None:   # 3b: only a superseding record after FINAL
+                req(final is not None and supersedes(final, r), 'event.result',
                     'after a FINAL result only an executed exchange record superseding not_found_corroborated')
-            check_result_for_intent(it, ev.result, sent_at)
+            check_result_for_intent(it, r, sent_at)
+            if r.evidence is Evidence.EXCHANGE_EXTERNAL:                     # PR #44 P2-2
+                req(r.resolved_by in self.grammar.decision_ids, 'event.result.resolved_by',
+                    'the authorising RECONCILE decision is not in the log')
 
     def _apply(self, ev):
+        self._facts.check(ev)()
         if isinstance(ev, IntentRecorded):
             self._live[ev.intent.intent_id] = [ev.intent, ev.intent.state, None, None]
         elif isinstance(ev, IntentStateChanged):
@@ -459,6 +472,7 @@ class JournalGate:
             st[3] = ev.result
         elif isinstance(ev, DecisionRecorded) and ev.decision.reason is ReasonCode.RECONCILE_LATE_FILL:
             self._late_applied.add(ev.decision.subject_id)
+
 
 
 # ---------------------------------------------------------------------------------------------- consumed-signal rule

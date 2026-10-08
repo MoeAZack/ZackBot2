@@ -32,7 +32,7 @@ import typing
 from decimal import Decimal
 
 from . import account, decision, events, instrument, orders, portfolio, protection, snapshot
-from .base import INT64, Record, canonical_decimal, dec_str, field_spec, req
+from .base import INT64, Record, canonical_decimal, dec_str, field_spec, req, show
 from .errors import DomainError, ForeignDocument, FutureSchema, InvalidRecord, OlderSchema, UnknownSchema, \
     UnsupportedVersion
 
@@ -41,6 +41,7 @@ SCHEMA_VERSION = 1
 ENVELOPE = frozenset({'format', 'schema_version', 'record_type', 'body'})
 DECIMAL_RE = re.compile(r'-?(0|[1-9][0-9]*)(\.[0-9]+)?')    # contract invariant 2, ASCII digits only
 DECIMAL_MAX_CHARS = 64                     # 38 significant digits within |adjusted exponent| <= 18 fit in 59
+MAX_DOCUMENT_BYTES = 4 * 1024 * 1024       # PR #44 (Cowork 1): far under the NC-02a 16 MiB frame; typical portfolio 19 KB
 
 RECORD_TYPES = {
     'account': account.Account,
@@ -131,13 +132,13 @@ def _decoder(tp):
         def dec_enum(v, path):
             m = members.get(v) if type(v) is str else None
             if m is None:
-                _bad(path, f'{v!r} is not a {tp.__name__}')
+                _bad(path, f'{show(v)} is not a {tp.__name__}')
             return m
         return dec_enum
     if tp is Decimal:
         def dec_decimal(v, path):
             if type(v) is not str or len(v) > DECIMAL_MAX_CHARS or DECIMAL_RE.fullmatch(v) is None:
-                _bad(path, f'{v!r:.40} is not a canonical bounded decimal string (a JSON number is never accepted)')
+                _bad(path, f'{show(v)} is not a canonical bounded decimal string (a JSON number is never accepted)')
             d = canonical_decimal(Decimal(v), path)
             if format(d, 'f') != v:
                 _bad(path, f'{v!r} is not the canonical spelling (trailing zeroes / negative zero)')
@@ -164,7 +165,7 @@ def from_json(cls, d, path):
     spec, names = _record_decoder(cls)
     if d.keys() != names:
         extra, missing = set(d) - names, names - set(d)
-        _bad(path, f'unknown keys {sorted(map(repr, extra))}' if extra else f'missing keys {sorted(missing)}')
+        _bad(path, f'unknown keys {sorted(map(show, extra))}' if extra else f'missing keys {sorted(missing)}')
     kw = {name: dec(d[name], f'{path}.{name}') for name, dec in spec}
     try:
         return cls(**kw)
@@ -181,7 +182,7 @@ def check_header(doc):
         raise InvalidRecord('document.schema_version', 'missing')
     v = doc['schema_version']
     if type(v) is not int or v < 0:
-        raise UnknownSchema('document.schema_version', f'{v!r} is not a JSON integer >= 0: unknown format')
+        raise UnknownSchema('document.schema_version', f'{show(v)} is not a JSON integer >= 0: unknown format')
     if v > SCHEMA_VERSION:
         raise FutureSchema('document.schema_version', f'{v} is newer than this build ({SCHEMA_VERSION})')
     if v < SCHEMA_VERSION:
@@ -190,7 +191,7 @@ def check_header(doc):
         _bad('document', f'envelope keys {sorted(map(repr, doc))}')
     rtype = doc['record_type']
     if type(rtype) is not str or rtype not in RECORD_TYPES:     # type first: never hash an unhashable wire value
-        _bad('document.record_type', f'unknown record type {rtype!r:.80}')
+        _bad('document.record_type', f'unknown record type {show(rtype)}')
     return rtype
 
 
@@ -209,6 +210,16 @@ class _Bad:
         self.text = text
 
 
+def _encoded_size(text):
+    """The UTF-8 size of a document (bytes as given). For str: a char is 1..4 bytes, so the cheap bounds decide
+    most inputs; only an ambiguous one is encoded (Codex re-review P2-b: bytes, never characters)."""
+    if isinstance(text, bytes):
+        return len(text)
+    if len(text) > MAX_DOCUMENT_BYTES or len(text) * 4 <= MAX_DOCUMENT_BYTES:
+        return len(text)
+    return len(text.encode('utf-8', 'surrogatepass'))
+
+
 def loads(text, *, expect=None):
     """Strict decode of JSON text (str or bytes). An unsupported version wins over any damage in the body."""
     problems = []
@@ -223,7 +234,7 @@ def loads(text, *, expect=None):
         out = {}
         for k, v in kv:
             if k in out:
-                problems.append(f'duplicate key {k!r}')
+                problems.append(f'duplicate key {show(k)}')
             out[k] = v
         return out
 
@@ -238,6 +249,8 @@ def loads(text, *, expect=None):
             return _Bad(s)
         return n
 
+    if isinstance(text, (bytes, str)) and _encoded_size(text) > MAX_DOCUMENT_BYTES:
+        raise InvalidRecord('document', f'larger than {MAX_DOCUMENT_BYTES} bytes')
     if isinstance(text, bytes):
         try:
             text = text.decode('utf-8')
