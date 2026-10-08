@@ -834,6 +834,8 @@ def run_lab_job(kind, req, get_book, progress=None, should_stop=None):
     if not isinstance(book, BT.Book): raise ValueError('no data')
     run_kwargs = dict(q.get('run_options') or {}, start=q['start'], max_lev=q['max_lev'], daily_halt=q['daily_halt'],
                       fund_per_bar=BT.FUND_PER_BAR * TF_SEC[q['tf']] / 14400)
+    btc1h = getattr(book, 'btc1h', None)                     # AUD-07 C13b: BTC 1h candles from get_book, when it loaded them
+    if btc1h is not None: run_kwargs['btc1h'] = btc1h
     T0, T1 = default_period(book, 220, q['days'])
     t0 = max(T0, pd.Timestamp(q['t0'])) if q.get('t0') else T0
     t1 = min(T1, pd.Timestamp(q['t1'])) if q.get('t1') else T1
@@ -863,6 +865,9 @@ def run_lab_job(kind, req, get_book, progress=None, should_stop=None):
                 res = liquidation_report(book, sl, tr, cv, max_lev=q['max_lev'], mm=q['mm'], start=q['start'])
             res['backtest'] = st
     progress(1.0, 'done')
+    ro = q.get('run_options') or {}
+    if kind != 'lookahead' and BT.needs_btc_move(sl, ro.get('pump_guard'), ro.get('risk_rules')):
+        res['btc_move_source'] = BT.btc_move_source(book, btc1h)   # AUD-07 C13b: 'proxy' = no 1h BTC data, hourly spikes unseen
     res['period'] = res.get('period') or [str(t0), str(t1)]
     res['cpu_s'] = round(time.process_time() - t_cpu, 1)
     res['wall_s'] = round(time.time() - t_wall, 1)

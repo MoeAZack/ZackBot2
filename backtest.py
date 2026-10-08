@@ -92,22 +92,82 @@ def cairo_close_days(T, bar_sec):
                            'the Cairo trading day - install tzdata instead of guessing a UTC offset') from e
 
 
-def _btc_move_1h(book, btc, bar_sec, btc1h=None):
-    """|% close-to-close move of BTC over the last closed hour| at each bar's close.
-    1h (or finer) books use their own candles; a 4h book uses btc1h (DataFrame t,c) when given, else a proxy:
-    the 4h close-to-close move divided by sqrt(4) (random-walk scaling)."""
-    c = pd.Series(book.d[btc].c.values)
-    if bar_sec <= 3600:
-        k = max(1, int(round(3600 / bar_sec)))
-        return (c / c.shift(k) - 1).abs().fillna(0).values * 100
+HOUR_NS = 3600 * 10 ** 9
+
+
+def _btc_hours(book, btc, bar_sec, btc1h=None):
+    """AUD-07 C13b: the closed 1h BTC candles the 'BTC moved X% in the last hour' rules see, as (close time ns, |% move| vs the
+    previous 1h close) sorted by close time - from btc1h (DataFrame t,c) when given, else from the book's own BTC candles when
+    they are 1h or finer and hour-aligned (the closes that fall on the hour ARE the 1h closes). None = no 1h data (proxy)."""
     if btc1h is not None and len(btc1h):
-        h = btc1h.sort_values('t'); h = pd.DataFrame(dict(ct=pd.to_datetime(h.t) + pd.Timedelta(hours=1),
-                                                          mv=(h.c / h.c.shift() - 1).abs().fillna(0).values * 100))
-        left = pd.DataFrame(dict(ct=pd.to_datetime(book.t) + pd.Timedelta(seconds=bar_sec)))
-        h['ct'] = h['ct'].astype('datetime64[ns]'); left['ct'] = left['ct'].astype('datetime64[ns]')
-        out = pd.merge_asof(left, h, on='ct', direction='backward').mv.fillna(0).values
-        return out
-    return (c / c.shift() - 1).abs().fillna(0).values * 100 / np.sqrt(bar_sec / 3600)
+        h = btc1h.assign(t=pd.to_datetime(btc1h.t)).drop_duplicates('t').sort_values('t')
+        ct = h.t.values.astype('datetime64[ns]').astype('int64') + HOUR_NS
+        c = h.c.values.astype(float)
+    elif bar_sec <= 3600 and 3600 % int(bar_sec) == 0:
+        tc = pd.to_datetime(book.t).values.astype('datetime64[ns]').astype('int64') + int(bar_sec) * 10 ** 9
+        on = tc % HOUR_NS == 0
+        ct, c = tc[on], book.d[btc].c.values.astype(float)[on]
+    else:
+        return None
+    mv = np.abs(c / np.r_[np.nan, c[:-1]] - 1) * 100
+    return ct, np.nan_to_num(mv, nan=0.0)
+
+
+def needs_btc_move(sleeves, pump_guard=None, risk_rules=None):
+    """AUD-07 C13b: does a run with these slots / run options use a 'BTC moved X% in the last hour' rule (BTC breaker in
+    enforce mode, or a pump guard with btc_1h_pct)? The app job and Lab then load BTC 1h candles for a 4h run."""
+    return bool(_rules_on(risk_rules, 'btc_breaker')) or \
+        any((sl.get('pump_guard') or pump_guard or {}).get('btc_1h_pct') for sl in sleeves or [])
+
+
+def btc_move_source(book, btc1h=None, bar_sec=None):
+    """AUD-07 C13b label for results: '1h' (btc1h given), 'own' (the book's own 1h / finer BTC candles) or 'proxy' (a 4h book
+    without 1h BTC data: |4h move| / sqrt(4) once per candle close, which cannot see an hourly spike inside the candle)."""
+    if bar_sec is None:
+        T = book.t.values
+        bar_sec = float(pd.Series(T).diff().median() / np.timedelta64(1, 's')) if len(T) > 1 else 14400.0
+    if btc1h is not None and len(btc1h): return '1h'
+    return 'own' if bar_sec <= 3600 and 3600 % int(bar_sec) == 0 else 'proxy'
+
+
+def _btc_move_1h(book, btc, bar_sec, btc1h=None):
+    """|% close-to-close move of BTC over the last CLOSED 1h candle| at each bar's close (the engine's btc_move_1h at that
+    cycle). From the 1h candles of _btc_hours; without them (4h book, no btc1h) a proxy: the 4h close-to-close move divided by
+    sqrt(4) (random-walk scaling) - such results carry cv.attrs['btc_move_source'] == 'proxy'."""
+    H = _btc_hours(book, btc, bar_sec, btc1h)
+    if H is None:
+        c = pd.Series(book.d[btc].c.values)
+        return (c / c.shift() - 1).abs().fillna(0).values * 100 / np.sqrt(bar_sec / 3600)
+    tc = pd.to_datetime(book.t).values.astype('datetime64[ns]').astype('int64') + int(bar_sec) * 10 ** 9
+    k = np.searchsorted(H[0], tc, side='right') - 1                       # last 1h candle closed at the bar close
+    return np.where(k >= 0, H[1][np.maximum(k, 0)], 0.0)
+
+
+def btc_breaker_windows(book, btc, bar_sec, rule, btc1h=None, after=None, MV=None):
+    """AUD-07 C13b: the BTC circuit breaker sampled like the live engine - on EVERY closed 1h BTC candle - with a wall-clock
+    pause. Engine._breaker() runs on every manage pass (~8 s) and sets breaker_until = max(until, now + hours) while the last
+    closed 1h candle moved > pct; that candle stays the last closed one for a full hour, so the pause runs from the trip
+    candle's close ct to ct + 1 h + hours (measured on the real engine, see tests/test_aud07_c13b_breaker.py).
+    Returns dict(close=bool[n]: paused at bar i's CLOSE (the signal decision of bar i), open=bool[n]: paused at bar i's OPEN
+    (applied to every intrabar event of bar i: adds, safety orders, trailing entries - a pause that starts or ends inside a
+    candle takes effect at the next candle boundary, a declared approximation), new=bool[n]: a new pause episode started in
+    (open, close] of bar i (the optional tighten runs at that close), trips=int).
+    Without 1h data (proxy) the 4h-candle proxy move MV is the only sample, taken at each candle close.
+    after: ignore trips closing at or before this time (ns) - the run's first simulated candle open, like the old loop."""
+    T = pd.to_datetime(book.t).values.astype('datetime64[ns]').astype('int64')
+    tc = T + int(bar_sec) * 10 ** 9
+    H = _btc_hours(book, btc, bar_sec, btc1h)
+    ct, mv = H if H is not None else (tc, MV if MV is not None else _btc_move_1h(book, btc, bar_sec, None))
+    trip = np.sort(ct[mv > rule.get('pct', 5.0)])
+    if after is not None: trip = trip[trip > after]
+    dur = int(round((3600 + float(rule.get('hours', 4)) * 3600) * 10 ** 9))
+
+    def paused(x):
+        k = np.searchsorted(trip, x, side='right') - 1
+        return (k >= 0) & (x < np.where(k >= 0, trip[np.maximum(k, 0)], 0) + dur) if len(trip) else np.zeros(len(x), bool)
+    starts = trip[np.r_[True, trip[1:] >= trip[:-1] + dur]] if len(trip) else trip
+    new = np.searchsorted(starts, tc, side='right') > np.searchsorted(starts, T, side='right')
+    return dict(close=paused(tc), open=paused(T), new=new, trips=int(len(trip)))
 
 
 def _gov_rules(governor):
@@ -212,12 +272,14 @@ def run(book, sleeves, start=500.0, max_lev=10.0, daily_halt=0.08, t0=None, t1=N
     RR = {k: _rules_on(risk_rules, k) for k in ('coin_cap', 'open_risk_cap', 'correlated_cap', 'btc_breaker')}
     need_mv = RR['btc_breaker'] or any(x['pg'] and x['pg'].get('btc_1h_pct') for x in SL)
     MV = _btc_move_1h(book, btc, bar_sec, btc1h) if need_mv else None
+    # AUD-07 C13b: breaker sampled on every closed 1h BTC candle, wall-clock pause (btc_breaker_windows); proxy -> labelled
+    BRK = btc_breaker_windows(book, btc, bar_sec, RR['btc_breaker'], btc1h, after=int(pd.Timestamp(T[idx[0]]).value) if len(idx) else None,
+                              MV=MV) if RR['btc_breaker'] else None
     RG = S.regime(book.d[btc]) if any(x['cfg'].get('when', 'any') not in (None, 'any') for x in SL) else None
     RG = {k: RG[k].values for k in ('bull', 'bear', 'range')} if RG is not None else None
     corr_w = max(20, int(round(30 * 86400 / bar_sec)))
     G = _gov_rules(governor)
     gmult, peak_mtm = 1.0, start
-    breaker_until = -1                                   # bar index until which entries are paused
     liqs, blocked = 0, {}
     # ---- BT02: exchange filters (one rule per symbol) and skipped-signal accounting
     XR = F.snapshot_rules(exchange_rules)
@@ -363,7 +425,7 @@ def run(book, sleeves, start=500.0, max_lev=10.0, daily_halt=0.08, t0=None, t1=N
             a = book.arr[s]
             if pg.get('max_candle_atr') and a['atr'][i] > 0 and (a['h'][i] - a['l'][i]) / a['atr'][i] > pg['max_candle_atr']: return 'pump_candle'
             if pg.get('btc_1h_pct') and MV is not None and MV[i] > pg['btc_1h_pct']: return 'pump_btc'
-        if RR['btc_breaker'] and i <= breaker_until: return 'btc_breaker'
+        if BRK is not None and BRK['close'][i]: return 'btc_breaker'
         return None
 
     def ratchet(m, p, atr):
@@ -432,7 +494,7 @@ def run(book, sleeves, start=500.0, max_lev=10.0, daily_halt=0.08, t0=None, t1=N
                 lvl = p['levels'][p['dca']]; q = p['q0'] * p['w'][p['dca']]
                 lvl = min(lvl, a_) if sd == 1 else max(lvl, a_)              # gapped through the level -> filled where price is
                 lvl *= 1 + sd * SLIP                                         # AUD-07 C13a: a safety order is a taker market order: pays slippage
-                if RR['btc_breaker'] and i <= breaker_until:                 # same breaker policy as live
+                if BRK is not None and BRK['open'][i]:                       # same breaker policy as live (C13b: state at the open)
                     pol = RR['btc_breaker'].get('dca', 'pause')
                     if pol == 'pause': blocked_['dca'] = True; continue
                     if pol == 'half_size': q *= 0.5
@@ -483,7 +545,7 @@ def run(book, sleeves, start=500.0, max_lev=10.0, daily_halt=0.08, t0=None, t1=N
                     q = p['q0'] * py['frac']
                     lvl = max(lv, a_) if sd == 1 else min(lv, a_)                # gapped through the add level -> filled where price is
                     lvl *= 1 + sd * SLIP                                         # AUD-07 C13a: a pyramid add is a taker market order: pays slippage
-                    if halted or (RR['btc_breaker'] and i <= breaker_until) or notional(sl, i) + q * lvl > max_lev * eq * cfg['share']:
+                    if halted or (BRK is not None and BRK['open'][i]) or notional(sl, i) + q * lvl > max_lev * eq * cfg['share']:
                         blocked_['add'] = True; continue
                     if rule_block(s, sd, q, lvl, q * max(0.0, sd * (lvl - p['stop'])), i, add=True): blocked_['add'] = True; continue
                     d = F.size_check(q, q, lvl, ADD_RULES[s])  # BT02: the engine's _add_qty check
@@ -544,7 +606,7 @@ def run(book, sleeves, start=500.0, max_lev=10.0, daily_halt=0.08, t0=None, t1=N
             # trailing entries: enter when price rebounds dev_atr ATR from the extreme since the signal (candle path)
             for s, te in list(sl['tpend'].items()):
                 if i > te['until'] or halted or s in sl['pos'] or len(sl['pos']) >= cfg['max_pos'] or \
-                        (RR['btc_breaker'] and i <= breaker_until):
+                        (BRK is not None and BRK['open'][i]):
                     del sl['tpend'][s]; continue
                 a = book.arr[s]; sd = te['side']; o, h, l, c = a['o'][i], a['h'][i], a['l'][i], a['c'][i]
                 pts = [o, l, h, c] if c >= o else [o, h, l, c]
@@ -606,11 +668,10 @@ def run(book, sleeves, start=500.0, max_lev=10.0, daily_halt=0.08, t0=None, t1=N
             day, halted = days[i], False
             day_start = eq + up_now
         if (eq + up_now) / day_start - 1 <= -daily_halt: halted = True                 # same rule as live: includes open P&L
-        # ---- BTC circuit breaker (enforce): pause entries for `hours`, optionally move winners to breakeven
-        if RR['btc_breaker'] and MV is not None and MV[i] > RR['btc_breaker'].get('pct', 5.0):
-            was = i <= breaker_until
-            breaker_until = i + max(1, int(np.ceil(RR['btc_breaker'].get('hours', 4) * 3600 / bar_sec)))
-            if RR['btc_breaker'].get('tighten') and not was:
+        # ---- BTC circuit breaker (enforce): a pause episode that started during this candle (on any closed 1h BTC candle,
+        # AUD-07 C13b) optionally moves winners to breakeven - at this close (the engine does it at the trip, mid-candle)
+        if BRK is not None and BRK['new'][i]:
+            if RR['btc_breaker'].get('tighten'):
                 for sl in SL:
                     for s, p in sl['pos'].items():
                         sd = p['side']; be = p['avg'] * (1 + sd * BE_BUF); c = book.arr[s]['c'][i]
@@ -647,6 +708,8 @@ def run(book, sleeves, start=500.0, max_lev=10.0, daily_halt=0.08, t0=None, t1=N
             break
     cv = pd.Series(curve, index=pd.to_datetime(T[idx[:len(curve)]]))
     cv.attrs['liquidations'] = liqs; cv.attrs['blocked'] = blocked
+    # AUD-07 C13b: which BTC 1h data the BTC-move rules used ('1h' / 'own' / 'proxy'; None = no such rule in this run)
+    cv.attrs['btc_move_source'] = btc_move_source(book, btc1h, bar_sec) if need_mv else None
     n_feas = FEAS['executed'] + sum(FEAS['skipped'].values())
     FEAS['executable_pct'] = round(FEAS['executed'] / n_feas * 100, 1) if n_feas else None
     cv.attrs['feasibility'] = FEAS

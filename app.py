@@ -275,6 +275,19 @@ def feas_total(feas):
     return out
 
 
+def btc1h_for_backtest(days, tf_sec, now=None):
+    """AUD-07 C13b: closed BTC 1h candles (t, c) covering a backtest of `days` on `tf_sec` candles (+ warm-up), so its
+    'BTC moved X% in the last hour' rules (breaker, pump guard) see every hourly candle like the engine. None when they cannot
+    be loaded - the run then uses the 4h proxy and its result says so (btc_move_source = 'proxy')."""
+    try:
+        d = get_candles('BTCUSDT', '1h', int(days) + math.ceil(260 * tf_sec / 86400) + 1)
+    except Exception as e:
+        log.warning(f'backtest: BTC 1h candles unavailable ({e}) - BTC-move rules use the 4h proxy'); return None
+    now = time.time() if now is None else float(now)
+    d = d[pd.to_datetime(d.t) + pd.Timedelta(hours=1) <= pd.Timestamp(now, unit='s')]      # closed 1h candles only
+    return d[['t', 'c']].reset_index(drop=True) if len(d) else None
+
+
 def run_backtest_job(job_id, req):
     """Runs each candle-size group (4h / 1h / 15m) on its own data with its share of capital, then adds the curves.
     Mixed profiles (e.g. Boost 4h + Active 1h) are therefore simulated as side-by-side sub-accounts."""
@@ -288,6 +301,7 @@ def run_backtest_job(job_id, req):
         for sl in sleeves: groups.setdefault(sl.get('tf') or dtf, []).append(sl)
         total_share = sum(float(sl['share']) for sl in sleeves) or 1
         trs, cvs, skipped, all_syms, gaps = [], [], [], set(), {}
+        btc_src, ro = {}, req.get('run_options') or {}                 # AUD-07 C13b: BTC 1h data source per candle group
         xsnap, xstate, xdetail = exchange_rules_now() if req.get('exchange_rules', 'on') != 'off' else (None, 'off', 'exchange rules off')
         # BT02 review P1: only a valid, verified, fresh snapshot of THIS environment may change the canonical result
         # (entries, equity, PF, DD). Anything else runs the legacy floor and says so; it is never a promotable number.
@@ -319,8 +333,11 @@ def run_backtest_job(job_id, req):
                                 hours=sl.get('hours'), vol_max_pct=sl.get('vol_max_pct'), kelly=sl.get('kelly'),
                                 **{k: sl[k] for k in ('when', 'trail_entry', 'pump_guard') if sl.get(k) is not None}))
             gstart = start * gshare / total_share if len(groups) > 1 else start
+            need_1h = TF_SEC[tf] > 3600 and BT.needs_btc_move(cfg, ro.get('pump_guard'), ro.get('risk_rules'))
             tr, cv = BT.run(book, cfg, start=gstart, max_lev=float(req.get('max_lev', 10)), daily_halt=float(req.get('daily_halt', 0.08)),
-                            fund_per_bar=BT.FUND_PER_BAR * TF_SEC[tf] / 14400, exchange_rules=xapply, **(req.get('run_options') or {}))
+                            fund_per_bar=BT.FUND_PER_BAR * TF_SEC[tf] / 14400, exchange_rules=xapply,
+                            btc1h=btc1h_for_backtest(days, TF_SEC[tf]) if need_1h else None, **ro)
+            if cv.attrs.get('btc_move_source'): btc_src[tf] = cv.attrs['btc_move_source']
             fz = dict(cv.attrs.get('feasibility') or {}); fz['skips'] = (fz.get('skips') or [])[:100]
             feas['groups'][tf] = fz
             if len(tr): tr = tr.assign(tf=tf)
@@ -351,7 +368,7 @@ def run_backtest_job(job_id, req):
                    request=req, stats=st, skipped=skipped, years=years, engine=BT.VERSION, oos=oos, dd_curve=dd_curve,
                    gaps=gaps, period=[str(cv.index[0].date()), str(cv.index[-1].date())],
                    curve=[[str(t.date()), round(v, 2)] for t, v in cvd.items()], by_sleeve=by_sleeve, by_symbol=by_sym,
-                   symbols=sorted(all_syms), tfs=sorted(groups), feasibility=feas_total(feas))
+                   symbols=sorted(all_syms), tfs=sorted(groups), feasibility=feas_total(feas), btc_move_source=btc_src)
         fz = res['feasibility']
         fz['execution_realistic'] = bool(fz.get('rules_applied')) and not fz.get('unknown_symbols')
         fz['promotable'] = fz['execution_realistic']
@@ -414,6 +431,8 @@ def lab_book(q):
         sy = sl.get('symbols', 'all')
         syms |= set(CORE8 if sy == 'core8' else (q.get('universe') or TOP40) if sy == 'all' else sy)
     if not q.get('sleeves'): syms |= set(CORE8)
+    ro = q.get('run_options') or {}                                       # AUD-07 C13b: BTC 1h candles for the BTC-move rules
+    need_1h = TF_SEC[tf] > 3600 and BT.needs_btc_move(q.get('sleeves') or [], ro.get('pump_guard'), ro.get('risk_rules'))
     raw = {}
     for s_ in sorted(syms):
         try:
@@ -423,7 +442,9 @@ def lab_book(q):
         except Exception as ex:
             log.warning(f'lab data {s_}: {ex}')
     if 'BTCUSDT' not in raw: raise ValueError('no BTC data for that period')
-    return BT.Book(raw)
+    book = BT.Book(raw)
+    book.btc1h = btc1h_for_backtest(days, TF_SEC[tf]) if need_1h else None
+    return book
 
 
 def run_lab(jid, kind, req):
