@@ -26,7 +26,7 @@ from decimal import Decimal as D
 import pytest
 
 from nc02a_memfs import FaultFs, oserror
-from nc02a_util import tree
+from nc02a_util import real_fs_cipher, tree
 from nc02b_helpers import ACCT, OTHER_DIGEST, T, FakeExchange, account, owned
 from newcore.domain import Ownership
 from newcore.store import RealFs
@@ -35,14 +35,12 @@ from newcore.store.frame import FILE_HEADER, RT_BINDING, RT_SETTINGS, frame, rec
 from newcore.store.header import canonical_json
 from newcore.store.reconcile import ExOrder, ExPosition
 from newcore.store.records import provenance, snap_name
-from newcore.store.cipher import InsecureTestCipher
 from newcore.store.store import Mode
 from newcore.store.store import boot as _boot
 
 # Windows: None = the production default (DPAPI). Elsewhere: the portable test cipher (DPAPI does not exist there).
-# NC02B_PORTABLE_CIPHER=1 runs the portable path on Windows too.
-PORTABLE = sys.platform != 'win32' or bool(os.environ.get('NC02B_PORTABLE_CIPHER'))
-CIPHER = InsecureTestCipher(test_only=True) if PORTABLE else None
+# NC02B_NO_DPAPI=1 runs the portable path on Windows too (conftest.py).
+CIPHER = real_fs_cipher()
 
 
 def boot(*a, **kw):

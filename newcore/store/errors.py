@@ -32,6 +32,22 @@ class DurabilityUnavailable(JournalUnavailable):
         super().__init__(f'store {op} on {self.name or "<store>"}: {_os_kind(cause)}')
 
 
+def failure_reason(ex):
+    """(kind, text) naming WHY the store could not write - never silent (Cowork N6). kind is 'cipher_unavailable' when
+    no evidence cipher exists on this platform (DPAPI off Windows: the evidence copy, and with it the repair, fails
+    closed), else 'unwritable'. The text names the operation / file name / errno only (A16)."""
+    from .cipher import CipherUnavailable
+    cause = ex
+    while cause is not None and not isinstance(cause, CipherUnavailable):
+        cause = cause.__cause__ or cause.__context__
+    if cause is not None or isinstance(ex, CipherUnavailable) or 'CipherUnavailable' in str(ex):
+        c = cause or ex
+        return 'cipher_unavailable', f'no evidence cipher on this platform: {getattr(c, "strerror", None) or c}'
+    if isinstance(ex, DurabilityUnavailable):
+        return 'unwritable', str(ex)
+    return 'unwritable', _os_kind(ex) if isinstance(ex, OSError) else type(ex).__name__
+
+
 class SequenceConflict(JournalConflict):
     """A different event at an already-used sequence, or an event id re-used with other bytes (G2 / G3, NC-01
     invariant 12). The journal is unchanged; the event is never retried as it is."""

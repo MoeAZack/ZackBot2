@@ -259,3 +259,14 @@ def test_a_failing_kind_names_the_member_it_could_not_read(where, item):
     assert r.mode is Mode.HOLD and r.writes == frozenset()                 # rule 3: no write at all
     assert any(i.cause == 'unreadable' and item in i.ref for i in r.items), r.items
     _close(r)
+
+
+def test_a_torn_own_entry_is_reported_as_a_finding_without_changing_the_outcome():
+    fs, ex, _ = managed_with_lot()
+    p = os.path.join(P.by_binding, DIGEST)
+    fs.files.pop(os.path.normpath(p))
+    _put(fs, p, b'')                                              # 0 bytes: an interrupted own bind
+    r = go(fs, ex)
+    assert r.mode is Mode.MANAGE
+    assert any('by-binding entry torn' in f for f in r.findings), r.findings
+    _close(r)

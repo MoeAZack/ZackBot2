@@ -18,7 +18,7 @@ import pytest
 
 from nc02a_events import ACCOUNT_ID, AGGREGATE_ID, INTENTS, SCENARIO, T0, ev, result
 from nc02a_memfs import FaultFs, oserror
-from nc02a_util import header_doc, rebuild, records, tree
+from nc02a_util import header_doc, real_fs_cipher, rebuild, records, tree
 from newcore.domain import Lookup, ResultObserved, ResultPhase, canonical_bytes
 from newcore.store import IntentRecovery, RealFs, StoreOutcome, Verdict, create_journal, recover_journal
 from newcore.store.frame import RT_EVENT, frame
@@ -40,7 +40,7 @@ class Result:
 
 
 def adapter(acct_dir, fs):
-    r = recover_journal(acct_dir, ACCOUNT_ID, AGGREGATE_ID, fs=fs)
+    r = recover_journal(acct_dir, ACCOUNT_ID, AGGREGATE_ID, fs=fs, cipher=real_fs_cipher())
     d = r.directive
     mode = {StoreOutcome.ABORT_RO: 'ABORT_RO', StoreOutcome.HOLD: 'HOLD', StoreOutcome.HARD_HOLD: 'HOLD',
             StoreOutcome.PROCEED: 'PROCEED'}[d.outcome]
@@ -67,7 +67,7 @@ def segp(acct, n):
 
 
 def one_segment(acct, events=SCENARIO[:N]):
-    j = create_journal(acct, ACCOUNT_ID, AGGREGATE_ID)
+    j = create_journal(acct, ACCOUNT_ID, AGGREGATE_ID, cipher=real_fs_cipher())
     for e in events:
         j.append(e)
     j.close()
@@ -77,7 +77,7 @@ def two_segments(acct):
     """seg 1 = the backup generation (sealed), seg 2 = the primary (active)."""
     one_segment(acct, SCENARIO[:3])
     _write(segp(acct, 1), _read(segp(acct, 1)) + b'\0' * 9)
-    r = recover_journal(acct, ACCOUNT_ID, AGGREGATE_ID)
+    r = recover_journal(acct, ACCOUNT_ID, AGGREGATE_ID, cipher=real_fs_cipher())
     assert r.verdict is Verdict.REPAIRED
     for e in SCENARIO[3:N]:
         r.journal.append(e)

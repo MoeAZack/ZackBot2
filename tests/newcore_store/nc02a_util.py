@@ -2,6 +2,7 @@
 import hashlib
 import json
 import os
+import sys
 import stat
 
 from nc02a_events import ACCOUNT_ID, AGGREGATE_ID, SCENARIO
@@ -14,7 +15,18 @@ from newcore.store.header import canonical_json
 
 MEM_ROOT = os.path.join(os.path.abspath(os.sep), 'nc02a-mem')
 ACCT_DIR = os.path.join(MEM_ROOT, 'accounts', ACCOUNT_ID)
-TEST_CIPHER = InsecureTestCipher(test_only=True)          # in-memory drills only; real-FS tests use DPAPI
+TEST_CIPHER = InsecureTestCipher(test_only=True)          # in-memory drills only; real-FS tests: real_fs_cipher()
+
+
+def dpapi_available():
+    """DPAPI exists here (Windows) and is not switched off by NC02B_NO_DPAPI=1 (the Linux CI simulation)."""
+    return sys.platform == 'win32' and not os.environ.get('NC02B_NO_DPAPI')
+
+
+def real_fs_cipher():
+    """The cipher a REAL-file-system test passes: None (= the production default, DPAPI) where DPAPI exists, else
+    the portable test cipher - off Windows the production default fails closed (CipherUnavailable), by design."""
+    return None if dpapi_available() else TEST_CIPHER
 
 
 def opened(fs, ref, acct_dir=ACCT_DIR):
@@ -76,5 +88,5 @@ def tree(root):
     return out
 
 
-__all__ = ['MEM_ROOT', 'ACCT_DIR', 'TEST_CIPHER', 'opened', 'seg', 'mem_journal', 'recover', 'records', 'rebuild', 'header_doc', 'tree',
+__all__ = ['MEM_ROOT', 'ACCT_DIR', 'TEST_CIPHER', 'dpapi_available', 'real_fs_cipher', 'opened', 'seg', 'mem_journal', 'recover', 'records', 'rebuild', 'header_doc', 'tree',
            'file_header', 'frame', 'KIND_SEGMENT', 'RT_EVENT', 'RT_HEADER']

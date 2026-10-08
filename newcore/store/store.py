@@ -51,7 +51,7 @@ from newcore.domain.events import DecisionRecorded, IntentRecorded, IntentStateC
 from newcore.domain.portfolio import Ownership
 
 from .envelope import peek_version, write_envelope
-from .errors import DurabilityUnavailable
+from .errors import DurabilityUnavailable, failure_reason
 from .frame import KIND_ANCHOR, KIND_HEAD
 from .header import VersionVerdict, canonical_json, strict_json, HeaderError
 from .incidents import append_incident
@@ -538,7 +538,8 @@ def boot(base, account, *, exchange, now_ms, fs=None, reader=None, cipher=None, 
     rec = open_journal(store._insp, cipher=cipher)
     if rec.journal is None:
         store.view = rec.view
-        return _hard_hold(store, now_ms, incident, result, findings, 'journal not writable')
+        why = '; '.join(f.detail for f in rec.findings if f.kind in ('cipher_unavailable', 'unwritable'))
+        return _hard_hold(store, now_ms, incident, result, findings, 'journal not writable' + (f': {why}' if why else ''))
     store.journal = rec.journal
     if rec.evidence:
         store.writes.add('tail_seal')
@@ -672,6 +673,9 @@ def _read_only(fs, paths, account, reader, store, seen):
     bp = _binding_problem(fs, paths, account)                    # N7: the index is used at every boot
     if bp is not None:
         (seen.identity if bp[0] == 'identity' else seen.unreadable).append(bp[1])
+    elif _by_binding(fs, paths, account)[0] == 'torn':           # visible, outcome unchanged (Cowork, 7af893a)
+        seen.findings.append('by-binding entry torn (empty or a prefix of this account\'s own entry: an interrupted '
+                             'bind): treated as absent until the next bind() completes it')
     head = None
     if acct_exists:
         if acct_kind != 'dir':
@@ -1004,9 +1008,9 @@ def _enter_hold(store, items, reason, now_ms, incident, result, findings, seen, 
         if store.journal is None and getattr(store, '_insp', None) is not None and store._insp.plan is not None:
             rec = open_journal(store._insp, cipher=store.cipher)
             store.journal = rec.journal
-    except (OSError, DurabilityUnavailable, ValueError):
-        return _hard_hold(store, now_ms, incident, result, findings, 'store not writable while entering HOLD',
-                          items=items)
+    except (OSError, DurabilityUnavailable, ValueError) as ex:
+        return _hard_hold(store, now_ms, incident, result, findings,
+                          f'store not writable while entering HOLD: {failure_reason(ex)[1]}', items=items)
     incident('hold', str(reason), {'items': [i.doc() for i in items]})
     return result(Mode.HOLD, hold_kind=HoldKind.NORMAL, reason=reason,
                   portfolio=store.current.portfolio if store.current else None,
@@ -1020,7 +1024,7 @@ def _hard_hold(store, now_ms, incident, result, findings, why, items=()):
     incident('hard_hold', str(ReasonCode.RECOVERY_DURABILITY_UNAVAILABLE), {'why': why})
     return result(Mode.HOLD, hold_kind=HoldKind.DURABILITY_UNAVAILABLE, reason=ReasonCode.RECOVERY_DURABILITY_UNAVAILABLE,
                   portfolio=None, candidate=store.candidate.portfolio if store.candidate else None,
-                  candidate_kind=_cand_kind(store), items=tuple(items) + (HoldItem('account', 'store_unwritable'),),
+                  candidate_kind=_cand_kind(store), items=tuple(items) + (HoldItem('account', 'store_unwritable', why),),
                   findings=findings, store=store, view=getattr(store, 'view', None))
 
 

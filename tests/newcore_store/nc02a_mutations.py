@@ -22,6 +22,11 @@ SUITE = ['tests/newcore_store', 'tests/newcore_ports/test_nc02a_file_journal_con
 
 # name -> (file, [(exact source text, replacement)]); each anchor must occur exactly once
 MUTATIONS = {
+    'a cipher-less repair fails without a typed reason (N6)': (S + 'recovery.py', [(
+        "                        tuple(plan.findings) + (Finding(kind, None, None, why),), tuple(evidence), tuple(created),",
+        "                        tuple(plan.findings), tuple(evidence), tuple(created),")]),
+    'a torn own by-binding entry is silent (7af893a)': (S + 'store.py', [(
+        "    elif _by_binding(fs, paths, account)[0] == 'torn':", "    elif False:")]),
     'a stray file in snap/ read as damage (N4)': (S + 'store.py', [("            seen.findings.append(f'stray file in snap/: {n} (not a generation: reported, ignored, kept)')", "            seen.damage.append('unexpected file in snap/')")]),
     'a malformed by-binding entry ignored (N7)': (S + 'store.py', [("    if state == 'bad':\n        return 'identity'", "    if False:\n        return 'identity'")]),
     'promotion ignores the by-binding index (N7)': (S + 'store.py', [('        bp = _binding_problem(self.fs, self.paths, account)', '        bp = None  # ')]),
@@ -169,7 +174,8 @@ def _shim_step0_builder(dst):
 
 
 def run_suite(cwd):
-    out = subprocess.run([sys.executable, '-m', 'pytest', '-p', 'no:cacheprovider', '-q', '-o', 'addopts=', *SUITE],
+    out = subprocess.run([sys.executable, '-m', 'pytest', '-p', 'no:cacheprovider', '-q', '-o', 'addopts=', *SUITE,
+                          '-k', 'not test_the_whole_store_suite_passes_with_dpapi_unavailable'],   # a gate, not a detector
                          cwd=cwd, capture_output=True, text=True, timeout=1800)
     failed = sorted(set(re.findall(r'^(?:FAILED|ERROR) (.+?)(?: - .*)?$', out.stdout, re.M)))
     summary = (out.stdout.strip().splitlines() or [''])[-1]

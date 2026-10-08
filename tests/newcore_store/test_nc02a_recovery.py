@@ -409,9 +409,10 @@ def test_damage_on_a_real_file_system_leaves_bytes_mtimes_and_listing_unchanged(
 
 def test_torn_tail_on_a_real_file_system(tmp_path):
     from newcore.store import create_journal
+    from nc02a_util import real_fs_cipher
     os.mkdir(tmp_path / 'accounts')
     acct = str(tmp_path / 'accounts' / ACCOUNT_ID)
-    j = create_journal(acct, ACCOUNT_ID, AGGREGATE_ID)
+    j = create_journal(acct, ACCOUNT_ID, AGGREGATE_ID, cipher=real_fs_cipher())
     for e in SCENARIO[:N]:
         j.append(e)
     j.close()
@@ -420,7 +421,7 @@ def test_torn_tail_on_a_real_file_system(tmp_path):
         fh.write(TAILS['half_frame'])
     with open(p, 'rb') as fh:
         torn = fh.read()
-    r = recover_journal(acct, ACCOUNT_ID, AGGREGATE_ID)
+    r = recover_journal(acct, ACCOUNT_ID, AGGREGATE_ID, cipher=real_fs_cipher())
     assert r.verdict is Verdict.REPAIRED and r.journal.read() == tuple(SCENARIO[:N])
     for e in SCENARIO[N:]:
         r.journal.append(e)
@@ -429,6 +430,6 @@ def test_torn_tail_on_a_real_file_system(tmp_path):
         assert fh.read() == torn
     assert sorted(os.listdir(os.path.join(acct, 'journal'))) == ['.lock', 'seg-000001.seg', 'seg-000002.seg']
     assert len(os.listdir(os.path.join(acct, 'evidence'))) == 1
-    r2 = recover_journal(acct, ACCOUNT_ID, AGGREGATE_ID)
+    r2 = recover_journal(acct, ACCOUNT_ID, AGGREGATE_ID, cipher=real_fs_cipher())
     assert r2.verdict is Verdict.CLEAN and r2.journal.read() == tuple(SCENARIO)
     r2.journal.close()

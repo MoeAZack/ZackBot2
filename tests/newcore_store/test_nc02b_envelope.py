@@ -6,6 +6,8 @@ import sys
 
 import pytest
 
+from nc02a_util import dpapi_available
+
 from nc02a_memfs import PRIVATE, FaultFs, MemFs, oserror
 from nc02a_util import TEST_CIPHER
 from newcore.store.cipher import CipherUnavailable, DpapiCipher, InsecureTestCipher
@@ -17,7 +19,8 @@ from newcore.store.fs import RealFs
 ACCT = 'acct_' + 'c3' * 16
 OTHER = 'acct_' + 'd4' * 16
 SECRET = b'api_secret=sk_live_THIS_MUST_NEVER_APPEAR_IN_CLEAR_' * 3
-WIN = pytest.mark.skipif(sys.platform != 'win32', reason='DPAPI and the Windows DACL exist on Windows only')
+WIN = pytest.mark.skipif(not dpapi_available(), reason='DPAPI and the Windows DACL exist on Windows only '
+                                                         '(or NC02B_NO_DPAPI=1 simulates their absence)')
 
 
 def mem():

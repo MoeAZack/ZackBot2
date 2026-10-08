@@ -29,7 +29,7 @@ from newcore.domain.codec import Outcome
 from newcore.domain.events import EVENT_TYPES
 from newcore.ports.journal import JournalConflict
 
-from .errors import DurabilityUnavailable
+from .errors import DurabilityUnavailable, failure_reason
 from .envelope import EvidenceRef, write_evidence
 from .fold import Folder
 from .frame import KIND_SEGMENT, MAX_RECORD, RT_EVENT, RT_HEADER, HeaderState, resync_records, scan
@@ -347,9 +347,11 @@ def _finish(fs, account_dir, account_id, plan, writer_build, cipher, lock=None):
         path = os.path.join(jd, plan.names[m])
         try:
             h = fs.open_append(path)
-        except OSError:
-            return Recovery(Verdict.DURABILITY_UNAVAILABLE, None, folder.state(), tuple(plan.findings), (), (),
-                            ReadOnlyJournal(folder, 'the segment cannot be opened for writing'))
+        except OSError as ex:
+            kind, why = failure_reason(ex)
+            return Recovery(Verdict.DURABILITY_UNAVAILABLE, None, folder.state(),
+                            tuple(plan.findings) + (Finding(kind, plan.names[m], None, why),), (), (),
+                            ReadOnlyJournal(folder, f'the segment cannot be opened for writing: {why}'))
         j = FileJournal(fs, account_dir, folder, m, h, plan.header.seals, len(plan.blobs[m]), writer_build, cipher,
                         lock)
         return Recovery(Verdict.CLEAN, j, folder.state(),
@@ -383,9 +385,11 @@ def _finish(fs, account_dir, account_id, plan, writer_build, cipher, lock=None):
         created.append(f'{JOURNAL_DIR}/{seg_name(new_no)}')
         fs.mark('C-T3')                                       # sealed; nothing appended yet
         h = fs.open_append(os.path.join(jd, seg_name(new_no)))
-    except OSError:
-        return Recovery(Verdict.DURABILITY_UNAVAILABLE, None, folder.state(), tuple(plan.findings), tuple(evidence),
-                        tuple(created), ReadOnlyJournal(folder, 'the torn tail cannot be sealed'))
+    except OSError as ex:
+        kind, why = failure_reason(ex)                        # Cowork N6: typed and visible, never silent
+        return Recovery(Verdict.DURABILITY_UNAVAILABLE, None, folder.state(),
+                        tuple(plan.findings) + (Finding(kind, None, None, why),), tuple(evidence), tuple(created),
+                        ReadOnlyJournal(folder, f'the torn tail cannot be sealed: {why}'))
     j = FileJournal(fs, account_dir, folder, new_no, h, tuple(seals), seg_len, writer_build, cipher, lock)
     return Recovery(Verdict.REPAIRED, j, folder.state(), tuple(plan.findings), tuple(evidence), tuple(created))
 
