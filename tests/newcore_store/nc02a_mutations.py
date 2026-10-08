@@ -40,7 +40,7 @@ MUTATIONS = {
     'mid-segment damage treated as torn tail': (S + 'frame.py', [(
         '            later = _valid_record_after(data, off)\n', '            later = None\n')]),
     'evidence not copied before the seal': (S + 'recovery.py', [(
-        "            ref, new = write_evidence(fs, account_dir, account_id, plan.names[no], off, data)\n"
+        "            ref, new = write_evidence(fs, account_dir, account_id, plan.names[no], off, data, src, cipher)\n"
         "            evidence.append(ref)\n            if new:\n                created.append(ref.name)\n",
         "            pass\n")]),
     'failed fsync reopens the dirty segment instead of rolling': (S + 'journal.py', [(
@@ -78,6 +78,40 @@ MUTATIONS = {
         '        if False:\n')]),
     'non-canonical header accepted (finding 5)': (S + 'header.py', [(
         '    if payload is not None and canonical_json(doc) != payload:\n', '    if False:\n')]),
+    # ------------------------------------------------------------------------------------------- NC-02b
+    'HEAD picks the OLDER slot (D1)': (S + 'slots.py', [(
+        '        seq, which, doc, _ = max(valid, key=lambda v: v[0])\n',
+        '        seq, which, doc, _ = min(valid, key=lambda v: v[0])\n')]),
+    'anchor ahead of HEAD ignored (D2, rule 2)': (S + 'store.py', [(
+        "            seen.rollback.append('anchor ahead of HEAD')\n", "            pass\n")]),
+    'configured binding vs store binding ignored (A11)': (S + 'store.py', [(
+        "        seen.identity.append('the configured binding differs from the store binding')\n",
+        "        pass\n")]),
+    'trivially-empty / identity / HOLD-INIT promote without the owner (A08)': (S + 'store.py', [(
+        '        needs_owner = identity_change or empty or self.mode is Mode.HOLD_INIT\n',
+        '        needs_owner = False\n')]),
+    'promotion without the second fresh snapshot (A08 atomicity)': (S + 'store.py', [(
+        "        if not v2.match or s1.canonical().split(b'|', 2)[2] != s2.canonical().split(b'|', 2)[2]:\n",
+        "        if not v1.match:\n")]),
+    'orphan / any snapshot not peeked for rule 1 (D7)': (S + 'store.py', [(
+        "        if peek(raw, reader) == 'future':\n", "        if False:\n")]),
+    'HOLD entered without copying the evidence (A04)': (S + 'store.py', [(
+        '        refs, incs = _copy_evidence(store, seen, now_ms)\n', '        refs, incs = [], []\n')]),
+    'a checkpoint in HOLD is trusted (A05)': (S + 'store.py', [(
+        '        trust = Trust.MANAGED if self.mode is Mode.MANAGE else Trust.HOLD\n',
+        '        trust = Trust.MANAGED\n')]),
+    'any KNOWN_EMPTY counts as proven (R-KNOWN-EMPTY)': (S + 'store.py', [(
+        "    return (prov['kind'] in (ProvenanceKind.INIT_FLAT, ProvenanceKind.PROMOTION) and r is not None\n",
+        "    return True or (prov['kind'] in (ProvenanceKind.INIT_FLAT, ProvenanceKind.PROMOTION) and r is not None\n")]),
+    'stale exchange snapshot accepted (R-MATCH 2)': (S + 'reconcile.py', [(
+        '    if not 0 <= age < max_age_ms:\n', '    if False:\n')]),
+    'quantity tolerance ignored (R-MATCH 3)': (S + 'reconcile.py', [(
+        '        elif abs(o - e) * 2 >= step:\n', '        elif False:\n')]),
+    'a future settings record read as current (NF-03)': (S + 'snapfile.py', [(
+        "        raise SnapFuture('settings record version')", "        pass  # raise SnapFuture('settings record version')")]),
+    'a torn first slot read as damage (drill finding)': (S + 'slots.py', [(
+        "        return PairRead(PairState.ABSENT, None, None, states, 'torn first write')\n",
+        "        return PairRead(PairState.DAMAGE, None, None, states, 'torn first write')\n")]),
     'sent intent classified as never sent': (S + 'fold.py', [('            elif sent is None:\n',
                                                               '            elif True:\n')]),
 }
