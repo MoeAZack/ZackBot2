@@ -339,9 +339,38 @@ class Grammar:
 
 
 # ---------------------------------------------------------------------------------------------- the one gate
+class StagedEvent:
+    """A validated, NOT yet committed admission (JournalGate.stage). The journal makes the event durable FIRST and
+    only then calls commit(); if persistence fails it simply drops this object, and the gate never saw the event."""
+    __slots__ = ('_gate', '_event', '_grammar_commit', '_at_sequence', '_done')
+
+    def __init__(self, gate, event, grammar_commit):
+        self._gate, self._event, self._grammar_commit = gate, event, grammar_commit
+        self._at_sequence, self._done = gate.grammar.last_sequence, False
+
+    @property
+    def event(self):
+        return self._event
+
+    def commit(self) -> Admission:
+        """Apply the admission to the gate. Call exactly once, after the event is durable."""
+        req(not self._done, 'staged', 'already committed')
+        req(self._gate.grammar.last_sequence == self._at_sequence, 'staged',
+            'the gate moved since this event was staged (single writer: stage -> persist -> commit, one at a time)')
+        self._done = True
+        self._grammar_commit()
+        self._gate._apply(self._event)
+        return Admission.APPLY
+
+
 class JournalGate:
-    """The ONE admission every JournalPort runs before making an event durable. Pure; rebuild() after a restart.
-    Raises JournalConflict for anything it refuses (and then changes nothing)."""
+    """The ONE admission every JournalPort runs. Pure; rebuild() from the durable events after a restart.
+
+    append() protocol (store atomicity; part of the JournalPort contract):
+        staged = gate.stage(event)          validate only; raises JournalConflict; None = ALREADY_APPLIED
+        <write + fsync the event>           on failure: raise JournalUnavailable, drop `staged` (gate unchanged)
+        staged.commit()                     only now do sequence, decision, intent and lineage become consumed
+    """
 
     def __init__(self, account_id: str, aggregate_id: str):
         self.grammar = Grammar(account_id, aggregate_id)
@@ -354,17 +383,21 @@ class JournalGate:
             gate.admit(ev)
         return gate
 
-    def admit(self, event) -> Admission:
+    def stage(self, event) -> StagedEvent | None:
+        """Validate `event` against the gate without changing it. None = ALREADY_APPLIED (identical re-append)."""
         try:
             commit = self.grammar.prepare(header_of(event))      # order / identity / lineage first
             if commit is None:
-                return Admission.ALREADY_APPLIED
+                return None
             self._content(event)                                 # then the NC-01 per-record checks
         except DomainError as ex:
             raise JournalConflict(str(ex)) from ex
-        commit()
-        self._apply(event)
-        return Admission.APPLY
+        return StagedEvent(self, event, commit)
+
+    def admit(self, event) -> Admission:
+        """stage + commit at once: ONLY for events that are already durable (rebuild / replay)."""
+        staged = self.stage(event)
+        return Admission.ALREADY_APPLIED if staged is None else staged.commit()
 
     def _content(self, ev):
         """NC-01 per-record checks against the current state (pure)."""
@@ -415,8 +448,9 @@ class JournalPort(Protocol):
     implementation admits through JournalGate and must pass tests/newcore_ports/journal_contract.py."""
 
     def append(self, event: 'DomainEvent') -> Admission:
-        """JournalGate.admit, then durable (fsync'd) before it returns APPLY; ALREADY_APPLIED writes nothing.
-        Raises JournalConflict (refused, nothing written) or JournalUnavailable (store failure)."""
+        """staged = gate().stage(event) -> write + fsync -> staged.commit() -> APPLY. ALREADY_APPLIED writes nothing.
+        Raises JournalConflict (refused, nothing written) or JournalUnavailable (store failure: nothing durable AND
+        the gate unchanged, so the same event can be appended once the store is writable)."""
         ...
 
     def last_sequence(self) -> int:
