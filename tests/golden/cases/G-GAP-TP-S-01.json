@@ -1,12 +1,13 @@
 {
   "schema": "zb-golden/1",
-  "id": "G-GAP-TP-L-01",
-  "title": "The next candle OPENS through the take-profit level: the market close fills at the gapped open (with slippage), not at the level",
+  "id": "G-GAP-TP-S-01",
+  "title": "Short: the next candle OPENS through the take-profit level: the market close fills at the gapped open (with slippage), not at the level",
   "behaviours": [
     "target",
-    "gap"
+    "gap",
+    "short_side"
   ],
-  "side": "long",
+  "side": "short",
   "tf": "4h",
   "clock": {
     "start": 1704067200000,
@@ -33,10 +34,10 @@
       },
       "bars": {
         "282": [
-          "106",
-          "106",
-          "105.8",
-          "105.9"
+          "94",
+          "94.2",
+          "94",
+          "94.1"
         ]
       },
       "atr": {
@@ -47,7 +48,7 @@
   "path_policy": "zb-path/1",
   "slot": {
     "id": "S1",
-    "sides": "long",
+    "sides": "short",
     "risk": "0.02",
     "share": "1",
     "max_pos": 1,
@@ -65,7 +66,7 @@
     {
       "bar": 279,
       "sym": "SOLUSDT",
-      "kind": "enter_long"
+      "kind": "enter_short"
     }
   ],
   "faults": [],
@@ -73,12 +74,12 @@
     "trades": [
       {
         "sym": "SOLUSDT",
-        "side": "LONG",
+        "side": "SHORT",
         "i_in": 280,
         "i_out": 282,
         "exit": "TP_FULL",
-        "R": "2.9279003",
-        "pnl": "29.279003"
+        "R": "2.9321003",
+        "pnl": "29.321003"
       }
     ],
     "final": {
@@ -106,26 +107,27 @@
       "divergence_id": "AUD07-TP-GAP-OPEN",
       "ticket": "AUD-07",
       "finding": "TP gap at the open (pre-existing, outside C13f)",
-      "correction": "CORR-0049",
+      "correction": "CORR-0050",
       "until": "AUD-07 product fix",
-      "reason": "backtest.py favourable_leg books the tp_r exit at the LEVEL (104.02) even when the candle opened beyond it (106); the bot closes with a market order where the price is. Pyramid adds already use max(level, open)",
+      "reason": "backtest.py favourable_leg books the tp_r exit at the LEVEL (95.98) even when the candle opened beyond it (94) - mirrored on the short side; the bot buys back with a market order where the price is",
       "observed": [
         {
           "path": "trades[0].R",
-          "expected": "2.9279003",
-          "actual": 1.938593
+          "expected": "2.9321003",
+          "actual": 1.941407
         },
         {
           "path": "trades[0].pnl",
-          "expected": "29.279003",
-          "actual": 19.385932
+          "expected": "29.321003",
+          "actual": 19.414072
         }
       ]
     }
   ],
   "provenance": {
-    "created_at_sha": "4e03152",
-    "author": "AUD-07 review fixes (Claude)",
-    "notes": "Gap rule, target side: the engine's take-profit is a market close sent when the mark is at/through the level, so a candle that opens through it fills at the open, adverse-adjusted by the slippage (same as the stop side, G-GAP-STOP-L-01). ATR 1; entry 100.02, stop 98.02, R 2, target 2 R = 104.02. Candle 282 opens at 106 (= its high, red: the first path point is the open). Exit 106 x 0.9998 = 105.9788; pnl = 5 x (105.9788 - 100.02) - 5 x (105.9788 + 100.02) x 0.0005 = 29.279003. The legacy backtest books 104.02 x 0.9998: 19.385932 (-1.0 R). Found by gapprobe.py (Windows adversarial review)."
+    "created_at_sha": "cff3f88",
+    "author": "NC-01 golden short mirrors (Claude)",
+    "mirror_of": "G-GAP-TP-L-01",
+    "notes": "Short mirror of G-GAP-TP-L-01: market reflected around the base price, signals and side flipped. Entry 99.98, stop 101.98, R 2, target 2 R = 95.98. Candle 282 opens at 94 (= its low, green: o->l->h->c, the first path point is the open). The take-profit is a market buy at the mark: 94 x 1.0002 = 94.0188; pnl = 5 x (99.98 - 94.0188) - 5 x (99.98 + 94.0188) x 0.0005 = 29.321003. The legacy backtest books the level 95.98 x 1.0002 (the mirrored long TP-gap divergence)."
   }
 }
