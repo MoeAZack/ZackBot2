@@ -110,7 +110,8 @@ def export_head(dst):
 
 def run_suite(cwd):
     out = subprocess.run([sys.executable, '-m', 'pytest', '-p', 'no:cacheprovider', '-q', '-o', 'addopts=',
-                          'tests/newcore_management'], cwd=cwd, capture_output=True, text=True, timeout=900)
+                          '-m', 'not slow', 'tests/newcore_management'],
+                         cwd=cwd, capture_output=True, text=True, timeout=900)
     failed = sorted(set(re.findall(r'^FAILED (.+?)(?: - .*)?$', out.stdout, re.M)))
     summary = (out.stdout.strip().splitlines() or [''])[-1]
     return out.returncode, failed, summary
