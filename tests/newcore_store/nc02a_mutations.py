@@ -22,6 +22,7 @@ SUITE = ['tests/newcore_store', 'tests/newcore_ports/test_nc02a_file_journal_con
 
 # name -> (file, [(exact source text, replacement)]); each anchor must occur exactly once
 MUTATIONS = {
+    'lock I/O error read as contention (N1)': (S + 'fs.py', [('            if ex.errno in _CONTENDED:\n', '            if True:\n')]),
     'append without fsync': (S + 'journal.py', [('            self._fs.fsync(self._h)\n', '            pass\n')]),
     'segment create without file fsync': (S + 'journal.py', [('        fs.fsync(h)\n    finally:\n        _close_quiet',
                                                               '        pass\n    finally:\n        _close_quiet')]),

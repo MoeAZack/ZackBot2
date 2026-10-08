@@ -63,7 +63,14 @@ def _close_quiet(fs, h):
 
 def acquire_lock(fs, journal_dir):
     """The exclusive writer lock journal/.lock (held for the writer's lifetime). Raises JournalLocked when another
-    writer holds it and OSError when it cannot be created (an unwritable store)."""
+    writer holds it and OSError when it cannot be created or locked (an unwritable store, an I/O error, a non-file at
+    the lock path).
+
+    Lifecycle (N1): the .lock FILE is permanent. It is created once and never unlinked by the store - not by close(),
+    not by recovery, not after a crash - so the store can never delete a lock another writer holds. Release = the OS
+    lock is dropped (close(), or the process dying). A stale .lock after a crash is therefore harmless and must not be
+    removed by hand while a writer may run (on POSIX that would let a second writer lock a fresh file; RealFs detects
+    a path swapped between its open and its lock and refuses it). Recovery ignores .lock in the journal listing."""
     lock = fs.lock_exclusive(os.path.join(journal_dir, LOCK_NAME))
     if lock is None:
         raise JournalLocked('another writer holds this journal')
