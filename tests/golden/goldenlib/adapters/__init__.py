@@ -21,3 +21,20 @@ def get(name):
         from .legacy_engine import LegacyEngine
         return LegacyEngine()
     raise KeyError(f'no adapter {name!r} in this tree (NEWCORE adapters arrive with NC-07/NC-08)')
+
+
+POISON = 'ADAPTER-READ-THE-EXPECTATION'
+
+
+def blind(case):
+    """The case as the adapters see it in the pack (Cowork r2 attack (a)): `expect` replaced by a poisoned expectation and
+    `known_divergences` removed. Every input an adapter needs is untouched, so a correct adapter's trace is identical; an
+    adapter that reads or echoes the expectation produces poison and fails its golden comparison (the comparison itself
+    always uses the real, unmodified case)."""
+    import copy
+    c = copy.deepcopy(case)
+    c['expect'] = dict(trades=[dict(sym=POISON, side=POISON, i_in=-1, i_out=-1, exit=POISON, R='999', pnl='999')
+                               for _ in (case.get('expect') or {}).get('trades') or [None]],
+                       final=dict(lots=-999))
+    c.pop('known_divergences', None)
+    return c

@@ -4,7 +4,7 @@ contract_sha(case) = sha256(canonical(case minus DESCRIPTIVE)): the expectation 
 adapters it binds (`applies_to`), the recorded legacy behaviour (`known_divergences`) AND every causal input (market, signals,
 slot, costs, clock, account, faults, adapter_options, ...). Only the descriptive text (title, behaviours, provenance, notes)
 is outside it. Any new top-level key is protected automatically (validate() rejects keys it does not know)."""
-import glob, hashlib, json, os, re
+import glob, hashlib, json, math, numbers, os, re
 
 from . import CASES_DIR
 
@@ -23,12 +23,50 @@ FINAL_KEYS = ('lots',)                              # expect.final keys an adapt
 COST_KEYS = ('model', 'taker_fee', 'slip', 'funding_per_bar')
 DESCRIPTIVE = ('title', 'behaviours', 'provenance', 'notes')     # the only keys outside the contract hash
 CORR_ID = re.compile(r'CORR-\d{4}')
+TOL_MAX = 0.001                                      # largest per-trade tolerance (path / rounding artefacts only)
 REQUIRED_TOP = ('schema', 'id', 'title', 'behaviours', 'side', 'tf', 'clock', 'account', 'market', 'path_policy', 'slot',
                 'signals', 'faults', 'expect', 'applies_to', 'known_divergences', 'provenance')
 
 
 class CaseError(ValueError):
     """A fixture that does not follow zb-golden/1. Always a hard failure, never a skip."""
+
+
+class NumberError(ValueError):
+    """A non-finite, boolean or malformed number where a finite decimal is required (P1 on b01d439: NaN made
+    abs(expected - actual) > tol false, so a NaN expectation, actual or resolution passed every comparison)."""
+
+
+DECIMAL = re.compile(r'-?(0|[1-9][0-9]*)(\.[0-9]+)?([eE][-+]?[0-9]+)?')
+
+
+def finite(x, what):
+    """float(x) for a finite, non-boolean number: an int / float (numpy floats included), or a JSON decimal string. NaN,
+    +-Infinity, bool, None, '1_0', ' 1', 'nan', 'inf' and overflow to inf ('1e999') all raise NumberError."""
+    if isinstance(x, bool) or not (isinstance(x, numbers.Real) or isinstance(x, str)):
+        raise NumberError(f'{what}: {x!r} is not a finite number')
+    if isinstance(x, str) and not DECIMAL.fullmatch(x):
+        raise NumberError(f'{what}: {x!r} is not a decimal number')
+    v = float(x)
+    if not math.isfinite(v):
+        raise NumberError(f'{what}: {x!r} is not finite')
+    return v
+
+
+def _no_constant(name):
+    raise ValueError(f'JSON constant {name} is not allowed (NaN / Infinity are never a golden value)')
+
+
+def _finite_float(s):
+    v = float(s)
+    if not math.isfinite(v):
+        raise ValueError(f'JSON number {s} overflows to {v}')
+    return v
+
+
+def strict_loads(text):
+    """json.loads that REJECTS NaN / Infinity / -Infinity and numbers that overflow to inf (never canonicalises them)."""
+    return json.loads(text, parse_constant=_no_constant, parse_float=_finite_float)
 
 
 def canonical(obj):
@@ -103,14 +141,17 @@ def validate(case, path=None):
     for t in ex['trades']:
         _req(set(t) <= set(TRADE_KEYS) and {'sym', 'side', 'i_in', 'i_out', 'exit', 'R'} <= set(t), cid, f'expect trade keys {sorted(t)}')
         _req(t['exit'] in EXIT_CODES and t['side'] in ('LONG', 'SHORT'), cid, f'expect trade codes {t}')
+        for k in ('R', 'pnl'):
+            if k in t:
+                _req(_is_finite(t[k]), cid, f'expect trade {k}={t[k]!r}: a finite decimal (never NaN / Infinity / bool)')
         tol = t.get('tol')
         if tol is not None:
             _req(isinstance(tol, dict) and not (set(tol) - set(TOL_KEYS)) and (set(tol) & {'R', 'pnl'}) and tol.get('why'), cid,
                  f'expect trade tol {tol}: R and/or pnl, plus a mandatory "why"')
             _req(isinstance(tol.get('adapters'), list) and tol['adapters'] and set(tol['adapters']) <= set(ADAPTERS), cid,
                  f'expect trade tol {tol}: "adapters" = the adapters the tolerance applies to (never implicit)')
-            _req(all(0 <= float(tol[k]) <= 0.001 for k in ('R', 'pnl') if k in tol), cid,
-                 f'expect trade tol {tol}: at most 0.001 (a path / rounding artefact, never a behaviour difference)')
+            _req(all(_is_finite(tol[k]) and 0 <= float(tol[k]) <= TOL_MAX for k in ('R', 'pnl') if k in tol), cid,
+                 f'expect trade tol {tol}: a finite number in [0, {TOL_MAX}] (a path / rounding artefact, never a behaviour difference)')
     fin = ex.get('final') or {}
     _req(isinstance(fin, dict) and not (set(fin) - set(FINAL_KEYS)), cid,
          f'expect.final: unknown keys {sorted(set(fin) - set(FINAL_KEYS))} (known: {FINAL_KEYS})')
@@ -129,10 +170,24 @@ def validate(case, path=None):
              f"known_divergences: 'correction' must name the ledger entry that recorded it (CORR-nnnn), got {d['correction']!r}")
         _req(status(case, d['adapter']) == 'known_divergence', cid, f"known divergence for {d['adapter']} but applies_to is not known_divergence")
         _req(isinstance(d['observed'], list) and d['observed'], cid, 'known_divergences.observed: the exact mismatch list')
+        for o in d['observed']:
+            f = str(o.get('path', '')).rsplit('.', 1)[-1] if isinstance(o, dict) else None
+            _req(isinstance(o, dict) and f is not None, cid, f'known_divergences.observed: {o!r} is not a mismatch record')
+            if f in ('R', 'pnl'):
+                _req(all(o.get(k) is None or _is_finite(o[k]) for k in ('expected', 'actual')), cid,
+                     f'known_divergences.observed {o}: R / pnl values must be finite numbers')
     for a in ADAPTERS:
         if status(case, a) == 'known_divergence':
             _req(sum(d['adapter'] == a for d in kd) == 1, cid, f'applies_to.{a} = known_divergence needs exactly one known_divergences entry')
     return case
+
+
+def _is_finite(x):
+    try:
+        finite(x, 'x')
+        return True
+    except NumberError:
+        return False
 
 
 def status(case, adapter):
@@ -142,10 +197,10 @@ def status(case, adapter):
 
 def load(path):
     """utf-8-sig: a UTF-8 BOM (Windows editors) is accepted - the hash is over the parsed content, so it cannot hide a change.
-    Anything unreadable is a CaseError naming the file."""
+    NaN / Infinity are rejected at parse time (strict_loads). Anything unreadable is a CaseError naming the file."""
     try:
         with open(path, encoding='utf-8-sig') as f:
-            case = json.load(f)
+            case = strict_loads(f.read())
     except (OSError, UnicodeDecodeError, ValueError) as e:
         raise CaseError(f'{os.path.basename(path)}: not a readable UTF-8 JSON case ({type(e).__name__}: {e})') from None
     if not isinstance(case, dict):

@@ -11,18 +11,23 @@ applies_to per adapter:
 - not_applicable / pending_adapter -> the reason is mandatory (schema) and the pair is reported as skipped.
 No `slow` marker: the pack runs per commit in `verify fast`. Budget: test_pack_runtime_target (60 s) and
 test_pack_runtime_hard_stop (120 s), measured on the whole pack whatever the selection or order.
+Hard stop (P2 on b01d439): the adapters never run in the pytest process. pack() runs pack_worker.py ONCE per session under
+goldenlib.deadline (HARD_STOP_S wall clock, the whole process tree killed on expiry) and every test reads that run, so a hung
+adapter fails the session after HARD_STOP_S instead of holding verify-fast to the job timeout. The adapters only see
+adapters.blind(case) (Cowork r2 (a)): a trace that equals the golden was produced without the expectation.
 """
-import os, sys, time
+import json, os, sys
 
 import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from goldenlib import adapters, compare, schema  # noqa: E402
+from goldenlib import REPO_ROOT, adapters, compare, deadline, schema  # noqa: E402
 
 LEGACY = ('legacy_backtest', 'legacy_engine')
 TARGET_S = 60.0                      # design budget for the whole pack per commit (AUD-08 section 7)
 HARD_STOP_S = 120.0                  # the pack may never cost more than this, whatever else is decided
-_TIMES = {}                          # (case id, adapter) -> wall seconds of this session's run
+WORKER = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'pack_worker.py')
+_PACK = {}                           # the session's single pack run (pack())
 
 
 class KnownDivergence(AssertionError):
@@ -50,15 +55,59 @@ def _params():
     return out
 
 
+def run_pack(hard_stop_s, worker=WORKER):
+    """Run the whole pack in a deadline-bounded child -> dict(timed_out, elapsed, runs={(id, adapter): rec}, error)."""
+    import tempfile
+    fd, out = tempfile.mkstemp(prefix='golden_pack_', suffix='.json')
+    os.close(fd)
+    try:
+        r = deadline.run([sys.executable, worker, out], hard_stop_s, cwd=REPO_ROOT)
+        res = dict(timed_out=r.timed_out, elapsed=r.elapsed, runs={}, error=None)
+        if r.timed_out:
+            res['error'] = (f'golden pack hit the {hard_stop_s:g} s HARD STOP and was killed after {r.elapsed:.2f} s '
+                            f'(process tree). stderr tail: {r.stderr[-1500:]}')
+        elif r.returncode != 0:
+            res['error'] = f'golden pack worker exited {r.returncode}: {r.stderr[-3000:]}'
+        else:
+            with open(out, encoding='utf-8') as f:
+                data = json.load(f)                   # transport: NaN tokens allowed here, compare.py rejects them
+            res['runs'] = {(x['id'], x['adapter']): x for x in data['runs']}
+        return res
+    finally:
+        try:
+            os.remove(out)
+        except OSError:
+            pass
+
+
+def pack():
+    if not _PACK:
+        _PACK.update(run_pack(HARD_STOP_S))
+        slow = sorted(_PACK['runs'].values(), key=lambda x: -x['seconds'])[:3]
+        print(f"\ngolden pack: {len(_PACK['runs'])} runs, {_PACK['elapsed']:.1f} s wall incl. worker start (target "
+              f"{TARGET_S:.0f} s, hard stop {HARD_STOP_S:.0f} s); slowest "
+              f"{[(x['id'], x['adapter'], round(x['seconds'], 1)) for x in slow]}")
+    return _PACK
+
+
+def pack_trace(case_id, adapter):
+    p = pack()
+    if p['error']:
+        pytest.fail(p['error'])
+    rec = p['runs'].get((case_id, adapter))
+    if rec is None:
+        pytest.fail(f'golden pack worker did not run {case_id} [{adapter}]')
+    if 'error' in rec:
+        pytest.fail(f"{case_id} [{adapter}] raised in the adapter: {rec['error']}")
+    return rec
+
+
 @pytest.mark.parametrize('case,adapter', _params())
 def test_golden_case(case, adapter):
     if isinstance(case, schema.CaseError):
         pytest.fail(f'golden pack does not load: {case}')
-    t0 = time.perf_counter()
-    try:
-        trace = adapters.get(adapter).run(case)
-    finally:
-        _TIMES[(case['id'], adapter)] = time.perf_counter() - t0
+    rec = pack_trace(case['id'], adapter)
+    trace = adapters.Trace(trades=rec['trace']['trades'], final=rec['trace']['final'])
     mism = compare.compare(case, trace, adapter)
     if schema.status(case, adapter) == 'known_divergence':
         kd = next(d for d in case['known_divergences'] if d['adapter'] == adapter)
@@ -83,34 +132,33 @@ def test_the_pack_has_a_passing_case_on_each_legacy_adapter():
         assert any(schema.status(c, ad) == 'required' for c in schema.load_all()), ad
 
 
-def _pack_times():
-    """Wall time of every runnable case x legacy adapter. Reuses what this session already measured and runs every pair that
-    has not run (selected alone, -k, reordered collection), so the budget is always the whole pack - it never skips."""
-    for c in schema.load_all():
-        for ad in LEGACY:
-            if schema.status(c, ad) in ('required', 'known_divergence') and (c['id'], ad) not in _TIMES:
-                t0 = time.perf_counter()
-                try:
-                    adapters.get(ad).run(c)
-                except Exception:                         # a broken run fails its own case test; its time still counts
-                    pass
-                _TIMES[(c['id'], ad)] = time.perf_counter() - t0
-    total = sum(_TIMES.values())
-    slow = sorted(_TIMES.items(), key=lambda kv: -kv[1])[:3]
-    print(f'\ngolden pack: {len(_TIMES)} runs in {total:.1f} s (target {TARGET_S:.0f} s, hard stop {HARD_STOP_S:.0f} s); '
-          f'slowest {[(k, round(v, 1)) for k, v in slow]}')
-    return total
-
-
 def test_pack_runtime_hard_stop():
-    total = _pack_times()
-    assert total <= HARD_STOP_S, f'golden pack took {total:.1f} s > {HARD_STOP_S:.0f} s hard stop'
+    """The whole pack (every runnable pair, whatever the selection) ran inside the HARD_STOP_S deadline."""
+    p = pack()
+    assert not p['timed_out'], p['error']
+    assert p['error'] is None, p['error']
+    want = {(c['id'], ad) for c in schema.load_all() for ad in LEGACY if schema.status(c, ad) in ('required', 'known_divergence')}
+    assert set(p['runs']) == want, f"the pack run is incomplete: missing {sorted(want - set(p['runs']))}"
+    assert p['elapsed'] <= HARD_STOP_S, f"golden pack took {p['elapsed']:.1f} s > {HARD_STOP_S:.0f} s hard stop"
 
 
 def test_pack_runtime_target():
-    total = _pack_times()
-    assert total <= TARGET_S, (f'golden pack took {total:.1f} s > the {TARGET_S:.0f} s per-commit target: speed the slow cases up '
-                               'or move them out of verify fast with a recorded decision')
+    p = pack()
+    assert p['error'] is None, p['error']
+    assert p['elapsed'] <= TARGET_S, (f"golden pack took {p['elapsed']:.1f} s > the {TARGET_S:.0f} s per-commit target: speed "
+                                      'the slow cases up or move them out of verify fast with a recorded decision')
+
+
+def test_adapters_never_read_the_expectation():
+    """Cowork r2 (a): legacy_backtest on the full case and on blind(case) (expect poisoned, known divergences removed) gives
+    identical traces for every case; legacy_engine only ever runs blind, so its golden comparison is the same proof."""
+    n = 0
+    for c in schema.load_all():
+        if schema.status(c, 'legacy_backtest') in ('required', 'known_divergence'):
+            rec = pack_trace(c['id'], 'legacy_backtest')
+            assert rec['trace'] == rec['trace_full'], f"{c['id']}: legacy_backtest trace depends on expect / known_divergences"
+            n += 1
+    assert n
 
 
 def test_legacy_mgmt_mapping_is_explicit():

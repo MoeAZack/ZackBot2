@@ -26,7 +26,16 @@ def main(argv=None):
     ap.add_argument('--propose', action='store_true')
     a = ap.parse_args(argv)
     os.chdir(REPO_ROOT)
-    cases = [c for c in schema.load_all() if not a.ids or c['id'] in a.ids]
+    all_cases = schema.load_all()
+    unknown = sorted(set(a.ids) - {c['id'] for c in all_cases})
+    if unknown:                                           # P2 on b01d439: a typo'd id must never "pass" with nothing run
+        print(f'unknown golden case id(s): {unknown}', file=sys.stderr)
+        return 2
+    cases = [c for c in all_cases if not a.ids or c['id'] in a.ids]
+    if not cases:
+        print('empty selection: no golden case to run', file=sys.stderr)
+        return 2
+    ran = 0
     out_dir = os.path.join(REPO_ROOT, 'dev_out', 'golden_proposals')
     bad = 0
     for c in cases:
@@ -35,7 +44,8 @@ def main(argv=None):
             if st == 'not_applicable':
                 print(f"{c['id']:<26} {ad:<16} n/a"); continue
             t0 = time.perf_counter()
-            tr = adapters.get(ad).run(c)
+            ran += 1
+            tr = adapters.get(ad).run(adapters.blind(c))
             mm = compare.compare(c, tr, ad)
             kd = next((d for d in c['known_divergences'] if d['adapter'] == ad), None)
             if not mm:
@@ -52,6 +62,9 @@ def main(argv=None):
                 os.makedirs(out_dir, exist_ok=True)
                 with open(os.path.join(out_dir, f"{c['id']}.{ad}.json"), 'w') as f:
                     json.dump(dict(trace=tr.as_dict(), mismatches=mm), f, indent=1, default=float)
+    if not ran:
+        print('empty selection: every selected case x adapter is not applicable', file=sys.stderr)
+        return 2
     return 1 if bad else 0
 
 
