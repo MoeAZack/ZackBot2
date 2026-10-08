@@ -472,6 +472,11 @@ def _restore_stop(w, b):
     if live:
         return
     w.reconcile.append(('stop_lost', b.intent_id, b.status))
+    cover = [x for x in w.bindings() if x.leg is Leg.STOP and x.state is BindState.WORKING
+             and x.stop_price == pos.stop.price and x.qty >= pos.stop.qty]
+    if cover:                     # Cowork 11: a confirmed stop at that price already covers it - rebind, never a duplicate
+        w.replace_binding(next(x for x in w.bindings() if x.intent_id == cover[-1].intent_id), current=True)
+        return
     d = w.send(w.draft(Leg.STOP, Purpose.PROTECT, OrderType.STOP_MARKET, pos.stop.qty, R.PROTECT_RESTORING, Op.PLACE,
                        pos.stop.price, route=w.d['stop_route']))
     _ = d

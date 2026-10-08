@@ -295,8 +295,8 @@ def check(v, before, ev, drv):
     ds = drv.state
     if ds.stop_route_policy == 'per_attempt':
         g6_drive_ok(before, ev, drv)
-    if ds.pos.stop_locked:                     # Cowork 11: no second same-price stop beside a confirmed one covering it
-        for d in drv.submits:
+    for d in drv.submits:                      # Cowork 11: no second same-price stop beside a confirmed one covering it
+        if ds.pos.stop_locked or d.reason.value == 'protect.restoring':   # (a normal resize may shrink in place)
             if d.leg is Leg.STOP and d.route == 'classic' and any(
                     b.leg is Leg.STOP and b.state is DR.BindState.WORKING and b.intent_id != d.intent_id
                     and b.stop_price == d.stop_price and b.qty >= d.qty for b in ds.bindings):
