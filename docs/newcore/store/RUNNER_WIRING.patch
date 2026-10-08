@@ -1,0 +1,254 @@
+--- a/newcore/runner/app.py
++++ b/newcore/runner/app.py
+@@ -14,7 +14,9 @@
+          <journal dir>/replay-<symbol> (or in memory), reports per symbol; --compare prints the match against the
+          research trade list (the 224 / 224 check over the core 8).
+ The strategy (trend_ema_mom.v1) is DISABLED unless the config says enabled = true AND --enable-candidate is given.
+-Exit codes: 0 ok, 2 config refused, 3 store cannot write at boot, 4 store HOLD verdict, 5 store ABORT-RO.
++Exit codes: 0 ok, 2 config refused, 3 store refused to start (another process / INIT waits), 4 store HOLD /
++HOLD-INIT (items printed; leaving it is the store's promote()), 5 store ABORT-RO.
++The account store (NC-02b) lives under <journal dir>/data/accounts/<account id>; boot = newcore.store.open_store.
+ """
+ from __future__ import annotations
+
+@@ -33,7 +35,8 @@
+ from newcore.domain import (Account, AccountBinding, BindingConfirmation, BindingState, Environment, Venue,
+                             confirmation_phrase)
+ from newcore.risk import BookPolicy
+-from newcore.store import Verdict, create_journal, recover_journal
++from newcore.store import DurabilityUnavailable, Outcome, create_journal, open_store
++from newcore.store.exchange_view import VenueExchangeView
+ from newcore.strategy import Params
+
+ from . import config as C
+@@ -51,6 +54,10 @@
+ EXIT_CONFIG, EXIT_STORE_DOWN, EXIT_STORE_HOLD, EXIT_ABORT_RO = 2, 3, 4, 5
+
+
++class StoreDown(Exception):
++    """The boot directive of a hard HOLD (the store cannot write): Runner(hard_hold=...)."""
++
++
+ class StoreRefused(Exception):
+     def __init__(self, code, text):
+         super().__init__(text)
+@@ -94,20 +101,22 @@
+                    binding_state=BindingState.CONFIRMED, proposed_binding=None, confirmation=conf)
+
+
+-def open_journal(account_dir, cfg):
+-    """FileJournal of the account: created on the first run, recovered (CLEAN / REPAIRED) on every later one."""
+-    jd = os.path.join(account_dir, 'journal')
+-    if not os.path.isdir(jd) or not os.listdir(jd):
+-        return create_journal(account_dir, cfg.account_id, cfg.portfolio_id)
+-    r = recover_journal(account_dir, cfg.account_id, cfg.portfolio_id)
+-    if r.verdict in (Verdict.CLEAN, Verdict.REPAIRED):
+-        return r.journal
+-    if r.verdict is Verdict.DURABILITY_UNAVAILABLE:
+-        raise StoreRefused(EXIT_STORE_DOWN, f'store cannot write at boot ({r.findings}): hard HOLD needs the '
+-                                            'emergency set with a read-only journal view (NC-02a gap)')
+-    if r.verdict is Verdict.ABORT_RO:
+-        raise StoreRefused(EXIT_ABORT_RO, f'journal of an unknown / future format: ABORT-RO ({r.findings})')
+-    raise StoreRefused(EXIT_STORE_HOLD, f'journal {r.verdict}: HOLD, nothing is run ({r.findings})')
++def boot_store(cfg, reads, rules, now_ms, fold):
++    """NC-02b boot (newcore.store.open_store): the typed outcome decides whether this process runs at all.
++    INIT / MANAGE: the writable journal. HOLD with hold_kind DURABILITY_UNAVAILABLE (hard HOLD): the read-only view
++    (events, gate, state; every append refused) so the runner can price the A23 / A24 emergency set. Anything else
++    refuses to start with its exit code; nothing is written by a refusal."""
++    view = VenueExchangeView(reads, key_digest=cfg.key_digest, steps={s: r.step_size for s, r in rules.items()})
++    b = open_store(cfg.journal_dir, account(cfg), exchange=view, now_ms=now_ms, aggregate_id=cfg.portfolio_id,
++                   fold=fold)
++    if b.outcome in (Outcome.INIT, Outcome.MANAGE) or (b.outcome is Outcome.HOLD and b.hard_hold):
++        return b
++    if b.outcome is Outcome.ABORT_RO:
++        raise StoreRefused(EXIT_ABORT_RO, f'store of an unknown / future format: ABORT-RO ({b.findings})')
++    if b.outcome is Outcome.REJECT:
++        raise StoreRefused(EXIT_STORE_DOWN, f'store refused to start: {b.reason}')
++    items = '; '.join(f'{i.scope} {i.cause} {i.ref}'.strip() for i in b.items)
++    raise StoreRefused(EXIT_STORE_HOLD, f'store {b.outcome}: nothing is run until promote() ({items})')
+
+
+ def signals_for(cfg, enabled):
+@@ -150,9 +159,8 @@
+     def __init__(self, cfg, enabled):
+         self.cfg = cfg
+         self.tf_ms = TF_MS[cfg.tf]
+-        self.account_dir = os.path.join(cfg.journal_dir, cfg.account_id)
+-        os.makedirs(cfg.journal_dir, exist_ok=True)
+-        self.journal = open_journal(self.account_dir, cfg)
++        self.account_dir = os.path.join(cfg.journal_dir, cfg.account_id)       # fake venue state (not the store)
++        os.makedirs(self.account_dir, exist_ok=True)
+         if cfg.venue_kind == 'fake':
+             self.bars = data_source(cfg, cfg.symbols)
+             candles = {s: self.bars.all_bars(s) for s in cfg.symbols}
+@@ -176,9 +184,24 @@
+                             sizing=SizingPolicy(cfg.risk_pct, cfg.max_leverage, cfg.cap_gap_buffer),
+                             sides=sides_for(cfg), strict=False,
+                             raw_qty=cfg.tnet_raw_qty if cfg.tnet_enabled else None)
+-        self.runner = ManagedBookRunner(rcfg, policy=policy_for(cfg), journal=self.journal, venue=port,
+-                                        bars=self.bars, signals=signals_for(cfg, enabled), account_reads=reads,
+-                                        management=management_for(cfg))
++        now = self.venue.now_ms if self.venue is not None else int(time.time() * 1000)
++
++        def make(journal, hard_hold=None):
++            return ManagedBookRunner(rcfg, policy=policy_for(cfg), journal=journal, venue=port, bars=self.bars,
++                                     signals=signals_for(cfg, enabled), account_reads=reads,
++                                     management=management_for(cfg), hard_hold=hard_hold)
++
++        def fold(journal, snapshot_portfolio):
++            """Only for a journal tail no checkpoint covers (a crash between an event and its checkpoint)."""
++            probe = make(journal)                     # folds journal.read(); sends nothing
++            probe.now = now
++            return probe.portfolio()
++
++        self.boot = b = boot_store(cfg, reads, rcfg.rules, now, fold)
++        self.store = b.store
++        self.journal = b.journal or b.view
++        hard = b.hard_hold
++        self.runner = make(self.journal, hard_hold=StoreDown(b.reason) if hard else None)
+
+     def next_close(self, wall_ms=None):
+         """The candle close of the next cycle, or None when the fake data is exhausted."""
+@@ -216,6 +239,18 @@
+                 n += self.runner.mark(sym, r.value[0], now)
+         return n
+
++    def checkpoint(self):
++        """Ruling item 6: after every cycle that journaled an ownership-changing event, a new generation holding the
++        runner's portfolio, so the next start MANAGEs without an event -> portfolio apply in the store."""
++        if self.store is None or self.runner.hard_hold is not None or not self.store.checkpoint_due:
++            return
++        try:
++            self.store.checkpoint(self.runner.portfolio(), self.runner.now)
++        except DurabilityUnavailable as ex:           # the store cannot write: hard HOLD now (NC-02 A21)
++            self.runner.store_unavailable(ex)
++        except ValueError as ex:                      # not provable now (e.g. no fresh flat snapshot): next cycle
++            self.runner.incidents.append((self.runner.now, f'checkpoint skipped: {ex}'))
++
+     def save(self):
+         if self.venue is not None:
+             path = os.path.join(self.account_dir, STATE_FILE)
+@@ -229,6 +264,8 @@
+         close = getattr(self.journal, 'close', None)
+         if close is not None:
+             close()
++        if self.store is not None:                    # releases the writer lock in hard HOLD too (idempotent)
++            self.store.close()
+
+
+ # ---------------------------------------------------------------------------------------------------- commands
+@@ -258,6 +295,7 @@
+                         break
+                     continue
+             s.cycle(t)
++            s.checkpoint()
+             last = t
+             done += 1
+             s.save()
+--- a/tests/newcore_slice/test_run_cli.py
++++ b/tests/newcore_slice/test_run_cli.py
+@@ -109,7 +109,8 @@
+     assert 'Cairo (' in health[0] and 'mode=ACTIVE hold=- positions=flat protected=yes' in health[0]
+     acct = C.load(cfg_file(tmp_path)).account_id
+     base = tmp_path / 'nc'
+-    assert (base / acct / 'journal').is_dir() and (base / acct / A.STATE_FILE).is_file()
++    store = base / 'data' / 'accounts' / acct                               # the NC-02b account store
++    assert (store / 'journal').is_dir() and (store / 'HEAD.a').is_file() and (base / acct / A.STATE_FILE).is_file()
+     assert (base / 'reports' / 'trades.csv').read_text().startswith('symbol,side,lot_id')
+     assert (base / 'reports' / 'incidents.jsonl').exists()
+
+@@ -135,8 +136,8 @@
+         assert (tmp_path / 'one' / 'reports' / f).read_bytes() == (tmp_path / 'two' / 'reports' / f).read_bytes()
+     acct = C.load(one).account_id
+     assert (tmp_path / 'one' / acct / A.STATE_FILE).read_bytes() == (tmp_path / 'two' / acct / A.STATE_FILE).read_bytes()
+-    segs = lambda d: b''.join((d / acct / 'journal' / n).read_bytes()
+-                              for n in sorted(os.listdir(d / acct / 'journal')))
++    jd = lambda d: d / 'data' / 'accounts' / acct / 'journal'
++    segs = lambda d: b''.join((jd(d) / n).read_bytes() for n in sorted(os.listdir(jd(d))) if n.endswith('.seg'))
+     assert segs(tmp_path / 'one') == segs(tmp_path / 'two')                  # the journal bytes too
+
+
+--- a/tests/newcore_slice/test_hard_hold_a24.py
++++ b/tests/newcore_slice/test_hard_hold_a24.py
+@@ -289,6 +289,7 @@
+     if journal_kind == "file":
+         from file_journal_harness import FileJournalProxy
+         assert isinstance(w.journal, FileJournalProxy)
+-        segs = os.listdir(os.path.join(w.journal._j.account_dir, 'journal'))
++        segs = [n for n in os.listdir(os.path.join(w.journal._j.account_dir, 'journal'))
++                if n != '.lock']                                    # NC-02a writer fence (Cowork finding 3)
+         assert segs and all(s.endswith('.seg') for s in segs)
+         assert len(w.journal.reopen().read()) == len(w.journal.read()) > 0
+--- /dev/null
++++ b/tests/newcore_slice/test_store_wiring.py
+@@ -0,0 +1,70 @@
++"""The runner on the NC-02b account store (docs/newcore/store/RUNNER_WIRING.md): boot = open_store's typed outcome,
++checkpoint after every cycle, so a restart MANAGEs from a checkpoint; a second process is refused; a store HOLD runs
++nothing; a checkpoint the store cannot write is hard HOLD in-process. Fake venue, tmp dirs, no network."""
++import os
++
++import pytest
++
++from newcore.runner import app as A
++from newcore.runner import config as C
++from newcore.store import DurabilityUnavailable, Outcome
++from test_run_cli import cfg_file, run
++
++
++def test_a_restart_mid_trade_manages_from_the_last_checkpoint(tmp_path):
++    p = cfg_file(tmp_path)
++    assert run(['run', '--config', p, '--cycles', '27', '--enable-candidate'])[0] == 0          # mid-trade
++    s = A.Session(C.load(p), True)
++    try:
++        assert s.boot.outcome is Outcome.MANAGE and s.runner.hard_hold is None
++        assert s.journal.last_sequence() > 0 and not s.store.checkpoint_due
++        assert 'checkpoint' not in s.store.writes                 # covered by the cycle checkpoint, not the boot fold
++        assert s.store.current.lsn_upto == s.journal.last_sequence()
++    finally:
++        s.close()
++
++
++def test_a_second_process_on_the_same_account_is_refused_with_exit_3(tmp_path):
++    p = cfg_file(tmp_path)
++    s = A.Session(C.load(p), True)
++    try:
++        code, out = run(['run', '--config', p, '--once', '--enable-candidate'])
++        assert code == A.EXIT_STORE_DOWN and 'locked' in out
++    finally:
++        s.close()
++    assert run(['run', '--config', p, '--once', '--enable-candidate'])[0] == 0                 # lock released
++
++
++def test_a_store_hold_runs_nothing_and_exits_4(tmp_path):
++    p = cfg_file(tmp_path)
++    assert run(['run', '--config', p, '--cycles', '27', '--enable-candidate'])[0] == 0
++    acct = C.load(p).account_id
++    os.remove(tmp_path / 'nc' / acct / A.STATE_FILE)            # the fake exchange restarts flat: no longer matches
++    before = sorted(os.listdir(tmp_path / 'nc' / 'reports'))
++    code, out = run(['run', '--config', p, '--once', '--enable-candidate'])
++    assert code == A.EXIT_STORE_HOLD and 'promote()' in out and 'HEALTH' not in out
++    assert sorted(os.listdir(tmp_path / 'nc' / 'reports')) == before
++
++
++def test_a_checkpoint_the_store_cannot_write_is_hard_hold(tmp_path, monkeypatch):
++    s = A.Session(C.load(cfg_file(tmp_path)), True)
++    try:
++        def boom(portfolio, now_ms):
++            raise DurabilityUnavailable('snapshot create', None)
++        monkeypatch.setattr(type(s.store), 'checkpoint_due', property(lambda self: True))
++        monkeypatch.setattr(s.store, 'checkpoint', boom)
++        s.cycle(s.next_close())
++        s.checkpoint()
++        assert s.runner.hard_hold is not None                     # A21: only the A23 / A24 emergency set from here
++        s.checkpoint()                                            # and no further checkpoint is attempted
++    finally:
++        s.close()
++
++
++def test_the_store_layout(tmp_path):
++    p = cfg_file(tmp_path)
++    assert run(['run', '--config', p, '--once', '--enable-candidate'])[0] == 0
++    acct = C.load(p).account_id
++    store = tmp_path / 'nc' / 'data' / 'accounts' / acct
++    assert {'journal', 'snap', 'HEAD.a'} <= set(os.listdir(store))
++    assert (tmp_path / 'nc' / 'anchors').is_dir() and not (tmp_path / 'nc' / acct / 'journal').exists()
