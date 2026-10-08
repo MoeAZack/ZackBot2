@@ -18,7 +18,8 @@ cycle(now_ms), called once per closed candle (now_ms = that candle's close = the
   3. protect     every open lot without a live stop (and no close in flight) is SECURED with bounded attempts: a stop;
                  if the venue refuses it, a reduce-only close; at most SECURE_ROUNDS rounds per lot per cycle (never
                  recursion), then a durable HOLD + incident. Runs in HOLD too.
-  4. decide      strategy signals on the closed candles: CLOSE first (cancel the stop, reduce-only market close), then
+  4. decide      strategy signals on the closed candles: CLOSE first (a reduce-only market close WITH the stop still
+                 live; the stop is cancelled only once the close has made the lot flat - Codex ruling 13 / TNET N6), then
                  ENTER (decision -> sizing -> intent -> market -> result -> stop intent -> stop -> result).
   5. reconcile + invariants (end of cycle).
 Journal order for every order: decision_recorded -> intent_recorded (DURABLE) -> sent -> [venue call] ->
@@ -513,6 +514,7 @@ class Runner:
                         self._corroborate_entry(iv)
             elif iv.state is IntentState.DURABLE:
                 self._send_durable(iv)
+        self._release_closed_lot_stops()                                 # after every close this sync resolved
 
     @staticmethod
     def _not_found(iv):
@@ -940,7 +942,11 @@ class Runner:
         self._secure(lot.lot_id)                                          # the close failed: re-protect at once
 
     def _close_lot(self, lot, *, reason, key):
-        """Cancel the stop, then a reduce-only market close of the whole lot. key=None: an unkeyed (protection) close."""
+        """A reduce-only market close of the whole lot WHILE its stop stays live (Codex ruling 13, TNET N6: never cancel
+        protection before the exit; hedge mode + reduce-only make both live safe - whichever fills first, the other
+        cannot over-fill). The leftover stop is cancelled only once the close's FINAL result proves the lot flat
+        (_release_closed_lot_stops, also at every sync, so a crash in between is finished by the next cycle).
+        key=None: an unkeyed (protection) close."""
         if key is not None:
             did = ids.derive_decision_id(self.acct, key)
             iid = ids.derive_intent_id(self.acct, key)
@@ -961,21 +967,29 @@ class Runner:
                            detail=f'close {lot.qty}')
         if planned.intent_id in self.fold.intents:
             return
-        stop = lot.live_stop
-        if stop is not None:
-            if stop.state is not IntentState.CANCELLING:
-                self._state(stop, IntentState.CANCELLING, reason)
-            out = self.venue.cancel(self._ref(stop))
-            self._apply(stop, out, submit=False)
-            if stop.live:
-                self._apply(stop, self.venue.query(self._ref(stop)), submit=False)
-            if stop.live:                                                 # stop state unknown: do not close blind
-                self._hold([ReasonCode.PROTECT_CHECKING])
-                return
-        lot = next((x for x in self.fold.open_lots() if x.lot_id == lot.lot_id), None)
-        if lot is None:
+        if self._lot(lot.lot_id) is None:
             return                                                        # the stop filled first: nothing to close
-        self._send_close(self._record_durable(planned))
+        self._send_close(self._record_durable(planned))                   # the stop stays live meanwhile
+        self._release_closed_lot_stops()
+
+    def _runner_owns(self, lot_id):
+        """True when the runner itself manages the lot's protection (hook: a management driver owns its own lots)."""
+        return True
+
+    def _release_closed_lot_stops(self):
+        """Cancel the live stops of lots the exchange has proven flat (a close / reduce FINAL booked the whole lot):
+        protection is released only AFTER the exit, never before (Codex ruling 13). Runs after every close and at every
+        sync (a crash between the close's result and the cancel is finished here)."""
+        for lot in self.fold.lots():
+            if lot.open or not self._runner_owns(lot.lot_id):            # a managed lot: the driver releases it
+                continue
+            for stop in [p for p in lot.protects if p.live]:
+                if stop.state is not IntentState.CANCELLING:
+                    self._state(stop, IntentState.CANCELLING, ReasonCode.LIFECYCLE_ORPHAN_CANCEL)
+                out = self.venue.cancel(self._ref(stop))
+                self._apply(stop, out, submit=False)
+                if stop.live:
+                    self._apply(stop, self.venue.query(self._ref(stop)), submit=False)
 
     def _send_close(self, iv):
         self._state(iv, IntentState.SUBMITTED)

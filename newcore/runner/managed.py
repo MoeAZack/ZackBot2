@@ -606,6 +606,9 @@ class ManagementMixin:
         self._hold([ReasonCode.PROTECT_RESTORING], reason=ReasonCode.PROTECT_RESTORING)
         self._secure(lot.lot_id)
 
+    def _runner_owns(self, lot_id):
+        return lot_id not in self.mg                    # a managed lot: the driver releases its stops when flat
+
     def _protect_price(self, lot):
         mg = [p for p in lot.protects if self.fold.decisions[p.intent.decision_id].detail.startswith(MG)]
         if mg:

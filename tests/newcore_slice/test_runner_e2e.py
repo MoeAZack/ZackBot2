@@ -52,10 +52,12 @@ def test_entry_fill_protect_signal_close(side, entry_px, stop_px, exit_px):
     assert t.entry_price == D(entry_px) and t.exit_price == D(exit_px)
     assert t.fees == D('0.5') and t.gross == D('-0.2') and t.pnl == D('-0.7') and t.r == D('-0.07')
     assert t.entry_ms == w.candles[ENTRY_BAR + 1].open_ms and t.exit_ms == w.candles[EXIT_BAR + 1].open_ms
+    # Codex ruling 13 (TNET N6): the close goes out with the stop still live; the stop is cancelled only after the
+    # close's FINAL proves the lot flat (previously: cancel the stop, then close - a naked crash window)
     assert kinds(w) == ['decision_recorded', 'intent_recorded', 'sent', 'result_recorded', 'intent_closed',  # entry
                         'decision_recorded', 'intent_recorded', 'sent', 'result_recorded', 'state_changed',  # stop
-                        'decision_recorded', 'state_changed', 'result_recorded', 'intent_closed',  # cancel stop
-                        'intent_recorded', 'sent', 'result_recorded', 'intent_closed']               # close
+                        'decision_recorded', 'intent_recorded', 'sent', 'result_recorded', 'intent_closed',  # close
+                        'state_changed', 'result_recorded', 'intent_closed']                  # then cancel the stop
     assert venue_orders(w) == [('MARKET', side, False, 'FILLED'), ('STOP_MARKET', side, True, 'CANCELED'),
                                ('MARKET', side, True, 'FILLED')]
     assert_flat_known_empty(w)
