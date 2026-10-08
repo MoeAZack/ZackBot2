@@ -234,6 +234,25 @@
       "accepted_by": null,
       "date_cairo": "2026-10-08",
       "prev_entry_sha": "546991efb8c874da8949e736ea5507efc8a2003f1bb0b8832257c752be28a2ca"
+    },
+    {
+      "id": "CORR-0007",
+      "type": "add",
+      "ticket": "AUD-08",
+      "finding": "B2 coverage: outage (smallest slice: exchange-side stop fills while the bot is cut off)",
+      "title": "Stop filled on the exchange during a bot outage: STOP_HIT in the candle of the fill, booked from the exchange record",
+      "cases": {
+        "G-OUTAGE-STOP-L-01": {
+          "prev_contract_sha": null,
+          "contract_sha": "ae6adb38075cf9f733a9632d74ae1f02fed03a48309b494eaf62245c759566d9"
+        }
+      },
+      "adapters_changed": [],
+      "rationale": "Smallest outage slice whose correct outcome needs no new policy: the protective stop rests on the exchange, so it fills during the outage exactly as in the fault-free twin G-STOP-L-01; the bot must book it from the exchange order record with the exchange time (i_out 282, STOP_HIT, R -1.059307099) rather than at the recovery candle, as a resync, or with a second close. Outage window in integer UTC ms, seed null (deterministic). Legacy adapters not_applicable: the replay cannot inject an outage (check_unsupported raises NotExpressible).",
+      "evidence": "branch golden-short-mirrors on 47932c0; twin G-STOP-L-01",
+      "accepted_by": null,
+      "date_cairo": "2026-10-08",
+      "prev_entry_sha": "dd7b7c2c48f1aa37ce85b612c14b04f41c53cb204edcfa7b334c6a44298420f7"
     }
   ]
 }

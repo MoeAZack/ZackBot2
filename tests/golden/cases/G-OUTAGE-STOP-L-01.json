@@ -1,0 +1,116 @@
+{
+  "schema": "zb-golden/1",
+  "id": "G-OUTAGE-STOP-L-01",
+  "title": "The stop fills ON THE EXCHANGE during a bot outage: booked as STOP_HIT in the candle of the fill (from the exchange record), not at the recovery",
+  "behaviours": [
+    "outage",
+    "stop"
+  ],
+  "side": "long",
+  "tf": "4h",
+  "clock": {
+    "start": "2024-01-01T00:00:00Z",
+    "entry_cycle_delay_s": 15
+  },
+  "costs": {
+    "model": "legacy",
+    "taker_fee": "0.0005",
+    "slip": "0.0002",
+    "funding_per_bar": "0"
+  },
+  "account": {
+    "equity": "500",
+    "max_leverage": 10,
+    "sizing": "legacy_replay"
+  },
+  "market": {
+    "SOLUSDT": {
+      "base": {
+        "kind": "flat",
+        "px": "100",
+        "wick": "0.5",
+        "n": 300
+      },
+      "bars": {
+        "282": [
+          "100",
+          "100.2",
+          "97.5",
+          "97.8"
+        ]
+      },
+      "atr": {
+        "kind": "computed"
+      }
+    }
+  },
+  "path_policy": "zb-path/1",
+  "slot": {
+    "id": "S1",
+    "sides": "long",
+    "risk": "0.02",
+    "share": "1",
+    "max_pos": 1,
+    "entry": {
+      "type": "market"
+    },
+    "stop": {
+      "atr": "2"
+    }
+  },
+  "signals": [
+    {
+      "bar": 279,
+      "sym": "SOLUSDT",
+      "kind": "enter_long"
+    }
+  ],
+  "faults": [
+    {
+      "kind": "exchange_outage",
+      "from_ms": 1708113660000,
+      "to_ms": 1708156800000,
+      "seed": null
+    }
+  ],
+  "expect": {
+    "trades": [
+      {
+        "sym": "SOLUSDT",
+        "side": "LONG",
+        "i_in": 280,
+        "i_out": 282,
+        "exit": "STOP_HIT",
+        "R": "-1.059307099",
+        "pnl": "-10.59307099"
+      }
+    ],
+    "final": {
+      "lots": 0
+    }
+  },
+  "applies_to": {
+    "legacy_engine": {
+      "status": "not_applicable",
+      "reason": "NotExpressible (adapters.base.check_unsupported): the legacy replay / backtester cannot inject this fault; the fault-capable fake comes with NC-03 / NC-08"
+    },
+    "legacy_backtest": {
+      "status": "not_applicable",
+      "reason": "NotExpressible (adapters.base.check_unsupported): the legacy replay / backtester cannot inject this fault; the fault-capable fake comes with NC-03 / NC-08"
+    },
+    "newcore_sim": {
+      "status": "pending_adapter",
+      "reason": "NEWCORE NC-07/NC-08 adapter not built yet"
+    },
+    "newcore_live_sim": {
+      "status": "pending_adapter",
+      "reason": "NEWCORE NC-08 live-sim adapter not built yet"
+    }
+  },
+  "known_divergences": [],
+  "provenance": {
+    "created_at_sha": "cda8f58",
+    "author": "AUD-08 smallest slices (Claude)",
+    "notes": "Fault-free twin: G-STOP-L-01 (same market, slot and signal). The bot loses the exchange from 1 min after the open of candle 281 (UTC ms 1708113660000) until the open of 284 (1708156800000): it cannot read or send anything, so it takes no decision. The protective stop-market at 98.02 rests ON THE EXCHANGE and fills there in candle 282 at 98.02 x 0.9998 = 98.000396, exactly as in the twin. After recovery the bot learns the fill from the exchange order record (AUD-03: only the final order record is truth) and books it with the exchange time: i_out 282, STOP_HIT, R -1.059307099 - never at the recovery candle 284, never as a bot close or resync, and no second close order. Deterministic: seed null."
+  }
+}
