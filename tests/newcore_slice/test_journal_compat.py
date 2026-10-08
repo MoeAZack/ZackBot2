@@ -8,8 +8,8 @@ restart identically, and a record this build cannot read exactly is a HOLD - nev
 - the pre-35cb80c tick ('mg tick <open> <request>': it needed a bars read on replay) and malformed records: the lot
   leaves management (the runner protects it), an incident, a durable HOLD; the boot does not raise.
 (The NC-01 freeze itself - OrderIntent.replaces_intent_id - is the domain codec's: a pre-freeze record is rejected by
-the strict schema-1 codec, the store answers DAMAGED and the run becomes the tail-loss guard; a migration / schema
-bump is the NC-01 / NC-02 lane's.)"""
+the strict schema-1 codec, the store answers DAMAGED and the run becomes the tail-loss guard. NO migration and no
+shim (Codex #13): an explicit pre-release format break, docs/newcore/slice/JOURNAL_FORMAT_BREAK.md.)"""
 import dataclasses
 from decimal import Decimal as D
 
