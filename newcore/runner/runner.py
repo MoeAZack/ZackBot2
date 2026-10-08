@@ -378,7 +378,10 @@ class Runner:
 
     # ----------------------------------------------------------------------------------------------- A23 / A24
     def _owned_order(self, client_id):
-        return client_id in self.fold.by_client_id or ids.is_emergency_client_id(client_id)
+        """Ours: a journaled client id, an A23 emergency stop, or - when the journal cannot be trusted (a guard) - any
+        NEWCORE client id (the zbn1 namespace proves the order was ours)."""
+        return (client_id in self.fold.by_client_id or ids.is_emergency_client_id(client_id)
+                or (self.fold.last_sequence == 0 and self.hard_hold is not None and ids.is_newcore_client_id(client_id)))
 
     def _emergency_set(self):
         """NC-02 A23 / A24, exactly the NC-01 permitted set for HOLD + DURABILITY_UNAVAILABLE (hard_hold_permits).
@@ -480,6 +483,12 @@ class Runner:
                 if p.side == 'LONG':
                     return rules.quantize_price(p.entry_price - d, Rounding.DOWN)
                 return rules.quantize_price(p.entry_price + d, Rounding.UP)
+        oo = self.venue.open_orders(p.symbol)                             # no journal (a guard): our own resting stop
+        if oo.kind is ReadKind.OK:                                        # on that side is the level we chose
+            levels = [o.stop_price for o in oo.value if o.reduce and o.order_type == 'STOP_MARKET'
+                      and o.position_side == p.side and o.stop_price is not None and self._owned_order(o.ref.client_id)]
+            if levels:
+                return max(levels) if p.side == 'LONG' else min(levels)  # the bot's own latest (tightest) level
         return None
 
     def _cycle(self, decide):
