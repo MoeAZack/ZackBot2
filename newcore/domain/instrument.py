@@ -10,6 +10,8 @@ import enum
 from decimal import ROUND_CEILING, ROUND_FLOOR, ROUND_HALF_EVEN, Decimal
 
 from .base import MAX_ABS, Record, check_decimal, check_symbol, positive, record, req
+from .account import VENUE_RE
+from .orders import OrderType
 
 
 class Rounding(enum.StrEnum):
@@ -37,23 +39,50 @@ def _quantize(x, unit, rounding, path):
     return q.quantize(unit) if q else Decimal(0).quantize(unit)
 
 
+class Capability(enum.StrEnum):
+    """What the venue supports for this instrument (validation input, not fetched here)."""
+    HEDGE_MODE = 'hedge_mode'
+    POST_ONLY = 'post_only'
+    STOP_MARKET = 'stop_market'
+    REDUCE_ONLY = 'reduce_only'
+
+
+@record
+class InstrumentId(Record):
+    venue: str
+    symbol: str
+
+    def _validate(self, p):
+        req(VENUE_RE.fullmatch(self.venue) is not None, p + '.venue', f'{self.venue!r}')
+        check_symbol(self.symbol, p + '.symbol')
+
+
 @record
 class InstrumentRules(Record):
-    """Exchange filters of one symbol (legacy feasibility.size_check vocabulary: step, min_qty, max_qty, tick, min_notional)."""
-    symbol: str
+    """Exchange filters of one instrument (legacy feasibility.size_check vocabulary: step, min_qty, max_qty, tick,
+    min_notional) plus its capabilities."""
+    instrument: InstrumentId
     tick_size: Decimal
     step_size: Decimal
     min_qty: Decimal
     max_qty: Decimal
     min_notional: Decimal
+    capabilities: tuple[Capability, ...]
 
     def _validate(self, p):
-        check_symbol(self.symbol, p + '.symbol')
+        req(len(set(self.capabilities)) == len(self.capabilities), p + '.capabilities', 'duplicate capability')
         for f in ('tick_size', 'step_size', 'min_qty', 'max_qty'):
             positive(getattr(self, f), f'{p}.{f}')
         req(self.min_notional >= 0, p + '.min_notional', 'must be >= 0')
         req(self.min_qty <= self.max_qty, p + '.max_qty', 'below min_qty')
         req(self.on_step(self.min_qty) and self.on_step(self.max_qty), p + '.min_qty', 'min/max qty off the step grid')
+
+    @property
+    def symbol(self):
+        return self.instrument.symbol
+
+    def supports(self, cap):
+        return Capability(cap) in self.capabilities
 
     # -------------------------------------------------------------------------------------------- helpers
     def quantize_qty(self, x, rounding):
@@ -86,6 +115,10 @@ class InstrumentRules(Record):
         p = f'OrderIntent[{intent.intent_id}]'
         req(intent.symbol == self.symbol, p + '.symbol', f'rules are for {self.symbol}')
         self.check_qty(intent.qty, p + '.qty', reduce_only=intent.reduce_only)
+        if intent.order_type is OrderType.LIMIT_POST_ONLY:
+            req(self.supports(Capability.POST_ONLY), p + '.order_type', 'post-only is not supported')
+        if intent.stop_price is not None:
+            req(self.supports(Capability.STOP_MARKET), p + '.order_type', 'stop-market is not supported')
         if intent.price is not None:
             self.check_price(intent.price, p + '.price')
             req(intent.reduce_only or intent.price * intent.qty >= self.min_notional, p + '.qty', 'below min notional')

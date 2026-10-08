@@ -2,7 +2,7 @@
 
 `account_id` (acct_<uuid>) is the stable identity, assigned once at creation and carried by every record. It is NOT derived
 from the API key. `AccountBinding` is separate, non-secret evidence of which exchange account the keys reach (venue,
-environment, base URL, PBKDF2 key digest, exchange uid when known). Position equality never proves identity.
+environment, settlement asset, base URL, PBKDF2 key digest, exchange uid when known). Position equality never proves identity.
 
 A key rotation changes the binding of the SAME account_id and walks a typed state machine:
 
@@ -26,6 +26,7 @@ VENUE_RE = re.compile(r'[a-z0-9][a-z0-9-]{1,31}')
 # https only, no userinfo, query or fragment: a binding can never carry a credential
 BASE_URL_RE = re.compile(r'https://[a-z0-9.-]+(:[0-9]{1,5})?(/[A-Za-z0-9._/-]*)?')
 UID_RE = re.compile(r'[0-9A-Za-z_-]{1,64}')
+ASSET_RE = re.compile(r'[A-Z0-9]{2,10}')
 
 
 class Environment(enum.StrEnum):
@@ -56,20 +57,22 @@ BINDING_TRANSITIONS = {
 class AccountBinding(Record):
     venue: str                       # e.g. 'binance-usdm'
     environment: Environment
+    settlement_asset: str            # e.g. 'USDT'
     base_url: str
     key_digest: str                  # 16-hex PBKDF2 digest of the API key (legacy account_fingerprint formula)
     exchange_uid: str | None = None
 
     def _validate(self, p):
         req(VENUE_RE.fullmatch(self.venue) is not None, p + '.venue', f'{self.venue!r}')
+        req(ASSET_RE.fullmatch(self.settlement_asset) is not None, p + '.settlement_asset', 'e.g. USDT')
         req(BASE_URL_RE.fullmatch(self.base_url) is not None, p + '.base_url', 'https URL without credentials / query')
         req(DIGEST_RE.fullmatch(self.key_digest) is not None, p + '.key_digest', 'not 16 lowercase hex')
         req(self.exchange_uid is None or UID_RE.fullmatch(self.exchange_uid) is not None, p + '.exchange_uid', 'bad uid')
 
     def same_account_as(self, other):
         """True only when every identifying field agrees (uid compared when both sides know it)."""
-        if (self.venue, self.environment, self.base_url, self.key_digest) != \
-                (other.venue, other.environment, other.base_url, other.key_digest):
+        if (self.venue, self.environment, self.settlement_asset, self.base_url, self.key_digest) != \
+                (other.venue, other.environment, other.settlement_asset, other.base_url, other.key_digest):
             return False
         return self.exchange_uid is None or other.exchange_uid is None or self.exchange_uid == other.exchange_uid
 
@@ -128,8 +131,8 @@ class Account(Record):
             req(not self.proposed_binding.same_account_as(self.binding), p + '.proposed_binding', 'equal to the binding')
         if S is BindingState.ROTATION_PENDING:
             b, n = self.binding, self.proposed_binding
-            req((n.venue, n.environment) == (b.venue, b.environment), p + '.proposed_binding',
-                'a rotation never changes venue or environment')
+            req((n.venue, n.environment, n.settlement_asset) == (b.venue, b.environment, b.settlement_asset),
+                p + '.proposed_binding', 'a rotation never changes venue, environment or settlement asset')
 
     @property
     def entries_allowed(self):
@@ -137,10 +140,10 @@ class Account(Record):
 
 
 BINDING_BLOCK_REASON = {
-    BindingState.UNCONFIRMED: ReasonCode.ACCOUNT_BINDING_UNCONFIRMED,
-    BindingState.MISMATCH: ReasonCode.ACCOUNT_BINDING_MISMATCH,
-    BindingState.ROTATION_PENDING: ReasonCode.ACCOUNT_ROTATION_PENDING,
-    BindingState.RECONCILING: ReasonCode.ACCOUNT_RECONCILING,
+    BindingState.UNCONFIRMED: ReasonCode.BINDING_UNCONFIRMED,
+    BindingState.MISMATCH: ReasonCode.BINDING_MISMATCH,
+    BindingState.ROTATION_PENDING: ReasonCode.BINDING_ROTATION_PENDING,
+    BindingState.RECONCILING: ReasonCode.BINDING_RECONCILING,
 }
 
 

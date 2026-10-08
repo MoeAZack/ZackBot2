@@ -1,9 +1,7 @@
-"""Append-only events (ruling 1). NC-02 stores them; NC-01 defines them and the pure chain check.
+"""Append-only events (ruling 1; contract invariant 6). NC-02 stores them; NC-01 defines them and the pure chain check.
 
-Durability order: IntentRecorded is durable BEFORE the send and ResultObserved is durable BEFORE it is applied, for every
-purpose including stops and closes. `check_event_chain` makes violations detectable in a log: a result for an intent
-that was never recorded, a lifecycle step the table forbids, an event after a final result, a reused client id, a gap in
-the sequence or a one-shot authorization used twice.
+Durability order: IntentRecorded (the intent in state DURABLE) is appended BEFORE the send, and ResultObserved is
+appended BEFORE the result is applied (the intent's terminal step), for every purpose including stops and closes.
 """
 from __future__ import annotations
 
@@ -11,7 +9,8 @@ from .account import BINDING_TRANSITIONS, AccountBinding, BindingConfirmation, B
 from .base import Record, check_id, record, req
 from .decision import Decision
 from .modes import EntriesMode, HoldKind
-from .orders import INTENT_TRANSITIONS, IntentState, OrderIntent, OrderResult, ResultPhase, check_result_for_intent
+from .orders import (INTENT_TRANSITIONS, TERMINAL, IntentState, OrderIntent, OrderResult, ResultPhase,
+                     check_result_for_intent, terminal_for)
 from .reasons import ReasonCode
 
 
@@ -37,8 +36,7 @@ class IntentRecorded(Event):
 
     def _check(self, p):
         req(self.intent.account_id == self.account_id, p + '.intent', 'intent of another account')
-        req(self.intent.state in (IntentState.ARMED, IntentState.SENDING), p + '.intent.state',
-            'recorded before it is sent (ARMED or SENDING)')
+        req(self.intent.state is IntentState.DURABLE, p + '.intent.state', 'the write-ahead record of an unsent intent')
         req(self.at_ms >= self.intent.created_at_ms, p + '.at_ms', 'recorded before it was created')
 
 
@@ -97,6 +95,8 @@ class ModeChanged(Event):
         req((self.to_hold is not None) == (self.to_mode is EntriesMode.HOLD), p + '.to_hold', 'set exactly in HOLD')
         req((self.from_mode, self.from_hold) != (self.to_mode, self.to_hold), p + '.to_mode', 'not a change')
         req((len(self.reasons) == 0) == (self.to_mode is EntriesMode.ACTIVE), p + '.reasons', 'non-empty unless ACTIVE')
+        if self.to_hold is HoldKind.DURABILITY_UNAVAILABLE:
+            req(ReasonCode.RECOVERY_DURABILITY_UNAVAILABLE in self.reasons, p + '.reasons', 'hard HOLD names its cause')
         if self.decision_id is not None:
             check_id(self.decision_id, p + '.decision_id', 'dec')
         if self.reconciliation_id is not None:
@@ -142,11 +142,15 @@ EVENT_TYPES = (IntentRecorded, IntentStateChanged, ResultObserved, DecisionRecor
 
 def check_event_chain(events, *, after_seq=0, known_intents=None):
     """Validate an ordered event list. `after_seq` is the snapshot's last_seq. `known_intents` maps intent_id ->
-    (OrderIntent, state, sent_at_ms or None) for intents open in that snapshot. Returns the open intents after the
-    chain, in the same shape. Raises InvalidRecord naming the event."""
-    open_ = dict(known_intents or {})
-    cids = {c for it, _, _ in open_.values() for c in it.client_ids}
-    finals, decisions, one_shots, used_auth = set(), set(), set(), set()
+    (OrderIntent, state, submitted_at_ms or None) for intents live in that snapshot. Returns the live intents after the
+    chain in the same shape. Raises InvalidRecord naming the event.
+
+    Detects: a sequence gap / reorder, another account's event, a result for an intent that was never made durable, a
+    terminal step without a durable FINAL result (applied before recorded) or not matching it, any event after a terminal
+    state, a reused id or client id, and a one-shot authorization that is missing or used twice."""
+    live = dict(known_intents or {})
+    cids = {c for it, _, _ in live.values() for c in it.client_ids}
+    finals, ended, decisions, one_shots, used_auth = {}, set(), set(), set(), set()
     account = None
     for n, ev in enumerate(events):
         p = f'events[{n}]'
@@ -162,27 +166,36 @@ def check_event_chain(events, *, after_seq=0, known_intents=None):
                 one_shots.add(d.decision_id)
         elif isinstance(ev, IntentRecorded):
             it = ev.intent
-            req(it.intent_id not in open_ and it.intent_id not in finals, p, 'intent recorded twice')
+            req(it.intent_id not in live and it.intent_id not in ended, p, 'intent recorded twice')
             req(not (set(it.client_ids) & cids), p + '.intent.client_order_id', 'a client order id is never reused')
             if it.authorized_by is not None:
                 req(it.authorized_by in one_shots, p + '.intent.authorized_by', 'names no recorded operator one-shot')
                 req(it.authorized_by not in used_auth, p + '.intent.authorized_by', 'a one-shot authorizes one intent')
                 used_auth.add(it.authorized_by)
             cids.update(it.client_ids)
-            open_[it.intent_id] = (it, it.state, ev.at_ms if it.state is IntentState.SENDING else None)
+            live[it.intent_id] = (it, it.state, None)
         elif isinstance(ev, IntentStateChanged):
-            req(ev.intent_id not in finals, p, 'event after the final result')
-            req(ev.intent_id in open_, p, 'state change of an intent that was never recorded')
-            it, st, sent = open_[ev.intent_id]
+            req(ev.intent_id not in ended, p, 'event after a terminal state (terminal never returns to active)')
+            req(ev.intent_id in live, p, 'state change of an intent that was never made durable')
+            it, st, sent = live[ev.intent_id]
             req(ev.from_state is st, p + '.from_state', f'the intent is {st}')
-            open_[ev.intent_id] = (it, ev.to_state, ev.at_ms if ev.to_state is IntentState.SENDING else sent)
+            fin = finals.get(ev.intent_id)
+            if ev.to_state in TERMINAL:
+                req(fin is not None, p + '.to_state', 'a terminal step needs a durable FINAL result first')
+                req(terminal_for(fin) is ev.to_state, p + '.to_state', f'the final result means {terminal_for(fin)}')
+                ended.add(ev.intent_id)
+                del live[ev.intent_id]
+                continue
+            req(fin is None, p + '.to_state', 'after a FINAL result only its terminal step may follow')
+            if ev.to_state is IntentState.SUBMITTED and sent is None:
+                sent = ev.at_ms
+            live[ev.intent_id] = (it, ev.to_state, sent)
         elif isinstance(ev, ResultObserved):
             r = ev.result
-            req(r.intent_id not in finals, p, 'event after the final result')
-            req(r.intent_id in open_, p, 'a result for an intent that was never made durable (applied before recorded)')
-            it, st, sent = open_[r.intent_id]
+            req(r.intent_id not in ended and r.intent_id not in finals, p, 'event after the final result')
+            req(r.intent_id in live, p, 'a result for an intent that was never made durable')
+            it, st, sent = live[r.intent_id]
             check_result_for_intent(it, r, sent)
             if r.phase is ResultPhase.FINAL:
-                finals.add(r.intent_id)
-                del open_[r.intent_id]
-    return open_
+                finals[r.intent_id] = r
+    return live

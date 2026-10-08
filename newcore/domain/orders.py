@@ -1,33 +1,34 @@
-"""Order intents and order results (rulings 1, 3 and 7).
+"""Order intents and order results: the ONE order-ownership family (contract 2, invariants 5-7; rulings 1, 3, 7).
 
-OrderIntent is the write-ahead record: it is durable BEFORE the send (IntentRecorded event), for every purpose, closes
-and stops included. There is no separate EntryIntent: an unconfirmed market entry, a resting maker entry and an armed
-trailing entry are all OrderIntents with purpose ENTRY and a lifecycle `state`. The client order id is REQUIRED, so an
-id-less, quantity-only pending order cannot be represented. Protective orders use a deterministic client id, so a retry
-re-sends the same id and the exchange refuses a duplicate.
+OrderIntent covers every purpose (ENTRY, ADD, REDUCE, CLOSE, PROTECT). There is no EntryIntent and no side queue: an
+unconfirmed market entry, a resting maker, an armed trailing entry and an orphan cancel are all OrderIntents in some
+lifecycle state. Lifecycle:
 
-Ownership families (explicit, derived from purpose): ENTRY (opening risk not yet a lot), LOT (add/reduce/close of a lot),
-PROTECTION (the stop of a lot or of an unconfirmed entry) and ORPHAN (owned orders queued for cancellation,
-portfolio.OrphanCancel).
+    PLANNED -> DURABLE -> SUBMITTED -> WORKING / UNKNOWN -> CANCELLING -> terminal (FILLED, CANCELLED, REJECTED, NOT_SENT)
 
-OrderResult is what the venue told us, durable BEFORE it is applied (ResultObserved event). Only a FINAL result books an
-executed quantity, and a FINAL result names its evidence. A bare not-found is not evidence: it is an UNKNOWN result with
-`lookup=NOT_FOUND`. Nothing executed after a not-found needs NOT_FOUND_CORROBORATED, i.e. at least two position reads past
-the visibility window that agree.
+PLANNED exists only inside a Decision. DURABLE = the write-ahead record exists, so it may be sent (`may_send`). Each step
+has a finite predecessor set (PREDECESSORS) and a terminal state never returns to an active one. A terminal step is
+applied only from a durable FINAL OrderResult (events.check_event_chain).
+
+OrderResult is what the venue told us. Only a FINAL result books an executed quantity, and it names its evidence. A bare
+not-found is not evidence: it is an UNKNOWN result with `lookup=NOT_FOUND`, which carries no executed value. Resolving it
+needs a final exchange record, or an explicit decision (`resolved_by`) corroborated by >= 2 agreeing position reads past
+the visibility window (NOT_FOUND_CORROBORATED for nothing executed, POSITION_ADOPTED for an adopted quantity).
 """
 from __future__ import annotations
 
 import enum
 from decimal import Decimal
 
-from .base import (Record, check_cid, check_id, check_symbol, dec_str, deterministic_cid, non_negative, positive,
-                   record, req)
+from .base import (Record, check_client_id, check_id, check_symbol, check_text, dec_str, idempotency_key, non_negative,
+                   positive, record, req)
 from .reasons import ReasonCode
 
-NOT_FOUND_WINDOW_MS = 20_000          # legacy visibility window: a lookup earlier than this proves even less
+NOT_FOUND_WINDOW_MS = 20_000          # a lookup earlier than this after the send proves even less (legacy window)
 
 
 class Side(enum.StrEnum):
+    """Position side. LONG and SHORT are distinct; a side is never inferred from a quantity sign."""
     LONG = 'LONG'
     SHORT = 'SHORT'
 
@@ -45,49 +46,66 @@ REDUCE_ONLY = frozenset({Purpose.REDUCE, Purpose.CLOSE, Purpose.PROTECT})
 
 
 class OwnerFamily(enum.StrEnum):
-    ENTRY = 'entry'
-    LOT = 'lot'
-    PROTECTION = 'protection'
-    ORPHAN = 'orphan'
+    ENTRY = 'entry'            # opening risk that is not a lot yet
+    LOT = 'lot'                # add / reduce / close of a lot
+    PROTECTION = 'protection'  # the stop of a lot or of an unconfirmed entry
+    ORPHAN = 'orphan'          # owner gone; only cancel work remains (derived, see Portfolio)
 
 
 FAMILY = {Purpose.ENTRY: OwnerFamily.ENTRY, Purpose.ADD: OwnerFamily.LOT, Purpose.REDUCE: OwnerFamily.LOT,
           Purpose.CLOSE: OwnerFamily.LOT, Purpose.PROTECT: OwnerFamily.PROTECTION}
-REASON_STAGE = {Purpose.ENTRY: 'entry', Purpose.ADD: 'entry', Purpose.REDUCE: 'exit', Purpose.CLOSE: 'exit',
-                Purpose.PROTECT: 'protect'}
+REASON_NAMESPACE = {Purpose.ENTRY: 'entry', Purpose.ADD: 'entry', Purpose.REDUCE: 'exit', Purpose.CLOSE: 'exit',
+                    Purpose.PROTECT: 'protect'}
 
 
 class OrderType(enum.StrEnum):
     MARKET = 'market'
-    LIMIT_POST_ONLY = 'limit_gtx'     # maker
-    STOP_MARKET = 'stop_market'       # protective stop
+    LIMIT_POST_ONLY = 'limit_post_only'   # maker
+    STOP_MARKET = 'stop_market'           # protective stop
 
 
 class IntentState(enum.StrEnum):
-    ARMED = 'armed'                   # trailing entry: durable, nothing on the exchange yet
-    SENDING = 'sending'               # durable; the send may or may not have reached the exchange
-    WORKING = 'working'               # the exchange acknowledged it and it is not final (resting maker / stop)
-    UNRESOLVED = 'unresolved'         # the answer was lost or unreadable
-    CANCELLING = 'cancelling'         # cancel requested (or an armed intent being dropped)
-    CANCEL_UNRESOLVED = 'cancel_unresolved'
+    PLANNED = 'planned'          # decided; not durable, must not be sent
+    DURABLE = 'durable'          # write-ahead record exists; may be sent (an armed trailing entry waits here)
+    SUBMITTED = 'submitted'      # the send was attempted
+    WORKING = 'working'          # the exchange acknowledged it and it is open
+    UNKNOWN = 'unknown'          # the answer was lost / the order cannot be read
+    CANCELLING = 'cancelling'    # cancel requested (or a durable, never-sent intent being dropped)
+    FILLED = 'filled'            # terminal: executed the whole request
+    CANCELLED = 'cancelled'      # terminal: ended with part or nothing executed (cancel / expiry / corroborated not-found)
+    REJECTED = 'rejected'        # terminal: refused, nothing executed
+    NOT_SENT = 'not_sent'        # terminal: never reached the exchange
 
 
-SENT_STATES = frozenset({IntentState.SENDING, IntentState.WORKING, IntentState.UNRESOLVED})
-CANCEL_STATES = frozenset({IntentState.CANCELLING, IntentState.CANCEL_UNRESOLVED})
-# allowed lifecycle steps; leaving the portfolio happens only through a FINAL OrderResult
+TERMINAL = frozenset({IntentState.FILLED, IntentState.CANCELLED, IntentState.REJECTED, IntentState.NOT_SENT})
+LIVE = frozenset({IntentState.DURABLE, IntentState.SUBMITTED, IntentState.WORKING, IntentState.UNKNOWN,
+                  IntentState.CANCELLING})     # the states an intent may have inside a Portfolio
+_S = IntentState
 INTENT_TRANSITIONS = {
-    IntentState.ARMED: frozenset({IntentState.SENDING, IntentState.CANCELLING}),
-    IntentState.SENDING: frozenset({IntentState.WORKING, IntentState.UNRESOLVED, IntentState.CANCELLING}),
-    IntentState.UNRESOLVED: frozenset({IntentState.WORKING, IntentState.CANCELLING}),
-    IntentState.WORKING: frozenset({IntentState.CANCELLING}),
-    IntentState.CANCELLING: frozenset({IntentState.CANCEL_UNRESOLVED}),
-    IntentState.CANCEL_UNRESOLVED: frozenset({IntentState.CANCELLING}),
+    _S.PLANNED: frozenset({_S.DURABLE, _S.NOT_SENT}),
+    _S.DURABLE: frozenset({_S.SUBMITTED, _S.CANCELLING, _S.NOT_SENT}),
+    _S.SUBMITTED: frozenset({_S.WORKING, _S.UNKNOWN, _S.CANCELLING, _S.FILLED, _S.CANCELLED, _S.REJECTED}),
+    _S.WORKING: frozenset({_S.UNKNOWN, _S.CANCELLING, _S.FILLED, _S.CANCELLED}),
+    _S.UNKNOWN: frozenset({_S.WORKING, _S.CANCELLING, _S.FILLED, _S.CANCELLED, _S.REJECTED}),
+    _S.CANCELLING: frozenset({_S.WORKING, _S.UNKNOWN, _S.FILLED, _S.CANCELLED, _S.NOT_SENT}),
+    _S.FILLED: frozenset(), _S.CANCELLED: frozenset(), _S.REJECTED: frozenset(), _S.NOT_SENT: frozenset(),
 }
+PREDECESSORS = {s: frozenset(a for a, nxt in INTENT_TRANSITIONS.items() if s in nxt) for s in IntentState}
+del _S
 
 
-def protect_cid(account_id, owner_id, side, qty, stop_price, *, alt=False):
-    """Deterministic client id of a protective stop: the same protection request always gets the same id."""
-    return deterministic_cid('q' if alt else 'p', account_id, owner_id, side, dec_str(qty), dec_str(stop_price))
+def can_transition(a, b):
+    return IntentState(b) in INTENT_TRANSITIONS[IntentState(a)]
+
+
+def may_send(intent):
+    """Durability phase gate: only a DURABLE intent may be sent (and only a durable one exists outside a Decision)."""
+    return intent.state is IntentState.DURABLE
+
+
+def protect_key(account_id, owner_id, side, qty, stop_price):
+    """Deterministic idempotency key of a protective stop: the same protection request always has the same key."""
+    return idempotency_key('protect', account_id, owner_id, side, dec_str(qty), dec_str(stop_price))
 
 
 @record
@@ -104,8 +122,8 @@ class Arming(Record):
 class OrderIntent(Record):
     intent_id: str
     account_id: str
-    decision_id: str                 # the Decision that created it (audit chain)
-    client_order_id: str             # REQUIRED
+    decision_id: str                 # the Decision that created it (authority + audit chain)
+    client_order_id: str             # REQUIRED and opaque (the venue adapter formats it)
     purpose: Purpose
     order_type: OrderType
     state: IntentState
@@ -119,7 +137,8 @@ class OrderIntent(Record):
     price: Decimal | None = None     # limit price (maker only)
     stop_price: Decimal | None = None
     arm: Arming | None = None        # trailing entry trigger
-    alt_client_order_id: str | None = None    # algo-order fallback id of a stop (deterministic too)
+    idempotency_key: str | None = None        # PROTECT: protect_key(...) - a retry is the same order
+    alt_client_order_id: str | None = None    # PROTECT: algo-order fallback id (owned from the write-ahead record on)
     seen_qty: Decimal | None = None  # unresolved size seen on the position for a market ENTRY (never booked)
     authorized_by: str | None = None  # dec_ of an audited operator one-shot authorization (opening risk while paused)
 
@@ -128,12 +147,11 @@ class OrderIntent(Record):
         check_id(self.intent_id, p + '.intent_id', 'int')
         check_id(self.account_id, p + '.account_id', 'acct')
         check_id(self.decision_id, p + '.decision_id', 'dec')
-        check_cid(self.client_order_id, p + '.client_order_id')
+        check_client_id(self.client_order_id, p + '.client_order_id')
         check_symbol(self.symbol, p + '.symbol')
         positive(self.qty, p + '.qty')
-        u = self.purpose
-        req(self.reason.stage == REASON_STAGE[u], p + '.reason', f'a {u} intent needs a {REASON_STAGE[u]}.* reason')
-        # owner per family
+        u, t = self.purpose, self.order_type
+        req(self.reason.namespace == REASON_NAMESPACE[u], p + '.reason', f'a {u} intent needs a {REASON_NAMESPACE[u]}.* reason')
         if u is Purpose.ENTRY:
             req(self.owner_id is None, p + '.owner_id', 'an ENTRY owns itself (its result creates the lot)')
         elif u is Purpose.PROTECT:
@@ -141,9 +159,8 @@ class OrderIntent(Record):
         else:
             check_id(self.owner_id, p + '.owner_id', 'lot')
         req(u is Purpose.ENTRY or self.slot_id is None, p + '.slot_id', 'only an ENTRY names a strategy slot')
-        req(self.slot_id is None or 0 < len(self.slot_id) <= 32 and self.slot_id.isprintable(), p + '.slot_id', '1..32 chars')
-        # order type
-        t = self.order_type
+        if self.slot_id is not None:
+            check_text(self.slot_id, p + '.slot_id', 32)
         req((t is OrderType.STOP_MARKET) == (u is Purpose.PROTECT), p + '.order_type', 'PROTECT <=> stop_market')
         req(t is not OrderType.LIMIT_POST_ONLY or u in OPENING, p + '.order_type', 'only ENTRY / ADD may rest as a maker')
         if t is OrderType.LIMIT_POST_ONLY:
@@ -154,19 +171,18 @@ class OrderIntent(Record):
         if t is OrderType.STOP_MARKET:
             req(self.stop_price is not None, p + '.stop_price', 'a stop has a stop price')
             positive(self.stop_price, p + '.stop_price')
-            req(self.client_order_id == protect_cid(self.account_id, self.owner_id, self.side, self.qty, self.stop_price),
-                p + '.client_order_id', 'a protective stop uses its deterministic client id')
-            req(self.alt_client_order_id is None or self.alt_client_order_id == protect_cid(
-                self.account_id, self.owner_id, self.side, self.qty, self.stop_price, alt=True),
-                p + '.alt_client_order_id', 'the algo fallback id is deterministic too')
+            req(self.idempotency_key == protect_key(self.account_id, self.owner_id, self.side, self.qty, self.stop_price),
+                p + '.idempotency_key', 'a protective stop carries its deterministic key')
+            if self.alt_client_order_id is not None:
+                check_client_id(self.alt_client_order_id, p + '.alt_client_order_id')
+                req(self.alt_client_order_id != self.client_order_id, p + '.alt_client_order_id', 'equals the primary id')
         else:
             req(self.stop_price is None, p + '.stop_price', 'only a stop has a stop price')
+            req(self.idempotency_key is None, p + '.idempotency_key', 'only a protective stop has one')
             req(self.alt_client_order_id is None, p + '.alt_client_order_id', 'only a stop has an algo fallback id')
-        # trailing / unresolved size / one-shot
         if self.arm is not None:
             req(u is Purpose.ENTRY and t is OrderType.MARKET, p + '.arm', 'only a market ENTRY can be armed (trailing)')
             req(self.arm.expires_at_ms > self.created_at_ms, p + '.arm.expires_at_ms', 'expires before it was created')
-        req(self.state is not IntentState.ARMED or self.arm is not None, p + '.state', 'ARMED needs a trailing trigger')
         if self.seen_qty is not None:
             req(u is Purpose.ENTRY and t is OrderType.MARKET, p + '.seen_qty', 'only for an unresolved market ENTRY')
             non_negative(self.seen_qty, p + '.seen_qty')
@@ -188,9 +204,14 @@ class OrderIntent(Record):
         return self.purpose in OPENING
 
     @property
+    def terminal(self):
+        return self.state in TERMINAL
+
+    @property
     def pullable(self):
-        """An opening intent that can still be withdrawn without a fill: a resting maker or an armed trailing entry."""
-        return self.opening and (self.order_type is OrderType.LIMIT_POST_ONLY or self.state is IntentState.ARMED)
+        """Opening risk that can still be withdrawn without a fill: a resting maker or a not-yet-sent armed entry."""
+        return self.opening and (self.order_type is OrderType.LIMIT_POST_ONLY or
+                                 (self.arm is not None and self.state is IntentState.DURABLE))
 
     @property
     def client_ids(self):
@@ -200,9 +221,25 @@ class OrderIntent(Record):
 
 # ----------------------------------------------------------------------------------------------------------- results
 class ResultPhase(enum.StrEnum):
-    UNKNOWN = 'unknown'      # sent; the answer is lost / the order cannot be read
+    UNKNOWN = 'unknown'      # sent; the answer is lost / the order cannot be read / not found
     KNOWN = 'known'          # the exchange has it, not final: its executed quantity is NOT trusted
     FINAL = 'final'          # the executed quantity is decided
+
+
+class ResultStage(enum.StrEnum):
+    """Durability phase of a result: received -> durable (ResultObserved appended) -> applied to ownership."""
+    RECEIVED = 'received'
+    DURABLE = 'durable'
+    APPLIED = 'applied'
+
+
+RESULT_STAGE_TRANSITIONS = {ResultStage.RECEIVED: frozenset({ResultStage.DURABLE}),
+                            ResultStage.DURABLE: frozenset({ResultStage.APPLIED}), ResultStage.APPLIED: frozenset()}
+
+
+def may_apply(stage):
+    """Only a durable result may change ownership."""
+    return ResultStage(stage) is ResultStage.DURABLE
 
 
 class ExchangeStatus(enum.StrEnum):
@@ -227,17 +264,18 @@ class Lookup(enum.StrEnum):
 class Evidence(enum.StrEnum):
     EXCHANGE_FINAL = 'exchange_final'                   # a final exchange order record
     EXCHANGE_REFUSED = 'exchange_refused'               # the send was refused synchronously: nothing executed
-    NOT_FOUND_CORROBORATED = 'not_found_corroborated'   # not found AND >= 2 agreeing position reads past the window
-    POSITION_ADOPTED = 'position_adopted'               # explicitly adopted (operator / reconciliation decision)
-    NOT_SENT = 'not_sent'                               # never left ARMED: nothing reached the exchange
+    NOT_SENT = 'not_sent'                               # never left the process: nothing reached the exchange
+    NOT_FOUND_CORROBORATED = 'not_found_corroborated'   # decided "nothing executed": not found + agreeing position reads
+    POSITION_ADOPTED = 'position_adopted'               # decided "this quantity executed": adoption + agreeing reads
 
 
 EXECUTING_EVIDENCE = frozenset({Evidence.EXCHANGE_FINAL, Evidence.POSITION_ADOPTED})
+DECIDED_EVIDENCE = frozenset({Evidence.NOT_FOUND_CORROBORATED, Evidence.POSITION_ADOPTED})
 
 
 @record
 class PositionRead(Record):
-    """One exchange position read (the intent's symbol / side) used to corroborate a not-found."""
+    """One exchange position read (the intent's symbol / side) used as corroboration."""
     at_ms: int
     qty: Decimal
 
@@ -247,6 +285,7 @@ class PositionRead(Record):
 
 @record
 class OrderResult(Record):
+    result_id: str
     intent_id: str
     account_id: str
     client_order_id: str
@@ -260,31 +299,29 @@ class OrderResult(Record):
     avg_price: Decimal | None = None
     evidence: Evidence | None = None         # FINAL only
     corroboration: tuple[PositionRead, ...] = ()
-    adopted_by: str | None = None            # dec_ of the explicit adoption
+    resolved_by: str | None = None           # dec_ of the explicit resolution / adoption
 
     def _validate(self, p):
-        p = f'{p}[{self.intent_id}]'
+        p = f'{p}[{self.result_id}]'
+        check_id(self.result_id, p + '.result_id', 'res')
         check_id(self.intent_id, p + '.intent_id', 'int')
         check_id(self.account_id, p + '.account_id', 'acct')
-        check_cid(self.client_order_id, p + '.client_order_id')
+        check_client_id(self.client_order_id, p + '.client_order_id')
         positive(self.requested_qty, p + '.requested_qty')
-        req(self.exchange_order_id is None or self.exchange_order_id.isdigit() and len(self.exchange_order_id) <= 24,
-            p + '.exchange_order_id', 'an exchange order id is digits')
+        if self.exchange_order_id is not None:
+            check_text(self.exchange_order_id, p + '.exchange_order_id', 64)
         ph, ev, st = self.phase, self.evidence, self.exchange_status
         if ph is not ResultPhase.FINAL:
             req(self.executed_qty is None and self.avg_price is None and ev is None and not self.corroboration
-                and self.adopted_by is None, p, f'a {ph} result books nothing (no executed qty / price / evidence)')
-        if ph is ResultPhase.UNKNOWN:
-            req(st is None, p + '.exchange_status', 'an UNKNOWN result has no exchange status')
-        else:
-            req(self.lookup is None, p + '.lookup', 'only an UNKNOWN result records a failed lookup')
-        if ph is ResultPhase.KNOWN:
-            req(st in OPEN_STATUSES and self.exchange_order_id is not None, p + '.exchange_status',
-                'KNOWN = an open exchange order (NEW / PARTIALLY_FILLED) with its id')
+                and self.resolved_by is None, p, f'a {ph} result books nothing (no executed qty / price / evidence)')
+            if ph is ResultPhase.UNKNOWN:
+                req(st is None, p + '.exchange_status', 'an UNKNOWN result has no exchange status')
+            else:
+                req(self.lookup is None, p + '.lookup', 'only an UNKNOWN result records a failed lookup')
+                req(st in OPEN_STATUSES and self.exchange_order_id is not None, p + '.exchange_status',
+                    'KNOWN = an open exchange order (NEW / PARTIALLY_FILLED) with its id')
             return
-        if ph is ResultPhase.UNKNOWN:
-            return
-        # FINAL
+        req(self.lookup is None, p + '.lookup', 'a final result is not a lookup failure')
         req(ev is not None, p + '.evidence', 'a final result names its evidence')
         req(self.executed_qty is not None, p + '.executed_qty', 'a final result decides the executed qty')
         non_negative(self.executed_qty, p + '.executed_qty')
@@ -294,6 +331,7 @@ class OrderResult(Record):
             req(self.avg_price is not None and self.avg_price > 0, p + '.avg_price', 'an execution has a price')
         else:
             req(self.avg_price is None, p + '.avg_price', 'nothing executed has no price')
+            req(ev is not Evidence.POSITION_ADOPTED, p + '.evidence', 'an adoption adopts a quantity')
         if ev is Evidence.EXCHANGE_FINAL:
             req(st in FINAL_STATUSES and self.exchange_order_id is not None, p + '.exchange_status',
                 'needs the final exchange status and order id')
@@ -301,33 +339,44 @@ class OrderResult(Record):
                 'FILLED executes the whole request')
             req(st is not ExchangeStatus.REJECTED or self.executed_qty == 0, p + '.executed_qty', 'REJECTED executes nothing')
         else:
-            req(st is None and self.exchange_order_id is None, p + '.exchange_status',
-                f'{ev}: there is no exchange order record')
-        if ev is Evidence.POSITION_ADOPTED:
-            check_id(self.adopted_by, p + '.adopted_by', 'dec')
-            req(self.executed_qty > 0, p + '.executed_qty', 'an adoption adopts a quantity')
-        else:
-            req(self.adopted_by is None, p + '.adopted_by', 'only an adoption names its decision')
+            req(st is None and self.exchange_order_id is None, p + '.exchange_status', f'{ev}: no exchange order record')
         if ev in (Evidence.EXCHANGE_REFUSED, Evidence.NOT_SENT, Evidence.NOT_FOUND_CORROBORATED):
             req(self.executed_qty == 0, p + '.executed_qty', f'{ev} executes nothing')
         reads = self.corroboration
-        if ev is Evidence.NOT_FOUND_CORROBORATED:
+        if ev in DECIDED_EVIDENCE:
+            check_id(self.resolved_by, p + '.resolved_by', 'dec')
             req(len(reads) >= 2, p + '.corroboration', 'needs at least two position reads')
             req(all(a.at_ms < b.at_ms for a, b in zip(reads, reads[1:])), p + '.corroboration', 'reads strictly in time')
             req(len({r.qty for r in reads}) == 1, p + '.corroboration', 'the position changed between the reads')
+            req(ev is not Evidence.POSITION_ADOPTED or self.executed_qty <= reads[-1].qty, p + '.executed_qty',
+                'adopts more than the position holds')
         else:
-            req(not reads, p + '.corroboration', 'only a corroborated not-found carries position reads')
+            req(self.resolved_by is None, p + '.resolved_by', 'only a decided resolution names its decision')
+            req(not reads, p + '.corroboration', 'only a decided resolution carries position reads')
 
     @property
     def booked_qty(self):
-        """The quantity that may be booked: only from a FINAL result (final record or adoption), else None."""
+        """The quantity that may be booked: only from a FINAL result, else None (never 0 for "unknown")."""
         return self.executed_qty if self.phase is ResultPhase.FINAL else None
 
 
+def terminal_for(result):
+    """The terminal IntentState a FINAL result moves its intent to (None for a non-final result)."""
+    if result.phase is not ResultPhase.FINAL:
+        return None
+    if result.evidence is Evidence.NOT_SENT:
+        return IntentState.NOT_SENT
+    if result.executed_qty == result.requested_qty:
+        return IntentState.FILLED
+    if result.evidence is Evidence.EXCHANGE_REFUSED or result.exchange_status is ExchangeStatus.REJECTED:
+        return IntentState.REJECTED
+    return IntentState.CANCELLED
+
+
 def check_result_for_intent(intent, result, sent_at_ms):
-    """Cross-record rules of a result against its durable intent. `sent_at_ms` is when the intent left ARMED/was sent
-    (None = never sent). Raises InvalidRecord."""
-    p = f'OrderResult[{result.intent_id}]'
+    """Cross-record rules of a result against its durable intent. `sent_at_ms` is when it was submitted (None = never).
+    Raises InvalidRecord."""
+    p = f'OrderResult[{result.result_id}]'
     req(result.intent_id == intent.intent_id and result.client_order_id in intent.client_ids, p + '.client_order_id',
         'belongs to another intent')
     req(result.account_id == intent.account_id, p + '.account_id', 'belongs to another account')
@@ -336,13 +385,11 @@ def check_result_for_intent(intent, result, sent_at_ms):
     ev = result.evidence
     if sent_at_ms is None:
         req(result.phase is ResultPhase.FINAL and ev is Evidence.NOT_SENT, p + '.evidence',
-            'an intent that was never sent can only end NOT_SENT')
+            'an intent that was never submitted can only end NOT_SENT')
         return
-    req(ev is not Evidence.NOT_SENT, p + '.evidence', 'the intent was sent')
-    if ev is Evidence.NOT_FOUND_CORROBORATED:
+    req(ev is not Evidence.NOT_SENT, p + '.evidence', 'the intent was submitted')
+    if ev in DECIDED_EVIDENCE:
         req(result.corroboration[0].at_ms >= sent_at_ms + NOT_FOUND_WINDOW_MS, p + '.corroboration',
             'position reads inside the visibility window corroborate nothing')
     if ev is Evidence.POSITION_ADOPTED:
         req(intent.opening, p + '.evidence', 'only opening risk is adopted')
-
-

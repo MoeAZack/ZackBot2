@@ -1,36 +1,38 @@
-"""NC-01 domain model and reason codes.
+"""NC-01 domain model and reason codes (docs/newcore/NC01_CONTRACT.md).
 
-Pure stdlib (no IO, clock, randomness, network or legacy import; enforced by tests/newcore/test_nc01_import_boundary.py).
-One short module per record family:
+Pure stdlib: no file, network, clock, environment, logging or legacy access (enforced by
+tests/newcore/test_nc01_import_boundary.py). One short module per record family:
 
-    errors      DomainError / InvalidRecord / ForeignDocument / FutureSchema / UnknownSchema / OwnershipUnknown
-    base        Record base class, Decimal / ms-timestamp / id rules, deterministic client ids
-    reasons     ReasonCode registry (append-only), golden exit projection
-    instrument  InstrumentRules + explicit-rounding quantize helpers
-    account     Account, AccountBinding, typed binding confirmation / rotation states
-    orders      OrderIntent (one record for every purpose, with lifecycle), OrderResult (phase + evidence)
+    errors      DomainError / InvalidRecord / ForeignDocument / UnsupportedVersion (Future/Unknown/Older) / OwnershipUnknown
+    base        Record base class, Decimal / ms-timestamp / id rules, idempotency keys
+    reasons     ReasonCode registry (append-only, semantic entries), golden exit / signal projection
+    instrument  InstrumentId, InstrumentRules + explicit-rounding quantize helpers
+    account     Account (stable AccountId), AccountBinding, typed binding confirmation / rotation states
+    orders      OrderIntent (the one order-ownership family, lifecycle), OrderResult (phase + evidence)
     modes       EntriesMode, HoldKind, the pure permitted-action table
     protection  Protection (own facts only) and its derived lifecycle status
-    portfolio   Portfolio, Position, Lot, Fill, OrphanCancel, ownership proof
-    decision    Decision, Action priority, reason-stage rules
+    portfolio   Portfolio (explicit trust), Position, Lot, Fill, ownership proof
+    decision    Decision (reason, authority, evidence refs), Action priority
     events      append-only event records + pure chain check
     snapshot    Snapshot / HighWater + generation rollback verdict
-    codec       strict canonical JSON
+    codec       strict canonical versioned JSON
 """
 from .account import (Account, AccountBinding, BindingConfirmation, BindingState, Environment, confirmation_phrase,
                       observe_binding)
-from .base import deterministic_cid, make_cid, make_id
-from .codec import decode_document, dumps, encode_document, loads
-from .decision import Action, Decision
-from .errors import DomainError, ForeignDocument, FutureSchema, InvalidRecord, OwnershipUnknown, UnknownSchema
+from .base import idempotency_key, make_id
+from .codec import DecodeResult, Outcome, decode_document, decode_result, dumps, encode_document, loads
+from .decision import Action, Authority, Decision
+from .errors import (DomainError, ForeignDocument, FutureSchema, InvalidRecord, OlderSchema, OwnershipUnknown,
+                     UnknownSchema, UnsupportedVersion)
 from .events import (BindingChanged, DecisionRecorded, IntentRecorded, IntentStateChanged, ModeChanged, ResultObserved,
                      check_event_chain)
-from .instrument import InstrumentRules, Rounding
+from .instrument import Capability, InstrumentId, InstrumentRules, Rounding
 from .modes import EntriesMode, HoldKind, Op, Permission, permitted
 from .orders import (Arming, Evidence, ExchangeStatus, IntentState, Lookup, OrderIntent, OrderResult, OrderType,
-                     OwnerFamily, PositionRead, Purpose, ResultPhase, Side, check_result_for_intent, protect_cid)
-from .portfolio import (Fill, Lot, LotSource, OrphanCancel, Ownership, OwnershipProof, Portfolio, Position, ProofKind,
-                        check_account_portfolio, owned_client_ids, ownership_families)
+                     OwnerFamily, PositionRead, Purpose, ResultPhase, ResultStage, Side, check_result_for_intent,
+                     may_apply, may_send, protect_key, terminal_for)
+from .portfolio import (Fill, Lot, LotSource, Ownership, OwnershipProof, Portfolio, Position, ProofKind,
+                        check_account_portfolio, entry_blocking_protections, owned_client_ids, ownership_families)
 from .protection import MissPhase, Protection, ProtectionStatus, StopMiss, protection_status
-from .reasons import GOLDEN_EXIT, GOLDEN_EXIT_CODES, ReasonCode
+from .reasons import GOLDEN_EXIT, GOLDEN_EXIT_CODES, GOLDEN_SIGNAL, MEANING, ReasonCode
 from .snapshot import GenerationVerdict, HighWater, Snapshot, check_generation

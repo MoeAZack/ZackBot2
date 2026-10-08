@@ -1,26 +1,31 @@
-"""Portfolio, Position, Lot, Fill and the orphan-cancel queue (rulings 3, 4, 8, 9, 10).
+"""Portfolio, Position, Lot and Fill: the account-keyed ownership aggregate (contract 2, invariants 1, 4, 5, 8, 9, 10).
 
-A Portfolio is everything one account owns; it is the unit NC-02 snapshots. Ownership is either KNOWN, with a typed
-proof, or UNKNOWN. UNKNOWN means positions / intents / entry stops / orphan cancels are None - never empty - and every
-accessor raises OwnershipUnknown instead of returning nothing. A KNOWN empty portfolio needs a proof that can establish
-emptiness (a proven first run against a flat exchange, a journaled result chain or an owner adoption); a reconciliation
-"match" alone never makes an empty candidate KNOWN. There is no legacy-import proof: NEWCORE starts flat (ruling 10).
+Trust is explicit. `ownership` is UNKNOWN, KNOWN or KNOWN_EMPTY:
 
-The constructor checks every cross-record invariant: one position per symbol/side, unique ids and client ids, every lot /
-protection / intent reference resolves to an owned record of the same account, each lot's fill ledger adds up to its
-quantity, and the drain rule: outside ACTIVE every resting maker / armed trailing opening intent is cancelling, and no
-intent created after the mode change is one the permitted-action table forbids.
+- UNKNOWN: positions / intents / entry stops are None - never empty - and every accessor raises OwnershipUnknown. The
+  entries mode is HOLD.
+- KNOWN_EMPTY: nothing is owned, proven by a FLAT_SNAPSHOT proof: a fresh flat exchange snapshot taken under the
+  confirmed binding (key digest recorded) and accepted by the reconciliation gate (rec_ id). `check_account_portfolio`
+  checks the binding is that confirmed one. An empty portfolio is never just "KNOWN".
+- KNOWN: something is owned, proven by the journal, a reconciliation match or an owner adoption.
+There is no legacy-import proof: NEWCORE starts flat.
+
+The constructor checks every cross-record invariant: unique ids and client ids, one position per symbol/side, every lot /
+protection / intent reference resolves to a record of the same account, each lot's fill ledger adds up to its quantity,
+protection never exceeds exposure, an owned order that no record carries any more is an ORPHAN and may only be cancelling,
+and the drain rule: outside ACTIVE every resting maker / armed trailing opening intent is cancelling, and no intent created
+after the mode change is one the permitted-action table forbids (manual entries get no exception).
 """
 from __future__ import annotations
 
 import enum
 from decimal import Decimal
 
-from .base import ZERO, Record, check_cid, check_id, check_symbol, non_negative, positive, record, req
+from .base import ZERO, Record, check_id, check_symbol, check_text, non_negative, positive, record, req
 from .errors import OwnershipUnknown
 from .modes import EntriesMode, HoldKind, Op, Permission, permitted
-from .orders import CANCEL_STATES, OrderIntent, OrderType, OwnerFamily, Purpose, Side
-from .protection import Protection, ProtectionStatus, check_protection, protection_status
+from .orders import LIVE, IntentState, OrderIntent, OrderType, OwnerFamily, Purpose, Side
+from .protection import PROTECTING, Protection, check_protection, protection_status
 from .reasons import ReasonCode
 
 
@@ -33,29 +38,29 @@ class LotSource(enum.StrEnum):
 @record
 class Fill(Record):
     """One booked execution of a lot. Opening fills carry an entry.* reason, closing fills an exit.* reason.
-    Booked only from a FINAL OrderResult (intent_id) or an explicit adoption / reconcile decision (decision_id)."""
+    Booked only from a FINAL OrderResult (result_id) or an explicit adoption / reconcile decision (decision_id)."""
     at_ms: int
     reason: ReasonCode
     qty: Decimal
     price: Decimal
     fee: Decimal
-    intent_id: str | None = None
+    result_id: str | None = None
     decision_id: str | None = None
 
     def _validate(self, p):
-        req(self.reason.stage in ('entry', 'exit'), p + '.reason', 'a fill opens (entry.*) or closes (exit.*)')
+        req(self.reason.namespace in ('entry', 'exit'), p + '.reason', 'a fill opens (entry.*) or closes (exit.*)')
         positive(self.qty, p + '.qty')
         positive(self.price, p + '.price')
-        req((self.intent_id is None) != (self.decision_id is None), p + '.intent_id',
+        req((self.result_id is None) != (self.decision_id is None), p + '.result_id',
             'booked from exactly one source: a final order result or a decision')
-        if self.intent_id is not None:
-            check_id(self.intent_id, p + '.intent_id', 'int')
+        if self.result_id is not None:
+            check_id(self.result_id, p + '.result_id', 'res')
         else:
             check_id(self.decision_id, p + '.decision_id', 'dec')
 
     @property
     def opening(self):
-        return self.reason.stage == 'entry'
+        return self.reason.namespace == 'entry'
 
 
 @record
@@ -66,6 +71,7 @@ class Lot(Record):
     side: Side
     source: LotSource
     slot_id: str | None              # strategy slot; None for manual / adopted
+    timeframe: str | None            # strategy timeframe of the slot (e.g. '4h'); None for manual / adopted
     opened_at_ms: int
     qty: Decimal                     # > 0: a finished lot is removed, never stored at 0
     avg_price: Decimal
@@ -75,7 +81,7 @@ class Lot(Record):
     risk_usd: Decimal
     stop: Protection
     fills: tuple[Fill, ...]
-    in_flight: str | None = None     # the ONE open add/reduce/close intent of this lot
+    in_flight: str | None = None     # the ONE open add / reduce / close intent of this lot
     adopted_by: str | None = None    # dec_ of the adoption (ADOPTED only)
     tp1_done: bool = False
     ladder_done: tuple[int, ...] = ()
@@ -86,7 +92,12 @@ class Lot(Record):
         check_id(self.lot_id, p + '.lot_id', 'lot')
         check_id(self.account_id, p + '.account_id', 'acct')
         check_symbol(self.symbol, p + '.symbol')
-        req((self.source is LotSource.STRATEGY) == (self.slot_id is not None), p + '.slot_id', 'set exactly for a strategy lot')
+        strategy = self.source is LotSource.STRATEGY
+        req(strategy == (self.slot_id is not None) == (self.timeframe is not None), p + '.slot_id',
+            'slot and timeframe are set exactly for a strategy lot')
+        if strategy:
+            check_text(self.slot_id, p + '.slot_id', 32)
+            check_text(self.timeframe, p + '.timeframe', 8)
         req((self.source is LotSource.ADOPTED) == (self.adopted_by is not None), p + '.adopted_by', 'set exactly when adopted')
         if self.adopted_by is not None:
             check_id(self.adopted_by, p + '.adopted_by', 'dec')
@@ -107,7 +118,7 @@ class Lot(Record):
         if self.source is LotSource.ADOPTED:
             req(f0.decision_id == self.adopted_by, p + '.fills[0]', 'an adopted lot opens with its adoption')
         else:
-            req(f0.intent_id is not None, p + '.fills[0]', 'a traded lot opens from a final order result')
+            req(f0.result_id is not None, p + '.fills[0]', 'a traded lot opens from a final order result')
         run, top, prev = ZERO, ZERO, f0.at_ms
         for i, f in enumerate(fills):
             req(f.at_ms >= prev, f'{p}.fills[{i}].at_ms', 'fills out of time order')
@@ -124,12 +135,14 @@ class Lot(Record):
 @record
 class Position(Record):
     """All lots of one account / symbol / side (hedge-mode position). `qty` is derived, never stored."""
+    position_id: str
     symbol: str
     side: Side
     lots: tuple[Lot, ...]
 
     def _validate(self, p):
         p = f'{p}[{self.symbol}|{self.side}]'
+        check_id(self.position_id, p + '.position_id', 'pos')
         check_symbol(self.symbol, p + '.symbol')
         req(len(self.lots) > 0, p + '.lots', 'an empty position is not stored')
         req(all(x.symbol == self.symbol and x.side is self.side for x in self.lots), p + '.lots', 'lot of another symbol / side')
@@ -139,55 +152,38 @@ class Position(Record):
         return sum((x.qty for x in self.lots), ZERO)
 
 
-@record
-class OrphanCancel(Record):
-    """An OWNED order (bot client id) that no record carries any more, queued for cancellation. Foreign orders never
-    enter this queue: they are an owner decision (NC-02 A22)."""
-    account_id: str
-    symbol: str
-    client_order_id: str
-    queued_at_ms: int
-    reason: ReasonCode
-    attempts: int = 0
-
-    def _validate(self, p):
-        check_id(self.account_id, p + '.account_id', 'acct')
-        check_symbol(self.symbol, p + '.symbol')
-        check_cid(self.client_order_id, p + '.client_order_id')
-        req(self.attempts >= 0, p + '.attempts', '>= 0')
-
-
 class Ownership(enum.StrEnum):
-    KNOWN = 'known'
     UNKNOWN = 'unknown'
+    KNOWN_EMPTY = 'known_empty'
+    KNOWN = 'known'
 
 
 class ProofKind(enum.StrEnum):
-    FIRST_RUN_FLAT = 'first_run_flat'    # INIT: no store existed and a fresh exchange snapshot was flat
-    JOURNAL = 'journal'                  # derived from a proven generation by the journaled event chain
-    RECONCILED = 'reconciled'            # a reconciliation record matched a non-empty candidate
-    OWNER_ADOPTED = 'owner_adopted'      # the owner resolved every difference (adopt / close / cancel), per item
-
-
-EMPTY_PROOFS = frozenset({ProofKind.FIRST_RUN_FLAT, ProofKind.JOURNAL, ProofKind.OWNER_ADOPTED})
+    FLAT_SNAPSHOT = 'flat_snapshot'      # KNOWN_EMPTY: fresh flat exchange snapshot under the confirmed binding, gate-accepted
+    JOURNAL = 'journal'                  # KNOWN: derived from a proven generation by the journaled event chain
+    RECONCILED = 'reconciled'            # KNOWN: a reconciliation record matched this non-empty candidate
+    OWNER_ADOPTED = 'owner_adopted'      # KNOWN: the owner resolved every difference (adopt / close / cancel), per item
 
 
 @record
 class OwnershipProof(Record):
     kind: ProofKind
-    at_ms: int
-    reconciliation_id: str | None = None     # rec_: FIRST_RUN_FLAT (the flat snapshot) / RECONCILED
+    at_ms: int                               # FLAT_SNAPSHOT: when the flat snapshot was taken
+    reconciliation_id: str | None = None     # rec_: FLAT_SNAPSHOT / RECONCILED
+    key_digest: str | None = None            # FLAT_SNAPSHOT: the confirmed binding the snapshot was taken under
     decision_id: str | None = None           # dec_: OWNER_ADOPTED
     through_seq: int | None = None           # JOURNAL: the last applied event
 
     def _validate(self, p):
-        k = self.kind
-        need = {ProofKind.FIRST_RUN_FLAT: 'reconciliation_id', ProofKind.RECONCILED: 'reconciliation_id',
-                ProofKind.OWNER_ADOPTED: 'decision_id', ProofKind.JOURNAL: 'through_seq'}[k]
-        for f in ('reconciliation_id', 'decision_id', 'through_seq'):
-            req((getattr(self, f) is not None) == (f == need), f'{p}.{f}', f'a {k} proof sets exactly {need}')
+        need = {ProofKind.FLAT_SNAPSHOT: {'reconciliation_id', 'key_digest'}, ProofKind.RECONCILED: {'reconciliation_id'},
+                ProofKind.OWNER_ADOPTED: {'decision_id'}, ProofKind.JOURNAL: {'through_seq'}}[self.kind]
+        for f in ('reconciliation_id', 'key_digest', 'decision_id', 'through_seq'):
+            req((getattr(self, f) is not None) == (f in need), f'{p}.{f}', f'a {self.kind} proof sets exactly {sorted(need)}')
         if self.reconciliation_id is not None:
             check_id(self.reconciliation_id, p + '.reconciliation_id', 'rec')
+        if self.key_digest is not None:
+            req(len(self.key_digest) == 16 and all(c in '0123456789abcdef' for c in self.key_digest), p + '.key_digest',
+                'not 16 lowercase hex')
         if self.decision_id is not None:
             check_id(self.decision_id, p + '.decision_id', 'dec')
         if self.through_seq is not None:
@@ -196,6 +192,7 @@ class OwnershipProof(Record):
 
 @record
 class Portfolio(Record):
+    portfolio_id: str
     account_id: str
     generation: int                          # strictly increasing per durable write (NC-02)
     ownership: Ownership
@@ -204,26 +201,34 @@ class Portfolio(Record):
     mode_since_ms: int
     pause_reasons: tuple[ReasonCode, ...]    # non-empty iff not ACTIVE
     positions: tuple[Position, ...] | None   # None iff UNKNOWN (never "empty" by default)
-    intents: tuple[OrderIntent, ...] | None  # open (non-final) intents: the write-ahead set
+    intents: tuple[OrderIntent, ...] | None  # open (live) intents: the write-ahead set, orphan cancels included
     entry_stops: tuple[Protection, ...] | None   # provisional stops of unresolved market entries
-    orphan_cancels: tuple[OrphanCancel, ...] | None
     hold_kind: HoldKind | None = None        # set iff entries_mode is HOLD
 
     def _validate(self, p):
+        check_id(self.portfolio_id, p + '.portfolio_id', 'pf')
         check_id(self.account_id, p + '.account_id', 'acct')
         req(self.generation >= 0, p + '.generation', '>= 0')
         unknown = self.ownership is Ownership.UNKNOWN
-        cols = (self.positions, self.intents, self.entry_stops, self.orphan_cancels)
+        cols = (self.positions, self.intents, self.entry_stops)
         req(all(c is None for c in cols) if unknown else all(c is not None for c in cols), p + '.positions',
-            'UNKNOWN ownership <=> positions / intents / entry_stops / orphan_cancels are None (unknown is never empty)')
-        req((self.proof is None) == unknown, p + '.proof', 'KNOWN ownership needs a proof; UNKNOWN has none')
+            'UNKNOWN ownership <=> positions / intents / entry_stops are None (unknown is never empty)')
+        req((self.proof is None) == unknown, p + '.proof', 'trusted ownership needs a proof; UNKNOWN has none')
         req(not unknown or self.entries_mode is EntriesMode.HOLD, p + '.entries_mode', 'UNKNOWN ownership is HOLD')
         req((self.hold_kind is not None) == (self.entries_mode is EntriesMode.HOLD), p + '.hold_kind', 'set exactly in HOLD')
         req((len(self.pause_reasons) == 0) == (self.entries_mode is EntriesMode.ACTIVE), p + '.pause_reasons',
             'non-empty exactly when entries are not ACTIVE')
         req(len(set(self.pause_reasons)) == len(self.pause_reasons), p + '.pause_reasons', 'duplicate reason')
+        req((self.hold_kind is HoldKind.DURABILITY_UNAVAILABLE) <= (ReasonCode.RECOVERY_DURABILITY_UNAVAILABLE in
+                                                                    self.pause_reasons), p + '.pause_reasons',
+            'a hard HOLD names its cause')
         if unknown:
             return
+        empty = not (self.positions or self.intents or self.entry_stops)
+        req(empty == (self.ownership is Ownership.KNOWN_EMPTY), p + '.ownership',
+            'empty <=> KNOWN_EMPTY (an empty portfolio is never just KNOWN; KNOWN_EMPTY owns nothing)')
+        req((self.proof.kind is ProofKind.FLAT_SNAPSHOT) == empty, p + '.proof',
+            'KNOWN_EMPTY is proven exactly by a flat snapshot; KNOWN by journal / reconciliation / adoption')
         _check_known(self, p)
 
     # ------------------------------------------------------------------------------------------------ accessors
@@ -236,11 +241,6 @@ class Portfolio(Record):
     def lots(self):
         return tuple(x for pos in self._known().positions for x in pos.lots)
 
-    @property
-    def is_empty(self):
-        k = self._known()
-        return not (k.positions or k.intents or k.entry_stops or k.orphan_cancels)
-
     def intents_by_id(self):
         return {i.intent_id: i for i in self._known().intents}
 
@@ -250,13 +250,10 @@ class Portfolio(Record):
 
 def _check_known(pf, p):
     acct = pf.account_id
-    if pf.is_empty:
-        req(pf.proof.kind in EMPTY_PROOFS, p + '.proof',
-            f'an empty portfolio is KNOWN only by {sorted(EMPTY_PROOFS)} (a trivially-empty candidate never auto-matches)')
-    if pf.proof.kind is ProofKind.FIRST_RUN_FLAT:
-        req(pf.generation == 0 and pf.is_empty, p + '.proof', 'FIRST_RUN_FLAT is generation 0 and empty')
     keys = [(x.symbol, x.side) for x in pf.positions]
     req(len(keys) == len(set(keys)), p + '.positions', 'one Position per symbol / side')
+    pos_ids = [x.position_id for x in pf.positions]
+    req(len(pos_ids) == len(set(pos_ids)), p + '.positions', 'duplicate position id')
     lots = {}
     for x in pf.lots:
         req(x.lot_id not in lots, f'{p}.lot[{x.lot_id}]', 'duplicate lot id')
@@ -268,80 +265,74 @@ def _check_known(pf, p):
         ip = f'{p}.intent[{it.intent_id}]'
         req(it.intent_id not in intents, ip, 'duplicate intent id')
         req(it.account_id == acct, ip + '.account_id', 'intent of another account')
+        req(it.state in LIVE, ip + '.state', f'{it.state} is not a live state (planned / terminal intents are not owned)')
         for c in it.client_ids:
             req(c not in cids, ip + '.client_order_id', 'duplicate client order id')
             cids.add(c)
         intents[it.intent_id] = it
-    for o in pf.orphan_cancels:
-        req(o.account_id == acct, f'{p}.orphan[{o.client_order_id}].account_id', 'orphan of another account')
-        req(o.client_order_id not in cids, f'{p}.orphan[{o.client_order_id}]', 'an orphan is not also owned by a record')
-        cids.add(o.client_order_id)
-    # LOT family: every add / reduce / close intent is THE in-flight order of an owned lot, and vice versa
+    # carried: which intents a record carries (anything else of the LOT / PROTECTION family is an orphan)
+    carried = set()
     for x in lots.values():
         if x.in_flight is not None:
             it = intents.get(x.in_flight)
             req(it is not None and it.family is OwnerFamily.LOT and it.owner_id == x.lot_id, f'{p}.lot[{x.lot_id}].in_flight',
-                'names no durable add / reduce / close intent of this lot')
-    for it in intents.values():
-        ip = f'{p}.intent[{it.intent_id}]'
-        if it.family is OwnerFamily.LOT:
-            owner = lots.get(it.owner_id)
-            req(owner is not None and owner.in_flight == it.intent_id, ip + '.owner_id', 'not the in-flight intent of an owned lot')
-            req((owner.symbol, owner.side) == (it.symbol, it.side), ip + '.symbol', 'differs from its lot')
-    # PROTECTION family: one protection record per protective intent, derived lifecycle consistent
-    entry_stop_owners = set()
-    carried = {}
+                'names no open add / reduce / close intent of this lot')
+            req((it.symbol, it.side) == (x.symbol, x.side), f'{p}.lot[{x.lot_id}].in_flight', 'intent of another symbol / side')
+            carried.add(it.intent_id)
+    prots = []
+    owners = set()
     for s in pf.entry_stops:
         sp = f'{p}.entry_stop[{s.owner_id}]'
         it = intents.get(s.owner_id)
         req(it is not None and it.purpose is Purpose.ENTRY and it.order_type is OrderType.MARKET, sp,
             'a provisional stop protects an open market ENTRY of this portfolio')
-        req(s.owner_id not in entry_stop_owners, sp, 'two provisional stops for one entry')
-        entry_stop_owners.add(s.owner_id)
-        req(it.seen_qty is not None and s.qty <= it.seen_qty, sp + '.qty', 'larger than the unresolved size it protects')
-        check_protection(s, intents, it.side, it.symbol, sp)
-        if s.order is not None:
-            carried[s.order] = s
+        req(s.owner_id not in owners, sp, 'two provisional stops for one entry')
+        owners.add(s.owner_id)
+        req(it.seen_qty is not None, sp, 'protects an entry with a seen (unresolved) size')
+        prots.append((s, it.side, it.symbol, it.seen_qty, sp))
     for x in lots.values():
-        sp = f'{p}.lot[{x.lot_id}].stop'
-        check_protection(x.stop, intents, x.side, x.symbol, sp)
-        req(x.stop.order is None or x.stop.order not in carried, sp + '.order', 'one stop order carries two protections')
-        if x.stop.order is not None:
-            carried[x.stop.order] = x.stop
-        status = protection_status(x.stop, intents)
-        req(x.stop.qty == x.qty or x.in_flight is not None or status in (
-            ProtectionStatus.NEEDS_PLACEMENT, ProtectionStatus.RELEASING, ProtectionStatus.MISSING_RESTORING),
-            sp + '.qty', 'a placed stop covers exactly the lot qty (a resize is a new placement)')
+        prots.append((x.stop, x.side, x.symbol, x.qty, f'{p}.lot[{x.lot_id}].stop'))
+    for s, side, symbol, exposure, sp in prots:
+        check_protection(s, intents, side, symbol, exposure, sp)
+        for iid in (s.order, s.replacement):
+            if iid is not None:
+                req(iid not in carried, sp, 'one stop order carries two protections')
+                carried.add(iid)
+        if s.miss is not None and s.miss.foreign_order_id is not None:
+            req(s.miss.foreign_order_id not in cids, sp + '.miss.foreign_order_id', 'an owned client id is never foreign')
     for it in intents.values():
-        if it.purpose is Purpose.PROTECT:
-            req(it.intent_id in carried, f'{p}.intent[{it.intent_id}]', 'a protective order no protection record carries')
-    # drain (ruling 9) and the permitted-action table (hard HOLD)
+        if it.family is not OwnerFamily.ENTRY and it.intent_id not in carried:
+            req(it.state is IntentState.CANCELLING, f'{p}.intent[{it.intent_id}].state',
+                'an owned order no record carries is an orphan: only cancel work remains')
+    # drain (ruling 9) and the permitted-action table (HOLD kinds)
     if pf.entries_mode is not EntriesMode.ACTIVE:
         for it in intents.values():
             ip = f'{p}.intent[{it.intent_id}]'
             if it.pullable:
-                req(it.state in CANCEL_STATES, ip + '.state',
+                req(it.state is IntentState.CANCELLING, ip + '.state',
                     f'a resting / armed opening intent must be cancelling while entries are {pf.entries_mode}')
-            elif it.created_at_ms > pf.mode_since_ms and it.state not in CANCEL_STATES:
+            elif it.created_at_ms > pf.mode_since_ms and it.state is not IntentState.CANCELLING:
                 req(pf.permits(it.purpose, Op.PLACE, one_shot=it.authorized_by is not None), ip,
                     f'a {it.purpose} intent created after entries became {pf.entries_mode} is not permitted')
 
 
 # ----------------------------------------------------------------------------------------------------------- queries
 def owned_client_ids(pf):
-    """Every client order id this portfolio owns (intents, algo fallbacks, orphan queue). Raises OwnershipUnknown for an
-    UNKNOWN portfolio: unknown is never an empty set."""
-    k = pf._known()
-    return frozenset(c for it in k.intents for c in it.client_ids) | frozenset(o.client_order_id for o in k.orphan_cancels)
+    """Every client order id this portfolio owns (intents, algo fallbacks, orphan cancels). Raises OwnershipUnknown for
+    an UNKNOWN portfolio: unknown is never an empty set."""
+    return frozenset(c for it in pf._known().intents for c in it.client_ids)
 
 
 def ownership_families(pf):
-    """{OwnerFamily: (client ids...)}: the explicit ownership families. Raises OwnershipUnknown when UNKNOWN."""
+    """{OwnerFamily: (intent ids...)}: the explicit ownership families, orphans (cancel-only, uncarried) separated.
+    Raises OwnershipUnknown when UNKNOWN."""
     k = pf._known()
+    carried = {x.in_flight for x in k.lots} | {s.order for s in [x.stop for x in k.lots] + list(k.entry_stops)} | \
+              {s.replacement for s in [x.stop for x in k.lots] + list(k.entry_stops)}
     out = {f: [] for f in OwnerFamily}
     for it in k.intents:
-        out[it.family].extend(it.client_ids)
-    out[OwnerFamily.ORPHAN].extend(o.client_order_id for o in k.orphan_cancels)
+        fam = it.family if it.family is OwnerFamily.ENTRY or it.intent_id in carried else OwnerFamily.ORPHAN
+        out[fam].append(it.intent_id)
     return {f: tuple(v) for f, v in out.items()}
 
 
@@ -349,16 +340,17 @@ def entry_blocking_protections(pf):
     """Protections whose derived status blocks new entries on their symbol/side (replaces legacy stop_missing_block)."""
     k = pf._known()
     intents = k.intents_by_id()
-    return tuple(s for s in [x.stop for x in k.lots] + list(k.entry_stops)
-                 if protection_status(s, intents) not in (ProtectionStatus.OWNED_CONFIRMED, ProtectionStatus.OWNED_UNVERIFIED))
+    pairs = [(x.stop, x.qty) for x in k.lots] + [(s, intents[s.owner_id].seen_qty) for s in k.entry_stops]
+    return tuple(s for s, exp in pairs if protection_status(s, intents, exp) not in PROTECTING)
 
 
 def check_account_portfolio(account, pf):
-    """The portfolio belongs to this account, and an unconfirmed / rotating / mismatched binding keeps entries non-active.
-    Equal positions prove nothing about identity."""
+    """The portfolio belongs to this account; an unconfirmed / rotating / mismatched binding keeps entries non-active;
+    KNOWN_EMPTY was proven under the CONFIRMED binding. Equal positions prove nothing about identity."""
     req(pf.account_id == account.account_id, 'Portfolio.account_id', 'belongs to another account')
     if not account.entries_allowed:
         req(pf.entries_mode is not EntriesMode.ACTIVE, 'Portfolio.entries_mode',
             f'entries cannot be ACTIVE while the binding is {account.binding_state}')
-
-
+    if pf.ownership is Ownership.KNOWN_EMPTY:
+        req(account.entries_allowed and pf.proof.key_digest == account.binding.key_digest, 'Portfolio.proof',
+            'KNOWN_EMPTY needs a flat snapshot taken under the confirmed binding')
