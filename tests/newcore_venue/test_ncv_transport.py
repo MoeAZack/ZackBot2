@@ -308,6 +308,14 @@ def test_quantity_must_be_positive_decimal(qty):
     assert http.requests == []
 
 
+def test_quantity_formatting_never_rounds_long_decimals():
+    # Decimal.normalize() would round this to 28 significant digits and send a DIFFERENT quantity.
+    long_qty = D('1.0000000000000000000000000000001')
+    t, http = make(raw(200, b'{}'))
+    t.place_market('BTCUSDT', 'BUY', 'LONG', long_qty, CID, reduce_only=False)
+    assert ('quantity', '1.0000000000000000000000000000001') in parse_qsl(http.last.query)
+
+
 def test_quantity_formatting_is_plain():
     t, http = make(raw(200, b'{}'), raw(200, b'{}'))
     t.place_market('BTCUSDT', 'BUY', 'LONG', D('0.0100'), CID, reduce_only=False)

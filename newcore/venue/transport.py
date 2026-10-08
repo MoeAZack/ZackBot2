@@ -70,7 +70,9 @@ def _cid(v, what='client_id'):
 def _qty(v, what):
     if type(v) is not Decimal or not v.is_finite() or v <= 0:
         raise VenueInputError(f'{what} must be a finite positive Decimal')
-    s = format(v.normalize(), 'f')
+    s = format(v, 'f')                    # exact: Decimal.normalize() would round to the 28-digit context precision
+    if '.' in s:
+        s = s.rstrip('0').rstrip('.')
     if not re.fullmatch(r'^[0-9]+(\.[0-9]+)?$', s):
         raise VenueInputError(f'{what} does not format as a plain decimal')
     return s
