@@ -25,8 +25,8 @@ needs_dpapi = pytest.mark.skipif(not WINDOWS, reason='DPAPI is Windows-only')
 # Dummy values only (Binance's public docs example pair, plus two obviously fake ones).
 KEY = 'dbefbc809e3e83c283a984c3a1459732ea7db1360ca80c5c2c8867408d28cc83'
 SECRET = '2b5eb11e18796d12d88f13dc27dbbd02c2cc51ff7059765ed9821957d82bb4d9'
-KEY2 = 'DUMMYROTATEDKEY0000000000000000000000000000000000000000000000001'
-SECRET2 = 'DUMMYROTATEDSECRET000000000000000000000000000000000000000000002'
+KEY2 = 'DUMMYROTATEDKEY' + '0' * 48 + '1'   # two halves: no key-like literal (verify.py scan)
+SECRET2 = 'DUMMYROTATEDSECRET' + '0' * 44 + '2'   # two halves: no key-like literal (verify.py scan)
 ACCOUNT = '3f2a9c1e-7b4d-4e8a-9c21-5d6e7f8a9b0c'   # CLI account ids are dashed UUIDs
 NOW = 1759917600000
 

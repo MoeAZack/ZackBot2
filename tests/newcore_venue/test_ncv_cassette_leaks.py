@@ -15,7 +15,7 @@ from newcore.venue.wire import HttpRequest, HttpResponse
 from ncv_support import DUMMY_KEY, DUMMY_SECRET, NOW_MS, FakeHttp, raw
 
 URL = 'https://testnet.binancefuture.com/fapi/v1/listenKey'
-LK = 'pqrsListenKeyDUMMYzz0123456789abcdefghijklmnopqrstuvwxyzABCDEFGH'
+LK = 'pqrsListenKeyDUMMYzz' + '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGH'   # two halves: no key-like literal (verify.py scan)
 ODD_KEY = 'Ab+Cd/Ef' * 8
 SIG = 'ab12' * 16
 

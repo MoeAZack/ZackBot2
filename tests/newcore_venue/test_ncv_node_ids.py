@@ -13,9 +13,10 @@ import unicodedata
 import urllib.parse
 
 REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from ncv_support import DUMMY_KEY, DUMMY_SECRET  # noqa: E402
+
 KNOWN = (
-    'DUMMYKEYzzLEAKCHECKqq0123456789abcdefABCDEF0123456789abcdefABCD',     # ncv_support.DUMMY_KEY
-    'DUMMYSECRETzzLEAKCHECKqq9876543210fedcbaFEDCBA9876543210fedcba',      # ncv_support.DUMMY_SECRET
+    DUMMY_KEY, DUMMY_SECRET,
     'REPLAYDUMMYKEY' + 'r' * 50, 'REPLAYDUMMYSECRET' + 'q' * 47,          # newcore.venue.scenarios
     'REPLAYKEY' + 'z' * 55, 'REPLAYSECRET' + 'y' * 52,                    # test_ncv_cassette
     'Ab+Cd/Ef' * 8, 'AbCdEfGh' * 8,                                         # test_ncv_redact / _cassette_leaks
