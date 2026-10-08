@@ -22,8 +22,12 @@
     [cycle]
     cadence_s = 0                        # pause between cycles in a loop (seconds); 0 = back to back
     delay_s = 15                         # testnet: seconds after the candle close before the cycle runs
+    [management]                         # M4 position management (NC-07 driver); OFF by default
+    enabled = false
+    plan = "range_bb_mr_v1"              # the only plan: a DISABLED mechanics fixture (4h), no edge claimed
+    cap_mult = "2.5"                     # plan risk cap = cap_mult x the entry's risk to its stop (reserved add)
     [account]
-    name = "nc-smoke"                    # account / portfolio ids derive from it (or give id / portfolio_id)
+    name = "nc-smoke"                   # account / portfolio ids derive from it (or give id / portfolio_id)
     equity = "10000"                     # fake / replay starting equity
     key_digest = "0123456789abcdef"      # the binding's NON-secret 16-hex key digest (never a key)
 
@@ -48,7 +52,7 @@ ALLOWED_KEY_NAMES = {'key_digest'}                 # the binding's non-secret di
 TIMEFRAMES = ('1h', '4h')
 RULES = ('trend_ema_mom.v1',)
 SECTIONS = {
-    '': {'mode', 'venue', 'journal', 'strategy', 'book', 'cycle', 'account', 'output'},
+    '': {'mode', 'venue', 'journal', 'strategy', 'book', 'cycle', 'account', 'output', 'management'},
     'venue': {'kind', 'factory', 'data_root', 'start', 'end'},
     'journal': {'dir'},
     'strategy': {'rule', 'enabled', 'mirrored_short', 'symbols', 'tf'},
@@ -56,7 +60,9 @@ SECTIONS = {
     'cycle': {'cadence_s', 'delay_s'},
     'account': {'name', 'id', 'portfolio_id', 'equity', 'key_digest'},
     'output': {'dir'},
+    'management': {'enabled', 'plan', 'cap_mult'},
 }
+PLANS = ('range_bb_mr_v1',)
 
 
 class ConfigError(ValueError):
@@ -91,6 +97,9 @@ class RunConfig:
     equity: Decimal
     key_digest: str
     source: str = field(default='')
+    mg_enabled: bool = False                       # [management] enabled: position management OFF unless true
+    mg_plan: str = 'range_bb_mr_v1'
+    mg_cap_mult: Decimal = Decimal('2.5')
 
 
 def _scan(node, path=''):
@@ -219,7 +228,17 @@ def validate(doc, *, source='', environ=None):
     for k in ('cadence_s', 'delay_s'):
         if not isinstance(c.get(k, 0), (int, float)) or isinstance(c.get(k, 0), bool) or c.get(k, 0) < 0:
             raise ConfigError(f'cycle.{k}: seconds >= 0')
+    m = doc.get('management', {})
+    if type(m.get('enabled', False)) is not bool:
+        raise ConfigError('management.enabled must be true / false')
+    mg_plan = m.get('plan', 'range_bb_mr_v1')
+    if mg_plan not in PLANS:
+        raise ConfigError(f'management.plan={mg_plan!r}: only {PLANS} (a disabled mechanics fixture)')
+    if m.get('enabled', False) and tf != '4h':
+        raise ConfigError(f'management.plan={mg_plan!r} is a 4h plan; strategy.tf is {tf!r}')
     return RunConfig(
+        mg_enabled=m.get('enabled', False), mg_plan=mg_plan,
+        mg_cap_mult=_dec(m.get('cap_mult', '2.5'), 'management.cap_mult', lo=1, hi=10),
         mode=mode, venue_kind=kind, factory=factory, data_root=v.get('data_root', '.'), start=v.get('start') or None,
         end=v.get('end') or None, journal_dir=jdir, output_dir=odir, rule=rule, enabled=s.get('enabled', False),
         mirrored_short=s.get('mirrored_short', False), symbols=tuple(symbols), tf=tf,

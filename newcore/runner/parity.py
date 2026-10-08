@@ -94,16 +94,18 @@ def trade_rows(runner, t0):
 def pair(longs, shorts):
     L = {(r['sym'], r['i_in']): r for r in longs}
     S = {(r['sym'], r['i_in']): r for r in shorts}
-    same, diffs, dr = 0, [], []
+    same, same_cc, diffs, dr = 0, 0, [], []
     for k in sorted(set(L) & set(S), key=lambda k: (k[1], k[0])):
         a, b = L[k], S[k]
         d = Decimal(a['r']) - Decimal(b['r'])
         dr.append(abs(d))
+        same_cc += (a['i_out'], a['exit']) == (b['i_out'], b['exit'])
         if (a['i_out'], a['exit'], a['qty']) == (b['i_out'], b['exit'], b['qty']):
             same += 1
-        else:
+        elif (a['i_out'], a['exit']) != (b['i_out'], b['exit']):
             diffs.append(dict(long=a, short=b))
-    return dict(longs=len(L), shorts=len(S), paired=len(set(L) & set(S)), same_exit_qty=same,
+    return dict(longs=len(L), shorts=len(S), paired=len(set(L) & set(S)), same_exit_qty=same, same_candles_code=same_cc,
+                median_abs_dr=str(sorted(dr)[len(dr) // 2]) if dr else '0',
                 only_long=sorted(set(L) - set(S)), only_short=sorted(set(S) - set(L)), diffs=diffs[:20],
                 max_abs_dr=str(max(dr, default=ZERO)), r_equal=sum(1 for x in dr if x == 0),
                 sum_r_long=str(sum((Decimal(r['r']) for r in longs), ZERO)),
@@ -127,21 +129,34 @@ def cmd_single(a):
 
 def cmd_book(a):
     orig, mirr = candles(a.root, CORE8)
-    policy = BookPolicy(max_leverage=NO_CAP)                              # the canary, minus the level-dependent cap
+    policy = BookPolicy(max_leverage=NO_CAP,                              # the canary, minus the level-dependent cap
+                        kill_drawdown_pct=BookPolicy().kill_drawdown_pct if a.kill == 'on' else None)
     t0 = orig[CORE8[0]][0].open_ms
-    lr = run_book(a.root, orig, 'LONG', a.costs, os.path.join(a.work, f'book-{a.costs}-long'), policy)
-    sr = run_book(a.root, mirr, 'SHORT', a.costs, os.path.join(a.work, f'book-{a.costs}-short'), policy)
+    lr = run_book(a.root, orig, 'LONG', a.costs, os.path.join(a.work, f'book-{a.costs}-{a.kill}-long'), policy)
+    sr = run_book(a.root, mirr, 'SHORT', a.costs, os.path.join(a.work, f'book-{a.costs}-{a.kill}-short'), policy)
     ev = lambda r: [(e.kind, e.day, str(e.change)) for e in r.events if e.kind != 'roll']
     res = pair(trade_rows(lr, t0), trade_rows(sr, t0))
     res.update(events_long=ev(lr), events_short=ev(sr), events_equal=ev(lr) == ev(sr),
                skips=(lr.counters.skips, sr.counters.skips), modes=(str(lr.fold.mode), str(sr.fold.mode)),
                unprotected=(lr.counters.unprotected_cycles, sr.counters.unprotected_cycles))
     print('book', a.costs, {k: res[k] for k in ('longs', 'shorts', 'same_exit_qty', 'r_equal', 'events_equal')})
-    return {'kind': 'book', 'costs': a.costs, 'book': res}
+    return {'kind': 'book', 'costs': a.costs, 'kill': a.kill, 'book': res}
 
 
 def cmd_report(a):
-    parts = [json.load(open(p, encoding='utf-8')) for p in a.parts]
+    raw = [json.load(open(p, encoding='utf-8')) for p in a.parts]
+    parts, singles = [], {}
+    for p in raw:                                             # one table per cost model (parts are symbol halves)
+        if p['kind'] == 'single':
+            if p['costs'] not in singles:
+                singles[p['costs']] = {'kind': 'single', 'costs': p['costs'], 'symbols': {}}
+                parts.append(singles[p['costs']])
+            singles[p['costs']]['symbols'].update(p['symbols'])
+        else:
+            parts.append(p)
+    for p in parts:
+        if p['kind'] == 'single':
+            p['symbols'] = {s: p['symbols'][s] for s in CORE8 if s in p['symbols']}
     L = ['# M3: short-side mechanical parity (mirror proof)', '',
          'Long `trend_ema_mom.v1` on `data_long` 4h vs the mirrored-short fixture (`enable_short`) on the mirrored '
          'series (`p -> 2*P0 - p`, high/low swapped, P0 = the highest high; `newcore/runner/mirror.py`), each through '
@@ -155,29 +170,58 @@ def cmd_report(a):
     for p in parts:
         if p['kind'] == 'single':
             L += [f"## Single symbol, costs = {p['costs']}", '',
-                  '| symbol | long trades | short trades | same entry/exit/code/qty | R exactly equal | max abs dR | '
-                  'sum R long | sum R short | unprotected cycles (L/S) |', '|---|---|---|---|---|---|---|---|---|']
-            tot = [0, 0, 0, 0]
+                  '| symbol | long trades | short trades | same entry/exit candle + code | + same qty | R exactly equal | '
+                  'median abs dR | max abs dR | sum R long | sum R short | unprotected cycles (L/S) |',
+                  '|---|---|---|---|---|---|---|---|---|---|---|']
+            tot = [0, 0, 0, 0, 0]
             for s, r in p['symbols'].items():
-                tot = [tot[0] + r['longs'], tot[1] + r['shorts'], tot[2] + r['same_exit_qty'], tot[3] + r['r_equal']]
-                L.append(f"| {s} | {r['longs']} | {r['shorts']} | {r['same_exit_qty']} | {r['r_equal']} | "
-                         f"{Decimal(r['max_abs_dr']):.6g} | {Decimal(r['sum_r_long']):.4f} | "
-                         f"{Decimal(r['sum_r_short']):.4f} | {r['unprotected'][0]} / {r['unprotected'][1]} |")
-            L += [f'| **total** | **{tot[0]}** | **{tot[1]}** | **{tot[2]}** | **{tot[3]}** | | | | |', '']
+                cc = r.get('same_candles_code', r['same_exit_qty'])
+                tot = [tot[0] + r['longs'], tot[1] + r['shorts'], tot[2] + cc, tot[3] + r['same_exit_qty'],
+                       tot[4] + r['r_equal']]
+                L.append(f"| {s} | {r['longs']} | {r['shorts']} | {cc} | {r['same_exit_qty']} | {r['r_equal']} | "
+                         f"{Decimal(r.get('median_abs_dr', r['max_abs_dr'])):.6g} | {Decimal(r['max_abs_dr']):.6g} | "
+                         f"{Decimal(r['sum_r_long']):.4f} | {Decimal(r['sum_r_short']):.4f} | "
+                         f"{r['unprotected'][0]} / {r['unprotected'][1]} |")
+            L += [f'| **total** | **{tot[0]}** | **{tot[1]}** | **{tot[2]}** | **{tot[3]}** | **{tot[4]}** | | | | | |', '']
             for s, r in p['symbols'].items():
                 if r['diffs'] or r['only_long'] or r['only_short']:
-                    L.append(f"- {s}: only long {r['only_long']}, only short {r['only_short']}, diffs {r['diffs']}")
+                    d = '; '.join(f"entry candle {x['long']['i_in']}: long exits {x['long']['i_out']} "
+                                  f"{x['long']['exit']}, short exits {x['short']['i_out']} {x['short']['exit']}"
+                                  for x in r['diffs'])
+                    L.append(f"- {s}: {d}" + (f"; only long {r['only_long']}" if r['only_long'] else '') +
+                             (f"; only short {r['only_short']}" if r['only_short'] else ''))
             L.append('')
         else:
             r = p['book']
-            L += [f"## S4 book (core 8, canary: 4 positions, 3% Cairo-day halt, 10% kill; cap lifted), costs = "
+            kill = '10% kill' if p.get('kill', 'on') == 'on' else 'kill disarmed'
+            L += [f"## S4 book (core 8, canary: 4 positions, 3% Cairo-day halt, {kill}; cap lifted), costs = "
                   f"{p['costs']}", '',
-                  f"- trades long / short: {r['longs']} / {r['shorts']}; same entry/exit/code/qty: {r['same_exit_qty']};"
+                  f"- trades long / short: {r['longs']} / {r['shorts']}; same entry/exit candle + code: "
+                  f"{r.get('same_candles_code', r['same_exit_qty'])}; + same qty: {r['same_exit_qty']};"
                   f" R exactly equal: {r['r_equal']}; max abs dR {Decimal(r['max_abs_dr']):.6g}",
                   f"- refusals (max positions, halt, kill) long / short: {r['skips'][0]} / {r['skips'][1]}; final mode "
                   f"{r['modes'][0]} / {r['modes'][1]}; unprotected cycles {r['unprotected'][0]} / {r['unprotected'][1]}",
                   f"- risk events (halt / kill: kind, Cairo day, equity change) equal: **{r['events_equal']}**",
-                  f"  - long: {r['events_long']}", f"  - short: {r['events_short']}", '']
+                  f"  - long: {[(k, d, f'{float(c):+.4%}') for k, d, c in r['events_long']]}",
+                  f"  - short: {[(k, d, f'{float(c):+.4%}') for k, d, c in r['events_short']]}", '']
+    L += ['## Short side under crash / restart', '',
+          '- `tests/newcore_slice/test_short_parity.py::test_short_side_crash_restart_sample_matches_the_uninterrupted_run`'
+          ' (mirrored BTCUSDT: a path stop; mirrored SOLUSDT: signal closes): the process dies before and after each of '
+          'the first venue effects (entry, stop, cancel, close), restarts from the FileJournal, and finishes with the '
+          'identical trade list; a forced external stop cancel is restored with exactly one replacement stop.',
+          '- `tests/newcore_slice/test_crash_safety.py` (MemoryJournal and FileJournal): the SHORT points of the '
+          'crash matrix: `trade-SHORT` (entry, stop, cancel, signal close), `replacement-SHORT` (stop replace after an '
+          'external cancel) and `stopped-SHORT` (a gapped stop filled at the open), crash before / after every venue '
+          'effect: never ACTIVE naked, at most one resting stop, one entry, the same trade as uninterrupted.',
+          '', '## Reading the cost-on rows', '',
+          '- Fees, slippage and funding are a fraction of the PRICE, and the mirrored price level differs (e.g. '
+          'SOLUSDT at 20 mirrors to about 500): costs per trade differ, so the equity paths and therefore the sizes '
+          'diverge (quantities match only by chance) and R differs by the cost difference in R.',
+          '- The few pairs whose exit differs (a long SIGNAL_EXIT vs a short STOP_HIT) come from the same cause: the '
+          'stop is set from the FILL, and the fill carries slippage of a different price level on each side '
+          '(long: o x (1 + s) - d; mirrored short: o\' x (1 - s) + d, which mirrors back to o - d + s x (2 P0 - o), not '
+          'o - d + s x o), so the mirrored stop sits a little closer and is reached where the original one was not. '
+          'At zero costs this term is 0 and every pair agrees exactly (tables above).', '']
     with open(a.out, 'w', encoding='utf-8', newline='\n') as fh:
         fh.write('\n'.join(L) + '\n')
     return None
@@ -192,6 +236,7 @@ def main(argv=None):
     p.add_argument('--work', default='')
     p.add_argument('--out', required=True)
     p.add_argument('--parts', nargs='*', default=())
+    p.add_argument('--kill', default='on', choices=('on', 'off'), help='book: the 10%% drawdown kill')
     a = p.parse_args(argv)
     a.symbols = tuple(a.symbols.split(','))
     if a.work:

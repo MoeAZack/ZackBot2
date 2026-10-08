@@ -1355,6 +1355,55 @@
       "accepted_by": null,
       "date_cairo": "2026-10-08",
       "prev_entry_sha": "a69dda43513b3d84ceef1020f101b2efe5b501e3f5be71aeb7f3ebf4caea4911"
+    },
+    {
+      "id": "CORR-0066",
+      "type": "correction",
+      "ticket": "NC-07 one-add cap",
+      "finding": "the NEWCORE management core caps adds at one by design",
+      "title": "G-GAP-DCA-L-01 / G-GAP-DCA-S-01: NEWCORE adapters record the one-add cap (NC07-ONE-ADD-CAP); the historical two-add contract is unchanged",
+      "cases": {
+        "G-GAP-DCA-L-01": {
+          "prev_contract_sha": "2d4f0d0ca46ecb924bac8ce34ea60a7bc8222acf1dac3635fe9f66f1637b8975",
+          "contract_sha": "b0d1e7f2937723f760963d8328505209fb69f25604e45e658f66ccd7d640ad51"
+        },
+        "G-GAP-DCA-S-01": {
+          "prev_contract_sha": "85dfade7e6c1a096d88292fffe278a85d587d0ad495412c3bed31ecfeb5a0938",
+          "contract_sha": "d8dafb94771b94126c9e86f7d23a328370180726ed7af67828d6e8d2ada122ff"
+        }
+      },
+      "adapters_changed": [
+        "newcore_live_sim",
+        "newcore_sim"
+      ],
+      "rationale": "Codex ruling (NC-07 golden follow-up): keep the historical two-add golden cases, do not retire or rewrite them, and record a stable NEWCORE-incompatible divergence for the intentionally one-add core. The NC-07 management core enforces a single bounded add in the core (its planned risk reserves exactly one add), so on these three-level DCA baskets it takes only the first safety order. Both NEWCORE adapters move from pending_adapter to known_divergence with the new registry ID NC07-ONE-ADD-CAP; the expectation, the market, the slot, the legacy adapters and the legacy_backtest AUD07-C13A divergence (still bound to its own record) are unchanged. The observed lists are the NC-07 core prediction until the NC-08 adapter runs. The NEWCORE contract for the same gap-through-the-add path is the separate one-add case G-GAP-DCA-ONEADD-L-01 / -S-01.",
+      "evidence": "scratchpad oneadd/compute.py: newcore.management.run on an export of nc-management 5e17446 (Decimal; q0 = 0.408163265306, q1 = floor(1.5 x q0) at 1e-12): LONG exit candle 286, pnl 0.898994187, R 0.089899; SHORT exit candle 286, pnl 0.896924800, R 0.089692",
+      "accepted_by": null,
+      "date_cairo": "2026-10-08",
+      "prev_entry_sha": "ed6e89521431f61d673e8030f002bf050bf78ce7186125801bf6d7a38fef1557"
+    },
+    {
+      "id": "CORR-0067",
+      "type": "add",
+      "ticket": "NC-07 one-add cap",
+      "finding": "NEWCORE one-add DCA contract (gap through the single add, basket target re-anchored to the new average)",
+      "title": "G-GAP-DCA-ONEADD-L-01 / -S-01: the NEWCORE one-add DCA contract next to the historical two-add cases",
+      "cases": {
+        "G-GAP-DCA-ONEADD-L-01": {
+          "prev_contract_sha": null,
+          "contract_sha": "0917caf6362754f0ac82bc1c3f7b6804e2cea79ef4bcd052e80f6953cae84dbf"
+        },
+        "G-GAP-DCA-ONEADD-S-01": {
+          "prev_contract_sha": null,
+          "contract_sha": "c8d10ab7135fa6c271ab646fcd6969292df14fc1a5052cd3cfae7b1fdfa6629e"
+        }
+      },
+      "adapters_changed": [],
+      "rationale": "Codex ruling (NC-07 golden follow-up): add a separate one-add NEWCORE case for the new contract while the historical two-add cases stay unchanged (CORR-0066 records NC07-ONE-ADD-CAP on them). Same market shape as G-GAP-DCA-L-01 / -S-01 with slot.dca n 1, scale 1: the single add is gapped at the open and fills at the open with the entry slippage, then the basket target avg +/- 1 ATR re-anchored to the new average is reached in candle 285 (its extreme moved to just past the recomputed target). Expectations are the NC-07 core result (Decimal) checked by hand. The legacy engine reproduces them exactly (required); the legacy backtester shows the existing AUD07-C13A defect (gapped add without slippage), recorded as a strict-xfail divergence bound to this record with the observed list from a blind run. NEWCORE adapters stay pending_adapter until NC-08. Extended tier: every coverage class is already in core via G-GAP-DCA-L-01.",
+      "evidence": "scratchpad oneadd/compute.py (newcore.management.run at nc-management 5e17446: LONG add 2 @ 97.61952, TP basket 4 @ 99.799796048, pnl 3.522905079904; SHORT add 2 @ 102.37952, 4 @ 100.199795952, pnl 3.517097080096); oneadd/probe.py blind legacy runs: engine equal within the stated path-step tol, backtest R 0.352295 / 0.351705",
+      "accepted_by": null,
+      "date_cairo": "2026-10-08",
+      "prev_entry_sha": "ee3e509171a5e72bdcbd6acc11edcdd691f1f4aff5e3c00cd279e083579f7c74"
     }
   ]
 }

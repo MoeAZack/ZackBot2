@@ -204,8 +204,8 @@ class Runner:
 
     def _decision(self, *, decision_id, action, reason, authority, key, symbol, side, intents=(), subject_id=None,
                   detail='', evidence=()):
-        if action in OPENING_ACTIONS:                                     # Codex ruling: opening risk is keyed
-            if key is None:
+        if action in OPENING_ACTIONS and not self._lineage_add(action, key, decision_id, intents, subject_id):
+            if key is None:                                               # Codex ruling: opening risk is keyed
                 raise UnkeyedOpeningDecision(f'{action}: an opening decision needs a keys.decision_key key')
             check_decision_key(key)
             if key.purpose is not OPENING_ACTIONS[action] or decision_id != ids.derive_decision_id(self.acct, key):
@@ -216,6 +216,20 @@ class Runner:
                      intents=tuple(intents), policy_version=self.cfg.policy_version)
         self._emit(DecisionRecorded, reason=reason, decision=d)
         return d
+
+    def _lineage_add(self, action, key, decision_id, intents, subject_id):
+        """The one unkeyed opening decision (M4, reported for a Codex ruling): a management plan's ADD of an OPEN lot,
+        authorizing exactly the lot's next lineage ADD child (derive_child_intent_id(account, lot, ADD, ordinal)), under
+        its child decision id. Its identity is (lot, ADD, journal ordinal), so a replay / restart re-derives the same id
+        and G5 refuses a second record: consumed once, like a keyed signal. Grammar G4 forbids a keyed decision from
+        authorizing a lineage id, so the plan's add cannot be keyed."""
+        if action is not Action.ADD or key is not None or len(intents) != 1:
+            return False
+        it = intents[0]
+        lot = subject_id
+        return (it.owner_id == lot and lot is not None and any(x.lot_id == lot for x in self.fold.open_lots())
+                and it.intent_id == self.journal.gate().grammar.next_child_intent_id(lot, Purpose.ADD)
+                and decision_id == ids.child_decision_id(it.intent_id))
 
     def _state(self, iv, to, reason=None):
         self._emit(IntentStateChanged, reason=reason or iv.intent.reason, intent_id=iv.intent_id, from_state=iv.state,
@@ -461,7 +475,7 @@ class Runner:
                 if self._not_found(iv):
                     if iv.purpose in REDUCE_ONLY:
                         self._resend(iv)
-                    elif iv.purpose is Purpose.ENTRY:
+                    elif iv.purpose in OPENING_PURPOSES:                 # an entry or a lineage add
                         self._corroborate_entry(iv)
             elif iv.state is IntentState.DURABLE:
                 self._send_durable(iv)
@@ -476,9 +490,9 @@ class Runner:
         deterministic client id. Idempotent: if an earlier send did land, the venue refuses the duplicate id and the
         refusal is read as "exists" (_apply). No new journal 'sent': one intent, one route, the same order."""
         it = iv.intent
-        lot = next((x for x in self.fold.open_lots() if x.lot_id == it.owner_id), None)
-        if lot is None:
-            return                                                        # nothing left to protect / close
+        # also when the lot is closed meanwhile (M4: a lost reduce after the stop filled): a reduce-only order can never
+        # add exposure, and the venue's refusal (nothing to reduce) is what finally resolves the intent - left alone it
+        # would stay UNKNOWN for ever, owned by a lot that no longer exists
         self.counters.resends += 1
         if it.purpose is Purpose.PROTECT:
             out = self.venue.submit_stop(StopOrder(ref=self._ref(iv), position_side=str(it.side), qty=it.qty,
@@ -566,7 +580,7 @@ class Runner:
             k = (lot.symbol, lot.side)
             expected[k] = expected.get(k, ZERO) + lot.qty
         for iv in self.fold.live_intents():
-            if iv.purpose in (Purpose.ENTRY, Purpose.CLOSE, Purpose.REDUCE) and iv.state in OPEN_STATES:
+            if iv.purpose in (Purpose.ENTRY, Purpose.ADD, Purpose.CLOSE, Purpose.REDUCE) and iv.state in OPEN_STATES:
                 ambiguous.add((iv.intent.symbol, str(iv.intent.side)))
         for p in pos.value:
             k = (p.symbol, p.side)
@@ -655,8 +669,8 @@ class Runner:
         rules = self.cfg.rules[lot.symbol]
         d = self._stop_distance(lot)
         if lot.side == 'LONG':
-            return rules.quantize_price(lot.avg_price - d, Rounding.DOWN)       # never tighter than the R
-        return rules.quantize_price(lot.avg_price + d, Rounding.UP)
+            return rules.quantize_price(lot.entry_price - d, Rounding.DOWN)       # never tighter than the R
+        return rules.quantize_price(lot.entry_price + d, Rounding.UP)
 
     def _handover_emergency(self):
         """Store writable again (after a restart): an A23 emergency stop left on the venue is retired only AFTER the
@@ -707,7 +721,7 @@ class Runner:
         if prior is not None:                                             # crash gap: decided, intent not recorded
             planned = prior.decision.intents[0]
         else:
-            price = self.stop_price_of(lot)
+            price = self._protect_price(lot)
             route = self._next_route(lot)
             reason = ReasonCode.PROTECT_PLACE if n == 0 or route == 'algo' else ReasonCode.PROTECT_RESTORING
             planned = planned_intent(intent_id=iid, account_id=self.acct, decision_id=did, purpose='protect',
@@ -717,6 +731,10 @@ class Runner:
                            key=None, symbol=lot.symbol, side=lot.side, intents=(planned,), subject_id=lot.lot_id,
                            evidence=(lot.entry.intent_id,), detail=f'stop {price} x {lot.qty}')
         self._send_stop(self._record_durable(planned))
+
+    def _protect_price(self, lot):
+        """The level a runner stop protects the lot at (hook: a lot management handed back keeps its plan's level)."""
+        return self.stop_price_of(lot)
 
     def _send_stop(self, iv):
         self._state(iv, IntentState.SUBMITTED)
@@ -980,31 +998,33 @@ class Runner:
         listed = {o.ref.client_id for o in (rec.orders or ())} if rec is not None else set()
         by_pos = {}
         for lot in lots:
-            stop_iv = lot.live_stop
+            stop_iv = lot.carrier                                         # = live_stop unless a replacement flies
+            repl = lot.replacement
             price = stop_iv.intent.stop_price if stop_iv is not None else self.stop_price_of(lot)
             qty = stop_iv.intent.qty if stop_iv is not None else lot.qty
             confirmed = rec.at_ms if (stop_iv is not None and stop_iv.state is IntentState.WORKING and
                                       stop_iv.intent.client_order_id in listed) else None
             prot = Protection(owner_id=lot.lot_id, price=price, qty=qty,
-                              order=None if stop_iv is None else stop_iv.intent_id, replacement=None,
+                              order=None if stop_iv is None else stop_iv.intent_id,
+                              replacement=None if repl is None else repl.intent_id,
                               confirmed_at_ms=confirmed, miss=None)
             e = lot.entry.final
             fills = [Fill(at_ms=lot.opened_at_ms, reason=lot.entry.intent.reason, qty=lot.initial_qty,
-                          price=lot.avg_price, fee=self._fee(lot.symbol, e.exchange_order_id), result_id=e.result_id,
+                          price=lot.entry_price, fee=self._fee(lot.symbol, e.exchange_order_id), result_id=e.result_id,
                           decision_id=None)]
-            for c in lot.closings:
+            for c, _ in lot.ledger():                                     # adds (opening) and closings, time order
                 fills.append(Fill(at_ms=c.at_ms, reason=c.reason, qty=c.qty, price=c.price,
                                   fee=self._fee(lot.symbol, c.exchange_order_id), result_id=c.result_id,
                                   decision_id=None))
-            dist = abs(lot.avg_price - self.stop_price_of(lot))
-            closing = lot.closing
+            dist = abs(lot.entry_price - self.stop_price_of(lot))
+            flying = lot.in_flight
             rec_lot = Lot(lot_id=lot.lot_id, account_id=self.acct, symbol=lot.symbol, side=Side(lot.side),
                           source=LotSource.STRATEGY, slot_id=self.cfg.slot_id, timeframe=self.cfg.timeframe,
                           opened_at_ms=lot.opened_at_ms, qty=lot.qty, avg_price=lot.avg_price,
-                          initial_qty=lot.initial_qty, max_qty=lot.initial_qty, risk_distance=dist,
+                          initial_qty=lot.initial_qty, max_qty=lot.max_qty, risk_distance=dist,
                           risk_usd=lot.initial_qty * dist, stop=prot, fills=tuple(fills),
-                          in_flight=None if closing is None else closing.intent_id, adopted_by=None, tp1_done=False,
-                          ladder_done=(), adds_done=0)
+                          in_flight=None if flying is None else flying.intent_id, adopted_by=None, tp1_done=False,
+                          ladder_done=(), adds_done=len(lot.add_fills))
             by_pos.setdefault((lot.symbol, lot.side), []).append(rec_lot)
         positions = tuple(Position(position_id=ids.position_id(self.acct, s, sd), symbol=s, side=Side(sd),
                                    lots=tuple(v)) for (s, sd), v in sorted(by_pos.items()))

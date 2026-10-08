@@ -117,3 +117,15 @@ def test_short_side_crash_restart_sample_matches_the_uninterrupted_run(tmp_path,
     rr, rport = run(str(tmp_path / 'replace'), replace_at=first_entry + 1)
     assert [(t.entry_ms, t.exit_ms, t.exit_code) for t in rr.trades()] == [w[:3] for w in want]
     assert rport.effects.count('stop') == port.effects.count('stop') + 1     # exactly one restored stop
+
+
+def test_parity_cli_parses_and_renders_a_report(tmp_path):
+    import json
+    with pytest.raises(SystemExit) as e:
+        P.main(['--help'])
+    assert e.value.code == 0
+    part = {'kind': 'single', 'costs': 'zero', 'symbols': {'BTCUSDT': P.pair([], [])}}
+    part['symbols']['BTCUSDT']['unprotected'] = (0, 0)
+    (tmp_path / 'p.json').write_text(json.dumps(part), encoding='utf-8')
+    assert P.main(['report', '--parts', str(tmp_path / 'p.json'), '--out', str(tmp_path / 'r.md')]) == 0
+    assert '| BTCUSDT | 0 | 0 |' in (tmp_path / 'r.md').read_text(encoding='utf-8')
