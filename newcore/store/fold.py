@@ -109,12 +109,16 @@ def _seq_typed(fn):
 class Folder:
     """Incremental fold of one journal (one account aggregate)."""
 
-    def __init__(self, account_id, aggregate_id):
+    def __init__(self, account_id, aggregate_id, *, facts=None, after_sequence=0, known_intents=None):
+        """facts / after_sequence / known_intents: start from a snapshot (a compacted journal) - the NC-01 r3a seed
+        (Snapshot.facts, Snapshot.last_sequence, the snapshot's live intents). Defaults: the whole journal."""
         self.account_id, self.aggregate_id = account_id, aggregate_id
-        self.gate = JournalGate(account_id, aggregate_id)
-        self.events = []
-        self.live = {}
-        self.recorded = {}            # intent_id -> OrderIntent
+        self.base, self.base_facts = after_sequence, facts
+        self.base_known = dict(known_intents or {})
+        self.gate = JournalGate(account_id, aggregate_id, facts=facts, after_sequence=after_sequence)
+        self.events = []              # the events AFTER self.base
+        self.live = dict(self.base_known)
+        self.recorded = {iid: v[0] for iid, v in self.base_known.items()}     # intent_id -> OrderIntent
         self.results = {}             # intent_id -> (last OrderResult, final OrderResult | None)
         self.closed = {}
         self.decisions = {}           # decision_id -> DecisionRecorded
@@ -123,7 +127,17 @@ class Folder:
 
     @property
     def last_sequence(self):
-        return len(self.events)
+        return self.base + len(self.events)
+
+    def events_after(self, after_sequence):
+        """The held events with sequence > after_sequence. Before the seed point they are compacted away: refused."""
+        if after_sequence < self.base:
+            raise ValueError('events before the snapshot this journal was seeded from are compacted')
+        return tuple(self.events[after_sequence - self.base:])
+
+    def _chain(self, events):
+        return check_event_chain(events, after_sequence=self.base, known_intents=self.base_known or None,
+                                 facts=self.base_facts)
 
     def stage(self, ev):
         """gate().stage(ev): validate only. Returns Admission.ALREADY_APPLIED (identical re-append) or a Prepared to
@@ -132,7 +146,7 @@ class Folder:
         if staged is None:
             return Admission.ALREADY_APPLIED
         try:
-            live = check_event_chain(self.events + [ev])            # tripwire: never refuses what the gate admits
+            live = self._chain(self.events + [ev])                  # tripwire: never refuses what the gate admits
         except DomainError as ex:
             raise JournalConflict(f'NC-01 chain refuses what the gate admitted ({ex.path}: {ex.msg})') from None
         return Prepared(staged, live)
@@ -164,16 +178,20 @@ class Folder:
             self.mode, self.hold_kind = ev.to_mode, ev.to_hold
 
     @classmethod
-    def replay(cls, account_id, aggregate_id, events):
+    def replay(cls, account_id, aggregate_id, events, *, facts=None, after_sequence=0, known_intents=None):
         """Boot: JournalGate.rebuild from the durable events (the only use of admit), then one NC-01 chain check over
-        all of them. Raises JournalConflict (incl. an event stored twice) on the first refusal."""
+        all of them. Raises JournalConflict (incl. an event stored twice) on the first refusal.
+        After compaction pass the snapshot's FactIndex, last sequence and live intents with only the tail events:
+        BOTH layers are seeded (JournalGate.rebuild(..., facts=, after_sequence=) and check_event_chain(...,
+        after_sequence=, known_intents=, facts=)), so a fact the compacted prefix journaled stays exactly-once."""
         events = list(events)
-        f = cls(account_id, aggregate_id)
-        f.gate = _seq_typed(lambda: JournalGate.rebuild(account_id, aggregate_id, events))
-        if f.gate.grammar.last_sequence != len(events):
+        f = cls(account_id, aggregate_id, facts=facts, after_sequence=after_sequence, known_intents=known_intents)
+        f.gate = _seq_typed(lambda: JournalGate.rebuild(account_id, aggregate_id, events, facts=facts,
+                                                        after_sequence=after_sequence))
+        if f.gate.grammar.last_sequence != after_sequence + len(events):
             raise SequenceConflict('an event is stored twice')
         try:
-            f.live = check_event_chain(events)
+            f.live = f._chain(events)
         except DomainError as ex:
             raise JournalConflict(f'NC-01 chain: {ex.path}: {ex.msg}') from None
         for ev in events:

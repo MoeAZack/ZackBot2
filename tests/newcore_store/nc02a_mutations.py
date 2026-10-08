@@ -22,6 +22,12 @@ SUITE = ['tests/newcore_store', 'tests/newcore_ports/test_nc02a_file_journal_con
 
 # name -> (file, [(exact source text, replacement)]); each anchor must occur exactly once
 MUTATIONS = {
+    'a generation forgets its facts (r3a)': (S + 'store.py', [(
+        'portfolio=pf, facts=self.facts_through(lsn))', 'portfolio=pf, facts=fold_facts(()))')]),
+    'boot ignores generation facts that disagree with the journal (r3a)': (S + 'store.py', [(
+        "            items.append(HoldItem('account', 'damage', 'generation facts disagree with the journal'))", "            pass")]),
+    'a compacted replay is not seeded with the facts (r3a)': (S + 'fold.py', [(
+        'JournalGate.rebuild(account_id, aggregate_id, events, facts=facts,', 'JournalGate.rebuild(account_id, aggregate_id, events, facts=None,')]),
     'the torn check re-reads the by-binding entry (P1)': (S + 'store.py', [(
         "    elif entry[0] == 'torn':", "    elif _by_binding(fs, paths, account)[0] == 'torn':")]),
     'failure_reason echoes the exception message (P2)': (S + 'errors.py', [(

@@ -47,6 +47,7 @@ from dataclasses import dataclass
 from newcore.domain import (BindingState, EntriesMode, HoldKind, OwnershipProof, Portfolio, ProofKind, ReasonCode,
                             Snapshot, check_account_portfolio)
 from newcore.domain.errors import DomainError
+from newcore.domain.facts import fold_facts
 from newcore.domain.events import DecisionRecorded, IntentRecorded, IntentStateChanged, ResultObserved
 from newcore.domain.portfolio import Ownership
 
@@ -198,7 +199,7 @@ class AccountStore:
         try:
             pf = dataclasses.replace(portfolio, generation=g)
             snap = Snapshot(account_id=self.account_id, generation=g, last_sequence=lsn, written_at_ms=now_ms,
-                            writer_build=self.reader.writer_build, portfolio=pf)
+                            writer_build=self.reader.writer_build, portfolio=pf, facts=self.facts_through(lsn))
         except DomainError as ex:
             raise ValueError(f'the generation does not validate: {ex.path}') from None
         raw = encode_snapshot(account=account, settings=settings, snapshot=snap, prov=prov,
@@ -233,6 +234,33 @@ class AccountStore:
         keep_marker = bool(self.anchor and self.anchor['hard_hold']) and write_class != 'promotion'
         self._write_anchor(now_ms, hard_hold=keep_marker)                       # D11 marker cleared only by A08
         return sf
+
+    def _events(self):
+        """The durable events this store can see: the open journal's, else the boot inspection's, else None."""
+        if self.journal is not None:
+            return self.journal.read(0)
+        insp = getattr(self, '_insp', None)
+        return insp.events if insp is not None and insp.plan is not None else None
+
+    def facts_through(self, lsn):
+        """NC-01 r3a (#44): the account's FactIndex through sequence `lsn` - every generation carries it
+        (Snapshot.facts), so a compacted restart seeds the gate and the chain check from the snapshot
+        (fold.Folder.replay(..., facts=, after_sequence=)) and exactly-once facts survive compaction. Folded from the
+        current generation's facts plus the events after it when that generation is not ahead of `lsn`, else from the
+        whole journal. Raises ValueError when events are needed but none are visible (never invents facts)."""
+        cur = self.current
+        base, after = (cur.snapshot.facts, cur.lsn_upto) if cur is not None and cur.lsn_upto <= lsn else (None, 0)
+        if lsn == after and base is not None:
+            return base
+        events = self._events()
+        if events is None:
+            if lsn == 0:
+                return fold_facts(())
+            raise ValueError('no journal events are visible to fold the generation facts')
+        tail = [e for e in events if after < e.sequence <= lsn]
+        if len(tail) != lsn - after:
+            raise ValueError('the journal does not hold every event the generation facts need')
+        return fold_facts(tail, facts=base)
 
     def _head_target(self):
         return 'a' if self.head_slot is None else ('b' if self.head_slot == 'a' else 'a')
@@ -584,6 +612,12 @@ def boot(base, account, *, exchange, now_ms, fs=None, reader=None, cipher=None, 
     items = []
     if account.binding_state is not BindingState.CONFIRMED or store.account.binding != account.binding:
         items.append(HoldItem('account', 'identity', 'binding not confirmed'))
+    try:                                                 # r3a: the generation's facts are the journal's facts
+        if store.facts_through(store.current.lsn_upto) != store.current.snapshot.facts or \
+                _journal_facts(store, store.current.lsn_upto) != store.current.snapshot.facts:
+            items.append(HoldItem('account', 'damage', 'generation facts disagree with the journal'))
+    except (ValueError, DomainError):
+        items.append(HoldItem('account', 'damage', 'generation facts cannot be checked against the journal'))
     pf = store.current.portfolio
     folded = False
     if any(_ownership_changing(e) for e in tail):
@@ -610,6 +644,12 @@ def boot(base, account, *, exchange, now_ms, fs=None, reader=None, cipher=None, 
         return result(Mode.MANAGE, portfolio=pf, findings=findings, evidence=rec.evidence, store=store)
     return _enter_hold(store, items, ReasonCode.RECONCILE_UNRECONCILED, now_ms, incident, result, findings, seen,
                        candidate=store.current)
+
+
+def _journal_facts(store, lsn):
+    """The FactIndex of the journal alone (no snapshot base) through `lsn` - the independent side of the cross-check."""
+    events = store._events() or ()
+    return fold_facts([e for e in events if e.sequence <= lsn])
 
 
 def _folded(store, fold, snapshot_pf):

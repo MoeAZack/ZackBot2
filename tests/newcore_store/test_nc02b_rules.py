@@ -215,6 +215,9 @@ def test_a_journal_behind_its_snapshot_is_damage():                             
     r = go(fs, ex)
     st = r.store
     from newcore.store.records import provenance
+    # The store refuses to fold facts for events it cannot see (r3a), so the rolled-back state is staged by hand: a
+    # generation claiming sequence 5 over a journal that holds fewer events.
+    st.facts_through = lambda lsn: st.current.snapshot.facts
     st.commit(st.current.portfolio, provenance('checkpoint', 'managed', from_generation=3), T + 50, lsn_upto=5)
     st.journal.close()
     h = go(fs, ex)

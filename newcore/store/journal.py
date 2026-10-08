@@ -174,7 +174,7 @@ class FileJournal:
     def read(self, after_sequence=0):
         if type(after_sequence) is not int or after_sequence < 0:
             raise ValueError('after_sequence must be an int >= 0')
-        return tuple(self._folder.events[after_sequence:])
+        return self._folder.events_after(after_sequence)
 
     def find_decision(self, decision_id):
         return self._folder.decisions.get(decision_id)
@@ -285,7 +285,7 @@ class ReadOnlyJournal:
     def read(self, after_sequence=0):
         if type(after_sequence) is not int or after_sequence < 0:
             raise ValueError('after_sequence must be an int >= 0')
-        return tuple(self._folder.events[after_sequence:])
+        return self._folder.events_after(after_sequence)
 
     def find_decision(self, decision_id):
         return self._folder.decisions.get(decision_id)
