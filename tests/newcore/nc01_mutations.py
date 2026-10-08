@@ -87,6 +87,22 @@ MUTATIONS = {
         "    check_header(doc)\n    if problems:\n        raise InvalidRecord('document', f'hostile JSON: {problems[0]}')\n",
         "    if problems:\n        raise InvalidRecord('document', f'hostile JSON: {problems[0]}')\n    check_header(doc)\n")]),
     'drain resting maker': (D + 'portfolio.py', [('            if it.pullable:', '            if False:')]),
+    'E07: record_type looked up before its type is checked': (D + 'codec.py', [(
+        '    if type(rtype) is not str or rtype not in RECORD_TYPES:', '    if rtype not in RECORD_TYPES:')]),
+    'I05: owner_kind ignored (orphan never recognized)': (D + 'orders.py', [(
+        '        return self.owner_kind is OwnerKind.PORTFOLIO', '        return False')]),
+    'S05: reducing intents not bounded by their lot': (D + 'portfolio.py', [(
+        '        req(q <= lots[lot_id].qty,', '        req(True,')]),
+    'S05: reducing intents not bounded by the position': (D + 'portfolio.py', [(
+        '        req(q <= held.get(key, ZERO),', '        req(True,')]),
+    'H05: Lot not encodable standalone': (D + 'codec.py', [("    'lot': portfolio.Lot,\n", '')]),
+    'CP05: a position accepts duplicate lots': (D + 'portfolio.py', [(
+        "        req(len({x.lot_id for x in self.lots}) == len(self.lots), p + '.lots',", "        req(True, p + '.lots',")]),
+    'ruling 1: Decision.symbol unvalidated': (D + 'decision.py', [(
+        "            check_symbol(self.symbol, p + '.symbol')", '            pass')]),
+    'ruling 2: whitespace-only text accepted': (D + 'base.py', [("    req(v.strip() != '', path,", '    req(True, path,')]),
+    'ruling 4: position lots keep their given order': (D + 'portfolio.py', [(
+        "        if ordered != self.lots:\n            object.__setattr__(self, 'lots', ordered)", '        pass')]),
     'duplicate JSON keys': (D + 'codec.py', [("            if k in out:\n                problems.append(",
                                               "            if False:\n                problems.append(")]),
     'truncated JSON': (D + 'codec.py', [(

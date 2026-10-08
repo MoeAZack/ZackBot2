@@ -117,6 +117,8 @@ class Decision(Record):
         p = f'{p}[{self.decision_id}]'
         check_id(self.decision_id, p + '.decision_id', 'dec')
         check_id(self.account_id, p + '.account_id', 'acct')
+        if self.symbol is not None:
+            check_symbol(self.symbol, p + '.symbol')          # Codex ruling: the canonical validator whenever present
         if self.subject_id is not None:
             check_id(self.subject_id, p + '.subject_id', 'lot', 'int')
         req(len(self.detail) <= 160 and self.detail.isprintable(), p + '.detail', 'at most 160 printable characters')

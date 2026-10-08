@@ -25,7 +25,7 @@ from decimal import Decimal
 from .base import CTX, ZERO, Record, check_id, check_symbol, check_text, non_negative, positive, record, req
 from .errors import OwnershipUnknown
 from .modes import EntriesMode, HoldKind, Op, Permission, permitted
-from .orders import LIVE, IntentState, OrderIntent, OrderType, OwnerFamily, Purpose, Side
+from .orders import LIVE, IntentState, OrderIntent, OrderType, OwnerFamily, OwnerKind, Purpose, Side
 from .protection import PROTECTING, Protection, check_protection, protection_status, target_coverage
 from .reasons import ReasonCode
 
@@ -146,6 +146,10 @@ class Position(Record):
         check_id(self.position_id, p + '.position_id', 'pos')
         check_symbol(self.symbol, p + '.symbol')
         req(len(self.lots) > 0, p + '.lots', 'an empty position is not stored')
+        req(len({x.lot_id for x in self.lots}) == len(self.lots), p + '.lots', 'duplicate lot id (qty would double count)')
+        ordered = tuple(sorted(self.lots, key=lambda x: x.lot_id))     # Codex ruling 4: one canonical lot order
+        if ordered != self.lots:
+            object.__setattr__(self, 'lots', ordered)
         req(all(x.symbol == self.symbol and x.side is self.side for x in self.lots), p + '.lots', 'lot of another symbol / side')
 
     @property
@@ -283,12 +287,29 @@ def _check_known(pf, p):
         if it.orphan:
             req(own == pf.portfolio_id, ip, 'an orphan cancel is owned by this portfolio aggregate')
             continue
-        owner = lots.get(own) if own.startswith('lot_') else intents.get(own)
+        by_lot = it.owner_kind is OwnerKind.LOT
+        owner = lots.get(own) if by_lot else intents.get(own)
         req(owner is not None, ip, 'names no lot / entry of this portfolio (a KNOWN portfolio has no orphan reference)')
-        if not own.startswith('lot_'):
+        if not by_lot:
             req(owner.purpose is Purpose.ENTRY and owner.order_type is OrderType.MARKET, ip,
                 'only an unresolved market ENTRY owns a provisional stop')
         req((owner.symbol, owner.side) == (it.symbol, it.side), ip, 'owner of another symbol / side')
+    # reducing intents never exceed what they could reduce (Cowork S05): per lot, all live REDUCE / CLOSE intents of
+    # that lot together <= the lot qty; per symbol / side, those plus portfolio-owned ones <= the position qty
+    per_lot, per_side = {}, {}
+    for it in intents.values():
+        if it.purpose not in (Purpose.REDUCE, Purpose.CLOSE):
+            continue
+        if it.owner_kind is OwnerKind.LOT:
+            per_lot[it.owner_id] = CTX.add(per_lot.get(it.owner_id, ZERO), it.qty)
+        key = (it.symbol, it.side)
+        per_side[key] = CTX.add(per_side.get(key, ZERO), it.qty)
+    for lot_id, q in per_lot.items():
+        req(q <= lots[lot_id].qty, f'{p}.lot[{lot_id}]', f'live reducing intents {q} exceed the lot qty {lots[lot_id].qty}')
+    held = {(x.symbol, x.side): x.qty for x in pf.positions}
+    for key, q in per_side.items():
+        req(q <= held.get(key, ZERO), f'{p}.position[{key[0]}|{key[1]}]',
+            f'live reducing intents {q} exceed the position qty {held.get(key, ZERO)}')
     # carried: which intents a record carries; anything else (not an entry) is cancel-only work
     carried = set()
     for x in lots.values():
