@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import enum
 
-from .base import ID_PREFIXES, Record, check_id, record, req
+from .base import ID_PREFIXES, Record, check_id, check_symbol, check_text, record, req
 from .orders import IntentState, OrderIntent, Purpose, Side
 from .reasons import GATE_NAMESPACES, NAMESPACES, ReasonCode
 
@@ -63,6 +63,27 @@ ACTION_PURPOSES = {
 NEEDS_INTENTS = frozenset({Action.PROTECT, Action.CLOSE, Action.REDUCE, Action.ADD, Action.ENTER})
 
 
+@record
+class DecisionKey(Record):
+    """The canonical key of a strategy decision: strategy / version + symbol + side + candle close + purpose.
+
+    It identifies "this signal on this candle" independently of process restarts, so a caller can derive a restart-stable
+    intent id from it (for example make_id('int', int(contract_sha256(key)[:32], 16))) and refuse a signal it already
+    consumed. The derivation and the consumed-signal rule belong to the shared interface ("step 0"), not to NC-01; the
+    domain only makes the key representable and checks that a decision and its intents agree with it."""
+    strategy: str
+    strategy_version: str
+    symbol: str
+    side: Side
+    candle_close_ms: int
+    purpose: Purpose
+
+    def _validate(self, p):
+        check_text(self.strategy, p + '.strategy', 32)
+        check_text(self.strategy_version, p + '.strategy_version', 32)
+        check_symbol(self.symbol, p + '.symbol')
+
+
 class Authority(enum.StrEnum):
     STRATEGY = 'strategy'
     RISK = 'risk'
@@ -83,6 +104,7 @@ class Decision(Record):
     action: Action
     reason: ReasonCode
     authority: Authority
+    key: DecisionKey | None                  # the canonical decision key of a strategy decision (None otherwise)
     evidence: tuple[str, ...]           # opaque ids of the inputs / evidence it used (rec_, res_, int_, lot_, ...)
     symbol: str | None
     side: Side | None
@@ -117,6 +139,11 @@ class Decision(Record):
             req(i.decision_id == self.decision_id and i.created_at_ms == self.at_ms, ip + '.decision_id',
                 'created by another decision')
             req(i.state is IntentState.PLANNED, ip + '.state', 'a decision creates PLANNED intents only')
+        if self.key is not None:
+            k = self.key
+            req((self.symbol, self.side) == (k.symbol, k.side), p + '.key', 'the decision names another symbol / side')
+            req(all((i.symbol, i.side, i.purpose) == (k.symbol, k.side, k.purpose) for i in self.intents), p + '.key',
+                'an intent differs from the decision key (symbol / side / purpose)')
         ids = [i.intent_id for i in self.intents]
         req(len(ids) == len(set(ids)), p + '.intents', 'duplicate intent id')
 

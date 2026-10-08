@@ -23,7 +23,7 @@ from .account import (Account, AccountBinding, BindingConfirmation, BindingState
 from .base import make_id
 from .codec import (DecodeResult, Outcome, canonical_bytes, contract_sha256, decode_document, decode_result, dumps,
                     encode_document, loads)
-from .decision import Action, Authority, Decision
+from .decision import Action, Authority, Decision, DecisionKey
 from .errors import (DomainError, EventOrderError, ForeignDocument, FutureSchema, InvalidRecord, OlderSchema,
                      OwnershipUnknown, UnknownSchema, UnsupportedVersion)
 from .events import (BindingChanged, DecisionRecorded, DomainEvent, IntentRecorded, IntentStateChanged, ModeChanged,
@@ -35,7 +35,8 @@ from .orders import (Arming, Evidence, ExchangeStatus, IntentState, Lookup, Orde
                      OwnerFamily, PositionRead, Purpose, ResultPhase, ResultStage, Side, check_result_for_intent,
                      may_apply, may_send, terminal_for)
 from .portfolio import (Fill, Lot, LotSource, Ownership, OwnershipProof, Portfolio, Position, ProofKind,
-                        check_account_portfolio, entry_blocking_protections, owned_client_ids, ownership_families)
+                        check_account_portfolio, check_flat_snapshot_fresh, entry_blocking_protections,
+                        owned_client_ids, ownership_families)
 from .protection import MissPhase, Protection, ProtectionStatus, StopMiss, active_coverage, protection_status
 from .reasons import GOLDEN_EXIT, GOLDEN_EXIT_CODES, GOLDEN_SIGNAL, MEANING, ReasonCode
 from .snapshot import GenerationVerdict, HighWater, Snapshot, check_generation

@@ -308,6 +308,12 @@ def decision(ids, acct, action, reason, intents=(), *, dec_id=None, at=T0):
                  authority=authority_for(action, reason), intents=tuple(intents))
 
 
+def decision_key(symbol='SOLUSDT', side=Side.LONG, purpose=Purpose.ENTRY, candle=T0 - 60_000):
+    from newcore.domain import DecisionKey
+    return DecisionKey(strategy='ema_st', strategy_version='v3', symbol=symbol, side=side, candle_close_ms=candle,
+                       purpose=purpose)
+
+
 def decision_with_intents(ids, acct, action, reason):
     """A decision of `action` with the minimal PLANNED intent set it needs (ids / timestamps wired)."""
     dec_id = ids.id('dec')
@@ -364,7 +370,7 @@ def samples(seed=5):
     res = results(ids, acct, it)
     dec = decision_with_intents(ids, acct, Action.ENTER, ReasonCode.ENTRY_SIGNAL)
     durable = replace(dec.intents[0], state=IntentState.DURABLE)
-    return [account(acct), rules(), it, pf, dec, unknown_portfolio(acct), *res.values(),
+    return [account(acct), rules(), it, pf, dec, decision_key(), unknown_portfolio(acct), *res.values(),
             Snapshot(account_id=acct, generation=7, last_sequence=4, written_at_ms=T0, writer_build='nc01-test',
                      portfolio=pf),
             HighWater(account_id=acct, generation=7, last_sequence=4, writer_build='nc01-test'),

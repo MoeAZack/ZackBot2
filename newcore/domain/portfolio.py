@@ -375,3 +375,17 @@ def check_account_portfolio(account, pf):
     if pf.ownership is Ownership.KNOWN_EMPTY:
         req(account.entries_allowed and pf.proof.key_digest == account.binding.key_digest, 'Portfolio.proof',
             'KNOWN_EMPTY needs a flat snapshot taken under the confirmed binding')
+        req(pf.proof.at_ms >= account.confirmation.confirmed_at_ms, 'Portfolio.proof.at_ms',
+            'the flat snapshot predates the binding confirmation')
+
+
+def check_flat_snapshot_fresh(account, pf, now_ms, max_age_ms):
+    """The fresh-snapshot rule (contract invariant 1): a KNOWN_EMPTY claim is usable only while its flat exchange
+    snapshot is younger than `max_age_ms` at the caller-supplied `now_ms` (the domain reads no clock; the age limit is
+    NC-02 policy). Also re-checks the binding rules of check_account_portfolio. Raises InvalidRecord."""
+    check_account_portfolio(account, pf)
+    req(pf.ownership is Ownership.KNOWN_EMPTY, 'Portfolio.ownership', 'only a KNOWN_EMPTY claim rests on a flat snapshot')
+    req(type(now_ms) is int and type(max_age_ms) is int and max_age_ms >= 0, 'now_ms', 'integer milliseconds')
+    age = now_ms - pf.proof.at_ms
+    req(age >= 0, 'Portfolio.proof.at_ms', 'the flat snapshot is from the future')
+    req(age <= max_age_ms, 'Portfolio.proof.at_ms', f'the flat snapshot is {age} ms old (limit {max_age_ms} ms)')

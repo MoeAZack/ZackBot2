@@ -49,6 +49,7 @@ RECORD_TYPES = {
     'order_result': orders.OrderResult,
     'portfolio': portfolio.Portfolio,
     'decision': decision.Decision,
+    'decision_key': decision.DecisionKey,
     'snapshot': snapshot.Snapshot,
     'high_water': snapshot.HighWater,
     'event_intent_recorded': events.IntentRecorded,
