@@ -190,6 +190,31 @@
       "accepted_by": null,
       "date_cairo": "2026-10-08",
       "prev_entry_sha": "ecc4599182a43d528ad4c3efe03445d7bd3997b0f32eb43a0a93a513c486db7f"
+    },
+    {
+      "id": "CORR-0005",
+      "type": "add",
+      "ticket": "AUD-08",
+      "finding": "exit-code vocabulary: STOP_CROSSED (bot market close) distinct from STOP_HIT (exchange stop fill)",
+      "title": "STOP_CROSSED cases (long + short): a trailing level recomputed at a candle close is already through the price",
+      "cases": {
+        "G-STOP-CROSSED-L-01": {
+          "prev_contract_sha": null,
+          "contract_sha": "6dce4656365ef16322df02ec0fe893607182dbad7783f369e3fcdd65d410bd5f"
+        },
+        "G-STOP-CROSSED-S-01": {
+          "prev_contract_sha": null,
+          "contract_sha": "3366cfb06e6aa13587d8f3135d3393309eb64475ecbbee59b8dcd80838ed72ab"
+        }
+      },
+      "adapters_changed": [
+        "legacy_engine: stop_crossed -> STOP_CROSSED (was folded into STOP_HIT); flatten / resync / stop_failed / basket_tp_part mapped (bc948d9)"
+      ],
+      "rationale": "Pins the STOP_HIT vs STOP_CROSSED distinction with a fully causal trigger and no path artefact: zero-range candles make the Wilder ATR of each closed candle shrink by 1/14, so the 2-ATR trailing level rises at every candle-close decision until, with ATR(285), it lies above the price 100 (short: below). A stop order cannot rest on the wrong side of the market, so the correct NEWCORE outcome is a bot market close at the next decision - the open of candle 286, which is that candle's first path point - booked as STOP_CROSSED at 100 x (1 -/+ slippage), R -0.07; the resting exchange stop at 99.96 (100.04) is never touched. The legacy engine journals exactly this (stop_crossed, required). The legacy backtester closes at the same bar and price but writes why='stop', i.e. STOP_HIT: recorded as a strict-xfail known divergence (code only) bound to this record. Expectations from first principles (scratch calc.py prints the ATR / level schedule).",
+      "evidence": "branch golden-short-mirrors on bc948d9; blind probe of both legacy adapters (scratch probe.py)",
+      "accepted_by": null,
+      "date_cairo": "2026-10-08",
+      "prev_entry_sha": "2e8501e060f8f22dc3344b1c20500cff095a57ca2ed9085f327a81f7137996ab"
     }
   ]
 }
