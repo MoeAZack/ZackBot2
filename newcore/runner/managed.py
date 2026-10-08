@@ -211,6 +211,7 @@ class ManagementMixin:
         self._items = []                     # (lot id, reconcile items) not handled yet
         self._mg_mode = (EntriesMode.ACTIVE, None)
         self._refused = {}                   # lot id -> (cycle ms, refused submits this cycle)
+        self._mg_deferred = set()            # adv6 M: trail moves deferred (incident once)
         self._pending_start = set()          # lots whose entry filled; the 'mg start' input is not journaled yet
         self._malformed = []                 # (lot, decision, error): unreadable management records -> HOLD
         super().__init__(config, **kw)
@@ -536,10 +537,20 @@ class ManagementMixin:
                 continue                                                  # held at the runner until permitted
             if b.state is not DR.BindState.SENT:
                 continue                                                  # never a draft the driver already retired
-            if d.purpose is Purpose.PROTECT and self.fold.mode is not EntriesMode.ACTIVE and self._mg_covered(lot_id):
+            pending = self._mg_unconfirmed_replacement(lot_id) if d.purpose is Purpose.PROTECT else None
+            if d.purpose is Purpose.PROTECT and (self.fold.mode is not EntriesMode.ACTIVE or pending is not None) \
+                    and self._mg_covered(lot_id):
                 # MED-2: not ACTIVE and the lot is covered by a CONFIRMED stop: a replacement (a trail move) is not
                 # sent; the newest waits for the resume, a superseded one is recorded NOT_SENT (the lineage stays
-                # in order) and retired - never a second stop while the protection cancel is held
+                # in order) and retired - never a second stop while the protection cancel is held.
+                # Cowork adv6 M: the same while the PREVIOUS replacement is unconfirmed (its send failed / raised /
+                # its answer is unknown): the old stop keeps carrying - never loosened, never unprotected - and the
+                # newest move waits until that replacement resolves (never two unconfirmed stops on one lot)
+                if pending is not None and b.intent_id not in self._mg_deferred:
+                    self._mg_deferred.add(b.intent_id)
+                    self._incident(f'management {lot_id}: trail move {b.intent_id} deferred - the previous replacement '
+                                   f'{pending.intent_id} is unconfirmed ({pending.state}); the old stop '
+                                   f'{self._lot(lot_id).carrier.intent.client_order_id} keeps protecting')
                 later = [x for x in ds.bindings if x.leg.value == 'stop' and x.intent_id not in self.fold.intents]
                 if later and later[-1].intent_id != b.intent_id:
                     self._mg_record_unsent(lot_id, d)
@@ -594,6 +605,12 @@ class ManagementMixin:
         iv = self._record_durable(planned)
         self._mg_send(iv)
         return iv
+
+    def _mg_unconfirmed_replacement(self, lot_id):
+        """The lot's replacement stop in flight that is NOT confirmed working yet (None when there is none)."""
+        lot = self._lot(lot_id)
+        r = None if lot is None else lot.replacement
+        return r if r is not None and r.state is not IntentState.WORKING else None
 
     def _mg_covered(self, lot_id):
         lot = self._lot(lot_id)

@@ -252,6 +252,17 @@ class Runner:
     def venue(self, v):                                                   # adv6: always behind the raising guard
         self._venue = v if isinstance(v, _SafeVenue) else _SafeVenue(v, self)
 
+    @property
+    def mode(self):
+        """The EFFECTIVE entries mode (Cowork adv6 E): HOLD whenever a hard HOLD is active - the journal fold cannot
+        record that ModeChanged (the store is down), so fold.mode alone would still read ACTIVE."""
+        return EntriesMode.HOLD if self.hard_hold is not None else self.fold.mode
+
+    @property
+    def hold(self):
+        """The effective HOLD kind: DURABILITY_UNAVAILABLE in a hard HOLD, else the journal's."""
+        return HoldKind.DURABILITY_UNAVAILABLE if self.hard_hold is not None else self.fold.hold
+
     def __init__(self, config: RunnerConfig, *, journal, venue, bars, signals, account_reads=None, hard_hold=None):
         self.cfg = config
         self.acct = config.account.account_id
@@ -409,7 +420,7 @@ class Runner:
                    from_hold=self.fold.hold, to_hold=HoldKind.NORMAL, decision_id=None, reconciliation_id=None)
 
     def _permits(self, purpose, op):
-        return permitted(self.fold.mode, self.fold.hold, purpose, op) is Permission.ALLOWED
+        return permitted(self.mode, self.hold, purpose, op) is Permission.ALLOWED   # the effective mode
 
     # =============================================================================================== the cycle
     def cycle(self, now_ms, *, decide=True):
@@ -1505,8 +1516,8 @@ class Runner:
         self._send_entry(self._record_durable(planned))
 
     def _entry_gate(self, symbol, side):
-        if self.fold.mode is not EntriesMode.ACTIVE:
-            return GATE_REASON[self.fold.mode]
+        if self.mode is not EntriesMode.ACTIVE:
+            return GATE_REASON[self.mode]
         if any(x.symbol == symbol and x.side == side for x in self.fold.open_lots()):
             return ReasonCode.CAPACITY_IN_TRADE
         if self.fold.live_entries(symbol, side):
