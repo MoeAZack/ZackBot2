@@ -272,6 +272,25 @@
       "accepted_by": null,
       "date_cairo": "2026-10-08",
       "prev_entry_sha": "6d7dfb05fe6f4507da3207d64ba757371850606a5b86648b5ebebf9ac6fbd52e"
+    },
+    {
+      "id": "CORR-0009",
+      "type": "add",
+      "ticket": "AUD-08",
+      "finding": "B2 coverage: ambiguity (smallest slice: lost answer to a filled entry)",
+      "title": "Entry filled on the exchange with its answer lost: resolved from the order record, booked as the one filled trade",
+      "cases": {
+        "G-AMBIG-ENTRY-L-01": {
+          "prev_contract_sha": null,
+          "contract_sha": "4333831277bb5d5cdb61a9386173f19cee36dc844a1705a1fc34025542e2daa5"
+        }
+      },
+      "adapters_changed": [],
+      "rationale": "Smallest ambiguity slice: the first entry order is executed by the exchange (truth filled) but its answer is lost (seed null, deterministic). Under the AUD-03 contract the order is resolved only from the exchange's final record and never re-sent while unresolved, so the correct outcome equals the fault-free twin G-STOP-L-01: one LONG lot of 5 from candle 280, STOP_HIT in 282, R -1.059307099, final lots 0. A second entry (double size), a phantom lot or an untracked position fails it. The not_filled truth is left out on purpose: whether NEWCORE retries an entry at a later decision is an open policy, not a causal fact. Legacy adapters not_applicable.",
+      "evidence": "branch golden-short-mirrors; twin G-STOP-L-01",
+      "accepted_by": null,
+      "date_cairo": "2026-10-08",
+      "prev_entry_sha": "4b5376a7b9897f3852711fa07041d72c4768f2450792736a5e840172b070718d"
     }
   ]
 }

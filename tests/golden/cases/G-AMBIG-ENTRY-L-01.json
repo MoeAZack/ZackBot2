@@ -1,0 +1,118 @@
+{
+  "schema": "zb-golden/1",
+  "id": "G-AMBIG-ENTRY-L-01",
+  "title": "The entry order reaches the exchange and fills but its answer is lost: the bot resolves it from the order record and books exactly the filled trade (no phantom, no second entry)",
+  "behaviours": [
+    "ambiguity",
+    "entry",
+    "stop"
+  ],
+  "side": "long",
+  "tf": "4h",
+  "clock": {
+    "start": "2024-01-01T00:00:00Z",
+    "entry_cycle_delay_s": 15
+  },
+  "costs": {
+    "model": "legacy",
+    "taker_fee": "0.0005",
+    "slip": "0.0002",
+    "funding_per_bar": "0"
+  },
+  "account": {
+    "equity": "500",
+    "max_leverage": 10,
+    "sizing": "legacy_replay"
+  },
+  "market": {
+    "SOLUSDT": {
+      "base": {
+        "kind": "flat",
+        "px": "100",
+        "wick": "0.5",
+        "n": 300
+      },
+      "bars": {
+        "282": [
+          "100",
+          "100.2",
+          "97.5",
+          "97.8"
+        ]
+      },
+      "atr": {
+        "kind": "computed"
+      }
+    }
+  },
+  "path_policy": "zb-path/1",
+  "slot": {
+    "id": "S1",
+    "sides": "long",
+    "risk": "0.02",
+    "share": "1",
+    "max_pos": 1,
+    "entry": {
+      "type": "market"
+    },
+    "stop": {
+      "atr": "2"
+    }
+  },
+  "signals": [
+    {
+      "bar": 279,
+      "sym": "SOLUSDT",
+      "kind": "enter_long"
+    }
+  ],
+  "faults": [
+    {
+      "kind": "lost_response",
+      "order": "entry",
+      "nth": 1,
+      "truth": "filled",
+      "seed": null
+    }
+  ],
+  "expect": {
+    "trades": [
+      {
+        "sym": "SOLUSDT",
+        "side": "LONG",
+        "i_in": 280,
+        "i_out": 282,
+        "exit": "STOP_HIT",
+        "R": "-1.059307099",
+        "pnl": "-10.59307099"
+      }
+    ],
+    "final": {
+      "lots": 0
+    }
+  },
+  "applies_to": {
+    "legacy_engine": {
+      "status": "not_applicable",
+      "reason": "NotExpressible (adapters.base.check_unsupported): the legacy replay / backtester cannot inject this fault; the fault-capable fake comes with NC-03 / NC-08"
+    },
+    "legacy_backtest": {
+      "status": "not_applicable",
+      "reason": "NotExpressible (adapters.base.check_unsupported): the legacy replay / backtester cannot inject this fault; the fault-capable fake comes with NC-03 / NC-08"
+    },
+    "newcore_sim": {
+      "status": "pending_adapter",
+      "reason": "NEWCORE NC-07/NC-08 adapter not built yet"
+    },
+    "newcore_live_sim": {
+      "status": "pending_adapter",
+      "reason": "NEWCORE NC-08 live-sim adapter not built yet"
+    }
+  },
+  "known_divergences": [],
+  "provenance": {
+    "created_at_sha": "cda8f58",
+    "author": "AUD-08 smallest slices (Claude)",
+    "notes": "Fault-free twin: G-STOP-L-01. The first entry order (the market buy at the open of 280) is executed by the exchange at 100 x 1.0002 = 100.02 for qty 5, but the request times out with no answer. AUD-03 contract: an order known by its client id is resolved only from the exchange's final order record (never inferred, never re-sent while unresolved), protection follows the resolved quantity. Resolution is bounded to minutes, long before candle 282, so the outcome is the twin's: one LONG lot of 5 from 280, its 98.02 stop filled in 282 at 98.000396, STOP_HIT, R -1.059307099, final lots 0. A second entry (double size) or an untracked position would fail it. Deterministic: seed null."
+  }
+}

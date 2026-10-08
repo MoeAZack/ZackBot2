@@ -2,6 +2,7 @@
   "schema": "zb-golden-manifest/2",
   "note": "sha256 of each case CONTRACT (goldenlib.schema.contract_sha: the case minus title / behaviours / provenance / notes). Change an entry only together with an appended CORRECTIONS.json record carrying the same contract_sha.",
   "cases": {
+    "G-AMBIG-ENTRY-L-01": "4333831277bb5d5cdb61a9386173f19cee36dc844a1705a1fc34025542e2daa5",
     "G-DAY-CAIRO-S-01": "fca3960fb9d2ec2c7893cb2b7f7ef70c942dda422bff174e6983b0a31cb16daa",
     "G-DAY-CAIRO-S-SHORT-01": "d79957b02efe2af2484dd0c1736032513f2d27e2058cdf7750eaf5a25401337e",
     "G-DAY-CAIRO-W-01": "625636ffef385ede68fe3123479ef767de1640469a8862662e369d191a5f497e",
