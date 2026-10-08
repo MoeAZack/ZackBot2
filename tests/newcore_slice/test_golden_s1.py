@@ -1,4 +1,4 @@
-"""The S1 / S4-expressible golden cases (origin/golden-short-mirrors @ 74a4505, copied verbatim into golden_cases/) through
+"""The S1 / S3 / S4-expressible golden cases (origin/golden-short-mirrors @ 74a4505, copied verbatim into golden_cases/) through
 the NEWCORE adapter: codes, bars and sides exactly, R / pnl to 1e-9 (goldenlib/compare.py EPS)."""
 import pytest
 
@@ -43,9 +43,32 @@ def test_s4_cairo_day_golden_case_passes_on_the_book(case_id):
     assert runner.summary().counters['unprotected_cycles'] == 0
 
 
-def test_unsupported_inputs_are_not_expressible():
+def test_s3_exchange_outage_golden_case_passes():
+    """G-OUTAGE-STOP-L-01: no read / send during the outage (reconciliation unreadable -> HOLD, no decision); the stop
+    rests on the exchange and fills there; after recovery the fill is booked from the order record at the EXCHANGE
+    time (i_out 282, STOP_HIT), never a bot close."""
+    case = load('G-OUTAGE-STOP-L-01')
+    trace, runner = run_case(case)
+    assert diff(case, trace) == []
+    assert not [o for o in runner.venue.inner.orders_submitted() if o.order_type == 'MARKET' and o.reduce]
+
+
+def test_a_restart_fault_reproduces_the_fault_free_trace():
+    """The adapter's restart fault (no cycle while down, then a NEW Runner over the same journal) on G-STOP-L-01's
+    market while the trade is open: identical trace (G-RESTART-TIME-L-01 itself also needs a time exit: S2)."""
     case = load('G-STOP-L-01')
-    for patch in ({'faults': [{'kind': 'restart', 'at_ms': 1, 'down_ms': 1}]}, {'instruments': {}},
-                  {'slot': dict(case['slot'], target={'r': '2'})}):
-        with pytest.raises(NotExpressible):
+    t0 = int(case['clock']['start'])
+    faulted = dict(case, faults=[{'kind': 'restart', 'at_ms': t0 + 281 * 14_400_000 + 60_000,
+                                  'down_ms': 14_400_000}])
+    assert diff(case, run_case(faulted)[0]) == []
+
+
+def test_unsupported_inputs_are_refused_with_a_named_owner():
+    case = load('G-STOP-L-01')
+    for patch, owner in (({'faults': [{'kind': 'lost_response', 'order': 'stop', 'nth': 1, 'truth': 'filled'}]},
+                          'S3 runner'),
+                         ({'instruments': {}}, 'S2 management'),
+                         ({'slot': dict(case['slot'], target={'r': '2'})}, 'S2 management'),
+                         ({'slot': dict(case['slot'], dca={'n': 1})}, 'range slice')):
+        with pytest.raises(NotExpressible, match=f'owner: {owner}'):
             check_expressible(dict(case, **patch))

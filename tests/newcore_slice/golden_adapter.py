@@ -66,20 +66,25 @@ def market(case, tf_ms):
 
 def check_expressible(case):
     sl = case['slot']
-    other = [f['kind'] for f in case.get('faults') or () if not (f['kind'] == 'lost_response' and f['order'] == 'entry')]
-    if other:
-        raise NotExpressible(f'faults {other} (S3)')
-    if case.get('instruments') is not None:
-        raise NotExpressible('instruments filters (S2)')
+    for f in case.get('faults') or ():
+        if f['kind'] == 'lost_response' and f['order'] != 'entry':
+            raise NotExpressible(f"lost_response on {f['order']} (owner: S3 runner, not built)")
+        if f['kind'] not in ('lost_response', 'exchange_outage', 'restart'):
+            raise NotExpressible(f"fault {f['kind']} (owner: NC-02 fault vocabulary)")
     extra = {k for k, v in sl.items() if v is not None} - SLOT_OK
+    owner = {'target': 'S2 management (NC-07)', 'trail': 'S2 management (NC-07)', 'time_exit': 'S2 management (NC-07)',
+             'tp1': 'S2 management (NC-07)', 'ladder': 'S2 management (NC-07)', 'runner': 'S2 management (NC-07)',
+             'dca': 'range slice', 'pyramid': 'range slice'}
     if extra:
-        raise NotExpressible(f'slot management {sorted(extra)} (S2 / range slice)')
+        raise NotExpressible('slot ' + ', '.join(f'{k} (owner: {owner.get(k, "unowned")})' for k in sorted(extra)))
+    if case.get('instruments') is not None:
+        raise NotExpressible('instruments filters in the golden adapter (owner: S2 management, with tp1 C25)')
     if (sl.get('entry') or {'type': 'market'})['type'] != 'market':
-        raise NotExpressible('non-market entry')
+        raise NotExpressible('trailing / maker entry (owner: range slice)')
     if set(sl.get('stop') or {}) != {'atr'}:
-        raise NotExpressible('slot.stop must be exactly {atr}')
+        raise NotExpressible('slot.stop must be exactly {atr} (owner: S2 management)')
     if case['account'].get('sizing') != 'legacy_replay':
-        raise NotExpressible('sizing')
+        raise NotExpressible('sizing (owner: S4 risk)')
 
 
 def run_case(case):
@@ -125,7 +130,11 @@ def run_case(case):
                                                    kill_drawdown_pct=None, cap_gap_buffer=Decimal(0)), **kw)
     else:
         runner = Runner(cfg, **kw)
-    runner = run_replay(runner, venue, start_ms=t0, end_ms=bars[-1].close_ms, tf_ms=tf)
+    outage = [(f['from_ms'], f['to_ms']) for f in case.get('faults') or () if f['kind'] == 'exchange_outage']
+    restarts = [(f['at_ms'], f['at_ms'] + f['down_ms']) for f in case.get('faults') or () if f['kind'] == 'restart']
+    if outage:
+        runner.venue = runner.reads = Outage(venue, outage)
+    runner = drive(runner, venue, t0, bars[-1].close_ms, tf, restarts)
     trades = []
     for t in runner.trades():
         i_in = (t.entry_ms - t0) // tf
@@ -137,6 +146,72 @@ def run_case(case):
                            pnl=float(t.pnl)))
     trades.sort(key=lambda x: (x['i_in'], x['sym']))
     return dict(trades=trades, final=dict(lots=len(runner.fold.open_lots()))), runner
+
+
+class Outage:
+    """exchange_outage fault: while from <= venue time < to, the bot can neither read nor send (every answer UNKNOWN);
+    orders resting ON the exchange keep working (the FakeVenue walks them as usual)."""
+
+    def __init__(self, venue, windows):
+        self.inner, self.windows = venue, windows
+
+    def __getattr__(self, name):
+        return getattr(self.inner, name)
+
+    def _down(self):
+        return any(a <= self.inner.now_ms < b for a, b in self.windows)
+
+    def _order(self, name, ref, *args):
+        if self._down():
+            from newcore.ports.venue import OrderOutcome, OutcomeKind
+            return OrderOutcome(kind=OutcomeKind.UNKNOWN, ref=ref, observed_at_ms=self.inner.now_ms, detail='outage')
+        return getattr(self.inner, name)(*args)
+
+    def _read(self, name, *args, **kw):
+        if self._down():
+            from newcore.ports.venue import ReadKind, ReadOutcome
+            return ReadOutcome(kind=ReadKind.UNKNOWN, observed_at_ms=self.inner.now_ms, detail='outage')
+        return getattr(self.inner, name)(*args, **kw)
+
+    def submit_market(self, order):
+        return self._order('submit_market', order.ref, order)
+
+    def submit_stop(self, order):
+        return self._order('submit_stop', order.ref, order)
+
+    def cancel(self, ref):
+        return self._order('cancel', ref, ref)
+
+    def query(self, ref):
+        return self._order('query', ref, ref)
+
+    def positions(self, symbol=None):
+        return self._read('positions', symbol)
+
+    def open_orders(self, symbol=None):
+        return self._read('open_orders', symbol)
+
+    def equity(self):
+        return self._read('equity')
+
+
+def drive(runner, venue, start, end, tf, restarts):
+    """The replay clock with restart faults: no cycle while the process is down; it comes back as a NEW Runner over
+    the same journal (the fold is the only state that survives)."""
+    t = start + tf
+    was_down = False
+    while t <= end:
+        venue.advance_to(t)
+        down = any(a <= t < b for a, b in restarts)
+        if not down:
+            if was_down:
+                runner = type(runner)(runner.cfg, journal=runner.journal, venue=runner.venue, bars=runner.bars,
+                                      signals=runner.signals, account_reads=runner.reads,
+                                      **({'policy': runner.policy} if hasattr(runner, 'policy') else {}))
+            runner.cycle(t, decide=t < end)
+        was_down = down
+        t += tf
+    return runner
 
 
 def diff(case, trace):
