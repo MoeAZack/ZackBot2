@@ -40,6 +40,7 @@ class FaultVenue:
         self._foreign = []
         self._nf_until = {}
         self._hide = {}
+        self._hide_reads = {}
         self._stale = [0, 0]
         self._skew = {}
         self._fake_cancel = set()
@@ -103,6 +104,11 @@ class FaultVenue:
     def hide_position_until(self, symbol, side, until_ms):
         self._hide[(symbol, side)] = until_ms
 
+    def hide_position_reads(self, symbol, side, n):
+        """The next n position reads that WOULD show that side non-flat show it flat (positionRisk lag right after a
+        fill; FakeVenue's clock does not move between candles, so lag is counted in reads)."""
+        self._hide_reads[(symbol, side)] = n
+
     def stale_reads(self, n, age_ms):
         self._stale = [n, age_ms]
 
@@ -160,11 +166,15 @@ class FaultVenue:
 
     def positions(self, symbol=None):
         r = self.inner.positions(symbol)
-        if r.kind is ReadKind.OK and self._hide:
+        if r.kind is ReadKind.OK and (self._hide or self._hide_reads):
             rows = []
             for p in r.value:
-                until = self._hide.get((p.symbol, p.side))
-                if until is not None and self.now < until:
+                k = (p.symbol, p.side)
+                until = self._hide.get(k)
+                lag = p.qty > 0 and self._hide_reads.get(k, 0) > 0
+                if lag:
+                    self._hide_reads[k] -= 1
+                if lag or (until is not None and self.now < until):
                     p = VenuePosition(symbol=p.symbol, side=p.side, qty=ZERO, entry_price=ZERO)
                 rows.append(p)
             r = ReadOutcome(kind=r.kind, observed_at_ms=r.observed_at_ms, value=tuple(rows))
