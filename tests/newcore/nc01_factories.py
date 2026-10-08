@@ -4,11 +4,20 @@ import dataclasses
 import random
 from decimal import Decimal as D
 
+from hypothesis import HealthCheck, settings
+
 from newcore.domain import (Account, AccountBinding, Action, Arming, Authority, BindingConfirmation, BindingState,
                             Capability, Decision, EntriesMode, Environment, Fill, HoldKind, InstrumentId, InstrumentRules,
                             IntentState, Lot, LotSource, MissPhase, OrderIntent, OrderType, Ownership, OwnershipProof,
                             Portfolio, Position, ProofKind, Protection, Purpose, ReasonCode, Side, StopMiss,
                             confirmation_phrase, make_id, protect_key)
+
+# Hypothesis is pinned (requirements-dev.txt) and deterministic here: every property carries an explicit @seed, the
+# example database is off (nothing is written to the repo) and there is no wall-clock deadline. Registered in this module
+# rather than a tests/newcore/conftest.py, which would shadow the top-level tests/conftest.py module name.
+settings.register_profile('nc01', database=None, deadline=None, max_examples=150, print_blob=True,
+                          suppress_health_check=(HealthCheck.too_slow,))
+settings.load_profile('nc01')
 
 T0 = 1_791_400_000_000                      # 2026-10-07 UTC, integer ms
 DIGEST = '0123456789abcdef'
