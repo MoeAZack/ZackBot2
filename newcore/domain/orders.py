@@ -127,6 +127,8 @@ def can_transition(a, b):
 
 
 POST_HOC_REASON = ReasonCode.RECONCILE_EXTERNAL_CLOSE
+TARGET_REASONS = frozenset({ReasonCode.EXIT_TAKE_PROFIT, ReasonCode.EXIT_TP1, ReasonCode.EXIT_LADDER,
+                            ReasonCode.EXIT_BASKET_TP, ReasonCode.EXIT_BASKET_TP_PART})   # r3 DRAFT item 4
 
 
 def is_post_hoc(intent):
@@ -504,6 +506,9 @@ def check_result_for_intent(intent, result, sent_at_ms):
     ev = result.evidence
     req((ev is Evidence.EXCHANGE_EXTERNAL) <= is_post_hoc(intent), p + '.evidence',
         'exchange_external only books a post-hoc (reconcile.external_close) intent')
+    if intent.order_type is OrderType.LIMIT_REDUCE_ONLY and result.avg_price is not None:
+        better = (result.avg_price >= intent.price) if intent.side is Side.LONG else (result.avg_price <= intent.price)
+        req(better, p + '.avg_price', 'a resting target never fills worse than its limit (a gap fills at it or better)')
     if is_post_hoc(intent):
         req(sent_at_ms is None and result.phase is ResultPhase.FINAL
             and ev in (Evidence.EXCHANGE_EXTERNAL, Evidence.NOT_SENT), p + '.evidence',

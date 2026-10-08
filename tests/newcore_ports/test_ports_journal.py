@@ -580,3 +580,45 @@ def test_journal_rebuilt_from_a_compacted_snapshot_keeps_its_facts():
     assert gate().append(nxt(s._event(IncidentRecorded, reason=inc.kind, incident=inc))) is Admission.APPLY
     with pytest.raises(JournalConflict, match='incident id .* used for a different fact'):
         gate().append(nxt(s._event(IncidentRecorded, reason=inc.kind, incident=replace(inc, detail='changed'))))
+def test_a_resting_target_survives_a_journal_restart_and_never_fills_worse_than_its_limit():
+    """NC-01 r3b item 4 (ruling 5): a reduce-only GTC limit target journaled, sent and WORKING; the gate rebuilt from
+    the decoded bytes continues it; a fill worse than the limit is refused, at or better is admitted."""
+    from decimal import Decimal as D
+    from nc_events import replace
+    from newcore.domain import (Action, Authority, Decision, DecisionRecorded, Evidence, ExchangeStatus,
+                                IntentStateChanged, OrderResult, OrderType, ReasonCode, ResultObserved, ResultPhase,
+                                canonical_bytes, loads, make_id)
+    s = Scenario()
+    s.entry_filled()
+    tid = K.derive_child_intent_id(ACCT, LOT, Purpose.REDUCE, 0)
+    at = s.events[-1].at_ms + 1000
+    dec_id = make_id('dec', 5151)
+    it = replace(s._intent(tid, Purpose.REDUCE, dec_id, at, owner=LOT, qty=D('1')),
+                 order_type=OrderType.LIMIT_REDUCE_ONLY, price=D('160'))
+    d = Decision(decision_id=dec_id, account_id=ACCT, at_ms=at, action=Action.REDUCE, reason=ReasonCode.EXIT_TP1,
+                 authority=Authority.STRATEGY, key=None, evidence=(), symbol='SOLUSDT', side=Side.LONG,
+                 subject_id=LOT, detail='', intents=(it,), policy_version='step0-test')
+    s._event(DecisionRecorded, reason=d.reason, decision=d)
+    s.intents[tid] = it
+    s.record(tid)
+    s.step(tid, IntentState.DURABLE, IntentState.SUBMITTED)
+    s.step(tid, IntentState.SUBMITTED, IntentState.WORKING)
+    j = ReferenceJournal(events=[loads(canonical_bytes(ev)) for ev in s.events])          # restart from bytes
+    assert j.last_sequence() == len(s.events)
+
+    def fill(avg, n):
+        r = OrderResult(result_id=make_id('res', n), intent_id=tid, account_id=ACCT, client_order_id=it.client_order_id,
+                        phase=ResultPhase.FINAL, requested_qty=it.qty, observed_at_ms=s.events[-1].at_ms + 5000,
+                        exchange_order_id='7001', exchange_status=ExchangeStatus.FILLED, lookup=None,
+                        executed_qty=it.qty, avg_price=D(avg), evidence=Evidence.EXCHANGE_FINAL, corroboration=(),
+                        resolved_by=None, external_trades=(), supersedes_result_id=None)
+        return replace(s._event(ResultObserved, reason=ReasonCode.EXIT_TP1, result=r), sequence=len(s.events))
+
+    worse = fill('159.99', 6001)
+    s.events.pop()
+    s.n -= 1
+    with pytest.raises(JournalConflict, match='never fills worse than its limit'):
+        j.append(worse)
+    assert j.append(fill('161.5', 6002)) is Admission.APPLY                               # gapped through: better
+    assert j.append(s.step(tid, IntentState.WORKING, IntentState.FILLED)) is Admission.APPLY
+    assert isinstance(s.events[-1], IntentStateChanged)
