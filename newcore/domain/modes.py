@@ -72,16 +72,21 @@ def is_protective_removal(purpose, op):
     return purpose is Purpose.PROTECT and op in (Op.CANCEL, Op.REPRICE)
 
 
-def permitted(mode, hold_kind, purpose, op, *, one_shot=False):
+def permitted(mode, hold_kind, purpose, op, *, one_shot=False, emergency_close=False):
     """Pure table: may the shell perform `op` on an order of `purpose` while the portfolio is in `mode` / `hold_kind`?
-    `one_shot` = the opening intent carries an audited operator one-shot authorization."""
+    `one_shot` = the opening intent carries an audited operator one-shot authorization.
+    `emergency_close` = the order is a deterministic reduce-only EMERGENCY CLOSE placed because protection failed
+    (no emergency stop can be confirmed). It changes exactly one cell: (CLOSE, PLACE) under HOLD /
+    DURABILITY_UNAVAILABLE (Codex ruling: the protection-outranks exception to the A24 emergency set); it never widens
+    any other purpose, op or mode."""
     mode, purpose, op = EntriesMode(mode), Purpose(purpose), Op(op)
     req((mode is EntriesMode.HOLD) == (hold_kind is not None), 'permitted.hold_kind', 'set exactly in HOLD')
-    allowed = _permitted(mode, None if hold_kind is None else HoldKind(hold_kind), purpose, op, one_shot)
+    allowed = _permitted(mode, None if hold_kind is None else HoldKind(hold_kind), purpose, op, one_shot,
+                         emergency_close)
     return Permission.ALLOWED if allowed else Permission.FORBIDDEN
 
 
-def _permitted(mode, hold, purpose, op, one_shot):
+def _permitted(mode, hold, purpose, op, one_shot, emergency_close=False):
     opening = purpose in OPENING
     if op is Op.QUERY:
         return True
@@ -90,7 +95,7 @@ def _permitted(mode, hold, purpose, op, one_shot):
     if op is Op.FALLBACK and not opening:
         return False                         # only a maker entry falls back
     if hold is HoldKind.DURABILITY_UNAVAILABLE:
-        return (purpose, op) in EMERGENCY_SET
+        return (purpose, op) in EMERGENCY_SET or (emergency_close and (purpose, op) == (Purpose.CLOSE, Op.PLACE))
     if mode is EntriesMode.ACTIVE:
         return True
     if op is Op.RESUME:
