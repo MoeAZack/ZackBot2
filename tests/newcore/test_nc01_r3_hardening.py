@@ -408,3 +408,49 @@ def test_rr_p2b_the_document_cap_counts_utf8_bytes_for_text_input():
     with pytest.raises(InvalidRecord) as ex:
         loads(at_cap)                                                           # admitted by the cap; not a document
     assert 'larger than' not in str(ex.value)
+
+
+# ======================================================= Cowork on a676019 (6065763087): follow-ups folded into r3a
+SHORT_SECRET = 'sk-' + 'live-' + 'Q7f3K9'                 # short enough to slip past a length cap
+
+
+@pytest.mark.parametrize('field', ['symbol', 'evidence', 'intent_refs', 'lot_refs', 'account_id', 'incident_id'])
+def test_cw_a_short_secret_in_a_wrong_field_is_never_echoed(field):
+    ids, p, inc = _incident()
+    value = (SHORT_SECRET,) if field in ('evidence', 'intent_refs', 'lot_refs') else SHORT_SECRET
+    with pytest.raises(InvalidRecord) as ex:
+        F.replace(inc, **{field: value})
+    text = str(ex.value)
+    assert SHORT_SECRET not in text and 'Q7f3K9' not in text
+    assert f'len={len(SHORT_SECRET)}' in text and 'sha256:' in text               # type, length, short hash
+
+
+def test_cw_a_record_path_and_codec_errors_never_echo_text():
+    import json
+    ids, p, inc = _incident()
+    dec = F.decision_with_intents(ids, p.account_id, F.Action.ENTER, ReasonCode.ENTRY_SIGNAL)
+    with pytest.raises(InvalidRecord) as ex:
+        F.replace(dec, decision_id=SHORT_SECRET)                               # the record path names its own id
+    assert SHORT_SECRET not in str(ex.value) and SHORT_SECRET not in ex.value.path
+    doc = json.loads(canonical_bytes(F.event(_incident_event_cls(), ids, p.account_id, 1, at=F.T0 + 600,
+                                             incident=inc, reason=inc.kind)))
+    for mutate in (lambda d: d['body']['incident'].__setitem__('kind', SHORT_SECRET),
+                   lambda d: d.__setitem__('record_type', SHORT_SECRET),
+                   lambda d: d.__setitem__('schema_version', SHORT_SECRET)):
+        bad = json.loads(json.dumps(doc))
+        mutate(bad)
+        with pytest.raises(Exception) as ex:
+            loads(json.dumps(bad))
+        assert SHORT_SECRET not in str(ex.value)
+
+
+def test_cw_an_incident_is_never_its_own_evidence_and_refs_stay_opaque():
+    from newcore.domain import IncidentRecorded, check_event_chain
+    ids, p, inc = _incident()
+    with pytest.raises(InvalidRecord, match='never its own evidence'):
+        F.replace(inc, evidence=(ids.id('res'), inc.incident_id))
+    F.replace(inc, evidence=(ids.id('inc'),))                                   # another incident is fine
+    ghost = F.replace(inc, intent_refs=(ids.id('int'),), lot_refs=(ids.id('lot'),), position_refs=(ids.id('pos'),),
+                      evidence=(ids.id('res'),))
+    check_event_chain([F.event(IncidentRecorded, ids, p.account_id, 1, at=F.T0 + 600, incident=ghost,
+                               reason=ghost.kind)])                            # existence is the reconciler's job

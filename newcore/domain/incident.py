@@ -5,11 +5,16 @@ them. An Incident names its kind from the reason registry (never an entry / exit
 fills), the records it concerns by opaque id (intents, lots, positions), the evidence it rests on (result /
 reconciliation / decision / event ids) and its integer UTC-ms time. Free text is display only. It is journaled through
 events.IncidentRecorded and has no effect on ownership: it never changes a lot, an intent or a mode by itself.
+
+References are OPAQUE: each is a well-formed id of its family (int_ / lot_ / pos_, evidence res_ / rec_ / dec_ / evt_ /
+inc_), but whether the referenced record EXISTS is the reconciler's job - neither the record nor check_event_chain
+resolves them (a ghost id passes). The one structural rule: an incident never cites its own id as evidence.
 """
 from __future__ import annotations
 
 import re
 
+from .base import tag
 from .base import Record, check_ascii_text, check_id, check_symbol, record, req
 from .orders import Side
 from .reasons import ReasonCode
@@ -19,8 +24,11 @@ EVIDENCE_PREFIXES = ('res', 'rec', 'dec', 'evt', 'inc')  # what an incident can 
 MAX_REFS = 32                # PR #44 (Cowork 1): per reference tuple; the largest valid incident event is < 16 KiB
 MAX_DETAIL = 160
 # PR #44 (Cowork 2): display text is constrained, never scrubbed (a record is never silently altered). A run of 20+
-# key / token characters is how API keys, secrets, bot tokens and base64 blobs look - refused, so a secret cannot be
-# journaled through `detail`. Ids belong in the *_refs fields, not in the text.
+# key / token characters is how API keys, secrets, bot tokens and base64 blobs look - refused. This is a BACKSTOP
+# HEURISTIC only and is evadable (a secret split by separators - 'sk-ab cd ef ...' - passes): `detail` must never carry
+# a secret BY CONSTRUCTION. Callers build it from a fixed vocabulary / fixed templates filled with non-secret values
+# (counts, ms times, symbols, reason codes), never from venue payloads, exception text, config or credentials.
+# Ids belong in the *_refs fields, not in the text.
 KEY_SHAPED = re.compile(r'[A-Za-z0-9+/=_-]{20,}')
 
 
@@ -55,7 +63,7 @@ class Incident(Record):
 
     def _validate(self, p):
         check_id(self.incident_id, p + '.incident_id', 'inc')
-        p = f'{p}[{self.incident_id}]'
+        p = f'{p}[{tag(self.incident_id)}]'
         check_id(self.account_id, p + '.account_id', 'acct')
         req(self.kind.namespace not in NOT_INCIDENT_KINDS, p + '.kind', f'{self.kind} is a decision / fill reason')
         if self.symbol is not None:
@@ -65,4 +73,5 @@ class Incident(Record):
         _refs(self.lot_refs, p + '.lot_refs', 'lot')
         _refs(self.position_refs, p + '.position_refs', 'pos')
         _refs(self.evidence, p + '.evidence', *EVIDENCE_PREFIXES)
+        req(self.incident_id not in self.evidence, p + '.evidence', 'an incident is never its own evidence')
         check_detail(self.detail, p + '.detail')

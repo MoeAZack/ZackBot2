@@ -138,7 +138,7 @@ def _decoder(tp):
     if tp is Decimal:
         def dec_decimal(v, path):
             if type(v) is not str or len(v) > DECIMAL_MAX_CHARS or DECIMAL_RE.fullmatch(v) is None:
-                _bad(path, f'{v!r:.40} is not a canonical bounded decimal string (a JSON number is never accepted)')
+                _bad(path, f'{show(v)} is not a canonical bounded decimal string (a JSON number is never accepted)')
             d = canonical_decimal(Decimal(v), path)
             if format(d, 'f') != v:
                 _bad(path, f'{v!r} is not the canonical spelling (trailing zeroes / negative zero)')
@@ -182,7 +182,7 @@ def check_header(doc):
         raise InvalidRecord('document.schema_version', 'missing')
     v = doc['schema_version']
     if type(v) is not int or v < 0:
-        raise UnknownSchema('document.schema_version', f'{v!r} is not a JSON integer >= 0: unknown format')
+        raise UnknownSchema('document.schema_version', f'{show(v)} is not a JSON integer >= 0: unknown format')
     if v > SCHEMA_VERSION:
         raise FutureSchema('document.schema_version', f'{v} is newer than this build ({SCHEMA_VERSION})')
     if v < SCHEMA_VERSION:
@@ -191,7 +191,7 @@ def check_header(doc):
         _bad('document', f'envelope keys {sorted(map(repr, doc))}')
     rtype = doc['record_type']
     if type(rtype) is not str or rtype not in RECORD_TYPES:     # type first: never hash an unhashable wire value
-        _bad('document.record_type', f'unknown record type {rtype!r:.80}')
+        _bad('document.record_type', f'unknown record type {show(rtype)}')
     return rtype
 
 
@@ -234,7 +234,7 @@ def loads(text, *, expect=None):
         out = {}
         for k, v in kv:
             if k in out:
-                problems.append(f'duplicate key {k!r}')
+                problems.append(f'duplicate key {show(k)}')
             out[k] = v
         return out
 

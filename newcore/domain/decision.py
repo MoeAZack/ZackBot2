@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import enum
 
+from .base import tag
 from .base import ID_PREFIXES, Record, check_id, check_nfc, check_symbol, check_text, record, req
 from .orders import IntentState, OrderIntent, Purpose, Side
 from .reasons import GATE_NAMESPACES, NAMESPACES, ReasonCode
@@ -116,7 +117,7 @@ class Decision(Record):
     policy_version: str
 
     def _validate(self, p):
-        p = f'{p}[{self.decision_id}]'
+        p = f'{p}[{tag(self.decision_id)}]'
         check_id(self.decision_id, p + '.decision_id', 'dec')
         check_id(self.account_id, p + '.account_id', 'acct')
         if self.symbol is not None:

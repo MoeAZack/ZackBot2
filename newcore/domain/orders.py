@@ -23,6 +23,7 @@ from __future__ import annotations
 import enum
 from decimal import Decimal
 
+from .base import tag
 from .base import (CTX, ZERO, Record, check_ascii_text, check_client_id, check_id, check_symbol, check_text, non_negative, positive, record,
                    req)
 from .account import Venue
@@ -179,7 +180,7 @@ class OrderIntent(Record):
     replaces_intent_id: str | None  # REDUCE / CLOSE cancel-replace: the CANCELLING predecessor this intent replaces
 
     def _validate(self, p):
-        p = f'{p}[{self.intent_id}]'
+        p = f'{p}[{tag(self.intent_id)}]'
         check_id(self.intent_id, p + '.intent_id', 'int')
         check_id(self.account_id, p + '.account_id', 'acct')
         check_id(self.decision_id, p + '.decision_id', 'dec')
@@ -374,7 +375,7 @@ class OrderResult(Record):
     supersedes_result_id: str | None  # PR #44 P1-b: a late executed FINAL names the not_found_corroborated it supersedes
 
     def _validate(self, p):
-        p = f'{p}[{self.result_id}]'
+        p = f'{p}[{tag(self.result_id)}]'
         check_id(self.result_id, p + '.result_id', 'res')
         check_id(self.intent_id, p + '.intent_id', 'int')
         check_id(self.account_id, p + '.account_id', 'acct')

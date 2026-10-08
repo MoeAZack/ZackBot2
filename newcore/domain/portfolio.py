@@ -22,6 +22,7 @@ from __future__ import annotations
 import enum
 from decimal import Decimal
 
+from .base import tag
 from .base import CTX, ZERO, Record, check_id, check_symbol, check_text, non_negative, positive, record, req
 from .errors import OwnershipUnknown
 from .modes import EntriesMode, HoldKind, Op, Permission, permitted
@@ -89,7 +90,7 @@ class Lot(Record):
     adds_done: int
 
     def _validate(self, p):
-        p = f'{p}[{self.lot_id}]'
+        p = f'{p}[{tag(self.lot_id)}]'
         check_id(self.lot_id, p + '.lot_id', 'lot')
         check_id(self.account_id, p + '.account_id', 'acct')
         check_symbol(self.symbol, p + '.symbol')

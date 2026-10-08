@@ -189,8 +189,6 @@ MUTATIONS = {
         "            pass")]),
     'PR44 c1: incident reference tuples unbounded': (D + 'incident.py', [(
         "    req(len(values) <= MAX_REFS, path, f'at most {MAX_REFS} references')", "    pass")]),
-    'PR44 c1: no document size cap': (D + 'codec.py', [(
-        "    if isinstance(text, (bytes, str)) and len(text) > MAX_DOCUMENT_BYTES:", "    if False:")]),
     'PR44 c2: key-shaped tokens journaled in detail': (D + 'incident.py', [(
         "    req(KEY_SHAPED.search(v) is None, path,", "    req(True, path,")]),
     'PR44 c3: errors echo whole values': (D + 'errors.py', [(
@@ -249,6 +247,15 @@ MUTATIONS = {
         "        req(True, p + '.external_trades',")]),
     'rr44 P2-b: the document cap counts characters': (D + 'codec.py', [(
         "    return len(text.encode('utf-8', 'surrogatepass'))", "    return len(text)")]),
+    'PR44 c1: no document size cap': (D + 'codec.py', [(
+        "    if isinstance(text, (bytes, str)) and _encoded_size(text) > MAX_DOCUMENT_BYTES:", "    if False:")]),
+    'cw2: errors echo short text values': (D + 'base.py', [(
+        "    if isinstance(v, (str, bytes)):\n", "    if False:\n")]),
+    'cw2: a record path echoes its raw id': (D + 'base.py', [(
+        "    return v if type(v) is str and ID_RE.fullmatch(v) is not None else show(v)", "    return v")]),
+    'cw2: an incident may cite itself as evidence': (D + 'incident.py', [(
+        "        req(self.incident_id not in self.evidence, p + '.evidence', 'an incident is never its own evidence')",
+        "        pass")]),
     'duplicate JSON keys': (D + 'codec.py', [("            if k in out:\n                problems.append(",
                                               "            if False:\n                problems.append(")]),
     'truncated JSON': (D + 'codec.py', [(

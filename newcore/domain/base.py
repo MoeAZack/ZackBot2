@@ -20,6 +20,7 @@ from __future__ import annotations
 import dataclasses
 import enum
 import functools
+import hashlib
 import re
 import types
 import typing
@@ -44,9 +45,19 @@ ID_PREFIXES = frozenset({'acct', 'pf', 'pos', 'lot', 'int', 'res', 'dec', 'rec',
 
 
 def show(v, n=40):
-    """A short, safe rendering of a value for an error message (never the whole of a huge value)."""
-    r = repr(v) if not isinstance(v, str) or len(v) <= n else f'{v[:n]!r}...<{len(v)} chars>'
-    return r if len(r) <= n + 30 else f'{r[:n]}...<{type(v).__name__}>'
+    """A safe rendering of a rejected value for an error message (PR #44, Cowork). Text is NEVER echoed - a short
+    secret pasted into the wrong field (symbol, an id, a ref) must not reach a log - only its type, length and a short
+    hash prefix (enough to correlate two errors). Other values are shown, bounded to n characters."""
+    if isinstance(v, (str, bytes)):
+        raw = v.encode('utf-8', 'surrogatepass') if isinstance(v, str) else v
+        return f'<{type(v).__name__} len={len(v)} sha256:{hashlib.sha256(raw).hexdigest()[:8]}>'
+    r = repr(v)
+    return r if len(r) <= n else f'{r[:n]}...<{type(v).__name__}>'
+
+
+def tag(v):
+    """A record's own id in an error path: shown when it is a well-formed id, otherwise summarized (show)."""
+    return v if type(v) is str and ID_RE.fullmatch(v) is not None else show(v)
 
 
 def req(cond, path, msg):
@@ -175,7 +186,7 @@ def _checker(tp, name):
     if tp is str:
         return lambda v, p: req(type(v) is str, p, f'not a str ({type(v).__name__})')
     if isinstance(tp, type) and issubclass(tp, enum.Enum):
-        return lambda v, p: req(isinstance(v, tp), p, f'{v!r} is not a {tp.__name__}')
+        return lambda v, p: req(isinstance(v, tp), p, f'{show(v)} is not a {tp.__name__}')
     if isinstance(tp, type) and issubclass(tp, Record):
         return lambda v, p: req(isinstance(v, tp), p, f'not a {tp.__name__} ({type(v).__name__})')
     raise TypeError(f'{name}: unsupported field type {tp!r}')
