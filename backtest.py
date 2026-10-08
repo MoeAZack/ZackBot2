@@ -556,7 +556,8 @@ def run(book, sleeves, start=500.0, max_lev=10.0, daily_halt=0.08, t0=None, t1=N
                     winning = sd * (c - p['avg']) > 0
                     if winning and trend_ok: ex = False                       # winners in a healthy trend are never exited by the signal
                     elif winning and RUN.get('trend_exit') and not trend_ok: ex = True
-                if ex or (m.get('max_bars') and not RUN and i - p['i'] >= m['max_bars']):
+                # AUD-07 C11: the fill candle counts as candle 1 -> time exit at the close of candle p['i'] + N - 1 (N candles held)
+                if ex or (m.get('max_bars') and not RUN and i - p['i'] + 1 >= m['max_bars']):
                     close(sl, s, p, c, 1, i, 'signal' if ex else 'time'); del sl['pos'][s]
         # ---- liquidation: cross-margin equity at every open position's adverse extreme vs maintenance margin
         if maint_margin:
