@@ -11,8 +11,8 @@ from decimal import Decimal as D
 
 from newcore.domain import (Action, Authority, Decision, DecisionRecorded, EntriesMode, Evidence,
                             ExchangeStatus, HoldKind, IntentRecorded, IntentState, IntentStateChanged, Lookup,
-                            ModeChanged, OrderIntent, OrderResult, OrderType, Purpose, ReasonCode, ResultObserved,
-                            ResultPhase, Side)
+                            ModeChanged, OrderIntent, OrderResult, OrderType, OwnerKind, Purpose, ReasonCode,
+                            ResultObserved, ResultPhase, Side)
 from newcore.ports.keys import (client_id_for, decision_key, derive_child_intent_id, derive_decision_id,
                                 derive_intent_id, derive_lot_id)
 
@@ -55,6 +55,7 @@ def planned(intent_id, decision_id, purpose, at, *, owner=None, stop=None, reaso
                        client_order_id=client_id_for(intent_id, 'classic'), purpose=purpose,
                        order_type=OrderType.STOP_MARKET if protect else OrderType.MARKET, state=IntentState.PLANNED,
                        symbol=SYMBOL, side=Side.LONG, qty=QTY, reason=reason, created_at_ms=at, owner_id=owner,
+                       owner_kind=None if owner is None else OwnerKind.LOT,
                        slot_id=slot, price=None, stop_price=stop, arm=None, alt_client_order_id=None, seen_qty=None,
                        authorized_by=None)
 
