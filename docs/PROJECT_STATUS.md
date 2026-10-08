@@ -11,7 +11,7 @@
 > Cowork's evidence scope is Linux/sandbox research and adversarial validation; Windows, native UI, installer and connected
 > testnet claims come from Claude Code/Codex Windows runs. STRAT-00 research can run beside core work without changing runtime.
 
-*Last refreshed: 2026-10-08 08:23 Cairo (Africa/Cairo) by Codex, on branch `roadmap/fable-audit2-integration`. This is the plain-language owner view. `ROADMAP.md` and `docs/reviews/` hold the detailed scope and evidence.*
+*Last refreshed: 2026-10-08 10:10 Cairo (Africa/Cairo) by Codex, on branch `contract/nc01-domain`. This is the plain-language owner view. `ROADMAP.md` and `docs/reviews/` hold the detailed scope and evidence.*
 
 ## Where we are now
 
@@ -20,12 +20,12 @@
 | Environment | **Binance Futures testnet only.** Mainnet stays impossible until the roadmap and the final release audit are complete and you approve it. |
 | Is ZackBot running? | Yes, on your PC (PAPER/testnet), build `20261007-075404`: engine and exchange OK; four positions, all protected; zero open incidents or unprotected lots. |
 | Installed application | **T05a installed and runtime-proven.** The causal trade-audit endpoint/card and bounded audit file are active without changing trading decisions. |
-| Latest accepted commit | AUD-07 golden execution gate merged on protected master at `cff3f88`. |
-| Current ticket | **Close AUD-07/C12 as reusable evidence, then NEWCORE contracts and foundation** |
-| Stage | **Accepted golden gate is closed; no new legacy product repair/cleanup cycle will run.** |
-| What Claude is doing | Finishing only reusable AUD-07/C12 contract evidence, then moving to NEWCORE work. |
-| What Cowork is doing | Freezing the reproduced recovery/order failures as adversarial NEWCORE fixtures. |
-| What Codex is reviewing | Fable Audit2 integration and the active exact-head handoffs. |
+| Latest accepted commit | Fable Audit2 NEWCORE roadmap merged on protected master at `1a24e70`; test-log isolation merged immediately before it at `5225734`. |
+| Current ticket | **NC-01 domain model/reason-code contract and AUD-08 golden expansion** |
+| Stage | **Legacy work is frozen. NC-01 contract r2 incorporates Cowork's adversarial findings and is ready for re-check; NC-02 fixtures remain evidence-only prep.** |
+| What Claude is doing | Implementing the pure NC-01 domain package locally and preparing the golden short/fault/time-contract expansion. |
+| What Cowork is doing | Attacking NC-02 recovery/HOLD matrices and the golden tier, clock and reason-code evidence. |
+| What Codex is reviewing | PR #35's final full gate and Cowork's re-check of the revised exact NC-01 contract. |
 | Your action | **None.** |
 
 ## Latest test results
