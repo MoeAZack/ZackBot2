@@ -107,3 +107,39 @@ def test_commit_evidence_defers_a_real_sigint():
         return 'done'
     assert T.commit_evidence(write, flag) == 'done' and flag.hit
     assert signal.getsignal(signal.SIGINT) is signal.default_int_handler
+
+
+# ---------------------------------------------------------------------------------------------- 6064560998 / 6064553738
+class ExitAt(FakeBinance):
+    def __init__(self, k, exc, **kw):
+        super().__init__(**kw)
+        self.k, self.exc = k, exc
+
+    def __call__(self, request):
+        if len(self.requests) == self.k:
+            self.requests.append(request)
+            raise self.exc()
+        return super().__call__(request)
+
+
+def _n_requests(env):  # noqa: F811
+    fb = FakeBinance()
+    run(env, ['--probe', 'P1'], http=fb)
+    return len(fb.requests)
+
+
+@pytest.mark.parametrize('exc', [KeyboardInterrupt, SystemExit])
+def test_an_interrupt_or_systemexit_at_every_request_is_typed_and_flat(env, exc):  # noqa: F811
+    n = _n_requests(env)
+    for k in range(n):
+        fb = ExitAt(k, exc)
+        rc, out = run(env, ['--probe', 'P1'], http=fb)
+        assert rc in (6, 8), (k, rc, out)
+        assert 'Traceback' not in out
+        assert fb.flat() and not fb.open_cids(), (k, out)
+
+
+def test_an_absorbed_interrupt_never_hides_a_more_specific_exit(env, monkeypatch):  # noqa: F811
+    once = arm(monkeypatch, C, 'rename')                       # the cassette write of a REFUSED preflight
+    rc, out = run(env, ['--probe', 'P1'], http=FakeBinance(dual=False))
+    assert once.fired and rc == 4                              # preflight refused (4) wins over the interrupt (6)
