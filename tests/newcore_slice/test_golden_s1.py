@@ -1,4 +1,4 @@
-"""The S1-expressible golden cases (origin/golden-short-mirrors @ 74a4505, copied verbatim into golden_cases/) through
+"""The S1 / S4-expressible golden cases (origin/golden-short-mirrors @ 74a4505, copied verbatim into golden_cases/) through
 the NEWCORE adapter: codes, bars and sides exactly, R / pnl to 1e-9 (goldenlib/compare.py EPS)."""
 import pytest
 
@@ -27,6 +27,20 @@ def test_lost_entry_answer_golden_resolves_by_query_into_one_lot():
     assert [(o.order_type, o.reduce) for o in venue.orders_submitted()] == [('MARKET', False), ('STOP_MARKET', True)]
     s = runner.summary()
     assert s.mode == 'hold' and s.counters['unprotected_cycles'] == 0           # HOLD until an operator resume
+
+
+S4_CASES = ('G-DAY-CAIRO-W-01', 'G-DAY-CAIRO-S-01', 'G-DAY-CAIRO-W-SHORT-01', 'G-DAY-CAIRO-S-SHORT-01')
+
+
+@pytest.mark.parametrize('case_id', S4_CASES)
+def test_s4_cairo_day_golden_case_passes_on_the_book(case_id):
+    """Two symbols, max_pos 2, the 8% Cairo-day halt keyed by the candle CLOSE (winter UTC+2 / summer UTC+3, long and
+    short): the halt of day D does not block a signal whose candle closes after Cairo midnight (AUD-07 C13d)."""
+    case = load(case_id)
+    trace, runner = run_case(case)
+    assert diff(case, trace) == []
+    assert [e.kind for e in runner.events if e.kind != 'roll'] == ['halt']
+    assert runner.summary().counters['unprotected_cycles'] == 0
 
 
 def test_unsupported_inputs_are_not_expressible():
