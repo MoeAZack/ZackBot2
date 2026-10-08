@@ -4,6 +4,7 @@ value types. No adapters, no IO, no clock, no randomness, no legacy imports; NC-
     values   port-local validators (NC-01 rules are newcore.domain's own functions)
     keys     decision_key() constructor, restart-stable decision / intent / lot / child / client ids
     journal  JournalPort, header_of(DomainEvent), Grammar G1-G10, JournalGate, consumed-signal claim
+    seed     GrammarSeed: the complete gate state of a journal prefix + its snapshot envelope (GRAMMAR_SEED.md)
     venue    VenuePort, order requests / typed outcomes, position / open-order / fill values
     bars     BarSource, Bar, closed-candle check
 """

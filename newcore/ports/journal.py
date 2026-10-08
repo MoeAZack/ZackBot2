@@ -405,13 +405,76 @@ class JournalGate:
 
     @classmethod
     def rebuild(cls, account_id, aggregate_id, events: Iterable, *, facts=None,
-                after_sequence: int = 0) -> 'JournalGate':
-        """Replay the durable journal. After compaction pass the snapshot's FactIndex and last sequence (`facts`,
-        `after_sequence`) and only the tail events: the facts are seeded, never forgotten (Codex re-review P1)."""
-        gate = cls(account_id, aggregate_id, facts=facts, after_sequence=after_sequence)
+                after_sequence: int | None = None, grammar_seed=None) -> 'JournalGate':
+        """Replay the durable journal. After compaction pass the snapshot's GrammarSeed (`grammar_seed`, ports/seed.py)
+        and only the tail events: the whole gate state of the prefix is restored (S1..S5 checked, fail closed). The
+        legacy facts-only form (`facts`, `after_sequence`) stays for the full-log + facts case; with a seed it is
+        refused (S6): the seed is the one source."""
+        if grammar_seed is not None:
+            from .seed import refuse
+            refuse(facts is None and after_sequence is None, 'S6', 'rebuild',
+                   'grammar_seed= together with facts= / after_sequence=: the seed is the one source')
+            gate = cls._from_seed(account_id, aggregate_id, grammar_seed)
+        else:
+            gate = cls(account_id, aggregate_id, facts=facts, after_sequence=after_sequence or 0)
         for ev in events:
             gate.admit(ev)
         return gate
+
+    @classmethod
+    def _from_seed(cls, account_id, aggregate_id, seed) -> 'JournalGate':
+        from .seed import check_grammar_seed
+        check_grammar_seed(seed, account_id, aggregate_id)             # S1..S5: never half-seeded
+        gate = cls(account_id, aggregate_id, facts=seed.facts, after_sequence=seed.last_sequence)
+        g = gate.grammar
+        g._events.update((d.event_id, (d.sequence, d.sha256)) for d in seed.events)
+        g._decisions.update((d.decision_id, (d.key, frozenset(d.authorized))) for d in seed.decisions)
+        for si in seed.intents:
+            it = si.intent
+            cid = it.client_order_id
+            g._intents[it.intent_id] = _Intent(it.decision_id, it.purpose, it.owner_id, cid, route_of(it.intent_id, cid),
+                                               sent=si.sent_at_ms is not None,
+                                               final=None if si.final is None else si.final.evidence,
+                                               closed=si.state if si.state in TERMINAL else None,
+                                               superseded=si.superseded)
+            g._client_ids.add(cid)
+            gate._live[it.intent_id] = [it, si.state, si.sent_at_ms, si.final]
+            if si.late_result_id is not None:
+                gate._late[it.intent_id] = si.late_result_id
+            if si.late_applied:
+                gate._late_applied.add(it.intent_id)
+        g._lineage.update(((x.owner_id, x.purpose), x.next_ordinal) for x in seed.lineage)
+        g._last_protect.update((x.owner_id, x.intent_id) for x in seed.last_protect)
+        g._lots.update(seed.lots)
+        return gate
+
+    def grammar_seed(self):
+        """The GrammarSeed of everything this gate admitted (ports/seed.py). Refused (S3) for a gate restored the
+        legacy facts-only way: its prefix event digests are unknown, so no complete seed exists."""
+        from .seed import (GRAMMAR_SEED_VERSION, GrammarSeed, SeedDecision, SeedIntent, SeedLineage, SeedProtect,
+                           check_grammar_seed, refuse)
+        from newcore.domain.ledger import EventDigest
+        g = self.grammar
+        refuse(len(g._events) == g.last_sequence, 'S3', 'grammar_seed.events',
+               'this gate does not know every event of its prefix (facts-only rebuild)')
+        seed = GrammarSeed(
+            seed_version=GRAMMAR_SEED_VERSION, account_id=g.account_id, aggregate_id=g.aggregate_id,
+            last_sequence=g.last_sequence,
+            events=tuple(EventDigest(event_id=e, sequence=s, sha256=d)
+                         for e, (s, d) in sorted(g._events.items(), key=lambda kv: kv[1][0])),
+            decisions=tuple(SeedDecision(decision_id=k, key=key, authorized=tuple(sorted(auth)))
+                            for k, (key, auth) in sorted(g._decisions.items())),
+            intents=tuple(SeedIntent(intent=it, state=state, sent_at_ms=sent, final=final,
+                                     superseded=g._intents[iid].superseded, late_result_id=self._late.get(iid),
+                                     late_applied=iid in self._late_applied)
+                          for iid, (it, state, sent, final) in sorted(self._live.items())),
+            lots=tuple(sorted(g._lots)),
+            lineage=tuple(SeedLineage(owner_id=o, purpose=u, next_ordinal=n)
+                          for (o, u), n in sorted(g._lineage.items(), key=lambda kv: (kv[0][0], kv[0][1].value))),
+            last_protect=tuple(SeedProtect(owner_id=o, intent_id=i) for o, i in sorted(g._last_protect.items())),
+            facts=self._facts.index())
+        check_grammar_seed(seed, g.account_id, g.aggregate_id)          # never export a seed rebuild would refuse
+        return seed
 
     def stage(self, event) -> StagedEvent | None:
         """Validate `event` against the gate without changing it. None = ALREADY_APPLIED (identical re-append)."""

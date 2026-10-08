@@ -23,7 +23,7 @@ def tree(name):
 
 
 def test_the_package_has_the_expected_modules():
-    assert FILES == ['__init__.py', 'bars.py', 'journal.py', 'keys.py', 'values.py', 'venue.py']
+    assert FILES == ['__init__.py', 'bars.py', 'journal.py', 'keys.py', 'seed.py', 'values.py', 'venue.py']
 
 
 @pytest.mark.parametrize('name', FILES)

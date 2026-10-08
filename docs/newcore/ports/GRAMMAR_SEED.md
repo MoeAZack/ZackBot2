@@ -1,7 +1,8 @@
 # Step-0 journal: the grammar seed (contract DRAFT for Codex review)
 
-Status: **DRAFT r2, contract only, no implementation on this branch yet.** Codex confirmed the approach on #13
-(6069341639). This file is for reviewing the CONTRACT before the code lands on `nc-ports-gate-seed`.
+Status: **r2 ACCEPTED by Codex (6070599699), IMPLEMENTED on `nc-ports-gate-seed`** (`newcore/ports/seed.py`,
+`JournalGate.grammar_seed()` / `rebuild(grammar_seed=)`). Rulings applied: all G3 digests kept in v1; the chain's
+`known_intents` is `seed.known_intents(seed)`, a projection of `SeedIntent` (no second list); snapshot binding in 4a.
 **Compaction stays DISABLED** until the parity suite below and Cowork's attack pass are green.
 
 ## 1. Problem
@@ -64,6 +65,17 @@ effect. `FactIndex` has no sequence of its own: the seed-to-facts binding is the
    `superseded` without a superseding final; `late_applied` without `late_result_id`; facts that do not contain a seeded
    final result's id.
 6. **S6** `grammar_seed=` together with `facts=` / `after_sequence=` -> refused: the seed is the one source.
+
+### 4a. Snapshot binding (Codex binding clarification)
+
+The durable unit is ONE canonical envelope `SeededSnapshot(snapshot, seed, seed_version, seed_sha256)`:
+`seal_snapshot(snapshot, seed)` returns its bytes (S3-checked, re-decoded before return). NC-02 commits those bytes as
+one record and keeps `envelope_sha256(bytes)` in what it commits (HEAD / anchor). The restart runs
+`restore_gate(account, aggregate, bytes, tail, committed_sha256=)` -> `open_snapshot` -> `rebuild(grammar_seed=)`.
+Refused (S3): missing bytes, a bare NC-01 Snapshot or a loose seed document (no envelope), bytes that are not the
+committed digest (snapshot A + seed B, a torn or never-committed write), an inner `seed_sha256` mismatch, a seed whose
+`last_sequence` / `facts` differ from the snapshot's (stale / future seed); (S1) an unsupported seed version.
+Store integration (the snapfile record carrying the envelope) is NC-02b's, and compaction stays DISABLED.
 
 ## 5. Parity (the acceptance suite; compaction stays off until it and Cowork's attacks pass)
 
