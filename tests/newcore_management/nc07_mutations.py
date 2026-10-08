@@ -21,13 +21,14 @@ M = 'newcore/management/'
 
 # name -> [(file, exact source text, replacement), ...]; each anchor must occur exactly once in its file
 MUTATIONS = {
+    # ------------------------------------------------------------------------------------- the original 13 (fbd618b)
     'break-even on a touch': [(M + 'core.py',
-        "    if plan.be_after_tp1 and w['tp1_confirmed']:",
-        "    if plan.be_after_tp1 and (w['tp1_confirmed'] or (candle is not None and w['tp1'] is not None and (\n"
+        "    if plan.be_after_tp1 and w['tp1_done']:",
+        "    if plan.be_after_tp1 and (w['tp1_done'] or (candle is not None and w['tp1'] is not None and (\n"
         "            candle.high >= w['tp1'].price if side is plan.side.LONG else candle.low <= w['tp1'].price))):")],
     'add cap removed': [
-        (M + 'core.py', "            req(CTX.add(w['add_filled'], q) <= (plan.add_qty or ZERO), p + '.qty',",
-                        "            req(True, p + '.qty',"),
+        (M + 'core.py', "            if CTX.add(w['add_filled'], q) > (plan.add_qty or ZERO):",
+                        "            if False:"),
         (M + 'core.py', "                if w['add'] is None:\n                    w['add_phase'] = AddPhase.CLOSED",
                         "                if w['add'] is None:\n                    w['add_phase'] = AddPhase.PENDING")],
     'add risk not reserved in the plan': [(M + 'plan.py',
@@ -36,8 +37,8 @@ MUTATIONS = {
         "                  if plan.add_price is not None else []))",
         "                 [(plan.entry_qty, plan.entry_price)])")],
     'tp1 split rounds up': [(M + 'core.py',
-        "                q = plan.rules.quantize_qty(CTX.multiply(plan.tp1_frac, live), Rounding.DOWN)",
-        "                q = plan.rules.quantize_qty(CTX.multiply(plan.tp1_frac, live), Rounding.UP)")],
+        "                    q1 = plan.rules.quantize_qty(CTX.multiply(plan.tp1_frac, live), Rounding.DOWN)",
+        "                    q1 = plan.rules.quantize_qty(CTX.multiply(plan.tp1_frac, live), Rounding.UP)")],
     'add size rounds up': [
         (M + 'plan.py', "            req(self.add_qty == r.quantize_qty(CTX.multiply(self.add_scale, self.entry_qty), Rounding.DOWN),",
                         "            req(self.add_qty == r.quantize_qty(CTX.multiply(self.add_scale, self.entry_qty), Rounding.UP),"),
@@ -50,8 +51,8 @@ MUTATIONS = {
         "    return Order(price=price, qty=w['qty'])",
         "    return Order(price=price, qty=w['stop'].qty if w['stop'] is not None else w['qty'])")],
     'add kept after TP1': [(M + 'core.py',
-        "    want_add = (plan.has_add and w['add_phase'] is not AddPhase.CLOSED and not w['tp1_confirmed']",
-        "    want_add = (plan.has_add and w['add_phase'] is not AddPhase.CLOSED")],
+        "        want_add = (plan.has_add and w['add_phase'] is not AddPhase.CLOSED and not w['tp1_confirmed']",
+        "        want_add = (plan.has_add and w['add_phase'] is not AddPhase.CLOSED")],
     'gap fills at the level': [(M + 'sim.py',
         "            hit = next(((g, x) for g in PRIORITY for leg, p, falls in lv",
         "            hit = next(((g, p) for g in PRIORITY for leg, p, falls in lv")],
@@ -59,13 +60,42 @@ MUTATIONS = {
         '    blocked = st.stop is not None and candle.low <= st.stop.price <= candle.high',
         '    blocked = False')],
     'time exit off by one': [(M + 'core.py',
-        '            if (candle.open_ms - plan.entry_candle_open_ms) // plan.tf_ms + 1 >= plan.time_exit_candles:',
-        '            if (candle.open_ms - plan.entry_candle_open_ms) // plan.tf_ms >= plan.time_exit_candles:')],
+        '                if (candle.open_ms - plan.entry_candle_open_ms) // plan.tf_ms + 1 >= plan.time_exit_candles:',
+        '                if (candle.open_ms - plan.entry_candle_open_ms) // plan.tf_ms >= plan.time_exit_candles:')],
     'cost veto disabled': [(M + 'plan.py', '    ok = cost <= CTX.multiply(max_cost_r, dist)', '    ok = True')],
     'late add kept open': [(M + 'core.py',
         "                flags['flatten'] = CTX.add(flags['flatten'], q)",
         "                pass")],
+    # ------------------------------------------------------------------- Cowork's attack + Codex rulings (f668951)
+    'cap not re-checked on the actual add fill': [(M + 'core.py',
+        "            over = _excess_risk(plan, w, des_stop, CTX.subtract(live, cut)) if flags['added'] else ZERO",
+        "            over = ZERO")],
+    'racing add re-opens after a terminal stop': [(M + 'core.py',
+        "    exiting = flags['terminal'] and w['qty'] > 0",
+        "    exiting = False")],
+    'duplicate fill applied twice': [(M + 'core.py',
+        "        if ev.fill_id in seen:\n",
+        "        if False:\n")],
+    'fill on an unrequested / retired leg accepted': [(M + 'core.py',
+        "    if not (0 < q <= left):\n        raise ManagementError(p, f'a {leg} fill of {q} on a leg with no outstanding",
+        "    if False:\n        raise ManagementError(p, f'a {leg} fill of {q} on a leg with no outstanding")],
+    'targets not venue-feasible': [(M + 'core.py',
+        "    return q >= r.min_qty and CTX.multiply(q, px) >= r.min_notional",
+        "    return True")],
+    'break-even on a partial TP1': [(M + 'core.py',
+        "    if w['tp1_confirmed'] and w['tp1'] is None and _racing(w, Leg.TP1) == 0:",
+        "    if w['tp1_confirmed']:")],
+    'break-even at the raw average': [(M + 'core.py',
+        "        be = _net_break_even(plan, w, avg)",
+        "        be = rules.quantize_price(avg, toward_profit(side))")],
+    'retained TP1 left on the loss side': [(M + 'core.py',
+        "                    if CTX.multiply(s, CTX.subtract(w['tp1'].price, avg)) > 0:",
+        "                    if True:")],
+    'negative / non-canonical zero pnl': [(M + 'core.py',
+        "    return _canonical_zero(CTX.subtract(CTX.subtract(gross, state.fees), state.funding))",
+        "    return CTX.subtract(CTX.subtract(gross, state.fees), state.funding)")],
 }
+
 
 
 def export_head(dst):
