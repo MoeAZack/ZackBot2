@@ -94,8 +94,9 @@ ALGO_FALLBACK_CODES = (-4120, -1116, -1102, -4136)   # newcore.venue.errors (tra
 SECURE_ROUNDS = 2                     # per lot per cycle: stop attempt, then (if refused) one reduce-only close
 EMERGENCY_GENERATIONS = 16            # hard HOLD: cover generations per (symbol, side, gap size)
 ESCALATE_AFTER = 2                    # cycles with an unconfirmed stop before the reduce-only close (Cowork NEW-4)
-LOST_ENTRY_LOOKBACK = 3               # (superseded by GUARD_ENTRY_LOOKBACK for the search: Cowork NEW A)
+LOST_ENTRY_LOOKBACK = 3               # the lost-entry search after the boot search (mid-run mismatches)
 GUARD_ENTRY_LOOKBACK = 60             # the guard (no journal): candles back an own entry is proven by its client id
+BAR_PAGE = 1500                       # the BarSource port's per-read limit (Binance klines max)
 MAX_LOST_TAIL_CANDLES = 2000          # runtime lost-tail search: hard bound (4h: ~333 days)
 GUARD_CHILDREN = 32                   # the guard: lineage ordinals per purpose probed for our own exits / adds
 GUARD_CHILD_MISSES = 4                # ... until this many consecutive unknown ordinals (unsent ones leave gaps)
@@ -277,6 +278,7 @@ class Runner:
         last = journal.last_sequence()                                    # the journal's last DURABLE state at boot
         tail = tuple(journal.read(after_sequence=last - 1)) if last else ()
         self._boot_last_at = tail[-1].at_ms if tail else None             # anchors the lost-tail search (NEW A)
+        self._deep_search_done = False                                    # ... until one boot search completed
         self.guard = False                                                # app guard: no trusted journal at all
         self.degraded = {}                                                # (symbol, side) -> degraded protection
         self._listed = None                                               # this sync's listed client ids (LOW-6)
@@ -697,11 +699,12 @@ class Runner:
                 misses = 0 if hit else misses + 1
                 if misses >= GUARD_CHILD_MISSES:                          # past the lineage (gaps: unsent ordinals)
                     break
-        for c in range(key.candle_close_ms + self.cfg.tf_ms, self.now + 1, self.cfg.tf_ms):
-            r = self.bars.closed_bars(p.symbol, self.cfg.tf_ms, as_of_ms=c, limit=self.signals.window)
-            if r.kind is not ReadKind.OK or not r.value or r.value[-1].close_ms != c:
-                continue
-            for s in self.signals.decide(p.symbol, r.value, c):
+        span = (self.now - key.candle_close_ms) // self.cfg.tf_ms - 1     # the candles after the entry's
+        wins = self._signal_windows(p.symbol, self.now, min(span, MAX_LOST_TAIL_CANDLES))
+        if wins is None:
+            return None, 'bars unreadable (strategy closes since the entry)'
+        for c, win in wins:
+            for s in self.signals.decide(p.symbol, win, c):
                 if s.action == CLOSE and s.side == p.side:
                     ck = ids.derive_intent_id(self.acct, self._key(p.symbol, s, Purpose.CLOSE))
                     q = self.venue.query(OrderRef(symbol=p.symbol, client_id=ids.client_id_for(ck, 'classic')))
@@ -743,6 +746,34 @@ class Runner:
                 break
         return False
 
+    def _signal_windows(self, symbol, newest_ms, n):
+        """Cowork 6066645198 (request cost): the strategy's input window at each of the n + 1 candles newest_ms,
+        newest_ms - tf, ... from ONE bars read (limit n + window; a BarSource pages it under its own request bound),
+        evaluated locally - never one klines read per candle. Newest first: [(close_ms, bars ending there)]; None when
+        the read is not OK. A candle missing from the series is skipped (as a per-candle read would have)."""
+        if n < 0:
+            return []
+        w, tf = self.signals.window, self.cfg.tf_ms
+        need, bars, as_of = n + w, [], newest_ms
+        while len(bars) < need:                                           # pages of <= BAR_PAGE, newest first:
+            r = self.bars.closed_bars(symbol, tf, as_of_ms=as_of,           # ceil((n + window) / 1500) reads
+                                      limit=min(BAR_PAGE, need - len(bars)))
+            if r.kind is not ReadKind.OK:
+                return None
+            page = [b for b in r.value if b.close_ms <= as_of]
+            bars = page + bars
+            if len(page) < min(BAR_PAGE, need - len(bars) + len(page)) or not page:
+                break                                                     # the series starts here
+            as_of = page[0].close_ms - tf
+        lo, out = newest_ms - n * tf, []
+        for i in range(len(bars) - 1, -1, -1):
+            c = bars[i].close_ms
+            if c < lo:
+                break
+            if c <= newest_ms:
+                out.append((c, bars[max(0, i - w + 1):i + 1]))
+        return out
+
     def _guard_proven_entry(self, p):
         """The guard (no trusted journal, Codex tail-loss contract): the LATEST own ENTRY of this side the venue
         confirms FINAL + executed by its deterministic client id - the strategy's own ENTER signals of the last
@@ -752,12 +783,8 @@ class Runner:
         SURVIVES (Codex P1-1)."""
         if p.symbol not in self.cfg.rules or p.side not in self.cfg.sides or self.now is None:
             return None
-        for k in range(GUARD_ENTRY_LOOKBACK + 1):
-            c = self.now - k * self.cfg.tf_ms
-            r = self.bars.closed_bars(p.symbol, self.cfg.tf_ms, as_of_ms=c, limit=self.signals.window)
-            if r.kind is not ReadKind.OK or not r.value or r.value[-1].close_ms != c:
-                continue
-            for s in self.signals.decide(p.symbol, r.value, c):
+        for c, win in self._signal_windows(p.symbol, self.now, GUARD_ENTRY_LOOKBACK) or ():
+            for s in self.signals.decide(p.symbol, win, c):
                 if s.action != ENTER or s.side != p.side or not s.stop_distance:
                     continue
                 iid = ids.derive_intent_id(self.acct, self._key(p.symbol, s, Purpose.ENTRY))
@@ -1090,6 +1117,7 @@ class Runner:
         pos = self.venue.positions()
         if pos.kind is not ReadKind.OK:
             return
+        complete = True
         owned = {}
         for x in self.fold.open_lots():
             owned[(x.symbol, x.side)] = owned.get((x.symbol, x.side), ZERO) + x.qty
@@ -1097,19 +1125,28 @@ class Runner:
             if p.symbol not in self.cfg.symbols or p.side not in self.cfg.sides or \
                     p.qty <= owned.get((p.symbol, p.side), ZERO) or self.fold.live_entries(p.symbol, p.side):
                 continue
-            for k in range(self._lost_tail_candles() + 1):                # Cowork NEW A: back to the last
-                c = self.now - k * self.cfg.tf_ms                         # durable state (at least the guard's)
+            wins = self._signal_windows(p.symbol, self.now, self._lost_tail_candles())
+            if wins is None:
+                complete = False                                          # retried; the deep search stays armed
+                continue
+            for c, win in wins:                                           # newest first (Cowork NEW A)
                 if (p.symbol, p.side, c) in self._lost_checked:
                     continue
                 self._lost_checked.add((p.symbol, p.side, c))
-                if self._recover_entry_at(p.symbol, p.side, c):
+                if self._recover_entry_at(p.symbol, p.side, c, win):
                     break
+        if complete:
+            self._deep_search_done = True                                 # later mismatches: the shallow search
 
     def _lost_tail_candles(self):
         """How far back a lost entry can be (Cowork NEW A, beyond 60): a lost tail is a SUFFIX of the journal, so an entry
         whose every record was lost was decided after the journal's last durable event at boot. The search reaches that
         event's candle (+1 candle margin), at least GUARD_ENTRY_LOOKBACK, at most MAX_LOST_TAIL_CANDLES (beyond: an
-        incident; the untracked-position HOLD stays for the owner). Bounded by the lost tail, not by wall-clock time."""
+        incident; the untracked-position HOLD stays for the owner). Bounded by the lost tail, not by wall-clock time.
+        Only until ONE boot search completed (Cowork 6066645198): later position mismatches (a manual position after
+        hours of uptime) search LOST_ENTRY_LOOKBACK candles only - a tail is lost at a restart, never mid-run."""
+        if self._deep_search_done:
+            return LOST_ENTRY_LOOKBACK                                    # mid-run (a foreign position...): shallow
         if self._boot_last_at is None or self.now is None:
             return GUARD_ENTRY_LOOKBACK
         n = max(GUARD_ENTRY_LOOKBACK, -(-(self.now - self._boot_last_at) // self.cfg.tf_ms) + 1)
@@ -1119,11 +1156,8 @@ class Runner:
             n = MAX_LOST_TAIL_CANDLES
         return n
 
-    def _recover_entry_at(self, symbol, side, close_ms):
-        r = self.bars.closed_bars(symbol, self.cfg.tf_ms, as_of_ms=close_ms, limit=self.signals.window)
-        if r.kind is not ReadKind.OK or not r.value or r.value[-1].close_ms != close_ms:
-            return False
-        for s in self.signals.decide(symbol, r.value, close_ms):
+    def _recover_entry_at(self, symbol, side, close_ms, bars):
+        for s in self.signals.decide(symbol, bars, close_ms):
             if s.action != ENTER or s.side != side:
                 continue
             key = self._key(symbol, s, Purpose.ENTRY)
