@@ -21,6 +21,7 @@ from decimal import Decimal
 
 from newcore.adapters import CsvBarSource, FakeVenue, MemoryJournal
 from newcore.domain import Capability, Environment, InstrumentId, InstrumentRules, Venue
+from newcore.ports import venue as P
 from newcore.ports.bars import Bar
 from newcore.runner.testnet_hook import AccountReadsShim
 from newcore.venue.tnet import PreflightResult, tnet_cleanup, tnet_preflight
@@ -120,6 +121,25 @@ class FakeTarget:
         return tnet_cleanup(self.raw, symbols, run_id=run_id, baseline=baseline)
 
 
+class MarkedReads:
+    """The Runner's account reads plus `mark_price(symbol)` in the shape Runner._current_mark reads (value[0] = the
+    Decimal mark): TestnetAccountReader.mark_price answers MarkQuote rows, and AccountReadsShim (nc-s1-slice) does
+    not expose a mark at all, so without this the F3 / guard fallback had no mark on testnet."""
+
+    def __init__(self, shim, reader):
+        self._shim, self._reader = shim, reader
+
+    def __getattr__(self, name):
+        return getattr(self._shim, name)
+
+    def mark_price(self, symbol):
+        import dataclasses
+        r = self._reader.mark_price(symbol)
+        if r.kind is not P.ReadKind.OK:
+            return r
+        return dataclasses.replace(r, value=tuple(q.price for q in r.value))
+
+
 def check_settle_ms(v):
     if type(v) is not int or not 0 <= v <= MAX_SETTLE_MS:
         raise ValueError(f'settle_ms must be an int in 0..{MAX_SETTLE_MS}')
@@ -148,7 +168,7 @@ class TestnetTarget:
         self.bars, self.clock = parts['bars'], parts['clock']
         self.instrument_rules = parts['instrument_rules']
         self.binding_digest = parts.get('binding_digest')
-        self.reads = AccountReadsShim(self.reader)
+        self.reads = MarkedReads(AccountReadsShim(self.reader), self.reader)
         self.raw = self.venue
         self.sleep, self.settle_ms, self.default_settle_ms = sleep, settle_ms, settle_ms
 

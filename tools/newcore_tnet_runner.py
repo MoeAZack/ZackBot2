@@ -146,7 +146,8 @@ def _plan(args, specs):
 
 
 def _print(r, out, verbose):
-    out.write(f'{r.verdict:<12} {r.id:<18} {r.name}' + (f'  ({r.error})' if r.error else '') + '\n')
+    out.write(f'{r.verdict:<12} {r.id:<18} {r.name}' + (f'  ({r.error})' if r.error else '')
+              + (' degraded=' + ','.join(f'{k}:{v}' for k, v in r.degraded.items()) if r.degraded else '') + '\n')
     for name, ok, detail in r.assertions:
         if verbose or not ok:
             out.write(f'    [{"x" if ok else " "}] {name}: {detail}\n')

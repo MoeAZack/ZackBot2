@@ -91,6 +91,7 @@ class ScenarioResult:
     wall_s: float = 0.0
     interrupted: bool = False                              # Ctrl+C / SystemExit (N2)
     attempts: int = 1                                      # bracket scenarios: runs until observed (spec attempts)
+    degraded: dict = field(default_factory=dict)           # 'SYMBOL:SIDE' -> how (Runner F3 / guard degraded protection)
     cycle_times: list = field(default_factory=list)        # the candle closes the Runner cycled at (replay tape)
     cassette: str | None = None                            # testnet: the sanitized cassette of this scenario
 
@@ -103,7 +104,8 @@ class ScenarioResult:
                 'assertions': [{'name': n, 'ok': ok, 'detail': d} for n, ok, d in self.assertions],
                 'counters': self.counters, 'orders': self.orders, 'ledger': self.ledger, 'injected': self.injected,
                 'final_truth': self.final_truth, 'cleanup': self.cleanup, 'trades': self.trades, 'error': self.error,
-                'wall_s': round(self.wall_s, 3), 'cycle_times': list(self.cycle_times), 'cassette': self.cassette}
+                'wall_s': round(self.wall_s, 3), 'cycle_times': list(self.cycle_times), 'cassette': self.cassette,
+                'degraded': dict(self.degraded)}
 
 
 class _Run:
@@ -378,6 +380,7 @@ def run_scenario(spec, target, *, run_nonce, monotonic=time.monotonic, baseline=
     if run.runner is not None:
         res.counters = {k: v for k, v in vars(run.runner.counters).items()}
         res.orders = _orders(run.runner)
+        res.degraded = {f'{s}:{sd}': how for (s, sd), how in sorted(getattr(run.runner, 'degraded', {}).items())}
         res.trades = [{'side': t.side, 'exit_code': t.exit_code, 'entry': str(t.entry_price), 'exit': str(t.exit_price),
                        'qty': str(t.qty), 'fees': str(t.fees), 'pnl': str(t.pnl), 'r': str(t.r)}
                       for t in _safe_trades(run.runner)]
