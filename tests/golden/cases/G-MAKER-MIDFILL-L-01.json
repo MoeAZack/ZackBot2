@@ -1,0 +1,111 @@
+{
+  "schema": "zb-golden/1",
+  "id": "G-MAKER-MIDFILL-L-01",
+  "title": "A maker limit filled inside a candle sees only the path after its first touch: no target from the up-leg before the fill",
+  "behaviours": [
+    "maker_entry",
+    "intrabar_path",
+    "time_exit"
+  ],
+  "side": "long",
+  "tf": "4h",
+  "clock": {
+    "start": "2024-01-01T00:00:00Z",
+    "entry_cycle_delay_s": 15
+  },
+  "costs": {
+    "model": "legacy",
+    "taker_fee": "0.0005",
+    "slip": "0.0002",
+    "funding_per_bar": "0"
+  },
+  "account": {
+    "equity": "500",
+    "max_leverage": 10,
+    "sizing": "legacy_replay"
+  },
+  "market": {
+    "SOLUSDT": {
+      "base": {
+        "kind": "flat",
+        "px": "100",
+        "wick": "0.5",
+        "n": 300
+      },
+      "bars": {
+        "280": [
+          "101",
+          "106",
+          "99.5",
+          "99.8"
+        ]
+      },
+      "atr": {
+        "kind": "computed"
+      }
+    }
+  },
+  "path_policy": "zb-path/1",
+  "slot": {
+    "id": "S1",
+    "sides": "long",
+    "risk": "0.02",
+    "share": "1",
+    "max_pos": 1,
+    "entry": {
+      "type": "maker",
+      "fallback": "market"
+    },
+    "stop": {
+      "atr": "2"
+    },
+    "target": {
+      "r": "1"
+    },
+    "time_exit": {
+      "bars": 2
+    }
+  },
+  "signals": [
+    {
+      "bar": 279,
+      "sym": "SOLUSDT",
+      "kind": "enter_long"
+    }
+  ],
+  "faults": [],
+  "expect": {
+    "trades": [
+      {
+        "sym": "SOLUSDT",
+        "side": "LONG",
+        "i_in": 280,
+        "i_out": 281,
+        "exit": "TIME_EXIT",
+        "R": "-0.14492501",
+        "pnl": "-1.4492501"
+      }
+    ]
+  },
+  "applies_to": {
+    "legacy_engine": {
+      "status": "not_applicable",
+      "reason": "maker entries are backtest-only here: the engine adapter raises NotExpressible (the live engine posts at bid/ask for MAKER_WAIT_S and then falls back to market; that calibration is BT-08, not replayed)"
+    },
+    "legacy_backtest": "required",
+    "newcore_sim": {
+      "status": "pending_adapter",
+      "reason": "NEWCORE NC-07/NC-08 adapter not built yet"
+    },
+    "newcore_live_sim": {
+      "status": "pending_adapter",
+      "reason": "NEWCORE NC-08 live-sim adapter not built yet"
+    }
+  },
+  "known_divergences": [],
+  "provenance": {
+    "created_at_sha": "7d35299",
+    "author": "AUD-07 C12 (Claude)",
+    "notes": "AUD-07 C12 corrected rule: a fill inside a candle sees only the declared path (zb-path/1) after the first touch of the fill price. Limit = signal close 100. Candle 280 is red (101, 106, 99.5, 99.8): path open -> high -> low -> close, so 100 is first touched on the high -> low leg AFTER the high. Fill 100 (maker fee 0.0002), ATR 1, R 2: stop 98, target 102. Remainder of 280 after the fill: 100 -> 99.5 -> 99.8 (no stop, no target). Candle 281 flat at 99.8 (wick 0.5: 99.3..100.3). Time exit (N = 2) at the close of 281: 99.8 x 0.9998 = 99.78004. qty 10 / 2 = 5; pnl = 5 x (99.78004 - 100) - 5 x 100 x 0.0002 - 5 x 99.78004 x 0.0005 = -1.0998 - 0.1 - 0.2494501 = -1.4492501; R = -1.4492501 / 10. Before C12 the backtest walked 280 from its open and booked the target 102 on the up-leg BEFORE the limit could fill (TP_FULL at 280). Maker fill rate / price are uncalibrated against live fills (BT-08)."
+  }
+}

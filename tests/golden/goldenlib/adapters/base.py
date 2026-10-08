@@ -43,8 +43,14 @@ def _num(x):
     return int(v) if v.is_integer() else v
 
 
-def legacy_slot(case):
-    """Neutral slot -> (carrier key, mgmt dict, extras dict) for both legacy models."""
+MAKER_FALLBACK = {'market': True, 'none': False}
+
+
+def legacy_slot(case, maker=False):
+    """Neutral slot -> (carrier key, mgmt dict, extras dict) for both legacy models.
+    maker: the caller models AUD-07 C12 maker entries (only the backtester: limit at the signal close, filled on the candle
+    path after its first touch). Then entry {type: maker, fallback: market|none} gives extras entry_order / maker_fallback
+    (backtest.run options, not sleeve keys); every other caller gets NotExpressible."""
     sl = case['slot']
     mg = {}
     for (blk, k), leg in MGMT_MAP.items():
@@ -74,8 +80,13 @@ def legacy_slot(case):
     ent = sl.get('entry') or {'type': 'market'}
     if ent['type'] == 'trail':
         extras['trail_entry'] = {'dev_atr': _num(ent['dev_atr']), 'max_bars': _num(ent['max_bars'])}
+    elif ent['type'] == 'maker' and maker:
+        if set(ent) != {'type', 'fallback'} or ent['fallback'] not in MAKER_FALLBACK:
+            raise NotExpressible(f'slot.entry: a maker entry gives exactly type and fallback ({sorted(MAKER_FALLBACK)}), got {ent}')
+        extras['entry_order'] = 'maker'; extras['maker_fallback'] = MAKER_FALLBACK[ent['fallback']]
     elif ent['type'] != 'market':
-        raise NotExpressible(f"slot.entry.type {ent['type']!r}: maker entries need the C12 fill-point model (not in v1)")
+        raise NotExpressible(f"slot.entry.type {ent['type']!r}: maker entries need the C12 fill-point model (backtester only; "
+                             "the live engine's bid/ask post + 40 s market fallback is not replayed)")
     return key, mg, extras
 
 

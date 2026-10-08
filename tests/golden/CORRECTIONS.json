@@ -285,6 +285,27 @@
       "accepted_by": null,
       "date_cairo": "2026-10-08",
       "prev_entry_sha": "e8574cc374c30ebf7ab068742c4c018f8bf1a608279ed54328bcd94bc720ee2a"
+    },
+    {
+      "id": "CORR-0010",
+      "type": "add",
+      "ticket": "AUD-07 C12",
+      "finding": "C12",
+      "title": "C12: a maker limit filled inside a candle sees only the path after its first touch",
+      "cases": {
+        "G-MAKER-MIDFILL-L-01": {
+          "prev_contract_sha": null,
+          "contract_sha": "ff31d8791a122ce78214891b79766a0e09cf5907f8e9cc65b1c1141c75114d38"
+        }
+      },
+      "adapters_changed": [
+        "legacy_backtest (models slot.entry {type: maker, fallback}: backtest.run entry_order / maker_fallback)"
+      ],
+      "rationale": "backtest.py filled a maker entry at the previous close and then walked the whole fill candle from its open, so a target or stop could be booked from price movement before the limit could fill (+0.95 R TP in the repro while the honest result is still open at about -0.10 R). Corrected rule: the fill candle is walked only on the zb-path/1 remainder after the first touch of the limit. Backtest-only: the engine adapter cannot express maker entries (live posts at bid/ask for 40 s then falls back to market; calibration is BT-08), so legacy_engine is not_applicable with that reason. Maker results are labelled uncalibrated.",
+      "evidence": "branch aud-07-c12 (from aud-07-product-r2 7d35299); reverting the C12 backtest.py lines turns this case into TP_FULL at 280 (mutation check in the build report); tests/test_aud07_c12_maker.py",
+      "accepted_by": null,
+      "date_cairo": "2026-10-08",
+      "prev_entry_sha": "eb1ab184e1673bc62f7c7ac05e273f7893200b77c76dd2f9bba077c45760288a"
     }
   ]
 }

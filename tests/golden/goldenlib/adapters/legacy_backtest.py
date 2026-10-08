@@ -17,7 +17,8 @@ class LegacyBacktest:
         from . import CAPS
         check_costs(case, funding=CAPS[self.name]['funding'])
         raw = market.build(case)
-        key, mg, extras = legacy_slot(case)
+        key, mg, extras = legacy_slot(case, maker=True)
+        run_opts = {k: extras.pop(k) for k in ('entry_order', 'maker_fallback') if k in extras}   # AUD-07 C12: run options
         syms = symbols(case)
         sig = market.signal_arrays(case, raw)
         bk = B.Book(raw)
@@ -30,7 +31,7 @@ class LegacyBacktest:
         fpb = float((case.get('costs') or {}).get('funding_per_bar', 0))
         acct = case['account']
         tr, cv = B.run(bk, cfg, start=float(acct['equity']), max_lev=float(acct.get('max_leverage', 10)),
-                       t0=raw[syms[0]].t[T0 + 1], fund_per_bar=fpb * tf / 14400)
+                       t0=raw[syms[0]].t[T0 + 1], fund_per_bar=fpb * tf / 14400, **run_opts)
         trades = []
         for r in tr.to_dict('records') if len(tr) else []:
             why = r['why']
