@@ -158,8 +158,8 @@ SNAPREF_KEYS = frozenset({'generation', 'name', 'sha256', 'len'})
 HEAD_KEYS = frozenset({'account_id', 'binding_digest', 'commit_seq', 'format', 'format_version', 'min_reader_version',
                        'generation', 'snapshot', 'retained', 'quarantined', 'retired', 'high_water', 'writer_history',
                        'open_incidents', 'written_ms'})
-ANCHOR_KEYS = frozenset({'account_id', 'binding_digest', 'commit_seq', 'format', 'format_version', 'min_reader_version',
-                         'generation', 'writer_seq', 'hard_hold', 'written_ms'})
+ANCHOR_KEYS = frozenset({'account_id', 'binding_digest', 'commit_seq', 'head_commit', 'format', 'format_version',
+                         'min_reader_version', 'generation', 'writer_seq', 'hard_hold', 'written_ms'})
 
 
 def _snapref(d):
@@ -196,7 +196,7 @@ def validate_head(doc):
 
 def validate_anchor(doc):
     req(set(doc) == ANCHOR_KEYS and doc['format'] == FORMAT_ANCHOR, 'anchor keys')
-    req(is_count(doc['commit_seq']) and doc['commit_seq'] >= 1 and is_count(doc['generation'])
+    req(is_count(doc['commit_seq']) and doc['commit_seq'] >= 1 and is_count(doc['head_commit']) and is_count(doc['generation'])
         and is_count(doc['writer_seq']) and is_count(doc['written_ms']) and type(doc['hard_hold']) is bool,
         'anchor fields')
     req(type(doc['binding_digest']) is str and type(doc['account_id']) is str, 'anchor identity')

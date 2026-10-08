@@ -55,6 +55,29 @@ MUTATIONS = {
     'gate bypassed on append': (S + 'fold.py', [(
         '        staged = _seq_typed(lambda: self.gate.stage(ev))\n',
         "        staged = type('B', (), {'event': ev, 'commit': lambda self: None})()\n")]),
+    'complete-length bad frame treated as a tail (finding 1, Codex ruling)': (S + 'frame.py', [(
+        "        return False, 'a complete-length record fails its check'\n",
+        "        return True, 'a complete-length record fails its check'\n")]),
+    'corrupted length of a complete record treated as a tail (finding 1)': (S + 'frame.py', [(
+        "        return False, 'a complete record with a corrupted length field'\n",
+        "        return True, 'a complete record with a corrupted length field'\n")]),
+    'header segment mismatch not stopped and no exception net (finding 2)': (S + 'recovery.py', [(
+        "            raise _Out(Verdict.DAMAGED, damage + [Finding('foreign', names[m], 8,\n",
+        "            damage.append(Finding('foreign', names[m], 8,\n"), (
+        "                                                          'the journal names another account / aggregate / "
+        "segment')])\n",
+        "                                                          'the journal names another account / aggregate / "
+        "segment'))\n"), (
+        "    except (IndexError, KeyError, TypeError, ValueError, AttributeError, OverflowError) as ex:\n",
+        "    except ZeroDivisionError as ex:\n")]),
+    'no writer lock (finding 3)': (S + 'journal.py', [(
+        "    lock = fs.lock_exclusive(os.path.join(journal_dir, LOCK_NAME))\n    if lock is None:\n",
+        "    lock = fs.lock_exclusive(os.path.join(journal_dir, LOCK_NAME))\n    if False:\n")]),
+    'no size fence before an append (finding 3)': (S + 'journal.py', [(
+        '        if size != self._seg_len:                                 # Cowork finding 3: someone else wrote here\n',
+        '        if False:\n')]),
+    'non-canonical header accepted (finding 5)': (S + 'header.py', [(
+        '    if payload is not None and canonical_json(doc) != payload:\n', '    if False:\n')]),
     'sent intent classified as never sent': (S + 'fold.py', [('            elif sent is None:\n',
                                                               '            elif True:\n')]),
 }
@@ -68,6 +91,23 @@ def export_head(dst):
                            *root_py], capture_output=True, check=True).stdout
     with tarfile.open(fileobj=io.BytesIO(blob)) as tar:
         tar.extractall(dst, filter='data')
+    _shim_step0_builder(dst)
+
+
+def _shim_step0_builder(dst):
+    """In the TEMP export only: until step 0's tests/newcore_ports/nc_events.py adopts NC-01 440bfbd's required
+    OrderIntent.owner_kind, give its builder the field so the shared contract suite can run. The repo is not touched."""
+    p = os.path.join(dst, 'tests', 'newcore_ports', 'nc_events.py')
+    with open(p, encoding='utf-8') as fh:
+        src = fh.read()
+    if 'owner_kind' in src:
+        return
+    old = 'created_at_ms=at, owner_id=owner,'
+    new = ("created_at_ms=at, owner_id=owner, owner_kind=None if owner is None else __import__('newcore.domain', "
+           "fromlist=['OwnerKind']).OwnerKind('entry_intent' if owner in self.intents else 'lot'),")
+    if src.count(old) == 1:
+        with open(p, 'w', encoding='utf-8') as fh:
+            fh.write(src.replace(old, new))
 
 
 def run_suite(cwd):

@@ -117,8 +117,8 @@ def test_segment_create_fsyncs_file_then_directory():
     fs = MemFs(os.path.dirname(ACCT_DIR))
     f = FaultFs(fs)
     create_journal(ACCT_DIR, ACCOUNT_ID, AGGREGATE_ID, fs=f)
-    assert [op for _, op, _ in f.trace] == ['mkdir', 'fsync_dir', 'mkdir', 'fsync_dir', 'open_new', 'write', 'fsync',
-                                           'fsync_dir', 'open_append']
+    assert [op for _, op, _ in f.trace] == ['mkdir', 'fsync_dir', 'mkdir', 'fsync_dir', 'lock', 'open_new', 'write',
+                                           'fsync', 'fsync_dir', 'open_append']
 
 
 def test_create_refuses_an_existing_journal_and_bad_ids():
@@ -165,7 +165,7 @@ def test_real_file_system_round_trip(tmp_path):
     assert r2.verdict is Verdict.CLEAN and r2.journal.read() == tuple(SCENARIO)
     r2.journal.close()
     assert tree(str(tmp_path)) == before                       # a clean recovery writes nothing
-    assert sorted(os.listdir(os.path.join(acct, 'journal'))) == ['seg-000001.seg']
+    assert sorted(os.listdir(os.path.join(acct, 'journal'))) == ['.lock', 'seg-000001.seg']
 
 
 def test_closed_journal_refuses_appends_as_unavailable():

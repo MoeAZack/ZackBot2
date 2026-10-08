@@ -217,7 +217,7 @@ class AccountStore:
             fs.mark('C-S3')
             fs.fsync_dir(paths.snap)
             ref = {'generation': g, 'name': name, 'sha256': sf.sha256, 'len': sf.length}
-            head = self._next_head(ref, now_ms, quarantine)
+            head = self._next_head(ref, now_ms, quarantine, account)
             step = 'HEAD commit'
             fs.mark('C-S6')
             write_slot(fs, paths.account, 'HEAD', self._head_target(), KIND_HEAD, head)      # |commit|
@@ -235,7 +235,7 @@ class AccountStore:
     def _head_target(self):
         return 'a' if self.head_slot is None else ('b' if self.head_slot == 'a' else 'a')
 
-    def _next_head(self, ref, now_ms, quarantine):
+    def _next_head(self, ref, now_ms, quarantine, account):
         old = self.head
         retained = []
         if old is not None and old['snapshot']['name'] not in {q['name'] for q in quarantine}:
@@ -251,7 +251,7 @@ class AccountStore:
             hist.append({'writer_seq': self.reader.writer_seq, 'from_commit': commit_seq})
         hw_gen = max(ref['generation'], old['high_water']['generation'] if old else 0)
         hw_seq = max(self.reader.writer_seq, old['high_water']['writer_seq'] if old else 0)
-        return {'account_id': self.account_id, 'binding_digest': self.account.binding.key_digest,
+        return {'account_id': self.account_id, 'binding_digest': account.binding.key_digest,
                 'commit_seq': commit_seq, 'format': FORMAT_HEAD, 'format_version': STORE_FORMAT,
                 'min_reader_version': STORE_FORMAT, 'generation': ref['generation'], 'snapshot': ref,
                 'retained': keep, 'quarantined': quar, 'retired': sorted(set((old['retired'] if old else []) + retired)),
@@ -264,7 +264,8 @@ class AccountStore:
         """S7, best-effort (a lagging anchor is harmless, M55). Writes outside data\\."""
         fs, paths = self.fs, self.paths
         doc = {'account_id': self.account_id, 'binding_digest': self.account.binding.key_digest,
-               'commit_seq': self.head['commit_seq'] if self.head else 1, 'format': FORMAT_ANCHOR,
+               'commit_seq': (self.anchor['commit_seq'] if self.anchor else 0) + 1, 'format': FORMAT_ANCHOR,
+               'head_commit': self.head['commit_seq'] if self.head else 0,
                'format_version': STORE_FORMAT, 'min_reader_version': STORE_FORMAT,
                'generation': self.head['generation'] if self.head else 0, 'writer_seq': self.reader.writer_seq,
                'hard_hold': hard_hold, 'written_ms': now_ms}
@@ -385,6 +386,8 @@ class AccountStore:
                           decision_id=owner_decision_id)
         try:
             self.commit(pf, prov, now_ms, account=account, write_class='promotion')
+            if identity_change:
+                self.bind(now_ms)                                        # the owner-confirmed new binding
         except DurabilityUnavailable:
             self.mode, self.hold_kind = Mode.HOLD, HoldKind.DURABILITY_UNAVAILABLE
             self.mark_hard_hold(now_ms)
@@ -465,7 +468,8 @@ def boot(base, account, *, exchange, now_ms, fs=None, reader=None, cipher=None, 
     if hold_items:
         reason = (ReasonCode.RECOVERY_GENERATION_ROLLBACK if seen.rollback else
                   ReasonCode.RECOVERY_SCHEMA_INVALID if seen.damage else ReasonCode.BINDING_MISMATCH)
-        return _enter_hold(store, hold_items, reason, now_ms, incident, result, findings, seen)
+        return _enter_hold(store, hold_items, reason, now_ms, incident, result, findings, seen,
+                           candidate=store.candidate or store.current)
 
     # ---- the journal (repair a torn tail now that rule 1 / 2 / 3 / 4 passed)
     rec = open_journal(store._insp, cipher=cipher)
@@ -620,7 +624,7 @@ def _read_only(fs, paths, account, reader, store, seen):
     if hd['binding_digest'] != account.binding.key_digest:
         seen.identity.append('the configured binding differs from the store binding')
     if store.anchor is not None:
-        if store.anchor['generation'] > hd['generation'] or store.anchor['commit_seq'] > hd['commit_seq']:
+        if store.anchor['generation'] > hd['generation'] or store.anchor['head_commit'] > hd['commit_seq']:
             seen.rollback.append('anchor ahead of HEAD')
         if store.anchor['binding_digest'] != hd['binding_digest']:
             seen.identity.append('anchor binding differs from HEAD')
@@ -712,9 +716,9 @@ def _scan_snapshots(fs, paths, reader, store, seen):
             continue
         raw = raws[n]
         try:
+            sf = decode_snapshot(raw, reader, account_id=store.account_id)     # rule 1 first (a future record)
             if sha256_hex(raw) != ref['sha256'] or len(raw) != ref['len']:
                 raise SnapDamage('bytes differ from the HEAD reference')
-            sf = decode_snapshot(raw, reader, account_id=store.account_id)
         except SnapFuture:
             seen.future.append(f'snap/{n} record')
             continue
@@ -734,21 +738,26 @@ def _scan_snapshots(fs, paths, reader, store, seen):
             store.settings = dict(store.current.settings)
             store.account = store.current.account
             fg = store.current.provenance['from_generation']
-            cands = [decoded[r['name']] for r in hd['retained'] if r['name'] in decoded]
+            cands = _candidates([decoded[r['name']] for r in hd['retained'] if r['name'] in decoded])
             if store.current.provenance['trust'] != Trust.MANAGED:
                 pref = [c for c in cands if c.generation == fg] or cands
                 store.candidate = pref[0] if pref else None
         else:
-            cands = [decoded[r['name']] for r in hd['retained'] if r['name'] in decoded]
+            cands = _candidates([decoded[r['name']] for r in hd['retained'] if r['name'] in decoded])
             store.candidate = cands[0] if cands else None
     else:
-        best = [x for x in (_try_decode(raws[n], reader, store) for n in raws) if x is not None]
+        best = _candidates(x for x in (_try_decode(raws[n], reader, store) for n in raws) if x is not None)
         store.candidate = max(best, key=lambda x: x.generation) if best else None
     if store.current is None and store.candidate is not None:
         store.account = store.candidate.account
     for n in raws:
         if n not in named and n not in quarantined and n not in retired:
             seen.findings.append(f'orphan snap/{n} (uncommitted: never read as state, kept)')
+
+
+def _candidates(sfs):
+    """A07 candidates: decodable generations whose ownership is proven (an UNKNOWN portfolio owns nothing to offer)."""
+    return [x for x in sfs if x.portfolio.ownership is not Ownership.UNKNOWN]
 
 
 def _try_decode(raw, reader, store):
@@ -849,7 +858,7 @@ def _enter_hold(store, items, reason, now_ms, incident, result, findings, seen, 
                     fs.fsync_dir(os.path.dirname(d))
             store.commit(pf, prov, now_ms, lsn_upto=store._insp.last_sequence if getattr(store, '_insp', None)
                          else 0, quarantine=quarantine, write_class='hold_snapshot')
-        if getattr(store, '_insp', None) is not None and store._insp.plan is not None:
+        if store.journal is None and getattr(store, '_insp', None) is not None and store._insp.plan is not None:
             rec = open_journal(store._insp, cipher=store.cipher)
             store.journal = rec.journal
     except (OSError, DurabilityUnavailable, ValueError):

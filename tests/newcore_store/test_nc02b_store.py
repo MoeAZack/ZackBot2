@@ -204,7 +204,7 @@ def test_a_checkpoint_in_hold_is_hold():                                        
     fs, ex, pf = managed_with_lot()
     r = go(fs, FakeExchange([], []))
     st = r.store
-    st.checkpoint(pf, T + 5)
+    st.checkpoint(st.candidate.portfolio, T + 5)
     st.journal.close()
     assert go(fs, ex).mode is Mode.HOLD
 
@@ -243,7 +243,7 @@ def test_a_whole_data_folder_rollback_trips_the_anchor():                       
     fs, ex, pf = managed_with_lot()
     old = {k: v for k, v in fs.snapshot().items()}
     r = go(fs, ex)
-    r.store.checkpoint(pf, T + 1)
+    r.store.checkpoint(r.store.current.portfolio, T + 1)
     r.store.journal.close()
     data_root = os.path.normpath(os.path.join(MEM_BASE, 'data'))
     for k in [k for k in fs.files if k.startswith(data_root)]:
@@ -270,7 +270,7 @@ def test_an_anchor_behind_head_is_harmless(tmp_path=None):                      
     fs, ex, pf = managed_with_lot()
     old_anchor = {k: v for k, v in outside_files(fs).items() if 'anchors' in k and v[0] == 'f'}
     r = go(fs, ex)
-    r.store.checkpoint(pf, T + 1)
+    r.store.checkpoint(r.store.current.portfolio, T + 1)
     r.store.journal.close()
     for k, v in old_anchor.items():
         fs.put(k, v[1])                                                          # the anchor write was lost

@@ -37,7 +37,8 @@ from .fs import RealFs
 from .header import (EMPTY_SHA, HeaderError, Seal, SegmentHeader, VersionVerdict, check_version, decode_header,
                      header_frame_max, strict_json)
 from .hold import Verdict, directive_for
-from .journal import JOURNAL_DIR, SEG_RE, WRITER_BUILD, FileJournal, _check_ids, seg_name, write_segment
+from .journal import (JOURNAL_DIR, LOCK_NAME, SEG_RE, WRITER_BUILD, FileJournal, ReadOnlyJournal, _check_ids,
+                      acquire_lock, seg_name, write_segment)
 
 
 @dataclass(frozen=True, slots=True)
@@ -56,6 +57,7 @@ class Recovery:
     findings: tuple
     evidence: tuple
     created: tuple                    # files this recovery created (relative names)
+    view: ReadOnlyJournal | None = None   # DURABILITY_UNAVAILABLE: read-only events / gate / state, appends refused
 
     @property
     def directive(self):
@@ -69,7 +71,9 @@ class _Out(Exception):
         self.verdict, self.findings = verdict, tuple(findings)
 
 def recover_journal(account_dir, account_id, aggregate_id, *, fs=None, writer_build=WRITER_BUILD, cipher=None):
-    """Inspect (read-only) and, for CLEAN / a torn tail, open the journal. `cipher` seals torn bytes (None = DPAPI)."""
+    """Inspect (read-only) and, for CLEAN / a torn tail, open the journal. `cipher` seals torn bytes (None = DPAPI).
+    Raises JournalLocked when another writer holds the journal (the read-only verdicts never take the lock, so an
+    ABORT_RO / DAMAGED / UNREADABLE / MISSING journal is never written to, not even by the lock file)."""
     insp = inspect_journal(account_dir, account_id, aggregate_id, fs=fs)
     return open_journal(insp, writer_build=writer_build, cipher=cipher)
 
@@ -80,6 +84,7 @@ class Inspection:
     fs: object
     account_dir: str
     account_id: str
+    aggregate_id: str
     verdict: Verdict                   # CLEAN (incl. a torn tail to repair) or the zero-write outcome
     findings: tuple
     plan: object | None
@@ -107,18 +112,43 @@ def inspect_journal(account_dir, account_id, aggregate_id, *, fs=None):
     _check_ids(account_id, aggregate_id)
     fs = fs or RealFs()
     try:
-        plan = _read_only(fs, account_dir, account_id, aggregate_id)
+        plan = _read_only_safe(fs, account_dir, account_id, aggregate_id)
     except _Out as out:
-        return Inspection(fs, account_dir, account_id, out.verdict, out.findings, None)
-    return Inspection(fs, account_dir, account_id, Verdict.CLEAN, tuple(plan.findings), plan)
+        return Inspection(fs, account_dir, account_id, aggregate_id, out.verdict, out.findings, None)
+    return Inspection(fs, account_dir, account_id, aggregate_id, Verdict.CLEAN, tuple(plan.findings), plan)
 
 
 def open_journal(insp, *, writer_build=WRITER_BUILD, cipher=None):
-    """Write phase of an inspection: repair a torn tail (evidence envelope, seal, roll) and open for appending."""
+    """Write phase of an inspection: take the writer lock, re-read under it, repair a torn tail (evidence envelope,
+    seal, roll) and open for appending. Raises JournalLocked."""
     if insp.plan is None:
         return Recovery(insp.verdict, None, None, insp.findings, (), ())
-    return _finish(insp.fs, insp.account_dir, insp.account_id, insp.plan, writer_build, cipher)
+    fs = insp.fs
+    jd = os.path.join(insp.account_dir, JOURNAL_DIR)
+    try:
+        lock = acquire_lock(fs, jd)
+    except OSError:
+        return Recovery(Verdict.DURABILITY_UNAVAILABLE, None, insp.plan.folder.state(), tuple(insp.plan.findings), (),
+                        (), ReadOnlyJournal(insp.plan.folder, 'the writer lock cannot be taken'))
+    try:
+        plan = _read_only_safe(fs, insp.account_dir, insp.account_id, insp.aggregate_id)     # re-read under the lock
+    except _Out as out:
+        fs.unlock(lock)
+        return Recovery(out.verdict, None, None, out.findings, (), ())
+    rec = _finish(fs, insp.account_dir, insp.account_id, plan, writer_build, cipher, lock)
+    if rec.journal is None:
+        fs.unlock(lock)
+    return rec
 
+
+def _read_only_safe(fs, account_dir, account_id, aggregate_id):
+    """_read_only, with any unexpected exception on hostile bytes turned into DAMAGED (never raised: finding 2)."""
+    try:
+        return _read_only(fs, account_dir, account_id, aggregate_id)
+    except _Out:
+        raise
+    except (IndexError, KeyError, TypeError, ValueError, AttributeError, OverflowError) as ex:
+        raise _Out(Verdict.DAMAGED, [Finding('damage', None, None, f'internal: {type(ex).__name__}')]) from None
 
 # ---------------------------------------------------------------------------------------------------- read-only phase
 @dataclass
@@ -149,8 +179,8 @@ def _read_only(fs, account_dir, account_id, aggregate_id):
         mt = SEG_RE.fullmatch(n)
         if mt and int(mt.group(1)) >= 1:
             names[int(mt.group(1))] = n
-        else:
-            damage.append(Finding('unexpected_file', n, None, 'not a journal segment'))
+        elif n != LOCK_NAME:                                  # Cowork finding 7: reported, ignored, never damage
+            findings.append(Finding('stray_file', n, None, 'not a journal segment: ignored'))
     blobs = {}
     for no, n in sorted(names.items()):
         p = os.path.join(jd, n)
@@ -183,7 +213,7 @@ def _read_only(fs, account_dir, account_id, aggregate_id):
                     future.append(Finding('future_format' if v is VersionVerdict.FUTURE else 'unknown_format', n, 8,
                                           'segment header version'))
                 else:
-                    headers[no] = decode_header(doc, problems)
+                    headers[no] = decode_header(doc, problems, recs[0].payload)
             except HeaderError as ex:
                 headers[no] = ex
         for r in recs:
@@ -224,8 +254,10 @@ def _read_only(fs, account_dir, account_id, aggregate_id):
             damage.append(Finding('damage', names[no], sc.damage[0] if sc.damage else 0, why))
     seq_segments = []                                         # (no, records after the header)
     if hdr is not None:
-        if (hdr.account_id, hdr.aggregate_id) != (account_id, aggregate_id) or hdr.segment_no != m:
-            damage.append(Finding('foreign', names[m], 8, 'the journal names another account / aggregate / segment'))
+        if (hdr.account_id, hdr.aggregate_id) != (account_id, aggregate_id) or hdr.segment_no != m \
+                or len(hdr.seals) != m - 1:                    # Cowork finding 2: stop here, never index past it
+            raise _Out(Verdict.DAMAGED, damage + [Finding('foreign', names[m], 8,
+                                                          'the journal names another account / aggregate / segment')])
         for j in range(1, m):
             seal, data = hdr.seals[j - 1], blobs[j]
             if seal.sealed_len > len(data) or _sha(data[:seal.sealed_len]) != seal.sha256:
@@ -281,7 +313,7 @@ def _read_only(fs, account_dir, account_id, aggregate_id):
     return _Plan(folder, names, blobs, m, hdr, active, voids, findings)
 
 # ---------------------------------------------------------------------------------------------------- write phase
-def _finish(fs, account_dir, account_id, plan, writer_build, cipher):
+def _finish(fs, account_dir, account_id, plan, writer_build, cipher, lock=None):
     jd = os.path.join(account_dir, JOURNAL_DIR)
     folder, m = plan.folder, plan.m
     torn = plan.active_scan is not None and plan.active_scan.tail_offset is not None
@@ -290,8 +322,10 @@ def _finish(fs, account_dir, account_id, plan, writer_build, cipher):
         try:
             h = fs.open_append(path)
         except OSError:
-            return Recovery(Verdict.DURABILITY_UNAVAILABLE, None, folder.state(), tuple(plan.findings), (), ())
-        j = FileJournal(fs, account_dir, folder, m, h, plan.header.seals, len(plan.blobs[m]), writer_build, cipher)
+            return Recovery(Verdict.DURABILITY_UNAVAILABLE, None, folder.state(), tuple(plan.findings), (), (),
+                            ReadOnlyJournal(folder, 'the segment cannot be opened for writing'))
+        j = FileJournal(fs, account_dir, folder, m, h, plan.header.seals, len(plan.blobs[m]), writer_build, cipher,
+                        lock)
         return Recovery(Verdict.CLEAN, j, folder.state(),
                         tuple(plan.findings), (), ())
 
@@ -325,8 +359,8 @@ def _finish(fs, account_dir, account_id, plan, writer_build, cipher):
         h = fs.open_append(os.path.join(jd, seg_name(new_no)))
     except OSError:
         return Recovery(Verdict.DURABILITY_UNAVAILABLE, None, folder.state(), tuple(plan.findings), tuple(evidence),
-                        tuple(created))
-    j = FileJournal(fs, account_dir, folder, new_no, h, tuple(seals), seg_len, writer_build, cipher)
+                        tuple(created), ReadOnlyJournal(folder, 'the torn tail cannot be sealed'))
+    j = FileJournal(fs, account_dir, folder, new_no, h, tuple(seals), seg_len, writer_build, cipher, lock)
     return Recovery(Verdict.REPAIRED, j, folder.state(), tuple(plan.findings), tuple(evidence), tuple(created))
 
 

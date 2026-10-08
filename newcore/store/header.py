@@ -131,12 +131,15 @@ def check_version(doc):
     return VersionVerdict.OK
 
 
-def decode_header(doc, problems):
-    """The SegmentHeader of a version-checked document. Raises HeaderError on any damage."""
+def decode_header(doc, problems, payload=None):
+    """The SegmentHeader of a version-checked document. Raises HeaderError on any damage. With `payload`, the record
+    must be the canonical encoding of the document (Cowork finding 5, as for events)."""
     if type(doc) is not dict or set(doc) != HEADER_KEYS:
         raise HeaderError('header keys')
     if problems:
         raise HeaderError(f'hostile JSON in header ({problems[0]})')
+    if payload is not None and canonical_json(doc) != payload:
+        raise HeaderError('the header record is not canonical JSON')
     if doc['format'] != FORMAT:
         raise HeaderError('not a journal segment header')
     for k in ('account_id', 'aggregate_id'):

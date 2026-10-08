@@ -16,7 +16,7 @@ import errno
 import os
 
 MUTATING = ('mkdir', 'open_new', 'open_append', 'open_slot', 'write', 'write_at', 'fsync', 'fsync_dir',
-            'set_private_acl', 'unlink_own_partial')
+            'set_private_acl', 'unlink_own_partial', 'lock')
 PENDING = ('drop', 'all', 'half', 'one', 'minus1', 'zero')
 PRIVATE = 'PRIVATE(user,SYSTEM)'
 
@@ -54,7 +54,7 @@ class _H:
 
 class MemFs:
     def __init__(self, *dirs):
-        self.files, self.dirs, self.clock, self.acl = {}, {}, 0, {}
+        self.files, self.dirs, self.clock, self.acl, self.locks = {}, {}, 0, {}, set()
         for d in dirs:
             self._ensure(os.path.normpath(d), True)
 
@@ -179,6 +179,26 @@ class MemFs:
     def mark(self, label):
         pass
 
+    def size(self, p):
+        p = self._n(p)
+        if p not in self.files:
+            raise oserror(errno.ENOENT)
+        return len(self.files[p].current)
+
+    def lock_exclusive(self, p):
+        p = self._n(p)
+        if p not in self.files:
+            self._need_parent(p)
+            self.clock += 1
+            self.files[p] = _F(mtime=self.clock)
+        if p in self.locks:
+            return None
+        self.locks.add(p)
+        return _H(p, 'lock')
+
+    def unlock(self, lock):
+        self.locks.discard(lock.path)
+
     # ------------------------------------------------------------------------------------------------ test helpers
     def snapshot(self):
         out = {p: ('d',) for p in self.dirs}
@@ -295,6 +315,15 @@ class FaultFs:
 
     def close(self, h):
         return self.inner.close(h)
+
+    def size(self, p):
+        return self._read('size', p, lambda: self.inner.size(p))
+
+    def lock_exclusive(self, p):
+        return self._mut('lock', p, lambda: self.inner.lock_exclusive(p))
+
+    def unlock(self, lock):
+        return self.inner.unlock(lock)
 
     def mark(self, label):
         self.marks.append((self.n, label))
