@@ -31,7 +31,7 @@ __all__ = ['client_id_for', 'decision_key', 'derive_child_intent_id', 'derive_de
            'derive_lot_id', 'is_newcore_client_id', 'event_id', 'result_id', 'position_id', 'child_decision_id',
            'reconciliation_id', 'operator_decision_id', 'risk_decision_id', 'resolution_decision_id',
            'emergency_stop_client_id', 'is_emergency_client_id', 'tick_decision_id', 'marker_decision_id',
-           'mark_decision_id']
+           'mark_decision_id', 'mg_input_decision_id']
 
 
 def _hex(tag, *parts):
@@ -105,6 +105,11 @@ def tick_decision_id(lot_id, candle_open_ms):
 def marker_decision_id(kind, intent_id):
     """A management route marker of one refused classic stop ('mg fallback' / 'mg refused'): at most one per intent."""
     return 'dec_' + _hex('marker_decision_id', kind, intent_id)
+
+
+def mg_input_decision_id(kind, lot_id, *parts):
+    """A durable management input of one lot ('start' once; 'fill' once per venue trade id)."""
+    return 'dec_' + _hex('mg_input_decision_id', kind, lot_id, *parts)
 
 
 def mark_decision_id(lot_id, at_ms, sequence):

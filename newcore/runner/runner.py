@@ -973,6 +973,11 @@ class Runner:
                     c = confirmed_coverage(lot.stop, live)
                     if c and live[lot.stop.order].client_order_id in listed:
                         cover[(lot.symbol, str(lot.side))] = cover.get((lot.symbol, str(lot.side)), ZERO) + c
+            elif pf is None:                       # I3 refused the projection (reported above): I1 still measures the
+                for lot in self.fold.open_lots():  # same thing from the fold - the WORKING carrier, listed now
+                    c = lot.carrier
+                    if c is not None and c.state is IntentState.WORKING and c.intent.client_order_id in listed:
+                        cover[(lot.symbol, lot.side)] = cover.get((lot.symbol, lot.side), ZERO) + c.intent.qty
             for o in rec.orders:                                  # an A23 emergency stop is owned protection too
                 if o.reduce and ids.is_emergency_client_id(o.ref.client_id):
                     cover[(o.ref.symbol, o.position_side)] = cover.get((o.ref.symbol, o.position_side), ZERO) + o.qty
