@@ -87,6 +87,8 @@ MUTATIONS = {
         "    check_header(doc)\n    if problems:\n        raise InvalidRecord('document', f'hostile JSON: {problems[0]}')\n",
         "    if problems:\n        raise InvalidRecord('document', f'hostile JSON: {problems[0]}')\n    check_header(doc)\n")]),
     'drain resting maker': (D + 'portfolio.py', [('            if it.pullable:', '            if False:')]),
+    'E07: record_type looked up before its type is checked': (D + 'codec.py', [(
+        '    if type(rtype) is not str or rtype not in RECORD_TYPES:', '    if rtype not in RECORD_TYPES:')]),
     'duplicate JSON keys': (D + 'codec.py', [("            if k in out:\n                problems.append(",
                                               "            if False:\n                problems.append(")]),
     'truncated JSON': (D + 'codec.py', [(
