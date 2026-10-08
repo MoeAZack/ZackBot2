@@ -1,6 +1,6 @@
 # NC-01 domain model and reason-code contract
 
-**State:** READY for implementation  
+**State:** READY for implementation after Cowork adversarial revision
 **Published by:** Codex integration lane  
 **Exact base:** protected `master` at `1a24e70bebe01e64d3f4f4325e1bce903b663282`  
 **Time:** 08 Oct 2026, Africa/Cairo
@@ -38,6 +38,7 @@ Names may change only if the ownership and invariants remain one-to-one and Code
 | `OrderResult` | Evidence-bearing known/unknown/final outcome. Bare not-found has no executed value and cannot mean never-filled. |
 | `Protection` | Explicit protective-order coverage and lifecycle. Any summary status is derived from these records and exposure, never a second source of truth. |
 | `Decision` | Stable reason code, authority, input/evidence references and integer UTC-ms decision time. Display text is not policy. |
+| `DomainEvent` | Immutable result/application event with account, aggregate, intent/result, reason, `event_id`, integer `sequence` and integer UTC-ms evidence time. Sequence is the replay ordering key; timestamp never breaks ties. |
 
 All identifiers are opaque values. Orphan-cancel work is represented by the same `OrderIntent` lifecycle, not an
 untyped side queue.
@@ -48,9 +49,15 @@ untyped side queue.
    `KNOWN_EMPTY` requires a confirmed account binding, a fresh flat exchange snapshot and the later NC-02 reconciliation
    gate.
 2. **Exact numbers.** Owned price, quantity, fee, funding, PnL and risk values use finite `Decimal`; floats and booleans
-   are rejected. Adapters quantize against explicit tick/step rules. Zero/negative quantities are rejected where an
-   exposure or order requires positive quantity.
-3. **Canonical time.** Stored timestamps are integer UTC milliseconds. Cairo conversion is presentation/audit context.
+   are rejected. The wire grammar is exactly `^-?(0|[1-9][0-9]*)(\.[0-9]+)?$`: no sign `+`, whitespace, separators,
+   exponent, non-ASCII digits or negative zero. Canonical form removes trailing fractional zeroes and the decimal point
+   when the fraction becomes empty, so numerically equal values have one encoding. V1 permits at most 38 significant
+   digits and absolute adjusted exponent at most 18; field-specific instrument rules may be tighter. Adapters quantize
+   against explicit tick/step rules. Zero/negative quantities are rejected where exposure or an order requires positive
+   quantity.
+3. **Canonical time.** Stored timestamps are `int` (never `bool`) UTC milliseconds in the inclusive range
+   `946684800000..4102444799999` (2000-01-01 through 2099-12-31 UTC). ISO strings, floats, NaN and local dates are
+   rejected. Cairo conversion and trading-day labels are presentation/audit context and never domain record fields.
 4. **Stable identity.** Account, portfolio, position, lot, intent and result IDs cannot be derived from display text or
    second-resolution timestamps. Duplicate IDs are invalid.
 5. **One order lifecycle.** Entry/add/close/reduce/protect ownership cannot bypass `OrderIntent`. Each transition has a
@@ -64,6 +71,16 @@ untyped side queue.
 9. **HOLD is explicit authority.** Manual entry does not bypass pause/HOLD. Protect, close, reduce and idempotent draining
    of risk-adding intents are representable emergency permissions; entry, add, reprice and market fallback are not.
 10. **No legacy import.** NEWCORE begins flat on testnet. NC-01 contains no legacy state migration or compatibility shim.
+11. **References agree.** Every intent, result, protection and lot belongs to the same account/instrument/side as its
+    owning aggregate. A `KNOWN` portfolio cannot contain an orphan reference; `KNOWN_EMPTY` is valid only with the
+    explicit evidence in invariant 1. Total active protective coverage for a side is bounded by confirmed exposure.
+12. **Determinism is injected.** Domain code does not read a clock, random source, UUID generator or environment. Callers
+    supply validated opaque IDs, evidence times and monotonic per-aggregate sequence numbers. An event applies only when
+    its sequence is exactly the next expected sequence. Re-applying the same `event_id` with identical canonical bytes is
+    an idempotent no-op; reuse with different bytes or a gap/out-of-order sequence is a typed hard failure.
+13. **Environment is explicit.** `AccountBinding` uses closed venue/environment enums. It cannot contain a URL or secret.
+    NC-03 must prove that a binding's environment maps only to an allow-listed endpoint of the same environment; NC-01
+    exposes enough typed data to make that check mandatory and cannot bind testnet identity to mainnet configuration.
 
 ## 4. Reason-code registry
 
@@ -83,19 +100,28 @@ strategy decision, recovery, reconciliation and operator authority. New codes re
 The v1 codec must:
 
 - round-trip every required type deterministically with canonical key ordering and Decimal strings;
-- carry explicit `schema_version` and record type;
+- carry explicit integer (not boolean/float) `schema_version` and record type;
 - reject unknown/missing/duplicate fields, duplicate IDs, invalid enum/reason values and cross-record reference failures;
 - reject floats, NaN/infinity, booleans in numeric fields, huge/non-finite values and invalid integer-ms timestamps;
+- accept bytes/text through a duplicate-key-detecting parser; truncated input and duplicate object keys are typed failures;
+- require every persisted field, including empty collections and optional values represented explicitly as `null`; decode
+  never supplies business defaults such as zero, empty, `None` or `KNOWN_EMPTY` for an absent field;
+- use the exact Decimal grammar, canonicalization and bounds in invariant 2. Constructors normalize equal `Decimal`
+  values such as `1`, `1.0` and `10E-1` to the same canonical value; wire input accepts only that canonical form;
 - return a typed validation failure; never coerce an invalid document to empty ownership;
 - leave forward-version and persistence/recovery policy to NC-02, while exposing a distinct `unsupported_version` result.
+
+The codec publishes a single `canonical_bytes(record) -> bytes` API (UTF-8 JSON, sorted keys, no insignificant
+whitespace) and `contract_sha256(record) -> lowercase hex` over those bytes. These functions are the only domain hash
+input. Constructors and codecs share the same strict validators; there is no permissive in-memory dialect.
 
 ## 6. Acceptance evidence
 
 The implementation PR must provide:
 
 1. table-driven unit tests for every invariant and allowed/forbidden lifecycle transition;
-2. pinned Hypothesis properties plus recorded seeds for codec round-trip, invalid-state rejection and Decimal/tick/step
-   boundaries;
+2. deterministic seeded stdlib-generated properties for codec round-trip, invalid-state rejection and Decimal/tick/step
+   boundaries. The seed and failing example are printed/recorded; NC-01 adds no unpinned test dependency;
 3. tests mapping every current golden reason and the accepted expanded vocabulary;
 4. tests showing the Audit2 empty-account, future/damaged schema, false-not-found, pending, resting-maker and pause/flatten
    families are rejected or represented as UNKNOWN/HOLD rather than silently resolved;
@@ -103,7 +129,8 @@ The implementation PR must provide:
 6. deterministic serialization snapshots and an explicit performance baseline for representative portfolio codecs. The
    baseline is recorded before setting a regression budget; no arbitrary audit number is imported;
 7. mutation evidence for numeric type checks, unknown-vs-empty, not-found ambiguity, terminal-state monotonicity,
-   protection bounds, manual pause bypass and reason-code membership;
+   protection bounds, cross-record account/symbol/side/quantity agreement, manual pause bypass, reason-code membership,
+   duplicate/truncated JSON, missing persisted fields, event ordering and idempotent replay;
 8. `git diff --check`, focused Windows tests, independent Cowork adversarial review, exact-head fast/CodeQL, then one full
    gate after review is clean.
 
@@ -113,7 +140,8 @@ or explicitly version-pinned as an exact reviewed artifact.
 
 ## 7. Explicitly out of scope
 
-- exchange requests, retries, cancellation or client-ID formatting;
+- exchange requests, retries, cancellation or client-ID formatting (NC-03 owns deterministic client-ID derivation from
+  the caller-supplied opaque intent ID; NC-01 must not generate one internally);
 - files, databases, encryption, migrations, recovery or forensic envelopes;
 - strategy indicators, entries/exits, DCA, runner, sizing, leverage or allocation;
 - scheduler/locks, UI/API/Telegram, backtest calculations or legacy cleanup;
@@ -130,3 +158,9 @@ Any need for one of these is a handoff to its owning ticket, not permission to b
 - **Integration — Codex:** review architecture/invariants, reproduce high-risk mutations, own scope and advance the
   exact-head gate. No self-acceptance by the Build lane.
 
+## 9. Contract revisions
+
+- **r2, 08 Oct 2026:** incorporates Cowork's independent 61-case attack: canonical bounded Decimal and UTC-ms formats,
+  strict required-field/duplicate-key decoding, unified constructor/codec validation, cross-record/protection checks,
+  injected identity/time, explicit event order and idempotency, canonical hash API, environment binding boundary, and a
+  deterministic stdlib property generator. Sketch failures are implementation evidence, not accepted behavior.
