@@ -1,7 +1,7 @@
 {
  "format": "zb-newcore-tnet-mgmt/1",
  "scenario": "t07_bounded_dca",
- "note": "Driver-level script for the FakeVenue executor (tests/newcore_management/test_tnet_mgmt.py). Prices in the LONG frame around 100 (the short run mirrors them around 200). The venue refuses classic stops with -4120 (algo route required), like Binance testnet.",
+ "note": "Driver-level script for the FakeVenue executor (tests/newcore_management/test_tnet_mgmt.py). Prices in the LONG frame around 100 (the short run mirrors them around 200). The venue refuses classic stops with -4120 (algo route required), like Binance testnet. Driver stop_route_policy per_attempt (journal rule G6): EVERY new stop is tried classic first and goes algo only after that attempt is refused.",
  "plan": {
   "stop": "2",
   "add": "1",

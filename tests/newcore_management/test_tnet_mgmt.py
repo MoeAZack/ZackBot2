@@ -6,7 +6,12 @@ answer per step and the end state - plus a driver-level script (<name>.script.js
 the venue behaviour (classic stops refused with -4120 like testnet, partial fills, an acknowledged-only or in-flight
 stop, held fills) and the price path. This executor runs the script, checks every step against the spec, runs the
 fault-fuzz invariants (test_driver_faults.check) after every driver call, and checks the end state and that the durable
-event log folds to the identical driver state. The runner-driven TNET harness runs the same specs on testnet."""
+event log folds to the identical driver state. The runner-driven TNET harness runs the same specs on testnet.
+
+Driver stop_route_policy is the default `per_attempt` (journal rule G6): EVERY new stop - the first protection, each
+resize, the break-even - is tried on the classic route, refused (-4120), and only then re-sent on the algo route. The
+specs therefore carry a `<step>_classic` (expect rejected) before every algo stop; the a0acf99 snapshot (sticky route:
+only the first stop tried classic) is superseded."""
 import glob
 import json
 import os
@@ -254,6 +259,11 @@ def check_against_spec(v):
         cid_of[s['id']] = o['cid']
         if s['id'] in outcomes:
             assert o['answer'] in outcomes[s['id']], (s['id'], o['answer'])
+    for k, s in enumerate(spec_ops):        # journal rule G6 (stop_route_policy per_attempt): every algo stop is the
+        if s['op'] == 'stop' and s['route'] == 'algo':      # re-send of the classic attempt just refused before it
+            prev = spec_ops[k - 1]
+            assert (prev['op'], prev['route'], prev['qty']) == ('stop', 'classic', s['qty']), s['id']
+            assert outcomes[prev['id']] == ['rejected'] and ops[k - 1]['answer'] == 'rejected', s['id']
     end = v.spec['expect']['end_state']
     assert (v.pos == 0) == end['flat']
     assert len(v.stops) == end['open_newcore_orders']

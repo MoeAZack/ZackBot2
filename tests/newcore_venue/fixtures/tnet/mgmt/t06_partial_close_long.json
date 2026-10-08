@@ -1,7 +1,7 @@
 {
  "format": "zb-newcore-tnet-scenario/1",
  "name": "t06_partial_close_long",
- "description": "TNET-01 T06 partial close: TP1 (50%) fills only 2 of 2.5, the stop is resized (replace, then cancel the old one once the new one is confirmed), the rest of TP1 fires on the next mark, break-even (net of fees) replaces the stop, TP2 closes the rest and the stop is released.",
+ "description": "TNET-01 T06 partial close: TP1 (50%) fills only 2 of 2.5, the stop is resized (replace: classic refused -4120 -> algo, then cancel the old one once the new one is confirmed), the rest of TP1 fires on the next mark, break-even (net of fees, again classic refused -> algo) replaces the stop, TP2 closes the rest and the stop is released.",
  "symbols": [
   "SOLUSDT"
  ],
@@ -47,6 +47,16 @@
    "qty": "2.5"
   },
   {
+   "id": "resize_classic",
+   "op": "stop",
+   "symbol": "SOLUSDT",
+   "side": "LONG",
+   "qty": "3",
+   "trigger_offset_pct": "-2",
+   "from": "entry",
+   "route": "classic"
+  },
+  {
    "id": "resize",
    "op": "stop",
    "symbol": "SOLUSDT",
@@ -68,6 +78,16 @@
    "side": "LONG",
    "reduce": true,
    "qty": "0.5"
+  },
+  {
+   "id": "breakeven_classic",
+   "op": "stop",
+   "symbol": "SOLUSDT",
+   "side": "LONG",
+   "qty": "2.5",
+   "trigger_offset_pct": "0.1",
+   "from": "entry",
+   "route": "classic"
   },
   {
    "id": "breakeven",
@@ -117,8 +137,14 @@
    "tp1": [
     "final"
    ],
+   "resize_classic": [
+    "rejected"
+   ],
    "resize": [
     "known"
+   ],
+   "breakeven_classic": [
+    "rejected"
    ],
    "unstop_a": [
     "final"
