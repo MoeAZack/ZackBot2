@@ -169,6 +169,28 @@ def bad_unknown_owner():
     return _lineage_bad(K.derive_child_intent_id(ACCT, other, Purpose.PROTECT, 0), owner=other)
 
 
+def bad_stop_for_an_unfilled_entry():
+    s = Scenario()
+    s.decision(key=KEY, intent_ids=(ENTRY,))
+    s.record(ENTRY)
+    s.step(ENTRY, D, S)
+    s.refused(ENTRY)                                       # nothing executed: no lot exists
+    sid = K.derive_child_intent_id(ACCT, LOT, Purpose.PROTECT, 0)
+    s.decision(purpose=Purpose.PROTECT, intent_ids=(sid,), owner=LOT)
+    return s.events[:], s.record(sid)
+
+
+def bad_unkeyed_intent_without_owner():
+    s = Scenario()
+    manual = make_id('int', 4321)
+    s.decision(purpose=Purpose.ENTRY, intent_ids=(manual,))
+    return s.events[:], s.record(manual)
+
+
+def bad_keyed_decision_with_another_id():
+    return [], Scenario().decision(key=KEY, intent_ids=(ENTRY,), dec_id=make_id('dec', 99))
+
+
 def bad_unauthorized_intent():
     s = _flow(lambda s: s.entry_filled())
     sid = K.derive_child_intent_id(ACCT, LOT, Purpose.PROTECT, 0)       # lineage-correct, but its decision (the
@@ -240,6 +262,9 @@ BAD = {f.__name__[4:]: (f, why) for f, why in (
     (bad_leg1_after_leg0_completed, "not in its decision's authorized intent set"),
     (bad_wrong_parent, 'G5: lineage id must be'), (bad_wrong_ordinal, 'G5: lineage id must be'),
     (bad_wrong_id, 'G5: lineage id must be'), (bad_unknown_owner, 'G5: owner is no lot'),
+    (bad_stop_for_an_unfilled_entry, 'G5: owner is no lot'),
+    (bad_unkeyed_intent_without_owner, 'G5: an unkeyed intent needs its lineage owner'),
+    (bad_keyed_decision_with_another_id, 'G4: a keyed decision id must be'),
     (bad_unauthorized_intent, "not in its decision's authorized intent set"),
     (bad_client_id_not_derived, 'G5: the client id must be client_id_for'),
     (bad_fallback_after_unknown, 'G6: algo only as the fallback'), (bad_algo_without_classic, 'G6: algo only'),
