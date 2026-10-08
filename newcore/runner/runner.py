@@ -90,6 +90,7 @@ OPENING_ACTIONS = {Action.ENTER: Purpose.ENTRY, Action.ADD: Purpose.ADD}
 DUPLICATE_CLIENT_ID = -4116           # Binance "ClientOrderId is duplicated": the order EXISTS (step-0 has no kind for it)
 ALGO_FALLBACK_CODES = (-4120, -1116, -1102, -4136)   # newcore.venue.errors (transport): use the algo service
 SECURE_ROUNDS = 2                     # per lot per cycle: stop attempt, then (if refused) one reduce-only close
+EMERGENCY_GENERATIONS = 16            # hard HOLD: cover generations per (symbol, side, gap size)
 OPENING_PURPOSES = frozenset({Purpose.ENTRY, Purpose.ADD})
 
 
@@ -206,6 +207,7 @@ class Runner:
         self.incidents = []                                               # (at_ms, text): surfaced, not journaled
         self._reads = {}                                                  # lost entry -> agreeing position reads
         self._refusals = {}                                               # stop intent -> venue refusal code
+        self._orphans_checked = set()                                     # ENTER decisions asked about (289)
         if config.raw_qty is not None and (config.account.binding.environment is not Environment.TESTNET
                                            or not config.raw_qty > 0):
             raise ValueError('raw_qty (H2) is a TESTNET-only override of a positive quantity: refused for '
@@ -439,11 +441,20 @@ class Runner:
         if price is None:
             self._incident(f'hard HOLD: no stop level for {p.symbol} {p.side} {qty}: unprotected, operator needed')
             return
-        cid = ids.emergency_stop_client_id(self.acct, p.symbol, p.side, qty)
-        ref = OrderRef(symbol=p.symbol, client_id=cid)
-        found = self.venue.query(ref)                                     # (1) narrow query by the deterministic id
-        if found.kind is OutcomeKind.KNOWN:
-            return                                                        # already resting: confirmed, not duplicated
+        # (1) narrow queries by the deterministic ids, generation by generation (Cowork F1 / F2): a LIVE one is
+        # already in `covered` (that is why a gap is left), an ENDED one is never reused - both move to the next
+        # generation; the first id the venue does not know (or cannot answer for) is placed. A restart re-derives the
+        # same sequence, so nothing is duplicated.
+        for gen in range(EMERGENCY_GENERATIONS):
+            cid = ids.emergency_stop_client_id(self.acct, p.symbol, p.side, qty, gen)
+            ref = OrderRef(symbol=p.symbol, client_id=cid)
+            found = self.venue.query(ref)
+            if found.kind not in (OutcomeKind.KNOWN, OutcomeKind.FINAL):
+                break
+        else:
+            self._incident(f'hard HOLD: {EMERGENCY_GENERATIONS} emergency stop ids of {p.symbol} {p.side} {qty} used; '
+                           'unprotected gap, operator needed')
+            return
         out = self.venue.submit_stop(StopOrder(ref=ref, position_side=p.side, qty=qty, stop_price=price))
         if _suggests_algo(out):                                              # same id, the algo route
             ref = OrderRef(symbol=p.symbol, client_id=cid, route='algo')
@@ -488,6 +499,7 @@ class Runner:
 
     # ----------------------------------------------------------------------------------------------- 1. sync
     def _sync(self):
+        self._orphan_entry_decisions()
         for iv in list(self.fold.live_intents()):
             if iv.state in OPEN_STATES:
                 out = self.venue.query(self._ref(iv))
@@ -551,9 +563,10 @@ class Runner:
             self._incident(f'{iv.intent_id}: position {qty} vs owned {owned}: cannot attribute the lost entry')
             return
         did = ids.resolution_decision_id(iv.intent_id)
-        self._decision(decision_id=did, action=Action.RECONCILE, reason=ReasonCode.RECONCILE_MATCH,
-                       authority=Authority.RECONCILIATION, key=None, symbol=it.symbol, side=str(it.side),
-                       subject_id=iv.intent_id, detail=f'lost entry: {len(reads)} reads, surplus {surplus}')
+        if self.journal.find_decision(did) is None:     # Cowork NEW-1: a crash after the decision, before its result:
+            self._decision(decision_id=did, action=Action.RECONCILE, reason=ReasonCode.RECONCILE_MATCH,  # reuse it
+                           authority=Authority.RECONCILIATION, key=None, symbol=it.symbol, side=str(it.side),
+                           subject_id=iv.intent_id, detail=f'lost entry: {len(reads)} reads, surplus {surplus}')
         adopted = surplus > 0
         res = OrderResult(result_id=ids.result_id(iv.intent_id, len(iv.results)), intent_id=iv.intent_id,
                           account_id=self.acct, client_order_id=it.client_order_id, phase=ResultPhase.FINAL,
@@ -576,7 +589,7 @@ class Runner:
             key = self.fold.entry_key(iv)
             if self.now == key.candle_close_ms and self.fold.mode is EntriesMode.ACTIVE:
                 self._send_entry(iv)
-            else:
+            elif not self._adopt_sent(iv):           # the 20k fuzz 289: its send record may be what the store lost
                 self._emit(ResultObserved, reason=ReasonCode.LIFECYCLE_NOT_DURABLE,
                            result=not_sent_result(iv.intent, ids.result_id(iv.intent_id, len(iv.results)), self.now))
                 self._state(iv, IntentState.NOT_SENT)
@@ -584,6 +597,43 @@ class Runner:
             self._send_stop(iv)
         else:
             self._send_close(iv)
+
+    def _adopt_sent(self, iv):
+        """An opening intent with no durable send record (the store lost its last events after the venue call): if
+        the venue knows its deterministic client id, it WAS sent - record the send, then the venue's answer, and the
+        lot is owned and protected like any other. NOT_FOUND (after the visibility window, a cycle later) / UNKNOWN:
+        False (the caller decides). The send record is a fact the venue proves, never a guess."""
+        out = self.venue.query(self._ref(iv))
+        if out.kind not in (OutcomeKind.KNOWN, OutcomeKind.FINAL):
+            return False
+        self._incident(f'{iv.intent_id}: no durable send record but the venue has {iv.intent.client_order_id} '
+                       f'({out.kind}): the send is recorded now')
+        self._state(iv, IntentState.SUBMITTED)
+        self._apply(iv, out, submit=False)
+        if iv.final is not None and iv.executed > 0:
+            self._secure(ids.derive_lot_id(self.acct, iv.intent_id))
+        return True
+
+    def _orphan_entry_decisions(self):
+        """The 20k fuzz 289, intent lost too: an ENTER decision whose derived intent is not recorded and whose candle
+        has passed (inside its candle, _enter re-sends it). If the venue has the derived client id, the order was sent:
+        record the intent, its send and the venue's answer. Asked once per decision per process (NOT_FOUND a cycle
+        after the decision is not a lag any more)."""
+        for d in list(self.fold.decisions.values()):
+            if d.action is not Action.ENTER or not d.intents or d.decision_id in self._orphans_checked:
+                continue
+            planned = d.intents[0]
+            if planned.intent_id in self.fold.intents or d.key is None or d.key.candle_close_ms >= self.now:
+                continue
+            self._orphans_checked.add(d.decision_id)
+            ref = OrderRef(symbol=planned.symbol, client_id=planned.client_order_id,
+                           route=route_of(planned.intent_id, planned.client_order_id) or 'classic')
+            out = self.venue.query(ref)
+            if out.kind in (OutcomeKind.KNOWN, OutcomeKind.FINAL):
+                self._incident(f'{planned.intent_id}: no durable intent record but the venue has '
+                               f'{planned.client_order_id}: recorded now')
+                iv = self._record_durable(planned)
+                self._adopt_sent(iv)
 
     # ----------------------------------------------------------------------------------------------- 2. reconcile
     def reconcile(self):
