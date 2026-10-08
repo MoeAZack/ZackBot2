@@ -186,6 +186,19 @@ MUTATIONS = {
     'r3a ruling 4: the gate applies a late fill twice': ('newcore/ports/journal.py', [(
         "            req(d.subject_id not in self._late_applied, 'event.decision', 'a late fill is reconciled once')",
         "            pass")]),
+        '        if (k is EventKind.RESULT_RECORDED and st.final is Evidence.NOT_FOUND_CORROBORATED and not st.superseded',
+        '        if (k is EventKind.RESULT_RECORDED and st.final in (Evidence.NOT_FOUND_CORROBORATED, Evidence.EXCHANGE_FINAL)')]),
+    'r3 item 4: a resting target may open risk': (D + 'orders.py', [(
+        "            req(u in (Purpose.REDUCE, Purpose.CLOSE) and self.owner_kind is OwnerKind.LOT, p + '.order_type',\n"
+        "                'a resting reduce-only target is a lot REDUCE / CLOSE')",
+        '            pass')]),
+    'r3 item 4: a resting target on any exit reason': (D + 'orders.py', [(
+        "            req(self.reason in TARGET_REASONS, p + '.reason',", "            req(True, p + '.reason',")]),
+    'r3 item 4: a resting target needs no price': (D + 'orders.py', [(
+        '        if t in LIMIT_TYPES:', '        if t is OrderType.LIMIT_POST_ONLY:')]),
+    'r3 item 4: the venue grid ignores the reduce-only capability': (D + 'instrument.py', [(
+        "            req(self.supports(Capability.REDUCE_ONLY), p + '.order_type',",
+        "            req(True, p + '.order_type',")]),
     'duplicate JSON keys': (D + 'codec.py', [("            if k in out:\n                problems.append(",
                                               "            if False:\n                problems.append(")]),
     'truncated JSON': (D + 'codec.py', [(

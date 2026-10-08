@@ -79,6 +79,10 @@ class OrderType(enum.StrEnum):
     MARKET = 'market'
     LIMIT_POST_ONLY = 'limit_post_only'   # maker
     STOP_MARKET = 'stop_market'           # protective stop
+    LIMIT_REDUCE_ONLY = 'limit_reduce_only'   # r3 DRAFT item 4: a resting reduce-only take-profit target of a lot
+
+
+LIMIT_TYPES = frozenset({OrderType.LIMIT_POST_ONLY, OrderType.LIMIT_REDUCE_ONLY})
 
 
 class IntentState(enum.StrEnum):
@@ -119,6 +123,8 @@ def can_transition(a, b):
 
 
 POST_HOC_REASON = ReasonCode.RECONCILE_EXTERNAL_CLOSE
+TARGET_REASONS = frozenset({ReasonCode.EXIT_TAKE_PROFIT, ReasonCode.EXIT_TP1, ReasonCode.EXIT_LADDER,
+                            ReasonCode.EXIT_BASKET_TP, ReasonCode.EXIT_BASKET_TP_PART})   # r3 DRAFT item 4
 
 
 def is_post_hoc(intent):
@@ -201,7 +207,11 @@ class OrderIntent(Record):
             check_text(self.slot_id, p + '.slot_id', 32)
         req((t is OrderType.STOP_MARKET) == (u is Purpose.PROTECT), p + '.order_type', 'PROTECT <=> stop_market')
         req(t is not OrderType.LIMIT_POST_ONLY or u in OPENING, p + '.order_type', 'only ENTRY / ADD may rest as a maker')
-        if t is OrderType.LIMIT_POST_ONLY:
+        if t is OrderType.LIMIT_REDUCE_ONLY:            # r3 DRAFT item 4: the resting target order kind
+            req(u in (Purpose.REDUCE, Purpose.CLOSE) and self.owner_kind is OwnerKind.LOT, p + '.order_type',
+                'a resting reduce-only target is a lot REDUCE / CLOSE')
+            req(self.reason in TARGET_REASONS, p + '.reason', 'a resting target exits on a take-profit reason')
+        if t in LIMIT_TYPES:
             req(self.price is not None, p + '.price', 'a limit order has a price')
             positive(self.price, p + '.price')
         else:
