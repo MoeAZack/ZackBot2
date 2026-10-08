@@ -111,6 +111,9 @@ def probe_p1(venue, *, symbol, rules, price, run_id, route='algo'):
     qty = min_feasible_qty(rules, price)
     if qty is None:
         raise ProbeAborted('no feasible minimum quantity')
+    before = _position_qty(venue, symbol, 'LONG')          # an ADOPTED foreign LONG is never the probe's to close
+    if before is None:
+        raise ProbeAborted('the LONG position is unreadable before the probe; nothing sent')
     fin = _open_long(venue, entry, qty, res.steps)
     filled = fin.executed_qty
     stop_price = _floor_to(fin.avg_price * FAR_STOP, rules.tick_size)
@@ -129,10 +132,13 @@ def probe_p1(venue, *, symbol, rules, price, run_id, route='algo'):
     reuse = venue.submit_market(P.MarketOrder(ref=entry, position_side='LONG', qty=filled, reduce=True))
     res.filled_id_reused = _classify_reuse(reuse)
     if reuse.kind is P.OutcomeKind.UNKNOWN and reuse.detail != 'duplicate_client_id':
-        left = _position_qty(venue, symbol, 'LONG')         # a query by Y returns the ORIGINAL fill: judge by position
-        res.filled_id_reused = 'accepted' if left == 0 else f'unknown:{reuse.detail}'
+        now = _position_qty(venue, symbol, 'LONG')          # a query by Y returns the ORIGINAL fill: judge by position
+        res.filled_id_reused = 'accepted' if now is not None and now <= before else f'unknown:{reuse.detail}'
     res.steps.append(f'resubmit {entry.client_id} as a reduce-only close: {res.filled_id_reused}')
-    left = _position_qty(venue, symbol, 'LONG')
+    now = _position_qty(venue, symbol, 'LONG')
+    if now is None:
+        raise ProbeAborted('the LONG position is unreadable after the probe', exposure_possible=True)
+    left = min(filled, max(now - before, Decimal(0)))       # ONLY what the probe itself still holds
     if left:
         close = venue.submit_market(P.MarketOrder(ref=fallback_close, position_side='LONG', qty=left, reduce=True))
         res.steps.append(f'close {fallback_close.client_id}: {close.kind.value}')
