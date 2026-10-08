@@ -8,8 +8,9 @@ Codex #13 P1). Every runner decision that sizes, attributes or books from fill r
   - DUP / DUPLAST: the same trade id twice                     -> de-duplicated (identical rows); conflicting -> UNKNOWN
   - EMPTY / TRUNC: rows of an order that do not add up to the quantity the venue's own order record executed
                                                                -> UNKNOWN (never a partial sum, never zero)
-  - a FULL page (as many rows as one venue page holds) with no proven end -> UNKNOWN, unless the read carries the
-    adapter's completeness evidence (proven_complete: TestnetVenue pages to a proven end itself; Cowork 6068372233 #2)
+  - NOT PROVEN COMPLETE: an OK read without the adapter's completeness evidence ('complete pages=P dups=N' in its
+    detail: TestnetVenue pages to a proven end, FakeVenue answers whole) -> UNKNOWN (Cowork 6068372233 #2 /
+    6069221337 #4: no row-count heuristic)
 Unknown evidence is never zero and never widens ownership; callers record an incident and HOLD / stay pending.
 """
 from __future__ import annotations
@@ -20,7 +21,6 @@ from decimal import Decimal
 from newcore.ports.venue import ReadKind
 
 ZERO = Decimal(0)
-PAGE_LIMIT = 1000                     # one venue page of fills / userTrades (Binance max limit): full = end not proven
 
 
 COMPLETE = re.compile(r'complete pages=\d+ dups=\d+')
@@ -32,9 +32,8 @@ class EvidencePending(LookupError):
 
 def proven_complete(read):
     """The adapter's own completeness evidence on an OK read (TestnetVenue fills / trades, nc-venue-testnet 5f0c959:
-    ReadOutcome.detail 'complete pages=P dups=N' - every page read to a short page by its raw row count). Present:
-    the page count heuristic is not applied (a long, complete multi-page answer is valid). Absent (FakeVenue, an
-    adapter without the marker): a page that reaches PAGE_LIMIT rows is not proven complete -> UNKNOWN."""
+    ReadOutcome.detail 'complete pages=P dups=N' - every page read to a short page by its raw row count; FakeVenue
+    emits 'complete pages=1 dups=0'). Absent -> the read is not proven complete -> UNKNOWN (fail-closed)."""
     return isinstance(getattr(read, 'detail', None), str) and COMPLETE.fullmatch(read.detail) is not None
 
 
@@ -45,8 +44,8 @@ def rows_of(read, *, symbol, now=None, eoid=None, side=None, since=None, expect=
         return None, f'read {getattr(read, "kind", "absent")}'
     if now is not None and read.observed_at_ms < now:
         return None, f'stale read (observed {read.observed_at_ms} < {now})'
-    if not proven_complete(read) and len(read.value) >= PAGE_LIMIT:
-        return None, f'a full page of {len(read.value)} rows: its end is not proven'
+    if not proven_complete(read):                                     # Cowork 6069221337 #4: never a row-count
+        return None, 'no completeness evidence on the read (end not proven)'   # heuristic - the adapter proves it
     seen = {}
     for f in read.value:
         if f.symbol != symbol or (eoid is not None and f.exchange_order_id != eoid) or \

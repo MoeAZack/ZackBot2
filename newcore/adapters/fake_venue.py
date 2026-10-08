@@ -61,6 +61,8 @@ E_DUPLICATE_ID = -4116
 E_NO_ORDER = -2013
 E_UNKNOWN_ORDER = -2011
 E_NO_MARKET = -1
+COMPLETE = 'complete pages=1 dups=0'   # fills / trades answered whole: the completeness evidence the
+                                       # runner requires (TestnetVenue: the same marker)
 
 
 @dataclass(frozen=True, slots=True)
@@ -458,7 +460,7 @@ class FakeVenue:
     def fills(self, symbol, exchange_order_id):
         self.calls['fills'] += 1
         out = tuple(f for f in self._fills if f.symbol == symbol and f.exchange_order_id == exchange_order_id)
-        return ReadOutcome(kind=ReadKind.OK, observed_at_ms=self.now_ms, value=out)
+        return ReadOutcome(kind=ReadKind.OK, observed_at_ms=self.now_ms, value=out, detail=COMPLETE)
 
     # ------------------------------------------------------------------------------------------------ account reads
     def equity(self) -> ReadOutcome:
@@ -519,7 +521,7 @@ class FakeVenue:
     def trades(self, symbol, side, from_ms):
         """userTrades of one (symbol, position side) since from_ms (inclusive): VenueFill rows, oldest first."""
         rows = tuple(f for f in self._fills if (f.symbol, f.position_side) == (symbol, side) and f.at_ms >= from_ms)
-        return ReadOutcome(kind=ReadKind.OK, observed_at_ms=self.now_ms, value=rows)
+        return ReadOutcome(kind=ReadKind.OK, observed_at_ms=self.now_ms, value=rows, detail=COMPLETE)
 
     def mark_price(self, symbol):
         """The current mark: the price a market order would execute at now (the next open, or the intra-candle mark)."""

@@ -12,6 +12,7 @@ h5  a malformed FINAL answer (FILLED with executed 0 / half / double) is UNKNOWN
 h6  a fee is booked only from proven rows: otherwise the trade is PENDING with an incident (never a zero fee).
 h7  the structured state reports the effective mode: portfolio().entries_mode / hold_kind are HOLD /
     durability_unavailable in a hard HOLD (fold.mode is the journal's durable view only)."""
+import dataclasses
 import json
 from decimal import Decimal as D
 
@@ -19,7 +20,7 @@ import pytest
 
 from evidence_faults import FAULTS, RECOVERABLE, UNPROVEN, faulty
 from newcore.domain import EntriesMode, HoldKind, Purpose
-from newcore.ports.venue import OrderOutcome, OutcomeKind
+from newcore.ports.venue import OrderOutcome, OutcomeKind, ReadKind, ReadOutcome
 from newcore.runner import InjectedSignals, ids
 from slice_helpers import H4, ScriptedVenue, World, flat_bars
 
@@ -231,19 +232,28 @@ def test_h7_the_structured_state_reports_the_effective_hold(side):
     assert r.fold.mode is EntriesMode.ACTIVE                             # the journal's durable view (documented)
 
 
-# ------------------------------------------------------------------------- 6068372233 #2 / #5: full page, fee
+# ---------------------------------------------------- 6068372233 #2 / 6069221337 #4: completeness, #5: fee
+def unmarked(read):
+    """The same rows without the adapter's completeness evidence (an adapter / page that does not prove its end)."""
+    def call(*a, **k):
+        r = read(*a, **k)
+        if r.kind is not ReadKind.OK:
+            return r
+        return ReadOutcome(kind=ReadKind.OK, observed_at_ms=r.observed_at_ms, value=r.value)
+    return call
+
+
 @pytest.mark.parametrize('side', SIDES)
-def test_a_full_page_has_no_proven_end_and_is_unknown(side, monkeypatch):
-    """A page with as many rows as the venue page holds may continue: its end is not proven -> UNKNOWN (the port has
-    no continuation marker yet). PAGE_LIMIT is lowered so the one true row fills a page."""
-    from newcore.runner import fill_evidence as FE
-    monkeypatch.setattr(FE, 'PAGE_LIMIT', 1)
+def test_a_read_without_proven_completeness_is_unknown(side):
+    """No row-count heuristic (a 40-row page passes any limit): only the adapter's completeness evidence makes a read
+    complete; without it nothing is sized from it."""
     w = resting_entry_hard_hold(side, D('2'), final=True)
+    w.venue.fills = unmarked(w.venue.fills)
     n = len(w.venue.orders_submitted())
     for b in (6, 7):
         w.run(b)
     assert not [o for o in new_orders(w, n) if o.order_type == 'STOP_MARKET']
-    assert any('full page' in t for _, t in w.runner.incidents)
+    assert any('no completeness evidence' in t for _, t in w.runner.incidents)
 
 
 @pytest.mark.parametrize('side', SIDES)
@@ -265,15 +275,110 @@ def test_the_adapters_completeness_marker_lifts_the_full_page_rule():
     """TestnetVenue (nc-venue-testnet 5f0c959) pages fills / userTrades to a PROVEN end and says so in the OK read's
     detail ('complete pages=P dups=N'): a long complete answer is accepted; without the marker a full page is UNKNOWN."""
     from newcore.ports.venue import ReadKind, ReadOutcome, VenueFill
-    from newcore.runner.fill_evidence import PAGE_LIMIT, rows_of
+    from newcore.runner.fill_evidence import rows_of
+    n = 1005
     rows = tuple(VenueFill(trade_id=str(i), exchange_order_id='7', symbol=SYM, position_side='LONG', qty=D('1'),
                            price=D('100'), fee=D('0.01'), fee_asset='USDT', realized_pnl=D('0'), maker=False,
-                           at_ms=T0 + i) for i in range(PAGE_LIMIT + 5))
+                           at_ms=T0 + i) for i in range(n))
     marked = ReadOutcome(kind=ReadKind.OK, observed_at_ms=T0 + 10 ** 6, value=rows, detail='complete pages=2 dups=0')
     plain = ReadOutcome(kind=ReadKind.OK, observed_at_ms=T0 + 10 ** 6, value=rows)
-    got, why = rows_of(marked, symbol=SYM, side='LONG', expect={'7': D(PAGE_LIMIT + 5)})
-    assert why is None and len(got) == PAGE_LIMIT + 5
+    got, why = rows_of(marked, symbol=SYM, side='LONG', expect={'7': D(n)})
+    assert why is None and len(got) == n
     got, why = rows_of(plain, symbol=SYM, side='LONG')
-    assert got is None and 'full page' in why
+    assert got is None and 'no completeness evidence' in why
     forged = ReadOutcome(kind=ReadKind.OK, observed_at_ms=T0 + 10 ** 6, value=rows, detail='complete-ish')
     assert rows_of(forged, symbol=SYM, side='LONG')[0] is None             # only the exact marker counts
+
+
+
+# ------------------------------------------------------------------------------- Cowork 6069221337 #1 / #2 / #5
+def earlier_emergency_exit(side, *, restart):
+    """Lot 5 of ours; an emergency close of 2 sent by an EARLIER process (never in this process's ledger) left own 3;
+    a foreign add of 3 -> the venue holds 6; then the store is down and our stop is gone."""
+    from newcore.ports.venue import MarketOrder, OrderRef
+    w = World(flat_bars(30), InjectedSignals({(SYM, at(5)): (('enter', side),)}, stop_atr=D('2')), strict=False)
+    w.run(6)
+    lot, = w.runner.fold.open_lots()
+    cid = ids.emergency_stop_client_id(w.runner.acct, SYM, side, D('2'), 'close')
+    out = w.venue.submit_market(MarketOrder(ref=OrderRef(symbol=SYM, client_id=cid), position_side=side, qty=D('2'),
+                                            reduce=True))
+    assert out.kind is OutcomeKind.FINAL and position(w, side) == D('3')
+    w.emergency_eoid = out.exchange_order_id
+    w.venue.inject_position(SYM, side, D('3'), D('100'))
+    w.venue.external_cancel(lot.live_stop.intent.client_order_id)
+    w.journal.fail_writes(10 ** 9)
+    if restart:
+        w.restart(hard_hold='test: store down at boot')
+    else:
+        w.runner.store_unavailable('test: ENOSPC')
+    return w
+
+
+@pytest.mark.parametrize('side', SIDES)
+@pytest.mark.parametrize('fault', ('ok',) + FAULTS)
+@pytest.mark.parametrize('restart', (False, True))
+@pytest.mark.parametrize('code', (None, -2010))
+def test_emgexit_unproven_trades_never_size_from_the_whole_lot(side, fault, restart, code):
+    w = earlier_emergency_exit(side, restart=restart)
+    w.venue.trades = faulty(w.venue.trades, fault)
+    if code is not None:
+        w.port.refuse('stop', code)                                      # a refused stop escalates to the close
+    n = len(w.venue.orders_submitted())
+    for b in (7, 8, 9):
+        w.run(b)
+    sent = new_orders(w, n)
+    r = w.runner
+    assert r.mode is EntriesMode.HOLD
+    if fault in UNPROVEN:                                                # ownership UNKNOWN: nothing new, loud
+        assert sent == [] and position(w, side) == D('6')
+        assert any('UNREADABLE' in t for _, t in r.incidents)
+    elif code is None:                                                   # proven: exactly our 3
+        assert [o.qty for o in sent if o.order_type == 'STOP_MARKET'] == [D('3')]
+    else:
+        assert [o.qty for o in sent if o.order_type == 'MARKET'] == [D('3')] and position(w, side) == D('3')
+
+
+def conflicting(read, how, eoid):
+    """h8 A1b: a trade id of OUR emergency exit reused by another order (a conflicting repeat); A1c: our emergency
+    exit's exchange order id reused by another trade (its rows no longer add up to it)."""
+    def call(*a, **k):
+        r = read(*a, **k)
+        if r.kind is not ReadKind.OK or not r.value:
+            return r
+        f = next((x for x in r.value if x.exchange_order_id == eoid), r.value[-1])
+        extra = (dataclasses.replace(f, exchange_order_id='424242', qty=f.qty + 1) if how == 'tradeid'
+                 else dataclasses.replace(f, trade_id=f.trade_id + '9', qty=D('1')))
+        return ReadOutcome(kind=ReadKind.OK, observed_at_ms=r.observed_at_ms, value=r.value + (extra,), detail=r.detail)
+    return call
+
+
+@pytest.mark.parametrize('side', SIDES)
+@pytest.mark.parametrize('how', ('tradeid', 'eoid'))
+def test_a1_reused_ids_never_widen(side, how):
+    w = earlier_emergency_exit(side, restart=False)
+    w.venue.trades = conflicting(w.venue.trades, how, w.emergency_eoid)
+    n = len(w.venue.orders_submitted())
+    for b in (7, 8):
+        w.run(b)
+    sent = new_orders(w, n)
+    assert sum((o.qty for o in sent if o.order_type == 'STOP_MARKET'), D(0)) <= D('3')   # never 5 on own 3
+    assert not [o for o in sent if o.order_type == 'MARKET'] and position(w, side) == D('6')
+    assert w.runner.mode is EntriesMode.HOLD and any('UNREADABLE' in t for _, t in w.runner.incidents)
+
+
+@pytest.mark.parametrize('side', SIDES)
+def test_a3f_the_venue_goes_flat_while_ownership_is_unknown(side):
+    """Store back with the trades unreadable (ownership UNKNOWN), then the venue side reads flat: the lot takes the
+    external-flat path (owner item, suspended, nothing sent), never left open and silent."""
+    w = earlier_emergency_exit(side, restart=False)
+    w.run(7)
+    w.restart()                                                          # writable again
+    w.venue.trades = faulty(w.venue.trades, 'unknown')
+    w.run(8)
+    w.venue._positions.pop((SYM, side), None)                            # flat at the venue
+    n = len(w.venue.orders_submitted())
+    w.run(10)
+    r = w.runner
+    lot, = r.fold.open_lots()
+    assert r.journal.find_decision(ids.marker_decision_id('external_close', lot.lot_id)) is not None
+    assert r.mode is EntriesMode.HOLD and new_orders(w, n) == []

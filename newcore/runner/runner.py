@@ -385,6 +385,9 @@ class Runner:
         except DomainError as ex:                                         # Cowork h5: e.g. FILLED with executed 0 /
             self._incident(f'{iv.intent_id}: malformed venue answer ({describe(ex)}): taken as UNKNOWN, '
                            're-queried; nothing booked from it')          # half / double: never booked, never raised
+            self._durable_incident(ReasonCode.RECONCILE_STALE_READ, 'malformed venue answer taken as UNKNOWN; '
+                                   'nothing booked from it', key=iv.intent_id + '/malformed', symbol=iv.intent.symbol,
+                                   side=str(iv.intent.side), intents=(iv.intent_id,))
             out = OrderOutcome(kind=OutcomeKind.UNKNOWN, ref=self._ref(iv), observed_at_ms=out.observed_at_ms,
                                detail='malformed')
             res = result_from(out, iv.intent, ids.result_id(iv.intent_id, len(iv.results)), submit=submit)
@@ -597,12 +600,10 @@ class Runner:
     def _emergency_filled(self, symbol, side):
         """What OUR emergency orders (zbn1e stops / closes, never journaled) filled on (symbol, side) since the earliest
         open lot's entry: from the venue's trades, each order matched by its exchange order id to an emergency client
-        id re-derived for that order's filled quantity (so it survives a restart); this process's own FINAL emergency
-        results are the floor when the trades cannot be read.
-        Codex #13 P1: None (UNKNOWN) when it cannot be proven - the trades unreadable AND either a previous process may
-        have sent emergency orders for these lots (a lot opened before this process's first cycle, a boot in hard HOLD,
-        or a store-back accounting that could not read them) or an emergency order this process sent cannot be read back
-        by its id. Only for lots opened by THIS process is its own ledger of sent ids complete."""
+        id re-derived for that order's filled quantity (so it survives a restart).
+        Codex #13 P1 / Cowork 6069221337: None (UNKNOWN) whenever the trades evidence is not PROVEN (unreadable,
+        stale, short, conflicting, not marked complete): no fallback to this process's own ledger - an emergency order
+        it did not send (another process, a previous run) would be invisible to it. Unknown never sizes anything."""
         mem = self._em_filled.get((symbol, side), ZERO)
         lots = [x for x in self.fold.open_lots() if (x.symbol, x.side) == (symbol, side)]
         if not lots:
@@ -612,29 +613,35 @@ class Runner:
         tr = read(symbol, side, since) if read is not None else None
         rows, why = rows_of(tr, symbol=symbol, now=self.now, side=side, since=since,
                             expect=self._known_fills(lots)) if tr is not None else (None, 'no trades read')
-        if rows is None:
-            if self._boot_hard_hold or self._first_now is None or any(
-                    x.lot_id in self._own_unknown or x.opened_at_ms < self._first_now for x in lots):
-                return None                                               # a previous process's orders: unprovable
-            total = ZERO
-            for cid, route in sorted(self._em_sent.get((symbol, side), ())):   # this process's own, by their ids
-                q = self.venue.query(OrderRef(symbol=symbol, client_id=cid, route=route))
-                if q.kind is OutcomeKind.NOT_FOUND or q.kind is OutcomeKind.REJECTED:
-                    continue
-                if q.kind is OutcomeKind.KNOWN and route == 'classic' and not q.executed_qty:
-                    continue                                              # resting, nothing filled
-                if q.kind is OutcomeKind.FINAL and q.executed_qty is not None:
-                    total += q.executed_qty
-                    continue
-                return None                                               # unreadable / triggered algo: unknown
-            return max(total, mem)
-        orders = {}
+        if rows is None:                                                  # Cowork 6069221337 (Codex ruling 3 + P1):
+            return None                                                   # unproven trades -> ownership UNKNOWN
+        groups = {}
         for t in rows:
-            orders[t.exchange_order_id] = orders.get(t.exchange_order_id, ZERO) + t.qty
-        total = sum((q for eoid, q in orders.items() if self._is_emergency_order(symbol, side, eoid, q)), ZERO)
+            groups.setdefault(t.exchange_order_id, []).append(t)
+        total = ZERO
+        for eoid, grp in groups.items():
+            q = sum((t.qty for t in grp), ZERO)
+            if self._is_emergency_order(symbol, side, eoid, q):
+                total += q
+            elif self._emergency_conflict(symbol, side, eoid, grp, q):
+                return None                                               # h8 A1c: an id reused - UNKNOWN
         if total < mem:
             return None                                                   # the trades miss a fill we saw: UNKNOWN
         return total
+
+    def _emergency_conflict(self, symbol, side, eoid, grp, qty):
+        """Cowork h8 A1c: rows of ONE of our emergency orders that do not add up to it (an exchange order id reused
+        by another trade, a row too many): the order is found by an id re-derived for one row's quantity or a running
+        total, but its venue record executed a different quantity than the rows say -> conflicting evidence."""
+        cands, run = set(), ZERO
+        for t in grp:
+            run += t.qty
+            cands.update((t.qty, run))
+        cands.discard(qty)
+        for c in sorted(cands):
+            if c > 0 and self._is_emergency_order(symbol, side, eoid, c):
+                return True
+        return False
 
     def _known_fills(self, lots):
         """{exchange order id: executed} of every fill the journal already holds for these lots (entry, adds, exits):
@@ -685,7 +692,7 @@ class Runner:
             ef = self._emergency_filled(sym, side)
             total = sum((x.qty for x in lots), ZERO)
             if ef is None:                                                # Codex #13 P1: unknown is not zero
-                if venue.get((sym, side), total) < total:                 # and the venue holds less than the lots
+                if venue.get((sym, side), total) != total:                # and the venue disagrees with the lots
                     new = {x.lot_id for x in lots} - self._own_unknown
                     self._own_unknown.update(x.lot_id for x in lots)
                     if new:
@@ -2026,7 +2033,10 @@ class Runner:
         return sum((f.fee for f in rows), ZERO)
 
     def portfolio(self, rec=None):
-        """The NC-01 Portfolio this fold + reconciliation proves (constructing it runs every NC-01 invariant)."""
+        """The NC-01 Portfolio this fold + reconciliation proves (constructing it runs every NC-01 invariant).
+        Raises fill_evidence.EvidencePending (a LookupError) when a fill fee it needs is not PROVEN by the venue
+        (never a zero): check_invariants records it as a pending incident, summary() reports ownership None; a direct
+        caller must handle it the same way (the projection is pending, not refused)."""
         rec = rec or self.last_rec
         f = self.fold
         mode, hold = self.mode, self.hold                                 # Cowork h7: the EFFECTIVE mode
