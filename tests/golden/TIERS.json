@@ -1,0 +1,36 @@
+{
+  "schema": "zb-golden-tiers/1",
+  "note": "Every golden case is in EXACTLY one tier (goldenlib/tiers.py; test_tiers.py). core = per commit (verify fast): representative long and short paths and one case per critical ownership / protection class, each with the reason it is core. extended = every other mirror, fault and adapter case, run at the accepted exact-head full gate (verify full). Moving a case between tiers is a reviewed edit of this file; it never changes a contract hash.",
+  "core": {
+    "G-STOP-L-01": "exchange stop resting on the book, filled inside the candle (STOP_HIT, long path; the backtester's required case)",
+    "G-STOP-S-01": "the same exchange stop on the short path (representative SHORT on both legacy adapters)",
+    "G-GAP-STOP-L-01": "protection: a stop gapped through at the open fills at the open, never at the stop price",
+    "G-STOP-CROSSED-S-01": "protection: a trail level already crossed is a bot taker close (STOP_CROSSED), never an exchange fill",
+    "G-TIME-L-01": "ownership of the holding clock: TIME_EXIT at the candle-close decision (the engine's required case)",
+    "G-GAP-TP-S-01": "take-profit gapped through at the open: the market close fills at the gapped open (TP_FULL, short path)",
+    "G-GAP-DCA-L-01": "DCA basket: safety orders gapped at the open fill at the open, then the whole basket closes at its target (TP_BASKET)",
+    "G-PYR-SLIP-L-01": "pyramid add is a taker market order with the entry slippage; the strategy exit closes the whole position",
+    "G-TRAILENTRY-MAXPOS-SHORT-01": "entry ownership: an armed trailing entry holds a max_pos slot until it fills (short path)",
+    "G-DAY-CAIRO-W-01": "the Cairo trading-day boundary (winter, UTC+2): the daily-loss halt of day D does not block day D+1",
+    "G-OUTAGE-STOP-L-01": "fault class exchange_outage: the resting exchange stop protects while the bot is cut off",
+    "G-RESTART-TIME-L-01": "fault class restart: the persisted holding clock survives a restart mid-trade",
+    "G-AMBIG-ENTRY-L-01": "fault class lost_response: a lost answer to a filled entry is resolved from the order record (no phantom, no second entry)",
+    "G-TP1-ZERO-L-01": "partial-exit class: a tp1 part that floors to zero sends nothing, so the whole position runs to the target (C25)"
+  },
+  "extended": [
+    "G-DAY-CAIRO-S-01",
+    "G-DAY-CAIRO-S-SHORT-01",
+    "G-DAY-CAIRO-W-SHORT-01",
+    "G-DCA-SLIP-L-01",
+    "G-DCA-SLIP-S-01",
+    "G-GAP-DCA-S-01",
+    "G-GAP-STOP-S-01",
+    "G-GAP-TP-L-01",
+    "G-PYR-SLIP-S-01",
+    "G-STOP-CROSSED-L-01",
+    "G-TIME-L-02",
+    "G-TIME-S-01",
+    "G-TIME-S-02",
+    "G-TRAILENTRY-MAXPOS-01"
+  ]
+}
