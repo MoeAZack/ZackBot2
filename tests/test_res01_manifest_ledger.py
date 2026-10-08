@@ -15,7 +15,7 @@ sys.path.insert(0, os.path.join(ROOT, 'tools', 'research'))
 import ledger as L                                                                          # noqa: E402
 import manifest as M                                                                        # noqa: E402
 
-RES = os.path.join(ROOT, 'docs', 'newcore', 'research')
+RES = os.path.join(ROOT, 'research_evidence')
 W = {'start': '2025-01-01T00:00:00Z', 'end': '2025-07-01T00:00:00Z'}
 RD = 'a' * 64
 MD = 'b' * 64

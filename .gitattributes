@@ -5,3 +5,5 @@ data/**/*.csv text eol=lf
 data1h/**/*.csv text eol=lf
 data_long/**/*.csv text eol=lf
 DATA_MANIFEST.json text eol=lf
+research_evidence/manifests/*.json text eol=lf
+research_evidence/ledger/*.jsonl text eol=lf

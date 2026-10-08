@@ -106,7 +106,7 @@ Built inside the existing NEWCORE research path, not beside it:
 - **Spent windows:** all three legacy-derived families have seen the **whole legacy window (2021-12-19 -> 2026-10-04)**,
   not only 2025-26. It is development evidence only; an untouched claim needs post-freeze forward data; the rejected
   short family is not retuned against it. Each is pre-entered as `window_spent` in
-  `docs/newcore/research/ledger/<family>.jsonl` with its evidence.
+  `research_evidence/ledger/<family>.jsonl` with its evidence.
 
 ### 4a. Contamination inventory (grep of legacy code, results and issue 13; 09 Oct 2026)
 
@@ -169,7 +169,7 @@ Built inside the existing NEWCORE research path, not beside it:
 ## R1 status (source + fixture preparation only; no sealed or evidence run)
 
 - `tools/research/manifest.py`: `zb-data-manifest/1` build / validate / verify / write-once, canonical-JSON SHA-256
-  digest. Committed `manifests/legacy-unverified-v1.json` (64 files = `DATA_MANIFEST.json`, digest `5354a611...`).
+  digest. Committed `research_evidence/manifests/legacy-unverified-v1.json` (64 files = `DATA_MANIFEST.json`, digest `5354a611...`).
 - `tools/research/ledger.py`: `zb-ledger/1` hash-chained JSONL, append-only byte check, Git-ancestry check, holdout
   reveal / rerun rules, `n_trials`. Tests: `tests/test_res01_manifest_ledger.py`.
 - **Data gaps (nothing downloaded).** Local data is klines only (`t,o,h,l,c,v`, survivor-only;
