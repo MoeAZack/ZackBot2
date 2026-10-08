@@ -146,6 +146,8 @@ def test_order_final_and_open():
 
 
 @pytest.mark.parametrize('patch', [{'status': 'WEIRD'}, {'executedQty': '11'}, {'reduceOnly': 'true'},
+                                   {'status': 'CANCELED', 'executedQty': '11'},
+                                   {'status': 'PARTIALLY_FILLED', 'executedQty': '10.5'},
                                    {'orderId': True}, {'side': 'HOLD'},
                                    {'status': 'FILLED', 'executedQty': '9'}])
 def test_order_bad_records(patch):
