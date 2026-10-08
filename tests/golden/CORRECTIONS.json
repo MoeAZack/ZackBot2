@@ -215,6 +215,25 @@
       "accepted_by": null,
       "date_cairo": "2026-10-08",
       "prev_entry_sha": "2e8501e060f8f22dc3344b1c20500cff095a57ca2ed9085f327a81f7137996ab"
+    },
+    {
+      "id": "CORR-0006",
+      "type": "add",
+      "ticket": "AUD-08",
+      "finding": "B2 coverage: partial exit (smallest expressible slice: C25 zero part)",
+      "title": "Partial take-profit that floors to zero at the exchange step: nothing sent, nothing marked, full target taken",
+      "cases": {
+        "G-TP1-ZERO-L-01": {
+          "prev_contract_sha": null,
+          "contract_sha": "539122734cebc7be831f1c4f513814b27b12e47a20ddda749afa8b00a8f2a1d0"
+        }
+      },
+      "adapters_changed": [],
+      "rationale": "A real partial fill is not expressible in the v1 one-row-per-position trace (P2-3b, needs the AUD-08 event trace); the smallest partial-exit slice that IS expressible is the AUD-02 C25 rule: a tp1 part that floors to zero at the instrument step (step 5, qty 5, part 2.5) sends no order and marks nothing done, so the whole position reaches the 2 R target as one row, TP_FULL R 1.9385932. Legacy adapters are not_applicable (they refuse slot.tp1 and instruments by design); the expectation was cross-checked outside the pack by running both legacy models directly with these exchange rules (scratch xcheck_tp1.py: replay take_profit 19.3859, backtester tp 19.385932 with one recorded zero partial).",
+      "evidence": "branch golden-short-mirrors on cda8f58; scratch xcheck_tp1.py",
+      "accepted_by": null,
+      "date_cairo": "2026-10-08",
+      "prev_entry_sha": "546991efb8c874da8949e736ea5507efc8a2003f1bb0b8832257c752be28a2ca"
     }
   ]
 }
