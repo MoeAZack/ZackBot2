@@ -4,7 +4,7 @@ from decimal import Decimal as D
 
 import pytest
 
-from newcore.adapters import header_of
+from newcore.ports import header_of
 from newcore.domain import (EntriesMode, IntentState, Lookup, ModeChanged, Ownership, Purpose, ReasonCode, ResultObserved,
                             ResultPhase)
 from newcore.ports import EventKind, JournalUnavailable
@@ -92,7 +92,7 @@ def test_restart_mid_entry_cycle_no_duplicate_entry_or_stop(after):
     w.journal.fail_writes(1, after=after)
     with pytest.raises(JournalUnavailable):
         w.run(ENTRY_BAR)
-    w.runner = w.new_runner()                                    # restart: fold the journal
+    w.restart()                                                   # restart: fold the journal
     w.runner.cycle(w.close_ms(ENTRY_BAR))                        # the same candle is re-delivered
     _assert_one_entry_one_stop(w)
     assert w.runner.counters.redelivered == 1
@@ -114,7 +114,7 @@ def test_restart_mid_exit_cycle_finishes_the_close_without_a_fresh_stop(after):
     w.journal.fail_writes(1, after=after)
     with pytest.raises(JournalUnavailable):
         w.run(EXIT_BAR)
-    w.runner = w.new_runner()
+    w.restart()
     w.runner.cycle(w.close_ms(EXIT_BAR))
     w.run(15)
     assert venue_orders(w) == venue_orders(ref)                  # entry, ONE stop (cancelled), ONE close
@@ -129,7 +129,7 @@ def test_restart_mid_trade_rebuilds_from_the_journal():
     w = World(flat_bars(20), signals())
     w.run(7)
     events = len(w.journal.read())
-    w.runner = w.new_runner()
+    w.restart()
     lot, = w.runner.fold.open_lots()
     assert lot.live_stop.state is IntentState.WORKING
     w.runner.cycle(w.close_ms(7))                                # re-run the last cycle: nothing new
@@ -146,7 +146,7 @@ def test_crash_between_decision_and_intent_resumes_only_inside_the_candle():
     w.journal.fail_writes(1, after=1)                            # the decision lands, its intent does not
     with pytest.raises(JournalUnavailable):
         w.run(ENTRY_BAR)
-    w.runner = w.new_runner()
+    w.restart()
     w.runner.cycle(w.close_ms(ENTRY_BAR))                        # same candle: the derived intent is recorded + sent
     _assert_one_entry_one_stop(w)
     late = World(flat_bars(20), signals())
@@ -154,7 +154,7 @@ def test_crash_between_decision_and_intent_resumes_only_inside_the_candle():
     late.journal.fail_writes(1, after=1)
     with pytest.raises(JournalUnavailable):
         late.run(ENTRY_BAR)
-    late.runner = late.new_runner()
+    late.restart()
     late.run(12)                                                 # next candle: the signal is spent (fail closed)
     assert late.venue.orders_submitted() == ()
 

@@ -43,7 +43,7 @@ import dataclasses
 from dataclasses import dataclass, field
 from decimal import Decimal
 
-from newcore.domain import (Account, Action, Authority, Decision, DecisionKey, DecisionRecorded, EntriesMode, HoldKind,
+from newcore.domain import (Account, Action, Authority, Decision, DecisionRecorded, EntriesMode, HoldKind,
                             InstrumentRules, IntentRecorded, IntentState, IntentStateChanged, Lot, LotSource,
                             ModeChanged, Op, Ownership, OwnershipProof, Portfolio, Position, ProofKind, Protection,
                             Purpose, ReasonCode, ResultObserved, ResultPhase, Rounding, Side, check_account_portfolio,
@@ -334,7 +334,7 @@ class Runner:
         if not self._permits(Purpose.PROTECT, Op.PLACE):
             return
         n = len(lot.protects)
-        iid = ids.derive_child_intent_id(self.acct, lot.entry.intent_id, 'protect', n)
+        iid = self.journal.gate().grammar.next_child_intent_id(lot.lot_id, Purpose.PROTECT)    # read just before
         did = ids.child_decision_id(iid)
         prior = self.journal.find_decision(did)
         if prior is not None:                                             # crash gap: decided, intent not recorded
@@ -376,8 +376,9 @@ class Runner:
                 self._enter(symbol, s, r.value[-1].close)
 
     def _key(self, symbol, s, purpose):
-        return DecisionKey(strategy=self.signals.strategy, strategy_version=self.signals.version, symbol=symbol,
-                           side=Side(s.side), candle_close_ms=s.candle_close_ms, purpose=purpose)
+        """The one runner-boundary key constructor (step 0 r2): strategy = '<name>@<tf>', version v<n>."""
+        return ids.decision_key(self.signals.name, self.signals.version, self.signals.tf_label, symbol, s.side,
+                                s.candle_close_ms, purpose)
 
     def _enter(self, symbol, s, ref_price):
         key = self._key(symbol, s, Purpose.ENTRY)
@@ -407,7 +408,7 @@ class Runner:
             self._decision(decision_id=did, action=Action.SKIP, reason=gate, authority=Authority.STRATEGY, key=key,
                            symbol=symbol, side=s.side, detail=f'skip {gate}')
             return
-        iid = ids.derive_intent_id(self.acct, key, 0)
+        iid = ids.derive_intent_id(self.acct, key)
         planned = planned_intent(intent_id=iid, account_id=self.acct, decision_id=did, purpose='entry', symbol=symbol,
                                  side=s.side, qty=sz.qty, reason=s.reason, at_ms=self.now, slot_id=self.cfg.slot_id)
         self._decision(decision_id=did, action=Action.ENTER, reason=s.reason, authority=Authority.STRATEGY, key=key,
@@ -446,7 +447,7 @@ class Runner:
         key = self._key(symbol, s, Purpose.CLOSE)
         if self.journal.find_decision(ids.derive_decision_id(self.acct, key)) is not None:
             self.counters.redelivered += 1
-            if ids.derive_intent_id(self.acct, key, 0) in self.fold.intents:
+            if ids.derive_intent_id(self.acct, key) in self.fold.intents:
                 return                                                    # already recorded: sync owns it
         self._close_lot(lot, reason=s.reason, key=key)                    # (re)entered: a crash gap resumes here
 
@@ -454,10 +455,10 @@ class Runner:
         """Cancel the stop, then a reduce-only market close of the whole lot. key=None: an unkeyed (protection) close."""
         if key is not None:
             did = ids.derive_decision_id(self.acct, key)
-            iid = ids.derive_intent_id(self.acct, key, 0)
+            iid = ids.derive_intent_id(self.acct, key)
             authority = Authority.STRATEGY
         else:
-            iid = ids.derive_child_intent_id(self.acct, lot.entry.intent_id, 'close', len(lot.closes))
+            iid = self.journal.gate().grammar.next_child_intent_id(lot.lot_id, Purpose.CLOSE)
             did = ids.child_decision_id(iid)
             authority = Authority.PROTECTION
         prior = self.journal.find_decision(did)

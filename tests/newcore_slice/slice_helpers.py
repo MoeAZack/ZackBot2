@@ -74,6 +74,12 @@ class World:
                                    sides=sides, strict=strict)
         self.runner = self.new_runner()
 
+    def restart(self):
+        """A process restart: the journal is reopened (gate rebuilt from durable events), the Runner folds it."""
+        self.journal = self.journal.reopen()
+        self.runner = self.new_runner()
+        return self.runner
+
     def new_runner(self):
         return Runner(self.config, journal=self.journal, venue=self.venue, bars=self.bars, signals=self.signals)
 

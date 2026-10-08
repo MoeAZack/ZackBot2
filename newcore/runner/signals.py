@@ -36,7 +36,8 @@ class Signal:
 
 
 class SignalSource(Protocol):
-    strategy: str                     # DecisionKey.strategy (instance, timeframe included)
+    name: str                         # rule name; DecisionKey.strategy = keys.decision_key -> '<name>@<tf>'
+    tf_label: str                     # timeframe label ('4h')
     version: str                      # DecisionKey.strategy_version
     window: int                       # closed candles to read
 
@@ -70,7 +71,7 @@ class EmaMomSignals:
 
     def __post_init__(self):
         rule, version = NS.RULE_ID.rsplit('.', 1)
-        self.strategy, self.version = f'{rule}@{self.tf_label}', version
+        self.name, self.version = rule, version
         self._cache = _FloatCache()
 
     def decide(self, symbol, bars, as_of_ms):
@@ -91,11 +92,10 @@ class InjectedSignals:
     tf_label: str = '4h'
     atr_len: int = 14
     window: int = 1500
-    strategy: str = ''
+    name: str = 'injected'
     version: str = 'v1'
 
     def __post_init__(self):
-        self.strategy = self.strategy or f'injected@{self.tf_label}'
         self._cache = _FloatCache()
 
     def decide(self, symbol, bars, as_of_ms):
@@ -115,7 +115,8 @@ class InjectedSignals:
 
 @dataclass
 class NoSignals:
-    strategy: str = 'disabled@4h'
+    name: str = 'disabled'
+    tf_label: str = '4h'
     version: str = 'v1'
     window: int = 1
 

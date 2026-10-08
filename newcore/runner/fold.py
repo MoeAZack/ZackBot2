@@ -4,7 +4,7 @@ Nothing here is stored outside the journal. Every view is derived from NC-01 eve
   decisions   decision_id -> Decision
   intents     intent_id -> IntentView (the durable OrderIntent, its current state, results, final result)
   mode        EntriesMode / HoldKind / reasons from the last ModeChanged (ACTIVE before any)
-  lots        one per ENTRY intent whose FINAL result executed > 0 (lot id = ids.lot_id(entry intent)); closing fills
+  lots        one per ENTRY intent whose FINAL result executed > 0 (lot id = derive_lot_id(account, entry)); closing fills
               are the FINAL executions of the lot's PROTECT / CLOSE / REDUCE intents (owner_id = the lot)
 """
 from __future__ import annotations
@@ -163,7 +163,7 @@ class Fold:
         out, by_id = [], {}
         for iv in self.intents.values():
             if iv.purpose is Purpose.ENTRY and iv.final is not None and iv.executed > 0:
-                lot = LotView(lot_id=ids.lot_id(iv.intent_id), entry=iv, symbol=iv.intent.symbol,
+                lot = LotView(lot_id=ids.derive_lot_id(self.account_id, iv.intent_id), entry=iv, symbol=iv.intent.symbol,
                               side=str(iv.intent.side), opened_at_ms=iv.final.observed_at_ms, initial_qty=iv.executed,
                               avg_price=iv.final.avg_price)
                 out.append(lot)
