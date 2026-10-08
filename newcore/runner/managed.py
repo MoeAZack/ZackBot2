@@ -8,13 +8,21 @@ CONFIRMED entry fill, and no unmanaged (runner) child intent of it is in the jou
 owns identity, durability and the venue:
 
   journal -> driver   every driver input is a journal event, applied right after it is durable (`_emit`), and a
-                      restart folds the SAME events through the SAME function (`_mg_observe`) at boot:
-                        entry ResultObserved FINAL executed > 0     -> driver.start(plan)   (entry fee = venue fills)
-                        ResultObserved of a driver intent           -> on_outcome (KNOWN / FINAL / refused = REJECTED);
-                                                                       a FINAL with execution -> on_fills(venue fills)
-                        the tick decision (WAIT, 'mg tick <open> <close_request>') -> on_candle(closed candle from the
-                                                                       bars, strategy close request) then on_mark(close)
+                      restart folds the SAME events through the SAME function (`_mg_observe`) at boot. Replay reads
+                      ONLY journal bytes (Codex P1, 7f35c5c): no bars, no venue read - every external observation a
+                      driver input depends on is journaled in full BEFORE it is applied:
+                        'mg start <entry> <fee> <dist>' (WAIT)       -> driver.start(plan): the entry fee the venue's
+                                                                       fills showed and the stop distance, as used
+                        ResultObserved of a driver intent           -> on_outcome (KNOWN / FINAL / refused = REJECTED)
+                        'mg fill <trade> <order> <qty> <px> <fee> <asset> <ms>' (WAIT, one per venue fill)
+                                                                    -> on_fills((that row,))
+                        'mg tick <open> <o> <h> <l> <c> <atr> <request>' (WAIT) -> on_candle(that candle incl. its
+                                                                       ATR, request), on_mark(c); the ATR is recorded
+                                                                       only for a highest_high_atr trail plan
+                        'mg mark <price>' (WAIT)                    -> on_mark(price)
                         ModeChanged                                 -> set_mode (HOLD / PAUSED / ... table)
+                      A venue read that fails (fills UNKNOWN) is never booked as a zero: the input stays pending (a
+                      fill) or the lot is not managed and the runner protects it under HOLD (the entry fee).
   driver -> journal   `_mg_flush`: every driver binding with no journaled intent is decided (child decision id,
                       reason = the core's), recorded DURABLE and sent with the runner's own send machinery (stop:
                       _send_stop + same-id re-send on NOT_FOUND; close / reduce: _send_close, HOLD on an unknown answer;
@@ -48,12 +56,17 @@ from decimal import Decimal
 
 from newcore.domain import (Action, Authority, DecisionRecorded, EntriesMode, Evidence, IntentState, ModeChanged,
                             Purpose, ReasonCode, ResultObserved, ResultPhase, Rounding, Side)
+from newcore.domain.base import CTX
 from newcore.domain.errors import DomainError
 from newcore.management import Candle, CostModel, ManagementError, PlanRefused, Stage, build_plan, range_bb_mr_v1
 from newcore.management import driver as DR
+from newcore.management.plan import TrailMode
 from newcore.management.presets import CANDLE_SECONDS, STOP_ATR
+from newcore.strategy import indicators as IND
+from newcore.strategy.ema_mom import to_decimal
+from newcore.ports.journal import JournalUnavailable
 from newcore.ports.keys import route_of
-from newcore.ports.venue import MarketOrder, OrderOutcome, OutcomeKind, ReadKind
+from newcore.ports.venue import MarketOrder, OrderOutcome, OutcomeKind, ReadKind, VenueFill
 
 from . import ids
 from .book import BookRunner
@@ -62,13 +75,17 @@ from .signals import CLOSE
 
 ZERO = Decimal(0)
 MG = 'mg '                                   # every management decision's detail starts with it
-TICK = 'mg tick'
+TICK = 'mg tick'                             # 'mg tick <open_ms> <open> <high> <low> <close> <atr|-> <request|->'
+START = 'mg start'                           # 'mg start <entry intent> <entry fee> <stop distance|->'
+FILL = 'mg fill'                             # 'mg fill <trade id> <order id> <qty> <price> <fee> <fee asset> <at_ms>'
+MARK = 'mg mark'                             # an intra-candle mark that fired a trigger (made durable first)
 FALLBACK = 'mg fallback'                     # route marker: the refused classic stop goes to the algo route (G6)
 REFUSED = 'mg refused'                       # route marker: the refusal goes to the driver (Rejected)
 # driver reconcile tokens that stop new risk (incident + HOLD); every other token is an incident only, and the transient
 # fill bookkeeping tokens are not reported at all (a persistent gap shows in the runner's reconciliation)
 HOLD_ITEMS = frozenset({'unmatched_fill', 'unknown_order', 'close_found_nothing', 'fill_refused', 'core_refused',
-                        'core_loop', 'route_fallback_refused', 'driver_refused', 'adopted_add'})
+                        'core_loop', 'route_fallback_refused', 'driver_refused', 'adopted_add', 'fill_not_journalable',
+                        'tick_not_journalable'})
 QUIET_ITEMS = frozenset({'fill_gap', 'deferred_fill'})
 TICK_REASON = ReasonCode.PROTECT_CHECKING    # no management-tick code in the NC-01 registry (reported)
 MAX_FLUSH = 32
@@ -175,6 +192,19 @@ class RangeFixturePlans:
                               risk_cap=self.cap_mult * info.entry_qty * info.stop_distance, costs=self.costs).plan
 
 
+def draft_intent(d, *, decision_id, at_ms):
+    """The NC-01 OrderIntent (PLANNED) a driver draft stands for: driver.to_order_intent's mapping, plus the NC-01
+    freeze's (dfd6b03) required replaces_intent_id - None: a management draft is a new child intent, never an NC-01
+    cancel-replace of a REDUCE / CLOSE (interface item for the management lane: to_order_intent needs the field)."""
+    from newcore.domain import IntentState, OrderIntent
+    return OrderIntent(intent_id=d.intent_id, account_id=d.account_id, decision_id=decision_id,
+                       client_order_id=d.client_id, purpose=d.purpose, order_type=d.order_type,
+                       state=IntentState.PLANNED, symbol=d.symbol, side=d.side, qty=d.qty, reason=d.reason,
+                       created_at_ms=at_ms, owner_id=d.owner_id, owner_kind=d.owner_kind, slot_id=None, price=None,
+                       stop_price=d.stop_price, arm=None, alt_client_order_id=None, seen_qty=None, authorized_by=None,
+                       replaces_intent_id=None)
+
+
 # ------------------------------------------------------------------------------------------------------- the mixin
 class ManagementMixin:
     def __init__(self, config, *, management=None, **kw):
@@ -187,11 +217,14 @@ class ManagementMixin:
         self._items = []                     # (lot id, reconcile items) not handled yet
         self._mg_mode = (EntriesMode.ACTIVE, None)
         self._refused = {}                   # lot id -> (cycle ms, refused submits this cycle)
+        self._pending_start = set()          # lots whose entry filled; the 'mg start' input is not journaled yet
         super().__init__(config, **kw)
         if self.mgmt.enabled:                # restart: fold the journal through the driver (same function as live)
-            for ev in self.journal.read():
+            for ev in self.journal.read():   # journal bytes only: no bars / venue read (Codex P1)
                 self._mg_observe(ev)
             self._items = []                 # handled by the process that saw them (the HOLD is durable)
+            self._pending_start = {x.lot_id for x in self.fold.open_lots()
+                                   if x.lot_id not in self.mg and self._mg_eligible(x.lot_id)}
 
     # ----------------------------------------------------------------------------------------------- journal -> driver
     def _emit(self, cls, *, reason, **fields):
@@ -207,17 +240,27 @@ class ManagementMixin:
                 self._mg_drive(lot_id, DR.set_mode, ds, ev.to_mode, ev.to_hold)
         elif isinstance(ev, DecisionRecorded):
             d = ev.decision
-            if d.action is Action.WAIT and d.subject_id in self.mg:
+            if d.action is Action.WAIT and d.detail.startswith(START + ' '):
+                self._mg_apply_start(d)
+            elif d.action is Action.WAIT and d.subject_id in self.mg:
                 if d.detail.startswith(TICK + ' '):
                     self._mg_apply_tick(d)
+                elif d.detail.startswith(MARK + ' '):
+                    ds = self.mg[d.subject_id]
+                    if ds.pos.stage is not Stage.DONE:
+                        self._mg_drive(d.subject_id, DR.on_mark, ds, Decimal(d.detail.split(' ')[2]))
                 elif d.detail.startswith((FALLBACK + ' ', REFUSED + ' ')):
                     self._mg_apply_marker(d)
+                elif d.detail.startswith(FILL + ' '):
+                    self._mg_apply_fill(d)
         elif isinstance(ev, ResultObserved):
             r = ev.result
             iv = self.fold.intents[r.intent_id]
             if iv.purpose is Purpose.ENTRY:
                 if r.phase is ResultPhase.FINAL and r.executed_qty and r.executed_qty > 0:
-                    self._mg_start(iv, r)
+                    lot_id = ids.derive_lot_id(self.acct, iv.intent_id)
+                    if lot_id not in self.mg and lot_id not in self.unmanaged:
+                        self._pending_start.add(lot_id)               # its 'mg start' is written at the flush
                 return
             lot_id = iv.intent.owner_id
             ds = self.mg.get(lot_id)
@@ -229,9 +272,7 @@ class ManagementMixin:
             if conv is None:
                 return
             out, submit = conv
-            self._mg_drive(lot_id, DR.on_outcome, ds, out, submit=submit)
-            if out.kind is OutcomeKind.FINAL and out.executed_qty > 0:
-                self._mg_fills(lot_id, iv.intent.symbol, out.exchange_order_id)
+            self._mg_drive(lot_id, DR.on_outcome, ds, out, submit=submit)   # its fills: 'mg fill' inputs (_mg_step)
 
     @staticmethod
     def _mg_classic_stop_refused(iv, r):
@@ -269,12 +310,43 @@ class ManagementMixin:
                             status=str(r.exchange_status), exchange_order_id=r.exchange_order_id,
                             executed_qty=r.executed_qty, avg_price=r.avg_price if r.executed_qty > 0 else None), False
 
-    def _mg_fills(self, lot_id, symbol, eoid):
-        r = self.venue.fills(symbol, eoid)
-        if r.kind is ReadKind.OK and r.value:
-            self._mg_drive(lot_id, DR.on_fills, self.mg[lot_id], tuple(r.value))
+    def _mg_journal_fills(self, lot_id, b):
+        """Read the venue fills of one FINAL binding and journal each new one as a 'mg fill' input (applied by the
+        observer, so a restart applies the same rows). Unreadable -> nothing (the binding stays pending; never a
+        zero). True when one input was written."""
+        plan = self.plans[lot_id]
+        r = self.venue.fills(plan.symbol, b.exchange_order_id)
+        if r.kind is not ReadKind.OK:                                     # executed at the venue, not bookable yet:
+            if self.fold.mode is not EntriesMode.HOLD:                    # fail closed until it is (never a zero)
+                self._incident(f'management {lot_id}: fills of {b.intent_id} unreadable; pending, HOLD')
+                self._hold([ReasonCode.CONNECTIVITY_EXCHANGE_OUTAGE], reason=ReasonCode.CONNECTIVITY_EXCHANGE_OUTAGE)
+            return False
+        ds = self.mg[lot_id]
+        for f in r.value:
+            if f.trade_id in ds.trade_ids:
+                continue
+            did = ids.mg_input_decision_id('fill', lot_id, f.trade_id)
+            if self.journal.find_decision(did) is not None:
+                continue
+            parts = (f.trade_id, f.exchange_order_id, f.qty, f.price, f.fee, f.fee_asset, f.at_ms)
+            detail = FILL + ' ' + ' '.join(str(x) for x in parts)
+            if any(' ' in str(x) or not str(x) for x in parts) or len(detail) > 160 or not detail.isprintable():
+                self._items.append((lot_id, (('fill_not_journalable', f.trade_id),)))
+                continue
+            self._decision(decision_id=did, action=Action.WAIT, reason=TICK_REASON, authority=Authority.STRATEGY,
+                           key=None, symbol=plan.symbol, side=str(plan.side), subject_id=lot_id,
+                           evidence=(b.intent_id,), detail=detail)
             return True
-        return False                                                      # re-read at the next flush
+        return False
+
+    def _mg_apply_fill(self, d):
+        lot_id = d.subject_id
+        trade, eoid, qty, px, fee, asset, at = d.detail[len(FILL) + 1:].split(' ')
+        plan = self.plans[lot_id]
+        row = VenueFill(trade_id=trade, exchange_order_id=eoid, symbol=plan.symbol, position_side=plan.side.value,
+                        qty=Decimal(qty), price=Decimal(px), fee=Decimal(fee), fee_asset=asset,
+                        realized_pnl=ZERO, maker=False, at_ms=int(at))
+        self._mg_drive(lot_id, DR.on_fills, self.mg[lot_id], (row,))
 
     def _mg_drive(self, lid, fn, /, *args, **kw):
         """One driver call. A driver refusal (ManagementError / an invalid record: e.g. a late answer for a position
@@ -307,47 +379,78 @@ class ManagementMixin:
                     return False
         return True
 
-    def _mg_start(self, entry_iv, r):
-        lot_id = ids.derive_lot_id(self.acct, entry_iv.intent_id)
+    def _mg_plan(self, lot_id, entry_iv, dist, quiet=False):
+        """The lot's plan from journal facts only (the entry's FINAL result, its key, the recorded stop distance) and
+        the config (rules, plan factory): the same plan live and at every restart. None = unmanaged."""
+        it, r = entry_iv.intent, entry_iv.final
+        key = self.fold.entry_key(entry_iv)
+        info = EntryInfo(lot_id=lot_id, symbol=it.symbol, side=Side(it.side), entry_price=r.avg_price,
+                         entry_qty=r.executed_qty, entry_candle_open_ms=key.candle_close_ms,
+                         signal_close_ms=key.candle_close_ms, stop_distance=dist,
+                         rules=self.cfg.rules[it.symbol], tf_ms=self.cfg.tf_ms)
+        try:
+            return self.mgmt.plans(info)
+        except (PlanRefused, ManagementError, DomainError) as ex:
+            if not quiet:
+                self._incident(f'management {lot_id}: no plan ({type(ex).__name__}: {ex}); the runner protects it')
+            return None
+
+    def _mg_try_start(self, lot_id):
+        """Live: the entry filled. Read what the plan needs from outside the journal (the entry fills' fee, the stop
+        distance), journal it as 'mg start' and let the observer start the driver from that record. An unreadable
+        fee is never booked as zero: the lot is left to the runner (its own stop) under a durable HOLD."""
+        self._pending_start.discard(lot_id)
+        lot = self._lot(lot_id)
+        if lot is None or self.mgmt.plans is None or not self._mg_eligible(lot_id):
+            self.unmanaged.add(lot_id)
+            return False
+        e = lot.entry
+        dist = self._entry_distance(e)
+        if self._mg_plan(lot_id, e, dist) is None:
+            self.unmanaged.add(lot_id)
+            return False
+        fr = self.venue.fills(lot.symbol, e.final.exchange_order_id) if e.final.exchange_order_id else None
+        rates = dict(self.mgmt.fee_rates)
+        if fr is None or fr.kind is not ReadKind.OK or not fr.value or \
+                any(f.fee_asset != self.mgmt.quote_asset and f.fee_asset not in rates for f in fr.value):
+            self.unmanaged.add(lot_id)
+            self._incident(f'management {lot_id}: entry fills unreadable / in an unpriced asset; not managed, '
+                           f'the runner protects it (HOLD)')
+            self._hold([ReasonCode.RECONCILE_UNRECONCILED])
+            return False
+        fee = ZERO
+        for f in fr.value:
+            x = max(f.fee, ZERO)
+            fee = CTX.add(fee, x if f.fee_asset == self.mgmt.quote_asset else CTX.multiply(x, rates[f.fee_asset]))
+        detail = f'{START} {e.intent_id} {fee} {"-" if dist is None else dist}'
+        self._decision(decision_id=ids.mg_input_decision_id('start', lot_id), action=Action.WAIT, reason=TICK_REASON,
+                       authority=Authority.STRATEGY, key=None, symbol=lot.symbol, side=lot.side, subject_id=lot_id,
+                       evidence=(e.intent_id,), detail=detail)
+        return lot_id in self.mg
+
+    def _mg_apply_start(self, d):
+        lot_id = d.subject_id
+        entry_id, fee, dist = d.detail[len(START) + 1:].split(' ')
+        self._pending_start.discard(lot_id)
         if lot_id in self.mg or lot_id in self.unmanaged:
             return
-        it = entry_iv.intent
-        plan = None
-        if self.mgmt.plans is not None and self._mg_eligible(lot_id):
-            key = self.fold.entry_key(entry_iv)
-            info = EntryInfo(lot_id=lot_id, symbol=it.symbol, side=Side(it.side), entry_price=r.avg_price,
-                             entry_qty=r.executed_qty, entry_candle_open_ms=key.candle_close_ms,
-                             signal_close_ms=key.candle_close_ms, stop_distance=self._entry_distance(entry_iv),
-                             rules=self.cfg.rules[it.symbol], tf_ms=self.cfg.tf_ms)
-            try:
-                plan = self.mgmt.plans(info)
-            except (PlanRefused, ManagementError, DomainError) as ex:
-                self._incident(f'management {lot_id}: no plan ({type(ex).__name__}: {ex}); the runner protects it')
+        plan = self._mg_plan(lot_id, self.fold.intents[entry_id], None if dist == '-' else Decimal(dist))
         if plan is None:
             self.unmanaged.add(lot_id)
             return
-        fee = ZERO
-        fr = self.venue.fills(it.symbol, r.exchange_order_id) if r.exchange_order_id is not None else None
-        if fr is not None and fr.kind is ReadKind.OK:
-            fee = sum((max(f.fee, ZERO) for f in fr.value), ZERO)
-        else:
-            self._incident(f'management {lot_id}: entry fills unreadable; the plan books a zero entry fee')
         self.plans[lot_id] = plan
         mode, hold = self._mg_mode
-        self._mg_drive(lot_id, DR.start, plan, account_id=self.acct, lot_id=lot_id, entry_fee=fee, mode=mode,
+        self._mg_drive(lot_id, DR.start, plan, account_id=self.acct, lot_id=lot_id, entry_fee=Decimal(fee), mode=mode,
                        hold_kind=hold, quote_asset=self.mgmt.quote_asset, fee_rates=tuple(self.mgmt.fee_rates))
-
-    def _mg_candle(self, symbol, open_ms):
-        r = self.bars.closed_bars(symbol, self.cfg.tf_ms, as_of_ms=open_ms + self.cfg.tf_ms, limit=1)
-        if r.kind is not ReadKind.OK or not r.value or r.value[-1].open_ms != open_ms:
-            raise LookupError(f'management tick: candle {symbol} {open_ms} not readable')
-        b = r.value[-1]
-        return Candle(open_ms=b.open_ms, open=b.open, high=b.high, low=b.low, close=b.close)
 
     def _mg_apply_tick(self, d):
         lot_id = d.subject_id
-        _, _, open_ms, request = d.detail.split(' ')
-        candle = self._mg_candle(d.symbol, int(open_ms))
+        parts = d.detail[len(TICK) + 1:].split(' ')
+        if len(parts) == 6:                                               # 35cb80c records: no ATR field
+            parts.insert(5, '-')
+        open_ms, o, h, lo, c, atr, request = parts
+        candle = Candle(open_ms=int(open_ms), open=Decimal(o), high=Decimal(h), low=Decimal(lo), close=Decimal(c),
+                        atr=None if atr == '-' else Decimal(atr))
         ds = self.mg[lot_id]
         if ds.pos.stage is not Stage.DONE:
             self._mg_drive(lot_id, DR.on_candle, ds, candle,
@@ -379,11 +482,9 @@ class ManagementMixin:
     def _mg_step(self, lot_id):
         """One unit of driver work (True = something was done; the driver state changed, so look again)."""
         ds = self.mg[lot_id]
-        for b in ds.bindings:                                             # a FINAL whose fills were unreadable
+        for b in ds.bindings:                                             # a FINAL with execution: its fills
             if b.state is DR.BindState.FINAL and b.executed and b.filled < b.executed and b.exchange_order_id:
-                before = self.mg[lot_id]
-                if self._mg_fills(lot_id, self.plans[lot_id].symbol, b.exchange_order_id) and \
-                        self.mg[lot_id] != before:
+                if self._mg_journal_fills(lot_id, b):
                     return True
         for b in ds.bindings:                                             # a refused classic stop: route marker
             iv = self.fold.intents.get(b.intent_id)
@@ -439,7 +540,7 @@ class ManagementMixin:
         if prior is not None:                                             # crash gap: decided, intent not recorded
             planned = prior.decision.intents[0]
         else:
-            planned = DR.to_order_intent(d, decision_id=did, at_ms=self.now)
+            planned = draft_intent(d, decision_id=did, at_ms=self.now)
             authority = Authority.PROTECTION if (d.purpose is Purpose.PROTECT or d.reason in PROTECTIVE_EXITS) \
                 else Authority.STRATEGY
             px = f' @ {d.stop_price}' if d.stop_price is not None else ''
@@ -479,6 +580,9 @@ class ManagementMixin:
     # ----------------------------------------------------------------------------------------------- runner hooks
     def _protect_all(self):
         for lot in self.fold.open_lots():
+            if lot.lot_id in self._pending_start:
+                self._secure(lot.lot_id)                                  # start it (or leave it to the runner)
+                continue
             if lot.lot_id in self.mg:
                 continue
             d = self.fold.pending_closes.get(lot.lot_id)
@@ -509,6 +613,8 @@ class ManagementMixin:
         return super()._protect_price(lot)
 
     def _secure(self, lot_id):
+        if lot_id in self._pending_start:
+            self._mg_try_start(lot_id)
         if lot_id in self.mg:
             self._mg_flush(lot_id)
         else:
@@ -532,10 +638,22 @@ class ManagementMixin:
                         closes.setdefault(s.side, s.reason)
                 for side in ('LONG', 'SHORT'):
                     for lot_id in self._mg_managed(sym, side):
-                        self._mg_tick(lot_id, bars[-1], closes.get(side))
+                        self._mg_tick(lot_id, bars, closes.get(side))
         super()._decide_all()
 
-    def _mg_tick(self, lot_id, bar, close_reason):
+    def _mg_atr(self, plan, bars):
+        """The CURRENT ATR at this close (Wilder, the signal's length), for a highest_high_atr trail plan only (else
+        None: the candle input stays as before). Read live, recorded in the tick, never re-read on replay."""
+        if plan.trail_mode is not TrailMode.HIGHEST_HIGH_ATR or len(bars) < 2:
+            return None
+        n = getattr(self.signals, 'atr_len', 14)
+        atr = IND.wilder_atr([float(b.high) for b in bars], [float(b.low) for b in bars],
+                             [float(b.close) for b in bars], n)[-1]
+        d = to_decimal(atr)
+        return d if d > 0 else None
+
+    def _mg_tick(self, lot_id, bars, close_reason):
+        bar = bars[-1]
         ds, plan = self.mg[lot_id], self.plans[lot_id]
         if ds.pos.stage is Stage.DONE or bar.open_ms < plan.entry_candle_open_ms:
             return
@@ -544,10 +662,78 @@ class ManagementMixin:
             return
         did = ids.tick_decision_id(lot_id, bar.open_ms)
         if self.journal.find_decision(did) is None:
+            atr = self._mg_atr(plan, bars)
+            detail = (f'{TICK} {bar.open_ms} {bar.open} {bar.high} {bar.low} {bar.close} {"-" if atr is None else atr} '
+                      f'{close_reason or "-"}')
+            if len(detail) > 160:                                         # never applied unrecorded
+                self._items.append((lot_id, (('tick_not_journalable', bar.open_ms),)))
+                self._mg_flush(lot_id)
+                return
             self._decision(decision_id=did, action=Action.WAIT, reason=TICK_REASON, authority=Authority.STRATEGY,
-                           key=None, symbol=plan.symbol, side=str(plan.side), subject_id=lot_id,
-                           detail=f'{TICK} {bar.open_ms} {close_reason or "-"}')
+                           key=None, symbol=plan.symbol, side=str(plan.side), subject_id=lot_id, detail=detail)
         self._mg_flush(lot_id)
+
+    # ----------------------------------------------------------------------------------------------- intra-candle marks
+    def mark_side(self, symbol):
+        """The position side of the first managed open lot of `symbol` (the zb-path doji order), else None."""
+        lots = [x for x in self.fold.open_lots() if x.symbol == symbol and x.lot_id in self.mg]
+        return lots[0].side if lots else None
+
+    def mark_levels(self, symbol):
+        """The bot-side trigger levels the drivers would fire now: ((leg, price, falls, lot side), ...); `falls` = it
+        triggers when the price falls to / below it (a long target rises, a long DCA add falls)."""
+        out = []
+        for x in self.fold.open_lots():
+            ds = self.mg.get(x.lot_id)
+            if x.symbol != symbol or ds is None or ds.pos.stage is Stage.DONE:
+                continue
+            long = ds.plan.side is Side.LONG
+            for t in DR.armed_triggers(ds):
+                falls = (long != ds.plan.add_is_pyramid) if t.leg.value == 'add' else not long
+                out.append((t.leg.value, t.price, falls, x.side))
+        return tuple(out)
+
+    def _mark_guard(self, at_ms):
+        if self.hard_hold is not None:
+            return False
+        if self.now is not None and at_ms < self.now:
+            raise ValueError('the runner clock never goes back')
+        self.now = at_ms
+        return True
+
+    def mark(self, symbol, price, at_ms):
+        """A mark price between candle closes (replay: intrabar.play_candle; testnet: each poll). Every managed lot of
+        `symbol` whose driver would fire a trigger at `price` gets a durable 'mg mark <price>' decision (the driver
+        input, journal first) and is flushed: the market order goes out now. Returns whether anything fired."""
+        if not self._mark_guard(at_ms):
+            return False
+        fired = False
+        try:
+            for x in list(self.fold.open_lots()):
+                ds = self.mg.get(x.lot_id)
+                if x.symbol != symbol or ds is None or ds.pos.stage is Stage.DONE:
+                    continue
+                if not DR.on_mark(ds, price).submits:
+                    continue
+                self._decision(decision_id=ids.mark_decision_id(x.lot_id, at_ms, self.fold.last_sequence),
+                               action=Action.WAIT, reason=TICK_REASON, authority=Authority.STRATEGY, key=None,
+                               symbol=symbol, side=x.side, subject_id=x.lot_id, detail=f'{MARK} {price}')
+                self._mg_flush(x.lot_id)
+                fired = True
+        except JournalUnavailable as ex:
+            self._enter_hard_hold(ex)
+        return fired
+
+    def intrabar_sync(self, at_ms):
+        """A venue event between candle closes (a stop triggered): read the owned orders now and let the drivers
+        react (a flat lot releases its other stops, a partial one is re-protected)."""
+        if not self._mark_guard(at_ms):
+            return
+        try:
+            self._sync()
+            self._mg_flush_all()
+        except JournalUnavailable as ex:
+            self._enter_hard_hold(ex)
 
     def _exit(self, symbol, s):
         if self._mg_managed(symbol, s.side):

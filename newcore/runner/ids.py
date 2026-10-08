@@ -30,7 +30,8 @@ from newcore.ports.keys import (client_id_for, decision_key, derive_child_intent
 __all__ = ['client_id_for', 'decision_key', 'derive_child_intent_id', 'derive_decision_id', 'derive_intent_id',
            'derive_lot_id', 'is_newcore_client_id', 'event_id', 'result_id', 'position_id', 'child_decision_id',
            'reconciliation_id', 'operator_decision_id', 'risk_decision_id', 'resolution_decision_id',
-           'emergency_stop_client_id', 'is_emergency_client_id', 'tick_decision_id', 'marker_decision_id']
+           'emergency_stop_client_id', 'is_emergency_client_id', 'tick_decision_id', 'marker_decision_id',
+           'mark_decision_id', 'mg_input_decision_id']
 
 
 def _hex(tag, *parts):
@@ -80,12 +81,15 @@ EMERGENCY_PREFIX = 'zbn1e-'
 EMERGENCY_CID_RE = re.compile(r'zbn1e-[a-z2-7]{26}')
 
 
-def emergency_stop_client_id(account_id, symbol, side, qty):
+def emergency_stop_client_id(account_id, symbol, side, qty, generation=0):
     """A23 emergency stop placed while the store cannot journal anything: its id is a pure function of EXCHANGE
-    truth (account, symbol, side, the uncovered quantity it protects), so a restart that re-derives the same gap finds
-    the stop by this id instead of duplicating it (M53). 32 chars, `zbn1e-` + 26 base32 (STEP0 section 6 item 6)."""
+    truth (account, symbol, side, the uncovered quantity it protects) and a cover GENERATION (Cowork F1 / F2: a second
+    gap of the same size, or an id already used by a stop that ended, takes the next generation; generation 0 is the
+    original id). A restart re-derives the same ids, finds a live one and never duplicates it (M53). 32 chars,
+    `zbn1e-` + 26 base32 (STEP0 section 6 item 6)."""
+    parts = (account_id, symbol, side, dec_str(qty)) + ((generation,) if generation else ())
     digest = hashlib.sha256(b'zackbot.newcore.slice.emergency_stop.v1' + b''.join(
-        b'\x00' + str(p).encode('ascii') for p in (account_id, symbol, side, dec_str(qty)))).digest()
+        b'\x00' + str(p).encode('ascii') for p in parts)).digest()
     n, b32 = int.from_bytes(digest, 'big'), 'abcdefghijklmnopqrstuvwxyz234567'
     return EMERGENCY_PREFIX + ''.join(b32[(n >> (256 - 5 * (i + 1))) & 31] for i in range(26))
 
@@ -104,3 +108,13 @@ def tick_decision_id(lot_id, candle_open_ms):
 def marker_decision_id(kind, intent_id):
     """A management route marker of one refused classic stop ('mg fallback' / 'mg refused'): at most one per intent."""
     return 'dec_' + _hex('marker_decision_id', kind, intent_id)
+
+
+def mg_input_decision_id(kind, lot_id, *parts):
+    """A durable management input of one lot ('start' once; 'fill' once per venue trade id)."""
+    return 'dec_' + _hex('mg_input_decision_id', kind, lot_id, *parts)
+
+
+def mark_decision_id(lot_id, at_ms, sequence):
+    """An intra-candle mark that fired a trigger of the lot (the journal sequence it was decided after: unique)."""
+    return 'dec_' + _hex('mark_decision_id', lot_id, at_ms, sequence)

@@ -119,8 +119,11 @@ class Candle(Record):
     high: Decimal
     low: Decimal
     close: Decimal
+    atr: Decimal | None = None   # the CURRENT ATR at this close (trail_mode highest_high_atr; supplied by the runner)
 
     def _validate(self, p):
+        if self.atr is not None:
+            positive(self.atr, p + '.atr')
         positive(self.low, p + '.low')
         req(self.low <= min(self.open, self.close) and self.high >= max(self.open, self.close), p + '.high',
             'open / close outside the high-low range')
@@ -155,6 +158,7 @@ class PositionState(Record):
     racing: tuple[LegQty, ...]   # cancelled legs whose cancel is not confirmed yet
     fills: tuple[ConfirmedFill, ...]   # every applied fill, in order (dedupe + per-leg cumulative record)
     last_candle_open_ms: int | None
+    trail_extreme: Decimal | None = None   # trail_mode highest_high_atr: highest high (short: lowest low) since entry
 
     def _validate(self, p):
         for f in ('qty', 'basket_qty', 'basket_cost', 'exit_qty', 'exit_value', 'fees', 'open_fees', 'add_filled',

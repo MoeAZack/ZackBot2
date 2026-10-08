@@ -31,6 +31,12 @@ Fault hooks (all off by default):
   unknown_reads(times)            the next `times` positions / open_orders reads answer UNKNOWN.
 Test hooks: external_cancel(client_id) (a stop vanishes outside the bot), inject_position(...) (a foreign position).
 
+Intra-candle play (M4, management marks; newcore/runner/intrabar.py drives it): begin_candle(t) charges the candle's
+funding and opens it with the mark at its open; the caller walks the zb-path/1 path, moving the mark (set_mark) and
+triggering resting stops at a level / at the gapped point (trigger_stop); while a candle is open a market order fills
+at the CURRENT MARK (same slippage and fee, fill time = the candle's open) and a stop is checked against the mark;
+end_candle(t) closes it (now_ms = t). advance_to never opens a candle, so the candle-close clock is unchanged.
+
 Not in the port (STEP0 section 7 defers equity and income reads): `equity()` and `funding(...)` are the account reads
 the S1 Runner needs; they are reported as an interface gap.
 """
@@ -127,6 +133,8 @@ class FakeVenue:
         self._fill_on_cancel = set()     # client ids whose remainder fills when the cancel arrives (cancel loses)
         self._lose_cancel = {}           # client id -> 'cancelled' | 'working': the cancel's answer is lost
         self._refuse_classic_stop = None  # error code: classic-route STOP_MARKET refused (the algo route is accepted)
+        self._open = {}                  # intra-candle play: symbol -> the open candle (Bar)
+        self._marks = {}                 # intra-candle play: symbol -> the current mark
         self.calls = {'submit_market': 0, 'submit_stop': 0, 'cancel': 0, 'query': 0, 'positions': 0, 'open_orders': 0,
                       'fills': 0}
 
@@ -181,6 +189,8 @@ class FakeVenue:
     # ------------------------------------------------------------------------------------------------ clock
     def advance_to(self, t_ms):
         """Play every candle of every symbol with close_ms <= t_ms (stops, funding). Moves now_ms to t_ms."""
+        if self._open:
+            raise ValueError(f"advance_to({t_ms}): a candle is open (end_candle first)")
         if t_ms < self.now_ms or t_ms % self.tf_ms:
             raise ValueError(f'advance_to({t_ms}) from {self.now_ms}: only forward, to candle boundaries')
         t = self.now_ms
@@ -193,6 +203,10 @@ class FakeVenue:
         self.now_ms = t_ms
 
     def _play(self, symbol, bar):
+        self._fund(symbol, bar)
+        self._walk_stops(symbol, bar)
+
+    def _fund(self, symbol, bar):
         fund = self.costs.funding_per_bar
         if fund:
             for (s, side), (q, _) in sorted(self._positions.items()):
@@ -200,6 +214,8 @@ class FakeVenue:
                     amt = VCTX.multiply(VCTX.multiply(q, bar.close), fund)
                     self._wallet = VCTX.subtract(self._wallet, amt)
                     self._funding.append(FundingRow(s, side, bar.close_ms, amt))
+
+    def _walk_stops(self, symbol, bar):
         stops = [o for o in self._orders.values() if o.status == 'NEW' and o.order_type == 'STOP_MARKET'
                  and o.ref.symbol == symbol]
         hits = []
@@ -221,12 +237,62 @@ class FakeVenue:
             fill = self._slipped(px, buy=_buy(o.position_side, True))
             self._execute(o, q, fill, at_ms=bar.open_ms)
 
+    # ------------------------------------------------------------------------------------------------ intra-candle
+    def begin_candle(self, t_ms):
+        """Open the candle that closes at t_ms (every symbol that has one): funding is charged, marks = the opens.
+        Returns {symbol: Bar}."""
+        if t_ms != self.now_ms + self.tf_ms or self._open:
+            raise ValueError(f'begin_candle({t_ms}) at {self.now_ms}: one candle at a time, the next one')
+        for s in sorted(self._bars):
+            i = self._idx[s].get(self.now_ms)
+            if i is not None:
+                bar = self._bars[s][i]
+                self._fund(s, bar)
+                self._open[s] = bar
+                self._marks[s] = bar.open
+        return dict(self._open)
+
+    def open_candle(self):
+        """The candle being played ({symbol: Bar}; empty between candles): a restarted process resumes its walk."""
+        return dict(self._open)
+
+    def set_mark(self, symbol, price):
+        if symbol not in self._open:
+            raise ValueError(f'{symbol}: no open candle')
+        self._marks[symbol] = price
+
+    def stop_levels(self, symbol):
+        """Resting STOP_MARKET orders of `symbol`: ((client_id, position_side, stop_price), ...) in placement order."""
+        return tuple((o.ref.client_id, o.position_side, o.stop_price) for o in sorted(self._orders.values(),
+                                                                                     key=lambda o: o.seq)
+                     if o.status == 'NEW' and o.order_type == 'STOP_MARKET' and o.ref.symbol == symbol)
+
+    def trigger_stop(self, client_id, px):
+        """The mark reached a resting stop: it fills at `px` (the level, or the gapped point) with taker slippage; a
+        reduce-only stop with nothing to reduce expires unfilled (as on a whole-candle walk)."""
+        o = self._orders[client_id]
+        bar = self._open[o.ref.symbol]
+        pos = self._positions.get((o.ref.symbol, o.position_side))
+        if pos is None or pos[0] <= 0:
+            o.status = 'CANCELED'
+            return
+        q = min(o.qty, pos[0])
+        self._execute(o, q, self._slipped(px, buy=_buy(o.position_side, True)), at_ms=bar.open_ms)
+
+    def end_candle(self, t_ms):
+        if not self._open or t_ms != self.now_ms + self.tf_ms:
+            raise ValueError(f'end_candle({t_ms}) at {self.now_ms}: no such open candle')
+        self._open, self._marks = {}, {}
+        self.now_ms = t_ms
+
     # ------------------------------------------------------------------------------------------------ helpers
     def _slipped(self, px, *, buy):
         k = VCTX.add(ONE, self.costs.slip) if buy else VCTX.subtract(ONE, self.costs.slip)
         return VCTX.multiply(px, k)
 
     def _next_open(self, symbol):
+        if symbol in self._open:                      # intra-candle: the current mark is the market
+            return self._marks[symbol]
         i = self._idx.get(symbol, {}).get(self.now_ms)
         return None if i is None else self._bars[symbol][i].open
 

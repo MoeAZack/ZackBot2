@@ -16,7 +16,8 @@ plan is the golden newcore_sim mapping (tests/golden/goldenlib/adapters/newcore_
 ATR, tp1 / target in R of that distance, break-even after tp1, time exit in candles, risk cap = budget + the plan's
 reserved costs) plus trail = trail_atr x ATR. The runner decides bot-side triggers and management exits at the candle
 close and its market orders fill at the next candle's open (FakeVenue), so a management exit is booked on its decision
-candle (i_out = fill candle - 1), like a signal exit.
+candle (i_out = fill candle - 1), like a signal exit. Targets trigger INSIDE the candle (newcore/runner/intrabar.py:
+the zb-path/1 walk feeds the runner its marks), so a target exit is booked on the candle it filled in.
 """
 import json
 import os
@@ -28,6 +29,7 @@ from newcore.ports.bars import Bar
 from newcore.risk import BookPolicy
 from newcore.runner import InjectedSignals, Runner, RunnerConfig, SizingPolicy, run_replay
 from newcore.runner.book import BookRunner
+from newcore.runner.intrabar import play_candle
 from newcore.runner.managed import ManagedBookRunner, ManagedRunner, ManagementConfig
 from slice_helpers import ACCOUNT_ID, PORTFOLIO_ID, fine_rules, sim_account
 
@@ -73,6 +75,7 @@ def market(case, tf_ms):
 
 
 S2_SLOTS = {'target', 'tp1', 'time_exit', 'trail'}
+INTRABAR_EXITS = frozenset({ReasonCode.EXIT_TAKE_PROFIT, ReasonCode.EXIT_TP1})
 
 
 def check_expressible(case, management=False):
@@ -198,7 +201,9 @@ def run_case(case, management=False):
         i_in = (t.entry_ms - t0) // tf
         if t.exit_reason is ReasonCode.EXIT_SIGNAL:              # golden: a signal exit is booked on its decision bar
             i_out = (t.exit_signal_close_ms - t0) // tf - 1
-        elif management and t.exit_reason is not ReasonCode.EXIT_STOP:   # a management market exit: decision bar
+        elif management and t.exit_reason in INTRABAR_EXITS:      # a target triggered at its level in the candle
+            i_out = (t.exit_ms - t0) // tf
+        elif management and t.exit_reason is not ReasonCode.EXIT_STOP:   # a candle-close decision: its bar
             i_out = (t.exit_ms - t0) // tf - 1
         else:
             i_out = (t.exit_ms - t0) // tf
@@ -261,8 +266,11 @@ def drive(runner, venue, start, end, tf, restarts):
     t = start + tf
     was_down = False
     while t <= end:
-        venue.advance_to(t)
         down = any(a <= t < b for a, b in restarts)
+        if hasattr(runner, 'mgmt') and runner.mgmt.enabled and not down and not was_down:
+            play_candle(venue, runner, t)                         # M4: intra-candle marks along zb-path/1
+        else:
+            venue.advance_to(t)
         if not down:
             if was_down:
                 runner = type(runner)(runner.cfg, journal=runner.journal, venue=runner.venue, bars=runner.bars,

@@ -10,6 +10,8 @@ Invariants after every driver call:
   reported for reconcile;
 - never above the risk cap after an add fill;
 - no duplicate client id; no venue trade booked twice; a stop request is never loosened (outside a refused replace);
+- journal rule G6 (stop_route_policy per_attempt, the default): an algo stop is only ever the refused classic stop
+  re-sent, in the drive answering that refusal;
 - fold(log) == the live state;
 - at the end, after the venue delivered everything: the core's position equals the venue's, and the result is flat,
   protected, or reported for reconcile - never silently wrong.
@@ -266,8 +268,29 @@ def coverage_ok(v, ds):
     return bool(v.reported)                                  # a lost answer is out for reconcile
 
 
+def g6_drive_ok(before, ev, drv):
+    """Per drive: an algo stop draft appears ONLY in the drive answering the -4120 refusal of a classic stop for the
+    same protection (price, qty) - never on its own."""
+    algo = [d for d in drv.submits if d.leg is Leg.STOP and d.route == 'algo']
+    if not algo:
+        return
+    if len(algo) != 1:
+        raise Violation('two algo stops from one refusal')
+    if ev[0] == 'route_fallback':                       # the runner resolved the classic attempt as refused
+        refused = next((b for b in before.bindings if b.intent_id == ev[1]), None)
+    elif ev[0] == 'outcome' and ev[1].kind is OutcomeKind.REJECTED and ev[2]:
+        refused = next((b for b in before.bindings if b.client_id == ev[1].ref.client_id), None)
+    else:
+        raise Violation(f'G6: an algo stop without a refused classic attempt ({ev[0]})')
+    if (refused is None or refused.leg is not Leg.STOP or refused.route != 'classic'
+            or (refused.stop_price, refused.qty) != (algo[0].stop_price, algo[0].qty)):
+        raise Violation('G6: the algo stop is not the refused classic stop re-sent')
+
+
 def check(v, before, ev, drv):
     ds = drv.state
+    if ds.stop_route_policy == 'per_attempt':
+        g6_drive_ok(before, ev, drv)
     pos = ds.pos
     if any(b.leg is Leg.STOP and b.state is DR.BindState.WORKING for b in ds.bindings):
         v.ever_confirmed = True
@@ -325,6 +348,9 @@ def end_state(v):
         raise Violation(f'fills the driver could not book: {unmatched}')
     if pos.qty != v.pos:
         raise Violation(f'core position {pos.qty} != venue position {v.pos} after full delivery')
+    stray = [cid for cid, o in v.orders.items() if o['kind'] == 'stop' and o['live']]
+    if pos.qty == 0 and stray:                                   # TNET-01 T08: a flat lot keeps no stop at the venue
+        raise Violation(f'flat with stops still live at the venue: {stray}')
     if pos.stage is Stage.DONE or DR.protected(v.ds) or v.reported or pos.closing >= pos.qty:
         return
     if any(b.state is DR.BindState.SENT for b in v.ds.bindings):
