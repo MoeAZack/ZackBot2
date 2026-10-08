@@ -278,3 +278,116 @@ def test_the_same_divergence_id_on_two_adapters_is_valid():
     assert sorted((d['adapter'], d['divergence_id']) for d in c['known_divergences']) == \
         [('legacy_backtest', 'AUD07-C11'), ('legacy_engine', 'AUD07-C11')]
     schema.validate(c)
+
+
+# ------------------------------------------------------------------ divergence registry (Codex golden r5 ruling, 2)
+def test_divergence_registry_matches_the_pack():
+    """DIVERGENCES.json is the pack's defect vocabulary: every ACTIVE ID is recorded by at least one case (a defect no case
+    records any more is retired), and no case records a retired one (schema.validate rejects it)."""
+    used = {d['divergence_id'] for c in schema.load_all() for d in c['known_divergences']}
+    active = {i for i, e in schema.DIVERGENCE_REGISTRY.items() if e['status'] == 'active'}
+    assert used <= active, sorted(used - active)
+    assert active <= used, f'active divergence IDs no case records (retire them): {sorted(active - used)}'
+
+
+@pytest.mark.parametrize('mutation', ['unregistered', 'retired', 'other_adapter', 'other_ticket', 'other_finding'])
+def test_schema_rejects_a_divergence_outside_the_registry(mutation):
+    """A case cannot reference an unregistered or retired ID, use it on an adapter outside its scope, or give it another
+    meaning (ticket / finding) than the registry binds it to."""
+    c = _kd_case()
+    d = c['known_divergences'][0]
+    reg = copy.deepcopy(schema.DIVERGENCE_REGISTRY)
+    if mutation == 'unregistered':
+        d['divergence_id'] = 'AUD07-C11B'
+    elif mutation == 'retired':
+        reg[d['divergence_id']]['status'] = 'retired'
+    elif mutation == 'other_adapter':
+        reg[d['divergence_id']]['adapters'] = [a for a in reg[d['divergence_id']]['adapters'] if a != d['adapter']]
+    elif mutation == 'other_ticket':
+        d['ticket'] = 'AUD-7'
+    elif mutation == 'other_finding':
+        d['finding'] = 'C11 reworded'
+    with pytest.raises(schema.CaseError, match='divergence_id'):
+        schema._validate_divergence_ref(d, c['id'], reg)
+    if mutation in ('unregistered', 'other_ticket', 'other_finding'):         # the same through the full validation
+        with pytest.raises(schema.CaseError, match='divergence_id'):
+            schema.validate(c)
+
+
+def _div_base():
+    return copy.deepcopy(registry.read(registry.DIVERGENCES_PATH))
+
+
+def _new_div(i='AUD08-NEW-DEFECT', **kw):
+    return dict(dict(id=i, adapters=['legacy_engine'], ticket='AUD-08', finding='a newly recorded defect', status='active'), **kw)
+
+
+def test_divergence_registry_extension_controls():
+    """Codex golden r5 ruling #2, positive controls: unchanged, an appended ID, a retirement (active -> retired), and an
+    appended ID next to a retired one all extend the base."""
+    base = _div_base()
+    ext = lambda now: registry.extends_divergences(base, now, schema.ADAPTERS)
+    ext(copy.deepcopy(base))
+    now = copy.deepcopy(base)
+    now['divergences'].append(_new_div())
+    ext(now)
+    now['divergences'][0]['status'] = 'retired'
+    ext(now)
+    ret = copy.deepcopy(base)
+    ret['divergences'][0]['status'] = 'retired'
+    now2 = copy.deepcopy(ret)
+    now2['divergences'].append(_new_div())
+    registry.extends_divergences(ret, now2, schema.ADAPTERS)                  # a retired base entry stays retired
+
+
+@pytest.mark.parametrize('mutation', ['rename', 'rebind_ticket', 'rebind_finding', 'rebind_scope', 'removed', 'reordered',
+                                      'inserted', 'unretire', 'reuse_retired', 'reuse_active', 'second_id_same_defect',
+                                      'second_id_same_defect_after_retire', 'bad_status', 'version', 'unsorted_scope',
+                                      'unknown_adapter', 'extra_key', 'malformed_id'])
+def test_divergence_registry_extension_mutations(mutation):
+    """Codex golden r5 ruling #2: against the base registry, a rename, a semantic rebinding (ticket, finding or scope), a
+    removal, a reorder, an insertion, an un-retirement, the reuse of a retired (or active) ID and a second ID for an already
+    recorded defect all fail."""
+    base = _div_base()
+    base['divergences'][1]['status'] = 'retired'
+    now = copy.deepcopy(base)
+    ds = now['divergences']
+    if mutation == 'rename':
+        ds[0]['id'] = 'AUD07-C11B'
+    elif mutation == 'rebind_ticket':
+        ds[0]['ticket'] = 'AUD-08'
+    elif mutation == 'rebind_finding':
+        ds[0]['finding'] = 'C11 (another defect)'
+    elif mutation == 'rebind_scope':
+        ds[0]['adapters'] = ['legacy_engine']
+    elif mutation == 'removed':
+        ds.pop(2)
+    elif mutation == 'reordered':
+        ds[2], ds[3] = ds[3], ds[2]
+    elif mutation == 'inserted':
+        ds.insert(0, _new_div())
+    elif mutation == 'unretire':
+        ds[1]['status'] = 'active'
+    elif mutation == 'reuse_retired':
+        ds.append(_new_div(ds[1]['id']))
+    elif mutation == 'reuse_active':
+        ds.append(_new_div(ds[0]['id']))
+    elif mutation == 'second_id_same_defect':
+        ds.append(_new_div('AUD07-C11B', ticket=ds[0]['ticket'], finding=ds[0]['finding']))
+    elif mutation == 'second_id_same_defect_after_retire':
+        ds[0]['status'] = 'retired'
+        ds.append(_new_div('AUD07-C11B', ticket=ds[0]['ticket'], finding=ds[0]['finding'], adapters=ds[0]['adapters']))
+    elif mutation == 'bad_status':
+        ds[0]['status'] = 'deprecated'
+    elif mutation == 'version':
+        now['schema'] = 'zb-golden-divergences/2'
+    elif mutation == 'unsorted_scope':
+        ds.append(_new_div(adapters=['legacy_engine', 'legacy_backtest']))
+    elif mutation == 'unknown_adapter':
+        ds.append(_new_div(adapters=['legacy_engine2']))
+    elif mutation == 'extra_key':
+        ds.append(dict(_new_div(), until='later'))
+    elif mutation == 'malformed_id':
+        ds.append(_new_div('aud08_new'))
+    with pytest.raises(registry.RegistryError):
+        registry.extends_divergences(base, now, schema.ADAPTERS)

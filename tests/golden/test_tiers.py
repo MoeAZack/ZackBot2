@@ -118,7 +118,8 @@ def test_core_gaps_detects_a_moved_sole_divergence_guard(moved, gaps):
 
 def test_divergence_classes_key_on_the_id_not_the_prose():
     """Codex golden r3 residual ruling point 2: re-wording ticket / finding (descriptive evidence) leaves every coverage class
-    as it was; only the divergence_id is identity. (The re-wording itself is a contract change: test_ledger catches it.)"""
+    as it was; only the divergence_id is identity. (The re-wording itself is a contract change test_ledger catches, and a
+    rebinding of the ID that schema.validate rejects against DIVERGENCES.json - Codex golden r5 ruling #2.)"""
     cases = copy.deepcopy(schema.load_all())
     tier_of = tiers.load([c['id'] for c in cases])
     before = [sorted(tiers.classes(c)) for c in cases]
