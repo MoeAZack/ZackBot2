@@ -21,6 +21,8 @@ from newcore.domain import ReasonCode
 from newcore.domain.reasons import golden_exit
 from newcore.ports.venue import ReadKind
 
+from .fill_evidence import rows_of
+
 ZERO = Decimal(0)
 RCTX = Context(prec=28)                     # R and the exit VWAP (reporting precision)
 ECTX = Context(prec=60)                     # sums of venue amounts: exact at this precision
@@ -59,19 +61,32 @@ def _read(r, what):
     return r.value
 
 
-def trade_outcome(fold, lot, venue, account_reads, tf_ms, stop_price) -> TradeOutcome:
+def _fills(venue, sym, side, eoid, qty, what, now):
+    """The PROVEN rows of one order: de-duplicated, fresh, its own, adding up to its executed quantity (Cowork h6) -
+    else LookupError: the trade stays pending, never booked with a zero / partial fee."""
+    rows, why = rows_of(venue.fills(sym, eoid), symbol=sym, now=now, eoid=eoid, side=side, expect={eoid: qty})
+    if rows is None:
+        raise LookupError(f'{what}: {why}')
+    return rows
+
+
+def trade_outcome(fold, lot, venue, account_reads, tf_ms, stop_price, now=None) -> TradeOutcome:
     with localcontext(ECTX):
-        return _trade_outcome(fold, lot, venue, account_reads, tf_ms, stop_price)
+        return _trade_outcome(fold, lot, venue, account_reads, tf_ms, stop_price, now)
 
 
-def _trade_outcome(fold, lot, venue, account_reads, tf_ms, stop_price):
+def _trade_outcome(fold, lot, venue, account_reads, tf_ms, stop_price, now=None):
     sym, side = lot.symbol, lot.side
-    entry_fills = _read(venue.fills(sym, lot.entry.final.exchange_order_id), 'entry fills')
+    e = lot.entry.final
+    entry_fills = _fills(venue, sym, side, e.exchange_order_id, e.executed_qty, 'entry fills', now)
     for a in lot.add_fills:                                         # ADD fills: opening fees too (none in S1)
-        entry_fills += _read(venue.fills(sym, a.exchange_order_id), 'add fills')
+        entry_fills += _fills(venue, sym, side, a.exchange_order_id, a.qty, 'add fills', now)
     exit_fills = []
+    by_order = {}
     for c in lot.closings:
-        exit_fills += _read(venue.fills(sym, c.exchange_order_id), 'exit fills')
+        by_order[c.exchange_order_id] = by_order.get(c.exchange_order_id, ZERO) + c.qty
+    for eoid, qty in by_order.items():
+        exit_fills += _fills(venue, sym, side, eoid, qty, 'exit fills', now)
     fees = sum((f.fee for f in entry_fills + tuple(exit_fills)), ZERO)
     gross = sum((f.realized_pnl for f in exit_fills), ZERO)
     qty_out = sum((f.qty for f in exit_fills), ZERO)

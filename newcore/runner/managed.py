@@ -71,6 +71,7 @@ from newcore.ports.venue import MarketOrder, OrderOutcome, OutcomeKind, ReadKind
 from . import ids
 from .book import BookRunner
 from .records import not_sent_result
+from .fill_evidence import rows_of
 from .redact import describe
 from .runner import ALGO_ROUTE, Runner
 from .signals import CLOSE
@@ -312,14 +313,15 @@ class ManagementMixin:
         observer, so a restart applies the same rows). Unreadable -> nothing (the binding stays pending; never a
         zero). True when one input was written."""
         plan = self.plans[lot_id]
-        r = self.venue.fills(plan.symbol, b.exchange_order_id)
-        if r.kind is not ReadKind.OK:                                     # executed at the venue, not bookable yet:
+        rows, why = rows_of(self.venue.fills(plan.symbol, b.exchange_order_id), symbol=plan.symbol, now=self.now,
+                            eoid=b.exchange_order_id, expect={b.exchange_order_id: b.executed})
+        if rows is None:                                                  # executed at the venue, not bookable yet:
             if self.fold.mode is not EntriesMode.HOLD:                    # fail closed until it is (never a zero)
-                self._incident(f'management {lot_id}: fills of {b.intent_id} unreadable; pending, HOLD')
+                self._incident(f'management {lot_id}: fills of {b.intent_id} not proven ({why}); pending, HOLD')
                 self._hold([ReasonCode.CONNECTIVITY_EXCHANGE_OUTAGE], reason=ReasonCode.CONNECTIVITY_EXCHANGE_OUTAGE)
             return False
         ds = self.mg[lot_id]
-        for f in r.value:
+        for f in rows:
             if f.trade_id in ds.trade_ids:
                 continue
             did = ids.mg_input_decision_id('fill', lot_id, f.trade_id)
@@ -406,17 +408,20 @@ class ManagementMixin:
         if self._mg_plan(lot_id, e, dist) is None:
             self.unmanaged.add(lot_id)
             return False
-        fr = self.venue.fills(lot.symbol, e.final.exchange_order_id) if e.final.exchange_order_id else None
+        rows, _ = (rows_of(self.venue.fills(lot.symbol, e.final.exchange_order_id), symbol=lot.symbol, now=self.now,
+                           eoid=e.final.exchange_order_id, side=lot.side,
+                           expect={e.final.exchange_order_id: e.final.executed_qty})
+                   if e.final.exchange_order_id else (None, 'no order id'))
         rates = dict(self.mgmt.fee_rates)
-        if fr is None or fr.kind is not ReadKind.OK or not fr.value or \
-                any(f.fee_asset != self.mgmt.quote_asset and f.fee_asset not in rates for f in fr.value):
+        if rows is None or not rows or \
+                any(f.fee_asset != self.mgmt.quote_asset and f.fee_asset not in rates for f in rows):
             self.unmanaged.add(lot_id)
             self._incident(f'management {lot_id}: entry fills unreadable / in an unpriced asset; not managed, '
                            f'the runner protects it (HOLD)')
             self._hold([ReasonCode.RECONCILE_UNRECONCILED])
             return False
         fee = ZERO
-        for f in fr.value:
+        for f in rows:
             x = max(f.fee, ZERO)
             fee = CTX.add(fee, x if f.fee_asset == self.mgmt.quote_asset else CTX.multiply(x, rates[f.fee_asset]))
         detail = f'{START} {e.intent_id} {fee} {"-" if dist is None else dist}'

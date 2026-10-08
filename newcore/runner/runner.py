@@ -68,6 +68,7 @@ from newcore.domain import Evidence, Lookup, OrderResult
 from newcore.domain.orders import NOT_FOUND_WINDOW_MS, REDUCE_ONLY, PositionRead, terminal_for
 from newcore.domain.portfolio import Fill
 from newcore.ports.journal import JournalUnavailable
+from newcore.domain.errors import DomainError
 from newcore.store.hold import durability_hold, hard_hold_permits
 from newcore.ports.keys import check_decision_key, route_of
 from newcore.ports.venue import MarketOrder, OrderOutcome, OrderRef, OutcomeKind, ReadKind, ReadOutcome, StopOrder
@@ -76,6 +77,7 @@ from . import ids
 from .fold import Fold, OPEN_STATES
 from .outcome import summarize, trade_outcome
 from .records import not_sent_result, planned_intent, result_from
+from .fill_evidence import rows_of
 from .redact import describe, exc_tag
 from .signals import CLOSE, ENTER
 from .sizing import SizingPolicy, size_entry
@@ -255,8 +257,9 @@ class Runner:
 
     @property
     def mode(self):
-        """The EFFECTIVE entries mode (Cowork adv6 E): HOLD whenever a hard HOLD is active - the journal fold cannot
-        record that ModeChanged (the store is down), so fold.mode alone would still read ACTIVE."""
+        """The EFFECTIVE entries mode (Cowork adv6 E / h7) - THE authoritative mode for every caller: HOLD whenever a
+        hard HOLD is active. fold.mode is only the journal's durable view (it cannot record a HOLD while the store is
+        down); portfolio().entries_mode / hold_kind, the health line and the summary all derive from this."""
         return EntriesMode.HOLD if self.hard_hold is not None else self.fold.mode
 
     @property
@@ -282,6 +285,7 @@ class Runner:
         self._em_filled, self._em_closed_ids, self._em_left = {}, set(), {}   # hard-HOLD emergency fills (in process)
         self._em_sent = {}                                                # (symbol, side) -> {(zbn1e cid, route)} sent
         self._own_unknown = set()                                         # lots whose ownership evidence is unreadable
+        self._pending_trades = set()                                      # closed lots not bookable yet (h6)
         self._boot_hard_hold = hard_hold is not None                      # a previous process may have sent zbn1e
         self._first_now = None                                            # this process's first cycle (candle close)
         self._reads = {}                                                  # lost entry -> agreeing position reads
@@ -374,7 +378,14 @@ class Runner:
                 return                                                    # triggered, child not filled yet: wait
         if out.kind is OutcomeKind.KNOWN and out.status not in OPEN_EXCHANGE_STATUSES:
             return                                                        # no open-order record to book: re-query
-        res = result_from(out, iv.intent, ids.result_id(iv.intent_id, len(iv.results)), submit=submit)
+        try:
+            res = result_from(out, iv.intent, ids.result_id(iv.intent_id, len(iv.results)), submit=submit)
+        except DomainError as ex:                                         # Cowork h5: e.g. FILLED with executed 0 /
+            self._incident(f'{iv.intent_id}: malformed venue answer ({describe(ex)}): taken as UNKNOWN, '
+                           're-queried; nothing booked from it')          # half / double: never booked, never raised
+            out = OrderOutcome(kind=OutcomeKind.UNKNOWN, ref=self._ref(iv), observed_at_ms=out.observed_at_ms,
+                               detail='malformed')
+            res = result_from(out, iv.intent, ids.result_id(iv.intent_id, len(iv.results)), submit=submit)
         if res is None:
             return
         st = iv.state
@@ -398,13 +409,14 @@ class Runner:
         """An algo stop that triggered is KNOWN with its CHILD order id (TestnetVenue 'algo_triggered'): it carries no
         executed quantity of its own. Book it only from the child's fills: all of the intent's quantity filled ->
         a FINAL FILLED result at the fills' VWAP under the child id; anything less -> nothing yet (re-queried)."""
-        r = self.venue.fills(iv.intent.symbol, out.exchange_order_id)
-        if r.kind is not ReadKind.OK or not r.value:
-            return None
-        qty = sum((f.qty for f in r.value), ZERO)
+        rows, why = rows_of(self.venue.fills(iv.intent.symbol, out.exchange_order_id), symbol=iv.intent.symbol,
+                            now=self.now, eoid=out.exchange_order_id, side=str(iv.intent.side))
+        if rows is None or not rows:
+            return None                                                   # unknown / nothing yet: re-queried
+        qty = sum((f.qty for f in rows), ZERO)
         if qty != iv.intent.qty:
             return None
-        vwap = RCTX.divide(sum((f.qty * f.price for f in r.value), ZERO), qty)
+        vwap = RCTX.divide(sum((f.qty * f.price for f in rows), ZERO), qty)
         return OrderOutcome(kind=OutcomeKind.FINAL, ref=out.ref, observed_at_ms=out.observed_at_ms, status='FILLED',
                             exchange_order_id=out.exchange_order_id, executed_qty=qty, avg_price=vwap,
                             detail=ALGO_TRIGGERED)
@@ -455,6 +467,7 @@ class Runner:
         store and a reconciliation, A08). Only the A23 / A24 emergency set runs (_emergency_set). Surfaced through
         `hard_hold`, the incidents and the summary."""
         d = durability_hold()
+        self._hard_hold_at = self.now if self.now is not None else int(time.time() * 1000)
         why = ex if isinstance(ex, str) else describe(ex)                 # P2: never a raw exception text
         self.hard_hold = f'{d.reason}: {why}'
         self.counters.hard_holds += 1
@@ -561,13 +574,18 @@ class Runner:
                 q = self.venue.query(self._ref(iv))
                 if q.kind is OutcomeKind.NOT_FOUND or (q.kind is OutcomeKind.FINAL and not q.executed_qty):
                     continue                                              # never reached the venue / filled nothing
-                fr = self.venue.fills(symbol, q.exchange_order_id) if q.exchange_order_id else None
-                if fr is not None and fr.kind is ReadKind.OK:
-                    owned += sum((f.qty for f in fr.value), ZERO)         # our race / partial fills (userTrades)
-                elif q.kind is OutcomeKind.FINAL:
-                    owned += q.executed_qty
-                else:
-                    complete = False                                      # our own fills unreadable: UNKNOWN
+                if q.kind is OutcomeKind.FINAL:
+                    owned += q.executed_qty                               # the venue's own order record (h4 a)
+                    continue
+                rows, why = (rows_of(self.venue.fills(symbol, q.exchange_order_id), symbol=symbol, now=self.now,
+                                     eoid=q.exchange_order_id, side=side) if q.kind is OutcomeKind.KNOWN
+                             and q.exchange_order_id else (None, f'{q.kind}'))
+                if rows is not None:
+                    owned += sum((f.qty for f in rows), ZERO)             # our race / partial fills, de-duplicated
+                # a WORKING order carries no executed quantity on the port (FINAL only), so its rows cannot be
+                # checked for completeness (an empty / short page looks the same): a lower bound at most, never the
+                # whole - always incomplete (the loud incident), whatever the read; UNKNOWN rows add nothing
+                complete = False
         return max(owned, ZERO), complete
 
     def _emergency_filled(self, symbol, side):
@@ -584,8 +602,11 @@ class Runner:
         if not lots:
             return mem
         read = getattr(self.venue, 'trades', None)
-        tr = read(symbol, side, min(x.entry.intent.created_at_ms for x in lots)) if read is not None else None
-        if tr is None or tr.kind is not ReadKind.OK:
+        since = min(x.entry.intent.created_at_ms for x in lots)
+        tr = read(symbol, side, since) if read is not None else None
+        rows, why = rows_of(tr, symbol=symbol, now=self.now, side=side, since=since,
+                            expect=self._known_fills(lots)) if tr is not None else (None, 'no trades read')
+        if rows is None:
             if self._boot_hard_hold or self._first_now is None or any(
                     x.lot_id in self._own_unknown or x.opened_at_ms < self._first_now for x in lots):
                 return None                                               # a previous process's orders: unprovable
@@ -602,10 +623,24 @@ class Runner:
                 return None                                               # unreadable / triggered algo: unknown
             return max(total, mem)
         orders = {}
-        for t in tr.value:
+        for t in rows:
             orders[t.exchange_order_id] = orders.get(t.exchange_order_id, ZERO) + t.qty
         total = sum((q for eoid, q in orders.items() if self._is_emergency_order(symbol, side, eoid, q)), ZERO)
-        return max(total, mem)
+        if total < mem:
+            return None                                                   # the trades miss a fill we saw: UNKNOWN
+        return total
+
+    def _known_fills(self, lots):
+        """{exchange order id: executed} of every fill the journal already holds for these lots (entry, adds, exits):
+        a trades window that does not contain them exactly is incomplete (h4 c)."""
+        out = {}
+        for lot in lots:
+            e = lot.entry.final
+            if e is not None and e.exchange_order_id and e.executed_qty:
+                out[e.exchange_order_id] = out.get(e.exchange_order_id, ZERO) + e.executed_qty
+            for f in list(lot.add_fills) + list(lot.closings):
+                out[f.exchange_order_id] = out.get(f.exchange_order_id, ZERO) + f.qty
+        return out
 
     def _is_emergency_order(self, symbol, side, eoid, qty):
         def matches(cid, routes):
@@ -730,14 +765,14 @@ class Runner:
         read = getattr(self.venue, 'trades', None)
         if read is None:
             return None, 'the venue has no trades read'
-        fr = self.venue.fills(symbol, out.exchange_order_id)
-        if fr.kind is not ReadKind.OK or not fr.value:
-            return None, 'the entry fills are unreadable'
-        since = min(f.at_ms for f in fr.value)
+        fills, why = rows_of(self.venue.fills(symbol, out.exchange_order_id), symbol=symbol, now=self.now,
+                             eoid=out.exchange_order_id, side=side, expect={out.exchange_order_id: out.executed_qty})
+        if fills is None or not fills:
+            return None, f'the entry fills are not proven ({why or "empty"})'
+        since = min(f.at_ms for f in fills)
         tr = read(symbol, side, since)
-        if tr.kind is not ReadKind.OK:
-            return None, 'trades unreadable'
         own = {out.exchange_order_id: 1}
+        finals = {out.exchange_order_id: out.executed_qty}               # every FINAL of ours: its rows must be whole
         lot = ids.derive_lot_id(self.acct, iid)
         for purpose in (Purpose.PROTECT, Purpose.CLOSE, Purpose.REDUCE, Purpose.ADD):
             misses = 0
@@ -749,6 +784,8 @@ class Runner:
                                                   route=route))
                     if q.kind in (OutcomeKind.KNOWN, OutcomeKind.FINAL) and q.exchange_order_id:
                         own[q.exchange_order_id] = 1 if purpose is Purpose.ADD else -1
+                        if q.kind is OutcomeKind.FINAL:
+                            finals[q.exchange_order_id] = q.executed_qty
                         hit = True
                 misses = 0 if hit else misses + 1
                 if misses >= GUARD_CHILD_MISSES:                          # past the lineage (gaps: unsent ordinals)
@@ -764,8 +801,13 @@ class Runner:
                     q = self.venue.query(OrderRef(symbol=p.symbol, client_id=ids.client_id_for(ck, 'classic')))
                     if q.kind in (OutcomeKind.KNOWN, OutcomeKind.FINAL) and q.exchange_order_id:
                         own[q.exchange_order_id] = -1
+                        if q.kind is OutcomeKind.FINAL:
+                            finals[q.exchange_order_id] = q.executed_qty
+        rows, why = rows_of(tr, symbol=symbol, now=self.now, side=side, since=since, expect=finals)
+        if rows is None:
+            return None, f'trades not proven ({why})'                     # short / stale / mismatched page: UNKNOWN
         net = ZERO
-        for t in tr.value:
+        for t in rows:
             sign = own.get(t.exchange_order_id)
             if sign is None and self._emergency_order_of(p, t):
                 sign = -1                                                 # our A23 emergency stop / close filled
@@ -1938,16 +1980,21 @@ class Runner:
 
     # ----------------------------------------------------------------------------------------------- projections
     def _fee(self, symbol, eoid):
-        r = self.venue.fills(symbol, eoid)
-        return sum((f.fee for f in r.value), ZERO) if r.kind is ReadKind.OK else ZERO
+        """The I3 projection's fill fee (NOT a booking: trades.csv / management book only validated rows)."""
+        rows, _ = rows_of(self.venue.fills(symbol, eoid), symbol=symbol, eoid=eoid)
+        return sum((f.fee for f in rows), ZERO) if rows is not None else ZERO
 
     def portfolio(self, rec=None):
         """The NC-01 Portfolio this fold + reconciliation proves (constructing it runs every NC-01 invariant)."""
         rec = rec or self.last_rec
         f = self.fold
-        mode, hold = f.mode, f.hold
-        reasons = f.mode_reasons if mode is not EntriesMode.ACTIVE else ()
-        since = f.mode_since_ms if f.mode_since_ms is not None else (f.first_at_ms or self.now)
+        mode, hold = self.mode, self.hold                                 # Cowork h7: the EFFECTIVE mode
+        if self.hard_hold is not None:                                    # (the journal cannot hold this HOLD)
+            reasons = tuple(dict.fromkeys((durability_hold().reason,) + tuple(f.mode_reasons or ())))
+            since = self._hard_hold_at
+        else:
+            reasons = f.mode_reasons if mode is not EntriesMode.ACTIVE else ()
+            since = f.mode_since_ms if f.mode_since_ms is not None else (f.first_at_ms or self.now)
         common = dict(portfolio_id=self.pf, account_id=self.acct, generation=f.last_sequence, entries_mode=mode,
                       mode_since_ms=since, pause_reasons=reasons, hold_kind=hold)
         lots = f.open_lots()
@@ -2007,9 +2054,20 @@ class Runner:
         return pf
 
     def trades(self):
-        """TradeOutcome of every closed lot, in entry order."""
-        return [trade_outcome(self.fold, lot, self.venue, self.reads, self.cfg.tf_ms, self.stop_price_of(lot))
-                for lot in self.fold.lots() if not lot.open]
+        """TradeOutcome of every closed lot, in entry order. Cowork h6: a lot whose fills / funding are not PROVEN
+        (unreadable, empty, short, stale, mismatched) is PENDING - never booked with a zero fee - with an incident."""
+        out = []
+        for lot in self.fold.lots():
+            if lot.open:
+                continue
+            try:
+                out.append(trade_outcome(self.fold, lot, self.venue, self.reads, self.cfg.tf_ms,
+                                         self.stop_price_of(lot), now=self.now))
+            except LookupError as ex:
+                if lot.lot_id not in self._pending_trades:
+                    self._pending_trades.add(lot.lot_id)
+                    self._incident(f'{lot.lot_id}: trade not booked - evidence not proven ({ex}); pending')
+        return out
 
     def summary(self):
         eq = self.reads.equity()
