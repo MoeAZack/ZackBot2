@@ -9,12 +9,14 @@ A UUID is exempt from the key heuristic (Cowork round 2: a valid id was refused 
 """
 import re
 
-ACCOUNT_UUID_RE = re.compile(r'[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}')
+ACCOUNT_UUID_RE = re.compile(r'[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}'
+                             r'|acct_[0-9a-f]{32}')       # or the runner's NC-01 AccountId (account.id in the run config)
 _SECRET_FLAG = re.compile(r'-{1,2}(api[-_]?key|key|apikey|secret|api[-_]?secret|password|passwd|token)(=.*)?',
                           re.I | re.S)
 _TOKEN_LIKE = re.compile(r'[A-Za-z0-9]{24,}')
 KEY_REFUSAL = 'keys are never passed on the command line; type them at the hidden prompts of tools/newcore_keys.py'
-ACCOUNT_REFUSAL = '--account-id must be a dashed UUID (8-4-4-4-12 hex digits)'
+ACCOUNT_REFUSAL = ('--account-id must be a dashed UUID (8-4-4-4-12 hex digits) or the runner AccountId '
+                   '(acct_ + 32 lowercase hex)')
 
 
 def is_account_uuid(value):

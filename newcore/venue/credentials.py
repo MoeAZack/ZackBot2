@@ -79,6 +79,19 @@ def key_digest(api_key):
     return KEY_DIGEST_PREFIX + hashlib.sha256(_DIGEST_DOMAIN + api_key.encode('ascii')).hexdigest()
 
 
+BINDING_DIGEST_SALT = b'zackbot-install-marker-v1'
+BINDING_DIGEST_ITERATIONS = 200_000
+
+
+def binding_digest(api_key):
+    """The NC-01 AccountBinding key digest: 16 lowercase hex of PBKDF2-HMAC-SHA256(key, 'zackbot-install-marker-v1',
+    200 000) - the legacy account_fingerprint formula (reproduced here, never imported). A slow KDF, so a recorded
+    digest does not make the key cheap to brute-force. This is what the run config's account.key_digest must hold."""
+    _check_token(api_key, 'api_key')
+    return hashlib.pbkdf2_hmac('sha256', api_key.encode('ascii'), BINDING_DIGEST_SALT,
+                               BINDING_DIGEST_ITERATIONS).hex()[:16]
+
+
 def mask_key(api_key):
     """'abcd…wxyz' (first and last four). Short keys are fully masked."""
     if type(api_key) is not str or len(api_key) < 12:
@@ -245,6 +258,7 @@ class StoredCredentialInfo:
     created_ms: int
     previous_key_digest: object        # str | None: set when this record replaced a different key (rotation)
     path: str
+    binding_digest: object = None      # the 16-hex NC-01 binding digest (run config account.key_digest)
 
     @property
     def rotated(self):
@@ -377,7 +391,8 @@ class CredentialStore:
         """-> StoredCredentialInfo (masked). Raises CredentialsUnavailable(reason) on any problem."""
         rec = self._read_record()
         return StoredCredentialInfo(rec['account_id'], rec['environment'], mask_key(rec['api_key']),
-                                    rec['key_digest'], rec['created_ms'], rec['previous_key_digest'], self.path)
+                                    rec['key_digest'], rec['created_ms'], rec['previous_key_digest'], self.path,
+                                    binding_digest(rec['api_key']))
 
     def exists(self):
         return os.path.exists(self.path)
@@ -416,7 +431,7 @@ class CredentialStore:
         blob = STORE_MAGIC + self.protector.protect(plain, self._entropy())
         self._atomic_write(blob)
         return StoredCredentialInfo(self.account_id, environment, mask_key(api_key), digest, now_ms, previous,
-                                    self.path)
+                                    self.path, binding_digest(api_key))
 
     def _atomic_write(self, blob):
         try:

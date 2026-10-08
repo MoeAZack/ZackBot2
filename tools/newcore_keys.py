@@ -65,6 +65,8 @@ def _print_info(info, out):
     out.write(f'account_id  : {info.account_id}\n')
     out.write(f'api key     : {info.masked_key}\n')
     out.write(f'key digest  : {info.key_digest}\n')
+    if info.binding_digest:
+        out.write(f'binding     : {info.binding_digest}   (put this in the run config: [account] key_digest)\n')
     out.write(f'created     : {fmt_time(info.created_ms)}\n')
     if info.rotated:
         out.write(f'ROTATED     : replaced key {info.previous_key_digest} - the binding is UNCONFIRMED until '

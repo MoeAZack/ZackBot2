@@ -262,8 +262,21 @@ def test_no_module_imports_legacy_or_network():
                     assert n.split('.')[0] not in LEGACY, f'{fname} imports legacy {n}'
                     if fname not in NETWORK_ALLOWED:
                         assert n not in NETWORK_MODULES, f'{fname} imports network module {n}'
-                    if node.__class__ is ast.ImportFrom and node.level and n == 'http_sender':
+                    if node.__class__ is ast.ImportFrom and node.level and n == 'http_sender' and \
+                            fname not in SENDER_WIRING:
                         raise AssertionError(f'{fname} imports the network sender')
+
+
+SENDER_WIRING = {'factory.py'}        # the production wiring point: may import the sender, lazily (inside a function)
+
+
+def test_sender_wiring_imports_the_sender_only_lazily():
+    for fname, tree in _modules():
+        if fname not in SENDER_WIRING:
+            continue
+        top_level = [n for n in tree.body if isinstance(n, ast.ImportFrom) and n.module == 'http_sender']
+        nested = [n for n in ast.walk(tree) if isinstance(n, ast.ImportFrom) and n.module == 'http_sender']
+        assert top_level == [] and nested, f'{fname} must import the sender lazily, inside a function'
 
 
 def test_only_the_sender_is_network_capable():
