@@ -29,6 +29,7 @@ from decimal import Decimal
 
 from newcore.adapters import CostModel, CsvBarSource, FakeVenue, MemoryJournal, load_rules
 from newcore.adapters.csv_bars import TF_MS, parse_utc_ms
+from newcore.ports.venue import ReadKind
 from newcore.domain import (Account, AccountBinding, BindingConfirmation, BindingState, Environment, Venue,
                             confirmation_phrase)
 from newcore.risk import BookPolicy
@@ -37,6 +38,7 @@ from newcore.strategy import Params
 
 from . import config as C
 from .compare import compare
+from .intrabar import play_candle
 from .managed import ManagedBookRunner, ManagedRunner, ManagementConfig, RangeFixturePlans
 from .replay import run_replay
 from .reports import health_line, write_reports
@@ -163,14 +165,17 @@ class Session:
                 start = parse_utc_ms(cfg.start) if cfg.start else max(b[0].open_ms for b in candles.values())
                 self.venue = FakeVenue(candles, self.tf_ms, costs=BASE_COSTS, equity=cfg.equity, start_ms=start)
             reads, port, venue_rules = self.venue, self.venue, None
+            self.reads = reads
         else:
             from .testnet_hook import build
             port, self.bars, reads, venue_rules = build(cfg)
+            self.reads = reads
             self.venue, self.last_close = None, None
         rcfg = RunnerConfig(account=account(cfg), portfolio_id=cfg.portfolio_id, symbols=cfg.symbols,
                             tf_ms=self.tf_ms, timeframe=cfg.tf, rules=venue_rules or rules_for(cfg, cfg.symbols),
                             sizing=SizingPolicy(cfg.risk_pct, cfg.max_leverage, cfg.cap_gap_buffer),
-                            sides=sides_for(cfg), strict=False)
+                            sides=sides_for(cfg), strict=False,
+                            raw_qty=cfg.tnet_raw_qty if cfg.tnet_enabled else None)
         self.runner = ManagedBookRunner(rcfg, policy=policy_for(cfg), journal=self.journal, venue=port,
                                         bars=self.bars, signals=signals_for(cfg, enabled), account_reads=reads,
                                         management=management_for(cfg))
@@ -185,10 +190,31 @@ class Session:
 
     def cycle(self, t):
         if self.venue is not None:
-            self.venue.advance_to(t)
+            if self.cfg.mg_enabled:                               # management: intra-candle marks (zb-path/1)
+                play_candle(self.venue, self.runner, t)
+            else:
+                self.venue.advance_to(t)
             self.runner.cycle(t, decide=t < self.last_close)
         else:
             self.runner.cycle(t)
+
+    def poll_marks(self, wall_ms=None):
+        """Testnet, management enabled: between candle closes, read the owned orders and offer each symbol's mark
+        price to the drivers (a target / add triggers at the mark, not at the next close). The mark read is the
+        adapter's `mark_price(symbol)` (duck-typed; interface item for the TestnetVenue lane)."""
+        if not self.cfg.mg_enabled or self.venue is not None:
+            return 0
+        read = getattr(self.reads, 'mark_price', None)
+        if read is None:
+            return 0
+        now = int(time.time() * 1000) if wall_ms is None else wall_ms
+        self.runner.intrabar_sync(now)
+        n = 0
+        for sym in self.cfg.symbols:
+            r = read(sym)
+            if r.kind is ReadKind.OK:
+                n += self.runner.mark(sym, r.value[0], now)
+        return n
 
     def save(self):
         if self.venue is not None:
@@ -216,6 +242,7 @@ def cmd_run(cfg, args, out, stop):
     limit = 1 if args.once else args.cycles
     done = 0
     last = None
+    polled = 0.0
     try:
         while limit is None or done < limit:
             t = s.next_close()
@@ -224,6 +251,9 @@ def cmd_run(cfg, args, out, stop):
                 break
             if s.venue is None:                                     # testnet: once per candle close + delay
                 if t == last or (time.time() * 1000) < t + cfg.delay_s * 1000:
+                    if cfg.mark_poll_s and time.time() - polled >= cfg.mark_poll_s:
+                        s.poll_marks()
+                        polled = time.time()
                     if stop.wait(1.0):
                         break
                     continue
@@ -271,7 +301,7 @@ def cmd_replay(cfg, args, out, stop):
                             sizing=SizingPolicy(cfg.risk_pct, cfg.max_leverage, Decimal(0)), sides=sides_for(cfg))
         runner = ManagedRunner(rcfg, journal=journal, venue=venue, bars=src, signals=signals_for(cfg, enabled),
                                management=management_for(cfg))
-        runner = run_replay(runner, venue, start_ms=start, end_ms=end, tf_ms=TF_MS[cfg.tf])
+        runner = run_replay(runner, venue, start_ms=start, end_ms=end, tf_ms=TF_MS[cfg.tf], intrabar=cfg.mg_enabled)
         write_reports(runner, os.path.join(cfg.output_dir, f'replay-{sym}'))
         s = runner.summary()
         print(f'REPLAY {sym}: {s.trades} trades, sum R {s.sum_r:.4f}, pnl {s.pnl:.2f}, '

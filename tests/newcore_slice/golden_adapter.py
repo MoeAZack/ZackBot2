@@ -10,6 +10,14 @@ S1 + S4 can express: market entries, an ATR stop, signal exits, a lost entry ans
 max_pos and the Cairo-day halt (S4 BookRunner, legacy 8%), no other faults, no exchange filters, no management. Anything else
 raises NotExpressible (never silently dropped): targets / trail / tp1 / time exits (S2), outage / restart faults (S3),
 DCA / pyramid / trailing entry (range slice), `instruments` filters (S2).
+
+M4: run_case(case, management=True) runs the S2 slots (target / tp1 / time_exit / trail) through the ManagedRunner: the
+plan is the golden newcore_sim mapping (tests/golden/goldenlib/adapters/newcore_sim.py `_plan`: stop e -/+ stop_atr x
+ATR, tp1 / target in R of that distance, break-even after tp1, time exit in candles, risk cap = budget + the plan's
+reserved costs) plus trail = trail_atr x ATR. The runner decides bot-side triggers and management exits at the candle
+close and its market orders fill at the next candle's open (FakeVenue), so a management exit is booked on its decision
+candle (i_out = fill candle - 1), like a signal exit. Targets trigger INSIDE the candle (newcore/runner/intrabar.py:
+the zb-path/1 walk feeds the runner its marks), so a target exit is booked on the candle it filled in.
 """
 import json
 import os
@@ -21,6 +29,8 @@ from newcore.ports.bars import Bar
 from newcore.risk import BookPolicy
 from newcore.runner import InjectedSignals, Runner, RunnerConfig, SizingPolicy, run_replay
 from newcore.runner.book import BookRunner
+from newcore.runner.intrabar import play_candle
+from newcore.runner.managed import ManagedBookRunner, ManagedRunner, ManagementConfig
 from slice_helpers import ACCOUNT_ID, PORTFOLIO_ID, fine_rules, sim_account
 
 CASES = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'golden_cases')
@@ -64,8 +74,15 @@ def market(case, tf_ms):
     return out
 
 
-def check_expressible(case):
+S2_SLOTS = {'target', 'tp1', 'time_exit', 'trail'}
+INTRABAR_EXITS = frozenset({ReasonCode.EXIT_TAKE_PROFIT, ReasonCode.EXIT_TP1})
+
+
+def check_expressible(case, management=False):
     sl = case['slot']
+    if management:                                 # M4: the S2 slots run through the ManagedRunner
+        sl = {k: v for k, v in sl.items() if k not in S2_SLOTS}
+        case = dict(case, slot=sl, instruments=None)              # instrument filters: case_rules()
     for f in case.get('faults') or ():
         if f['kind'] == 'lost_response' and f['order'] != 'entry':
             raise NotExpressible(f"lost_response on {f['order']} (owner: S3 runner, not built)")
@@ -87,8 +104,49 @@ def check_expressible(case):
         raise NotExpressible('sizing (owner: S4 risk)')
 
 
-def run_case(case):
-    check_expressible(case)
+def case_rules(case, sym):
+    """The case's instrument filters (tick / step / min qty / min notional), else the never-binding fine rules."""
+    from newcore.domain import Capability, InstrumentId, InstrumentRules, Venue
+    ins = (case.get('instruments') or {}).get(sym)
+    if ins is None:
+        return fine_rules(sym)
+    return InstrumentRules(instrument=InstrumentId(venue=Venue.BINANCE_USDM, symbol=sym), tick_size=Decimal(ins['tick']),
+                           step_size=Decimal(ins['step']), min_qty=Decimal(ins['min_qty']), max_qty=Decimal('1000000000'),
+                           min_notional=Decimal(ins['min_notional']),
+                           capabilities=(Capability.HEDGE_MODE, Capability.STOP_MARKET, Capability.REDUCE_ONLY))
+
+
+class GoldenPlans:
+    """The golden newcore_sim plan mapping (see the module doc), from the runner's EntryInfo."""
+
+    def __init__(self, case):
+        self.case = case
+
+    def __call__(self, info):
+        from newcore.domain.instrument import Rounding
+        from newcore.management import CostModel as PlanCosts, build_plan, planned_risk
+        sl, co = self.case['slot'], self.case.get('costs') or {}
+        costs = PlanCosts(taker_fee=Decimal(co.get('taker_fee', '0.0005')), slip=Decimal(co.get('slip', '0.0002')))
+        d = info.stop_distance                                     # stop_atr x Wilder ATR14 (= stop_atr x ATR, flat)
+        atr = d / Decimal(sl['stop']['atr'])
+        s = 1 if info.side.value == 'LONG' else -1
+        e = info.entry_price
+        tp1, tgt, tex, trl = sl.get('tp1'), sl.get('target'), sl.get('time_exit'), sl.get('trail')
+        kw = dict(rules=info.rules, side=info.side, entry_price=e, entry_qty=info.entry_qty,
+                  entry_candle_open_ms=info.entry_candle_open_ms, candle_seconds=info.tf_ms // 1000,
+                  stop_price=info.rules.quantize_price(e - s * d, Rounding.NEAREST), costs=costs,
+                  tp1_frac=None if tp1 is None else Decimal(tp1['frac']),
+                  tp1_offset=None if tp1 is None else Decimal(tp1['r']) * d,
+                  tp2_offset=None if tgt is None else Decimal(tgt['r']) * d, be_after_tp1=tp1 is not None,
+                  time_exit_candles=None if tex is None else int(tex['bars']),
+                  trail_offset=None if trl is None else Decimal(trl['atr']) * atr)
+        probe = build_plan(risk_cap=Decimal('1e15'), **kw).plan
+        price_risk = probe.entry_qty * abs(probe.entry_price - probe.stop_price)
+        return build_plan(risk_cap=price_risk + (planned_risk(probe) - price_risk), **kw).plan
+
+
+def run_case(case, management=False):
+    check_expressible(case, management)
     tf = TFS[case['tf']]
     candles = market(case, tf)
     syms = tuple(case['slot'].get('symbols') or candles)
@@ -118,18 +176,21 @@ def run_case(case):
     risk_pct = Decimal(sl['risk']) * Decimal(sl.get('share', '1'))
     max_lev = Decimal(str(acct.get('max_leverage', 10)))
     cfg = RunnerConfig(account=sim_account(t0 - 1), portfolio_id=PORTFOLIO_ID, symbols=syms, tf_ms=tf,
-                       timeframe=case['tf'], rules={s: fine_rules(s) for s in syms},
+                       timeframe=case['tf'], rules={s: case_rules(case, s) for s in syms},
                        sizing=SizingPolicy(risk_pct=risk_pct, max_leverage=max_lev), sides=sides)
     signals = InjectedSignals({k: tuple(v) for k, v in sig.items()}, stop_atr=Decimal(sl['stop']['atr']),
                               tf_label=case['tf'])
     kw = dict(journal=MemoryJournal(ACCOUNT_ID, PORTFOLIO_ID), venue=venue, bars=CsvBarSource(candles, tf),
               signals=signals)
+    if management:
+        kw['management'] = ManagementConfig(enabled=True, plans=GoldenPlans(case))
     if book:                       # S4: one book, max_pos, the legacy 8% Cairo-day halt (backtest.run default), no kill
-        runner = BookRunner(cfg, policy=BookPolicy(risk_pct=risk_pct, max_positions=int(sl['max_pos']),
-                                                   max_leverage=max_lev, daily_loss_pct=LEGACY_DAILY_HALT,
-                                                   kill_drawdown_pct=None, cap_gap_buffer=Decimal(0)), **kw)
+        runner = (ManagedBookRunner if management else BookRunner)(
+            cfg, policy=BookPolicy(risk_pct=risk_pct, max_positions=int(sl['max_pos']), max_leverage=max_lev,
+                                   daily_loss_pct=LEGACY_DAILY_HALT, kill_drawdown_pct=None,
+                                   cap_gap_buffer=Decimal(0)), **kw)
     else:
-        runner = Runner(cfg, **kw)
+        runner = (ManagedRunner if management else Runner)(cfg, **kw)
     outage = [(f['from_ms'], f['to_ms']) for f in case.get('faults') or () if f['kind'] == 'exchange_outage']
     restarts = [(f['at_ms'], f['at_ms'] + f['down_ms']) for f in case.get('faults') or () if f['kind'] == 'restart']
     if outage:
@@ -140,6 +201,10 @@ def run_case(case):
         i_in = (t.entry_ms - t0) // tf
         if t.exit_reason is ReasonCode.EXIT_SIGNAL:              # golden: a signal exit is booked on its decision bar
             i_out = (t.exit_signal_close_ms - t0) // tf - 1
+        elif management and t.exit_reason in INTRABAR_EXITS:      # a target triggered at its level in the candle
+            i_out = (t.exit_ms - t0) // tf
+        elif management and t.exit_reason is not ReasonCode.EXIT_STOP:   # a candle-close decision: its bar
+            i_out = (t.exit_ms - t0) // tf - 1
         else:
             i_out = (t.exit_ms - t0) // tf
         trades.append(dict(sym=t.symbol, side=t.side, i_in=i_in, i_out=i_out, exit=t.exit_code, R=float(t.r),
@@ -201,13 +266,17 @@ def drive(runner, venue, start, end, tf, restarts):
     t = start + tf
     was_down = False
     while t <= end:
-        venue.advance_to(t)
         down = any(a <= t < b for a, b in restarts)
+        if hasattr(runner, 'mgmt') and runner.mgmt.enabled and not down and not was_down:
+            play_candle(venue, runner, t)                         # M4: intra-candle marks along zb-path/1
+        else:
+            venue.advance_to(t)
         if not down:
             if was_down:
                 runner = type(runner)(runner.cfg, journal=runner.journal, venue=runner.venue, bars=runner.bars,
                                       signals=runner.signals, account_reads=runner.reads,
-                                      **({'policy': runner.policy} if hasattr(runner, 'policy') else {}))
+                                      **({'policy': runner.policy} if hasattr(runner, 'policy') else {}),
+                                      **({'management': runner.mgmt} if hasattr(runner, 'mgmt') else {}))
             runner.cycle(t, decide=t < end)
         was_down = down
         t += tf

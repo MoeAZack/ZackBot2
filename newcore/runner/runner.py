@@ -52,10 +52,11 @@ Runner boundary (Codex ruling): ENTER and ADD decisions are keyed (keys.decision
 from __future__ import annotations
 
 import dataclasses
+import re
 from dataclasses import dataclass, field
 from decimal import Context, Decimal
 
-from newcore.domain import (Account, Action, Authority, Decision, DecisionRecorded, EntriesMode, HoldKind,
+from newcore.domain import (Account, Action, Authority, Decision, DecisionRecorded, EntriesMode, Environment, HoldKind,
                             InstrumentRules, IntentRecorded, IntentState, IntentStateChanged, Lot, LotSource,
                             ModeChanged, Op, Ownership, OwnershipProof, Portfolio, Position, ProofKind, Protection,
                             Purpose, ReasonCode, ResultObserved, ResultPhase, Rounding, Side, check_account_portfolio,
@@ -89,6 +90,7 @@ OPENING_ACTIONS = {Action.ENTER: Purpose.ENTRY, Action.ADD: Purpose.ADD}
 DUPLICATE_CLIENT_ID = -4116           # Binance "ClientOrderId is duplicated": the order EXISTS (step-0 has no kind for it)
 ALGO_FALLBACK_CODES = (-4120, -1116, -1102, -4136)   # newcore.venue.errors (transport): use the algo service
 SECURE_ROUNDS = 2                     # per lot per cycle: stop attempt, then (if refused) one reduce-only close
+EMERGENCY_GENERATIONS = 16            # hard HOLD: cover generations per (symbol, side, gap size)
 OPENING_PURPOSES = frozenset({Purpose.ENTRY, Purpose.ADD})
 
 
@@ -97,6 +99,20 @@ ALGO_TRIGGERED = 'algo_triggered'    # TestnetVenue detail: an algo stop trigger
 DUPLICATE_DETAIL = 'duplicate_client_id'   # TestnetVenue: a duplicate client id comes back UNKNOWN with this detail
 OPEN_EXCHANGE_STATUSES = ('NEW', 'PARTIALLY_FILLED')
 RCTX = Context(prec=34)
+
+
+DIST_TOKEN = re.compile(r'(?:^| )dist ([0-9]+(?:\.[0-9]+)?(?:E[+-]?[0-9]+)?)(?: |$)')
+
+
+def journaled_distance(decision):
+    """H1: the planned stop distance an ENTER decision recorded ('dist <Decimal>' in its detail, exact text), or None."""
+    if decision is None or decision.action is not Action.ENTER:
+        return None
+    m = DIST_TOKEN.search(decision.detail)
+    if m is None:
+        return None
+    d = Decimal(m.group(1))
+    return d if d > 0 else None
 
 
 def _is_duplicate(out):
@@ -132,6 +148,9 @@ class RunnerConfig:
     slot_id: str = 'S1'
     policy_version: str = 'nc-s1'
     strict: bool = True                        # raise InvariantBreach outside HOLD
+    raw_qty: Decimal | None = None             # H2 (TNET-01 T10b only): send THIS entry quantity unsized and unfiltered,
+                                               # so the venue's own min-qty / min-notional refusal is exercised;
+                                               # refused unless the account is bound to TESTNET
 
 
 @dataclass(frozen=True)
@@ -188,6 +207,11 @@ class Runner:
         self.incidents = []                                               # (at_ms, text): surfaced, not journaled
         self._reads = {}                                                  # lost entry -> agreeing position reads
         self._refusals = {}                                               # stop intent -> venue refusal code
+        self._orphans_checked = set()                                     # ENTER decisions asked about (289)
+        if config.raw_qty is not None and (config.account.binding.environment is not Environment.TESTNET
+                                           or not config.raw_qty > 0):
+            raise ValueError('raw_qty (H2) is a TESTNET-only override of a positive quantity: refused for '
+                             f'{config.account.binding.environment}')
         if hard_hold is not None:                                         # boot directive: the store cannot write
             self.store_unavailable(hard_hold)
 
@@ -417,11 +441,20 @@ class Runner:
         if price is None:
             self._incident(f'hard HOLD: no stop level for {p.symbol} {p.side} {qty}: unprotected, operator needed')
             return
-        cid = ids.emergency_stop_client_id(self.acct, p.symbol, p.side, qty)
-        ref = OrderRef(symbol=p.symbol, client_id=cid)
-        found = self.venue.query(ref)                                     # (1) narrow query by the deterministic id
-        if found.kind is OutcomeKind.KNOWN:
-            return                                                        # already resting: confirmed, not duplicated
+        # (1) narrow queries by the deterministic ids, generation by generation (Cowork F1 / F2): a LIVE one is
+        # already in `covered` (that is why a gap is left), an ENDED one is never reused - both move to the next
+        # generation; the first id the venue does not know (or cannot answer for) is placed. A restart re-derives the
+        # same sequence, so nothing is duplicated.
+        for gen in range(EMERGENCY_GENERATIONS):
+            cid = ids.emergency_stop_client_id(self.acct, p.symbol, p.side, qty, gen)
+            ref = OrderRef(symbol=p.symbol, client_id=cid)
+            found = self.venue.query(ref)
+            if found.kind not in (OutcomeKind.KNOWN, OutcomeKind.FINAL):
+                break
+        else:
+            self._incident(f'hard HOLD: {EMERGENCY_GENERATIONS} emergency stop ids of {p.symbol} {p.side} {qty} used; '
+                           'unprotected gap, operator needed')
+            return
         out = self.venue.submit_stop(StopOrder(ref=ref, position_side=p.side, qty=qty, stop_price=price))
         if _suggests_algo(out):                                              # same id, the algo route
             ref = OrderRef(symbol=p.symbol, client_id=cid, route='algo')
@@ -466,6 +499,7 @@ class Runner:
 
     # ----------------------------------------------------------------------------------------------- 1. sync
     def _sync(self):
+        self._orphan_entry_decisions()
         for iv in list(self.fold.live_intents()):
             if iv.state in OPEN_STATES:
                 out = self.venue.query(self._ref(iv))
@@ -529,9 +563,10 @@ class Runner:
             self._incident(f'{iv.intent_id}: position {qty} vs owned {owned}: cannot attribute the lost entry')
             return
         did = ids.resolution_decision_id(iv.intent_id)
-        self._decision(decision_id=did, action=Action.RECONCILE, reason=ReasonCode.RECONCILE_MATCH,
-                       authority=Authority.RECONCILIATION, key=None, symbol=it.symbol, side=str(it.side),
-                       subject_id=iv.intent_id, detail=f'lost entry: {len(reads)} reads, surplus {surplus}')
+        if self.journal.find_decision(did) is None:     # Cowork NEW-1: a crash after the decision, before its result:
+            self._decision(decision_id=did, action=Action.RECONCILE, reason=ReasonCode.RECONCILE_MATCH,  # reuse it
+                           authority=Authority.RECONCILIATION, key=None, symbol=it.symbol, side=str(it.side),
+                           subject_id=iv.intent_id, detail=f'lost entry: {len(reads)} reads, surplus {surplus}')
         adopted = surplus > 0
         res = OrderResult(result_id=ids.result_id(iv.intent_id, len(iv.results)), intent_id=iv.intent_id,
                           account_id=self.acct, client_order_id=it.client_order_id, phase=ResultPhase.FINAL,
@@ -554,7 +589,7 @@ class Runner:
             key = self.fold.entry_key(iv)
             if self.now == key.candle_close_ms and self.fold.mode is EntriesMode.ACTIVE:
                 self._send_entry(iv)
-            else:
+            elif not self._adopt_sent(iv):           # the 20k fuzz 289: its send record may be what the store lost
                 self._emit(ResultObserved, reason=ReasonCode.LIFECYCLE_NOT_DURABLE,
                            result=not_sent_result(iv.intent, ids.result_id(iv.intent_id, len(iv.results)), self.now))
                 self._state(iv, IntentState.NOT_SENT)
@@ -562,6 +597,43 @@ class Runner:
             self._send_stop(iv)
         else:
             self._send_close(iv)
+
+    def _adopt_sent(self, iv):
+        """An opening intent with no durable send record (the store lost its last events after the venue call): if
+        the venue knows its deterministic client id, it WAS sent - record the send, then the venue's answer, and the
+        lot is owned and protected like any other. NOT_FOUND (after the visibility window, a cycle later) / UNKNOWN:
+        False (the caller decides). The send record is a fact the venue proves, never a guess."""
+        out = self.venue.query(self._ref(iv))
+        if out.kind not in (OutcomeKind.KNOWN, OutcomeKind.FINAL):
+            return False
+        self._incident(f'{iv.intent_id}: no durable send record but the venue has {iv.intent.client_order_id} '
+                       f'({out.kind}): the send is recorded now')
+        self._state(iv, IntentState.SUBMITTED)
+        self._apply(iv, out, submit=False)
+        if iv.final is not None and iv.executed > 0:
+            self._secure(ids.derive_lot_id(self.acct, iv.intent_id))
+        return True
+
+    def _orphan_entry_decisions(self):
+        """The 20k fuzz 289, intent lost too: an ENTER decision whose derived intent is not recorded and whose candle
+        has passed (inside its candle, _enter re-sends it). If the venue has the derived client id, the order was sent:
+        record the intent, its send and the venue's answer. Asked once per decision per process (NOT_FOUND a cycle
+        after the decision is not a lag any more)."""
+        for d in list(self.fold.decisions.values()):
+            if d.action is not Action.ENTER or not d.intents or d.decision_id in self._orphans_checked:
+                continue
+            planned = d.intents[0]
+            if planned.intent_id in self.fold.intents or d.key is None or d.key.candle_close_ms >= self.now:
+                continue
+            self._orphans_checked.add(d.decision_id)
+            ref = OrderRef(symbol=planned.symbol, client_id=planned.client_order_id,
+                           route=route_of(planned.intent_id, planned.client_order_id) or 'classic')
+            out = self.venue.query(ref)
+            if out.kind in (OutcomeKind.KNOWN, OutcomeKind.FINAL):
+                self._incident(f'{planned.intent_id}: no durable intent record but the venue has '
+                               f'{planned.client_order_id}: recorded now')
+                iv = self._record_durable(planned)
+                self._adopt_sent(iv)
 
     # ----------------------------------------------------------------------------------------------- 2. reconcile
     def reconcile(self):
@@ -643,9 +715,15 @@ class Runner:
             self._hold([ReasonCode.EXEC_STOP_FAILED], reason=ReasonCode.EXEC_STOP_FAILED)
 
     def _entry_distance(self, entry_iv):
-        """The stop distance of an entry: cached, or re-derived from the klines at its key candle (exchange truth)."""
+        """The stop distance of an entry: cached; else the JOURNALED planned distance (H1: the ENTER decision's
+        'dist <d>' token, durable since S1 - no NC-01 field carries it, proposed for r3); else re-derived from the
+        klines at its key candle (exchange truth: an adopted fill / an older journal)."""
         d = self._dist.get(entry_iv.intent_id)
         if d is not None:
+            return d
+        d = journaled_distance(self.fold.decisions.get(entry_iv.intent.decision_id))
+        if d is not None:
+            self._dist[entry_iv.intent_id] = d
             return d
         key = self.fold.entry_key(entry_iv)
         sym, side = entry_iv.intent.symbol, str(entry_iv.intent.side)
@@ -809,6 +887,8 @@ class Runner:
                 sz = size_entry(equity=eq.value[0], stop_distance=s.stop_distance, ref_price=ref_price,
                                 rules=self.cfg.rules[symbol], policy=self.cfg.sizing, open_notional=notional)
                 gate = sz.reason
+                if self.cfg.raw_qty is not None:                          # H2: the venue, not the sizer, refuses
+                    gate = None
         if gate is not None:
             self.counters.skips += 1
             self._decision(decision_id=did, action=Action.SKIP, reason=gate, authority=Authority.STRATEGY, key=key,
@@ -816,10 +896,12 @@ class Runner:
             return
         iid = ids.derive_intent_id(self.acct, key)
         planned = planned_intent(intent_id=iid, account_id=self.acct, decision_id=did, purpose='entry', symbol=symbol,
-                                 side=s.side, qty=sz.qty, reason=s.reason, at_ms=self.now, slot_id=self.cfg.slot_id)
+                                 side=s.side, qty=sz.qty if self.cfg.raw_qty is None else self.cfg.raw_qty,
+                                 reason=s.reason, at_ms=self.now, slot_id=self.cfg.slot_id)
+        raw = '' if self.cfg.raw_qty is None else f' raw_qty {self.cfg.raw_qty}'
         self._decision(decision_id=did, action=Action.ENTER, reason=s.reason, authority=Authority.STRATEGY, key=key,
                        symbol=symbol, side=s.side, intents=(planned,),
-                       detail=f'risk {sz.risk_usd:.8f} dist {s.stop_distance} capped {sz.capped}')
+                       detail=f'risk {sz.risk_usd:.8f} dist {s.stop_distance} capped {sz.capped}{raw}')
         self._dist[iid] = s.stop_distance
         self.counters.entries += 1
         self._send_entry(self._record_durable(planned))
@@ -941,6 +1023,11 @@ class Runner:
                     c = confirmed_coverage(lot.stop, live)
                     if c and live[lot.stop.order].client_order_id in listed:
                         cover[(lot.symbol, str(lot.side))] = cover.get((lot.symbol, str(lot.side)), ZERO) + c
+            elif pf is None:                       # I3 refused the projection (reported above): I1 still measures the
+                for lot in self.fold.open_lots():  # same thing from the fold - the WORKING carrier, listed now
+                    c = lot.carrier
+                    if c is not None and c.state is IntentState.WORKING and c.intent.client_order_id in listed:
+                        cover[(lot.symbol, lot.side)] = cover.get((lot.symbol, lot.side), ZERO) + c.intent.qty
             for o in rec.orders:                                  # an A23 emergency stop is owned protection too
                 if o.reduce and ids.is_emergency_client_id(o.ref.client_id):
                     cover[(o.ref.symbol, o.position_side)] = cover.get((o.ref.symbol, o.position_side), ZERO) + o.qty
@@ -1049,4 +1136,16 @@ class Runner:
         return summarize(self.trades(), equity_end=eq.value[0] if eq.kind is ReadKind.OK else None,
                          open_lots=len(self.fold.open_lots()), ownership=own,
                          mode=str(self.fold.mode) if self.hard_hold is None else 'hold(durability_unavailable)',
-                         counters=dataclasses.asdict(self.counters))
+                         counters=dataclasses.asdict(self.counters), stop_routes=self.stop_routes_text())
+
+    def stop_routes(self):
+        """H4: (symbol, side, route) of every open lot's carrying stop (classic | algo; 'none' when unprotected)."""
+        out = []
+        for lot in self.fold.open_lots():
+            c = lot.carrier
+            route = 'none' if c is None else (route_of(c.intent_id, c.intent.client_order_id) or 'classic')
+            out.append((lot.symbol, lot.side, route))
+        return tuple(sorted(out))
+
+    def stop_routes_text(self):
+        return ','.join(f'{s}:{sd}:{r}' for s, sd, r in self.stop_routes()) or '-'

@@ -50,7 +50,8 @@ characters. These are pure functions with pinned test vectors.
 | `client_id` | `"zbn1" + ("o" classic \| "a" algo) + "-" + base32(H(client_id, intent_id, route))[:26]` |
 
 **Child intents:**
-- `owner_id` is the `int_` entry or the `lot_` the intent works for.
+- `owner_id` is the entry intent or the lot the intent works for; NC-01's `OrderIntent.owner_kind`
+  (`entry_intent` / `lot`) says which. The journal resolves the owner by that kind, never by the id's prefix.
 - The ordinal is the journal's count of earlier `(owner, purpose)` intents, read with
   `Grammar.next_child_intent_id`. The journal sets it, not the caller.
 
@@ -93,7 +94,7 @@ the state.
 | Kind | NC-01 event | Header fields |
 |---|---|---|
 | `decision_recorded` | DecisionRecorded | `decision_id`, `decision_key`, `authorized` = ids of `Decision.intents` |
-| `intent_recorded` | IntentRecorded | `decision_id`, `intent_id`, `purpose`, `owner_id`, `client_ids` (one) |
+| `intent_recorded` | IntentRecorded | `decision_id`, `intent_id`, `purpose`, `owner_id`, `owner_kind`, `client_ids` (one) |
 | `sent` / `state_changed` / `intent_closed` | IntentStateChanged → submitted / working·unknown·cancelling / terminal | `intent_id`, `to_state` |
 | `result_recorded` | ResultObserved | `intent_id`, `outcome` final/known/unknown/not_found, `evidence`, the result's client id |
 | `mode_changed` | ModeChanged | (HOLD in/out, halt; used by the slice) |
@@ -114,8 +115,8 @@ own events.
   - the intent is new, its decision was recorded earlier, and that decision authorized it;
   - a keyed intent has the key's purpose;
   - any other intent needs an owner and must have the derived lineage id (owner, purpose, journal ordinal);
-  - an `int_` owner is a recorded entry, and a `lot_` owner is `derive_lot_id` of an entry with an **executing** final
-    result;
+  - an `entry_intent` owner is a recorded entry, and a `lot` owner is `derive_lot_id` of an entry with an
+    **executing** final result (a `portfolio`-owned intent is cancel-only in NC-01, so it is never recorded new);
   - the client id is `client_id_for(intent, route)` and is never reused.
 - **G6, routes:**
   - `algo` is allowed for protect only;
@@ -183,7 +184,7 @@ own events.
    - A keyed ENTER or CLOSE has exactly the one derived intent.
    - A SKIP has none.
 3. **Lineage:** protect, replacement, reduce and close intents that no key covers need:
-   - an `owner_id` (`int_` entry or `lot_` = `derive_lot_id(account, entry_intent_id)`);
+   - an `owner_id` with its `owner_kind` (`entry_intent`, or `lot` = `derive_lot_id(account, entry_intent_id)`);
    - the id from `journal.gate().grammar.next_child_intent_id(owner, purpose)`, taken immediately before the decision.
 4. **One client id per intent:**
    - NC-01 `alt_client_order_id` must be `None`.

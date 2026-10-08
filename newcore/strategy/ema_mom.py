@@ -31,14 +31,15 @@ from dataclasses import dataclass, field
 from decimal import Context, Decimal, ROUND_HALF_EVEN
 from typing import Optional, Sequence, Tuple
 
+from ..domain.reasons import ReasonCode
 from . import indicators as ind
 
 RULE_ID = 'trend_ema_mom.v1'
 DAY_MS = 86_400_000
-# Reason-code values from the NC-01 registry (newcore.domain.reasons): ENTRY_SIGNAL / EXIT_SIGNAL. Plain strings here so
-# this module does not depend on the unmerged domain package; tests pin the values.
-REASON_ENTRY = 'entry.signal'
-REASON_EXIT = 'exit.exit_signal'
+# Reason codes from the NC-01 registry (newcore.domain.reasons, pure stdlib): members, never string literals, so an
+# unregistered code cannot slip in (test_no_literal_reason_bypasses_the_registry). StrEnum: equal to their values.
+REASON_ENTRY = ReasonCode.ENTRY_SIGNAL
+REASON_EXIT = ReasonCode.EXIT_SIGNAL
 
 _DEC = Context(prec=34, rounding=ROUND_HALF_EVEN)     # explicit: never the ambient decimal context
 

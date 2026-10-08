@@ -77,7 +77,6 @@ class LegQty(Record):
 
     def _validate(self, p):
         positive(self.qty, p + '.qty')
-        req(self.leg is not Leg.CLOSE, p + '.leg', 'a market close is never cancelled')
 
 
 @record
@@ -97,7 +96,15 @@ class ConfirmedFill(Record):
 
 @record
 class Rejected(Record):
+    """The venue refused the latest request for `leg`. For a market CLOSE / REDUCE, `qty` is the part that will NOT
+    execute (a refused order: its whole size; a short fill: what expired); None = all of the close in flight."""
     leg: Leg
+    qty: Decimal | None = None
+
+    def _validate(self, p):
+        if self.qty is not None:
+            positive(self.qty, p + '.qty')
+            req(self.leg is Leg.CLOSE, p + '.qty', 'only a market close names the part that will not execute')
 
 
 @record
@@ -112,8 +119,11 @@ class Candle(Record):
     high: Decimal
     low: Decimal
     close: Decimal
+    atr: Decimal | None = None   # the CURRENT ATR at this close (trail_mode highest_high_atr; supplied by the runner)
 
     def _validate(self, p):
+        if self.atr is not None:
+            positive(self.atr, p + '.atr')
         positive(self.low, p + '.low')
         req(self.low <= min(self.open, self.close) and self.high >= max(self.open, self.close), p + '.high',
             'open / close outside the high-low range')
@@ -148,6 +158,7 @@ class PositionState(Record):
     racing: tuple[LegQty, ...]   # cancelled legs whose cancel is not confirmed yet
     fills: tuple[ConfirmedFill, ...]   # every applied fill, in order (dedupe + per-leg cumulative record)
     last_candle_open_ms: int | None
+    trail_extreme: Decimal | None = None   # trail_mode highest_high_atr: highest high (short: lowest low) since entry
 
     def _validate(self, p):
         for f in ('qty', 'basket_qty', 'basket_cost', 'exit_qty', 'exit_value', 'fees', 'open_fees', 'add_filled',

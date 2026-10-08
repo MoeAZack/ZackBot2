@@ -30,7 +30,7 @@ def planned_intent(*, intent_id, account_id, decision_id, purpose, symbol, side,
                        symbol=symbol, side=Side(side), qty=qty, reason=reason, created_at_ms=at_ms, owner_id=owner_id,
                        owner_kind=None if owner_id is None else (owner_kind or OwnerKind.LOT),
                        slot_id=slot_id, price=None, stop_price=stop_price if protect else None, arm=None,
-                       alt_client_order_id=None, seen_qty=None, authorized_by=None)
+                       alt_client_order_id=None, seen_qty=None, authorized_by=None, replaces_intent_id=None)
 
 
 def _result(intent, rid, at_ms, **kw):

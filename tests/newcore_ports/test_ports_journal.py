@@ -184,3 +184,24 @@ def test_lineage_ordinal_follows_the_journal():
     assert g.next_child_intent_id(LOT, Purpose.PROTECT) == K.derive_child_intent_id(ACCT, LOT, Purpose.PROTECT, 2)
     assert g.next_child_intent_id(LOT, Purpose.CLOSE) == K.derive_child_intent_id(ACCT, LOT, Purpose.CLOSE, 0)
     assert IntentState.REJECTED in {header_of(e).to_state for e in s.events}
+
+
+def test_lineage_owner_is_resolved_by_owner_kind():
+    """NC-01 #38 adaptation: the journal resolves a lineage owner by OrderIntent.owner_kind, never by the id prefix.
+    A provisional stop owned by the recorded ENTRY intent (kind entry_intent) is accepted; the header carries the kind."""
+    from newcore.domain import OwnerKind
+    from newcore.ports.journal import header_of
+    s = Scenario()
+    s.decision(key=KEY, intent_ids=(ENTRY,))
+    s.record(ENTRY)
+    sid = K.derive_child_intent_id(ACCT, ENTRY, Purpose.PROTECT, 0)
+    s.decision(purpose=Purpose.PROTECT, intent_ids=(sid,), owner=ENTRY, owner_kind=OwnerKind.ENTRY_INTENT)
+    rec = s.record(sid)
+    j = ReferenceJournal()
+    for ev in s.events:
+        j.append(ev)
+    h = header_of(rec)
+    assert (h.owner_id, h.owner_kind) == (ENTRY, OwnerKind.ENTRY_INTENT)
+    assert j.last_sequence() == len(s.events)
+    with pytest.raises(InvalidRecord):                 # the kind must fit the id family: an entry id is no lot
+        s._intent(sid, Purpose.PROTECT, rec.intent.decision_id, rec.at_ms, owner=ENTRY, owner_kind=OwnerKind.LOT)

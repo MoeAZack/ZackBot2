@@ -131,6 +131,8 @@ class ReasonCode(enum.StrEnum):
     OPERATOR_FLATTEN = 'operator.flatten'
     OPERATOR_ONE_SHOT = 'operator.one_shot'
     OPERATOR_ADOPT = 'operator.adopt'
+    # ---- appended after v1 publication (append-only: new codes go at the end)
+    RISK_COST_TO_STOP = 'risk_gateway.cost_to_stop'
 
     @property
     def namespace(self):
@@ -243,6 +245,7 @@ MEANING = {
     R.OPERATOR_FLATTEN: 'the owner ordered a flatten',
     R.OPERATOR_ONE_SHOT: 'the owner authorized exactly one opening intent while paused',
     R.OPERATOR_ADOPT: 'the owner adopted an exchange position / fill as owned',
+    R.RISK_COST_TO_STOP: 'risk rule: the round-trip trading cost is too large a share of the distance to the stop',
 }
 del R
 

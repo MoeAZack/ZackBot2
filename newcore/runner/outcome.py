@@ -113,21 +113,23 @@ class RunSummary:
     ownership: str | None
     mode: str
     counters: dict
+    stop_routes: str = '-'                   # H4: 'SYMBOL:SIDE:classic|algo' of each open lot's carrying stop
 
     def as_dict(self):
         return {k: (str(v) if isinstance(v, Decimal) else v) for k, v in
                 ((f, getattr(self, f)) for f in self.__dataclass_fields__)}
 
 
-def summarize(trades, *, equity_end, open_lots, ownership, mode, counters) -> RunSummary:
+def summarize(trades, *, equity_end, open_lots, ownership, mode, counters, stop_routes='-') -> RunSummary:
     with localcontext(ECTX):
-        return _summarize(trades, equity_end, open_lots, ownership, mode, counters)
+        return _summarize(trades, equity_end, open_lots, ownership, mode, counters, stop_routes)
 
 
-def _summarize(trades, equity_end, open_lots, ownership, mode, counters):
+def _summarize(trades, equity_end, open_lots, ownership, mode, counters, stop_routes='-'):
     n = len(trades)
     sum_r = sum((t.r for t in trades), ZERO)
     return RunSummary(trades=n, wins=sum(1 for t in trades if t.pnl > 0), sum_r=sum_r,
                       mean_r=RCTX.divide(sum_r, n) if n else ZERO, pnl=sum((t.pnl for t in trades), ZERO),
                       fees=sum((t.fees for t in trades), ZERO), funding=sum((t.funding for t in trades), ZERO),
-                      equity_end=equity_end, open_lots=open_lots, ownership=ownership, mode=mode, counters=dict(counters))
+                      equity_end=equity_end, open_lots=open_lots, ownership=ownership, mode=mode, counters=dict(counters),
+                      stop_routes=stop_routes)

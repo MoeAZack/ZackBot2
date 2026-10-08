@@ -27,7 +27,7 @@ from .actions import ActionKind, ManagementAction, Tier, ordered
 from .core import (ExitLedger, ExitLeg, Step, StepInput, average, exit_ledger, initial_state, realized_pnl, replay,
                    risk_to_stop, step)
 from .plan import (Admission, AdmissionVerdict, CostModel, ManagementError, ManagementPlan, PlanBuild, PlanNote,
-                   PlanRefused, admit_entry, build_plan, planned_risk)
+                   PlanRefused, TrailMode, admit_entry, build_plan, planned_risk)
 from .presets import range_bb_mr_v1
 from .sim import SimRun, SimStep, path_points, run, simulate_candle
 from .state import AddPhase, Cancelled, Candle, ConfirmedFill, Leg, LegQty, Order, PositionState, Rejected, Stage

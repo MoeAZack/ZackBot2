@@ -153,6 +153,7 @@ class OrderIntent(Record):
     alt_client_order_id: str | None    # PROTECT: algo-order fallback id (owned from the write-ahead record on)
     seen_qty: Decimal | None  # unresolved size seen on the position for a market ENTRY (never booked)
     authorized_by: str | None  # dec_ of an audited operator one-shot authorization (opening risk while paused)
+    replaces_intent_id: str | None  # REDUCE / CLOSE cancel-replace: the CANCELLING predecessor this intent replaces
 
     def _validate(self, p):
         p = f'{p}[{self.intent_id}]'
@@ -201,6 +202,11 @@ class OrderIntent(Record):
         if self.authorized_by is not None:
             req(u in OPENING, p + '.authorized_by', 'only opening intents need a one-shot authorization')
             check_id(self.authorized_by, p + '.authorized_by', 'dec')
+        if self.replaces_intent_id is not None:          # the explicit cancel-replace link (Codex P1 on af4e5f3)
+            req(u in (Purpose.REDUCE, Purpose.CLOSE) and self.owner_kind is OwnerKind.LOT, p + '.replaces_intent_id',
+                'only a lot REDUCE / CLOSE replaces a predecessor')
+            check_id(self.replaces_intent_id, p + '.replaces_intent_id', 'int')
+            req(self.replaces_intent_id != self.intent_id, p + '.replaces_intent_id', 'replaces itself')
 
     @property
     def orphan(self):
