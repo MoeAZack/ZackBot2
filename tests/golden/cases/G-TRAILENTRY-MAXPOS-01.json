@@ -130,10 +130,7 @@
   },
   "applies_to": {
     "legacy_engine": "required",
-    "legacy_backtest": {
-      "status": "known_divergence",
-      "reason": "AUD-07 C13c: legacy behaviour differs from the corrected contract until the AUD-07 product fix lands"
-    },
+    "legacy_backtest": "required",
     "newcore_sim": {
       "status": "pending_adapter",
       "reason": "NEWCORE NC-07/NC-08 adapter not built yet"
@@ -143,38 +140,7 @@
       "reason": "NEWCORE NC-08 live-sim adapter not built yet"
     }
   },
-  "known_divergences": [
-    {
-      "adapter": "legacy_backtest",
-      "ticket": "AUD-07",
-      "finding": "C13c",
-      "correction": "CORR-0002",
-      "until": "AUD-07 product fix",
-      "reason": "backtest.py:598-601 arms trailing entries without a slot check and checks max_pos only at the fill, so XRP (rebounds first, in candle 280) takes the slot and SOL (armed first, rebounds in 281) is dropped",
-      "observed": [
-        {
-          "path": "trades[0].sym",
-          "expected": "SOLUSDT",
-          "actual": "XRPUSDT"
-        },
-        {
-          "path": "trades[0].i_in",
-          "expected": 281,
-          "actual": 280
-        },
-        {
-          "path": "trades[0].R",
-          "expected": "-0.004643333333",
-          "actual": 0.045298
-        },
-        {
-          "path": "trades[0].pnl",
-          "expected": "-0.04643333333",
-          "actual": 0.452983
-        }
-      ]
-    }
-  ],
+  "known_divergences": [],
   "provenance": {
     "created_at_sha": "b8c11c8",
     "author": "AUD-07 slice 1 (Claude)",

@@ -186,6 +186,27 @@
       "accepted_by": null,
       "date_cairo": "2026-10-08",
       "prev_entry_sha": "38ad164476eff4928f6d5c8591827cc71781b39f9660d7c6b81b895dc78d391b"
+    },
+    {
+      "id": "CORR-0006",
+      "type": "correction",
+      "ticket": "AUD-07",
+      "finding": "C13c",
+      "title": "C13c fixed: an armed backtest trailing entry holds a max_pos slot from arming",
+      "cases": {
+        "G-TRAILENTRY-MAXPOS-01": {
+          "prev_contract_sha": "bbd6723458fb7242f504e9f4a00c4a2463d272b9a6e12b1ade676bc62949838d",
+          "contract_sha": "73ae90dbf63bbe90e7b21957e848d3db0e947ac2b2d9b32694fbac63f64a6974"
+        }
+      },
+      "adapters_changed": [
+        "legacy_backtest (known divergence C13c resolved: G-TRAILENTRY-MAXPOS-01)"
+      ],
+      "rationale": "The backtest refuses to arm when open + armed >= max_pos (arming order, as the engine's held/entry_block) and counts blocked['max_pos'].",
+      "evidence": "branch aud-07-product-r2 (merged with #32 r2 b01d439); reverting the item's product lines re-breaks exactly these pairs (mutation check in the build report)",
+      "accepted_by": null,
+      "date_cairo": "2026-10-08",
+      "prev_entry_sha": "8628d15b4fb53e59828f3d3baac51a51586166288a97f5f335d2051b9d33f09f"
     }
   ]
 }
