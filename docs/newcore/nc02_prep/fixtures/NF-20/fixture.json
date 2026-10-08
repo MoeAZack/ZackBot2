@@ -1,0 +1,45 @@
+{
+  "id": "NF-20",
+  "title": "damaged current state read by OLD build",
+  "reader_build": "N-1",
+  "source_repro": "d6",
+  "input_files": {
+    "state.json": "080c951120aa78ffdb03e9d7d9310105bd0f915b75b5c8b90acdb92f7201ad41",
+    "state.json.bak": "10b5ac98e73818054229305ba0bc6c088d448fb06fd0b17a172a21ba302eff2c",
+    "settings.json": "b6dfb92d3bb23d1c1eaee0ff3490b8df77de5b87e0136adbd7cb06c5b98aa0e9",
+    "settings.json.bak": "b6dfb92d3bb23d1c1eaee0ff3490b8df77de5b87e0136adbd7cb06c5b98aa0e9",
+    "install.json": "651f7f8890c4b58375fa9a9ded9ef6fb3c988d3dc19167611a279e0dcc547526",
+    "install.json.bak": "651f7f8890c4b58375fa9a9ded9ef6fb3c988d3dc19167611a279e0dcc547526"
+  },
+  "exchange": {
+    "positions": [
+      {
+        "symbol": "BTCUSDT",
+        "side": "LONG",
+        "qty": 1.0
+      }
+    ],
+    "protective_orders": [
+      {
+        "tag": "o:1",
+        "symbol": "BTCUSDT",
+        "side": "LONG",
+        "qty": 1.0,
+        "stop": 95.0
+      }
+    ]
+  },
+  "legacy_observed": {
+    "build": "b8c11c8",
+    "behaviour": "OLD silently starts EMPTY, entries OPEN, and OVERWRITES the damaged state.json (evidence destroyed)"
+  },
+  "violates": [
+    "D2 current damage: fail closed, keep evidence",
+    "D3 never an empty managed account"
+  ],
+  "nc02_required": {
+    "R-EVIDENCE": "the damaged bytes are preserved bit-for-bit (copy-then-mark, never move-then-rewrite) and linked from a durable incident record that survives restarts",
+    "R-NO-EMPTY": "an initialized account (marker or any store generation or evidence present) can never load as an empty portfolio; an empty portfolio is only legal for a first run whose exchange snapshot is flat (no positions, no open orders) or after an explicit owner adoption record"
+  },
+  "contract_sha": "43b20057a9988d5d1941d6a7ad2c832a475509440720749b547812f7439947de"
+}

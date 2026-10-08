@@ -1,0 +1,45 @@
+{
+  "id": "NF-08",
+  "title": "truncated state.json (invalid JSON), good .bak",
+  "reader_build": "N",
+  "source_repro": "b1",
+  "input_files": {
+    "state.json": "080c951120aa78ffdb03e9d7d9310105bd0f915b75b5c8b90acdb92f7201ad41",
+    "state.json.bak": "1d69eaa800b745a5fab83705d72ff95107f7cfad5876523ae6707410a7484cca",
+    "settings.json": "71f50ee68d2b1c0a73f364fe4e3dedeb6f7399fc30d474b8eff5ceaaf315df0e",
+    "settings.json.bak": "71f50ee68d2b1c0a73f364fe4e3dedeb6f7399fc30d474b8eff5ceaaf315df0e",
+    "install.json": "bcb10aecaa52e34f4d5ac6554c78322a2929fc8c883158867ea2344dcdf51399",
+    "install.json.bak": "bcb10aecaa52e34f4d5ac6554c78322a2929fc8c883158867ea2344dcdf51399"
+  },
+  "exchange": {
+    "positions": [
+      {
+        "symbol": "BTCUSDT",
+        "side": "LONG",
+        "qty": 1.0
+      }
+    ],
+    "protective_orders": [
+      {
+        "tag": "o:1",
+        "symbol": "BTCUSDT",
+        "side": "LONG",
+        "qty": 1.0,
+        "stop": 95.0
+      }
+    ]
+  },
+  "legacy_observed": {
+    "build": "cff3f88",
+    "behaviour": "evidence kept as .corrupt-*; older .bak promoted to managed lots with restored_from_bak; resume allowed, a new entry was SENT without any reconciliation record. legacy resume gate checks install_block only (app.py:1225, telegram_ctl.py:524); MANUAL entries bypass ENTRIES_PAUSED (engine.py:3415); untracked needs 2 reconcile passes (engine.py:3268)"
+  },
+  "violates": [
+    "D4 explicit exchange/state reconciliation before management resumes"
+  ],
+  "nc02_required": {
+    "R-EVIDENCE": "the damaged bytes are preserved bit-for-bit (copy-then-mark, never move-then-rewrite) and linked from a durable incident record that survives restarts",
+    "R-BACKUP-CANDIDATE": "an older generation (backup) is offered as a reconciliation CANDIDATE, never silently promoted to managed state; it becomes managed only after R-RECON-GATE passes against the exchange",
+    "R-RECON-GATE": "management (and every new-risk path, MANUAL included) stays blocked until a reconciliation record binds state generation G to an exchange snapshot that matches it (positions, open orders, protective orders) or the owner adopts/flattens each difference explicitly; resuming entries alone never clears it"
+  },
+  "contract_sha": "c1f5cafee265b792e6af0e08af528c1a5bf8b96c19db029c47bdb22e64567ae7"
+}

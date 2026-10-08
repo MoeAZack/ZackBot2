@@ -1,0 +1,66 @@
+{
+  "COMPOUND": false,
+  "CAP_SINCE": "2026-10-08T05:35:47+00:00",
+  "CAP_ADJ": [],
+  "CAP_CYCLES": [],
+  "TELEGRAM_ON": false,
+  "TELEGRAM_TOKEN": "",
+  "TELEGRAM_CHAT": "",
+  "MAX_LEVERAGE": 10,
+  "DAILY_LOSS_HALT": 0.08,
+  "PEAK_DD_FLATTEN": 0.0,
+  "CAPITAL_CAP": 500.0,
+  "ENTRIES_PAUSED": false,
+  "AI_FILTER": false,
+  "PRESET": "original",
+  "UNIVERSE": [
+    "BTCUSDT",
+    "ETHUSDT"
+  ],
+  "SYMBOLS_ON": {
+    "BTCUSDT": true,
+    "ETHUSDT": true
+  },
+  "RUN_IN_BACKGROUND": true,
+  "MARKET_COLLECTOR": true,
+  "ENTRY_ORDER": "market",
+  "MAKER_FALLBACK": true,
+  "MAKER_REPRICE": 3,
+  "MAKER_WAIT_S": 40,
+  "FEE_MAKER": 0.0002,
+  "PUMP_GUARD": {},
+  "RISK_RULES": {},
+  "GOVERNOR": {
+    "mode": "off",
+    "rules": []
+  },
+  "SLEEVES": [
+    {
+      "id": "A",
+      "key": "ema_st",
+      "name": "EMA cross + Supertrend",
+      "enabled": true,
+      "share": 0.5,
+      "risk": 0.03,
+      "max_pos": 4,
+      "symbols": "core8",
+      "sides": "long",
+      "mgmt": {},
+      "tf": "4h"
+    },
+    {
+      "id": "B",
+      "key": "ema_mom",
+      "name": "EMA cross + Momentum",
+      "enabled": true,
+      "share": 0.5,
+      "risk": 0.03,
+      "max_pos": 4,
+      "symbols": "core8",
+      "sides": "long",
+      "mgmt": {},
+      "tf": "4h"
+    }
+  ],
+  "GRID_SLOTS": []
+}

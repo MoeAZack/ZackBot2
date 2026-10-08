@@ -1,0 +1,45 @@
+{
+  "id": "NF-09",
+  "title": "schema-invalid lot in state.json (qty=\"abc\"), good .bak",
+  "reader_build": "N",
+  "source_repro": "b2",
+  "input_files": {
+    "state.json": "cb820cda5272e2b00c372c82a5c6d4d1c13fcd1e22cf502eb05c70b67e8ce54a",
+    "state.json.bak": "de3f42c4b1efa9d490539a511bde8e2c932d3c869d6b164212bb18582183201a",
+    "settings.json": "71f50ee68d2b1c0a73f364fe4e3dedeb6f7399fc30d474b8eff5ceaaf315df0e",
+    "settings.json.bak": "71f50ee68d2b1c0a73f364fe4e3dedeb6f7399fc30d474b8eff5ceaaf315df0e",
+    "install.json": "bcb10aecaa52e34f4d5ac6554c78322a2929fc8c883158867ea2344dcdf51399",
+    "install.json.bak": "bcb10aecaa52e34f4d5ac6554c78322a2929fc8c883158867ea2344dcdf51399"
+  },
+  "exchange": {
+    "positions": [
+      {
+        "symbol": "BTCUSDT",
+        "side": "LONG",
+        "qty": 1.0
+      }
+    ],
+    "protective_orders": [
+      {
+        "tag": "o:1",
+        "symbol": "BTCUSDT",
+        "side": "LONG",
+        "qty": 1.0,
+        "stop": 95.0
+      }
+    ]
+  },
+  "legacy_observed": {
+    "build": "cff3f88",
+    "behaviour": "as NF-08 (SchemaError handled like damage, engine.py:1262-1263)"
+  },
+  "violates": [
+    "D4 explicit exchange/state reconciliation before management resumes"
+  ],
+  "nc02_required": {
+    "R-EVIDENCE": "the damaged bytes are preserved bit-for-bit (copy-then-mark, never move-then-rewrite) and linked from a durable incident record that survives restarts",
+    "R-BACKUP-CANDIDATE": "an older generation (backup) is offered as a reconciliation CANDIDATE, never silently promoted to managed state; it becomes managed only after R-RECON-GATE passes against the exchange",
+    "R-RECON-GATE": "management (and every new-risk path, MANUAL included) stays blocked until a reconciliation record binds state generation G to an exchange snapshot that matches it (positions, open orders, protective orders) or the owner adopts/flattens each difference explicitly; resuming entries alone never clears it"
+  },
+  "contract_sha": "4d491dfe4ee12514425567a450a483e28571f9d80f43c344d66cee6e75d2c731"
+}

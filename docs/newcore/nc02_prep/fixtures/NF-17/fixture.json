@@ -1,0 +1,40 @@
+{
+  "id": "NF-17",
+  "title": "only an unversioned (v0) settings.json left, exchange NOT flat",
+  "reader_build": "N",
+  "source_repro": "c4",
+  "input_files": {
+    "settings.json": "fe0452bfb89ec3b8555e717cba14e487c4362f8b94a9dc7e9c7f22b949c74541"
+  },
+  "exchange": {
+    "positions": [
+      {
+        "symbol": "BTCUSDT",
+        "side": "LONG",
+        "qty": 1.0
+      }
+    ],
+    "protective_orders": [
+      {
+        "tag": "o:1",
+        "symbol": "BTCUSDT",
+        "side": "LONG",
+        "qty": 1.0,
+        "stop": 95.0
+      }
+    ]
+  },
+  "legacy_observed": {
+    "build": "cff3f88",
+    "behaviour": "legacy-install path: marker written, empty state, entries OPEN; new entry SENT"
+  },
+  "violates": [
+    "D3 never an empty managed account",
+    "D4 explicit exchange/state reconciliation before management resumes"
+  ],
+  "nc02_required": {
+    "R-FIRST-RUN-FLAT": "first-run initialization requires a successful exchange snapshot; a non-flat account blocks initialization until the owner adopts or closes each position/order explicitly",
+    "R-NO-EMPTY": "an initialized account (marker or any store generation or evidence present) can never load as an empty portfolio; an empty portfolio is only legal for a first run whose exchange snapshot is flat (no positions, no open orders) or after an explicit owner adoption record"
+  },
+  "contract_sha": "bcc8dbc51471e095c0ad8b48f397f46f5b068df0d613ec3ee2976e73c547a702"
+}

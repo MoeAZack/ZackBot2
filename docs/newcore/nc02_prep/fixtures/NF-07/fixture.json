@@ -1,0 +1,52 @@
+{
+  "id": "NF-07",
+  "title": "failed-closed state is not durable (NF-02 inputs, then one save + restart)",
+  "reader_build": "N",
+  "source_repro": "a7,b3",
+  "input_files": {
+    "state.json": "6546fd3c8fcb886b54d299933d20dae205f716c6e0f46c760753208beb40b61a",
+    "state.json.bak": "6546fd3c8fcb886b54d299933d20dae205f716c6e0f46c760753208beb40b61a",
+    "settings.json": "71f50ee68d2b1c0a73f364fe4e3dedeb6f7399fc30d474b8eff5ceaaf315df0e",
+    "settings.json.bak": "71f50ee68d2b1c0a73f364fe4e3dedeb6f7399fc30d474b8eff5ceaaf315df0e",
+    "install.json": "bcb10aecaa52e34f4d5ac6554c78322a2929fc8c883158867ea2344dcdf51399",
+    "install.json.bak": "bcb10aecaa52e34f4d5ac6554c78322a2929fc8c883158867ea2344dcdf51399"
+  },
+  "exchange": {
+    "positions": [
+      {
+        "symbol": "BTCUSDT",
+        "side": "LONG",
+        "qty": 1.0
+      }
+    ],
+    "protective_orders": [
+      {
+        "tag": "o:1",
+        "symbol": "BTCUSDT",
+        "side": "LONG",
+        "qty": 1.0,
+        "stop": 95.0
+      }
+    ]
+  },
+  "legacy_observed": {
+    "build": "cff3f88",
+    "behaviour": "after one cycle the empty state is saved as a valid v1 state.json; the next restart reports integrity={} and loads an empty managed account; only the persisted ENTRIES_PAUSED flag remains (owner-clearable)"
+  },
+  "violates": [
+    "D2 current damage: fail closed, keep evidence",
+    "D3 never an empty managed account",
+    "D4 explicit exchange/state reconciliation before management resumes"
+  ],
+  "nc02_required": {
+    "R-DURABLE-FAIL": "the failed-closed condition is itself durable: a restart (with or without intervening saves) returns to the same blocked state until an explicit reconciliation record exists",
+    "R-NO-EMPTY": "an initialized account (marker or any store generation or evidence present) can never load as an empty portfolio; an empty portfolio is only legal for a first run whose exchange snapshot is flat (no positions, no open orders) or after an explicit owner adoption record",
+    "R-RECON-GATE": "management (and every new-risk path, MANUAL included) stays blocked until a reconciliation record binds state generation G to an exchange snapshot that matches it (positions, open orders, protective orders) or the owner adopts/flattens each difference explicitly; resuming entries alone never clears it"
+  },
+  "steps": [
+    "start",
+    "one state save",
+    "restart"
+  ],
+  "contract_sha": "16a09d06cf69471da3628ab58cddd4fe78d55cfce0877abd59d31902fa5d056e"
+}

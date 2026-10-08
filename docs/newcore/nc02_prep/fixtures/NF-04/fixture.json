@@ -1,0 +1,43 @@
+{
+  "id": "NF-04",
+  "title": "future settings.json AND .bak (v2)",
+  "reader_build": "N",
+  "source_repro": "a4",
+  "input_files": {
+    "state.json": "50ee370da25e0c55080c72d7177b98e97b3581792ae58860219447732d4a12bf",
+    "state.json.bak": "50ee370da25e0c55080c72d7177b98e97b3581792ae58860219447732d4a12bf",
+    "settings.json": "8ae69a8d18bccc2a405421324307064a3ee655e754ee07392b58596d9266cc62",
+    "settings.json.bak": "8ae69a8d18bccc2a405421324307064a3ee655e754ee07392b58596d9266cc62",
+    "install.json": "bcb10aecaa52e34f4d5ac6554c78322a2929fc8c883158867ea2344dcdf51399",
+    "install.json.bak": "bcb10aecaa52e34f4d5ac6554c78322a2929fc8c883158867ea2344dcdf51399"
+  },
+  "exchange": {
+    "positions": [
+      {
+        "symbol": "BTCUSDT",
+        "side": "LONG",
+        "qty": 1.0
+      }
+    ],
+    "protective_orders": [
+      {
+        "tag": "o:1",
+        "symbol": "BTCUSDT",
+        "side": "LONG",
+        "qty": 1.0,
+        "stop": 95.0
+      }
+    ]
+  },
+  "legacy_observed": {
+    "build": "cff3f88",
+    "behaviour": "both moved aside; GLOBAL_DEFAULTS (40-coin universe, default sleeves) loaded and written to settings.json + .bak"
+  },
+  "violates": [
+    "D1 future schema: abort, state+backup byte-identical"
+  ],
+  "nc02_required": {
+    "R-ABORT-RO": "start-up aborts before ANY write to the store: every input file byte-identical after the attempt (sha256 equal), no rename, no .bak rotation, no settings write; the refusal is reported out-of-band (process exit code + boot incident log outside the store)"
+  },
+  "contract_sha": "973da082c07a9690335b05b3d3697632cfa1479433372296c362a7bf812577e4"
+}

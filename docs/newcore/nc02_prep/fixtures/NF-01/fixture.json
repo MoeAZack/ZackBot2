@@ -1,0 +1,46 @@
+{
+  "id": "NF-01",
+  "title": "future state.json (v99), current .bak",
+  "reader_build": "N",
+  "source_repro": "a1",
+  "input_files": {
+    "state.json": "29afcc921f61388a3d55b68d157d52e0d14b57fe38ffb0d458b7e336a7742757",
+    "state.json.bak": "5ba8a2949484eb517e610ffdc8293abbeeaa618da2737b489d1abc180cc78acb",
+    "settings.json": "71f50ee68d2b1c0a73f364fe4e3dedeb6f7399fc30d474b8eff5ceaaf315df0e",
+    "settings.json.bak": "71f50ee68d2b1c0a73f364fe4e3dedeb6f7399fc30d474b8eff5ceaaf315df0e",
+    "install.json": "bcb10aecaa52e34f4d5ac6554c78322a2929fc8c883158867ea2344dcdf51399",
+    "install.json.bak": "bcb10aecaa52e34f4d5ac6554c78322a2929fc8c883158867ea2344dcdf51399"
+  },
+  "exchange": {
+    "positions": [
+      {
+        "symbol": "BTCUSDT",
+        "side": "LONG",
+        "qty": 1.0
+      }
+    ],
+    "protective_orders": [
+      {
+        "tag": "o:1",
+        "symbol": "BTCUSDT",
+        "side": "LONG",
+        "qty": 1.0,
+        "stop": 95.0
+      }
+    ]
+  },
+  "legacy_observed": {
+    "build": "cff3f88",
+    "behaviour": "start-up continues; state.json MOVED to state.json.corrupt-* (engine.py:1276-1278 via _version engine.py:550 -> SchemaError), older .bak promoted to managed lots (engine.py:1283-1292); settings rewritten to persist the pause; after 2 normal saves state.json.bak is overwritten (engine.py:483-487)"
+  },
+  "violates": [
+    "D1 future schema: abort, state+backup byte-identical",
+    "D4 explicit exchange/state reconciliation before management resumes"
+  ],
+  "nc02_required": {
+    "R-ABORT-RO": "start-up aborts before ANY write to the store: every input file byte-identical after the attempt (sha256 equal), no rename, no .bak rotation, no settings write; the refusal is reported out-of-band (process exit code + boot incident log outside the store)",
+    "R-NO-MANAGE": "no AccountContext is created for the account: no order, cancel, stop repair, reconcile booking or journal write is issued; protective orders already on the exchange are left untouched",
+    "R-GEN-MONOTONIC": "every store write carries (generation, writer_build, format_version, min_reader_version); a reader that sees a generation written by a newer build, or a lower generation than the highest it has seen (rollback/stale copy), aborts read-only (R-ABORT-RO)"
+  },
+  "contract_sha": "7f3561b93dacf8162467df3b72c8b53e5b1099e42ffe377b0be808900dd902bc"
+}

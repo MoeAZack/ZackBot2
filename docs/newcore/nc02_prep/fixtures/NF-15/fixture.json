@@ -1,0 +1,40 @@
+{
+  "id": "NF-15",
+  "title": "state + install marker deleted, versioned settings kept (POSITIVE control)",
+  "reader_build": "N",
+  "source_repro": "c2",
+  "input_files": {
+    "settings.json": "b6dfb92d3bb23d1c1eaee0ff3490b8df77de5b87e0136adbd7cb06c5b98aa0e9",
+    "settings.json.bak": "b6dfb92d3bb23d1c1eaee0ff3490b8df77de5b87e0136adbd7cb06c5b98aa0e9"
+  },
+  "exchange": {
+    "positions": [
+      {
+        "symbol": "BTCUSDT",
+        "side": "LONG",
+        "qty": 1.0
+      }
+    ],
+    "protective_orders": [
+      {
+        "tag": "o:1",
+        "symbol": "BTCUSDT",
+        "side": "LONG",
+        "qty": 1.0,
+        "stop": 95.0
+      }
+    ]
+  },
+  "legacy_observed": {
+    "build": "cff3f88",
+    "behaviour": "install_block set via _versioned_data (engine.py:1155-1170): resume and manual entries refused - correct; still zero lots in memory"
+  },
+  "violates": [
+    "D3 never an empty managed account"
+  ],
+  "nc02_required": {
+    "R-NO-EMPTY": "an initialized account (marker or any store generation or evidence present) can never load as an empty portfolio; an empty portfolio is only legal for a first run whose exchange snapshot is flat (no positions, no open orders) or after an explicit owner adoption record",
+    "R-RECON-GATE": "management (and every new-risk path, MANUAL included) stays blocked until a reconciliation record binds state generation G to an exchange snapshot that matches it (positions, open orders, protective orders) or the owner adopts/flattens each difference explicitly; resuming entries alone never clears it"
+  },
+  "contract_sha": "73b9e3f62ba10c0eada81bfd07869d7cca6b66134f64c8b0fae3c8c8e6d2e1a8"
+}

@@ -1,0 +1,141 @@
+{
+  "lots": {
+    "T|BTCUSDT|LONG|1791437747": {
+      "symbol": "BTCUSDT",
+      "side": "LONG",
+      "sleeve": "T",
+      "key_strategy": "ema_mom",
+      "qty": 1.0,
+      "q0": 1.0,
+      "avg": 100.0,
+      "e0": 100.0,
+      "entry0": 100.0,
+      "R": 5.0,
+      "stop": 95.0,
+      "stop_id": "o:1",
+      "stop_dirty": false,
+      "tp1": false,
+      "adds": 0,
+      "dca": 0,
+      "best": 100.0,
+      "atr0": 2.0,
+      "atr_now": 2.0,
+      "mgmt": {
+        "stop_atr": 2.5
+      },
+      "tf": "4h",
+      "manual": false,
+      "opened": "2026-10-08T05:35:47+00:00",
+      "risk_usd": 5.0,
+      "eq_at_entry": 500.0,
+      "qty_max": 1.0,
+      "fills": [
+        [
+          "2026-10-08T05:35:47+00:00",
+          "entry",
+          1.0,
+          100.0
+        ]
+      ],
+      "fees": 0.05,
+      "share": 0.5,
+      "ap": {
+        "v": 2,
+        "declared_at": "2026-10-08T05:35:47+00:00",
+        "seq": -1,
+        "coverage": "full",
+        "why": null,
+        "policies": {
+          "target": {
+            "v": 1,
+            "rule": "close the remainder at the planned target",
+            "params": {
+              "level": "the lot target valid at each observation (tp, else e0 + tp_r x R)",
+              "fill": "at the target level (resting order), modelled slippage"
+            }
+          },
+          "trailing": {
+            "v": 1,
+            "rule": "trailing stop k x ATR from the running best since entry",
+            "params": {
+              "k": 2.0,
+              "k_src": "default",
+              "atr": 2.0,
+              "atr_src": "atr0",
+              "best_from": 100.0,
+              "fill": "the observed mark that crossed the stop (never improved)"
+            }
+          },
+          "time_cap": {
+            "v": 1,
+            "rule": "time cap: close at the first observation at/after entry + 48 bars",
+            "params": {
+              "bars": 48,
+              "tf_s": 14400,
+              "cap_t": "2026-10-16T05:35:47+00:00"
+            }
+          },
+          "runner": {
+            "v": 1,
+            "rule": "close the runner quantity at its activation",
+            "params": {
+              "qty": "open quantity right after the first partial take-profit",
+              "price": "that partial close fill",
+              "cohorts": "FIFO"
+            }
+          },
+          "breakeven": {
+            "v": 1,
+            "rule": "breakeven after costs: once +arm_r x R in favour, close when the net P&L after fees falls back to zero",
+            "params": {
+              "arm_r": 1.0,
+              "R": 5.0,
+              "e0": 100.0,
+              "level": "net P&L after fees paid and the estimated exit fee = 0, with the lot state at each observation",
+              "fill": "the observed mark that crossed it (never improved)"
+            }
+          },
+          "regime_exit": {
+            "v": 1,
+            "rule": "regime exit: close at the first mark after a closed candle of the lot tf with the trend against the position",
+            "params": {
+              "tf": "4h",
+              "against": "LONG: close < EMA200 and EMA20 < EMA50 (SHORT mirrored) on the last CLOSED candle of the lot tf",
+              "fill": "the first mark sample at/after the candle-close decision"
+            }
+          }
+        },
+        "ctx": {
+          "entry": {
+            "symbol": {
+              "status": "unknown",
+              "why": "no closed-candle snapshot for this symbol / timeframe",
+              "decision_at": "2026-10-08T05:35:47+00:00"
+            },
+            "btc": {
+              "status": "unknown",
+              "why": "no closed-candle snapshot for this symbol / timeframe",
+              "decision_at": "2026-10-08T05:35:47+00:00"
+            },
+            "btc_basis": "BTCUSDT 4h (4h not cached)",
+            "label": "unknown",
+            "rule": "bear: symbol close < EMA200 (lot tf) AND BTC close < EMA200 (btc_basis); bull mirrored; else mixed / unknown"
+          }
+        }
+      },
+      "last_order_t": 1791437747.224618,
+      "stop_confirmed_t": 1791437747.224619,
+      "stop_placed_t": 1791437747.224619,
+      "stop_miss": 0
+    }
+  },
+  "day": null,
+  "day_start_equity": null,
+  "halted": false,
+  "peak_equity": null,
+  "last_cycle": {},
+  "orphans": [],
+  "pending_entries": {},
+  "resting_entries": {},
+  "unconfirmed_entries": {}
+}

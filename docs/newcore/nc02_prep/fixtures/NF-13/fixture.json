@@ -1,0 +1,47 @@
+{
+  "id": "NF-13",
+  "title": "state.json persistently unreadable (OSError) at start-up",
+  "reader_build": "N",
+  "source_repro": "b7",
+  "input_files": {
+    "state.json": "6fad3232423309f36f471d0d421d6b7428d268fff8e6951953a6f8606d9606c6",
+    "state.json.bak": "6fad3232423309f36f471d0d421d6b7428d268fff8e6951953a6f8606d9606c6",
+    "settings.json": "b6dfb92d3bb23d1c1eaee0ff3490b8df77de5b87e0136adbd7cb06c5b98aa0e9",
+    "settings.json.bak": "b6dfb92d3bb23d1c1eaee0ff3490b8df77de5b87e0136adbd7cb06c5b98aa0e9",
+    "install.json": "651f7f8890c4b58375fa9a9ded9ef6fb3c988d3dc19167611a279e0dcc547526",
+    "install.json.bak": "651f7f8890c4b58375fa9a9ded9ef6fb3c988d3dc19167611a279e0dcc547526"
+  },
+  "exchange": {
+    "positions": [
+      {
+        "symbol": "BTCUSDT",
+        "side": "LONG",
+        "qty": 1.0
+      }
+    ],
+    "protective_orders": [
+      {
+        "tag": "o:1",
+        "symbol": "BTCUSDT",
+        "side": "LONG",
+        "qty": 1.0,
+        "stop": 95.0
+      }
+    ]
+  },
+  "legacy_observed": {
+    "build": "cff3f88",
+    "behaviour": "file left untouched and save-held (engine.py:1264-1270) - GOOD; but ZERO lots in memory, position untracked after pass 2, and resume is still allowed"
+  },
+  "violates": [
+    "D3 never an empty managed account",
+    "D4 explicit exchange/state reconciliation before management resumes"
+  ],
+  "nc02_required": {
+    "R-NO-MANAGE": "no AccountContext is created for the account: no order, cancel, stop repair, reconcile booking or journal write is issued; protective orders already on the exchange are left untouched",
+    "R-DURABLE-FAIL": "the failed-closed condition is itself durable: a restart (with or without intervening saves) returns to the same blocked state until an explicit reconciliation record exists",
+    "R-RECON-GATE": "management (and every new-risk path, MANUAL included) stays blocked until a reconciliation record binds state generation G to an exchange snapshot that matches it (positions, open orders, protective orders) or the owner adopts/flattens each difference explicitly; resuming entries alone never clears it"
+  },
+  "inject": "state.json read raises PermissionError(13) on every attempt",
+  "contract_sha": "274bcd99be111951b24522cac03bf0a71f20e508bce3e155feec2ab6abfe4f5c"
+}

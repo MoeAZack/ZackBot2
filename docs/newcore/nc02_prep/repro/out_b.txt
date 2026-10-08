@@ -1,0 +1,127 @@
+
+=== b1 state.json truncated (invalid JSON), state.json.bak good
+ start-up returned an Engine (no abort)
+ file hashes before -> after start-up:
+  same     install.json (05df7a790e65)
+  same     install.json.bak (05df7a790e65)
+  CHANGED  settings.json 658bb959d73b -> 4ccbd7ea46f7
+  CHANGED  settings.json.bak 658bb959d73b -> 4ccbd7ea46f7
+  GONE     state.json (080c951120aa)
+  same     state.json.bak (804da04c4c85)
+  NEW      state.json.corrupt-20261008T053104Z (080c951120aa)
+  [start] lots in memory: 1   exchange positions: {'BTCUSDT|LONG': 1.0}   exchange stops: 1
+  [start] integrity: {'state': {'status': 'restored_from_backup', 'why': 'damaged: not valid JSON (Expecting value: line 3 column 23 (char 39))', 'evidence': 'C:\\Users\\princ\\AppData\\Local\\Temp\\tmpzc_bm00u\\state.json.corrupt-20261008T053104Z'}}
+  [start] ENTRIES_PAUSED=True  persist_block=None  install_block=None
+  untracked after pass 1: {}   after pass 2: {}
+  [resume] resume allowed by app/telegram gate (install_block only): True
+  [resume] MANUAL entry gate while still paused (ETHUSDT LONG): None  (None = allowed)
+  [resume] after resume: automatic ETHUSDT LONG entry sent=True last_skip='' exchange pos change={('ETHUSDT', 'LONG'): 1.0}
+
+=== b2 state.json schema-invalid lot (qty="abc"), state.json.bak good
+ start-up returned an Engine (no abort)
+ file hashes before -> after start-up:
+  same     install.json (ab048cd8360d)
+  same     install.json.bak (ab048cd8360d)
+  CHANGED  settings.json ce1afe102f1c -> e3d383ffca7a
+  CHANGED  settings.json.bak ce1afe102f1c -> e3d383ffca7a
+  GONE     state.json (5dd203f8d6ab)
+  same     state.json.bak (965325ce708a)
+  NEW      state.json.corrupt-20261008T053105Z (5dd203f8d6ab)
+  [start] lots in memory: 1   exchange positions: {'BTCUSDT|LONG': 1.0}   exchange stops: 1
+  [start] integrity: {'state': {'status': 'restored_from_backup', 'why': 'invalid: lots[T|BTCUSDT|LONG|1791437465].qty: not a number (str)', 'evidence': 'C:\\Users\\princ\\AppData\\Local\\Temp\\tmpr_oz23g0\\state.json.corrupt-20261008T053105Z'}}
+  [start] ENTRIES_PAUSED=True  persist_block=None  install_block=None
+  untracked after pass 1: {}   after pass 2: {}
+  [resume] resume allowed by app/telegram gate (install_block only): True
+  [resume] MANUAL entry gate while still paused (ETHUSDT LONG): None  (None = allowed)
+  [resume] after resume: automatic ETHUSDT LONG entry sent=True last_skip='' exchange pos change={('ETHUSDT', 'LONG'): 1.0}
+
+=== b3 state.json AND .bak schema-invalid lot
+ start-up returned an Engine (no abort)
+ file hashes before -> after start-up:
+  same     install.json (ab048cd8360d)
+  same     install.json.bak (ab048cd8360d)
+  CHANGED  settings.json ce1afe102f1c -> e3d383ffca7a
+  CHANGED  settings.json.bak ce1afe102f1c -> e3d383ffca7a
+  GONE     state.json (078c93253da3)
+  GONE     state.json.bak (078c93253da3)
+  NEW      state.json.bak.corrupt-20261008T053105Z (078c93253da3)
+  NEW      state.json.corrupt-20261008T053105Z (078c93253da3)
+  [start] lots in memory: 0   exchange positions: {'BTCUSDT|LONG': 1.0}   exchange stops: 1
+  [start] integrity: {'state': {'status': 'failed_closed', 'why': 'invalid: lots[T|BTCUSDT|LONG|1791437465].qty: not a number (str)', 'evidence': 'C:\\Users\\princ\\AppData\\Local\\Temp\\tmpbxevz2xj\\state.json.corrupt-20261008T053105Z'}}
+  [start] ENTRIES_PAUSED=True  persist_block=None  install_block=None
+  untracked after pass 1: {}   after pass 2: {'BTCUSDT|LONG': 1.0}
+  [resume] resume allowed by app/telegram gate (install_block only): True
+  [resume] MANUAL entry gate while still paused (ETHUSDT LONG): None  (None = allowed)
+  [resume] after resume: automatic ETHUSDT LONG entry sent=True last_skip='' exchange pos change={('ETHUSDT', 'LONG'): 1.0}
+ after one state save + restart:
+  same     install.json (ab048cd8360d)
+  same     install.json.bak (ab048cd8360d)
+  same     settings.json (e3d383ffca7a)
+  same     settings.json.bak (e3d383ffca7a)
+  same     state.json (28625b725c58)
+  same     state.json.bak (28625b725c58)
+  same     state.json.bak.corrupt-20261008T053105Z (078c93253da3)
+  same     state.json.corrupt-20261008T053105Z (078c93253da3)
+  [restart#2] lots in memory: 1   exchange positions: {'BTCUSDT|LONG': 1.0, 'ETHUSDT|LONG': 1.0}   exchange stops: 2
+  [restart#2] integrity: {}
+  [restart#2] ENTRIES_PAUSED=True  persist_block=None  install_block=None
+
+=== b4 state.json truncated, state.json.bak valid but OLDER and empty (lots={}: saved before the trade)
+ start-up returned an Engine (no abort)
+ file hashes before -> after start-up:
+  same     install.json (ab048cd8360d)
+  same     install.json.bak (ab048cd8360d)
+  CHANGED  settings.json ce1afe102f1c -> e3d383ffca7a
+  CHANGED  settings.json.bak ce1afe102f1c -> e3d383ffca7a
+  GONE     state.json (080c951120aa)
+  same     state.json.bak (85264a9e3447)
+  NEW      state.json.corrupt-20261008T053105Z (080c951120aa)
+  [start] lots in memory: 0   exchange positions: {'BTCUSDT|LONG': 1.0}   exchange stops: 1
+  [start] integrity: {'state': {'status': 'restored_from_backup', 'why': 'damaged: not valid JSON (Expecting value: line 3 column 23 (char 39))', 'evidence': 'C:\\Users\\princ\\AppData\\Local\\Temp\\tmpo1pjrt6o\\state.json.corrupt-20261008T053105Z'}}
+  [start] ENTRIES_PAUSED=True  persist_block=None  install_block=None
+  untracked after pass 1: {}   after pass 2: {'BTCUSDT|LONG': 1.0}
+  [resume] resume allowed by app/telegram gate (install_block only): True
+  [resume] MANUAL entry gate while still paused (ETHUSDT LONG): None  (None = allowed)
+  [resume] after resume: automatic ETHUSDT LONG entry sent=True last_skip='' exchange pos change={('ETHUSDT', 'LONG'): 1.0}
+
+=== b5 settings.json truncated, .bak good
+ start-up returned an Engine (no abort)
+ file hashes before -> after start-up:
+  same     install.json (ab048cd8360d)
+  same     install.json.bak (ab048cd8360d)
+  CHANGED  settings.json 5dbe6b9708ba -> e3d383ffca7a
+  same     settings.json.bak (ce1afe102f1c)
+  NEW      settings.json.corrupt-20261008T053105Z (5dbe6b9708ba)
+  same     state.json (b60087ba9d56)
+  same     state.json.bak (b60087ba9d56)
+  [start] lots in memory: 1   exchange positions: {'BTCUSDT|LONG': 1.0}   exchange stops: 1
+  [start] integrity: {'settings': {'status': 'restored_from_backup', 'why': 'damaged: not valid JSON (Expecting value: line 3 column 17 (char 40))', 'evidence': 'C:\\Users\\princ\\AppData\\Local\\Temp\\tmpk4aqi0ob\\settings.json.corrupt-20261008T053105Z'}}
+  [start] ENTRIES_PAUSED=True  persist_block=None  install_block=None
+
+=== b6 settings.json AND .bak truncated
+ start-up returned an Engine (no abort)
+ file hashes before -> after start-up:
+  same     install.json (ab048cd8360d)
+  same     install.json.bak (ab048cd8360d)
+  CHANGED  settings.json 5dbe6b9708ba -> 00cf9f6e82c4
+  CHANGED  settings.json.bak 5dbe6b9708ba -> d166d10f795c
+  NEW      settings.json.bak.corrupt-20261008T053105Z (5dbe6b9708ba)
+  NEW      settings.json.corrupt-20261008T053105Z (5dbe6b9708ba)
+  same     state.json (a1b6b17e2424)
+  same     state.json.bak (a1b6b17e2424)
+  [start] lots in memory: 1   exchange positions: {'BTCUSDT|LONG': 1.0}   exchange stops: 1
+  [start] integrity: {'settings': {'status': 'failed_closed', 'why': 'damaged: not valid JSON (Expecting value: line 3 column 17 (char 40))', 'evidence': 'C:\\Users\\princ\\AppData\\Local\\Temp\\tmpkn2_6kbq\\settings.json.corrupt-20261008T053105Z'}}
+  [start] ENTRIES_PAUSED=True  persist_block=None  install_block=None
+
+=== b7 state.json persistently unreadable (PermissionError) at start-up
+  same     install.json (ab048cd8360d)
+  same     install.json.bak (ab048cd8360d)
+  CHANGED  settings.json ce1afe102f1c -> e3d383ffca7a
+  CHANGED  settings.json.bak ce1afe102f1c -> e3d383ffca7a
+  same     state.json (3c3f13adf312)
+  same     state.json.bak (3c3f13adf312)
+  [start] lots in memory: 0   exchange positions: {'BTCUSDT|LONG': 1.0}   exchange stops: 1
+  [start] integrity: {'state': {'status': 'failed_closed', 'why': 'cannot be read (PermissionError: [Errno 13] sharing violation (injected))', 'evidence': None}}
+  [start] ENTRIES_PAUSED=True  persist_block=None  install_block=None
+  save_hold={'state': 'unreadable'}  save_state() -> False
+  untracked after pass 1: {}   after pass 2: {'BTCUSDT|LONG': 1.0}

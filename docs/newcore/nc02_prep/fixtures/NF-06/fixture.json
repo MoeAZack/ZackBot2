@@ -1,0 +1,44 @@
+{
+  "id": "NF-06",
+  "title": "current state.json, future state.json.bak (v99)",
+  "reader_build": "N",
+  "source_repro": "a6",
+  "input_files": {
+    "state.json": "0fd478b8fe11678f1cbb93c32f91bc3d871587b95c5a05ade40c226b3359fcd7",
+    "state.json.bak": "298e680e06f85033f26da830795a887c93636042c128277829d0dc1c3788bb30",
+    "settings.json": "71f50ee68d2b1c0a73f364fe4e3dedeb6f7399fc30d474b8eff5ceaaf315df0e",
+    "settings.json.bak": "71f50ee68d2b1c0a73f364fe4e3dedeb6f7399fc30d474b8eff5ceaaf315df0e",
+    "install.json": "bcb10aecaa52e34f4d5ac6554c78322a2929fc8c883158867ea2344dcdf51399",
+    "install.json.bak": "bcb10aecaa52e34f4d5ac6554c78322a2929fc8c883158867ea2344dcdf51399"
+  },
+  "exchange": {
+    "positions": [
+      {
+        "symbol": "BTCUSDT",
+        "side": "LONG",
+        "qty": 1.0
+      }
+    ],
+    "protective_orders": [
+      {
+        "tag": "o:1",
+        "symbol": "BTCUSDT",
+        "side": "LONG",
+        "qty": 1.0,
+        "stop": 95.0
+      }
+    ]
+  },
+  "legacy_observed": {
+    "build": "cff3f88",
+    "behaviour": "no incident, entries open; the future .bak is overwritten by the first normal save (save_json engine.py:483-487)"
+  },
+  "violates": [
+    "D1 future schema: abort, state+backup byte-identical"
+  ],
+  "nc02_required": {
+    "R-ABORT-RO": "start-up aborts before ANY write to the store: every input file byte-identical after the attempt (sha256 equal), no rename, no .bak rotation, no settings write; the refusal is reported out-of-band (process exit code + boot incident log outside the store)",
+    "R-GEN-MONOTONIC": "every store write carries (generation, writer_build, format_version, min_reader_version); a reader that sees a generation written by a newer build, or a lower generation than the highest it has seen (rollback/stale copy), aborts read-only (R-ABORT-RO)"
+  },
+  "contract_sha": "327ed907cd406bd5d62c3a510a69fbb8dee8c5dddaf75c6683982a7b604feff1"
+}

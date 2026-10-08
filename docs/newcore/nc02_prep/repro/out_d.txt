@@ -1,0 +1,85 @@
+
+=== d1 NEW writes -> OLD build reads (installer rollback across AUD-05)
+  NEW(cff3f88) init: lots=1 files=['fills.jsonl', 'install.json', 'install.json.bak', 'settings.json', 'settings.json.bak', 'state.json', 'state.json.bak', 'trade_audit.jsonl.since', 'trades.csv']
+  OLD(b8c11c8) start: lots in memory=1 state schema_version in memory=1 ENTRIES_PAUSED=False integrity=n/a (no such concept) install_block='n/a'
+  OLD(b8c11c8) untracked after 2 passes: {}
+  OLD(b8c11c8) after one save: files=['fills.jsonl', 'install.json', 'install.json.bak', 'settings.json', 'settings.json.bak', 'state.json', 'state.json.bak', 'trade_audit.jsonl.since', 'trades.csv']  state.json schema_version=1
+  same     install.json (c82c061ca53b)
+  same     install.json.bak (c82c061ca53b)
+  same     settings.json (ba0b792170d1)
+  same     settings.json.bak (ba0b792170d1)
+  CHANGED  state.json 9153619e6f82 -> 5f06e034771d
+  same     state.json.bak (9153619e6f82)
+
+=== d2 OLD writes (unversioned, no marker) -> NEW reads (upgrade)
+  OLD(b8c11c8) init: lots=1 files=['fills.jsonl', 'settings.json', 'state.json', 'trade_audit.jsonl.since', 'trades.csv']
+  NEW(cff3f88) start: lots in memory=1 state schema_version in memory=1 ENTRIES_PAUSED=True integrity={} install_block='account not confirmed for this data folder - type THIS_ACCOUNT in Settings first'
+  NEW(cff3f88) untracked after 2 passes: {}
+  NEW(cff3f88) after one save: files=['fills.jsonl', 'settings.json', 'settings.json.bak', 'state.json', 'state.json.bak', 'trade_audit.jsonl.since', 'trades.csv']  state.json schema_version=1
+  CHANGED  settings.json b40af390f466 -> c7c75c65c4d8
+  NEW      settings.json.bak (f1994cd44c1b)
+  CHANGED  state.json 9f3504794952 -> 33c095ee1584
+  NEW      state.json.bak (4ed28705f8ea)
+
+=== d3 NEW -> OLD -> NEW round trip
+  NEW(cff3f88) init: lots=1 files=['fills.jsonl', 'install.json', 'install.json.bak', 'settings.json', 'settings.json.bak', 'state.json', 'state.json.bak', 'trade_audit.jsonl.since', 'trades.csv']
+  OLD(b8c11c8) start: lots in memory=1 state schema_version in memory=1 ENTRIES_PAUSED=False integrity=n/a (no such concept) install_block='n/a'
+  OLD(b8c11c8) untracked after 2 passes: {}
+  OLD(b8c11c8) after one save: files=['fills.jsonl', 'install.json', 'install.json.bak', 'settings.json', 'settings.json.bak', 'state.json', 'state.json.bak', 'trade_audit.jsonl.since', 'trades.csv']  state.json schema_version=1
+  same     install.json (bf6cebc3424a)
+  same     install.json.bak (bf6cebc3424a)
+  same     settings.json (7f275ddd933a)
+  same     settings.json.bak (7f275ddd933a)
+  CHANGED  state.json 7c7131a92887 -> 608ffa03da74
+  same     state.json.bak (7c7131a92887)
+  NEW(cff3f88) start: lots in memory=1 state schema_version in memory=1 ENTRIES_PAUSED=False integrity={} install_block=None
+  NEW(cff3f88) untracked after 2 passes: {}
+  NEW(cff3f88) after one save: files=['fills.jsonl', 'install.json', 'install.json.bak', 'settings.json', 'settings.json.bak', 'state.json', 'state.json.bak', 'trade_audit.jsonl.since', 'trades.csv']  state.json schema_version=1
+  same     install.json (bf6cebc3424a)
+  same     install.json.bak (bf6cebc3424a)
+  same     settings.json (7f275ddd933a)
+  same     settings.json.bak (7f275ddd933a)
+  CHANGED  state.json 608ffa03da74 -> 5b226673d62a
+  CHANGED  state.json.bak 7c7131a92887 -> 5b226673d62a
+
+=== d4 NEW+1 (v2) files -> OLD build reads
+  NEW(cff3f88) init: lots=1 files=['fills.jsonl', 'install.json', 'install.json.bak', 'settings.json', 'settings.json.bak', 'state.json', 'state.json.bak', 'trade_audit.jsonl.since', 'trades.csv']
+  (files mutated: state.json + state.json.bak + settings.json stamped schema_version=2 (a NEW+1 writer))
+  OLD(b8c11c8) start: lots in memory=1 state schema_version in memory=2 ENTRIES_PAUSED=False integrity=n/a (no such concept) install_block='n/a'
+  OLD(b8c11c8) untracked after 2 passes: {}
+  OLD(b8c11c8) after one save: files=['fills.jsonl', 'install.json', 'install.json.bak', 'settings.json', 'settings.json.bak', 'state.json', 'state.json.bak', 'trade_audit.jsonl.since', 'trades.csv']  state.json schema_version=2
+  same     install.json (478271d954e8)
+  same     install.json.bak (478271d954e8)
+  same     settings.json (a90ccbf32e60)
+  same     settings.json.bak (d42921c41ad1)
+  CHANGED  state.json 0ce9a2e3cec2 -> d0c80205f0a8
+  same     state.json.bak (0ce9a2e3cec2)
+
+=== d5 NEW+1 (v2) files -> NEW build reads (rollback of a schema bump)
+  NEW(cff3f88) init: lots=1 files=['fills.jsonl', 'install.json', 'install.json.bak', 'settings.json', 'settings.json.bak', 'state.json', 'state.json.bak', 'trade_audit.jsonl.since', 'trades.csv']
+  (files mutated: state.json + state.json.bak + settings.json stamped schema_version=2 (a NEW+1 writer))
+  NEW(cff3f88) start: lots in memory=0 state schema_version in memory=- ENTRIES_PAUSED=True integrity={'settings': {'status': 'restored_from_backup', 'why': 'invalid: settings.schema_version: 2 is newer than this build understands (1)', 'evidence': 'C:\\Users\\princ\\AppData\\Local\\Temp\\rec01_d_ky67tnlc\\data\\settings.json.corrupt-20261008T053210Z'}, 'state': {'status': 'failed_closed', 'why': 'invalid: state.schema_version: 2 is newer than this build understands (1)', 'evidence': 'C:\\Users\\princ\\AppData\\Local\\Temp\\rec01_d_ky67tnlc\\data\\state.json.corrupt-20261008T053210Z'}} install_block=None
+  NEW(cff3f88) untracked after 2 passes: {'BTCUSDT|LONG': 1.0}
+  NEW(cff3f88) after one save: files=['fills.jsonl', 'install.json', 'install.json.bak', 'settings.json', 'settings.json.bak', 'settings.json.corrupt-20261008T053210Z', 'state.json', 'state.json.bak.corrupt-20261008T053210Z', 'state.json.corrupt-20261008T053210Z', 'trade_audit.jsonl.since', 'trades.csv']  state.json schema_version=1
+  same     install.json (0e028fb90c13)
+  same     install.json.bak (0e028fb90c13)
+  CHANGED  settings.json 95b473334745 -> 630fd7ed3e36
+  CHANGED  settings.json.bak 43962f46b744 -> 630fd7ed3e36
+  NEW      settings.json.corrupt-20261008T053210Z (95b473334745)
+  CHANGED  state.json 64e58eee0d1c -> 5fb4672137d8
+  GONE     state.json.bak (64e58eee0d1c)
+  NEW      state.json.bak.corrupt-20261008T053210Z (64e58eee0d1c)
+  NEW      state.json.corrupt-20261008T053210Z (64e58eee0d1c)
+
+=== d6 damaged current state -> OLD build reads
+  NEW(cff3f88) init: lots=1 files=['fills.jsonl', 'install.json', 'install.json.bak', 'settings.json', 'settings.json.bak', 'state.json', 'state.json.bak', 'trade_audit.jsonl.since', 'trades.csv']
+  (files mutated: state.json truncated to 40 bytes)
+  OLD(b8c11c8) start: lots in memory=0 state schema_version in memory=- ENTRIES_PAUSED=False integrity=n/a (no such concept) install_block='n/a'
+  OLD(b8c11c8) untracked after 2 passes: {'BTCUSDT|LONG': 1.0}
+  OLD(b8c11c8) after one save: files=['fills.jsonl', 'install.json', 'install.json.bak', 'settings.json', 'settings.json.bak', 'state.json', 'state.json.bak', 'trade_audit.jsonl.since', 'trades.csv']  state.json schema_version=0
+  same     install.json (299d3d8f5064)
+  same     install.json.bak (299d3d8f5064)
+  same     settings.json (65641c976e9b)
+  same     settings.json.bak (65641c976e9b)
+  CHANGED  state.json 080c951120aa -> be23db124569
+  same     state.json.bak (e99286d0ecb4)

@@ -1,0 +1,44 @@
+{
+  "id": "NF-14",
+  "title": "state.json + .bak deleted, install.json kept",
+  "reader_build": "N",
+  "source_repro": "c1",
+  "input_files": {
+    "settings.json": "b6dfb92d3bb23d1c1eaee0ff3490b8df77de5b87e0136adbd7cb06c5b98aa0e9",
+    "settings.json.bak": "b6dfb92d3bb23d1c1eaee0ff3490b8df77de5b87e0136adbd7cb06c5b98aa0e9",
+    "install.json": "651f7f8890c4b58375fa9a9ded9ef6fb3c988d3dc19167611a279e0dcc547526",
+    "install.json.bak": "651f7f8890c4b58375fa9a9ded9ef6fb3c988d3dc19167611a279e0dcc547526"
+  },
+  "exchange": {
+    "positions": [
+      {
+        "symbol": "BTCUSDT",
+        "side": "LONG",
+        "qty": 1.0
+      }
+    ],
+    "protective_orders": [
+      {
+        "tag": "o:1",
+        "symbol": "BTCUSDT",
+        "side": "LONG",
+        "qty": 1.0,
+        "stop": 95.0
+      }
+    ]
+  },
+  "legacy_observed": {
+    "build": "cff3f88",
+    "behaviour": "failed_closed (\"missing on an already initialized installation\", engine.py:1255-1257); ZERO lots; resume allowed; new entry SENT"
+  },
+  "violates": [
+    "D3 never an empty managed account",
+    "D4 explicit exchange/state reconciliation before management resumes"
+  ],
+  "nc02_required": {
+    "R-NO-EMPTY": "an initialized account (marker or any store generation or evidence present) can never load as an empty portfolio; an empty portfolio is only legal for a first run whose exchange snapshot is flat (no positions, no open orders) or after an explicit owner adoption record",
+    "R-DURABLE-FAIL": "the failed-closed condition is itself durable: a restart (with or without intervening saves) returns to the same blocked state until an explicit reconciliation record exists",
+    "R-RECON-GATE": "management (and every new-risk path, MANUAL included) stays blocked until a reconciliation record binds state generation G to an exchange snapshot that matches it (positions, open orders, protective orders) or the owner adopts/flattens each difference explicitly; resuming entries alone never clears it"
+  },
+  "contract_sha": "5414c4c6f43e2eeeaaadf10fd3de3f5c020c8c279343b765c8c8b848813c7935"
+}

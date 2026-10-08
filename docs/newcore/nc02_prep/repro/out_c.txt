@@ -1,0 +1,54 @@
+
+=== c1 state.json + state.json.bak deleted (install.json kept)
+ file hashes before -> after start-up:
+  same     install.json (f345277f45e5)
+  same     install.json.bak (f345277f45e5)
+  CHANGED  settings.json d9fdd7701cca -> ecf7fffcb4ca
+  same     settings.json.bak (d9fdd7701cca)
+  [start] lots in memory: 0   exchange positions: {'BTCUSDT|LONG': 1.0}   exchange stops: 1
+  [start] integrity: {'state': {'status': 'failed_closed', 'why': 'missing on an already initialized installation (install.json)', 'evidence': None}}
+  [start] ENTRIES_PAUSED=True  persist_block=None  install_block=None
+  untracked after pass 1: {}   after pass 2: {'BTCUSDT|LONG': 1.0}
+  [resume] resume allowed by app/telegram gate (install_block only): True
+  [resume] MANUAL entry gate while still paused (ETHUSDT LONG): None  (None = allowed)
+  [resume] after resume: automatic ETHUSDT LONG entry sent=True last_skip='' exchange pos change={('ETHUSDT', 'LONG'): 1.0}
+
+=== c2 state + install markers deleted, versioned settings kept
+ file hashes before -> after start-up:
+  CHANGED  settings.json d9fdd7701cca -> ecf7fffcb4ca
+  CHANGED  settings.json.bak d9fdd7701cca -> ecf7fffcb4ca
+  [start] lots in memory: 0   exchange positions: {'BTCUSDT|LONG': 1.0}   exchange stops: 1
+  [start] integrity: {'state': {'status': 'failed_closed', 'why': 'missing on an already initialized installation (install.json)', 'evidence': None}}
+  [start] ENTRIES_PAUSED=True  persist_block='account not confirmed for this data folder - type THIS_ACCOUNT in Settings first'  install_block='account not confirmed for this data folder - type THIS_ACCOUNT in Settings first'
+  untracked after pass 1: {}   after pass 2: {'BTCUSDT|LONG': 1.0}
+  [resume] resume allowed by app/telegram gate (install_block only): False
+  [resume] MANUAL entry gate while still paused (ETHUSDT LONG): 'account not confirmed for this data folder - type THIS_ACCOUNT in Settings first'  (None = allowed)
+
+=== c3 whole data folder replaced by an EMPTY folder (reinstall / LOCALAPPDATA moved), same API key
+ file hashes before -> after start-up:
+  NEW      install.json (f345277f45e5)
+  NEW      install.json.bak (f345277f45e5)
+  NEW      settings.json (a4c5196b2712)
+  NEW      settings.json.bak (eeb1cef62e7d)
+  NEW      state.json (3a887db15842)
+  [start] lots in memory: 0   exchange positions: {'BTCUSDT|LONG': 1.0}   exchange stops: 1
+  [start] integrity: {}
+  [start] ENTRIES_PAUSED=False  persist_block=None  install_block=None
+  untracked after pass 1: {}   after pass 2: {'BTCUSDT|LONG': 1.0}
+  [resume] resume allowed by app/telegram gate (install_block only): True
+  [resume] MANUAL entry gate while still paused (ETHUSDT LONG): None  (None = allowed)
+  [resume] after resume: automatic ETHUSDT LONG entry sent=True last_skip='' exchange pos change={('ETHUSDT', 'LONG'): 1.0}
+
+=== c4 everything deleted except an unversioned (v0) settings.json
+ file hashes before -> after start-up:
+  NEW      install.json (f345277f45e5)
+  NEW      install.json.bak (f345277f45e5)
+  same     settings.json (ef73211f9ad6)
+  NEW      state.json (3a887db15842)
+  [start] lots in memory: 0   exchange positions: {'BTCUSDT|LONG': 1.0}   exchange stops: 1
+  [start] integrity: {}
+  [start] ENTRIES_PAUSED=False  persist_block=None  install_block=None
+  untracked after pass 1: {}   after pass 2: {'BTCUSDT|LONG': 1.0}
+  [resume] resume allowed by app/telegram gate (install_block only): True
+  [resume] MANUAL entry gate while still paused (ETHUSDT LONG): None  (None = allowed)
+  [resume] after resume: automatic ETHUSDT LONG entry sent=True last_skip='' exchange pos change={('ETHUSDT', 'LONG'): 1.0}

@@ -1,0 +1,45 @@
+{
+  "id": "NF-05",
+  "title": "future install.json (v2), current install.json.bak",
+  "reader_build": "N",
+  "source_repro": "a5,a8",
+  "input_files": {
+    "state.json": "201802822933c19d18678e63b5ef0c972d0ecaa7f60612773a89791530362ed8",
+    "state.json.bak": "201802822933c19d18678e63b5ef0c972d0ecaa7f60612773a89791530362ed8",
+    "settings.json": "71f50ee68d2b1c0a73f364fe4e3dedeb6f7399fc30d474b8eff5ceaaf315df0e",
+    "settings.json.bak": "71f50ee68d2b1c0a73f364fe4e3dedeb6f7399fc30d474b8eff5ceaaf315df0e",
+    "install.json": "466fba834f172886891cb86cc3f814f4b6b1a80883ddd29b664cf686adcb3301",
+    "install.json.bak": "bcb10aecaa52e34f4d5ac6554c78322a2929fc8c883158867ea2344dcdf51399"
+  },
+  "exchange": {
+    "positions": [
+      {
+        "symbol": "BTCUSDT",
+        "side": "LONG",
+        "qty": 1.0
+      }
+    ],
+    "protective_orders": [
+      {
+        "tag": "o:1",
+        "symbol": "BTCUSDT",
+        "side": "LONG",
+        "qty": 1.0,
+        "stop": 95.0
+      }
+    ]
+  },
+  "legacy_observed": {
+    "build": "cff3f88",
+    "behaviour": "install.json moved aside, account confirmation required (engine.py:1137-1144); on the NEXT restart install.json is silently restored from install.json.bak (engine.py:1126-1131) and the confirmation requirement disappears"
+  },
+  "violates": [
+    "D1 future schema: abort, state+backup byte-identical",
+    "D4 explicit exchange/state reconciliation before management resumes"
+  ],
+  "nc02_required": {
+    "R-ABORT-RO": "start-up aborts before ANY write to the store: every input file byte-identical after the attempt (sha256 equal), no rename, no .bak rotation, no settings write; the refusal is reported out-of-band (process exit code + boot incident log outside the store)",
+    "R-SINGLE-SOURCE": "the account marker, the store and its backups are one versioned unit: one invalid member blocks the unit; a backup can never silently clear an owner-confirmation requirement"
+  },
+  "contract_sha": "8555ef7e5f21441739c03c15e1dc474be3f23dd421522e9ba319e3cbfa3bb3a9"
+}

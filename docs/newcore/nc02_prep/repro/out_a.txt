@@ -1,0 +1,207 @@
+build schema: STATE=1 SETTINGS=1 INSTALL=1
+
+=== a1 state.json schema_version=99, state.json.bak current
+ start-up returned an Engine (no abort)
+ file hashes before -> after start-up:
+  same     install.json (9f0775729289)
+  same     install.json.bak (9f0775729289)
+  CHANGED  settings.json b660bf7cb56a -> 246619c59833
+  CHANGED  settings.json.bak b660bf7cb56a -> 246619c59833
+  GONE     state.json (087d2c26f3ca)
+  same     state.json.bak (822b55b0f245)
+  NEW      state.json.corrupt-20261008T053047Z (087d2c26f3ca)
+  state.json.bak: schema_version on disk now = 1
+  settings.json: schema_version on disk now = 1
+  settings.json.bak: schema_version on disk now = 1
+  install.json: schema_version on disk now = 1
+  [start] lots in memory: 1   exchange positions: {'BTCUSDT|LONG': 1.0}   exchange stops: 1
+  [start] integrity: {'state': {'status': 'restored_from_backup', 'why': 'invalid: state.schema_version: 99 is newer than this build understands (1)', 'evidence': 'C:\\Users\\princ\\AppData\\Local\\Temp\\tmpjx9lbhn8\\state.json.corrupt-20261008T053047Z'}}
+  [start] ENTRIES_PAUSED=True  persist_block=None  install_block=None
+ after 2 more state + settings saves (normal cycles):
+  same     install.json (9f0775729289)
+  same     install.json.bak (9f0775729289)
+  CHANGED  settings.json b660bf7cb56a -> 246619c59833
+  CHANGED  settings.json.bak b660bf7cb56a -> 246619c59833
+  CHANGED  state.json 087d2c26f3ca -> 4ead2529ed55
+  CHANGED  state.json.bak 822b55b0f245 -> 4ead2529ed55
+  NEW      state.json.corrupt-20261008T053047Z (087d2c26f3ca)
+
+=== a2 state.json AND state.json.bak schema_version=2 (Codex reproduction)
+ start-up returned an Engine (no abort)
+ file hashes before -> after start-up:
+  same     install.json (9f0775729289)
+  same     install.json.bak (9f0775729289)
+  CHANGED  settings.json b660bf7cb56a -> 246619c59833
+  CHANGED  settings.json.bak b660bf7cb56a -> 246619c59833
+  GONE     state.json (4510e4b2efec)
+  GONE     state.json.bak (4510e4b2efec)
+  NEW      state.json.bak.corrupt-20261008T053047Z (4510e4b2efec)
+  NEW      state.json.corrupt-20261008T053047Z (4510e4b2efec)
+  settings.json: schema_version on disk now = 1
+  settings.json.bak: schema_version on disk now = 1
+  install.json: schema_version on disk now = 1
+  [start] lots in memory: 0   exchange positions: {'BTCUSDT|LONG': 1.0}   exchange stops: 1
+  [start] integrity: {'state': {'status': 'failed_closed', 'why': 'invalid: state.schema_version: 2 is newer than this build understands (1)', 'evidence': 'C:\\Users\\princ\\AppData\\Local\\Temp\\tmphu0h60m0\\state.json.corrupt-20261008T053047Z'}}
+  [start] ENTRIES_PAUSED=True  persist_block=None  install_block=None
+  untracked after pass 1: {}   after pass 2: {'BTCUSDT|LONG': 1.0}
+  [resume] resume allowed by app/telegram gate (install_block only): True
+  [resume] MANUAL entry gate while still paused (ETHUSDT LONG): None  (None = allowed)
+  [resume] after resume: automatic ETHUSDT LONG entry sent=True last_skip='' exchange pos change={('ETHUSDT', 'LONG'): 1.0}
+
+=== a3 settings.json schema_version=2, settings.json.bak current
+ start-up returned an Engine (no abort)
+ file hashes before -> after start-up:
+  same     install.json (9f0775729289)
+  same     install.json.bak (9f0775729289)
+  CHANGED  settings.json 3c196fc6ea6f -> 246619c59833
+  same     settings.json.bak (b660bf7cb56a)
+  NEW      settings.json.corrupt-20261008T053047Z (3c196fc6ea6f)
+  same     state.json (ba3c0f6bba96)
+  same     state.json.bak (ba3c0f6bba96)
+  state.json: schema_version on disk now = 1
+  state.json.bak: schema_version on disk now = 1
+  settings.json: schema_version on disk now = 1
+  settings.json.bak: schema_version on disk now = 1
+  install.json: schema_version on disk now = 1
+  [start] lots in memory: 1   exchange positions: {'BTCUSDT|LONG': 1.0}   exchange stops: 1
+  [start] integrity: {'settings': {'status': 'restored_from_backup', 'why': 'invalid: settings.schema_version: 2 is newer than this build understands (1)', 'evidence': 'C:\\Users\\princ\\AppData\\Local\\Temp\\tmpr1uj7ljs\\settings.json.corrupt-20261008T053047Z'}}
+  [start] ENTRIES_PAUSED=True  persist_block=None  install_block=None
+ after 2 more state + settings saves (normal cycles):
+  same     install.json (9f0775729289)
+  same     install.json.bak (9f0775729289)
+  CHANGED  settings.json 3c196fc6ea6f -> 246619c59833
+  CHANGED  settings.json.bak b660bf7cb56a -> 246619c59833
+  NEW      settings.json.corrupt-20261008T053047Z (3c196fc6ea6f)
+  CHANGED  state.json ba3c0f6bba96 -> d2930e14f080
+  CHANGED  state.json.bak ba3c0f6bba96 -> d2930e14f080
+
+=== a4 settings.json AND settings.json.bak schema_version=2
+ start-up returned an Engine (no abort)
+ file hashes before -> after start-up:
+  same     install.json (bdcdd3fef2d1)
+  same     install.json.bak (bdcdd3fef2d1)
+  CHANGED  settings.json 01362cd8e306 -> 0997e4804a83
+  CHANGED  settings.json.bak 01362cd8e306 -> d166d10f795c
+  NEW      settings.json.bak.corrupt-20261008T053048Z (01362cd8e306)
+  NEW      settings.json.corrupt-20261008T053048Z (01362cd8e306)
+  same     state.json (5e39495aba5e)
+  same     state.json.bak (5e39495aba5e)
+  state.json: schema_version on disk now = 1
+  state.json.bak: schema_version on disk now = 1
+  settings.json: schema_version on disk now = 1
+  settings.json.bak: schema_version on disk now = 1
+  install.json: schema_version on disk now = 1
+  [start] lots in memory: 1   exchange positions: {'BTCUSDT|LONG': 1.0}   exchange stops: 1
+  [start] integrity: {'settings': {'status': 'failed_closed', 'why': 'invalid: settings.schema_version: 2 is newer than this build understands (1)', 'evidence': 'C:\\Users\\princ\\AppData\\Local\\Temp\\tmphbf47w6b\\settings.json.corrupt-20261008T053048Z'}}
+  [start] ENTRIES_PAUSED=True  persist_block=None  install_block=None
+ after 2 more state + settings saves (normal cycles):
+  same     install.json (bdcdd3fef2d1)
+  same     install.json.bak (bdcdd3fef2d1)
+  CHANGED  settings.json 01362cd8e306 -> 0997e4804a83
+  CHANGED  settings.json.bak 01362cd8e306 -> 0997e4804a83
+  NEW      settings.json.bak.corrupt-20261008T053048Z (01362cd8e306)
+  NEW      settings.json.corrupt-20261008T053048Z (01362cd8e306)
+  CHANGED  state.json 5e39495aba5e -> 74b6df1f8186
+  CHANGED  state.json.bak 5e39495aba5e -> 74b6df1f8186
+
+=== a5 install.json schema_version=2 (install.json.bak current)
+ start-up returned an Engine (no abort)
+ file hashes before -> after start-up:
+  GONE     install.json (85466e2b7da7)
+  same     install.json.bak (bdcdd3fef2d1)
+  NEW      install.json.corrupt-20261008T053048Z (85466e2b7da7)
+  CHANGED  settings.json 68ba8d3f6f13 -> 14069b6aef56
+  same     settings.json.bak (68ba8d3f6f13)
+  same     state.json (f0a2031bdbc3)
+  same     state.json.bak (f0a2031bdbc3)
+  state.json: schema_version on disk now = 1
+  state.json.bak: schema_version on disk now = 1
+  settings.json: schema_version on disk now = 1
+  settings.json.bak: schema_version on disk now = 1
+  [start] lots in memory: 1   exchange positions: {'BTCUSDT|LONG': 1.0}   exchange stops: 1
+  [start] integrity: {}
+  [start] ENTRIES_PAUSED=True  persist_block='account not confirmed for this data folder - type THIS_ACCOUNT in Settings first'  install_block='account not confirmed for this data folder - type THIS_ACCOUNT in Settings first'
+
+=== a6 only state.json.bak future (99), main current
+ start-up returned an Engine (no abort)
+ file hashes before -> after start-up:
+  same     install.json (bdcdd3fef2d1)
+  same     install.json.bak (bdcdd3fef2d1)
+  same     settings.json (68ba8d3f6f13)
+  same     settings.json.bak (68ba8d3f6f13)
+  same     state.json (a7d30bb0b7df)
+  same     state.json.bak (c38f85d7cbd4)
+  state.json: schema_version on disk now = 1
+  state.json.bak: schema_version on disk now = 99
+  settings.json: schema_version on disk now = 1
+  settings.json.bak: schema_version on disk now = 1
+  install.json: schema_version on disk now = 1
+  [start] lots in memory: 1   exchange positions: {'BTCUSDT|LONG': 1.0}   exchange stops: 1
+  [start] integrity: {}
+  [start] ENTRIES_PAUSED=False  persist_block=None  install_block=None
+ after 2 more state + settings saves (normal cycles):
+  same     install.json (bdcdd3fef2d1)
+  same     install.json.bak (bdcdd3fef2d1)
+  same     settings.json (68ba8d3f6f13)
+  same     settings.json.bak (68ba8d3f6f13)
+  CHANGED  state.json a7d30bb0b7df -> 75428ae4295f
+  CHANGED  state.json.bak c38f85d7cbd4 -> 75428ae4295f
+
+=== a7 = a2, then one cycle saves state, then restart (is the failed-closed condition durable?)
+ start-up returned an Engine (no abort)
+ file hashes before -> after start-up:
+  same     install.json (bdcdd3fef2d1)
+  same     install.json.bak (bdcdd3fef2d1)
+  CHANGED  settings.json 68ba8d3f6f13 -> 14069b6aef56
+  CHANGED  settings.json.bak 68ba8d3f6f13 -> 14069b6aef56
+  GONE     state.json (8fb7531c68e2)
+  GONE     state.json.bak (8fb7531c68e2)
+  NEW      state.json.bak.corrupt-20261008T053048Z (8fb7531c68e2)
+  NEW      state.json.corrupt-20261008T053048Z (8fb7531c68e2)
+  settings.json: schema_version on disk now = 1
+  settings.json.bak: schema_version on disk now = 1
+  install.json: schema_version on disk now = 1
+  [start] lots in memory: 0   exchange positions: {'BTCUSDT|LONG': 1.0}   exchange stops: 1
+  [start] integrity: {'state': {'status': 'failed_closed', 'why': 'invalid: state.schema_version: 2 is newer than this build understands (1)', 'evidence': 'C:\\Users\\princ\\AppData\\Local\\Temp\\tmp6la_2mco\\state.json.corrupt-20261008T053048Z'}}
+  [start] ENTRIES_PAUSED=True  persist_block=None  install_block=None
+ one normal state save (a cycle) ...
+ ... then the process restarts:
+  same     install.json (bdcdd3fef2d1)
+  same     install.json.bak (bdcdd3fef2d1)
+  same     settings.json (14069b6aef56)
+  same     settings.json.bak (14069b6aef56)
+  same     state.json (8c126fcb21b3)
+  same     state.json.bak.corrupt-20261008T053048Z (8fb7531c68e2)
+  same     state.json.corrupt-20261008T053048Z (8fb7531c68e2)
+  [restart#2] lots in memory: 0   exchange positions: {'BTCUSDT|LONG': 1.0}   exchange stops: 1
+  [restart#2] integrity: {}
+  [restart#2] ENTRIES_PAUSED=True  persist_block=None  install_block=None
+
+=== a8 = a5 (future install.json), then plain restart (does the account-confirmation requirement survive?)
+ start-up returned an Engine (no abort)
+ file hashes before -> after start-up:
+  GONE     install.json (85466e2b7da7)
+  same     install.json.bak (bdcdd3fef2d1)
+  NEW      install.json.corrupt-20261008T053048Z (85466e2b7da7)
+  CHANGED  settings.json 68ba8d3f6f13 -> 14069b6aef56
+  same     settings.json.bak (68ba8d3f6f13)
+  same     state.json (3bfbe8ad2a4b)
+  same     state.json.bak (3bfbe8ad2a4b)
+  state.json: schema_version on disk now = 1
+  state.json.bak: schema_version on disk now = 1
+  settings.json: schema_version on disk now = 1
+  settings.json.bak: schema_version on disk now = 1
+  [start] lots in memory: 1   exchange positions: {'BTCUSDT|LONG': 1.0}   exchange stops: 1
+  [start] integrity: {}
+  [start] ENTRIES_PAUSED=True  persist_block='account not confirmed for this data folder - type THIS_ACCOUNT in Settings first'  install_block='account not confirmed for this data folder - type THIS_ACCOUNT in Settings first'
+ ... then the process restarts:
+  NEW      install.json (bdcdd3fef2d1)
+  same     install.json.bak (bdcdd3fef2d1)
+  same     install.json.corrupt-20261008T053048Z (85466e2b7da7)
+  same     settings.json (14069b6aef56)
+  same     settings.json.bak (68ba8d3f6f13)
+  same     state.json (3bfbe8ad2a4b)
+  same     state.json.bak (3bfbe8ad2a4b)
+  [restart#2] lots in memory: 1   exchange positions: {'BTCUSDT|LONG': 1.0}   exchange stops: 1
+  [restart#2] integrity: {}
+  [restart#2] ENTRIES_PAUSED=True  persist_block=None  install_block=None

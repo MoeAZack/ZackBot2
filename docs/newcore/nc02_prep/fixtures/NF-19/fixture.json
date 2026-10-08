@@ -1,0 +1,44 @@
+{
+  "id": "NF-19",
+  "title": "NEW+1 (v2) files read by OLD build",
+  "reader_build": "N-1",
+  "source_repro": "d4",
+  "input_files": {
+    "state.json": "ac75bd1a77a5a6602b95a6c242ef1c93b249d695fcb7e28c858f82f5f89e5af4",
+    "state.json.bak": "ac75bd1a77a5a6602b95a6c242ef1c93b249d695fcb7e28c858f82f5f89e5af4",
+    "settings.json": "43c6239744fe7e0b2966302d99df6cc0f1d64076ebf8b7337203e419280a5105",
+    "settings.json.bak": "b6dfb92d3bb23d1c1eaee0ff3490b8df77de5b87e0136adbd7cb06c5b98aa0e9",
+    "install.json": "651f7f8890c4b58375fa9a9ded9ef6fb3c988d3dc19167611a279e0dcc547526",
+    "install.json.bak": "651f7f8890c4b58375fa9a9ded9ef6fb3c988d3dc19167611a279e0dcc547526"
+  },
+  "exchange": {
+    "positions": [
+      {
+        "symbol": "BTCUSDT",
+        "side": "LONG",
+        "qty": 1.0
+      }
+    ],
+    "protective_orders": [
+      {
+        "tag": "o:1",
+        "symbol": "BTCUSDT",
+        "side": "LONG",
+        "qty": 1.0,
+        "stop": 95.0
+      }
+    ]
+  },
+  "legacy_observed": {
+    "build": "b8c11c8",
+    "behaviour": "OLD loads v2 as if current, trades on it and writes state.json still labelled v2 with OLD semantics (version laundering)"
+  },
+  "violates": [
+    "D1 future schema: abort, state+backup byte-identical"
+  ],
+  "nc02_required": {
+    "R-GEN-MONOTONIC": "every store write carries (generation, writer_build, format_version, min_reader_version); a reader that sees a generation written by a newer build, or a lower generation than the highest it has seen (rollback/stale copy), aborts read-only (R-ABORT-RO)",
+    "R-ABORT-RO": "start-up aborts before ANY write to the store: every input file byte-identical after the attempt (sha256 equal), no rename, no .bak rotation, no settings write; the refusal is reported out-of-band (process exit code + boot incident log outside the store)"
+  },
+  "contract_sha": "2c771be361d284ae64825d178b07dd1d981cd288e3373585dbee98defc4df6c0"
+}

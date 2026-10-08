@@ -1,0 +1,39 @@
+{
+  "schema": "nc02-negative-fixtures/0-draft",
+  "generated_from": "master cff3f88 (scratch, TEMP data dirs)",
+  "requirements": {
+    "R-ABORT-RO": "start-up aborts before ANY write to the store: every input file byte-identical after the attempt (sha256 equal), no rename, no .bak rotation, no settings write; the refusal is reported out-of-band (process exit code + boot incident log outside the store)",
+    "R-NO-MANAGE": "no AccountContext is created for the account: no order, cancel, stop repair, reconcile booking or journal write is issued; protective orders already on the exchange are left untouched",
+    "R-EVIDENCE": "the damaged bytes are preserved bit-for-bit (copy-then-mark, never move-then-rewrite) and linked from a durable incident record that survives restarts",
+    "R-DURABLE-FAIL": "the failed-closed condition is itself durable: a restart (with or without intervening saves) returns to the same blocked state until an explicit reconciliation record exists",
+    "R-RECON-GATE": "management (and every new-risk path, MANUAL included) stays blocked until a reconciliation record binds state generation G to an exchange snapshot that matches it (positions, open orders, protective orders) or the owner adopts/flattens each difference explicitly; resuming entries alone never clears it",
+    "R-NO-EMPTY": "an initialized account (marker or any store generation or evidence present) can never load as an empty portfolio; an empty portfolio is only legal for a first run whose exchange snapshot is flat (no positions, no open orders) or after an explicit owner adoption record",
+    "R-BACKUP-CANDIDATE": "an older generation (backup) is offered as a reconciliation CANDIDATE, never silently promoted to managed state; it becomes managed only after R-RECON-GATE passes against the exchange",
+    "R-FIRST-RUN-FLAT": "first-run initialization requires a successful exchange snapshot; a non-flat account blocks initialization until the owner adopts or closes each position/order explicitly",
+    "R-GEN-MONOTONIC": "every store write carries (generation, writer_build, format_version, min_reader_version); a reader that sees a generation written by a newer build, or a lower generation than the highest it has seen (rollback/stale copy), aborts read-only (R-ABORT-RO)",
+    "R-SINGLE-SOURCE": "the account marker, the store and its backups are one versioned unit: one invalid member blocks the unit; a backup can never silently clear an owner-confirmation requirement"
+  },
+  "fixtures": {
+    "NF-01": "7f3561b93dacf8162467df3b72c8b53e5b1099e42ffe377b0be808900dd902bc",
+    "NF-02": "0e27f17b8e4ae2b6746eeac8975084a119a40f964eac669be2622d312a7736dd",
+    "NF-03": "5d02db9ef87b061cffa620a06a75a49e9e7da3b59f6d6a274ddb4df6af2afaf2",
+    "NF-04": "973da082c07a9690335b05b3d3697632cfa1479433372296c362a7bf812577e4",
+    "NF-05": "8555ef7e5f21441739c03c15e1dc474be3f23dd421522e9ba319e3cbfa3bb3a9",
+    "NF-06": "327ed907cd406bd5d62c3a510a69fbb8dee8c5dddaf75c6683982a7b604feff1",
+    "NF-07": "16a09d06cf69471da3628ab58cddd4fe78d55cfce0877abd59d31902fa5d056e",
+    "NF-08": "c1f5cafee265b792e6af0e08af528c1a5bf8b96c19db029c47bdb22e64567ae7",
+    "NF-09": "4d491dfe4ee12514425567a450a483e28571f9d80f43c344d66cee6e75d2c731",
+    "NF-10": "3da4f05ca0ff7e38419a2dedfdaad3387c1fea12f1ace433c1fb30bd156b133b",
+    "NF-11": "60606ad4df379252917316a77f7ea392655875ee581bcbe3ba5c78c24b61ac58",
+    "NF-12": "4469a89bc63dfd6433178b6ea5eb9678c41db29dca904b84fead37e15b4beda3",
+    "NF-13": "274bcd99be111951b24522cac03bf0a71f20e508bce3e155feec2ab6abfe4f5c",
+    "NF-14": "5414c4c6f43e2eeeaaadf10fd3de3f5c020c8c279343b765c8c8b848813c7935",
+    "NF-15": "73b9e3f62ba10c0eada81bfd07869d7cca6b66134f64c8b0fae3c8c8e6d2e1a8",
+    "NF-16": "7bf8c616313e94ff28959800720c487fac3376a4b60b8ee814ac75a3a1f4e64c",
+    "NF-17": "bcc8dbc51471e095c0ad8b48f397f46f5b068df0d613ec3ee2976e73c547a702",
+    "NF-18": "6ad5a5a96690fa7cabb8e6dd87e9ae83678384204facbbc8b8f5813872046a26",
+    "NF-19": "2c771be361d284ae64825d178b07dd1d981cd288e3373585dbee98defc4df6c0",
+    "NF-20": "43b20057a9988d5d1941d6a7ad2c832a475509440720749b547812f7439947de",
+    "NF-21": "7466ebd77d9e9cbb4ed7a0af03b428240a8266af142af457fa3e90a3534a7b20"
+  }
+}

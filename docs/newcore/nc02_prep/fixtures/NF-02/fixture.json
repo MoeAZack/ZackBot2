@@ -1,0 +1,47 @@
+{
+  "id": "NF-02",
+  "title": "future state.json AND .bak (v2) - Codex reproduction",
+  "reader_build": "N",
+  "source_repro": "a2",
+  "input_files": {
+    "state.json": "321bcd251b266d6126a470b95bf57eb06456a1b75d33300e22481aa0c95c42b2",
+    "state.json.bak": "321bcd251b266d6126a470b95bf57eb06456a1b75d33300e22481aa0c95c42b2",
+    "settings.json": "71f50ee68d2b1c0a73f364fe4e3dedeb6f7399fc30d474b8eff5ceaaf315df0e",
+    "settings.json.bak": "71f50ee68d2b1c0a73f364fe4e3dedeb6f7399fc30d474b8eff5ceaaf315df0e",
+    "install.json": "bcb10aecaa52e34f4d5ac6554c78322a2929fc8c883158867ea2344dcdf51399",
+    "install.json.bak": "bcb10aecaa52e34f4d5ac6554c78322a2929fc8c883158867ea2344dcdf51399"
+  },
+  "exchange": {
+    "positions": [
+      {
+        "symbol": "BTCUSDT",
+        "side": "LONG",
+        "qty": 1.0
+      }
+    ],
+    "protective_orders": [
+      {
+        "tag": "o:1",
+        "symbol": "BTCUSDT",
+        "side": "LONG",
+        "qty": 1.0,
+        "stop": 95.0
+      }
+    ]
+  },
+  "legacy_observed": {
+    "build": "cff3f88",
+    "behaviour": "both moved aside (engine.py:1278, 1294), failed_closed with ZERO lots while the exchange holds BTCUSDT LONG 1.0 + stop; untracked only after pass 2; owner resume allowed; a new ETHUSDT entry was SENT. legacy resume gate checks install_block only (app.py:1225, telegram_ctl.py:524); MANUAL entries bypass ENTRIES_PAUSED (engine.py:3415); untracked needs 2 reconcile passes (engine.py:3268)"
+  },
+  "violates": [
+    "D1 future schema: abort, state+backup byte-identical",
+    "D3 never an empty managed account",
+    "D4 explicit exchange/state reconciliation before management resumes"
+  ],
+  "nc02_required": {
+    "R-ABORT-RO": "start-up aborts before ANY write to the store: every input file byte-identical after the attempt (sha256 equal), no rename, no .bak rotation, no settings write; the refusal is reported out-of-band (process exit code + boot incident log outside the store)",
+    "R-NO-MANAGE": "no AccountContext is created for the account: no order, cancel, stop repair, reconcile booking or journal write is issued; protective orders already on the exchange are left untouched",
+    "R-NO-EMPTY": "an initialized account (marker or any store generation or evidence present) can never load as an empty portfolio; an empty portfolio is only legal for a first run whose exchange snapshot is flat (no positions, no open orders) or after an explicit owner adoption record"
+  },
+  "contract_sha": "0e27f17b8e4ae2b6746eeac8975084a119a40f964eac669be2622d312a7736dd"
+}

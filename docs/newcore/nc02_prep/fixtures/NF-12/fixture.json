@@ -1,0 +1,44 @@
+{
+  "id": "NF-12",
+  "title": "settings.json AND .bak truncated",
+  "reader_build": "N",
+  "source_repro": "b6",
+  "input_files": {
+    "state.json": "3a9dc59125d69f330c66578e025bc48da84e4468246b7b043eb72f530ed6b99c",
+    "state.json.bak": "3a9dc59125d69f330c66578e025bc48da84e4468246b7b043eb72f530ed6b99c",
+    "settings.json": "5dbe6b9708baf60a76af42fdbef1c6210c118c21d346e0f4a38472cd2aadbb3f",
+    "settings.json.bak": "5dbe6b9708baf60a76af42fdbef1c6210c118c21d346e0f4a38472cd2aadbb3f",
+    "install.json": "651f7f8890c4b58375fa9a9ded9ef6fb3c988d3dc19167611a279e0dcc547526",
+    "install.json.bak": "651f7f8890c4b58375fa9a9ded9ef6fb3c988d3dc19167611a279e0dcc547526"
+  },
+  "exchange": {
+    "positions": [
+      {
+        "symbol": "BTCUSDT",
+        "side": "LONG",
+        "qty": 1.0
+      }
+    ],
+    "protective_orders": [
+      {
+        "tag": "o:1",
+        "symbol": "BTCUSDT",
+        "side": "LONG",
+        "qty": 1.0,
+        "stop": 95.0
+      }
+    ]
+  },
+  "legacy_observed": {
+    "build": "cff3f88",
+    "behaviour": "evidence kept; defaults loaded and written over both paths"
+  },
+  "violates": [
+    "D2 current damage: fail closed, keep evidence"
+  ],
+  "nc02_required": {
+    "R-EVIDENCE": "the damaged bytes are preserved bit-for-bit (copy-then-mark, never move-then-rewrite) and linked from a durable incident record that survives restarts",
+    "R-RECON-GATE": "management (and every new-risk path, MANUAL included) stays blocked until a reconciliation record binds state generation G to an exchange snapshot that matches it (positions, open orders, protective orders) or the owner adopts/flattens each difference explicitly; resuming entries alone never clears it"
+  },
+  "contract_sha": "4469a89bc63dfd6433178b6ea5eb9678c41db29dca904b84fead37e15b4beda3"
+}

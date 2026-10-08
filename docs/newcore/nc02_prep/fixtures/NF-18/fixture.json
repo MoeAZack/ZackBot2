@@ -1,0 +1,44 @@
+{
+  "id": "NF-18",
+  "title": "NEW (cff3f88) files read by OLD build (b8c11c8) - installer rollback across AUD-05",
+  "reader_build": "N-1",
+  "source_repro": "d1,d3",
+  "input_files": {
+    "state.json": "f3c9c0df76a87fe370b2de91087114a5dc9cdb88f5ebffa7c868e74685b7cebe",
+    "state.json.bak": "f3c9c0df76a87fe370b2de91087114a5dc9cdb88f5ebffa7c868e74685b7cebe",
+    "settings.json": "b6dfb92d3bb23d1c1eaee0ff3490b8df77de5b87e0136adbd7cb06c5b98aa0e9",
+    "settings.json.bak": "b6dfb92d3bb23d1c1eaee0ff3490b8df77de5b87e0136adbd7cb06c5b98aa0e9",
+    "install.json": "651f7f8890c4b58375fa9a9ded9ef6fb3c988d3dc19167611a279e0dcc547526",
+    "install.json.bak": "651f7f8890c4b58375fa9a9ded9ef6fb3c988d3dc19167611a279e0dcc547526"
+  },
+  "exchange": {
+    "positions": [
+      {
+        "symbol": "BTCUSDT",
+        "side": "LONG",
+        "qty": 1.0
+      }
+    ],
+    "protective_orders": [
+      {
+        "tag": "o:1",
+        "symbol": "BTCUSDT",
+        "side": "LONG",
+        "qty": 1.0,
+        "stop": 95.0
+      }
+    ]
+  },
+  "legacy_observed": {
+    "build": "b8c11c8",
+    "behaviour": "OLD ignores schema_version/install.json/.bak, manages the lots and rewrites state.json (keeps the v1 label, .bak left stale); NEW later reads it back with no sign an older writer ran"
+  },
+  "violates": [
+    "D4 explicit exchange/state reconciliation before management resumes"
+  ],
+  "nc02_required": {
+    "R-GEN-MONOTONIC": "every store write carries (generation, writer_build, format_version, min_reader_version); a reader that sees a generation written by a newer build, or a lower generation than the highest it has seen (rollback/stale copy), aborts read-only (R-ABORT-RO)"
+  },
+  "note": "inputs are untouched NEW output; reader is the pre-AUD-05 build",
+  "contract_sha": "6ad5a5a96690fa7cabb8e6dd87e9ae83678384204facbbc8b8f5813872046a26"
+}

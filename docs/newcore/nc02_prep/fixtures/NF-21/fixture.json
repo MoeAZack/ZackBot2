@@ -1,0 +1,39 @@
+{
+  "id": "NF-21",
+  "title": "OLD (unversioned, no marker) files read by NEW (POSITIVE control)",
+  "reader_build": "N",
+  "source_repro": "d2",
+  "input_files": {
+    "settings.json": "5e9608f1d62e2e6b4da5b048cc80a8a6db0d900555bda7265b49c7ed959ff99f",
+    "state.json": "c3c90388327b7bfb56853a73a64db08fdf8ea2dd769c644b66d4a5f31f18fa7c"
+  },
+  "exchange": {
+    "positions": [
+      {
+        "symbol": "BTCUSDT",
+        "side": "LONG",
+        "qty": 1.0
+      }
+    ],
+    "protective_orders": [
+      {
+        "tag": "o:1",
+        "symbol": "BTCUSDT",
+        "side": "LONG",
+        "qty": 1.0,
+        "stop": 95.0
+      }
+    ]
+  },
+  "legacy_observed": {
+    "build": "cff3f88",
+    "behaviour": "v0 -> v1 migration in place; legacy state owning lots -> install_mismatch, entries paused until THIS_ACCOUNT",
+    "writer_build": "b8c11c8"
+  },
+  "violates": [],
+  "nc02_required": {
+    "R-GEN-MONOTONIC": "every store write carries (generation, writer_build, format_version, min_reader_version); a reader that sees a generation written by a newer build, or a lower generation than the highest it has seen (rollback/stale copy), aborts read-only (R-ABORT-RO)",
+    "R-RECON-GATE": "management (and every new-risk path, MANUAL included) stays blocked until a reconciliation record binds state generation G to an exchange snapshot that matches it (positions, open orders, protective orders) or the owner adopts/flattens each difference explicitly; resuming entries alone never clears it"
+  },
+  "contract_sha": "7466ebd77d9e9cbb4ed7a0af03b428240a8266af142af457fa3e90a3534a7b20"
+}
