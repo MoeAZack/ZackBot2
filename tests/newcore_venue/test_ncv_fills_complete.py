@@ -96,3 +96,45 @@ def test_by_order_a_conflicting_repeat_is_unknown():
     v, _ = venue(ok([trade(1), trade(2), trade(2, qty='9')]))
     out = v.fills('SOLUSDT', '5000')
     assert out.kind is P.ReadKind.UNKNOWN and out.detail == 'malformed'
+
+
+# ---------------------------------------------------------------------------------------------- Codex 6069281718
+# The window walk used a row past the window end as proof that the window was complete - assuming time is monotonic
+# with the trade id. Now: complete only at a raw-SHORT page; time never goes back within or across continuation pages.
+def READ(v):
+    return v.fills('SOLUSDT', start_ms=T0, end_ms=NOW_MS)
+
+
+def _codex_pages(window_end):
+    """Codex's repro, page limit 2: page 1 = (id 1, w0 + 1), (id 2, w1 + 1) - a FULL raw page whose last row is past
+    the window end; page 2 (fromId 3) = (id 3, w0 + 2) - an unseen in-window trade with an EARLIER time."""
+    return ok([trade(1, t=T0 + 1), trade(2, t=window_end + 1)]), ok([trade(3, t=T0 + 2)])
+
+
+def test_codex_repro_a_row_past_the_end_is_no_proof_and_the_time_regression_is_unknown(monkeypatch):
+    monkeypatch.setattr(TV, 'USER_TRADES_LIMIT', 2)
+    v, http = venue(*_codex_pages(NOW_MS))
+    out = READ(v)
+    assert len(http.requests) == 2                                   # it did NOT stop after the first page
+    assert out.kind is P.ReadKind.UNKNOWN and out.detail == 'time_regression' and out.value is None
+
+
+def test_a_time_regression_across_continuation_pages_is_unknown(monkeypatch):
+    monkeypatch.setattr(TV, 'USER_TRADES_LIMIT', 2)
+    v, _ = venue(ok([trade(1, t=T0 + 10), trade(2, t=T0 + 20)]), ok([trade(3, t=T0 + 15), trade(4, t=T0 + 30)]))
+    out = READ(v)
+    assert out.kind is P.ReadKind.UNKNOWN and out.detail == 'time_regression'
+
+
+def test_a_time_regression_inside_a_page_is_unknown():
+    v, _ = venue(ok([trade(1, t=T0 + 20), trade(2, t=T0 + 10)]))
+    out = READ(v)
+    assert out.kind is P.ReadKind.UNKNOWN and out.detail == 'time_regression'
+
+
+def test_equal_times_and_rows_past_the_end_are_fine_when_paged_to_a_short_page(monkeypatch):
+    monkeypatch.setattr(TV, 'USER_TRADES_LIMIT', 2)
+    v, http = venue(ok([trade(1, t=T0 + 5), trade(2, t=T0 + 5)]), ok([trade(3, t=NOW_MS + 1), trade(4, t=NOW_MS + 2)]),
+                    ok([]))
+    out = READ(v)
+    assert out.kind is P.ReadKind.OK and [int(f.trade_id) for f in out.value] == [1, 2] and len(http.requests) == 3

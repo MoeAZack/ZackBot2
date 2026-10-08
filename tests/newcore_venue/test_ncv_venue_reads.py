@@ -107,11 +107,12 @@ def test_window_fills_carry_side_and_are_sorted():
     assert dict(query_pairs(q))['startTime'] == str(T0) and dict(query_pairs(q))['endTime'] == str(NOW_MS)
 
 
-def test_a_full_page_continues_by_from_id_and_stops_at_the_window_end(monkeypatch):
-    monkeypatch.setattr(TV, 'USER_TRADES_LIMIT', 3)
-    v, http = venue(ok([trade(1), trade(2), trade(3)]), ok([trade(4), trade(5), trade(6, t=NOW_MS + 5)]))
+def test_a_full_page_continues_by_from_id_to_a_raw_short_page_even_past_the_window_end(monkeypatch):
+    monkeypatch.setattr(TV, 'USER_TRADES_LIMIT', 3)                       # Codex 6069281718: no timestamp proof
+    v, http = venue(ok([trade(1), trade(2), trade(3)]), ok([trade(4), trade(5), trade(6, t=NOW_MS + 5)]), ok([]))
     out = v.fills('SOLUSDT', start_ms=T0, end_ms=NOW_MS)
     assert out.kind is P.ReadKind.OK and [f.trade_id for f in out.value] == ['1', '2', '3', '4', '5']
+    assert len(http.requests) == 3 and out.detail == 'complete pages=3 dups=0'
     second = dict(query_pairs(http.requests[1]))
     assert second['fromId'] == '4' and 'startTime' not in second and 'endTime' not in second
 
@@ -148,7 +149,7 @@ def test_a_from_id_page_that_goes_back_is_unknown(monkeypatch):
 
 def test_a_from_id_page_with_an_unseen_older_trade_is_unknown(monkeypatch):
     monkeypatch.setattr(TV, 'USER_TRADES_LIMIT', 2)
-    v, _ = venue(ok([trade(2), trade(3)]), ok([trade(1), trade(4)]))
+    v, _ = venue(ok([trade(2), trade(3)]), ok([trade(1, t=T0 + 10), trade(4, t=T0 + 11)]))   # time goes forward
     out = v.fills('SOLUSDT', start_ms=T0, end_ms=NOW_MS)
     assert out.kind is P.ReadKind.UNKNOWN and out.detail == 'out_of_order'      # fromId 4 got an unseen id 1
 
