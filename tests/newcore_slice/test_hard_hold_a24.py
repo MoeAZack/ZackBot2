@@ -88,15 +88,21 @@ def test_m45_confirmed_protection_is_left_unchanged():
 
 
 def test_m46_uncovered_quantity_is_topped_up_and_old_protection_never_cancelled():
-    w = World(flat_bars(20), sig((5, 'enter', 'LONG')))
-    w.run(5)
-    old = w.runner.fold.open_lots()[0].live_stop.intent.client_order_id
-    w.venue.inject_position(SYM, 'LONG', D('3'), D('100'))         # the owned side grew (race / adopted fill)
+    """The owned side grows in hard HOLD (race fills of our resting entry whose drain cancels never land): the
+    uncovered quantity is topped up, the earlier protection is never cancelled. (A foreign add on the side is NOT
+    ours and is never covered: Cowork 6065286201 #1, A22.)"""
+    w, entry = resting_world()
     store_down(w)
+    w.port.lose('cancel')
+    w.venue.fill_resting(entry.intent.client_order_id, D('2'))
+    w.run(6)
+    old, = emergency_stops(w)
+    assert old.qty == D('2') == position(w)
+    w.port.lose('cancel')
+    w.venue.fill_resting(entry.intent.client_order_id, D('1'))      # the owned side grew again
     w.run(7)
-    es, = emergency_stops(w)
-    assert es.qty == D('3') and covered(w) == position(w) == D('8')
-    assert w.venue._orders[old].status == 'NEW'                     # the old stop was never cancelled
+    assert sorted(o.qty for o in emergency_stops(w)) == [D('1'), D('2')] and covered(w) == position(w) == D('3')
+    assert w.venue._orders[old.ref.client_id].status == 'NEW'      # the old stop was never cancelled
 
 
 # ------------------------------------------------------------------------------------------------ M47-M52: drain

@@ -275,7 +275,13 @@ class Session:
 
 # ---------------------------------------------------------------------------------------------------- commands
 def cmd_guard(cfg, out, reason):
-    """The store refused the journal (HOLD verdict): one guard pass over exchange truth, then exit 4."""
+    """The store refused the journal (HOLD verdict): one guard pass over exchange truth, then exit 4.
+
+    What the guard protects (Codex P1-1; docs/newcore/slice/GUARD.md): only the surviving net of OUR orders that the
+    venue's own trades prove, at most that residual. DISCLOSED LIMIT (Cowork 6065286201 #4): when our lot is mixed
+    with a foreign same-side trade since our entry (a manual add, another bot), nothing can be attributed and the guard
+    protects NOTHING on that side - a loud HOLD ('provenance not proven ... ambiguous' incident, exit 4) for the owner,
+    never a guess."""
     s = Session(cfg, cfg.enabled, guard=reason)
     try:
         t = s.next_close() if s.venue is not None else int(time.time() * 1000)
