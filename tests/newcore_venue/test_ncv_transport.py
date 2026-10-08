@@ -124,6 +124,37 @@ def test_klines_input_validation_sends_nothing(kw):
     assert http.requests == []
 
 
+# ---------- symbol grammar (NC-01: [A-Z0-9]{2,30}, Codex ruling C1) ----------
+
+@pytest.mark.parametrize('n', [2, 20, 21, 25, 29, 30])
+def test_symbol_length_2_to_30_accepted(n):
+    sym = ('1000' + 'X' * 40)[:n]
+    t, http = make(raw(200, b'[]'), raw(200, b'{}'), raw(200, b'[]'))
+    t.klines(sym, '4h')
+    assert dict(parse_qsl(http.last.query))['symbol'] == sym
+    t.place_market(sym, 'BUY', 'LONG', D('1'), CID, reduce_only=False)
+    assert dict(parse_qsl(http.last.query))['symbol'] == sym
+    t.positions(sym)
+    assert dict(parse_qsl(http.last.query))['symbol'] == sym
+
+
+@pytest.mark.parametrize('sym', ['A', 'A' * 31, 'A' * 40, '', 'solusdt', 'SOL-USDT', 'SOL_USDT', 'SOL USDT',
+                                 'ＳＯＬＵＳＤＴ', 'SOLUSDT\n', None, 7])
+def test_symbol_outside_grammar_refused_everywhere(sym):
+    t, http = make()
+    calls = [lambda: t.klines(sym, '4h'), lambda: t.positions(sym), lambda: t.open_orders(sym),
+             lambda: t.open_algo_orders(sym), lambda: t.user_trades(sym), lambda: t.income(symbol=sym),
+             lambda: t.place_market(sym, 'BUY', 'LONG', D('1'), CID, reduce_only=False),
+             lambda: t.place_stop_market(sym, 'LONG', D('1'), D('2'), SCID, route=StopRoute.CLASSIC),
+             lambda: t.query_order(sym, CID), lambda: t.cancel_order(sym, CID)]
+    for call in calls:
+        if sym is None and call in (calls[1], calls[2], calls[3], calls[5]):
+            continue                                   # None = "all symbols" on these reads
+        with pytest.raises(VenueInputError):
+            call()
+    assert http.requests == []
+
+
 # ---------- signed reads ----------
 
 def test_account():
@@ -590,3 +621,17 @@ def test_empty_list_is_a_real_empty_read():
     t, _ = make(raw(200, b'[]'))
     out = t.positions()
     assert out.ok and out.value == ()
+
+
+# ---------- regression: "$" also matches before a trailing newline; every validator uses fullmatch ----------
+
+@pytest.mark.parametrize('call', [
+    lambda t: t.place_market('SOLUSDT', 'BUY', 'LONG', D('1'), CID + '\n', reduce_only=False),
+    lambda t: t.query_algo_order(ACID + '\n'),
+    lambda t: t.income(income_type='FUNDING_FEE\n'),
+])
+def test_trailing_newline_refused(call):
+    t, http = make()
+    with pytest.raises(VenueInputError):
+        call(t)
+    assert http.requests == []

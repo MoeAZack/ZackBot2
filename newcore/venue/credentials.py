@@ -300,7 +300,7 @@ class CredentialStore:
     """DPAPI-protected credential file for ONE NEWCORE AccountId."""
 
     def __init__(self, account_id, *, root=None, protector=None, harden_acl=True):
-        if type(account_id) is not str or not ACCOUNT_ID_RE.match(account_id):
+        if type(account_id) is not str or not ACCOUNT_ID_RE.fullmatch(account_id):
             raise CredentialStoreError('account_id must match ' + ACCOUNT_ID_RE.pattern)
         self.account_id = account_id
         self.root = check_root(default_root() if root is None else root)

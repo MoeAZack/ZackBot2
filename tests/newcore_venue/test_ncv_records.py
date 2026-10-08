@@ -29,10 +29,16 @@ def test_decode_refuses_bad_json(raw):
         R.decode_json(raw)
 
 
-@pytest.mark.parametrize('v', ['1e5', '+1', ' 1', '1.', '.5', '0x10', 'NaN', '1_000', True, [1], {}])
+@pytest.mark.parametrize('v', ['1e5', '+1', ' 1', '1.', '.5', '0x10', 'NaN', '1_000', True, [1], {}, '1.5\n', '7\n'])
 def test_dec_refuses_non_plain_numbers(v):
     with pytest.raises(R.MalformedResponse):
         R.dec({'x': v}, 'x')
+
+
+@pytest.mark.parametrize('v', ['12\n', ' 12', '1.0', '1e3'])
+def test_integer_refuses_non_plain_strings(v):
+    with pytest.raises(R.MalformedResponse):
+        R.integer({'x': v}, 'x')
 
 
 def test_dec_accepts_strings_ints_decimals():

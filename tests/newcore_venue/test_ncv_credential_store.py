@@ -212,7 +212,7 @@ def test_other_environments_refused(tmp_path, env):
         fake_store(tmp_path).save(env, KEY, SECRET, now_ms=NOW)
 
 
-@pytest.mark.parametrize('acct', ['', '../x', 'a b', 'a/b', '-x', 'x' * 65, None])
+@pytest.mark.parametrize('acct', ['', '../x', 'a b', 'a/b', '-x', 'x' * 65, None, 'nc-acct-0001\n'])
 def test_account_id_grammar(tmp_path, acct):
     with pytest.raises(CredentialStoreError):
         CredentialStore(acct, root=str(tmp_path))

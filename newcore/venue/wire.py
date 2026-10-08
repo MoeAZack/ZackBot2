@@ -101,13 +101,13 @@ def parse_rate_limits(headers):
         if not isinstance(name, str) or not isinstance(value, str):
             continue
         n, v = name.strip().lower(), value.strip()
-        if not _INT.match(v):
+        if not _INT.fullmatch(v):
             continue
-        m = _WEIGHT.match(n)
+        m = _WEIGHT.fullmatch(n)
         if m:
             weight[m.group(1)] = int(v)
             continue
-        m = _ORDERS.match(n)
+        m = _ORDERS.fullmatch(n)
         if m:
             orders[m.group(1)] = int(v)
             continue

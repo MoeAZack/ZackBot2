@@ -26,7 +26,8 @@ def test_parse_income_fixture():
 
 
 @pytest.mark.parametrize('patch', [{'income': 1.5}, {'income': 'NaN'}, {'tranId': True}, {'incomeType': 'bad type'},
-                                   {'time': 0}, {'tradeId': 1.5}, {'asset': ''}, {'symbol': 5}])
+                                   {'time': 0}, {'tradeId': 1.5}, {'asset': ''}, {'symbol': 5},
+                                   {'incomeType': 'COMMISSION\n'}, {'income': '-0.5\n'}, {'tranId': '9\n'}])
 def test_parse_income_strict(patch):
     row = json.loads(fixture('income_mixed').body)[0]
     row.update(patch)

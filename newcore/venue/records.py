@@ -61,7 +61,7 @@ def dec(row, key, *, nonneg=False, positive=False, optional=False):
         if not v.is_finite():
             raise MalformedResponse(f'{key}: non-finite')
         d = v
-    elif isinstance(v, str) and _NUM.match(v):
+    elif isinstance(v, str) and _NUM.fullmatch(v):
         d = Decimal(v)
     else:
         raise MalformedResponse(f'{key}: not a decimal number')
@@ -82,7 +82,7 @@ def integer(row, key, *, optional=False, positive=False, nonneg=False):
     v = row[key]
     if isinstance(v, bool):
         raise MalformedResponse(f'{key}: boolean is not an integer')
-    if isinstance(v, str) and re.match(r'^-?[0-9]+$', v):
+    if isinstance(v, str) and re.fullmatch(r'^-?[0-9]+$', v):
         v = int(v)
     if not isinstance(v, int):
         raise MalformedResponse(f'{key}: not an integer')
@@ -537,7 +537,7 @@ def parse_income(data):
         if not isinstance(info, str):
             raise MalformedResponse('info: not text')
         itype = text(r, 'incomeType')
-        if not INCOME_TYPE_RE.match(itype):
+        if not INCOME_TYPE_RE.fullmatch(itype):
             raise MalformedResponse('incomeType: unexpected value')
         row = IncomeRow(symbol=sym or None, income_type=itype, income=dec(r, 'income'), asset=text(r, 'asset'),
                         info=info, time_ms=integer(r, 'time', positive=True),

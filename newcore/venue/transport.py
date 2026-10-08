@@ -45,7 +45,7 @@ class StopRoute(Enum):
 
 
 CLIENT_ID_RE = re.compile(r'^[.A-Z:/a-z0-9_-]{1,36}$')        # Binance newClientOrderId / clientAlgoId grammar
-SYMBOL_RE = re.compile(r'^[A-Z0-9]{2,20}$')
+SYMBOL_RE = re.compile(r'^[A-Z0-9]{2,30}$')                 # NC-01 symbol length (Codex ruling C1)
 INTERVALS = ('1m', '3m', '5m', '15m', '30m', '1h', '2h', '4h', '6h', '8h', '12h', '1d', '3d', '1w', '1M')
 CLOSING_SIDE = {'LONG': 'SELL', 'SHORT': 'BUY'}
 OPENING_SIDE = {'LONG': 'BUY', 'SHORT': 'SELL'}
@@ -56,13 +56,13 @@ _NOT_FOUND_TEXT = ('not exist', 'unknown order', 'not found')
 # ---------- argument validators (raise VenueInputError; values are echoed only when they are not secrets) ----------
 
 def _symbol(v):
-    if type(v) is not str or not SYMBOL_RE.match(v):
-        raise VenueInputError('symbol must be upper-case alphanumeric (2..20)')
+    if type(v) is not str or not SYMBOL_RE.fullmatch(v):
+        raise VenueInputError('symbol must be upper-case alphanumeric (2..30)')
     return v
 
 
 def _cid(v, what='client_id'):
-    if type(v) is not str or not CLIENT_ID_RE.match(v):
+    if type(v) is not str or not CLIENT_ID_RE.fullmatch(v):
         raise VenueInputError(f'{what} must match {CLIENT_ID_RE.pattern}')
     return v
 
@@ -71,7 +71,7 @@ def _qty(v, what):
     if type(v) is not Decimal or not v.is_finite() or v <= 0:
         raise VenueInputError(f'{what} must be a finite positive Decimal')
     s = format(v.normalize(), 'f')
-    if not re.match(r'^[0-9]+(\.[0-9]+)?$', s):
+    if not re.fullmatch(r'^[0-9]+(\.[0-9]+)?$', s):
         raise VenueInputError(f'{what} does not format as a plain decimal')
     return s
 
@@ -380,7 +380,7 @@ class BinanceTestnetTransport:
     def income(self, *, symbol=None, income_type=None, start_ms=None, end_ms=None, limit=None):
         """One page of /fapi/v1/income (funding fees, commission, realized pnl, ...). Paginate with
         newcore.venue.income.income_history, which walks time windows and never returns a partial history as whole."""
-        if income_type is not None and (type(income_type) is not str or not R.INCOME_TYPE_RE.match(income_type)):
+        if income_type is not None and (type(income_type) is not str or not R.INCOME_TYPE_RE.fullmatch(income_type)):
             raise VenueInputError('income_type must be an upper-case Binance income type')
         pairs = _pairs(('symbol', _symbol(symbol) if symbol is not None else None), ('incomeType', income_type),
                        ('startTime', _opt_ms(start_ms, 'start_ms')), ('endTime', _opt_ms(end_ms, 'end_ms')),
@@ -469,7 +469,7 @@ def _code(data):
     c = data.get('code')
     if isinstance(c, bool):
         return c
-    if isinstance(c, str) and re.match(r'^-?[0-9]+$', c):
+    if isinstance(c, str) and re.fullmatch(r'^-?[0-9]+$', c):
         return int(c)
     return c
 
