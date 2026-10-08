@@ -55,7 +55,7 @@ MUTATIONS = {
         "    req(type(v) is int, path, f'not an int ({type(v).__name__})')",
         "    req(isinstance(v, int), path, f'not an int ({type(v).__name__})')")]),
     'parity: enum text accepted in memory': (D + 'base.py', [(
-        "        return lambda v, p: req(isinstance(v, tp), p, f'{v!r} is not a {tp.__name__}')",
+        "        return lambda v, p: req(isinstance(v, tp), p, f'{show(v)} is not a {tp.__name__}')",
         "        return lambda v, p: req(isinstance(v, tp) or v in {m.value for m in tp}, p, 'x')")]),
     'fresh snapshot age': (D + 'portfolio.py', [(
         "    req(age <= max_age_ms, 'Portfolio.proof.at_ms',", "    req(True, 'Portfolio.proof.at_ms',")]),
@@ -71,7 +71,7 @@ MUTATIONS = {
         '                req(pf.permits(it.purpose, Op.PLACE, one_shot=it.authorized_by is not None), ip,',
         '                req(True, ip,')]),
     'reason-code membership': (D + 'base.py', [(
-        "        return lambda v, p: req(isinstance(v, tp), p, f'{v!r} is not a {tp.__name__}')",
+        "        return lambda v, p: req(isinstance(v, tp), p, f'{show(v)} is not a {tp.__name__}')",
         '        return lambda v, p: None')]),
     'hard HOLD widened': (D + 'modes.py', [('    | {(Purpose.PROTECT, Op.PLACE)}',
                                             '    | {(Purpose.PROTECT, Op.PLACE), (Purpose.CLOSE, Op.MANAGE)}')]),

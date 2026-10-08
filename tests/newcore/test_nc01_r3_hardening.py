@@ -454,3 +454,16 @@ def test_cw_an_incident_is_never_its_own_evidence_and_refs_stay_opaque():
                       evidence=(ids.id('res'),))
     check_event_chain([F.event(IncidentRecorded, ids, p.account_id, 1, at=F.T0 + 600, incident=ghost,
                                reason=ghost.kind)])                            # existence is the reconciler's job
+
+
+def test_cw_an_error_built_from_many_values_is_still_bounded():
+    """The DomainError cap itself (not only show / tag): a document with thousands of unknown keys builds a long
+    message from many short summaries; the error stays bounded."""
+    import json
+    ids, p, inc = _incident()
+    doc = json.loads(canonical_bytes(F.event(_incident_event_cls(), ids, p.account_id, 1, at=F.T0 + 600, incident=inc,
+                                             reason=inc.kind)))
+    doc['body']['incident'].update({f'k{i}': 1 for i in range(5000)})
+    with pytest.raises(InvalidRecord, match='unknown keys') as ex:
+        loads(json.dumps(doc))
+    assert len(str(ex.value)) < 1000
