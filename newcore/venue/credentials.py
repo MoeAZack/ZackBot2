@@ -8,7 +8,10 @@ transport only ever sees an object implementing CredentialSource:
 
 The secret never has to leave the source. StaticCredentials is the simple in-memory implementation (tests, and the
 later owner-run loader); it redacts itself everywhere and refuses to be pickled or copied.
-key_digest() is a one-way, domain-separated fingerprint of the API key for account binding (NC-01 AccountBinding).
+key_digest() is a one-way, domain-separated fingerprint of the API key. It identifies a CREDENTIAL, not an exchange
+account (Codex ruling 2026-10-08): the NEWCORE AccountId binding is provisioned before the first INIT, and a rotated
+key keeps the AccountId but leaves the binding unconfirmed (HOLD + reconcile + confirm).
+Nothing here needs credentials at import time; fake / replay / S1-S4 run without any.
 """
 import hashlib
 from typing import Protocol, runtime_checkable
@@ -18,6 +21,11 @@ from .signing import hmac_sha256_hex
 KEY_DIGEST_PREFIX = 'zbk1:'
 _DIGEST_DOMAIN = b'zackbot/newcore/venue/key-digest/v1\x00'
 _REDACTED = '<redacted>'
+
+
+class CredentialsUnavailable(Exception):
+    """No usable credentials (none configured, store missing / corrupt / undecryptable, source failure). A clean typed
+    failure: nothing was sent. The engine treats it as idle/HOLD; it is never retried in a loop here."""
 
 
 @runtime_checkable

@@ -1,0 +1,201 @@
+{
+  "_provenance": "HAND-WRITTEN recorded-shape fixtures for the NC-03 wire layer, 2026-10-08. Shapes follow the Binance USD-M Futures REST docs and the legacy binance_client.py handling (field names it reads, the algo {code:'200',msg:'success'} answer, list-or-{orders:[...]} openAlgoOrders). Nothing was fetched from any network; ids, prices and times are synthetic. Replace with real testnet cassettes at S5.",
+
+  "server_time": {"status": 200, "headers": {"X-MBX-USED-WEIGHT-1M": "1"}, "body": {"serverTime": 1759917600000}},
+
+  "exchange_info": {"status": 200, "headers": {"X-MBX-USED-WEIGHT-1M": "2"}, "body": {
+    "timezone": "UTC", "serverTime": 1759917600000,
+    "rateLimits": [
+      {"rateLimitType": "REQUEST_WEIGHT", "interval": "MINUTE", "intervalNum": 1, "limit": 2400},
+      {"rateLimitType": "ORDERS", "interval": "MINUTE", "intervalNum": 1, "limit": 1200},
+      {"rateLimitType": "ORDERS", "interval": "SECOND", "intervalNum": 10, "limit": 300}],
+    "assets": [],
+    "symbols": [
+      {"symbol": "SOLUSDT", "pair": "SOLUSDT", "contractType": "PERPETUAL", "status": "TRADING", "baseAsset": "SOL",
+       "quoteAsset": "USDT", "marginAsset": "USDT", "pricePrecision": 4, "quantityPrecision": 0,
+       "baseAssetPrecision": 8, "quotePrecision": 8, "triggerProtect": "0.0500",
+       "filters": [
+         {"filterType": "PRICE_FILTER", "minPrice": "0.4200", "maxPrice": "6857", "tickSize": "0.0100"},
+         {"filterType": "LOT_SIZE", "minQty": "1", "maxQty": "1000000", "stepSize": "1"},
+         {"filterType": "MARKET_LOT_SIZE", "minQty": "1", "maxQty": "5000", "stepSize": "1"},
+         {"filterType": "MAX_NUM_ORDERS", "limit": 200},
+         {"filterType": "MAX_NUM_ALGO_ORDERS", "limit": 10},
+         {"filterType": "MIN_NOTIONAL", "notional": "5"},
+         {"filterType": "PERCENT_PRICE", "multiplierUp": "1.0500", "multiplierDown": "0.9500", "multiplierDecimal": "4"}],
+       "orderTypes": ["LIMIT", "MARKET", "STOP", "STOP_MARKET", "TAKE_PROFIT", "TAKE_PROFIT_MARKET", "TRAILING_STOP_MARKET"],
+       "timeInForce": ["GTC", "IOC", "FOK", "GTX"]},
+      {"symbol": "BTCUSDT", "pair": "BTCUSDT", "contractType": "PERPETUAL", "status": "TRADING", "baseAsset": "BTC",
+       "quoteAsset": "USDT", "marginAsset": "USDT", "pricePrecision": 2, "quantityPrecision": 3,
+       "filters": [
+         {"filterType": "PRICE_FILTER", "minPrice": "261.10", "maxPrice": "809484", "tickSize": "0.10"},
+         {"filterType": "LOT_SIZE", "minQty": "0.001", "maxQty": "1000", "stepSize": "0.001"},
+         {"filterType": "MARKET_LOT_SIZE", "minQty": "0.001", "maxQty": "120", "stepSize": "0.001"},
+         {"filterType": "MIN_NOTIONAL", "notional": "100"}],
+       "orderTypes": ["LIMIT", "MARKET", "STOP_MARKET"]},
+      {"symbol": "ODDUSDT", "pair": "ODDUSDT", "contractType": "PERPETUAL", "status": "TRADING", "baseAsset": "ODD",
+       "quoteAsset": "USDT", "marginAsset": "USDT", "pricePrecision": 2, "quantityPrecision": 0,
+       "filters": [
+         {"filterType": "PRICE_FILTER", "minPrice": "0.01", "maxPrice": "100", "tickSize": "0.01"},
+         {"filterType": "LOT_SIZE", "minQty": "1", "maxQty": "1000", "stepSize": "1"}],
+       "orderTypes": ["MARKET"]}]}},
+
+  "klines_4h": {"status": 200, "headers": {"X-MBX-USED-WEIGHT-1M": "5"}, "body": [
+    [1759881600000, "220.10", "224.50", "219.00", "223.40", "151234.5", 1759895999999, "33612345.67", 51234, "80000.1", "17800000.12", "0"],
+    [1759896000000, "223.40", "225.00", "221.30", "221.90", "98765.0", 1759910399999, "21987654.32", 40321, "45000.0", "10012345.67", "0"],
+    [1759910400000, "221.90", "222.80", "220.70", "222.10", "12000.0", 1759924799999, "2662000.00", 5012, "6100.0", "1353000.00", "0"]]},
+
+  "account_v2": {"status": 200, "headers": {"X-MBX-USED-WEIGHT-1M": "10"}, "body": {
+    "feeTier": 0, "canTrade": true, "canDeposit": true, "canWithdraw": true, "updateTime": 0, "multiAssetsMargin": false,
+    "totalInitialMargin": "74.10000000", "totalMaintMargin": "0.74100000", "totalWalletBalance": "5000.12345678",
+    "totalUnrealizedProfit": "-12.50000000", "totalMarginBalance": "4987.62345678",
+    "totalPositionInitialMargin": "74.10000000", "totalOpenOrderInitialMargin": "0.00000000",
+    "totalCrossWalletBalance": "5000.12345678", "totalCrossUnPnl": "-12.50000000",
+    "availableBalance": "4913.52345678", "maxWithdrawAmount": "4913.52345678",
+    "assets": [
+      {"asset": "USDT", "walletBalance": "5000.12345678", "unrealizedProfit": "-12.50000000",
+       "marginBalance": "4987.62345678", "maintMargin": "0.74100000", "initialMargin": "74.10000000",
+       "positionInitialMargin": "74.10000000", "openOrderInitialMargin": "0.00000000",
+       "crossWalletBalance": "5000.12345678", "crossUnPnl": "-12.50000000", "availableBalance": "4913.52345678",
+       "maxWithdrawAmount": "4913.52345678", "marginAvailable": true, "updateTime": 1759917000000}],
+    "positions": []}},
+
+  "position_risk_hedge": {"status": 200, "headers": {"X-MBX-USED-WEIGHT-1M": "15"}, "body": [
+    {"symbol": "SOLUSDT", "positionAmt": "10", "entryPrice": "222.30", "breakEvenPrice": "222.41", "markPrice": "221.05",
+     "unRealizedProfit": "-12.50000000", "liquidationPrice": "0", "leverage": "3", "maxNotionalValue": "4000000",
+     "marginType": "cross", "isolatedMargin": "0.00000000", "isAutoAddMargin": "false", "positionSide": "LONG",
+     "notional": "2210.50", "isolatedWallet": "0", "updateTime": 1759917000000},
+    {"symbol": "SOLUSDT", "positionAmt": "0", "entryPrice": "0.0", "breakEvenPrice": "0.0", "markPrice": "221.05",
+     "unRealizedProfit": "0.00000000", "liquidationPrice": "0", "leverage": "3", "maxNotionalValue": "4000000",
+     "marginType": "cross", "isolatedMargin": "0.00000000", "isAutoAddMargin": "false", "positionSide": "SHORT",
+     "notional": "0", "isolatedWallet": "0", "updateTime": 0}]},
+
+  "dual_side_true": {"status": 200, "headers": {}, "body": {"dualSidePosition": true}},
+
+  "open_orders": {"status": 200, "headers": {"X-MBX-USED-WEIGHT-1M": "16"}, "body": [
+    {"avgPrice": "0.00000", "clientOrderId": "zb-es-AAAABBBBCCCCDDDDEEEE", "cumQuote": "0", "executedQty": "0",
+     "orderId": 4000000101, "origQty": "10", "origType": "STOP_MARKET", "price": "0", "reduceOnly": true,
+     "side": "SELL", "positionSide": "LONG", "status": "NEW", "stopPrice": "211.40", "closePosition": false,
+     "symbol": "SOLUSDT", "time": 1759917000100, "timeInForce": "GTC", "type": "STOP_MARKET",
+     "activatePrice": "0", "priceRate": "0", "updateTime": 1759917000100, "workingType": "MARK_PRICE",
+     "priceProtect": false, "priceMatch": "NONE", "selfTradePreventionMode": "NONE", "goodTillDate": 0}]},
+
+  "open_algo_orders_list": {"status": 200, "headers": {"X-MBX-USED-WEIGHT-1M": "17"}, "body": [
+    {"algoId": 2146760, "clientAlgoId": "zb-es-QQQQRRRRSSSSTTTTUUUU", "algoType": "CONDITIONAL",
+     "orderType": "STOP_MARKET", "symbol": "SOLUSDT", "side": "SELL", "positionSide": "LONG", "timeInForce": "GTC",
+     "quantity": "10", "algoStatus": "NEW", "triggerPrice": "211.40", "price": "0", "icebergQuantity": null,
+     "selfTradePreventionMode": "NONE", "workingType": "MARK_PRICE", "priceMatch": "NONE", "closePosition": false,
+     "priceProtect": false, "reduceOnly": true, "activatePrice": "", "callbackRate": "",
+     "createTime": 1759917000200, "updateTime": 1759917000200, "triggerTime": 0, "goodTillDate": 0}]},
+
+  "open_algo_orders_wrapped": {"status": 200, "headers": {}, "body": {"total": 1, "orders": [
+    {"algoId": 2146761, "clientAlgoId": "zb-es-VVVVWWWWXXXXYYYYZZZZ", "algoType": "CONDITIONAL",
+     "orderType": "STOP_MARKET", "symbol": "SOLUSDT", "side": "BUY", "positionSide": "SHORT",
+     "quantity": "5", "algoStatus": "NEW", "triggerPrice": "231.00", "workingType": "MARK_PRICE",
+     "closePosition": false, "reduceOnly": true, "createTime": 1759917000300, "updateTime": 1759917000300}]}},
+
+  "open_algo_orders_bad_shape": {"status": 200, "headers": {}, "body": {"rows": []}},
+
+  "order_market_filled": {"status": 200, "headers": {"X-MBX-USED-WEIGHT-1M": "20", "X-MBX-ORDER-COUNT-10S": "1", "X-MBX-ORDER-COUNT-1M": "3"}, "body": {
+    "clientOrderId": "zb-ABCDEFGHIJKLMNOPQRSTUVWX", "cumQty": "10", "cumQuote": "2223.0000", "executedQty": "10",
+    "orderId": 4000000100, "avgPrice": "222.3000", "origQty": "10", "price": "0.0000", "reduceOnly": false,
+    "side": "BUY", "positionSide": "LONG", "status": "FILLED", "stopPrice": "0.0000", "closePosition": false,
+    "symbol": "SOLUSDT", "timeInForce": "GTC", "type": "MARKET", "origType": "MARKET", "updateTime": 1759917000050,
+    "workingType": "CONTRACT_PRICE", "priceProtect": false, "priceMatch": "NONE",
+    "selfTradePreventionMode": "NONE", "goodTillDate": 0}},
+
+  "order_market_new": {"status": 200, "headers": {}, "body": {
+    "clientOrderId": "zb-ABCDEFGHIJKLMNOPQRSTUVWX", "cumQty": "0", "cumQuote": "0", "executedQty": "0",
+    "orderId": 4000000100, "avgPrice": "0.00000", "origQty": "10", "price": "0", "reduceOnly": false,
+    "side": "BUY", "positionSide": "LONG", "status": "NEW", "stopPrice": "0", "closePosition": false,
+    "symbol": "SOLUSDT", "timeInForce": "GTC", "type": "MARKET", "origType": "MARKET", "updateTime": 1759917000050,
+    "workingType": "CONTRACT_PRICE"}},
+
+  "order_market_expired_partial": {"status": 200, "headers": {}, "body": {
+    "clientOrderId": "zb-ABCDEFGHIJKLMNOPQRSTUVWX", "cumQty": "4", "cumQuote": "889.2000", "executedQty": "4",
+    "orderId": 4000000100, "avgPrice": "222.3000", "origQty": "10", "price": "0", "reduceOnly": false,
+    "side": "BUY", "positionSide": "LONG", "status": "EXPIRED", "stopPrice": "0", "closePosition": false,
+    "symbol": "SOLUSDT", "timeInForce": "GTC", "type": "MARKET", "origType": "MARKET", "updateTime": 1759917000050,
+    "workingType": "CONTRACT_PRICE"}},
+
+  "order_stop_new": {"status": 200, "headers": {"X-MBX-USED-WEIGHT-1M": "21"}, "body": {
+    "clientOrderId": "zb-es-AAAABBBBCCCCDDDDEEEE", "cumQty": "0", "cumQuote": "0", "executedQty": "0",
+    "orderId": 4000000101, "avgPrice": "0.00000", "origQty": "10", "price": "0", "reduceOnly": true,
+    "side": "SELL", "positionSide": "LONG", "status": "NEW", "stopPrice": "211.40", "closePosition": false,
+    "symbol": "SOLUSDT", "timeInForce": "GTC", "type": "STOP_MARKET", "origType": "STOP_MARKET",
+    "updateTime": 1759917000100, "workingType": "MARK_PRICE", "priceProtect": false}},
+
+  "algo_order_new": {"status": 200, "headers": {"X-MBX-USED-WEIGHT-1M": "22"}, "body": {
+    "algoId": 2146760, "clientAlgoId": "zb-es-QQQQRRRRSSSSTTTTUUUU", "algoType": "CONDITIONAL",
+    "orderType": "STOP_MARKET", "symbol": "SOLUSDT", "side": "SELL", "positionSide": "LONG", "timeInForce": "GTC",
+    "quantity": "10", "algoStatus": "NEW", "triggerPrice": "211.40", "price": "0", "icebergQuantity": null,
+    "selfTradePreventionMode": "NONE", "workingType": "MARK_PRICE", "priceMatch": "NONE", "closePosition": false,
+    "priceProtect": false, "reduceOnly": true, "activatePrice": "", "callbackRate": "",
+    "createTime": 1759917000200, "updateTime": 1759917000200, "triggerTime": 0, "goodTillDate": 0}},
+
+  "algo_order_triggered": {"status": 200, "headers": {}, "body": {
+    "algoId": 2146760, "clientAlgoId": "zb-es-QQQQRRRRSSSSTTTTUUUU", "algoType": "CONDITIONAL",
+    "orderType": "STOP_MARKET", "symbol": "SOLUSDT", "side": "SELL", "positionSide": "LONG",
+    "quantity": "10", "algoStatus": "TRIGGERED", "triggerPrice": "211.40", "workingType": "MARK_PRICE",
+    "closePosition": false, "reduceOnly": true, "createTime": 1759917000200, "updateTime": 1759920000000,
+    "triggerTime": 1759920000000, "actualOrderId": "4000000222", "actualPrice": "211.35"}},
+
+  "algo_order_finished": {"status": 200, "headers": {}, "body": {
+    "algoId": 2146760, "clientAlgoId": "zb-es-QQQQRRRRSSSSTTTTUUUU", "algoType": "CONDITIONAL",
+    "orderType": "STOP_MARKET", "symbol": "SOLUSDT", "side": "SELL", "positionSide": "LONG",
+    "quantity": "10", "algoStatus": "FINISHED", "triggerPrice": "211.40", "workingType": "MARK_PRICE",
+    "closePosition": false, "reduceOnly": true, "createTime": 1759917000200, "updateTime": 1759920000500,
+    "triggerTime": 1759920000000, "actualOrderId": 4000000222, "actualPrice": "211.35"}},
+
+  "order_query_filled": {"status": 200, "headers": {"X-MBX-USED-WEIGHT-1M": "23"}, "body": {
+    "avgPrice": "222.3000", "clientOrderId": "zb-ABCDEFGHIJKLMNOPQRSTUVWX", "cumQuote": "2223.0000",
+    "executedQty": "10", "orderId": 4000000100, "origQty": "10", "origType": "MARKET", "price": "0",
+    "reduceOnly": false, "side": "BUY", "positionSide": "LONG", "status": "FILLED", "stopPrice": "0",
+    "closePosition": false, "symbol": "SOLUSDT", "time": 1759917000040, "timeInForce": "GTC", "type": "MARKET",
+    "activatePrice": "0", "priceRate": "0", "updateTime": 1759917000050, "workingType": "CONTRACT_PRICE",
+    "priceProtect": false}},
+
+  "order_cancel_canceled": {"status": 200, "headers": {"X-MBX-USED-WEIGHT-1M": "24"}, "body": {
+    "clientOrderId": "zb-es-AAAABBBBCCCCDDDDEEEE", "cumQty": "0", "cumQuote": "0", "executedQty": "0",
+    "orderId": 4000000101, "origQty": "10", "origType": "STOP_MARKET", "price": "0", "reduceOnly": true,
+    "side": "SELL", "positionSide": "LONG", "status": "CANCELED", "stopPrice": "211.40", "closePosition": false,
+    "symbol": "SOLUSDT", "timeInForce": "GTC", "type": "STOP_MARKET", "updateTime": 1759918000000,
+    "workingType": "MARK_PRICE", "priceProtect": false}},
+
+  "algo_cancel_ack": {"status": 200, "headers": {"X-MBX-USED-WEIGHT-1M": "25"}, "body": {
+    "algoId": 2146760, "clientAlgoId": "zb-es-QQQQRRRRSSSSTTTTUUUU", "code": "200", "msg": "success"}},
+
+  "user_trades": {"status": 200, "headers": {"X-MBX-USED-WEIGHT-1M": "30"}, "body": [
+    {"buyer": true, "commission": "0.55575000", "commissionAsset": "USDT", "id": 698759, "maker": false,
+     "orderId": 4000000100, "price": "222.30", "qty": "5", "quoteQty": "1111.50", "realizedPnl": "0",
+     "side": "BUY", "positionSide": "LONG", "symbol": "SOLUSDT", "time": 1759917000045},
+    {"buyer": true, "commission": "0.55575000", "commissionAsset": "USDT", "id": 698760, "maker": false,
+     "orderId": 4000000100, "price": "222.30", "qty": "5", "quoteQty": "1111.50", "realizedPnl": "0",
+     "side": "BUY", "positionSide": "LONG", "symbol": "SOLUSDT", "time": 1759917000046}]},
+
+  "err_timestamp": {"status": 400, "headers": {}, "body": {"code": -1021, "msg": "Timestamp for this request is outside of the recvWindow."}},
+  "err_signature": {"status": 400, "headers": {}, "body": {"code": -1022, "msg": "Signature for this request is not valid."}},
+  "err_cancel_unknown": {"status": 400, "headers": {}, "body": {"code": -2011, "msg": "Unknown order sent."}},
+  "err_no_such_order": {"status": 400, "headers": {}, "body": {"code": -2013, "msg": "Order does not exist."}},
+  "err_algo_switch": {"status": 400, "headers": {}, "body": {"code": -4120, "msg": "Order type not supported for this endpoint. Please use the Algo Order API endpoints instead."}},
+  "err_invalid_order_type": {"status": 400, "headers": {}, "body": {"code": -1116, "msg": "Invalid orderType."}},
+  "err_would_trigger": {"status": 400, "headers": {}, "body": {"code": -2021, "msg": "Order would immediately trigger."}},
+  "err_reduce_only": {"status": 400, "headers": {}, "body": {"code": -2022, "msg": "ReduceOnly Order is rejected."}},
+  "err_margin": {"status": 400, "headers": {}, "body": {"code": -2019, "msg": "Margin is insufficient."}},
+  "err_position_side": {"status": 400, "headers": {}, "body": {"code": -4061, "msg": "Order's position side does not match user's setting."}},
+  "err_param_not_required": {"status": 400, "headers": {}, "body": {"code": -1106, "msg": "Parameter 'reduceonly' sent when not required."}},
+  "err_unlisted_4xxx": {"status": 400, "headers": {}, "body": {"code": -4999, "msg": "Some venue rule."}},
+  "err_unlisted_other": {"status": 400, "headers": {}, "body": {"code": -3999, "msg": "Something else."}},
+  "err_algo_not_exist_msg": {"status": 400, "headers": {}, "body": {"code": -3998, "msg": "Algo order does not exist."}},
+  "err_path_invalid": {"status": 400, "headers": {}, "body": {"code": -5000, "msg": "Path /fapi/v1/openAlgoOrders, Method GET is invalid"}},
+  "err_unknown_1000": {"status": 400, "headers": {}, "body": {"code": -1000, "msg": "An unknown error occurred while processing the request."}},
+  "err_backend_timeout": {"status": 408, "headers": {}, "body": {"code": -1007, "msg": "Timeout waiting for response from backend server. Send status unknown; execution status unknown."}},
+  "err_unexpected_resp": {"status": 400, "headers": {}, "body": {"code": -1006, "msg": "An unexpected response was received from the message bus. Execution status unknown."}},
+  "err_busy_503": {"status": 503, "headers": {"Retry-After": "5"}, "body": {"code": -1008, "msg": "Service Unavailable."}},
+  "err_502_html": {"status": 502, "headers": {}, "body_text": "<html><body>502 Bad Gateway</body></html>"},
+  "err_429": {"status": 429, "headers": {"Retry-After": "7", "X-MBX-USED-WEIGHT-1M": "2401"}, "body": {"code": -1003, "msg": "Too many requests; current limit of IP is 2400 requests per minute."}},
+  "err_418_html": {"status": 418, "headers": {"Retry-After": "120"}, "body_text": "IP banned"},
+  "err_404_html": {"status": 404, "headers": {}, "body_text": "<html>Not Found</html>"},
+  "err_403_html": {"status": 403, "headers": {}, "body_text": "<html>WAF</html>"},
+  "ok_non_json": {"status": 200, "headers": {}, "body_text": "<html>maintenance</html>"},
+  "ok_empty": {"status": 200, "headers": {}, "body_text": ""}
+}
