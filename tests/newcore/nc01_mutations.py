@@ -1,4 +1,4 @@
-"""NC-01 mutation evidence (contract 6.7). A script, not a pytest module.
+"""NC-01 mutation evidence (contract r2 6.7). A script, not a pytest module.
 
 For each mutation it exports the committed HEAD (git archive) into a fresh temp folder, removes or weakens ONE domain
 rule there, runs tests/newcore, and requires the suite to FAIL - naming the failing tests. The working tree is never
@@ -19,31 +19,58 @@ import tempfile
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 D = 'newcore/domain/'
 
-# name -> (file, exact source text, replacement)
+# name -> (file, [(exact source text, replacement), ...]); each anchor must occur exactly once
 MUTATIONS = {
-    'numeric type check': (D + 'base.py', "    req(type(v) is Decimal, path, f'not a Decimal ({type(v).__name__})')\n",
-                           "    if type(v) is not Decimal:\n        return\n"),
-    'unknown vs empty': (D + 'portfolio.py', "        req(all(c is None for c in cols) if unknown else all(c is not None for c in cols), p + '.positions',",
-                         "        req(True, p + '.positions',"),
-    'not-found ambiguity': (D + 'orders.py', "            req(self.executed_qty is None and self.avg_price is None and ev is None and not self.corroboration\n"
-                                             "                and self.resolved_by is None, p,",
-                            "            req(True, p,"),
-    'terminal monotonicity': (D + 'orders.py', '    _S.FILLED: frozenset(), _S.CANCELLED',
-                              '    _S.FILLED: frozenset({_S.WORKING}), _S.CANCELLED'),
-    'protection bound': (D + 'protection.py', '    req(prot.qty <= exposure or prot.replacement is not None,',
-                         '    req(True,'),
-    'manual pause bypass': (D + 'portfolio.py', '                req(pf.permits(it.purpose, Op.PLACE, one_shot=it.authorized_by is not None), ip,',
-                            '                req(True, ip,'),
-    'reason-code membership': (D + 'base.py', "        return lambda v, p: req(isinstance(v, tp), p, f'{v!r} is not a {tp.__name__}')",
-                               '        return lambda v, p: None'),
-    'hard HOLD widened': (D + 'modes.py', '    | {(Purpose.PROTECT, Op.PLACE)}', '    | {(Purpose.PROTECT, Op.PLACE), (Purpose.CLOSE, Op.MANAGE)}'),
-    'apply before durable result': (D + 'events.py', "                req(fin is not None, p + '.to_state', 'a terminal step needs a durable FINAL result first')\n"
-                                                    "                req(terminal_for(fin) is ev.to_state,",
-                                    "                req(fin is None or terminal_for(fin) is ev.to_state,"),
-    'fill ledger': (D + 'portfolio.py', "        req(run == self.qty, p + '.qty',", "        req(True, p + '.qty',"),
-    'future before body': (D + 'codec.py', '    if v > SCHEMA_VERSION:\n        raise FutureSchema(',
-                           '    if v > SCHEMA_VERSION and doc["body"] is not None:\n        raise FutureSchema('),
-    'drain resting maker': (D + 'portfolio.py', '            if it.pullable:', '            if False:'),
+    'numeric type check': (D + 'base.py', [(
+        "    if type(v) is not Decimal:\n        raise InvalidRecord(path, f'not a Decimal ({type(v).__name__})')\n",
+        "    if type(v) is not Decimal:\n        return v\n")]),
+    'unknown vs empty': (D + 'portfolio.py', [(
+        "        req(all(c is None for c in cols) if unknown else all(c is not None for c in cols), p + '.positions',",
+        "        req(True, p + '.positions',")]),
+    'not-found ambiguity': (D + 'orders.py', [(
+        "            req(self.executed_qty is None and self.avg_price is None and ev is None and not self.corroboration\n"
+        "                and self.resolved_by is None, p,",
+        "            req(True, p,")]),
+    'terminal monotonicity': (D + 'orders.py', [('    _S.FILLED: frozenset(), _S.CANCELLED',
+                                                 '    _S.FILLED: frozenset({_S.WORKING}), _S.CANCELLED')]),
+    'protection bound': (D + 'protection.py', [('    req(prot.qty <= exposure or prot.replacement is not None,',
+                                                '    req(True,')]),
+    'cross-record symbol/side agreement': (D + 'portfolio.py', [(
+        "        req((owner.symbol, owner.side) == (it.symbol, it.side), ip, 'owner of another symbol / side')",
+        "        req(True, ip, 'owner of another symbol / side')")]),
+    'cross-record account agreement': (D + 'portfolio.py', [(
+        "        req(it.account_id == acct, ip + '.account_id', 'intent of another account')", "        pass")]),
+    'cross-record quantity agreement': (D + 'protection.py', [(
+        "        req((it.qty, it.stop_price) == (prot.qty, prot.price), path + '.order',",
+        "        req(True, path + '.order',")]),
+    'manual pause bypass': (D + 'portfolio.py', [(
+        '                req(pf.permits(it.purpose, Op.PLACE, one_shot=it.authorized_by is not None), ip,',
+        '                req(True, ip,')]),
+    'reason-code membership': (D + 'base.py', [(
+        "        return lambda v, p: req(isinstance(v, tp), p, f'{v!r} is not a {tp.__name__}')",
+        '        return lambda v, p: None')]),
+    'hard HOLD widened': (D + 'modes.py', [('    | {(Purpose.PROTECT, Op.PLACE)}',
+                                            '    | {(Purpose.PROTECT, Op.PLACE), (Purpose.CLOSE, Op.MANAGE)}')]),
+    'apply before durable result': (D + 'events.py', [(
+        "                req(fin is not None, p + '.to_state', 'a terminal step needs a durable FINAL result first')\n"
+        "                req(terminal_for(fin) is ev.to_state,",
+        "                req(fin is None or terminal_for(fin) is ev.to_state,")]),
+    'fill ledger': (D + 'portfolio.py', [("        req(run == self.qty, p + '.qty',", "        req(True, p + '.qty',")]),
+    'future before body': (D + 'codec.py', [('    if v > SCHEMA_VERSION:\n        raise FutureSchema(',
+                                             '    if v > SCHEMA_VERSION and doc["body"] is not None:\n        raise FutureSchema(')]),
+    'drain resting maker': (D + 'portfolio.py', [('            if it.pullable:', '            if False:')]),
+    'duplicate JSON keys': (D + 'codec.py', [("            if k in out:\n                problems.append(",
+                                              "            if False:\n                problems.append(")]),
+    'truncated JSON': (D + 'codec.py', [(
+        "        raise InvalidRecord('document', f'not one JSON document ({type(ex).__name__})') from None",
+        "        doc = {}")]),
+    'missing persisted fields': (D + 'codec.py', [
+        ('    if d.keys() != names:', '    if d.keys() - names:'),
+        ("    kw = {name: dec(d[name], f'{path}.{name}') for name, dec in spec}",
+         "    kw = {name: dec(d.get(name), f'{path}.{name}') for name, dec in spec}")]),
+    'event ordering': (D + 'ledger.py', [('    if event.sequence != expected:', '    if event.sequence < expected:')]),
+    'idempotent replay': (D + 'ledger.py', [('            if d.sequence == event.sequence and d.sha256 == digest:',
+                                             '            if d.sequence == event.sequence:')]),
 }
 
 
@@ -75,20 +102,23 @@ def main(names):
             return 2
         survivors = []
         for name in names:
-            path, old, new = MUTATIONS[name]
+            path, pairs = MUTATIONS[name]
             work = os.path.join(tmp, re.sub(r'\W+', '_', name))
             shutil.copytree(base, work)
             src = open(os.path.join(work, path), encoding='utf-8').read()
-            if src.count(old) != 1:
-                print(f'[{name}] mutation anchor not found exactly once in {path}')
+            bad = [old for old, _ in pairs if src.count(old) != 1]
+            if bad:
+                print(f'[{name}] mutation anchor not found exactly once in {path}: {bad[0][:60]!r}')
                 survivors.append(name)
                 continue
+            for old, new in pairs:
+                src = src.replace(old, new)
             with open(os.path.join(work, path), 'w', encoding='utf-8', newline='\n') as f:
-                f.write(src.replace(old, new))
+                f.write(src)
             rc, failed, summary = run_suite(work)
             killed = rc != 0
             print(f'[{name}] {"KILLED" if killed else "SURVIVED"} ({summary}); {len(failed)} failing tests')
-            for t in failed[:6]:
+            for t in failed[:5]:
                 print(f'    {t}')
             if not killed:
                 survivors.append(name)

@@ -29,7 +29,7 @@ def _median_us(fn, n, repeats=5):
 def test_typical_portfolio_codec_and_validation_budget():
     p = F.typical_portfolio()
     text = dumps(p)
-    assert len(p.lots) == 11 and len(text) == 19157               # the baseline's portfolio, unchanged
+    assert len(p.lots) == 11 and len(text) == 18464               # the baseline's portfolio, unchanged
     validate = _median_us(lambda: dataclasses.replace(p, generation=p.generation + 1), 200)
     encode = _median_us(lambda: dumps(p), 40)
     decode = _median_us(lambda: loads(text), 20)

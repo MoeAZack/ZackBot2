@@ -1,12 +1,11 @@
 """NC-01 entries modes, HOLD kinds and the pure permitted-action table (ruling 9, hard-HOLD ruling, contract invariant 9).
 
-Includes the Hypothesis properties the hard-HOLD ruling asks for: hard HOLD never permits a risk-increasing action or a
+Includes the properties the hard-HOLD ruling asks for, checked EXHAUSTIVELY over every (mode, hold kind, purpose,
+op, one-shot) cell (480 cells - stronger than sampling): hard HOLD never permits a risk-increasing action or a
 protective cancel / reprice; no HOLD permits risk; manual entry never bypasses pause or HOLD."""
 from itertools import product
 
 import pytest
-from hypothesis import given, seed, strategies as st
-
 from newcore.domain import EntriesMode, HoldKind, InvalidRecord, Op, Permission, Purpose, permitted
 from newcore.domain.modes import EMERGENCY_SET, is_protective_removal, is_risk_increasing
 from newcore.domain.orders import OPENING
@@ -78,11 +77,7 @@ def test_hold_kind_is_set_exactly_in_hold():
 
 
 # ----------------------------------------------------------------------------------------------------------- properties
-cells = st.tuples(st.sampled_from(MODES), st.sampled_from(list(Purpose)), st.sampled_from(list(Op)), st.booleans())
-
-
-@seed(2026100801)
-@given(cells)
+@pytest.mark.parametrize('cell', ALL, ids=lambda c: f'{c[0][0]}/{c[0][1]}/{c[1]}/{c[2]}/{c[3]}')
 def test_property_hard_hold_never_increases_risk_or_removes_protection(cell):
     (mode, hold), purpose, op, one_shot = cell
     if hold is HoldKind.DURABILITY_UNAVAILABLE and ok(mode, hold, purpose, op, one_shot):
@@ -91,26 +86,22 @@ def test_property_hard_hold_never_increases_risk_or_removes_protection(cell):
         assert (purpose, op) in EMERGENCY_SET
 
 
-@seed(2026100802)
-@given(cells)
-def test_property_no_hold_permits_risk_and_only_paused_one_shot_opens_outside_active(cell):
-    (mode, hold), purpose, op, one_shot = cell
-    allowed = ok(mode, hold, purpose, op, one_shot)
-    if mode is EntriesMode.HOLD:
-        assert not (allowed and is_risk_increasing(purpose, op))
-    if mode is not EntriesMode.ACTIVE and allowed and is_risk_increasing(purpose, op):
-        assert (mode, purpose, op, one_shot) in {(EntriesMode.PAUSED, u, Op.PLACE, True) for u in OPENING} | \
-            {(m, u, Op.RESUME, s) for m in (EntriesMode.PAUSED, EntriesMode.HALTED, EntriesMode.FLATTENING)
-             for u in Purpose for s in (False, True)}
+def test_property_no_hold_permits_risk_and_only_paused_one_shot_opens_outside_active():
+    for (mode, hold), purpose, op, one_shot in ALL:
+        allowed = ok(mode, hold, purpose, op, one_shot)
+        if mode is EntriesMode.HOLD:
+            assert not (allowed and is_risk_increasing(purpose, op))
+        if mode is not EntriesMode.ACTIVE and allowed and is_risk_increasing(purpose, op):
+            assert (mode, purpose, op, one_shot) in {(EntriesMode.PAUSED, u, Op.PLACE, True) for u in OPENING} | \
+                {(m, u, Op.RESUME, x) for m in (EntriesMode.PAUSED, EntriesMode.HALTED, EntriesMode.FLATTENING)
+                 for u in Purpose for x in (False, True)}
 
 
-@seed(2026100803)
-@given(cells)
-def test_property_hard_hold_is_never_wider_than_normal_hold(cell):
-    _, purpose, op, one_shot = cell
-    if ok(EntriesMode.HOLD, HoldKind.DURABILITY_UNAVAILABLE, purpose, op, one_shot):
-        assert ok(EntriesMode.HOLD, HoldKind.NORMAL, purpose, op, one_shot) or op is Op.ADOPT or op is Op.QUERY or \
-            (purpose is Purpose.PROTECT and op is Op.PLACE)
+def test_property_hard_hold_is_never_wider_than_normal_hold():
+    for _, purpose, op, one_shot in ALL:
+        if ok(EntriesMode.HOLD, HoldKind.DURABILITY_UNAVAILABLE, purpose, op, one_shot):
+            assert ok(EntriesMode.HOLD, HoldKind.NORMAL, purpose, op, one_shot) or op in (Op.ADOPT, Op.QUERY) or \
+                (purpose is Purpose.PROTECT and op is Op.PLACE)
 
 
 def test_exhaustive_table_is_total_and_pure():

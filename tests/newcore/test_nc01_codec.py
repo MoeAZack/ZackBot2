@@ -47,8 +47,12 @@ def test_equal_values_encode_identically():
 
 
 # ----------------------------------------------------------------------------------------------------------- numbers
-BAD_NUMBERS = ['NaN', 'Infinity', '-Infinity', '1e3', '1E+2', ' 1', '1 ', '1_0', '+1', '01', '1.', '.5', '1.50', '-0',
-               '0x10', '', '1' * 16, '0.' + '1' * 13]
+# contract invariant 2: exactly ^-?(0|[1-9][0-9]*)(\.[0-9]+)?$ in canonical form, <= 38 significant digits,
+# |adjusted exponent| <= 18
+BAD_NUMBERS = ['NaN', 'Infinity', '-Infinity', 'sNaN', '1e3', '1E+2', '1E+999999', ' 1', '1 ', '1_0', '+1', '01', '1.',
+               '.5', '1.50', '1.0', '10.0', '-0', '-0.0', '0.0', '0x10', '', '\u0661', '1\u0662', '\uff11', '1,5',
+               '1' * 20, '0.' + '0' * 18 + '1', '1.' + '1' * 38, '9' * 70]
+GOOD_NUMBERS = ['0', '1', '-1', '0.5', '1' * 19, '0.' + '0' * 17 + '1', '1.' + '1' * 37, '123456789.123456789']
 
 
 @pytest.mark.parametrize('bad', BAD_NUMBERS)
@@ -58,6 +62,18 @@ def test_decimal_strings_are_strict(bad):
     with pytest.raises(InvalidRecord) as e:
         decode_document(doc)
     assert e.value.path == 'instrument_rules.tick_size'
+
+
+@pytest.mark.parametrize('good', GOOD_NUMBERS)
+def test_canonical_decimal_strings_round_trip(good):
+    doc = encode_document(F.rules())
+    doc['body']['min_notional'] = good
+    if good.startswith('-'):
+        with pytest.raises(InvalidRecord, match='must be >= 0'):
+            decode_document(doc)
+        return
+    rec = decode_document(doc)
+    assert encode_document(rec)['body']['min_notional'] == good
 
 
 @pytest.mark.parametrize('bad', [1.5, 1, True, None, [], {}], ids=repr)
@@ -76,9 +92,12 @@ def test_hostile_json_tokens_are_damage(token):
         loads(text)
 
 
-@pytest.mark.parametrize('field,bad', [('opened_at_ms', '2026-10-07T10:00:00Z'), ('opened_at_ms', 1791400000.5),
+@pytest.mark.parametrize('field,bad', [('opened_at_ms', '2026-10-07T10:00:00Z'), ('opened_at_ms', '2026-10-07'),
+                                       ('opened_at_ms', '2026-10-07 13:00'), ('opened_at_ms', 1791400000.5),
                                        ('opened_at_ms', 1791400000), ('opened_at_ms', True), ('opened_at_ms', -1),
-                                       ('adds_done', True), ('adds_done', 2 ** 63)])
+                                       ('opened_at_ms', 946684799999), ('opened_at_ms', 4102444800000),
+                                       ('opened_at_ms', None), ('opened_at_ms', float('nan')), ('adds_done', True),
+                                       ('adds_done', 2 ** 63)])
 def test_timestamps_are_integer_utc_ms(field, bad):
     p, _ = F.single_lot_portfolio()
     doc = encode_document(p)
@@ -88,11 +107,59 @@ def test_timestamps_are_integer_utc_ms(field, bad):
     assert e.value.path.endswith(field)
 
 
+@pytest.mark.parametrize('ms', [946684800000, 4102444799999])
+def test_timestamp_bounds_are_inclusive(ms):
+    p, _ = F.single_lot_portfolio()
+    doc = encode_document(p)
+    lot = doc['body']['positions'][0]['lots'][0]
+    lot['opened_at_ms'] = lot['fills'][0]['at_ms'] = ms
+    assert decode_document(doc).lots[0].opened_at_ms == ms
+
+
+def test_canonical_bytes_and_hash_api():
+    from newcore.domain import canonical_bytes, contract_sha256
+    import hashlib
+    for rec in SAMPLES:
+        b = canonical_bytes(rec)
+        assert isinstance(b, bytes) and b == dumps(rec).encode('utf-8') and b'": ' not in b and b', "' not in b
+        assert contract_sha256(rec) == hashlib.sha256(b).hexdigest() and contract_sha256(rec).islower()
+        assert loads(b) == rec                                         # the bytes entry point
+    r = F.rules()
+    assert contract_sha256(r) == contract_sha256(F.replace(r, tick_size=F.D('0.010')))
+
+
+@pytest.mark.parametrize('cut', [1, 2, 10, 100])
+def test_truncated_input_is_a_typed_failure(cut):
+    text = dumps(F.single_lot_portfolio()[0])
+    res = decode_result(text[:-cut].encode('utf-8'))
+    assert res.outcome is Outcome.INVALID and res.record is None
+
+
+def test_torn_document_never_gets_business_defaults():
+    """A missing optional / flag / collection field is damage, never None / False / 0 / () / KNOWN_EMPTY."""
+    p, _ = F.single_lot_portfolio(in_flight='add')
+    for path in (('positions', 0, 'lots', 0, 'in_flight'), ('positions', 0, 'lots', 0, 'tp1_done'),
+                 ('positions', 0, 'lots', 0, 'adds_done'), ('positions', 0, 'lots', 0, 'ladder_done'),
+                 ('entry_stops',), ('hold_kind',), ('ownership',), ('intents', 0, 'seen_qty')):
+        doc = encode_document(p)
+        node = doc['body']
+        for k in path[:-1]:
+            node = node[k]
+        del node[path[-1]]
+        with pytest.raises(InvalidRecord, match='missing keys'):
+            decode_document(doc)
+
+
 def test_duplicate_keys_are_damage():
     text = dumps(F.rules())
     dup = text.replace('"min_qty":"0.01"', '"min_qty":"0.01","min_qty":"0.02"')
     with pytest.raises(InvalidRecord, match='duplicate key'):
         loads(dup)
+    with pytest.raises(InvalidRecord, match='duplicate key'):
+        loads(dup.encode('utf-8'))                                      # the bytes entry point uses the same hook
+    same = text.replace('"min_qty":"0.01"', '"min_qty":"0.01","min_qty":"0.01"')
+    with pytest.raises(InvalidRecord, match='duplicate key'):           # even an identical duplicate
+        loads(same)
 
 
 @pytest.mark.parametrize('blob', [b'', b'\x00' * 64, b'{"a":1} {"b":2}', b'\xff\xfe', b'[' * 5000, b'null'])

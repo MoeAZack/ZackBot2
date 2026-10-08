@@ -12,7 +12,7 @@ from newcore.domain import (Account, AccountBinding, Action, Arming, Authority, 
                             HoldKind, IntentRecorded, IntentState, IntentStateChanged, InvalidRecord, Lookup, LotSource,
                             MissPhase, ModeChanged, OrderType, Ownership, OwnershipProof, Position, PositionRead,
                             ProofKind, Protection, Purpose, ReasonCode, Side, Snapshot, StopMiss,
-                            confirmation_phrase, protect_key)
+                            Venue, confirmation_phrase, require_environment)
 
 ids = F.Ids(1234)
 ACCT = ids.id('acct')
@@ -56,7 +56,10 @@ CASES = {
     'NaN qty': (lambda: replace(ENTRY, qty=D('NaN')), 'qty'),
     'Infinity price': (lambda: replace(MAKER, price=D('Infinity')), 'price'),
     'huge qty 1e300': (lambda: replace(ENTRY, qty=D('1e300')), 'qty'),
-    '13 fractional digits': (lambda: replace(ENTRY, qty=D('0.0000000000001')), 'qty'),
+    'adjusted exponent below -18': (lambda: replace(ENTRY, qty=D('0.0000000000000000001')), 'qty'),
+    'adjusted exponent above 18': (lambda: replace(ENTRY, qty=D('10000000000000000000')), 'qty'),
+    '39 significant digits': (lambda: replace(ENTRY, qty=D('1.' + '1' * 38)), 'qty'),
+    'sNaN qty': (lambda: replace(ENTRY, qty=D('sNaN')), 'qty'),
     'negative zero fee': (lambda: replace(FILL, fee=D('-0')), 'fee'),
     'zero qty': (lambda: replace(ENTRY, qty=D('0')), 'qty'),
     'negative qty': (lambda: replace(ENTRY, qty=D('-1')), 'qty'),
@@ -78,9 +81,9 @@ CASES = {
     'negative tick': (lambda: replace(F.rules(), tick_size=D('-0.01')), 'tick_size'),
     'duplicate capability': (lambda: replace(F.rules(), capabilities=(Capability.POST_ONLY,) * 2), 'capabilities'),
     # ---- account binding / identity (ruling 5)
-    'credential in base url': (lambda: replace(B, base_url='https://key:secret@fapi.binance.com'), 'base_url'),
-    'query in base url': (lambda: replace(B, base_url='https://fapi.binance.com/?apiKey=abc'), 'base_url'),
-    'plain http': (lambda: replace(B, base_url='http://fapi.binance.com'), 'base_url'),
+    'venue as text': (lambda: replace(B, venue='binance_usdm'), 'venue'),
+    'environment as text': (lambda: replace(B, environment='testnet'), 'environment'),
+    'testnet identity on mainnet config': (lambda: require_environment(B, Environment.MAINNET), 'environment'),
     'digest not hex16': (lambda: replace(B, key_digest='0123456789ABCDEF'), 'key_digest'),
     'settlement asset lowercase': (lambda: replace(B, settlement_asset='usdt'), 'settlement_asset'),
     'wrong typed phrase': (lambda: replace(ACC.confirmation, typed_phrase='yes'), 'typed_phrase'),
@@ -111,9 +114,8 @@ CASES = {
     'market with price': (lambda: replace(ENTRY, price=D('1')), 'price'),
     'stop without stop price': (lambda: replace(STOP, stop_price=None), 'stop_price'),
     'stop price on market': (lambda: replace(ENTRY, stop_price=D('1')), 'stop_price'),
-    'protect key not deterministic': (lambda: replace(STOP, idempotency_key='0' * 32), 'idempotency_key'),
-    'protect key after resize': (lambda: replace(STOP, qty=D('2')), 'idempotency_key'),
-    'key on an entry': (lambda: replace(ENTRY, idempotency_key='0' * 32), 'idempotency_key'),
+    'orphan intent still working': (lambda: replace(STOP, owner_id=F.pf_id(ACCT)), 'state'),
+    'orphan add submitted': (lambda: replace(ADD, owner_id=F.pf_id(ACCT)), 'state'),
     'algo id on an entry': (lambda: replace(ENTRY, alt_client_order_id='zz1'), 'alt_client_order_id'),
     'algo id equals primary': (lambda: replace(STOP, alt_client_order_id=STOP.client_order_id), 'alt_client_order_id'),
     'armed maker': (lambda: replace(MAKER, arm=Arming(trigger_price=D('1'), expires_at_ms=T0 + 1)), 'arm'),
@@ -156,14 +158,14 @@ CASES = {
     'reads on an exchange final': (lambda: replace(RES['filled'], corroboration=RES['corroborated'].corroboration),
                                    'corroboration'),
     # ---- protection (own facts, bounds)
-    'confirmed and missing': (lambda: replace(PROT, miss=StopMiss(phase=MissPhase.OWNER_CHECK, count=1, since_ms=T0)),
+    'confirmed and missing': (lambda: replace(PROT, miss=F.miss(MissPhase.OWNER_CHECK)),
                               'confirmed_at_ms'),
     'confirmed without order': (lambda: replace(PROT, order=None), 'confirmed_at_ms'),
-    'checking without order': (lambda: Protection(owner_id=LOT.lot_id, price=D('1'), qty=D('1'),
-                                                  miss=StopMiss(phase=MissPhase.CHECKING, count=1, since_ms=T0)), 'miss'),
+    'checking without order': (lambda: F.build(Protection, owner_id=LOT.lot_id, price=D('1'), qty=D('1'),
+                                                   miss=F.miss(MissPhase.CHECKING)), 'miss'),
     'foreign id outside owner check': (lambda: StopMiss(phase=MissPhase.RESTORING, count=1, since_ms=T0,
                                                         foreign_order_id='77'), 'foreign_order_id'),
-    'miss count zero': (lambda: StopMiss(phase=MissPhase.RESTORING, count=0, since_ms=T0), 'count'),
+    'miss count zero': (lambda: F.miss(MissPhase.RESTORING, 0), 'count'),
     'replacement is the order': (lambda: replace(PROT, replacement=PROT.order), 'replacement'),
     # ---- lot (fill ledger)
     'ghost lot qty 0': (lambda: replace(LOT, qty=D('0')), 'qty'),
@@ -200,7 +202,7 @@ CASES = {
     'KNOWN_EMPTY owning a position': (lambda: replace(PF, ownership=Ownership.KNOWN_EMPTY), 'ownership'),
     'KNOWN_EMPTY by journal': (lambda: replace(F.portfolio(ACCT), proof=F.proof(ProofKind.JOURNAL)), 'proof'),
     'KNOWN by flat snapshot': (lambda: replace(PF, proof=F.proof(ProofKind.FLAT_SNAPSHOT)), 'proof'),
-    'flat proof without digest': (lambda: OwnershipProof(kind=ProofKind.FLAT_SNAPSHOT, at_ms=T0,
+    'flat proof without digest': (lambda: F.build(OwnershipProof, kind=ProofKind.FLAT_SNAPSHOT, at_ms=T0,
                                                          reconciliation_id=ids.id('rec')), 'key_digest'),
     'journal proof with a decision': (lambda: replace(F.proof(), decision_id=ids.id('dec')), 'decision_id'),
     # ---- portfolio: modes
@@ -239,9 +241,9 @@ CASES = {
     'confirmed but not working': (lambda: _stop_state(IntentState.SUBMITTED), 'confirmed_at_ms'),
     'replacement keeps no old stop': (lambda: _replacement(old_state=IntentState.CANCELLING), 'order'),
     'replacement above exposure': (lambda: _replacement(qty=D('99')), 'replacement'),
-    'replacement on another side': (lambda: _replacement(side=Side.SHORT), 'replacement'),
-    'foreign id is an owned id': (lambda: prot_pf(confirmed_at_ms=None, miss=StopMiss(
-        phase=MissPhase.OWNER_CHECK, count=1, since_ms=T0, foreign_order_id=PF.intents[0].client_order_id)),
+    'replacement on another side': (lambda: _replacement(side=Side.SHORT), 'owner_id'),          # a stop on the other side has another owner side
+    'foreign id is an owned id': (lambda: prot_pf(confirmed_at_ms=None, miss=F.miss(
+        MissPhase.OWNER_CHECK, 1, PF.intents[0].client_order_id)),
         'foreign_order_id'),
     'entry stop above seen size': (lambda: _entry_stop(D('401')), 'qty'),
     'entry stop of a maker': (lambda: _entry_stop(D('1'), owner=MAKER), 'entry_stop'),
@@ -284,35 +286,35 @@ CASES = {
     'evidence not an id': (lambda: replace(DEC, evidence=('see log',)), 'evidence'),
     'duplicate evidence': (lambda: replace(DEC, evidence=(LOT.lot_id, LOT.lot_id)), 'evidence'),
     # ---- events / snapshot
-    'recorded intent already sent': (lambda: IntentRecorded(seq=1, account_id=ACCT, at_ms=T0, intent=ENTRY), 'state'),
-    'recorded before created': (lambda: IntentRecorded(seq=1, account_id=ACCT, at_ms=T0 - 1,
+    'recorded intent already sent': (lambda: F.event(IntentRecorded, ids, ACCT, 1, at=T0, reason=ENTRY.reason, intent=ENTRY), 'state'),
+    'recorded before created': (lambda: F.event(IntentRecorded, ids, ACCT, 1, at=T0 - 1, reason=ENTRY.reason,
                                                        intent=replace(ENTRY, state=IntentState.DURABLE)), 'at_ms'),
-    'terminal returns to working': (lambda: IntentStateChanged(seq=1, account_id=ACCT, at_ms=T0, intent_id=ENTRY.intent_id,
+    'terminal returns to working': (lambda: F.event(IntentStateChanged, ids, ACCT, 1, intent_id=ENTRY.intent_id,
                                                                from_state=IntentState.FILLED,
                                                                to_state=IntentState.WORKING), 'to_state'),
-    'leave HOLD without reconciliation': (lambda: ModeChanged(seq=1, account_id=ACCT, at_ms=T0, from_mode=EntriesMode.HOLD,
+    'leave HOLD without reconciliation': (lambda: F.event(ModeChanged, ids, ACCT, 1, from_mode=EntriesMode.HOLD,
                                                               to_mode=EntriesMode.PAUSED, from_hold=HoldKind.NORMAL,
-                                                              reasons=(ReasonCode.OPERATOR_PAUSE,)), 'reconciliation_id'),
-    'resume without decision': (lambda: ModeChanged(seq=1, account_id=ACCT, at_ms=T0, from_mode=EntriesMode.PAUSED,
-                                                    to_mode=EntriesMode.ACTIVE, reasons=()), 'decision_id'),
-    'hard HOLD event without cause': (lambda: ModeChanged(seq=1, account_id=ACCT, at_ms=T0, from_mode=EntriesMode.ACTIVE,
+                                                              reasons=(ReasonCode.OPERATOR_PAUSE,), reason=ReasonCode.OPERATOR_PAUSE), 'reconciliation_id'),
+    'resume without decision': (lambda: F.event(ModeChanged, ids, ACCT, 1, from_mode=EntriesMode.PAUSED,
+                                                    to_mode=EntriesMode.ACTIVE, reasons=(), reason=ReasonCode.OPERATOR_RESUME), 'decision_id'),
+    'hard HOLD event without cause': (lambda: F.event(ModeChanged, ids, ACCT, 1, from_mode=EntriesMode.ACTIVE,
                                                           to_mode=EntriesMode.HOLD, to_hold=HoldKind.DURABILITY_UNAVAILABLE,
-                                                          reasons=(ReasonCode.OPERATOR_PAUSE,)), 'reasons'),
-    'binding skips confirmation': (lambda: BindingChanged(seq=1, account_id=ACCT, at_ms=T0, from_state=BindingState.CONFIRMED,
+                                                          reasons=(ReasonCode.OPERATOR_PAUSE,), reason=ReasonCode.OPERATOR_PAUSE), 'reasons'),
+    'binding skips confirmation': (lambda: F.event(BindingChanged, ids, ACCT, 1, from_state=BindingState.CONFIRMED,
                                                           to_state=BindingState.RECONCILING, binding=B), 'to_state'),
-    'rotation without typed confirmation': (lambda: BindingChanged(seq=1, account_id=ACCT, at_ms=T0,
+    'rotation without typed confirmation': (lambda: F.event(BindingChanged, ids, ACCT, 1,
                                                                    from_state=BindingState.ROTATION_PENDING,
                                                                    to_state=BindingState.RECONCILING, binding=B),
                                             'confirmation'),
-    'rotation confirmed without reconciliation': (lambda: BindingChanged(seq=1, account_id=ACCT, at_ms=T0,
+    'rotation confirmed without reconciliation': (lambda: F.event(BindingChanged, ids, ACCT, 1,
                                                                          from_state=BindingState.RECONCILING,
                                                                          to_state=BindingState.CONFIRMED, binding=B),
                                                   'reconciliation_id'),
-    'snapshot of another account': (lambda: Snapshot(account_id=OTHER, generation=PF.generation, last_seq=5, written_at_ms=T0,
+    'snapshot of another account': (lambda: Snapshot(account_id=OTHER, generation=PF.generation, last_sequence=5, written_at_ms=T0,
                                                      writer_build='b', portfolio=PF), 'portfolio'),
-    'snapshot generation differs': (lambda: Snapshot(account_id=PF.account_id, generation=PF.generation + 1, last_seq=5,
+    'snapshot generation differs': (lambda: Snapshot(account_id=PF.account_id, generation=PF.generation + 1, last_sequence=5,
                                                      written_at_ms=T0, writer_build='b', portfolio=PF), 'generation'),
-    'journal proof beyond snapshot': (lambda: Snapshot(account_id=PF.account_id, generation=PF.generation, last_seq=0,
+    'journal proof beyond snapshot': (lambda: Snapshot(account_id=PF.account_id, generation=PF.generation, last_sequence=0,
                                                        written_at_ms=T0, writer_build='b', portfolio=PF), 'proof'),
 }
 
@@ -343,7 +345,7 @@ def _replacement(old_state=IntentState.WORKING, qty=None, side=None):
 def _entry_stop(qty, owner=None):
     me = owner or F.market_entry(ids, PF.account_id)
     me = replace(me, account_id=PF.account_id)
-    s = Protection(owner_id=me.intent_id, price=D('0.1'), qty=qty)
+    s = F.build(Protection, owner_id=me.intent_id, price=D('0.1'), qty=qty)
     return replace(PF, intents=PF.intents + (me,), entry_stops=(s,))
 
 
@@ -383,7 +385,7 @@ def test_every_base_record_is_valid():
     """The table's starting points are valid, so each row breaks exactly what it names."""
     for rec in (ENTRY, ADD, STOP, MAKER, PF, LOT, POS, ACC, B, DEC, PROT, FILL, *RES.values()):
         assert replace(rec) == rec
-    assert protect_key(ACCT, STOP.owner_id, STOP.side, STOP.qty, STOP.stop_price) == STOP.idempotency_key
+    assert B.venue is Venue.BINANCE_USDM
     assert confirmation_phrase(ACCT, F.DIGEST) == ACC.confirmation.typed_phrase
     assert isinstance(ACC, Account) and isinstance(B, AccountBinding) and isinstance(ACC.confirmation, BindingConfirmation)
 
@@ -402,3 +404,64 @@ def test_valid_alternatives_are_accepted():
                    stop_price=PROT.price + 1, reason=ReasonCode.PROTECT_REPLACE, created=T0 + 20_000)
     lt = replace(LOT, stop=replace(PROT, replacement=new.intent_id))
     replace(PF, positions=(replace(POS, lots=(lt,)),), intents=PF.intents + (new,), **hard)
+
+
+# ----------------------------------------------------------------------------------------------------------- r2 additions
+def test_a_known_portfolio_has_no_dangling_owner_reference():
+    """Contract invariant 11: an owner id must resolve inside this portfolio; orphan work is portfolio-owned."""
+    acct = PF.account_id
+    ghost = F.intent(ids, acct, Purpose.PROTECT, LOT.symbol, LOT.side, D('1'), state=IntentState.CANCELLING,
+                     owner_id=ids.id('lot'), stop_price=D('9'))
+    with pytest.raises(InvalidRecord, match='no orphan reference'):
+        with_intents(ghost)
+    with_intents(replace(ghost, owner_id=F.pf_id(acct)))                       # re-owned by the aggregate: valid
+    with pytest.raises(InvalidRecord, match='owned by this portfolio'):
+        with_intents(replace(ghost, owner_id=F.pf_id(OTHER)))
+
+
+def test_owner_symbol_and_side_agree():
+    acct = PF.account_id
+    bad = F.intent(ids, acct, Purpose.REDUCE, 'ETHUSDT', LOT.side, D('0.5'), owner_id=LOT.lot_id)
+    lt = replace(LOT, in_flight=bad.intent_id)
+    its = tuple(i for i in PF.intents if i.intent_id != LOT.in_flight) + (bad,)
+    with pytest.raises(InvalidRecord, match='owner of another symbol'):
+        replace(PF, positions=(replace(POS, lots=(lt,)),), intents=its)
+
+
+def test_aggregate_protective_coverage_is_bounded_by_exposure():
+    """Two lots of one position: each stop within its own lot, and the side total within the position."""
+    acct = PF.account_id
+    lt2, extra = F.lot(ids, acct, LOT.symbol, LOT.side, D('2'), stop_state='confirmed')
+    pos2 = replace(POS, lots=(LOT, lt2))
+    ok = replace(PF, positions=(pos2,), intents=PF.intents + tuple(extra))
+    assert ok.positions[0].qty == D('3.5')
+    from newcore.domain import active_coverage
+    intents = ok.intents_by_id()
+    assert sum(active_coverage(x.stop, intents) for x in ok.lots) == D('3.5')
+    # an entry stop larger than the seen size breaks the bound for its symbol / side as well
+    with pytest.raises(InvalidRecord):
+        _entry_stop(D('400.01'))
+
+
+def test_event_reason_matches_its_payload():
+    dur = replace(ENTRY, state=IntentState.DURABLE)
+    with pytest.raises(InvalidRecord, match="intent's reason"):
+        F.event(IntentRecorded, ids, ACCT, 1, intent=dur, reason=ReasonCode.EXIT_STOP)
+    with pytest.raises(InvalidRecord, match='names one of its reasons'):
+        F.event(ModeChanged, ids, ACCT, 1, from_mode=EntriesMode.ACTIVE, to_mode=EntriesMode.PAUSED,
+                reasons=(ReasonCode.OPERATOR_PAUSE,), reason=ReasonCode.FILTER_HALT)
+
+
+@pytest.mark.parametrize('spelling', ['1', '1.0', '1.000', '10E-1', '0.1E+1', '1E0'])
+def test_constructors_normalize_equal_decimals_to_one_value(spelling):
+    it = replace(ADD, qty=D(spelling))
+    assert it.qty.as_tuple() == D('1').as_tuple()
+    from newcore.domain import canonical_bytes
+    assert canonical_bytes(it) == canonical_bytes(replace(ADD, qty=D('1')))
+
+
+def test_environment_boundary_accepts_its_own_environment():
+    require_environment(B, Environment.TESTNET)
+    for env in (Environment.MAINNET, Environment.SIM, Environment.BACKTEST):
+        with pytest.raises(InvalidRecord):
+            require_environment(B, env)

@@ -97,11 +97,12 @@ def test_bare_not_found_resolves_nothing():
         replace(p, intents=p.intents + (second,))
     # in the log the not-found is recorded and the intent is still live afterwards
     acct = p.account_id
-    log = [IntentRecorded(seq=1, account_id=acct, at_ms=add.created_at_ms, intent=replace(add, state=IntentState.DURABLE)),
-           IntentStateChanged(seq=2, account_id=acct, at_ms=add.created_at_ms, intent_id=add.intent_id,
-                              from_state=IntentState.DURABLE,
-                              to_state=IntentState.SUBMITTED),
-           ResultObserved(seq=3, account_id=acct, at_ms=T0 + 30_000, result=nf)]
+    at = add.created_at_ms
+    log = [F.event(IntentRecorded, ids, acct, 1, at=at, intent=replace(add, state=IntentState.DURABLE), reason=add.reason),
+           F.event(IntentStateChanged, ids, acct, 2, at=at, intent_id=add.intent_id, from_state=IntentState.DURABLE,
+                   to_state=IntentState.SUBMITTED),
+           F.event(ResultObserved, ids, acct, 3, at=T0 + 30_000, result=nf,
+                   reason=ReasonCode.EVIDENCE_NOT_FOUND_UNCORROBORATED)]
     assert add.intent_id in check_event_chain(log)
 
 
@@ -129,19 +130,19 @@ def test_identical_positions_never_prove_identity():
 def test_generation_rollback_is_detectable():
     p, _ = F.single_lot_portfolio(13)
     acct = p.account_id
-    snap = Snapshot(account_id=acct, generation=7, last_seq=40, written_at_ms=T0, writer_build='b1', portfolio=p)
-    mark = lambda g, s: HighWater(account_id=acct, generation=g, last_seq=s, writer_build='b1')
+    snap = Snapshot(account_id=acct, generation=7, last_sequence=40, written_at_ms=T0, writer_build='b1', portfolio=p)
+    mark = lambda g, s: HighWater(account_id=acct, generation=g, last_sequence=s, writer_build='b1')
     assert check_generation(snap, mark(7, 40)) is GenerationVerdict.CURRENT
     assert check_generation(snap, mark(9, 55)) is GenerationVerdict.ROLLED_BACK
     assert check_generation(snap, mark(7, 41)) is GenerationVerdict.ROLLED_BACK       # same generation, fewer events
     assert check_generation(snap, mark(6, 30)) is GenerationVerdict.AHEAD
-    other = HighWater(account_id=F.Ids(1).id('acct'), generation=7, last_seq=40, writer_build='b1')
+    other = HighWater(account_id=F.Ids(1).id('acct'), generation=7, last_sequence=40, writer_build='b1')
     assert check_generation(snap, other) is GenerationVerdict.FOREIGN
     # an event log that continues a NEWER snapshot cannot follow this one
-    ev = IntentRecorded(seq=56, account_id=acct, at_ms=T0, intent=replace(F.market_entry(F.Ids(2), acct),
-                                                                          state=IntentState.DURABLE))
-    with pytest.raises(InvalidRecord, match='expected seq 41'):
-        check_event_chain([ev], after_seq=snap.last_seq)
+    newer = replace(F.market_entry(F.Ids(2), acct), state=IntentState.DURABLE)
+    ev = F.event(IntentRecorded, F.Ids(2), acct, 56, intent=newer, reason=newer.reason)
+    with pytest.raises(InvalidRecord, match='expected sequence 41'):
+        check_event_chain([ev], after_sequence=snap.last_sequence)
 
 
 # ---------------------------------------------------------------------------------- resting maker / pause / flatten
