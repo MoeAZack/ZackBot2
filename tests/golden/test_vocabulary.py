@@ -147,6 +147,23 @@ def test_schema_rejects_behaviours_outside_the_registry(mutation):
         schema.validate(c)
 
 
+def test_behaviours_and_divergence_ids_are_inside_the_contract_hash():
+    """Codex golden r3 residual ruling: nothing the per-commit tier gate reads is unhashed. Removing / adding / swapping a
+    behaviour or renaming a divergence_id moves contract_sha (so it needs a ledger record); title / notes / provenance do not."""
+    assert schema.DESCRIPTIVE == ('title', 'provenance', 'notes')
+    c = _kd_case()
+    h = schema.contract_sha(c)
+    for mut in (lambda x: x['behaviours'].append('short_side'), lambda x: x['behaviours'].clear(),
+                lambda x: x['behaviours'].__setitem__(0, 'stop'),
+                lambda x: x['known_divergences'][0].__setitem__('divergence_id', 'AUD07-C11B'),
+                lambda x: x['known_divergences'][0].__setitem__('finding', 'C11 reworded')):
+        m = copy.deepcopy(c)
+        mut(m)
+        assert schema.contract_sha(m) != h
+    for k in schema.DESCRIPTIVE:
+        assert schema.contract_sha(dict(c, **{k: 'changed'})) == h, k
+
+
 # ------------------------------------------------------------------ divergence identity (Codex golden r3 residual ruling, 2)
 def _kd_case(cid='G-TIME-L-02'):
     return copy.deepcopy(schema.load(os.path.join(os.path.dirname(schema.case_paths()[0]), cid + '.json')))
