@@ -446,7 +446,7 @@ def test_grep_full_cycle_secret_only_in_encrypted_blob(tmp_path, capsys):
             raise RuntimeError(f'simulated crash holding {SECRET}')
         except RuntimeError:
             log.exception('crash')
-        assert http.requests[0].header('X-MBX-APIKEY') == KEY            # the wire really carried the key
+        assert http.requests[0].wire_header('X-MBX-APIKEY') == KEY       # the wire really carried the key
     finally:
         scrub.uninstall()
         rootlog.removeHandler(fh)

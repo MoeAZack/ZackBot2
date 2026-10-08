@@ -78,7 +78,7 @@ class CassetteRecorder:
         for k, v in pairs:
             if k == 'signature':
                 self.add_redactions(v)
-        key = request.header('X-MBX-APIKEY')
+        key = request.wire_header('X-MBX-APIKEY')
         if key:
             self.add_redactions(key)
         return {
@@ -177,7 +177,7 @@ class CassettePlayer:
             raise CassetteMismatch(f'request {i}: query differs (params: {", ".join(names) or "order"})')
         if request.signed:
             has_sig = any(k == 'signature' and v for k, v in urllib.parse.parse_qsl(request.query))
-            if not has_sig or not request.header('X-MBX-APIKEY'):
+            if not has_sig or not request.wire_header('X-MBX-APIKEY'):
                 raise CassetteMismatch(f'request {i}: a signed request must carry a key header and a signature')
         self._next += 1
         if 'error' in rec:

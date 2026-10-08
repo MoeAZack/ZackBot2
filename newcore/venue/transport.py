@@ -24,8 +24,8 @@ from .errors import (ALGO_FALLBACK_CODES, ErrorCategory, NotFoundEvidence, NotFo
 from .guard import TESTNET_BASE_URL, VenueGuardError, check_binding, check_request_url
 from .outcomes import OrderOutcome, OrderOutcomeKind, ReadKind, ReadOutcome
 from .signing import check_ms, check_recv_window, encode_params, signed_query
-from .wire import (HttpRequest, HttpResponse, RateLimitUsage, WireConnectionError, WireResponseTooLarge, WireSeamError,
-                   WireTimeout, parse_rate_limits)
+from .wire import (API_KEY_HEADER, HttpRequest, HttpResponse, RateLimitUsage, WireConnectionError,
+                   WireResponseTooLarge, WireSeamError, WireTimeout, parse_rate_limits)
 
 log = logging.getLogger('newcore.venue.transport')
 
@@ -167,7 +167,7 @@ class BinanceTestnetTransport:
         url = check_request_url(self._base_url + path)
         if not signed:
             return HttpRequest(method, url, encode_params(pairs), (), self._timeout, False)
-        key = self._api_key()
+        self._api_key()                 # fail fast (CredentialsUnavailable) before anything is signed or sent
         now = self._clock()
 
         def sign(payload):
@@ -181,7 +181,9 @@ class BinanceTestnetTransport:
             raise
         except ValueError as ex:
             raise VenueInputError(str(ex)) from None
-        return HttpRequest(method, url, query + '&signature=' + sig, (('X-MBX-APIKEY', key),), self._timeout, True)
+        # The raw key is NOT put into the request: the sender fetches it from the provider at send time (finding 5).
+        return HttpRequest(method, url, query + '&signature=' + sig, ((API_KEY_HEADER, '<redacted>'),), self._timeout,
+                           True, key_provider=self._api_key)
 
     def _exchange(self, method, path, pairs, signed):
         """Send one request. Returns (verdict, payload, http_status, rate) where verdict is 'ok' (payload = decoded
@@ -189,7 +191,7 @@ class BinanceTestnetTransport:
         req = self._build(method, path, pairs, signed)
         try:
             resp = self._http(req)
-        except (VenueGuardError, WireSeamError):
+        except (VenueGuardError, WireSeamError, CredentialsUnavailable):
             raise                              # the seam refused before sending / a broken harness: not venue data
         except WireTimeout:
             return 'unknown', ('timeout', None), None, RateLimitUsage()

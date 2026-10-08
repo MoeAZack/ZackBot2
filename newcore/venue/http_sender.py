@@ -71,7 +71,7 @@ class TestnetHttpSender:
         if isinstance(timeout, bool) or not isinstance(timeout, (int, float)) or not 0 < timeout <= 60:
             raise VenueGuardError('timeout_s must be in (0, 60]')
         headers = {'User-Agent': USER_AGENT, 'Accept': 'application/json'}
-        for k, v in request.headers:
+        for k, v in request.wire_headers():
             headers[k] = v
         conn = None
         try:

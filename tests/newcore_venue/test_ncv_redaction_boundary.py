@@ -10,11 +10,11 @@ from decimal import Decimal as D
 
 import pytest
 
-from newcore.venue.credentials import CredentialsUnavailable
-from newcore.venue.transport import StopRoute, VenueInputError
+from newcore.venue.credentials import CredentialsUnavailable, StaticCredentials
+from newcore.venue.transport import BinanceTestnetTransport, PositionMode, StopRoute, VenueInputError
 from newcore.venue.wire import HttpRequest, WireConnectionError, WireTimeout
 
-from ncv_support import DUMMY_KEY, DUMMY_SECRET, make, raw
+from ncv_support import DUMMY_KEY, DUMMY_SECRET, NOW_MS, make, raw
 
 PKG = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'newcore', 'venue')
 
@@ -74,10 +74,88 @@ def test_request_repr_redacts_header_and_signature():
     t, http = make(raw(200, b'{}'))
     t.account()
     req = http.last
-    assert req.header('X-MBX-APIKEY') == DUMMY_KEY                  # the wire still carries it ...
+    assert req.wire_header('X-MBX-APIKEY') == DUMMY_KEY             # the wire still carries it ...
     sig = req.query.rsplit('&signature=', 1)[1]
     for text in (repr(req), str(req), f'{req}'):                    # ... the text form never does
         assert DUMMY_KEY not in text and sig not in text and '<redacted>' in text
+
+
+# ---------- Cowork finding 5: no readable raw key on the request; no raw secret in the credentials ----------
+
+def test_request_exposes_no_raw_key_through_fields_asdict_or_vars():
+    import dataclasses
+    import pickle
+    t, http = make(raw(200, b'{}'))
+    t.account()
+    req = http.last
+    assert DUMMY_KEY not in repr(req.headers) and req.header('X-MBX-APIKEY') == '<redacted>'
+    for name in ('method', 'url', 'query', 'headers', 'timeout_s', 'signed'):
+        assert DUMMY_KEY not in repr(getattr(req, name))
+    with pytest.raises(TypeError):
+        dataclasses.asdict(req)
+    with pytest.raises(TypeError):
+        vars(req)
+    with pytest.raises(AttributeError):
+        req.headers = (('X-MBX-APIKEY', 'x'),)
+    with pytest.raises(TypeError):
+        pickle.dumps(req)
+    assert req.wire_header('X-MBX-APIKEY') == DUMMY_KEY          # only the send-time view carries it
+
+
+def test_raw_key_given_in_headers_is_moved_behind_the_provider():
+    req = HttpRequest('GET', 'https://testnet.binancefuture.com/fapi/v2/account', 'a=1',
+                      (('X-MBX-APIKEY', DUMMY_KEY), ('Accept', 'x')), 5.0, True)
+    assert req.headers == (('X-MBX-APIKEY', '<redacted>'), ('Accept', 'x'))
+    assert req.wire_headers() == (('X-MBX-APIKEY', DUMMY_KEY), ('Accept', 'x'))
+
+
+def test_key_is_fetched_from_the_source_at_send_time():
+    calls = []
+
+    class Counting(StaticCredentials):
+        __slots__ = ()
+
+        def api_key(self):
+            calls.append(1)
+            return super().api_key()
+    seen = []
+    t = BinanceTestnetTransport(environment='testnet', clock=lambda: NOW_MS, position_mode=PositionMode.HEDGE,
+                                credentials=Counting(DUMMY_KEY, DUMMY_SECRET),
+                                http=lambda r: (seen.append((len(calls), r.wire_header('X-MBX-APIKEY'),
+                                                             len(calls))), raw(200, b'{}'))[1])
+    t.account()
+    before, key, after = seen[0]
+    assert key == DUMMY_KEY and after == before + 1               # resolved inside the send, not stored earlier
+
+
+def test_missing_key_provider_is_a_seam_error_not_unknown():
+    from newcore.venue.wire import WireSeamError
+    req = HttpRequest('GET', 'https://testnet.binancefuture.com/fapi/v2/account', '', (('X-MBX-APIKEY', '<redacted>'),),
+                      5.0, True)
+    with pytest.raises(WireSeamError):
+        req.wire_headers()
+
+
+def test_credentials_hold_no_raw_secret_anywhere_reachable():
+    import gc
+    creds = StaticCredentials(DUMMY_KEY, DUMMY_SECRET)
+    names = {n for cls in type(creds).__mro__ for n in getattr(cls, '__slots__', ())}
+    mangled = [f'_StaticCredentials{n}' if n.startswith('__') else n for n in names]
+    values = [getattr(creds, n) for n in mangled if hasattr(creds, n)]
+    assert values, 'the probe must actually read the slots'
+    for v in values + list(gc.get_referents(creds)):
+        if isinstance(v, (str, bytes, bytearray)):
+            assert DUMMY_SECRET.encode() not in (v.encode() if isinstance(v, str) else bytes(v))
+        else:
+            assert DUMMY_SECRET not in repr(v)
+            for inner in gc.get_referents(v):
+                if isinstance(inner, (bytes, bytearray, str)):
+                    assert DUMMY_SECRET.encode() not in (inner.encode() if isinstance(inner, str) else bytes(inner))
+    with pytest.raises(TypeError):
+        vars(creds)
+    # Signing still matches the plain HMAC of the secret.
+    from newcore.venue.signing import hmac_sha256_hex
+    assert creds.sign(b'abc') == hmac_sha256_hex(DUMMY_SECRET.encode(), b'abc')
 
 
 def test_exceptions_carry_no_secret():

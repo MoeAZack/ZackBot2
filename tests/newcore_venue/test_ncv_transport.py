@@ -28,7 +28,7 @@ def check_signed(req, expect_pairs, *, recv=5000, now=NOW_MS):
     assert pairs[-1][0] == 'signature'
     unsigned = req.query.rsplit('&signature=', 1)[0]
     assert pairs[-1][1] == hmac_sha256_hex(DUMMY_SECRET.encode(), unsigned.encode())
-    assert req.header('X-MBX-APIKEY') == DUMMY_KEY and req.signed
+    assert req.wire_header('X-MBX-APIKEY') == DUMMY_KEY and req.header('X-MBX-APIKEY') == '<redacted>' and req.signed
 
 
 def check_unsigned(req, expect_pairs):

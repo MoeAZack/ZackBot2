@@ -24,13 +24,12 @@ CredentialStore (Windows DPAPI, CurrentUser scope, via ctypes/crypt32):
 Nothing here needs credentials at import time; ctypes / subprocess are imported only when the store is used.
 """
 import hashlib
+import hmac
 import json
 import os
 import re
 from dataclasses import dataclass
 from typing import Protocol, runtime_checkable
-
-from .signing import hmac_sha256_hex
 
 KEY_DIGEST_PREFIX = 'zbk1:'
 _DIGEST_DOMAIN = b'zackbot/newcore/venue/key-digest/v1\x00'
@@ -86,20 +85,26 @@ def mask_key(api_key):
 
 
 class StaticCredentials:
-    """In-memory key + secret. repr/str are redacted; pickling and copying are refused; equality is identity."""
-    __slots__ = ('__key', '__secret')
+    """In-memory key + signer. repr/str are redacted; pickling and copying are refused; equality is identity.
+    The raw secret is NOT retained (Cowork finding 5): only a pre-keyed HMAC-SHA256 state is kept, and each sign()
+    works on a copy of it, so no attribute (mangled or not) holds the secret string or bytes."""
+    __slots__ = ('__key', '__mac')
 
     def __init__(self, api_key, secret):
         _check_token(api_key, 'api_key')
         _check_token(secret, 'secret')
         self.__key = api_key
-        self.__secret = secret.encode('ascii')
+        self.__mac = hmac.new(secret.encode('ascii'), digestmod=hashlib.sha256)
 
     def api_key(self):
         return self.__key
 
     def sign(self, payload):
-        return hmac_sha256_hex(self.__secret, payload)
+        if not isinstance(payload, (bytes, bytearray)):
+            raise TypeError('payload must be bytes')
+        mac = self.__mac.copy()
+        mac.update(bytes(payload))
+        return mac.hexdigest()
 
     def key_digest(self):
         return key_digest(self.__key)
