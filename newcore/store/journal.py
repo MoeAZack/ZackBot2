@@ -40,11 +40,13 @@ from .evidence import write_evidence
 from .fold import Folder
 from .frame import KIND_SEGMENT, MAX_RECORD, RT_EVENT, RT_HEADER, file_header, frame
 from .fs import RealFs
-from .header import EMPTY_SHA, ID_RE, Seal, SegmentHeader, encode_header
+from .header import EMPTY_SHA, Seal, SegmentHeader, encode_header
 
 JOURNAL_DIR = 'journal'
 SEG_RE = re.compile(r'seg-([0-9]{6})\.seg')
 WRITER_BUILD = 'nc-02a'
+ACCT_RE = re.compile(r'acct_[0-9a-f]{32}')
+PF_RE = re.compile(r'pf_[0-9a-f]{32}')
 
 
 def seg_name(n):
@@ -218,9 +220,9 @@ class FileJournal:
 
 
 def _check_ids(account_id, aggregate_id):
-    if not (type(account_id) is str and ID_RE.fullmatch(account_id) and account_id.startswith('acct_')):
+    if not (type(account_id) is str and ACCT_RE.fullmatch(account_id)):
         raise ValueError('account_id is not an acct_ id')
-    if not (type(aggregate_id) is str and ID_RE.fullmatch(aggregate_id) and aggregate_id.startswith('pf_')):
+    if not (type(aggregate_id) is str and PF_RE.fullmatch(aggregate_id)):
         raise ValueError('aggregate_id is not a pf_ id')
 
 
