@@ -170,6 +170,15 @@ MUTATIONS = {
     'r3 item 4: the venue grid ignores the reduce-only capability': (D + 'instrument.py', [(
         "            req(self.supports(Capability.REDUCE_ONLY), p + '.order_type',",
         "            req(True, p + '.order_type',")]),
+    'r3 item 5: a management tick about no lot': (D + 'decision.py', [(
+        "            req(a is Action.WAIT and self.authority is Authority.STRATEGY and self.subject_id is not None, p + '.reason',",
+        "            req(a is Action.WAIT and self.authority is Authority.STRATEGY, p + '.reason',")]),
+    'r3 item 5: a management tick about an intent': (D + 'decision.py', [(
+        "            check_id(self.subject_id, p + '.subject_id', 'lot')\n        if self.reason is ReasonCode.RECONCILE_LATE_FILL:",
+        "            check_id(self.subject_id, p + '.subject_id', 'lot', 'int')\n        if self.reason is ReasonCode.RECONCILE_LATE_FILL:")]),
+    'r3 item 5: a management tick under any authority': (D + 'decision.py', [(
+        "            req(a is Action.WAIT and self.authority is Authority.STRATEGY and self.subject_id is not None, p + '.reason',",
+        "            req(a is Action.WAIT and self.subject_id is not None, p + '.reason',")]),
     'duplicate JSON keys': (D + 'codec.py', [("            if k in out:\n                problems.append(",
                                               "            if False:\n                problems.append(")]),
     'truncated JSON': (D + 'codec.py', [(

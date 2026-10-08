@@ -146,6 +146,10 @@ class Decision(Record):
             'a post-hoc (exit.manual) booking comes only from a RECONCILE reconcile.manual_close decision')
         req(self.reason is not ReasonCode.RECONCILE_MANUAL_CLOSE or len(post_hoc) == len(self.intents), p + '.intents',
             'a reconcile.manual_close decision books post-hoc intents only')
+        if self.reason is ReasonCode.MANAGE_TICK:          # r3 draft item 5: one lot's durable management step
+            req(a is Action.WAIT and self.authority is Authority.STRATEGY and self.subject_id is not None, p + '.reason',
+                'a management tick is a STRATEGY WAIT about one lot')
+            check_id(self.subject_id, p + '.subject_id', 'lot')
         if self.reason is ReasonCode.RECONCILE_LATE_FILL:   # r3 draft item 3b: names the intent it corrects
             req(a is Action.RECONCILE and self.subject_id is not None, p + '.reason',
                 'a late fill after not-found is a RECONCILE decision about one intent')

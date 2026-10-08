@@ -35,7 +35,8 @@ def test_item2_r3_reason_codes_exist_and_are_usable(value):
 def test_item2_r3_codes_are_appended_after_v1():
     order = [r.value for r in ReasonCode]
     assert order.index('risk_gateway.cost_to_stop') < min(order.index(v) for v in R3_CODES)
-    assert order[-len(R3_CODES):] == ['risk_gateway.drawdown_kill', 'risk_gateway.daily_halt',
+    start = order.index('risk_gateway.cost_to_stop') + 1                  # later r3 items append after these
+    assert order[start:start + len(R3_CODES)] == ['risk_gateway.drawdown_kill', 'risk_gateway.daily_halt',
                                       'reconcile.foreign_quarantine', 'reconcile.manual_close', 'reconcile.manual_add',
                                       'reconcile.stale_read', 'reconcile.late_fill_after_not_found']
 
@@ -385,3 +386,42 @@ def test_item4_resting_target_refusals():
     no_reduce_only = tuple(c for c in F.rules().capabilities if c is not Capability.REDUCE_ONLY)
     with pytest.raises(InvalidRecord, match='resting reduce-only limit is not supported'):
         F.rules(caps=no_reduce_only).check_intent(tgt)
+
+
+# ----------------------------------------------------------------------------------------------------------- item 5
+def _tick(ids, acct, lot_id, **kw):
+    from newcore.domain import Authority
+    base = dict(decision_id=ids.id('dec'), account_id=acct, at_ms=F.T0 + 4 * 3_600_000, action=Action.WAIT,
+                reason=ReasonCode.MANAGE_TICK, authority=Authority.STRATEGY, symbol='SOLUSDT', side=F.Side.LONG,
+                subject_id=lot_id, detail='mg tick 1791414400000 -')
+    return F.build(F.Decision, **{**base, **kw})
+
+
+def test_item5_manage_tick_is_appended_and_names_its_lot():
+    from newcore.domain import MEANING, canonical_bytes, loads
+    from newcore.domain.reasons import GATE_NAMESPACES, NAMESPACES
+    order = [r.value for r in ReasonCode]
+    assert order.index('manage.tick') == order.index('reconcile.late_fill_after_not_found') + 1
+    assert ReasonCode('manage.tick').namespace == 'manage' and 'manage' in NAMESPACES
+    assert 'manage' not in GATE_NAMESPACES and len(MEANING[ReasonCode.MANAGE_TICK]) > 10
+    ids = F.Ids(360)
+    acct = ids.id('acct')
+    d = _tick(ids, acct, ids.id('lot'))
+    assert loads(canonical_bytes(d)) == d
+
+
+def test_item5_manage_tick_refusals():
+    from newcore.domain import Authority, InvalidRecord
+    ids = F.Ids(361)
+    acct, lot_id = ids.id('acct'), ids.id('lot')
+    cases = {
+        'no subject lot': ('a STRATEGY WAIT about one lot', dict(subject_id=None)),
+        'an intent subject': ('subject_id', dict(subject_id=ids.id('int'))),
+        'a SKIP': ('not a reason for', dict(action=Action.SKIP)),       # manage.* is no gate namespace
+        'a RECONCILE': ('not a reason for', dict(action=Action.RECONCILE, authority=Authority.RECONCILIATION)),
+        'another authority': ('a STRATEGY WAIT about one lot', dict(authority=Authority.PROTECTION)),
+    }
+    for name, (message, kw) in cases.items():
+        with pytest.raises(InvalidRecord, match=message):
+            _tick(ids, acct, lot_id, **kw)
+            raise AssertionError(name)

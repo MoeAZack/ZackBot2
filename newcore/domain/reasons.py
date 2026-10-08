@@ -12,6 +12,7 @@ Namespaces (the contract's catalog -> namespace):
   strategy decision .. entry.*, exit.*, filter.*, regime.*, input.*
   recovery ........... recovery.*                   reconciliation ..... reconcile.*
   operator authority . operator.*                   venue / execution .. connectivity.*, execution.*
+  position management  manage.* (r3 draft: the runner's per-lot management tick; a WAIT about one lot)
 The gate namespaces keep the legacy trade_audit.reason_info stage/code values 1:1 (tests check the seed; NEWCORE never
 classifies text). GOLDEN_EXIT / GOLDEN_SIGNAL map the zb-golden/1 vocabulary explicitly; legacy `UNMAPPED:*` values have
 no member and so can never enter a NEWCORE record.
@@ -141,6 +142,8 @@ class ReasonCode(enum.StrEnum):
     RECONCILE_MANUAL_ADD = 'reconcile.manual_add'
     RECONCILE_STALE_READ = 'reconcile.stale_read'
     RECONCILE_LATE_FILL = 'reconcile.late_fill_after_not_found'
+    # ---- r3 DRAFT item 5: the runner's durable per-position management step
+    MANAGE_TICK = 'manage.tick'
 
     @property
     def namespace(self):
@@ -261,12 +264,13 @@ MEANING = {
     R.RECONCILE_MANUAL_ADD: 'the venue holds more than is owned (a manual add); never adopted without the owner',
     R.RECONCILE_STALE_READ: 'a venue read older than the newest recorded result: re-read, never compared',
     R.RECONCILE_LATE_FILL: 'a FINAL record of an owned order supersedes its earlier corroborated not-found',
+    R.MANAGE_TICK: 'a durable management step of one open lot (a closed-candle tick or an intra-candle mark)',
 }
 del R
 
 NAMESPACES = ('connectivity', 'input', 'side_mask', 'filter', 'capacity', 'regime', 'risk_gateway', 'config', 'execution',
               'trailing', 'exit', 'entry', 'ownership', 'binding', 'lifecycle', 'evidence', 'protect', 'recovery', 'reconcile',
-              'operator')
+              'operator', 'manage')
 GATE_NAMESPACES = frozenset({'connectivity', 'input', 'side_mask', 'filter', 'capacity', 'regime', 'risk_gateway', 'config',
                              'execution', 'trailing', 'ownership', 'binding', 'recovery', 'reconcile', 'protect'})
 
