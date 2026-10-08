@@ -331,7 +331,11 @@ class TestnetVenue:
         paging_bound). A page is FULL by the RAW row count Binance sent (a dedupe never makes it look short). A window
         is complete ONLY at a raw-SHORT page (Codex 6069281718): a row past the window end is never taken as proof,
         since nothing makes time monotonic with the trade id - and that order is checked: trade ids ascending, time
-        never going back within a page or from one continuation page to the next (else UNKNOWN time_regression)."""
+        never going back within a page or from one continuation page to the next (else UNKNOWN time_regression).
+        The FIRST page of a window is bounded (startTime / endTime): a row outside them is UNKNOWN window_mismatch,
+        never filtered (Codex 6069415268); fromId pages cannot be bounded, so a row past the end is valid there, kept
+        as seen, and EMITTED when its own window returns it (Cowork 6069451524 - not dropped as an overlap, not a
+        dup). Every row is emitted in exactly the window that contains it."""
         out, seen, pages, dups, w0 = {}, {}, 0, 0, start_ms
         while w0 <= end_ms:
             w1 = min(end_ms, w0 + FILL_WINDOW_MS)
@@ -353,12 +357,18 @@ class TestnetVenue:
                 chain = ([prev] if prev is not None else []) + rows   # this page, joined to the previous one
                 if any(b.time_ms < a.time_ms for a, b in zip(chain, chain[1:])):
                     return P.ReadOutcome(kind=P.ReadKind.UNKNOWN, observed_at_ms=self._now(), detail='time_regression')
-                for r in rows:
+                if from_id is None and any(not w0 <= r.time_ms <= w1 for r in rows):
+                    return P.ReadOutcome(kind=P.ReadKind.UNKNOWN, observed_at_ms=self._now(),   # Codex 6069415268:
+                                         detail='window_mismatch')     # a BOUNDED page answered outside its bounds
+                for r in rows:                                   # (fromId pages cannot be bounded: past-end is valid)
                     if r.trade_id in seen:                       # an overlap with an earlier page
                         if seen[r.trade_id] != r:
                             return P.ReadOutcome(kind=P.ReadKind.UNKNOWN, observed_at_ms=self._now(),
                                                  detail='conflicting_trade')
-                        dups += 1
+                        if w0 <= r.time_ms <= w1 and r.trade_id not in out:
+                            out[r.trade_id] = r                  # Cowork 6069451524: first SEEN past an earlier
+                            continue                             # window's end (fromId), emitted in its own window
+                        dups += 1                                # a true repeat of an emitted / out-of-window row
                         continue
                     if from_id is not None and r.trade_id < from_id:   # older than asked and never seen
                         return P.ReadOutcome(kind=P.ReadKind.UNKNOWN, observed_at_ms=self._now(),

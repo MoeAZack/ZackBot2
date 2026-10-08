@@ -167,12 +167,12 @@ def test_an_identical_duplicate_trade_in_a_page_is_deduped_and_counted():       
     assert out.detail == 'complete pages=1 dups=1'
 
 
-def test_a_trade_seen_again_outside_its_window_is_not_counted_twice(monkeypatch):
+def test_a_bounded_window_page_answering_outside_its_window_is_unknown(monkeypatch):     # Codex 6069415268
     monkeypatch.setattr(TV, 'FILL_WINDOW_MS', 50)
     v, http = venue(ok([trade(1, t=T0 + 10), trade(2, t=T0 + 50)]), ok([trade(2, t=T0 + 50), trade(3, t=T0 + 60)]))
     out = v.fills('SOLUSDT', start_ms=T0, end_ms=T0 + 100)
-    assert out.kind is P.ReadKind.OK and [f.trade_id for f in out.value] == ['1', '2', '3'] and len(http.requests) == 2
-    assert out.detail == 'complete pages=2 dups=1'                       # trade 2 came back in the next window
+    assert out.kind is P.ReadKind.UNKNOWN and out.detail == 'window_mismatch' and len(http.requests) == 2
+    # trade 2 (t = T0 + 50) came back on the window [T0 + 51, ...]: a bounded answer outside its bounds
 
 
 def test_long_ranges_walk_seven_day_windows(monkeypatch):

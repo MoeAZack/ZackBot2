@@ -111,12 +111,21 @@ def _codex_pages(window_end):
     return ok([trade(1, t=T0 + 1), trade(2, t=window_end + 1)]), ok([trade(3, t=T0 + 2)])
 
 
-def test_codex_repro_a_row_past_the_end_is_no_proof_and_the_time_regression_is_unknown(monkeypatch):
+def test_codex_repro_a_row_past_the_end_is_no_proof(monkeypatch):
     monkeypatch.setattr(TV, 'USER_TRADES_LIMIT', 2)
     v, http = venue(*_codex_pages(NOW_MS))
+    out = READ(v)                                     # (6069415268: the past-end row on the BOUNDED page
+    assert out.kind is P.ReadKind.UNKNOWN and out.value is None   # already stops it, never a false complete)
+    assert out.detail == 'window_mismatch' and len(http.requests) == 1
+
+
+def test_past_end_rows_on_continuation_pages_then_a_time_regression_is_unknown(monkeypatch):
+    monkeypatch.setattr(TV, 'USER_TRADES_LIMIT', 2)                  # 6069281718 on fromId pages
+    v, http = venue(ok([trade(1, t=T0 + 1), trade(2, t=T0 + 2)]), ok([trade(3, t=NOW_MS + 1), trade(4, t=NOW_MS + 2)]),
+                    ok([trade(5, t=T0 + 3)]))
     out = READ(v)
-    assert len(http.requests) == 2                                   # it did NOT stop after the first page
-    assert out.kind is P.ReadKind.UNKNOWN and out.detail == 'time_regression' and out.value is None
+    assert len(http.requests) == 3                                   # a past-end row did not stop the walk
+    assert out.kind is P.ReadKind.UNKNOWN and out.detail == 'time_regression'
 
 
 def test_a_time_regression_across_continuation_pages_is_unknown(monkeypatch):
@@ -138,3 +147,22 @@ def test_equal_times_and_rows_past_the_end_are_fine_when_paged_to_a_short_page(m
                     ok([]))
     out = READ(v)
     assert out.kind is P.ReadKind.OK and [int(f.trade_id) for f in out.value] == [1, 2] and len(http.requests) == 3
+
+
+# ---------------------------------------------------------------------------------------------- Codex 6069415268
+# The first page of each window is BOUNDED (startTime / endTime): a row outside those bounds is a malformed answer,
+# never filtered away - else non-empty evidence became a trusted EMPTY history. fromId pages cannot be bounded, so a
+# past-end row there stays valid (the continuation tests above).
+@pytest.mark.parametrize('when', ['before_start', 'after_end'])
+def test_a_bounded_short_page_with_a_row_outside_its_window_is_unknown_never_empty(when):
+    t = T0 - 1 if when == 'before_start' else NOW_MS + 1
+    v, http = venue(ok([trade(1, t=t)]))
+    out = READ(v)
+    assert out.kind is P.ReadKind.UNKNOWN and out.detail == 'window_mismatch' and out.value is None
+    assert len(http.requests) == 1
+
+
+def test_a_bounded_page_mixing_in_window_and_outside_rows_is_unknown():
+    v, _ = venue(ok([trade(1, t=T0 + 1), trade(2, t=NOW_MS + 1)]))
+    out = READ(v)
+    assert out.kind is P.ReadKind.UNKNOWN and out.detail == 'window_mismatch'
