@@ -218,7 +218,7 @@ def run_candles(p, cs):
 
 
 BARS = [('100', '101', '99.5', '100.5', '1'), ('100.5', '103', '100', '102', '1'), ('102', '102.5', '101.6', '102.2', '2'),
-        ('102.2', '105', '102.1', '104.4', None), ('104.4', '104.5', '103.8', '104', '1')]
+        ('102.2', '105', '102.1', '104.4', None), ('104.4', '104.6', '104.3', '104.5', '0.5')]
 
 
 @pytest.mark.parametrize('side', SIDES)
@@ -228,9 +228,9 @@ def test_highest_high_atr_chandelier(side):
     cs = [atr_candle(i, o, h, lo, c, side, a) if a else candle(i, o, h, lo, c, side)
           for i, (o, h, lo, c, a) in enumerate(BARS)]
     st, stops = run_candles(p, cs)
-    want = ['98.02', '99.5', '101.5', '101.5', '101.5', '103.5']
+    want = ['98.02', '99.5', '101.5', '101.5', '101.5', '104.25']
     # c0: HH 101 - 1.5 x 1; c1: HH 103 - 1.5; c2: HH 103 - 1.5 x 2 = 100 < 101.5 (ATR expanded: never loosens);
-    # c3: no ATR at this close - the trail holds (HH 105 still recorded); c4: HH 105 - 1.5 x 1 = 103.5
+    # c3: no ATR at this close - the trail holds (HH 105 still recorded); c4: HH 105 - 1.5 x 0.5 = 104.25
     assert stops == [px(side, x) for x in want]
     assert st.trail_extreme == px(side, '105')
 
@@ -241,7 +241,7 @@ def test_close_offset_stays_the_default_and_ignores_atr(side):
     assert p.trail_mode is TrailMode.CLOSE_OFFSET
     cs = [atr_candle(i, o, h, lo, c, side, a or '7') for i, (o, h, lo, c, a) in enumerate(BARS)]
     st, stops = run_candles(p, cs)
-    assert stops == [px(side, x) for x in ('98.02', '99', '100.5', '100.7', '102.9', '102.9')]
+    assert stops == [px(side, x) for x in ('98.02', '99', '100.5', '100.7', '102.9', '103')]
     assert st.trail_extreme is None
 
 
