@@ -105,8 +105,9 @@ MUTATIONS = {
         "                _set_racing(w, leg, CTX.add(_racing(w, leg), CTX.subtract(cur.qty, des.qty)))",
         "                pass")],
     'no racing allowance for a replaced stop': [(M + 'core.py',
+        "            # Cancelled(STOP) (bounded by the position, see _consume)\n"
         "            _set_racing(w, Leg.STOP, CTX.add(_racing(w, Leg.STOP), cur.qty))",
-        "            pass")],
+        "            # Cancelled(STOP) (bounded by the position, see _consume)\n            pass")],
     'deferred reductions booked out of venue order': [(M + 'driver.py',
         "            blocked = blocked or not opening",
         "            blocked = False")],
