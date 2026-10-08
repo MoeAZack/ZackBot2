@@ -83,16 +83,15 @@ def test_preflight_refuses_a_foreign_order_and_runs_nothing():
     assert not [q for q in w.fb.requests if q.method in ('POST', 'DELETE')]
 
 
-def test_an_adopted_foreign_order_passes_preflight_but_the_runner_holds_and_never_touches_it():
-    """Preflight may adopt a foreign order (venue harness), but the RUNNER has no adoption yet (REC-02): it sees a
-    foreign order, holds entries (SKIP, nothing sent) and the scenario FAILs closed. The order is left alone."""
+def test_an_adopted_foreign_order_is_scoped_out_of_the_runner_and_never_touched():
+    """Cowork #37 N4: adopted foreign exposure is the baseline the Runner is shown (AdoptedView) until REC-02
+    adoption is wired: the scenario runs normally, the adopted order is never touched."""
     w = World(foreign_orders=('web_manual1',))
     res = run_suite([spec('T01-long')], w.target(), run_nonce='pf2', monotonic=w.monotonic,
                     adopt_foreign=('web_manual1',))
     r, = res.scenarios
-    assert res.exit_code == DR.EXIT_FAIL and r.counters['holds'] == 1 and r.counters['entries'] == 0
-    assert r.ledger == [] and r.final_truth['outcome'] == 'unreconciled'
-    assert ['foreign_order', 'web_manual1'] in r.final_truth['items']
+    assert res.exit_code == DR.EXIT_PASS and r.verdict == 'PASS' and r.counters['holds'] == 0
+    assert r.final_truth['outcome'] == 'flat'
     assert r.cleanup['clean'] and w.fb.orders['web_manual1']['status'] == 'NEW'
 
 

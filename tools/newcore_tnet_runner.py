@@ -32,7 +32,9 @@ from newcore.tnet.driver import EXIT_FAIL, EXIT_PASS, EXIT_PREFLIGHT, EXIT_RESID
 from newcore.tnet.rspec import (MAX_SETTLE_MS, SpecError, bundled, load_rspec, rspec_digest,  # noqa: E402
                                 validate_rspec)
 from newcore.venue.cli_args import ACCOUNT_REFUSAL, argv_refusal  # noqa: E402
-from newcore.venue.tnet import CleanupResult, ScenarioOutcome, _audit, git_build, tnet_report  # noqa: E402
+from newcore.venue.redact import scrub_tokens  # noqa: E402
+from newcore.venue.tnet import (CleanupResult, ScenarioOutcome, _audit, adopt_refusal, git_build,  # noqa: E402
+                                tnet_report)
 
 EXIT_USAGE, EXIT_CREDS, EXIT_REPORT = 2, 3, 5
 DIGEST_RE = re.compile(r'[0-9a-f]{16}')
@@ -90,20 +92,22 @@ def _apply_config(args, out):
     from newcore.runner.config import ConfigError, load
     try:
         cfg = load(args.config)
-    except (ConfigError, OSError, ValueError) as ex:
-        out.write(f'REFUSED: config {args.config}: {type(ex).__name__}: {ex}\n')
+    except ConfigError as ex:                        # messages may quote values: key-like runs are redacted
+        out.write(f'REFUSED: --config: {scrub_tokens(str(ex))[:200]}\n')
+        return EXIT_USAGE
+    except Exception as ex:                                          # noqa: BLE001 - OSError / nesting / types
+        out.write(f'REFUSED: --config: not a usable config ({type(ex).__name__})\n')
         return EXIT_USAGE
     if cfg.mode != 'TESTNET' or cfg.venue_kind != 'testnet' or cfg.factory != FACTORY:
-        out.write(f'REFUSED: config {args.config} is not a TESTNET config with venue.factory {FACTORY} '
-                  f'(mode {cfg.mode}, kind {cfg.venue_kind}, factory {cfg.factory}).\n')
+        out.write(f'REFUSED: --config is not a TESTNET config with venue.factory {FACTORY}.\n')
         return EXIT_USAGE
     for flag, mine in (('account_id', cfg.account_id), ('key_digest', cfg.key_digest)):
         given = getattr(args, flag)
         if given is not None and given != mine:
-            out.write(f'REFUSED: --{flag.replace("_", "-")} {given} disagrees with the config ({mine}).\n')
+            out.write(f'REFUSED: --{flag.replace("_", "-")} disagrees with the config ({mine}).\n')
             return EXIT_USAGE
     args.account_id, args.key_digest, args.config_symbols = cfg.account_id, cfg.key_digest, tuple(cfg.symbols)
-    out.write(f'config {args.config}: account {cfg.account_id}, binding {cfg.key_digest}, symbols '
+    out.write(f'config {scrub_tokens(args.config)}: account {cfg.account_id}, binding {cfg.key_digest}, symbols '
               f'{", ".join(cfg.symbols)}\n')
     return None
 
@@ -179,10 +183,21 @@ def _report(args, res, run_id, build, values, out, cassettes=None):
     return EXIT_PASS
 
 
-def main(argv=None, *, http=None, local_clock=None, sleep=None, store=None, out=None, git_run=None,
-         monotonic=None):
-    argv = list(sys.argv[1:] if argv is None else argv)
+def main(argv=None, *, out=None, **kw):
+    """Typed exit codes only: an unexpected exception is exit 7 with its type (never exit 1 = INCONCLUSIVE, never
+    its message: it may echo input). Ctrl+C inside a scenario is handled there (teardown, report, exit 6)."""
     out = out or sys.stdout
+    try:
+        return _main(argv, out=out, **kw)
+    except Exception as ex:                                          # noqa: BLE001
+        out.write(f'ERROR: unexpected {type(ex).__name__} (details withheld). Any scenario that sent orders ran '
+                  f'its teardown.\n')
+        return 7
+
+
+def _main(argv=None, *, http=None, local_clock=None, sleep=None, store=None, out=None, git_run=None,
+          monotonic=None):
+    argv = list(sys.argv[1:] if argv is None else argv)
     refusal = argv_refusal(argv)
     if refusal is not None:
         why = ACCOUNT_REFUSAL if refusal == ACCOUNT_REFUSAL else 'keys are never passed on the command line'
@@ -193,18 +208,43 @@ def main(argv=None, *, http=None, local_clock=None, sleep=None, store=None, out=
     except SystemExit as ex:
         return EXIT_USAGE if ex.code else EXIT_PASS
     if args.replay:                                  # offline: no key, no network, the recorded answers only
+        others = [f for f in ('spec', 'only', 'config', 'account_id', 'key_digest', 'symbol', 'adopt_foreign')
+                  if getattr(args, f)]
+        if others or args.target != 'fake' or args.dry_run:
+            out.write('REFUSED: --replay runs alone (no target / spec / account options).\n')
+            return EXIT_USAGE
         return _replay(args.replay, out, args.verbose)
-    try:
-        specs = [load_rspec(p) for p in args.spec] if args.spec else bundled()
-    except (SpecError, OSError) as ex:
-        out.write(f'REFUSED: {type(ex).__name__}: {ex}\n')
-        return EXIT_USAGE
+    specs = []
+    for i, p in enumerate(args.spec):
+        try:
+            specs.append(load_rspec(p))
+        except SpecError as ex:
+            out.write(f'REFUSED: --spec #{i + 1}: {scrub_tokens(str(ex))[:200]}\n')
+            return EXIT_USAGE
+        except Exception as ex:                                      # noqa: BLE001 - bad UTF-8 / nesting / types
+            out.write(f'REFUSED: --spec #{i + 1}: not a usable spec ({type(ex).__name__})\n')
+            return EXIT_USAGE
+    if not args.spec:
+        specs = bundled()
+    for a in args.adopt_foreign:
+        why = adopt_refusal(a)
+        if why is not None:
+            out.write(f'REFUSED: --adopt-foreign item: {why}.\n')
+            return EXIT_USAGE
+    for d, flag in ((args.report_dir, '--report-dir'), (args.cassette_dir, '--cassette-dir')):
+        if d is not None and (not d.strip() or (os.path.exists(d) and not os.path.isdir(d))):
+            out.write(f'REFUSED: {flag} must be a directory.\n')
+            return EXIT_USAGE
     if args.only:
         unknown = set(args.only) - {s['id'] for s in specs}
         if unknown:
             out.write(f'REFUSED: unknown scenario id(s) {sorted(unknown)}\n')
             return EXIT_USAGE
         specs = [s for s in specs if s['id'] in args.only]
+        skipped = [s['id'] for s in specs if args.target not in s['targets']]
+        if skipped:
+            out.write(f'REFUSED: not {args.target} scenario(s): {skipped} (SKIPPED is never a pass)\n')
+            return EXIT_USAGE
     if not 0 <= args.settle_ms <= MAX_SETTLE_MS:
         out.write(f'REFUSED: --settle-ms must be in 0..{MAX_SETTLE_MS}.\n')
         return EXIT_USAGE
@@ -244,8 +284,10 @@ def main(argv=None, *, http=None, local_clock=None, sleep=None, store=None, out=
     if args.min_balance is not None:
         try:
             min_balance = Decimal(args.min_balance)
+            if not min_balance.is_finite() or min_balance < 0:
+                raise InvalidOperation
         except InvalidOperation:
-            out.write('REFUSED: --min-balance must be a decimal\n')
+            out.write('REFUSED: --min-balance must be a finite decimal >= 0\n')
             return EXIT_USAGE
 
     values = []
@@ -260,7 +302,11 @@ def main(argv=None, *, http=None, local_clock=None, sleep=None, store=None, out=
             cassette_dir = check_root(args.cassette_dir or default_cassette_dir())
             os.makedirs(cassette_dir, exist_ok=True)
         except (CredentialStoreError, OSError) as ex:
-            out.write(f'REFUSED: cassette dir: {ex}\n')
+            out.write(f'REFUSED: cassette dir ({type(ex).__name__})\n')
+            return EXIT_USAGE
+        clash = [n for n in os.listdir(cassette_dir) if n.startswith(f'tnet-{nonce}-')]
+        if clash:                                    # a rerun with the same nonce would overwrite evidence
+            out.write(f'REFUSED: cassettes of run {nonce} already exist; use another --run-nonce\n')
             return EXIT_USAGE
         rc, make_target, scrubber = _testnet_target(args, specs, http, local_clock, sleep, store, out)
         if make_target is None:
@@ -285,6 +331,10 @@ def main(argv=None, *, http=None, local_clock=None, sleep=None, store=None, out=
             cassettes = {'preflight': pre_path, **{r.id: r.cassette for r in res.scenarios if r.cassette}}
             for sid, why in cassette_errors:
                 out.write(f'ERROR: cassette of {sid} not written ({why}).\n')
+        if res.exit_code == 2 and res.scenarios is not None and not any(r.verdict != 'SKIPPED'
+                                                                         for r in res.scenarios):
+            out.write('NOTHING RAN: every selected scenario was SKIPPED on this target (not a pass).\n')
+            return EXIT_USAGE
         if res.exit_code == EXIT_PREFLIGHT:
             out.write('PREFLIGHT REFUSED:\n' + ''.join(f'  - {x}\n' for x in res.preflight.refusals))
             return EXIT_PREFLIGHT
@@ -349,16 +399,34 @@ def _testnet_target(args, specs, http, local_clock, sleep, store, out):
                 raise _BootRefused(EXIT_CREDS, f'BINDING MISMATCH: {ex}\n') from None
             if isinstance(ex, CredentialsUnavailable):
                 raise _BootRefused(EXIT_CREDS, f'NO USABLE TESTNET KEY ({ex.reason}).\n') from None
-            raise _BootRefused(EXIT_PREFLIGHT, f'FACTORY REFUSED: {type(ex).__name__}: {ex}\n') from None
+            if isinstance(ex, BOOT_REFUSALS):
+                raise _BootRefused(EXIT_PREFLIGHT, f'FACTORY REFUSED: {type(ex).__name__}\n') from None
+            raise                                                    # a bug: the typed top level (exit 7)
         booted.append(1)
         return t
     return EXIT_PASS, make_target, scrubber
+
+
+def _boot_refusals():
+    from newcore.venue.factory import FactoryRefused
+    from newcore.venue.guard import VenueGuardError
+    from newcore.venue.rules_fetch import RulesUnavailable, SymbolRefused
+    from newcore.venue.testnet_venue import HedgeModeRequired, VenueBootUnknown
+    return (FactoryRefused, VenueGuardError, RulesUnavailable, SymbolRefused, HedgeModeRequired, VenueBootUnknown)
+
+
+BOOT_REFUSALS = _boot_refusals()
 
 
 class _BootRefused(Exception):
     def __init__(self, code, text):
         super().__init__(text)
         self.code, self.text = code, text
+
+
+def _clean(text, limit=200):
+    """One printable line (ESC / CR / LF -> '?'), key-like runs redacted: no forged SAME / PASS lines."""
+    return scrub_tokens(''.join(ch if ch.isprintable() else '?' for ch in str(text)))[:limit]
 
 
 def default_cassette_dir():
@@ -368,16 +436,19 @@ def default_cassette_dir():
 def _replay(paths, out, verbose):
     from newcore.tnet.replay import ReplayError, describe, replay
     rc = EXIT_PASS
-    for p in paths:
+    for i, p in enumerate(paths):
         try:
             rr = replay(p)
         except (ReplayError, SpecError) as ex:
-            out.write(f'REFUSED: {p}: {ex}\n')
+            out.write(f'REFUSED: --replay #{i + 1}: {_clean(ex)}\n')
             return EXIT_USAGE
-        out.write(describe(rr, p) + '\n')
+        except Exception as ex:                                      # noqa: BLE001 - a malformed file
+            out.write(f'REFUSED: --replay #{i + 1}: not a usable recording ({type(ex).__name__})\n')
+            return EXIT_USAGE
+        out.write(_clean(describe(rr, p), 400) + '\n')
         if verbose:
             for name, ok, detail in rr.replayed.assertions:
-                out.write(f'    [{"x" if ok else " "}] {name}: {detail}\n')
+                out.write(f'    [{"x" if ok else " "}] {_clean(name, 80)}: {_clean(detail)}\n')
         if not rr.same:
             rc = EXIT_FAIL
     return rc

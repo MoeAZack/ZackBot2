@@ -18,7 +18,8 @@ import os
 from newcore.venue.cassette import CassetteLeak, CassetteRecorder
 from newcore.venue.tnet import _audit
 
-from .driver import EXIT_PREFLIGHT, FAIL, ScenarioResult, SuiteResult, run_scenario, suite_exit_code
+from .driver import (EXIT_PREFLIGHT, FAIL, ScenarioResult, SuiteResult, adopted_orders, run_scenario,
+                     suite_exit_code)
 
 REPLAY_FORMAT = 'zb-newcore-tnet-replay/1'
 
@@ -88,7 +89,8 @@ def run_recorded_suite(specs, make_target, *, run_nonce, cassette_dir, redact, m
                 r.assertions.append(('target boot', False, r.error))
                 results.append(r)
                 break
-            r = run_scenario(spec, t, run_nonce=run_nonce, monotonic=monotonic, baseline=pre.baseline)
+            r = run_scenario(spec, t, run_nonce=run_nonce, monotonic=monotonic, baseline=pre.baseline,
+                             adopted=adopted_orders(pre))
             meta = replay_meta(spec, r, run_nonce=run_nonce, account_id=t.config.account_id,
                                symbols=t.config.symbols, settle_ms=t.settle_ms, baseline=pre.baseline)
             try:
@@ -98,6 +100,6 @@ def run_recorded_suite(specs, make_target, *, run_nonce, cassette_dir, redact, m
         results.append(r)
         if on_result is not None:
             on_result(r)
-        if r.residue:
+        if r.residue or r.interrupted:
             break
     return SuiteResult(pre, results, suite_exit_code(results)), pre_path, errors

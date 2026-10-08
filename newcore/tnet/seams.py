@@ -181,3 +181,34 @@ class NoFaults:
 
     def __call__(self, request):
         return self._inner(request)
+
+
+class AdoptedView:
+    """N4: what the Runner and the final truth see of an account that holds ADOPTED foreign exposure (the preflight's
+    --adopt-foreign): positions minus their adopted baseline, open orders without the adopted foreign client ids.
+    Sends pass through unchanged (the Runner only ever sends for its own lots). Until REC-02 adoption is wired, this
+    scopes the Runner's reconciliation to the exposure the scenario owns."""
+
+    def __init__(self, inner, *, baseline=None, adopted_orders=()):
+        self.inner = inner
+        self.baseline = dict(baseline or {})
+        self.adopted_orders = frozenset(adopted_orders)
+
+    def __getattr__(self, name):
+        return getattr(self.inner, name)
+
+    def positions(self, symbol=None):
+        import dataclasses
+        r = self.inner.positions(symbol)
+        if r.kind is not P.ReadKind.OK or not self.baseline:
+            return r
+        rows = tuple(dataclasses.replace(p, qty=max(p.qty - self.baseline.get((p.symbol, p.side), Decimal(0)),
+                                                    Decimal(0))) for p in r.value)
+        return dataclasses.replace(r, value=rows)
+
+    def open_orders(self, symbol=None):
+        import dataclasses
+        r = self.inner.open_orders(symbol)
+        if r.kind is not P.ReadKind.OK or not self.adopted_orders:
+            return r
+        return dataclasses.replace(r, value=tuple(o for o in r.value if o.ref.client_id not in self.adopted_orders))

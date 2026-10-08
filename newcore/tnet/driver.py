@@ -42,12 +42,13 @@ from newcore.runner.runner import InvariantBreach
 from newcore.venue.tnet import guarded, is_newcore_cid
 
 from .rspec import expectations, validate_rspec
-from .seams import BoundedPort, BoundExceeded, DeadlineExceeded  # noqa: F401  (DeadlineExceeded re-exported)
+from .seams import AdoptedView, BoundedPort, BoundExceeded, DeadlineExceeded  # noqa: F401  (re-exported)
 from .signals import ScriptedSignals
 from .targets import TF_MS
 
 PASS, FAIL, INCONCLUSIVE, SKIPPED = 'PASS', 'FAIL', 'INCONCLUSIVE', 'SKIPPED'
 EXIT_PASS, EXIT_INCONCLUSIVE, EXIT_PREFLIGHT, EXIT_DEADLINE, EXIT_FAIL, EXIT_RESIDUE = 0, 1, 4, 6, 7, 8
+EXIT_NOTHING_RAN = 2                                                 # every selected scenario was SKIPPED
 SIM_KEY_DIGEST = '0123456789abcdef'
 
 
@@ -88,6 +89,7 @@ class ScenarioResult:
     trades: list = field(default_factory=list)
     error: str | None = None
     wall_s: float = 0.0
+    interrupted: bool = False                              # Ctrl+C / SystemExit (N2)
     cycle_times: list = field(default_factory=list)        # the candle closes the Runner cycled at (replay tape)
     cassette: str | None = None                            # testnet: the sanitized cassette of this scenario
 
@@ -106,7 +108,8 @@ class ScenarioResult:
 class _Run:
     """The state of one scenario run (one Runner at a time; a restart swaps it)."""
 
-    def __init__(self, spec, target, nonce, monotonic):
+    def __init__(self, spec, target, nonce, monotonic, baseline=None, adopted=()):
+        self.baseline, self.adopted = dict(baseline or {}), tuple(adopted)
         self.spec, self.target, self.nonce = spec, target, nonce
         self.sym, self.side = spec['symbol'], spec['side']
         self.bound = spec['bound']
@@ -131,7 +134,11 @@ class _Run:
         self.portfolio_id = 'pf_' + _h('tnet.portfolio', self.nonce, self.spec['id'])
         t.prepare(self.spec, self.account, self.portfolio_id)
         self.injected0 = len(t.injected)
-        self.port = BoundedPort(t.port, max_orders=self.bound['max_orders'],
+        t_port = AdoptedView(t.port, baseline=self.baseline, adopted_orders=self.adopted) \
+            if (self.baseline or self.adopted) else t.port
+        self.truth_venue = AdoptedView(t.raw, baseline=self.baseline, adopted_orders=self.adopted) \
+            if (self.baseline or self.adopted) else t.raw
+        self.port = BoundedPort(t_port, max_orders=self.bound['max_orders'],
                                 max_notional=Decimal(self.bound['max_notional_usdt']),
                                 price_of=self.signals.last_close.get, ledger=self.ledger, expired=self.expired)
         sz = self.spec['sizing']
@@ -193,7 +200,7 @@ class _Run:
             self.inconclusive.append(f'no exit within {st["max_ticks"]} cycles')
             return False
         elif op == 'check':
-            truth = final_truth(self.runner, self.target.raw, self.sym)
+            truth = final_truth(self.runner, self.truth_venue, self.sym)
             self.checks.append((f'check_{st["what"]}@cycle{self.ticks}', truth['outcome'] == st['what'],
                                 f'observed {truth["outcome"]}'))
         return True
@@ -306,14 +313,14 @@ def _evaluate(run, exp, truth):
     return out
 
 
-def run_scenario(spec, target, *, run_nonce, monotonic=time.monotonic, baseline=None):
+def run_scenario(spec, target, *, run_nonce, monotonic=time.monotonic, baseline=None, adopted=()):
     spec = validate_rspec(spec)
     res = ScenarioResult(spec['id'], spec['name'], target.kind, SKIPPED)
     if target.kind not in spec['targets']:
         res.error = f'not a {target.kind} scenario'
         return res
     nonce = scenario_nonce(run_nonce, spec['id'])
-    run = _Run(spec, target, nonce, monotonic)
+    run = _Run(spec, target, nonce, monotonic, baseline, adopted)
     state = {}
 
     def body():
@@ -322,11 +329,14 @@ def run_scenario(spec, target, *, run_nonce, monotonic=time.monotonic, baseline=
             for st in spec['steps']:
                 if not run.step(st):
                     break
-            state['truth'] = final_truth(run.runner, target.raw, run.sym)
+            state['truth'] = final_truth(run.runner, run.truth_venue, run.sym)
         except (BoundExceeded, DeadlineExceeded, InvariantBreach) as ex:
             state['error'] = f'{type(ex).__name__}: {ex}'
         except Exception as ex:                                       # noqa: BLE001 - a FAIL, never a crash
             state['error'] = f'{type(ex).__name__}: {ex}'
+        except (KeyboardInterrupt, SystemExit) as ex:                 # N2: stop here; the teardown still runs
+            state['error'] = f'Interrupted ({type(ex).__name__})'
+            state['interrupted'] = True
 
     def clean():
         if run.port is None:                                          # build failed: nothing was sent
@@ -352,6 +362,7 @@ def run_scenario(spec, target, *, run_nonce, monotonic=time.monotonic, baseline=
                        'qty': str(t.qty), 'fees': str(t.fees), 'pnl': str(t.pnl), 'r': str(t.r)}
                       for t in _safe_trades(run.runner)]
     res.final_truth = state.get('truth', {})
+    res.interrupted = bool(state.get('interrupted'))
     res.assertions = list(run.checks)
     if 'error' in state:
         res.error = state['error']
@@ -383,6 +394,11 @@ def _safe_trades(runner):
         return []
 
 
+def adopted_orders(pre):
+    """The foreign open orders the preflight accepted (--adopt-foreign client ids)."""
+    return tuple(o.ref.client_id for o in getattr(pre, 'orders', ()) if not is_newcore_cid(o.ref.client_id))
+
+
 @dataclass
 class SuiteResult:
     preflight: object
@@ -395,6 +411,10 @@ def suite_exit_code(results, preflight_ok=True):
         return EXIT_PREFLIGHT
     if any(r.residue for r in results):
         return EXIT_RESIDUE
+    if any(r.interrupted for r in results):
+        return EXIT_DEADLINE                                         # as the venue CLI's Ctrl+C
+    if not results or all(r.verdict == SKIPPED for r in results):
+        return EXIT_NOTHING_RAN                                      # N5: SKIPPED is never a pass
     if any(r.error and r.error.startswith('DeadlineExceeded') for r in results):
         return EXIT_DEADLINE
     if any(r.verdict == FAIL for r in results):
@@ -415,10 +435,11 @@ def run_suite(specs, target, *, run_nonce, monotonic=time.monotonic, min_balance
         return SuiteResult(pre, [], EXIT_PREFLIGHT)
     results = []
     for spec in specs:
-        r = run_scenario(spec, target, run_nonce=run_nonce, monotonic=monotonic, baseline=pre.baseline)
+        r = run_scenario(spec, target, run_nonce=run_nonce, monotonic=monotonic, baseline=pre.baseline,
+                         adopted=adopted_orders(pre))
         results.append(r)
         if on_result is not None:
             on_result(r)
-        if r.residue:
+        if r.residue or r.interrupted:
             break
     return SuiteResult(pre, results, suite_exit_code(results))

@@ -65,7 +65,7 @@ def test_bad_spec_file_is_usage(tmp_path):
     p = tmp_path / 's.json'
     p.write_text('{"format": 1}')
     rc, text = main(['--spec', str(p)])
-    assert rc == 2 and 'SpecError' in text
+    assert rc == 2 and 'REFUSED: --spec #1' in text
 
 
 def test_a_failing_spec_exits_7(tmp_path):
@@ -109,9 +109,14 @@ def test_keys_on_the_command_line_are_refused():
     assert rc == 2 and 'REFUSED' in text
 
 
+def nonce_for(tmp_path, tag):
+    import hashlib
+    return tag + hashlib.sha256(str(tmp_path).encode()).hexdigest()[:8]      # cassettes of a nonce are never reused
+
+
 def _testnet(argv, w, tmp_path, **kw):
     return main(['--target', 'testnet', '--account-id', ACCOUNT, '--key-digest', DIGEST, '--report-dir',
-                 str(tmp_path), '--run-nonce', 'tcli', *argv], http=w.fb, sleep=w.sleep, local_clock=w.clock,
+                 str(tmp_path), '--run-nonce', nonce_for(tmp_path, 'tcli'), *argv], http=w.fb, sleep=w.sleep, local_clock=w.clock,
                 store=kw.pop('store', Store()), **kw)
 
 
@@ -158,7 +163,7 @@ def test_testnet_one_way_mode_is_a_factory_refusal_exit_4(tmp_path):
 
 def test_testnet_only_fake_specs_is_usage(tmp_path):
     rc, text = _testnet(['--only', 'T04-classic'], World(), tmp_path)
-    assert rc == 2 and 'none of the selected specs targets testnet' in text
+    assert rc == 2 and 'not testnet scenario(s)' in text and 'SKIPPED is never a pass' in text
 
 
 def test_a_report_leak_exits_5(tmp_path, monkeypatch):
@@ -199,7 +204,7 @@ def write_config(tmp_path, symbols=('BTCUSDT', 'SOLUSDT'), mode='TESTNET', facto
 
 def _with_config(argv, w, cfg, tmp_path, **kw):
     return main(['--target', 'testnet', '--config', str(cfg), '--report-dir', str(tmp_path / 'r'), '--run-nonce',
-                 'ccli', *argv], http=w.fb, sleep=w.sleep, local_clock=w.clock, store=Store(), **kw)
+                 nonce_for(tmp_path, 'ccli'), *argv], http=w.fb, sleep=w.sleep, local_clock=w.clock, store=Store(), **kw)
 
 
 def test_config_supplies_account_digest_and_symbols_and_is_never_written(tmp_path):
