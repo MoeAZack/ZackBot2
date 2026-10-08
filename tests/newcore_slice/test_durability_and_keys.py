@@ -120,3 +120,6 @@ def test_duplicate_candle_and_redelivered_entry_signal_create_one_entry():
     assert len(entries(w)) == 1
     assert sum(1 for d in w.runner.fold.decisions.values() if d.action is Action.ENTER) == 1
     assert w.runner.counters.redelivered >= 1
+
+
+pytestmark = pytest.mark.usefixtures('journal_kind')            # every test: MemoryJournal and FileJournal

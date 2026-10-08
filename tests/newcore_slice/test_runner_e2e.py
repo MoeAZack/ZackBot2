@@ -269,3 +269,6 @@ def test_replay_is_deterministic():
     a.run(15)
     b.run(15)
     assert [header_of(e).digest for e in a.journal.read()] == [header_of(e).digest for e in b.journal.read()]
+
+
+pytestmark = pytest.mark.usefixtures('journal_kind')            # every test: MemoryJournal and FileJournal

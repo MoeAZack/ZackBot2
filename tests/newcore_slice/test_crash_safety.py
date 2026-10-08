@@ -230,3 +230,6 @@ def test_crash_between_journal_and_venue(kind, side, n, when):
     if not (n == 1 and when == 'before'):                         # the entry reached the venue: same trade
         assert [(t.exit_code, t.entry_price, t.exit_price) for t in r.trades()] == \
             [(t.exit_code, t.entry_price, t.exit_price) for t in ref.runner.trades()]
+
+
+pytestmark = pytest.mark.usefixtures('journal_kind')            # every test: MemoryJournal and FileJournal

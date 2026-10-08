@@ -55,6 +55,17 @@ def sim_account(confirmed_at_ms=T0 - 1):
                    binding_state=BindingState.CONFIRMED, proposed_binding=None, confirmation=conf)
 
 
+JOURNAL = {'kind': 'memory', 'base': None}         # set by the journal_kind fixture (conftest.py)
+
+
+def make_journal():
+    """The journal under test: MemoryJournal, or the NC-02a FileJournal on a fresh account dir (real file system)."""
+    if JOURNAL['kind'] == 'file':
+        from file_journal_harness import FileJournalProxy, new_account_dir
+        return FileJournalProxy.create(new_account_dir(JOURNAL['base']), ACCOUNT_ID, PORTFOLIO_ID)
+    return MemoryJournal(ACCOUNT_ID, PORTFOLIO_ID)
+
+
 class Crash(Exception):
     """The process dies here (not a venue answer, not a journal failure): nothing after this point ran."""
 
@@ -140,7 +151,7 @@ class World:
         self.t0 = self.candles[0].open_ms
         self.venue = FakeVenue({symbol: self.candles}, H4, costs=costs, equity=Decimal(equity))
         self.port = ScriptedVenue(self.venue)                          # what the Runner talks to
-        self.journal = MemoryJournal(ACCOUNT_ID, PORTFOLIO_ID)
+        self.journal = make_journal()
         self.bars = CsvBarSource({symbol: self.candles}, H4)
         self.signals = signals
         acct = sim_account(self.t0 - 1 if confirmed_at_ms is None else confirmed_at_ms)

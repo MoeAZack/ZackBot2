@@ -276,3 +276,19 @@ def test_crash_matrix_in_hard_hold(kind, n, when):
     if kind != 'naked':
         assert resting_entry(w).status in ('CANCELED', 'FILLED')    # drained
     assert frozen(w) == journal
+
+
+pytestmark = pytest.mark.usefixtures('journal_kind')            # every test: MemoryJournal and FileJournal
+
+
+def test_the_file_parameter_really_runs_the_nc02a_file_journal(journal_kind):
+    """Guard for the journal_kind parametrization: under "file" the Runner journals into NC-02a segment files."""
+    import os
+    w = World(flat_bars(20), sig((5, "enter", "LONG")))
+    w.run(6)
+    if journal_kind == "file":
+        from file_journal_harness import FileJournalProxy
+        assert isinstance(w.journal, FileJournalProxy)
+        segs = os.listdir(os.path.join(w.journal._j.account_dir, 'journal'))
+        assert segs and all(s.endswith('.seg') for s in segs)
+        assert len(w.journal.reopen().read()) == len(w.journal.read()) > 0

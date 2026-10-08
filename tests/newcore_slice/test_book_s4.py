@@ -10,7 +10,7 @@ from newcore.ports import header_of
 from newcore.risk import BookPolicy, BookRisk, cairo_day, cairo_offset_hours
 from newcore.runner import InjectedSignals, RunnerConfig
 from newcore.runner.book import BookRunner
-from slice_helpers import Crash, ACCOUNT_ID, PORTFOLIO_ID, fine_rules, flat_bars, sim_account
+from slice_helpers import Crash, ACCOUNT_ID, PORTFOLIO_ID, fine_rules, flat_bars, make_journal, sim_account
 
 H1 = 3_600_000
 H4 = 14_400_000
@@ -77,7 +77,7 @@ class Book:
         self.tf, self.syms = tf, symbols
         self.candles = {s: flat_bars(n, overrides=(overrides or {}).get(s), tf=tf, t0=t0) for s in symbols}
         self.venue = FakeVenue(self.candles, tf, costs=CostModel(), equity=D(equity))
-        self.journal = MemoryJournal(ACCOUNT_ID, PORTFOLIO_ID)
+        self.journal = make_journal()
         self.bars = CsvBarSource(self.candles, tf)
         label = {H1: '1h', H4: '4h'}[tf]
         self.signals = InjectedSignals({(s, t0 + (b + 1) * tf): tuple(v) for (s, b), v in signals.items()},
@@ -257,3 +257,6 @@ def test_restart_with_three_lots_open_rebuilds_the_book():
     assert len(b.journal.read()) == n
     b.run(20)
     assert [header_of(e).digest for e in b.journal.read()] == [header_of(e).digest for e in ref.journal.read()]
+
+
+pytestmark = pytest.mark.usefixtures('journal_kind')            # every test: MemoryJournal and FileJournal

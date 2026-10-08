@@ -120,3 +120,6 @@ def test_crash_around_the_algo_send_never_sends_the_route_twice(after):
     assert stop_routes(w) == [('classic', IntentState.REJECTED), ('algo', IntentState.WORKING)]
     algo_orders = [o for o in w.venue.orders_submitted() if o.ref.route == 'algo']
     assert len(algo_orders) == 1 and w.runner.counters.unprotected_cycles == 0
+
+
+pytestmark = pytest.mark.usefixtures('journal_kind')            # every test: MemoryJournal and FileJournal
