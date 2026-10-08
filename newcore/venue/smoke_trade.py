@@ -11,7 +11,7 @@ triggers ONE immediate reduce-only close and a loud manual-check message naming 
 """
 import hashlib
 from dataclasses import dataclass, field
-from decimal import ROUND_CEILING, ROUND_FLOOR, Decimal
+from decimal import ROUND_CEILING, ROUND_FLOOR, Context, Decimal, DivisionByZero, InvalidOperation, Overflow
 
 from newcore.ports import keys as K
 from newcore.ports import venue as P
@@ -92,20 +92,32 @@ def smoke_ids(account_uuid, run_ms, symbol, stop_route):
                     entry_intent=entry_intent, stop_intent=stop_intent, close_intent=close_intent)
 
 
+_EXACT = Context(prec=120, traps=[InvalidOperation, DivisionByZero, Overflow])
+
+
 def _ceil_to(x, step):
-    return (x / step).to_integral_value(rounding=ROUND_CEILING) * step
+    return _EXACT.multiply(_EXACT.divide(x, step).to_integral_value(rounding=ROUND_CEILING), step)
 
 
 def _floor_to(x, step):
-    return (x / step).to_integral_value(rounding=ROUND_FLOOR) * step
+    return _EXACT.multiply(_EXACT.divide(x, step).to_integral_value(rounding=ROUND_FLOOR), step)
 
 
 def min_feasible_qty(rules, price):
     """The smallest MARKET quantity that satisfies min qty and 1.1 x min notional (rounded UP to the market step:
     this is a mechanics smoke, not risk sizing). None if it would exceed the market max qty."""
     step = rules.market_step_size
-    qty = max(rules.market_min_qty, _ceil_to(rules.min_notional * NOTIONAL_HEADROOM / price, step))
-    qty = _ceil_to(qty, step).quantize(step)
+    try:
+        target = _EXACT.multiply(rules.min_notional, NOTIONAL_HEADROOM)
+        qty = max(rules.market_min_qty, _ceil_to(_EXACT.divide(target, price), step))
+        qty = _ceil_to(qty, step)
+        for _ in range(3):                    # exact arithmetic: at most one step short, never below the target
+            if _EXACT.multiply(qty, price) >= target:
+                break
+            qty = _EXACT.add(qty, step)
+        qty = qty.quantize(step, context=_EXACT)
+    except (InvalidOperation, DivisionByZero, Overflow):
+        return None
     return None if qty > rules.market_max_qty else qty
 
 

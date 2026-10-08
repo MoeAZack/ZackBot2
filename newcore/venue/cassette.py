@@ -319,9 +319,20 @@ class CassettePlayer:
                 raise CassetteMismatch(f'request {i}: a signed request must carry a key header and a signature')
         self._next += 1
         if 'error' in rec:
+            if rec['error'] not in _ERRORS:
+                raise CassetteMismatch(f'request {i}: unknown recorded error')
             if rec['error'] == 'WireNotSent':
-                raise WireNotSent('replayed WireNotSent', str(rec.get('reason', 'unspecified')))
+                raise WireNotSent('replayed WireNotSent', str(rec.get('reason', 'unspecified'))[:20])
             raise _ERRORS[rec['error']]('replayed ' + rec['error'])
-        r = rec['response']
-        body = r['body_text'].encode('utf-8') if 'body_text' in r else base64.b64decode(r['body_b64'])
-        return HttpResponse(int(r['status']), dict(r['headers']), body)
+        try:                                       # a malformed record is a mismatch, never a silent answer
+            r = rec['response']
+            if 'body_text' in r:
+                body = r['body_text'].encode('utf-8')
+            else:
+                body = base64.b64decode(r['body_b64'], validate=True)
+            status = int(r['status'])
+            if not 100 <= status <= 599:
+                raise ValueError('status')
+            return HttpResponse(status, dict(r['headers']), body)
+        except (KeyError, TypeError, ValueError):
+            raise CassetteMismatch(f'request {i}: malformed recorded answer') from None

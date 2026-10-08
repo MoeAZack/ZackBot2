@@ -70,6 +70,8 @@ def _cid(v, what='client_id'):
 def _qty(v, what):
     if type(v) is not Decimal or not v.is_finite() or v <= 0:
         raise VenueInputError(f'{what} must be a finite positive Decimal')
+    if not -30 <= v.adjusted() <= 30 or len(v.as_tuple().digits) > 40:      # no 1 GB format(1e999999999)
+        raise VenueInputError(f'{what} is out of range')
     s = format(v, 'f')                    # exact: Decimal.normalize() would round to the 28-digit context precision
     if '.' in s:
         s = s.rstrip('0').rstrip('.')

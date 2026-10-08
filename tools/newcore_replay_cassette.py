@@ -16,11 +16,26 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from newcore.venue.cassette_replay import leak_audit, replay_report  # noqa: E402
+from newcore.venue.redact import scrub_tokens  # noqa: E402
+
+
+def clean(text, limit=200):
+    """Printable one-line text: control characters (ESC, CR, LF, ...) become '?', key-like runs are redacted."""
+    t = ''.join(ch if ch.isprintable() else '?' for ch in str(text))
+    return scrub_tokens(t)[:limit]
 
 
 def main(argv=None, *, out=None):
-    argv = list(sys.argv[1:] if argv is None else argv)
     out = out or sys.stdout
+    try:
+        return _main(argv, out)
+    except Exception as ex:                                      # noqa: BLE001 - typed: never exit 1
+        out.write(f'ERROR: cannot replay ({type(ex).__name__})\n')
+        return 2
+
+
+def _main(argv, out):
+    argv = list(sys.argv[1:] if argv is None else argv)
     if len(argv) != 1 or argv[0].startswith('-'):
         out.write('usage: python tools/newcore_replay_cassette.py <cassette.json>\n')
         return 2
@@ -29,11 +44,11 @@ def main(argv=None, *, out=None):
         with open(path, encoding='utf-8') as fh:
             doc = json.load(fh)
         results = replay_report(doc)
-    except (OSError, ValueError) as ex:
-        out.write(f'ERROR: cannot replay {path}: {type(ex).__name__}: {ex}\n')
+    except (OSError, ValueError, RecursionError, MemoryError) as ex:
+        out.write(f'ERROR: cannot replay {clean(path)}: {type(ex).__name__}\n')
         return 2
     for r in results:
-        out.write(f'{r.status:<7} {r.label:<52} {r.detail}\n')
+        out.write(f'{r.status:<7} {clean(r.label, 52):<52} {clean(r.detail)}\n')
     passed = sum(r.status == 'PASS' for r in results)
     audit = leak_audit(doc)
     out.write(f'interactions: {passed} PASS / {len(results)} total; leak audit: '
