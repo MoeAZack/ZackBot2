@@ -201,6 +201,22 @@ def test_hard_hold_permits_exactly_the_a23_a24_emergency_set(purpose, op):
     assert got is (Permission.ALLOWED if (purpose, op) in ALLOWED else Permission.FORBIDDEN)
 
 
+EMERGENCY_CLOSE = (Purpose.CLOSE, Op.PLACE)          # Codex P1-3: the ONE protection-failure exception
+
+
+@pytest.mark.parametrize('purpose', list(Purpose))
+@pytest.mark.parametrize('op', list(Op))
+def test_the_emergency_close_flag_opens_exactly_one_cell(purpose, op):
+    """emergency_close=True newly allows (CLOSE, PLACE) only - an ordinary close (the flag off) stays FORBIDDEN, and every
+    other purpose x op cell is identical with and without the flag."""
+    plain = hard_hold_permits(purpose, op)
+    flagged = hard_hold_permits(purpose, op, emergency_close=True)
+    if (purpose, op) == EMERGENCY_CLOSE:
+        assert (plain, flagged) == (Permission.FORBIDDEN, Permission.ALLOWED)
+    else:
+        assert flagged is plain
+
+
 def test_the_hard_hold_mode_change_is_a_valid_nc01_record_and_journals_once_writable():
     fs, j = _journal_with(5)
     d = durability_hold()

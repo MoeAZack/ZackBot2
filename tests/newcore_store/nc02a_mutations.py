@@ -22,6 +22,8 @@ SUITE = ['tests/newcore_store', 'tests/newcore_ports/test_nc02a_file_journal_con
 
 # name -> (file, [(exact source text, replacement)]); each anchor must occur exactly once
 MUTATIONS = {
+    'hard_hold_permits drops the emergency_close flag (P1-3)': (S + 'hold.py', [(
+        'purpose, op, emergency_close=emergency_close)', 'purpose, op, emergency_close=False)')]),
     'the Folder chain tripwire is not seeded with the facts (r3a)': (S + 'fold.py', [(
         '                                 facts=self.base_facts)', '                                 facts=None)')]),
     'a generation forgets its facts (r3a)': (S + 'store.py', [(
