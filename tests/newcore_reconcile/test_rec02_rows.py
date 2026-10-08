@@ -435,6 +435,23 @@ def test_R14_stale_read_rereads_then_holds_and_never_clears():
     assert fresh.of(K.CLEAR_HOLD)                        # the same account with a fresh read does clear
 
 
+def test_R14_a_diff_right_after_a_recorded_fill_settles_before_it_is_judged():
+    from rec_helpers import order, pos
+    e = fact(1, 'entry', state=IntentState.FILLED, executed='1', final_at=T - 1000)
+    stop = fact(2, 'protect', stop='90', owner='lot_' + f'{1:032x}')
+    vw = view(lots=[lot(1, stop_intent=stop.intent_id)], intents=[e, stop], newest=T - 1000)
+    s = snap(positions=[], orders=[order(stop.client_id)])          # positionRisk has not caught up with the fill
+    pol = RecPolicy(settle_ms=5000)
+    v = reconcile(vw, s, now_ms=T, policy=pol)
+    assert kinds(v) == [('reread', 'R14', 'settling')] and v.outcome is Outcome.PENDING
+    last = reconcile(vw, s, now_ms=T, policy=pol, attempt=pol.max_attempts - 1)
+    assert ('reread', 'R14', 'settling') not in kinds(last) and last.outcome is Outcome.HOLD
+    later = snap(positions=[], orders=[order(stop.client_id)], at=T + 10_000)
+    old = reconcile(vw, later, now_ms=T + 10_000, policy=pol)      # a read long after the fill: judged at once
+    assert ('reread', 'R14', 'settling') not in kinds(old)
+    assert ('reread', 'R14', 'settling') not in kinds(reconcile(vw, s, now_ms=T))     # settle_ms 0 = off
+
+
 def test_R17_fills_that_disagree_with_the_final_record_hold_and_book_nothing():
     from dataclasses import replace
     from rec_helpers import fill

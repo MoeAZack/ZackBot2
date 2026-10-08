@@ -31,8 +31,12 @@ def intent_fact(iv) -> IntentFact:
 
 
 def lot_fact(lot, hints) -> LotFact:
-    live = lot.live_stop
-    if lot.protects:
+    """The lot's stop level: its carrier stop (management's replace-then-cancel keeps the OLD stop carrying until the
+    new one is confirmed; `carrier` exists on the M4 fold), else its live stop, else its first protect, else the hint."""
+    live = getattr(lot, 'carrier', None) or lot.live_stop
+    if live is not None:
+        price = live.intent.stop_price
+    elif lot.protects:
         price = lot.protects[0].intent.stop_price
     else:
         price = hints.get((lot.symbol, lot.side))

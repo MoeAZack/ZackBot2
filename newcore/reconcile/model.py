@@ -167,6 +167,7 @@ class RecPolicy:
     visibility_ms: int = NOT_FOUND_WINDOW_MS   # a NOT_FOUND earlier than sent + this proves nothing
     corroboration_reads: int = 2           # agreeing position reads that resolve a lost entry
     max_attempts: int = 3                  # PENDING passes before an unresolved episode becomes HOLD
+    settle_ms: int = 0                     # a diff on a side with a FINAL this recent re-reads first (R14 b; 0 = off)
     reopen_window_ms: int = 86_400_000     # how long a corroborated not-found may still be superseded (Q2)
     quarantine_per_side: bool = Q1_QUARANTINE_PER_SIDE
     adopt_external_change: bool = Q2_ADOPT_EXTERNAL_CHANGE

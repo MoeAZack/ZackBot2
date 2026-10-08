@@ -467,6 +467,18 @@ class _Pass:
             self.bump(k, q.executed_qty)
 
     # ------------------------------------------------------------------------------------------------ 4. sides
+    def settling(self, k):
+        """R14 (b): a side whose venue quantity may simply not show a just-recorded result yet (read lag after a fill):
+        a FINAL of that side recorded within policy.settle_ms before the position read, or resolved in this pass.
+        Re-read instead of judging, but only while attempts remain: the last attempt always judges."""
+        if self.attempt + 1 >= self.p.max_attempts or self.p.settle_ms <= 0:
+            return False
+        if k in self.delta:
+            return True
+        at = self.s.positions.observed_at_ms
+        return any((f.symbol, f.side) == k and f.final_at_ms is not None and 0 <= at - f.final_at_ms < self.p.settle_ms
+                   and f.final_executed for f in self.v.intents)
+
     def compare_sides(self):
         self.surplus = {}
         keys = sorted(set(self.pos_qty) | set(self.owned) | set(self.delta))
@@ -476,6 +488,10 @@ class _Pass:
             P = self.pos_qty.get(k, ZERO)
             E = QCTX.add(self.owned.get(k, ZERO), self.delta.get(k, ZERO))
             if P == E:
+                continue
+            if self.settling(k):
+                self.add(K.REREAD, 'R14', symbol=k[0], side=k[1], detail='settling',
+                         evidence=(f'venue_qty:{P}', f'owned_qty:{E}', f'read:{self.s.positions.observed_at_ms}'))
                 continue
             if P > E:
                 surplus = _sub(P, E)
