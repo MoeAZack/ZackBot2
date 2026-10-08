@@ -67,6 +67,8 @@ def trade_outcome(fold, lot, venue, account_reads, tf_ms, stop_price) -> TradeOu
 def _trade_outcome(fold, lot, venue, account_reads, tf_ms, stop_price):
     sym, side = lot.symbol, lot.side
     entry_fills = _read(venue.fills(sym, lot.entry.final.exchange_order_id), 'entry fills')
+    for a in lot.add_fills:                                         # ADD fills: opening fees too (none in S1)
+        entry_fills += _read(venue.fills(sym, a.exchange_order_id), 'add fills')
     exit_fills = []
     for c in lot.closings:
         exit_fills += _read(venue.fills(sym, c.exchange_order_id), 'exit fills')
@@ -82,7 +84,7 @@ def _trade_outcome(fold, lot, venue, account_reads, tf_ms, stop_price):
     # market close fills at a candle open before the candle is played
     end = exit_ms + tf_ms if reason is ReasonCode.EXIT_STOP else exit_ms
     funding = sum((row.amount for row in _read(account_reads.funding(sym, side, entry_ms, end), 'funding')), ZERO)
-    dist = abs(lot.avg_price - stop_price)
+    dist = abs(lot.entry_price - stop_price)              # R anchors on the entry fill (== avg without adds)
     risk_usd = lot.initial_qty * dist
     pnl = gross - fees - funding
     close_iv = fold.intents[last.intent_id]
@@ -91,7 +93,7 @@ def _trade_outcome(fold, lot, venue, account_reads, tf_ms, stop_price):
         symbol=sym, side=side, lot_id=lot.lot_id, entry_intent_id=lot.entry.intent_id,
         exit_intent_ids=tuple(c.intent_id for c in lot.closings), signal_close_ms=fold.entry_key(lot.entry).candle_close_ms,
         entry_ms=entry_ms, exit_ms=exit_ms, exit_signal_close_ms=None if key is None else key.candle_close_ms,
-        qty=lot.initial_qty, entry_price=lot.avg_price, exit_price=exit_px, stop_price=stop_price, risk_distance=dist,
+        qty=lot.initial_qty, entry_price=lot.entry_price, exit_price=exit_px, stop_price=stop_price, risk_distance=dist,
         risk_usd=risk_usd, gross=gross, fees=fees, funding=funding, pnl=pnl,
         r=RCTX.divide(pnl, risk_usd) if risk_usd > 0 else ZERO, exit_reason=reason, exit_code=golden_exit(reason),
         reason_codes=(str(lot.entry.intent.reason), str(reason)))
