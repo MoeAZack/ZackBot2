@@ -364,6 +364,12 @@ class BinanceTestnetTransport:
     def exchange_info(self):
         return self._read('exchange_info', 'GET', '/fapi/v1/exchangeInfo', [], False, R.parse_exchange_info)
 
+    def mark_price(self, symbol):
+        """GET /fapi/v1/premiumIndex?symbol= (public, weight 1): the mark price + its server time. One request,
+        never retried here."""
+        return self._read('mark_price', 'GET', '/fapi/v1/premiumIndex', _pairs(('symbol', _symbol(symbol))), False,
+                          R.parse_premium_index)
+
     def klines(self, symbol, interval, *, start_ms=None, end_ms=None, limit=500):
         pairs = _pairs(('symbol', _symbol(symbol)), ('interval', _choice(interval, INTERVALS, 'interval')),
                        ('startTime', _opt_ms(start_ms, 'start_ms')), ('endTime', _opt_ms(end_ms, 'end_ms')),

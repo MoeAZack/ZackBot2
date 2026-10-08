@@ -19,6 +19,20 @@ Hedge mode is required: the transport must be built with PositionMode.HEDGE, and
 account in one-way mode (HedgeModeRequired) or an unreadable mode (VenueBootUnknown).
 
 Equity and funding are NOT on the port (Codex): TestnetAccountReader reads them explicitly for the Runner.
+
+fills(symbol, start_ms=, end_ms=) (REC-02): every own trade of the symbol in [start_ms, end_ms] as TradeFill (side
+BUY / SELL, positionSide, ids, qty, price, commission + asset, realizedPnl, time), oldest first. Paged over
+/fapi/v1/userTrades: 7-day windows, inside a window a full page continues with fromId (Binance refuses fromId with a
+time window); at most FILL_WINDOW_PAGES pages in all. Complete or not OK: any page that is not OK, a conflicting
+duplicate in a page (malformed), an out-of-order page or the page bound -> UNKNOWN (REJECTED passed through),
+never a partial list as OK.
+fills(symbol, exchange_order_id) is unchanged (the port read).
+
+TestnetAccountReader.mark_price(symbol): /fapi/v1/premiumIndex -> (MarkQuote(symbol, price, at_ms = Binance server
+time),); one request, never retried; OK / REJECTED / UNKNOWN. WEIGHT: premiumIndex with a symbol costs 1 weight per
+call, so a poll every cycle.mark_poll_s seconds over N symbols is N x 60 / mark_poll_s weight per minute (10 s x 8
+symbols = 48 / min) on top of the cycle's reads; keep poll cadence x symbols well under the 2400 / min IP limit
+(the transport reports X-MBX-USED-WEIGHT-1M on every answer).
 """
 from dataclasses import dataclass
 from decimal import Decimal
@@ -36,6 +50,8 @@ from .transport import CLOSING_SIDE, OPENING_SIDE, PositionMode, StopRoute
 
 ROUTE_CHAR = {'classic': 'zbn1o-', 'algo': 'zbn1a-'}
 USER_TRADES_LIMIT = 1000
+FILL_WINDOW_MS = 7 * 24 * 3600 * 1000 - 1    # one userTrades time window (Binance: at most 7 days)
+FILL_WINDOW_PAGES = 20                       # all pages of one fills(start, end) read
 
 
 class HedgeModeRequired(Exception):
@@ -238,7 +254,10 @@ class TestnetVenue:
                                 lambda rows: tuple(_classic_order(o) for o in rows)
                                 + tuple(_algo_order(a) for a in algo.value))
 
-    def fills(self, symbol, exchange_order_id):
+    def fills(self, symbol, exchange_order_id=None, *, start_ms=None, end_ms=None):
+        if exchange_order_id is None:
+            return self._fills_window(symbol, start_ms, end_ms)
+        req(start_ms is None and end_ms is None, 'fills', 'by order OR by time window, not both')
         req(isinstance(exchange_order_id, str) and exchange_order_id.isdigit() and exchange_order_id.isascii()
             and not exchange_order_id.startswith('0'), 'exchange_order_id', 'a positive decimal order id')
         t = self._t.user_trades(symbol, order_id=int(exchange_order_id), limit=USER_TRADES_LIMIT)
@@ -250,6 +269,68 @@ class TestnetVenue:
                 raise ValueError('fill of another order')
             return tuple(_fill(f) for f in sorted(rows, key=lambda f: (f.time_ms, f.trade_id)))
         return map_read_outcome(t, self._now(), convert)
+
+
+    def _fills_window(self, symbol, start_ms, end_ms):
+        req(type(start_ms) is int and type(end_ms) is int and 0 < start_ms <= end_ms, 'fills',
+            'start_ms <= end_ms, both int ms')
+        out, pages, w0 = {}, 0, start_ms
+        while w0 <= end_ms:
+            w1 = min(end_ms, w0 + FILL_WINDOW_MS)
+            from_id = None
+            while True:
+                pages += 1
+                if pages > FILL_WINDOW_PAGES:
+                    return P.ReadOutcome(kind=P.ReadKind.UNKNOWN, observed_at_ms=self._now(), detail='paging_bound')
+                if from_id is None:
+                    t = self._t.user_trades(symbol, start_ms=w0, end_ms=w1, limit=USER_TRADES_LIMIT)
+                else:
+                    t = self._t.user_trades(symbol, from_id=from_id, limit=USER_TRADES_LIMIT)
+                if t.kind is not TR.OK:
+                    return map_read_outcome(t, self._now(), lambda v: ())      # REJECTED / UNKNOWN as is
+                rows = list(t.value)
+                if any(r.symbol != symbol for r in rows) or rows != sorted(rows, key=lambda r: (r.trade_id,)) \
+                        or (from_id is not None and rows and rows[0].trade_id < from_id):
+                    return P.ReadOutcome(kind=P.ReadKind.UNKNOWN, observed_at_ms=self._now(), detail='out_of_order')
+                for r in rows:           # a page never repeats a trade id (parse_fills: malformed); windows and
+                    if w0 <= r.time_ms <= w1:            # fromId pages are disjoint, so nothing is counted twice
+                        out[r.trade_id] = r
+                if len(rows) < USER_TRADES_LIMIT or rows[-1].time_ms > w1:
+                    break                                         # the window is complete
+                from_id = rows[-1].trade_id + 1
+            w0 = w1 + 1
+        fills = sorted(out.values(), key=lambda f: (f.time_ms, f.trade_id))
+        return P.ReadOutcome(kind=P.ReadKind.OK, observed_at_ms=self._now(), value=tuple(_trade_fill(f) for f in fills))
+
+
+@dataclass(frozen=True)
+class TradeFill:
+    """One own trade with its side (REC-02: a manual close / late fill is attributed by side + positionSide)."""
+    trade_id: str
+    exchange_order_id: str
+    symbol: str
+    side: str                    # BUY / SELL
+    position_side: str           # LONG / SHORT (BOTH only on a one-way account)
+    qty: Decimal
+    price: Decimal
+    fee: Decimal
+    fee_asset: str
+    realized_pnl: Decimal
+    maker: bool
+    at_ms: int
+
+
+def _trade_fill(f):
+    return TradeFill(trade_id=str(f.trade_id), exchange_order_id=str(f.order_id), symbol=f.symbol, side=f.side,
+                     position_side=f.position_side, qty=f.qty, price=f.price, fee=f.commission,
+                     fee_asset=f.commission_asset, realized_pnl=f.realized_pnl, maker=f.maker, at_ms=f.time_ms)
+
+
+@dataclass(frozen=True)
+class MarkQuote:
+    symbol: str
+    price: Decimal
+    at_ms: int                   # Binance server time of the mark
 
 
 # ---------------------------------------------------------------------------------------------- equity / funding
@@ -295,6 +376,17 @@ class TestnetAccountReader:
         if out.kind is P.ReadKind.UNKNOWN and t.kind is TR.OK:
             return P.ReadOutcome(kind=P.ReadKind.UNKNOWN, observed_at_ms=out.observed_at_ms, detail='asset_missing')
         return out
+
+    def mark_price(self, symbol):
+        """value: (MarkQuote,) from /fapi/v1/premiumIndex. One request, never retried; a mark of another symbol is
+        UNKNOWN 'unrepresentable'."""
+        t = self._t.mark_price(symbol)
+
+        def convert(m):
+            if m.symbol != symbol:
+                raise ValueError('mark of another symbol')
+            return (MarkQuote(m.symbol, m.mark_price, m.time_ms),)
+        return map_read_outcome(t, self._clock(), convert)
 
     def funding(self, *, start_ms, end_ms, symbol=None):
         """value: tuple[FundingPayment, ...] for FUNDING_FEE rows in [start_ms, end_ms], oldest first (complete or not
