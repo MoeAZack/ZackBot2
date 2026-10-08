@@ -52,6 +52,8 @@ ROUTE_CHAR = {'classic': 'zbn1o-', 'algo': 'zbn1a-'}
 USER_TRADES_LIMIT = 1000
 FILL_WINDOW_MS = 7 * 24 * 3600 * 1000 - 1    # one userTrades time window (Binance: at most 7 days)
 FILL_WINDOW_PAGES = 20                       # all pages of one fills(start, end) read
+MARK_MAX_AGE_MS = 30_000                     # a mark older than this (server clock) is stale
+MARK_MAX_AHEAD_MS = 5_000                    # a mark further ahead of the server clock is not believed
 
 
 class HedgeModeRequired(Exception):
@@ -377,16 +379,25 @@ class TestnetAccountReader:
             return P.ReadOutcome(kind=P.ReadKind.UNKNOWN, observed_at_ms=out.observed_at_ms, detail='asset_missing')
         return out
 
-    def mark_price(self, symbol):
+    def mark_price(self, symbol, *, max_age_ms=MARK_MAX_AGE_MS, max_ahead_ms=MARK_MAX_AHEAD_MS):
         """value: (MarkQuote,) from /fapi/v1/premiumIndex. One request, never retried; a mark of another symbol is
-        UNKNOWN 'unrepresentable'."""
+        UNKNOWN 'unrepresentable'; a mark older than max_age_ms or more than max_ahead_ms ahead of the (server-
+        aligned) clock is UNKNOWN 'stale_mark' / 'future_mark' (M1)."""
         t = self._t.mark_price(symbol)
 
         def convert(m):
             if m.symbol != symbol:
                 raise ValueError('mark of another symbol')
             return (MarkQuote(m.symbol, m.mark_price, m.time_ms),)
-        return map_read_outcome(t, self._clock(), convert)
+        now = self._clock()
+        out = map_read_outcome(t, now, convert)
+        if out.kind is P.ReadKind.OK:
+            at = out.value[0].at_ms
+            if at < now - max_age_ms:
+                return P.ReadOutcome(kind=P.ReadKind.UNKNOWN, observed_at_ms=now, detail='stale_mark')
+            if at > now + max_ahead_ms:
+                return P.ReadOutcome(kind=P.ReadKind.UNKNOWN, observed_at_ms=now, detail='future_mark')
+        return out
 
     def funding(self, *, start_ms, end_ms, symbol=None):
         """value: tuple[FundingPayment, ...] for FUNDING_FEE rows in [start_ms, end_ms], oldest first (complete or not

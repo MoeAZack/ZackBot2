@@ -130,3 +130,22 @@ def test_r4_an_exception_reason_carrying_a_key_is_not_stored():
     with pytest.raises(WireNotSent):
         rec(req())
     assert rec.interactions[0]['reason'] == 'unspecified' and DUMMY_KEY not in rec.to_json()
+
+
+# ---------------------------------------------------------------------------------------------- re-check V1 / M1
+@pytest.mark.parametrize('ch', ['"', chr(92), chr(10), chr(1)])
+def test_v1_a_value_with_an_escapable_char_learned_later_is_removed_from_an_earlier_text_body(ch):
+    secret = 'LATER' + ch + 'SECRETabcdef1234'
+    first = ok(('note: ' + secret + ' end').encode())                     # a plain-text (non-JSON) body
+    second = ok(json.dumps({'listenKey': secret}))
+    rec = record(first, second, redact=())
+    text = rec.to_json()
+    assert secret not in json.loads(text)['interactions'][0]['response']['body_text']
+
+
+def test_v1_the_audit_matches_raw_strings_too():
+    rec = record(ok(b'plain'), redact=())
+    rec.interactions[0]['response']['body_text'] = 'x "QUOTED"SECRETvalue1234 y'
+    rec._values.add('"QUOTED"SECRETvalue1234')
+    with pytest.raises(CassetteLeak):
+        rec.to_json()
