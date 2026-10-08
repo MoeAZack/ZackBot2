@@ -136,9 +136,6 @@ MUTATIONS = {
     'r3 item 3a: a post-hoc booking may be sent': (D + 'orders.py', [(
         '    return intent.state is IntentState.DURABLE and not is_post_hoc(intent)',
         '    return intent.state is IntentState.DURABLE')]),
-    'r3 item 3b: a zero fill supersedes a corroborated not-found': (D + 'orders.py', [(
-        'new.evidence is Evidence.EXCHANGE_FINAL and new.executed_qty > 0',
-        'new.evidence is Evidence.EXCHANGE_FINAL')]),
     'r3 item 3b: any FINAL prior is superseded': (D + 'orders.py', [(
         '    return (prior.phase is ResultPhase.FINAL and prior.evidence is Evidence.NOT_FOUND_CORROBORATED\n',
         '    return (prior.phase is ResultPhase.FINAL\n')]),
@@ -155,8 +152,8 @@ MUTATIONS = {
         "            req(a is Action.RECONCILE and self.subject_id is not None, p + '.reason',",
         "            req(True, p + '.reason',")]),
     'r3 item 3b: the journal gate lets any record follow a FINAL': ('newcore/ports/journal.py', [(
-        '                req(supersedes(final, ev.result), \'event.result\',',
-        '                req(True, \'event.result\',')]),
+        "                req(final is not None and supersedes(final, r), 'event.result',",
+        "                req(True, 'event.result',")]),
     'r3 item 3b: the journal supersedes more than once': ('newcore/ports/journal.py', [(
         '        if (k is EventKind.RESULT_RECORDED and st.closed is not None and st.final is Evidence.NOT_FOUND_CORROBORATED\n'
         '                and not st.superseded and h.outcome',

@@ -325,6 +325,7 @@ def test_item3b_only_an_executed_exchange_record_of_the_same_order_supersedes():
         assert not supersedes(cor, new), name
     for prior in (rs['filled'], rs['refused'], rs['adopted'], rs['known']):
         assert not supersedes(prior, late)                          # only a corroborated not-found is superseded
+        assert not supersedes(prior, F.replace(late, supersedes_result_id=prior.result_id))   # even when named
     assert cor.phase is ResultPhase.FINAL and cor.evidence is Evidence.NOT_FOUND_CORROBORATED
 
 

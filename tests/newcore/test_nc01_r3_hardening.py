@@ -284,3 +284,16 @@ def test_p2_2_an_external_booking_is_resolved_by_its_own_recorded_reconcile_deci
     without_decision = [F.replace(ev, sequence=n) for n, ev in enumerate(chain[1:], 1)]
     with pytest.raises(InvalidRecord, match='authorising RECONCILE decision is not in the log'):
         check_event_chain(without_decision)
+
+
+def test_p1b_a_result_naming_a_prior_fact_needs_that_prior_fact():
+    """A first FINAL for a live intent that claims to supersede some result is refused: there is nothing to
+    supersede (chain); the step-0 twin is test_journal_refuses_a_dangling_supersedes_result_id."""
+    from newcore.domain import InvalidRecord, ResultObserved, check_event_chain
+    from test_nc01_r3 import _late_fill
+    p, ids, acct, it, rs, late, head, E = _late_fill()
+    dangling = F.replace(late, observed_at_ms=F.T0 + 2_000, supersedes_result_id=ids.id('res'))
+    with pytest.raises(InvalidRecord, match='names a prior result it does not supersede'):
+        check_event_chain(head[:4] + [E(ResultObserved, 5, dangling.observed_at_ms, result=dangling)])
+    check_event_chain(head[:4] + [E(ResultObserved, 5, dangling.observed_at_ms,
+                                    result=F.replace(dangling, supersedes_result_id=None))])

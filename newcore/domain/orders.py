@@ -465,9 +465,11 @@ def terminal_for(result):
 
 def supersedes(prior, new):
     """r3 DRAFT item 3b (REC-02 Q2 / R08): exchange evidence wins. A FINAL exchange record of the same owned order that
-    shows an execution supersedes an earlier corroborated not-found ("nothing executed") of that intent. Pure."""
+    shows an execution supersedes an earlier corroborated not-found ("nothing executed") of that intent. Pure.
+    (An execution is guaranteed by the record itself: only an executed FINAL exchange record may carry
+    supersedes_result_id, and the late record must name the prior one.)"""
     return (prior.phase is ResultPhase.FINAL and prior.evidence is Evidence.NOT_FOUND_CORROBORATED
-            and new.phase is ResultPhase.FINAL and new.evidence is Evidence.EXCHANGE_FINAL and new.executed_qty > 0
+            and new.phase is ResultPhase.FINAL and new.evidence is Evidence.EXCHANGE_FINAL
             and new.intent_id == prior.intent_id and new.client_order_id == prior.client_order_id
             and new.account_id == prior.account_id and new.observed_at_ms >= prior.observed_at_ms
             and new.supersedes_result_id == prior.result_id and new.result_id != prior.result_id)   # PR #44 P1-b

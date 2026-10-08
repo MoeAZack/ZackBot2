@@ -525,3 +525,19 @@ def test_journal_refuses_an_external_booking_resolved_by_another_decision():
     bad = replace(res_ev, result=replace(res_ev.result, resolved_by=make_id('dec', 999_999)))
     with pytest.raises(JournalConflict, match='resolved by the RECONCILE decision that booked it'):
         j.append(bad)
+
+
+def test_journal_refuses_a_dangling_supersedes_result_id():
+    """P1-b step-0 twin: a first FINAL that names a prior result it cannot supersede is refused by the gate."""
+    from nc_events import replace
+    from newcore.domain import ResultObserved, make_id
+    s = Scenario()
+    s.entry_filled()
+    sid = s.protect_attempt(0)
+    j = ReferenceJournal()
+    for ev in s.events:
+        j.append(ev)
+    ev = s.result(sid, 'filled')
+    with pytest.raises(JournalConflict, match='superseding'):
+        j.append(replace(ev, result=replace(ev.result, supersedes_result_id=make_id('res', 31337))))
+    assert isinstance(ev, ResultObserved) and j.append(ev) is Admission.APPLY
