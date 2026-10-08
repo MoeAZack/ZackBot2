@@ -19,10 +19,12 @@ from .fold import Folder, IntentRecovery, IntentView, JournalState, fold
 from .fs import FsSeam, RealFs
 from .hold import StoreDirective, StoreOutcome, Verdict, directive_for, durability_hold, hard_hold_permits
 from .journal import FileJournal, ReadOnlyJournal, create_journal
+from .api import Outcome, StoreBoot, open_store
 from .recovery import EvidenceRef, Finding, Recovery, recover_journal
 
 __all__ = ['DurabilityUnavailable', 'JournalExists', 'JournalLocked', 'SequenceConflict', 'Folder', 'IntentRecovery', 'IntentView',
            'JournalState', 'fold', 'FsSeam', 'RealFs', 'StoreDirective', 'StoreOutcome', 'Verdict', 'directive_for',
-           'durability_hold', 'hard_hold_permits', 'FileJournal', 'ReadOnlyJournal', 'create_journal',
+           'durability_hold', 'hard_hold_permits', 'FileJournal', 'ReadOnlyJournal', 'create_journal', 'Outcome',
+           'StoreBoot', 'open_store',
            'EvidenceRef',
            'Finding', 'Recovery', 'recover_journal']

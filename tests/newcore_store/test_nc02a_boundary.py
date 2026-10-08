@@ -23,7 +23,8 @@ SEAM_STDLIB = PURE_STDLIB | {'stat', 'sys', 'ctypes', 'msvcrt', 'fcntl'}
 FORBIDDEN_CALLS = {'open', 'print', 'input', 'eval', 'exec', 'compile', '__import__', 'breakpoint', 'globals'}
 FORBIDDEN_ATTRS = {'environ', 'getenv', 'time', 'time_ns', 'monotonic', 'perf_counter', 'now', 'utcnow', 'today',
                    'random', 'urandom', 'uuid4', 'system', 'popen', 'read_text', 'write_text', 'getLogger'}
-EXPECTED = ['__init__.py', 'cipher.py', 'envelope.py', 'errors.py', 'fold.py', 'frame.py', 'fs.py', 'header.py',
+EXPECTED = ['__init__.py', 'api.py', 'cipher.py', 'envelope.py', 'errors.py', 'exchange_view.py', 'fold.py', 'frame.py',
+            'fs.py', 'header.py',
             'incidents.py', 'legacy.py', 'reconcile.py', 'records.py', 'slots.py', 'snapfile.py', 'store.py',
             'hold.py', 'journal.py', 'recovery.py']
 

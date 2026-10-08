@@ -145,11 +145,11 @@ def _ownership_changing(ev):
     return isinstance(ev, (IntentRecorded, IntentStateChanged, ResultObserved))
 
 
-def unknown_portfolio(account_id, generation, now_ms, reason, hold_kind=HoldKind.NORMAL):
+def unknown_portfolio(account_id, generation, now_ms, reason, hold_kind=HoldKind.NORMAL, portfolio_id=None):
     reasons = (reason,)
     if hold_kind is HoldKind.DURABILITY_UNAVAILABLE and ReasonCode.RECOVERY_DURABILITY_UNAVAILABLE not in reasons:
         reasons += (ReasonCode.RECOVERY_DURABILITY_UNAVAILABLE,)
-    return Portfolio(portfolio_id=aggregate_for(account_id), account_id=account_id, generation=generation,
+    return Portfolio(portfolio_id=portfolio_id or aggregate_for(account_id), account_id=account_id, generation=generation,
                      ownership=Ownership.UNKNOWN, proof=None, entries_mode=EntriesMode.HOLD, mode_since_ms=now_ms,
                      pause_reasons=reasons, positions=None, intents=None, entry_stops=None, hold_kind=hold_kind)
 
@@ -163,12 +163,12 @@ class _Abort(Exception):
 class AccountStore:
     """The opened store unit of one account. Built by boot(); the runner keeps it for checkpoints and promotion."""
 
-    def __init__(self, fs, paths, account, reader, cipher):
+    def __init__(self, fs, paths, account, reader, cipher, aggregate_id=None):
         self.fs, self.paths, self.reader, self.cipher = fs, paths, reader, cipher
         self.configured = account            # the binding the launcher is configured with
         self.account = account               # the binding the store holds (set from the current generation)
         self.account_id = account.account_id
-        self.aggregate_id = aggregate_for(self.account_id)
+        self.aggregate_id = aggregate_id or aggregate_for(self.account_id)
         self.head, self.head_slot = None, None
         self.anchor, self.anchor_slot = None, None
         self.current = None                  # SnapFile of HEAD's generation
@@ -311,13 +311,31 @@ class AccountStore:
         return True
 
     # ---------------------------------------------------------------------------------------------- runner API
+    @property
+    def checkpoint_due(self):
+        """True when the journal holds events the current generation does not cover (call checkpoint())."""
+        return (self.journal is not None and self.current is not None
+                and self.journal.last_sequence() > self.current.lsn_upto)
+
     def checkpoint(self, portfolio, now_ms):
-        """The runner's snapshot of its portfolio at the journal's last sequence. MANAGED only while managing; in HOLD a
-        checkpoint is HOLD (A05: a save in HOLD never produces a store the next start trusts)."""
-        trust = Trust.MANAGED if self.mode is Mode.MANAGE else Trust.HOLD
+        """The runner's checkpoint (ruling item 6): a new generation holding the runner's folded NC-01 Portfolio at the
+        journal's last sequence, so a restart MANAGEs without an event -> portfolio apply in the store. Call it after
+        every ownership-changing event (or every N cycles; `checkpoint_due`). Crash-safe: it is an ordinary generation
+        commit (S0-S7); a crash before the HEAD write leaves the previous generation + the journal tail, which the boot
+        `fold` hook (or HOLD) covers.
+
+        Trust: MANAGED only while the store is MANAGE and the portfolio's ownership is proven and not in HOLD; anything
+        else is a HOLD generation (A05: a save in HOLD never produces a store the next start trusts). The portfolio
+        must name this account / aggregate, and a JOURNAL proof may not reach past the journal (NC-01 Snapshot)."""
+        if portfolio.account_id != self.account_id or portfolio.portfolio_id != self.aggregate_id:
+            raise ValueError('the checkpoint portfolio belongs to another account / aggregate')
+        managed = (self.mode is Mode.MANAGE and portfolio.ownership is not Ownership.UNKNOWN
+                   and portfolio.entries_mode is not EntriesMode.HOLD)
+        trust = Trust.MANAGED if managed else Trust.HOLD
         kind = ProvenanceKind.CHECKPOINT if trust is Trust.MANAGED else ProvenanceKind.HOLD
+        items = () if managed else ({'scope': 'account', 'cause': 'checkpoint_in_hold', 'ref': ''},)
         prov = provenance(kind, trust, from_generation=self.current.generation if self.current else None,
-                          incident_ids=self.current.provenance['incident_ids'] if self.current else ())
+                          incident_ids=self.current.provenance['incident_ids'] if self.current else (), items=items)
         return self.commit(portfolio, prov, now_ms, write_class='checkpoint')
 
     def tail_after(self, lsn):
@@ -416,13 +434,19 @@ class _Seen:
     identity: list = dataclasses.field(default_factory=list)
 
 
-def boot(base, account, *, exchange, now_ms, fs=None, reader=None, cipher=None, settings=None):
-    """Open (or INIT) the store of `account` (the configured NC-01 Account: id + binding + confirmation state)."""
+def boot(base, account, *, exchange, now_ms, fs=None, reader=None, cipher=None, settings=None, aggregate_id=None,
+         fold=None):
+    """Open (or INIT) the store of `account` (the configured NC-01 Account: id + binding + confirmation state).
+    aggregate_id: the journal aggregate / Portfolio.portfolio_id (default: derived from the account id).
+    fold(journal, snapshot_portfolio) -> Portfolio | None: the runner's own fold of the journal, used ONLY when the
+    journal holds ownership-changing events after the newest MANAGED generation (a crash between an event and its
+    checkpoint). Its portfolio must carry a JOURNAL proof through the journal's last sequence; it is matched against a
+    fresh exchange snapshot like any MANAGE decision and, on a match, checkpointed at once."""
     from .fs import RealFs
     fs = fs or RealFs()
     reader = reader or Reader()
     paths = Paths(base, account.account_id)
-    store = AccountStore(fs, paths, account, reader, cipher)
+    store = AccountStore(fs, paths, account, reader, cipher, aggregate_id)
     store.settings = dict(settings or {})
     seen = _Seen()
     incidents = []
@@ -522,22 +546,49 @@ def boot(base, account, *, exchange, now_ms, fs=None, reader=None, cipher=None, 
     items = []
     if account.binding_state is not BindingState.CONFIRMED or store.account.binding != account.binding:
         items.append(HoldItem('account', 'identity', 'binding not confirmed'))
+    pf = store.current.portfolio
+    folded = False
     if any(_ownership_changing(e) for e in tail):
-        items.append(HoldItem('account', 'journal_tail_unapplied', f'after {store.current.lsn_upto}'))
+        pf2 = _folded(store, fold, pf)
+        if pf2 is None:
+            items.append(HoldItem('account', 'journal_tail_unapplied', f'after {store.current.lsn_upto}'))
+        else:
+            pf, folded = pf2, True
     jmode = store.journal.state().mode
     if jmode is EntriesMode.HOLD:
         items.append(HoldItem('account', 'journaled_hold'))
-    pf = store.current.portfolio
     if not items:
-        v = verdict(account, pf, snap, now_ms, empty_proven=_empty_proven(store.current, tail))
+        v = verdict(account, pf, snap, now_ms, empty_proven=_empty_proven(store.current, tail) and not folded)
         if v.kind is VerdictKind.TRIVIALLY_EMPTY:
             items.append(HoldItem('account', 'trivially_empty'))
         items.extend(v.items if not v.match else ())
     if not items:
         store.mode = Mode.MANAGE
+        if folded:                                       # cover the tail at once (the hook ran; the match held)
+            try:
+                store.checkpoint(pf, now_ms)
+            except (DurabilityUnavailable, ValueError):
+                return _hard_hold(store, now_ms, incident, result, findings, 'checkpoint of the folded tail failed')
         return result(Mode.MANAGE, portfolio=pf, findings=findings, evidence=rec.evidence, store=store)
     return _enter_hold(store, items, ReasonCode.RECONCILE_UNRECONCILED, now_ms, incident, result, findings, seen,
                        candidate=store.current)
+
+
+def _folded(store, fold, snapshot_pf):
+    """The runner's fold of the journal tail, or None (no hook, a refusal, or a portfolio that is not a JOURNAL-proven
+    view of exactly this journal)."""
+    if fold is None:
+        return None
+    try:
+        pf = fold(store.journal, snapshot_pf)
+    except (ValueError, DomainError):
+        return None
+    if pf is None or pf.account_id != store.account_id or pf.portfolio_id != store.aggregate_id:
+        return None
+    proof = pf.proof
+    if proof is None or proof.kind is not ProofKind.JOURNAL or proof.through_sequence != store.journal.last_sequence():
+        return None
+    return pf
 
 
 def _cand_kind(store):
@@ -849,7 +900,7 @@ def _enter_hold(store, items, reason, now_ms, incident, result, findings, seen, 
                           for (rel, g), inc in zip(seen.damaged_members, incs) if g is not None and rel.startswith(
                               'snap/')] if seen.damaged_members else []
             g = store.next_generation()
-            pf = unknown_portfolio(store.account_id, g, now_ms, reason)
+            pf = unknown_portfolio(store.account_id, g, now_ms, reason, portfolio_id=store.aggregate_id)
             prov = provenance(ProvenanceKind.HOLD, Trust.HOLD,
                               from_generation=store.candidate.generation if store.candidate else None,
                               incident_ids=incs, items=[i.doc() for i in items],
@@ -929,7 +980,8 @@ def _init(store, exchange, now_ms, incident, result, findings):
             check_account_portfolio(account, pf)
             prov = provenance(ProvenanceKind.INIT_FLAT, Trust.MANAGED, recon=recon)
         else:
-            pf = unknown_portfolio(account.account_id, g, now_ms, ReasonCode.RECONCILE_UNRECONCILED)
+            pf = unknown_portfolio(account.account_id, g, now_ms, ReasonCode.RECONCILE_UNRECONCILED,
+                                   portfolio_id=store.aggregate_id)
             items = [HoldItem(f'{p.symbol}:{p.side}', 'unowned_position', str(p.qty)) for p in snap.positions if p.qty]
             items += [HoldItem(f'{o.symbol}:{o.side}', 'unowned_order', o.client_id) for o in snap.orders]
             if account.binding_state is not BindingState.CONFIRMED or snap.key_digest != account.binding.key_digest:
