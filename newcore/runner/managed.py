@@ -70,6 +70,7 @@ from newcore.ports.venue import MarketOrder, OrderOutcome, OutcomeKind, ReadKind
 
 from . import ids
 from .book import BookRunner
+from .records import not_sent_result
 from .runner import ALGO_ROUTE, Runner
 from .signals import CLOSE
 
@@ -193,16 +194,9 @@ class RangeFixturePlans:
 
 
 def draft_intent(d, *, decision_id, at_ms):
-    """The NC-01 OrderIntent (PLANNED) a driver draft stands for: driver.to_order_intent's mapping, plus the NC-01
-    freeze's (dfd6b03) required replaces_intent_id - None: a management draft is a new child intent, never an NC-01
-    cancel-replace of a REDUCE / CLOSE (interface item for the management lane: to_order_intent needs the field)."""
-    from newcore.domain import IntentState, OrderIntent
-    return OrderIntent(intent_id=d.intent_id, account_id=d.account_id, decision_id=decision_id,
-                       client_order_id=d.client_id, purpose=d.purpose, order_type=d.order_type,
-                       state=IntentState.PLANNED, symbol=d.symbol, side=d.side, qty=d.qty, reason=d.reason,
-                       created_at_ms=at_ms, owner_id=d.owner_id, owner_kind=d.owner_kind, slot_id=None, price=None,
-                       stop_price=d.stop_price, arm=None, alt_client_order_id=None, seen_qty=None, authorized_by=None,
-                       replaces_intent_id=None)
+    """The NC-01 OrderIntent (PLANNED) a driver draft stands for: the driver's own to_order_intent (83c39da: it sets
+    the frozen NC-01 replaces_intent_id from the draft's `replaces` for a lot REDUCE / CLOSE, None otherwise)."""
+    return DR.to_order_intent(d, decision_id=decision_id, at_ms=at_ms)
 
 
 # ------------------------------------------------------------------------------------------------------- the mixin
@@ -470,6 +464,8 @@ class ManagementMixin:
                 self._mg_flush(lot_id)
 
     def _mg_flush(self, lot_id):
+        if self._suspended(lot_id):
+            return                                                        # MED-3: external close, owner item
         for _ in range(MAX_FLUSH):
             if not self._mg_step(lot_id):
                 break
@@ -501,6 +497,17 @@ class ManagementMixin:
                 continue
             if not self._permits(d.purpose, d.op):
                 continue                                                  # held at the runner until permitted
+            if b.state is not DR.BindState.SENT:
+                continue                                                  # never a draft the driver already retired
+            if d.purpose is Purpose.PROTECT and self.fold.mode is not EntriesMode.ACTIVE and self._mg_covered(lot_id):
+                # MED-2: not ACTIVE and the lot is covered by a CONFIRMED stop: a replacement (a trail move) is not
+                # sent; the newest waits for the resume, a superseded one is recorded NOT_SENT (the lineage stays
+                # in order) and retired - never a second stop while the protection cancel is held
+                later = [x for x in ds.bindings if x.leg.value == 'stop' and x.intent_id not in self.fold.intents]
+                if later and later[-1].intent_id != b.intent_id:
+                    self._mg_record_unsent(lot_id, d)
+                    return True
+                continue
             at, n = self._refused.get(lot_id, (None, 0))
             if at == self.now and n >= MAX_REFUSALS:
                 return False                                              # bounded: retried next cycle (in HOLD)
@@ -551,6 +558,29 @@ class ManagementMixin:
         self._mg_send(iv)
         return iv
 
+    def _mg_covered(self, lot_id):
+        lot = self._lot(lot_id)
+        c = None if lot is None else lot.carrier
+        return c is not None and c.state is IntentState.WORKING and c.intent.qty >= lot.qty
+
+    def _mg_record_unsent(self, lot_id, d):
+        """Record a superseded draft and close it NOT_SENT (G9): its lineage ordinal is journaled in order, the
+        observer hands the driver its refusal and the driver retires the binding."""
+        did = ids.child_decision_id(d.intent_id)
+        prior = self.journal.find_decision(did)
+        if prior is not None:
+            planned = prior.decision.intents[0]
+        else:
+            planned = draft_intent(d, decision_id=did, at_ms=self.now)
+            self._decision(decision_id=did, action=ACTIONS[d.purpose], reason=d.reason,
+                           authority=Authority.PROTECTION, key=None, symbol=d.symbol, side=str(d.side),
+                           intents=(planned,), subject_id=lot_id, detail=f'{MG}{d.leg} {d.qty} superseded in HOLD')
+        iv = self._record_durable(planned)
+        self._emit(ResultObserved, reason=ReasonCode.LIFECYCLE_NOT_DURABLE,
+                   result=not_sent_result(iv.intent, ids.result_id(iv.intent_id, len(iv.results)), self.now))
+        self._state(iv, IntentState.NOT_SENT)
+        return iv
+
     def _mg_send(self, iv):
         p = iv.purpose
         if p is Purpose.PROTECT:
@@ -589,6 +619,7 @@ class ManagementMixin:
             if d is not None and lot.closing is None:
                 self._close_lot(lot, reason=d.reason, key=d.key)
             self._secure(lot.lot_id)
+        self._escalate_unconfirmed()                                      # unmanaged lots (_runner_owns)
         self._mg_flush_all()
         for lot in self.fold.open_lots():
             if lot.lot_id in self.mg and lot.live_stop is None and lot.in_flight is None:
@@ -605,6 +636,9 @@ class ManagementMixin:
         self.unmanaged.add(lot.lot_id)
         self._hold([ReasonCode.PROTECT_RESTORING], reason=ReasonCode.PROTECT_RESTORING)
         self._secure(lot.lot_id)
+
+    def _runner_owns(self, lot_id):
+        return lot_id not in self.mg                    # a managed lot: the driver releases its stops when flat
 
     def _protect_price(self, lot):
         mg = [p for p in lot.protects if self.fold.decisions[p.intent.decision_id].detail.startswith(MG)]

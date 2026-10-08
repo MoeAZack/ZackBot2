@@ -32,6 +32,7 @@ from newcore.ports.venue import OrderOutcome, OrderRef, OutcomeKind, VenueFill
 
 ACCT = make_id('acct', 3)
 LOT = make_id('lot', 5)
+DEC = make_id('dec', 7)
 H4 = 14_400_000
 FAST_SEEDS = range(500)
 
@@ -113,6 +114,9 @@ class FaultVenue:
         cid = d.client_id
         assert cid not in self.client_ids, f'duplicate client id {cid}'
         self.client_ids.append(cid)
+        it = DR.to_order_intent(d, decision_id=DEC, at_ms=T0)      # every order sent is a valid frozen NC-01 intent
+        if it.replaces_intent_id is not None:                      # the driver never cancel-replaces a reduce / close
+            raise Violation(f'unexpected cancel-replace link on {d.purpose}')
         stop = d.stop_price is not None
         o = dict(kind='stop' if stop else 'market', qty=d.qty, price=d.stop_price, xid=self.nid('x'), filled=D(0),
                  live=True, reduce=d.reduce_only, leg=d.leg)
@@ -291,6 +295,12 @@ def check(v, before, ev, drv):
     ds = drv.state
     if ds.stop_route_policy == 'per_attempt':
         g6_drive_ok(before, ev, drv)
+    for d in drv.submits:                      # Cowork 11: no second same-price stop beside a confirmed one covering it
+        if ds.pos.stop_locked or d.reason.value == 'protect.restoring':   # (a normal resize may shrink in place)
+            if d.leg is Leg.STOP and d.route == 'classic' and any(
+                    b.leg is Leg.STOP and b.state is DR.BindState.WORKING and b.intent_id != d.intent_id
+                    and b.stop_price == d.stop_price and b.qty >= d.qty for b in ds.bindings):
+                raise Violation('a duplicate same-price stop beside a working one (Cowork 11)')
     pos = ds.pos
     if any(b.leg is Leg.STOP and b.state is DR.BindState.WORKING for b in ds.bindings):
         v.ever_confirmed = True

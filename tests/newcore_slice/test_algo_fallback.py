@@ -9,7 +9,7 @@ from decimal import Decimal as D
 
 import pytest
 
-from newcore.domain import EntriesMode, IntentState, Purpose
+from newcore.domain import EntriesMode, IntentState, Purpose, ReasonCode
 from newcore.ports import keys as K
 from slice_helpers import Crash, World, flat_bars
 from test_runner_e2e import ENTRY_BAR, signals
@@ -72,7 +72,9 @@ def test_no_fallback_after_an_unknown_until_it_is_resolved():
 
 def test_an_unresolvable_unknown_never_falls_back():
     """The answer is lost and the venue cannot be read for that id: the attempt stays UNKNOWN (HOLD, surfaced as
-    naked), and no algo attempt is ever made while its classic sibling may still be live."""
+    naked), and no algo attempt is ever made while its classic sibling may still be live. Since Cowork NEW-4 the
+    unconfirmed stop escalates after ESCALATE_AFTER cycles to a reduce-only close (the stop staying live): flat,
+    never a second stop route (deliberate update: the lot used to stay naked in HOLD for every cycle)."""
     w = World(flat_bars(20), signals(exit_=None), strict=False)
     acct = w.config.account.account_id
     key = K.decision_key('injected', 'v1', '4h', 'SOLUSDT', 'LONG', w.close_ms(ENTRY_BAR), 'entry')
@@ -82,10 +84,13 @@ def test_an_unresolvable_unknown_never_falls_back():
     w.port.lose('stop')
     w.port.blind(K.client_id_for(first_stop, 'classic'))
     w.run(ENTRY_BAR + 3)
-    lot = w.runner.fold.open_lots()[0]
-    assert [(p.intent_id, p.state) for p in lot.protects] == [(first_stop, IntentState.UNKNOWN)]
+    lot, = w.runner.fold.lots()
+    assert [p.intent_id for p in lot.protects] == [first_stop]                  # never an algo attempt
+    assert lot.protects[0].state in (IntentState.UNKNOWN, IntentState.CANCELLING)   # released after the close
     assert w.runner.fold.mode is EntriesMode.HOLD and len(stop_sends(w)) == 1
-    assert w.runner.counters.unprotected_cycles == 4                # visible every cycle, never hidden
+    assert not lot.open and lot.closings[-1].reason is ReasonCode.EXIT_STOP_FAILED       # escalated (NEW-4)
+    assert all(p.qty == 0 for p in w.venue.positions().value)
+    assert w.runner.counters.unprotected_cycles == 2                # visible every naked cycle, then closed
 
 
 def test_restart_between_the_routes_still_falls_back_once():

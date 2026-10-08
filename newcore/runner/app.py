@@ -97,6 +97,10 @@ def account(cfg):
 def open_journal(account_dir, cfg):
     """FileJournal of the account: created on the first run, recovered (CLEAN / REPAIRED) on every later one."""
     jd = os.path.join(account_dir, 'journal')
+    if os.path.isdir(jd):
+        empty = sorted(n for n in os.listdir(jd) if os.path.getsize(os.path.join(jd, n)) == 0)
+        if empty:                                                         # Cowork M2: never a silent fresh journal
+            raise StoreRefused(EXIT_STORE_HOLD, f'zero-byte journal segment(s) {empty}: the history is gone, HOLD')
     if not os.path.isdir(jd) or not os.listdir(jd):
         return create_journal(account_dir, cfg.account_id, cfg.portfolio_id)
     r = recover_journal(account_dir, cfg.account_id, cfg.portfolio_id)
@@ -147,12 +151,18 @@ def rules_for(cfg, symbols):
 class Session:
     """One account: its journal, venue, bars, Runner and the cycle clock."""
 
-    def __init__(self, cfg, enabled):
+    def __init__(self, cfg, enabled, guard=None):
+        """guard: the store's HOLD verdict text (DAMAGED / UNREADABLE / MISSING-with-history): the journal cannot be
+        trusted, so the session runs as a GUARD - an in-memory journal that is never persisted, the runner in hard HOLD
+        from boot: exchange truth only, the A23 / A24 emergency set protects the exposure our own orders prove, nothing
+        is traded, decided or inferred ('never sent' included); recovery / adoption stays the owner's (Codex ruling 13
+        tail-loss contract)."""
         self.cfg = cfg
         self.tf_ms = TF_MS[cfg.tf]
         self.account_dir = os.path.join(cfg.journal_dir, cfg.account_id)
         os.makedirs(cfg.journal_dir, exist_ok=True)
-        self.journal = open_journal(self.account_dir, cfg)
+        self.guard = guard
+        self.journal = MemoryJournal(cfg.account_id, cfg.portfolio_id) if guard else open_journal(self.account_dir, cfg)
         if cfg.venue_kind == 'fake':
             self.bars = data_source(cfg, cfg.symbols)
             candles = {s: self.bars.all_bars(s) for s in cfg.symbols}
@@ -177,8 +187,9 @@ class Session:
                             sides=sides_for(cfg), strict=False,
                             raw_qty=cfg.tnet_raw_qty if cfg.tnet_enabled else None)
         self.runner = ManagedBookRunner(rcfg, policy=policy_for(cfg), journal=self.journal, venue=port,
-                                        bars=self.bars, signals=signals_for(cfg, enabled), account_reads=reads,
-                                        management=management_for(cfg))
+                                        bars=self.bars, signals=signals_for(cfg, enabled) if not guard else NoSignals(),
+                                        account_reads=reads, management=management_for(cfg),
+                                        hard_hold=guard)
 
     def next_close(self, wall_ms=None):
         """The candle close of the next cycle, or None when the fake data is exhausted."""
@@ -217,6 +228,13 @@ class Session:
         return n
 
     def save(self):
+        if self.guard:                                                    # a guard writes no reports / journal
+            if self.venue is not None:
+                path = os.path.join(self.account_dir, STATE_FILE)
+                with open(path + '.tmp', 'w', encoding='utf-8') as fh:
+                    json.dump(self.venue.to_state(), fh, sort_keys=True, separators=(',', ':'))
+                os.replace(path + '.tmp', path)
+            return
         if self.venue is not None:
             path = os.path.join(self.account_dir, STATE_FILE)
             tmp = path + '.tmp'
@@ -232,11 +250,34 @@ class Session:
 
 
 # ---------------------------------------------------------------------------------------------------- commands
+def cmd_guard(cfg, out, reason):
+    """The store refused the journal (HOLD verdict): one guard pass over exchange truth, then exit 4."""
+    s = Session(cfg, False, guard=reason)
+    try:
+        t = s.next_close() if s.venue is not None else int(time.time() * 1000)
+        if t is not None:
+            s.cycle(t)
+        s.save()
+        print(f'GUARD (store HOLD: {reason}): exchange truth only, nothing traded', file=out)
+        for at, text in s.runner.incidents:
+            print(f'INCIDENT {text}', file=out)
+        print(health_line(s.runner), file=out, flush=True)
+    finally:
+        s.close()
+    return EXIT_STORE_HOLD
+
+
 def cmd_run(cfg, args, out, stop):
     enabled = cfg.enabled and args.enable_candidate
     if cfg.enabled and not args.enable_candidate:
         print('strategy enabled in the config but --enable-candidate not given: DISABLED (no entries)', file=out)
-    s = Session(cfg, enabled)
+    try:
+        s = Session(cfg, enabled)
+    except StoreRefused as ex:
+        if ex.code != EXIT_STORE_HOLD:
+            raise
+        print(f'STORE: {ex}', file=out)
+        return cmd_guard(cfg, out, str(ex))
     print(f'RUN mode={cfg.mode} venue={cfg.venue_kind} account={cfg.account_id} journal={s.account_dir} '
           f'strategy={"ON" if enabled else "off"} symbols={",".join(cfg.symbols)}', file=out)
     limit = 1 if args.once else args.cycles
@@ -321,6 +362,13 @@ def cmd_replay(cfg, args, out, stop):
     return 0
 
 
+def positive_int(text):
+    n = int(text)
+    if n < 1:
+        raise argparse.ArgumentTypeError(f'{text}: at least 1 (use --once for one cycle)')
+    return n
+
+
 def parser():
     p = argparse.ArgumentParser(prog='python -m newcore.run', description=__doc__.splitlines()[0])
     p.add_argument('command', nargs='?', default='run', choices=('run', 'replay'))
@@ -328,7 +376,7 @@ def parser():
     p.add_argument('--enable-candidate', action='store_true', help='allow the candidate strategy to trade')
     g = p.add_mutually_exclusive_group()
     g.add_argument('--once', action='store_true', help='one cycle, then exit')
-    g.add_argument('--cycles', type=int, default=None, help='at most N cycles')
+    g.add_argument('--cycles', type=positive_int, default=None, help='at most N cycles (N >= 1)')
     p.add_argument('--symbols', default='', help='replay: comma-separated subset')
     p.add_argument('--compare', default='', help='replay: research trade list CSV')
     p.add_argument('--memory-journal', action='store_true', help='replay: journal in memory')
@@ -337,7 +385,10 @@ def parser():
 
 def main(argv=None, *, out=None, stop=None):
     out = out or sys.stdout
-    args = parser().parse_args(argv)
+    try:
+        args = parser().parse_args(argv)
+    except SystemExit as ex:                                              # argparse refusal: exit 2, never a run
+        return EXIT_CONFIG if ex.code else 0
     try:
         cfg = C.load(args.config)
     except (C.ConfigError, OSError, ValueError) as ex:
@@ -353,4 +404,10 @@ def main(argv=None, *, out=None, stop=None):
         return ex.code
     except C.ConfigError as ex:
         print(f'CONFIG REFUSED: {ex}', file=out)
+        return EXIT_CONFIG
+    except (NotADirectoryError, FileExistsError, PermissionError) as ex:  # the journal / output dir cannot be used
+        print(f'STORE: {type(ex).__name__}: {ex}', file=out)
+        return EXIT_STORE_DOWN
+    except (OSError, KeyError, ValueError) as ex:                         # data root, symbols, rules: typed refusal
+        print(f'CONFIG REFUSED: {type(ex).__name__}: {ex}', file=out)
         return EXIT_CONFIG
