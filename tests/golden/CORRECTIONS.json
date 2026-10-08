@@ -1381,6 +1381,29 @@
       "accepted_by": null,
       "date_cairo": "2026-10-08",
       "prev_entry_sha": "ed6e89521431f61d673e8030f002bf050bf78ce7186125801bf6d7a38fef1557"
+    },
+    {
+      "id": "CORR-0067",
+      "type": "add",
+      "ticket": "NC-07 one-add cap",
+      "finding": "NEWCORE one-add DCA contract (gap through the single add, basket target re-anchored to the new average)",
+      "title": "G-GAP-DCA-ONEADD-L-01 / -S-01: the NEWCORE one-add DCA contract next to the historical two-add cases",
+      "cases": {
+        "G-GAP-DCA-ONEADD-L-01": {
+          "prev_contract_sha": null,
+          "contract_sha": "0917caf6362754f0ac82bc1c3f7b6804e2cea79ef4bcd052e80f6953cae84dbf"
+        },
+        "G-GAP-DCA-ONEADD-S-01": {
+          "prev_contract_sha": null,
+          "contract_sha": "c8d10ab7135fa6c271ab646fcd6969292df14fc1a5052cd3cfae7b1fdfa6629e"
+        }
+      },
+      "adapters_changed": [],
+      "rationale": "Codex ruling (NC-07 golden follow-up): add a separate one-add NEWCORE case for the new contract while the historical two-add cases stay unchanged (CORR-0066 records NC07-ONE-ADD-CAP on them). Same market shape as G-GAP-DCA-L-01 / -S-01 with slot.dca n 1, scale 1: the single add is gapped at the open and fills at the open with the entry slippage, then the basket target avg +/- 1 ATR re-anchored to the new average is reached in candle 285 (its extreme moved to just past the recomputed target). Expectations are the NC-07 core result (Decimal) checked by hand. The legacy engine reproduces them exactly (required); the legacy backtester shows the existing AUD07-C13A defect (gapped add without slippage), recorded as a strict-xfail divergence bound to this record with the observed list from a blind run. NEWCORE adapters stay pending_adapter until NC-08. Extended tier: every coverage class is already in core via G-GAP-DCA-L-01.",
+      "evidence": "scratchpad oneadd/compute.py (newcore.management.run at nc-management 5e17446: LONG add 2 @ 97.61952, TP basket 4 @ 99.799796048, pnl 3.522905079904; SHORT add 2 @ 102.37952, 4 @ 100.199795952, pnl 3.517097080096); oneadd/probe.py blind legacy runs: engine equal within the stated path-step tol, backtest R 0.352295 / 0.351705",
+      "accepted_by": null,
+      "date_cairo": "2026-10-08",
+      "prev_entry_sha": "ee3e509171a5e72bdcbd6acc11edcdd691f1f4aff5e3c00cd279e083579f7c74"
     }
   ]
 }

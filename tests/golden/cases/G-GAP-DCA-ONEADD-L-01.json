@@ -1,0 +1,147 @@
+{
+  "schema": "zb-golden/1",
+  "id": "G-GAP-DCA-ONEADD-L-01",
+  "title": "NEWCORE one-add DCA: the single add is gapped at the open and fills at the open (with slippage), then the basket target re-anchored to the new average is reached",
+  "behaviours": [
+    "dca",
+    "gap",
+    "costs"
+  ],
+  "side": "long",
+  "tf": "4h",
+  "clock": {
+    "start": 1704067200000,
+    "entry_cycle_delay_s": 15
+  },
+  "costs": {
+    "model": "legacy",
+    "taker_fee": "0.0005",
+    "slip": "0.0002",
+    "funding_per_bar": "0"
+  },
+  "account": {
+    "equity": "500",
+    "max_leverage": 10,
+    "sizing": "legacy_replay"
+  },
+  "market": {
+    "SOLUSDT": {
+      "base": {
+        "kind": "flat",
+        "px": "100",
+        "wick": "0.5",
+        "n": 300
+      },
+      "bars": {
+        "282": [
+          "97.6",
+          "97.6",
+          "97.55",
+          "97.55"
+        ],
+        "285": [
+          "97.55",
+          "99.8198",
+          "97.5",
+          "99.8"
+        ]
+      },
+      "atr": {
+        "kind": "computed"
+      }
+    }
+  },
+  "path_policy": "zb-path/1",
+  "slot": {
+    "id": "S1",
+    "sides": "long",
+    "risk": "0.02",
+    "share": "1",
+    "max_pos": 1,
+    "entry": {
+      "type": "market"
+    },
+    "dca": {
+      "n": 1,
+      "step_atr": "1",
+      "scale": "1",
+      "tp_atr": "1",
+      "stop_atr": "2"
+    }
+  },
+  "signals": [
+    {
+      "bar": 279,
+      "sym": "SOLUSDT",
+      "kind": "enter_long"
+    }
+  ],
+  "faults": [],
+  "expect": {
+    "trades": [
+      {
+        "sym": "SOLUSDT",
+        "side": "LONG",
+        "i_in": 280,
+        "i_out": 285,
+        "exit": "TP_BASKET",
+        "R": "0.3522905079904",
+        "pnl": "3.522905079904",
+        "tol": {
+          "R": "0.00002",
+          "pnl": "0.0002",
+          "adapters": [
+            "legacy_engine"
+          ],
+          "why": "the replay closes at the path step mark 99.8198 (the leg end just past the 99.81976 basket target: no event-snapped path in v1): 4 x 0.00004 = 0.00016 USDT"
+        }
+      }
+    ],
+    "final": {
+      "lots": 0
+    }
+  },
+  "applies_to": {
+    "legacy_engine": "required",
+    "legacy_backtest": {
+      "status": "known_divergence",
+      "reason": "AUD-07 C13a: legacy behaviour differs from the corrected contract until the AUD-07 product fix lands"
+    },
+    "newcore_sim": {
+      "status": "pending_adapter",
+      "reason": "NEWCORE NC-08 adapter not built yet; the expectation is the NC-07 one-add management core contract"
+    },
+    "newcore_live_sim": {
+      "status": "pending_adapter",
+      "reason": "NEWCORE NC-08 live-sim adapter not built yet; the expectation is the NC-07 one-add management core contract"
+    }
+  },
+  "known_divergences": [
+    {
+      "adapter": "legacy_backtest",
+      "divergence_id": "AUD07-C13A",
+      "ticket": "AUD-07",
+      "finding": "C13a",
+      "correction": "CORR-0067",
+      "until": "AUD-07 product fix",
+      "reason": "backtest.py:419-420 fills the gapped safety order at the open with the fee only, no slippage (entries and exits pay it)",
+      "observed": [
+        {
+          "path": "trades[0].R",
+          "expected": "0.3522905079904",
+          "actual": 0.352295
+        },
+        {
+          "path": "trades[0].pnl",
+          "expected": "3.522905079904",
+          "actual": 3.522952
+        }
+      ]
+    }
+  ],
+  "provenance": {
+    "created_at_sha": "f8f52a5",
+    "author": "NC-07 golden one-add follow-up (Claude)",
+    "notes": "NEWCORE contract for the gap-through-the-add path with the ONE add the NC-07 core allows (the historical G-GAP-DCA-L-01 keeps its two-add contract). dca n 1, step 1 ATR, scale 1, tp 1 ATR, stop 2 ATR past the level (ATR 1): entry 100.02, add level 99.02, basket stop 97.02; legacy_replay sizing q0 = q1 = 10 / (3 + 2) = 2. Candle 282 opens at 97.6 (= its high: the first path point is the open), through the add level: the add fills at the open with the entry slippage, 97.6 x 1.0002 = 97.61952 (not at 99.02), q 2. avg = (2 x 100.02 + 2 x 97.61952) / 4 = 98.81976; basket target avg + 1 ATR = 99.81976, reached in candle 285 (green, high 99.8198: the leg ends just past the target); exit at the target x 0.9998 = 99.799796048. pnl = 4 x 99.799796048 - 395.27904 - 0.0005 x (395.27904 + 399.199184192) = 3.522905079904, R = pnl / 10. The flat candles after 282 stay above the stop (low 97.05 > 97.02). Computed by the NC-07 core (scratch oneadd/compute.py: newcore.management.run at nc-management 5e17446, Decimal, tick 1e-8) and by hand. NEWCORE plan cap: the planned risk of this plan incl. the reserved add and costs is 10.510285 USDT; the NC-08 adapter must map the cap so it admits the add (a 10 USDT cap drops it: PlanNote add_over_cap, a different case)."
+  }
+}
