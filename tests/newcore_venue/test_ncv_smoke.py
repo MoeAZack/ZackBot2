@@ -19,7 +19,7 @@ from ncv_support import DUMMY_KEY, DUMMY_SECRET, FakeHttp, fixture, raw
 
 REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 TOOL = os.path.join(REPO, 'tools', 'newcore_smoke.py')
-ACCOUNT = 'nc-acct-smoke'
+ACCOUNT = '8c1d2e3f-4a5b-4c6d-8e7f-90a1b2c3d4e5'   # CLI account ids are dashed UUIDs
 NOW = 1759960000000                 # after every income_mixed row, so the 7-day window holds them all
 READ_PATHS = {'/fapi/v1/time', '/fapi/v1/exchangeInfo', '/fapi/v2/account', '/fapi/v2/positionRisk',
               '/fapi/v1/positionSide/dual', '/fapi/v1/openOrders', '/fapi/v1/openAlgoOrders', '/fapi/v1/income'}

@@ -1,8 +1,8 @@
 """NEWCORE testnet key entry (console). The OWNER runs this; keys are typed at hidden prompts, never passed as arguments.
 
-    python tools/newcore_keys.py set    --env testnet --account-id <NEWCORE AccountId>
-    python tools/newcore_keys.py status --account-id <NEWCORE AccountId>
-    python tools/newcore_keys.py clear  --account-id <NEWCORE AccountId> --yes
+    python tools/newcore_keys.py set    --env testnet --account-id <NEWCORE AccountId, a dashed UUID>
+    python tools/newcore_keys.py status --account-id <NEWCORE AccountId, a dashed UUID>
+    python tools/newcore_keys.py clear  --account-id <NEWCORE AccountId, a dashed UUID> --yes
 
 The key and secret are stored DPAPI-encrypted (CurrentUser) at %LOCALAPPDATA%\\ZackBotNC\\secrets\\<account_id>.bin
 (--root overrides the folder; the legacy %LOCALAPPDATA%\\ZackBot folder and the repository are refused).
@@ -16,30 +16,21 @@ Exit codes: 0 ok, 2 refused usage (incl. secrets on the command line), 3 mainnet
 import argparse
 import getpass
 import os
-import re
 import sys
 import time
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from newcore.venue.cli_args import ACCOUNT_REFUSAL, argv_refusal  # noqa: E402
 from newcore.venue.credentials import (CredentialsUnavailable, CredentialStore, CredentialStoreError,  # noqa: E402
                                        MainnetCredentialRefused, SecretScrubber)
 
-_SECRET_FLAG = re.compile(r'^-{1,2}(api[-_]?key|key|apikey|secret|api[-_]?secret|password|passwd|token)(=.*)?$', re.I)
-_TOKEN_LIKE = re.compile(r'[A-Za-z0-9]{24,}')
 NOT_TRADING = 'This does NOT enable trading or live mode.'
 
 
 def argv_carries_secret(argv):
-    """True if any argument is a key/secret flag, or looks like a key (a long token that is not a path)."""
-    for a in argv:
-        if not isinstance(a, str):
-            continue
-        if _SECRET_FLAG.match(a):
-            return True
-        if not any(sep in a for sep in ('\\', '/', ':')) and _TOKEN_LIKE.search(a):
-            return True
-    return False
+    """True if argv is refused (a key/secret flag, a key-like token, or an --account-id that is not a dashed UUID)."""
+    return argv_refusal(argv) is not None
 
 
 def fmt_time(ms):
@@ -83,7 +74,11 @@ def _print_info(info, out):
 def main(argv=None, *, prompt=None, out=None, now_ms=None, scrubber=None, protector=None, harden_acl=True):
     argv = list(sys.argv[1:] if argv is None else argv)
     out = out or sys.stdout
-    if argv_carries_secret(argv):
+    refusal = argv_refusal(argv)
+    if refusal == ACCOUNT_REFUSAL:
+        out.write(f'REFUSED: {ACCOUNT_REFUSAL}.\n')
+        return 2
+    if refusal is not None:
         out.write('REFUSED: never pass an API key or secret on the command line (shell history, process list).\n'
                   '         Run "set" and type them at the hidden prompts.\n')
         return 2

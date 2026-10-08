@@ -1,7 +1,7 @@
 """NEWCORE S5 READ-ONLY testnet smoke. The OWNER runs this on their PC after entering the testnet key with
 tools/newcore_keys.py. It places NO orders, cancels nothing and changes no setting: it only reads.
 
-    python tools/newcore_smoke.py --account-id <NEWCORE AccountId>
+    python tools/newcore_smoke.py --account-id <NEWCORE AccountId, a dashed UUID>
 
 Reads: server time (clock calibration), exchangeInfo (core-8 filters), account balances, positions, position mode,
 open classic + algo orders, and a 7-day income window. Prints a short summary and writes a sanitized cassette to
@@ -15,12 +15,12 @@ symbols); 2 refused usage; 3 no usable credentials; 4 a read failed (UNKNOWN or 
 """
 import argparse
 import os
-import re
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from newcore.venue.cassette import CassetteLeak, CassetteRecorder  # noqa: E402
+from newcore.venue.cli_args import ACCOUNT_REFUSAL, argv_refusal  # noqa: E402
 from newcore.venue.clock import OffsetClock, system_clock_ms  # noqa: E402
 from newcore.venue.credentials import (CredentialsUnavailable, CredentialStore, CredentialStoreError,  # noqa: E402
                                        SecretScrubber, check_root)
@@ -30,8 +30,6 @@ from newcore.venue.smoke import (DEFAULT_DEADLINE_S, SmokeDeadlineExceeded, Smok
 from newcore.venue.transport import BinanceTestnetTransport, PositionMode  # noqa: E402
 from newcore.venue.wire import WireSeamError  # noqa: E402
 
-_SECRET_FLAG = re.compile(r'^-{1,2}(api[-_]?key|key|apikey|secret|api[-_]?secret|password|passwd|token)(=.*)?$', re.I)
-_TOKEN_LIKE = re.compile(r'[A-Za-z0-9]{24,}')
 READ_ONLY_NOTE = 'READ-ONLY smoke: no order was placed or cancelled and no setting was changed.'
 
 
@@ -77,8 +75,11 @@ def _write_cassette(recorder, directory, stamp_ms, values, out):
 def main(argv=None, *, http=None, local_clock=None, protector=None, out=None, monotonic=None):
     argv = list(sys.argv[1:] if argv is None else argv)
     out = out or sys.stdout
-    if any(isinstance(a, str) and (_SECRET_FLAG.match(a) or (not any(c in a for c in '\\/:')
-                                                             and _TOKEN_LIKE.search(a))) for a in argv):
+    refusal = argv_refusal(argv)
+    if refusal == ACCOUNT_REFUSAL:
+        out.write(f'REFUSED: {ACCOUNT_REFUSAL}.\n')
+        return 2
+    if refusal is not None:
         out.write('REFUSED: keys are never passed on the command line. Enter them with tools/newcore_keys.py.\n')
         return 2
     try:

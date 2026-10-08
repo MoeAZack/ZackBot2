@@ -158,6 +158,7 @@ def test_keys_tool_refuses_short_key_or_secret(tmp_path):
     spec.loader.exec_module(tool)
     answers = iter(['shortk', DUMMY_SECRET])
     out = io.StringIO()
-    rc = tool.main(['set', '--env', 'testnet', '--account-id', 'nc-acct-1', '--root', str(tmp_path / 's')],
+    rc = tool.main(['set', '--env', 'testnet', '--account-id', '11111111-2222-4333-8444-555555555555',
+                    '--root', str(tmp_path / 's')],
                    prompt=lambda _: next(answers), out=out, harden_acl=False)
     assert rc == 2 and 'at least 8 characters' in out.getvalue() and not os.path.exists(tmp_path / 's')
