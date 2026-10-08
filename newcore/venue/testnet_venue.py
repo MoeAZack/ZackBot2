@@ -167,6 +167,11 @@ class TestnetVenue:
     def __repr__(self):
         return f'TestnetVenue({self._t!r})'
 
+    @property
+    def transport(self):
+        """The underlying transport (read access for harnesses such as the cassette replay)."""
+        return self._t
+
     def _now(self):
         return self._clock()
 
