@@ -15,7 +15,7 @@ from .decision import Decision
 from .incident import Incident
 from .modes import EntriesMode, HoldKind
 from .orders import (INTENT_TRANSITIONS, TERMINAL, IntentState, OrderIntent, OrderResult, ResultPhase,
-                     check_result_for_intent, terminal_for)
+                     check_result_for_intent, supersedes, terminal_for)
 from .reasons import ReasonCode
 
 
@@ -195,10 +195,16 @@ def check_event_chain(events, *, after_sequence=0, known_intents=None):
 
     Detects: a sequence gap / reorder, another account's or aggregate's event, a result for an intent that was never made durable, a
     terminal step without a durable FINAL result (applied before recorded) or not matching it, any event after a terminal
-    state, a reused id or client id, and a one-shot authorization that is missing or used twice."""
+    state, a reused id or client id, and a one-shot authorization that is missing or used twice.
+
+    r3 DRAFT item 3b: the one exception to "nothing after the final result" - a FINAL exchange record that supersedes
+    a corroborated not-found (orders.supersedes) is accepted once, even after the intent closed; a RECONCILE decision
+    with reason reconcile.late_fill_after_not_found must then name that intent (subject_id) and that result (evidence),
+    once, and only after the superseding record is journaled."""
     live = dict(known_intents or {})
     cids = {c for it, _, _ in live.values() for c in it.client_ids}
     finals, ended, decisions, one_shots, used_auth = {}, set(), set(), set(), set()
+    closed, superseding, applied_late = {}, {}, set()       # r3 item 3b: ended intents, late FINAL records, decisions
     owner = None
     for n, ev in enumerate(events):
         p = f'events[{n}]'
@@ -213,6 +219,12 @@ def check_event_chain(events, *, after_sequence=0, known_intents=None):
             decisions.add(d.decision_id)
             if d.reason is ReasonCode.OPERATOR_ONE_SHOT:
                 one_shots.add(d.decision_id)
+            if d.reason is ReasonCode.RECONCILE_LATE_FILL:
+                late = superseding.get(d.subject_id)
+                req(late is not None and late.result_id in d.evidence, p + '.decision',
+                    'a late-fill reconcile names a journaled superseding FINAL record (subject + evidence)')
+                req(d.subject_id not in applied_late, p + '.decision', 'a late fill is reconciled once')
+                applied_late.add(d.subject_id)
         elif isinstance(ev, IntentRecorded):
             it = ev.intent
             req(it.intent_id not in live and it.intent_id not in ended, p, 'intent recorded twice')
@@ -233,6 +245,7 @@ def check_event_chain(events, *, after_sequence=0, known_intents=None):
                 req(fin is not None, p + '.to_state', 'a terminal step needs a durable FINAL result first')
                 req(terminal_for(fin) is ev.to_state, p + '.to_state', f'the final result means {terminal_for(fin)}')
                 ended.add(ev.intent_id)
+                closed[ev.intent_id] = (it, sent)
                 del live[ev.intent_id]
                 continue
             req(fin is None, p + '.to_state', 'after a FINAL result only its terminal step may follow')
@@ -241,6 +254,17 @@ def check_event_chain(events, *, after_sequence=0, known_intents=None):
             live[ev.intent_id] = (it, ev.to_state, sent)
         elif isinstance(ev, ResultObserved):
             r = ev.result
+            prior = finals.get(r.intent_id)
+            if prior is not None and r.intent_id not in superseding and supersedes(prior, r):
+                if r.intent_id in closed:
+                    it, sent = closed[r.intent_id]
+                else:
+                    it, _st, sent = live[r.intent_id]
+                check_result_for_intent(it, r, sent)
+                superseding[r.intent_id] = r                    # exchange evidence wins over the corroboration
+                if r.intent_id in live:
+                    finals[r.intent_id] = r                     # not closed yet: the terminal step follows the fill
+                continue
             req(r.intent_id not in ended and r.intent_id not in finals, p, 'event after the final result')
             req(r.intent_id in live, p, 'a result for an intent that was never made durable')
             it, st, sent = live[r.intent_id]

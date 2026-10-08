@@ -146,6 +146,10 @@ class Decision(Record):
             'a post-hoc (exit.manual) booking comes only from a RECONCILE reconcile.manual_close decision')
         req(self.reason is not ReasonCode.RECONCILE_MANUAL_CLOSE or len(post_hoc) == len(self.intents), p + '.intents',
             'a reconcile.manual_close decision books post-hoc intents only')
+        if self.reason is ReasonCode.RECONCILE_LATE_FILL:   # r3 draft item 3b: names the intent it corrects
+            req(a is Action.RECONCILE and self.subject_id is not None, p + '.reason',
+                'a late fill after not-found is a RECONCILE decision about one intent')
+            check_id(self.subject_id, p + '.subject_id', 'int')
         if self.key is not None:
             k = self.key
             req((self.symbol, self.side) == (k.symbol, k.side), p + '.key', 'the decision names another symbol / side')

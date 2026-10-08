@@ -258,3 +258,63 @@ def test_an_external_close_is_journaled_as_a_post_hoc_booking():
     for ev in s.events:
         j.append(ev)
     assert j.last_sequence() == len(s.events)
+
+
+def _late_fill_flow():
+    """NC-01 r3 draft item 3b: a protective stop sent, lost (UNKNOWN), decided not_found_corroborated and closed
+    CANCELLED - then the venue's FINAL record of its client id shows it filled. Returns (scenario, stop id, late)."""
+    from newcore.domain import Evidence, OrderResult, PositionRead, ReasonCode, ResultObserved, ResultPhase, make_id
+    from decimal import Decimal as D
+    from nc_events import T0, replace
+    s = Scenario()
+    s.entry_filled()
+    sid = s.protect_attempt(0)
+    s.step(sid, IntentState.SUBMITTED, IntentState.UNKNOWN)
+    it = s.intents[sid]
+    reads = (PositionRead(at_ms=T0 + 60_000, qty=it.qty), PositionRead(at_ms=T0 + 61_000, qty=it.qty))
+    cor = OrderResult(result_id=make_id('res', 9001), intent_id=sid, account_id=ACCT, client_order_id=it.client_order_id,
+                      phase=ResultPhase.FINAL, requested_qty=it.qty, observed_at_ms=T0 + 62_000, exchange_order_id=None,
+                      exchange_status=None, lookup=None, executed_qty=D('0'), avg_price=None,
+                      evidence=Evidence.NOT_FOUND_CORROBORATED, corroboration=reads, resolved_by=make_id('dec', 9002),
+                      external_trades=())
+    s._event(ResultObserved, reason=ReasonCode.RECONCILE_LATE_FILL, result=cor)
+    s.step(sid, IntentState.UNKNOWN, IntentState.CANCELLED)
+    filled = s.result(sid, 'filled').result
+    s.events.pop()
+    s.n -= 1
+    late = replace(filled, result_id=make_id('res', 9003), observed_at_ms=T0 + 90_000)
+    return s, sid, late
+
+
+def test_a_late_final_record_supersedes_not_found_corroborated_once():
+    from nc_events import replace
+    from newcore.domain import (Action, Authority, Decision, DecisionRecorded, ReasonCode, ResultObserved, Side,
+                                make_id)
+    s, sid, late = _late_fill_flow()
+    s._event(ResultObserved, reason=ReasonCode.RECONCILE_LATE_FILL, result=late)
+    d = Decision(decision_id=make_id('dec', 9004), account_id=ACCT, at_ms=s.events[-1].at_ms + 1000,
+                 action=Action.RECONCILE, reason=ReasonCode.RECONCILE_LATE_FILL, authority=Authority.RECONCILIATION,
+                 key=None, evidence=(late.result_id,), symbol='SOLUSDT', side=Side.LONG, subject_id=sid, detail='',
+                 intents=(), policy_version='step0-test')
+    s._event(DecisionRecorded, reason=d.reason, decision=d)
+    j = ReferenceJournal()
+    for ev in s.events:
+        j.append(ev)
+    assert j.last_sequence() == len(s.events)
+    again = s._event(ResultObserved, reason=ReasonCode.RECONCILE_LATE_FILL,
+                     result=replace(late, result_id=make_id('res', 9005)))
+    with pytest.raises(JournalConflict, match='G10'):
+        j.append(again)                                          # superseded once; the intent stays closed
+
+
+def test_only_an_executed_exchange_record_supersedes_in_the_journal():
+    from decimal import Decimal as D
+    from nc_events import replace
+    from newcore.domain import ExchangeStatus, ReasonCode, ResultObserved
+    s, sid, late = _late_fill_flow()
+    j = ReferenceJournal()
+    for ev in s.events:
+        j.append(ev)
+    zero = replace(late, executed_qty=D('0'), avg_price=None, exchange_status=ExchangeStatus.CANCELED)
+    with pytest.raises(JournalConflict, match='superseding not_found_corroborated'):
+        j.append(s._event(ResultObserved, reason=ReasonCode.RECONCILE_LATE_FILL, result=zero))

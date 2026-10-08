@@ -42,7 +42,7 @@ from newcore.domain.codec import contract_sha256
 from newcore.domain.errors import DomainError
 from newcore.domain.events import EVENT_TYPES
 from newcore.domain.ledger import Admission
-from newcore.domain.orders import TERMINAL, can_transition, check_result_for_intent, terminal_for
+from newcore.domain.orders import TERMINAL, can_transition, check_result_for_intent, supersedes, terminal_for
 
 from .keys import (check_decision_key, derive_child_intent_id, derive_decision_id, derive_intent_id, derive_lot_id,
                    route_of)
@@ -186,6 +186,7 @@ class _Intent:
     sent: bool = False
     final: Evidence | None = None
     closed: IntentState | None = None
+    superseded: bool = False             # r3 draft item 3b: a late FINAL record replaced a corroborated not-found
 
 
 def req_g(cond, path, msg):
@@ -261,6 +262,14 @@ class Grammar:
             return lambda: None
         st = self._intents.get(h.intent_id)
         req_g(st is not None, p, f'{k} before the intent was recorded')
+        if (k is EventKind.RESULT_RECORDED and st.final is Evidence.NOT_FOUND_CORROBORATED and not st.superseded
+                and h.outcome is ResultOutcome.FINAL and h.evidence is Evidence.EXCHANGE_FINAL):
+            req_g(h.client_ids == (st.client_id,), p + '.client_ids', "G9: the result names another intent's order")
+
+            def commit_superseded():          # r3 draft item 3b: exchange evidence wins over the corroboration, once
+                st.final = h.evidence
+                st.superseded = True
+            return commit_superseded
         req_g(st.closed is None, p, f'G10: {k} after the intent closed')
         if k is EventKind.SENT:
             req_g(not st.sent and st.final is None, p, 'G7: sent twice or after its final result')
@@ -420,7 +429,10 @@ class JournalGate:
                 req(final is not None and terminal_for(final) is ev.to_state, 'event.to_state',
                     'the terminal step must be terminal_for(final result)')
         elif isinstance(ev, ResultObserved) and ev.result.intent_id in self._live:
-            it, _, sent_at, _ = self._live[ev.result.intent_id]
+            it, _, sent_at, final = self._live[ev.result.intent_id]
+            if final is not None:     # r3 draft item 3b: only a superseding exchange record follows a FINAL result
+                req(supersedes(final, ev.result), 'event.result',
+                    'after a FINAL result only an executed exchange record superseding not_found_corroborated')
             check_result_for_intent(it, ev.result, sent_at)
 
     def _apply(self, ev):
