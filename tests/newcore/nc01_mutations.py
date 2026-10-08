@@ -73,7 +73,11 @@ MUTATIONS = {
         "                req(fin is None or terminal_for(fin) is ev.to_state,")]),
     'fill ledger': (D + 'portfolio.py', [("        req(run == self.qty, p + '.qty',", "        req(True, p + '.qty',")]),
     'future before body': (D + 'codec.py', [('    if v > SCHEMA_VERSION:\n        raise FutureSchema(',
-                                             '    if v > SCHEMA_VERSION and doc["body"] is not None:\n        raise FutureSchema(')]),
+                                             '    if v > SCHEMA_VERSION and set(doc["body"]) is not None:\n'
+                                             '        raise FutureSchema(')]),
+    'damage before version (text)': (D + 'codec.py', [(
+        "    check_header(doc)\n    if problems:\n        raise InvalidRecord('document', f'hostile JSON: {problems[0]}')\n",
+        "    if problems:\n        raise InvalidRecord('document', f'hostile JSON: {problems[0]}')\n    check_header(doc)\n")]),
     'drain resting maker': (D + 'portfolio.py', [('            if it.pullable:', '            if False:')]),
     'duplicate JSON keys': (D + 'codec.py', [("            if k in out:\n                problems.append(",
                                               "            if False:\n                problems.append(")]),
@@ -104,7 +108,7 @@ def run_suite(cwd):
     out = subprocess.run([sys.executable, '-m', 'pytest', '-p', 'no:cacheprovider', '-q', '-o', 'addopts=',
                           'tests/newcore', '--ignore=tests/newcore/test_nc01_perf.py'],
                          cwd=cwd, capture_output=True, text=True, timeout=900)
-    failed = sorted(set(re.findall(r'^FAILED (\S+?)(?: - .*)?$', out.stdout, re.M)))
+    failed = sorted(set(re.findall(r'^FAILED (.+?)(?: - .*)?$', out.stdout, re.M)))
     summary = (out.stdout.strip().splitlines() or [''])[-1]
     return out.returncode, failed, summary
 
