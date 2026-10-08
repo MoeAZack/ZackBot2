@@ -25,12 +25,13 @@ from newcore.ports.bars import Bar
 from newcore.runner.testnet_hook import AccountReadsShim
 from newcore.venue.tnet import PreflightResult, tnet_cleanup, tnet_preflight
 
-from .seams import BoundExceeded, HttpFaults, PortFaults
+from .seams import BoundExceeded, DeadlineExceeded, HttpFaults, PortFaults
 
 TF_MS = 60_000
 FAKE_T0 = 1_759_917_600_000            # 2025-10-08 10:00 UTC, a minute boundary
 WARMUP = 20                            # candles before the first cycle (ATR14 needs 15)
 SLACK = 6                              # candles after the last planned cycle (cleanup closes need a next open)
+from .rspec import MAX_SETTLE_MS  # noqa: E402  (the bounded testnet wait after a candle close)
 D = Decimal
 
 
@@ -92,7 +93,8 @@ class FakeTarget:
     def preflight(self, symbols, **kw):
         return PreflightResult(True, (), None, (), (), {})
 
-    def next_close(self):
+    def next_close(self, deadline_s=None):
+        """No wall time passes on the fake market; the driver still re-checks its deadline after this returns."""
         if self._i >= len(self.candles) - 1:
             raise BoundExceeded('the fake market is exhausted')
         t = self.candles[self._i].close_ms
@@ -115,6 +117,12 @@ class FakeTarget:
         return tnet_cleanup(self.raw, symbols, run_id=run_id, baseline=baseline)
 
 
+def check_settle_ms(v):
+    if type(v) is not int or not 0 <= v <= MAX_SETTLE_MS:
+        raise ValueError(f'settle_ms must be an int in 0..{MAX_SETTLE_MS}')
+    return v
+
+
 class TestnetTarget:
     __test__ = False
     kind = 'testnet'
@@ -125,6 +133,7 @@ class TestnetTarget:
         if factory is None:
             from newcore.venue.factory import build_testnet as factory
         self.seam = HttpFaults(http)
+        check_settle_ms(settle_ms)
         kw = {} if scrubber is None else {'scrubber': scrubber}
         parts = factory(config, http=self.seam, local_clock=local_clock, store=store, **kw)
         self.config = config
@@ -134,23 +143,30 @@ class TestnetTarget:
         self.binding_digest = parts.get('binding_digest')
         self.reads = AccountReadsShim(self.reader)
         self.raw = self.venue
-        self.sleep, self.settle_ms = sleep, settle_ms
+        self.sleep, self.settle_ms, self.default_settle_ms = sleep, settle_ms, settle_ms
 
     def prepare(self, spec, account, portfolio_id):
         sym = spec['symbol']
         if sym not in self.instrument_rules:
             raise BoundExceeded(f'{sym} is not in the factory rules (config.symbols)')
         self.port = self.venue
+        self.settle_ms = spec['bound'].get('settle_ms', self.default_settle_ms)
         self.rules = {sym: self.instrument_rules[sym]}
         self.journal = MemoryJournal(account.account_id, portfolio_id)
 
     def preflight(self, symbols, **kw):
         return tnet_preflight(self.venue, self.reader, symbols, **kw)
 
-    def next_close(self):
+    def next_close(self, deadline_s=None):
+        """Wait for the next candle close + settle. The wait is bounded by the caller's remaining deadline: if it would
+        end past it, DeadlineExceeded is raised BEFORE sleeping (never a sleep past the deadline)."""
         now = self.clock()
         boundary = (now // TF_MS + 1) * TF_MS
-        self.sleep((boundary + self.settle_ms - now) / 1000)
+        wait_s = (boundary + self.settle_ms - now) / 1000
+        if deadline_s is not None and wait_s > deadline_s:
+            raise DeadlineExceeded(f'the next candle close + settle is {wait_s:.1f} s away, only {max(deadline_s, 0):.1f}'
+                                   f' s of the scenario deadline are left; nothing was sent')
+        self.sleep(wait_s)
         return boundary
 
     def arm_fault(self, on, kind, code=None):

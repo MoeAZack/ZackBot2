@@ -42,17 +42,13 @@ from newcore.runner.runner import InvariantBreach
 from newcore.venue.tnet import guarded, is_newcore_cid
 
 from .rspec import expectations, validate_rspec
-from .seams import BoundedPort, BoundExceeded
+from .seams import BoundedPort, BoundExceeded, DeadlineExceeded  # noqa: F401  (DeadlineExceeded re-exported)
 from .signals import ScriptedSignals
 from .targets import TF_MS
 
 PASS, FAIL, INCONCLUSIVE, SKIPPED = 'PASS', 'FAIL', 'INCONCLUSIVE', 'SKIPPED'
 EXIT_PASS, EXIT_INCONCLUSIVE, EXIT_PREFLIGHT, EXIT_DEADLINE, EXIT_FAIL, EXIT_RESIDUE = 0, 1, 4, 6, 7, 8
 SIM_KEY_DIGEST = '0123456789abcdef'
-
-
-class DeadlineExceeded(Exception):
-    """The scenario's max_wall_s elapsed."""
 
 
 def _h(*parts):
@@ -92,6 +88,7 @@ class ScenarioResult:
     trades: list = field(default_factory=list)
     error: str | None = None
     wall_s: float = 0.0
+    cycle_times: list = field(default_factory=list)        # the candle closes the Runner cycled at (replay tape)
 
     @property
     def residue(self):
@@ -102,7 +99,7 @@ class ScenarioResult:
                 'assertions': [{'name': n, 'ok': ok, 'detail': d} for n, ok, d in self.assertions],
                 'counters': self.counters, 'orders': self.orders, 'ledger': self.ledger, 'injected': self.injected,
                 'final_truth': self.final_truth, 'cleanup': self.cleanup, 'trades': self.trades, 'error': self.error,
-                'wall_s': round(self.wall_s, 3)}
+                'wall_s': round(self.wall_s, 3), 'cycle_times': list(self.cycle_times)}
 
 
 class _Run:
@@ -113,7 +110,9 @@ class _Run:
         self.sym, self.side = spec['symbol'], spec['side']
         self.bound = spec['bound']
         self.monotonic, self.t0 = monotonic, monotonic()
+        self.deadline = self.t0 + spec['bound']['max_wall_s']        # ABSOLUTE (monotonic seconds)
         self.ticks, self.now = 0, None
+        self.cycle_times = []
         self.inconclusive = []
         self.checks = []
         self.signals = ScriptedSignals(nonce=nonce, stop=spec['stop'], window=30)
@@ -133,7 +132,7 @@ class _Run:
         self.injected0 = len(t.injected)
         self.port = BoundedPort(t.port, max_orders=self.bound['max_orders'],
                                 max_notional=Decimal(self.bound['max_notional_usdt']),
-                                price_of=self.signals.last_close.get, ledger=self.ledger)
+                                price_of=self.signals.last_close.get, ledger=self.ledger, expired=self.expired)
         sz = self.spec['sizing']
         self.config = RunnerConfig(account=self.account, portfolio_id=self.portfolio_id, symbols=(self.sym,),
                                    tf_ms=TF_MS, timeframe='1m', rules=dict(t.rules),
@@ -147,13 +146,26 @@ class _Run:
                       signals=self.signals, account_reads=self.target.reads)
 
     # ------------------------------------------------------------------------------------------------ steps
+    def remaining(self):
+        return self.deadline - self.monotonic()
+
+    def expired(self):
+        return self.monotonic() > self.deadline
+
     def tick(self):
+        """One cycle. The absolute deadline is checked BEFORE the candle wait, bounds the wait itself (a target never
+        sleeps past it) and is checked again AFTER the wait, immediately before the Runner may send anything."""
         if self.ticks >= self.bound['max_ticks']:
             raise BoundExceeded(f'more than {self.bound["max_ticks"]} cycles')
-        if self.monotonic() - self.t0 > self.bound['max_wall_s']:
-            raise DeadlineExceeded(f'max_wall_s {self.bound["max_wall_s"]} elapsed')
-        self.now = self.target.next_close()
+        if self.expired():
+            raise DeadlineExceeded(f'max_wall_s {self.bound["max_wall_s"]} elapsed before cycle {self.ticks + 1}')
+        now = self.target.next_close(deadline_s=self.remaining())
+        if self.expired():
+            raise DeadlineExceeded(f'max_wall_s {self.bound["max_wall_s"]} elapsed during the candle wait '
+                                   f'(cycle {self.ticks + 1}); nothing was sent')
+        self.now = now
         self.ticks += 1
+        self.cycle_times.append(now)
         self.runner.cycle(self.now)
 
     def step(self, st):
@@ -323,6 +335,7 @@ def run_scenario(spec, target, *, run_nonce, monotonic=time.monotonic, baseline=
     _, cleanup = guarded(body, clean)
     res.wall_s = monotonic() - run.t0
     res.ledger = list(run.ledger)
+    res.cycle_times = list(run.cycle_times)
     res.injected = [list(x) for x in target.injected[run.injected0:]] if run.port is not None else []
     if cleanup is not None:
         res.cleanup = {'clean': cleanup.clean, 'attempts': cleanup.attempts,

@@ -26,7 +26,8 @@ never raw orders.
   ],
   "expect": {"entries": 1, "trades": ["SIGNAL_EXIT"], "fills_match": true, "final": "flat"},
   "expect_testnet": {"stop_route": "any"},            # merged over expect on the testnet target (optional)
-  "bound": {"max_ticks": 20, "max_orders": 4, "max_notional_usdt": "2000", "max_wall_s": 900}
+  "bound": {"max_ticks": 20, "max_orders": 4, "max_notional_usdt": "2000", "max_wall_s": 900,
+            "settle_ms": 1500}                     # settle_ms optional, 0..10000 (testnet wait after a close)
 }
 Fault kinds: lost_response (the venue acts, the answer is lost), timeout (nothing sent, UNKNOWN), refuse (nothing sent,
 REJECTED with `code` - on testnet a SYNTHETIC refusal at the HTTP seam, labelled so in the report).
@@ -40,6 +41,7 @@ from decimal import Decimal
 from newcore.venue.tnet_spec import SpecError, _dec, _keys, _req
 
 FORMAT = 'zb-newcore-tnet-runner/1'
+MAX_SETTLE_MS = 10_000             # bound.settle_ms / --settle-ms: the testnet wait after a candle close
 TARGETS = ('fake', 'testnet')
 ID_RE = re.compile(r'T[0-9]{2}(-[a-z0-9]{1,12}){0,2}')
 NAME_RE = re.compile(r'[a-z0-9_]{3,48}')
@@ -127,11 +129,13 @@ def validate_rspec(doc):
         if 'classic_stops' in f:
             _req(f['classic_stops'] in ('accept', 'refuse'), '$.fake.classic_stops', 'accept / refuse')
     b = doc['bound']
-    _keys(b, '$.bound', {'max_ticks', 'max_orders', 'max_notional_usdt', 'max_wall_s'})
+    _keys(b, '$.bound', {'max_ticks', 'max_orders', 'max_notional_usdt', 'max_wall_s'}, {'settle_ms'})
     _int(b['max_ticks'], '$.bound.max_ticks', 1, 240)
     _int(b['max_orders'], '$.bound.max_orders', 0, 20)
     _dec(b['max_notional_usdt'], '$.bound.max_notional_usdt', positive=True, hi=Decimal('100000'))
     _int(b['max_wall_s'], '$.bound.max_wall_s', 1, 3600)
+    if 'settle_ms' in b:
+        _int(b['settle_ms'], '$.bound.settle_ms', 0, MAX_SETTLE_MS)
     steps = doc['steps']
     _req(isinstance(steps, list) and 0 < len(steps) <= 50, '$.steps', '1..50 steps')
     ticks = 0

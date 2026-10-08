@@ -29,7 +29,8 @@ REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, REPO)
 
 from newcore.tnet.driver import EXIT_PASS, EXIT_PREFLIGHT, EXIT_RESIDUE, run_suite  # noqa: E402
-from newcore.tnet.rspec import SpecError, bundled, load_rspec, rspec_digest, validate_rspec  # noqa: E402
+from newcore.tnet.rspec import (MAX_SETTLE_MS, SpecError, bundled, load_rspec, rspec_digest,  # noqa: E402
+                                validate_rspec)
 from newcore.venue.cli_args import ACCOUNT_REFUSAL, argv_refusal  # noqa: E402
 from newcore.venue.tnet import CleanupResult, ScenarioOutcome, _audit, git_build, tnet_report  # noqa: E402
 
@@ -194,6 +195,9 @@ def main(argv=None, *, http=None, local_clock=None, sleep=None, store=None, out=
             out.write(f'REFUSED: unknown scenario id(s) {sorted(unknown)}\n')
             return EXIT_USAGE
         specs = [s for s in specs if s['id'] in args.only]
+    if not 0 <= args.settle_ms <= MAX_SETTLE_MS:
+        out.write(f'REFUSED: --settle-ms must be in 0..{MAX_SETTLE_MS}.\n')
+        return EXIT_USAGE
     nonce = args.run_nonce or secrets.token_hex(4)
     if not re.fullmatch(r'[0-9a-z_]{1,32}', nonce):
         out.write('REFUSED: --run-nonce must be [0-9a-z_]{1,32}\n')

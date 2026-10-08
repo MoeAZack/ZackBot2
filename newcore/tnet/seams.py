@@ -3,6 +3,10 @@
 BoundedPort   the VenuePort the Runner talks to: every submit is checked against the scenario's bound (max orders,
               max opening notional at the last closed price) and its client id is appended to the run ledger BEFORE it
               is sent. A breach raises BoundExceeded (the scenario FAILs, cleanup runs). Reads pass through.
+              Deadline (second layer; the driver checks it before and after every candle wait): past the scenario's
+              absolute deadline an OPENING order raises DeadlineExceeded before it is sent. A risk-REDUCING send (a
+              protective stop, a reduce-only close) is still let through and ledgered past_deadline=True: refusing it
+              would leave an open position naked until the teardown, which sends the same kind of order anyway.
 PortFaults    FakeVenue-side faults on the next matching effect (entry / close / stop / cancel).
 HttpFaults    the same faults on the testnet target, at the HTTP seam UNDER the transport (newcore.venue.tnet_seams.
               FaultHttp semantics), matched on the request: entry / close = POST /fapi/v1/order MARKET opening /
@@ -25,17 +29,25 @@ class BoundExceeded(Exception):
     """The harness refused a submit: the scenario's order / notional bound would be exceeded (runaway guard)."""
 
 
+class DeadlineExceeded(Exception):
+    """The scenario's absolute wall deadline (bound.max_wall_s) has passed: nothing may OPEN exposure any more."""
+
+
 class BoundedPort:
-    def __init__(self, inner, *, max_orders, max_notional, price_of, ledger=None):
+    def __init__(self, inner, *, max_orders, max_notional, price_of, ledger=None, expired=None):
         self.inner, self.max_orders, self.max_notional = inner, max_orders, Decimal(max_notional)
         self.price_of = price_of                       # symbol -> Decimal | None (the last closed candle's close)
         self.ledger = ledger if ledger is not None else []
+        self.expired = expired                         # () -> bool: the scenario deadline has passed
         self.submits = 0
 
     def __getattr__(self, name):
         return getattr(self.inner, name)
 
     def _admit(self, kind, order, opening):
+        late = self.expired is not None and self.expired()
+        if late and opening:                           # second deadline layer, checked before EVERY send
+            raise DeadlineExceeded(f'{kind} {order.ref.client_id}: the scenario deadline has passed')
         if self.submits + 1 > self.max_orders:
             raise BoundExceeded(f'{kind} {order.ref.client_id}: more than {self.max_orders} orders')
         if opening:
@@ -46,7 +58,8 @@ class BoundedPort:
                 raise BoundExceeded(f'{kind} {order.ref.client_id}: notional {order.qty * px} > {self.max_notional}')
         self.submits += 1
         self.ledger.append({'kind': kind, 'symbol': order.ref.symbol, 'client_id': order.ref.client_id,
-                            'route': order.ref.route, 'side': order.position_side, 'qty': str(order.qty)})
+                            'route': order.ref.route, 'side': order.position_side, 'qty': str(order.qty),
+                            'past_deadline': late})
 
     def submit_market(self, order):
         self._admit('close' if order.reduce else 'entry', order, not order.reduce)
