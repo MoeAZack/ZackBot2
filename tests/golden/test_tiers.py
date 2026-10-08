@@ -133,10 +133,10 @@ def test_core_gaps_detects_a_divergence_id_only_in_extended():
     """A divergence_id that only an extended case carries on an adapter is a core gap (renaming the core guard's ID does it)."""
     cases = copy.deepcopy(schema.load_all())
     tier_of = tiers.load([c['id'] for c in cases])
-    ext = next(c for c in cases if c['id'] == 'G-TIME-S-02')
-    assert tier_of['G-TIME-S-02'] == 'extended'
-    next(d for d in ext['known_divergences'] if d['adapter'] == 'legacy_engine')['divergence_id'] = 'AUD07-C11-RENAMED'
-    assert tiers.core_gaps(cases, tier_of) == ['divergence:legacy_engine:AUD07-C11-RENAMED']
+    ext = next(c for c in cases if tier_of[c['id']] == 'extended' and c['known_divergences'])
+    d = ext['known_divergences'][0]
+    d['divergence_id'] = 'ZZ-RENAMED-ONLY-IN-EXTENDED'
+    assert tiers.core_gaps(cases, tier_of) == [f"divergence:{d['adapter']}:ZZ-RENAMED-ONLY-IN-EXTENDED"]
 
 
 def test_extended_params_are_slow_and_core_params_are_not():
