@@ -17,11 +17,18 @@ The PDF holds the long-form rationale. This file is the working plan that lives 
 
 ## Target
 
-Live trading from **$2,000+**, run as one engine across **several Binance accounts**:
+The first product target is a testnet-proven engine whose **controlled bot allocation** can start around **$500**, with
+copy-feasibility previews for followers at **$100, $200 and $500**. These are sizing and feasibility targets, not a
+promise that every strategy or Binance order will fit every balance.
+
+The later production-capital target remains live trading from an account funded at **$2,000+**, run as one engine across
+**several Binance accounts**:
 - own trading accounts;
 - **at least two master (lead) portfolios** that others copy.
 
-Everything below is built for that end state now, so nothing has to be rebuilt later. Each phase still ships behind safe defaults and its own gate.
+The controlled bot allocation is distinct from total account or lead-portfolio capital: unused account equity is not
+automatically risked. Everything below is built for that end state now, so nothing has to be rebuilt later. Each phase
+still ships behind safe defaults and its own gate.
 
 ## North star
 
