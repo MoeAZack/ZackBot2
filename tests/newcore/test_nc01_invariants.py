@@ -8,10 +8,10 @@ import pytest
 import nc01_factories as F
 from nc01_factories import T0, replace
 from newcore.domain import (Account, AccountBinding, Action, Arming, Authority, BindingChanged, BindingConfirmation,
-                            BindingState, Capability, Decision, EntriesMode, Environment, Evidence, ExchangeStatus, Fill,
+                            BindingState, Capability, EntriesMode, Environment, Evidence, ExchangeStatus,
                             HoldKind, IntentRecorded, IntentState, IntentStateChanged, InvalidRecord, Lookup, LotSource,
                             MissPhase, ModeChanged, OrderType, Ownership, OwnershipProof, Position, PositionRead,
-                            ProofKind, Protection, Purpose, ReasonCode, ResultPhase, Side, Snapshot, StopMiss,
+                            ProofKind, Protection, Purpose, ReasonCode, Side, Snapshot, StopMiss,
                             confirmation_phrase, protect_key)
 
 ids = F.Ids(1234)
