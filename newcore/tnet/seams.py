@@ -25,12 +25,17 @@ KINDS = ('lost_response', 'timeout', 'refuse')
 ON = ('entry', 'close', 'stop', 'cancel')
 
 
-class BoundExceeded(Exception):
-    """The harness refused a submit: the scenario's order / notional bound would be exceeded (runaway guard)."""
+class BoundExceeded(BaseException):
+    """The harness refused a submit: the scenario's order / notional bound would be exceeded (runaway guard).
+
+    A BaseException on purpose: it is raised INSIDE a venue call, and S1's Runner turns any Exception from a venue
+    call into an UNKNOWN answer (_SafeVenue). A harness stop must end the scenario as a FAIL instead, so it passes
+    through like KeyboardInterrupt; run_scenario catches it by name, before anything generic."""
 
 
-class DeadlineExceeded(Exception):
-    """The scenario's absolute wall deadline (bound.max_wall_s) has passed: nothing may OPEN exposure any more."""
+class DeadlineExceeded(BaseException):
+    """The scenario's absolute wall deadline (bound.max_wall_s) has passed: nothing may OPEN exposure any more.
+    A BaseException for the same reason as BoundExceeded."""
 
 
 class BoundedPort:

@@ -209,7 +209,7 @@ class _Run:
             self.runner = self.new_runner()
         elif op == 'resume':
             ok = self.runner.resume(self.now)
-            self.checks.append(('resume_succeeds', ok, f'mode {self.runner.fold.mode}'))
+            self.checks.append(('resume_succeeds', ok, f'mode {self.runner.mode}'))   # effective (hard HOLD)
         elif op == 'await_exit':
             for _ in range(st['max_ticks']):
                 self.tick()
@@ -312,7 +312,7 @@ def _evaluate(run, exp, truth):
     if 'hold_seen' in exp:
         out.append((f'hold seen == {exp["hold_seen"]}', (c.holds > 0) == exp['hold_seen'], str(c.holds)))
     if 'mode_end' in exp:
-        m = str(r.fold.mode)
+        m = str(r.mode)                                  # effective mode (S1 9a506d3)
         out.append((f'mode at end {exp["mode_end"]}', m == exp['mode_end'], m))
     if 'max_orders' in exp:
         out.append((f'orders <= {exp["max_orders"]}', run.port.submits <= exp['max_orders'], str(run.port.submits)))
