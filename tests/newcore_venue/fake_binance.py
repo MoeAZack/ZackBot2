@@ -145,8 +145,19 @@ class FakeBinance:
                    and sym in (None, a['symbol']) and self._visible(a['cid'])])
 
     def _get_fapi_v1_userTrades(self, q):
-        return ok([f for f in self.fills if f['symbol'] == q['symbol'] and
-                   ('orderId' not in q or f['orderId'] == int(q['orderId']))])
+        # Binance semantics: fromId -> trades with id >= fromId (time bounds not applied); else startTime / endTime
+        # bound the rows; ascending ids; at most `limit` (default 500) rows.
+        rows = [f for f in self.fills if f['symbol'] == q['symbol'] and
+                ('orderId' not in q or f['orderId'] == int(q['orderId']))]
+        if 'fromId' in q:
+            rows = [f for f in rows if f['id'] >= int(q['fromId'])]
+        else:
+            if 'startTime' in q:
+                rows = [f for f in rows if f['time'] >= int(q['startTime'])]
+            if 'endTime' in q:
+                rows = [f for f in rows if f['time'] <= int(q['endTime'])]
+        rows.sort(key=lambda f: f['id'])
+        return ok(rows[:int(q.get('limit', 500))])
 
     def _get_fapi_v1_income(self, q):
         return ok([])
