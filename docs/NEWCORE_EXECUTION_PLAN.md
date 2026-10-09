@@ -77,6 +77,12 @@ positions are disposable. Mainnet credentials, funds and deployment remain a sep
 
 ## 3. Team operating model
 
+The owner is the ultimate product authority. Codex is the binding roadmap, scope, prioritization and integration owner:
+it maintains the `NOW / NEXT / LATER / POST-LIVE` queue and redirects work that does not advance the active milestone.
+Claude Code implements and Cowork independently validates/researches within that queue. Both continue autonomously from
+the next ready non-conflicting item, but material scope expansion or reordering requires a Codex ruling. Every handoff
+states `ROADMAP FIT:` and `DEFERRED:` so multi-agent capacity accelerates the plan instead of creating distractions.
+
 | Role | Primary responsibility | Must not do |
 |---|---|---|
 | **Claude Code — implementation owner** | Product code, migrations, focused regression tests and touched-file cleanup; publishes exact-SHA handoffs. | Self-accept, silently broaden a ticket, or preserve legacy code without a named contract. |

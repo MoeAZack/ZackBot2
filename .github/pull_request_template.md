@@ -3,6 +3,8 @@
 - Exact head:
 - Ticket/contract:
 - Integration owner:
+- ROADMAP FIT (`NOW` milestone / owner-contract section):
+- DEFERRED (adjacent work intentionally not taken):
 
 ## Owner product contract
 

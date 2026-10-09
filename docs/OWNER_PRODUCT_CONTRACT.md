@@ -39,6 +39,24 @@ step or strategy experiment unless it prevents a confirmed serious failure in th
 may interrupt the queue; unrelated polish may not. Mainnet remains separately gated and requires complete live security,
 safety, operational and release acceptance.
 
+### Roadmap and multi-agent authority
+
+The owner is the ultimate product authority. Under this contract, **Codex is the roadmap, prioritization, scope and
+integration authority**. Codex owns the active `NOW / NEXT / LATER / POST-LIVE` queue, acceptance sequence, parallel-work
+boundaries, requirement traceability and protected-branch merge decision.
+
+- Claude Code owns implementation within the approved queue; Cowork owns independent evidence, adversarial testing and
+  research within it.
+- Claude Code and Cowork may propose alternatives and report discoveries, but may not silently widen/reorder scope,
+  start optional workstreams or replace an owner requirement without a Codex ruling.
+- They continue autonomously from the next ready non-conflicting queue item; routine work does not wait for Codex
+  permission. Codex becomes a gate only for material scope/priority changes, acceptance or conflicts.
+- A confirmed serious defect in the immediate Binance/testnet path may interrupt for the smallest bounded fix and proof;
+  it is reported to Codex immediately. Unrelated audits, architecture, polish and post-live venues are deferred.
+- Every handoff and PR states `ROADMAP FIT:` with the current milestone/contract section and `DEFERRED:` for tempting
+  adjacent work intentionally not taken. Codex redirects work that does not directly advance the active milestone.
+- No agent accepts its own implementation. Codex integrates independent evidence and keeps the three lanes aligned.
+
 ## 1. Product authority and visibility
 
 1. Every meaningful application feature and setting is visible in the final UI and owner-toggleable where technically
