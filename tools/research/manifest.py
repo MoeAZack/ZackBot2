@@ -13,19 +13,39 @@ logical store name (default `repo` = the repository checkout), never a machine-s
 `..` segments, drive/UNC/absolute paths, backslashes and NUL are rejected, and every root and file is resolved
 (symlinks included) and proven to stay under the explicitly allowed store directory before it is read.
 
+Two loaders share the schema (RES-01 R1):
+  `zb-local-csv/1`           `<SYMBOL>_<interval>.csv` with header `t,o,h,l,c,v` (the legacy survivor-only store).
+  `zb-binance-vision-zip/1`  a `data.binance.vision` UM monthly mirror `um/monthly/<series>/<SYMBOL>/[<interval>/]
+                             <SYMBOL>-<interval|fundingRate>-YYYY-MM.zip`, each zip beside a `.ok` sidecar holding the
+                             SHA-256 published in the archive's `.CHECKSUM`. Every zip is re-hashed and must equal its
+                             sidecar; it must hold exactly the one expected CSV, whose schema (column count, optional
+                             Binance header, 13-digit ms times inside the file's month, interval alignment, close_time =
+                             open + interval - 1, numeric quote volume, strictly increasing) is checked row by row.
+                             Archive file entries add a `series` key (`klines` / `markPriceKlines` / `fundingRate`);
+                             funding has `interval` null and first/last times are `calc_time` (a funding row is
+                             available at its `calc_time`).
+`data_root` is one of the logical store names in DATA_ROOTS; the archive loader requires `binance_um`, a directory
+outside the repository that is always passed explicitly with `--store`.
+
 Usage (repo root):
   python tools/research/manifest.py build --id ID --source-class legacy-unverified --root data_long [--root ...] --out FILE
-  python tools/research/manifest.py verify FILE
+  python tools/research/manifest.py build --loader zb-binance-vision-zip/1 --store DIR --data-root binance_um
+      --id ID --source-class archive-verified --root um/monthly --accessed-cairo TEXT --out FILE [--workers N]
+  python tools/research/manifest.py verify FILE [--store DIR] [--workers N]
   (`--store DIR --data-root NAME` select a store other than the repository checkout.)
 """
 from __future__ import annotations
 
 import argparse
+import gzip
 import hashlib
 import json
 import os
 import re
 import sys
+import urllib.parse
+import zipfile
+from concurrent.futures import ProcessPoolExecutor
 from datetime import datetime, timezone
 
 FORMAT = 'zb-data-manifest/1'
@@ -43,6 +63,21 @@ TOP_KEYS = {'format', 'manifest_id', 'source_class', 'survivor_only', 'loader_ve
             'note', 'data_root', 'files', 'digest'}
 DATA_ROOT_RE = re.compile(r'^[a-z][a-z0-9_-]*$')
 FILE_KEYS = {'path', 'symbol', 'interval', 'sha256', 'bytes', 'rows', 'first_open_ms', 'last_open_ms', 'source'}
+DATA_ROOTS = ('repo', 'binance_um')                         # the only logical stores a manifest may name
+
+ARCHIVE_LOADER = 'zb-binance-vision-zip/1'
+ARCHIVE_RULE = 'klines, markPriceKlines: open_ms + interval_ms; fundingRate: calc_time'
+ARCHIVE_ROOT = 'binance_um'
+ARCHIVE_KIND = 'binance-vision-archive'
+ARCHIVE_URL = 'https://data.binance.vision/data/futures/'   # + the store-relative path (um/monthly/...)
+ARCHIVE_FILE_KEYS = FILE_KEYS | {'series'}
+SERIES = ('klines', 'markPriceKlines', 'fundingRate')
+# Binance lists a few non-ASCII perps (e.g. CJK-named memecoins): any non-ASCII char is allowed in the symbol.
+ZIP_RE = re.compile(r'^((?:[A-Z0-9]|[^\x00-\x7f])+)-(' + '|'.join(INTERVALS) + r'|fundingRate)-(\d{4})-(\d{2})\.zip$')
+KLINE_HEADER = (b'open_time,open,high,low,close,volume,close_time,quote_volume,count,taker_buy_volume,'
+                b'taker_buy_quote_volume,ignore')
+FUNDING_HEADER = b'calc_time,funding_interval_hours,last_funding_rate'
+LOADERS = {LOADER_VERSION: (FILE_KEYS, AVAILABLE_RULE), ARCHIVE_LOADER: (ARCHIVE_FILE_KEYS, ARCHIVE_RULE)}
 
 
 class ManifestError(ValueError):
@@ -112,10 +147,117 @@ def scan_file(abs_path: str, rel_path: str) -> dict:
             'source': {'kind': 'local-file', 'url': None, 'archive_checksum': None}}
 
 
+def archive_url(rel: str) -> str:
+    return ARCHIVE_URL + urllib.parse.quote(rel, safe='/')
+
+
+def archive_meta(rel: str) -> dict:
+    """Series/symbol/interval/month of a store-relative archive path; raises unless the layout is exact."""
+    parts = check_rel_path(rel).split('/')
+    m = ZIP_RE.match(parts[-1])
+    ok = bool(m) and len(parts) >= 5 and parts[:2] == ['um', 'monthly'] and parts[2] in SERIES and parts[3] == m.group(1)
+    funding = ok and parts[2] == 'fundingRate'
+    if ok:
+        ok = (len(parts) == 5 and m.group(2) == 'fundingRate') if funding else \
+             (len(parts) == 6 and parts[4] == m.group(2) and m.group(2) in INTERVALS)
+    if not ok or not 1 <= int(m.group(4)) <= 12:
+        raise ManifestError(f'{rel}: not um/monthly/<series>/<SYMBOL>/[<interval>/]<SYMBOL>-<interval>-YYYY-MM.zip')
+    y, mo = int(m.group(3)), int(m.group(4))
+    start = int(datetime(y, mo, 1, tzinfo=timezone.utc).timestamp() * 1000)
+    end = int(datetime(y + mo // 12, mo % 12 + 1, 1, tzinfo=timezone.utc).timestamp() * 1000)
+    return {'series': parts[2], 'symbol': m.group(1), 'interval': None if funding else m.group(2),
+            'month_start_ms': start, 'month_end_ms': end}
+
+
+def parse_archive_csv(rel: str, data: bytes, meta: dict) -> list[list[bytes]]:
+    """Row-by-row schema check of one archive CSV; returns the split rows (header removed)."""
+    funding = meta['series'] == 'fundingRate'
+    header, ncol = (FUNDING_HEADER, 3) if funding else (KLINE_HEADER, 12)
+    lines = data.split(b'\n')
+    if lines and lines[-1] == b'':
+        lines.pop()
+    lines = [ln[:-1] if ln.endswith(b'\r') else ln for ln in lines]
+    if lines and lines[0] == header:
+        lines = lines[1:]
+    rows = [ln.split(b',') for ln in lines]
+    if any(len(r) != ncol for r in rows):
+        raise ManifestError(f'{rel}: a row does not have {ncol} columns (or the header is unknown)')
+    try:
+        t = [int(r[0]) for r in rows]
+        if not funding:
+            close = [int(r[6]) for r in rows]
+            qv = [float(r[7]) for r in rows]                   # quote_volume must be numeric (the PIT universe reads it)
+    except ValueError as e:
+        raise ManifestError(f'{rel}: non-numeric time/volume field ({e})')
+    lo, hi = meta['month_start_ms'], meta['month_end_ms']
+    if any(not lo <= x < hi for x in t):
+        raise ManifestError(f'{rel}: a row time lies outside the file month (or is not in ms)')
+    if any(b <= a for a, b in zip(t, t[1:])):
+        raise ManifestError(f'{rel}: rows must be strictly increasing by time (unordered or duplicate row)')
+    if not funding:
+        step = INTERVALS[meta['interval']]
+        if any(x % step for x in t):
+            raise ManifestError(f'{rel}: an open time is not aligned to {meta["interval"]}')
+        if any(c != x + step - 1 for x, c in zip(t, close)):
+            raise ManifestError(f'{rel}: close_time != open_time + interval - 1')
+        if any(not v >= 0 or v == float('inf') for v in qv):
+            raise ManifestError(f'{rel}: quote_volume must be a finite non-negative number')
+    return rows
+
+
+def read_archive(abs_path: str, rel_path: str) -> tuple[bytes, str, bytes]:
+    """(zip bytes, published sidecar checksum, CSV bytes); refuses a hash mismatch or an unexpected member."""
+    with open(abs_path, 'rb') as f:
+        raw = f.read()
+    try:
+        with open(abs_path + '.ok', 'rb') as f:
+            published = f.read().strip().decode('ascii')
+    except (OSError, UnicodeDecodeError):
+        raise ManifestError(f'{rel_path}: missing or unreadable .ok checksum sidecar')
+    ours = hashlib.sha256(raw).hexdigest()
+    if not HEX64.match(published) or published != ours:
+        raise ManifestError(f'{rel_path}: SHA-256 {ours} != published archive checksum {published!r}')
+    csv_name = os.path.basename(rel_path)[:-4] + '.csv'
+    try:
+        with zipfile.ZipFile(abs_path) as z:
+            names = z.namelist()
+            if names != [csv_name]:
+                raise ManifestError(f'{rel_path}: zip must hold exactly {csv_name}, holds {names}')
+            return raw, published, z.read(csv_name)
+    except zipfile.BadZipFile as e:
+        raise ManifestError(f'{rel_path}: bad zip ({e})')
+
+
+def scan_archive(abs_path: str, rel_path: str) -> dict:
+    meta = archive_meta(rel_path)
+    raw, published, data = read_archive(abs_path, rel_path)
+    t = [int(r[0]) for r in parse_archive_csv(rel_path, data, meta)]
+    return {'path': rel_path, 'series': meta['series'], 'symbol': meta['symbol'], 'interval': meta['interval'],
+            'sha256': published, 'bytes': len(raw), 'rows': len(t),
+            'first_open_ms': t[0] if t else None, 'last_open_ms': t[-1] if t else None,
+            'source': {'kind': ARCHIVE_KIND, 'url': archive_url(rel_path), 'archive_checksum': published}}
+
+
+def _scan_job(job):
+    loader, abs_path, rel = job
+    return (scan_archive if loader == ARCHIVE_LOADER else scan_file)(abs_path, rel)
+
+
+def _scan_all(jobs, workers: int) -> list[dict]:
+    if workers <= 1 or len(jobs) < 2:
+        return [_scan_job(j) for j in jobs]
+    with ProcessPoolExecutor(max_workers=workers) as ex:
+        return list(ex.map(_scan_job, jobs, chunksize=32))
+
+
 def build(roots, *, manifest_id: str, source_class: str, base: str = REPO, data_root: str = 'repo',
-          survivor_only: bool = True, accessed_cairo: str | None = None, note: str = '') -> dict:
+          survivor_only: bool = True, accessed_cairo: str | None = None, note: str = '',
+          loader: str = LOADER_VERSION, workers: int = 1) -> dict:
     """`base` is the allowed data-store directory; `data_root` its logical name recorded in the manifest."""
-    files = []
+    if loader not in LOADERS:
+        raise ManifestError(f'loader must be one of {sorted(LOADERS)}')
+    pick = (lambda n: n.endswith('.zip')) if loader == ARCHIVE_LOADER else NAME_RE.match
+    jobs = []
     for root in roots:
         top = contained(base, root)
         if not os.path.isdir(top):
@@ -123,11 +265,12 @@ def build(roots, *, manifest_id: str, source_class: str, base: str = REPO, data_
         for d, dirs, names in os.walk(top):
             dirs.sort()
             for name in sorted(names):
-                if NAME_RE.match(name):
+                if pick(name):
                     rel = os.path.relpath(os.path.join(d, name), os.path.realpath(base)).replace(os.sep, '/')
-                    files.append(scan_file(contained(base, rel), rel))
+                    jobs.append((loader, contained(base, rel), rel))
+    files = _scan_all(jobs, workers)
     m = {'format': FORMAT, 'manifest_id': manifest_id, 'source_class': source_class, 'survivor_only': survivor_only,
-         'loader_version': LOADER_VERSION, 'available_rule': AVAILABLE_RULE, 'accessed_cairo': accessed_cairo,
+         'loader_version': loader, 'available_rule': LOADERS[loader][1], 'accessed_cairo': accessed_cairo,
          'note': note, 'data_root': data_root, 'files': sorted(files, key=lambda f: f['path'])}
     m['digest'] = digest_of(m)
     validate(m)
@@ -144,22 +287,38 @@ def validate(m: dict) -> None:
     need(isinstance(m['manifest_id'], str) and m['manifest_id'], 'manifest_id must be a non-empty string')
     need(m['source_class'] in SOURCE_CLASSES, f'source_class must be one of {SOURCE_CLASSES}')
     need(isinstance(m['survivor_only'], bool), 'survivor_only must be a bool')
-    need(m['available_rule'] == AVAILABLE_RULE, f'available_rule must be {AVAILABLE_RULE!r}')
-    need(m['loader_version'] == LOADER_VERSION, f'loader_version must be {LOADER_VERSION!r}')
+    need(m['loader_version'] in LOADERS, f'loader_version must be one of {sorted(LOADERS)}')
+    file_keys, rule = LOADERS[m['loader_version']]
+    archive = m['loader_version'] == ARCHIVE_LOADER
+    need(m['available_rule'] == rule, f'available_rule must be {rule!r}')
     need(isinstance(m['note'], str), 'note must be a string')
     need(m['accessed_cairo'] is None or (isinstance(m['accessed_cairo'], str) and _strict_date(m['accessed_cairo'][:10])),
          'accessed_cairo must be null or a string starting with a valid YYYY-MM-DD Cairo date')
     need(isinstance(m['data_root'], str) and DATA_ROOT_RE.match(m['data_root']),
          f'data_root must be a logical store name matching {DATA_ROOT_RE.pattern} (never an absolute path)')
+    need(m['data_root'] in DATA_ROOTS, f'data_root must be one of {DATA_ROOTS}')
+    need(not archive or (m['data_root'] == ARCHIVE_ROOT and m['source_class'] == 'archive-verified'
+                         and m['survivor_only'] is False),
+         f'{ARCHIVE_LOADER} requires data_root {ARCHIVE_ROOT!r}, source_class archive-verified, survivor_only false')
     need(isinstance(m['files'], list) and m['files'], 'files must be a non-empty list')
     paths = [f.get('path') for f in m['files']]
     need(paths == sorted(set(paths)), 'file paths must be unique and sorted')
     for f in m['files']:
         p = f.get('path')
         check_rel_path(p)
-        need(set(f) == FILE_KEYS, f'{p}: file keys must be exactly {sorted(FILE_KEYS)}')
-        mm = NAME_RE.match(os.path.basename(p))
-        need(mm and mm.group(1) == f['symbol'] and mm.group(2) == f['interval'], f'{p}: symbol/interval disagree with name')
+        need(set(f) == file_keys, f'{p}: file keys must be exactly {sorted(file_keys)}')
+        if archive:
+            meta = archive_meta(p)
+            need(all(f[k] == meta[k] for k in ('series', 'symbol', 'interval')),
+                 f'{p}: series/symbol/interval disagree with the path')
+            s = f['source']
+            need(isinstance(s, dict) and s.get('kind') == ARCHIVE_KIND and s.get('url') == archive_url(p)
+                 and s.get('archive_checksum') == f['sha256'],
+                 f'{p}: archive source must be {ARCHIVE_KIND} at {ARCHIVE_URL}<path> with checksum == sha256')
+        else:
+            mm = NAME_RE.match(os.path.basename(p))
+            need(mm and mm.group(1) == f['symbol'] and mm.group(2) == f['interval'],
+                 f'{p}: symbol/interval disagree with name')
         need(isinstance(f['sha256'], str) and HEX64.match(f['sha256']), f'{p}: sha256 must be 64 lowercase hex')
         need(_is_int(f['rows']) and f['rows'] >= 0 and _is_int(f['bytes']) and f['bytes'] >= 0,
              f'{p}: rows/bytes must be non-negative ints')
@@ -177,44 +336,65 @@ def validate(m: dict) -> None:
     need(m['digest'] == digest_of(m), 'digest does not match the canonical content')
 
 
-def verify(m: dict, base: str = REPO) -> list[str]:
+def verify(m: dict, base: str = REPO, workers: int = 1) -> list[str]:
     """Re-scan every file on disk; return the list of mismatches (empty = the manifest still describes the bytes).
     `base` is the allowed store for `m['data_root']`; a path resolving outside it raises before anything is read."""
     validate(m)
-    out = []
+    out, jobs, want = [], [], []
     for f in m['files']:
         ap = contained(base, f['path'])
         if not os.path.exists(ap):
             out.append(f'{f["path"]}: missing')
             continue
-        now = scan_file(ap, f['path'])
+        jobs.append((m['loader_version'], ap, f['path']))
+        want.append(f)
+    for f, now in zip(want, _scan_all(jobs, workers)):
         for k in ('sha256', 'bytes', 'rows', 'first_open_ms', 'last_open_ms'):
             if now[k] != f[k]:
                 out.append(f'{f["path"]}: {k} {f[k]} != {now[k]}')
     return out
 
 
+def _read_text(path: str) -> bytes:
+    """The manifest's JSON bytes; a `.json.gz` file is a gzip wrapper over exactly the bytes a `.json` file holds."""
+    with open(path, 'rb') as f:
+        raw = f.read()
+    if path.endswith('.gz'):
+        try:
+            return gzip.decompress(raw)
+        except (OSError, EOFError) as e:
+            raise ManifestError(f'{path}: not a valid gzip file ({e})')
+    return raw
+
+
 def write(m: dict, path: str) -> None:
-    """Write once. Re-writing identical bytes is a no-op; different bytes are refused (manifests are never edited)."""
+    """Write once. Re-writing identical content is a no-op; different content is refused (manifests are never edited).
+    A path ending `.json.gz` stores the same JSON bytes gzip-compressed (mtime 0, no file name) for large archive
+    manifests; immutability is judged on the decompressed bytes, so a different zlib build cannot fake a change."""
     validate(m)
     data = json.dumps(m, sort_keys=True, indent=1, ensure_ascii=True).encode('ascii') + b'\n'
     if os.path.exists(path):
-        with open(path, 'rb') as f:
-            if f.read() == data:
-                return
+        if _read_text(path) == data:
+            return
         raise ManifestError(f'{path} exists with different content; manifests are immutable, use a new manifest_id')
     with open(path, 'wb') as f:
-        f.write(data)
+        f.write(gzip.compress(data, compresslevel=9, mtime=0) if path.endswith('.gz') else data)
 
 
 def load(path: str) -> dict:
-    with open(path, encoding='utf-8') as f:
-        try:
-            m = json.load(f, parse_constant=lambda c: (_ for _ in ()).throw(ValueError(c)))
-        except ValueError as e:
-            raise ManifestError(f'{path}: not strict JSON (NaN / Infinity refused): {e}')
+    try:
+        m = json.loads(_read_text(path).decode('utf-8'),
+                       parse_constant=lambda c: (_ for _ in ()).throw(ValueError(c)))
+    except ValueError as e:
+        raise ManifestError(f'{path}: not strict JSON (NaN / Infinity refused): {e}')
     validate(m)
     return m
+
+
+def _store_for(data_root: str, store) -> str:
+    if store is None and data_root != 'repo':
+        raise ManifestError(f'data_root {data_root!r} lives outside the repository: pass --store explicitly')
+    return REPO if store is None else store
 
 
 def main(argv=None) -> int:
@@ -229,18 +409,24 @@ def main(argv=None) -> int:
     b.add_argument('--out', required=True)
     v = sub.add_parser('verify')
     v.add_argument('file')
+    b.add_argument('--loader', default=LOADER_VERSION, choices=sorted(LOADERS))
     for p in (b, v):
-        p.add_argument('--store', default=REPO, help='allowed data-store directory (default: the repository checkout)')
+        p.add_argument('--store', help='allowed data-store directory (default: the repository checkout; '
+                                       'required for any data_root other than repo)')
+        p.add_argument('--workers', type=int, default=1, help='parallel scan processes')
     b.add_argument('--data-root', default='repo', help='logical name of --store recorded in the manifest')
     a = ap.parse_args(argv)
     try:
         if a.cmd == 'build':
-            m = build(a.root, manifest_id=a.id, source_class=a.source_class, base=a.store, data_root=a.data_root,
-                      accessed_cairo=a.accessed_cairo, note=a.note)
+            store = _store_for(a.data_root, a.store)
+            m = build(a.root, manifest_id=a.id, source_class=a.source_class, base=store, data_root=a.data_root,
+                      accessed_cairo=a.accessed_cairo, note=a.note, loader=a.loader, workers=a.workers,
+                      survivor_only=a.loader != ARCHIVE_LOADER)
             write(m, a.out)
             print(m['digest'])
             return 0
-        bad = verify(load(a.file), a.store)
+        m = load(a.file)
+        bad = verify(m, _store_for(m['data_root'], a.store), a.workers)
         print('\n'.join(bad) if bad else 'OK')
         return 1 if bad else 0
     except ManifestError as e:

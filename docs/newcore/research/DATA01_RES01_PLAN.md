@@ -196,6 +196,19 @@ Built inside the existing NEWCORE research path, not beside it:
   5. 1m klines for intrabar resolution: `data/futures/um/monthly/klines/<SYMBOL>/1m/`.
   6. Historical rules snapshots: no public history before our own first snapshot, hence `RULES-BACKFILLED`.
 
+## R1 data + R2 status (09 Oct 2026 Cairo; data and universe only, no strategy run, no returns computed)
+
+- Archive store (outside the repo, logical `data_root` `binance_um`): `data.binance.vision` UM monthly zips for all 900
+  historically listed USDT perps (klines 1d + 4h, markPriceKlines 1h, fundingRate) plus klines 1m for the 432-symbol
+  top-40 union. `research_evidence/manifests/binance-um-archive-v1.json.gz` (`zb-binance-vision-zip/1` loader):
+  103,659 files, digest `54912d9d...`. Every zip re-hashed against its published checksum and schema-checked row by row
+  (0 failures). Gzip is a byte-exact wrapper of the canonical JSON (62 MB plain).
+- `tools/research/universe.py` -> `research_evidence/universe/pit-top40-qv30d-v1.json` (`zb-pit-universe/1`): 348
+  Monday rankings 2020-02-03 -> 2026-09-28 over 900 symbols; every week `RULES-BACKFILLED`. Delist vetoes need
+  timestamped observations (none loaded yet); archive end / last traded close are hindsight, audit only.
+- Open: timestamped delist announcements; rename evidence + price-continuity check; 1m archives for the 11 post-2021-12
+  universe members outside the 1m union; ruling on TradFi USDT perps (XAU, CL, single stocks) in the crypto universe.
+
 ## Ruling 6070934398 applied
 
 - [x] 1 Immutable UTC splits, purge/embargo, one split per episode -> section 4
