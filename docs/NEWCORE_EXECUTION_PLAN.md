@@ -5,6 +5,10 @@
 This is the shared execution document for the owner, Claude Code, Cowork and Codex. It converts the historical audit,
 the product roadmap and the replacement-first decision into one ordered build plan.
 
+The binding feature, control and final-UI requirements are maintained in
+[`OWNER_PRODUCT_CONTRACT.md`](OWNER_PRODUCT_CONTRACT.md). Every affected ticket and acceptance decision must preserve
+its traceability; this execution plan controls sequencing, not whether an owner requirement is remembered.
+
 The objective is not to preserve the current installed bot. The objective is a clean, testable and operationally safe
 new system that is measurably better than the legacy implementation. Legacy code is evidence: reuse a proven contract,
 formula, fixture or regression test when it deserves to survive; do not port structure or compatibility merely because
