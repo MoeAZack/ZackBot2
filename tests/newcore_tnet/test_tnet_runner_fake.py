@@ -119,7 +119,9 @@ def test_fills_that_disagree_with_the_final_result_fail(monkeypatch, skew):
     monkeypatch.setattr(FakeVenue, 'fills', fills)
     r = run(spec('T03'))
     bad = [a for a in r.assertions if not a[1]]
-    assert r.verdict == FAIL and bad and bad[0][0].startswith('fills match FINAL') and 'vs FINAL' in bad[0][2]
+    # S1 (qty skew): the venue disagreeing with our fills also holds the exit, so the 'trades' assertion may fail
+    # first; the fills-vs-FINAL check must still be among the failures (Cowork 6074142371).
+    assert r.verdict == FAIL and any(a[0].startswith('fills match FINAL') and 'vs FINAL' in a[2] for a in bad), bad
 
 
 def test_a_bound_breach_fails_and_the_teardown_flattens():

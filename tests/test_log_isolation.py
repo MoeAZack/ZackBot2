@@ -127,10 +127,14 @@ def test_startup_path_configures_one_rotating_scrubbed_handler_in_the_data_dir(t
     assert 'startup ok key ***' in text and 'second line key ***' in text and 'SuperSecretApiKey123' not in text
 
 
-def test_this_pytest_process_has_no_log_file_under_the_real_data_folder():
+def test_this_pytest_process_has_no_log_file_under_the_real_data_folder(request):
     """In-process guard: during this session no logging FileHandler resolves under the real %LOCALAPPDATA%\\ZackBot."""
     import app  # noqa: F401  (the import that used to attach bot.log)
-    from conftest import file_handlers
+    # The ROOT conftest's helper, found by file: a sub-folder conftest (tests/newcore_tnet) may own the bare name
+    # 'conftest' in sys.modules in a full run.
+    root = os.path.normcase(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'conftest.py'))
+    file_handlers, = [m.file_handlers for m in request.config.pluginmanager.get_plugins()
+                      if os.path.normcase(getattr(m, '__file__', '') or '') == root]
     if not REAL_LAD: pytest.skip('no real LOCALAPPDATA on this machine')
     real = os.path.join(REAL_LAD, 'ZackBot')
     assert not [h.baseFilename for _, h in file_handlers() if _under(h.baseFilename, real)]
