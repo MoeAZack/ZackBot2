@@ -18,9 +18,10 @@ from newcore.domain.errors import InvalidRecord
 
 SCHEMAS = {k: load(f'{k}_v1.schema.json') for k in ('signal_intent', 'signal_result', 'candidate_score',
                                                     'candidate_evaluation')}
-SEMANTIC = {'signal_intent': S.check_signal_intent, 'signal_result': S.check_signal_result,
-            'candidate_score': S.check_candidate_score}
 T0 = 1_791_000_000_000                   # 2026-10 UTC ms
+SEMANTIC = {'signal_intent': lambda p, now_ms=T0 + 1_000: S.check_signal_intent(p, now_ms=now_ms),
+            'signal_result': S.check_signal_result,
+            'candidate_score': lambda p, now_ms=T0 + 1_000: S.check_candidate_score(p, now_ms=now_ms)}
 H = lambda c: c * 64                     # noqa: E731  a non-zero digest
 ID = lambda p, c='a': f'{p}_' + c * 32   # noqa: E731
 
@@ -118,6 +119,7 @@ def candidate(state='READY', symbol='BTCUSDT', cid='a', evidence='testnet'):
 def evaluation(evidence='testnet', sealed=False):
     cands = [candidate(cid='a', evidence=evidence), candidate('WAIT', cid='b', evidence=evidence)]
     cands[1]['reason_codes'] = ['candidate.no_entry_trigger']
+    cands[1]['side'] = 'SHORT'                                            # one candidate per evaluation cell
     ev = {'contract_version': 1, 'evaluation_id': ID('eval'), 'evidence_class': evidence, 'as_of_ms': T0,
           'universe': copy.deepcopy(UNIVERSE), 'universe_snapshot_sha256': S.sha256_of(UNIVERSE),
           'scoring': copy.deepcopy(SCORING), 'weights_sha256': S.sha256_of(SCORING), 'profile_id': 'balanced',
@@ -432,7 +434,7 @@ def test_item5_strict_integer_token_type():
 def test_item5_semantic_rejects_bool_and_float_where_parse_was_skipped():
     for v in (True, float(T0)):
         with pytest.raises(InvalidRecord):
-            S.check_signal_intent(mutate(signal(), lambda p: p.update(generated_at_ms=v)))
+            S.check_signal_intent(mutate(signal(), lambda p: p.update(generated_at_ms=v)), now_ms=T0 + 1_000)
 
 
 @pytest.mark.parametrize('name,action,fn', [
@@ -486,10 +488,10 @@ def test_item5_registry_membership_and_scopes():
 
 
 @pytest.mark.parametrize('check,payload', [
-    (S.check_signal_intent, {'action': 'enter'}),
+    (S.check_signal_shape, {'action': 'enter'}),
     (S.check_signal_result, {'status': 'accepted'}),
-    (S.check_candidate_score, {}),
-    (S.check_signal_intent, ['not', 'an', 'object']),
+    (S.check_candidate_shape, {}),
+    (S.check_signal_shape, ['not', 'an', 'object']),
 ])
 def test_item5_unvalidated_payloads_fail_closed_as_invalid_record(check, payload):
     with pytest.raises(InvalidRecord):
@@ -514,7 +516,7 @@ def test_sender_cannot_choose_environment_or_authority():
 
 # --------------------------------------------------------------------- boundary: the validator package stays pure
 def test_contracts_package_imports_only_stdlib_allowlist_and_domain():
-    allowed = {'__future__', 'collections', 'decimal', 'functools', 'hashlib', 'json', 're'}
+    allowed = {'__future__', 'collections', 'decimal', 'functools', 'hashlib', 'inspect', 'json', 're'}
     bad = []
     for path in glob.glob(os.path.join(ROOT, 'newcore', 'contracts', '*.py')):
         for node in ast.walk(ast.parse(open(path, encoding='utf-8').read())):
