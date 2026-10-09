@@ -27,6 +27,7 @@ from newcore.strategy import Params
 from .book import BookRunner
 from .mirror import mirror_bars
 from .replay import run_replay
+from .redact import describe
 from .runner import Runner, RunnerConfig
 from .signals import EmaMomSignals
 from .sizing import SizingPolicy
@@ -247,7 +248,7 @@ def main(argv=None):
             return 0
         res = (cmd_single if a.command == 'single' else cmd_book)(a)
     except (OSError, ValueError, KeyError) as ex:                         # e.g. no data under --root: a clean refusal
-        print(f'parity: {type(ex).__name__}: {ex}', file=sys.stderr)
+        print(f'parity: {describe(ex, (ValueError,))}', file=sys.stderr)   # research tool over our own data
         return 2
     with open(a.out, 'w', encoding='utf-8') as fh:
         json.dump(res, fh, indent=1, sort_keys=True)

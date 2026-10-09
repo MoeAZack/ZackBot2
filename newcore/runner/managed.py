@@ -71,6 +71,8 @@ from newcore.ports.venue import MarketOrder, OrderOutcome, OutcomeKind, ReadKind
 from . import ids
 from .book import BookRunner
 from .records import not_sent_result
+from .fill_evidence import rows_of
+from .redact import describe
 from .runner import ALGO_ROUTE, Runner
 from .signals import CLOSE
 
@@ -211,6 +213,7 @@ class ManagementMixin:
         self._items = []                     # (lot id, reconcile items) not handled yet
         self._mg_mode = (EntriesMode.ACTIVE, None)
         self._refused = {}                   # lot id -> (cycle ms, refused submits this cycle)
+        self._mg_deferred = set()            # adv6 M: trail moves deferred (incident once)
         self._pending_start = set()          # lots whose entry filled; the 'mg start' input is not journaled yet
         self._malformed = []                 # (lot, decision, error): unreadable management records -> HOLD
         super().__init__(config, **kw)
@@ -310,14 +313,15 @@ class ManagementMixin:
         observer, so a restart applies the same rows). Unreadable -> nothing (the binding stays pending; never a
         zero). True when one input was written."""
         plan = self.plans[lot_id]
-        r = self.venue.fills(plan.symbol, b.exchange_order_id)
-        if r.kind is not ReadKind.OK:                                     # executed at the venue, not bookable yet:
+        rows, why = rows_of(self.venue.fills(plan.symbol, b.exchange_order_id), symbol=plan.symbol, now=self.now,
+                            eoid=b.exchange_order_id, expect={b.exchange_order_id: b.executed})
+        if rows is None:                                                  # executed at the venue, not bookable yet:
             if self.fold.mode is not EntriesMode.HOLD:                    # fail closed until it is (never a zero)
-                self._incident(f'management {lot_id}: fills of {b.intent_id} unreadable; pending, HOLD')
+                self._incident(f'management {lot_id}: fills of {b.intent_id} not proven ({why}); pending, HOLD')
                 self._hold([ReasonCode.CONNECTIVITY_EXCHANGE_OUTAGE], reason=ReasonCode.CONNECTIVITY_EXCHANGE_OUTAGE)
             return False
         ds = self.mg[lot_id]
-        for f in r.value:
+        for f in rows:
             if f.trade_id in ds.trade_ids:
                 continue
             did = ids.mg_input_decision_id('fill', lot_id, f.trade_id)
@@ -351,9 +355,9 @@ class ManagementMixin:
             drive = fn(*args, **kw)
         except (ManagementError, DomainError) as ex:
             if lid in self.mg:
-                self._items.append((lid, (('driver_refused', f'{fn.__name__}: {type(ex).__name__}: {ex}'[:200]),)))
+                self._items.append((lid, (('driver_refused', f'{fn.__name__}: {describe(ex, (ValueError,))}'[:200]),)))
             else:
-                self._incident(f'management {lid}: driver refused {fn.__name__}: {ex}')
+                self._incident(f'management {lid}: driver refused {fn.__name__}: {describe(ex, (ValueError,))}')
                 self.unmanaged.add(lid)
             return
         self.mg[lid] = drive.state
@@ -387,7 +391,7 @@ class ManagementMixin:
             return self.mgmt.plans(info)
         except (PlanRefused, ManagementError, DomainError) as ex:
             if not quiet:
-                self._incident(f'management {lot_id}: no plan ({type(ex).__name__}: {ex}); the runner protects it')
+                self._incident(f'management {lot_id}: no plan ({describe(ex, (ValueError,))}); the runner protects it')
             return None
 
     def _mg_try_start(self, lot_id):
@@ -404,17 +408,20 @@ class ManagementMixin:
         if self._mg_plan(lot_id, e, dist) is None:
             self.unmanaged.add(lot_id)
             return False
-        fr = self.venue.fills(lot.symbol, e.final.exchange_order_id) if e.final.exchange_order_id else None
+        rows, _ = (rows_of(self.venue.fills(lot.symbol, e.final.exchange_order_id), symbol=lot.symbol, now=self.now,
+                           eoid=e.final.exchange_order_id, side=lot.side,
+                           expect={e.final.exchange_order_id: e.final.executed_qty})
+                   if e.final.exchange_order_id else (None, 'no order id'))
         rates = dict(self.mgmt.fee_rates)
-        if fr is None or fr.kind is not ReadKind.OK or not fr.value or \
-                any(f.fee_asset != self.mgmt.quote_asset and f.fee_asset not in rates for f in fr.value):
+        if rows is None or not rows or \
+                any(f.fee_asset != self.mgmt.quote_asset and f.fee_asset not in rates for f in rows):
             self.unmanaged.add(lot_id)
             self._incident(f'management {lot_id}: entry fills unreadable / in an unpriced asset; not managed, '
                            f'the runner protects it (HOLD)')
             self._hold([ReasonCode.RECONCILE_UNRECONCILED])
             return False
         fee = ZERO
-        for f in fr.value:
+        for f in rows:
             x = max(f.fee, ZERO)
             fee = CTX.add(fee, x if f.fee_asset == self.mgmt.quote_asset else CTX.multiply(x, rates[f.fee_asset]))
         detail = f'{START} {e.intent_id} {fee} {"-" if dist is None else dist}'
@@ -468,7 +475,8 @@ class ManagementMixin:
         self.mg.pop(lot_id, None)
         self.plans.pop(lot_id, None)
         self.unmanaged.add(lot_id)
-        self._malformed.append((lot_id, d.decision_id, f'{type(ex).__name__}: {ex}'[:120]))
+        self._malformed.append((lot_id, d.decision_id, describe(ex, (ValueError, ArithmeticError, IndexError,
+                                                                     KeyError))[:120]))
 
     def _mg_apply_tick(self, d):
         lot_id = d.subject_id
@@ -536,10 +544,20 @@ class ManagementMixin:
                 continue                                                  # held at the runner until permitted
             if b.state is not DR.BindState.SENT:
                 continue                                                  # never a draft the driver already retired
-            if d.purpose is Purpose.PROTECT and self.fold.mode is not EntriesMode.ACTIVE and self._mg_covered(lot_id):
+            pending = self._mg_unconfirmed_replacement(lot_id) if d.purpose is Purpose.PROTECT else None
+            if d.purpose is Purpose.PROTECT and (self.fold.mode is not EntriesMode.ACTIVE or pending is not None) \
+                    and self._mg_covered(lot_id):
                 # MED-2: not ACTIVE and the lot is covered by a CONFIRMED stop: a replacement (a trail move) is not
                 # sent; the newest waits for the resume, a superseded one is recorded NOT_SENT (the lineage stays
-                # in order) and retired - never a second stop while the protection cancel is held
+                # in order) and retired - never a second stop while the protection cancel is held.
+                # Cowork adv6 M: the same while the PREVIOUS replacement is unconfirmed (its send failed / raised /
+                # its answer is unknown): the old stop keeps carrying - never loosened, never unprotected - and the
+                # newest move waits until that replacement resolves (never two unconfirmed stops on one lot)
+                if pending is not None and b.intent_id not in self._mg_deferred:
+                    self._mg_deferred.add(b.intent_id)
+                    self._incident(f'management {lot_id}: trail move {b.intent_id} deferred - the previous replacement '
+                                   f'{pending.intent_id} is unconfirmed ({pending.state}); the old stop '
+                                   f'{self._lot(lot_id).carrier.intent.client_order_id} keeps protecting')
                 later = [x for x in ds.bindings if x.leg.value == 'stop' and x.intent_id not in self.fold.intents]
                 if later and later[-1].intent_id != b.intent_id:
                     self._mg_record_unsent(lot_id, d)
@@ -594,6 +612,12 @@ class ManagementMixin:
         iv = self._record_durable(planned)
         self._mg_send(iv)
         return iv
+
+    def _mg_unconfirmed_replacement(self, lot_id):
+        """The lot's replacement stop in flight that is NOT confirmed working yet (None when there is none)."""
+        lot = self._lot(lot_id)
+        r = None if lot is None else lot.replacement
+        return r if r is not None and r.state is not IntentState.WORKING else None
 
     def _mg_covered(self, lot_id):
         lot = self._lot(lot_id)

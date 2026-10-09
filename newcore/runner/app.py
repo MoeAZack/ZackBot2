@@ -45,6 +45,7 @@ from .intrabar import play_candle
 from .managed import ManagedBookRunner, ManagedRunner, ManagementConfig, RangeFixturePlans
 from .replay import run_replay
 from .reports import health_line, write_reports
+from .redact import describe
 from .runner import RunnerConfig
 from .signals import EmaMomSignals, NoSignals
 from .sizing import SizingPolicy
@@ -297,6 +298,16 @@ def cmd_guard(cfg, out, reason):
     return EXIT_STORE_HOLD
 
 
+def _say(ex):
+    """Codex #13 P2: CLI text of an exception - our own refusals (config, store, journal lock) as written; a filesystem
+    error by its type and path only; anything else (an adapter / transport / factory error) by type + tag only."""
+    if isinstance(ex, (C.ConfigError, StoreRefused, JournalLocked)):
+        return f'{type(ex).__name__}: {ex}' if isinstance(ex, JournalLocked) else str(ex)
+    if isinstance(ex, (FileNotFoundError, NotADirectoryError, FileExistsError, PermissionError, IsADirectoryError)):
+        return f'{type(ex).__name__}: {ex.filename}'
+    return describe(ex)
+
+
 def cmd_run(cfg, args, out, stop):
     enabled = cfg.enabled and args.enable_candidate
     if cfg.enabled and not args.enable_candidate:
@@ -422,7 +433,7 @@ def main(argv=None, *, out=None, stop=None):
     try:
         cfg = C.load(args.config)
     except (C.ConfigError, OSError, ValueError) as ex:
-        print(f'CONFIG REFUSED: {ex}', file=out)
+        print(f'CONFIG REFUSED: {_say(ex)}', file=out)
         return EXIT_CONFIG
     if stop is None:
         stop = StopFlag()
@@ -436,8 +447,8 @@ def main(argv=None, *, out=None, stop=None):
         print(f'CONFIG REFUSED: {ex}', file=out)
         return EXIT_CONFIG
     except (NotADirectoryError, FileExistsError, PermissionError, JournalLocked) as ex:   # journal / output dir
-        print(f'STORE: {type(ex).__name__}: {ex}', file=out)
+        print(f'STORE: {_say(ex)}', file=out)
         return EXIT_STORE_DOWN
     except (OSError, KeyError, ValueError) as ex:                         # data root, symbols, rules: typed refusal
-        print(f'CONFIG REFUSED: {type(ex).__name__}: {ex}', file=out)
+        print(f'CONFIG REFUSED: {_say(ex)}', file=out)
         return EXIT_CONFIG

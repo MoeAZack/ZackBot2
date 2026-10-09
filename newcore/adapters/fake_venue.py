@@ -47,7 +47,7 @@ from decimal import Context, Decimal, Inexact, InvalidOperation, Overflow
 
 from newcore.ports.bars import Bar
 from newcore.ports.venue import (MarketOrder, OrderOutcome, OrderRef, OutcomeKind, ReadKind, ReadOutcome, StopOrder,
-                                 VenueFill, VenueOrder, VenuePosition)
+                                 VenueFill, VenueOrder, VenueOrderRecord, VenuePosition)
 
 ZERO = Decimal(0)
 ONE = Decimal(1)
@@ -61,6 +61,8 @@ E_DUPLICATE_ID = -4116
 E_NO_ORDER = -2013
 E_UNKNOWN_ORDER = -2011
 E_NO_MARKET = -1
+COMPLETE = 'complete pages=1 dups=0'   # fills / trades answered whole: the completeness evidence the
+                                       # runner requires (TestnetVenue: the same marker)
 
 
 @dataclass(frozen=True, slots=True)
@@ -136,7 +138,7 @@ class FakeVenue:
         self._open = {}                  # intra-candle play: symbol -> the open candle (Bar)
         self._marks = {}                 # intra-candle play: symbol -> the current mark
         self.calls = {'submit_market': 0, 'submit_stop': 0, 'cancel': 0, 'query': 0, 'positions': 0, 'open_orders': 0,
-                      'fills': 0}
+                      'fills': 0, 'order_by_id': 0}
 
     # ------------------------------------------------------------------------------------------------ fault hooks
     def lose_next_market_answer(self, truth='filled'):
@@ -184,7 +186,8 @@ class FakeVenue:
 
     def inject_position(self, symbol, side, qty, price):
         """A position the bot did not open (foreign / manual)."""
-        self._apply_fill(symbol, side, qty, price, reduce=False, eoid='foreign', at_ms=self.now_ms, fee=ZERO)
+        eoid = f'foreign-{self._trade_seq + 1}'          # its own exchange order (a manual order of the account)
+        self._apply_fill(symbol, side, qty, price, reduce=False, eoid=eoid, at_ms=self.now_ms, fee=ZERO)
 
     # ------------------------------------------------------------------------------------------------ clock
     def advance_to(self, t_ms):
@@ -458,7 +461,25 @@ class FakeVenue:
     def fills(self, symbol, exchange_order_id):
         self.calls['fills'] += 1
         out = tuple(f for f in self._fills if f.symbol == symbol and f.exchange_order_id == exchange_order_id)
-        return ReadOutcome(kind=ReadKind.OK, observed_at_ms=self.now_ms, value=out)
+        return ReadOutcome(kind=ReadKind.OK, observed_at_ms=self.now_ms, value=out, detail=COMPLETE)
+
+    def order_by_id(self, symbol, exchange_order_id):
+        """The order record by exchange order id (any status), with its original client id and route."""
+        self.calls['order_by_id'] += 1
+        for o in self._orders.values():
+            if o.exchange_order_id == exchange_order_id and o.ref.symbol == symbol:
+                status = ('PARTIALLY_FILLED' if o.executed > 0 else 'NEW') if o.status == 'NEW' else o.status
+                return ReadOutcome(kind=ReadKind.OK, observed_at_ms=self.now_ms, value=(VenueOrderRecord(
+                    ref=o.ref, exchange_order_id=o.exchange_order_id, position_side=o.position_side, status=status,
+                    orig_qty=o.qty, executed_qty=o.executed),))
+        rows = [f for f in self._fills if f.symbol == symbol and f.exchange_order_id == exchange_order_id]
+        if rows:                                         # a fill made outside the bot (inject_position, a manual
+            q = sum((f.qty for f in rows), ZERO)         # close): a manual order of the account, never one of ours
+            return ReadOutcome(kind=ReadKind.OK, observed_at_ms=self.now_ms, value=(VenueOrderRecord(
+                ref=OrderRef(symbol=symbol, client_id='manual-' + exchange_order_id[:29]),
+                exchange_order_id=exchange_order_id, position_side=rows[0].position_side, status='FILLED',
+                orig_qty=q, executed_qty=q),))
+        return ReadOutcome(kind=ReadKind.REJECTED, observed_at_ms=self.now_ms, error_code=E_NO_ORDER)
 
     # ------------------------------------------------------------------------------------------------ account reads
     def equity(self) -> ReadOutcome:
@@ -519,7 +540,7 @@ class FakeVenue:
     def trades(self, symbol, side, from_ms):
         """userTrades of one (symbol, position side) since from_ms (inclusive): VenueFill rows, oldest first."""
         rows = tuple(f for f in self._fills if (f.symbol, f.position_side) == (symbol, side) and f.at_ms >= from_ms)
-        return ReadOutcome(kind=ReadKind.OK, observed_at_ms=self.now_ms, value=rows)
+        return ReadOutcome(kind=ReadKind.OK, observed_at_ms=self.now_ms, value=rows, detail=COMPLETE)
 
     def mark_price(self, symbol):
         """The current mark: the price a market order would execute at now (the next open, or the intra-candle mark)."""

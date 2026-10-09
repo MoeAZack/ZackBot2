@@ -26,3 +26,14 @@ def test_fuzz_s1_no_naked_exposure_no_orphan_stop_no_entry_in_hold():
 @pytest.mark.parametrize('seed', range(3))
 def test_fuzz_s1_is_deterministic(seed):
     assert run_seed(seed)[0] == run_seed(seed)[0]
+
+
+# the 20k seeds a recovered (adopted) entry's trades window missed its own fill: the entry intent is recorded AFTER
+# it filled, so the window must start at its proven fill (Runner._lots_since) - never UNKNOWN ownership from that
+REGRESSION = (2426, 2858, 2905, 4571, 4596, 4662, 4692, 5851, 6336, 6422, 6582, 7671, 7685, 8629, 9379)
+
+
+@pytest.mark.parametrize('seed', REGRESSION)
+def test_fuzz_s1_regression_seeds(seed):
+    v, p, d = run_seed(seed)
+    assert not v.startswith('FAIL'), (p, d)

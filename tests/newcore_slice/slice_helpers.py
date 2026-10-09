@@ -66,8 +66,9 @@ def make_journal():
     return MemoryJournal(ACCOUNT_ID, PORTFOLIO_ID)
 
 
-class Crash(Exception):
-    """The process dies here (not a venue answer, not a journal failure): nothing after this point ran."""
+class Crash(BaseException):
+    """The process dies here (not a venue answer, not a journal failure): nothing after this point ran. A
+    BaseException, like a kill: never taken as a venue answer by the Runner's raising-adapter guard (adv6)."""
 
 
 class ScriptedVenue:

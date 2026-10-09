@@ -175,5 +175,5 @@ def test_p1_1_unreadable_trades_touch_nothing(tmp_path, monkeypatch):
     monkeypatch.setattr(FakeVenue, 'trades', lambda self, symbol, side, from_ms: ReadOutcome(
         kind=ReadKind.UNKNOWN, observed_at_ms=self.now_ms, detail='timeout'))
     code, out = run(['run', '--config', cfg, '--cycles', '5', '--enable-candidate'])
-    assert code == A.EXIT_STORE_HOLD and 'ambiguous' in out and 'trades unreadable' in out
+    assert code == A.EXIT_STORE_HOLD and 'ambiguous' in out and 'trades not proven' in out
     assert _emergency(d) == []

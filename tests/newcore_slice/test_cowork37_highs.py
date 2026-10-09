@@ -100,18 +100,34 @@ def racing_entry(side):
 
 
 def race_fill(w, cid, qty, bar):
-    w.port.lose('cancel')                                          # the drain cancel never lands
+    """A race fill of our resting entry, then the drain cancel lands: the entry is FINAL with `qty` executed (its
+    fills agree), so the quantity is PROVEN ours."""
     w.venue.fill_resting(cid, qty)
     w.run(bar)
 
 
+def grow_owned(w, monkeypatch, by):
+    """Our PROVEN owned quantity grows by `by` (a FINAL opening order of ours whose fills agree): stubbed here, so the
+    generation / top-up mechanics are tested on their own (Cowork 6068372233 #3: a WORKING order's fills alone never
+    size anything, so race fills of a resting entry can no longer drive these tests)."""
+    real = type(w.runner)._owned_exposure
+
+    def owned(self, symbol, side):
+        o, complete = real(self, symbol, side)
+        return o + by, complete
+    monkeypatch.setattr(type(w.runner), '_owned_exposure', owned)
+    w.venue.inject_position(SYM, w.side, by, D('100'))
+
+
 # ------------------------------------------------------------------------------------------------------- F1
 @pytest.mark.parametrize('side', SIDES)
-def test_f1_a_second_equal_gap_in_hard_hold_gets_its_own_emergency_stop(side):
+def test_f1_a_second_equal_gap_in_hard_hold_gets_its_own_emergency_stop(side, monkeypatch):
     w, cid = racing_entry(side)
+    w.side = side
     race_fill(w, cid, D('1'), 6)                                   # 1: the first gap
     assert position(w, side) == covered(w, side) == D('1')
-    race_fill(w, cid, D('1'), 7)                                   # 1 again: the same-size gap
+    grow_owned(w, monkeypatch, D('1'))                             # 1 again: the same-size gap
+    w.run(7)
     assert covered(w, side) >= position(w, side) == D('2')
     w.run(8)                                                       # idempotent: no duplicate, still covered
     assert covered(w, side) == D('2')
