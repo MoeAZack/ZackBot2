@@ -69,6 +69,40 @@ boundaries, requirement traceability and protected-branch merge decision.
    corrupt/unknown ownership treated as known, unprotected exposure, or unbounded account/portfolio risk.
 5. The owner remains the final authority at the future mainnet boundary. This contract does not authorize mainnet.
 
+### Preserved 15-item roadmap register
+
+The original roadmap's complete structure is permanent scope unless the owner explicitly removes an item. The two
+top-level anchors plus Phases 0–12 are the following 15 items. Reordering or deferring one does **not** delete it:
+
+1. **Target** — a testnet-proven engine with controlled capital and follower-feasibility previews, growing later into
+   the owner/live and lead-portfolio product.
+2. **North Star** — one explainable engine, one risk gateway and one source of decision/execution truth across modes.
+3. **Phase 0: Verified baseline** — reproducible build, tests, installer/runtime truth and protected starting state.
+4. **Phase 1: Account-aware shared core** — common live/replay/backtest decisions, account isolation and reason codes.
+5. **Phase 2: Trade Decision Record** — durable reasons, inputs, settings, risk checks, orders, fills and outcomes.
+6. **Phase 3: Strategy scorecard, readiness and copy suitability** — evidence/risk/robustness/operational/copy scores,
+   including the complete manual strategy catalog and honest labels.
+7. **Phase 4: 24/7 operations** — watchdog, recovery, alerts, backup/restore, incident response and release gates.
+8. **Phase 5: Multiple accounts and internal copy** — isolated workers; copy risk intent rather than raw quantity.
+9. **Phase 6: Own-account live canary** — only after all live gates and explicit owner approval, at the smallest bounded
+   capital and staged scale.
+10. **Phase 7: Master/lead portfolios** — separate copy portfolios, follower feasibility, disclosure and public
+    performance/accounting readiness.
+11. **Phase 8: PWA and remote control** — secure mobile monitoring/control with stronger confirmation for dangerous
+    actions.
+12. **Phase 9: Simple / Guided / Pro and direction preference** — accessible UI levels without removing owner control.
+13. **Phase 10: Machine learning in shadow** — separate signal-quality, regime and execution-quality models; frozen
+    datasets, leakage checks, walk-forward/calibration, challenger/shadow, drift and rollback. ML may recommend, veto or
+    reduce risk within 0–1×; it may never silently raise the owner's mechanical risk ceiling or bypass the gateway.
+14. **Phase 11: TradingView and real news** — authenticated TradingView signals and timestamped/freshness-bounded news
+    providers through the same risk gateway; news begins warn/veto only.
+15. **Phase 12: Gold, TradFi and shareable release** — separate venue/session/gap/borrow/corporate-action contracts,
+    signed distribution, onboarding, isolation and disclosures. Per section 8, Vantage/Bybit/MT5 implementation remains
+    post-Binance-live only.
+
+The active Codex queue controls *when* these happen. Engine/strategy-first and post-live rules control sequencing, not
+memory. `ROADMAP.md` retains the detailed acceptance requirements for every phase.
+
 ## 2. Primary engine controls
 
 The final engine UI exposes these primary controls globally and, where supported, per account, asset and strategy:
