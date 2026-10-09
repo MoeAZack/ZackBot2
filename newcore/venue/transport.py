@@ -478,6 +478,24 @@ class BinanceTestnetTransport:
                                 nf_types={-2013: NotFoundEvidenceType.ALGO_QUERY_NOT_FOUND,
                                           'message': NotFoundEvidenceType.ALGO_QUERY_NOT_FOUND})
 
+    def query_order_by_id(self, symbol, order_id):
+        """GET /fapi/v1/order?symbol=&orderId= (signed, weight 1): one classic order by its EXCHANGE order id, any
+        status. A plain read (OK / REJECTED / UNKNOWN): -2013 comes back REJECTED with the venue code, never retried.
+        Quantities must be JSON strings (parse_order_by_id); anything else is UNKNOWN 'malformed'."""
+        symbol = _symbol(symbol)
+        if type(order_id) is not int or order_id <= 0:
+            raise VenueInputError('order_id must be a positive int')
+        return self._read('query_order_by_id', 'GET', '/fapi/v1/order',
+                          [('symbol', symbol), ('orderId', str(order_id))], True, R.parse_order_by_id)
+
+    def query_algo_order_by_id(self, algo_id):
+        """GET /fapi/v1/algoOrder?algoId= (signed): one conditional (algo) order by its algo id, any status. A plain
+        read like query_order_by_id; the quantity must be a JSON string."""
+        if type(algo_id) is not int or algo_id <= 0:
+            raise VenueInputError('algo_id must be a positive int')
+        return self._read('query_algo_order_by_id', 'GET', '/fapi/v1/algoOrder', [('algoId', str(algo_id))], True,
+                          R.parse_algo_order_by_id)
+
     def cancel_order(self, symbol, client_id):
         symbol, cid = _symbol(symbol), _cid(client_id)
         return self._order_call('cancel', 'classic', cid, 'DELETE', '/fapi/v1/order',

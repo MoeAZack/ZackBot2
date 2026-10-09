@@ -14,4 +14,4 @@ from .keys import (check_decision_key, client_id_for, decision_key, derive_child
                    derive_intent_id, derive_lot_id, is_newcore_client_id, route_of, strategy_instance)
 from .values import PortValueError
 from .venue import (MarketOrder, OrderOutcome, OrderRef, OutcomeKind, ReadKind, ReadOutcome, StopOrder, VenueFill,
-                    VenueOrder, VenuePort, VenuePosition)
+                    VenueOrder, VenueOrderRecord, VenuePort, VenuePosition)

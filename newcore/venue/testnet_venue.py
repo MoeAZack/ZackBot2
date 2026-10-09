@@ -28,6 +28,15 @@ duplicate in a page (malformed), an out-of-order page or the page bound -> UNKNO
 never a partial list as OK.
 fills(symbol, exchange_order_id) is unchanged (the port read).
 
+order_by_id(symbol, exchange_order_id) (S1 / Codex 6071659449): GET /fapi/v1/order?symbol=&orderId= first (trade rows
+carry this id; a triggered algo stop's child is a classic order). Only when that answers -2013 is the id tried as an
+algo id (GET /fapi/v1/algoOrder?algoId=; open_orders and FINAL algo outcomes hand out algo ids as exchange ids) - so a
+NOT_FOUND costs two requests. OK = (VenueOrderRecord,) of exactly the asked id and symbol; REJECTED -2013 = neither
+endpoint holds it; UNKNOWN for no answer, malformed JSON, a missing field, a JSON-number (float-looking) quantity, an
+id / symbol echo mismatch, a one-way (BOTH) order, or a TRIGGERED algo order (its executed quantity lives in the
+child order: look that id up). Route of a classic record: 'algo' when its client id is a NEWCORE algo id, else
+'classic'.
+
 TestnetAccountReader.mark_price(symbol): /fapi/v1/premiumIndex -> (MarkQuote(symbol, price, at_ms = Binance server
 time),); one request, never retried; OK / REJECTED / UNKNOWN. WEIGHT: premiumIndex with a symbol costs 1 weight per
 call, so a poll every cycle.mark_poll_s seconds over N symbols is N x 60 / mark_poll_s weight per minute (10 s x 8
@@ -39,16 +48,17 @@ from decimal import Decimal
 
 from newcore.ports import keys as K
 from newcore.ports import venue as P
-from newcore.ports.values import PortValueError, req
+from newcore.ports.values import PortValueError, check_symbol, req
 
 from . import records as R
 from .errors import ErrorCategory
 from .income import FUNDING_FEE, income_history
 from .outcomes import OrderOutcomeKind as TK
 from .outcomes import ReadKind as TR
-from .transport import CLOSING_SIDE, OPENING_SIDE, PositionMode, StopRoute
+from .transport import _NOT_FOUND_TEXT, CLOSING_SIDE, OPENING_SIDE, PositionMode, StopRoute
 
 ROUTE_CHAR = {'classic': 'zbn1o-', 'algo': 'zbn1a-'}
+E_NO_ORDER = -2013                           # Binance 'Order does not exist.'
 USER_TRADES_LIMIT = 1000
 FILL_WINDOW_MS = 7 * 24 * 3600 * 1000 - 1    # one userTrades time window (Binance: at most 7 days)
 FILL_WINDOW_PAGES = 20                       # all pages of one fills(start, end) read
@@ -291,6 +301,49 @@ class TestnetVenue:
                                 detail=evidence(1, dups))
         return out
 
+
+    def order_by_id(self, symbol, exchange_order_id):
+        check_symbol(symbol, 'order_by_id.symbol')
+        req(isinstance(exchange_order_id, str) and exchange_order_id.isdigit() and exchange_order_id.isascii()
+            and not exchange_order_id.startswith('0') and len(exchange_order_id) <= 19, 'exchange_order_id',
+            'a positive decimal order id')
+        oid = int(exchange_order_id)
+        t = self._t.query_order_by_id(symbol, oid)
+        if t.kind is TR.REJECTED and _code(t.error) == E_NO_ORDER:
+            return self._algo_by_id(symbol, oid)
+        if t.kind is not TR.OK:
+            return map_read_outcome(t, self._now(), tuple)
+        rec = t.value
+        if rec.order_id != oid or rec.symbol != symbol:
+            return P.ReadOutcome(kind=P.ReadKind.UNKNOWN, observed_at_ms=self._now(), detail='echo_mismatch')
+        route = 'algo' if rec.client_order_id.startswith(ROUTE_CHAR['algo']) else 'classic'
+        return map_read_outcome(t, self._now(), lambda r: (P.VenueOrderRecord(
+            ref=P.OrderRef(symbol=r.symbol, client_id=r.client_order_id, route=route),
+            exchange_order_id=str(r.order_id), position_side=r.position_side, status=r.status,
+            orig_qty=r.orig_qty, executed_qty=r.executed_qty),))
+
+    def _algo_by_id(self, symbol, algo_id):
+        a = self._t.query_algo_order_by_id(algo_id)
+        now = self._now()
+        if a.kind is TR.REJECTED:
+            e = a.error
+            if _code(e) == E_NO_ORDER or any(x in (e.msg or '').lower() for x in _NOT_FOUND_TEXT):
+                return P.ReadOutcome(kind=P.ReadKind.REJECTED, observed_at_ms=now, error_code=E_NO_ORDER,
+                                     detail='not_found')
+            # the classic book said "no such order" but the algo book could not answer: never NOT_FOUND
+            return P.ReadOutcome(kind=P.ReadKind.UNKNOWN, observed_at_ms=now,
+                                 detail='algo_read_' + e.category.value[:20])
+        if a.kind is not TR.OK:
+            return map_read_outcome(a, now, tuple)
+        rec = a.value
+        if rec.algo_id != algo_id or rec.symbol != symbol:
+            return P.ReadOutcome(kind=P.ReadKind.UNKNOWN, observed_at_ms=now, detail='echo_mismatch')
+        if rec.actual_order_id is not None or rec.algo_status in ('TRIGGERING', 'TRIGGERED', 'FINISHED'):
+            return P.ReadOutcome(kind=P.ReadKind.UNKNOWN, observed_at_ms=now, detail='algo_triggered')
+        return map_read_outcome(a, now, lambda r: (P.VenueOrderRecord(
+            ref=P.OrderRef(symbol=r.symbol, client_id=r.client_algo_id, route='algo'),
+            exchange_order_id=str(r.algo_id), position_side=r.position_side, status=r.algo_status,
+            orig_qty=r.quantity, executed_qty=Decimal('0')),))
 
     def _fills_window(self, symbol, start_ms, end_ms):
         req(type(start_ms) is int and type(end_ms) is int and 0 < start_ms <= end_ms, 'fills',

@@ -466,6 +466,26 @@ def parse_algo_order(o):
                            actual_order_id=actual, actual_price=dec(o, 'actualPrice', nonneg=True, optional=True))
 
 
+def _string_qty(o, keys, what):
+    """order_by_id: the quantities must come as JSON STRINGS (Binance sends "0.010"); a bare JSON number - even one
+    that looks exact - is a shape the lookup never trusts (it may have passed through a float somewhere)."""
+    o = as_obj(o, what)
+    for k in keys:
+        if not isinstance(o.get(k), str):
+            raise MalformedResponse(f'{k}: quantity is not a JSON string')
+    return o
+
+
+def parse_order_by_id(o):
+    """GET /fapi/v1/order?orderId= answer: parse_order, quantities as strings only."""
+    return parse_order(_string_qty(o, ('origQty', 'executedQty'), 'order'))
+
+
+def parse_algo_order_by_id(o):
+    """GET /fapi/v1/algoOrder?algoId= answer: parse_algo_order, quantity as a string only."""
+    return parse_algo_order(_string_qty(o, ('quantity',), 'algoOrder'))
+
+
 def parse_open_orders(data):
     return tuple(parse_order(o) for o in as_list(data, 'openOrders'))
 
