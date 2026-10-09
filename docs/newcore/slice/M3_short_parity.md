@@ -62,4 +62,3 @@ Long `trend_ema_mom.v1` on `data_long` 4h vs the mirrored-short fixture (`enable
 
 - Fees, slippage and funding are a fraction of the PRICE, and the mirrored price level differs (e.g. SOLUSDT at 20 mirrors to about 500): costs per trade differ, so the equity paths and therefore the sizes diverge (quantities match only by chance) and R differs by the cost difference in R.
 - The few pairs whose exit differs (a long SIGNAL_EXIT vs a short STOP_HIT) come from the same cause: the stop is set from the FILL, and the fill carries slippage of a different price level on each side (long: o x (1 + s) - d; mirrored short: o' x (1 - s) + d, which mirrors back to o - d + s x (2 P0 - o), not o - d + s x o), so the mirrored stop sits a little closer and is reached where the original one was not. At zero costs this term is 0 and every pair agrees exactly (tables above).
-

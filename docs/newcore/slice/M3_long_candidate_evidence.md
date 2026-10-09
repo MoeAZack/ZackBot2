@@ -66,4 +66,3 @@ Risk events (Cairo day, change): halt 2023-04-19 (-3.28%), halt 2023-07-14 (-4.8
 - Where an episode-clustered CI includes 0, the expectancy is **not distinguishable from zero** at 95% once simultaneous trades are counted as the dependent samples they are; the per-trade CI overstates the evidence.
 - The canary as configured trades only until its first 10% drawdown from the peak, then holds for good (no auto-resume, by design): its row is the behaviour the canary would have shown, not an estimate of the rule.
 - The kill-off rows evaluate the rule under every other canary limit; they are the input for the gate discussion, together with the cost stress and the holdout split.
-

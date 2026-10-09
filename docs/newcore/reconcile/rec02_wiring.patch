@@ -36,7 +36,7 @@ index b954cf4..243b891 100644
 +    def tick(self, wall_ms):
 +        self._last_tick = wall_ms
 +        self.runner.tick(wall_ms)
- 
+
      def next_close(self, wall_ms=None):
          """The candle close of the next cycle, or None when the fake data is exhausted."""
 @@ -254,6 +265,11 @@ def cmd_run(cfg, args, out, stop):
@@ -90,7 +90,7 @@ index 9449b0e..62d35d9 100644
 +    rec02: bool = False                            # [reconcile] rec02: the REC-02 fold in the cycle
      tnet_enabled: bool = False                     # [tnet] the TNET-01 harness hooks (TESTNET + testnet venue only)
      tnet_raw_qty: Decimal | None = None            # H2: unsized entry quantity (T10b venue min-qty refusal)
- 
+
 @@ -233,9 +240,12 @@ def validate(doc, *, source='', environ=None):
      digest = a.get('key_digest', '0123456789abcdef')
      if not re.fullmatch(r'[0-9a-f]{16}', digest):
@@ -119,8 +119,8 @@ index c4d3357..781f20b 100644
 +++ b/newcore/runner/managed.py
 @@ -110,11 +110,22 @@ def hold_reconciler(runner, lot_id, items):
          runner._hold([ReasonCode.RECONCILE_UNRECONCILED])
- 
- 
+
+
 +def rec02_reconciler(runner, lot_id, items):
 +    """The REC-02 slot: a driver item that can mean unowned / unbooked exposure (HOLD_ITEMS) is an UNCERTAIN answer, so
 +    the account-level fold runs now (exchange evidence, resolutions it can prove, protection gaps). The driver item
@@ -140,7 +140,7 @@ index c4d3357..781f20b 100644
 +    reconciler: object = rec02_reconciler    # callable(runner, lot_id, items): the REC-02 slot
      quote_asset: str = 'USDT'                # fees in this asset are booked as they are
      fee_rates: tuple = ()                    # ((asset, Decimal rate in quote), ...) for fees in another asset
- 
+
 diff --git a/newcore/runner/runner.py b/newcore/runner/runner.py
 index 56ff14a..cd94aa3 100644
 --- a/newcore/runner/runner.py
@@ -155,7 +155,7 @@ index 56ff14a..cd94aa3 100644
 +from newcore.reconcile import Outcome as RecOutcome
 +from newcore.reconcile import (ReadPlan, RecPolicy, TradeWindow, Trigger, VenueSnapshot, plan_reads, reconcile as
 +                               rec_fold, view_from_fold)
- 
+
  from . import ids
  from .fold import Fold, OPEN_STATES
 @@ -150,6 +154,20 @@ class RunnerConfig:
@@ -176,12 +176,12 @@ index 56ff14a..cd94aa3 100644
 +                              auto_clear_hold=False, settle_ms=10_000, max_attempts=4)
 +REC_PASSES_PER_CYCLE = 2                       # in-cycle re-read passes; the rest waits for the next cycle / tick
 +CORROBORATED = frozenset({'not_found_corroborated', 'position_adopted'})   # journaled by _corroborate_entry
- 
- 
+
+
  @dataclass(frozen=True)
 @@ -190,8 +208,18 @@ class Counters:
- 
- 
+
+
  class Runner:
 -    def __init__(self, config: RunnerConfig, *, journal, venue, bars, signals, account_reads=None, hard_hold=None):
 +    def __init__(self, config: RunnerConfig, *, journal, venue, bars, signals, account_reads=None, hard_hold=None,
@@ -209,7 +209,7 @@ index 56ff14a..cd94aa3 100644
 +            self._remember(iv, out)
              if self._not_found(iv) and iv.purpose in REDUCE_ONLY:
                  self._resend(iv)                                          # never landed: same id, same route
- 
+
 @@ -341,6 +371,7 @@ class Runner:
              raise ValueError('the runner clock never goes back')
          self.now = now_ms
@@ -220,7 +220,7 @@ index 56ff14a..cd94aa3 100644
          try:
 @@ -471,27 +502,211 @@ class Runner:
          return None
- 
+
      def _cycle(self, decide):
 +        trigger = Trigger.CYCLE if decide else Trigger.TICK
 +        if not self._started:
@@ -241,7 +241,7 @@ index 56ff14a..cd94aa3 100644
 -            self._hold([ITEM_REASON[k] for k, _ in rec.items])
          self.check_invariants(rec)
          return rec
- 
+
 +    def _reconcile_step(self, trigger):
 +        """Reconcile v0 (items -> HOLD), or the REC-02 fold when the config enables it (it holds by itself)."""
 +        if self.cfg.rec02:
@@ -450,8 +450,8 @@ index 501f8a0..4ee78a1 100644
 --- a/newcore/runner/testnet_hook.py
 +++ b/newcore/runner/testnet_hook.py
 @@ -66,11 +66,12 @@ def load_factory(spec):
- 
- 
+
+
  def build(config):
 -    """(venue, bars, account_reads, instrument_rules or None) from the configured factory (newcore.venue.factory:
 -    build_testnet on nc-venue-testnet returns venue, bars, account_reader and the venue's own instrument_rules)."""

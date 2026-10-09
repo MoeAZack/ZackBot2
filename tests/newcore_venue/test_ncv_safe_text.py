@@ -181,4 +181,3 @@ def test_venue_cli_a_report_write_error_with_a_secret_path_prints_type_and_errno
     monkeypatch.setattr(m, 'tnet_report', refuse)
     rc, out = run(env, ['--probe', 'P1'], http=FakeBinance(), mod=m)
     assert rc == 5 and 'report not written (PermissionError errno 13 (detail withheld, ref ' in out and clean(out), out
-
