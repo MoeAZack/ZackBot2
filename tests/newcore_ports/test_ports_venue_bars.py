@@ -156,6 +156,9 @@ class StubVenue:
     def fills(self, symbol, exchange_order_id):
         return V.ReadOutcome(kind='rejected', observed_at_ms=T, error_code=-1121)
 
+    def order_by_id(self, symbol, exchange_order_id):
+        return V.ReadOutcome(kind='rejected', observed_at_ms=T, error_code=-2013)
+
 
 class StubBars:
     def closed_bars(self, symbol, tf_ms, *, as_of_ms, limit):

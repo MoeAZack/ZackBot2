@@ -72,7 +72,8 @@ from newcore.domain import Incident, IncidentRecorded
 from newcore.domain.errors import DomainError
 from newcore.store.hold import durability_hold, hard_hold_permits
 from newcore.ports.keys import check_decision_key, route_of
-from newcore.ports.venue import MarketOrder, OrderOutcome, OrderRef, OutcomeKind, ReadKind, ReadOutcome, StopOrder
+from newcore.ports.venue import (MarketOrder, OrderOutcome, OrderRef, OutcomeKind, ReadKind, ReadOutcome, StopOrder,
+                                 VenueOrderRecord)
 
 from . import ids
 from .fold import Fold, OPEN_STATES
@@ -99,6 +100,7 @@ SECURE_ROUNDS = 2                     # per lot per cycle: stop attempt, then (i
 RECOVERED_DETAIL = 'recovered after a lost journal tail'   # the decision detail marking a recovered entry
 EMERGENCY_CONFLICT_CANDIDATES = 8      # Cowork 6070885320 #4: distinct quantities tried per reused-id check
 EMERGENCY_QUERY_BUDGET = 96            # emergency-attribution queries per cycle (beyond: UNKNOWN, loud)
+E_NO_ORDER = -2013                     # Binance: the order does not exist (order-by-id lookup NOT_FOUND)
 EMERGENCY_GENERATIONS = 16            # hard HOLD: cover generations per (symbol, side, gap size)
 ESCALATE_AFTER = 2                    # cycles with an unconfirmed stop before the reduce-only close (Cowork NEW-4)
 LOST_ENTRY_LOOKBACK = 3               # the lost-entry search after the boot search (mid-run mismatches)
@@ -216,7 +218,7 @@ class Counters:
 
 
 _ORDER_CALLS = frozenset({'submit_market', 'submit_stop', 'cancel', 'query'})
-_READ_CALLS = frozenset({'positions', 'open_orders', 'fills', 'trades', 'mark_price'})
+_READ_CALLS = frozenset({'positions', 'open_orders', 'fills', 'trades', 'mark_price', 'order_by_id'})
 
 
 class _SafeVenue:
@@ -641,6 +643,10 @@ class Runner:
             conflict = self._emergency_conflict(symbol, side, eoid, grp, q, cap)
             if conflict is None or conflict:
                 return None                                               # h8 A1c: an id reused / unknown - UNKNOWN
+            got = self._emergency_by_order_id(symbol, side, eoid, q)    # Codex 6071659449: a PARTIAL emergency
+            if got is None:                                               # order's id was encoded from the quantity
+                return None                                               # it REQUESTED, never seen in the rows -
+            total += got                                                  # proven by its exchange order id only
         if total < mem:
             return None                                                   # the trades miss a fill we saw: UNKNOWN
         return total
@@ -663,6 +669,44 @@ class Runner:
             if hit is None or hit:
                 return hit                                                # None: unknown - never proven clean
         return False
+
+    def _emergency_by_order_id(self, symbol, side, eoid, qty):
+        """Codex 6071659449: the identity of exchange order `eoid` (its trade rows add up to `qty`) from the venue's
+        order-by-id lookup. A partially filled emergency order's client id was derived from the quantity it REQUESTED,
+        which trade rows never show, so it is proven here - never guessed. qty = one of OUR emergency orders (its
+        original client id is ours for its original quantity); 0 = proven not an emergency order; None = UNKNOWN (the
+        lookup unavailable / NOT_FOUND / UNKNOWN / over budget, or a record that disagrees with the rows): never
+        foreign, never ours - loud."""
+        def unknown(why):
+            self._incident(f'hard HOLD: {symbol} {side}: order {eoid} ({qty}): order-id lookup {why}: emergency '
+                           'attribution UNKNOWN, nothing sized from it')
+            return None
+        read = getattr(self.venue, 'order_by_id', None)
+        if not callable(read):
+            return unknown('unavailable on this venue adapter')
+        if self._emq[0] != self.now:
+            self._emq = [self.now, 0]
+        if self._emq[1] >= EMERGENCY_QUERY_BUDGET:
+            return unknown('over the per-cycle budget')
+        self._emq[1] += 1
+        r = read(symbol, eoid)
+        if not isinstance(r, ReadOutcome) or r.kind is not ReadKind.OK:
+            return unknown('NOT_FOUND' if isinstance(r, ReadOutcome) and r.kind is ReadKind.REJECTED
+                           and r.error_code == E_NO_ORDER else f'answered {getattr(r, "kind", r)}')
+        if len(r.value) != 1 or not isinstance(r.value[0], VenueOrderRecord):
+            return unknown(f'answered {len(r.value)} records')
+        x = r.value[0]
+        if (x.exchange_order_id, x.ref.symbol, x.position_side) != (eoid, symbol, side):
+            return unknown(f'record mismatch ({x.exchange_order_id} {x.ref.symbol} {x.position_side})')
+        if x.executed_qty != qty:
+            return unknown(f'executed {x.executed_qty} disagrees with the trade rows {qty}')
+        if not ids.is_emergency_client_id(x.ref.client_id):
+            return ZERO                                                   # proven: not an emergency order
+        cids = {ids.emergency_stop_client_id(self.acct, symbol, side, x.orig_qty, 'close')} | {
+            ids.emergency_stop_client_id(self.acct, symbol, side, x.orig_qty, g) for g in range(EMERGENCY_GENERATIONS)}
+        if x.ref.client_id in cids:
+            return qty                                                    # ours: requested orig_qty, filled qty
+        return unknown(f'emergency-shaped id {x.ref.client_id} is not ours for {x.orig_qty}')
 
     def _lots_since(self, symbol, side, lots):
         """Where the trades window of these lots starts. An ordinary entry: its intent's creation (it is recorded before

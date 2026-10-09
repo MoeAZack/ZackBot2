@@ -47,7 +47,7 @@ from decimal import Context, Decimal, Inexact, InvalidOperation, Overflow
 
 from newcore.ports.bars import Bar
 from newcore.ports.venue import (MarketOrder, OrderOutcome, OrderRef, OutcomeKind, ReadKind, ReadOutcome, StopOrder,
-                                 VenueFill, VenueOrder, VenuePosition)
+                                 VenueFill, VenueOrder, VenueOrderRecord, VenuePosition)
 
 ZERO = Decimal(0)
 ONE = Decimal(1)
@@ -135,10 +135,11 @@ class FakeVenue:
         self._fill_on_cancel = set()     # client ids whose remainder fills when the cancel arrives (cancel loses)
         self._lose_cancel = {}           # client id -> 'cancelled' | 'working': the cancel's answer is lost
         self._refuse_classic_stop = None  # error code: classic-route STOP_MARKET refused (the algo route is accepted)
+        self._foreign = {}               # inject_position orders: exchange order id -> (symbol, side, qty)
         self._open = {}                  # intra-candle play: symbol -> the open candle (Bar)
         self._marks = {}                 # intra-candle play: symbol -> the current mark
         self.calls = {'submit_market': 0, 'submit_stop': 0, 'cancel': 0, 'query': 0, 'positions': 0, 'open_orders': 0,
-                      'fills': 0}
+                      'fills': 0, 'order_by_id': 0}
 
     # ------------------------------------------------------------------------------------------------ fault hooks
     def lose_next_market_answer(self, truth='filled'):
@@ -186,7 +187,9 @@ class FakeVenue:
 
     def inject_position(self, symbol, side, qty, price):
         """A position the bot did not open (foreign / manual)."""
-        self._apply_fill(symbol, side, qty, price, reduce=False, eoid='foreign', at_ms=self.now_ms, fee=ZERO)
+        eoid = f'foreign-{self._trade_seq + 1}'          # its own exchange order (a manual order of the account),
+        self._foreign[eoid] = (symbol, side, qty)        # known to the order-by-id lookup; never one of ours
+        self._apply_fill(symbol, side, qty, price, reduce=False, eoid=eoid, at_ms=self.now_ms, fee=ZERO)
 
     # ------------------------------------------------------------------------------------------------ clock
     def advance_to(self, t_ms):
@@ -462,6 +465,23 @@ class FakeVenue:
         out = tuple(f for f in self._fills if f.symbol == symbol and f.exchange_order_id == exchange_order_id)
         return ReadOutcome(kind=ReadKind.OK, observed_at_ms=self.now_ms, value=out, detail=COMPLETE)
 
+    def order_by_id(self, symbol, exchange_order_id):
+        """The order record by exchange order id (any status), with its original client id and route."""
+        self.calls['order_by_id'] += 1
+        for o in self._orders.values():
+            if o.exchange_order_id == exchange_order_id and o.ref.symbol == symbol:
+                status = ('PARTIALLY_FILLED' if o.executed > 0 else 'NEW') if o.status == 'NEW' else o.status
+                return ReadOutcome(kind=ReadKind.OK, observed_at_ms=self.now_ms, value=(VenueOrderRecord(
+                    ref=o.ref, exchange_order_id=o.exchange_order_id, position_side=o.position_side, status=status,
+                    orig_qty=o.qty, executed_qty=o.executed),))
+        f = self._foreign.get(exchange_order_id)
+        if f is not None and f[0] == symbol:
+            return ReadOutcome(kind=ReadKind.OK, observed_at_ms=self.now_ms, value=(VenueOrderRecord(
+                ref=OrderRef(symbol=symbol, client_id='manual-' + exchange_order_id),
+                exchange_order_id=exchange_order_id, position_side=f[1], status='FILLED', orig_qty=f[2],
+                executed_qty=f[2]),))
+        return ReadOutcome(kind=ReadKind.REJECTED, observed_at_ms=self.now_ms, error_code=E_NO_ORDER)
+
     # ------------------------------------------------------------------------------------------------ account reads
     def equity(self) -> ReadOutcome:
         """Wallet balance (start + realized - fees - funding): the 'closed equity' the sizing rule risks 1% of."""
@@ -490,6 +510,7 @@ class FakeVenue:
             'fills': [[f.trade_id, f.exchange_order_id, f.symbol, f.position_side, s(f.qty), s(f.price), s(f.fee),
                        f.fee_asset, s(f.realized_pnl), f.maker, f.at_ms] for f in self._fills],
             'funding': [[r.symbol, r.side, r.at_ms, s(r.amount)] for r in self._funding],
+            'foreign': [[e, sym, side, s(q)] for e, (sym, side, q) in sorted(self._foreign.items())],
         }
 
     @classmethod
@@ -510,6 +531,7 @@ class FakeVenue:
                               fee=D(fee), fee_asset=asset, realized_pnl=D(r), maker=m, at_ms=at)
                     for t, e, sym, side, q, p, fee, asset, r, m, at in state['fills']]
         v._funding = [FundingRow(sym, side, at, D(a)) for sym, side, at, a in state['funding']]
+        v._foreign = {e: (sym, side, D(q)) for e, sym, side, q in state.get('foreign', ())}
         return v
 
     # ------------------------------------------------------------------------------------------------ inspection
