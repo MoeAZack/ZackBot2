@@ -182,7 +182,18 @@ This is the top product priority. It comes before ML.
 - evidence readiness;
 - operational readiness.
 
+**Point-in-time candidate board:** each asset/timeframe/strategy/side also publishes separate opportunity, entry-quality,
+hold-quality and regime-fit dimensions plus an explicit `READY / SETUP / WAIT / EXTENDED / BREAKING / STAND_DOWN`
+state. The components and versioned weights remain visible; a composite score never conceals weak evidence/readiness or
+authorizes size. See `docs/newcore/SCANNER_SCORECARD_CONTRACT.md`.
+
 A high score **never** changes settings automatically.
+
+**Activity is profile-controlled, not accidentally filtered away:** integrity, protection, ownership/reconciliation and
+hard account-loss invariants remain absolute. Opportunity/regime thresholds, concurrency, cooldown, leverage within its
+cap, bounded DCA permission and target trade frequency vary visibly from Conservative through high-risk profiles. Every
+profile is tested for expected opportunity frequency. If entries dry up, the UI reports rejection counts and closest
+missed thresholds; the engine never silently loosens rules or forces a trade.
 
 **Scorecard v1 weights:**
 
@@ -215,6 +226,10 @@ A high score **never** changes settings automatically.
 - leverage-tag risk (Binance tags ≥ 20×).
 
 **Exit gate:** scores reproduce from frozen manifests, and the UI cannot confuse readiness with profitability.
+
+**Forward-truth gate:** backtest, paper, testnet and live-forward results remain separate. Every forward period includes
+the chosen benchmark, flat/stand-down periods, all exits and reason-coded exclusions. A proof-of-prior digest may prove
+that a call existed before its outcome, but is never presented as proof of brokerage returns.
 
 **High-risk DCA / martingale mode (owner decision 2026-10-07; later, not now).**
 - What it is: an opt-in recovery mode (DCA ladder / martingale-style sizing).
@@ -353,9 +368,17 @@ A high score **never** changes settings automatically.
 ### Phase 11 — TradingView and real news
 
 - **TradingView webhook:**
-  - durable queue and idempotency;
-  - age checks, allowlists and Pine version hash;
+  - one strict, versioned signal envelope for internal strategies, TradingView and manual intake;
+  - durable write-before-send idempotency keyed by `signal_id`; conflicting reuse rejects;
+  - required `strategy_id`, `strategy_version` and optional `trade_family_id` for basket/DCA/scale-out attribution;
+  - explicit price/percent/tick/ATR units; never infer units by magnitude;
+  - `dry_run` validates auth, account, capability and risk without touching the venue;
+  - every accepted, rejected, duplicate and held signal receives a stable reason-coded result;
+  - authenticated header/HMAC, timestamp, nonce, age checks, account-alias allowlists and key rotation;
+  - new-entry limits never block reduce-risk close, protection or emergency flatten;
   - modes: Off / Observe / Testnet / Live.
+- **Contract foundation:** `docs/newcore/SIGNAL_INGRESS_CONTRACT.md` and the schemas in `contracts/` are frozen before the
+  HTTP adapter. The runtime listener remains gated behind the Binance vertical slice and strategy evidence.
 - **News:** a real `NewsProvider` with source, freshness and expiry. It may warn or veto only. The existing LLM reviewer stays separate.
 
 ### Phase 12 — Gold, TradFi and shareable release

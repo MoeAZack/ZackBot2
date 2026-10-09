@@ -1,0 +1,174 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://zackbot.local/contracts/candidate-evaluation-v1.schema.json",
+  "title": "ZackBot Candidate Evaluation v1",
+  "description": "One scoring cycle / evaluation run: the point-in-time universe (delisted and halted members retained), the scoring weights, every candidate id produced, every reason-coded exclusion and the benchmark set. Hash bindings, coverage (every member is a candidate or an exclusion), exclusion counts and the proof-of-prior anchor are enforced by newcore.contracts.signal_v1.check_candidate_evaluation.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "contract_version",
+    "evaluation_id",
+    "evidence_class",
+    "as_of_ms",
+    "universe",
+    "universe_snapshot_sha256",
+    "scoring",
+    "weights_sha256",
+    "profile_id",
+    "profile_version",
+    "candidate_ids",
+    "exclusions",
+    "exclusion_counts",
+    "benchmarks",
+    "benchmark_set_sha256",
+    "sealed",
+    "prior_commitment"
+  ],
+  "properties": {
+    "contract_version": {"const": 1},
+    "evaluation_id": {"type": "string", "pattern": "^eval_[0-9a-f]{32}$"},
+    "evidence_class": {"enum": ["backtest", "paper", "testnet", "live_forward"]},
+    "as_of_ms": {"$ref": "#/$defs/ms"},
+    "universe": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["universe_id", "as_of_ms", "members"],
+      "properties": {
+        "universe_id": {"$ref": "#/$defs/label"},
+        "as_of_ms": {"$ref": "#/$defs/ms"},
+        "members": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 2000,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["symbol", "status"],
+            "properties": {
+              "symbol": {"$ref": "#/$defs/symbol"},
+              "status": {"enum": ["listed", "halted", "delisted"]}
+            }
+          }
+        }
+      }
+    },
+    "universe_snapshot_sha256": {"$ref": "#/$defs/sha256"},
+    "scoring": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["scoring_version", "weights"],
+      "properties": {
+        "scoring_version": {"$ref": "#/$defs/version"},
+        "weights": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "opportunity",
+            "entry_quality",
+            "hold_quality",
+            "regime_fit",
+            "evidence_readiness",
+            "operational_readiness"
+          ],
+          "properties": {
+            "opportunity": {"$ref": "#/$defs/weight"},
+            "entry_quality": {"$ref": "#/$defs/weight"},
+            "hold_quality": {"$ref": "#/$defs/weight"},
+            "regime_fit": {"$ref": "#/$defs/weight"},
+            "evidence_readiness": {"$ref": "#/$defs/weight"},
+            "operational_readiness": {"$ref": "#/$defs/weight"}
+          }
+        }
+      }
+    },
+    "weights_sha256": {"$ref": "#/$defs/sha256"},
+    "profile_id": {"$ref": "#/$defs/label"},
+    "profile_version": {"$ref": "#/$defs/version"},
+    "candidate_ids": {
+      "type": "array",
+      "maxItems": 20000,
+      "uniqueItems": true,
+      "items": {"type": "string", "pattern": "^cand_[0-9a-f]{32}$"}
+    },
+    "exclusions": {
+      "description": "One row per excluded cell (symbol, optionally strategy_id / side). Overlapping cells and cells that are also scored are refused by check_candidate_evaluation.",
+      "type": "array",
+      "maxItems": 20000,
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["symbol", "reason_code"],
+        "properties": {
+          "symbol": {"$ref": "#/$defs/symbol"},
+          "strategy_id": {"$ref": "#/$defs/label"},
+          "side": {"enum": ["LONG", "SHORT"]},
+          "reason_code": {"$ref": "#/$defs/reasonCode"}
+        }
+      }
+    },
+    "exclusion_counts": {
+      "type": "object",
+      "propertyNames": {"$ref": "#/$defs/reasonCode"},
+      "additionalProperties": {"type": "integer", "minimum": 1, "maximum": 20000}
+    },
+    "benchmarks": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 16,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["benchmark_id", "kind"],
+        "properties": {
+          "benchmark_id": {"$ref": "#/$defs/label"},
+          "kind": {"enum": ["flat_cash", "buy_and_hold", "random_entry_same_exits", "equal_weight_universe"]}
+        }
+      }
+    },
+    "benchmark_set_sha256": {"$ref": "#/$defs/sha256"},
+    "sealed": {"type": "boolean"},
+    "prior_commitment": {
+      "description": "Proof-of-prior: valid only when independently anchored (append-only, not editable by ZackBot) BEFORE the first bar of the evaluated forward window. Never evidence for a backtest.",
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": [
+        "commitment_sha256",
+        "anchor_kind",
+        "anchor_ref",
+        "anchored_at_ms",
+        "window_start_ms",
+        "window_end_ms",
+        "benchmark_set_sha256"
+      ],
+      "properties": {
+        "commitment_sha256": {"$ref": "#/$defs/sha256"},
+        "anchor_kind": {"enum": ["rfc3161_timestamp", "public_append_only_log", "signed_public_git_tag"]},
+        "anchor_ref": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/#-]{0,127}$"},
+        "anchored_at_ms": {"$ref": "#/$defs/ms"},
+        "window_start_ms": {"$ref": "#/$defs/ms"},
+        "window_end_ms": {"$ref": "#/$defs/ms"},
+        "benchmark_set_sha256": {"$ref": "#/$defs/sha256"}
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"evidence_class": {"const": "backtest"}}, "required": ["evidence_class"]},
+      "then": {"properties": {"sealed": {"const": false}, "prior_commitment": {"type": "null"}}}
+    },
+    {
+      "if": {"properties": {"sealed": {"const": true}}, "required": ["sealed"]},
+      "then": {"properties": {"prior_commitment": {"type": "object"}}}
+    }
+  ],
+  "$defs": {
+    "ms": {"type": "integer", "minimum": 946684800000, "maximum": 4102444799999},
+    "symbol": {"type": "string", "pattern": "^[A-Z0-9]{2,30}$"},
+    "label": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$"},
+    "version": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._+-]{0,31}$"},
+    "weight": {"type": "string", "pattern": "^(0(\\.[0-9]{1,6})?|1(\\.0{1,6})?)$"},
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$", "not": {"const": "0000000000000000000000000000000000000000000000000000000000000000"}},
+    "reasonCode": {"type": "string", "pattern": "^[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*$", "maxLength": 64}
+  }
+}
