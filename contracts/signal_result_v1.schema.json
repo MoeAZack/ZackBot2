@@ -2,10 +2,12 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://zackbot.local/contracts/signal-result-v1.schema.json",
   "title": "ZackBot Signal Result v1",
+  "description": "Durable outcome of one signal. Per-status branches below; reason-code registry membership per status, the duplicate self-reference rule and the detail secret check are enforced by newcore.contracts.signal_v1.check_signal_result, and a result is only ever serialized by encode_result (validate, then canonical bytes).",
   "type": "object",
   "additionalProperties": false,
   "required": [
     "contract_version",
+    "result_id",
     "signal_id",
     "status",
     "reason_code",
@@ -14,12 +16,54 @@
   ],
   "properties": {
     "contract_version": {"const": 1},
+    "result_id": {"$ref": "#/$defs/resultId"},
     "signal_id": {"type": "string", "pattern": "^sig_[0-9a-f]{32}$"},
     "status": {"enum": ["validated", "accepted", "rejected", "duplicate", "held"]},
-    "reason_code": {"type": "string", "pattern": "^[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*$"},
+    "reason_code": {"type": "string", "pattern": "^[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*$", "maxLength": 64},
     "retryable": {"type": "boolean"},
     "recorded_at_ms": {"type": "integer", "minimum": 946684800000, "maximum": 4102444799999},
     "decision_id": {"type": ["string", "null"], "pattern": "^dec_[0-9a-f]{32}$"},
-    "detail": {"type": ["string", "null"], "maxLength": 256}
+    "original_result_id": {"$ref": "#/$defs/resultId"},
+    "original_status": {"enum": ["validated", "accepted", "rejected", "held"]},
+    "detail": {
+      "description": "Display only, never parsed. Built from fixed templates with non-secret values; printable ASCII here, and refused (never scrubbed) by the NEWCORE detail boundary when it looks like a credential.",
+      "type": ["string", "null"],
+      "pattern": "^[ -~]{1,160}$",
+      "maxLength": 160
+    }
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"status": {"enum": ["accepted", "validated"]}}, "required": ["status"]},
+      "then": {
+        "required": ["decision_id"],
+        "properties": {
+          "decision_id": {"type": "string"},
+          "retryable": {"const": false},
+          "original_result_id": false,
+          "original_status": false
+        }
+      }
+    },
+    {
+      "if": {"properties": {"status": {"const": "rejected"}}, "required": ["status"]},
+      "then": {"properties": {"original_result_id": false, "original_status": false}}
+    },
+    {
+      "if": {"properties": {"status": {"const": "held"}}, "required": ["status"]},
+      "then": {
+        "properties": {"retryable": {"const": false}, "original_result_id": false, "original_status": false}
+      }
+    },
+    {
+      "if": {"properties": {"status": {"const": "duplicate"}}, "required": ["status"]},
+      "then": {
+        "required": ["original_result_id", "original_status"],
+        "properties": {"retryable": {"const": false}}
+      }
+    }
+  ],
+  "$defs": {
+    "resultId": {"type": "string", "pattern": "^res_[0-9a-f]{32}$"}
   }
 }

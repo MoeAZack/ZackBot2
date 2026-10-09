@@ -2,15 +2,23 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://zackbot.local/contracts/candidate-score-v1.schema.json",
   "title": "ZackBot Strategy Candidate Score v1",
-  "description": "Point-in-time strategy candidate facts. Scores describe evidence; they do not authorize an order or raise risk.",
+  "description": "Point-in-time strategy candidate facts. Scores describe evidence; they do not authorize an order or raise risk. entry_state is computed server-side from the named versioned risk/activity profile after the hard integrity gates: there is deliberately no fixed score floor here. Time, hash, registry and automation-ceiling rules are enforced by newcore.contracts.signal_v1.check_candidate_score; universe coverage, exclusions and benchmarks by check_candidate_evaluation.",
   "type": "object",
   "additionalProperties": false,
   "required": [
     "contract_version",
     "candidate_id",
+    "evidence_class",
     "as_of_ms",
     "expires_at_ms",
     "universe_id",
+    "universe_snapshot_sha256",
+    "universe_as_of_ms",
+    "scoring_version",
+    "weights_sha256",
+    "profile_id",
+    "profile_version",
+    "automation_ceiling",
     "strategy_id",
     "strategy_version",
     "symbol",
@@ -23,11 +31,22 @@
   "properties": {
     "contract_version": {"const": 1},
     "candidate_id": {"type": "string", "pattern": "^cand_[0-9a-f]{32}$"},
-    "as_of_ms": {"type": "integer", "minimum": 946684800000, "maximum": 4102444799999},
-    "expires_at_ms": {"type": "integer", "minimum": 946684800000, "maximum": 4102444799999},
-    "universe_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$"},
-    "strategy_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$"},
-    "strategy_version": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._+-]{0,31}$"},
+    "evidence_class": {"enum": ["backtest", "paper", "testnet", "live_forward"]},
+    "as_of_ms": {"$ref": "#/$defs/ms"},
+    "expires_at_ms": {"$ref": "#/$defs/ms"},
+    "universe_id": {"$ref": "#/$defs/label"},
+    "universe_snapshot_sha256": {"$ref": "#/$defs/sha256"},
+    "universe_as_of_ms": {"$ref": "#/$defs/ms"},
+    "scoring_version": {"$ref": "#/$defs/version"},
+    "weights_sha256": {"$ref": "#/$defs/sha256"},
+    "profile_id": {"$ref": "#/$defs/label"},
+    "profile_version": {"$ref": "#/$defs/version"},
+    "automation_ceiling": {
+      "description": "Highest AUTOMATIC stage this candidate may feed. Evidence immaturity lowers it; it never blocks research, observe, dry-run, testnet or manual modes.",
+      "enum": ["observe", "dry_run", "testnet", "auto_mainnet"]
+    },
+    "strategy_id": {"$ref": "#/$defs/label"},
+    "strategy_version": {"$ref": "#/$defs/version"},
     "symbol": {"type": "string", "pattern": "^[A-Z0-9]{2,30}$"},
     "side": {"enum": ["LONG", "SHORT"]},
     "entry_state": {"enum": ["READY", "SETUP", "WAIT", "EXTENDED", "BREAKING", "STAND_DOWN"]},
@@ -43,29 +62,48 @@
         "operational_readiness"
       ],
       "properties": {
-        "opportunity": {"type": "integer", "minimum": 0, "maximum": 100},
-        "entry_quality": {"type": "integer", "minimum": 0, "maximum": 100},
-        "hold_quality": {"type": "integer", "minimum": 0, "maximum": 100},
-        "regime_fit": {"type": "integer", "minimum": 0, "maximum": 100},
-        "evidence_readiness": {"type": "integer", "minimum": 0, "maximum": 100},
-        "operational_readiness": {"type": "integer", "minimum": 0, "maximum": 100}
+        "opportunity": {"$ref": "#/$defs/score"},
+        "entry_quality": {"$ref": "#/$defs/score"},
+        "hold_quality": {"$ref": "#/$defs/score"},
+        "regime_fit": {"$ref": "#/$defs/score"},
+        "evidence_readiness": {"$ref": "#/$defs/score"},
+        "operational_readiness": {"$ref": "#/$defs/score"}
       }
     },
     "reason_codes": {
       "type": "array",
-      "items": {"type": "string", "pattern": "^[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*$"},
+      "items": {"$ref": "#/$defs/reasonCode"},
       "maxItems": 32,
       "uniqueItems": true
     },
-    "source_manifest_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "source_manifest_sha256": {"$ref": "#/$defs/sha256"},
     "structural_stop": {
       "type": ["object", "null"],
       "additionalProperties": false,
       "required": ["unit", "value"],
       "properties": {
         "unit": {"enum": ["price", "percent", "ticks", "atr"]},
-        "value": {"type": "string", "pattern": "^(0\\.[0-9]*[1-9][0-9]*|[1-9][0-9]*(\\.[0-9]+)?)$", "maxLength": 64}
+        "value": {
+          "type": "string",
+          "pattern": "^(0\\.(?=[0-9]*[1-9])[0-9]{1,18}|[1-9][0-9]{0,17}(\\.[0-9]{1,18})?)$",
+          "maxLength": 37
+        }
       }
     }
+  },
+  "allOf": [
+    {
+      "description": "STAND_DOWN may carry any score (a regime/operational veto can override a high opportunity), but it must say why.",
+      "if": {"properties": {"entry_state": {"const": "STAND_DOWN"}}, "required": ["entry_state"]},
+      "then": {"properties": {"reason_codes": {"minItems": 1}}}
+    }
+  ],
+  "$defs": {
+    "ms": {"type": "integer", "minimum": 946684800000, "maximum": 4102444799999},
+    "score": {"type": "integer", "minimum": 0, "maximum": 100},
+    "label": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$"},
+    "version": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._+-]{0,31}$"},
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$", "not": {"const": "0000000000000000000000000000000000000000000000000000000000000000"}},
+    "reasonCode": {"type": "string", "pattern": "^[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*$", "maxLength": 64}
   }
 }

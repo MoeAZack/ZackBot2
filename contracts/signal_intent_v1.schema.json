@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://zackbot.local/contracts/signal-intent-v1.schema.json",
   "title": "ZackBot Signal Intent v1",
-  "description": "Strict external or internal signal envelope. Authentication, account environment and automation authority are server-side configuration and cannot be selected by this payload.",
+  "description": "Strict external or internal signal envelope. Authentication, account environment and automation authority are server-side configuration and cannot be selected by this payload. Structural rules only: cross-field, time, bound and unit rules are enforced by newcore.contracts.signal_v1.check_signal_intent, which every adapter must run after this schema.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -29,36 +29,62 @@
     "side": {"enum": ["LONG", "SHORT"]},
     "strategy_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$"},
     "strategy_version": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._+-]{0,31}$"},
-    "generated_at_ms": {"type": "integer", "minimum": 946684800000, "maximum": 4102444799999},
-    "expires_at_ms": {"type": "integer", "minimum": 946684800000, "maximum": 4102444799999},
+    "generated_at_ms": {"$ref": "#/$defs/ms"},
+    "expires_at_ms": {"$ref": "#/$defs/ms"},
     "dry_run": {"type": "boolean"},
     "order": {"$ref": "#/$defs/order"},
     "risk": {"$ref": "#/$defs/risk"},
     "stop": {"$ref": "#/$defs/level"},
     "target": {"$ref": "#/$defs/level"},
     "trail": {"$ref": "#/$defs/trail"},
-    "target_ref": {"type": "string", "pattern": "^[A-Za-z0-9._:/-]{1,64}$"}
+    "reduce_percent": {"$ref": "#/$defs/positiveDecimal"},
+    "target_ref": {"type": "string", "pattern": "^(pos|lot|int)_[0-9a-f]{32}$"}
   },
   "allOf": [
     {
       "if": {"properties": {"action": {"const": "enter"}}, "required": ["action"]},
-      "then": {"required": ["side", "order", "risk", "stop"]}
+      "then": {
+        "required": ["side", "order", "risk", "stop"],
+        "properties": {"target_ref": false, "reduce_percent": false}
+      }
     },
     {
-      "if": {"properties": {"action": {"enum": ["reduce", "close", "modify"]}}, "required": ["action"]},
-      "then": {"required": ["target_ref"]}
+      "if": {"properties": {"action": {"const": "reduce"}}, "required": ["action"]},
+      "then": {
+        "required": ["target_ref", "reduce_percent"],
+        "properties": {
+          "target_ref": {"pattern": "^(pos|lot)_"},
+          "side": false, "order": false, "risk": false, "stop": false, "target": false, "trail": false
+        }
+      }
+    },
+    {
+      "if": {"properties": {"action": {"const": "close"}}, "required": ["action"]},
+      "then": {
+        "required": ["target_ref"],
+        "properties": {
+          "target_ref": {"pattern": "^(pos|lot)_"},
+          "side": false, "order": false, "risk": false, "stop": false, "target": false, "trail": false,
+          "reduce_percent": false, "trade_family_id": false
+        }
+      }
+    },
+    {
+      "if": {"properties": {"action": {"const": "modify"}}, "required": ["action"]},
+      "then": {
+        "required": ["target_ref"],
+        "anyOf": [{"required": ["stop"]}, {"required": ["target"]}, {"required": ["trail"]}],
+        "properties": {"side": false, "order": false, "risk": false, "reduce_percent": false}
+      }
     }
   ],
   "$defs": {
-    "decimal": {
-      "type": "string",
-      "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]+)?$",
-      "maxLength": 64
-    },
+    "ms": {"type": "integer", "minimum": 946684800000, "maximum": 4102444799999},
     "positiveDecimal": {
+      "description": "Canonical positive decimal text: at most 18 integer and 18 fraction digits, never zero, never an exponent. Per-unit upper bounds are semantic (check_signal_intent).",
       "type": "string",
-      "pattern": "^(0\\.[0-9]*[1-9][0-9]*|[1-9][0-9]*(\\.[0-9]+)?)$",
-      "maxLength": 64
+      "pattern": "^(0\\.(?=[0-9]*[1-9])[0-9]{1,18}|[1-9][0-9]{0,17}(\\.[0-9]{1,18})?)$",
+      "maxLength": 37
     },
     "value": {
       "type": "object",
@@ -85,9 +111,19 @@
       "required": ["type"],
       "properties": {
         "type": {"enum": ["market", "limit_post_only", "stop_market"]},
-        "price": {"anyOf": [{"$ref": "#/$defs/value"}, {"type": "null"}]},
-        "expires_at_ms": {"type": ["integer", "null"], "minimum": 946684800000, "maximum": 4102444799999}
-      }
+        "price": {"$ref": "#/$defs/value"},
+        "expires_at_ms": {"$ref": "#/$defs/ms"}
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"type": {"const": "market"}}, "required": ["type"]},
+          "then": {"properties": {"price": false, "expires_at_ms": false}}
+        },
+        {
+          "if": {"properties": {"type": {"enum": ["limit_post_only", "stop_market"]}}, "required": ["type"]},
+          "then": {"required": ["price"]}
+        }
+      ]
     },
     "risk": {
       "type": "object",
@@ -108,7 +144,7 @@
       "properties": {
         "trigger": {"$ref": "#/$defs/value"},
         "distance": {"$ref": "#/$defs/value"},
-        "update_step": {"anyOf": [{"$ref": "#/$defs/value"}, {"type": "null"}]}
+        "update_step": {"$ref": "#/$defs/value"}
       }
     }
   }
