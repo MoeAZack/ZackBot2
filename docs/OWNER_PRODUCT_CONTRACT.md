@@ -120,16 +120,17 @@ Simple/Guided/Pro interfaces must remain coherent and responsive. Simple mode ex
 controls without engine noise; Pro exposes the evidence, mechanics and advanced scopes. Accessibility, mobile behavior
 and actionable error/recovery states are release acceptance requirements.
 
-## 8. Later optional MetaTrader 5 execution bridge
+## 8. Post-Binance-live optional MetaTrader 5 execution bridge
 
 **The current Binance execution path remains the native Binance API. MT5 does not replace, wrap or sit in front of
 Binance, and it is not part of the present runnable-slice gate.**
 
-Later, MetaTrader 5 becomes a separate optional ZackBot venue adapter for Vantage and for specific Bybit/TradFi
+Only after the Binance engine has crossed its live milestone and the owner explicitly opens the post-live expansion
+phase may MetaTrader 5 become a separate optional ZackBot venue adapter for Vantage and for specific Bybit/TradFi
 accounts whose chosen account product actually executes through MT5. A future native Bybit API adapter remains a
-separate option; do not assume every Bybit account uses MT5. For an MT5-connected account, ZackBot remains the control
-plane for strategies, regimes, risk, baskets, settings, audit and owner decisions. An MT5 Expert Advisor/gateway only
-executes approved ZackBot intents and returns that broker/account's truth to the app.
+separate post-live option; do not assume every Bybit account uses MT5. For an MT5-connected account, ZackBot remains
+the control plane for strategies, regimes, risk, baskets, settings, audit and owner decisions. An MT5 Expert
+Advisor/gateway only executes approved ZackBot intents and returns that broker/account's truth to the app.
 
 Required architecture and authority:
 
@@ -165,10 +166,11 @@ partial fill, reject/requote, spread/gap, session close, terminal/EA/app restart
 trade, hedging/netting mismatch, symbol/rule change, stale quote and emergency flatten. Final truth must be flat or
 explicitly protected and reconciled.
 
-Roadmap placement: after the Binance NEWCORE engine and strategy milestone, VENUE-01 defines the generic multi-venue
-contract and MT5-01 separately builds/proves the optional bridge. GOLD-02 and TRADFI-01 may consume it. Broker-specific
-plugins/configuration follow the shared bridge rather than forking the strategy engine. No MT5 work may delay the
-current Binance vertical slice or its strategy validation.
+Roadmap placement: **after the Binance live milestone and explicit owner activation of post-live expansion**, VENUE-01
+defines the generic multi-venue contract and MT5-01 separately builds/proves the optional bridge. GOLD-02 and
+TRADFI-01 may consume it. Broker-specific plugins/configuration follow the shared bridge rather than forking the
+strategy engine. Before that boundary, Vantage, Bybit and MT5 implementation are deferred and may not consume the
+active Build, Evidence or Integration lanes needed for Binance readiness.
 
 ## 9. Traceability and final-UI acceptance
 

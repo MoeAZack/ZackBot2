@@ -359,10 +359,10 @@ A high score **never** changes settings automatically.
 
 - **Gold:** PAXG spot first, then XAUT, then broker XAUUSD.
 - **TradFi:** paper-only until sessions, gaps and corporate actions pass their tests.
-- **MetaTrader 5 (later, separate):** keep Binance on its native API. A shared fail-closed MT5 Expert Advisor/gateway
-  may execute for Vantage and specific Bybit/TradFi account products that use MT5, returning their broker truth to
-  ZackBot. A native Bybit API adapter remains a separate option. Prove MT5 on broker demo accounts before any live
-  boundary; it must not delay the Binance engine/strategy milestone or fork the strategy engine.
+- **Vantage / Bybit / MetaTrader 5 (post-Binance-live only):** keep Binance on its native API and finish its engine,
+  strategies, evidence and live milestone first. Only after the owner explicitly opens post-live expansion may a
+  fail-closed MT5 bridge serve Vantage or specific Bybit/TradFi account products, or a native Bybit API adapter begin.
+  These adapters cannot enter the active queue or consume Binance-readiness lanes before that boundary.
 - **Shareable release:**
   - signed installer and updates;
   - onboarding;

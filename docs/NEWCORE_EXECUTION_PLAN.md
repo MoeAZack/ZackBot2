@@ -24,8 +24,8 @@ The target product is one engine that can:
 - explain every decision, order, hold and close;
 - support Simple, Guided and Pro interfaces plus secure mobile monitoring/control;
 - expand to TradingView, news, gold and TradFi without bypassing core risk or execution contracts.
-- later add a separate fail-closed MetaTrader 5 adapter for Vantage and specific Bybit/TradFi accounts that use MT5,
-  without changing or delaying the native Binance API execution path.
+- only after the Binance live milestone and explicit owner activation, consider separate Vantage, Bybit and MT5 venue
+  adapters; they cannot enter the active queue or delay the native Binance API engine and strategy path.
 
 ### Owner priority: engine-first mainnet candidate
 
