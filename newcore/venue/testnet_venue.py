@@ -35,7 +35,9 @@ NOT_FOUND costs two requests. OK = (VenueOrderRecord,) of exactly the asked id a
 endpoint holds it; UNKNOWN for no answer, malformed JSON, a missing field, a JSON-number (float-looking) quantity, an
 id / symbol echo mismatch, a one-way (BOTH) order, or a TRIGGERED algo order (its executed quantity lives in the
 child order: look that id up). Route of a classic record: 'algo' when its client id is a NEWCORE algo id, else
-'classic'.
+'classic'. side / reduce_only / close_position / order_type / orig_type (S1 db96379: what proves a not-ours record a
+foreign OPENING order) come from Binance's side, reduceOnly, closePosition, type (algo: orderType) and origType; a
+field the answer omits stays None, a malformed one (unknown side, non-bool flag, non-text type) -> UNKNOWN.
 
 TestnetAccountReader.mark_price(symbol): /fapi/v1/premiumIndex -> (MarkQuote(symbol, price, at_ms = Binance server
 time),); one request, never retried; OK / REJECTED / UNKNOWN. WEIGHT: premiumIndex with a symbol costs 1 weight per
@@ -320,7 +322,8 @@ class TestnetVenue:
         return map_read_outcome(t, self._now(), lambda r: (P.VenueOrderRecord(
             ref=P.OrderRef(symbol=r.symbol, client_id=r.client_order_id, route=route),
             exchange_order_id=str(r.order_id), position_side=r.position_side, status=r.status,
-            orig_qty=r.orig_qty, executed_qty=r.executed_qty),))
+            orig_qty=r.orig_qty, executed_qty=r.executed_qty, side=r.side, reduce_only=r.reduce_only,
+            close_position=r.close_position, order_type=r.type, orig_type=r.orig_type),))
 
     def _algo_by_id(self, symbol, algo_id):
         a = self._t.query_algo_order_by_id(algo_id)
@@ -343,7 +346,8 @@ class TestnetVenue:
         return map_read_outcome(a, now, lambda r: (P.VenueOrderRecord(
             ref=P.OrderRef(symbol=r.symbol, client_id=r.client_algo_id, route='algo'),
             exchange_order_id=str(r.algo_id), position_side=r.position_side, status=r.algo_status,
-            orig_qty=r.quantity, executed_qty=Decimal('0')),))
+            orig_qty=r.quantity, executed_qty=Decimal('0'), side=r.side, reduce_only=r.reduce_only,
+            close_position=r.close_position, order_type=r.order_type, orig_type=r.orig_type),))
 
     def _fills_window(self, symbol, start_ms, end_ms):
         req(type(start_ms) is int and type(end_ms) is int and 0 < start_ms <= end_ms, 'fills',

@@ -190,6 +190,104 @@ def test_executed_above_original_is_unknown():
     unknown(v.order_by_id(SYM, OID), 'malformed')
 
 
+# ---------- side / reduceOnly / closePosition / type / origType (S1 db96379) ----------
+
+FIELDS = ('side', 'reduce_only', 'close_position', 'order_type', 'orig_type')
+WIRE = {'side': 'side', 'reduce_only': 'reduceOnly', 'close_position': 'closePosition', 'order_type': 'type',
+        'orig_type': 'origType'}
+ALGO_WIRE = dict(WIRE, order_type='orderType')          # the algo answer names the type orderType
+CLASSIC_BASE = dict(zip(FIELDS, ('BUY', False, False, 'MARKET', 'MARKET')))     # order_query_filled
+
+
+def fields(rec):
+    return tuple(getattr(rec, f) for f in FIELDS)
+
+
+def algo(drop=(), **patch):
+    return body('algo_order_new', drop, **{'clientAlgoId': ACID, **patch})
+
+
+def test_classic_fields_are_reported_verbatim():
+    rec, = venue(classic())[0].order_by_id(SYM, OID).value
+    assert fields(rec) == ('BUY', False, False, 'MARKET', 'MARKET')
+    rec, = venue(classic(side='SELL', reduceOnly=True, closePosition=True, type='STOP_MARKET',
+                         origType='STOP_MARKET'))[0].order_by_id(SYM, OID).value
+    assert fields(rec) == ('SELL', True, True, 'STOP_MARKET', 'STOP_MARKET')
+    assert type(rec.reduce_only) is bool and type(rec.close_position) is bool
+
+
+@pytest.mark.parametrize('field,value', [('side', 'SELL'), ('reduce_only', True), ('close_position', True),
+                                         ('order_type', 'TAKE_PROFIT_MARKET'), ('orig_type', 'TRAILING_STOP_MARKET')])
+def test_classic_each_field_comes_from_its_binance_key(field, value):
+    rec, = venue(classic(**{WIRE[field]: value}))[0].order_by_id(SYM, OID).value
+    assert getattr(rec, field) == value
+    assert all(getattr(rec, f) == CLASSIC_BASE[f] for f in FIELDS if f != field)
+
+
+@pytest.mark.parametrize('field', FIELDS)
+def test_classic_omitted_field_stays_none(field):
+    out = venue(classic(drop=(WIRE[field],)))[0].order_by_id(SYM, OID)
+    assert out.kind is P.ReadKind.OK
+    rec, = out.value
+    assert getattr(rec, field) is None
+    assert all(getattr(rec, f) == CLASSIC_BASE[f] for f in FIELDS if f != field)
+
+
+def test_classic_all_fields_omitted_all_none():
+    out = venue(classic(drop=tuple(WIRE.values())))[0].order_by_id(SYM, OID)
+    assert out.kind is P.ReadKind.OK
+    rec, = out.value
+    assert fields(rec) == (None,) * 5
+
+
+def test_algo_fields_are_reported():
+    out = venue('err_no_such_order', algo())[0].order_by_id(SYM, AID)
+    assert out.kind is P.ReadKind.OK
+    rec, = out.value
+    assert fields(rec) == ('SELL', True, False, 'STOP_MARKET', None)        # no origType on the algo answer
+    rec, = venue('err_no_such_order', algo(side='BUY', positionSide='SHORT', reduceOnly=False, closePosition=True,
+                                           orderType='TAKE_PROFIT_MARKET', origType='TAKE_PROFIT_MARKET')
+                 )[0].order_by_id(SYM, AID).value
+    assert fields(rec) == ('BUY', False, True, 'TAKE_PROFIT_MARKET', 'TAKE_PROFIT_MARKET')
+
+
+@pytest.mark.parametrize('field', ['side', 'reduce_only', 'close_position', 'order_type'])
+def test_algo_omitted_field_stays_none(field):
+    out = venue('err_no_such_order', algo(drop=(ALGO_WIRE[field],)))[0].order_by_id(SYM, AID)
+    assert out.kind is P.ReadKind.OK
+    rec, = out.value
+    assert getattr(rec, field) is None
+    assert all(getattr(rec, f) is not None for f in FIELDS if f not in (field, 'orig_type'))
+
+
+# a value that is present but not one the venue sends: the whole record is UNKNOWN, never OK with the field dropped
+BAD = [('side', 'buy'), ('side', 'LONG'), ('side', 'BOTH'), ('side', ''), ('side', 1),
+       ('reduce_only', 'true'), ('reduce_only', 'false'), ('reduce_only', 1), ('reduce_only', 0), ('reduce_only', None),
+       ('close_position', 'false'), ('close_position', 1), ('close_position', None),
+       ('order_type', 5), ('order_type', ''), ('order_type', True), ('orig_type', 7), ('orig_type', ''),
+       ('orig_type', ['MARKET'])]
+
+
+@pytest.mark.parametrize('field,value', BAD)
+def test_classic_malformed_field_makes_the_whole_result_unknown(field, value):
+    v, _ = venue(classic(**{WIRE[field]: value}))
+    unknown(v.order_by_id(SYM, OID), 'malformed')
+
+
+@pytest.mark.parametrize('field,value', BAD)
+def test_algo_malformed_field_makes_the_whole_result_unknown(field, value):
+    v, _ = venue('err_no_such_order', algo(**{ALGO_WIRE[field]: value}))
+    unknown(v.order_by_id(SYM, AID), 'malformed')
+
+
+@pytest.mark.parametrize('wire', ['type', 'origType'])
+@pytest.mark.parametrize('value', ['X' * 33, 'STOP\nMARKET', 'MARKET​'])
+def test_classic_unrepresentable_type_text_is_unknown(wire, value):
+    """Text the port cannot hold verbatim (over 32 characters, non-printable): never OK with the value dropped."""
+    v, _ = venue(classic(**{wire: value}))
+    unknown(v.order_by_id(SYM, OID), 'unrepresentable')
+
+
 # ---------- arguments: refused before anything is sent ----------
 
 @pytest.mark.parametrize('sym,eoid', [('solusdt', OID), (SYM, ''), (SYM, '0'), (SYM, '01'), (SYM, '-5'), (SYM, '1.5'),
