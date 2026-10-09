@@ -163,6 +163,22 @@ def map_read_outcome(t, observed_at_ms, convert):
 
 
 # ---------------------------------------------------------------------------------------------- value conversion
+def _addressable(sym):
+    try:
+        check_symbol(sym, 'symbol')
+        return True
+    except PortValueError:
+        return False
+
+
+def _keep_position(row):
+    """First testnet 5a run (38da6f7): the account-wide positionRisk lists ~1,500 rows, flat ones included, and some
+    symbols are non-ASCII (newer Binance listings) - check_symbol refused them and the WHOLE read went UNKNOWN, so
+    every scenario held before its first order. A FLAT row on a symbol NEWCORE cannot address carries nothing and is
+    dropped; a NON-FLAT one is still refused (the read stays UNKNOWN): an exposure we cannot name is never ignored."""
+    return row.position_amt != 0 or _addressable(row.symbol)
+
+
 def _position(row):
     req(row.position_side in ('LONG', 'SHORT'), 'positionRisk.positionSide', 'LONG / SHORT (hedge mode required)')
     return P.VenuePosition(symbol=row.symbol, side=row.position_side, qty=abs(row.position_amt),
@@ -292,7 +308,7 @@ class TestnetVenue:
     # ---- reads
     def positions(self, symbol=None):
         t = self._t.positions(symbol)
-        return map_read_outcome(t, self._now(), lambda rows: tuple(_position(r) for r in rows))
+        return map_read_outcome(t, self._now(), lambda rows: tuple(_position(r) for r in rows if _keep_position(r)))
 
     def open_orders(self, symbol=None):
         classic = self._t.open_orders(symbol)

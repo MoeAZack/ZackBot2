@@ -379,3 +379,13 @@ def test_algo_cancel_still_new_after_the_budget_is_unknown():
     out = v.cancel(AREF)
     assert out.kind is P.OutcomeKind.UNKNOWN and out.detail == 'algo_cancel_unconfirmed' and out.status == 'NEW'
     assert SLEPT == [ms / 1000 for ms in ALGO_CANCEL_BACKOFF_MS]
+
+
+def test_flat_rows_on_unaddressable_symbols_are_dropped_from_the_account_wide_read():
+    """38da6f7 5a: positionRisk (no symbol) lists non-ASCII symbols; a FLAT row there is dropped, the read stays OK."""
+    from newcore.venue import records as R
+    from newcore.venue.testnet_venue import _keep_position
+    row = lambda sym, amt: R.parse_positions([dict(json.loads(fixture('position_risk_hedge').body)[0], symbol=sym,
+                                                   positionAmt=amt)])[0]
+    assert not _keep_position(row('币安USDT', '0'))
+    assert _keep_position(row('币安USDT', '1')) and _keep_position(row('BTCUSDT', '0'))

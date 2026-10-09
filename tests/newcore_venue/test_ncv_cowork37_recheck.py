@@ -225,3 +225,28 @@ def test_n2b_ctrl_c_during_the_cleanup_listing_is_truthful(env):  # noqa: F811
     rc, out = run(env, ['--cleanup'], http=fb)
     assert rc == 6 and 'teardown has run' not in out and '--cleanup' in out
     assert not [q for q in fb.requests if q.method in ('POST', 'DELETE')]
+
+
+# ---------------------------------------------------------------------------------------------- first testnet 5a run
+def _big_bodies(n, hidden=''):
+    junk = ' '.join('QUJDREVGR0hJSktMTU5PUA' for _ in range(MAX_DECODED_TOKENS // 2 + 1000))
+    return [ok(json.dumps({'msg': junk + (' ' + hidden if i == n - 1 else '')})) for i in range(n)]
+
+
+def test_many_large_bodies_each_under_the_cap_still_produce_a_cassette():
+    """38da6f7 5a: account-wide bodies (~4,500 base64-like runs each) summed past the cap across one scenario, and
+    every cassette was refused. The cap is per string now: three bodies of cap/2 runs each are audited and saved."""
+    rec = CassetteRecorder(FakeHttp(*_big_bodies(3)), redact=(DUMMY_KEY, DUMMY_SECRET))
+    for _ in range(3):
+        rec(req())
+    assert json.loads(rec.to_json())['interactions']
+
+
+def test_a_secret_encoded_in_one_of_many_large_bodies_is_still_caught():
+    import base64
+    hidden = base64.b64encode(DUMMY_SECRET.encode()).decode()
+    rec = CassetteRecorder(FakeHttp(*_big_bodies(3, hidden)), redact=(DUMMY_KEY, DUMMY_SECRET))
+    for _ in range(3):
+        rec(req())
+    with pytest.raises(CassetteLeak):
+        rec.to_json()

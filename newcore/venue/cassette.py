@@ -61,6 +61,22 @@ def _strings(obj):
             stack.extend(o)
 
 
+def _strings_and_keys(obj):
+    """Every string leaf and every object key (iterative)."""
+    stack = [obj]
+    while stack:
+        o = stack.pop()
+        if isinstance(o, str):
+            yield o
+        elif isinstance(o, dict):
+            for k, v in o.items():
+                if isinstance(k, str):
+                    yield k
+                stack.append(v)
+        elif isinstance(o, (list, tuple)):
+            stack.extend(o)
+
+
 def decoded_views(text):
     """Text forms a registered secret could hide in (Cowork #37 R2): NFKC, unicode-escape decoded, and every
     base64 / hex run decoded. Bounded: at most MAX_DECODED_TOKENS runs per text."""
@@ -317,7 +333,12 @@ class CassetteRecorder:
         if contains_values(text, values, self._cache) or \
                 any(contains_values(s, values, self._cache) for s in _strings(self.interactions)):
             raise CassetteLeak('a secret value is still present; cassette not produced')
-        if values and any(contains_values(view, values, self._cache) for view in decoded_views(text)):
+        # First testnet 5a run (38da6f7): one account-wide positionRisk / account body holds ~4,500 base64-like runs,
+        # so a multi-cycle scenario cassette passed MAX_DECODED_TOKENS as ONE text and every cassette was refused.
+        # The encoded-form audit runs per string leaf and per object key instead (each bounded on its own); together
+        # they cover every value the cassette holds.
+        if values and any(contains_values(view, values, self._cache)
+                          for s in _strings_and_keys(self.interactions) for view in decoded_views(s)):
             raise CassetteLeak('a secret value is present in an encoded form; cassette not produced')
         for n, it in enumerate(self.interactions):
             req = it['request']
