@@ -24,7 +24,7 @@ CLOSING = {'LONG': 'SELL', 'SHORT': 'BUY'}
 OPENING = {'LONG': 'BUY', 'SHORT': 'SELL'}
 
 
-def child_record(w, o, **fields):
+def child_record(w, o, route='classic', **fields):
     """The order-by-id lookup of the triggered algo stop answers its classic CHILD with a foreign / system client id.
     `fields`: the record's optional opening-proof fields (none given = an adapter that does not populate them)."""
     inner = w.venue.order_by_id
@@ -35,7 +35,7 @@ def child_record(w, o, **fields):
             return r
         x, = r.value
         return ReadOutcome(kind=ReadKind.OK, observed_at_ms=r.observed_at_ms, value=(VenueOrderRecord(
-            ref=OrderRef(symbol=SYM, client_id='autoclose-' + eoid), exchange_order_id=x.exchange_order_id,
+            ref=OrderRef(symbol=SYM, client_id='autoclose-' + eoid, route=route), exchange_order_id=x.exchange_order_id,
             position_side=x.position_side, status='FILLED' if x.executed_qty == x.orig_qty else 'CANCELED',
             orig_qty=x.orig_qty, executed_qty=x.executed_qty, **fields),))
     w.port.order_by_id = order_by_id
@@ -123,3 +123,16 @@ def test_fake_venue_populates_the_opening_fields(side):
     y, = w.venue.order_by_id(SYM, add.exchange_order_id).value
     assert (y.side, y.reduce_only, y.close_position, y.order_type, y.orig_type) == (
         OPENING[side], False, False, 'MARKET', 'MARKET')
+
+
+@pytest.mark.parametrize('side', SIDES)
+@pytest.mark.parametrize('mode', MODES)
+@pytest.mark.parametrize('emergency', ('classic', 'algo'))
+def test_an_opening_shaped_algo_route_record_is_unknown(side, mode, emergency):
+    """Codex 6073909317 (numeric id collision): the classic lookup of a trade-row order id answers -2013 and the
+    algo fallback returns an UNRELATED algo order with the same numeric id, opening-shaped and not ours. Only a
+    classic-route record proves foreign: an algo-route answer is UNKNOWN / HOLD, whatever its fields say."""
+    w, lot, o = partial_emergency(side, emergency, ORDERS[0], 'cancelled', '1', mode, 'ok')
+    child_record(w, o, route='algo', side=OPENING[side], reduce_only=False, close_position=False,
+                 order_type='MARKET', orig_type='MARKET')
+    assert_unknown_hold(w, lot, side, mode)
