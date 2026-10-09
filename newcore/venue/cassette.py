@@ -32,7 +32,8 @@ import urllib.parse
 
 from . import cassette_allow as A
 
-from .redact import (REDACTED, TOKEN_RUN, PatternCache, check_value, contains_values, is_sensitive_name,
+from .redact import (MIN_SECRET_LEN, REDACTED, TOKEN_RUN, PatternCache, check_value, contains_values,
+                     is_sensitive_name,
                      redact_values)
 from .wire import (API_KEY_HEADER, HttpResponse, WireConnectionError, WireNotSent, WireResponseTooLarge, WireSeamError,
                    WireTimeout)
@@ -44,12 +45,17 @@ _ERRORS = {'WireTimeout': WireTimeout, 'WireNotSent': WireNotSent, 'WireResponse
 _CLEARED = (REDACTED, '', None)
 MAX_RECORD_BODY = 8 * 1024 * 1024           # a larger answer is not stored (the cassette becomes unproducible)
 _REASON_RE = re.compile(r'[a-z_]{1,20}')
-_B64_RUN = re.compile(r'[A-Za-z0-9+/_-]{16,}={0,2}')
+# Codex P1 on bc5a351: decode runs down to the shortest encoding of a MIN_SECRET_LEN-byte secret (8 bytes -> 11
+# characters unpadded), so a case-variant of a short secret is decoded and matched case-insensitively.
+_B64_MIN = -(-MIN_SECRET_LEN * 8 // 6)
+_B64_RUN = re.compile(r'[A-Za-z0-9+/_-]{%d,}={0,2}' % _B64_MIN)
 _HEX_RUN = re.compile(r'(?:[0-9a-fA-F]{2}){8,}')
 MAX_DECODED_TOKENS = 20000                # encoded runs decoded per string (beyond: fail closed)
 MAX_AUDIT_RUNS = 50 * MAX_DECODED_TOKENS  # encoded runs decoded over the WHOLE cassette (Codex P2 on 1297ee3)
 MAX_AUDIT_STRINGS = 1_000_000             # string leaves + object keys audited over the whole cassette
 MAX_AUDIT_CHARS = 128 * 1024 * 1024       # characters audited over the whole cassette
+MAX_SECRET_CHARS = 4096                   # one registered / learned secret value (Codex P2 on bc5a351)
+MAX_SECRET_TOTAL_CHARS = 512 * 1024       # all secret values together (bounds the generated base64 forms)
 _URLSAFE = str.maketrans('+/', '-_')
 MAX_LEARNED_VALUES = 4096                  # distinct secret values one recorder will scrub (beyond: fail closed)
 
@@ -101,6 +107,17 @@ class _AuditBudget:
         if self.runs > MAX_AUDIT_RUNS:
             raise CassetteLeak('too many encoded runs to audit; cassette not produced')
 
+    @staticmethod
+    def secrets(values):
+        """Charged BEFORE any form or pattern is built from the values (Codex P2 on bc5a351)."""
+        total = 0
+        for v in values:
+            if len(v) > MAX_SECRET_CHARS:
+                raise CassetteLeak('a secret value too long to audit; cassette not produced')
+            total += len(v)
+            if total > MAX_SECRET_TOTAL_CHARS:
+                raise CassetteLeak('too much secret text to audit; cassette not produced')
+
 
 def b64_forms(values):
     """Every base64 form of every registered secret, generated FROM the secret (Codex P1 on 1297ee3: _B64_RUN needs
@@ -142,7 +159,9 @@ def decoded_views(text, budget=None):
             budget.run()
         if n > MAX_DECODED_TOKENS:     # NEW-R2a: never stop auditing early; too many runs is a refusal
             raise CassetteLeak('too many encoded runs to audit; cassette not produced')
-        tok = m.group(0)
+        tok = m.group(0).rstrip('=')
+        if len(tok) % 4 == 1:                  # a dangling character cannot decode; the rest still can
+            tok = tok[:-1]
         for fn in (base64.b64decode, base64.urlsafe_b64decode):
             try:
                 yield fn(tok + '=' * (-len(tok) % 4)).decode('latin-1')
@@ -377,9 +396,19 @@ class CassetteRecorder:
     # ---- output ----
 
     def _audit(self, text, doc):
+        """text=None: the serialized form is built here, after the document has been charged to the budget."""
         values = sorted(self._values)
         if self._unproducible:
             raise CassetteLeak(f'{self._unproducible}; cassette not produced')
+        # Codex P2 on bc5a351: every key and string of the completed document is charged to the budget, and every
+        # secret value to its caps, BEFORE any regex, value scan or generated form; with or without registered values
+        # (leak_audit of a replay document has none).
+        budget = _AuditBudget()
+        for s in _strings_and_keys(doc):
+            budget.string(s)
+        _AuditBudget.secrets(values)
+        if text is None:
+            text = json.dumps(doc, ensure_ascii=False)
         if contains_values(text, values, self._cache) or \
                 any(contains_values(s, values, self._cache) for s in _strings_and_keys(doc)):
             raise CassetteLeak('a secret value is still present; cassette not produced')
@@ -388,13 +417,12 @@ class CassetteRecorder:
         # The encoded-form audit runs per string leaf and per object key instead (each bounded on its own, and all of
         # them together by one _AuditBudget). Codex P1s on 1297ee3: it walks the COMPLETED document (the recorder note
         # under _provenance included), and every string is also searched for the base64 forms generated from each
-        # secret, which catches secrets too short for _B64_RUN.
+        # secret (exact spelling, any byte alignment). Codex P1 on bc5a351: runs are decoded down to _B64_MIN, so a
+        # case-variant of a short secret is matched case-insensitively on the decoded text.
         if values:
-            budget = _AuditBudget()
             forms = b64_forms(values)
             found = re.compile('|'.join(map(re.escape, sorted(forms, key=len, reverse=True)))).search
             for s in _strings_and_keys(doc):
-                budget.string(s)
                 if found(s) or ('%' in s and found(urllib.parse.unquote(s))):
                     raise CassetteLeak('a secret value is present in an encoded form; cassette not produced')
                 if any(contains_values(view, values, self._cache) for view in decoded_views(s, budget)):

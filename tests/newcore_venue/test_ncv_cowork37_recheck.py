@@ -325,3 +325,78 @@ def test_p2_the_whole_audit_has_a_total_string_and_char_budget(monkeypatch, limi
         rec(req())
     with pytest.raises(CassetteLeak, match='too much text'):
         rec.to_json()
+
+
+# ---------------------------------------------------------------------------------------------- Codex on bc5a351
+from newcore.venue.cassette_replay import leak_audit  # noqa: E402
+
+CASED_SECRETS = tuple('aBcDeFgHiJkLmNoP'[:n] for n in range(8, 16))
+
+
+@pytest.mark.parametrize('secret', CASED_SECRETS, ids=lambda s: f'len{len(s)}')
+@pytest.mark.parametrize('case', ['lower', 'upper', 'swapcase'])
+@pytest.mark.parametrize('kind', ['std', 'unpadded', 'urlsafe_unpadded'])
+def test_bc5_p1_base64_of_a_case_variant_of_a_short_secret_is_refused(secret, case, kind):
+    """Codex P1: value matching is case-insensitive, but only the exact spelling's base64 was generated and runs
+    under 16 characters were never decoded: base64('ABCDEFGH') passed with 'abcdefgh' registered."""
+    form = _encodings(getattr(secret, case)())[kind]
+    rec = CassetteRecorder(FakeHttp(ok(json.dumps({'msg': 'echo ' + form}))), redact=(DUMMY_KEY, secret))
+    rec(req())
+    with pytest.raises(CassetteLeak, match='encoded'):
+        rec.to_json()
+
+
+def test_bc5_p1_codex_repro_upper_case_of_abcdefgh():
+    rec = CassetteRecorder(FakeHttp(ok(json.dumps({'msg': 'QUJDREVGR0g='}))), redact=(DUMMY_KEY, 'abcdefgh'))
+    rec(req())
+    with pytest.raises(CassetteLeak):
+        rec.to_json()
+
+
+def _clean_doc(n=12):
+    rec = CassetteRecorder(FakeHttp(*[ok(b'{"serverTime": 1}') for _ in range(n)]))
+    for _ in range(n):
+        rec(req())
+    return json.loads(rec.to_json())
+
+
+@pytest.mark.parametrize('limit,value', [('MAX_AUDIT_CHARS', 10), ('MAX_AUDIT_STRINGS', 5)])
+def test_bc5_p2_leak_audit_without_registered_values_is_bounded(monkeypatch, limit, value):
+    """Codex P2 repro: MAX_AUDIT_CHARS=10 and a replay document of >100 characters, no redact values: it passed."""
+    doc = _clean_doc()
+    assert len(json.dumps(doc)) > 100 and leak_audit(doc) is None
+    monkeypatch.setattr(C, limit, value)
+    assert 'too much text' in leak_audit(doc)
+
+
+def test_bc5_p2_recorder_without_registered_values_is_bounded(monkeypatch):
+    rec = CassetteRecorder(FakeHttp(ok(b'{"serverTime": 1}')))
+    rec(req())
+    monkeypatch.setattr(C, 'MAX_AUDIT_CHARS', 10)
+    with pytest.raises(CassetteLeak, match='too much text'):
+        rec.to_json()
+
+
+def test_bc5_p2_the_document_is_charged_before_any_value_scan(monkeypatch):
+    def scan(*a, **k):
+        raise AssertionError('value scan before the budget')
+    rec = CassetteRecorder(lambda r: None, redact=(DUMMY_KEY, DUMMY_SECRET))
+    rec.interactions = _clean_doc()['interactions']
+    monkeypatch.setattr(C, 'MAX_AUDIT_CHARS', 10)
+    monkeypatch.setattr(C, 'contains_values', scan)
+    with pytest.raises(CassetteLeak, match='too much text'):
+        rec.to_json()
+
+
+@pytest.mark.parametrize('limit,value,match', [('MAX_SECRET_CHARS', 20, 'too long'),
+                                               ('MAX_SECRET_TOTAL_CHARS', 40, 'too much secret')])
+def test_bc5_p2_secret_derived_work_is_capped_before_forms_are_built(monkeypatch, limit, value, match):
+    """Codex P2: b64_forms and the alternation regex were built before their size was charged."""
+    def forms(values):
+        raise AssertionError('forms built before the secret caps')
+    monkeypatch.setattr(C, limit, value)
+    monkeypatch.setattr(C, 'b64_forms', forms)
+    rec = CassetteRecorder(FakeHttp(ok(b'{"serverTime": 1}')), redact=('k' * 30, 's' * 30))
+    rec(req())
+    with pytest.raises(CassetteLeak, match=match):
+        rec.to_json()
