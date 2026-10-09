@@ -14,9 +14,13 @@ Machine-readable contracts:
 Every adapter runs `parse_strict -> JSON Schema -> check_signal_intent` (`newcore.contracts.signal_v1`). The schema
 carries structure and the per-action / per-order-type branches; the semantic validator carries what a JSON Schema
 cannot: no binary float token anywhere (so `1700000000000.0` is never an integer), `generated_at_ms < expires_at_ms`
-with a TTL of at most 1 h, an order expiry after generation and not after the signal, per-unit numeric bounds,
+with a TTL ceiling of 1 h (a maximum, not a default: sources choose shorter expiries where their cadence
+requires), an order expiry after generation and not after the signal, per-unit numeric bounds,
 level method / unit compatibility, one unit per trail, and reason-code registry membership per result status.
-Results leave the process only through `encode_result`.
+Freshness against the trusted clock is mandatory at promotion / use (`check_signal_intent(payload, now_ms=...)`);
+`check_signal_shape` is the clock-free variant for audit and replay and never authorizes use. The validator is
+standalone: it re-checks every field and refuses unknown fields at every level itself. Results leave the process only
+through `encode_result`, which emits a fresh object built from the allowlisted result fields after that check.
 
 ## 1. Non-negotiable path
 

@@ -73,7 +73,7 @@ Every cycle processes protection, exits and reconciliation before new-entry rank
 means no new entries; existing positions continue to be protected and managed from durable local rules and exchange
 truth. `STAND_DOWN` is a valid outcome, not a system failure.
 
-Every candidate carries `as_of_ms`, `expires_at_ms` (strictly later, at most 24 h), strategy/version, the universe
+Every candidate carries `as_of_ms`, `expires_at_ms` (strictly later; 24 h is a ceiling, not a default), strategy/version, the universe
 id plus its point-in-time snapshot hash and as-of (not after the candidate), the scoring version plus weights hash, and
 a frozen source-manifest hash. No digest may be all-zero. An expired or mismatched record cannot be promoted into a
 signal.
@@ -101,13 +101,18 @@ weak forward evidence. The forward ledger includes every eligible outcome, expli
 and corrected-defect policy. Exclusions are counted and reason-coded, never silently removed: each evaluation run
 lists its universe snapshot (delisted and halted members retained and excluded as such), every candidate id, every
 exclusion with a registered reason code and the exact per-reason counts; every member is either scored or excluded,
-and the universe, weights and benchmark-set hashes are recomputed from the record. Benchmarks are a pre-registered
+and the universe, weights and benchmark-set hashes are recomputed from the record. Each evaluation cell (strategy,
+version, symbol, side) has at most one candidate; exclusion rows never overlap and a cell is never both scored and
+excluded, so counts cannot be inflated. Using a candidate requires the trusted clock (`check_candidate_score(...,
+now_ms=...)`). Benchmarks are a pre-registered
 set bound by `benchmark_set_sha256`.
 
 Before a sealed evaluation or public/lead claim, ZackBot commits the canonical digest of the evaluation and its
-candidate records, including the benchmark-set hash. That proof-of-prior counts only when it is independently anchored
+candidate records, including the evaluated window bounds and the benchmark-set hash (only the anchor facts that
+exist after the digest are outside it). That proof-of-prior counts only when it is independently anchored
 - an RFC 3161 timestamp, a public append-only log or a signed public git tag that ZackBot cannot edit - after the
-candidates were scored and strictly before the first bar of the evaluated forward window. A digest anchored later, or
+candidates were scored and strictly before the first bar of the evaluated forward window (at most 366 days long); every committed candidate must still be
+valid when that window opens. A digest anchored later, or
 held only in ZackBot's own storage, proves nothing. It is never evidence for a backtest (a backtest's outcome is known
 before any commitment). Even when valid it shows only that the call was fixed before its window; it does not prove
 brokerage returns. The validator checks the ordering and the digest; verifying the anchor itself is an evidence-review
