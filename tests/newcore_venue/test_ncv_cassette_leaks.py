@@ -98,9 +98,12 @@ def test_short_redact_value_is_refused_not_dropped(short):
 
 
 def test_short_api_key_on_the_wire_is_refused():
+    """Refused at save, never on the wire (official 5a at 74dc47c: the recorder must not change what the trading
+    path sees); nothing is produced."""
     rec = CassetteRecorder(FakeHttp(ok('{}')))
+    rec(req('a=1', (('X-MBX-APIKEY', 'short'),), signed=True))
     with pytest.raises(CassetteLeak):
-        rec(req('a=1', (('X-MBX-APIKEY', 'short'),), signed=True))
+        rec.to_json()
 
 
 # ---------- Cowork round 2: UNREGISTERED values under sensitive NAMES are blanked (fixed list, any case) ----------

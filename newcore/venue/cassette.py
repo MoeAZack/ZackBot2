@@ -53,15 +53,21 @@ _B64_RUN = re.compile(r'[A-Za-z0-9+/_-]{%d,}={0,2}' % _B64_MIN)
 _HEX_RUN = re.compile(r'[0-9a-fA-F]{%d,}' % (2 * MIN_SECRET_LEN))
 _LINE_BREAK = re.compile(r'[\r\n]+')
 _PCT = re.compile(r'%[0-9A-Fa-f]{2}')
-MAX_DECODED_TOKENS = 20000                # encoded runs decoded per string (beyond: fail closed)
+# Sized from the official 5a run at 74dc47c (every cassette refused): the factory boot's real exchangeInfo body holds
+# 25,334 base64-like runs in ONE string (account-wide positionRisk ~15,000, account ~18,100), so the old 20,000 refused
+# the preflight and all 9 scenario cassettes. 100,000 keeps ~4x headroom on the largest real string.
+MAX_DECODED_TOKENS = 100_000              # encoded runs decoded per string (beyond: fail closed)
 DECODE_DEPTH = 2                          # nested encodings decoded (base64 of base64, base64 of hex, ...)
 MAX_SURFACES = 24                         # rewritten forms (percent / NFKC / unicode-escape / unwrapped) per text
 # Totals over the WHOLE audit (Codex P2s on 1297ee3 / bcc2d8d). Units are UTF-8 BYTES, and the document is charged as a
 # structure (every container, key and scalar, at a conservative serialized size) before it is serialized at all.
-MAX_AUDIT_RUNS = 200 * MAX_DECODED_TOKENS  # decode attempts (each run x byte offset x alphabet, at every depth)
+# Real 1297ee3 5a cassettes measured with the 74dc47c audit: the largest scenario (T01, 4 cycles) costs 1.45 M decode
+# attempts and 16.5 MB of document, the boot alone ~0.25 M / 2.7 MB, each cycle ~0.3 M / 3.4 MB. The 31-tick testnet
+# specs (T04-algo, T05..T07-tn) therefore need ~10 M / ~110 MB; the totals below keep >= 3x headroom on that.
+MAX_AUDIT_RUNS = 32_000_000               # decode attempts (each run x byte offset x alphabet, at every depth)
 MAX_AUDIT_STRINGS = 1_000_000             # string leaves + object keys
 MAX_AUDIT_NODES = 4_000_000               # every node: containers, keys, strings, numbers, booleans, nulls
-MAX_AUDIT_CHARS = 128 * 1024 * 1024       # bytes of the document (conservative serialized size)
+MAX_AUDIT_CHARS = 384 * 1024 * 1024       # bytes of the document (conservative serialized size)
 MAX_AUDIT_DERIVED = 16 * MAX_AUDIT_CHARS  # bytes of every rewritten / decoded view the audit produces
 MAX_SECRET_BYTES = 4096                   # one registered / learned secret value, UTF-8 bytes (Codex P2 on bc5a351)
 MAX_SECRET_TOTAL_BYTES = 512 * 1024       # all secret values together, checked when each is REGISTERED
@@ -301,6 +307,15 @@ class CassetteLeak(WireSeamError):
     """A secret value or a sensitive field value is still present in the cassette; nothing was produced."""
 
 
+class _Unrecordable(Exception):
+    """A request the recorder cannot store safely: the cassette becomes unproducible (never raised to the caller).
+    `reason` is a fixed text of this module, never request data."""
+
+    def __init__(self, reason):
+        super().__init__(reason)
+        self.reason = reason
+
+
 def _error_name(ex):
     for name in ('WireTimeout', 'WireNotSent', 'WireResponseTooLarge', 'WireConnectionError'):
         if isinstance(ex, _ERRORS[name]):
@@ -350,7 +365,6 @@ class CassetteRecorder:
         self._values = set()
         self._secret_bytes = 0                     # UTF-8 bytes of every value in _values (MAX_SECRET_TOTAL_BYTES)
         self._cache = PatternCache()                # compiled patterns, owned here
-        self._last_response = None
         self._unproducible = None              # set: to_json fails closed
         self.interactions = []
         self.note = str(note)
@@ -429,14 +443,13 @@ class CassetteRecorder:
             try:
                 check_value(key)
             except ValueError:
-                raise CassetteLeak('the API key on the wire is too short to be redacted safely; not recorded') \
-                    from None
+                raise _Unrecordable('the API key on the wire is too short to be redacted safely') from None
             try:
                 ok = self._register(key)
             except ValueError:
                 ok = False
             if not ok:
-                raise CassetteLeak('the API key on the wire cannot be redacted within the caps; not recorded')
+                raise _Unrecordable('the API key on the wire cannot be redacted within the caps')
         pairs = urllib.parse.parse_qsl(request.query, keep_blank_values=True)
         query = self._clean_pairs(pairs, A.param_allowed)
         headers = self._clean_pairs(list(request.headers), A.header_allowed)
@@ -470,29 +483,51 @@ class CassetteRecorder:
         return obj
 
     def __call__(self, request):
+        """Forward the request and return EXACTLY what the inner seam returned or raised (official 5a at 74dc47c:
+        the recorder must never change what the trading path sees). A failure of the recorder's own bookkeeping (an
+        API key that cannot be redacted, a sanitizer or rescrub error) only makes the cassette unproducible: to_json /
+        save refuse it with CassetteLeak after the run, and nothing is written."""
         known = set(self._values)
-        try:
-            self._record(request)
-        finally:
-            new = self._values - known
-            if new and len(self.interactions) > 1 and self._occurs(new, self.interactions[:-1]):
-                self.interactions = self._rescrub(self.interactions)
-        return self._last_response
-
-    def _record(self, request):
-        self._last_response = None
-        req = self._request_record(request)
+        req = self._guard(self._request_record, request)
         try:
             resp = self._inner(request)
         except Exception as ex:
-            name = _error_name(ex)
-            if name is not None:
-                rec = {'request': req, 'error': name}
-                if isinstance(ex, WireNotSent):          # a token, never free text (it could carry anything)
-                    reason = str(ex.reason)
-                    rec['reason'] = reason if _REASON_RE.fullmatch(reason) else 'unspecified'
-                self.interactions.append(rec)
+            if req is not None:
+                self._guard(self._record_error, req, ex)
+            self._guard(self._rescrub_new, known)
             raise
+        if req is not None:
+            self._guard(self._record_response, req, resp)
+        self._guard(self._rescrub_new, known)
+        return resp
+
+    def _guard(self, step, *args):
+        """One bookkeeping step. Any exception marks the cassette unproducible (fail closed at save) and never
+        reaches the caller. Returns the step's value, None when it failed."""
+        try:
+            return step(*args)
+        except Exception as ex:                       # noqa: BLE001 - never on the trading path
+            if not self._unproducible:
+                self._unproducible = (ex.reason if isinstance(ex, _Unrecordable) else
+                                      f'the recorder failed ({type(ex).__name__}) at interaction '
+                                      f'{len(self.interactions)}')
+            return None
+
+    def _rescrub_new(self, known):
+        new = self._values - known
+        if new and len(self.interactions) > 1 and self._occurs(new, self.interactions[:-1]):
+            self.interactions = self._rescrub(self.interactions)
+
+    def _record_error(self, req, ex):
+        name = _error_name(ex)
+        if name is not None:
+            rec = {'request': req, 'error': name}
+            if isinstance(ex, WireNotSent):          # a token, never free text (it could carry anything)
+                reason = str(ex.reason)
+                rec['reason'] = reason if _REASON_RE.fullmatch(reason) else 'unspecified'
+            self.interactions.append(rec)
+
+    def _record_response(self, req, resp):
         headers = dict(self._clean_pairs([(str(k), str(v)) for k, v in dict(resp.headers).items()],
                                          A.header_allowed))
         raw = bytes(resp.body)
@@ -501,7 +536,6 @@ class CassetteRecorder:
             payload = {'body_omitted': 'too_large'}
             self.interactions.append({'request': req, 'response': dict(status=resp.status, headers=headers,
                                                                      **payload)})
-            self._last_response = resp
             return
         try:
             text = raw.decode('utf-8')
@@ -522,7 +556,6 @@ class CassetteRecorder:
             cleaned = self._clean_text(raw.decode('latin-1')).encode('latin-1')
             payload = {'body_b64': base64.b64encode(cleaned).decode('ascii')}
         self.interactions.append({'request': req, 'response': dict(status=resp.status, headers=headers, **payload)})
-        self._last_response = resp
 
     # ---- output ----
 
