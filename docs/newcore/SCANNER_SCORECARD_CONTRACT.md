@@ -6,7 +6,10 @@ This contract incorporates the useful engineering lessons from Coil's scanner an
 ZackBot's independent long/short, crypto-first and evidence-first requirements. ZackBot does not copy Coil's fixed
 weights, long-only book, leveraged-ETF acceleration or claimed backtest edge.
 
-Machine-readable candidate shape: `contracts/candidate_score_v1.schema.json`.
+Machine-readable contracts: `contracts/candidate_score_v1.schema.json` (one candidate) and
+`contracts/candidate_evaluation_v1.schema.json` (one scoring cycle / evaluation run). Rules a JSON Schema cannot express
+(time order, TTL, hash recomputation, coverage, counts, reason-registry membership, automation ceiling, proof-of-prior
+ordering) are enforced by `newcore.contracts.signal_v1` (`check_candidate_score`, `check_candidate_evaluation`).
 
 ## 1. Separate facts, never one magic score
 
@@ -39,6 +42,12 @@ An evidence/operationally immature strategy may run in research, observe, dry-ru
 readiness, but cannot silently become automatic mainnet merely because the owner selected a higher risk grade. Manual
 mainnet control remains a separate explicit mode and still uses exchange protection and account hard limits.
 
+Every candidate names its `evidence_class` (`backtest`, `paper`, `testnet`, `live_forward`), the `profile_id` /
+`profile_version` that computed its state, and an `automation_ceiling`. Evidence immaturity only lowers that ceiling
+(backtest or paper evidence caps automatic use at testnet); it is never a universal no-trade gate. There is no fixed
+READY score floor in the contract: READY is computed server-side from the selected versioned profile after the hard
+integrity gates, so READY with low evidence or operational readiness is a valid record.
+
 Each profile has an expected opportunity-frequency band by strategy/regime. If actual eligible entries stay below that
 band, ZackBot reports a starvation diagnostic: candidates seen, rejection counts by reason, closest missed thresholds
 and the estimated effect of each user-selectable profile. It never silently loosens thresholds or forces a trade.
@@ -52,7 +61,8 @@ Every candidate has one state:
 - `WAIT`: valid idea without an entry;
 - `EXTENDED`: move already stretched; do not chase;
 - `BREAKING`: structure is failing for the proposed side;
-- `STAND_DOWN`: the strategy/regime cell should hold cash or remain inactive.
+- `STAND_DOWN`: the strategy/regime cell should hold cash or remain inactive. It may carry a high opportunity
+  score when a regime or operational fact vetoes entry, but it must name that veto (a `stand_down.*` or gate reason).
 
 Direction is separate, so the same states apply independently to LONG and SHORT. ZackBot does not turn a long rule
 upside down and call it a calibrated short strategy.
@@ -63,8 +73,10 @@ Every cycle processes protection, exits and reconciliation before new-entry rank
 means no new entries; existing positions continue to be protected and managed from durable local rules and exchange
 truth. `STAND_DOWN` is a valid outcome, not a system failure.
 
-Every candidate carries `as_of_ms`, `expires_at_ms`, strategy/version, universe identity and a frozen source-manifest
-hash. An expired or mismatched record cannot be promoted into a signal.
+Every candidate carries `as_of_ms`, `expires_at_ms` (strictly later, at most 24 h), strategy/version, the universe
+id plus its point-in-time snapshot hash and as-of (not after the candidate), the scoring version plus weights hash, and
+a frozen source-manifest hash. No digest may be all-zero. An expired or mismatched record cannot be promoted into a
+signal.
 
 ## 4. Structural entries and exits
 
@@ -86,10 +98,20 @@ is compared with simple benchmarks for the same window and exposure.
 
 Backtest, paper, testnet and live-forward results are separate datasets and labels. A strong backtest cannot overwrite
 weak forward evidence. The forward ledger includes every eligible outcome, explicit flat/stand-down periods, exclusions
-and corrected-defect policy. Exclusions are counted and reason-coded, never silently removed.
+and corrected-defect policy. Exclusions are counted and reason-coded, never silently removed: each evaluation run
+lists its universe snapshot (delisted and halted members retained and excluded as such), every candidate id, every
+exclusion with a registered reason code and the exact per-reason counts; every member is either scored or excluded,
+and the universe, weights and benchmark-set hashes are recomputed from the record. Benchmarks are a pre-registered
+set bound by `benchmark_set_sha256`.
 
-Before a sealed evaluation or public/lead claim, ZackBot commits the canonical candidate/decision digest before the
-outcome is known. This proof-of-prior shows the call was not edited later; it does not prove brokerage returns.
+Before a sealed evaluation or public/lead claim, ZackBot commits the canonical digest of the evaluation and its
+candidate records, including the benchmark-set hash. That proof-of-prior counts only when it is independently anchored
+- an RFC 3161 timestamp, a public append-only log or a signed public git tag that ZackBot cannot edit - after the
+candidates were scored and strictly before the first bar of the evaluated forward window. A digest anchored later, or
+held only in ZackBot's own storage, proves nothing. It is never evidence for a backtest (a backtest's outcome is known
+before any commitment). Even when valid it shows only that the call was fixed before its window; it does not prove
+brokerage returns. The validator checks the ordering and the digest; verifying the anchor itself is an evidence-review
+step.
 
 ## 6. Automation and ML boundary
 

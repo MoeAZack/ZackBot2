@@ -11,6 +11,13 @@ Machine-readable contracts:
 - `contracts/signal_intent_v1.schema.json`
 - `contracts/signal_result_v1.schema.json`
 
+Every adapter runs `parse_strict -> JSON Schema -> check_signal_intent` (`newcore.contracts.signal_v1`). The schema
+carries structure and the per-action / per-order-type branches; the semantic validator carries what a JSON Schema
+cannot: no binary float token anywhere (so `1700000000000.0` is never an integer), `generated_at_ms < expires_at_ms`
+with a TTL of at most 1 h, an order expiry after generation and not after the signal, per-unit numeric bounds,
+level method / unit compatibility, one unit per trail, and reason-code registry membership per result status.
+Results leave the process only through `encode_result`.
+
 ## 1. Non-negotiable path
 
 `authenticate -> parse -> freshness/expiry -> durable dedupe -> account alias -> capability check -> risk gateway ->
@@ -49,7 +56,12 @@ campaign. It never permits an add: the risk gateway separately authorizes every 
 
 ## 4. Strict semantics
 
-Unknown fields reject. Decimal values are canonical strings, never binary JSON floats. Stop, target, trail and entry
+Unknown fields reject. Each action has its own field set: `enter` needs side, order, risk and stop and never a
+`target_ref`; `reduce` needs `target_ref` and `reduce_percent`; `close` carries only its `target_ref`; `modify` needs a
+`target_ref` and at least one of stop / target / trail. `target_ref` is a concrete `pos_` / `lot_` (or, for modify,
+`int_`) id, never a word such as `all`. `market` orders carry no price or expiry; `limit_post_only` and `stop_market`
+require a price. Decimal values are canonical strings, never binary JSON floats, with at most 18 integer and 18
+fraction digits; bounds per unit are contract plausibility limits, not risk limits. Stop, target, trail and entry
 prices always carry an explicit unit: `price`, `percent`, `ticks` or `atr`; magnitude is never used to guess a unit.
 
 `strategy_id` and `strategy_version` are required on every signal. Strategy behavior changes require a new version.
@@ -64,8 +76,12 @@ priced generic symbol rather than silently applying a price to a different contr
 `dry_run=true` performs authentication, parsing, freshness, account, symbol/capability and risk validation but sends no
 venue action and changes no trading state. Its audit record is the only durable side effect.
 
-Every response follows `signal_result_v1` and contains a stable machine `reason_code`. Free text is display-only and
-never drives retry or engine behavior. A duplicate returns the original stable result. Retryability is explicit.
+Every response follows `signal_result_v1` and contains its own `result_id` and a stable machine `reason_code` that is
+registered for that status. `accepted` and `validated` name their `decision_id` and are not retryable; `held` and
+`duplicate` are not retryable; a duplicate cites `original_result_id` and `original_status` of the stored original,
+never itself. Free text is display-only, never drives retry or engine behavior, and is built from fixed templates with
+non-secret values; printable ASCII alone is not a secret guarantee, so `encode_result` refuses (never scrubs) text that
+names a credential or contains a key-shaped token, and the error never echoes the refused text.
 
 New-entry limits may reject `enter`, but plan/capacity limits never block reduce-risk `reduce`, `close`, protection or
 emergency flatten. Unknown ownership may HOLD and require reconciliation; it never guesses an exit target.
