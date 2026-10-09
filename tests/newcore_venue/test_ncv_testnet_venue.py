@@ -389,3 +389,26 @@ def test_flat_rows_on_unaddressable_symbols_are_dropped_from_the_account_wide_re
                                                    positionAmt=amt)])[0]
     assert not _keep_position(row('币安USDT', '0'))
     assert _keep_position(row('币安USDT', '1')) and _keep_position(row('BTCUSDT', '0'))
+
+
+def _priceless(name):
+    b = json.loads(fixture(name).body)
+    b.update(clientOrderId=CID)
+    b.pop('avgPrice', None)
+    b.pop('cumQuote', None)
+    return raw(fixture(name).status, json.dumps(b).encode(), dict(fixture(name).headers))
+
+
+def test_a_filled_market_answer_without_avg_price_is_read_back_by_id():
+    """72a32bf 5a diagnostic: the testnet FILLED answer carries no avgPrice -> read back by id -> FINAL with price."""
+    SLEPT.clear()
+    v, http = venue(_priceless('order_market_filled'), body_with('order_query_filled', clientOrderId=CID))
+    out = v.submit_market(market())
+    assert out.kind is P.OutcomeKind.FINAL and out.avg_price is not None and out.executed_qty > 0
+
+
+def test_a_priceless_fill_that_cannot_be_read_back_stays_unknown():
+    p = _priceless('order_market_filled')
+    v, http = venue(p, *([_priceless('order_query_filled')] * 3))
+    out = v.submit_market(market())
+    assert out.kind is P.OutcomeKind.UNKNOWN and out.detail == 'final_without_price'

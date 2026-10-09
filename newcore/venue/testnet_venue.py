@@ -214,6 +214,7 @@ def _fill(f):
                        fee_asset=f.commission_asset, realized_pnl=f.realized_pnl, maker=f.maker, at_ms=f.time_ms)
 
 
+MARKET_PRICE_BACKOFF_MS = (0, 200, 400)           # read a FILLED-without-price market answer back by id
 ALGO_CANCEL_BACKOFF_MS = (200, 400, 800, 1600, 3200)   # ~6.2 s to see a terminal algo state after a DELETE
 
 
@@ -265,7 +266,22 @@ class TestnetVenue:
         ps = order.position_side
         side = CLOSING_SIDE[ps] if order.reduce else OPENING_SIDE[ps]
         t = self._t.place_market(order.ref.symbol, side, ps, order.qty, order.ref.client_id, reduce_only=order.reduce)
-        return _safe_map(t, order.ref, self._now())
+        out = _safe_map(t, order.ref, self._now())
+        if out.kind is P.OutcomeKind.UNKNOWN and out.detail == 'final_without_price':
+            return self._final_price_by_query(order.ref, out)
+        return out
+
+    def _final_price_by_query(self, ref, out):
+        """First testnet 5a diagnostic (72a32bf): the testnet answers a MARKET order with status FILLED and the
+        executed quantity but WITHOUT avgPrice / cumQuote, so the answer cannot be booked (a fill needs its price)
+        and every entry went UNKNOWN -> HOLD. The fill is read back by client id at once (GET /fapi/v1/order carries
+        avgPrice), on a short bounded backoff. Anything but a priced FINAL keeps the original UNKNOWN."""
+        for ms in MARKET_PRICE_BACKOFF_MS:
+            self._sleep(ms / 1000)
+            q = self.query(ref)
+            if q.kind is P.OutcomeKind.FINAL and (q.executed_qty == 0 or q.avg_price is not None):
+                return q
+        return out
 
     def submit_stop(self, order):
         req(isinstance(order, P.StopOrder), 'order', 'a StopOrder')
