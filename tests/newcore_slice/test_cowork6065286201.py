@@ -131,7 +131,10 @@ def test_2_an_external_flat_close_cancels_our_resting_stop_with_the_owner_item(s
 
 # ------------------------------------------------------------------------------------------------------- 3
 @pytest.mark.parametrize('side', SIDES)
-def test_3_a_partial_external_close_is_an_owner_item_and_protection_is_resized_down(side):
+def test_3_a_partial_external_close_is_ownership_unknown_and_protection_is_kept(side):
+    """Cowork 6073089838 supersedes the resize-down here: a reduce-only close whose client id is not ours is not a
+    PROVEN foreign order (it may be the child of our own triggered algo stop carrying a system id) - ownership
+    UNKNOWN: the resting reduce-only stop is kept (it cannot over-close), nothing sent, HOLD, loud."""
     w = World(flat_bars(20), InjectedSignals({(SYM, at(5)): (('enter', side),)}, stop_atr=D('2')), strict=False)
     w.run(6)
     lot, = w.runner.fold.open_lots()
@@ -139,9 +142,9 @@ def test_3_a_partial_external_close_is_an_owner_item_and_protection_is_resized_d
     w.run(9)
     r = w.runner
     assert r.fold.mode is EntriesMode.HOLD
-    assert any('external partial close suspected' in t for _, t in r.incidents)
-    assert r.journal.find_decision(ids.marker_decision_id('external_partial', lot.lot_id)) is not None
-    assert [o.qty for o in stops(w, side)] == [D('3')]                   # one stop, re-sized down to the venue qty
+    assert any('not a proven opening order' in t for _, t in r.incidents)
+    assert lot.lot_id in r._own_unknown
+    assert [o.qty for o in stops(w, side)] == [D('5')]                   # resting protection kept, never resized
     assert position(w, side) == D('3') and not closes(w, side)
     n = len(w.venue.orders_submitted())
     w.run(11)

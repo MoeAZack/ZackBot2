@@ -121,6 +121,28 @@ EMERGENCY_FALLBACK_BUFFER = Decimal('0.005')   # a bounded emergency constant (n
 OPENING_PURPOSES = frozenset({Purpose.ENTRY, Purpose.ADD})
 
 
+CONDITIONAL_TYPES = ('STOP', 'TAKE_PROFIT', 'TRAILING')   # STOP*, TAKE_PROFIT*, TRAILING* (Binance type / origType)
+OPENING_SIDE = {'LONG': 'BUY', 'SHORT': 'SELL'}           # hedge mode: the order side that INCREASES the position
+
+
+def _not_opening(x):
+    """Cowork 6073089838: why an order-by-id record that is NOT ours is not PROVEN a foreign opening order ('' = it
+    is one). Proven only when its side increases the position, reduceOnly and closePosition are both false, and its
+    type / origType (where the record carries them) is not conditional. Anything else - a closing side, reduce-only,
+    closePosition, a conditional type, a field the adapter did not populate - may be the classic child of our own
+    triggered algo stop carrying a foreign / system client id: never foreign, UNKNOWN."""
+    if x.side is None or x.reduce_only is None or x.close_position is None:
+        return 'side / reduceOnly / closePosition not reported'
+    if x.side != OPENING_SIDE.get(x.position_side):
+        return f'side {x.side} does not increase {x.position_side}'
+    if x.reduce_only or x.close_position:
+        return f'reduceOnly={x.reduce_only} closePosition={x.close_position}'
+    for t in (x.order_type, x.orig_type):
+        if t is not None and t.upper().startswith(CONDITIONAL_TYPES):
+            return f'conditional type {t}'
+    return ''
+
+
 ALGO_ROUTE = 'algo_route'            # TestnetVenue detail: the refusal names the algo service (-4120 and friends)
 ALGO_TRIGGERED = 'algo_triggered'    # TestnetVenue detail: an algo stop triggered; exchange_order_id = the child order
 DUPLICATE_DETAIL = 'duplicate_client_id'   # TestnetVenue: a duplicate client id comes back UNKNOWN with this detail
@@ -701,7 +723,10 @@ class Runner:
         if x.executed_qty != qty:
             return unknown(f'executed {x.executed_qty} disagrees with the trade rows {qty}')
         if not ids.is_emergency_client_id(x.ref.client_id):
-            return ZERO                                                   # proven: not an emergency order
+            why = _not_opening(x)                                         # Cowork 6073089838: the classic child of
+            if why:                                                       # our triggered algo stop may carry a
+                return unknown(f'a record not ours ({x.ref.client_id}) that is not a proven opening order ({why})')
+            return ZERO                                                   # proven: a foreign OPENING order
         cids = {ids.emergency_stop_client_id(self.acct, symbol, side, x.orig_qty, 'close')} | {
             ids.emergency_stop_client_id(self.acct, symbol, side, x.orig_qty, g) for g in range(EMERGENCY_GENERATIONS)}
         if x.ref.client_id in cids:

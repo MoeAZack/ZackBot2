@@ -205,9 +205,23 @@ class VenueOrderRecord:
     status: str                  # venue status verbatim (NEW, PARTIALLY_FILLED, FILLED, CANCELED, EXPIRED, ...)
     orig_qty: Decimal            # the quantity requested
     executed_qty: Decimal        # executed so far (<= orig_qty)
+    # Cowork 6073089838: what proves a record that is NOT ours to be a foreign OPENING order (never the classic child of
+    # a triggered algo stop, whatever client id that child carries). Optional - None = the adapter did not say, and
+    # then a record that is not ours is ownership UNKNOWN. Binance: side, reduceOnly, closePosition, type, origType.
+    side: str | None = None              # BUY | SELL (venue verbatim)
+    reduce_only: bool | None = None
+    close_position: bool | None = None
+    order_type: str | None = None        # type verbatim (MARKET, LIMIT, STOP_MARKET, ...)
+    orig_type: str | None = None         # origType verbatim
 
     def __post_init__(self):
         req(isinstance(self.ref, OrderRef), 'VenueOrderRecord.ref', 'an OrderRef')
+        req(self.reduce_only is None or type(self.reduce_only) is bool, 'VenueOrderRecord.reduce_only', 'a bool / None')
+        req(self.close_position is None or type(self.close_position) is bool, 'VenueOrderRecord.close_position',
+            'a bool / None')
+        for name in ('side', 'order_type', 'orig_type'):            # verbatim; the runner proves nothing from
+            if getattr(self, name) is not None:                     # a value it does not recognise
+                check_text(getattr(self, name), f'VenueOrderRecord.{name}', 32)
         check_text(self.exchange_order_id, 'VenueOrderRecord.exchange_order_id', 64)
         _side(self)
         check_text(self.status, 'VenueOrderRecord.status', 32)

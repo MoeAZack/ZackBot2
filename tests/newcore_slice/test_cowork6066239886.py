@@ -142,6 +142,19 @@ def test_3_both_hold_protect_cancels_go_through_the_one_named_check(side, case, 
     lot, = w.runner.fold.open_lots()
     w.venue._apply_fill(SYM, side, lot.qty if case == 'flat_side' else D('2'), D('100'), reduce=True,
                         eoid='manual-close', at_ms=w.venue.now_ms, fee=D('0'))
+    if case == 'replaced':
+        # Cowork 6073089838: a reduce-only close that is not ours is ownership UNKNOWN (never resized down). To still
+        # drive the resize-down gate, a test instrument makes the lookup PROVE the order foreign (an opening record).
+        import dataclasses
+        inner = w.venue.order_by_id
+
+        def order_by_id(symbol, eoid):
+            r = inner(symbol, eoid)
+            if eoid != 'manual-close':
+                return r
+            return dataclasses.replace(r, value=(dataclasses.replace(
+                r.value[0], side='BUY' if side == 'LONG' else 'SELL', reduce_only=False),))
+        w.port.order_by_id = order_by_id
     w.run(8)
     assert asked and set(asked) == {case}
     assert lot.live_stop.intent.client_order_id in {o.ref.client_id for o in stops(w, side)}   # denied: kept
