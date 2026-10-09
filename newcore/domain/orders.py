@@ -146,6 +146,13 @@ def booking_step_ok(intent, to_state):
     return not is_post_hoc(intent) or IntentState(to_state) in POST_HOC_STATES
 
 
+def orphan_step_ok(intent, to_state):
+    """Codex P1 on 4b4c3a6: an orphan (portfolio-owned) intent is cancel-only work for good - on replay it never steps
+    back to WORKING / UNKNOWN (or any other sendable state); it stays CANCELLING until its terminal step. The event chain
+    applies this on top of the generic transition table, which non-orphan intents keep unchanged."""
+    return not intent.orphan or IntentState(to_state) in CANCEL_ONLY
+
+
 def may_send(intent):
     """Durability phase gate: only a DURABLE intent may be sent (and only a durable one exists outside a Decision);
     a post-hoc booking is never sent."""

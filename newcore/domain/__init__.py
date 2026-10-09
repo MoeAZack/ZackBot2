@@ -36,7 +36,7 @@ from .modes import EntriesMode, HoldKind, Op, Permission, permitted
 from .orders import (Arming, Evidence, ExchangeStatus, ExternalTrade, IntentState, Lookup, OrderIntent, OrderResult,
                      OrderType,
                      OwnerFamily, OwnerKind, PositionRead, Purpose, ResultPhase, ResultStage, Side, check_result_for_intent,
-                     booking_step_ok, is_post_hoc, may_apply, may_send, supersedes, terminal_for,
+                     booking_step_ok, is_post_hoc, may_apply, may_send, orphan_step_ok, supersedes, terminal_for,
                      LIMIT_TYPES, TARGET_REASONS)
 from .portfolio import (Fill, Lot, LotSource, Ownership, OwnershipProof, Portfolio, Position, ProofKind,
                         check_account_portfolio, check_flat_snapshot_fresh, entry_blocking_protections,

@@ -747,3 +747,53 @@ def test_p1_a_portfolio_owned_target_must_be_cancelling_and_owned_by_this_portfo
         F.replace(target, owner_id=F.Ids(6).id('lot'))
     with pytest.raises(InvalidRecord, match='not owned by entry_intent'):    # an entry-owned target stays refused
         F.replace(target, owner_kind=OwnerKind.ENTRY_INTENT, owner_id=F.Ids(5).id('int'), state=IntentState.WORKING)
+
+
+# ------------------------------------------------------- Codex P1 on 4b4c3a6: replay never reactivates an orphan target
+def _orphan_replay(how='stop_fill', after=40):
+    """The orphaned target as a snapshot carries it after restart: known to replay as CANCELLING, sent at T0."""
+    from newcore.domain import IntentState
+    pf, ids, target = _orphaned_target(how)
+    acct = pf.account_id
+    E = lambda cls, n, at, **kw: F.event(cls, ids, acct, after + n, at=at, **kw)               # noqa: E731
+    return ids, target, {target.intent_id: (target, IntentState.CANCELLING, F.T0)}, E
+
+
+@pytest.mark.parametrize('how', HOW)
+@pytest.mark.parametrize('to', ('working', 'unknown'))
+def test_p1_replay_refuses_to_reactivate_an_orphan_target(how, to):
+    from newcore.domain import (IntentState, IntentStateChanged, InvalidRecord, canonical_bytes, check_event_chain,
+                                loads)
+    ids, target, known, E = _orphan_replay(how)
+    ev = E(IntentStateChanged, 1, F.T0 + 70_000, intent_id=target.intent_id, from_state=IntentState.CANCELLING,
+           to_state=IntentState(to))
+    back = loads(canonical_bytes(ev))                                         # byte round trip, as read from the journal
+    assert back == ev
+    with pytest.raises(InvalidRecord, match='cancel-only work'):
+        check_event_chain([back], after_sequence=40, known_intents=known)
+
+
+@pytest.mark.parametrize('how', HOW)
+def test_p1_a_late_final_still_ends_the_orphan_target_after_restart(how):
+    from newcore.domain import (ExchangeStatus, IntentState, IntentStateChanged, ResultObserved, ResultPhase,
+                                canonical_bytes, check_event_chain, loads)
+    ids, target, known, E = _orphan_replay(how)
+    final = _target_result(ids, target, ResultPhase.FINAL, '0.4', '112.5', ExchangeStatus.CANCELED)
+    chain = [E(ResultObserved, 1, final.observed_at_ms, result=final),
+             E(IntentStateChanged, 2, final.observed_at_ms + 1, intent_id=target.intent_id,
+               from_state=IntentState.CANCELLING, to_state=IntentState.CANCELLED)]
+    back = [loads(canonical_bytes(ev)) for ev in chain]
+    assert back == chain
+    assert check_event_chain(back, after_sequence=40, known_intents=known) == {}
+
+
+def test_p1_a_lot_owned_cancelling_target_keeps_the_generic_transition_table():
+    from newcore.domain import IntentState, IntentStateChanged, check_event_chain
+    p, ids, acct, lt, tgt, chain, E = _target_chain(seed=392)
+    cancel = E(IntentStateChanged, 5, F.T0 + 30_000, intent_id=tgt.intent_id, from_state=IntentState.WORKING,
+               to_state=IntentState.CANCELLING)
+    for to in (IntentState.WORKING, IntentState.UNKNOWN):                     # cancel rejected / timed out: unchanged
+        back = E(IntentStateChanged, 6, F.T0 + 31_000, intent_id=tgt.intent_id, from_state=IntentState.CANCELLING,
+                 to_state=to)
+        live = check_event_chain(chain + [cancel, back])
+        assert live[tgt.intent_id][1] is to

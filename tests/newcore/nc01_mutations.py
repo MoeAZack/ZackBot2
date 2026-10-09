@@ -269,6 +269,8 @@ MUTATIONS = {
     'P1 on 02493b6: a resting target has no portfolio-owned orphan cancel form': (D + 'orders.py', [(
         "            req(u in (Purpose.REDUCE, Purpose.CLOSE) and (self.owner_kind is OwnerKind.LOT or self.orphan),",
         "            req(u in (Purpose.REDUCE, Purpose.CLOSE) and self.owner_kind is OwnerKind.LOT,")]),
+    'P1 on 4b4c3a6: replay may reactivate an orphan cancel': (D + 'orders.py', [(
+        "    return not intent.orphan or IntentState(to_state) in CANCEL_ONLY", "    return True")]),
     'r3 item 4: a resting target on any exit reason': (D + 'orders.py', [(
         "            req(self.reason in TARGET_REASONS, p + '.reason',", "            req(True, p + '.reason',")]),
     'r3 item 4: a resting target needs no price': (D + 'orders.py', [(
