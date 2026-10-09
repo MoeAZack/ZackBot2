@@ -8,9 +8,15 @@ edited (`write` refuses to replace a file with different bytes).
 Stdlib only, no network, data files are opened read-only. The output is deterministic: no run clock (`accessed_cairo`
 is caller-supplied), files sorted by path.
 
+Containment (Codex R1 P2): every path is a canonical forward-slash path relative to the manifest's `data_root`, a
+logical store name (default `repo` = the repository checkout), never a machine-specific absolute path. Empty, `.` and
+`..` segments, drive/UNC/absolute paths, backslashes and NUL are rejected, and every root and file is resolved
+(symlinks included) and proven to stay under the explicitly allowed store directory before it is read.
+
 Usage (repo root):
   python tools/research/manifest.py build --id ID --source-class legacy-unverified --root data_long [--root ...] --out FILE
   python tools/research/manifest.py verify FILE
+  (`--store DIR --data-root NAME` select a store other than the repository checkout.)
 """
 from __future__ import annotations
 
@@ -34,7 +40,8 @@ AVAILABLE_RULE = 'open_ms + interval_ms'
 SOURCE_CLASSES = ('legacy-unverified', 'archive-verified', 'rest-tail', 'fixture')
 HEX64 = re.compile(r'^[0-9a-f]{64}$')
 TOP_KEYS = {'format', 'manifest_id', 'source_class', 'survivor_only', 'loader_version', 'available_rule', 'accessed_cairo',
-            'note', 'files', 'digest'}
+            'note', 'data_root', 'files', 'digest'}
+DATA_ROOT_RE = re.compile(r'^[a-z][a-z0-9_-]*$')
 FILE_KEYS = {'path', 'symbol', 'interval', 'sha256', 'bytes', 'rows', 'first_open_ms', 'last_open_ms', 'source'}
 
 
@@ -54,6 +61,24 @@ def parse_open_ms(s: str) -> int:
     return int(datetime.strptime(s, '%Y-%m-%d %H:%M:%S').replace(tzinfo=timezone.utc).timestamp() * 1000)
 
 
+def check_rel_path(p) -> str:
+    """A canonical forward-slash relative path: no empty/`.`/`..` segment, no drive/UNC/absolute form, no backslash, no NUL."""
+    ok = (isinstance(p, str) and p and chr(92) not in p and chr(0) not in p and ':' not in p and not p.startswith('/')
+          and all(seg not in ('', '.', '..') for seg in p.split('/')))
+    if not ok:
+        raise ManifestError(f'{p!r}: path must be a canonical forward-slash relative path inside the data store')
+    return p
+
+
+def contained(store: str, rel: str) -> str:
+    """Resolve `rel` under `store` (symlinks followed) and prove it stays inside; return the resolved path."""
+    top = os.path.realpath(store)
+    full = os.path.realpath(os.path.join(top, *check_rel_path(rel).split('/')))
+    if os.path.normcase(os.path.commonpath([top, full])) != os.path.normcase(top) or full == top:
+        raise ManifestError(f'{rel}: resolves outside the allowed data store')
+    return full
+
+
 def scan_file(abs_path: str, rel_path: str) -> dict:
     name = os.path.basename(rel_path)
     m = NAME_RE.match(name)
@@ -71,18 +96,23 @@ def scan_file(abs_path: str, rel_path: str) -> dict:
             'source': {'kind': 'local-file', 'url': None, 'archive_checksum': None}}
 
 
-def build(roots, *, manifest_id: str, source_class: str, base: str = REPO, survivor_only: bool = True,
-          accessed_cairo: str | None = None, note: str = '') -> dict:
+def build(roots, *, manifest_id: str, source_class: str, base: str = REPO, data_root: str = 'repo',
+          survivor_only: bool = True, accessed_cairo: str | None = None, note: str = '') -> dict:
+    """`base` is the allowed data-store directory; `data_root` its logical name recorded in the manifest."""
     files = []
     for root in roots:
-        for d, dirs, names in os.walk(os.path.join(base, root)):
+        top = contained(base, root)
+        if not os.path.isdir(top):
+            raise ManifestError(f'{root}: not a directory under the data store')
+        for d, dirs, names in os.walk(top):
             dirs.sort()
             for name in sorted(names):
                 if NAME_RE.match(name):
-                    files.append(scan_file(os.path.join(d, name), os.path.relpath(os.path.join(d, name), base)))
+                    rel = os.path.relpath(os.path.join(d, name), os.path.realpath(base)).replace(os.sep, '/')
+                    files.append(scan_file(contained(base, rel), rel))
     m = {'format': FORMAT, 'manifest_id': manifest_id, 'source_class': source_class, 'survivor_only': survivor_only,
          'loader_version': LOADER_VERSION, 'available_rule': AVAILABLE_RULE, 'accessed_cairo': accessed_cairo,
-         'note': note, 'files': sorted(files, key=lambda f: f['path'])}
+         'note': note, 'data_root': data_root, 'files': sorted(files, key=lambda f: f['path'])}
     m['digest'] = digest_of(m)
     validate(m)
     return m
@@ -99,11 +129,14 @@ def validate(m: dict) -> None:
     need(m['source_class'] in SOURCE_CLASSES, f'source_class must be one of {SOURCE_CLASSES}')
     need(isinstance(m['survivor_only'], bool), 'survivor_only must be a bool')
     need(m['available_rule'] == AVAILABLE_RULE, f'available_rule must be {AVAILABLE_RULE!r}')
+    need(isinstance(m['data_root'], str) and DATA_ROOT_RE.match(m['data_root']),
+         f'data_root must be a logical store name matching {DATA_ROOT_RE.pattern} (never an absolute path)')
     need(isinstance(m['files'], list) and m['files'], 'files must be a non-empty list')
     paths = [f.get('path') for f in m['files']]
     need(paths == sorted(set(paths)), 'file paths must be unique and sorted')
     for f in m['files']:
         p = f.get('path')
+        check_rel_path(p)
         need(set(f) == FILE_KEYS, f'{p}: file keys must be exactly {sorted(FILE_KEYS)}')
         mm = NAME_RE.match(os.path.basename(p))
         need(mm and mm.group(1) == f['symbol'] and mm.group(2) == f['interval'], f'{p}: symbol/interval disagree with name')
@@ -117,11 +150,12 @@ def validate(m: dict) -> None:
 
 
 def verify(m: dict, base: str = REPO) -> list[str]:
-    """Re-scan every file on disk; return the list of mismatches (empty = the manifest still describes the bytes)."""
+    """Re-scan every file on disk; return the list of mismatches (empty = the manifest still describes the bytes).
+    `base` is the allowed store for `m['data_root']`; a path resolving outside it raises before anything is read."""
     validate(m)
     out = []
     for f in m['files']:
-        ap = os.path.join(base, *f['path'].split('/'))
+        ap = contained(base, f['path'])
         if not os.path.exists(ap):
             out.append(f'{f["path"]}: missing')
             continue
@@ -164,14 +198,18 @@ def main(argv=None) -> int:
     b.add_argument('--out', required=True)
     v = sub.add_parser('verify')
     v.add_argument('file')
+    for p in (b, v):
+        p.add_argument('--store', default=REPO, help='allowed data-store directory (default: the repository checkout)')
+    b.add_argument('--data-root', default='repo', help='logical name of --store recorded in the manifest')
     a = ap.parse_args(argv)
     try:
         if a.cmd == 'build':
-            m = build(a.root, manifest_id=a.id, source_class=a.source_class, accessed_cairo=a.accessed_cairo, note=a.note)
+            m = build(a.root, manifest_id=a.id, source_class=a.source_class, base=a.store, data_root=a.data_root,
+                      accessed_cairo=a.accessed_cairo, note=a.note)
             write(m, a.out)
             print(m['digest'])
             return 0
-        bad = verify(load(a.file))
+        bad = verify(load(a.file), a.store)
         print('\n'.join(bad) if bad else 'OK')
         return 1 if bad else 0
     except ManifestError as e:

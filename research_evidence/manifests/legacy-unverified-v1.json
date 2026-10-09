@@ -1,7 +1,8 @@
 {
  "accessed_cairo": "2026-10-04 (copy date from DATA_MANIFEST.json; time not recorded)",
  "available_rule": "open_ms + interval_ms",
- "digest": "5354a611608450740d38318286b74c8f2b12ba9288dbb1a148b98dfb1cdc9e68",
+ "data_root": "repo",
+ "digest": "0cc8ba493a714b1100ab5445f9bab432dc35dd2637260bf5d841e46a6ebc5fd5",
  "files": [
   {
    "bytes": 328202,

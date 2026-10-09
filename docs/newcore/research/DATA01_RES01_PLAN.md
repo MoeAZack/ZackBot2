@@ -169,9 +169,14 @@ Built inside the existing NEWCORE research path, not beside it:
 ## R1 status (source + fixture preparation only; no sealed or evidence run)
 
 - `tools/research/manifest.py`: `zb-data-manifest/1` build / validate / verify / write-once, canonical-JSON SHA-256
-  digest. Committed `research_evidence/manifests/legacy-unverified-v1.json` (64 files = `DATA_MANIFEST.json`, digest `5354a611...`).
+  digest. Committed `research_evidence/manifests/legacy-unverified-v1.json` (64 files = `DATA_MANIFEST.json`, digest `0cc8ba49...`).
+  Paths are canonical forward-slash paths relative to a logical `data_root` (`repo`), resolved (symlinks/junctions
+  included) and proven inside the allowed store before any read (Codex R1 P2).
 - `tools/research/ledger.py`: `zb-ledger/1` hash-chained JSONL, append-only byte check, Git-ancestry check, holdout
-  reveal / rerun rules, `n_trials`. Tests: `tests/test_res01_manifest_ledger.py`.
+  reveal / rerun rules, `n_trials`. A `holdout_rerun` must repeat the reveal's full identity: family, candidate/prereg
+  id, manifest digest, window, `detail.eval_digest` (evaluation code + config + seeds) and `run_digest` (Codex R1 P1).
+  R3 hook: `recompute_run_digest()` will recompute `run_digest` from the frozen run envelope. Tests:
+  `tests/test_res01_manifest_ledger.py`.
 - **Data gaps (nothing downloaded).** Local data is klines only (`t,o,h,l,c,v`, survivor-only;
   `data/exchange_rules_testnet.json` is a testnet snapshot). Missing, all public, each archive with a `.CHECKSUM`:
   1. All-listed incl. delisted USD-M symbols + onboard / delivery dates: the `data.binance.vision` listing of
@@ -212,3 +217,28 @@ Built inside the existing NEWCORE research path, not beside it:
 - [x] 3 Fully frozen, hashed slippage calibration; no-fill / taker as named stress rows -> section 2
 - [x] 4 Pairing units, Holm wording, non-overlapping month blocks -> section 5
 - [x] Listing age and warm-up are two independent PIT tests -> section 1a
+
+## Cowork plan review 6071450810 folded in (binding on the prereg / R2-R3; no R1 code change)
+
+- [x] 1 Delist exit: next bar open with `available_ms` >= timestamped notice; no observed notice = last archived mark
+  with 5x slippage; forced-exit PnL reported separately -> section 1a
+- [x] 2 Trend/short holdout is forward-only: any run before ~30 sealed forward episodes is development evidence;
+  forward manifests extend the frozen one and cite the parent digest -> sections 4, 7
+- [x] 3 B0/B1/B2 matching keys (symbol, side, regime, hold horizon, count), identical costs/funding/universe and the
+  equal-risk scaling are frozen in the prereg before any reveal -> sections 4, 5
+- [x] 4 Holm: one family = every ledger variant of the hypothesis family, block = calendar month; report family size
+  and the minimum detectable effect -> section 5
+- [x] 5 1000x re-denominations / contract-type changes are new instruments; renames join only after a price-continuity
+  check -> section 1a
+- [x] 6 PIT rules: funding at T counts for a position open over T (entry == T included, exit == T excluded); a higher-TF
+  bar is usable only after its last sub-bar closes; joins on `available_ms`, no forward-fill across a gap > 1 bar -> section 1
+- [x] 7 Regime/range filters use trailing or expanding data only; first signal at warm-up + 1; EMA seeded from the first
+  bar -> section 3
+- [x] 8 Prereg names walk-forward fold boundaries/count and the slippage-calibration interval; all folds reported -> sections 2, 4
+- [x] 9 R3 exit tests: future-perturbation, negative-control peeking strategy, Cowork canary suite (noise ~ -round-trip
+  cost, funding sign, qty round-up), fixed float-sum order + per-shard seeds, library versions + dirty tree invalidate a
+  run, SHA re-verify at load fails closed -> section 3, R3
+- [x] 10 Quantity floored to step, prices rounded adversely, never silently upsized -> section 2
+- [x] 11 This plan's thresholds are authoritative (60 episodes / 80% neighbours); add a per-cell floor and >= 10k
+  bootstrap resamples -> section 5
+- [x] 12 Missing 1m bars = unresolved ambiguous bar, counted toward the 5% PARK rule -> section 2a

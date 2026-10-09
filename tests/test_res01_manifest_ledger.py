@@ -19,6 +19,7 @@ RES = os.path.join(ROOT, 'research_evidence')
 W = {'start': '2025-01-01T00:00:00Z', 'end': '2025-07-01T00:00:00Z'}
 RD = 'a' * 64
 MD = 'b' * 64
+ED = 'e' * 64
 
 
 def fixture_root(tmp_path):
@@ -45,13 +46,14 @@ def test_manifest_fields_and_pit_rule(tmp_path):
     assert btc['first_open_ms'] == 1735689600000 and btc['last_open_ms'] == 1735689600000 + 4 * 3_600_000
     assert btc['sha256'] == hashlib.sha256((tmp_path / 'fx/4h/BTCUSDT_4h.csv').read_bytes()).hexdigest()
     assert m['available_rule'] == 'open_ms + interval_ms' and m['format'] == 'zb-data-manifest/1'
+    assert m['data_root'] == 'repo' and str(tmp_path) not in json.dumps(m)      # logical root, no machine path
 
 
 def test_manifest_digest_is_deterministic_and_pinned(tmp_path):
     a, b = build(fixture_root(tmp_path / 'a')), build(fixture_root(tmp_path / 'b'))
     assert a['digest'] == b['digest'] == M.digest_of(a)
     # golden: any change to the schema or canonical form must change this pin deliberately
-    assert a['digest'] == '044344671cb8af623791e58f0c508e2bfd0f01040c4f4aa94f58ef9fd87b0e88'
+    assert a['digest'] == '7653c501b4846c4304667ae66ce43f3d29d33509549936ef3e6f91ee82f3e30d'
 
 
 def test_manifest_validate_rejects_tamper(tmp_path):
@@ -90,6 +92,71 @@ def test_manifest_write_is_immutable(tmp_path):
     assert M.load(out) == m
 
 
+@pytest.mark.parametrize('bad', ['', 'fx//BTCUSDT_4h.csv', './fx/BTCUSDT_4h.csv', 'fx/./BTCUSDT_4h.csv',
+                                 '../outside/BTCUSDT_4h.csv', 'fx/../../BTCUSDT_4h.csv', '/fx/BTCUSDT_4h.csv',
+                                 'C:/fx/BTCUSDT_4h.csv', 'C:fx/BTCUSDT_4h.csv', '//server/share/BTCUSDT_4h.csv',
+                                 'fx' + chr(92) + 'BTCUSDT_4h.csv', 'fx/BTC' + chr(0) + 'USDT_4h.csv', 'fx/'])
+def test_manifest_rejects_non_canonical_paths(tmp_path, bad):
+    with pytest.raises(M.ManifestError, match='canonical'):
+        M.check_rel_path(bad)
+    m = build(fixture_root(tmp_path))
+    m['files'][0]['path'] = bad
+    m['digest'] = M.digest_of(m)
+    with pytest.raises(M.ManifestError):
+        M.validate(m)
+    with pytest.raises(M.ManifestError):
+        M.build([bad], manifest_id='x', source_class='fixture', base=str(tmp_path / 'fx'))
+
+
+def test_manifest_rejects_root_outside_store(tmp_path):
+    fixture_root(tmp_path / 'outside')
+    store = tmp_path / 'store'
+    store.mkdir()
+    with pytest.raises(M.ManifestError, match='canonical'):
+        M.build(['../outside/fx'], manifest_id='x', source_class='fixture', base=str(store))
+
+
+def test_manifest_rejects_symlink_escape(tmp_path):
+    fixture_root(tmp_path / 'outside')
+    store = tmp_path / 'store'
+    store.mkdir()
+    roots = ['fx', 'in']                                          # symlinked root dir, symlinked file
+    try:
+        os.symlink(str(tmp_path / 'outside' / 'fx'), str(store / 'fx'), target_is_directory=True)
+        (store / 'in').mkdir()
+        os.symlink(str(tmp_path / 'outside' / 'fx' / '4h' / 'BTCUSDT_4h.csv'), str(store / 'in' / 'BTCUSDT_4h.csv'))
+    except (OSError, NotImplementedError):
+        if os.name != 'nt':
+            pytest.skip('symlinks not permitted on this machine')
+        # Windows without symlink privilege: a directory junction escapes the same way
+        subprocess.run(['cmd', '/c', 'mklink', '/J', str(store / 'fx'), str(tmp_path / 'outside' / 'fx')],
+                       check=True, capture_output=True)
+        roots = ['fx']
+    for root in roots:
+        with pytest.raises(M.ManifestError, match='outside'):
+            M.build([root], manifest_id='x', source_class='fixture', base=str(store))
+    with pytest.raises(M.ManifestError, match='outside'):
+        M.contained(str(store), 'fx/4h/BTCUSDT_4h.csv')
+
+
+def test_manifest_verify_refuses_escape_before_reading(tmp_path):
+    base = fixture_root(tmp_path / 'store')
+    m = build(base)
+    m['files'][0]['path'] = '../outside/BTCUSDT_4h.csv'
+    m['digest'] = M.digest_of(m)
+    with pytest.raises(M.ManifestError):
+        M.verify(m, str(base))
+
+
+def test_manifest_data_root_must_be_logical_name(tmp_path):
+    m = build(fixture_root(tmp_path))
+    for bad in ('C:/Dev/data', '/home/x', '', 'Repo'):
+        x = dict(m, data_root=bad)
+        x['digest'] = M.digest_of(x)
+        with pytest.raises(M.ManifestError, match='data_root'):
+            M.validate(x)
+
+
 def test_manifest_rejects_bad_header(tmp_path):
     d = tmp_path / 'fx'
     d.mkdir()
@@ -100,7 +167,7 @@ def test_manifest_rejects_bad_header(tmp_path):
 
 def test_committed_legacy_manifest_matches_disk_and_data_manifest():
     m = M.load(os.path.join(RES, 'manifests', 'legacy-unverified-v1.json'))
-    assert m['source_class'] == 'legacy-unverified' and m['survivor_only'] is True
+    assert m['source_class'] == 'legacy-unverified' and m['survivor_only'] is True and m['data_root'] == 'repo'
     assert M.verify(m) == []
     legacy = json.load(open(os.path.join(ROOT, 'DATA_MANIFEST.json'), encoding='utf-8'))['files']
     assert {f['path'] for f in m['files']} == set(legacy)
@@ -155,26 +222,63 @@ def test_ledger_check_append():
         L.check_append(b'a\nb\n', b'a\n')
 
 
+def hold(path, kind, **kw):
+    base = dict(kind=kind, split='holdout', run_digest=RD, manifest_digest=MD, candidate_id='c.v1',
+                detail={'eval_digest': ED})
+    base.update(kw)
+    return rec(path, **base)
+
+
 def test_holdout_reveal_spends_window_family_wide(tmp_path):
     p = tmp_path / 'fam_h.jsonl'
-    rec(p, kind='holdout_reveal', split='holdout', run_digest=RD, manifest_digest=MD, candidate_id='c.v1')
-    rec(p, kind='holdout_rerun', split='holdout', run_digest=RD, manifest_digest=MD, candidate_id='c.v1')
+    hold(p, 'holdout_reveal')
+    hold(p, 'holdout_rerun')
     with pytest.raises(L.LedgerError, match='identical run_digest'):
-        rec(p, kind='holdout_rerun', split='holdout', run_digest='c' * 64, manifest_digest=MD)
+        hold(p, 'holdout_rerun', run_digest='c' * 64)
+    with pytest.raises(L.LedgerError, match='already revealed'):
+        hold(p, 'holdout_reveal')
     # a renamed descendant in the same family cannot reveal an overlapping window
     w2 = {'start': '2025-06-01T00:00:00Z', 'end': '2025-09-01T00:00:00Z'}
     with pytest.raises(L.LedgerError, match='overlaps'):
-        rec(p, kind='holdout_reveal', split='holdout', run_digest='d' * 64, manifest_digest=MD, window=w2,
-            candidate_id='c_renamed.v2')
+        hold(p, 'holdout_reveal', run_digest='d' * 64, window=w2, candidate_id='c_renamed.v2')
     w3 = {'start': '2025-07-01T00:00:00Z', 'end': '2025-10-01T00:00:00Z'}
-    rec(p, kind='holdout_reveal', split='holdout', run_digest='d' * 64, manifest_digest=MD, window=w3)
+    hold(p, 'holdout_reveal', run_digest='d' * 64, window=w3)
+
+
+@pytest.mark.parametrize('field', ['family', 'candidate_id', 'manifest_digest', 'window', 'eval_digest', 'run_digest'])
+def test_holdout_rerun_must_repeat_every_identity_field(tmp_path, field):
+    """Codex R1 P1 repro: same run_digest/window but a different candidate or manifest was accepted."""
+    p = tmp_path / 'fam_r.jsonl'
+    hold(p, 'holdout_reveal')
+    before = p.read_bytes()
+    if field == 'family':                       # the reveal's bytes copied under another family name
+        other = tmp_path / 'fam_other.jsonl'
+        other.write_bytes(before)
+        with pytest.raises(L.LedgerError, match='family'):
+            hold(other, 'holdout_rerun')
+    else:
+        mutated = {'candidate_id': dict(candidate_id='DIFFERENT'), 'manifest_digest': dict(manifest_digest='c' * 64),
+                   'window': dict(window={'start': '2025-01-01T00:00:00Z', 'end': '2025-06-01T00:00:00Z'}),
+                   'eval_digest': dict(detail={'eval_digest': 'f' * 64}),
+                   'run_digest': dict(run_digest='d' * 64)}[field]
+        with pytest.raises(L.LedgerError, match='identical'):
+            hold(p, 'holdout_rerun', **mutated)
+    assert p.read_bytes() == before                                # nothing appended
+    hold(p, 'holdout_rerun')                                       # the exact identity still reruns
+
+
+def test_holdout_records_need_eval_digest(tmp_path):
+    p = tmp_path / 'fam_e.jsonl'
+    with pytest.raises(L.LedgerError, match='eval_digest'):
+        hold(p, 'holdout_reveal', detail={})
+    assert L.recompute_run_digest({'run_digest': RD}) is None      # R3 hook: not yet checked
 
 
 def test_window_spent_blocks_reveal(tmp_path):
     p = tmp_path / 'fam_s.jsonl'
     rec(p, kind='window_spent', split='development')
     with pytest.raises(L.LedgerError, match='overlaps'):
-        rec(p, kind='holdout_reveal', split='holdout', run_digest=RD, manifest_digest=MD)
+        hold(p, 'holdout_reveal')
 
 
 def test_ledger_rejects_bad_window_and_digest(tmp_path):
@@ -182,7 +286,7 @@ def test_ledger_rejects_bad_window_and_digest(tmp_path):
     with pytest.raises(L.LedgerError, match='window'):
         rec(p, window={'start': '2025-07-01T00:00:00Z', 'end': '2025-01-01T00:00:00Z'})
     with pytest.raises(L.LedgerError, match='holdout'):
-        rec(p, kind='holdout_reveal', split='train', run_digest=RD, manifest_digest=MD)
+        hold(p, 'holdout_reveal', split='train')
     assert not p.exists() or p.read_bytes() == b''
 
 

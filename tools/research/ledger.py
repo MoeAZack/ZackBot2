@@ -10,9 +10,11 @@ Checks:
   check_git       along Git ancestry every commit's version of the file is a prefix of its successor's (CI check)
 
 Holdout rule (Codex clarification 1, comment 6071140643): the first `holdout_reveal` on a window spends it for the whole
-family; any later `holdout_reveal` overlapping a spent window fails. A `holdout_rerun` is allowed only with the identical
-`run_digest` of an earlier reveal (deterministic reproduction, no new decision). `window_spent` records a window already
-seen before this ledger existed; a reveal overlapping it fails as well.
+family; any later `holdout_reveal` overlapping a spent window fails. A `holdout_rerun` is allowed only as a deterministic
+reproduction of an earlier reveal: it must repeat the reveal's whole canonical identity (Codex R1 P1, comment 6071894926)
+  family, candidate_id (= prereg id), manifest_digest, window, detail.eval_digest, run_digest
+where `detail.eval_digest` (64 hex) pins the immutable evaluation code + config + seeds. Every holdout record carries it.
+`window_spent` records a window already seen before this ledger existed; a reveal overlapping it fails as well.
 
 Usage: python tools/research/ledger.py check FILE [--git]
 """
@@ -37,6 +39,7 @@ FAMILY_RE = re.compile(r'^[a-z0-9][a-z0-9_]*$')
 UTC_RE = re.compile(r'^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$')
 DATE_RE = re.compile(r'^\d{4}-\d{2}-\d{2}$')
 HEX64 = re.compile(r'^[0-9a-f]{64}$')
+IDENTITY = ('family', 'candidate_id', 'manifest_digest', 'window', 'eval_digest', 'run_digest')
 
 
 class LedgerError(ValueError):
@@ -49,6 +52,19 @@ def line_of(rec: dict) -> bytes:
 
 def _overlap(a, b) -> bool:
     return a['start'] < b['end'] and b['start'] < a['end']
+
+
+def holdout_identity(r: dict) -> dict:
+    """The canonical identity a `holdout_rerun` must repeat exactly."""
+    return {k: (r['detail'].get(k) if k == 'eval_digest' else r[k]) for k in IDENTITY}
+
+
+def recompute_run_digest(r: dict):
+    """TODO(R3): once R3 defines the frozen run envelope, load it by `run_digest`, recompute the digest from its bytes
+    and from the identity fields (manifest, window, eval_digest), and return it; check_records then fails a holdout
+    record whose stored `run_digest` differs instead of trusting the caller-supplied string. Until then: None = not
+    checked (R1 has no sealed runs)."""
+    return None
 
 
 def check_records(data: bytes, family: str) -> list[dict]:
@@ -84,14 +100,21 @@ def check_records(data: bytes, family: str) -> list[dict]:
         need(isinstance(r['author'], str) and r['author'], 'author must be a non-empty string')
         need(isinstance(r['cairo_date'], str) and DATE_RE.match(r['cairo_date']), 'cairo_date must be YYYY-MM-DD')
         if r['kind'] in ('holdout_reveal', 'holdout_rerun'):
-            need(r['split'] == 'holdout' and r['run_digest'] and r['manifest_digest'],
-                 f'{r["kind"]} needs split=holdout, run_digest and manifest_digest')
+            need(r['split'] == 'holdout' and r['run_digest'] and r['manifest_digest']
+                 and isinstance(r['detail'].get('eval_digest'), str) and HEX64.match(r['detail']['eval_digest']),
+                 f'{r["kind"]} needs split=holdout, run_digest, manifest_digest and detail.eval_digest (64 hex)')
+            rd = recompute_run_digest(r)
+            need(rd is None or rd == r['run_digest'], 'run_digest does not match the frozen run envelope')
         if r['kind'] == 'holdout_reveal':
+            need(r['run_digest'] not in reveals, 'run_digest already revealed; a repeat must be a holdout_rerun')
             need(not any(_overlap(w, s) for s in spent), 'holdout window overlaps a window already spent by this family')
             spent.append(w)
-            reveals[r['run_digest']] = w
+            reveals[r['run_digest']] = holdout_identity(r)
         elif r['kind'] == 'holdout_rerun':
-            need(reveals.get(r['run_digest']) == w, 'holdout_rerun must repeat the identical run_digest and window of a reveal')
+            orig = reveals.get(r['run_digest'])
+            need(orig is not None, 'holdout_rerun must repeat the identical run_digest of an earlier reveal')
+            diff = [k for k in IDENTITY if orig[k] != holdout_identity(r)[k]]
+            need(not diff, f'holdout_rerun must repeat the identical reveal identity; differs in {diff}')
         elif r['kind'] == 'window_spent':
             spent.append(w)
         recs.append(r)
