@@ -1,28 +1,41 @@
 """Point-in-time data view + holdout guard (RES-01 R3; plan sections 1, 1a, 3, 4; the plan's `data.py`).
 
 Layers (each the only way to reach the next):
-  Dataset  one verified `zb-data-manifest/1` + its `zb-pit-universe/1`. Every file is read only through the manifest:
-           its bytes are re-hashed and must equal the manifest SHA-256 (and, for archives, the published checksum)
-           before a row is parsed - a mismatch fails closed. Rows carry `available_ms` (klines / mark klines:
-           open + interval; funding: `calc_time`).
+  Dataset  one verified `zb-data-manifest/1` + its `zb-pit-universe/2`, restricted to the named asset-class `books`
+           (never a mixed list; gold is served from the `gold-commodity` book). Every file is read only through the
+           manifest: its bytes are re-hashed and must equal the manifest SHA-256 (and, for archives, the published
+           checksum) before a row is parsed - a mismatch fails closed. Rows carry `available_ms` (klines / mark
+           klines: open + interval; funding: `calc_time`). Harness-side only.
   Access   opens one split of an immutable `splits.SplitPlan` (or a development window) for one hypothesis family and
            appends a `data_access` record to the family ledger BEFORE returning any data. The sealed holdout opens only
-           when the ledger's last open group is the atomic `holdout_reveal` / `holdout_rerun` of exactly this frozen,
-           clean-tree run envelope (`report.py`); anything else raises. A development window may not touch the plan's
-           holdout.
-  Window   the data range of the opened split: rows with `open_ms >= lo` and `available_ms <= hi`, nothing else.
-  View     `window.view(t)`: a frozen decision time. Every accessor filters `available_ms <= t`; there is no accessor
-           that takes another time, so lookahead is impossible by construction. Symbols are served only while they are
-           universe members at `t` (or, for an open position, at its entry decision `entered_ms <= t`). A survivor-only
-           legacy manifest (no universe) is served with the label SURVIVOR-ONLY.
-Funding joins: `funding_events` returns (time, rate, mark) for entry <= time < exit, the mark being the close of the
-1h mark bar available at the funding time, never forward-filled across a gap > 1 bar.
+           when (a) the frozen run envelope (`report.py`) is the stored one, (b) the executing checkout re-proves the
+           envelope's code identity (HEAD, clean tree, Python, dependency set, recomputed `eval_digest`;
+           `report.verify_code`), and (c) the ledger's last open group is the atomic `holdout_reveal` /
+           `holdout_rerun` of exactly this run, with every component carrying its complete identity. A development
+           window may not touch the plan's holdout. Harness-side only.
+  Window   the data range of the opened split: rows with `open_ms >= lo` and `available_ms <= hi`. Harness-side only;
+           it is never handed to evaluator code.
+  View     `window.view(t)`: the evaluator's only capability (Codex R3 P1). It holds an opaque key, no Dataset or
+           Window reference; every accessor filters `available_ms <= t` and there is no accessor taking another time.
+           Symbols are served only while they are members of the dataset's books at `t`, or under a `Position`
+           capability that `View.enter()` issued (membership checked and the decision recorded at entry). A position
+           cannot be constructed or back-dated by the caller.
+  evaluate `evaluate(window, evaluator, times)` is the only evaluation runner: it calls `evaluator(view)` per decision
+           time and, by default, re-runs each decision with every cached row not yet available at `t` perturbed; any
+           difference (an evaluator that bypassed the view) raises.
+A survivor-only legacy manifest (no universe) is served with the label SURVIVOR-ONLY.
+
+Funding joins: `funding_events` returns (time, rate, mark) for entry <= time < exit at the ACTUAL funding timestamps
+(no cadence is assumed; XAUUSDT's observed 4h schedule is just what its rows say). The mark is the funding-mark proxy
+v1 (`FUNDING_MARK_PROXY`): the close of the 1h mark bar ending at or before the funding time, never forward-filled
+across a gap > 1 bar.
 
 Smoke (shape/coverage counts only, never returns; logged in the ledger as a development access):
   python tools/research/pit.py smoke --manifest research_evidence/manifests/binance-um-archive-v1.json.gz
-      --store C:/Dev/ZackBot2_data/binance_um --universe research_evidence/universe/pit-top40-qv30d-v1.json
-      --ledger research_evidence/ledger/res01_infra.jsonl --start 2026-01-05T00:00:00Z --end 2026-01-12T00:00:00Z
-      --symbols BTCUSDT,XAUUSDT --author claude-code --cairo-date 2026-10-09
+      --store C:/Dev/ZackBot2_data/binance_um --universe research_evidence/universe/pit-top40-qv30d-v2.json
+      --books crypto,gold-commodity --ledger research_evidence/ledger/res01_infra.jsonl
+      --start 2026-01-05T00:00:00Z --end 2026-01-12T00:00:00Z --symbols BTCUSDT,XAUUSDT
+      --author claude-code --cairo-date 2026-10-09
 """
 from __future__ import annotations
 
@@ -32,6 +45,7 @@ import hashlib
 import json
 import os
 import sys
+import weakref
 from collections import namedtuple
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -46,6 +60,7 @@ Funding = namedtuple('Funding', 'time_ms rate interval_hours available_ms')
 HOUR = 3_600_000
 SURVIVOR_ONLY = 'SURVIVOR-ONLY'
 GROUP_KINDS = ('holdout_reveal', 'holdout_rerun')
+FUNDING_MARK_PROXY = 'funding-mark-proxy-v1: close of the 1h mark bar ending at or before T (causal proxy, PROVISIONAL)'
 
 
 class PITError(ValueError):
@@ -53,14 +68,16 @@ class PITError(ValueError):
 
 
 class Dataset:
-    def __init__(self, manifest: dict, store: str, universe: dict | None):
+    def __init__(self, manifest: dict, store: str, universe: dict | None, books=None):
         M.validate(manifest)
         self.manifest, self.store, self.digest = manifest, store, manifest['digest']
         self.archive = manifest['loader_version'] == M.ARCHIVE_LOADER
         if universe is None:
             if not manifest['survivor_only']:
                 raise PITError('an all-listed manifest is served only through its PIT universe')
-            self.universe_digest, self.labels = None, (SURVIVOR_ONLY,)
+            if books is not None:
+                raise PITError('books need a PIT universe')
+            self.universe_digest, self.labels, self.books = None, (SURVIVOR_ONLY,), ()
             self._mondays, self._members = None, None
             self._all = frozenset(f['symbol'] for f in manifest['files'])
         else:
@@ -68,9 +85,13 @@ class Dataset:
                 raise PITError('universe digest does not match its content')
             if universe['manifest_digest'] != self.digest:
                 raise PITError('universe was built from a different manifest')
-            self.universe_digest, self.labels = universe['digest'], ()
+            if not books or any(b not in universe['books'] for b in books):
+                raise PITError(f'name the asset-class books to serve, from {universe["books"]} (no mixed default)')
+            self.universe_digest, self.labels, self.books = universe['digest'], (), tuple(sorted(set(books)))
             self._mondays = [w['monday_ms'] for w in universe['weeks']]
-            self._members = [frozenset(w['members']) for w in universe['weeks']]
+            self._members = [frozenset(s for b in self.books for s in U.members(universe, w, b))
+                             for w in universe['weeks']]
+            self.symbol_class = {s['symbol']: (s['class'], s['subclass']) for s in universe['symbols']}
         self._files: dict[tuple, list] = {}
         for f in manifest['files']:
             key = (f.get('series', 'klines'), f['symbol'], f['interval'])
@@ -94,7 +115,7 @@ class Dataset:
         return self._files.get((series, symbol, interval), [])
 
     def rows(self, f: dict) -> list:
-        """Parsed rows of one manifest file, after the SHA-256 re-check (fail closed)."""
+        """Parsed rows of one manifest file, after the SHA-256 re-check (fail closed). Harness-side only."""
         p = f['path']
         if p in self._cache:
             return self._cache[p]
@@ -135,28 +156,77 @@ class Dataset:
         return rows[bisect.bisect_left(times, lo):bisect.bisect_right(avail, t)]
 
 
+_TOKEN = object()
+
+
+class _Cap:
+    """Opaque capability key a View holds instead of a Window reference."""
+    __slots__ = ('__weakref__',)
+
+
+_SOURCES: 'weakref.WeakKeyDictionary[_Cap, Window]' = weakref.WeakKeyDictionary()
+
+
+class Position:
+    """An open-position capability issued by `View.enter` from a recorded decision; never built by a caller."""
+    __slots__ = ('symbol', 'entry_ms', 'decision_id', '_cap', '__weakref__')
+
+    def __init__(self, symbol, entry_ms, decision_id, cap, _token=None):
+        if _token is not _TOKEN:
+            raise PITError('a Position is issued only by View.enter (a recorded decision)')
+        for k, v in (('symbol', symbol), ('entry_ms', entry_ms), ('decision_id', decision_id), ('_cap', cap)):
+            object.__setattr__(self, k, v)
+
+    def __setattr__(self, k, v):
+        raise AttributeError('a position capability is immutable')
+
+    def __eq__(self, other):
+        return isinstance(other, Position) and (self.symbol, self.entry_ms, self.decision_id) == (
+            other.symbol, other.entry_ms, other.decision_id)
+
+    def __hash__(self):
+        return hash((self.symbol, self.entry_ms, self.decision_id))
+
+    def __repr__(self):
+        return f'Position({self.symbol}, {S.utc(self.entry_ms)}, {self.decision_id!r})'
+
+
 class Window:
-    """The rows of one opened split: open_ms >= lo and available_ms <= hi. Created only by Access."""
+    """The rows of one opened split: open_ms >= lo and available_ms <= hi. Created only by Access; harness-side."""
 
     def __init__(self, ds: Dataset, lo: int, hi: int, key: str, _token=None):
         if _token is not _TOKEN:
             raise PITError('a Window is opened only through Access (ledger-recorded)')
-        self.ds, self.lo, self.hi, self.key = ds, lo, hi, key
+        self._ds, self.lo, self.hi, self.key = ds, lo, hi, key
+        self._cap = _Cap()
+        self._issued: weakref.WeakSet = weakref.WeakSet()
+        self._decisions: list[tuple] = []
+        self._shadow = False
+        _SOURCES[self._cap] = self
 
     def view(self, t: int) -> 'View':
         if not self.lo <= t <= self.hi:
             raise PITError(f'decision time {S.utc(t)} outside the opened window {self.key}')
-        return View(self, t)
+        return View(self._cap, t)
+
+    def decisions(self) -> tuple:
+        """The recorded position decisions (decision_id, symbol, entry_ms), in issue order."""
+        return tuple(self._decisions)
 
 
-_TOKEN = object()
+def _src(cap) -> Window:
+    w = _SOURCES.get(cap) if isinstance(cap, _Cap) else None
+    if w is None:
+        raise PITError('this view no longer refers to an opened window')
+    return w
 
 
 class View:
-    __slots__ = ('_w', 't')
+    """The evaluator's capability: a frozen decision time over an opened window, with no Dataset/Window reference."""
+    __slots__ = ('_cap', 't')
 
-    def __init__(self, w: Window, t: int):
-        object.__setattr__(self, '_w', w)
+    def __init__(self, cap: _Cap, t: int):
+        object.__setattr__(self, '_cap', cap)
         object.__setattr__(self, 't', t)
 
     def __setattr__(self, k, v):
@@ -164,50 +234,76 @@ class View:
 
     @property
     def labels(self):
-        return self._w.ds.labels
+        return _src(self._cap)._ds.labels
 
     def members(self) -> frozenset:
-        return self._w.ds.members(self.t)
+        return _src(self._cap)._ds.members(self.t)
 
-    def _check(self, symbol: str, entered_ms):
-        at = self.t if entered_ms is None else entered_ms
-        if not self._w.lo <= at <= self.t:
-            raise PITError('entered_ms must lie inside the window and not after the decision time')
-        if symbol not in self._w.ds.members(at):
-            raise PITError(f'{symbol} is not a universe member at {S.utc(at)}')
+    def enter(self, symbol: str, decision_id: str) -> Position:
+        """Issue a position capability for a decision at this view's time (membership checked now, decision
+        recorded). Its holder may keep reading the symbol after it leaves the universe."""
+        w = _src(self._cap)
+        if not isinstance(decision_id, str) or not decision_id:
+            raise PITError('decision_id must be a non-empty string')
+        if symbol not in w._ds.members(self.t):
+            raise PITError(f'{symbol} is not a universe member at {S.utc(self.t)}')
+        if not w._shadow:
+            if any(d[0] == decision_id for d in w._decisions):
+                raise PITError(f'decision {decision_id!r} already issued a position')
+            w._decisions.append((decision_id, symbol, self.t))
+        p = Position(symbol, self.t, decision_id, self._cap, _TOKEN)
+        w._issued.add(p)
+        return p
 
-    def _rows(self, series, symbol, interval, n=None, since=None):
+    def _check(self, symbol: str, position):
+        w = _src(self._cap)
+        if position is None:
+            if symbol not in w._ds.members(self.t):
+                raise PITError(f'{symbol} is not a universe member at {S.utc(self.t)}')
+            return w
+        if not isinstance(position, Position) or position._cap is not self._cap or position not in w._issued:
+            raise PITError('position is not a capability issued by this window')
+        if position.symbol != symbol:
+            raise PITError(f'position is for {position.symbol}, not {symbol}')
+        if not w.lo <= position.entry_ms <= self.t:
+            raise PITError('position entry must lie inside the window and not after the decision time')
+        return w
+
+    def _rows(self, w, series, symbol, interval, n=None, since=None):
         """Rows with lo <= time, (since <= time) and available <= t; the last n if n is given."""
-        lo, out = max(self._w.lo, since or self._w.lo), []
-        for f in reversed(self._w.ds.files(series, symbol, interval)):
+        lo, out = max(w.lo, since or w.lo), []
+        for f in reversed(w._ds.files(series, symbol, interval)):
             if f['first_open_ms'] is None or f['first_open_ms'] > self.t or f['last_open_ms'] < lo:
                 continue
-            rows = self._w.ds.slice(f, lo, self.t)
+            rows = w._ds.slice(f, lo, self.t)
             out = rows + out
             if n is not None and len(out) >= n:
                 break
         return tuple(out[-n:] if n is not None else out)
 
-    def bars(self, symbol: str, interval: str, n: int, *, entered_ms=None, series='klines') -> tuple:
+    def bars(self, symbol: str, interval: str, n: int, *, position=None, series='klines') -> tuple:
         """The last `n` closed bars (oldest first) available at t."""
-        self._check(symbol, entered_ms)
+        w = self._check(symbol, position)
         if type(n) is not int or n < 1:
             raise PITError('n must be an int >= 1')
-        return self._rows(series, symbol, interval, n=n)
+        return self._rows(w, series, symbol, interval, n=n)
 
-    def mark_bars(self, symbol: str, n: int, *, entered_ms=None) -> tuple:
-        return self.bars(symbol, '1h', n, entered_ms=entered_ms, series='markPriceKlines')
+    def mark_bars(self, symbol: str, n: int, *, position=None) -> tuple:
+        return self.bars(symbol, '1h', n, position=position, series='markPriceKlines')
 
-    def funding(self, symbol: str, since_ms: int, *, entered_ms=None) -> tuple:
-        self._check(symbol, entered_ms)
-        return self._rows('fundingRate', symbol, None, since=since_ms)
+    def funding(self, symbol: str, since_ms: int, *, position=None) -> tuple:
+        w = self._check(symbol, position)
+        return self._rows(w, 'fundingRate', symbol, None, since=since_ms)
 
-    def funding_events(self, symbol: str, entry_ms: int, exit_ms: int) -> list:
-        """[(time_ms, rate, mark_close)] for entry <= time < exit (entry == T counts, exit == T does not)."""
+    def funding_events(self, position: Position, exit_ms: int) -> list:
+        """[(time_ms, rate, mark_close)] at the actual funding times entry <= time < exit (entry == T counts, exit == T
+        does not); the mark is `FUNDING_MARK_PROXY`."""
+        w = self._check(getattr(position, 'symbol', None), position)
+        entry_ms, symbol = position.entry_ms, position.symbol
         if not entry_ms <= exit_ms <= self.t:
             raise PITError('funding events need entry <= exit <= t')
-        rows = [f for f in self.funding(symbol, entry_ms, entered_ms=entry_ms) if f.time_ms < exit_ms]
-        marks = self._rows('markPriceKlines', symbol, '1h', since=entry_ms - 2 * HOUR)
+        rows = [f for f in self._rows(w, 'fundingRate', symbol, None, since=entry_ms) if f.time_ms < exit_ms]
+        marks = self._rows(w, 'markPriceKlines', symbol, '1h', since=entry_ms - 2 * HOUR)
         avail = [m.available_ms for m in marks]
         out = []
         for f in rows:
@@ -217,20 +313,58 @@ class View:
             out.append((f.time_ms, f.rate, marks[i].close))
         return out
 
-    def minute_bars(self, symbol: str, open_ms: int, close_ms: int, *, entered_ms=None) -> tuple:
+    def minute_bars(self, symbol: str, open_ms: int, close_ms: int, *, position=None) -> tuple:
         """1m bars of one closed signal bar [open_ms, close_ms); empty when the manifest has no 1m data for it."""
-        self._check(symbol, entered_ms)
+        w = self._check(symbol, position)
         if close_ms > self.t:
             raise PITError('the signal bar is not closed at t')
-        return tuple(b for b in self._rows('klines', symbol, '1m', since=open_ms) if b.open_ms < close_ms)
+        return tuple(b for b in self._rows(w, 'klines', symbol, '1m', since=open_ms) if b.open_ms < close_ms)
+
+
+def _perturb_future(ds: Dataset, t: int) -> dict:
+    """Scale every cached row not yet available at t (prices x3, rates x-3); returns what to restore."""
+    saved = {}
+    for p, rows in ds._cache.items():
+        saved[p] = list(rows)
+        for i, r in enumerate(rows):
+            if r.available_ms > t:
+                rows[i] = r._replace(rate=-3 * r.rate - 1e-3) if isinstance(r, Funding) else \
+                    r._replace(open=r.open * 3, high=r.high * 3, low=r.low * 3, close=r.close * 3)
+    return saved
+
+
+def evaluate(window: Window, evaluator, times, *, perturb: bool = True) -> list:
+    """Run `evaluator(view)` at each decision time; the evaluator receives the View only. With `perturb`, each decision
+    is recomputed with every cached not-yet-available row perturbed (positions it issues there are not recorded) and
+    must be identical, so an evaluator that bypasses the view fails closed."""
+    if not isinstance(window, Window):
+        raise PITError('evaluate needs a Window opened through Access')
+    out = []
+    for t in times:
+        res = evaluator(window.view(t))
+        if perturb:
+            ds = window._ds
+            saved = _perturb_future(ds, t)
+            window._shadow = True
+            try:
+                again = evaluator(window.view(t))
+            finally:
+                window._shadow = False
+                for p, rows in saved.items():
+                    ds._cache[p][:] = rows
+            if again != res:
+                raise PITError(f'evaluator output at {S.utc(t)} depends on data not available at t (future '
+                               'perturbation changed it): the view was bypassed')
+        out.append(res)
+    return out
 
 
 class Access:
     """Opens data for one hypothesis family; every opening is a ledger `data_access` record."""
 
     def __init__(self, ds: Dataset, plan: S.SplitPlan | None, ledger_path: str, *, candidate_id: str, author: str,
-                 cairo_date: str, runs_dir=None):
-        self.ds, self.plan, self.path = ds, plan, ledger_path
+                 cairo_date: str, runs_dir=None, repo: str = M.REPO):
+        self.ds, self.plan, self.path, self.repo = ds, plan, ledger_path, repo
         self.family = os.path.splitext(os.path.basename(ledger_path))[0]
         self.candidate_id, self.author, self.cairo_date = candidate_id, author, cairo_date
         self.runs_dir = runs_dir if runs_dir is not None else L._runs_of(L._dir_of(ledger_path))
@@ -244,7 +378,7 @@ class Access:
                  detail=detail, lineage=None if self._family_exists() else lineage)
 
     def _base_detail(self, extra):
-        d = {'universe_digest': self.ds.universe_digest, 'labels': list(self.ds.labels)}
+        d = {'universe_digest': self.ds.universe_digest, 'books': list(self.ds.books), 'labels': list(self.ds.labels)}
         if self.plan is not None:
             d['split_plan_digest'] = self.plan.digest
         d.update(extra or {})
@@ -283,25 +417,28 @@ class Access:
         need(env is not None and self.runs_dir is not None, 'needs a frozen run envelope and a runs store')
         try:
             stored = R.load_envelope(self.runs_dir, env['run_digest'])
+            need(R.run_digest(env['run']) == env['run_digest'], 'envelope digest mismatch')
         except R.ReportError as e:
             raise PITError(f'sealed holdout: {e}')
         need(stored == env, 'envelope is not the stored frozen envelope')
-        need(R.run_digest(env['run']) == env['run_digest'], 'envelope digest mismatch')
         need(not R.sealable(env), f'run not sealable: {R.sealable(env)}')
+        bad = R.verify_code(env, self.repo)
+        need(not bad, f'the executing checkout does not match the frozen code identity: {bad}')
         run = env['run']
         want = {'family': self.family, 'candidate_id': self.candidate_id, 'split': 'holdout', 'window': window,
                 'manifest_digest': self.ds.digest, 'universe_digest': self.ds.universe_digest,
-                'split_plan_digest': self.plan.digest}
+                'split_plan_digest': self.plan.digest, 'books': list(self.ds.books)}
         need(all(run[k] == v for k, v in want.items()), 'envelope identity differs from this access')
         need(self._family_exists(), 'no ledger for this family')
         recs = L._check_state(self.path)[self.family]
         idx = max((i for i, r in enumerate(recs) if r['kind'] in GROUP_KINDS), default=None)
         need(idx is not None, 'no atomic holdout_reveal record in the family ledger')
         head = recs[idx]
-        need(head['run_digest'] == env['run_digest'] and head['window'] == window
-             and head['detail'].get('eval_digest') == run['eval_digest'],
+        ident = L.holdout_identity(head)
+        need(ident == {'family': self.family, 'candidate_id': self.candidate_id, 'manifest_digest': self.ds.digest,
+                       'window': window, 'eval_digest': run['eval_digest'], 'run_digest': env['run_digest']},
              'the latest reveal belongs to another run')
-        need(all(r['split'] == 'holdout' and r['run_digest'] == env['run_digest'] and r['kind'] in L.COMPONENT_KINDS
+        need(all(r['split'] == 'holdout' and r['kind'] in L.COMPONENT_KINDS and L.holdout_identity(r) == ident
                  for r in recs[idx + 1:]), 'the reveal group is closed (another record followed it)')
 
 
@@ -312,20 +449,22 @@ def smoke(ds: Dataset, ledger_path: str, start: str, end: str, symbols, *, autho
     w = acc.open_development(start, end, lineage='root',
                              detail={'purpose': 'R3 PIT-view shape/coverage smoke; no strategy, no returns',
                                      'symbols': list(symbols)})
-    v = w.view(w.hi)
-    out = {'window': [start, end], 'manifest_digest': ds.digest, 'universe_digest': ds.universe_digest, 'symbols': {}}
+    v0, v = w.view(w.lo), w.view(w.hi)
+    out = {'window': [start, end], 'manifest_digest': ds.digest, 'universe_digest': ds.universe_digest,
+           'books': list(ds.books), 'symbols': {}}
     big = 10 ** 7
     for s in symbols:
         member = s in ds.members(w.lo)
         row = {'member_at_start': member}
         if member:
-            row['1d'] = len(v.bars(s, '1d', big, entered_ms=w.lo))
-            row['4h'] = len(v.bars(s, '4h', big, entered_ms=w.lo))
-            row['mark_1h'] = len(v.mark_bars(s, big, entered_ms=w.lo))
-            row['funding'] = len(v.funding(s, w.lo, entered_ms=w.lo))
-            row['1m'] = len(v.minute_bars(s, w.lo, w.hi, entered_ms=w.lo))
+            pos = v0.enter(s, f'smoke-{s}')
+            row['1d'] = len(v.bars(s, '1d', big, position=pos))
+            row['4h'] = len(v.bars(s, '4h', big, position=pos))
+            row['mark_1h'] = len(v.mark_bars(s, big, position=pos))
+            row['funding'] = len(v.funding(s, w.lo, position=pos))
+            row['1m'] = len(v.minute_bars(s, w.lo, w.hi, position=pos))
             row['1m_expected'] = (w.hi - w.lo) // 60_000
-            row['funding_marks_joined'] = len(v.funding_events(s, w.lo + HOUR, w.hi))
+            row['funding_marks_joined'] = len(v.funding_events(pos, w.hi))
         out['symbols'][s] = row
     return out
 
@@ -333,14 +472,14 @@ def smoke(ds: Dataset, ledger_path: str, start: str, end: str, symbols, *, autho
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description='PIT view smoke: shape/coverage counts over a development window')
     ap.add_argument('cmd', choices=['smoke'])
-    for k in ('--manifest', '--store', '--universe', '--ledger', '--start', '--end', '--symbols', '--author',
+    for k in ('--manifest', '--store', '--universe', '--books', '--ledger', '--start', '--end', '--symbols', '--author',
               '--cairo-date'):
         ap.add_argument(k, required=True)
     a = ap.parse_args(argv)
     try:
         with open(a.universe, encoding='utf-8') as f:
             u = json.load(f)
-        ds = Dataset(M.load(a.manifest), a.store, u)
+        ds = Dataset(M.load(a.manifest), a.store, u, books=a.books.split(','))
         print(json.dumps(smoke(ds, a.ledger, a.start, a.end, a.symbols.split(','), author=a.author,
                                cairo_date=a.cairo_date), indent=1, sort_keys=True))
         return 0

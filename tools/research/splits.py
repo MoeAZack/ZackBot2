@@ -12,7 +12,7 @@ Purge and embargo (declared cap, never realised durations):
   allowed in `[start + purge + embargo, end - horizon]`, so the lookback a decision reads starts at or after
   `start + embargo` and every episode ends at or before `end`: an episode, its look-back and its whole hold lie inside
   one split, and a view never reads across a split boundary (`access_range` == the split window).
-The lookback must cover slip-v1 (ATR14 on closed bars = 15 bars), so `lookback_bars >= MIN_LOOKBACK`.
+The lookback must cover slip-v1 (TR-SMA14 on closed bars = 15 bars), so `lookback_bars >= MIN_LOOKBACK`.
 
 Holdout rules (the guard itself lives in pit.Access): exactly one holdout, chronologically last; nothing overlaps.
 
@@ -31,7 +31,7 @@ import manifest as M                                                            
 FORMAT = 'zb-splits/1'
 NAMES = ('calibration', 'train', 'walk_forward', 'holdout')      # a subset of ledger.SPLITS
 TS_FMT = '%Y-%m-%dT%H:%M:%SZ'
-MIN_LOOKBACK = 15                                                # slip-v1: ATR14 over closed bars needs 15 bars
+MIN_LOOKBACK = 15                                                # slip-v1: TR-SMA14 over closed bars needs 15 bars
 
 
 class SplitError(ValueError):

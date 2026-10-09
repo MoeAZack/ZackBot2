@@ -2,6 +2,8 @@
 intrabar resolver (intrabar.py) and the `zb-research-run/1` envelope (report.py). Small synthetic stores and bars only
 (no network, no real data, no strategy, no returns)."""
 import ast
+import shutil
+import subprocess
 import glob
 import hashlib
 import io
@@ -73,10 +75,10 @@ def build_store(store):
             if not (sym == 'XAUUSDT' and m == 3):            # XAU: no mark bars in March (join gap test)
                 put(store, f'um/monthly/markPriceKlines/{sym}/1h/{sym}-1h-{tag}.zip',
                     [kl(t, HOUR) for t in range(a, b, HOUR)])
-            rate = 0.0001 if sym == 'AAAUSDT' else -0.0002
+            rate, ih = (0.0001, 8) if sym == 'AAAUSDT' else (-0.0002, 4)      # gold: observed 4h cadence
             put(store, f'um/monthly/fundingRate/{sym}/{sym}-fundingRate-{tag}.zip',
                 ['calc_time,funding_interval_hours,last_funding_rate'] +
-                [f'{t + 3},8,{rate}' for t in range(a, b, 8 * HOUR)])
+                [f'{t + 3},{ih},{rate}' for t in range(a, b, ih * HOUR)])
     a, b = month_range(2024, 2)
     put(store, f'um/monthly/klines/AAAUSDT/1m/AAAUSDT-1m-2024-02.zip', [kl(t, MIN) for t in range(a, b, MIN)])
 
@@ -87,13 +89,40 @@ def world(tmp_path_factory):
     build_store(store)
     m = M.build(['um/monthly'], manifest_id='fx-r3', source_class='archive-verified', base=store,
                 data_root='binance_um', survivor_only=False, loader=M.ARCHIVE_LOADER)
-    u = U.build(U.load_daily(m, store), manifest_digest=m['digest'])
+    cls = U.make_classes([{'symbol': 'XAUUSDT', 'class': 'gold-commodity', 'subclass': 'gold-spot',
+                           'effective_from_ms': ms('2024-01-01'), 'basis': 'fixture listing notice'}],
+                         classes_id='fx-classes', tradfi_cutoff_ms=ms('2025-12-01'), reviewed_cairo='2026-10-09',
+                         method='fixture', pre_cutoff_rule='fixture: pre-cutoff symbols are crypto')
+    u = U.build(U.load_daily(m, store), manifest_digest=m['digest'], classes=cls)
     return store, m, u
+
+
+BOOKS = ('crypto', 'gold-commodity')
 
 
 def ds_of(world):
     store, m, u = world
-    return P.Dataset(m, store, u)
+    return P.Dataset(m, store, u, books=BOOKS)
+
+
+def git(repo, *a):
+    return subprocess.run(['git', '-C', str(repo), '-c', 'user.name=t', '-c', 'user.email=t@example.invalid', *a],
+                          capture_output=True, text=True, check=True, stdin=subprocess.DEVNULL).stdout.strip()
+
+
+@pytest.fixture
+def repo(tmp_path):
+    """A throwaway Git checkout holding the research modules + one candidate file (the evaluation code)."""
+    r = tmp_path / 'repo'
+    for rel in R.CORE_EVAL_FILES:
+        (r / rel).parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(os.path.join(ROOT, rel), r / rel)
+    (r / 'strategy').mkdir()
+    (r / 'strategy' / 'cand.py').write_text('RULE = 1\n')
+    git(tmp_path, 'init', '-q', str(r))
+    git(r, 'add', '-A')
+    git(r, 'commit', '-q', '-m', 'fixture')
+    return str(r)
 
 
 PLAN_SPLITS = [{'name': 'train', 'start': '2024-02-05T00:00:00Z', 'end': '2024-02-19T00:00:00Z'},
@@ -111,8 +140,9 @@ def dirs(tmp_path):
     return str(tmp_path / 'ledger' / 'fam_x.jsonl'), str(tmp_path / 'runs')
 
 
-def access(ds, path, pl='default'):
-    return P.Access(ds, plan() if pl == 'default' else pl, path, candidate_id='c.v1', author='t', cairo_date='2026-10-09')
+def access(ds, path, pl='default', repo=M.REPO, candidate_id='c.v1'):
+    return P.Access(ds, plan() if pl == 'default' else pl, path, candidate_id=candidate_id, author='t',
+                    cairo_date='2026-10-09', repo=repo)
 
 
 # ------------------------------------------------------------------ PIT view
@@ -131,38 +161,68 @@ def test_view_serves_only_closed_bars_available_at_t(world, tmp_path):
         w.view(t).t = t + H4
 
 
-def test_future_perturbation_cannot_change_a_view_and_a_peeking_control_is_caught(world, tmp_path):
+def test_evaluator_gets_only_the_view_and_a_peeking_control_is_caught(world, tmp_path):
+    """Codex R3 P1: evaluation runs through `evaluate`, which hands out the frozen View only and re-runs every decision
+    with all not-yet-available rows perturbed; an evaluator that bypasses the view fails closed."""
     ds = ds_of(world)
     path, _ = dirs(tmp_path)
     w = access(ds, path).open('train', lineage='root')
     rnd = random.Random(7)
     lo, hi = plan().decision_range('train')
     times = sorted({lo + rnd.randrange((hi - lo) // H4 + 1) * H4 for _ in range(40)})
+    seen = []
 
     def honest(v):
+        seen.append(v)
         b = v.bars('AAAUSDT', '4h', 15)
         return (b[-1].close > sum(x.close for x in b) / 15, round(C.slip_bps(b, 0.05), 9))
 
-    def peeking(v):                                       # negative control: bypasses the view to read the raw rows
-        rows = [r for f in ds.files('klines', 'AAAUSDT', '4h') for r in ds.rows(f)]
+    out = P.evaluate(w, honest, times)
+    assert len(out) == len(times) and all(type(v) is P.View for v in seen)
+    v = seen[0]
+    assert type(v).__slots__ == ('_cap', 't') and not any(hasattr(v, a) for a in ('ds', '_w', '_ds', 'window', 'lo'))
+    assert not isinstance(v._cap, (P.Window, P.Dataset)) and not hasattr(v._cap, '__dict__')
+
+    def peeking(v):                           # negative control: reaches the dataset behind the capability
+        src = P._SOURCES[v._cap]._ds
+        rows = [r for f in src.files('klines', 'AAAUSDT', '4h') for r in src.rows(f)]
         nxt = [r for r in rows if r.open_ms == v.t]
         return nxt[0].close if nxt else None
 
-    files = ds.files('klines', 'AAAUSDT', '4h')
-    caught = 0
-    for t in times:
-        before = (honest(w.view(t)), peeking(w.view(t)))
-        saved = {f['path']: list(ds.rows(f)) for f in files}
-        for f in files:                                    # perturb every bar not yet closed at t
-            rows = ds.rows(f)
-            for i, r in enumerate(rows):
-                if r.available_ms > t:
-                    rows[i] = r._replace(close=r.close * 3, high=r.high * 3)
-        assert honest(w.view(t)) == before[0]
-        caught += peeking(w.view(t)) != before[1]
-        for f in files:
-            ds.rows(f)[:] = saved[f['path']]
-    assert caught == len(times)                            # the peeking control is detected at every decision
+    for t in times[:5]:
+        with pytest.raises(P.PITError, match='bypassed'):
+            P.evaluate(w, peeking, [t])
+    with pytest.raises(P.PITError, match='Window opened through Access'):
+        P.evaluate(v, honest, times)
+
+
+def test_position_capability_replaces_caller_entered_ms(world, tmp_path):
+    ds = ds_of(world)
+    path, _ = dirs(tmp_path)
+    acc = access(ds, path, pl=None)
+    w = acc.open_development('2024-02-05T00:00:00Z', '2024-03-04T00:00:00Z', lineage='root')
+    t0 = ms('2024-02-12')
+    pos = w.view(t0).enter('AAAUSDT', 'dec-1')
+    v = w.view(t0 + 10 * H4)
+    assert v.bars('AAAUSDT', '4h', 3, position=pos)[-1].available_ms == v.t
+    assert w.decisions() == (('dec-1', 'AAAUSDT', t0),)
+    with pytest.raises(P.PITError, match='issued only by View.enter'):
+        P.Position('BTCUSDT', w.lo, 'forged', v._cap)                   # cannot invent an earlier membership date
+    with pytest.raises(AttributeError):
+        pos.entry_ms = w.lo
+    with pytest.raises(P.PITError, match='already issued'):
+        w.view(t0).enter('AAAUSDT', 'dec-1')
+    with pytest.raises(P.PITError, match='not a universe member'):
+        w.view(t0).enter('BTCUSDT', 'dec-2')
+    with pytest.raises(P.PITError, match='position is for'):
+        v.bars('XAUUSDT', '4h', 1, position=pos)
+    with pytest.raises(P.PITError, match='not after the decision time'):
+        w.view(t0 - H4).bars('AAAUSDT', '4h', 1, position=pos)
+    other = acc.open_development('2024-02-05T00:00:00Z', '2024-03-04T00:00:00Z')
+    with pytest.raises(P.PITError, match='issued by this window'):
+        other.view(t0 + H4).bars('AAAUSDT', '4h', 1, position=pos)
+    with pytest.raises(TypeError):
+        v.bars('AAAUSDT', '4h', 1, entered_ms=w.lo)                    # the self-attested integer is gone
 
 
 def test_truncation_rerun_reproduces_every_decision(world, tmp_path):
@@ -199,19 +259,28 @@ def test_funding_events_timestamp_rule_and_mark_join(world, tmp_path):
     path, _ = dirs(tmp_path)
     w = access(ds, path, pl=None).open_development('2024-02-05T00:00:00Z', '2024-03-20T00:00:00Z', lineage='root')
     t0 = ms('2024-02-12') + 3                                            # a funding calc_time
+    pos = w.view(t0).enter('AAAUSDT', 'f-aaa')
     v = w.view(ms('2024-02-14'))
-    ev = v.funding_events('AAAUSDT', t0, t0 + 16 * HOUR)            # entry == T counts, exit == T does not
+    ev = v.funding_events(pos, t0 + 16 * HOUR)                          # entry == T counts, exit == T does not
     assert [e[0] for e in ev] == [t0, t0 + 8 * HOUR]
     assert ev[0][2] == px(t0 - 3 - MIN)                                 # close of the 1h mark bar closing at T
     long_ = C.funding_cost('long', 2.0, ev, C.STRESS['base'])
     short = C.funding_cost('short', 2.0, ev, C.STRESS['base'])
     assert long_ > 0 and short == -long_                                # longs pay a positive rate, shorts receive
     assert C.funding_cost('long', 2.0, ev, C.STRESS['funding_x2']) == pytest.approx(2 * long_)
-    gold = v.funding_events('XAUUSDT', t0, t0 + 9 * HOUR)
+    assert C.funding_cost('long', 2.0, ev, C.STRESS['funding_mark_adverse']) == pytest.approx(long_ * 1.005)
+    assert C.funding_cost('short', 2.0, ev, C.STRESS['funding_mark_adverse']) == pytest.approx(short * 0.995)
+    gpos = w.view(t0).enter('XAUUSDT', 'f-xau')
+    gold = v.funding_events(gpos, t0 + 9 * HOUR)
+    assert [e[0] for e in gold] == [t0, t0 + 4 * HOUR, t0 + 8 * HOUR]  # gold's actual 4h funding times
     assert C.funding_cost('long', 1.0, gold, C.STRESS['base']) < 0     # negative rate: longs receive
-    vm = w.view(ms('2024-03-19'))
+    m = C.CostModel(CAL, C.symbol_class_from_universe(world[2]))
+    m.check_funding_cadence('XAUUSDT', v.funding('XAUUSDT', t0))
+    with pytest.raises(C.CostError, match='declares 4h'):
+        m.check_funding_cadence('XAUUSDT', v.funding('AAAUSDT', t0))    # 8h rows cannot pass as gold's
+    mpos = w.view(ms('2024-03-11')).enter('XAUUSDT', 'f-gap')
     with pytest.raises(P.PITError, match='gap > 1 bar'):
-        vm.funding_events('XAUUSDT', ms('2024-03-11'), ms('2024-03-12'))
+        w.view(ms('2024-03-19')).funding_events(mpos, ms('2024-03-12'))
 
 
 def test_dataset_fails_closed_on_changed_bytes(world, tmp_path):
@@ -222,7 +291,7 @@ def test_dataset_fails_closed_on_changed_bytes(world, tmp_path):
     rel = 'um/monthly/klines/AAAUSDT/4h/AAAUSDT-4h-2024-02.zip'
     a, b = month_range(2024, 2)
     put(s2, rel, [kl(t, H4) for t in range(a, b - H4, H4)])               # republished with its own matching .ok
-    ds = P.Dataset(m, s2, u)
+    ds = P.Dataset(m, s2, u, books=BOOKS)
     path, _ = dirs(tmp_path)
     w = access(ds, path).open('train', lineage='root')
     with pytest.raises(P.PITError, match='no longer match'):
@@ -239,9 +308,15 @@ def test_universe_must_match_manifest(world):
     bad = dict(u, manifest_digest='0' * 64)
     bad['digest'] = U.digest_of(bad)
     with pytest.raises(P.PITError, match='different manifest'):
-        P.Dataset(m, store, bad)
+        P.Dataset(m, store, bad, books=BOOKS)
     with pytest.raises(P.PITError, match='PIT universe'):
         P.Dataset(m, store, None)
+    for books in (None, (), ('mixed',)):
+        with pytest.raises(P.PITError, match='no mixed default'):
+            P.Dataset(m, store, u, books=books)
+    crypto_only = P.Dataset(m, store, u, books=('crypto',))
+    assert 'XAUUSDT' not in crypto_only.members(ms('2024-02-12'))      # gold lives in its own book
+    assert 'XAUUSDT' in ds_of(world).members(ms('2024-02-12'))
 
 
 # ------------------------------------------------------------------ splits + holdout guard
@@ -278,13 +353,16 @@ def test_split_plan_refusals(splits, kw, msg):
         S.SplitPlan(splits, **args)
 
 
-def make_env(ds, pl, *, dirty=False, family='fam_x', window=None, eval_d='e' * 64):
-    run = {'family': family, 'candidate_id': 'c.v1', 'split': 'holdout', 'window': window or pl.window('holdout'),
-           'manifest_digest': ds.digest, 'universe_digest': ds.universe_digest, 'split_plan_digest': pl.digest,
-           'cost_model_digest': 'c' * 64, 'slip_cal_digest': 'd' * 64, 'eval_digest': eval_d, 'seeds': [1, 2],
-           'code': {'git_head': 'a' * 40, 'dirty': dirty, 'python': '3.14', 'libs': {}},
-           'author': 't', 'cairo_date': '2026-10-09'}
-    return R.envelope(run)
+def ident(ds, pl, *, family='fam_x', window=None, candidate_id='c.v1'):
+    return {'family': family, 'candidate_id': candidate_id, 'split': 'holdout', 'window': window or pl.window('holdout'),
+            'books': list(ds.books), 'manifest_digest': ds.digest, 'universe_digest': ds.universe_digest,
+            'split_plan_digest': pl.digest, 'cost_model_digest': 'c' * 64, 'slip_cal_digest': 'd' * 64,
+            'author': 't', 'cairo_date': '2026-10-09'}
+
+
+def make_env(ds, pl, repo, *, config=None, **kw):
+    return R.freeze_run(repo=repo, eval_files=['strategy/cand.py'], config=config or {'k': 1}, seeds=[1, 2],
+                        **ident(ds, pl, **kw))
 
 
 def reveal(path, env, kind='holdout_reveal'):
@@ -294,13 +372,13 @@ def reveal(path, env, kind='holdout_reveal'):
              detail={'eval_digest': r['eval_digest']})
 
 
-def test_holdout_is_sealed_without_the_atomic_reveal(world, tmp_path):
+def test_holdout_is_sealed_without_the_atomic_reveal(world, tmp_path, repo):
     ds = ds_of(world)
     path, runs = dirs(tmp_path)
     pl = plan()
-    acc = access(ds, path, pl)
+    acc = access(ds, path, pl, repo=repo)
     acc.open('train', lineage='root')                                   # the family exists, no reveal yet
-    env = make_env(ds, pl)
+    env = make_env(ds, pl, repo)
     with pytest.raises(P.PITError, match='sealed'):
         acc.open('holdout')                                             # no envelope at all
     with pytest.raises(P.PITError, match='sealed'):
@@ -315,6 +393,7 @@ def test_holdout_is_sealed_without_the_atomic_reveal(world, tmp_path):
     assert w.view(w.hi).bars('AAAUSDT', '4h', 3)
     recs = L._check_state(path)['fam_x']
     assert [r['kind'] for r in recs][-2:] == ['holdout_reveal', 'data_access'] and recs[-1]['split'] == 'holdout'
+    assert recs[-1]['candidate_id'] == 'c.v1' and recs[-1]['detail']['books'] == list(BOOKS)
     acc.open('train')                                                   # any other record closes the reveal group
     with pytest.raises(P.PITError, match='group is closed'):
         acc.open('holdout', envelope=env)
@@ -322,48 +401,149 @@ def test_holdout_is_sealed_without_the_atomic_reveal(world, tmp_path):
     acc.open('holdout', envelope=env)
 
 
-@pytest.mark.parametrize('mutate,msg', [
-    (dict(dirty=True), 'sealable'),
+@pytest.mark.parametrize('kw,msg', [
     (dict(family='fam_y'), 'identity'),
     (dict(window={'start': '2024-03-04T00:00:00Z', 'end': '2024-03-18T00:00:00Z'}), 'identity'),
+    (dict(candidate_id='c.v2'), 'identity'),
 ])
-def test_holdout_guard_refuses_dirty_or_foreign_envelopes(world, tmp_path, mutate, msg):
+def test_holdout_guard_refuses_foreign_envelopes(world, tmp_path, repo, kw, msg):
     ds = ds_of(world)
     path, runs = dirs(tmp_path)
     pl = plan()
-    acc = access(ds, path, pl)
+    acc = access(ds, path, pl, repo=repo)
     acc.open('train', lineage='root')
-    env = make_env(ds, pl, **mutate)
+    env = make_env(ds, pl, repo, **kw)
     R.write_envelope(runs, env)
     with pytest.raises(P.PITError, match=msg):
         acc.open('holdout', envelope=env)
 
 
-def test_ledger_recomputes_run_digest_from_the_envelope(world, tmp_path):
+def test_code_identity_is_captured_not_self_attested(world, tmp_path, repo):
+    """Codex R3 P1: a fabricated clean identity, a dirty or moved checkout, or a changed evaluator never opens."""
+    ds = ds_of(world)
+    pl = plan()
+    env = make_env(ds, pl, repo)
+    run = env['run']
+    assert run['code']['git_head'] == git(repo, 'rev-parse', 'HEAD') and run['code']['dirty'] is False
+    assert {f['path'] for f in run['eval']['files']} == set(R.CORE_EVAL_FILES) | {'strategy/cand.py'}
+    assert R.verify_code(env, repo) == []
+    # fabricated: any 40-hex head, an arbitrary eval_digest, empty libs
+    fake = dict(run, eval_digest='e' * 64)
+    with pytest.raises(R.ReportError, match='eval_digest does not match'):
+        R.envelope(fake)
+    fake = dict(run, code=dict(run['code'], git_head='a' * 40))
+    assert any('HEAD moved' in x for x in R.verify_code(R.envelope(fake), repo))
+    fake = dict(run, eval=dict(run['eval'], files=[dict(f, sha256='0' * 64) if f['path'] == 'strategy/cand.py' else f
+                                                   for f in run['eval']['files']]))
+    fake['eval_digest'] = R.eval_digest(fake['eval']['files'], fake['eval']['config'], fake['seeds'])
+    assert any('evaluation files changed' in x for x in R.verify_code(R.envelope(fake), repo))
+    assert R.verify_code(R.envelope(dict(run, code=dict(run['code'], libs={'numpy': '9'}))), repo) == [
+        'dependency set differs from the canonical frozen set']
+    no_core = [f for f in run['eval']['files'] if f['path'] != 'tools/research/pit.py']
+    with pytest.raises(R.ReportError, match='CORE_EVAL_FILES'):
+        R.envelope(dict(run, eval=dict(run['eval'], files=no_core)))
+    with pytest.raises(R.ReportError, match='tracked'):
+        R.freeze_run(repo=repo, eval_files=['strategy/untracked.py'], config={}, seeds=[], **ident(ds, pl))
+    # the executing checkout changes after freezing
+    cand = os.path.join(repo, 'strategy', 'cand.py')
+    with open(cand, 'a') as f:
+        f.write('RULE = 2\n')
+    bad = R.verify_code(env, repo)
+    assert 'the executing checkout is dirty' in bad and any('evaluation files changed' in x for x in bad)
+    assert any('eval_digest recomputed' in x for x in bad)
+    with pytest.raises(R.ReportError, match='dirty'):
+        make_env(ds, pl, repo)                                          # freezing a dirty tree is refused
+    git(repo, 'commit', '-q', '-am', 'tweak')
+    bad = R.verify_code(env, repo)
+    assert any('HEAD moved' in x for x in bad) and not any('dirty' in x for x in bad)
+    os.makedirs(os.path.join(repo, 'research_evidence'), exist_ok=True)
+    with open(os.path.join(repo, 'research_evidence', 'x.json'), 'w') as f:
+        f.write('{}')
+    assert R.code_identity(repo)['dirty'] is False                      # evidence writes are not code
+
+
+def test_moved_or_dirty_checkout_cannot_open_the_holdout(world, tmp_path, repo):
+    ds = ds_of(world)
+    path, runs = dirs(tmp_path)
+    pl = plan()
+    acc = access(ds, path, pl, repo=repo)
+    acc.open('train', lineage='root')
+    env = make_env(ds, pl, repo)
+    R.write_envelope(runs, env)
+    reveal(path, env)
+    with open(os.path.join(repo, 'strategy', 'cand.py'), 'a') as f:
+        f.write('RULE = 3\n')
+    with pytest.raises(P.PITError, match='frozen code identity'):
+        acc.open('holdout', envelope=env)
+    git(repo, 'commit', '-q', '-am', 'moved')
+    with pytest.raises(P.PITError, match='HEAD moved'):
+        acc.open('holdout', envelope=env)
+
+
+def test_ledger_recomputes_run_digest_from_the_envelope(world, tmp_path, repo):
     ds = ds_of(world)
     path, runs = dirs(tmp_path)
     pl = plan()
     access(ds, path, pl).open('train', lineage='root')
-    env = make_env(ds, pl)
+    env = make_env(ds, pl, repo)
     with pytest.raises(L.LedgerError, match='frozen run envelope'):
         reveal(path, env)                                               # envelope not stored: refused
     R.write_envelope(runs, env)
-    other = make_env(ds, pl, eval_d='f' * 64)
+    other = make_env(ds, pl, repo, config={'k': 2})
     R.write_envelope(runs, other)
     forged = dict(env, run=other['run'])                                # stored digest of A, identity of B
     with pytest.raises(L.LedgerError, match='frozen run envelope'):
         reveal(path, forged)
     reveal(path, env)
     assert L.recompute_run_digest(L._check_state(path)['fam_x'][-1], runs) == env['run_digest']
-    assert L.recompute_run_digest({'run_digest': env['run_digest']}) is None    # no runs store: not checked
+    assert L.recompute_run_digest({'run_digest': env['run_digest']}) == 'no-immutable-runs-store'
+
+
+def test_scratch_ledger_never_skips_the_envelope_proof_for_holdout_records(world, tmp_path, repo):
+    """Codex R3 P1 / ruling 5: no runs store beside the ledger = development only."""
+    ds = ds_of(world)
+    (tmp_path / 'scratch').mkdir()
+    path = str(tmp_path / 'scratch' / 'fam_x.jsonl')
+    pl = plan()
+    access(ds, path, pl).open('train', lineage='root')                 # development/train records still work
+    env = make_env(ds, pl, repo)
+    with pytest.raises(L.LedgerError, match='immutable runs store'):
+        reveal(path, env)
+    r = env['run']
+    with pytest.raises(L.LedgerError, match='immutable runs store'):
+        L.append(path, kind='data_access', candidate_id='c.v1', split='holdout', window=r['window'], author='t',
+                 cairo_date='2026-10-09', manifest_digest=r['manifest_digest'], run_digest=env['run_digest'],
+                 detail={'eval_digest': r['eval_digest']})
+
+
+def test_reveal_components_bind_the_complete_identity_cross_candidate_rejected(world, tmp_path, repo):
+    """Codex R3 P2: a component naming another candidate (with its own valid envelope) cannot join the reveal group."""
+    ds = ds_of(world)
+    path, runs = dirs(tmp_path)
+    pl = plan()
+    access(ds, path, pl).open('train', lineage='root')
+    env = make_env(ds, pl, repo)
+    other = make_env(ds, pl, repo, candidate_id='c.v2')
+    R.write_envelope(runs, env)
+    R.write_envelope(runs, other)
+    reveal(path, env)
+    o = other['run']
+    with pytest.raises(L.LedgerError, match='complete identity'):
+        L.append(path, kind='data_access', candidate_id='c.v2', split='holdout', window=o['window'], author='t',
+                 cairo_date='2026-10-09', manifest_digest=o['manifest_digest'], run_digest=other['run_digest'],
+                 detail={'eval_digest': o['eval_digest']})
+    with pytest.raises(P.PITError, match='another run'):
+        access(ds, path, pl, repo=repo, candidate_id='c.v2').open('holdout', envelope=other)
+    access(ds, path, pl, repo=repo).open('holdout', envelope=env)       # the right candidate still opens
 
 
 # ------------------------------------------------------------------ costs + slip-v1
 CAL = {'id': 'slip-cal-v1', 'target': 'per-side fill-vs-reference bps', 'source_series': 'synthetic fixture',
        'estimator': 'median ratio', 'loss': 'absolute', 'pooling': 'per cost class', 'fallback': 'floor 2 bps',
        'limit_touch_rule': C.LIMIT_TOUCH_RULE,
-       'calibration_window': {'start': '2022-01-01T00:00:00Z', 'end': '2022-07-01T00:00:00Z'},
-       'c': {'crypto': 0.05, 'tradfi_gold': 0.05}}
+       'calibration_window': {'start': '2022-01-01T00:00:00Z', 'end': '2022-07-01T00:00:00Z'}, 'fitted': False,
+       'c': {'crypto': 0.05, 'gold': 0.06, 'commodity': 0.07, 'equity': 0.08, 'fx': 0.09}}
+SC = {'BTCUSDT': 'crypto', 'XAUUSDT': 'gold', 'CLUSDT': 'commodity', 'TSLAUSDT': 'equity', 'USDBRLUSDT': 'fx'}
 
 
 def bars_of(rows):
@@ -373,13 +553,27 @@ def bars_of(rows):
 def test_slip_v1_formula_is_exact():
     rows = [(100, 101, 99, 100)] * 15
     b = bars_of(rows)
-    assert C.atr14(b) == 2.0
+    assert C.tr_sma14(b) == 2.0 and C.wilder_atr14(b) == 2.0                 # 15 bars: Wilder's seed = the SMA
     assert C.slip_bps(b, 0.05) == pytest.approx(max(2, 0.05 * 1e4 * 2 / 100))          # 10 bps
     assert C.slip_bps(b, 0.001) == 2.0                                                   # floor
     gap = bars_of([(100, 100, 100, 100)] + [(100, 100, 100, 100)] * 13 + [(110, 111, 109, 110)])
-    assert C.atr14(gap) == pytest.approx(11 / 14)                                        # |h - prev close| counts
+    assert C.tr_sma14(gap) == pytest.approx(11 / 14)                                     # |h - prev close| counts
     with pytest.raises(C.CostError, match='15 closed bars'):
-        C.atr14(b[:14])
+        C.tr_sma14(b[:14])
+    assert not hasattr(C, 'atr14')                                                       # renamed: not Wilder ATR
+
+
+def test_wilder_atr14_is_the_sensitivity_candidate():
+    b = bars_of([(100, 101, 99, 100)] * 15 + [(100, 108, 100, 100)])                     # one TR of 8 after 14 of 2
+    assert C.tr_sma14(b) == pytest.approx((13 * 2 + 8) / 14)                             # the simple mean of 14 TRs
+    assert C.wilder_atr14(b) == pytest.approx((2 * 13 + 8) / 14)                         # Wilder smoothing step
+    long_ = bars_of([(100, 101, 99, 100)] * 15 + [(100, 108, 100, 100)] * 3)
+    assert C.wilder_atr14(long_) != pytest.approx(C.tr_sma14(long_))
+    assert C.slip_bps(long_, 0.05, C.WILDER_ATR14) == pytest.approx(
+        max(2, 0.05 * 1e4 * C.wilder_atr14(long_) / 100))
+    assert C.STRESS['slip_wilder_atr14'].vol == C.WILDER_ATR14 and C.STRESS['base'].vol == C.TR_SMA14
+    with pytest.raises(C.CostError, match='vol must be'):
+        C.slip_bps(long_, 0.05, 'ATR14')
 
 
 def test_fill_prices_are_adverse_and_gap_stops_fill_at_open():
@@ -396,35 +590,48 @@ def test_fill_prices_are_adverse_and_gap_stops_fill_at_open():
 
 def test_limit_fill_rule_and_stress_rows():
     assert set(C.STRESS) == {'base', 'fees_slip_x2', 'funding_x2', 'gap_slip_x5', 'limit_no_fill', 'limit_as_taker',
-                             'flat_funding_legacy'}
+                             'flat_funding_legacy', 'slip_wilder_atr14', 'funding_mark_adverse'}
     assert C.limit_fill('touch', C.STRESS['base']) is None
     assert C.limit_fill('price_through', C.STRESS['base']) == 'maker'
     assert C.limit_fill('price_through', C.STRESS['limit_no_fill']) is None
     assert C.limit_fill('touch', C.STRESS['limit_as_taker']) == 'taker'
-    m = C.CostModel(CAL)
+    m = C.CostModel(CAL, SC)
     assert C.fee(1000, 'taker', m.row('BTCUSDT'), C.STRESS['base']) == pytest.approx(0.5)
     assert C.fee(1000, 'maker', m.row('BTCUSDT'), C.STRESS['fees_slip_x2']) == pytest.approx(0.4)
     assert C.funding_cost('short', 1, [], C.STRESS['flat_funding_legacy'], bars_held=10,
                           entry_notional=1000) == pytest.approx(0.5)
 
 
-def test_cost_rows_per_class_with_gold_provisional():
-    m = C.CostModel(CAL)
+def test_cost_rows_per_class_gold_own_row_no_crypto_fallback(world):
+    m = C.CostModel(CAL, SC)
     gold, crypto = m.row('XAUUSDT'), m.row('BTCUSDT')
-    assert gold.cost_class == 'tradfi_gold' and gold.status == 'PROVISIONAL'
-    assert (gold.taker, gold.maker, gold.fee_tier, gold.funding) == (crypto.taker, crypto.maker, crypto.fee_tier,
-                                                                     crypto.funding)
-    assert m.labels('XAUUSDT') == ['COST-TRADFI_GOLD-PROVISIONAL'] and m.labels('BTCUSDT') == []
-    rows = dict(C.DEFAULT_ROWS, tradfi_oil=C.CostRow('tradfi_oil', 0.0004, 0.0002, 'VIP0', 'actual', 'mon-fri',
-                                                     'PROVISIONAL'))
-    m2 = C.CostModel(dict(CAL, c=dict(CAL['c'], tradfi_oil=0.07)), rows=rows,
-                     symbol_class=dict(C.DEFAULT_SYMBOL_CLASS, CLUSDT='tradfi_oil'))
-    assert m2.row('CLUSDT').taker == 0.0004 and m2.slip_c('CLUSDT') == 0.07 and m2.digest != m.digest
+    assert gold.cost_class == 'gold' and gold.status == 'PROVISIONAL' and gold.funding_cadence_hours == 4
+    assert (gold.taker, gold.maker, gold.fee_tier) == (crypto.taker, crypto.maker, crypto.fee_tier)   # Binance tier
+    assert m.slip_c('XAUUSDT') == 0.06 != m.slip_c('BTCUSDT')                                        # own slip c
+    assert m.labels('XAUUSDT') == [C.FUNDING_MARK_LABEL, 'SLIP-VOL-TR-SMA14', 'COST-GOLD-PROVISIONAL',
+                                   'SLIP-C-UNFITTED', 'WEEKEND-REFERENCE-GAP']
+    assert m.labels('BTCUSDT') == [C.FUNDING_MARK_LABEL, 'SLIP-VOL-TR-SMA14', 'SLIP-C-UNFITTED']
+    for sym, cls in (('CLUSDT', 'commodity'), ('TSLAUSDT', 'equity'), ('USDBRLUSDT', 'fx')):
+        assert m.row(sym).cost_class == cls and m.row(sym).status == 'UNCALIBRATED'
+        assert f'COST-{cls.upper()}-UNCALIBRATED' in m.labels(sym)
+    with pytest.raises(C.CostError, match='no silent crypto fallback'):
+        m.row('NEWUSDT')
+    with pytest.raises(TypeError):
+        C.CostModel(CAL)                                                   # no default symbol mapping
     with pytest.raises(C.CostError, match='one coefficient per cost class'):
-        C.CostModel(dict(CAL, c={'crypto': 0.05}))
+        C.CostModel(dict(CAL, c={'crypto': 0.05}), SC)
     with pytest.raises(C.CostError, match='primary rule'):
-        C.CostModel(dict(CAL, limit_touch_rule='touch = maker'))
-    assert C.CostModel(CAL).digest == m.digest
+        C.CostModel(dict(CAL, limit_touch_rule='touch = maker'), SC)
+    with pytest.raises(C.CostError, match='fitted'):
+        C.CostModel(dict(CAL, fitted='no'), SC)
+    assert C.CostModel(CAL, SC).digest == m.digest != C.CostModel(CAL, SC, vol_estimator=C.WILDER_ATR14).digest
+    u = world[2]
+    assert C.symbol_class_from_universe(u) == {'AAAUSDT': 'crypto', 'XAUUSDT': 'gold'}
+    assert C.symbol_class_from_universe({'symbols': [
+        {'symbol': 'CLUSDT', 'class': 'gold-commodity', 'subclass': 'energy-oil'},
+        {'symbol': 'PAXGUSDT', 'class': 'gold-commodity', 'subclass': 'gold-tokenized'},
+        {'symbol': 'ODDUSDT', 'class': 'unclassified', 'subclass': 'x'}]}) == {'CLUSDT': 'commodity',
+                                                                               'PAXGUSDT': 'commodity'}
 
 
 def test_quantity_is_floored_never_upsized():
@@ -491,10 +698,10 @@ def test_resolver_on_the_pit_view_minutes(world, tmp_path):
 
 
 # ------------------------------------------------------------------ report envelope
-def test_envelope_write_once_and_report_shape(world, tmp_path):
+def test_envelope_write_once_and_report_shape(world, tmp_path, repo):
     ds = ds_of(world)
-    env = make_env(ds, plan())
-    assert env['run_digest'] == R.run_digest(env['run'])
+    env = make_env(ds, plan(), repo)
+    assert env['run_digest'] == R.run_digest(env['run']) and env['format'] == 'zb-research-run/2'
     R.write_envelope(str(tmp_path), env)
     R.write_envelope(str(tmp_path), env)                                         # identical: no-op
     assert R.load_envelope(str(tmp_path), env['run_digest']) == env
@@ -507,7 +714,8 @@ def test_envelope_write_once_and_report_shape(world, tmp_path):
         R.make_report(env, {'long': {'base': sec}})
     with pytest.raises(R.ReportError, match='keys must be exactly'):
         R.make_report(env, {'short': {row: dict(sec, ci={}) for row in C.STRESS}})
-    assert R.sealable(make_env(ds, plan(), dirty=True)) == ['dirty working tree']
+    dirty = dict(env['run'], code=dict(env['run']['code'], dirty=True))
+    assert R.sealable(R.envelope(dirty)) == ['dirty working tree']
 
 
 def test_runtime_never_imports_research_code():

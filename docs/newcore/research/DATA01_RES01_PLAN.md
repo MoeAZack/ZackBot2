@@ -42,7 +42,8 @@ evidence until the rules below are executable in R1-R3.
 - **Funding:** signed actual rate x mark notional at each `fundingTime` the position spans (longs pay positive, shorts
   receive). The legacy flat 0.005%/bar stays only as a reproduction row.
 - **Slippage (frozen formula, `slip-v1`):** per side, in bps of fill price,
-  `slip_bps = max(2, c x 10^4 x ATR14 / close)` on the signal timeframe's closed bars (lookback 14). Gap/stop fills at
+  `slip_bps = max(2, c x 10^4 x TR-SMA14 / close)` on the signal timeframe's closed bars (TR-SMA14 = the simple mean
+  of the last 14 true ranges, not Wilder's ATR; Wilder ATR14 is the `slip_wilder_atr14` sensitivity row). Gap/stop fills at
   the bar open when price opens through the stop. Unspecified `k x ATR proxy` is not accepted.
 - **Calibration config `slip-cal-v1` (fully frozen, hashed, cited by digest):** names the observed target (per-side
   fill-vs-reference bps), the source series, the estimator and loss, symbol pooling, the fallback when execution-grade
@@ -278,23 +279,39 @@ Built inside the existing NEWCORE research path, not beside it:
 
 ## R3 status (09 Oct 2026 Cairo; harness core only, no strategy evaluated, no returns computed)
 
+Codex R3 review 6077894871 applied (stacked on the fixed R2 universe `pit-top40-qv30d-v2`):
+
 - `tools/research/pit.py` (the plan's `data.py`): `Dataset` reads only through the manifest (SHA-256 re-check, fail
-  closed) and the PIT universe; `Access` records every opening as a ledger `data_access` before returning data;
-  `Window.view(t)` is frozen at `t` and every accessor filters `available_ms <= t`; symbols served only while universe
-  members (at `t`, or at the entry decision of an open position). Funding joins use the 1h mark close available at
-  `fundingTime`, never forward-filled across a gap. Sealed holdout opens only inside the ledger's open atomic
-  `holdout_reveal` / `holdout_rerun` group of the same frozen, clean-tree run envelope.
-- `costs.py`: per-class cost rows (`crypto`; `tradfi_gold` = XAUUSDT, equal to crypto, **PROVISIONAL** pending the
-  Codex TradFi ruling), taker/maker with the one limit-touch rule, signed funding, `slip-v1` (ATR14 = simple mean of 14
-  TR over 15 closed bars), adverse tick rounding, gap fills at the open, floored qty, the seven stress rows, and a
-  frozen `slip-cal-v1` config (one `c` per class, hashed). No coefficient is fitted in R3.
+  closed) and the PIT universe, restricted to named asset-class books (no mixed default; gold from `gold-commodity`).
+  `Access` records every opening as a ledger `data_access` before returning data. Capability boundary: evaluator code
+  receives only the frozen `View` (an opaque key, no Dataset/Window reference) through `evaluate()`, which re-runs every
+  decision with all not-yet-available rows perturbed and fails closed if the output changes (the peeking negative
+  control is caught). The caller-supplied `entered_ms` is gone: a symbol outside the universe is served only under a
+  `Position` capability issued by `View.enter()` from a recorded decision (unforgeable, not back-datable, per window).
+  Funding joins use the actual funding timestamps (no assumed cadence) and the funding-mark proxy v1 (1h mark close
+  ending at or before T), never forward-filled across a gap. The sealed holdout opens only when the stored envelope's
+  code identity is re-proven on the executing checkout (`report.verify_code`) and the ledger's open atomic group carries
+  this run's complete identity.
+- `costs.py` (`zb-cost-model/2`): explicit symbol -> cost class mapping from the universe classification, no crypto
+  fallback. Rows: `crypto` (PLAN); `gold` (XAUUSDT: Binance VIP0 fees, its own observed 4h funding cadence checked
+  against the rows, its own slip `c`, weekend reference-gap label; PROVISIONAL); `commodity`, `equity`, `fx`
+  (classified, UNCALIBRATED). `slip-v1` uses `TR-SMA14`; Wilder ATR14 is a sensitivity stress row; `slip-cal-v1` has
+  `fitted` (false = labelled `SLIP-C-UNFITTED`). Nine stress rows incl. `slip_wilder_atr14` and `funding_mark_adverse`
+  (the v1 mark proxy stressed 50 bps against the position; compare with exchange-reported funding in forward/testnet
+  records).
+- `report.py` (`zb-research-run/2`): `freeze_run` captures HEAD, clean-tree status (outside `research_evidence/`),
+  Python and the canonical dependency set itself, hashes the canonical evaluation file list (`CORE_EVAL_FILES` + the
+  candidate's tracked files) with config and seeds into `eval_digest`; `verify_code` re-captures and recomputes all of
+  it at holdout access (moved HEAD, dirty tree, changed file, other Python/deps fail closed).
+- `ledger.py`: every holdout record (reveal, rerun, component) needs the immutable runs store and its recomputed
+  envelope; a scratch ledger is development-only. Components must carry the reveal's complete identity (candidate
+  included); a rerun opens its own access group after full identity binding.
 - `splits.py`: immutable UTC `SplitPlan`; purge = max(lookback, declared horizon), embargo = 1 bar; decisions in
   `[start + purge + embargo, end - horizon]`, so an episode and its look-back stay in one split; one holdout, last.
 - `intrabar.py`: 1m resolution; same-minute and missing/incomplete 1m fall back to stop-first, labelled and counted
   as unresolved toward the 5% PARK rule; both bounds kept.
-- `report.py`: `zb-research-run/1` envelope (`run` block -> `run_digest`), write-once `research_evidence/runs/`,
-  results shape per section 6 x every stress row. `ledger.recompute_run_digest()` now proves holdout digests from the
-  stored envelope whenever `research_evidence/runs/` exists; a `holdout_rerun` now opens its own access group.
-- Smoke (shape/coverage only, development split, `research_evidence/ledger/res01_infra.jsonl`): 2026-01-05..01-12
+- Report shape per section 6 x every stress row; envelopes write-once under `research_evidence/runs/`.
+- Smoke (shape/coverage only, development split, `research_evidence/ledger/res01_infra.jsonl`, run on the v1
+  universe before the #51 fixes; not re-run): 2026-01-05..01-12
   (BTC, ETH; XAU not yet a member) and 2026-02-02..02-09 (XAU, BTC): full 1m/4h/1d/mark coverage; XAUUSDT funds every
   4h (42/week) vs 8h for BTC.

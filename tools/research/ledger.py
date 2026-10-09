@@ -27,8 +27,12 @@ Holdout rules (Codex clarification 1, comment 6071140643; Codex R1 P1, comment 6
 - holdout-split data_access / variant / grid_point / baseline records belong to the atomic reveal (or to a rerun of it):
   they directly follow it with its run_digest, manifest_digest, window and eval_digest; any other record closes it;
 - no variant / grid_point (tuning) on a revealed window afterwards, whatever its split label;
-- (R3) where a `runs` directory sits beside the ledger directory, a holdout record's run_digest must be recomputed from
-  its frozen `zb-research-run/1` envelope there (`recompute_run_digest`), identity included.
+- (R3) every holdout record (reveal, rerun and each component) must have its run_digest recomputed from its frozen
+  `zb-research-run/2` envelope in the immutable `runs` store beside the ledger directory (`recompute_run_digest`),
+  identity included; a ledger with no runs store refuses holdout records (Codex R3 P1: a scratch ledger is
+  development-only, never a sealed-holdout bypass);
+- (R3) a component carries the reveal's complete identity (family, candidate_id, manifest_digest, window, eval_digest,
+  run_digest); a component naming another candidate is refused.
 
 Usage: python tools/research/ledger.py check PATH [--base REV]     (PATH = a family file or the ledger directory)
 """
@@ -63,7 +67,6 @@ REG_KEYS = {'format', 'seq', 'prev', 'kind', 'family', 'ref'}
 FAMILY_RE = re.compile(r'^[a-z0-9][a-z0-9_]*$')
 HEX64 = re.compile(r'^[0-9a-f]{64}$')
 IDENTITY = ('family', 'candidate_id', 'manifest_digest', 'window', 'eval_digest', 'run_digest')
-GROUP = ('manifest_digest', 'window', 'eval_digest', 'run_digest')
 
 
 class LedgerError(ValueError):
@@ -100,9 +103,9 @@ def recompute_run_digest(r: dict, runs_dir=None):
     `<runs_dir>/<run_digest>.json` (report.recompute_run_digest): the record's identity (family, candidate, manifest,
     window, eval_digest, split) must equal the envelope's and the envelope must hash to the stored digest, so a missing
     envelope or a caller-supplied string fails. `runs_dir` = the `runs` directory beside the ledger directory; None (no
-    such directory, e.g. a scratch ledger) = not checked."""
+    such directory, e.g. a scratch ledger) can never prove a holdout record, so it returns a non-digest value."""
     if runs_dir is None:
-        return None
+        return 'no-immutable-runs-store'
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
     import report as R
     return R.recompute_run_digest(r, runs_dir)
@@ -155,12 +158,15 @@ def _parse_family(data: bytes, family: str, runs_dir=None) -> list[dict]:
         need(isinstance(r['author'], str) and r['author'], 'author must be a non-empty string')
         need(_strict(r['cairo_date'], '%Y-%m-%d', 10), 'cairo_date must be a valid YYYY-MM-DD date')
         kind, ident = r['kind'], holdout_identity(r)
+        if r['split'] == 'holdout' and kind != 'window_spent':
+            need(runs_dir is not None, 'a holdout record needs the immutable runs store beside the ledger (no scratch '
+                                       'ledger bypass for the sealed holdout)')
+            need(recompute_run_digest(r, runs_dir) == r['run_digest'],
+                 'run_digest does not match the frozen run envelope')
         if kind in ('holdout_reveal', 'holdout_rerun'):
             need(r['split'] == 'holdout' and r['run_digest'] and r['manifest_digest']
                  and isinstance(r['detail'].get('eval_digest'), str) and HEX64.match(r['detail']['eval_digest']),
                  f'{kind} needs split=holdout, run_digest, manifest_digest and detail.eval_digest (64 hex)')
-            rd = recompute_run_digest(r, runs_dir)
-            need(rd is None or rd == r['run_digest'], 'run_digest does not match the frozen run envelope')
         if kind == 'holdout_reveal':
             cap = r['detail'].get('max_reruns', MAX_RERUNS)
             need(type(cap) is int and 0 <= cap <= MAX_RERUNS, f'detail.max_reruns must be an int 0..{MAX_RERUNS}')
@@ -179,9 +185,9 @@ def _parse_family(data: bytes, family: str, runs_dir=None) -> list[dict]:
             orig[1] -= 1
             group = ident                     # R3: a rerun's data accesses belong to it like a reveal's
         elif r['split'] == 'holdout' and kind in COMPONENT_KINDS:
-            need(group is not None and all(group[k] == ident[k] for k in GROUP),
-                 f'holdout-split {kind} must belong to the atomic reveal (directly after it, same run_digest, '
-                 'manifest_digest, window and eval_digest)')
+            need(group is not None and all(group[k] == ident[k] for k in IDENTITY),
+                 f'holdout-split {kind} must belong to the atomic reveal (directly after it, with its complete '
+                 f'identity {IDENTITY})')
         else:
             need(kind not in TUNING_KINDS or not any(_overlap(w, s) for s in revealed),
                  f'{kind} on a revealed holdout window: no tuning on the holdout after a reveal')

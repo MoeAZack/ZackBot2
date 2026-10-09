@@ -20,6 +20,7 @@ W = {'start': '2025-01-01T00:00:00Z', 'end': '2025-07-01T00:00:00Z'}
 RD = 'a' * 64
 MD = 'b' * 64
 ED = 'e' * 64
+REAL_RECOMPUTE = L.recompute_run_digest
 
 
 def fixture_root(tmp_path):
@@ -176,6 +177,18 @@ def test_committed_legacy_manifest_matches_disk_and_data_manifest():
 
 # ---------------------------------------------------------------- ledger
 
+@pytest.fixture(autouse=True)
+def stub_envelope_prover(monkeypatch, tmp_path):
+    """These R1 tests check the ledger's sequencing rules (spend, rerun identity, atomic groups) with synthetic
+    digests. Since R3 every holdout record needs the immutable runs store and its frozen envelope; that proof is
+    exercised for real in tests/test_res03_core.py, so here a stub store accepts any digest it is asked to prove."""
+    stub = tmp_path / 'runs_stub'
+    stub.mkdir(exist_ok=True)
+    monkeypatch.setattr(L, '_runs_of', lambda d: str(stub))
+    monkeypatch.setattr(L, 'recompute_run_digest',
+                        lambda r, runs_dir=None: r['run_digest'] if runs_dir else 'no-immutable-runs-store')
+
+
 def rec(path, **kw):
     if not os.path.exists(str(path)):                       # a new family is declared as an independent root
         kw.setdefault('lineage', 'root')
@@ -268,7 +281,7 @@ def test_holdout_records_need_eval_digest(tmp_path):
     p = tmp_path / 'fam_e.jsonl'
     with pytest.raises(L.LedgerError, match='eval_digest'):
         hold(p, 'holdout_reveal', detail={})
-    assert L.recompute_run_digest({'run_digest': RD}) is None      # R3 hook: not yet checked
+    assert REAL_RECOMPUTE({'run_digest': RD}) == 'no-immutable-runs-store'   # R3: no store can prove nothing
 
 
 def test_window_spent_blocks_reveal(tmp_path):
@@ -344,7 +357,7 @@ def test_holdout_reruns_are_capped(tmp_path):
     with pytest.raises(L.LedgerError, match='rerun cap'):
         for _ in range(5):
             hold(p, 'holdout_rerun')
-    assert sum(r['kind'] == 'holdout_rerun' for r in L._parse_family(p.read_bytes(), 'fam_c')) == L.MAX_RERUNS
+    assert sum(r['kind'] == 'holdout_rerun' for r in L._check_state(str(p))['fam_c']) == L.MAX_RERUNS
 
 
 @pytest.mark.parametrize('declared,ok', [(0, 0), (1, 1), (True, None), (99, None), ('1', None)])
@@ -407,7 +420,9 @@ def test_holdout_split_records_only_inside_the_atomic_reveal(tmp_path, kind):
     with pytest.raises(L.LedgerError, match='atomic'):
         _fam(p, kind=kind, split='holdout', run_digest=RD, manifest_digest=MD, detail={'eval_digest': ED})
     hold(p, 'holdout_reveal', lineage='root')
-    hold(p, kind, candidate_id='baseline.flat')                      # part of the reveal: same identity, contiguous
+    with pytest.raises(L.LedgerError, match='complete identity'):    # Codex R3 P2: another candidate never joins
+        hold(p, kind, candidate_id='baseline.flat')
+    hold(p, kind)                                                    # part of the reveal: same identity, contiguous
     with pytest.raises(L.LedgerError, match='atomic'):
         hold(p, kind, window={'start': '2025-01-01T00:00:00Z', 'end': '2025-06-01T00:00:00Z'})
     rec(p, kind='data_access', split='train', window={'start': '2024-01-01T00:00:00Z', 'end': '2024-06-01T00:00:00Z'})
