@@ -10,7 +10,7 @@ evidence until the rules below are executable in R1-R3.
 
 | Item | Decision |
 |---|---|
-| Venue / symbols | Binance USD-M USDT perps. Universe `pit-top40-qv30d-v3` (section 1a), ranked per asset-class book (`crypto`, `gold-commodity`, `equity`, `fx`); XAUUSDT stays in the research in the `gold-commodity` book (owner decision). Core 8 (BTC ETH SOL BNB XRP DOGE AVAX LINK) reported separately as the legacy comparison. |
+| Venue / symbols | Binance USD-M USDT perps. Universe `pit-top40-qv30d-v4` (section 1a), ranked per asset-class book (`crypto`, `gold-commodity`, `equity`, `fx`); XAUUSDT stays in the research in the `gold-commodity` book (owner decision). Core 8 (BTC ETH SOL BNB XRP DOGE AVAX LINK) reported separately as the legacy comparison. |
 | Timeframes | 4h and 1h (trend, short, range). 1m for intrabar resolution of every candidate (section 2a); 15m + 1m for Quick Bank (DATA-01a). |
 | Series | last-price klines, mark klines, signed funding history (`fundingTime`), rules snapshots. OI / long-short / taker only if a preregistration needs them. |
 | Sources | `data.binance.vision` archives are primary **only after first-build schema/coverage verification**. Raw archive bytes and the published `.CHECKSUM` bytes are preserved; checksums verified; exact object key/hash and loader version recorded. REST (`market_data.py`, `market_collector.py`) is **tail-only**, overlap cross-checked (gap class X1); no silent substitution. |
@@ -204,8 +204,8 @@ Built inside the existing NEWCORE research path, not beside it:
   top-40 union. `research_evidence/manifests/binance-um-archive-v1.json.gz` (`zb-binance-vision-zip/1` loader):
   103,659 files, digest `54912d9d...`. Every zip re-hashed against its published checksum and schema-checked row by row
   (0 failures). Gzip is a byte-exact wrapper of the canonical JSON (62 MB plain).
-- `tools/research/universe.py` -> `research_evidence/universe/pit-top40-qv30d-v3.json` (`zb-pit-universe/2`,
-  Codex reviews 6077570517 + 6078823692 applied; digest `fd6e15d0...`): 348 Monday rankings 2020-02-03 -> 2026-09-28 over 900 symbols, ranked separately
+- `tools/research/universe.py` -> `research_evidence/universe/pit-top40-qv30d-v4.json` (`zb-pit-universe/2`,
+  Codex reviews 6077570517 + 6078823692 + 6088058441 applied; digest `485c7522...`): 348 Monday rankings 2020-02-03 -> 2026-09-28 over 900 symbols, ranked separately
   per book from `research_evidence/universe/instrument-classes-v1.json` (`zb-instrument-classes/1`; offline manual
   review, every post-2025-12-01 listing has an explicit entry, 27 unidentified symbols are `unclassified` and join no
   book). Exact decimal volume sums; any missing daily bar in a scored window vetoes `data-gap` (never zero volume) and
@@ -222,9 +222,12 @@ Built inside the existing NEWCORE research path, not beside it:
 - Open: timestamped delist announcements; rename evidence + price-continuity check (renames refused until then);
   an exchangeInfo `underlyingType` snapshot to replace the manual classification; 1m archives for the 11 post-2021-12
   universe members outside the 1m union; raw `.CHECKSUM` preservation + manifest gap-report digest.
-- Open (owner direction 6078694212, awaiting a Codex ruling, not applied): a labelled `not-addressable: non-ASCII
-  symbol` eligibility veto applied before ranking and listed in the weekly audit. Sourced point-in-time exchange
-  classification still gates strategy evidence (Codex 6078823692).
+- Addressability veto (owner direction 6078694212, ruled required by Codex 6088058441): non-ASCII symbols are vetoed
+  `not-addressable:non-ascii-symbol` before ranking (NEWCORE's `check_symbol` cannot address them). Each week's
+  `not_addressable` lists them with the veto they would otherwise have had, exact qv30d, would-be rank and top-40 flag.
+  v4 (digest `485c7522...`): 5 symbols in 49 weeks (123 audit entries); 3 of them would otherwise have ranked top-40 in
+  the crypto book in 15 weeks, which are the only weeks whose members differ from v3. v3 is withdrawn.
+- Sourced point-in-time exchange classification still gates strategy evidence (Codex 6078823692 / 6088058441).
 
 ## Ruling 6070934398 applied
 
@@ -286,7 +289,7 @@ Built inside the existing NEWCORE research path, not beside it:
 
 ## R3 status (09 Oct 2026 Cairo; harness core only, no strategy evaluated, no returns computed)
 
-Codex R3 review 6077894871 applied (stacked on the fixed R2 universe `pit-top40-qv30d-v3`):
+Codex R3 review 6077894871 applied (stacked on the fixed R2 universe `pit-top40-qv30d-v4`):
 
 - `tools/research/pit.py` (the plan's `data.py`): `Dataset` reads only through the manifest (SHA-256 re-check, fail
   closed) and the PIT universe, restricted to named asset-class books (no mixed default; gold from `gold-commodity`).
@@ -323,7 +326,7 @@ Codex R3 review 6077894871 applied (stacked on the fixed R2 universe `pit-top40-
   (BTC, ETH; XAU not yet a member) and 2026-02-02..02-09 (XAU, BTC): full 1m/4h/1d/mark coverage; XAUUSDT funds every
   4h (42/week) vs 8h for BTC.
 
-Codex R3 fix review 6079042573 applied (merged with the fixed R2 head; universe `pit-top40-qv30d-v3`):
+Codex R3 fix review 6079042573 applied (merged with the fixed R2 head; universe `pit-top40-qv30d-v4`):
 
 - Evaluator isolation: `pit.evaluate(window, evaluator_path, function, times)` runs the evaluator in a separate
   process (`tools/research/sandbox.py`, `zb-eval-sandbox/1`) that holds no Dataset, Window, manifest, store path or

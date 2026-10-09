@@ -340,6 +340,50 @@ def test_archive_accepts_non_ascii_symbols(tmp_path):
     assert out.read_bytes().isascii() and M.load(str(out)) == m
 
 
+CJK = chr(0x54c8) + chr(0x57fa) + chr(0x7c73) + 'USDT'
+
+
+def test_non_ascii_symbol_is_vetoed_before_ranking_and_audited(tmp_path):
+    """Codex 6088058441 / owner 6078694212: explicit pre-ranking `not-addressable:non-ascii-symbol` veto, with the
+    would-be rank and top-40 flag recorded in every affected week."""
+    put_daily(tmp_path, CJK, days('2024-01-01', 120, 1e9))                    # by far the largest volume
+    put_daily(tmp_path, 'AAAUSDT', days('2024-01-01', 120, 10.0))
+    put_daily(tmp_path, 'BBBUSDT', days('2024-01-01', 120, 20.0))
+    young = '\u00c9TEUSDT'                                                     # non-ASCII and too young
+    put_daily(tmp_path, young, days('2024-03-01', 60, 1e6))
+    u = universe(tmp_path)
+    w = week(u, '2024-03-04')
+    assert w['members'] == ['BBBUSDT', 'AAAUSDT'] and CJK not in w['members']
+    assert [CJK, U.VETO_NOT_ADDRESSABLE] in w['vetoes'] and [young, U.VETO_NOT_ADDRESSABLE] in w['vetoes']
+    na = {e['symbol']: e for e in w['not_addressable']}
+    assert na[CJK] == {'symbol': CJK, 'book': 'crypto', 'otherwise': 'eligible', 'qv30d_usdt': str(30 * 10 ** 9),
+                       'would_rank': 1, 'would_be_top_n': True}
+    assert na[young]['otherwise'] == U.VETO_AGE and na[young]['would_rank'] is None
+    assert na[young]['would_be_top_n'] is False
+    assert w['eligible'] == 2                                                  # never counted as eligible
+    for wk in u['weeks']:                                                      # every affected week records it
+        if any(v[0] == CJK for v in wk['vetoes']):
+            assert {e['symbol'] for e in wk['not_addressable']} >= {CJK}
+        assert all(r == U.VETO_NOT_ADDRESSABLE for s, r in wk['vetoes'] if not s.isascii())
+    sym = {x['symbol']: x for x in u['symbols']}
+    assert sym[CJK]['addressable'] is False and sym['AAAUSDT']['addressable'] is True
+    assert U.addressable('BTCUSDT') and not U.addressable(CJK)
+    # a would-be rank below the top N is recorded as such
+    u2 = universe(tmp_path, top_n=1)
+    na2 = {e['symbol']: e for e in week(u2, '2024-03-04')['not_addressable']}
+    assert na2[CJK]['would_rank'] == 1 and na2[CJK]['would_be_top_n'] is True
+
+
+def test_non_ascii_veto_replaces_the_gap_veto_and_keeps_the_underlying_reason(tmp_path):
+    a = days('2024-01-01', 90, 5.0)
+    del a['2024-02-20']
+    put_daily(tmp_path, CJK, a)
+    put_daily(tmp_path, 'AAAUSDT', days('2024-01-01', 90, 10.0))
+    w = week(universe(tmp_path), '2024-03-04')
+    assert [CJK, U.VETO_NOT_ADDRESSABLE] in w['vetoes'] and [CJK, U.VETO_GAP] not in w['vetoes']
+    assert w['gaps'] == [] and w['not_addressable'][0]['otherwise'] == U.VETO_GAP
+
+
 def test_gz_manifest_round_trip_and_immutability(tmp_path):
     put_daily(tmp_path, 'BTCUSDT', days('2024-01-01', 2))
     m = build_manifest(tmp_path)
@@ -523,17 +567,21 @@ def test_committed_archive_manifest_classes_and_universe_are_consistent():
     assert m['digest'] == '54912d9d2bf6e6fc45bc75c0553f0bd867e877972beeb3452785937379baf1e7'
     assert len(m['files']) == 103659 and len({f['symbol'] for f in m['files']}) == 900
     c = U.load_classes(os.path.join(res, 'universe', 'instrument-classes-v1.json'))
-    with open(os.path.join(res, 'universe', 'pit-top40-qv30d-v3.json'), encoding='utf-8') as f:
+    with open(os.path.join(res, 'universe', 'pit-top40-qv30d-v4.json'), encoding='utf-8') as f:
         u = json.load(f)
     assert u['digest'] == U.digest_of(u) and u['manifest_digest'] == m['digest'] and u['format'] == U.FORMAT
     assert u['classes_digest'] == c['digest'] and u['books'] == list(U.BOOKS) and u['renames'] == []
-    for old in ('v1', 'v2'):                                     # v1 mixed list; v2 had the rounding sort + silent drop
+    for old in ('v1', 'v2', 'v3'):          # v1 mixed list; v2 rounding sort + silent drop; v3 no addressability veto
         assert not os.path.exists(os.path.join(res, 'universe', f'pit-top40-qv30d-{old}.json'))
     for w in u['weeks']:
         assert w['rules'] == U.RULES_BACKFILLED and 'members' not in w
         assert all(len(w['books'][b]['members']) <= U.TOP_N for b in U.BOOKS)
         assert {g[0] for g in w['gaps']} == {s for s, r in w['vetoes'] if r in (U.VETO_GAP, U.VETO_WINDOW_ABSENT)}
         assert all(n == U.LOOKBACK_DAYS for s, n in w['gaps'] if [s, U.VETO_WINDOW_ABSENT] in w['vetoes'])
+        assert all(s.isascii() for b in U.BOOKS for s in w['books'][b]['members'])
+        assert sorted(e['symbol'] for e in w['not_addressable']) == sorted(
+            s for s, r in w['vetoes'] if r == U.VETO_NOT_ADDRESSABLE) == sorted(
+            s for s, _ in w['vetoes'] if not s.isascii())
     assert [w['monday_ms'] for w in u['weeks']] == list(range(u['weeks'][0]['monday_ms'],
                                                                u['weeks'][-1]['monday_ms'] + U.WEEK, U.WEEK))
     cls = {s['symbol']: s['class'] for s in u['symbols']}

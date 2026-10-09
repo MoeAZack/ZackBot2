@@ -42,7 +42,7 @@ across a gap > 1 bar.
 
 Smoke (shape/coverage counts only, never returns; logged in the ledger as a development access):
   python tools/research/pit.py smoke --manifest research_evidence/manifests/binance-um-archive-v1.json.gz
-      --store C:/Dev/ZackBot2_data/binance_um --universe research_evidence/universe/pit-top40-qv30d-v3.json
+      --store C:/Dev/ZackBot2_data/binance_um --universe research_evidence/universe/pit-top40-qv30d-v4.json
       --books crypto,gold-commodity --ledger research_evidence/ledger/res01_infra.jsonl
       --start 2026-01-05T00:00:00Z --end 2026-01-12T00:00:00Z --symbols BTCUSDT,XAUUSDT
       --author claude-code --cairo-date 2026-10-09
