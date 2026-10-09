@@ -582,6 +582,8 @@ class IncomeRow:
 
     @property
     def key(self):
+        if self.tran_id == 0:                          # testnet faucet TRANSFER rows all carry tranId 0
+            return (0, self.income_type, self.asset, self.time_ms, self.income)
         return (self.tran_id, self.income_type, self.asset)
 
 
@@ -603,8 +605,10 @@ def parse_income(data):
             raise MalformedResponse('incomeType: unexpected value')
         row = IncomeRow(symbol=sym or None, income_type=itype, income=dec(r, 'income'), asset=text(r, 'asset'),
                         info=info, time_ms=integer(r, 'time', positive=True),
-                        tran_id=integer(r, 'tranId', positive=True),
+                        tran_id=integer(r, 'tranId', nonneg=True),
                         trade_id=None if trade in ('', None) else str(trade))
+        if row.tran_id == 0 and itype != 'TRANSFER':   # first testnet smoke: the faucet credit is TRANSFER, tranId 0;
+            raise MalformedResponse('tranId: must be > 0')  # every trade / funding row keeps a real id
         if row.key in seen:
             raise MalformedResponse('duplicate income row')
         seen.add(row.key)

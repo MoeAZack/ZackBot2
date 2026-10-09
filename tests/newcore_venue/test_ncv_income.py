@@ -208,3 +208,25 @@ def test_history_argument_validation(kw):
     args.update(kw)
     with pytest.raises(ValueError):
         income_history(FakeIncomeVenue([]), **args)
+
+
+# First testnet smoke (owner, e524715): the testnet faucet credit is a TRANSFER row with tranId 0, and an account can
+# have several. Shape copied from the sanitized smoke cassette.
+FAUCET = {'symbol': '', 'incomeType': 'TRANSFER', 'income': '5000.00000000', 'asset': 'USDT', 'time': 1791079456000,
+          'info': 'TRANSFER', 'tranId': 0, 'tradeId': ''}
+
+
+def test_testnet_faucet_transfers_with_tran_id_zero_parse():
+    second = dict(FAUCET, time=FAUCET['time'] + 60_000)
+    rows = R.parse_income([FAUCET, second, json.loads(fixture('income_mixed').body)[0]])
+    assert [(r.income_type, r.tran_id, r.symbol) for r in rows[:2]] == [('TRANSFER', 0, None)] * 2
+    with pytest.raises(R.MalformedResponse):
+        R.parse_income([FAUCET, dict(FAUCET)])                        # the very same row twice is still a duplicate
+
+
+@pytest.mark.parametrize('itype', ['COMMISSION', 'REALIZED_PNL', 'FUNDING_FEE'])
+def test_tran_id_zero_stays_refused_outside_transfers(itype):
+    row = json.loads(fixture('income_mixed').body)[0]
+    row.update(incomeType=itype, tranId=0)
+    with pytest.raises(R.MalformedResponse):
+        R.parse_income([row])
