@@ -32,7 +32,7 @@ ACCOUNT = '8c1d2e3f-4a5b-4c6d-8e7f-90a1b2c3d4e5'
 def venue_over(http):
     t = BinanceTestnetTransport(environment='testnet', http=http, clock=lambda: NOW, position_mode=PositionMode.HEDGE,
                                 credentials=StaticCredentials(DUMMY_KEY, DUMMY_SECRET))
-    return TestnetVenue(t, lambda: NOW), t
+    return TestnetVenue(t, lambda: NOW, sleep=lambda _s: None), t
 
 
 def sol_rules(t):
@@ -144,7 +144,8 @@ def test_example_spec_with_a_lost_entry_answer_passes():
     outcome, records = run_spec(spec, v, rules_by_symbol={'SOLUSDT': sol_rules(t)}, price_by_symbol={'SOLUSDT': D('220')},
                                 run_id='run1', seam=seam)
     assert outcome.passed, outcome.assertions
-    assert [r.outcome for r in records] == ['unknown', 'final', 'known', 'known', 'acknowledged', 'final', None]
+    # the algo cancel is confirmed by id (Codex P1(b)): FINAL, not a bare acknowledgement
+    assert [r.outcome for r in records] == ['unknown', 'final', 'known', 'known', 'final', 'final', None]
     assert seam.injected == [('lost_response', 'POST', '/fapi/v1/order')] and fb.flat()
 
 

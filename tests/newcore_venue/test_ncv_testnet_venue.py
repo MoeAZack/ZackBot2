@@ -27,11 +27,16 @@ AREF = P.OrderRef(symbol='SOLUSDT', client_id=ACID, route='algo')
 OBS = 1759917601234
 
 
+from newcore.venue.testnet_venue import ALGO_CANCEL_BACKOFF_MS  # noqa: E402
+
+SLEPT = []                       # algo cancel confirmation backoff (seconds), recorded instead of slept
+
+
 def venue(*script, mode=PositionMode.HEDGE):
     http = FakeHttp(*script)
     t = BinanceTestnetTransport(environment='testnet', http=http, clock=lambda: NOW_MS, position_mode=mode,
                                 credentials=StaticCredentials(DUMMY_KEY, DUMMY_SECRET))
-    return TestnetVenue(t, lambda: OBS), http
+    return TestnetVenue(t, lambda: OBS, sleep=SLEPT.append), http
 
 
 def body_with(name, **patch):
@@ -148,8 +153,7 @@ def test_algo_cancel_ack_and_algo_states():
     v, _ = venue(body_with('algo_cancel_ack', clientAlgoId=ACID), body_with('algo_order_triggered', clientAlgoId=ACID),
                  body_with('algo_order_finished', clientAlgoId=ACID),
                  body_with('algo_order_finished', clientAlgoId=ACID, algoStatus='CANCELED', actualOrderId=None))
-    assert v.cancel(AREF).kind is P.OutcomeKind.ACKNOWLEDGED
-    trig = v.query(AREF)
+    trig = v.cancel(AREF)        # Codex P1(b): the ack is followed by a by-id poll; a TRIGGERED parent comes back as is
     assert trig.kind is P.OutcomeKind.KNOWN and trig.exchange_order_id == '4000000222' and trig.detail == 'algo_triggered'
     fin = v.query(AREF)          # FINISHED: fill truth is the child order -> KNOWN, never an invented executed qty
     assert fin.kind is P.OutcomeKind.KNOWN and fin.executed_qty is None and fin.exchange_order_id == '4000000222'
@@ -354,3 +358,24 @@ def test_cassette_replay_reproduces_port_outcomes():
                                  position_mode=PositionMode.HEDGE,
                                  credentials=StaticCredentials('REPLAY' + 'k' * 58, 'REPLAY' + 's' * 58))
     assert session(TestnetVenue(t2, lambda: OBS)) == first
+
+
+def test_algo_cancel_ack_is_confirmed_by_id_until_terminal():
+    """Codex P1(b) (first testnet P1 probe): DELETE acked, GET still NEW, then CANCELED -> FINAL, nothing executed."""
+    SLEPT.clear()
+    v, http = venue(body_with('algo_cancel_ack', clientAlgoId=ACID),
+                    body_with('algo_order_finished', clientAlgoId=ACID, algoStatus='NEW', actualOrderId=None),
+                    body_with('algo_order_finished', clientAlgoId=ACID, algoStatus='CANCELED', actualOrderId=None))
+    out = v.cancel(AREF)
+    assert out.kind is P.OutcomeKind.FINAL and out.executed_qty == D('0')
+    assert SLEPT == [0.2, 0.4]
+
+
+def test_algo_cancel_still_new_after_the_budget_is_unknown():
+    """Never NEW-and-absent as cancellation truth: still NEW after every poll -> UNKNOWN, the id is not free."""
+    SLEPT.clear()
+    new = body_with('algo_order_finished', clientAlgoId=ACID, algoStatus='NEW', actualOrderId=None)
+    v, http = venue(body_with('algo_cancel_ack', clientAlgoId=ACID), *([new] * len(ALGO_CANCEL_BACKOFF_MS)))
+    out = v.cancel(AREF)
+    assert out.kind is P.OutcomeKind.UNKNOWN and out.detail == 'algo_cancel_unconfirmed' and out.status == 'NEW'
+    assert SLEPT == [ms / 1000 for ms in ALGO_CANCEL_BACKOFF_MS]

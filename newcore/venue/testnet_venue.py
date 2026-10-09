@@ -45,6 +45,7 @@ call, so a poll every cycle.mark_poll_s seconds over N symbols is N x 60 / mark_
 symbols = 48 / min) on top of the cycle's reads; keep poll cadence x symbols well under the 2400 / min IP limit
 (the transport reports X-MBX-USED-WEIGHT-1M on every answer).
 """
+import time
 from dataclasses import dataclass
 from decimal import Decimal
 
@@ -197,16 +198,22 @@ def _fill(f):
                        fee_asset=f.commission_asset, realized_pnl=f.realized_pnl, maker=f.maker, at_ms=f.time_ms)
 
 
+ALGO_CANCEL_BACKOFF_MS = (200, 400, 800, 1600, 3200)   # ~6.2 s to see a terminal algo state after a DELETE
+
+
 # ---------------------------------------------------------------------------------------------- the adapter
 class TestnetVenue:
     __test__ = False
 
-    def __init__(self, transport, clock):
+    def __init__(self, transport, clock, *, sleep=time.sleep, algo_cancel_backoff_ms=ALGO_CANCEL_BACKOFF_MS):
         if getattr(transport, 'position_mode', None) is not PositionMode.HEDGE:
             raise HedgeModeRequired('the transport must be built with PositionMode.HEDGE')
         if not callable(clock):
             raise PortValueError('clock', 'callable() -> int ms')
-        self._t, self._clock = transport, clock
+        if not callable(sleep):
+            raise PortValueError('sleep', 'callable(seconds)')
+        self._t, self._clock, self._sleep = transport, clock, sleep
+        self._algo_backoff = tuple(algo_cancel_backoff_ms)
 
     def __repr__(self):
         return f'TestnetVenue({self._t!r})'
@@ -255,7 +262,26 @@ class TestnetVenue:
         self._owned(ref)
         t = (self._t.cancel_algo_order(ref.client_id) if ref.route == 'algo'
              else self._t.cancel_order(ref.symbol, ref.client_id))
-        return _safe_map(t, ref, self._now())
+        out = _safe_map(t, ref, self._now())
+        if ref.route == 'algo' and out.kind in (P.OutcomeKind.ACKNOWLEDGED, P.OutcomeKind.KNOWN)                 and out.detail != 'algo_triggered':
+            return self._confirm_algo_cancel(ref, out)
+        return out
+
+    def _confirm_algo_cancel(self, ref, out):
+        """Codex P1(b) ruling (first testnet P1 probe): DELETE /algoOrder answers {"code":"200","msg":"success"} while
+        GET /algoOrder may still say NEW and openAlgoOrders may already omit it. Absence is never cancellation truth:
+        poll the by-id record on a bounded backoff until a terminal parent state (FINAL). TRIGGERING / TRIGGERED comes
+        back as the query's own outcome so the caller reconciles the child. Still NEW (or unreadable) at the end of the
+        budget: UNKNOWN - the id is never treated as free."""
+        last = out
+        for ms in self._algo_backoff:
+            self._sleep(ms / 1000)
+            q = self.query(ref)
+            if q.kind is P.OutcomeKind.FINAL or q.detail in ('algo_triggered', 'algo_triggered_no_child'):
+                return q
+            last = q
+        return P.OrderOutcome(kind=P.OutcomeKind.UNKNOWN, ref=ref, observed_at_ms=self._now(), status=last.status,
+                              detail='algo_cancel_unconfirmed')
 
     def query(self, ref):
         req(isinstance(ref, P.OrderRef), 'ref', 'an OrderRef')

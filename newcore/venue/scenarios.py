@@ -152,7 +152,7 @@ class ScriptedHttp:
 def _venue(http, key, secret, clock_ms):
     t = BinanceTestnetTransport(environment='testnet', http=http, clock=lambda: clock_ms,
                                 position_mode=PositionMode.HEDGE, credentials=StaticCredentials(key, secret))
-    return TestnetVenue(t, lambda: clock_ms)
+    return TestnetVenue(t, lambda: clock_ms, sleep=lambda _s: None)
 
 
 def _run_step(step, venue):
@@ -253,8 +253,11 @@ ALGO_ROUTE = Scenario('algo_route', 'classic stop refused -4120 -> NEW protect i
          (algo(STOP_ALGO_REF, status='NEW'),), dict(kind='known', exchange_order_id='9001')),
     Step('query the algo stop', lambda v: v.query(STOP_ALGO_REF), (algo(STOP_ALGO_REF, status='NEW'),),
          dict(kind='known', status='NEW')),
-    Step('cancel the algo stop: acknowledged only', lambda v: v.cancel(STOP_ALGO_REF), (algo_ack(STOP_ALGO_REF),),
-         dict(kind='acknowledged')),
+    # Codex P1(b) (first testnet P1 probe): the DELETE ack alone is not cancellation truth - the by-id record is polled
+    # until terminal, and the real testnet still said NEW right after the ack.
+    Step('cancel the algo stop: ack, still NEW, then CANCELED by id', lambda v: v.cancel(STOP_ALGO_REF),
+         (algo_ack(STOP_ALGO_REF), algo(STOP_ALGO_REF, status='NEW'), algo(STOP_ALGO_REF, status='CANCELED')),
+         dict(kind='final', executed_qty=Decimal('0'))),
     Step('confirm: CANCELED, nothing executed', lambda v: v.query(STOP_ALGO_REF),
          (algo(STOP_ALGO_REF, status='CANCELED'),), dict(kind='final', executed_qty=Decimal('0'))),
     Step('a triggered algo stop points at its child order', lambda v: v.query(STOP_ALGO_REF),
