@@ -12,8 +12,10 @@ Sanitizing (Cowork finding 1: by NAME and by VALUE, then a fail-closed audit; ru
   replaced wherever it appears, case-insensitively, percent-encoded and with separators inserted. A `redact=` value
   shorter than 8 characters is refused (ValueError), never dropped.
 - AUDIT (to_json, fail closed): the serialized cassette, its percent-decoded form and every base64 body are checked
-  again for every value, and every query pair, header, JSON field (parsed, any depth) and form pair is checked for a
-  sensitive name that still carries a value. Anything left raises CassetteLeak and nothing is produced.
+  again for every value (every string and key of the completed document, the _provenance note included, also in
+  decoded and generated base64 forms, within one total work budget), and every query pair, header, JSON field
+  (parsed, any depth) and form pair is checked for a sensitive name that still carries a value. Anything left
+  raises CassetteLeak and nothing is produced.
 
 Replay matches interactions in order on method, URL, the signed flag and every query parameter, except that the
 volatile `timestamp` and the sensitive parameters (signature, listenKey, ...) are compared by presence only (a
@@ -44,7 +46,11 @@ MAX_RECORD_BODY = 8 * 1024 * 1024           # a larger answer is not stored (the
 _REASON_RE = re.compile(r'[a-z_]{1,20}')
 _B64_RUN = re.compile(r'[A-Za-z0-9+/_-]{16,}={0,2}')
 _HEX_RUN = re.compile(r'(?:[0-9a-fA-F]{2}){8,}')
-MAX_DECODED_TOKENS = 20000
+MAX_DECODED_TOKENS = 20000                # encoded runs decoded per string (beyond: fail closed)
+MAX_AUDIT_RUNS = 50 * MAX_DECODED_TOKENS  # encoded runs decoded over the WHOLE cassette (Codex P2 on 1297ee3)
+MAX_AUDIT_STRINGS = 1_000_000             # string leaves + object keys audited over the whole cassette
+MAX_AUDIT_CHARS = 128 * 1024 * 1024       # characters audited over the whole cassette
+_URLSAFE = str.maketrans('+/', '-_')
 MAX_LEARNED_VALUES = 4096                  # distinct secret values one recorder will scrub (beyond: fail closed)
 
 
@@ -77,9 +83,49 @@ def _strings_and_keys(obj):
             stack.extend(o)
 
 
-def decoded_views(text):
+class _AuditBudget:
+    """The total work of one cassette audit (Codex P2 on 1297ee3): the per-string cap alone let many small strings
+    or many interactions create unbounded work. Exceeding any total is a refusal (fail closed), never a skip."""
+
+    def __init__(self):
+        self.runs = self.strings = self.chars = 0
+
+    def string(self, s):
+        self.strings += 1
+        self.chars += len(s)
+        if self.strings > MAX_AUDIT_STRINGS or self.chars > MAX_AUDIT_CHARS:
+            raise CassetteLeak('too much text to audit; cassette not produced')
+
+    def run(self):
+        self.runs += 1
+        if self.runs > MAX_AUDIT_RUNS:
+            raise CassetteLeak('too many encoded runs to audit; cassette not produced')
+
+
+def b64_forms(values):
+    """Every base64 form of every registered secret, generated FROM the secret (Codex P1 on 1297ee3: _B64_RUN needs
+    16+ characters, so the 11-12 character encoding of an 8-11 byte secret was never decoded). For each of the three
+    byte alignments inside a larger blob, the characters whose six bits all come from the secret; standard and
+    URL-safe alphabets. Any base64 text holding the secret (alone, padded or not, or inside a blob) contains one."""
+    forms = set()
+    for v in values:
+        for enc in ('utf-8', 'latin-1'):
+            try:
+                b = v.encode(enc)
+            except UnicodeEncodeError:
+                continue
+            for k in range(3):
+                full = base64.b64encode(b'\0' * k + b).decode('ascii')
+                stable = full[-(-8 * k // 6):(8 * (k + len(b))) // 6]
+                if stable:
+                    forms.add(stable)
+                    forms.add(stable.translate(_URLSAFE))
+    return forms
+
+
+def decoded_views(text, budget=None):
     """Text forms a registered secret could hide in (Cowork #37 R2): NFKC, unicode-escape decoded, and every
-    base64 / hex run decoded. Bounded: at most MAX_DECODED_TOKENS runs per text."""
+    base64 / hex run decoded. Bounded: at most MAX_DECODED_TOKENS runs per text (and the budget's total)."""
     yield unicodedata.normalize('NFKC', text)
     cur = text
     for _ in range(3):                         # nested escaping (a JSON string inside a JSON document inside ...)
@@ -92,6 +138,8 @@ def decoded_views(text):
     n = 0
     for m in _B64_RUN.finditer(text):
         n += 1
+        if budget is not None:
+            budget.run()
         if n > MAX_DECODED_TOKENS:     # NEW-R2a: never stop auditing early; too many runs is a refusal
             raise CassetteLeak('too many encoded runs to audit; cassette not produced')
         tok = m.group(0)
@@ -102,6 +150,8 @@ def decoded_views(text):
                 pass
     for m in _HEX_RUN.finditer(text):
         n += 1
+        if budget is not None:
+            budget.run()
         if n > 2 * MAX_DECODED_TOKENS:
             raise CassetteLeak('too many encoded runs to audit; cassette not produced')
         try:
@@ -326,20 +376,29 @@ class CassetteRecorder:
 
     # ---- output ----
 
-    def _audit(self, text):
+    def _audit(self, text, doc):
         values = sorted(self._values)
         if self._unproducible:
             raise CassetteLeak(f'{self._unproducible}; cassette not produced')
         if contains_values(text, values, self._cache) or \
-                any(contains_values(s, values, self._cache) for s in _strings(self.interactions)):
+                any(contains_values(s, values, self._cache) for s in _strings_and_keys(doc)):
             raise CassetteLeak('a secret value is still present; cassette not produced')
         # First testnet 5a run (38da6f7): one account-wide positionRisk / account body holds ~4,500 base64-like runs,
         # so a multi-cycle scenario cassette passed MAX_DECODED_TOKENS as ONE text and every cassette was refused.
-        # The encoded-form audit runs per string leaf and per object key instead (each bounded on its own); together
-        # they cover every value the cassette holds.
-        if values and any(contains_values(view, values, self._cache)
-                          for s in _strings_and_keys(self.interactions) for view in decoded_views(s)):
-            raise CassetteLeak('a secret value is present in an encoded form; cassette not produced')
+        # The encoded-form audit runs per string leaf and per object key instead (each bounded on its own, and all of
+        # them together by one _AuditBudget). Codex P1s on 1297ee3: it walks the COMPLETED document (the recorder note
+        # under _provenance included), and every string is also searched for the base64 forms generated from each
+        # secret, which catches secrets too short for _B64_RUN.
+        if values:
+            budget = _AuditBudget()
+            forms = b64_forms(values)
+            found = re.compile('|'.join(map(re.escape, sorted(forms, key=len, reverse=True)))).search
+            for s in _strings_and_keys(doc):
+                budget.string(s)
+                if found(s) or ('%' in s and found(urllib.parse.unquote(s))):
+                    raise CassetteLeak('a secret value is present in an encoded form; cassette not produced')
+                if any(contains_values(view, values, self._cache) for view in decoded_views(s, budget)):
+                    raise CassetteLeak('a secret value is present in an encoded form; cassette not produced')
         for n, it in enumerate(self.interactions):
             req = it['request']
             resp = it.get('response', {})
@@ -376,7 +435,7 @@ class CassetteRecorder:
         except UnicodeEncodeError:
             raise CassetteLeak('an answer holds text that is not encodable (lone surrogate); cassette not '
                                'produced') from None
-        self._audit(text)                            # a pure check: anything left raises, nothing is repaired here
+        self._audit(text, doc)                       # a pure check: anything left raises, nothing is repaired here
         return text
 
     def save(self, path):

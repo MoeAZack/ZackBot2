@@ -250,3 +250,78 @@ def test_a_secret_encoded_in_one_of_many_large_bodies_is_still_caught():
         rec(req())
     with pytest.raises(CassetteLeak):
         rec.to_json()
+
+
+# ---------------------------------------------------------------------------------------------- Codex P1s on 1297ee3
+import base64 as _b64  # noqa: E402
+
+from newcore.venue import cassette as C  # noqa: E402
+
+SHORT_SECRETS = tuple(('Zq7#kP2!wX9$mN4@' * 2)[:n] for n in range(8, 16))
+
+
+def _encodings(secret):
+    b = secret.encode()
+    std = _b64.b64encode(b).decode()
+    url = _b64.urlsafe_b64encode(b).decode()
+    shifted = _b64.b64encode(b'zq' + b).decode()          # inside a larger blob, another byte alignment
+    return {'std': std, 'unpadded': std.rstrip('='), 'urlsafe': url, 'urlsafe_unpadded': url.rstrip('='),
+            'in_blob': shifted}
+
+
+def test_p1_an_encoded_secret_in_the_recorder_note_is_refused():
+    """Codex P1 (1): the per-string encoded audit walked interactions only; the _provenance note was never decoded."""
+    for form in _encodings(DUMMY_SECRET).values():
+        rec = CassetteRecorder(FakeHttp(ok(b'{"serverTime": 1}')), redact=(DUMMY_KEY, DUMMY_SECRET),
+                               note='5a smoke ' + form)
+        rec(req())
+        with pytest.raises(CassetteLeak, match='encoded'):
+            rec.to_json()
+
+
+def test_p1_a_plain_note_still_produces_a_cassette():
+    rec = CassetteRecorder(FakeHttp(ok(b'{"serverTime": 1}')), redact=(DUMMY_KEY, DUMMY_SECRET), note='5a smoke run 3')
+    rec(req())
+    assert '5a smoke run 3' in json.loads(rec.to_json())['_provenance']
+
+
+@pytest.mark.parametrize('secret', SHORT_SECRETS, ids=lambda s: f'len{len(s)}')
+@pytest.mark.parametrize('kind', ['std', 'unpadded', 'urlsafe', 'urlsafe_unpadded', 'in_blob'])
+def test_p1_base64_of_a_minimum_length_secret_is_refused(secret, kind):
+    """Codex P1 (2): _B64_RUN needs 16+ characters, so the base64 of an 8-11 byte registered secret passed."""
+    form = _encodings(secret)[kind]
+    rec = CassetteRecorder(FakeHttp(ok(json.dumps({'msg': 'echo ' + form}))), redact=(DUMMY_KEY, secret))
+    rec(req())
+    with pytest.raises(CassetteLeak):
+        rec.to_json()
+
+
+@pytest.mark.parametrize('secret', SHORT_SECRETS[:4], ids=lambda s: f'len{len(s)}')
+def test_p1_a_minimum_length_secret_encoded_in_the_note_is_refused(secret):
+    rec = CassetteRecorder(FakeHttp(ok(b'{"serverTime": 1}')), redact=(DUMMY_KEY, secret),
+                           note=_encodings(secret)['unpadded'])
+    rec(req())
+    with pytest.raises(CassetteLeak):
+        rec.to_json()
+
+
+def test_p2_the_whole_audit_has_a_total_run_budget(monkeypatch):
+    """Codex P2: per-string caps alone let many small strings / interactions make unbounded audit work."""
+    monkeypatch.setattr(C, 'MAX_AUDIT_RUNS', 100, raising=False)
+    junk = ' '.join('QUJDREVGR0hJSktMTU5PUA' for _ in range(60))        # each body far under the per-string cap
+    rec = CassetteRecorder(FakeHttp(*[ok(json.dumps({'msg': junk})) for _ in range(2)]),
+                           redact=(DUMMY_KEY, DUMMY_SECRET))
+    rec(req())
+    rec(req())
+    with pytest.raises(CassetteLeak, match='too many encoded runs'):
+        rec.to_json()
+
+
+@pytest.mark.parametrize('limit', ['MAX_AUDIT_STRINGS', 'MAX_AUDIT_CHARS'])
+def test_p2_the_whole_audit_has_a_total_string_and_char_budget(monkeypatch, limit):
+    monkeypatch.setattr(C, limit, 30, raising=False)
+    rec = CassetteRecorder(FakeHttp(*[ok(b'{"serverTime": 1}') for _ in range(12)]), redact=(DUMMY_KEY, DUMMY_SECRET))
+    for _ in range(12):
+        rec(req())
+    with pytest.raises(CassetteLeak, match='too much text'):
+        rec.to_json()
