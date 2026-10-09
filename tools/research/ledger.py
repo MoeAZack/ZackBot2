@@ -24,9 +24,11 @@ Holdout rules (Codex clarification 1, comment 6071140643; Codex R1 P1, comment 6
 - a `holdout_rerun` must repeat the reveal's identity (family, candidate_id, manifest_digest, window,
   detail.eval_digest, run_digest) and at most `max_reruns` times: MAX_RERUNS, or a lower int `detail.max_reruns`
   declared in the reveal;
-- holdout-split data_access / variant / grid_point / baseline records belong to the atomic reveal: they directly follow
-  it with its run_digest, manifest_digest, window and eval_digest; any other record closes the reveal;
-- no variant / grid_point (tuning) on a revealed window afterwards, whatever its split label.
+- holdout-split data_access / variant / grid_point / baseline records belong to the atomic reveal (or to a rerun of it):
+  they directly follow it with its run_digest, manifest_digest, window and eval_digest; any other record closes it;
+- no variant / grid_point (tuning) on a revealed window afterwards, whatever its split label;
+- (R3) where a `runs` directory sits beside the ledger directory, a holdout record's run_digest must be recomputed from
+  its frozen `zb-research-run/1` envelope there (`recompute_run_digest`), identity included.
 
 Usage: python tools/research/ledger.py check PATH [--base REV]     (PATH = a family file or the ledger directory)
 """
@@ -93,12 +95,23 @@ def holdout_identity(r: dict) -> dict:
     return {k: (r['detail'].get(k) if k == 'eval_digest' else r[k]) for k in IDENTITY}
 
 
-def recompute_run_digest(r: dict):
-    """TODO(R3): once R3 defines the frozen run envelope, load it by `run_digest`, recompute the digest from its bytes
-    and from the identity fields (manifest, window, eval_digest), and return it; the parser then fails a holdout
-    record whose stored `run_digest` differs instead of trusting the caller-supplied string. Until then: None = not
-    checked (R1 has no sealed runs)."""
-    return None
+def recompute_run_digest(r: dict, runs_dir=None):
+    """R3 hook: recompute `run_digest` from the frozen `zb-research-run/1` envelope stored as
+    `<runs_dir>/<run_digest>.json` (report.recompute_run_digest): the record's identity (family, candidate, manifest,
+    window, eval_digest, split) must equal the envelope's and the envelope must hash to the stored digest, so a missing
+    envelope or a caller-supplied string fails. `runs_dir` = the `runs` directory beside the ledger directory; None (no
+    such directory, e.g. a scratch ledger) = not checked."""
+    if runs_dir is None:
+        return None
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import report as R
+    return R.recompute_run_digest(r, runs_dir)
+
+
+def _runs_of(d: str):
+    """The run-envelope store beside a ledger directory (`research_evidence/runs` for `research_evidence/ledger`)."""
+    p = os.path.join(os.path.dirname(os.path.abspath(d)), 'runs')
+    return p if os.path.isdir(p) else None
 
 
 def _lines(data: bytes, what: str):
@@ -120,7 +133,7 @@ def _lines(data: bytes, what: str):
         yield r, need
 
 
-def _parse_family(data: bytes, family: str) -> list[dict]:
+def _parse_family(data: bytes, family: str, runs_dir=None) -> list[dict]:
     """Parse one family file's bytes. NOT a verification on its own (bytes cannot prove append-only): use verify()."""
     if not FAMILY_RE.match(family):
         raise LedgerError(f'family {family!r} must match {FAMILY_RE.pattern}')
@@ -146,7 +159,7 @@ def _parse_family(data: bytes, family: str) -> list[dict]:
             need(r['split'] == 'holdout' and r['run_digest'] and r['manifest_digest']
                  and isinstance(r['detail'].get('eval_digest'), str) and HEX64.match(r['detail']['eval_digest']),
                  f'{kind} needs split=holdout, run_digest, manifest_digest and detail.eval_digest (64 hex)')
-            rd = recompute_run_digest(r)
+            rd = recompute_run_digest(r, runs_dir)
             need(rd is None or rd == r['run_digest'], 'run_digest does not match the frozen run envelope')
         if kind == 'holdout_reveal':
             cap = r['detail'].get('max_reruns', MAX_RERUNS)
@@ -164,7 +177,7 @@ def _parse_family(data: bytes, family: str) -> list[dict]:
             need(not diff, f'holdout_rerun must repeat the identical reveal identity; differs in {diff}')
             need(orig[1] > 0, 'holdout rerun cap reached for this reveal')
             orig[1] -= 1
-            group = None
+            group = ident                     # R3: a rerun's data accesses belong to it like a reveal's
         elif r['split'] == 'holdout' and kind in COMPONENT_KINDS:
             need(group is not None and all(group[k] == ident[k] for k in GROUP),
                  f'holdout-split {kind} must belong to the atomic reveal (directly after it, same run_digest, '
@@ -183,7 +196,7 @@ def _spend_ref(r: dict) -> dict:
     return {'seq': r['seq'], 'kind': r['kind'], 'window': r['window'], 'run_digest': r['run_digest']}
 
 
-def _check_files(reg: bytes, fams: dict[str, bytes]) -> dict[str, list]:
+def _check_files(reg: bytes, fams: dict[str, bytes], runs_dir=None) -> dict[str, list]:
     """Records + registry + lineage over one directory's bytes (no history)."""
     parent, genesis, copies = {}, {}, []
     for r, need in _lines(reg, REGISTRY):
@@ -207,7 +220,7 @@ def _check_files(reg: bytes, fams: dict[str, bytes]) -> dict[str, list]:
     for f, data in sorted(fams.items()):
         if f not in parent:
             raise LedgerError(f'family file {f!r} is not declared in {REGISTRY}')
-        out[f] = _parse_family(data, f)
+        out[f] = _parse_family(data, f, runs_dir)
         if not out[f] or _sha(data.splitlines(keepends=True)[0]) != genesis[f]:
             raise LedgerError(f'{f}: first line does not match its declared genesis')
     own = sorted((f, json.dumps(_spend_ref(r), sort_keys=True)) for f in out for r in out[f] if r['kind'] in SPEND_KINDS)
@@ -240,7 +253,8 @@ def _read_dir(d: str):
 
 
 def _check_state(path: str) -> dict[str, list]:
-    return _check_files(*_read_dir(_dir_of(path)))
+    d = _dir_of(path)
+    return _check_files(*_read_dir(d), _runs_of(d))
 
 
 def n_trials(recs) -> int:
@@ -267,7 +281,8 @@ def append(path: str, *, kind, candidate_id, split, window, author, cairo_date, 
     try:
         os.close(fd)
         reg, fams = _read_dir(d)
-        _check_files(reg, fams)
+        runs = _runs_of(d)
+        _check_files(reg, fams, runs)
         old = fams.get(family, b'')
         rec = {'format': FORMAT, 'family': family, 'kind': kind, 'candidate_id': candidate_id, 'split': split,
                'window': window, 'manifest_digest': manifest_digest, 'run_digest': run_digest, 'detail': detail or {},
@@ -287,7 +302,7 @@ def append(path: str, *, kind, candidate_id, split, window, author, cairo_date, 
         if kind in SPEND_KINDS:
             add += _next(reg + add, {'format': REG_FORMAT, 'kind': 'spend', 'family': family, 'ref': _spend_ref(rec)})
         fams[family] = old + line
-        _check_files(reg + add, fams)
+        _check_files(reg + add, fams, runs)
         if add:
             with open(os.path.join(d, REGISTRY), 'ab') as f:
                 f.write(add)
@@ -347,7 +362,7 @@ def verify(path: str, *, base=None, registry_genesis=None) -> dict[str, list]:
     directory of `path`. Fails closed outside a Git work tree. Returns {family: records}."""
     d = _dir_of(path)
     reg, fams = _read_dir(d)
-    out = _check_files(reg, fams)
+    out = _check_files(reg, fams, _runs_of(d))
     if not os.path.isdir(d) or subprocess.run(['git', '-C', d, 'rev-parse', '--is-inside-work-tree'],
                                               capture_output=True).returncode:
         raise LedgerError(f'{d}: not inside a git work tree; the append-only history cannot be checked')

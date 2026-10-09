@@ -319,7 +319,10 @@ def _base():
 def test_committed_family_ledgers_mark_legacy_window_spent():
     d = os.path.join(RES, 'ledger')
     out = L.verify(d, base=_base())                            # records + registry + Git history + base anchor
-    assert sorted(out) == ['range_bb_mr', 'short_breakdown', 'trend_ema_mom']
+    assert sorted(out) == ['range_bb_mr', 'res01_infra', 'short_breakdown', 'trend_ema_mom']
+    # R3: the infrastructure family holds only development-split shape/coverage smokes (no trials, no holdout)
+    infra = out.pop('res01_infra')
+    assert {(r['kind'], r['split']) for r in infra} == {('data_access', 'development')} and L.n_trials(infra) == 0
     for fam, recs in out.items():
         spent = [r['window'] for r in recs if r['kind'] == 'window_spent']
         assert any(w['start'] <= '2025-01-01T00:00:00Z' and w['end'] >= '2026-10-04T00:00:00Z' for w in spent), fam

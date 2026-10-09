@@ -263,3 +263,26 @@ Built inside the existing NEWCORE research path, not beside it:
 - [x] 11 This plan's thresholds are authoritative (60 episodes / 80% neighbours); add a per-cell floor and >= 10k
   bootstrap resamples -> section 5
 - [x] 12 Missing 1m bars = unresolved ambiguous bar, counted toward the 5% PARK rule -> section 2a
+
+## R3 status (09 Oct 2026 Cairo; harness core only, no strategy evaluated, no returns computed)
+
+- `tools/research/pit.py` (the plan's `data.py`): `Dataset` reads only through the manifest (SHA-256 re-check, fail
+  closed) and the PIT universe; `Access` records every opening as a ledger `data_access` before returning data;
+  `Window.view(t)` is frozen at `t` and every accessor filters `available_ms <= t`; symbols served only while universe
+  members (at `t`, or at the entry decision of an open position). Funding joins use the 1h mark close available at
+  `fundingTime`, never forward-filled across a gap. Sealed holdout opens only inside the ledger's open atomic
+  `holdout_reveal` / `holdout_rerun` group of the same frozen, clean-tree run envelope.
+- `costs.py`: per-class cost rows (`crypto`; `tradfi_gold` = XAUUSDT, equal to crypto, **PROVISIONAL** pending the
+  Codex TradFi ruling), taker/maker with the one limit-touch rule, signed funding, `slip-v1` (ATR14 = simple mean of 14
+  TR over 15 closed bars), adverse tick rounding, gap fills at the open, floored qty, the seven stress rows, and a
+  frozen `slip-cal-v1` config (one `c` per class, hashed). No coefficient is fitted in R3.
+- `splits.py`: immutable UTC `SplitPlan`; purge = max(lookback, declared horizon), embargo = 1 bar; decisions in
+  `[start + purge + embargo, end - horizon]`, so an episode and its look-back stay in one split; one holdout, last.
+- `intrabar.py`: 1m resolution; same-minute and missing/incomplete 1m fall back to stop-first, labelled and counted
+  as unresolved toward the 5% PARK rule; both bounds kept.
+- `report.py`: `zb-research-run/1` envelope (`run` block -> `run_digest`), write-once `research_evidence/runs/`,
+  results shape per section 6 x every stress row. `ledger.recompute_run_digest()` now proves holdout digests from the
+  stored envelope whenever `research_evidence/runs/` exists; a `holdout_rerun` now opens its own access group.
+- Smoke (shape/coverage only, development split, `research_evidence/ledger/res01_infra.jsonl`): 2026-01-05..01-12
+  (BTC, ETH; XAU not yet a member) and 2026-02-02..02-09 (XAU, BTC): full 1m/4h/1d/mark coverage; XAUUSDT funds every
+  4h (42/week) vs 8h for BTC.
