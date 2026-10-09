@@ -21,12 +21,15 @@ T0 = 1_704_067_200_000
 
 
 def _testnet(case):
-    """-> (venue, exchange order id of the resting order): a NEW classic stop, 2 requested, nothing executed."""
+    """-> (venue, exchange order id of the resting order): 'known' a NEW classic reduce-only stop of the LONG, 2
+    requested, nothing executed; 'opening' a NEW MARKET that opens a SHORT, 3 requested."""
     b = json.loads(fixture('order_query_filled').body)
-    b.update(clientOrderId=CID, status='NEW', type='STOP_MARKET', origQty='2', executedQty='0', avgPrice='0',
-             side='SELL', reduceOnly=True)
+    b.update(clientOrderId=CID, status='NEW', type='STOP_MARKET', origType='STOP_MARKET', origQty='2',
+             executedQty='0', avgPrice='0', side='SELL', reduceOnly=True, closePosition=False)
+    if case == 'opening':
+        b.update(positionSide='SHORT', type='MARKET', origType='MARKET', origQty='3', reduceOnly=False)
     eoid = str(b['orderId'])
-    script = {'known': [raw(200, json.dumps(b).encode())],
+    script = {'known': [raw(200, json.dumps(b).encode())], 'opening': [raw(200, json.dumps(b).encode())],
               'missing': ['err_no_such_order', 'err_no_such_order'],
               'other_symbol': ['err_no_such_order', 'err_no_such_order']}[case]
     t = BinanceTestnetTransport(environment='testnet', http=FakeHttp(*script), clock=lambda: NOW_MS,
@@ -41,7 +44,10 @@ def _fake(case):
     bars = tuple(Bar(open_ms=T0 + i * H4, close_ms=T0 + (i + 1) * H4, open=D(100), high=D('100.5'), low=D('99.5'),
                      close=D(100), volume=D(1000)) for i in range(5))
     v = fv.FakeVenue({SYM: bars}, H4)
-    o = v._new_order(P.OrderRef(symbol=SYM, client_id=CID), 'STOP_MARKET', 'LONG', D('2'), True, D('90'))
+    if case == 'opening':
+        o = v._new_order(P.OrderRef(symbol=SYM, client_id=CID), 'MARKET', 'SHORT', D('3'), False, None)
+    else:
+        o = v._new_order(P.OrderRef(symbol=SYM, client_id=CID), 'STOP_MARKET', 'LONG', D('2'), True, D('90'))
     return v, o.exchange_order_id
 
 
@@ -67,6 +73,20 @@ def test_known_order_is_exactly_the_one_asked(make):
     assert (rec.ref.symbol, rec.ref.client_id, rec.ref.route, rec.exchange_order_id) == (SYM, CID, 'classic', eoid)
     assert (rec.position_side, rec.status, rec.orig_qty, rec.executed_qty) == ('LONG', 'NEW', D('2'), D('0'))
     assert type(rec.orig_qty) is D and type(rec.executed_qty) is D
+    # S1 db96379: what proves a not-ours record a foreign opening order - reported by both venues, never None here
+    assert (rec.side, rec.reduce_only, rec.close_position, rec.order_type, rec.orig_type) == (
+        'SELL', True, False, 'STOP_MARKET', 'STOP_MARKET')
+
+
+def test_opening_order_reports_side_and_flags(make):
+    v, eoid = make('opening')
+    out = v.order_by_id(SYM, eoid)
+    assert out.kind is P.ReadKind.OK
+    rec, = out.value
+    assert (rec.ref.client_id, rec.position_side, rec.status, rec.orig_qty) == (CID, 'SHORT', 'NEW', D('3'))
+    assert (rec.side, rec.reduce_only, rec.close_position, rec.order_type, rec.orig_type) == (
+        'SELL', False, False, 'MARKET', 'MARKET')
+    assert type(rec.reduce_only) is bool and type(rec.close_position) is bool
 
 
 def test_missing_order_is_rejected_2013_never_empty(make):

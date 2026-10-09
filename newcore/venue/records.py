@@ -392,19 +392,22 @@ class OrderRecord:
         return self.status in FINAL_ORDER_STATUSES
 
 
-def parse_order(o):
+def parse_order(o, *, by_id=False):
+    """by_id (order_by_id only): side / type / reduceOnly / closePosition may be absent (-> None, 'not reported');
+    a present value is still checked (an unknown side, a non-bool flag, a non-text type -> MalformedResponse)."""
     o = as_obj(o, 'order')
     rec = OrderRecord(order_id=integer(o, 'orderId', positive=True), client_order_id=text(o, 'clientOrderId'),
                       symbol=text(o, 'symbol'), status=text(o, 'status', allowed=ORDER_STATUSES),
-                      type=text(o, 'type'), orig_type=text(o, 'origType', optional=True),
-                      side=text(o, 'side', allowed=SIDES),
+                      type=text(o, 'type', optional=by_id), orig_type=text(o, 'origType', optional=True),
+                      side=text(o, 'side', allowed=SIDES, optional=by_id),
                       position_side=text(o, 'positionSide', allowed=POSITION_SIDES),
                       orig_qty=dec(o, 'origQty', nonneg=True), executed_qty=dec(o, 'executedQty', nonneg=True),
                       avg_price=dec(o, 'avgPrice', nonneg=True, optional=True),
                       cum_quote=dec(o, 'cumQuote', nonneg=True, optional=True),
                       price=dec(o, 'price', nonneg=True, optional=True),
                       stop_price=dec(o, 'stopPrice', nonneg=True, optional=True),
-                      reduce_only=flag(o, 'reduceOnly'), close_position=flag(o, 'closePosition'),
+                      reduce_only=flag(o, 'reduceOnly', optional=by_id),
+                      close_position=flag(o, 'closePosition', optional=by_id),
                       working_type=text(o, 'workingType', optional=True),
                       update_time_ms=integer(o, 'updateTime', nonneg=True))
     if rec.executed_qty > rec.orig_qty:
@@ -438,13 +441,16 @@ class AlgoOrderRecord:
     update_time_ms: object
     actual_order_id: object         # str or None: the child order once triggered
     actual_price: object            # Decimal or None
+    orig_type: object = None        # origType when the by-id answer carries it (str or None)
 
     @property
     def is_final(self):
         return self.algo_status in FINAL_ALGO_STATUSES
 
 
-def parse_algo_order(o):
+def parse_algo_order(o, *, by_id=False):
+    """by_id: as parse_order - side / orderType / reduceOnly / closePosition may be absent (-> None); origType is
+    read when present (Binance's algo answer does not carry it today)."""
     o = as_obj(o, 'algoOrder')
     actual = o.get('actualOrderId')
     if actual in (None, ''):
@@ -454,13 +460,15 @@ def parse_algo_order(o):
     else:
         actual = str(actual)
     return AlgoOrderRecord(algo_id=integer(o, 'algoId', positive=True), client_algo_id=text(o, 'clientAlgoId'),
-                           algo_type=text(o, 'algoType'), order_type=text(o, 'orderType'), symbol=text(o, 'symbol'),
-                           side=text(o, 'side', allowed=SIDES),
+                           algo_type=text(o, 'algoType'), order_type=text(o, 'orderType', optional=by_id),
+                           symbol=text(o, 'symbol'), side=text(o, 'side', allowed=SIDES, optional=by_id),
                            position_side=text(o, 'positionSide', allowed=POSITION_SIDES),
                            quantity=dec(o, 'quantity', nonneg=True), trigger_price=dec(o, 'triggerPrice', positive=True),
                            algo_status=text(o, 'algoStatus', allowed=ALGO_STATUSES),
                            working_type=text(o, 'workingType', optional=True),
-                           reduce_only=flag(o, 'reduceOnly'), close_position=flag(o, 'closePosition'),
+                           reduce_only=flag(o, 'reduceOnly', optional=by_id),
+                           close_position=flag(o, 'closePosition', optional=by_id),
+                           orig_type=text(o, 'origType', optional=True) if by_id else None,
                            create_time_ms=integer(o, 'createTime', optional=True, nonneg=True),
                            update_time_ms=integer(o, 'updateTime', optional=True, nonneg=True),
                            actual_order_id=actual, actual_price=dec(o, 'actualPrice', nonneg=True, optional=True))
@@ -477,13 +485,13 @@ def _string_qty(o, keys, what):
 
 
 def parse_order_by_id(o):
-    """GET /fapi/v1/order?orderId= answer: parse_order, quantities as strings only."""
-    return parse_order(_string_qty(o, ('origQty', 'executedQty'), 'order'))
+    """GET /fapi/v1/order?orderId= answer: parse_order(by_id), quantities as strings only."""
+    return parse_order(_string_qty(o, ('origQty', 'executedQty'), 'order'), by_id=True)
 
 
 def parse_algo_order_by_id(o):
-    """GET /fapi/v1/algoOrder?algoId= answer: parse_algo_order, quantity as a string only."""
-    return parse_algo_order(_string_qty(o, ('quantity',), 'algoOrder'))
+    """GET /fapi/v1/algoOrder?algoId= answer: parse_algo_order(by_id), quantity as a string only."""
+    return parse_algo_order(_string_qty(o, ('quantity',), 'algoOrder'), by_id=True)
 
 
 def parse_open_orders(data):
