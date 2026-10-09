@@ -63,6 +63,7 @@ from collections import namedtuple
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import ledger as L                                                                          # noqa: E402
 import manifest as M                                                                        # noqa: E402
+import costs as C                                                                           # noqa: E402
 import report as R                                                                          # noqa: E402
 import splits as S                                                                          # noqa: E402
 import universe as U                                                                        # noqa: E402
@@ -74,8 +75,8 @@ SURVIVOR_ONLY = 'SURVIVOR-ONLY'
 GROUP_KINDS = ('holdout_reveal', 'holdout_rerun')
 FUNDING_MARK_PROXY = 'funding-mark-proxy-v1: close of the 1h mark bar ending at or before T (causal proxy, PROVISIONAL)'
 ATTESTATION_FORMAT = 'zb-eval-attestation/1'
-RUNNER_ID = 'pit.evaluate/v2'
-ISOLATION_ID = 'subprocess+audit-hook/zb-eval-sandbox/1'
+RUNNER_ID = 'pit.evaluate/v3'
+ISOLATION_ID = 'subprocess-I-S+audit-hook+closure-allowlist/zb-eval-sandbox/2'
 SANDBOX = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'sandbox.py')
 CANONICAL_REPO = M.REPO                          # the checkout whose registered ledger may open a sealed holdout
 LEDGER_REL = ('research_evidence', 'ledger')
@@ -325,7 +326,15 @@ class View:
         entry_ms, symbol = position.entry_ms, position.symbol
         if not entry_ms <= exit_ms <= self.t:
             raise PITError('funding events need entry <= exit <= t')
-        rows = [f for f in self._rows(w, 'fundingRate', symbol, None, since=entry_ms) if f.time_ms < exit_ms]
+        # the phase anchor (the event at or before entry) is read too, so a missing event at entry or anywhere in
+        # [entry, exit) fails closed here, independently of any cost model (Codex 6088593971 P2)
+        span = (C.MAX_FUNDING_INTERVAL_H + 1) * HOUR
+        hist = [f for f in self._rows(w, 'fundingRate', symbol, None, since=entry_ms - span) if f.time_ms < exit_ms]
+        try:
+            C.check_funding_sequence(symbol, hist, start_ms=entry_ms, end_ms=exit_ms)
+        except C.CostError as e:
+            raise PITError(f'funding events incomplete: {e}')
+        rows = [f for f in hist if f.time_ms >= entry_ms]
         marks = self._rows(w, 'markPriceKlines', symbol, '1h', since=entry_ms - 2 * HOUR)
         avail = [m.available_ms for m in marks]
         out = []
@@ -372,18 +381,30 @@ class Evaluated(list):
     attestation_digest: str
 
 
+def stdlib_roots() -> list[str]:
+    """The interpreter's own standard library (`Lib`, `DLLs`); site-packages below them stays refused."""
+    out = {os.path.dirname(os.__file__)}
+    for base in {sys.base_prefix, sys.base_exec_prefix}:
+        dlls = os.path.join(base, 'DLLs')
+        if os.path.isdir(dlls):
+            out.add(dlls)
+        dyn = os.path.join(os.path.dirname(os.__file__), 'lib-dynload')
+        if os.path.isdir(dyn):
+            out.add(dyn)
+    return sorted(out)
+
+
 class _Sandbox:
-    def __init__(self, evaluator_path: str, function: str, code_roots):
-        lib = sorted({sys.base_prefix, sys.prefix, sys.exec_prefix, os.path.dirname(os.__file__)})
+    def __init__(self, evaluator_path: str, function: str, sys_path, allow_files):
+        lib = stdlib_roots()
         self._tmp = tempfile.TemporaryDirectory(prefix='zb-sandbox-')
         self._err = tempfile.TemporaryFile()
         env = {k: os.environ[k] for k in ('SYSTEMROOT', 'WINDIR') if k in os.environ}
-        self.p = subprocess.Popen([sys.executable, '-I', '-B', SANDBOX], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+        self.p = subprocess.Popen([sys.executable, '-I', '-S', '-B', SANDBOX], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                                   stderr=self._err, cwd=self._tmp.name, env=env)
-        here = os.path.dirname(os.path.abspath(__file__))
         self.send({'op': 'init', 'protocol': 'zb-eval-sandbox/1', 'evaluator_path': evaluator_path,
-                   'function': function, 'lib_roots': lib, 'code_roots': sorted(set(code_roots)),
-                   'sys_path': [here, M.REPO, os.path.dirname(evaluator_path)]})
+                   'function': function, 'lib_roots': lib, 'list_roots': list(sys_path),
+                   'allow_files': sorted(allow_files), 'sys_path': list(sys_path)})
         r = self.recv()
         if not r.get('ready'):
             self.close()
@@ -449,6 +470,23 @@ class _Sandbox:
             self._tmp.cleanup()
 
 
+def _code_path(f: str, repo: str) -> str:
+    """Repo-relative '/' path (on-disk spelling) for a file inside the run checkout, else the absolute path."""
+    rel = os.path.relpath(os.path.abspath(f), repo) if os.path.splitdrive(f)[0].lower() == \
+        os.path.splitdrive(repo)[0].lower() else '..'
+    if rel.startswith('..'):
+        return os.path.abspath(f)
+    return R._true_case(repo, rel.replace(os.sep, '/'))
+
+
+def _code_hashes(files, repo: str) -> list[dict]:
+    out = []
+    for f in files:
+        with open(f, 'rb') as fh:
+            out.append({'path': _code_path(f, repo), 'sha256': hashlib.sha256(fh.read()).hexdigest()})
+    return sorted(out, key=lambda c: c['path'])
+
+
 def _sha_obj(obj) -> str:
     return hashlib.sha256(M.canonical(obj)).hexdigest()
 
@@ -468,8 +506,12 @@ def evaluate(window: Window, evaluator_path: str, function: str, times, *, pertu
     if any(type(t) is not int for t in times):
         raise PITError('decision times must be ints (ms)')
     evaluator_path = os.path.abspath(evaluator_path)
-    repo = window._access.repo
-    box = _Sandbox(evaluator_path, function, [M.REPO, repo, os.path.dirname(evaluator_path)])
+    repo = os.path.abspath(window._access.repo)
+    # the evaluator runs the run checkout's research code, never another tree's (Codex 6088593971 P1)
+    sys_path = [os.path.join(repo, 'tools', 'research'), repo, os.path.dirname(evaluator_path)]
+    closure = R.closure_abs([evaluator_path], sys_path)
+    code_before = _code_hashes(closure, repo)
+    box = _Sandbox(evaluator_path, function, sys_path, closure)
     out, positions = Evaluated(), {}
     try:
         for t in times:
@@ -490,15 +532,15 @@ def evaluate(window: Window, evaluator_path: str, function: str, times, *, pertu
             out.append(res)
     finally:
         box.close()
-    with open(evaluator_path, 'rb') as f:
-        ev_sha = hashlib.sha256(f.read()).hexdigest()
-    try:
-        rel = os.path.relpath(evaluator_path, repo).replace(os.sep, '/')
-    except ValueError:
-        rel = evaluator_path
+    code = _code_hashes(closure, repo)
+    if code != code_before:
+        raise PITError('evaluator code changed while it ran')
+    rel = _code_path(os.path.normcase(evaluator_path), repo)
+    ev_sha = next(c['sha256'] for c in code if c['path'] == rel)
     att = {'format': ATTESTATION_FORMAT, 'runner': RUNNER_ID, 'isolation': ISOLATION_ID, 'perturbed': bool(perturb),
            'split': window.split, 'window': window.window_doc, 'window_key': window.key,
            'run_digest': window.run_digest, 'evaluator': {'path': rel, 'sha256': ev_sha, 'function': function},
+           'code': code,
            'times_digest': _sha_obj(times), 'outputs_digest': _sha_obj(list(out)),
            'decisions_digest': _sha_obj([list(d) for d in window.decisions()]), 'n_decisions': len(times)}
     digest = _sha_obj(att)

@@ -1,7 +1,8 @@
 """`zb-eval-sandbox/1`: the evaluator process of `pit.evaluate` (RES-01 R3; Codex 6079042573 P1).
 
 The evaluator never runs in the harness process. `pit.evaluate` starts this script as a separate Python process
-(`-I -B`, empty working directory, minimal environment) and speaks a JSON-lines protocol over its stdin/stdout:
+(`-I -S -B`: no environment, no `site` - so no site-packages, `.pth` files, `sitecustomize` or user site - and no
+bytecode writes; empty working directory, minimal environment) and speaks a JSON-lines protocol over its stdin/stdout:
 
   parent -> child  {"op": "init", ...}            evaluator file + function, the read policy
   child  -> parent {"ready": true}
@@ -13,10 +14,13 @@ The evaluator never runs in the harness process. `pit.evaluate` starts this scri
 
 The child holds no Dataset, Window, manifest, store path or ledger: the only data it can obtain is what the parent's
 View returns. Before the evaluator is imported, an audit hook (`sys.addaudithook`, which cannot be removed) refuses:
-  * opening any file except Python's own library and `.py` / `.pyc` source under the allowed code roots (the
-    research checkout, the run's checkout and the evaluator's directory), never under `research_evidence/`; every
-    write mode is refused;
-  * listing any directory outside those roots;
+  * opening any file except (a) the Python standard library (the interpreter's `Lib` / `DLLs`, never a
+    `site-packages` / `dist-packages` directory: third-party distributions are not pinned, `RESEARCH_DEPS` is empty)
+    and (b) exactly the evaluator's static import closure (`report.closure_abs`), which the runner hashes into the
+    attestation; any other repository file - an ignored or untracked helper, a module reached only by a dynamic
+    import / `importlib` / `__import__` / `runpy`, a data file read to be `exec`'d, any `.pyc` in the repository -
+    is refused, and every write mode is refused;
+  * listing any directory outside the stdlib and the code search roots (listing reveals names, never bytes);
   * process creation, sockets, ctypes, mmap, Windows API file/process calls, file-system mutation.
 This is a runtime control that turns a bypass into a hard failure; it is not claimed to be a security boundary against
 hostile native code. The authority that makes a result sealable is the runner's attestation bound into the ledger
@@ -34,7 +38,6 @@ PROTOCOL = 'zb-eval-sandbox/1'
 Bar = namedtuple('Bar', 'open_ms open high low close volume quote_volume available_ms')
 Funding = namedtuple('Funding', 'time_ms rate interval_hours available_ms')
 EVIDENCE_DIR = 'research_evidence'
-CODE_SUFFIXES = ('.py', '.pyc')
 BLOCKED_EVENTS = ('subprocess.', 'os.system', 'os.exec', 'os.spawn', 'os.posix_spawn', 'os.fork', 'os.startfile',
                   'os.kill', 'os.remove', 'os.rename', 'os.rmdir', 'os.mkdir', 'os.chdir', 'os.chmod', 'os.link',
                   'os.symlink', 'os.truncate', 'os.utime', 'os.putenv', 'os.unsetenv', 'os.add_dll_directory',
@@ -52,27 +55,24 @@ def _norm(p) -> str:
     return os.path.normcase(os.path.realpath(os.fspath(p)))
 
 
-def make_hook(lib_roots, code_roots, allow_files):
+THIRD_PARTY_DIRS = ('site-packages', 'dist-packages')
+
+
+def make_hook(lib_roots, list_roots, allow_files):
     lib = [_norm(r) for r in lib_roots]
-    code = [_norm(r) for r in code_roots]
+    listable = [_norm(r) for r in list_roots]
     files = {_norm(f) for f in allow_files}
 
     def under(p, roots):
         return any(p == r or p.startswith(r.rstrip(os.sep) + os.sep) for r in roots)
 
-    def no_evidence(p, root):
-        rel = os.path.relpath(p, root).split(os.sep)
-        return EVIDENCE_DIR not in rel
+    def stdlib(p):
+        return under(p, lib) and not any(d in p.split(os.sep) for d in THIRD_PARTY_DIRS)
 
     def readable(p, is_dir):
-        if p in files:
+        if p in files or stdlib(p):
             return True
-        if under(p, lib):
-            return True
-        for r in code:
-            if under(p, [r]) and no_evidence(p, r) and (is_dir or p.endswith(CODE_SUFFIXES)):
-                return True
-        return False
+        return is_dir and under(p, listable) and EVIDENCE_DIR not in p.split(os.sep)
 
     def hook(event, args):
         if event == 'open':
@@ -199,7 +199,7 @@ def main() -> int:
         return 2
     for p in reversed(init['sys_path']):
         sys.path.insert(0, p)
-    sys.addaudithook(make_hook(init['lib_roots'], init['code_roots'], [init['evaluator_path']]))
+    sys.addaudithook(make_hook(init['lib_roots'], init['list_roots'], init['allow_files']))
     try:
         spec = importlib.util.spec_from_file_location('zb_evaluator', init['evaluator_path'])
         mod = importlib.util.module_from_spec(spec)

@@ -255,6 +255,90 @@ def test_evaluator_cannot_reach_raw_store_manifest_or_files(world, tmp_path, src
         P.evaluate(w, f, 'run', train_times(3))
 
 
+ATTACKS = {
+    # Codex 6088593971 P1: a tracked evaluator dynamically loading an ignored helper
+    'ignored-helper-spec': ("import importlib.util\nimport os\nROOT = os.path.dirname(os.path.dirname("
+                            "os.path.abspath(__file__)))\n\n\ndef run(v):\n    spec = importlib.util."
+                            "spec_from_file_location('ign', os.path.join(ROOT, 'dev_out', 'ignored.py'))\n"
+                            "    m = importlib.util.module_from_spec(spec)\n    spec.loader.exec_module(m)\n"
+                            "    return m.V\n", 'sandbox refused open'),
+    # Codex 6088593971 P1: an unpinned installed (site-packages) distribution
+    'site-package-import': ("def run(v):\n    import pytest\n    return pytest.__version__\n",
+                            "No module named 'pytest'"),
+    'site-package-file': ("def run(v):\n    return len(open({site!r}, 'rb').read())\n", 'sandbox refused open'),
+    # self-attack: dynamic imports of a repo module outside the static closure
+    'dunder-import': ("def run(v):\n    return __import__('other').X\n", 'sandbox refused open'),
+    'importlib-import-module': ("import importlib\n\n\ndef run(v):\n    return importlib.import_module('other').X\n",
+                                'sandbox refused open'),
+    'runpy': ("import os\nimport runpy\n\n\ndef run(v):\n    return runpy.run_path(os.path.join(os.path.dirname("
+              "__file__), 'other.py'))['X']\n", 'sandbox refused open'),
+    'exec-of-repo-source': ("import os\n\n\ndef run(v):\n    g = {{}}\n    exec(open(os.path.join(os.path.dirname("
+                            "__file__), 'other.py')).read(), g)\n    return g['X']\n", 'sandbox refused open'),
+    'data-file-as-code': ("import os\n\n\ndef run(v):\n    g = {{}}\n    exec(open(os.path.join(os.path.dirname("
+                          "__file__), 'payload.txt')).read(), g)\n    return g['X']\n", 'sandbox refused open'),
+    'repo-pyc': ("import marshal\nimport os\n\n\ndef run(v):\n    p = os.path.join(os.path.dirname(__file__), "
+                 "'__pycache__', 'other.cpython-x.pyc')\n    return len(open(p, 'rb').read())\n",
+                 'sandbox refused open'),
+}
+
+
+@pytest.mark.parametrize('name', sorted(ATTACKS))
+def test_sandbox_refuses_code_outside_the_hashed_closure(world, tmp_path, repo, name):
+    """Codex 6088593971 P1 + Build self-attack: code the closure does not hash can never execute in the sandbox."""
+    import pytest as _pt
+    ds = ds_of(world)
+    path, _ = dirs(tmp_path)
+    strat = os.path.join(repo, 'strategy')
+    with open(os.path.join(repo, '.gitignore'), 'w') as f:
+        f.write('dev_out/\n')
+    os.makedirs(os.path.join(repo, 'dev_out'))
+    for rel, body in (('dev_out/ignored.py', 'V = 1\n'), ('strategy/other.py', 'X = 7\n'),
+                      ('strategy/payload.txt', 'X = 7\n'), ('strategy/__pycache__/other.cpython-x.pyc', 'x')):
+        os.makedirs(os.path.dirname(os.path.join(repo, *rel.split('/'))), exist_ok=True)
+        with open(os.path.join(repo, *rel.split('/')), 'w') as f:
+            f.write(body)
+    src, msg = ATTACKS[name]
+    f = evaluator(strat, src.format(site=_pt.__file__), 'attack.py')
+    git(repo, 'add', '-A')
+    git(repo, 'commit', '-q', '-m', 'attack fixture')
+    assert 'dev_out/ignored.py' not in git(repo, 'ls-files')                    # ignored: invisible to Git status
+    w = access(ds, path, repo=repo).open('train', lineage='root')
+    with pytest.raises(P.PITError, match=msg):
+        P.evaluate(w, f, 'run', train_times(1))
+
+
+def test_sandbox_has_no_site_pth_or_entry_points_and_hashes_its_closure(world, tmp_path, repo):
+    """-S: no site-packages, `.pth`, `sitecustomize` or distribution entry points; the attestation lists every
+    repo file the evaluator could load, and a statically imported ignored helper cannot be frozen into a run."""
+    ds = ds_of(world)
+    path, _ = dirs(tmp_path)
+    strat = os.path.join(repo, 'strategy')
+    src = ("import importlib.metadata\nimport sys\nimport costs\n\n\ndef run(v):\n    return [sys.flags.no_site, "
+           "'sitecustomize' in sys.modules, len(list(importlib.metadata.distributions())), "
+           "len(importlib.metadata.entry_points()), any('site-packages' in p for p in sys.path)]\n")
+    f = evaluator(strat, src, 'probe.py')
+    git(repo, 'add', '-A')
+    git(repo, 'commit', '-q', '-m', 'probe')
+    w = access(ds, path, repo=repo).open('train', lineage='root')
+    out = P.evaluate(w, f, 'run', train_times(1))
+    assert list(out) == [[1, False, 0, 0, False]]
+    code = {c['path'] for c in out.attestation['code']}
+    assert {'strategy/probe.py', 'tools/research/costs.py', 'tools/research/manifest.py', 'feasibility.py'} <= code
+    assert all(not os.path.isabs(c) for c in code)                             # all from the run checkout
+    with open(os.path.join(repo, '.gitignore'), 'w') as fh:
+        fh.write('dev_out/\n')
+    os.makedirs(os.path.join(repo, 'dev_out'))
+    with open(os.path.join(repo, 'dev_out', 'ignored.py'), 'w') as fh:
+        fh.write('V = 1\n')
+    evaluator(strat, 'from dev_out.ignored import V\n\n\ndef run(v):\n    return V\n', 'stat.py')
+    git(repo, 'add', '-A')
+    git(repo, 'commit', '-q', '-m', 'static import of an ignored helper')
+    with pytest.raises(R.ReportError, match='tracked'):
+        R.freeze_run(repo=repo, eval_files=['strategy/stat.py'], config={}, seeds=[], **ident(ds, plan()))
+    att = P.evaluate(w, os.path.join(strat, 'stat.py'), 'run', train_times(1)).attestation
+    assert 'dev_out/ignored.py' in {c['path'] for c in att['code']}            # hashed, so a report would refuse it
+
+
 def test_position_capability_replaces_caller_entered_ms(world, tmp_path):
     ds = ds_of(world)
     path, _ = dirs(tmp_path)
@@ -799,15 +883,15 @@ def test_funding_cadence_detects_missing_and_unexpected_events():
     ok = [F(T + i * 4 * HOUR, -0.0002, 4, T + i * 4 * HOUR) for i in range(3)]
     m.check_funding_cadence('XAUUSDT', ok, start_ms=T, end_ms=T + 9 * HOUR)
     m.check_funding_cadence('XAUUSDT', ok[::-1])                                     # order does not matter
-    with pytest.raises(C.CostError, match='missing before the first row'):
+    with pytest.raises(C.CostError, match='no funding phase anchor'):
         m.check_funding_cadence('XAUUSDT', ok, start_ms=T - 5 * HOUR, end_ms=T + 9 * HOUR)
     with pytest.raises(C.CostError, match='missing after the last row'):
         m.check_funding_cadence('XAUUSDT', ok, start_ms=T, end_ms=T + 13 * HOUR)
-    with pytest.raises(C.CostError, match='no funding rows'):
-        m.check_funding_cadence('XAUUSDT', [], start_ms=T, end_ms=T + 5 * HOUR)
-    m.check_funding_cadence('XAUUSDT', [], start_ms=T, end_ms=T + 3 * HOUR)          # shorter than one interval
+    with pytest.raises(C.CostError, match='no funding phase anchor'):
+        m.check_funding_cadence('XAUUSDT', [], start_ms=T, end_ms=T + 3 * HOUR)       # no rows prove nothing
+    m.check_funding_cadence('XAUUSDT', ok, start_ms=T + HOUR, end_ms=T + 9 * HOUR)   # T is the phase anchor
     with pytest.raises(C.CostError, match='outside the covered interval'):
-        m.check_funding_cadence('XAUUSDT', ok, start_ms=T + HOUR, end_ms=T + 9 * HOUR)
+        m.check_funding_cadence('XAUUSDT', ok, start_ms=T, end_ms=T + 7 * HOUR)
     # per-symbol cadence (crypto): an 8h -> 4h schedule switch is accepted, an off-schedule event is not
     m.check_funding_cadence('BTCUSDT', [F(T, 1e-4, 8, T), F(T + 8 * HOUR, 1e-4, 4, T + 8 * HOUR),
                                         F(T + 12 * HOUR, 1e-4, 4, T + 12 * HOUR)])
@@ -816,6 +900,50 @@ def test_funding_cadence_detects_missing_and_unexpected_events():
     with pytest.raises(C.CostError, match='missing or unexpected'):
         m.check_funding_cadence('BTCUSDT', [F(T, 1e-4, 8, T), F(T + 24 * HOUR, 1e-4, 8, T + 24 * HOUR)])
     m.check_funding_cadence('BTCUSDT', [F(T, 1e-4, 8, T), F(T + 8 * HOUR + 2_000, 1e-4, 8, T + 8 * HOUR)])
+
+
+def test_funding_entry_boundary_event_must_be_present():
+    """Codex 6088593971 P2 repro: one event at 4h for a covered [0h, 8h] at 4h cadence; the entry event is absent."""
+    m = C.CostModel(CAL, SC)
+    T = ms('2024-02-12')
+    F = P.Funding
+    at4 = [F(T + 4 * HOUR, -0.0002, 4, T + 4 * HOUR)]
+    with pytest.raises(C.CostError, match='no funding phase anchor'):
+        m.check_funding_cadence('XAUUSDT', at4, start_ms=T, end_ms=T + 8 * HOUR)
+    with pytest.raises(C.CostError, match='missing or unexpected'):            # anchor at -4h, entry event missing
+        m.check_funding_cadence('XAUUSDT', [F(T - 4 * HOUR, -0.0002, 4, T - 4 * HOUR)] + at4,
+                                start_ms=T, end_ms=T + 8 * HOUR)
+    m.check_funding_cadence('XAUUSDT', [F(T, -0.0002, 4, T)] + at4, start_ms=T, end_ms=T + 8 * HOUR)
+    m.check_funding_cadence('XAUUSDT', [F(T - 2 * HOUR, -0.0002, 4, T - 2 * HOUR), F(T + 2 * HOUR, -0.0002, 4,
+                                         T + 2 * HOUR), F(T + 6 * HOUR, -0.0002, 4, T + 6 * HOUR)],
+                            start_ms=T, end_ms=T + 8 * HOUR)                   # off-phase schedule, anchored
+
+
+def _drop_funding(ds, symbol, t):
+    """Remove the cached funding row at time t (a synthetic missing event; the bytes were already verified)."""
+    for f in ds.files('fundingRate', symbol, None):
+        rows = ds.rows(f)
+        hit = [i for i, r in enumerate(rows) if r.time_ms == t]
+        if hit:
+            del rows[hit[0]]
+            ds._keys[f['path']] = ([r[0] for r in rows], [r.available_ms for r in rows])
+            return
+    raise AssertionError('no such funding row')
+
+
+@pytest.mark.parametrize('drop', ['entry', 'inside'])
+def test_pit_funding_events_fail_closed_on_a_missing_event(world, tmp_path, drop):
+    """Codex 6088593971 P2: the generic PIT path enforces funding continuity itself, entry event included."""
+    ds = ds_of(world)
+    path, _ = dirs(tmp_path)
+    w = access(ds, path, pl=None).open_development('2024-02-05T00:00:00Z', '2024-03-04T00:00:00Z', lineage='root')
+    t0 = ms('2024-02-12') + 3
+    v = w.view(ms('2024-02-14'))
+    gpos = w.view(t0).enter('XAUUSDT', 'g')
+    assert len(v.funding_events(gpos, t0 + 9 * HOUR)) == 3                   # complete before the drop
+    _drop_funding(ds, 'XAUUSDT', t0 if drop == 'entry' else t0 + 4 * HOUR)
+    with pytest.raises(P.PITError, match='funding events incomplete'):
+        v.funding_events(gpos, t0 + 9 * HOUR)
 
 
 def test_quantity_is_floored_never_upsized():

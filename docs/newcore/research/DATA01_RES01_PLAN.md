@@ -351,4 +351,16 @@ Codex R3 fix review 6079042573 applied (merged with the fixed R2 head; universe 
   after the last row of the covered interval, and refuses an empty span longer than one interval. No forward fill.
 - Gold: cost classes `gold-spot` (XAUUSDT, 4h, PROVISIONAL) and `gold-tokenized` (PAXGUSDT / XAUTUSDT, per-symbol
   cadence, UNCALIBRATED), both in the `gold` regime family (`CostModel.regime_family`); never the commodity fallback.
-- Open: the non-ASCII `not-addressable` universe veto awaits a Codex ruling (owner direction 6078694212).
+- Codex 6088593971 applied. Executed code = hashed code: the sandbox (`-I -S -B`) reads only the standard library
+  (`Lib`/`DLLs`, never `site-packages`; no `site`, so no `.pth`, `sitecustomize`, user site or distribution entry
+  points; `RESEARCH_DEPS` stays empty) and exactly the evaluator's static import closure in the run checkout
+  (`report.closure_abs`); research code is loaded from the run checkout. The attestation lists every closure file with
+  its SHA-256 (re-hashed after the run) and `make_report` requires each in the envelope's hashed evaluation files.
+  Refused (regressions): ignored helper via `importlib.util`, `__import__`, `importlib.import_module`, `runpy`,
+  `exec` of repo source or a data file, repository `.pyc`, installed packages by import or by path.
+  Residual limit: `exec`/`eval` of strings built inside hashed code from View data is allowed (the text is fixed by
+  hashed code); the stdlib (incl. its `.pyc`) is trusted and pinned only by the Python version in the code identity;
+  the audit hook is a CPython runtime control, not an OS jail against native code.
+- Funding: `costs.check_funding_sequence` requires the phase anchor (the event at or before entry) in the rows, so every
+  event due in [entry, exit) - the entry event included - follows from continuity; `View.funding_events` reads the
+  anchor and enforces it itself, failing closed on a missing event.

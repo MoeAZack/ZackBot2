@@ -144,55 +144,85 @@ def code_identity(repo: str = M.REPO) -> dict:
             'python': platform.python_version(), 'libs': canonical_libs()}
 
 
-def _resolve(repo: str, base_dir: str, name: str) -> list[str]:
-    """Repo-relative files a dotted module name can load from, searched in the importing file's directory and the
-    research import roots (`a.b` -> a/b.py, a/b/__init__.py, plus each package __init__ on the way)."""
-    parts = name.split('.')
-    out = []
-    for root in (base_dir,) + IMPORT_ROOTS:
-        for k in range(1, len(parts) + 1):
-            stem = '/'.join(p for p in (root, *parts[:k]) if p)
-            for cand in (stem + '.py', stem + '/__init__.py'):
-                if os.path.isfile(os.path.join(repo, *cand.split('/'))):
-                    out.append(cand)
+def _candidates(root: str, name: str) -> list[str]:
+    """Absolute files a dotted module name can load from below one search root (`a.b` -> a.py, a/__init__.py,
+    a/b.py, a/b/__init__.py)."""
+    parts, out = name.split('.'), []
+    for k in range(1, len(parts) + 1):
+        stem = os.path.join(root, *parts[:k])
+        for cand in (stem + '.py', os.path.join(stem, '__init__.py')):
+            if os.path.isfile(cand):
+                out.append(os.path.normcase(os.path.abspath(cand)))
     return out
 
 
-def import_closure(repo: str, paths) -> list[str]:
-    """The given evaluation files plus every repo module they import, transitively (static `import` / `from` only)."""
+def closure_abs(files, roots) -> list[str]:
+    """Absolute static import closure of `files`: every file any `import` / `from` statement (relative ones resolved
+    against their package directory) can load from the importing file's directory or any of `roots`. A deliberate
+    superset - the sandbox lets exactly these repo files be read (and hashes them), so a module reached only by a
+    dynamic import is refused, never silently executed."""
     import ast
-    seen, todo = set(), list(paths)
+    seen, todo = set(), [os.path.normcase(os.path.abspath(f)) for f in files]
+    roots = [os.path.abspath(r) for r in roots]
     while todo:
-        rel = todo.pop()
-        if rel in seen:
+        f = todo.pop()
+        if f in seen:
             continue
-        seen.add(rel)
-        if not rel.endswith('.py'):
+        seen.add(f)
+        if not f.endswith('.py'):
             continue
         try:
-            with open(M.contained(repo, rel), 'rb') as f:
-                tree = ast.parse(f.read(), rel)
+            with open(f, 'rb') as fh:
+                tree = ast.parse(fh.read(), f)
         except (OSError, SyntaxError, ValueError) as e:
-            raise ReportError(f'evaluation file {rel} unreadable: {e}')
-        base = rel.rsplit('/', 1)[0] if '/' in rel else ''
+            raise ReportError(f'evaluation file {f} unreadable: {e}')
+        here = os.path.dirname(f)
         for node in ast.walk(tree):
-            names = []
             if isinstance(node, ast.Import):
-                names = [a.name for a in node.names]
+                for al in node.names:
+                    for r in [here] + roots:
+                        todo += _candidates(r, al.name)
             elif isinstance(node, ast.ImportFrom):
                 if node.level:
-                    up = base.split('/') if base else []
-                    up = up[:len(up) - (node.level - 1)] if node.level > 1 else up
-                    pkg = '.'.join(p for p in up if p)
-                    mod = '.'.join(p for p in (pkg, node.module or '') if p)
-                    names = [f'{mod}.{a.name}' if mod else a.name for a in node.names] + ([mod] if mod else [])
+                    base = here
+                    for _ in range(node.level - 1):
+                        base = os.path.dirname(base)
+                    mod = node.module or ''
+                    names = ([mod] if mod else []) + [f'{mod}.{al.name}' if mod else al.name for al in node.names]
                     for n in names:
-                        todo += [c for c in _resolve(repo, '', n)]
-                    continue
-                names = [node.module] + [f'{node.module}.{a.name}' for a in node.names]
-            for n in names:
-                todo += _resolve(repo, base, n)
+                        todo += _candidates(base, n)
+                else:
+                    names = [node.module] + [f'{node.module}.{al.name}' for al in node.names]
+                    for n in names:
+                        for r in [here] + roots:
+                            todo += _candidates(r, n)
     return sorted(seen)
+
+
+def import_closure(repo: str, paths) -> list[str]:
+    """The given repo-relative evaluation files plus every repo module they statically import, transitively
+    (searched in the importing file's directory, the repo root and tools/research), as repo-relative paths."""
+    top = os.path.normcase(os.path.abspath(repo))
+    roots = [os.path.join(repo, *r.split('/')) if r else repo for r in IMPORT_ROOTS]
+    out = []
+    for f in closure_abs([os.path.join(repo, *p.split('/')) for p in paths], roots):
+        rel = os.path.relpath(f, top)
+        if rel.startswith('..'):
+            continue
+        out.append(rel.replace(os.sep, '/'))
+    real = {os.path.normcase(p): p for p in paths}
+    return sorted(real.get(os.path.normcase(r), _true_case(repo, r)) for r in out)
+
+
+def _true_case(repo: str, rel: str) -> str:
+    """The on-disk spelling of a repo-relative path (normcase lowers it on Windows)."""
+    cur, parts = repo, []
+    for part in rel.split('/'):
+        names = {n.lower(): n for n in os.listdir(cur)}
+        name = names.get(part.lower(), part)
+        parts.append(name)
+        cur = os.path.join(cur, name)
+    return '/'.join(parts)
 
 
 def _file_sha(repo: str, rel: str) -> str:
@@ -360,8 +390,8 @@ def recompute_run_digest(rec: dict, runs_dir: str) -> str:
 
 
 ATTESTATION_FORMAT = 'zb-eval-attestation/1'
-SEALABLE_RUNNER = 'pit.evaluate/v2'
-SEALABLE_ISOLATION = 'subprocess+audit-hook/zb-eval-sandbox/1'
+SEALABLE_RUNNER = 'pit.evaluate/v3'
+SEALABLE_ISOLATION = 'subprocess-I-S+audit-hook+closure-allowlist/zb-eval-sandbox/2'
 
 
 def check_attestation(env: dict, att: dict, ledger_path: str) -> str:
@@ -381,6 +411,10 @@ def check_attestation(env: dict, att: dict, ledger_path: str) -> str:
     ev = att.get('evaluator') or {}
     need({'path': ev.get('path'), 'sha256': ev.get('sha256')} in run['eval']['files'],
          'the evaluator file is not one of the envelope\'s hashed evaluation files')
+    code = att.get('code')
+    need(isinstance(code, list) and code and all(c in run['eval']['files'] for c in code),
+         'code the sandbox let the evaluator load is not in the envelope\'s hashed evaluation files: '
+         f'{[c.get("path") for c in code or [] if c not in run["eval"]["files"]]}')
     digest = _digest(att)
     try:
         recs = L._check_state(ledger_path).get(run['family'], [])

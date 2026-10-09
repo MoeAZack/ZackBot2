@@ -232,45 +232,48 @@ class CostModel:
 
     def check_funding_cadence(self, symbol: str, funding_rows, *, start_ms: int | None = None,
                               end_ms: int | None = None) -> None:
-        """Fail closed unless the funding rows are a complete event sequence (Codex 6079042573 P2):
-          * a row with a declared cadence (gold-spot: 4h) must match every row's interval_hours;
-          * consecutive rows must be exactly one declared interval apart (either row's interval, so a schedule change
-            is accepted at the switch) within FUNDING_TIME_TOLERANCE_MS - a larger step is a missing event, a smaller
-            one an unexpected event; nothing is forward-filled;
-          * with `start_ms` / `end_ms` (the covered interval, e.g. entry / exit), no expected event may be missing
-            before the first row or after the last one, and an empty covered span longer than one interval (the
-            declared cadence, else MAX_FUNDING_INTERVAL_H) is refused."""
-        want = self.row(symbol).funding_cadence_hours
-        rows = sorted(funding_rows, key=lambda r: r.time_ms)
-        tol = FUNDING_TIME_TOLERANCE_MS
-        for r in rows:
-            if type(r.interval_hours) is not int or r.interval_hours <= 0:
-                raise CostError(f'{symbol}: funding row at {r.time_ms} has no valid interval_hours')
-        if want is not None:
-            bad = sorted({r.interval_hours for r in rows if r.interval_hours != want})
-            if bad:
-                raise CostError(f'{symbol}: funding rows show interval {bad}h, the {self.cost_class(symbol)} row '
-                                f'declares {want}h')
-        for a, b in zip(rows, rows[1:]):
-            step = b.time_ms - a.time_ms
-            if not any(abs(step - h * HOUR_MS) <= tol for h in {a.interval_hours, b.interval_hours}):
-                raise CostError(f'{symbol}: funding events at {a.time_ms} and {b.time_ms} are {step / HOUR_MS:g}h '
-                                f'apart, expected {a.interval_hours}h: missing or unexpected funding event')
-        if start_ms is None and end_ms is None:
-            return
-        if start_ms is None or end_ms is None or not start_ms <= end_ms:
-            raise CostError('the covered interval needs start_ms <= end_ms')
-        if not rows:
-            span_h = want or MAX_FUNDING_INTERVAL_H
-            if end_ms - start_ms > span_h * HOUR_MS + tol:
-                raise CostError(f'{symbol}: no funding rows over a covered span longer than {span_h}h')
-            return
-        if rows[0].time_ms < start_ms - tol or rows[-1].time_ms > end_ms + tol:
-            raise CostError(f'{symbol}: funding rows lie outside the covered interval')
-        if rows[0].time_ms - start_ms > rows[0].interval_hours * HOUR_MS + tol:
-            raise CostError(f'{symbol}: funding event missing before the first row at {rows[0].time_ms}')
-        if end_ms - rows[-1].time_ms > rows[-1].interval_hours * HOUR_MS + tol:
-            raise CostError(f'{symbol}: funding event missing after the last row at {rows[-1].time_ms}')
+        """`check_funding_sequence` with this symbol's declared cadence (gold-spot: 4h)."""
+        check_funding_sequence(symbol, funding_rows, start_ms=start_ms, end_ms=end_ms,
+                               want=self.row(symbol).funding_cadence_hours, label=self.cost_class(symbol))
+
+
+def check_funding_sequence(symbol: str, funding_rows, *, start_ms: int | None = None, end_ms: int | None = None,
+                           want: int | None = None, label: str = 'declared') -> None:
+    """Fail closed unless the funding rows are a complete event sequence (Codex 6079042573 / 6088593971 P2):
+      * every row has a positive int interval_hours; with `want` (a declared cadence) every row must show it;
+      * consecutive rows are exactly one interval apart (either row's interval, so a schedule switch is accepted at
+        the switch) within FUNDING_TIME_TOLERANCE_MS - a larger step is a missing event, a smaller one an unexpected
+        event; nothing is forward-filled;
+      * with a covered interval [start_ms, end_ms): the PHASE ANCHOR - the event at or immediately before start_ms -
+        must be among the rows (an event at entry is its own anchor), so every event due in the interval, the one
+        at entry included, follows from the continuity check; no row may lie after end_ms; and the event after the
+        last row must fall at or after end_ms (exit == T is not covered)."""
+    rows = sorted(funding_rows, key=lambda r: r.time_ms)
+    tol = FUNDING_TIME_TOLERANCE_MS
+    for r in rows:
+        if type(r.interval_hours) is not int or r.interval_hours <= 0:
+            raise CostError(f'{symbol}: funding row at {r.time_ms} has no valid interval_hours')
+    if want is not None:
+        bad = sorted({r.interval_hours for r in rows if r.interval_hours != want})
+        if bad:
+            raise CostError(f'{symbol}: funding rows show interval {bad}h, the {label} row declares {want}h')
+    for x, y in zip(rows, rows[1:]):
+        step = y.time_ms - x.time_ms
+        if not any(abs(step - h * HOUR_MS) <= tol for h in {x.interval_hours, y.interval_hours}):
+            raise CostError(f'{symbol}: funding events at {x.time_ms} and {y.time_ms} are {step / HOUR_MS:g}h '
+                            f'apart, expected {x.interval_hours}h: missing or unexpected funding event')
+    if start_ms is None and end_ms is None:
+        return
+    if start_ms is None or end_ms is None or not start_ms <= end_ms:
+        raise CostError('the covered interval needs start_ms <= end_ms')
+    anchors = [r for r in rows if r.time_ms <= start_ms + tol]
+    if not anchors:
+        raise CostError(f'{symbol}: no funding phase anchor (event at or before the covered start {start_ms}); '
+                        'the events due from entry cannot be proven complete')
+    if rows[-1].time_ms > end_ms + tol:
+        raise CostError(f'{symbol}: funding rows lie outside the covered interval')
+    if end_ms - rows[-1].time_ms > rows[-1].interval_hours * HOUR_MS + tol:
+        raise CostError(f'{symbol}: funding event missing after the last row at {rows[-1].time_ms}')
 
 
 # ------------------------------------------------------------------ slip-v1
