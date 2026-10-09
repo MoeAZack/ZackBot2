@@ -7,6 +7,12 @@
 > remains the long-term product vision; the execution plan controls the near-term sequence when the two differ.
 > The owner's primary milestone is the mainnet-candidate **engine**: long/short strategy coverage, bounded risk/bias/
 > drawdown controls and crypto/gold/TradFi venue readiness precede optional product features.
+> Binding owner feature, settings and final-UI requirements live in
+> [`docs/OWNER_PRODUCT_CONTRACT.md`](docs/OWNER_PRODUCT_CONTRACT.md) and must be traced through implementation and
+> acceptance rather than reconstructed from chat history.
+> Delivery priority is Binance engine + strategies -> early trustworthy testnet -> evidence-driven hardening and final
+> UI/options -> complete live gates. Optional security/release polish cannot block the first useful testnet slice, but
+> the contract's narrow pre-testnet safety floor and all pre-mainnet gates remain mandatory.
 
 This plan merges:
 - the companion "ZackBot Master Roadmap & Build Vision" (32 pages, 2026-10-05);
@@ -356,6 +362,10 @@ A high score **never** changes settings automatically.
 
 - **Gold:** PAXG spot first, then XAUT, then broker XAUUSD.
 - **TradFi:** paper-only until sessions, gaps and corporate actions pass their tests.
+- **Vantage / Bybit / MetaTrader 5 (post-Binance-live only):** keep Binance on its native API and finish its engine,
+  strategies, evidence and live milestone first. Only after the owner explicitly opens post-live expansion may a
+  fail-closed MT5 bridge serve Vantage or specific Bybit/TradFi account products, or a native Bybit API adapter begin.
+  These adapters cannot enter the active queue or consume Binance-readiness lanes before that boundary.
 - **Shareable release:**
   - signed installer and updates;
   - onboarding;
