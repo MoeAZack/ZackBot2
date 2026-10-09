@@ -1,0 +1,3614 @@
+{
+ "audited_head": "ef6abc0",
+ "baseline": "v3.2-rc2",
+ "status": "proposed (not accepted)",
+ "consolidated": [
+  {
+   "id": "C01",
+   "severity": "P0",
+   "evidence_class": "CONF (repro)",
+   "issue": "A failed `trades.csv` / JSON write inside the fill, partial-close and add paths skips the post-fill bookkeeping. Partial closes and adds repeat every pass, the extra size is unstopped, and a reconcile failure freezes all management",
+   "sources": [
+    "ENG-B01",
+    "OBS-01"
+   ],
+   "blocks": "testnet",
+   "cowork": "yes (Excel lock on testnet)"
+  },
+  {
+   "id": "C02",
+   "severity": "P1",
+   "evidence_class": "CONF (repro)",
+   "issue": "One try-block per lot: a repeatedly failing add (e.g. -2019) starves trailing, breakeven, TP1, ladder and tp_r",
+   "sources": [
+    "ENG-B02"
+   ],
+   "blocks": "testnet",
+   "cowork": "no"
+  },
+  {
+   "id": "C03",
+   "severity": "P1",
+   "evidence_class": "CONF",
+   "issue": "Fill truth: an unanswered order of ≤ (lots+1) steps is treated as filled. Fill quantities are ignored on the success path. An unconfirmed entry that filled is never adopted (it can sit unstopped for up to about 8 h)",
+   "sources": [
+    "ENG-B03",
+    "ENG-B04",
+    "ENG-B08",
+    "HIST-03"
+   ],
+   "blocks": "testnet",
+   "cowork": "yes"
+  },
+  {
+   "id": "C04",
+   "severity": "P1",
+   "evidence_class": "CONF",
+   "issue": "Stop existence is not verified routinely (only a report-only check after an outage). `cowork/eng01` has a reference, but it conflicts with ENG02 provisional stops",
+   "sources": [
+    "ENG-B07",
+    "HIST-02"
+   ],
+   "blocks": "testnet",
+   "cowork": "yes"
+  },
+  {
+   "id": "C05",
+   "severity": "P1 (mainnet)",
+   "evidence_class": "SPEC",
+   "issue": "Resending with the same client order id after `-2013` can double-fill a delayed MARKET order",
+   "sources": [
+    "ENG-B10",
+    "OPS-03"
+   ],
+   "blocks": "mainnet",
+   "cowork": "yes (testnet probe)"
+  },
+  {
+   "id": "C06",
+   "severity": "P1",
+   "evidence_class": "CONF (budget SPEC)",
+   "issue": "No shared request budget or ban back-off across order, critical-read, backtest and Lab traffic. A 418 can escalate. A transient stop failure on entry triggers an immediate market close",
+   "sources": [
+    "OPS-01",
+    "HIST-04",
+    "CON-02",
+    "ENG-B09"
+   ],
+   "blocks": "mainnet (CON-02: testnet if Lab is used heavily)",
+   "cowork": "yes"
+  },
+  {
+   "id": "C07",
+   "severity": "P1",
+   "evidence_class": "CONF",
+   "issue": "The engine lock is held across the whole cycle: candle fetches, account reads, AI review ≤ 60 s, orphan cancels. The loop sleeps 60 s after a failed cycle. The panel has no fetch timeout, so it shows stale data with green chips",
+   "sources": [
+    "OPS-02",
+    "CON-01",
+    "CON-03",
+    "UX-05",
+    "HIST-05"
+   ],
+   "blocks": "testnet (UX/controls)",
+   "cowork": "yes (timings)"
+  },
+  {
+   "id": "C08",
+   "severity": "P1",
+   "evidence_class": "CONF",
+   "issue": "Persistence: a corrupt settings file resets to defaults with entries open and is overwritten. A corrupt state file starts with no lots. No fsync or backup. `/api/settings` applies keys one by one, so memory and disk can diverge",
+   "sources": [
+    "ARCH-01",
+    "OPS-05",
+    "OPS-06",
+    "HIST-06"
+   ],
+   "blocks": "testnet",
+   "cowork": "no"
+  },
+  {
+   "id": "C09",
+   "severity": "P2",
+   "evidence_class": "CONF",
+   "issue": "The cycle exit, panel/Telegram close and flatten ignore `lot['pending']` and can close another slot's resting-maker fill or a sibling lot's size",
+   "sources": [
+    "ENG-B05",
+    "ENG-B06",
+    "HIST-07"
+   ],
+   "blocks": "testnet (ENG-B06)",
+   "cowork": "no"
+  },
+  {
+   "id": "C10",
+   "severity": "P1",
+   "evidence_class": "CONF",
+   "issue": "DCA truthfulness: preset cards and the Research table show invalidated numbers. DCA is on by default (the owner's DCA-off decision is not on master). The \"old engine\" badge shows on every backtest, and the backtester version was not bumped by FBL-BT01",
+   "sources": [
+    "HIST-01",
+    "UX-01",
+    "UX-02"
+   ],
+   "blocks": "testnet (copy followers)",
+   "cowork": "no"
+  },
+  {
+   "id": "C11",
+   "severity": "P1",
+   "evidence_class": "CONF (run)",
+   "issue": "Time exit `max_bars` is off by one between engine and backtest; live timing jitters with the cycle phase",
+   "sources": [
+    "BT-C1"
+   ],
+   "blocks": "testnet (DCA presets)",
+   "cowork": "no"
+  },
+  {
+   "id": "C12",
+   "severity": "P1 (option off)",
+   "evidence_class": "CONF (repro)",
+   "issue": "Maker entry fills walk from the candle open, so targets and trails can hit before the limit fill (same-candle lookahead)",
+   "sources": [
+    "BT-C2 (Fable BT-08)"
+   ],
+   "blocks": "neither while maker is off by default",
+   "cowork": "no"
+  },
+  {
+   "id": "C13",
+   "severity": "P2",
+   "evidence_class": "CONF",
+   "issue": "Smaller fill-model and parity gaps: adds pay no slippage; BTC breaker / pump guard are sampled differently; armed trail entries don't count toward `max_pos`; replay harness asymmetries; shipped `data/` ends on a forming candle; Cairo-midnight halt day",
+   "sources": [
+    "BT-C3..C8"
+   ],
+   "blocks": "neither",
+   "cowork": "no"
+  },
+  {
+   "id": "C14",
+   "severity": "P1",
+   "evidence_class": "CONF",
+   "issue": "Duplicated rule implementations (engine vs backtest): sizing, Kelly, governor, risk rules, stop ratchet, add gate. They already differ (governor default auto vs off), and parity never exercises them",
+   "sources": [
+    "ARCH-02",
+    "ENG-B14"
+   ],
+   "blocks": "testnet (results)",
+   "cowork": "no"
+  },
+  {
+   "id": "C15",
+   "severity": "P2",
+   "evidence_class": "CONF",
+   "issue": "Parity/causality coverage gaps: no mode with a firing time exit, maker, trail-entry, ladder, ttp, regime, breaker, risk rules, Kelly/governor, 1h. Only 3 of 6 causality modes are in the fast gate; strict replays only in the full gate",
+   "sources": [
+    "BT-C9",
+    "HIST-12",
+    "TEST-03"
+   ],
+   "blocks": "testnet (for result claims)",
+   "cowork": "no"
+  },
+  {
+   "id": "C16",
+   "severity": "P2",
+   "evidence_class": "CONF",
+   "issue": "Accounting estimates (FEE_EST, flat funding) feed guards, Kelly and drift gates. Recorded `risk_usd` ignores the leverage cap. Capital is derived from a history capped at 3,000 trades",
+   "sources": [
+    "HIST-09",
+    "ENG-B12",
+    "UX-04"
+   ],
+   "blocks": "mainnet",
+   "cowork": "yes"
+  },
+  {
+   "id": "C17",
+   "severity": "P2",
+   "evidence_class": "CONF",
+   "issue": "Install/update safety: the installer hard-kills the bot with no PAPER/idle gate (only the drill has one). No build provenance; no hash pins or Python pin; plaintext config copies left behind",
+   "sources": [
+    "OPS-04",
+    "HIST-10",
+    "OPS-13",
+    "OPS-11"
+   ],
+   "blocks": "mainnet",
+   "cowork": "yes"
+  },
+  {
+   "id": "C18",
+   "severity": "P2",
+   "evidence_class": "CONF / runtime",
+   "issue": "Single-instance race (port check TOCTOU + SO_REUSEADDR) could run two engines on one account. Paper→live switch carries testnet state",
+   "sources": [
+    "OPS-08",
+    "OPS-07"
+   ],
+   "blocks": "testnet (OPS-08) / mainnet (OPS-07)",
+   "cowork": "yes (OPS-08)"
+  },
+  {
+   "id": "C19",
+   "severity": "P2",
+   "evidence_class": "CONF",
+   "issue": "Telegram authorises a chat, not a person, with an optional PIN. Sending is implemented 3 times, with an unbounded thread per message",
+   "sources": [
+    "OPS-10",
+    "ARCH-04"
+   ],
+   "blocks": "mainnet",
+   "cowork": "no"
+  },
+  {
+   "id": "C20",
+   "severity": "P2",
+   "evidence_class": "CONF",
+   "issue": "CI/process: a PR can edit its own workflows to satisfy required checks; pytest config hardening; docs drift on CI",
+   "sources": [
+    "OPS-09",
+    "TEST-07",
+    "ARCH-08"
+   ],
+   "blocks": "neither (process)",
+   "cowork": "no"
+  },
+  {
+   "id": "C21",
+   "severity": "P2",
+   "evidence_class": "CONF",
+   "issue": "Test quality: global monkeypatch seams leak across tests and leave fake-only production branches. No tests for Kelly, settings load/migration, or HTTP auth outside the UI harness. Source-text-pinned tests. No property/mutation tests on rounding, sizing, intrabar path, reconcile or circuit",
+   "sources": [
+    "TEST-01",
+    "TEST-02",
+    "TEST-04",
+    "TEST-05",
+    "TEST-06"
+   ],
+   "blocks": "neither (prerequisite for C14)",
+   "cowork": "no"
+  },
+  {
+   "id": "C22",
+   "severity": "P2",
+   "evidence_class": "CONF",
+   "issue": "Three slot validators with different rules: settings accept DCA values the engine then refuses; the Lab skips validation; the Kelly×governor ceiling reaches up to 8× slot risk (SPEC)",
+   "sources": [
+    "ARCH-03",
+    "ENG-B12 (part)"
+   ],
+   "blocks": "neither",
+   "cowork": "no"
+  },
+  {
+   "id": "C23",
+   "severity": "P2",
+   "evidence_class": "CONF",
+   "issue": "Observability: the backtest worker can die silently; telemetry/audit health is invisible; audit expectancy is shown without coverage; full-file JSON rewrites per event inside the lock",
+   "sources": [
+    "OBS-02",
+    "OBS-03",
+    "OBS-04"
+   ],
+   "blocks": "neither",
+   "cowork": "no"
+  },
+  {
+   "id": "C24",
+   "severity": "P2",
+   "evidence_class": "CONF",
+   "issue": "UI: \"30d\"/\"All\" equity and \"All trades\" are silently truncated; some unescaped symbol/side interpolations; panel errors swallowed",
+   "sources": [
+    "UX-03",
+    "UX-06",
+    "UX-07"
+   ],
+   "blocks": "neither",
+   "cowork": "yes (UI)"
+  },
+  {
+   "id": "C25",
+   "severity": "P2",
+   "evidence_class": "CONF",
+   "issue": "T03c above-cap exception is always on; ordinary-maker leverage race; one-way account fails every order (not just shorts); partial TP rounding to 0 marked done",
+   "sources": [
+    "HIST-13",
+    "ENG-B11",
+    "ENG-B13"
+   ],
+   "blocks": "mainnet",
+   "cowork": "no"
+  },
+  {
+   "id": "C26",
+   "severity": "P2",
+   "evidence_class": "CONF",
+   "issue": "Ops minimum absent: heartbeat, kill switch, playbook, 24/7 coverage",
+   "sources": [
+    "HIST-11"
+   ],
+   "blocks": "mainnet",
+   "cowork": "yes"
+  },
+  {
+   "id": "C27",
+   "severity": "P3",
+   "evidence_class": "CONF",
+   "issue": "Docs/instructions stale or contradictory (see §6 owner decision); dead / test-only code and unexecuted research scripts; app main loop reaches into engine privates",
+   "sources": [
+    "HIST-15",
+    "ARCH-05",
+    "ARCH-06",
+    "ARCH-07"
+   ],
+   "blocks": "neither",
+   "cowork": "no"
+  },
+  {
+   "id": "C28",
+   "severity": "P3",
+   "evidence_class": "CONF",
+   "issue": "Small unsynchronised races and memory/payload growth (JOBS, caches)",
+   "sources": [
+    "CON-04",
+    "CON-05"
+   ],
+   "blocks": "neither",
+   "cowork": "no"
+  },
+  {
+   "id": "C29",
+   "severity": "P3",
+   "evidence_class": "CONF",
+   "issue": "Time-sync error path and minor client error paths",
+   "sources": [
+    "OPS-12"
+   ],
+   "blocks": "neither",
+   "cowork": "no"
+  },
+  {
+   "id": "C30",
+   "severity": "P3",
+   "evidence_class": "CONF",
+   "issue": "Research statistics details (OOS labelling, MC assumptions)",
+   "sources": [
+    "BT-C10"
+   ],
+   "blocks": "neither",
+   "cowork": "no"
+  }
+ ],
+ "tickets": [
+  {
+   "id": "AUD-01",
+   "covers": "C01",
+   "depends_on": "none (first)",
+   "gate": "`log_trade` / `save_json` can never raise into an order path. The `post` bookkeeping runs before any I/O. `stop_dirty` is set on any exception after an exchange call. Tests: fault-inject PermissionError in TP1, ladder, pyramid, DCA and reconcile; exactly one order per event; stop qty = position; other lots still managed. Cowork: testnet run with trades.csv open in Excel",
+   "blocks": "testnet"
+  },
+  {
+   "id": "AUD-02",
+   "covers": "C02, C09",
+   "depends_on": "AUD-01",
+   "gate": "One step failing doesn't skip the others. Close / flatten respect `pending` and resting makers. Repro tests for ENG-B02, B05 and B06",
+   "blocks": "testnet"
+  },
+  {
+   "id": "AUD-03",
+   "covers": "C03 (ref `cowork/eng02`)",
+   "depends_on": "AUD-01",
+   "gate": "executedQty/status drive bookkeeping. An unconfirmed entry that filled is adopted with a stop within one pass. Pending resolution is decided by exchange evidence, not tolerance. Testnet canary via Cowork",
+   "blocks": "testnet"
+  },
+  {
+   "id": "AUD-04",
+   "covers": "C04 (ref `cowork/eng01`)",
+   "depends_on": "AUD-03",
+   "gate": "Stops are checked every N passes, and re-placed or alerted. Interaction test with AUD-03 provisional stops (the known ENG01×ENG02 bug). Cowork: delete a testnet stop by hand and observe the repair",
+   "blocks": "testnet"
+  },
+  {
+   "id": "AUD-05",
+   "covers": "C08",
+   "depends_on": "none (parallel with AUD-01)",
+   "gate": "Corrupt settings or state: entries paused, backup restored or alert, never overwritten. fsync + `.bak`. Atomic `/api/settings` validate-then-apply. Tests with corrupt and truncated files",
+   "blocks": "testnet"
+  },
+  {
+   "id": "AUD-06",
+   "covers": "C10 (ref `cowork/dca-off`)",
+   "depends_on": "PR #18 merged",
+   "gate": "DCA off by default (owner decision 2026-10-07). Preset cards / Research table show BT01+BT02 verified numbers or \"not verified\" with no headline number. Backtest version bumped. UI test asserts no invalidated numbers",
+   "blocks": "testnet (followers)"
+  },
+  {
+   "id": "AUD-07",
+   "covers": "C11, C12, C13",
+   "depends_on": "PR #18 merged",
+   "gate": "Time exit matches the engine (N candles). Maker fill only after the limit is touched. Adds pay slippage. Breaker sampling uses 1h BTC. Trail entries count toward `max_pos`. Each with a replay test",
+   "blocks": "testnet (result claims)"
+  },
+  {
+   "id": "AUD-08",
+   "covers": "C15",
+   "depends_on": "AUD-07",
+   "gate": "Replay/causality modes for time exit, maker, trail entry, ladder, ttp, regime, breaker, risk rules, Kelly/governor, 1h. The BT01 modes join the fast gate",
+   "blocks": "testnet (result claims)"
+  },
+  {
+   "id": "AUD-09",
+   "covers": "C14, C22",
+   "depends_on": "AUD-08, AUD-12 (injection)",
+   "gate": "Engine and backtest import one sizing/Kelly/governor/rules module. One slot validator. Property tests (Hypothesis) on sizing/rounding",
+   "blocks": "neither"
+  },
+  {
+   "id": "AUD-10",
+   "covers": "C07",
+   "depends_on": "AUD-01..04 (same code)",
+   "gate": "No network, AI or sleep under the engine lock. Panel fetch timeout and stale indicator. Failed-cycle back-off ≤ the management interval. Cowork: measure Flatten latency during a simulated outage",
+   "blocks": "testnet (controls)"
+  },
+  {
+   "id": "AUD-11",
+   "covers": "C06, C05 (ref `cowork/trate`)",
+   "depends_on": "AUD-10",
+   "gate": "Shared weight budget across clients including backtest/Lab downloads. Global 418 ban-until. No market close on a transient stop error. Same-cid resend decided by testnet evidence (Cowork probe)",
+   "blocks": "mainnet"
+  },
+  {
+   "id": "AUD-12",
+   "covers": "C20, C21",
+   "depends_on": "none (parallel)",
+   "gate": "Exchange client injected (no module-global fakes). HTTP auth tests in the fast gate. Workflow-file changes need owner review (CODEOWNERS). pytest hardening. Mutation run on rounding, intrabar path and circuit",
+   "blocks": "neither (enables AUD-09)"
+  },
+  {
+   "id": "AUD-13",
+   "covers": "C17, C18",
+   "depends_on": "none",
+   "gate": "Install refuses unless PAPER/idle (or the owner confirms). Build provenance (commit, Python, hashes). Exclusive single-instance lock. Paper→live wipes testnet state. Cowork: PC install run",
+   "blocks": "mainnet (C18 OPS-08: testnet)"
+  },
+  {
+   "id": "AUD-14",
+   "covers": "C16 (UI part), C23, C24",
+   "depends_on": "AUD-05",
+   "gate": "Worker death reported. Telemetry/audit health shown. Truncation labelled. All interpolations escaped. Panel errors surfaced",
+   "blocks": "neither"
+  },
+  {
+   "id": "AUD-15",
+   "covers": "C16, C19, C25, C26",
+   "depends_on": "AUD-11, AUD-13",
+   "gate": "Exchange-truth accounting. Telegram user auth + PIN required. T03c setting. Heartbeat, kill switch, playbook",
+   "blocks": "mainnet"
+  },
+  {
+   "id": "AUD-16",
+   "covers": "C27–C30",
+   "depends_on": "AUD-12",
+   "gate": "Dead code removed with tests. Docs reconciled. Small races fixed",
+   "blocks": "neither"
+  }
+ ],
+ "findings": [
+  {
+   "id": "HIST-01",
+   "title": "DCA presets still advertised with invalidated numbers; owner's \"DCA OFF\" decision not on master",
+   "section": "A",
+   "severity": "P1",
+   "status": "partially-fixed (label only) / open (DCA-off)",
+   "evidence_class": "CONFIRMED",
+   "origin": "#13 FBL-BT01 acceptance; #13 owner decision 2026-10-07; I13-UNVER, I13-DCAOFF, V31-A4",
+   "files": "engine.py:300-310, 314-319; panel.html:639, 665, 1326; app.py:376-378",
+   "evidence": "`ef6abc0` adds `UNVERIFIED_BT01` to `p['bt']` only. Notes still say Active DCA \"$500 -> $4,637 ... positive every year incl. late 2022\" (engine.py:308) and Steady mix \"$4,015, max DD -15%\" (:305). The corrected backtester gives DCA-1h $210 / PF 0.80 (#13). The static Research table (panel.html:639) repeats $4,637 and $4,015 with no label (the tag only renders in `btBadge`). panel.html:665 still calls the tight ladder \"a candidate\". No `DCA_ENABLED` setting exists on master; the fix is only on `origin/cowork/dca-off`. Codex reported the installed testnet bot runs `steady_mix`.",
+   "impact": "the owner and followers see disproven returns; the running testnet bot keeps opening DCA baskets the owner has switched off.",
+   "fix": "merge DCA-off (default off, open baskets keep stop/TP); replace DCA preset `bt`/notes and the panel.html:639 rows with BT01-corrected numbers, or drop them; delete the stale tight-ladder text.",
+   "tests": "preset-note test that no profile with a `dca_dip` slot shows a pre-BT01 `end` value; UI harness checks the Research table label.",
+   "cowork": "yes (confirm the installed preset and that no new DCA entries open after the change).",
+   "blocks": "testnet progression"
+  },
+  {
+   "id": "HIST-02",
+   "title": "Protective-stop existence is still only inferred (FBL-ENG-01)",
+   "section": "A",
+   "severity": "P1 · Status: open · Evidence class: CONFIRMED · Origin: Fable ENG-01, #13 Priority 1",
+   "files": "engine.py:1567-1570, 1383-1400",
+   "evidence": "`if have >= expected - tol: continue` (1567) runs before `open_stop_tags(sym)` (1570). `_stops_reconfirmed` (1383) runs only after an outage. Same as at Fable's audit (3b86a03). The fix exists only on `origin/cowork/eng01`, and Cowork found that it cancels ENG02 provisional stops unless the interaction fix on `cowork/eng02` comes with it (I13-ENG0102).",
+   "impact": "a stop that was cancelled externally or EXPIRED leaves the position unprotected indefinitely while the panel shows \"protected\".",
+   "fix": "land ENG01 and the ENG02 interaction fix together, or ENG02 first, so ENG01 is never merged alone.",
+   "tests": "fake exchange: external cancel / EXPIRED-on-trigger → re-placed within one manage pass; `test_eng01_eng02_interaction.py`.",
+   "cowork": "yes (testnet: cancel a stop in the UI, observe re-placement).",
+   "blocks": "mainnet release only (testnet may continue per #13)"
+  },
+  {
+   "id": "HIST-03",
+   "title": "Zero/partial fills booked as full plan quantity (FBL-ENG-02)",
+   "section": "A",
+   "severity": "P1 · Status: open · Evidence class: CONFIRMED · Origin: Fable ENG-02, #13",
+   "files": "engine.py:2221; engine.py:1196-1226 (`_add_qty`); engine.py:1062-1090 (`_market_close`)",
+   "evidence": "`qty = self._rd(filled, r['step']) if filled > 0 else plan['qty']`. T05 marks telemetry `unknown` (CX-T05-5), but trading state still books the plan quantity.",
+   "impact": "phantom lots, adds or closes, with a stop on a position that does not exist and phantom P&L in Kelly and the daily halt.",
+   "fix": "`cowork/eng02` (r1-r3), after review.",
+   "tests": "EXPIRED/zero/partial MARKET answers on entry, add, partial TP, close and flatten.",
+   "cowork": "no (deterministic fakes suffice; testnet rarely returns EXPIRED)",
+   "blocks": "mainnet release only"
+  },
+  {
+   "id": "HIST-04",
+   "title": "No order budget; 418/429 handling; transient stop failure closes at market (FBL-ENG-03, I13-F1)",
+   "section": "A",
+   "severity": "P1 · Status: open · Evidence class: CONFIRMED · Origin: Fable ENG-03/ENG-18/ENG-19, #13 TRATE",
+   "files": "engine.py:2252-2256; binance_client.py:179, 294",
+   "evidence": "`STOP FAILED ... closing for safety` → `close_lot` at once, with no bounded retry for transient errors. 418/429 are treated as transient (`binance_client.py:179`), so an IP ban is retried. The TRATE fix exists only on `cowork/trate`.",
+   "impact": "under a lead-key 20/10 s budget, a burst can round-trip entries (two taker fees) or deepen a ban.",
+   "fix": "merge TRATE, then T10a (state machine + priority budget).",
+   "tests": "burst of 20 writes/10 s; 418 is never retried; no sleep while the lock is held.",
+   "cowork": "no",
+   "blocks": "mainnet release only"
+  },
+  {
+   "id": "HIST-05",
+   "title": "Management and emergency controls serialised behind one lock (FBL-ENG-08 / UI-01)",
+   "section": "A",
+   "severity": "P1 · Status: open · Evidence class: CONFIRMED · Origin: Fable ENG-08, UI-01; #13 CONC01",
+   "files": "engine.py:1652-1653 (`cycle` holds the lock), 2696, 2723 (move_stop/flatten take it); app.py:586 (`time.sleep(60)` after a cycle failure); ai_filter.py:35 (`timeout=60`)",
+   "evidence": "unchanged since v3.2. T05a adds per-mark work in `manage()`, but it is bounded.",
+   "impact": "Flatten, Close, trailing and DCA management can be delayed by minutes. Exchange stops still bound the loss.",
+   "fix": "decide outside the lock, use a snapshot read model, pre-empt for flatten (T06-T09 seam).",
+   "tests": "harness check that `/api/status` and `flatten` answer within 2 s during a slow cycle.",
+   "cowork": "yes (measure the lock-hold time per cycle on testnet)",
+   "blocks": "mainnet release only"
+  },
+  {
+   "id": "HIST-06",
+   "title": "Persistence: silent empty start on corrupt state, no fsync (FBL-DATA-01/02, ENG-14)",
+   "section": "A",
+   "severity": "P1 · Status: open · Evidence class: CONFIRMED · Origin: Fable DATA-01/02, #13 DATA01",
+   "files": "engine.py:419 (`log.warning('state.json unreadable - starting empty')`); engine.py:381-384 (`save_json` with no fsync and no .bak)",
+   "impact": "after a power loss the bot can forget every lot while positions and stops stay on Binance. Reconcile then reports untracked positions, and they are left unmanaged.",
+   "fix": "fsync + `.bak` + refuse to trade (pause entries, alert) on unreadable non-empty state.",
+   "tests": "corrupt or zero-length `state.json` with live fake positions → entries paused, alert raised, no empty start.",
+   "cowork": "no",
+   "blocks": "mainnet release only"
+  },
+  {
+   "id": "HIST-07",
+   "title": "Close paths ignore pending markers and resting makers (FBL-ENG-04/07/09)",
+   "section": "A",
+   "severity": "P1 · Status: open · Evidence class: CONFIRMED · Origin: Fable ENG-04, ENG-07, ENG-09",
+   "files": "engine.py:1136-1146 (`close_lot`: no `pending` check; closes `_positions_critical()` qty incl. untracked); engine.py:2720-2737 (`flatten` never cancels resting maker entries)",
+   "impact": "a duplicate close or a reversed position after a lost reply, and a maker entry that fills after Flatten.",
+   "fix": "refuse close while `pending`; cancel makers on halt/pause/flatten; close only tracked qty.",
+   "tests": "close/flatten while pending; flatten with a resting maker.",
+   "cowork": "no",
+   "blocks": "mainnet release only"
+  },
+  {
+   "id": "HIST-08",
+   "title": "Backtests include trades the exchange cannot place (I13-BT02 / FBL-BT-16)",
+   "section": "A",
+   "severity": "P1 · Status: open · Evidence class: CONFIRMED · Origin: #13 Codex finding, #14",
+   "files": "backtest.py:17, 268 (min-notional table only, no stepSize/minQty); live gate engine.py:2158",
+   "impact": "preset and COPY100/200 numbers overstate what small accounts can do. Codex observed broad DCA skips on testnet.",
+   "fix": "`bt02-exchange-filters` (in review). Rerun every advertised preset.",
+   "tests": "feasibility parity (backtest vs live gate) on a versioned exchangeInfo snapshot.",
+   "cowork": "yes (testnet exchangeInfo snapshot)",
+   "blocks": "testnet progression (COPY calibration depends on it)"
+  },
+  {
+   "id": "HIST-09",
+   "title": "Estimated accounting feeds guards, Kelly and drift gates (FBL-ENG-05/11, RM-02)",
+   "section": "A",
+   "severity": "P1 · Status: open · Evidence class: CONFIRMED · Origin: Fable ENG-05, ENG-11, RM-02; #13 ACCT01",
+   "files": "engine.py:269 (`FEE_EST = 0.0005`), 1087, 1220; engine.py:2134 (`risk_usd = sleeve_eq * risk`, before the leverage cap trims qty at 2155) and 2234",
+   "impact": "the daily halt, compounding, Kelly and R drift from exchange truth. The Phase-6 live-vs-backtest gate cannot be measured.",
+   "fix": "reconcile closed lots to `/fapi/v1/income`; store the capped risk.",
+   "tests": "leverage-cap-binding entry stores capped `risk_usd`; income reconciliation with a fake.",
+   "cowork": "yes (compare against testnet income)",
+   "blocks": "mainnet release only"
+  },
+  {
+   "id": "HIST-10",
+   "title": "Build provenance and hard-kill install (FBL-OPS-01/02)",
+   "section": "A",
+   "severity": "P1 · Status: open · Evidence class: CONFIRMED · Origin: Fable OPS-01/02; #13 OPS01",
+   "files": "installer.ps1:342 (`build_info.py` = timestamp only), 262, 269 (`Process.Kill()`)",
+   "impact": "an install cannot prove which commit is running (a dirty tree can be staged). The kill leaves a 1-2 min unmanaged window with no in-flight drain. Testnet installs are now pre-approved and frequent.",
+   "fix": "commit/dirty/manifest in `build_info`; refuse dirty trees; `prepare-stop` API before the kill.",
+   "tests": "installer unit test refusing a dirty tree; `/api/status` shows the commit.",
+   "cowork": "yes (one testnet install)",
+   "blocks": "mainnet release only"
+  },
+  {
+   "id": "HIST-11",
+   "title": "Ops minimum absent: heartbeat, kill switch, playbook, 24/7 (V31-R7/R8, FBL-RM-01)",
+   "section": "A",
+   "severity": "P1 · Status: open · Evidence class: CONFIRMED (absence) · Origin: v3.1 §5.7-5.8, Q8; Fable RM-01",
+   "files": "ROADMAP.md:367 (T14 not started); no heartbeat or dead-man code in engine.py/app.py/telegram_ctl.py",
+   "impact": "an unattended bot on a home PC has no external alarm.",
+   "fix": "Telegram dead-man heartbeat, a written incident playbook, a testnet kill-switch drill.",
+   "tests": "heartbeat-missed alert unit test.",
+   "cowork": "yes (kill-switch drill)",
+   "blocks": "mainnet release only"
+  },
+  {
+   "id": "HIST-12",
+   "title": "Replay/causality coverage only partly extended (FBL-BT-02/03, V32-Q4)",
+   "section": "A",
+   "severity": "P2 · Status: partially-fixed · Evidence class: CONFIRMED · Origin: Fable BT-02/03; v3.2 Q4",
+   "files": "test_engine_sim.py:25 (strict gate still 4h, DCA at 30% share); tests/test_bt_intrabar_path.py:287 (hand-built DCA replay); tests/test_causality.py:97-99, 122 (tolerance unchanged)",
+   "impact": "a 1h DCA-dominant mix (the one BT-01 broke) is still not in the strict gate.",
+   "fix": "add a 1h DCA-dominant strict replay scenario on `data1h/`.",
+   "tests": "the scenario itself, at 24 steps.",
+   "cowork": "no",
+   "blocks": "neither"
+  },
+  {
+   "id": "HIST-13",
+   "title": "T03c exception always on; ordinary-maker leverage race (FBL-PROC-05, CX-T03C-15, ENG-13)",
+   "section": "A",
+   "severity": "P2 · Status: open / partially-fixed · Evidence class: CONFIRMED · Origin: Fable PROC-05, App.B#2; T03c round 3",
+   "files": "engine.py:2044-2070, 2199 (no setting gates the exposure path); engine.py:1787-1796 (marginType POST on every non-cooldown entry)",
+   "fix": "an `ABOVE_CAP_EXCEPTION` setting, default off for mainnet; re-prove leverage on a maker fill.",
+   "tests": "setting off → refusal path skips as in T03a.",
+   "cowork": "no",
+   "blocks": "mainnet release only"
+  },
+  {
+   "id": "HIST-14",
+   "title": "Partially-fixed hygiene items (grouped)",
+   "section": "A",
+   "severity": "P2 · Status: partially-fixed · Evidence class: CONFIRMED - CX-T04-5 / CX-T04B-2: secret scan covers the current tree at any depth (verify.py:108-125), but there is no git-history or dependency scan, and verify.py:125 still says \"Git-history scanning is T04b\". - FBL-OPS-06: `enforce_admins=true`, required [verify fast, verify full], no force-push (GitHub API). There is no CODEOWNERS, and any writer can add `full-ready`. - V31-R2 / V31-R3: T05 measures real fills and BT01 declares one path, but the maker fill model (backtest.py:439-449) and the absence of detail candles are unchanged. - FBL-WF-02, FBL-PROC-02/03, FBL-RM-04, FBL-B4: process improved (lanes, standing testnet authorization, T09a paused), but Codex and Claude still post as the owner.",
+   "blocks": "mainnet release only (security scan, identity); otherwise neither"
+  },
+  {
+   "id": "HIST-15",
+   "title": "Status docs stale and instructions contradict (A-DOC-1..7, FBL-PROC-01)",
+   "section": "A",
+   "severity": "P2 · Status: open · Evidence class: CONFIRMED · Origin: Fable PROC-01; this audit",
+   "files": "ROADMAP.md:356-358 (T05a \"⬜ Planned\"; no T05b, FBL-BT01 or BT02 rows); docs/PROJECT_STATUS.md:3-15 (says T05a merge pending); README.md:48, docs/reviews/README.md:19, docs/PROJECT_STATUS.md:66 (\"verify full on every PR\"; actual: `full-ready` label, verify.yml:19-22); verify-push.yml:5 (\"dispatched full\")",
+   "impact": "agents act on a stale queue, and approval behaviour differs between Claude sessions.",
+   "fix": "owner reconciles the global rule; Codex regenerates the ROADMAP/status tables from the GitHub API; add a tripwire test for workflow names in docs.",
+   "cowork": "no · Blocks: neither"
+  },
+  {
+   "id": "HIST-16",
+   "title": "Needs runtime evidence (grouped)",
+   "section": "A",
+   "severity": "P2/P3 · Evidence class: SPECULATIVE until run · Blocks: neither (ENG-10: mainnet release only)"
+  },
+  {
+   "id": "ENG-B01",
+   "title": "A failed `trades.csv` write after a fill repeats partial closes and pyramid/DCA adds every pass, and leaves the extra size without a stop",
+   "section": "B",
+   "severity": "P0",
+   "status": "open (pre-existing in v3.2-rc2)",
+   "evidence_class": "CONFIRMED (reproduced)",
+   "origin": "new (this audit)",
+   "files": "engine.py:1081-1093 (`_apply_close`), 1214-1224 (`_apply_add`), 720-725 (`log_trade`), 1285-1288, 1303-1313, 1318-1329 (manage), 1581-1586 (reconcile stop path)",
+   "evidence": "`_apply_close`/`_apply_add` mutate `lot['qty']`/`avg`/`fills` and only then call `log_trade()`, which is a synchronous `open(trades.csv,'a')`. The caller's bookkeeping runs after `_market_close`/`_add_qty` returns: `lot['tp1']=True`, `tps_done`, `lot['adds']+=1`, `next_add`, `lot['dca']+=1` and `_replace_stop(lot)`. So does the stop re-size. If `log_trade` raises (on Windows, Excel holds an exclusive lock on an open CSV; AV, OneDrive or a full disk can do the same), the exception skips all of it. The per-lot `except` at 1359 swallows it, and the next pass fires the same event again. The `post=` dict is applied only on the AmbiguousOrder path. Repro with `log_trade` raising PermissionError, 4 manage passes: - tp1 50% fired 4 times. The position went 1.0 → 0.063 and `tp1` stayed False. - A pyramid with `n=1` sent 5 opens. The position went 1.0 → 3.0 and `adds` stayed 0. **The exchange stop still covers 1.0**, so 2.0 is unprotected. `_add_block` does not catch this because `stop_dirty` was never set. Only the slot leverage cap ends the loop. - In `reconcile()`, `log_trade` runs before `_finish` (1581). A failure there raises out of reconcile, and `manage()` returns at 1245-1250 before managing ANY lot. All trailing stops and exits freeze while the file is locked.",
+   "impact": "real money. Repeated taker closes of a winner, and unbounded unprotected averaging-up, triggered by an ordinary desktop action (the owner opening trades.csv in Excel).",
+   "fix": "do the bookkeeping before the exchange call, or apply the `post` dict before any I/O. Wrap `log_trade` (and `save_json` for history/missed) in try/except that queues or logs and never raises into an order path, the same way T05 telemetry does. After any exception in an add or partial-close step, set `stop_dirty=True` so that adds stop and the stop is re-placed.",
+   "tests": "fake `log_trade`/`open` raising PermissionError during tp1, ladder, pyramid add, DCA safety order and reconcile stop. Assert exactly one exchange order per event, the stop qty equals the position, and other lots are still managed.",
+   "cowork": "yes. Open trades.csv in Excel on a testnet box during a partial TP to confirm the lock behaviour.",
+   "blocks": "testnet progression"
+  },
+  {
+   "id": "ENG-B02",
+   "title": "A failing add starves all later exit management of that lot (trailing, BE, tp1, ladder, tp_r)",
+   "section": "B",
+   "severity": "P1",
+   "status": "open (pre-existing; extends Fable ENG-21, which only covers \"retried forever\")",
+   "evidence_class": "CONFIRMED (reproduced)",
+   "origin": "new angle on Fable ENG-21",
+   "files": "engine.py:1277-1360 (one try block per lot), 1303-1308 (pyramid), 1282-1288 (DCA)",
+   "evidence": "management for a lot runs in a fixed order: stop retry, DCA, pyramid, tp1, ladder, tp_r, `best`, stop ratchet. It all sits in ONE `try`. `ge(next_add)` stays true while price keeps running. A business rejection on the add (e.g. -2019 margin insufficient, -4164, -1111) is raised every pass from `_add_qty`, so nothing after it ever runs. Repro: a trail_atr=1.0 lot with pyramid, `open` failing, price 100 → 130. The stop stayed at 95.0 and `best` stayed at 100. Once the add succeeded, the stop jumped to 128.",
+   "impact": "a pyramid winner that hits margin limits keeps its initial stop, and the whole run-up can be given back. The 6-failure Telegram alert fires, but nothing self-heals.",
+   "fix": "give each management stage its own try/except, or run exits and the stop ratchet BEFORE adds. On a non-transient add rejection, set `add_blocked` with a cooldown (Fable ticket for ENG-21).",
+   "tests": "pyramid plus trail with `open` raising -2019. Assert the stop is ratcheted on every pass.",
+   "cowork": "no",
+   "blocks": "testnet progression"
+  },
+  {
+   "id": "ENG-B03",
+   "title": "`_resolve_pending` reports any unanswered order of ≤ (lots+1) steps as filled, booking a phantom close/add and leaving size unprotected",
+   "section": "B",
+   "severity": "P1",
+   "status": "open (pre-existing)",
+   "evidence_class": "CONFIRMED (reproduced)",
+   "origin": "new (this audit)",
+   "files": "engine.py:1095-1119, 1556-1560",
+   "evidence": "`tol = step*(len(keys)+1)`. The \"filled\" test `abs(have - (expected ∓ qty)) <= tol` runs BEFORE the \"never filled\" test `abs(have - expected) <= tol`. When the pending qty is ≤ tol, both are true, so the order is always classified as filled, even when it never reached Binance. Repro: lot 1.0 BTC (step 0.001) with a pending tp1 close of 0.001 that did not fill. Reconcile set lot=0.999 and `tp1=True` and re-sized the stop to 0.999, while the exchange still held 1.0. Untracked stayed `{}` because the 0.001 excess is inside tol, so the gap is never reported. With ~$500 capital this is realistic: BTC tp1 halves are often 1-2 steps.",
+   "impact": "a phantom partial TP enters history, Kelly and the guards, and the residual size has no stop. The same happens for a pending add (it books size that was never bought).",
+   "fix": "when `qty <= tol`, don't decide from the position. Resolve from `get_order(cid)` (the AmbiguousOrder tag carries the cid), or wait for a second confirming read and the 20 s age. Never let the two tests overlap: require `abs(have-target) < abs(have-expected)`.",
+   "tests": "pending close/add of 1 step with have==expected. Expect \"not filled\" after 20 s.",
+   "cowork": "no",
+   "blocks": "testnet progression"
+  },
+  {
+   "id": "ENG-B04",
+   "title": "An unconfirmed market entry that filled is never adopted, and while the bot is flat it isn't even looked for until 2 candle cycles later",
+   "section": "B",
+   "severity": "P1",
+   "status": "open (pre-existing)",
+   "evidence_class": "CONFIRMED (code)",
+   "origin": "new (Fable ENG-19 covers only the ambiguous stop)",
+   "files": "engine.py:2207-2213 (`_market_entry`), 1549-1551, 1608-1618 (untracked needs 2 sightings), app.py:598 (manage only if lots/grids/pending/resting exist), engine.py:1657 (cycle reconcile)",
+   "evidence": "on `AmbiguousOrder` (raised after ~10 s of failed cid lookups), `_market_entry` returns False and creates no lot and no stop (\"reconcile will flag it\"). If the bot has no other lot, `app.loop` skips `manage()`, so the only `reconcile()` comes from `cycle()`. The untracked alert needs `over_seen >= 2`, which on a 4h slot means up to ~8 h of an unprotected position before the first alert. Even then it is only reported, never adopted or stopped. `grid._resolve_open` (grid.py:783-797) shows the adopt pattern already exists for grids.",
+   "impact": "an unprotected position for hours, discovered by a human.",
+   "fix": "keep a `pending_entry` record with the cid and plan. Resolve it on the next manage pass with `get_order(cid)`, and on FILLED create the lot and stop (reuse `_create_lot`). Run `manage()` while any pending entry record exists.",
+   "tests": "`open` raising AmbiguousOrder with the position present. Expect a lot plus a stop within one manage pass.",
+   "cowork": "no",
+   "blocks": "testnet progression"
+  },
+  {
+   "id": "ENG-B05",
+   "title": "The exit path, the panel/Telegram close and flatten can close another slot's resting-maker fill or a grid's inventory",
+   "section": "B",
+   "severity": "P2",
+   "status": "open (a variant of Fable ENG-09)",
+   "evidence_class": "CONFIRMED (code)",
+   "origin": "Fable ENG-09",
+   "files": "engine.py:1136-1146, 1545-1547, 1759-1761",
+   "evidence": "when no other *lot* exists on the same symbol/side, `close_lot` closes `positions()[(sym, side)]`. That includes untracked size and the filled part of another slot's working maker entry (entry_block de-duplicates maker entries only per slot, 1759-1761). Later, `_maker_finalize` creates a lot and stop for size that is already gone, and the next reconcile books it as a `resync` at mark.",
+   "fix": "close `min(lot qty + dust, exchange qty − resting fills − untracked)`, and close the exchange quantity only when nothing else is attributable.",
+   "tests": "slot A lot plus slot B partial maker fill on the same coin/side, then an exit on A.",
+   "cowork": "no",
+   "blocks": "mainnet release only"
+  },
+  {
+   "id": "ENG-B06",
+   "title": "The cycle exit, panel/Telegram close and flatten ignore `lot['pending']` (Fable ENG-04), and a multi-lot pending close can eat a neighbour's size",
+   "section": "B",
+   "severity": "P2",
+   "status": "open",
+   "evidence_class": "CONFIRMED (code)",
+   "origin": "Fable ENG-04",
+   "files": "engine.py:1686-1688, 2725-2728, 1136-1146; app.py:1213-1215",
+   "evidence": "`manage` skips pending lots (1269), but the cycle exit and the close handlers call `close_lot` directly. If the earlier pending close had filled and other lots share the side, `close_lot` sends `lot['qty']` (now too large). In hedge mode that size is taken from the sibling lot's position, and the sibling's stop then over-covers.",
+   "fix": "`close_lot` refuses (or defers) while `pending`, as the Fable audit recommends.",
+   "tests": "pending close plus exit signal with 2 lots on the side.",
+   "cowork": "no",
+   "blocks": "testnet progression"
+  },
+  {
+   "id": "ENG-B07",
+   "title": "No routine stop-existence check (Fable ENG-01); T05b added a report-only check after outages",
+   "section": "B",
+   "severity": "P1",
+   "status": "partially-fixed (only after an outage, and it reports without re-placing)",
+   "evidence_class": "CONFIRMED",
+   "origin": "Fable ENG-01",
+   "files": "engine.py:1563-1567 (open orders read only when the position shrank), 1383-1410 (`_stops_reconfirmed`: report only), 1280 (re-place only if `stop_dirty` or no `stop_id`)",
+   "evidence": "an externally cancelled or expired stop, with the position unchanged, is never noticed in normal running. Only the T03c exposure proof (1928-1929) would refuse a *new* above-cap entry.",
+   "fix": "every N passes, for each held symbol, read `open_stop_tags`. If a `stop_id` is missing while the position matches, set `stop_dirty=True` (manage re-places it) and alert.",
+   "tests": "fake stop removed with the position unchanged. Expect the stop re-placed within one pass.",
+   "cowork": "yes (testnet: cancel a stop in the Binance UI)",
+   "blocks": "testnet progression"
+  },
+  {
+   "id": "ENG-B08",
+   "title": "Fill quantities are ignored on the success path (Fable ENG-02)",
+   "section": "B",
+   "severity": "P1",
+   "status": "open",
+   "evidence_class": "CONFIRMED",
+   "origin": "Fable ENG-02",
+   "files": "engine.py:2216-2221 (zero fill books the full plan), 1203-1211 (`_add_qty` books the requested `q`), 1072-1079 (`_market_close` books `qty`); binance_client.py:341-347 (FILLED is enforced only on the lookup path) - Fix/Tests: as in the Fable ticket. FakeX.close returns no `executedQty`, so add EXPIRED/partial fakes.",
+   "cowork": "no",
+   "blocks": "testnet progression"
+  },
+  {
+   "id": "ENG-B09",
+   "title": "A transient stop failure on entry triggers an immediate market close (Fable ENG-03/19)",
+   "section": "B",
+   "severity": "P2",
+   "status": "open",
+   "evidence_class": "CONFIRMED",
+   "files": "engine.py:2253-2261, 1041-1045 (an AmbiguousOrder on the first stop makes `_replace_stop` return False, and `close_lot` follows while the stop may exist and is only queued in `orphans`)",
+   "fix": "retry the stop for a bounded window on transient errors, and resolve an ambiguous stop by cid before closing.",
+   "cowork": "no",
+   "blocks": "mainnet release only"
+  },
+  {
+   "id": "ENG-B10",
+   "title": "Same-cid resend after `-2013` can double-fill (Fable ENG-10)",
+   "section": "B",
+   "severity": "P1",
+   "status": "open (unchanged since v3.0: `git diff v3.2-rc2 -- binance_client.py` leaves `_order` untouched)",
+   "evidence_class": "SPECULATIVE (depends on Binance order-visibility lag)",
+   "files": "binance_client.py:329-340",
+   "evidence": "after a POST timeout, `get_order` runs at +1 s. If it returns -2013 (not visible yet), the order is re-POSTed with the same cid. A filled MARKET order's cid is not \"open\", so Binance does not reject the duplicate.",
+   "fix": "before resending, require ≥ 2 not-found answers spread over ≥ 5 s, and for MARKET entries prefer AmbiguousOrder plus ENG-B04 adoption over a resend.",
+   "cowork": "yes (testnet latency injection)",
+   "blocks": "mainnet release only"
+  },
+  {
+   "id": "ENG-B11",
+   "title": "One-way account: every order fails (-4061), not just shorts (Fable ENG-12)",
+   "section": "B",
+   "severity": "P2",
+   "status": "open",
+   "evidence_class": "CONFIRMED (code); the Binance code itself is SPECULATIVE",
+   "files": "engine.py:533-540, 1709, 1748; binance_client.py:493-506, 2553 (`positionSide` is always sent)",
+   "fix": "refuse all entries with a clear reason while `hedge` is False, and re-check hedge mode when the bot is flat.",
+   "blocks": "neither"
+  },
+  {
+   "id": "ENG-B12",
+   "title": "Recorded `risk_usd` is the uncapped plan risk (Fable ENG-11); Kelly×governor ceiling (Fable ENG-06)",
+   "section": "B",
+   "severity": "P2",
+   "status": "open",
+   "evidence_class": "CONFIRMED",
+   "files": "engine.py:2133-2134, 2156-2157, 2197, 2234 (`risk_usd` stored before the leverage-cap/step scaling; the risk-rule check correctly uses `risk_usd*qty/qty_raw` at 2163, so R, Kelly and the history R are understated when the cap binds), 1126-1134, 2463-2471 (Kelly up to 4× from app.py:1036, times governor 2× = 8× slot risk; all portfolio rules default to `warn`, 330-336)",
+   "fix": "store `risk_usd*qty/qty_raw`, and clip `kelly*gov` at 1.0 for automatic changes.",
+   "blocks": "mainnet release only"
+  },
+  {
+   "id": "ENG-B13",
+   "title": "Partial TPs: rounding to zero is marked done (Fable ENG-15); the dust rule exists only for the ladder",
+   "section": "B",
+   "severity": "P3",
+   "status": "open",
+   "evidence_class": "CONFIRMED (code)",
+   "files": "engine.py:1066-1067 (qty → 0 returns 0.0), 1310-1311 (`tp1=True` anyway), 1292-1296 (basket_tp_part has no dust rule), 1321-1323 (only the ladder keeps no dust)",
+   "impact": "with small lots, tp1 can bank nothing, or leave a remainder below `min_notional` that later stops/closes may refuse (SPECULATIVE in hedge mode).",
+   "fix": "one shared `leaves_dust()` (the BT02 branch has one in `feasibility.py`) used for tp1, basket_tp_part and the ladder. When the partial rounds to 0, skip it without marking it done, or close all.",
+   "blocks": "neither"
+  },
+  {
+   "id": "ENG-B14",
+   "title": "Duplicated rule implementations (engine vs backtest vs grid; BT02 would add a third)",
+   "section": "B",
+   "severity": "P2",
+   "status": "open",
+   "evidence_class": "CONFIRMED",
+   "origin": "new (context)",
+   "files": "- risk sizing and DCA basket sizing: engine.py:2132-2157 vs backtest.py:253-266 - open-risk incl. unfilled DCA: engine.py:2296-2303 vs backtest.py:221 - stop ratchet (BE/trail/ttp/runner): engine.py:1334-1358 vs backtest.py:295-313 - add gates: engine.py:1474-1503 vs backtest.py:353-363, 399-402 - basket runner reset: engine.py:1291-1300 vs backtest.py:390-395 - grids use their own add gate: grid.py:654-661, which bypasses `_add_block`'s slot cap and risk rules - origin/bt02-exchange-filters `feasibility.py` re-implements step/min-qty/dust/size_check (`risk_qty`, `size_check`, `leaves_dust`) while the engine keeps inline `_rd` and min checks (engine.py:2157-2162, 1199, 1321-1323)",
+   "evidence": "the copies already differ: - The engine moves a runner's stop to BE only if price is beyond BE (1298); the backtest tightens unconditionally (394). - The engine's DCA cap uses `used` at avg prices plus `last_eq*share`; the backtest uses `notional(sl,i)` plus `eq`. - The engine floors the stop to the tick (1037, 2228); the backtest does not.",
+   "fix": "one pure `sizing`/`ratchet`/`add_gate` module imported by engine, backtest and feasibility (fits T09's decide/act split). Add parity tests per rule rather than only end-to-end replay.",
+   "cowork": "no",
+   "blocks": "neither"
+  },
+  {
+   "id": "ENG-B15",
+   "title": "Minor",
+   "section": "B"
+  },
+  {
+   "id": "BT-C1",
+   "title": "Time exit (`max_bars`) is off by one candle between engine and backtester; live timing is jittery",
+   "section": "C",
+   "severity": "P1",
+   "status": "open",
+   "evidence_class": "CONFIRMED (ran)",
+   "origin": "new (this audit)",
+   "files": "engine.py:1672, 1684; backtest.py:493 (p['i'] = fill bar, set in open_pos backtest.py:273)",
+   "evidence": "engine `bars = (now_utc() - opened)/TF_SEC; closing ... bars >= max_bars` -> with `opened` = the fill (start of candle i_in) the engine exits at the close of candle i_in+max_bars-1 (holds max_bars candles). Backtester exits when `i - p['i'] >= max_bars` at candle close -> close of candle i_in+max_bars (holds max_bars+1 candles). Synthetic replay (test_causality.synth seed 6, donchian_ens both, stop 6 ATR, no trail, max_bars=4): engine holds exactly 4.0 candles on 45/45 trades; backtester `i_out - i_in == 4` (5 candles) on 43/43; matched 93.3 %, median |dR| 0.066, ret gap 3.3 pp -> fails 3 STRICT targets. Same config without max_bars: 100 % matched, median 0.018. In live the comparison uses wall-clock seconds: if the entry cycle ran later after the candle close than the exit cycle (order latency, AI review, slow cycle), `bars` = 3.999 and the exit slips to the next candle - so live is nondeterministic between the two conventions.",
+   "impact": "every preset with a DCA slot (dca_dip max_bars=60) and pullback_rsi (60) exit a candle earlier live than in the backtests that justified them; any user-set small max_bars diverges strongly. Escaped CI because no replay/causality mode exercises a time exit that actually fires (see BT-C9).",
+   "fix": "count closed candles, not seconds: store the entry candle open time on the lot and compare candle indices (`floor((now - entry_candle_open)/tf)`), then pick ONE convention (desc says \"time exit after N candles\") in both models.",
+   "tests": "add a `max_bars` mode to test_causality.MODES (fast set) asserting STRICT parity; unit test with an entry cycle delayed by 30 s.",
+   "cowork": "no (deterministic in replay)",
+   "blocks": "testnet progression (presets' DCA slot behaviour differs from its evidence)"
+  },
+  {
+   "id": "BT-C2",
+   "title": "Maker entries are filled before the candle reaches them: same-candle lookahead on targets/trails",
+   "section": "C",
+   "severity": "P1 (option off by default; available in Lab/backtest run_options and research_refresh v3.1 tables)",
+   "status": "open",
+   "evidence_class": "CONFIRMED (ran)",
+   "origin": "new; extends Fable BT-08 (which covers fill *probability*, not path order)",
+   "files": "backtest.py:440-450 (maker fill), 469 (`skip_i` only for trailing entries), 476-485 (same-candle walk from the open)",
+   "evidence": "a maker long fills at the previous close `lim` when `l[i] < lim`, at `min(lim, o)`. The position is then walked from the candle OPEN along the full path. On a red candle with o > lim (o -> h -> l -> c) the fill can only have happened on the down leg, but the walk books targets on the earlier up leg. Reproduced: prev close 100, candle o=101 h=106 l=99.5 c=99.8, tp_r 1 (target 102): `entry_order='maker'` books `tp` +0.95 R in the fill candle; the candle closes below the entry, so the honest outcome is an open trade at about -0.1 R. `best` is also raised to the pre-fill high, so trails ratchet off a price the position never saw.",
+   "impact": "any maker-mode backtest, optimisation or research row (research_refresh v3.1 table) is biased upward on top of BT-08.",
+   "fix": "for a maker fill with o beyond the limit, start the walk at the fill point (only path legs after the limit is touched), or mark it `skip_i` like trailing entries; keep BT-08's calibration work separate.",
+   "tests": "extend test_bt_intrabar_path with the case above (expect no exit in the fill candle).",
+   "cowork": "no",
+   "blocks": "neither (option off by default) - must be fixed before any maker preset or maker research is quoted"
+  },
+  {
+   "id": "BT-C3",
+   "title": "DCA safety orders and pyramid adds pay no slippage in the backtester (entries/exits do)",
+   "section": "C",
+   "severity": "P2",
+   "status": "open",
+   "evidence_class": "CONFIRMED",
+   "origin": "new (this audit); test locks it in",
+   "files": "backtest.py:361-362 (DCA add at `lvl`, fee only), 404-405 (pyramid add at `lvl`, fee only); compare 449 (entry `o*(1+side*SLIP)`), 201 (exits `px*(1-side*SLIP)`); replay.py:86-88 (sim applies SLIP to every engine `open`, adds included); tests/test_bt_intrabar_path.py:146 asserts the slip-free add price",
+   "evidence": "engine adds are taker MARKET orders (engine.py:1196-1212 `_add_qty`), so they pay the same spread/impact as entries. A full 3-order DCA basket has ~6.6x the first order's notional (scale 1.5); all of it is slip-free in the backtest.",
+   "impact": "DCA/pyramid sleeves are systematically flattered by 2 bp on most of their notional; contributes to replay ret gap for DCA mixes; Fable's \"slippage optimistic\" note is concrete here.",
+   "fix": "`lvl_fill = lvl*(1+sd*SLIP)` for adds in both legs; update the intrabar test expectations.",
+   "tests": "test_bt_intrabar_path add-price assertions.",
+   "cowork": "no",
+   "blocks": "neither (affects preset evidence; re-validation after BT01 should include it)"
+  },
+  {
+   "id": "BT-C4",
+   "title": "BTC circuit breaker / pump guard are sampled differently live vs backtest",
+   "section": "C",
+   "severity": "P2",
+   "status": "open",
+   "evidence_class": "CONFIRMED (code)",
+   "origin": "new (this audit)",
+   "files": "backtest.py:71-86 (4h book without `btc1h` -> 4h move / sqrt(4) proxy), 510 (breaker checked once per bar close); app.py:278-279 and lab.py:835-836 never pass `btc1h`; engine.py:1249-1251 (`_breaker()` every manage pass), 2279-2287 (`btc_move_1h` = last closed 1h candle, refreshed each minute)",
+   "evidence": "live trips on ANY closed 1h BTC candle moving > pct (4 chances per 4h candle, plus pump-guard checks at entry time); the app/Lab backtest uses a random-walk proxy at the 4h close only, so a 6 % 1h spike inside a 4h candle that closes flat never trips it. Only research_long.py passes real 1h data.",
+   "impact": "backtests of `risk_rules.btc_breaker` / `pump_guard.btc_1h_pct` understate pauses and `tighten` exits - the feature's measured benefit/cost is not what live does.",
+   "fix": "have app/lab load BTC 1h from the candle cache and evaluate the breaker at each 1h close inside the walk (or label the result \"proxy\" in the UI).",
+   "tests": "backtest unit test: 4h book + 1h spike inside a flat 4h candle -> breaker_until set.",
+   "cowork": "no",
+   "blocks": "neither (enforce mode off by default)"
+  },
+  {
+   "id": "BT-C5",
+   "title": "Trailing entries do not count toward `max_pos` in the backtester; the engine counts them",
+   "section": "C",
+   "severity": "P2",
+   "status": "open",
+   "evidence_class": "CONFIRMED (code)",
+   "origin": "new (this audit)",
+   "files": "backtest.py:519-537 (arming ignores `tpend` count), 453-456 (max_pos checked only at fill); engine.py:1757-1762 (`len(held) + len(working) >= max_pos`, working = pending trailing + resting maker entries)",
+   "evidence": "with max_pos=4 and 4 trailing entries armed, the engine refuses a 5th signal; the backtester arms it and fills whichever rebounds first (slot order differs, BT-15 tie-break no longer applies).",
+   "impact": "different coin selection for `trail_entry` slots; replay never covers trailing entries (BT-C9), so undetected.",
+   "fix": "count `len(sl['pos']) + len(sl['tpend'])` (and pending maker) at arming time, same as entry_block.",
+   "tests": "replay mode with trail_entry + max_pos 1-2.",
+   "cowork": "no",
+   "blocks": "neither"
+  },
+  {
+   "id": "BT-C6",
+   "title": "Daily-halt day of a signal on a bar that spans Cairo midnight",
+   "section": "C",
+   "severity": "P3",
+   "status": "open",
+   "evidence_class": "CONFIRMED (code)",
+   "origin": "new (this audit)",
+   "files": "backtest.py:195-196, 430-432, 519; engine.py:369-371, 1625-1628",
+   "evidence": "backtest day = Cairo date of the bar OPEN; halt reset happens at the first bar whose open is on a new day. The 4h bar opening 20:00 UTC (23:00 Cairo summer / 22:00 winter) closes after Cairo midnight: live evaluates its signal on the new day (halt cleared), backtest still applies the previous day's halt. Day-start equity likewise uses c[i-1].",
+   "impact": "a few entries per halted day differ; small.",
+   "fix": "use the Cairo date of the bar CLOSE (`T + bar_sec`) for both reset and signal gating.",
+   "tests": "unit test with a halt on day D and a signal on the 20:00 UTC bar.",
+   "cowork": "no",
+   "blocks": "neither"
+  },
+  {
+   "id": "BT-C7",
+   "title": "Shipped `data/` ends with a forming (partial) 4h candle on every coin",
+   "section": "C",
+   "severity": "P3",
+   "status": "open",
+   "evidence_class": "CONFIRMED",
+   "origin": "new (this audit)",
+   "files": "data/*_4h.csv last row (e.g. data/BTCUSDT_4h.csv:4501); DATA_MANIFEST.json note (\"klines ... closed\")",
+   "evidence": "data/BTCUSDT_4h.csv `2026-10-04 00:00` = o 84710.5 h 84839.3 c 84744.0 v 2217 (typical v 7-9k); the same candle in data_long/4h = h 84853.4 c 84799.9 v 4265. ETH/SOL show the same pattern (v 45.9k vs 124k; 369k vs 1.54M). app.get_candles filters forming candles (app.py:213) but the sandbox download did not.",
+   "impact": "replay 1 (`N-900 .. N-1`) and all research tables end on a partial candle; one-bar effect, but the manifest's \"closed candles\" claim is false and the replay gate runs on it.",
+   "fix": "drop the last row of data/ (and re-hash) or re-download with the closed filter; add a manifest check that the last open time + tf <= download time.",
+   "tests": "verify.py manifest_check assertion on last-row closure.",
+   "cowork": "no",
+   "blocks": "neither"
+  },
+  {
+   "id": "BT-C8",
+   "title": "Replay harness asymmetries that blur the strict metrics",
+   "section": "C",
+   "severity": "P3",
+   "status": "open",
+   "evidence_class": "CONFIRMED (code)",
+   "origin": "new; related to Fable TEST-03",
+   "files": "replay.py:114 (`CAPITAL_CAP = 0`), engine.py:576-578; replay.py:122 (open applied with `W.mark.update`, not `move()`)",
+   "evidence": "(a) with CAPITAL_CAP 0 the engine sizes on `totalMarginBalance` (incl. open P&L), the backtester on realised equity - sizing diverges whenever lots are open; this feeds the ret/DD gap the gate measures. (b) The candle open is set without running the simulated stops, so a stop gapped at the open fills at the stop price on the first path step (sim), while the backtester fills at the open - optimistic sim, mismatched R on gaps.",
+   "impact": "strict-gate noise; real bugs can hide in (or be blamed on) harness differences.",
+   "fix": "set CAPITAL_CAP=start + COMPOUND=True in the replay (realised compounding like the backtester); call `move()` for the open.",
+   "tests": "replay unit case with a gap through a stop.",
+   "cowork": "no",
+   "blocks": "neither"
+  },
+  {
+   "id": "BT-C9",
+   "title": "Parity/causality coverage: what is and is not gated",
+   "section": "C",
+   "severity": "P2",
+   "status": "open (partially overlaps Fable BT-02/BT-03, still open)",
+   "evidence_class": "CONFIRMED",
+   "origin": "Fable BT-02, BT-03; this audit",
+   "files": "tests/test_causality.py:63-75, 99-103; test_engine_sim.py:25-26; replay_scenario2.json; verify.py:179-196, 232-237, 364; .github/workflows/verify.yml",
+   "evidence": "fast set (every PR) runs 3 of 6 modes (trailing, breakout pyramid, DCA); the other 3 + both real-data strict replays (24 steps, ZB_REPLAY_STRICT=1) run only in `verify full` (label-triggered). Strict thresholds are enforced there (good). Parity tolerance: one unmatched trade (`max(1, 2 %)`), med |dR| 0.05, p95 0.25, single seed per mode. NOT covered by any replay or causality mode: `max_bars` that fires (BT-C1 found by adding it), maker entries (BT-C2), trailing entries (BT-C5), TP ladder `tps`, `ttp`, `when` regime filter, pump guard, BTC breaker, enforce risk rules, governor, Kelly, `hours`, `vol_max_pct`, context strategies (rotation/hot_coin rank), shorts with DCA, the 1h timeframe (BT-02). The perturbation test only perturbs candle j and later; it cannot see cross-sectional context or regime_now (unused without `when`).",
+   "impact": "every finding in this section except BT-C7 lives in an uncovered option; \"strict replay PASS\" covers 6 strategy configs on 4h only.",
+   "fix": "one parametrised fast replay per option (small synthetic, 3 steps) + a 1h DCA strict replay (BT-02); seed sweep (3 seeds) for the CORE modes.",
+   "tests": "as above.",
+   "cowork": "no",
+   "blocks": "testnet progression for any preset using those options"
+  },
+  {
+   "id": "BT-C10",
+   "title": "Research/statistics details",
+   "section": "C",
+   "severity": "P3",
+   "status": "open",
+   "evidence_class": "CONFIRMED (code)",
+   "origin": "new; adjacent to Fable BT-06/07/18",
+   "files": "backtest.py:581 (maxdd from bar-close curve), lab.py:343-353 (WF test windows), lab.py:375 vs panel.html:1887",
+   "evidence": "(a) max DD is computed on candle-close marks; intrabar adverse extremes (which drive live stops/halt/liquidation) are invisible, so DD is understated, most for 4h DCA baskets. (b) Walk-forward test windows start flat and end at MTM: positions open at a window end are valued without exit fee/slippage and vanish; the next window restarts flat. (c) Panel labels WF \"Efficiency\" as \"test score ÷ train score\" but lab computes OOS CAGR / mean IS CAGR (`efficiency_score` is the score ratio). (d) Lab optimiser ranks raw in-sample scores with no trial-count deflation; hold-out shown for top_k only (Fable BT-18).",
+   "impact": "optimistic DD and WF numbers; mislabelled efficiency tile.",
+   "fix": "track intrabar MTM low per bar for DD; close open positions at window end with costs in WF; relabel tile; show number of trials next to the best score.",
+   "tests": "lab unit tests for WF boundary close and label.",
+   "cowork": "no",
+   "blocks": "neither"
+  },
+  {
+   "id": "OPS-01",
+   "title": "No shared back-off for writes / critical reads on 429/418 (ban escalation)",
+   "section": "D",
+   "severity": "P1 (mainnet) / P2 (testnet)",
+   "status": "open",
+   "evidence_class": "CONFIRMED",
+   "origin": "new (this audit); related Fable ENG-03 (no order budget)",
+   "files": "binance_client.py:264-311 (`_req`), 138-159 (`ExchangeHealth.fail`), 313-348 (`_order`), 520-537 (`cancel`); engine.py:1231-1236 (orphan cancels)",
+   "evidence": "the circuit only gates `read = method == 'GET' and not critical` (l.270). DELETE (cancels), POST, `get_order` (`critical=True`, l.315) and critical `positions/marks` always go to the network. On HTTP 429/418 a DELETE/critical GET is retried up to 4 times (l.275, 294-306), sleeping `Retry-After` capped at 30 s per attempt, and `_order`'s confirmation loop issues up to 4 x `get_order` (each up to 4 attempts) + a resend. Nothing records \"banned until T\" across calls, and `X-MBX-USED-WEIGHT-*` / `X-MBX-ORDER-COUNT-*` headers are never read. 418 is treated as just another transient code (`is_transient`, l.179). Retry-After handling itself improved vs v3.2-rc2 (old: `float(r.headers.get('Retry-After'))` crashed on an HTTP-date; now `retry_after()` l.69-84 never raises).",
+   "impact": "Binance escalates IP bans (minutes to days) when requests continue after 429/418. During a ban every protective action (stop move, close, flatten) fails; exchange stops stay, but nothing can be adjusted. With copy-trading followers this is a multi-account stall.",
+   "fix": "one client-wide `banned_until` set from 418/429 Retry-After (and weight headers above ~90%), honoured by ALL methods (protective calls get priority after it expires, entries/adds refused until then); never retry a 418 inside `_req`.",
+   "tests": "fake returning 429 then 418 with Retry-After; assert zero requests until the deadline, then protect-before-enter order.",
+   "cowork": "no (unit-testable with the existing fake clock)",
+   "blocks": "mainnet release only"
+  },
+  {
+   "id": "OPS-02",
+   "title": "Network I/O and sleeps while holding the engine lock; 60 s loop sleep stalls management",
+   "section": "D",
+   "severity": "P1",
+   "status": "open (unchanged by T05b; durations newly quantified)",
+   "evidence_class": "CONFIRMED",
+   "origin": "Fable UI-01 / ENG-08 (decide-then-act cycle)",
+   "files": "engine.py:1227-1240 (`manage` holds `self.lock`, orphan cancels BEFORE reconcile), 1653 (`cycle` under lock), 2170-2176 (AI review inside `open_lot`), ai_filter.py:35 (`timeout=60`); app.py:582-586 (`time.sleep(60)` after a failed cycle), 594-602; binance_client.py:329-348",
+   "evidence": "per orphan, a black-holed network costs ~4 x 15 s timeout + ~6 s back-off (~65 s); under Retry-After 30 s, ~90 s; all inside `manage()` with the RLock held, before the reconcile that would detect the outage. An ambiguous order costs 1+2+3+4 s sleeps + 4 `get_order` calls (each up to ~66 s) = up to ~4.5 min under the lock. The AI veto can hold it 60 s per signal. A cycle that raises (e.g. `equity()` in an outage) makes the single loop thread `sleep(60)` per failing TF, so `manage` (trailing, stop repair) does not run; same line exists in v3.2-rc2 (app.py:538 there). Panel `flatten/close/move_stop` and Telegram `/flatten` wait on the same lock. T05b tests use `_nosleep` (tests/test_outage.py:337-391), so no test bounds wall-clock time.",
+   "impact": "protective management and emergency controls can be blocked for minutes exactly when the exchange misbehaves.",
+   "fix": "move orphan cancels after a successful reconcile and give them a single attempt per pass (they are retried every 8 s anyway); run AI review and kline fetches outside the lock with <=15 s timeout; replace the 60 s sleep with a per-TF `retry_at` so the loop keeps calling `manage`; drop the lock around `_order` confirmation sleeps (record a pending marker first).",
+   "tests": "wall-clock harness: `/api/status` and `flatten` answer in <2 s while a cycle is blocked on a slow fake; `manage` runs within 10 s after a cycle failure.",
+   "cowork": "yes (T05b-style read-outage canary measuring manage cadence on testnet)",
+   "blocks": "testnet progression (unattended runs)"
+  },
+  {
+   "id": "OPS-03",
+   "title": "Same-cid resend ~1 s after -2013 can double-fill a delayed POST",
+   "section": "D",
+   "severity": "P1 (mainnet)",
+   "status": "open (byte-identical to v3.2-rc2 `_order`)",
+   "evidence_class": "SPECULATIVE (needs Binance delayed-visibility behaviour; confirm on testnet with an injected 503 after send)",
+   "origin": "Fable ENG-10",
+   "files": "binance_client.py:321-348",
+   "evidence": "after a timeout/5xx the first `get_order` returning -2013 triggers `return self._req('POST', ...)` with the same `newClientOrderId`. Binance only guarantees cid uniqueness among OPEN orders; a MARKET order that is processed late and FILLED is not open, so the resend can be accepted. The code does not distinguish a pre-send failure (`ConnectTimeout`, `ConnectionError` before the body was written) from a post-send one (`ReadTimeout`, HTTP 503 \"execution status unknown\").",
+   "impact": "a second full-size market position on a copied account.",
+   "fix": "resend only after a pre-send failure; after a post-send failure poll `get_order` for a bounded window (e.g. 10-20 s) and then compare position size, raising `AmbiguousOrder` instead of resending.",
+   "tests": "fake whose first POST times out and whose order becomes visible 3 s later; assert exactly one fill.",
+   "cowork": "yes (delayed visibility cannot be proven with fakes)",
+   "blocks": "mainnet release only"
+  },
+  {
+   "id": "OPS-04",
+   "title": "Installer hard-kills the bot; install mode has no PAPER/idle gate",
+   "section": "D",
+   "severity": "P2 (P1 once live)",
+   "status": "open",
+   "evidence_class": "CONFIRMED",
+   "origin": "Fable OPS-02 (hard-kill stop); the missing install-mode gate is new",
+   "files": "installer.ps1:249-268 (`Stop-Bot` -> `Process.Kill()`), 439-447; verify.py:337-344 (PAPER/healthy gate only for the drill); app.py:1244-1248 (`quit`: save under lock, then `Timer(1.0, os._exit)` without the lock); engine.py:2240-2241 (lot saved only after the fill returns)",
+   "evidence": "`build_app.bat` (install) kills ZackBot at any instant; only `verify.py release` checks \"mode PAPER, healthy, all protected\" before the drill. A kill between a MARKET fill (`_market_entry`, l.2209) and `self.state['lots'][key] = lot; self.save_state()` (l.2240) leaves a position the restarted engine reports as UNTRACKED with no bot stop (engine.py:1609-1618). The panel `quit` path has the same 1 s race because the loop thread can start a cycle after the save.",
+   "impact": "rare but unbounded: an unprotected position after an update; on LIVE the installer would also silently stop a mainnet bot.",
+   "fix": "a `prepare-stop` API (pause entries, take the engine lock, persist, exit) called by `Stop-Bot` before any kill; refuse `install` when the running bot reports LIVE unless an explicit flag is given; `quit` should `os._exit` while holding the lock.",
+   "tests": "installer fake asserting prepare-stop is called and kill only after timeout; engine test that `quit` holds the lock.",
+   "cowork": "yes (Windows install on the PC)",
+   "blocks": "mainnet release only (testnet: update risk accepted)"
+  },
+  {
+   "id": "OPS-05",
+   "title": "Corrupt settings.json silently resets to defaults with entries OPEN; no fsync, no backup",
+   "section": "D",
+   "severity": "P1",
+   "status": "open (unchanged since v3.2-rc2)",
+   "evidence_class": "CONFIRMED (code); corruption trigger = SPECULATIVE (power loss without fsync)",
+   "origin": "Fable DATA-01..04 / DATA-02",
+   "files": "engine.py:381-384 (`save_json`: no flush/fsync), 417-419 (state), 476-479 (settings), 322-323 (`GLOBAL_DEFAULTS`: `ENTRIES_PAUSED=False`, `CAPITAL_CAP=500`, `PRESET='original'`); app.py:155-157 (config tmp+replace, no fsync); telegram_ctl.py:236-241",
+   "evidence": "`settings.json unreadable - defaults used` is only a warning; defaults re-enable entries with the stock preset and the next `save_settings()` overwrites the broken file. `state.json unreadable - starting empty` drops every lot (all positions become UNTRACKED). No `.bak`, no schema version.",
+   "impact": "after a crash/power cut the bot may restart trading a strategy and risk the owner never chose, with followers copying.",
+   "fix": "one `atomic_write()` (flush + fsync + replace + keep `.bak`); on an unreadable non-empty settings/state file: load `.bak` or set `error`, pause entries, alert, and never overwrite the bad file.",
+   "tests": "write garbage / zero bytes to each file, start Engine, assert entries paused and the file preserved.",
+   "cowork": "no",
+   "blocks": "testnet progression"
+  },
+  {
+   "id": "OPS-06",
+   "title": "/api/settings applies keys one by one; a later invalid key leaves memory and disk diverged",
+   "section": "D",
+   "severity": "P2",
+   "status": "open (same structure in v3.2-rc2 app.py:968+)",
+   "evidence_class": "CONFIRMED",
+   "origin": "Fable (validate-then-apply, roadmap item 6)",
+   "files": "app.py:1044-1093",
+   "evidence": "inside `with e.lock`, each key mutates `e.S` immediately; `TELEGRAM_TOKEN` even calls `write_cfg` (l.1066-1067). A ValueError on a later key returns 400 before `e.save_settings()`, so e.g. `{\"MAX_LEVERAGE\":5,\"ENTRY_ORDER\":\"x\"}` changes leverage in the running engine (and resets `e._lev`) but not on disk; the panel shows an error.",
+   "impact": "the running bot trades on settings the user believes were rejected; they vanish on restart.",
+   "fix": "validate into a copy (`new = deepcopy(e.S)`), then swap + save once; side effects (write_cfg, tg.restart) after success.",
+   "tests": "POST a valid + invalid key; assert `e.S` unchanged and 400.",
+   "cowork": "no",
+   "blocks": "neither"
+  },
+  {
+   "id": "OPS-07",
+   "title": "Paper<->live switch carries testnet state into mainnet",
+   "section": "D",
+   "severity": "P2",
+   "status": "open",
+   "evidence_class": "CONFIRMED (code); impact on guards SPECULATIVE",
+   "origin": "new (this audit)",
+   "files": "app.py:1109-1124 (`/api/keys`: refuses only when `e.state['lots']`), engine.py:400 (same `state.json`/settings for both modes), 1621-1636 (`check_guards` uses stored `peak_equity` / `day_start_equity`)",
+   "evidence": "the switch is allowed with `grids`, `pending_entries`, `resting_entries` or `orphans` present; the new mainnet engine inherits testnet order tags and grid plans. Capital baselines (`peak_equity`, `day_start_equity`, `halted`, `CAP_*`) are not reset, so a testnet peak can trip the daily halt or PEAK_DD flatten logic on the first live guard check.",
+   "impact": "confusing first live session; mainnet engine acting on testnet order ids/grids.",
+   "fix": "refuse the switch unless lots, grids, pending/resting entries and orphans are all empty; per-mode state files (`state.paper.json` / `state.live.json`) or an explicit baseline reset on switch.",
+   "tests": "switch with a resting entry -> refused; switch resets baselines.",
+   "cowork": "no",
+   "blocks": "mainnet release only"
+  },
+  {
+   "id": "OPS-08",
+   "title": "Single-instance guarantee is TOCTOU; server binds with SO_REUSEADDR on Windows",
+   "section": "D",
+   "severity": "P2",
+   "status": "needs-runtime-evidence",
+   "evidence_class": "CONFIRMED (code: `http.server.HTTPServer.allow_reuse_address == True`, `socketserver.TCPServer.server_bind` sets `SO_REUSEADDR`, checked in Python 3.14.6); Windows double-bind behaviour SPECULATIVE",
+   "origin": "new (this audit)",
+   "files": "app.py:1271-1273 (`port_in_use`), 1324-1342 (`main`: session.json written, `App()` connects the engine and starts Telegram BEFORE `ThreadingHTTPServer(('127.0.0.1', PORT), H)`)",
+   "evidence": "two near-simultaneous launches both pass `port_in_use()`, both construct an Engine (exchange reads, possible `set_hedge_mode`) and Telegram poller, and the second overwrites `session.json` (installer ping and `existing_instance_token` then trust the wrong token). On Windows, SO_REUSEADDR lets a second socket bind the same address, so the second instance may not fail at bind and both loops trade one account; a local process could also bind 8765 and receive the `?t=<token>` launch URL.",
+   "impact": "duplicate engines = duplicate orders; Telegram 409 conflicts.",
+   "fix": "`allow_reuse_address = False` + `SO_EXCLUSIVEADDRUSE`; bind the server first, then build App; a named mutex / locked pid file as the single-instance guard.",
+   "tests": "unit test that the server class sets exclusive use; Windows test that a second bind fails.",
+   "cowork": "yes (Windows socket semantics)",
+   "blocks": "testnet progression (cheap to fix)"
+  },
+  {
+   "id": "OPS-09",
+   "title": "Required checks can be satisfied by a PR's own edited workflows",
+   "section": "D",
+   "severity": "P2",
+   "status": "open",
+   "evidence_class": "CONFIRMED (protection settings); exploit path SPECULATIVE (not exercised)",
+   "origin": "new (this audit)",
+   "files": ".github/workflows/verify-fast.yml, verify.yml; `gh api repos/MoeAZack/ZackBot2/branches/master/protection`",
+   "evidence": "repo is public; required contexts `verify fast`, `verify full` (app 15368 = Actions), `strict`, enforce_admins on, `required_approving_review_count: 0`, no CODEOWNERS. `pull_request` workflows run the workflow files from the PR, so a PR that edits `verify*.yml` (or `verify.py` / `verify_ci.py`) can publish green checks under the required names. The gates rely on the reviewing agent noticing. Positives: actions pinned by SHA, `permissions: contents: read`, no secrets used, secret scanning and push protection enabled; dependabot alerts disabled.",
+   "impact": "an agent or compromised contributor can merge untested trading code.",
+   "fix": "CODEOWNERS for `.github/**`, `verify*.py`, `installer*.ps1`, `*.bat` with one required owner review; or a repository ruleset \"require workflow\" pinned to the default branch; `verify_ci.py merge` fails when gate files differ from base unless an `infra-change` label is set by the owner.",
+   "tests": "CI self-test that diffs gate files vs `origin/master`.",
+   "cowork": "no",
+   "blocks": "neither (process risk; should precede any mainnet release)"
+  },
+  {
+   "id": "OPS-10",
+   "title": "Telegram control authorises a chat, not a person; PIN optional",
+   "section": "D",
+   "severity": "P2",
+   "status": "open (unchanged)",
+   "evidence_class": "CONFIRMED",
+   "origin": "Fable SEC-02",
+   "files": "telegram_ctl.py:276-283 (`_authorized` by chat id / `@username`), 511-533 (PIN only if set), 567-587; app.py:1068-1071",
+   "evidence": "any member of a configured group/channel can `/pause`, and with the 6-char code sent to that same chat, `/flatten` or `/close`. 4-digit PIN with 5 tries / 15 min lock = ~480 guesses/day. Positives: offset saved before acting, stale updates dropped, rate limit, token stripped from errors, no remote stop.",
+   "fix": "require a PIN when control is on; also check `from.id` against an allow-list; refuse negative (group) chat ids for control.",
+   "tests": "group message from a non-owner `from.id` ignored.",
+   "cowork": "no",
+   "blocks": "mainnet release only"
+  },
+  {
+   "id": "OPS-11",
+   "title": "Plaintext config.env copies left behind after import",
+   "section": "D",
+   "severity": "P3",
+   "status": "open",
+   "evidence_class": "CONFIRMED",
+   "origin": "new (this audit)",
+   "files": "app.py:105-112 (`config_path` copies `EXE_DIR\\config.env` or `Documents\\ZackBot\\config.env`), 162-166 (only `DATA\\src\\config.env` is removed)",
+   "evidence": "the imported plaintext file is left in place (\"you can delete that old copy\" is only logged). The new copy is re-encrypted with DPAPI on the next start.",
+   "fix": "after a successful encrypted rewrite, delete (or overwrite) the imported source, or show a panel warning until it is gone.",
+   "tests": "import fixture; assert the old file is gone after `write_cfg`.",
+   "cowork": "no",
+   "blocks": "mainnet release only"
+  },
+  {
+   "id": "OPS-12",
+   "title": "Time sync and minor client error paths",
+   "section": "D",
+   "severity": "P3",
+   "status": "open",
+   "evidence_class": "CONFIRMED",
+   "origin": "new (this audit)",
+   "files": "binance_client.py:236-238, 292-293, 547-553; app.py:776, 786-790",
+   "evidence": "`sync_time()` does `.json()['serverTime']` with no handling; called from `_req` on -1021, an error body (e.g. 418 JSON) raises `KeyError` out of `_req` (not BinanceError/RequestException), bypassing `_order`'s handlers, the circuit and `_exchange_down` (reported as a generic failure). Offset is only refreshed reactively (fine with recvWindow 6000). `api_restrictions()` (mainnet only) uses a raw `s.get`; its exception text with the signed query string reaches the panel unscrubbed (signature is not a secret, but inconsistent with `scrub`).",
+   "fix": "wrap `sync_time` (raise BinanceError(-1021) on failure, record health); route `api_restrictions` through `_scrubbed`.",
+   "tests": "-1021 followed by a non-JSON / error time response.",
+   "cowork": "no",
+   "blocks": "neither"
+  },
+  {
+   "id": "OPS-13",
+   "title": "Build reproducibility: pins without hashes, Python not pinned in the Windows build",
+   "section": "D",
+   "severity": "P3",
+   "status": "open (provenance part = Fable OPS-01)",
+   "evidence_class": "CONFIRMED",
+   "origin": "Fable OPS-01; rest new",
+   "files": "requirements.txt, requirements-dev.txt, requirements-ui.txt; installer.ps1:245-252 (`Find-Python`), 343-347 (venv created once, reused), 324 (`build_info.py` = timestamp only)",
+   "evidence": "exact `==` pins for the full tree (good) but no `--require-hashes`; the persistent `buildenv` is never recreated when `py` resolves to a new Python, and pip never removes stray packages; CI uses 3.14 on Ubuntu while the shipped exe is built with whatever `py` is on the PC. The exe selftest records version/build only (not Python, commit, or dependency hash).",
+   "fix": "hash-locked requirements; recreate buildenv when `sys.version` or the requirements hash changes; write commit + dirty flag + Python + `pip freeze` hash into `build_info.py` and the selftest JSON; refuse dirty trees for `install`.",
+   "tests": "installer fake asserting venv rebuild on version change.",
+   "cowork": "yes (Windows build)",
+   "blocks": "mainnet release only"
+  },
+  {
+   "id": "UX-01",
+   "title": "DCA profile cards still quote backtest numbers that the corrected backtester contradicts; Research tab drops the label",
+   "section": "E",
+   "severity": "P1",
+   "status": "open (partially mitigated by a label)",
+   "evidence_class": "CONFIRMED",
+   "origin": "FBL-BT01 (docs/reviews/FBL_BT01_review_request.md \"Presets labelled unverified\", item 5 re-baselining deferred)",
+   "files": "engine.py:300-319 (PRESETS notes/bt + UNVERIFIED_BT01 loop); panel.html:1326 (btBadge), 1328 (renderPresets), 1488 (renderResearch); app.py:377-378",
+   "evidence": "the cards still render the old `bt` block (\"$500 -> $4,637, max DD -26%\") and note text, e.g. active_dca \"positive every year incl. late 2022\". The FBL-BT01 rerun on the same data gives active_dca $4,637 -> **$210**, PF 1.75 -> 0.80, DD -26% -> -68%, negative in every year 2022-2026; steady_mix 4h+1h $4,015 -> $1,517; boost_active $8,112 -> $3,256. The only signal is a small amber tag \"unverified: backtest path fix pending re-validation\" above the unchanged headline numbers. `/api/research` returns `unverified`, but panel.html never reads it (only reference to `unverified` is btBadge), so Research-tab rows with a DCA slot are shown with no caveat at all (the review request says so: \"the Research tab does not render it\").",
+   "impact": "the owner (and anyone choosing a profile for copy-trading followers at $100-$200) sees a known-wrong, strongly positive expectation for a profile the fixed backtester shows losing. \"Unverified\" understates \"measured as losing\".",
+   "fix": "until re-baselined, replace the `bt` headline for dca_dip profiles with the FBL-BT01 rerun numbers (or hide `bt`/note numbers and show \"re-validation pending\"), strip \"positive every year\" text; render `R.unverified` on Research rows whose strategy set contains dca_dip. Owner decision exists (origin/cowork/dca-off, \"DCA off by default\") - land that or this, not neither.",
+   "tests": "test_app_ui check that no preset card with a dca_dip slot shows a `$500 -> ` figure differing from a stored post-BT01 value; unit test that renderResearch marks dca rows.",
+   "cowork": "no (static content)",
+   "blocks": "testnet progression (profile choice for the forward test) and mainnet release"
+  },
+  {
+   "id": "UX-02",
+   "title": "\"Old engine\" warning is shown on every backtest; FBL-BT01 did not bump the backtester version",
+   "section": "E",
+   "severity": "P2",
+   "status": "open (since v3.1, 4aa1c0e; unchanged at v3.2-rc2)",
+   "evidence_class": "CONFIRMED (code); visual confirmation needs-runtime",
+   "origin": "new (this audit)",
+   "files": "panel.html:1449 (`old=b.engine!=='v3'`), 1466/1470 (showBT \"Old engine (v2) result - re-run\"); backtest.py:16 (`VERSION = 'v3.1'`); app.py:305, 361",
+   "evidence": "results are saved with `engine=BT.VERSION='v3.1'`; the panel compares to the literal `'v3'`, so every current result carries \"old engine\" / \"Made with the old engine - re-run for current numbers\". Conversely FBL-BT01 (ef6abc0) changed fill ordering materially but left VERSION at 'v3.1', so pre-fix saved backtests and Lab results in %LOCALAPPDATA%\\ZackBot\\backtests are indistinguishable from post-fix ones.",
+   "impact": "the stale-result warning is permanently on (ignored), while the one staleness that matters (pre-BT01 DCA results) is invisible.",
+   "fix": "bump BT.VERSION (e.g. 'v3.2-bt01'), expose it in /api/meta, and compute `old = r.engine !== META.bt_version`; label pre-BT01 results containing dca/pyramid sleeves explicitly.",
+   "tests": "unit test that a result saved by the current backtester is not flagged old; one saved with 'v3.1' is.",
+   "cowork": "yes (confirm badge on a fresh backtest)",
+   "blocks": "neither"
+  },
+  {
+   "id": "UX-03",
+   "title": "Equity chart \"30d\"/\"All\" and Trades \"All\" are silently truncated",
+   "section": "E",
+   "severity": "P2",
+   "status": "open (same at v3.2-rc2: app.py:792/797 there)",
+   "evidence_class": "CONFIRMED",
+   "origin": "new (this audit)",
+   "files": "app.py:871 (`equity_hist[-3000:]`), 866 (`history[-1500:]`), 614-617 (record every 300 s); engine.py:715-718 (keeps 8000), 1736 (extra point per cycle); panel.html:434 (eqRange default 30d), 469 (trRange All), 1155",
+   "evidence": "a point is recorded every 5 min plus one per cycle (>=288/day, ~384/day with a 15m slot). 3000 points = ~8-10 days; the engine keeps 8000 (~3-4 weeks). The default \"30d\" and \"All\" views therefore show at most ~10 days with no notice. Trades \"All\" and all stats/calendar are over the last 1500 trades only.",
+   "impact": "misleading performance/drawdown picture once the bot has run >10 days (equity) or >1500 trades.",
+   "fix": "downsample server-side for long ranges (e.g. hourly for >7d) and return the full kept range; label the window actually covered (\"since <date>\"); keep a daily equity series that is never truncated.",
+   "tests": "unit test for /api/equity covering 30 days of synthetic points.",
+   "cowork": "no",
+   "blocks": "neither"
+  },
+  {
+   "id": "UX-04",
+   "title": "Bot capital / compounding sizing is derived from a history list capped at 3000 trades",
+   "section": "E",
+   "severity": "P2",
+   "status": "open (pre-existing: v3.2-rc2 engine.py:590)",
+   "evidence_class": "CONFIRMED (code); timing SPECULATIVE",
+   "origin": "new (this audit)",
+   "files": "engine.py:593 (`realized = sum(... for h in self.history if closed >= since)`), 1175 (`self.history = self.history[-3000:]`), 585-586 (compound sizing), 584 (guard_eq)",
+   "evidence": "realized P&L since CAP_SINCE is recomputed from `history`, which drops its oldest records past 3000. When >3000 trades close within one capital cycle, \"Bot capital\", compounding sizing equity and the guard equity (daily halt / DD flatten baselines) jump by the dropped trades' P&L.",
+   "impact": "at ~15-30 trades/week this is 2-4 years out, sooner with high-frequency slots; silent change of sizing and of the numbers followers' sizing would mirror.",
+   "fix": "keep a running `realized_since_cap` accumulator in settings/state (updated in _finish, reset on capital reset) instead of summing a truncated list; keep history truncation for display only.",
+   "tests": "unit test with 3,100 synthetic closes asserting capital_info()['realized'] is unchanged by truncation.",
+   "cowork": "no",
+   "blocks": "mainnet release only"
+  },
+  {
+   "id": "UX-05",
+   "title": "Panel freezes on stale data with green chips while the engine lock is held; no fetch timeout",
+   "section": "E",
+   "severity": "P2",
+   "status": "open (known: test_app_ui.py:221-225 records CYCLE_BLOCK_S); T05b made it more frequent during outages",
+   "evidence_class": "CONFIRMED (code); duration needs-runtime",
+   "origin": "T02 review note; new for the UI consequence",
+   "files": "app.py:634 (_lots_view `with e.lock`), 751 (candles_view), 508-515 (T05b _reconnect holds lock across connect); panel.html:783 (api() without AbortController), 1954-1966 (load/OFFLINE), 1059, 1072-1090",
+   "evidence": "/api/status takes e.lock, which cycle() holds for the whole candle cycle (see CON-01). `load()` has no timeout and `LOADING` blocks further polls, so the page keeps the last D. Only `tick()` keeps updating \"prices Xs ago\"; the Engine/Exchange chips keep their old colour and the RUNNING pill stays green. OFFLINE is only set on a thrown error, and then only the pill changes - balances, P&L and positions stay rendered as if live. T05b `_reconnect` holds e.lock across `connect()` (exchange_info with 15 s timeout x up to 4 attempts), so during an outage - when the owner most needs the panel - /api/status can block for tens of seconds per retry.",
+   "impact": "owner can act on stale positions/P&L; \"ENGINE STOPPED\" can also flash after a >60 s cycle because loop_ok is updated only at the end of a pass (app.py:622, 657).",
+   "fix": "(1) read models without e.lock (copy lots under a short lock that cycle releases between phases, or publish an immutable snapshot from the loop); (2) api(): AbortController ~8 s; (3) when the last good status is >15 s old, grey the money strip/positions and show \"data as of hh:mm\"; (4) don't hold e.lock across network in _reconnect.",
+   "tests": "UI harness: inject a 20 s /api/status delay and assert a stale banner appears and chips leave \"ok\".",
+   "cowork": "yes (measure /api/status latency during a 4h-boundary cycle and during a simulated outage via ZB_TESTNET_FAULTS)",
+   "blocks": "testnet progression (operator visibility)"
+  },
+  {
+   "id": "UX-06",
+   "title": "Unescaped interpolations of symbol/side strings",
+   "section": "E",
+   "severity": "P3",
+   "status": "open",
+   "evidence_class": "CONFIRMED (code); exploitability SPECULATIVE (low)",
+   "origin": "new (this audit)",
+   "files": "panel.html:756 (`coin=s=>(s||'').replace('USDT','')` - no esc), 1158, 1168-1170 (activity feed `coin(h.symbol)`, `h.side.toLowerCase()`), 1199 (sideTag `${s}`), 1237/1243/1254, 1351/1385 (`t-${lib.style}`), 1491 (`x.tf`), 1222 (`<option value=\"${s}\">${coin(s)}`)",
+   "evidence": "264 esc() calls cover nearly all free text (errors, notes, names, logs via hl(), toast uses textContent). The remaining raw values are symbols/sides/tf from history.json, missed.json, state.json and Binance. Server-side these are regex-validated on entry (SYM, sleeve id), but history/missed files are loaded from disk unvalidated (engine.py:458-460).",
+   "impact": "low (local files, loopback-only, CSP blocks external script but allows 'unsafe-inline', so an injected inline handler would run).",
+   "fix": "make `coin()` and `sideTag()` return escaped text; esc() the remaining tf/style values.",
+   "tests": "UI harness seed with a history record whose symbol is `<img src=x onerror=...>USDT`; assert no execution.",
+   "cowork": "no",
+   "blocks": "neither"
+  },
+  {
+   "id": "UX-07",
+   "title": "Errors swallowed in the panel",
+   "section": "E",
+   "severity": "P3",
+   "status": "open",
+   "evidence_class": "CONFIRMED",
+   "origin": "new (this audit)",
+   "files": "panel.html:1488 (renderResearch `catch(e){return}` -> blank tab), 1506 (loadLogs `catch(e){}`), 1445 (loadBT keeps old list), 1213 (`try{renderAudit()}catch(e){}`)",
+   "impact": "a failing endpoint looks like \"no data\". Fix: render an inline \"could not load (<error>) - retry\" note. Tests: harness API-failure injection already exists (T02) - add these endpoints.",
+   "cowork": "no",
+   "blocks": "neither Accessibility / mobile (checked, no finding above P3): proper tablist/tabpanel with roving tabindex, 84 aria-labels, aria-live regions, focus-visible rings, setHTML skips unchanged DOM, dialog() for flatten, confirm() on close / move stop / take signal / grid stop / backtest delete / quit / live switch / capital mode. Viewport meta and 640/900/1250 px breakpoints; T04 harness checks 390/820/1560 px for sideways scroll. Dark theme only. The server is loopback-only with exact Host check, so there is no phone path to the panel; Telegram is the only mobile surface (a product fact, not a defect). \"Pause entries\" has no confirm (intentional: it is the safe direction)."
+  },
+  {
+   "id": "OBS-01",
+   "title": "trades.csv is written synchronously inside order paths; a locked file aborts bookkeeping after the exchange executed",
+   "section": "E",
+   "severity": "P2",
+   "status": "open (pre-existing; T05/T05a made only fills/audit non-blocking)",
+   "evidence_class": "CONFIRMED (code path); Windows lock behaviour SPECULATIVE",
+   "origin": "new (this audit)",
+   "files": "engine.py:720-725 (log_trade `open(..., 'a')`), 1089 (_apply_close), 1221 (_apply_add), 1581 (stop fill), 2262 (entry, before save_state at 2265), 1136-1146 (close_lot -> _finish/save_state after _apply_close)",
+   "evidence": "`_apply_close` mutates the lot (realized, fills, qty) then calls `log_trade`; if the open raises (Excel opens CSV with a deny-write share lock; also AV/backup tools), the exception leaves `_market_close` before `_finish()` and `save_state()`: the position is closed on Binance, the lot stays in memory with qty 0, no history record, stop not cancelled, state not saved, and the caller logs \"exit failed\". A later close attempt self-heals (qty 0 -> `_market_close` returns early -> `_finish`), but a restart in between replays the stale state.json. On entry (2262) the exception skips `notify` and `save_state()`, so a restart before the next save loses the lot (it becomes an untracked position).",
+   "impact": "owner opening trades.csv in Excel while the bot trades can make an executed close/entry look failed, delay history/P&L and, across a restart, desynchronise state from the exchange.",
+   "fix": "route trades.csv through the existing FillWriter (non-blocking, counted) or wrap log_trade in try/except that logs and counts; never let a CSV failure raise into an order path.",
+   "tests": "unit test patching `open` for trades.csv to raise PermissionError during close_lot/open; assert lot finished, history saved, state saved.",
+   "cowork": "yes (testnet: open trades.csv in Excel, trigger a manual close)",
+   "blocks": "testnet progression"
+  },
+  {
+   "id": "OBS-02",
+   "title": "Backtest worker thread can die silently; nothing restarts or reports it",
+   "section": "E",
+   "severity": "P2",
+   "status": "open (same code at v3.2-rc2)",
+   "evidence_class": "CONFIRMED (code path); race likelihood SPECULATIVE (low)",
+   "origin": "new (this audit)",
+   "files": "app.py:226-233 (job_worker), 1134/1144/1149/1167 (HTTP thread inserts into JOBS), 47 (windowed exe: no stdout/stderr), no threading.excepthook anywhere",
+   "evidence": "the `finally:` block iterates `JOBS.items()` in a Python-level comprehension while HTTP threads insert jobs; \"dictionary changed size during iteration\" raised in `finally` escapes `while True` and ends the thread. Default threading.excepthook prints to sys.stderr, which is None in the windowed exe, so nothing reaches bot.log. All later jobs stay \"queued\", then enqueue fails with \"too many backtests waiting\". Also: pruning keeps only status done/error, so `cancelled` lab jobs (with partial results) are never pruned.",
+   "impact": "Backtest/Lab silently stop working until restart; no trading impact.",
+   "fix": "snapshot `list(JOBS.items())` and guard with a lock; wrap the whole loop body; install threading.excepthook that logs to bot.log; prune 'cancelled' too; show worker liveness in /api/status.",
+   "tests": "unit test that an exception in the pruning step does not stop job_worker; excepthook logs.",
+   "cowork": "no",
+   "blocks": "neither"
+  },
+  {
+   "id": "OBS-03",
+   "title": "Telemetry and audit health are invisible in the panel; audit expectancy shown without coverage",
+   "section": "E",
+   "severity": "P2",
+   "status": "open (new surface since v3.2-rc2: T05, T05a)",
+   "evidence_class": "CONFIRMED",
+   "origin": "T05 / T05a",
+   "files": "app.py:663 (health.fills), 669 (health.audit); engine.py:148-167 (summary: dropped/write_errors/state), 919-942; panel.html:1204-1212 (renderAudit), no reference to `fills`, `telemetry`, `dropped`, `write_errors`, `coverage`",
+   "evidence": "/api/status ships the fill summary and audit telemetry counters every 5 s, but the panel never renders them; a writer stuck in 'closing', a full queue (records dropped) or disk write errors are visible only as per-record WARNING lines in bot.log. The audit card shows \"N audited closed trades\" and segment expectancy but not `coverage` (legacy / rotated / missing), so expectancy over a partial window reads as complete. The missed-list funnel covers only the last 600 records (engine.py:1193) with no stated window.",
+   "impact": "forward-test evidence (T05/T05a are the measurement basis for later gates) can silently degrade.",
+   "fix": "one \"Telemetry\" row in the Engine popover (accepted/persisted/dropped/write_errors/state for fills and audit, red when dropped or errors > 0); show coverage and window dates in the audit card; mark segments with n < 30 as \"too few\".",
+   "tests": "harness: inject write_errors>0 and assert the popover shows it.",
+   "cowork": "no",
+   "blocks": "testnet progression (evidence quality)"
+  },
+  {
+   "id": "OBS-04",
+   "title": "Full-file JSON rewrites per event inside the lock",
+   "section": "E",
+   "severity": "P3",
+   "status": "open (pre-existing)",
+   "evidence_class": "CONFIRMED",
+   "origin": "new (this audit)",
+   "files": "engine.py:1194 (miss -> save_json(missed, 600 recs, indent=2) per missed signal), 1525 (add_blocked), 1176 (history 3000 recs incl. fills per close), 381-384 (save_json: no fsync; os.replace can raise PermissionError on Windows if a reader holds the target)",
+   "impact": "CPU/disk inside cycle under e.lock (many misses per cycle = many 100-500 KB rewrites); a failing replace raises into miss()/close paths. Fix: batch missed writes once per cycle; append-only JSONL for history; catch and count persistence errors outside order-critical state.json. Tests: count save_json calls per cycle in replay.",
+   "cowork": "no",
+   "blocks": "neither Logging / secrets (checked, no defect found): Scrub filter on every handler (app.py:33-48) replaces API key/secret, Anthropic key, Telegram tokens (regex) in formatted messages; no `log.exception`/`exc_info` use (tracebacks are put in the message and so are scrubbed); binance_client.scrub/_scrubbed strip signed query strings and chained urllib3 causes; Telegram failures log only the exception type (engine.py:472, telegram_ctl.py:185-188, 216); TELEGRAM_PIN is stored hashed and excluded from /api/status. bot.log rotates at 5 MB x 3; fills.jsonl rotates at 5 MB (one .1), trade_audit.jsonl at 20k lines/16 MB (one .1); incidents de-duplicated (INCIDENT_MAX 200). err() de-dup limits warning floods."
+  },
+  {
+   "id": "CON-01",
+   "title": "Engine lock held across the whole cycle including network and AI calls",
+   "section": "E",
+   "severity": "P2",
+   "status": "open (pre-existing; T05b added `_reconnect` under the lock)",
+   "evidence_class": "CONFIRMED (code); durations needs-runtime",
+   "origin": "T02 review (test_app_ui.py:221 \"the panel cannot refresh while a cycle runs\")",
+   "files": "engine.py:1652-1662 (cycle: equity(), reconcile(), compute_signals -> candles() klines for every coin, all under `with self.lock`), 2167-2177 (AI review: Anthropic call, timeout 60 s, ai_filter.py:35, per candidate under the lock); app.py:508, 573-598 (cycle and manage on the same loop thread); telegram_ctl.py:365/416/449/463/479/494 (Telegram reads take e.lock)",
+   "evidence": "up to 120 coins x klines(1500) per timeframe plus account/positions reads and optional sequential 60 s AI reviews run inside the lock. Every panel read model, /api/candles, close/flatten/settings writes and Telegram /status/positions wait. manage() (trailing, breakeven, maker polling, unprotected-stop retries) runs after the cycle on the same thread, so soft management pauses for the whole cycle; maker MAKER_WAIT_S windows stretch.",
+   "impact": "exchange stops still protect, but soft exits and stop repairs are delayed; panel/Telegram unresponsive (UX-05).",
+   "fix": "prefetch candles and run AI review outside the lock (they only read), take the lock only for the decision/order phase; publish a read-only snapshot for HTTP/Telegram; keep `_reconnect` network outside the lock.",
+   "tests": "replay test asserting lock hold time per cycle < N s with a slow fake data client; harness CYCLE_BLOCK_S budget.",
+   "cowork": "yes (measure hold time at a 4h boundary with TOP40 and with AI_FILTER on)",
+   "blocks": "testnet progression (before more coins / AI filter), mainnet release"
+  },
+  {
+   "id": "CON-02",
+   "title": "Backtest/Lab downloads and per-cycle full kline refetches share the Binance IP weight budget with the engine, unthrottled",
+   "section": "E",
+   "severity": "P1 (mainnet) / P2 (paper)",
+   "status": "open",
+   "evidence_class": "SPECULATIVE (code CONFIRMED; ban requires measured request rate)",
+   "origin": "new (this audit)",
+   "files": "app.py:183-209 (get_candles: back/forward fill loops of klines(limit=1500) with no pacing, public MAINNET client), 316-333 (lab_book), 1241 (top_by_volume); engine.py:405 (`self.data = Futures('', '', MAINNET)` even in paper), 657-672 (candles(): full klines(1500) refetch per coin per new candle); binance_client.py:275-294 (retries on 418/429, no client-side weight budget)",
+   "evidence": "klines with limit 1500 cost weight 10. A 2200-day 15m/1h multi-coin backtest or Lab job issues thousands of sequential calls from the same IP the engine uses for marks/klines; nothing paces them. At a 4h boundary the engine also refetches 1500 candles for every coin on each due timeframe (3 x 40 x 10 = 1200 weight) where 2-3 new candles (weight 1) would do.",
+   "impact": "429 then 418 IP ban (minutes to days) blocks mark prices and signals even in paper (data client is mainnet), and in LIVE also order/stop management on the same host.",
+   "fix": "a process-wide weight limiter shared by all Futures instances on the mainnet host (headers X-MBX-USED-WEIGHT-1M), backtest downloads yield when used weight > ~50%; incremental candle cache in Engine.candles (fetch since last open, limit<100).",
+   "tests": "fake client counting weight: a 2-year 1h TOP40 backtest stays under 1200/min; engine cycle weight per boundary.",
+   "cowork": "yes (log X-MBX-USED-WEIGHT-1M during a long backtest download on paper)",
+   "blocks": "mainnet release only"
+  },
+  {
+   "id": "CON-03",
+   "title": "Backtests and Lab run in the trading process (GIL), single worker, no cancel for backtests/study",
+   "section": "E",
+   "severity": "P2",
+   "status": "open",
+   "evidence_class": "CONFIRMED (structure); latency impact SPECULATIVE",
+   "origin": "new (this audit)",
+   "files": "app.py:222-238 (one daemon worker, Queue(8)), 1138-1159 (study = 7+ full backtests in one queue item), 1171-1174 (cancel only for lab jobs); lab.py:264-301 (optimize up to MAX_TRIALS runs), backtest.py (Python loops); no multiprocessing anywhere",
+   "evidence": "CPU-bound Python backtests hold the GIL in slices alongside the loop thread, HTTP threads and preview worker. A study or 300-trial optimize can occupy the worker for a long time; queued jobs cannot start, backtests cannot be cancelled.",
+   "impact": "slower manage passes / panel during research; owner may avoid research while the bot runs.",
+   "fix": "run jobs in a subprocess (ProcessPoolExecutor(1) or a `python app.py --job` child) with cancel; add cancel for backtest/study.",
+   "tests": "measure loop pass latency (loop_ok deltas) with a lab optimize running.",
+   "cowork": "yes (loop latency under a Lab run)",
+   "blocks": "neither"
+  },
+  {
+   "id": "CON-04",
+   "title": "Small unsynchronised shared-state races",
+   "section": "E",
+   "severity": "P3",
+   "status": "open",
+   "evidence_class": "CONFIRMED (code); occurrence SPECULATIVE",
+   "origin": "new (this audit)",
+   "files": "app.py:711 (`{x: y for x, y in j.items()}` while the worker adds 'result'/'error' -> RuntimeError -> /api/status 500 -> OFFLINE flash), 880, 1140 (generator over JOBS.values()); app.py:525-543 + engine.py:700-705 (preview_worker runs compute_signals without the lock and overwrites `_sig_raw`, the T05a raw-signal source; a mismatched candle time makes the audit drop `raw`); app.py:412-435 (coin_icon: all waiting threads repeat the network fetch serially under _ICON_LOCK, no re-check of _ICON_FAIL; with Binance CDN unreachable each icon blocks a browser connection ~16 s and can starve the 6-per-host pool used by /api/status); app.py:1098-1099 vs 1179 (share-sum check outside the lock: concurrent sleeve + grid saves can exceed 100%)",
+   "fix": "guard JOBS with a lock and copy under it; give preview its own raw-signal dict; re-check _ICON_FAIL after acquiring the lock; validate shares under e.lock.",
+   "tests": "unit test for icon fail cache under concurrency; JOBS snapshot test.",
+   "cowork": "no",
+   "blocks": "neither"
+  },
+  {
+   "id": "CON-05",
+   "title": "Memory / payload growth",
+   "section": "E",
+   "severity": "P3",
+   "status": "open",
+   "evidence_class": "CONFIRMED",
+   "origin": "new (this audit)",
+   "files": "engine.py:428/671 (`_kc` keyed by any regex-valid symbol requested via /api/candles or grid_preview, never evicted; each entry 1500 rows x indicator columns); app.py:232-233 (30 finished jobs keep full `result`); app.py:663/669 (fill_summary uncached O(5000) Python loop + audit summary in every 5 s /api/status, unused by the UI - OBS-03); origin/bt02-exchange-filters app.py:362-388 `_PF_FILES` (keyed by shipped file + mtime: bounded by bundled files, no lock, duplicate compute only - acceptable)",
+   "fix": "LRU-bound `_kc` to the universe + held symbols; store only job metadata in JOBS (results are on disk); serve health.fills/audit only on /api/audit_summary or when the card is open.",
+   "tests": "none needed beyond a size assertion on `_kc` after 200 distinct /api/candles calls.",
+   "cowork": "no",
+   "blocks": "neither"
+  },
+  {
+   "id": "ARCH-01",
+   "title": "Corrupt settings.json / state.json silently replaced by defaults (and persisted at once)",
+   "section": "F",
+   "severity": "P1",
+   "status": "open",
+   "evidence_class": "CONFIRMED (code read)",
+   "origin": "new (this audit)",
+   "files": "engine.py:476-489 (`load_settings`), engine.py:416-419 (state), engine.py:427-428 (`CAP_SINCE` save), engine.py:381-384 (`save_json`)",
+   "evidence": "`try: s.update(json.load(...)) except Exception: log.warning('settings.json unreadable - defaults used')`, then `SLEEVES` falls back to `PRESETS[s.get('PRESET','original')]`, and because `CAP_SINCE` is now empty the constructor calls `self.save_settings()` immediately, overwriting the corrupt file with defaults (owner's slots, risk rules, governor, coin switches, capital cycle all lost; no `.corrupt` copy kept). `state.json` unreadable -> `'starting empty'` (lots forgotten; the next `save_state` overwrites it). `save_json` writes tmp + `os.replace` without `flush/fsync`, so a power loss can leave a truncated file, which this fallback then hides. Unchanged since v3.0 (`git show v3.2-rc2:engine.py`).",
+   "impact": "after a crash the bot restarts trading the *original* preset at default leverage/risk and a fresh capital cycle; open positions become \"untracked\" (alerted, entries on that coin blocked, but no trailing/exits managed by the bot).",
+   "fix": "fail closed: on unreadable settings/state, rename to `*.corrupt-<ts>`, refuse to start the engine (panel shows the error), never auto-save over it; add `f.flush(); os.fsync()` in `save_json`; keep one `.bak` generation.",
+   "tests": "write garbage to settings.json/state.json -> Engine refuses to start, file preserved, no save; fsync spy test.",
+   "cowork": "no",
+   "blocks": "testnet progression"
+  },
+  {
+   "id": "ARCH-02",
+   "title": "Engine and backtester duplicate sizing / Kelly / governor / risk rules, and parity never exercises them",
+   "section": "F",
+   "severity": "P1",
+   "status": "open (v3.1 audit P2-7 \"engine and backtester are separate implementations\"; shared core T06-T09 still pending)",
+   "evidence_class": "CONFIRMED (duplication, parity scope) / SPECULATIVE (size of result drift)",
+   "origin": "ZackBot_v3.2_Response_to_Audit.md:110 (P2-7)",
+   "files": "sizing engine.py:2131-2160 vs backtest.py:249-269 vs backtest.py:553 (`martingale_risk`, third copy of the DCA weight formula, production-unused); Kelly engine.py:1126-1134 vs backtest.py:53-63 (identical code, separate history sources); governor engine.py:2413-2471 vs backtest.py:89-113; risk rules engine `_rules_eval` 2311 vs backtest `rule_block` ~220-247; BTC-1h move engine.py:2279 vs backtest.py:71-87 (4h book without `btc1h` uses a sqrt(4) proxy); replay.py:179-181.",
+   "evidence": "- Governor default mode differs: backtest `governor.get('mode','auto')=='off'` (backtest.py:90) vs engine `G.get('mode','off')` (engine.py:2419); `tests/test_v31_engine.py:472` locks the backtest default in. Engine clips the product to `GOV_MULT_MAX`, backtest clips each rule to a literal `2.0`; drawdown basis differs (engine `guard_eq` / capital-cycle growth, backtest mark-to-market vs `start`). Lab passes `governor`/`risk_rules` raw (lab.py:820-823), not through `app.clean_governor`, so a malformed rule raises `KeyError` inside the job. - Sizing: backtest omits `step`/`min_qty` rounding (BT02 branch addresses it) and caps leverage on current close (`notional(sl,i)`) while the engine uses entry `avg` (engine.py:2154). - Parity harness passes only `when/trail_entry/pump_guard` to `B.run` (replay.py:179-181) - never `kelly`, `hours`, `vol_max_pct`, `risk_rules`, `governor`, `entry_order`. Its fake has `stepSize 0.00001` (replay.py:87) so rounding is never compared. Zero tests reference `kelly_mult` in either module (grep).",
+   "impact": "Lab/backtest results for any slot using Kelly, governor, risk rules, maker entries or hours filters can differ from live with no gate noticing; the governor \"suggest\" vs \"auto\" semantics are only kept aligned by panel.html:1807. - Fix (bounded, before the full shared core): move `kelly_mult`, `gov_step`, the DCA weight/qty formula and the leverage cap into one pure module used by engine, backtest and `martingale_risk`; make backtest governor default `off`; validate lab `run_options.governor/risk_rules` with the app cleaners; extend `replay.run_replay` to pass every slot option.",
+   "tests": "property test \"engine sizing == backtest sizing\" over random (equity, share, risk, atr, dca, lev, step); replay scenario with kelly + governor + coin_cap enforced; unit tests for Kelly edge cases (all wins/all losses/min_trades).",
+   "cowork": "no",
+   "blocks": "testnet progression (results feed preset choices)"
+  },
+  {
+   "id": "ARCH-03",
+   "title": "Three slot validators with different rules; settings accept DCA values the engine then refuses forever",
+   "section": "F",
+   "severity": "P2",
+   "status": "open",
+   "evidence_class": "CONFIRMED",
+   "origin": "new (this audit)",
+   "files": "app.py:922-926 `_num`, 929-951 `clean_mgmt`, 1012-1039 `validate_sleeve`, MG_SUB app.py:~915; lab.py:694-712; grid.py:128 `_num`; engine.py:2135-2139",
+   "evidence": "`MG_SUB['dca']` allows `n` 0-8 and `scale` 0.1-3, but `open_lot` refuses unless `1 <= n <= 8 and 1.0 <= scale <= 3.0` -> a slot saved with `scale 0.5` is accepted by `/api/sleeves` and then skips every entry (\"DCA settings out of range\"). Lab `_validate_sleeves` checks only share/risk/max_pos (max_pos 1-40 vs 1-20 live) and does not validate `mgmt`/`params` at all; `/api/backtest` uses `validate_sleeve` but `/api/lab` does not. `app._num` accepts bools/strings (`True`->1.0, `\"0.02\"`), `lab._num` rejects them, so the same slot passes one endpoint and fails the other. Kelly `max` accepted up to 4 (app.py:1036) while the panel offers 1.5; with governor x2 a slot's risk can reach 8x its configured risk (SPECULATIVE: bounded only by the leverage cap/open-risk rule if enabled).",
+   "impact": "silently dead slots; optimizer/Lab can explore configurations the live engine rejects; inconsistent errors.",
+   "fix": "one `validate_slot()` (app's, tightened to the engine's DCA bounds) used by settings, backtest, lab, grid; one `_num`.",
+   "tests": "table test - every slot accepted by the validator opens a lot in `mk_engine` (no `last_skip` from range checks); lab and backtest endpoints reject the same invalid inputs.",
+   "cowork": "no",
+   "blocks": "neither"
+  },
+  {
+   "id": "TEST-01",
+   "title": "Global monkeypatch seams leak across tests; production code carries branches that only test fakes take",
+   "section": "F",
+   "severity": "P2",
+   "status": "open",
+   "evidence_class": "CONFIRMED",
+   "origin": "new (this audit)",
+   "files": "tests/test_safety.py:51-59 (`E.Futures = FakeX`, never restored), tests/test_grid.py:55; replay.py:107-112 (patches `E.Futures`, `E.now_utc`, `E.time`); engine.py:1008-1011 (`positions(critical=True)` `TypeError` fallback), 1015 & 1373 (`self.trade.__dict__.get('_health')`), 1819-1842 (\"older client\" `leverage_max` / `current_leverage` paths)",
+   "evidence": "tests/test_testnet_faults.py:147 and test_t05b_startup_outage.py:94 must undo it (\"test_grid/test_safety replace it globally\") -> results depend on test order. `FakeX` and replay's `Fake` lack `leverage_brackets`/`margin_state`/ `critical=`, so the engine runs the \"older client\" branches the real `binance_client.Futures` never takes; the strict replays and most engine tests therefore do not exercise the bracket/margin-state path used in production. The `except TypeError` fallback would also hide a real `TypeError` raised inside `positions()` and retry a non-critical read.",
+   "impact": "order-dependent tests; the parity gate validates a code path production does not run; a refactor/split of engine.py cannot move `Futures`/`time` without breaking every seam.",
+   "fix": "inject `client_factory` and `clock` into `Engine.__init__` (default real); a conftest fixture builds `FakeX`; make `FakeX`/replay `Fake` implement the full client protocol (incl. `leverage_brackets`, `margin_state`, `critical`) and delete the \"older client\" and `TypeError` branches; add a protocol-conformance test (fake methods == real public methods).",
+   "tests": "run the suite with `pytest -p random_order` (or reversed file order) - must be green.",
+   "cowork": "no",
+   "blocks": "neither (prerequisite for the shared-core split)"
+  },
+  {
+   "id": "TEST-02",
+   "title": "Critical paths with no tests (Kelly, settings load/migration, HTTP auth outside the UI harness)",
+   "section": "F",
+   "severity": "P2",
+   "status": "open",
+   "evidence_class": "CONFIRMED (grep of tests/)",
+   "origin": "new (this audit)",
+   "files": "engine.py `kelly_mult` 1126, `load_settings` 476, `apply_preset` 503, `daily_summary` 1643, `_sweep_incidents` 979; backtest.py `kelly_mult` 53; app.py `H._authed/_host_ok/do_POST` 828-910",
+   "evidence": "0 test references to `kelly_mult`, `load_settings`, `save_settings`, `apply_preset`, `daily_summary`, `_sweep_incidents`. Token/Host/Origin/Content-Type/size checks are only exercised by `test_app_ui.py` (checks at lines 167-171), which runs only in the full gate's `replay1-ui` slice (needs Playwright) - no PR-fast coverage of the panel's security boundary. The v1/v2 migrations (engine.py:412-415, 483-484; app.py:162, 461-467) are untested.",
+   "fix": "plain pytest tests that drive `H` through `http.server` on an ephemeral port (or call `do_POST` on a stub) for 401/403/ 415/413/421; unit tests for Kelly and settings load/migration.",
+   "tests": "as above.",
+   "cowork": "no",
+   "blocks": "neither"
+  },
+  {
+   "id": "TEST-03",
+   "title": "Fast gate (the only per-commit gate) excludes the parity modes BT01 changed; master never runs full",
+   "section": "F",
+   "severity": "P2",
+   "status": "open",
+   "evidence_class": "CONFIRMED",
+   "origin": "new (this audit)",
+   "files": "tests/test_causality.py:73-75 (`CORE` vs slow), .github/workflows/verify-push.yml (fast only), verify.yml (label only)",
+   "evidence": "slow = causality+parity for \"trend long + pyramid\", \"partial TP + breakeven\", \"runner ladder\" (6 tests) and the autocrlf clone test. FBL-BT01 (ef6abc0) changed pyramid/partial/ladder ordering, i.e. exactly the slow modes; both strict replays and the UI harness are full-only. Full runs only when Codex adds `full-ready`; master pushes run fast only. Mitigation verified: branch protection `strict: true` with required \"verify fast\"+\"verify full\" (`gh api .../required_status_checks`), so a merged head did pass full. Risk is in iteration: a PR can sit green on fast while a parity regression is only found at the final label.",
+   "fix": "move one pyramid and one partial-TP parity case into the fast set with fewer steps (measure; causality cases are ~16 s each: PROJECT_STATUS.md:46 \"isolated causality 13/13 passed in 3:35\"), or add a nightly `verify full` on master.",
+   "cowork": "no",
+   "blocks": "neither"
+  },
+  {
+   "id": "TEST-04",
+   "title": "Tests pinned to source text and dead compatibility guards",
+   "section": "F",
+   "severity": "P2",
+   "status": "open",
+   "evidence_class": "CONFIRMED",
+   "origin": "new (this audit)",
+   "files": "tests/test_fills.py:133-135, 305, 357-360; tests/test_trade_audit.py:298-300, 2382-2416; tests/test_leverage_auto.py:795-830; app.py:651, 663-669, 865 (`hasattr(e, 'fill_summary'|'audit_summary'|'exchange_state'|'_sweep_incidents')`)",
+   "evidence": "tests assert literal code lines such as `\"fills=e.fill_summary() if hasattr(e, 'fill_summary') else None\" in src` - they lock in `hasattr` guards that are dead (app and engine always ship together in one exe) and fail on any harmless reformat. Two panel tests `return` (silently pass) when the card or `node` is missing (test_trade_audit.py:2400, 2410) instead of `pytest.skip`/fail; test_t05b_startup_outage.py:84 keys behaviour off `inspect.stack()[1].function == 'loop'`.",
+   "fix": "replace text asserts with behavioural tests (call `App.snapshot()` with a stub engine); delete the `hasattr` guards; use `pytest.skip` for missing tools; remove the stack-name coupling.",
+   "cowork": "no",
+   "blocks": "neither"
+  },
+  {
+   "id": "TEST-05",
+   "title": "Test-to-test imports instead of fixtures; wall-clock assertions",
+   "section": "F",
+   "severity": "P3",
+   "status": "open",
+   "evidence_class": "CONFIRMED",
+   "origin": "new (this audit)",
+   "files": "56 `from test_safety import ...` lines (tests/test_trade_audit.py alone ~45), test_outage_final.py:8, test_t03c_t05b_interaction.py:7-8; tests/test_fills.py:187, 200, 315, 430 (`time.time() - t < 1/3`, `sleep(0.3)` ordering)",
+   "evidence": "helper/fake definitions live in test modules (and module-level state such as `E.Futures`), so editing one test file breaks others; timing asserts (<1 s) can flake on a loaded runner (this audit's own run shared the CPU with other suites and ran several-fold slower).",
+   "fix": "`tests/fakes.py` + conftest fixtures; replace timing asserts with event/queue assertions (or generous bounds).",
+   "cowork": "no",
+   "blocks": "neither"
+  },
+  {
+   "id": "ARCH-04",
+   "title": "Telegram sending implemented three times; engine.notify spawns an unbounded thread per message",
+   "section": "F",
+   "severity": "P3",
+   "status": "open",
+   "evidence_class": "CONFIRMED",
+   "origin": "new (this audit)",
+   "files": "engine.py:463-473, app.py:1218-1226, telegram_ctl.py:41,126,207",
+   "evidence": "`notify` builds the URL with the token and starts a new daemon thread per call, bypassing telegram_ctl's rate limiter (20/min) and back-off; a burst (e.g. many CLOSED messages during a flatten) can hit Telegram's 429 and drop alerts.",
+   "fix": "route all sends through `TelegramControl.send` (one queue, one rate limit, token scrubbing in one place).",
+   "tests": "burst of 50 notify() calls -> <=20/min sent, rest queued; token absent from logs.",
+   "cowork": "no",
+   "blocks": "neither"
+  },
+  {
+   "id": "ARCH-05",
+   "title": "Dead or test-only code and unexecuted research scripts",
+   "section": "F",
+   "severity": "P3",
+   "status": "open",
+   "evidence_class": "CONFIRMED (grep: no production caller)",
+   "origin": "new (this audit)",
+   "files": "grid.py:329-614 (`run_grid`, `run_combo`: only tests/test_grid.py:162-173 call them); backtest.py:553 (`martingale_risk`: only tests); app.py:795 (`research_get`: no caller); engine.py:345-378 (`_egypt_offset` fallback - the exe self-test app.py:1311-1312 already requires tzdata) and backtest.py:195-196 (`+3h` fallback, wrong in winter); engine.py:208/2578 `LEGACY_LEV_EXC_MAKER` (covers maker records saved only by T03c review-round builds); research_*.py, load_data.py (module-level scripts, compiled by `verify` but never run; `research_grid.py` is a single-strategy sweep writing `results_single.csv`, unchanged since v2.2, although README.md:67 calls it the \"grid / COMBO study\").",
+   "impact": "~400 lines maintained and reviewed without a caller; research tables and preset numbers cannot be reproduced by the documented commands after BT01 (`UNVERIFIED_BT01` label, engine.py:317, is the only signal).",
+   "fix": "delete `research_get`, the tz fallbacks, `LEGACY_LEV_EXC_MAKER` once the testnet state has no such record; either wire `run_grid` into the Lab or move it with the research scripts under `research/` with a smoke test that imports and runs each on a tiny book; fix README.",
+   "cowork": "yes (confirm no resting maker record with `lev_exception` in the testnet state.json)",
+   "blocks": "neither"
+  },
+  {
+   "id": "ARCH-06",
+   "title": "App main loop is the live scheduler and reaches into engine privates",
+   "section": "F",
+   "severity": "P3",
+   "status": "open",
+   "evidence_class": "CONFIRMED",
+   "origin": "new (this audit)",
+   "files": "app.py:560-620 (cycle / manage every 8 s / guards every 60 s / equity 300 s), app.py:547 (`e._kc`), 601-602 (`e._manage_failed`), 1049 (`e._lev = {}`); grid.py uses `e._market_close/_finish/_add_qty/_replace_stop`",
+   "evidence": "ordering of cycle -> manage -> guards lives in app.py; replay.py:118-146 re-implements a different ordering (no periodic guards, no catch-up). A non-exchange exception in `check_guards` is only `log.error`'d by the outer loop (app.py:612-614) - surfaced later only as \"engine stopped\" after 60 s.",
+   "fix": "`Engine.tick(now)` owning the schedule; app and replay both call it; grid gets a small public lot API.",
+   "cowork": "no",
+   "blocks": "neither"
+  },
+  {
+   "id": "ARCH-07",
+   "title": "Engine.py split: only after injection (ARCH/TEST-01)",
+   "section": "F",
+   "severity": "P3",
+   "status": "open",
+   "evidence_class": "CONFIRMED (structure)",
+   "origin": "new (this audit)",
+   "files": "engine.py (2,737 lines, 141 defs): FillWriter 31-212, leverage/exposure 1780-2120 (~340), maker flow 2528-2668, governor/risk rules 2296-2490 - Evidence/benefit: these blocks have their own state and tests (test_fills, test_leverage_auto, test_v31_engine) and are natural modules; but every seam today is `E.<global>` monkeypatching (TEST-01), so splitting first would silently break the replay/causality gates. Recommend: injection -> extract FillWriter and leverage/exposure -> shared pure sizing/ management core (ARCH-02). No benefit from splitting app.py/panel.html now.",
+   "blocks": "neither"
+  },
+  {
+   "id": "ARCH-08",
+   "title": "Documentation drift on CI and test counts",
+   "section": "F",
+   "severity": "P3",
+   "status": "open",
+   "evidence_class": "CONFIRMED",
+   "origin": "new (this audit)",
+   "files": "README.md:47-48, 52, 67, 70; docs/reviews/README.md:19-20; docs/PROJECT_STATUS.md:66",
+   "evidence": "docs say fast runs \"on every push\" and full \"on every pull request ... and on demand (Run workflow)\". Actual: verify-fast on PRs, push-fast on master pushes only, full only on the `full-ready` label (no `workflow_dispatch`). README says \"200+ tests\" (823 now); README.md:70 omits BT01's doji = worst-case rule; README.md:67 (see ARCH-05).",
+   "fix": "update README and docs/reviews/README.md (PROJECT_STATUS is Codex-owned - flag to Codex).",
+   "blocks": "neither"
+  },
+  {
+   "id": "TEST-06",
+   "title": "No property-based or automated mutation testing where it pays off",
+   "section": "F",
+   "severity": "P3",
+   "status": "open",
+   "evidence_class": "CONFIRMED (no hypothesis/mutmut in requirements-dev.txt or tests)",
+   "origin": "new (this audit); CLAUDE.md requires manual \"mutation check on key lines\" per PR",
+   "blocks": "neither"
+  },
+  {
+   "id": "TEST-07",
+   "title": "pytest config hardening",
+   "section": "F",
+   "severity": "P3",
+   "status": "open",
+   "evidence_class": "CONFIRMED",
+   "files": "pytest.ini (only `testpaths`), tests/conftest.py",
+   "evidence": "no `--strict-markers`, no per-test timeout (threads in FillWriter/telegram tests -> a deadlock hangs until the 30-90 min job timeout), no `filterwarnings=error`. Installer flow tests run on CI under PowerShell 7 (`pwsh` on ubuntu-24.04) while production is Windows PowerShell 5.1 (tests/test_installer.py:100-115, 365-367) - semantics differ (encoding defaults); 5.1 coverage exists only on the PC.",
+   "fix": "add `--strict-markers`, `pytest-timeout` (e.g. 120 s), keep PS 5.1 runs in verify_release.",
+   "blocks": "neither"
+  }
+ ],
+ "prior_ledger": [
+  {
+   "id": "V31-A1",
+   "source": "v3.1 report §3",
+   "issue": "Algo-order cancel string code '200' treated as failure",
+   "severity": "P3",
+   "status": "fixed",
+   "evidence": "binance_client.py:288-290",
+   "blocks": "neither"
+  },
+  {
+   "id": "V31-A2",
+   "source": "v3.1 report §3",
+   "issue": "Backtest tab/Lab ignored per-slot when/trail_entry/pump_guard and run options",
+   "severity": "P1",
+   "status": "fixed",
+   "evidence": "app.py:276; lab.py:103",
+   "blocks": "neither"
+  },
+  {
+   "id": "V31-A3",
+   "source": "v3.1 report §3",
+   "issue": "pandas 3 datetime unit mismatch crashed merge_asof (regime filter every cycle)",
+   "severity": "P1",
+   "status": "fixed",
+   "evidence": "strategies.py:273-274",
+   "blocks": "neither"
+  },
+  {
+   "id": "V31-A4",
+   "source": "v3.1 report §3",
+   "issue": "Active (1h) preset far riskier (-63% DD) than its 6-month test",
+   "severity": "P1",
+   "status": "partially-fixed",
+   "evidence": "engine.py:300 (warning in note; preset still offered, numbers pre-BT01)",
+   "blocks": "testnet progression"
+  },
+  {
+   "id": "V31-A5",
+   "source": "v3.1 report §3",
+   "issue": "Tight ladder (1h) recommended from a 6-month test",
+   "severity": "P2",
+   "status": "partially-fixed",
+   "evidence": "panel.html:642 corrected; panel.html:665 still calls it 'a candidate'",
+   "blocks": "neither"
+  },
+  {
+   "id": "V31-A6",
+   "source": "v3.1 report §3",
+   "issue": "Telegram chat id is the bot's own id; Telegram never worked",
+   "severity": "P2",
+   "status": "needs-runtime-evidence",
+   "evidence": "panel.html:1940 adoption hint; PC config not readable here",
+   "blocks": "mainnet release only"
+  },
+  {
+   "id": "V31-A7",
+   "source": "v3.1 report §3",
+   "issue": "7 legacy 'invalid value ignored' config warnings at startup",
+   "severity": "P3",
+   "status": "open",
+   "evidence": "app.py:127-135 (no migrate(); also FBL CH-02)",
+   "blocks": "neither"
+  },
+  {
+   "id": "V31-A8",
+   "source": "v3.1 report §3",
+   "issue": "Worst-case intrabar mode identical to path mode",
+   "severity": "P3",
+   "status": "obsolete",
+   "evidence": "backtest.py:116-133 (worst=True now reorders every candle)",
+   "blocks": "neither"
+  },
+  {
+   "id": "V31-A9",
+   "source": "v3.1 report §3",
+   "issue": "v3.1 UI build cut off mid-way",
+   "severity": "P3",
+   "status": "fixed",
+   "evidence": "test_app_ui.py (T02 harness, 171 checks)",
+   "blocks": "neither"
+  },
+  {
+   "id": "V31-R1",
+   "source": "v3.1 report §5.1",
+   "issue": "Testnet != mainnet: fills, algo endpoints, order-lookup-on-timeout never fired live",
+   "severity": "P1",
+   "status": "needs-runtime-evidence",
+   "evidence": "engine.py:41-177 (T05 telemetry now records fills); binance_client.py:321-348",
+   "blocks": "mainnet release only"
+  },
+  {
+   "id": "V31-R2",
+   "source": "v3.1 report §5.2",
+   "issue": "Maker fill model optimistic; resting maker entry has no stop",
+   "severity": "P1",
+   "status": "partially-fixed",
+   "evidence": "T05 telemetry engine.py:41-177; backtest maker model unchanged backtest.py:13-14,439-449",
+   "blocks": "mainnet release only"
+  },
+  {
+   "id": "V31-R3",
+   "source": "v3.1 report §5.3",
+   "issue": "No 1m data; intrabar order is a heuristic; survivorship",
+   "severity": "P2",
+   "status": "partially-fixed",
+   "evidence": "backtest.py:116-133 declared path (FBL-BT01); no detail candles",
+   "blocks": "mainnet release only"
+  },
+  {
+   "id": "V31-R4",
+   "source": "v3.1 report §5.4",
+   "issue": "Presets selected in-sample",
+   "severity": "P1",
+   "status": "open",
+   "evidence": "engine.py:300-310 (insample True everywhere)",
+   "blocks": "mainnet release only"
+  },
+  {
+   "id": "V31-R5",
+   "source": "v3.1 report §5.5",
+   "issue": "Funding filter not backtested; flat funding",
+   "severity": "P2",
+   "status": "open",
+   "evidence": "backtest.py:13 FUND_PER_BAR",
+   "blocks": "mainnet release only"
+  },
+  {
+   "id": "V31-R6",
+   "source": "v3.1 report §5.6",
+   "issue": "Backtest tab BTC breaker uses 4h proxy (no 1h BTC)",
+   "severity": "P3",
+   "status": "open",
+   "evidence": "backtest.py:135 btc1h param; app.py never passes btc1h",
+   "blocks": "neither"
+  },
+  {
+   "id": "V31-R7",
+   "source": "v3.1 report §5.7",
+   "issue": "Bot on home PC; nothing manages positions while down",
+   "severity": "P1",
+   "status": "open",
+   "evidence": "ROADMAP.md:367 (T14 not started)",
+   "blocks": "mainnet release only"
+  },
+  {
+   "id": "V31-R8",
+   "source": "v3.1 report §5.8/Q8",
+   "issue": "No kill switch/dead-man heartbeat outside the PC",
+   "severity": "P1",
+   "status": "open",
+   "evidence": "no heartbeat code; ROADMAP.md:367",
+   "blocks": "mainnet release only"
+  },
+  {
+   "id": "V31-R9",
+   "source": "v3.1 report §5.9",
+   "issue": "All grid configs lost; grids shipped as experiment",
+   "severity": "P2",
+   "status": "open",
+   "evidence": "grid.py (988 lines) still wired into manage(); decision deferred (#13)",
+   "blocks": "neither"
+  },
+  {
+   "id": "V31-R10",
+   "source": "v3.1 report §5.10",
+   "issue": "All profiles long-biased crypto beta",
+   "severity": "P2",
+   "status": "open",
+   "evidence": "research/*.csv; no benchmark rows",
+   "blocks": "neither"
+  },
+  {
+   "id": "V32-P1-1",
+   "source": "v3.2 response §1",
+   "issue": "Adds bypassed portfolio risk rules",
+   "severity": "P1",
+   "status": "fixed",
+   "evidence": "engine.py:1474-1505; backtest.py:350-352,386",
+   "blocks": "neither"
+  },
+  {
+   "id": "V32-P1-2",
+   "source": "v3.2 response §1",
+   "issue": "Orphaned/reused slots could add without leverage cap",
+   "severity": "P1",
+   "status": "fixed",
+   "evidence": "engine.py:1491-1496",
+   "blocks": "neither"
+  },
+  {
+   "id": "V32-P1-3",
+   "source": "v3.2 response §1",
+   "issue": "Installer could relaunch a stale exe after failed build",
+   "severity": "P1",
+   "status": "fixed",
+   "evidence": "installer.ps1 (T03/T03b); docs/reviews/T03b_acceptance.md",
+   "blocks": "neither"
+  },
+  {
+   "id": "V32-P2-1",
+   "source": "v3.2 response §2",
+   "issue": "Test run not reproducible (load_data, pytest deps)",
+   "severity": "P2",
+   "status": "fixed",
+   "evidence": "requirements-dev.txt; tests/conftest.py; verify.py",
+   "blocks": "neither"
+  },
+  {
+   "id": "V32-P2-2",
+   "source": "v3.2 response §2",
+   "issue": "UI harness/research not reproducible",
+   "severity": "P2",
+   "status": "fixed",
+   "evidence": "test_app_ui.py; DATA_MANIFEST.json; verify.py manifest check",
+   "blocks": "neither"
+  },
+  {
+   "id": "V32-P2-3",
+   "source": "v3.2 response §2",
+   "issue": "Partial nested dca/pyramid override -> KeyError",
+   "severity": "P2",
+   "status": "fixed",
+   "evidence": "strategies.py:217 merge_mgmt",
+   "blocks": "neither"
+  },
+  {
+   "id": "V32-P2-4",
+   "source": "v3.2 response §2",
+   "issue": "UI time follows device not Cairo",
+   "severity": "P3",
+   "status": "fixed",
+   "evidence": "panel.html:766",
+   "blocks": "neither"
+  },
+  {
+   "id": "V32-P2-5",
+   "source": "v3.2 response §2",
+   "issue": "Blank target looked broken; no exit plan",
+   "severity": "P3",
+   "status": "fixed",
+   "evidence": "engine.py:1423 exit_plan",
+   "blocks": "neither"
+  },
+  {
+   "id": "V32-P2-6",
+   "source": "v3.2 response §2",
+   "issue": "AI review claimed news knowledge, always 4h",
+   "severity": "P2",
+   "status": "fixed",
+   "evidence": "ai_filter.py:5-7,29",
+   "blocks": "neither"
+  },
+  {
+   "id": "V32-P2-7",
+   "source": "v3.2 response §2",
+   "issue": "Engine and backtester are separate implementations",
+   "severity": "P1",
+   "status": "open",
+   "evidence": "backtest.py:316-421 vs engine.py:1227-1380; ROADMAP.md:359-362 T06-T09 not started",
+   "blocks": "mainnet release only"
+  },
+  {
+   "id": "V32-WIN",
+   "source": "v3.2 response §2",
+   "issue": "Windows build/test/self-test never run end to end",
+   "severity": "P2",
+   "status": "fixed",
+   "evidence": "docs/reviews/T03_acceptance.md; T03b_acceptance.md",
+   "blocks": "neither"
+  },
+  {
+   "id": "V32-ATR",
+   "source": "v3.2 response §3",
+   "issue": "Backtester trailing stop used same-candle ATR (lookahead)",
+   "severity": "P1",
+   "status": "fixed",
+   "evidence": "backtest.py:439,478 atr[i-1]",
+   "blocks": "neither"
+  },
+  {
+   "id": "V32-Q1",
+   "source": "v3.2 response §7",
+   "issue": "Should BTC breaker pause DCA safety orders",
+   "severity": "P3",
+   "status": "fixed",
+   "evidence": "engine.py:1507-1514; backtest.py:345-348 (per-lot policy)",
+   "blocks": "neither"
+  },
+  {
+   "id": "V32-Q2",
+   "source": "v3.2 response §7",
+   "issue": "Replay gate tolerance too loose (15 pts)",
+   "severity": "P2",
+   "status": "fixed",
+   "evidence": "replay.py STRICT matched%/median dR; tests/test_causality.py:97-99",
+   "blocks": "neither"
+  },
+  {
+   "id": "V32-Q3",
+   "source": "v3.2 response §7",
+   "issue": "Shared-core pure management function",
+   "severity": "P2",
+   "status": "open",
+   "evidence": "same as V32-P2-7",
+   "blocks": "mainnet release only"
+  },
+  {
+   "id": "V32-Q4",
+   "source": "v3.2 response §7",
+   "issue": "Cheap CI check for intrabar leaks",
+   "severity": "P2",
+   "status": "partially-fixed",
+   "evidence": "tests/test_bt_intrabar_path.py; tests/test_causality.py (synthetic only)",
+   "blocks": "neither"
+  },
+  {
+   "id": "V32-G8",
+   "source": "v3.2 response §6",
+   "issue": "Testnet observation with fill/reconcile telemetry",
+   "severity": "P2",
+   "status": "fixed",
+   "evidence": "engine.py:41-177 (T05); trade_audit.py (T05a)",
+   "blocks": "neither"
+  },
+  {
+   "id": "CX-T03-1",
+   "source": "T03_review_gpt P2",
+   "issue": "Review summary pointed at obsolete states",
+   "severity": "P3",
+   "status": "fixed",
+   "evidence": "docs/reviews/T03_review_request.md top section",
+   "blocks": "neither"
+  },
+  {
+   "id": "CX-T03-2",
+   "source": "T03_review_gpt P2",
+   "issue": "Normal install success path unproven",
+   "severity": "P2",
+   "status": "fixed",
+   "evidence": "docs/reviews/T03_acceptance.md",
+   "blocks": "neither"
+  },
+  {
+   "id": "CX-T03-3",
+   "source": "T03_review_gpt P3",
+   "issue": "Protect master after CI exists",
+   "severity": "P3",
+   "status": "fixed",
+   "evidence": "GitHub API: required [verify fast, verify full], enforce_admins=true, force_push=false",
+   "blocks": "neither"
+  },
+  {
+   "id": "CX-T03A-1",
+   "source": "T03a_review_gpt follow-up",
+   "issue": "lev_refusals panel snapshot not atomic",
+   "severity": "P3",
+   "status": "open",
+   "evidence": "engine.py:2044-2070 (deferred to T06-T09)",
+   "blocks": "neither"
+  },
+  {
+   "id": "CX-T03A-2",
+   "source": "T03a_review_gpt follow-up",
+   "issue": "Move leverage read to PositionInfo V3/user stream",
+   "severity": "P3",
+   "status": "open",
+   "evidence": "binance_client.py positionRisk v2",
+   "blocks": "mainnet release only"
+  },
+  {
+   "id": "CX-T03B-1",
+   "source": "T03b_review_gpt P1",
+   "issue": "Invalid drill left new build installed/running",
+   "severity": "P1",
+   "status": "fixed",
+   "evidence": "installer.ps1 DRILL_INVALID rollback; T03b_acceptance.md",
+   "blocks": "neither"
+  },
+  {
+   "id": "CX-T03B-2",
+   "source": "T03b_review_gpt P1",
+   "issue": "Failed stop not followed by verification/recovery",
+   "severity": "P1",
+   "status": "fixed",
+   "evidence": "installer.ps1:118 bot_stop_confirmed + stop_recovery",
+   "blocks": "neither"
+  },
+  {
+   "id": "CX-T03B-3",
+   "source": "T03b_review_gpt P2",
+   "issue": "Structured record overstated installed/stopped",
+   "severity": "P2",
+   "status": "fixed",
+   "evidence": "installer.ps1:105-119",
+   "blocks": "neither"
+  },
+  {
+   "id": "CX-T03B-4",
+   "source": "T03b_review_gpt P3",
+   "issue": "Launcher re-expanded mode unquoted",
+   "severity": "P3",
+   "status": "fixed",
+   "evidence": "build_app.bat:9-20 (no %1 expansion)",
+   "blocks": "neither"
+  },
+  {
+   "id": "CX-T03B-5",
+   "source": "T03b_review_gpt R1 P2",
+   "issue": "installed_file_sha256 cached/stale",
+   "severity": "P2",
+   "status": "fixed",
+   "evidence": "installer.ps1:105-119",
+   "blocks": "neither"
+  },
+  {
+   "id": "CX-T03B-6",
+   "source": "T03b_review_gpt R1 P3",
+   "issue": "Embedded quotes escaped launcher",
+   "severity": "P3",
+   "status": "fixed",
+   "evidence": "build_app.bat:11 (scoped out as caller shell)",
+   "blocks": "neither"
+  },
+  {
+   "id": "CX-T03B-7",
+   "source": "T03b_review_gpt R2 P2",
+   "issue": "Last-occurrence parsing could select install/drill",
+   "severity": "P2",
+   "status": "fixed",
+   "evidence": "installer.ps1:616-667 Get-LauncherMode",
+   "blocks": "neither"
+  },
+  {
+   "id": "CX-T03B-8",
+   "source": "T03b_review_gpt R2 P3",
+   "issue": "Injection test asserted impossible guarantee",
+   "severity": "P3",
+   "status": "fixed",
+   "evidence": "tests/test_installer.py",
+   "blocks": "neither"
+  },
+  {
+   "id": "CX-T03C-1",
+   "source": "T03c_review_gpt R1 P1",
+   "issue": "Exposure proof omitted account exposure/unprotected/in-flight state",
+   "severity": "P1",
+   "status": "fixed",
+   "evidence": "engine.py:1850-2043",
+   "blocks": "neither"
+  },
+  {
+   "id": "CX-T03C-2",
+   "source": "T03c_review_gpt R1 P1",
+   "issue": "Margin balance combined with wrong loss/notional basis",
+   "severity": "P1",
+   "status": "fixed",
+   "evidence": "engine.py:1850-2043",
+   "blocks": "neither"
+  },
+  {
+   "id": "CX-T03C-3",
+   "source": "T03c_review_gpt R1 P1",
+   "issue": "Adds/maker remainder bypassed exceptional gate",
+   "severity": "P1",
+   "status": "fixed",
+   "evidence": "engine.py:1483,2199,2578-2638",
+   "blocks": "neither"
+  },
+  {
+   "id": "CX-T03C-4",
+   "source": "T03c_review_gpt R1 P1",
+   "issue": "1/leverage_max not bracket-aware",
+   "severity": "P1",
+   "status": "fixed",
+   "evidence": "engine.py:1819-1830; binance_client.py:472-475",
+   "blocks": "neither"
+  },
+  {
+   "id": "CX-T03C-5",
+   "source": "T03c_review_gpt R1 P2",
+   "issue": "NaN/invalid numerics fail open",
+   "severity": "P2",
+   "status": "fixed",
+   "evidence": "binance_client.py _finite_number",
+   "blocks": "neither"
+  },
+  {
+   "id": "CX-T03C-6",
+   "source": "T03c_review_gpt R1 P2",
+   "issue": "Decision telemetry lost real reason",
+   "severity": "P2",
+   "status": "fixed",
+   "evidence": "engine.py:2044-2070",
+   "blocks": "neither"
+  },
+  {
+   "id": "CX-T03C-7",
+   "source": "T03c_review_gpt R1 P3",
+   "issue": "Cooldown still made venue calls",
+   "severity": "P3",
+   "status": "fixed",
+   "evidence": "engine.py:1790-1795 (cooldown only; see ENG-13)",
+   "blocks": "neither"
+  },
+  {
+   "id": "CX-T03C-8",
+   "source": "T03c_review_gpt R2",
+   "issue": "Stale exceptional maker admission",
+   "severity": "P1",
+   "status": "fixed",
+   "evidence": "engine.py:2199",
+   "blocks": "neither"
+  },
+  {
+   "id": "CX-T03C-9",
+   "source": "T03c_review_gpt R2",
+   "issue": "Stop proof did not require STOP_MARKET/MARK_PRICE shape",
+   "severity": "P1",
+   "status": "fixed",
+   "evidence": "engine.py:1850-2043",
+   "blocks": "neither"
+  },
+  {
+   "id": "CX-T03C-10",
+   "source": "T03c_review_gpt R2",
+   "issue": "Stale _lev cache after external leverage change",
+   "severity": "P1",
+   "status": "fixed",
+   "evidence": "engine.py:1787-1789",
+   "blocks": "neither"
+  },
+  {
+   "id": "CX-T03C-11",
+   "source": "T03c_review_gpt R2",
+   "issue": "Fractional/bool leverage truncated to valid int",
+   "severity": "P2",
+   "status": "fixed",
+   "evidence": "binance_client.py adapters",
+   "blocks": "neither"
+  },
+  {
+   "id": "CX-T03C-12",
+   "source": "T03c_review_gpt R2",
+   "issue": "String 'false' flags read as true",
+   "severity": "P2",
+   "status": "fixed",
+   "evidence": "engine.py exposure proof flag checks",
+   "blocks": "neither"
+  },
+  {
+   "id": "CX-T03C-13",
+   "source": "T03c_review_gpt R2/R3",
+   "issue": "notionalCoef ignored / guessed scaling",
+   "severity": "P2",
+   "status": "fixed",
+   "evidence": "binance_client.py:472-475 (non-1 coef rejects)",
+   "blocks": "neither"
+  },
+  {
+   "id": "CX-T03C-14",
+   "source": "T03c_review_gpt R3",
+   "issue": "Legacy exceptional maker record re-priced on stale approval",
+   "severity": "P2",
+   "status": "fixed",
+   "evidence": "engine.py:2578",
+   "blocks": "neither"
+  },
+  {
+   "id": "CX-T03C-15",
+   "source": "T03c_review_gpt R3 follow-up",
+   "issue": "Ordinary maker order vs external leverage change race",
+   "severity": "P2",
+   "status": "open",
+   "evidence": "engine.py:1787-1789 (pop only at next ensure)",
+   "blocks": "mainnet release only"
+  },
+  {
+   "id": "CX-T03C-16",
+   "source": "T03c_review_gpt runtime",
+   "issue": "Installer staging omitted manifest data -> staged tests failed",
+   "severity": "P2",
+   "status": "fixed",
+   "evidence": "installer.ps1 (data staged for pytest, deleted before PyInstaller)",
+   "blocks": "neither"
+  },
+  {
+   "id": "CX-T03C-17",
+   "source": "T03c_review_gpt R5",
+   "issue": "Two failed leverage requests counted as one",
+   "severity": "P3",
+   "status": "fixed",
+   "evidence": "engine.py _lev_api_refused",
+   "blocks": "neither"
+  },
+  {
+   "id": "CX-T04-1",
+   "source": "T04_review_gpt P1",
+   "issue": "Required full check red (mobile overflow, calendar timeout)",
+   "severity": "P1",
+   "status": "fixed",
+   "evidence": "panel.html (74fc48c); verify.py seed handoff",
+   "blocks": "neither"
+  },
+  {
+   "id": "CX-T04-2",
+   "source": "T04_review_gpt P1",
+   "issue": "Manifest test failed on Windows CRLF",
+   "severity": "P2",
+   "status": "fixed",
+   "evidence": "tests/test_verify.py byte-exact fixture",
+   "blocks": "neither"
+  },
+  {
+   "id": "CX-T04-3",
+   "source": "T04_review_gpt P1",
+   "issue": "Release drill could stop a LIVE bot",
+   "severity": "P1",
+   "status": "fixed",
+   "evidence": "verify.py:274-300",
+   "blocks": "neither"
+  },
+  {
+   "id": "CX-T04-4",
+   "source": "T04_review_gpt P1",
+   "issue": "Skip switches let full/release report PASS",
+   "severity": "P1",
+   "status": "fixed",
+   "evidence": "verify.py (no skip on named levels)",
+   "blocks": "neither"
+  },
+  {
+   "id": "CX-T04-5",
+   "source": "T04_review_gpt P2",
+   "issue": "Secret scan: root names only, JSON skipped, no history",
+   "severity": "P2",
+   "status": "partially-fixed",
+   "evidence": "verify.py:108-125 (any depth, JSON in); no git-history scan",
+   "blocks": "mainnet release only"
+  },
+  {
+   "id": "CX-T04-6",
+   "source": "T04_review_gpt R2 P1",
+   "issue": "Pre-drill runtime gate fail-open on missing fields",
+   "severity": "P1",
+   "status": "fixed",
+   "evidence": "verify.py:274-300 runtime_problems",
+   "blocks": "neither"
+  },
+  {
+   "id": "CX-T04-7",
+   "source": "T04_review_gpt non-blocking",
+   "issue": "Batch-file whitespace noise",
+   "severity": "P3",
+   "status": "obsolete",
+   "evidence": "T03b replaced CMD logic",
+   "blocks": "neither"
+  },
+  {
+   "id": "CX-T04B-1",
+   "source": "T04b_review_gpt follow-up",
+   "issue": "No Dependabot for pinned actions",
+   "severity": "P3",
+   "status": "open",
+   "evidence": ".github/ has no dependabot.yml",
+   "blocks": "neither"
+  },
+  {
+   "id": "CX-T04B-2",
+   "source": "T04b_review_gpt follow-up",
+   "issue": "No git-history secret / dependency scanning",
+   "severity": "P2",
+   "status": "open",
+   "evidence": "verify.py:125 'Git-history scanning is T04b' (never added)",
+   "blocks": "mainnet release only"
+  },
+  {
+   "id": "CX-T04D-1",
+   "source": "T04d_review_gpt R4",
+   "issue": "Full result not PR-associated",
+   "severity": "P2",
+   "status": "fixed",
+   "evidence": ".github/workflows/verify.yml:19-22 (label full-ready)",
+   "blocks": "neither"
+  },
+  {
+   "id": "CX-T04D-2",
+   "source": "T04d_review_gpt R4",
+   "issue": "Unrelated labels could satisfy full gate",
+   "severity": "P2",
+   "status": "fixed",
+   "evidence": ".github/workflows/verify.yml",
+   "blocks": "neither"
+  },
+  {
+   "id": "CX-T04D-3",
+   "source": "T04d_review_gpt R4",
+   "issue": "CodeQL py/redos in test regex",
+   "severity": "P3",
+   "status": "fixed",
+   "evidence": "tests/test_ci.py line parser",
+   "blocks": "neither"
+  },
+  {
+   "id": "CX-T05-1",
+   "source": "T05_review_gpt P1",
+   "issue": "Telemetry file I/O between fill and stop",
+   "severity": "P1",
+   "status": "fixed",
+   "evidence": "engine.py:42-56 put_nowait writer",
+   "blocks": "neither"
+  },
+  {
+   "id": "CX-T05-2",
+   "source": "T05_review_gpt P2",
+   "issue": "Failed writes created phantom stats",
+   "severity": "P2",
+   "status": "fixed",
+   "evidence": "engine.py:60 ctr persisted/dropped",
+   "blocks": "neither"
+  },
+  {
+   "id": "CX-T05-3",
+   "source": "T05_review_gpt P2",
+   "issue": "Partial maker record claimed fallback",
+   "severity": "P2",
+   "status": "fixed",
+   "evidence": "engine.py maker fallback states",
+   "blocks": "neither"
+  },
+  {
+   "id": "CX-T05-4",
+   "source": "T05_review_gpt P2",
+   "issue": "Rotation broke restart summary window",
+   "severity": "P2",
+   "status": "fixed",
+   "evidence": "engine.py FillWriter window (.1 + current)",
+   "blocks": "neither"
+  },
+  {
+   "id": "CX-T05-5",
+   "source": "T05_review_gpt P2",
+   "issue": "Missing executedQty recorded as full fill (telemetry)",
+   "severity": "P2",
+   "status": "fixed",
+   "evidence": "telemetry 'unknown'; trading path still books plan qty (ENG-02)",
+   "blocks": "neither"
+  },
+  {
+   "id": "CX-T05-6",
+   "source": "T05_review_gpt R2 P1",
+   "issue": "Timed-out handover started second writer",
+   "severity": "P1",
+   "status": "fixed",
+   "evidence": "engine.py:41-177 process-wide writer",
+   "blocks": "neither"
+  },
+  {
+   "id": "CX-T05-7",
+   "source": "T05_review_gpt R2 P2",
+   "issue": "fallback=true meant call returned, not filled",
+   "severity": "P2",
+   "status": "fixed",
+   "evidence": "engine.py fallback_attempted/confirmed/pending",
+   "blocks": "neither"
+  },
+  {
+   "id": "CX-T05-8",
+   "source": "T05_review_gpt R2 P2",
+   "issue": "Malformed JSONL line broke /api/status",
+   "severity": "P2",
+   "status": "fixed",
+   "evidence": "engine.py invalid_records counter",
+   "blocks": "neither"
+  },
+  {
+   "id": "CX-T05-9",
+   "source": "T05_review_gpt R2 P2",
+   "issue": "Writer threads leaked (tests/replay/ctor failure)",
+   "severity": "P2",
+   "status": "fixed",
+   "evidence": "tests/conftest.py; replay.py close",
+   "blocks": "neither"
+  },
+  {
+   "id": "CX-T05-10",
+   "source": "T05_review_gpt R3 P2",
+   "issue": "emit() could admit after close()",
+   "severity": "P2",
+   "status": "fixed",
+   "evidence": "engine.py:42-56 single lock",
+   "blocks": "neither"
+  },
+  {
+   "id": "CX-T05A-1",
+   "source": "T05a_review_gpt P2",
+   "issue": "Tests used Windows locale not UTF-8",
+   "severity": "P2",
+   "status": "fixed",
+   "evidence": "tests/test_trade_audit.py (encoding='utf-8')",
+   "blocks": "neither"
+  },
+  {
+   "id": "CX-T05B-1",
+   "source": "T05b_review_gpt P1",
+   "issue": "Startup outage left engine permanently disconnected",
+   "severity": "P1",
+   "status": "fixed",
+   "evidence": "app.py:471-513",
+   "blocks": "neither"
+  },
+  {
+   "id": "CX-T05B-2",
+   "source": "T05b_review_gpt P2",
+   "issue": "Backoff 2**n overflow after ~17h outage",
+   "severity": "P2",
+   "status": "fixed",
+   "evidence": "app.py:495",
+   "blocks": "neither"
+  },
+  {
+   "id": "CX-T05B-3",
+   "source": "T05b_review_gpt follow-up",
+   "issue": "Test connection uses uncircuit-gated time read",
+   "severity": "P3",
+   "status": "open",
+   "evidence": "app.py:770-781",
+   "blocks": "neither"
+  },
+  {
+   "id": "CX-BT01-1",
+   "source": "FBL_BT01_review_gpt P1",
+   "issue": "Whole-candle stop precheck skipped earlier DCA fills",
+   "severity": "P1",
+   "status": "fixed",
+   "evidence": "backtest.py:336-367",
+   "blocks": "neither"
+  },
+  {
+   "id": "FBL-ENG-01",
+   "source": "Fable audit §3 / #13",
+   "issue": "Stop existence not re-verified while position size matches",
+   "severity": "P1",
+   "status": "open",
+   "evidence": "engine.py:1567-1570 (fix only on origin/cowork/eng01)",
+   "blocks": "mainnet release only"
+  },
+  {
+   "id": "FBL-ENG-02",
+   "source": "Fable audit §3 / #13",
+   "issue": "executedQty/status ignored -> phantom lot/add/close",
+   "severity": "P1",
+   "status": "open",
+   "evidence": "engine.py:2221; engine.py:1196-1220 (fix only on cowork/eng02)",
+   "blocks": "mainnet release only"
+  },
+  {
+   "id": "FBL-ENG-03",
+   "source": "Fable audit §3 / #13",
+   "issue": "No order budget; transient stop failure -> market close",
+   "severity": "P1",
+   "status": "open",
+   "evidence": "engine.py:2252-2256; binance_client.py:294",
+   "blocks": "mainnet release only"
+  },
+  {
+   "id": "FBL-ENG-04",
+   "source": "Fable audit §3",
+   "issue": "close_lot/flatten/cycle exit ignore pending -> duplicate close",
+   "severity": "P1",
+   "status": "open",
+   "evidence": "engine.py:1136-1146",
+   "blocks": "mainnet release only"
+  },
+  {
+   "id": "FBL-ENG-05",
+   "source": "Fable audit §3",
+   "issue": "Stop P&L at stop price, flat fee, no funding",
+   "severity": "P1",
+   "status": "open",
+   "evidence": "engine.py:269,1087,1220 FEE_EST",
+   "blocks": "mainnet release only"
+  },
+  {
+   "id": "FBL-ENG-06",
+   "source": "Fable audit §3",
+   "issue": "Kelly x governor can raise slot risk up to 8x",
+   "severity": "P2",
+   "status": "open",
+   "evidence": "engine.py:1126-1134,2133,2463-2471",
+   "blocks": "mainnet release only"
+  },
+  {
+   "id": "FBL-ENG-07",
+   "source": "Fable audit §3",
+   "issue": "Resting maker entries survive halt/pause/flatten",
+   "severity": "P1",
+   "status": "open",
+   "evidence": "engine.py:2720-2737 (flatten never cancels makers)",
+   "blocks": "mainnet release only"
+  },
+  {
+   "id": "FBL-ENG-08",
+   "source": "Fable audit §3",
+   "issue": "Cycle holds lock over fetches, 60s LLM, sleeps; sleep(60) before manage",
+   "severity": "P1",
+   "status": "open",
+   "evidence": "engine.py:1652-1653; app.py:586; ai_filter.py:35",
+   "blocks": "mainnet release only"
+  },
+  {
+   "id": "FBL-ENG-09",
+   "source": "Fable audit §3",
+   "issue": "close_lot closes whole exchange qty incl. untracked",
+   "severity": "P2",
+   "status": "open",
+   "evidence": "engine.py:1141-1143",
+   "blocks": "mainnet release only"
+  },
+  {
+   "id": "FBL-ENG-10",
+   "source": "Fable audit §3",
+   "issue": "Same-cid resend after -2013 may double-fill delayed POST",
+   "severity": "P2",
+   "status": "needs-runtime-evidence",
+   "evidence": "binance_client.py:318-340",
+   "blocks": "mainnet release only"
+  },
+  {
+   "id": "FBL-ENG-11",
+   "source": "Fable audit §3",
+   "issue": "lot risk_usd stores uncapped risk",
+   "severity": "P2",
+   "status": "open",
+   "evidence": "engine.py:2134,2155,2234",
+   "blocks": "neither"
+  },
+  {
+   "id": "FBL-ENG-12",
+   "source": "Fable audit §3",
+   "issue": "One-way mode: every order fails; hedge flag not re-checked",
+   "severity": "P3",
+   "status": "open",
+   "evidence": "engine.py:534-537",
+   "blocks": "neither"
+  },
+  {
+   "id": "FBL-ENG-13",
+   "source": "Fable audit §3",
+   "issue": "marginType POST + read on every entry",
+   "severity": "P3",
+   "status": "partially-fixed",
+   "evidence": "engine.py:1792-1796 (skipped only in cooldown)",
+   "blocks": "neither"
+  },
+  {
+   "id": "FBL-ENG-14",
+   "source": "Fable audit §3",
+   "issue": "Unreadable state.json -> starts with no lots",
+   "severity": "P1",
+   "status": "open",
+   "evidence": "engine.py:419",
+   "blocks": "mainnet release only"
+  },
+  {
+   "id": "FBL-ENG-15",
+   "source": "Fable audit §3",
+   "issue": "Partial TPs can round to zero, marked done",
+   "severity": "P3",
+   "status": "open",
+   "evidence": "engine.py:1310",
+   "blocks": "neither"
+  },
+  {
+   "id": "FBL-ENG-16",
+   "source": "Fable audit §3",
+   "issue": "maxQty unchecked; MARKET_LOT_SIZE used for STOP/LIMIT",
+   "severity": "P3",
+   "status": "open",
+   "evidence": "engine.py:527",
+   "blocks": "neither"
+  },
+  {
+   "id": "FBL-ENG-17",
+   "source": "Fable audit §3",
+   "issue": "Dead hasattr client fallbacks",
+   "severity": "P3",
+   "status": "open",
+   "evidence": "engine.py:1819-1839",
+   "blocks": "neither"
+  },
+  {
+   "id": "FBL-ENG-18",
+   "source": "Fable audit §3",
+   "issue": "No client-side weight accounting",
+   "severity": "P3",
+   "status": "open",
+   "evidence": "binance_client.py:264-311",
+   "blocks": "mainnet release only"
+  },
+  {
+   "id": "FBL-ENG-19",
+   "source": "Fable audit §3",
+   "issue": "Ambiguous initial stop -> safety close not cid poll",
+   "severity": "P3",
+   "status": "open",
+   "evidence": "engine.py:2252-2256",
+   "blocks": "neither"
+  },
+  {
+   "id": "FBL-ENG-20",
+   "source": "Fable audit §3",
+   "issue": "Module globals block AccountContext",
+   "severity": "P3",
+   "status": "open",
+   "evidence": "engine.py:389 INCIDENT_LOCK; app.py APP.engine",
+   "blocks": "neither"
+  },
+  {
+   "id": "FBL-ENG-21",
+   "source": "Fable audit §3",
+   "issue": "Business-error add failures retried every 8s forever",
+   "severity": "P3",
+   "status": "open",
+   "evidence": "engine.py:1196-1226",
+   "blocks": "neither"
+  },
+  {
+   "id": "FBL-ENG-22",
+   "source": "Fable audit §3",
+   "issue": "Paper mode manages on mainnet marks, stops on testnet marks",
+   "severity": "P2",
+   "status": "open",
+   "evidence": "engine.py:405; app.py:597",
+   "blocks": "testnet progression"
+  },
+  {
+   "id": "FBL-BT-01",
+   "source": "Fable audit §4 / #13 FBL-BT01",
+   "issue": "DCA basket TP hit by pre-fill high on red candles",
+   "severity": "P1",
+   "status": "fixed",
+   "evidence": "backtest.py:116-133,316-421 (ef6abc0)",
+   "blocks": "neither"
+  },
+  {
+   "id": "FBL-BT-02",
+   "source": "Fable audit §4",
+   "issue": "Strict replay never covers 1h or DCA-dominant mix",
+   "severity": "P2",
+   "status": "partially-fixed",
+   "evidence": "test_engine_sim.py:25 (4h only); tests/test_bt_intrabar_path.py:287 hand-built DCA replay",
+   "blocks": "testnet progression"
+  },
+  {
+   "id": "FBL-BT-03",
+   "source": "Fable audit §4",
+   "issue": "Causality/parity use synthetic candles; 1 unmatched tolerated",
+   "severity": "P2",
+   "status": "partially-fixed",
+   "evidence": "tests/test_causality.py:97-99,122 unchanged; new deterministic path tests",
+   "blocks": "neither"
+  },
+  {
+   "id": "FBL-BT-04",
+   "source": "Fable audit §4",
+   "issue": "Trend edge concentrated in top-10 trades / 2 quarters",
+   "severity": "P1",
+   "status": "open",
+   "evidence": "research/*.csv; no P&L-ex-top-10 in reports",
+   "blocks": "mainnet release only"
+  },
+  {
+   "id": "FBL-BT-05",
+   "source": "Fable audit §4",
+   "issue": "2y/40-coin tables survivorship-biased, bull-only",
+   "severity": "P1",
+   "status": "open",
+   "evidence": "research_combos.py; panel.html:639",
+   "blocks": "mainnet release only"
+  },
+  {
+   "id": "FBL-BT-06",
+   "source": "Fable audit §4",
+   "issue": "Walk-forward tested only risk",
+   "severity": "P2",
+   "status": "open",
+   "evidence": "research_long2.py",
+   "blocks": "mainnet release only"
+  },
+  {
+   "id": "FBL-BT-07",
+   "source": "Fable audit §4",
+   "issue": "5-day block MC mis-calibrated",
+   "severity": "P2",
+   "status": "open",
+   "evidence": "lab.py block bootstrap",
+   "blocks": "mainnet release only"
+  },
+  {
+   "id": "FBL-BT-08",
+   "source": "Fable audit §4",
+   "issue": "Maker model (rest a bar) far more generous than live GTX",
+   "severity": "P1",
+   "status": "open",
+   "evidence": "backtest.py:439-449",
+   "blocks": "mainnet release only"
+  },
+  {
+   "id": "FBL-BT-09",
+   "source": "Fable audit §4",
+   "issue": "Live regime from 1,500-candle window differs from backtest",
+   "severity": "P3",
+   "status": "open",
+   "evidence": "engine.py:664",
+   "blocks": "neither"
+  },
+  {
+   "id": "FBL-BT-10",
+   "source": "Fable audit §4",
+   "issue": "Pyramid add + stop same red candle under-counts loss",
+   "severity": "P2",
+   "status": "fixed",
+   "evidence": "backtest.py:383-392 (path-ordered adds)",
+   "blocks": "neither"
+  },
+  {
+   "id": "FBL-BT-11",
+   "source": "Fable audit §4",
+   "issue": "Worst-case rows byte-identical to baseline",
+   "severity": "P3",
+   "status": "needs-runtime-evidence",
+   "evidence": "backtest.py:128 (worst=True now differs for DCA; not re-run)",
+   "blocks": "neither"
+  },
+  {
+   "id": "FBL-BT-12",
+   "source": "Fable audit §4",
+   "issue": "Funding flat both sides; no history",
+   "severity": "P2",
+   "status": "open",
+   "evidence": "backtest.py:13",
+   "blocks": "mainnet release only"
+  },
+  {
+   "id": "FBL-BT-13",
+   "source": "Fable audit §4",
+   "issue": "research_grid.py is a copy; grid result not reproducible",
+   "severity": "P3",
+   "status": "open",
+   "evidence": "research_grid.py",
+   "blocks": "neither"
+  },
+  {
+   "id": "FBL-BT-14",
+   "source": "Fable audit §4",
+   "issue": "Rotation 'both' rows duplicate 'long'",
+   "severity": "P3",
+   "status": "open",
+   "evidence": "strategies.py rotation; research_refresh.py",
+   "blocks": "neither"
+  },
+  {
+   "id": "FBL-BT-15",
+   "source": "Fable audit §4",
+   "issue": "Slot allocation alphabetical, not signal strength",
+   "severity": "P3",
+   "status": "open",
+   "evidence": "backtest.py pend order; engine.cycle",
+   "blocks": "neither"
+  },
+  {
+   "id": "FBL-BT-16",
+   "source": "Fable audit §4",
+   "issue": "BTC min notional 50 vs exchange 100",
+   "severity": "P2",
+   "status": "open",
+   "evidence": "backtest.py:17,268 (tracked as #14 BT02)",
+   "blocks": "testnet progression"
+  },
+  {
+   "id": "FBL-BT-17",
+   "source": "Fable audit §4",
+   "issue": "Backtests compound; live COMPOUND=False",
+   "severity": "P3",
+   "status": "open",
+   "evidence": "engine.py:323",
+   "blocks": "neither"
+  },
+  {
+   "id": "FBL-BT-18",
+   "source": "Fable audit §4",
+   "issue": "Lab hold-out reusable without consult count",
+   "severity": "P3",
+   "status": "open",
+   "evidence": "lab.py",
+   "blocks": "neither"
+  },
+  {
+   "id": "FBL-BT-19",
+   "source": "Fable audit §4",
+   "issue": "Kelly over 40 fat-tailed R is noise",
+   "severity": "P3",
+   "status": "open",
+   "evidence": "backtest.py Kelly; engine.py:1126-1134",
+   "blocks": "neither"
+  },
+  {
+   "id": "FBL-BT-20",
+   "source": "Fable audit §4",
+   "issue": "Flat 0.5% maintenance; constant stop slippage",
+   "severity": "P3",
+   "status": "open",
+   "evidence": "backtest.py:135,201",
+   "blocks": "neither"
+  },
+  {
+   "id": "FBL-UI-01",
+   "source": "Fable audit §5 / #13 CONC01",
+   "issue": "Flatten/Close/Move stop/Telegram wait on engine lock",
+   "severity": "P1",
+   "status": "open",
+   "evidence": "engine.py:1653,2696,2723",
+   "blocks": "mainnet release only"
+  },
+  {
+   "id": "FBL-UI-02",
+   "source": "Fable audit §5",
+   "issue": "No data-as-of/busy state; no fetch timeout",
+   "severity": "P2",
+   "status": "open",
+   "evidence": "panel.html (no AbortController)",
+   "blocks": "neither"
+  },
+  {
+   "id": "FBL-UI-03",
+   "source": "Fable audit §5",
+   "issue": "19 native confirm(); inconsistent danger confirms",
+   "severity": "P2",
+   "status": "open",
+   "evidence": "panel.html (19 confirm( calls)",
+   "blocks": "mainnet release only"
+  },
+  {
+   "id": "FBL-UI-04",
+   "source": "Fable audit §5",
+   "issue": "Too many controls; no tiering",
+   "severity": "P3",
+   "status": "open",
+   "evidence": "panel.html",
+   "blocks": "neither"
+  },
+  {
+   "id": "FBL-UI-05",
+   "source": "Fable audit §5",
+   "issue": "Exposure only on Risk tab; no 'why did it trade'",
+   "severity": "P3",
+   "status": "open",
+   "evidence": "panel.html",
+   "blocks": "neither"
+  },
+  {
+   "id": "FBL-UI-06",
+   "source": "Fable audit §5",
+   "issue": "Typography/contrast/reduced-motion",
+   "severity": "P3",
+   "status": "open",
+   "evidence": "panel.html:9-85",
+   "blocks": "neither"
+  },
+  {
+   "id": "FBL-UI-07",
+   "source": "Fable audit §5",
+   "issue": "Mobile is reflowed desktop",
+   "severity": "P3",
+   "status": "open",
+   "evidence": "panel.html",
+   "blocks": "neither"
+  },
+  {
+   "id": "FBL-UI-08",
+   "source": "Fable audit §5",
+   "issue": "Nested interactive in role=switch; small targets",
+   "severity": "P3",
+   "status": "open",
+   "evidence": "panel.html",
+   "blocks": "neither"
+  },
+  {
+   "id": "FBL-UI-09",
+   "source": "Fable audit §5",
+   "issue": "Single 327KB file, no-store",
+   "severity": "P3",
+   "status": "open",
+   "evidence": "panel.html (1,987 lines)",
+   "blocks": "neither"
+  },
+  {
+   "id": "FBL-UI-10",
+   "source": "Fable audit §5",
+   "issue": "Client/server validation drift (manual stop distance)",
+   "severity": "P3",
+   "status": "open",
+   "evidence": "panel.html; app.py; engine.py",
+   "blocks": "neither"
+  },
+  {
+   "id": "FBL-DATA-01",
+   "source": "Fable audit §5 / #13 DATA01",
+   "issue": "Unreadable state.json silently starts empty; no .bak",
+   "severity": "P1",
+   "status": "open",
+   "evidence": "engine.py:419",
+   "blocks": "mainnet release only"
+  },
+  {
+   "id": "FBL-DATA-02",
+   "source": "Fable audit §5",
+   "issue": "Atomic rename without fsync",
+   "severity": "P2",
+   "status": "open",
+   "evidence": "engine.py:381-384",
+   "blocks": "mainnet release only"
+  },
+  {
+   "id": "FBL-DATA-03",
+   "source": "Fable audit §5",
+   "issue": "No SETTINGS_VERSION/migrations",
+   "severity": "P2",
+   "status": "open",
+   "evidence": "no SETTINGS_VERSION in engine.py/app.py",
+   "blocks": "neither"
+  },
+  {
+   "id": "FBL-DATA-04",
+   "source": "Fable audit §5",
+   "issue": "/api/settings applies keys one by one",
+   "severity": "P2",
+   "status": "open",
+   "evidence": "app.py settings handler",
+   "blocks": "neither"
+  },
+  {
+   "id": "FBL-DATA-05",
+   "source": "Fable audit §5",
+   "issue": "Job worker iterates JOBS.items() during inserts",
+   "severity": "P2",
+   "status": "needs-runtime-evidence",
+   "evidence": "app.py:232",
+   "blocks": "neither"
+  },
+  {
+   "id": "FBL-DATA-06",
+   "source": "Fable audit §5",
+   "issue": "Whole-file rewrites on hot path under lock",
+   "severity": "P2",
+   "status": "open",
+   "evidence": "engine.py:1525 (missed.json in add gate)",
+   "blocks": "neither"
+  },
+  {
+   "id": "FBL-DATA-07",
+   "source": "Fable audit §5",
+   "issue": "Live candles re-downloaded every cycle",
+   "severity": "P3",
+   "status": "open",
+   "evidence": "engine.py:664",
+   "blocks": "neither"
+  },
+  {
+   "id": "FBL-DATA-08",
+   "source": "Fable audit §5",
+   "issue": "Preview worker vs cycle race on signals/_kc",
+   "severity": "P3",
+   "status": "needs-runtime-evidence",
+   "evidence": "app.py preview worker",
+   "blocks": "neither"
+  },
+  {
+   "id": "FBL-DATA-09",
+   "source": "Fable audit §5",
+   "issue": "Module-global single-account state",
+   "severity": "P3",
+   "status": "open",
+   "evidence": "app.py globals",
+   "blocks": "neither"
+  },
+  {
+   "id": "FBL-SEC-01",
+   "source": "Fable audit §5",
+   "issue": "Session token plaintext in session.json / command line",
+   "severity": "P2",
+   "status": "open",
+   "evidence": "app.py:1253",
+   "blocks": "mainnet release only"
+  },
+  {
+   "id": "FBL-SEC-02",
+   "source": "Fable audit §5",
+   "issue": "One-click Telegram chat adoption; PIN optional",
+   "severity": "P2",
+   "status": "open",
+   "evidence": "panel.html:1940",
+   "blocks": "mainnet release only"
+  },
+  {
+   "id": "FBL-SEC-03",
+   "source": "Fable audit §5",
+   "issue": "AI veto fail-open, 60s under lock, brittle parsing",
+   "severity": "P3",
+   "status": "open",
+   "evidence": "ai_filter.py:35",
+   "blocks": "neither"
+  },
+  {
+   "id": "FBL-SEC-04",
+   "source": "Fable audit §5",
+   "issue": "Imported plaintext config.env left on disk",
+   "severity": "P3",
+   "status": "open",
+   "evidence": "app.py:105-111",
+   "blocks": "mainnet release only"
+  },
+  {
+   "id": "FBL-SEC-05",
+   "source": "Fable audit §5",
+   "issue": "CSP allows unsafe-inline",
+   "severity": "P3",
+   "status": "open",
+   "evidence": "app.py:800-802",
+   "blocks": "neither"
+  },
+  {
+   "id": "FBL-WF-01",
+   "source": "Fable audit §5",
+   "issue": "UI harness is a smoke suite, no value checks",
+   "severity": "P2",
+   "status": "open",
+   "evidence": "test_app_ui.py",
+   "blocks": "neither"
+  },
+  {
+   "id": "FBL-WF-02",
+   "source": "Fable audit §5",
+   "issue": "Owner is manual relay; status doc mixes trail",
+   "severity": "P3",
+   "status": "partially-fixed",
+   "evidence": "CLAUDE.md roles; ~/.codex/AGENTS.md pre-approval",
+   "blocks": "neither"
+  },
+  {
+   "id": "FBL-CODE-01",
+   "source": "Fable audit §5",
+   "issue": "app.py nine concerns, 200-line handle()",
+   "severity": "P3",
+   "status": "open",
+   "evidence": "app.py",
+   "blocks": "neither"
+  },
+  {
+   "id": "FBL-CODE-02",
+   "source": "Fable audit §5",
+   "issue": "Stale telegram docstring; /close burns code",
+   "severity": "P3",
+   "status": "open",
+   "evidence": "telegram_ctl.py:14-35",
+   "blocks": "neither"
+  },
+  {
+   "id": "FBL-OPS-01",
+   "source": "Fable audit §6 / #13 OPS01",
+   "issue": "Installed build cannot prove its commit; dirty tree stageable",
+   "severity": "P1",
+   "status": "open",
+   "evidence": "installer.ps1:342 (BUILD_ID only)",
+   "blocks": "mainnet release only"
+  },
+  {
+   "id": "FBL-OPS-02",
+   "source": "Fable audit §6 / #13 OPS01",
+   "issue": "Installer hard-kills bot; no drain",
+   "severity": "P1",
+   "status": "open",
+   "evidence": "installer.ps1:262,269",
+   "blocks": "mainnet release only"
+  },
+  {
+   "id": "FBL-OPS-03",
+   "source": "Fable audit §6",
+   "issue": "Exe build and PS 5.1 installer never in CI",
+   "severity": "P2",
+   "status": "open",
+   "evidence": ".github/workflows (ubuntu-24.04 only)",
+   "blocks": "neither"
+  },
+  {
+   "id": "FBL-OPS-04",
+   "source": "Fable audit §6",
+   "issue": "Pre-T02 history/tags only on owner PC",
+   "severity": "P3",
+   "status": "fixed",
+   "evidence": "GitHub tags v2.2..v3.2-rc2 present",
+   "blocks": "neither"
+  },
+  {
+   "id": "FBL-OPS-05",
+   "source": "Fable audit §6",
+   "issue": "No Dependabot, no pip hashes",
+   "severity": "P2",
+   "status": "open",
+   "evidence": "requirements*.txt pinned without hashes",
+   "blocks": "mainnet release only"
+  },
+  {
+   "id": "FBL-OPS-06",
+   "source": "Fable audit §6",
+   "issue": "No identity separation; implementer can add full-ready",
+   "severity": "P2",
+   "status": "partially-fixed",
+   "evidence": "enforce_admins=true; no CODEOWNERS; label not restricted",
+   "blocks": "mainnet release only"
+  },
+  {
+   "id": "FBL-OPS-07",
+   "source": "Fable audit §6",
+   "issue": "Public repo exposes username/runtime details",
+   "severity": "P3",
+   "status": "open",
+   "evidence": "GitHub private=false; docs/reviews/T03_acceptance.md",
+   "blocks": "mainnet release only"
+  },
+  {
+   "id": "FBL-OPS-08",
+   "source": "Fable audit §6",
+   "issue": "Unsigned onefile exe + 60s ping -> false rollback on AV",
+   "severity": "P3",
+   "status": "needs-runtime-evidence",
+   "evidence": "installer.ps1 ping wait",
+   "blocks": "neither"
+  },
+  {
+   "id": "FBL-OPS-09",
+   "source": "Fable audit §6",
+   "issue": "~4k lines Windows-only deploy code vs Linux VPS plan",
+   "severity": "P3",
+   "status": "open",
+   "evidence": "installer.ps1; tests/test_installer.py",
+   "blocks": "neither"
+  },
+  {
+   "id": "FBL-TEST-01",
+   "source": "Fable audit §6",
+   "issue": "Production except TypeError fallbacks for fakes",
+   "severity": "P2",
+   "status": "open",
+   "evidence": "engine.py:1011,2712",
+   "blocks": "mainnet release only"
+  },
+  {
+   "id": "FBL-TEST-02",
+   "source": "Fable audit §6",
+   "issue": "Five independent fake exchanges",
+   "severity": "P2",
+   "status": "open",
+   "evidence": "tests/test_safety.py:14; tests/test_grid.py:15; replay.py:64; test_app_ui.py:106",
+   "blocks": "neither"
+  },
+  {
+   "id": "FBL-TEST-03",
+   "source": "Fable audit §6",
+   "issue": "Strict replay = parity on idealised exchange",
+   "severity": "P2",
+   "status": "open",
+   "evidence": "replay.py:63-98",
+   "blocks": "mainnet release only"
+  },
+  {
+   "id": "FBL-TEST-04",
+   "source": "Fable audit §6",
+   "issue": "Lock-in tests of YAML/source text",
+   "severity": "P3",
+   "status": "open",
+   "evidence": "tests/test_ci.py",
+   "blocks": "neither"
+  },
+  {
+   "id": "FBL-TEST-05",
+   "source": "Fable audit §6",
+   "issue": "Mutation proofs unreproducible",
+   "severity": "P3",
+   "status": "open",
+   "evidence": "no mutation script in repo",
+   "blocks": "neither"
+  },
+  {
+   "id": "FBL-TEST-06",
+   "source": "Fable audit §6",
+   "issue": "Test counts in docs unexplained",
+   "severity": "P3",
+   "status": "open",
+   "evidence": "docs/PROJECT_STATUS.md",
+   "blocks": "neither"
+  },
+  {
+   "id": "FBL-TEST-07",
+   "source": "Fable audit §6",
+   "issue": "Flakiness vectors, no duration tracking",
+   "severity": "P3",
+   "status": "needs-runtime-evidence",
+   "evidence": "tests/test_fills.py; verify.py",
+   "blocks": "neither"
+  },
+  {
+   "id": "FBL-RM-01",
+   "source": "Fable audit §7",
+   "issue": "Incident playbook, dead-man, key rotation, kill drill too late",
+   "severity": "P1",
+   "status": "open",
+   "evidence": "ROADMAP.md (T14 Phase 4; no playbook)",
+   "blocks": "mainnet release only"
+  },
+  {
+   "id": "FBL-RM-02",
+   "source": "Fable audit §7 / #13 ACCT01",
+   "issue": "Accounting estimated, /fapi/v1/income unused",
+   "severity": "P1",
+   "status": "open",
+   "evidence": "engine.py:269 FEE_EST",
+   "blocks": "mainnet release only"
+  },
+  {
+   "id": "FBL-RM-03",
+   "source": "Fable audit §7",
+   "issue": "Live > 6 months out while edge evidence in-sample",
+   "severity": "P2",
+   "status": "open",
+   "evidence": "ROADMAP.md",
+   "blocks": "neither"
+  },
+  {
+   "id": "FBL-RM-04",
+   "source": "Fable audit §7",
+   "issue": "T09a/T09b scope creep ahead of T10-T13",
+   "severity": "P3",
+   "status": "partially-fixed",
+   "evidence": "#13: T09a paused until BT01/BT02",
+   "blocks": "neither"
+  },
+  {
+   "id": "FBL-RM-05",
+   "source": "Fable audit §7",
+   "issue": "Big refactor before event record/accounting",
+   "severity": "P3",
+   "status": "open",
+   "evidence": "ROADMAP.md:359-366",
+   "blocks": "neither"
+  },
+  {
+   "id": "FBL-PROC-01",
+   "source": "Fable audit §7",
+   "issue": "Hand-maintained status docs stale",
+   "severity": "P2",
+   "status": "open",
+   "evidence": "ROADMAP.md:358; docs/PROJECT_STATUS.md:3-15 (see A-DOC-1/2)",
+   "blocks": "neither"
+  },
+  {
+   "id": "FBL-PROC-02",
+   "source": "Fable audit §7",
+   "issue": "Effort skewed to tooling/docs",
+   "severity": "P3",
+   "status": "partially-fixed",
+   "evidence": "ef6abc0 touches backtest.py; engine fixes still on branches",
+   "blocks": "neither"
+  },
+  {
+   "id": "FBL-PROC-03",
+   "source": "Fable audit §7",
+   "issue": "Loop serialised through owner PC",
+   "severity": "P3",
+   "status": "partially-fixed",
+   "evidence": "~/.codex/AGENTS.md standing testnet authorization",
+   "blocks": "neither"
+  },
+  {
+   "id": "FBL-PROC-04",
+   "source": "Fable audit §7",
+   "issue": "Commit hygiene, authorship as MoeAZack",
+   "severity": "P3",
+   "status": "open",
+   "evidence": "git log (all commits MoeAZack)",
+   "blocks": "neither"
+  },
+  {
+   "id": "FBL-PROC-05",
+   "source": "Fable audit §7 / App.B#2",
+   "issue": "T03c above-cap exception has no off switch (default off for mainnet)",
+   "severity": "P2",
+   "status": "open",
+   "evidence": "engine.py:2044-2070,2199 (no setting)",
+   "blocks": "mainnet release only"
+  },
+  {
+   "id": "FBL-CH-01",
+   "source": "Fable audit §7",
+   "issue": "Untyped, unlinted code; no ruff",
+   "severity": "P3",
+   "status": "open",
+   "evidence": "verify.py (compile only)",
+   "blocks": "neither"
+  },
+  {
+   "id": "FBL-CH-02",
+   "source": "Fable audit §7",
+   "issue": "Three config sources + legacy imports",
+   "severity": "P3",
+   "status": "open",
+   "evidence": "app.py:105-135",
+   "blocks": "neither"
+  },
+  {
+   "id": "FBL-B1",
+   "source": "Fable audit App.B#1",
+   "issue": "Remove grid/COMBO from app",
+   "severity": "P3",
+   "status": "open",
+   "evidence": "grid.py; superseded by range-sleeve 'retire, keep primitives'",
+   "blocks": "neither"
+  },
+  {
+   "id": "FBL-B3",
+   "source": "Fable audit App.B#3",
+   "issue": "Freeze T09a/T09b until BT01 + edge go/no-go",
+   "severity": "P3",
+   "status": "fixed",
+   "evidence": "#13 owner/Claude comments (paused)",
+   "blocks": "neither"
+  },
+  {
+   "id": "FBL-B4",
+   "source": "Fable audit App.B#4",
+   "issue": "Two-lane process, separate Codex identity",
+   "severity": "P3",
+   "status": "partially-fixed",
+   "evidence": "CLAUDE.md roles; Codex still posts as owner",
+   "blocks": "neither"
+  },
+  {
+   "id": "FBL-B5",
+   "source": "Fable audit App.B#5",
+   "issue": "Linux VPS testnet pilot now",
+   "severity": "P3",
+   "status": "open",
+   "evidence": "ROADMAP T14 not started",
+   "blocks": "neither"
+  },
+  {
+   "id": "FBL-B6",
+   "source": "Fable audit App.B#6",
+   "issue": "Return repo to private",
+   "severity": "P2",
+   "status": "open",
+   "evidence": "GitHub private=false",
+   "blocks": "mainnet release only"
+  },
+  {
+   "id": "I13-BT02",
+   "source": "#13 / #14",
+   "issue": "Backtester lacks stepSize/minQty/minNotional; presets include unplaceable trades",
+   "severity": "P1",
+   "status": "open",
+   "evidence": "backtest.py:17,268 vs engine.py:2158 live gate",
+   "blocks": "testnet progression"
+  },
+  {
+   "id": "I13-COPY",
+   "source": "#13 / #15",
+   "issue": "COPY100/COPY200 lead/follower profiles",
+   "severity": "P2",
+   "status": "open",
+   "evidence": "issue #15 (not started)",
+   "blocks": "mainnet release only"
+  },
+  {
+   "id": "I13-F1",
+   "source": "#13 TRATE",
+   "issue": "418 ban retried; 429 sleeps under engine lock",
+   "severity": "P1",
+   "status": "open",
+   "evidence": "binance_client.py:179,294 (fix only on origin/cowork/trate)",
+   "blocks": "mainnet release only"
+  },
+  {
+   "id": "I13-F2",
+   "source": "#13 handoff note",
+   "issue": "Backtest keeps zero-qty position when tp1_frac=1.0",
+   "severity": "P3",
+   "status": "needs-runtime-evidence",
+   "evidence": "backtest.py:198-210 (frac 1.0 -> qty 0 -> True by reading)",
+   "blocks": "neither"
+  },
+  {
+   "id": "I13-ENG0102",
+   "source": "#13 Cowork handoff",
+   "issue": "ENG01 verifier cancels ENG02 provisional stops (branch-only)",
+   "severity": "P1",
+   "status": "open",
+   "evidence": "origin/cowork/eng02 tests/test_eng01_eng02_interaction.py; not on master",
+   "blocks": "testnet progression"
+  },
+  {
+   "id": "I13-DCAOFF",
+   "source": "#13 owner decision 2026-10-07",
+   "issue": "DCA OFF decision not on master; DCA presets still selectable",
+   "severity": "P1",
+   "status": "open",
+   "evidence": "engine.py:300-310 (no DCA_ENABLED); fix on origin/cowork/dca-off",
+   "blocks": "testnet progression"
+  },
+  {
+   "id": "I13-UNVER",
+   "source": "#13 FBL-BT01 acceptance",
+   "issue": "DCA preset numbers invalid; only an 'unverified' tag",
+   "severity": "P1",
+   "status": "partially-fixed",
+   "evidence": "engine.py:305,308,314-319; panel.html:639 table unlabelled",
+   "blocks": "testnet progression"
+  },
+  {
+   "id": "FS-ALL",
+   "source": "Fable scouting 2026-10-07",
+   "issue": "25 ranked proposals, S1-S5 shorts, G1-G8 gold, TradFi engine prerequisites",
+   "severity": "P3",
+   "status": "open",
+   "evidence": "triaged on PR #8 / #13; none implemented on master",
+   "blocks": "neither"
+  },
+  {
+   "id": "FR-ALL",
+   "source": "Fable range sleeve 2026-10-07",
+   "issue": "Range/quick-bank sleeve, 1m backtester, maker fills, gate ladder",
+   "severity": "P3",
+   "status": "open",
+   "evidence": "triaged #13 (RS0 research first); no code",
+   "blocks": "neither"
+  },
+  {
+   "id": "A-DOC-1",
+   "source": "this audit",
+   "issue": "ROADMAP status: T05a 'Planned'; no T05b / FBL-BT01 / BT02 rows",
+   "severity": "P2",
+   "status": "open",
+   "evidence": "ROADMAP.md:356-358",
+   "blocks": "neither"
+  },
+  {
+   "id": "A-DOC-2",
+   "source": "this audit",
+   "issue": "PROJECT_STATUS says T05a merge pending / current ticket T05a",
+   "severity": "P2",
+   "status": "open",
+   "evidence": "docs/PROJECT_STATUS.md:3-15",
+   "blocks": "neither"
+  },
+  {
+   "id": "A-DOC-3",
+   "source": "this audit",
+   "issue": "Docs say verify full runs on every PR; it is label full-ready only",
+   "severity": "P3",
+   "status": "open",
+   "evidence": "README.md:48; docs/reviews/README.md:19; docs/PROJECT_STATUS.md:66; .github/workflows/verify-push.yml:5",
+   "blocks": "neither"
+  },
+  {
+   "id": "A-DOC-4",
+   "source": "this audit",
+   "issue": "Instruction conflict: global CLAUDE.md pauses for installer/drill/bot stop; repo CLAUDE.md + AGENTS.md pre-approve them on testnet",
+   "severity": "P2",
+   "status": "open",
+   "evidence": "~/.claude/CLAUDE.md 'ZackBot autonomy'; CLAUDE.md 'Safety boundaries'; ~/.codex/AGENTS.md",
+   "blocks": "neither"
+  },
+  {
+   "id": "A-DOC-5",
+   "source": "this audit",
+   "issue": "verify.py says history scanning is T04b (never added)",
+   "severity": "P3",
+   "status": "open",
+   "evidence": "verify.py:125",
+   "blocks": "neither"
+  },
+  {
+   "id": "A-DOC-6",
+   "source": "this audit",
+   "issue": "Fable reports untracked; #13 cites a different PDF name",
+   "severity": "P3",
+   "status": "open",
+   "evidence": "C:/Dev/ZackBot2/docs/reviews/Fable_* untracked; #13 body",
+   "blocks": "neither"
+  },
+  {
+   "id": "A-DOC-7",
+   "source": "this audit",
+   "issue": "Review workflow names Txx_fix_report.md that is never produced",
+   "severity": "P3",
+   "status": "open",
+   "evidence": "docs/reviews/README.md:8-14",
+   "blocks": "neither"
+  }
+ ]
+}
