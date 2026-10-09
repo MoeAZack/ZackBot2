@@ -12,7 +12,8 @@ import pytest
 
 from evidence_faults import faulty
 from newcore.domain import EntriesMode
-from newcore.ports.venue import MarketOrder, OrderRef, OutcomeKind, ReadKind, ReadOutcome, VenueFill
+from newcore.ports.venue import (MarketOrder, OrderRef, OutcomeKind, ReadKind, ReadOutcome, VenueFill,
+                                 VenueOrderRecord)
 from newcore.runner import InjectedSignals, ids
 from newcore.runner.fill_evidence import rows_of
 from slice_helpers import H4, World, flat_bars
@@ -136,6 +137,15 @@ def test_4_a_500_fill_order_costs_a_bounded_number_of_queries(side, how):
     w, lot = emergency_closed(side, None, cancel=False)
     qtys = [D('0.01')] * 500 if how == 'same' else [D('0.01') * (i + 1) for i in range(500)]
     w.venue.trades = with_rows(w.venue.trades, side, qtys)
+    inner, total = w.venue.order_by_id, sum(qtys, D(0))
+
+    def order_by_id(symbol, eoid):                                       # Codex 6071659449: the venue knows the
+        if eoid != '77777':                                              # foreign order behind the rows
+            return inner(symbol, eoid)
+        return ReadOutcome(kind=ReadKind.OK, observed_at_ms=w.venue.now_ms, value=(VenueOrderRecord(
+            ref=OrderRef(symbol=SYM, client_id='manual-77777'), exchange_order_id=eoid, position_side=side,
+            status='FILLED', orig_qty=total, executed_qty=total),))
+    w.port.order_by_id = order_by_id
     r = w.runner
     q0 = w.venue.calls['query']
     ef = r._emergency_filled(SYM, side)

@@ -135,7 +135,6 @@ class FakeVenue:
         self._fill_on_cancel = set()     # client ids whose remainder fills when the cancel arrives (cancel loses)
         self._lose_cancel = {}           # client id -> 'cancelled' | 'working': the cancel's answer is lost
         self._refuse_classic_stop = None  # error code: classic-route STOP_MARKET refused (the algo route is accepted)
-        self._foreign = {}               # inject_position orders: exchange order id -> (symbol, side, qty)
         self._open = {}                  # intra-candle play: symbol -> the open candle (Bar)
         self._marks = {}                 # intra-candle play: symbol -> the current mark
         self.calls = {'submit_market': 0, 'submit_stop': 0, 'cancel': 0, 'query': 0, 'positions': 0, 'open_orders': 0,
@@ -187,8 +186,7 @@ class FakeVenue:
 
     def inject_position(self, symbol, side, qty, price):
         """A position the bot did not open (foreign / manual)."""
-        eoid = f'foreign-{self._trade_seq + 1}'          # its own exchange order (a manual order of the account),
-        self._foreign[eoid] = (symbol, side, qty)        # known to the order-by-id lookup; never one of ours
+        eoid = f'foreign-{self._trade_seq + 1}'          # its own exchange order (a manual order of the account)
         self._apply_fill(symbol, side, qty, price, reduce=False, eoid=eoid, at_ms=self.now_ms, fee=ZERO)
 
     # ------------------------------------------------------------------------------------------------ clock
@@ -474,12 +472,13 @@ class FakeVenue:
                 return ReadOutcome(kind=ReadKind.OK, observed_at_ms=self.now_ms, value=(VenueOrderRecord(
                     ref=o.ref, exchange_order_id=o.exchange_order_id, position_side=o.position_side, status=status,
                     orig_qty=o.qty, executed_qty=o.executed),))
-        f = self._foreign.get(exchange_order_id)
-        if f is not None and f[0] == symbol:
+        rows = [f for f in self._fills if f.symbol == symbol and f.exchange_order_id == exchange_order_id]
+        if rows:                                         # a fill made outside the bot (inject_position, a manual
+            q = sum((f.qty for f in rows), ZERO)         # close): a manual order of the account, never one of ours
             return ReadOutcome(kind=ReadKind.OK, observed_at_ms=self.now_ms, value=(VenueOrderRecord(
-                ref=OrderRef(symbol=symbol, client_id='manual-' + exchange_order_id),
-                exchange_order_id=exchange_order_id, position_side=f[1], status='FILLED', orig_qty=f[2],
-                executed_qty=f[2]),))
+                ref=OrderRef(symbol=symbol, client_id='manual-' + exchange_order_id[:29]),
+                exchange_order_id=exchange_order_id, position_side=rows[0].position_side, status='FILLED',
+                orig_qty=q, executed_qty=q),))
         return ReadOutcome(kind=ReadKind.REJECTED, observed_at_ms=self.now_ms, error_code=E_NO_ORDER)
 
     # ------------------------------------------------------------------------------------------------ account reads
@@ -510,7 +509,6 @@ class FakeVenue:
             'fills': [[f.trade_id, f.exchange_order_id, f.symbol, f.position_side, s(f.qty), s(f.price), s(f.fee),
                        f.fee_asset, s(f.realized_pnl), f.maker, f.at_ms] for f in self._fills],
             'funding': [[r.symbol, r.side, r.at_ms, s(r.amount)] for r in self._funding],
-            'foreign': [[e, sym, side, s(q)] for e, (sym, side, q) in sorted(self._foreign.items())],
         }
 
     @classmethod
@@ -531,7 +529,6 @@ class FakeVenue:
                               fee=D(fee), fee_asset=asset, realized_pnl=D(r), maker=m, at_ms=at)
                     for t, e, sym, side, q, p, fee, asset, r, m, at in state['fills']]
         v._funding = [FundingRow(sym, side, at, D(a)) for sym, side, at, a in state['funding']]
-        v._foreign = {e: (sym, side, D(q)) for e, sym, side, q in state.get('foreign', ())}
         return v
 
     # ------------------------------------------------------------------------------------------------ inspection
