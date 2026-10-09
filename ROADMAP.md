@@ -189,6 +189,12 @@ authorizes size. See `docs/newcore/SCANNER_SCORECARD_CONTRACT.md`.
 
 A high score **never** changes settings automatically.
 
+**Activity is profile-controlled, not accidentally filtered away:** integrity, protection, ownership/reconciliation and
+hard account-loss invariants remain absolute. Opportunity/regime thresholds, concurrency, cooldown, leverage within its
+cap, bounded DCA permission and target trade frequency vary visibly from Conservative through high-risk profiles. Every
+profile is tested for expected opportunity frequency. If entries dry up, the UI reports rejection counts and closest
+missed thresholds; the engine never silently loosens rules or forces a trade.
+
 **Scorecard v1 weights:**
 
 | Component | Weight |

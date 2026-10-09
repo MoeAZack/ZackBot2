@@ -123,6 +123,14 @@ strategy/side, lot/notional, dollar risk, leverage/margin, stop/targets, fees/sl
 cooldown and follower feasibility. Changes apply to new entries unless the owner explicitly confirms an audited
 management change.
 
+The controls must not collapse into an over-restrictive all-or-nothing gate. Data integrity, duplicate/conflicting
+identity, account ownership, required protection, reconciliation and hard account/session loss ceilings are absolute
+safety boundaries. Opportunity score, regime confidence, entry timing, concurrency, cooldown, leverage within its cap,
+DCA permission and target trade frequency are deterministic profile settings. Conservative profiles trade selectively;
+high-risk profiles intentionally admit more eligible setups and activity within their displayed dollar-risk, exposure
+and drawdown ceilings. The UI shows expected trade frequency and a no-trade/rejection breakdown so inactivity is
+explainable instead of silently caused by stacked filters.
+
 ## 3. Required strategy catalog
 
 The catalog must cover both directions and differing risk/holding styles:

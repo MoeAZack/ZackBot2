@@ -23,6 +23,26 @@ The UI may rank by a versioned composite, but it always shows the components and
 never hide weak evidence, poor operational readiness or a mismatched regime. Scores never authorize an order or raise
 the owner's mechanical risk ceiling.
 
+### Ranking is not a blanket veto
+
+The board exists to find and size enough valid opportunities for the selected operating profile, not to demand that
+every score be perfect. Only integrity and account-safety failures are unconditional new-entry blocks: malformed or
+expired input, unusable market data, duplicate/conflicting identity, unsupported venue capability, inability to place
+required protection, unresolved ownership/reconciliation, or a reached account/session hard-loss ceiling.
+
+Everything else is a versioned profile input. Conservative through explicitly high-risk profiles may use different
+opportunity and regime thresholds, concurrency, cooldown, leverage ceilings, DCA permission and trade-frequency targets.
+Those mappings are backtested and visible in the preview. They may accept more marginal but still valid candidates; they
+never fabricate a signal, exceed the owner's dollar-risk/drawdown ceilings or bypass the unconditional blocks above.
+
+An evidence/operationally immature strategy may run in research, observe, dry-run or bounded testnet according to its
+readiness, but cannot silently become automatic mainnet merely because the owner selected a higher risk grade. Manual
+mainnet control remains a separate explicit mode and still uses exchange protection and account hard limits.
+
+Each profile has an expected opportunity-frequency band by strategy/regime. If actual eligible entries stay below that
+band, ZackBot reports a starvation diagnostic: candidates seen, rejection counts by reason, closest missed thresholds
+and the estimated effect of each user-selectable profile. It never silently loosens thresholds or forces a trade.
+
 ## 2. Explicit entry state
 
 Every candidate has one state:

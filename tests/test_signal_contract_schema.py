@@ -65,3 +65,12 @@ def test_candidate_score_keeps_decision_dimensions_separate_and_has_stand_down()
     stop_value = re.compile(s['properties']['structural_stop']['properties']['value']['pattern'])
     assert stop_value.fullmatch('0.5')
     assert not stop_value.fullmatch('0')
+
+
+def test_scorecard_distinguishes_safety_from_profile_activity_controls():
+    text = (ROOT / 'docs' / 'newcore' / 'SCANNER_SCORECARD_CONTRACT.md').read_text(encoding='utf-8')
+    assert 'Ranking is not a blanket veto' in text
+    assert 'unconditional new-entry blocks' in text
+    assert 'expected opportunity-frequency band' in text
+    assert 'starvation diagnostic' in text
+    assert 'never silently loosens thresholds or forces a trade' in text

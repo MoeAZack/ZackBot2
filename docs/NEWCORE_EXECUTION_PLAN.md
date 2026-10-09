@@ -282,13 +282,17 @@ symbol/year concentration checks and gap/funding/slippage stress. More strategie
 | D6 | STR-04 DCA basket | Legacy DCA-1h curves are historical/unverified and excluded from the candidate catalog. Any replacement starts as a new bounded candidate with hard basket stop, bounded depth/scale and total-risk accounting. | Rebuilt causal results on execution-grade data; otherwise remains disabled/dropped. A single micro-DCA scalp experiment is separate and optional. |
 | D7 | REG-01 per-asset regime engine | Asset/timeframe trend/range/volatility and strategy preference; Manual/Recommend/Automatic. | Point-in-time stability, hysteresis and shadow evidence. |
 | D8 | MACRO-01 context | DXY, US 2Y/10Y/curve, S&P/Nasdaq, oil, gold/minerals and timestamped geopolitics/news. | Observe first; veto/reduce only after evidence. |
-| D9 | GOV-01 bounded risk grades | Conservative through high-risk/“Maniac,” mapped to explicit trade risk, leverage, exposure, DCA permission and portfolio drawdown ceilings. | No grade bypasses the risk gateway; high-risk modes are explicit and separately evaluated. |
+| D9 | GOV-01 bounded risk grades | Conservative through high-risk/“Maniac,” mapped to explicit admission thresholds, target opportunity frequency, trade risk, leverage, exposure, concurrency, cooldown, DCA permission and portfolio drawdown ceilings. | Profiles are separately backtested and expose expected/actual trade frequency plus rejection reasons. High-risk modes admit more valid setups without bypassing integrity, protection, reconciliation or account hard-loss boundaries. |
 | D10 | GOV-02 allocator/strategy matrix | Recommend, disable or reduce strategies by asset/regime; never exceed user ceilings. | Manual, Recommend and Automatic produce auditable decisions and never force a trade. |
 | D11 | CTRL-01 engine controls | Controlled capital plus Direction Bias, Risk and Acceptable Drawdown controls, globally and optionally per asset/strategy. | Deterministic mappings, previewed consequences and no silent changes to existing positions. |
 | D12 | EDGE-00 evidence checkpoint | Compare promoted candidates against simple after-cost baselines and each other before adding more strategy families. Keep backtest, paper, testnet and forward ledgers separate, with reason-coded exclusions and optional proof-of-prior commitments. | Freeze winners/losers by regime, concentration, tail risk and operational feasibility; park candidates with no distinct edge. |
 
 Each strategy has separate performance, tail-risk, evidence-readiness and operational/copy-readiness scores. No blended
 score may hide a failed hard gate.
+
+Here, a hard gate means an integrity, venue-capability, protection, ownership/reconciliation or account-loss invariant;
+it does not mean every ranking dimension must be high. Market-quality thresholds and activity settings vary by the
+selected risk profile. Starvation diagnostics must prove when stacked filters are suppressing nearly all entries.
 
 #### Required strategy-coverage matrix
 
