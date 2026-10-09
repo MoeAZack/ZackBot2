@@ -388,15 +388,126 @@ def test_bc5_p2_the_document_is_charged_before_any_value_scan(monkeypatch):
         rec.to_json()
 
 
-@pytest.mark.parametrize('limit,value,match', [('MAX_SECRET_CHARS', 20, 'too long'),
-                                               ('MAX_SECRET_TOTAL_CHARS', 40, 'too much secret')])
-def test_bc5_p2_secret_derived_work_is_capped_before_forms_are_built(monkeypatch, limit, value, match):
-    """Codex P2: b64_forms and the alternation regex were built before their size was charged."""
+def test_bc5_p2_secret_derived_work_is_capped_before_forms_are_built(monkeypatch):
+    """Codex P2 on bc5a351, kept: b64_forms is never built for values over the caps (now refused at registration)."""
     def forms(values):
         raise AssertionError('forms built before the secret caps')
-    monkeypatch.setattr(C, limit, value)
+    monkeypatch.setattr(C, 'MAX_SECRET_TOTAL_BYTES', 40)
     monkeypatch.setattr(C, 'b64_forms', forms)
-    rec = CassetteRecorder(FakeHttp(ok(b'{"serverTime": 1}')), redact=('k' * 30, 's' * 30))
+    with pytest.raises(ValueError):
+        CassetteRecorder(FakeHttp(), redact=('k' * 30, 's' * 30))
+
+
+# ---------------------------------------------------------------------------------------------- Codex on bcc2d8d
+import urllib.parse as _up  # noqa: E402
+
+from newcore.venue import redact as _redact  # noqa: E402
+
+
+def _refused(text_or_note, secret, where='msg'):
+    body = json.dumps({'msg': text_or_note}) if where == 'msg' else '{"serverTime": 1}'
+    rec = CassetteRecorder(FakeHttp(ok(body)), redact=(DUMMY_KEY, secret),
+                           note=text_or_note if where == 'note' else '')
     rec(req())
-    with pytest.raises(CassetteLeak, match=match):
+    with pytest.raises(CassetteLeak):
         rec.to_json()
+
+
+def test_bcc_p1_codex_repro_percent_encoded_case_variant_in_the_note():
+    """Codex P1: decoded_views ran on the percent-encoded string only; QUJDREF%2BQUE%3D = b64('ABCDA~AA') passed."""
+    _refused('QUJDREF%2BQUE%3D', 'abcda~aa', 'note')
+
+
+@pytest.mark.parametrize('where', ['msg', 'note'])
+@pytest.mark.parametrize('secret', ['abcda~aa', 'abcd~?a>b', 'ab~c?d>e?f', 'ab?cd~ef>gh'], ids=len)
+@pytest.mark.parametrize('alphabet', ['std', 'urlsafe'])
+def test_bcc_p1_percent_encoded_base64_of_a_case_variant_is_refused(where, secret, alphabet):
+    enc = _b64.b64encode if alphabet == 'std' else _b64.urlsafe_b64encode
+    form = enc(secret.upper().encode()).decode()
+    assert form != _up.quote(form, safe='') or alphabet == 'urlsafe'
+    _refused(_up.quote(form, safe=''), secret, where)
+
+
+def test_bcc_p2_secret_caps_hold_before_any_pattern_is_compiled(monkeypatch):
+    """Codex P2: a MAX_SECRET_CHARS + 1 value reached value_pattern before the audit refused it."""
+    seen = []
+    real = _redact.value_pattern
+    monkeypatch.setattr(_redact, 'value_pattern', lambda v: seen.append(v) or real(v))
+    monkeypatch.setattr(C, 'MAX_SECRET_BYTES', 64)
+    with pytest.raises(ValueError):
+        CassetteRecorder(FakeHttp(), redact=(DUMMY_KEY, 'x' * 65))
+    long_key = 'L' * 65                                            # a learned value (sensitive JSON field)
+    rec = CassetteRecorder(FakeHttp(ok(json.dumps({'listenKey': long_key}))), redact=(DUMMY_KEY, DUMMY_SECRET))
+    rec(req())
+    with pytest.raises(CassetteLeak):
+        rec.to_json()
+    assert long_key not in seen and 'x' * 65 not in seen
+
+
+def test_bcc_p2_secret_caps_count_utf8_bytes(monkeypatch):
+    """Codex P2: eight 'é' passed an 8-unit cap while being 16 UTF-8 bytes."""
+    monkeypatch.setattr(C, 'MAX_SECRET_BYTES', 10)
+    with pytest.raises(ValueError):
+        CassetteRecorder(FakeHttp(), redact=('é' * 8,))
+
+
+def test_bcc_p2_to_json_charges_the_document_before_serializing(monkeypatch):
+    """Codex P2: to_json serialized the whole document before the budget saw it."""
+    rec = CassetteRecorder(FakeHttp(ok(b'{"serverTime": 1}')), redact=(DUMMY_KEY, DUMMY_SECRET))
+    rec(req())
+    calls = []
+    real = json.dumps
+    monkeypatch.setattr(C.json, 'dumps', lambda *a, **k: calls.append(1) or real(*a, **k))
+    monkeypatch.setattr(C, 'MAX_AUDIT_CHARS', 10)
+    with pytest.raises(CassetteLeak, match='too much text'):
+        rec.to_json()
+    assert calls == []
+
+
+def test_bcc_p2_structure_and_numbers_are_charged():
+    """Codex P2 repro: a zero-secret replay document with a 10,000-number list passed a 4-string / 46-unit budget."""
+    doc = {'format': 'zb-newcore-cassette/1', 'interactions': [], 'pad': list(range(10000))}
+    assert leak_audit(doc) is None
+    import unittest.mock as um
+    with um.patch.object(C, 'MAX_AUDIT_STRINGS', 4), um.patch.object(C, 'MAX_AUDIT_CHARS', 46):
+        assert 'too much text' in leak_audit(doc)
+    with um.patch.object(C, 'MAX_AUDIT_NODES', 100):
+        assert 'too much text' in leak_audit(doc)
+
+
+def test_bcc_p2_document_bytes_not_characters(monkeypatch):
+    doc = {'format': 'é' * 40, 'interactions': []}
+    monkeypatch.setattr(C, 'MAX_AUDIT_CHARS', 70)                  # 40 chars fit, 80 bytes do not
+    assert 'too much text' in leak_audit(doc)
+
+
+# self-attack on the decoded-views pipeline: every transform chain below stacks on a CASE-VARIANT of a short secret
+SECRET8 = 'abcdefgh'
+UP = SECRET8.upper().encode()
+
+
+@pytest.mark.parametrize('text', [
+    'pre' + _b64.b64encode(b'Abcdefgh').decode() + 'suf',                    # Cowork LOW-1: glued, alignment lost
+    'x' + _b64.b64encode(UP).decode(),
+    'xy' + _b64.urlsafe_b64encode(UP).decode().rstrip('='),
+    _b64.b64encode(_b64.b64encode(UP)).decode(),                              # double base64
+    _b64.b64encode(_up.quote(SECRET8.upper(), safe='').encode()).decode(),   # base64 of percent-encoded
+    _b64.b64encode(UP.hex().encode()).decode(),                               # base64 of hex
+    'a' + UP.hex(),                                                           # hex glued, odd offset
+    ''.join(chr(ord(c) + 0xFEE0) for c in _b64.b64encode(UP).decode().rstrip('=')),  # fullwidth (NFKC)
+    ''.join('\\u%04x' % ord(c) for c in _b64.b64encode(UP).decode()),        # unicode-escaped base64
+    _b64.b64encode(UP).decode()[:6] + '\n' + _b64.b64encode(UP).decode()[6:],  # MIME line wrap
+    _up.quote(_up.quote(_b64.b64encode(UP).decode(), safe=''), safe=''),     # double percent-encoding
+], ids=['glued', 'prefix1', 'prefix2_urlsafe', 'double_b64', 'b64_of_pct', 'b64_of_hex', 'hex_glued', 'fullwidth',
+        'unicode_escape', 'line_wrap', 'double_pct'])
+@pytest.mark.parametrize('where', ['msg', 'note'])
+def test_bcc_self_attack_transform_chains_of_a_case_variant_are_refused(text, where):
+    _refused(text, SECRET8, where)
+
+
+def test_bcc_benign_text_is_still_saved():
+    """No false refusals on ordinary answers: ids, prices, base64-looking symbols, percent / escapes."""
+    body = json.dumps({'msg': 'BTCUSDT 1759917000050 0.00012 %41 \\w QUJDREVGR0hJSktMTU5PUA tok+en/abc='})
+    rec = CassetteRecorder(FakeHttp(ok(body)), redact=(DUMMY_KEY, DUMMY_SECRET), note='5a smoke')
+    rec(req())
+    assert json.loads(rec.to_json())['interactions']
