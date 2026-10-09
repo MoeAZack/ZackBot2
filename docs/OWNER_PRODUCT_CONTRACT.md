@@ -120,7 +120,57 @@ Simple/Guided/Pro interfaces must remain coherent and responsive. Simple mode ex
 controls without engine noise; Pro exposes the evidence, mechanics and advanced scopes. Accessibility, mobile behavior
 and actionable error/recovery states are release acceptance requirements.
 
-## 8. Traceability and final-UI acceptance
+## 8. Later optional MetaTrader 5 execution bridge
+
+**The current Binance execution path remains the native Binance API. MT5 does not replace, wrap or sit in front of
+Binance, and it is not part of the present runnable-slice gate.**
+
+Later, MetaTrader 5 becomes a separate optional ZackBot venue adapter for Vantage and for specific Bybit/TradFi
+accounts whose chosen account product actually executes through MT5. A future native Bybit API adapter remains a
+separate option; do not assume every Bybit account uses MT5. For an MT5-connected account, ZackBot remains the control
+plane for strategies, regimes, risk, baskets, settings, audit and owner decisions. An MT5 Expert Advisor/gateway only
+executes approved ZackBot intents and returns that broker/account's truth to the app.
+
+Required architecture and authority:
+
+1. Use a versioned `VenuePort` adapter plus a minimal MQL5 Expert Advisor/gateway. The same domain intent and management
+   actions used by replay/testnet feed MT5; strategies must not be duplicated or independently reimplemented in MQL5.
+2. Communication is bidirectional: ZackBot sends idempotent order/cancel/modify/flatten intents; MT5 returns account,
+   symbol, quote/session, order, deal/fill, position, commission, swap, rejection and terminal-health events.
+3. Every message is authenticated, sequenced, replay-resistant and bound to environment, broker server, account,
+   terminal instance and strategy/account scope. Credentials stay in the terminal/normal secret interface, never in
+   Git, logs or mobile clients.
+4. A durable mapping binds ZackBot intent/client IDs to MT5 request/order/deal/position tickets, magic number and
+   comment metadata. Duplicate delivery is harmless. Lost/late/partial answers, reconnects and terminal restarts are
+   reconciled against broker truth before new risk is allowed.
+5. Unknown, stale, conflicting or disconnected state means HOLD: no new entries. Existing broker-side stops remain;
+   protection/flatten actions receive priority when communication is healthy. An optional broker-side emergency limit
+   may only reduce risk and cannot invent entries.
+6. The ZackBot risk gateway remains authoritative, and the EA independently enforces a small immutable safety envelope
+   (allowed account/environment, maximum order/position exposure, permitted symbols, no duplicate intent and reduce-
+   only semantics where applicable). The EA may reject but never increase ZackBot size or risk.
+7. Explicitly normalize MT5 hedging versus netting accounts, symbol aliases/suffixes, contract size, lot minimum/step,
+   tick size/value, quote/profit/margin currencies and conversion, stop/freeze levels, fill policy, market execution,
+   partial fills, sessions/holidays, rollover/swap, commissions, spread, gaps, borrow/short availability and corporate
+   actions. Unsupported cells stay visible and disabled with the exact reason.
+8. Market data provenance is explicit: broker/MT5 quotes may drive executable pricing and session truth, while research
+   data remains separately versioned. The app displays source, freshness and divergence; it never silently mixes feeds.
+9. The app—not MT5—is the owner UI. It exposes each MT5 account/terminal's connection, demo/live state, broker/server,
+   permissions, positions, protection, pending intents, P&L/costs and incidents. Manual, Recommend and Automatic modes
+   use the same owner controls and audit trail as crypto venues.
+
+Acceptance proceeds through a deterministic fake bridge, recorded replay, MT5 Strategy Tester where applicable, and a
+broker demo account before any live boundary. Required drills include duplicate/lost messages, out-of-order events,
+partial fill, reject/requote, spread/gap, session close, terminal/EA/app restart, network partition, broker-side manual
+trade, hedging/netting mismatch, symbol/rule change, stale quote and emergency flatten. Final truth must be flat or
+explicitly protected and reconciled.
+
+Roadmap placement: after the Binance NEWCORE engine and strategy milestone, VENUE-01 defines the generic multi-venue
+contract and MT5-01 separately builds/proves the optional bridge. GOLD-02 and TRADFI-01 may consume it. Broker-specific
+plugins/configuration follow the shared bridge rather than forking the strategy engine. No MT5 work may delay the
+current Binance vertical slice or its strategy validation.
+
+## 9. Traceability and final-UI acceptance
 
 Every affected ticket/PR must state:
 
@@ -134,7 +184,7 @@ Before the engine/final UI is accepted, maintain a requirements matrix mapping e
 UI surface, tests, evidence and current status. A feature hidden only in configuration or code does not satisfy a UI
 requirement. A toggle without deterministic behavior, preview, persistence and an audit reason is incomplete.
 
-## 9. Change control
+## 10. Change control
 
 New explicit owner instructions append or revise this file promptly. Do not silently weaken an earlier requirement to
 fit an implementation. If two owner requirements conflict, record the conflict and obtain an explicit ruling at the
