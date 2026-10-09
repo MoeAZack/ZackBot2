@@ -109,7 +109,24 @@ def test_the_real_shaped_exchange_info_is_above_the_old_per_string_cap():
     """The shape matters: one exchangeInfo body is ONE string leaf with more runs than 74dc47c allowed (20,000)."""
     body = RealShapedBinance()._get_fapi_v1_exchangeInfo({}).body.decode()
     assert _runs(body) > 20_000
-    assert _runs(body) * 3 < C.MAX_DECODED_TOKENS
+    assert _runs(body) < C.MAX_DECODED_TOKENS == 50_000
+    assert C.MAX_AUDIT_RUNS == 4_000_000                   # the whole-cassette budget is not derived from it
+
+
+def _junk(n):
+    return ' '.join('QUJDREVGR0hJSktMTU5PUA' for _ in range(n))
+
+
+def test_exactly_the_per_string_cap_is_audited_and_one_more_is_refused():
+    rec = CassetteRecorder(FakeHttp(ok(json.dumps({'msg': _junk(C.MAX_DECODED_TOKENS)}))),
+                           redact=(DUMMY_KEY, DUMMY_SECRET))
+    rec(req())
+    assert json.loads(rec.to_json())['interactions']
+    rec = CassetteRecorder(FakeHttp(ok(json.dumps({'msg': _junk(C.MAX_DECODED_TOKENS + 1)}))),
+                           redact=(DUMMY_KEY, DUMMY_SECRET))
+    rec(req())
+    with pytest.raises(CassetteLeak, match='too many encoded runs'):
+        rec.to_json()
 
 
 def test_a_real_shaped_boot_cassette_is_produced():

@@ -53,21 +53,19 @@ _B64_RUN = re.compile(r'[A-Za-z0-9+/_-]{%d,}={0,2}' % _B64_MIN)
 _HEX_RUN = re.compile(r'[0-9a-fA-F]{%d,}' % (2 * MIN_SECRET_LEN))
 _LINE_BREAK = re.compile(r'[\r\n]+')
 _PCT = re.compile(r'%[0-9A-Fa-f]{2}')
-# Sized from the official 5a run at 74dc47c (every cassette refused): the factory boot's real exchangeInfo body holds
-# 25,334 base64-like runs in ONE string (account-wide positionRisk ~15,000, account ~18,100), so the old 20,000 refused
-# the preflight and all 9 scenario cassettes. 100,000 keeps ~4x headroom on the largest real string.
-MAX_DECODED_TOKENS = 100_000              # encoded runs decoded per string (beyond: fail closed)
+# Official 5a at 74dc47c refused every cassette: the factory boot's real exchangeInfo body holds 25,334 base64-like runs
+# in ONE string (account-wide positionRisk ~15,000, account ~18,100), above the old 20,000. Codex ruling on #13: 50,000.
+MAX_DECODED_TOKENS = 50_000               # encoded runs decoded per string (beyond: fail closed)
 DECODE_DEPTH = 2                          # nested encodings decoded (base64 of base64, base64 of hex, ...)
 MAX_SURFACES = 24                         # rewritten forms (percent / NFKC / unicode-escape / unwrapped) per text
 # Totals over the WHOLE audit (Codex P2s on 1297ee3 / bcc2d8d). Units are UTF-8 BYTES, and the document is charged as a
 # structure (every container, key and scalar, at a conservative serialized size) before it is serialized at all.
-# Real 1297ee3 5a cassettes measured with the 74dc47c audit: the largest scenario (T01, 4 cycles) costs 1.45 M decode
-# attempts and 16.5 MB of document, the boot alone ~0.25 M / 2.7 MB, each cycle ~0.3 M / 3.4 MB. The 31-tick testnet
-# specs (T04-algo, T05..T07-tn) therefore need ~10 M / ~110 MB; the totals below keep >= 3x headroom on that.
-MAX_AUDIT_RUNS = 32_000_000               # decode attempts (each run x byte offset x alphabet, at every depth)
+# Real 1297ee3 5a cassettes under the audit: the largest scenario (T01) costs 1.45 M decode attempts / 16.5 MB, the
+# preflight 0.25 M / 2.7 MB. The whole-cassette totals stay fixed (Codex ruling on #13: not derived from the per-string cap).
+MAX_AUDIT_RUNS = 4_000_000                # decode attempts (each run x byte offset x alphabet, at every depth)
 MAX_AUDIT_STRINGS = 1_000_000             # string leaves + object keys
 MAX_AUDIT_NODES = 4_000_000               # every node: containers, keys, strings, numbers, booleans, nulls
-MAX_AUDIT_CHARS = 384 * 1024 * 1024       # bytes of the document (conservative serialized size)
+MAX_AUDIT_CHARS = 128 * 1024 * 1024       # bytes of the document (conservative serialized size)
 MAX_AUDIT_DERIVED = 16 * MAX_AUDIT_CHARS  # bytes of every rewritten / decoded view the audit produces
 MAX_SECRET_BYTES = 4096                   # one registered / learned secret value, UTF-8 bytes (Codex P2 on bc5a351)
 MAX_SECRET_TOTAL_BYTES = 512 * 1024       # all secret values together, checked when each is REGISTERED
