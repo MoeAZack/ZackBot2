@@ -5,6 +5,10 @@
 This is the shared execution document for the owner, Claude Code, Cowork and Codex. It converts the historical audit,
 the product roadmap and the replacement-first decision into one ordered build plan.
 
+The binding feature, control and final-UI requirements are maintained in
+[`OWNER_PRODUCT_CONTRACT.md`](OWNER_PRODUCT_CONTRACT.md). Every affected ticket and acceptance decision must preserve
+its traceability; this execution plan controls sequencing, not whether an owner requirement is remembered.
+
 The objective is not to preserve the current installed bot. The objective is a clean, testable and operationally safe
 new system that is measurably better than the legacy implementation. Legacy code is evidence: reuse a proven contract,
 formula, fixture or regression test when it deserves to survive; do not port structure or compatibility merely because
@@ -20,6 +24,8 @@ The target product is one engine that can:
 - explain every decision, order, hold and close;
 - support Simple, Guided and Pro interfaces plus secure mobile monitoring/control;
 - expand to TradingView, news, gold and TradFi without bypassing core risk or execution contracts.
+- only after the Binance live milestone and explicit owner activation, consider separate Vantage, Bybit and MT5 venue
+  adapters; they cannot enter the active queue or delay the native Binance API engine and strategy path.
 
 ### Owner priority: engine-first mainnet candidate
 
@@ -37,6 +43,13 @@ features take priority, the engine must have:
 PWA, copy-product polish, broad remote controls, social features and secondary integrations follow this milestone. This
 does not grant permission to trade mainnet early; it means the engine is designed and evidenced to mainnet standards
 while the remaining product is built around it.
+
+**Delivery ruling (owner, 09 Oct 2026):** get the minimum trustworthy Binance long/short engine onto testnet as soon as
+possible, then use testnet findings to drive deeper safety/security, recovery coverage, final UI and full settings work.
+Before first useful testnet execution, require only the narrow floor that makes evidence trustworthy: environment/account
+binding, bounded exposure, idempotency, confirmed protection or HOLD, reconciliation/restart ownership, emergency exit
+and telemetry. Optional hardening, speculative edge matrices and release polish cannot block the vertical slice. Every
+mainnet/live gate remains mandatory after testnet and before explicit live activation.
 
 Development remains PAPER/Binance Futures testnet until the release gate explicitly changes it. Testnet balances and
 positions are disposable. Mainnet credentials, funds and deployment remain a separate owner-approved boundary.
@@ -63,6 +76,12 @@ positions are disposable. Mainnet credentials, funds and deployment remain a sep
     exception needs Codex scope, reports the `engine.py` line-count/top-level-definition delta and adds no product behavior.
 
 ## 3. Team operating model
+
+The owner is the ultimate product authority. Codex is the binding roadmap, scope, prioritization and integration owner:
+it maintains the `NOW / NEXT / LATER / POST-LIVE` queue and redirects work that does not advance the active milestone.
+Claude Code implements and Cowork independently validates/researches within that queue. Both continue autonomously from
+the next ready non-conflicting item, but material scope expansion or reordering requires a Codex ruling. Every handoff
+states `ROADMAP FIT:` and `DEFERRED:` so multi-agent capacity accelerates the plan instead of creating distractions.
 
 | Role | Primary responsibility | Must not do |
 |---|---|---|

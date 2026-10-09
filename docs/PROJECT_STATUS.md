@@ -1,5 +1,9 @@
 # ZackBot owner overview
 
+> **Canonical owner requirements:** [`OWNER_PRODUCT_CONTRACT.md`](OWNER_PRODUCT_CONTRACT.md) is the binding feature,
+> settings and final-UI contract. Every affected implementation and acceptance ticket must trace to it so requirements
+> are not reconstructed from chat history.
+
 > **08 Oct 2026 roadmap alignment:** the shared replacement-first execution spine is in
 > [`NEWCORE_EXECUTION_PLAN.md`](NEWCORE_EXECUTION_PLAN.md). Claude Code implements, Cowork independently validates and
 > runs evidence/research, and Codex owns scope, review, ordering and protected merge. AUD-05 durable state, AUD-06a
