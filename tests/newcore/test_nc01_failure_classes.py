@@ -6,6 +6,7 @@ from decimal import Decimal as D
 import pytest
 
 import nc01_factories as F
+from newcore.domain import EMPTY_FACTS
 from nc01_factories import T0, replace
 from newcore.domain import (Account, BindingState, EntriesMode, Evidence, GenerationVerdict, HighWater, HoldKind,
                             IntentRecorded, IntentState, IntentStateChanged, InvalidRecord, Lookup, Op, Outcome,
@@ -130,7 +131,7 @@ def test_identical_positions_never_prove_identity():
 def test_generation_rollback_is_detectable():
     p, _ = F.single_lot_portfolio(13)
     acct = p.account_id
-    snap = Snapshot(account_id=acct, generation=7, last_sequence=40, written_at_ms=T0, writer_build='b1', portfolio=p)
+    snap = Snapshot(facts=EMPTY_FACTS, account_id=acct, generation=7, last_sequence=40, written_at_ms=T0, writer_build='b1', portfolio=p)
     mark = lambda g, s: HighWater(account_id=acct, generation=g, last_sequence=s, writer_build='b1')
     assert check_generation(snap, mark(7, 40)) is GenerationVerdict.CURRENT
     assert check_generation(snap, mark(9, 55)) is GenerationVerdict.ROLLED_BACK

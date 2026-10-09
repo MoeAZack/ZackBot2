@@ -25,6 +25,7 @@ from __future__ import annotations
 import enum
 from decimal import Decimal
 
+from .base import tag
 from .base import ZERO, Record, check_id, check_text, positive, record, req
 from .orders import IntentState, OrderType, Purpose
 
@@ -78,7 +79,7 @@ class Protection(Record):
     miss: StopMiss | None
 
     def _validate(self, p):
-        p = f'{p}[{self.owner_id}]'
+        p = f'{p}[{tag(self.owner_id)}]'
         check_id(self.owner_id, p + '.owner_id', 'lot', 'int')
         positive(self.price, p + '.price')
         positive(self.qty, p + '.qty')

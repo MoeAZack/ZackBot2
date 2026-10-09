@@ -22,6 +22,7 @@ from __future__ import annotations
 import enum
 from decimal import Decimal
 
+from .base import tag
 from .base import CTX, ZERO, Record, check_id, check_symbol, check_text, non_negative, positive, record, req
 from .errors import OwnershipUnknown
 from .modes import EntriesMode, HoldKind, Op, Permission, permitted
@@ -89,7 +90,7 @@ class Lot(Record):
     adds_done: int
 
     def _validate(self, p):
-        p = f'{p}[{self.lot_id}]'
+        p = f'{p}[{tag(self.lot_id)}]'
         check_id(self.lot_id, p + '.lot_id', 'lot')
         check_id(self.account_id, p + '.account_id', 'acct')
         check_symbol(self.symbol, p + '.symbol')
@@ -393,7 +394,8 @@ def _check_known(pf, p):
             if it.pullable:
                 req(it.state is IntentState.CANCELLING, ip + '.state',
                     f'a resting / armed opening intent must be cancelling while entries are {pf.entries_mode}')
-            elif it.created_at_ms > pf.mode_since_ms and it.state is not IntentState.CANCELLING:
+            elif it.created_at_ms > pf.mode_since_ms and it.state is not IntentState.CANCELLING and \
+                    it.reason is not ReasonCode.RECONCILE_EXTERNAL_CLOSE:     # a post-hoc booking places nothing
                 req(pf.permits(it.purpose, Op.PLACE, one_shot=it.authorized_by is not None), ip,
                     f'a {it.purpose} intent created after entries became {pf.entries_mode} is not permitted')
 

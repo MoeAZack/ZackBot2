@@ -12,7 +12,8 @@ from __future__ import annotations
 
 import enum
 
-from .base import ID_PREFIXES, Record, check_id, check_symbol, check_text, record, req
+from .base import tag
+from .base import ID_PREFIXES, Record, check_id, check_nfc, check_symbol, check_text, record, req
 from .orders import IntentState, OrderIntent, Purpose, Side
 from .reasons import GATE_NAMESPACES, NAMESPACES, ReasonCode
 
@@ -56,7 +57,7 @@ ACTION_PURPOSES = {
     Action.FLATTEN: frozenset({Purpose.CLOSE}),
     Action.CLOSE: frozenset({Purpose.CLOSE}),
     Action.REDUCE: frozenset({Purpose.REDUCE}),
-    Action.RECONCILE: frozenset({Purpose.PROTECT, Purpose.CLOSE}),
+    Action.RECONCILE: frozenset({Purpose.PROTECT, Purpose.CLOSE, Purpose.REDUCE}),   # REDUCE: r3 post-hoc booking
     Action.ADD: frozenset({Purpose.ADD}),
     Action.ENTER: frozenset({Purpose.ENTRY}),
 }
@@ -93,7 +94,9 @@ class Authority(enum.StrEnum):
     OPERATOR = 'operator'
 
 
-OPERATOR_REASONS = frozenset({ReasonCode.ENTRY_MANUAL, ReasonCode.ENTRY_ONE_SHOT})
+OPERATOR_REASONS = frozenset({ReasonCode.ENTRY_MANUAL, ReasonCode.ENTRY_ONE_SHOT,
+                              ReasonCode.EXIT_MANUAL})        # r3a ruling 2: exit.manual = operator-requested bot close
+QUARANTINE_REASONS = frozenset({ReasonCode.RECONCILE_MANUAL_ADD, ReasonCode.RECONCILE_FOREIGN_QUARANTINE})
 
 
 @record
@@ -114,7 +117,7 @@ class Decision(Record):
     policy_version: str
 
     def _validate(self, p):
-        p = f'{p}[{self.decision_id}]'
+        p = f'{p}[{tag(self.decision_id)}]'
         check_id(self.decision_id, p + '.decision_id', 'dec')
         check_id(self.account_id, p + '.account_id', 'acct')
         if self.symbol is not None:
@@ -122,7 +125,9 @@ class Decision(Record):
         if self.subject_id is not None:
             check_id(self.subject_id, p + '.subject_id', 'lot', 'int')
         req(len(self.detail) <= 160 and self.detail.isprintable(), p + '.detail', 'at most 160 printable characters')
+        check_nfc(self.detail, p + '.detail')
         req(len(self.policy_version) <= 32 and self.policy_version.isprintable(), p + '.policy_version', '<= 32 chars')
+        check_nfc(self.policy_version, p + '.policy_version')
         a = self.action
         req(self.reason.namespace in ACTION_NAMESPACES[a], p + '.reason', f'{self.reason} is not a reason for {a}')
         operator = self.reason.namespace == 'operator' or self.reason in OPERATOR_REASONS or a is Action.RESUME
@@ -141,6 +146,18 @@ class Decision(Record):
             req(i.decision_id == self.decision_id and i.created_at_ms == self.at_ms, ip + '.decision_id',
                 'created by another decision')
             req(i.state is IntentState.PLANNED, ip + '.state', 'a decision creates PLANNED intents only')
+        post_hoc = [i for i in self.intents if i.reason is ReasonCode.RECONCILE_EXTERNAL_CLOSE]
+        req(not post_hoc or (a is Action.RECONCILE and self.reason is ReasonCode.RECONCILE_EXTERNAL_CLOSE),
+            p + '.intents', 'a post-hoc booking comes only from a RECONCILE reconcile.external_close decision')
+        req(self.reason is not ReasonCode.RECONCILE_EXTERNAL_CLOSE
+            or (post_hoc and len(post_hoc) == len(self.intents)), p + '.intents',   # RECONCILE: rule above
+            'a reconcile.external_close decision is a RECONCILE that books post-hoc intents only (at least one)')
+        req(self.reason not in QUARANTINE_REASONS or all(i.purpose is Purpose.PROTECT for i in self.intents),
+            p + '.intents', 'an external increase is quarantined: protect-only, never booked (ruling 1)')
+        if self.reason is ReasonCode.RECONCILE_LATE_FILL:   # r3 draft item 3b: names the intent it corrects
+            req(a is Action.RECONCILE and self.subject_id is not None, p + '.reason',
+                'a late fill after not-found is a RECONCILE decision about one intent')
+            check_id(self.subject_id, p + '.subject_id', 'int')
         if self.key is not None:
             k = self.key
             req((self.symbol, self.side) == (k.symbol, k.side), p + '.key', 'the decision names another symbol / side')
