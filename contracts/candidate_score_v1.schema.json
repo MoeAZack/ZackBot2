@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://zackbot.local/contracts/candidate-score-v1.schema.json",
+  "title": "ZackBot Strategy Candidate Score v1",
+  "description": "Point-in-time strategy candidate facts. Scores describe evidence; they do not authorize an order or raise risk.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "contract_version",
+    "candidate_id",
+    "as_of_ms",
+    "expires_at_ms",
+    "universe_id",
+    "strategy_id",
+    "strategy_version",
+    "symbol",
+    "side",
+    "entry_state",
+    "scores",
+    "reason_codes",
+    "source_manifest_sha256"
+  ],
+  "properties": {
+    "contract_version": {"const": 1},
+    "candidate_id": {"type": "string", "pattern": "^cand_[0-9a-f]{32}$"},
+    "as_of_ms": {"type": "integer", "minimum": 946684800000, "maximum": 4102444799999},
+    "expires_at_ms": {"type": "integer", "minimum": 946684800000, "maximum": 4102444799999},
+    "universe_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$"},
+    "strategy_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$"},
+    "strategy_version": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._+-]{0,31}$"},
+    "symbol": {"type": "string", "pattern": "^[A-Z0-9]{2,30}$"},
+    "side": {"enum": ["LONG", "SHORT"]},
+    "entry_state": {"enum": ["READY", "SETUP", "WAIT", "EXTENDED", "BREAKING", "STAND_DOWN"]},
+    "scores": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "opportunity",
+        "entry_quality",
+        "hold_quality",
+        "regime_fit",
+        "evidence_readiness",
+        "operational_readiness"
+      ],
+      "properties": {
+        "opportunity": {"type": "integer", "minimum": 0, "maximum": 100},
+        "entry_quality": {"type": "integer", "minimum": 0, "maximum": 100},
+        "hold_quality": {"type": "integer", "minimum": 0, "maximum": 100},
+        "regime_fit": {"type": "integer", "minimum": 0, "maximum": 100},
+        "evidence_readiness": {"type": "integer", "minimum": 0, "maximum": 100},
+        "operational_readiness": {"type": "integer", "minimum": 0, "maximum": 100}
+      }
+    },
+    "reason_codes": {
+      "type": "array",
+      "items": {"type": "string", "pattern": "^[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*$"},
+      "maxItems": 32,
+      "uniqueItems": true
+    },
+    "source_manifest_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "structural_stop": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["unit", "value"],
+      "properties": {
+        "unit": {"enum": ["price", "percent", "ticks", "atr"]},
+        "value": {"type": "string", "pattern": "^(0\\.[0-9]*[1-9][0-9]*|[1-9][0-9]*(\\.[0-9]+)?)$", "maxLength": 64}
+      }
+    }
+  }
+}

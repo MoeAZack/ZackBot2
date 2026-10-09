@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://zackbot.local/contracts/signal-result-v1.schema.json",
+  "title": "ZackBot Signal Result v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "contract_version",
+    "signal_id",
+    "status",
+    "reason_code",
+    "retryable",
+    "recorded_at_ms"
+  ],
+  "properties": {
+    "contract_version": {"const": 1},
+    "signal_id": {"type": "string", "pattern": "^sig_[0-9a-f]{32}$"},
+    "status": {"enum": ["validated", "accepted", "rejected", "duplicate", "held"]},
+    "reason_code": {"type": "string", "pattern": "^[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*$"},
+    "retryable": {"type": "boolean"},
+    "recorded_at_ms": {"type": "integer", "minimum": 946684800000, "maximum": 4102444799999},
+    "decision_id": {"type": ["string", "null"], "pattern": "^dec_[0-9a-f]{32}$"},
+    "detail": {"type": ["string", "null"], "maxLength": 256}
+  }
+}

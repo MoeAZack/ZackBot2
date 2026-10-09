@@ -141,6 +141,16 @@ No strategy is promised to be profitable. Backtests and promotion decisions must
 funding/borrow, gaps, latency, capacity, sample size, long/short coverage, drawdown, tail loss and untouched holdout
 evidence.
 
+Strategy selection must expose separate opportunity, entry-quality, hold-quality, regime-fit, evidence-readiness and
+operational-readiness dimensions plus an explicit ready/setup/wait/extended/breaking/stand-down state. A composite is
+display convenience only: it cannot hide a failed component or authorize risk. Every operating cycle prioritizes
+protection, exits and reconciliation before new entries. Missing/stale scoring blocks new entries while durable local
+rules continue managing existing exposure.
+
+Backtest, paper, testnet and live-forward records remain separate and benchmarked on matching windows. Flat periods,
+losses, exclusions and corrected-defect exclusions are visible and reason-coded. Proof-of-prior commitments may prove a
+call was not edited after the outcome; they never substitute for exchange/broker account truth.
+
 ## 4. Confirmed-range scalp behavior
 
 When an asset is in a confirmed range and the owner selects a fast horizon/high activity:
@@ -189,6 +199,10 @@ distance to stop, realized/unrealized P&L, costs, trade count, range confidence 
 - Context candidates include DXY, US 2Y/10Y and curve, S&P/Nasdaq, oil, gold/other relevant minerals and timestamped
   geopolitical/news inputs. They begin observe-only and become veto/reduction inputs only after causal evidence.
 - TradingView signals enter through the same risk gateway and never bypass strategy, ownership or protection rules.
+- Signal intake uses the versioned contract in `docs/newcore/SIGNAL_INGRESS_CONTRACT.md`: durable deduplication,
+  mandatory strategy/version attribution, optional basket/trade-family identity, explicit units, dry-run validation and
+  stable reason-coded outcomes. Authentication secrets never appear in signal bodies. Environment and automation
+  authority are trusted application settings and can never be selected by the sender.
 
 ## 7. Markets, accounts and product surface
 

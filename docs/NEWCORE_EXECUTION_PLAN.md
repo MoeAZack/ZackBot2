@@ -275,7 +275,7 @@ symbol/year concentration checks and gap/funding/slippage stress. More strategie
 |---:|---|---|---|
 | D1 | DATA-01 market-data integrity | Point-in-time candles, funding, mark, OI, taker and long/short data with freshness/provenance. | Frozen manifest, gap report, survivorship policy. |
 | D1a | DATA-01a execution-grade datasets | 1m/5m plus trade/book/spread/latency inputs where required; point-in-time listing/rules, funding/index/mark and venue-session histories. | Venue-specific manifest, exact query/window, source version, Cairo access time, lawful content hash/archive reference and revalidation date. |
-| D2 | RES-01 research harness | Walk-forward/holdout, Monte Carlo, sensitivity, regimes, costs and follower feasibility. | Reproducible clean-checkout report. |
+| D2 | RES-01 research harness | Walk-forward/holdout, Monte Carlo, sensitivity, regimes, costs, follower feasibility, point-in-time candidate board and same-window benchmarks. | Reproducible clean-checkout report; separate opportunity/entry/hold/regime/evidence/operational dimensions and explicit stand-down state. |
 | D3 | STR-01 trend long + short | Independently calibrated long and short trend strategies. | Adequate samples, untouched holdout; no forced symmetry. |
 | D4 | STR-02 range/mean reversion | Sideways-market entries/exits with volatility/spread guards. | Regime advantage after costs and gaps. |
 | D5 | STR-03 Quick Bank scalp | Early TP, protected runner and optional one small bounded DCA layer. | Green-after-cost measured honestly; tail/gap and follower-minimum stress; no “always positive” promise. |
@@ -285,7 +285,7 @@ symbol/year concentration checks and gap/funding/slippage stress. More strategie
 | D9 | GOV-01 bounded risk grades | Conservative through high-risk/“Maniac,” mapped to explicit trade risk, leverage, exposure, DCA permission and portfolio drawdown ceilings. | No grade bypasses the risk gateway; high-risk modes are explicit and separately evaluated. |
 | D10 | GOV-02 allocator/strategy matrix | Recommend, disable or reduce strategies by asset/regime; never exceed user ceilings. | Manual, Recommend and Automatic produce auditable decisions and never force a trade. |
 | D11 | CTRL-01 engine controls | Controlled capital plus Direction Bias, Risk and Acceptable Drawdown controls, globally and optionally per asset/strategy. | Deterministic mappings, previewed consequences and no silent changes to existing positions. |
-| D12 | EDGE-00 evidence checkpoint | Compare promoted candidates against simple after-cost baselines and each other before adding more strategy families. | Freeze winners/losers by regime, concentration, tail risk and operational feasibility; park candidates with no distinct edge. |
+| D12 | EDGE-00 evidence checkpoint | Compare promoted candidates against simple after-cost baselines and each other before adding more strategy families. Keep backtest, paper, testnet and forward ledgers separate, with reason-coded exclusions and optional proof-of-prior commitments. | Freeze winners/losers by regime, concentration, tail risk and operational feasibility; park candidates with no distinct edge. |
 
 Each strategy has separate performance, tail-risk, evidence-readiness and operational/copy-readiness scores. No blended
 score may hide a failed hard gate.
@@ -345,7 +345,7 @@ not silently filled with weak strategies.
 | G3 | ACCT-01 multi-account | Separate credentials, state, limits, health and emergency control per account/exchange. |
 | G4 | COPY-01 follower feasibility/copy intent | Predict $100/$200/$500 plan feasibility; copy risk intent, not quantity; protect/reconcile each follower independently. |
 | G5 | PWA-01/02 mobile | Secure monitor first; dangerous controls require re-auth, MFA, idempotency, expiry and audit. |
-| G6 | TV-01 TradingView | Signed/versioned webhook intents through the same risk gateway. |
+| G6 | TV-01 TradingView | Strict versioned signal/result schemas; HMAC + timestamp/nonce; durable `signal_id` dedupe; strategy/version and trade-family attribution; explicit units; dry-run; stable reason codes; all intents through the same risk gateway. Runtime intake begins only after the Binance vertical slice. |
 | G7 | NEWS-01 news authority | Timestamped source/expiry; observe then veto/reduce only. |
 | G8 | REL-02 shareable/lead product | Signed release, private lead/no-followers rehearsal, then copy-suitability/incident gates before public launch. |
 
