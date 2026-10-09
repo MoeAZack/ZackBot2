@@ -224,6 +224,13 @@ def test_testnet_faucet_transfers_with_tran_id_zero_parse():
         R.parse_income([FAUCET, dict(FAUCET)])                        # the very same row twice is still a duplicate
 
 
+@pytest.mark.parametrize('field, value', [('info', 'TRANSFER_2'), ('symbol', 'XAUUSDT'), ('tradeId', '77')])
+def test_tran_id_zero_key_uses_the_full_stable_row(field, value):
+    # Codex 6076485539: same millisecond, same amount, one other stable field differs -> two rows, not a duplicate
+    rows = R.parse_income([FAUCET, dict(FAUCET, **{field: value})])
+    assert len(rows) == 2 and rows[0].key != rows[1].key
+
+
 @pytest.mark.parametrize('itype', ['COMMISSION', 'REALIZED_PNL', 'FUNDING_FEE'])
 def test_tran_id_zero_stays_refused_outside_transfers(itype):
     row = json.loads(fixture('income_mixed').body)[0]

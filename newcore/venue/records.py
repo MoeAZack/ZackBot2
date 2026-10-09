@@ -588,7 +588,8 @@ class IncomeRow:
     @property
     def key(self):
         if self.tran_id == 0:                          # testnet faucet TRANSFER rows all carry tranId 0
-            return (0, self.income_type, self.asset, self.time_ms, self.income)
+            return (0, self.income_type, self.asset, self.time_ms, self.income,   # no id: the full stable row is
+                    self.info, self.symbol, self.trade_id)                       # the identity (Codex 6076485539)
         return (self.tran_id, self.income_type, self.asset)
 
 
