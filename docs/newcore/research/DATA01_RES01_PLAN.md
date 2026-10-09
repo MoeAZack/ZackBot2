@@ -10,7 +10,7 @@ evidence until the rules below are executable in R1-R3.
 
 | Item | Decision |
 |---|---|
-| Venue / symbols | Binance USD-M USDT perps. Universe `pit-top40-qv30d-v2` (section 1a), ranked per asset-class book (`crypto`, `gold-commodity`, `equity`, `fx`); XAUUSDT stays in the research in the `gold-commodity` book (owner decision). Core 8 (BTC ETH SOL BNB XRP DOGE AVAX LINK) reported separately as the legacy comparison. |
+| Venue / symbols | Binance USD-M USDT perps. Universe `pit-top40-qv30d-v3` (section 1a), ranked per asset-class book (`crypto`, `gold-commodity`, `equity`, `fx`); XAUUSDT stays in the research in the `gold-commodity` book (owner decision). Core 8 (BTC ETH SOL BNB XRP DOGE AVAX LINK) reported separately as the legacy comparison. |
 | Timeframes | 4h and 1h (trend, short, range). 1m for intrabar resolution of every candidate (section 2a); 15m + 1m for Quick Bank (DATA-01a). |
 | Series | last-price klines, mark klines, signed funding history (`fundingTime`), rules snapshots. OI / long-short / taker only if a preregistration needs them. |
 | Sources | `data.binance.vision` archives are primary **only after first-build schema/coverage verification**. Raw archive bytes and the published `.CHECKSUM` bytes are preserved; checksums verified; exact object key/hash and loader version recorded. REST (`market_data.py`, `market_collector.py`) is **tail-only**, overlap cross-checked (gap class X1); no silent substitution. |
@@ -203,13 +203,17 @@ Built inside the existing NEWCORE research path, not beside it:
   top-40 union. `research_evidence/manifests/binance-um-archive-v1.json.gz` (`zb-binance-vision-zip/1` loader):
   103,659 files, digest `54912d9d...`. Every zip re-hashed against its published checksum and schema-checked row by row
   (0 failures). Gzip is a byte-exact wrapper of the canonical JSON (62 MB plain).
-- `tools/research/universe.py` -> `research_evidence/universe/pit-top40-qv30d-v2.json` (`zb-pit-universe/2`,
-  Codex review 6077570517 applied): 348 Monday rankings 2020-02-03 -> 2026-09-28 over 900 symbols, ranked separately
+- `tools/research/universe.py` -> `research_evidence/universe/pit-top40-qv30d-v3.json` (`zb-pit-universe/2`,
+  Codex reviews 6077570517 + 6078823692 applied; digest `fd6e15d0...`): 348 Monday rankings 2020-02-03 -> 2026-09-28 over 900 symbols, ranked separately
   per book from `research_evidence/universe/instrument-classes-v1.json` (`zb-instrument-classes/1`; offline manual
   review, every post-2025-12-01 listing has an explicit entry, 27 unidentified symbols are `unclassified` and join no
   book). Exact decimal volume sums; any missing daily bar in a scored window vetoes `data-gap` (never zero volume) and
   every symbol's internal 1d gaps are listed (`missing_days`). Renames fail closed. Every week `RULES-BACKFILLED`.
   The v1 artifact (one mixed list, float sums, silent zero-volume gaps) is withdrawn and must not be used.
+  Codex 6078823692: ranking is a comparison-only exact sort (no negated Decimal key rounding to 28 digits), and a
+  listed contract with no bar in the whole window and no delist observation is vetoed `data-gap:window-absent` with a
+  30-day `gaps` entry instead of vanishing. v3 has identical book memberships to v2 in all 348 weeks and adds 4,629
+  window-absent audit vetoes (max 31 per week); v2 is withdrawn (universe files are immutable, hence the new id).
 - Provenance, stated truthfully: the store keeps each zip plus a `.ok` sidecar holding the normalized 64-hex SHA-256
   parsed from the published `.CHECKSUM`; the raw `.CHECKSUM` bytes are **not** preserved, and the manifest carries no
   `zb-data-gaps/1` gap-report digest yet. The only bound gap report is the 1d one inside the universe artifact.
@@ -217,6 +221,9 @@ Built inside the existing NEWCORE research path, not beside it:
 - Open: timestamped delist announcements; rename evidence + price-continuity check (renames refused until then);
   an exchangeInfo `underlyingType` snapshot to replace the manual classification; 1m archives for the 11 post-2021-12
   universe members outside the 1m union; raw `.CHECKSUM` preservation + manifest gap-report digest.
+- Open (owner direction 6078694212, awaiting a Codex ruling, not applied): a labelled `not-addressable: non-ASCII
+  symbol` eligibility veto applied before ranking and listed in the weekly audit. Sourced point-in-time exchange
+  classification still gates strategy evidence (Codex 6078823692).
 
 ## Ruling 6070934398 applied
 
