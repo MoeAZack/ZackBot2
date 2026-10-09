@@ -20,7 +20,7 @@ Two loaders share the schema (RES-01 R1):
                              SHA-256 published in the archive's `.CHECKSUM`. Every zip is re-hashed and must equal its
                              sidecar; it must hold exactly the one expected CSV, whose schema (column count, optional
                              Binance header, 13-digit ms times inside the file's month, interval alignment, close_time =
-                             open + interval - 1, numeric quote volume, strictly increasing) is checked row by row.
+                             open + interval - 1, canonical plain-decimal quote volume, strictly increasing) is checked row by row.
                              Archive file entries add a `series` key (`klines` / `markPriceKlines` / `fundingRate`);
                              funding has `interval` null and first/last times are `calc_time` (a funding row is
                              available at its `calc_time`).
@@ -77,6 +77,9 @@ ZIP_RE = re.compile(r'^((?:[A-Z0-9]|[^\x00-\x7f])+)-(' + '|'.join(INTERVALS) + r
 KLINE_HEADER = (b'open_time,open,high,low,close,volume,close_time,quote_volume,count,taker_buy_volume,'
                 b'taker_buy_quote_volume,ignore')
 FUNDING_HEADER = b'calc_time,funding_interval_hours,last_funding_rate'
+# quote_volume is ranked with exact decimal arithmetic (Codex P2 on #51), so only the canonical plain decimal form is
+# part of the archive contract: no sign, exponent, inf/nan, leading zeros or blank; <= 20 integer + 18 fraction digits.
+QV_RE = re.compile(rb'^(0|[1-9][0-9]{0,19})(\.[0-9]{1,18})?$')
 LOADERS = {LOADER_VERSION: (FILE_KEYS, AVAILABLE_RULE), ARCHIVE_LOADER: (ARCHIVE_FILE_KEYS, ARCHIVE_RULE)}
 
 
@@ -186,7 +189,6 @@ def parse_archive_csv(rel: str, data: bytes, meta: dict) -> list[list[bytes]]:
         t = [int(r[0]) for r in rows]
         if not funding:
             close = [int(r[6]) for r in rows]
-            qv = [float(r[7]) for r in rows]                   # quote_volume must be numeric (the PIT universe reads it)
     except ValueError as e:
         raise ManifestError(f'{rel}: non-numeric time/volume field ({e})')
     lo, hi = meta['month_start_ms'], meta['month_end_ms']
@@ -200,8 +202,9 @@ def parse_archive_csv(rel: str, data: bytes, meta: dict) -> list[list[bytes]]:
             raise ManifestError(f'{rel}: an open time is not aligned to {meta["interval"]}')
         if any(c != x + step - 1 for x, c in zip(t, close)):
             raise ManifestError(f'{rel}: close_time != open_time + interval - 1')
-        if any(not v >= 0 or v == float('inf') for v in qv):
-            raise ManifestError(f'{rel}: quote_volume must be a finite non-negative number')
+        bad = next((r[7] for r in rows if not QV_RE.match(r[7])), None)
+        if bad is not None:                                     # the PIT universe sums it exactly (Decimal)
+            raise ManifestError(f'{rel}: quote_volume {bad!r} is not a canonical non-negative bounded decimal')
     return rows
 
 

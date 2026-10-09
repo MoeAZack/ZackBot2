@@ -10,7 +10,7 @@ evidence until the rules below are executable in R1-R3.
 
 | Item | Decision |
 |---|---|
-| Venue / symbols | Binance USD-M USDT perps. Universe `pit-top40-qv30d-v1` (section 1a). Core 8 (BTC ETH SOL BNB XRP DOGE AVAX LINK) reported separately as the legacy comparison. |
+| Venue / symbols | Binance USD-M USDT perps. Universe `pit-top40-qv30d-v2` (section 1a), ranked per asset-class book (`crypto`, `gold-commodity`, `equity`, `fx`); XAUUSDT stays in the research in the `gold-commodity` book (owner decision). Core 8 (BTC ETH SOL BNB XRP DOGE AVAX LINK) reported separately as the legacy comparison. |
 | Timeframes | 4h and 1h (trend, short, range). 1m for intrabar resolution of every candidate (section 2a); 15m + 1m for Quick Bank (DATA-01a). |
 | Series | last-price klines, mark klines, signed funding history (`fundingTime`), rules snapshots. OI / long-short / taker only if a preregistration needs them. |
 | Sources | `data.binance.vision` archives are primary **only after first-build schema/coverage verification**. Raw archive bytes and the published `.CHECKSUM` bytes are preserved; checksums verified; exact object key/hash and loader version recorded. REST (`market_data.py`, `market_collector.py`) is **tail-only**, overlap cross-checked (gap class X1); no silent substitution. |
@@ -203,11 +203,20 @@ Built inside the existing NEWCORE research path, not beside it:
   top-40 union. `research_evidence/manifests/binance-um-archive-v1.json.gz` (`zb-binance-vision-zip/1` loader):
   103,659 files, digest `54912d9d...`. Every zip re-hashed against its published checksum and schema-checked row by row
   (0 failures). Gzip is a byte-exact wrapper of the canonical JSON (62 MB plain).
-- `tools/research/universe.py` -> `research_evidence/universe/pit-top40-qv30d-v1.json` (`zb-pit-universe/1`): 348
-  Monday rankings 2020-02-03 -> 2026-09-28 over 900 symbols; every week `RULES-BACKFILLED`. Delist vetoes need
-  timestamped observations (none loaded yet); archive end / last traded close are hindsight, audit only.
-- Open: timestamped delist announcements; rename evidence + price-continuity check; 1m archives for the 11 post-2021-12
-  universe members outside the 1m union; ruling on TradFi USDT perps (XAU, CL, single stocks) in the crypto universe.
+- `tools/research/universe.py` -> `research_evidence/universe/pit-top40-qv30d-v2.json` (`zb-pit-universe/2`,
+  Codex review 6077570517 applied): 348 Monday rankings 2020-02-03 -> 2026-09-28 over 900 symbols, ranked separately
+  per book from `research_evidence/universe/instrument-classes-v1.json` (`zb-instrument-classes/1`; offline manual
+  review, every post-2025-12-01 listing has an explicit entry, 27 unidentified symbols are `unclassified` and join no
+  book). Exact decimal volume sums; any missing daily bar in a scored window vetoes `data-gap` (never zero volume) and
+  every symbol's internal 1d gaps are listed (`missing_days`). Renames fail closed. Every week `RULES-BACKFILLED`.
+  The v1 artifact (one mixed list, float sums, silent zero-volume gaps) is withdrawn and must not be used.
+- Provenance, stated truthfully: the store keeps each zip plus a `.ok` sidecar holding the normalized 64-hex SHA-256
+  parsed from the published `.CHECKSUM`; the raw `.CHECKSUM` bytes are **not** preserved, and the manifest carries no
+  `zb-data-gaps/1` gap-report digest yet. The only bound gap report is the 1d one inside the universe artifact.
+  Section 1's raw-checksum and gap-digest items stay open (checklist below).
+- Open: timestamped delist announcements; rename evidence + price-continuity check (renames refused until then);
+  an exchangeInfo `underlyingType` snapshot to replace the manual classification; 1m archives for the 11 post-2021-12
+  universe members outside the 1m union; raw `.CHECKSUM` preservation + manifest gap-report digest.
 
 ## Ruling 6070934398 applied
 
@@ -215,7 +224,8 @@ Built inside the existing NEWCORE research path, not beside it:
 - [x] 1 Sealed-holdout-only CI, walk-forward separate and never pooled -> section 5 (Expectancy)
 - [x] 1 Hypothesis-family ledger + CI Git ancestry check -> section 4, R3
 - [x] 1 Spent 2025-26 window for `trend_ema_mom` and short family -> sections 4, 7
-- [x] 2 All-historically-listed universe, Monday 00:00 UTC ranking, age + warm-up, renames -> section 1a
+- [x] 2 All-historically-listed universe, Monday 00:00 UTC ranking, age + warm-up -> section 1a
+- [ ] 2 Renames: refused (fail closed) until time-scoped identity + price-continuity evidence exists
 - [x] 2 Timestamped delist veto, settlement/last-mark exit + stress -> section 1a
 - [x] 2 `RULES-BACKFILLED`, no gating of refusal/feasibility/E11, sensitivity bands -> sections 1a, 2, 5
 - [x] 3 60 / 30 / 6 sample floor -> section 5
@@ -227,7 +237,9 @@ Built inside the existing NEWCORE research path, not beside it:
 - [x] 4 Stop-first + target-first + ambiguity rate, 1m resolution, ordered trades, 5% PARK; scalp 1m + spread/latency -> section 2a
 - [x] 4 Limit-fill evidence rule (price-through/ordered trades, else no-fill/taker + stress) -> section 2
 - [x] 4 Frozen slippage formula: units, lookback, coefficient, PIT calibration sample -> section 2
-- [x] 5 Archive primary after verification, raw + checksum bytes, object/hash/loader version, REST tail-only -> section 1
+- [x] 5 Archive primary after verification, object/hash/loader version, REST tail-only -> section 1
+- [ ] 5 Raw `.CHECKSUM` bytes preserved + gap-report digest on every manifest (not yet: `.ok` holds the normalized
+  hash; only the universe's 1d gap report is bound)
 - [x] 5 Signed funding at timestamp, closed-bar availability, period semantics recorded -> section 1
 - [x] Verdict: R1-R3 first; R4-R7 claim no evidence until executable -> header, section 8
 

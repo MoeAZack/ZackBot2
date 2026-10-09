@@ -62,13 +62,32 @@ def build_manifest(store):
                    data_root='binance_um', survivor_only=False, loader=M.ARCHIVE_LOADER)
 
 
-def universe(store, **kw):
+CUTOFF = ms('2025-12-01')
+
+
+def classes(entries=()):
+    return U.make_classes(list(entries), classes_id='fx-classes', tradfi_cutoff_ms=CUTOFF, reviewed_cairo='2026-10-09',
+                          method='fixture', pre_cutoff_rule='fixture: pre-cutoff symbols are crypto')
+
+
+def entry(sym, cls, t, sub='x'):
+    return {'symbol': sym, 'class': cls, 'subclass': sub, 'effective_from_ms': t, 'basis': 'fixture listing notice'}
+
+
+def universe(store, classes_doc=None, **kw):
     m = build_manifest(store)
-    return U.build(U.load_daily(m, str(store)), manifest_digest=m['digest'], **kw)
+    return U.build(U.load_daily(m, str(store)), manifest_digest=m['digest'], classes=classes_doc or classes(), **kw)
 
 
-def week(u, date):
-    return next(w for w in u['weeks'] if w['monday_utc'] == date)
+def week(u, date, book='crypto'):
+    w = next(w for w in u['weeks'] if w['monday_utc'] == date)
+    return dict(w, members=w['books'][book]['members'], qv30d_usdt=w['books'][book]['qv30d_usdt'],
+                eligible=w['books'][book]['eligible'])
+
+
+def write_classes(path, entries=()):
+    path.write_text(json.dumps(classes(entries)))
+    return str(path)
 
 
 # ---------------------------------------------------------------- R1 archive manifest
@@ -140,7 +159,13 @@ def test_archive_layout_must_be_exact(tmp_path, rel):
     ([kline(ms('2024-01-01') + 3_600_000, DAY)], 'aligned'),
     ([kline(ms('2024-01-01'), DAY).replace(str(ms('2024-01-01') + DAY - 1), str(ms('2024-01-01') + DAY))], 'close_time'),
     ([kline(ms('2024-01-01'), DAY, qv='nan')], 'quote_volume'),
-    ([kline(ms('2024-01-01'), DAY, qv='x')], 'non-numeric'),
+    ([kline(ms('2024-01-01'), DAY, qv='x')], 'quote_volume'),
+    ([kline(ms('2024-01-01'), DAY, qv='1e5')], 'quote_volume'),                 # exponent form: not canonical
+    ([kline(ms('2024-01-01'), DAY, qv='-1')], 'quote_volume'),
+    ([kline(ms('2024-01-01'), DAY, qv='007')], 'quote_volume'),                 # leading zeros
+    ([kline(ms('2024-01-01'), DAY, qv='1.')], 'quote_volume'),
+    ([kline(ms('2024-01-01'), DAY, qv='1' * 21)], 'quote_volume'),             # beyond the bounded width
+    ([kline(ms('2024-01-01'), DAY).replace('2,0.5', 'x,0.5').replace(str(ms('2024-01-01')) + ',', 'x,', 1)], 'non-numeric'),
     ([kline(ms('2024-01-01'), DAY) + ',9'], 'columns'),
     (['open_time,open', kline(ms('2024-01-01'), DAY)], 'columns'),
 ])
@@ -189,7 +214,7 @@ def test_ranking_uses_only_bars_closed_before_monday(tmp_path):
     put_daily(tmp_path, 'BBBUSDT', b)
     u = universe(tmp_path, top_n=1)
     w = week(u, '2024-03-04')
-    assert w['members'] == ['AAAUSDT'] and w['qv30d_usdt'] == [3000] and w['eligible'] == 2
+    assert w['members'] == ['AAAUSDT'] and w['qv30d_usdt'] == ['3000'] and w['eligible'] == 2
     assert week(u, '2024-03-11')['members'] == ['BBBUSDT']                     # visible one week later
 
 
@@ -198,7 +223,7 @@ def test_trailing_window_is_exactly_30_closed_days(tmp_path):
     q['2024-02-03'] = 1000.0                                                    # 30 days before Monday 2024-03-04: in
     q['2024-02-02'] = 5000.0                                                    # 31 days before: out
     put_daily(tmp_path, 'AAAUSDT', q)
-    assert week(universe(tmp_path), '2024-03-04')['qv30d_usdt'] == [1000 + 29]
+    assert week(universe(tmp_path), '2024-03-04')['qv30d_usdt'] == [str(1000 + 29)]
 
 
 def test_listing_age_and_week_range(tmp_path):
@@ -254,16 +279,18 @@ def test_top_n_and_tie_break(tmp_path):
     assert w['members'] == ['AAAUSDT', 'BBBUSDT'] and w['eligible'] == 3
 
 
-def test_rename_keeps_contract_identity(tmp_path):
+def test_renames_fail_closed_before_and_after_the_effective_time(tmp_path):
+    """Codex P1 (#51): a rename merged volume histories for every week, before its effective time too."""
     put_daily(tmp_path, 'OLDNAMEUSDT', days('2024-01-01', 60, 10.0))           # through 2024-02-29
     put_daily(tmp_path, 'NEWNAMEUSDT', days('2024-03-01', 30, 10.0))           # renamed 2024-03-01
-    ren = [{'old': 'OLDNAMEUSDT', 'new': 'NEWNAMEUSDT', 'effective_ms': ms('2024-03-01'), 'source': 'fixture notice'}]
-    w = week(universe(tmp_path, renames=ren), '2024-03-04')
-    assert w['members'] == ['NEWNAMEUSDT'] and w['qv30d_usdt'] == [300] and w['vetoes'] == []
-    w = week(universe(tmp_path), '2024-03-04')                                  # without the rename: a 3-day-old listing
-    assert ['NEWNAMEUSDT', U.VETO_AGE] in w['vetoes']
-    with pytest.raises(U.UniverseError, match='rename'):
-        universe(tmp_path, renames=[{'old': 'OLDNAMEUSDT', 'new': 'NEWNAMEUSDT', 'effective_ms': 1}])
+    for eff in (ms('2024-03-01'), ms('2024-01-15')):
+        ren = [{'old': 'OLDNAMEUSDT', 'new': 'NEWNAMEUSDT', 'effective_ms': eff, 'source': 'fixture notice'}]
+        with pytest.raises(U.UniverseError, match='renames are refused'):
+            universe(tmp_path, renames=ren)
+    u = universe(tmp_path)                                                      # no rename: two separate contracts
+    assert u['renames'] == [] and ['NEWNAMEUSDT', U.VETO_AGE] in week(u, '2024-03-04')['vetoes']
+    assert week(u, '2024-02-05')['members'] == ['OLDNAMEUSDT']                  # history before the rename untouched
+    assert {s['symbol'] for s in u['symbols']} == {'OLDNAMEUSDT', 'NEWNAMEUSDT'}
 
 
 def test_universe_digest_deterministic_write_once_and_cli_verify(tmp_path):
@@ -273,9 +300,12 @@ def test_universe_digest_deterministic_write_once_and_cli_verify(tmp_path):
     assert a['digest'] == b['digest'] == U.digest_of(a)
     mpath, upath = tmp_path / 'm.json', tmp_path / 'u.json'
     M.write(build_manifest(tmp_path / 'store'), str(mpath))
-    assert U.main(['build', '--manifest', str(mpath), '--store', str(tmp_path / 'store'), '--out', str(upath)]) == 0
+    cpath = write_classes(tmp_path / 'c.json')
+    assert U.main(['build', '--manifest', str(mpath), '--classes', cpath, '--store', str(tmp_path / 'store'),
+                   '--out', str(upath)]) == 0
     assert json.loads(upath.read_text())['digest'] == a['digest']
-    assert U.main(['verify', str(upath), '--manifest', str(mpath), '--store', str(tmp_path / 'store')]) == 0
+    assert U.main(['verify', str(upath), '--manifest', str(mpath), '--classes', cpath,
+                   '--store', str(tmp_path / 'store')]) == 0
     c = dict(a, universe_id='other')
     c['digest'] = U.digest_of(c)
     with pytest.raises(U.UniverseError, match='immutable'):
@@ -341,15 +371,128 @@ def test_settled_contract_with_zero_volume_bars_is_unrankable_not_vetoed_early(t
     assert dead['last_traded_close_ms'] == ms('2024-03-11') and dead['archive_ended_before_store_end'] is False
 
 
-def test_committed_archive_manifest_and_universe_are_consistent():
+# ---------------------------------------------------------------- Codex #51 regressions: gaps, exact decimals, books
+
+def test_missing_middle_day_is_a_data_gap_not_zero_volume(tmp_path):
+    a = days('2024-01-01', 90, 100.0)
+    del a['2024-02-20']                                                         # one archive day missing mid-window
+    put_daily(tmp_path, 'AAAUSDT', a)
+    put_daily(tmp_path, 'BBBUSDT', days('2024-01-01', 90, 99.0))
+    u = universe(tmp_path)
+    w = week(u, '2024-03-04')
+    assert w['members'] == ['BBBUSDT'] and ['AAAUSDT', U.VETO_GAP] in w['vetoes'] and w['gaps'] == [['AAAUSDT', 1]]
+    assert week(u, '2024-03-25')['members'] == ['AAAUSDT', 'BBBUSDT']           # gap left the 30-day window
+    sym = {s['symbol']: s for s in u['symbols']}
+    assert sym['AAAUSDT']['missing_days'] == [['2024-02-20', '2024-02-20']] and sym['AAAUSDT']['missing_day_count'] == 1
+    assert sym['BBBUSDT']['missing_days'] == []
+
+
+def test_missing_month_archive_is_never_zero_volume(tmp_path):
+    a = days('2024-01-01', 120, 1e6)
+    for d in [d for d in a if d.startswith('2024-02')]:
+        del a[d]                                                                # the whole 2024-02 zip is absent
+    put_daily(tmp_path, 'AAAUSDT', a)
+    put_daily(tmp_path, 'BBBUSDT', days('2024-01-01', 120, 1.0))
+    u = universe(tmp_path)
+    assert ['AAAUSDT', U.VETO_NOT_TRADING] in week(u, '2024-02-12')['vetoes']   # no bar closes at the instant
+    for date, n in (('2024-03-04', 27), ('2024-03-25', 6)):
+        w = week(u, date)
+        assert w['members'] == ['BBBUSDT'] and ['AAAUSDT', U.VETO_GAP] in w['vetoes'] and w['gaps'] == [['AAAUSDT', n]]
+    assert week(u, '2024-04-01')['members'] == ['AAAUSDT', 'BBBUSDT']           # 30 complete days again
+    assert next(s for s in u['symbols'] if s['symbol'] == 'AAAUSDT')['missing_days'] == [['2024-02-01', '2024-02-29']]
+
+
+def test_near_tie_ranks_on_exact_decimals_not_binary_floats(tmp_path):
+    # float 0.1 + 0.2 = 0.30000000000000004 > 0.3 would put BBB ahead; exactly they tie -> AAA first by symbol.
+    a, b = days('2024-01-01', 90, '0'), days('2024-01-01', 90, '0')
+    a['2024-02-20'] = '0.3'
+    b['2024-02-20'], b['2024-02-21'] = '0.1', '0.2'
+    # 2**53 + 1 collapses onto 2**53 as a float; exactly, DDD (one unit more) ranks first.
+    c, d = days('2024-01-01', 90, '0'), days('2024-01-01', 90, '0')
+    c['2024-02-20'], d['2024-02-20'] = str(2 ** 53), str(2 ** 53 + 1)
+    for sym, q in (('AAAUSDT', a), ('BBBUSDT', b), ('CCCUSDT', c), ('DDDUSDT', d)):
+        put_daily(tmp_path, sym, q)
+    assert 0.1 + 0.2 > 0.3 and float(2 ** 53) == float(2 ** 53 + 1)             # the float hazard is real
+    w = week(universe(tmp_path), '2024-03-04')
+    assert w['members'] == ['DDDUSDT', 'CCCUSDT', 'AAAUSDT', 'BBBUSDT']
+    assert w['qv30d_usdt'] == [str(2 ** 53 + 1), str(2 ** 53), '0.3', '0.3']
+    with pytest.raises(U.UniverseError, match='Decimal'):
+        U.build({'AAAUSDT': {ms('2024-01-01'): 1.5}}, manifest_digest='a' * 64, classes=classes())
+
+
+def test_books_are_ranked_separately_and_gold_stays_in(tmp_path):
+    t = ms('2025-12-08')
+    put_daily(tmp_path, 'BTCUSDT', days('2025-11-01', 90, 1e9))
+    put_daily(tmp_path, 'PAXGUSDT', days('2025-11-01', 90, 1e3))
+    put_daily(tmp_path, 'XAUUSDT', days('2025-12-08', 60, 1e10))               # bigger than BTC, but its own book
+    put_daily(tmp_path, 'TSLAUSDT', days('2025-12-08', 60, 1e8))
+    put_daily(tmp_path, 'ODDUSDT', days('2025-12-08', 60, 1e11))
+    c = classes([entry('XAUUSDT', 'gold-commodity', t, 'gold-spot'), entry('PAXGUSDT', 'gold-commodity', ms('2025-11-01')),
+                 entry('TSLAUSDT', 'equity', t), entry('ODDUSDT', 'unclassified', t)])
+    u = universe(tmp_path, c)
+    w = week(u, '2026-01-12')
+    assert w['books']['crypto']['members'] == ['BTCUSDT']
+    assert w['books']['gold-commodity']['members'] == ['XAUUSDT', 'PAXGUSDT']
+    assert w['books']['equity']['members'] == ['TSLAUSDT'] and w['books']['fx']['members'] == []
+    assert ['ODDUSDT', U.VETO_UNCLASSIFIED] in w['vetoes']
+    assert U.members(u, w, 'gold-commodity') == ['XAUUSDT', 'PAXGUSDT']
+    with pytest.raises(U.UniverseError, match='book'):
+        U.members(u, w, 'mixed')
+    assert u['classes_digest'] == c['digest'] and all('members' not in x for x in u['weeks'])
+    sym = {s['symbol']: s for s in u['symbols']}
+    assert (sym['BTCUSDT']['class'], sym['BTCUSDT']['subclass']) == ('crypto', 'pre-cutoff-rule')
+    assert sym['XAUUSDT']['class'] == 'gold-commodity'
+
+
+def test_post_cutoff_symbol_without_a_class_entry_fails_closed(tmp_path):
+    put_daily(tmp_path, 'BTCUSDT', days('2025-11-01', 60, 1e9))
+    put_daily(tmp_path, 'XAUUSDT', days('2025-12-08', 30, 1e10))
+    with pytest.raises(U.UniverseError, match='no silent crypto default'):
+        universe(tmp_path)
+
+
+def test_class_applies_only_from_its_effective_time(tmp_path):
+    put_daily(tmp_path, 'BTCUSDT', days('2024-01-01', 90, 1.0))
+    put_daily(tmp_path, 'GLDUSDT', days('2024-01-01', 90, 9.0))
+    u = universe(tmp_path, classes([entry('GLDUSDT', 'gold-commodity', ms('2024-03-05'))]))
+    assert ['GLDUSDT', U.VETO_UNCLASSIFIED] in week(u, '2024-03-04')['vetoes']
+    assert week(u, '2024-03-11', 'gold-commodity')['members'] == ['GLDUSDT']
+
+
+@pytest.mark.parametrize('mutate,redigest', [
+    (lambda c: c['entries'][0].__setitem__('class', 'mixed'), True),
+    (lambda c: c['entries'][0].__setitem__('basis', ''), True),
+    (lambda c: c['entries'].append(dict(c['entries'][0])), True),
+    (lambda c: c.__setitem__('tradfi_cutoff_ms', 1), False),                   # content changed, digest stale
+])
+def test_classification_file_is_validated(mutate, redigest):
+    c = classes([entry('XAUUSDT', 'gold-commodity', ms('2025-12-08'))])
+    mutate(c)
+    if redigest:
+        c['digest'] = U.classes_digest(c)
+    with pytest.raises(U.UniverseError, match='instrument classes'):
+        U.validate_classes(c)
+
+
+def test_committed_archive_manifest_classes_and_universe_are_consistent():
     """Schema/digest only (the archive bytes live outside the repo; `manifest.py verify --store` re-hashes them)."""
     res = os.path.join(ROOT, 'research_evidence')
     m = M.load(os.path.join(res, 'manifests', 'binance-um-archive-v1.json.gz'))
     assert m['digest'] == '54912d9d2bf6e6fc45bc75c0553f0bd867e877972beeb3452785937379baf1e7'
     assert len(m['files']) == 103659 and len({f['symbol'] for f in m['files']}) == 900
-    with open(os.path.join(res, 'universe', 'pit-top40-qv30d-v1.json'), encoding='utf-8') as f:
+    c = U.load_classes(os.path.join(res, 'universe', 'instrument-classes-v1.json'))
+    with open(os.path.join(res, 'universe', 'pit-top40-qv30d-v2.json'), encoding='utf-8') as f:
         u = json.load(f)
     assert u['digest'] == U.digest_of(u) and u['manifest_digest'] == m['digest'] and u['format'] == U.FORMAT
-    assert all(len(w['members']) <= U.TOP_N and w['rules'] == U.RULES_BACKFILLED for w in u['weeks'])
+    assert u['classes_digest'] == c['digest'] and u['books'] == list(U.BOOKS) and u['renames'] == []
+    assert not os.path.exists(os.path.join(res, 'universe', 'pit-top40-qv30d-v1.json'))   # the mixed artifact is gone
+    for w in u['weeks']:
+        assert w['rules'] == U.RULES_BACKFILLED and 'members' not in w
+        assert all(len(w['books'][b]['members']) <= U.TOP_N for b in U.BOOKS)
+        assert {g[0] for g in w['gaps']} == {s for s, r in w['vetoes'] if r == U.VETO_GAP}
     assert [w['monday_ms'] for w in u['weeks']] == list(range(u['weeks'][0]['monday_ms'],
                                                                u['weeks'][-1]['monday_ms'] + U.WEEK, U.WEEK))
+    cls = {s['symbol']: s['class'] for s in u['symbols']}
+    assert cls['XAUUSDT'] == 'gold-commodity' and cls['BTCUSDT'] == 'crypto' and cls['TSLAUSDT'] == 'equity'
+    assert any('XAUUSDT' in w['books']['gold-commodity']['members'] for w in u['weeks'])   # gold stays in
+    assert not any(cls[s] != 'crypto' for w in u['weeks'] for s in w['books']['crypto']['members'])
