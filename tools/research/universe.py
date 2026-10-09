@@ -1,4 +1,4 @@
-"""`zb-pit-universe/2`: the point-in-time weekly universe `pit-top40-qv30d-v3` (RES-01 R2; plan sections 1a and 8).
+"""`zb-pit-universe/2`: the point-in-time weekly universe `pit-top40-qv30d-v4` (RES-01 R2; plan sections 1a and 8).
 
 Input is one `zb-data-manifest/1` built by the `zb-binance-vision-zip/1` loader: its daily last-price klines
 (`um/monthly/klines/<SYMBOL>/1d/`) for every historically listed USD-M USDT perpetual, delisted contracts included,
@@ -29,6 +29,10 @@ Rules (all evaluated with information available at the ranking instant only):
     `observed_ms`. The archive end date (`archive_last_close_ms`) and the last traded close (`last_traded_close_ms`;
     settled contracts keep printing zero-volume bars) are hindsight, recorded for audit only; they never veto a
     ranking. A contract with zero trailing quote volume is simply unrankable (`zero-qv30d`), which is observable.
+  * Addressability (owner direction 6078694212, Codex 6088058441): a non-ASCII symbol cannot be addressed by
+    NEWCORE's `check_symbol`, so it is vetoed `not-addressable:non-ascii-symbol` before ranking - never a silent drop.
+    Each week's `not_addressable` lists every such symbol with the veto it would otherwise have had, its exact trailing
+    volume, and its would-be rank and top-40 flag in its book, so the exclusion stays auditable.
   * Renames: refused (Codex P1 on #51). A non-empty rename list fails closed until time-scoped identity with overlap
     checks and price-continuity evidence exists; every symbol is its own contract.
   * Exchange rules (tick / step / min qty / min notional) before the first genuinely observed snapshot are labelled
@@ -40,7 +44,7 @@ universe file is never edited. Stdlib only, no network. No price returns are com
 Usage (repo root):
   python tools/research/universe.py build --manifest research_evidence/manifests/binance-um-archive-v1.json.gz
       --classes research_evidence/universe/instrument-classes-v1.json
-      --store C:/Dev/ZackBot2_data/binance_um --out research_evidence/universe/pit-top40-qv30d-v3.json [--workers N]
+      --store C:/Dev/ZackBot2_data/binance_um --out research_evidence/universe/pit-top40-qv30d-v4.json [--workers N]
   python tools/research/universe.py verify FILE --manifest MANIFEST --classes CLASSES --store DIR [--workers N]
 """
 from __future__ import annotations
@@ -59,7 +63,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import manifest as M                                                                        # noqa: E402
 
 FORMAT = 'zb-pit-universe/2'
-UNIVERSE_ID = 'pit-top40-qv30d-v3'
+UNIVERSE_ID = 'pit-top40-qv30d-v4'
 CLASSES_FORMAT = 'zb-instrument-classes/1'
 DAY = 86_400_000
 WEEK = 7 * DAY
@@ -76,6 +80,7 @@ VETO_GAP = 'data-gap'
 VETO_WINDOW_ABSENT = 'data-gap:window-absent'              # listed, no bar in the whole window, no delist observed
 VETO_NO_VOLUME = 'zero-qv30d'
 VETO_UNCLASSIFIED = 'unclassified'
+VETO_NOT_ADDRESSABLE = 'not-addressable:non-ascii-symbol'   # NEWCORE check_symbol cannot address it; pre-ranking
 BOOKS = ('crypto', 'gold-commodity', 'equity', 'fx')        # each ranked on its own; never one mixed list
 UNCLASSIFIED = 'unclassified'
 CLASS_KEYS = {'format', 'classes_id', 'reviewed_cairo', 'method', 'tradfi_cutoff_ms', 'pre_cutoff_rule', 'entries',
@@ -249,6 +254,11 @@ def _gap_ranges(d: dict) -> list[list[str]]:
     return out
 
 
+def addressable(symbol: str) -> bool:
+    """NEWCORE's `check_symbol` addresses ASCII symbols only; anything else can never be traded by the engine."""
+    return symbol.isascii()
+
+
 def rank(scored: list[tuple[str, Decimal]]) -> list[tuple[str, Decimal]]:
     """Quote volume descending, ties by symbol ascending. Comparison only - no Decimal arithmetic (a negated key
     would round to the default 28-digit context and merge distinct volumes; Codex 6078823692 P1). Python's sort is
@@ -279,7 +289,7 @@ def build(daily: dict[str, dict[int, Decimal]], *, manifest_digest: str, classes
         table.append({'symbol': s, 'class': cls[s]['class'], 'subclass': cls[s]['subclass'],
                       'class_effective_from_ms': cls[s]['effective_from_ms'],
                       'first_open_ms': listing[s], 'listing_ms': listing[s],
-                      'listing_censored': listing[s] == store_start,
+                      'listing_censored': listing[s] == store_start, 'addressable': addressable(s),
                       'archive_last_close_ms': max(d) + DAY if d else None,
                       'archive_ended_before_store_end': bool(d) and max(d) + DAY < store_end,
                       # settled contracts keep printing zero-volume daily bars, so the last traded close is the
@@ -294,11 +304,13 @@ def build(daily: dict[str, dict[int, Decimal]], *, manifest_digest: str, classes
     while monday <= store_end:
         window = range(monday - LOOKBACK_DAYS * DAY, monday, DAY)   # open in [instant-30d, instant-1d] = closed by then
         scored = {b: [] for b in BOOKS}
-        vetoes, gaps = [], []
+        vetoes, gaps, excluded = [], [], []
         for s in symbols:
             d = daily[s]
             present = [t for t in window if t in d]
             live = monday - DAY in d
+            c = cls[s]
+            qv, gap = None, None
             if not present:
                 if listing[s] is None or listing[s] >= monday:
                     continue                                # not listed yet at this instant: nothing to audit
@@ -306,28 +318,33 @@ def build(daily: dict[str, dict[int, Decimal]], *, manifest_digest: str, classes
                 # absence is not observable as a delisting at this instant: fail closed with an explicit veto + gap
                 # entry, never a silent drop (Codex 6078823692 P2).
                 if delist.get(s, monday + 1) <= monday:
-                    vetoes.append([s, VETO_DELIST])
+                    reason = VETO_DELIST
                 else:
-                    vetoes.append([s, VETO_WINDOW_ABSENT])
-                    gaps.append([s, len(window)])
+                    reason, gap = VETO_WINDOW_ABSENT, len(window)
+            else:
+                qv = qv_sum(d[t] for t in present)
+                missing = len(window) - len(present)
+                reason = None
+                if c['class'] == UNCLASSIFIED or c['effective_from_ms'] > monday:
+                    reason = VETO_UNCLASSIFIED
+                elif monday - listing[s] < MIN_AGE_DAYS * DAY:
+                    reason = VETO_AGE
+                elif not live:
+                    reason = VETO_NOT_TRADING
+                elif delist.get(s, monday + 1) <= monday:
+                    reason = VETO_DELIST
+                elif missing:
+                    reason, gap = VETO_GAP, missing
+                elif qv <= 0:
+                    reason = VETO_NO_VOLUME
+            if not addressable(s):
+                # pre-ranking addressability veto (owner direction 6078694212, Codex 6088058441): NEWCORE cannot
+                # address the symbol, so it never ranks; the audit keeps what it would otherwise have been
+                vetoes.append([s, VETO_NOT_ADDRESSABLE])
+                excluded.append((s, c['class'], reason, qv))
                 continue
-            qv = qv_sum(d[t] for t in present)
-            missing = len(window) - len(present)
-            c = cls[s]
-            reason = None
-            if c['class'] == UNCLASSIFIED or c['effective_from_ms'] > monday:
-                reason = VETO_UNCLASSIFIED
-            elif monday - listing[s] < MIN_AGE_DAYS * DAY:
-                reason = VETO_AGE
-            elif not live:
-                reason = VETO_NOT_TRADING
-            elif delist.get(s, monday + 1) <= monday:
-                reason = VETO_DELIST
-            elif missing:
-                reason = VETO_GAP
-                gaps.append([s, missing])
-            elif qv <= 0:
-                reason = VETO_NO_VOLUME
+            if gap is not None:
+                gaps.append([s, gap])
             if reason:
                 vetoes.append([s, reason])
             else:
@@ -338,8 +355,16 @@ def build(daily: dict[str, dict[int, Decimal]], *, manifest_digest: str, classes
             top = ranked[:top_n]
             books[b] = {'eligible': len(ranked), 'members': [s for s, _ in top],
                         'qv30d_usdt': [qv_text(q) for _, q in top]}
+        audit = []
+        for s, book, reason, qv in sorted(excluded):
+            would = None
+            if reason is None and book in scored:
+                would = [x for x, _ in rank(scored[book] + [(s, qv)])].index(s) + 1
+            audit.append({'symbol': s, 'book': book if book in scored else None,
+                          'otherwise': reason or 'eligible', 'qv30d_usdt': qv_text(qv) if qv is not None else None,
+                          'would_rank': would, 'would_be_top_n': would is not None and would <= top_n})
         weeks.append({'monday_ms': monday, 'monday_utc': utc_date(monday), 'books': books,
-                      'vetoes': sorted(vetoes), 'gaps': sorted(gaps),
+                      'vetoes': sorted(vetoes), 'gaps': sorted(gaps), 'not_addressable': audit,
                       'rules': RULES_OBSERVED if rules_first_observed_ms is not None and monday >= rules_first_observed_ms
                       else RULES_BACKFILLED})
         monday += WEEK
@@ -355,6 +380,10 @@ def build(daily: dict[str, dict[int, Decimal]], *, manifest_digest: str, classes
                                      f'a listed contract with no bar in the window and no delist observation is vetoed '
                                      f'{VETO_WINDOW_ABSENT} with a {LOOKBACK_DAYS}-day gap entry (never dropped silently)',
                   'warmup_test': 'per strategy, applied by the R3 harness (independent of the listing-age test)',
+                  'addressability': f'pre-ranking veto {VETO_NOT_ADDRESSABLE} for non-ASCII symbols (NEWCORE cannot '
+                                    f'address them); each week lists them in not_addressable with the veto they '
+                                    f'would otherwise have had, their exact qv30d and their would-be rank / top-'
+                                    f'{top_n} flag in their book',
                   'delist_veto': 'timestamped observations only; archive end is hindsight, audit only',
                   'renames': 'refused (fail closed) until time-scoped identity + price-continuity evidence exists',
                   'rules_label': f'{RULES_BACKFILLED} before rules_first_observed_ms'},
