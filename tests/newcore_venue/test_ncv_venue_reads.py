@@ -107,11 +107,12 @@ def test_window_fills_carry_side_and_are_sorted():
     assert dict(query_pairs(q))['startTime'] == str(T0) and dict(query_pairs(q))['endTime'] == str(NOW_MS)
 
 
-def test_a_full_page_continues_by_from_id_and_stops_at_the_window_end(monkeypatch):
-    monkeypatch.setattr(TV, 'USER_TRADES_LIMIT', 3)
-    v, http = venue(ok([trade(1), trade(2), trade(3)]), ok([trade(4), trade(5), trade(6, t=NOW_MS + 5)]))
+def test_a_full_page_continues_by_from_id_to_a_raw_short_page_even_past_the_window_end(monkeypatch):
+    monkeypatch.setattr(TV, 'USER_TRADES_LIMIT', 3)                       # Codex 6069281718: no timestamp proof
+    v, http = venue(ok([trade(1), trade(2), trade(3)]), ok([trade(4), trade(5), trade(6, t=NOW_MS + 5)]), ok([]))
     out = v.fills('SOLUSDT', start_ms=T0, end_ms=NOW_MS)
     assert out.kind is P.ReadKind.OK and [f.trade_id for f in out.value] == ['1', '2', '3', '4', '5']
+    assert len(http.requests) == 3 and out.detail == 'complete pages=3 dups=0'
     second = dict(query_pairs(http.requests[1]))
     assert second['fromId'] == '4' and 'startTime' not in second and 'endTime' not in second
 
@@ -143,21 +144,35 @@ def test_a_from_id_page_that_goes_back_is_unknown(monkeypatch):
     monkeypatch.setattr(TV, 'USER_TRADES_LIMIT', 2)
     v, _ = venue(ok([trade(1), trade(2)]), ok([trade(2, qty='9'), trade(3)]))
     out = v.fills('SOLUSDT', start_ms=T0, end_ms=NOW_MS)
-    assert out.kind is P.ReadKind.UNKNOWN and out.detail == 'out_of_order'              # fromId 3 got id 2 back
+    assert out.kind is P.ReadKind.UNKNOWN and out.detail == 'conflicting_trade'  # id 2 back, with other fields
 
 
-@pytest.mark.parametrize('dup', [{'qty': '9'}, {}])
-def test_a_duplicate_trade_in_a_page_is_unknown(dup):
-    v, _ = venue(ok([trade(1), trade(1, **dup), trade(2)]))
+def test_a_from_id_page_with_an_unseen_older_trade_is_unknown(monkeypatch):
+    monkeypatch.setattr(TV, 'USER_TRADES_LIMIT', 2)
+    v, _ = venue(ok([trade(2), trade(3)]), ok([trade(1, t=T0 + 10), trade(4, t=T0 + 11)]))   # time goes forward
+    out = v.fills('SOLUSDT', start_ms=T0, end_ms=NOW_MS)
+    assert out.kind is P.ReadKind.UNKNOWN and out.detail == 'out_of_order'      # fromId 4 got an unseen id 1
+
+
+def test_a_conflicting_duplicate_trade_in_a_page_is_unknown():
+    v, _ = venue(ok([trade(1), trade(1, qty='9'), trade(2)]))
     out = v.fills('SOLUSDT', start_ms=T0, end_ms=NOW_MS)
     assert out.kind is P.ReadKind.UNKNOWN and out.detail == 'malformed'
 
 
-def test_a_trade_seen_again_outside_its_window_is_not_counted_twice(monkeypatch):
+def test_an_identical_duplicate_trade_in_a_page_is_deduped_and_counted():          # Cowork 6068372233
+    v, _ = venue(ok([trade(1), trade(1), trade(2)]))
+    out = v.fills('SOLUSDT', start_ms=T0, end_ms=NOW_MS)
+    assert out.kind is P.ReadKind.OK and [f.trade_id for f in out.value] == ['1', '2']
+    assert out.detail == 'complete pages=1 dups=1'
+
+
+def test_a_bounded_window_page_answering_outside_its_window_is_unknown(monkeypatch):     # Codex 6069415268
     monkeypatch.setattr(TV, 'FILL_WINDOW_MS', 50)
     v, http = venue(ok([trade(1, t=T0 + 10), trade(2, t=T0 + 50)]), ok([trade(2, t=T0 + 50), trade(3, t=T0 + 60)]))
     out = v.fills('SOLUSDT', start_ms=T0, end_ms=T0 + 100)
-    assert out.kind is P.ReadKind.OK and [f.trade_id for f in out.value] == ['1', '2', '3'] and len(http.requests) == 2
+    assert out.kind is P.ReadKind.UNKNOWN and out.detail == 'window_mismatch' and len(http.requests) == 2
+    # trade 2 (t = T0 + 50) came back on the window [T0 + 51, ...]: a bounded answer outside its bounds
 
 
 def test_long_ranges_walk_seven_day_windows(monkeypatch):
