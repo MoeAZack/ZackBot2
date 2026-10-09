@@ -8,10 +8,21 @@ plus a replay sidecar:
                                                settle, the candle-close tape, the preflight baseline, the verdict
     tnet-<run nonce>-preflight.json            the suite preflight (not replayed)
 
+A long scenario whose cassette passes one audit budget (T04: 31 cycles) is SEGMENTED at cycle checkpoints (Codex T04
+triage 6087020052; CassetteRecorder.to_segments): every segment is a complete, separately leak-audited cassette
+
+    tnet-<run nonce>-<scenario id>.segNN.json  zb-newcore-cassette/1 with 'segment': {index, count, first}
+    tnet-<run nonce>-<scenario id>.json        zb-newcore-cassette-set/1: the ordered segment files, their SHA-256,
+                                               interaction counts and first indexes (written LAST: the commit point)
+
+All segments (and the meta) are audited before any file is written; a write that fails removes what it wrote, so no
+manifest ever names a missing segment. A cassette that fits one budget is written exactly as before.
+
 A fresh TestnetTarget (fresh factory boot) is built per scenario so every cassette replays on its own
 (newcore.tnet.replay). Nothing is written when the leak audit finds anything: the scenario's cassette is None and the
 CLI exits 5.
 """
+import hashlib
 import json
 import os
 
@@ -23,6 +34,7 @@ from .driver import (EXIT_DEADLINE, EXIT_PREFLIGHT, FAIL, INCONCLUSIVE, Scenario
                      attempt_nonce, run_scenario, suite_exit_code)
 
 REPLAY_FORMAT = 'zb-newcore-tnet-replay/1'
+SEGMENT_SET_FORMAT = 'zb-newcore-cassette-set/1'
 
 
 def bundle_base(cassette_dir, run_nonce, scenario_id):
@@ -43,16 +55,53 @@ def _write(path, text):
     return path
 
 
+def segment_name(base, index):
+    return f'{os.path.basename(base)}.seg{index:02d}.json'
+
+
+def segment_manifest(base, parts):
+    """The zb-newcore-cassette-set/1 manifest of [(text, first, count), ...] (two or more segments)."""
+    return {'format': SEGMENT_SET_FORMAT, 'interactions': sum(n for _, _, n in parts),
+            'segments': [{'file': segment_name(base, i), 'sha256': hashlib.sha256(t.encode('utf-8')).hexdigest(),
+                          'first': first, 'interactions': n} for i, (t, first, n) in enumerate(parts, 1)]}
+
+
 def save_bundle(recorder, base, meta, redact, flag=None):
-    """Audit both texts first (CassetteLeak / ReportLeak: nothing is written), then write the cassette and its meta."""
-    text = recorder.to_json()
+    """Audit every text first (CassetteLeak / ReportLeak: nothing is written), then write the cassette and its meta.
+    A segmented cassette: the segments, the meta, then the manifest last; any failed write removes what this commit
+    wrote and re-raises (fail closed: never a manifest naming a missing or partial segment)."""
+    parts = recorder.to_segments()
     meta_text = json.dumps(meta, indent=1, sort_keys=True) + '\n'
-    _audit((meta_text,), [v for v in redact if isinstance(v, str)])
-    def commit():                                     # SIGINT deferred, one retry (tnet.commit_evidence)
-        p = _write(base + '.json', text)
-        _write(base + '.meta.json', meta_text)
-        return p
-    return commit_evidence(commit, flag)
+    values = [v for v in redact if isinstance(v, str)]
+    if len(parts) == 1:
+        text = parts[0][0]
+        _audit((meta_text,), values)
+
+        def commit():                                 # SIGINT deferred, one retry (tnet.commit_evidence)
+            p = _write(base + '.json', text)
+            _write(base + '.meta.json', meta_text)
+            return p
+        return commit_evidence(commit, flag)
+    manifest_text = json.dumps(segment_manifest(base, parts), indent=1, sort_keys=True) + '\n'
+    _audit((meta_text, manifest_text), values)
+    folder = os.path.dirname(base)
+    files = [(os.path.join(folder, segment_name(base, i)), t) for i, (t, _, _) in enumerate(parts, 1)]
+    files += [(base + '.meta.json', meta_text), (base + '.json', manifest_text)]
+
+    def commit_set():
+        written = []
+        try:
+            for path, text in files:
+                written.append(_write(path, text))
+        except BaseException:
+            for path in written:
+                try:
+                    os.remove(path)
+                except OSError:
+                    pass
+            raise
+        return written[-1]
+    return commit_evidence(commit_set, flag)
 
 
 def replay_meta(spec, result, *, run_nonce, account_id, symbols, settle_ms, baseline):
