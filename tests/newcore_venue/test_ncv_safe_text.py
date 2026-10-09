@@ -135,7 +135,8 @@ def test_a_broken_str_is_still_typed():
 @pytest.mark.parametrize('mod, name', sorted(SAFE_MESSAGES))
 def test_every_listed_class_exists(mod, name):
     cls = getattr(importlib.import_module(mod), name)
-    assert isinstance(cls, type) and issubclass(cls, Exception) and cls.__module__ == mod
+    assert isinstance(cls, type) and issubclass(cls, BaseException) and cls.__module__ == mod   # harness stops are
+                                                                                                  # BaseExceptions
 
 
 # ---------------------------------------------------------------------------------------------- no raw forms left
