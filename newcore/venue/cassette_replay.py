@@ -93,7 +93,7 @@ def leak_audit(doc):
     rec = CassetteRecorder(lambda r: None)
     rec.interactions = doc['interactions']
     try:
-        rec._audit(json.dumps(doc, ensure_ascii=False))
+        rec._audit(json.dumps(doc, ensure_ascii=False), doc)
     except CassetteLeak as ex:
         return exc_msg(ex)
     return None
