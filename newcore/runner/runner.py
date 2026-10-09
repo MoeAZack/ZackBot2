@@ -130,7 +130,11 @@ def _not_opening(x):
     is one). Proven only when its side increases the position, reduceOnly and closePosition are both false, and its
     type / origType (where the record carries them) is not conditional. Anything else - a closing side, reduce-only,
     closePosition, a conditional type, a field the adapter did not populate - may be the classic child of our own
-    triggered algo stop carrying a foreign / system client id: never foreign, UNKNOWN."""
+    triggered algo stop carrying a foreign / system client id: never foreign, UNKNOWN. Codex 6073909317: only a
+    CLASSIC-route record can prove it - an algo-route answer to a trade-row order id (the classic lookup said -2013) may
+    be an unrelated algo order sharing the numeric id: never foreign, UNKNOWN."""
+    if x.ref.route != 'classic':
+        return f'route {x.ref.route}, not classic'
     if x.side is None or x.reduce_only is None or x.close_position is None:
         return 'side / reduceOnly / closePosition not reported'
     if x.side != OPENING_SIDE.get(x.position_side):
