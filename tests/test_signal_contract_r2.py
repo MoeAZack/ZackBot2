@@ -26,7 +26,7 @@ def reseal(ev, cands):
 
 # ------------------------------------------------- P1-1: the serializer emits only an allowlisted, fully checked result
 @pytest.mark.parametrize('extra', [{'secret_dump': SECRET}, {'detail_raw': SECRET}, {'Detail': SECRET},
-                                   {'': SECRET}, {'decision_id ': SECRET}])
+                                   {'': SECRET}, {'decision_id ': SECRET}], ids=lambda v: 'probe')
 def test_p1_encode_result_refuses_unknown_fields_and_never_echoes_them(extra):
     p = result('rejected')
     p.update(extra)
@@ -308,7 +308,7 @@ def test_self_evaluation_contradictions():
     f'AUTHORIZATION {SECRET}', f'auth: {SECRET}', f'pwd {SECRET}', f'key={SECRET}', f'sig:{SECRET}',
     f'https://api.example/x?k={SECRET}', f'credential {SECRET}', f'jwt {SECRET}', f'x-mbx-apikey {SECRET}',
     f'B-e-a-r-e-r {SECRET}x' * 1, f'{SECRET}&{SECRET}',
-])
+], ids=lambda v: 'probe')
 def test_self_redaction_bypass_attempts_are_refused(detail):
     p = mutate(result('rejected'), lambda q: q.update(detail=detail))
     with pytest.raises(InvalidRecord) as ei:

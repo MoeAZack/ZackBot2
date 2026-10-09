@@ -376,12 +376,12 @@ def test_item4_each_status_has_a_valid_form(status):
     ('non-gate domain code', 'rejected', lambda p: p.update(reason_code='exit.stop'), 'semantic'),
     ('detail with newline', 'rejected', lambda p: p.update(detail='a\nb'), 'schema'),
     ('detail too long', 'rejected', lambda p: p.update(detail='x' * 161), 'schema'),
-    ('detail bearer header', 'rejected', lambda p: p.update(detail='Authorization: Bearer abc123'), 'semantic'),
+    ('detail auth header', 'rejected', lambda p: p.update(detail='Authorization: Bearer abc123'), 'semantic'),
     ('detail api key word', 'rejected', lambda p: p.update(detail='api_key=xyz'), 'semantic'),
     ('detail key-shaped token', 'rejected', lambda p: p.update(detail='key ' + 'Ab9_' * 8), 'semantic'),
     ('detail blank', 'rejected', lambda p: p.update(detail='   '), 'semantic'),
     ('timestamp as float', 'rejected', lambda p: p.update(recorded_at_ms=float(T0) + 0.5), 'schema'),
-])
+], ids=lambda v: v.replace(' ', '_') if isinstance(v, str) and ' ' in v else None)
 def test_item4_result_negative_payloads(name, status, fn, layer):
     refuses('signal_result', mutate(result(status), fn), layer)
 
@@ -395,8 +395,10 @@ def test_item4_gate_codes_are_valid_for_rejections_and_holds():
 SECRET = 'Zq7RkP2mW9xL4vN8'
 
 
-@pytest.mark.parametrize('detail', [f'Authorization: Bearer {SECRET}', f'token={SECRET}', f'x {SECRET}{SECRET}',
-                                    f'password {SECRET}'])
+SECRET_DETAILS = [f'Authorization: Bearer {SECRET}', f'token={SECRET}', f'x {SECRET}{SECRET}', f'password {SECRET}']
+
+
+@pytest.mark.parametrize('detail', SECRET_DETAILS, ids=[f'probe-{i}' for i in range(len(SECRET_DETAILS))])
 def test_ruling_encode_result_refuses_secret_detail_without_echoing_it(detail):
     p = result('rejected')
     p['detail'] = detail
