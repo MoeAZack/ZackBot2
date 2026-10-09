@@ -1,8 +1,18 @@
 """`zb-eval-sandbox/1`: the evaluator process of `pit.evaluate` (RES-01 R3; Codex 6079042573 P1).
 
 The evaluator never runs in the harness process. `pit.evaluate` starts this script as a separate Python process
-(`-I -S -B`: no environment, no `site` - so no site-packages, `.pth` files, `sitecustomize` or user site - and no
-bytecode writes; empty working directory, minimal environment) and speaks a JSON-lines protocol over its stdin/stdout:
+(`-s -S -B -P`: no `site` - so no site-packages, `.pth` files, `sitecustomize` or user site - no bytecode writes,
+no script/cwd directory on sys.path) with a fixed, fully controlled environment (`SANDBOX_ENV`: hash seed 0, UTF-8 mode,
+TZ=UTC, plus SYSTEMROOT/WINDIR) and an empty working directory.
+
+Materialized tree (Codex 6089091570 P1): the evaluator never runs from, or sees a path of, the original checkout. The
+runner copies exactly the hashed static import closure into a fresh temporary tree (repo layout kept, every mtime set
+to the fixed `TREE_MTIME`), and that tree is the only repository the child has: no `.git`, no ignored or untracked
+file, no unrelated repo metadata exists there. Path probes (`stat`, `lstat`, `access`, `exists`/`isdir`/`isfile`,
+`listdir`, `scandir`, `readlink`, final-path lookups) are additionally allowlisted to the tree, the working directory
+and the interpreter's own installation (never `site-packages`), so an absolute probe of host state fails closed instead
+of answering. The observable environment (hash seed, UTF-8 mode, time zone, locale encoding, environment keys, empty
+cwd, tree mtimes) is reported at start-up and bound into the attestation. and speaks a JSON-lines protocol over its stdin/stdout:
 
   parent -> child  {"op": "init", ...}            evaluator file + function, the read policy
   child  -> parent {"ready": true}
@@ -190,6 +200,55 @@ class View:
         return tuple(Bar(*r) for r in self._call('minute_bars', symbol, open_ms, close_ms, position=position))
 
 
+PROBE_FUNCS = ('stat', 'lstat', 'access', 'listdir', 'scandir', 'readlink', 'chdir', '_path_exists', '_path_isdir',
+               '_path_isfile', '_path_islink', '_path_isjunction', '_path_lexists', '_path_isdevdrive',
+               '_getfinalpathname', '_findfirstfile', '_getvolumepathname')
+
+
+def guard_path_probes(roots) -> None:
+    """Replace every path-probing primitive of the OS module (and each alias other modules bound at import time) by an
+    allowlist wrapper: a path outside `roots` raises instead of revealing whether it exists."""
+    import importlib as _il
+    osmod = _il.import_module(os.name)                         # nt / posix
+    allowed = [os.path.normcase(os.path.abspath(r)) for r in roots]
+    abspath, normcase, sep = os.path.abspath, os.path.normcase, os.sep
+
+    def ok(path):
+        if path is None or isinstance(path, int):
+            return True
+        p = os.fsdecode(os.fspath(path))
+        q = normcase(abspath(p))
+        if any(d in q.split(sep) for d in THIRD_PARTY_DIRS):
+            return False
+        return any(q == r or q.startswith(r.rstrip(sep) + sep) for r in allowed)
+
+    originals = {}
+    for name in PROBE_FUNCS:
+        f = getattr(osmod, name, None)
+        if f is None:
+            continue
+
+        def wrap(*a, _f=f, _n=name, **kw):
+            path = a[0] if a else kw.get('path', '.' if _n in ('listdir', 'scandir') else None)
+            if not ok(path):
+                raise SandboxRefused(f'sandbox refused path probe {_n}({path!r})')
+            return _f(*a, **kw)
+        originals[id(f)] = wrap
+    mods = [osmod, os, os.path] + [sys.modules[m] for m in ('genericpath', 'ntpath', 'posixpath') if m in sys.modules]
+    for m in mods:
+        for k, v in list(vars(m).items()):
+            if id(v) in originals:
+                setattr(m, k, originals[id(v)])
+
+
+def observed_env() -> dict:
+    import locale
+    import time
+    return {'hash_randomization': sys.flags.hash_randomization, 'utf8_mode': sys.flags.utf8_mode,
+            'no_site': sys.flags.no_site, 'tzname': list(time.tzname), 'timezone': time.timezone,
+            'locale_encoding': locale.getencoding(), 'env_keys': sorted(os.environ), 'cwd_entries': os.listdir('.')}
+
+
 def main() -> int:
     chan = _Chan(sys.stdin.buffer, sys.stdout.buffer)
     sys.stdout = sys.stderr                                   # evaluator prints never reach the protocol channel
@@ -199,25 +258,28 @@ def main() -> int:
         return 2
     for p in reversed(init['sys_path']):
         sys.path.insert(0, p)
+    env = observed_env()
+    guard_path_probes(init['probe_roots'])
     sys.addaudithook(make_hook(init['lib_roots'], init['list_roots'], init['allow_files']))
     try:
         spec = importlib.util.spec_from_file_location('zb_evaluator', init['evaluator_path'])
         mod = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(mod)
         fn = getattr(mod, init['function'])
+        summ = getattr(mod, init['summary']) if init.get('summary') else None
     except BaseException as e:                                # noqa: BLE001 - reported to the parent, fail closed
         chan.send({'error': f'evaluator load failed: {type(e).__name__}: {e}'})
         return 2
-    chan.send({'ready': True})
+    chan.send({'ready': True, 'env': env})
     while True:
         msg = chan.recv()
         if msg.get('op') == 'exit':
             return 0
-        if msg.get('op') != 'decide':
+        if msg.get('op') not in ('decide', 'summarize') or (msg['op'] == 'summarize' and summ is None):
             chan.send({'error': 'unexpected message'})
             return 2
         try:
-            res = fn(View(msg['t'], chan))
+            res = fn(View(msg['t'], chan)) if msg['op'] == 'decide' else summ(msg['outputs'])
             json.dumps(res, allow_nan=False)
         except BaseException as e:                            # noqa: BLE001
             chan.send({'error': f'{type(e).__name__}: {e}'})

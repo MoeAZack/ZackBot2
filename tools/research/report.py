@@ -51,7 +51,8 @@ DIGESTS = ('manifest_digest', 'universe_digest', 'split_plan_digest', 'cost_mode
 RUN_KEYS = {'family', 'candidate_id', 'split', 'window', 'books', 'seeds', 'eval', 'code', 'author', 'cairo_date',
             *DIGESTS}
 CODE_KEYS = {'git_head', 'dirty', 'python', 'libs'}
-EVAL_KEYS = {'files', 'config'}
+EVAL_KEYS = {'files', 'config', 'entrypoint', 'schedule'}
+ENTRY_KEYS = {'path', 'function', 'summary'}
 # Every evaluation runs on these research modules; a run must hash them along with its own strategy files.
 CORE_EVAL_FILES = ('feasibility.py', 'tools/research/costs.py', 'tools/research/intrabar.py',
                    'tools/research/ledger.py', 'tools/research/manifest.py', 'tools/research/pit.py',
@@ -231,15 +232,38 @@ def _file_sha(repo: str, rel: str) -> str:
         return hashlib.sha256(f.read()).hexdigest()
 
 
-def eval_digest(files, config: dict, seeds) -> str:
-    """SHA-256 over the canonical evaluation identity: the sorted [{path, sha256}] list, the config and the seeds."""
-    return _digest({'files': list(files), 'config': config, 'seeds': list(seeds)})
+def eval_digest(ev: dict, seeds) -> str:
+    """SHA-256 over the canonical evaluation identity: the sorted [{path, sha256}] list, the config, the frozen
+    entrypoint {path, function, summary}, the canonical decision schedule {n, digest} and the seeds."""
+    return _digest({'files': list(ev['files']), 'config': ev['config'], 'entrypoint': ev['entrypoint'],
+                    'schedule': ev['schedule'], 'seeds': list(seeds)})
 
 
-def eval_identity(repo: str, paths, config: dict) -> dict:
-    """The canonical evaluation block: sorted unique repo-relative tracked files (CORE_EVAL_FILES included), hashed
-    from disk, plus the config."""
-    paths = import_closure(repo, sorted(set(paths) | set(CORE_EVAL_FILES)))
+def schedule_of(times) -> dict:
+    """The canonical decision schedule: strictly increasing int ms, frozen as {n, digest} (Codex 6089002043 P1)."""
+    times = list(times)
+    if not times or any(type(t) is not int for t in times) or any(b <= a for a, b in zip(times, times[1:])):
+        raise ReportError('the decision schedule must be a non-empty, strictly increasing list of int ms')
+    return {'n': len(times), 'digest': _digest(times)}
+
+
+def results_digest(results) -> str:
+    """The digest that binds a report's exact `results` payload to the runner attestation."""
+    try:
+        return _digest(results)
+    except ValueError:
+        raise ReportError('results must be strict JSON (NaN / Infinity refused)')
+
+
+def eval_identity(repo: str, paths, config: dict, entrypoint: dict, schedule) -> dict:
+    """The canonical evaluation block: sorted unique repo-relative tracked files (CORE_EVAL_FILES and the entrypoint
+    file included, closed over static imports), hashed from disk, plus the config, the frozen entrypoint and the
+    canonical decision schedule."""
+    if not isinstance(entrypoint, dict) or set(entrypoint) != ENTRY_KEYS or not all(
+            isinstance(entrypoint[k], str) and entrypoint[k] for k in ENTRY_KEYS) or not (
+            entrypoint['function'].isidentifier() and entrypoint['summary'].isidentifier()):
+        raise ReportError(f'entrypoint must be {{path, function, summary}} with identifier function names')
+    paths = import_closure(repo, sorted(set(paths) | set(CORE_EVAL_FILES) | {entrypoint['path']}))
     evidence = [p for p in paths if p.split('/')[0] == EVIDENCE_DIR]
     if evidence:
         raise ReportError(f'evaluation code may not live in or import from {EVIDENCE_DIR}/: {evidence}')
@@ -247,7 +271,8 @@ def eval_identity(repo: str, paths, config: dict) -> dict:
     missing = [p for p in paths if p not in tracked]
     if missing:
         raise ReportError(f'evaluation files must be tracked by Git: {missing}')
-    return {'files': [{'path': p, 'sha256': _file_sha(repo, p)} for p in paths], 'config': config}
+    return {'files': [{'path': p, 'sha256': _file_sha(repo, p)} for p in paths], 'config': config,
+            'entrypoint': dict(entrypoint), 'schedule': schedule_of(schedule)}
 
 
 def validate_run(run: dict) -> None:
@@ -270,12 +295,17 @@ def validate_run(run: dict) -> None:
     need(isinstance(e, dict) and set(e) == EVAL_KEYS and isinstance(e['config'], dict) and isinstance(e['files'], list)
          and all(isinstance(f, dict) and set(f) == {'path', 'sha256'} and isinstance(f['path'], str)
                  and isinstance(f['sha256'], str) and HEX64.match(f['sha256']) for f in e['files']),
-         'eval must be {files: [{path, sha256}], config}')
+         'eval must be {files: [{path, sha256}], config, entrypoint, schedule}')
+    ep, sc = e['entrypoint'], e['schedule']
+    need(isinstance(ep, dict) and set(ep) == ENTRY_KEYS and all(isinstance(ep[k], str) and ep[k] for k in ep)
+         and ep['path'] in [f['path'] for f in e['files']], 'eval.entrypoint must name a hashed evaluation file')
+    need(isinstance(sc, dict) and set(sc) == {'n', 'digest'} and type(sc['n']) is int and sc['n'] > 0
+         and isinstance(sc['digest'], str) and HEX64.match(sc['digest']), 'eval.schedule must be {n, digest}')
     paths = [f['path'] for f in e['files']]
     need(paths == sorted(set(paths)) and set(CORE_EVAL_FILES) <= set(paths),
          f'eval.files must be sorted, unique and include every CORE_EVAL_FILES entry')
-    need(run['eval_digest'] == eval_digest(e['files'], e['config'], run['seeds']),
-         'eval_digest does not match the eval files, config and seeds')
+    need(run['eval_digest'] == eval_digest(e, run['seeds']),
+         'eval_digest does not match the eval files, config, entrypoint, schedule and seeds')
     c = run['code']
     need(isinstance(c, dict) and set(c) == CODE_KEYS and isinstance(c['git_head'], str) and type(c['dirty']) is bool
          and isinstance(c['python'], str) and isinstance(c['libs'], dict), f'code must be {sorted(CODE_KEYS)}')
@@ -290,14 +320,15 @@ def envelope(run: dict) -> dict:
     return {'format': FORMAT, 'run': run, 'run_digest': run_digest(run)}
 
 
-def freeze_run(*, repo: str = M.REPO, eval_files, config: dict, seeds, **ident) -> dict:
+def freeze_run(*, repo: str = M.REPO, eval_files, config: dict, seeds, entrypoint: dict, schedule,
+               **ident) -> dict:
     """Build the envelope with an independently captured code identity and evaluation digest. `ident` carries family,
     candidate_id, split, window, books, author, cairo_date and the five data/cost digests. A dirty tree is refused."""
     code = code_identity(repo)
     if code['dirty']:
         raise ReportError('dirty working tree: commit the evaluation code before freezing a run')
-    ev = eval_identity(repo, eval_files, config)
-    run = dict(ident, code=code, eval=ev, seeds=list(seeds), eval_digest=eval_digest(ev['files'], config, seeds))
+    ev = eval_identity(repo, eval_files, config, entrypoint, schedule)
+    run = dict(ident, code=code, eval=ev, seeds=list(seeds), eval_digest=eval_digest(ev, seeds))
     return envelope(run)
 
 
@@ -338,7 +369,7 @@ def verify_code(env: dict, repo: str = M.REPO) -> list[str]:
     changed = [a['path'] for a, b in zip(files, run['eval']['files']) if a != b]
     if changed:
         out.append(f'evaluation files changed: {changed}')
-    if eval_digest(files, run['eval']['config'], run['seeds']) != run['eval_digest']:
+    if eval_digest(dict(run['eval'], files=files), run['seeds']) != run['eval_digest']:
         out.append('eval_digest recomputed at access differs from the frozen one')
     return out
 
@@ -390,8 +421,8 @@ def recompute_run_digest(rec: dict, runs_dir: str) -> str:
 
 
 ATTESTATION_FORMAT = 'zb-eval-attestation/1'
-SEALABLE_RUNNER = 'pit.evaluate/v3'
-SEALABLE_ISOLATION = 'subprocess-I-S+audit-hook+closure-allowlist/zb-eval-sandbox/2'
+SEALABLE_RUNNER = 'pit.evaluate/v4'
+SEALABLE_ISOLATION = 'subprocess-sSBP+materialized-closure-tree+probe-allowlist+audit-hook/zb-eval-sandbox/3'
 
 
 def check_attestation(env: dict, att: dict, ledger_path: str) -> str:
@@ -411,6 +442,11 @@ def check_attestation(env: dict, att: dict, ledger_path: str) -> str:
     ev = att.get('evaluator') or {}
     need({'path': ev.get('path'), 'sha256': ev.get('sha256')} in run['eval']['files'],
          'the evaluator file is not one of the envelope\'s hashed evaluation files')
+    ep = run['eval']['entrypoint']
+    need((ev.get('path'), ev.get('function'), ev.get('summary')) == (ep['path'], ep['function'], ep['summary']),
+         'the evaluator entrypoint (file / function / summary) is not the frozen one')
+    need(att.get('schedule') == run['eval']['schedule'],
+         'the decision schedule is not the frozen canonical schedule')
     code = att.get('code')
     need(isinstance(code, list) and code and all(c in run['eval']['files'] for c in code),
          'code the sandbox let the evaluator load is not in the envelope\'s hashed evaluation files: '
@@ -427,7 +463,9 @@ def check_attestation(env: dict, att: dict, ledger_path: str) -> str:
 
 
 def make_report(env: dict, results: dict, attestation: dict, ledger_path: str) -> dict:
-    """Validate the results shape against plan section 6, bind the runner attestation and seal with `report_digest`."""
+    """Validate the results shape against plan section 6, bind the runner attestation and seal with `report_digest`.
+    The exact `results` payload must be the one the frozen summary function produced in the sandbox (its digest is
+    in the attestation)."""
     if env.get('run_digest') != run_digest(env['run']):
         raise ReportError('envelope run_digest does not match its run block')
     att_digest = check_attestation(env, attestation, ledger_path)
@@ -442,6 +480,8 @@ def make_report(env: dict, results: dict, attestation: dict, ledger_path: str) -
             for s, keys in SECTIONS.items():
                 if not isinstance(secs[s], dict) or set(secs[s]) != set(keys):
                     raise ReportError(f'{side}/{row}/{s}: keys must be exactly {sorted(keys)}')
+    if attestation.get('results_digest') != results_digest(results):
+        raise ReportError('attestation: the report results are not the payload the frozen summary produced')
     rep = {**env, 'results': results, 'attestation': attestation, 'attestation_digest': att_digest}
     try:
         rep['report_digest'] = _digest(rep)

@@ -361,6 +361,23 @@ Codex R3 fix review 6079042573 applied (merged with the fixed R2 head; universe 
   Residual limit: `exec`/`eval` of strings built inside hashed code from View data is allowed (the text is fixed by
   hashed code); the stdlib (incl. its `.pyc`) is trusted and pinned only by the Python version in the code identity;
   the audit hook is a CPython runtime control, not an OS jail against native code.
+- Codex 6089002043 / 6089091570 applied (two P1s).
+  (1) Attestation bound to the exact report: the frozen eval identity now carries the entrypoint
+  {path, function, summary} and the canonical decision schedule {n, digest} (strictly increasing int ms), all inside
+  `eval_digest`. `evaluate(..., summary=)` runs the frozen summary in the sandbox (twice, must agree) and binds its
+  `results_digest`. `make_report` refuses another function or summary of the same file, an altered or subset schedule,
+  and any results payload other than the bound one.
+  (2) No uncommitted repository state is observable: the evaluator runs from a materialized temporary tree holding only
+  the hashed closure (repo layout, every mtime fixed to 2000-01-01), with no `.git`, ignored or untracked file, and no
+  checkout path. Path probes (`stat`/`exists`/`listdir`/`scandir`/final-path) are allowlisted to the tree, the empty cwd
+  and the interpreter installation (never site-packages), so an absolute host probe fails closed. The environment is
+  fixed (`-s -S -B -P`; PYTHONHASHSEED=0, PYTHONUTF8=1, TZ=UTC, SYSTEMROOT/WINDIR only). The observed hash flag, UTF-8
+  mode, time zone, locale code page (host-specific, so bound rather than fixed), env keys and empty cwd are recorded in
+  the attestation.
+  Residual limit, stated plainly: the wall clock, `os.getpid`, `random` without a seed, and the random temp-tree path
+  string are readable by hashed evaluator code. Any output that depends on them is caught only when it differs between
+  the two in-run passes or at the ledger's deterministic `holdout_rerun`. The guard is a CPython runtime control, not
+  an OS jail; for example, reloading the `nt` module is not prevented.
 - Funding: `costs.check_funding_sequence` requires the phase anchor (the event at or before entry) in the rows, so every
   event due in [entry, exit) - the entry event included - follows from continuity; `View.funding_events` reads the
   anchor and enforces it itself, failing closed on a missing event.

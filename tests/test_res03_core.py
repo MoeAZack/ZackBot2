@@ -186,6 +186,26 @@ def run(v):
 """
 
 
+REPORTING = """
+
+import report as _R
+
+
+def summarize(outputs):
+    sec = {s: {k: None for k in keys} for s, keys in _R.SECTIONS.items()}
+    sec['counts'] = dict(sec['counts'], trades=len(outputs))
+    return {'long': {row: sec for row in C.STRESS}}
+
+
+def summarize2(outputs):
+    return summarize(outputs[:1])
+
+
+def run2(v):
+    return [True, 0.0]
+"""
+
+
 def evaluator(dirpath, src, name='ev.py'):
     os.makedirs(str(dirpath), exist_ok=True)
     f = os.path.join(str(dirpath), name)
@@ -213,7 +233,7 @@ def test_evaluator_runs_sandboxed_and_a_nondeterministic_control_is_caught(world
         b = w.view(t).bars('AAAUSDT', '4h', 15)
         direct.append([b[-1].close > sum(x.close for x in b) / 15, round(C.slip_bps(b, 0.05), 9)])
     assert list(out) == direct and out.attestation['perturbed'] is True
-    assert out.attestation['isolation'] == P.ISOLATION_ID and out.attestation['n_decisions'] == len(times)
+    assert out.attestation['isolation'] == P.ISOLATION_ID and out.attestation['schedule'] == R.schedule_of(times)
     rec = L._check_state(path)['fam_x'][-1]
     assert rec['detail']['evaluation_attestation'] == out.attestation_digest
     counter = evaluator(tmp_path / 'ev', 'N = [0]\n\n\ndef run(v):\n    N[0] += 1\n    return N[0]\n', 'cnt.py')
@@ -228,11 +248,11 @@ def test_evaluator_runs_sandboxed_and_a_nondeterministic_control_is_caught(world
     ("import pit\n\n\ndef run(v):\n    return pit._src(v._cap)._ds.files('klines', 'AAAUSDT', '4h')[-1]"
      "['last_open_ms']\n", "no attribute '_cap'"),
     # a fresh Dataset built from the manifest/store on disk
-    ("import gzip\n\n\ndef run(v):\n    return len(open({manifest!r}, 'rb').read())\n", 'sandbox refused open'),
+    ("import gzip\n\n\ndef run(v):\n    return len(open({manifest!r}, 'rb').read())\n", 'sandbox refused'),
     # direct read of an archive file of the store
-    ("def run(v):\n    return len(open({zip!r}, 'rb').read())\n", 'sandbox refused open'),
-    ("import os\n\n\ndef run(v):\n    return os.listdir({store!r})\n", 'sandbox refused listing'),
-    ("def run(v):\n    return open({evidence!r}).read()\n", 'sandbox refused open'),
+    ("def run(v):\n    return len(open({zip!r}, 'rb').read())\n", 'sandbox refused'),
+    ("import os\n\n\ndef run(v):\n    return os.listdir({store!r})\n", 'sandbox refused'),
+    ("def run(v):\n    return open({evidence!r}).read()\n", 'sandbox refused'),
     ("import subprocess\n\n\ndef run(v):\n    return subprocess.run(['git', 'log']).returncode\n",
      'sandbox refused'),
     ("def run(v):\n    open('out.txt', 'w').write('x')\n    return 1\n", 'sandbox refused write'),
@@ -261,24 +281,24 @@ ATTACKS = {
                             "os.path.abspath(__file__)))\n\n\ndef run(v):\n    spec = importlib.util."
                             "spec_from_file_location('ign', os.path.join(ROOT, 'dev_out', 'ignored.py'))\n"
                             "    m = importlib.util.module_from_spec(spec)\n    spec.loader.exec_module(m)\n"
-                            "    return m.V\n", 'sandbox refused open'),
+                            "    return m.V\n", 'sandbox refused'),
     # Codex 6088593971 P1: an unpinned installed (site-packages) distribution
     'site-package-import': ("def run(v):\n    import pytest\n    return pytest.__version__\n",
                             "No module named 'pytest'"),
-    'site-package-file': ("def run(v):\n    return len(open({site!r}, 'rb').read())\n", 'sandbox refused open'),
+    'site-package-file': ("def run(v):\n    return len(open({site!r}, 'rb').read())\n", 'sandbox refused'),
     # self-attack: dynamic imports of a repo module outside the static closure
-    'dunder-import': ("def run(v):\n    return __import__('other').X\n", 'sandbox refused open'),
+    'dunder-import': ("def run(v):\n    return __import__('other').X\n", "No module named 'other'"),
     'importlib-import-module': ("import importlib\n\n\ndef run(v):\n    return importlib.import_module('other').X\n",
-                                'sandbox refused open'),
+                                "No module named 'other'"),
     'runpy': ("import os\nimport runpy\n\n\ndef run(v):\n    return runpy.run_path(os.path.join(os.path.dirname("
-              "__file__), 'other.py'))['X']\n", 'sandbox refused open'),
+              "__file__), 'other.py'))['X']\n", 'sandbox refused'),
     'exec-of-repo-source': ("import os\n\n\ndef run(v):\n    g = {{}}\n    exec(open(os.path.join(os.path.dirname("
-                            "__file__), 'other.py')).read(), g)\n    return g['X']\n", 'sandbox refused open'),
+                            "__file__), 'other.py')).read(), g)\n    return g['X']\n", 'sandbox refused'),
     'data-file-as-code': ("import os\n\n\ndef run(v):\n    g = {{}}\n    exec(open(os.path.join(os.path.dirname("
-                          "__file__), 'payload.txt')).read(), g)\n    return g['X']\n", 'sandbox refused open'),
+                          "__file__), 'payload.txt')).read(), g)\n    return g['X']\n", 'sandbox refused'),
     'repo-pyc': ("import marshal\nimport os\n\n\ndef run(v):\n    p = os.path.join(os.path.dirname(__file__), "
                  "'__pycache__', 'other.cpython-x.pyc')\n    return len(open(p, 'rb').read())\n",
-                 'sandbox refused open'),
+                 'sandbox refused'),
 }
 
 
@@ -305,6 +325,69 @@ def test_sandbox_refuses_code_outside_the_hashed_closure(world, tmp_path, repo, 
     w = access(ds, path, repo=repo).open('train', lineage='root')
     with pytest.raises(P.PITError, match=msg):
         P.evaluate(w, f, 'run', train_times(1))
+
+
+OBSERVE = """
+import locale
+import os
+import sys
+import time
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+ROOT = os.path.dirname(HERE)
+
+
+def run(v):
+    return [os.path.exists(os.path.join(ROOT, 'dev_out', 'marker')), os.path.exists(os.path.join(ROOT, '.git')),
+            os.path.exists(os.path.join(ROOT, '.gitignore')), sorted(os.listdir(HERE)), sorted(os.listdir(ROOT)),
+            os.listdir('.'), int(os.stat(__file__).st_mtime), sorted(os.environ), sys.flags.hash_randomization,
+            time.timezone, locale.getencoding(), hash('zb') == {seed0!r}]
+
+
+def probe(v):
+    return os.stat({host!r}).st_size
+
+
+def probe_exists(v):
+    return os.path.exists({host!r})
+"""
+
+
+def test_evaluator_cannot_observe_ignored_repo_state_or_unbound_environment(world, tmp_path, repo):
+    """Codex 6089091570 P1: an ignored filename / existence probe cannot change the output; the evaluator sees only
+    the materialized hashed tree, a fixed environment, and the observed environment is bound in the attestation."""
+    ds = ds_of(world)
+    path, _ = dirs(tmp_path)
+    with open(os.path.join(repo, '.gitignore'), 'w') as f:
+        f.write('dev_out/\n')
+    os.makedirs(os.path.join(repo, 'dev_out'))
+    marker = os.path.join(repo, 'dev_out', 'marker')
+    with open(marker, 'w') as f:
+        f.write('1')
+    seed0 = subprocess.run([sys.executable, '-c', "print(hash('zb'))"], capture_output=True, text=True,
+                           env={**{k: os.environ[k] for k in ('SYSTEMROOT', 'WINDIR') if k in os.environ},
+                                'PYTHONHASHSEED': '0'}, stdin=subprocess.DEVNULL).stdout.strip()
+    f = evaluator(os.path.join(repo, 'strategy'), OBSERVE.format(host=marker, seed0=int(seed0)), 'obs.py')
+    git(repo, 'add', '-A')
+    git(repo, 'commit', '-q', '-m', 'observer')
+    assert R.code_identity(repo)['dirty'] is False and os.path.exists(marker)  # Git is clean, the marker exists
+    w = access(ds, path, repo=repo).open('train', lineage='root')
+    out = P.evaluate(w, f, 'run', train_times(1))
+    (got,) = list(out)
+    assert got[:3] == [False, False, False]                   # ignored marker, .git, .gitignore: not in the tree
+    assert got[3] == ['obs.py'] and got[4] == ['strategy'] and got[5] == []    # only the hashed closure exists
+    assert got[6] == P.TREE_MTIME                             # mtimes fixed, not the checkout's
+    assert got[7] == sorted(set(P.SANDBOX_ENV) | {k for k in P.SANDBOX_ENV_KEYS if k in os.environ})
+    env = out.attestation['sandbox_env']
+    assert got[8:10] == [0, 0] and got[11] is True             # fixed hash seed and TZ
+    assert got[10] == env['locale_encoding'] and env['utf8_mode'] == 1   # host code page: bound, not fixed
+    assert env['hash_randomization'] == 0 and env['timezone'] == 0 and env['cwd_entries'] == []
+    assert env['tree_mtime'] == P.TREE_MTIME and env['env'] == P.SANDBOX_ENV
+    os.remove(marker)                                          # host state changes: the output does not
+    assert list(P.evaluate(w, f, 'run', train_times(1))) == [got]
+    for fn in ('probe', 'probe_exists'):                       # absolute host probes fail closed
+        with pytest.raises(P.PITError, match='sandbox refused path probe'):
+            P.evaluate(w, f, fn, train_times(1))
 
 
 def test_sandbox_has_no_site_pth_or_entry_points_and_hashes_its_closure(world, tmp_path, repo):
@@ -334,7 +417,7 @@ def test_sandbox_has_no_site_pth_or_entry_points_and_hashes_its_closure(world, t
     git(repo, 'add', '-A')
     git(repo, 'commit', '-q', '-m', 'static import of an ignored helper')
     with pytest.raises(R.ReportError, match='tracked'):
-        R.freeze_run(repo=repo, eval_files=['strategy/stat.py'], config={}, seeds=[], **ident(ds, plan()))
+        R.freeze_run(repo=repo, entrypoint=ep('strategy/stat.py'), schedule=SCHED, eval_files=['strategy/stat.py'], config={}, seeds=[], **ident(ds, plan()))
     att = P.evaluate(w, os.path.join(strat, 'stat.py'), 'run', train_times(1)).attestation
     assert 'dev_out/ignored.py' in {c['path'] for c in att['code']}            # hashed, so a report would refuse it
 
@@ -496,6 +579,13 @@ def test_split_plan_refusals(splits, kw, msg):
         S.SplitPlan(splits, **args)
 
 
+SCHED = [0]
+
+
+def ep(path, function='run', summary='summarize'):
+    return {'path': path, 'function': function, 'summary': summary}
+
+
 def ident(ds, pl, *, family='fam_x', window=None, candidate_id='c.v1'):
     return {'family': family, 'candidate_id': candidate_id, 'split': 'holdout', 'window': window or pl.window('holdout'),
             'books': list(ds.books), 'manifest_digest': ds.digest, 'universe_digest': ds.universe_digest,
@@ -504,7 +594,7 @@ def ident(ds, pl, *, family='fam_x', window=None, candidate_id='c.v1'):
 
 
 def make_env(ds, pl, repo, *, config=None, **kw):
-    return R.freeze_run(repo=repo, eval_files=['strategy/cand.py'], config=config or {'k': 1}, seeds=[1, 2],
+    return R.freeze_run(repo=repo, entrypoint=ep('strategy/cand.py'), schedule=SCHED, eval_files=['strategy/cand.py'], config=config or {'k': 1}, seeds=[1, 2],
                         **ident(ds, pl, **kw))
 
 
@@ -578,7 +668,7 @@ def test_code_identity_is_captured_not_self_attested(world, tmp_path, repo):
     assert any('HEAD moved' in x for x in R.verify_code(R.envelope(fake), repo))
     fake = dict(run, eval=dict(run['eval'], files=[dict(f, sha256='0' * 64) if f['path'] == 'strategy/cand.py' else f
                                                    for f in run['eval']['files']]))
-    fake['eval_digest'] = R.eval_digest(fake['eval']['files'], fake['eval']['config'], fake['seeds'])
+    fake['eval_digest'] = R.eval_digest(fake['eval'], fake['seeds'])
     assert any('evaluation files changed' in x for x in R.verify_code(R.envelope(fake), repo))
     assert R.verify_code(R.envelope(dict(run, code=dict(run['code'], libs={'numpy': '9'}))), repo) == [
         'dependency set differs from the canonical frozen set']
@@ -586,7 +676,7 @@ def test_code_identity_is_captured_not_self_attested(world, tmp_path, repo):
     with pytest.raises(R.ReportError, match='CORE_EVAL_FILES'):
         R.envelope(dict(run, eval=dict(run['eval'], files=no_core)))
     with pytest.raises(R.ReportError, match='tracked'):
-        R.freeze_run(repo=repo, eval_files=['strategy/untracked.py'], config={}, seeds=[], **ident(ds, pl))
+        R.freeze_run(repo=repo, entrypoint=ep('strategy/untracked.py'), schedule=SCHED, eval_files=['strategy/untracked.py'], config={}, seeds=[], **ident(ds, pl))
     # the executing checkout changes after freezing
     cand = os.path.join(repo, 'strategy', 'cand.py')
     with open(cand, 'a') as f:
@@ -731,10 +821,10 @@ def test_executable_evidence_and_imported_helpers_are_code(world, tmp_path, repo
     git(repo, 'add', '-A')
     git(repo, 'commit', '-q', '-m', 'helpers')
     with pytest.raises(R.ReportError, match='may not live in or import from research_evidence'):
-        R.freeze_run(repo=repo, eval_files=['strategy/uses_ev.py'], config={}, seeds=[], **ident(ds, pl))
+        R.freeze_run(repo=repo, entrypoint=ep('strategy/uses_ev.py'), schedule=SCHED, eval_files=['strategy/uses_ev.py'], config={}, seeds=[], **ident(ds, pl))
     with pytest.raises(R.ReportError, match='may not live in or import from research_evidence'):
-        R.freeze_run(repo=repo, eval_files=['research_evidence/helper.py'], config={}, seeds=[], **ident(ds, pl))
-    env = R.freeze_run(repo=repo, eval_files=['strategy/cand2.py'], config={}, seeds=[], **ident(ds, pl))
+        R.freeze_run(repo=repo, entrypoint=ep('research_evidence/helper.py'), schedule=SCHED, eval_files=['research_evidence/helper.py'], config={}, seeds=[], **ident(ds, pl))
+    env = R.freeze_run(repo=repo, entrypoint=ep('strategy/cand2.py'), schedule=SCHED, eval_files=['strategy/cand2.py'], config={}, seeds=[], **ident(ds, pl))
     assert 'strategy/util.py' in {f['path'] for f in env['run']['eval']['files']}     # closure hashed automatically
     assert R.verify_code(env, repo) == []
     with open(os.path.join(ev, 'helper.py'), 'w', newline='\n') as f:
@@ -1014,12 +1104,15 @@ def test_envelope_write_once_and_report_needs_the_runner_attestation(world, tmp_
     """Codex 6079042573 P1: only `pit.evaluate` (sandboxed, perturbed, ledger-recorded) can produce a report."""
     ds = ds_of(world)
     pl = plan()
-    evaluator(os.path.join(repo, 'strategy'), HONEST)
+    evaluator(os.path.join(repo, 'strategy'), HONEST + REPORTING)
     git(repo, 'add', '-A')
     git(repo, 'commit', '-q', '-m', 'evaluator')
-    env = R.freeze_run(repo=repo, eval_files=['strategy/cand.py', 'strategy/ev.py'], config={'k': 1}, seeds=[1, 2],
+    times = train_times(4)
+    env = R.freeze_run(repo=repo, entrypoint=ep('strategy/ev.py'), schedule=times,
+                       eval_files=['strategy/cand.py', 'strategy/ev.py'], config={'k': 1}, seeds=[1, 2],
                        **dict(ident(ds, pl), split='train', window=pl.window('train')))
     assert env['run_digest'] == R.run_digest(env['run']) and env['format'] == 'zb-research-run/2'
+    assert env['run']['eval']['entrypoint'] == ep('strategy/ev.py') and env['run']['eval']['schedule']['n'] == 4
     R.write_envelope(str(tmp_path), env)
     R.write_envelope(str(tmp_path), env)                                         # identical: no-op
     assert R.load_envelope(str(tmp_path), env['run_digest']) == env
@@ -1027,34 +1120,54 @@ def test_envelope_write_once_and_report_needs_the_runner_attestation(world, tmp_
         R.write_envelope(str(tmp_path), dict(env, run_digest='0' * 64))
     path, _ = dirs(tmp_path)
     w = access(ds, path, pl, repo=repo).open('train', envelope=env, lineage='root')
-    ev, times = os.path.join(repo, 'strategy', 'ev.py'), train_times(4)
-    out = P.evaluate(w, ev, 'run', times)
-    sec = {s: {k: None for k in keys} for s, keys in R.SECTIONS.items()}
-    full = {'long': {row: sec for row in C.STRESS}}
+    ev = os.path.join(repo, 'strategy', 'ev.py')
+    out = P.evaluate(w, ev, 'run', times, summary='summarize')
+    full = out.results
+    assert full['long']['base']['counts']['trades'] == 4
     rep = R.make_report(env, full, out.attestation, path)
-    assert rep['report_digest'] and rep['run_digest'] == env['run_digest']
-    assert rep['attestation_digest'] == out.attestation_digest and rep['attestation']['evaluator']['path'] == \
-        'strategy/ev.py'
+    assert rep['report_digest'] and rep['run_digest'] == env['run_digest'] and rep['results'] == full
+    assert rep['attestation_digest'] == out.attestation_digest and rep['attestation']['evaluator']['path'] ==         'strategy/ev.py'
+    sec = {s: {k: None for k in keys} for s, keys in R.SECTIONS.items()}
     with pytest.raises(R.ReportError, match='every stress row'):
         R.make_report(env, {'long': {'base': sec}}, out.attestation, path)
     with pytest.raises(R.ReportError, match='keys must be exactly'):
         R.make_report(env, {'short': {row: dict(sec, ci={}) for row in C.STRESS}}, out.attestation, path)
+    # Codex 6089002043 P1: an unrelated payload, a second function of the same file, an altered / subset schedule
+    with pytest.raises(R.ReportError, match='not the payload the frozen summary produced'):
+        R.make_report(env, {'long': {row: sec for row in C.STRESS}}, out.attestation, path)
+    other_fn = P.evaluate(w, ev, 'run2', times, summary='summarize')
+    with pytest.raises(R.ReportError, match='entrypoint'):
+        R.make_report(env, other_fn.results, other_fn.attestation, path)
+    other_sum = P.evaluate(w, ev, 'run', times, summary='summarize2')
+    with pytest.raises(R.ReportError, match='entrypoint'):
+        R.make_report(env, other_sum.results, other_sum.attestation, path)
+    subset = P.evaluate(w, ev, 'run', times[:2], summary='summarize')
+    with pytest.raises(R.ReportError, match='schedule'):
+        R.make_report(env, subset.results, subset.attestation, path)
+    shifted = P.evaluate(w, ev, 'run', [t + H4 for t in times], summary='summarize')
+    with pytest.raises(R.ReportError, match='schedule'):
+        R.make_report(env, shifted.results, shifted.attestation, path)
+    with pytest.raises(P.PITError, match='strictly increasing'):
+        P.evaluate(w, ev, 'run', times[::-1], summary='summarize')
     # bypass-runner negative controls
     with pytest.raises(TypeError):
         R.make_report(env, full)                                                 # no attestation at all
     with pytest.raises(R.ReportError, match='not a runner attestation'):
         R.make_report(env, full, {'outputs': [w.view(t).bars('AAAUSDT', '4h', 1) for t in times]}, path)
-    nop = P.evaluate(w, ev, 'run', times, perturb=False)
+    nop = P.evaluate(w, ev, 'run', times, summary='summarize', perturb=False)
     with pytest.raises(R.ReportError, match='future-perturbation'):
         R.make_report(env, full, nop.attestation, path)
     with pytest.raises(R.ReportError, match='no matching evaluation record'):
         R.make_report(env, full, dict(out.attestation, outputs_digest='0' * 64), path)
-    stray = P.evaluate(w, evaluator(tmp_path / 'stray', HONEST), 'run', times)
+    no_sum = P.evaluate(w, ev, 'run', times)
+    with pytest.raises(R.ReportError, match='entrypoint'):
+        R.make_report(env, full, no_sum.attestation, path)
+    stray = P.evaluate(w, evaluator(tmp_path / 'stray', HONEST + REPORTING), 'run', times, summary='summarize')
     with pytest.raises(R.ReportError, match='hashed evaluation files'):
         R.make_report(env, full, stray.attestation, path)
     dev = access(ds, path, pl, repo=repo).open('walk_forward[0]')
     with pytest.raises(R.ReportError, match='another run'):
-        R.make_report(env, full, P.evaluate(dev, ev, 'run', [dev.hi]).attestation, path)
+        R.make_report(env, full, P.evaluate(dev, ev, 'run', [dev.hi], summary='summarize').attestation, path)
     dirty = dict(env['run'], code=dict(env['run']['code'], dirty=True))
     assert R.sealable(R.envelope(dirty)) == ['dirty working tree']
 
