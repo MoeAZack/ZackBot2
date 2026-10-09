@@ -262,6 +262,27 @@ MUTATIONS = {
     'P1-3 emergency close: allowed without the emergency flag': (D + 'modes.py', [(
         "        return (purpose, op) in EMERGENCY_SET or (emergency_close and (purpose, op) == (Purpose.CLOSE, Op.PLACE))",
         "        return (purpose, op) in EMERGENCY_SET or (purpose, op) == (Purpose.CLOSE, Op.PLACE)")]),
+    'r3 item 4: a resting target may open risk': (D + 'orders.py', [(
+        "            req(u in (Purpose.REDUCE, Purpose.CLOSE) and (self.owner_kind is OwnerKind.LOT or self.orphan),\n"
+        "                p + '.order_type', 'a resting reduce-only target is a lot REDUCE / CLOSE (or its orphan cancel)')",
+        '            pass')]),
+    'P1 on 02493b6: a resting target has no portfolio-owned orphan cancel form': (D + 'orders.py', [(
+        "            req(u in (Purpose.REDUCE, Purpose.CLOSE) and (self.owner_kind is OwnerKind.LOT or self.orphan),",
+        "            req(u in (Purpose.REDUCE, Purpose.CLOSE) and self.owner_kind is OwnerKind.LOT,")]),
+    'P1 on 4b4c3a6: replay may reactivate an orphan cancel': (D + 'orders.py', [(
+        "    return not intent.orphan or IntentState(to_state) in CANCEL_ONLY", "    return True")]),
+    'r3 item 4: a resting target on any exit reason': (D + 'orders.py', [(
+        "            req(self.reason in TARGET_REASONS, p + '.reason',", "            req(True, p + '.reason',")]),
+    'r3 item 4: a resting target needs no price': (D + 'orders.py', [(
+        '        if t in LIMIT_TYPES:', '        if t is OrderType.LIMIT_POST_ONLY:')]),
+    'r3 item 4: the venue grid ignores the reduce-only capability': (D + 'instrument.py', [(
+        "            req(self.supports(Capability.REDUCE_ONLY), p + '.order_type',",
+        "            req(True, p + '.order_type',")]),
+    'r3b ruling 5: a resting target may fill worse than its limit': (D + 'orders.py', [(
+        "        req(better, p + '.avg_price',", "        req(True, p + '.avg_price',")]),
+    'r3b ruling 5: the limit side is ignored (short target checked as long)': (D + 'orders.py', [(
+        "        better = (result.avg_price >= intent.price) if intent.side is Side.LONG else (result.avg_price <= intent.price)",
+        "        better = result.avg_price >= intent.price")]),
     'duplicate JSON keys': (D + 'codec.py', [("            if k in out:\n                problems.append(",
                                               "            if False:\n                problems.append(")]),
     'truncated JSON': (D + 'codec.py', [(

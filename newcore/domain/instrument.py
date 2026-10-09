@@ -130,6 +130,8 @@ class InstrumentRules(Record):
         self.check_qty(intent.qty, p + '.qty', reduce_only=intent.reduce_only)
         if intent.order_type is OrderType.LIMIT_POST_ONLY:
             req(self.supports(Capability.POST_ONLY), p + '.order_type', 'post-only is not supported')
+        if intent.order_type is OrderType.LIMIT_REDUCE_ONLY:          # r3 DRAFT item 4: a resting target
+            req(self.supports(Capability.REDUCE_ONLY), p + '.order_type', 'a resting reduce-only limit is not supported')
         if intent.stop_price is not None:
             req(self.supports(Capability.STOP_MARKET), p + '.order_type', 'stop-market is not supported')
         if intent.price is not None:
