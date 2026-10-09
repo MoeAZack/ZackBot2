@@ -50,7 +50,18 @@ class ManifestError(ValueError):
 
 
 def canonical(obj) -> bytes:
-    return json.dumps(obj, sort_keys=True, separators=(',', ':'), ensure_ascii=True).encode('ascii')
+    return json.dumps(obj, sort_keys=True, separators=(',', ':'), ensure_ascii=True, allow_nan=False).encode('ascii')
+
+
+def _is_int(x) -> bool:
+    return type(x) is int                                   # bool is not an int here
+
+
+def _strict_date(s) -> bool:
+    try:
+        return isinstance(s, str) and len(s) == 10 and datetime.strptime(s, '%Y-%m-%d').strftime('%Y-%m-%d') == s
+    except ValueError:
+        return False
 
 
 def digest_of(manifest: dict) -> str:
@@ -89,7 +100,12 @@ def scan_file(abs_path: str, rel_path: str) -> dict:
     lines = raw.decode('utf-8').splitlines()
     if not lines or lines[0].strip() != HEADER:
         raise ManifestError(f'{rel_path}: header is not {HEADER!r}')
-    opens = [parse_open_ms(ln.split(',', 1)[0]) for ln in lines[1:] if ln.strip()]
+    try:
+        opens = [parse_open_ms(ln.split(',', 1)[0]) for ln in lines[1:] if ln.strip()]
+    except ValueError as e:
+        raise ManifestError(f'{rel_path}: bad open time ({e})')
+    if any(b <= a for a, b in zip(opens, opens[1:])):
+        raise ManifestError(f'{rel_path}: bars must be strictly increasing by open time (unordered or duplicate bar)')
     return {'path': rel_path.replace(os.sep, '/'), 'symbol': m.group(1), 'interval': m.group(2),
             'sha256': hashlib.sha256(raw).hexdigest(), 'bytes': len(raw), 'rows': len(opens),
             'first_open_ms': min(opens) if opens else None, 'last_open_ms': max(opens) if opens else None,
@@ -129,6 +145,10 @@ def validate(m: dict) -> None:
     need(m['source_class'] in SOURCE_CLASSES, f'source_class must be one of {SOURCE_CLASSES}')
     need(isinstance(m['survivor_only'], bool), 'survivor_only must be a bool')
     need(m['available_rule'] == AVAILABLE_RULE, f'available_rule must be {AVAILABLE_RULE!r}')
+    need(m['loader_version'] == LOADER_VERSION, f'loader_version must be {LOADER_VERSION!r}')
+    need(isinstance(m['note'], str), 'note must be a string')
+    need(m['accessed_cairo'] is None or (isinstance(m['accessed_cairo'], str) and _strict_date(m['accessed_cairo'][:10])),
+         'accessed_cairo must be null or a string starting with a valid YYYY-MM-DD Cairo date')
     need(isinstance(m['data_root'], str) and DATA_ROOT_RE.match(m['data_root']),
          f'data_root must be a logical store name matching {DATA_ROOT_RE.pattern} (never an absolute path)')
     need(isinstance(m['files'], list) and m['files'], 'files must be a non-empty list')
@@ -141,11 +161,19 @@ def validate(m: dict) -> None:
         mm = NAME_RE.match(os.path.basename(p))
         need(mm and mm.group(1) == f['symbol'] and mm.group(2) == f['interval'], f'{p}: symbol/interval disagree with name')
         need(isinstance(f['sha256'], str) and HEX64.match(f['sha256']), f'{p}: sha256 must be 64 lowercase hex')
-        need(isinstance(f['rows'], int) and f['rows'] >= 0 and isinstance(f['bytes'], int) and f['bytes'] >= 0,
+        need(_is_int(f['rows']) and f['rows'] >= 0 and _is_int(f['bytes']) and f['bytes'] >= 0,
              f'{p}: rows/bytes must be non-negative ints')
         if f['rows']:
-            need(isinstance(f['first_open_ms'], int) and isinstance(f['last_open_ms'], int)
+            need(_is_int(f['first_open_ms']) and _is_int(f['last_open_ms'])
                  and f['first_open_ms'] <= f['last_open_ms'], f'{p}: first_open_ms <= last_open_ms required')
+        else:
+            need(f['first_open_ms'] is None and f['last_open_ms'] is None, f'{p}: no rows means null open times')
+        s = f['source']
+        need(isinstance(s, dict) and set(s) == {'kind', 'url', 'archive_checksum'} and isinstance(s['kind'], str)
+             and s['kind'] and (s['url'] is None or isinstance(s['url'], str))
+             and (s['archive_checksum'] is None or (isinstance(s['archive_checksum'], str)
+                                                    and HEX64.match(s['archive_checksum']))),
+             f'{p}: source must be {{kind, url, archive_checksum}} (kind string, url null|string, checksum null|64 hex)')
     need(m['digest'] == digest_of(m), 'digest does not match the canonical content')
 
 
@@ -181,7 +209,10 @@ def write(m: dict, path: str) -> None:
 
 def load(path: str) -> dict:
     with open(path, encoding='utf-8') as f:
-        m = json.load(f)
+        try:
+            m = json.load(f, parse_constant=lambda c: (_ for _ in ()).throw(ValueError(c)))
+        except ValueError as e:
+            raise ManifestError(f'{path}: not strict JSON (NaN / Infinity refused): {e}')
     validate(m)
     return m
 

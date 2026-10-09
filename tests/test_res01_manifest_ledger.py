@@ -177,6 +177,8 @@ def test_committed_legacy_manifest_matches_disk_and_data_manifest():
 # ---------------------------------------------------------------- ledger
 
 def rec(path, **kw):
+    if not os.path.exists(str(path)):                       # a new family is declared as an independent root
+        kw.setdefault('lineage', 'root')
     base = dict(kind='data_access', candidate_id='c.v1', split='train', window=W, author='t', cairo_date='2026-10-09')
     base.update(kw)
     return L.append(str(path), **base)
@@ -187,7 +189,7 @@ def test_ledger_append_chain_and_trials(tmp_path):
     rec(p)
     rec(p, kind='variant')
     rec(p, kind='grid_point', detail={'ema': 21})
-    recs = L.check_records(p.read_bytes(), 'fam_a')
+    recs = L._parse_family(p.read_bytes(), 'fam_a')
     assert [r['seq'] for r in recs] == [1, 2, 3] and recs[0]['prev'] == L.GENESIS
     assert recs[1]['prev'] == hashlib.sha256(p.read_bytes().splitlines(keepends=True)[0]).hexdigest()
     assert L.n_trials(recs) == 2
@@ -213,13 +215,7 @@ def test_ledger_rejects_edits(tmp_path, edit):
     elif edit == 'wrong_family':
         fam = 'fam_b'
     with pytest.raises(L.LedgerError):
-        L.check_records(data, fam)
-
-
-def test_ledger_check_append():
-    L.check_append(b'a\n', b'a\nb\n')
-    with pytest.raises(L.LedgerError):
-        L.check_append(b'a\nb\n', b'a\n')
+        L._parse_family(data, fam)
 
 
 def hold(path, kind, **kw):
@@ -252,7 +248,8 @@ def test_holdout_rerun_must_repeat_every_identity_field(tmp_path, field):
     hold(p, 'holdout_reveal')
     before = p.read_bytes()
     if field == 'family':                       # the reveal's bytes copied under another family name
-        other = tmp_path / 'fam_other.jsonl'
+        (tmp_path / 'copy').mkdir()
+        other = tmp_path / 'copy' / 'fam_other.jsonl'
         other.write_bytes(before)
         with pytest.raises(L.LedgerError, match='family'):
             hold(other, 'holdout_rerun')
@@ -305,19 +302,257 @@ def test_check_git_ancestry(tmp_path):
     _git(repo, 'commit', '-qm', '1')
     rec(p, kind='variant')
     _git(repo, 'commit', '-qam', '2')
-    assert L.check_git(str(repo), 'fam_g.jsonl') == 2
+    g = hashlib.sha256((repo / L.REGISTRY).read_bytes().splitlines(keepends=True)[0]).hexdigest()
+    assert len(L.verify(str(p), registry_genesis=g)['fam_g']) == 2
     lines = p.read_bytes().splitlines(keepends=True)
     p.write_bytes(lines[0])                                    # rewrite history: drop the last record
     _git(repo, 'commit', '-qam', '3')
     with pytest.raises(L.LedgerError, match='rewritten'):
-        L.check_git(str(repo), 'fam_g.jsonl')
+        L.verify(str(p), registry_genesis=g)
+
+
+def _base():
+    """CI names the PR base (ZB_GOLDEN_BASE, fetched explicitly); locally origin/master."""
+    return os.environ.get('ZB_LEDGER_BASE') or os.environ.get('ZB_GOLDEN_BASE') or 'origin/master'
 
 
 def test_committed_family_ledgers_mark_legacy_window_spent():
     d = os.path.join(RES, 'ledger')
-    fams = sorted(f[:-6] for f in os.listdir(d) if f.endswith('.jsonl'))
-    assert fams == ['range_bb_mr', 'short_breakdown', 'trend_ema_mom']
-    for fam in fams:
-        recs = L.check_records(open(os.path.join(d, fam + '.jsonl'), 'rb').read(), fam)
+    out = L.verify(d, base=_base())                            # records + registry + Git history + base anchor
+    assert sorted(out) == ['range_bb_mr', 'short_breakdown', 'trend_ema_mom']
+    for fam, recs in out.items():
         spent = [r['window'] for r in recs if r['kind'] == 'window_spent']
         assert any(w['start'] <= '2025-01-01T00:00:00Z' and w['end'] >= '2026-10-04T00:00:00Z' for w in spent), fam
+    assert L.main(['check', d, '--base', _base()]) == 0
+
+
+# ---------------------------------------------------------------- R1 hardening (Cowork 6072246284)
+
+def _fam(path, kind='data_access', lineage='root', **kw):
+    """Append to a family file, declaring the family (root or a named parent) when the file is new."""
+    if not os.path.exists(str(path)) or not os.path.getsize(str(path)):
+        kw['lineage'] = lineage
+    return rec(path, kind=kind, **kw)
+
+
+def test_holdout_reruns_are_capped(tmp_path):
+    p = tmp_path / 'fam_c.jsonl'
+    hold(p, 'holdout_reveal', lineage='root')
+    with pytest.raises(L.LedgerError, match='rerun cap'):
+        for _ in range(5):
+            hold(p, 'holdout_rerun')
+    assert sum(r['kind'] == 'holdout_rerun' for r in L._parse_family(p.read_bytes(), 'fam_c')) == L.MAX_RERUNS
+
+
+@pytest.mark.parametrize('declared,ok', [(0, 0), (1, 1), (True, None), (99, None), ('1', None)])
+def test_reveal_may_declare_a_lower_rerun_cap(tmp_path, declared, ok):
+    p = tmp_path / 'fam_d.jsonl'
+    d = {'eval_digest': ED, 'max_reruns': declared}
+    if ok is None:
+        with pytest.raises(L.LedgerError, match='max_reruns'):
+            hold(p, 'holdout_reveal', detail=d, lineage='root')
+        return
+    hold(p, 'holdout_reveal', detail=d, lineage='root')
+    for _ in range(ok):
+        hold(p, 'holdout_rerun', detail=d)
+    with pytest.raises(L.LedgerError, match='rerun cap'):
+        hold(p, 'holdout_rerun', detail=d)
+
+
+def test_descendant_or_renamed_family_cannot_reveal_a_spent_window(tmp_path):
+    hold(tmp_path / 'fam_a.jsonl', 'holdout_reveal', lineage='root')
+    for name, lineage in (('fam_a_v2', 'fam_a'), ('fam_a_v3', 'fam_a_v2')):     # child and grandchild
+        with pytest.raises(L.LedgerError, match='spent'):
+            hold(tmp_path / f'{name}.jsonl', 'holdout_reveal', run_digest='d' * 64, lineage=lineage)
+        _fam(tmp_path / f'{name}.jsonl', lineage=lineage)                       # declared, may work off-holdout
+    # an undeclared copy (a hand-made renamed file) is refused outright
+    (tmp_path / 'fam_b.jsonl').write_bytes((tmp_path / 'fam_a.jsonl').read_bytes().replace(b'fam_a', b'fam_b'))
+    with pytest.raises(L.LedgerError, match='not declared'):
+        L._check_state(str(tmp_path))
+    os.remove(tmp_path / 'fam_b.jsonl')
+    # deleting a declared family file (rename = delete + new file) is refused: its spends live on in the registry
+    data = (tmp_path / 'fam_a.jsonl').read_bytes()
+    os.remove(tmp_path / 'fam_a.jsonl')
+    with pytest.raises(L.LedgerError, match='missing'):
+        L._check_state(str(tmp_path))
+    (tmp_path / 'fam_a.jsonl').write_bytes(data)
+    L._check_state(str(tmp_path))
+    # an explicitly independent root family is a separate hypothesis and keeps its own spend
+    hold(tmp_path / 'other.jsonl', 'holdout_reveal', run_digest='d' * 64, lineage='root')
+
+
+def test_registry_spend_copy_must_match_family(tmp_path):
+    hold(tmp_path / 'fam_a.jsonl', 'holdout_reveal', lineage='root')
+    reg = tmp_path / L.REGISTRY
+    reg.write_bytes(reg.read_bytes().splitlines(keepends=True)[0])   # spend copy dropped
+    with pytest.raises(L.LedgerError, match='spend'):
+        L._check_state(str(tmp_path))
+
+
+def test_new_family_needs_explicit_lineage(tmp_path):
+    with pytest.raises(L.LedgerError, match='lineage'):
+        L.append(str(tmp_path / 'fam_n.jsonl'), kind='data_access', candidate_id='c', split='train', window=W,
+                 author='t', cairo_date='2026-10-09')
+    with pytest.raises(L.LedgerError, match='lineage'):
+        _fam(tmp_path / 'fam_n.jsonl', lineage='nobody')               # parent must be declared
+    assert not (tmp_path / 'fam_n.jsonl').exists() and not (tmp_path / L.REGISTRY).exists()
+
+
+@pytest.mark.parametrize('kind', ['data_access', 'variant', 'grid_point', 'baseline'])
+def test_holdout_split_records_only_inside_the_atomic_reveal(tmp_path, kind):
+    p = tmp_path / 'fam_h.jsonl'
+    with pytest.raises(L.LedgerError, match='atomic'):
+        _fam(p, kind=kind, split='holdout', run_digest=RD, manifest_digest=MD, detail={'eval_digest': ED})
+    hold(p, 'holdout_reveal', lineage='root')
+    hold(p, kind, candidate_id='baseline.flat')                      # part of the reveal: same identity, contiguous
+    with pytest.raises(L.LedgerError, match='atomic'):
+        hold(p, kind, window={'start': '2025-01-01T00:00:00Z', 'end': '2025-06-01T00:00:00Z'})
+    rec(p, kind='data_access', split='train', window={'start': '2024-01-01T00:00:00Z', 'end': '2024-06-01T00:00:00Z'})
+    with pytest.raises(L.LedgerError, match='atomic'):                # the reveal is closed now
+        hold(p, kind)
+
+
+@pytest.mark.parametrize('kind', ['variant', 'grid_point'])
+def test_no_tuning_on_a_revealed_window(tmp_path, kind):
+    p = tmp_path / 'fam_t.jsonl'
+    hold(p, 'holdout_reveal', lineage='root')
+    rec(p, kind='data_access', split='train', window={'start': '2024-01-01T00:00:00Z', 'end': '2024-06-01T00:00:00Z'})
+    for split in ('train', 'walk_forward', 'development'):            # relabelling the split does not help
+        with pytest.raises(L.LedgerError, match='tuning'):
+            rec(p, kind=kind, split=split, window={'start': '2025-03-01T00:00:00Z', 'end': '2025-09-01T00:00:00Z'})
+    rec(p, kind=kind, split='train', window={'start': '2024-01-01T00:00:00Z', 'end': '2024-06-01T00:00:00Z'})
+
+
+def _repo(tmp_path):
+    repo = tmp_path / 'r'
+    (repo / 'led').mkdir(parents=True)
+    _git(repo, 'init', '-q', '-b', 'master')
+    return repo
+
+
+def _reg_genesis(repo):
+    return hashlib.sha256((repo / 'led' / L.REGISTRY).read_bytes().splitlines(keepends=True)[0]).hexdigest()
+
+
+def test_check_records_is_not_a_public_verification():
+    assert not hasattr(L, 'check_records')                           # bytes alone can never prove append-only
+
+
+def test_verify_always_checks_history(tmp_path):
+    repo = _repo(tmp_path)
+    p = repo / 'led' / 'fam_g.jsonl'
+    _fam(p)
+    _fam(p, kind='variant')
+    _git(repo, 'add', '.')
+    _git(repo, 'commit', '-qm', '1')
+    g = _reg_genesis(repo)
+    assert [r['seq'] for r in L.verify(str(p), registry_genesis=g)['fam_g']] == [1, 2]
+    good = p.read_bytes()
+    p.write_bytes(good.splitlines(keepends=True)[0])                 # truncated tail, still a valid chain
+    with pytest.raises(L.LedgerError, match='append'):
+        L.verify(str(p), registry_genesis=g)
+    assert L.main(['check', str(p)]) == 1
+    L.append(str(p), kind='baseline', candidate_id='c.v1', split='train', window=W, author='t', cairo_date='2026-10-09')
+    with pytest.raises(L.LedgerError, match='append'):                # a fully re-chained forgery of record 2
+        L.verify(str(p), registry_genesis=g)
+    p.write_bytes(good)
+    L.verify(str(p), registry_genesis=g)
+
+
+def test_verify_refuses_undeclared_genesis(tmp_path):
+    repo = _repo(tmp_path)
+    p = repo / 'led' / 'fam_g.jsonl'
+    _fam(p)
+    _git(repo, 'add', '.')
+    _git(repo, 'commit', '-qm', '1')
+    with pytest.raises(L.LedgerError, match='genesis'):              # the registry must match its pinned genesis
+        L.verify(str(p), registry_genesis='0' * 64)
+    # a branch off a base without the ledger that starts a fresh ledger
+    _git(repo, 'checkout', '-q', '--orphan', 'fresh')
+    _git(repo, 'rm', '-rqf', '.')
+    (repo / 'led').mkdir(exist_ok=True)
+    _fam(p, kind='baseline')
+    _git(repo, 'add', '.')
+    _git(repo, 'commit', '-qm', 'fresh')
+    with pytest.raises(L.LedgerError, match='genesis'):              # the committed pin refuses a fresh registry
+        L.verify(str(p))
+    with pytest.raises(L.LedgerError, match='base'):                 # and the base anchor refuses the restart
+        L.verify(str(p), registry_genesis=_reg_genesis(repo), base='master')
+
+
+def test_verify_outside_git_fails_closed(tmp_path):
+    p = tmp_path / 'fam_x.jsonl'
+    _fam(p)
+    with pytest.raises(L.LedgerError, match='git'):
+        L.verify(str(p))
+
+
+@pytest.mark.parametrize('field,value', [('window', {'start': '2025-13-45T99:99:99Z', 'end': '2026-01-01T00:00:00Z'}),
+                                         ('window', {'start': '2025-02-30T00:00:00Z', 'end': '2026-01-01T00:00:00Z'}),
+                                         ('cairo_date', '2026-99-99'), ('cairo_date', '2026-02-30')])
+def test_ledger_strict_dates(tmp_path, field, value):
+    with pytest.raises(L.LedgerError, match=field):
+        _fam(tmp_path / 'fam_q.jsonl', **{field: value})
+
+
+def test_ledger_rejects_bool_seq_and_nan(tmp_path):
+    p = tmp_path / 'fam_b.jsonl'
+    _fam(p)
+    line = p.read_bytes()
+    with pytest.raises(L.LedgerError, match='seq'):
+        L._parse_family(line.replace(b'"seq":1', b'"seq":true'), 'fam_b')
+    with pytest.raises(L.LedgerError, match='JSON'):
+        L._parse_family(line.replace(b'"detail":{}', b'"detail":{"x":NaN}'), 'fam_b')
+
+
+def test_ledger_append_lock(tmp_path):
+    p = tmp_path / 'fam_l.jsonl'
+    _fam(p)
+    assert not (tmp_path / L.LOCK).exists()                          # released after a normal append
+    (tmp_path / L.LOCK).write_bytes(b'')
+    with pytest.raises(L.LedgerError, match='lock'):
+        rec(p, kind='variant')
+    assert len(p.read_bytes().splitlines()) == 1
+
+
+@pytest.mark.parametrize('mutate', [
+    lambda f, m: f.__setitem__('rows', True),
+    lambda f, m: f.__setitem__('bytes', False),
+    lambda f, m: f.__setitem__('first_open_ms', True),
+    lambda f, m: m.__setitem__('note', float('nan')),
+    lambda f, m: m.__setitem__('note', 7),
+    lambda f, m: m.__setitem__('loader_version', 'junk'),
+    lambda f, m: f.__setitem__('source', 'junk'),
+    lambda f, m: f['source'].__setitem__('archive_checksum', 'junk'),
+    lambda f, m: m.__setitem__('accessed_cairo', '2026-99-99'),
+    lambda f, m: m.__setitem__('accessed_cairo', 7),
+])
+def test_manifest_rejects_bool_nan_and_junk(tmp_path, mutate):
+    m = build(fixture_root(tmp_path))
+    mutate(m['files'][0], m)
+    try:
+        m['digest'] = M.digest_of(m)
+    except ValueError:
+        pass
+    with pytest.raises(M.ManifestError):
+        M.validate(m)
+
+
+def test_manifest_load_rejects_nan(tmp_path):
+    m = build(fixture_root(tmp_path))
+    out = tmp_path / 'm.json'
+    M.write(m, str(out))
+    out.write_bytes(out.read_bytes().replace(b'"note": ""', b'"note": NaN'))
+    with pytest.raises(M.ManifestError, match='JSON'):
+        M.load(str(out))
+
+
+@pytest.mark.parametrize('body', [b'2025-01-01 04:00:00,1,2,0.5,1.5,10\n2025-01-01 00:00:00,1,2,0.5,1.5,10\n',
+                                  b'2025-01-01 00:00:00,1,2,0.5,1.5,10\n2025-01-01 00:00:00,1,2,0.5,1.5,10\n',
+                                  b'2025-02-30 00:00:00,1,2,0.5,1.5,10\n'])
+def test_manifest_refuses_unordered_duplicate_or_bad_bars(tmp_path, body):
+    d = tmp_path / 'fx'
+    d.mkdir()
+    (d / 'BTCUSDT_4h.csv').write_bytes(b't,o,h,l,c,v\n' + body)
+    with pytest.raises(M.ManifestError):
+        M.build(['fx'], manifest_id='x', source_class='fixture', base=str(tmp_path))

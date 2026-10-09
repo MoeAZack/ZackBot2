@@ -175,6 +175,14 @@ Built inside the existing NEWCORE research path, not beside it:
 - `tools/research/ledger.py`: `zb-ledger/1` hash-chained JSONL, append-only byte check, Git-ancestry check, holdout
   reveal / rerun rules, `n_trials`. A `holdout_rerun` must repeat the reveal's full identity: family, candidate/prereg
   id, manifest digest, window, `detail.eval_digest` (evaluation code + config + seeds) and `run_digest` (Codex R1 P1).
+  Reruns are capped (`MAX_RERUNS` = 2, or a lower `detail.max_reruns` declared in the reveal). Holdout-split
+  data_access / variant / grid_point / baseline records must belong to the atomic reveal (directly after it, same
+  identity); no variant / grid_point on a revealed window afterwards. `research_evidence/ledger/REGISTRY.jsonl` is the
+  cross-file registry: every family is declared once with its lineage (`parent`, null = independent root) and genesis,
+  and every spend is copied there, so a renamed or descendant family cannot reveal a window spent in its lineage.
+  `verify()` / `ledger.py check` is the single check and always runs records + registry + Git history (+ the CI base);
+  a ledger file with no parent version must be its declared genesis (registry pin `REGISTRY_GENESIS`). Strict dates,
+  no bool-as-int, no NaN, strictly increasing bars, and an append lock (Cowork 6072246284).
   R3 hook: `recompute_run_digest()` will recompute `run_digest` from the frozen run envelope. Tests:
   `tests/test_res01_manifest_ledger.py`.
 - **Data gaps (nothing downloaded).** Local data is klines only (`t,o,h,l,c,v`, survivor-only;
