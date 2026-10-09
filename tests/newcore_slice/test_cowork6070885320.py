@@ -144,7 +144,9 @@ def test_4_a_500_fill_order_costs_a_bounded_number_of_queries(side, how):
             return inner(symbol, eoid)
         return ReadOutcome(kind=ReadKind.OK, observed_at_ms=w.venue.now_ms, value=(VenueOrderRecord(
             ref=OrderRef(symbol=SYM, client_id='manual-77777'), exchange_order_id=eoid, position_side=side,
-            status='FILLED', orig_qty=total, executed_qty=total),))
+            status='FILLED', orig_qty=total, executed_qty=total, side='BUY' if side == 'LONG' else 'SELL',
+            reduce_only=False, close_position=False, order_type='MARKET', orig_type='MARKET'),))   # a foreign ADD
+            # (Cowork 6073089838: only an opening record is proven foreign)
     w.port.order_by_id = order_by_id
     r = w.runner
     q0 = w.venue.calls['query']

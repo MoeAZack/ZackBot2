@@ -124,6 +124,7 @@ class FakeVenue:
         self._positions = {}             # (symbol, side) -> [qty, avg]
         self._orders = {}                # client_id -> _Order (every order ever accepted)
         self._fills = []
+        self._ext_reduce = {}             # exchange order id of a fill made outside the bot -> reduced?
         self._funding = []
         self._seq = 0
         self._trade_seq = 0
@@ -323,6 +324,7 @@ class FakeVenue:
             self._positions.pop(key, None)
         self._wallet = VCTX.subtract(VCTX.add(self._wallet, realized), fee)
         self._trade_seq += 1
+        self._ext_reduce.setdefault(eoid, reduce)
         self._fills.append(VenueFill(trade_id=str(self._trade_seq), exchange_order_id=eoid, symbol=symbol,
                                      position_side=side, qty=q, price=px, fee=fee, fee_asset=self.asset,
                                      realized_pnl=realized, maker=False, at_ms=at_ms))
@@ -471,14 +473,19 @@ class FakeVenue:
                 status = ('PARTIALLY_FILLED' if o.executed > 0 else 'NEW') if o.status == 'NEW' else o.status
                 return ReadOutcome(kind=ReadKind.OK, observed_at_ms=self.now_ms, value=(VenueOrderRecord(
                     ref=o.ref, exchange_order_id=o.exchange_order_id, position_side=o.position_side, status=status,
-                    orig_qty=o.qty, executed_qty=o.executed),))
+                    orig_qty=o.qty, executed_qty=o.executed, side='BUY' if _buy(o.position_side, o.reduce) else 'SELL',
+                    reduce_only=o.reduce, close_position=False, order_type=o.order_type, orig_type=o.order_type),))
         rows = [f for f in self._fills if f.symbol == symbol and f.exchange_order_id == exchange_order_id]
         if rows:                                         # a fill made outside the bot (inject_position, a manual
             q = sum((f.qty for f in rows), ZERO)         # close): a manual order of the account, never one of ours
+            red = self._ext_reduce.get(exchange_order_id)   # a manual MARKET order: opening or reduce-only
+            how = {} if red is None else dict(side='BUY' if _buy(rows[0].position_side, red) else 'SELL',
+                                              reduce_only=red, close_position=False, order_type='MARKET',
+                                              orig_type='MARKET')   # not known (an older state): not reported
             return ReadOutcome(kind=ReadKind.OK, observed_at_ms=self.now_ms, value=(VenueOrderRecord(
                 ref=OrderRef(symbol=symbol, client_id='manual-' + exchange_order_id[:29]),
                 exchange_order_id=exchange_order_id, position_side=rows[0].position_side, status='FILLED',
-                orig_qty=q, executed_qty=q),))
+                orig_qty=q, executed_qty=q, **how),))
         return ReadOutcome(kind=ReadKind.REJECTED, observed_at_ms=self.now_ms, error_code=E_NO_ORDER)
 
     # ------------------------------------------------------------------------------------------------ account reads
@@ -509,6 +516,7 @@ class FakeVenue:
             'fills': [[f.trade_id, f.exchange_order_id, f.symbol, f.position_side, s(f.qty), s(f.price), s(f.fee),
                        f.fee_asset, s(f.realized_pnl), f.maker, f.at_ms] for f in self._fills],
             'funding': [[r.symbol, r.side, r.at_ms, s(r.amount)] for r in self._funding],
+            'ext_reduce': sorted([e, r] for e, r in self._ext_reduce.items()),
         }
 
     @classmethod
@@ -529,6 +537,7 @@ class FakeVenue:
                               fee=D(fee), fee_asset=asset, realized_pnl=D(r), maker=m, at_ms=at)
                     for t, e, sym, side, q, p, fee, asset, r, m, at in state['fills']]
         v._funding = [FundingRow(sym, side, at, D(a)) for sym, side, at, a in state['funding']]
+        v._ext_reduce = {e: r for e, r in state.get('ext_reduce', ())}   # absent (older state): records UNKNOWN
         return v
 
     # ------------------------------------------------------------------------------------------------ inspection
