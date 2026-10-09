@@ -142,7 +142,7 @@ def _not_opening(x):
     if x.reduce_only or x.close_position:
         return f'reduceOnly={x.reduce_only} closePosition={x.close_position}'
     for t in (x.order_type, x.orig_type):
-        if t is not None and t.upper().startswith(CONDITIONAL_TYPES):
+        if t is not None and t.strip().upper().startswith(CONDITIONAL_TYPES):
             return f'conditional type {t}'
     return ''
 

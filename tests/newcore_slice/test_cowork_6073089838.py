@@ -136,3 +136,13 @@ def test_an_opening_shaped_algo_route_record_is_unknown(side, mode, emergency):
     child_record(w, o, route='algo', side=OPENING[side], reduce_only=False, close_position=False,
                  order_type='MARKET', orig_type='MARKET')
     assert_unknown_hold(w, lot, side, mode)
+
+
+@pytest.mark.parametrize('side', SIDES)
+@pytest.mark.parametrize('pad', (' STOP_MARKET', 'stop_market ', '\tTRAILING_STOP_MARKET'))
+def test_a_padded_conditional_type_is_unknown(side, pad):
+    """Cowork 6074142371: padding / case around a conditional type never proves a classic record foreign."""
+    w, lot, o = partial_emergency(side, 'classic', ORDERS[0], 'cancelled', '1', 'restart', 'ok')
+    child_record(w, o, side=OPENING[side], reduce_only=False, close_position=False, order_type='MARKET',
+                 orig_type=pad)
+    assert_unknown_hold(w, lot, side, 'restart')
