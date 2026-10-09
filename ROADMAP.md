@@ -10,6 +10,9 @@
 > Binding owner feature, settings and final-UI requirements live in
 > [`docs/OWNER_PRODUCT_CONTRACT.md`](docs/OWNER_PRODUCT_CONTRACT.md) and must be traced through implementation and
 > acceptance rather than reconstructed from chat history.
+> Delivery priority is Binance engine + strategies -> early trustworthy testnet -> evidence-driven hardening and final
+> UI/options -> complete live gates. Optional security/release polish cannot block the first useful testnet slice, but
+> the contract's narrow pre-testnet safety floor and all pre-mainnet gates remain mandatory.
 
 This plan merges:
 - the companion "ZackBot Master Roadmap & Build Vision" (32 pages, 2026-10-05);

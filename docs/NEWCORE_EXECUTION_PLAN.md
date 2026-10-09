@@ -44,6 +44,13 @@ PWA, copy-product polish, broad remote controls, social features and secondary i
 does not grant permission to trade mainnet early; it means the engine is designed and evidenced to mainnet standards
 while the remaining product is built around it.
 
+**Delivery ruling (owner, 09 Oct 2026):** get the minimum trustworthy Binance long/short engine onto testnet as soon as
+possible, then use testnet findings to drive deeper safety/security, recovery coverage, final UI and full settings work.
+Before first useful testnet execution, require only the narrow floor that makes evidence trustworthy: environment/account
+binding, bounded exposure, idempotency, confirmed protection or HOLD, reconciliation/restart ownership, emergency exit
+and telemetry. Optional hardening, speculative edge matrices and release polish cannot block the vertical slice. Every
+mainnet/live gate remains mandatory after testnet and before explicit live activation.
+
 Development remains PAPER/Binance Futures testnet until the release gate explicitly changes it. Testnet balances and
 positions are disposable. Mainnet credentials, funds and deployment remain a separate owner-approved boundary.
 

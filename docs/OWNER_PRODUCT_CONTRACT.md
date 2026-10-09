@@ -10,6 +10,35 @@ These requirements remain binding until the owner explicitly changes them. Evide
 warnings and automation authority; it does not remove an owner-requested feature from the catalog or silently remove
 manual control.
 
+## 0. Binding delivery priority and staged safety
+
+The urgent product priority is the **native Binance engine and its strategies**, not a security program, polished final
+UI or broad platform architecture. Build the smallest trustworthy vertical slice, put it on Binance Futures testnet,
+observe what works and fails, and improve it from evidence. Do not hold the first useful testnet engine behind optional
+hardening, exhaustive rare-edge coverage, release polish, PWA/copy/multi-venue work or the final UI.
+
+Required order:
+
+1. Runnable Binance slice: market data -> long/short signal -> sizing -> native API order -> confirmed fill -> stop and
+   target -> profit management -> reconciliation -> close -> recorded outcome.
+2. Strategy completeness: independently calibrated long/short trend, range/mean-reversion and Quick Bank scalp with
+   early profit, protected runner and separately bounded micro-DCA/basket behavior.
+3. Early repeated testnet use: disposable testnet P&L, observable controlled scenarios and fast fixes based on actual
+   execution, regime and strategy behavior.
+4. In parallel with/after useful testnet feedback: deepen operational safety, security, recovery coverage, final UI,
+   full settings surfaces and release quality. All required live gates must finish before mainnet activation.
+
+The narrow pre-testnet safety floor is not optional because without it results are misleading or the wrong environment
+could be affected: hard testnet/mainnet binding, normal secret handling, idempotent/duplicate prevention, bounded
+exposure, confirmed protective stop or fail-closed HOLD, exchange-truth reconciliation, restart ownership, emergency
+stop/flatten path and sufficient telemetry to know what happened. Implement the smallest version that makes testnet
+experiments trustworthy; defer broader hardening until the engine is exercising real testnet paths.
+
+No audit, abstraction, documentation expansion or speculative safety fixture may outrank a missing executable engine
+step or strategy experiment unless it prevents a confirmed serious failure in that immediate slice. Testnet discoveries
+may interrupt the queue; unrelated polish may not. Mainnet remains separately gated and requires complete live security,
+safety, operational and release acceptance.
+
 ## 1. Product authority and visibility
 
 1. Every meaningful application feature and setting is visible in the final UI and owner-toggleable where technically
