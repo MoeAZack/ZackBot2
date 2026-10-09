@@ -1,0 +1,11 @@
+{
+ "format": "zb-r4-gate/1",
+ "prereg": "research_evidence/prereg/trend_ema_mom.v1.json",
+ "ledger": "research_evidence/ledger/trend_ema_mom.jsonl",
+ "integration_ref": "origin/master",
+ "cleared": [
+  {"slice": "R1+R2", "pr": 51, "branch": "origin/nc-res01-r2", "head": "e6fdad120d72421a9147d86ce3a68b7daf49bb9d"},
+  {"slice": "R3", "pr": 52, "branch": "origin/nc-res01-r3", "head": "d267463e074fbc22196e9f9c8d5e387dc42968b9"}
+ ],
+ "note": "Each head is the Codex-cleared head of its PR. If a fix round moves a PR, this pin is updated in a reviewed commit to the new cleared head; run_r4.py refuses while the branch tip differs from the pin or the pin is not merged into integration_ref and contained in the executing HEAD."
+}
