@@ -412,3 +412,41 @@ def test_a_priceless_fill_that_cannot_be_read_back_stays_unknown():
     v, http = venue(p, *([_priceless('order_query_filled')] * 3))
     out = v.submit_market(market())
     assert out.kind is P.OutcomeKind.UNKNOWN and out.detail == 'final_without_price'
+
+
+# ---------- Codex P1 on 1297ee3: the read-back is bound to the execution the POST confirmed ----------
+
+@pytest.mark.parametrize('patch', [
+    dict(status='CANCELED', executedQty='0', cumQuote='0', avgPrice='0'),      # Codex repro: canceled, zero
+    dict(status='EXPIRED', executedQty='0', cumQuote='0', avgPrice='0'),       # Cowork probe: expired, zero
+    dict(status='EXPIRED', executedQty='4', cumQuote='889.2'),                 # lower quantity
+    dict(origQty='12', executedQty='12', cumQuote='2667.6'),                   # higher quantity
+    dict(status='EXPIRED'),                                                    # same quantity, other status
+    dict(orderId=4000000999),                                                  # another exchange order
+    dict(positionSide='SHORT'),                                                # another position side
+])
+def test_a_conflicting_read_back_never_erases_a_post_confirmed_fill(patch):
+    v, http = venue(_priceless('order_market_filled'), body_with('order_query_filled', clientOrderId=CID, **patch),
+                    fixture('order_query_filled'))
+    out = v.submit_market(market())
+    assert out.kind is P.OutcomeKind.UNKNOWN and out.detail == 'fill_readback_conflict'
+    assert out.executed_qty is None and len(http.requests) == 2     # stops at the contradiction, no further read
+
+
+def test_an_unreadable_then_matching_read_back_is_booked():
+    v, http = venue(_priceless('order_market_filled'), WireTimeout('read'),
+                    body_with('order_query_filled', clientOrderId=CID))
+    out = v.submit_market(market())
+    assert out.kind is P.OutcomeKind.FINAL and out.executed_qty == D('10') and out.avg_price == D('222.3000')
+
+
+def test_an_unpriced_read_back_returns_a_fresh_unknown():
+    """Codex P2: the UNKNOWN that survives the retries is observed at the last attempt, not before them."""
+    ticks = iter(range(OBS, OBS + 100))
+    http = FakeHttp(_priceless('order_market_filled'), *([_priceless('order_query_filled')] * 3))
+    t = BinanceTestnetTransport(environment='testnet', http=http, clock=lambda: NOW_MS, position_mode=PositionMode.HEDGE,
+                                credentials=StaticCredentials(DUMMY_KEY, DUMMY_SECRET))
+    v = TestnetVenue(t, lambda: next(ticks), sleep=SLEPT.append)
+    out = v.submit_market(market())
+    assert out.kind is P.OutcomeKind.UNKNOWN and out.detail == 'final_without_price'
+    assert out.observed_at_ms > OBS

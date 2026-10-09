@@ -218,6 +218,16 @@ MARKET_PRICE_BACKOFF_MS = (0, 200, 400)           # read a FILLED-without-price 
 ALGO_CANCEL_BACKOFF_MS = (200, 400, 800, 1600, 3200)   # ~6.2 s to see a terminal algo state after a DELETE
 
 
+def _same_execution(posted, rec, ref):
+    """A by-id read-back describes the execution the POST confirmed: same identity, same status, same positive
+    executed quantity (a FILLED market order cannot change any of these)."""
+    return (posted.executed_qty > 0 and rec.executed_qty == posted.executed_qty
+            and rec.symbol == posted.symbol == ref.symbol
+            and rec.client_order_id == posted.client_order_id == ref.client_id
+            and rec.order_id == posted.order_id and rec.status == posted.status
+            and rec.side == posted.side and rec.position_side == posted.position_side)
+
+
 # ---------------------------------------------------------------------------------------------- the adapter
 class TestnetVenue:
     __test__ = False
@@ -267,21 +277,36 @@ class TestnetVenue:
         side = CLOSING_SIDE[ps] if order.reduce else OPENING_SIDE[ps]
         t = self._t.place_market(order.ref.symbol, side, ps, order.qty, order.ref.client_id, reduce_only=order.reduce)
         out = _safe_map(t, order.ref, self._now())
-        if out.kind is P.OutcomeKind.UNKNOWN and out.detail == 'final_without_price':
-            return self._final_price_by_query(order.ref, out)
+        if (out.kind is P.OutcomeKind.UNKNOWN and out.detail == 'final_without_price'
+                and isinstance(t.record, R.OrderRecord)):
+            return self._final_price_by_query(order.ref, t.record, out)
         return out
 
-    def _final_price_by_query(self, ref, out):
+    def _final_price_by_query(self, ref, posted, out):
         """First testnet 5a diagnostic (72a32bf): the testnet answers a MARKET order with status FILLED and the
         executed quantity but WITHOUT avgPrice / cumQuote, so the answer cannot be booked (a fill needs its price)
         and every entry went UNKNOWN -> HOLD. The fill is read back by client id at once (GET /fapi/v1/order carries
-        avgPrice), on a short bounded backoff. Anything but a priced FINAL keeps the original UNKNOWN."""
+        avgPrice), on a short bounded backoff.
+
+        The POST already CONFIRMED a positive execution, so the read-back is bound to it (Codex P1 on 1297ee3): only
+        a FINAL record of the same symbol, client id, exchange order id, side, position side and status with the SAME
+        positive executed quantity and a valid price replaces the UNKNOWN. A conflicting FINAL (zero, lower or other
+        quantity, another status or id) stops at once as UNKNOWN 'fill_readback_conflict'; it is never booked as
+        'nothing filled'. An unreadable / non-final / still unpriced read-back is retried, then the original
+        UNKNOWN is returned, observed at the last attempt (positions / fills reconcile it)."""
         for ms in MARKET_PRICE_BACKOFF_MS:
             self._sleep(ms / 1000)
-            q = self.query(ref)
-            if q.kind is P.OutcomeKind.FINAL and (q.executed_qty == 0 or q.avg_price is not None):
+            t = self._t.query_order(ref.symbol, ref.client_id)
+            rec = t.record
+            if t.kind is not TK.FINAL or not isinstance(rec, R.OrderRecord):
+                continue
+            if not _same_execution(posted, rec, ref):
+                return P.OrderOutcome(kind=P.OutcomeKind.UNKNOWN, ref=ref, observed_at_ms=self._now(),
+                                      detail='fill_readback_conflict')
+            q = _safe_map(t, ref, self._now())
+            if q.kind is P.OutcomeKind.FINAL and q.avg_price is not None and q.executed_qty == posted.executed_qty:
                 return q
-        return out
+        return P.OrderOutcome(kind=P.OutcomeKind.UNKNOWN, ref=ref, observed_at_ms=self._now(), detail=out.detail)
 
     def submit_stop(self, order):
         req(isinstance(order, P.StopOrder), 'order', 'a StopOrder')
