@@ -286,7 +286,7 @@ Built inside the existing NEWCORE research path, not beside it:
 
 ## R3 status (09 Oct 2026 Cairo; harness core only, no strategy evaluated, no returns computed)
 
-Codex R3 review 6077894871 applied (stacked on the fixed R2 universe `pit-top40-qv30d-v2`):
+Codex R3 review 6077894871 applied (stacked on the fixed R2 universe `pit-top40-qv30d-v3`):
 
 - `tools/research/pit.py` (the plan's `data.py`): `Dataset` reads only through the manifest (SHA-256 re-check, fail
   closed) and the PIT universe, restricted to named asset-class books (no mixed default; gold from `gold-commodity`).
@@ -322,3 +322,30 @@ Codex R3 review 6077894871 applied (stacked on the fixed R2 universe `pit-top40-
   universe before the #51 fixes; not re-run): 2026-01-05..01-12
   (BTC, ETH; XAU not yet a member) and 2026-02-02..02-09 (XAU, BTC): full 1m/4h/1d/mark coverage; XAUUSDT funds every
   4h (42/week) vs 8h for BTC.
+
+Codex R3 fix review 6079042573 applied (merged with the fixed R2 head; universe `pit-top40-qv30d-v3`):
+
+- Evaluator isolation: `pit.evaluate(window, evaluator_path, function, times)` runs the evaluator in a separate
+  process (`tools/research/sandbox.py`, `zb-eval-sandbox/1`) that holds no Dataset, Window, manifest, store path or
+  ledger. Its View is a proxy answered by the harness from the View frozen at the decision time; an audit hook refuses
+  reading anything but Python's library and `.py` code outside `research_evidence/`, directory listings elsewhere,
+  writes, process creation, sockets and ctypes. This is a runtime control, not claimed as a security boundary; private
+  Python names are explicitly not one. The perturbation re-run is kept.
+- Runner authority: `evaluate` appends a `zb-eval-attestation/1` (runner, isolation, perturbation, split/window,
+  run_digest, evaluator file hash, digests of times / outputs / recorded decisions) to the family ledger;
+  `report.make_report(env, results, attestation, ledger)` refuses an attestation that is unperturbed, not sandboxed,
+  for another run/split/window, whose evaluator file is not in the envelope's hashed evaluation files, or that has no
+  matching ledger record. Results from `Window.view` directly or `perturb=False` cannot be sealed.
+- Holdout ledger: the holdout opens only from the canonical registered ledger and runs store
+  (`research_evidence/ledger` + `research_evidence/runs` of the canonical research checkout, which must be the access
+  repo) and only after `ledger.verify` (registry genesis pin + append-only Git history) passes at access. A scratch
+  ledger/runs tree, or a freshly minted registry at the canonical path, is refused.
+- Code identity: "dirty" ignores only non-executable evidence artifacts (`.json`, `.jsonl`, `.json.gz`, `.csv`, `.md`
+  under `research_evidence/`); a `.py` (or any other file) there is code. The evaluation file list is closed over static
+  imports (`import_closure`), and evaluation code in or imported from `research_evidence/` is refused at freeze.
+- Funding continuity: `check_funding_cadence(symbol, rows, start_ms=, end_ms=)` requires consecutive events exactly one
+  declared interval apart (+/- 60 s; a schedule switch accepted at the switch), no missing event before the first or
+  after the last row of the covered interval, and refuses an empty span longer than one interval. No forward fill.
+- Gold: cost classes `gold-spot` (XAUUSDT, 4h, PROVISIONAL) and `gold-tokenized` (PAXGUSDT / XAUTUSDT, per-symbol
+  cadence, UNCALIBRATED), both in the `gold` regime family (`CostModel.regime_family`); never the commodity fallback.
+- Open: the non-ASCII `not-addressable` universe veto awaits a Codex ruling (owner direction 6078694212).

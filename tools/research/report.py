@@ -10,14 +10,24 @@ Code identity is never self-attested (Codex R3 P1, comment 6077894871): `freeze_
 dependencies itself from the checkout, refuses a dirty tree, requires every file of `CORE_EVAL_FILES` in the evaluation
 file list, requires each listed file to be tracked by Git, and hashes the files itself. `verify_code` re-captures all
 of it at holdout access and recomputes `eval_digest` from the files on disk: a different HEAD, a dirty tree, a changed
-evaluation file, a different Python or dependency set fails closed. "Dirty" ignores only `research_evidence/` (ledger,
-run envelopes and data artifacts are written during a run; they are evidence, not code).
+evaluation file, a different Python or dependency set fails closed.
+
+Executable evidence (Codex 6079042573 P1): "dirty" ignores only validated NON-EXECUTABLE artifacts under
+`research_evidence/` (`ARTIFACT_SUFFIXES`: ledger lines, run envelopes, JSON / gzip-JSON data, CSV, Markdown); any other
+change there (a `.py` helper, anything importable or runnable) makes the tree dirty. The evaluation file list is closed
+over static imports (`import_closure`): every repo module an evaluation file imports, transitively, is hashed into
+`eval` automatically, whatever the caller listed, and an evaluation file or import that resolves under
+`research_evidence/` is refused. Dynamic reads are refused at run time by the evaluator sandbox (`sandbox.py`).
 
 An envelope is written once to `<runs_dir>/<run_digest>.json` before any sealed access, and the ledger's
 `recompute_run_digest()` reloads it to prove a holdout record's digest and identity.
 
-A report = envelope + `results` {side: {stress row: {section: {...}}}} with every section of plan section 6, and a
-`report_digest` over the whole. R3 defines and validates the shape only; it computes no metric.
+A report = envelope + `results` {side: {stress row: {section: {...}}}} with every section of plan section 6 + the
+runner's `attestation` and its digest, and a `report_digest` over the whole. Only the evaluation runner
+(`pit.evaluate`) can produce a sealable result (Codex 6079042573 P1): `make_report` refuses an attestation that is not
+perturbed and sandbox-isolated, that names another run / split / window, whose evaluator file is not one of the
+envelope's hashed evaluation files, or that has no matching `data_access` record in the family ledger. R3 defines and
+validates the shape only; it computes no metric.
 """
 from __future__ import annotations
 
@@ -45,11 +55,14 @@ EVAL_KEYS = {'files', 'config'}
 # Every evaluation runs on these research modules; a run must hash them along with its own strategy files.
 CORE_EVAL_FILES = ('feasibility.py', 'tools/research/costs.py', 'tools/research/intrabar.py',
                    'tools/research/ledger.py', 'tools/research/manifest.py', 'tools/research/pit.py',
-                   'tools/research/report.py', 'tools/research/splits.py', 'tools/research/universe.py')
+                   'tools/research/report.py', 'tools/research/sandbox.py', 'tools/research/splits.py',
+                   'tools/research/universe.py')
 # The research path is stdlib-only: the canonical third-party dependency set is empty, and any distribution named here
 # would be pinned by its installed version.
 RESEARCH_DEPS: tuple[str, ...] = ()
 EVIDENCE_DIR = 'research_evidence'
+ARTIFACT_SUFFIXES = ('.json', '.jsonl', '.json.gz', '.csv', '.md')     # non-executable evidence artifacts only
+IMPORT_ROOTS = ('', 'tools/research')                                   # repo-relative roots the research code imports from
 SIDES = ('long', 'short')
 SECTIONS = {
     'expectancy': ('mean_net_r', 'net_pct_equity', 'profit_factor', 'win_rate', 'avg_win_r', 'avg_loss_r'),
@@ -92,12 +105,94 @@ def canonical_libs() -> dict:
     return dict(sorted(out.items()))
 
 
+def is_evidence_artifact(rel: str) -> bool:
+    """A validated non-executable artifact path: under research_evidence/, no parent traversal, an artifact suffix."""
+    rel = rel.replace('\\', '/')
+    parts = rel.split('/')
+    return (len(parts) > 1 and parts[0] == EVIDENCE_DIR and '..' not in parts and '' not in parts
+            and rel.lower().endswith(ARTIFACT_SUFFIXES))
+
+
+def dirty_paths(repo: str = M.REPO) -> list[str]:
+    """Every tracked or untracked change except validated non-executable evidence artifacts (both sides of a rename
+    count)."""
+    try:
+        raw = subprocess.run(['git', '-C', repo, 'status', '--porcelain=v1', '-z', '--untracked-files=all'],
+                             capture_output=True, check=True, stdin=subprocess.DEVNULL).stdout.decode('utf-8')
+    except (OSError, subprocess.CalledProcessError) as e:
+        raise ReportError(f'git status failed in {repo}: {e}')
+    items, out = raw.split('\0'), []
+    i = 0
+    while i < len(items):
+        it = items[i]
+        i += 1
+        if not it:
+            continue
+        code, path = it[:2], it[3:]
+        paths = [path]
+        if 'R' in code or 'C' in code:
+            paths.append(items[i])
+            i += 1
+        out += [q for q in paths if not is_evidence_artifact(q)]
+    return sorted(set(out))
+
+
 def code_identity(repo: str = M.REPO) -> dict:
-    """Captured from the checkout, never passed in: HEAD, dirty (any tracked or untracked change outside
-    research_evidence/), Python version and the canonical dependency set."""
-    status = _git(repo, 'status', '--porcelain', '--untracked-files=all', '--', '.', f':(exclude){EVIDENCE_DIR}')
-    return {'git_head': _git(repo, 'rev-parse', 'HEAD'), 'dirty': bool(status), 'python': platform.python_version(),
-            'libs': canonical_libs()}
+    """Captured from the checkout, never passed in: HEAD, dirty (any tracked or untracked change other than a validated
+    non-executable evidence artifact), Python version and the canonical dependency set."""
+    return {'git_head': _git(repo, 'rev-parse', 'HEAD'), 'dirty': bool(dirty_paths(repo)),
+            'python': platform.python_version(), 'libs': canonical_libs()}
+
+
+def _resolve(repo: str, base_dir: str, name: str) -> list[str]:
+    """Repo-relative files a dotted module name can load from, searched in the importing file's directory and the
+    research import roots (`a.b` -> a/b.py, a/b/__init__.py, plus each package __init__ on the way)."""
+    parts = name.split('.')
+    out = []
+    for root in (base_dir,) + IMPORT_ROOTS:
+        for k in range(1, len(parts) + 1):
+            stem = '/'.join(p for p in (root, *parts[:k]) if p)
+            for cand in (stem + '.py', stem + '/__init__.py'):
+                if os.path.isfile(os.path.join(repo, *cand.split('/'))):
+                    out.append(cand)
+    return out
+
+
+def import_closure(repo: str, paths) -> list[str]:
+    """The given evaluation files plus every repo module they import, transitively (static `import` / `from` only)."""
+    import ast
+    seen, todo = set(), list(paths)
+    while todo:
+        rel = todo.pop()
+        if rel in seen:
+            continue
+        seen.add(rel)
+        if not rel.endswith('.py'):
+            continue
+        try:
+            with open(M.contained(repo, rel), 'rb') as f:
+                tree = ast.parse(f.read(), rel)
+        except (OSError, SyntaxError, ValueError) as e:
+            raise ReportError(f'evaluation file {rel} unreadable: {e}')
+        base = rel.rsplit('/', 1)[0] if '/' in rel else ''
+        for node in ast.walk(tree):
+            names = []
+            if isinstance(node, ast.Import):
+                names = [a.name for a in node.names]
+            elif isinstance(node, ast.ImportFrom):
+                if node.level:
+                    up = base.split('/') if base else []
+                    up = up[:len(up) - (node.level - 1)] if node.level > 1 else up
+                    pkg = '.'.join(p for p in up if p)
+                    mod = '.'.join(p for p in (pkg, node.module or '') if p)
+                    names = [f'{mod}.{a.name}' if mod else a.name for a in node.names] + ([mod] if mod else [])
+                    for n in names:
+                        todo += [c for c in _resolve(repo, '', n)]
+                    continue
+                names = [node.module] + [f'{node.module}.{a.name}' for a in node.names]
+            for n in names:
+                todo += _resolve(repo, base, n)
+    return sorted(seen)
 
 
 def _file_sha(repo: str, rel: str) -> str:
@@ -114,7 +209,10 @@ def eval_digest(files, config: dict, seeds) -> str:
 def eval_identity(repo: str, paths, config: dict) -> dict:
     """The canonical evaluation block: sorted unique repo-relative tracked files (CORE_EVAL_FILES included), hashed
     from disk, plus the config."""
-    paths = sorted(set(paths) | set(CORE_EVAL_FILES))
+    paths = import_closure(repo, sorted(set(paths) | set(CORE_EVAL_FILES)))
+    evidence = [p for p in paths if p.split('/')[0] == EVIDENCE_DIR]
+    if evidence:
+        raise ReportError(f'evaluation code may not live in or import from {EVIDENCE_DIR}/: {evidence}')
     tracked = set(_git(repo, 'ls-files', '--', *paths).splitlines())
     missing = [p for p in paths if p not in tracked]
     if missing:
@@ -261,10 +359,44 @@ def recompute_run_digest(rec: dict, runs_dir: str) -> str:
         return 'missing-or-invalid-envelope'
 
 
-def make_report(env: dict, results: dict) -> dict:
-    """Validate the results shape against plan section 6 and seal it with `report_digest`."""
+ATTESTATION_FORMAT = 'zb-eval-attestation/1'
+SEALABLE_RUNNER = 'pit.evaluate/v2'
+SEALABLE_ISOLATION = 'subprocess+audit-hook/zb-eval-sandbox/1'
+
+
+def check_attestation(env: dict, att: dict, ledger_path: str) -> str:
+    """The runner attestation behind a report: returns its digest, or raises."""
+    import ledger as L                                                     # lazy: ledger imports this module
+    run = env['run']
+
+    def need(ok, msg):
+        if not ok:
+            raise ReportError(f'attestation: {msg}')
+    need(isinstance(att, dict) and att.get('format') == ATTESTATION_FORMAT, 'not a runner attestation')
+    need(att.get('runner') == SEALABLE_RUNNER and att.get('isolation') == SEALABLE_ISOLATION,
+         'results were not produced by the sandboxed evaluation runner')
+    need(att.get('perturbed') is True, 'the runner ran without the future-perturbation control')
+    need(att.get('run_digest') == env['run_digest'] and att.get('split') == run['split']
+         and att.get('window') == run['window'], 'the attestation belongs to another run / split / window')
+    ev = att.get('evaluator') or {}
+    need({'path': ev.get('path'), 'sha256': ev.get('sha256')} in run['eval']['files'],
+         'the evaluator file is not one of the envelope\'s hashed evaluation files')
+    digest = _digest(att)
+    try:
+        recs = L._check_state(ledger_path).get(run['family'], [])
+    except L.LedgerError as e:
+        raise ReportError(f'attestation: ledger unreadable: {e}')
+    need(any(r['kind'] == 'data_access' and r['run_digest'] == env['run_digest']
+             and r['detail'].get('evaluation_attestation') == digest for r in recs),
+         'no matching evaluation record in the family ledger (results did not come from pit.evaluate)')
+    return digest
+
+
+def make_report(env: dict, results: dict, attestation: dict, ledger_path: str) -> dict:
+    """Validate the results shape against plan section 6, bind the runner attestation and seal with `report_digest`."""
     if env.get('run_digest') != run_digest(env['run']):
         raise ReportError('envelope run_digest does not match its run block')
+    att_digest = check_attestation(env, attestation, ledger_path)
     if not isinstance(results, dict) or not results or set(results) - set(SIDES):
         raise ReportError(f'results must be keyed by side {SIDES}')
     for side, rows in results.items():
@@ -276,7 +408,7 @@ def make_report(env: dict, results: dict) -> dict:
             for s, keys in SECTIONS.items():
                 if not isinstance(secs[s], dict) or set(secs[s]) != set(keys):
                     raise ReportError(f'{side}/{row}/{s}: keys must be exactly {sorted(keys)}')
-    rep = {**env, 'results': results}
+    rep = {**env, 'results': results, 'attestation': attestation, 'attestation_digest': att_digest}
     try:
         rep['report_digest'] = _digest(rep)
     except ValueError:

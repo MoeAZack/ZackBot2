@@ -8,21 +8,31 @@ Layers (each the only way to reach the next):
            klines: open + interval; funding: `calc_time`). Harness-side only.
   Access   opens one split of an immutable `splits.SplitPlan` (or a development window) for one hypothesis family and
            appends a `data_access` record to the family ledger BEFORE returning any data. The sealed holdout opens only
-           when (a) the frozen run envelope (`report.py`) is the stored one, (b) the executing checkout re-proves the
-           envelope's code identity (HEAD, clean tree, Python, dependency set, recomputed `eval_digest`;
-           `report.verify_code`), and (c) the ledger's last open group is the atomic `holdout_reveal` /
-           `holdout_rerun` of exactly this run, with every component carrying its complete identity. A development
-           window may not touch the plan's holdout. Harness-side only.
+           when (a) the ledger is the canonical registered one - `<CANONICAL_REPO>/research_evidence/ledger`, its
+           runs store `<CANONICAL_REPO>/research_evidence/runs`, the access repo IS that checkout, and `ledger.verify`
+           (records, registry genesis pin, append-only Git history) passes at access (Codex 6079042573 P1: a scratch
+           ledger + runs tree can never open the holdout); (b) the frozen run envelope (`report.py`) is the stored
+           one; (c) the executing checkout re-proves the envelope's code identity (HEAD, clean tree, Python,
+           dependency set, recomputed `eval_digest`; `report.verify_code`); and (d) the ledger's last open group is
+           the atomic `holdout_reveal` / `holdout_rerun` of exactly this run, with every component carrying its
+           complete identity. A development window may not touch the plan's holdout. Harness-side only.
   Window   the data range of the opened split: rows with `open_ms >= lo` and `available_ms <= hi`. Harness-side only;
            it is never handed to evaluator code.
-  View     `window.view(t)`: the evaluator's only capability (Codex R3 P1). It holds an opaque key, no Dataset or
-           Window reference; every accessor filters `available_ms <= t` and there is no accessor taking another time.
-           Symbols are served only while they are members of the dataset's books at `t`, or under a `Position`
-           capability that `View.enter()` issued (membership checked and the decision recorded at entry). A position
-           cannot be constructed or back-dated by the caller.
-  evaluate `evaluate(window, evaluator, times)` is the only evaluation runner: it calls `evaluator(view)` per decision
-           time and, by default, re-runs each decision with every cached row not yet available at `t` perturbed; any
-           difference (an evaluator that bypassed the view) raises.
+  View     `window.view(t)`: a harness-side accessor frozen at `t`; every accessor filters `available_ms <= t` and
+           there is no accessor taking another time. Symbols are served only while they are members of the dataset's
+           books at `t`, or under a `Position` capability that `View.enter()` issued (membership checked and the
+           decision recorded at entry). Its private fields are NOT a security boundary (Codex 6079042573 P1): in the
+           harness process a View can reach the Window, so evaluator code never runs in this process.
+  evaluate `evaluate(window, evaluator_path, function, times)` is the only evaluation runner and the only authority
+           that can produce a sealable result. The evaluator runs in a separate sandboxed process (`sandbox.py`) that
+           holds no Dataset, Window, manifest, store path or ledger; its View is a proxy whose every request is
+           answered here from the View frozen at the decision time, and an audit hook refuses direct file reads
+           (store, manifest, research_evidence), process creation, sockets and ctypes. Each decision is then re-run
+           with every cached row not yet available at `t` perturbed; any difference raises. The runner writes an
+           attestation (`zb-eval-attestation/1`: runner, isolation, perturbation, window, run_digest, evaluator file
+           hash, digests of the times / outputs / recorded decisions) into the family ledger as a `data_access`
+           record, and `report.make_report` refuses results without a matching perturbed, isolated attestation in
+           the ledger. Results from `Window.view` directly or from `perturb=False` therefore cannot be sealed.
 A survivor-only legacy manifest (no universe) is served with the label SURVIVOR-ONLY.
 
 Funding joins: `funding_events` returns (time, rate, mark) for entry <= time < exit at the ACTUAL funding timestamps
@@ -32,7 +42,7 @@ across a gap > 1 bar.
 
 Smoke (shape/coverage counts only, never returns; logged in the ledger as a development access):
   python tools/research/pit.py smoke --manifest research_evidence/manifests/binance-um-archive-v1.json.gz
-      --store C:/Dev/ZackBot2_data/binance_um --universe research_evidence/universe/pit-top40-qv30d-v2.json
+      --store C:/Dev/ZackBot2_data/binance_um --universe research_evidence/universe/pit-top40-qv30d-v3.json
       --books crypto,gold-commodity --ledger research_evidence/ledger/res01_infra.jsonl
       --start 2026-01-05T00:00:00Z --end 2026-01-12T00:00:00Z --symbols BTCUSDT,XAUUSDT
       --author claude-code --cairo-date 2026-10-09
@@ -44,7 +54,9 @@ import bisect
 import hashlib
 import json
 import os
+import subprocess
 import sys
+import tempfile
 import weakref
 from collections import namedtuple
 
@@ -61,6 +73,14 @@ HOUR = 3_600_000
 SURVIVOR_ONLY = 'SURVIVOR-ONLY'
 GROUP_KINDS = ('holdout_reveal', 'holdout_rerun')
 FUNDING_MARK_PROXY = 'funding-mark-proxy-v1: close of the 1h mark bar ending at or before T (causal proxy, PROVISIONAL)'
+ATTESTATION_FORMAT = 'zb-eval-attestation/1'
+RUNNER_ID = 'pit.evaluate/v2'
+ISOLATION_ID = 'subprocess+audit-hook/zb-eval-sandbox/1'
+SANDBOX = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'sandbox.py')
+CANONICAL_REPO = M.REPO                          # the checkout whose registered ledger may open a sealed holdout
+LEDGER_REL = ('research_evidence', 'ledger')
+RUNS_REL = ('research_evidence', 'runs')
+VIEW_CALLS = ('labels', 'members', 'enter', 'bars', 'mark_bars', 'funding', 'funding_events', 'minute_bars')
 
 
 class PITError(ValueError):
@@ -194,10 +214,13 @@ class Position:
 class Window:
     """The rows of one opened split: open_ms >= lo and available_ms <= hi. Created only by Access; harness-side."""
 
-    def __init__(self, ds: Dataset, lo: int, hi: int, key: str, _token=None):
+    def __init__(self, ds: Dataset, lo: int, hi: int, key: str, _token=None, *, access=None, split=None,
+                 window=None, run_digest=None, eval_digest=None):
         if _token is not _TOKEN:
             raise PITError('a Window is opened only through Access (ledger-recorded)')
         self._ds, self.lo, self.hi, self.key = ds, lo, hi, key
+        self._access, self.split, self.window_doc = access, split, window
+        self.run_digest, self.eval_digest = run_digest, eval_digest
         self._cap = _Cap()
         self._issued: weakref.WeakSet = weakref.WeakSet()
         self._decisions: list[tuple] = []
@@ -333,29 +356,154 @@ def _perturb_future(ds: Dataset, t: int) -> dict:
     return saved
 
 
-def evaluate(window: Window, evaluator, times, *, perturb: bool = True) -> list:
-    """Run `evaluator(view)` at each decision time; the evaluator receives the View only. With `perturb`, each decision
-    is recomputed with every cached not-yet-available row perturbed (positions it issues there are not recorded) and
-    must be identical, so an evaluator that bypasses the view fails closed."""
-    if not isinstance(window, Window):
-        raise PITError('evaluate needs a Window opened through Access')
-    out = []
-    for t in times:
-        res = evaluator(window.view(t))
-        if perturb:
-            ds = window._ds
-            saved = _perturb_future(ds, t)
-            window._shadow = True
+def _jsonable(v):
+    if isinstance(v, Position):
+        return {'__position__': id(v), 'symbol': v.symbol, 'entry_ms': v.entry_ms, 'decision_id': v.decision_id}
+    if isinstance(v, (frozenset, set)):
+        return sorted(v)
+    if isinstance(v, (list, tuple)):
+        return [_jsonable(x) for x in v]
+    return v
+
+
+class Evaluated(list):
+    """The runner's outputs (one per decision time) plus its ledger-bound attestation."""
+    attestation: dict
+    attestation_digest: str
+
+
+class _Sandbox:
+    def __init__(self, evaluator_path: str, function: str, code_roots):
+        lib = sorted({sys.base_prefix, sys.prefix, sys.exec_prefix, os.path.dirname(os.__file__)})
+        self._tmp = tempfile.TemporaryDirectory(prefix='zb-sandbox-')
+        self._err = tempfile.TemporaryFile()
+        env = {k: os.environ[k] for k in ('SYSTEMROOT', 'WINDIR') if k in os.environ}
+        self.p = subprocess.Popen([sys.executable, '-I', '-B', SANDBOX], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                                  stderr=self._err, cwd=self._tmp.name, env=env)
+        here = os.path.dirname(os.path.abspath(__file__))
+        self.send({'op': 'init', 'protocol': 'zb-eval-sandbox/1', 'evaluator_path': evaluator_path,
+                   'function': function, 'lib_roots': lib, 'code_roots': sorted(set(code_roots)),
+                   'sys_path': [here, M.REPO, os.path.dirname(evaluator_path)]})
+        r = self.recv()
+        if not r.get('ready'):
+            self.close()
+            raise PITError(f'evaluator sandbox: {r.get("error", "did not start")}')
+
+    def send(self, obj):
+        self.p.stdin.write(json.dumps(obj, sort_keys=True, allow_nan=False).encode('utf-8') + b'\n')
+        self.p.stdin.flush()
+
+    def recv(self) -> dict:
+        line = self.p.stdout.readline()
+        if not line:
+            self._err.seek(0)
+            tail = self._err.read()[-800:].decode('utf-8', 'replace')
+            raise PITError(f'evaluator sandbox exited unexpectedly: {tail}')
+        return json.loads(line)
+
+    def decide(self, window: 'Window', t: int, positions: dict):
+        view = window.view(t)
+        self.send({'op': 'decide', 't': t})
+        while True:
+            msg = self.recv()
+            if 'result' in msg:
+                return msg['result']
+            if 'error' in msg:
+                raise PITError(f'evaluator failed at {S.utc(t)}: {msg["error"]}')
+            name = msg.get('name')
             try:
-                again = evaluator(window.view(t))
-            finally:
-                window._shadow = False
-                for p, rows in saved.items():
-                    ds._cache[p][:] = rows
-            if again != res:
-                raise PITError(f'evaluator output at {S.utc(t)} depends on data not available at t (future '
-                               'perturbation changed it): the view was bypassed')
-        out.append(res)
+                if msg.get('op') != 'call' or name not in VIEW_CALLS:
+                    raise PITError(f'the sandbox asked for {name!r}, which is not a View accessor')
+                args = [self._pos(a, positions) for a in msg.get('args', [])]
+                kw = {k: self._pos(v, positions) for k, v in msg.get('kw', {}).items()}
+                out = getattr(view, name) if name == 'labels' else getattr(view, name)(*args, **kw)
+                if isinstance(out, Position):
+                    positions[id(out)] = out
+                self.send({'ok': _jsonable(out)})
+            except (PITError, TypeError, ValueError) as e:
+                self.send({'error': f'{type(e).__name__}: {e}'})
+
+    @staticmethod
+    def _pos(v, positions):
+        if isinstance(v, dict) and set(v) == {'__position__'}:
+            if v['__position__'] not in positions:
+                raise PITError('position is not a capability issued by this window')
+            return positions[v['__position__']]
+        return v
+
+    def close(self):
+        try:
+            if self.p.poll() is None:
+                try:
+                    self.send({'op': 'exit'})
+                except OSError:
+                    pass
+                try:
+                    self.p.wait(10)
+                except subprocess.TimeoutExpired:
+                    self.p.kill()
+        finally:
+            for f in (self.p.stdin, self.p.stdout):
+                f.close()
+            self._err.close()
+            self._tmp.cleanup()
+
+
+def _sha_obj(obj) -> str:
+    return hashlib.sha256(M.canonical(obj)).hexdigest()
+
+
+def evaluate(window: Window, evaluator_path: str, function: str, times, *, perturb: bool = True) -> Evaluated:
+    """Run `function(view)` from the evaluator file `evaluator_path` in the sandbox at each decision time (the
+    evaluator receives a View proxy only). With `perturb`, each decision is recomputed with every cached
+    not-yet-available row perturbed (positions it issues there are not recorded) and must be identical. The
+    attestation is appended to the family ledger before the outputs are returned."""
+    if not isinstance(window, Window) or window._access is None:
+        raise PITError('evaluate needs a Window opened through Access')
+    if not isinstance(evaluator_path, str) or not os.path.isfile(evaluator_path) or not evaluator_path.endswith('.py'):
+        raise PITError('the evaluator must be a .py file')
+    if not isinstance(function, str) or not function.isidentifier():
+        raise PITError('the evaluator function must be an identifier')
+    times = list(times)
+    if any(type(t) is not int for t in times):
+        raise PITError('decision times must be ints (ms)')
+    evaluator_path = os.path.abspath(evaluator_path)
+    repo = window._access.repo
+    box = _Sandbox(evaluator_path, function, [M.REPO, repo, os.path.dirname(evaluator_path)])
+    out, positions = Evaluated(), {}
+    try:
+        for t in times:
+            res = box.decide(window, t, positions)
+            if perturb:
+                ds = window._ds
+                saved = _perturb_future(ds, t)
+                window._shadow = True
+                try:
+                    again = box.decide(window, t, positions)
+                finally:
+                    window._shadow = False
+                    for p, rows in saved.items():
+                        ds._cache[p][:] = rows
+                if again != res:
+                    raise PITError(f'evaluator output at {S.utc(t)} depends on data not available at t (future '
+                                   'perturbation changed it): the view was bypassed')
+            out.append(res)
+    finally:
+        box.close()
+    with open(evaluator_path, 'rb') as f:
+        ev_sha = hashlib.sha256(f.read()).hexdigest()
+    try:
+        rel = os.path.relpath(evaluator_path, repo).replace(os.sep, '/')
+    except ValueError:
+        rel = evaluator_path
+    att = {'format': ATTESTATION_FORMAT, 'runner': RUNNER_ID, 'isolation': ISOLATION_ID, 'perturbed': bool(perturb),
+           'split': window.split, 'window': window.window_doc, 'window_key': window.key,
+           'run_digest': window.run_digest, 'evaluator': {'path': rel, 'sha256': ev_sha, 'function': function},
+           'times_digest': _sha_obj(times), 'outputs_digest': _sha_obj(list(out)),
+           'decisions_digest': _sha_obj([list(d) for d in window.decisions()]), 'n_decisions': len(times)}
+    digest = _sha_obj(att)
+    window._access._record_evaluation(window, att, digest)
+    out.attestation, out.attestation_digest = att, digest
     return out
 
 
@@ -384,6 +532,14 @@ class Access:
         d.update(extra or {})
         return d
 
+    def _record_evaluation(self, window: Window, att: dict, digest: str) -> None:
+        """The runner's attestation as a ledger record (a component of a holdout reveal group when sealed)."""
+        d = self._base_detail({'purpose': 'evaluation attestation', 'evaluation_attestation': digest,
+                               'attestation': att})
+        if window.eval_digest is not None:
+            d['eval_digest'] = window.eval_digest
+        self._record(window.split, window.window_doc, window.run_digest, d, None)
+
     def open(self, key: str, *, envelope=None, detail=None, lineage=None) -> Window:
         if self.plan is None:
             raise PITError('a split opens only through a SplitPlan')
@@ -394,12 +550,14 @@ class Access:
         if name != 'holdout':
             if envelope is not None and envelope['run']['split'] == 'holdout':
                 raise PITError('a holdout envelope cannot open a non-holdout split')
-            self._record(name, window, envelope['run_digest'] if envelope else None, d, lineage)
-            return Window(self.ds, lo, hi, key, _TOKEN)
+            rd = envelope['run_digest'] if envelope else None
+            self._record(name, window, rd, d, lineage)
+            return Window(self.ds, lo, hi, key, _TOKEN, access=self, split=name, window=window, run_digest=rd)
         self._guard_holdout(envelope, window)
         d['eval_digest'] = envelope['run']['eval_digest']
         self._record('holdout', window, envelope['run_digest'], d, lineage)
-        return Window(self.ds, lo, hi, key, _TOKEN)
+        return Window(self.ds, lo, hi, key, _TOKEN, access=self, split='holdout', window=window,
+                      run_digest=envelope['run_digest'], eval_digest=d['eval_digest'])
 
     def open_development(self, start: str, end: str, *, detail=None, lineage=None) -> Window:
         lo, hi = S.parse_utc(start), S.parse_utc(end)
@@ -407,14 +565,28 @@ class Access:
             raise PITError('development window needs start < end')
         if self.plan is not None and self.plan.overlaps_holdout(lo, hi):
             raise PITError('a development window may not touch the sealed holdout')
-        self._record('development', {'start': start, 'end': end}, None, self._base_detail(detail), lineage)
-        return Window(self.ds, lo, hi, f'development {start}..{end}', _TOKEN)
+        win = {'start': start, 'end': end}
+        self._record('development', win, None, self._base_detail(detail), lineage)
+        return Window(self.ds, lo, hi, f'development {start}..{end}', _TOKEN, access=self, split='development',
+                      window=win)
 
     def _guard_holdout(self, env, window):
         def need(ok, msg):
             if not ok:
                 raise PITError(f'sealed holdout: {msg}')
         need(env is not None and self.runs_dir is not None, 'needs a frozen run envelope and a runs store')
+        def real(x):
+            return os.path.normcase(os.path.realpath(x))
+        canon = real(CANONICAL_REPO)
+        need(real(self.repo) == canon, 'the access checkout is not the canonical research checkout')
+        need(real(os.path.dirname(os.path.abspath(self.path))) == os.path.join(canon, *LEDGER_REL),
+             'the ledger is not the canonical registered ledger (research_evidence/ledger of the checkout)')
+        need(real(self.runs_dir) == os.path.join(canon, *RUNS_REL),
+             'the runs store is not the canonical research_evidence/runs of the checkout')
+        try:
+            L.verify(self.path)
+        except L.LedgerError as e:
+            raise PITError(f'sealed holdout: the ledger failed append-only verification: {e}')
         try:
             stored = R.load_envelope(self.runs_dir, env['run_digest'])
             need(R.run_digest(env['run']) == env['run_digest'], 'envelope digest mismatch')

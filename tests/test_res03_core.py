@@ -140,6 +140,21 @@ def dirs(tmp_path):
     return str(tmp_path / 'ledger' / 'fam_x.jsonl'), str(tmp_path / 'runs')
 
 
+@pytest.fixture
+def canon(repo, monkeypatch):
+    """The canonical registered ledger + runs store inside the checkout (a copy of the committed ledger, so the
+    registry genesis pin holds), and that checkout made the canonical research checkout."""
+    led = os.path.join(repo, 'research_evidence', 'ledger')
+    os.makedirs(led)
+    os.makedirs(os.path.join(repo, 'research_evidence', 'runs'))
+    for f in glob.glob(os.path.join(ROOT, 'research_evidence', 'ledger', '*.jsonl')):
+        shutil.copyfile(f, os.path.join(led, os.path.basename(f)))
+    git(repo, 'add', '-A')
+    git(repo, 'commit', '-q', '-m', 'registered ledger')
+    monkeypatch.setattr(P, 'CANONICAL_REPO', repo)
+    return os.path.join(led, 'fam_x.jsonl'), os.path.join(repo, 'research_evidence', 'runs')
+
+
 def access(ds, path, pl='default', repo=M.REPO, candidate_id='c.v1'):
     return P.Access(ds, plan() if pl == 'default' else pl, path, candidate_id=candidate_id, author='t',
                     cairo_date='2026-10-09', repo=repo)
@@ -161,39 +176,83 @@ def test_view_serves_only_closed_bars_available_at_t(world, tmp_path):
         w.view(t).t = t + H4
 
 
-def test_evaluator_gets_only_the_view_and_a_peeking_control_is_caught(world, tmp_path):
-    """Codex R3 P1: evaluation runs through `evaluate`, which hands out the frozen View only and re-runs every decision
-    with all not-yet-available rows perturbed; an evaluator that bypasses the view fails closed."""
+HONEST = """
+import costs as C
+
+
+def run(v):
+    b = v.bars('AAAUSDT', '4h', 15)
+    return [b[-1].close > sum(x.close for x in b) / 15, round(C.slip_bps(b, 0.05), 9)]
+"""
+
+
+def evaluator(dirpath, src, name='ev.py'):
+    os.makedirs(str(dirpath), exist_ok=True)
+    f = os.path.join(str(dirpath), name)
+    with open(f, 'w', newline='\n') as fh:
+        fh.write(src)
+    return f
+
+
+def train_times(n=40, seed=7):
+    rnd = random.Random(seed)
+    lo, hi = plan().decision_range('train')
+    return sorted({lo + rnd.randrange((hi - lo) // H4 + 1) * H4 for _ in range(n)})
+
+
+def test_evaluator_runs_sandboxed_and_a_nondeterministic_control_is_caught(world, tmp_path):
+    """Codex R3 P1: evaluation runs through `evaluate`, which runs the evaluator in a separate sandboxed process with
+    a View proxy and re-runs every decision with all not-yet-available rows perturbed."""
     ds = ds_of(world)
     path, _ = dirs(tmp_path)
     w = access(ds, path).open('train', lineage='root')
-    rnd = random.Random(7)
-    lo, hi = plan().decision_range('train')
-    times = sorted({lo + rnd.randrange((hi - lo) // H4 + 1) * H4 for _ in range(40)})
-    seen = []
-
-    def honest(v):
-        seen.append(v)
-        b = v.bars('AAAUSDT', '4h', 15)
-        return (b[-1].close > sum(x.close for x in b) / 15, round(C.slip_bps(b, 0.05), 9))
-
-    out = P.evaluate(w, honest, times)
-    assert len(out) == len(times) and all(type(v) is P.View for v in seen)
-    v = seen[0]
-    assert type(v).__slots__ == ('_cap', 't') and not any(hasattr(v, a) for a in ('ds', '_w', '_ds', 'window', 'lo'))
-    assert not isinstance(v._cap, (P.Window, P.Dataset)) and not hasattr(v._cap, '__dict__')
-
-    def peeking(v):                           # negative control: reaches the dataset behind the capability
-        src = P._SOURCES[v._cap]._ds
-        rows = [r for f in src.files('klines', 'AAAUSDT', '4h') for r in src.rows(f)]
-        nxt = [r for r in rows if r.open_ms == v.t]
-        return nxt[0].close if nxt else None
-
-    for t in times[:5]:
-        with pytest.raises(P.PITError, match='bypassed'):
-            P.evaluate(w, peeking, [t])
+    times = train_times()
+    out = P.evaluate(w, evaluator(tmp_path / 'ev', HONEST), 'run', times)
+    direct = []
+    for t in times:                                       # the same rule in-process gives the same outputs
+        b = w.view(t).bars('AAAUSDT', '4h', 15)
+        direct.append([b[-1].close > sum(x.close for x in b) / 15, round(C.slip_bps(b, 0.05), 9)])
+    assert list(out) == direct and out.attestation['perturbed'] is True
+    assert out.attestation['isolation'] == P.ISOLATION_ID and out.attestation['n_decisions'] == len(times)
+    rec = L._check_state(path)['fam_x'][-1]
+    assert rec['detail']['evaluation_attestation'] == out.attestation_digest
+    counter = evaluator(tmp_path / 'ev', 'N = [0]\n\n\ndef run(v):\n    N[0] += 1\n    return N[0]\n', 'cnt.py')
+    with pytest.raises(P.PITError, match='bypassed'):
+        P.evaluate(w, counter, 'run', times[:1])
     with pytest.raises(P.PITError, match='Window opened through Access'):
-        P.evaluate(v, honest, times)
+        P.evaluate(w.view(times[0]), counter, 'run', times)
+
+
+@pytest.mark.parametrize('src,msg', [
+    # Codex 6079042573 repro: the raw Dataset behind the capability (manifest metadata of a future file)
+    ("import pit\n\n\ndef run(v):\n    return pit._src(v._cap)._ds.files('klines', 'AAAUSDT', '4h')[-1]"
+     "['last_open_ms']\n", "no attribute '_cap'"),
+    # a fresh Dataset built from the manifest/store on disk
+    ("import gzip\n\n\ndef run(v):\n    return len(open({manifest!r}, 'rb').read())\n", 'sandbox refused open'),
+    # direct read of an archive file of the store
+    ("def run(v):\n    return len(open({zip!r}, 'rb').read())\n", 'sandbox refused open'),
+    ("import os\n\n\ndef run(v):\n    return os.listdir({store!r})\n", 'sandbox refused listing'),
+    ("def run(v):\n    return open({evidence!r}).read()\n", 'sandbox refused open'),
+    ("import subprocess\n\n\ndef run(v):\n    return subprocess.run(['git', 'log']).returncode\n",
+     'sandbox refused'),
+    ("def run(v):\n    open('out.txt', 'w').write('x')\n    return 1\n", 'sandbox refused write'),
+    ("import ctypes\n\n\ndef run(v):\n    return 1\n", 'sandbox refused import'),
+], ids=['raw-dataset-via-pit', 'manifest-file', 'store-zip', 'store-listing', 'research-evidence', 'subprocess',
+        'write', 'ctypes'])
+def test_evaluator_cannot_reach_raw_store_manifest_or_files(world, tmp_path, src, msg):
+    """Codex 6079042573 P1 negative controls: manifest metadata, direct file reads and the raw Dataset are not
+    reachable from evaluator code; every attempt fails closed."""
+    ds = ds_of(world)
+    store = world[0]
+    path, _ = dirs(tmp_path)
+    mf = tmp_path / 'manifest.json'
+    mf.write_text(json.dumps(world[1]))
+    zp = glob.glob(os.path.join(store, 'um', 'monthly', 'klines', 'AAAUSDT', '4h', '*.zip'))[-1]
+    evid = os.path.join(ROOT, 'research_evidence', 'ledger', 'REGISTRY.jsonl')
+    w = access(ds, path).open('train', lineage='root')
+    f = evaluator(tmp_path / 'ev', src.format(manifest=str(mf), zip=zp, store=store, evidence=evid), 'bad.py')
+    with pytest.raises(P.PITError, match=msg):
+        P.evaluate(w, f, 'run', train_times(3))
 
 
 def test_position_capability_replaces_caller_entered_ms(world, tmp_path):
@@ -372,9 +431,9 @@ def reveal(path, env, kind='holdout_reveal'):
              detail={'eval_digest': r['eval_digest']})
 
 
-def test_holdout_is_sealed_without_the_atomic_reveal(world, tmp_path, repo):
+def test_holdout_is_sealed_without_the_atomic_reveal(world, tmp_path, repo, canon):
     ds = ds_of(world)
-    path, runs = dirs(tmp_path)
+    path, runs = canon
     pl = plan()
     acc = access(ds, path, pl, repo=repo)
     acc.open('train', lineage='root')                                   # the family exists, no reveal yet
@@ -406,9 +465,9 @@ def test_holdout_is_sealed_without_the_atomic_reveal(world, tmp_path, repo):
     (dict(window={'start': '2024-03-04T00:00:00Z', 'end': '2024-03-18T00:00:00Z'}), 'identity'),
     (dict(candidate_id='c.v2'), 'identity'),
 ])
-def test_holdout_guard_refuses_foreign_envelopes(world, tmp_path, repo, kw, msg):
+def test_holdout_guard_refuses_foreign_envelopes(world, tmp_path, repo, canon, kw, msg):
     ds = ds_of(world)
-    path, runs = dirs(tmp_path)
+    path, runs = canon
     pl = plan()
     acc = access(ds, path, pl, repo=repo)
     acc.open('train', lineage='root')
@@ -460,11 +519,14 @@ def test_code_identity_is_captured_not_self_attested(world, tmp_path, repo):
     with open(os.path.join(repo, 'research_evidence', 'x.json'), 'w') as f:
         f.write('{}')
     assert R.code_identity(repo)['dirty'] is False                      # evidence writes are not code
+    with open(os.path.join(repo, 'research_evidence', 'x.py'), 'w') as f:
+        f.write('X = 1')
+    assert R.code_identity(repo)['dirty'] is True                       # executable evidence is code
 
 
-def test_moved_or_dirty_checkout_cannot_open_the_holdout(world, tmp_path, repo):
+def test_moved_or_dirty_checkout_cannot_open_the_holdout(world, tmp_path, repo, canon):
     ds = ds_of(world)
-    path, runs = dirs(tmp_path)
+    path, runs = canon
     pl = plan()
     acc = access(ds, path, pl, repo=repo)
     acc.open('train', lineage='root')
@@ -516,10 +578,10 @@ def test_scratch_ledger_never_skips_the_envelope_proof_for_holdout_records(world
                  detail={'eval_digest': r['eval_digest']})
 
 
-def test_reveal_components_bind_the_complete_identity_cross_candidate_rejected(world, tmp_path, repo):
+def test_reveal_components_bind_the_complete_identity_cross_candidate_rejected(world, tmp_path, repo, canon):
     """Codex R3 P2: a component naming another candidate (with its own valid envelope) cannot join the reveal group."""
     ds = ds_of(world)
-    path, runs = dirs(tmp_path)
+    path, runs = canon
     pl = plan()
     access(ds, path, pl).open('train', lineage='root')
     env = make_env(ds, pl, repo)
@@ -537,13 +599,87 @@ def test_reveal_components_bind_the_complete_identity_cross_candidate_rejected(w
     access(ds, path, pl, repo=repo).open('holdout', envelope=env)       # the right candidate still opens
 
 
+def test_scratch_ledger_and_runs_tree_never_open_the_holdout(world, tmp_path, repo, monkeypatch):
+    """Codex 6079042573 P1 repro: a scratch ledger + runs tree with a valid envelope, train + reveal records."""
+    ds = ds_of(world)
+    pl = plan()
+    sc = tmp_path / 'scratch'
+    (sc / 'ledger').mkdir(parents=True)
+    (sc / 'runs').mkdir()
+    path, runs = str(sc / 'ledger' / 'fam_x.jsonl'), str(sc / 'runs')
+    acc = access(ds, path, pl, repo=repo)
+    acc.open('train', lineage='root')
+    env = make_env(ds, pl, repo)
+    R.write_envelope(runs, env)
+    reveal(path, env)                                                   # the scratch tree accepts the reveal...
+    with pytest.raises(P.PITError, match='canonical research checkout'):
+        acc.open('holdout', envelope=env)                               # ...but it cannot open the holdout
+    monkeypatch.setattr(P, 'CANONICAL_REPO', repo)
+    with pytest.raises(P.PITError, match='canonical registered ledger'):
+        acc.open('holdout', envelope=env)
+    # the canonical location itself, but a freshly minted registry (not the pinned genesis): append-only check fails
+    led = os.path.join(repo, 'research_evidence', 'ledger')
+    os.makedirs(led)
+    os.makedirs(os.path.join(repo, 'research_evidence', 'runs'))
+    path2 = os.path.join(led, 'fam_x.jsonl')
+    acc2 = access(ds, path2, pl, repo=repo)
+    acc2.open('train', lineage='root')
+    R.write_envelope(os.path.join(repo, 'research_evidence', 'runs'), env)
+    reveal(path2, env)
+    with pytest.raises(P.PITError, match='append-only verification'):
+        acc2.open('holdout', envelope=env)
+
+
+def test_executable_evidence_and_imported_helpers_are_code(world, tmp_path, repo):
+    """Codex 6079042573 P1 repro: a tracked candidate importing a tracked research_evidence/helper.py."""
+    ds = ds_of(world)
+    pl = plan()
+    ev = os.path.join(repo, 'research_evidence')
+    os.makedirs(ev)
+    with open(os.path.join(ev, 'helper.py'), 'w', newline='\n') as f:
+        f.write('K = 1\n')
+    with open(os.path.join(repo, 'strategy', 'uses_ev.py'), 'w', newline='\n') as f:
+        f.write('from research_evidence.helper import K\n')
+    with open(os.path.join(repo, 'strategy', 'util.py'), 'w', newline='\n') as f:
+        f.write('W = 1\n')
+    with open(os.path.join(repo, 'strategy', 'cand2.py'), 'w', newline='\n') as f:
+        f.write('import util\n')
+    git(repo, 'add', '-A')
+    git(repo, 'commit', '-q', '-m', 'helpers')
+    with pytest.raises(R.ReportError, match='may not live in or import from research_evidence'):
+        R.freeze_run(repo=repo, eval_files=['strategy/uses_ev.py'], config={}, seeds=[], **ident(ds, pl))
+    with pytest.raises(R.ReportError, match='may not live in or import from research_evidence'):
+        R.freeze_run(repo=repo, eval_files=['research_evidence/helper.py'], config={}, seeds=[], **ident(ds, pl))
+    env = R.freeze_run(repo=repo, eval_files=['strategy/cand2.py'], config={}, seeds=[], **ident(ds, pl))
+    assert 'strategy/util.py' in {f['path'] for f in env['run']['eval']['files']}     # closure hashed automatically
+    assert R.verify_code(env, repo) == []
+    with open(os.path.join(ev, 'helper.py'), 'w', newline='\n') as f:
+        f.write('K = 999\n')                                         # executable evidence changed
+    assert R.code_identity(repo)['dirty'] is True and 'the executing checkout is dirty' in R.verify_code(env, repo)
+    assert R.dirty_paths(repo) == ['research_evidence/helper.py']
+    git(repo, 'checkout', '--', 'research_evidence/helper.py')
+    with open(os.path.join(ev, 'run.json'), 'w') as f:
+        f.write('{}')
+    assert R.code_identity(repo)['dirty'] is False                      # a non-executable artifact is evidence
+    with open(os.path.join(ev, 'sneaky.pth'), 'w') as f:
+        f.write('import os')
+    assert R.dirty_paths(repo) == ['research_evidence/sneaky.pth']      # anything not a known artifact is code
+    os.remove(os.path.join(ev, 'sneaky.pth'))
+    with open(os.path.join(repo, 'strategy', 'util.py'), 'a') as f:
+        f.write('W = 2\n')
+    git(repo, 'commit', '-q', '-am', 'util')
+    assert any('evaluation files changed' in x for x in R.verify_code(env, repo))
+
+
 # ------------------------------------------------------------------ costs + slip-v1
 CAL = {'id': 'slip-cal-v1', 'target': 'per-side fill-vs-reference bps', 'source_series': 'synthetic fixture',
        'estimator': 'median ratio', 'loss': 'absolute', 'pooling': 'per cost class', 'fallback': 'floor 2 bps',
        'limit_touch_rule': C.LIMIT_TOUCH_RULE,
        'calibration_window': {'start': '2022-01-01T00:00:00Z', 'end': '2022-07-01T00:00:00Z'}, 'fitted': False,
-       'c': {'crypto': 0.05, 'gold': 0.06, 'commodity': 0.07, 'equity': 0.08, 'fx': 0.09}}
-SC = {'BTCUSDT': 'crypto', 'XAUUSDT': 'gold', 'CLUSDT': 'commodity', 'TSLAUSDT': 'equity', 'USDBRLUSDT': 'fx'}
+       'c': {'crypto': 0.05, 'gold-spot': 0.06, 'gold-tokenized': 0.065, 'commodity': 0.07, 'equity': 0.08,
+             'fx': 0.09}}
+SC = {'BTCUSDT': 'crypto', 'XAUUSDT': 'gold-spot', 'PAXGUSDT': 'gold-tokenized', 'CLUSDT': 'commodity',
+      'TSLAUSDT': 'equity', 'USDBRLUSDT': 'fx'}
 
 
 def bars_of(rows):
@@ -605,10 +741,10 @@ def test_limit_fill_rule_and_stress_rows():
 def test_cost_rows_per_class_gold_own_row_no_crypto_fallback(world):
     m = C.CostModel(CAL, SC)
     gold, crypto = m.row('XAUUSDT'), m.row('BTCUSDT')
-    assert gold.cost_class == 'gold' and gold.status == 'PROVISIONAL' and gold.funding_cadence_hours == 4
+    assert gold.cost_class == 'gold-spot' and gold.status == 'PROVISIONAL' and gold.funding_cadence_hours == 4
     assert (gold.taker, gold.maker, gold.fee_tier) == (crypto.taker, crypto.maker, crypto.fee_tier)   # Binance tier
     assert m.slip_c('XAUUSDT') == 0.06 != m.slip_c('BTCUSDT')                                        # own slip c
-    assert m.labels('XAUUSDT') == [C.FUNDING_MARK_LABEL, 'SLIP-VOL-TR-SMA14', 'COST-GOLD-PROVISIONAL',
+    assert m.labels('XAUUSDT') == [C.FUNDING_MARK_LABEL, 'SLIP-VOL-TR-SMA14', 'COST-GOLD-SPOT-PROVISIONAL',
                                    'SLIP-C-UNFITTED', 'WEEKEND-REFERENCE-GAP']
     assert m.labels('BTCUSDT') == [C.FUNDING_MARK_LABEL, 'SLIP-VOL-TR-SMA14', 'SLIP-C-UNFITTED']
     for sym, cls in (('CLUSDT', 'commodity'), ('TSLAUSDT', 'equity'), ('USDBRLUSDT', 'fx')):
@@ -626,12 +762,60 @@ def test_cost_rows_per_class_gold_own_row_no_crypto_fallback(world):
         C.CostModel(dict(CAL, fitted='no'), SC)
     assert C.CostModel(CAL, SC).digest == m.digest != C.CostModel(CAL, SC, vol_estimator=C.WILDER_ATR14).digest
     u = world[2]
-    assert C.symbol_class_from_universe(u) == {'AAAUSDT': 'crypto', 'XAUUSDT': 'gold'}
+    assert C.symbol_class_from_universe(u) == {'AAAUSDT': 'crypto', 'XAUUSDT': 'gold-spot'}
     assert C.symbol_class_from_universe({'symbols': [
         {'symbol': 'CLUSDT', 'class': 'gold-commodity', 'subclass': 'energy-oil'},
         {'symbol': 'PAXGUSDT', 'class': 'gold-commodity', 'subclass': 'gold-tokenized'},
         {'symbol': 'ODDUSDT', 'class': 'unclassified', 'subclass': 'x'}]}) == {'CLUSDT': 'commodity',
-                                                                               'PAXGUSDT': 'commodity'}
+                                                                               'PAXGUSDT': 'gold-tokenized'}
+
+
+def test_tokenized_gold_has_its_own_cost_row_in_the_gold_family():
+    """Codex 6079042573 P2: PAXG / XAUT are gold (shared regime family) with their own execution/cost row."""
+    sc = C.symbol_class_from_universe({'symbols': [
+        {'symbol': 'XAUUSDT', 'class': 'gold-commodity', 'subclass': 'gold-spot'},
+        {'symbol': 'PAXGUSDT', 'class': 'gold-commodity', 'subclass': 'gold-tokenized'},
+        {'symbol': 'XAUTUSDT', 'class': 'gold-commodity', 'subclass': 'gold-tokenized'},
+        {'symbol': 'CLUSDT', 'class': 'gold-commodity', 'subclass': 'energy-oil'}]})
+    assert sc == {'CLUSDT': 'commodity', 'PAXGUSDT': 'gold-tokenized', 'XAUTUSDT': 'gold-tokenized',
+                  'XAUUSDT': 'gold-spot'}
+    m = C.CostModel(CAL, sc)
+    tok, spot, com = m.row('PAXGUSDT'), m.row('XAUUSDT'), m.row('CLUSDT')
+    assert tok.cost_class == 'gold-tokenized' and tok != com and tok != spot and m.row('XAUTUSDT') == tok
+    assert m.regime_family('PAXGUSDT') == m.regime_family('XAUTUSDT') == m.regime_family('XAUUSDT') == 'gold'
+    assert m.regime_family('CLUSDT') == 'commodity'
+    assert tok.funding_cadence_hours is None and spot.funding_cadence_hours == 4      # cadence may differ
+    assert m.slip_c('PAXGUSDT') == 0.065 != m.slip_c('XAUUSDT')
+    assert 'COST-GOLD-TOKENIZED-UNCALIBRATED' in m.labels('PAXGUSDT') and 'WEEKEND-REFERENCE-GAP' in m.labels('PAXGUSDT')
+
+
+def test_funding_cadence_detects_missing_and_unexpected_events():
+    """Codex 6079042573 P2 repro: rows at T and T+8h both labelled 4h omit the T+4h event."""
+    m = C.CostModel(CAL, SC)
+    T = ms('2024-02-12') + 3
+    F = P.Funding
+    with pytest.raises(C.CostError, match='missing or unexpected funding event'):
+        m.check_funding_cadence('XAUUSDT', [F(T, -0.0002, 4, T), F(T + 8 * HOUR, -0.0002, 4, T + 8 * HOUR)])
+    ok = [F(T + i * 4 * HOUR, -0.0002, 4, T + i * 4 * HOUR) for i in range(3)]
+    m.check_funding_cadence('XAUUSDT', ok, start_ms=T, end_ms=T + 9 * HOUR)
+    m.check_funding_cadence('XAUUSDT', ok[::-1])                                     # order does not matter
+    with pytest.raises(C.CostError, match='missing before the first row'):
+        m.check_funding_cadence('XAUUSDT', ok, start_ms=T - 5 * HOUR, end_ms=T + 9 * HOUR)
+    with pytest.raises(C.CostError, match='missing after the last row'):
+        m.check_funding_cadence('XAUUSDT', ok, start_ms=T, end_ms=T + 13 * HOUR)
+    with pytest.raises(C.CostError, match='no funding rows'):
+        m.check_funding_cadence('XAUUSDT', [], start_ms=T, end_ms=T + 5 * HOUR)
+    m.check_funding_cadence('XAUUSDT', [], start_ms=T, end_ms=T + 3 * HOUR)          # shorter than one interval
+    with pytest.raises(C.CostError, match='outside the covered interval'):
+        m.check_funding_cadence('XAUUSDT', ok, start_ms=T + HOUR, end_ms=T + 9 * HOUR)
+    # per-symbol cadence (crypto): an 8h -> 4h schedule switch is accepted, an off-schedule event is not
+    m.check_funding_cadence('BTCUSDT', [F(T, 1e-4, 8, T), F(T + 8 * HOUR, 1e-4, 4, T + 8 * HOUR),
+                                        F(T + 12 * HOUR, 1e-4, 4, T + 12 * HOUR)])
+    with pytest.raises(C.CostError, match='missing or unexpected'):
+        m.check_funding_cadence('BTCUSDT', [F(T, 1e-4, 8, T), F(T + 3 * HOUR, 1e-4, 8, T + 3 * HOUR)])
+    with pytest.raises(C.CostError, match='missing or unexpected'):
+        m.check_funding_cadence('BTCUSDT', [F(T, 1e-4, 8, T), F(T + 24 * HOUR, 1e-4, 8, T + 24 * HOUR)])
+    m.check_funding_cadence('BTCUSDT', [F(T, 1e-4, 8, T), F(T + 8 * HOUR + 2_000, 1e-4, 8, T + 8 * HOUR)])
 
 
 def test_quantity_is_floored_never_upsized():
@@ -698,28 +882,57 @@ def test_resolver_on_the_pit_view_minutes(world, tmp_path):
 
 
 # ------------------------------------------------------------------ report envelope
-def test_envelope_write_once_and_report_shape(world, tmp_path, repo):
+def test_envelope_write_once_and_report_needs_the_runner_attestation(world, tmp_path, repo):
+    """Codex 6079042573 P1: only `pit.evaluate` (sandboxed, perturbed, ledger-recorded) can produce a report."""
     ds = ds_of(world)
-    env = make_env(ds, plan(), repo)
+    pl = plan()
+    evaluator(os.path.join(repo, 'strategy'), HONEST)
+    git(repo, 'add', '-A')
+    git(repo, 'commit', '-q', '-m', 'evaluator')
+    env = R.freeze_run(repo=repo, eval_files=['strategy/cand.py', 'strategy/ev.py'], config={'k': 1}, seeds=[1, 2],
+                       **dict(ident(ds, pl), split='train', window=pl.window('train')))
     assert env['run_digest'] == R.run_digest(env['run']) and env['format'] == 'zb-research-run/2'
     R.write_envelope(str(tmp_path), env)
     R.write_envelope(str(tmp_path), env)                                         # identical: no-op
     assert R.load_envelope(str(tmp_path), env['run_digest']) == env
     with pytest.raises(R.ReportError):
         R.write_envelope(str(tmp_path), dict(env, run_digest='0' * 64))
+    path, _ = dirs(tmp_path)
+    w = access(ds, path, pl, repo=repo).open('train', envelope=env, lineage='root')
+    ev, times = os.path.join(repo, 'strategy', 'ev.py'), train_times(4)
+    out = P.evaluate(w, ev, 'run', times)
     sec = {s: {k: None for k in keys} for s, keys in R.SECTIONS.items()}
-    rep = R.make_report(env, {'long': {row: sec for row in C.STRESS}})
+    full = {'long': {row: sec for row in C.STRESS}}
+    rep = R.make_report(env, full, out.attestation, path)
     assert rep['report_digest'] and rep['run_digest'] == env['run_digest']
+    assert rep['attestation_digest'] == out.attestation_digest and rep['attestation']['evaluator']['path'] == \
+        'strategy/ev.py'
     with pytest.raises(R.ReportError, match='every stress row'):
-        R.make_report(env, {'long': {'base': sec}})
+        R.make_report(env, {'long': {'base': sec}}, out.attestation, path)
     with pytest.raises(R.ReportError, match='keys must be exactly'):
-        R.make_report(env, {'short': {row: dict(sec, ci={}) for row in C.STRESS}})
+        R.make_report(env, {'short': {row: dict(sec, ci={}) for row in C.STRESS}}, out.attestation, path)
+    # bypass-runner negative controls
+    with pytest.raises(TypeError):
+        R.make_report(env, full)                                                 # no attestation at all
+    with pytest.raises(R.ReportError, match='not a runner attestation'):
+        R.make_report(env, full, {'outputs': [w.view(t).bars('AAAUSDT', '4h', 1) for t in times]}, path)
+    nop = P.evaluate(w, ev, 'run', times, perturb=False)
+    with pytest.raises(R.ReportError, match='future-perturbation'):
+        R.make_report(env, full, nop.attestation, path)
+    with pytest.raises(R.ReportError, match='no matching evaluation record'):
+        R.make_report(env, full, dict(out.attestation, outputs_digest='0' * 64), path)
+    stray = P.evaluate(w, evaluator(tmp_path / 'stray', HONEST), 'run', times)
+    with pytest.raises(R.ReportError, match='hashed evaluation files'):
+        R.make_report(env, full, stray.attestation, path)
+    dev = access(ds, path, pl, repo=repo).open('walk_forward[0]')
+    with pytest.raises(R.ReportError, match='another run'):
+        R.make_report(env, full, P.evaluate(dev, ev, 'run', [dev.hi]).attestation, path)
     dirty = dict(env['run'], code=dict(env['run']['code'], dirty=True))
     assert R.sealable(R.envelope(dirty)) == ['dirty working tree']
 
 
 def test_runtime_never_imports_research_code():
-    names = {'manifest', 'ledger', 'universe', 'pit', 'costs', 'splits', 'intrabar', 'report'}
+    names = {'manifest', 'ledger', 'universe', 'pit', 'costs', 'splits', 'intrabar', 'report', 'sandbox'}
     files = glob.glob(os.path.join(ROOT, '*.py')) + glob.glob(os.path.join(ROOT, 'newcore', '**', '*.py'), recursive=True)
     bad = []
     for f in files:
