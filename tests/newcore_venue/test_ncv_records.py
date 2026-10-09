@@ -248,3 +248,31 @@ def test_rate_limit_headers():
 def test_rate_limit_headers_never_raise(headers):
     r = parse_rate_limits(headers)
     assert r.weight('1m') is None and r.retry_after_s is None
+
+
+# First testnet P2 probe (3596e8b): openAlgoOrders sent the open stop's quantity as "7.0E-4" (Java scientific form);
+# the strict parser refused it, so open_orders was UNKNOWN while a stop rested. Row shape from the sanitized cassette.
+REAL_OPEN_ALGO = {'algoId': 1000000234377033, 'clientAlgoId': 'zbn1a-ub7sc7nrte3cco5rnhfylblf3k',
+                  'algoType': 'CONDITIONAL', 'orderType': 'STOP_MARKET', 'symbol': 'BTCUSDT', 'side': 'SELL',
+                  'positionSide': 'LONG', 'timeInForce': 'GTC', 'quantity': '7.0E-4', 'algoStatus': 'NEW',
+                  'actualOrderId': '', 'triggerPrice': '57811.8', 'price': '0.0', 'icebergQuantity': None,
+                  'selfTradePreventionMode': 'EXPIRE_MAKER', 'workingType': 'MARK_PRICE', 'priceMatch': 'NONE',
+                  'closePosition': False, 'priceProtect': False, 'reduceOnly': True, 'createTime': 1791533394182,
+                  'updateTime': 1791533394183, 'triggerTime': 0, 'goodTillDate': 0}
+
+
+@pytest.mark.parametrize('qty, want', [('7.0E-4', '0.0007'), ('1.5E+2', '150'), ('2E-3', '0.002'), ('0.0007', '0.0007')])
+def test_open_algo_quantity_in_scientific_form_parses_exactly(qty, want):
+    a, = R.parse_open_algo_orders([dict(REAL_OPEN_ALGO, quantity=qty)])
+    assert a.quantity == D(want) and a.trigger_price == D('57811.8')
+
+
+@pytest.mark.parametrize('qty', ['7.0e-4', '7.0E-400', 'E-4', '7.0E', '1E5E5', ' 7.0E-4', 'Infinity', '7.0E-4\n'])
+def test_open_algo_quantity_still_strict(qty):
+    with pytest.raises(R.MalformedResponse):
+        R.parse_open_algo_orders([dict(REAL_OPEN_ALGO, quantity=qty)])
+
+
+def test_scientific_form_stays_refused_outside_algo_orders():
+    with pytest.raises(R.MalformedResponse):
+        R.dec({'qty': '7.0E-4'}, 'qty')

@@ -43,13 +43,16 @@ def decode_json(body):
 
 
 _NUM = re.compile(r'^-?[0-9]+(\.[0-9]+)?$')
+# Binance's openAlgoOrders sends small quantities in Java scientific form ("7.0E-4", first testnet P2 probe):
+# accepted ONLY where a parser asks for it (sci=True), mantissa and a signed 1-2 digit exponent, nothing looser.
+_SCI = re.compile(r'^-?[0-9]+(\.[0-9]+)?E[-+]?[0-9]{1,2}$')
 MAX_NUM_TEXT = 64                  # a venue number longer than this is malformed (no 1 MB digit strings)
 MAX_ADJUSTED = 40                  # |exponent| cap: 1e999999999 is refused before any arithmetic (no OOM)
 MAX_INT = 2 ** 63
 MS_MIN, MS_MAX = 946_684_800_000, 4_102_444_799_999      # 2000-01-01 .. 2099-12-31 UTC
 
 
-def dec(row, key, *, nonneg=False, positive=False, optional=False):
+def dec(row, key, *, nonneg=False, positive=False, optional=False, sci=False):
     if not isinstance(row, dict):
         raise MalformedResponse('row is not an object')
     if key not in row or row[key] is None or row[key] == '':
@@ -65,7 +68,7 @@ def dec(row, key, *, nonneg=False, positive=False, optional=False):
         if not v.is_finite():
             raise MalformedResponse(f'{key}: non-finite')
         d = v
-    elif isinstance(v, str) and len(v) <= MAX_NUM_TEXT and _NUM.fullmatch(v):
+    elif isinstance(v, str) and len(v) <= MAX_NUM_TEXT and (_NUM.fullmatch(v) or sci and _SCI.fullmatch(v)):
         d = Decimal(v)
     else:
         raise MalformedResponse(f'{key}: not a decimal number')
@@ -463,7 +466,8 @@ def parse_algo_order(o, *, by_id=False):
                            algo_type=text(o, 'algoType'), order_type=text(o, 'orderType', optional=by_id),
                            symbol=text(o, 'symbol'), side=text(o, 'side', allowed=SIDES, optional=by_id),
                            position_side=text(o, 'positionSide', allowed=POSITION_SIDES),
-                           quantity=dec(o, 'quantity', nonneg=True), trigger_price=dec(o, 'triggerPrice', positive=True),
+                           quantity=dec(o, 'quantity', nonneg=True, sci=True),
+                           trigger_price=dec(o, 'triggerPrice', positive=True, sci=True),
                            algo_status=text(o, 'algoStatus', allowed=ALGO_STATUSES),
                            working_type=text(o, 'workingType', optional=True),
                            reduce_only=flag(o, 'reduceOnly', optional=by_id),
@@ -471,7 +475,8 @@ def parse_algo_order(o, *, by_id=False):
                            orig_type=text(o, 'origType', optional=True) if by_id else None,
                            create_time_ms=integer(o, 'createTime', optional=True, nonneg=True),
                            update_time_ms=integer(o, 'updateTime', optional=True, nonneg=True),
-                           actual_order_id=actual, actual_price=dec(o, 'actualPrice', nonneg=True, optional=True))
+                           actual_order_id=actual, actual_price=dec(o, 'actualPrice', nonneg=True, optional=True,
+                                                                    sci=True))
 
 
 def _string_qty(o, keys, what):
