@@ -1,0 +1,1978 @@
+{
+ "classes_id": "instrument-classes-v1",
+ "digest": "48a9d32c4299495d0c58b175755d8ebdab562f8e18a05196a7f361fb6a986845",
+ "entries": [
+  {
+   "basis": "single-stock perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1780876800000,
+   "subclass": "single-stock",
+   "symbol": "AAOIUSDT"
+  },
+  {
+   "basis": "single-stock perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1775433600000,
+   "subclass": "single-stock",
+   "symbol": "AAPLUSDT"
+  },
+  {
+   "basis": "single-stock perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1790640000000,
+   "subclass": "single-stock",
+   "symbol": "ACNUSDT"
+  },
+  {
+   "basis": "crypto token (project/meme name, sub-$2-typical price); manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "crypto",
+   "effective_from_ms": 1768953600000,
+   "subclass": "token",
+   "symbol": "ACUUSDT"
+  },
+  {
+   "basis": "single-stock perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1781136000000,
+   "subclass": "single-stock",
+   "symbol": "ADBEUSDT"
+  },
+  {
+   "basis": "not identified offline; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "unclassified",
+   "effective_from_ms": 1789689600000,
+   "subclass": "unidentified-underlying",
+   "symbol": "AGPUUSDT"
+  },
+  {
+   "basis": "crypto token (project/meme name, sub-$2-typical price); manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "crypto",
+   "effective_from_ms": 1777420800000,
+   "subclass": "token",
+   "symbol": "AIGENSYNUSDT"
+  },
+  {
+   "basis": "single-stock perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1782086400000,
+   "subclass": "single-stock",
+   "symbol": "ALABUSDT"
+  },
+  {
+   "basis": "single-stock perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1780876800000,
+   "subclass": "single-stock",
+   "symbol": "AMATUSDT"
+  },
+  {
+   "basis": "single-stock perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1789689600000,
+   "subclass": "single-stock",
+   "symbol": "AMCUSDT"
+  },
+  {
+   "basis": "single-stock perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1778025600000,
+   "subclass": "single-stock",
+   "symbol": "AMDUSDT"
+  },
+  {
+   "basis": "single-stock perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1770595200000,
+   "subclass": "single-stock",
+   "symbol": "AMZNUSDT"
+  },
+  {
+   "basis": "single-stock perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1789689600000,
+   "subclass": "single-stock",
+   "symbol": "ANETUSDT"
+  },
+  {
+   "basis": "pre-IPO company perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1780358400000,
+   "subclass": "pre-ipo",
+   "symbol": "ANTHROPICUSDT"
+  },
+  {
+   "basis": "single-stock perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1789689600000,
+   "subclass": "single-stock",
+   "symbol": "APLDUSDT"
+  },
+  {
+   "basis": "single-stock perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1783641600000,
+   "subclass": "single-stock",
+   "symbol": "APPUSDT"
+  },
+  {
+   "basis": "single-stock perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1779753600000,
+   "subclass": "single-stock",
+   "symbol": "ARMUSDT"
+  },
+  {
+   "basis": "crypto token (project/meme name, sub-$2-typical price); manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "crypto",
+   "effective_from_ms": 1782172800000,
+   "subclass": "token",
+   "symbol": "ARXUSDT"
+  },
+  {
+   "basis": "single-stock perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1781136000000,
+   "subclass": "single-stock",
+   "symbol": "ASMLUSDT"
+  },
+  {
+   "basis": "single-stock perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1780272000000,
+   "subclass": "single-stock",
+   "symbol": "ASTSUSDT"
+  },
+  {
+   "basis": "single-stock perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1776643200000,
+   "subclass": "single-stock",
+   "symbol": "AVGOUSDT"
+  },
+  {
+   "basis": "single-stock perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1780876800000,
+   "subclass": "single-stock",
+   "symbol": "AXTIUSDT"
+  },
+  {
+   "basis": "crypto token (project/meme name, sub-$2-typical price); manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "crypto",
+   "effective_from_ms": 1770768000000,
+   "subclass": "token",
+   "symbol": "AZTECUSDT"
+  },
+  {
+   "basis": "single-stock perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1776643200000,
+   "subclass": "single-stock",
+   "symbol": "BABAUSDT"
+  },
+  {
+   "basis": "crypto token (project/meme name, sub-$2-typical price); manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "crypto",
+   "effective_from_ms": 1774828800000,
+   "subclass": "token",
+   "symbol": "BASEDUSDT"
+  },
+  {
+   "basis": "not identified offline; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "unclassified",
+   "effective_from_ms": 1780272000000,
+   "subclass": "unidentified-underlying",
+   "symbol": "BBXUSDT"
+  },
+  {
+   "basis": "single-stock perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1779753600000,
+   "subclass": "single-stock",
+   "symbol": "BEUSDT"
+  },
+  {
+   "basis": "crypto token (project/meme name, sub-$2-typical price); manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "crypto",
+   "effective_from_ms": 1778112000000,
+   "subclass": "token",
+   "symbol": "BILLUSDT"
+  },
+  {
+   "basis": "crypto token (project/meme name, sub-$2-typical price); manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "crypto",
+   "effective_from_ms": 1769644800000,
+   "subclass": "token",
+   "symbol": "BIRBUSDT"
+  },
+  {
+   "basis": "exchange-traded fund perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1785110400000,
+   "subclass": "etf",
+   "symbol": "BITOUSDT"
+  },
+  {
+   "basis": "Binance composite index perpetual over crypto assets (pre-cutoff listing)",
+   "class": "crypto",
+   "effective_from_ms": 1667347200000,
+   "subclass": "crypto-index",
+   "symbol": "BLUEBIRDUSDT"
+  },
+  {
+   "basis": "single-stock perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1781136000000,
+   "subclass": "single-stock",
+   "symbol": "BMNRUSDT"
+  },
+  {
+   "basis": "single-stock perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1783555200000,
+   "subclass": "single-stock",
+   "symbol": "BNCUSDT"
+  },
+  {
+   "basis": "not identified offline; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "unclassified",
+   "effective_from_ms": 1783555200000,
+   "subclass": "unidentified-underlying",
+   "symbol": "BOTUSDT"
+  },
+  {
+   "basis": "crypto token (project/meme name, sub-$2-typical price); manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "crypto",
+   "effective_from_ms": 1767052800000,
+   "subclass": "token",
+   "symbol": "BREVUSDT"
+  },
+  {
+   "basis": "single-stock perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1779062400000,
+   "subclass": "single-stock",
+   "symbol": "BRKBUSDT"
+  },
+  {
+   "basis": "crypto token (project/meme name, sub-$2-typical price); manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "crypto",
+   "effective_from_ms": 1774396800000,
+   "subclass": "token",
+   "symbol": "BSBUSDT"
+  },
+  {
+   "basis": "not identified offline; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "unclassified",
+   "effective_from_ms": 1782950400000,
+   "subclass": "unidentified-underlying",
+   "symbol": "BSPUSDT"
+  },
+  {
+   "basis": "Binance composite index perpetual over crypto assets (pre-cutoff listing)",
+   "class": "crypto",
+   "effective_from_ms": 1624233600000,
+   "subclass": "crypto-index",
+   "symbol": "BTCDOMUSDT"
+  },
+  {
+   "basis": "not identified offline; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "unclassified",
+   "effective_from_ms": 1780531200000,
+   "subclass": "unidentified-underlying",
+   "symbol": "BTWUSDT"
+  },
+  {
+   "basis": "not identified offline; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "unclassified",
+   "effective_from_ms": 1790640000000,
+   "subclass": "unidentified-underlying",
+   "symbol": "BWETUSDT"
+  },
+  {
+   "basis": "single-stock perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1780876800000,
+   "subclass": "single-stock",
+   "symbol": "BXUSDT"
+  },
+  {
+   "basis": "single-stock perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1788739200000,
+   "subclass": "single-stock",
+   "symbol": "BYDUSDT"
+  },
+  {
+   "basis": "Binance TradFi perp on Brent crude oil (BZ)",
+   "class": "gold-commodity",
+   "effective_from_ms": 1775001600000,
+   "subclass": "energy-oil",
+   "symbol": "BZUSDT"
+  },
+  {
+   "basis": "crypto token (project/meme name, sub-$2-typical price); manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "crypto",
+   "effective_from_ms": 1782518400000,
+   "subclass": "token",
+   "symbol": "CAPUSDT"
+  },
+  {
+   "basis": "single-stock perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1782950400000,
+   "subclass": "single-stock",
+   "symbol": "CATUSDT"
+  },
+  {
+   "basis": "not identified offline; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "unclassified",
+   "effective_from_ms": 1779148800000,
+   "subclass": "unidentified-underlying",
+   "symbol": "CBRSUSDT"
+  },
+  {
+   "basis": "crypto token (project/meme name, sub-$2-typical price); manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "crypto",
+   "effective_from_ms": 1773619200000,
+   "subclass": "token",
+   "symbol": "CFGUSDT"
+  },
+  {
+   "basis": "crypto token (project/meme name, sub-$2-typical price); manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "crypto",
+   "effective_from_ms": 1776297600000,
+   "subclass": "token",
+   "symbol": "CHIPUSDT"
+  },
+  {
+   "basis": "single-stock perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1782086400000,
+   "subclass": "single-stock",
+   "symbol": "CIENUSDT"
+  },
+  {
+   "basis": "Binance TradFi perp on WTI crude oil (CL)",
+   "class": "gold-commodity",
+   "effective_from_ms": 1775001600000,
+   "subclass": "energy-oil",
+   "symbol": "CLUSDT"
+  },
+  {
+   "basis": "single-stock perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1779753600000,
+   "subclass": "single-stock",
+   "symbol": "COHRUSDT"
+  },
+  {
+   "basis": "single-stock perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1770595200000,
+   "subclass": "single-stock",
+   "symbol": "COINUSDT"
+  },
+  {
+   "basis": "crypto token (project/meme name, sub-$2-typical price); manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "crypto",
+   "effective_from_ms": 1767139200000,
+   "subclass": "token",
+   "symbol": "COLLECTUSDT"
+  },
+  {
+   "basis": "Binance TradFi perp on copper",
+   "class": "gold-commodity",
+   "effective_from_ms": 1772755200000,
+   "subclass": "base-metal",
+   "symbol": "COPPERUSDT"
+  },
+  {
+   "basis": "single-stock perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1780963200000,
+   "subclass": "single-stock",
+   "symbol": "COSTUSDT"
+  },
+  {
+   "basis": "single-stock perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1770595200000,
+   "subclass": "single-stock",
+   "symbol": "CRCLUSDT"
+  },
+  {
+   "basis": "single-stock perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1780876800000,
+   "subclass": "single-stock",
+   "symbol": "CRDOUSDT"
+  },
+  {
+   "basis": "single-stock perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1790640000000,
+   "subclass": "single-stock",
+   "symbol": "CRMLUSDT"
+  },
+  {
+   "basis": "single-stock perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1780444800000,
+   "subclass": "single-stock",
+   "symbol": "CRMUSDT"
+  },
+  {
+   "basis": "single-stock perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1780876800000,
+   "subclass": "single-stock",
+   "symbol": "CRWDUSDT"
+  },
+  {
+   "basis": "single-stock perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1779062400000,
+   "subclass": "single-stock",
+   "symbol": "CRWVUSDT"
+  },
+  {
+   "basis": "single-stock perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1778803200000,
+   "subclass": "single-stock",
+   "symbol": "CSCOUSDT"
+  },
+  {
+   "basis": "leveraged/inverse ETF perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1786406400000,
+   "subclass": "leveraged-etf",
+   "symbol": "CSOPSAMSUNG2LUSDT"
+  },
+  {
+   "basis": "leveraged/inverse ETF perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1786406400000,
+   "subclass": "leveraged-etf",
+   "symbol": "CSOPSKHYNIX2LUSDT"
+  },
+  {
+   "basis": "crypto token (project/meme name, sub-$2-typical price); manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "crypto",
+   "effective_from_ms": 1779926400000,
+   "subclass": "token",
+   "symbol": "CTRUSDT"
+  },
+  {
+   "basis": "single-stock perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1790553600000,
+   "subclass": "single-stock",
+   "symbol": "CVNAUSDT"
+  },
+  {
+   "basis": "pre-IPO company perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1787011200000,
+   "subclass": "pre-ipo",
+   "symbol": "CXMTUSDT"
+  },
+  {
+   "basis": "not identified offline; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "unclassified",
+   "effective_from_ms": 1789689600000,
+   "subclass": "unidentified-underlying",
+   "symbol": "CYPHUSDT"
+  },
+  {
+   "basis": "crypto token (project/meme name, sub-$2-typical price); manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "crypto",
+   "effective_from_ms": 1765497600000,
+   "subclass": "token",
+   "symbol": "CYSUSDT"
+  },
+  {
+   "basis": "crypto token (project/meme name, sub-$2-typical price); manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "crypto",
+   "effective_from_ms": 1783036800000,
+   "subclass": "token",
+   "symbol": "DATAIPUSDT"
+  },
+  {
+   "basis": "single-stock perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1788307200000,
+   "subclass": "single-stock",
+   "symbol": "DDOGUSDT"
+  },
+  {
+   "basis": "Binance composite index perpetual over crypto assets (pre-cutoff listing)",
+   "class": "crypto",
+   "effective_from_ms": 1598572800000,
+   "subclass": "crypto-index",
+   "symbol": "DEFIUSDT"
+  },
+  {
+   "basis": "single-stock perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1780444800000,
+   "subclass": "single-stock",
+   "symbol": "DELLUSDT"
+  },
+  {
+   "basis": "single-stock perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1778803200000,
+   "subclass": "single-stock",
+   "symbol": "DISUSDT"
+  },
+  {
+   "basis": "single-stock perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1787616000000,
+   "subclass": "single-stock",
+   "symbol": "DJTUSDT"
+  },
+  {
+   "basis": "single-stock perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1781049600000,
+   "subclass": "single-stock",
+   "symbol": "DKNGUSDT"
+  },
+  {
+   "basis": "crypto token (project/meme name, sub-$2-typical price); manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "crypto",
+   "effective_from_ms": 1786406400000,
+   "subclass": "token",
+   "symbol": "DOSUSDT"
+  },
+  {
+   "basis": "not identified offline; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "unclassified",
+   "effective_from_ms": 1779062400000,
+   "subclass": "unidentified-underlying",
+   "symbol": "DRAMUSDT"
+  },
+  {
+   "basis": "single-stock perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1780963200000,
+   "subclass": "single-stock",
+   "symbol": "EBAYUSDT"
+  },
+  {
+   "basis": "crypto token (project/meme name, sub-$2-typical price); manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "crypto",
+   "effective_from_ms": 1773878400000,
+   "subclass": "token",
+   "symbol": "EDGEUSDT"
+  },
+  {
+   "basis": "crypto token (project/meme name, sub-$2-typical price); manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "crypto",
+   "effective_from_ms": 1769040000000,
+   "subclass": "token",
+   "symbol": "ELSAUSDT"
+  },
+  {
+   "basis": "crypto token (project/meme name, sub-$2-typical price); manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "crypto",
+   "effective_from_ms": 1770681600000,
+   "subclass": "token",
+   "symbol": "ESPUSDT"
+  },
+  {
+   "basis": "exchange-traded fund perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1773878400000,
+   "subclass": "etf",
+   "symbol": "EWJUSDT"
+  },
+  {
+   "basis": "exchange-traded fund perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1780272000000,
+   "subclass": "etf",
+   "symbol": "EWTUSDT"
+  },
+  {
+   "basis": "exchange-traded fund perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1773619200000,
+   "subclass": "etf",
+   "symbol": "EWYUSDT"
+  },
+  {
+   "basis": "exchange-traded fund perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1781049600000,
+   "subclass": "etf",
+   "symbol": "EWZUSDT"
+  },
+  {
+   "basis": "crypto token (project/meme name, sub-$2-typical price); manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "crypto",
+   "effective_from_ms": 1769126400000,
+   "subclass": "token",
+   "symbol": "FIGHTUSDT"
+  },
+  {
+   "basis": "single-stock perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1782950400000,
+   "subclass": "single-stock",
+   "symbol": "FLEXUSDT"
+  },
+  {
+   "basis": "single-stock perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1779062400000,
+   "subclass": "single-stock",
+   "symbol": "FLNCUSDT"
+  },
+  {
+   "basis": "crypto token (project/meme name, sub-$2-typical price); manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "crypto",
+   "effective_from_ms": 1768003200000,
+   "subclass": "token",
+   "symbol": "FOGOUSDT"
+  },
+  {
+   "basis": "Binance composite index perpetual over crypto assets (pre-cutoff listing)",
+   "class": "crypto",
+   "effective_from_ms": 1661990400000,
+   "subclass": "crypto-index",
+   "symbol": "FOOTBALLUSDT"
+  },
+  {
+   "basis": "crypto token (project/meme name, sub-$2-typical price); manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "crypto",
+   "effective_from_ms": 1768435200000,
+   "subclass": "token",
+   "symbol": "FRAXUSDT"
+  },
+  {
+   "basis": "single-stock perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1783555200000,
+   "subclass": "single-stock",
+   "symbol": "FWDIUSDT"
+  },
+  {
+   "basis": "exchange-traded fund perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1786924800000,
+   "subclass": "etf",
+   "symbol": "GDXUSDT"
+  },
+  {
+   "basis": "crypto token (project/meme name, sub-$2-typical price); manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "crypto",
+   "effective_from_ms": 1776297600000,
+   "subclass": "token",
+   "symbol": "GENIUSUSDT"
+  },
+  {
+   "basis": "single-stock perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1783641600000,
+   "subclass": "single-stock",
+   "symbol": "GEVUSDT"
+  },
+  {
+   "basis": "single-stock perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1785715200000,
+   "subclass": "single-stock",
+   "symbol": "GIGADEVUSDT"
+  },
+  {
+   "basis": "single-stock perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1781136000000,
+   "subclass": "single-stock",
+   "symbol": "GLWUSDT"
+  },
+  {
+   "basis": "single-stock perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1781049600000,
+   "subclass": "single-stock",
+   "symbol": "GMEUSDT"
+  },
+  {
+   "basis": "single-stock perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1774483200000,
+   "subclass": "single-stock",
+   "symbol": "GOOGLUSDT"
+  },
+  {
+   "basis": "single-stock perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1788393600000,
+   "subclass": "single-stock",
+   "symbol": "GPROUSDT"
+  },
+  {
+   "basis": "not identified offline; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "unclassified",
+   "effective_from_ms": 1782950400000,
+   "subclass": "unidentified-underlying",
+   "symbol": "GRAMUSDT"
+  },
+  {
+   "basis": "crypto token (project/meme name, sub-$2-typical price); manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "crypto",
+   "effective_from_ms": 1785456000000,
+   "subclass": "token",
+   "symbol": "GRVTUSDT"
+  },
+  {
+   "basis": "single-stock perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1785283200000,
+   "subclass": "single-stock",
+   "symbol": "GSUSDT"
+  },
+  {
+   "basis": "single-stock perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1788307200000,
+   "subclass": "single-stock",
+   "symbol": "GTLBUSDT"
+  },
+  {
+   "basis": "crypto token (project/meme name, sub-$2-typical price); manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "crypto",
+   "effective_from_ms": 1766275200000,
+   "subclass": "token",
+   "symbol": "GUAUSDT"
+  },
+  {
+   "basis": "crypto token (project/meme name, sub-$2-typical price); manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "crypto",
+   "effective_from_ms": 1769644800000,
+   "subclass": "token",
+   "symbol": "GWEIUSDT"
+  },
+  {
+   "basis": "single-stock perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1786665600000,
+   "subclass": "single-stock",
+   "symbol": "HANMIUSDT"
+  },
+  {
+   "basis": "single-stock perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1778803200000,
+   "subclass": "single-stock",
+   "symbol": "HDUSDT"
+  },
+  {
+   "basis": "single-stock perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1780963200000,
+   "subclass": "single-stock",
+   "symbol": "HIMSUSDT"
+  },
+  {
+   "basis": "single-stock perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1788220800000,
+   "subclass": "single-stock",
+   "symbol": "HK0625USDT"
+  },
+  {
+   "basis": "single-stock perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1784678400000,
+   "subclass": "single-stock",
+   "symbol": "HK0700USDT"
+  },
+  {
+   "basis": "single-stock perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1788739200000,
+   "subclass": "single-stock",
+   "symbol": "HK0992USDT"
+  },
+  {
+   "basis": "single-stock perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1784678400000,
+   "subclass": "single-stock",
+   "symbol": "HK1810USDT"
+  },
+  {
+   "basis": "single-stock perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1769990400000,
+   "subclass": "single-stock",
+   "symbol": "HOODUSDT"
+  },
+  {
+   "basis": "single-stock perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1780876800000,
+   "subclass": "single-stock",
+   "symbol": "HPEUSDT"
+  },
+  {
+   "basis": "single-stock perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1789689600000,
+   "subclass": "single-stock",
+   "symbol": "HUTUSDT"
+  },
+  {
+   "basis": "single-stock perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1780358400000,
+   "subclass": "single-stock",
+   "symbol": "HYUNDAIUSDT"
+  },
+  {
+   "basis": "single-stock perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1780444800000,
+   "subclass": "single-stock",
+   "symbol": "IBMUSDT"
+  },
+  {
+   "basis": "single-stock perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1769990400000,
+   "subclass": "single-stock",
+   "symbol": "INTCUSDT"
+  },
+  {
+   "basis": "not identified offline; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "unclassified",
+   "effective_from_ms": 1783555200000,
+   "subclass": "unidentified-underlying",
+   "symbol": "INTWUSDT"
+  },
+  {
+   "basis": "crypto token (project/meme name, sub-$2-typical price); manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "crypto",
+   "effective_from_ms": 1769731200000,
+   "subclass": "token",
+   "symbol": "INXUSDT"
+  },
+  {
+   "basis": "single-stock perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1787875200000,
+   "subclass": "single-stock",
+   "symbol": "IONQUSDT"
+  },
+  {
+   "basis": "single-stock perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1780444800000,
+   "subclass": "single-stock",
+   "symbol": "IRENUSDT"
+  },
+  {
+   "basis": "crypto token (project/meme name, sub-$2-typical price); manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "crypto",
+   "effective_from_ms": 1766275200000,
+   "subclass": "token",
+   "symbol": "IRUSDT"
+  },
+  {
+   "basis": "exchange-traded fund perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1780876800000,
+   "subclass": "etf",
+   "symbol": "IWMUSDT"
+  },
+  {
+   "basis": "single-stock perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1779062400000,
+   "subclass": "single-stock",
+   "symbol": "JPMUSDT"
+  },
+  {
+   "basis": "crypto token (project/meme name, sub-$2-typical price); manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "crypto",
+   "effective_from_ms": 1772409600000,
+   "subclass": "token",
+   "symbol": "KATUSDT"
+  },
+  {
+   "basis": "single-stock perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1782086400000,
+   "subclass": "single-stock",
+   "symbol": "KLACUSDT"
+  },
+  {
+   "basis": "exchange-traded fund perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1786665600000,
+   "subclass": "etf",
+   "symbol": "KODEX200USDT"
+  },
+  {
+   "basis": "leveraged/inverse ETF perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1782086400000,
+   "subclass": "leveraged-etf",
+   "symbol": "KORUUSDT"
+  },
+  {
+   "basis": "single-stock perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1785974400000,
+   "subclass": "single-stock",
+   "symbol": "KOUSDT"
+  },
+  {
+   "basis": "not identified offline; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "unclassified",
+   "effective_from_ms": 1782950400000,
+   "subclass": "unidentified-underlying",
+   "symbol": "KSTRUSDT"
+  },
+  {
+   "basis": "single-stock perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1786406400000,
+   "subclass": "single-stock",
+   "symbol": "KUAISHOUUSDT"
+  },
+  {
+   "basis": "single-stock perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1786665600000,
+   "subclass": "single-stock",
+   "symbol": "LGELECTRONICSUSDT"
+  },
+  {
+   "basis": "single-stock perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1778803200000,
+   "subclass": "single-stock",
+   "symbol": "LITEUSDT"
+  },
+  {
+   "basis": "single-stock perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1780272000000,
+   "subclass": "single-stock",
+   "symbol": "LLYUSDT"
+  },
+  {
+   "basis": "single-stock perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1782086400000,
+   "subclass": "single-stock",
+   "symbol": "LRCXUSDT"
+  },
+  {
+   "basis": "not identified offline; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "unclassified",
+   "effective_from_ms": 1786924800000,
+   "subclass": "unidentified-underlying",
+   "symbol": "LYTEUSDT"
+  },
+  {
+   "basis": "crypto token (project/meme name, sub-$2-typical price); manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "crypto",
+   "effective_from_ms": 1767139200000,
+   "subclass": "token",
+   "symbol": "MAGMAUSDT"
+  },
+  {
+   "basis": "crypto token (project/meme name, sub-$2-typical price); manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "crypto",
+   "effective_from_ms": 1772582400000,
+   "subclass": "token",
+   "symbol": "MANTRAUSDT"
+  },
+  {
+   "basis": "single-stock perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1787875200000,
+   "subclass": "single-stock",
+   "symbol": "MARAUSDT"
+  },
+  {
+   "basis": "crypto token (project/meme name, sub-$2-typical price); manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "crypto",
+   "effective_from_ms": 1788220800000,
+   "subclass": "token",
+   "symbol": "MARSCOINUSDT"
+  },
+  {
+   "basis": "single-stock perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1788307200000,
+   "subclass": "single-stock",
+   "symbol": "MDBUSDT"
+  },
+  {
+   "basis": "crypto token (project/meme name, sub-$2-typical price); manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "crypto",
+   "effective_from_ms": 1769731200000,
+   "subclass": "token",
+   "symbol": "MEGAUSDT"
+  },
+  {
+   "basis": "single-stock perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1786406400000,
+   "subclass": "single-stock",
+   "symbol": "MEITUANUSDT"
+  },
+  {
+   "basis": "single-stock perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1774483200000,
+   "subclass": "single-stock",
+   "symbol": "METAUSDT"
+  },
+  {
+   "basis": "single-stock perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1784246400000,
+   "subclass": "single-stock",
+   "symbol": "MINIMAXUSDT"
+  },
+  {
+   "basis": "not identified offline; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "unclassified",
+   "effective_from_ms": 1790035200000,
+   "subclass": "unidentified-underlying",
+   "symbol": "MOONSHOTUSDT"
+  },
+  {
+   "basis": "single-stock perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1790640000000,
+   "subclass": "single-stock",
+   "symbol": "MPUSDT"
+  },
+  {
+   "basis": "single-stock perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1787875200000,
+   "subclass": "single-stock",
+   "symbol": "MRKUSDT"
+  },
+  {
+   "basis": "single-stock perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1787616000000,
+   "subclass": "single-stock",
+   "symbol": "MRNAUSDT"
+  },
+  {
+   "basis": "single-stock perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1778803200000,
+   "subclass": "single-stock",
+   "symbol": "MRVLUSDT"
+  },
+  {
+   "basis": "single-stock perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1776643200000,
+   "subclass": "single-stock",
+   "symbol": "MSFTUSDT"
+  },
+  {
+   "basis": "single-stock perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1770595200000,
+   "subclass": "single-stock",
+   "symbol": "MSTRUSDT"
+  },
+  {
+   "basis": "single-stock perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1775520000000,
+   "subclass": "single-stock",
+   "symbol": "MUUSDT"
+  },
+  {
+   "basis": "leveraged/inverse ETF perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1784160000000,
+   "subclass": "leveraged-etf",
+   "symbol": "MUUUSDT"
+  },
+  {
+   "basis": "not identified offline; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "unclassified",
+   "effective_from_ms": 1782691200000,
+   "subclass": "unidentified-underlying",
+   "symbol": "MVLLUSDT"
+  },
+  {
+   "basis": "Binance TradFi perp on natural gas",
+   "class": "gold-commodity",
+   "effective_from_ms": 1775001600000,
+   "subclass": "energy-gas",
+   "symbol": "NATGASUSDT"
+  },
+  {
+   "basis": "single-stock perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1786665600000,
+   "subclass": "single-stock",
+   "symbol": "NAVERUSDT"
+  },
+  {
+   "basis": "single-stock perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1779753600000,
+   "subclass": "single-stock",
+   "symbol": "NBISUSDT"
+  },
+  {
+   "basis": "single-stock perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1786924800000,
+   "subclass": "single-stock",
+   "symbol": "NETUSDT"
+  },
+  {
+   "basis": "single-stock perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1780963200000,
+   "subclass": "single-stock",
+   "symbol": "NFLXUSDT"
+  },
+  {
+   "basis": "crypto token (project/meme name, sub-$2-typical price); manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "crypto",
+   "effective_from_ms": 1765324800000,
+   "subclass": "token",
+   "symbol": "NIGHTUSDT"
+  },
+  {
+   "basis": "single-stock perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1790640000000,
+   "subclass": "single-stock",
+   "symbol": "NKEUSDT"
+  },
+  {
+   "basis": "single-stock perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1780272000000,
+   "subclass": "single-stock",
+   "symbol": "NOKUSDT"
+  },
+  {
+   "basis": "single-stock perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1780444800000,
+   "subclass": "single-stock",
+   "symbol": "NOWUSDT"
+  },
+  {
+   "basis": "single-stock perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1774483200000,
+   "subclass": "single-stock",
+   "symbol": "NVDAUSDT"
+  },
+  {
+   "basis": "leveraged/inverse ETF perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1788307200000,
+   "subclass": "leveraged-etf",
+   "symbol": "NVDLUSDT"
+  },
+  {
+   "basis": "single-stock perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1780272000000,
+   "subclass": "single-stock",
+   "symbol": "NVOUSDT"
+  },
+  {
+   "basis": "single-stock perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1790553600000,
+   "subclass": "single-stock",
+   "symbol": "OKLOUSDT"
+  },
+  {
+   "basis": "single-stock perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1780444800000,
+   "subclass": "single-stock",
+   "symbol": "ONDSUSDT"
+  },
+  {
+   "basis": "pre-IPO company perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1779753600000,
+   "subclass": "pre-ipo",
+   "symbol": "OPENAIUSDT"
+  },
+  {
+   "basis": "crypto token (project/meme name, sub-$2-typical price); manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "crypto",
+   "effective_from_ms": 1776816000000,
+   "subclass": "token",
+   "symbol": "OPGUSDT"
+  },
+  {
+   "basis": "crypto token (project/meme name, sub-$2-typical price); manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "crypto",
+   "effective_from_ms": 1771632000000,
+   "subclass": "token",
+   "symbol": "OPNUSDT"
+  },
+  {
+   "basis": "single-stock perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1778803200000,
+   "subclass": "single-stock",
+   "symbol": "ORCLUSDT"
+  },
+  {
+   "basis": "pre-IPO company perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1790121600000,
+   "subclass": "pre-ipo",
+   "symbol": "OURAUSDT"
+  },
+  {
+   "basis": "crypto token (project/meme name, sub-$2-typical price); manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "crypto",
+   "effective_from_ms": 1782259200000,
+   "subclass": "token",
+   "symbol": "OUSDT"
+  },
+  {
+   "basis": "single-stock perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1784592000000,
+   "subclass": "single-stock",
+   "symbol": "PANWUSDT"
+  },
+  {
+   "basis": "single-stock perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1789689600000,
+   "subclass": "single-stock",
+   "symbol": "PATHUSDT"
+  },
+  {
+   "basis": "Paxos Gold (PAXG) token, one token = one troy ounce of gold",
+   "class": "gold-commodity",
+   "effective_from_ms": 1743033600000,
+   "subclass": "gold-tokenized",
+   "symbol": "PAXGUSDT"
+  },
+  {
+   "basis": "not identified offline; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "unclassified",
+   "effective_from_ms": 1774224000000,
+   "subclass": "unidentified-underlying",
+   "symbol": "PAYPUSDT"
+  },
+  {
+   "basis": "single-stock perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1787875200000,
+   "subclass": "single-stock",
+   "symbol": "PDDUSDT"
+  },
+  {
+   "basis": "single-stock perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1784592000000,
+   "subclass": "single-stock",
+   "symbol": "PENGUSDT"
+  },
+  {
+   "basis": "crypto token (project/meme name, sub-$2-typical price); manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "crypto",
+   "effective_from_ms": 1778716800000,
+   "subclass": "token",
+   "symbol": "PHAROSUSDT"
+  },
+  {
+   "basis": "single-stock perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1770595200000,
+   "subclass": "single-stock",
+   "symbol": "PLTRUSDT"
+  },
+  {
+   "basis": "crypto token (project/meme name, sub-$2-typical price); manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "crypto",
+   "effective_from_ms": 1788652800000,
+   "subclass": "token",
+   "symbol": "PONSUSDT"
+  },
+  {
+   "basis": "single-stock perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1784764800000,
+   "subclass": "single-stock",
+   "symbol": "POPMARTUSDT"
+  },
+  {
+   "basis": "crypto token (project/meme name, sub-$2-typical price); manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "crypto",
+   "effective_from_ms": 1764979200000,
+   "subclass": "token",
+   "symbol": "POWERUSDT"
+  },
+  {
+   "basis": "crypto token (project/meme name, sub-$2-typical price); manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "crypto",
+   "effective_from_ms": 1775001600000,
+   "subclass": "token",
+   "symbol": "PRLUSDT"
+  },
+  {
+   "basis": "single-stock perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1785283200000,
+   "subclass": "single-stock",
+   "symbol": "PYPLUSDT"
+  },
+  {
+   "basis": "single-stock perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1778025600000,
+   "subclass": "single-stock",
+   "symbol": "QCOMUSDT"
+  },
+  {
+   "basis": "not identified offline; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "unclassified",
+   "effective_from_ms": 1780012800000,
+   "subclass": "unidentified-underlying",
+   "symbol": "QNTXUSDT"
+  },
+  {
+   "basis": "exchange-traded fund perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1775433600000,
+   "subclass": "etf",
+   "symbol": "QQQUSDT"
+  },
+  {
+   "basis": "not identified offline; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "unclassified",
+   "effective_from_ms": 1787616000000,
+   "subclass": "unidentified-underlying",
+   "symbol": "RAMUSDT"
+  },
+  {
+   "basis": "crypto token (project/meme name, sub-$2-typical price); manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "crypto",
+   "effective_from_ms": 1765670400000,
+   "subclass": "token",
+   "symbol": "RAVEUSDT"
+  },
+  {
+   "basis": "single-stock perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1785974400000,
+   "subclass": "single-stock",
+   "symbol": "RDDTUSDT"
+  },
+  {
+   "basis": "crypto token (project/meme name, sub-$2-typical price); manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "crypto",
+   "effective_from_ms": 1781740800000,
+   "subclass": "token",
+   "symbol": "REUSDT"
+  },
+  {
+   "basis": "single-stock perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1781049600000,
+   "subclass": "single-stock",
+   "symbol": "RIVNUSDT"
+  },
+  {
+   "basis": "single-stock perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1779062400000,
+   "subclass": "single-stock",
+   "symbol": "RKLBUSDT"
+  },
+  {
+   "basis": "crypto token (project/meme name, sub-$2-typical price); manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "crypto",
+   "effective_from_ms": 1764633600000,
+   "subclass": "token",
+   "symbol": "RLSUSDT"
+  },
+  {
+   "basis": "crypto token (project/meme name, sub-$2-typical price); manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "crypto",
+   "effective_from_ms": 1772150400000,
+   "subclass": "token",
+   "symbol": "ROBOUSDT"
+  },
+  {
+   "basis": "single-stock perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1790553600000,
+   "subclass": "single-stock",
+   "symbol": "RUMUSDT"
+  },
+  {
+   "basis": "single-stock perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1786665600000,
+   "subclass": "single-stock",
+   "symbol": "SAMSUNGEMUSDT"
+  },
+  {
+   "basis": "single-stock perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1780358400000,
+   "subclass": "single-stock",
+   "symbol": "SAMSUNGUSDT"
+  },
+  {
+   "basis": "not identified offline; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "unclassified",
+   "effective_from_ms": 1790640000000,
+   "subclass": "unidentified-underlying",
+   "symbol": "SECZUSDT"
+  },
+  {
+   "basis": "not identified offline; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "unclassified",
+   "effective_from_ms": 1784592000000,
+   "subclass": "unidentified-underlying",
+   "symbol": "SHAZUSDT"
+  },
+  {
+   "basis": "single-stock perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1786924800000,
+   "subclass": "single-stock",
+   "symbol": "SHOPUSDT"
+  },
+  {
+   "basis": "not identified offline; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "unclassified",
+   "effective_from_ms": 1787616000000,
+   "subclass": "unidentified-underlying",
+   "symbol": "SKDDUSDT"
+  },
+  {
+   "basis": "single-stock perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1780358400000,
+   "subclass": "single-stock",
+   "symbol": "SKHYNIXUSDT"
+  },
+  {
+   "basis": "not identified offline; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "unclassified",
+   "effective_from_ms": 1783641600000,
+   "subclass": "unidentified-underlying",
+   "symbol": "SKHYUSDT"
+  },
+  {
+   "basis": "crypto token (project/meme name, sub-$2-typical price); manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "crypto",
+   "effective_from_ms": 1769040000000,
+   "subclass": "token",
+   "symbol": "SKRUSDT"
+  },
+  {
+   "basis": "not identified offline; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "unclassified",
+   "effective_from_ms": 1787616000000,
+   "subclass": "unidentified-underlying",
+   "symbol": "SKUUUSDT"
+  },
+  {
+   "basis": "crypto token (project/meme name, sub-$2-typical price); manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "crypto",
+   "effective_from_ms": 1780272000000,
+   "subclass": "token",
+   "symbol": "SLXUSDT"
+  },
+  {
+   "basis": "single-stock perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1782086400000,
+   "subclass": "single-stock",
+   "symbol": "SMCIUSDT"
+  },
+  {
+   "basis": "exchange-traded fund perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1785283200000,
+   "subclass": "etf",
+   "symbol": "SMHUSDT"
+  },
+  {
+   "basis": "single-stock perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1775520000000,
+   "subclass": "single-stock",
+   "symbol": "SNDKUSDT"
+  },
+  {
+   "basis": "single-stock perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1783641600000,
+   "subclass": "single-stock",
+   "symbol": "SNOWUSDT"
+  },
+  {
+   "basis": "not identified offline; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "unclassified",
+   "effective_from_ms": 1783555200000,
+   "subclass": "unidentified-underlying",
+   "symbol": "SNXXUSDT"
+  },
+  {
+   "basis": "single-stock perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1784592000000,
+   "subclass": "single-stock",
+   "symbol": "SOFIUSDT"
+  },
+  {
+   "basis": "single-stock perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1782086400000,
+   "subclass": "single-stock",
+   "symbol": "SONYUSDT"
+  },
+  {
+   "basis": "leveraged/inverse ETF perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1778803200000,
+   "subclass": "leveraged-etf",
+   "symbol": "SOXLUSDT"
+  },
+  {
+   "basis": "leveraged/inverse ETF perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1784160000000,
+   "subclass": "leveraged-etf",
+   "symbol": "SOXSUSDT"
+  },
+  {
+   "basis": "crypto token (project/meme name, sub-$2-typical price); manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "crypto",
+   "effective_from_ms": 1769126400000,
+   "subclass": "token",
+   "symbol": "SPACEUSDT"
+  },
+  {
+   "basis": "not identified offline; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "unclassified",
+   "effective_from_ms": 1779321600000,
+   "subclass": "unidentified-underlying",
+   "symbol": "SPCXUSDT"
+  },
+  {
+   "basis": "crypto token (project/meme name, sub-$2-typical price); manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "crypto",
+   "effective_from_ms": 1768521600000,
+   "subclass": "token",
+   "symbol": "SPORTFUNUSDT"
+  },
+  {
+   "basis": "exchange-traded fund perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1775433600000,
+   "subclass": "etf",
+   "symbol": "SPYUSDT"
+  },
+  {
+   "basis": "leveraged/inverse ETF perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1782691200000,
+   "subclass": "leveraged-etf",
+   "symbol": "SQQQUSDT"
+  },
+  {
+   "basis": "crypto token (project/meme name, sub-$2-typical price); manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "crypto",
+   "effective_from_ms": 1778716800000,
+   "subclass": "token",
+   "symbol": "STARUSDT"
+  },
+  {
+   "basis": "single-stock perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1782950400000,
+   "subclass": "single-stock",
+   "symbol": "STRCUSDT"
+  },
+  {
+   "basis": "not identified offline; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "unclassified",
+   "effective_from_ms": 1781136000000,
+   "subclass": "unidentified-underlying",
+   "symbol": "STXXUSDT"
+  },
+  {
+   "basis": "leveraged/inverse ETF perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1785110400000,
+   "subclass": "leveraged-etf",
+   "symbol": "TBTUSDT"
+  },
+  {
+   "basis": "single-stock perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1788307200000,
+   "subclass": "single-stock",
+   "symbol": "TEAMUSDT"
+  },
+  {
+   "basis": "single-stock perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1787875200000,
+   "subclass": "single-stock",
+   "symbol": "TEMUSDT"
+  },
+  {
+   "basis": "single-stock perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1784678400000,
+   "subclass": "single-stock",
+   "symbol": "TENCENTUSDT"
+  },
+  {
+   "basis": "single-stock perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1782950400000,
+   "subclass": "single-stock",
+   "symbol": "TERUSDT"
+  },
+  {
+   "basis": "leveraged/inverse ETF perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1785110400000,
+   "subclass": "leveraged-etf",
+   "symbol": "TMFUSDT"
+  },
+  {
+   "basis": "leveraged/inverse ETF perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1782691200000,
+   "subclass": "leveraged-etf",
+   "symbol": "TQQQUSDT"
+  },
+  {
+   "basis": "crypto token (project/meme name, sub-$2-typical price); manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "crypto",
+   "effective_from_ms": 1770336000000,
+   "subclass": "token",
+   "symbol": "TRIAUSDT"
+  },
+  {
+   "basis": "single-stock perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1769558400000,
+   "subclass": "single-stock",
+   "symbol": "TSLAUSDT"
+  },
+  {
+   "basis": "leveraged/inverse ETF perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1788307200000,
+   "subclass": "leveraged-etf",
+   "symbol": "TSLLUSDT"
+  },
+  {
+   "basis": "single-stock perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1775433600000,
+   "subclass": "single-stock",
+   "symbol": "TSMUSDT"
+  },
+  {
+   "basis": "single-stock perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1782950400000,
+   "subclass": "single-stock",
+   "symbol": "TTWOUSDT"
+  },
+  {
+   "basis": "single-stock perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1790553600000,
+   "subclass": "single-stock",
+   "symbol": "TWSTUSDT"
+  },
+  {
+   "basis": "single-stock perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1782950400000,
+   "subclass": "single-stock",
+   "symbol": "TXNUSDT"
+  },
+  {
+   "basis": "leveraged/inverse ETF perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1784160000000,
+   "subclass": "leveraged-etf",
+   "symbol": "TZAUSDT"
+  },
+  {
+   "basis": "single-stock perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1778803200000,
+   "subclass": "single-stock",
+   "symbol": "UBERUSDT"
+  },
+  {
+   "basis": "single-stock perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1790640000000,
+   "subclass": "single-stock",
+   "symbol": "UNHUSDT"
+  },
+  {
+   "basis": "pre-IPO company perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1787097600000,
+   "subclass": "pre-ipo",
+   "symbol": "UNITREEUSDT"
+  },
+  {
+   "basis": "exchange-traded fund perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1780963200000,
+   "subclass": "etf",
+   "symbol": "URNMUSDT"
+  },
+  {
+   "basis": "single-stock perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1778025600000,
+   "subclass": "single-stock",
+   "symbol": "USARUSDT"
+  },
+  {
+   "basis": "Binance TradFi perp on the USD/BRL exchange rate",
+   "class": "fx",
+   "effective_from_ms": 1789948800000,
+   "subclass": "fx-pair",
+   "symbol": "USDBRLUSDT"
+  },
+  {
+   "basis": "crypto token (project/meme name, sub-$2-typical price); manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "crypto",
+   "effective_from_ms": 1765497600000,
+   "subclass": "token",
+   "symbol": "USUSDT"
+  },
+  {
+   "basis": "leveraged/inverse ETF perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1781136000000,
+   "subclass": "leveraged-etf",
+   "symbol": "UVXYUSDT"
+  },
+  {
+   "basis": "single-stock perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1783641600000,
+   "subclass": "single-stock",
+   "symbol": "VRTUSDT"
+  },
+  {
+   "basis": "single-stock perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1786924800000,
+   "subclass": "single-stock",
+   "symbol": "VSTUSDT"
+  },
+  {
+   "basis": "single-stock perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1779062400000,
+   "subclass": "single-stock",
+   "symbol": "VUSDT"
+  },
+  {
+   "basis": "single-stock perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1779753600000,
+   "subclass": "single-stock",
+   "symbol": "WDCUSDT"
+  },
+  {
+   "basis": "not identified offline; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "unclassified",
+   "effective_from_ms": 1783555200000,
+   "subclass": "unidentified-underlying",
+   "symbol": "WENUSDT"
+  },
+  {
+   "basis": "crypto token (project/meme name, sub-$2-typical price); manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "crypto",
+   "effective_from_ms": 1765324800000,
+   "subclass": "token",
+   "symbol": "WETUSDT"
+  },
+  {
+   "basis": "single-stock perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1779062400000,
+   "subclass": "single-stock",
+   "symbol": "WMTUSDT"
+  },
+  {
+   "basis": "Binance TradFi perp on spot silver (XAG)",
+   "class": "gold-commodity",
+   "effective_from_ms": 1767744000000,
+   "subclass": "silver-spot",
+   "symbol": "XAGUSDT"
+  },
+  {
+   "basis": "Tether Gold (XAUT) token, one token = one troy ounce of gold",
+   "class": "gold-commodity",
+   "effective_from_ms": 1774483200000,
+   "subclass": "gold-tokenized",
+   "symbol": "XAUTUSDT"
+  },
+  {
+   "basis": "Binance TradFi perp on spot gold (XAU), first TradFi-underlying USDT perp, Dec 2025",
+   "class": "gold-commodity",
+   "effective_from_ms": 1765411200000,
+   "subclass": "gold-spot",
+   "symbol": "XAUUSDT"
+  },
+  {
+   "basis": "exchange-traded fund perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1783555200000,
+   "subclass": "etf",
+   "symbol": "XBIUSDT"
+  },
+  {
+   "basis": "exchange-traded fund perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1781049600000,
+   "subclass": "etf",
+   "symbol": "XLEUSDT"
+  },
+  {
+   "basis": "single-stock perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1790553600000,
+   "subclass": "single-stock",
+   "symbol": "XOMUSDT"
+  },
+  {
+   "basis": "Binance TradFi perp on palladium (XPD)",
+   "class": "gold-commodity",
+   "effective_from_ms": 1769731200000,
+   "subclass": "palladium-spot",
+   "symbol": "XPDUSDT"
+  },
+  {
+   "basis": "Binance TradFi perp on platinum (XPT)",
+   "class": "gold-commodity",
+   "effective_from_ms": 1769731200000,
+   "subclass": "platinum-spot",
+   "symbol": "XPTUSDT"
+  },
+  {
+   "basis": "crypto token (project/meme name, sub-$2-typical price); manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "crypto",
+   "effective_from_ms": 1767916800000,
+   "subclass": "token",
+   "symbol": "ZAMAUSDT"
+  },
+  {
+   "basis": "crypto token (project/meme name, sub-$2-typical price); manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "crypto",
+   "effective_from_ms": 1780531200000,
+   "subclass": "token",
+   "symbol": "ZESTUSDT"
+  },
+  {
+   "basis": "single-stock perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1784246400000,
+   "subclass": "single-stock",
+   "symbol": "ZHIPUUSDT"
+  },
+  {
+   "basis": "single-stock perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1786665600000,
+   "subclass": "single-stock",
+   "symbol": "ZHONGJIUSDT"
+  },
+  {
+   "basis": "crypto token (project/meme name, sub-$2-typical price); manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "crypto",
+   "effective_from_ms": 1766275200000,
+   "subclass": "token",
+   "symbol": "ZKPUSDT"
+  },
+  {
+   "basis": "single-stock perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1781049600000,
+   "subclass": "single-stock",
+   "symbol": "ZMUSDT"
+  },
+  {
+   "basis": "single-stock perp; manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "equity",
+   "effective_from_ms": 1788307200000,
+   "subclass": "single-stock",
+   "symbol": "ZSUSDT"
+  },
+  {
+   "basis": "crypto token (project/meme name, sub-$2-typical price); manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "crypto",
+   "effective_from_ms": 1788652800000,
+   "subclass": "token",
+   "symbol": "\u54c8\u57fa\u7c73USDT"
+  },
+  {
+   "basis": "crypto token (project/meme name, sub-$2-typical price); manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "crypto",
+   "effective_from_ms": 1768953600000,
+   "subclass": "token",
+   "symbol": "\u6211\u8e0f\u9a6c\u6765\u4e86USDT"
+  },
+  {
+   "basis": "crypto token (project/meme name, sub-$2-typical price); manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "crypto",
+   "effective_from_ms": 1788048000000,
+   "subclass": "token",
+   "symbol": "\u725b\u6765USDT"
+  },
+  {
+   "basis": "crypto token (project/meme name, sub-$2-typical price); manual review of ticker + listing month + price level (claude-code, 2026-10-09, offline)",
+   "class": "crypto",
+   "effective_from_ms": 1773187200000,
+   "subclass": "token",
+   "symbol": "\u9f99\u867eUSDT"
+  }
+ ],
+ "format": "zb-instrument-classes/1",
+ "method": "Offline manual review (no exchangeInfo underlyingType snapshot exists yet). Every symbol first listed on/after tradfi_cutoff_ms has an explicit entry; the rest are covered by pre_cutoff_rule. To be superseded by a sourced exchangeInfo snapshot (new classes_id).",
+ "pre_cutoff_rule": "A symbol whose first archived 1d bar opens before tradfi_cutoff_ms and has no entry is crypto: Binance listed no TradFi-underlying USDT perp before XAUUSDT (Dec 2025). PAXG and the crypto index perps carry explicit entries.",
+ "reviewed_cairo": "2026-10-09",
+ "tradfi_cutoff_ms": 1764547200000
+}

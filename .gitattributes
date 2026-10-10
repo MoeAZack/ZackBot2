@@ -6,6 +6,8 @@ data1h/**/*.csv text eol=lf
 data_long/**/*.csv text eol=lf
 DATA_MANIFEST.json text eol=lf
 research_evidence/manifests/*.json text eol=lf
+research_evidence/universe/*.json text eol=lf
+research_evidence/manifests/*.json.gz binary
 research_evidence/ledger/*.jsonl text eol=lf
 # All Python is LF in the repo and in every checkout (Codex R1: CRLF pollution from Windows).
 *.py text eol=lf
