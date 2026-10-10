@@ -188,6 +188,107 @@ def test_the_whole_cassette_stays_under_the_document_cap(monkeypatch):
         rec.to_segments()
 
 
+def test_a_segment_over_another_audit_cap_is_split_again_at_its_checkpoints(monkeypatch):
+    """Codex P1 on beaf82d: six checkpointed dense interactions fit one SEGMENT_CHARS segment but pass a 1,000-run
+    budget; packing by bytes alone refused them. Now that segment is split at its own checkpoints until each piece
+    passes its unchanged budget; no checkpoint inside, or more than MAX_SEGMENTS pieces, is still a refusal."""
+    monkeypatch.setattr(C, 'MAX_AUDIT_RUNS', 1000)
+    rec = _junk_recorder(6, runs=40)                           # 320 runs per interaction; default SEGMENT_CHARS
+    assert len(rec._segment_ranges()) == 1
+    parts = rec.to_segments()
+    assert 2 <= len(parts) <= C.MAX_SEGMENTS
+    assert [it for t, _, _ in parts for it in json.loads(t)['interactions']] == rec.interactions
+    for i, (t, f, n) in enumerate(parts, 1):
+        assert json.loads(t)['segment'] == {'index': i, 'count': len(parts), 'first': f}
+        assert n <= 3                                          # 3 x 320 = 960 runs fit, 4 x 320 do not
+        leak_audit(json.loads(t))
+    with pytest.raises(CassetteLeak, match='too many encoded runs'):
+        _junk_recorder(6, checkpoint_every=6, runs=40).to_segments()
+    monkeypatch.setattr(C, 'MAX_AUDIT_RUNS', 300)              # one interaction alone passes the budget
+    with pytest.raises(CassetteLeak, match='too many encoded runs'):
+        rec.to_segments()
+    monkeypatch.setattr(C, 'MAX_AUDIT_RUNS', 1000)
+    monkeypatch.setattr(C, 'MAX_SEGMENTS', 2)
+    with pytest.raises(CassetteLeak, match='too many cassette segments'):
+        rec.to_segments()
+
+
+@pytest.mark.parametrize('cap', ['MAX_AUDIT_NODES', 'MAX_AUDIT_STRINGS'])
+def test_segments_are_packed_against_the_structural_caps_too(monkeypatch, cap):
+    rec = _junk_recorder(6, runs=1)
+    b = C._AuditBudget()
+    b.document(rec.interactions[:1])
+    per = b.nodes if cap == 'MAX_AUDIT_NODES' else b.strings
+    monkeypatch.setattr(C, cap, C._ENVELOPE_NODES + 2 * per)   # two interactions plus the envelope headroom
+    assert rec._segment_ranges() == [(0, 2), (2, 4), (4, 6)]
+    parts = rec.to_segments()
+    assert [(f, n) for _, f, n in parts] == [(0, 2), (2, 2), (4, 2)]
+
+
+def test_a_leak_is_never_answered_by_splitting(monkeypatch):
+    calls = []
+    real = CassetteRecorder._split
+    monkeypatch.setattr(CassetteRecorder, '_split', lambda self, *a: calls.append(a) or real(self, *a))
+    hidden = base64.b64encode(DUMMY_SECRET.encode()).decode()
+    clean = ok(json.dumps({'msg': 'fine'}))
+    rec = CassetteRecorder(FakeHttp(clean, ok(json.dumps({'msg': 'x ' + hidden})), clean), redact=REDACT)
+    for _ in range(3):
+        rec(req())
+        rec.checkpoint()
+    with pytest.raises(CassetteLeak, match='encoded form'):
+        rec.to_segments()
+    assert calls == []
+
+
+def test_the_global_cap_counts_the_complete_segment_documents(monkeypatch):
+    """Codex P2 on beaf82d: the global MAX_AUDIT_CHARS summed interaction slices only, so segment envelopes (format,
+    provenance, header) were admitted above it. Now charged on the complete documents written: as the audit charges
+    them and as their exact UTF-8 bytes."""
+    monkeypatch.setattr(C, 'SEGMENT_CHARS', 1)
+    rec = _junk_recorder(4, runs=1)
+    parts = rec.to_segments()
+    docs = [json.loads(t) for t, _, _ in parts]
+    slices = sum(_doc_chars(it) for it in rec.interactions)
+    charged = sum(_charged(d) for d in docs)
+    written = sum(len(t.encode('utf-8')) for t, _, _ in parts)
+    full = max(charged, written)
+    assert full > slices
+    monkeypatch.setattr(C, 'MAX_AUDIT_CHARS', full - 1)        # slices fit; the written documents do not
+    with pytest.raises(CassetteLeak, match='too much text'):
+        rec.to_segments()
+    monkeypatch.setattr(C, 'MAX_AUDIT_CHARS', full)
+    assert rec.to_segments() == parts
+    for cap in (charged, written):                              # each total is enforced on its own
+        if cap < full:
+            monkeypatch.setattr(C, 'MAX_AUDIT_CHARS', cap)
+            with pytest.raises(CassetteLeak, match='too much text'):
+                rec.to_segments()
+
+
+def test_the_global_cap_also_holds_the_conservative_charge_of_the_documents(monkeypatch):
+    """Tabs are charged 6 bytes each but written as 2: the conservative charge of the complete documents is above
+    their written bytes, and that total alone is refused."""
+    monkeypatch.setattr(C, 'SEGMENT_CHARS', 1)
+    rec = CassetteRecorder(FakeHttp(*[ok('a\tb' * 2000) for _ in range(3)]), redact=REDACT)
+    for _ in range(3):
+        rec(req())
+        rec.checkpoint()
+    parts = rec.to_segments()
+    charged = sum(_charged(json.loads(t)) for t, _, _ in parts)
+    assert len(parts) == 3 and charged > sum(len(t.encode('utf-8')) for t, _, _ in parts)
+    monkeypatch.setattr(C, 'MAX_AUDIT_CHARS', charged - 1)
+    with pytest.raises(CassetteLeak, match='too much text'):
+        rec.to_segments()
+    monkeypatch.setattr(C, 'MAX_AUDIT_CHARS', charged)
+    assert rec.to_segments() == parts
+
+
+def _charged(doc):
+    b = C._AuditBudget()
+    b.document(doc)
+    return b.chars
+
+
 def _doc_chars(obj):
     b = C._AuditBudget()
     b.document([obj])
