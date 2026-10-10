@@ -39,6 +39,46 @@ step or strategy experiment unless it prevents a confirmed serious failure in th
 may interrupt the queue; unrelated polish may not. Mainnet remains separately gated and requires complete live security,
 safety, operational and release acceptance.
 
+### 0.1 Active mission lock — crypto-first Binance release (10 Oct 2026, Africa/Cairo)
+
+The current release is deliberately narrower than the preserved long-term roadmap. Until the owner explicitly changes
+this lock, **NOW means a trustworthy Binance engine and strategy program for one dated snapshot of the current top-40
+individual crypto instruments**. Work is accepted only when it directly advances that engine, its long/short/range/scalp strategy
+evidence, its risk and exit behaviour, or the minimum data/execution proof needed to trust those results.
+
+- Detailed universe selection, data ingestion and primary backtesting are limited to those 40 frozen
+  current-universe instruments. Each is tested backward only from the point where reliable data exists. Results are
+  labelled `CURRENT-UNIVERSE / SURVIVOR-BIASED`; that limitation is reported, not hidden.
+- The active universe artifact is intentionally simple: one immutable dated list containing exactly 40 unique Binance
+  symbols in ranked order, the already-agreed selection rule, and the source/list digests. Its first 10 and first 20 are
+  frozen as `CORE-10` and `CORE-20`. Validate that those exact symbols existed and were tradable at the snapshot. Do not
+  build a general instrument-classification framework, announcement collector or per-symbol catalog for this release;
+  the approved list itself is the boundary.
+- Strategy development, long/short coverage, exit and profit-protection tuning, risk/sizing calibration and repeated
+  testnet attention focus on `CORE-10` and then `CORE-20`. Symbols ranked 21–40 are an extended generalization check,
+  not an equal-effort research program and not a blocker for a useful core engine. Freeze all tiers before viewing
+  strategy outcomes; report core-10, core-20 and extended-40 results separately so the narrower focus does not hide
+  concentration or overfitting.
+- Reconstructing every historical top-40 membership change is a later robustness study. It may test selection-policy
+  turnover and delisting risk, but it cannot block the current top-40 engine, strategy backtests or testnet progress.
+- A separate gold pilot may record only the approved direct-XAU/XAUUSDT path and PAXGUSDT identity. It stays inactive
+  and may not block crypto readiness.
+- Crypto indices, XAUT, stocks, equity indices, ETFs, FX, oil, other commodities, other venues and every instrument
+  outside the approved set are `LATER` or `POST-LIVE`. They do not receive individual research, enrichment, strategy
+  work, data acquisition, backtests, UI or integrations during this release.
+- A full exchange snapshot may be used only to derive and verify the frozen list. Symbols outside it are absent and
+  out of scope; they need no catalog, enrichment or exhaustive exclusion tests. Cowork verifies the exact list, its
+  source/digest and a few basic malformed-list cases, then returns to strategy, accounting and execution evidence.
+- Preserving an idea in this contract does not authorize present work on it. `LATER` and `POST-LIVE` items remain in the
+  roadmap so they are not forgotten, but they consume no active Build, Evidence or Integration lane.
+- Before starting or accepting a task, each agent must state the direct path to the active crypto engine milestone and
+  the approved instrument set. If that path is absent, Codex defers the work. Preparatory, architectural or defensive
+  work outside this boundary is still out of scope unless it fixes a confirmed defect that can invalidate the active
+  engine or its evidence.
+
+This section is the controlling interpretation when an older roadmap item, issue comment, audit or automation could be
+read more broadly. Codex must stop and redirect drift at proposal/handoff time rather than after implementation.
+
 ### Roadmap and multi-agent authority
 
 The owner is the ultimate product authority. Under this contract, **Codex is the roadmap, prioritization, scope and
