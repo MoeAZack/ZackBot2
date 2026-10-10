@@ -517,6 +517,26 @@ def load_prereg():
         return f.read()
 
 
+def test_committed_prereg_artifacts_are_lf_in_every_checkout():
+    # Codex #53 6096066849: core.autocrlf=true must not rewrite the byte-pinned prereg/gate files on checkout
+    if not os.path.isdir(os.path.join(ROOT, '.git')) and not os.path.isfile(os.path.join(ROOT, '.git')):
+        pytest.skip('not a git checkout')
+    d = os.path.join(ROOT, 'research_evidence', 'prereg')
+    names = sorted(n for n in os.listdir(d) if n.endswith('.json'))
+    assert names == ['r4_gate.json', 'trend_ema_mom.v1.json']
+    for n in names:
+        rel = f'research_evidence/prereg/{n}'
+        attr = subprocess.run(['git', 'check-attr', 'text', 'eol', '--', rel], cwd=ROOT, capture_output=True,
+                              text=True, check=True).stdout
+        assert f'{rel}: text: set' in attr and f'{rel}: eol: lf' in attr, attr
+        blob = subprocess.run(['git', 'show', f'HEAD:{rel}'], cwd=ROOT, capture_output=True, check=True).stdout
+        with open(os.path.join(d, n), 'rb') as f:
+            work = f.read()
+        assert b'
+' not in blob and b'
+' not in work
+
+
 def test_committed_prereg_validates():
     raw = load_prereg()
     assert b'\r\n' not in raw
