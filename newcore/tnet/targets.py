@@ -168,6 +168,7 @@ class TestnetTarget:
     def next_close(self, deadline_s=None):
         """Wait for the next candle close + settle. The wait is bounded by the caller's remaining deadline: if it would
         end past it, DeadlineExceeded is raised BEFORE sleeping (never a sleep past the deadline)."""
+        self._checkpoint()
         now = self.clock()
         boundary = (now // TF_MS + 1) * TF_MS
         wait_s = (boundary + self.settle_ms - now) / 1000
@@ -176,6 +177,11 @@ class TestnetTarget:
                                    f' s of the scenario deadline are left; nothing was sent')
         self.sleep(wait_s)
         return boundary
+
+    def _checkpoint(self):
+        """Evidence only: a cycle / teardown boundary where the cassette may be segmented (Codex T04 triage)."""
+        if self.recorder is not None:
+            self.recorder.checkpoint()
 
     def arm_fault(self, on, kind, code=None):
         self.seam.arm(on, kind, code)
@@ -190,5 +196,6 @@ class TestnetTarget:
 
     def cleanup(self, symbols, run_id, baseline=None):
         """A clean read must be confirmed CLEANUP_SETTLE_S later (venue read lag); not bounded by the deadline."""
+        self._checkpoint()
         return tnet_cleanup(self.raw, symbols, run_id=run_id, baseline=baseline, confirm_reads=2,
                             settle_s=CLEANUP_SETTLE_S, sleep=self.sleep)

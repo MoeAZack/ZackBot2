@@ -67,6 +67,14 @@ MAX_SECRET_BYTES = 4096                   # one registered / learned secret valu
 MAX_SECRET_TOTAL_BYTES = 512 * 1024       # all secret values together, checked when each is REGISTERED
 _URLSAFE = str.maketrans('+/', '-_')
 MAX_LEARNED_VALUES = 4096                  # distinct secret values one recorder will scrub (beyond: fail closed)
+# Segmented evidence (Codex T04 triage 6087020052): T04-algo (31 cycles; one account-wide positionRisk read alone costs
+# ~96,000 decode attempts) passes MAX_AUDIT_RUNS as ONE document, so its cassette was refused at save. to_segments() closes
+# a segment at a scenario checkpoint (a cycle boundary) once it holds SEGMENT_CHARS; every segment is a complete
+# cassette audited on its own under the UNCHANGED per-audit budget, all before anything is produced. The WHOLE cassette
+# stays under MAX_AUDIT_CHARS and at most MAX_SEGMENTS segments are audited (total work bounded).
+SEGMENT_CHARS = MAX_AUDIT_CHARS // 8       # conservative serialized bytes after which a segment closes (16 MiB)
+MAX_SEGMENTS = 16
+_ENVELOPE_NODES = 64                       # headroom for a segment document's envelope (format, provenance, header)
 
 
 def _strings(obj):
@@ -113,7 +121,7 @@ class _AuditBudget:
         self.runs = self.strings = self.nodes = self.chars = self.derived = 0
 
     def _text(self):
-        raise CassetteLeak('too much text to audit; cassette not produced')
+        raise _audit_limit('too much text to audit; cassette not produced')
 
     def document(self, doc):
         """Charge the whole structure BEFORE it is serialized or scanned: one node per container / key / scalar and
@@ -156,12 +164,12 @@ class _AuditBudget:
     def view(self, s):
         self.derived += len(s)
         if self.derived > MAX_AUDIT_DERIVED:
-            raise CassetteLeak('too much decoded text to audit; cassette not produced')
+            raise _audit_limit('too much decoded text to audit; cassette not produced')
 
     def run(self):
         self.runs += 1
         if self.runs > MAX_AUDIT_RUNS:
-            raise CassetteLeak('too many encoded runs to audit; cassette not produced')
+            raise _audit_limit('too many encoded runs to audit; cassette not produced')
 
 
 def secret_cost(value):
@@ -301,6 +309,16 @@ class CassetteLeak(WireSeamError):
     """A secret value or a sensitive field value is still present in the cassette; nothing was produced."""
 
 
+def _audit_limit(message):
+    """A CassetteLeak marked audit_limit: one audit's TOTAL budget (_AuditBudget: runs / derived / strings / nodes /
+    chars) was exceeded. Still a refusal (same type and message everywhere); only to_segments() answers it, by
+    splitting that segment again at an existing checkpoint (Codex P1 on beaf82d). Never used for a leak or for a
+    per-string cap (MAX_DECODED_TOKENS / MAX_SURFACES): splitting cannot help those."""
+    ex = CassetteLeak(message)
+    ex.audit_limit = True
+    return ex
+
+
 def _error_name(ex):
     for name in ('WireTimeout', 'WireNotSent', 'WireResponseTooLarge', 'WireConnectionError'):
         if isinstance(ex, _ERRORS[name]):
@@ -353,6 +371,7 @@ class CassetteRecorder:
         self._last_response = None
         self._unproducible = None              # set: to_json fails closed
         self.interactions = []
+        self.checkpoints = []                  # interaction counts at scenario checkpoints
         self.note = str(note)
         for v in redact:
             check_value(v)                         # refuse, never drop, a value that cannot be redacted safely
@@ -526,9 +545,10 @@ class CassetteRecorder:
 
     # ---- output ----
 
-    def _audit(self, text, doc, budget=None):
+    def _audit(self, text, doc, budget=None, first=0):
         """budget=None: the document is charged here first. text=None: the serialized form is built here, after the
-        charge (to_json charges, serializes once, then audits with the same budget)."""
+        charge (to_json charges, serializes once, then audits with the same budget). The per-interaction checks walk
+        doc['interactions'] (a segment's own); first = the global index of its first interaction (messages)."""
         values = sorted(self._values)
         if self._unproducible:
             raise CassetteLeak(f'{self._unproducible}; cassette not produced')
@@ -564,7 +584,7 @@ class CassetteRecorder:
                 for view in decoded_views(s, budget):
                     if found(view):
                         raise CassetteLeak('a secret value is present in an encoded form; cassette not produced')
-        for n, it in enumerate(self.interactions):
+        for n, it in enumerate(doc['interactions'], first):     # the audited document's own (a segment's)
             req = it['request']
             resp = it.get('response', {})
             pairs = list(req['query']) + list(req['headers']) + list(resp.get('headers', {}).items())
@@ -588,12 +608,23 @@ class CassetteRecorder:
                 if _sensitive_text_leftovers(b):
                     raise CassetteLeak(f'interaction {n}: a sensitive field in the body still has a value')
 
+    def _provenance(self, extra=''):
+        return ('Recorded through newcore.venue.cassette.CassetteRecorder. Sensitive names (signature, API key, '
+                'listenKey, secret, token, cookie, ...) and registered secret values are replaced by <redacted>. '
+                + self.note + extra).strip()
+
     def to_json(self):
-        doc = {'format': CASSETTE_FORMAT,
-               '_provenance': ('Recorded through newcore.venue.cassette.CassetteRecorder. Sensitive names (signature, '
-                               'API key, listenKey, secret, token, cookie, ...) and registered secret values are '
-                               'replaced by <redacted>. ' + self.note).strip(),
-               'interactions': self.interactions}
+        doc = {'format': CASSETTE_FORMAT, '_provenance': self._provenance(), 'interactions': self.interactions}
+        return self._audited_text(doc)
+
+    def _audited_text(self, doc, first=0):
+        budget, text = self._serialized(doc)
+        self._audit(text, doc, budget, first)        # a pure check: anything left raises, nothing is repaired here
+        return text
+
+    @staticmethod
+    def _serialized(doc):
+        """(budget charged with the complete document, the exact text that is written)."""
         budget = _AuditBudget()
         budget.document(doc)                         # charged before the one serialization (Codex P2 on bcc2d8d)
         text = json.dumps(doc, indent=1, sort_keys=True, ensure_ascii=False)
@@ -602,8 +633,113 @@ class CassetteRecorder:
         except UnicodeEncodeError:
             raise CassetteLeak('an answer holds text that is not encodable (lone surrogate); cassette not '
                                'produced') from None
-        self._audit(text, doc, budget)               # a pure check: anything left raises, nothing is repaired here
-        return text
+        return budget, text
+
+    # ---- segmented evidence (Codex T04 triage 6087020052) ----
+
+    def checkpoint(self):
+        """Evidence only: a scenario checkpoint (a Runner cycle boundary) after the interactions so far, where
+        to_segments() may close a segment. Touches nothing but this list; never raises into the caller."""
+        n = len(self.interactions)
+        if n and (not self.checkpoints or self.checkpoints[-1] < n):
+            self.checkpoints.append(n)
+
+    def _segment_ranges(self):
+        """[(first, end), ...]: consecutive checkpoint ranges packed in order while a segment holds less than
+        SEGMENT_CHARS and below MAX_AUDIT_NODES / MAX_AUDIT_STRINGS (charged exactly as the audit charges a document;
+        Codex P1 on beaf82d: every structural dimension, not bytes alone). Runs and derived views, which only the leak
+        audit itself measures, are answered by to_segments() splitting again. The interactions alone above
+        MAX_AUDIT_CHARS (an early refusal; to_segments() charges the complete documents), or more than MAX_SEGMENTS
+        segments, is a refusal."""
+        n = len(self.interactions)
+        cuts = [c for c in sorted(set(self.checkpoints)) if 0 < c < n] + [n]
+        total, out, start, prev = 0, [], 0, 0
+        size = nodes = strings = 0
+        for c in cuts:
+            b = _AuditBudget()
+            b.document(self.interactions[prev:c])            # one range alone above any cap: refused here
+            total += b.chars
+            if total > MAX_AUDIT_CHARS:
+                raise CassetteLeak('too much text to audit; cassette not produced')
+            if size and (size + b.chars > SEGMENT_CHARS or nodes + b.nodes > MAX_AUDIT_NODES - _ENVELOPE_NODES
+                         or strings + b.strings > MAX_AUDIT_STRINGS - _ENVELOPE_NODES):
+                out.append((start, prev))
+                start, size, nodes, strings = prev, 0, 0, 0
+            size += b.chars
+            nodes += b.nodes
+            strings += b.strings
+            prev = c
+        out.append((start, n))
+        if len(out) > MAX_SEGMENTS:
+            raise CassetteLeak('too many cassette segments to audit; cassette not produced')
+        return out
+
+    def to_segments(self):
+        """[(text, first interaction index, interaction count), ...]: the cassette as complete zb-newcore-cassette/1
+        documents split at checkpoints (exactly to_json()'s one document when one segment holds everything). EVERY
+        segment is charged, serialized once and leak-audited with its OWN budget against every secret value, all of
+        them before anything is returned: any refusal raises CassetteLeak and nothing is produced. No whole-document
+        audit first; without a split each segment is audited once (a split costs at most one more pass per added
+        segment, bounded by MAX_SEGMENTS).
+
+        Codex P1 on beaf82d: a segment refused by one audit's TOTAL budget (audit_limit: runs, derived views, ...) is
+        split again at an existing checkpoint inside it (never inside an interaction) and the pieces audited, until
+        every segment passes or MAX_SEGMENTS is exceeded; with no checkpoint inside, the refusal stands. When the count
+        changed, every segment is audited again with its final envelope (only the written documents count).
+        Codex P2 on beaf82d: the global MAX_AUDIT_CHARS is charged on the COMPLETE documents that are written
+        (format, provenance, segment header), both as the audit charges them and as their exact UTF-8 bytes, before
+        any leak audit."""
+        if self._unproducible:
+            raise CassetteLeak(f'{self._unproducible}; cassette not produced')
+        ranges = self._segment_ranges()
+        while True:
+            docs = [self._segment_doc(k, ranges) for k in range(len(ranges))]
+            prepared = [self._serialized(d) for d in docs]
+            if sum(b.chars for b, _ in prepared) > MAX_AUDIT_CHARS or \
+                    sum(_utf8_len(t) for _, t in prepared) > MAX_AUDIT_CHARS:
+                raise CassetteLeak('too much text to audit; cassette not produced')
+            count, out, k = len(ranges), [], 0
+            while k < len(ranges):
+                first, end = ranges[k]
+                try:
+                    if len(ranges) == 1:                     # one segment IS the to_json() document
+                        text = self.to_json()
+                    else:
+                        if len(ranges) == count:             # the envelope that is written
+                            doc, (budget, text) = docs[k], prepared[k]
+                        else:                                # provisional envelope: audited again on the next pass
+                            doc = self._segment_doc(k, ranges)
+                            budget, text = self._serialized(doc)
+                        self._audit(text, doc, budget, first)
+                except CassetteLeak as ex:
+                    if not getattr(ex, 'audit_limit', False):
+                        raise
+                    ranges[k:k + 1] = self._split(first, end)
+                    if len(ranges) > MAX_SEGMENTS:
+                        raise CassetteLeak('too many cassette segments to audit; cassette not produced') from None
+                    continue
+                out.append((text, first, end - first))
+                k += 1
+            if len(ranges) == count:
+                return out
+
+    def _segment_doc(self, k, ranges):
+        """The complete document written for segment k (to_json()'s own document when there is one segment)."""
+        if len(ranges) == 1:
+            return {'format': CASSETTE_FORMAT, '_provenance': self._provenance(), 'interactions': self.interactions}
+        first, end = ranges[k]
+        return {'format': CASSETTE_FORMAT, '_provenance': self._provenance(f' Segment {k + 1} of {len(ranges)}.'),
+                'segment': {'index': k + 1, 'count': len(ranges), 'first': first},
+                'interactions': self.interactions[first:end]}
+
+    def _split(self, first, end):
+        """[(first, c), (c, end)] at the existing checkpoint c nearest the middle; none inside (first, end): the
+        audit_limit refusal being handled is re-raised (never split inside an interaction)."""
+        inside = [c for c in sorted(set(self.checkpoints)) if first < c < end]
+        if not inside:
+            raise                                            # called only while an audit_limit refusal is handled
+        c = min(inside, key=lambda x: abs(2 * x - first - end))
+        return [(first, c), (c, end)]
 
     def save(self, path):
         text = self.to_json()                        # raises CassetteLeak before anything touches the disk

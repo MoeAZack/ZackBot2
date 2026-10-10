@@ -7,17 +7,18 @@ replay(cassette_path) -> ReplayResult: same = the replayed verdict equals the re
 interaction was replayed AND no request diverged. A divergence (CassetteMismatch) surfaces as a FAIL of the replayed
 scenario with the mismatch text.
 """
+import hashlib
 import json
 import os
 from dataclasses import dataclass
 from decimal import Decimal
 
-from newcore.venue.cassette import CassetteMismatch, CassettePlayer
+from newcore.venue.cassette import CASSETTE_FORMAT, MAX_SEGMENTS, CassetteMismatch, CassettePlayer
 from newcore.venue.cassette_replay import leak_audit
 from newcore.venue.credentials import StaticCredentials, binding_digest
 
 from .driver import run_scenario
-from .recording import REPLAY_FORMAT
+from .recording import REPLAY_FORMAT, SEGMENT_SET_FORMAT, segment_name
 from .rspec import validate_rspec
 from .seams import DeadlineExceeded
 from .targets import TestnetTarget
@@ -94,6 +95,53 @@ def _boot_server_ms(doc):
     raise ReplayError('the cassette has no server-time answer (not a factory boot recording)')
 
 
+def _read_json(path):
+    try:
+        with open(path, 'rb') as fh:
+            raw = fh.read()
+        return raw, json.loads(raw.decode('utf-8'))
+    except (OSError, ValueError) as ex:
+        raise ReplayError(f'cannot read {os.path.basename(path)}: {type(ex).__name__}') from None
+
+
+def _is_int(v):
+    return type(v) is int and v >= 0
+
+
+def _join_segments(cassette_path, manifest):
+    """One cassette document from a zb-newcore-cassette-set/1 manifest, fail closed: exactly the segment files the
+    manifest names (seg01.. in order, no other), each byte-identical to its SHA-256, a complete cassette whose own
+    'segment' header, first index and interaction count agree, contiguous, summing to the total, and each passing
+    the leak audit ON ITS OWN (the joined document is never audited as one: it may exceed one audit budget)."""
+    base = str(cassette_path)[:-len('.json')]
+    segs = manifest.get('segments')
+    if not isinstance(segs, list) or not 2 <= len(segs) <= MAX_SEGMENTS or not _is_int(manifest.get('interactions')):
+        raise ReplayError('malformed segment manifest')
+    folder, items = os.path.dirname(str(cassette_path)), []
+    for i, ent in enumerate(segs, 1):
+        name = segment_name(base, i)
+        if (not isinstance(ent, dict) or ent.get('file') != name or not isinstance(ent.get('sha256'), str)
+                or ent.get('first') != len(items) or not _is_int(ent.get('interactions'))):
+            raise ReplayError(f'segment {i}: manifest entry does not match the expected order')
+        raw, doc = _read_json(os.path.join(folder, name))
+        if hashlib.sha256(raw).hexdigest() != ent['sha256']:
+            raise ReplayError(f'segment {i}: content does not match its SHA-256')
+        if (not isinstance(doc, dict) or doc.get('format') != CASSETTE_FORMAT
+                or not isinstance(doc.get('interactions'), list)
+                or doc.get('segment') != {'index': i, 'count': len(segs), 'first': len(items)}
+                or len(doc['interactions']) != ent['interactions']):
+            raise ReplayError(f'segment {i}: not the segment the manifest names')
+        problem = leak_audit(doc)
+        if problem is not None:
+            raise ReplayError(f'segment {i} fails the leak audit: {problem}')
+        items.extend(doc['interactions'])
+    if len(items) != manifest['interactions']:
+        raise ReplayError('the segments do not hold the manifest total')
+    if os.path.exists(os.path.join(folder, segment_name(base, len(segs) + 1))):
+        raise ReplayError('a segment file exists beyond the manifest')
+    return {'format': CASSETTE_FORMAT, 'interactions': items}
+
+
 def load_bundle(cassette_path):
     if not str(cassette_path).endswith('.json') or str(cassette_path).endswith('.meta.json'):
         raise ReplayError('give the cassette (.json), not its .meta.json')
@@ -107,11 +155,14 @@ def load_bundle(cassette_path):
         raise ReplayError(f'cannot read the cassette / its sidecar: {type(ex).__name__}') from None
     if not isinstance(meta, dict) or meta.get('format') != REPLAY_FORMAT:
         raise ReplayError(f'{meta_path} is not a {REPLAY_FORMAT} sidecar')
-    if not isinstance(doc, dict) or not isinstance(doc.get('interactions'), list):
-        raise ReplayError('not a cassette')
-    problem = leak_audit(doc)
-    if problem is not None:
-        raise ReplayError(f'the cassette fails the leak audit: {problem}')
+    if isinstance(doc, dict) and doc.get('format') == SEGMENT_SET_FORMAT:
+        doc = _join_segments(cassette_path, doc)          # every segment audited on its own
+    else:
+        if not isinstance(doc, dict) or not isinstance(doc.get('interactions'), list):
+            raise ReplayError('not a cassette')
+        problem = leak_audit(doc)
+        if problem is not None:
+            raise ReplayError(f'the cassette fails the leak audit: {problem}')
     validate_rspec(meta['spec'])
     return doc, meta
 
