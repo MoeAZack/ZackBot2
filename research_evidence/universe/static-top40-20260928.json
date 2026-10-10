@@ -1,0 +1,575 @@
+{
+ "core_10": [
+  "BTCUSDT",
+  "ETHUSDT",
+  "ZECUSDT",
+  "SOLUSDT",
+  "XRPUSDT",
+  "HYPEUSDT",
+  "DOGEUSDT",
+  "NEARUSDT",
+  "UNIUSDT",
+  "BNBUSDT"
+ ],
+ "core_20": [
+  "BTCUSDT",
+  "ETHUSDT",
+  "ZECUSDT",
+  "SOLUSDT",
+  "XRPUSDT",
+  "HYPEUSDT",
+  "DOGEUSDT",
+  "NEARUSDT",
+  "UNIUSDT",
+  "BNBUSDT",
+  "SUIUSDT",
+  "LSKUSDT",
+  "ENAUSDT",
+  "1000PEPEUSDT",
+  "AKEUSDT",
+  "ARBUSDT",
+  "WLDUSDT",
+  "ADAUSDT",
+  "PUMPUSDT",
+  "USELESSUSDT"
+ ],
+ "digest": "f69502aa77a4375d0c0a854a68f4dbce8aaf315083e4a31e9d82ddd9bde0ad43",
+ "format": "zb-static-universe/1",
+ "inactive_gold": [
+  {
+   "blocking": false,
+   "counts_toward_40": false,
+   "snapshot_row": {
+    "contractType": "PERPETUAL",
+    "quoteAsset": "USDT",
+    "status": "TRADING",
+    "symbol": "PAXGUSDT",
+    "underlyingType": "COIN"
+   },
+   "status": "inactive",
+   "symbol": "PAXGUSDT"
+  },
+  {
+   "blocking": false,
+   "counts_toward_40": false,
+   "snapshot_row": {
+    "contractType": "TRADIFI_PERPETUAL",
+    "quoteAsset": "USDT",
+    "status": "TRADING",
+    "symbol": "XAUUSDT",
+    "underlyingType": "COMMODITY"
+   },
+   "status": "inactive",
+   "symbol": "XAUUSDT"
+  }
+ ],
+ "label": "CURRENT-UNIVERSE / SURVIVOR-BIASED",
+ "list_digest": "07ce33e4644f565c33a5db1cb5d4c832a384ede0d9f3d45a33f54cb96851e47c",
+ "owner_approval": "PENDING",
+ "owner_approved": false,
+ "ranked_source": [
+  [
+   1,
+   "BTCUSDT",
+   "326152537478.2735"
+  ],
+  [
+   2,
+   "ETHUSDT",
+   "260443323864.27097"
+  ],
+  [
+   3,
+   "ZECUSDT",
+   "68534208676.32718"
+  ],
+  [
+   4,
+   "SOLUSDT",
+   "60784078104.12583"
+  ],
+  [
+   5,
+   "XRPUSDT",
+   "36486280846.62059"
+  ],
+  [
+   6,
+   "HYPEUSDT",
+   "20495847334.79996"
+  ],
+  [
+   7,
+   "DOGEUSDT",
+   "16146360239.85553"
+  ],
+  [
+   8,
+   "NEARUSDT",
+   "14845136093.99"
+  ],
+  [
+   9,
+   "UNIUSDT",
+   "12884815281.605"
+  ],
+  [
+   10,
+   "BNBUSDT",
+   "11891689258.3583"
+  ],
+  [
+   11,
+   "SUIUSDT",
+   "10989092497.68955"
+  ],
+  [
+   12,
+   "LSKUSDT",
+   "9957933214.57436"
+  ],
+  [
+   13,
+   "ENAUSDT",
+   "9293235908.57024"
+  ],
+  [
+   14,
+   "1000PEPEUSDT",
+   "8832329317.9037361"
+  ],
+  [
+   15,
+   "AKEUSDT",
+   "7947695836.4317581"
+  ],
+  [
+   16,
+   "ARBUSDT",
+   "7482987915.081104"
+  ],
+  [
+   17,
+   "WLDUSDT",
+   "6225259107.6075"
+  ],
+  [
+   18,
+   "ADAUSDT",
+   "6059560926.202"
+  ],
+  [
+   19,
+   "PUMPUSDT",
+   "5648157937.900593"
+  ],
+  [
+   20,
+   "USELESSUSDT",
+   "5634292439.87536"
+  ],
+  [
+   21,
+   "LINKUSDT",
+   "5498385039.57182"
+  ],
+  [
+   22,
+   "TAOUSDT",
+   "5492253191.37588"
+  ],
+  [
+   23,
+   "TRUMPUSDT",
+   "5488157934.18562"
+  ],
+  [
+   24,
+   "AVAXUSDT",
+   "4977918409.962"
+  ],
+  [
+   25,
+   "BCHUSDT",
+   "4799390027.13867"
+  ],
+  [
+   26,
+   "FILUSDT",
+   "4416994413.4320265"
+  ],
+  [
+   27,
+   "ONDOUSDT",
+   "4261968777.73992"
+  ],
+  [
+   28,
+   "BRUSDT",
+   "4034406384.83005"
+  ],
+  [
+   29,
+   "LTCUSDT",
+   "3850857167.1082"
+  ],
+  [
+   30,
+   "DASHUSDT",
+   "3814463890.61"
+  ],
+  [
+   31,
+   "ONEUSDT",
+   "3644315747.3313389"
+  ],
+  [
+   32,
+   "AAVEUSDT",
+   "3257187508.297"
+  ],
+  [
+   33,
+   "QNTUSDT",
+   "2995375916.188"
+  ],
+  [
+   34,
+   "LITUSDT",
+   "2672503082.93399"
+  ],
+  [
+   35,
+   "BTRUSDT",
+   "2582070002.64322"
+  ],
+  [
+   36,
+   "IOSTUSDT",
+   "2520064621.79730708"
+  ],
+  [
+   37,
+   "RAYSOLUSDT",
+   "2488824525.41917"
+  ],
+  [
+   38,
+   "XLMUSDT",
+   "2428522223.28693"
+  ],
+  [
+   39,
+   "SKRUSDT",
+   "2392630728.161291"
+  ],
+  [
+   40,
+   "PENGUUSDT",
+   "2364642557.464214"
+  ]
+ ],
+ "ranking_rule": {
+  "book": "crypto",
+  "instant_ms": 1790553600000,
+  "instant_utc": "2026-09-28",
+  "rule_id": "pit-top40-qv30d-v4",
+  "selection": "walk the ranked crypto book; take the first 40 symbols whose snapshot row is {'status': 'TRADING', 'contractType': 'PERPETUAL', 'quoteAsset': 'USDT', 'underlyingType': 'COIN'}; gold identities ['PAXGUSDT', 'XAUUSDT'] never count"
+ },
+ "skipped": [],
+ "snapshot_cairo": "2026-10-09T10:16:04+03:00",
+ "sources": {
+  "classes_digest": "48a9d32c4299495d0c58b175755d8ebdab562f8e18a05196a7f361fb6a986845",
+  "exchange_info": {
+   "raw_sha256": "b512355ad8ffcca88de5c5a1c9f30fb8a4418a957edc77f74c68003431e59c83",
+   "reduced_digest": "87970b5447f62475dda0e8cd0454c236830764d639a3a139a7dcbcd6a8b51e48",
+   "server_time_ms": 1791530164008,
+   "url": "https://fapi.binance.com/fapi/v1/exchangeInfo"
+  },
+  "manifest_digest": "54912d9d2bf6e6fc45bc75c0553f0bd867e877972beeb3452785937379baf1e7",
+  "pit_universe_digest": "485c752226cc6b50a07d3feefa90a4fdc62e256e8d5a033e57d24983bf2cd093"
+ },
+ "symbols": [
+  {
+   "qv30d_usdt": "326152537478.2735",
+   "rank": 1,
+   "source_rank": 1,
+   "symbol": "BTCUSDT",
+   "tier": "CORE-10"
+  },
+  {
+   "qv30d_usdt": "260443323864.27097",
+   "rank": 2,
+   "source_rank": 2,
+   "symbol": "ETHUSDT",
+   "tier": "CORE-10"
+  },
+  {
+   "qv30d_usdt": "68534208676.32718",
+   "rank": 3,
+   "source_rank": 3,
+   "symbol": "ZECUSDT",
+   "tier": "CORE-10"
+  },
+  {
+   "qv30d_usdt": "60784078104.12583",
+   "rank": 4,
+   "source_rank": 4,
+   "symbol": "SOLUSDT",
+   "tier": "CORE-10"
+  },
+  {
+   "qv30d_usdt": "36486280846.62059",
+   "rank": 5,
+   "source_rank": 5,
+   "symbol": "XRPUSDT",
+   "tier": "CORE-10"
+  },
+  {
+   "qv30d_usdt": "20495847334.79996",
+   "rank": 6,
+   "source_rank": 6,
+   "symbol": "HYPEUSDT",
+   "tier": "CORE-10"
+  },
+  {
+   "qv30d_usdt": "16146360239.85553",
+   "rank": 7,
+   "source_rank": 7,
+   "symbol": "DOGEUSDT",
+   "tier": "CORE-10"
+  },
+  {
+   "qv30d_usdt": "14845136093.99",
+   "rank": 8,
+   "source_rank": 8,
+   "symbol": "NEARUSDT",
+   "tier": "CORE-10"
+  },
+  {
+   "qv30d_usdt": "12884815281.605",
+   "rank": 9,
+   "source_rank": 9,
+   "symbol": "UNIUSDT",
+   "tier": "CORE-10"
+  },
+  {
+   "qv30d_usdt": "11891689258.3583",
+   "rank": 10,
+   "source_rank": 10,
+   "symbol": "BNBUSDT",
+   "tier": "CORE-10"
+  },
+  {
+   "qv30d_usdt": "10989092497.68955",
+   "rank": 11,
+   "source_rank": 11,
+   "symbol": "SUIUSDT",
+   "tier": "CORE-20"
+  },
+  {
+   "qv30d_usdt": "9957933214.57436",
+   "rank": 12,
+   "source_rank": 12,
+   "symbol": "LSKUSDT",
+   "tier": "CORE-20"
+  },
+  {
+   "qv30d_usdt": "9293235908.57024",
+   "rank": 13,
+   "source_rank": 13,
+   "symbol": "ENAUSDT",
+   "tier": "CORE-20"
+  },
+  {
+   "qv30d_usdt": "8832329317.9037361",
+   "rank": 14,
+   "source_rank": 14,
+   "symbol": "1000PEPEUSDT",
+   "tier": "CORE-20"
+  },
+  {
+   "qv30d_usdt": "7947695836.4317581",
+   "rank": 15,
+   "source_rank": 15,
+   "symbol": "AKEUSDT",
+   "tier": "CORE-20"
+  },
+  {
+   "qv30d_usdt": "7482987915.081104",
+   "rank": 16,
+   "source_rank": 16,
+   "symbol": "ARBUSDT",
+   "tier": "CORE-20"
+  },
+  {
+   "qv30d_usdt": "6225259107.6075",
+   "rank": 17,
+   "source_rank": 17,
+   "symbol": "WLDUSDT",
+   "tier": "CORE-20"
+  },
+  {
+   "qv30d_usdt": "6059560926.202",
+   "rank": 18,
+   "source_rank": 18,
+   "symbol": "ADAUSDT",
+   "tier": "CORE-20"
+  },
+  {
+   "qv30d_usdt": "5648157937.900593",
+   "rank": 19,
+   "source_rank": 19,
+   "symbol": "PUMPUSDT",
+   "tier": "CORE-20"
+  },
+  {
+   "qv30d_usdt": "5634292439.87536",
+   "rank": 20,
+   "source_rank": 20,
+   "symbol": "USELESSUSDT",
+   "tier": "CORE-20"
+  },
+  {
+   "qv30d_usdt": "5498385039.57182",
+   "rank": 21,
+   "source_rank": 21,
+   "symbol": "LINKUSDT",
+   "tier": "EXTENDED-40"
+  },
+  {
+   "qv30d_usdt": "5492253191.37588",
+   "rank": 22,
+   "source_rank": 22,
+   "symbol": "TAOUSDT",
+   "tier": "EXTENDED-40"
+  },
+  {
+   "qv30d_usdt": "5488157934.18562",
+   "rank": 23,
+   "source_rank": 23,
+   "symbol": "TRUMPUSDT",
+   "tier": "EXTENDED-40"
+  },
+  {
+   "qv30d_usdt": "4977918409.962",
+   "rank": 24,
+   "source_rank": 24,
+   "symbol": "AVAXUSDT",
+   "tier": "EXTENDED-40"
+  },
+  {
+   "qv30d_usdt": "4799390027.13867",
+   "rank": 25,
+   "source_rank": 25,
+   "symbol": "BCHUSDT",
+   "tier": "EXTENDED-40"
+  },
+  {
+   "qv30d_usdt": "4416994413.4320265",
+   "rank": 26,
+   "source_rank": 26,
+   "symbol": "FILUSDT",
+   "tier": "EXTENDED-40"
+  },
+  {
+   "qv30d_usdt": "4261968777.73992",
+   "rank": 27,
+   "source_rank": 27,
+   "symbol": "ONDOUSDT",
+   "tier": "EXTENDED-40"
+  },
+  {
+   "qv30d_usdt": "4034406384.83005",
+   "rank": 28,
+   "source_rank": 28,
+   "symbol": "BRUSDT",
+   "tier": "EXTENDED-40"
+  },
+  {
+   "qv30d_usdt": "3850857167.1082",
+   "rank": 29,
+   "source_rank": 29,
+   "symbol": "LTCUSDT",
+   "tier": "EXTENDED-40"
+  },
+  {
+   "qv30d_usdt": "3814463890.61",
+   "rank": 30,
+   "source_rank": 30,
+   "symbol": "DASHUSDT",
+   "tier": "EXTENDED-40"
+  },
+  {
+   "qv30d_usdt": "3644315747.3313389",
+   "rank": 31,
+   "source_rank": 31,
+   "symbol": "ONEUSDT",
+   "tier": "EXTENDED-40"
+  },
+  {
+   "qv30d_usdt": "3257187508.297",
+   "rank": 32,
+   "source_rank": 32,
+   "symbol": "AAVEUSDT",
+   "tier": "EXTENDED-40"
+  },
+  {
+   "qv30d_usdt": "2995375916.188",
+   "rank": 33,
+   "source_rank": 33,
+   "symbol": "QNTUSDT",
+   "tier": "EXTENDED-40"
+  },
+  {
+   "qv30d_usdt": "2672503082.93399",
+   "rank": 34,
+   "source_rank": 34,
+   "symbol": "LITUSDT",
+   "tier": "EXTENDED-40"
+  },
+  {
+   "qv30d_usdt": "2582070002.64322",
+   "rank": 35,
+   "source_rank": 35,
+   "symbol": "BTRUSDT",
+   "tier": "EXTENDED-40"
+  },
+  {
+   "qv30d_usdt": "2520064621.79730708",
+   "rank": 36,
+   "source_rank": 36,
+   "symbol": "IOSTUSDT",
+   "tier": "EXTENDED-40"
+  },
+  {
+   "qv30d_usdt": "2488824525.41917",
+   "rank": 37,
+   "source_rank": 37,
+   "symbol": "RAYSOLUSDT",
+   "tier": "EXTENDED-40"
+  },
+  {
+   "qv30d_usdt": "2428522223.28693",
+   "rank": 38,
+   "source_rank": 38,
+   "symbol": "XLMUSDT",
+   "tier": "EXTENDED-40"
+  },
+  {
+   "qv30d_usdt": "2392630728.161291",
+   "rank": 39,
+   "source_rank": 39,
+   "symbol": "SKRUSDT",
+   "tier": "EXTENDED-40"
+  },
+  {
+   "qv30d_usdt": "2364642557.464214",
+   "rank": 40,
+   "source_rank": 40,
+   "symbol": "PENGUUSDT",
+   "tier": "EXTENDED-40"
+  }
+ ],
+ "universe_id": "static-top40-20260928"
+}
