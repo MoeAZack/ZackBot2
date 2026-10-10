@@ -768,7 +768,17 @@ def attempt(fn):
 
 def import_low():
     import _posixsubprocess
-    _posixsubprocess.fork_exec
+    _posixsubprocess.fork_exec()
+
+
+def reload_low():
+    import importlib
+    importlib.reload(sys.modules['_posixsubprocess'])
+
+
+def subinterp():
+    import _interpreters
+    _interpreters.exec(_interpreters.create(), 'x = 1')
 
 
 def builtin_route():
@@ -790,9 +800,7 @@ def aliases():
         except TypeError:
             continue
         for k, v in items:
-            if getattr(v, '__name__', '') == '_posixsubprocess' and getattr(v, 'fork_exec', None) is not None:
-                found.append(k)
-            elif getattr(v, '__name__', '') == 'fork_exec' and type(v).__name__ == 'builtin_function_or_method':
+            if getattr(v, '__name__', '') == 'fork_exec' and type(v).__name__ == 'builtin_function_or_method':
                 found.append(k)
     return found
 
@@ -804,15 +812,22 @@ def low_level_launch():
         _winapi.CreateProcess(None, 'cmd /c rem', None, None, False, 0, None, None, None)
     else:
         import _posixsubprocess
-        _posixsubprocess.fork_exec
+        _posixsubprocess.fork_exec()
 
 
 def run(v):
-    import subprocess
+    import subprocess                              # Cowork 6094554597: must import on every platform
     alias = getattr(subprocess, '_fork_exec', None)
+    posix = os.name != 'nt'
     return {
-        'import _posixsubprocess': attempt(import_low),
-        'sys.modules': sys.modules.get('_posixsubprocess') is None,
+        'import subprocess': 'ok',
+        '_posixsubprocess.fork_exec': attempt(import_low) if posix else 'absent',
+        'reload _posixsubprocess': attempt(reload_low) if posix else 'absent',
+        'subinterpreter': attempt(subinterp),
+        'concurrent.interpreters': attempt(lambda: __import__('concurrent.interpreters')),
+        '_testcapi': attempt(lambda: __import__('_testcapi')),
+        'create_builtin _interpreters': attempt(lambda: __import__('_imp').create_builtin(
+            types.SimpleNamespace(name='_interpreters'))),
         'aliases': aliases(),
         'subprocess._fork_exec': 'absent' if alias is None else attempt(lambda: alias()),
         'create_builtin': attempt(builtin_route),
@@ -830,9 +845,10 @@ def run(v):
 
 
 def test_evaluator_cannot_reach_low_level_process_creation(world, tmp_path):
-    """Codex 6094447977 (Cowork, Linux): `_posixsubprocess.fork_exec` raises no audit event, so it is refused on every
-    route - import, preloaded `sys.modules`, aliases in loaded modules (`subprocess._fork_exec`), `_imp.create_builtin`
-    and `_imp.create_dynamic` (by name, dotted name or file stem). The direct low-level no-op launch is refused on this
+    """Codex 6094447977 (Cowork, Linux): `_posixsubprocess.fork_exec` raises no audit event. The module stays importable
+    (`subprocess` needs it; Cowork 6094554597 finding 1) but the function is a refusing stub in the module and every alias
+    (`subprocess._fork_exec`), and reload / `_imp.create_builtin` / `_imp.create_dynamic` (by name, dotted name or file
+    stem) cannot mint a fresh one. Subinterpreters, which have no audit hook (finding 2), are refused. The direct low-level no-op launch is refused on this
     platform (Windows: `_winapi.CreateProcess`, an audited event); subprocess / os / socket / write refusals hold and an
     ordinary stdlib evaluator still works, identically in both fresh processes."""
     ds = ds_of(world)
@@ -840,10 +856,12 @@ def test_evaluator_cannot_reach_low_level_process_creation(world, tmp_path):
     w = access(ds, path).open('train', lineage='root')
     f = evaluator(tmp_path / 'ev', PROCESS_ATTACK, 'process_attack.py')
     out = list(P.evaluate(w, f, 'run', train_times(2)))
-    refused = ('import _posixsubprocess', 'create_builtin', 'create_dynamic', 'create_dynamic dotted',
-               'create_dynamic renamed', 'low-level launch', 'subprocess.run', 'os.system', 'socket', 'write open')
-    want = dict({k: 'refused' for k in refused}, **{'sys.modules': True, 'aliases': [], 'json works': True})
-    want['subprocess._fork_exec'] = 'absent' if os.name == 'nt' else 'refused'
+    refused = ('subinterpreter', 'concurrent.interpreters', '_testcapi', 'create_builtin _interpreters',
+               'create_builtin', 'create_dynamic', 'create_dynamic dotted', 'create_dynamic renamed', 'low-level launch',
+               'subprocess.run', 'os.system', 'socket', 'write open')
+    want = dict({k: 'refused' for k in refused}, **{'import subprocess': 'ok', 'aliases': [], 'json works': True})
+    for k in ('_posixsubprocess.fork_exec', 'reload _posixsubprocess', 'subprocess._fork_exec'):
+        want[k] = 'absent' if os.name == 'nt' else 'refused'
     assert out == [want] * 2
     assert not os.path.exists(tmp_path / 'ev' / 'pwn.txt')
 

@@ -15,7 +15,8 @@ of answering (the boolean `exists`/`isdir`/... answer False). Audited probes (`l
 enforced by the hook itself; every unaudited one, and `_imp.create_builtin` / `_imp.create_dynamic`, is a broker that
 raises a `zb.*` audit event, and only the frozen hook holds the raw function, so no Python-reachable object can restore
 an original. Low-level process modules with an unaudited creation primitive (`PROCESS_MODULES`: `_posixsubprocess`)
-are refused on every route - import, preloaded `sys.modules` / aliases, builtin and extension creation.
+stay importable but every callable is a refusing stub, and re-creating or re-executing them is refused; modules that can
+run a hook-less subinterpreter (`NO_HOOK_MODULES`) are refused on every route.
 The observable environment (hash seed, UTF-8 mode, time zone, locale encoding, environment keys, empty
 cwd, tree mtimes) and the canonical `execution_environment` (implementation, version, executable SHA-256, OS,
 platform, CPU count; no host path) are reported at start-up and bound into the attestation; the runner requires the
@@ -68,12 +69,18 @@ BLOCKED_EVENTS = ('subprocess.', 'os.system', 'os.exec', 'os.spawn', 'os.posix_s
                   'os.symlink', 'os.truncate', 'os.utime', 'os.putenv', 'os.unsetenv', 'os.add_dll_directory',
                   'shutil.', 'socket.', 'ctypes.', '_winapi.', 'winreg.', 'mmap.', 'msvcrt.', 'webbrowser.',
                   'urllib.', 'http.', 'ftplib.', 'smtplib.', 'sqlite3.', 'tempfile.', 'pty.', 'resource.')
-BLOCKED_IMPORTS = frozenset({'ctypes', '_ctypes', 'mmap', 'winreg', '_winreg', '_posixsubprocess'})
+# Cowork 6094554597 finding 2: a subinterpreter has no audit hook (hooks are per-interpreter), so the modules that can
+# create or run one (and the C-API test modules that can) are refused on every route, and dropped if preloaded.
+NO_HOOK_MODULES = ('_interpreters', '_xxsubinterpreters', '_interpqueues', '_interpchannels', '_xxinterpchannels',
+                   '_testcapi', '_testinternalcapi', '_testlimitedcapi')
+BLOCKED_IMPORTS = frozenset({'ctypes', '_ctypes', 'mmap', 'winreg', '_winreg', 'concurrent.interpreters',
+                             *NO_HOOK_MODULES})
 # Codex 6094447977: low-level process modules whose creation primitive raises no audit event (`_posixsubprocess.
-# fork_exec`). They are import-refused, refused by the `create_builtin` / `create_dynamic` brokers, and a preloaded copy
-# is dropped from `sys.modules` with every alias of it or its functions replaced by a refusing stub before the evaluator
-# loads. The Windows equivalent `_winapi` stays importable: its process primitives (`_winapi.CreateProcess`, ...) raise
-# `_winapi.*` audit events, which `BLOCKED_EVENTS` refuses.
+# fork_exec`). They stay importable - `subprocess` imports them on POSIX and the research code imports `subprocess`
+# (Cowork 6094554597 finding 1) - but before the evaluator loads every callable of theirs is replaced, in the module and
+# in every alias, by a refusing stub; the hook holds the stubbed module and refuses re-creating it (`create_builtin` /
+# `create_dynamic`) or re-executing it (`exec_builtin` / `exec_dynamic`, i.e. `importlib.reload`). The Windows
+# equivalent `_winapi` needs nothing: its process primitives raise `_winapi.*` events, which `BLOCKED_EVENTS` refuses.
 PROCESS_MODULES = ('_posixsubprocess',)
 WRITE_FLAGS = os.O_WRONLY | os.O_RDWR | os.O_APPEND | os.O_CREAT | os.O_TRUNC
 # Codex 6094254617: introspection that could reach the installed hook (gc) or the sandbox loop's frames is refused,
@@ -142,8 +149,16 @@ def make_hook(lib_roots, list_roots, allow_files, probe_roots):
     osmod = __import__(os.name)
     probes = tuple((k, getattr(osmod, k)) for k in PROBE_FUNCS if hasattr(osmod, k))
     raw_create, raw_dynamic = _imp.create_builtin, _imp.create_dynamic
-    no_create = frozenset({'nt', 'posix', '_imp'}) | blocked_imports
-    no_dynamic = blocked_imports
+    raw_exec = {'builtin': _imp.exec_builtin, 'dynamic': _imp.exec_dynamic}
+    held = []                                      # the process modules, loaded now; `guard_path_probes` stubs them
+    for nm in PROCESS_MODULES:
+        try:
+            held.append(__import__(nm))
+        except ImportError:
+            pass
+    held = tuple(held)
+    no_dynamic = blocked_imports | frozenset(PROCESS_MODULES)
+    no_create = frozenset({'nt', 'posix', '_imp'}) | no_dynamic
     probe_allowed = tuple(sorted({x for r in probe_roots for x in both(r)}))
 
     class _Spec:
@@ -204,7 +219,8 @@ def make_hook(lib_roots, list_roots, allow_files, probe_roots):
             if not readable(p, True):
                 raise refused(f'sandbox refused listing {p!r}')
         elif event == 'import':
-            if n and type_(args[0]) is str_ and args[0].split('.')[0] in blocked_imports:
+            if n and type_(args[0]) is str_ and (args[0] in blocked_imports
+                                                 or args[0].split('.')[0] in blocked_imports):
                 raise refused(f'sandbox refused import of {args[0]}')
         elif event == 'zb.probe':
             if n != 4 or type_(args[0]) is not str_ or type_(args[1]) is not tuple_ or type_(args[2]) is not dict_ \
@@ -245,6 +261,16 @@ def make_hook(lib_roots, list_roots, allow_files, probe_roots):
             spec = _Spec()                                 # one read of name / origin: no re-read after the check
             spec.name, spec.origin = nm, origin
             args[1].append(raw_dynamic(spec))
+        elif event == 'zb.exec_module':
+            if n != 3 or args[0] not in raw_exec or type_(args[2]) is not list_ or args[2]:
+                raise refused('sandbox refused a malformed module exec')
+            mod, nm = args[1], getattr_(args[1], '__name__', None)
+            for h in held:
+                if mod is h:
+                    raise refused(f'sandbox refused re-executing {nm!r}')
+            if type_(nm) is not str_ or nm in no_create or nm.rpartition('.')[2] in no_create:
+                raise refused(f'sandbox refused executing module {nm!r}')
+            args[2].append(raw_exec[args[0]](mod))
         elif event in introspection:
             raise refused(f'sandbox refused {event}')
         elif event == 'object.__getattr__':
@@ -397,6 +423,16 @@ def guard_path_probes() -> None:
             raise refused('sandbox create_dynamic is unavailable')
         return box[0]
 
+    def exec_broker(kind):
+        def exec_module(mod):
+            box = list_()
+            audit('zb.exec_module', kind, mod, box)
+            if not box:
+                raise refused('sandbox module exec is unavailable')
+            return box[0]
+        exec_module.__name__ = exec_module.__qualname__ = f'exec_{kind}'
+        return exec_module
+
     def gone(name):
         def stub(*a, **kw):
             raise refused(f'sandbox refused {name}')
@@ -410,12 +446,16 @@ def guard_path_probes() -> None:
             repl[id(f)] = (f, broker(name))
     repl[id(_imp.create_builtin)] = (_imp.create_builtin, create_builtin)
     repl[id(_imp.create_dynamic)] = (_imp.create_dynamic, create_dynamic)
-    for name in PROCESS_MODULES:                    # Codex 6094447977: drop any preloaded copy and every alias of it
-        mod = sys.modules.pop(name, None)
+    repl[id(_imp.exec_builtin)] = (_imp.exec_builtin, exec_broker('builtin'))
+    repl[id(_imp.exec_dynamic)] = (_imp.exec_dynamic, exec_broker('dynamic'))
+    for name in PROCESS_MODULES + NO_HOOK_MODULES:
+        mod = sys.modules.get(name)
         if mod is None:
             continue
-        repl[id(mod)] = (mod, type(sys)(name))
-        for k, v in list(vars(mod).items()):
+        if name in NO_HOOK_MODULES:                 # Cowork 6094554597: no preloaded subinterpreter module survives
+            del sys.modules[name]
+            repl[id(mod)] = (mod, type(sys)(name))
+        for k, v in list(vars(mod).items()):        # Codex 6094447977: the module and every alias get refusing stubs
             if callable(v):
                 repl[id(v)] = (v, gone(f'{name}.{k}'))
     for m in list(sys.modules.values()):
@@ -493,7 +533,7 @@ def virtualize_interpreter_paths() -> None:
 
 
 AUTHORITY_NAMES = ('BLOCKED_EVENTS', 'BLOCKED_IMPORTS', 'WRITE_FLAGS', 'EVIDENCE_DIR', 'THIRD_PARTY_DIRS',
-                   'INTROSPECTION_EVENTS', 'FRAME_ATTRS', 'PROBE_FUNCS', 'PROCESS_MODULES', 'PROTOCOL', '_builtin_norm',
+                   'INTROSPECTION_EVENTS', 'FRAME_ATTRS', 'PROBE_FUNCS', 'PROCESS_MODULES', 'NO_HOOK_MODULES', 'PROTOCOL', '_builtin_norm',
                    'make_hook', 'guard_path_probes', 'observed_env', 'execution_environment',
                    'virtualize_interpreter_paths', 'EXEC_ENV_KEYS', 'SYS_SENTINELS', 'SANDBOX_MAIN', 'BOOT', '_Chan',
                    'main', 'AUTHORITY_NAMES')
