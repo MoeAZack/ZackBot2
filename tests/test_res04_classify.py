@@ -100,9 +100,20 @@ def base_snap(retrieved=RETR):
         tradfi('AAPLUSDT', 'EQUITY', onboard=ms('2026-04-06') + 13 * HOUR)])
 
 
-def build(store, snaps=None, records=(), cutoff=None):
-    return C.build(snaps if snaps is not None else [base_snap()], ann(*records), manifest(store),
-                   classes_id='fx-classes', tradfi_cutoff=cutoff)
+def universe(members, monday=None):
+    """A minimal committed-universe stand-in: one week whose crypto book selected `members`."""
+    return {'universe_id': 'fx-universe', 'digest': H,
+            'weeks': [{'monday_ms': ms('2026-04-06') if monday is None else monday,
+                       'books': {'crypto': {'members': sorted(members)}}}]}
+
+
+def build(store, snaps=None, records=(), cands=None):
+    """Default: every fixture symbol except the gold pilot is a top-40 candidate (so it gets a detailed row)."""
+    m = manifest(store)
+    if cands is None:
+        cands = sorted({f['symbol'] for f in m['files']} - set(C.GOLD_PILOT))
+    return C.build(snaps if snaps is not None else [base_snap()], ann(*records), m, universe(cands),
+                   classes_id='fx-classes')
 
 
 # ---------------------------------------------------------------- determinism + digest
@@ -129,8 +140,9 @@ def test_cli_build_verify_and_immutable(store, tmp_path, capsys):
     (d / 'ann.json').write_text(json.dumps(ann()))
     m = manifest(store)
     (d / 'man.json').write_text(json.dumps(m))
+    (d / 'uni.json').write_text(json.dumps(universe(['BTCUSDT'])))
     args = ['--exchange-info', str(d / 'snap.json'), '--announcements', str(d / 'ann.json'),
-            '--manifest', str(d / 'man.json'), '--classes-id', 'fx']
+            '--manifest', str(d / 'man.json'), '--universe', str(d / 'uni.json'), '--classes-id', 'fx']
     out = d / 'classes.json'
     assert C.main(['build', '--out', str(out)] + args) == 0
     first = out.read_bytes()
@@ -142,6 +154,9 @@ def test_cli_build_verify_and_immutable(store, tmp_path, capsys):
     assert C.main(['verify', str(out)] + args) == 1                                          # input changed
     assert C.main(['build', '--out', str(out)] + args) == 2                                  # never overwritten
     assert out.read_bytes() == first
+    assert C.main(['coverage'] + args) == 0                                                  # in memory, no file
+    with pytest.raises(SystemExit):                                                          # the rule is gone
+        C.main(['build', '--out', str(d / 'x.json'), '--tradfi-cutoff', 'TF'] + args)
 
 
 def test_extract_minimal_scoped_compact(store):
@@ -207,19 +222,20 @@ def test_listing_time_disagreement_is_unknown(store):
     assert rows(c, 'XAUUSDT')[0][4] == 'UNKNOWN:listing-time-disagreement'
 
 
-def test_missing_source_is_unknown_and_cutoff_rule_is_bounded(store, tmp_path):
+def test_missing_source_is_unknown_no_chronology_rule(store):
+    # Codex PR #57 6095886569 ruling 2: listing before the first TradFi perp is absence-based inference, not identity
     put_daily(store, 'OLDUSDT', '2024-02-01', 10)              # delisted pre-TradFi contract, no exchangeInfo entry
     put_daily(store, 'NEWUSDT', '2026-05-01', 10)              # post-TradFi, no source at all
     c = build(store)
     assert rows(c, 'OLDUSDT') == [('UNKNOWN', 'UNKNOWN', ms('2024-02-01'), None, 'UNKNOWN:no-documented-listing')]
-    launch = rec('TF', 'tradfi-launch', None, CUT)
-    c = build(store, records=[launch], cutoff='TF')
-    assert rows(c, 'OLDUSDT') == [
-        ('crypto', 'pre-tradfi-cutoff', ms('2024-02-01'), ms('2024-02-11'), 'rule:pre-tradfi-cutoff'),
-        ('UNKNOWN', 'UNKNOWN', ms('2024-02-11'), None, 'UNKNOWN:archive-beyond-pre-tradfi-run')]
     assert rows(c, 'NEWUSDT') == [('UNKNOWN', 'UNKNOWN', ms('2026-05-01'), None, 'UNKNOWN:no-documented-listing')]
-    with pytest.raises(C.ClassifyError, match='tradfi-launch'):
-        build(store, records=[launch], cutoff='NOPE')
+    assert not C.addressable(C.resolve_at(c, 'OLDUSDT', ms('2024-02-05')))
+    assert 'tradfi-launch' not in C.KINDS and 'tradfi_cutoff' not in C.build.__code__.co_varnames
+    with pytest.raises(C.ClassifyError, match='kind'):         # a chronology record is refused outright
+        build(store, records=[rec('TF', 'tradfi-launch', None, CUT)])
+    # only a dated, cited listing record makes it positive
+    c = build(store, records=[rec('LO', 'listing', 'OLDUSDT', ms('2024-02-01') + 9 * HOUR, cls='crypto')])
+    assert rows(c, 'OLDUSDT')[0][:2] == ('crypto', 'unspecified') and C.active(C.resolve_at(c, 'OLDUSDT', ms('2024-02-05')))
 
 
 def test_unmapped_underlying_fails_closed(store):
@@ -309,11 +325,11 @@ def test_identity_mismatch_is_unknown(store):
     assert rows(build(store, snaps=[s]), 'BTCUSDT')[0][4] == 'UNKNOWN:identity-mismatch'
 
 
-def test_archive_before_documented_listing_is_unknown_even_pre_tradfi(store):
+def test_archive_before_documented_listing_is_unknown(store):
     put_daily(store, 'RELUSDT', '2024-03-01', 20)                    # archived since 1 March, onboardDate 15 March
     s = base_snap()
     s['symbols'].append(xi('RELUSDT', onboard=ms('2024-03-15') + 8 * HOUR))
-    c = build(store, snaps=[s], records=[rec('TF', 'tradfi-launch', None, CUT)], cutoff='TF')
+    c = build(store, snaps=[s])
     t = ms('2024-03-15') + 8 * HOUR
     assert rows(c, 'RELUSDT') == [
         ('UNKNOWN', 'UNKNOWN', ms('2024-03-01'), t, 'UNKNOWN:archive-precedes-documented-listing'),
@@ -382,3 +398,89 @@ def test_gold_pilot_identity_mismatch_is_unknown(store):
     r = rows(build(store, snaps=[s]), 'PAXGUSDT')
     assert r == [('UNKNOWN', 'UNKNOWN', ms('2025-03-27') + 10 * HOUR, None,
                   'UNKNOWN:gold-pilot-identity-mismatch:crypto/coin')]
+
+
+# ---------------------------------------------------------------- active set + blanket exclusion (PR #57 rulings)
+
+def test_crypto_index_keeps_class_but_is_never_active(store):
+    put_daily(store, 'BTCDOMUSDT', '2024-01-01', 20)
+    s = base_snap()
+    s['symbols'].append(xi('BTCDOMUSDT', ut='INDEX', base='BTCDOM', subs=('Index', 'Crypto'),
+                           onboard=ms('2024-01-01') + 8 * HOUR))
+    c = build(store, snaps=[s])
+    r = C.resolve_at(c, 'BTCDOMUSDT', ms('2024-01-10'))
+    assert (r['class'], r['scope']) == ('crypto-index', 'crypto-research')      # explicit class preserved
+    assert C.addressable(r) and not C.active(r)                                  # ruling 1: not in the top-40 book
+    assert C.active(C.resolve_at(c, 'BTCUSDT', ms('2024-01-10')))
+
+
+def _narrow(store):
+    """The owner scope correction: only BTCUSDT is a candidate; every other fixture symbol is blanket-excluded."""
+    put_daily(store, 'XAUTUSDT', '2026-03-26', 5)
+    put_daily(store, 'BTCDOMUSDT', '2024-01-01', 20)
+    put_daily(store, 'ROGUEUSDT', '2024-01-01', 20)           # in the archive, in no source, never selected
+    s = base_snap()
+    s['symbols'] += [xi('XAUTUSDT', subs=('RWA', 'Crypto'), onboard=ms('2026-03-26') + 14 * HOUR),
+                     xi('BTCDOMUSDT', ut='INDEX', base='BTCDOM', subs=('Index', 'Crypto'),
+                        onboard=ms('2024-01-01') + 8 * HOUR)]
+    m = manifest(store)
+    return C.build([s], ann(), m, universe(['BTCUSDT']), classes_id='fx-narrow'), m
+
+
+def test_blanket_exclusion_detailed_rows_only_for_candidates_and_gold(store):
+    c, m = _narrow(store)
+    assert sorted({r['symbol'] for r in c['rows']}) == ['BTCUSDT', 'PAXGUSDT', 'XAUUSDT']
+    excluded = sorted({f['symbol'] for f in m['files']} - {'BTCUSDT', 'PAXGUSDT', 'XAUUSDT'})
+    assert excluded == ['AAPLUSDT', 'BTCDOMUSDT', 'ROGUEUSDT', 'XAUTUSDT']
+    assert c['exclusion'] == {'class': 'OUT_OF_SCOPE', 'scope': 'deferred', 'count': 4,
+                              'symbols_sha256': hashlib.sha256(M.canonical(excluded)).hexdigest()}
+    assert c['symbols'] == 7 and c['detailed_symbols'] == 3
+    C.check(c, m)
+    at = ms('2026-04-07')
+    assert C.active_at(c, m, 'BTCUSDT', at)
+    for sym in ('XAUUSDT', 'PAXGUSDT'):                       # recorded identities, inactive
+        assert C.addressable(C.resolve_at(c, sym, at)) and not C.active_at(c, m, sym, at)
+
+
+@pytest.mark.parametrize('sym', ['ROGUEUSDT',                 # unlisted / never selected
+                                 'AAPLUSDT',                  # TradFi
+                                 'BTCDOMUSDT',                # crypto-index
+                                 'XAUTUSDT',                  # tokenized gold outside the pilot
+                                 'NOSUCHUSDT'])               # not even in the manifest
+def test_exclusion_is_fail_closed(store, sym):
+    c, m = _narrow(store)
+    for t in (ms('2024-01-10'), ms('2026-04-07'), ms('2026-09-01')):
+        assert C.resolve_at(c, sym, t) is None
+        assert not C.addressable(C.resolve_at(c, sym, t)) and not C.active_at(c, m, sym, t)
+
+
+def test_tampered_exclusion_or_smuggled_row_refused(store):
+    c, m = _narrow(store)
+    bad = json.loads(json.dumps(c))
+    bad['exclusion']['symbols_sha256'] = H                    # tampered digest, outer digest not refreshed
+    with pytest.raises(C.ClassifyError, match='digest'):
+        C.active_at(bad, m, 'BTCUSDT', ms('2026-04-07'))
+    bad['digest'] = C.digest_of(bad)                          # ... and refreshed: the manifest recomputation catches it
+    with pytest.raises(C.ClassifyError, match='exclusion'):
+        C.check(bad, m)
+    smuggled = json.loads(json.dumps(c))                      # a TradFi symbol slipped in as an active crypto row
+    smuggled['rows'].append(dict(smuggled['rows'][0], symbol='AAPLUSDT'))
+    smuggled['detailed_symbols'] += 1
+    smuggled['digest'] = C.digest_of(smuggled)
+    with pytest.raises(C.ClassifyError, match='exclusion'):
+        C.active_at(smuggled, m, 'AAPLUSDT', ms('2026-04-07'))
+
+
+def test_candidate_absent_from_manifest_refused(store):
+    with pytest.raises(C.ClassifyError, match='absent from the manifest'):
+        C.build([base_snap()], ann(), manifest(store), universe(['BTCUSDT', 'GHOSTUSDT']), classes_id='x')
+
+
+def test_top40_candidates_and_coverage(store):
+    u = universe(['BTCUSDT', 'OLDUSDT'], monday=ms('2024-02-05'))
+    assert C.top40_candidates(u) == {'BTCUSDT': [ms('2024-02-05')], 'OLDUSDT': [ms('2024-02-05')]}
+    put_daily(store, 'OLDUSDT', '2024-02-01', 10)
+    c = C.build([base_snap()], ann(), manifest(store), u, classes_id='x')
+    cov = C.coverage(c, C.top40_candidates(u))
+    assert (cov['candidates'], cov['positive'], cov['not_positive']) == (2, 1, 1)
+    assert cov['not_positive_symbols'] == {'OLDUSDT': ['UNKNOWN:no-documented-listing']}

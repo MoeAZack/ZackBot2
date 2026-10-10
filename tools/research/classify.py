@@ -10,23 +10,29 @@ Inputs
     of the raw response body (`extract` produces one from a saved body);
   * one `zb-announcement-records/1` file: Binance announcements transcribed as records (URL, publication time,
     retrieval time, page SHA-256, kind, symbol, effective time, asserted class);
-  * the `zb-data-manifest/1` archive manifest (first/last archived daily bar per symbol, relisting gaps);
-  * optionally the record id of the `tradfi-launch` announcement that bounds the pre-TradFi crypto rule.
+  * the `zb-data-manifest/1` archive manifest (first/last archived daily bar per symbol, relisting gaps).
 
-Output: per manifest symbol, contiguous dated rows `[effective_from_ms, effective_to_ms)` (last row open-ended), each
-citing its source ids, plus a digest over the canonical JSON. Same inputs -> byte-identical output (no run clock).
+Output: detailed contiguous dated rows `[effective_from_ms, effective_to_ms)` (last row open-ended), each citing its
+source ids, ONLY for the top-40 crypto candidates of a committed universe plus the two gold-pilot identities; every other
+manifest symbol is one blanket `exclusion` (count + digest); plus a digest over the canonical JSON. Same inputs -> byte-identical output (no run clock).
 Missing, unmapped or contradictory evidence -> an explicit `UNKNOWN` row, never a guess; `UNKNOWN` is not addressable.
-Scope (owner scope cut, #53 comment 6095065913): only the native-crypto research universe and the gold pilot (XAUUSDT
-direct, PAXGUSDT tokenized) are classified; every other symbol gets one audited `OUT_OF_SCOPE` (DEFERRED) row, never
-active and never researched. Each row carries its `scope`.
+Positive classification needs positive, dated, source-backed identity evidence (Codex PR #57 6095886569 ruling 2): there
+is no absence-based rule (the former pre-TradFi chronology rule is removed), so an undocumented contract stays UNKNOWN.
+Scope (owner scope correction, PR #57 comment 6095979330): only the dated top-40 individual-crypto candidates are
+active research; XAUUSDT (direct gold) and PAXGUSDT (tokenized gold) are recorded but inactive; everything else is
+neither researched nor classified individually and is non-addressable (`check` / `active_at` fail closed). Each detailed
+row carries its `scope`.
 
 Usage (repo root):
   python tools/research/classify.py extract RAW_BODY --retrieved-ms MS --snapshot-id ID [--manifest MANIFEST]
       --out SNAPSHOT.json
   python tools/research/classify.py build --exchange-info SNAP.json [--exchange-info ...] --announcements ANN.json
-      --manifest research_evidence/manifests/binance-um-archive-v1.json.gz [--tradfi-cutoff RECORD_ID]
-      --classes-id instrument-classes-v2 --out research_evidence/universe/instrument-classes-v2.json
+      --manifest research_evidence/manifests/binance-um-archive-v1.json.gz
+      --universe research_evidence/universe/pit-top40-qv30d-v4.json --classes-id instrument-classes-v2
+      --out research_evidence/universe/instrument-classes-v2.json
   python tools/research/classify.py verify FILE (same inputs as build)
+  python tools/research/classify.py coverage --universe research_evidence/universe/pit-top40-qv30d-v4.json (same inputs
+      as build, no --out): in memory only, writes nothing; reports which top-40 candidates are positively classified
 """
 from __future__ import annotations
 
@@ -46,16 +52,20 @@ BUILDER_VERSION = 'zb-classify/1'
 EXCHANGEINFO_URL = 'https://fapi.binance.com/fapi/v1/exchangeInfo'
 DAY = 86_400_000
 LISTING_TOLERANCE_MS = DAY          # documented listing times further apart than this are a contradiction
-RELIST_GAP_MS = 30 * DAY            # an archive gap this long ends the contiguous contract the cutoff rule covers
+RELIST_GAP_MS = 30 * DAY            # an archive gap this long splits the archived history into separate runs
 
 UNKNOWN = 'UNKNOWN'
 OUT_OF_SCOPE = 'OUT_OF_SCOPE'       # DEFERRED (owner scope cut #53 6095065913): audited, never active, never researched
 CLASSES = ('crypto', 'crypto-index', 'tokenized-gold', 'commodity')
 CRYPTO_CLASSES = ('crypto', 'crypto-index')
+# Codex PR #57 6095886569 ruling 1: crypto-index keeps its explicit class but is a basket product with its own ranking and
+# behaviour; the initial active top-40 book takes individually classified crypto only.
+ACTIVE_CLASSES = ('crypto',)
 # Scope (owner scope cut): the native-crypto research universe plus a two-instrument gold pilot. The pilot only selects
 # scope; each pilot symbol's class is still derived from its sources and must equal the expected identity, else UNKNOWN.
 GOLD_PILOT = {'XAUUSDT': ('commodity', 'gold-spot'), 'PAXGUSDT': ('tokenized-gold', 'paxg')}
 SCOPE_CRYPTO, SCOPE_GOLD, SCOPE_DEFERRED = 'crypto-research', 'gold-pilot', 'deferred'
+ACTIVE_SCOPES = (SCOPE_CRYPTO,)
 # Committed, reviewable mapping tables (contract section 3). A base asset missing here fails closed to UNKNOWN.
 COMMODITY_SUBCLASS = {'XAU': 'gold-spot'}
 TOKENIZED_GOLD_BASES = {'PAXG': 'paxg', 'XAUT': 'xaut'}    # XAUT is recognised only to route it out of the crypto book
@@ -67,7 +77,7 @@ SNAP_SYMBOL_KEYS = {'symbol', 'pair', 'baseAsset', 'quoteAsset', 'contractType',
 ANN_KEYS = {'format', 'records'}
 RECORD_KEYS = {'record_id', 'kind', 'symbol', 'url', 'published_ms', 'retrieved_ms', 'page_sha256', 'effective_ms',
                'class', 'subclass'}
-KINDS = ('listing', 'class-change', 'tradfi-launch')
+KINDS = ('listing', 'class-change')        # no `tradfi-launch`: chronology is not identity evidence (ruling 2)
 
 
 class ClassifyError(ValueError):
@@ -135,10 +145,6 @@ def validate_announcements(a: dict) -> None:
               f'{rid}: published_ms <= retrieved_ms (ints) required')
         _need(_sha(r['page_sha256']), f'{rid}: page_sha256 must be a lowercase sha256 hex')
         _need(_int(r['effective_ms']), f'{rid}: effective_ms must be an int')
-        if r['kind'] == 'tradfi-launch':
-            _need(r['symbol'] is None and r['class'] is None and r['subclass'] is None,
-                  f'{rid}: a tradfi-launch record carries no symbol/class/subclass')
-            continue
         _need(isinstance(r['symbol'], str) and r['symbol'], f'{rid}: symbol must be a non-empty string')
         if r['kind'] == 'class-change':
             _need(r['class'] in CLASSES, f'{rid}: a class-change must assert a class in {CLASSES}')
@@ -282,20 +288,8 @@ def _segment(sym, a, b, docs, snaps, kind):
     return rows
 
 
-def _pre_rows(sym, start, end, runs, cutoff, mid):
-    """Rows for an UNDOCUMENTED contract (no listing source at all): the pre-TradFi crypto rule, else UNKNOWN.
-
-    The rule covers only the contiguous archived run that STARTS before the TradFi launch (a later relisting after a
-    gap >= RELIST_GAP_MS is a new contract and is UNKNOWN), and never past `end` (a documented class change)."""
-    rows = []
-    if cutoff is not None and start < cutoff['ms']:
-        run_end = next(r[1] + DAY for r in runs if r[0] <= start <= r[1])
-        rule_end = run_end if end is None else min(run_end, end)
-        rows.append(_row(sym, 'crypto', 'pre-tradfi-cutoff', start, rule_end, cutoff['published_ms'],
-                         [f'rule:tradfi-cutoff:{cutoff["record_id"]}', mid], 'rule:pre-tradfi-cutoff'))
-        if end is None or rule_end < end:
-            rows.append(_unknown(sym, rule_end, end, [mid], 'archive-beyond-pre-tradfi-run'))
-        return rows
+def _undocumented(sym, start, end, mid):
+    """An UNDOCUMENTED contract (no listing source at all) is UNKNOWN: no absence-based rule applies (ruling 2)."""
     return [_unknown(sym, start, end, [mid], 'no-documented-listing')]
 
 
@@ -310,7 +304,7 @@ def scope_of(sym, entries) -> tuple[str, str | None]:
     return SCOPE_CRYPTO, None
 
 
-def classify_symbol(sym, runs, snaps, records, cutoff, mid):
+def classify_symbol(sym, runs, snaps, records, mid):
     snap_hits = sorted((s['retrieved_ms'], f'xinfo:{s["snapshot_id"]}', s['by'][sym]) for s in snaps
                        if sym in s['by'])
     scope, why = scope_of(sym, [e for _, _, e in snap_hits])
@@ -319,7 +313,7 @@ def classify_symbol(sym, runs, snaps, records, cutoff, mid):
         rows = [_row(sym, OUT_OF_SCOPE, 'DEFERRED', start, None, None, [sid for _, sid, _ in snap_hits] + [mid],
                      f'OUT_OF_SCOPE:{why}')]
     else:
-        rows = _classify(sym, runs, snap_hits, records, cutoff, mid)
+        rows = _classify(sym, runs, snap_hits, records, mid)
     for r in rows:
         if scope == SCOPE_GOLD and r['class'] not in (UNKNOWN, OUT_OF_SCOPE) and \
                 (r['class'], r['subclass']) != GOLD_PILOT[sym]:
@@ -332,7 +326,7 @@ def classify_symbol(sym, runs, snaps, records, cutoff, mid):
     return rows
 
 
-def _classify(sym, runs, snap_hits, records, cutoff, mid):
+def _classify(sym, runs, snap_hits, records, mid):
     first_open = runs[0][0]
     listings = [r for r in records if r['kind'] == 'listing']
     changes = sorted((r for r in records if r['kind'] == 'class-change'),
@@ -350,13 +344,13 @@ def _classify(sym, runs, snap_hits, records, cutoff, mid):
     rows = []
     if listing is None:
         end = change_at[0] if change_at else None
-        rows += _pre_rows(sym, first_open, end, runs, cutoff, mid)
+        rows += _undocumented(sym, first_open, end, mid)
         bounds = change_at
         seg_docs = [[r] for r in changes]
     else:
         if first_open < listing - listing % DAY:
             # archived trading before the documented listing day: a relisted / migrated / rebranded contract whose
-            # earlier identity no source documents (ruling 2: mutable contract -> UNKNOWN, no rule applied)
+            # earlier identity no source documents (ruling 2: mutable contract -> UNKNOWN)
             rows.append(_unknown(sym, first_open, listing, all_ids, 'archive-precedes-documented-listing'))
         bounds = [listing] + change_at
         seg_docs = [listings] + [[r] for r in changes]
@@ -381,8 +375,18 @@ def _classify(sym, runs, snap_hits, records, cutoff, mid):
     return merged
 
 
-def build(snapshots, announcements, manifest, *, classes_id, tradfi_cutoff=None, snapshot_file_sha=None,
+def exclusion_of(manifest_symbols, detailed) -> dict:
+    """The blanket exclusion (owner scope correction, PR #57 6095979330): every manifest symbol without a detailed row,
+    represented by its count and the SHA-256 of the canonical sorted symbol list, never by curated per-symbol rows."""
+    excluded = sorted(set(manifest_symbols) - set(detailed))
+    return {'class': OUT_OF_SCOPE, 'scope': SCOPE_DEFERRED, 'count': len(excluded),
+            'symbols_sha256': hashlib.sha256(M.canonical(excluded)).hexdigest()}
+
+
+def build(snapshots, announcements, manifest, universe, *, classes_id, snapshot_file_sha=None,
           announcements_file_sha=None) -> dict:
+    """Detailed rows ONLY for the committed universe's top-40 crypto candidates plus the two inactive gold-pilot
+    identities; every other manifest symbol is covered by the blanket `exclusion` (count + digest), never researched."""
     for s in snapshots:
         validate_snapshot(s)
     validate_announcements(announcements)
@@ -392,12 +396,6 @@ def build(snapshots, announcements, manifest, *, classes_id, tradfi_cutoff=None,
     sids = [s['snapshot_id'] for s in snapshots]
     _need(len(sids) == len(set(sids)), 'snapshot ids must be unique')
     recs = announcements['records']
-    by_id = {r['record_id']: r for r in recs}
-    cutoff = None
-    if tradfi_cutoff is not None:
-        r = by_id.get(tradfi_cutoff)
-        _need(r is not None and r['kind'] == 'tradfi-launch', f'--tradfi-cutoff {tradfi_cutoff!r}: no such tradfi-launch record')
-        cutoff = {'record_id': r['record_id'], 'ms': r['effective_ms'], 'published_ms': r['published_ms']}
     snaps = [dict(s, by={e['symbol']: e for e in s['symbols']}) for s in snapshots]
     spans = archive_spans(manifest)
     _need(spans, 'the manifest has no 1d klines')
@@ -406,10 +404,14 @@ def build(snapshots, announcements, manifest, *, classes_id, tradfi_cutoff=None,
     for r in recs:
         if r['symbol'] is not None:
             recs_by_sym.setdefault(r['symbol'], []).append(r)
+    cands = top40_candidates(universe)
+    missing = sorted(set(cands) - set(spans))
+    _need(not missing, f'top-40 candidates absent from the manifest: {missing[:5]}')
+    detailed = sorted(set(cands) | (set(GOLD_PILOT) & set(spans)))
     rows = []
-    for sym in sorted(spans):
+    for sym in detailed:
         rows += classify_symbol(sym, spans[sym], snaps, sorted(recs_by_sym.get(sym, []), key=lambda r: r['record_id']),
-                                cutoff, mid)
+                                mid)
     sources = {mid: {'kind': 'archive-manifest', 'manifest_id': manifest['manifest_id'], 'digest': manifest['digest']}}
     for i, s in enumerate(snapshots):
         sources[f'xinfo:{s["snapshot_id"]}'] = {
@@ -420,10 +422,6 @@ def build(snapshots, announcements, manifest, *, classes_id, tradfi_cutoff=None,
         sources[f'ann:{r["record_id"]}'] = {'kind': f'announcement:{r["kind"]}', 'url': r['url'],
                                             'published_ms': r['published_ms'], 'retrieved_ms': r['retrieved_ms'],
                                             'page_sha256': r['page_sha256']}
-    if cutoff:
-        sources[f'rule:tradfi-cutoff:{cutoff["record_id"]}'] = {
-            'kind': 'rule', 'rule': 'an undocumented contract whose contiguous archived run starts before the first '
-                                    'TradFi perpetual launch is crypto for that run', 'cutoff_ms': cutoff['ms']}
     used = {x for r in rows for x in r['sources']}
     counts: dict[str, int] = {}
     for r in rows:
@@ -433,12 +431,16 @@ def build(snapshots, announcements, manifest, *, classes_id, tradfi_cutoff=None,
            'contract': 'docs/newcore/research/CLASSIFICATION_SOURCES.md',
            'classes': list(CLASSES) + [UNKNOWN, OUT_OF_SCOPE], 'mapping': {
                'commodity_subclass': COMMODITY_SUBCLASS, 'tokenized_gold_bases': TOKENIZED_GOLD_BASES,
-               'gold_pilot': {k: list(v) for k, v in GOLD_PILOT.items()}, 'listing_tolerance_ms': LISTING_TOLERANCE_MS,
+               'gold_pilot': {k: list(v) for k, v in GOLD_PILOT.items()}, 'active_classes': list(ACTIVE_CLASSES),
+               'active_scopes': list(ACTIVE_SCOPES), 'listing_tolerance_ms': LISTING_TOLERANCE_MS,
                'relist_gap_ms': RELIST_GAP_MS},
            'inputs': {'announcements_file_sha256': announcements_file_sha, 'records': len(recs),
-                      'snapshots': sids, 'tradfi_cutoff_record': tradfi_cutoff},
-           'sources': {k: v for k, v in sorted(sources.items()) if k in used},
-           'symbols': len(spans), 'row_counts': dict(sorted(counts.items())), 'rows': rows}
+                      'snapshots': sids, 'candidates': {'universe_id': universe['universe_id'],
+                                                        'universe_digest': universe['digest'], 'book': 'crypto',
+                                                        'count': len(cands)}},
+           'sources': {k: v for k, v in sorted(sources.items()) if k in used | {mid}},
+           'symbols': len(spans), 'detailed_symbols': len(detailed), 'exclusion': exclusion_of(spans, detailed),
+           'row_counts': dict(sorted(counts.items())), 'rows': rows}
     out['digest'] = digest_of(out)
     return out
 
@@ -461,9 +463,26 @@ def dumps_compact(doc: dict, list_key: str) -> bytes:
 
 # ---------------------------------------------------------------- downstream helpers
 
+def check(c: dict, manifest: dict) -> None:
+    """Fail closed unless `c` is untampered: its digest matches its content, and its exclusion count + digest equal the
+    manifest symbols minus the detailed symbols (no symbol can be dropped from, or slipped past, the exclusion)."""
+    _need(c.get('format') == FORMAT and c.get('digest') == digest_of(c), 'classes: digest mismatch (tampered)')
+    detailed = {r['symbol'] for r in c['rows']}
+    _need(c['detailed_symbols'] == len(detailed), 'classes: detailed symbol count mismatch')
+    _need(c['exclusion'] == exclusion_of({f['symbol'] for f in manifest['files']}, detailed),
+          'classes: exclusion digest/count does not match the manifest (tampered)')
+
+
+def active_at(c: dict, manifest: dict, symbol: str, t_ms: int) -> bool:
+    """The membership proof downstream code uses: verified classes, then an ACTIVE row in force at `t_ms`. Any symbol
+    without a detailed row (the blanket exclusion, or unknown to the manifest) is non-addressable and never active."""
+    check(c, manifest)
+    return active(resolve_at(c, symbol, t_ms))
+
+
 def resolve_at(c: dict, symbol: str, t_ms: int) -> dict | None:
-    """The row in force for `symbol` at `t_ms`, or None (no row = not classified = not addressable). Membership of a
-    book also needs the row's `scope`: gold-pilot rows never join the crypto books."""
+    """The row in force for `symbol` at `t_ms`, or None (no row = excluded or unclassified = not addressable).
+    Membership of a book also needs the row's `scope`: gold-pilot rows never join the crypto books."""
     for r in c['rows']:
         if r['symbol'] == symbol and r['effective_from_ms'] <= t_ms and \
                 (r['effective_to_ms'] is None or t_ms < r['effective_to_ms']):
@@ -475,13 +494,35 @@ def addressable(row: dict | None) -> bool:
     return row is not None and row['class'] not in (UNKNOWN, OUT_OF_SCOPE)
 
 
-ACTIVE_SCOPES = (SCOPE_CRYPTO,)
-
-
 def active(row: dict | None) -> bool:
-    """May join the active R4 book (Codex #53 6095682220: top-40 Binance crypto only). Gold-pilot identities stay
-    recorded but inactive and non-blocking until their own future prereg; deferred rows are never active."""
-    return addressable(row) and row['scope'] in ACTIVE_SCOPES
+    """May join the active R4 top-40 book (Codex #53 6095682220: Binance crypto only; PR #57 6095886569 ruling 1:
+    individually classified `crypto` only). `crypto-index` rows keep their class but are inactive (a possible later
+    separate book); gold-pilot identities stay recorded but inactive and non-blocking until their own future prereg;
+    deferred and UNKNOWN rows are never active."""
+    return addressable(row) and row['scope'] in ACTIVE_SCOPES and row['class'] in ACTIVE_CLASSES
+
+
+def top40_candidates(universe: dict, book: str = 'crypto') -> dict[str, list[int]]:
+    """symbol -> the week Mondays (ms) on which the committed universe ever selected it into `book`."""
+    out: dict[str, list[int]] = {}
+    for w in universe['weeks']:
+        for s in w['books'][book]['members']:
+            out.setdefault(s, []).append(w['monday_ms'])
+    return dict(sorted(out.items()))
+
+
+def coverage(c: dict, candidates: dict[str, list[int]]) -> dict:
+    """Which top-40 candidates resolve to an ACTIVE row on every week they were selected (positive), and which do not
+    (UNKNOWN or otherwise inactive on at least one selected week, with the basis in force there)."""
+    positive, missing = [], {}
+    for s, weeks in candidates.items():
+        bad = sorted({(r or {}).get('basis', 'no-row') for t in weeks for r in [resolve_at(c, s, t)] if not active(r)})
+        if bad:
+            missing[s] = bad
+        else:
+            positive.append(s)
+    return {'candidates': len(candidates), 'positive': len(positive), 'not_positive': len(missing),
+            'not_positive_symbols': missing}
 
 
 # ---------------------------------------------------------------- snapshot extraction (no network)
@@ -526,11 +567,12 @@ def main(argv=None) -> int:
     b.add_argument('--out', required=True)
     v = sub.add_parser('verify')
     v.add_argument('file')
-    for p in (b, v):
+    cv = sub.add_parser('coverage')
+    for p in (b, v, cv):
+        p.add_argument('--universe', required=True, help='committed universe artifact naming the top-40 candidates')
         p.add_argument('--exchange-info', action='append', required=True)
         p.add_argument('--announcements', required=True)
         p.add_argument('--manifest', required=True)
-        p.add_argument('--tradfi-cutoff')
         p.add_argument('--classes-id', required=True)
     a = ap.parse_args(argv)
     try:
@@ -544,8 +586,12 @@ def main(argv=None) -> int:
             return 0
         snaps = [_read_json(p) for p in a.exchange_info]
         ann, ann_sha = _read_json(a.announcements)
-        c = build([s for s, _ in snaps], ann, M.load(a.manifest), classes_id=a.classes_id,
-                  tradfi_cutoff=a.tradfi_cutoff, snapshot_file_sha=[h for _, h in snaps], announcements_file_sha=ann_sha)
+        u, _ = _read_json(a.universe)
+        c = build([s for s, _ in snaps], ann, M.load(a.manifest), u, classes_id=a.classes_id,
+                  snapshot_file_sha=[h for _, h in snaps], announcements_file_sha=ann_sha)
+        if a.cmd == 'coverage':                             # in memory only: writes and registers nothing
+            print(json.dumps(coverage(c, top40_candidates(u)), indent=1, sort_keys=True))
+            return 0
         data = dumps(c)
         if a.cmd == 'build':
             if os.path.exists(a.out):
