@@ -1,0 +1,15 @@
+{
+ "format": "zb-r4-gate/2",
+ "prereg": "research_evidence/prereg/trend_ema_mom.v1.json",
+ "ledger": "research_evidence/ledger/trend_ema_mom.jsonl",
+ "integration_ref": "origin/master",
+ "pins": [
+  {"slice": "R1+R2+R3", "prs": [51, 52], "head": "01564264431650a9fde53f27623928bb84702914"},
+  {"slice": "R3 overlap integrity + legacy-m3-repro-v1", "prs": [56],
+   "head": "33ee82f70039a30dd6bcd9cda6b3816156131638", "integrated": "a47815b76350dc77d195637b00de3c2607126d0c",
+   "after": "01564264431650a9fde53f27623928bb84702914"}
+ ],
+ "classification": {"id": "instrument-classes-v2", "digest": "PENDING",
+  "note": "Classification v2 (sourced, point-in-time dated, Cowork-verified, Codex-bound; Binance top-40 crypto only for the active book, gold identities recorded but inactive) is not built yet. While this is PENDING the gate is closed and R4-0 is NOT READY. Manual classification v1 cannot authorize R4 (Codex 6094780810 Q5)."},
+ "note": "Exact reviewed SHA pins plus ancestry (Codex 6080124561). #56 was rebase-merged (Codex 6095813913): its reviewed source head 33ee82f and the integrated master commit a47815b must have identical trees; a47815b must descend from 0156426, be in origin/master and in the executing HEAD. The rewritten source head is not required to be a master ancestor. A fix round that moves a pin is re-pinned only in a reviewed commit."
+}
