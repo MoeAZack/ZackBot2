@@ -169,9 +169,14 @@ class Machine:
     """The M3 book as a deterministic state machine over sandbox views (see the module doc)."""
 
     def __init__(self, *, symbols, rules: dict, costs: CostRow, book: Book = Book(), params: T.Params = T.PRIMARY,
-                 window: int = T.WINDOW):
+                 window: int = T.WINDOW, time_cap_bars=None):
+        # time_cap_bars: None = the uncapped M3 reproduction (development / reproduction only, never promotable);
+        # an int N >= 1 closes every lot at the open of bar entry_index + N (never N + 1), so the episode
+        # [entry_ms, entry_ms + N x 4h] fits the split horizon / purge contract when N == horizon_bars.
+        if time_cap_bars is not None and (type(time_cap_bars) is not int or time_cap_bars < 1):
+            raise ValueError('time_cap_bars must be None (uncapped, reproduction only) or an int >= 1')
         self.symbols, self.rules, self.costs, self.book = tuple(symbols), dict(rules), costs, book
-        self.params, self.window = params, window
+        self.params, self.window, self.time_cap_bars = params, window, time_cap_bars
         self._last_t = None
         self._prev = self._cur = None
 
@@ -236,6 +241,18 @@ class Machine:
             if b is None:
                 raise GapUnderPositionError(f'{s}: no bar closing at {t} while a lot is open (exit fill)')
             close_lot(lot, X.multiply(dec(b.open), X.subtract(ONE, costs.slip)), b.open_ms, 'exit.exit_signal', sig_ms)
+        if self.time_cap_bars is not None:                   # the time cap: at the open of bar entry_index + N
+            cap_ms = self.time_cap_bars * iv
+            for s in sorted(lots):
+                lot, b = lots[s], bars.get(s)
+                if b is None:
+                    raise GapUnderPositionError(f'{s}: no bar closing at {t} while a lot is open (time cap)')
+                held = b.open_ms - lot.entry_ms
+                if held > cap_ms:                            # unreachable: every bar of a hold is played
+                    raise AssertionError(f'{s}: lot held past its time cap ({held // iv} > {self.time_cap_bars})')
+                if held == cap_ms:
+                    close_lot(lot, X.multiply(dec(b.open), X.subtract(ONE, costs.slip)), b.open_ms,
+                              'exit.time_cap', None)
         snapshot = st['wallet']
         for s, sig_ms, dist, ref, halted in st['pend_entry']:
             dist, ref = Decimal(dist), Decimal(ref)

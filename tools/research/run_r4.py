@@ -56,7 +56,7 @@ PREREG_KEYS = {'format', 'candidate_id', 'family', 'author', 'cairo_date', 'stat
 EDGE_ROWS = {'sample', 'expectancy', 'baselines', 'multiplicity', 'pit', 'robustness', 'neighbours', 'intrabar',
              'e10_drawdown', 'e11_follower'}
 PRIMARY_NAME = 'trend_ema_mom.v1.cap180'        # the promotable primary (Codex 6095682220)
-PRIMARY_CAP = 180                               # its finite time cap = the purge / embargo horizon
+PRIMARY_CAP = T.TIME_CAP_BARS                   # its finite time cap = the purge / embargo horizon
 DEV_ONLY = 'trend_ema_mom.v1.uncapped'          # the uncapped M3 rule: reproduction / development evidence only
 TRIALS = 18                                     # crypto family; gold has its own future budget
 DEFERRED = {'gold-spot': 'XAUUSDT', 'gold-tokenized': 'PAXGUSDT'}  # costs.py class names

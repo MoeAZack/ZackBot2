@@ -568,9 +568,10 @@ def test_prereg_validation_refuses_drift(mut, msg):
     assert any(msg in b for b in G.validate_prereg(pre, ROOT))
 
 
-def git(repo, *a):
+def git(repo, *a, env=None):
     return subprocess.run(['git', '-C', str(repo), '-c', 'user.name=t', '-c', 'user.email=t@example.invalid', *a],
-                          capture_output=True, text=True, check=True, stdin=subprocess.DEVNULL).stdout.strip()
+                          capture_output=True, text=True, check=True, stdin=subprocess.DEVNULL,
+                          env=None if env is None else dict(os.environ, **env)).stdout.strip()
 
 
 @pytest.fixture
@@ -723,7 +724,101 @@ def test_a_rebase_merged_pin_is_checked_by_its_integrated_commit(grepo):
     assert any('tree differs' in f for f in bad)
     assert any('full 40-hex' in f for f in G.pin_failures(repo, dict(g, pins=[dict(pin, integrated=integ[:7])])))
     git(repo, 'checkout', '-q', '-b', 'side', 'master~1')
-    git(repo, 'cherry-pick', '-x', src)
+    # A fixed, distinct committer date: the stray pick has integ's parent, tree and message, so picked in the same
+    # second it would BE integ (Cowork 6095930574 flake). The date makes the two SHAs differ deterministically.
+    git(repo, 'cherry-pick', '-x', src, env={'GIT_COMMITTER_DATE': '2001-02-03T04:05:06+0000'})
     stray = git(repo, 'rev-parse', 'HEAD')                           # same tree, but never merged into master
+    assert stray != integ and git(repo, 'rev-parse', f'{stray}^') == git(repo, 'rev-parse', f'{integ}^')
     git(repo, 'checkout', '-q', 'r4')
     assert any('not merged into' in f for f in G.pin_failures(repo, dict(g, pins=[dict(pin, integrated=stray)])))
+
+
+# ------------------------------------------------------------------ N1: the cap180 time-cap boundary (Codex 6095886395)
+class CapView:
+    """A minimal in-process view: one symbol of flat bars (the stop is never reached), REPRO-labelled."""
+
+    def __init__(self, bars, t):
+        self._b, self.t, self.labels = bars, t, (E.REPRO_LABEL,)
+
+    def members(self):
+        return ('AAAUSDT',)
+
+    def bars(self, s, tf, n, position=None):
+        return [b for b in self._b if b.available_ms <= self.t][-n:]
+
+    def enter(self, s, key):
+        return ('pos', s, key)
+
+
+def run_cap(monkeypatch, cap, *, sig_index=5, extra=12):
+    n = sig_index + (cap or 200) + extra
+    bars = [P.Bar(START + i * H4, 100.0, 101.0, 99.0, 100.0, 1.0, None, START + (i + 1) * H4) for i in range(n)]
+    sig_close = bars[sig_index].available_ms
+    monkeypatch.setattr(E.T, 'signal_at_last', lambda b, p: (b[-1].available_ms == sig_close, False, 1.0))
+    m = E.Machine(symbols=('AAAUSDT',), rules={'AAAUSDT': eval(RULE, {'E': E, 'D': Decimal})},
+                  costs=E.COSTS['base'], time_cap_bars=cap)
+    outs = []
+    for b in bars:
+        out = m.decide(CapView(bars, b.available_ms))
+        assert m.decide(CapView(bars, b.available_ms)) == out          # the perturbation re-run path agrees
+        outs.append(out)
+    return outs, sig_close
+
+
+@pytest.mark.parametrize('cap', [1, 2, 179, 180, 181])
+def test_a_lot_exits_exactly_at_the_open_of_bar_entry_index_plus_cap(monkeypatch, cap):
+    outs, sig_close = run_cap(monkeypatch, cap)
+    trades = [tr for o in outs for tr in o['trades']]
+    assert len(trades) == 1
+    tr = trades[0]
+    entry_ms = sig_close                                                 # filled at the open of the next bar
+    assert tr['entry_ms'] == entry_ms and tr['exit_reason'] == 'exit.time_cap' and tr['exit_signal_close_ms'] is None
+    assert tr['exit_ms'] == entry_ms + cap * H4                          # bar entry_index + cap, never + cap + 1
+    assert (tr['exit_ms'] - tr['entry_ms']) // H4 == cap
+    assert Decimal(tr['exit_price']) == Decimal('100') * (1 - E.COSTS['base'].slip)
+    open_at = {o['t']: o['open'] for o in outs}
+    assert open_at[entry_ms + cap * H4] == 1                             # bar entry_index + cap - 1 is still held
+    assert open_at[entry_ms + (cap + 1) * H4] == 0                       # closed at the open of bar entry_index + cap
+
+
+def test_the_pinned_primary_cap_is_180_and_closes_at_180_never_181(monkeypatch):
+    assert T.TIME_CAP_BARS == G.PRIMARY_CAP == 180
+    pre = json.loads(load_prereg())
+    assert pre['primary_params']['time_cap_bars'] == pre['variants']['primary']['time_cap_bars'] == T.TIME_CAP_BARS
+    assert pre['splits']['horizon_bars'] == T.TIME_CAP_BARS
+    outs, sig_close = run_cap(monkeypatch, T.TIME_CAP_BARS)
+    (tr,) = [tr for o in outs for tr in o['trades']]
+    assert tr['exit_ms'] == sig_close + 180 * H4 != sig_close + 181 * H4
+
+
+def test_uncapped_holds_past_the_cap_and_stays_reproduction_only(monkeypatch):
+    outs, _ = run_cap(monkeypatch, None, extra=30)
+    assert not [tr for o in outs for tr in o['trades']] and outs[-1]['open'] == 1
+    assert E._BASE.time_cap_bars is None and E._X2.time_cap_bars is None   # the M3 repro rows stay uncapped
+    pre = json.loads(load_prereg())
+    (sec,) = pre['variants']['secondary']
+    assert sec['time_cap_bars'] is None and sec['promotable'] is False and sec['name'] == G.DEV_ONLY
+    sp = pre['splits']
+    with pytest.raises(S.SplitError, match='horizon'):                  # an uncapped runner cannot build a plan
+        S.SplitPlan(sp['splits'], interval=sp['interval'], lookback_bars=sp['lookback_bars'], horizon_bars=None)
+
+
+@pytest.mark.parametrize('bad', [0, -1, True, 180.0, '180'])
+def test_a_malformed_time_cap_is_refused(bad):
+    with pytest.raises(ValueError, match='time_cap_bars'):
+        E.Machine(symbols=('AAAUSDT',), rules={}, costs=E.COSTS['base'], time_cap_bars=bad)
+
+
+def test_a_capped_episode_satisfies_the_split_purge_contract():
+    sp = json.loads(load_prereg())['splits']
+    plan = S.SplitPlan(sp['splits'], interval=sp['interval'], lookback_bars=sp['lookback_bars'],
+                       horizon_bars=sp['horizon_bars'])
+    assert plan.horizon_ms == T.TIME_CAP_BARS * H4 and plan.purge_ms >= plan.horizon_ms
+    for k in plan.keys():
+        if k == plan.holdout_key():
+            continue
+        first, last = plan.decision_range(k)
+        for entry in (first, last):
+            assert plan.split_of_episode(entry, entry + T.TIME_CAP_BARS * H4) == k   # exit at entry_index + 180
+        with pytest.raises(S.SplitError):                                # one bar more leaves the split
+            plan.split_of_episode(last, last + (T.TIME_CAP_BARS + 1) * H4)

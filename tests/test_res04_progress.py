@@ -145,6 +145,92 @@ def test_only_seq_and_fold_may_be_numbers(fold):
         PG.check_doc(live(stages=[{'name': 'pit.walk_forward', 'status': 'started', 'fold': fold}]))
 
 
+# ------------------------------------------------------------------ N3: fold bounded by the preregistered count
+BAD_FOLDS = [True, False, 1.5, '2', None, -1, 5, 31337, 2 ** 63]
+
+
+def test_fold_count_is_read_from_the_committed_prereg():
+    pre = json.load(open(PG.PREREG, encoding='utf-8'))
+    wf = [w['fold'] for w in pre['splits']['splits'] if w['name'] == 'walk_forward']
+    assert PG.fold_count() == len(wf) == 5 and wf == list(range(5))
+
+
+@pytest.mark.parametrize('fold', BAD_FOLDS)
+@pytest.mark.parametrize('where', ['stage', 'integrity'])
+def test_a_fold_outside_the_preregistered_range_is_refused_on_read(fold, where):
+    if where == 'stage':
+        doc = live(stages=[{'name': 'pit.walk_forward', 'status': 'started', 'fold': fold}])
+    else:
+        doc = live(integrity=[{'code': 'DataGap', 'stage': 'pit.walk_forward', 'fold': fold}])
+    with pytest.raises(PG.ProgressError, match='fold'):
+        PG.check_doc(doc)
+
+
+@pytest.mark.parametrize('fold', [0, 4])
+def test_the_preregistered_fold_bounds_are_accepted(fold):
+    PG.check_doc(live(stages=[{'name': 'pit.walk_forward', 'status': 'started', 'fold': fold}],
+                      integrity=[{'code': 'DataGap', 'stage': 'pit.walk_forward', 'fold': fold}]))
+
+
+@pytest.mark.parametrize('fold', [b for b in BAD_FOLDS if b is not None])
+@pytest.mark.parametrize('call', ['stage_start', 'stage_done', 'integrity_failure', 'aborted'])
+def test_a_bad_fold_is_refused_on_write_before_any_state_changes(tmp_path, fold, call):
+    p = new(tmp_path)
+    before = open(p.path, 'rb').read()
+    with pytest.raises(PG.ProgressError, match='fold'):
+        if call in ('stage_start', 'stage_done'):
+            getattr(p, call)('pit.walk_forward', fold=fold)
+        else:
+            getattr(p, call)(['DataGap'], stage='pit.walk_forward', fold=fold)
+    assert open(p.path, 'rb').read() == before and p.stages == [] and p.integrity == []
+    assert not os.path.exists(p.final_path)
+    p.stage_start('pit.walk_forward', fold=4)                    # the writer still works, with an in-range fold
+
+
+def test_a_tampered_on_disk_fold_is_refused_by_read(tmp_path):
+    p = new(tmp_path)
+    p.stage_start('pit.walk_forward', fold=1)
+    doc = json.loads(open(p.path, 'rb').read())
+    doc['stages'][0]['fold'] = 31337
+    doc['digest'] = PG.doc_digest(doc)                           # a consistent digest does not launder it
+    open(p.path, 'wb').write(PG.doc_bytes(doc))
+    with pytest.raises(PG.ProgressError, match='fold'):
+        PG.read(p.path)
+    with pytest.raises(PG.ProgressError, match='fold'):
+        new(tmp_path)                                            # resume refuses it too
+
+
+def _prereg_with(tmp_path, folds):
+    pre = json.load(open(PG.PREREG, encoding='utf-8'))
+    other = [w for w in pre['splits']['splits'] if w['name'] != 'walk_forward']
+    pre['splits']['splits'] = other[:2] + [dict(name='walk_forward', fold=k, start='x', end='y') for k in folds] + other[2:]
+    path = tmp_path / 'prereg.json'
+    path.write_text(json.dumps(pre))
+    return str(path)
+
+
+def test_the_bound_follows_the_prereg_not_a_constant(tmp_path, monkeypatch):
+    monkeypatch.setattr(PG, 'PREREG', _prereg_with(tmp_path, [0, 1, 2]))
+    assert PG.fold_count() == 3
+    PG.check_doc(live(stages=[{'name': 'pit.walk_forward', 'status': 'started', 'fold': 2}]))
+    with pytest.raises(PG.ProgressError, match=r'\[0, 3\)'):
+        PG.check_doc(live(stages=[{'name': 'pit.walk_forward', 'status': 'started', 'fold': 3}]))
+
+
+@pytest.mark.parametrize('folds', [[], [1, 2], [0, 2], [True, 1], [0, '1'], [1, 0]])
+def test_a_malformed_prereg_fold_list_refuses(tmp_path, monkeypatch, folds):
+    monkeypatch.setattr(PG, 'PREREG', _prereg_with(tmp_path, folds))
+    with pytest.raises(PG.ProgressError, match='walk-forward folds'):
+        PG.check_doc(live(stages=[{'name': 'pit.walk_forward', 'status': 'started', 'fold': 0}]))
+
+
+def test_a_missing_prereg_refuses_every_fold(tmp_path, monkeypatch):
+    monkeypatch.setattr(PG, 'PREREG', str(tmp_path / 'absent.json'))
+    with pytest.raises(PG.ProgressError, match='walk-forward folds'):
+        PG.check_doc(live(stages=[{'name': 'pit.walk_forward', 'status': 'started', 'fold': 0}]))
+    PG.check_doc(live())                                         # a fold-free record needs no prereg
+
+
 def test_a_full_run_carries_no_outcome_and_seals_once(tmp_path):
     p = run_all(tmp_path)
     for path in (p.path, p.final_path):

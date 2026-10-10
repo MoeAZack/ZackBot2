@@ -19,7 +19,8 @@ reproduction has no universe). `identity_digest` = SHA-256 of the canonical iden
 from every digest, so two identical runs produce byte-identical records apart from `wall`.
 
 Enforced by `check_doc` on write AND on read: every key at every depth is whitelisted (unknown key = refusal); no
-float / bool anywhere; the only integers are `seq` and a stage `fold`; every string matches a strict shape (hex
+float / bool anywhere; the only integers are `seq` and a stage `fold` (bounded
+by the preregistered walk-forward fold count, `fold_count()`); every string matches a strict shape (hex
 digests, relative paths); stage names and integrity codes come from fixed allowlists (`STAGE_NAMES`,
 `INTEGRITY_CODES`; an unknown code refuses), which are themselves checked against the outcome-word denylist.
 """
@@ -31,6 +32,7 @@ import os
 import re
 import tempfile
 from datetime import datetime
+from functools import lru_cache
 from zoneinfo import ZoneInfo
 
 FORMAT = 'zb-run-progress/2'
@@ -51,6 +53,10 @@ LIVE_KEYS = {'format', 'kind', 'run', 'seq', 'state', 'identity', 'identity_dige
 FINAL_KEYS = LIVE_KEYS | {'artifacts', 'evidence'}
 STATES = {'live': ('running', 'sealed', 'aborted'), 'final': ('sealed', 'aborted')}
 TERMINAL = ('sealed', 'aborted')
+# The fold channel is bounded by the PREREGISTERED walk-forward fold count (Codex 6095886395 N3), read from the
+# committed preregistration, never hardcoded: a fold is an int (not bool) in range(fold_count()).
+PREREG = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+                      'research_evidence', 'prereg', 'trend_ema_mom.v1.json')
 
 
 class ProgressError(ValueError):
@@ -126,13 +132,37 @@ def check_identity(v) -> None:
             raise ProgressError(f'identity.{k} must be a 64-hex digest or null (not applicable)')
 
 
+@lru_cache(maxsize=None)
+def _fold_count_of(path: str) -> int:
+    try:
+        with open(path, 'rb') as f:
+            pre = json.loads(f.read())
+        folds = [w['fold'] for w in pre['splits']['splits'] if w['name'] == 'walk_forward']
+    except (OSError, ValueError, KeyError, TypeError) as e:
+        raise ProgressError(f'{path}: cannot read the preregistered walk-forward folds: {e!r}')
+    if not folds or any(type(k) is not int for k in folds) or folds != list(range(len(folds))):
+        raise ProgressError(f'{path}: walk-forward folds must be the ints 0..n-1 in order')
+    return len(folds)
+
+
+def fold_count() -> int:
+    """The preregistered walk-forward fold count (from the committed prereg `splits`)."""
+    return _fold_count_of(PREREG)
+
+
+def _fold(v, what):
+    n = fold_count()
+    if type(v) is not int or not 0 <= v < n:
+        raise ProgressError(f'{what} must be an int in [0, {n}) (the preregistered walk-forward folds)')
+
+
 def _stage(v):
     _keys(v, {'name', 'fold', 'status', 'artifacts'}, {'name', 'status'}, 'stage')
     _code(v['name'], 'stage.name', STAGE_NAMES)
     if v['status'] not in ('started', 'done'):
         raise ProgressError('stage.status must be started / done')
-    if 'fold' in v and (type(v['fold']) is not int or v['fold'] < 0):
-        raise ProgressError('stage.fold must be a non-negative int')
+    if 'fold' in v:
+        _fold(v['fold'], 'stage.fold')
     if 'artifacts' in v:
         _artifacts(v['artifacts'])
 
@@ -157,8 +187,8 @@ def _integrity(v):
         _code(i['code'], 'integrity.code', INTEGRITY_CODES)
         if 'stage' in i:
             _code(i['stage'], 'integrity.stage', STAGE_NAMES)
-        if 'fold' in i and (type(i['fold']) is not int or i['fold'] < 0):
-            raise ProgressError('integrity.fold must be a non-negative int')
+        if 'fold' in i:
+            _fold(i['fold'], 'integrity.fold')
 
 
 def check_doc(doc: dict) -> None:
@@ -358,6 +388,7 @@ def _mk_stage(name, fold, status):
     s = {'name': name, 'status': status}
     if fold is not None:
         s['fold'] = fold
+    _stage(s)                                   # refuse before the in-memory state changes
     return s
 
 
@@ -367,4 +398,5 @@ def _mk_integrity(code, stage, fold):
         i['stage'] = stage
     if fold is not None:
         i['fold'] = fold
+    _integrity([i])                             # refuse before the in-memory state changes
     return i

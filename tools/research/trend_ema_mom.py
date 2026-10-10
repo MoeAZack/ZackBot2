@@ -25,6 +25,8 @@ DAY_MS = 86_400_000
 TF = '4h'
 TF_MS = 14_400_000
 WINDOW = 1500                                   # live kline read cap = the M3 runner's signal window
+TIME_CAP_BARS = 180                             # cap180 primary: a lot exits at the open of bar entry_index + 180
+                                                # (never 181); equals the split horizon_bars / purge horizon
 ENTER, CLOSE = 'enter', 'close'
 _DEC = Context(prec=34, rounding=ROUND_HALF_EVEN)
 
