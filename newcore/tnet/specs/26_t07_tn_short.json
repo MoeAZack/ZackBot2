@@ -1,0 +1,54 @@
+{
+  "format": "zb-newcore-tnet-runner/1",
+  "id": "T07-tn-short",
+  "name": "t07_dca_bracket_short",
+  "description": "Testnet bracket for T07: one DCA add at 0.5 R adverse, basket stop, TP2 at 1 R; INCONCLUSIVE (retried) unless the add filled.",
+  "targets": [
+    "testnet"
+  ],
+  "symbol": "SOLUSDT",
+  "side": "SHORT",
+  "sizing": {
+    "risk_pct": "0.000075",
+    "max_leverage": "3"
+  },
+  "stop": {
+    "pct": "0.15"
+  },
+  "steps": [
+    {
+      "op": "enter"
+    },
+    {
+      "op": "await_exit",
+      "max_ticks": 30
+    }
+  ],
+  "expect": {
+    "entries": 1,
+    "final": "flat",
+    "open_orders_end": 0,
+    "observe": {
+      "adds_min": 1
+    }
+  },
+  "bound": {
+    "max_ticks": 31,
+    "max_orders": 12,
+    "max_notional_usdt": "2000",
+    "max_wall_s": 2400
+  },
+  "management": {
+    "enabled": true,
+    "plan": {
+      "add_r": "0.5",
+      "add_scale": "1",
+      "tp1_r": null,
+      "tp2_r": "1",
+      "be_after_tp1": false,
+      "time_exit_candles": 25,
+      "cap_mult": "4"
+    }
+  },
+  "attempts": 3
+}

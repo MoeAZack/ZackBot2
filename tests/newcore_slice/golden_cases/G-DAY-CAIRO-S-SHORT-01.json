@@ -1,0 +1,211 @@
+{
+  "schema": "zb-golden/1",
+  "id": "G-DAY-CAIRO-S-SHORT-01",
+  "title": "Short: daily-loss halt on Cairo day D does not block a signal whose 4h candle CLOSES after Cairo midnight (summer DST, Cairo = UTC+3)",
+  "behaviours": [
+    "cairo_day",
+    "daily_halt",
+    "short_side"
+  ],
+  "side": "short",
+  "tf": "4h",
+  "clock": {
+    "start": 1717200000000,
+    "entry_cycle_delay_s": 15
+  },
+  "costs": {
+    "model": "legacy",
+    "taker_fee": "0.0005",
+    "slip": "0.0002",
+    "funding_per_bar": "0"
+  },
+  "account": {
+    "equity": "500",
+    "max_leverage": 10,
+    "sizing": "legacy_replay"
+  },
+  "market": {
+    "SOLUSDT": {
+      "base": {
+        "kind": "flat",
+        "px": "100",
+        "wick": "0.5",
+        "n": 300
+      },
+      "bars": {
+        "284": [
+          "100",
+          "110",
+          "99.9",
+          "108"
+        ]
+      },
+      "atr": {
+        "kind": "computed"
+      }
+    },
+    "XRPUSDT": {
+      "base": {
+        "kind": "flat",
+        "px": "200",
+        "wick": "1",
+        "n": 300
+      },
+      "bars": {},
+      "atr": {
+        "kind": "computed"
+      }
+    }
+  },
+  "path_policy": "zb-path/1",
+  "slot": {
+    "id": "S1",
+    "sides": "short",
+    "risk": "0.10",
+    "share": "1",
+    "max_pos": 2,
+    "symbols": [
+      "SOLUSDT",
+      "XRPUSDT"
+    ],
+    "entry": {
+      "type": "market"
+    },
+    "stop": {
+      "atr": "2"
+    }
+  },
+  "signals": [
+    {
+      "bar": 283,
+      "sym": "SOLUSDT",
+      "kind": "enter_short"
+    },
+    {
+      "bar": 287,
+      "sym": "XRPUSDT",
+      "kind": "enter_short"
+    },
+    {
+      "bar": 290,
+      "sym": "XRPUSDT",
+      "kind": "exit_short"
+    }
+  ],
+  "faults": [],
+  "expect": {
+    "trades": [
+      {
+        "sym": "SOLUSDT",
+        "side": "SHORT",
+        "i_in": 284,
+        "i_out": 284,
+        "exit": "STOP_HIT",
+        "R": "-1.060693099",
+        "pnl": "-53.03465495"
+      },
+      {
+        "sym": "XRPUSDT",
+        "side": "SHORT",
+        "i_in": 288,
+        "i_out": 290,
+        "exit": "SIGNAL_EXIT",
+        "R": "-0.07"
+      }
+    ],
+    "final": {
+      "lots": 0
+    }
+  },
+  "applies_to": {
+    "legacy_engine": {
+      "status": "known_divergence",
+      "reason": "AUD-07 C13g: the engine journal books a filled exchange stop without its exit slippage"
+    },
+    "legacy_backtest": {
+      "status": "known_divergence",
+      "reason": "AUD-07 C13d: legacy behaviour differs from the corrected contract until the AUD-07 product fix lands"
+    },
+    "newcore_sim": {
+      "status": "pending_adapter",
+      "reason": "NEWCORE NC-07/NC-08 adapter not built yet"
+    },
+    "newcore_live_sim": {
+      "status": "pending_adapter",
+      "reason": "NEWCORE NC-08 live-sim adapter not built yet"
+    }
+  },
+  "known_divergences": [
+    {
+      "adapter": "legacy_backtest",
+      "divergence_id": "AUD07-C13D",
+      "ticket": "AUD-07",
+      "finding": "C13d",
+      "correction": "CORR-0040",
+      "until": "AUD-07 product fix",
+      "reason": "backtest.py:240-242 keys the trading day by the Cairo date of the bar OPEN, so the day-D halt still gates the signal of a candle that closes on day D+1",
+      "observed": [
+        {
+          "path": "trades",
+          "expected": [
+            {
+              "sym": "SOLUSDT",
+              "side": "SHORT",
+              "i_in": 284,
+              "i_out": 284,
+              "exit": "STOP_HIT",
+              "R": "-1.060693099",
+              "pnl": "-53.03465495"
+            },
+            {
+              "sym": "XRPUSDT",
+              "side": "SHORT",
+              "i_in": 288,
+              "i_out": 290,
+              "exit": "SIGNAL_EXIT",
+              "R": "-0.07"
+            }
+          ],
+          "actual": [
+            {
+              "sym": "SOLUSDT",
+              "side": "SHORT",
+              "i_in": 284,
+              "i_out": 284,
+              "exit": "STOP_HIT",
+              "R": -1.060693,
+              "pnl": -53.034655
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "adapter": "legacy_engine",
+      "divergence_id": "AUD07-C13G",
+      "ticket": "AUD-07",
+      "finding": "C13g",
+      "correction": "CORR-0040",
+      "until": "AUD-07 product fix",
+      "reason": "engine.py:2284-2290 books an exchange stop that filled (stop gone) at the STOP price, not the fill price - mirrored on the short side: the journal books the 101.98 buy stop without the exit slippage the exchange charged (-1.05049 R booked vs -1.06069 R paid)",
+      "observed": [
+        {
+          "path": "trades[0].R",
+          "expected": "-1.060693099",
+          "actual": -1.05049
+        },
+        {
+          "path": "trades[0].pnl",
+          "expected": "-53.03465495",
+          "actual": -52.5245
+        }
+      ]
+    }
+  ],
+  "provenance": {
+    "created_at_sha": "cff3f88",
+    "author": "NC-01 golden short mirrors (Claude)",
+    "mirror_of": "G-DAY-CAIRO-S-01",
+    "notes": "Short mirror of G-DAY-CAIRO-S-01: market reflected around the base price, signals and side flipped. AUD-07 C13d corrected rule (trading day = Africa/Cairo date at the decision time, the candle CLOSE). SOL short (risk 10 %: qty 25, stop 101.98) is stopped in candle 284 (green, o->l->h->c up to 110) at 101.98 x 1.0002 for -1.0607 R = -10.6 % > the 8 % daily halt. XRP signals short on candle 287 (closes at Cairo midnight, day D+1), enters at the open of 288 at 199.96 and exits on the signal of 290 at 200.04: R = ((199.96 - 200.04) - 400 x 0.0005) / 4 = -0.07. XRP pnl not asserted (sizing basis BT-C8a), as in the long."
+  }
+}

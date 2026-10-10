@@ -195,6 +195,42 @@ class VenueOrder:
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
+class VenueOrderRecord:
+    """One order's record looked up by its EXCHANGE order id (Binance GET /fapi/v1/order?orderId=, any status): the
+    identity the order was sent with (original client id + route) and its original and executed quantities. Codex
+    6071659449: the only proof of a partially filled order's client id - trade rows carry the filled quantity only."""
+    ref: OrderRef                # the ORIGINAL client id; route 'algo' for a triggered algo order (its algo client id)
+    exchange_order_id: str
+    position_side: str
+    status: str                  # venue status verbatim (NEW, PARTIALLY_FILLED, FILLED, CANCELED, EXPIRED, ...)
+    orig_qty: Decimal            # the quantity requested
+    executed_qty: Decimal        # executed so far (<= orig_qty)
+    # Cowork 6073089838: what proves a record that is NOT ours to be a foreign OPENING order (never the classic child of
+    # a triggered algo stop, whatever client id that child carries). Optional - None = the adapter did not say, and
+    # then a record that is not ours is ownership UNKNOWN. Binance: side, reduceOnly, closePosition, type, origType.
+    side: str | None = None              # BUY | SELL (venue verbatim)
+    reduce_only: bool | None = None
+    close_position: bool | None = None
+    order_type: str | None = None        # type verbatim (MARKET, LIMIT, STOP_MARKET, ...)
+    orig_type: str | None = None         # origType verbatim
+
+    def __post_init__(self):
+        req(isinstance(self.ref, OrderRef), 'VenueOrderRecord.ref', 'an OrderRef')
+        req(self.reduce_only is None or type(self.reduce_only) is bool, 'VenueOrderRecord.reduce_only', 'a bool / None')
+        req(self.close_position is None or type(self.close_position) is bool, 'VenueOrderRecord.close_position',
+            'a bool / None')
+        for name in ('side', 'order_type', 'orig_type'):            # verbatim; the runner proves nothing from
+            if getattr(self, name) is not None:                     # a value it does not recognise
+                check_text(getattr(self, name), f'VenueOrderRecord.{name}', 32)
+        check_text(self.exchange_order_id, 'VenueOrderRecord.exchange_order_id', 64)
+        _side(self)
+        check_text(self.status, 'VenueOrderRecord.status', 32)
+        check_decimal(self.orig_qty, 'VenueOrderRecord.orig_qty', positive=True)
+        check_decimal(self.executed_qty, 'VenueOrderRecord.executed_qty', nonneg=True)
+        req(self.executed_qty <= self.orig_qty, 'VenueOrderRecord.executed_qty', 'never above the original quantity')
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
 class VenueFill:
     """One execution (Binance userTrades row): the ledger's fee and price truth."""
     trade_id: str
@@ -243,4 +279,11 @@ class VenuePort(Protocol):
 
     def fills(self, symbol: str, exchange_order_id: str) -> ReadOutcome:
         """value: tuple[VenueFill, ...] of one exchange order, oldest first."""
+        ...
+
+    def order_by_id(self, symbol: str, exchange_order_id: str) -> ReadOutcome:
+        """One order by its EXCHANGE order id (Binance order query by orderId; classic and triggered algo orders):
+        OK value: (VenueOrderRecord,) - exactly the order asked; REJECTED -2013: the venue holds no such order
+        (NOT_FOUND); UNKNOWN: no answer. Codex 6071659449: proves the identity (original client id, original and
+        executed quantities) of an order seen only in trade rows."""
         ...

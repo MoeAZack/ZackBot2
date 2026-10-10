@@ -1,0 +1,23 @@
+{
+ "format": "zb-newcore-tnet-mgmt/1",
+ "scenario": "t05_target_exit",
+ "note": "Driver-level script for the FakeVenue executor (tests/newcore_management/test_tnet_mgmt.py). Prices in the LONG frame around 100 (the short run mirrors them around 200). The venue refuses classic stops with -4120 (algo route required), like Binance testnet. Driver stop_route_policy per_attempt (journal rule G6): EVERY new stop is tried classic first and goes algo only after that attempt is refused.",
+ "plan": {
+  "stop": "2",
+  "tp2": "2"
+ },
+ "venue": {
+  "classic_stops": "algo_only"
+ },
+ "path": [
+  {
+   "mark": "102.5"
+  }
+ ],
+ "end": {
+  "stage": "done",
+  "legs": [
+   "tp2"
+  ]
+ }
+}

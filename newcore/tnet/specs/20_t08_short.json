@@ -1,0 +1,68 @@
+{
+  "format": "zb-newcore-tnet-runner/1",
+  "id": "T08-short",
+  "name": "t08_cancel_replace_short",
+  "description": "Cancel / replace around TP1: after the partial the break-even replacement is placed while the market falls through the stop; the stop fills the rest. Runner-level end check: NO stop or order of any kind is left (the in-flight race itself is covered at driver level by tests/newcore_management/test_tnet_mgmt.py).",
+  "targets": [
+    "fake"
+  ],
+  "symbol": "SOLUSDT",
+  "side": "SHORT",
+  "sizing": {
+    "risk_pct": "0.0005",
+    "max_leverage": "3"
+  },
+  "stop": {
+    "pct": "1"
+  },
+  "fake": {
+    "classic_stops": "refuse"
+  },
+  "steps": [
+    {
+      "op": "enter"
+    },
+    {
+      "op": "move",
+      "pct": "-1.2"
+    },
+    {
+      "op": "tick",
+      "n": 2
+    },
+    {
+      "op": "move",
+      "pct": "4"
+    },
+    {
+      "op": "tick",
+      "n": 4
+    }
+  ],
+  "expect": {
+    "entries": 1,
+    "trades": [
+      "STOP_HIT"
+    ],
+    "reduces": 1,
+    "final": "flat",
+    "open_orders_end": 0
+  },
+  "bound": {
+    "max_ticks": 20,
+    "max_orders": 10,
+    "max_notional_usdt": "2000",
+    "max_wall_s": 900
+  },
+  "management": {
+    "enabled": true,
+    "plan": {
+      "add_r": null,
+      "tp1_r": "1",
+      "tp1_frac": "0.5",
+      "tp2_r": "2",
+      "be_after_tp1": true,
+      "time_exit_candles": 50
+    }
+  }
+}

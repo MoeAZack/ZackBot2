@@ -24,6 +24,7 @@ from datetime import datetime, timezone
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if ROOT not in sys.path: sys.path.insert(0, ROOT)
 import market_data as MD  # noqa: E402
+from newcore.venue.safe_text import exc_msg  # noqa: E402
 
 
 def parse_every(v):
@@ -107,7 +108,7 @@ def run_once(a, log, transport=None, sleep=time.sleep, clock=time.time):
             try:
                 info, latest, fetched = c.snapshot_exchange_info('testnet')
             except (MD.StopRun, MD.Transient, MD.Refused) as ex:
-                log(f'testnet exchangeInfo failed: {ex}'); MD.atomic_write_json(os.path.join(out, 'manifest.json'), c.manifest); return 1
+                log(f'testnet exchangeInfo failed: {exc_msg(ex)}'); MD.atomic_write_json(os.path.join(out, 'manifest.json'), c.manifest); return 1
             MD.atomic_write_json(os.path.join(out, 'manifest.json'), c.manifest)
             log(f"testnet exchangeInfo: {len(info['symbols'])} symbols -> {latest}")
             if not a.no_rules: build_rules(latest, fetched, log)

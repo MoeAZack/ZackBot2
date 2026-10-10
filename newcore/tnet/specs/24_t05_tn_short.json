@@ -1,0 +1,54 @@
+{
+  "format": "zb-newcore-tnet-runner/1",
+  "id": "T05-tn-short",
+  "name": "t05_target_bracket_short",
+  "description": "Testnet bracket for T05: TP2 at 1 R (0.15%) vs the 1 R stop, a 25-candle time exit; INCONCLUSIVE (retried) unless the target is what closed the lot.",
+  "targets": [
+    "testnet"
+  ],
+  "symbol": "SOLUSDT",
+  "side": "SHORT",
+  "sizing": {
+    "risk_pct": "0.000075",
+    "max_leverage": "3"
+  },
+  "stop": {
+    "pct": "0.15"
+  },
+  "steps": [
+    {
+      "op": "enter"
+    },
+    {
+      "op": "await_exit",
+      "max_ticks": 30
+    }
+  ],
+  "expect": {
+    "entries": 1,
+    "final": "flat",
+    "open_orders_end": 0,
+    "observe": {
+      "trades_in": [
+        "TP_FULL"
+      ]
+    }
+  },
+  "bound": {
+    "max_ticks": 31,
+    "max_orders": 12,
+    "max_notional_usdt": "2000",
+    "max_wall_s": 2400
+  },
+  "management": {
+    "enabled": true,
+    "plan": {
+      "add_r": null,
+      "tp1_r": null,
+      "tp2_r": "1",
+      "be_after_tp1": false,
+      "time_exit_candles": 25
+    }
+  },
+  "attempts": 3
+}

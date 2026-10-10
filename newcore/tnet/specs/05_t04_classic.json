@@ -1,0 +1,42 @@
+{
+  "format": "zb-newcore-tnet-runner/1",
+  "id": "T04-classic",
+  "name": "stop_exit_classic",
+  "description": "Stop exit on the CLASSIC route (FakeVenue accepts classic STOP_MARKET): the market gaps through the stop, it fills at the open; booked as STOP_HIT.",
+  "targets": [
+    "fake"
+  ],
+  "symbol": "SOLUSDT",
+  "side": "LONG",
+  "sizing": {
+    "risk_pct": "0.000125",
+    "max_leverage": "3"
+  },
+  "stop": {
+    "pct": "0.25"
+  },
+  "steps": [
+    {
+      "op": "enter"
+    },
+    {
+      "op": "await_exit",
+      "max_ticks": 10,
+      "fake_gap_pct": "-3"
+    }
+  ],
+  "expect": {
+    "entries": 1,
+    "trades": [
+      "STOP_HIT"
+    ],
+    "stop_route": "classic",
+    "final": "flat"
+  },
+  "bound": {
+    "max_ticks": 11,
+    "max_orders": 4,
+    "max_notional_usdt": "2000",
+    "max_wall_s": 900
+  }
+}

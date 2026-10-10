@@ -1,0 +1,78 @@
+{
+  "format": "zb-newcore-tnet-runner/1",
+  "id": "T07-long",
+  "name": "t07_bounded_dca_long",
+  "description": "One bounded DCA: the add fills at 0.5 R adverse, the basket stop is re-placed for the whole basket; a second adverse move adds nothing more; the basket stop fills.",
+  "targets": [
+    "fake"
+  ],
+  "symbol": "SOLUSDT",
+  "side": "LONG",
+  "sizing": {
+    "risk_pct": "0.0005",
+    "max_leverage": "3"
+  },
+  "stop": {
+    "pct": "1"
+  },
+  "fake": {
+    "classic_stops": "refuse"
+  },
+  "steps": [
+    {
+      "op": "enter"
+    },
+    {
+      "op": "move",
+      "pct": "-0.6"
+    },
+    {
+      "op": "tick",
+      "n": 3
+    },
+    {
+      "op": "move",
+      "pct": "-0.4"
+    },
+    {
+      "op": "tick",
+      "n": 2
+    },
+    {
+      "op": "move",
+      "pct": "-2"
+    },
+    {
+      "op": "tick",
+      "n": 4
+    }
+  ],
+  "expect": {
+    "entries": 1,
+    "trades": [
+      "STOP_HIT"
+    ],
+    "adds": 1,
+    "reduces": 0,
+    "final": "flat",
+    "open_orders_end": 0
+  },
+  "bound": {
+    "max_ticks": 20,
+    "max_orders": 10,
+    "max_notional_usdt": "2000",
+    "max_wall_s": 900
+  },
+  "management": {
+    "enabled": true,
+    "plan": {
+      "add_r": "0.5",
+      "add_scale": "1",
+      "tp1_r": null,
+      "tp2_r": "2",
+      "be_after_tp1": false,
+      "time_exit_candles": 50,
+      "cap_mult": "4"
+    }
+  }
+}
