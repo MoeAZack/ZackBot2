@@ -14,7 +14,8 @@ and the interpreter's own installation (never `site-packages`), so an absolute p
 of answering. The observable environment (hash seed, UTF-8 mode, time zone, locale encoding, environment keys, empty
 cwd, tree mtimes) and the canonical `execution_environment` (implementation, version, executable SHA-256, OS,
 platform, CPU count; no host path) are reported at start-up and bound into the attestation; the runner requires the
-latter to equal the one frozen in `run.code` (Codex 6093381880). The runner starts TWO such processes per run, each over its own fresh tree, and
+latter to equal the one frozen in `run.code` (Codex 6093381880).
+The runner starts TWO such processes per run, each over its own fresh tree, and
 refuses any difference (Codex 6089789885). The child speaks a JSON-lines protocol over its stdin/stdout:
 
   parent -> child  {"op": "init", ...}            evaluator file + function, the read policy
@@ -253,13 +254,22 @@ def observed_env() -> dict:
 
 
 EXEC_ENV_KEYS = ('implementation', 'python', 'version', 'hexversion', 'cache_tag', 'executable_sha256', 'os',
-                 'platform', 'pointer_bits', 'cpu_count')
+                 'platform', 'pointer_bits', 'cpu_count', 'install_digest')
+# Codex 6093943713 P1: evaluator-visible interpreter location attributes are virtualized to these path-independent
+# sentinels in the sandbox child, after the identity and import roots are captured and before evaluator code loads.
+SYS_SENTINELS = {'executable': '<zb-sandbox>/python', '_base_executable': '<zb-sandbox>/python',
+                 'prefix': '<zb-sandbox>', 'exec_prefix': '<zb-sandbox>', 'base_prefix': '<zb-sandbox>',
+                 'base_exec_prefix': '<zb-sandbox>'}
 
 
 def execution_environment() -> dict:
     """The canonical execution environment (Codex 6093381880 P1): interpreter implementation, version / hexversion /
     cache tag, the executable's SHA-256 (its bytes, never its host path), OS, interpreter platform / architecture and
-    CPU count. ONE function used at freeze time (`report.code_identity` -> frozen `run.code`), inside every fresh
+    CPU count, plus `install_digest` - the SHA-256 of the interpreter's install location (executable, base prefixes),
+    which deliberately binds a run to its install path: what is still evaluator-visible of it (the stdlib entries of
+    `sys.path`, stdlib module `__file__`) is then a committed input, and a relocated interpreter is a different run
+    (Codex 6093943713). ONE function used at freeze time (`report.code_identity` -> frozen `run.code`), inside every
+    fresh
     sandbox process (read before the audit hook is installed) and at `make_report` / holdout re-verification; every
     use must equal the frozen value exactly. Evidence is reproducible under the same frozen execution environment,
     not portable across arbitrary hosts. Reads nothing from the process environment variables."""
@@ -269,10 +279,19 @@ def execution_environment() -> dict:
     import sysconfig
     with open(sys.executable, 'rb') as f:
         exe = hashlib.sha256(f.read()).hexdigest()
+    where = json.dumps([sys.executable, sys.base_prefix, sys.base_exec_prefix], ensure_ascii=True)
     return {'implementation': sys.implementation.name, 'python': platform.python_version(), 'version': sys.version,
             'hexversion': sys.hexversion, 'cache_tag': sys.implementation.cache_tag, 'executable_sha256': exe,
             'os': sys.platform, 'platform': sysconfig.get_platform(), 'pointer_bits': struct.calcsize('P') * 8,
-            'cpu_count': os.cpu_count()}
+            'cpu_count': os.cpu_count(), 'install_digest': hashlib.sha256(where.encode('ascii')).hexdigest()}
+
+
+def virtualize_interpreter_paths() -> None:
+    """Replace the evaluator-visible interpreter location attributes with `SYS_SENTINELS` (Codex 6093943713 P1), so
+    no encoding of them (codepoints, hashes) can make accepted results depend on where Python is installed."""
+    for name, value in SYS_SENTINELS.items():
+        if name == 'executable' or hasattr(sys, name):
+            setattr(sys, name, value)
 
 
 def main() -> int:
@@ -287,6 +306,7 @@ def main() -> int:
     env = observed_env()
     interp = execution_environment()
     guard_path_probes(init['probe_roots'])
+    virtualize_interpreter_paths()                            # after identity + roots, before the evaluator
     sys.addaudithook(make_hook(init['lib_roots'], init['list_roots'], init['allow_files']))
     try:
         spec = importlib.util.spec_from_file_location('zb_evaluator', init['evaluator_path'])

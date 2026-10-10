@@ -460,7 +460,11 @@ def test_fresh_process_replay_binds_interpreter_without_host_paths(world, tmp_pa
     w = access(ds, path).open('train', lineage='root')
     src = ("import os\nimport sys\n\n\ndef run(v):\n    return [os.path.basename(__file__), os.listdir('.'), "
            "len(v.bars('AAAUSDT', '4h', 3))]\n\n\ndef exe(v):\n    return sys.executable\n\n\n"
-           "def prefix(v):\n    return {'k': [sys.base_prefix]}\n")
+           "def prefix(v):\n    return {'k': [sys.base_prefix]}\n\n\n"
+           "LOC = ('executable', 'prefix', 'exec_prefix', 'base_prefix', 'base_exec_prefix')\n\n\n"
+           "def codes(v):\n    return [[ord(c) for c in getattr(sys, n)] for n in LOC]\n\n\n"
+           "def phash(v):\n    import hashlib\n"
+           "    return [hashlib.sha256(getattr(sys, n).encode()).hexdigest() for n in LOC]\n")
     f = evaluator(tmp_path / 'ev', src, 'fine.py')
     out = P.evaluate(w, f, 'run', train_times(2))
     assert list(out) == [['fine.py', [], 3]] * 2
@@ -474,9 +478,20 @@ def test_fresh_process_replay_binds_interpreter_without_host_paths(world, tmp_pa
     assert not re.search(r'zb-eval-[a-z0-9_]{8}(\\|/)', blob)      # no materialized-tree / cwd temp path
     for host in (sys.executable, sys.base_prefix, os.path.dirname(sys.executable)):
         assert json.dumps(host).lower()[1:-1] not in blob and host.lower().replace('\\', '/') not in blob
-    for fn in ('exe', 'prefix'):                               # the interpreter's host path is never a result
-        with pytest.raises(P.PITError, match='host path of the sandbox'):
-            P.evaluate(w, f, fn, train_times(1))
+    # Codex 6093943713 P1: the evaluator sees only path-independent sentinels for the interpreter location, so no
+    # encoding of it (plain string, integer codepoints, path hash) carries the install path into accepted results.
+    loc = ('executable', 'prefix', 'exec_prefix', 'base_prefix', 'base_exec_prefix')
+    sent = [R.SB.SYS_SENTINELS[n] for n in loc]
+    assert all(R.SB.SYS_SENTINELS[n] != getattr(sys, n) for n in loc)
+    assert list(P.evaluate(w, f, 'exe', train_times(1))) == [sent[0]]
+    assert list(P.evaluate(w, f, 'prefix', train_times(1))) == [{'k': [sent[3]]}]
+    cp = P.evaluate(w, f, 'codes', train_times(1))
+    assert list(cp) == [[[ord(c) for c in x] for x in sent]]
+    assert all(''.join(map(chr, c)) == x for c, x in zip(list(cp)[0], sent))      # reconstructs only the sentinel
+    hs = P.evaluate(w, f, 'phash', train_times(1))
+    assert list(hs) == [[hashlib.sha256(x.encode()).hexdigest() for x in sent]]
+    real = [hashlib.sha256(getattr(sys, n).encode()).hexdigest() for n in loc]
+    assert not set(real) & set(list(hs)[0])                                          # never the host path's hash
 
 
 def test_position_capability_replaces_caller_entered_ms(world, tmp_path):
@@ -731,6 +746,12 @@ def test_execution_environment_is_frozen_and_must_match_exactly(world, tmp_path,
                 dict(xe, executable_sha256='x'), None):
         with pytest.raises(R.ReportError, match='execution_environment'):
             R.envelope(dict(env['run'], code=dict(env['run']['code'], execution_environment=bad)))
+    # relocated interpreter (identical executable bytes, another install path) is another execution environment
+    monkeypatch.setattr(sys, 'base_prefix', sys.base_prefix + '-relocated')
+    moved = R.SB.execution_environment()
+    monkeypatch.undo()
+    assert moved['executable_sha256'] == xe['executable_sha256'] and moved['install_digest'] != xe['install_digest']
+    assert {k for k in xe if moved[k] != xe[k]} == {'install_digest'}
     # cross-environment: frozen on a simulated other host (one more CPU), then verified / evaluated here
     other = dict(xe, cpu_count=xe['cpu_count'] + 1)
     monkeypatch.setattr(R.SB, 'execution_environment', lambda: dict(other))
@@ -1265,7 +1286,7 @@ def test_envelope_write_once_and_report_needs_the_runner_attestation(world, tmp_
     assert xe == env['run']['code']['execution_environment']
     for k, v in (('python', '0.0.0'), ('hexversion', 1), ('cache_tag', 'cpython-00'), ('executable_sha256', 'f' * 64),
                  ('os', 'plan9'), ('platform', 'other-arch'), ('pointer_bits', 16), ('cpu_count', xe['cpu_count'] + 1),
-                 ('implementation', 'pypy'), ('version', 'x')):
+                 ('implementation', 'pypy'), ('version', 'x'), ('install_digest', '0' * 64)):
         bad = dict(out.attestation, execution_environment=dict(xe, **{k: v}))
         with pytest.raises(R.ReportError, match=rf"execution environment of the evaluator processes differs.*'{k}'"):
             R.make_report(env, full, bad, path)

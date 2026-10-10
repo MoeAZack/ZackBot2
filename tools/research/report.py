@@ -15,11 +15,15 @@ evaluation file, a different Python or dependency set fails closed.
 
 Execution environment (Codex 6093381880 P1): `run.code.execution_environment` is `sandbox.execution_environment()`
 captured at freeze time, BEFORE evaluation - interpreter implementation, Python version / hexversion / cache tag,
-executable SHA-256, OS, platform / architecture and CPU count. Both fresh sandbox processes, `make_report` (the
+executable SHA-256, OS, platform / architecture, CPU count and the install-location digest. Both fresh sandbox
+processes, `make_report` (the
 attestation AND the process sealing the report) and the holdout re-verification (`verify_code`) must equal it
 exactly; any divergence fails closed. Evidence is therefore reproducible under the same frozen execution environment,
 NOT portable across arbitrary hosts: a different interpreter build, OS, architecture or CPU count is a different run.
 Once frozen these host facts are committed inputs; an evaluator may read them.
+Inside the sandbox `sys.executable` / `sys.prefix` / `sys.exec_prefix` / `sys.base_prefix` / `sys.base_exec_prefix`
+are path-independent sentinels (`sandbox.SYS_SENTINELS`, Codex 6093943713); the install path itself is bound by
+`install_digest`, so a relocated interpreter is a different execution environment.
 
 Executable evidence (Codex 6079042573 P1): "dirty" ignores only validated NON-EXECUTABLE artifacts under
 `research_evidence/` (`ARTIFACT_SUFFIXES`: ledger lines, run envelopes, JSON / gzip-JSON data, CSV, Markdown); any other
@@ -162,7 +166,7 @@ def valid_exec_env(x) -> bool:
     return (isinstance(x, dict) and set(x) == set(SB.EXEC_ENV_KEYS)
             and all(isinstance(x[k], str) and x[k] for k in ('implementation', 'python', 'version', 'cache_tag', 'os',
                                                               'platform'))
-            and isinstance(x['executable_sha256'], str) and bool(HEX64.match(x['executable_sha256']))
+            and all(isinstance(x[k], str) and bool(HEX64.match(x[k])) for k in ('executable_sha256', 'install_digest'))
             and all(type(x[k]) is int and x[k] > 0 for k in ('hexversion', 'pointer_bits', 'cpu_count')))
 
 

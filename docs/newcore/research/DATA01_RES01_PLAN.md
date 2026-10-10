@@ -385,6 +385,8 @@ Codex R3 fix review 6079042573 applied (merged with the fixed R2 head; universe 
   must equal it exactly; any divergence fails closed. Evidence is reproducible under the same frozen execution
   environment, NOT portable across arbitrary hosts. Once frozen these host facts are committed inputs, so evaluator
   code may read them.
+  `install_digest` binds the interpreter's install location (executable, base prefixes); inside the sandbox the
+  evaluator sees `sys.executable` and the four prefixes only as path-independent sentinels (Codex 6093943713).
 - Funding: `costs.check_funding_sequence` requires the phase anchor (the event at or before entry) in the rows, so every
   event due in [entry, exit) - the entry event included - follows from continuity; `View.funding_events` reads the
   anchor and enforces it itself, failing closed on a missing event.
