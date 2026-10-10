@@ -3,8 +3,8 @@
  "candidate_id": "trend_ema_mom.v1",
  "family": "trend_ema_mom",
  "author": "claude-code",
- "cairo_date": "2026-10-09",
- "status": "DRAFT for Codex review. Frozen once cleared: `run_r4.py register` then records its SHA-256 in the family ledger as the primary `variant`, and no run starts before that record is committed.",
+ "cairo_date": "2026-10-10",
+ "status": "UNREGISTERED v1 - DRAFT for Codex review (R4-0 rebuild). Frozen once cleared: `run_r4.py register` then records its SHA-256 in the family ledger as the primary `variant` (plus every declared trial), and no run starts before that record is committed and the R4-0 gate is READY.",
  "hypothesis": {
   "mechanism": "Time-series momentum in USD-M perpetuals: when the fast EMA crosses above the slow EMA while price is above its long EMA and both the 7-day and 30-day returns are positive, trend persistence over the next days to weeks pays more than the round-trip cost plus funding. Long side only; the short mirror is a separate family (short_breakdown) and is never claimed here.",
   "side": "long",
@@ -15,48 +15,101 @@
   "ledger": "research_evidence/ledger/trend_ema_mom.jsonl seq 1: window_spent 2021-12-19T00:00:00Z -> 2026-10-05T00:00:00Z (legacy research, M3 pack, Codex ruling 6070934398)",
   "rule": "Every split that ends on or before 2026-10-05 is development evidence only, whatever its name. No parameter, rule, cost or universe choice may be changed in response to any of it (no retune). An untouched claim comes only from the forward holdout below.",
   "pre_2021_12_19": "PIT data 2020-02-03 -> 2021-12-19 is not recorded as spent for this family, but this candidate's parameters come from the legacy research, so it is still reported as development evidence, never as an untouched sample.",
-  "m3_reproduction": "The M3 reproduction on legacy-unverified-v1 is an acceptance test of the harness, not evidence; it is ledgered as a development data_access."
+  "m3_reproduction": "The M3 reproduction on legacy-m3-repro-v1 (REPRO-ONLY, digest a42c3692...8bb6) is an acceptance test of the harness, not evidence; it opens only as a ledgered development data_access and can never feed split, holdout or promotion evidence."
  },
  "data": {
   "manifest_id": "binance-um-archive-v1",
   "manifest_digest": "54912d9d2bf6e6fc45bc75c0553f0bd867e877972beeb3452785937379baf1e7",
-  "universe_id": "pit-top40-qv30d-v2",
-  "universe_digest": "1b1d7cfa8ed59d67cfb44b2bc9fda427580f66cf1a85fcf75d6ce01d56d1b0bb",
-  "classes_digest": "48a9d32c4299495d0c58b175755d8ebdab562f8e18a05196a7f361fb6a986845",
-  "forward": "The holdout lies after the frozen manifest's store end (2026-10-01). It is read only from a forward manifest + universe that extend these two and cite their digests as parents; until then the holdout cannot open."
+  "universe_id": "pit-top40-qv30d-v4",
+  "universe_digest": "485c752226cc6b50a07d3feefa90a4fdc62e256e8d5a033e57d24983bf2cd093",
+  "forward": "The holdout lies after the frozen manifest's store end (2026-10-01). It is read only from a forward manifest + universe that extend these two and cite their digests as parents; until then the holdout cannot open.",
+  "classification": {
+   "id": "instrument-classes-v2",
+   "digest": "PENDING",
+   "note": "Sourced, point-in-time dated classification v2 (crypto top-40 + the selected gold-pilot identities, Cowork-verified, Codex-bound) is not built yet; it yields a new universe artifact whose digests replace the two above in a reviewed commit BEFORE registration. Manual classification v1 cannot authorize R4."
+  }
  },
  "universe_rule": {
   "books": {
-   "crypto": "PRIMARY. Members of the pit-top40-qv30d-v2 crypto book at the decision time (Monday 00:00 UTC ranking, top 40 by trailing 30-day quote volume, listing age >= 30 days, delist and data-gap vetoes as recorded in the universe).",
-   "gold-commodity": "SECONDARY, reported separately and never pooled into the crypto endpoint (owner decision: gold is in the research). Same rule and parameters, ranked as its own book. XAUUSDT uses the gold cost row (PROVISIONAL, its own 4h funding cadence checked, WEEKEND-REFERENCE-GAP label); PAXGUSDT, XAUTUSDT (tokenized gold), XAGUSDT, XPTUSDT, XPDUSDT, CLUSDT, BZUSDT, NATGASUSDT and COPPERUSDT use the commodity row (UNCALIBRATED). Coverage stated plainly: every member lists on or after 2025-03-27 (XAUUSDT 2025-12-11), so all of its pre-forward data lies inside the spent window (development only) and its sample is small; it gets its own EDGE-00 table and is expected to PARK on the sample row until forward data accumulates. It cannot be promoted while its cost rows are PROVISIONAL / UNCALIBRATED."
+   "crypto": "PRIMARY and the only book of this run (Codex 6095065913 crypto-first scope). Members of the pit-top40-qv30d-v4 crypto book at the decision time (Monday 00:00 UTC ranking, top 40 by trailing 30-day quote volume, listing age >= 30 days, delist and data-gap vetoes as recorded in the universe). Unknown or out-of-scope instruments never enter the book; their exclusion is audited, not silent."
   },
   "warm_up": "A symbol is decided only once its contiguous closed 4h history inside the opened split reaches the configuration's start index (240 bars max over all configurations, 220 for the primary); a gap restarts the count (never forward-filled). This is the independent warm-up test of plan section 1a; listing age is the universe's own test.",
   "held_positions": "A symbol that leaves the universe while held is still read through its View.enter Position capability until exit.",
-  "symbol_priority": "Within a cycle, closes then entries in ascending universe rank of the latest Monday ranking (ties by symbol)."
+  "symbol_priority": "Within a cycle, closes then entries in ascending universe rank of the latest Monday ranking (ties by symbol).",
+  "deferred_pilot": {
+   "rule": "NOT part of this run. Gold gets its own later preregistration and pilot and cannot hold or block the crypto run. Gold-spot and tokenized gold are separate books with separate execution / cost rows, reported separately, never pooled with crypto or with each other. The same hypothesis evaluated there stays in this multiple-testing family: one deferred-pilot variant trial is reserved now.",
+   "gold-spot": {
+    "symbol": "XAUUSDT",
+    "book": "gold-spot",
+    "cost_row": "gold-spot"
+   },
+   "gold-tokenized": {
+    "symbol": "PAXGUSDT",
+    "book": "gold-tokenized",
+    "cost_row": "gold-tokenized"
+   }
+  }
  },
  "timeframe": "4h",
  "rule": {
   "entry": "le at the close of bar i = cross_up(EMA20, EMA50) and close > EMA200 and ret7d > 0 and ret30d > 0; market buy at the open of bar i+1",
   "exit_signal": "lx at the close of bar i = EMA20 < EMA50 or not (ret7d > 0 and ret30d > 0); market sell at the open of bar i+1",
   "stop": "stop_atr x Wilder ATR14 of the signal bar, from the fill price, floored to the tick; a bar that opens through it fills at its open, else at the stop; slip-v1 on the fill",
-  "time_cap": "NEW in the PIT prereg (plan section 4 finite ex-ante horizon; the M3 rule had none): a lot still open 180 bars (30 days) after its entry is closed at the open of the next bar (market, taker). Declared before any run; purge uses this cap, never realised durations.",
+  "time_cap": "PRIMARY: none (the M3 rule, uncapped). The 180-bar (30-day) cap is the separately named secondary variant `trend_ema_mom.v1.cap180` in `variants`, never part of the primary or of the M3 reproduction.",
   "indicators": "EMA seeded at the first bar read (pandas ewm adjust=False), Wilder ATR seeded at TR0 = h0 - l0, returns in days converted to bars (7d = 42, 30d = 180 on 4h), cross_up(a, b) = a_i > b_i and a_(i-1) <= b_(i-1); computed over the last 1500 closed bars available at the decision (the live kline cap). Implementation: tools/research/trend_ema_mom.py (bit-parity with newcore/strategy/indicators.py at 45c22df).",
-  "book": "One book per asset-class book on its own equity: 10,000 USDT start, 1% risk of the cycle's wallet snapshot, max 4 open lots, gross notional <= 3x equity sized on signal close x 1.10, Cairo-day 3% MTM halt, drawdown kill disarmed (rule evaluation). Quantity floored to the step, never upsized; below min qty / min notional = counted refusal.",
+  "book": "The crypto book on its own equity: 10,000 USDT start, 1% risk of the cycle's wallet snapshot, max 4 open lots, gross notional <= 3x equity sized on signal close x 1.10, Cairo-day 3% MTM halt, drawdown kill disarmed (rule evaluation). Quantity floored to the step, never upsized; below min qty / min notional = counted refusal.",
   "no_maker": "No limit orders: every fill is taker."
  },
- "primary_params": {"ema_fast": 20, "ema_slow": 50, "ema_trend": 200, "atr_len": 14, "stop_atr": "2.5", "mom_short_days": 7, "mom_long_days": 30, "warmup_bars": 220, "time_cap_bars": 180, "window_bars": 1500},
+ "primary_params": {
+  "ema_fast": 20,
+  "ema_slow": 50,
+  "ema_trend": 200,
+  "atr_len": 14,
+  "stop_atr": "2.5",
+  "mom_short_days": 7,
+  "mom_long_days": 30,
+  "warmup_bars": 220,
+  "window_bars": 1500
+ },
  "neighbour_grid": {
   "rule": "one at a time, +/- one step around the primary; no grid search, no selection: neighbours feed only the 80% stability row",
-  "steps": {"ema_fast": 5, "ema_slow": 10, "ema_trend": 50, "stop_atr": "0.5", "mom_short_days": 2, "mom_long_days": 10},
-  "configs": ["ema_fast-5", "ema_fast+5", "ema_slow-10", "ema_slow+10", "ema_trend-50", "ema_trend+50", "stop_atr-0.5", "stop_atr+0.5", "mom_short_days-2", "mom_short_days+2", "mom_long_days-10", "mom_long_days+10"]
+  "steps": {
+   "ema_fast": 5,
+   "ema_slow": 10,
+   "ema_trend": 50,
+   "stop_atr": "0.5",
+   "mom_short_days": 2,
+   "mom_long_days": 10
+  },
+  "configs": [
+   "ema_fast-5",
+   "ema_fast+5",
+   "ema_slow-10",
+   "ema_slow+10",
+   "ema_trend-50",
+   "ema_trend+50",
+   "stop_atr-0.5",
+   "stop_atr+0.5",
+   "mom_short_days-2",
+   "mom_short_days+2",
+   "mom_long_days-10",
+   "mom_long_days+10"
+  ]
  },
  "trials": {
-  "declared": {"variant": 2, "grid_point": 12, "baseline": 4, "total": 18},
-  "detail": "variant = primary crypto book + secondary gold-commodity book; grid_point = the 12 neighbours (evaluated on the crypto book); baseline = B0..B3. n_trials and the Holm family are read from the family ledger at evaluation time (every earlier record of the family counts), never from this declaration."
+  "declared": {
+   "variant": 3,
+   "grid_point": 12,
+   "baseline": 4,
+   "total": 19
+  },
+  "detail": "variant = the primary (uncapped, crypto) + the secondary cap180 variant (crypto) + the reserved deferred gold-pilot variant (same hypothesis, own later prereg); grid_point = the 12 neighbours of the primary (crypto book); baseline = B0..B3. n_trials and the Holm family are read from the family ledger at evaluation time (every earlier record of the family counts), never from this declaration."
  },
  "costs": {
   "model": "zb-cost-model/2 (tools/research/costs.py), rows by explicit symbol class, no crypto fallback",
-  "rows": {"crypto": "PLAN: VIP0 taker 0.05% per side, signed actual funding at each actual funding time x funding-mark proxy v1", "gold": "PROVISIONAL: VIP0 taker, own observed 4h funding cadence (checked), own slip c, WEEKEND-REFERENCE-GAP label", "commodity": "UNCALIBRATED placeholder, labelled"},
+  "rows": {
+   "crypto": "PLAN: VIP0 taker 0.05% per side, signed actual funding at each actual funding time x funding-mark proxy v1. The legacy flat per-bar funding is the M3 reproduction-only adapter and the labelled flat_funding_legacy stress row; it never enters a primary result."
+  },
   "slip_cal_v1": {
    "id": "slip-cal-v1",
    "target": "per-side fill-vs-reference slippage in bps of the fill price",
@@ -66,12 +119,36 @@
    "pooling": "one coefficient per cost class",
    "fallback": "c fixed before any run (crypto 0.05, every other class 0.10); every result labelled SLIP-C-UNFITTED; a later fit happens once on the calibration window with execution-grade observations and is a new ledger variant, never a per-candidate refit",
    "limit_touch_rule": "touch = no fill; price-through or ordered-trade evidence = maker fill",
-   "calibration_window": {"start": "2020-02-03T00:00:00Z", "end": "2021-01-04T00:00:00Z"},
+   "calibration_window": {
+    "start": "2020-02-03T00:00:00Z",
+    "end": "2021-01-04T00:00:00Z"
+   },
    "fitted": false,
-   "c": {"commodity": 0.1, "crypto": 0.05, "equity": 0.1, "fx": 0.1, "gold": 0.1}
+   "c": {
+    "commodity": 0.1,
+    "crypto": 0.05,
+    "equity": 0.1,
+    "fx": 0.1,
+    "gold-spot": 0.1,
+    "gold-tokenized": 0.1
+   }
   },
-  "stress_rows": ["base", "fees_slip_x2", "funding_x2", "gap_slip_x5", "limit_no_fill", "limit_as_taker", "flat_funding_legacy", "slip_wilder_atr14", "funding_mark_adverse"],
-  "delist": "exit at the next bar open with available_ms >= a timestamped notice; no observed notice = last archived mark with 5x slippage; forced-exit PnL reported separately"
+  "stress_rows": [
+   "base",
+   "fees_slip_x2",
+   "funding_x2",
+   "gap_slip_x5",
+   "limit_no_fill",
+   "limit_as_taker",
+   "flat_funding_legacy",
+   "slip_wilder_atr14",
+   "funding_mark_adverse"
+  ],
+  "delist": "exit at the next bar open with available_ms >= a timestamped notice; no observed notice = last archived mark with 5x slippage; forced-exit PnL reported separately",
+  "deferred_pilot": {
+   "gold-spot": "own execution / cost row (direct gold, PROVISIONAL until calibrated), declared in the gold pilot prereg",
+   "gold-tokenized": "own execution / cost row (PAXG, UNCALIBRATED until calibrated), declared in the gold pilot prereg"
+  }
  },
  "splits": {
   "format": "zb-splits/1",
@@ -80,16 +157,53 @@
   "horizon_bars": 180,
   "purge_embargo": "purge = max(240, 180) bars = 40 days, embargo 1 bar; decisions in [start + purge + embargo, end - horizon]; an episode belongs wholly to one split",
   "splits": [
-   {"name": "calibration", "start": "2020-02-03T00:00:00Z", "end": "2021-01-04T00:00:00Z"},
-   {"name": "train", "start": "2021-01-04T00:00:00Z", "end": "2021-12-20T00:00:00Z"},
-   {"name": "walk_forward", "fold": 0, "start": "2021-12-20T00:00:00Z", "end": "2022-12-19T00:00:00Z"},
-   {"name": "walk_forward", "fold": 1, "start": "2022-12-19T00:00:00Z", "end": "2023-12-18T00:00:00Z"},
-   {"name": "walk_forward", "fold": 2, "start": "2023-12-18T00:00:00Z", "end": "2024-12-16T00:00:00Z"},
-   {"name": "walk_forward", "fold": 3, "start": "2024-12-16T00:00:00Z", "end": "2025-12-15T00:00:00Z"},
-   {"name": "walk_forward", "fold": 4, "start": "2025-12-15T00:00:00Z", "end": "2026-09-28T00:00:00Z"},
-   {"name": "holdout", "start": "2026-10-05T00:00:00Z", "end": "2027-10-04T00:00:00Z"}
+   {
+    "name": "calibration",
+    "start": "2020-02-03T00:00:00Z",
+    "end": "2021-01-04T00:00:00Z"
+   },
+   {
+    "name": "train",
+    "start": "2021-01-04T00:00:00Z",
+    "end": "2021-12-20T00:00:00Z"
+   },
+   {
+    "name": "walk_forward",
+    "fold": 0,
+    "start": "2021-12-20T00:00:00Z",
+    "end": "2022-12-19T00:00:00Z"
+   },
+   {
+    "name": "walk_forward",
+    "fold": 1,
+    "start": "2022-12-19T00:00:00Z",
+    "end": "2023-12-18T00:00:00Z"
+   },
+   {
+    "name": "walk_forward",
+    "fold": 2,
+    "start": "2023-12-18T00:00:00Z",
+    "end": "2024-12-16T00:00:00Z"
+   },
+   {
+    "name": "walk_forward",
+    "fold": 3,
+    "start": "2024-12-16T00:00:00Z",
+    "end": "2025-12-15T00:00:00Z"
+   },
+   {
+    "name": "walk_forward",
+    "fold": 4,
+    "start": "2025-12-15T00:00:00Z",
+    "end": "2026-09-28T00:00:00Z"
+   },
+   {
+    "name": "holdout",
+    "start": "2026-10-05T00:00:00Z",
+    "end": "2027-10-04T00:00:00Z"
+   }
   ],
-  "notes": "calibration = the slip-cal-v1 interval, excluded from all evidence (no strategy evaluation). train is named so only because a plan needs one: nothing is fitted, the parameters are fixed. train and every walk-forward fold are development evidence (spent window or legacy-derived parameters), each reported separately and never pooled with the holdout. The holdout is forward-only (post-freeze), opened once, atomically, with every baseline and stress row."
+  "notes": "calibration = the slip-cal-v1 interval, excluded from all evidence (no strategy evaluation). train is named so only because a plan needs one: nothing is fitted, the parameters are fixed. train and every walk-forward fold are development evidence (spent window or legacy-derived parameters), each reported separately and never pooled with the holdout. The holdout is forward-only (post-freeze), opened once, atomically, with every baseline and stress row. horizon_bars 180 = the secondary cap and the purge horizon; a lot of the uncapped primary still open at its split's access end is closed-trade truncated there (exit at the last open inside the split, counted and labelled TRUNCATED) so no episode crosses a split."
  },
  "metrics": "zb-research-run/2, plan section 6, per side, per cost row and per book: after-cost expectancy (mean net R, net % equity, PF, win rate, avg win / loss), MTM drawdown + episode-bootstrap MC p5/p50/p95 (10,000) + longest underwater, MFE / MAE / give-back, counts (trades, episodes, month blocks, refusals by reason, exposure, ambiguity), 95% episode-clustered bootstrap CI (gating) + per-trade CI (reported) with seeds, contribution by symbol / year / regime + top-5 episodes + LOSO / LOYO, neighbour table, stop-first vs target-first, survivor-only vs PIT delta, paired baselines, follower tiers 100 / 200 / 500 USDT and RULES-BACKFILLED share.",
  "baselines": {
@@ -115,13 +229,45 @@
  "verdict_rules": {
   "development": "Any run before the forward holdout opens (this R4 PIT run included) is development evidence: it can neither PROMOTE nor REJECT. It is reported with every row; a base-row PIT development mean net R <= 0 is flagged DEV-NEGATIVE for Codex, with no retune either way.",
   "PROMOTE": "only on the sealed forward holdout, per book, when every EDGE-00 row passes",
-  "REJECT": "sealed-holdout sample row met and the holdout mean net R <= 0 (no positive point estimate in an adequately sized sealed sample)",
+  "REJECT": {
+   "powered_mean": "sealed-holdout sample row met (adequately powered: >= 30 sealed-holdout episodes, the MDE at 80% power reported with the family size) and the sealed-holdout base-row mean net R <= 0",
+   "retained_gates": {
+    "cost": "after-cost expectancy is gated on the base cost row; every stress row is reported; a cost row still PROVISIONAL / UNCALIBRATED or SLIP-C-UNFITTED cannot support PROMOTE",
+    "drawdown": "E10 drawdown stays PARK-only until GOV freezes a ceiling",
+    "stability": "neighbour (>= 80% keep the sign) and LOSO / LOYO robustness rows stay binding for PROMOTE"
+   },
+   "note": "The retained gates are predeclared in addition to the powered-mean REJECT: failing one blocks PROMOTE (PARK) even with a positive mean; none of them can turn a powered mean <= 0 into anything but REJECT."
+  },
   "PARK": "every other failure: sample short, CI includes 0 with a positive mean, any baseline / robustness / neighbour / intrabar / E10 row fails, a cost row still PROVISIONAL or UNCALIBRATED, or a data / rename / delist gap unresolved"
  },
  "stop_condition": "The forward holdout window is fixed (2026-10-05 -> 2027-10-04). It is revealed once, atomically, after its end. Fewer than 30 holdout episodes at that point = PARK on the sample row; extending the window needs a new prereg (a new ledger variant). No interim looks.",
  "m3_reproduction": {
-  "purpose": "R4 acceptance (plan section 7): the harness reproduces the M3 kill-OFF rule evaluation on legacy-unverified-v1 before any PIT run",
+  "purpose": "R4-0 item 5 (plan section 7): the harness reproduces the M3 kill-OFF rule evaluation (UNCAPPED) before any PIT run",
+  "manifest": {
+   "id": "legacy-m3-repro-v1",
+   "digest": "a42c36927eccf48a16c09085192dd53a7ef7ba607dfc1021cf96a67c917e8bb6",
+   "source_class": "repro-only"
+  },
+  "runner": "pit.evaluate (zb-eval-sandbox/1, perturbed, two fresh processes, attestation in the family ledger) with tools/research/m3_eval.py",
   "target": "origin commit 45c22df, docs/newcore/slice/evidence/trend_ema_mom_v1_canary_{base,2x}_kill_off.csv (blob ids pinned in tools/research/m3_repro.py)",
   "acceptance": "trade for trade: symbol, side, signal / entry / exit time, exit reason, qty, entry / stop / exit price equal; |dR| <= 1e-9; same trade count. Anything else = NOT REPRODUCED and the PIT run does not start."
+ },
+ "variants": {
+  "primary": {
+   "name": "trend_ema_mom.v1",
+   "time_cap_bars": null,
+   "book": "crypto",
+   "role": "the primary endpoint (uncapped M3 rule)"
+  },
+  "secondary": [
+   {
+    "name": "trend_ema_mom.v1.cap180",
+    "time_cap_bars": 180,
+    "book": "crypto",
+    "rule": "identical to the primary except: a lot still open 180 bars after its entry is closed at the open of the next bar (market, taker)",
+    "role": "separately named secondary variant, reported beside the primary with every row"
+   }
+  ],
+  "selection": "none: both are evaluated and reported; there is no adaptive choice between them and the primary endpoint is the uncapped rule whatever the secondary shows"
  }
 }

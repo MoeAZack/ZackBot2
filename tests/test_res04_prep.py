@@ -1,6 +1,7 @@
-"""RES-01 R4 prep: the M3 reproduction harness (tools/research/m3_repro.py), the `trend_ema_mom.v1` View evaluator
-(trend_ema_mom.py), the preregistration and the gated entry point (run_r4.py). Synthetic fixtures only: no real data,
-no returns of any real market, nothing run on the store."""
+"""RES-01 R4-0 prep: the M3 reproduction harness (tools/research/m3_repro.py) running the M3 book evaluator
+(m3_eval.py) only through the accepted R3 sandboxed runner, the `trend_ema_mom.v1` signal code, the preregistration
+and the gated entry point (run_r4.py). Synthetic fixtures only: no real data, no returns of any real market, nothing
+run on the store, the holdout never opened."""
 import csv
 import hashlib
 import importlib
@@ -11,13 +12,17 @@ import os
 import shutil
 import subprocess
 import sys
+from datetime import datetime, timezone
 from decimal import Decimal
+from zoneinfo import ZoneInfo
 
 import pytest
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, 'tools', 'research'))
+import costs as C                                                                           # noqa: E402
 import ledger as L                                                                          # noqa: E402
+import m3_eval as E                                                                         # noqa: E402
 import m3_repro as X                                                                        # noqa: E402
 import manifest as M                                                                        # noqa: E402
 import pit as P                                                                             # noqa: E402
@@ -29,7 +34,35 @@ import trend_ema_mom as T                                                       
 H4 = T.TF_MS
 START = S.parse_utc('2024-01-01T00:00:00Z')
 SYMS = ('AAAUSDT', 'BBBUSDT', 'CCCUSDT', 'DDDUSDT', 'EEEUSDT')
-NBARS = 1200
+NBARS = 1000
+RULE = ("E.Rule(D('0.0001'), D('0.001'), D('0.001'), D('5'))")
+FIX_EVAL = f'''from decimal import Decimal as D
+
+import m3_eval as E
+
+SYMS = {SYMS!r}
+RULES = {{s: {RULE} for s in SYMS}}
+_B = E.Machine(symbols=SYMS, rules=RULES, costs=E.COSTS['base'])
+_X2 = E.Machine(symbols=SYMS, rules=RULES, costs=E.COSTS['2x'])
+_T = E.Machine(symbols=SYMS, rules=RULES, costs=E.COSTS['base'],
+               book=E.Book(max_positions=1, daily_loss_pct=D('0.002')))
+
+
+def base(view):
+    return _B.decide(view)
+
+
+def x2(view):
+    return _X2.decide(view)
+
+
+def tight(view):
+    return _T.decide(view)
+
+
+summary = E.summary
+'''
+FUNCS = {'base': 'base', '2x': 'x2'}
 
 
 def price(k, i):
@@ -56,22 +89,34 @@ def legacy(tmp_path_factory):
     store = str(tmp_path_factory.mktemp('legacy'))
     for k, s in enumerate(SYMS):
         write_csv(store, f'data_long/{s}_4h.csv', k, 0, NBARS)
-        write_csv(store, f"data/{s}_4h.csv", k, NBARS - 300, NBARS)          # overlapping second source, as legacy
-    m = M.build(['data', 'data_long'], manifest_id='fx-legacy', source_class='fixture', base=store, data_root='repo',
+    m = M.build(['data_long'], manifest_id='fx-m3-repro', source_class='repro-only', base=store, data_root='repo',
                 survivor_only=True)
     rules = {s: X.Rule(Decimal('0.0001'), Decimal('0.001'), Decimal('0.001'), Decimal('5')) for s in SYMS}
-    return store, m, rules
+    ev = os.path.join(str(tmp_path_factory.mktemp('ev')), 'm3_fixture_eval.py')
+    with open(ev, 'w', newline='\n') as f:
+        f.write(FIX_EVAL)
+    return store, m, rules, ev
 
 
-def opened(legacy, tmp_path, *, lineage='root'):
-    store, m, _ = legacy
-    ds = P.Dataset(m, store, None)
-    X.restrict_sources(ds, symbols=SYMS)
+def opened(legacy, tmp_path, *, lineage='root', manifest=None):
+    store, m, _, _ = legacy
+    ds = P.Dataset(manifest or m, store, None)
     lo, hi = X.span(ds, symbols=SYMS)
     (tmp_path / 'ledger').mkdir(exist_ok=True)
     acc = P.Access(ds, None, str(tmp_path / 'ledger' / 'trend_ema_mom.jsonl'), candidate_id=T.RULE_ID, author='t',
-                   cairo_date='2026-10-09')
+                   cairo_date='2026-10-10')
     return ds, acc.open_development(S.utc(lo), S.utc(hi), lineage=lineage), lo, hi
+
+
+@pytest.fixture(scope='module')
+def runs(legacy, tmp_path_factory):
+    """One attested, perturbed sandbox run per fixture function (shared: each run is two fresh processes)."""
+    out = {}
+    for name, fn in (('base', 'base'), ('2x', 'x2'), ('tight', 'tight')):
+        tmp = tmp_path_factory.mktemp(f'run_{name}')
+        _, w, lo, hi = opened(legacy, tmp)
+        out[name] = (X.replay(w, start_ms=lo, end_ms=hi, function=fn, evaluator=legacy[3]), tmp, lo, hi)
+    return out
 
 
 # ------------------------------------------------------------------ an independent M3-order reference simulator
@@ -160,103 +205,139 @@ def as_csv(trades):
     w.writerow(['symbol', 'side', 'signal_close_ms', 'entry_ms', 'exit_ms', 'qty', 'entry_price', 'exit_price',
                 'stop_price', 'r', 'pnl', 'exit_reason'])
     for t in trades:
-        w.writerow([t.symbol, t.side, t.signal_close_ms, t.entry_ms, t.exit_ms, t.qty, t.entry_price, t.exit_price,
-                    t.stop_price, t.r, t.pnl, t.exit_reason])
+        w.writerow([t[k] for k in ('symbol', 'side', 'signal_close_ms', 'entry_ms', 'exit_ms', 'qty', 'entry_price',
+                                   'exit_price', 'stop_price', 'r', 'pnl', 'exit_reason')])
     return out.getvalue()
 
 
-# ------------------------------------------------------------------ M3 harness
+def key_of(trades):
+    return sorted((t['symbol'], t['entry_ms'], t['exit_ms'], t['exit_reason'], Decimal(t['qty']), Decimal(t['r']))
+                  for t in trades)
+
+
+# ------------------------------------------------------------------ M3 harness through the sandboxed runner
 @pytest.mark.parametrize('row', ['base', '2x'])
-def test_harness_matches_an_independent_m3_order_simulator(legacy, tmp_path, row):
-    store, m, rules = legacy
-    ds, w, lo, hi = opened(legacy, tmp_path)
-    costs = X.cost_row(row)
-    rep = X.replay(w, symbols=SYMS, start_ms=lo, end_ms=hi, costs=costs, rules=rules)
-    ref = m3_order_reference(store, rules, costs)
-    got = sorted(((t.symbol, t.entry_ms, t.exit_ms, t.exit_reason, t.qty, t.r) for t in rep.trades))
-    want = sorted(((t['symbol'], t['entry_ms'], t['exit_ms'], t['exit_reason'], t['qty'], t['r']) for t in ref))
+def test_harness_matches_an_independent_m3_order_simulator(legacy, runs, row):
+    store, m, rules, _ = legacy
+    ev, _, lo, hi = runs[row]
+    ref = m3_order_reference(store, rules, X.cost_row(row))
+    got = key_of(ev.results['trades'])
     assert len(got) >= 8 and {t[3] for t in got} == {'exit.stop', 'exit.exit_signal'}
-    assert got == want
-    assert rep.decisions == (hi - lo) // H4 - 1
+    assert got == sorted((t['symbol'], t['entry_ms'], t['exit_ms'], t['exit_reason'], t['qty'], t['r']) for t in ref)
+    assert ev.results['cycles'] == len(X.schedule(lo, hi)) == (hi - lo) // H4
 
 
-def test_book_limits_bind_on_the_fixture(legacy, tmp_path):
-    store, m, rules = legacy
-    _, w, lo, hi = opened(legacy, tmp_path)
-    tight = X.Book(max_positions=1, daily_loss_pct=Decimal('0.002'))
-    rep = X.replay(w, symbols=SYMS, start_ms=lo, end_ms=hi, costs=X.cost_row('base'), rules=rules, book=tight)
-    assert rep.refusals.get('capacity.max_positions', 0) > 0 and rep.halts
-    ref = m3_order_reference(store, rules, X.cost_row('base'), book=tight)
-    assert sorted((t.symbol, t.entry_ms, t.r) for t in rep.trades) == sorted((t['symbol'], t['entry_ms'], t['r'])
-                                                                              for t in ref)
+def test_book_limits_bind_on_the_fixture(legacy, runs):
+    store, m, rules, _ = legacy
+    ev = runs['tight'][0]
+    assert ev.results['refusals'].get('capacity.max_positions', 0) > 0 and ev.results['halts']
+    ref = m3_order_reference(store, rules, X.cost_row('base'), book=X.Book(max_positions=1,
+                                                                         daily_loss_pct=Decimal('0.002')))
+    assert sorted((t['symbol'], t['entry_ms'], Decimal(t['r'])) for t in ev.results['trades']) == \
+        sorted((t['symbol'], t['entry_ms'], t['r']) for t in ref)
 
 
-def test_acceptance_compare_and_its_mutations(legacy, tmp_path):
-    store, m, rules = legacy
-    _, w, lo, hi = opened(legacy, tmp_path)
-    rep = X.replay(w, symbols=SYMS, start_ms=lo, end_ms=hi, costs=X.cost_row('base'), rules=rules)
-    text = as_csv(sorted(rep.trades, key=lambda t: (t.entry_ms, t.symbol)))
-    doc = X.report(name='base', ref_text=text, rep=rep, meta={})
-    assert doc['acceptance']['verdict'] == 'REPRODUCED' and doc['acceptance']['max_abs_dR'] == '0'
+def test_m3_runs_only_in_the_sandbox_with_a_perturbed_attestation(legacy, runs):
+    ev, tmp, lo, hi = runs['base']
+    att = ev.attestation
+    assert att['perturbed'] is True and att['isolation'] == P.ISOLATION_ID and att['runner'] == P.RUNNER_ID
+    assert att['evaluator']['function'] == 'base' and att['evaluator']['summary'] == 'summary'
+    assert att['schedule'] == R.schedule_of(X.schedule(lo, hi))
+    assert {c['path'] for c in att['code']} >= {'tools/research/m3_eval.py', 'tools/research/trend_ema_mom.py'}
+    rec = L._check_state(str(tmp / 'ledger' / 'trend_ema_mom.jsonl'))['trend_ema_mom'][-1]
+    assert rec['detail']['evaluation_attestation'] == ev.attestation_digest
+    assert len(ev) == ev.results['cycles'] and ev.results['trades'] == sorted(
+        (t for o in ev for t in o['trades']), key=lambda t: (t['entry_ms'], t['symbol']))
+    assert att['decisions_digest']                                    # View.enter capabilities issued at fills
+    assert not hasattr(X, 'restrict_sources') and not hasattr(X, 'LEGACY_DIGEST')
+    assert 'decide' not in vars(X) and 'P.evaluate(window, evaluator' in open(X.__file__).read()
+
+
+def test_acceptance_compare_and_its_mutations(runs):
+    ev = runs['base'][0]
+    trades = ev.results['trades']
+    text = as_csv(trades)
+    doc = X.report(name='base', ref_text=text, ev=ev, meta={})
+    assert doc['acceptance']['verdict'] == 'REPRODUCED' and Decimal(doc['acceptance']['max_abs_dR']) == 0
     assert doc['reference_summary'] == doc['repro_summary']
+    assert doc['attestation']['digest'] == ev.attestation_digest and doc['attestation']['perturbed'] is True
     rows = text.splitlines()
     drop = '\n'.join(rows[:1] + rows[2:]) + '\n'
-    assert X.compare(X.parse_reference(drop), X.as_rows(rep.trades))['extra_in_repro']
+    assert X.compare(X.parse_reference(drop), X.as_rows(trades))['extra_in_repro']
     f = rows[1].split(',')
     f[5] = str(Decimal(f[5]) + Decimal('0.001'))                           # qty differs
-    bad = X.compare(X.parse_reference('\n'.join([rows[0], ','.join(f)] + rows[2:]) + '\n'), X.as_rows(rep.trades))
+    bad = X.compare(X.parse_reference('\n'.join([rows[0], ','.join(f)] + rows[2:]) + '\n'), X.as_rows(trades))
     assert bad['verdict'] == 'NOT REPRODUCED' and bad['field_mismatches'][0]['fields'] == ['qty']
     f = rows[1].split(',')
     f[9] = str(Decimal(f[9]) + Decimal('1e-6'))                            # R beyond tolerance
-    bad = X.compare(X.parse_reference('\n'.join([rows[0], ','.join(f)] + rows[2:]) + '\n'), X.as_rows(rep.trades))
+    bad = X.compare(X.parse_reference('\n'.join([rows[0], ','.join(f)] + rows[2:]) + '\n'), X.as_rows(trades))
     assert bad['field_mismatches'][0]['fields'] == ['r']
 
 
-def test_strategy_runs_only_through_the_view_a_peeker_is_caught(legacy, tmp_path, monkeypatch):
-    store, m, rules = legacy
-    ds, w, lo, hi = opened(legacy, tmp_path)
-    real = T.decide
+def test_legacy_flat_funding_adapter_cannot_enter_primary_results(legacy, tmp_path):
+    """R4-0 item 4: the flat per-bar funding adapter is reproduction-only. The harness refuses a promotion-eligible
+    dataset, and the sandboxed evaluator itself refuses without the REPRO-ONLY label."""
+    store, m, _, ev = legacy
+    prim = M.build(['data_long'], manifest_id='fx-primary', source_class='fixture', base=store, data_root='repo',
+                   survivor_only=True)
+    _, w, lo, hi = opened(legacy, tmp_path, manifest=prim)
+    with pytest.raises(X.ReproError, match='reproduction-only'):
+        X.replay(w, start_ms=lo, end_ms=lo + 3 * H4, function='base', evaluator=ev)
+    with pytest.raises(P.PITError, match='REPRO-ONLY'):
+        P.evaluate(w, ev, 'base', X.schedule(lo, lo + 3 * H4), summary='summary')
+    assert C.STRESS['base'].funding_mode == 'actual'                      # the primary R3 row is actual funding
+    assert E.COSTS['base'] == X.cost_row('base') and E.COSTS['2x'] == X.cost_row('2x')
 
-    def peeking(view, **kw):
-        f = ds.files('klines', SYMS[0], '4h')[0]
-        future = [b for b in ds.rows(f) if b.available_ms > view.t][:1]     # bypasses the view
-        return real(view, **kw) + ((('peek', future[0].close),) if future else ())
-    monkeypatch.setattr(T, 'decide', peeking)
-    with pytest.raises(P.PITError, match='future perturbation'):
-        X.replay(w, symbols=SYMS, start_ms=lo, end_ms=hi, costs=X.cost_row('base'), rules=rules)
+
+def test_repro_only_manifest_opens_only_development_windows(legacy, tmp_path):
+    store, m, _, _ = legacy
+    ds = P.Dataset(m, store, None)
+    assert P.REPRO_ONLY in ds.labels and P.SURVIVOR_ONLY in ds.labels
+    plan = S.SplitPlan([{'name': 'calibration', 'start': '2024-01-01T00:00:00Z', 'end': '2024-02-05T00:00:00Z'},
+                        {'name': 'train', 'start': '2024-02-05T00:00:00Z', 'end': '2024-03-04T00:00:00Z'},
+                        {'name': 'holdout', 'start': '2024-03-04T00:00:00Z', 'end': '2024-04-01T00:00:00Z'}],
+                       interval='4h', lookback_bars=20, horizon_bars=5)
+    acc = P.Access(ds, plan, str(tmp_path / 'f.jsonl'), candidate_id=T.RULE_ID, author='t', cairo_date='2026-10-10')
+    with pytest.raises(P.PITError, match='reproduction-only'):
+        acc.open('train', lineage='root')
 
 
-def test_truncating_the_future_never_changes_a_closed_trade(legacy, tmp_path):
-    store, m, rules = legacy
-    _, w, lo, hi = opened(legacy, tmp_path)
-    full = X.replay(w, symbols=SYMS, start_ms=lo, end_ms=hi, costs=X.cost_row('base'), rules=rules, perturb=False)
+def test_truncating_the_future_never_changes_a_closed_trade(legacy, runs, tmp_path):
+    full = runs['base'][0].results['trades']
+    _, w, lo, hi = opened(legacy, tmp_path, lineage='root')
     cut = hi - 120 * H4
-    _, w2, _, _ = opened(legacy, tmp_path, lineage=None)                  # a window issues each decision once
-    part = X.replay(w2, symbols=SYMS, start_ms=lo, end_ms=cut, costs=X.cost_row('base'), rules=rules, perturb=False)
-    a = [(t.symbol, t.entry_ms, t.exit_ms, t.r) for t in full.trades if t.exit_ms < cut - H4]
-    b = [(t.symbol, t.entry_ms, t.exit_ms, t.r) for t in part.trades if t.exit_ms < cut - H4]
+    part = X.replay(w, start_ms=lo, end_ms=cut, function='base', evaluator=legacy[3], perturb=False)
+    a = [(t['symbol'], t['entry_ms'], t['exit_ms'], t['r']) for t in full if t['exit_ms'] < cut - H4]
+    b = [(t['symbol'], t['entry_ms'], t['exit_ms'], t['r']) for t in part.results['trades'] if t['exit_ms'] < cut - H4]
     assert a == b and a
 
 
-def test_overlapping_legacy_sources_are_refused_unless_restricted(legacy):
-    store, m, _ = legacy
-    ds = P.Dataset(m, store, None)
-    assert len(ds.files('klines', SYMS[0], '4h')) == 2                    # data/ and data_long/ overlap
-    X.restrict_sources(ds, symbols=SYMS)
-    assert [f['path'] for f in ds.files('klines', SYMS[0], '4h')] == [f'data_long/{SYMS[0]}_4h.csv']
-    with pytest.raises(X.ReproError, match='exactly one'):
-        X.restrict_sources(P.Dataset(m, store, None), prefix='nowhere/', symbols=SYMS)
+def test_overlapping_sources_are_refused_by_the_dataset_and_the_repro_manifest_is_pinned(legacy, tmp_path):
+    store, m, _, _ = legacy
+    write_csv(store, f'data/{SYMS[0]}_4h.csv', 0, NBARS - 300, NBARS)          # an overlapping second source
+    try:
+        both = M.build(['data', 'data_long'], manifest_id='fx-overlap', source_class='repro-only', base=store,
+                       data_root='repo', survivor_only=True)
+        with pytest.raises(P.OverlapError):
+            P.Dataset(both, store, None)
+    finally:
+        shutil.rmtree(os.path.join(store, 'data'))
+    man = M.load(os.path.join(ROOT, X.REPRO_MANIFEST))
+    assert (man['manifest_id'], man['digest'], man['source_class']) == (X.REPRO_ID, X.REPRO_DIGEST, M.REPRO_ONLY)
+    assert sorted(f['symbol'] for f in man['files']) == sorted(X.CORE8)
+    assert all(f['path'].startswith('data_long/4h/') for f in man['files'])
+    X.require_repro(P.Dataset(man, ROOT, None))                                # zero overlaps, repro-only
+    with pytest.raises(P.PITError):
+        P.Dataset(man, ROOT, {'format': 'x'}, books=['crypto'])               # never with a universe
 
 
-def test_cost_rows_come_from_the_r3_constants():
+def test_cost_rows_rules_and_embedded_constants_are_pinned(tmp_path):
     b, x2 = X.cost_row('base'), X.cost_row('2x')
     assert (b.taker, b.slip, b.funding_per_bar) == (Decimal('0.0005'), Decimal('0.0002'), Decimal('0.00005'))
     assert (x2.taker, x2.slip, x2.funding_per_bar) == (Decimal('0.001'), Decimal('0.0004'), Decimal('0.00005'))
     with pytest.raises(X.ReproError):
         X.cost_row('3x')
-
-
-def test_rules_snapshot_and_reference_are_pinned(tmp_path):
+    X.check_embedded(ROOT)                                                     # m3_eval rules == pinned snapshot
     p = tmp_path / 'rules.json'
     p.write_text(json.dumps({'schema': 'zackbot.exchange_rules/1', 'symbols': {}}))
     with pytest.raises(X.ReproError, match='pinned'):
@@ -264,6 +345,50 @@ def test_rules_snapshot_and_reference_are_pinned(tmp_path):
     assert X.load_rules(str(p), [], sha256=None) == {}
     with pytest.raises(X.ReproError, match='missing or not blob'):
         X.read_reference(str(tmp_path), 'base')                                # not a repo with the M3 commit
+
+
+def test_cairo_day_table_matches_zoneinfo_hour_by_hour():
+    z = ZoneInfo('Africa/Cairo')
+    t = E.CAIRO_OFFSETS[0][0]
+    while t < E.CAIRO_END_MS:
+        assert E.cairo_day(t) == datetime.fromtimestamp(t // 1000, tz=timezone.utc).astimezone(z).date().isoformat()
+        t += 3_600_000
+    for bad in (E.CAIRO_OFFSETS[0][0] - 1, E.CAIRO_END_MS):
+        with pytest.raises(ValueError):
+            E.cairo_day(bad)
+
+
+def test_m3_reports_are_written_atomically(tmp_path, monkeypatch):
+    p = str(tmp_path / 'm3_repro_base.json')
+    X.atomic_write_json(p, {'a': 1})
+    assert json.load(open(p)) == {'a': 1}
+
+    def boom(src, dst):
+        raise OSError('interrupted')
+    monkeypatch.setattr(X.os, 'replace', boom)
+    with pytest.raises(OSError):
+        X.atomic_write_json(p, {'a': 2})
+    with pytest.raises(OSError):
+        X.atomic_write_json(str(tmp_path / 'new.json'), {'b': 1})
+    monkeypatch.undo()
+    assert json.load(open(p)) == {'a': 1}                                      # old content intact
+    assert sorted(os.listdir(tmp_path)) == ['m3_repro_base.json']              # no partial file, no temp left
+
+
+def test_warmup_known_answer():
+    """R4-0 item 3: no signal before the configuration's start index; the first evaluable bar is exactly
+    max(warmup, 7d, 30d bars) = 220 for the primary; a gap restarts the count (never forward-filled)."""
+    assert T.PRIMARY.start() == 220 and T.PRIMARY.bars_of(7) == 42 and T.PRIMARY.bars_of(30) == 180
+    assert T.max_lookback_bars([T.PRIMARY] + [p for _, p in T.neighbours()]) == 240
+    bars = [P.Bar(START + i * H4, price(0, i - 1), price(0, i) * 1.01, price(0, i) * 0.99, price(0, i), 1.0, None,
+                  START + (i + 1) * H4) for i in range(600)]
+    assert T.signal_at_last(bars[:220], T.PRIMARY) is None                     # index 219
+    assert T.signal_at_last(bars[:221], T.PRIMARY) is not None                 # index 220: first evaluable
+    gap = bars[:300] + [b._replace(open_ms=b.open_ms + H4, available_ms=b.available_ms + H4) for b in bars[300:]]
+    tail = T.contiguous_tail(gap[:300 + 219])
+    assert len(tail) == 219 and T.signal_at_last(tail, T.PRIMARY) is None      # 219 bars after the gap: none
+    tail = T.contiguous_tail(gap[:300 + 221])
+    assert len(tail) == 221 and T.signal_at_last(tail, T.PRIMARY) is not None
 
 
 def test_episode_clustering_and_summary_are_deterministic():
@@ -297,9 +422,8 @@ def _newcore_strategy(tmp_path):
 
 def test_signals_are_bit_identical_to_newcore_ema_mom(legacy, tmp_path):
     nc = _newcore_strategy(tmp_path)
-    store, m, _ = legacy
+    store, m, _, _ = legacy
     ds = P.Dataset(m, store, None)
-    X.restrict_sources(ds, symbols=SYMS)
     for s in SYMS[:2]:
         rows = ds.rows(ds.files('klines', s, '4h')[0])
         b = nc.Bars(s, H4, [r.open_ms for r in rows], [r.open for r in rows], [r.high for r in rows],
@@ -318,9 +442,13 @@ def test_signals_are_bit_identical_to_newcore_ema_mom(legacy, tmp_path):
 
 
 # ------------------------------------------------------------------ prereg + gate
-def test_committed_prereg_validates():
+def load_prereg():
     with open(os.path.join(ROOT, 'research_evidence', 'prereg', 'trend_ema_mom.v1.json'), 'rb') as f:
-        raw = f.read()
+        return f.read()
+
+
+def test_committed_prereg_validates():
+    raw = load_prereg()
     assert b'\r\n' not in raw
     pre = json.loads(raw)
     assert G.validate_prereg(pre, ROOT) == []
@@ -328,21 +456,36 @@ def test_committed_prereg_validates():
     spent_end = S.parse_utc('2026-10-05T00:00:00Z')
     assert plan.access_range('holdout')[0] >= spent_end                     # holdout is forward-only
     assert all(plan.access_range(k)[1] <= spent_end for k in plan.keys() if k != 'holdout')
-    assert len(G.trial_records(pre, '0' * 64, 'x')) == pre['trials']['declared']['total']
+    recs = G.trial_records(pre, '0' * 64, 'x')
+    assert len(recs) == pre['trials']['declared']['total'] == 19
+    assert [(r['detail']['role'], r['detail'].get('book'), r['detail'].get('config')) for r in recs[:3]] == [
+        ('preregistration', 'crypto', 'primary'), ('secondary_variant', 'crypto', G.SECONDARY),
+        ('deferred_pilot', 'gold', 'primary')]
+    assert 'time_cap_bars' not in pre['primary_params'] and pre['variants']['primary']['time_cap_bars'] is None
+    assert set(pre['universe_rule']['books']) == {'crypto'}
+    assert pre['data']['classification']['digest'] == 'PENDING'
+    assert 'UNREGISTERED' in pre['status']
 
 
 @pytest.mark.parametrize('mut, msg', [
     (lambda p: p['primary_params'].__setitem__('ema_fast', 21), 'primary_params'),
-    (lambda p: p['primary_params'].pop('time_cap_bars'), 'time cap'),
+    (lambda p: p['primary_params'].__setitem__('time_cap_bars', 180), 'uncapped'),
+    (lambda p: p['variants']['secondary'][0].__setitem__('time_cap_bars', 120), 'variants.secondary'),
+    (lambda p: p['variants'].__setitem__('selection', 'best of the two on walk-forward'), 'adaptive'),
     (lambda p: p['splits'].__setitem__('lookback_bars', 220), 'lookback_bars'),
     (lambda p: p['costs']['slip_cal_v1'].__setitem__('fitted', 'no'), 'slip-cal-v1'),
-    (lambda p: p['universe_rule']['books'].pop('gold-commodity'), 'gold-commodity'),
+    (lambda p: p['universe_rule']['books'].__setitem__('gold-commodity', 'x'), 'only book'),
+    (lambda p: p['costs']['rows'].__setitem__('gold', 'x'), 'crypto row only'),
+    (lambda p: p['universe_rule']['deferred_pilot']['gold-tokenized'].__setitem__('cost_row', 'gold-spot'),
+     'separate cost rows'),
+    (lambda p: p['verdict_rules']['REJECT']['retained_gates'].pop('drawdown'), 'retain'),
+    (lambda p: p['trials']['declared'].__setitem__('total', 18), '19'),
+    (lambda p: p['m3_reproduction']['manifest'].__setitem__('digest', '0' * 64), 'legacy-m3-repro-v1'),
     (lambda p: p['edge00'].pop('neighbours'), 'edge00'),
     (lambda p: p['neighbour_grid']['configs'].pop(), 'neighbour grid'),
 ])
 def test_prereg_validation_refuses_drift(mut, msg):
-    with open(os.path.join(ROOT, 'research_evidence', 'prereg', 'trend_ema_mom.v1.json')) as f:
-        pre = json.load(f)
+    pre = json.loads(load_prereg())
     mut(pre)
     assert any(msg in b for b in G.validate_prereg(pre, ROOT))
 
@@ -354,7 +497,8 @@ def git(repo, *a):
 
 @pytest.fixture
 def grepo(tmp_path):
-    """A throwaway repo: research modules, the prereg, a universe stub, a fresh family ledger, two slice branches."""
+    """A throwaway repo: research modules, the prereg, a universe stub, a fresh family ledger, a foundation commit
+    pinned on master's line and a follow-up branch pinned by exact SHA."""
     r = tmp_path / 'repo'
     for rel in R.CORE_EVAL_FILES + G.EVAL_FILES + ('research_evidence/prereg/trend_ema_mom.v1.json',):
         (r / rel).parent.mkdir(parents=True, exist_ok=True)
@@ -371,19 +515,19 @@ def grepo(tmp_path):
              window={'start': '2021-12-19T00:00:00Z', 'end': '2026-10-05T00:00:00Z'}, author='t',
              cairo_date='2026-10-09', lineage='root')
     git(r, 'add', '-A')
-    git(r, 'commit', '-q', '-m', 'base')
-    heads = {}
-    for b in ('r2', 'r3'):
-        git(r, 'checkout', '-q', '-b', b, 'master')
-        (r / f'{b}.txt').write_text(b)
-        git(r, 'add', '-A')
-        git(r, 'commit', '-q', '-m', b)
-        heads[b] = git(r, 'rev-parse', 'HEAD')
-    git(r, 'checkout', '-q', 'master')
-    gate = {'format': 'zb-r4-gate/1', 'prereg': 'research_evidence/prereg/trend_ema_mom.v1.json',
+    git(r, 'commit', '-q', '-m', 'r1-r3 merged')
+    foundation = git(r, 'rev-parse', 'HEAD')
+    git(r, 'checkout', '-q', '-b', 'overlap', 'master')
+    (r / 'overlap.txt').write_text('overlap')
+    git(r, 'add', '-A')
+    git(r, 'commit', '-q', '-m', 'overlap follow-up')
+    follow = git(r, 'rev-parse', 'HEAD')
+    git(r, 'checkout', '-q', '-b', 'r4', 'overlap')
+    gate = {'format': G.GATE_FORMAT, 'prereg': 'research_evidence/prereg/trend_ema_mom.v1.json',
             'ledger': 'research_evidence/ledger/trend_ema_mom.jsonl', 'integration_ref': 'master',
-            'cleared': [{'slice': 'R1+R2', 'pr': 51, 'branch': 'r2', 'head': heads['r2']},
-                        {'slice': 'R3', 'pr': 52, 'branch': 'r3', 'head': heads['r3']}]}
+            'pins': [{'slice': 'R1+R2+R3', 'prs': [51, 52], 'head': foundation},
+                     {'slice': 'overlap', 'prs': [56], 'branch': 'overlap', 'head': follow, 'after': foundation}],
+            'classification': {'id': 'instrument-classes-v2', 'digest': 'PENDING'}}
     (r / G.GATE).write_text(json.dumps(gate))
     git(r, 'add', '-A')
     git(r, 'commit', '-q', '-m', 'gate')
@@ -392,50 +536,74 @@ def grepo(tmp_path):
     return str(r), gen
 
 
-def test_gate_refuses_until_registered_committed_and_cleared(grepo):
+def bind_classification(repo, digest):
+    p = os.path.join(repo, G.GATE)
+    g = json.load(open(p))
+    g['classification']['digest'] = digest
+    with open(p, 'w') as f:
+        json.dump(g, f)
+    git(repo, 'commit', '-q', '-am', 'bind classification')
+
+
+def test_gate_refuses_until_registered_committed_merged_and_classified(grepo):
     repo, gen = grepo
     kw = dict(registry_genesis=gen)
     fail = G.gate(repo, **kw)
-    assert any('G3 no preregistration' in f for f in fail) and sum('not merged' in f for f in fail) == 2
+    assert any('G3 no preregistration' in f for f in fail)
+    assert [f for f in fail if f.startswith('G4')] == [f for f in fail if 'overlap' in f and 'not merged' in f]
+    assert any(f.startswith('G5') and 'PENDING' in f for f in fail)
     with pytest.raises(G.GateError):
-        G.run_m3(repo, store=repo, rows=('base',), out_dir=repo, author='t', cairo_date='2026-10-09', gate_kw=kw)
-    recs = G.register(repo, author='t', cairo_date='2026-10-09', registry_genesis=gen)
-    assert [r['kind'] for r in recs].count('grid_point') == 12 and len(recs) == 18
+        G.run_m3(repo, store=repo, rows=('base',), out_dir=repo, author='t', cairo_date='2026-10-10', gate_kw=kw)
+    recs = G.register(repo, author='t', cairo_date='2026-10-10', registry_genesis=gen)
+    assert [r['kind'] for r in recs].count('grid_point') == 12 and len(recs) == 19
     fail = G.gate(repo, **kw)
     assert any('G3 the registration records are not committed at HEAD' in f for f in fail)
     assert not any('G1' in f for f in fail)                          # research_evidence/ is outside the code identity
     git(repo, 'add', '-A')
     git(repo, 'commit', '-q', '-m', 'register prereg')
     with pytest.raises(G.GateError, match='already registered'):
-        G.register(repo, author='t', cairo_date='2026-10-09', registry_genesis=gen)
-    assert [f for f in G.gate(repo, **kw) if not f.startswith('G4')] == []
-    git(repo, 'merge', '-q', '--no-ff', '-m', 'merge r2', 'r2')
-    git(repo, 'merge', '-q', '--no-ff', '-m', 'merge r3', 'r3')
+        G.register(repo, author='t', cairo_date='2026-10-10', registry_genesis=gen)
+    assert sorted(f[:2] for f in G.gate(repo, **kw)) == ['G4', 'G5']
+    git(repo, 'checkout', '-q', 'master')
+    git(repo, 'merge', '-q', '--no-ff', '-m', 'merge overlap', 'overlap')
+    git(repo, 'checkout', '-q', 'r4')
+    git(repo, 'merge', '-q', '--no-ff', '-m', 'merge master', 'master')
+    assert [f[:2] for f in G.gate(repo, **kw)] == ['G5']               # classification PENDING keeps it closed
+    bind_classification(repo, 'c' * 64)
     assert G.gate(repo, **kw) == []
     with open(os.path.join(repo, 'tools/research/trend_ema_mom.py'), 'a') as f:
         f.write('# edit' + chr(10))
     assert any('G1 dirty' in f for f in G.gate(repo, **kw))
     git(repo, 'checkout', '--', 'tools/research/trend_ema_mom.py')
     recs = L.verify(os.path.join(repo, 'research_evidence/ledger/trend_ema_mom.jsonl'), registry_genesis=gen)
-    assert L.n_trials(recs['trend_ema_mom']) == 18
+    assert L.n_trials(recs['trend_ema_mom']) == 19
 
 
-def test_gate_closes_on_a_moved_branch_or_an_edited_prereg(grepo):
+def test_gate_closes_on_a_moved_pin_bad_ancestry_or_an_edited_prereg(grepo):
     repo, gen = grepo
-    G.register(repo, author='t', cairo_date='2026-10-09', registry_genesis=gen)
+    G.register(repo, author='t', cairo_date='2026-10-10', registry_genesis=gen)
     git(repo, 'add', '-A')
     git(repo, 'commit', '-q', '-m', 'register')
-    git(repo, 'merge', '-q', '--no-ff', '-m', 'm2', 'r2')
-    git(repo, 'merge', '-q', '--no-ff', '-m', 'm3', 'r3')
+    git(repo, 'checkout', '-q', 'master')
+    git(repo, 'merge', '-q', '--no-ff', '-m', 'm', 'overlap')
+    git(repo, 'checkout', '-q', 'r4')
+    git(repo, 'merge', '-q', '--no-ff', '-m', 'mm', 'master')
+    bind_classification(repo, 'c' * 64)
     assert G.gate(repo, registry_genesis=gen) == []
-    git(repo, 'checkout', '-q', 'r3')
-    with open(os.path.join(repo, 'r3.txt'), 'a') as f:
+    git(repo, 'checkout', '-q', 'overlap')
+    with open(os.path.join(repo, 'overlap.txt'), 'a') as f:
         f.write('fix round')
     git(repo, 'commit', '-q', '-am', 'codex fix round')
-    git(repo, 'checkout', '-q', 'master')
+    git(repo, 'checkout', '-q', 'r4')
     assert any('moved' in f for f in G.gate(repo, registry_genesis=gen))
-    git(repo, 'branch', '-q', '-f', 'r3', 'r3~1')                     # the fix round is cleared away again
+    git(repo, 'branch', '-q', '-f', 'overlap', 'overlap~1')            # the fix round is cleared away again
     assert G.gate(repo, registry_genesis=gen) == []
+    g = json.load(open(os.path.join(repo, G.GATE)))
+    g['pins'][1]['after'] = g['pins'][1]['head']                      # a pin that does not descend from its base
+    g['pins'][0]['head'] = g['pins'][0]['head'][:7]                   # an abbreviated pin
+    assert any('descend' in f for f in G.pin_failures(repo, dict(g, pins=[dict(g['pins'][1],
+                                                                                after=git(repo, 'rev-parse', 'r4'))])))
+    assert any('full 40-hex' in f for f in G.pin_failures(repo, g))
     p = os.path.join(repo, 'research_evidence/prereg/trend_ema_mom.v1.json')
     with open(p, 'rb') as f:
         raw = f.read()
@@ -447,5 +615,9 @@ def test_gate_closes_on_a_moved_branch_or_an_edited_prereg(grepo):
 
 
 def test_pit_subcommand_and_m3_never_run_with_the_gate_closed():
-    assert G.main(['pit', '--author', 't', '--cairo-date', '2026-10-09']) == 3      # this branch: not registered
-    assert G.main(['m3', '--store', ROOT, '--author', 't', '--cairo-date', '2026-10-09']) == 3
+    assert G.main(['pit', '--author', 't', '--cairo-date', '2026-10-10']) == 3      # this branch: not registered
+    assert G.main(['m3', '--store', ROOT, '--author', 't', '--cairo-date', '2026-10-10']) == 3
+    g = json.loads(G._load(ROOT, G.GATE))
+    assert g['classification']['digest'] == 'PENDING'
+    assert [p['head'] for p in g['pins']] == ['01564264431650a9fde53f27623928bb84702914',
+                                              '33ee82f70039a30dd6bcd9cda6b3816156131638']

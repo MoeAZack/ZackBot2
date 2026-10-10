@@ -1,5 +1,7 @@
-"""R4 sanitized progress record (tools/research/progress.py, Codex 6094685201): whitelist refusal, no outcome
-leak, determinism, append-only chain, and the run_r4 m3 wiring. Synthetic stubs only: no data is read."""
+"""R4 sanitized progress record (tools/research/progress.py, zb-run-progress/2; Codex 6094685201, 6094780810 Q2/Q3):
+one atomically replaced live snapshot + one immutable sealed final, identity digests, whitelist refusal, no outcome
+leak, wall time outside every digest, the run_r4 m3 wiring and the R4-0 readiness report. Synthetic stubs only: no
+data is read."""
 import json
 import os
 import sys
@@ -11,16 +13,17 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, 'tools', 'research'))
 import m3_repro as X                                                                        # noqa: E402
 import progress as PG                                                                       # noqa: E402
+import r4_readiness as RR                                                                   # noqa: E402
 import report as R                                                                          # noqa: E402
 import run_r4 as G                                                                          # noqa: E402
 
-COMMIT = 'a' * 40
-DS = {'manifest': 'research_evidence/manifests/legacy-unverified-v1.json', 'digest': 'b' * 64}
+IDENT = {'commit': 'a' * 40, 'evaluator': 'e' * 64, 'manifest': 'b' * 64, 'universe': None, 'classification': None,
+         'prereg': 'f' * 64}
 CFG = {'rows': ['base', '2x'], 'perturb': True}
 
 
 def new(tmp, **kw):
-    return PG.Progress(str(tmp), commit=COMMIT, dataset=DS, config=CFG, clock=kw.pop('clock', None), **kw)
+    return PG.Progress(str(tmp), identity=kw.pop('identity', IDENT), config=CFG, clock=kw.pop('clock', None))
 
 
 def run_all(tmp):
@@ -33,147 +36,182 @@ def run_all(tmp):
     p.integrity_failure(['DataGap'], stage='walk_forward', fold=2)
     p.stage_done('walk_forward', fold=2, artifacts=[str(art)])
     p.sealed([str(art)], ['m3_repro_base.json'])
-    return p.path
+    return p
 
 
-def rehash(rec):
-    rec = dict(rec)
-    rec['digest'] = PG.record_digest(rec)
-    return rec
+def live(**over):
+    doc = dict(format=PG.FORMAT, kind='live', run='0' * 16, seq=1, state='running', identity=dict(IDENT),
+               identity_digest=PG.identity_digest(IDENT), stages=[{'name': 'm3.base', 'status': 'started'}],
+               integrity=[])
+    doc.update(over)
+    doc = {k: v for k, v in doc.items() if v is not None}
+    doc['digest'] = PG.doc_digest(doc)
+    return doc
 
 
-def base_rec(**over):
-    rec = dict(format=PG.FORMAT, seq=1, prev='0' * 64, event='stage_start', run='0' * 16,
-               stage={'name': 'm3.base'})
-    rec.update(over)
-    return rehash({k: v for k, v in rec.items() if v is not None})
-
-
-# ------------------------------------------------------------------ whitelist refusal
+# ------------------------------------------------------------------ whitelist refusal + identity
 @pytest.mark.parametrize('extra', [{'note': 'x'}, {'token': 'abc'}, {'api_key': 'k'}, {'account': 'acct'},
-                                   {'commit': COMMIT}])          # commit only on run_start
+                                   {'artifacts': []}])         # artifacts only on the final
 def test_unknown_or_misplaced_top_level_keys_are_refused(extra):
     with pytest.raises(PG.ProgressError, match='whitelist'):
-        PG.check_record(base_rec(**extra))
+        PG.check_doc(live(**extra))
 
 
-@pytest.mark.parametrize('stage', [{'name': 'm3.base', 'extra': 'x'}, {'name': 'm3.base', 'fold': 1, 'n': 2}])
+@pytest.mark.parametrize('stage', [{'name': 'm3.base', 'status': 'done', 'extra': 'x'},
+                                   {'name': 'm3.base', 'status': 'done', 'fold': 1, 'n': 2}])
 def test_nested_unknown_keys_are_refused(stage):
     with pytest.raises(PG.ProgressError, match='whitelist'):
-        PG.check_record(base_rec(stage=stage))
+        PG.check_doc(live(stages=[stage]))
 
 
-def test_unknown_event_and_bad_shapes_are_refused():
-    for rec in (base_rec(event='metrics'), base_rec(run='xyz'), base_rec(prev='z' * 64),
-                base_rec(stage={'name': '../etc'}), base_rec(wall='yesterday')):
+@pytest.mark.parametrize('bad', [dict(IDENT, commit='abc'), dict(IDENT, evaluator=None), dict(IDENT, prereg='x'),
+                                 dict(IDENT, token='t'), {k: v for k, v in IDENT.items() if k != 'classification'}])
+def test_identity_shape_is_strict(bad):
+    with pytest.raises(PG.ProgressError):
+        PG.check_doc(live(identity=bad, identity_digest=PG.identity_digest(bad)))
+    with pytest.raises(PG.ProgressError):
+        PG.Progress('unused', identity=bad, config=CFG, clock=None)
+
+
+def test_bad_shapes_and_tampering_are_refused():
+    for doc in (live(kind='log'), live(run='xyz'), live(state='done'), live(stages=[{'name': '../etc',
+                                                                                     'status': 'done'}]),
+                live(wall='yesterday'), live(identity_digest='0' * 64)):
         with pytest.raises(PG.ProgressError):
-            PG.check_record(rec)
-    bad = base_rec()
-    bad['stage'] = {'name': 'm3.2x'}                  # edited after hashing
+            PG.check_doc(doc)
+    bad = live()
+    bad['stages'] = [{'name': 'm3.2x', 'status': 'started'}]          # edited after hashing
     with pytest.raises(PG.ProgressError, match='digest'):
-        PG.check_record(bad)
+        PG.check_doc(bad)
 
 
 # ------------------------------------------------------------------ no outcome leak
 @pytest.mark.parametrize('key', ['pnl', 'score', 'return', 'sharpe', 'equity', 'drawdown', 'win_rate',
                                  'mean_r', 'expectancy', 'profit'])
 def test_outcome_keys_are_refused_at_every_depth(key):
-    for rec in (base_rec(**{key: 1.5}), base_rec(stage={'name': 'm3.base', key: 2})):
+    for doc in (live(**{key: 1.5}), live(stages=[{'name': 'm3.base', 'status': 'done', key: 2}]),
+                live(integrity=[{'code': 'X', key: 1}])):
         with pytest.raises(PG.ProgressError):
-            PG.check_record(rec)
+            PG.check_doc(doc)
 
 
 @pytest.mark.parametrize('name', ['pnl_ok', 'score.high', 'NET_R', 'sharpe:2', 'equity_peak', 'DRAWDOWN_8',
                                   'WIN_RATE', 'verdict.PROMOTE', 'return'])
 def test_outcome_words_are_refused_in_codes_and_stage_names(name):
     with pytest.raises(PG.ProgressError, match='outcome-free'):
-        PG.check_record(base_rec(stage={'name': name}))
+        PG.check_doc(live(stages=[{'name': name, 'status': 'started'}]))
     with pytest.raises(PG.ProgressError, match='outcome-free'):
-        PG.check_record(base_rec(event='integrity_failure', stage=None, integrity=[name]))
+        PG.check_doc(live(integrity=[{'code': name}]))
 
 
 @pytest.mark.parametrize('fold', [1.5, True, -1, '2'])
 def test_only_seq_and_fold_may_be_numbers(fold):
     with pytest.raises(PG.ProgressError, match='fold'):
-        PG.check_record(base_rec(stage={'name': 'walk_forward', 'fold': fold}))
+        PG.check_doc(live(stages=[{'name': 'walk_forward', 'status': 'started', 'fold': fold}]))
 
 
-def test_operational_names_are_accepted():
-    for n in ('m3.open', 'm3.base', 'm3.2x', 'walk_forward', 'calibration', 'pit.window', 'add_rows'):
-        PG.check_record(base_rec(stage={'name': n}))
-    PG.check_record(base_rec(event='integrity_failure', stage={'name': 'm3.base'},
-                             integrity=['ManifestError', 'WINDOW_GAP', 'GateError']))
+def test_a_full_run_carries_no_outcome_and_seals_once(tmp_path):
+    p = run_all(tmp_path)
+    for path in (p.path, p.final_path):
+        text = open(path, encoding='ascii').read()
+        assert 'pnl' not in text and 'sharpe' not in text and '12.5' not in text
+    snap, final = PG.read(p.path), PG.read(p.final_path)
+    assert snap['state'] == final['state'] == 'sealed' and final['kind'] == 'final'
+    assert [(s['name'], s['status']) for s in final['stages']] == [('m3.open', 'done'), ('walk_forward', 'done')]
+    assert final['integrity'] == [{'code': 'DataGap', 'stage': 'walk_forward', 'fold': 2}]
+    assert final['artifacts'] == [{'path': 'm3_repro_base.json',
+                                   'sha256': PG.file_sha256(str(tmp_path / 'm3_repro_base.json'))}]
+    assert final['identity'] == IDENT and final['identity_digest'] == PG.identity_digest(IDENT)
+    assert sorted(os.listdir(tmp_path)) == sorted(['m3_repro_base.json', os.path.basename(p.path),
+                                                   os.path.basename(p.final_path)])     # no temp file left
 
 
-def test_a_full_run_file_carries_no_outcome(tmp_path):
-    path = run_all(tmp_path)
-    text = open(path, encoding='ascii').read()
-    assert 'pnl' not in text and 'sharpe' not in text and '12.5' not in text
-    recs = PG.verify(path)
-    assert [r['event'] for r in recs] == ['run_start', 'stage_start', 'stage_done', 'stage_start',
-                                         'integrity_failure', 'stage_done', 'run_sealed']
-    assert recs[-1]['artifacts'] == [{'path': 'm3_repro_base.json',
-                                      'sha256': PG.file_sha256(str(tmp_path / 'm3_repro_base.json'))}]
-
-
-# ------------------------------------------------------------------ determinism + append-only
+# ------------------------------------------------------------------ atomic snapshot, immutable final, determinism
 def test_two_identical_runs_are_byte_identical_without_wall(tmp_path):
     a, b = run_all(tmp_path / 'a'), run_all(tmp_path / 'b')
-    assert os.path.basename(a) == os.path.basename(b)
-    assert open(a, 'rb').read() == open(b, 'rb').read()
+    assert os.path.basename(a.path) == os.path.basename(b.path)
+    for x, y in ((a.path, b.path), (a.final_path, b.final_path)):
+        assert open(x, 'rb').read() == open(y, 'rb').read()
 
 
-def test_wall_time_is_the_only_difference_and_is_outside_the_chain(tmp_path):
-    ticks = iter(['2026-10-10T14:00:00+03:00', '2026-10-10T14:00:01+03:00', '2026-10-10T15:00:00+03:00'])
+def test_wall_time_is_excluded_from_identity_and_digests(tmp_path):
+    ticks = iter(f'2026-10-10T14:00:0{i}+03:00' for i in range(9))
     p = new(tmp_path / 'w', clock=lambda: next(ticks))
     p.stage_start('m3.open')
     p.aborted(['ReproError'], stage='m3.open')
     q = new(tmp_path / 'n')
     q.stage_start('m3.open')
     q.aborted(['ReproError'], stage='m3.open')
-    rw, rn = PG.verify(p.path), PG.verify(q.path)
-    assert [r.pop('wall') for r in rw][0].endswith('+03:00')
-    assert rw == rn
+    fw, fn = PG.read(p.final_path), PG.read(q.final_path)
+    assert fw.pop('wall').endswith('+03:00')
+    assert fw == fn and fn['state'] == 'aborted'
 
 
-def test_run_id_depends_on_commit_dataset_and_config_only(tmp_path):
-    assert PG.run_id(COMMIT, DS, CFG) == PG.run_id(COMMIT, dict(DS), dict(CFG))
-    assert PG.run_id(COMMIT, DS, CFG) != PG.run_id('c' * 40, DS, CFG)
-    assert PG.run_id(COMMIT, DS, CFG) != PG.run_id(COMMIT, DS, dict(CFG, perturb=False))
+def test_run_id_depends_on_identity_and_config_only():
+    assert PG.run_id(IDENT, CFG) == PG.run_id(dict(IDENT), dict(CFG))
+    for k in ('commit', 'evaluator', 'manifest', 'prereg'):
+        assert PG.run_id(IDENT, CFG) != PG.run_id(dict(IDENT, **{k: 'c' * (40 if k == 'commit' else 64)}), CFG)
+    assert PG.run_id(IDENT, CFG) != PG.run_id(dict(IDENT, classification='d' * 64), CFG)
+    assert PG.run_id(IDENT, CFG) != PG.run_id(IDENT, dict(CFG, perturb=False))
 
 
-def test_terminal_run_refuses_more_records_and_tampering_is_caught(tmp_path):
-    path = run_all(tmp_path)
-    with pytest.raises(PG.ProgressError, match='already run_sealed'):
+def test_sealed_final_is_immutable_and_tampering_is_caught(tmp_path):
+    p = run_all(tmp_path)
+    with pytest.raises(PG.ProgressError, match='already sealed'):
         new(tmp_path)
-    lines = open(path, 'rb').read().splitlines(keepends=True)
-    with open(path, 'wb') as f:                      # drop a middle record: the chain breaks
-        f.writelines(lines[:2] + lines[3:])
-    with pytest.raises(PG.ProgressError, match='chain'):
-        PG.verify(path)
+    with pytest.raises(PG.ProgressError, match='already exists'):
+        PG.write_once(p.final_path, b'{}\n')
+    raw = open(p.final_path, 'rb').read()
+    with open(p.final_path, 'wb') as f:
+        f.write(raw.replace(b'"DataGap"', b'"DataGaps"'))
+    with pytest.raises(PG.ProgressError, match='digest'):
+        PG.read(p.final_path)
 
 
-def test_an_unfinished_run_resumes_on_the_same_chain(tmp_path):
+def test_snapshot_replace_is_atomic_on_failure(tmp_path, monkeypatch):
     p = new(tmp_path)
     p.stage_start('m3.open')
-    q = new(tmp_path)                                # e.g. after a crash: no second run_start
+    before = open(p.path, 'rb').read()
+
+    def boom(src, dst):
+        raise OSError('disk full')
+    monkeypatch.setattr(PG.os, 'replace', boom)
+    with pytest.raises(OSError):
+        p.stage_done('m3.open')
+    monkeypatch.undo()
+    assert open(p.path, 'rb').read() == before                       # the previous snapshot, never a torn one
+    assert [f for f in os.listdir(tmp_path) if f.endswith('.tmp')] == []
+
+
+def test_an_unfinished_run_resumes_from_the_snapshot(tmp_path):
+    p = new(tmp_path)
+    p.stage_start('m3.open')
+    q = new(tmp_path)                                # e.g. after a crash
     q.stage_done('m3.open')
     q.sealed([], [])
-    assert [r['seq'] for r in PG.verify(q.path)] == [0, 1, 2, 3]
+    final = PG.read(q.final_path)
+    assert final['seq'] == 4 and final['stages'] == [{'name': 'm3.open', 'status': 'done'}]
+    r = new(tmp_path / 'x')
+    r.stage_start('m3.open')
+    other = dict(IDENT, prereg='9' * 64)
+    os.replace(r.path, str(tmp_path / 'x' / f'progress-{PG.run_id(other, CFG)}.json'))   # a planted snapshot
+    with pytest.raises(PG.ProgressError, match='another identity'):
+        new(tmp_path / 'x', identity=other)
 
 
 # ------------------------------------------------------------------ run_r4 m3 wiring (stubs; gate bypassed)
 def _stub_m3(monkeypatch, *, fail_open=False):
     monkeypatch.setattr(G, 'refuse_unless_open', lambda repo, **kw: None)
-    monkeypatch.setattr(R, 'eval_identity', lambda repo, paths, config: {'files': sorted(paths)})
+    monkeypatch.setattr(G, 'm3_identity', lambda repo, rows, times, config, pre: dict(IDENT, commit=R.code_identity(
+        repo)['git_head'], manifest=X.REPRO_DIGEST, prereg=pre))
+    lo, hi = X.span(X.P.Dataset(X.M.load(os.path.join(ROOT, X.REPRO_MANIFEST)), ROOT, None))
 
-    def open_legacy(*a, **k):
+    def open_repro(*a, **k):
         if fail_open:
             raise X.ReproError('manifest SHA-256 mismatch')
-        return SimpleNamespace(digest=X.LEGACY_DIGEST, labels=('survivor-only',)), object(), 0, 4 * 3_600_000
+        return SimpleNamespace(digest=X.REPRO_DIGEST, labels=('SURVIVOR-ONLY', 'REPRO-ONLY')), object(), lo, hi
 
-    monkeypatch.setattr(X, 'open_legacy', open_legacy)
-    monkeypatch.setattr(X, 'load_rules', lambda *a, **k: {})
+    monkeypatch.setattr(X, 'open_repro', open_repro)
     monkeypatch.setattr(X, 'replay', lambda *a, **k: None)
     monkeypatch.setattr(X, 'read_reference', lambda repo, name: '')
     monkeypatch.setattr(X, 'report', lambda **k: {'row': k['name'], 'pnl': '123.45', 'sharpe': '9.9'})
@@ -183,35 +221,44 @@ def test_m3_writes_a_sealed_outcome_free_progress_record(monkeypatch, tmp_path):
     _stub_m3(monkeypatch)
     outs = []
     for d in ('a', 'b'):
-        G.run_m3(ROOT, store=str(tmp_path), rows=('base', '2x'), out_dir=str(tmp_path / d), author='t',
+        G.run_m3(ROOT, store=ROOT, rows=('base', '2x'), out_dir=str(tmp_path / d), author='t',
                  cairo_date='2026-10-10', clock=None)
-        (prog,) = [f for f in os.listdir(tmp_path / d) if f.startswith('progress-')]
-        outs.append(open(tmp_path / d / prog, 'rb').read())
+        (fin,) = [f for f in os.listdir(tmp_path / d) if f.startswith('final-')]
+        outs.append(open(tmp_path / d / fin, 'rb').read())
+        assert json.loads(open(tmp_path / d / 'm3_repro_base.json').read())['row'] == 'base'
     assert outs[0] == outs[1]
-    recs = [json.loads(x) for x in outs[0].splitlines()]
-    assert recs[0]['commit'] == R.code_identity(ROOT)['git_head']
-    assert recs[0]['dataset'] == {'manifest': X.LEGACY_MANIFEST, 'digest': X.LEGACY_DIGEST}
-    assert [r['stage']['name'] for r in recs if r['event'] == 'stage_done'] == ['m3.open', 'm3.base', 'm3.2x']
-    assert recs[-1]['event'] == 'run_sealed'
-    assert recs[-1]['evidence'] == ['m3_repro_2x.json', 'm3_repro_base.json']
+    final = json.loads(outs[0])
+    assert final['identity']['commit'] == R.code_identity(ROOT)['git_head']
+    assert final['identity']['manifest'] == X.REPRO_DIGEST and final['identity']['universe'] is None
+    assert [s['name'] for s in final['stages'] if s['status'] == 'done'] == ['m3.open', 'm3.base', 'm3.2x']
+    assert final['state'] == 'sealed' and final['evidence'] == ['m3_repro_2x.json', 'm3_repro_base.json']
     assert b'123.45' not in outs[0] and b'pnl' not in outs[0]
 
 
 def test_m3_failure_is_recorded_as_an_abort_with_a_code_only(monkeypatch, tmp_path):
     _stub_m3(monkeypatch, fail_open=True)
     with pytest.raises(X.ReproError):
-        G.run_m3(ROOT, store=str(tmp_path), rows=('base',), out_dir=str(tmp_path), author='t',
-                 cairo_date='2026-10-10', clock=None)
-    (prog,) = [f for f in os.listdir(tmp_path) if f.startswith('progress-')]
-    last = PG.verify(str(tmp_path / prog))[-1]
-    assert last['event'] == 'run_aborted' and last['integrity'] == ['ReproError']
-    assert last['stage'] == {'name': 'm3.open'} and 'mismatch' not in open(tmp_path / prog).read()
+        G.run_m3(ROOT, store=ROOT, rows=('base',), out_dir=str(tmp_path), author='t', cairo_date='2026-10-10',
+                 clock=None)
+    (fin,) = [f for f in os.listdir(tmp_path) if f.startswith('final-')]
+    final = PG.read(str(tmp_path / fin))
+    assert final['state'] == 'aborted' and final['integrity'] == [{'code': 'ReproError', 'stage': 'm3.open'}]
+    assert 'mismatch' not in open(tmp_path / fin).read()
 
 
-# ------------------------------------------------------------------ R4-0 readiness skeleton
-import r4_readiness as RR                                                                   # noqa: E402
+def test_m3_identity_binds_the_sandboxed_evaluator_and_digests():
+    lo, hi = X.span(X.P.Dataset(X.M.load(os.path.join(ROOT, X.REPRO_MANIFEST)), ROOT, None))
+    times = X.schedule(lo, hi)
+    a = G.m3_identity(ROOT, ('base', '2x'), times, {'k': 1}, 'f' * 64)
+    PG.check_identity(a)
+    assert a['manifest'] == X.REPRO_DIGEST and a['universe'] is None and a['prereg'] == 'f' * 64
+    assert a['evaluator'] != G.m3_identity(ROOT, ('base',), times, {'k': 1}, 'f' * 64)['evaluator']
+    assert a['evaluator'] != G.m3_identity(ROOT, ('base', '2x'), times[:-1], {'k': 1}, 'f' * 64)['evaluator']
 
-FULL = {'head': 'a' * 40, 'digests': {'dataset': 'b' * 64, 'universe': 'c' * 64, 'classification': 'd' * 64},
+
+# ------------------------------------------------------------------ R4-0 readiness
+FULL = {'head': 'a' * 40,
+        'digests': {'dataset': 'b' * 64, 'universe': 'c' * 64, 'classification': 'd' * 64, 'prereg': 'f' * 64},
         'tests': {'passed': 10, 'failed': 0}, 'm3_parity': {'status': 'PASS'},
         'accounting_sample': {'status': 'PASS'}, 'pilot': {'status': 'PASS'},
         'items': {str(n): {'status': 'PASS'} for n in RR.ITEMS}}
@@ -225,27 +272,47 @@ def test_readiness_defaults_to_not_ready_with_every_item_missing():
         RR.build({'items': {'8': {'status': 'PASS'}}})
     with pytest.raises(RR.ReadinessError):
         RR.build({'pilot': {'status': 'GOOD'}})
+    assert RR.build(dict(FULL, digests=dict(FULL['digests'], classification='PENDING')))['verdict'] == 'NOT READY'
 
 
 @pytest.mark.parametrize('drop', ['head', 'digests', 'tests', 'm3_parity', 'accounting_sample', 'pilot', 'items'])
 def test_any_missing_input_is_not_ready(tmp_path, drop):
     a, b = run_all(tmp_path / 'a'), run_all(tmp_path / 'b')
-    ev = dict(FULL, progress_files=[a, b])
+    ev = dict(FULL, final_files=[a.final_path, b.final_path])
     assert RR.build(ev)['verdict'] == 'READY'
     ev.pop(drop)
     assert RR.build(ev)['verdict'] == 'NOT READY'
-    assert RR.build(dict(FULL, progress_files=[a, b], tests={'passed': 10, 'failed': 1}))['verdict'] == 'NOT READY'
+    assert RR.build(dict(FULL, final_files=[a.final_path, b.final_path],
+                         tests={'passed': 10, 'failed': 1}))['verdict'] == 'NOT READY'
 
 
-def test_readiness_determinism_from_sealed_progress_files(tmp_path):
+def test_readiness_determinism_from_sealed_finals(tmp_path):
     a, b = run_all(tmp_path / 'a'), run_all(tmp_path / 'b')
-    doc = RR.build(dict(FULL, progress_files=[a, b]))
+    doc = RR.build(dict(FULL, final_files=[a.final_path, b.final_path]))
     assert doc['verdict'] == 'READY' and doc['determinism_sha256']['m3_repro_base.json']
     (tmp_path / 'c').mkdir()
     art = tmp_path / 'c' / 'm3_repro_base.json'
     art.write_text('{"changed": 1}' + chr(10))
     c = new(tmp_path / 'c')
     c.sealed([str(art)], ['m3_repro_base.json'])
-    doc = RR.build(dict(FULL, progress_files=[a, c.path]))
+    doc = RR.build(dict(FULL, final_files=[a.final_path, c.final_path]))
     assert doc['items']['6']['status'] == 'FAIL' and doc['verdict'] == 'NOT READY'
-    assert RR.build(dict(FULL, progress_files=[a]))['verdict'] == 'NOT READY'
+    assert RR.build(dict(FULL, final_files=[a.final_path]))['verdict'] == 'NOT READY'
+    with pytest.raises(RR.ReadinessError, match='sealed final'):
+        RR.build(dict(FULL, final_files=[a.path, b.final_path]))
+
+
+def test_offline_readiness_on_this_tree_is_not_ready(tmp_path):
+    """The real committed inputs: digests recomputed, holdout unread, classification PENDING -> NOT READY."""
+    ev = RR.offline(ROOT)
+    assert ev['digests']['classification'] == 'PENDING'
+    assert ev['digests']['universe'] == G.json.loads(G._load(ROOT, G.UNIVERSE))['digest']
+    off = ev['offline']
+    assert off['repro_manifest']['pinned'] and not off['repro_manifest']['promotion_eligible']
+    assert off['universe']['recomputed_ok'] and off['universe']['matches_prereg']
+    assert off['archive_manifest']['files'] == 103659 and off['archive_manifest']['matches_prereg']
+    assert ev['items']['3']['holdout_unread'] is True
+    doc = RR.build(ev)
+    assert doc['verdict'] == 'NOT READY' and 'digest.classification' in doc['not_passing']
+    assert RR.main(['--out', str(tmp_path / 'r.json'), '--repo', ROOT]) == 1
+    assert json.load(open(tmp_path / 'r.json'))['verdict'] == 'NOT READY'

@@ -1,20 +1,26 @@
-"""`zb-run-progress/1`: the sanitized operational progress record of an official R4 run (Codex 6094685201).
+"""`zb-run-progress/2`: the sanitized operational progress record of an official R4 run (Codex 6094685201;
+format per Codex 6094780810 Q2/Q3).
 
-One append-only JSONL file per run under the run's evidence dir (`progress-<run_id>.jsonl`). It carries ONLY:
-exact commit, registered dataset / manifest identity, run and stage (fold) state, integrity failures, artifact
-hashes and the final evidence locations. Never credentials, tokens or account values, and never an outcome: no PnL,
-score, return, Sharpe, equity, drawdown, win rate or other metric, and no strategy comparison. Metrics live only in
-the run's sealed artifacts, which this file references by SHA-256.
+Two files per run in the run's evidence dir:
+  progress-<run>.json   ONE live snapshot of the operational state, atomically replaced on every change (temp file in
+                        the same directory + fsync + os.replace): a reader sees the previous or the next snapshot,
+                        never a torn one. There is no append log to recover.
+  final-<run>.json      ONE immutable sealed final record, written once at the end (`sealed` or `aborted`) and never
+                        replaced (created by hard-linking a fully written temp file: an existing final refuses).
+Both carry ONLY: the run identity, run state, stage (fold) state, integrity failure codes, artifact hashes and the
+final evidence locations. Never credentials, tokens or account values, and never an outcome: no PnL, score, return,
+Sharpe, equity, drawdown, win rate or other metric, no strategy comparison. Metrics live only in the sealed artifacts,
+referenced here by SHA-256.
 
-Enforced by `check_record` on write AND on read (`verify`):
-  * every key at every depth is whitelisted per event (unknown key = refusal);
-  * no float / bool anywhere; the only integers are `seq` and the stage `fold` index;
-  * every string field matches a strict shape (hex digests, codes, relative paths); codes and stage names may not
-    carry an outcome word (pnl, score, return, sharpe, equity, ...);
-  * records are hash-chained (`prev` = previous `digest`); `digest` = SHA-256 of the canonical record without
-    `digest` and `wall`. `wall` (Cairo local ISO time, optional) is the only wall-clock field and is excluded from
-    the chain, so two identical runs give byte-identical records apart from `wall`;
-  * after `run_sealed` or `run_aborted` nothing more is appended.
+Identity (Codex 6094780810 Q2): the evaluator-identity digest plus the exact commit and the manifest, universe,
+sourced-classification and preregistration digests (`null` = not applicable to this run, e.g. the survivor-only M3
+reproduction has no universe). `identity_digest` = SHA-256 of the canonical identity; the run id = SHA-256 of identity
++ run config (first 16 hex). Wall time (`wall`, Cairo local ISO, optional) is the only clock field and is excluded
+from every digest, so two identical runs produce byte-identical records apart from `wall`.
+
+Enforced by `check_doc` on write AND on read: every key at every depth is whitelisted (unknown key = refusal); no
+float / bool anywhere; the only integers are `seq` and a stage `fold`; every string matches a strict shape (hex
+digests, codes, relative paths) and codes / stage names may not carry an outcome word.
 """
 from __future__ import annotations
 
@@ -22,12 +28,12 @@ import hashlib
 import json
 import os
 import re
+import tempfile
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-FORMAT = 'zb-run-progress/1'
+FORMAT = 'zb-run-progress/2'
 CAIRO = ZoneInfo('Africa/Cairo')
-GENESIS = '0' * 64
 
 HEX64 = re.compile(r'[0-9a-f]{64}\Z')
 HEX40 = re.compile(r'[0-9a-f]{40}\Z')
@@ -38,16 +44,12 @@ WALL = re.compile(r'\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d[+-]\d\d:\d\d\Z')
 OUTCOME = re.compile(r'pnl|profit|loss|score|return|sharpe|sortino|calmar|equity|balance|drawdown|dd\b|wins?\b|win_?rate|'
                      r'expectan|mean|cagr|alpha|metric|perf|gain|edge|verdict|promote|reject|net_r|\br\b', re.I)
 
-COMMON = {'format', 'seq', 'prev', 'digest', 'wall', 'event', 'run'}
-EVENTS = {                         # event -> (required extra keys, optional extra keys)
-    'run_start': ({'commit', 'dataset'}, set()),
-    'stage_start': ({'stage'}, set()),
-    'stage_done': ({'stage'}, {'artifacts'}),
-    'integrity_failure': ({'integrity'}, {'stage'}),
-    'run_sealed': ({'artifacts', 'evidence'}, set()),
-    'run_aborted': ({'integrity'}, {'stage'}),
-}
-TERMINAL = {'run_sealed', 'run_aborted'}
+IDENTITY = ('commit', 'evaluator', 'manifest', 'universe', 'classification', 'prereg')
+LIVE_KEYS = {'format', 'kind', 'run', 'seq', 'state', 'identity', 'identity_digest', 'stages', 'integrity', 'digest',
+             'wall'}
+FINAL_KEYS = LIVE_KEYS | {'artifacts', 'evidence'}
+STATES = {'live': ('running', 'sealed', 'aborted'), 'final': ('sealed', 'aborted')}
+TERMINAL = ('sealed', 'aborted')
 
 
 class ProgressError(ValueError):
@@ -55,16 +57,20 @@ class ProgressError(ValueError):
 
 
 def canon(obj) -> bytes:
-    return json.dumps(obj, sort_keys=True, separators=(',', ':'), ensure_ascii=True).encode('ascii')
+    return json.dumps(obj, sort_keys=True, separators=(',', ':'), ensure_ascii=True, allow_nan=False).encode('ascii')
 
 
-def record_digest(rec: dict) -> str:
-    return hashlib.sha256(canon({k: v for k, v in rec.items() if k not in ('digest', 'wall')})).hexdigest()
+def doc_digest(doc: dict) -> str:
+    return hashlib.sha256(canon({k: v for k, v in doc.items() if k not in ('digest', 'wall')})).hexdigest()
 
 
-def run_id(commit: str, dataset: dict, config: dict) -> str:
-    """Deterministic: same commit + dataset identity + run config = same id (no clock, no randomness)."""
-    return hashlib.sha256(canon({'commit': commit, 'dataset': dataset, 'config': config})).hexdigest()[:16]
+def identity_digest(identity: dict) -> str:
+    return hashlib.sha256(canon(identity)).hexdigest()
+
+
+def run_id(identity: dict, config: dict) -> str:
+    """Deterministic: same identity + run config = same id (no clock, no randomness)."""
+    return hashlib.sha256(canon({'identity': identity, 'config': config})).hexdigest()[:16]
 
 
 def _code(v, what):
@@ -80,18 +86,33 @@ def _relpath(v, what):
 def _keys(d, allowed, required, what):
     if not isinstance(d, dict):
         raise ProgressError(f'{what} must be an object')
-    extra, missing = set(d) - allowed, required - set(d)
+    extra, missing = set(d) - set(allowed), set(required) - set(d)
     if extra:
         raise ProgressError(f'{what}: key(s) outside the whitelist: {sorted(extra)}')
     if missing:
         raise ProgressError(f'{what}: missing key(s) {sorted(missing)}')
 
 
+def check_identity(v) -> None:
+    _keys(v, IDENTITY, IDENTITY, 'identity')
+    if type(v['commit']) is not str or not HEX40.match(v['commit']):
+        raise ProgressError('identity.commit must be a full 40-hex SHA')
+    if type(v['evaluator']) is not str or not HEX64.match(v['evaluator']):
+        raise ProgressError('identity.evaluator must be a 64-hex evaluator-identity digest')
+    for k in ('manifest', 'universe', 'classification', 'prereg'):
+        if v[k] is not None and (type(v[k]) is not str or not HEX64.match(v[k])):
+            raise ProgressError(f'identity.{k} must be a 64-hex digest or null (not applicable)')
+
+
 def _stage(v):
-    _keys(v, {'name', 'fold'}, {'name'}, 'stage')
+    _keys(v, {'name', 'fold', 'status', 'artifacts'}, {'name', 'status'}, 'stage')
     _code(v['name'], 'stage.name')
+    if v['status'] not in ('started', 'done'):
+        raise ProgressError('stage.status must be started / done')
     if 'fold' in v and (type(v['fold']) is not int or v['fold'] < 0):
         raise ProgressError('stage.fold must be a non-negative int')
+    if 'artifacts' in v:
+        _artifacts(v['artifacts'])
 
 
 def _artifacts(v):
@@ -106,81 +127,114 @@ def _artifacts(v):
         raise ProgressError('artifacts must be sorted by path and unique')
 
 
-def check_record(rec: dict) -> None:
+def _integrity(v):
+    if not isinstance(v, list):
+        raise ProgressError('integrity must be a list')
+    for i in v:
+        _keys(i, {'code', 'stage', 'fold'}, {'code'}, 'integrity entry')
+        _code(i['code'], 'integrity.code')
+        if 'stage' in i:
+            _code(i['stage'], 'integrity.stage')
+        if 'fold' in i and (type(i['fold']) is not int or i['fold'] < 0):
+            raise ProgressError('integrity.fold must be a non-negative int')
+
+
+def check_doc(doc: dict) -> None:
     """Refuse anything outside the whitelist, any numeric outcome and any malformed field."""
-    if not isinstance(rec, dict) or type(rec.get('event')) is not str or rec['event'] not in EVENTS:
-        raise ProgressError(f'event must be one of {sorted(EVENTS)}')
-    req, opt = EVENTS[rec['event']]
-    _keys(rec, COMMON | req | opt, (COMMON - {'wall'}) | req, f'record {rec["event"]}')
-    if rec['format'] != FORMAT:
+    if not isinstance(doc, dict) or doc.get('kind') not in STATES:
+        raise ProgressError('kind must be live or final')
+    kind = doc['kind']
+    allowed = LIVE_KEYS if kind == 'live' else FINAL_KEYS
+    _keys(doc, allowed, allowed - {'wall'}, f'{kind} record')
+    if doc['format'] != FORMAT:
         raise ProgressError(f'format must be {FORMAT}')
-    if type(rec['seq']) is not int or rec['seq'] < 0:
-        raise ProgressError('seq must be a non-negative int')
-    for k in ('prev', 'digest'):
-        if type(rec[k]) is not str or not HEX64.match(rec[k]):
-            raise ProgressError(f'{k} must be 64 lowercase hex')
-    if type(rec['run']) is not str or not RUN_ID.match(rec['run']):
+    if type(doc['run']) is not str or not RUN_ID.match(doc['run']):
         raise ProgressError('run must be a 16-hex run id')
-    if 'wall' in rec and (type(rec['wall']) is not str or not WALL.match(rec['wall'])):
-        raise ProgressError('wall must be an ISO local time with offset')
-    if 'commit' in rec and (type(rec['commit']) is not str or not HEX40.match(rec['commit'])):
-        raise ProgressError('commit must be a full 40-hex SHA')
-    if 'dataset' in rec:
-        ds = rec['dataset']
-        _keys(ds, {'manifest', 'digest'}, {'manifest', 'digest'}, 'dataset')
-        _relpath(ds['manifest'], 'dataset.manifest')
-        if type(ds['digest']) is not str or not HEX64.match(ds['digest']):
-            raise ProgressError('dataset.digest must be 64 lowercase hex')
-    if 'stage' in rec:
-        _stage(rec['stage'])
-    if 'integrity' in rec:
-        if not isinstance(rec['integrity'], list) or not rec['integrity']:
-            raise ProgressError('integrity must be a non-empty list of codes')
-        for c in rec['integrity']:
-            _code(c, 'integrity')
-    if 'artifacts' in rec:
-        _artifacts(rec['artifacts'])
-    if 'evidence' in rec:
-        if not isinstance(rec['evidence'], list) or rec['evidence'] != sorted(set(rec['evidence'])):
+    if type(doc['seq']) is not int or doc['seq'] < 0:
+        raise ProgressError('seq must be a non-negative int')
+    if doc['state'] not in STATES[kind]:
+        raise ProgressError(f'state must be one of {STATES[kind]}')
+    check_identity(doc['identity'])
+    if doc['identity_digest'] != identity_digest(doc['identity']):
+        raise ProgressError('identity_digest does not match the identity')
+    if not isinstance(doc['stages'], list):
+        raise ProgressError('stages must be a list')
+    for s in doc['stages']:
+        _stage(s)
+    _integrity(doc['integrity'])
+    if kind == 'final':
+        _artifacts(doc['artifacts'])
+        if not isinstance(doc['evidence'], list) or doc['evidence'] != sorted(set(doc['evidence'])):
             raise ProgressError('evidence must be a sorted unique list of relative paths')
-        for p in rec['evidence']:
+        for p in doc['evidence']:
             _relpath(p, 'evidence')
-    if record_digest(rec) != rec['digest']:
+    if 'wall' in doc and (type(doc['wall']) is not str or not WALL.match(doc['wall'])):
+        raise ProgressError('wall must be an ISO local time with offset')
+    if type(doc['digest']) is not str or doc['digest'] != doc_digest(doc):
         raise ProgressError('digest does not match the record')
 
 
-def verify(path: str) -> list[dict]:
-    """Read and check the whole chain: schema, seq continuity, prev links, digests, one run id, run_start first,
-    nothing after a terminal event."""
-    out = []
+def doc_bytes(doc: dict) -> bytes:
+    return json.dumps(doc, sort_keys=True, indent=1, ensure_ascii=True, allow_nan=False).encode('ascii') + b'\n'
+
+
+def read(path: str) -> dict | None:
+    """Read and check one snapshot / final record (None when absent)."""
     if not os.path.exists(path):
-        return out
+        return None
     with open(path, 'rb') as f:
         data = f.read()
-    if data and not data.endswith(b'\n'):
-        raise ProgressError(f'{path}: truncated last line')
-    prev = GENESIS
-    for i, line in enumerate(data.splitlines()):
-        try:
-            rec = json.loads(line)
-        except ValueError as e:
-            raise ProgressError(f'{path}:{i + 1}: not JSON: {e}')
-        check_record(rec)
-        if rec['seq'] != i or rec['prev'] != prev:
-            raise ProgressError(f'{path}:{i + 1}: broken chain (seq / prev)')
-        if (i == 0) != (rec['event'] == 'run_start'):
-            raise ProgressError(f'{path}:{i + 1}: run_start must be the first and only start record')
-        if out and (out[-1]['event'] in TERMINAL or rec['run'] != out[0]['run']):
-            raise ProgressError(f'{path}:{i + 1}: record after a terminal event or from another run')
-        if canon_line(rec) != line + b'\n':
-            raise ProgressError(f'{path}:{i + 1}: not in canonical form')
-        out.append(rec)
-        prev = rec['digest']
-    return out
+    try:
+        doc = json.loads(data)
+    except ValueError as e:
+        raise ProgressError(f'{path}: not JSON: {e}')
+    check_doc(doc)
+    if doc_bytes(doc) != data:
+        raise ProgressError(f'{path}: not in canonical form')
+    return doc
 
 
-def canon_line(rec: dict) -> bytes:
-    return canon(rec) + b'\n'
+def _tmp(path: str, data: bytes) -> str:
+    d = os.path.dirname(os.path.abspath(path))
+    fd, tmp = tempfile.mkstemp(prefix='.' + os.path.basename(path) + '.', suffix='.tmp', dir=d)
+    try:
+        with os.fdopen(fd, 'wb') as f:
+            f.write(data)
+            f.flush()
+            os.fsync(f.fileno())
+    except BaseException:
+        _unlink(tmp)
+        raise
+    return tmp
+
+
+def _unlink(p):
+    try:
+        os.unlink(p)
+    except OSError:
+        pass
+
+
+def atomic_replace(path: str, data: bytes) -> None:
+    """Replace `path` with `data` atomically (temp in the same dir + fsync + os.replace)."""
+    tmp = _tmp(path, data)
+    try:
+        os.replace(tmp, path)
+    except BaseException:
+        _unlink(tmp)
+        raise
+
+
+def write_once(path: str, data: bytes) -> None:
+    """Create `path` with `data` exactly once: a fully written temp file is hard-linked into place, which fails if
+    `path` exists (on Windows and POSIX alike), so a final record is never replaced or torn."""
+    tmp = _tmp(path, data)
+    try:
+        os.link(tmp, path)
+    except FileExistsError:
+        raise ProgressError(f'{path}: the sealed final record already exists (immutable)')
+    finally:
+        _unlink(tmp)
 
 
 def cairo_now() -> str:
@@ -196,36 +250,44 @@ def file_sha256(path: str) -> str:
 
 
 class Progress:
-    """Append-only writer. `clock=None` omits `wall` entirely (tests, determinism checks)."""
+    """Live snapshot writer + one sealed final. `clock=None` omits `wall` entirely (tests, determinism checks)."""
 
-    def __init__(self, evidence_dir: str, *, commit: str, dataset: dict, config: dict, clock=cairo_now):
-        self.dir, self.clock = evidence_dir, clock
-        self.run = run_id(commit, dataset, config)
-        self.path = os.path.join(evidence_dir, f'progress-{self.run}.jsonl')
+    def __init__(self, evidence_dir: str, *, identity: dict, config: dict, clock=cairo_now):
+        check_identity(identity)
+        self.dir, self.clock, self.identity = evidence_dir, clock, dict(identity)
+        self.run = run_id(self.identity, config)
+        self.path = os.path.join(evidence_dir, f'progress-{self.run}.json')
+        self.final_path = os.path.join(evidence_dir, f'final-{self.run}.json')
         os.makedirs(evidence_dir, exist_ok=True)
-        recs = verify(self.path)
-        if recs and recs[-1]['event'] in TERMINAL:
-            raise ProgressError(f'{self.path}: run already {recs[-1]["event"]}; use a new evidence dir')
-        self.seq, self.prev = len(recs), recs[-1]['digest'] if recs else GENESIS
-        if not recs:
-            self._emit('run_start', commit=commit, dataset=dataset)
+        if os.path.exists(self.final_path):
+            raise ProgressError(f'{self.final_path}: run already sealed; use a new evidence dir')
+        cur = read(self.path)
+        if cur is not None and cur['state'] in TERMINAL:
+            raise ProgressError(f'{self.path}: run already {cur["state"]}; use a new evidence dir')
+        if cur is not None and cur['identity'] != self.identity:
+            raise ProgressError(f'{self.path}: snapshot belongs to another identity')
+        self.seq = cur['seq'] if cur else -1
+        self.stages = cur['stages'] if cur else []
+        self.integrity = cur['integrity'] if cur else []
+        self.done = False
+        self._write('running')
 
-    def _emit(self, event: str, **fields) -> dict:
-        if self.prev is None:
-            raise ProgressError('run already finished')
-        rec = dict(fields, format=FORMAT, seq=self.seq, prev=self.prev, event=event, run=self.run)
-        rec['digest'] = record_digest(rec)
+    def _doc(self, kind: str, state: str, **extra) -> dict:
+        doc = dict(extra, format=FORMAT, kind=kind, run=self.run, seq=self.seq, state=state, identity=self.identity,
+                   identity_digest=identity_digest(self.identity), stages=self.stages, integrity=self.integrity)
+        doc['digest'] = doc_digest(doc)
         if self.clock is not None:
-            rec['wall'] = self.clock()
-        check_record(rec)
-        with open(self.path, 'ab') as f:
-            f.write(canon_line(rec))
-            f.flush()
-            os.fsync(f.fileno())
-        self.seq, self.prev = self.seq + 1, rec['digest']
-        if event in TERMINAL:
-            self.prev = None
-        return rec
+            doc['wall'] = self.clock()
+        check_doc(doc)
+        return doc
+
+    def _write(self, state: str) -> dict:
+        if self.done:
+            raise ProgressError('run already finished')
+        self.seq += 1
+        doc = self._doc('live', state)
+        atomic_replace(self.path, doc_bytes(doc))
+        return doc
 
     def artifacts(self, paths) -> list[dict]:
         out = []
@@ -236,23 +298,51 @@ class Progress:
         return out
 
     def stage_start(self, name: str, fold: int | None = None) -> dict:
-        return self._emit('stage_start', stage=_mk_stage(name, fold))
+        self.stages = self.stages + [_mk_stage(name, fold, 'started')]
+        return self._write('running')
 
     def stage_done(self, name: str, fold: int | None = None, artifacts=()) -> dict:
-        extra = {'artifacts': self.artifacts(artifacts)} if artifacts else {}
-        return self._emit('stage_done', stage=_mk_stage(name, fold), **extra)
+        s = _mk_stage(name, fold, 'done')
+        if artifacts:
+            s['artifacts'] = self.artifacts(artifacts)
+        key = (name, fold)
+        idx = max((i for i, x in enumerate(self.stages) if (x['name'], x.get('fold')) == key
+                   and x['status'] == 'started'), default=None)
+        if idx is None:
+            raise ProgressError(f'stage {name} was not started')
+        self.stages = self.stages[:idx] + [s] + self.stages[idx + 1:]
+        return self._write('running')
 
     def integrity_failure(self, codes, stage: str | None = None, fold: int | None = None) -> dict:
-        extra = {'stage': _mk_stage(stage, fold)} if stage else {}
-        return self._emit('integrity_failure', integrity=list(codes), **extra)
+        self.integrity = self.integrity + [_mk_integrity(c, stage, fold) for c in codes]
+        return self._write('running')
+
+    def _finish(self, state: str, artifacts, evidence) -> dict:
+        self._write(state)
+        final = self._doc('final', state, artifacts=self.artifacts(artifacts), evidence=sorted(set(evidence)))
+        write_once(self.final_path, doc_bytes(final))
+        self.done = True
+        return final
 
     def sealed(self, artifacts, evidence) -> dict:
-        return self._emit('run_sealed', artifacts=self.artifacts(artifacts), evidence=sorted(set(evidence)))
+        return self._finish('sealed', artifacts, evidence)
 
     def aborted(self, codes, stage: str | None = None, fold: int | None = None) -> dict:
-        extra = {'stage': _mk_stage(stage, fold)} if stage else {}
-        return self._emit('run_aborted', integrity=list(codes), **extra)
+        self.integrity = self.integrity + [_mk_integrity(c, stage, fold) for c in codes]
+        return self._finish('aborted', (), ())
 
 
-def _mk_stage(name, fold):
-    return {'name': name} if fold is None else {'name': name, 'fold': fold}
+def _mk_stage(name, fold, status):
+    s = {'name': name, 'status': status}
+    if fold is not None:
+        s['fold'] = fold
+    return s
+
+
+def _mk_integrity(code, stage, fold):
+    i = {'code': code}
+    if stage is not None:
+        i['stage'] = stage
+    if fold is not None:
+        i['fold'] = fold
+    return i

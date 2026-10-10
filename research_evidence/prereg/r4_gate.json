@@ -1,11 +1,14 @@
 {
- "format": "zb-r4-gate/1",
+ "format": "zb-r4-gate/2",
  "prereg": "research_evidence/prereg/trend_ema_mom.v1.json",
  "ledger": "research_evidence/ledger/trend_ema_mom.jsonl",
  "integration_ref": "origin/master",
- "cleared": [
-  {"slice": "R1+R2", "pr": 51, "branch": "origin/nc-res01-r2", "head": "e6fdad120d72421a9147d86ce3a68b7daf49bb9d"},
-  {"slice": "R3", "pr": 52, "branch": "origin/nc-res01-r3", "head": "d267463e074fbc22196e9f9c8d5e387dc42968b9"}
+ "pins": [
+  {"slice": "R1+R2+R3", "prs": [51, 52], "head": "01564264431650a9fde53f27623928bb84702914"},
+  {"slice": "R3 overlap integrity + legacy-m3-repro-v1", "prs": [56], "branch": "origin/nc-r3-overlap-integrity",
+   "head": "33ee82f70039a30dd6bcd9cda6b3816156131638", "after": "01564264431650a9fde53f27623928bb84702914"}
  ],
- "note": "Each head is the Codex-cleared head of its PR. If a fix round moves a PR, this pin is updated in a reviewed commit to the new cleared head; run_r4.py refuses while the branch tip differs from the pin or the pin is not merged into integration_ref and contained in the executing HEAD."
+ "classification": {"id": "instrument-classes-v2", "digest": "PENDING",
+  "note": "Classification v2 (sourced, point-in-time dated, Cowork-verified, Codex-bound; crypto top-40 + the selected gold-pilot identities only) is not built yet. While this is PENDING the gate is closed and R4-0 is NOT READY. Manual classification v1 cannot authorize R4 (Codex 6094780810 Q5)."},
+ "note": "Exact reviewed SHA pins plus ancestry (Codex 6080124561). Each pin must exist, equal its branch tip when a branch is named, lie after its `after` commit, be merged into integration_ref and be contained in the executing HEAD. A fix round that moves a pin is re-pinned only in a reviewed commit."
 }
