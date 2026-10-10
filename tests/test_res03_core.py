@@ -847,17 +847,21 @@ def low_level_launch():
 
 def run(v):
     import subprocess                              # Cowork 6094554597: must import on every platform
+    import concurrent.futures as cf
     alias = getattr(subprocess, '_fork_exec', None)
-    posix = os.name != 'nt'
+    # Codex 6094776448: an alias that this interpreter does not have (CPython 3.13 has neither
+    # `subprocess._posixsubprocess` nor `concurrent.futures._interpreters`) is 'unavailable', decided by a feature
+    # check before the attempt - never by accepting an arbitrary exception
+    has_psp, has_cfi = hasattr(subprocess, '_posixsubprocess'), hasattr(cf, '_interpreters')
     return {
         'import subprocess': 'ok',
         'imports': {n: attempt(lambda: __import__(n)) for n in IMPORT_REFUSED},
         'in sys.modules': [n for n in IMPORT_REFUSED if n in sys.modules],  # before the reload rows re-insert
         '_posixsubprocess.fork_exec': attempt(import_low),
-        'reload _posixsubprocess': attempt(reload_low) if posix else 'absent',
+        'reload _posixsubprocess': attempt(reload_low) if has_psp else 'unavailable',
         'subinterpreter': attempt(subinterp),
-        'subinterpreter via alias': attempt(subinterp_alias),
-        'reload _interpreters': attempt(reload_interp),
+        'subinterpreter via alias': attempt(subinterp_alias) if has_cfi else 'unavailable',
+        'reload _interpreters': attempt(reload_interp) if has_cfi else 'unavailable',
         'create_builtin _interpreters': attempt(lambda: __import__('_imp').create_builtin(
             types.SimpleNamespace(name='_interpreters'))),
         'aliases': aliases(),
@@ -880,16 +884,15 @@ def test_evaluator_cannot_reach_low_level_process_creation(world, tmp_path):
     """Codex 6094447977 (Cowork, Linux): `_posixsubprocess.fork_exec` raises no audit event. The module stays importable
     (`subprocess` needs it; Cowork 6094554597 finding 1) but the function is a refusing stub in the module and every alias
     (`subprocess._fork_exec`), and reload / `_imp.create_builtin` / `_imp.create_dynamic` (by name, dotted name or file
-    stem) cannot mint a fresh one. Subinterpreters, which have no audit hook (finding 2), are refused. The direct low-level no-op launch is refused on this
-    platform (Windows: `_winapi.CreateProcess`, an audited event); subprocess / os / socket / write refusals hold and an
+    stem) cannot mint a fresh one. Subinterpreters, which have no audit hook (finding 2), are refused. The direct
+    low-level no-op launch is refused on this platform (Windows: `_winapi.CreateProcess`, an audited event); subprocess / os / socket / write refusals hold and an
     ordinary stdlib evaluator still works, identically in both fresh processes."""
     ds = ds_of(world)
     path, _ = dirs(tmp_path)
     w = access(ds, path).open('train', lineage='root')
     f = evaluator(tmp_path / 'ev', PROCESS_ATTACK, 'process_attack.py')
     out = list(P.evaluate(w, f, 'run', train_times(2)))
-    refused = ('subinterpreter', 'subinterpreter via alias', 'reload _interpreters', '_posixsubprocess.fork_exec',
-               'create_builtin _interpreters',
+    refused = ('subinterpreter', '_posixsubprocess.fork_exec', 'create_builtin _interpreters',
                'create_builtin', 'create_dynamic', 'create_dynamic dotted', 'create_dynamic renamed', 'low-level launch',
                'subprocess.run', 'os.system', 'socket', 'write open')
     names = ('_posixsubprocess', '_interpreters', '_xxsubinterpreters', '_interpqueues', '_interpchannels',
@@ -897,8 +900,12 @@ def test_evaluator_cannot_reach_low_level_process_creation(world, tmp_path):
              '_testlimitedcapi')
     want = dict({k: 'refused' for k in refused}, **{'import subprocess': 'ok', 'aliases': [], 'json works': True,
                                                    'imports': {n: 'refused' for n in names}, 'in sys.modules': []})
-    for k in ('reload _posixsubprocess', 'subprocess._fork_exec'):
-        want[k] = 'absent' if os.name == 'nt' else 'refused'
+    want['subprocess._fork_exec'] = 'absent' if os.name == 'nt' else 'refused'
+    import concurrent.futures as cf                # the sandbox child runs this same interpreter
+    import subprocess
+    cfi = 'refused' if hasattr(cf, '_interpreters') else 'unavailable'
+    want.update({'reload _posixsubprocess': 'refused' if hasattr(subprocess, '_posixsubprocess') else 'unavailable',
+                 'subinterpreter via alias': cfi, 'reload _interpreters': cfi})
     assert out == [want] * 2
     assert not os.path.exists(tmp_path / 'ev' / 'pwn.txt')
 

@@ -18,6 +18,10 @@ an original. Modules whose primitives escape the hook without an audit event (`S
 the subinterpreter modules) are refused on direct import and creation; the copies `subprocess` / `concurrent.futures`
 need are preloaded and every function in them is a refusing stub that cannot be re-executed away. The C-API test
 modules (`NO_HOOK_MODULES`) are refused on every route.
+Known limitation (Cowork 6094764379 finding 3, DEFERRED by Codex 6094776448): other unaudited OS primitives (`mkfifo` /
+`mknod`, extended attributes, shared memory, `memfd`) are not brokered. This boundary is a CPython runtime control for
+honest strategy evaluators, not a hostile-native-code jail; it is reopened only if R4-0 shows result contamination,
+cross-run state, holdout leakage or an honest evaluator dependency.
 The observable environment (hash seed, UTF-8 mode, time zone, locale encoding, environment keys, empty
 cwd, tree mtimes) and the canonical `execution_environment` (implementation, version, executable SHA-256, OS,
 platform, CPU count; no host path) are reported at start-up and bound into the attestation; the runner requires the
