@@ -89,6 +89,29 @@ class PITError(ValueError):
     pass
 
 
+class OverlapError(PITError):
+    """Two manifest files of one (series, symbol, interval) declare overlapping or duplicate time coverage."""
+
+
+def _refuse_overlap(key: tuple, files: list) -> None:
+    """Fail closed when any two files of one key cover a common open time. Coverage is the manifest's declared
+    [first_open_ms, last_open_ms] (`M.validate` requires it for every non-empty file and `Dataset.rows` re-checks it
+    against the hashed bytes); an empty file covers nothing. Exactly adjacent files are fine. There is deliberately no
+    source preference here: which source serves a key is chosen upstream, in the manifest / universe artifact."""
+    seen = sorted((f for f in files if f['first_open_ms'] is not None),
+                  key=lambda f: (f['first_open_ms'], f['last_open_ms'], f['path']))
+    reach = None                                       # the file reaching furthest so far
+    for f in seen:
+        if reach is not None and f['first_open_ms'] <= reach['last_open_ms']:
+            series, symbol, interval = key
+            lo, hi = f['first_open_ms'], min(f['last_open_ms'], reach['last_open_ms'])
+            raise OverlapError(f'{series} {symbol} {interval}: manifest files {reach["path"]} and {f["path"]} overlap '
+                               f'on open times {S.utc(lo)} .. {S.utc(hi)}; refusing to serve duplicated coverage '
+                               f'(choose one source upstream in the manifest/universe artifact)')
+        if reach is None or f['last_open_ms'] > reach['last_open_ms']:
+            reach = f
+
+
 class Dataset:
     def __init__(self, manifest: dict, store: str, universe: dict | None, books=None):
         M.validate(manifest)
@@ -118,8 +141,9 @@ class Dataset:
         for f in manifest['files']:
             key = (f.get('series', 'klines'), f['symbol'], f['interval'])
             self._files.setdefault(key, []).append(f)
-        for v in self._files.values():
+        for key, v in self._files.items():
             v.sort(key=lambda f: (f['first_open_ms'] is None, f['first_open_ms'] or 0))
+            _refuse_overlap(key, v)
         self._cache: dict[str, list] = {}
         self._keys: dict[str, tuple] = {}
 
@@ -167,6 +191,9 @@ class Dataset:
                     out.append(Bar(om, float(o), float(h), float(lo), float(c), float(v), None, om + iv))
         if len(out) != f['rows']:
             raise PITError(f'{p}: {len(out)} rows != manifest {f["rows"]}')
+        if out and (out[0][0] != f['first_open_ms'] or out[-1][0] != f['last_open_ms']):
+            raise PITError(f'{p}: bars span {out[0][0]}..{out[-1][0]} != manifest coverage '
+                           f'{f["first_open_ms"]}..{f["last_open_ms"]} (the overlap check relies on it)')
         self._cache[p] = out
         self._keys[p] = ([r[0] for r in out], [r.available_ms for r in out])
         return out

@@ -1748,3 +1748,67 @@ def test_runtime_never_imports_research_code():
                 [n.module or ''] if isinstance(n, ast.ImportFrom) and not n.level else []
             bad += [(f, m) for m in mods if m.split('.')[0] in names or m.startswith('tools.research')]
     assert bad == []
+
+
+# ------------------------------------------------------------------ R3 data integrity: overlapping coverage refuses
+# (Codex #53 6094780810 Q1): a Dataset must never serve two manifest files of one (series, symbol, interval) whose
+# coverage overlaps; there is no source preference - choosing a source is the manifest/universe artifact's job.
+def _csv_world(tmp_path, spans):
+    """A survivor-only local-CSV store: one BTCUSDT_1h.csv per (dir, first_hour, last_hour) in `spans`."""
+    store = tmp_path / 'csv'
+    for d, a, b in spans:
+        p = store / d / 'BTCUSDT_1h.csv'
+        p.parent.mkdir(parents=True, exist_ok=True)
+        t0 = ms('2024-01-01')
+        rows = [datetime.fromtimestamp((t0 + h * HOUR) / 1000, timezone.utc).strftime('%Y-%m-%d %H:%M:%S')
+                + ',1,2,0.5,1.5,10' for h in range(a, b + 1)]
+        p.write_bytes(('t,o,h,l,c,v\n' + '\n'.join(rows) + '\n').encode())
+    m = M.build(sorted({d for d, _, _ in spans}), manifest_id='fx-overlap', source_class='legacy-unverified',
+                base=str(store), data_root='repo', survivor_only=True)
+    return str(store), m
+
+
+@pytest.mark.parametrize('spans,lo,hi', [
+    ((('a', 0, 47), ('b', 24, 71)), '2024-01-02T00:00:00Z', '2024-01-02T23:00:00Z'),     # partial overlap
+    ((('a', 0, 47), ('b', 0, 47)), '2024-01-01T00:00:00Z', '2024-01-02T23:00:00Z'),      # duplicate (identical range)
+    ((('a', 0, 71), ('b', 24, 47)), '2024-01-02T00:00:00Z', '2024-01-02T23:00:00Z'),     # nested
+    ((('a', 0, 47), ('b', 47, 71)), '2024-01-02T23:00:00Z', '2024-01-02T23:00:00Z'),     # one shared bar
+    ((('a', 0, 23), ('b', 24, 47), ('c', 30, 30)), '2024-01-02T06:00:00Z', '2024-01-02T06:00:00Z'),  # 3rd file
+])
+def test_dataset_refuses_overlapping_coverage(tmp_path, spans, lo, hi):
+    store, m = _csv_world(tmp_path, spans)
+    with pytest.raises(P.OverlapError) as e:
+        P.Dataset(m, store, None)
+    msg = str(e.value)
+    assert isinstance(e.value, P.PITError) and msg.startswith('klines BTCUSDT 1h: ')
+    paths = re.findall(r'manifest files (\S+) and (\S+) overlap', msg)
+    assert len(paths) == 1 and all(p.endswith('/BTCUSDT_1h.csv') for p in paths[0]) and paths[0][0] != paths[0][1]
+    assert f'{lo} .. {hi}' in msg
+
+
+def test_dataset_loads_exactly_adjacent_coverage(tmp_path):
+    store, m = _csv_world(tmp_path, (('a', 0, 23), ('b', 24, 47), ('c', 48, 71)))
+    ds = P.Dataset(m, store, None)
+    fs = ds.files('klines', 'BTCUSDT', '1h')
+    assert [f['path'] for f in fs] == ['a/BTCUSDT_1h.csv', 'b/BTCUSDT_1h.csv', 'c/BTCUSDT_1h.csv']
+    assert [len(ds.rows(f)) for f in fs] == [24, 24, 24]
+
+
+def test_dataset_rows_refuse_misdeclared_coverage(tmp_path):
+    """The overlap check trusts the declared span, so loading re-checks it against the hashed bytes."""
+    store, m = _csv_world(tmp_path, (('a', 0, 23),))
+    m = json.loads(json.dumps(m))
+    m['files'][0]['last_open_ms'] -= HOUR                          # a hand-edited manifest hiding its last bar
+    m['digest'] = M.digest_of(m)
+    with pytest.raises(P.PITError, match='!= manifest coverage'):
+        P.Dataset(m, store, None).rows(m['files'][0])
+
+
+def test_committed_archive_manifest_has_no_overlap():
+    """Manifest metadata only (no market data): the archive manifest the R2 universe is built on refuses nothing."""
+    m = M.load(os.path.join(ROOT, 'research_evidence', 'manifests', 'binance-um-archive-v1.json.gz'))
+    g = {}
+    for f in m['files']:
+        g.setdefault((f.get('series', 'klines'), f['symbol'], f['interval']), []).append(f)
+    for k, fs in g.items():
+        P._refuse_overlap(k, fs)
