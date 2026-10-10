@@ -11,3 +11,5 @@ research_evidence/manifests/*.json.gz binary
 research_evidence/ledger/*.jsonl text eol=lf
 # All Python is LF in the repo and in every checkout (Codex R1: CRLF pollution from Windows).
 *.py text eol=lf
+# Codex #53 6096066849 (same class): classification inputs are hash-pinned, so every checkout writes them LF.
+research_evidence/inputs/**/*.json text eol=lf

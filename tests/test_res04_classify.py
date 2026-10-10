@@ -484,3 +484,18 @@ def test_top40_candidates_and_coverage(store):
     cov = C.coverage(c, C.top40_candidates(u))
     assert (cov['candidates'], cov['positive'], cov['not_positive']) == (2, 1, 1)
     assert cov['not_positive_symbols'] == {'OLDUSDT': ['UNKNOWN:no-documented-listing']}
+
+
+def test_committed_classification_inputs_are_lf_in_every_checkout():
+    # Codex #53 6096066849 (same class): core.autocrlf=true must not rewrite the hash-pinned classification inputs
+    import subprocess
+    d = 'research_evidence/inputs/instrument-classes-v2'
+    files = subprocess.run(['git', 'ls-files', '--', d], cwd=ROOT, capture_output=True, text=True,
+                           check=True).stdout.split()
+    assert files and all(f.endswith('.json') for f in files)
+    attr = subprocess.run(['git', 'check-attr', 'text', 'eol', '--', *files], cwd=ROOT, capture_output=True,
+                          text=True, check=True).stdout
+    for f in files:
+        assert f'{f}: text: set' in attr and f'{f}: eol: lf' in attr, attr
+        with open(os.path.join(ROOT, f), 'rb') as fh:
+            assert b'\r' not in fh.read()
