@@ -20,6 +20,7 @@ W = {'start': '2025-01-01T00:00:00Z', 'end': '2025-07-01T00:00:00Z'}
 RD = 'a' * 64
 MD = 'b' * 64
 ED = 'e' * 64
+REAL_RECOMPUTE = L.recompute_run_digest
 
 
 def fixture_root(tmp_path):
@@ -174,7 +175,49 @@ def test_committed_legacy_manifest_matches_disk_and_data_manifest():
     assert all(legacy[f['path']]['sha256'] == f['sha256'] for f in m['files'])
 
 
+
+REPRO_DIGEST = 'a42c36927eccf48a16c09085192dd53a7ef7ba607dfc1021cf96a67c917e8bb6'
+CORE8 = ('BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT', 'XRPUSDT', 'DOGEUSDT', 'AVAXUSDT', 'LINKUSDT')
+
+
+def test_committed_m3_repro_manifest_is_bound_derived_and_reproduction_only():
+    """legacy-m3-repro-v1 (Codex #53 6094970068): exactly the data_long/4h core-8 files the M3 harness served, their
+    metadata copied verbatim from legacy-unverified-v1, digest pinned, marked reproduction-only, bytes still on disk."""
+    m = M.load(os.path.join(RES, 'manifests', 'legacy-m3-repro-v1.json'))
+    legacy = M.load(os.path.join(RES, 'manifests', 'legacy-unverified-v1.json'))
+    assert m['digest'] == REPRO_DIGEST and m['manifest_id'] == 'legacy-m3-repro-v1'
+    assert m['source_class'] == M.REPRO_ONLY and M.promotion_eligible(m) is False and m['survivor_only'] is True
+    assert M.promotion_eligible(legacy) is True                                 # only repro-only is excluded here
+    assert [f['path'] for f in m['files']] == sorted(f'data_long/4h/{s}_4h.csv' for s in CORE8)
+    assert M.subset(legacy, [f['path'] for f in m['files']], manifest_id=m['manifest_id'],
+                    source_class=M.REPRO_ONLY, note=m['note']) == m
+    assert M.verify(m) == []
+
+
+def test_repro_only_manifest_must_be_survivor_only_and_subset_refuses_unknown_paths():
+    legacy = M.load(os.path.join(RES, 'manifests', 'legacy-unverified-v1.json'))
+    m = M.subset(legacy, ['data_long/4h/BTCUSDT_4h.csv'], manifest_id='x', source_class=M.REPRO_ONLY, note='')
+    bad = dict(m, survivor_only=False)
+    bad['digest'] = M.digest_of(bad)
+    with pytest.raises(M.ManifestError, match='survivor_only true'):
+        M.validate(bad)
+    with pytest.raises(M.ManifestError, match='not in legacy-unverified-v1'):
+        M.subset(legacy, ['data_long/4h/NOPEUSDT_4h.csv'], manifest_id='x', source_class=M.REPRO_ONLY, note='')
+
+
 # ---------------------------------------------------------------- ledger
+
+@pytest.fixture(autouse=True)
+def stub_envelope_prover(monkeypatch, tmp_path):
+    """These R1 tests check the ledger's sequencing rules (spend, rerun identity, atomic groups) with synthetic
+    digests. Since R3 every holdout record needs the immutable runs store and its frozen envelope; that proof is
+    exercised for real in tests/test_res03_core.py, so here a stub store accepts any digest it is asked to prove."""
+    stub = tmp_path / 'runs_stub'
+    stub.mkdir(exist_ok=True)
+    monkeypatch.setattr(L, '_runs_of', lambda d: str(stub))
+    monkeypatch.setattr(L, 'recompute_run_digest',
+                        lambda r, runs_dir=None: r['run_digest'] if runs_dir else 'no-immutable-runs-store')
+
 
 def rec(path, **kw):
     if not os.path.exists(str(path)):                       # a new family is declared as an independent root
@@ -268,7 +311,7 @@ def test_holdout_records_need_eval_digest(tmp_path):
     p = tmp_path / 'fam_e.jsonl'
     with pytest.raises(L.LedgerError, match='eval_digest'):
         hold(p, 'holdout_reveal', detail={})
-    assert L.recompute_run_digest({'run_digest': RD}) is None      # R3 hook: not yet checked
+    assert REAL_RECOMPUTE({'run_digest': RD}) == 'no-immutable-runs-store'   # R3: no store can prove nothing
 
 
 def test_window_spent_blocks_reveal(tmp_path):
@@ -319,7 +362,10 @@ def _base():
 def test_committed_family_ledgers_mark_legacy_window_spent():
     d = os.path.join(RES, 'ledger')
     out = L.verify(d, base=_base())                            # records + registry + Git history + base anchor
-    assert sorted(out) == ['range_bb_mr', 'short_breakdown', 'trend_ema_mom']
+    assert sorted(out) == ['range_bb_mr', 'res01_infra', 'short_breakdown', 'trend_ema_mom']
+    # R3: the infrastructure family holds only development-split shape/coverage smokes (no trials, no holdout)
+    infra = out.pop('res01_infra')
+    assert {(r['kind'], r['split']) for r in infra} == {('data_access', 'development')} and L.n_trials(infra) == 0
     for fam, recs in out.items():
         spent = [r['window'] for r in recs if r['kind'] == 'window_spent']
         assert any(w['start'] <= '2025-01-01T00:00:00Z' and w['end'] >= '2026-10-04T00:00:00Z' for w in spent), fam
@@ -341,7 +387,7 @@ def test_holdout_reruns_are_capped(tmp_path):
     with pytest.raises(L.LedgerError, match='rerun cap'):
         for _ in range(5):
             hold(p, 'holdout_rerun')
-    assert sum(r['kind'] == 'holdout_rerun' for r in L._parse_family(p.read_bytes(), 'fam_c')) == L.MAX_RERUNS
+    assert sum(r['kind'] == 'holdout_rerun' for r in L._check_state(str(p))['fam_c']) == L.MAX_RERUNS
 
 
 @pytest.mark.parametrize('declared,ok', [(0, 0), (1, 1), (True, None), (99, None), ('1', None)])
@@ -404,7 +450,9 @@ def test_holdout_split_records_only_inside_the_atomic_reveal(tmp_path, kind):
     with pytest.raises(L.LedgerError, match='atomic'):
         _fam(p, kind=kind, split='holdout', run_digest=RD, manifest_digest=MD, detail={'eval_digest': ED})
     hold(p, 'holdout_reveal', lineage='root')
-    hold(p, kind, candidate_id='baseline.flat')                      # part of the reveal: same identity, contiguous
+    with pytest.raises(L.LedgerError, match='complete identity'):    # Codex R3 P2: another candidate never joins
+        hold(p, kind, candidate_id='baseline.flat')
+    hold(p, kind)                                                    # part of the reveal: same identity, contiguous
     with pytest.raises(L.LedgerError, match='atomic'):
         hold(p, kind, window={'start': '2025-01-01T00:00:00Z', 'end': '2025-06-01T00:00:00Z'})
     rec(p, kind='data_access', split='train', window={'start': '2024-01-01T00:00:00Z', 'end': '2024-06-01T00:00:00Z'})

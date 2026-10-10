@@ -42,7 +42,8 @@ evidence until the rules below are executable in R1-R3.
 - **Funding:** signed actual rate x mark notional at each `fundingTime` the position spans (longs pay positive, shorts
   receive). The legacy flat 0.005%/bar stays only as a reproduction row.
 - **Slippage (frozen formula, `slip-v1`):** per side, in bps of fill price,
-  `slip_bps = max(2, c x 10^4 x ATR14 / close)` on the signal timeframe's closed bars (lookback 14). Gap/stop fills at
+  `slip_bps = max(2, c x 10^4 x TR-SMA14 / close)` on the signal timeframe's closed bars (TR-SMA14 = the simple mean
+  of the last 14 true ranges, not Wilder's ATR; Wilder ATR14 is the `slip_wilder_atr14` sensitivity row). Gap/stop fills at
   the bar open when price opens through the stop. Unspecified `k x ATR proxy` is not accepted.
 - **Calibration config `slip-cal-v1` (fully frozen, hashed, cited by digest):** names the observed target (per-side
   fill-vs-reference bps), the source series, the estimator and loss, symbol pooling, the fallback when execution-grade
@@ -285,3 +286,107 @@ Built inside the existing NEWCORE research path, not beside it:
 - [x] 11 This plan's thresholds are authoritative (60 episodes / 80% neighbours); add a per-cell floor and >= 10k
   bootstrap resamples -> section 5
 - [x] 12 Missing 1m bars = unresolved ambiguous bar, counted toward the 5% PARK rule -> section 2a
+
+## R3 status (09 Oct 2026 Cairo; harness core only, no strategy evaluated, no returns computed)
+
+Codex R3 review 6077894871 applied (stacked on the fixed R2 universe `pit-top40-qv30d-v4`):
+
+- `tools/research/pit.py` (the plan's `data.py`): `Dataset` reads only through the manifest (SHA-256 re-check, fail
+  closed) and the PIT universe, restricted to named asset-class books (no mixed default; gold from `gold-commodity`).
+  `Access` records every opening as a ledger `data_access` before returning data. Capability boundary: evaluator code
+  receives only the frozen `View` (an opaque key, no Dataset/Window reference) through `evaluate()`, which re-runs every
+  decision with all not-yet-available rows perturbed and fails closed if the output changes (the peeking negative
+  control is caught). The caller-supplied `entered_ms` is gone: a symbol outside the universe is served only under a
+  `Position` capability issued by `View.enter()` from a recorded decision (unforgeable, not back-datable, per window).
+  Funding joins use the actual funding timestamps (no assumed cadence) and the funding-mark proxy v1 (1h mark close
+  ending at or before T), never forward-filled across a gap. The sealed holdout opens only when the stored envelope's
+  code identity is re-proven on the executing checkout (`report.verify_code`) and the ledger's open atomic group carries
+  this run's complete identity.
+- `costs.py` (`zb-cost-model/2`): explicit symbol -> cost class mapping from the universe classification, no crypto
+  fallback. Rows: `crypto` (PLAN); `gold` (XAUUSDT: Binance VIP0 fees, its own observed 4h funding cadence checked
+  against the rows, its own slip `c`, weekend reference-gap label; PROVISIONAL); `commodity`, `equity`, `fx`
+  (classified, UNCALIBRATED). `slip-v1` uses `TR-SMA14`; Wilder ATR14 is a sensitivity stress row; `slip-cal-v1` has
+  `fitted` (false = labelled `SLIP-C-UNFITTED`). Nine stress rows incl. `slip_wilder_atr14` and `funding_mark_adverse`
+  (the v1 mark proxy stressed 50 bps against the position; compare with exchange-reported funding in forward/testnet
+  records).
+- `report.py` (`zb-research-run/2`): `freeze_run` captures HEAD, clean-tree status (outside `research_evidence/`),
+  Python and the canonical dependency set itself, hashes the canonical evaluation file list (`CORE_EVAL_FILES` + the
+  candidate's tracked files) with config and seeds into `eval_digest`; `verify_code` re-captures and recomputes all of
+  it at holdout access (moved HEAD, dirty tree, changed file, other Python/deps fail closed).
+- `ledger.py`: every holdout record (reveal, rerun, component) needs the immutable runs store and its recomputed
+  envelope; a scratch ledger is development-only. Components must carry the reveal's complete identity (candidate
+  included); a rerun opens its own access group after full identity binding.
+- `splits.py`: immutable UTC `SplitPlan`; purge = max(lookback, declared horizon), embargo = 1 bar; decisions in
+  `[start + purge + embargo, end - horizon]`, so an episode and its look-back stay in one split; one holdout, last.
+- `intrabar.py`: 1m resolution; same-minute and missing/incomplete 1m fall back to stop-first, labelled and counted
+  as unresolved toward the 5% PARK rule; both bounds kept.
+- Report shape per section 6 x every stress row; envelopes write-once under `research_evidence/runs/`.
+- Smoke (shape/coverage only, development split, `research_evidence/ledger/res01_infra.jsonl`, run on the v1
+  universe before the #51 fixes; not re-run): 2026-01-05..01-12
+  (BTC, ETH; XAU not yet a member) and 2026-02-02..02-09 (XAU, BTC): full 1m/4h/1d/mark coverage; XAUUSDT funds every
+  4h (42/week) vs 8h for BTC.
+
+Codex R3 fix review 6079042573 applied (merged with the fixed R2 head; universe `pit-top40-qv30d-v4`):
+
+- Evaluator isolation: `pit.evaluate(window, evaluator_path, function, times)` runs the evaluator in a separate
+  process (`tools/research/sandbox.py`, `zb-eval-sandbox/1`) that holds no Dataset, Window, manifest, store path or
+  ledger. Its View is a proxy answered by the harness from the View frozen at the decision time; an audit hook refuses
+  reading anything but Python's library and `.py` code outside `research_evidence/`, directory listings elsewhere,
+  writes, process creation, sockets and ctypes. This is a runtime control, not claimed as a security boundary; private
+  Python names are explicitly not one. The perturbation re-run is kept.
+- Runner authority: `evaluate` appends a `zb-eval-attestation/1` (runner, isolation, perturbation, split/window,
+  run_digest, evaluator file hash, digests of times / outputs / recorded decisions) to the family ledger;
+  `report.make_report(env, results, attestation, ledger)` refuses an attestation that is unperturbed, not sandboxed,
+  for another run/split/window, whose evaluator file is not in the envelope's hashed evaluation files, or that has no
+  matching ledger record. Results from `Window.view` directly or `perturb=False` cannot be sealed.
+- Holdout ledger: the holdout opens only from the canonical registered ledger and runs store
+  (`research_evidence/ledger` + `research_evidence/runs` of the canonical research checkout, which must be the access
+  repo) and only after `ledger.verify` (registry genesis pin + append-only Git history) passes at access. A scratch
+  ledger/runs tree, or a freshly minted registry at the canonical path, is refused.
+- Code identity: "dirty" ignores only non-executable evidence artifacts (`.json`, `.jsonl`, `.json.gz`, `.csv`, `.md`
+  under `research_evidence/`); a `.py` (or any other file) there is code. The evaluation file list is closed over static
+  imports (`import_closure`), and evaluation code in or imported from `research_evidence/` is refused at freeze.
+- Funding continuity: `check_funding_cadence(symbol, rows, start_ms=, end_ms=)` requires consecutive events exactly one
+  declared interval apart (+/- 60 s; a schedule switch accepted at the switch), no missing event before the first or
+  after the last row of the covered interval, and refuses an empty span longer than one interval. No forward fill.
+- Gold: cost classes `gold-spot` (XAUUSDT, 4h, PROVISIONAL) and `gold-tokenized` (PAXGUSDT / XAUTUSDT, per-symbol
+  cadence, UNCALIBRATED), both in the `gold` regime family (`CostModel.regime_family`); never the commodity fallback.
+- Codex 6088593971 applied. Executed code = hashed code: the sandbox (`-I -S -B`) reads only the standard library
+  (`Lib`/`DLLs`, never `site-packages`; no `site`, so no `.pth`, `sitecustomize`, user site or distribution entry
+  points; `RESEARCH_DEPS` stays empty) and exactly the evaluator's static import closure in the run checkout
+  (`report.closure_abs`); research code is loaded from the run checkout. The attestation lists every closure file with
+  its SHA-256 (re-hashed after the run) and `make_report` requires each in the envelope's hashed evaluation files.
+  Refused (regressions): ignored helper via `importlib.util`, `__import__`, `importlib.import_module`, `runpy`,
+  `exec` of repo source or a data file, repository `.pyc`, installed packages by import or by path.
+  Residual limit: `exec`/`eval` of strings built inside hashed code from View data is allowed (the text is fixed by
+  hashed code); the stdlib (incl. its `.pyc`) is trusted and pinned only by the Python version in the code identity;
+  the audit hook is a CPython runtime control, not an OS jail against native code.
+- Codex 6089002043 / 6089091570 applied (two P1s).
+  (1) Attestation bound to the exact report: the frozen eval identity now carries the entrypoint
+  {path, function, summary} and the canonical decision schedule {n, digest} (strictly increasing int ms), all inside
+  `eval_digest`. `evaluate(..., summary=)` runs the frozen summary in the sandbox (twice, must agree) and binds its
+  `results_digest`. `make_report` refuses another function or summary of the same file, an altered or subset schedule,
+  and any results payload other than the bound one.
+  (2) No uncommitted repository state is observable: the evaluator runs from a materialized temporary tree holding only
+  the hashed closure (repo layout, every mtime fixed to 2000-01-01), with no `.git`, ignored or untracked file, and no
+  checkout path. Path probes (`stat`/`exists`/`listdir`/`scandir`/final-path) are allowlisted to the tree, the empty cwd
+  and the interpreter installation (never site-packages), so an absolute host probe fails closed. The environment is
+  fixed (`-s -S -B -P`; PYTHONHASHSEED=0, PYTHONUTF8=1, TZ=UTC, SYSTEMROOT/WINDIR only). The observed hash flag, UTF-8
+  mode, time zone, locale code page (host-specific, so bound rather than fixed), env keys and empty cwd are recorded in
+  the attestation.
+  Residual limit, stated plainly: the wall clock, `os.getpid`, `random` without a seed, and the random temp-tree path
+  string are readable by hashed evaluator code. Any output that depends on them is caught only when it differs between
+  the two in-run passes or at the ledger's deterministic `holdout_rerun`. The guard is a CPython runtime control, not
+  an OS jail; for example, reloading the `nt` module is not prevented.
+  (3) Frozen execution environment (Codex 6093381880 P1): `freeze_run` records `run.code.execution_environment` =
+  `sandbox.execution_environment()` BEFORE evaluation - implementation, Python version / hexversion / cache tag,
+  executable SHA-256, OS, interpreter platform / architecture, pointer width and CPU count. Both fresh sandbox
+  processes, the attestation checked by `make_report`, the process sealing the report and the holdout `verify_code`
+  must equal it exactly; any divergence fails closed. Evidence is reproducible under the same frozen execution
+  environment, NOT portable across arbitrary hosts. Once frozen these host facts are committed inputs, so evaluator
+  code may read them.
+  `install_digest` binds the interpreter's install location (executable, base prefixes); inside the sandbox the
+  evaluator sees `sys.executable` and the four prefixes only as path-independent sentinels (Codex 6093943713).
+- Funding: `costs.check_funding_sequence` requires the phase anchor (the event at or before entry) in the rows, so every
+  event due in [entry, exit) - the entry event included - follows from continuity; `View.funding_events` reads the
+  anchor and enforces it itself, failing closed on a missing event.
