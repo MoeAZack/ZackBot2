@@ -11,7 +11,10 @@ to the fixed `TREE_MTIME`), and that tree is the only repository the child has: 
 file, no unrelated repo metadata exists there. Path probes (`stat`, `lstat`, `access`, `exists`/`isdir`/`isfile`,
 `listdir`, `scandir`, `readlink`, final-path lookups) are additionally allowlisted to the tree, the working directory
 and the interpreter's own installation (never `site-packages`), so an absolute probe of host state fails closed instead
-of answering. The observable environment (hash seed, UTF-8 mode, time zone, locale encoding, environment keys, empty
+of answering (the boolean `exists`/`isdir`/... answer False). Audited probes (`listdir`, `scandir`, `chdir`) are
+enforced by the hook itself; every unaudited one, and `_imp.create_builtin`, is a broker that raises a `zb.*` audit
+event, and only the frozen hook holds the raw function, so no Python-reachable object can restore an original.
+The observable environment (hash seed, UTF-8 mode, time zone, locale encoding, environment keys, empty
 cwd, tree mtimes) and the canonical `execution_environment` (implementation, version, executable SHA-256, OS,
 platform, CPU count; no host path) are reported at start-up and bound into the attestation; the runner requires the
 latter to equal the one frozen in `run.code` (Codex 6093381880).
@@ -108,7 +111,7 @@ def _builtin_norm():
     return norm
 
 
-def make_hook(lib_roots, list_roots, allow_files):
+def make_hook(lib_roots, list_roots, allow_files, probe_roots):
     """The audit hook. Build it BEFORE `guard_path_probes` (it captures the raw `stat`). It closes over immutable
     snapshots only - tuples / frozensets of the normalized roots and of the policy, the builtins it calls - and never
     consults a module global at event time, so rebinding or clearing the policy names (or the evaluator-visible
@@ -125,6 +128,17 @@ def make_hook(lib_roots, list_roots, allow_files):
     introspection, frame_attrs = frozenset(INTROSPECTION_EVENTS), frozenset(FRAME_ATTRS)
     refused, raw_stat, oserror, exc = SandboxRefused, __import__(os.name).stat, OSError, Exception
     type_, str_, int_, len_ = type, str, int, len
+    tuple_, dict_, list_, getattr_ = tuple, dict, list, getattr
+    # the ONLY holders of the raw unaudited probes and of `_imp.create_builtin` (see `guard_path_probes`)
+    import _imp
+    osmod = __import__(os.name)
+    probes = tuple((k, getattr(osmod, k)) for k in PROBE_FUNCS if hasattr(osmod, k))
+    raw_create = _imp.create_builtin
+    no_create = frozenset({'nt', 'posix', '_imp'})
+    probe_allowed = tuple(sorted({x for r in probe_roots for x in both(r)}))
+
+    class _Spec:
+        __slots__ = ('name',)
 
     def under(p, roots):
         for r in roots:
@@ -183,6 +197,32 @@ def make_hook(lib_roots, list_roots, allow_files):
         elif event == 'import':
             if n and type_(args[0]) is str_ and args[0].split('.')[0] in blocked_imports:
                 raise refused(f'sandbox refused import of {args[0]}')
+        elif event == 'zb.probe':
+            if n != 4 or type_(args[0]) is not str_ or type_(args[1]) is not tuple_ or type_(args[2]) is not dict_ \
+                    or type_(args[3]) is not list_ or args[3]:
+                raise refused('sandbox refused a malformed path probe')
+            name, a, kw, box = args[0], args[1], dict_(args[2]), args[3]
+            f = None
+            for k, v in probes:
+                if k == name:
+                    f = v
+            if f is None or 'dir_fd' in kw:
+                raise refused(f'sandbox refused path probe {name}')
+            path = a[0] if len_(a) else kw.get('path')
+            if path is not None and type_(path) is not int_:      # an fd was opened through the audited open
+                p = path_of(path)
+                if not under(p, probe_allowed) or [d for d in p.split(sep) if d in third]:
+                    raise refused(f'sandbox refused path probe {name}({path!r})')
+            box.append(f(*a, **kw))
+        elif event == 'zb.create_builtin':
+            if n != 2 or type_(args[1]) is not list_ or args[1]:
+                raise refused('sandbox refused a malformed create_builtin')
+            nm = getattr_(args[0], 'name', None)
+            if type_(nm) is not str_ or nm in no_create:
+                raise refused(f'sandbox refused creating builtin module {nm!r}')
+            spec = _Spec()
+            spec.name = nm
+            args[1].append(raw_create(spec))
         elif event in introspection:
             raise refused(f'sandbox refused {event}')
         elif event == 'object.__getattr__':
@@ -286,53 +326,67 @@ class View:
         return tuple(Bar(*r) for r in self._call('minute_bars', symbol, open_ms, close_ms, position=position))
 
 
-PROBE_FUNCS = ('stat', 'lstat', 'access', 'listdir', 'scandir', 'readlink', 'chdir', '_path_exists', '_path_isdir',
-               '_path_isfile', '_path_islink', '_path_isjunction', '_path_lexists', '_path_isdevdrive',
-               '_getfinalpathname', '_findfirstfile', '_getvolumepathname')
+# Path probes with NO audit event. `listdir` / `scandir` / `chdir` are not here: they raise audit events and the hook
+# enforces them, so restoring an original gains nothing.
+PROBE_FUNCS = ('stat', 'lstat', 'access', 'readlink', '_path_exists', '_path_isdir', '_path_isfile', '_path_islink',
+               '_path_isjunction', '_path_lexists', '_path_isdevdrive', '_getfinalpathname', '_findfirstfile',
+               '_getvolumepathname')
 
 
-def guard_path_probes(roots) -> None:
-    """Replace every path-probing primitive of the OS module (and each alias other modules bound at import time) by an
-    allowlist wrapper: a path outside `roots` raises instead of revealing whether it exists."""
-    import importlib as _il
-    osmod = _il.import_module(os.name)                         # nt / posix
-    norm = _builtin_norm()                                     # captured builtins only (Codex 6094254617)
-    allowed = tuple(norm(r) for r in roots)
-    third, sep, refused, exc = tuple(THIRD_PARTY_DIRS), os.sep, SandboxRefused, Exception
-    type_, int_ = type, int
+def guard_path_probes() -> None:
+    """Replace every unaudited path probe of the OS module - and every alias of it in any loaded module or class - by a
+    broker that holds NO original (Codex 6094254617 follow-up, owner order): it raises the `zb.probe` audit event and
+    the frozen hook, the only holder of the raw functions, checks the path against the probe roots and performs the
+    call. `_imp.create_builtin` is brokered the same way (`zb.create_builtin`), since it would otherwise mint a fresh
+    `nt` / `posix` module with raw probes. Restoring, re-importing or reloading gains nothing: no Python-reachable
+    object holds a raw probe after this. Run after the hook is installed."""
+    import _imp
+    osmod = __import__(os.name)
+    audit, refused, list_ = sys.audit, SandboxRefused, list
 
-    def ok(path):
-        if path is None or type_(path) is int_:
-            return True
-        try:
-            q = norm(path)
-        except exc:
-            return False
-        for d in q.split(sep):
-            if d in third:
-                return False
-        for r in allowed:
-            if q == r or q.startswith(r.rstrip(sep) + sep):
-                return True
-        return False
+    def broker(name):
+        predicate = name.startswith('_path_')           # the C exists/isdir/... never raise: outside is just False
 
-    originals = {}
+        def probe(*a, **kw):
+            box = list_()
+            try:
+                audit('zb.probe', name, a, kw, box)
+            except refused:
+                if predicate:
+                    return False
+                raise
+            if not box:
+                raise refused(f'sandbox path probe {name} is unavailable')
+            return box[0]
+        probe.__name__ = probe.__qualname__ = name
+        return probe
+
+    def create_builtin(spec):
+        box = list_()
+        audit('zb.create_builtin', spec, box)
+        if not box:
+            raise refused('sandbox create_builtin is unavailable')
+        return box[0]
+
+    repl = {}
     for name in PROBE_FUNCS:
         f = getattr(osmod, name, None)
-        if f is None:
+        if f is not None:
+            repl[id(f)] = (f, broker(name))
+    repl[id(_imp.create_builtin)] = (_imp.create_builtin, create_builtin)
+    for m in list(sys.modules.values()):
+        try:
+            holders = [m] + [v for v in vars(m).values() if isinstance(v, type)]
+        except TypeError:
             continue
-
-        def wrap(*a, _f=f, _n=name, **kw):
-            path = a[0] if a else kw.get('path', '.' if _n in ('listdir', 'scandir') else None)
-            if not ok(path):
-                raise refused(f'sandbox refused path probe {_n}({path!r})')
-            return _f(*a, **kw)
-        originals[id(f)] = wrap
-    mods = [osmod, os, os.path] + [sys.modules[m] for m in ('genericpath', 'ntpath', 'posixpath') if m in sys.modules]
-    for m in mods:
-        for k, v in list(vars(m).items()):
-            if id(v) in originals:
-                setattr(m, k, originals[id(v)])
+        for h in holders:
+            for k, v in list(vars(h).items()):
+                r = repl.get(id(v))
+                if r is not None and r[0] is v:
+                    try:
+                        setattr(h, k, r[1])
+                    except (AttributeError, TypeError):
+                        pass
 
 
 def observed_env() -> dict:
@@ -412,11 +466,10 @@ def main() -> int:
         sys.path.insert(0, p)
     env = observed_env()
     interp = execution_environment()
-    hook = make_hook(init['lib_roots'], init['list_roots'], init['allow_files'])    # before the probe guard
-    guard_path_probes(init['probe_roots'])
+    # the hook captures the raw probes and is installed BEFORE the guard swaps every alias for an audit broker
+    sys.addaudithook(make_hook(init['lib_roots'], init['list_roots'], init['allow_files'], init['probe_roots']))
+    guard_path_probes()
     virtualize_interpreter_paths()                            # after identity + roots, before the evaluator
-    sys.addaudithook(hook)
-    del hook
     # Codex 6094254617: the evaluator reaches this module's globals (sys.modules['__main__'], View.__globals__);
     # drop every policy / protocol / factory name from them before it loads. The hook keeps its own snapshots.
     g = globals()

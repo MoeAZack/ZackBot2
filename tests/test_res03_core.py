@@ -386,9 +386,11 @@ def test_evaluator_cannot_observe_ignored_repo_state_or_unbound_environment(worl
     assert env['tree_mtime'] == P.TREE_MTIME and env['env'] == P.SANDBOX_ENV
     os.remove(marker)                                          # host state changes: the output does not
     assert list(P.evaluate(w, f, 'run', train_times(1))) == [got]
-    for fn in ('probe', 'probe_exists'):                       # absolute host probes fail closed
-        with pytest.raises(P.PITError, match='sandbox refused path probe'):
-            P.evaluate(w, f, fn, train_times(1))
+    with pytest.raises(P.PITError, match='sandbox refused path probe'):     # absolute host probes fail closed
+        P.evaluate(w, f, 'probe', train_times(1))
+    with open(marker, 'w') as fh:                              # boolean probes: constant False, path-independent
+        fh.write('x')
+    assert list(P.evaluate(w, f, 'probe_exists', train_times(1))) == [False]
 
 
 def test_sandbox_has_no_site_pth_or_entry_points_and_hashes_its_closure(world, tmp_path, repo):
@@ -629,6 +631,124 @@ def test_evaluator_cannot_disable_the_sandbox_policy(world, tmp_path):
                                    'gc.get_objects', 'sys._getframe', 'tb_frame')}
     assert out == [[[], want]] * 3
     assert not os.path.exists(tmp_path / 'ev' / 'pwn.txt')
+
+
+PROBE_ATTACK = '''import importlib
+import importlib.machinery
+import importlib.util
+import os
+import sys
+
+OUT = os.sep                                     # a path outside every allowed root on any host
+NAMES = ('stat', 'lstat', 'access', 'readlink', '_path_exists', '_path_isdir', '_path_isfile', '_getfinalpathname')
+
+
+def attempt(fn):
+    try:
+        fn()
+        return 'allowed'
+    except PermissionError:
+        return 'refused'
+    except Exception as e:
+        return 'error ' + type(e).__name__
+
+
+def raw_like(x):
+    return type(x).__name__ == 'builtin_function_or_method' and getattr(x, '__name__', '') in NAMES + ('create_builtin',)
+
+
+def harvested():
+    """Every builtin probe reachable from the guarded functions' closures, defaults and __wrapped__."""
+    import _imp
+    found = []
+    for m in (os, os.path, sys.modules[os.name], _imp):
+        for v in list(vars(m).values()):
+            for c in (getattr(v, '__closure__', None) or ()):
+                try:
+                    found.append(c.cell_contents)
+                except ValueError:
+                    pass
+            found += list(getattr(v, '__defaults__', None) or ()) + list((getattr(v, '__kwdefaults__', None) or {}).values())
+            found.append(getattr(v, '__wrapped__', None))
+    return [f for f in found if raw_like(f)]
+
+
+def call_all(fs):
+    for f in fs:
+        if f.__name__ == 'create_builtin':
+            f(importlib.machinery.BuiltinImporter.find_spec(os.name)).stat(OUT)
+        else:
+            f(OUT) if f.__name__ != 'access' else f(OUT, os.F_OK)
+
+
+def fresh_module():
+    import _imp
+    return _imp.create_builtin(importlib.machinery.BuiltinImporter.find_spec(os.name))
+
+
+def reimport():
+    saved = sys.modules.pop(os.name)
+    try:
+        return importlib.import_module(os.name)
+    finally:
+        sys.modules[os.name] = saved
+
+
+def harvest_only(v):
+    return [len(harvested()), attempt(lambda: call_all(harvested()) or (_ for _ in ()).throw(PermissionError()))]
+
+
+def run(v):
+    rebound = {}
+    for name in NAMES:                           # rebind every guarded name to whatever its wrapper holds
+        f = getattr(sys.modules[os.name], name, None)
+        if f is None:
+            continue
+        cells = [c.cell_contents for c in (f.__closure__ or ())] if hasattr(f, '__closure__') else []
+        for c in cells:
+            if raw_like(c):
+                setattr(os, name, c)
+                rebound[name] = True
+    res = {
+        'harvested raw': len(harvested()),
+        'call harvested': attempt(lambda: call_all(harvested()) or (_ for _ in ()).throw(PermissionError())),
+        'os.stat': attempt(lambda: os.stat(OUT)),
+        'os.lstat': attempt(lambda: os.lstat(OUT)),
+        'os.access': attempt(lambda: os.access(OUT, os.F_OK)),
+        'nt/posix stat': attempt(lambda: sys.modules[os.name].stat(OUT)),
+        'reload os': attempt(lambda: importlib.reload(os).stat(OUT)),
+        'reload nt/posix': attempt(lambda: importlib.reload(sys.modules[os.name]).stat(OUT)),
+        'create_builtin': attempt(lambda: fresh_module().stat(OUT)),
+        'module_from_spec': attempt(lambda: importlib.util.module_from_spec(
+            importlib.machinery.BuiltinImporter.find_spec(os.name)).stat(OUT)),
+        're-import': attempt(lambda: reimport().stat(OUT)),
+        'scandir entry': attempt(lambda: [e.stat() for e in os.scandir(OUT)]),
+        'audit forged': attempt(lambda: sys.audit('zb.probe', 'stat', (OUT,), {}, [])),
+        'audit dir_fd': attempt(lambda: sys.audit('zb.probe', 'stat', ('x',), {'dir_fd': 3}, [])),
+        'exists is constant': os.path.exists(OUT) is False and os.path.isdir(OUT) is False,
+        'own file': os.path.isfile(__file__),
+        'rebound': sorted(rebound),
+    }
+    return res
+'''
+
+
+def test_evaluator_cannot_restore_the_path_probe_originals(world, tmp_path):
+    """Owner order on cbcdbcb (self-reported residual): no raw unaudited path probe is Python-reachable in the
+    sandbox. Harvesting wrapper closures / defaults / __wrapped__, rebinding, reloading os or nt/posix, minting a
+    fresh nt/posix (`_imp.create_builtin`, `module_from_spec`, re-import), DirEntry.stat and forged `zb.probe`
+    events all stay refused for a path outside the roots, identically in both fresh processes."""
+    ds = ds_of(world)
+    path, _ = dirs(tmp_path)
+    w = access(ds, path).open('train', lineage='root')
+    f = evaluator(tmp_path / 'ev', PROBE_ATTACK, 'probe_attack.py')
+    out = list(P.evaluate(w, f, 'run', train_times(2)))
+    refused = ('call harvested', 'os.stat', 'os.lstat', 'os.access', 'nt/posix stat', 'reload os', 'reload nt/posix',
+               'create_builtin', 'module_from_spec', 're-import', 'scandir entry', 'audit forged', 'audit dir_fd')
+    want = dict({k: 'refused' for k in refused}, **{'harvested raw': 0, 'exists is constant': True, 'own file': True,
+                                                   'rebound': []})
+    assert out == [want] * 2
+    assert list(P.evaluate(w, f, 'harvest_only', train_times(1))) == [[0, 'refused']]
 
 
 def test_position_capability_replaces_caller_entered_ms(world, tmp_path):
