@@ -532,9 +532,7 @@ def test_committed_prereg_artifacts_are_lf_in_every_checkout():
         blob = subprocess.run(['git', 'show', f'HEAD:{rel}'], cwd=ROOT, capture_output=True, check=True).stdout
         with open(os.path.join(d, n), 'rb') as f:
             work = f.read()
-        assert b'
-' not in blob and b'
-' not in work
+        assert b'\r\n' not in blob and b'\r\n' not in work
 
 
 def test_committed_prereg_validates():
