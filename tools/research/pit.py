@@ -398,7 +398,10 @@ def stdlib_roots() -> list[str]:
 
 
 SANDBOX_ENV_KEYS = ('SYSTEMROOT', 'WINDIR')
-SANDBOX_ENV = {'PYTHONHASHSEED': '0', 'PYTHONUTF8': '1', 'TZ': 'UTC'}
+# PYTHONCOERCECLOCALE=0: on POSIX under the C locale, CPython's PEP 538 coercion would otherwise ADD `LC_CTYPE` to the
+# child's environment (Linux CI, not Windows), so the evaluator-visible environment would differ by platform; UTF-8 mode
+# already fixes the text encoding, so coercion adds nothing.
+SANDBOX_ENV = {'PYTHONCOERCECLOCALE': '0', 'PYTHONHASHSEED': '0', 'PYTHONUTF8': '1', 'TZ': 'UTC'}
 TREE_MTIME = 946_684_800                         # 2000-01-01T00:00:00Z: every materialized file and directory
 
 

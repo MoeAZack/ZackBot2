@@ -3,7 +3,7 @@
 The evaluator never runs in the harness process. `pit.evaluate` starts this script as a separate Python process
 (`-s -S -B -P`: no `site` - so no site-packages, `.pth` files, `sitecustomize` or user site - no bytecode writes,
 no script/cwd directory on sys.path) with a fixed, fully controlled environment (`SANDBOX_ENV`: hash seed 0, UTF-8 mode,
-TZ=UTC, plus SYSTEMROOT/WINDIR) and an empty working directory.
+TZ=UTC, no C-locale coercion, plus SYSTEMROOT/WINDIR) and an empty working directory.
 
 Materialized tree (Codex 6089091570 P1): the evaluator never runs from, or sees a path of, the original checkout. The
 runner copies exactly the hashed static import closure into a fresh temporary tree (repo layout kept, every mtime set
