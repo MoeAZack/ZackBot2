@@ -6,11 +6,15 @@ from the PIT universe's instrument classification with `symbol_class_from_univer
 unmapped symbol raises (Codex R3 ruling 1: never fall through to crypto defaults).
   crypto     VIP0 taker 0.05% / maker 0.02% per side (plan section 2), funding at each symbol's actual fundingTimes,
              24/7. Status PLAN.
-  gold       XAUUSDT (owner decision: gold is IN the research). Binance VIP0 fee tier, its own observed 4h funding
+  gold-spot  XAUUSDT (owner decision: gold is IN the research). Binance VIP0 fee tier, its own observed 4h funding
              cadence (checked against the rows: `check_funding_cadence`), its own slip-v1 coefficient, and reference-
              session / gap labels (the perp trades 24/7, the reference gold market closes at weekends). PROVISIONAL
              until its spread / slippage / liquidity calibration exists.
-  commodity  CL, BZ, NATGAS, XAG, XPT, XPD, COPPER and the tokenized gold perps: own row, UNCALIBRATED.
+  gold-tokenized  PAXGUSDT / XAUTUSDT (Codex 6079042573 P2): its own execution/cost row - per-symbol actual funding
+             cadence, own slip-v1 coefficient, UNCALIBRATED - never the generic commodity fallback. gold-spot and
+             gold-tokenized share the `gold` regime family (`regime_family`): one gold strategy/regime research, two
+             execution/cost rows.
+  commodity  CL, BZ, NATGAS, XAG, XPT, XPD, COPPER: own row, UNCALIBRATED.
   equity     single stocks, ETFs and pre-IPO perps: own row, US-equity reference session, UNCALIBRATED.
   fx         USDBRL: own row, UNCALIBRATED.
 An UNCALIBRATED row is a placeholder that carries labels; it must be calibrated before any result is promoted.
@@ -83,24 +87,33 @@ class CostRow:
     hours: str                                     # trading hours of the perp
     reference_session: str                         # the underlying's reference market session (gap label source)
     status: str                                    # PLAN | PROVISIONAL | UNCALIBRATED
+    regime_family: str                             # strategy/regime family shared across execution rows (gold)
     note: str = ''
 
 
-CRYPTO = CostRow('crypto', TAKER, MAKER, 'VIP0', 'actual', None, '24/7', 'none (24/7 underlying)', 'PLAN',
+GOLD_REFERENCE = 'spot gold reference market: closed at weekends (WEEKEND-REFERENCE-GAP)'
+CRYPTO = CostRow('crypto', TAKER, MAKER, 'VIP0', 'actual', None, '24/7', 'none (24/7 underlying)', 'PLAN', 'crypto',
                  'plan section 2')
-GOLD = CostRow('gold', TAKER, MAKER, 'VIP0', 'actual', 4, '24/7',
-               'spot gold reference market: closed at weekends (WEEKEND-REFERENCE-GAP)', 'PROVISIONAL',
-               'Codex ruling 1 (6077894871): Binance fee tier, own observed 4h funding, own slip coefficient, '
-               'reference-session/gap labels; spread/slippage/liquidity calibration pending')
+GOLD_SPOT = CostRow('gold-spot', TAKER, MAKER, 'VIP0', 'actual', 4, '24/7', GOLD_REFERENCE, 'PROVISIONAL', 'gold',
+                    'Codex ruling 1 (6077894871): Binance fee tier, own observed 4h funding, own slip coefficient, '
+                    'reference-session/gap labels; spread/slippage/liquidity calibration pending')
+GOLD_TOKENIZED = CostRow('gold-tokenized', TAKER, MAKER, 'VIP0', 'actual', None, '24/7', GOLD_REFERENCE,
+                         'UNCALIBRATED', 'gold',
+                         'Codex 6079042573 P2: PAXG/XAUT tokenized-gold perps; own execution/cost row, per-symbol '
+                         'actual funding cadence; calibrate before promotion')
 COMMODITY = CostRow('commodity', TAKER, MAKER, 'VIP0', 'actual', None, '24/7',
-                    'commodity futures reference sessions (per underlying)', 'UNCALIBRATED',
+                    'commodity futures reference sessions (per underlying)', 'UNCALIBRATED', 'commodity',
                     'classified placeholder; calibrate before promotion')
 EQUITY = CostRow('equity', TAKER, MAKER, 'VIP0', 'actual', None, '24/7',
                  'US/KR/HK equity exchange sessions (per underlying); weekends and holidays closed', 'UNCALIBRATED',
-                 'classified placeholder; calibrate before promotion')
+                 'equity', 'classified placeholder; calibrate before promotion')
 FX = CostRow('fx', TAKER, MAKER, 'VIP0', 'actual', None, '24/7', 'FX reference market: closed at weekends',
-             'UNCALIBRATED', 'classified placeholder; calibrate before promotion')
-DEFAULT_ROWS = {r.cost_class: r for r in (CRYPTO, GOLD, COMMODITY, EQUITY, FX)}
+             'UNCALIBRATED', 'fx', 'classified placeholder; calibrate before promotion')
+DEFAULT_ROWS = {r.cost_class: r for r in (CRYPTO, GOLD_SPOT, GOLD_TOKENIZED, COMMODITY, EQUITY, FX)}
+GOLD_SUBCLASSES = {'gold-spot': 'gold-spot', 'gold-tokenized': 'gold-tokenized'}
+HOUR_MS = 3_600_000
+FUNDING_TIME_TOLERANCE_MS = 60_000                 # calc_time jitter allowed around an expected funding time
+MAX_FUNDING_INTERVAL_H = 8                         # longest Binance USD-M cadence (bound for an empty covered span)
 
 
 def symbol_class_from_universe(u: dict) -> dict:
@@ -111,7 +124,7 @@ def symbol_class_from_universe(u: dict) -> dict:
         if cls == 'crypto':
             out[s['symbol']] = 'crypto'
         elif cls == 'gold-commodity':
-            out[s['symbol']] = 'gold' if sub == 'gold-spot' else 'commodity'
+            out[s['symbol']] = GOLD_SUBCLASSES.get(sub, 'commodity')
         elif cls in ('equity', 'fx'):
             out[s['symbol']] = cls
     return dict(sorted(out.items()))
@@ -213,15 +226,54 @@ class CostModel:
             out.append('WEEKEND-REFERENCE-GAP')
         return out
 
-    def check_funding_cadence(self, symbol: str, funding_rows) -> None:
-        """A row with a declared cadence (gold: 4h) must match every funding row's interval; no assumed schedule."""
-        want = self.row(symbol).funding_cadence_hours
-        if want is None:
-            return
-        bad = sorted({r.interval_hours for r in funding_rows if r.interval_hours != want})
+    def regime_family(self, symbol: str) -> str:
+        """The strategy/regime family (gold-spot and gold-tokenized are both `gold`)."""
+        return self.row(symbol).regime_family
+
+    def check_funding_cadence(self, symbol: str, funding_rows, *, start_ms: int | None = None,
+                              end_ms: int | None = None) -> None:
+        """`check_funding_sequence` with this symbol's declared cadence (gold-spot: 4h)."""
+        check_funding_sequence(symbol, funding_rows, start_ms=start_ms, end_ms=end_ms,
+                               want=self.row(symbol).funding_cadence_hours, label=self.cost_class(symbol))
+
+
+def check_funding_sequence(symbol: str, funding_rows, *, start_ms: int | None = None, end_ms: int | None = None,
+                           want: int | None = None, label: str = 'declared') -> None:
+    """Fail closed unless the funding rows are a complete event sequence (Codex 6079042573 / 6088593971 P2):
+      * every row has a positive int interval_hours; with `want` (a declared cadence) every row must show it;
+      * consecutive rows are exactly one interval apart (either row's interval, so a schedule switch is accepted at
+        the switch) within FUNDING_TIME_TOLERANCE_MS - a larger step is a missing event, a smaller one an unexpected
+        event; nothing is forward-filled;
+      * with a covered interval [start_ms, end_ms): the PHASE ANCHOR - the event at or immediately before start_ms -
+        must be among the rows (an event at entry is its own anchor), so every event due in the interval, the one
+        at entry included, follows from the continuity check; no row may lie after end_ms; and the event after the
+        last row must fall at or after end_ms (exit == T is not covered)."""
+    rows = sorted(funding_rows, key=lambda r: r.time_ms)
+    tol = FUNDING_TIME_TOLERANCE_MS
+    for r in rows:
+        if type(r.interval_hours) is not int or r.interval_hours <= 0:
+            raise CostError(f'{symbol}: funding row at {r.time_ms} has no valid interval_hours')
+    if want is not None:
+        bad = sorted({r.interval_hours for r in rows if r.interval_hours != want})
         if bad:
-            raise CostError(f'{symbol}: funding rows show interval {bad}h, the {self.cost_class(symbol)} row declares '
-                            f'{want}h')
+            raise CostError(f'{symbol}: funding rows show interval {bad}h, the {label} row declares {want}h')
+    for x, y in zip(rows, rows[1:]):
+        step = y.time_ms - x.time_ms
+        if not any(abs(step - h * HOUR_MS) <= tol for h in {x.interval_hours, y.interval_hours}):
+            raise CostError(f'{symbol}: funding events at {x.time_ms} and {y.time_ms} are {step / HOUR_MS:g}h '
+                            f'apart, expected {x.interval_hours}h: missing or unexpected funding event')
+    if start_ms is None and end_ms is None:
+        return
+    if start_ms is None or end_ms is None or not start_ms <= end_ms:
+        raise CostError('the covered interval needs start_ms <= end_ms')
+    anchors = [r for r in rows if r.time_ms <= start_ms + tol]
+    if not anchors:
+        raise CostError(f'{symbol}: no funding phase anchor (event at or before the covered start {start_ms}); '
+                        'the events due from entry cannot be proven complete')
+    if rows[-1].time_ms > end_ms + tol:
+        raise CostError(f'{symbol}: funding rows lie outside the covered interval')
+    if end_ms - rows[-1].time_ms > rows[-1].interval_hours * HOUR_MS + tol:
+        raise CostError(f'{symbol}: funding event missing after the last row at {rows[-1].time_ms}')
 
 
 # ------------------------------------------------------------------ slip-v1

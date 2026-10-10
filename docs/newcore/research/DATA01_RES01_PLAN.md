@@ -10,7 +10,7 @@ evidence until the rules below are executable in R1-R3.
 
 | Item | Decision |
 |---|---|
-| Venue / symbols | Binance USD-M USDT perps. Universe `pit-top40-qv30d-v2` (section 1a), ranked per asset-class book (`crypto`, `gold-commodity`, `equity`, `fx`); XAUUSDT stays in the research in the `gold-commodity` book (owner decision). Core 8 (BTC ETH SOL BNB XRP DOGE AVAX LINK) reported separately as the legacy comparison. |
+| Venue / symbols | Binance USD-M USDT perps. Universe `pit-top40-qv30d-v4` (section 1a), ranked per asset-class book (`crypto`, `gold-commodity`, `equity`, `fx`); XAUUSDT stays in the research in the `gold-commodity` book (owner decision). Core 8 (BTC ETH SOL BNB XRP DOGE AVAX LINK) reported separately as the legacy comparison. |
 | Timeframes | 4h and 1h (trend, short, range). 1m for intrabar resolution of every candidate (section 2a); 15m + 1m for Quick Bank (DATA-01a). |
 | Series | last-price klines, mark klines, signed funding history (`fundingTime`), rules snapshots. OI / long-short / taker only if a preregistration needs them. |
 | Sources | `data.binance.vision` archives are primary **only after first-build schema/coverage verification**. Raw archive bytes and the published `.CHECKSUM` bytes are preserved; checksums verified; exact object key/hash and loader version recorded. REST (`market_data.py`, `market_collector.py`) is **tail-only**, overlap cross-checked (gap class X1); no silent substitution. |
@@ -204,13 +204,17 @@ Built inside the existing NEWCORE research path, not beside it:
   top-40 union. `research_evidence/manifests/binance-um-archive-v1.json.gz` (`zb-binance-vision-zip/1` loader):
   103,659 files, digest `54912d9d...`. Every zip re-hashed against its published checksum and schema-checked row by row
   (0 failures). Gzip is a byte-exact wrapper of the canonical JSON (62 MB plain).
-- `tools/research/universe.py` -> `research_evidence/universe/pit-top40-qv30d-v2.json` (`zb-pit-universe/2`,
-  Codex review 6077570517 applied): 348 Monday rankings 2020-02-03 -> 2026-09-28 over 900 symbols, ranked separately
+- `tools/research/universe.py` -> `research_evidence/universe/pit-top40-qv30d-v4.json` (`zb-pit-universe/2`,
+  Codex reviews 6077570517 + 6078823692 + 6088058441 applied; digest `485c7522...`): 348 Monday rankings 2020-02-03 -> 2026-09-28 over 900 symbols, ranked separately
   per book from `research_evidence/universe/instrument-classes-v1.json` (`zb-instrument-classes/1`; offline manual
   review, every post-2025-12-01 listing has an explicit entry, 27 unidentified symbols are `unclassified` and join no
   book). Exact decimal volume sums; any missing daily bar in a scored window vetoes `data-gap` (never zero volume) and
   every symbol's internal 1d gaps are listed (`missing_days`). Renames fail closed. Every week `RULES-BACKFILLED`.
   The v1 artifact (one mixed list, float sums, silent zero-volume gaps) is withdrawn and must not be used.
+  Codex 6078823692: ranking is a comparison-only exact sort (no negated Decimal key rounding to 28 digits), and a
+  listed contract with no bar in the whole window and no delist observation is vetoed `data-gap:window-absent` with a
+  30-day `gaps` entry instead of vanishing. v3 has identical book memberships to v2 in all 348 weeks and adds 4,629
+  window-absent audit vetoes (max 31 per week); v2 is withdrawn (universe files are immutable, hence the new id).
 - Provenance, stated truthfully: the store keeps each zip plus a `.ok` sidecar holding the normalized 64-hex SHA-256
   parsed from the published `.CHECKSUM`; the raw `.CHECKSUM` bytes are **not** preserved, and the manifest carries no
   `zb-data-gaps/1` gap-report digest yet. The only bound gap report is the 1d one inside the universe artifact.
@@ -218,6 +222,12 @@ Built inside the existing NEWCORE research path, not beside it:
 - Open: timestamped delist announcements; rename evidence + price-continuity check (renames refused until then);
   an exchangeInfo `underlyingType` snapshot to replace the manual classification; 1m archives for the 11 post-2021-12
   universe members outside the 1m union; raw `.CHECKSUM` preservation + manifest gap-report digest.
+- Addressability veto (owner direction 6078694212, ruled required by Codex 6088058441): non-ASCII symbols are vetoed
+  `not-addressable:non-ascii-symbol` before ranking (NEWCORE's `check_symbol` cannot address them). Each week's
+  `not_addressable` lists them with the veto they would otherwise have had, exact qv30d, would-be rank and top-40 flag.
+  v4 (digest `485c7522...`): 5 symbols in 49 weeks (123 audit entries); 3 of them would otherwise have ranked top-40 in
+  the crypto book in 15 weeks, which are the only weeks whose members differ from v3. v3 is withdrawn.
+- Sourced point-in-time exchange classification still gates strategy evidence (Codex 6078823692 / 6088058441).
 
 ## Ruling 6070934398 applied
 
@@ -279,7 +289,7 @@ Built inside the existing NEWCORE research path, not beside it:
 
 ## R3 status (09 Oct 2026 Cairo; harness core only, no strategy evaluated, no returns computed)
 
-Codex R3 review 6077894871 applied (stacked on the fixed R2 universe `pit-top40-qv30d-v2`):
+Codex R3 review 6077894871 applied (stacked on the fixed R2 universe `pit-top40-qv30d-v4`):
 
 - `tools/research/pit.py` (the plan's `data.py`): `Dataset` reads only through the manifest (SHA-256 re-check, fail
   closed) and the PIT universe, restricted to named asset-class books (no mixed default; gold from `gold-commodity`).
@@ -315,3 +325,68 @@ Codex R3 review 6077894871 applied (stacked on the fixed R2 universe `pit-top40-
   universe before the #51 fixes; not re-run): 2026-01-05..01-12
   (BTC, ETH; XAU not yet a member) and 2026-02-02..02-09 (XAU, BTC): full 1m/4h/1d/mark coverage; XAUUSDT funds every
   4h (42/week) vs 8h for BTC.
+
+Codex R3 fix review 6079042573 applied (merged with the fixed R2 head; universe `pit-top40-qv30d-v4`):
+
+- Evaluator isolation: `pit.evaluate(window, evaluator_path, function, times)` runs the evaluator in a separate
+  process (`tools/research/sandbox.py`, `zb-eval-sandbox/1`) that holds no Dataset, Window, manifest, store path or
+  ledger. Its View is a proxy answered by the harness from the View frozen at the decision time; an audit hook refuses
+  reading anything but Python's library and `.py` code outside `research_evidence/`, directory listings elsewhere,
+  writes, process creation, sockets and ctypes. This is a runtime control, not claimed as a security boundary; private
+  Python names are explicitly not one. The perturbation re-run is kept.
+- Runner authority: `evaluate` appends a `zb-eval-attestation/1` (runner, isolation, perturbation, split/window,
+  run_digest, evaluator file hash, digests of times / outputs / recorded decisions) to the family ledger;
+  `report.make_report(env, results, attestation, ledger)` refuses an attestation that is unperturbed, not sandboxed,
+  for another run/split/window, whose evaluator file is not in the envelope's hashed evaluation files, or that has no
+  matching ledger record. Results from `Window.view` directly or `perturb=False` cannot be sealed.
+- Holdout ledger: the holdout opens only from the canonical registered ledger and runs store
+  (`research_evidence/ledger` + `research_evidence/runs` of the canonical research checkout, which must be the access
+  repo) and only after `ledger.verify` (registry genesis pin + append-only Git history) passes at access. A scratch
+  ledger/runs tree, or a freshly minted registry at the canonical path, is refused.
+- Code identity: "dirty" ignores only non-executable evidence artifacts (`.json`, `.jsonl`, `.json.gz`, `.csv`, `.md`
+  under `research_evidence/`); a `.py` (or any other file) there is code. The evaluation file list is closed over static
+  imports (`import_closure`), and evaluation code in or imported from `research_evidence/` is refused at freeze.
+- Funding continuity: `check_funding_cadence(symbol, rows, start_ms=, end_ms=)` requires consecutive events exactly one
+  declared interval apart (+/- 60 s; a schedule switch accepted at the switch), no missing event before the first or
+  after the last row of the covered interval, and refuses an empty span longer than one interval. No forward fill.
+- Gold: cost classes `gold-spot` (XAUUSDT, 4h, PROVISIONAL) and `gold-tokenized` (PAXGUSDT / XAUTUSDT, per-symbol
+  cadence, UNCALIBRATED), both in the `gold` regime family (`CostModel.regime_family`); never the commodity fallback.
+- Codex 6088593971 applied. Executed code = hashed code: the sandbox (`-I -S -B`) reads only the standard library
+  (`Lib`/`DLLs`, never `site-packages`; no `site`, so no `.pth`, `sitecustomize`, user site or distribution entry
+  points; `RESEARCH_DEPS` stays empty) and exactly the evaluator's static import closure in the run checkout
+  (`report.closure_abs`); research code is loaded from the run checkout. The attestation lists every closure file with
+  its SHA-256 (re-hashed after the run) and `make_report` requires each in the envelope's hashed evaluation files.
+  Refused (regressions): ignored helper via `importlib.util`, `__import__`, `importlib.import_module`, `runpy`,
+  `exec` of repo source or a data file, repository `.pyc`, installed packages by import or by path.
+  Residual limit: `exec`/`eval` of strings built inside hashed code from View data is allowed (the text is fixed by
+  hashed code); the stdlib (incl. its `.pyc`) is trusted and pinned only by the Python version in the code identity;
+  the audit hook is a CPython runtime control, not an OS jail against native code.
+- Codex 6089002043 / 6089091570 applied (two P1s).
+  (1) Attestation bound to the exact report: the frozen eval identity now carries the entrypoint
+  {path, function, summary} and the canonical decision schedule {n, digest} (strictly increasing int ms), all inside
+  `eval_digest`. `evaluate(..., summary=)` runs the frozen summary in the sandbox (twice, must agree) and binds its
+  `results_digest`. `make_report` refuses another function or summary of the same file, an altered or subset schedule,
+  and any results payload other than the bound one.
+  (2) No uncommitted repository state is observable: the evaluator runs from a materialized temporary tree holding only
+  the hashed closure (repo layout, every mtime fixed to 2000-01-01), with no `.git`, ignored or untracked file, and no
+  checkout path. Path probes (`stat`/`exists`/`listdir`/`scandir`/final-path) are allowlisted to the tree, the empty cwd
+  and the interpreter installation (never site-packages), so an absolute host probe fails closed. The environment is
+  fixed (`-s -S -B -P`; PYTHONHASHSEED=0, PYTHONUTF8=1, TZ=UTC, SYSTEMROOT/WINDIR only). The observed hash flag, UTF-8
+  mode, time zone, locale code page (host-specific, so bound rather than fixed), env keys and empty cwd are recorded in
+  the attestation.
+  Residual limit, stated plainly: the wall clock, `os.getpid`, `random` without a seed, and the random temp-tree path
+  string are readable by hashed evaluator code. Any output that depends on them is caught only when it differs between
+  the two in-run passes or at the ledger's deterministic `holdout_rerun`. The guard is a CPython runtime control, not
+  an OS jail; for example, reloading the `nt` module is not prevented.
+  (3) Frozen execution environment (Codex 6093381880 P1): `freeze_run` records `run.code.execution_environment` =
+  `sandbox.execution_environment()` BEFORE evaluation - implementation, Python version / hexversion / cache tag,
+  executable SHA-256, OS, interpreter platform / architecture, pointer width and CPU count. Both fresh sandbox
+  processes, the attestation checked by `make_report`, the process sealing the report and the holdout `verify_code`
+  must equal it exactly; any divergence fails closed. Evidence is reproducible under the same frozen execution
+  environment, NOT portable across arbitrary hosts. Once frozen these host facts are committed inputs, so evaluator
+  code may read them.
+  `install_digest` binds the interpreter's install location (executable, base prefixes); inside the sandbox the
+  evaluator sees `sys.executable` and the four prefixes only as path-independent sentinels (Codex 6093943713).
+- Funding: `costs.check_funding_sequence` requires the phase anchor (the event at or before entry) in the rows, so every
+  event due in [entry, exit) - the entry event included - follows from continuity; `View.funding_events` reads the
+  anchor and enforces it itself, failing closed on a missing event.

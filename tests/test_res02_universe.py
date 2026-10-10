@@ -340,6 +340,50 @@ def test_archive_accepts_non_ascii_symbols(tmp_path):
     assert out.read_bytes().isascii() and M.load(str(out)) == m
 
 
+CJK = chr(0x54c8) + chr(0x57fa) + chr(0x7c73) + 'USDT'
+
+
+def test_non_ascii_symbol_is_vetoed_before_ranking_and_audited(tmp_path):
+    """Codex 6088058441 / owner 6078694212: explicit pre-ranking `not-addressable:non-ascii-symbol` veto, with the
+    would-be rank and top-40 flag recorded in every affected week."""
+    put_daily(tmp_path, CJK, days('2024-01-01', 120, 1e9))                    # by far the largest volume
+    put_daily(tmp_path, 'AAAUSDT', days('2024-01-01', 120, 10.0))
+    put_daily(tmp_path, 'BBBUSDT', days('2024-01-01', 120, 20.0))
+    young = '\u00c9TEUSDT'                                                     # non-ASCII and too young
+    put_daily(tmp_path, young, days('2024-03-01', 60, 1e6))
+    u = universe(tmp_path)
+    w = week(u, '2024-03-04')
+    assert w['members'] == ['BBBUSDT', 'AAAUSDT'] and CJK not in w['members']
+    assert [CJK, U.VETO_NOT_ADDRESSABLE] in w['vetoes'] and [young, U.VETO_NOT_ADDRESSABLE] in w['vetoes']
+    na = {e['symbol']: e for e in w['not_addressable']}
+    assert na[CJK] == {'symbol': CJK, 'book': 'crypto', 'otherwise': 'eligible', 'qv30d_usdt': str(30 * 10 ** 9),
+                       'would_rank': 1, 'would_be_top_n': True}
+    assert na[young]['otherwise'] == U.VETO_AGE and na[young]['would_rank'] is None
+    assert na[young]['would_be_top_n'] is False
+    assert w['eligible'] == 2                                                  # never counted as eligible
+    for wk in u['weeks']:                                                      # every affected week records it
+        if any(v[0] == CJK for v in wk['vetoes']):
+            assert {e['symbol'] for e in wk['not_addressable']} >= {CJK}
+        assert all(r == U.VETO_NOT_ADDRESSABLE for s, r in wk['vetoes'] if not s.isascii())
+    sym = {x['symbol']: x for x in u['symbols']}
+    assert sym[CJK]['addressable'] is False and sym['AAAUSDT']['addressable'] is True
+    assert U.addressable('BTCUSDT') and not U.addressable(CJK)
+    # a would-be rank below the top N is recorded as such
+    u2 = universe(tmp_path, top_n=1)
+    na2 = {e['symbol']: e for e in week(u2, '2024-03-04')['not_addressable']}
+    assert na2[CJK]['would_rank'] == 1 and na2[CJK]['would_be_top_n'] is True
+
+
+def test_non_ascii_veto_replaces_the_gap_veto_and_keeps_the_underlying_reason(tmp_path):
+    a = days('2024-01-01', 90, 5.0)
+    del a['2024-02-20']
+    put_daily(tmp_path, CJK, a)
+    put_daily(tmp_path, 'AAAUSDT', days('2024-01-01', 90, 10.0))
+    w = week(universe(tmp_path), '2024-03-04')
+    assert [CJK, U.VETO_NOT_ADDRESSABLE] in w['vetoes'] and [CJK, U.VETO_GAP] not in w['vetoes']
+    assert w['gaps'] == [] and w['not_addressable'][0]['otherwise'] == U.VETO_GAP
+
+
 def test_gz_manifest_round_trip_and_immutability(tmp_path):
     put_daily(tmp_path, 'BTCUSDT', days('2024-01-01', 2))
     m = build_manifest(tmp_path)
@@ -420,6 +464,48 @@ def test_near_tie_ranks_on_exact_decimals_not_binary_floats(tmp_path):
         U.build({'AAAUSDT': {ms('2024-01-01'): 1.5}}, manifest_digest='a' * 64, classes=classes())
 
 
+def test_ranking_is_exact_beyond_28_significant_digits(tmp_path):
+    # Codex 6078823692 P1: a negated Decimal key rounds to the default 28-digit context and merges these two.
+    lo, hi = '12345678901234567890.123456789012345677', '12345678901234567890.123456789012345678'
+    a, b = days('2024-01-01', 90, '0'), days('2024-01-01', 90, '0')
+    a['2024-02-20'], b['2024-02-20'] = lo, hi
+    put_daily(tmp_path, 'AAAUSDT', a)
+    put_daily(tmp_path, 'BBBUSDT', b)
+    from decimal import Decimal
+    assert Decimal(hi) > Decimal(lo) and -Decimal(hi) == -Decimal(lo)          # the hazard is real
+    w = week(universe(tmp_path), '2024-03-04')
+    assert w['members'] == ['BBBUSDT', 'AAAUSDT'] and w['qv30d_usdt'] == [hi, lo]
+    assert U.rank([('BBB', Decimal('1')), ('AAA', Decimal('1')), ('CCC', Decimal(hi))]) ==         [('CCC', Decimal(hi)), ('AAA', Decimal('1')), ('BBB', Decimal('1'))]
+
+
+def test_full_window_outage_is_an_explicit_veto_not_a_silent_drop(tmp_path):
+    # Codex 6078823692 P2: bars through 1 Feb, none 2 Feb - 31 Mar, then resumed.
+    a = {d: q for d, q in days('2024-01-01', 150, 100.0).items() if not ('2024-02-02' <= d <= '2024-03-31')}
+    put_daily(tmp_path, 'AAAUSDT', a)
+    put_daily(tmp_path, 'BBBUSDT', days('2024-01-01', 150, 1.0))
+    u = universe(tmp_path)
+    w = week(u, '2024-03-04')                                                   # window 2 Feb - 3 Mar: no bar at all
+    assert w['members'] == ['BBBUSDT'] and ['AAAUSDT', U.VETO_WINDOW_ABSENT] in w['vetoes']
+    assert w['gaps'] == [['AAAUSDT', 30]]
+    assert week(u, '2024-04-01')['gaps'] == [['AAAUSDT', 30]]                   # window 2 Mar - 31 Mar, still absent
+    assert ['AAAUSDT', U.VETO_NOT_TRADING] in week(u, '2024-02-05')['vetoes']   # partial window: existing veto
+    assert next(s for s in u['symbols'] if s['symbol'] == 'AAAUSDT')['missing_days'] == [['2024-02-02', '2024-03-31']]
+    assert week(u, '2024-05-06')['members'] == ['AAAUSDT', 'BBBUSDT']           # 30 complete days again
+
+
+def test_window_absent_veto_needs_a_listing_and_yields_to_a_delist_observation(tmp_path):
+    put_daily(tmp_path, 'LIVEUSDT', days('2024-01-01', 150, 10.0))
+    put_daily(tmp_path, 'GONEUSDT', days('2024-01-01', 40, 1e6))                # stops 2024-02-09
+    put_daily(tmp_path, 'NEWUSDT', days('2024-04-20', 30, 1e6))                 # not listed before 2024-04-20
+    u = universe(tmp_path)
+    w = week(u, '2024-04-15')
+    assert ['GONEUSDT', U.VETO_WINDOW_ABSENT] in w['vetoes'] and ['GONEUSDT', 30] in w['gaps']
+    assert not any(v[0] == 'NEWUSDT' for v in w['vetoes'])                     # future listing is not looked ahead to
+    obs = [{'symbol': 'GONEUSDT', 'observed_ms': ms('2024-02-12'), 'source': 'fixture notice'}]
+    w = week(universe(tmp_path, delist_observations=obs), '2024-04-15')
+    assert ['GONEUSDT', U.VETO_DELIST] in w['vetoes'] and not any(g[0] == 'GONEUSDT' for g in w['gaps'])
+
+
 def test_books_are_ranked_separately_and_gold_stays_in(tmp_path):
     t = ms('2025-12-08')
     put_daily(tmp_path, 'BTCUSDT', days('2025-11-01', 90, 1e9))
@@ -481,15 +567,21 @@ def test_committed_archive_manifest_classes_and_universe_are_consistent():
     assert m['digest'] == '54912d9d2bf6e6fc45bc75c0553f0bd867e877972beeb3452785937379baf1e7'
     assert len(m['files']) == 103659 and len({f['symbol'] for f in m['files']}) == 900
     c = U.load_classes(os.path.join(res, 'universe', 'instrument-classes-v1.json'))
-    with open(os.path.join(res, 'universe', 'pit-top40-qv30d-v2.json'), encoding='utf-8') as f:
+    with open(os.path.join(res, 'universe', 'pit-top40-qv30d-v4.json'), encoding='utf-8') as f:
         u = json.load(f)
     assert u['digest'] == U.digest_of(u) and u['manifest_digest'] == m['digest'] and u['format'] == U.FORMAT
     assert u['classes_digest'] == c['digest'] and u['books'] == list(U.BOOKS) and u['renames'] == []
-    assert not os.path.exists(os.path.join(res, 'universe', 'pit-top40-qv30d-v1.json'))   # the mixed artifact is gone
+    for old in ('v1', 'v2', 'v3'):          # v1 mixed list; v2 rounding sort + silent drop; v3 no addressability veto
+        assert not os.path.exists(os.path.join(res, 'universe', f'pit-top40-qv30d-{old}.json'))
     for w in u['weeks']:
         assert w['rules'] == U.RULES_BACKFILLED and 'members' not in w
         assert all(len(w['books'][b]['members']) <= U.TOP_N for b in U.BOOKS)
-        assert {g[0] for g in w['gaps']} == {s for s, r in w['vetoes'] if r == U.VETO_GAP}
+        assert {g[0] for g in w['gaps']} == {s for s, r in w['vetoes'] if r in (U.VETO_GAP, U.VETO_WINDOW_ABSENT)}
+        assert all(n == U.LOOKBACK_DAYS for s, n in w['gaps'] if [s, U.VETO_WINDOW_ABSENT] in w['vetoes'])
+        assert all(s.isascii() for b in U.BOOKS for s in w['books'][b]['members'])
+        assert sorted(e['symbol'] for e in w['not_addressable']) == sorted(
+            s for s, r in w['vetoes'] if r == U.VETO_NOT_ADDRESSABLE) == sorted(
+            s for s, _ in w['vetoes'] if not s.isascii())
     assert [w['monday_ms'] for w in u['weeks']] == list(range(u['weeks'][0]['monday_ms'],
                                                                u['weeks'][-1]['monday_ms'] + U.WEEK, U.WEEK))
     cls = {s['symbol']: s['class'] for s in u['symbols']}
