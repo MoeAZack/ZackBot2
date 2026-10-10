@@ -773,12 +773,39 @@ def import_low():
 
 def reload_low():
     import importlib
-    importlib.reload(sys.modules['_posixsubprocess'])
+    import subprocess
+    sys.modules['_posixsubprocess'] = subprocess._posixsubprocess      # put the alias back, then re-execute it
+    try:
+        importlib.reload(subprocess._posixsubprocess)
+    finally:
+        del sys.modules['_posixsubprocess']
+
+
+def reload_interp():
+    import concurrent.futures as cf
+    import importlib
+    sys.modules['_interpreters'] = cf._interpreters
+    try:
+        importlib.reload(cf._interpreters)
+    finally:
+        del sys.modules['_interpreters']
 
 
 def subinterp():
     import _interpreters
     _interpreters.exec(_interpreters.create(), 'x = 1')
+
+
+def subinterp_alias():
+    import concurrent.futures as cf
+    i = cf._interpreters
+    i.exec(i.create(), 'x = open(__file__).read()')
+
+
+STUBBED = ('_posixsubprocess', '_interpreters', '_xxsubinterpreters', '_interpqueues', '_interpchannels',
+           '_xxinterpchannels')
+IMPORT_REFUSED = STUBBED + ('interpreters', 'concurrent.interpreters', '_testcapi', '_testinternalcapi',
+                            '_testlimitedcapi')
 
 
 def builtin_route():
@@ -792,7 +819,8 @@ def dynamic_route(name, origin):
 
 
 def aliases():
-    """Any function named fork_exec, or any _posixsubprocess module, still reachable from a loaded module."""
+    """Any raw function of a stubbed module still reachable from a loaded module (aliases such as subprocess._fork_exec,
+    or attributes of an aliased stubbed module)."""
     found = []
     for m in list(sys.modules.values()):
         try:
@@ -800,7 +828,9 @@ def aliases():
         except TypeError:
             continue
         for k, v in items:
-            if getattr(v, '__name__', '') == 'fork_exec' and type(v).__name__ == 'builtin_function_or_method':
+            if type(v).__name__ == 'module' and v.__name__ in STUBBED:
+                items += [(k + '.' + a, b) for a, b in vars(v).items()]
+            if type(v).__name__ == 'builtin_function_or_method' and                     getattr(getattr(v, '__self__', None), '__name__', '') in STUBBED:
                 found.append(k)
     return found
 
@@ -821,12 +851,13 @@ def run(v):
     posix = os.name != 'nt'
     return {
         'import subprocess': 'ok',
-        '_posixsubprocess.fork_exec': attempt(import_low) if posix else 'absent',
+        'imports': {n: attempt(lambda: __import__(n)) for n in IMPORT_REFUSED},
+        'in sys.modules': [n for n in IMPORT_REFUSED if n in sys.modules],  # before the reload rows re-insert
+        '_posixsubprocess.fork_exec': attempt(import_low),
         'reload _posixsubprocess': attempt(reload_low) if posix else 'absent',
         'subinterpreter': attempt(subinterp),
-        'reload _interpreters': attempt(lambda: __import__('importlib').reload(__import__('_interpreters'))),
-        'concurrent.interpreters': attempt(lambda: __import__('concurrent.interpreters')),
-        '_testcapi': attempt(lambda: __import__('_testcapi')),
+        'subinterpreter via alias': attempt(subinterp_alias),
+        'reload _interpreters': attempt(reload_interp),
         'create_builtin _interpreters': attempt(lambda: __import__('_imp').create_builtin(
             types.SimpleNamespace(name='_interpreters'))),
         'aliases': aliases(),
@@ -857,11 +888,16 @@ def test_evaluator_cannot_reach_low_level_process_creation(world, tmp_path):
     w = access(ds, path).open('train', lineage='root')
     f = evaluator(tmp_path / 'ev', PROCESS_ATTACK, 'process_attack.py')
     out = list(P.evaluate(w, f, 'run', train_times(2)))
-    refused = ('subinterpreter', 'reload _interpreters', 'concurrent.interpreters', '_testcapi', 'create_builtin _interpreters',
+    refused = ('subinterpreter', 'subinterpreter via alias', 'reload _interpreters', '_posixsubprocess.fork_exec',
+               'create_builtin _interpreters',
                'create_builtin', 'create_dynamic', 'create_dynamic dotted', 'create_dynamic renamed', 'low-level launch',
                'subprocess.run', 'os.system', 'socket', 'write open')
-    want = dict({k: 'refused' for k in refused}, **{'import subprocess': 'ok', 'aliases': [], 'json works': True})
-    for k in ('_posixsubprocess.fork_exec', 'reload _posixsubprocess', 'subprocess._fork_exec'):
+    names = ('_posixsubprocess', '_interpreters', '_xxsubinterpreters', '_interpqueues', '_interpchannels',
+             '_xxinterpchannels', 'interpreters', 'concurrent.interpreters', '_testcapi', '_testinternalcapi',
+             '_testlimitedcapi')
+    want = dict({k: 'refused' for k in refused}, **{'import subprocess': 'ok', 'aliases': [], 'json works': True,
+                                                   'imports': {n: 'refused' for n in names}, 'in sys.modules': []})
+    for k in ('reload _posixsubprocess', 'subprocess._fork_exec'):
         want[k] = 'absent' if os.name == 'nt' else 'refused'
     assert out == [want] * 2
     assert not os.path.exists(tmp_path / 'ev' / 'pwn.txt')
