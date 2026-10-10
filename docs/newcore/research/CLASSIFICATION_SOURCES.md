@@ -29,11 +29,25 @@ manifest symbols without a detailed row.
 | `gold-pilot` | `XAUUSDT` (expected `commodity/gold-spot`) and `PAXGUSDT` (expected `tokenized-gold/paxg`) | **no**. The class is derived from sources and must equal the expected identity, otherwise UNKNOWN. Recorded but inactive (Codex #53 6095682220); activation needs its own future prereg |
 | `deferred` | a candidate that exchangeInfo shows as `TRADIFI_PERPETUAL`, or tokenized gold outside the pilot (XAUT): one `OUT_OF_SCOPE` row; **and** the blanket exclusion (everything else) | **no** |
 
-- **Membership proof, fail closed.** `classify.active_at(c, manifest, symbol, t)` first runs `classify.check`: the
-  outer digest must match, and the exclusion count + digest must equal the recomputation (manifest symbols minus the
-  detailed symbols), so a symbol can be neither dropped from nor smuggled past the exclusion. Then the row in force
-  at `t` must be `crypto` in `crypto-research`. A symbol with no detailed row (excluded, or unknown to the manifest)
-  resolves to no row and is never addressable or active.
+- **Candidate binding (F2, Codex PR #57 6096110707).** `classify.PINNED_CANDIDATES` pins the historical candidate
+  set: v4 universe id + digest, count 415, and the SHA-256 of the sorted symbol list. `classify.check(c, manifest,
+  universe)` fails closed unless all of these hold:
+  - the outer digest matches;
+  - the candidate pin equals both the universe's and the pinned set;
+  - the detailed symbols are **exactly** the candidates plus XAUUSDT and PAXGUSDT (nothing added or removed);
+  - each symbol's rows are ordered, contiguous and non-overlapping (no duplicates), with the right scope (gold stays
+    `gold-pilot`);
+  - every classified row lists positive `evidence` that it also cites in its `sources`;
+  - the exclusion count + digest equal the manifest minus the detailed symbols, so the exclusion is disjoint and
+    complete. `build` refuses snapshot symbols outside the manifest, so every remaining snapshot symbol is covered.
+
+  A forged row with recomputed digests fails the set, order, scope or evidence checks.
+- **Membership proof.** `classify.active_at(c, manifest, universe, symbol, t)` runs `check`, then requires all of:
+  - membership of the pinned candidate set;
+  - dated top-40 membership in the universe week containing `t`;
+  - a `crypto` / `crypto-research` row in force at `t` with positive evidence.
+
+  Gold is never active. A symbol with no detailed row is never addressable or active.
 - Non-addressable: UNKNOWN, OUT_OF_SCOPE, and everything in the exclusion (stocks, indices, commodities, FX, other
   products). Not active: additionally `crypto-index` and the gold pilot.
 
@@ -83,9 +97,10 @@ energy and other-metal mapping, and the equity-kind (ruling 4) work, are **remov
 | Condition | Result |
 |---|---|
 | `pair != symbol` or `baseAsset + quoteAsset != symbol`, or quoteAsset != USDT | UNKNOWN |
-| `COIN`, `PERPETUAL`, no `RWA` tag | `crypto/coin` |
-| `COIN`, `PERPETUAL`, `RWA`, base PAXG / XAUT | `tokenized-gold/<base>` (XAUT is then deferred) |
-| `COIN`, `PERPETUAL`, `RWA`, other base (MANTRA, CFG) | abstain: UNKNOWN unless a listing record asserts the class |
+| `COIN`, `PERPETUAL`, explicit `Crypto` tag, no conflicting tag | `crypto/coin` (F1: the only exchangeInfo route to an active class) |
+| `COIN`, `PERPETUAL`, no `Crypto` tag (COIN alone, or sector tags only: DeFi, Layer-1, AI, ...) | abstain: UNKNOWN unless a cited listing record asserts `crypto` |
+| `COIN`, `PERPETUAL`, only conflicting tag `RWA`, base PAXG / XAUT | `tokenized-gold/<base>` (XAUT is then deferred) |
+| `COIN`, `PERPETUAL`, any other conflicting tag (TradFi, Stock, Equity, ETF, Index, RWA, Commodity, FX, Pre-IPO, Metal, Energy) | UNKNOWN (`conflicting-tag:*`); an announcement cannot outvote it |
 | `INDEX`, `PERPETUAL`, `Crypto` tag | `crypto-index/index` |
 | `INDEX` without a `Crypto` tag (DEFI) | abstain: UNKNOWN unless a listing record asserts the class |
 | `COMMODITY`, `TRADIFI_PERPETUAL`, base XAU | `commodity/gold-spot` (pilot) |
@@ -128,7 +143,8 @@ byte-identical output (`classify.py verify`); outputs are write-once. `classify.
 which candidates are positive on every week they were selected.
 
 Offline result on these inputs (artifact **not** built): 900 manifest symbols = 417 detailed (415 candidates + 2 gold)
-+ 483 excluded. Candidates: **387 positive**, **28 not positive**.
++ 483 excluded. Candidates: **335 positive**, **80 not positive**. F1 moved 52 previously positive candidates to UNKNOWN
+(no explicit `Crypto` tag).
 
 ## 7. Cowork's checklist (active set + exclusion bypasses only)
 
@@ -138,7 +154,11 @@ Offline result on these inputs (artifact **not** built): 900 manifest symbols = 
 4. Try to make an unapproved symbol active: a TradFi symbol, a crypto-index symbol, XAUT, a symbol outside the
    candidate set, a tampered exclusion digest. Do not audit or research the wider market.
 
-UNKNOWN candidates (28), listed, not researched further (owner contract section 0.1):
+UNKNOWN candidates (80), listed, not researched further (owner contract section 0.1):
+- 53 with no `Crypto` tag in exchangeInfo, of which 52 were positive before F1 (BNX was already UNKNOWN for its
+  earlier segment): AGIX, AI16Z, AI, ALPACA, ALPHA, AMB, BAKE, BAL, BLZ, BNX, BOND, DAR, DEGO, DENT, FLM, FTM, FTT,
+  FUN, HIFI, HIGH, HOOK, ICX, IP, KLAY, LEVER, LINA, LOOM, LRC, MEMEFI, MKR, NEIROETH, OCEAN, OMG, OMNI, OM, PERP, RAY,
+  REEF, REN, STMX, STORJ, STRAX, TON, TROY, UNFI, UXLINK, VANRY, VIC, VIDT, VINE, VOXEL, WAVES, ZKJ (all `...USDT`).
 - 21 delisted, no committed source: AERGO, ANC, ANT, AUDIO, BTT, BZRX, COCOS, DODO, EOS, FRONT, GAL, HNT, KEEP, LEND,
   LUNA, MATIC, RNDR, SRM, SXP, TOMO, YFII (all `...USDT`). Binance launch announcements were located for all but BTT
   (whose 2020-09 listing was cancelled), but no page could be fetched and hashed.

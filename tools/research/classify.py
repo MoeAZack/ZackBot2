@@ -69,6 +69,18 @@ ACTIVE_SCOPES = (SCOPE_CRYPTO,)
 # Committed, reviewable mapping tables (contract section 3). A base asset missing here fails closed to UNKNOWN.
 COMMODITY_SUBCLASS = {'XAU': 'gold-spot'}
 TOKENIZED_GOLD_BASES = {'PAXG': 'paxg', 'XAUT': 'xaut'}    # XAUT is recognised only to route it out of the crypto book
+# F1 (Codex PR #57 6096110707): a crypto class needs the explicit positive `Crypto` underlyingSubType tag (or a cited
+# listing record asserting crypto) and NO conflicting tag. COIN type alone, or sector tags alone (DeFi, Layer-1, ...),
+# are not identity evidence; missing or conflicting evidence is UNKNOWN.
+CRYPTO_TAG = 'Crypto'
+# F2 (Codex PR #57 6096110707): the detailed crypto rows are bound to THIS historical top-40 candidate set (every symbol
+# the committed v4 universe ever put in its crypto book). `check` / `active_at` refuse any other set by default.
+PINNED_CANDIDATES = {'universe_id': 'pit-top40-qv30d-v4', 'book': 'crypto', 'count': 415,
+                     'universe_digest': '485c752226cc6b50a07d3feefa90a4fdc62e256e8d5a033e57d24983bf2cd093',
+                     'symbols_sha256': '95567b44452aa11754b18f73a621435a7bfc9fbc5cbf4cbf6eace72321938bb6'}
+WEEK = 7 * 86_400_000
+CONFLICT_TAGS = frozenset({'tradfi', 'stock', 'stocks', 'equity', 'etf', 'index', 'rwa', 'commodity', 'commodities',
+                           'forex', 'fx', 'pre-ipo', 'metal', 'metals', 'energy'})
 
 SNAP_KEYS = {'format', 'snapshot_id', 'retrieval_url', 'retrieved_ms', 'response_sha256', 'response_server_time_ms',
              'scope', 'symbols'}
@@ -168,11 +180,14 @@ def derive(e: dict) -> tuple[str, str]:
         if ct != 'PERPETUAL':
             return UNKNOWN, f'contract-type:{ut}/{ct}'
         if ut == 'INDEX':
-            return ('crypto-index', 'index') if 'Crypto' in subs else ('abstain', 'index-not-tagged-crypto')
-        if 'RWA' in subs:
-            if base in TOKENIZED_GOLD_BASES:
-                return 'tokenized-gold', TOKENIZED_GOLD_BASES[base]
-            return 'abstain', f'rwa-base-unmapped:{base}'
+            return ('crypto-index', 'index') if CRYPTO_TAG in subs else ('abstain', 'index-not-tagged-crypto')
+        conflicts = sorted(t for t in subs if t.lower() in CONFLICT_TAGS)
+        if conflicts == ['RWA'] and base in TOKENIZED_GOLD_BASES:
+            return 'tokenized-gold', TOKENIZED_GOLD_BASES[base]
+        if conflicts:
+            return UNKNOWN, f'conflicting-tag:{",".join(conflicts)}'
+        if CRYPTO_TAG not in subs:
+            return 'abstain', 'no-crypto-tag'               # a cited listing record may still supply the identity
         return 'crypto', 'coin'
     if ct != 'TRADIFI_PERPETUAL':
         return UNKNOWN, f'contract-type:{ut}/{ct}'
@@ -205,10 +220,14 @@ def archive_spans(manifest: dict) -> dict[str, list[tuple[int, int]]]:
 
 # ---------------------------------------------------------------- builder
 
-def _row(sym, cls, sub, a, b, observed, sources, basis):
-    prov = None if cls in (UNKNOWN, OUT_OF_SCOPE) else ('contemporaneous' if observed <= a else 'retrospective')
+def _row(sym, cls, sub, a, b, observed, sources, basis, evidence=()):
+    """`evidence`: the source ids that POSITIVELY assert this class (exchangeInfo snapshots whose entry derived it, e.g.
+    via the `Crypto` tag, and announcement records asserting it); empty for UNKNOWN / OUT_OF_SCOPE."""
+    known = cls not in (UNKNOWN, OUT_OF_SCOPE)
+    prov = ('contemporaneous' if observed <= a else 'retrospective') if known else None
     return {'symbol': sym, 'class': cls, 'subclass': sub, 'effective_from_ms': a, 'effective_to_ms': b,
-            'class_first_observed_ms': observed, 'provenance': prov, 'sources': sorted(set(sources)), 'basis': basis}
+            'class_first_observed_ms': observed, 'provenance': prov, 'sources': sorted(set(sources)), 'basis': basis,
+            'evidence': sorted(set(evidence)) if known else []}
 
 
 def _unknown(sym, a, b, sources, reason):
@@ -236,6 +255,7 @@ def _segment(sym, a, b, docs, snaps, kind):
     rows = []
     doc_claims = [(r['class'], r['subclass']) for r in docs if r['class'] is not None]
     doc_ids = [f'ann:{r["record_id"]}' for r in docs]
+    claim_ids = [f'ann:{r["record_id"]}' for r in docs if r['class'] is not None]
     doc_seen = min((r['published_ms'] for r in docs if r['class'] is not None), default=None)
     abstains = [f'{sid}={d[1]}' for _, sid, d in snaps if d[0] == 'abstain']
     groups = []                                             # consecutive runs of identical derived results
@@ -255,7 +275,7 @@ def _segment(sym, a, b, docs, snaps, kind):
         if not doc_claims:
             return [_unknown(sym, a, b, all_ids, 'no-class-source' + (f'({";".join(abstains)})' if abstains else ''))]
         cls, sub = _combine(doc_claims)
-        return [_row(sym, cls, sub, a, b, doc_seen, doc_ids, f'{head}:announcement')]
+        return [_row(sym, cls, sub, a, b, doc_seen, doc_ids, f'{head}:announcement', claim_ids)]
     g0 = groups[0]
     if g0['d'][0] == UNKNOWN:
         return [_unknown(sym, a, b, all_ids, g0['d'][1])]
@@ -264,11 +284,12 @@ def _segment(sym, a, b, docs, snaps, kind):
         if merged is None:
             return [_unknown(sym, a, b, all_ids, 'announcement-vs-exchangeinfo')]
         rows.append(_row(sym, *merged, a, None, min(doc_seen, g0['first']), doc_ids + g0['ids'],
-                         f'{head}:exchangeinfo+announcement'))
+                         f'{head}:exchangeinfo+announcement', claim_ids + g0['ids']))
     else:
         if kind == 'change':                                # unreachable: change segments always carry a claim
             raise ClassifyError(f'{sym}: class-change segment without an asserted class')
-        rows.append(_row(sym, *_combine([], g0['d']), a, None, g0['first'], g0['ids'], f'{head}:exchangeinfo'))
+        rows.append(_row(sym, *_combine([], g0['d']), a, None, g0['first'], g0['ids'], f'{head}:exchangeinfo',
+                         g0['ids']))
     prev = g0
     for g in groups[1:]:
         # undocumented change between two snapshots (mutable contract): the gap is UNKNOWN and the new class dates only
@@ -282,7 +303,7 @@ def _segment(sym, a, b, docs, snaps, kind):
             rows.append(_unknown(sym, gf, None, g['ids'], g['d'][1]))
         else:
             rows.append(_row(sym, *_combine([], g['d']), gf, None, g['first'], g['ids'],
-                             'observed:exchangeinfo-snapshot'))
+                             'observed:exchangeinfo-snapshot', g['ids']))
         prev = g
     rows[-1]['effective_to_ms'] = b
     return rows
@@ -368,11 +389,19 @@ def _classify(sym, runs, snap_hits, records, mid):
                 and p['effective_to_ms'] == r['effective_from_ms']:
             p['effective_to_ms'] = r['effective_to_ms']
             p['sources'] = sorted(set(p['sources']) | set(r['sources']))
+            p['evidence'] = sorted(set(p['evidence']) | set(r['evidence']))
             if r['basis'] not in p['basis'].split('|'):
                 p['basis'] += '|' + r['basis']
         else:
             merged.append(r)
     return merged
+
+
+def candidates_pin(universe: dict) -> dict:
+    """The identity of a universe's historical crypto candidate set (compare with PINNED_CANDIDATES)."""
+    cands = sorted(top40_candidates(universe))
+    return {'universe_id': universe['universe_id'], 'book': 'crypto', 'count': len(cands),
+            'universe_digest': universe['digest'], 'symbols_sha256': hashlib.sha256(M.canonical(cands)).hexdigest()}
 
 
 def exclusion_of(manifest_symbols, detailed) -> dict:
@@ -407,6 +436,8 @@ def build(snapshots, announcements, manifest, universe, *, classes_id, snapshot_
     cands = top40_candidates(universe)
     missing = sorted(set(cands) - set(spans))
     _need(not missing, f'top-40 candidates absent from the manifest: {missing[:5]}')
+    stray = sorted({e['symbol'] for s in snapshots for e in s['symbols']} - set(spans))
+    _need(not stray, f'snapshot symbols outside the manifest (the exclusion must cover them): {stray[:5]}')
     detailed = sorted(set(cands) | (set(GOLD_PILOT) & set(spans)))
     rows = []
     for sym in detailed:
@@ -435,9 +466,7 @@ def build(snapshots, announcements, manifest, universe, *, classes_id, snapshot_
                'active_scopes': list(ACTIVE_SCOPES), 'listing_tolerance_ms': LISTING_TOLERANCE_MS,
                'relist_gap_ms': RELIST_GAP_MS},
            'inputs': {'announcements_file_sha256': announcements_file_sha, 'records': len(recs),
-                      'snapshots': sids, 'candidates': {'universe_id': universe['universe_id'],
-                                                        'universe_digest': universe['digest'], 'book': 'crypto',
-                                                        'count': len(cands)}},
+                      'snapshots': sids, 'candidates': candidates_pin(universe)},
            'sources': {k: v for k, v in sorted(sources.items()) if k in used | {mid}},
            'symbols': len(spans), 'detailed_symbols': len(detailed), 'exclusion': exclusion_of(spans, detailed),
            'row_counts': dict(sorted(counts.items())), 'rows': rows}
@@ -463,20 +492,62 @@ def dumps_compact(doc: dict, list_key: str) -> bytes:
 
 # ---------------------------------------------------------------- downstream helpers
 
-def check(c: dict, manifest: dict) -> None:
-    """Fail closed unless `c` is untampered: its digest matches its content, and its exclusion count + digest equal the
-    manifest symbols minus the detailed symbols (no symbol can be dropped from, or slipped past, the exclusion)."""
+def check(c: dict, manifest: dict, universe: dict, pinned: dict | None = PINNED_CANDIDATES) -> None:
+    """Fail closed unless `c` is the untampered classification of exactly the pinned candidate set:
+    * its digest matches its content; its candidate pin equals `universe`'s and the pinned set (`pinned`; None only in
+      fixtures);
+    * the detailed symbols are EXACTLY the candidates plus the gold-pilot identities in the manifest (no row added or
+      removed), each symbol's rows contiguous, ordered and non-overlapping (no duplicate or overlapping row), with the
+      right scope, and every known row cites positive evidence it also lists among its sources;
+    * the exclusion count + digest equal the manifest symbols minus the detailed symbols (disjoint and complete).
+    A forged row with recomputed digests fails the set, ordering, scope or evidence checks."""
     _need(c.get('format') == FORMAT and c.get('digest') == digest_of(c), 'classes: digest mismatch (tampered)')
-    detailed = {r['symbol'] for r in c['rows']}
-    _need(c['detailed_symbols'] == len(detailed), 'classes: detailed symbol count mismatch')
-    _need(c['exclusion'] == exclusion_of({f['symbol'] for f in manifest['files']}, detailed),
+    pin = candidates_pin(universe)
+    _need(c['inputs']['candidates'] == pin, 'classes: candidate pin does not match the universe')
+    _need(pinned is None or pin == pinned, 'classes: candidate set is not the pinned historical top-40 set')
+    man = {f['symbol'] for f in manifest['files']}
+    cands = set(top40_candidates(universe))
+    want = cands | (set(GOLD_PILOT) & man)
+    by: dict[str, list] = {}
+    for r in c['rows']:
+        by.setdefault(r['symbol'], []).append(r)
+    _need(set(by) == want, f'classes: detailed symbols differ from the candidate set + gold pilot '
+                           f'(added {sorted(set(by) - want)[:3]}, removed {sorted(want - set(by))[:3]})')
+    _need([r['symbol'] for r in c['rows']] == sorted(r['symbol'] for r in c['rows']), 'classes: rows out of order')
+    for sym, rs in by.items():
+        for x, y in zip(rs, rs[1:]):
+            _need(x['effective_to_ms'] is not None and x['effective_to_ms'] == y['effective_from_ms'],
+                  f'classes: {sym}: duplicate, overlapping or gapped rows')
+        _need(rs[-1]['effective_to_ms'] is None, f'classes: {sym}: last row must be open-ended')
+        for r in rs:
+            _need(r['effective_to_ms'] is None or r['effective_from_ms'] < r['effective_to_ms'],
+                  f'classes: {sym}: empty row')
+            ok_scopes = (SCOPE_GOLD,) if sym in GOLD_PILOT else (SCOPE_CRYPTO, SCOPE_DEFERRED)
+            _need(r['scope'] in ok_scopes, f'classes: {sym}: wrong scope')
+            if addressable(r):
+                _need(r['evidence'] and set(r['evidence']) <= set(r['sources']) <= set(c['sources']),
+                      f'classes: {sym}: a classified row without cited positive evidence')
+            else:
+                _need(r['evidence'] == [], f'classes: {sym}: an unclassified row claims evidence')
+    _need(c['detailed_symbols'] == len(by), 'classes: detailed symbol count mismatch')
+    _need(c['exclusion'] == exclusion_of(man, set(by)),
           'classes: exclusion digest/count does not match the manifest (tampered)')
 
 
-def active_at(c: dict, manifest: dict, symbol: str, t_ms: int) -> bool:
-    """The membership proof downstream code uses: verified classes, then an ACTIVE row in force at `t_ms`. Any symbol
-    without a detailed row (the blanket exclusion, or unknown to the manifest) is non-addressable and never active."""
-    check(c, manifest)
+def in_book_at(universe: dict, symbol: str, t_ms: int) -> bool:
+    """Dated top-40 membership: `symbol` is in the crypto book of the universe week containing `t_ms`."""
+    return any(w['monday_ms'] <= t_ms < w['monday_ms'] + WEEK and symbol in w['books']['crypto']['members']
+               for w in universe['weeks'])
+
+
+def active_at(c: dict, manifest: dict, universe: dict, symbol: str, t_ms: int,
+              pinned: dict | None = PINNED_CANDIDATES) -> bool:
+    """The membership proof downstream code uses. All of: verified classes (`check`), membership of the pinned
+    crypto-candidate set, dated top-40 membership at `t_ms`, and an ACTIVE row (positive crypto evidence) in force at
+    `t_ms`. Gold is never active; any symbol without a detailed row is non-addressable and never active."""
+    check(c, manifest, universe, pinned)
+    if symbol in GOLD_PILOT or symbol not in top40_candidates(universe) or not in_book_at(universe, symbol, t_ms):
+        return False
     return active(resolve_at(c, symbol, t_ms))
 
 
@@ -499,7 +570,8 @@ def active(row: dict | None) -> bool:
     individually classified `crypto` only). `crypto-index` rows keep their class but are inactive (a possible later
     separate book); gold-pilot identities stay recorded but inactive and non-blocking until their own future prereg;
     deferred and UNKNOWN rows are never active."""
-    return addressable(row) and row['scope'] in ACTIVE_SCOPES and row['class'] in ACTIVE_CLASSES
+    return addressable(row) and row['scope'] in ACTIVE_SCOPES and row['class'] in ACTIVE_CLASSES and \
+        bool(row.get('evidence'))
 
 
 def top40_candidates(universe: dict, book: str = 'crypto') -> dict[str, list[int]]:

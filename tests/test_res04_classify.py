@@ -245,11 +245,37 @@ def test_unmapped_underlying_fails_closed(store):
     s['symbols'] += [xi('MANTRAUSDT', subs=('RWA', 'Crypto'), onboard=ms('2026-03-04') + 8 * HOUR),
                      xi('DEFIUSDT', ut='INDEX', subs=('Index',), onboard=ms('2024-01-01') + 8 * HOUR)]
     c = build(store, snaps=[s])
-    assert rows(c, 'MANTRAUSDT')[0][4] == 'UNKNOWN:no-class-source(xinfo:s1=rwa-base-unmapped:MANTRA)'
+    assert rows(c, 'MANTRAUSDT')[0][4] == 'UNKNOWN:conflicting-tag:RWA'
     assert rows(c, 'DEFIUSDT')[0][4] == 'UNKNOWN:no-class-source(xinfo:s1=index-not-tagged-crypto)'
-    # an announcement can supply the missing class (Cowork-verified record)
+    # a conflicting tag is not outvoted by an announcement: contradiction stays UNKNOWN
     c = build(store, snaps=[s], records=[rec('LM', 'listing', 'MANTRAUSDT', ms('2026-03-04') + 8 * HOUR, cls='crypto')])
-    assert rows(c, 'MANTRAUSDT')[0][:2] == ('crypto', 'unspecified')
+    assert rows(c, 'MANTRAUSDT')[0][0] == 'UNKNOWN'
+
+
+@pytest.mark.parametrize('subs, basis', [
+    (('DeFi',), 'UNKNOWN:no-class-source(xinfo:s1=no-crypto-tag)'),           # sector tag only: no identity
+    ((), 'UNKNOWN:no-class-source(xinfo:s1=no-crypto-tag)'),                  # COIN type alone
+    (('Crypto', 'Stock'), 'UNKNOWN:conflicting-tag:Stock'),
+    (('Crypto', 'TradFi'), 'UNKNOWN:conflicting-tag:TradFi'),
+    (('Crypto', 'Index'), 'UNKNOWN:conflicting-tag:Index')])
+def test_f1_coin_needs_positive_crypto_tag_and_no_conflict(store, subs, basis):
+    s = base_snap()
+    s['symbols'][0] = xi('BTCUSDT', subs=subs, onboard=ms('2024-01-01') + 8 * HOUR)
+    c = build(store, snaps=[s])
+    assert rows(c, 'BTCUSDT')[0][4] == basis
+    assert not C.active(C.resolve_at(c, 'BTCUSDT', ms('2024-01-10')))
+
+
+def test_f1_positive_row_carries_evidence(store):
+    c = build(store)
+    (r,) = [r for r in c['rows'] if r['symbol'] == 'BTCUSDT']
+    assert r['evidence'] == ['xinfo:s1'] and C.active(r)
+    assert not C.active(dict(r, evidence=[]))                                  # no evidence -> never active
+    s = base_snap()
+    s['symbols'][0] = xi('BTCUSDT', subs=('DeFi',), onboard=ms('2024-01-01') + 8 * HOUR)
+    c = build(store, snaps=[s], records=[rec('LB', 'listing', 'BTCUSDT', ms('2024-01-01') + 8 * HOUR, cls='crypto')])
+    (r,) = [r for r in c['rows'] if r['symbol'] == 'BTCUSDT']               # a cited listing record is positive evidence
+    assert (r['class'], r['evidence']) == ('crypto', ['ann:LB']) and C.active(r)
 
 
 def test_contract_type_mismatch_is_unknown(store):
@@ -424,22 +450,26 @@ def _narrow(store):
                      xi('BTCDOMUSDT', ut='INDEX', base='BTCDOM', subs=('Index', 'Crypto'),
                         onboard=ms('2024-01-01') + 8 * HOUR)]
     m = manifest(store)
-    return C.build([s], ann(), m, universe(['BTCUSDT']), classes_id='fx-narrow'), m
+    u = universe(['BTCUSDT'])
+    return C.build([s], ann(), m, u, classes_id='fx-narrow'), m, u
 
 
 def test_blanket_exclusion_detailed_rows_only_for_candidates_and_gold(store):
-    c, m = _narrow(store)
+    c, m, u = _narrow(store)
     assert sorted({r['symbol'] for r in c['rows']}) == ['BTCUSDT', 'PAXGUSDT', 'XAUUSDT']
     excluded = sorted({f['symbol'] for f in m['files']} - {'BTCUSDT', 'PAXGUSDT', 'XAUUSDT'})
     assert excluded == ['AAPLUSDT', 'BTCDOMUSDT', 'ROGUEUSDT', 'XAUTUSDT']
     assert c['exclusion'] == {'class': 'OUT_OF_SCOPE', 'scope': 'deferred', 'count': 4,
                               'symbols_sha256': hashlib.sha256(M.canonical(excluded)).hexdigest()}
     assert c['symbols'] == 7 and c['detailed_symbols'] == 3
-    C.check(c, m)
+    C.check(c, m, u, pinned=None)
     at = ms('2026-04-07')
-    assert C.active_at(c, m, 'BTCUSDT', at)
+    assert C.active_at(c, m, u, 'BTCUSDT', at, pinned=None)
+    assert not C.active_at(c, m, u, 'BTCUSDT', ms('2026-04-20'), pinned=None)      # not in the book that week
     for sym in ('XAUUSDT', 'PAXGUSDT'):                       # recorded identities, inactive
-        assert C.addressable(C.resolve_at(c, sym, at)) and not C.active_at(c, m, sym, at)
+        assert C.addressable(C.resolve_at(c, sym, at)) and not C.active_at(c, m, u, sym, at, pinned=None)
+    with pytest.raises(C.ClassifyError, match='pinned'):      # a fixture set is not the pinned v4 set
+        C.active_at(c, m, u, 'BTCUSDT', at)
 
 
 @pytest.mark.parametrize('sym', ['ROGUEUSDT',                 # unlisted / never selected
@@ -448,27 +478,109 @@ def test_blanket_exclusion_detailed_rows_only_for_candidates_and_gold(store):
                                  'XAUTUSDT',                  # tokenized gold outside the pilot
                                  'NOSUCHUSDT'])               # not even in the manifest
 def test_exclusion_is_fail_closed(store, sym):
-    c, m = _narrow(store)
+    c, m, u = _narrow(store)
     for t in (ms('2024-01-10'), ms('2026-04-07'), ms('2026-09-01')):
         assert C.resolve_at(c, sym, t) is None
-        assert not C.addressable(C.resolve_at(c, sym, t)) and not C.active_at(c, m, sym, t)
+        assert not C.addressable(C.resolve_at(c, sym, t)) and not C.active_at(c, m, u, sym, t, pinned=None)
 
 
-def test_tampered_exclusion_or_smuggled_row_refused(store):
-    c, m = _narrow(store)
+def _redigest(c):
+    c['digest'] = C.digest_of(c)
+    return c
+
+
+def _attack(store, mutate, match):
+    c, m, u = _narrow(store)
     bad = json.loads(json.dumps(c))
-    bad['exclusion']['symbols_sha256'] = H                    # tampered digest, outer digest not refreshed
+    u2 = mutate(bad, u) or u
+    _redigest(bad)                                            # the forger recomputes every digest
+    with pytest.raises(C.ClassifyError, match=match):
+        C.active_at(bad, m, u2, 'BTCUSDT', ms('2026-04-07'), pinned=None)
+
+
+def test_tampered_exclusion_refused(store):
+    c, m, u = _narrow(store)
+    bad = json.loads(json.dumps(c))
+    bad['exclusion']['symbols_sha256'] = H                    # outer digest not refreshed
     with pytest.raises(C.ClassifyError, match='digest'):
-        C.active_at(bad, m, 'BTCUSDT', ms('2026-04-07'))
-    bad['digest'] = C.digest_of(bad)                          # ... and refreshed: the manifest recomputation catches it
-    with pytest.raises(C.ClassifyError, match='exclusion'):
-        C.check(bad, m)
-    smuggled = json.loads(json.dumps(c))                      # a TradFi symbol slipped in as an active crypto row
-    smuggled['rows'].append(dict(smuggled['rows'][0], symbol='AAPLUSDT'))
-    smuggled['detailed_symbols'] += 1
-    smuggled['digest'] = C.digest_of(smuggled)
-    with pytest.raises(C.ClassifyError, match='exclusion'):
-        C.active_at(smuggled, m, 'AAPLUSDT', ms('2026-04-07'))
+        C.active_at(bad, m, u, 'BTCUSDT', ms('2026-04-07'), pinned=None)
+    _attack(store, lambda b, u: b['exclusion'].update(symbols_sha256=H), 'exclusion')
+
+
+def _forge_row(sym, cls='crypto'):
+    def f(b, u):
+        b['rows'].append(dict(b['rows'][0], symbol=sym, **{'class': cls}))
+        b['rows'].sort(key=lambda r: r['symbol'])
+        b['detailed_symbols'] += 1
+        b['exclusion'] = C.exclusion_of({x['symbol'] for x in b['rows']} | {'AAPLUSDT', 'BTCDOMUSDT', 'ROGUEUSDT',
+                                                                            'XAUTUSDT'}, {x['symbol'] for x in b['rows']})
+    return f
+
+
+@pytest.mark.parametrize('sym', ['AAPLUSDT', 'BTCDOMUSDT', 'XAUTUSDT', 'ROGUEUSDT'])
+def test_forged_detailed_row_with_recomputed_digests_refused(store, sym):
+    # a forged active row for a TradFi / crypto-index / XAUT / unselected symbol, exclusion and digest recomputed
+    _attack(store, _forge_row(sym), 'detailed symbols differ')
+
+
+def test_forged_candidate_set_refused(store):
+    # the forger also adds the symbol to the universe: the pin no longer matches the classes (or the pinned set)
+    def f(b, u):
+        _forge_row('AAPLUSDT')(b, u)
+        return universe(['BTCUSDT', 'AAPLUSDT'])
+    _attack(store, f, 'candidate pin')
+    c, m, u = _narrow(store)
+    with pytest.raises(C.ClassifyError, match='pinned'):
+        C.check(c, m, u)
+
+
+def test_overlap_between_detailed_and_excluded_refused(store):
+    # exclusion recomputed as if BTCUSDT were also excluded: overlap with a detailed row
+    _attack(store, lambda b, u: b['exclusion'].update(C.exclusion_of(
+        {'AAPLUSDT', 'BTCDOMUSDT', 'ROGUEUSDT', 'XAUTUSDT', 'BTCUSDT'}, set())), 'exclusion')
+
+
+def test_candidate_removal_refused(store):
+    def f(b, u):
+        b['rows'] = [r for r in b['rows'] if r['symbol'] != 'BTCUSDT']
+        b['detailed_symbols'] -= 1
+    _attack(store, f, 'detailed symbols differ')
+
+
+def test_duplicate_or_overlapping_row_refused(store):
+    def dup(b, u):
+        b['rows'].insert(0, dict(b['rows'][0]))
+    _attack(store, dup, 'overlapping')
+
+    def overlap(b, u):
+        r = b['rows'][0]
+        b['rows'][0:1] = [dict(r, effective_to_ms=ms('2024-02-01')), dict(r, effective_from_ms=ms('2024-01-15'))]
+    _attack(store, overlap, 'overlapping')
+
+
+def test_forged_evidence_free_or_gold_rescoped_row_refused(store):
+    _attack(store, lambda b, u: b['rows'][0].update(evidence=[]), 'positive evidence')
+    def rescope(b, u):
+        for r in b['rows']:
+            if r['symbol'] == 'PAXGUSDT':
+                r.update(scope='crypto-research', **{'class': 'crypto'})
+    _attack(store, rescope, 'wrong scope')
+
+
+def test_stock_tagged_coin_candidate_never_active(store):
+    s = base_snap()
+    s['symbols'][0] = xi('BTCUSDT', subs=('Crypto', 'Stock'), onboard=ms('2024-01-01') + 8 * HOUR)
+    m = manifest(store)
+    u = universe(['BTCUSDT'])
+    c = C.build([s], ann(), m, u, classes_id='x')
+    C.check(c, m, u, pinned=None)
+    assert C.resolve_at(c, 'BTCUSDT', ms('2026-04-07'))['basis'] == 'UNKNOWN:conflicting-tag:Stock'
+    assert not C.active_at(c, m, u, 'BTCUSDT', ms('2026-04-07'), pinned=None)
+
+
+def test_pinned_candidates_match_committed_v4_universe():
+    with open(os.path.join(ROOT, 'research_evidence', 'universe', 'pit-top40-qv30d-v4.json'), encoding='utf-8') as f:
+        assert C.candidates_pin(json.load(f)) == C.PINNED_CANDIDATES
 
 
 def test_candidate_absent_from_manifest_refused(store):
