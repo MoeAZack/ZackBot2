@@ -1812,3 +1812,42 @@ def test_committed_archive_manifest_has_no_overlap():
         g.setdefault((f.get('series', 'klines'), f['symbol'], f['interval']), []).append(f)
     for k, fs in g.items():
         P._refuse_overlap(k, fs)
+
+
+# ------------------------------------------------------------------ legacy M3 source (Codex #53 6094970068)
+def _committed(name):
+    return M.load(os.path.join(ROOT, 'research_evidence', 'manifests', name))
+
+
+def test_legacy_unverified_manifest_still_refuses_its_overlaps():
+    """The 16 data/ vs data_long/ overlaps (core 8 x 1h/4h) keep legacy-unverified-v1 refused (metadata only)."""
+    m = _committed('legacy-unverified-v1.json')
+    with pytest.raises(P.OverlapError, match=r'manifest files data_long/(1h|4h)/[A-Z]+USDT_(1h|4h)\.csv and data'):
+        P.Dataset(m, ROOT, None)
+    g = {}
+    for f in m['files']:
+        g.setdefault(('klines', f['symbol'], f['interval']), []).append(f)
+    refused = []
+    for k, fs in g.items():
+        try:
+            P._refuse_overlap(k, fs)
+        except P.OverlapError:
+            refused.append(k)
+    assert len(refused) == 16 and {k[2] for k in refused} == {'1h', '4h'} and len({k[1] for k in refused}) == 8
+
+
+def test_m3_repro_manifest_loads_with_zero_overlaps_and_only_as_development(tmp_path):
+    m = _committed('legacy-m3-repro-v1.json')
+    ds = P.Dataset(m, ROOT, None)                                   # the overlap check passes: zero overlaps
+    assert ds.labels == (P.SURVIVOR_ONLY, P.REPRO_ONLY) and len(ds._files) == 8
+    assert all(len(v) == 1 for v in ds._files.values())
+    path, _ = dirs(tmp_path)
+    for key in plan().keys():                                     # every split, holdout included
+        with pytest.raises(P.PITError, match='reproduction-only'):
+            access(ds, path).open(key)
+    assert not os.path.exists(path)                                # a refused open writes no ledger record
+    w = access(ds, path, pl=None).open_development('2024-01-01T00:00:00Z', '2024-02-01T00:00:00Z',
+                                                    lineage='root')
+    rec = json.loads(open(path, encoding='utf-8').read().splitlines()[-1])
+    assert w.split == 'development' and rec['manifest_digest'] == m['digest']
+    assert 'REPRO-ONLY' in rec['detail']['labels']

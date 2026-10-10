@@ -72,6 +72,7 @@ Bar = namedtuple('Bar', 'open_ms open high low close volume quote_volume availab
 Funding = namedtuple('Funding', 'time_ms rate interval_hours available_ms')
 HOUR = 3_600_000
 SURVIVOR_ONLY = 'SURVIVOR-ONLY'
+REPRO_ONLY = 'REPRO-ONLY'                         # label of a reproduction-only manifest (never evidence)
 GROUP_KINDS = ('holdout_reveal', 'holdout_rerun')
 FUNDING_MARK_PROXY = 'funding-mark-proxy-v1: close of the 1h mark bar ending at or before T (causal proxy, PROVISIONAL)'
 ATTESTATION_FORMAT = 'zb-eval-attestation/1'
@@ -122,7 +123,8 @@ class Dataset:
                 raise PITError('an all-listed manifest is served only through its PIT universe')
             if books is not None:
                 raise PITError('books need a PIT universe')
-            self.universe_digest, self.labels, self.books = None, (SURVIVOR_ONLY,), ()
+            self.universe_digest, self.books = None, ()
+            self.labels = (SURVIVOR_ONLY,) + (() if M.promotion_eligible(manifest) else (REPRO_ONLY,))
             self._mondays, self._members = None, None
             self._all = frozenset(f['symbol'] for f in manifest['files'])
         else:
@@ -759,6 +761,9 @@ class Access:
     def open(self, key: str, *, envelope=None, detail=None, lineage=None) -> Window:
         if self.plan is None:
             raise PITError('a split opens only through a SplitPlan')
+        if not M.promotion_eligible(self.ds.manifest):
+            raise PITError(f'{self.ds.manifest["manifest_id"]} is reproduction-only: it opens only as a development '
+                           f'window and can never feed split, holdout or promotion evidence')
         name, window = self.plan.split(key)['name'], self.plan.window(key)
         lo, hi = self.plan.access_range(key)
         d = self._base_detail(detail)
