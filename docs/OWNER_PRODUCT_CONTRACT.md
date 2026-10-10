@@ -50,9 +50,15 @@ evidence, its risk and exit behaviour, or the minimum data/execution proof neede
   current-universe instruments. Each is tested backward only from the point where reliable data exists. Results are
   labelled `CURRENT-UNIVERSE / SURVIVOR-BIASED`; that limitation is reported, not hidden.
 - The active universe artifact is intentionally simple: one immutable dated list containing exactly 40 unique Binance
-  symbols, the already-agreed selection rule, and the source/list digests. Validate that those exact symbols existed and
-  were tradable at the snapshot. Do not build a general instrument-classification framework, announcement collector or
-  per-symbol catalog for this release; the approved list itself is the boundary.
+  symbols in ranked order, the already-agreed selection rule, and the source/list digests. Its first 10 and first 20 are
+  frozen as `CORE-10` and `CORE-20`. Validate that those exact symbols existed and were tradable at the snapshot. Do not
+  build a general instrument-classification framework, announcement collector or per-symbol catalog for this release;
+  the approved list itself is the boundary.
+- Strategy development, long/short coverage, exit and profit-protection tuning, risk/sizing calibration and repeated
+  testnet attention focus on `CORE-10` and then `CORE-20`. Symbols ranked 21–40 are an extended generalization check,
+  not an equal-effort research program and not a blocker for a useful core engine. Freeze all tiers before viewing
+  strategy outcomes; report core-10, core-20 and extended-40 results separately so the narrower focus does not hide
+  concentration or overfitting.
 - Reconstructing every historical top-40 membership change is a later robustness study. It may test selection-policy
   turnover and delisting risk, but it cannot block the current top-40 engine, strategy backtests or testnet progress.
 - A separate gold pilot may record only the approved direct-XAU/XAUUSDT path and PAXGUSDT identity. It stays inactive
