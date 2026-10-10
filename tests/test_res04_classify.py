@@ -50,8 +50,7 @@ def manifest(store):
 
 def xi(sym, ut='COIN', ct='PERPETUAL', base=None, subs=('Crypto',), onboard=None, quote='USDT'):
     return {'symbol': sym, 'pair': sym, 'baseAsset': base or sym[:-4], 'quoteAsset': quote, 'contractType': ct,
-            'underlyingType': ut, 'underlyingSubType': list(subs), 'onboardDate': onboard, 'deliveryDate': 4133404800000,
-            'status': 'TRADING'}
+            'underlyingType': ut, 'underlyingSubType': list(subs), 'onboardDate': onboard}
 
 
 def tradfi(sym, ut, base=None, onboard=None):
@@ -60,7 +59,8 @@ def tradfi(sym, ut, base=None, onboard=None):
 
 def snap(sid, retrieved, entries):
     return {'format': C.SNAPSHOT_FORMAT, 'snapshot_id': sid, 'retrieval_url': C.EXCHANGEINFO_URL,
-            'retrieved_ms': retrieved, 'response_sha256': H, 'symbols': entries}
+            'retrieved_ms': retrieved, 'response_sha256': H, 'scope': 'fixture',
+            'response_server_time_ms': None, 'symbols': entries}
 
 
 def rec(rid, kind, sym, eff, published=None, cls=None, sub=None):
@@ -144,22 +144,29 @@ def test_cli_build_verify_and_immutable(store, tmp_path, capsys):
     assert out.read_bytes() == first
 
 
-def test_extract_from_raw_body():
-    body = {'timezone': 'UTC', 'symbols': [dict(xi('BTCUSDT', onboard=1), filters=[], extra=1)]}
+def test_extract_minimal_scoped_compact(store):
+    body = {'timezone': 'UTC', 'symbols': [dict(xi('BTCUSDT', onboard=1), filters=[], status='TRADING'),
+                                           dict(xi('ZZZUSDT', onboard=1), deliveryDate=4133404800000)]}
     raw = json.dumps(body).encode()
     s = C.extract(raw, retrieved_ms=5, snapshot_id='x')
     assert s['response_sha256'] == hashlib.sha256(raw).hexdigest() and set(s['symbols'][0]) == C.SNAP_SYMBOL_KEYS
+    m = manifest(store)
+    s = C.extract(raw, retrieved_ms=5, snapshot_id='x', manifest=m)
+    assert [e['symbol'] for e in s['symbols']] == ['BTCUSDT'] and m['digest'] in s['scope']
+    data = C.dumps_compact(s, 'symbols')
+    assert json.loads(data) == s and data.count(b'\n') == 3                # header line, 1 symbol line, closing line
 
 
 # ---------------------------------------------------------------- point-in-time dating
 
 def test_effective_from_is_documented_listing_not_archive_or_retrieval(store):
     c = build(store)
-    assert rows(c, 'XAUUSDT') == [('commodity', 'gold-spot', ms('2025-12-11') + 8 * HOUR, None, 'exchangeinfo')]
+    assert rows(c, 'XAUUSDT') == [('commodity', 'gold-spot', ms('2025-12-11') + 8 * HOUR, None,
+                                   'identity-fact-at-listing:exchangeinfo')]
     r = C.resolve_at(c, 'XAUUSDT', ms('2025-12-11'))
     assert r is None and not C.addressable(r)                       # before listing: nothing in force
     row = C.resolve_at(c, 'XAUUSDT', ms('2025-12-12'))
-    assert C.addressable(row) and row['class_first_observed_ms'] == RETR   # retrospective evidence is labelled
+    assert C.addressable(row) and row['class_first_observed_ms'] == RETR and row['provenance'] == 'retrospective'
 
 
 def test_listing_announcement_within_tolerance_takes_earliest(store):
@@ -168,7 +175,8 @@ def test_listing_announcement_within_tolerance_takes_earliest(store):
                                   sub='gold-spot')])
     (r,) = [r for r in c['rows'] if r['symbol'] == 'XAUUSDT']
     assert r['effective_from_ms'] == t and r['class_first_observed_ms'] == ms('2025-12-08')
-    assert r['sources'] == ['ann:L1', 'xinfo:s1'] and r['basis'] == 'exchangeinfo+announcement'
+    assert r['sources'] == ['ann:L1', 'xinfo:s1'] and r['basis'] == 'identity-fact-at-listing:exchangeinfo+announcement'
+    assert r['provenance'] == 'contemporaneous'
 
 
 def test_class_change_creates_new_dated_row_never_before_publication(store):
@@ -177,8 +185,8 @@ def test_class_change_creates_new_dated_row_never_before_publication(store):
               snaps=[base_snap(retrieved=ms('2026-04-07')),
                      snap('s2', ms('2026-05-01'), [tradfi('AAPLUSDT', 'PREMARKET', onboard=ms('2026-04-06') + 13 * HOUR)])])
     assert rows(c, 'AAPLUSDT') == [
-        ('equity', 'equity', ms('2026-04-06') + 13 * HOUR, pub, 'exchangeinfo'),
-        ('pre-ipo', 'premarket', pub, None, 'exchangeinfo+announcement')]
+        ('equity', 'equity/UNKNOWN', ms('2026-04-06') + 13 * HOUR, pub, 'identity-fact-at-listing:exchangeinfo'),
+        ('pre-ipo', 'premarket', pub, None, 'class-change:exchangeinfo+announcement')]
     assert C.resolve_at(c, 'AAPLUSDT', pub - 1)['class'] == 'equity'
     assert C.resolve_at(c, 'AAPLUSDT', pub)['class'] == 'pre-ipo'
 
@@ -264,7 +272,8 @@ def test_gold_spot_and_tokenized_gold_are_distinct_classes(store):
     assert rows(c, 'XAUUSDT')[0][:2] == ('commodity', 'gold-spot')
     assert rows(c, 'PAXGUSDT')[0][:2] == ('tokenized-gold', 'paxg')
     assert rows(c, 'XAUTUSDT')[0][:2] == ('tokenized-gold', 'xaut')
-    assert rows(c, 'BTCUSDT')[0][:2] == ('crypto', 'coin') and rows(c, 'AAPLUSDT')[0][:2] == ('equity', 'equity')
+    assert rows(c, 'BTCUSDT')[0][:2] == ('crypto', 'coin') and rows(c, 'AAPLUSDT')[0][:2] == ('equity', 'equity/UNKNOWN')
+    assert len({r['class'] for r in c['rows'] if r['symbol'] in ('XAUUSDT', 'PAXGUSDT', 'BTCUSDT')}) == 3
 
 
 # ---------------------------------------------------------------- input validation
@@ -274,6 +283,8 @@ def test_gold_spot_and_tokenized_gold_are_distinct_classes(store):
     (lambda s: s.update(response_sha256='XYZ'), 'response_sha256'),
     (lambda s: s['symbols'].append(dict(s['symbols'][0])), 'duplicated'),
     (lambda s: s['symbols'][0].pop('onboardDate'), 'keys must be exactly'),
+    (lambda s: s['symbols'][0].update(status='TRADING'), 'keys must be exactly'),     # minimal fields only
+    (lambda s: s.update(scope=''), 'scope'),
 ])
 def test_bad_snapshot_refused(store, mutate, match):
     s = base_snap()
@@ -296,3 +307,43 @@ def test_bad_records_refused(store):
     bad['retrieved_ms'] = bad['published_ms'] - 1
     with pytest.raises(C.ClassifyError, match='published_ms <= retrieved_ms'):
         build(store, records=[bad])
+
+
+# ---------------------------------------------------------------- Codex rulings 6094970068 (2: identity, 4: equity kind)
+
+def test_identity_mismatch_is_unknown(store):
+    s = base_snap()
+    s['symbols'][0] = dict(s['symbols'][0], pair='BTCUSD')
+    assert rows(build(store, snaps=[s]), 'BTCUSDT')[0][4] == 'UNKNOWN:identity-mismatch'
+
+
+def test_archive_before_documented_listing_is_unknown_even_pre_tradfi(store):
+    put_daily(store, 'RELUSDT', '2024-03-01', 20)                    # archived since 1 March, onboardDate 15 March
+    s = base_snap()
+    s['symbols'].append(xi('RELUSDT', onboard=ms('2024-03-15') + 8 * HOUR))
+    c = build(store, snaps=[s], records=[rec('TF', 'tradfi-launch', None, CUT)], cutoff='TF')
+    t = ms('2024-03-15') + 8 * HOUR
+    assert rows(c, 'RELUSDT') == [
+        ('UNKNOWN', 'UNKNOWN', ms('2024-03-01'), t, 'UNKNOWN:archive-precedes-documented-listing'),
+        ('crypto', 'coin', t, None, 'identity-fact-at-listing:exchangeinfo')]
+
+
+def test_equity_kind_only_from_announcement(store):
+    t = ms('2026-04-06') + 13 * HOUR
+    c = build(store, records=[rec('LA', 'listing', 'AAPLUSDT', t, cls='equity', sub='single-stock')])
+    assert rows(c, 'AAPLUSDT')[0][:2] == ('equity', 'equity/single-stock')
+    c = build(store, records=[rec('LA', 'listing', 'AAPLUSDT', t, cls='equity', sub='single-stock'),
+                              rec('LB', 'listing', 'AAPLUSDT', t, cls='equity', sub='etf')])
+    assert rows(c, 'AAPLUSDT')[0][4] == 'UNKNOWN:announcements-disagree'
+    with pytest.raises(C.ClassifyError, match='equity subclass'):
+        build(store, records=[rec('LA', 'listing', 'AAPLUSDT', t, cls='equity', sub='stock')])
+
+
+def test_announcement_only_row_and_provenance(store):
+    put_daily(store, 'GONEUSDT', '2026-02-01', 10)                   # delisted: absent from exchangeInfo
+    t = ms('2026-02-01') + 6 * HOUR
+    c = build(store, records=[rec('LG', 'listing', 'GONEUSDT', t, published=t - 2 * DAY, cls='commodity',
+                                  sub='silver-spot')])
+    (r,) = [r for r in c['rows'] if r['symbol'] == 'GONEUSDT']
+    assert (r['class'], r['subclass'], r['basis'], r['provenance']) == (
+        'commodity', 'silver-spot', 'identity-fact-at-listing:announcement', 'contemporaneous')

@@ -18,7 +18,8 @@ citing its source ids, plus a digest over the canonical JSON. Same inputs -> byt
 Missing, unmapped or contradictory evidence -> an explicit `UNKNOWN` row, never a guess; `UNKNOWN` is not addressable.
 
 Usage (repo root):
-  python tools/research/classify.py extract RAW_BODY --retrieved-ms MS --snapshot-id ID --out SNAPSHOT.json
+  python tools/research/classify.py extract RAW_BODY --retrieved-ms MS --snapshot-id ID [--manifest MANIFEST]
+      --out SNAPSHOT.json
   python tools/research/classify.py build --exchange-info SNAP.json [--exchange-info ...] --announcements ANN.json
       --manifest research_evidence/manifests/binance-um-archive-v1.json.gz [--tradfi-cutoff RECORD_ID]
       --classes-id instrument-classes-v2 --out research_evidence/universe/instrument-classes-v2.json
@@ -51,10 +52,12 @@ COMMODITY_SUBCLASS = {'XAU': 'gold-spot', 'XAG': 'silver-spot', 'XPT': 'platinum
                       'COPPER': 'base-metal', 'CL': 'energy-oil', 'BZ': 'energy-oil', 'NATGAS': 'energy-gas'}
 TOKENIZED_GOLD_BASES = {'PAXG': 'paxg', 'XAUT': 'xaut'}
 EQUITY_SUBCLASS = {'EQUITY': 'equity', 'HK_EQUITY': 'hk-equity', 'KR_EQUITY': 'kr-equity', 'CN_EQUITY': 'cn-equity'}
+EQUITY_KINDS = ('single-stock', 'etf', 'leveraged-etf')     # only from a dated, hashed announcement (ruling 4)
 
-SNAP_KEYS = {'format', 'snapshot_id', 'retrieval_url', 'retrieved_ms', 'response_sha256', 'symbols'}
+SNAP_KEYS = {'format', 'snapshot_id', 'retrieval_url', 'retrieved_ms', 'response_sha256', 'response_server_time_ms',
+             'scope', 'symbols'}
 SNAP_SYMBOL_KEYS = {'symbol', 'pair', 'baseAsset', 'quoteAsset', 'contractType', 'underlyingType', 'underlyingSubType',
-                    'onboardDate', 'deliveryDate', 'status'}
+                    'onboardDate'}                          # only the fields the builder reads (ruling 3: minimal)
 ANN_KEYS = {'format', 'records'}
 RECORD_KEYS = {'record_id', 'kind', 'symbol', 'url', 'published_ms', 'retrieved_ms', 'page_sha256', 'effective_ms',
                'class', 'subclass'}
@@ -91,6 +94,9 @@ def validate_snapshot(s: dict) -> None:
     _need(s['retrieval_url'] == EXCHANGEINFO_URL, f'snapshot: retrieval_url must be {EXCHANGEINFO_URL}')
     _need(_int(s['retrieved_ms']) and s['retrieved_ms'] > 0, 'snapshot: retrieved_ms must be a positive int')
     _need(_sha(s['response_sha256']), 'snapshot: response_sha256 must be a lowercase sha256 hex')
+    _need(isinstance(s['scope'], str) and s['scope'], 'snapshot: scope must be a non-empty string')
+    _need(s['response_server_time_ms'] is None or _int(s['response_server_time_ms']),
+          'snapshot: response_server_time_ms must be null or an int (the body serverTime, kept for audit)')
     _need(isinstance(s['symbols'], list), 'snapshot: symbols must be a list')
     seen = set()
     for e in s['symbols']:
@@ -99,11 +105,11 @@ def validate_snapshot(s: dict) -> None:
         _need(isinstance(e['symbol'], str) and e['symbol'] and e['symbol'] not in seen,
               f'snapshot {s["snapshot_id"]}: symbol {e.get("symbol")!r} missing or duplicated')
         seen.add(e['symbol'])
-        for k in ('pair', 'baseAsset', 'quoteAsset', 'contractType', 'underlyingType', 'status'):
+        for k in ('pair', 'baseAsset', 'quoteAsset', 'contractType', 'underlyingType'):
             _need(isinstance(e[k], str), f'{e["symbol"]}: {k} must be a string')
         _need(isinstance(e['underlyingSubType'], list) and all(isinstance(x, str) for x in e['underlyingSubType']),
               f'{e["symbol"]}: underlyingSubType must be a list of strings')
-        _need(_int(e['onboardDate']) and _int(e['deliveryDate']), f'{e["symbol"]}: onboardDate/deliveryDate must be ints')
+        _need(_int(e['onboardDate']), f'{e["symbol"]}: onboardDate must be an int')
 
 
 def validate_announcements(a: dict) -> None:
@@ -135,6 +141,8 @@ def validate_announcements(a: dict) -> None:
         _need(r['subclass'] is None or (isinstance(r['subclass'], str) and r['subclass']),
               f'{rid}: subclass must be null or a non-empty string')
         _need(r['class'] is not None or r['subclass'] is None, f'{rid}: a subclass needs a class')
+        _need(r['class'] != 'equity' or r['subclass'] is None or r['subclass'] in EQUITY_KINDS,
+              f'{rid}: an equity subclass must be null or one of {EQUITY_KINDS}')
 
 
 # ---------------------------------------------------------------- exchangeInfo -> class
@@ -144,6 +152,8 @@ def derive(e: dict) -> tuple[str, str]:
     ut, ct, base, subs = e['underlyingType'], e['contractType'], e['baseAsset'], set(e['underlyingSubType'])
     if e['quoteAsset'] != 'USDT':
         return UNKNOWN, f'quote-asset:{e["quoteAsset"]}'
+    if e['pair'] != e['symbol'] or base + e['quoteAsset'] != e['symbol']:
+        return UNKNOWN, 'identity-mismatch'                 # symbol is not base+quote: ambiguous identity (ruling 2)
     if ut in ('COIN', 'INDEX'):
         if ct != 'PERPETUAL':
             return UNKNOWN, f'contract-type:{ut}/{ct}'
@@ -192,25 +202,39 @@ def archive_spans(manifest: dict) -> dict[str, list[tuple[int, int]]]:
 # ---------------------------------------------------------------- builder
 
 def _row(sym, cls, sub, a, b, observed, sources, basis):
+    prov = None if cls == UNKNOWN else ('contemporaneous' if observed <= a else 'retrospective')
     return {'symbol': sym, 'class': cls, 'subclass': sub, 'effective_from_ms': a, 'effective_to_ms': b,
-            'class_first_observed_ms': observed, 'sources': sorted(set(sources)), 'basis': basis}
+            'class_first_observed_ms': observed, 'provenance': prov, 'sources': sorted(set(sources)), 'basis': basis}
 
 
 def _unknown(sym, a, b, sources, reason):
     return _row(sym, UNKNOWN, UNKNOWN, a, b, None, sources, f'UNKNOWN:{reason}')
 
 
-def _agree(claims):
-    """claims: [(class, subclass|None)] -> (class, subclass) or None when they disagree."""
-    classes = {c for c, _ in claims}
-    subs = {s for _, s in claims if s is not None}
-    if len(classes) != 1 or len(subs) > 1:
+def _combine(doc_claims, x=None):
+    """Announcement claims [(class, subclass|None)] + one exchangeInfo result -> (class, subclass), None = disagree.
+
+    Equity: exchangeInfo gives the market (region), only a dated announcement gives the kind (single-stock / etf /
+    leveraged-etf, ruling 4); subclass = '<market>/<kind>' with UNKNOWN for whichever part has no source."""
+    classes = {c for c, _ in doc_claims} | ({x[0]} if x else set())
+    if len(classes) != 1:
         return None
-    return classes.pop(), (subs.pop() if subs else 'unspecified')
+    cls = classes.pop()
+    doc_subs = {s for _, s in doc_claims if s is not None}
+    if cls == 'equity':
+        if len(doc_subs) > 1:
+            return None
+        return cls, f'{x[1] if x else UNKNOWN}/{doc_subs.pop() if doc_subs else UNKNOWN}'
+    subs = doc_subs | ({x[1]} if x else set())
+    if len(subs) > 1:
+        return None
+    return cls, (subs.pop() if subs else 'unspecified')
 
 
-def _segment(sym, a, b, docs, snaps):
-    """Rows for documented segment [a, b). docs: announcement claims; snaps: [(retrieved_ms, sid, derived)] sorted."""
+def _segment(sym, a, b, docs, snaps, kind):
+    """Rows for documented segment [a, b) (kind 'listing' or 'change').
+
+    docs: the segment's announcement records; snaps: [(retrieved_ms, sid, derived)] sorted by retrieval."""
     rows = []
     doc_claims = [(r['class'], r['subclass']) for r in docs if r['class'] is not None]
     doc_ids = [f'ann:{r["record_id"]}' for r in docs]
@@ -226,29 +250,31 @@ def _segment(sym, a, b, docs, snaps):
         else:
             groups.append({'d': d, 'ids': [sid], 'first': t, 'last': t})
     all_ids = doc_ids + [sid for _, sid, _ in snaps]
-    if doc_claims and _agree(doc_claims) is None:
+    head = 'identity-fact-at-listing' if kind == 'listing' else 'class-change'
+    if doc_claims and _combine(doc_claims) is None:
         return [_unknown(sym, a, b, all_ids, 'announcements-disagree')]
     if not groups:
         if not doc_claims:
             return [_unknown(sym, a, b, all_ids, 'no-class-source' + (f'({";".join(abstains)})' if abstains else ''))]
-        cls, sub = _agree(doc_claims)
-        return [_row(sym, cls, sub, a, b, doc_seen, doc_ids, 'announcement')]
+        cls, sub = _combine(doc_claims)
+        return [_row(sym, cls, sub, a, b, doc_seen, doc_ids, f'{head}:announcement')]
     g0 = groups[0]
     if g0['d'][0] == UNKNOWN:
         return [_unknown(sym, a, b, all_ids, g0['d'][1])]
     if doc_claims:
-        merged = _agree(doc_claims + [g0['d']])
+        merged = _combine(doc_claims, g0['d'])
         if merged is None:
             return [_unknown(sym, a, b, all_ids, 'announcement-vs-exchangeinfo')]
-        cls, sub = g0['d']
-        observed = min(doc_seen, g0['first'])
-        rows.append(_row(sym, cls, sub, a, None, observed, doc_ids + g0['ids'], 'exchangeinfo+announcement'))
+        rows.append(_row(sym, *merged, a, None, min(doc_seen, g0['first']), doc_ids + g0['ids'],
+                         f'{head}:exchangeinfo+announcement'))
     else:
-        cls, sub = g0['d']
-        rows.append(_row(sym, cls, sub, a, None, g0['first'], g0['ids'], 'exchangeinfo'))
+        if kind == 'change':                                # unreachable: change segments always carry a claim
+            raise ClassifyError(f'{sym}: class-change segment without an asserted class')
+        rows.append(_row(sym, *_combine([], g0['d']), a, None, g0['first'], g0['ids'], f'{head}:exchangeinfo'))
     prev = g0
     for g in groups[1:]:
-        # undocumented change between two snapshots: the gap is UNKNOWN, the new class dates from its first observation
+        # undocumented change between two snapshots (mutable contract): the gap is UNKNOWN and the new class dates only
+        # from the first snapshot that shows it; a contemporaneous class-change record is what resolves it
         gap_from = max(prev['last'] + 1, a)
         rows[-1]['effective_to_ms'] = gap_from
         gf = max(g['first'], gap_from)
@@ -257,17 +283,18 @@ def _segment(sym, a, b, docs, snaps):
         if g['d'][0] == UNKNOWN:
             rows.append(_unknown(sym, gf, None, g['ids'], g['d'][1]))
         else:
-            rows.append(_row(sym, g['d'][0], g['d'][1], gf, None, g['first'], g['ids'], 'exchangeinfo'))
+            rows.append(_row(sym, *_combine([], g['d']), gf, None, g['first'], g['ids'],
+                             'observed:exchangeinfo-snapshot'))
         prev = g
     rows[-1]['effective_to_ms'] = b
     return rows
 
 
-def _pre_rows(sym, start, end, runs, cutoff, mid, reason):
-    """Rows for archived trading not covered by a documented listing: the pre-TradFi crypto rule, else UNKNOWN.
+def _pre_rows(sym, start, end, runs, cutoff, mid):
+    """Rows for an UNDOCUMENTED contract (no listing source at all): the pre-TradFi crypto rule, else UNKNOWN.
 
     The rule covers only the contiguous archived run that STARTS before the TradFi launch (a later relisting after a
-    gap >= RELIST_GAP_MS is a new contract and is UNKNOWN), and never past `end` (a documented listing/change)."""
+    gap >= RELIST_GAP_MS is a new contract and is UNKNOWN), and never past `end` (a documented class change)."""
     rows = []
     if cutoff is not None and start < cutoff['ms']:
         run_end = next(r[1] + DAY for r in runs if r[0] <= start <= r[1])
@@ -277,7 +304,7 @@ def _pre_rows(sym, start, end, runs, cutoff, mid, reason):
         if end is None or rule_end < end:
             rows.append(_unknown(sym, rule_end, end, [mid], 'archive-beyond-pre-tradfi-run'))
         return rows
-    return [_unknown(sym, start, end, [mid], reason)]
+    return [_unknown(sym, start, end, [mid], 'no-documented-listing')]
 
 
 def classify_symbol(sym, runs, snaps, records, cutoff, mid):
@@ -300,12 +327,14 @@ def classify_symbol(sym, runs, snaps, records, cutoff, mid):
     rows = []
     if listing is None:
         end = change_at[0] if change_at else None
-        rows += _pre_rows(sym, first_open, end, runs, cutoff, mid, 'no-documented-listing')
+        rows += _pre_rows(sym, first_open, end, runs, cutoff, mid)
         bounds = change_at
         seg_docs = [[r] for r in changes]
     else:
         if first_open < listing - listing % DAY:
-            rows += _pre_rows(sym, first_open, listing, runs, cutoff, mid, 'archive-precedes-documented-listing')
+            # archived trading before the documented listing day: a relisted / migrated / rebranded contract whose
+            # earlier identity no source documents (ruling 2: mutable contract -> UNKNOWN, no rule applied)
+            rows.append(_unknown(sym, first_open, listing, all_ids, 'archive-precedes-documented-listing'))
         bounds = [listing] + change_at
         seg_docs = [listings] + [[r] for r in changes]
     for i, a in enumerate(bounds):
@@ -314,7 +343,7 @@ def classify_symbol(sym, runs, snaps, records, cutoff, mid):
             seg_snaps = [x for x in derived if b is None or x[0] < b]
         else:
             seg_snaps = [x for x in derived if x[0] >= a and (b is None or x[0] < b)]
-        rows += _segment(sym, a, b, seg_docs[i], seg_snaps)
+        rows += _segment(sym, a, b, seg_docs[i], seg_snaps, 'listing' if i == 0 and listing is not None else 'change')
     merged = []
     for r in rows:                                          # fold adjacent identical known classes
         p = merged[-1] if merged else None
@@ -380,7 +409,8 @@ def build(snapshots, announcements, manifest, *, classes_id, tradfi_cutoff=None,
            'contract': 'docs/newcore/research/CLASSIFICATION_SOURCES.md',
            'classes': list(CLASSES) + [UNKNOWN], 'mapping': {
                'commodity_subclass': COMMODITY_SUBCLASS, 'tokenized_gold_bases': TOKENIZED_GOLD_BASES,
-               'equity_subclass': EQUITY_SUBCLASS, 'listing_tolerance_ms': LISTING_TOLERANCE_MS,
+               'equity_subclass': EQUITY_SUBCLASS, 'equity_kinds': list(EQUITY_KINDS),
+               'listing_tolerance_ms': LISTING_TOLERANCE_MS,
                'relist_gap_ms': RELIST_GAP_MS},
            'inputs': {'announcements_file_sha256': announcements_file_sha, 'records': len(recs),
                       'snapshots': sids, 'tradfi_cutoff_record': tradfi_cutoff},
@@ -396,6 +426,14 @@ def digest_of(c: dict) -> str:
 
 def dumps(c: dict) -> bytes:
     return json.dumps(c, sort_keys=True, indent=1, ensure_ascii=True, allow_nan=False).encode('ascii') + b'\n'
+
+
+def dumps_compact(doc: dict, list_key: str) -> bytes:
+    """Deterministic small input file: header keys sorted, then one canonical JSON line per element of `list_key`."""
+    head = {k: v for k, v in doc.items() if k != list_key}
+    items = [M.canonical(x).decode('ascii') for x in doc[list_key]]
+    body = json.dumps(head, sort_keys=True, separators=(',', ':'), ensure_ascii=True, allow_nan=False)[:-1]
+    return (body + f',"{list_key}":[\n' + ',\n'.join(items) + '\n]}\n').encode('ascii')
 
 
 # ---------------------------------------------------------------- downstream helpers
@@ -415,13 +453,21 @@ def addressable(row: dict | None) -> bool:
 
 # ---------------------------------------------------------------- snapshot extraction (no network)
 
-def extract(raw: bytes, *, retrieved_ms: int, snapshot_id: str) -> dict:
-    """A `zb-exchangeinfo-snapshot/1` from a saved raw exchangeInfo response body (all symbols, fields subset)."""
+def extract(raw: bytes, *, retrieved_ms: int, snapshot_id: str, manifest: dict | None = None) -> dict:
+    """A minimal `zb-exchangeinfo-snapshot/1` from a saved raw exchangeInfo response body: only SNAP_SYMBOL_KEYS, and
+    with `manifest` only the symbols that manifest archives (the raw body itself is bound by hash, not committed)."""
     body = json.loads(raw.decode('utf-8'), parse_constant=lambda c: (_ for _ in ()).throw(ValueError(c)))
+    keep = None
+    scope = 'every symbol in the response'
+    if manifest is not None:
+        M.validate(manifest)
+        keep = {f['symbol'] for f in manifest['files']}
+        scope = f'symbols of manifest {manifest["manifest_id"]} (digest {manifest["digest"]}) present in the response'
     syms = [{k: (e.get(k) if k != 'underlyingSubType' else list(e.get(k) or [])) for k in SNAP_SYMBOL_KEYS}
-            for e in body['symbols']]
+            for e in body['symbols'] if keep is None or e.get('symbol') in keep]
     s = {'format': SNAPSHOT_FORMAT, 'snapshot_id': snapshot_id, 'retrieval_url': EXCHANGEINFO_URL,
-         'retrieved_ms': retrieved_ms, 'response_sha256': sha256_bytes(raw),
+         'retrieved_ms': retrieved_ms, 'response_sha256': sha256_bytes(raw), 'scope': scope,
+         'response_server_time_ms': body.get('serverTime'),
          'symbols': sorted(syms, key=lambda e: e['symbol'])}
     validate_snapshot(s)
     return s
@@ -441,6 +487,7 @@ def main(argv=None) -> int:
     x.add_argument('raw')
     x.add_argument('--retrieved-ms', type=int, required=True)
     x.add_argument('--snapshot-id', required=True)
+    x.add_argument('--manifest', help='keep only the symbols this manifest archives')
     x.add_argument('--out', required=True)
     b = sub.add_parser('build')
     b.add_argument('--out', required=True)
@@ -456,9 +503,10 @@ def main(argv=None) -> int:
     try:
         if a.cmd == 'extract':
             with open(a.raw, 'rb') as f:
-                s = extract(f.read(), retrieved_ms=a.retrieved_ms, snapshot_id=a.snapshot_id)
+                s = extract(f.read(), retrieved_ms=a.retrieved_ms, snapshot_id=a.snapshot_id,
+                            manifest=M.load(a.manifest) if a.manifest else None)
             with open(a.out, 'wb') as f:
-                f.write(dumps(s))
+                f.write(dumps_compact(s, 'symbols'))
             print(s['response_sha256'])
             return 0
         snaps = [_read_json(p) for p in a.exchange_info]
