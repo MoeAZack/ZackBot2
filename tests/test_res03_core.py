@@ -499,12 +499,16 @@ import sys
 
 
 def launch(v):
-    f = sys._getframe()
-    while f.f_back is not None:
-        f = f.f_back
+    try:
+        f = sys._getframe()
+        while f.f_back is not None:
+            f = f.f_back
+        outer = f.f_code.co_filename
+    except PermissionError:
+        outer = 'frames refused'
     main = sys.modules['__main__']
     stray = sorted(k for k in sys.path_importer_cache if not any(k.startswith(p) for p in sys.path if p))
-    vals = [sys.argv, sys.orig_argv, getattr(main, '__file__', None), f.f_code.co_filename]
+    vals = [sys.argv, sys.orig_argv, getattr(main, '__file__', None), outer]
     return [vals, [[ord(c) for c in str(x)] for x in vals], hashlib.sha256(repr(vals).encode()).hexdigest(),
             hashlib.sha256(repr(stray).encode()).hexdigest()]
 '''
@@ -528,10 +532,103 @@ def test_sandbox_launch_is_checkout_path_independent(world, tmp_path, monkeypatc
     monkeypatch.undo()
     assert outs[0] == outs[1]
     main = R.SB.SANDBOX_MAIN
-    vals = [[main], [R.SB.SYS_SENTINELS['executable'], '-s', '-S', '-B', '-P', main], main, '<string>']
+    vals = [[main], [R.SB.SYS_SENTINELS['executable'], '-s', '-S', '-B', '-P', main], main, 'frames refused']
     assert outs[0] == [[vals, [[ord(c) for c in str(x)] for x in vals], hashlib.sha256(repr(vals).encode()).hexdigest(),
                         hashlib.sha256(repr([]).encode()).hexdigest()]]
     assert 'checkout' not in json.dumps(outs)
+
+
+SELF_DISABLE = '''import sys
+
+POLICY = ('BLOCKED_EVENTS', 'BLOCKED_IMPORTS', 'WRITE_FLAGS', 'EVIDENCE_DIR', 'THIRD_PARTY_DIRS', 'INTROSPECTION_EVENTS',
+          'FRAME_ATTRS', 'PROBE_FUNCS', 'make_hook', 'guard_path_probes', '_Chan', '_builtin_norm', 'main')
+
+
+def attempt(fn):
+    try:
+        fn()
+        return 'allowed'
+    except PermissionError:
+        return 'refused'
+    except Exception as e:
+        return 'error ' + type(e).__name__
+
+
+def cdll():
+    import ctypes
+    ctypes.CDLL(None)
+
+
+def write():
+    with open('pwn.txt', 'w') as f:
+        f.write('x')
+
+
+def sock():
+    import socket
+    socket.socket()
+
+
+def proc():
+    import subprocess
+    subprocess.run(['echo', 'x'])
+
+
+def system():
+    import os
+    os.system('echo x')
+
+
+def gc_walk():
+    import gc
+    gc.get_objects()
+
+
+def frame():
+    sys._getframe(1)
+
+
+def tb_frame():
+    try:
+        raise ValueError
+    except ValueError as e:
+        return e.__traceback__.tb_frame
+
+
+SEEN = []
+
+
+def run(v):
+    gs = list({id(g): g for g in (sys.modules['__main__'].__dict__, type(v).__init__.__globals__,
+                                  type(v)._call.__globals__)}.values())
+    if not SEEN:                                   # what the sandbox left reachable, before any tampering
+        SEEN.append(sorted({n for g in gs for n in POLICY if n in g}))
+    for g in gs:                                   # clear / rebind every policy name, every decision
+        for n in POLICY:
+            x = g.get(n)
+            if hasattr(x, 'clear'):
+                x.clear()
+            g[n] = () if n != 'WRITE_FLAGS' else 0
+    return [SEEN[0], {k: attempt(f) for k, f in sorted({
+        'ctypes.CDLL(None)': cdll, 'write open': write, 'socket': sock, 'subprocess': proc, 'os.system': system,
+        'gc.get_objects': gc_walk, 'sys._getframe': frame, 'tb_frame': tb_frame}.items())}]
+'''
+
+
+def test_evaluator_cannot_disable_the_sandbox_policy(world, tmp_path):
+    """Codex 6094254617: the evaluator reaches no policy / protocol / factory name through __main__, sys.modules or
+    function globals; clearing or rebinding every policy name there changes nothing, because the installed hook
+    closes over immutable snapshots. ctypes.CDLL(None), a write open, a socket, a process and the gc / frame routes to
+    the hook stay refused at every decision, in both fresh processes (the replay must equal the first run)."""
+    ds = ds_of(world)
+    path, _ = dirs(tmp_path)
+    w = access(ds, path).open('train', lineage='root')
+    f = evaluator(tmp_path / 'ev', SELF_DISABLE, 'attack.py')
+    out = list(P.evaluate(w, f, 'run', train_times(3)))
+    want = {k: 'refused' for k in ('ctypes.CDLL(None)', 'write open', 'socket', 'subprocess', 'os.system',
+                                   'gc.get_objects', 'sys._getframe', 'tb_frame')}
+    assert out == [[[], want]] * 3
+    assert not os.path.exists(tmp_path / 'ev' / 'pwn.txt')
 
 
 def test_position_capability_replaces_caller_entered_ms(world, tmp_path):

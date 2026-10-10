@@ -38,6 +38,10 @@ View returns. Before the evaluator is imported, an audit hook (`sys.addaudithook
     is refused, and every write mode is refused;
   * listing any directory outside the stdlib and the code search roots (listing reveals names, never bytes);
   * process creation, sockets, ctypes, mmap, Windows API file/process calls, file-system mutation.
+Policy is not evaluator-mutable (Codex 6094254617): the audit hook closes over immutable snapshots (tuples /
+frozensets, captured builtins) and consults no module global at event time; every policy / protocol / factory name is
+dropped from this module's globals (reachable as `__main__` and via `View.__globals__`) before the evaluator loads;
+gc object walks and frame access (`sys._getframe`, tracebacks' / generators' frames, trace / profile hooks) are refused.
 This is a runtime control that turns a bypass into a hard failure; it is not claimed to be a security boundary against
 hostile native code. The authority that makes a result sealable is the runner's attestation bound into the ledger
 (`pit.evaluate` -> `report.make_report`), never a private Python name.
@@ -59,57 +63,133 @@ BLOCKED_EVENTS = ('subprocess.', 'os.system', 'os.exec', 'os.spawn', 'os.posix_s
                   'os.symlink', 'os.truncate', 'os.utime', 'os.putenv', 'os.unsetenv', 'os.add_dll_directory',
                   'shutil.', 'socket.', 'ctypes.', '_winapi.', 'winreg.', 'mmap.', 'msvcrt.', 'webbrowser.',
                   'urllib.', 'http.', 'ftplib.', 'smtplib.', 'sqlite3.', 'tempfile.', 'pty.', 'resource.')
-BLOCKED_IMPORTS = {'ctypes', '_ctypes', 'mmap', 'winreg', '_winreg'}
+BLOCKED_IMPORTS = frozenset({'ctypes', '_ctypes', 'mmap', 'winreg', '_winreg'})
 WRITE_FLAGS = os.O_WRONLY | os.O_RDWR | os.O_APPEND | os.O_CREAT | os.O_TRUNC
+# Codex 6094254617: introspection that could reach the installed hook (gc) or the sandbox loop's frames is refused,
+# matched exactly (`sys._getframemodulename` returns a name only and stays allowed).
+INTROSPECTION_EVENTS = frozenset({'sys._getframe', 'sys._current_frames', 'sys._current_exceptions', 'sys.settrace',
+                                  'sys.setprofile', 'gc.get_objects', 'gc.get_referrers', 'gc.get_referents'})
+FRAME_ATTRS = frozenset({'tb_frame', 'gi_frame', 'cr_frame', 'ag_frame'})
 
 
 class SandboxRefused(PermissionError):
     pass
 
 
-def _norm(p) -> str:
-    return os.path.normcase(os.path.realpath(os.fspath(p)))
-
-
 THIRD_PARTY_DIRS = ('site-packages', 'dist-packages')
 
 
+def _builtin_norm():
+    """A path normalizer built only from builtins captured NOW: at call time it looks up no module global, no
+    builtins-module name and no Python-level stdlib helper an evaluator could rebind (Codex 6094254617). It does not
+    resolve symlinks (the evaluator cannot create any: links and every file-system mutation are refused)."""
+    osmod = __import__(os.name)
+    enc, errs = sys.getfilesystemencoding(), sys.getfilesystemencodeerrors()
+    type_, str_, bytes_, err = type, str, bytes, TypeError
+    if os.name == 'nt':
+        full = osmod._getfullpathname
+
+        def norm(p):
+            if type_(p) is bytes_:
+                p = p.decode(enc, errs)
+            if type_(p) is not str_:
+                raise err('path must be str or bytes')
+            return full(p).replace('/', '\\').lower()
+        return norm
+    getcwd = osmod.getcwd
+    normpath = getattr(osmod, '_path_normpath', None) or os.path.normpath
+
+    def norm(p):
+        if type_(p) is bytes_:
+            p = p.decode(enc, errs)
+        if type_(p) is not str_:
+            raise err('path must be str or bytes')
+        return normpath(p if p.startswith('/') else getcwd() + '/' + p)
+    return norm
+
+
 def make_hook(lib_roots, list_roots, allow_files):
-    lib = [_norm(r) for r in lib_roots]
-    listable = [_norm(r) for r in list_roots]
-    files = {_norm(f) for f in allow_files}
+    """The audit hook. Build it BEFORE `guard_path_probes` (it captures the raw `stat`). It closes over immutable
+    snapshots only - tuples / frozensets of the normalized roots and of the policy, the builtins it calls - and never
+    consults a module global at event time, so rebinding or clearing the policy names (or the evaluator-visible
+    `__main__` that held them) cannot change it (Codex 6094254617)."""
+    norm, realpath = _builtin_norm(), os.path.realpath
+
+    def both(r):
+        return (norm(r), norm(realpath(r)))
+    lib = tuple(sorted({x for r in lib_roots for x in both(r)}))
+    listable = tuple(sorted({x for r in list_roots for x in both(r)}))
+    files = frozenset(x for f in allow_files for x in both(f))
+    third, evidence, sep = tuple(THIRD_PARTY_DIRS), EVIDENCE_DIR, os.sep
+    blocked_events, blocked_imports, write_flags = tuple(BLOCKED_EVENTS), frozenset(BLOCKED_IMPORTS), int(WRITE_FLAGS)
+    introspection, frame_attrs = frozenset(INTROSPECTION_EVENTS), frozenset(FRAME_ATTRS)
+    refused, raw_stat, oserror, exc = SandboxRefused, __import__(os.name).stat, OSError, Exception
+    type_, str_, int_, len_ = type, str, int, len
 
     def under(p, roots):
-        return any(p == r or p.startswith(r.rstrip(os.sep) + os.sep) for r in roots)
+        for r in roots:
+            if p == r or p.startswith(r.rstrip(sep) + sep):
+                return True
+        return False
 
     def stdlib(p):
-        return under(p, lib) and not any(d in p.split(os.sep) for d in THIRD_PARTY_DIRS)
+        if not under(p, lib):
+            return False
+        for d in p.split(sep):
+            if d in third:
+                return False
+        return True
+
+    def isdir(p):
+        try:
+            return (raw_stat(p).st_mode & 0o170000) == 0o040000
+        except oserror:
+            return False
 
     def readable(p, is_dir):
         if p in files or stdlib(p):
             return True
-        return is_dir and under(p, listable) and EVIDENCE_DIR not in p.split(os.sep)
+        return is_dir and under(p, listable) and evidence not in p.split(sep)
+
+    def path_of(x):
+        try:
+            return norm(x)
+        except exc:
+            raise refused(f'sandbox refused a non-str/bytes path {type_(x).__name__}')
 
     def hook(event, args):
+        n = len_(args)
         if event == 'open':
-            path, mode, flags = (list(args) + [None, None, None])[:3]
-            if path is None or isinstance(path, int):
+            path = args[0] if n else None
+            mode = args[1] if n > 1 else None
+            flags = args[2] if n > 2 else None
+            if path is None or type_(path) is int_:
                 return
-            if (isinstance(mode, str) and any(c in mode for c in 'wax+')) or (
-                    isinstance(flags, int) and flags & WRITE_FLAGS):
-                raise SandboxRefused(f'sandbox refused write open of {path!r}')
-            p = _norm(path)
-            if not readable(p, os.path.isdir(p)):
-                raise SandboxRefused(f'sandbox refused open of {path!r} (only library and code files are readable)')
-        elif event in ('os.listdir', 'os.scandir'):
-            p = _norm(args[0] if args and args[0] is not None else '.')
+            if mode is not None and (type_(mode) is not str_ or 'w' in mode or 'a' in mode or 'x' in mode
+                                     or '+' in mode):
+                raise refused(f'sandbox refused write open of {path!r}')
+            if flags is not None and (type_(flags) is not int_ or flags & write_flags):
+                raise refused(f'sandbox refused write open of {path!r}')
+            p = path_of(path)
+            if not readable(p, isdir(p)):
+                raise refused(f'sandbox refused open of {path!r} (only library and code files are readable)')
+        elif event == 'os.listdir' or event == 'os.scandir':
+            a0 = args[0] if n else None
+            if type_(a0) is int_:
+                return
+            p = path_of('.' if a0 is None else a0)
             if not readable(p, True):
-                raise SandboxRefused(f'sandbox refused listing {p!r}')
+                raise refused(f'sandbox refused listing {p!r}')
         elif event == 'import':
-            if args and isinstance(args[0], str) and args[0].split('.')[0] in BLOCKED_IMPORTS:
-                raise SandboxRefused(f'sandbox refused import of {args[0]}')
-        elif event.startswith(BLOCKED_EVENTS):
-            raise SandboxRefused(f'sandbox refused {event}')
+            if n and type_(args[0]) is str_ and args[0].split('.')[0] in blocked_imports:
+                raise refused(f'sandbox refused import of {args[0]}')
+        elif event in introspection:
+            raise refused(f'sandbox refused {event}')
+        elif event == 'object.__getattr__':
+            if n > 1 and args[1] in frame_attrs:
+                raise refused(f'sandbox refused frame access {args[1]}')
+        elif event.startswith(blocked_events):
+            raise refused(f'sandbox refused {event}')
     return hook
 
 
@@ -216,17 +296,25 @@ def guard_path_probes(roots) -> None:
     allowlist wrapper: a path outside `roots` raises instead of revealing whether it exists."""
     import importlib as _il
     osmod = _il.import_module(os.name)                         # nt / posix
-    allowed = [os.path.normcase(os.path.abspath(r)) for r in roots]
-    abspath, normcase, sep = os.path.abspath, os.path.normcase, os.sep
+    norm = _builtin_norm()                                     # captured builtins only (Codex 6094254617)
+    allowed = tuple(norm(r) for r in roots)
+    third, sep, refused, exc = tuple(THIRD_PARTY_DIRS), os.sep, SandboxRefused, Exception
+    type_, int_ = type, int
 
     def ok(path):
-        if path is None or isinstance(path, int):
+        if path is None or type_(path) is int_:
             return True
-        p = os.fsdecode(os.fspath(path))
-        q = normcase(abspath(p))
-        if any(d in q.split(sep) for d in THIRD_PARTY_DIRS):
+        try:
+            q = norm(path)
+        except exc:
             return False
-        return any(q == r or q.startswith(r.rstrip(sep) + sep) for r in allowed)
+        for d in q.split(sep):
+            if d in third:
+                return False
+        for r in allowed:
+            if q == r or q.startswith(r.rstrip(sep) + sep):
+                return True
+        return False
 
     originals = {}
     for name in PROBE_FUNCS:
@@ -237,7 +325,7 @@ def guard_path_probes(roots) -> None:
         def wrap(*a, _f=f, _n=name, **kw):
             path = a[0] if a else kw.get('path', '.' if _n in ('listdir', 'scandir') else None)
             if not ok(path):
-                raise SandboxRefused(f'sandbox refused path probe {_n}({path!r})')
+                raise refused(f'sandbox refused path probe {_n}({path!r})')
             return _f(*a, **kw)
         originals[id(f)] = wrap
     mods = [osmod, os, os.path] + [sys.modules[m] for m in ('genericpath', 'ntpath', 'posixpath') if m in sys.modules]
@@ -306,6 +394,13 @@ def virtualize_interpreter_paths() -> None:
     sys.path_importer_cache.clear()
 
 
+AUTHORITY_NAMES = ('BLOCKED_EVENTS', 'BLOCKED_IMPORTS', 'WRITE_FLAGS', 'EVIDENCE_DIR', 'THIRD_PARTY_DIRS',
+                   'INTROSPECTION_EVENTS', 'FRAME_ATTRS', 'PROBE_FUNCS', 'PROTOCOL', '_builtin_norm',
+                   'make_hook', 'guard_path_probes', 'observed_env', 'execution_environment',
+                   'virtualize_interpreter_paths', 'EXEC_ENV_KEYS', 'SYS_SENTINELS', 'SANDBOX_MAIN', 'BOOT', '_Chan',
+                   'main', 'AUTHORITY_NAMES')
+
+
 def main() -> int:
     chan = _Chan(sys.stdin.buffer, sys.stdout.buffer)
     sys.stdout = sys.stderr                                   # evaluator prints never reach the protocol channel
@@ -317,9 +412,17 @@ def main() -> int:
         sys.path.insert(0, p)
     env = observed_env()
     interp = execution_environment()
+    hook = make_hook(init['lib_roots'], init['list_roots'], init['allow_files'])    # before the probe guard
     guard_path_probes(init['probe_roots'])
     virtualize_interpreter_paths()                            # after identity + roots, before the evaluator
-    sys.addaudithook(make_hook(init['lib_roots'], init['list_roots'], init['allow_files']))
+    sys.addaudithook(hook)
+    del hook
+    # Codex 6094254617: the evaluator reaches this module's globals (sys.modules['__main__'], View.__globals__);
+    # drop every policy / protocol / factory name from them before it loads. The hook keeps its own snapshots.
+    g = globals()
+    for name in AUTHORITY_NAMES:
+        g.pop(name, None)
+    del g
     try:
         spec = importlib.util.spec_from_file_location('zb_evaluator', init['evaluator_path'])
         mod = importlib.util.module_from_spec(spec)
