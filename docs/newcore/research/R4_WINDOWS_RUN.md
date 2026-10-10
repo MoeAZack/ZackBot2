@@ -10,11 +10,11 @@ is never opened by any command here.
 | Pin | Exact SHA | Check |
 |---|---|---|
 | R1+R2+R3 (#51, #52) | `01564264431650a9fde53f27623928bb84702914` (master, 2026-10-10 10:59 Cairo) | merged into `origin/master`, in HEAD |
-| R3 overlap integrity + `legacy-m3-repro-v1` (#56) | `33ee82f70039a30dd6bcd9cda6b3816156131638` | equals `origin/nc-r3-overlap-integrity`, descends from 0156426, merged into `origin/master`, in HEAD |
+| R3 overlap integrity + `legacy-m3-repro-v1` (#56) | reviewed source `33ee82f70039a30dd6bcd9cda6b3816156131638`, rebase-merged as `a47815b76350dc77d195637b00de3c2607126d0c` | identical trees; a47815b descends from 0156426, is in `origin/master` and in HEAD (the rewritten source head need not be a master ancestor) |
 | Classification v2 | `PENDING` | G5 keeps the gate closed until a 64-hex digest is bound in a reviewed commit |
 
-Today the gate is CLOSED by design: #56 is not yet merged into master (G4), the prereg is UNREGISTERED (G3) and
-classification v2 is PENDING (G5). A fix round that moves a pin is re-pinned only in a reviewed commit.
+Today the gate is CLOSED by design: the prereg is UNREGISTERED (G3) and classification v2 is PENDING (G5); the G4
+pins pass on master `a47815b`. A fix round that moves a pin is re-pinned only in a reviewed commit.
 
 | Placeholder | Meaning |
 |---|---|
@@ -31,7 +31,8 @@ Set-Location C:\Dev\ZackBot2_r4run
 git fetch origin
 git checkout --detach <MASTER_SHA>
 git merge-base --is-ancestor 01564264431650a9fde53f27623928bb84702914 HEAD; if ($LASTEXITCODE) { throw "R1-R3 not in HEAD" }
-git merge-base --is-ancestor 33ee82f70039a30dd6bcd9cda6b3816156131638 HEAD; if ($LASTEXITCODE) { throw "#56 not in HEAD" }
+git merge-base --is-ancestor a47815b76350dc77d195637b00de3c2607126d0c HEAD; if ($LASTEXITCODE) { throw "#56 (a47815b) not in HEAD" }
+if ((git rev-parse 33ee82f70039a30dd6bcd9cda6b3816156131638^{tree}) -ne (git rev-parse a47815b76350dc77d195637b00de3c2607126d0c^{tree})) { throw "#56 tree mismatch" }
 git merge-base --is-ancestor <R4_SHA> HEAD; if ($LASTEXITCODE) { throw "#53 not in HEAD" }
 git status --porcelain                      # must print nothing
 python --version                            # record; must match the reviewed execution environment

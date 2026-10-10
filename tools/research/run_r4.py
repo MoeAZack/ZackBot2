@@ -15,9 +15,10 @@ Gate (`gate()` returns every failure; any failure = exit 3, nothing is read):
   G3 prereg registered: the family ledger verifies (ledger.verify: records, registry, append-only Git history) and
      holds the `variant` record of role `preregistration` carrying this prereg's SHA-256, plus every declared trial
      record; each of those lines is present in HEAD's committed ledger (registered AND committed).
-  G4 pinned foundations (r4_gate.json `pins`, exact SHAs + ancestry, Codex 6080124561): each pin exists, equals its
-     branch tip when a branch is named, has its `after` commit as an ancestor, is merged into the integration ref and
-     is contained in HEAD.
+  G4 pinned foundations (r4_gate.json `pins`, exact SHAs + ancestry, Codex 6080124561 / 6095813913): each pin exists,
+     equals its branch tip when a branch is named, has its `after` commit as an ancestor, is merged into the
+     integration ref and is contained in HEAD; a rebase-merged pin names its `integrated` master commit, whose tree
+     must equal the reviewed source head's, and the ancestry checks apply to the integrated commit.
   G5 classification bound: the gate's classification digest is a 64-hex digest. `PENDING` (classification v2 not
      built) keeps the gate closed - R4-0 is NOT READY.
 `m3` keeps the sanitized progress snapshot + sealed final (progress.py, zb-run-progress/2) beside its reports:
@@ -247,30 +248,45 @@ def gate(repo: str = M.REPO, *, gate_path: str = GATE, registry_genesis=None, ne
     return fail
 
 
+def _tree(repo, sha):
+    p = _git(repo, 'rev-parse', '--verify', '--quiet', f'{sha}^{{tree}}', check=False)
+    return None if p.returncode else p.stdout.decode().strip()
+
+
 def pin_failures(repo: str, g: dict) -> list[str]:
-    """G4: exact SHA pins with ancestry."""
+    """G4: exact SHA pins with ancestry. A pin may carry `integrated` (Codex 6095813913): the reviewed source head
+    `head` was rebase-merged, so the check is on the integrated master commit (exists, tree identical to the source
+    head's, descends from `after`, merged into the integration ref, in HEAD); the rewritten source head itself is
+    only required to exist and is never required to be a master ancestor."""
     fail, ref = [], g.get('integration_ref', 'origin/master')
     pins = g.get('pins') or []
     if not pins:
         return ['G4 no foundation heads pinned']
     for c in pins:
-        h = c.get('head', '')
+        h, integ = c.get('head', ''), c.get('integrated')
         tag = f'G4 {c.get("slice")} (#{",".join(map(str, c.get("prs", [])))}) {h[:7]}'
-        if not HEX40.match(h):
-            fail.append(f'{tag}: pin must be a full 40-hex SHA')
+        if not HEX40.match(h) or (integ is not None and not HEX40.match(str(integ))):
+            fail.append(f'{tag}: pins must be full 40-hex SHAs')
             continue
-        if _git(repo, 'rev-parse', '--verify', '--quiet', f'{h}^{{commit}}', check=False).returncode:
-            fail.append(f'{tag}: commit not present (git fetch)')
+        missing = [x for x in (h, integ) if x and _git(repo, 'rev-parse', '--verify', '--quiet', f'{x}^{{commit}}',
+                                                         check=False).returncode]
+        if missing:
+            fail.append(f'{tag}: commit {missing[0][:7]} not present (git fetch)')
             continue
         if c.get('branch'):
             tip = _git(repo, 'rev-parse', '--verify', '--quiet', c['branch'], check=False)
             if not tip.returncode and tip.stdout.decode().strip() != h:
                 fail.append(f'{tag}: branch {c["branch"]} moved to {tip.stdout.decode().strip()[:7]} (uncleared round)')
-        if c.get('after') and _git(repo, 'merge-base', '--is-ancestor', c['after'], h, check=False).returncode:
+        m = integ or h                                   # the commit that must be in master and HEAD
+        if integ:
+            tag += f' -> {integ[:7]}'
+            if _tree(repo, h) != _tree(repo, integ):
+                fail.append(f'{tag}: integrated commit tree differs from the reviewed source head tree')
+        if c.get('after') and _git(repo, 'merge-base', '--is-ancestor', c['after'], m, check=False).returncode:
             fail.append(f'{tag}: does not descend from {c["after"][:7]}')
-        if _git(repo, 'merge-base', '--is-ancestor', h, ref, check=False).returncode:
+        if _git(repo, 'merge-base', '--is-ancestor', m, ref, check=False).returncode:
             fail.append(f'{tag}: not merged into {ref}')
-        if _git(repo, 'merge-base', '--is-ancestor', h, 'HEAD', check=False).returncode:
+        if _git(repo, 'merge-base', '--is-ancestor', m, 'HEAD', check=False).returncode:
             fail.append(f'{tag}: not contained in the executing HEAD')
     return fail
 

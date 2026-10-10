@@ -699,3 +699,31 @@ def test_pit_subcommand_and_m3_never_run_with_the_gate_closed():
     assert g['classification']['digest'] == 'PENDING'
     assert [p['head'] for p in g['pins']] == ['01564264431650a9fde53f27623928bb84702914',
                                               '33ee82f70039a30dd6bcd9cda6b3816156131638']
+    assert g['pins'][1]['integrated'] == 'a47815b76350dc77d195637b00de3c2607126d0c'
+    assert 'branch' not in g['pins'][1]
+
+
+def test_a_rebase_merged_pin_is_checked_by_its_integrated_commit(grepo):
+    """Codex 6095813913: the reviewed source head was rebase-merged; G4 binds both identities, requires identical
+    trees and checks ancestry on the integrated commit only."""
+    repo, gen = grepo
+    g = json.load(open(os.path.join(repo, G.GATE)))
+    src = g['pins'][1]['head']
+    git(repo, 'checkout', '-q', 'master')
+    git(repo, 'cherry-pick', '-x', src)                                    # a rewritten commit with the same tree
+    integ = git(repo, 'rev-parse', 'HEAD')
+    git(repo, 'checkout', '-q', 'r4')
+    git(repo, 'merge', '-q', '--no-ff', '-m', 'merge master', 'master')
+    assert integ != src and git(repo, 'rev-parse', f'{integ}^{{tree}}') == git(repo, 'rev-parse', f'{src}^{{tree}}')
+    pin = {'slice': 'overlap', 'prs': [56], 'head': src, 'integrated': integ, 'after': g['pins'][0]['head']}
+    git(repo, 'branch', '-q', '-D', 'overlap')                       # the source branch may be gone after merging
+    assert G.pin_failures(repo, dict(g, pins=[g['pins'][0], pin])) == []
+    other = git(repo, 'rev-parse', 'master~1')                       # a master commit with a different tree
+    bad = G.pin_failures(repo, dict(g, pins=[dict(pin, integrated=other)]))
+    assert any('tree differs' in f for f in bad)
+    assert any('full 40-hex' in f for f in G.pin_failures(repo, dict(g, pins=[dict(pin, integrated=integ[:7])])))
+    git(repo, 'checkout', '-q', '-b', 'side', 'master~1')
+    git(repo, 'cherry-pick', '-x', src)
+    stray = git(repo, 'rev-parse', 'HEAD')                           # same tree, but never merged into master
+    git(repo, 'checkout', '-q', 'r4')
+    assert any('not merged into' in f for f in G.pin_failures(repo, dict(g, pins=[dict(pin, integrated=stray)])))
