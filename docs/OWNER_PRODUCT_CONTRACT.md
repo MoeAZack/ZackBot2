@@ -49,6 +49,10 @@ evidence, its risk and exit behaviour, or the minimum data/execution proof neede
 - Detailed instrument research, classification, ingestion and primary backtesting are limited to those 40 frozen
   current-universe instruments. Each is tested backward only from the point where reliable data exists. Results are
   labelled `CURRENT-UNIVERSE / SURVIVOR-BIASED`; that limitation is reported, not hidden.
+- The active universe artifact is intentionally simple: one immutable dated list containing exactly 40 unique Binance
+  symbols, the already-agreed selection rule, and the source/list digests. Validate that those exact symbols existed and
+  were tradable at the snapshot. Do not build a general instrument-classification framework, announcement collector or
+  per-symbol catalog for this release; the approved list itself is the boundary.
 - Reconstructing every historical top-40 membership change is a later robustness study. It may test selection-policy
   turnover and delisting risk, but it cannot block the current top-40 engine, strategy backtests or testnet progress.
 - A separate gold pilot may record only the approved direct-XAU/XAUUSDT path and PAXGUSDT identity. It stays inactive
@@ -56,10 +60,9 @@ evidence, its risk and exit behaviour, or the minimum data/execution proof neede
 - Crypto indices, XAUT, stocks, equity indices, ETFs, FX, oil, other commodities, other venues and every instrument
   outside the approved set are `LATER` or `POST-LIVE`. They do not receive individual research, enrichment, strategy
   work, data acquisition, backtests, UI or integrations during this release.
-- A full exchange snapshot may be inspected only to construct a compact fail-closed exclusion proof. Cowork may use a
-  few representative out-of-scope symbols as adversarial fixtures, but this is boundary testing—not market research.
-  Detailed rows are produced only for the approved 40-symbol snapshot and the two inactive gold identities; everything
-  else is represented by a blanket exclusion digest/count where possible.
+- A full exchange snapshot may be used only to derive and verify the frozen list. Symbols outside it are absent and
+  out of scope; they need no catalog, enrichment or exhaustive exclusion tests. Cowork verifies the exact list, its
+  source/digest and a few basic malformed-list cases, then returns to strategy, accounting and execution evidence.
 - Preserving an idea in this contract does not authorize present work on it. `LATER` and `POST-LIVE` items remain in the
   roadmap so they are not forgotten, but they consume no active Build, Evidence or Integration lane.
 - Before starting or accepting a task, each agent must state the direct path to the active crypto engine milestone and
