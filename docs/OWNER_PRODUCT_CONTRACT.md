@@ -39,6 +39,34 @@ step or strategy experiment unless it prevents a confirmed serious failure in th
 may interrupt the queue; unrelated polish may not. Mainnet remains separately gated and requires complete live security,
 safety, operational and release acceptance.
 
+### 0.1 Active mission lock — crypto-first Binance release (10 Oct 2026, Africa/Cairo)
+
+The current release is deliberately narrower than the preserved long-term roadmap. Until the owner explicitly changes
+this lock, **NOW means a trustworthy Binance engine and strategy program for a point-in-time top-40 set of individual
+crypto instruments**. Work is accepted only when it directly advances that engine, its long/short/range/scalp strategy
+evidence, its risk and exit behaviour, or the minimum data/execution proof needed to trust those results.
+
+- Detailed instrument research, classification, ingestion and backtesting are limited to the dated Binance top-40
+  individual-crypto candidates.
+- A separate gold pilot may record only the approved direct-XAU/XAUUSDT path and PAXGUSDT identity. It stays inactive
+  and may not block crypto readiness.
+- Crypto indices, XAUT, stocks, equity indices, ETFs, FX, oil, other commodities, other venues and every instrument
+  outside the approved set are `LATER` or `POST-LIVE`. They do not receive individual research, enrichment, strategy
+  work, data acquisition, backtests, UI or integrations during this release.
+- A full exchange snapshot may be inspected only to construct a compact fail-closed exclusion proof. Cowork may use a
+  few representative out-of-scope symbols as adversarial fixtures, but this is boundary testing—not market research.
+  Detailed rows are produced only for the approved top-40 candidates and the two inactive gold identities; everything
+  else is represented by a blanket exclusion digest/count where possible.
+- Preserving an idea in this contract does not authorize present work on it. `LATER` and `POST-LIVE` items remain in the
+  roadmap so they are not forgotten, but they consume no active Build, Evidence or Integration lane.
+- Before starting or accepting a task, each agent must state the direct path to the active crypto engine milestone and
+  the approved instrument set. If that path is absent, Codex defers the work. Preparatory, architectural or defensive
+  work outside this boundary is still out of scope unless it fixes a confirmed defect that can invalidate the active
+  engine or its evidence.
+
+This section is the controlling interpretation when an older roadmap item, issue comment, audit or automation could be
+read more broadly. Codex must stop and redirect drift at proposal/handoff time rather than after implementation.
+
 ### Roadmap and multi-agent authority
 
 The owner is the ultimate product authority. Under this contract, **Codex is the roadmap, prioritization, scope and
