@@ -12,7 +12,7 @@ sys.path.insert(0, os.path.join(ROOT, 'tools', 'research'))
 import static_universe as S                                                                 # noqa: E402
 
 UDIR = os.path.join(ROOT, 'research_evidence', 'universe')
-SOURCE = {'rule_id': 'pit-top40-qv30d-v4', 'instant_ms': 1790553600000, 'instant_utc': '2026-09-28',
+SOURCE = {'base_rule_id': 'pit-top40-qv30d-v4', 'instant_ms': 1790553600000, 'instant_utc': '2026-09-28',
           'manifest_digest': 'a' * 64, 'classes_digest': 'b' * 64, 'pit_universe_digest': 'c' * 64}
 
 
@@ -30,8 +30,9 @@ ROWS = [row(s) for s in COINS] + [row('PAXGUSDT'), row('XAUUSDT', ct='TRADIFI_PE
 RANKED_SYMS = COINS[:3] + ['PAXGUSDT', 'BTCDOMUSDT', 'DEADUSDT', 'GONEUSDT'] + COINS[3:]
 
 
-def ranked():
-    return [[i + 1, s, str(10 ** 9 - i)] for i, s in enumerate(RANKED_SYMS)]
+def ranked(history=None):
+    history = history or {}
+    return [[i + 1, s, str(10 ** 9 - i), history.get(s, 400)] for i, s in enumerate(RANKED_SYMS)]
 
 
 def resync_cores(u):
@@ -139,10 +140,36 @@ def test_deterministic_rebuild(built, tmp_path):
 
 
 def test_committed_artifact():
-    path = os.path.join(UDIR, 'static-top40-20260928.json')
+    path = os.path.join(UDIR, 'static-top40-minhist365-20260928.json')
     snap_path = os.path.join(UDIR, 'binance-um-exchangeinfo-20261009.json')
     assert S.main(['verify', path, '--snapshot', snap_path]) == 0
     with open(path, encoding='ascii') as f:
         u = json.load(f)
     assert u['label'] == 'CURRENT-UNIVERSE / SURVIVOR-BIASED' and u['owner_approved'] is False
-    assert u['ranking_rule']['rule_id'] == 'pit-top40-qv30d-v4' and u['core_10'][:2] == ['BTCUSDT', 'ETHUSDT']
+    assert u['ranking_rule']['rule_id'] == 'qv30d-top40-minhist365' and u['ranking_rule']['min_history_days'] == 365
+    assert u['ranking_rule']['base_rule_id'] == 'pit-top40-qv30d-v4' and u['core_10'][:2] == ['BTCUSDT', 'ETHUSDT']
+
+
+# owner rule 10 Oct 2026: >= 365 days of continuous daily history at the instant
+def test_min_history_365():
+    snap = S.reduce_exchange_info(raw_info(ROWS))
+    u = S.build_static(ranked({'C02USDT': 364, 'C03USDT': 365}), snap, SOURCE)
+    syms = [t['symbol'] for t in u['symbols']]
+    assert 'C02USDT' not in syms and 'C03USDT' in syms and syms[-1] == 'C41USDT'
+    assert u['excluded_by_history'] == [{'old_rank': 2, 'source_rank': 2, 'symbol': 'C02USDT', 'history_days': 364}]
+    S.validate(u, snap)
+    # a short-history symbol ranked below the old top 40 is not recorded (no catalog)
+    assert S.build_static(ranked({'C44USDT': 10}), snap, SOURCE)['excluded_by_history'] == []
+    bad = copy.deepcopy(u)
+    bad['symbols'][1]['history_days'] = 364
+    with pytest.raises(S.StaticUniverseError, match='history'):
+        S.validate(bad, snap)
+
+
+def test_history_days_counts_current_segment_only():
+    D, inst = S.DAY, 1000 * S.DAY
+    bars = {inst - k * D: 1 for k in range(1, 501) if k != 366}       # gap 366 days back: a relisting
+    assert S.history_days(bars, inst) == 365
+    del bars[inst - 200 * D]
+    assert S.history_days(bars, inst) == 199
+    assert S.history_days({inst - 2 * D: 1}, inst) == 0                # no bar closing at the instant

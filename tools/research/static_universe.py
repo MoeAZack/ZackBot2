@@ -13,6 +13,9 @@ The file is labelled CURRENT-UNIVERSE / SURVIVOR-BIASED and `owner_approved` is 
 approves it. Output is deterministic (its timestamp is the snapshot's serverTime in Africa/Cairo) and written once.
 Stdlib only; the build reads bar volumes only (no strategy, outcomes or holdout) and makes no network call.
 
+Owner rule (10 Oct 2026, set before any results): a symbol is eligible only with >= 365 days of continuous
+archived daily history at the instant (history_days); a relisted symbol counts only its current segment.
+
 Usage (repo root):
   python tools/research/static_universe.py build --exchange-info-raw RAW.json --manifest MANIFEST --classes CLASSES
       --store C:/Dev/ZackBot2_data/binance_um --pit research_evidence/universe/pit-top40-qv30d-v4.json
@@ -43,6 +46,11 @@ N = 40
 GOLD = ('PAXGUSDT', 'XAUUSDT')
 ELIGIBLE = {'status': 'TRADING', 'contractType': 'PERPETUAL', 'quoteAsset': 'USDT', 'underlyingType': 'COIN'}
 CAIRO = ZoneInfo('Africa/Cairo')
+DAY = U.DAY
+RULE_ID = 'qv30d-top40-minhist365'
+MIN_HISTORY_DAYS = 365
+RULE_NOTE = 'owner rule, 10 Oct 2026, set before any results'
+VETO_HISTORY = f'history<{MIN_HISTORY_DAYS}d'
 
 
 class StaticUniverseError(ValueError):
@@ -82,37 +90,49 @@ def reject_reason(symbol: str, row: dict | None) -> str | None:
 
 
 def build_static(ranked: list[list], snapshot: dict, source: dict) -> dict:
-    """ranked = [[source_rank, symbol, qv30d_usdt], ...] in the rule's order; take the first N eligible symbols."""
+    """ranked = [[source_rank, symbol, qv30d_usdt, history_days], ...] in the rule's order; take the first N symbols
+    that are tradable at the snapshot and have >= MIN_HISTORY_DAYS of continuous daily history at the instant."""
     by = {r['symbol']: r for r in snapshot['symbols']}
-    taken, skipped, consumed = [], [], []
-    for src_rank, sym, qv in ranked:
+    taken, skipped, consumed, history_out, old = [], [], [], [], 0
+    for src_rank, sym, qv, hist in ranked:
         if len(taken) == N:
             break
-        consumed.append([src_rank, sym, qv])
+        consumed.append([src_rank, sym, qv, hist])
         why = reject_reason(sym, by.get(sym))
         if why:
             skipped.append({'source_rank': src_rank, 'symbol': sym, 'reason': why})
             continue
+        old += 1                                    # rank in the list without the history rule (the 4d96e00 list)
+        if hist < MIN_HISTORY_DAYS:
+            if old <= N:                            # record only what the rule pushed out of the old top 40
+                history_out.append({'old_rank': old, 'source_rank': src_rank, 'symbol': sym, 'history_days': hist})
+            continue
         r = len(taken) + 1
         taken.append({'rank': r, 'symbol': sym, 'source_rank': src_rank, 'qv30d_usdt': qv,
-                      'tier': 'CORE-10' if r <= 10 else 'CORE-20' if r <= 20 else 'EXTENDED-40'})
+                      'history_days': hist, 'tier': 'CORE-10' if r <= 10 else 'CORE-20' if r <= 20 else 'EXTENDED-40'})
     if len(taken) != N:
         raise StaticUniverseError(f'only {len(taken)} eligible symbols in the ranked book; need exactly {N}')
     syms = [t['symbol'] for t in taken]
     gold = [{'symbol': g, 'status': 'inactive', 'counts_toward_40': False, 'blocking': False,
              'snapshot_row': by.get(g)} for g in GOLD]
-    u = {'format': FORMAT, 'universe_id': f'static-top40-{source["instant_utc"].replace("-", "")}', 'label': LABEL,
+    u = {'format': FORMAT, 'universe_id': f'static-top40-minhist{MIN_HISTORY_DAYS}-{source["instant_utc"].replace("-", "")}',
+         'label': LABEL,
          'owner_approved': False, 'owner_approval': 'PENDING',
-         'ranking_rule': {'rule_id': source['rule_id'], 'book': BOOK, 'instant_ms': source['instant_ms'],
+         'ranking_rule': {'rule_id': RULE_ID, 'base_rule_id': source['base_rule_id'], 'book': BOOK,
+                          'min_history_days': MIN_HISTORY_DAYS, 'min_history_note': RULE_NOTE,
+                          'history': 'continuous archived daily bars ending with the bar that closes at the instant; '
+                                     'any missing day (e.g. a relisting) restarts the count', 'instant_ms': source['instant_ms'],
                           'instant_utc': source['instant_utc'],
                           'selection': f'walk the ranked {BOOK} book; take the first {N} symbols whose snapshot row '
-                                       f'is {ELIGIBLE}; gold identities {list(GOLD)} never count'},
+                                       f'is {ELIGIBLE} and whose history_days >= {MIN_HISTORY_DAYS}; gold identities '
+                                       f'{list(GOLD)} never count'},
          'sources': {'manifest_digest': source['manifest_digest'], 'classes_digest': source['classes_digest'],
                      'pit_universe_digest': source['pit_universe_digest'],
                      'exchange_info': {'url': SOURCE_URL, 'server_time_ms': snapshot['server_time_ms'],
                                        'raw_sha256': snapshot['raw_sha256'], 'reduced_digest': snapshot['digest']}},
          'snapshot_cairo': snapshot['server_time_cairo'],
          'symbols': taken, 'core_10': syms[:10], 'core_20': syms[:20], 'skipped': skipped,
+         'excluded_by_history': history_out,
          'inactive_gold': gold, 'ranked_source': consumed, 'list_digest': sha(syms)}
     u['digest'] = body_digest(u)
     return u
@@ -142,6 +162,7 @@ def validate(u: dict, snapshot: dict) -> None:
     for sym in syms:
         why = reject_reason(sym, by.get(sym))
         need(why is None, f'{sym}: {why}')
+    need(all(t['history_days'] >= MIN_HISTORY_DAYS for t in s), f'a listed symbol has < {MIN_HISTORY_DAYS} days history')
     # 4. digest mismatch is refused
     need(snapshot['digest'] == body_digest(snapshot), 'snapshot digest does not match its content')
     ex = u['sources']['exchange_info']
@@ -150,7 +171,7 @@ def validate(u: dict, snapshot: dict) -> None:
     need(u['list_digest'] == sha(syms), 'list digest does not match the symbols')
     need(u['digest'] == body_digest(u), 'file digest does not match the canonical content')
     # 5. deterministic rebuild is byte-identical
-    src = {'rule_id': u['ranking_rule']['rule_id'], 'instant_ms': u['ranking_rule']['instant_ms'],
+    src = {'base_rule_id': u['ranking_rule']['base_rule_id'], 'instant_ms': u['ranking_rule']['instant_ms'],
            'instant_utc': u['ranking_rule']['instant_utc'], **{k: u['sources'][k] for k in
            ('manifest_digest', 'classes_digest', 'pit_universe_digest')}}
     need(dumps(build_static(u['ranked_source'], snapshot, src)) == dumps(u), 'rebuild is not byte-identical')
@@ -167,6 +188,17 @@ def write_once(d: dict, path: str) -> None:
         f.write(data)
 
 
+def history_days(bars: dict, instant_ms: int) -> int:
+    """Days of continuous daily history at the instant: the run of consecutive archived 1d bars ending with the bar
+    that closes at the instant. A missing day (relisting or outage) starts a new segment; only the current one counts."""
+    t = instant_ms - DAY
+    if t not in bars:
+        return 0
+    while t - DAY in bars:
+        t -= DAY
+    return (instant_ms - t) // DAY
+
+
 def ranked_from_store(manifest_path: str, classes_path: str, store: str, pit_path: str, workers: int):
     """The full ranked crypto book at the PIT universe's latest instant, cross-checked against its committed top 40."""
     m = M.load(manifest_path)
@@ -176,13 +208,16 @@ def ranked_from_store(manifest_path: str, classes_path: str, store: str, pit_pat
     if pit['digest'] != U.digest_of(pit) or pit['manifest_digest'] != m['digest'] \
             or pit['classes_digest'] != c['digest']:
         raise StaticUniverseError('PIT universe does not match its digest / manifest / classes')
-    full = U.build(U.load_daily(m, store, workers), manifest_digest=m['digest'], classes=c, top_n=10 ** 6)
+    daily = U.load_daily(m, store, workers)
+    full = U.build(daily, manifest_digest=m['digest'], classes=c, top_n=10 ** 6)
     week, pit_week = full['weeks'][-1], pit['weeks'][-1]
     book = week['books'][BOOK]
     if week['monday_ms'] != pit_week['monday_ms'] or book['members'][:U.TOP_N] != pit_week['books'][BOOK]['members']:
         raise StaticUniverseError('store rebuild disagrees with the committed PIT universe top 40')
-    ranked = [[i + 1, s, q] for i, (s, q) in enumerate(zip(book['members'], book['qv30d_usdt']))]
-    return ranked, {'rule_id': pit['universe_id'], 'instant_ms': week['monday_ms'], 'instant_utc': week['monday_utc'],
+    instant = week['monday_ms']
+    ranked = [[i + 1, s, q, history_days(daily[s], instant)]
+              for i, (s, q) in enumerate(zip(book['members'], book['qv30d_usdt']))]
+    return ranked, {'base_rule_id': pit['universe_id'], 'instant_ms': week['monday_ms'], 'instant_utc': week['monday_utc'],
                     'manifest_digest': m['digest'], 'classes_digest': c['digest'], 'pit_universe_digest': pit['digest']}
 
 
