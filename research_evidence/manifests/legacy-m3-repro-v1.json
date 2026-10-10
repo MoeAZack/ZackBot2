@@ -1,0 +1,134 @@
+{
+ "accessed_cairo": "2026-10-04 (copy date from DATA_MANIFEST.json; time not recorded)",
+ "available_rule": "open_ms + interval_ms",
+ "data_root": "repo",
+ "digest": "a42c36927eccf48a16c09085192dd53a7ef7ba607dfc1021cf96a67c917e8bb6",
+ "files": [
+  {
+   "bytes": 588640,
+   "first_open_ms": 1639900800000,
+   "interval": "4h",
+   "last_open_ms": 1791072000000,
+   "path": "data_long/4h/AVAXUSDT_4h.csv",
+   "rows": 10499,
+   "sha256": "96e34b44cd53f137625c7cb7ccd42f67905cd978291a44904386b631782cd1ba",
+   "source": {
+    "archive_checksum": null,
+    "kind": "local-file",
+    "url": null
+   },
+   "symbol": "AVAXUSDT"
+  },
+  {
+   "bytes": 599026,
+   "first_open_ms": 1639900800000,
+   "interval": "4h",
+   "last_open_ms": 1791072000000,
+   "path": "data_long/4h/BNBUSDT_4h.csv",
+   "rows": 10499,
+   "sha256": "a54474e67eab0a26222a63851c9e443e7ad5c07f807abc44bc28601e026d9d2b",
+   "source": {
+    "archive_checksum": null,
+    "kind": "local-file",
+    "url": null
+   },
+   "symbol": "BNBUSDT"
+  },
+  {
+   "bytes": 656528,
+   "first_open_ms": 1639900800000,
+   "interval": "4h",
+   "last_open_ms": 1791072000000,
+   "path": "data_long/4h/BTCUSDT_4h.csv",
+   "rows": 10499,
+   "sha256": "469420592551c251ed5e48edc4e9e3568ee4a40b185adfcb423cf6d33024848d",
+   "source": {
+    "archive_checksum": null,
+    "kind": "local-file",
+    "url": null
+   },
+   "symbol": "BTCUSDT"
+  },
+  {
+   "bytes": 669834,
+   "first_open_ms": 1639900800000,
+   "interval": "4h",
+   "last_open_ms": 1791072000000,
+   "path": "data_long/4h/DOGEUSDT_4h.csv",
+   "rows": 10499,
+   "sha256": "aac668cc4e4f5210a54923bf4280b43816572d27c65fae63d9af3dd96e5112a2",
+   "source": {
+    "archive_checksum": null,
+    "kind": "local-file",
+    "url": null
+   },
+   "symbol": "DOGEUSDT"
+  },
+  {
+   "bytes": 653409,
+   "first_open_ms": 1639900800000,
+   "interval": "4h",
+   "last_open_ms": 1791072000000,
+   "path": "data_long/4h/ETHUSDT_4h.csv",
+   "rows": 10499,
+   "sha256": "d250487771d802728edddf778079cb790f9975ad55d635cdde7ea906576425b8",
+   "source": {
+    "archive_checksum": null,
+    "kind": "local-file",
+    "url": null
+   },
+   "symbol": "ETHUSDT"
+  },
+  {
+   "bytes": 595859,
+   "first_open_ms": 1639900800000,
+   "interval": "4h",
+   "last_open_ms": 1791072000000,
+   "path": "data_long/4h/LINKUSDT_4h.csv",
+   "rows": 10499,
+   "sha256": "669a6c7af684cccd5c08bdfd6c621423c609dbf3437ad208eac23f57d6418484",
+   "source": {
+    "archive_checksum": null,
+    "kind": "local-file",
+    "url": null
+   },
+   "symbol": "LINKUSDT"
+  },
+  {
+   "bytes": 600477,
+   "first_open_ms": 1639900800000,
+   "interval": "4h",
+   "last_open_ms": 1791072000000,
+   "path": "data_long/4h/SOLUSDT_4h.csv",
+   "rows": 10499,
+   "sha256": "f726dfd5adb3f29c240058b0417c2793d1738b91fb2feeedf23ac9928ad939a3",
+   "source": {
+    "archive_checksum": null,
+    "kind": "local-file",
+    "url": null
+   },
+   "symbol": "SOLUSDT"
+  },
+  {
+   "bytes": 620744,
+   "first_open_ms": 1639900800000,
+   "interval": "4h",
+   "last_open_ms": 1791072000000,
+   "path": "data_long/4h/XRPUSDT_4h.csv",
+   "rows": 10499,
+   "sha256": "68b6e8ebd302d5606f5c4b62eeb3045e4fd36996ed334a5dbbe9c7c8d740b1f6",
+   "source": {
+    "archive_checksum": null,
+    "kind": "local-file",
+    "url": null
+   },
+   "symbol": "XRPUSDT"
+  }
+ ],
+ "format": "zb-data-manifest/1",
+ "loader_version": "zb-local-csv/1",
+ "manifest_id": "legacy-m3-repro-v1",
+ "note": "REPRODUCTION ONLY - not research data. The data_long/4h core-8 files that the M3 harness served (m3_repro restrict_sources: prefix data_long/, CORE8, 4h), metadata copied verbatim from legacy-unverified-v1 (0cc8ba493a714b1100ab5445f9bab432dc35dd2637260bf5d841e46a6ebc5fd5). Reproduces M3 only; never PIT evidence; cannot feed R4 promotion evidence (Codex #53 6094970068).",
+ "source_class": "repro-only",
+ "survivor_only": true
+}

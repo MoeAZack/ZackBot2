@@ -57,7 +57,10 @@ INTERVALS = {'1m': MIN, '3m': 3 * MIN, '5m': 5 * MIN, '15m': 15 * MIN, '30m': 30
 NAME_RE = re.compile(r'^([A-Z0-9]+)_(' + '|'.join(INTERVALS) + r')\.csv$')
 HEADER = 't,o,h,l,c,v'
 AVAILABLE_RULE = 'open_ms + interval_ms'
-SOURCE_CLASSES = ('legacy-unverified', 'archive-verified', 'rest-tail', 'fixture')
+SOURCE_CLASSES = ('legacy-unverified', 'archive-verified', 'rest-tail', 'fixture', 'repro-only')
+# A `repro-only` manifest exists only to reproduce a named legacy result (Codex #53 6094970068): it is never primary
+# research data, `pit.Access` opens it only as a development window, and it can never feed promotion evidence.
+REPRO_ONLY = 'repro-only'
 HEX64 = re.compile(r'^[0-9a-f]{64}$')
 TOP_KEYS = {'format', 'manifest_id', 'source_class', 'survivor_only', 'loader_version', 'available_rule', 'accessed_cairo',
             'note', 'data_root', 'files', 'digest'}
@@ -290,6 +293,8 @@ def validate(m: dict) -> None:
     need(isinstance(m['manifest_id'], str) and m['manifest_id'], 'manifest_id must be a non-empty string')
     need(m['source_class'] in SOURCE_CLASSES, f'source_class must be one of {SOURCE_CLASSES}')
     need(isinstance(m['survivor_only'], bool), 'survivor_only must be a bool')
+    need(m['source_class'] != REPRO_ONLY or m['survivor_only'] is True,
+         f'a {REPRO_ONLY} manifest is a survivor-only legacy reproduction (survivor_only true)')
     need(m['loader_version'] in LOADERS, f'loader_version must be one of {sorted(LOADERS)}')
     file_keys, rule = LOADERS[m['loader_version']]
     archive = m['loader_version'] == ARCHIVE_LOADER
@@ -382,6 +387,25 @@ def write(m: dict, path: str) -> None:
         raise ManifestError(f'{path} exists with different content; manifests are immutable, use a new manifest_id')
     with open(path, 'wb') as f:
         f.write(gzip.compress(data, compresslevel=9, mtime=0) if path.endswith('.gz') else data)
+
+
+def promotion_eligible(m: dict) -> bool:
+    """False for a reproduction-only manifest: its data can never feed promotion evidence."""
+    return m['source_class'] != REPRO_ONLY
+
+
+def subset(m: dict, paths, *, manifest_id: str, source_class: str, note: str) -> dict:
+    """A new manifest holding exactly `paths` of `m`, their per-file metadata copied verbatim (no data is read)."""
+    validate(m)
+    want = set(paths)
+    files = [dict(f) for f in m['files'] if f['path'] in want]
+    if {f['path'] for f in files} != want:
+        raise ManifestError(f'{sorted(want - {f["path"] for f in files})}: not in {m["manifest_id"]}')
+    out = {k: m[k] for k in TOP_KEYS if k not in ('files', 'digest')}
+    out.update(manifest_id=manifest_id, source_class=source_class, note=note, files=files)
+    out['digest'] = digest_of(out)
+    validate(out)
+    return out
 
 
 def load(path: str) -> dict:

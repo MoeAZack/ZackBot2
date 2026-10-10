@@ -175,6 +175,36 @@ def test_committed_legacy_manifest_matches_disk_and_data_manifest():
     assert all(legacy[f['path']]['sha256'] == f['sha256'] for f in m['files'])
 
 
+
+REPRO_DIGEST = 'a42c36927eccf48a16c09085192dd53a7ef7ba607dfc1021cf96a67c917e8bb6'
+CORE8 = ('BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT', 'XRPUSDT', 'DOGEUSDT', 'AVAXUSDT', 'LINKUSDT')
+
+
+def test_committed_m3_repro_manifest_is_bound_derived_and_reproduction_only():
+    """legacy-m3-repro-v1 (Codex #53 6094970068): exactly the data_long/4h core-8 files the M3 harness served, their
+    metadata copied verbatim from legacy-unverified-v1, digest pinned, marked reproduction-only, bytes still on disk."""
+    m = M.load(os.path.join(RES, 'manifests', 'legacy-m3-repro-v1.json'))
+    legacy = M.load(os.path.join(RES, 'manifests', 'legacy-unverified-v1.json'))
+    assert m['digest'] == REPRO_DIGEST and m['manifest_id'] == 'legacy-m3-repro-v1'
+    assert m['source_class'] == M.REPRO_ONLY and M.promotion_eligible(m) is False and m['survivor_only'] is True
+    assert M.promotion_eligible(legacy) is True                                 # only repro-only is excluded here
+    assert [f['path'] for f in m['files']] == sorted(f'data_long/4h/{s}_4h.csv' for s in CORE8)
+    assert M.subset(legacy, [f['path'] for f in m['files']], manifest_id=m['manifest_id'],
+                    source_class=M.REPRO_ONLY, note=m['note']) == m
+    assert M.verify(m) == []
+
+
+def test_repro_only_manifest_must_be_survivor_only_and_subset_refuses_unknown_paths():
+    legacy = M.load(os.path.join(RES, 'manifests', 'legacy-unverified-v1.json'))
+    m = M.subset(legacy, ['data_long/4h/BTCUSDT_4h.csv'], manifest_id='x', source_class=M.REPRO_ONLY, note='')
+    bad = dict(m, survivor_only=False)
+    bad['digest'] = M.digest_of(bad)
+    with pytest.raises(M.ManifestError, match='survivor_only true'):
+        M.validate(bad)
+    with pytest.raises(M.ManifestError, match='not in legacy-unverified-v1'):
+        M.subset(legacy, ['data_long/4h/NOPEUSDT_4h.csv'], manifest_id='x', source_class=M.REPRO_ONLY, note='')
+
+
 # ---------------------------------------------------------------- ledger
 
 @pytest.fixture(autouse=True)
