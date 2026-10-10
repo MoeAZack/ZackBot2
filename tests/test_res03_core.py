@@ -1851,3 +1851,14 @@ def test_m3_repro_manifest_loads_with_zero_overlaps_and_only_as_development(tmp_
     rec = json.loads(open(path, encoding='utf-8').read().splitlines()[-1])
     assert w.split == 'development' and rec['manifest_digest'] == m['digest']
     assert 'REPRO-ONLY' in rec['detail']['labels']
+
+
+def test_m3_repro_manifest_with_any_universe_refuses_before_access(world, tmp_path):
+    # Codex #56 6095540302: a universe would drop the REPRO-ONLY / SURVIVOR-ONLY labels, so construction refuses
+    _, _, u = world
+    m = _committed('legacy-m3-repro-v1.json')
+    path, _ = dirs(tmp_path)
+    for books in (None, BOOKS):
+        with pytest.raises(P.PITError, match='reproduction-only manifest is served without a universe'):
+            P.Dataset(m, ROOT, u, books=books)
+    assert not os.path.exists(path)                                # no Dataset, so no access and no ledger record
