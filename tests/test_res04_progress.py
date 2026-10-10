@@ -206,3 +206,46 @@ def test_m3_failure_is_recorded_as_an_abort_with_a_code_only(monkeypatch, tmp_pa
     last = PG.verify(str(tmp_path / prog))[-1]
     assert last['event'] == 'run_aborted' and last['integrity'] == ['ReproError']
     assert last['stage'] == {'name': 'm3.open'} and 'mismatch' not in open(tmp_path / prog).read()
+
+
+# ------------------------------------------------------------------ R4-0 readiness skeleton
+import r4_readiness as RR                                                                   # noqa: E402
+
+FULL = {'head': 'a' * 40, 'digests': {'dataset': 'b' * 64, 'universe': 'c' * 64, 'classification': 'd' * 64},
+        'tests': {'passed': 10, 'failed': 0}, 'm3_parity': {'status': 'PASS'},
+        'accounting_sample': {'status': 'PASS'}, 'pilot': {'status': 'PASS'},
+        'items': {str(n): {'status': 'PASS'} for n in RR.ITEMS}}
+
+
+def test_readiness_defaults_to_not_ready_with_every_item_missing():
+    doc = RR.build({})
+    assert doc['verdict'] == 'NOT READY' and {i['status'] for i in doc['items'].values()} == {'MISSING'}
+    assert {'head', 'digest.classification', 'tests', 'm3_parity', 'pilot', 'item.6'} <= set(doc['not_passing'])
+    with pytest.raises(RR.ReadinessError):
+        RR.build({'items': {'8': {'status': 'PASS'}}})
+    with pytest.raises(RR.ReadinessError):
+        RR.build({'pilot': {'status': 'GOOD'}})
+
+
+@pytest.mark.parametrize('drop', ['head', 'digests', 'tests', 'm3_parity', 'accounting_sample', 'pilot', 'items'])
+def test_any_missing_input_is_not_ready(tmp_path, drop):
+    a, b = run_all(tmp_path / 'a'), run_all(tmp_path / 'b')
+    ev = dict(FULL, progress_files=[a, b])
+    assert RR.build(ev)['verdict'] == 'READY'
+    ev.pop(drop)
+    assert RR.build(ev)['verdict'] == 'NOT READY'
+    assert RR.build(dict(FULL, progress_files=[a, b], tests={'passed': 10, 'failed': 1}))['verdict'] == 'NOT READY'
+
+
+def test_readiness_determinism_from_sealed_progress_files(tmp_path):
+    a, b = run_all(tmp_path / 'a'), run_all(tmp_path / 'b')
+    doc = RR.build(dict(FULL, progress_files=[a, b]))
+    assert doc['verdict'] == 'READY' and doc['determinism_sha256']['m3_repro_base.json']
+    (tmp_path / 'c').mkdir()
+    art = tmp_path / 'c' / 'm3_repro_base.json'
+    art.write_text('{"changed": 1}' + chr(10))
+    c = new(tmp_path / 'c')
+    c.sealed([str(art)], ['m3_repro_base.json'])
+    doc = RR.build(dict(FULL, progress_files=[a, c.path]))
+    assert doc['items']['6']['status'] == 'FAIL' and doc['verdict'] == 'NOT READY'
+    assert RR.build(dict(FULL, progress_files=[a]))['verdict'] == 'NOT READY'

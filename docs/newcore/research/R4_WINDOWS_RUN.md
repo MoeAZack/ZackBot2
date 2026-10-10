@@ -61,9 +61,20 @@ Get-FileHash $out\* -Algorithm SHA256
 - Acceptance: trade-for-trade match, |dR| <= 1e-9, same count, for both rows. Anything else = NOT REPRODUCED and
   step 3 does not start.
 
+## 2b. R4-0 readiness report (Codex 6094720765, binding)
+
+No strategy run until all 7 R4-0 items pass. Assemble the evidence inputs (head, dataset / universe /
+classification digests, test counts, M3 parity, accounting sample, pilot, >= 2 sealed progress files from fresh
+processes incl. a relocated checkout) into `r4_0_inputs.json`, then:
+
+```powershell
+python tools/research/r4_readiness.py --evidence r4_0_inputs.json --out research_evidence\runs\r4\R4-0_readiness.json
+# exit 0 = READY; exit 1 = NOT READY (see not_passing). Only Codex issues "R4 READY".
+```
+
 ## 3. First time-correct long/short evaluation (development only)
 
-Lands only after M3 is REPRODUCED and reviewed (R4b); today `run_r4.py pit` refuses with exit 4.
+Lands only after R4 READY and after M3 is REPRODUCED and reviewed (R4b); today `run_r4.py pit` refuses with exit 4.
 Expected shape (subject to the R4b contract):
 
 ```powershell
