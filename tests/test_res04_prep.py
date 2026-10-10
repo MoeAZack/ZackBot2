@@ -457,11 +457,15 @@ def test_committed_prereg_validates():
     assert plan.access_range('holdout')[0] >= spent_end                     # holdout is forward-only
     assert all(plan.access_range(k)[1] <= spent_end for k in plan.keys() if k != 'holdout')
     recs = G.trial_records(pre, '0' * 64, 'x')
-    assert len(recs) == pre['trials']['declared']['total'] == 19
+    assert len(recs) == pre['trials']['declared']['total'] == 18
     assert [(r['detail']['role'], r['detail'].get('book'), r['detail'].get('config')) for r in recs[:3]] == [
-        ('preregistration', 'crypto', 'primary'), ('secondary_variant', 'crypto', G.SECONDARY),
-        ('deferred_pilot', 'gold', 'primary')]
-    assert 'time_cap_bars' not in pre['primary_params'] and pre['variants']['primary']['time_cap_bars'] is None
+        ('preregistration', 'crypto', G.PRIMARY_NAME), ('development_only_variant', 'crypto', G.DEV_ONLY),
+        ('neighbour', 'crypto', 'ema_fast-5')]
+    assert not any(r['detail'].get('book') == 'gold' for r in recs)              # gold: own future budget
+    assert pre['primary_params']['time_cap_bars'] == 180 == pre['splits']['horizon_bars']
+    assert pre['variants']['primary']['promotable'] is True
+    assert pre['variants']['secondary'][0]['time_cap_bars'] is None
+    assert pre['variants']['secondary'][0]['promotable'] is False
     assert set(pre['universe_rule']['books']) == {'crypto'}
     assert pre['data']['classification']['digest'] == 'PENDING'
     assert 'UNREGISTERED' in pre['status']
@@ -469,8 +473,11 @@ def test_committed_prereg_validates():
 
 @pytest.mark.parametrize('mut, msg', [
     (lambda p: p['primary_params'].__setitem__('ema_fast', 21), 'primary_params'),
-    (lambda p: p['primary_params'].__setitem__('time_cap_bars', 180), 'uncapped'),
-    (lambda p: p['variants']['secondary'][0].__setitem__('time_cap_bars', 120), 'variants.secondary'),
+    (lambda p: p['primary_params'].pop('time_cap_bars'), 'finite time cap'),
+    (lambda p: p['primary_params'].__setitem__('time_cap_bars', 120), 'finite time cap'),
+    (lambda p: p['variants']['primary'].__setitem__('time_cap_bars', None), 'variants.primary'),
+    (lambda p: p['variants']['secondary'][0].__setitem__('promotable', True), 'variants.secondary'),
+    (lambda p: p['splits'].__setitem__('horizon_bars', 240), 'purge'),
     (lambda p: p['variants'].__setitem__('selection', 'best of the two on walk-forward'), 'adaptive'),
     (lambda p: p['splits'].__setitem__('lookback_bars', 220), 'lookback_bars'),
     (lambda p: p['costs']['slip_cal_v1'].__setitem__('fitted', 'no'), 'slip-cal-v1'),
@@ -479,7 +486,8 @@ def test_committed_prereg_validates():
     (lambda p: p['universe_rule']['deferred_pilot']['gold-tokenized'].__setitem__('cost_row', 'gold-spot'),
      'separate cost rows'),
     (lambda p: p['verdict_rules']['REJECT']['retained_gates'].pop('drawdown'), 'retain'),
-    (lambda p: p['trials']['declared'].__setitem__('total', 18), '19'),
+    (lambda p: p['trials']['declared'].__setitem__('total', 19), '18'),
+    (lambda p: p['trials']['declared'].__setitem__('variant', 3), 'crypto family only'),
     (lambda p: p['m3_reproduction']['manifest'].__setitem__('digest', '0' * 64), 'legacy-m3-repro-v1'),
     (lambda p: p['edge00'].pop('neighbours'), 'edge00'),
     (lambda p: p['neighbour_grid']['configs'].pop(), 'neighbour grid'),
@@ -555,7 +563,7 @@ def test_gate_refuses_until_registered_committed_merged_and_classified(grepo):
     with pytest.raises(G.GateError):
         G.run_m3(repo, store=repo, rows=('base',), out_dir=repo, author='t', cairo_date='2026-10-10', gate_kw=kw)
     recs = G.register(repo, author='t', cairo_date='2026-10-10', registry_genesis=gen)
-    assert [r['kind'] for r in recs].count('grid_point') == 12 and len(recs) == 19
+    assert [r['kind'] for r in recs].count('grid_point') == 12 and len(recs) == 18
     fail = G.gate(repo, **kw)
     assert any('G3 the registration records are not committed at HEAD' in f for f in fail)
     assert not any('G1' in f for f in fail)                          # research_evidence/ is outside the code identity
@@ -576,7 +584,7 @@ def test_gate_refuses_until_registered_committed_merged_and_classified(grepo):
     assert any('G1 dirty' in f for f in G.gate(repo, **kw))
     git(repo, 'checkout', '--', 'tools/research/trend_ema_mom.py')
     recs = L.verify(os.path.join(repo, 'research_evidence/ledger/trend_ema_mom.jsonl'), registry_genesis=gen)
-    assert L.n_trials(recs['trend_ema_mom']) == 19
+    assert L.n_trials(recs['trend_ema_mom']) == 18
 
 
 def test_gate_closes_on_a_moved_pin_bad_ancestry_or_an_edited_prereg(grepo):

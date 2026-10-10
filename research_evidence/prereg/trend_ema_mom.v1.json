@@ -37,7 +37,7 @@
   "held_positions": "A symbol that leaves the universe while held is still read through its View.enter Position capability until exit.",
   "symbol_priority": "Within a cycle, closes then entries in ascending universe rank of the latest Monday ranking (ties by symbol).",
   "deferred_pilot": {
-   "rule": "NOT part of this run. Gold gets its own later preregistration and pilot and cannot hold or block the crypto run. Gold-spot and tokenized gold are separate books with separate execution / cost rows, reported separately, never pooled with crypto or with each other. The same hypothesis evaluated there stays in this multiple-testing family: one deferred-pilot variant trial is reserved now.",
+   "rule": "NOT part of this run: inactive and non-blocking. XAUUSDT / PAXGUSDT identities are recorded only; gold gets its own future preregistration, books and trial budget and cannot hold or block the crypto run. Gold-spot and gold-tokenized are separate books with separate execution / cost rows, reported separately, never pooled with crypto or with each other. Gold does not count toward this crypto trial budget.",
    "gold-spot": {
     "symbol": "XAUUSDT",
     "book": "gold-spot",
@@ -55,7 +55,7 @@
   "entry": "le at the close of bar i = cross_up(EMA20, EMA50) and close > EMA200 and ret7d > 0 and ret30d > 0; market buy at the open of bar i+1",
   "exit_signal": "lx at the close of bar i = EMA20 < EMA50 or not (ret7d > 0 and ret30d > 0); market sell at the open of bar i+1",
   "stop": "stop_atr x Wilder ATR14 of the signal bar, from the fill price, floored to the tick; a bar that opens through it fills at its open, else at the stop; slip-v1 on the fill",
-  "time_cap": "PRIMARY: none (the M3 rule, uncapped). The 180-bar (30-day) cap is the separately named secondary variant `trend_ema_mom.v1.cap180` in `variants`, never part of the primary or of the M3 reproduction.",
+  "time_cap": "PRIMARY (promotable): a lot still open 180 bars (30 days) after its entry is closed at the open of the next bar (market, taker). The same finite 180-bar horizon is the split purge / embargo horizon (Codex 6095682220). The uncapped M3 rule is reproduction / development evidence only (`variants.secondary`), never the promotable primary.",
   "indicators": "EMA seeded at the first bar read (pandas ewm adjust=False), Wilder ATR seeded at TR0 = h0 - l0, returns in days converted to bars (7d = 42, 30d = 180 on 4h), cross_up(a, b) = a_i > b_i and a_(i-1) <= b_(i-1); computed over the last 1500 closed bars available at the decision (the live kline cap). Implementation: tools/research/trend_ema_mom.py (bit-parity with newcore/strategy/indicators.py at 45c22df).",
   "book": "The crypto book on its own equity: 10,000 USDT start, 1% risk of the cycle's wallet snapshot, max 4 open lots, gross notional <= 3x equity sized on signal close x 1.10, Cairo-day 3% MTM halt, drawdown kill disarmed (rule evaluation). Quantity floored to the step, never upsized; below min qty / min notional = counted refusal.",
   "no_maker": "No limit orders: every fill is taker."
@@ -69,6 +69,7 @@
   "mom_short_days": 7,
   "mom_long_days": 30,
   "warmup_bars": 220,
+  "time_cap_bars": 180,
   "window_bars": 1500
  },
  "neighbour_grid": {
@@ -98,12 +99,12 @@
  },
  "trials": {
   "declared": {
-   "variant": 3,
+   "variant": 2,
    "grid_point": 12,
    "baseline": 4,
-   "total": 19
+   "total": 18
   },
-  "detail": "variant = the primary (uncapped, crypto) + the secondary cap180 variant (crypto) + the reserved deferred gold-pilot variant (same hypothesis, own later prereg); grid_point = the 12 neighbours of the primary (crypto book); baseline = B0..B3. n_trials and the Holm family are read from the family ledger at evaluation time (every earlier record of the family counts), never from this declaration."
+  "detail": "crypto family only (Codex 6095682220): variant = the capped primary + the uncapped development-only variant; grid_point = the 12 neighbours of the primary; baseline = B0..B3. The deferred gold pilot is not in this budget (own future prereg). n_trials and the Holm family are read from the family ledger at evaluation time (every earlier record of the family counts), never from this declaration."
  },
  "costs": {
   "model": "zb-cost-model/2 (tools/research/costs.py), rows by explicit symbol class, no crypto fallback",
@@ -203,7 +204,7 @@
     "end": "2027-10-04T00:00:00Z"
    }
   ],
-  "notes": "calibration = the slip-cal-v1 interval, excluded from all evidence (no strategy evaluation). train is named so only because a plan needs one: nothing is fitted, the parameters are fixed. train and every walk-forward fold are development evidence (spent window or legacy-derived parameters), each reported separately and never pooled with the holdout. The holdout is forward-only (post-freeze), opened once, atomically, with every baseline and stress row. horizon_bars 180 = the secondary cap and the purge horizon; a lot of the uncapped primary still open at its split's access end is closed-trade truncated there (exit at the last open inside the split, counted and labelled TRUNCATED) so no episode crosses a split."
+  "notes": "calibration = the slip-cal-v1 interval, excluded from all evidence (no strategy evaluation). train is named so only because a plan needs one: nothing is fitted, the parameters are fixed. train and every walk-forward fold are development evidence (spent window or legacy-derived parameters), each reported separately and never pooled with the holdout. The holdout is forward-only (post-freeze), opened once, atomically, with every baseline and stress row. horizon_bars 180 = the primary's finite time cap = the purge / embargo horizon, so no primary trade crosses a split. A trade cut by a split end or the data end anyway (e.g. the uncapped development-only variant) is reported INCOMPLETE: invalid for promotion, never counted as an ordinary closed outcome."
  },
  "metrics": "zb-research-run/2, plan section 6, per side, per cost row and per book: after-cost expectancy (mean net R, net % equity, PF, win rate, avg win / loss), MTM drawdown + episode-bootstrap MC p5/p50/p95 (10,000) + longest underwater, MFE / MAE / give-back, counts (trades, episodes, month blocks, refusals by reason, exposure, ambiguity), 95% episode-clustered bootstrap CI (gating) + per-trade CI (reported) with seeds, contribution by symbol / year / regime + top-5 episodes + LOSO / LOYO, neighbour table, stop-first vs target-first, survivor-only vs PIT delta, paired baselines, follower tiers 100 / 200 / 500 USDT and RULES-BACKFILLED share.",
  "baselines": {
@@ -228,7 +229,7 @@
  },
  "verdict_rules": {
   "development": "Any run before the forward holdout opens (this R4 PIT run included) is development evidence: it can neither PROMOTE nor REJECT. It is reported with every row; a base-row PIT development mean net R <= 0 is flagged DEV-NEGATIVE for Codex, with no retune either way.",
-  "PROMOTE": "only on the sealed forward holdout, per book, when every EDGE-00 row passes",
+  "PROMOTE": "only on the sealed forward holdout, per book, for the capped primary, when every EDGE-00 row passes; INCOMPLETE (split-end / data-end truncated) trades are invalid for promotion and never counted as closed outcomes; the uncapped development-only variant can never PROMOTE",
   "REJECT": {
    "powered_mean": "sealed-holdout sample row met (adequately powered: >= 30 sealed-holdout episodes, the MDE at 80% power reported with the family size) and the sealed-holdout base-row mean net R <= 0",
    "retained_gates": {
@@ -254,20 +255,21 @@
  },
  "variants": {
   "primary": {
-   "name": "trend_ema_mom.v1",
-   "time_cap_bars": null,
+   "name": "trend_ema_mom.v1.cap180",
+   "time_cap_bars": 180,
    "book": "crypto",
-   "role": "the primary endpoint (uncapped M3 rule)"
+   "promotable": true,
+   "role": "the promotable primary endpoint: the M3 rule with the explicit 180-bar time cap"
   },
   "secondary": [
    {
-    "name": "trend_ema_mom.v1.cap180",
-    "time_cap_bars": 180,
+    "name": "trend_ema_mom.v1.uncapped",
+    "time_cap_bars": null,
     "book": "crypto",
-    "rule": "identical to the primary except: a lot still open 180 bars after its entry is closed at the open of the next bar (market, taker)",
-    "role": "separately named secondary variant, reported beside the primary with every row"
+    "promotable": false,
+    "role": "the uncapped M3 rule: reproduction / development evidence only, never promotable; counted in the family because it is evaluated"
    }
   ],
-  "selection": "none: both are evaluated and reported; there is no adaptive choice between them and the primary endpoint is the uncapped rule whatever the secondary shows"
+  "selection": "none: both are reported; there is no adaptive choice between them and only the capped primary can support PROMOTE"
  }
 }

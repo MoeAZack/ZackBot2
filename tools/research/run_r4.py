@@ -54,8 +54,10 @@ PREREG_KEYS = {'format', 'candidate_id', 'family', 'author', 'cairo_date', 'stat
                'm3_reproduction'}
 EDGE_ROWS = {'sample', 'expectancy', 'baselines', 'multiplicity', 'pit', 'robustness', 'neighbours', 'intrabar',
              'e10_drawdown', 'e11_follower'}
-SECONDARY = 'trend_ema_mom.v1.cap180'
-SECONDARY_CAP = 180
+PRIMARY_NAME = 'trend_ema_mom.v1.cap180'        # the promotable primary (Codex 6095682220)
+PRIMARY_CAP = 180                               # its finite time cap = the purge / embargo horizon
+DEV_ONLY = 'trend_ema_mom.v1.uncapped'          # the uncapped M3 rule: reproduction / development evidence only
+TRIALS = 18                                     # crypto family; gold has its own future budget
 DEFERRED = {'gold-spot': 'XAUUSDT', 'gold-tokenized': 'PAXGUSDT'}  # costs.py class names
 M3_EVALUATOR = 'tools/research/m3_eval.py'
 EVAL_FILES = ('tools/research/m3_eval.py', 'tools/research/trend_ema_mom.py')
@@ -81,15 +83,14 @@ def _load(repo, rel):
 
 
 def trial_records(pre: dict, sha: str, rel: str) -> list[dict]:
-    """The ledger records `register` appends: the primary variant (the preregistration), the secondary cap180
-    variant, the reserved deferred gold-pilot variant, every neighbour grid point and every baseline choice.
-    Same order every time."""
+    """The ledger records `register` appends: the capped primary variant (the preregistration), the uncapped
+    development-only variant, every neighbour grid point and every baseline choice (crypto family only; the deferred
+    gold pilot has its own future budget). Same order every time."""
     sp = pre['splits']['splits']
     win = {'start': sp[1]['start'], 'end': sp[-1]['end']}
     base = {'prereg_path': rel, 'prereg_sha256': sha}
-    out = [dict(kind='variant', detail=dict(base, role=ROLE_PREREG, book='crypto', config='primary')),
-           dict(kind='variant', detail=dict(base, role='secondary_variant', book='crypto', config=SECONDARY)),
-           dict(kind='variant', detail=dict(base, role='deferred_pilot', book='gold', config='primary'))]
+    out = [dict(kind='variant', detail=dict(base, role=ROLE_PREREG, book='crypto', config=PRIMARY_NAME)),
+           dict(kind='variant', detail=dict(base, role='development_only_variant', book='crypto', config=DEV_ONLY))]
     out += [dict(kind='grid_point', detail=dict(base, role='neighbour', book='crypto', config=n))
             for n in pre['neighbour_grid']['configs']]
     out += [dict(kind='baseline', detail=dict(base, role='baseline', baseline=b)) for b in ('B0', 'B1', 'B2', 'B3')]
@@ -109,21 +110,20 @@ def validate_prereg(pre: dict, repo: str) -> list[str]:
     if pre['timeframe'] != T.TF:
         bad.append(f'timeframe must be {T.TF}')
     pp = dict(pre['primary_params'])
-    win = pp.pop('window_bars', None)
-    if 'time_cap_bars' in pp:
-        bad.append('primary_params: the primary is the uncapped M3 rule (no time_cap_bars; the cap is a variant)')
-        pp.pop('time_cap_bars')
+    win, cap = pp.pop('window_bars', None), pp.pop('time_cap_bars', None)
+    if cap != PRIMARY_CAP:
+        bad.append(f'primary_params: the promotable primary needs the finite time cap time_cap_bars {PRIMARY_CAP}')
     if pp != T.PRIMARY.doc() or win != T.WINDOW:
         bad.append('primary_params differ from trend_ema_mom.PRIMARY / WINDOW')
     v = pre['variants']
     try:
         sec = v['secondary']
-        if (v['primary'].get('name') != T.RULE_ID or v['primary'].get('time_cap_bars') is not None
-                or v['primary'].get('book') != 'crypto'):
-            bad.append('variants.primary must be the uncapped trend_ema_mom.v1 on the crypto book')
-        if (len(sec) != 1 or sec[0].get('name') != SECONDARY or sec[0].get('time_cap_bars') != SECONDARY_CAP
-                or sec[0].get('book') != 'crypto'):
-            bad.append(f'variants.secondary must be exactly {SECONDARY} (time_cap_bars {SECONDARY_CAP}, crypto)')
+        if (v['primary'].get('name') != PRIMARY_NAME or v['primary'].get('time_cap_bars') != PRIMARY_CAP
+                or v['primary'].get('book') != 'crypto' or v['primary'].get('promotable') is not True):
+            bad.append(f'variants.primary must be the promotable {PRIMARY_NAME} (time_cap_bars {PRIMARY_CAP}, crypto)')
+        if (len(sec) != 1 or sec[0].get('name') != DEV_ONLY or sec[0].get('time_cap_bars') is not None
+                or sec[0].get('book') != 'crypto' or sec[0].get('promotable') is not False):
+            bad.append(f'variants.secondary must be exactly {DEV_ONLY} (uncapped, crypto, never promotable)')
         if not str(v.get('selection', '')).startswith('none'):
             bad.append('variants.selection must declare no adaptive choice between the variants')
     except (KeyError, TypeError, AttributeError) as e:
@@ -135,8 +135,8 @@ def validate_prereg(pre: dict, repo: str) -> list[str]:
     try:
         plan = S.SplitPlan(sp['splits'], interval=sp['interval'], lookback_bars=sp['lookback_bars'],
                            horizon_bars=sp['horizon_bars'])
-        if sp['horizon_bars'] != SECONDARY_CAP:
-            bad.append('split horizon_bars must equal the secondary variant cap (the purge horizon)')
+        if sp['horizon_bars'] != PRIMARY_CAP:
+            bad.append('split horizon_bars must equal the primary time cap (the purge / embargo horizon)')
         if sp['lookback_bars'] < T.max_lookback_bars([T.PRIMARY] + [p for _, p in T.neighbours()]):
             bad.append('lookback_bars does not cover every evaluated configuration')
         cal = pre['costs']['slip_cal_v1']['calibration_window']
@@ -172,9 +172,9 @@ def validate_prereg(pre: dict, repo: str) -> list[str]:
         bad.append('universe_rule.deferred_pilot must record gold-spot (XAUUSDT) and gold-tokenized (PAXGUSDT) as '
                    'separate books with separate cost rows')
     t = pre['trials']['declared']
-    want = {'variant': 3, 'grid_point': len(names), 'baseline': 4, 'total': 7 + len(names)}
-    if t != want or t['total'] != 19:
-        bad.append('declared trials differ from the records register appends (19)')
+    want = {'variant': 2, 'grid_point': len(names), 'baseline': 4, 'total': 6 + len(names)}
+    if t != want or t['total'] != TRIALS:
+        bad.append(f'declared trials differ from the records register appends ({TRIALS}, crypto family only)')
     try:
         u = json.loads(_load(repo, UNIVERSE))
         if (u['digest'], u['manifest_digest']) != (pre['data']['universe_digest'], pre['data']['manifest_digest']):

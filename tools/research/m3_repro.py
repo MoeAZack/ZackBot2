@@ -2,8 +2,8 @@
 
 Target: the M3 long-candidate pack (origin commit 45c22df, docs/newcore/slice/M3_long_candidate_evidence.md), the
 "kill OFF (rule evaluation)" runs at `base` and `2x` costs: S4 BookRunner, data_long core 8, 4h, long only, the canary
-book limits with the drawdown kill disarmed, UNCAPPED (the 180-bar cap is a separate preregistered variant, never part
-of the reproduction). Acceptance = the trade list reproduced trade for trade (same symbol, signal / entry / exit
+book limits with the drawdown kill disarmed, UNCAPPED (reproduction / development evidence only: the promotable
+primary is the capped 180-bar rule, never part of the reproduction). Acceptance = the trade list reproduced trade for trade (same symbol, signal / entry / exit
 candle, qty, entry / stop / exit price, exit reason) with |dR| <= R_TOL, through the accepted R3 boundary:
 
   data      `pit.Dataset` over the reproduction-only manifest `legacy-m3-repro-v1` (REPRO_DIGEST pinned; exactly the

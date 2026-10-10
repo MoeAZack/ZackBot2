@@ -57,7 +57,7 @@ prereg's universe digests are updated in a reviewed commit):
 
 ```powershell
 python tools/research/run_r4.py register --author claude-code --cairo-date <CAIRO_DATE>
-# then commit the 19 ledger lines through a reviewed PR, re-checkout the new accepted master, re-run check
+# then commit the 18 ledger lines through a reviewed PR, re-checkout the new accepted master, re-run check
 ```
 
 ## 2. M3 reproduction (R4-0 item 5; uncapped; reproduction-only flat funding)
@@ -93,5 +93,8 @@ Merge them into the readiness report with `--evidence r4_0_inputs.json` (keys `m
 ## 4. First time-correct evaluation (development only)
 
 Lands only after `R4 READY` and after M3 is REPRODUCED and reviewed (R4b); today `run_r4.py pit` refuses with exit 4.
-The crypto top-40 book is the only book; the uncapped primary and the `trend_ema_mom.v1.cap180` secondary are both
-reported with no adaptive choice; gold-spot and gold-tokenized are a deferred pilot with their own later prereg.
+The crypto top-40 book is the only book. The promotable primary is `trend_ema_mom.v1.cap180` (180-bar time cap =
+the purge / embargo horizon); the uncapped M3 rule `trend_ema_mom.v1.uncapped` is development evidence only and
+never promotable; trades cut by a split or data end are reported INCOMPLETE (invalid for promotion). 18 crypto
+trials. Gold-spot / gold-tokenized (XAUUSDT / PAXGUSDT) are an inactive, non-blocking deferred pilot with their own
+future prereg and trial budget (Codex 6095682220).
