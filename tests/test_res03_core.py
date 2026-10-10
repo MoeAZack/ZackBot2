@@ -751,6 +751,103 @@ def test_evaluator_cannot_restore_the_path_probe_originals(world, tmp_path):
     assert list(P.evaluate(w, f, 'harvest_only', train_times(1))) == [[0, 'refused']]
 
 
+PROCESS_ATTACK = '''import os
+import sys
+import types
+
+
+def attempt(fn):
+    try:
+        fn()
+        return 'allowed'
+    except PermissionError:
+        return 'refused'
+    except Exception as e:
+        return 'error ' + type(e).__name__
+
+
+def import_low():
+    import _posixsubprocess
+    _posixsubprocess.fork_exec
+
+
+def builtin_route():
+    import _imp
+    _imp.create_builtin(types.SimpleNamespace(name='_posixsubprocess'))
+
+
+def dynamic_route(name, origin):
+    import _imp
+    _imp.create_dynamic(types.SimpleNamespace(name=name, origin=origin))
+
+
+def aliases():
+    """Any function named fork_exec, or any _posixsubprocess module, still reachable from a loaded module."""
+    found = []
+    for m in list(sys.modules.values()):
+        try:
+            items = list(vars(m).items())
+        except TypeError:
+            continue
+        for k, v in items:
+            if getattr(v, '__name__', '') == '_posixsubprocess' and getattr(v, 'fork_exec', None) is not None:
+                found.append(k)
+            elif getattr(v, '__name__', '') == 'fork_exec' and type(v).__name__ == 'builtin_function_or_method':
+                found.append(k)
+    return found
+
+
+def low_level_launch():
+    """A direct no-op child launch through the platform's lowest Python-level primitive."""
+    if os.name == 'nt':
+        import _winapi
+        _winapi.CreateProcess(None, 'cmd /c rem', None, None, False, 0, None, None, None)
+    else:
+        import _posixsubprocess
+        _posixsubprocess.fork_exec
+
+
+def run(v):
+    import subprocess
+    alias = getattr(subprocess, '_fork_exec', None)
+    return {
+        'import _posixsubprocess': attempt(import_low),
+        'sys.modules': sys.modules.get('_posixsubprocess') is None,
+        'aliases': aliases(),
+        'subprocess._fork_exec': 'absent' if alias is None else attempt(lambda: alias()),
+        'create_builtin': attempt(builtin_route),
+        'create_dynamic': attempt(lambda: dynamic_route('_posixsubprocess', 'x/_posixsubprocess.so')),
+        'create_dynamic dotted': attempt(lambda: dynamic_route('pkg._posixsubprocess', 'x/m.so')),
+        'create_dynamic renamed': attempt(lambda: dynamic_route('harmless', 'x/_posixsubprocess.cpython-314.so')),
+        'low-level launch': attempt(low_level_launch),
+        'subprocess.run': attempt(lambda: subprocess.run(['echo', 'x'])),
+        'os.system': attempt(lambda: os.system('echo x')),
+        'socket': attempt(lambda: __import__('socket').socket()),
+        'write open': attempt(lambda: open('pwn.txt', 'w')),
+        'json works': __import__('json').dumps({'a': 1}) == '{"a": 1}',
+    }
+'''
+
+
+def test_evaluator_cannot_reach_low_level_process_creation(world, tmp_path):
+    """Codex 6094447977 (Cowork, Linux): `_posixsubprocess.fork_exec` raises no audit event, so it is refused on every
+    route - import, preloaded `sys.modules`, aliases in loaded modules (`subprocess._fork_exec`), `_imp.create_builtin`
+    and `_imp.create_dynamic` (by name, dotted name or file stem). The direct low-level no-op launch is refused on this
+    platform (Windows: `_winapi.CreateProcess`, an audited event); subprocess / os / socket / write refusals hold and an
+    ordinary stdlib evaluator still works, identically in both fresh processes."""
+    ds = ds_of(world)
+    path, _ = dirs(tmp_path)
+    w = access(ds, path).open('train', lineage='root')
+    f = evaluator(tmp_path / 'ev', PROCESS_ATTACK, 'process_attack.py')
+    out = list(P.evaluate(w, f, 'run', train_times(2)))
+    refused = ('import _posixsubprocess', 'create_builtin', 'create_dynamic', 'create_dynamic dotted',
+               'create_dynamic renamed', 'low-level launch', 'subprocess.run', 'os.system', 'socket', 'write open')
+    want = dict({k: 'refused' for k in refused}, **{'sys.modules': True, 'aliases': [], 'json works': True})
+    want['subprocess._fork_exec'] = 'absent' if os.name == 'nt' else 'refused'
+    assert out == [want] * 2
+    assert not os.path.exists(tmp_path / 'ev' / 'pwn.txt')
+
+
 def test_position_capability_replaces_caller_entered_ms(world, tmp_path):
     ds = ds_of(world)
     path, _ = dirs(tmp_path)
