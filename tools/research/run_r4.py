@@ -17,6 +17,7 @@ Gate (`gate()` returns every failure; any failure = exit 3, nothing is read):
      record; each of those lines is present in HEAD's committed ledger (registered AND committed).
   G4 slices cleared: each pinned R1/R2/R3 head (r4_gate.json) exists, equals its branch tip when that branch still
      exists (no newer uncleared fix round), is merged into the integration ref, and is contained in HEAD.
+`m3` writes `progress-<run_id>.jsonl` (progress.py, zb-run-progress/1) beside its reports: operational state only.
 `register` (after Codex clears the prereg) needs G1 + G2 and appends the declared trial records once; commit the
 ledger, then `m3` / `pit` pass G3. No network, no credentials; git is read locally (fetch beforehand).
 """
@@ -33,6 +34,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import costs as C                                                                           # noqa: E402
 import ledger as L                                                                          # noqa: E402
 import manifest as M                                                                        # noqa: E402
+import progress as PG                                                                       # noqa: E402
 import report as R                                                                          # noqa: E402
 import splits as S                                                                          # noqa: E402
 import trend_ema_mom as T                                                                   # noqa: E402
@@ -45,7 +47,8 @@ PREREG_KEYS = {'format', 'candidate_id', 'family', 'author', 'cairo_date', 'stat
                'splits', 'metrics', 'baselines', 'edge00', 'verdict_rules', 'stop_condition', 'm3_reproduction'}
 EDGE_ROWS = {'sample', 'expectancy', 'baselines', 'multiplicity', 'pit', 'robustness', 'neighbours', 'intrabar',
              'e10_drawdown', 'e11_follower'}
-EVAL_FILES = ('tools/research/m3_repro.py', 'tools/research/run_r4.py', 'tools/research/trend_ema_mom.py')
+EVAL_FILES = ('tools/research/m3_repro.py', 'tools/research/progress.py', 'tools/research/run_r4.py',
+              'tools/research/trend_ema_mom.py')
 ROLE_PREREG = 'preregistration'
 
 
@@ -227,26 +230,44 @@ def register(repo: str, *, author: str, cairo_date: str, gate_path: str = GATE, 
 
 
 def run_m3(repo: str, *, store: str, rows, out_dir: str, author: str, cairo_date: str, perturb: bool = True,
-           gate_kw=None) -> list[str]:
+           gate_kw=None, clock=PG.cairo_now) -> list[str]:
     refuse_unless_open(repo, **(gate_kw or {}))
     import m3_repro as X                                                                    # noqa: E402
     g = json.loads(_load(repo, GATE))
-    ds, w, lo, hi = X.open_legacy(repo, store, os.path.join(repo, g['ledger']), author=author, cairo_date=cairo_date)
-    rules = X.load_rules(os.path.join(repo, X.RULES_PATH), X.CORE8)
     config = {'rows': list(rows), 'perturb': perturb, 'params': T.PRIMARY.doc(), 'window': T.WINDOW,
               'book': {k: str(v) for k, v in X.Book().__dict__.items()}, 'source_prefix': X.SOURCE_PREFIX}
-    meta = {'code': R.code_identity(repo), 'eval': R.eval_identity(repo, EVAL_FILES, config),
-            'manifest_digest': ds.digest, 'labels': list(ds.labels), 'window': [S.utc(lo), S.utc(hi)]}
-    os.makedirs(out_dir, exist_ok=True)
-    written = []
-    for name in rows:
-        rep = X.replay(w, start_ms=lo, end_ms=hi, costs=X.cost_row(name), rules=rules, perturb=perturb)
-        doc = X.report(name=name, ref_text=X.read_reference(repo, name), rep=rep, meta=meta)
-        p = os.path.join(out_dir, f'm3_repro_{name}.json')
-        with open(p, 'w', encoding='utf-8', newline='\n') as f:
-            json.dump(doc, f, indent=1, sort_keys=True)
-            f.write('\n')
-        written.append(p)
+    code = R.code_identity(repo)
+    # Sanitized operational record (Codex 6094685201): commit, declared dataset identity, stage state, integrity
+    # codes, artifact hashes. No outcome ever enters it; the reports below are referenced only by SHA-256.
+    prog = PG.Progress(out_dir, commit=code['git_head'], config=config, clock=clock,
+                       dataset={'manifest': X.LEGACY_MANIFEST, 'digest': X.LEGACY_DIGEST})
+    stage = 'm3.open'
+    try:
+        prog.stage_start(stage)
+        ds, w, lo, hi = X.open_legacy(repo, store, os.path.join(repo, g['ledger']), author=author,
+                                      cairo_date=cairo_date)
+        if ds.digest != X.LEGACY_DIGEST:
+            raise X.ReproError('manifest digest differs from the declared legacy identity')
+        rules = X.load_rules(os.path.join(repo, X.RULES_PATH), X.CORE8)
+        meta = {'code': code, 'eval': R.eval_identity(repo, EVAL_FILES, config),
+                'manifest_digest': ds.digest, 'labels': list(ds.labels), 'window': [S.utc(lo), S.utc(hi)]}
+        prog.stage_done(stage)
+        written = []
+        for name in rows:
+            stage = f'm3.{name}'
+            prog.stage_start(stage)
+            rep = X.replay(w, start_ms=lo, end_ms=hi, costs=X.cost_row(name), rules=rules, perturb=perturb)
+            doc = X.report(name=name, ref_text=X.read_reference(repo, name), rep=rep, meta=meta)
+            p = os.path.join(out_dir, f'm3_repro_{name}.json')
+            with open(p, 'w', encoding='utf-8', newline='\n') as f:
+                json.dump(doc, f, indent=1, sort_keys=True)
+                f.write('\n')
+            written.append(p)
+            prog.stage_done(stage, artifacts=[p])
+    except Exception as e:
+        prog.aborted([type(e).__name__], stage=stage)
+        raise
+    prog.sealed(written, [os.path.basename(p) for p in written])
     return written
 
 
@@ -285,7 +306,8 @@ def main(argv=None) -> int:
     except GateError as e:
         print(str(e), file=sys.stderr)
         return 3
-    except (L.LedgerError, R.ReportError, M.ManifestError, C.CostError, S.SplitError, ValueError) as e:
+    except (L.LedgerError, R.ReportError, M.ManifestError, C.CostError, S.SplitError, PG.ProgressError,
+            ValueError) as e:
         print(f'error: {e}', file=sys.stderr)
         return 2
 
