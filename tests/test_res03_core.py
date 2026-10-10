@@ -464,10 +464,12 @@ def test_fresh_process_replay_binds_interpreter_without_host_paths(world, tmp_pa
     f = evaluator(tmp_path / 'ev', src, 'fine.py')
     out = P.evaluate(w, f, 'run', train_times(2))
     assert list(out) == [['fine.py', [], 3]] * 2
-    interp = out.attestation['interpreter']
+    interp = out.attestation['execution_environment']
     with open(sys.executable, 'rb') as fh:
         assert interp['executable_sha256'] == hashlib.sha256(fh.read()).hexdigest()
     assert interp['python'] == platform.python_version() and interp['hexversion'] == sys.hexversion
+    assert interp == R.SB.execution_environment()             # the child computes the parent's canonical identity
+    assert interp['os'] == sys.platform and interp['cpu_count'] == os.cpu_count()
     blob = json.dumps(out.attestation).lower()
     assert not re.search(r'zb-eval-[a-z0-9_]{8}(\\|/)', blob)      # no materialized-tree / cwd temp path
     for host in (sys.executable, sys.base_prefix, os.path.dirname(sys.executable)):
@@ -704,6 +706,50 @@ def test_holdout_guard_refuses_foreign_envelopes(world, tmp_path, repo, canon, k
     R.write_envelope(runs, env)
     with pytest.raises(P.PITError, match=msg):
         acc.open('holdout', envelope=env)
+
+
+def test_execution_environment_is_frozen_and_must_match_exactly(world, tmp_path, repo, monkeypatch):
+    """Codex 6093381880 P1: run.code carries the canonical execution environment, captured at freeze time BEFORE
+    evaluation; a run frozen under another environment fails closed in both fresh processes and at holdout access."""
+    ds = ds_of(world)
+    pl = plan()
+    evaluator(os.path.join(repo, 'strategy'), HONEST + REPORTING)
+    git(repo, 'add', '-A')
+    git(repo, 'commit', '-q', '-m', 'evaluator')
+    times = train_times(2)
+
+    def freeze():
+        return R.freeze_run(repo=repo, entrypoint=ep('strategy/ev.py'), schedule=times,
+                            eval_files=['strategy/cand.py', 'strategy/ev.py'], config={'k': 1}, seeds=[1, 2],
+                            **dict(ident(ds, pl), split='train', window=pl.window('train')))
+    env = freeze()
+    xe = env['run']['code']['execution_environment']
+    assert xe == R.SB.execution_environment() and set(xe) == set(R.SB.EXEC_ENV_KEYS)
+    assert xe['python'] == env['run']['code']['python'] and R.verify_code(env, repo) == []
+    # malformed / inconsistent frozen identities never validate
+    for bad in ({k: v for k, v in xe.items() if k != 'cpu_count'}, dict(xe, cpu_count='8'), dict(xe, python='0.0.0'),
+                dict(xe, executable_sha256='x'), None):
+        with pytest.raises(R.ReportError, match='execution_environment'):
+            R.envelope(dict(env['run'], code=dict(env['run']['code'], execution_environment=bad)))
+    # cross-environment: frozen on a simulated other host (one more CPU), then verified / evaluated here
+    other = dict(xe, cpu_count=xe['cpu_count'] + 1)
+    monkeypatch.setattr(R.SB, 'execution_environment', lambda: dict(other))
+    foreign = freeze()
+    monkeypatch.undo()
+    assert foreign['run']['code']['execution_environment'] == other
+    assert R.verify_code(foreign, repo) == [
+        "execution environment of this process differs from the frozen run.code identity: ['cpu_count']"]
+    path, _ = dirs(tmp_path)
+    w = access(ds, path, pl, repo=repo).open('train', envelope=foreign, lineage='root')
+    assert w.execution_environment == other
+    with pytest.raises(P.PITError, match=r"fresh sandbox process 1 differs from the frozen run.code identity: "
+                                         r"\['cpu_count'\]"):
+        P.evaluate(w, os.path.join(repo, 'strategy', 'ev.py'), 'run', times, summary='summarize')
+    # the same run frozen here evaluates and seals
+    w = access(ds, path, pl, repo=repo).open('train', envelope=env)
+    out = P.evaluate(w, os.path.join(repo, 'strategy', 'ev.py'), 'run', times, summary='summarize')
+    assert out.attestation['execution_environment'] == xe
+    assert R.make_report(env, out.results, out.attestation, path)['report_digest']
 
 
 def test_code_identity_is_captured_not_self_attested(world, tmp_path, repo):
@@ -1155,7 +1201,7 @@ def test_resolver_on_the_pit_view_minutes(world, tmp_path):
 
 
 # ------------------------------------------------------------------ report envelope
-def test_envelope_write_once_and_report_needs_the_runner_attestation(world, tmp_path, repo):
+def test_envelope_write_once_and_report_needs_the_runner_attestation(world, tmp_path, repo, monkeypatch):
     """Codex 6079042573 P1: only `pit.evaluate` (sandboxed, perturbed, ledger-recorded) can produce a report."""
     ds = ds_of(world)
     pl = plan()
@@ -1214,11 +1260,32 @@ def test_envelope_write_once_and_report_needs_the_runner_attestation(world, tmp_
         R.make_report(env, full, nop.attestation, path)
     with pytest.raises(R.ReportError, match='no matching evaluation record'):
         R.make_report(env, full, dict(out.attestation, outputs_digest='0' * 64), path)
-    bad = dict(out.attestation, interpreter=dict(out.attestation['interpreter'], python='0.0.0'))
-    with pytest.raises(R.ReportError, match='interpreter identity'):            # Codex 6089789885 item 3
-        R.make_report(env, full, bad, path)
-    with pytest.raises(R.ReportError, match='interpreter identity'):
-        R.make_report(env, full, {k: v for k, v in out.attestation.items() if k != 'interpreter'}, path)
+    # Codex 6093381880 P1: the attestation's execution environment must EQUAL the frozen run.code one (tamper)
+    xe = out.attestation['execution_environment']
+    assert xe == env['run']['code']['execution_environment']
+    for k, v in (('python', '0.0.0'), ('hexversion', 1), ('cache_tag', 'cpython-00'), ('executable_sha256', 'f' * 64),
+                 ('os', 'plan9'), ('platform', 'other-arch'), ('pointer_bits', 16), ('cpu_count', xe['cpu_count'] + 1),
+                 ('implementation', 'pypy'), ('version', 'x')):
+        bad = dict(out.attestation, execution_environment=dict(xe, **{k: v}))
+        with pytest.raises(R.ReportError, match=rf"execution environment of the evaluator processes differs.*'{k}'"):
+            R.make_report(env, full, bad, path)
+    with pytest.raises(R.ReportError, match='execution environment of the evaluator processes is missing'):
+        R.make_report(env, full, {k: v for k, v in out.attestation.items() if k != 'execution_environment'}, path)
+    with pytest.raises(R.ReportError, match='missing or malformed'):
+        R.make_report(env, full, dict(out.attestation, execution_environment=dict(xe, extra=1)), path)
+    # a tampered frozen identity: edited in place breaks run_digest; re-sealed it is another run
+    t_code = dict(env['run']['code'], execution_environment=dict(xe, cpu_count=xe['cpu_count'] + 1))
+    t_run = dict(env['run'], code=t_code)
+    with pytest.raises(R.ReportError, match='run_digest does not match'):
+        R.make_report(dict(env, run=t_run), full, out.attestation, path)
+    with pytest.raises(R.ReportError, match='another run'):
+        R.make_report(R.envelope(t_run), full, out.attestation, path)
+    # the process sealing the report runs in another environment: fails closed even with a genuine attestation
+    monkeypatch.setattr(R.SB, 'execution_environment', lambda: dict(xe, platform='other-arch'))
+    with pytest.raises(R.ReportError, match=r"process sealing the report differs.*'platform'"):
+        R.make_report(env, full, out.attestation, path)
+    monkeypatch.undo()
+    assert R.make_report(env, full, out.attestation, path)['report_digest'] == rep['report_digest']
     no_sum = P.evaluate(w, ev, 'run', times)
     with pytest.raises(R.ReportError, match='entrypoint'):
         R.make_report(env, full, no_sum.attestation, path)

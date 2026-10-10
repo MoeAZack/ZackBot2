@@ -3,7 +3,8 @@
 The envelope's `run` block is everything that identifies a run before it executes: family, candidate, split + window,
 universe books, the manifest / universe / split-plan / cost-model / slip-cal digests, the evaluation identity `eval`
 (the canonical evaluation file list with each file's SHA-256, plus the config) and `eval_digest` over it and the seeds,
-and the code identity (Git HEAD, dirty flag, Python, the canonical dependency set), author and Cairo date.
+and the code identity (Git HEAD, dirty flag, Python, the canonical dependency set, the canonical
+`execution_environment`), author and Cairo date.
 `run_digest` = SHA-256 of the canonical JSON of `run`.
 
 Code identity is never self-attested (Codex R3 P1, comment 6077894871): `freeze_run` captures HEAD / status / Python /
@@ -11,6 +12,14 @@ dependencies itself from the checkout, refuses a dirty tree, requires every file
 file list, requires each listed file to be tracked by Git, and hashes the files itself. `verify_code` re-captures all
 of it at holdout access and recomputes `eval_digest` from the files on disk: a different HEAD, a dirty tree, a changed
 evaluation file, a different Python or dependency set fails closed.
+
+Execution environment (Codex 6093381880 P1): `run.code.execution_environment` is `sandbox.execution_environment()`
+captured at freeze time, BEFORE evaluation - interpreter implementation, Python version / hexversion / cache tag,
+executable SHA-256, OS, platform / architecture and CPU count. Both fresh sandbox processes, `make_report` (the
+attestation AND the process sealing the report) and the holdout re-verification (`verify_code`) must equal it
+exactly; any divergence fails closed. Evidence is therefore reproducible under the same frozen execution environment,
+NOT portable across arbitrary hosts: a different interpreter build, OS, architecture or CPU count is a different run.
+Once frozen these host facts are committed inputs; an evaluator may read them.
 
 Executable evidence (Codex 6079042573 P1): "dirty" ignores only validated NON-EXECUTABLE artifacts under
 `research_evidence/` (`ARTIFACT_SUFFIXES`: ledger lines, run envelopes, JSON / gzip-JSON data, CSV, Markdown); any other
@@ -42,6 +51,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import costs as C                                                                           # noqa: E402
 import manifest as M                                                                        # noqa: E402
+import sandbox as SB                                                                        # noqa: E402
 
 FORMAT = 'zb-research-run/2'
 HEX64 = re.compile(r'^[0-9a-f]{64}$')
@@ -50,7 +60,7 @@ DIGESTS = ('manifest_digest', 'universe_digest', 'split_plan_digest', 'cost_mode
            'eval_digest')
 RUN_KEYS = {'family', 'candidate_id', 'split', 'window', 'books', 'seeds', 'eval', 'code', 'author', 'cairo_date',
             *DIGESTS}
-CODE_KEYS = {'git_head', 'dirty', 'python', 'libs'}
+CODE_KEYS = {'git_head', 'dirty', 'python', 'libs', 'execution_environment'}
 EVAL_KEYS = {'files', 'config', 'entrypoint', 'schedule'}
 ENTRY_KEYS = {'path', 'function', 'summary'}
 # Every evaluation runs on these research modules; a run must hash them along with its own strategy files.
@@ -140,9 +150,20 @@ def dirty_paths(repo: str = M.REPO) -> list[str]:
 
 def code_identity(repo: str = M.REPO) -> dict:
     """Captured from the checkout, never passed in: HEAD, dirty (any tracked or untracked change other than a validated
-    non-executable evidence artifact), Python version and the canonical dependency set."""
+    non-executable evidence artifact), Python version, the canonical dependency set and the canonical execution
+    environment (`sandbox.execution_environment`, the same function every fresh evaluator process reports)."""
     return {'git_head': _git(repo, 'rev-parse', 'HEAD'), 'dirty': bool(dirty_paths(repo)),
-            'python': platform.python_version(), 'libs': canonical_libs()}
+            'python': platform.python_version(), 'libs': canonical_libs(),
+            'execution_environment': SB.execution_environment()}
+
+
+def valid_exec_env(x) -> bool:
+    """Shape of a canonical execution environment (exact keys and types; values are compared by equality)."""
+    return (isinstance(x, dict) and set(x) == set(SB.EXEC_ENV_KEYS)
+            and all(isinstance(x[k], str) and x[k] for k in ('implementation', 'python', 'version', 'cache_tag', 'os',
+                                                              'platform'))
+            and isinstance(x['executable_sha256'], str) and bool(HEX64.match(x['executable_sha256']))
+            and all(type(x[k]) is int and x[k] > 0 for k in ('hexversion', 'pointer_bits', 'cpu_count')))
 
 
 def _candidates(root: str, name: str) -> list[str]:
@@ -309,6 +330,8 @@ def validate_run(run: dict) -> None:
     c = run['code']
     need(isinstance(c, dict) and set(c) == CODE_KEYS and isinstance(c['git_head'], str) and type(c['dirty']) is bool
          and isinstance(c['python'], str) and isinstance(c['libs'], dict), f'code must be {sorted(CODE_KEYS)}')
+    need(valid_exec_env(c['execution_environment']) and c['execution_environment']['python'] == c['python'],
+         f'code.execution_environment must be the canonical {list(SB.EXEC_ENV_KEYS)} of the frozen Python')
 
 
 def run_digest(run: dict) -> str:
@@ -362,6 +385,7 @@ def verify_code(env: dict, repo: str = M.REPO) -> list[str]:
         out.append(f'Python {now["python"]} != frozen {run["code"]["python"]}')
     if now['libs'] != run['code']['libs'] or run['code']['libs'] != canonical_libs():
         out.append('dependency set differs from the canonical frozen set')
+    out += exec_env_mismatch(run['code']['execution_environment'], now['execution_environment'], 'this process')
     try:
         files = [{'path': f['path'], 'sha256': _file_sha(repo, f['path'])} for f in run['eval']['files']]
     except (OSError, M.ManifestError) as e:
@@ -420,6 +444,14 @@ def recompute_run_digest(rec: dict, runs_dir: str) -> str:
         return 'missing-or-invalid-envelope'
 
 
+def exec_env_mismatch(frozen: dict, seen, where: str) -> list[str]:
+    """Exact comparison against the frozen execution environment; returns the differences (empty = identical)."""
+    if not valid_exec_env(seen):
+        return [f'execution environment of {where} is missing or malformed']
+    diff = sorted(k for k in SB.EXEC_ENV_KEYS if seen[k] != frozen.get(k))
+    return [f'execution environment of {where} differs from the frozen run.code identity: {diff}'] if diff else []
+
+
 ATTESTATION_FORMAT = 'zb-eval-attestation/1'
 SEALABLE_RUNNER = 'pit.evaluate/v5'
 SEALABLE_ISOLATION = ('subprocess-sSBP+materialized-closure-tree+probe-allowlist+audit-hook+two-fresh-process-replay'
@@ -448,10 +480,9 @@ def check_attestation(env: dict, att: dict, ledger_path: str) -> str:
          'the evaluator entrypoint (file / function / summary) is not the frozen one')
     need(att.get('schedule') == run['eval']['schedule'],
          'the decision schedule is not the frozen canonical schedule')
-    interp = att.get('interpreter')
-    need(isinstance(interp, dict) and interp.get('python') == run['code']['python']
-         and isinstance(interp.get('executable_sha256'), str) and len(interp['executable_sha256']) == 64,
-         'the interpreter identity (version + executable hash) is missing or is not the frozen Python')
+    bad = exec_env_mismatch(run['code']['execution_environment'], att.get('execution_environment'),
+                            'the evaluator processes')
+    need(not bad, '; '.join(bad))
     code = att.get('code')
     need(isinstance(code, list) and code and all(c in run['eval']['files'] for c in code),
          'code the sandbox let the evaluator load is not in the envelope\'s hashed evaluation files: '
@@ -474,6 +505,10 @@ def make_report(env: dict, results: dict, attestation: dict, ledger_path: str) -
     if env.get('run_digest') != run_digest(env['run']):
         raise ReportError('envelope run_digest does not match its run block')
     att_digest = check_attestation(env, attestation, ledger_path)
+    bad = exec_env_mismatch(env['run']['code']['execution_environment'], SB.execution_environment(),
+                            'the process sealing the report')
+    if bad:
+        raise ReportError('; '.join(bad))
     if not isinstance(results, dict) or not results or set(results) - set(SIDES):
         raise ReportError(f'results must be keyed by side {SIDES}')
     for side, rows in results.items():

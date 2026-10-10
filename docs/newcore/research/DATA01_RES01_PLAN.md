@@ -378,6 +378,13 @@ Codex R3 fix review 6079042573 applied (merged with the fixed R2 head; universe 
   string are readable by hashed evaluator code. Any output that depends on them is caught only when it differs between
   the two in-run passes or at the ledger's deterministic `holdout_rerun`. The guard is a CPython runtime control, not
   an OS jail; for example, reloading the `nt` module is not prevented.
+  (3) Frozen execution environment (Codex 6093381880 P1): `freeze_run` records `run.code.execution_environment` =
+  `sandbox.execution_environment()` BEFORE evaluation - implementation, Python version / hexversion / cache tag,
+  executable SHA-256, OS, interpreter platform / architecture, pointer width and CPU count. Both fresh sandbox
+  processes, the attestation checked by `make_report`, the process sealing the report and the holdout `verify_code`
+  must equal it exactly; any divergence fails closed. Evidence is reproducible under the same frozen execution
+  environment, NOT portable across arbitrary hosts. Once frozen these host facts are committed inputs, so evaluator
+  code may read them.
 - Funding: `costs.check_funding_sequence` requires the phase anchor (the event at or before entry) in the rows, so every
   event due in [entry, exit) - the entry event included - follows from continuity; `View.funding_events` reads the
   anchor and enforces it itself, failing closed on a missing event.

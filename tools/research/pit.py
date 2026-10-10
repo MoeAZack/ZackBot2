@@ -217,12 +217,13 @@ class Window:
     """The rows of one opened split: open_ms >= lo and available_ms <= hi. Created only by Access; harness-side."""
 
     def __init__(self, ds: Dataset, lo: int, hi: int, key: str, _token=None, *, access=None, split=None,
-                 window=None, run_digest=None, eval_digest=None):
+                 window=None, run_digest=None, eval_digest=None, execution_environment=None):
         if _token is not _TOKEN:
             raise PITError('a Window is opened only through Access (ledger-recorded)')
         self._ds, self.lo, self.hi, self.key = ds, lo, hi, key
         self._access, self.split, self.window_doc = access, split, window
         self.run_digest, self.eval_digest = run_digest, eval_digest
+        self.execution_environment = execution_environment      # frozen run.code identity (None: no envelope)
         self._cap = _Cap()
         self._issued: weakref.WeakSet = weakref.WeakSet()
         self._decisions: list[tuple] = []
@@ -418,7 +419,7 @@ class _Sandbox:
         if not r.get('ready'):
             self.close()
             raise PITError(f'evaluator sandbox: {r.get("error", "did not start")}')
-        self.env, self.interpreter = r['env'], r['interpreter']
+        self.env, self.exec_env = r['env'], r['execution_environment']
 
     def summarize(self, outputs):
         self.send({'op': 'summarize', 'outputs': outputs})
@@ -567,7 +568,8 @@ def _interpreter_roots() -> list[str]:
 def _run_fresh(window: Window, closure, repo: str, evaluator_path: str, function: str, summary, times, *,
                perturb: bool, record: bool):
     """One complete evaluation in ONE fresh sandbox process over ITS OWN freshly materialized tree and cwd. With
-    `record` False the window records no decision (a replay). Returns (outputs, results, sandbox env, interpreter)."""
+    `record` False the window records no decision (a replay). Returns (outputs, results, sandbox env, execution
+    environment)."""
     tmp = tempfile.TemporaryDirectory(prefix='zb-eval-')
     base_shadow = not record
     try:
@@ -603,7 +605,7 @@ def _run_fresh(window: Window, closure, repo: str, evaluator_path: str, function
                 results = box.summarize(list(out))
                 if box.summarize(list(out)) != results:
                     raise PITError('the summary is not deterministic in the outputs')
-            env, interp = box.env, box.interpreter
+            env, interp = box.env, box.exec_env
         finally:
             window._shadow = False
             box.close()
@@ -623,10 +625,11 @@ def evaluate(window: Window, evaluator_path: str, function: str, times, *, summa
     With `perturb`, each decision is recomputed with every cached not-yet-available row perturbed (positions it
     issues there are not recorded) and must be identical; the summary runs twice and must be identical. The whole run
     is then replayed in a second fresh sandbox process over its own materialized tree, and outputs, summary, observed
-    environment and interpreter identity must be identical; results carrying a temporary-tree, cwd or interpreter
+    environment and execution environment must be identical - and, for a window opened with a frozen envelope, equal
+    to `run.code.execution_environment` exactly; results carrying a temporary-tree, cwd or interpreter
     host path are refused. The evaluator runs from a materialized copy of its hashed closure (never the checkout).
     The attestation - entrypoint, schedule, outputs and results digests, closure hashes, observed sandbox environment,
-    interpreter identity (version + executable SHA-256, no host path) - is appended to the family ledger before
+    execution environment (`sandbox.execution_environment`, no host path) - is appended to the family ledger before
     anything is returned."""
     if not isinstance(window, Window) or window._access is None:
         raise PITError('evaluate needs a Window opened through Access')
@@ -648,14 +651,20 @@ def evaluate(window: Window, evaluator_path: str, function: str, times, *, summa
     code_before = _code_hashes(closure, repo)
     # Codex 6089789885 item 1: the run is executed in TWO fresh sandbox processes, each over its own materialized
     # tree and cwd; the second replays the schedule without recording decisions. Any difference in outputs, summary,
-    # observed environment or interpreter identity (wall clock, PID, auto-seeded random, __file__, cwd ...) refuses.
+    # observed environment or execution environment (wall clock, PID, auto-seeded random, __file__, cwd ...) refuses.
     first = _run_fresh(window, closure, repo, evaluator_path, function, summary, times, perturb=perturb, record=True)
     second = _run_fresh(window, closure, repo, evaluator_path, function, summary, times, perturb=False, record=False)
-    for i, what in enumerate(('outputs', 'summary results', 'observed sandbox environment', 'interpreter identity')):
+    for i, what in enumerate(('outputs', 'summary results', 'observed sandbox environment', 'execution environment')):
         if first[i] != second[i]:
             raise PITError(f'the evaluator {what} differ between two fresh sandbox processes: one frozen identity '
                            'must yield one result (wall clock, PID, unseeded random, file/cwd paths?)')
-    out, results, sandbox_env, interpreter = Evaluated(first[0]), first[1], first[2], first[3]
+    # Codex 6093381880 P1: each fresh process must run in exactly the execution environment frozen in run.code.
+    if window.execution_environment is not None:
+        for n, proc in enumerate((first, second), 1):
+            bad = R.exec_env_mismatch(window.execution_environment, proc[3], f'fresh sandbox process {n}')
+            if bad:
+                raise PITError('; '.join(bad) + ' (evidence reproduces only under the frozen execution environment)')
+    out, results, sandbox_env, exec_env = Evaluated(first[0]), first[1], first[2], first[3]
     code = _code_hashes(closure, repo)
     if code != code_before:
         raise PITError('evaluator code changed while it ran')
@@ -669,11 +678,15 @@ def evaluate(window: Window, evaluator_path: str, function: str, times, *, summa
            'results_digest': R.results_digest(results) if summary is not None else None,
            'decisions_digest': _sha_obj([list(d) for d in window.decisions()]),
            'sandbox_env': dict(sandbox_env, tree_mtime=TREE_MTIME, env=dict(SANDBOX_ENV)),
-           'interpreter': interpreter}
+           'execution_environment': exec_env}
     digest = _sha_obj(att)
     window._access._record_evaluation(window, att, digest)
     out.attestation, out.attestation_digest, out.results = att, digest, results
     return out
+
+
+def _frozen_env(envelope):
+    return envelope['run']['code']['execution_environment'] if envelope else None
 
 
 class Access:
@@ -721,12 +734,14 @@ class Access:
                 raise PITError('a holdout envelope cannot open a non-holdout split')
             rd = envelope['run_digest'] if envelope else None
             self._record(name, window, rd, d, lineage)
-            return Window(self.ds, lo, hi, key, _TOKEN, access=self, split=name, window=window, run_digest=rd)
+            return Window(self.ds, lo, hi, key, _TOKEN, access=self, split=name, window=window, run_digest=rd,
+                          execution_environment=_frozen_env(envelope))
         self._guard_holdout(envelope, window)
         d['eval_digest'] = envelope['run']['eval_digest']
         self._record('holdout', window, envelope['run_digest'], d, lineage)
         return Window(self.ds, lo, hi, key, _TOKEN, access=self, split='holdout', window=window,
-                      run_digest=envelope['run_digest'], eval_digest=d['eval_digest'])
+                      run_digest=envelope['run_digest'], eval_digest=d['eval_digest'],
+                      execution_environment=_frozen_env(envelope))
 
     def open_development(self, start: str, end: str, *, detail=None, lineage=None) -> Window:
         lo, hi = S.parse_utc(start), S.parse_utc(end)
