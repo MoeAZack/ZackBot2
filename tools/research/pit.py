@@ -118,6 +118,10 @@ class Dataset:
         M.validate(manifest)
         self.manifest, self.store, self.digest = manifest, store, manifest['digest']
         self.archive = manifest['loader_version'] == M.ARCHIVE_LOADER
+        if universe is not None and not M.promotion_eligible(manifest):
+            # Codex #56 6095540302: a reproduction-only manifest is a fixed survivor-only set; a universe would drop its
+            # REPRO-ONLY / SURVIVOR-ONLY labels from the ledger, so the combination is refused before any access
+            raise PITError('a reproduction-only manifest is served without a universe')
         if universe is None:
             if not manifest['survivor_only']:
                 raise PITError('an all-listed manifest is served only through its PIT universe')
