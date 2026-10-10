@@ -20,7 +20,8 @@ from every digest, so two identical runs produce byte-identical records apart fr
 
 Enforced by `check_doc` on write AND on read: every key at every depth is whitelisted (unknown key = refusal); no
 float / bool anywhere; the only integers are `seq` and a stage `fold`; every string matches a strict shape (hex
-digests, codes, relative paths) and codes / stage names may not carry an outcome word.
+digests, relative paths); stage names and integrity codes come from fixed allowlists (`STAGE_NAMES`,
+`INTEGRITY_CODES`; an unknown code refuses), which are themselves checked against the outcome-word denylist.
 """
 from __future__ import annotations
 
@@ -73,9 +74,30 @@ def run_id(identity: dict, config: dict) -> str:
     return hashlib.sha256(canon({'identity': identity, 'config': config})).hexdigest()[:16]
 
 
-def _code(v, what):
-    if type(v) is not str or not CODE.match(v) or OUTCOME.search(v):
-        raise ProgressError(f'{what}: {v!r} is not an outcome-free code')
+# Fixed allowlists (Cowork 6095679832 F2, Codex 6095727203): a stage name or integrity code is one of these exact
+# strings or the record refuses. Free-form codes could carry an interim outcome past any denylist ("beats_b0",
+# "gate_cost_failed", "best_fold", ...). Extending a list is a reviewed code change; every entry is also checked
+# against the OUTCOME denylist below at import time.
+STAGE_NAMES = ('m3.open', 'm3.base', 'm3.2x', 'pit.open', 'pit.development', 'pit.walk_forward')
+INTEGRITY_CODES = ('GateError', 'ReproError', 'PITError', 'OverlapError', 'GapUnderPositionError', 'ReproOnlyError',
+                   'ManifestError', 'FamilyLogRefused', 'ReportError', 'ProgressError', 'CostError', 'SplitError',
+                   'DataGap', 'OSError', 'Interrupted', 'Unexpected')
+if any(OUTCOME.search(c) or not CODE.match(c) for c in STAGE_NAMES + INTEGRITY_CODES):
+    raise RuntimeError('an allowlisted progress code carries an outcome word')
+
+
+RENAMED = {'LedgerError': 'FamilyLogRefused'}           # 'Ledger' contains the denylisted word 'edge'
+
+
+def integrity_code(name: str) -> str:
+    """Map an exception class name onto the integrity allowlist (anything else is 'Unexpected')."""
+    name = RENAMED.get(name, name)
+    return name if name in INTEGRITY_CODES else 'Unexpected'
+
+
+def _code(v, what, allowed):
+    if type(v) is not str or v not in allowed or not CODE.match(v) or OUTCOME.search(v):
+        raise ProgressError(f'{what}: {v!r} is not an allowlisted outcome-free code')
 
 
 def _relpath(v, what):
@@ -106,7 +128,7 @@ def check_identity(v) -> None:
 
 def _stage(v):
     _keys(v, {'name', 'fold', 'status', 'artifacts'}, {'name', 'status'}, 'stage')
-    _code(v['name'], 'stage.name')
+    _code(v['name'], 'stage.name', STAGE_NAMES)
     if v['status'] not in ('started', 'done'):
         raise ProgressError('stage.status must be started / done')
     if 'fold' in v and (type(v['fold']) is not int or v['fold'] < 0):
@@ -132,9 +154,9 @@ def _integrity(v):
         raise ProgressError('integrity must be a list')
     for i in v:
         _keys(i, {'code', 'stage', 'fold'}, {'code'}, 'integrity entry')
-        _code(i['code'], 'integrity.code')
+        _code(i['code'], 'integrity.code', INTEGRITY_CODES)
         if 'stage' in i:
-            _code(i['stage'], 'integrity.stage')
+            _code(i['stage'], 'integrity.stage', STAGE_NAMES)
         if 'fold' in i and (type(i['fold']) is not int or i['fold'] < 0):
             raise ProgressError('integrity.fold must be a non-negative int')
 

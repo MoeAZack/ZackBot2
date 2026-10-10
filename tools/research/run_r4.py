@@ -345,7 +345,7 @@ def run_m3(repo: str, *, store: str, rows, out_dir: str, author: str, cairo_date
             written.append(X.atomic_write_json(os.path.join(out_dir, f'm3_repro_{name}.json'), doc))
             prog.stage_done(stage, artifacts=[written[-1]])
     except Exception as e:
-        prog.aborted([type(e).__name__], stage=stage)
+        prog.aborted([PG.integrity_code(type(e).__name__)], stage=stage)
         raise
     prog.sealed(written, [os.path.basename(p) for p in written])
     return written

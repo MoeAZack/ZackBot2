@@ -25,6 +25,10 @@ ONE sandbox process. State only ever derives from earlier views (rows available 
 calls each decision time twice (the second time with every not-yet-available row perturbed) and replays the whole
 schedule in a second fresh process: a repeated time recomputes from the state BEFORE that time and discards its new
 state, so a repeat is a pure function of (prior state, view at T) and must match; a time going backwards is refused.
+Gaps (Cowork 6095679832 F1): every held lot must see the bar closing at every scheduled time while it is open; a
+missing bar under an open lot raises `GapUnderPositionError` (fail closed: a lot is never carried across an
+unobserved interval, which could skip its stop or its funding). A gap while flat only restarts that symbol's warm-up
+(`contiguous_tail`) and refuses an entry fill without a bar (`entry_no_next_open`).
 Bars are cached incrementally (the last `window` closed bars available at T, exactly what a full read returns; any
 discontinuity triggers a full re-read), so the IPC per decision stays small.
 
@@ -62,6 +66,10 @@ CAIRO_END_MS = 1924992000000                       # 2031-01-01T00:00:00Z
 
 class ReproOnlyError(RuntimeError):
     pass
+
+
+class GapUnderPositionError(RuntimeError):
+    """An open lot met a missing scheduled bar: fail closed (Cowork 6095679832 F1, Codex 6095727203)."""
 
 
 @dataclass(frozen=True)
@@ -226,8 +234,7 @@ class Machine:
             if lot is None:
                 continue
             if b is None:
-                refusals.append('exit_no_next_open')
-                continue
+                raise GapUnderPositionError(f'{s}: no bar closing at {t} while a lot is open (exit fill)')
             close_lot(lot, X.multiply(dec(b.open), X.subtract(ONE, costs.slip)), b.open_ms, 'exit.exit_signal', sig_ms)
         snapshot = st['wallet']
         for s, sig_ms, dist, ref, halted in st['pend_entry']:
@@ -269,7 +276,8 @@ class Machine:
         for s in sorted(lots):
             lot, b = lots[s], bars.get(s)
             if b is None:
-                continue
+                raise GapUnderPositionError(f'{s}: no bar closing at {t} while a lot is open: the stop and funding '
+                                            'of the unobserved interval cannot be played')
             amt = X.multiply(X.multiply(lot.qty, dec(b.close)), costs.funding_per_bar)
             st['wallet'] = X.subtract(st['wallet'], amt)
             lot = lots[s] = lot._replace(funding=X.add(lot.funding, amt))

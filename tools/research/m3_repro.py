@@ -147,6 +147,47 @@ def span(ds: P.Dataset, symbols=CORE8, interval: str = T.TF) -> tuple[int, int]:
     return f[0]['first_open_ms'], f[0]['last_open_ms'] + M.INTERVALS[interval]
 
 
+def coverage(ds: P.Dataset, lo: int, hi: int, *, symbols=CORE8, interval: str = T.TF, read_rows: bool = False) -> dict:
+    """Missing scheduled bars of every M3 reproduction series over the replay window [lo, hi) (Cowork 6095679832
+    F1, Codex 6095727203). `read_rows=False`: from the manifest metadata only (declared first / last open and row
+    count against the expected grid count: a deficit is a proven hole; no deficit proves zero holes only together with
+    the byte check). `read_rows=True`: the SHA-verified rows themselves (the Windows-store step): every expected open
+    present exactly once, strictly increasing, on the grid. Reads no outcome, evaluates nothing."""
+    iv = M.INTERVALS[interval]
+    if lo % iv or hi % iv or hi <= lo:
+        raise ReproError('coverage window must lie on the interval grid')
+    expected = (hi - lo) // iv
+    out = {'mode': 'bytes' if read_rows else 'metadata', 'interval': interval, 'window': [S.utc(lo), S.utc(hi)],
+           'expected_per_series': expected, 'series': {}}
+    total = 0
+    for s in symbols:
+        fs = ds.files('klines', s, interval)
+        row = {'files': len(fs)}
+        if len(fs) != 1:
+            row.update(missing=expected, error='expected exactly one manifest file')
+        elif not read_rows:
+            f = fs[0]
+            span_rows = (f['last_open_ms'] - f['first_open_ms']) // iv + 1 if f['rows'] else 0
+            a, z = max(f['first_open_ms'] or lo, lo), min(f['last_open_ms'] or lo, hi - iv)
+            covered = (z - a) // iv + 1 if f['rows'] and z >= a else 0
+            row.update(declared_rows=f['rows'], span_rows=span_rows,
+                       missing=expected - covered + max(span_rows - f['rows'], 0))
+        else:
+            opens = [b.open_ms for b in ds.rows(fs[0]) if lo <= b.open_ms < hi]
+            uniq = set(opens)
+            miss = sorted(set(range(lo, hi, iv)) - uniq)
+            row.update(present=len(uniq), missing=len(miss), first_missing=[S.utc(m) for m in miss[:5]],
+                       duplicates=len(opens) - len(uniq), off_grid=sum((o - lo) % iv != 0 for o in uniq),
+                       unordered=any(b <= a for a, b in zip(opens, opens[1:])))
+            if row['duplicates'] or row['off_grid'] or row['unordered']:
+                row['missing'] = max(row['missing'], 1)
+        total += row['missing']
+        out['series'][s] = row
+    out['total_missing'] = total
+    out['zero_missing'] = total == 0
+    return out
+
+
 def schedule(start_ms: int, end_ms: int) -> list[int]:
     """Every 4h bar close in (start, end]: one book cycle each."""
     iv = T.TF_MS

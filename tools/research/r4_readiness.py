@@ -59,12 +59,16 @@ OFFLINE_CHECKS = {
         'test_res04_prep::test_m3_runs_only_in_the_sandbox_with_a_perturbed_attestation'],
     4: ['test_res04_prep::test_legacy_flat_funding_adapter_cannot_enter_primary_results',
         'test_res04_prep::test_harness_matches_an_independent_m3_order_simulator (synthetic)'],
+    5: ['test_res04_prep::test_an_open_lot_meeting_a_gap_fails_closed',
+        'test_res04_prep::test_coverage_proves_zero_missing_bars_or_names_the_holes'],
     6: ['test_res04_prep::test_m3_reports_are_written_atomically',
-        'test_res04_progress (atomic live snapshot, immutable sealed final, no outcome leak, wall excluded)'],
+        'test_res04_progress (atomic live snapshot, immutable sealed final, fixed stage / integrity allowlists, no '
+        'outcome leak, wall excluded)'],
 }
 REMAINING = {
-    2: 'Windows: re-verify the 103,659-file archive manifest and the universe digest against the store; '
-       'classification v2 (sourced, PIT-dated, Cowork-verified, Codex-bound) and its new universe artifact',
+    2: 'Windows: re-verify the 103,659-file archive manifest and the universe digest against the store; the '
+       'byte-level M3 coverage check (`r4_readiness.py --store <checkout>`: zero missing scheduled bars in all 8 '
+       'series); classification v2 (sourced, PIT-dated, Cowork-verified, Codex-bound) and its new universe artifact',
     4: 'independent accounting calculator over representative long + short trades (Codex may assign to Cowork)',
     5: 'official Windows M3 reproduction (run_r4.py m3) = REPRODUCED for base and 2x',
     6: 'two fresh-process Windows runs + a relocated checkout with identical sealed finals',
@@ -154,7 +158,7 @@ def pytest_counts(repo: str, files=R40_TESTS) -> dict:
     return {'passed': n('passed'), 'failed': n('failed') + n('errors?'), 'summary': line, 'returncode': p.returncode}
 
 
-def offline(repo: str, *, run_tests: bool = False) -> dict:
+def offline(repo: str, *, run_tests: bool = False, store: str | None = None) -> dict:
     """The inputs computable now from the committed tree, plus per-item offline detail."""
     import ledger as L                                                                      # noqa: E402
     import m3_repro as X                                                                    # noqa: E402
@@ -168,7 +172,10 @@ def offline(repo: str, *, run_tests: bool = False) -> dict:
     pins = G.pin_failures(repo, g)
     detail, lim = {}, []
     repro = M.load(os.path.join(repo, X.REPRO_MANIFEST))
-    P.Dataset(repro, repo, None)                            # metadata only: refuses overlapping coverage
+    rds = P.Dataset(repro, store or repo, None)             # refuses overlapping coverage; rows read only with --store
+    lo, hi = X.span(rds)
+    # F1 (Cowork 6095679832, Codex 6095727203): zero missing scheduled bars in every M3 series over the replay window.
+    detail['m3_coverage'] = X.coverage(rds, lo, hi, read_rows=store is not None)
     detail['repro_manifest'] = {'id': repro['manifest_id'], 'digest': repro['digest'],
                                 'pinned': repro['digest'] == X.REPRO_DIGEST, 'files': len(repro['files']),
                                 'overlaps': 0, 'promotion_eligible': M.promotion_eligible(repro)}
@@ -193,8 +200,9 @@ def offline(repo: str, *, run_tests: bool = False) -> dict:
     pin_only_unmerged = pins and all('not merged into' in f for f in pins)
     items['1'] = {'status': 'PASS' if clean and not pins else ('MISSING' if clean and pin_only_unmerged else 'FAIL'),
                   'pins': g['pins'], 'pin_failures': pins, 'clean_tree': clean}
-    items['2'] = {'status': 'MISSING', 'offline': {k: detail[k] for k in ('repro_manifest', 'archive_manifest',
-                                                                          'universe')},
+    cov = detail['m3_coverage']
+    items['2'] = {'status': 'FAIL' if cov['total_missing'] else 'MISSING', 'offline': {k: detail[k] for k in ('repro_manifest', 'archive_manifest',
+                                                                          'universe', 'm3_coverage')},
                   'classification': cls, 'remaining': REMAINING[2]}
     t_ok = bool(tests) and tests['failed'] == 0 and tests['passed'] > 0
     items['3'] = {'status': 'PASS' if t_ok and holdout_unread else 'MISSING', 'holdout_unread': holdout_unread,
@@ -220,10 +228,11 @@ def main(argv=None) -> int:
     ap.add_argument('--out', required=True)
     ap.add_argument('--evidence', help='Windows-run evidence JSON merged over the offline inputs')
     ap.add_argument('--pytest', action='store_true', help='run the R4-0 test suite once for the counts')
+    ap.add_argument('--store', help='data root for the byte-level M3 coverage check (Windows step: the checkout)')
     ap.add_argument('--repo', default=os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
     a = ap.parse_args(argv)
     try:
-        ev = offline(a.repo, run_tests=a.pytest)
+        ev = offline(a.repo, run_tests=a.pytest, store=a.store)
         if a.evidence:
             with open(a.evidence, encoding='utf-8') as f:
                 extra = json.load(f)

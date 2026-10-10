@@ -391,6 +391,76 @@ def test_warmup_known_answer():
     assert len(tail) == 221 and T.signal_at_last(tail, T.PRIMARY) is not None
 
 
+# ------------------------------------------------------------------ F1: gaps while exposed (Cowork 6095679832)
+def holed(legacy, tmp_path, sym, drop):
+    """A copy of the fixture store with bar indices `drop` removed from `sym` (a data hole), as a repro manifest."""
+    store, _, _, _ = legacy
+    new = str(tmp_path / 'holed')
+    shutil.copytree(store, new)
+    p = os.path.join(new, 'data_long', f'{sym}_4h.csv')
+    lines = open(p).read().splitlines()
+    keep = [ln for i, ln in enumerate(lines) if i == 0 or (i - 1) not in set(drop)]
+    with open(p, 'w', newline=chr(10)) as f:
+        f.write(chr(10).join(keep) + chr(10))
+    m = M.build(['data_long'], manifest_id='fx-holed', source_class='repro-only', base=new, data_root='repo',
+                survivor_only=True)
+    return new, m
+
+
+def idx(ms):
+    return (ms - START) // H4
+
+
+def test_an_open_lot_meeting_a_gap_fails_closed(legacy, runs, tmp_path):
+    """Cowork F1 probe: a lot open across a data hole must not be carried silently (missed stop / funding)."""
+    tr = next(t for t in runs['base'][0].results['trades'] if t['symbol'] != SYMS[0]
+              and idx(t['exit_ms']) - idx(t['entry_ms']) >= 6)
+    e = idx(tr['entry_ms'])
+    store, m = holed(legacy, tmp_path, tr['symbol'], range(e + 2, e + 5))
+    ds = P.Dataset(m, store, None)
+    lo, hi = X.span(ds, symbols=SYMS)
+    acc = P.Access(ds, None, str(tmp_path / 'trend_ema_mom.jsonl'), candidate_id=T.RULE_ID, author='t',
+                   cairo_date='2026-10-10')
+    w = acc.open_development(S.utc(lo), S.utc(hi), lineage='root')
+    with pytest.raises(P.PITError, match='GapUnderPositionError'):
+        X.replay(w, start_ms=lo, end_ms=START + (e + 10) * H4, function='base', evaluator=legacy[3], perturb=False)
+    cov = X.coverage(ds, lo, hi, symbols=SYMS, read_rows=True)
+    assert cov['series'][tr['symbol']]['missing'] == 3 and cov['total_missing'] == 3 and not cov['zero_missing']
+    assert cov['series'][tr['symbol']]['first_missing'][0] == S.utc(START + (e + 2) * H4)
+    assert X.coverage(ds, lo, hi, symbols=SYMS)['series'][tr['symbol']]['missing'] == 3    # metadata deficit
+
+
+def test_a_gap_while_flat_only_restarts_warm_up(legacy, runs, tmp_path):
+    """Warm-up reset on a gap stays allowed while flat: no error, and no entry for that symbol until its contiguous
+    history reaches the start index again."""
+    sym = SYMS[1]
+    busy = [(idx(t['entry_ms']) - 1, idx(t['exit_ms']) + 1) for t in runs['base'][0].results['trades']
+            if t['symbol'] == sym]
+    g = next(i for i in range(450, NBARS - 260) if all(not (a <= j <= b) for a, b in busy for j in range(i - 2, i + 5)))
+    store, m = holed(legacy, tmp_path, sym, range(g, g + 3))
+    ds = P.Dataset(m, store, None)
+    lo, hi = X.span(ds, symbols=SYMS)
+    acc = P.Access(ds, None, str(tmp_path / 'trend_ema_mom.jsonl'), candidate_id=T.RULE_ID, author='t',
+                   cairo_date='2026-10-10')
+    w = acc.open_development(S.utc(lo), S.utc(hi), lineage='root')
+    ev = X.replay(w, start_ms=lo, end_ms=hi, function='base', evaluator=legacy[3], perturb=False)
+    after = [t for t in ev.results['trades'] if t['symbol'] == sym and idx(t['entry_ms']) >= g]
+    assert all(idx(t['signal_close_ms']) - 1 >= g + 3 + T.PRIMARY.start() for t in after)
+
+
+def test_coverage_proves_zero_missing_bars_or_names_the_holes(legacy):
+    store, m, _, _ = legacy
+    ds = P.Dataset(m, store, None)
+    lo, hi = X.span(ds, symbols=SYMS)
+    for read in (False, True):
+        cov = X.coverage(ds, lo, hi, symbols=SYMS, read_rows=read)
+        assert cov['zero_missing'] and cov['expected_per_series'] == NBARS == (hi - lo) // H4
+        assert cov['mode'] == ('bytes' if read else 'metadata')
+    assert X.coverage(ds, lo, hi + H4, symbols=SYMS)['total_missing'] == len(SYMS)       # window beyond the data
+    with pytest.raises(X.ReproError):
+        X.coverage(ds, lo + 1, hi, symbols=SYMS)
+
+
 def test_episode_clustering_and_summary_are_deterministic():
     rows = [dict(symbol='A', entry_ms=0, exit_ms=10, exit_reason='exit.exit_signal', r=Decimal(1)),
             dict(symbol='B', entry_ms=5, exit_ms=20, exit_reason='exit.stop', r=Decimal(-1)),

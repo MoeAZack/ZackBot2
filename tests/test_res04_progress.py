@@ -32,9 +32,9 @@ def run_all(tmp):
     art.write_text('{"pnl": 12.5, "sharpe": 1.3}\n')
     p.stage_start('m3.open')
     p.stage_done('m3.open')
-    p.stage_start('walk_forward', fold=2)
-    p.integrity_failure(['DataGap'], stage='walk_forward', fold=2)
-    p.stage_done('walk_forward', fold=2, artifacts=[str(art)])
+    p.stage_start('pit.walk_forward', fold=2)
+    p.integrity_failure(['DataGap'], stage='pit.walk_forward', fold=2)
+    p.stage_done('pit.walk_forward', fold=2, artifacts=[str(art)])
     p.sealed([str(art)], ['m3_repro_base.json'])
     return p
 
@@ -98,16 +98,51 @@ def test_outcome_keys_are_refused_at_every_depth(key):
 @pytest.mark.parametrize('name', ['pnl_ok', 'score.high', 'NET_R', 'sharpe:2', 'equity_peak', 'DRAWDOWN_8',
                                   'WIN_RATE', 'verdict.PROMOTE', 'return'])
 def test_outcome_words_are_refused_in_codes_and_stage_names(name):
-    with pytest.raises(PG.ProgressError, match='outcome-free'):
+    with pytest.raises(PG.ProgressError, match='allowlisted'):
         PG.check_doc(live(stages=[{'name': name, 'status': 'started'}]))
-    with pytest.raises(PG.ProgressError, match='outcome-free'):
+    with pytest.raises(PG.ProgressError, match='allowlisted'):
         PG.check_doc(live(integrity=[{'code': name}]))
+
+
+# Cowork 6095679832 F2: interim-outcome codes a denylist let through; the fixed allowlists refuse every one.
+COWORK_F2 = ['gate_cost_failed', 'pass_cost_gate', 'beats_b0', 'best_fold', 'positive', 'wallet', 'nav', 'roi',
+             'p_value', 'significant']
+
+
+@pytest.mark.parametrize('name', COWORK_F2 + ['m3.open2', 'M3.OPEN', 'walk_forward', 'Custom', 'GateErrorX',
+                                              'ReproError ', ''])
+def test_unknown_stage_and_integrity_codes_refuse(name, tmp_path):
+    with pytest.raises(PG.ProgressError, match='allowlisted'):
+        PG.check_doc(live(stages=[{'name': name, 'status': 'started'}]))
+    with pytest.raises(PG.ProgressError, match='allowlisted'):
+        PG.check_doc(live(integrity=[{'code': name}]))
+    with pytest.raises(PG.ProgressError, match='allowlisted'):
+        PG.check_doc(live(integrity=[{'code': 'DataGap', 'stage': name}]))
+    p = new(tmp_path)
+    with pytest.raises(PG.ProgressError, match='allowlisted'):
+        p.stage_start(name)
+    with pytest.raises(PG.ProgressError, match='allowlisted'):
+        p.integrity_failure([name])
+    assert PG.read(p.path)['stages'] == [] and PG.read(p.path)['integrity'] == []     # nothing written
+
+
+def test_allowlists_are_outcome_free_and_exceptions_map_onto_them():
+    for c in PG.STAGE_NAMES + PG.INTEGRITY_CODES:
+        assert PG.CODE.match(c) and not PG.OUTCOME.search(c)
+        assert not any(w in c.lower() for w in COWORK_F2)
+    PG.check_doc(live(stages=[{'name': n, 'status': 'done'} for n in PG.STAGE_NAMES],
+                      integrity=[{'code': c} for c in PG.INTEGRITY_CODES]))
+    assert PG.integrity_code('ReproError') == 'ReproError'
+    assert PG.integrity_code('LedgerError') == 'FamilyLogRefused'
+    assert PG.integrity_code('GapUnderPositionError') == 'GapUnderPositionError'
+    for other in ('KeyError', 'ZeroDivisionError', 'beats_b0', 'pnl'):
+        assert PG.integrity_code(other) == 'Unexpected'
 
 
 @pytest.mark.parametrize('fold', [1.5, True, -1, '2'])
 def test_only_seq_and_fold_may_be_numbers(fold):
     with pytest.raises(PG.ProgressError, match='fold'):
-        PG.check_doc(live(stages=[{'name': 'walk_forward', 'status': 'started', 'fold': fold}]))
+        PG.check_doc(live(stages=[{'name': 'pit.walk_forward', 'status': 'started', 'fold': fold}]))
 
 
 def test_a_full_run_carries_no_outcome_and_seals_once(tmp_path):
@@ -117,8 +152,8 @@ def test_a_full_run_carries_no_outcome_and_seals_once(tmp_path):
         assert 'pnl' not in text and 'sharpe' not in text and '12.5' not in text
     snap, final = PG.read(p.path), PG.read(p.final_path)
     assert snap['state'] == final['state'] == 'sealed' and final['kind'] == 'final'
-    assert [(s['name'], s['status']) for s in final['stages']] == [('m3.open', 'done'), ('walk_forward', 'done')]
-    assert final['integrity'] == [{'code': 'DataGap', 'stage': 'walk_forward', 'fold': 2}]
+    assert [(s['name'], s['status']) for s in final['stages']] == [('m3.open', 'done'), ('pit.walk_forward', 'done')]
+    assert final['integrity'] == [{'code': 'DataGap', 'stage': 'pit.walk_forward', 'fold': 2}]
     assert final['artifacts'] == [{'path': 'm3_repro_base.json',
                                    'sha256': PG.file_sha256(str(tmp_path / 'm3_repro_base.json'))}]
     assert final['identity'] == IDENT and final['identity_digest'] == PG.identity_digest(IDENT)
@@ -163,7 +198,7 @@ def test_sealed_final_is_immutable_and_tampering_is_caught(tmp_path):
         PG.write_once(p.final_path, b'{}\n')
     raw = open(p.final_path, 'rb').read()
     with open(p.final_path, 'wb') as f:
-        f.write(raw.replace(b'"DataGap"', b'"DataGaps"'))
+        f.write(raw.replace(b'"DataGap"', b'"OSError"'))
     with pytest.raises(PG.ProgressError, match='digest'):
         PG.read(p.final_path)
 
@@ -312,6 +347,10 @@ def test_offline_readiness_on_this_tree_is_not_ready(tmp_path):
     assert off['universe']['recomputed_ok'] and off['universe']['matches_prereg']
     assert off['archive_manifest']['files'] == 103659 and off['archive_manifest']['matches_prereg']
     assert ev['items']['3']['holdout_unread'] is True
+    cov = off['m3_coverage']                                     # F1: metadata proof offline, bytes = Windows step
+    assert cov['mode'] == 'metadata' and cov['zero_missing'] and cov['expected_per_series'] == 10499
+    assert sorted(cov['series']) == sorted(X.CORE8) and ev['items']['2']['status'] == 'MISSING'
+    assert '--store' in ev['items']['2']['remaining']
     doc = RR.build(ev)
     assert doc['verdict'] == 'NOT READY' and 'digest.classification' in doc['not_passing']
     assert RR.main(['--out', str(tmp_path / 'r.json'), '--repo', ROOT]) == 1
