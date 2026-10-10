@@ -16,6 +16,9 @@ Inputs
 Output: per manifest symbol, contiguous dated rows `[effective_from_ms, effective_to_ms)` (last row open-ended), each
 citing its source ids, plus a digest over the canonical JSON. Same inputs -> byte-identical output (no run clock).
 Missing, unmapped or contradictory evidence -> an explicit `UNKNOWN` row, never a guess; `UNKNOWN` is not addressable.
+Scope (owner scope cut, #53 comment 6095065913): only the native-crypto research universe and the gold pilot (XAUUSDT
+direct, PAXGUSDT tokenized) are classified; every other symbol gets one audited `OUT_OF_SCOPE` (DEFERRED) row, never
+active and never researched. Each row carries its `scope`.
 
 Usage (repo root):
   python tools/research/classify.py extract RAW_BODY --retrieved-ms MS --snapshot-id ID [--manifest MANIFEST]
@@ -46,13 +49,16 @@ LISTING_TOLERANCE_MS = DAY          # documented listing times further apart tha
 RELIST_GAP_MS = 30 * DAY            # an archive gap this long ends the contiguous contract the cutoff rule covers
 
 UNKNOWN = 'UNKNOWN'
-CLASSES = ('crypto', 'crypto-index', 'tokenized-gold', 'commodity', 'equity', 'pre-ipo', 'fx')
+OUT_OF_SCOPE = 'OUT_OF_SCOPE'       # DEFERRED (owner scope cut #53 6095065913): audited, never active, never researched
+CLASSES = ('crypto', 'crypto-index', 'tokenized-gold', 'commodity')
+CRYPTO_CLASSES = ('crypto', 'crypto-index')
+# Scope (owner scope cut): the native-crypto research universe plus a two-instrument gold pilot. The pilot only selects
+# scope; each pilot symbol's class is still derived from its sources and must equal the expected identity, else UNKNOWN.
+GOLD_PILOT = {'XAUUSDT': ('commodity', 'gold-spot'), 'PAXGUSDT': ('tokenized-gold', 'paxg')}
+SCOPE_CRYPTO, SCOPE_GOLD, SCOPE_DEFERRED = 'crypto-research', 'gold-pilot', 'deferred'
 # Committed, reviewable mapping tables (contract section 3). A base asset missing here fails closed to UNKNOWN.
-COMMODITY_SUBCLASS = {'XAU': 'gold-spot', 'XAG': 'silver-spot', 'XPT': 'platinum-spot', 'XPD': 'palladium-spot',
-                      'COPPER': 'base-metal', 'CL': 'energy-oil', 'BZ': 'energy-oil', 'NATGAS': 'energy-gas'}
-TOKENIZED_GOLD_BASES = {'PAXG': 'paxg', 'XAUT': 'xaut'}
-EQUITY_SUBCLASS = {'EQUITY': 'equity', 'HK_EQUITY': 'hk-equity', 'KR_EQUITY': 'kr-equity', 'CN_EQUITY': 'cn-equity'}
-EQUITY_KINDS = ('single-stock', 'etf', 'leveraged-etf')     # only from a dated, hashed announcement (ruling 4)
+COMMODITY_SUBCLASS = {'XAU': 'gold-spot'}
+TOKENIZED_GOLD_BASES = {'PAXG': 'paxg', 'XAUT': 'xaut'}    # XAUT is recognised only to route it out of the crypto book
 
 SNAP_KEYS = {'format', 'snapshot_id', 'retrieval_url', 'retrieved_ms', 'response_sha256', 'response_server_time_ms',
              'scope', 'symbols'}
@@ -141,8 +147,6 @@ def validate_announcements(a: dict) -> None:
         _need(r['subclass'] is None or (isinstance(r['subclass'], str) and r['subclass']),
               f'{rid}: subclass must be null or a non-empty string')
         _need(r['class'] is not None or r['subclass'] is None, f'{rid}: a subclass needs a class')
-        _need(r['class'] != 'equity' or r['subclass'] is None or r['subclass'] in EQUITY_KINDS,
-              f'{rid}: an equity subclass must be null or one of {EQUITY_KINDS}')
 
 
 # ---------------------------------------------------------------- exchangeInfo -> class
@@ -169,12 +173,6 @@ def derive(e: dict) -> tuple[str, str]:
     if ut == 'COMMODITY':
         return ('commodity', COMMODITY_SUBCLASS[base]) if base in COMMODITY_SUBCLASS else \
             ('abstain', f'commodity-base-unmapped:{base}')
-    if ut in EQUITY_SUBCLASS:
-        return 'equity', EQUITY_SUBCLASS[ut]
-    if ut == 'PREMARKET':
-        return 'pre-ipo', 'premarket'
-    if ut == 'FX':
-        return 'fx', 'fx-pair'
     return UNKNOWN, f'underlying-type-unmapped:{ut}'
 
 
@@ -202,7 +200,7 @@ def archive_spans(manifest: dict) -> dict[str, list[tuple[int, int]]]:
 # ---------------------------------------------------------------- builder
 
 def _row(sym, cls, sub, a, b, observed, sources, basis):
-    prov = None if cls == UNKNOWN else ('contemporaneous' if observed <= a else 'retrospective')
+    prov = None if cls in (UNKNOWN, OUT_OF_SCOPE) else ('contemporaneous' if observed <= a else 'retrospective')
     return {'symbol': sym, 'class': cls, 'subclass': sub, 'effective_from_ms': a, 'effective_to_ms': b,
             'class_first_observed_ms': observed, 'provenance': prov, 'sources': sorted(set(sources)), 'basis': basis}
 
@@ -214,18 +212,12 @@ def _unknown(sym, a, b, sources, reason):
 def _combine(doc_claims, x=None):
     """Announcement claims [(class, subclass|None)] + one exchangeInfo result -> (class, subclass), None = disagree.
 
-    Equity: exchangeInfo gives the market (region), only a dated announcement gives the kind (single-stock / etf /
-    leveraged-etf, ruling 4); subclass = '<market>/<kind>' with UNKNOWN for whichever part has no source."""
+    """
     classes = {c for c, _ in doc_claims} | ({x[0]} if x else set())
     if len(classes) != 1:
         return None
     cls = classes.pop()
-    doc_subs = {s for _, s in doc_claims if s is not None}
-    if cls == 'equity':
-        if len(doc_subs) > 1:
-            return None
-        return cls, f'{x[1] if x else UNKNOWN}/{doc_subs.pop() if doc_subs else UNKNOWN}'
-    subs = doc_subs | ({x[1]} if x else set())
+    subs = {s for _, s in doc_claims if s is not None} | ({x[1]} if x else set())
     if len(subs) > 1:
         return None
     return cls, (subs.pop() if subs else 'unspecified')
@@ -307,10 +299,41 @@ def _pre_rows(sym, start, end, runs, cutoff, mid):
     return [_unknown(sym, start, end, [mid], 'no-documented-listing')]
 
 
+def scope_of(sym, entries) -> tuple[str, str | None]:
+    """(scope, deferral reason). Routing reads only contractType / RWA-gold identity; it researches no class."""
+    if sym in GOLD_PILOT:
+        return SCOPE_GOLD, None
+    if entries and all(e['contractType'] == 'TRADIFI_PERPETUAL' for e in entries):
+        return SCOPE_DEFERRED, 'tradfi-deferred'
+    if entries and all(derive(e)[0] == 'tokenized-gold' for e in entries):
+        return SCOPE_DEFERRED, 'tokenized-gold-not-in-pilot'
+    return SCOPE_CRYPTO, None
+
+
 def classify_symbol(sym, runs, snaps, records, cutoff, mid):
-    first_open = runs[0][0]
     snap_hits = sorted((s['retrieved_ms'], f'xinfo:{s["snapshot_id"]}', s['by'][sym]) for s in snaps
                        if sym in s['by'])
+    scope, why = scope_of(sym, [e for _, _, e in snap_hits])
+    if scope == SCOPE_DEFERRED:
+        start = min([runs[0][0]] + [e['onboardDate'] for _, _, e in snap_hits])
+        rows = [_row(sym, OUT_OF_SCOPE, 'DEFERRED', start, None, None, [sid for _, sid, _ in snap_hits] + [mid],
+                     f'OUT_OF_SCOPE:{why}')]
+    else:
+        rows = _classify(sym, runs, snap_hits, records, cutoff, mid)
+    for r in rows:
+        if scope == SCOPE_GOLD and r['class'] not in (UNKNOWN, OUT_OF_SCOPE) and \
+                (r['class'], r['subclass']) != GOLD_PILOT[sym]:
+            r.update(_unknown(sym, r['effective_from_ms'], r['effective_to_ms'], r['sources'],
+                              f'gold-pilot-identity-mismatch:{r["class"]}/{r["subclass"]}'))
+        elif scope == SCOPE_CRYPTO and r['class'] not in CRYPTO_CLASSES + (UNKNOWN,):
+            r.update(_row(sym, OUT_OF_SCOPE, 'DEFERRED', r['effective_from_ms'], r['effective_to_ms'], None,
+                          r['sources'], f'OUT_OF_SCOPE:non-crypto-class:{r["class"]}/{r["subclass"]}'))
+        r['scope'] = scope
+    return rows
+
+
+def _classify(sym, runs, snap_hits, records, cutoff, mid):
+    first_open = runs[0][0]
     listings = [r for r in records if r['kind'] == 'listing']
     changes = sorted((r for r in records if r['kind'] == 'class-change'),
                      key=lambda r: (max(r['effective_ms'], r['published_ms']), r['record_id']))
@@ -404,13 +427,13 @@ def build(snapshots, announcements, manifest, *, classes_id, tradfi_cutoff=None,
     used = {x for r in rows for x in r['sources']}
     counts: dict[str, int] = {}
     for r in rows:
-        counts[r['class']] = counts.get(r['class'], 0) + 1
+        k = f'{r["scope"]}:{r["class"]}'
+        counts[k] = counts.get(k, 0) + 1
     out = {'format': FORMAT, 'classes_id': classes_id, 'builder': BUILDER_VERSION,
            'contract': 'docs/newcore/research/CLASSIFICATION_SOURCES.md',
-           'classes': list(CLASSES) + [UNKNOWN], 'mapping': {
+           'classes': list(CLASSES) + [UNKNOWN, OUT_OF_SCOPE], 'mapping': {
                'commodity_subclass': COMMODITY_SUBCLASS, 'tokenized_gold_bases': TOKENIZED_GOLD_BASES,
-               'equity_subclass': EQUITY_SUBCLASS, 'equity_kinds': list(EQUITY_KINDS),
-               'listing_tolerance_ms': LISTING_TOLERANCE_MS,
+               'gold_pilot': {k: list(v) for k, v in GOLD_PILOT.items()}, 'listing_tolerance_ms': LISTING_TOLERANCE_MS,
                'relist_gap_ms': RELIST_GAP_MS},
            'inputs': {'announcements_file_sha256': announcements_file_sha, 'records': len(recs),
                       'snapshots': sids, 'tradfi_cutoff_record': tradfi_cutoff},
@@ -439,7 +462,8 @@ def dumps_compact(doc: dict, list_key: str) -> bytes:
 # ---------------------------------------------------------------- downstream helpers
 
 def resolve_at(c: dict, symbol: str, t_ms: int) -> dict | None:
-    """The row in force for `symbol` at `t_ms`, or None (no row = not classified = not addressable)."""
+    """The row in force for `symbol` at `t_ms`, or None (no row = not classified = not addressable). Membership of a
+    book also needs the row's `scope`: gold-pilot rows never join the crypto books."""
     for r in c['rows']:
         if r['symbol'] == symbol and r['effective_from_ms'] <= t_ms and \
                 (r['effective_to_ms'] is None or t_ms < r['effective_to_ms']):
@@ -448,7 +472,7 @@ def resolve_at(c: dict, symbol: str, t_ms: int) -> dict | None:
 
 
 def addressable(row: dict | None) -> bool:
-    return row is not None and row['class'] != UNKNOWN
+    return row is not None and row['class'] not in (UNKNOWN, OUT_OF_SCOPE)
 
 
 # ---------------------------------------------------------------- snapshot extraction (no network)

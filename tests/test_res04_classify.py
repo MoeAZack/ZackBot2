@@ -109,10 +109,10 @@ def build(store, snaps=None, records=(), cutoff=None):
 
 def test_deterministic_byte_identical_and_order_independent(store):
     a = build(store, records=[rec('L1', 'listing', 'XAUUSDT', ms('2025-12-11') + 8 * HOUR, cls='commodity'),
-                              rec('L2', 'listing', 'AAPLUSDT', ms('2026-04-06') + 13 * HOUR, cls='equity')])
+                              rec('L2', 'listing', 'BTCUSDT', ms('2024-01-01') + 8 * HOUR, cls='crypto')])
     s = base_snap()
     s['symbols'] = list(reversed(s['symbols']))
-    b = build(store, snaps=[s], records=[rec('L2', 'listing', 'AAPLUSDT', ms('2026-04-06') + 13 * HOUR, cls='equity'),
+    b = build(store, snaps=[s], records=[rec('L2', 'listing', 'BTCUSDT', ms('2024-01-01') + 8 * HOUR, cls='crypto'),
                                          rec('L1', 'listing', 'XAUUSDT', ms('2025-12-11') + 8 * HOUR, cls='commodity')])
     assert C.dumps(a) == C.dumps(b)
     assert a['digest'] == C.digest_of(a) == hashlib.sha256(M.canonical({k: v for k, v in a.items()
@@ -179,31 +179,14 @@ def test_listing_announcement_within_tolerance_takes_earliest(store):
     assert r['provenance'] == 'contemporaneous'
 
 
-def test_class_change_creates_new_dated_row_never_before_publication(store):
-    eff, pub = ms('2026-04-10'), ms('2026-04-12')                   # retroactive notice: dated at publication
-    c = build(store, records=[rec('CC', 'class-change', 'AAPLUSDT', eff, published=pub, cls='pre-ipo', sub='premarket')],
-              snaps=[base_snap(retrieved=ms('2026-04-07')),
-                     snap('s2', ms('2026-05-01'), [tradfi('AAPLUSDT', 'PREMARKET', onboard=ms('2026-04-06') + 13 * HOUR)])])
-    assert rows(c, 'AAPLUSDT') == [
-        ('equity', 'equity/UNKNOWN', ms('2026-04-06') + 13 * HOUR, pub, 'identity-fact-at-listing:exchangeinfo'),
-        ('pre-ipo', 'premarket', pub, None, 'class-change:exchangeinfo+announcement')]
-    assert C.resolve_at(c, 'AAPLUSDT', pub - 1)['class'] == 'equity'
-    assert C.resolve_at(c, 'AAPLUSDT', pub)['class'] == 'pre-ipo'
 
 
-def test_undocumented_change_between_snapshots_leaves_unknown_gap(store):
-    s2 = snap('s2', ms('2026-06-01'), [tradfi('AAPLUSDT', 'PREMARKET', onboard=ms('2026-04-06') + 13 * HOUR)])
-    c = build(store, snaps=[base_snap(retrieved=ms('2026-05-01')), s2])
-    r = rows(c, 'AAPLUSDT')
-    assert [x[0] for x in r] == ['equity', 'UNKNOWN', 'pre-ipo']
-    assert r[0][3] == r[1][2] == ms('2026-05-01') + 1 and r[1][3] == r[2][2] == ms('2026-06-01')
-    assert r[1][4] == 'UNKNOWN:undocumented-class-change'
 
 
 # ---------------------------------------------------------------- disagreement / missing -> UNKNOWN
 
 def test_announcement_vs_exchangeinfo_disagreement_is_unknown(store):
-    c = build(store, records=[rec('L1', 'listing', 'XAUUSDT', ms('2025-12-11') + 8 * HOUR, cls='equity')])
+    c = build(store, records=[rec('L1', 'listing', 'XAUUSDT', ms('2025-12-11') + 8 * HOUR, cls='crypto')])
     (r,) = [r for r in c['rows'] if r['symbol'] == 'XAUUSDT']
     assert r['class'] == 'UNKNOWN' and r['basis'] == 'UNKNOWN:announcement-vs-exchangeinfo'
     assert not C.addressable(C.resolve_at(c, 'XAUUSDT', ms('2026-01-01')))
@@ -242,15 +225,12 @@ def test_missing_source_is_unknown_and_cutoff_rule_is_bounded(store, tmp_path):
 def test_unmapped_underlying_fails_closed(store):
     put_daily(store, 'MANTRAUSDT', '2026-03-04', 5)
     put_daily(store, 'DEFIUSDT', '2024-01-01', 5)
-    put_daily(store, 'CORNUSDT', '2026-05-01', 5)
     s = base_snap()
     s['symbols'] += [xi('MANTRAUSDT', subs=('RWA', 'Crypto'), onboard=ms('2026-03-04') + 8 * HOUR),
-                     xi('DEFIUSDT', ut='INDEX', subs=('Index',), onboard=ms('2024-01-01') + 8 * HOUR),
-                     tradfi('CORNUSDT', 'COMMODITY', onboard=ms('2026-05-01') + 8 * HOUR)]
+                     xi('DEFIUSDT', ut='INDEX', subs=('Index',), onboard=ms('2024-01-01') + 8 * HOUR)]
     c = build(store, snaps=[s])
     assert rows(c, 'MANTRAUSDT')[0][4] == 'UNKNOWN:no-class-source(xinfo:s1=rwa-base-unmapped:MANTRA)'
     assert rows(c, 'DEFIUSDT')[0][4] == 'UNKNOWN:no-class-source(xinfo:s1=index-not-tagged-crypto)'
-    assert rows(c, 'CORNUSDT')[0][4] == 'UNKNOWN:no-class-source(xinfo:s1=commodity-base-unmapped:CORN)'
     # an announcement can supply the missing class (Cowork-verified record)
     c = build(store, snaps=[s], records=[rec('LM', 'listing', 'MANTRAUSDT', ms('2026-03-04') + 8 * HOUR, cls='crypto')])
     assert rows(c, 'MANTRAUSDT')[0][:2] == ('crypto', 'unspecified')
@@ -271,9 +251,14 @@ def test_gold_spot_and_tokenized_gold_are_distinct_classes(store):
     c = build(store, snaps=[s])
     assert rows(c, 'XAUUSDT')[0][:2] == ('commodity', 'gold-spot')
     assert rows(c, 'PAXGUSDT')[0][:2] == ('tokenized-gold', 'paxg')
-    assert rows(c, 'XAUTUSDT')[0][:2] == ('tokenized-gold', 'xaut')
-    assert rows(c, 'BTCUSDT')[0][:2] == ('crypto', 'coin') and rows(c, 'AAPLUSDT')[0][:2] == ('equity', 'equity/UNKNOWN')
+    assert rows(c, 'BTCUSDT')[0][:2] == ('crypto', 'coin')
     assert len({r['class'] for r in c['rows'] if r['symbol'] in ('XAUUSDT', 'PAXGUSDT', 'BTCUSDT')}) == 3
+    scope = {r['symbol']: r['scope'] for r in c['rows']}
+    assert scope['XAUUSDT'] == scope['PAXGUSDT'] == 'gold-pilot' and scope['BTCUSDT'] == 'crypto-research'
+    # XAUT is not in the pilot: recognised as tokenized gold only to keep it out of the crypto book
+    assert rows(c, 'XAUTUSDT') == [('OUT_OF_SCOPE', 'DEFERRED', ms('2026-03-26'), None,
+                                    'OUT_OF_SCOPE:tokenized-gold-not-in-pilot')]
+    assert scope['XAUTUSDT'] == 'deferred' and not C.addressable(C.resolve_at(c, 'XAUTUSDT', ms('2026-04-01')))
 
 
 # ---------------------------------------------------------------- input validation
@@ -309,7 +294,7 @@ def test_bad_records_refused(store):
         build(store, records=[bad])
 
 
-# ---------------------------------------------------------------- Codex rulings 6094970068 (2: identity, 4: equity kind)
+# ---------------------------------------------------------------- Codex rulings 6094970068 (2: identity) + scope cut
 
 def test_identity_mismatch_is_unknown(store):
     s = base_snap()
@@ -328,15 +313,6 @@ def test_archive_before_documented_listing_is_unknown_even_pre_tradfi(store):
         ('crypto', 'coin', t, None, 'identity-fact-at-listing:exchangeinfo')]
 
 
-def test_equity_kind_only_from_announcement(store):
-    t = ms('2026-04-06') + 13 * HOUR
-    c = build(store, records=[rec('LA', 'listing', 'AAPLUSDT', t, cls='equity', sub='single-stock')])
-    assert rows(c, 'AAPLUSDT')[0][:2] == ('equity', 'equity/single-stock')
-    c = build(store, records=[rec('LA', 'listing', 'AAPLUSDT', t, cls='equity', sub='single-stock'),
-                              rec('LB', 'listing', 'AAPLUSDT', t, cls='equity', sub='etf')])
-    assert rows(c, 'AAPLUSDT')[0][4] == 'UNKNOWN:announcements-disagree'
-    with pytest.raises(C.ClassifyError, match='equity subclass'):
-        build(store, records=[rec('LA', 'listing', 'AAPLUSDT', t, cls='equity', sub='stock')])
 
 
 def test_announcement_only_row_and_provenance(store):
@@ -344,6 +320,58 @@ def test_announcement_only_row_and_provenance(store):
     t = ms('2026-02-01') + 6 * HOUR
     c = build(store, records=[rec('LG', 'listing', 'GONEUSDT', t, published=t - 2 * DAY, cls='commodity',
                                   sub='silver-spot')])
+    assert rows(c, 'GONEUSDT')[0][4] == 'OUT_OF_SCOPE:non-crypto-class:commodity/silver-spot'   # never active
+    c = build(store, records=[rec('LG', 'listing', 'GONEUSDT', t, published=t - 2 * DAY, cls='crypto')])
     (r,) = [r for r in c['rows'] if r['symbol'] == 'GONEUSDT']
-    assert (r['class'], r['subclass'], r['basis'], r['provenance']) == (
-        'commodity', 'silver-spot', 'identity-fact-at-listing:announcement', 'contemporaneous')
+    assert (r['class'], r['subclass'], r['basis'], r['provenance'], r['scope']) == (
+        'crypto', 'unspecified', 'identity-fact-at-listing:announcement', 'contemporaneous', 'crypto-research')
+
+
+def _idx_snaps(t1, t2):
+    on = ms('2026-04-06') + 13 * HOUR
+    return [snap('s1', t1, [xi('IDXUSDT', onboard=on)]),
+            snap('s2', t2, [xi('IDXUSDT', ut='INDEX', subs=('Index', 'Crypto'), onboard=on)])], on
+
+
+def test_class_change_creates_new_dated_row_never_before_publication(store):
+    put_daily(store, 'IDXUSDT', '2026-04-06', 20)
+    eff, pub = ms('2026-04-10'), ms('2026-04-12')                   # retroactive notice: dated at publication
+    snaps, on = _idx_snaps(ms('2026-04-07'), ms('2026-05-01'))
+    c = build(store, snaps=snaps, records=[rec('CC', 'class-change', 'IDXUSDT', eff, published=pub,
+                                               cls='crypto-index', sub='index')])
+    assert rows(c, 'IDXUSDT') == [
+        ('crypto', 'coin', on, pub, 'identity-fact-at-listing:exchangeinfo'),
+        ('crypto-index', 'index', pub, None, 'class-change:exchangeinfo+announcement')]
+    assert C.resolve_at(c, 'IDXUSDT', pub - 1)['class'] == 'crypto'
+    assert C.resolve_at(c, 'IDXUSDT', pub)['class'] == 'crypto-index'
+
+
+def test_undocumented_change_between_snapshots_leaves_unknown_gap(store):
+    put_daily(store, 'IDXUSDT', '2026-04-06', 20)
+    snaps, on = _idx_snaps(ms('2026-05-01'), ms('2026-06-01'))
+    r = rows(build(store, snaps=snaps), 'IDXUSDT')
+    assert [x[0] for x in r] == ['crypto', 'UNKNOWN', 'crypto-index']
+    assert r[0][3] == r[1][2] == ms('2026-05-01') + 1 and r[1][3] == r[2][2] == ms('2026-06-01')
+    assert r[1][4] == 'UNKNOWN:undocumented-class-change'
+
+
+def test_tradfi_is_deferred_out_of_scope_and_audited(store):
+    put_daily(store, 'CORNUSDT', '2026-05-01', 5)
+    s = base_snap()
+    s['symbols'].append(tradfi('CORNUSDT', 'COMMODITY', onboard=ms('2026-05-01') + 8 * HOUR))
+    c = build(store, snaps=[s])
+    for sym, t in (('AAPLUSDT', ms('2026-04-06')), ('CORNUSDT', ms('2026-05-01'))):
+        (r,) = [r for r in c['rows'] if r['symbol'] == sym]
+        assert (r['class'], r['scope'], r['basis'], r['effective_from_ms'], r['provenance']) == (
+            'OUT_OF_SCOPE', 'deferred', 'OUT_OF_SCOPE:tradfi-deferred', t, None)
+        assert r['sources'] == ['manifest:fx-archive', 'xinfo:s1'] and not C.addressable(r)
+    assert c['row_counts'] == {'crypto-research:crypto': 1, 'deferred:OUT_OF_SCOPE': 2, 'gold-pilot:commodity': 1,
+                               'gold-pilot:tokenized-gold': 1}
+
+
+def test_gold_pilot_identity_mismatch_is_unknown(store):
+    s = base_snap()
+    s['symbols'][2] = xi('PAXGUSDT', onboard=ms('2025-03-27') + 10 * HOUR)    # RWA tag missing -> plain coin
+    r = rows(build(store, snaps=[s]), 'PAXGUSDT')
+    assert r == [('UNKNOWN', 'UNKNOWN', ms('2025-03-27') + 10 * HOUR, None,
+                  'UNKNOWN:gold-pilot-identity-mismatch:crypto/coin')]
