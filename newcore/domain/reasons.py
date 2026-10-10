@@ -202,10 +202,11 @@ MEANING = {
     R.EXIT_STOP_CROSSED: 'bot market close: the computed protective level was already crossed (never an exchange stop fill)',
     R.EXIT_TIME: 'bot market close at the holding-time limit',
     R.EXIT_SIGNAL: 'bot market close on the strategy exit signal',
-    R.EXIT_TAKE_PROFIT: 'bot market close of the whole position at the take-profit level',
+    R.EXIT_TAKE_PROFIT: 'the whole position exits at its take-profit level (the economic reason: a resting target '
+                        'or a bot close alike)',
     R.EXIT_TP1: 'the first partial take-profit',
     R.EXIT_LADDER: 'a take-profit ladder level',
-    R.EXIT_BASKET_TP: 'bot market close of the whole DCA basket at its target',
+    R.EXIT_BASKET_TP: 'the whole DCA basket exits at its basket target',
     R.EXIT_BASKET_TP_PART: 'the partial (runner split) close of a DCA basket at its target',
     R.EXIT_LIQUIDATED: 'the exchange liquidated the position',
     R.EXIT_FLATTEN: 'bot market close on an owner / safety flatten command',
