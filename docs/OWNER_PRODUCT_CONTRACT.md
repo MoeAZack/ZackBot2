@@ -46,7 +46,7 @@ this lock, **NOW means a trustworthy Binance engine and strategy program for one
 individual crypto instruments**. Work is accepted only when it directly advances that engine, its long/short/range/scalp strategy
 evidence, its risk and exit behaviour, or the minimum data/execution proof needed to trust those results.
 
-- Detailed instrument research, classification, ingestion and primary backtesting are limited to those 40 frozen
+- Detailed universe selection, data ingestion and primary backtesting are limited to those 40 frozen
   current-universe instruments. Each is tested backward only from the point where reliable data exists. Results are
   labelled `CURRENT-UNIVERSE / SURVIVOR-BIASED`; that limitation is reported, not hidden.
 - The active universe artifact is intentionally simple: one immutable dated list containing exactly 40 unique Binance
