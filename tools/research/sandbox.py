@@ -16,7 +16,9 @@ cwd, tree mtimes) and the canonical `execution_environment` (implementation, ver
 platform, CPU count; no host path) are reported at start-up and bound into the attestation; the runner requires the
 latter to equal the one frozen in `run.code` (Codex 6093381880).
 The runner starts TWO such processes per run, each over its own fresh tree, and
-refuses any difference (Codex 6089789885). The child speaks a JSON-lines protocol over its stdin/stdout:
+refuses any difference (Codex 6089789885). The child is launched path-independently (`-c BOOT`, source compiled as
+`SANDBOX_MAIN`; argv / orig_argv / `__main__.__file__` / importer cache scrubbed, Cowork 6094010557), so no checkout
+path is evaluator-visible. The child speaks a JSON-lines protocol over its stdin/stdout:
 
   parent -> child  {"op": "init", ...}            evaluator file + function, the read policy
   child  -> parent {"ready": true}
@@ -260,6 +262,11 @@ EXEC_ENV_KEYS = ('implementation', 'python', 'version', 'hexversion', 'cache_tag
 SYS_SENTINELS = {'executable': '<zb-sandbox>/python', '_base_executable': '<zb-sandbox>/python',
                  'prefix': '<zb-sandbox>', 'exec_prefix': '<zb-sandbox>', 'base_prefix': '<zb-sandbox>',
                  'base_exec_prefix': '<zb-sandbox>'}
+# Cowork 6094010557: the child is launched with `-c BOOT` and its source compiled under this sentinel name, so no
+# checkout path reaches argv / orig_argv / __main__.__file__ / code filenames / the path-importer cache.
+SANDBOX_MAIN = '<zb-sandbox>/sandbox.py'
+BOOT = ('import sys\nn = int(sys.stdin.buffer.readline())\n'
+        f'exec(compile(sys.stdin.buffer.read(n), {SANDBOX_MAIN!r}, "exec"), sys.modules["__main__"].__dict__)\n')
 
 
 def execution_environment() -> dict:
@@ -292,6 +299,11 @@ def virtualize_interpreter_paths() -> None:
     for name, value in SYS_SENTINELS.items():
         if name == 'executable' or hasattr(sys, name):
             setattr(sys, name, value)
+    # launch-path state (Cowork 6094010557): canonical argv, no checkout path anywhere, importer cache rebuilt lazily
+    sys.argv = [SANDBOX_MAIN]
+    sys.orig_argv = [SYS_SENTINELS['executable'], '-s', '-S', '-B', '-P', SANDBOX_MAIN]
+    sys.modules['__main__'].__file__ = SANDBOX_MAIN
+    sys.path_importer_cache.clear()
 
 
 def main() -> int:

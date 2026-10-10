@@ -409,8 +409,12 @@ class _Sandbox:
         env = {k: os.environ[k] for k in SANDBOX_ENV_KEYS if k in os.environ}
         env.update(SANDBOX_ENV)
         sys_path = [os.path.join(tree, 'tools', 'research'), tree, os.path.dirname(evaluator_path)]
-        self.p = subprocess.Popen([sys.executable, '-s', '-S', '-B', '-P', SANDBOX], stdin=subprocess.PIPE,
+        # path-independent launch (Cowork 6094010557): the child compiles sandbox.py's bytes under a sentinel name
+        with open(SANDBOX, 'rb') as f:
+            src = f.read()
+        self.p = subprocess.Popen([sys.executable, '-s', '-S', '-B', '-P', '-c', R.SB.BOOT], stdin=subprocess.PIPE,
                                   stdout=subprocess.PIPE, stderr=self._err, cwd=cwd, env=env)
+        self.p.stdin.write(b'%d\n' % len(src) + src)
         self.send({'op': 'init', 'protocol': 'zb-eval-sandbox/1', 'evaluator_path': evaluator_path,
                    'function': function, 'summary': summary, 'lib_roots': lib, 'list_roots': [tree, cwd],
                    'probe_roots': sorted({tree, cwd, sys.base_prefix, sys.base_exec_prefix}),

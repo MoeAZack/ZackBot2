@@ -494,6 +494,46 @@ def test_fresh_process_replay_binds_interpreter_without_host_paths(world, tmp_pa
     assert not set(real) & set(list(hs)[0])                                          # never the host path's hash
 
 
+LAUNCH_PROBE = '''import hashlib
+import sys
+
+
+def launch(v):
+    f = sys._getframe()
+    while f.f_back is not None:
+        f = f.f_back
+    main = sys.modules['__main__']
+    stray = sorted(k for k in sys.path_importer_cache if not any(k.startswith(p) for p in sys.path if p))
+    vals = [sys.argv, sys.orig_argv, getattr(main, '__file__', None), f.f_code.co_filename]
+    return [vals, [[ord(c) for c in str(x)] for x in vals], hashlib.sha256(repr(vals).encode()).hexdigest(),
+            hashlib.sha256(repr(stray).encode()).hexdigest()]
+'''
+
+
+def test_sandbox_launch_is_checkout_path_independent(world, tmp_path, monkeypatch):
+    """Cowork 6094010557: the checkout path that launched the sandbox (argv, orig_argv, __main__.__file__, the
+    outermost frame's filename, the path-importer cache) is never evaluator-visible; two byte-identical sandbox.py
+    copies at different checkout locations give identical outputs, plain, as codepoints and as hashes."""
+    import shutil
+    ds = ds_of(world)
+    path, _ = dirs(tmp_path)
+    w = access(ds, path).open('train', lineage='root')
+    f = evaluator(tmp_path / 'ev', LAUNCH_PROBE, 'probe.py')
+    outs = []
+    for loc in ('checkout-a', os.path.join('other', 'checkout-b-longer')):
+        d = tmp_path / loc / 'tools' / 'research'
+        os.makedirs(str(d))
+        monkeypatch.setattr(P, 'SANDBOX', shutil.copy(P.SANDBOX, str(d / 'sandbox.py')))
+        outs.append(list(P.evaluate(w, f, 'launch', train_times(1))))
+    monkeypatch.undo()
+    assert outs[0] == outs[1]
+    main = R.SB.SANDBOX_MAIN
+    vals = [[main], [R.SB.SYS_SENTINELS['executable'], '-s', '-S', '-B', '-P', main], main, '<string>']
+    assert outs[0] == [[vals, [[ord(c) for c in str(x)] for x in vals], hashlib.sha256(repr(vals).encode()).hexdigest(),
+                        hashlib.sha256(repr([]).encode()).hexdigest()]]
+    assert 'checkout' not in json.dumps(outs)
+
+
 def test_position_capability_replaces_caller_entered_ms(world, tmp_path):
     ds = ds_of(world)
     path, _ = dirs(tmp_path)
