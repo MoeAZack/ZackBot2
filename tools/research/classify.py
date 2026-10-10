@@ -475,6 +475,15 @@ def addressable(row: dict | None) -> bool:
     return row is not None and row['class'] not in (UNKNOWN, OUT_OF_SCOPE)
 
 
+ACTIVE_SCOPES = (SCOPE_CRYPTO,)
+
+
+def active(row: dict | None) -> bool:
+    """May join the active R4 book (Codex #53 6095682220: top-40 Binance crypto only). Gold-pilot identities stay
+    recorded but inactive and non-blocking until their own future prereg; deferred rows are never active."""
+    return addressable(row) and row['scope'] in ACTIVE_SCOPES
+
+
 # ---------------------------------------------------------------- snapshot extraction (no network)
 
 def extract(raw: bytes, *, retrieved_ms: int, snapshot_id: str, manifest: dict | None = None) -> dict:

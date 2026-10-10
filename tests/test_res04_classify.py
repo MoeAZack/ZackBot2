@@ -260,6 +260,13 @@ def test_gold_spot_and_tokenized_gold_are_distinct_classes(store):
                                     'OUT_OF_SCOPE:tokenized-gold-not-in-pilot')]
     assert scope['XAUTUSDT'] == 'deferred' and not C.addressable(C.resolve_at(c, 'XAUTUSDT', ms('2026-04-01')))
 
+    # Codex #53 6095682220: only crypto is active; the gold-pilot identities are recorded but inactive
+    at = ms('2026-04-01')
+    assert C.active(C.resolve_at(c, 'BTCUSDT', at))
+    for sym in ('XAUUSDT', 'PAXGUSDT'):
+        assert C.addressable(C.resolve_at(c, sym, at)) and not C.active(C.resolve_at(c, sym, at))
+    assert not C.active(C.resolve_at(c, 'XAUTUSDT', at)) and not C.active(None)
+
 
 # ---------------------------------------------------------------- input validation
 

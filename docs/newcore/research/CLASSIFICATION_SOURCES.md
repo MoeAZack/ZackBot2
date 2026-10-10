@@ -19,7 +19,7 @@ Every manifest symbol gets rows with a `scope`:
 | scope | Members | Classified? |
 |---|---|---|
 | `crypto-research` | every manifest symbol not routed elsewhere: native Binance crypto perps (exchangeInfo `COIN` / `INDEX`, `PERPETUAL`) and delisted contracts absent from exchangeInfo | yes. Only `crypto` / `crypto-index` rows can join the crypto books; any other derived class becomes `OUT_OF_SCOPE` |
-| `gold-pilot` | `XAUUSDT` (direct gold, expected `commodity/gold-spot`) and `PAXGUSDT` (tokenized gold, expected `tokenized-gold/paxg`) | yes. The class is still derived from sources and must equal the expected identity, otherwise UNKNOWN. Separate books and cost rows; never in the crypto books; cannot block crypto |
+| `gold-pilot` | `XAUUSDT` (direct gold, expected `commodity/gold-spot`) and `PAXGUSDT` (tokenized gold, expected `tokenized-gold/paxg`) | yes. The class is still derived from sources and must equal the expected identity, otherwise UNKNOWN. Identity recorded but **inactive** (Codex #53 6095682220): `classify.active()` is false, never in the crypto books, cannot block crypto; activation needs its own future prereg |
 | `deferred` | every exchangeInfo `TRADIFI_PERPETUAL` symbol except XAUUSDT (equity, ETF, index, FX, oil/energy, other metals, pre-IPO), and tokenized gold outside the pilot (XAUTUSDT) | **no**. One audited `OUT_OF_SCOPE` / `DEFERRED` row per symbol, never active and never researched |
 
 - Routing reads only `contractType`, plus the RWA/gold-base check (XAUT) needed to keep tokenized gold out of the
