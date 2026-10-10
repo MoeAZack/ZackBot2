@@ -824,6 +824,7 @@ def run(v):
         '_posixsubprocess.fork_exec': attempt(import_low) if posix else 'absent',
         'reload _posixsubprocess': attempt(reload_low) if posix else 'absent',
         'subinterpreter': attempt(subinterp),
+        'reload _interpreters': attempt(lambda: __import__('importlib').reload(__import__('_interpreters'))),
         'concurrent.interpreters': attempt(lambda: __import__('concurrent.interpreters')),
         '_testcapi': attempt(lambda: __import__('_testcapi')),
         'create_builtin _interpreters': attempt(lambda: __import__('_imp').create_builtin(
@@ -856,7 +857,7 @@ def test_evaluator_cannot_reach_low_level_process_creation(world, tmp_path):
     w = access(ds, path).open('train', lineage='root')
     f = evaluator(tmp_path / 'ev', PROCESS_ATTACK, 'process_attack.py')
     out = list(P.evaluate(w, f, 'run', train_times(2)))
-    refused = ('subinterpreter', 'concurrent.interpreters', '_testcapi', 'create_builtin _interpreters',
+    refused = ('subinterpreter', 'reload _interpreters', 'concurrent.interpreters', '_testcapi', 'create_builtin _interpreters',
                'create_builtin', 'create_dynamic', 'create_dynamic dotted', 'create_dynamic renamed', 'low-level launch',
                'subprocess.run', 'os.system', 'socket', 'write open')
     want = dict({k: 'refused' for k in refused}, **{'import subprocess': 'ok', 'aliases': [], 'json works': True})
