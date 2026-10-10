@@ -42,12 +42,15 @@ safety, operational and release acceptance.
 ### 0.1 Active mission lock — crypto-first Binance release (10 Oct 2026, Africa/Cairo)
 
 The current release is deliberately narrower than the preserved long-term roadmap. Until the owner explicitly changes
-this lock, **NOW means a trustworthy Binance engine and strategy program for a point-in-time top-40 set of individual
-crypto instruments**. Work is accepted only when it directly advances that engine, its long/short/range/scalp strategy
+this lock, **NOW means a trustworthy Binance engine and strategy program for one dated snapshot of the current top-40
+individual crypto instruments**. Work is accepted only when it directly advances that engine, its long/short/range/scalp strategy
 evidence, its risk and exit behaviour, or the minimum data/execution proof needed to trust those results.
 
-- Detailed instrument research, classification, ingestion and backtesting are limited to the dated Binance top-40
-  individual-crypto candidates.
+- Detailed instrument research, classification, ingestion and primary backtesting are limited to those 40 frozen
+  current-universe instruments. Each is tested backward only from the point where reliable data exists. Results are
+  labelled `CURRENT-UNIVERSE / SURVIVOR-BIASED`; that limitation is reported, not hidden.
+- Reconstructing every historical top-40 membership change is a later robustness study. It may test selection-policy
+  turnover and delisting risk, but it cannot block the current top-40 engine, strategy backtests or testnet progress.
 - A separate gold pilot may record only the approved direct-XAU/XAUUSDT path and PAXGUSDT identity. It stays inactive
   and may not block crypto readiness.
 - Crypto indices, XAUT, stocks, equity indices, ETFs, FX, oil, other commodities, other venues and every instrument
@@ -55,7 +58,7 @@ evidence, its risk and exit behaviour, or the minimum data/execution proof neede
   work, data acquisition, backtests, UI or integrations during this release.
 - A full exchange snapshot may be inspected only to construct a compact fail-closed exclusion proof. Cowork may use a
   few representative out-of-scope symbols as adversarial fixtures, but this is boundary testing—not market research.
-  Detailed rows are produced only for the approved top-40 candidates and the two inactive gold identities; everything
+  Detailed rows are produced only for the approved 40-symbol snapshot and the two inactive gold identities; everything
   else is represented by a blanket exclusion digest/count where possible.
 - Preserving an idea in this contract does not authorize present work on it. `LATER` and `POST-LIVE` items remain in the
   roadmap so they are not forgotten, but they consume no active Build, Evidence or Integration lane.
