@@ -421,8 +421,9 @@ def recompute_run_digest(rec: dict, runs_dir: str) -> str:
 
 
 ATTESTATION_FORMAT = 'zb-eval-attestation/1'
-SEALABLE_RUNNER = 'pit.evaluate/v4'
-SEALABLE_ISOLATION = 'subprocess-sSBP+materialized-closure-tree+probe-allowlist+audit-hook/zb-eval-sandbox/3'
+SEALABLE_RUNNER = 'pit.evaluate/v5'
+SEALABLE_ISOLATION = ('subprocess-sSBP+materialized-closure-tree+probe-allowlist+audit-hook+two-fresh-process-replay'
+                      '/zb-eval-sandbox/4')
 
 
 def check_attestation(env: dict, att: dict, ledger_path: str) -> str:
@@ -447,6 +448,10 @@ def check_attestation(env: dict, att: dict, ledger_path: str) -> str:
          'the evaluator entrypoint (file / function / summary) is not the frozen one')
     need(att.get('schedule') == run['eval']['schedule'],
          'the decision schedule is not the frozen canonical schedule')
+    interp = att.get('interpreter')
+    need(isinstance(interp, dict) and interp.get('python') == run['code']['python']
+         and isinstance(interp.get('executable_sha256'), str) and len(interp['executable_sha256']) == 64,
+         'the interpreter identity (version + executable hash) is missing or is not the frozen Python')
     code = att.get('code')
     need(isinstance(code, list) and code and all(c in run['eval']['files'] for c in code),
          'code the sandbox let the evaluator load is not in the envelope\'s hashed evaluation files: '

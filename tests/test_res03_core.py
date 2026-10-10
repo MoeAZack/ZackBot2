@@ -10,6 +10,7 @@ import io
 import json
 import os
 import random
+import re
 import sys
 import zipfile
 from datetime import datetime, timezone
@@ -420,6 +421,60 @@ def test_sandbox_has_no_site_pth_or_entry_points_and_hashes_its_closure(world, t
         R.freeze_run(repo=repo, entrypoint=ep('strategy/stat.py'), schedule=SCHED, eval_files=['strategy/stat.py'], config={}, seeds=[], **ident(ds, plan()))
     att = P.evaluate(w, os.path.join(strat, 'stat.py'), 'run', train_times(1)).attestation
     assert 'dev_out/ignored.py' in {c['path'] for c in att['code']}            # hashed, so a report would refuse it
+
+
+# Codex 6089789885 P1: one frozen identity must yield one result across fresh sandbox processes. Each evaluator reads
+# a process-dependent value at import time; two decisions inside one process agree, two fresh processes do not.
+FRESH_PROCESS = {
+    'wall-clock': ('import time\nX = time.time()\n', 'differ between two fresh sandbox processes'),
+    'pid': ('import os\nX = os.getpid()\n', 'differ between two fresh sandbox processes'),
+    'auto-seeded-random': ('import random\nX = random.random()\n', 'differ between two fresh sandbox processes'),
+    '__file__': ('X = __file__\n', 'host path of the sandbox'),
+    'cwd': ('import os\nX = os.getcwd()\n', 'host path of the sandbox'),
+}
+
+
+@pytest.mark.parametrize('name', sorted(FRESH_PROCESS))
+def test_process_dependent_evaluator_is_refused_across_fresh_processes(world, tmp_path, name):
+    src, msg = FRESH_PROCESS[name]
+    ds = ds_of(world)
+    path, _ = dirs(tmp_path)
+    w = access(ds, path).open('train', lineage='root')
+    f = evaluator(tmp_path / 'ev', src + '\n\ndef run(v):\n    return X\n', 'proc.py')
+    n = len(L._check_state(path)['fam_x'])
+    with pytest.raises(P.PITError, match=msg):
+        P.evaluate(w, f, 'run', train_times(2))
+    g = evaluator(tmp_path / 'ev', src + '\n\ndef run(v):\n    return 1\n\n\ndef summarize(o):\n    return [X]\n',
+                  'proc2.py')
+    with pytest.raises(P.PITError, match=msg):                 # the same dependency in the summary only
+        P.evaluate(w, g, 'run', train_times(2), summary='summarize')
+    assert len(L._check_state(path)['fam_x']) == n            # a refused run records no evaluation
+
+
+def test_fresh_process_replay_binds_interpreter_without_host_paths(world, tmp_path):
+    """Items 2 + 3: a path-independent evaluator passes both fresh processes; the attestation binds the interpreter
+    version + executable hash but carries no interpreter / temp-tree host path; a host path in results is refused."""
+    import platform
+    ds = ds_of(world)
+    path, _ = dirs(tmp_path)
+    w = access(ds, path).open('train', lineage='root')
+    src = ("import os\nimport sys\n\n\ndef run(v):\n    return [os.path.basename(__file__), os.listdir('.'), "
+           "len(v.bars('AAAUSDT', '4h', 3))]\n\n\ndef exe(v):\n    return sys.executable\n\n\n"
+           "def prefix(v):\n    return {'k': [sys.base_prefix]}\n")
+    f = evaluator(tmp_path / 'ev', src, 'fine.py')
+    out = P.evaluate(w, f, 'run', train_times(2))
+    assert list(out) == [['fine.py', [], 3]] * 2
+    interp = out.attestation['interpreter']
+    with open(sys.executable, 'rb') as fh:
+        assert interp['executable_sha256'] == hashlib.sha256(fh.read()).hexdigest()
+    assert interp['python'] == platform.python_version() and interp['hexversion'] == sys.hexversion
+    blob = json.dumps(out.attestation).lower()
+    assert not re.search(r'zb-eval-[a-z0-9_]{8}(\\|/)', blob)      # no materialized-tree / cwd temp path
+    for host in (sys.executable, sys.base_prefix, os.path.dirname(sys.executable)):
+        assert json.dumps(host).lower()[1:-1] not in blob and host.lower().replace('\\', '/') not in blob
+    for fn in ('exe', 'prefix'):                               # the interpreter's host path is never a result
+        with pytest.raises(P.PITError, match='host path of the sandbox'):
+            P.evaluate(w, f, fn, train_times(1))
 
 
 def test_position_capability_replaces_caller_entered_ms(world, tmp_path):
@@ -1159,6 +1214,11 @@ def test_envelope_write_once_and_report_needs_the_runner_attestation(world, tmp_
         R.make_report(env, full, nop.attestation, path)
     with pytest.raises(R.ReportError, match='no matching evaluation record'):
         R.make_report(env, full, dict(out.attestation, outputs_digest='0' * 64), path)
+    bad = dict(out.attestation, interpreter=dict(out.attestation['interpreter'], python='0.0.0'))
+    with pytest.raises(R.ReportError, match='interpreter identity'):            # Codex 6089789885 item 3
+        R.make_report(env, full, bad, path)
+    with pytest.raises(R.ReportError, match='interpreter identity'):
+        R.make_report(env, full, {k: v for k, v in out.attestation.items() if k != 'interpreter'}, path)
     no_sum = P.evaluate(w, ev, 'run', times)
     with pytest.raises(R.ReportError, match='entrypoint'):
         R.make_report(env, full, no_sum.attestation, path)

@@ -12,7 +12,9 @@ file, no unrelated repo metadata exists there. Path probes (`stat`, `lstat`, `ac
 `listdir`, `scandir`, `readlink`, final-path lookups) are additionally allowlisted to the tree, the working directory
 and the interpreter's own installation (never `site-packages`), so an absolute probe of host state fails closed instead
 of answering. The observable environment (hash seed, UTF-8 mode, time zone, locale encoding, environment keys, empty
-cwd, tree mtimes) is reported at start-up and bound into the attestation. and speaks a JSON-lines protocol over its stdin/stdout:
+cwd, tree mtimes) and the interpreter identity (version + executable SHA-256, no host path) are reported at start-up
+and bound into the attestation. The runner starts TWO such processes per run, each over its own fresh tree, and
+refuses any difference (Codex 6089789885). The child speaks a JSON-lines protocol over its stdin/stdout:
 
   parent -> child  {"op": "init", ...}            evaluator file + function, the read policy
   child  -> parent {"ready": true}
@@ -249,6 +251,17 @@ def observed_env() -> dict:
             'locale_encoding': locale.getencoding(), 'env_keys': sorted(os.environ), 'cwd_entries': os.listdir('.')}
 
 
+def interpreter_identity() -> dict:
+    """The interpreter that runs the evaluator (Codex 6089789885 item 3): version and executable bytes, never its host
+    path. Read before the audit hook is installed; bound into the attestation."""
+    import hashlib
+    import platform
+    with open(sys.executable, 'rb') as f:
+        exe = hashlib.sha256(f.read()).hexdigest()
+    return {'implementation': sys.implementation.name, 'python': platform.python_version(), 'version': sys.version,
+            'hexversion': sys.hexversion, 'cache_tag': sys.implementation.cache_tag, 'executable_sha256': exe}
+
+
 def main() -> int:
     chan = _Chan(sys.stdin.buffer, sys.stdout.buffer)
     sys.stdout = sys.stderr                                   # evaluator prints never reach the protocol channel
@@ -259,6 +272,7 @@ def main() -> int:
     for p in reversed(init['sys_path']):
         sys.path.insert(0, p)
     env = observed_env()
+    interp = interpreter_identity()
     guard_path_probes(init['probe_roots'])
     sys.addaudithook(make_hook(init['lib_roots'], init['list_roots'], init['allow_files']))
     try:
@@ -270,7 +284,7 @@ def main() -> int:
     except BaseException as e:                                # noqa: BLE001 - reported to the parent, fail closed
         chan.send({'error': f'evaluator load failed: {type(e).__name__}: {e}'})
         return 2
-    chan.send({'ready': True, 'env': env})
+    chan.send({'ready': True, 'env': env, 'interpreter': interp})
     while True:
         msg = chan.recv()
         if msg.get('op') == 'exit':

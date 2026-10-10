@@ -75,8 +75,9 @@ SURVIVOR_ONLY = 'SURVIVOR-ONLY'
 GROUP_KINDS = ('holdout_reveal', 'holdout_rerun')
 FUNDING_MARK_PROXY = 'funding-mark-proxy-v1: close of the 1h mark bar ending at or before T (causal proxy, PROVISIONAL)'
 ATTESTATION_FORMAT = 'zb-eval-attestation/1'
-RUNNER_ID = 'pit.evaluate/v4'
-ISOLATION_ID = 'subprocess-sSBP+materialized-closure-tree+probe-allowlist+audit-hook/zb-eval-sandbox/3'
+RUNNER_ID = 'pit.evaluate/v5'
+ISOLATION_ID = ('subprocess-sSBP+materialized-closure-tree+probe-allowlist+audit-hook+two-fresh-process-replay'
+                '/zb-eval-sandbox/4')
 SANDBOX = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'sandbox.py')
 CANONICAL_REPO = M.REPO                          # the checkout whose registered ledger may open a sealed holdout
 LEDGER_REL = ('research_evidence', 'ledger')
@@ -417,7 +418,7 @@ class _Sandbox:
         if not r.get('ready'):
             self.close()
             raise PITError(f'evaluator sandbox: {r.get("error", "did not start")}')
-        self.env = r['env']
+        self.env, self.interpreter = r['env'], r['interpreter']
 
     def summarize(self, outputs):
         self.send({'op': 'summarize', 'outputs': outputs})
@@ -531,16 +532,102 @@ def _materialize(closure, repo: str, evaluator_path: str, root: str) -> dict:
     return out
 
 
+def _host_needles(paths) -> list[str]:
+    out = set()
+    for p in paths:
+        for v in (os.path.abspath(p), os.path.realpath(p)):
+            n = os.path.normcase(v).rstrip('\\/')
+            if len(n) > 3:                                   # never a bare drive / filesystem root
+                out.add(n)
+    return sorted(out)
+
+
+def _refuse_host_paths(obj, needles, where: str) -> None:
+    """Codex 6089789885 item 2: evaluator-visible results never carry a temporary-tree, cwd or interpreter host path
+    (they would make one frozen identity mint a different result on every run / host)."""
+    if isinstance(obj, str):
+        s = os.path.normcase(obj)
+        hit = next((n for n in needles if n in s), None)
+        if hit is not None:
+            raise PITError(f'the evaluator {where} contains a host path of the sandbox (temporary tree / cwd / '
+                           f'interpreter): {obj[:120]!r}; results must not depend on where the run executes')
+    elif isinstance(obj, dict):
+        for k, v in obj.items():
+            _refuse_host_paths(k, needles, where)
+            _refuse_host_paths(v, needles, where)
+    elif isinstance(obj, (list, tuple)):
+        for v in obj:
+            _refuse_host_paths(v, needles, where)
+
+
+def _interpreter_roots() -> list[str]:
+    return sorted({sys.prefix, sys.exec_prefix, sys.base_prefix, sys.base_exec_prefix, os.path.dirname(sys.executable)})
+
+
+def _run_fresh(window: Window, closure, repo: str, evaluator_path: str, function: str, summary, times, *,
+               perturb: bool, record: bool):
+    """One complete evaluation in ONE fresh sandbox process over ITS OWN freshly materialized tree and cwd. With
+    `record` False the window records no decision (a replay). Returns (outputs, results, sandbox env, interpreter)."""
+    tmp = tempfile.TemporaryDirectory(prefix='zb-eval-')
+    base_shadow = not record
+    try:
+        tree, cwd = os.path.join(tmp.name, 'tree'), os.path.join(tmp.name, 'cwd')
+        os.makedirs(tree)
+        os.makedirs(cwd)
+        code_before = _code_hashes(closure, repo)
+        where = _materialize(closure, repo, evaluator_path, tree)
+        if sorted(c['sha256'] for c in code_before) != sorted(
+                c['sha256'] for c in _code_hashes(list(where.values()), tree)):
+            raise PITError('the materialized tree differs from the hashed closure')
+        box = _Sandbox(tree, where[os.path.normcase(evaluator_path)], function, summary, list(where.values()), cwd)
+        out, positions, results = [], {}, None
+        window._shadow = base_shadow
+        try:
+            for t in times:
+                res = box.decide(window, t, positions)
+                if perturb:
+                    ds = window._ds
+                    saved = _perturb_future(ds, t)
+                    window._shadow = True
+                    try:
+                        again = box.decide(window, t, positions)
+                    finally:
+                        window._shadow = base_shadow
+                        for p, rows in saved.items():
+                            ds._cache[p][:] = rows
+                    if again != res:
+                        raise PITError(f'evaluator output at {S.utc(t)} depends on data not available at t (future '
+                                       'perturbation changed it): the view was bypassed')
+                out.append(res)
+            if summary is not None:
+                results = box.summarize(list(out))
+                if box.summarize(list(out)) != results:
+                    raise PITError('the summary is not deterministic in the outputs')
+            env, interp = box.env, box.interpreter
+        finally:
+            window._shadow = False
+            box.close()
+        needles = _host_needles([tmp.name, tree, cwd] + _interpreter_roots())
+        _refuse_host_paths(out, needles, 'outputs')
+        _refuse_host_paths(results, needles, 'summary results')
+    finally:
+        tmp.cleanup()
+    return out, results, env, interp
+
+
 def evaluate(window: Window, evaluator_path: str, function: str, times, *, summary: str | None = None,
              perturb: bool = True) -> Evaluated:
     """Run `function(view)` from the evaluator file `evaluator_path` in the sandbox at each decision time of the
     canonical schedule `times` (strictly increasing int ms; the evaluator receives a View proxy only), then, with
     `summary`, run `summary(outputs)` from the same file in the sandbox to produce the report `results` payload.
     With `perturb`, each decision is recomputed with every cached not-yet-available row perturbed (positions it
-    issues there are not recorded) and must be identical; the summary runs twice and must be identical. The
-    evaluator runs from a materialized copy of its hashed closure (never the checkout). The attestation - entrypoint,
-    schedule, outputs and results digests, closure hashes, observed sandbox environment - is appended to the family
-    ledger before anything is returned."""
+    issues there are not recorded) and must be identical; the summary runs twice and must be identical. The whole run
+    is then replayed in a second fresh sandbox process over its own materialized tree, and outputs, summary, observed
+    environment and interpreter identity must be identical; results carrying a temporary-tree, cwd or interpreter
+    host path are refused. The evaluator runs from a materialized copy of its hashed closure (never the checkout).
+    The attestation - entrypoint, schedule, outputs and results digests, closure hashes, observed sandbox environment,
+    interpreter identity (version + executable SHA-256, no host path) - is appended to the family ledger before
+    anything is returned."""
     if not isinstance(window, Window) or window._access is None:
         raise PITError('evaluate needs a Window opened through Access')
     if not isinstance(evaluator_path, str) or not os.path.isfile(evaluator_path) or not evaluator_path.endswith('.py'):
@@ -559,44 +646,16 @@ def evaluate(window: Window, evaluator_path: str, function: str, times, *, summa
     roots = [os.path.join(repo, 'tools', 'research'), repo, os.path.dirname(evaluator_path)]
     closure = R.closure_abs([evaluator_path], roots)
     code_before = _code_hashes(closure, repo)
-    tmp = tempfile.TemporaryDirectory(prefix='zb-eval-')
-    try:
-        tree, cwd = os.path.join(tmp.name, 'tree'), os.path.join(tmp.name, 'cwd')
-        os.makedirs(tree)
-        os.makedirs(cwd)
-        where = _materialize(closure, repo, evaluator_path, tree)
-        if _code_hashes(list(where.values()), tree) and sorted(c['sha256'] for c in code_before) != sorted(
-                c['sha256'] for c in _code_hashes(list(where.values()), tree)):
-            raise PITError('the materialized tree differs from the hashed closure')
-        box = _Sandbox(tree, where[os.path.normcase(evaluator_path)], function, summary, list(where.values()), cwd)
-        out, positions = Evaluated(), {}
-        results = None
-        try:
-            for t in times:
-                res = box.decide(window, t, positions)
-                if perturb:
-                    ds = window._ds
-                    saved = _perturb_future(ds, t)
-                    window._shadow = True
-                    try:
-                        again = box.decide(window, t, positions)
-                    finally:
-                        window._shadow = False
-                        for p, rows in saved.items():
-                            ds._cache[p][:] = rows
-                    if again != res:
-                        raise PITError(f'evaluator output at {S.utc(t)} depends on data not available at t (future '
-                                       'perturbation changed it): the view was bypassed')
-                out.append(res)
-            if summary is not None:
-                results = box.summarize(list(out))
-                if box.summarize(list(out)) != results:
-                    raise PITError('the summary is not deterministic in the outputs')
-            sandbox_env = box.env
-        finally:
-            box.close()
-    finally:
-        tmp.cleanup()
+    # Codex 6089789885 item 1: the run is executed in TWO fresh sandbox processes, each over its own materialized
+    # tree and cwd; the second replays the schedule without recording decisions. Any difference in outputs, summary,
+    # observed environment or interpreter identity (wall clock, PID, auto-seeded random, __file__, cwd ...) refuses.
+    first = _run_fresh(window, closure, repo, evaluator_path, function, summary, times, perturb=perturb, record=True)
+    second = _run_fresh(window, closure, repo, evaluator_path, function, summary, times, perturb=False, record=False)
+    for i, what in enumerate(('outputs', 'summary results', 'observed sandbox environment', 'interpreter identity')):
+        if first[i] != second[i]:
+            raise PITError(f'the evaluator {what} differ between two fresh sandbox processes: one frozen identity '
+                           'must yield one result (wall clock, PID, unseeded random, file/cwd paths?)')
+    out, results, sandbox_env, interpreter = Evaluated(first[0]), first[1], first[2], first[3]
     code = _code_hashes(closure, repo)
     if code != code_before:
         raise PITError('evaluator code changed while it ran')
@@ -609,7 +668,8 @@ def evaluate(window: Window, evaluator_path: str, function: str, times, *, summa
            'code': code, 'schedule': schedule, 'outputs_digest': _sha_obj(list(out)),
            'results_digest': R.results_digest(results) if summary is not None else None,
            'decisions_digest': _sha_obj([list(d) for d in window.decisions()]),
-           'sandbox_env': dict(sandbox_env, tree_mtime=TREE_MTIME, env=dict(SANDBOX_ENV))}
+           'sandbox_env': dict(sandbox_env, tree_mtime=TREE_MTIME, env=dict(SANDBOX_ENV)),
+           'interpreter': interpreter}
     digest = _sha_obj(att)
     window._access._record_evaluation(window, att, digest)
     out.attestation, out.attestation_digest, out.results = att, digest, results
