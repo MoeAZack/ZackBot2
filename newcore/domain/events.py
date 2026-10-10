@@ -16,7 +16,7 @@ from .facts import FactLedger
 from .incident import Incident
 from .modes import EntriesMode, HoldKind
 from .orders import (INTENT_TRANSITIONS, TERMINAL, Evidence, IntentState, OrderIntent, OrderResult, ResultPhase,
-                     booking_step_ok, check_result_for_intent, supersedes, terminal_for)
+                     booking_step_ok, check_result_for_intent, orphan_step_ok, supersedes, terminal_for)
 from .reasons import ReasonCode
 
 
@@ -250,6 +250,7 @@ def check_event_chain(events, *, after_sequence=0, known_intents=None, facts=Non
             it, st, sent = live[ev.intent_id]
             req(ev.from_state is st, p + '.from_state', f'the intent is {st}')
             req(booking_step_ok(it, ev.to_state), p + '.to_state', 'a post-hoc booking is never sent')
+            req(orphan_step_ok(it, ev.to_state), p + '.to_state', 'an orphan (portfolio-owned) intent is cancel-only work')
             fin = finals.get(ev.intent_id)
             if ev.to_state in TERMINAL:
                 req(fin is not None, p + '.to_state', 'a terminal step needs a durable FINAL result first')

@@ -81,6 +81,12 @@ class OrderType(enum.StrEnum):
     MARKET = 'market'
     LIMIT_POST_ONLY = 'limit_post_only'   # maker
     STOP_MARKET = 'stop_market'           # protective stop
+    LIMIT_REDUCE_ONLY = 'limit_reduce_only'   # r3b item 4: a resting reduce-only GTC limit target of a lot (NOT
+    #                                           post-only: a marketable target fills as taker; post-only may only become
+    #                                           an optional preference later - Codex ruling 5)
+
+
+LIMIT_TYPES = frozenset({OrderType.LIMIT_POST_ONLY, OrderType.LIMIT_REDUCE_ONLY})
 
 
 class IntentState(enum.StrEnum):
@@ -121,6 +127,8 @@ def can_transition(a, b):
 
 
 POST_HOC_REASON = ReasonCode.RECONCILE_EXTERNAL_CLOSE
+TARGET_REASONS = frozenset({ReasonCode.EXIT_TAKE_PROFIT, ReasonCode.EXIT_TP1, ReasonCode.EXIT_LADDER,
+                            ReasonCode.EXIT_BASKET_TP, ReasonCode.EXIT_BASKET_TP_PART})   # r3 DRAFT item 4
 
 
 def is_post_hoc(intent):
@@ -136,6 +144,13 @@ def booking_step_ok(intent, to_state):
     """A post-hoc booking only ever moves inside POST_HOC_STATES (never SUBMITTED / WORKING / UNKNOWN / CANCELLING):
     the one lifecycle rule the event chain AND the step-0 journal gate both apply."""
     return not is_post_hoc(intent) or IntentState(to_state) in POST_HOC_STATES
+
+
+def orphan_step_ok(intent, to_state):
+    """Codex P1 on 4b4c3a6: an orphan (portfolio-owned) intent is cancel-only work for good - on replay it never steps
+    back to WORKING / UNKNOWN (or any other sendable state); it stays CANCELLING until its terminal step. The event chain
+    applies this on top of the generic transition table, which non-orphan intents keep unchanged."""
+    return not intent.orphan or IntentState(to_state) in CANCEL_ONLY
 
 
 def may_send(intent):
@@ -203,7 +218,14 @@ class OrderIntent(Record):
             check_text(self.slot_id, p + '.slot_id', 32)
         req((t is OrderType.STOP_MARKET) == (u is Purpose.PROTECT), p + '.order_type', 'PROTECT <=> stop_market')
         req(t is not OrderType.LIMIT_POST_ONLY or u in OPENING, p + '.order_type', 'only ENTRY / ADD may rest as a maker')
-        if t is OrderType.LIMIT_POST_ONLY:
+        if t is OrderType.LIMIT_REDUCE_ONLY:            # r3 DRAFT item 4: the resting target order kind
+            # Codex P1 on 02493b6: lot-owned, or - once its lot is gone (stop fill / external close / side flip)
+            # while it is being cancelled - the generic orphan form above (PORTFOLIO-owned, cancel-only; the
+            # portfolio checks owner_id == its own id). Never ENTRY_INTENT-owned.
+            req(u in (Purpose.REDUCE, Purpose.CLOSE) and (self.owner_kind is OwnerKind.LOT or self.orphan),
+                p + '.order_type', 'a resting reduce-only target is a lot REDUCE / CLOSE (or its orphan cancel)')
+            req(self.reason in TARGET_REASONS, p + '.reason', 'a resting target exits on a take-profit reason')
+        if t in LIMIT_TYPES:
             req(self.price is not None, p + '.price', 'a limit order has a price')
             positive(self.price, p + '.price')
         else:
@@ -494,6 +516,9 @@ def check_result_for_intent(intent, result, sent_at_ms):
     ev = result.evidence
     req((ev is Evidence.EXCHANGE_EXTERNAL) <= is_post_hoc(intent), p + '.evidence',
         'exchange_external only books a post-hoc (reconcile.external_close) intent')
+    if intent.order_type is OrderType.LIMIT_REDUCE_ONLY and result.avg_price is not None:
+        better = (result.avg_price >= intent.price) if intent.side is Side.LONG else (result.avg_price <= intent.price)
+        req(better, p + '.avg_price', 'a resting target never fills worse than its limit (a gap fills at it or better)')
     if is_post_hoc(intent):
         req(sent_at_ms is None and result.phase is ResultPhase.FINAL
             and ev in (Evidence.EXCHANGE_EXTERNAL, Evidence.NOT_SENT), p + '.evidence',
