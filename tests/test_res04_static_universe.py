@@ -13,7 +13,8 @@ import static_universe as S                                                     
 
 UDIR = os.path.join(ROOT, 'research_evidence', 'universe')
 SOURCE = {'base_rule_id': 'pit-top40-qv30d-v4', 'instant_ms': 1790553600000, 'instant_utc': '2026-09-28',
-          'manifest_digest': 'a' * 64, 'classes_digest': 'b' * 64, 'pit_universe_digest': 'c' * 64}
+          'manifest_digest': 'a' * 64, 'classes_digest': 'b' * 64, 'pit_universe_digest': 'c' * 64,
+          'recent_klines': {'source': 'x', 'start_ms': 0, 'symbols': 0, 'digest': 'e' * 64}}
 
 
 def row(sym, status='TRADING', ct='PERPETUAL', quote='USDT', under='COIN'):
@@ -51,7 +52,8 @@ def test_snapshot_is_reduced_and_pinned():
     snap = S.reduce_exchange_info(raw)
     assert all(set(r) == set(S.SNAP_FIELDS) for r in snap['symbols'])
     assert snap['raw_sha256'] == S.hashlib.sha256(raw).hexdigest()
-    assert snap['server_time_cairo'] == '2026-10-09T10:16:04+03:00'
+    assert snap['fetched_cairo'] == '2026-10-09T10:16:04+03:00'
+    assert S.reduce_exchange_info(raw, 1791676800000)['fetched_ms'] == 1791676800000
 
 
 # 1. exact count and order
@@ -140,13 +142,17 @@ def test_deterministic_rebuild(built, tmp_path):
 
 
 def test_committed_artifact():
-    path = os.path.join(UDIR, 'static-top40-minhist365-20260928.json')
-    snap_path = os.path.join(UDIR, 'binance-um-exchangeinfo-20261009.json')
+    path = os.path.join(UDIR, 'static-top40-minhist365-20261011.json')
+    snap_path = os.path.join(UDIR, 'binance-um-exchangeinfo-20261011.json')
     assert S.main(['verify', path, '--snapshot', snap_path]) == 0
     with open(path, encoding='ascii') as f:
         u = json.load(f)
     assert u['label'] == 'CURRENT-UNIVERSE / SURVIVOR-BIASED' and u['owner_approved'] is False
     assert u['ranking_rule']['rule_id'] == 'qv30d-top40-minhist365' and u['ranking_rule']['min_history_days'] == 365
+    with open(os.path.join(UDIR, 'binance-um-klines1d-recent-20261011.json'), encoding='ascii') as f:
+        recent = json.load(f)
+    assert recent['digest'] == S.body_digest(recent) == u['sources']['recent_klines']['digest']
+    assert recent['instant_ms'] == u['ranking_rule']['instant_ms']
     assert u['ranking_rule']['base_rule_id'] == 'pit-top40-qv30d-v4' and u['core_10'][:2] == ['BTCUSDT', 'ETHUSDT']
 
 
@@ -173,3 +179,30 @@ def test_history_days_counts_current_segment_only():
     del bars[inst - 200 * D]
     assert S.history_days(bars, inst) == 199
     assert S.history_days({inst - 2 * D: 1}, inst) == 0                # no bar closing at the instant
+
+
+# bounded recent refresh (no network: a fake getter); digest / overlap mismatches are refused
+def test_recent_refresh_and_merge():
+    D = S.DAY
+    store_end = 20 * D
+    m = {'files': [{'series': 'klines', 'interval': '1d', 'symbol': 'C01USDT', 'last_open_ms': store_end - D},
+                   {'series': 'klines', 'interval': '1d', 'symbol': 'DEADUSDT', 'last_open_ms': store_end - 2 * D}]}
+    snap = S.reduce_exchange_info(raw_info(ROWS), 23 * D + 5)
+    assert S.instant_of(snap) == 23 * D
+    urls = []
+
+    def get(url):
+        urls.append(url)
+        return json.dumps([[t, 0, 0, 0, 0, 0, t + D - 1, '7.5'] for t in range(store_end, 24 * D, D)]).encode()
+    r = S.fetch_recent(m, snap, pause_s=0, get=get)
+    assert list(r['symbols']) == ['C01USDT'] and len(urls) == 1          # SETTLING DEADUSDT is not fetched
+    assert [b[0] for b in r['symbols']['C01USDT']['bars']] == [20 * D, 21 * D, 22 * D]   # day 23 is not complete
+    daily = {'C01USDT': {store_end - D: S.U.Decimal(1)}}
+    S.merge_recent(daily, r, snap)
+    assert S.history_days(daily['C01USDT'], 23 * D) == 4
+    with pytest.raises(S.StaticUniverseError, match='overlaps'):
+        S.merge_recent(daily, r, snap)
+    bad = copy.deepcopy(r)
+    bad['symbols']['C01USDT']['bars'][0][1] = '9'
+    with pytest.raises(S.StaticUniverseError, match='digest'):
+        S.merge_recent({'C01USDT': {}}, bad, snap)

@@ -1,5 +1,7 @@
 {
- "digest": "87970b5447f62475dda0e8cd0454c236830764d639a3a139a7dcbcd6a8b51e48",
+ "digest": "4ca0600463dc4cc48dd7f566d92b73641b6a4d340ea73d20984e26cd7171af50",
+ "fetched_cairo": "2026-10-11T08:34:34+03:00",
+ "fetched_ms": 1791696874463,
  "fields": [
   "symbol",
   "status",
@@ -8,9 +10,8 @@
   "underlyingType"
  ],
  "format": "zb-binance-um-exchangeinfo-reduced/1",
- "raw_sha256": "b512355ad8ffcca88de5c5a1c9f30fb8a4418a957edc77f74c68003431e59c83",
- "server_time_cairo": "2026-10-09T10:16:04+03:00",
- "server_time_ms": 1791530164008,
+ "raw_sha256": "f4dff1fde97aa968087138c2a9d9a9e869074ee74cfd8ffee33c973e2465343a",
+ "server_time_ms": 1791530164012,
  "source_url": "https://fapi.binance.com/fapi/v1/exchangeInfo",
  "symbols": [
   {

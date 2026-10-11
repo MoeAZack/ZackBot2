@@ -268,7 +268,9 @@ def rank(scored: list[tuple[str, Decimal]]) -> list[tuple[str, Decimal]]:
 
 def build(daily: dict[str, dict[int, Decimal]], *, manifest_digest: str, classes: dict, renames=(),
           delist_observations=(), rules_first_observed_ms: int | None = None, top_n: int = TOP_N,
-          universe_id: str = UNIVERSE_ID) -> dict:
+          universe_id: str = UNIVERSE_ID, anchor_ms: int = MONDAY_EPOCH) -> dict:
+    """`anchor_ms` only shifts the weekly instants (default: Mondays 00:00 UTC); the static universe uses it to rank at
+    one refreshed instant with the same rule. Every other rule is unchanged."""
     symbols = sorted(daily)
     if not symbols or not M.HEX64.match(manifest_digest or ''):
         raise UniverseError('need daily bars and a 64-hex manifest digest')
@@ -299,7 +301,7 @@ def build(daily: dict[str, dict[int, Decimal]], *, manifest_digest: str, classes
                       'missing_day_count': sum((date_ms(b) - date_ms(a)) // DAY + 1 for a, b in gaps)})
 
     first = store_start + LOOKBACK_DAYS * DAY
-    monday = first + (MONDAY_EPOCH - first) % WEEK
+    monday = first + (anchor_ms - first) % WEEK
     weeks = []
     while monday <= store_end:
         window = range(monday - LOOKBACK_DAYS * DAY, monday, DAY)   # open in [instant-30d, instant-1d] = closed by then
