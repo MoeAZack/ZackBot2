@@ -219,6 +219,7 @@ Every ticket now ends with a **clean-up pass on the files it touched**: remove d
 | Data/research | **DATA-01/01a + EDGE-00** | Execution-grade venue data, pinned provenance and a stop/go edge checkpoint before strategy sprawl |
 | Engine gate | **OPS-01 minimum mechanisms + numeric ENG-GATE-01** | Must pass before “mainnet candidate”; this is not permission to trade live |
 | Product expansion | **T14–T16 and Phases 8–12** | Multi-account/copy, PWA and TradingView/news after the engine milestone; gold/TradFi venue work remains part of the engine milestone |
+| Secondary market intelligence | **DATA-EXT-01 (Wave G, later)** | Read-only PerpEquities discovery/context with provenance and stale/quality checks; Binance re-confirms every executable fact; no effect on the active engine queue |
 | Final gate | Release audit + your explicit mainnet approval | |
 
 ## Scouting: ideas from other bots and from Claude/Codex (proposed, not started)

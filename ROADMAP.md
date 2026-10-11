@@ -362,6 +362,12 @@ A high score **never** changes settings automatically.
 
 - **Gold:** PAXG spot first, then XAUT, then broker XAUUSD.
 - **TradFi:** paper-only until sessions, gaps and corporate actions pass their tests.
+- **Secondary market intelligence (DATA-EXT-01, later and non-blocking):** add a read-only PerpEquities adapter for
+  instrument/venue discovery, coverage, funding/basis context, spreads, depth, open interest and cost comparison. Its
+  data path is fixed as `PerpEquities discovery/context -> ZackBot normalization + stale/quality checks -> official
+  Binance API confirmation -> strategy eligibility and risk scoring -> Binance execution`. The adapter starts in
+  observe/shadow mode, carries source/freshness/coverage provenance, distinguishes missing from zero, and can never be
+  the authority for executable symbol state, price, leverage, funding, depth, account state or order routing.
 - **Vantage / Bybit / MetaTrader 5 (post-Binance-live only):** keep Binance on its native API and finish its engine,
   strategies, evidence and live milestone first. Only after the owner explicitly opens post-live expansion may a
   fail-closed MT5 bridge serve Vantage or specific Bybit/TradFi account products, or a native Bybit API adapter begin.
