@@ -7,6 +7,7 @@ data_long/**/*.csv text eol=lf
 DATA_MANIFEST.json text eol=lf
 research_evidence/manifests/*.json text eol=lf
 research_evidence/universe/*.json text eol=lf
+research_evidence/accounting/*.json text eol=lf
 research_evidence/manifests/*.json.gz binary
 research_evidence/ledger/*.jsonl text eol=lf
 # Codex #53 6096066849: the R4 prereg/gate are byte-pinned (no CRLF), so every checkout writes them LF.

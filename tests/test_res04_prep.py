@@ -781,12 +781,11 @@ def test_gate_closes_on_a_moved_pin_bad_ancestry_or_an_edited_prereg(grepo):
     assert any('primary_params' in f for f in fail) and any('G3 no preregistration' in f for f in fail)
 
 
-def test_pit_subcommand_and_m3_never_run_with_the_gate_closed():
-    if G.gate(ROOT):                                                                # not registered: both refuse
-        assert G.main(['pit', '--author', 't', '--cairo-date', '2026-10-10']) == 3
-        assert G.main(['m3', '--store', ROOT, '--author', 't', '--cairo-date', '2026-10-10']) == 3
-    else:                                       # registered (STRAT-00): pit still runs nothing; m3 is not invoked here
-        assert G.main(['pit', '--author', 't', '--cairo-date', '2026-10-10']) == 4
+def test_pit_subcommand_and_m3_never_run_with_the_gate_closed(monkeypatch):
+    """The refusal is invariant; do not couple it to whether the committed tree is before or after registration."""
+    monkeypatch.setattr(G, 'gate', lambda *a, **kw: ['G3 forced closed for the refusal test'])
+    assert G.main(['pit', '--author', 't', '--cairo-date', '2026-10-10']) == 3
+    assert G.main(['m3', '--store', ROOT, '--author', 't', '--cairo-date', '2026-10-10']) == 3
     g = json.loads(G._load(ROOT, G.GATE))
     assert 'classification' not in g and g['universe']['owner_approved'] is True       # STRAT-00 binding
     assert (g['universe']['digest'], g['universe']['list_digest']) == (
@@ -798,6 +797,20 @@ def test_pit_subcommand_and_m3_never_run_with_the_gate_closed():
                                               'c613337a4efc7ebf31afbda186aef4219ecd30e3']
     assert g['pins'][1]['integrated'] == 'a47815b76350dc77d195637b00de3c2607126d0c'
     assert 'branch' not in g['pins'][1]
+
+
+def test_committed_preregistration_is_complete_and_opens_the_gate():
+    """STRAT-00 registration transition: the accepted prereg has exactly its 18 committed trial records."""
+    # Exercise the registration gate without requiring CI to fetch every historical pin.
+    assert G.gate(ROOT, need_cleared=False) == []
+    g = json.loads(G._load(ROOT, G.GATE))
+    raw = G._load(ROOT, g['prereg'])
+    pre, sha = json.loads(raw), hashlib.sha256(raw).hexdigest()
+    recs = L.verify(os.path.join(ROOT, g['ledger']))[pre['family']]
+    registered = [r for r in recs if r['detail'].get('prereg_sha256') == sha]
+    assert len(registered) == pre['trials']['declared']['total'] == 18
+    key = lambda r: (r['kind'], json.dumps(r['detail'], sort_keys=True))
+    assert sorted(map(key, registered)) == sorted(map(key, G.trial_records(pre, sha, g['prereg'])))
 
 
 def test_a_rebase_merged_pin_is_checked_by_its_integrated_commit(grepo):
