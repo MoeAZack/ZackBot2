@@ -782,8 +782,11 @@ def test_gate_closes_on_a_moved_pin_bad_ancestry_or_an_edited_prereg(grepo):
 
 
 def test_pit_subcommand_and_m3_never_run_with_the_gate_closed():
-    assert G.main(['pit', '--author', 't', '--cairo-date', '2026-10-10']) == 3      # this branch: not registered
-    assert G.main(['m3', '--store', ROOT, '--author', 't', '--cairo-date', '2026-10-10']) == 3
+    if G.gate(ROOT):                                                                # not registered: both refuse
+        assert G.main(['pit', '--author', 't', '--cairo-date', '2026-10-10']) == 3
+        assert G.main(['m3', '--store', ROOT, '--author', 't', '--cairo-date', '2026-10-10']) == 3
+    else:                                       # registered (STRAT-00): pit still runs nothing; m3 is not invoked here
+        assert G.main(['pit', '--author', 't', '--cairo-date', '2026-10-10']) == 4
     g = json.loads(G._load(ROOT, G.GATE))
     assert 'classification' not in g and g['universe']['owner_approved'] is True       # STRAT-00 binding
     assert (g['universe']['digest'], g['universe']['list_digest']) == (
