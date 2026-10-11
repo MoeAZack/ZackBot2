@@ -1,0 +1,714 @@
+{
+ "core_10": [
+  "BTCUSDT",
+  "ETHUSDT",
+  "ZECUSDT",
+  "SOLUSDT",
+  "XRPUSDT",
+  "NEARUSDT",
+  "HYPEUSDT",
+  "DOGEUSDT",
+  "UNIUSDT",
+  "SUIUSDT"
+ ],
+ "core_20": [
+  "BTCUSDT",
+  "ETHUSDT",
+  "ZECUSDT",
+  "SOLUSDT",
+  "XRPUSDT",
+  "NEARUSDT",
+  "HYPEUSDT",
+  "DOGEUSDT",
+  "UNIUSDT",
+  "SUIUSDT",
+  "QNTUSDT",
+  "BNBUSDT",
+  "LSKUSDT",
+  "ENAUSDT",
+  "1000PEPEUSDT",
+  "WLDUSDT",
+  "PUMPUSDT",
+  "ADAUSDT",
+  "AVAXUSDT",
+  "LINKUSDT"
+ ],
+ "digest": "1c06c18d2fc82413b740260f0051a9f8286e9b0cb87d7d9614a2f88d78393fce",
+ "excluded_by_history": [
+  {
+   "history_days": 34,
+   "old_rank": 38,
+   "source_rank": 38,
+   "symbol": "PONSUSDT"
+  },
+  {
+   "history_days": 291,
+   "old_rank": 39,
+   "source_rank": 39,
+   "symbol": "LITUSDT"
+  }
+ ],
+ "format": "zb-static-universe/1",
+ "inactive_gold": [
+  {
+   "blocking": false,
+   "counts_toward_40": false,
+   "snapshot_row": {
+    "contractType": "PERPETUAL",
+    "onboardDate": 1743071400000,
+    "quoteAsset": "USDT",
+    "status": "TRADING",
+    "symbol": "PAXGUSDT",
+    "underlyingType": "COIN"
+   },
+   "status": "inactive",
+   "symbol": "PAXGUSDT"
+  },
+  {
+   "blocking": false,
+   "counts_toward_40": false,
+   "snapshot_row": {
+    "contractType": "TRADIFI_PERPETUAL",
+    "onboardDate": 1765440300000,
+    "quoteAsset": "USDT",
+    "status": "TRADING",
+    "symbol": "XAUUSDT",
+    "underlyingType": "COMMODITY"
+   },
+   "status": "inactive",
+   "symbol": "XAUUSDT"
+  }
+ ],
+ "label": "CURRENT-UNIVERSE / SURVIVOR-BIASED",
+ "list_digest": "d95ba63c126029e23196e253c74cd95918cb5c9102079792194c972d20884bc5",
+ "owner_approval": {
+  "approved_at_sha": "487c2c855572321b9c53119e6936f3ba5c6843ce",
+  "by": "owner",
+  "date_cairo": "2026-10-11",
+  "list_digest": "d95ba63c126029e23196e253c74cd95918cb5c9102079792194c972d20884bc5",
+  "pending_digest": "5353adbcf054184f39c98a7b898e9c7495588ee34126b34c9ecb741232c92f27",
+  "status": "APPROVED"
+ },
+ "owner_approved": true,
+ "ranked_source": [
+  [
+   1,
+   "BTCUSDT",
+   "344346165848.2948",
+   2475
+  ],
+  [
+   2,
+   "ETHUSDT",
+   "263116704567.68264",
+   2475
+  ],
+  [
+   3,
+   "ZECUSDT",
+   "65566505796.39725",
+   1652
+  ],
+  [
+   4,
+   "SOLUSDT",
+   "62190732737.35224",
+   1652
+  ],
+  [
+   5,
+   "XRPUSDT",
+   "36173207765.21423",
+   1652
+  ],
+  [
+   6,
+   "NEARUSDT",
+   "21867204545.013",
+   1652
+  ],
+  [
+   7,
+   "HYPEUSDT",
+   "19838083988.23463",
+   499
+  ],
+  [
+   8,
+   "DOGEUSDT",
+   "15908911434.32445",
+   2284
+  ],
+  [
+   9,
+   "UNIUSDT",
+   "12815404838.81",
+   2214
+  ],
+  [
+   10,
+   "SUIUSDT",
+   "12814472451.63103",
+   1257
+  ],
+  [
+   11,
+   "QNTUSDT",
+   "11809219023.628",
+   1452
+  ],
+  [
+   12,
+   "BNBUSDT",
+   "10968606133.6347",
+   2435
+  ],
+  [
+   13,
+   "LSKUSDT",
+   "10228130320.81082",
+   990
+  ],
+  [
+   14,
+   "ENAUSDT",
+   "9345428655.57206",
+   922
+  ],
+  [
+   15,
+   "1000PEPEUSDT",
+   "8968265943.7938664",
+   1255
+  ],
+  [
+   16,
+   "WLDUSDT",
+   "8135024350.0899",
+   1175
+  ],
+  [
+   17,
+   "PUMPUSDT",
+   "7593842882.09121",
+   547
+  ],
+  [
+   18,
+   "ADAUSDT",
+   "7141301345.0582",
+   2445
+  ],
+  [
+   19,
+   "AVAXUSDT",
+   "6590336274.061",
+   2209
+  ],
+  [
+   20,
+   "LINKUSDT",
+   "6151428168.01823",
+   2459
+  ],
+  [
+   21,
+   "TAOUSDT",
+   "5957326672.76994",
+   913
+  ],
+  [
+   22,
+   "ONDOUSDT",
+   "5719532165.01909",
+   995
+  ],
+  [
+   23,
+   "AKEUSDT",
+   "5571971778.3918243",
+   380
+  ],
+  [
+   24,
+   "ARBUSDT",
+   "5183259432.380617",
+   1298
+  ],
+  [
+   25,
+   "BCHUSDT",
+   "5085081186.11535",
+   2475
+  ],
+  [
+   26,
+   "BRUSDT",
+   "4961242160.98843",
+   569
+  ],
+  [
+   27,
+   "FILUSDT",
+   "4817670129.85229",
+   1652
+  ],
+  [
+   28,
+   "AAVEUSDT",
+   "4557884730.886",
+   2186
+  ],
+  [
+   29,
+   "LTCUSDT",
+   "4278026657.55897",
+   1652
+  ],
+  [
+   30,
+   "ONEUSDT",
+   "4172725407.1552885",
+   1652
+  ],
+  [
+   31,
+   "SANDUSDT",
+   "3791169682.09182",
+   1652
+  ],
+  [
+   32,
+   "TRUMPUSDT",
+   "3635837864.8505",
+   631
+  ],
+  [
+   33,
+   "MOVRUSDT",
+   "3606623414.309996",
+   1020
+  ],
+  [
+   34,
+   "RLCUSDT",
+   "3102416868.85943",
+   1652
+  ],
+  [
+   35,
+   "XLMUSDT",
+   "2997817135.53361",
+   1652
+  ],
+  [
+   36,
+   "HBARUSDT",
+   "2989926308.03037",
+   1652
+  ],
+  [
+   37,
+   "PENGUUSDT",
+   "2785503893.255988",
+   663
+  ],
+  [
+   38,
+   "PONSUSDT",
+   "2768925094.3003",
+   35
+  ],
+  [
+   39,
+   "LITUSDT",
+   "2596895799.84887",
+   1652
+  ],
+  [
+   40,
+   "STRKUSDT",
+   "2536492130.168703",
+   964
+  ],
+  [
+   41,
+   "MUBARAKUSDT",
+   "2518095894.79339",
+   573
+  ],
+  [
+   42,
+   "USUSDT",
+   "2441763715.029445",
+   303
+  ],
+  [
+   43,
+   "MARSCOINUSDT",
+   "2310307316.08079",
+   40
+  ],
+  [
+   44,
+   "DASHUSDT",
+   "2230140047.00957",
+   2441
+  ]
+ ],
+ "ranking_asof": "2026-10-11 03:00:00 Cairo (2026-10-11 00:00:00 UTC)",
+ "ranking_rule": {
+  "base_rule_id": "pit-top40-qv30d-v4",
+  "book": "crypto",
+  "history": "continuous archived daily bars ending with the bar that closes at the instant, counted no earlier than the current contract onboardDate (the older contract of a reused ticker never counts); any missing day (e.g. a relisting) restarts the count",
+  "instant_ms": 1791676800000,
+  "instant_utc": "2026-10-11",
+  "min_history_days": 365,
+  "min_history_note": "owner rule, 10 Oct 2026, set before any results",
+  "rule_id": "qv30d-top40-minhist365",
+  "selection": "walk the ranked crypto book; take the first 40 symbols whose snapshot row is {'status': 'TRADING', 'contractType': 'PERPETUAL', 'quoteAsset': 'USDT', 'underlyingType': 'COIN'} and whose history_days >= 365; gold identities ['PAXGUSDT', 'XAUUSDT'] never count"
+ },
+ "skipped": [],
+ "sources": {
+  "classes_digest": "48a9d32c4299495d0c58b175755d8ebdab562f8e18a05196a7f361fb6a986845",
+  "exchange_info": {
+   "fetched_ms": 1791696874463,
+   "raw_sha256": "f4dff1fde97aa968087138c2a9d9a9e869074ee74cfd8ffee33c973e2465343a",
+   "reduced_digest": "592680e54b489c4d444bfa9b35a695109e97d4369d4c67c1cd8b00e27a0c4bba",
+   "server_time_ms": 1791530164012,
+   "url": "https://fapi.binance.com/fapi/v1/exchangeInfo"
+  },
+  "manifest_digest": "54912d9d2bf6e6fc45bc75c0553f0bd867e877972beeb3452785937379baf1e7",
+  "pit_universe_digest": "485c752226cc6b50a07d3feefa90a4fdc62e256e8d5a033e57d24983bf2cd093",
+  "recent_klines": {
+   "digest": "4f39a8d2d4b27a1b0839b50f659fecf0a8a924c3ee88ad8a8a0e30512ff32d6f",
+   "source": "https://fapi.binance.com/fapi/v1/klines",
+   "start_ms": 1790812800000,
+   "symbols": 731
+  }
+ },
+ "symbols": [
+  {
+   "history_days": 2475,
+   "qv30d_usdt": "344346165848.2948",
+   "rank": 1,
+   "source_rank": 1,
+   "symbol": "BTCUSDT",
+   "tier": "CORE-10"
+  },
+  {
+   "history_days": 2475,
+   "qv30d_usdt": "263116704567.68264",
+   "rank": 2,
+   "source_rank": 2,
+   "symbol": "ETHUSDT",
+   "tier": "CORE-10"
+  },
+  {
+   "history_days": 1652,
+   "qv30d_usdt": "65566505796.39725",
+   "rank": 3,
+   "source_rank": 3,
+   "symbol": "ZECUSDT",
+   "tier": "CORE-10"
+  },
+  {
+   "history_days": 1652,
+   "qv30d_usdt": "62190732737.35224",
+   "rank": 4,
+   "source_rank": 4,
+   "symbol": "SOLUSDT",
+   "tier": "CORE-10"
+  },
+  {
+   "history_days": 1652,
+   "qv30d_usdt": "36173207765.21423",
+   "rank": 5,
+   "source_rank": 5,
+   "symbol": "XRPUSDT",
+   "tier": "CORE-10"
+  },
+  {
+   "history_days": 1652,
+   "qv30d_usdt": "21867204545.013",
+   "rank": 6,
+   "source_rank": 6,
+   "symbol": "NEARUSDT",
+   "tier": "CORE-10"
+  },
+  {
+   "history_days": 498,
+   "qv30d_usdt": "19838083988.23463",
+   "rank": 7,
+   "source_rank": 7,
+   "symbol": "HYPEUSDT",
+   "tier": "CORE-10"
+  },
+  {
+   "history_days": 2283,
+   "qv30d_usdt": "15908911434.32445",
+   "rank": 8,
+   "source_rank": 8,
+   "symbol": "DOGEUSDT",
+   "tier": "CORE-10"
+  },
+  {
+   "history_days": 2213,
+   "qv30d_usdt": "12815404838.81",
+   "rank": 9,
+   "source_rank": 9,
+   "symbol": "UNIUSDT",
+   "tier": "CORE-10"
+  },
+  {
+   "history_days": 1257,
+   "qv30d_usdt": "12814472451.63103",
+   "rank": 10,
+   "source_rank": 10,
+   "symbol": "SUIUSDT",
+   "tier": "CORE-10"
+  },
+  {
+   "history_days": 1452,
+   "qv30d_usdt": "11809219023.628",
+   "rank": 11,
+   "source_rank": 11,
+   "symbol": "QNTUSDT",
+   "tier": "CORE-20"
+  },
+  {
+   "history_days": 2434,
+   "qv30d_usdt": "10968606133.6347",
+   "rank": 12,
+   "source_rank": 12,
+   "symbol": "BNBUSDT",
+   "tier": "CORE-20"
+  },
+  {
+   "history_days": 989,
+   "qv30d_usdt": "10228130320.81082",
+   "rank": 13,
+   "source_rank": 13,
+   "symbol": "LSKUSDT",
+   "tier": "CORE-20"
+  },
+  {
+   "history_days": 921,
+   "qv30d_usdt": "9345428655.57206",
+   "rank": 14,
+   "source_rank": 14,
+   "symbol": "ENAUSDT",
+   "tier": "CORE-20"
+  },
+  {
+   "history_days": 1255,
+   "qv30d_usdt": "8968265943.7938664",
+   "rank": 15,
+   "source_rank": 15,
+   "symbol": "1000PEPEUSDT",
+   "tier": "CORE-20"
+  },
+  {
+   "history_days": 1174,
+   "qv30d_usdt": "8135024350.0899",
+   "rank": 16,
+   "source_rank": 16,
+   "symbol": "WLDUSDT",
+   "tier": "CORE-20"
+  },
+  {
+   "history_days": 457,
+   "qv30d_usdt": "7593842882.09121",
+   "rank": 17,
+   "source_rank": 17,
+   "symbol": "PUMPUSDT",
+   "tier": "CORE-20"
+  },
+  {
+   "history_days": 2444,
+   "qv30d_usdt": "7141301345.0582",
+   "rank": 18,
+   "source_rank": 18,
+   "symbol": "ADAUSDT",
+   "tier": "CORE-20"
+  },
+  {
+   "history_days": 2208,
+   "qv30d_usdt": "6590336274.061",
+   "rank": 19,
+   "source_rank": 19,
+   "symbol": "AVAXUSDT",
+   "tier": "CORE-20"
+  },
+  {
+   "history_days": 2458,
+   "qv30d_usdt": "6151428168.01823",
+   "rank": 20,
+   "source_rank": 20,
+   "symbol": "LINKUSDT",
+   "tier": "CORE-20"
+  },
+  {
+   "history_days": 912,
+   "qv30d_usdt": "5957326672.76994",
+   "rank": 21,
+   "source_rank": 21,
+   "symbol": "TAOUSDT",
+   "tier": "EXTENDED-40"
+  },
+  {
+   "history_days": 994,
+   "qv30d_usdt": "5719532165.01909",
+   "rank": 22,
+   "source_rank": 22,
+   "symbol": "ONDOUSDT",
+   "tier": "EXTENDED-40"
+  },
+  {
+   "history_days": 379,
+   "qv30d_usdt": "5571971778.3918243",
+   "rank": 23,
+   "source_rank": 23,
+   "symbol": "AKEUSDT",
+   "tier": "EXTENDED-40"
+  },
+  {
+   "history_days": 1297,
+   "qv30d_usdt": "5183259432.380617",
+   "rank": 24,
+   "source_rank": 24,
+   "symbol": "ARBUSDT",
+   "tier": "EXTENDED-40"
+  },
+  {
+   "history_days": 2475,
+   "qv30d_usdt": "5085081186.11535",
+   "rank": 25,
+   "source_rank": 25,
+   "symbol": "BCHUSDT",
+   "tier": "EXTENDED-40"
+  },
+  {
+   "history_days": 568,
+   "qv30d_usdt": "4961242160.98843",
+   "rank": 26,
+   "source_rank": 26,
+   "symbol": "BRUSDT",
+   "tier": "EXTENDED-40"
+  },
+  {
+   "history_days": 1652,
+   "qv30d_usdt": "4817670129.85229",
+   "rank": 27,
+   "source_rank": 27,
+   "symbol": "FILUSDT",
+   "tier": "EXTENDED-40"
+  },
+  {
+   "history_days": 2185,
+   "qv30d_usdt": "4557884730.886",
+   "rank": 28,
+   "source_rank": 28,
+   "symbol": "AAVEUSDT",
+   "tier": "EXTENDED-40"
+  },
+  {
+   "history_days": 1652,
+   "qv30d_usdt": "4278026657.55897",
+   "rank": 29,
+   "source_rank": 29,
+   "symbol": "LTCUSDT",
+   "tier": "EXTENDED-40"
+  },
+  {
+   "history_days": 1652,
+   "qv30d_usdt": "4172725407.1552885",
+   "rank": 30,
+   "source_rank": 30,
+   "symbol": "ONEUSDT",
+   "tier": "EXTENDED-40"
+  },
+  {
+   "history_days": 1652,
+   "qv30d_usdt": "3791169682.09182",
+   "rank": 31,
+   "source_rank": 31,
+   "symbol": "SANDUSDT",
+   "tier": "EXTENDED-40"
+  },
+  {
+   "history_days": 630,
+   "qv30d_usdt": "3635837864.8505",
+   "rank": 32,
+   "source_rank": 32,
+   "symbol": "TRUMPUSDT",
+   "tier": "EXTENDED-40"
+  },
+  {
+   "history_days": 1019,
+   "qv30d_usdt": "3606623414.309996",
+   "rank": 33,
+   "source_rank": 33,
+   "symbol": "MOVRUSDT",
+   "tier": "EXTENDED-40"
+  },
+  {
+   "history_days": 1652,
+   "qv30d_usdt": "3102416868.85943",
+   "rank": 34,
+   "source_rank": 34,
+   "symbol": "RLCUSDT",
+   "tier": "EXTENDED-40"
+  },
+  {
+   "history_days": 1652,
+   "qv30d_usdt": "2997817135.53361",
+   "rank": 35,
+   "source_rank": 35,
+   "symbol": "XLMUSDT",
+   "tier": "EXTENDED-40"
+  },
+  {
+   "history_days": 1652,
+   "qv30d_usdt": "2989926308.03037",
+   "rank": 36,
+   "source_rank": 36,
+   "symbol": "HBARUSDT",
+   "tier": "EXTENDED-40"
+  },
+  {
+   "history_days": 662,
+   "qv30d_usdt": "2785503893.255988",
+   "rank": 37,
+   "source_rank": 37,
+   "symbol": "PENGUUSDT",
+   "tier": "EXTENDED-40"
+  },
+  {
+   "history_days": 963,
+   "qv30d_usdt": "2536492130.168703",
+   "rank": 38,
+   "source_rank": 40,
+   "symbol": "STRKUSDT",
+   "tier": "EXTENDED-40"
+  },
+  {
+   "history_days": 572,
+   "qv30d_usdt": "2518095894.79339",
+   "rank": 39,
+   "source_rank": 41,
+   "symbol": "MUBARAKUSDT",
+   "tier": "EXTENDED-40"
+  },
+  {
+   "history_days": 2440,
+   "qv30d_usdt": "2230140047.00957",
+   "rank": 40,
+   "source_rank": 44,
+   "symbol": "DASHUSDT",
+   "tier": "EXTENDED-40"
+  }
+ ],
+ "tradability_asof": "2026-10-11 08:34:34 Cairo (2026-10-11 05:34:34 UTC)",
+ "universe_id": "static-top40-minhist365-contract-20261011"
+}
