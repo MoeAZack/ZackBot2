@@ -576,6 +576,9 @@ def main() -> int:
     try:
         spec = importlib.util.spec_from_file_location('zb_evaluator', init['evaluator_path'])
         mod = importlib.util.module_from_spec(spec)
+        # STRAT-00: register before exec (the standard importlib recipe). A dataclass in an evaluator with
+        # `from __future__ import annotations` (m3_eval.py) resolves its module through sys.modules at class creation.
+        sys.modules[spec.name] = mod
         spec.loader.exec_module(mod)
         fn = getattr(mod, init['function'])
         summ = getattr(mod, init['summary']) if init.get('summary') else None
