@@ -379,7 +379,7 @@ def test_m3_identity_binds_the_sandboxed_evaluator_and_digests():
 
 # ------------------------------------------------------------------ R4-0 readiness
 FULL = {'head': 'a' * 40,
-        'digests': {'dataset': 'b' * 64, 'universe': 'c' * 64, 'classification': 'd' * 64, 'prereg': 'f' * 64},
+        'digests': {'dataset': 'b' * 64, 'universe': 'c' * 64, 'universe_list': 'd' * 64, 'prereg': 'f' * 64},
         'tests': {'passed': 10, 'failed': 0}, 'm3_parity': {'status': 'PASS'},
         'accounting_sample': {'status': 'PASS'}, 'pilot': {'status': 'PASS'},
         'items': {str(n): {'status': 'PASS'} for n in RR.ITEMS}}
@@ -388,12 +388,12 @@ FULL = {'head': 'a' * 40,
 def test_readiness_defaults_to_not_ready_with_every_item_missing():
     doc = RR.build({})
     assert doc['verdict'] == 'NOT READY' and {i['status'] for i in doc['items'].values()} == {'MISSING'}
-    assert {'head', 'digest.classification', 'tests', 'm3_parity', 'pilot', 'item.6'} <= set(doc['not_passing'])
+    assert {'head', 'digest.universe_list', 'tests', 'm3_parity', 'pilot', 'item.6'} <= set(doc['not_passing'])
     with pytest.raises(RR.ReadinessError):
         RR.build({'items': {'8': {'status': 'PASS'}}})
     with pytest.raises(RR.ReadinessError):
         RR.build({'pilot': {'status': 'GOOD'}})
-    assert RR.build(dict(FULL, digests=dict(FULL['digests'], classification='PENDING')))['verdict'] == 'NOT READY'
+    assert RR.build(dict(FULL, digests=dict(FULL['digests'], universe_list='PENDING')))['verdict'] == 'NOT READY'
 
 
 @pytest.mark.parametrize('drop', ['head', 'digests', 'tests', 'm3_parity', 'accounting_sample', 'pilot', 'items'])
@@ -424,13 +424,16 @@ def test_readiness_determinism_from_sealed_finals(tmp_path):
 
 
 def test_offline_readiness_on_this_tree_is_not_ready(tmp_path):
-    """The real committed inputs: digests recomputed, holdout unread, classification PENDING -> NOT READY."""
+    """The real committed inputs: digests recomputed, holdout unread, static universe bound (STRAT-00), but the
+    Windows evidence is missing -> NOT READY."""
     ev = RR.offline(ROOT)
-    assert ev['digests']['classification'] == 'PENDING'
-    assert ev['digests']['universe'] == G.json.loads(G._load(ROOT, G.UNIVERSE))['digest']
+    u = G.json.loads(G._load(ROOT, G.UNIVERSE))
+    assert (ev['digests']['universe'], ev['digests']['universe_list']) == (u['digest'], u['list_digest'])
+    assert ev['items']['2']['universe_bound'] is True and 'classification' not in ev['digests']
     off = ev['offline']
     assert off['repro_manifest']['pinned'] and not off['repro_manifest']['promotion_eligible']
-    assert off['universe']['recomputed_ok'] and off['universe']['matches_prereg']
+    assert off['universe']['recomputed_ok'] and off['universe']['matches_prereg'] and off['universe']['owner_approved']
+    assert off['universe']['label'] == 'CURRENT-UNIVERSE / SURVIVOR-BIASED'
     assert off['archive_manifest']['files'] == 103659 and off['archive_manifest']['matches_prereg']
     assert ev['items']['3']['holdout_unread'] is True
     cov = off['m3_coverage']                                     # F1: metadata proof offline, bytes = Windows step
@@ -438,6 +441,7 @@ def test_offline_readiness_on_this_tree_is_not_ready(tmp_path):
     assert sorted(cov['series']) == sorted(X.CORE8) and ev['items']['2']['status'] == 'MISSING'
     assert '--store' in ev['items']['2']['remaining']
     doc = RR.build(ev)
-    assert doc['verdict'] == 'NOT READY' and 'digest.classification' in doc['not_passing']
+    assert doc['verdict'] == 'NOT READY' and {'m3_parity', 'item.5', 'item.6'} <= set(doc['not_passing'])
+    assert not any(k.startswith('digest.') for k in doc['not_passing'])
     assert RR.main(['--out', str(tmp_path / 'r.json'), '--repo', ROOT]) == 1
     assert json.load(open(tmp_path / 'r.json'))['verdict'] == 'NOT READY'

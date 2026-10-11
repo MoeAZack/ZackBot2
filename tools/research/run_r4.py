@@ -19,8 +19,11 @@ Gate (`gate()` returns every failure; any failure = exit 3, nothing is read):
      equals its branch tip when a branch is named, has its `after` commit as an ancestor, is merged into the
      integration ref and is contained in HEAD; a rebase-merged pin names its `integrated` master commit, whose tree
      must equal the reviewed source head's, and the ancestry checks apply to the integrated commit.
-  G5 classification bound: the gate's classification digest is a 64-hex digest. `PENDING` (classification v2 not
-     built) keeps the gate closed - R4-0 is NOT READY.
+  G5 universe bound (STRAT-00, contract section 0.1; classification v2 is superseded and not required): the gate's
+     `universe` block names the owner-approved static current top-40 artifact; it re-validates against its committed
+     exchangeInfo snapshot (static_universe.validate: 40 unique ranked symbols, CORE-10 / CORE-20, tradability,
+     digests, byte-identical rebuild + approval), carries the CURRENT-UNIVERSE / SURVIVOR-BIASED label and
+     `owner_approved` true, and equals the pinned digest and list digest, which the prereg cites too.
 `m3` keeps the sanitized progress snapshot + sealed final (progress.py, zb-run-progress/2) beside its reports:
 operational state only. `register` (after Codex clears the prereg) needs G1 + G2 and appends the declared trial
 records once; commit the ledger, then `m3` / `pit` pass G3. No network, no credentials; git is read locally (fetch
@@ -35,6 +38,7 @@ import os
 import re
 import subprocess
 import sys
+import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import costs as C                                                                           # noqa: E402
@@ -42,12 +46,15 @@ import ledger as L                                                              
 import manifest as M                                                                        # noqa: E402
 import progress as PG                                                                       # noqa: E402
 import report as R                                                                          # noqa: E402
+import static_universe as SU                                                                # noqa: E402
 import splits as S                                                                          # noqa: E402
 import trend_ema_mom as T                                                                   # noqa: E402
 
 GATE = 'research_evidence/prereg/r4_gate.json'
-GATE_FORMAT = 'zb-r4-gate/2'
-UNIVERSE = 'research_evidence/universe/pit-top40-qv30d-v4.json'
+GATE_FORMAT = 'zb-r4-gate/3'
+UNIVERSE = 'research_evidence/universe/static-top40-minhist365-contract-20261011.json'
+SNAPSHOT = 'research_evidence/universe/binance-um-exchangeinfo-v2-20261011.json'
+TIERS = {'CORE-10': [1, 10], 'CORE-20': [1, 20], 'EXT-21-40': [21, 40]}   # reported separately, never pooled
 PREREG_FORMAT = 'zb-prereg/1'
 PREREG_KEYS = {'format', 'candidate_id', 'family', 'author', 'cairo_date', 'status', 'hypothesis', 'contamination',
                'data', 'universe_rule', 'timeframe', 'rule', 'primary_params', 'variants', 'neighbour_grid', 'trials',
@@ -58,6 +65,8 @@ EDGE_ROWS = {'sample', 'expectancy', 'baselines', 'multiplicity', 'pit', 'robust
 PRIMARY_NAME = 'trend_ema_mom.v1.cap180'        # the promotable primary (Codex 6095682220)
 PRIMARY_CAP = T.TIME_CAP_BARS                   # its finite time cap = the purge / embargo horizon
 DEV_ONLY = 'trend_ema_mom.v1.uncapped'          # the uncapped M3 rule: reproduction / development evidence only
+SPENT_END = '2026-10-05T00:00:00Z'               # end of the ledger's spent window (trend_ema_mom seq 1)
+HOLDOUT_WEEKS = 52                              # fixed holdout length; the end is exclusive
 TRIALS = 18                                     # crypto family; gold has its own future budget
 DEFERRED = {'gold-spot': 'XAUUSDT', 'gold-tokenized': 'PAXGUSDT'}  # costs.py class names
 M3_EVALUATOR = 'tools/research/m3_eval.py'
@@ -140,6 +149,10 @@ def validate_prereg(pre: dict, repo: str) -> list[str]:
             bad.append('split horizon_bars must equal the primary time cap (the purge / embargo horizon)')
         if sp['lookback_bars'] < T.max_lookback_bars([T.PRIMARY] + [p for _, p in T.neighbours()]):
             bad.append('lookback_bars does not cover every evaluated configuration')
+        ho = plan.split('holdout')
+        h0, h1 = S.parse_utc(ho['start']), S.parse_utc(ho['end'])
+        if h0 <= S.parse_utc(SPENT_END) or h0 % (4 * 3_600_000) or h1 - h0 != HOLDOUT_WEEKS * 7 * 86_400_000:
+            bad.append(f'holdout must start on a 4h boundary after {SPENT_END} and last exactly {HOLDOUT_WEEKS} weeks')
         cal = pre['costs']['slip_cal_v1']['calibration_window']
         if plan.split('calibration') != {**plan.split('calibration'), 'start': cal['start'], 'end': cal['end']}:
             bad.append('the calibration split must be the slip-cal-v1 calibration window')
@@ -176,17 +189,64 @@ def validate_prereg(pre: dict, repo: str) -> list[str]:
     want = {'variant': 2, 'grid_point': len(names), 'baseline': 4, 'total': 6 + len(names)}
     if t != want or t['total'] != TRIALS:
         bad.append(f'declared trials differ from the records register appends ({TRIALS}, crypto family only)')
+    d = pre['data']
+    if d.get('universe_path') != UNIVERSE:
+        bad.append(f'data.universe_path must be the frozen static current list {UNIVERSE}')
     try:
-        u = json.loads(_load(repo, UNIVERSE))
-        if (u['digest'], u['manifest_digest']) != (pre['data']['universe_digest'], pre['data']['manifest_digest']):
-            bad.append('universe / manifest digests differ from the committed universe file')
-    except (OSError, ValueError, KeyError) as e:
+        u = static_universe(repo, UNIVERSE)
+        if (u['digest'], u['list_digest'], u['sources']['manifest_digest']) != (
+                d['universe_digest'], d['universe_list_digest'], d['manifest_digest']):
+            bad.append('universe / list / manifest digests differ from the committed static universe file')
+    except (OSError, ValueError, KeyError, GateError) as e:
         bad.append(f'universe file: {e}')
+    if d.get('label') != SU.LABEL or ur.get('label') != SU.LABEL:
+        bad.append(f'data.label and universe_rule.label must be {SU.LABEL!r}')
+    if ur.get('report_tiers') != TIERS:
+        bad.append(f'universe_rule.report_tiers must be exactly {TIERS} (reported separately)')
     m3 = pre['m3_reproduction'].get('manifest', {})
     import m3_repro as X                                                                    # noqa: E402
     if m3.get('id') != X.REPRO_ID or m3.get('digest') != X.REPRO_DIGEST or m3.get('source_class') != M.REPRO_ONLY:
         bad.append('m3_reproduction.manifest must pin legacy-m3-repro-v1 (repro-only) by digest')
     return bad
+
+
+# ------------------------------------------------------------------ the static universe (G5)
+def static_universe(repo: str, rel: str, snapshot_rel: str = SNAPSHOT) -> dict:
+    """The owner-approved static current list, re-validated by static_universe.validate against its committed
+    exchangeInfo snapshot (count / order / CORE tiers / uniqueness / tradability / digests / byte-identical rebuild +
+    approval). No network."""
+    raw = _load(repo, rel)
+    u = json.loads(raw)
+    try:
+        if raw != SU.dumps(u):
+            raise GateError(f'{rel}: not in canonical written form')
+        SU.validate(u, json.loads(_load(repo, snapshot_rel)))
+    except SU.StaticUniverseError as e:
+        raise GateError(f'{rel}: {e}') from e
+    if u.get('label') != SU.LABEL:
+        raise GateError(f'{rel}: label must be {SU.LABEL!r}')
+    if u.get('owner_approved') is not True:
+        raise GateError(f'{rel}: owner_approved is not true')
+    return u
+
+
+def universe_failures(repo: str, g: dict, pre: dict | None = None) -> list[str]:
+    """G5: the gate's universe block binds the static artifact by digest + list digest, owner_approved true."""
+    b = g.get('universe') or {}
+    if b.get('owner_approved') is not True or not all(isinstance(b.get(k), str) and HEX64.match(b[k])
+                                                      for k in ('digest', 'list_digest')):
+        return ['G5 universe: the gate must pin a 64-hex digest + list_digest with owner_approved true']
+    try:
+        u = static_universe(repo, b.get('path', ''), b.get('snapshot', SNAPSHOT))
+    except (OSError, ValueError, KeyError, GateError) as e:
+        return [f'G5 universe: {e}']
+    fail = []
+    if (u['universe_id'], u['digest'], u['list_digest']) != (b.get('id'), b['digest'], b['list_digest']):
+        fail.append('G5 universe: the file differs from the pinned id / digest / list digest')
+    if pre is not None and (pre['data'].get('universe_digest'), pre['data'].get('universe_list_digest')) != (
+            b['digest'], b['list_digest']):
+        fail.append('G5 universe: the prereg cites a different universe than the gate pins')
+    return fail
 
 
 # ------------------------------------------------------------------ the gate
@@ -242,9 +302,7 @@ def gate(repo: str = M.REPO, *, gate_path: str = GATE, registry_genesis=None, ne
     # G4 + G5
     if need_cleared:
         fail += pin_failures(repo, g)
-        cls = (g.get('classification') or {}).get('digest')
-        if not (isinstance(cls, str) and HEX64.match(cls)):
-            fail.append(f'G5 classification digest {cls!r}: classification v2 is not built / bound (R4-0 NOT READY)')
+        fail += universe_failures(repo, g, pre)
     return fail
 
 
@@ -298,12 +356,18 @@ def refuse_unless_open(repo, **kw):
 
 
 # ------------------------------------------------------------------ subcommands
-def register(repo: str, *, author: str, cairo_date: str, gate_path: str = GATE, registry_genesis=None) -> list[dict]:
+def register(repo: str, *, author: str, cairo_date: str, gate_path: str = GATE, registry_genesis=None,
+             now_ms: int | None = None) -> list[dict]:
+    """Append the declared trial records once. Refused at or after the prereg's holdout start (Codex 6106611116): a
+    forward holdout may never begin before its preregistration is recorded."""
     refuse_unless_open(repo, gate_path=gate_path, registry_genesis=registry_genesis, need_registered=False,
                        need_cleared=False)
     g = json.loads(_load(repo, gate_path))
     raw = _load(repo, g['prereg'])
     pre, sha = json.loads(raw), hashlib.sha256(raw).hexdigest()
+    h0 = S.parse_utc(next(x for x in pre['splits']['splits'] if x['name'] == 'holdout')['start'])
+    if (int(time.time() * 1000) if now_ms is None else now_ms) >= h0:
+        raise GateError(f'registration refused: the holdout started at {S.utc(h0)}; re-date the prereg holdout first')
     path = os.path.join(repo, g['ledger'])
     recs = L.verify(path, registry_genesis=registry_genesis).get(pre['family'], [])
     if any(r['detail'].get('prereg_sha256') == sha for r in recs):
@@ -343,12 +407,19 @@ def run_m3(repo: str, *, store: str, rows, out_dir: str, author: str, cairo_date
     # artifact hashes. No outcome ever enters it; the reports below are referenced only by SHA-256.
     prog = PG.Progress(out_dir, identity=ident, config=config, clock=clock)
     stage = 'm3.open'
-    try:
-        prog.stage_start(stage)
+
+    def opened():
+        # STRAT-00: one freshly opened (ledgered) development window per cost row. A Window records the decisions it
+        # issued, so a second row replayed on the same Window re-issues the same decision ids and is refused.
         ds, w, lo2, hi2 = X.open_repro(repo, store, os.path.join(repo, g['ledger']), author=author,
                                        cairo_date=cairo_date)
         if (ds.digest, lo2, hi2) != (X.REPRO_DIGEST, lo, hi):
             raise X.ReproError('the opened dataset differs from the declared identity')
+        return ds, w
+
+    try:
+        prog.stage_start(stage)
+        ds, w = opened()
         meta = {'code': R.code_identity(repo), 'identity': ident, 'manifest_digest': ds.digest,
                 'labels': list(ds.labels), 'window': [S.utc(lo), S.utc(hi)], 'cycles': len(times)}
         prog.stage_done(stage)
@@ -356,6 +427,8 @@ def run_m3(repo: str, *, store: str, rows, out_dir: str, author: str, cairo_date
         for name in rows:
             stage = f'm3.{name}'
             prog.stage_start(stage)
+            if name != rows[0]:
+                ds, w = opened()
             ev = X.replay(w, start_ms=lo, end_ms=hi, function=X.FUNCTIONS[name], perturb=perturb)
             doc = X.report(name=name, ref_text=X.read_reference(repo, name), ev=ev, meta=meta)
             written.append(X.atomic_write_json(os.path.join(out_dir, f'm3_repro_{name}.json'), doc))
