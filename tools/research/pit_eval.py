@@ -8,6 +8,12 @@ Entry point for `pit.evaluate(window, <this file>, 'tape', times)`:
                distance once the primary is warm, and the funding events that became available in (t - 4h, t] with
                their funding-mark proxy v1 (`pit.FUNDING_MARK_PROXY`: the close of the 1h mark bar ending at or before
                the funding time; a gap > 1 bar = no mark).
+  - per symbol `n`: the open of the bar opening at t (`View.next_open`: its open only, observable at t), used only
+    for a fill "at the open of the next bar" at the split end, where that bar lies past the window;
+  - per cycle `g`: the registered PIT regime label (prereg hypothesis.regime): BTCUSDT 4h close vs its trailing
+    EMA200 at the decision time, `btc_up` (close > EMA200) / `btc_down`, over the same last-`WINDOW` contiguous
+    closed bars as the rule; None until that tail reaches the rule's warm-up (220 bars) or without a BTCUSDT bar
+    closing at t. Frozen in the attested tape before any outcome is computed.
 The tape holds no outcome: no fill, no cost, no R. Accounting (fills, costs, funding, the 180-bar cap, baselines,
 metrics) is a pure function of this attested tape in `pit_run.py`, so every number it produces derives from rows that
 were available at the time they are used (each decision here is re-run under future perturbation by `pit.evaluate`).
@@ -21,8 +27,10 @@ from __future__ import annotations
 
 import trend_ema_mom as T
 
-FORMAT = 'zb-pit-tape/1'
+FORMAT = 'zb-pit-tape/2'
 HOUR = 3_600_000
+REGIME_SYMBOL = 'BTCUSDT'
+REGIME_EMA = 200
 MARK_BARS = 8                                       # 1h mark bars read per funding lookup (covers (t - 4h, t])
 SIGNAL_CONFIGS = (('primary', T.PRIMARY),) + tuple(T.neighbours())   # index 0 = the primary (cap180 + uncapped)
 
@@ -98,7 +106,7 @@ class Tape:
 
     def _step(self, base: dict, view):
         cache = dict(base)
-        t, recs = view.t, []
+        t, recs, regime = view.t, [], None
         for s in sorted(view.members()):
             b = self._bars(view, s, cache)
             fund = self._funding(view, s, t)
@@ -107,15 +115,20 @@ class Tape:
                     recs.append({'s': s, 'f': fund})
                 continue                                    # no bar closing at t: no decision (never stale)
             last = b[-1]
-            sig = signals(T.contiguous_tail(b), self.configs)
+            tail = T.contiguous_tail(b)
+            sig = signals(tail, self.configs)
+            if s == REGIME_SYMBOL and len(tail) > T.PRIMARY.warmup_bars:
+                closes = [x.close for x in tail]
+                regime = 'btc_up' if closes[-1] > T.ema(closes, REGIME_EMA)[-1] else 'btc_down'
             rec = {'s': s, 'b': [last.open, last.high, last.low, last.close], 'f': fund,
                    'w': ''.join('-' if x is None else '1' for x in sig),
                    'x': ''.join('1' if x is not None and x[1] else '0' for x in sig),
                    'e': {str(k): str(T.stop_distance(x[2], self.configs[k][1]))
                          for k, x in enumerate(sig) if x is not None and x[0]},
-                   'd': None if sig[0] is None else str(T.stop_distance(sig[0][2], self.configs[0][1]))}
+                   'd': None if sig[0] is None else str(T.stop_distance(sig[0][2], self.configs[0][1])),
+                   'n': view.next_open(s, T.TF)}
             recs.append(rec)
-        return {'t': t, 'r': recs}, cache
+        return {'t': t, 'r': recs, 'g': regime}, cache
 
 
 _TAPE = Tape()

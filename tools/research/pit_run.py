@@ -16,21 +16,27 @@ Order of operations (`run_pit`):
      a ledger-recorded `pit.Access.open` window over a `StaticDataset` (the manifest restricted to the tier's frozen
      members, labelled CURRENT-UNIVERSE / SURVIVOR-BIASED), and `pit.evaluate` of `pit_eval.tape` (sandboxed,
      perturbation-checked, two fresh processes, attestation in the family ledger);
-  4. accounting from the attested tape (`account`): long only, one lot per symbol per configuration, decision at
-     bar close t inside the split's decision range, fill at the next bar open, stop = fill - registered stop
-     distance (2.5 x Wilder ATR14; neighbours their own), signal exit at the next bar open, stop over each played
-     bar (`costs.stop_reference`: a bar opening through the stop fills at its open = gap), and the 180-bar cap: a lot
-     still open at the close of bar entry_index + 179 exits there (the last price at entry + 180 x 4h; the next open
-     is not available inside the split), so every capped episode lies inside its split (purge/embargo = the plan's).
-     Costs are the registered `zb-cost-model/2` crypto row through costs.py itself: VIP0 taker each side, slip-v1
-     (TR-SMA14, c = slip-cal-v1 crypto, floor 2 bps), signed actual funding at each actual funding time x
-     funding-mark proxy v1, every stress row of `costs.STRESS` re-pricing the same path (the stop level and exit path
-     are those of the base row; R = net per unit / registered stop distance). Unit-quantity R: no lot step / tick
-     rounding (follower-tier sizing is a later row);
+  4. accounting from the attested tape (`account` -> `run_book`): the registered SHARED PORTFOLIO BOOK per
+     configuration and stress row, one chronological cycle loop over the tier's symbols (m3_eval order): (A) exits
+     due at the bar open (signal exits; the 180-bar cap: a lot open 180 bars after entry closes at the OPEN of the
+     next bar, market taker), one wallet snapshot, entries in frozen rank order - 10,000 USDT start, risk 1% of the
+     snapshot / stop distance, max 4 open lots, gross notional <= 3x equity sized on signal close x 1.10, quantity
+     floored to the pinned rule step (never upsized), below min qty / min notional = counted refusal, a Cairo-day
+     halted decision = counted refusal; fill at the next bar open (tick-rounded), stop = fill - registered distance
+     floored to the tick; (B) stop over each played bar (`costs.stop_reference`, gap fills at the open), funding at
+     each actual funding time x mark proxy; (C) MTM at the closes, Cairo-day 3% MTM halt, drawdown kill disarmed.
+     The bar opening at the split end is served by the causal `View.next_open` capability (its open only, never its
+     H/L/C), so a cap or signal exit due exactly at the split end fills there; with no such bar it is INCOMPLETE,
+     never a close. Costs: the registered `zb-cost-model/2` crypto row via costs.py (VIP0 taker, slip-v1 TR-SMA14 with
+     c = slip-cal-v1 crypto, signed actual funding), every `costs.STRESS` row running its own book. Metrics are net %
+     equity, MTM max drawdown, longest underwater and an episode-bootstrap MC drawdown p5/p50/p95; per-trade R
+     (pnl / qty x initial stop risk) and MFE/MAE (stop bars bounded conservatively: earlier highs + the stop bar's
+     open) are diagnostics. B1 keeps its registered unit-R definition (`account_unit`);
   5. INCOMPLETE, never counted: a lot meeting a missing bar (gap), a funding sequence that is not provably complete or
-     lacks a mark, or a lot still open at the split end (only the uncapped variant can) is INCOMPLETE; every trade of
-     that (configuration, split, symbol) is then excluded from the metrics and reported (counts, never silently);
-  6. aggregate metrics, paired baselines (B0 episode-paired matched random entries, B1 weekly equal-weight hold and
+     lacks a mark, or a lot still open at the split end is INCOMPLETE; that (configuration, split, symbol) is excluded
+     and the book is re-run without it until stable, with counts reported (never silently);
+  6. aggregate metrics, paired baselines (B0 episode-paired matched random entries - same symbol, side, split and
+     registered PIT regime label (BTC 4h close vs its EMA200, frozen in the attested tape), B1 weekly equal-weight hold and
      B2 20-bar momentum on calendar-month blocks, B3 cash = the expectancy row; one-sided sign-flip permutation test,
      Holm over the family ledger's n_trials) and the mechanical EDGE-00 / verdict rows of the prereg.
      Development evidence can neither PROMOTE nor REJECT (prereg verdict_rules.development): the verdict is PARK, with
@@ -66,6 +72,7 @@ from decimal import Decimal
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import costs as C                                                                           # noqa: E402
 import ledger as L                                                                          # noqa: E402
+import m3_eval as E                                                                         # noqa: E402
 import m3_repro as X                                                                        # noqa: E402
 import manifest as M                                                                        # noqa: E402
 import pit as P                                                                             # noqa: E402
@@ -98,12 +105,11 @@ FUND_SPAN = (C.MAX_FUNDING_INTERVAL_H + 1) * HOUR
 BASE = C.STRESS['base']
 EXCLUDED_SPLITS = ('calibration', 'holdout')       # calibration: no strategy evaluation; holdout: sealed
 NOT_EVALUATED = (
-    'MTM drawdown + episode-bootstrap MC p5/p50/p95 (closed-trade drawdown is reported; E10 is PARK-only)',
-    'follower tiers 100 / 200 / 500 USDT and RULES-BACKFILLED share (E11; needs exchange lot rules)',
+    'follower tiers 100 / 200 / 500 USDT and RULES-BACKFILLED share (E11)',
     'per-side split (long only rule; the short mirror is never an edge claim)',
-    'contribution by regime and B0 regime matching (no registered PIT regime labeller in code)',
     'stop-first vs target-first (one stop, no target: every exit bar is single-level)',
     'MDE at 80% power (holdout-only quantity)')
+RULES_PATH = 'data/exchange_rules_testnet.json'      # the pinned M3 rules snapshot (m3_repro.RULES_SHA256)
 
 
 class PitRunError(ValueError):
@@ -252,7 +258,7 @@ def read_tape(outputs) -> tuple[list[int], dict]:
 
 
 def net_r(x: Sym, *, entry_ref, entry_ms, dist, exit_ref, exit_ms, gap, exit_bps_at, nbars, slip_c, rows):
-    """Net R per stress row of one unit-quantity long trade on a fixed path (see the module doc)."""
+    """Net R per stress row of one unit-quantity long trade on a fixed path (diagnostics, B0 and B1 only)."""
     ev = x.events(entry_ms, exit_ms)
     out = {}
     for name in rows:
@@ -284,8 +290,246 @@ def _signal(cfg, x: Sym, rec, t):
     return up and d is not None, not up, d
 
 
-def account(outputs, cfg: dict, *, first: int, last: int, hi: int, slip_c: float, rows=tuple(C.STRESS)) -> dict:
-    """Trades of one configuration over one split's attested tape (pure; see the module doc)."""
+def _next_open(x: Sym, at_ms: int, hi: int):
+    """The open of the bar opening at `at_ms`: the next tape bar's open, or at the split end the attested
+    `View.next_open` read (its open only). None = not observable inside the split."""
+    nxt = x.rec.get(at_ms + TF)
+    if nxt is not None:
+        return nxt['b'][0]
+    rec = x.rec.get(at_ms)
+    return rec.get('n') if rec is not None and at_ms == hi else None
+
+
+# ------------------------------------------------------------------ the registered book (prereg rule.book)
+BOOK = {'equity0': 10_000.0, 'risk_pct': 0.01, 'max_positions': 4, 'max_leverage': 3.0, 'cap_gap_buffer': 0.10,
+        'daily_loss_pct': 0.03}
+
+
+def _floor(v: float, unit) -> float:
+    return float(X.q_down(Decimal(repr(float(v))), Decimal(str(unit))))
+
+
+def run_book(tape, cfg: dict, symbols, *, first: int, last: int, hi: int, slip_c: float, rules: dict, row: str = 'base',
+             exclude=frozenset(), book=BOOK) -> dict:
+    """ONE pass of the registered shared crypto book over a split's attested tape, one cost row (prereg rule.book,
+    the M3 BookRunner order of m3_eval.Machine): cycle at bar close t (bar [t - 4h, t)):
+      (A) fills at the open of that bar of the decisions taken at t - 4h: signal exits, then time-cap exits (a lot held
+          180 bars exits at the open of the next bar), then ONE wallet snapshot, then entries in frozen-rank order:
+          one lot per symbol, Cairo-day halt of the decision day, max open lots, qty = min(risk x snapshot / dist,
+          (lev x snapshot - open notional) / (signal close x (1 + gap buffer))) floored to the step; below min qty /
+          min notional = refusal; fill = open moved by slip-v1 and rounded adversely to the tick (taker fee);
+          stop = fill - dist floored to the tick;
+      (B) the bar is played per lot: stop (a bar opening through it fills at its open), else the actual funding events
+          of the bar [t - 4h, t) at the funding-mark proxy are charged to the wallet;
+      (C) decision at t: MTM = wallet + open lots at the closes; Cairo-day roll / 3% MTM halt; signals queued.
+    At the split end (t == hi) a pending signal exit or a cap exit due at hi fills at the next open read through
+    `View.next_open`; a lot that cannot exit inside the split, a lot meeting a missing bar, or an incomplete funding
+    sequence / mark is INCOMPLETE (the caller re-runs the book without that symbol)."""
+    times, syms = tape
+    scen = C.STRESS[row]
+    order = [s for s in symbols if s in syms and s not in exclude]
+    wallet = book['equity0']
+    lots, closes, trades, incomplete, refusals, series = {}, {}, [], [], Counter(), []
+    pend_exit, pend_entry, day, day_start, halted_day = [], [], None, None, None
+    cap_ms = None if cfg['cap'] is None else cfg['cap'] * TF
+
+    def tick(s):
+        return float(rules[s]['tick'])
+
+    def drop(s, reason):
+        incomplete.append({'symbol': s, 'entry_ms': lots[s]['entry_ms'], 'reason': reason})
+        del lots[s]
+
+    def close(s, ref, exit_ms, reason, gap, at, nbars):
+        nonlocal wallet
+        lot, x = lots[s], syms[s]
+        try:
+            x.events(lot['entry_ms'], exit_ms)                      # the whole funding sequence is provably complete
+            xf = C.fill_price(ref, 'sell', x.bps(at, scen.vol, slip_c), scen, gap=gap, tick=tick(s))
+        except Incomplete as e:
+            drop(s, e.reason)
+            return
+        fee = C.fee(xf * lot['qty'], 'taker', C.CRYPTO, scen)
+        gross = (xf - lot['fill']) * lot['qty']
+        wallet += gross - fee
+        fees = lot['fees'] + fee
+        pnl = gross - fees - lot['funding']
+        risk = lot['qty'] * (lot['fill'] - lot['stop'])
+        trades.append({'config': cfg['name'], 'symbol': s, 'signal_ms': lot['signal_ms'], 'entry_ms': lot['entry_ms'],
+                       'exit_ms': exit_ms, 'exit_reason': reason, 'gap': gap, 'bars': nbars, 'qty': lot['qty'],
+                       'entry_price': lot['fill'], 'exit_price': xf, 'stop_price': lot['stop'], 'fees': fees,
+                       'funding': lot['funding'], 'pnl': pnl, 'snapshot': lot['snapshot'],
+                       'r': {row: pnl / risk if risk > 0 else 0.0},
+                       'mfe_r': (lot['hi'] - lot['fill']) / (lot['fill'] - lot['stop']),
+                       'mae_r': (lot['lo'] - lot['fill']) / (lot['fill'] - lot['stop'])})
+        del lots[s]
+
+    for t in times:
+        bo = t - TF
+        rec = {s: syms[s].rec.get(t) for s in order}
+        for s in [s for s in lots if rec[s] is None]:
+            drop(s, 'incomplete.gap')
+        # (A) fills at the open of the bar [bo, t)
+        for s, _ in pend_exit:
+            if s in lots:
+                close(s, rec[s]['b'][0], bo, 'exit.signal', False, bo, (bo - lots[s]['entry_ms']) // TF)
+        pend_exit = []
+        if cap_ms is not None:
+            for s in [s for s in order if s in lots]:
+                held = bo - lots[s]['entry_ms']
+                if held > cap_ms:
+                    raise PitRunError(f'{s}: lot held past its time cap')          # unreachable: every bar is played
+                if held == cap_ms:
+                    close(s, rec[s]['b'][0], bo, 'exit.time_cap', False, bo, cfg['cap'])
+        snapshot = wallet
+        for s, sig_t, dist, ref, halted in pend_entry:
+            if s in lots:
+                refusals['capacity.in_trade'] += 1
+                continue
+            if halted:
+                refusals['filter.halt'] += 1
+                continue
+            if len(lots) >= book['max_positions']:
+                refusals['capacity.max_positions'] += 1
+                continue
+            rule = rules[s]
+            notional = math.fsum(x['qty'] * (x['fill'] if x['entry_ms'] == bo else closes.get(k, x['fill']))
+                                 for k, x in lots.items())
+            if snapshot <= 0 or not dist or dist <= 0 or ref <= 0:
+                refusals['execution.size_min'] += 1
+                continue
+            raw = snapshot * book['risk_pct'] / dist
+            room = book['max_leverage'] * snapshot - notional
+            q = min(raw, max(room, 0.0) / (ref * (1 + book['cap_gap_buffer'])))
+            q = _floor(q, rule['step']) if q > 0 else 0.0
+            if q <= 0 or q < float(rule['min_qty']) or q * ref < float(rule['min_notional']):
+                refusals['execution.size_min'] += 1
+                continue
+            if rec[s] is None:
+                refusals['entry_no_next_open'] += 1
+                continue
+            x = syms[s]
+            try:
+                fill = C.fill_price(rec[s]['b'][0], 'buy', x.bps(bo, scen.vol, slip_c), scen, tick=tick(s))
+            except Incomplete:
+                refusals['entry_no_slip_history'] += 1
+                continue
+            fee = C.fee(fill * q, 'taker', C.CRYPTO, scen)
+            wallet -= fee
+            o = rec[s]['b'][0]
+            lots[s] = {'signal_ms': sig_t, 'entry_ms': bo, 'qty': q, 'fill': fill,
+                       'stop': _floor(fill - dist, rule['tick']), 'fees': fee, 'funding': 0.0, 'snapshot': snapshot,
+                       'hi': o, 'lo': o}
+        pend_entry = []
+        # (B) play the bar: stop first, else the bar's actual funding events
+        for s in [s for s in order if s in lots]:
+            lot, (o, h, lo, c) = lots[s], rec[s]['b']
+            if o <= lot['stop'] or lo <= lot['stop']:
+                ref, gap = C.stop_reference('long', lot['stop'], o)
+                lot['hi'], lot['lo'] = max(lot['hi'], o), min(lot['lo'], lo)    # pre-stop bound: never the bar high
+                close(s, ref, bo, 'exit.stop', gap, bo, (bo - lot['entry_ms']) // TF + 1)
+                continue
+            lot['hi'], lot['lo'] = max(lot['hi'], h), min(lot['lo'], lo)
+            ev = [(f.time_ms, f.rate, syms[s].mark[f.time_ms]) for f in syms[s].fund
+                  if bo <= f.time_ms < t and f.time_ms >= lot['entry_ms']]
+            if any(m is None for _, _, m in ev):
+                drop(s, 'incomplete.funding_mark')
+                continue
+            amt = C.funding_cost('long', lot['qty'], ev, scen, bars_held=1, entry_notional=lot['qty'] * lot['fill'])
+            wallet -= amt
+            lot['funding'] += amt
+        for s in order:
+            if rec[s] is not None:
+                closes[s] = rec[s]['b'][3]
+        # (C) decision at t
+        mtm = wallet + math.fsum(x['qty'] * (closes.get(k, x['fill']) - x['fill']) for k, x in lots.items())
+        series.append((t, mtm))
+        d = E.cairo_day(t)
+        if d != day:
+            day, day_start = d, mtm
+        if halted_day != d and day_start > 0 and mtm / day_start - 1.0 <= -book['daily_loss_pct']:
+            halted_day = d
+        for s in order:
+            r = rec[s]
+            if r is None:
+                continue
+            le, lx, dist = _signal(cfg, syms[s], r, t)
+            if lx and s in lots:
+                pend_exit.append((s, t))
+            if le and first <= t <= last:
+                pend_entry.append((s, t, dist, r['b'][3], halted_day == d))
+        if t == hi:                                     # split end: fills due at hi read the next open
+            sig_due = {s for s, _ in pend_exit if s in lots}
+            due = set(sig_due)
+            if cap_ms is not None:
+                due |= {s for s in lots if lots[s]['entry_ms'] + cap_ms == hi}
+            for s in [s for s in order if s in due]:
+                n = _next_open(syms[s], hi, hi)
+                if n is None:
+                    drop(s, 'incomplete.split_end')
+                else:
+                    close(s, n, hi, 'exit.signal' if s in sig_due else 'exit.time_cap', False, hi,
+                          (hi - lots[s]['entry_ms']) // TF)
+            pend_exit = []
+    for s in list(lots):
+        if cap_ms is not None and lots[s]['entry_ms'] + cap_ms < hi:
+            raise PitRunError(f'{s}: a capped lot outlived its cap inside the split')    # unreachable
+        drop(s, 'incomplete.split_end')
+    trades.sort(key=lambda r: (r['entry_ms'], r['symbol']))
+    return {'trades': trades, 'incomplete': incomplete, 'refusals': dict(sorted(refusals.items())),
+            'wallet_end': wallet, 'series': series}
+
+
+def book_stats(series, equity0=BOOK['equity0']) -> dict:
+    peak, dd, under, longest = equity0, 0.0, 0, 0
+    for _, m in series:
+        if m >= peak:
+            peak, under = m, 0
+        else:
+            under += 1
+            longest = max(longest, under)
+        dd = max(dd, (peak - m) / peak if peak > 0 else 0.0)
+    return {'mtm_max_dd_pct': 100.0 * dd, 'longest_underwater_cycles': longest}
+
+
+def account(outputs, cfg: dict, *, symbols, first: int, last: int, hi: int, slip_c: float, rules: dict,
+            rows=('base',)) -> dict:
+    """The registered book for one configuration over one split, per cost row. A symbol with any INCOMPLETE lot is
+    excluded and the book re-run without it until no INCOMPLETE remains (reported, never silently counted)."""
+    tape = read_tape(outputs)
+    missing = sorted(s for s in symbols if s in tape[1] and s not in rules)
+    if missing:
+        raise PitRunError(f'no pinned exchange rule (tick / step / min qty / min notional) for {missing}')
+    if cfg['kind'] == 'b1':
+        return account_unit(outputs, cfg, first=first, last=last, hi=hi, slip_c=slip_c, rows=rows)
+    out = {'config': cfg['name'], 'book': True, 'rows': {}}
+    for row in rows:
+        excl, seen, first_trades = set(), [], None
+        while True:
+            res = run_book(tape, cfg, symbols, first=first, last=last, hi=hi, slip_c=slip_c, rules=rules, row=row,
+                           exclude=frozenset(excl))
+            if first_trades is None:
+                first_trades = res['trades']
+            seen += res['incomplete']
+            new = {i['symbol'] for i in res['incomplete']} - excl
+            if not new:
+                break
+            excl |= new
+        res.update(counted=res['trades'], incomplete=seen, excluded_symbols=sorted(excl),
+                   excluded_trades=sum(1 for r in first_trades if r['symbol'] in excl),
+                   net_pct_equity=100.0 * (res['wallet_end'] - BOOK['equity0']) / BOOK['equity0'],
+                   **book_stats(res['series']))
+        res.pop('series')
+        out['rows'][row] = res
+    base = out['rows'][rows[0]]
+    out.update({k: base[k] for k in ('trades', 'counted', 'incomplete', 'excluded_symbols', 'excluded_trades',
+                                     'refusals')})
+    return out
+
+
+def account_unit(outputs, cfg: dict, *, first: int, last: int, hi: int, slip_c: float, rows=tuple(C.STRESS)) -> dict:
+    """Unit-quantity R per symbol (no shared book): B1 (prereg: equal-weight weekly hold scaled to equal risk) and
+    per-trade diagnostics. Same fill / stop / next-open cap / funding / INCOMPLETE rules as the book."""
     times, syms = read_tape(outputs)
     trades, incomplete, refusals = [], [], Counter()
     for s in sorted(syms):
@@ -319,6 +563,9 @@ def account(outputs, cfg: dict, *, first: int, last: int, hi: int, slip_c: float
                 close(o, bo, 'exit.signal', False, bo, (bo - lot['entry_ms']) // TF)
                 lot = None
             pend_exit = None
+            if lot is not None and cfg['cap'] is not None and bo - lot['entry_ms'] == cfg['cap'] * TF:
+                close(o, bo, 'exit.time_cap', False, bo, cfg['cap'])
+                lot = None
             if pend_entry is not None:
                 sig_t, dist = pend_entry
                 pend_entry = None
@@ -330,18 +577,13 @@ def account(outputs, cfg: dict, *, first: int, last: int, hi: int, slip_c: float
                     lot = {'entry_ms': bo, 'entry_ref': o, 'dist': dist, 'fill': fill,
                            'stop': fill - dist if cfg['stop'] else None, 'hi': o, 'lo': o}
             if lot is not None:
-                lot['hi'], lot['lo'] = max(lot['hi'], h), min(lot['lo'], lo)
                 if lot['stop'] is not None and (o <= lot['stop'] or lo <= lot['stop']):
+                    lot['hi'], lot['lo'] = max(lot['hi'], o), min(lot['lo'], lo)   # pre-stop bound
                     ref, gap = C.stop_reference('long', lot['stop'], o)
                     close(ref, bo, 'exit.stop', gap, bo, (bo - lot['entry_ms']) // TF + 1)
                     lot = None
-            if lot is not None and cfg['cap'] is not None:
-                held = t - lot['entry_ms']
-                if held > cfg['cap'] * TF:
-                    raise PitRunError(f'{s}: lot held past its time cap')         # unreachable: every bar is played
-                if held == cfg['cap'] * TF:
-                    close(c, t, 'exit.time_cap', False, t, cfg['cap'])
-                    lot = None
+                else:
+                    lot['hi'], lot['lo'] = max(lot['hi'], h), min(lot['lo'], lo)
             le, lx, dist = _signal(cfg, x, rec, t)
             if lx and lot is not None:
                 pend_exit = t
@@ -350,28 +592,49 @@ def account(outputs, cfg: dict, *, first: int, last: int, hi: int, slip_c: float
                     refusals['entry_bad_stop_distance'] += 1
                 else:
                     pend_entry = (t, dist)
+            if t == hi and lot is not None and (pend_exit is not None or (
+                    cfg['cap'] is not None and lot['entry_ms'] + cfg['cap'] * TF == hi)):
+                n = _next_open(x, hi, hi)
+                if n is not None:
+                    close(n, hi, 'exit.signal' if pend_exit is not None else 'exit.time_cap', False, hi,
+                          (hi - lot['entry_ms']) // TF)
+                    lot = None
         if lot is not None:
-            if cfg['cap'] is not None and lot['entry_ms'] + cfg['cap'] * TF <= hi:
-                raise PitRunError(f'{s}: a capped lot outlived its cap inside the split')   # unreachable
             incomplete.append({'symbol': s, 'entry_ms': lot['entry_ms'], 'reason': 'incomplete.split_end'})
     trades.sort(key=lambda r: (r['entry_ms'], r['symbol']))
     bad = sorted({i['symbol'] for i in incomplete})
     counted = [r for r in trades if r['symbol'] not in bad]
-    return {'config': cfg['name'], 'trades': trades, 'counted': counted, 'incomplete': incomplete,
-            'excluded_symbols': bad, 'excluded_trades': len(trades) - len(counted), 'refusals': dict(sorted(refusals.items()))}
+    return {'config': cfg['name'], 'book': False, 'trades': trades, 'counted': counted, 'incomplete': incomplete,
+            'excluded_symbols': bad, 'excluded_trades': len(trades) - len(counted),
+            'refusals': dict(sorted(refusals.items()))}
 
 
 # ------------------------------------------------------------------ B0: matched random entries
+def b0_pool(outputs, *, first: int, last: int) -> dict:
+    """{(symbol, regime label): [eligible decision times]}: inside the split's decision range, the symbol warm (its
+    primary stop distance defined) and the tape's frozen regime label defined."""
+    times, syms = read_tape(outputs)
+    regime = {o['t']: o.get('g') for o in outputs}
+    out = {}
+    for s, x in sorted(syms.items()):
+        for t in times:
+            if first <= t <= last and t in x.rec and x.rec[t]['d'] is not None and regime.get(t) is not None:
+                out.setdefault((s, regime[t]), []).append(t)
+    return out
+
+
 def b0_pairs(outputs, primary: dict, *, first: int, last: int, hi: int, slip_c: float, seed_key: str,
              draws: int = B0_DRAWS) -> dict:
-    """Episode-paired differences: candidate episode mean net R - the mean of its matched draws (same symbol, split,
-    hold horizon = the candidate's realised bars capped at 180, same stop rule, base costs and funding; entry times
-    drawn uniformly from that symbol's eligible decision times in the split). An invalid draw (gap / funding / slip
-    history) is excluded and counted."""
+    """Episode-paired differences: candidate episode mean net R - the mean of its matched draws. A draw matches the
+    candidate's symbol, side (long), split and registered PIT regime label at the decision (tape `g`: BTCUSDT close
+    vs EMA200, frozen in the attested tape), uses its realised hold capped at 180 bars (exit at the next open, the
+    same stop rule, base costs and funding) and is drawn uniformly from that symbol's eligible decision times in the
+    split with the same label. A candidate whose label is undefined is unmatched (counted); an invalid draw (gap /
+    funding / slip history / no next open in the split) is excluded and counted."""
     times, syms = read_tape(outputs)
-    elig = {s: [t for t in times if first <= t <= last and t in x.rec and x.rec[t]['d'] is not None]
-            for s, x in syms.items()}
-    cache, invalid = {}, 0
+    regime = {o['t']: o.get('g') for o in outputs}
+    elig = b0_pool(outputs, first=first, last=last)
+    cache, invalid, unmatched = {}, 0, 0
 
     def sim(s, e, h):
         key = (s, e, h)
@@ -394,7 +657,10 @@ def b0_pairs(outputs, primary: dict, *, first: int, last: int, hi: int, slip_c: 
                         break
                 if res is None:
                     t = e + h * TF
-                    res = net_r(x, entry_ref=o0, entry_ms=e, dist=d, exit_ref=x.rec[t]['b'][3], exit_ms=t, gap=False,
+                    n = _next_open(x, t, hi)
+                    if n is None:
+                        raise Incomplete('incomplete.split_end')
+                    res = net_r(x, entry_ref=o0, entry_ms=e, dist=d, exit_ref=n, exit_ms=t, gap=False,
                                 exit_bps_at=t, nbars=h, slip_c=slip_c, rows=('base',))['base']
                 cache[key] = res
             except Incomplete:
@@ -404,7 +670,10 @@ def b0_pairs(outputs, primary: dict, *, first: int, last: int, hi: int, slip_c: 
     means = {}
     for tr in primary['counted']:
         h = max(1, min(CAP, tr['bars']))
-        pool = elig.get(tr['symbol'], [])
+        lab = regime.get(tr['signal_ms'])
+        pool = elig.get((tr['symbol'], lab), []) if lab is not None else []
+        if lab is None:
+            unmatched += 1
         rng = random.Random(f'{seed_key}|{tr["symbol"]}|{tr["entry_ms"]}')
         vals = []
         for _ in range(draws if pool else 0):
@@ -419,7 +688,8 @@ def b0_pairs(outputs, primary: dict, *, first: int, last: int, hi: int, slip_c: 
         draws_ep = [v for tr in ep for v in means[(tr['symbol'], tr['entry_ms'])]]
         if draws_ep:
             diffs.append(sum(tr['r']['base'] for tr in ep) / len(ep) - sum(draws_ep) / len(draws_ep))
-    return {'diffs': diffs, 'invalid_draws': invalid, 'episodes': len(diffs)}
+    return {'diffs': diffs, 'invalid_draws': invalid, 'unmatched_trades': unmatched, 'episodes': len(diffs),
+            'regime_label': 'BTC 4h close vs its trailing EMA200 (btc_up / btc_down)'}
 
 
 # ------------------------------------------------------------------ statistics
@@ -507,10 +777,38 @@ def metrics(acc: dict, *, rows, boot=None) -> dict:
            'refusals': acc['refusals'], 'incomplete': len(acc['incomplete']),
            'incomplete_reasons': dict(sorted(Counter(i['reason'] for i in acc['incomplete']).items())),
            'excluded_symbol_count': len(acc['excluded_symbols']), 'excluded_trades': acc['excluded_trades'],
-           'stress_mean_r': {k: (math.fsum(r['r'][k] for r in tr) / len(tr) if tr else None) for k in rows}}
+           'stress_mean_r': {}}
+    by_row = acc.get('rows_trades')
+    for k in rows:
+        xs = [r['r'][k] for r in by_row[k]] if by_row is not None else [r['r'][k] for r in tr]
+        out['stress_mean_r'][k] = math.fsum(xs) / len(xs) if xs else None
+    if acc.get('book') is not None:
+        out['book'] = {k: dict(v) for k, v in sorted(acc['book'].items())}
     if boot is not None:
         out.update(bootstrap(tr, **boot))
+        if all('pnl' in r for r in tr):
+            out['mc_drawdown_pct'] = mc_drawdown(tr, **boot)
     return out
+
+
+def mc_drawdown(rows, *, seed: int, resamples: int, equity0=BOOK['equity0']):
+    """Episode-bootstrap Monte Carlo of the book's closed-trade drawdown (% of the running peak): p5 / p50 / p95."""
+    eps = [[r['pnl'] for r in e] for e in X.episodes(rows)]
+    if not eps:
+        return None
+    rng, dds = random.Random(seed + 1), []
+    for _ in range(resamples):
+        eq = peak = equity0
+        dd = 0.0
+        for _ in range(len(eps)):
+            for v in eps[rng.randrange(len(eps))]:
+                eq += v
+                peak = max(peak, eq)
+                dd = max(dd, (peak - eq) / peak if peak > 0 else 0.0)
+        dds.append(100.0 * dd)
+    dds.sort()
+    pick = lambda q: dds[min(len(dds) - 1, int(q * len(dds)))]
+    return {'p5': pick(0.05), 'p50': pick(0.50), 'p95': pick(0.95), 'resamples': resamples}
 
 
 def months_of(first: int, last: int) -> list[str]:
@@ -543,9 +841,12 @@ def evaluate_tier(env: dict, tier: str, prog: PG.Progress | None) -> tuple[dict,
     """Open, evaluate and account every development split of one tier; returns (summary, detail)."""
     plan, cfgs, cfg_run = env['plan'], configs(), env['run_config']
     symbols = env['tiers'][tier]
+    missing = [s for s in symbols if s not in env['rules']]
+    if missing:
+        raise PitRunError(f'{tier}: no pinned exchange rule for {missing}; the registered book cannot size them')
     ds = StaticDataset(env['manifest'], env['store'], env['static'], symbols)
     rows = tuple(cfg_run['stress_rows'])
-    per_split, detail_splits, blocks, b0_diffs = {}, {}, [], []
+    per_split, detail_splits, blocks, b0_diffs, b0_meta = {}, {}, [], [], Counter()
     for key in dev_keys(plan):
         lo, hi = dev_window(plan, key)
         first, last = plan.decision_range(key)
@@ -558,24 +859,49 @@ def evaluate_tier(env: dict, tier: str, prog: PG.Progress | None) -> tuple[dict,
         w = acc.open(key, detail={'purpose': f'STRAT-01 R4b-PIT {tier} development split (no holdout)',
                                   'tier': tier, 'symbols': list(symbols)}, lineage='root')
         ev = P.evaluate(w, env['evaluator'], FUNCTION, list(range(lo + TF, hi + 1, TF)), perturb=True)
-        res = {c['name']: account(ev, c, first=first, last=last, hi=hi, slip_c=cfg_run['slip_c'], rows=rows)
+        res = {c['name']: account(ev, c, symbols=symbols, first=first, last=last, hi=hi, slip_c=cfg_run['slip_c'],
+                                  rules=env['rules'],
+                                  rows=rows if c['role'] in ('primary', 'development_only', 'baseline') else ('base',))
                for c in cfgs}
+        regime = {o['t']: o.get('g') for o in ev}
+        for v in res.values():
+            for tr in v['trades']:
+                tr['regime'] = regime.get(tr['signal_ms'])
         prim = res[PRIMARY_NAME]
         boot = {'seed': cfg_run['seed'], 'resamples': cfg_run['resamples']}
-        per_split[key] = {'primary': metrics(prim, rows=rows, boot=boot),
-                          'uncapped_development_only': metrics(res[DEV_ONLY], rows=rows, boot=boot)}
+        per_split[key] = {'primary': metrics(_acc(prim), rows=rows, boot=boot),
+                          'uncapped_development_only': metrics(_acc(res[DEV_ONLY]), rows=rows, boot=boot)}
         b0 = b0_pairs(ev, prim, first=first, last=last, hi=hi, slip_c=cfg_run['slip_c'],
                       seed_key=f'{cfg_run["seed"]}|{tier}|{key}', draws=cfg_run['b0_draws'])
         b0_diffs += b0['diffs']
+        b0_meta.update(invalid_draws=b0['invalid_draws'], unmatched_trades=b0['unmatched_trades'])
         blocks += month_blocks(key, first, last, prim, res['B1'], res['B2'])
         detail_splits[key] = {'attestation': ev.attestation_digest, 'outputs_digest': ev.attestation['outputs_digest'],
-                              'b0_invalid_draws': b0['invalid_draws'],
-                              'configs': {k: {'trades': v['trades'], 'incomplete': v['incomplete'],
-                                              'excluded_symbols': v['excluded_symbols'], 'refusals': v['refusals']}
-                                          for k, v in res.items()}}
+                              'b0_invalid_draws': b0['invalid_draws'], 'b0_unmatched_trades': b0['unmatched_trades'],
+                              'configs': {k: _detail(v) for k, v in res.items()}}
         if prog is not None:
             prog.stage_done(stage, fold)
-    return summarize(env, tier, symbols, per_split, detail_splits, blocks, b0_diffs)
+    return summarize(env, tier, symbols, per_split, detail_splits, blocks, b0_diffs, dict(b0_meta))
+
+
+def _detail(v: dict) -> dict:
+    out = {k: v[k] for k in ('trades', 'incomplete', 'excluded_symbols', 'excluded_trades', 'refusals')}
+    if v.get('book'):
+        out['rows'] = {r: {'trades': x['counted'],
+                           'book': {k: x[k] for k in ('net_pct_equity', 'mtm_max_dd_pct', 'longest_underwater_cycles',
+                                                      'wallet_end')}}
+                       for r, x in v['rows'].items()}
+    return out
+
+
+def _acc(v: dict) -> dict:
+    """The metrics view of one configuration's account (one split)."""
+    a = {k: v[k] for k in ('counted', 'incomplete', 'refusals', 'excluded_symbols', 'excluded_trades')}
+    if v.get('book'):
+        a['rows_trades'] = {r: x['counted'] for r, x in v['rows'].items()}
+        a['book'] = {r: {k: x[k] for k in ('net_pct_equity', 'mtm_max_dd_pct', 'longest_underwater_cycles')}
+                     for r, x in v['rows'].items()}
+    return a
 
 
 def _counted(detail_splits, name, keys):
@@ -588,18 +914,28 @@ def _counted(detail_splits, name, keys):
 
 
 def _agg(detail_splits, name, keys, rows, boot):
+    """Several splits: trades pooled; each split's book starts at its own 10,000 USDT, so net % equity is summed
+    over the splits and the MTM drawdown / underwater are the worst split's."""
+    cs = [detail_splits[k]['configs'][name] for k in keys]
     tr = _counted(detail_splits, name, keys)
-    inc = [i for k in keys for i in detail_splits[k]['configs'][name]['incomplete']]
     ref = Counter()
-    for k in keys:
-        ref.update(detail_splits[k]['configs'][name]['refusals'])
-    acc = {'counted': tr, 'incomplete': inc, 'refusals': dict(sorted(ref.items())),
-           'excluded_symbols': sorted({f'{k}:{s}' for k in keys for s in detail_splits[k]['configs'][name]['excluded_symbols']}),
-           'excluded_trades': sum(len(detail_splits[k]['configs'][name]['trades']) for k in keys) - len(tr)}
+    for c in cs:
+        ref.update(c['refusals'])
+    acc = {'counted': tr, 'incomplete': [i for c in cs for i in c['incomplete']], 'refusals': dict(sorted(ref.items())),
+           'excluded_symbols': sorted({f'{k}:{s}' for k, c in zip(keys, cs) for s in c['excluded_symbols']}),
+           'excluded_trades': sum(c['excluded_trades'] for c in cs)}
+    if cs and all('rows' in c for c in cs):
+        rs = [r for r in rows if all(r in c['rows'] for c in cs)]
+        acc['rows_trades'] = {r: [t for c in cs for t in c['rows'][r]['trades']] for r in rs}
+        acc['book'] = {r: {'net_pct_equity': math.fsum(c['rows'][r]['book']['net_pct_equity'] for c in cs),
+                           'mtm_max_dd_pct': max(c['rows'][r]['book']['mtm_max_dd_pct'] for c in cs),
+                           'longest_underwater_cycles': max(c['rows'][r]['book']['longest_underwater_cycles']
+                                                            for c in cs)} for r in rs}
+        rows = rs
     return metrics(acc, rows=rows, boot=boot), tr
 
 
-def summarize(env, tier, symbols, per_split, detail_splits, blocks, b0_diffs):
+def summarize(env, tier, symbols, per_split, detail_splits, blocks, b0_diffs, b0_meta=None):
     cfg_run, plan = env['run_config'], env['plan']
     rows = tuple(cfg_run['stress_rows'])
     keys = list(per_split)
@@ -630,6 +966,8 @@ def summarize(env, tier, symbols, per_split, detail_splits, blocks, b0_diffs):
                 'ci95': ci_mean(d), 'p_one_sided': ps[k], 'p_holm': adj[k], 'label': LABEL}
             for k, p, d in (('B0', 'episode', b0_diffs), ('B1', 'calendar-month block', d1),
                             ('B2', 'calendar-month block', d2))}
+    base['B0'].update(match='symbol + side + split + PIT regime label (BTC 4h close vs EMA200)',
+                      **(b0_meta or {}))
     base['B3'] = {'pairing': 'cash (0 R)', 'note': 'reduces to the expectancy row', 'label': LABEL}
     dev_mean = dev_m['mean_r']
     edge = {
@@ -661,13 +999,23 @@ def summarize(env, tier, symbols, per_split, detail_splits, blocks, b0_diffs):
     summary = {'format': SUMMARY_FORMAT, 'tier': tier, 'label': LABEL, 'labels': [LABEL, DEV_LABEL] + env['cost_labels'],
                'development_only': True, 'identity': env['identity'], 'run_config_digest': sha(cfg_run),
                'symbol_count': len(symbols), 'splits': per_split,
-               'aggregates': {'development': dev_m, 'walk_forward': wf_m}, 'baselines': base, 'edge00': edge,
+               'aggregates': {'development': dev_m, 'walk_forward': wf_m},
+               'contribution_by_regime': {g: {'trades': len(v), 'mean_r': math.fsum(v) / len(v)}
+                                          for g, v in sorted(_by_regime(dev_tr).items())},
+               'book': dict(BOOK), 'baselines': base, 'edge00': edge,
                'verdict': 'PARK', 'verdict_basis': 'prereg verdict_rules.development: development evidence can neither '
                'PROMOTE nor REJECT', 'flags': flags, 'not_evaluated': list(NOT_EVALUATED)}
     detail = {'format': DETAIL_FORMAT, 'tier': tier, 'label': LABEL, 'symbols': list(symbols), 'splits': detail_splits,
               'neighbours_mean_r': neigh, 'loso_mean_r': loso_m, 'loyo_mean_r': loyo_m, 'month_blocks': blocks,
               'b0_episode_differences': b0_diffs}
     return summary, detail
+
+
+def _by_regime(trades) -> dict:
+    out = {}
+    for r in trades:
+        out.setdefault(str(r.get('regime')), []).append(r['r']['base'])
+    return out
 
 
 # ------------------------------------------------------------------ identity, progress, sealing, resume
@@ -770,7 +1118,14 @@ def real_env(repo: str, *, store: str, author: str, cairo_date: str, gate_path: 
     n_trials = sum(1 for r in fam if r['kind'] in ('variant', 'grid_point', 'baseline'))
     cal = pre['costs']['slip_cal_v1']
     model = C.CostModel(cal, {'BTCUSDT': 'crypto'})
-    run_config = {'configs': [c['name'] for c in configs()], 'stress_rows': list(C.STRESS),
+    rules_raw = G._load(repo, RULES_PATH)
+    if hashlib.sha256(rules_raw).hexdigest() != X.RULES_SHA256:
+        raise PitRunError(f'{RULES_PATH}: bytes differ from the pinned rules snapshot')
+    snap = json.loads(rules_raw)['symbols']
+    universe = static['core_20']
+    rules = {s: {k: snap[s][k] for k in ('tick', 'step', 'min_qty', 'min_notional')} for s in universe if s in snap}
+    run_config = {'configs': [c['name'] for c in configs()], 'stress_rows': list(C.STRESS), 'book': dict(BOOK),
+                  'rules_sha256': X.RULES_SHA256, 'rules': rules,
                   'slip_c': cal['c']['crypto'], 'seed': SEED, 'resamples': RESAMPLES, 'perms': PERMS,
                   'b0_draws': B0_DRAWS, 'dev_keys': dev_keys(plan), 'plan_digest': plan.digest, 'window': T.WINDOW,
                   'tape': PE.FORMAT, 'cost_model': model.digest, 'n_trials': n_trials}
@@ -782,4 +1137,5 @@ def real_env(repo: str, *, store: str, author: str, cairo_date: str, gate_path: 
     return {'repo': repo, 'manifest': man, 'store': store, 'static': static,
             'tiers': {'CORE-10': static['core_10'], 'CORE-20': static['core_20']}, 'plan': plan, 'ledger': ledger,
             'evaluator': EVALUATOR, 'author': author, 'cairo_date': cairo_date, 'run_config': run_config,
+            'rules': rules,
             'identity': identity, 'n_trials': n_trials, 'cost_labels': model.labels('BTCUSDT')}

@@ -99,20 +99,23 @@ def fixture_static():
             'digest': hashlib.sha256(json.dumps(SYMS).encode()).hexdigest()}
 
 
+FIX_RULES = {s: {'tick': 0.0001, 'step': 0.001, 'min_qty': 0.001, 'min_notional': 5.0} for s in SYMS}
+
+
 def fixture_env(store, ledger, *, resamples=200, perms=200, b0_draws=20):
     man = M.load(os.path.join(store, 'manifest.json'))
     plan = S.SplitPlan(FIX_SPLITS, interval='4h', lookback_bars=240, horizon_bars=180)
     run_config = {'configs': [c['name'] for c in PR.configs()], 'stress_rows': list(C.STRESS), 'slip_c': 0.05,
                   'seed': PR.SEED, 'resamples': resamples, 'perms': perms, 'b0_draws': b0_draws,
                   'dev_keys': PR.dev_keys(plan), 'plan_digest': plan.digest, 'window': T.WINDOW, 'tape': PE.FORMAT,
-                  'n_trials': 18}
+                  'n_trials': 18, 'book': dict(PR.BOOK), 'rules': FIX_RULES}
     static = fixture_static()
     identity = {'commit': '0' * 40, 'evaluator': PR.sha({'code': PR.code_digest(ROOT), 'config': run_config}),
                 'manifest': man['digest'], 'universe': static['digest'], 'classification': None, 'prereg': None}
     return {'repo': ROOT, 'manifest': man, 'store': store, 'static': static,
             'tiers': {'CORE-10': list(SYMS[:2]), 'CORE-20': list(SYMS)}, 'plan': plan, 'ledger': ledger,
             'evaluator': PR.EVALUATOR, 'author': 't', 'cairo_date': '2026-10-11', 'run_config': run_config,
-            'identity': identity, 'n_trials': 18, 'cost_labels': ['SLIP-C-UNFITTED']}
+            'identity': identity, 'n_trials': 18, 'cost_labels': ['SLIP-C-UNFITTED'], 'rules': FIX_RULES}
 
 
 def make_store(store):
@@ -239,23 +242,37 @@ def test_shared_period_signals_are_bit_identical_to_trend_ema_mom():
 
 # ------------------------------------------------------------------ accounting on hand-built tapes (pure)
 T0 = S.parse_utc('2024-01-01T00:00:00Z')
+RULE = {'tick': 0.01, 'step': 0.001, 'min_qty': 0.001, 'min_notional': 5.0}
 
 
-def mk_tape(closes, *, le=(), lx=(), d='2.0', lows=None, drop=(), fund_drop=(), mark_none=()):
-    """Bar i closes at T0 + (i + 1) x 4h; funding every 8h (calc_time + 3 ms) with a mark."""
+def mk_tape(closes, *, sym='AAAUSDT', le=(), lx=(), d='2.0', lows=None, highs=None, opens=None, drop=(),
+            fund_drop=(), mark_none=(), regime='btc_up', n_last=True):
+    """Bar i closes at T0 + (i + 1) x 4h (open = previous close unless `opens` says otherwise); funding every 8h
+    (calc_time + 3 ms) with a mark; `n` = the next bar's open (the last bar's `n` is the given/next value)."""
     out = []
+    op = lambda i: (opens or {}).get(i, closes[i - 1] if i else closes[0])
     for i, c in enumerate(closes):
         t = T0 + (i + 1) * TF
-        o = closes[i - 1] if i else c
+        o = op(i)
         lo = (lows or {}).get(i, min(o, c) - 0.25)
+        h = (highs or {}).get(i, max(o, c) + 0.25)
         f = [[ft + 3, 0.0001, 8, None if ft in mark_none else o] for ft in range(T0, t + 1, 8 * HOUR)
              if t - TF < ft + 3 <= t and ft not in fund_drop]
+        g = regime(i) if callable(regime) else regime
         if i in drop:
-            out.append({'t': t, 'r': [{'s': 'AAAUSDT', 'f': f}] if f else []})
+            out.append({'t': t, 'r': [{'s': sym, 'f': f}] if f else [], 'g': g})
             continue
-        rec = {'s': 'AAAUSDT', 'b': [o, max(o, c) + 0.25, lo, c], 'f': f, 'w': '1' * 13,
-               'x': ('1' if i in lx else '0') * 13, 'e': {str(k): d for k in range(13)} if i in le else {}, 'd': d}
-        out.append({'t': t, 'r': [rec]})
+        nxt = op(i + 1) if i + 1 < len(closes) else ((opens or {}).get(i + 1, c) if n_last else None)
+        rec = {'s': sym, 'b': [o, h, lo, c], 'f': f, 'w': '1' * 13, 'x': ('1' if i in lx else '0') * 13,
+               'e': {str(k): d for k in range(13)} if i in le else {}, 'd': d, 'n': nxt}
+        out.append({'t': t, 'r': [rec], 'g': g})
+    return out
+
+
+def merge(*tapes):
+    out = []
+    for cyc in zip(*tapes):
+        out.append({'t': cyc[0]['t'], 'r': [r for c in cyc for r in c['r']], 'g': cyc[0]['g']})
     return out
 
 
@@ -266,14 +283,21 @@ def t_of(i):
 CFG = {c['name']: c for c in PR.configs()}
 
 
-def acct(tape, cfg=PR.PRIMARY_NAME, first=None, last=None, hi=None):
-    return PR.account(tape, CFG[cfg], first=first if first is not None else t_of(20),
-                      last=last if last is not None else t_of(len(tape) - 2), hi=hi or tape[-1]['t'], slip_c=0.05)
+def acct(tape, cfg=PR.PRIMARY_NAME, first=None, last=None, hi=None, rows=('base',), rules=None):
+    syms = sorted({r['s'] for o in tape for r in o['r']})
+    return PR.account(tape, CFG[cfg], symbols=syms, first=first if first is not None else t_of(20),
+                      last=last if last is not None else t_of(len(tape) - 2), hi=hi or tape[-1]['t'], slip_c=0.05,
+                      rules=rules or {s: RULE for s in syms}, rows=rows)
 
 
-def test_signal_exit_net_r_is_the_registered_cost_model():
+def unit(tape, cfg=PR.PRIMARY_NAME, first=None, last=None):
+    return PR.account_unit(tape, CFG[cfg], first=first if first is not None else t_of(20),
+                           last=last if last is not None else t_of(len(tape) - 2), hi=tape[-1]['t'], slip_c=0.05)
+
+
+def test_unit_diagnostic_net_r_is_the_registered_cost_model():
     closes = [100.0 + 0.1 * i for i in range(60)]
-    a = acct(mk_tape(closes, le={25}, lx={30}))
+    a = unit(mk_tape(closes, le={25}, lx={30}))
     (tr,) = a['counted']
     assert (tr['entry_ms'], tr['exit_ms'], tr['exit_reason'], tr['bars']) == (t_of(25), t_of(30), 'exit.signal', 5)
     sym = PR.read_tape(mk_tape(closes, le={25}, lx={30}))[1]['AAAUSDT']
@@ -285,24 +309,83 @@ def test_signal_exit_net_r_is_the_registered_cost_model():
         want = (xf - ef - C.fee(ef, 'taker', C.CRYPTO, scen) - C.fee(xf, 'taker', C.CRYPTO, scen)
                 - C.funding_cost('long', 1.0, ev, scen, bars_held=5, entry_notional=ef)) / 2.0
         assert tr['r'][name] == pytest.approx(want, abs=1e-12), name
-    assert tr['r']['fees_slip_x2'] < tr['r']['base'] and tr['r']['funding_x2'] < tr['r']['base']
 
 
-def test_the_180_bar_cap_exits_at_bar_179_close_never_181():
+def test_the_book_sizes_by_risk_floors_to_step_and_books_the_wallet():
+    closes = [100.0 + 0.1 * i for i in range(60)]
+    a = acct(mk_tape(closes, le={25}, lx={30}), rows=tuple(C.STRESS))
+    (tr,) = a['counted']
+    x = PR.read_tape(mk_tape(closes))[1]['AAAUSDT']
+    fill = C.fill_price(closes[25], 'buy', x.bps(t_of(25), C.TR_SMA14, 0.05), C.STRESS['base'], tick=0.01)
+    q = math.floor(min(10_000 * 0.01 / 2.0, 3 * 10_000 / (closes[25] * 1.10)) / 0.001 + 1e-9) * 0.001
+    assert tr['qty'] == pytest.approx(q) and tr['entry_price'] == fill
+    assert tr['stop_price'] == pytest.approx(math.floor((fill - 2.0) / 0.01 + 1e-9) * 0.01)
+    base = a['rows']['base']
+    assert base['wallet_end'] == pytest.approx(10_000 + tr['pnl'])
+    assert base['net_pct_equity'] == pytest.approx(tr['pnl'] / 100.0)
+    assert tr['r']['base'] == pytest.approx(tr['pnl'] / (tr['qty'] * (fill - tr['stop_price'])))
+    assert a['rows']['fees_slip_x2']['counted'][0]['pnl'] < tr['pnl']          # stress rows run their own book
+    assert set(a['rows']) == set(C.STRESS)
+
+
+def test_book_limits_max_lots_leverage_and_minimums():
+    closes = [100.0 + 0.05 * i for i in range(60)]
+    five = merge(*(mk_tape(closes, sym=f'S{k}USDT', le={25}, lx={40}) for k in range(5)))
+    a = acct(five)
+    assert len(a['counted']) == 4 and a['refusals'] == {'capacity.max_positions': 1}
+    assert [t['symbol'] for t in a['counted']] == ['S0USDT', 'S1USDT', 'S2USDT', 'S3USDT']    # frozen rank order
+    tight = acct(mk_tape(closes, le={25}, lx={40}, d='0.01'))                      # tiny stop: leverage-capped
+    (tr,) = tight['counted']
+    assert tr['qty'] * closes[25] * 1.10 <= 3 * 10_000 + 1e-6 and tr['qty'] < 10_000 * 0.01 / 0.01
+    big = acct(mk_tape(closes, le={25}, lx={40}), rules={'AAAUSDT': dict(RULE, min_notional=1e9)})
+    assert big['counted'] == [] and big['refusals'] == {'execution.size_min': 1}
+
+
+def test_the_cairo_day_mtm_halt_refuses_that_days_entries():
+    closes = [100.0] * 32 + [98.0] * 40                                   # bar 32 gaps through a 0.5 stop: ~-4%
+    a = acct(merge(mk_tape(closes, sym='AAAUSDT', le={25}, d='0.5', opens={32: 98.0}),
+                   mk_tape([100.0] * 72, sym='BBBUSDT', le={32})))
+    (tr,) = a['counted']
+    assert tr['symbol'] == 'AAAUSDT' and tr['gap'] and tr['pnl'] < -300
+    assert a['refusals'] == {'filter.halt': 1}                           # BBB's same-Cairo-day signal is refused
+
+
+def test_the_180_bar_cap_exits_at_the_next_bar_open_never_a_close():
     closes = [100.0 + 0.01 * i for i in range(260)]
-    a = acct(mk_tape(closes, le={25}))
+    opens = {206: 150.0}                                                 # the cap bar gaps open far from the close
+    a = acct(mk_tape(closes, le={25}, opens=opens))
     (tr,) = a['counted']
     assert tr['exit_reason'] == 'exit.time_cap' and tr['exit_ms'] - tr['entry_ms'] == 180 * TF and tr['bars'] == 180
+    x = PR.read_tape(mk_tape(closes, opens=opens))[1]['AAAUSDT']
+    assert tr['exit_price'] == C.fill_price(150.0, 'sell', x.bps(tr['exit_ms'], C.TR_SMA14, 0.05),
+                                            C.STRESS['base'], tick=0.01)
     u = acct(mk_tape(closes, le={25}), cfg=PR.DEV_ONLY)
     assert not u['counted'] and [i['reason'] for i in u['incomplete']] == ['incomplete.split_end']
     assert u['excluded_symbols'] == ['AAAUSDT']
 
 
-def test_stops_fill_at_the_level_or_at_a_gapping_open():
+def test_a_cap_due_at_the_split_end_reads_the_attested_next_open_or_is_incomplete():
+    closes = [100.0 + 0.01 * i for i in range(206)]                      # entry bar 26 -> cap at hi exactly
+    hi = t_of(205)
+    a = acct(mk_tape(closes, le={25}, opens={206: 123.0}), hi=hi, last=t_of(25))
+    (tr,) = a['counted']
+    assert tr['exit_ms'] == hi and tr['exit_reason'] == 'exit.time_cap'
+    x = PR.read_tape(mk_tape(closes))[1]['AAAUSDT']
+    assert tr['exit_price'] == C.fill_price(123.0, 'sell', x.bps(hi, C.TR_SMA14, 0.05), C.STRESS['base'], tick=0.01)
+    b = acct(mk_tape(closes, le={25}, n_last=False), hi=hi, last=t_of(25))
+    assert b['counted'] == [] and [i['reason'] for i in b['incomplete']] == ['incomplete.split_end']
+
+
+def test_stops_fill_at_the_level_or_at_a_gapping_open_and_mfe_is_pre_stop():
     closes = [100.0] * 40
-    a = acct(mk_tape(closes, le={25}, lows={28: 97.0}))
+    a = acct(mk_tape(closes, le={25}, lows={28: 97.0}, highs={28: 130.0}))
     (tr,) = a['counted']
     assert tr['exit_reason'] == 'exit.stop' and not tr['gap'] and tr['exit_ms'] == t_of(27)
+    risk = tr['entry_price'] - tr['stop_price']
+    assert tr['mfe_r'] == pytest.approx((100.25 - tr['entry_price']) / risk)   # earlier highs + the stop bar's open,
+    assert tr['mfe_r'] < (130.0 - tr['entry_price']) / risk                      # never the stop bar's own high
+    u = unit(mk_tape(closes, le={25}, lows={28: 97.0}, highs={28: 130.0}))
+    assert u['counted'][0]['mfe_r'] < 1.0
     closes2 = [100.0] * 27 + [96.0] * 13                                 # bar 28 opens at 96, below the stop
     b = acct(mk_tape(closes2, le={25}, lows={27: 99.5}))
     (tr2,) = b['counted']
@@ -319,15 +402,19 @@ def test_entries_only_inside_the_decision_range():
 
 @pytest.mark.parametrize('kw,reason', [({'drop': {28}}, 'incomplete.gap'),
                                        ({'fund_drop': {T0 + 13 * 8 * HOUR}}, 'incomplete.funding'),
-                                       ({'mark_none': {T0 + 13 * 8 * HOUR}}, 'incomplete.funding_mark')])
-def test_incomplete_symbols_are_excluded_and_reported_never_counted(kw, reason):
+                                       ({'mark_none': {T0 + 14 * 8 * HOUR}}, 'incomplete.funding_mark')])
+def test_incomplete_symbols_are_excluded_and_the_book_is_rerun_without_them(kw, reason):
     closes = [100.0 + 0.1 * i for i in range(80)]
-    a = acct(mk_tape(closes, le={25, 60}, lx={32, 66}, **kw))
+    bad = mk_tape(closes, sym='AAAUSDT', le={25, 60}, lx={32, 66}, **kw)
+    good = mk_tape(closes, sym='BBBUSDT', le={25}, lx={32})
+    a = acct(merge(bad, good))
     assert [i['reason'] for i in a['incomplete']] == [reason]
-    assert a['excluded_symbols'] == ['AAAUSDT'] and a['counted'] == []
-    assert a['excluded_trades'] == len(a['trades']) == 1                 # the clean second trade is excluded too
-    m = PR.metrics(a, rows=('base',))
-    assert m['trades'] == 0 and m['incomplete'] == 1 and m['excluded_trades'] == 1
+    assert a['excluded_symbols'] == ['AAAUSDT'] and [t['symbol'] for t in a['counted']] == ['BBBUSDT']
+    assert a['excluded_trades'] >= 1
+    alone = acct(good)
+    assert a['counted'] == alone['counted']                              # the re-run book never saw the excluded symbol
+    m = PR.metrics(PR._acc(a), rows=('base',))
+    assert m['trades'] == 1 and m['incomplete'] == 1 and m['excluded_symbol_count'] == 1
 
 
 def test_a_gap_while_flat_drops_the_pending_entry_as_a_refusal():
@@ -338,25 +425,81 @@ def test_a_gap_while_flat_drops_the_pending_entry_as_a_refusal():
 
 def test_baselines_b1_weekly_and_b2_momentum_rules():
     closes = [100.0 + 0.1 * i for i in range(200)]
-    b1 = acct(mk_tape(closes), cfg='B1', first=t_of(20), last=t_of(150))
-    assert b1['counted'] and all(tr['exit_reason'] == 'exit.time_cap' and tr['bars'] == 42 for tr in b1['counted'])
+    b1 = acct(mk_tape(closes), cfg='B1', first=t_of(20), last=t_of(150), rows=tuple(C.STRESS))
+    assert not b1['book'] and b1['counted']
+    assert all(tr['exit_reason'] == 'exit.time_cap' and tr['bars'] == 42 for tr in b1['counted'])
     assert all(datetime.fromtimestamp(tr['entry_ms'] / 1000, tz=timezone.utc).weekday() == 0
                and tr['entry_ms'] % DAY == 0 for tr in b1['counted'])
     b2 = acct(mk_tape(closes + [closes[-1] + 0.1 * i for i in range(1, 200)]), cfg='B2', first=t_of(20),
               last=t_of(150))
-    assert b2['counted'] and b2['counted'][0]['entry_ms'] == t_of(20)    # close > close 20 bars earlier, flat
+    assert b2['book'] and b2['counted'] and b2['counted'][0]['entry_ms'] == t_of(20)
     down = acct(mk_tape([100.0 - 0.1 * i for i in range(200)]), cfg='B2', first=t_of(20), last=t_of(150))
     assert down['counted'] == []
 
 
-def test_b0_pairs_are_seeded_and_deterministic():
+def test_b0_draws_match_the_registered_regime_label_and_are_seeded():
     closes = [100.0 + 2 * math.sin(i / 7) + 0.02 * i for i in range(400)]
-    tape = mk_tape(closes, le={60, 140, 220}, lx={70, 160, 240})
+    lab = lambda i: None if i == 140 else ('btc_up' if (i // 30) % 2 == 0 else 'btc_down')
+    tape = mk_tape(closes, le={60, 140, 220}, lx={70, 160, 240}, regime=lab)
+    pool = PR.b0_pool(tape, first=t_of(20), last=t_of(220))
+    assert set(pool) == {('AAAUSDT', 'btc_up'), ('AAAUSDT', 'btc_down')}
+    for (_, g), ts in pool.items():
+        assert all(lab((t - T0) // TF - 1) == g for t in ts)
     prim = acct(tape, first=t_of(20), last=t_of(220), hi=tape[-1]['t'])
-    a = PR.b0_pairs(tape, prim, first=t_of(20), last=t_of(220), hi=tape[-1]['t'], slip_c=0.05, seed_key='k', draws=50)
-    b = PR.b0_pairs(tape, prim, first=t_of(20), last=t_of(220), hi=tape[-1]['t'], slip_c=0.05, seed_key='k', draws=50)
-    c = PR.b0_pairs(tape, prim, first=t_of(20), last=t_of(220), hi=tape[-1]['t'], slip_c=0.05, seed_key='j', draws=50)
-    assert a == b and a['episodes'] == 3 and a['diffs'] != c['diffs']
+    kw = dict(first=t_of(20), last=t_of(220), hi=tape[-1]['t'], slip_c=0.05, draws=50)
+    a, b = PR.b0_pairs(tape, prim, seed_key='k', **kw), PR.b0_pairs(tape, prim, seed_key='k', **kw)
+    c = PR.b0_pairs(tape, prim, seed_key='j', **kw)
+    assert a == b and a['diffs'] != c['diffs'] and a['unmatched_trades'] == 1          # the bar-140 trade: no label
+    assert a['episodes'] == 2
+
+
+def test_the_tape_regime_label_is_btc_close_vs_its_ema200():
+    bars = [P.Bar(START + i * TF, 1.0, 1.0, 1.0, 100.0 + (i if i < 300 else 600 - i), 1, 1, START + (i + 1) * TF)
+            for i in range(400)]
+
+    class V:
+        def __init__(self, n):
+            self.t, self.n = bars[n - 1].available_ms, n
+
+        def members(self):
+            return frozenset({'BTCUSDT'})
+
+        def bars(self, s, tf, n):
+            return tuple(bars[:self.n][-n:])
+
+        def funding(self, s, since):
+            return ()
+
+        def next_open(self, s, tf):
+            return None
+    for n, want in ((150, None), (280, 'btc_up'), (400, 'btc_down')):
+        out = PE.Tape().decide(V(n))
+        assert out['g'] == want, n
+
+
+def test_view_next_open_serves_only_the_open_and_survives_perturbation(tmp_path):
+    store = str(tmp_path / 's')
+    make_store(store)
+    man = M.load(os.path.join(store, 'manifest.json'))
+    ds = PR.StaticDataset(man, store, fixture_static(), list(SYMS))
+    plan = S.SplitPlan(FIX_SPLITS, interval='4h', lookback_bars=240, horizon_bars=180)
+    led = str(tmp_path / 'ledger' / 'trend_ema_mom.jsonl')
+    os.makedirs(os.path.dirname(led))
+    acc = P.Access(ds, plan, led, candidate_id=T.RULE_ID, author='t', cairo_date='2026-10-11')
+    w = acc.open('train', lineage='root')
+    v = w.view(w.hi)
+    k = SYMS.index('BTCUSDT')
+    assert v.next_open('BTCUSDT', '4h') == float(kline(k, w.hi, TF).split(',')[1])     # the bar opening at hi
+    assert v.bars('BTCUSDT', '4h', 1)[-1].available_ms == w.hi                           # never served as a bar
+    saved = P._perturb_future(ds, w.hi)
+    try:
+        assert v.next_open('BTCUSDT', '4h') == float(kline(k, w.hi, TF).split(',')[1])  # the open is known at hi
+    finally:
+        for p, rows in saved.items():
+            ds._cache[p][:] = rows
+    assert v.next_open(DROP[0], '4h') is not None
+    assert w.view(DROP[1]).next_open(DROP[0], '4h') is None                # no bar opens there (gap): None
+    assert 'next_open' in P.VIEW_CALLS
 
 
 def test_statistics_are_seeded_and_holm_is_step_down():
@@ -366,9 +509,11 @@ def test_statistics_are_seeded_and_holm_is_step_down():
     assert PR.sign_flip_p([], perms=10, seed=1) is None
     adj = PR.holm({'B0': 0.01, 'B1': 0.02, 'B2': None}, 18)
     assert adj == {'B0': pytest.approx(0.18), 'B1': pytest.approx(0.34), 'B2': None}
-    rows = [{'symbol': 'A', 'entry_ms': i * TF, 'exit_ms': i * TF + TF, 'exit_reason': 'exit.signal',
+    rows = [{'symbol': 'A', 'entry_ms': i * TF, 'exit_ms': i * TF + TF, 'exit_reason': 'exit.signal', 'pnl': 10.0 * i,
              'r': {'base': (-1) ** i * 0.5 + 0.1}} for i in range(0, 40, 2)]
     assert PR.bootstrap(rows, seed=1, resamples=300) == PR.bootstrap(rows, seed=1, resamples=300)
+    mc = PR.mc_drawdown(rows, seed=1, resamples=300)
+    assert mc == PR.mc_drawdown(rows, seed=1, resamples=300) and mc['p5'] <= mc['p50'] <= mc['p95']
 
 
 # ------------------------------------------------------------------ no holdout path
@@ -560,3 +705,11 @@ def test_the_real_environment_derives_from_committed_files_only(tmp_path):
     assert env['identity']['universe'] == u['digest'] and env['identity']['classification'] is None
     assert 'SLIP-C-UNFITTED' in env['cost_labels'] and not os.path.exists(tmp_path / 'no-store')
     PG.check_identity(env['identity'])
+    rules = env['rules']                                                 # the pinned M3 rules snapshot, sha-checked
+    assert env['run_config']['rules'] == rules and env['run_config']['book'] == PR.BOOK
+    assert set(rules) <= set(u['core_20']) and all(set(r) == {'tick', 'step', 'min_qty', 'min_notional'}
+                                                    for r in rules.values())
+    missing = sorted(set(u['core_20']) - set(rules))                    # fail closed: such a tier refuses to run
+    if missing:
+        with pytest.raises(PR.PitRunError, match='no pinned exchange rule'):
+            PR.evaluate_tier(env, 'CORE-20', None)
