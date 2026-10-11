@@ -54,15 +54,32 @@ The gating rows (LOSO/LOYO, neighbour stability, `funding_x2`, the program Holm 
 | Exit time for funding | Signal and cap exits and gap stops exit at the bar open. A non-gap intrabar stop exits at the stop-bar **close** (PR #61 / #67 convention), with the fill at the stop level. |
 | Funding | Signed actual funding at each funding time T with entry <= T < exit time, times funding-mark proxy v1. **A short receives a positive rate and pays a negative one** (`costs.funding_cost(side='short')`). A missing mark or an unprovable sequence makes the trade INCOMPLETE. |
 | MFE / MAE (diagnostics) | MFE = entry − lowest low before the exit. On the stop bar the bound is conservative: earlier lows plus the stop bar's **open**, never its own low. MAE uses highs, with the stop bar bounded by the stop. |
+| Fill tick rounding | Applied after adverse slip-v1. A **sell** (short entry) fill is rounded **DOWN** to the tick. A **buy** (cover: signal, cap, stop, gap stop or delist exit) fill is rounded **UP** to the tick. The stop level is **ceiled** to the tick. Every risk, sizing, PnL and R figure uses these exact rounded values, never unrounded ones. |
 | Indicators | Identical to v1: EMA `adjust=False` seeded at bar 0, Wilder ATR seeded at TR0, 7d = 42 and 30d = 180 bars, the last 1500 closed bars, warm-up 220 bars. Plus `cross_down(a,b) = a_i < b_i and a_(i-1) >= b_(i-1)`. |
 | Orders | Taker only; no limit orders. One lot per symbol. Within a cycle, exits come first, then entries in frozen-list rank order. |
+
+### 3.1 Window and EMA-seed behaviour (intentionally identical to STRAT-01)
+
+Each decision is a deterministic function of the closed 4h bars **as read**:
+- the last `min(1500, contiguous tail)` bars available at the decision;
+- every EMA seeded at the first bar read and the Wilder ATR at that bar's TR;
+- a 220-bar warm-up.
+
+This is **intentionally identical to STRAT-01** (`trend_ema_mom.v1`). The window is part of the rule definition. It is accepted on these exact terms, which the later runner must enforce with tests:
+
+1. **Exact prefix invariance (gating test).** Changing, adding or removing any bar *before* the read window never changes a decision. The decision reads nothing outside its window. Required: bit-identical `se` / `sx` / stop-distance outputs.
+2. **Declared tolerance versus longer history (stated, not a decision rule).** The seed's residual weight after k bars is `((n−1)/(n+1))^k` for an EMA of length n.
+   - With a full 1500-bar window, the EMA200 residual is ≈ 3.1e-7. For the widest neighbour EMA250 it is ≈ 6.2e-6, and it is negligible for EMA20/50 and ATR14.
+   - Required test: on synthetic fixtures with a full window, prepending 1500 earlier bars changes every indicator by at most **1e-5 relative**.
+   - Real-data decisions are always the as-read window's. They are never recomputed with longer history, and no tolerance is applied to a decision.
+3. **Early-history dependence is accepted by design.** Before the window reaches 1500 bars (from the 220-bar warm-up onward, where the EMA200 residual is ≈ 0.11), decisions depend on where the contiguous history starts. This is the same declared behaviour as STRAT-01, not a defect to be tuned.
 
 **Parameters (all fixed by symmetry with v1):** ema 20/50/200, ATR 14, stop 2.5, momentum 7d/30d, warm-up 220, cap 180, window 1500.
 
 ## 4. Risk and sizing: the same registered book
 
 The book is run separately on its own 10,000 USDT, never pooled with STRAT-01.
-- **Risk per trade:** 1% of the cycle's wallet snapshot, divided by the **actual** per-unit risk. That is the ceiled stop minus the tick-rounded fill (the short mirror of the #67 fix).
+- **Risk per trade:** 1% of the cycle's wallet snapshot, divided by the **actual** per-unit risk `stop − fill`. Here `fill` is the slipped sell fill rounded DOWN to the tick and `stop = ceil_tick(fill + 2.5 × ATR14)`, both exactly as booked (§3). This is the short mirror of the #67 fix.
 - **Limits:**
   - max 4 open lots;
   - gross notional <= 3x equity, sized on signal close × 1.10;
@@ -83,6 +100,7 @@ The book is run separately on its own 10,000 USDT, never pooled with STRAT-01.
     - `min_t W_t / G_t`;
     - the largest single-bar `(high − open) / open` of any open short.
   - **Any flagged bar is a PARK flag for Codex.** It never changes an exit, a fill or a sizing decision.
+  - **Sensitivity is intentional.** As gross notional approaches the 3x cap, `G_t / 3` approaches equity, so the diagnostic flags more readily. It stays an observation and a PARK flag only. It is never an exit, never a hidden leverage constraint, and never an input to sizing.
 
 ## 5. Costs and stress rows
 
