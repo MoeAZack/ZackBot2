@@ -1,0 +1,562 @@
+"""STRAT-01 R4b-PIT (Codex 6108364741): the real `run_r4.py pit` runner (tools/research/pit_run.py + pit_eval.py).
+
+Synthetic / portable fixtures only: a generated Binance-vision-shaped archive store, a fixture static list and a
+throwaway family ledger. No real development or holdout data is read and no real-market outcome exists anywhere here.
+Covers: fail-closed gate first, point-in-time tape (sandboxed + perturbed), 180-bar cap / purge, costs + funding rows,
+INCOMPLETE exclusion, baselines + deterministic seeds, atomic progress / sealed finals, interrupted-run refusal and
+resume, identity mismatch refusal, tier separation, no holdout path, and two fresh-process replay determinism.
+"""
+import glob
+import hashlib
+import io
+import json
+import math
+import os
+import subprocess
+import sys
+import zipfile
+from datetime import datetime, timezone
+from decimal import Decimal
+
+import pytest
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(ROOT, 'tools', 'research'))
+import costs as C                                                                           # noqa: E402
+import ledger as L                                                                          # noqa: E402
+import manifest as M                                                                        # noqa: E402
+import pit as P                                                                             # noqa: E402
+import pit_eval as PE                                                                       # noqa: E402
+import pit_run as PR                                                                        # noqa: E402
+import progress as PG                                                                       # noqa: E402
+import run_r4 as G                                                                          # noqa: E402
+import splits as S                                                                          # noqa: E402
+import static_universe as SU                                                                # noqa: E402
+import trend_ema_mom as T                                                                   # noqa: E402
+
+TF, HOUR, DAY = T.TF_MS, 3_600_000, 86_400_000
+START = S.parse_utc('2024-01-01T00:00:00Z')
+SYMS = ('BTCUSDT', 'ETHUSDT', 'ZECUSDT')
+MONTHS = [(2024, m) for m in range(1, 7)]
+FIX_SPLITS = [{'name': 'train', 'start': '2024-01-01T00:00:00Z', 'end': '2024-03-31T00:00:00Z'},
+              {'name': 'walk_forward', 'fold': 0, 'start': '2024-03-31T00:00:00Z', 'end': '2024-06-29T00:00:00Z'},
+              {'name': 'holdout', 'start': '2024-07-01T00:00:00Z', 'end': '2024-10-01T00:00:00Z'}]
+DROP = ('ZECUSDT', S.parse_utc('2024-02-20T08:00:00Z'))   # one missing 4h bar (gap) on the CORE-20-only symbol
+
+
+# ------------------------------------------------------------------ the synthetic archive store
+def price(k, x):
+    """Deterministic trending + oscillating path in bar units x (no market data)."""
+    return 100.0 * (k + 1) * math.exp(0.0009 * x + 0.08 * math.sin(x / (5.0 + 2 * k)) + 0.02 * math.sin(x / 2.3 + k))
+
+
+def kline(k, t, step, deep=False):
+    x0, x1 = (t - START) / TF, (t + step - START) / TF
+    o, c = round(price(k, x0), 4), round(price(k, x1), 4)
+    h = round(max(o, c) * 1.004, 4)
+    lo = round(min(o, c) * (0.96 if deep else 0.996), 4)
+    return f'{t},{o},{h},{lo},{c},10,{t + step - 1},{1000.0 + (t // step) % 7},5,4,1,0'
+
+
+def put(store, rel, lines):
+    p = os.path.join(store, *rel.split('/'))
+    os.makedirs(os.path.dirname(p), exist_ok=True)
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, 'w') as z:
+        z.writestr(rel.rsplit('/', 1)[1][:-4] + '.csv', '\n'.join(lines) + '\n')
+    raw = buf.getvalue()
+    with open(p, 'wb') as f:
+        f.write(raw)
+    with open(p + '.ok', 'w') as f:
+        f.write(hashlib.sha256(raw).hexdigest())
+
+
+def month_range(y, m):
+    a = int(datetime(y, m, 1, tzinfo=timezone.utc).timestamp() * 1000)
+    return a, int(datetime(y + m // 12, m % 12 + 1, 1, tzinfo=timezone.utc).timestamp() * 1000)
+
+
+def build_store(store):
+    for k, sym in enumerate(SYMS):
+        for y, m in MONTHS:
+            a, b = month_range(y, m)
+            tag = f'{y}-{m:02d}'
+            put(store, f'um/monthly/klines/{sym}/4h/{sym}-4h-{tag}.zip',
+                [kline(k, t, TF, deep=((t - START) // TF) % 37 == 11) for t in range(a, b, TF)
+                 if (sym, t) != DROP])
+            put(store, f'um/monthly/markPriceKlines/{sym}/1h/{sym}-1h-{tag}.zip',
+                [kline(k, t, HOUR) for t in range(a, b, HOUR)])
+            put(store, f'um/monthly/fundingRate/{sym}/{sym}-fundingRate-{tag}.zip',
+                ['calc_time,funding_interval_hours,last_funding_rate'] +
+                [f'{t + 3},8,{0.0001 * (1 + k)}' for t in range(a, b, 8 * HOUR)])
+    return M.build(['um/monthly'], manifest_id='fx-strat01', source_class='archive-verified', base=store,
+                   data_root='binance_um', survivor_only=False, loader=M.ARCHIVE_LOADER)
+
+
+def fixture_static():
+    s = [{'symbol': x, 'rank': i + 1} for i, x in enumerate(SYMS)]
+    return {'format': SU.FORMAT, 'label': SU.LABEL, 'owner_approved': True, 'symbols': s,
+            'digest': hashlib.sha256(json.dumps(SYMS).encode()).hexdigest()}
+
+
+def fixture_env(store, ledger, *, resamples=200, perms=200, b0_draws=20):
+    man = M.load(os.path.join(store, 'manifest.json'))
+    plan = S.SplitPlan(FIX_SPLITS, interval='4h', lookback_bars=240, horizon_bars=180)
+    run_config = {'configs': [c['name'] for c in PR.configs()], 'stress_rows': list(C.STRESS), 'slip_c': 0.05,
+                  'seed': PR.SEED, 'resamples': resamples, 'perms': perms, 'b0_draws': b0_draws,
+                  'dev_keys': PR.dev_keys(plan), 'plan_digest': plan.digest, 'window': T.WINDOW, 'tape': PE.FORMAT,
+                  'n_trials': 18}
+    static = fixture_static()
+    identity = {'commit': '0' * 40, 'evaluator': PR.sha({'code': PR.code_digest(ROOT), 'config': run_config}),
+                'manifest': man['digest'], 'universe': static['digest'], 'classification': None, 'prereg': None}
+    return {'repo': ROOT, 'manifest': man, 'store': store, 'static': static,
+            'tiers': {'CORE-10': list(SYMS[:2]), 'CORE-20': list(SYMS)}, 'plan': plan, 'ledger': ledger,
+            'evaluator': PR.EVALUATOR, 'author': 't', 'cairo_date': '2026-10-11', 'run_config': run_config,
+            'identity': identity, 'n_trials': 18, 'cost_labels': ['SLIP-C-UNFITTED']}
+
+
+def make_store(store):
+    m = build_store(store)
+    with open(os.path.join(store, 'manifest.json'), 'w', newline='\n') as f:
+        json.dump(m, f)
+
+
+def child(store, out, ledger):
+    """One complete fixture run in THIS (fresh) process: both tiers, clock off (byte-comparable finals)."""
+    os.makedirs(os.path.dirname(ledger), exist_ok=True)
+    for p in PR.run_tiers(fixture_env(store, ledger), out, clock=None):
+        print(p)
+
+
+# ------------------------------------------------------------------ the end-to-end fixture: two fresh processes
+@pytest.fixture(scope='module')
+def e2e(tmp_path_factory):
+    base = tmp_path_factory.mktemp('r4b')
+    store = str(base / 'store')
+    make_store(store)
+    procs, outs = [], []
+    for n in (1, 2):
+        out, led = str(base / f'out{n}'), str(base / f'ledger{n}' / 'trend_ema_mom.jsonl')
+        code = (f'import sys; sys.path.insert(0, {os.path.join(ROOT, "tests")!r}); '
+                f'import test_strat01_r4b_pit as F; F.child({store!r}, {out!r}, {led!r})')
+        procs.append(subprocess.Popen([sys.executable, '-c', code], cwd=ROOT, stdout=subprocess.PIPE,
+                                      stderr=subprocess.PIPE, stdin=subprocess.DEVNULL))
+        outs.append((out, led))
+    for p in procs:
+        o, e = p.communicate(timeout=1800)
+        assert p.returncode == 0, e.decode(errors='replace')[-3000:]
+    return store, outs
+
+
+def tier_files(out, tier):
+    d = os.path.join(out, tier)
+    get = lambda pat: sorted(glob.glob(os.path.join(d, pat)))
+    return get('final-*.json'), get('progress-*.json'), get('summary-*.json'), get('detail-*.json')
+
+
+def test_two_fresh_process_replay_is_byte_identical(e2e):
+    _, outs = e2e
+    for tier in PR.RUN_TIERS:
+        a, b = (tier_files(o, tier) for o, _ in outs)
+        assert all(len(x) == 1 for x in a) and all(len(x) == 1 for x in b)
+        for fa, fb in zip(a, b):
+            with open(fa[0], 'rb') as x, open(fb[0], 'rb') as y:
+                assert x.read() == y.read(), os.path.basename(fa[0])
+        fin = PG.read(a[0][0])
+        assert fin['state'] == 'sealed' and fin['digest'] == PG.doc_digest(fin)
+
+
+def test_tiers_are_separate_sealed_finals_with_one_identity(e2e):
+    _, outs = e2e
+    out, _ = outs[0]
+    f10, f20 = (PG.read(tier_files(out, t)[0][0]) for t in PR.RUN_TIERS)
+    assert f10['identity'] == f20['identity'] and f10['run'] != f20['run']
+    for fin, tier in ((f10, 'CORE-10'), (f20, 'CORE-20')):
+        names = [s['name'] for s in fin['stages']]
+        assert names == ['pit.open', 'pit.development', 'pit.walk_forward']
+        assert all(s['status'] == 'done' for s in fin['stages'])
+        assert [a['path'] for a in fin['artifacts']] == sorted(os.path.basename(p) for p in tier_files(out, tier)[2:]
+                                                                for p in p)
+    s10, s20 = (json.load(open(tier_files(out, t)[2][0])) for t in PR.RUN_TIERS)
+    assert s10['run_config_digest'] == s20['run_config_digest'] and s10['symbol_count'] == 2 and s20['symbol_count'] == 3
+
+
+def test_summary_is_labelled_aggregate_only_and_mechanical(e2e):
+    _, outs = e2e
+    for tier in PR.RUN_TIERS:
+        path = tier_files(outs[0][0], tier)[2][0]
+        raw = open(path, 'rb').read()
+        s = json.loads(raw)
+        assert s['label'] == SU.LABEL and SU.LABEL in s['labels'] and 'DEVELOPMENT-ONLY' in s['labels']
+        assert s['development_only'] is True and s['verdict'] == 'PARK'
+        assert set(s['edge00']) == G.EDGE_ROWS
+        assert set(s['flags']) <= {'DEV-NEGATIVE'}
+        for sym in SYMS:                                     # no symbol names / rankings / raw trades disclosed
+            assert sym.encode() not in raw
+        assert b'"trades": [' not in raw and b'neighbours_mean_r' not in raw
+        for key, blk in s['splits'].items():
+            assert blk['primary']['label'] == SU.LABEL and blk['uncapped_development_only']['label'] == SU.LABEL
+        assert s['aggregates']['development']['trades'] > 0                 # the synthetic path does trade
+        assert set(s['aggregates']['development']['stress_mean_r']) == set(C.STRESS)
+
+
+def test_ledger_records_development_access_and_attestations_only(e2e):
+    _, outs = e2e
+    led = outs[0][1]
+    recs = L._check_state(led)['trend_ema_mom']                         # records + chain (no git history here)
+    assert recs and all(r['kind'] == 'data_access' for r in recs)
+    assert {r['split'] for r in recs} == {'train', 'walk_forward'}          # never holdout, never calibration
+    att = [r for r in recs if r['detail'].get('purpose') == 'evaluation attestation']
+    assert len(att) == 4 and all(r['detail']['attestation']['perturbed'] for r in att)
+    assert all(SU.LABEL in r['detail']['labels'] for r in recs)
+
+
+def test_capped_trades_never_cross_their_split_and_incomplete_is_excluded(e2e):
+    _, outs = e2e
+    out = outs[0][0]
+    plan = S.SplitPlan(FIX_SPLITS, interval='4h', lookback_bars=240, horizon_bars=180)
+    for tier in PR.RUN_TIERS:
+        det = json.load(open(tier_files(out, tier)[3][0]))
+        for key, sp in det['splits'].items():
+            first, last = plan.decision_range(key)
+            for tr in sp['configs'][PR.PRIMARY_NAME]['trades']:
+                assert first <= tr['entry_ms'] <= last and tr['exit_ms'] - tr['entry_ms'] <= 180 * TF
+                assert plan.split_of_episode(tr['entry_ms'], tr['exit_ms']) == key
+            unc = sp['configs'][PR.DEV_ONLY]
+            assert all(i['reason'].startswith('incomplete.') for i in unc['incomplete'])
+
+
+# ------------------------------------------------------------------ evaluator parity (no sandbox, no data)
+def test_shared_period_signals_are_bit_identical_to_trend_ema_mom():
+    bars = [P.Bar(START + i * TF, price(0, i - 1), price(0, i) * 1.004, price(0, i) * 0.99, price(0, i), 1, 1,
+                  START + (i + 1) * TF) for i in range(700)]
+    for n in (200, 230, 260, 400, 700):
+        got = PE.signals(bars[:n])
+        for (name, p), g in zip(PE.SIGNAL_CONFIGS, got):
+            assert g == T.signal_at_last(bars[:n], p), (name, n)
+    assert [n for n, _ in PE.SIGNAL_CONFIGS] == ['primary'] + [n for n, _ in T.neighbours()]
+
+
+# ------------------------------------------------------------------ accounting on hand-built tapes (pure)
+T0 = S.parse_utc('2024-01-01T00:00:00Z')
+
+
+def mk_tape(closes, *, le=(), lx=(), d='2.0', lows=None, drop=(), fund_drop=(), mark_none=()):
+    """Bar i closes at T0 + (i + 1) x 4h; funding every 8h (calc_time + 3 ms) with a mark."""
+    out = []
+    for i, c in enumerate(closes):
+        t = T0 + (i + 1) * TF
+        o = closes[i - 1] if i else c
+        lo = (lows or {}).get(i, min(o, c) - 0.25)
+        f = [[ft + 3, 0.0001, 8, None if ft in mark_none else o] for ft in range(T0, t + 1, 8 * HOUR)
+             if t - TF < ft + 3 <= t and ft not in fund_drop]
+        if i in drop:
+            out.append({'t': t, 'r': [{'s': 'AAAUSDT', 'f': f}] if f else []})
+            continue
+        rec = {'s': 'AAAUSDT', 'b': [o, max(o, c) + 0.25, lo, c], 'f': f, 'w': '1' * 13,
+               'x': ('1' if i in lx else '0') * 13, 'e': {str(k): d for k in range(13)} if i in le else {}, 'd': d}
+        out.append({'t': t, 'r': [rec]})
+    return out
+
+
+def t_of(i):
+    return T0 + (i + 1) * TF
+
+
+CFG = {c['name']: c for c in PR.configs()}
+
+
+def acct(tape, cfg=PR.PRIMARY_NAME, first=None, last=None, hi=None):
+    return PR.account(tape, CFG[cfg], first=first if first is not None else t_of(20),
+                      last=last if last is not None else t_of(len(tape) - 2), hi=hi or tape[-1]['t'], slip_c=0.05)
+
+
+def test_signal_exit_net_r_is_the_registered_cost_model():
+    closes = [100.0 + 0.1 * i for i in range(60)]
+    a = acct(mk_tape(closes, le={25}, lx={30}))
+    (tr,) = a['counted']
+    assert (tr['entry_ms'], tr['exit_ms'], tr['exit_reason'], tr['bars']) == (t_of(25), t_of(30), 'exit.signal', 5)
+    sym = PR.read_tape(mk_tape(closes, le={25}, lx={30}))[1]['AAAUSDT']
+    for name, scen in C.STRESS.items():
+        ef = C.fill_price(closes[25], 'buy', sym.bps(t_of(25), scen.vol, 0.05), scen)
+        xf = C.fill_price(closes[30], 'sell', sym.bps(t_of(30), scen.vol, 0.05), scen)
+        ev = sym.events(t_of(25), t_of(30))
+        assert len(ev) == 3                                              # 8h cadence: 104h (entry counts), 112h, 120h
+        want = (xf - ef - C.fee(ef, 'taker', C.CRYPTO, scen) - C.fee(xf, 'taker', C.CRYPTO, scen)
+                - C.funding_cost('long', 1.0, ev, scen, bars_held=5, entry_notional=ef)) / 2.0
+        assert tr['r'][name] == pytest.approx(want, abs=1e-12), name
+    assert tr['r']['fees_slip_x2'] < tr['r']['base'] and tr['r']['funding_x2'] < tr['r']['base']
+
+
+def test_the_180_bar_cap_exits_at_bar_179_close_never_181():
+    closes = [100.0 + 0.01 * i for i in range(260)]
+    a = acct(mk_tape(closes, le={25}))
+    (tr,) = a['counted']
+    assert tr['exit_reason'] == 'exit.time_cap' and tr['exit_ms'] - tr['entry_ms'] == 180 * TF and tr['bars'] == 180
+    u = acct(mk_tape(closes, le={25}), cfg=PR.DEV_ONLY)
+    assert not u['counted'] and [i['reason'] for i in u['incomplete']] == ['incomplete.split_end']
+    assert u['excluded_symbols'] == ['AAAUSDT']
+
+
+def test_stops_fill_at_the_level_or_at_a_gapping_open():
+    closes = [100.0] * 40
+    a = acct(mk_tape(closes, le={25}, lows={28: 97.0}))
+    (tr,) = a['counted']
+    assert tr['exit_reason'] == 'exit.stop' and not tr['gap'] and tr['exit_ms'] == t_of(27)
+    closes2 = [100.0] * 27 + [96.0] * 13                                 # bar 28 opens at 96, below the stop
+    b = acct(mk_tape(closes2, le={25}, lows={27: 99.5}))
+    (tr2,) = b['counted']
+    assert tr2['exit_reason'] == 'exit.stop' and tr2['gap'] and tr2['r']['base'] < -1.0
+
+
+def test_entries_only_inside_the_decision_range():
+    closes = [100.0 + 0.1 * i for i in range(60)]
+    a = acct(mk_tape(closes, le={25, 45}, lx={30, 50}), first=t_of(26), last=t_of(44))
+    assert a['counted'] == []
+    b = acct(mk_tape(closes, le={25, 45}, lx={30, 50}), first=t_of(25), last=t_of(45))
+    assert [t['entry_ms'] for t in b['counted']] == [t_of(25), t_of(45)]
+
+
+@pytest.mark.parametrize('kw,reason', [({'drop': {28}}, 'incomplete.gap'),
+                                       ({'fund_drop': {T0 + 13 * 8 * HOUR}}, 'incomplete.funding'),
+                                       ({'mark_none': {T0 + 13 * 8 * HOUR}}, 'incomplete.funding_mark')])
+def test_incomplete_symbols_are_excluded_and_reported_never_counted(kw, reason):
+    closes = [100.0 + 0.1 * i for i in range(80)]
+    a = acct(mk_tape(closes, le={25, 60}, lx={32, 66}, **kw))
+    assert [i['reason'] for i in a['incomplete']] == [reason]
+    assert a['excluded_symbols'] == ['AAAUSDT'] and a['counted'] == []
+    assert a['excluded_trades'] == len(a['trades']) == 1                 # the clean second trade is excluded too
+    m = PR.metrics(a, rows=('base',))
+    assert m['trades'] == 0 and m['incomplete'] == 1 and m['excluded_trades'] == 1
+
+
+def test_a_gap_while_flat_drops_the_pending_entry_as_a_refusal():
+    closes = [100.0 + 0.1 * i for i in range(60)]
+    a = acct(mk_tape(closes, le={25}, drop={26}))
+    assert a['counted'] == [] and a['refusals'] == {'entry_no_next_open': 1} and not a['incomplete']
+
+
+def test_baselines_b1_weekly_and_b2_momentum_rules():
+    closes = [100.0 + 0.1 * i for i in range(200)]
+    b1 = acct(mk_tape(closes), cfg='B1', first=t_of(20), last=t_of(150))
+    assert b1['counted'] and all(tr['exit_reason'] == 'exit.time_cap' and tr['bars'] == 42 for tr in b1['counted'])
+    assert all(datetime.fromtimestamp(tr['entry_ms'] / 1000, tz=timezone.utc).weekday() == 0
+               and tr['entry_ms'] % DAY == 0 for tr in b1['counted'])
+    b2 = acct(mk_tape(closes + [closes[-1] + 0.1 * i for i in range(1, 200)]), cfg='B2', first=t_of(20),
+              last=t_of(150))
+    assert b2['counted'] and b2['counted'][0]['entry_ms'] == t_of(20)    # close > close 20 bars earlier, flat
+    down = acct(mk_tape([100.0 - 0.1 * i for i in range(200)]), cfg='B2', first=t_of(20), last=t_of(150))
+    assert down['counted'] == []
+
+
+def test_b0_pairs_are_seeded_and_deterministic():
+    closes = [100.0 + 2 * math.sin(i / 7) + 0.02 * i for i in range(400)]
+    tape = mk_tape(closes, le={60, 140, 220}, lx={70, 160, 240})
+    prim = acct(tape, first=t_of(20), last=t_of(220), hi=tape[-1]['t'])
+    a = PR.b0_pairs(tape, prim, first=t_of(20), last=t_of(220), hi=tape[-1]['t'], slip_c=0.05, seed_key='k', draws=50)
+    b = PR.b0_pairs(tape, prim, first=t_of(20), last=t_of(220), hi=tape[-1]['t'], slip_c=0.05, seed_key='k', draws=50)
+    c = PR.b0_pairs(tape, prim, first=t_of(20), last=t_of(220), hi=tape[-1]['t'], slip_c=0.05, seed_key='j', draws=50)
+    assert a == b and a['episodes'] == 3 and a['diffs'] != c['diffs']
+
+
+def test_statistics_are_seeded_and_holm_is_step_down():
+    d = [0.3, -0.1, 0.2, 0.25, -0.05, 0.4]
+    p = PR.sign_flip_p(d, perms=2000, seed=PR.SEED)
+    assert p == PR.sign_flip_p(d, perms=2000, seed=PR.SEED) and 0 < p <= 1
+    assert PR.sign_flip_p([], perms=10, seed=1) is None
+    adj = PR.holm({'B0': 0.01, 'B1': 0.02, 'B2': None}, 18)
+    assert adj == {'B0': pytest.approx(0.18), 'B1': pytest.approx(0.34), 'B2': None}
+    rows = [{'symbol': 'A', 'entry_ms': i * TF, 'exit_ms': i * TF + TF, 'exit_reason': 'exit.signal',
+             'r': {'base': (-1) ** i * 0.5 + 0.1}} for i in range(0, 40, 2)]
+    assert PR.bootstrap(rows, seed=1, resamples=300) == PR.bootstrap(rows, seed=1, resamples=300)
+
+
+# ------------------------------------------------------------------ no holdout path
+def prereg_plan():
+    sp = json.loads(G._load(ROOT, json.loads(G._load(ROOT, G.GATE))['prereg']))['splits']
+    return S.SplitPlan(sp['splits'], interval=sp['interval'], lookback_bars=sp['lookback_bars'],
+                       horizon_bars=sp['horizon_bars'])
+
+
+def test_the_registered_plan_opens_development_splits_only():
+    plan = prereg_plan()
+    keys = PR.dev_keys(plan)
+    assert keys == ['train'] + [f'walk_forward[{i}]' for i in range(5)]
+    h0 = PR.holdout_start(plan)
+    assert h0 == S.parse_utc('2026-10-12T00:00:00Z')
+    for k in keys:
+        lo, hi = PR.dev_window(plan, k)
+        assert hi <= h0 and not plan.overlaps_holdout(lo, hi)
+    for k in ('holdout', 'calibration'):
+        with pytest.raises(PR.PitRunError, match='development splits only'):
+            PR.dev_window(plan, k)
+
+
+def test_a_holdout_key_is_refused_before_any_ledger_access(tmp_path, monkeypatch):
+    store = str(tmp_path / 's')
+    make_store(store)
+    led = str(tmp_path / 'ledger' / 'trend_ema_mom.jsonl')
+    env = fixture_env(store, led)
+    for key in ('holdout', 'calibration'):
+        monkeypatch.setattr(PR, 'dev_keys', lambda plan, k=key: [k])
+        with pytest.raises((PR.PitRunError, S.SplitError)):
+            PR.evaluate_tier(env, 'CORE-10', None)
+    assert not os.path.exists(led)                                       # nothing opened, nothing recorded
+
+
+def test_the_cli_has_no_split_or_holdout_option():
+    with pytest.raises(SystemExit):
+        G.main(['pit', '--store', ROOT, '--author', 't', '--cairo-date', '2026-10-11', '--split', 'holdout'])
+    src = open(os.path.join(ROOT, 'tools', 'research', 'pit_run.py'), encoding='utf-8').read()
+    assert "'holdout'" in src and 'envelope' not in src.split('def evaluate_tier')[1].split('def _counted')[0]
+
+
+def test_the_gate_runs_first_and_nothing_is_read_when_closed(monkeypatch):
+    called = []
+    monkeypatch.setattr(G, 'gate', lambda *a, **kw: ['G1 dirty working tree'])
+    monkeypatch.setattr(PR, 'real_env', lambda *a, **kw: called.append(1))
+    monkeypatch.setattr(PR, 'run_tiers', lambda *a, **kw: called.append(2))
+    assert G.main(['pit', '--store', ROOT, '--author', 't', '--cairo-date', '2026-10-11']) == 3
+    for fail in (['G3 no preregistration record'], ['G4 R1+R2+R3 (#51,52) 0156426: not merged into origin/master']):
+        monkeypatch.setattr(G, 'gate', lambda *a, f=fail, **kw: f)
+        with pytest.raises(G.GateError):
+            G.run_pit(ROOT, store=ROOT, out_dir='x', author='t', cairo_date='2026-10-11')
+    assert called == []
+
+
+# ------------------------------------------------------------------ orchestration (stubbed tier evaluation; fast)
+def stub_env(**over):
+    run_config = {'configs': ['x'], 'stress_rows': ['base'], 'seed': 1, 'resamples': 10, **over}
+    ident = {'commit': '1' * 40, 'evaluator': PR.sha(run_config), 'manifest': '2' * 64, 'universe': '3' * 64,
+             'classification': None, 'prereg': None}
+    return {'tiers': {'CORE-10': ['A'], 'CORE-20': ['A', 'B']}, 'run_config': run_config, 'identity': ident}
+
+
+@pytest.fixture
+def stub(monkeypatch):
+    seen = []
+
+    def ev(env, tier, prog):
+        seen.append(tier)
+        prog.stage_start('pit.development')
+        prog.stage_done('pit.development')
+        if env.get('boom') == tier:
+            raise KeyboardInterrupt
+        if env.get('fail') == tier:
+            raise P.PITError('integrity')
+        return {'format': PR.SUMMARY_FORMAT, 'tier': tier, 'label': SU.LABEL}, {'tier': tier}
+    monkeypatch.setattr(PR, 'evaluate_tier', ev)
+    return seen
+
+
+def test_core10_is_sealed_before_core20_and_finals_are_separate(tmp_path, stub):
+    out = str(tmp_path)
+    finals = PR.run_tiers(stub_env(), out, clock=None)
+    assert stub == ['CORE-10', 'CORE-20'] and [os.path.basename(os.path.dirname(f)) for f in finals] == list(PR.RUN_TIERS)
+    for f in finals:
+        assert PG.read(f)['state'] == 'sealed'
+    with pytest.raises(PR.PitRunError, match='already sealed'):
+        PR.run_tiers(stub_env(), out, clock=None)
+    assert PR.run_tiers(stub_env(), out, resume=True, clock=None) == finals and stub == ['CORE-10', 'CORE-20']
+
+
+def test_core20_never_starts_without_a_sealed_core10(tmp_path, stub):
+    env = dict(stub_env(), fail='CORE-10')
+    with pytest.raises(P.PITError):
+        PR.run_tiers(env, str(tmp_path), clock=None)
+    assert stub == ['CORE-10'] and not os.path.exists(tmp_path / 'CORE-20')
+    (fin,) = glob.glob(str(tmp_path / 'CORE-10' / 'final-*.json'))
+    assert PG.read(fin)['state'] == 'aborted' and PG.read(fin)['integrity'] == [{'code': 'PITError'}]
+    with pytest.raises(PR.PitRunError, match='aborted'):
+        PR.run_tiers(stub_env(), str(tmp_path), resume=True, clock=None)
+
+
+def test_interrupted_run_refuses_without_resume_and_resumes_under_the_same_identity(tmp_path, stub):
+    out = str(tmp_path)
+    with pytest.raises(KeyboardInterrupt):
+        PR.run_tiers(dict(stub_env(), boom='CORE-20'), out, clock=None)
+    assert glob.glob(str(tmp_path / 'CORE-10' / 'final-*.json'))
+    assert glob.glob(str(tmp_path / 'CORE-20' / 'progress-*.json')) and not glob.glob(str(tmp_path / 'CORE-20' / 'final-*'))
+    with pytest.raises(PR.PitRunError, match='already sealed'):
+        PR.run_tiers(stub_env(), out, clock=None)
+    with pytest.raises(PR.PitRunError, match='another run identity'):
+        PR.run_tiers(stub_env(resamples=11), out, resume=True, clock=None)           # mismatched identity
+    finals = PR.run_tiers(stub_env(), out, resume=True, clock=None)
+    assert stub == ['CORE-10', 'CORE-20', 'CORE-20'] and all(PG.read(f)['state'] == 'sealed' for f in finals)
+    clean = str(tmp_path / 'clean')
+    PR.run_tiers(stub_env(), clean, clock=None)
+    for tier in PR.RUN_TIERS:
+        (a,), (b,) = (glob.glob(os.path.join(d, tier, 'summary-*.json')) for d in (out, clean))
+        assert open(a, 'rb').read() == open(b, 'rb').read()
+
+
+def test_an_interrupted_core10_refuses_a_plain_rerun(tmp_path, stub):
+    with pytest.raises(KeyboardInterrupt):
+        PR.run_tiers(dict(stub_env(), boom='CORE-10'), str(tmp_path), clock=None)
+    with pytest.raises(PR.PitRunError, match='interrupted run'):
+        PR.run_tiers(stub_env(), str(tmp_path), clock=None)
+    assert not os.path.exists(tmp_path / 'CORE-20')
+
+
+def test_a_tampered_sealed_artifact_is_refused_on_resume(tmp_path, stub):
+    PR.run_tiers(stub_env(), str(tmp_path), clock=None)
+    (s,) = glob.glob(str(tmp_path / 'CORE-10' / 'summary-*.json'))
+    with open(s, 'ab') as f:
+        f.write(b' ')
+    with pytest.raises(PR.PitRunError, match='no longer matches'):
+        PR.run_tiers(stub_env(), str(tmp_path), resume=True, clock=None)
+
+
+def test_artifacts_are_written_atomically(tmp_path, stub, monkeypatch):
+    real = os.replace
+
+    def boom(a, b):
+        if os.path.basename(b).startswith('summary-'):
+            raise OSError('disk full')
+        return real(a, b)
+    monkeypatch.setattr(os, 'replace', boom)
+    with pytest.raises(OSError):
+        PR.run_tiers(stub_env(), str(tmp_path), clock=None)
+    d = tmp_path / 'CORE-10'
+    assert not glob.glob(str(d / 'summary-*')) and not glob.glob(str(d / '.summary-*'))
+    (fin,) = glob.glob(str(d / 'final-*.json'))
+    assert PG.read(fin)['state'] == 'aborted'
+
+
+def test_static_dataset_serves_a_rank_prefix_with_the_label_only(tmp_path):
+    store = str(tmp_path / 's')
+    make_store(store)
+    man = M.load(os.path.join(store, 'manifest.json'))
+    ds = PR.StaticDataset(man, store, fixture_static(), SYMS[:2])
+    assert ds.labels == (SU.LABEL,) and ds.members(START) == frozenset(SYMS[:2]) and ds.books == ('crypto',)
+    assert not ds.files('klines', 'ZECUSDT', '4h')
+    with pytest.raises(PR.PitRunError, match='rank prefix'):
+        PR.StaticDataset(man, store, fixture_static(), ['ETHUSDT'])
+    with pytest.raises(PR.PitRunError, match='owner-approved'):
+        PR.StaticDataset(man, store, dict(fixture_static(), owner_approved=False), SYMS[:1])
+    with pytest.raises((PR.PitRunError, M.ManifestError), match='repro'):
+        PR.StaticDataset(dict(man, source_class='repro-only'), store, fixture_static(), SYMS[:1])
+
+
+def test_registered_configurations_and_constants():
+    names = [c['name'] for c in PR.configs()]
+    pre = json.loads(G._load(ROOT, json.loads(G._load(ROOT, G.GATE))['prereg']))
+    assert names[:2] == [pre['variants']['primary']['name'], pre['variants']['secondary'][0]['name']]
+    assert names[2:14] == pre['neighbour_grid']['configs'] and names[14:] == ['B1', 'B2']
+    assert PR.CAP == pre['primary_params']['time_cap_bars'] == pre['splits']['horizon_bars'] == 180
+    assert 'seed 20261009' in pre['baselines']['B0'] and PR.SEED == 20261009
+    assert '10,000' in pre['baselines']['p_value'] and PR.PERMS == PR.RESAMPLES == 10_000 and PR.B0_DRAWS == 1000
+    assert pre['costs']['stress_rows'] == list(C.STRESS) and pre['costs']['slip_cal_v1']['c']['crypto'] == 0.05
+    assert PR.RUN_TIERS == ('CORE-10', 'CORE-20')
+
+
+def test_the_real_environment_derives_from_committed_files_only(tmp_path):
+    """Manifest metadata + gate files only: the store path does not exist and no data row is read."""
+    env = PR.real_env(ROOT, store=str(tmp_path / 'no-store'), author='t', cairo_date='2026-10-11', gate_path=G.GATE)
+    u = json.loads(G._load(ROOT, PR.json.loads(G._load(ROOT, G.GATE))['universe']['path']))
+    assert env['tiers'] == {'CORE-10': u['core_10'], 'CORE-20': u['core_20']} and len(env['tiers']['CORE-20']) == 20
+    assert env['n_trials'] == 18 and env['run_config']['dev_keys'] == ['train'] + [f'walk_forward[{i}]' for i in range(5)]
+    assert env['run_config']['slip_c'] == 0.05 and env['run_config']['resamples'] == PR.RESAMPLES
+    assert env['identity']['universe'] == u['digest'] and env['identity']['classification'] is None
+    assert 'SLIP-C-UNFITTED' in env['cost_labels'] and not os.path.exists(tmp_path / 'no-store')
+    PG.check_identity(env['identity'])

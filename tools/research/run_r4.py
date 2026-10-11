@@ -6,7 +6,10 @@ gate is code, not a comment.
   python tools/research/run_r4.py register --author claude-code --cairo-date YYYY-MM-DD
   python tools/research/run_r4.py m3 --store <repo root holding data_long/4h> --cost base|2x|both
          --out-dir research_evidence/runs/r4 --author claude-code --cairo-date YYYY-MM-DD
-  python tools/research/run_r4.py pit ...        (refuses: the PIT evaluator lands after M3 acceptance)
+  python tools/research/run_r4.py pit --store <binance_um store> --author claude-code --cairo-date YYYY-MM-DD
+         [--out-dir research_evidence/runs/r4b] [--resume]
+         (STRAT-01 R4b-PIT, pit_run.py: CORE-10 then CORE-20 development splits only; holdout never opened. Codex
+         6108364741: run only after Codex posts `R4 READY`.)
 
 Gate (`gate()` returns every failure; any failure = exit 3, nothing is read):
   G1 clean tree: the executing checkout has no uncommitted change (report.code_identity).
@@ -440,6 +443,17 @@ def run_m3(repo: str, *, store: str, rows, out_dir: str, author: str, cairo_date
     return written
 
 
+def run_pit(repo: str, *, store: str, out_dir: str, author: str, cairo_date: str, resume: bool = False,
+            gate_kw=None, clock=PG.cairo_now) -> list[str]:
+    """STRAT-01 R4b-PIT (pit_run.py): the R4 gate first (nothing is read on any failure), then CORE-10 and CORE-20
+    over the development splits. Returns the sealed final record paths (operational; no outcome is printed)."""
+    refuse_unless_open(repo, **(gate_kw or {}))
+    import pit_run as PR                                                                    # noqa: E402
+    env = PR.real_env(repo, store=store, author=author, cairo_date=cairo_date,
+                      gate_path=(gate_kw or {}).get('gate_path', GATE))
+    return PR.run_tiers(env, out_dir, resume=resume, clock=clock)
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description='RES-01 R4: gated M3 reproduction and PIT run of trend_ema_mom.v1')
     sub = ap.add_subparsers(dest='cmd', required=True)
@@ -453,6 +467,9 @@ def main(argv=None) -> int:
     m.add_argument('--store', required=True)
     m.add_argument('--cost', choices=['base', '2x', 'both'], default='both')
     m.add_argument('--out-dir', default=os.path.join(M.REPO, 'research_evidence', 'runs', 'r4'))
+    p.add_argument('--store', required=True)
+    p.add_argument('--out-dir', default=os.path.join(M.REPO, 'research_evidence', 'runs', 'r4b'))
+    p.add_argument('--resume', action='store_true', help='re-run an interrupted tier under the same identity')
     a = ap.parse_args(argv)
     try:
         if a.cmd == 'check':
@@ -469,9 +486,10 @@ def main(argv=None) -> int:
                                cairo_date=a.cairo_date):
                 print(path)
             return 0
-        refuse_unless_open(M.REPO)
-        print('pit: the PIT evaluator lands after M3 is REPRODUCED and reviewed (R4b); nothing run', file=sys.stderr)
-        return 4
+        for path in run_pit(M.REPO, store=a.store, out_dir=a.out_dir, author=a.author, cairo_date=a.cairo_date,
+                            resume=a.resume):
+            print(path)
+        return 0
     except GateError as e:
         print(str(e), file=sys.stderr)
         return 3

@@ -784,7 +784,7 @@ def test_gate_closes_on_a_moved_pin_bad_ancestry_or_an_edited_prereg(grepo):
 def test_pit_subcommand_and_m3_never_run_with_the_gate_closed(monkeypatch):
     """The refusal is invariant; do not couple it to whether the committed tree is before or after registration."""
     monkeypatch.setattr(G, 'gate', lambda *a, **kw: ['G3 forced closed for the refusal test'])
-    assert G.main(['pit', '--author', 't', '--cairo-date', '2026-10-10']) == 3
+    assert G.main(['pit', '--store', ROOT, '--author', 't', '--cairo-date', '2026-10-10']) == 3
     assert G.main(['m3', '--store', ROOT, '--author', 't', '--cairo-date', '2026-10-10']) == 3
     g = json.loads(G._load(ROOT, G.GATE))
     assert 'classification' not in g and g['universe']['owner_approved'] is True       # STRAT-00 binding
