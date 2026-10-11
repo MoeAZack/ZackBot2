@@ -19,8 +19,11 @@ Gate (`gate()` returns every failure; any failure = exit 3, nothing is read):
      equals its branch tip when a branch is named, has its `after` commit as an ancestor, is merged into the
      integration ref and is contained in HEAD; a rebase-merged pin names its `integrated` master commit, whose tree
      must equal the reviewed source head's, and the ancestry checks apply to the integrated commit.
-  G5 classification bound: the gate's classification digest is a 64-hex digest. `PENDING` (classification v2 not
-     built) keeps the gate closed - R4-0 is NOT READY.
+  G5 universe bound (STRAT-00, contract section 0.1; classification v2 is superseded and not required): the gate's
+     `universe` block names the owner-approved static current top-40 artifact; it re-validates against its committed
+     exchangeInfo snapshot (static_universe.validate: 40 unique ranked symbols, CORE-10 / CORE-20, tradability,
+     digests, byte-identical rebuild + approval), carries the CURRENT-UNIVERSE / SURVIVOR-BIASED label and
+     `owner_approved` true, and equals the pinned digest and list digest, which the prereg cites too.
 `m3` keeps the sanitized progress snapshot + sealed final (progress.py, zb-run-progress/2) beside its reports:
 operational state only. `register` (after Codex clears the prereg) needs G1 + G2 and appends the declared trial
 records once; commit the ledger, then `m3` / `pit` pass G3. No network, no credentials; git is read locally (fetch
@@ -42,12 +45,15 @@ import ledger as L                                                              
 import manifest as M                                                                        # noqa: E402
 import progress as PG                                                                       # noqa: E402
 import report as R                                                                          # noqa: E402
+import static_universe as SU                                                                # noqa: E402
 import splits as S                                                                          # noqa: E402
 import trend_ema_mom as T                                                                   # noqa: E402
 
 GATE = 'research_evidence/prereg/r4_gate.json'
-GATE_FORMAT = 'zb-r4-gate/2'
-UNIVERSE = 'research_evidence/universe/pit-top40-qv30d-v4.json'
+GATE_FORMAT = 'zb-r4-gate/3'
+UNIVERSE = 'research_evidence/universe/static-top40-minhist365-contract-20261011.json'
+SNAPSHOT = 'research_evidence/universe/binance-um-exchangeinfo-v2-20261011.json'
+TIERS = {'CORE-10': [1, 10], 'CORE-20': [1, 20], 'EXT-21-40': [21, 40]}   # reported separately, never pooled
 PREREG_FORMAT = 'zb-prereg/1'
 PREREG_KEYS = {'format', 'candidate_id', 'family', 'author', 'cairo_date', 'status', 'hypothesis', 'contamination',
                'data', 'universe_rule', 'timeframe', 'rule', 'primary_params', 'variants', 'neighbour_grid', 'trials',
@@ -176,17 +182,64 @@ def validate_prereg(pre: dict, repo: str) -> list[str]:
     want = {'variant': 2, 'grid_point': len(names), 'baseline': 4, 'total': 6 + len(names)}
     if t != want or t['total'] != TRIALS:
         bad.append(f'declared trials differ from the records register appends ({TRIALS}, crypto family only)')
+    d = pre['data']
+    if d.get('universe_path') != UNIVERSE:
+        bad.append(f'data.universe_path must be the frozen static current list {UNIVERSE}')
     try:
-        u = json.loads(_load(repo, UNIVERSE))
-        if (u['digest'], u['manifest_digest']) != (pre['data']['universe_digest'], pre['data']['manifest_digest']):
-            bad.append('universe / manifest digests differ from the committed universe file')
-    except (OSError, ValueError, KeyError) as e:
+        u = static_universe(repo, UNIVERSE)
+        if (u['digest'], u['list_digest'], u['sources']['manifest_digest']) != (
+                d['universe_digest'], d['universe_list_digest'], d['manifest_digest']):
+            bad.append('universe / list / manifest digests differ from the committed static universe file')
+    except (OSError, ValueError, KeyError, GateError) as e:
         bad.append(f'universe file: {e}')
+    if d.get('label') != SU.LABEL or ur.get('label') != SU.LABEL:
+        bad.append(f'data.label and universe_rule.label must be {SU.LABEL!r}')
+    if ur.get('report_tiers') != TIERS:
+        bad.append(f'universe_rule.report_tiers must be exactly {TIERS} (reported separately)')
     m3 = pre['m3_reproduction'].get('manifest', {})
     import m3_repro as X                                                                    # noqa: E402
     if m3.get('id') != X.REPRO_ID or m3.get('digest') != X.REPRO_DIGEST or m3.get('source_class') != M.REPRO_ONLY:
         bad.append('m3_reproduction.manifest must pin legacy-m3-repro-v1 (repro-only) by digest')
     return bad
+
+
+# ------------------------------------------------------------------ the static universe (G5)
+def static_universe(repo: str, rel: str, snapshot_rel: str = SNAPSHOT) -> dict:
+    """The owner-approved static current list, re-validated by static_universe.validate against its committed
+    exchangeInfo snapshot (count / order / CORE tiers / uniqueness / tradability / digests / byte-identical rebuild +
+    approval). No network."""
+    raw = _load(repo, rel)
+    u = json.loads(raw)
+    try:
+        if raw != SU.dumps(u):
+            raise GateError(f'{rel}: not in canonical written form')
+        SU.validate(u, json.loads(_load(repo, snapshot_rel)))
+    except SU.StaticUniverseError as e:
+        raise GateError(f'{rel}: {e}') from e
+    if u.get('label') != SU.LABEL:
+        raise GateError(f'{rel}: label must be {SU.LABEL!r}')
+    if u.get('owner_approved') is not True:
+        raise GateError(f'{rel}: owner_approved is not true')
+    return u
+
+
+def universe_failures(repo: str, g: dict, pre: dict | None = None) -> list[str]:
+    """G5: the gate's universe block binds the static artifact by digest + list digest, owner_approved true."""
+    b = g.get('universe') or {}
+    if b.get('owner_approved') is not True or not all(isinstance(b.get(k), str) and HEX64.match(b[k])
+                                                      for k in ('digest', 'list_digest')):
+        return ['G5 universe: the gate must pin a 64-hex digest + list_digest with owner_approved true']
+    try:
+        u = static_universe(repo, b.get('path', ''), b.get('snapshot', SNAPSHOT))
+    except (OSError, ValueError, KeyError, GateError) as e:
+        return [f'G5 universe: {e}']
+    fail = []
+    if (u['universe_id'], u['digest'], u['list_digest']) != (b.get('id'), b['digest'], b['list_digest']):
+        fail.append('G5 universe: the file differs from the pinned id / digest / list digest')
+    if pre is not None and (pre['data'].get('universe_digest'), pre['data'].get('universe_list_digest')) != (
+            b['digest'], b['list_digest']):
+        fail.append('G5 universe: the prereg cites a different universe than the gate pins')
+    return fail
 
 
 # ------------------------------------------------------------------ the gate
@@ -242,9 +295,7 @@ def gate(repo: str = M.REPO, *, gate_path: str = GATE, registry_genesis=None, ne
     # G4 + G5
     if need_cleared:
         fail += pin_failures(repo, g)
-        cls = (g.get('classification') or {}).get('digest')
-        if not (isinstance(cls, str) and HEX64.match(cls)):
-            fail.append(f'G5 classification digest {cls!r}: classification v2 is not built / bound (R4-0 NOT READY)')
+        fail += universe_failures(repo, g, pre)
     return fail
 
 

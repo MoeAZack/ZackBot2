@@ -1,14 +1,14 @@
 """R4-0 backtest readiness report (Codex #53 comment 6094720765). Reads no market data and opens no holdout.
 
-One concise report: exact SHA, dataset / universe / classification / prereg digests, test counts, M3 parity,
+One concise report: exact SHA, dataset / universe / universe-list / prereg digests, test counts, M3 parity,
 accounting sample, determinism hashes, pilot result, limitations and a single READY / NOT READY. Seven items; READY
 only when every item is PASS. Missing evidence = MISSING, never assumed.
 
 `offline(repo)` computes what can be checked now from the committed tree alone: HEAD + clean tree, the R4 gate
-(pins + ancestry, classification), the reproduction-only and archive manifest digests (recomputed), the universe
-digest (recomputed) and its manifest binding, the prereg SHA-256, that the family ledger holds no holdout record
+(pins + ancestry, the owner-approved static universe binding), the reproduction-only and archive manifest digests (recomputed), the static
+universe digest + list digest (re-validated) and its manifest binding, the prereg SHA-256, that the family ledger holds no holdout record
 (holdout unread), and - with `--pytest` - the R4-0 test-suite counts. Everything the official Windows run must still
-produce (archive re-verification against the store, classification v2, M3 parity, independent accounting sample,
+produce (archive re-verification against the store, M3 parity, independent accounting sample,
 two-process / relocated determinism, development pilot) stays MISSING and the verdict NOT READY.
 
   python tools/research/r4_readiness.py --out research_evidence/runs/r4/R4-0_readiness.json [--pytest]
@@ -33,7 +33,7 @@ ITEMS = {
     1: 'accepted foundation: #51 + final #52 (+ the #56 overlap follow-up) merged; #53 rebuilt on that exact master, '
        'clean tree',
     2: 'data identity / chronology on Windows (103,659-file manifest, universe digest, overlap/gap/malformed refusal, '
-       'tz, listing/delisting, universe-as-of, symbol identity, funding alignment, PIT-dated classification)',
+       'tz, listing/delisting, universe-as-of, symbol identity, funding alignment; owner-approved static current top-40 list bound by digest)',
     3: 'no look-ahead known-answer tests (future-bar refusal, as-of membership, warm-up, purge/embargo, closed-trade '
        'truncation, perturbation); holdout unread',
     4: 'execution / accounting: representative long + short trades independently checked, exact reconciliation; '
@@ -44,7 +44,7 @@ ITEMS = {
     7: 'small spent/development-only Windows pilot with independently calculated sample trades',
 }
 STATUSES = ('PASS', 'FAIL', 'MISSING')
-DIGESTS = ('dataset', 'universe', 'classification', 'prereg')
+DIGESTS = ('dataset', 'universe', 'universe_list', 'prereg')
 RESULTS = ('m3_parity', 'accounting_sample', 'pilot')        # each {'status': PASS|FAIL|MISSING, ...}
 TESTS = ('passed', 'failed')
 HEX40 = re.compile(r'[0-9a-f]{40}\Z')
@@ -68,7 +68,7 @@ OFFLINE_CHECKS = {
 REMAINING = {
     2: 'Windows: re-verify the 103,659-file archive manifest and the universe digest against the store; the '
        'byte-level M3 coverage check (`r4_readiness.py --store <checkout>`: zero missing scheduled bars in all 8 '
-       'series); classification v2 (sourced, PIT-dated, Cowork-verified, Codex-bound) and its new universe artifact',
+       'series)',
     4: 'independent accounting calculator over representative long + short trades (Codex may assign to Cowork)',
     5: 'official Windows M3 reproduction (run_r4.py m3) = REPRODUCED for base and 2x',
     6: 'two fresh-process Windows runs + a relocated checkout with identical sealed finals',
@@ -114,7 +114,7 @@ def _result(v, what):
 
 
 def build(ev: dict) -> dict:
-    """`ev` = {'head': 40-hex, 'digests': {dataset, universe, classification, prereg}, 'tests': {passed, failed},
+    """`ev` = {'head': 40-hex, 'digests': {dataset, universe, universe_list, prereg}, 'tests': {passed, failed},
     'm3_parity' / 'accounting_sample' / 'pilot': {'status', ...}, 'items': {n: {'status', ...}},
     'final_files': [...], 'limitations': [...]}. NOT READY whenever any field is missing or not PASS."""
     missing = []
@@ -165,7 +165,6 @@ def offline(repo: str, *, run_tests: bool = False, store: str | None = None) -> 
     import manifest as M                                                                    # noqa: E402
     import pit as P                                                                         # noqa: E402
     import run_r4 as G                                                                      # noqa: E402
-    import universe as U                                                                    # noqa: E402
     head = _git(repo, 'rev-parse', 'HEAD')
     g = json.loads(G._load(repo, G.GATE))
     gate = G.gate(repo)
@@ -183,13 +182,20 @@ def offline(repo: str, *, run_tests: bool = False, store: str | None = None) -> 
     pre = json.loads(pre_raw)
     prereg_sha = hashlib.sha256(pre_raw).hexdigest()
     arch = M.load(os.path.join(repo, 'research_evidence', 'manifests', 'binance-um-archive-v1.json.gz'))
-    uni = json.loads(G._load(repo, G.UNIVERSE))
-    u_ok = U.digest_of(uni) == uni['digest'] and uni['manifest_digest'] == arch['digest']
+    try:
+        uni, u_err = G.static_universe(repo, G.UNIVERSE), None
+    except G.GateError as e:
+        uni, u_err = json.loads(G._load(repo, G.UNIVERSE)), str(e)
+    u_ok = u_err is None and uni['sources']['manifest_digest'] == arch['digest']
     detail['archive_manifest'] = {'digest': arch['digest'], 'files': len(arch['files']),
                                   'matches_prereg': arch['digest'] == pre['data']['manifest_digest']}
-    detail['universe'] = {'id': uni['universe_id'], 'digest': uni['digest'], 'recomputed_ok': u_ok,
-                          'matches_prereg': uni['digest'] == pre['data']['universe_digest']}
-    cls = (g.get('classification') or {}).get('digest')
+    detail['universe'] = {'id': uni['universe_id'], 'digest': uni['digest'], 'list_digest': uni['list_digest'],
+                          'owner_approved': uni.get('owner_approved') is True, 'label': uni.get('label'),
+                          'recomputed_ok': u_ok, 'error': u_err,
+                          'matches_prereg': (uni['digest'], uni['list_digest']) == (
+                              pre['data']['universe_digest'], pre['data'].get('universe_list_digest')),
+                          'tiers': {'CORE-10': 10, 'CORE-20': 20, 'EXT-21-40': len(uni['symbols']) - 20}}
+    u_bound = not G.universe_failures(repo, g, pre)
     led = os.path.join(repo, g['ledger'])
     recs = L._check_state(led).get(pre['family'], []) if os.path.exists(led) else []
     holdout_unread = not any(r.get('split') == 'holdout' for r in recs)
@@ -203,7 +209,7 @@ def offline(repo: str, *, run_tests: bool = False, store: str | None = None) -> 
     cov = detail['m3_coverage']
     items['2'] = {'status': 'FAIL' if cov['total_missing'] else 'MISSING', 'offline': {k: detail[k] for k in ('repro_manifest', 'archive_manifest',
                                                                           'universe', 'm3_coverage')},
-                  'classification': cls, 'remaining': REMAINING[2]}
+                  'universe_bound': u_bound, 'remaining': REMAINING[2]}
     t_ok = bool(tests) and tests['failed'] == 0 and tests['passed'] > 0
     items['3'] = {'status': 'PASS' if t_ok and holdout_unread else 'MISSING', 'holdout_unread': holdout_unread,
                   'offline_checks': OFFLINE_CHECKS[3]}
@@ -213,11 +219,12 @@ def offline(repo: str, *, run_tests: bool = False, store: str | None = None) -> 
             items[str(n)]['offline_checks'] = OFFLINE_CHECKS[n]
     if not registered:
         lim.append('preregistration v1 is UNREGISTERED (G3): no strategy run may start')
-    if not (isinstance(cls, str) and HEX64.match(cls)):
-        lim.append(f'classification digest {cls}: classification v2 not built (G5)')
+    if not u_bound:
+        lim.append('static universe not bound by the gate (G5)')
+    lim.append('universe labelled CURRENT-UNIVERSE / SURVIVOR-BIASED (frozen current list, contract section 0.1)')
     lim += [f'gate: {f}' for f in gate]
     return {'head': head, 'digests': {'dataset': arch['digest'], 'universe': uni['digest'],
-                                      'classification': cls, 'prereg': prereg_sha},
+                                      'universe_list': uni['list_digest'], 'prereg': prereg_sha},
             'tests': ({'passed': tests['passed'], 'failed': tests['failed']} if tests else None),
             'tests_summary': tests['summary'] if tests else 'not run (pass --pytest)',
             'items': items, 'limitations': lim, 'offline': detail}

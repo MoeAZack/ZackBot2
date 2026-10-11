@@ -555,7 +555,9 @@ def test_committed_prereg_validates():
     assert pre['variants']['secondary'][0]['time_cap_bars'] is None
     assert pre['variants']['secondary'][0]['promotable'] is False
     assert set(pre['universe_rule']['books']) == {'crypto'}
-    assert pre['data']['classification']['digest'] == 'PENDING'
+    assert pre['data']['classification'].startswith('SUPERSEDED')                # STRAT-00: no classification v2
+    assert pre['data']['universe_path'] == G.UNIVERSE and pre['data']['label'] == 'CURRENT-UNIVERSE / SURVIVOR-BIASED'
+    assert pre['universe_rule']['report_tiers'] == {'CORE-10': [1, 10], 'CORE-20': [1, 20], 'EXT-21-40': [21, 40]}
     assert 'UNREGISTERED' in pre['status']
 
 
@@ -579,6 +581,12 @@ def test_committed_prereg_validates():
     (lambda p: p['m3_reproduction']['manifest'].__setitem__('digest', '0' * 64), 'legacy-m3-repro-v1'),
     (lambda p: p['edge00'].pop('neighbours'), 'edge00'),
     (lambda p: p['neighbour_grid']['configs'].pop(), 'neighbour grid'),
+    (lambda p: p['data'].__setitem__('universe_digest', '0' * 64), 'static universe file'),
+    (lambda p: p['data'].__setitem__('universe_list_digest', '0' * 64), 'static universe file'),
+    (lambda p: p['data'].__setitem__('universe_path', 'research_evidence/universe/pit-top40-qv30d-v4.json'),
+     'frozen static current list'),
+    (lambda p: p['universe_rule'].__setitem__('label', 'CURRENT-UNIVERSE'), 'SURVIVOR-BIASED'),
+    (lambda p: p['universe_rule']['report_tiers'].pop('EXT-21-40'), 'report_tiers'),
 ])
 def test_prereg_validation_refuses_drift(mut, msg):
     pre = json.loads(load_prereg())
@@ -602,8 +610,8 @@ def grepo(tmp_path):
         shutil.copyfile(os.path.join(ROOT, rel), r / rel)
     pre = json.loads((r / 'research_evidence/prereg/trend_ema_mom.v1.json').read_text())
     (r / 'research_evidence/universe').mkdir(parents=True)
-    (r / G.UNIVERSE).write_text(json.dumps({'digest': pre['data']['universe_digest'],
-                                            'manifest_digest': pre['data']['manifest_digest']}))
+    for rel in (G.UNIVERSE, G.SNAPSHOT):                                  # the real owner-approved list + snapshot
+        shutil.copyfile(os.path.join(ROOT, rel), r / rel)
     (r / '.gitattributes').write_text('* -text\n')
     git(tmp_path, 'init', '-q', '-b', 'master', str(r))
     led = str(r / 'research_evidence/ledger/trend_ema_mom.jsonl')
@@ -624,7 +632,8 @@ def grepo(tmp_path):
             'ledger': 'research_evidence/ledger/trend_ema_mom.jsonl', 'integration_ref': 'master',
             'pins': [{'slice': 'R1+R2+R3', 'prs': [51, 52], 'head': foundation},
                      {'slice': 'overlap', 'prs': [56], 'branch': 'overlap', 'head': follow, 'after': foundation}],
-            'classification': {'id': 'instrument-classes-v2', 'digest': 'PENDING'}}
+            'universe': {'path': G.UNIVERSE, 'id': pre['data']['universe_id'], 'digest': 'PENDING',
+                         'list_digest': 'PENDING', 'owner_approved': False}}
     (r / G.GATE).write_text(json.dumps(gate))
     git(r, 'add', '-A')
     git(r, 'commit', '-q', '-m', 'gate')
@@ -633,22 +642,23 @@ def grepo(tmp_path):
     return str(r), gen
 
 
-def bind_classification(repo, digest):
+def bind_universe(repo, **over):
     p = os.path.join(repo, G.GATE)
     g = json.load(open(p))
-    g['classification']['digest'] = digest
+    u = json.load(open(os.path.join(repo, G.UNIVERSE)))
+    g['universe'].update(dict(digest=u['digest'], list_digest=u['list_digest'], owner_approved=True), **over)
     with open(p, 'w') as f:
         json.dump(g, f)
-    git(repo, 'commit', '-q', '-am', 'bind classification')
+    git(repo, 'commit', '-q', '-am', 'bind universe')
 
 
-def test_gate_refuses_until_registered_committed_merged_and_classified(grepo):
+def test_gate_refuses_until_registered_committed_merged_and_universe_bound(grepo):
     repo, gen = grepo
     kw = dict(registry_genesis=gen)
     fail = G.gate(repo, **kw)
     assert any('G3 no preregistration' in f for f in fail)
     assert [f for f in fail if f.startswith('G4')] == [f for f in fail if 'overlap' in f and 'not merged' in f]
-    assert any(f.startswith('G5') and 'PENDING' in f for f in fail)
+    assert any(f.startswith('G5 universe') for f in fail)
     with pytest.raises(G.GateError):
         G.run_m3(repo, store=repo, rows=('base',), out_dir=repo, author='t', cairo_date='2026-10-10', gate_kw=kw)
     recs = G.register(repo, author='t', cairo_date='2026-10-10', registry_genesis=gen)
@@ -665,9 +675,19 @@ def test_gate_refuses_until_registered_committed_merged_and_classified(grepo):
     git(repo, 'merge', '-q', '--no-ff', '-m', 'merge overlap', 'overlap')
     git(repo, 'checkout', '-q', 'r4')
     git(repo, 'merge', '-q', '--no-ff', '-m', 'merge master', 'master')
-    assert [f[:2] for f in G.gate(repo, **kw)] == ['G5']               # classification PENDING keeps it closed
-    bind_classification(repo, 'c' * 64)
+    assert [f[:2] for f in G.gate(repo, **kw)] == ['G5']               # universe not bound keeps it closed
+    bind_universe(repo, digest='c' * 64)
+    assert any('differs from the pinned' in f for f in G.gate(repo, **kw))   # a wrong digest stays closed
+    bind_universe(repo, owner_approved=False)
+    assert any('owner_approved true' in f for f in G.gate(repo, **kw))
+    bind_universe(repo)
     assert G.gate(repo, **kw) == []
+    u = json.load(open(os.path.join(repo, G.UNIVERSE)))
+    u['owner_approved'] = False                                           # the file itself must stay approved
+    with open(os.path.join(repo, G.UNIVERSE), 'w') as f:
+        json.dump(u, f)
+    assert any(f.startswith('G5 universe') for f in G.gate(repo, **kw))
+    git(repo, 'checkout', '--', G.UNIVERSE)
     with open(os.path.join(repo, 'tools/research/trend_ema_mom.py'), 'a') as f:
         f.write('# edit' + chr(10))
     assert any('G1 dirty' in f for f in G.gate(repo, **kw))
@@ -685,7 +705,7 @@ def test_gate_closes_on_a_moved_pin_bad_ancestry_or_an_edited_prereg(grepo):
     git(repo, 'merge', '-q', '--no-ff', '-m', 'm', 'overlap')
     git(repo, 'checkout', '-q', 'r4')
     git(repo, 'merge', '-q', '--no-ff', '-m', 'mm', 'master')
-    bind_classification(repo, 'c' * 64)
+    bind_universe(repo)
     assert G.gate(repo, registry_genesis=gen) == []
     git(repo, 'checkout', '-q', 'overlap')
     with open(os.path.join(repo, 'overlap.txt'), 'a') as f:
@@ -715,9 +735,14 @@ def test_pit_subcommand_and_m3_never_run_with_the_gate_closed():
     assert G.main(['pit', '--author', 't', '--cairo-date', '2026-10-10']) == 3      # this branch: not registered
     assert G.main(['m3', '--store', ROOT, '--author', 't', '--cairo-date', '2026-10-10']) == 3
     g = json.loads(G._load(ROOT, G.GATE))
-    assert g['classification']['digest'] == 'PENDING'
+    assert 'classification' not in g and g['universe']['owner_approved'] is True       # STRAT-00 binding
+    assert (g['universe']['digest'], g['universe']['list_digest']) == (
+        '1c06c18d2fc82413b740260f0051a9f8286e9b0cb87d7d9614a2f88d78393fce',
+        'd95ba63c126029e23196e253c74cd95918cb5c9102079792194c972d20884bc5')
+    assert not G.universe_failures(ROOT, g)
     assert [p['head'] for p in g['pins']] == ['01564264431650a9fde53f27623928bb84702914',
-                                              '33ee82f70039a30dd6bcd9cda6b3816156131638']
+                                              '33ee82f70039a30dd6bcd9cda6b3816156131638',
+                                              'c613337a4efc7ebf31afbda186aef4219ecd30e3']
     assert g['pins'][1]['integrated'] == 'a47815b76350dc77d195637b00de3c2607126d0c'
     assert 'branch' not in g['pins'][1]
 

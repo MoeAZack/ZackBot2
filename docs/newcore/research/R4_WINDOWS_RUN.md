@@ -5,16 +5,18 @@ PC (Codex 6094669453); Linux runs are complementary only. Progress is published 
 (Codex 6094685201): no PnL, score, return or comparison until the run is complete and sealed. The forward holdout
 is never opened by any command here.
 
-## Pins (research_evidence/prereg/r4_gate.json, `zb-r4-gate/2`)
+## Pins (research_evidence/prereg/r4_gate.json, `zb-r4-gate/3`)
 
 | Pin | Exact SHA | Check |
 |---|---|---|
 | R1+R2+R3 (#51, #52) | `01564264431650a9fde53f27623928bb84702914` (master, 2026-10-10 10:59 Cairo) | merged into `origin/master`, in HEAD |
 | R3 overlap integrity + `legacy-m3-repro-v1` (#56) | reviewed source `33ee82f70039a30dd6bcd9cda6b3816156131638`, rebase-merged as `a47815b76350dc77d195637b00de3c2607126d0c` | identical trees; a47815b descends from 0156426, is in `origin/master` and in HEAD (the rewritten source head need not be a master ancestor) |
-| Classification v2 | `PENDING` | G5 keeps the gate closed until a 64-hex digest is bound in a reviewed commit |
+| STRAT-00 base: static current top-40 (#59) | `c613337a4efc7ebf31afbda186aef4219ecd30e3` (master, 2026-10-11) | descends from a47815b, in `origin/master` and in HEAD |
+| Universe (G5) | `static-top40-minhist365-contract-20261011`, digest `1c06c18d...93fce`, list digest `d95ba63c...84bc5`, `owner_approved: true` | re-validated against its committed exchangeInfo snapshot; the prereg cites the same digests. Classification v2 is superseded (contract section 0.1) and not required |
 
-Today the gate is CLOSED by design: the prereg is UNREGISTERED (G3) and classification v2 is PENDING (G5); the G4
-pins pass on master `a47815b`. A fix round that moves a pin is re-pinned only in a reviewed commit.
+Today the gate is CLOSED by design only on G3: the prereg is UNREGISTERED until Codex clears it. G4 pins and the G5
+universe binding pass. Results are reported per tier: CORE-10, CORE-20 and EXT-21-40 separately, labelled
+`CURRENT-UNIVERSE / SURVIVOR-BIASED`. A fix round that moves a pin is re-pinned only in a reviewed commit.
 
 | Placeholder | Meaning |
 |---|---|
@@ -53,8 +55,7 @@ The offline report recomputes the archive manifest digest (103,659 files), the u
 binding, the `legacy-m3-repro-v1` digest (zero overlaps, repro-only), the prereg SHA-256, checks that the family
 ledger holds no holdout record, and records the test counts. Items it cannot compute stay MISSING.
 
-If G3 reports "not registered" and Codex has cleared the prereg (only after classification v2 is bound and the
-prereg's universe digests are updated in a reviewed commit):
+If G3 reports "not registered" and Codex has cleared the prereg (after the STRAT-00 rebind is merged):
 
 ```powershell
 python tools/research/run_r4.py register --author claude-code --cairo-date <CAIRO_DATE>
@@ -84,7 +85,7 @@ Get-FileHash $out\* -Algorithm SHA256
 
 ## 3. Remaining R4-0 evidence (not built by Build)
 
-- Item 2: Windows re-verification of the archive manifest and universe against the store; classification v2.
+- Item 2: Windows re-verification of the archive manifest and universe against the store.
 - Item 4: independent accounting calculator over representative long + short trades (Codex may assign to Cowork).
 - Item 7: development pilot on a small spent slice with independently calculated sample trades.
 
