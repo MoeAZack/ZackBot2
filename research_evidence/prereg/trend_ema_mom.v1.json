@@ -215,8 +215,8 @@
    },
    {
     "name": "holdout",
-    "start": "2026-10-05T00:00:00Z",
-    "end": "2027-10-04T00:00:00Z"
+    "start": "2026-10-12T00:00:00Z",
+    "end": "2027-10-11T00:00:00Z"
    }
   ],
   "notes": "calibration = the slip-cal-v1 interval, excluded from all evidence (no strategy evaluation). train is named so only because a plan needs one: nothing is fitted, the parameters are fixed. train and every walk-forward fold are development evidence (spent window or legacy-derived parameters), each reported separately and never pooled with the holdout. The holdout is forward-only (post-freeze), opened once, atomically, with every baseline and stress row. horizon_bars 180 = the primary's finite time cap = the purge / embargo horizon, so no primary trade crosses a split. A trade cut by a split end or the data end anyway (e.g. the uncapped development-only variant) is reported INCOMPLETE: invalid for promotion, never counted as an ordinary closed outcome."
@@ -256,7 +256,7 @@
   },
   "PARK": "every other failure: sample short, CI includes 0 with a positive mean, any baseline / robustness / neighbour / intrabar / E10 row fails, a cost row still PROVISIONAL or UNCALIBRATED, or a data / rename / delist gap unresolved"
  },
- "stop_condition": "The forward holdout window is fixed (2026-10-05 -> 2027-10-04). It is revealed once, atomically, after its end. Fewer than 30 holdout episodes at that point = PARK on the sample row; extending the window needs a new prereg (a new ledger variant). No interim looks.",
+ "stop_condition": "The forward holdout window is fixed (2026-10-12T00:00Z -> 2027-10-11T00:00Z, exclusive end, 52 weeks): the first clean 4h-aligned UTC boundary (a Monday 00:00 UTC) after this prereg is frozen; `run_r4.py register` refuses at or after the holdout start, so registration always precedes it. The interval 2026-10-05 -> 2026-10-12 belongs to no split and is never read. It is revealed once, atomically, after its end. Fewer than 30 holdout episodes at that point = PARK on the sample row; extending the window needs a new prereg (a new ledger variant). No interim looks.",
  "m3_reproduction": {
   "purpose": "R4-0 item 5 (plan section 7): the harness reproduces the M3 kill-OFF rule evaluation (UNCAPPED) before any PIT run",
   "manifest": {

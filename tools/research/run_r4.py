@@ -38,6 +38,7 @@ import os
 import re
 import subprocess
 import sys
+import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import costs as C                                                                           # noqa: E402
@@ -64,6 +65,8 @@ EDGE_ROWS = {'sample', 'expectancy', 'baselines', 'multiplicity', 'pit', 'robust
 PRIMARY_NAME = 'trend_ema_mom.v1.cap180'        # the promotable primary (Codex 6095682220)
 PRIMARY_CAP = T.TIME_CAP_BARS                   # its finite time cap = the purge / embargo horizon
 DEV_ONLY = 'trend_ema_mom.v1.uncapped'          # the uncapped M3 rule: reproduction / development evidence only
+SPENT_END = '2026-10-05T00:00:00Z'               # end of the ledger's spent window (trend_ema_mom seq 1)
+HOLDOUT_WEEKS = 52                              # fixed holdout length; the end is exclusive
 TRIALS = 18                                     # crypto family; gold has its own future budget
 DEFERRED = {'gold-spot': 'XAUUSDT', 'gold-tokenized': 'PAXGUSDT'}  # costs.py class names
 M3_EVALUATOR = 'tools/research/m3_eval.py'
@@ -146,6 +149,10 @@ def validate_prereg(pre: dict, repo: str) -> list[str]:
             bad.append('split horizon_bars must equal the primary time cap (the purge / embargo horizon)')
         if sp['lookback_bars'] < T.max_lookback_bars([T.PRIMARY] + [p for _, p in T.neighbours()]):
             bad.append('lookback_bars does not cover every evaluated configuration')
+        ho = plan.split('holdout')
+        h0, h1 = S.parse_utc(ho['start']), S.parse_utc(ho['end'])
+        if h0 <= S.parse_utc(SPENT_END) or h0 % (4 * 3_600_000) or h1 - h0 != HOLDOUT_WEEKS * 7 * 86_400_000:
+            bad.append(f'holdout must start on a 4h boundary after {SPENT_END} and last exactly {HOLDOUT_WEEKS} weeks')
         cal = pre['costs']['slip_cal_v1']['calibration_window']
         if plan.split('calibration') != {**plan.split('calibration'), 'start': cal['start'], 'end': cal['end']}:
             bad.append('the calibration split must be the slip-cal-v1 calibration window')
@@ -349,12 +356,18 @@ def refuse_unless_open(repo, **kw):
 
 
 # ------------------------------------------------------------------ subcommands
-def register(repo: str, *, author: str, cairo_date: str, gate_path: str = GATE, registry_genesis=None) -> list[dict]:
+def register(repo: str, *, author: str, cairo_date: str, gate_path: str = GATE, registry_genesis=None,
+             now_ms: int | None = None) -> list[dict]:
+    """Append the declared trial records once. Refused at or after the prereg's holdout start (Codex 6106611116): a
+    forward holdout may never begin before its preregistration is recorded."""
     refuse_unless_open(repo, gate_path=gate_path, registry_genesis=registry_genesis, need_registered=False,
                        need_cleared=False)
     g = json.loads(_load(repo, gate_path))
     raw = _load(repo, g['prereg'])
     pre, sha = json.loads(raw), hashlib.sha256(raw).hexdigest()
+    h0 = S.parse_utc(next(x for x in pre['splits']['splits'] if x['name'] == 'holdout')['start'])
+    if (int(time.time() * 1000) if now_ms is None else now_ms) >= h0:
+        raise GateError(f'registration refused: the holdout started at {S.utc(h0)}; re-date the prereg holdout first')
     path = os.path.join(repo, g['ledger'])
     recs = L.verify(path, registry_genesis=registry_genesis).get(pre['family'], [])
     if any(r['detail'].get('prereg_sha256') == sha for r in recs):

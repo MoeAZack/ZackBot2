@@ -543,6 +543,9 @@ def test_committed_prereg_validates():
     plan = S.SplitPlan(pre['splits']['splits'], interval='4h', lookback_bars=240, horizon_bars=180)
     spent_end = S.parse_utc('2026-10-05T00:00:00Z')
     assert plan.access_range('holdout')[0] >= spent_end                     # holdout is forward-only
+    ho = plan.split('holdout')                                              # Codex 6106611116: after the prereg date
+    assert (ho['start'], ho['end']) == ('2026-10-12T00:00:00Z', '2027-10-11T00:00:00Z')
+    assert S.parse_utc(ho['start']) > S.parse_utc(pre['cairo_date'] + 'T00:00:00Z')
     assert all(plan.access_range(k)[1] <= spent_end for k in plan.keys() if k != 'holdout')
     recs = G.trial_records(pre, '0' * 64, 'x')
     assert len(recs) == pre['trials']['declared']['total'] == 18
@@ -581,6 +584,9 @@ def test_committed_prereg_validates():
     (lambda p: p['m3_reproduction']['manifest'].__setitem__('digest', '0' * 64), 'legacy-m3-repro-v1'),
     (lambda p: p['edge00'].pop('neighbours'), 'edge00'),
     (lambda p: p['neighbour_grid']['configs'].pop(), 'neighbour grid'),
+    (lambda p: p['splits']['splits'][-1].update(start='2026-10-05T00:00:00Z', end='2027-10-04T00:00:00Z'), 'holdout'),
+    (lambda p: p['splits']['splits'][-1].update(start='2026-10-12T02:00:00Z', end='2027-10-11T02:00:00Z'), 'holdout'),
+    (lambda p: p['splits']['splits'][-1].update(end='2027-10-12T00:00:00Z'), 'holdout'),
     (lambda p: p['data'].__setitem__('universe_digest', '0' * 64), 'static universe file'),
     (lambda p: p['data'].__setitem__('universe_list_digest', '0' * 64), 'static universe file'),
     (lambda p: p['data'].__setitem__('universe_path', 'research_evidence/universe/pit-top40-qv30d-v4.json'),
@@ -592,6 +598,9 @@ def test_prereg_validation_refuses_drift(mut, msg):
     pre = json.loads(load_prereg())
     mut(pre)
     assert any(msg in b for b in G.validate_prereg(pre, ROOT))
+
+
+BEFORE_HOLDOUT = S.parse_utc('2026-10-11T00:00:00Z')
 
 
 def git(repo, *a, env=None):
@@ -661,7 +670,7 @@ def test_gate_refuses_until_registered_committed_merged_and_universe_bound(grepo
     assert any(f.startswith('G5 universe') for f in fail)
     with pytest.raises(G.GateError):
         G.run_m3(repo, store=repo, rows=('base',), out_dir=repo, author='t', cairo_date='2026-10-10', gate_kw=kw)
-    recs = G.register(repo, author='t', cairo_date='2026-10-10', registry_genesis=gen)
+    recs = G.register(repo, author='t', cairo_date='2026-10-10', registry_genesis=gen, now_ms=BEFORE_HOLDOUT)
     assert [r['kind'] for r in recs].count('grid_point') == 12 and len(recs) == 18
     fail = G.gate(repo, **kw)
     assert any('G3 the registration records are not committed at HEAD' in f for f in fail)
@@ -669,7 +678,7 @@ def test_gate_refuses_until_registered_committed_merged_and_universe_bound(grepo
     git(repo, 'add', '-A')
     git(repo, 'commit', '-q', '-m', 'register prereg')
     with pytest.raises(G.GateError, match='already registered'):
-        G.register(repo, author='t', cairo_date='2026-10-10', registry_genesis=gen)
+        G.register(repo, author='t', cairo_date='2026-10-10', registry_genesis=gen, now_ms=BEFORE_HOLDOUT)
     assert sorted(f[:2] for f in G.gate(repo, **kw)) == ['G4', 'G5']
     git(repo, 'checkout', '-q', 'master')
     git(repo, 'merge', '-q', '--no-ff', '-m', 'merge overlap', 'overlap')
@@ -696,9 +705,22 @@ def test_gate_refuses_until_registered_committed_merged_and_universe_bound(grepo
     assert L.n_trials(recs['trend_ema_mom']) == 18
 
 
+def test_registration_is_refused_once_the_holdout_has_started(grepo):
+    """Codex 6106611116: a forward holdout may not begin before its preregistration is recorded."""
+    repo, gen = grepo
+    led = os.path.join(repo, 'research_evidence/ledger/trend_ema_mom.jsonl')
+    before = open(led, 'rb').read()
+    for now in (S.parse_utc('2026-10-12T00:00:00Z'), S.parse_utc('2027-01-01T00:00:00Z')):
+        with pytest.raises(G.GateError, match='holdout started'):
+            G.register(repo, author='t', cairo_date='2026-10-12', registry_genesis=gen, now_ms=now)
+    assert open(led, 'rb').read() == before                             # nothing appended
+    assert len(G.register(repo, author='t', cairo_date='2026-10-11', registry_genesis=gen,
+                          now_ms=S.parse_utc('2026-10-11T23:59:59Z'))) == 18
+
+
 def test_gate_closes_on_a_moved_pin_bad_ancestry_or_an_edited_prereg(grepo):
     repo, gen = grepo
-    G.register(repo, author='t', cairo_date='2026-10-10', registry_genesis=gen)
+    G.register(repo, author='t', cairo_date='2026-10-10', registry_genesis=gen, now_ms=BEFORE_HOLDOUT)
     git(repo, 'add', '-A')
     git(repo, 'commit', '-q', '-m', 'register')
     git(repo, 'checkout', '-q', 'master')

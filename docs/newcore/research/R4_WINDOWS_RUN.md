@@ -62,6 +62,10 @@ python tools/research/run_r4.py register --author claude-code --cairo-date <CAIR
 # then commit the 18 ledger lines through a reviewed PR, re-checkout the new accepted master, re-run check
 ```
 
+`register` is refused at or after the prereg's holdout start (2026-10-12T00:00Z, 52 weeks, exclusive end; Codex
+6106611116). If registration slips past it, re-date the holdout in a reviewed commit first. Official M3 and determinism
+runs start only from the clean registered head (no `need_registered=False` run counts).
+
 ## 2. M3 reproduction (R4-0 item 5; uncapped; reproduction-only flat funding)
 
 ```powershell
