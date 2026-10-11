@@ -524,7 +524,7 @@ def test_committed_prereg_artifacts_are_lf_in_every_checkout():
         pytest.skip('not a git checkout')
     d = os.path.join(ROOT, 'research_evidence', 'prereg')
     names = sorted(n for n in os.listdir(d) if n.endswith('.json'))
-    assert names == ['r4_gate.json', 'trend_ema_mom.v1.json']
+    assert names == ['r4_gate.json', 'trend_ema_mom.v1.json', 'trend_ema_mom_short.v1.json']   # + STRAT-02 draft
     for n in names:
         rel = f'research_evidence/prereg/{n}'
         attr = subprocess.run(['git', 'check-attr', 'text', 'eol', '--', rel], cwd=ROOT, capture_output=True,

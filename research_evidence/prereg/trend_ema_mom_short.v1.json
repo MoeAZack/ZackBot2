@@ -1,0 +1,287 @@
+{
+ "format": "zb-prereg/1",
+ "candidate_id": "trend_ema_mom_short.v1",
+ "family": "trend_ema_mom_short",
+ "author": "claude-code",
+ "cairo_date": "2026-10-11",
+ "status": "UNREGISTERED DRAFT - STRAT-02 contract for Codex review (docs/newcore/research/STRAT02_SHORT_CONTRACT.md). NOT frozen, NOT registered, NOT runnable: no ledger record exists, no code implements the short side, and the R4 gate does not point at this file. Frozen only after Codex clears it, the short-side runner slice is accepted, and `run_r4.py register` records its SHA-256 in research_evidence/ledger/trend_ema_mom_short.jsonl before the holdout start below.",
+ "hypothesis": {
+  "mechanism": "Time-series momentum on the short side of USD-M perpetuals: when the fast EMA crosses below the slow EMA while price is below its long EMA and both the 7-day and 30-day returns are negative, downtrend persistence (leverage unwinds and forced long liquidations feeding further selling, slow information diffusion, risk-off de-grossing) over the next days to weeks pays more than the round-trip cost plus funding. Short side only; never pooled with or claimed for the long family trend_ema_mom.",
+  "side": "short",
+  "regime": "any; the rule carries its own per-symbol trend filter (close < EMA200, negative 7d and 30d returns). There is NO BTC regime gate on entry. The PIT regime label used only for reporting and B0 matching is BTCUSDT 4h close vs its trailing EMA200 at the decision time (btc_up / btc_down), identical to trend_ema_mom.v1.",
+  "primary_endpoint": "sealed forward-holdout episode-clustered mean net R per trade, crypto book, base cost row, short side"
+ },
+ "contamination": {
+  "parameters": "Every parameter is fixed a priori by exact sign-symmetry with the registered trend_ema_mom.v1 (same lengths, stop multiple, cap, book, costs, splits, neighbour steps). None was chosen, ranked or tuned on any outcome. STRAT-01 detail files and per-symbol / per-split results were not consulted; the author has seen only STRAT-01's published sealed aggregates, which cannot inform a short rule's parameters and were not used.",
+  "development_window": "2021-01-04 -> 2026-09-28 has been viewed by the legacy research of both the long family and the rejected 4h BTC-bear Donchian short (#13 6055348078, core8, 2022-2026). Every split before the holdout is therefore development evidence only, whatever its name. No parameter, rule, cost or universe choice may change in response to it (no retune).",
+  "holdout": "The Donchian candidate spent its 2025-2026 holdout for the short-breakdown family; this family uses only a fresh, post-registration forward holdout (splits.holdout), never that window as a claim.",
+  "rule": "An untouched claim comes only from the sealed forward holdout."
+ },
+ "data": {
+  "manifest_id": "binance-um-archive-v1",
+  "manifest_digest": "54912d9d2bf6e6fc45bc75c0553f0bd867e877972beeb3452785937379baf1e7",
+  "universe_id": "static-top40-minhist365-contract-20261011",
+  "universe_path": "research_evidence/universe/static-top40-minhist365-contract-20261011.json",
+  "universe_digest": "1c06c18d2fc82413b740260f0051a9f8286e9b0cb87d7d9614a2f88d78393fce",
+  "universe_list_digest": "d95ba63c126029e23196e253c74cd95918cb5c9102079792194c972d20884bc5",
+  "label": "CURRENT-UNIVERSE / SURVIVOR-BIASED",
+  "forward": "The holdout lies after the frozen manifest's store end (2026-10-01). It is read only from a forward manifest that extends this one and cites its digest as parent, over the same frozen list; until then the holdout cannot open.",
+  "classification": "SUPERSEDED (contract section 0.1, Codex 6106446403): no classification v2 and no classifier; the owner-approved frozen list (owner_approved true, digests above) is the instrument boundary.",
+  "exchange_rules": {
+   "path": "data/exchange_rules_mainnet.json",
+   "sha256": "a34ec71130683101183cd6039fcdd37096457544ccb9c07bbcdaa09d90680aa3",
+   "environment": "mainnet",
+   "note": "the R4b mainnet pin (PR #69); the M3 testnet anchor is never used"
+  }
+ },
+ "universe_rule": {
+  "books": {
+   "crypto": "PRIMARY and the only book of this run (contract section 0.1). Members are exactly the 40 symbols of the owner-approved frozen list static-top40-minhist365-contract-20261011 (ranked by trailing 30-day quote volume at 2026-10-11 00:00 UTC, >= 365 days of continuous history, TRADING individual-coin USDT perpetuals), held fixed over every split; each symbol is tested only from where its reliable archived data begins. No PIT membership changes are reconstructed (a later robustness study). Instruments outside the list never enter the book."
+  },
+  "label": "CURRENT-UNIVERSE / SURVIVOR-BIASED",
+  "report_tiers": {
+   "CORE-10": [
+    1,
+    10
+   ],
+   "CORE-20": [
+    1,
+    20
+   ],
+   "EXT-21-40": [
+    21,
+    40
+   ]
+  },
+  "tiers_rule": "Tiers are the list's frozen ranks, fixed before any outcome is viewed. Every metric, baseline and verdict row is reported separately for CORE-10 (ranks 1-10), CORE-20 (ranks 1-20) and EXT-21-40 (ranks 21-40, the extended generalization check), never only pooled; the full-40 book is reported beside them. Each tier is a reporting cut of the same trials: it adds no trial and no adaptive choice.",
+  "warm_up": "A symbol is decided only once its contiguous closed 4h history inside the opened split reaches the configuration's start index (240 bars max over all configurations, 220 for the primary); a gap restarts the count (never forward-filled). This is the independent warm-up test of plan section 1a; listing age is the universe's own test.",
+  "held_positions": "A symbol that leaves the universe while held is still read through its View.enter Position capability until covered.",
+  "symbol_priority": "Within a cycle, exits then entries in ascending frozen-list rank (ties impossible).",
+  "deferred_pilot": {
+   "rule": "NOT part of this run: inactive and non-blocking. XAUUSDT / PAXGUSDT identities are recorded only; gold gets its own future preregistration, books and trial budget and cannot hold or block the crypto run. Gold-spot and gold-tokenized are separate books with separate execution / cost rows, reported separately, never pooled with crypto or with each other. Gold does not count toward this crypto trial budget.",
+   "gold-spot": {
+    "symbol": "XAUUSDT",
+    "book": "gold-spot",
+    "cost_row": "gold-spot"
+   },
+   "gold-tokenized": {
+    "symbol": "PAXGUSDT",
+    "book": "gold-tokenized",
+    "cost_row": "gold-tokenized"
+   }
+  }
+ },
+ "timeframe": "4h",
+ "rule": {
+  "entry": "se at the close of bar i = cross_down(EMA20, EMA50) and close < EMA200 and ret7d < 0 and ret30d < 0; market SELL (open short) at the open of bar i+1 (taker, adverse slip-v1: fill below the open)",
+  "exit_signal": "sx at the close of bar i = EMA20 > EMA50 or not (ret7d < 0 and ret30d < 0); market BUY (cover) at the open of bar i+1 (taker, adverse slip-v1: fill above the open)",
+  "stop": "stop = fill + stop_atr x Wilder ATR14 of the signal bar, CEILED to the tick (rounding can only widen the risk). A bar that OPENS at or above the stop fills at its open (gap, gap slippage row), else a bar whose HIGH reaches the stop fills at the stop (+ adverse slip-v1). Stop checked before anything else on each played bar.",
+  "time_cap": "PRIMARY (promotable): a lot still open 180 bars after its entry is covered at the open of the next bar (market, taker), served at a split end by the causal View.next_open capability; no next open inside the split = INCOMPLETE, never a close.",
+  "exit_times": "signal / cap exits and gap stops exit at the bar open; a non-gap intrabar stop exits at the stop-bar CLOSE for the funding window (PR #61 / #67 convention) with the fill at the stop level.",
+  "funding": "signed actual funding at each actual funding time T with entry <= T < exit time, x funding-mark proxy v1: a SHORT RECEIVES a positive rate and PAYS a negative rate (costs.funding_cost side='short', sign -1). A missing mark or a non-provable funding sequence = INCOMPLETE (fail-closed).",
+  "excursions": "MFE / MAE are diagnostics: MFE = entry - lowest low before the exit; on a stop bar the bound is conservative (earlier lows and the stop bar's OPEN, never the stop bar's own low); MAE uses highs, the stop bar bounded by the stop.",
+  "indicators": "identical to trend_ema_mom.v1 (EMA seeded at the first bar read, adjust=False; Wilder ATR seeded at TR0 = h0 - l0; 7d = 42 bars, 30d = 180 bars on 4h; last 1500 closed bars), plus cross_down(a, b) = a_i < b_i and a_(i-1) >= b_(i-1).",
+  "book": "Same registered crypto book as trend_ema_mom.v1, run separately on its own equity: 10,000 USDT start, 1% risk of the cycle's wallet snapshot / the ACTUAL per-unit stop risk (ceiled stop - tick-rounded fill), max 4 open lots, gross notional <= 3x equity sized on signal close x 1.10, Cairo-day 3% MTM halt, drawdown kill disarmed; quantity floored to the step, never upsized; min qty / min notional checked on qty x the executable fill; below = counted refusal. A non-finite or non-positive stop risk is refused. Exchange rules: the pinned Binance mainnet snapshot (data/exchange_rules_mainnet.json).",
+  "liquidation": "Not modelled as an exit (cross margin, gross <= 3x). Diagnostic row: the largest adverse open-to-high excursion of any open short in one bar, and any bar where the book's MTM equity would fall below 1/3 of gross notional, are reported; any such bar = PARK flag for Codex.",
+  "no_maker": "No limit orders: every fill is taker."
+ },
+ "primary_params": {
+  "ema_fast": 20,
+  "ema_slow": 50,
+  "ema_trend": 200,
+  "atr_len": 14,
+  "stop_atr": "2.5",
+  "mom_short_days": 7,
+  "mom_long_days": 30,
+  "warmup_bars": 220,
+  "time_cap_bars": 180,
+  "window_bars": 1500
+ },
+ "variants": {
+  "primary": {
+   "name": "trend_ema_mom_short.v1.cap180",
+   "time_cap_bars": 180,
+   "book": "crypto",
+   "side": "short",
+   "promotable": true,
+   "role": "the only variant: the short mirror with the explicit 180-bar cap"
+  },
+  "secondary": [],
+  "selection": "none: a single variant; there is no uncapped variant (no M3 reproduction exists for the short side)"
+ },
+ "neighbour_grid": {
+  "rule": "one at a time, +/- one step around the primary; no grid search, no selection: neighbours feed only the 80% stability row",
+  "steps": {
+   "ema_fast": 5,
+   "ema_slow": 10,
+   "ema_trend": 50,
+   "stop_atr": "0.5",
+   "mom_short_days": 2,
+   "mom_long_days": 10
+  },
+  "configs": [
+   "ema_fast-5",
+   "ema_fast+5",
+   "ema_slow-10",
+   "ema_slow+10",
+   "ema_trend-50",
+   "ema_trend+50",
+   "stop_atr-0.5",
+   "stop_atr+0.5",
+   "mom_short_days-2",
+   "mom_short_days+2",
+   "mom_long_days-10",
+   "mom_long_days+10"
+  ]
+ },
+ "trials": {
+  "declared": {
+   "variant": 1,
+   "grid_point": 12,
+   "baseline": 4,
+   "total": 17
+  },
+  "detail": "variant = the capped primary; grid_point = the 12 one-at-a-time neighbours (steps identical to v1); baseline = B0..B3. The family ledger research_evidence/ledger/trend_ema_mom_short.jsonl is the source of n_trials at evaluation time.",
+  "program_multiplicity": "Gating Holm family = this family's ledger records PLUS every trend_ema_mom record (STRAT-01: 18), i.e. n = 35 as declared now; any later record of either family raises it. The own-family n (17) is reported beside it, never used to gate."
+ },
+ "costs": {
+  "model": "zb-cost-model/2 (tools/research/costs.py), rows by explicit symbol class, no crypto fallback",
+  "rows": {
+   "crypto": "PLAN: VIP0 taker 0.05% per side, signed actual funding at each actual funding time x funding-mark proxy v1. The legacy flat per-bar funding is the M3 reproduction-only adapter and the labelled flat_funding_legacy stress row; it never enters a primary result."
+  },
+  "slip_cal_v1": {
+   "id": "slip-cal-v1",
+   "target": "per-side fill-vs-reference slippage in bps of the fill price",
+   "source_series": "none: no execution-grade fills exist yet; the fallback applies",
+   "estimator": "set ex ante, not fitted",
+   "loss": "none (fitted = false)",
+   "pooling": "one coefficient per cost class",
+   "fallback": "c fixed before any run (crypto 0.05, every other class 0.10); every result labelled SLIP-C-UNFITTED; a later fit happens once on the calibration window with execution-grade observations and is a new ledger variant, never a per-candidate refit",
+   "limit_touch_rule": "touch = no fill; price-through or ordered-trade evidence = maker fill",
+   "calibration_window": {
+    "start": "2020-02-03T00:00:00Z",
+    "end": "2021-01-04T00:00:00Z"
+   },
+   "fitted": false,
+   "c": {
+    "commodity": 0.1,
+    "crypto": 0.05,
+    "equity": 0.1,
+    "fx": 0.1,
+    "gold-spot": 0.1,
+    "gold-tokenized": 0.1
+   }
+  },
+  "stress_rows": [
+   "base",
+   "fees_slip_x2",
+   "funding_x2",
+   "gap_slip_x5",
+   "limit_no_fill",
+   "limit_as_taker",
+   "flat_funding_legacy",
+   "slip_wilder_atr14",
+   "funding_mark_adverse"
+  ],
+  "delist": "exit at the next bar open with available_ms >= a timestamped notice; no observed notice = last archived mark with 5x slippage; forced-exit PnL reported separately",
+  "deferred_pilot": {
+   "gold-spot": "own execution / cost row (direct gold, PROVISIONAL until calibrated), declared in the gold pilot prereg",
+   "gold-tokenized": "own execution / cost row (PAXG, UNCALIBRATED until calibrated), declared in the gold pilot prereg"
+  }
+ },
+ "splits": {
+  "format": "zb-splits/1",
+  "interval": "4h",
+  "lookback_bars": 240,
+  "horizon_bars": 180,
+  "purge_embargo": "purge = max(240, 180) bars = 40 days, embargo 1 bar; decisions in [start + purge + embargo, end - horizon]; an episode belongs wholly to one split",
+  "splits": [
+   {
+    "name": "calibration",
+    "start": "2020-02-03T00:00:00Z",
+    "end": "2021-01-04T00:00:00Z"
+   },
+   {
+    "name": "train",
+    "start": "2021-01-04T00:00:00Z",
+    "end": "2021-12-20T00:00:00Z"
+   },
+   {
+    "name": "walk_forward",
+    "fold": 0,
+    "start": "2021-12-20T00:00:00Z",
+    "end": "2022-12-19T00:00:00Z"
+   },
+   {
+    "name": "walk_forward",
+    "fold": 1,
+    "start": "2022-12-19T00:00:00Z",
+    "end": "2023-12-18T00:00:00Z"
+   },
+   {
+    "name": "walk_forward",
+    "fold": 2,
+    "start": "2023-12-18T00:00:00Z",
+    "end": "2024-12-16T00:00:00Z"
+   },
+   {
+    "name": "walk_forward",
+    "fold": 3,
+    "start": "2024-12-16T00:00:00Z",
+    "end": "2025-12-15T00:00:00Z"
+   },
+   {
+    "name": "walk_forward",
+    "fold": 4,
+    "start": "2025-12-15T00:00:00Z",
+    "end": "2026-09-28T00:00:00Z"
+   },
+   {
+    "name": "holdout",
+    "start": "2026-10-19T00:00:00Z",
+    "end": "2027-10-18T00:00:00Z"
+   }
+  ],
+  "notes": "calibration = the slip-cal-v1 interval, excluded from all evidence (no strategy evaluation). train is named so only because a plan needs one: nothing is fitted, the parameters are fixed. train and every walk-forward fold are development evidence (spent window or legacy-derived parameters), each reported separately and never pooled with the holdout. The holdout is forward-only (post-freeze), opened once, atomically, with every baseline and stress row. horizon_bars 180 = the primary's finite time cap = the purge / embargo horizon, so no primary trade crosses a split. A trade cut by a split end or the data end anyway (e.g. the uncapped development-only variant) is reported INCOMPLETE: invalid for promotion, never counted as an ordinary closed outcome."
+ },
+ "metrics": "zb-research-run/2, plan section 6, short side only, per cost row, per book and per tier (CORE-10 / CORE-20 / EXT-21-40, reported separately): after-cost expectancy (mean net R, net % equity, PF, win rate, avg win / loss), MTM drawdown + episode-bootstrap MC p5/p50/p95 (10,000) + longest underwater, MFE / MAE / give-back, counts (trades, episodes, month blocks, refusals by reason, exposure, ambiguity), 95% episode-clustered bootstrap CI (gating) + per-trade CI (reported) with seeds, contribution by symbol / year / regime + top-5 episodes + LOSO / LOYO, neighbour table, stop-first vs target-first, the CURRENT-UNIVERSE / SURVIVOR-BIASED label on every row, paired baselines, follower tiers 100 / 200 / 500 USDT and RULES-BACKFILLED share.",
+ "baselines": {
+  "B0": "1,000 seeded matched random SHORT entries per candidate trade (seed 20261012): same symbol, side (short), split and PIT regime label (BTC 4h close vs EMA200) at the decision, same hold horizon (the candidate trade's realised bars, capped at 180, exit at the next open), same stop rule (ceiled, gap-at-open), costs, funding sign and universe; drawn from that symbol's eligible decision times in the same split; a draw whose stop or history is invalid is counted invalid. Pairing: episode-paired.",
+  "B1": "hold-short: equal-weight SHORT of the frozen list's members with data at the time, rebalanced each Monday 00:00 UTC, funding sign short, scaled to equal risk (1R = 1% of equity). Pairing: calendar-month blocks.",
+  "B2": "20-bar momentum short: short when close < close 20 bars earlier, cover when not; same stop, 180-bar cap, costs, sizing and book. Pairing: calendar-month blocks.",
+  "B3": "cash (0 R): reduces to the expectancy row.",
+  "p_value": "one-sided paired sign-flip permutation test, 10,000 permutations, seed 20261012; Holm-adjusted over the program family (trials.program_multiplicity, n = 35 now); ordinary 95% CIs reported beside it.",
+  "mde": "the minimum detectable effect at 80% power for the realised holdout episode count is reported with the family size"
+ },
+ "edge00": {
+  "sample": ">= 60 independent episodes total, >= 30 sealed-holdout episodes, >= 6 non-overlapping eligible calendar-month blocks, per book; else PARK",
+  "expectancy": "sealed-holdout-only lower 95% episode-clustered CI of mean net R > 0 (10,000 resamples); walk-forward mean > 0 checked separately, never pooled",
+  "baselines": "Holm-adjusted paired p < 0.05 against each of B0, B1, B2 (B3 = expectancy)",
+  "multiplicity": "Holm family = every variant, grid point and baseline record of the trend_ema_mom_short AND trend_ema_mom ledgers (n = 35 at freeze)",
+  "pit": "the frozen current-list result (labelled CURRENT-UNIVERSE / SURVIVOR-BIASED) passes the expectancy row; PIT-membership reconstruction is a later, non-blocking robustness study (contract section 0.1)",
+  "robustness": "leave-one-symbol-out and leave-one-year/block-out means > 0",
+  "neighbours": ">= 80% of the 12 one-at-a-time neighbours keep the sign of the primary endpoint",
+  "intrabar": "unresolved ambiguity <= 5% of trades and no verdict flip (this rule has one stop and no target: every exit bar is single-level BAR, so the ambiguity rate is reported and expected 0)",
+  "e10_drawdown": "PARK-only until GOV freezes a ceiling",
+  "e11_follower": "100 / 200 / 500 USDT tiers reported; PARK only a failing tier; RULES-BACKFILLED periods cannot gate it"
+ },
+ "verdict_rules": {
+  "development": "Any run before the forward holdout opens is development evidence: it can neither PROMOTE nor REJECT. A base-row development mean net R <= 0 is flagged DEV-NEGATIVE for Codex, with no retune either way.",
+  "PROMOTE": "only on the sealed forward holdout, per book, for the capped short primary, when every EDGE-00 row passes; INCOMPLETE trades are invalid for promotion and never counted as closed outcomes",
+  "REJECT": {
+   "powered_mean": "sealed-holdout sample row met (adequately powered: >= 30 sealed-holdout episodes, the MDE at 80% power reported with the family size) and the sealed-holdout base-row mean net R <= 0",
+   "retained_gates": {
+    "cost": "after-cost expectancy is gated on the base cost row; every stress row is reported; a cost row still PROVISIONAL / UNCALIBRATED or SLIP-C-UNFITTED cannot support PROMOTE",
+    "drawdown": "E10 drawdown stays PARK-only until GOV freezes a ceiling",
+    "stability": "neighbour (>= 80% keep the sign) and LOSO / LOYO robustness rows stay binding for PROMOTE"
+   },
+   "note": "The retained gates are predeclared in addition to the powered-mean REJECT: failing one blocks PROMOTE (PARK) even with a positive mean; none of them can turn a powered mean <= 0 into anything but REJECT."
+  },
+  "PARK": "every other failure: sample short, CI includes 0 with a positive mean, any baseline / robustness / neighbour / intrabar / E10 row fails, a cost row still PROVISIONAL or UNCALIBRATED, or a data / rename / delist gap unresolved"
+ },
+ "stop_condition": "The forward holdout window is 2026-10-19T00:00Z -> 2027-10-18T00:00Z (exclusive end, 52 weeks), the first Monday 00:00 UTC that a registration after Codex review can precede. `run_r4.py register` must refuse at or after the holdout start; if registration has not been committed before 2026-10-19T00:00Z this draft is void and a new version with the next Monday is drafted (never a back-dated window). The interval 2026-09-28 -> 2026-10-19 belongs to no split and is never read. Revealed once, atomically, after its end; < 30 holdout episodes = PARK on the sample row; no interim looks.",
+ "m3_reproduction": {
+  "applicable": false,
+  "reason": "no legacy short-side M3 rule exists to reproduce; the harness acceptance for the short side is the synthetic short-symmetry test slice (Evidence lane), not a reproduction"
+ }
+}
