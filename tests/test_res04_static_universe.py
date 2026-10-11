@@ -17,8 +17,9 @@ SOURCE = {'base_rule_id': 'pit-top40-qv30d-v4', 'instant_ms': 1790553600000, 'in
           'recent_klines': {'source': 'x', 'start_ms': 0, 'symbols': 0, 'digest': 'e' * 64}}
 
 
-def row(sym, status='TRADING', ct='PERPETUAL', quote='USDT', under='COIN'):
-    return {'symbol': sym, 'status': status, 'contractType': ct, 'quoteAsset': quote, 'underlyingType': under}
+def row(sym, status='TRADING', ct='PERPETUAL', quote='USDT', under='COIN', onboard=1567965300000):
+    return {'symbol': sym, 'status': status, 'contractType': ct, 'quoteAsset': quote, 'underlyingType': under,
+            'onboardDate': onboard}
 
 
 def raw_info(rows):
@@ -142,14 +143,14 @@ def test_deterministic_rebuild(built, tmp_path):
 
 
 def test_committed_artifact():
-    path = os.path.join(UDIR, 'static-top40-minhist365-20261011.json')
-    snap_path = os.path.join(UDIR, 'binance-um-exchangeinfo-20261011.json')
+    path = os.path.join(UDIR, 'static-top40-minhist365-contract-20261011.json')
+    snap_path = os.path.join(UDIR, 'binance-um-exchangeinfo-v2-20261011.json')
     assert S.main(['verify', path, '--snapshot', snap_path]) == 0
     with open(path, encoding='ascii') as f:
         u = json.load(f)
     assert u['label'] == 'CURRENT-UNIVERSE / SURVIVOR-BIASED' and u['owner_approved'] is False
     assert u['ranking_rule']['rule_id'] == 'qv30d-top40-minhist365' and u['ranking_rule']['min_history_days'] == 365
-    with open(os.path.join(UDIR, 'binance-um-klines1d-recent-20261011.json'), encoding='ascii') as f:
+    with open(os.path.join(UDIR, 'binance-um-klines1d-recent-v2-20261011.json'), encoding='ascii') as f:
         recent = json.load(f)
     assert recent['digest'] == S.body_digest(recent) == u['sources']['recent_klines']['digest']
     assert recent['instant_ms'] == u['ranking_rule']['instant_ms']
@@ -232,3 +233,18 @@ def test_owner_approval_is_pinned_to_the_exact_list(built):
     half['digest'] = S.body_digest(half)
     with pytest.raises(S.StaticUniverseError):
         S.validate(half, snap)
+
+
+# Codex 6106070994: a reused ticker (old contract's archive continues under the same symbol) counts only from the
+# current contract's onboardDate
+def test_reused_ticker_counts_from_current_contract():
+    inst = SOURCE['instant_ms']
+    rows = [row(r['symbol'], r['status'], r['contractType'], r['quoteAsset'], r['underlyingType'],
+                inst - 300 * S.DAY + 1234 if r['symbol'] == 'C05USDT' else r['onboardDate']) for r in ROWS]
+    snap = S.reduce_exchange_info(raw_info(rows))
+    u = S.build_static(ranked({'C05USDT': 2000}), snap, SOURCE)            # archive says 2000 continuous days
+    assert 'C05USDT' not in u['core_10'] and u['symbols'][-1]['symbol'] == 'C41USDT'
+    assert u['excluded_by_history'] == [{'old_rank': 5, 'source_rank': 9, 'symbol': 'C05USDT', 'history_days': 299}]
+    S.validate(u, snap)
+    with pytest.raises(S.StaticUniverseError, match='onboardDate'):
+        S.build_static(ranked(), S.reduce_exchange_info(raw_info([dict(r, onboardDate=None) for r in ROWS])), SOURCE)

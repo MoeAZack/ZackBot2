@@ -33,13 +33,19 @@
   "AVAXUSDT",
   "LINKUSDT"
  ],
- "digest": "34c2c6eb5244c9845c8103faf909777a29d4e343d64b73fe08e2ef01a86aadb3",
+ "digest": "5353adbcf054184f39c98a7b898e9c7495588ee34126b34c9ecb741232c92f27",
  "excluded_by_history": [
   {
-   "history_days": 35,
+   "history_days": 34,
    "old_rank": 38,
    "source_rank": 38,
    "symbol": "PONSUSDT"
+  },
+  {
+   "history_days": 291,
+   "old_rank": 39,
+   "source_rank": 39,
+   "symbol": "LITUSDT"
   }
  ],
  "format": "zb-static-universe/1",
@@ -49,6 +55,7 @@
    "counts_toward_40": false,
    "snapshot_row": {
     "contractType": "PERPETUAL",
+    "onboardDate": 1743071400000,
     "quoteAsset": "USDT",
     "status": "TRADING",
     "symbol": "PAXGUSDT",
@@ -62,6 +69,7 @@
    "counts_toward_40": false,
    "snapshot_row": {
     "contractType": "TRADIFI_PERPETUAL",
+    "onboardDate": 1765440300000,
     "quoteAsset": "USDT",
     "status": "TRADING",
     "symbol": "XAUUSDT",
@@ -72,7 +80,7 @@
   }
  ],
  "label": "CURRENT-UNIVERSE / SURVIVOR-BIASED",
- "list_digest": "204b89bdbd5e1f327b9cf59bb80e63bf56106e86a1da8a2894d92e9f2244dffa",
+ "list_digest": "d95ba63c126029e23196e253c74cd95918cb5c9102079792194c972d20884bc5",
  "owner_approval": "PENDING",
  "owner_approved": false,
  "ranked_source": [
@@ -321,13 +329,31 @@
    "MUBARAKUSDT",
    "2518095894.79339",
    573
+  ],
+  [
+   42,
+   "USUSDT",
+   "2441763715.029445",
+   303
+  ],
+  [
+   43,
+   "MARSCOINUSDT",
+   "2310307316.08079",
+   40
+  ],
+  [
+   44,
+   "DASHUSDT",
+   "2230140047.00957",
+   2441
   ]
  ],
  "ranking_asof": "2026-10-11 03:00:00 Cairo (2026-10-11 00:00:00 UTC)",
  "ranking_rule": {
   "base_rule_id": "pit-top40-qv30d-v4",
   "book": "crypto",
-  "history": "continuous archived daily bars ending with the bar that closes at the instant; any missing day (e.g. a relisting) restarts the count",
+  "history": "continuous archived daily bars ending with the bar that closes at the instant, counted no earlier than the current contract onboardDate (the older contract of a reused ticker never counts); any missing day (e.g. a relisting) restarts the count",
   "instant_ms": 1791676800000,
   "instant_utc": "2026-10-11",
   "min_history_days": 365,
@@ -341,14 +367,14 @@
   "exchange_info": {
    "fetched_ms": 1791696874463,
    "raw_sha256": "f4dff1fde97aa968087138c2a9d9a9e869074ee74cfd8ffee33c973e2465343a",
-   "reduced_digest": "4ca0600463dc4cc48dd7f566d92b73641b6a4d340ea73d20984e26cd7171af50",
+   "reduced_digest": "592680e54b489c4d444bfa9b35a695109e97d4369d4c67c1cd8b00e27a0c4bba",
    "server_time_ms": 1791530164012,
    "url": "https://fapi.binance.com/fapi/v1/exchangeInfo"
   },
   "manifest_digest": "54912d9d2bf6e6fc45bc75c0553f0bd867e877972beeb3452785937379baf1e7",
   "pit_universe_digest": "485c752226cc6b50a07d3feefa90a4fdc62e256e8d5a033e57d24983bf2cd093",
   "recent_klines": {
-   "digest": "8a09b5a1d0f20f95ae2de6cc12cda184fb8d1043d08177531c0e51e2eb7b4fb9",
+   "digest": "4f39a8d2d4b27a1b0839b50f659fecf0a8a924c3ee88ad8a8a0e30512ff32d6f",
    "source": "https://fapi.binance.com/fapi/v1/klines",
    "start_ms": 1790812800000,
    "symbols": 731
@@ -404,7 +430,7 @@
    "tier": "CORE-10"
   },
   {
-   "history_days": 499,
+   "history_days": 498,
    "qv30d_usdt": "19838083988.23463",
    "rank": 7,
    "source_rank": 7,
@@ -412,7 +438,7 @@
    "tier": "CORE-10"
   },
   {
-   "history_days": 2284,
+   "history_days": 2283,
    "qv30d_usdt": "15908911434.32445",
    "rank": 8,
    "source_rank": 8,
@@ -420,7 +446,7 @@
    "tier": "CORE-10"
   },
   {
-   "history_days": 2214,
+   "history_days": 2213,
    "qv30d_usdt": "12815404838.81",
    "rank": 9,
    "source_rank": 9,
@@ -444,7 +470,7 @@
    "tier": "CORE-20"
   },
   {
-   "history_days": 2435,
+   "history_days": 2434,
    "qv30d_usdt": "10968606133.6347",
    "rank": 12,
    "source_rank": 12,
@@ -452,7 +478,7 @@
    "tier": "CORE-20"
   },
   {
-   "history_days": 990,
+   "history_days": 989,
    "qv30d_usdt": "10228130320.81082",
    "rank": 13,
    "source_rank": 13,
@@ -460,7 +486,7 @@
    "tier": "CORE-20"
   },
   {
-   "history_days": 922,
+   "history_days": 921,
    "qv30d_usdt": "9345428655.57206",
    "rank": 14,
    "source_rank": 14,
@@ -476,7 +502,7 @@
    "tier": "CORE-20"
   },
   {
-   "history_days": 1175,
+   "history_days": 1174,
    "qv30d_usdt": "8135024350.0899",
    "rank": 16,
    "source_rank": 16,
@@ -484,7 +510,7 @@
    "tier": "CORE-20"
   },
   {
-   "history_days": 547,
+   "history_days": 457,
    "qv30d_usdt": "7593842882.09121",
    "rank": 17,
    "source_rank": 17,
@@ -492,7 +518,7 @@
    "tier": "CORE-20"
   },
   {
-   "history_days": 2445,
+   "history_days": 2444,
    "qv30d_usdt": "7141301345.0582",
    "rank": 18,
    "source_rank": 18,
@@ -500,7 +526,7 @@
    "tier": "CORE-20"
   },
   {
-   "history_days": 2209,
+   "history_days": 2208,
    "qv30d_usdt": "6590336274.061",
    "rank": 19,
    "source_rank": 19,
@@ -508,7 +534,7 @@
    "tier": "CORE-20"
   },
   {
-   "history_days": 2459,
+   "history_days": 2458,
    "qv30d_usdt": "6151428168.01823",
    "rank": 20,
    "source_rank": 20,
@@ -516,7 +542,7 @@
    "tier": "CORE-20"
   },
   {
-   "history_days": 913,
+   "history_days": 912,
    "qv30d_usdt": "5957326672.76994",
    "rank": 21,
    "source_rank": 21,
@@ -524,7 +550,7 @@
    "tier": "EXTENDED-40"
   },
   {
-   "history_days": 995,
+   "history_days": 994,
    "qv30d_usdt": "5719532165.01909",
    "rank": 22,
    "source_rank": 22,
@@ -532,7 +558,7 @@
    "tier": "EXTENDED-40"
   },
   {
-   "history_days": 380,
+   "history_days": 379,
    "qv30d_usdt": "5571971778.3918243",
    "rank": 23,
    "source_rank": 23,
@@ -540,7 +566,7 @@
    "tier": "EXTENDED-40"
   },
   {
-   "history_days": 1298,
+   "history_days": 1297,
    "qv30d_usdt": "5183259432.380617",
    "rank": 24,
    "source_rank": 24,
@@ -556,7 +582,7 @@
    "tier": "EXTENDED-40"
   },
   {
-   "history_days": 569,
+   "history_days": 568,
    "qv30d_usdt": "4961242160.98843",
    "rank": 26,
    "source_rank": 26,
@@ -572,7 +598,7 @@
    "tier": "EXTENDED-40"
   },
   {
-   "history_days": 2186,
+   "history_days": 2185,
    "qv30d_usdt": "4557884730.886",
    "rank": 28,
    "source_rank": 28,
@@ -604,7 +630,7 @@
    "tier": "EXTENDED-40"
   },
   {
-   "history_days": 631,
+   "history_days": 630,
    "qv30d_usdt": "3635837864.8505",
    "rank": 32,
    "source_rank": 32,
@@ -612,7 +638,7 @@
    "tier": "EXTENDED-40"
   },
   {
-   "history_days": 1020,
+   "history_days": 1019,
    "qv30d_usdt": "3606623414.309996",
    "rank": 33,
    "source_rank": 33,
@@ -644,7 +670,7 @@
    "tier": "EXTENDED-40"
   },
   {
-   "history_days": 663,
+   "history_days": 662,
    "qv30d_usdt": "2785503893.255988",
    "rank": 37,
    "source_rank": 37,
@@ -652,30 +678,30 @@
    "tier": "EXTENDED-40"
   },
   {
-   "history_days": 1652,
-   "qv30d_usdt": "2596895799.84887",
-   "rank": 38,
-   "source_rank": 39,
-   "symbol": "LITUSDT",
-   "tier": "EXTENDED-40"
-  },
-  {
-   "history_days": 964,
+   "history_days": 963,
    "qv30d_usdt": "2536492130.168703",
-   "rank": 39,
+   "rank": 38,
    "source_rank": 40,
    "symbol": "STRKUSDT",
    "tier": "EXTENDED-40"
   },
   {
-   "history_days": 573,
+   "history_days": 572,
    "qv30d_usdt": "2518095894.79339",
-   "rank": 40,
+   "rank": 39,
    "source_rank": 41,
    "symbol": "MUBARAKUSDT",
+   "tier": "EXTENDED-40"
+  },
+  {
+   "history_days": 2440,
+   "qv30d_usdt": "2230140047.00957",
+   "rank": 40,
+   "source_rank": 44,
+   "symbol": "DASHUSDT",
    "tier": "EXTENDED-40"
   }
  ],
  "tradability_asof": "2026-10-11 08:34:34 Cairo (2026-10-11 05:34:34 UTC)",
- "universe_id": "static-top40-minhist365-20261011"
+ "universe_id": "static-top40-minhist365-contract-20261011"
 }

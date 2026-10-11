@@ -1,8 +1,14 @@
 {
- "digest": "8a09b5a1d0f20f95ae2de6cc12cda184fb8d1043d08177531c0e51e2eb7b4fb9",
- "format": "zb-binance-um-klines1d-recent/1",
+ "digest": "4f39a8d2d4b27a1b0839b50f659fecf0a8a924c3ee88ad8a8a0e30512ff32d6f",
+ "format": "zb-binance-um-klines1d-recent/2",
  "instant_ms": 1791676800000,
- "snapshot_digest": "4ca0600463dc4cc48dd7f566d92b73641b6a4d340ea73d20984e26cd7171af50",
+ "migrated_from": {
+  "commit": "b1d83fd",
+  "file": "binance-um-klines1d-recent-20261011.json",
+  "note": "same bars and response sha256s; re-bound to the raw exchangeInfo, no re-fetch"
+ },
+ "snapshot_fetched_ms": 1791696874463,
+ "snapshot_raw_sha256": "f4dff1fde97aa968087138c2a9d9a9e869074ee74cfd8ffee33c973e2465343a",
  "source": "https://fapi.binance.com/fapi/v1/klines",
  "start_ms": 1790812800000,
  "symbols": {

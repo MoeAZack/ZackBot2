@@ -45,9 +45,9 @@ import manifest as M                                                            
 import universe as U                                                                        # noqa: E402
 
 FORMAT = 'zb-static-universe/1'
-SNAP_FORMAT = 'zb-binance-um-exchangeinfo-reduced/1'
+SNAP_FORMAT = 'zb-binance-um-exchangeinfo-reduced/2'          # /2 keeps onboardDate
 SOURCE_URL = 'https://fapi.binance.com/fapi/v1/exchangeInfo'
-SNAP_FIELDS = ('symbol', 'status', 'contractType', 'quoteAsset', 'underlyingType')
+SNAP_FIELDS = ('symbol', 'status', 'contractType', 'quoteAsset', 'underlyingType', 'onboardDate')
 LABEL = 'CURRENT-UNIVERSE / SURVIVOR-BIASED'
 BOOK = 'crypto'
 N = 40
@@ -59,7 +59,7 @@ RULE_ID = 'qv30d-top40-minhist365'
 MIN_HISTORY_DAYS = 365
 RULE_NOTE = 'owner rule, 10 Oct 2026, set before any results'
 VETO_HISTORY = f'history<{MIN_HISTORY_DAYS}d'
-RECENT_FORMAT = 'zb-binance-um-klines1d-recent/1'
+RECENT_FORMAT = 'zb-binance-um-klines1d-recent/2'              # /2 binds to the raw exchangeInfo
 KLINES_URL = ('https://fapi.binance.com/fapi/v1/klines?symbol={symbol}&interval=1d&startTime={start}&endTime={end}'
               '&limit=100')
 
@@ -108,6 +108,17 @@ def reject_reason(symbol: str, row: dict | None) -> str | None:
     return 'not-tradable:' + ','.join(bad) if bad else None
 
 
+def contract_history_days(hist: int, row: dict, instant_ms: int) -> int:
+    """Continuous history counted no earlier than the current contract's start (Codex 6106070994): a reused ticker's
+    archived bars from an earlier contract (e.g. Litentry LITUSDT before Lighter LITUSDT) never count. Only whole
+    days opening on/after onboardDate count."""
+    onboard = row.get('onboardDate')
+    if type(onboard) is not int:
+        raise StaticUniverseError(f'{row.get("symbol")}: no onboardDate in the snapshot (contract start unknown)')
+    first_day = -(-onboard // DAY) * DAY
+    return max(0, min(hist, (instant_ms - first_day) // DAY))
+
+
 def build_static(ranked: list[list], snapshot: dict, source: dict) -> dict:
     """ranked = [[source_rank, symbol, qv30d_usdt, history_days], ...] in the rule's order; take the first N symbols
     that are tradable at the snapshot and have >= MIN_HISTORY_DAYS of continuous daily history at the instant."""
@@ -122,6 +133,7 @@ def build_static(ranked: list[list], snapshot: dict, source: dict) -> dict:
             skipped.append({'source_rank': src_rank, 'symbol': sym, 'reason': why})
             continue
         old += 1                                    # rank in the list without the history rule (the 4d96e00 list)
+        hist = contract_history_days(hist, by[sym], source['instant_ms'])
         if hist < MIN_HISTORY_DAYS:
             if old <= N:                            # record only what the rule pushed out of the old top 40
                 history_out.append({'old_rank': old, 'source_rank': src_rank, 'symbol': sym, 'history_days': hist})
@@ -134,13 +146,15 @@ def build_static(ranked: list[list], snapshot: dict, source: dict) -> dict:
     syms = [t['symbol'] for t in taken]
     gold = [{'symbol': g, 'status': 'inactive', 'counts_toward_40': False, 'blocking': False,
              'snapshot_row': by.get(g)} for g in GOLD]
-    u = {'format': FORMAT, 'universe_id': f'static-top40-minhist{MIN_HISTORY_DAYS}-{source["instant_utc"].replace("-", "")}',
+    u = {'format': FORMAT,
+         'universe_id': f'static-top40-minhist{MIN_HISTORY_DAYS}-contract-{source["instant_utc"].replace("-", "")}',
          'label': LABEL,
          'owner_approved': False, 'owner_approval': 'PENDING',
          'ranking_rule': {'rule_id': RULE_ID, 'base_rule_id': source['base_rule_id'], 'book': BOOK,
                           'min_history_days': MIN_HISTORY_DAYS, 'min_history_note': RULE_NOTE,
-                          'history': 'continuous archived daily bars ending with the bar that closes at the instant; '
-                                     'any missing day (e.g. a relisting) restarts the count', 'instant_ms': source['instant_ms'],
+                          'history': 'continuous archived daily bars ending with the bar that closes at the instant, '
+                                     'counted no earlier than the current contract onboardDate (the older '
+                                     'contract of a reused ticker never counts); any missing day (e.g. a relisting) restarts the count', 'instant_ms': source['instant_ms'],
                           'instant_utc': source['instant_utc'],
                           'selection': f'walk the ranked {BOOK} book; take the first {N} symbols whose snapshot row '
                                        f'is {ELIGIBLE} and whose history_days >= {MIN_HISTORY_DAYS}; gold identities '
@@ -266,13 +280,15 @@ def fetch_recent(m: dict, snapshot: dict, pause_s: float = 0.25, get=None) -> di
         out[sym] = {'response_sha256': hashlib.sha256(raw).hexdigest(), 'bars': bars}
         time.sleep(pause_s)
     r = {'format': RECENT_FORMAT, 'source': KLINES_URL.split('?')[0], 'url_template': KLINES_URL,
-         'start_ms': start, 'instant_ms': instant, 'snapshot_digest': snapshot['digest'], 'symbols': out}
+         'start_ms': start, 'instant_ms': instant, 'snapshot_raw_sha256': snapshot['raw_sha256'],
+         'snapshot_fetched_ms': snapshot['fetched_ms'], 'symbols': out}
     r['digest'] = body_digest(r)
     return r
 
 
 def merge_recent(daily: dict, recent: dict, snapshot: dict) -> None:
-    if recent['digest'] != body_digest(recent) or recent['snapshot_digest'] != snapshot['digest'] \
+    if recent['digest'] != body_digest(recent) or recent['snapshot_raw_sha256'] != snapshot['raw_sha256'] \
+            or recent['snapshot_fetched_ms'] != snapshot['fetched_ms'] \
             or recent['instant_ms'] != instant_of(snapshot):
         raise StaticUniverseError('recent klines do not match their digest / the exchangeInfo snapshot')
     for sym, v in recent['symbols'].items():
@@ -344,7 +360,7 @@ def main(argv=None) -> int:
             u = build_static(ranked, snap, src)
             validate(u, snap)
             day = datetime.fromtimestamp(snap['fetched_ms'] / 1000, tz=CAIRO).strftime('%Y%m%d')
-            write_once(snap, os.path.join(a.out_dir, f'binance-um-exchangeinfo-{day}.json'))
+            write_once(snap, os.path.join(a.out_dir, f'binance-um-exchangeinfo-v2-{day}.json'))
             write_once(u, os.path.join(a.out_dir, f'{u["universe_id"]}.json'))
             print(u['digest'])
             return 0

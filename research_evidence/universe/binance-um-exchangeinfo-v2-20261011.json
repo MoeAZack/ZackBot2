@@ -1,5 +1,5 @@
 {
- "digest": "4ca0600463dc4cc48dd7f566d92b73641b6a4d340ea73d20984e26cd7171af50",
+ "digest": "592680e54b489c4d444bfa9b35a695109e97d4369d4c67c1cd8b00e27a0c4bba",
  "fetched_cairo": "2026-10-11T08:34:34+03:00",
  "fetched_ms": 1791696874463,
  "fields": [
@@ -7,15 +7,17 @@
   "status",
   "contractType",
   "quoteAsset",
-  "underlyingType"
+  "underlyingType",
+  "onboardDate"
  ],
- "format": "zb-binance-um-exchangeinfo-reduced/1",
+ "format": "zb-binance-um-exchangeinfo-reduced/2",
  "raw_sha256": "f4dff1fde97aa968087138c2a9d9a9e869074ee74cfd8ffee33c973e2465343a",
  "server_time_ms": 1791530164012,
  "source_url": "https://fapi.binance.com/fapi/v1/exchangeInfo",
  "symbols": [
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1758123900000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "0GUSDT",
@@ -23,6 +25,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1749112200000,
    "quoteAsset": "USDT",
    "status": "SETTLING",
    "symbol": "1000000BOBUSDT",
@@ -30,6 +33,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1730982600000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "1000000MOGUSDT",
@@ -37,6 +41,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1714633200000,
    "quoteAsset": "USDC",
    "status": "TRADING",
    "symbol": "1000BONKUSDC",
@@ -44,6 +49,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1700661600000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "1000BONKUSDT",
@@ -51,6 +57,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1729513800000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "1000CATUSDT",
@@ -58,6 +65,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1732535100000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "1000CHEEMSUSDT",
@@ -65,6 +73,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1683331200000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "1000FLOKIUSDT",
@@ -72,6 +81,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1662620400000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "1000LUNCUSDT",
@@ -79,6 +89,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1709800200000,
    "quoteAsset": "USDC",
    "status": "TRADING",
    "symbol": "1000PEPEUSDC",
@@ -86,6 +97,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1683244800000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "1000PEPEUSDT",
@@ -93,6 +105,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1702648800000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "1000RATSUSDT",
@@ -100,6 +113,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1702389600000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "1000SATSUSDT",
@@ -107,6 +121,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1711609200000,
    "quoteAsset": "USDC",
    "status": "TRADING",
    "symbol": "1000SHIBUSDC",
@@ -114,6 +129,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1620630000000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "1000SHIBUSDT",
@@ -121,6 +137,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1732534200000,
    "quoteAsset": "USDT",
    "status": "SETTLING",
    "symbol": "1000WHYUSDT",
@@ -128,6 +145,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1631775600000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "1000XECUSDT",
@@ -135,6 +153,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1731501000000,
    "quoteAsset": "USDT",
    "status": "SETTLING",
    "symbol": "1000XUSDT",
@@ -142,6 +161,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1608879600000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "1INCHUSDT",
@@ -149,6 +169,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1726486500000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "1MBABYDOGEUSDT",
@@ -156,6 +177,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1759408200000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "2ZUSDT",
@@ -163,6 +185,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1761561000000,
    "quoteAsset": "USDT",
    "status": "SETTLING",
    "symbol": "42USDT",
@@ -170,6 +193,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1759923000000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "4USDT",
@@ -177,6 +201,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1753862400000,
    "quoteAsset": "USDT",
    "status": "SETTLING",
    "symbol": "A2ZUSDT",
@@ -184,6 +209,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1780910700000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "AAOIUSDT",
@@ -191,6 +217,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1775483400000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "AAPLUSDT",
@@ -198,6 +225,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1750062600000,
    "quoteAsset": "USDC",
    "status": "TRADING",
    "symbol": "AAVEUSDC",
@@ -205,6 +233,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1602831600000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "AAVEUSDT",
@@ -212,6 +241,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1702893600000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "ACEUSDT",
@@ -219,6 +249,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1676962800000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "ACHUSDT",
@@ -226,6 +257,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1790673000000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "ACNUSDT",
@@ -233,6 +265,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1731327300000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "ACTUSDT",
@@ -240,6 +273,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1768999500000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "ACUUSDT",
@@ -247,6 +281,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1733497200000,
    "quoteAsset": "USDT",
    "status": "SETTLING",
    "symbol": "ACXUSDT",
@@ -254,6 +289,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1741256100000,
    "quoteAsset": "USDC",
    "status": "TRADING",
    "symbol": "ADAUSDC",
@@ -261,6 +297,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1580457600000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "ADAUSDT",
@@ -268,6 +305,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1781169900000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "ADBEUSDT",
@@ -275,6 +313,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1733321700000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "AEROUSDT",
@@ -282,6 +321,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1710336600000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "AEVOUSDT",
@@ -289,6 +329,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1676444400000,
    "quoteAsset": "USDT",
    "status": "SETTLING",
    "symbol": "AGIXUSDT",
@@ -296,6 +337,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1690597800000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "AGLDUSDT",
@@ -303,6 +345,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1789723800000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "AGPUUSDT",
@@ -310,6 +353,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1747737000000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "AGTUSDT",
@@ -317,6 +361,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1735825500000,
    "quoteAsset": "USDT",
    "status": "SETTLING",
    "symbol": "AI16ZUSDT",
@@ -324,6 +369,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1768907700000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "AIAUSDT",
@@ -331,6 +377,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1777472100000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "AIGENSYNUSDT",
@@ -338,6 +385,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1752144300000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "AINUSDT",
@@ -345,6 +393,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1746016200000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "AIOTUSDT",
@@ -352,6 +401,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1755084600000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "AIOUSDT",
@@ -359,6 +409,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1704717000000,
    "quoteAsset": "USDT",
    "status": "SETTLING",
    "symbol": "AIUSDT",
@@ -366,6 +417,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1734719400000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "AIXBTUSDT",
@@ -373,6 +425,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1791278100000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "AKAMUSDT",
@@ -380,6 +433,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1758889800000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "AKEUSDT",
@@ -387,6 +441,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1731929400000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "AKTUSDT",
@@ -394,6 +449,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1782135600000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "ALABUSDT",
@@ -401,6 +457,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1736250300000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "ALCHUSDT",
@@ -408,6 +465,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1592298000000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "ALGOUSDT",
@@ -415,6 +473,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1615791600000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "ALICEUSDT",
@@ -422,6 +481,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1762869600000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "ALLOUSDT",
@@ -429,6 +489,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1754472600000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "ALLUSDT",
@@ -436,6 +497,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1724322600000,
    "quoteAsset": "USDT",
    "status": "SETTLING",
    "symbol": "ALPACAUSDT",
@@ -443,6 +505,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1606114800000,
    "quoteAsset": "USDT",
    "status": "SETTLING",
    "symbol": "ALPHAUSDT",
@@ -450,6 +513,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1746524700000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "ALPINEUSDT",
@@ -457,6 +521,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1706191200000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "ALTUSDT",
@@ -464,6 +529,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1780909800000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "AMATUSDT",
@@ -471,6 +537,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1680048000000,
    "quoteAsset": "USDT",
    "status": "SETTLING",
    "symbol": "AMBUSDT",
@@ -478,6 +545,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1789722300000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "AMCUSDT",
@@ -485,6 +553,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1778074200000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "AMDUSDT",
@@ -492,6 +561,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1770648000000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "AMZNUSDT",
@@ -499,6 +569,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1789722900000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "ANETUSDT",
@@ -506,6 +577,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1737651600000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "ANIMEUSDT",
@@ -513,6 +585,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1611558000000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "ANKRUSDT",
@@ -520,6 +593,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1780374600000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "ANTHROPICUSDT",
@@ -527,6 +601,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1647500400000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "APEUSDT",
@@ -534,6 +609,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1645426800000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "API3USDT",
@@ -541,6 +617,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1789723500000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "APLDUSDT",
@@ -548,6 +625,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1783673100000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "APPUSDT",
@@ -555,6 +633,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1761215400000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "APRUSDT",
@@ -562,6 +641,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1666076400000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "APTUSDT",
@@ -569,6 +649,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1713423600000,
    "quoteAsset": "USDC",
    "status": "TRADING",
    "symbol": "ARBUSDC",
@@ -576,6 +657,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1679554800000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "ARBUSDT",
@@ -583,6 +665,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1737118800000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "ARCUSDT",
@@ -590,6 +673,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1756897200000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "ARIAUSDT",
@@ -597,6 +681,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1690512300000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "ARKMUSDT",
@@ -604,6 +689,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1695133800000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "ARKUSDT",
@@ -611,6 +697,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1779802800000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "ARMUSDT",
@@ -618,6 +705,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1634540400000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "ARPAUSDT",
@@ -625,6 +713,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1632812400000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "ARUSDT",
@@ -632,6 +721,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1782189900000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "ARXUSDT",
@@ -639,6 +729,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1781170800000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "ASMLUSDT",
@@ -646,6 +737,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1746523800000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "ASRUSDT",
@@ -653,6 +745,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1758283200000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "ASTERUSDT",
@@ -660,6 +753,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1676271600000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "ASTRUSDT",
@@ -667,6 +761,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1780322100000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "ASTSUSDT",
@@ -674,6 +769,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1630306800000,
    "quoteAsset": "USDT",
    "status": "SETTLING",
    "symbol": "ATAUSDT",
@@ -681,6 +777,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1743608700000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "ATHUSDT",
@@ -688,6 +785,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1581077400000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "ATOMUSDT",
@@ -695,6 +793,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1761737400000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "ATUSDT",
@@ -702,6 +801,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1702645200000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "AUCTIONUSDT",
@@ -709,6 +809,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1748419200000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "AUSDT",
@@ -716,6 +817,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1737119700000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "AVAAIUSDT",
@@ -723,6 +825,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1734094800000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "AVAUSDT",
@@ -730,6 +833,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1710918000000,
    "quoteAsset": "USDC",
    "status": "TRADING",
    "symbol": "AVAXUSDC",
@@ -737,6 +841,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1600844400000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "AVAXUSDT",
@@ -744,6 +849,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1776692400000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "AVGOUSDT",
@@ -751,6 +857,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1757430000000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "AVNTUSDT",
@@ -758,6 +865,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1747814400000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "AWEUSDT",
@@ -765,6 +873,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1709307000000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "AXLUSDT",
@@ -772,6 +881,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1605855600000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "AXSUSDT",
@@ -779,6 +889,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1780911300000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "AXTIUSDT",
@@ -786,6 +897,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1770784200000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "AZTECUSDT",
@@ -793,6 +905,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1746538200000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "B2USDT",
@@ -800,6 +913,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1739446200000,
    "quoteAsset": "USDT",
    "status": "SETTLING",
    "symbol": "B3USDT",
@@ -807,6 +921,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1776693000000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "BABAUSDT",
@@ -814,6 +929,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1743859800000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "BABYUSDT",
@@ -821,6 +937,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1699533000000,
    "quoteAsset": "USDT",
    "status": "SETTLING",
    "symbol": "BADGERUSDT",
@@ -828,6 +945,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1621321200000,
    "quoteAsset": "USDT",
    "status": "SETTLING",
    "symbol": "BAKEUSDT",
@@ -835,6 +953,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1598943600000,
    "quoteAsset": "USDT",
    "status": "SETTLING",
    "symbol": "BALUSDT",
@@ -842,6 +961,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1742634900000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "BANANAS31USDT",
@@ -849,6 +969,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1723687200000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "BANANAUSDT",
@@ -856,6 +977,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1596006000000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "BANDUSDT",
@@ -863,6 +985,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1745001000000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "BANKUSDT",
@@ -870,6 +993,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1731929400000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "BANUSDT",
@@ -877,6 +1001,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1758193200000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "BARDUSDT",
@@ -884,6 +1009,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1774864800000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "BASEDUSDT",
@@ -891,6 +1017,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1756215000000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "BASUSDT",
@@ -898,6 +1025,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1581581100000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "BATUSDT",
@@ -905,6 +1033,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1715603400000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "BBUSDT",
@@ -912,6 +1041,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1780321200000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "BBXUSDT",
@@ -919,6 +1049,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1712214000000,
    "quoteAsset": "USDC",
    "status": "TRADING",
    "symbol": "BCHUSDC",
@@ -926,6 +1057,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1576745700000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "BCHUSDT",
@@ -933,6 +1065,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1700227800000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "BEAMXUSDT",
@@ -940,6 +1073,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1762949700000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "BEATUSDT",
@@ -947,6 +1081,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1605682800000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "BELUSDT",
@@ -954,6 +1089,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1738854000000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "BERAUSDT",
@@ -961,6 +1097,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1779803100000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "BEUSDT",
@@ -968,6 +1105,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1695904200000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "BICOUSDT",
@@ -975,6 +1113,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1742463000000,
    "quoteAsset": "USDT",
    "status": "SETTLING",
    "symbol": "BIDUSDT",
@@ -982,6 +1121,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1697121000000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "BIGTIMEUSDT",
@@ -989,6 +1129,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1778141700000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "BILLUSDT",
@@ -996,6 +1137,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1756106100000,
    "quoteAsset": "USDC",
    "status": "TRADING",
    "symbol": "BIOUSDC",
@@ -1003,6 +1145,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1735906500000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "BIOUSDT",
@@ -1010,6 +1153,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1769663700000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "BIRBUSDT",
@@ -1017,6 +1161,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1785159600000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "BITOUSDT",
@@ -1024,6 +1169,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1758619800000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "BLESSUSDT",
@@ -1031,6 +1177,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1761046200000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "BLUAIUSDT",
@@ -1038,6 +1185,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1682553600000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "BLURUSDT",
@@ -1045,6 +1193,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1600326000000,
    "quoteAsset": "USDT",
    "status": "SETTLING",
    "symbol": "BLZUSDT",
@@ -1052,6 +1201,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1781169300000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "BMNRUSDT",
@@ -1059,6 +1209,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1742218200000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "BMTUSDT",
@@ -1066,6 +1217,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1704285600000,
    "quoteAsset": "USDC",
    "status": "TRADING",
    "symbol": "BNBUSDC",
@@ -1073,6 +1225,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1581321600000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "BNBUSDT",
@@ -1080,6 +1233,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1783607100000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "BNCUSDT",
@@ -1087,6 +1241,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1691668800000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "BNTUSDT",
@@ -1094,6 +1249,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1677049200000,
    "quoteAsset": "USDT",
    "status": "SETTLING",
    "symbol": "BNXUSDT",
@@ -1101,6 +1257,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1763721900000,
    "quoteAsset": "USDT",
    "status": "SETTLING",
    "symbol": "BOBUSDT",
@@ -1108,6 +1265,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1714028400000,
    "quoteAsset": "USDC",
    "status": "TRADING",
    "symbol": "BOMEUSDC",
@@ -1115,6 +1273,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1710592200000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "BOMEUSDT",
@@ -1122,6 +1281,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1697380200000,
    "quoteAsset": "USDT",
    "status": "SETTLING",
    "symbol": "BONDUSDT",
@@ -1129,6 +1289,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1783605600000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "BOTUSDT",
@@ -1136,6 +1297,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1724150100000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "BRETTUSDT",
@@ -1143,6 +1305,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1767091500000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "BREVUSDT",
@@ -1150,6 +1313,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1779112200000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "BRKBUSDT",
@@ -1157,6 +1321,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1742547600000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "BROCCOLI714USDT",
@@ -1164,6 +1329,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1742548500000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "BROCCOLIF3BUSDT",
@@ -1171,6 +1337,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1742561100000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "BRUSDT",
@@ -1178,6 +1345,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1774439100000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "BSBUSDT",
@@ -1185,6 +1353,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1782985800000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "BSPUSDT",
@@ -1192,6 +1361,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1697805000000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "BSVUSDT",
@@ -1199,6 +1369,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1725516000000,
    "quoteAsset": "USDT",
    "status": "SETTLING",
    "symbol": "BSWUSDT",
@@ -1206,6 +1377,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1623913200000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "BTCDOMUSDT",
@@ -1213,6 +1385,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1782896400000,
    "quoteAsset": "U",
    "status": "TRADING",
    "symbol": "BTCU",
@@ -1220,6 +1393,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1779094800000,
    "quoteAsset": "USD1",
    "status": "TRADING",
    "symbol": "BTCUSD1",
@@ -1227,6 +1401,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1704285000000,
    "quoteAsset": "USDC",
    "status": "TRADING",
    "symbol": "BTCUSDC",
@@ -1234,6 +1409,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1567965300000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "BTCUSDT",
@@ -1241,6 +1417,7 @@
   },
   {
    "contractType": "CURRENT_QUARTER",
+   "onboardDate": 1782460800000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "BTCUSDT_261225",
@@ -1248,6 +1425,7 @@
   },
   {
    "contractType": "NEXT_QUARTER",
+   "onboardDate": 1790323200000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "BTCUSDT_270326",
@@ -1255,6 +1433,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1756290600000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "BTRUSDT",
@@ -1262,6 +1441,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1780582500000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "BTWUSDT",
@@ -1269,6 +1449,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1751619600000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "BULLAUSDT",
@@ -1276,6 +1457,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1747931400000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "BUSDT",
@@ -1283,6 +1465,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1790672700000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "BWETUSDT",
@@ -1290,6 +1473,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1780909200000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "BXUSDT",
@@ -1297,6 +1481,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1788746400000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "BYDUSDT",
@@ -1304,6 +1489,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1775034600000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "BZUSDT",
@@ -1311,6 +1497,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1629702000000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "C98USDT",
@@ -1318,6 +1505,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1698929100000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "CAKEUSDT",
@@ -1325,6 +1513,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1782560700000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "CAPUSDT",
@@ -1332,6 +1521,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1754585100000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "CARVUSDT",
@@ -1339,6 +1529,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1726831800000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "CATIUSDT",
@@ -1346,6 +1537,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1782984000000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "CATUSDT",
@@ -1353,6 +1545,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1779183000000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "CBRSUSDT",
@@ -1360,6 +1553,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1761912000000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "CCUSDT",
@@ -1367,6 +1561,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1632639600000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "CELOUSDT",
@@ -1374,6 +1569,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1617001200000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "CELRUSDT",
@@ -1381,6 +1577,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1730901600000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "CETUSUSDT",
@@ -1388,6 +1585,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1773666000000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "CFGUSDT",
@@ -1395,6 +1593,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1676790000000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "CFXUSDT",
@@ -1402,6 +1601,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1734722100000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "CGPTUSDT",
@@ -1409,6 +1609,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1724916600000,
    "quoteAsset": "USDT",
    "status": "SETTLING",
    "symbol": "CHESSUSDT",
@@ -1416,6 +1617,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1732718700000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "CHILLGUYUSDT",
@@ -1423,6 +1625,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1776323700000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "CHIPUSDT",
@@ -1430,6 +1633,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1615532400000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "CHRUSDT",
@@ -1437,6 +1641,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1611212400000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "CHZUSDT",
@@ -1444,6 +1649,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1782136200000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "CIENUSDT",
@@ -1451,6 +1657,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1677481200000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "CKBUSDT",
@@ -1458,6 +1665,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1762948800000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "CLANKERUSDT",
@@ -1465,6 +1673,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1760441400000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "CLOUSDT",
@@ -1472,6 +1681,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1775034000000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "CLUSDT",
@@ -1479,6 +1689,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1758785400000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "COAIUSDT",
@@ -1486,6 +1697,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1779803400000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "COHRUSDT",
@@ -1493,6 +1705,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1770649200000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "COINUSDT",
@@ -1500,6 +1713,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1767186900000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "COLLECTUSDT",
@@ -1507,6 +1721,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1685707200000,
    "quoteAsset": "USDT",
    "status": "SETTLING",
    "symbol": "COMBOUSDT",
@@ -1514,6 +1729,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1761568200000,
    "quoteAsset": "USDT",
    "status": "SETTLING",
    "symbol": "COMMONUSDT",
@@ -1521,6 +1737,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1593507600000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "COMPUSDT",
@@ -1528,6 +1745,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1736249400000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "COOKIEUSDT",
@@ -1535,6 +1753,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1772787600000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "COPPERUSDT",
@@ -1542,6 +1761,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1780995900000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "COSTUSDT",
@@ -1549,6 +1769,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1727701200000,
    "quoteAsset": "USDT",
    "status": "SETTLING",
    "symbol": "COSUSDT",
@@ -1556,6 +1777,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1615273200000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "COTIUSDT",
@@ -1563,6 +1785,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1730899800000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "COWUSDT",
@@ -1570,6 +1793,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1770648600000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "CRCLUSDT",
@@ -1577,6 +1801,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1780910400000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "CRDOUSDT",
@@ -1584,6 +1809,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1790672400000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "CRMLUSDT",
@@ -1591,6 +1817,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1780478100000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "CRMUSDT",
@@ -1598,6 +1825,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1752143400000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "CROSSUSDT",
@@ -1605,6 +1833,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1720076400000,
    "quoteAsset": "USDC",
    "status": "TRADING",
    "symbol": "CRVUSDC",
@@ -1612,6 +1841,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1598943600000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "CRVUSDT",
@@ -1619,6 +1849,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1780910100000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "CRWDUSDT",
@@ -1626,6 +1857,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1779111000000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "CRWVUSDT",
@@ -1633,6 +1865,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1778853000000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "CSCOUSDT",
@@ -1640,6 +1873,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1786414500000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "CSOPSAMSUNG2LUSDT",
@@ -1647,6 +1881,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1786414200000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "CSOPSKHYNIX2LUSDT",
@@ -1654,6 +1889,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1746008100000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "CTKUSDT",
@@ -1661,6 +1897,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1779960600000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "CTRUSDT",
@@ -1668,6 +1905,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1635145200000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "CTSIUSDT",
@@ -1675,6 +1913,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1790840700000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "CTUSDT",
@@ -1682,6 +1921,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1755688500000,
    "quoteAsset": "USDT",
    "status": "SETTLING",
    "symbol": "CUDISUSDT",
@@ -1689,6 +1929,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1752570000000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "CUSDT",
@@ -1696,6 +1937,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1747384200000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "CVCUSDT",
@@ -1703,6 +1945,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1790586600000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "CVNAUSDT",
@@ -1710,6 +1953,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1753270200000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "CVXUSDT",
@@ -1717,6 +1961,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1787029200000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "CXMTUSDT",
@@ -1724,6 +1969,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1692619200000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "CYBERUSDT",
@@ -1731,6 +1977,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1789722600000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "CYPHUSDT",
@@ -1738,6 +1985,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1765537200000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "CYSUSDT",
@@ -1745,6 +1993,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1755520200000,
    "quoteAsset": "USDT",
    "status": "SETTLING",
    "symbol": "DAMUSDT",
@@ -1752,6 +2001,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1651129200000,
    "quoteAsset": "USDT",
    "status": "SETTLING",
    "symbol": "DARUSDT",
@@ -1759,6 +2009,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1580803500000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "DASHUSDT",
@@ -1766,6 +2017,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1783061400000,
    "quoteAsset": "USDC",
    "status": "TRADING",
    "symbol": "DATAIPUSDC",
@@ -1773,6 +2025,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1783061100000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "DATAIPUSDT",
@@ -1780,6 +2033,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1788343800000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "DDOGUSDT",
@@ -1787,6 +2041,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1745310600000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "DEEPUSDT",
@@ -1794,6 +2049,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1598598000000,
    "quoteAsset": "USDT",
    "status": "SETTLING",
    "symbol": "DEFIUSDT",
@@ -1801,6 +2057,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1731670200000,
    "quoteAsset": "USDT",
    "status": "SETTLING",
    "symbol": "DEGENUSDT",
@@ -1808,6 +2065,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1734095700000,
    "quoteAsset": "USDT",
    "status": "SETTLING",
    "symbol": "DEGOUSDT",
@@ -1815,6 +2073,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1780477200000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "DELLUSDT",
@@ -1822,6 +2081,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1616482800000,
    "quoteAsset": "USDT",
    "status": "SETTLING",
    "symbol": "DENTUSDT",
@@ -1829,6 +2089,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1735039800000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "DEXEUSDT",
@@ -1836,6 +2097,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1735559100000,
    "quoteAsset": "USDT",
    "status": "SETTLING",
    "symbol": "DFUSDT",
@@ -1843,6 +2105,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1618815600000,
    "quoteAsset": "USDT",
    "status": "SETTLING",
    "symbol": "DGBUSDT",
@@ -1850,6 +2113,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1727872200000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "DIAUSDT",
@@ -1857,6 +2121,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1778852400000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "DISUSDT",
@@ -1864,6 +2129,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1787649300000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "DJTUSDT",
@@ -1871,6 +2137,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1781082300000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "DKNGUSDT",
@@ -1878,6 +2145,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1750770000000,
    "quoteAsset": "USDT",
    "status": "SETTLING",
    "symbol": "DMCUSDT",
@@ -1885,6 +2153,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1691496000000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "DODOXUSDT",
@@ -1892,6 +2161,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1705572000000,
    "quoteAsset": "USDC",
    "status": "TRADING",
    "symbol": "DOGEUSDC",
@@ -1899,6 +2169,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1594371600000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "DOGEUSDT",
@@ -1906,6 +2177,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1724675400000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "DOGSUSDT",
@@ -1913,6 +2185,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1746068400000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "DOLOUSDT",
@@ -1920,6 +2193,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1746797400000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "DOODUSDT",
@@ -1927,6 +2201,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1786460400000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "DOSUSDT",
@@ -1934,6 +2209,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1598079600000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "DOTUSDT",
@@ -1941,6 +2217,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1779112800000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "DRAMUSDT",
@@ -1948,6 +2225,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1731080700000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "DRIFTUSDT",
@@ -1955,6 +2233,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1736416800000,
    "quoteAsset": "USDT",
    "status": "SETTLING",
    "symbol": "DUSDT",
@@ -1962,6 +2241,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1641452400000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "DUSKUSDT",
@@ -1969,6 +2249,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1631170800000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "DYDXUSDT",
@@ -1976,6 +2257,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1707289200000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "DYMUSDT",
@@ -1983,6 +2265,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1780996800000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "EBAYUSDT",
@@ -1990,6 +2273,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1759230000000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "EDENUSDT",
@@ -1997,6 +2281,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1773928800000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "EDGEUSDT",
@@ -2004,6 +2289,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1682640000000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "EDUUSDT",
@@ -2011,6 +2297,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1600066800000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "EGLDUSDT",
@@ -2018,6 +2305,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1727762400000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "EIGENUSDT",
@@ -2025,6 +2313,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1769066700000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "ELSAUSDT",
@@ -2032,6 +2321,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1714633200000,
    "quoteAsset": "USDC",
    "status": "TRADING",
    "symbol": "ENAUSDC",
@@ -2039,6 +2329,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1712061000000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "ENAUSDT",
@@ -2046,6 +2337,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1601362800000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "ENJUSDT",
@@ -2053,6 +2345,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1760432400000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "ENSOUSDT",
@@ -2060,6 +2353,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1638169200000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "ENSUSDT",
@@ -2067,6 +2361,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1741852800000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "EPICUSDT",
@@ -2074,6 +2369,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1745240400000,
    "quoteAsset": "USDT",
    "status": "SETTLING",
    "symbol": "EPTUSDT",
@@ -2081,6 +2377,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1752766200000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "ERAUSDT",
@@ -2088,6 +2385,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1753783200000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "ESPORTSUSDT",
@@ -2095,6 +2393,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1770711000000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "ESPUSDT",
@@ -2102,6 +2401,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1579161600000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "ETCUSDT",
@@ -2109,6 +2409,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1684972800000,
    "quoteAsset": "BTC",
    "status": "TRADING",
    "symbol": "ETHBTC",
@@ -2116,6 +2417,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1714634100000,
    "quoteAsset": "USDC",
    "status": "TRADING",
    "symbol": "ETHFIUSDC",
@@ -2123,6 +2425,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1710775800000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "ETHFIUSDT",
@@ -2130,6 +2433,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1782900000000,
    "quoteAsset": "U",
    "status": "TRADING",
    "symbol": "ETHU",
@@ -2137,6 +2441,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1783069200000,
    "quoteAsset": "USD1",
    "status": "TRADING",
    "symbol": "ETHUSD1",
@@ -2144,6 +2449,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1704285300000,
    "quoteAsset": "USDC",
    "status": "TRADING",
    "symbol": "ETHUSDC",
@@ -2151,6 +2457,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1574840700000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "ETHUSDT",
@@ -2158,6 +2465,7 @@
   },
   {
    "contractType": "CURRENT_QUARTER",
+   "onboardDate": 1782460800000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "ETHUSDT_261225",
@@ -2165,6 +2473,7 @@
   },
   {
    "contractType": "NEXT_QUARTER",
+   "onboardDate": 1790323200000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "ETHUSDT_270326",
@@ -2172,6 +2481,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1701174600000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "ETHWUSDT",
@@ -2179,6 +2489,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1760365800000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "EULUSDT",
@@ -2186,6 +2497,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1759487400000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "EVAAUSDT",
@@ -2193,6 +2505,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1773927000000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "EWJUSDT",
@@ -2200,6 +2513,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1780321800000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "EWTUSDT",
@@ -2207,6 +2521,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1773667800000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "EWYUSDT",
@@ -2214,6 +2529,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1781083500000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "EWZUSDT",
@@ -2221,6 +2537,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1734720300000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "FARTCOINUSDT",
@@ -2228,6 +2545,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1673766000000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "FETUSDT",
@@ -2235,6 +2553,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1759152600000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "FFUSDT",
@@ -2242,6 +2561,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1744470000000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "FHEUSDT",
@@ -2249,6 +2569,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1726749000000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "FIDAUSDT",
@@ -2256,6 +2577,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1769170500000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "FIGHTUSDT",
@@ -2263,6 +2585,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1713425400000,
    "quoteAsset": "USDC",
    "status": "TRADING",
    "symbol": "FILUSDC",
@@ -2270,6 +2593,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1602828000000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "FILUSDT",
@@ -2277,6 +2601,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1726831800000,
    "quoteAsset": "USDT",
    "status": "SETTLING",
    "symbol": "FIOUSDT",
@@ -2284,6 +2609,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1745566200000,
    "quoteAsset": "USDT",
    "status": "SETTLING",
    "symbol": "FISUSDT",
@@ -2291,6 +2617,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1782984600000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "FLEXUSDT",
@@ -2298,6 +2625,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1601362800000,
    "quoteAsset": "USDT",
    "status": "SETTLING",
    "symbol": "FLMUSDT",
@@ -2305,6 +2633,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1779112500000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "FLNCUSDT",
@@ -2312,6 +2641,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1757400300000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "FLOCKUSDT",
@@ -2319,6 +2649,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1644390000000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "FLOWUSDT",
@@ -2326,6 +2657,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1758708900000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "FLUIDUSDT",
@@ -2333,6 +2665,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1725346800000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "FLUXUSDT",
@@ -2340,6 +2673,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1768053600000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "FOGOUSDT",
@@ -2347,6 +2681,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1762432200000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "FOLKSUSDT",
@@ -2354,6 +2689,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1742371200000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "FORMUSDT",
@@ -2361,6 +2697,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1744101000000,
    "quoteAsset": "USDT",
    "status": "SETTLING",
    "symbol": "FORTHUSDT",
@@ -2368,6 +2705,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1768464000000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "FRAXUSDT",
@@ -2375,6 +2713,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1600930800000,
    "quoteAsset": "USDT",
    "status": "SETTLING",
    "symbol": "FTMUSDT",
@@ -2382,6 +2721,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1649919600000,
    "quoteAsset": "USDT",
    "status": "SETTLING",
    "symbol": "FTTUSDT",
@@ -2389,6 +2729,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1743409800000,
    "quoteAsset": "USDT",
    "status": "SETTLING",
    "symbol": "FUNUSDT",
@@ -2396,6 +2737,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1750250700000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "FUSDT",
@@ -2403,6 +2745,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1783607400000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "FWDIUSDT",
@@ -2410,6 +2753,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1674111600000,
    "quoteAsset": "USDT",
    "status": "SETTLING",
    "symbol": "FXSUSDT",
@@ -2417,6 +2761,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1763629200000,
    "quoteAsset": "USDT",
    "status": "PENDING_TRADING",
    "symbol": "GAIBUSDT",
@@ -2424,6 +2769,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1631862000000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "GALAUSDT",
@@ -2431,6 +2777,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1698201900000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "GASUSDT",
@@ -2438,6 +2785,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1786973400000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "GDXUSDT",
@@ -2445,6 +2793,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1776310200000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "GENIUSUSDT",
@@ -2452,6 +2801,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1783672200000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "GEVUSDT",
@@ -2459,6 +2809,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1727096400000,
    "quoteAsset": "USDT",
    "status": "SETTLING",
    "symbol": "GHSTUSDT",
@@ -2466,6 +2817,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1785735000000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "GIGADEVUSDT",
@@ -2473,6 +2825,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1760003100000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "GIGGLEUSDT",
@@ -2480,6 +2833,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1695691800000,
    "quoteAsset": "USDT",
    "status": "SETTLING",
    "symbol": "GLMRUSDT",
@@ -2487,6 +2841,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1708596000000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "GLMUSDT",
@@ -2494,6 +2849,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1781170200000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "GLWUSDT",
@@ -2501,6 +2857,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1781082900000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "GMEUSDT",
@@ -2508,6 +2865,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1647241200000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "GMTUSDT",
@@ -2515,6 +2873,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1676530800000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "GMXUSDT",
@@ -2522,6 +2881,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1729776600000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "GOATUSDT",
@@ -2529,6 +2889,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1774536600000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "GOOGLUSDT",
@@ -2536,6 +2897,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1788443100000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "GPROUSDT",
@@ -2543,6 +2905,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1739811600000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "GPSUSDT",
@@ -2550,6 +2913,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1782979200000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "GRAMUSDT",
@@ -2557,6 +2921,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1731079800000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "GRASSUSDT",
@@ -2564,6 +2929,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1735824600000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "GRIFFAINUSDT",
@@ -2571,6 +2937,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1608274800000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "GRTUSDT",
@@ -2578,6 +2945,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1785501900000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "GRVTUSDT",
@@ -2585,6 +2953,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1785315900000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "GSUSDT",
@@ -2592,6 +2961,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1615791600000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "GTCUSDT",
@@ -2599,6 +2969,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1788345000000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "GTLBUSDT",
@@ -2606,6 +2977,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1766312100000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "GUAUSDT",
@@ -2613,6 +2985,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1743426000000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "GUNUSDT",
@@ -2620,6 +2993,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1723725000000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "GUSDT",
@@ -2627,6 +3001,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1769664600000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "GWEIUSDT",
@@ -2634,6 +3009,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1746069300000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "HAEDALUSDT",
@@ -2641,6 +3017,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1758886200000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "HANAUSDT",
@@ -2648,6 +3025,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1786673400000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "HANMIUSDT",
@@ -2655,6 +3033,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1741342500000,
    "quoteAsset": "USDC",
    "status": "TRADING",
    "symbol": "HBARUSDC",
@@ -2662,6 +3041,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1615964400000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "HBARUSDT",
@@ -2669,6 +3049,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1778853300000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "HDUSDT",
@@ -2676,6 +3057,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1739437200000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "HEIUSDT",
@@ -2683,6 +3065,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1756441800000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "HEMIUSDT",
@@ -2690,6 +3073,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1680652800000,
    "quoteAsset": "USDT",
    "status": "SETTLING",
    "symbol": "HFTUSDT",
@@ -2697,6 +3081,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1694874600000,
    "quoteAsset": "USDT",
    "status": "SETTLING",
    "symbol": "HIFIUSDT",
@@ -2704,6 +3089,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1675407600000,
    "quoteAsset": "USDT",
    "status": "SETTLING",
    "symbol": "HIGHUSDT",
@@ -2711,6 +3097,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1780996500000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "HIMSUSDT",
@@ -2718,6 +3105,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1731501000000,
    "quoteAsset": "USDT",
    "status": "SETTLING",
    "symbol": "HIPPOUSDT",
@@ -2725,6 +3113,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1734953400000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "HIVEUSDT",
@@ -2732,6 +3121,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1788230700000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "HK0625USDT",
@@ -2739,6 +3129,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1784689200000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "HK0700USDT",
@@ -2746,6 +3137,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1788746700000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "HK0992USDT",
@@ -2753,6 +3145,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1784689500000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "HK1810USDT",
@@ -2760,6 +3153,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1727353800000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "HMSTRUSDT",
@@ -2767,6 +3161,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1757592000000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "HOLOUSDT",
@@ -2774,6 +3169,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1749555000000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "HOMEUSDT",
@@ -2781,6 +3177,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1770043500000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "HOODUSDT",
@@ -2788,6 +3185,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1674111600000,
    "quoteAsset": "USDT",
    "status": "SETTLING",
    "symbol": "HOOKUSDT",
@@ -2795,6 +3193,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1617087600000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "HOTUSDT",
@@ -2802,6 +3201,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1780909500000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "HPEUSDT",
@@ -2809,6 +3209,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1748264400000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "HUMAUSDT",
@@ -2816,6 +3217,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1750843800000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "HUSDT",
@@ -2823,6 +3225,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1789723200000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "HUTUSDT",
@@ -2830,6 +3233,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1745326800000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "HYPERUSDT",
@@ -2837,6 +3241,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1748601000000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "HYPEUSDT",
@@ -2844,6 +3249,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1780370400000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "HYUNDAIUSDT",
@@ -2851,6 +3257,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1780477500000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "IBMUSDT",
@@ -2858,6 +3265,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1751547600000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "ICNTUSDT",
@@ -2865,6 +3273,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1627628400000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "ICPUSDT",
@@ -2872,6 +3281,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1600153200000,
    "quoteAsset": "USDT",
    "status": "SETTLING",
    "symbol": "ICXUSDT",
@@ -2879,6 +3289,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1682985600000,
    "quoteAsset": "USDT",
    "status": "SETTLING",
    "symbol": "IDEXUSDT",
@@ -2886,6 +3297,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1751620500000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "IDOLUSDT",
@@ -2893,6 +3305,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1679529600000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "IDUSDT",
@@ -2900,6 +3313,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1699633800000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "ILVUSDT",
@@ -2907,6 +3321,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1644476400000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "IMXUSDT",
@@ -2914,6 +3329,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1744785000000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "INITUSDT",
@@ -2921,6 +3337,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1660633200000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "INJUSDT",
@@ -2928,6 +3345,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1770042600000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "INTCUSDT",
@@ -2935,6 +3353,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1783606200000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "INTWUSDT",
@@ -2942,6 +3361,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1754562600000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "INUSDT",
@@ -2949,6 +3369,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1769799600000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "INXUSDT",
@@ -2956,6 +3377,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1787908200000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "IONQUSDT",
@@ -2963,6 +3385,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1582272300000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "IOSTUSDT",
@@ -2970,6 +3393,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1581494400000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "IOTAUSDT",
@@ -2977,6 +3401,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1628665200000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "IOTXUSDT",
@@ -2984,6 +3409,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1718114400000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "IOUSDT",
@@ -2991,6 +3417,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1741169700000,
    "quoteAsset": "USDC",
    "status": "SETTLING",
    "symbol": "IPUSDC",
@@ -2998,6 +3425,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1739466000000,
    "quoteAsset": "USDT",
    "status": "SETTLING",
    "symbol": "IPUSDT",
@@ -3005,6 +3433,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1780478400000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "IRENUSDT",
@@ -3012,6 +3441,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1766313000000,
    "quoteAsset": "USDT",
    "status": "SETTLING",
    "symbol": "IRUSDT",
@@ -3019,6 +3449,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1764172800000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "IRYSUSDT",
@@ -3026,6 +3457,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1780911000000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "IWMUSDT",
@@ -3033,6 +3465,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1650351600000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "JASMYUSDT",
@@ -3040,6 +3473,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1762770600000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "JCTUSDT",
@@ -3047,6 +3481,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1743004800000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "JELLYJELLYUSDT",
@@ -3054,6 +3489,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1679961600000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "JOEUSDT",
@@ -3061,6 +3497,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1779111600000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "JPMUSDT",
@@ -3068,6 +3505,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1745832600000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "JSTUSDT",
@@ -3075,6 +3513,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1702029600000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "JTOUSDT",
@@ -3082,6 +3521,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1706725800000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "JUPUSDT",
@@ -3089,6 +3529,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1733320800000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "KAIAUSDT",
@@ -3096,6 +3537,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1741168800000,
    "quoteAsset": "USDC",
    "status": "TRADING",
    "symbol": "KAITOUSDC",
@@ -3103,6 +3545,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1740056400000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "KAITOUSDT",
@@ -3110,6 +3553,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1700186400000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "KASUSDT",
@@ -3117,6 +3561,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1772427600000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "KATUSDT",
@@ -3124,6 +3569,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1595919900000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "KAVAUSDT",
@@ -3131,6 +3577,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1726666200000,
    "quoteAsset": "USDT",
    "status": "SETTLING",
    "symbol": "KDAUSDT",
@@ -3138,6 +3585,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1744632000000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "KERNELUSDT",
@@ -3145,6 +3593,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1684800000000,
    "quoteAsset": "USDT",
    "status": "SETTLING",
    "symbol": "KEYUSDT",
@@ -3152,6 +3601,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1759847400000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "KGENUSDT",
@@ -3159,6 +3609,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1761733800000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "KITEUSDT",
@@ -3166,6 +3617,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1782135300000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "KLACUSDT",
@@ -3173,6 +3625,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1633935600000,
    "quoteAsset": "USDT",
    "status": "SETTLING",
    "symbol": "KLAYUSDT",
@@ -3180,6 +3633,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1734721200000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "KMNOUSDT",
@@ -3187,6 +3641,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1592815800000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "KNCUSDT",
@@ -3194,6 +3649,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1786674300000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "KODEX200USDT",
@@ -3201,6 +3657,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1733832900000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "KOMAUSDT",
@@ -3208,6 +3665,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1782136500000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "KORUUSDT",
@@ -3215,6 +3673,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1786006800000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "KOUSDT",
@@ -3222,6 +3681,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1602658800000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "KSMUSDT",
@@ -3229,6 +3689,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1782985500000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "KSTRUSDT",
@@ -3236,6 +3697,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1786413600000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "KUAISHOUUSDT",
@@ -3243,6 +3705,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1760711400000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "LABUSDT",
@@ -3250,6 +3713,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1749114000000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "LAUSDT",
@@ -3257,6 +3721,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1739288700000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "LAYERUSDT",
@@ -3264,6 +3729,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1663743600000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "LDOUSDT",
@@ -3271,6 +3737,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1680048000000,
    "quoteAsset": "USDT",
    "status": "SETTLING",
    "symbol": "LEVERUSDT",
@@ -3278,6 +3745,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1786673700000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "LGELECTRONICSUSDT",
@@ -3285,6 +3753,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1758972600000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "LIGHTUSDT",
@@ -3292,6 +3761,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1615964400000,
    "quoteAsset": "USDT",
    "status": "SETTLING",
    "symbol": "LINAUSDT",
@@ -3299,6 +3769,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1756715400000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "LINEAUSDT",
@@ -3306,6 +3777,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1708072200000,
    "quoteAsset": "USDC",
    "status": "TRADING",
    "symbol": "LINKUSDC",
@@ -3313,6 +3785,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1579248000000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "LINKUSDT",
@@ -3320,6 +3793,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1718886600000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "LISTAUSDT",
@@ -3327,6 +3801,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1778851800000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "LITEUSDT",
@@ -3334,6 +3809,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1766511000000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "LITUSDT",
@@ -3341,6 +3817,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1780320600000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "LLYUSDT",
@@ -3348,6 +3825,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1727177400000,
    "quoteAsset": "USDT",
    "status": "SETTLING",
    "symbol": "LOKAUSDT",
@@ -3355,6 +3833,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1697034600000,
    "quoteAsset": "USDT",
    "status": "SETTLING",
    "symbol": "LOOMUSDT",
@@ -3362,6 +3841,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1636527600000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "LPTUSDT",
@@ -3369,6 +3849,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1678258800000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "LQTYUSDT",
@@ -3376,6 +3857,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1603091100000,
    "quoteAsset": "USDT",
    "status": "SETTLING",
    "symbol": "LRCUSDT",
@@ -3383,6 +3865,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1782135000000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "LRCXUSDT",
@@ -3390,6 +3873,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1706192100000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "LSKUSDT",
@@ -3397,6 +3881,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1712818800000,
    "quoteAsset": "USDC",
    "status": "TRADING",
    "symbol": "LTCUSDC",
@@ -3404,6 +3889,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1578557100000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "LTCUSDT",
@@ -3411,6 +3897,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1734521400000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "LUMIAUSDT",
@@ -3418,6 +3905,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1662706800000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "LUNA2USDT",
@@ -3425,6 +3913,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1759735800000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "LYNUSDT",
@@ -3432,6 +3921,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1786974600000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "LYTEUSDT",
@@ -3439,6 +3929,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1674457200000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "MAGICUSDT",
@@ -3446,6 +3937,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1767187800000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "MAGMAUSDT",
@@ -3453,6 +3945,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1615705200000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "MANAUSDT",
@@ -3460,6 +3953,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1705586400000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "MANTAUSDT",
@@ -3467,6 +3961,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1772611200000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "MANTRAUSDT",
@@ -3474,6 +3969,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1787908500000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "MARAUSDT",
@@ -3481,6 +3977,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1788255900000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "MARSCOINUSDT",
@@ -3488,6 +3985,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1626418800000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "MASKUSDT",
@@ -3495,6 +3993,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1743008400000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "MAVIAUSDT",
@@ -3502,6 +4001,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1688040000000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "MAVUSDT",
@@ -3509,6 +4009,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1724837400000,
    "quoteAsset": "USDT",
    "status": "SETTLING",
    "symbol": "MBOXUSDT",
@@ -3516,6 +4017,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1791277800000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "MCDUSDT",
@@ -3523,6 +4025,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1788344400000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "MDBUSDT",
@@ -3530,6 +4033,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1688126400000,
    "quoteAsset": "USDT",
    "status": "SETTLING",
    "symbol": "MDTUSDT",
@@ -3537,6 +4041,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1769775300000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "MEGAUSDT",
@@ -3544,6 +4049,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1786413900000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "MEITUANUSDT",
@@ -3551,6 +4057,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1737365400000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "MELANIAUSDT",
@@ -3558,6 +4065,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1745565300000,
    "quoteAsset": "USDT",
    "status": "SETTLING",
    "symbol": "MEMEFIUSDT",
@@ -3565,6 +4073,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1699012800000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "MEMEUSDT",
@@ -3572,6 +4081,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1748507400000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "MERLUSDT",
@@ -3579,6 +4089,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1774535400000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "METAUSDT",
@@ -3586,6 +4097,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1710232200000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "METISUSDT",
@@ -3593,6 +4105,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1760185800000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "METUSDT",
@@ -3600,6 +4113,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1733850000000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "MEUSDT",
@@ -3607,6 +4121,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1718632800000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "MEWUSDT",
@@ -3614,6 +4129,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1746539100000,
    "quoteAsset": "USDT",
    "status": "SETTLING",
    "symbol": "MILKUSDT",
@@ -3621,6 +4137,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1675407600000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "MINAUSDT",
@@ -3628,6 +4145,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1784257200000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "MINIMAXUSDT",
@@ -3635,6 +4153,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1758888000000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "MIRAUSDT",
@@ -3642,6 +4161,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1756398600000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "MITOUSDT",
@@ -3649,6 +4169,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1597302000000,
    "quoteAsset": "USDT",
    "status": "SETTLING",
    "symbol": "MKRUSDT",
@@ -3656,6 +4177,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1743410700000,
    "quoteAsset": "USDT",
    "status": "SETTLING",
    "symbol": "MLNUSDT",
@@ -3663,6 +4185,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1762257600000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "MMTUSDT",
@@ -3670,6 +4193,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1734348600000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "MOCAUSDT",
@@ -3677,6 +4201,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1760080500000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "MONUSDT",
@@ -3684,6 +4209,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1729850400000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "MOODENGUSDT",
@@ -3691,6 +4217,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1790065800000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "MOONSHOTUSDT",
@@ -3698,6 +4225,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1732717800000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "MORPHOUSDT",
@@ -3705,6 +4233,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1733752800000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "MOVEUSDT",
@@ -3712,6 +4241,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1703593800000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "MOVRUSDT",
@@ -3719,6 +4249,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1790673300000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "MPUSDT",
@@ -3726,6 +4257,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1787907900000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "MRKUSDT",
@@ -3733,6 +4265,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1787649600000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "MRNAUSDT",
@@ -3740,6 +4273,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1778853900000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "MRVLUSDT",
@@ -3747,6 +4281,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1776691800000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "MSFTUSDT",
@@ -3754,6 +4289,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1770647400000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "MSTRUSDT",
@@ -3761,6 +4297,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1617174000000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "MTLUSDT",
@@ -3768,6 +4305,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1742219100000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "MUBARAKUSDT",
@@ -3775,6 +4313,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1751880600000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "MUSDT",
@@ -3782,6 +4321,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1775568600000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "MUUSDT",
@@ -3789,6 +4329,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1784192400000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "MUUUSDT",
@@ -3796,6 +4337,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1782740100000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "MVLLUSDT",
@@ -3803,6 +4345,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1709627400000,
    "quoteAsset": "USDT",
    "status": "SETTLING",
    "symbol": "MYROUSDT",
@@ -3810,6 +4353,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1750249800000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "MYXUSDT",
@@ -3817,6 +4361,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1753965000000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "NAORISUSDT",
@@ -3824,6 +4369,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1775035200000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "NATGASUSDT",
@@ -3831,6 +4377,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1786674000000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "NAVERUSDT",
@@ -3838,6 +4385,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1779802200000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "NBISUSDT",
@@ -3845,6 +4393,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1712819700000,
    "quoteAsset": "USDC",
    "status": "TRADING",
    "symbol": "NEARUSDC",
@@ -3852,6 +4401,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1602748800000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "NEARUSDT",
@@ -3859,6 +4409,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1725631200000,
    "quoteAsset": "USDT",
    "status": "SETTLING",
    "symbol": "NEIROETHUSDT",
@@ -3866,6 +4417,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1726486200000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "NEIROUSDT",
@@ -3873,6 +4425,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1713424500000,
    "quoteAsset": "USDC",
    "status": "TRADING",
    "symbol": "NEOUSDC",
@@ -3880,6 +4433,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1581929100000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "NEOUSDT",
@@ -3887,6 +4441,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1786973700000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "NETUSDT",
@@ -3894,6 +4449,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1750343400000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "NEWTUSDT",
@@ -3901,6 +4457,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1780995600000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "NFLXUSDT",
@@ -3908,6 +4465,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1703680200000,
    "quoteAsset": "USDT",
    "status": "SETTLING",
    "symbol": "NFPUSDT",
@@ -3915,6 +4473,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1765364400000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "NIGHTUSDT",
@@ -3922,6 +4481,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1742821200000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "NILUSDT",
@@ -3929,6 +4489,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1790674200000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "NKEUSDT",
@@ -3936,6 +4497,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1617865200000,
    "quoteAsset": "USDT",
    "status": "SETTLING",
    "symbol": "NKNUSDT",
@@ -3943,6 +4505,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1687435200000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "NMRUSDT",
@@ -3950,6 +4513,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1780321500000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "NOKUSDT",
@@ -3957,6 +4521,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1759305600000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "NOMUSDT",
@@ -3964,6 +4529,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1715868000000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "NOTUSDT",
@@ -3971,6 +4537,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1780477800000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "NOWUSDT",
@@ -3978,6 +4545,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1699963200000,
    "quoteAsset": "USDT",
    "status": "SETTLING",
    "symbol": "NTRNUSDT",
@@ -3985,6 +4553,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1724661000000,
    "quoteAsset": "USDT",
    "status": "SETTLING",
    "symbol": "NULSUSDT",
@@ -3992,6 +4561,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1774536000000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "NVDAUSDT",
@@ -3999,6 +4569,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1788343200000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "NVDLUSDT",
@@ -4006,6 +4577,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1780320900000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "NVOUSDT",
@@ -4013,6 +4585,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1747290600000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "NXPCUSDT",
@@ -4020,6 +4593,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1746613800000,
    "quoteAsset": "USDT",
    "status": "SETTLING",
    "symbol": "OBOLUSDT",
@@ -4027,6 +4601,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1604386800000,
    "quoteAsset": "USDT",
    "status": "SETTLING",
    "symbol": "OCEANUSDT",
@@ -4034,6 +4609,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1617174000000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "OGNUSDT",
@@ -4041,6 +4617,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1747040400000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "OGUSDT",
@@ -4048,6 +4625,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1790586000000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "OKLOUSDT",
@@ -4055,6 +4633,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1750851000000,
    "quoteAsset": "USDT",
    "status": "SETTLING",
    "symbol": "OLUSDT",
@@ -4062,6 +4641,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1593680400000,
    "quoteAsset": "USDT",
    "status": "SETTLING",
    "symbol": "OMGUSDT",
@@ -4069,6 +4649,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1713362400000,
    "quoteAsset": "USDT",
    "status": "SETTLING",
    "symbol": "OMNIUSDT",
@@ -4076,6 +4657,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1707832800000,
    "quoteAsset": "USDT",
    "status": "SETTLING",
    "symbol": "OMUSDT",
@@ -4083,6 +4665,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1705755600000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "ONDOUSDT",
@@ -4090,6 +4673,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1780478700000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "ONDSUSDT",
@@ -4097,6 +4681,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1615964400000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "ONEUSDT",
@@ -4104,6 +4689,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1701090000000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "ONGUSDT",
@@ -4111,6 +4697,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1581408300000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "ONTUSDT",
@@ -4118,6 +4705,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1761294600000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "ONUSDT",
@@ -4125,6 +4713,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1779784200000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "OPENAIUSDT",
@@ -4132,6 +4721,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1757336400000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "OPENUSDT",
@@ -4139,6 +4729,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1776871800000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "OPGUSDT",
@@ -4146,6 +4737,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1771686000000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "OPNUSDT",
@@ -4153,6 +4745,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1654066800000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "OPUSDT",
@@ -4160,6 +4753,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1697522400000,
    "quoteAsset": "USDT",
    "status": "SETTLING",
    "symbol": "ORBSUSDT",
@@ -4167,6 +4761,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1733497200000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "ORCAUSDT",
@@ -4174,6 +4769,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1778852100000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "ORCLUSDT",
@@ -4181,6 +4777,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1758890700000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "ORDERUSDT",
@@ -4188,6 +4785,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1708585200000,
    "quoteAsset": "USDC",
    "status": "TRADING",
    "symbol": "ORDIUSDC",
@@ -4195,6 +4793,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1699360200000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "ORDIUSDT",
@@ -4202,6 +4801,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1790152200000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "OURAUSDT",
@@ -4209,6 +4809,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1782301500000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "OUSDT",
@@ -4216,6 +4817,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1691755200000,
    "quoteAsset": "USDT",
    "status": "SETTLING",
    "symbol": "OXTUSDT",
@@ -4223,6 +4825,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1784625000000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "PANWUSDT",
@@ -4230,6 +4833,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1742907600000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "PARTIUSDT",
@@ -4237,6 +4841,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1789722000000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "PATHUSDT",
@@ -4244,6 +4849,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1743071400000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "PAXGUSDT",
@@ -4251,6 +4857,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1774276200000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "PAYPUSDT",
@@ -4258,6 +4865,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1787908800000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "PDDUSDT",
@@ -4265,6 +4873,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1690511400000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "PENDLEUSDT",
@@ -4272,6 +4881,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1784625300000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "PENGUSDT",
@@ -4279,6 +4889,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1753255800000,
    "quoteAsset": "USDC",
    "status": "TRADING",
    "symbol": "PENGUUSDC",
@@ -4286,6 +4897,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1734452100000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "PENGUUSDT",
@@ -4293,6 +4905,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1640242800000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "PEOPLEUSDT",
@@ -4300,6 +4913,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1677999600000,
    "quoteAsset": "USDT",
    "status": "SETTLING",
    "symbol": "PERPUSDT",
@@ -4307,6 +4921,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1778735700000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "PHAROSUSDT",
@@ -4314,6 +4929,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1735558200000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "PHAUSDT",
@@ -4321,6 +4937,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1676444400000,
    "quoteAsset": "USDT",
    "status": "SETTLING",
    "symbol": "PHBUSDT",
@@ -4328,6 +4945,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1763119800000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "PIEVERSEUSDT",
@@ -4335,6 +4953,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1737713700000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "PIPPINUSDT",
@@ -4342,6 +4961,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1708354800000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "PIXELUSDT",
@@ -4349,6 +4969,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1753954200000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "PLAYUSDT",
@@ -4356,6 +4977,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1770649800000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "PLTRUSDT",
@@ -4363,6 +4985,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1742562000000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "PLUMEUSDT",
@@ -4370,6 +4993,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1741341600000,
    "quoteAsset": "USDC",
    "status": "TRADING",
    "symbol": "PNUTUSDC",
@@ -4377,6 +5001,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1731328200000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "PNUTUSDT",
@@ -4384,6 +5009,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1726229700000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "POLUSDT",
@@ -4391,6 +5017,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1698201000000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "POLYXUSDT",
@@ -4398,6 +5025,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1730723400000,
    "quoteAsset": "USDT",
    "status": "SETTLING",
    "symbol": "PONKEUSDT",
@@ -4405,6 +5033,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1788677100000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "PONSUSDT",
@@ -4412,6 +5041,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1724331600000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "POPCATUSDT",
@@ -4419,6 +5049,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1784773800000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "POPMARTUSDT",
@@ -4426,6 +5057,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1749026700000,
    "quoteAsset": "USDT",
    "status": "SETTLING",
    "symbol": "PORT3USDT",
@@ -4433,6 +5065,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1709218800000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "PORTALUSDT",
@@ -4440,6 +5073,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1765011600000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "POWERUSDT",
@@ -4447,6 +5081,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1698373800000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "POWRUSDT",
@@ -4454,6 +5089,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1775039400000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "PRLUSDT",
@@ -4461,6 +5097,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1744353000000,
    "quoteAsset": "USDT",
    "status": "SETTLING",
    "symbol": "PROMPTUSDT",
@@ -4468,6 +5105,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1736944200000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "PROMUSDT",
@@ -4475,6 +5113,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1754413200000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "PROVEUSDT",
@@ -4482,6 +5121,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1756902600000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "PTBUSDT",
@@ -4489,6 +5129,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1749025800000,
    "quoteAsset": "USDT",
    "status": "SETTLING",
    "symbol": "PUFFERUSDT",
@@ -4496,6 +5137,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1749808800000,
    "quoteAsset": "USDT",
    "status": "SETTLING",
    "symbol": "PUMPBTCUSDT",
@@ -4503,6 +5145,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1752132600000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "PUMPUSDT",
@@ -4510,6 +5153,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1746007200000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "PUNDIXUSDT",
@@ -4517,6 +5161,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1785315600000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "PYPLUSDT",
@@ -4524,6 +5169,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1700663400000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "PYTHUSDT",
@@ -4531,6 +5177,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1778074500000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "QCOMUSDT",
@@ -4538,6 +5185,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1666076400000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "QNTUSDT",
@@ -4545,6 +5193,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1780042500000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "QNTXUSDT",
@@ -4552,6 +5201,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1775482200000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "QQQUSDT",
@@ -4559,6 +5209,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1582185900000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "QTUMUSDT",
@@ -4566,6 +5217,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1725598800000,
    "quoteAsset": "USDT",
    "status": "SETTLING",
    "symbol": "QUICKUSDT",
@@ -4573,6 +5225,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1756798200000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "QUSDT",
@@ -4580,6 +5233,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1683590400000,
    "quoteAsset": "USDT",
    "status": "SETTLING",
    "symbol": "RADUSDT",
@@ -4587,6 +5241,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1787649000000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "RAMUSDT",
@@ -4594,6 +5249,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1723726800000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "RAREUSDT",
@@ -4601,6 +5257,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1765726200000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "RAVEUSDT",
@@ -4608,6 +5265,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1733832000000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "RAYSOLUSDT",
@@ -4615,6 +5273,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1629270000000,
    "quoteAsset": "USDT",
    "status": "SETTLING",
    "symbol": "RAYUSDT",
@@ -4622,6 +5281,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1786007100000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "RDDTUSDT",
@@ -4629,6 +5289,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1680566400000,
    "quoteAsset": "USDT",
    "status": "SETTLING",
    "symbol": "RDNTUSDT",
@@ -4636,6 +5297,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1760531400000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "RECALLUSDT",
@@ -4643,6 +5305,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1741276800000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "REDUSDT",
@@ -4650,6 +5313,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1611558000000,
    "quoteAsset": "USDT",
    "status": "SETTLING",
    "symbol": "REEFUSDT",
@@ -4657,6 +5321,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1727434800000,
    "quoteAsset": "USDT",
    "status": "SETTLING",
    "symbol": "REIUSDT",
@@ -4664,6 +5329,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1721988000000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "RENDERUSDT",
@@ -4671,6 +5337,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1602572400000,
    "quoteAsset": "USDT",
    "status": "SETTLING",
    "symbol": "RENUSDT",
@@ -4678,6 +5345,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1749562200000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "RESOLVUSDT",
@@ -4685,6 +5353,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1781791200000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "REUSDT",
@@ -4692,6 +5361,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1714485600000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "REZUSDT",
@@ -4699,6 +5369,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1697891400000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "RIFUSDT",
@@ -4706,6 +5377,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1760712300000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "RIVERUSDT",
@@ -4713,6 +5385,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1781082600000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "RIVNUSDT",
@@ -4720,6 +5393,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1779113100000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "RKLBUSDT",
@@ -4727,6 +5401,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1596178800000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "RLCUSDT",
@@ -4734,6 +5409,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1764669600000,
    "quoteAsset": "USDT",
    "status": "SETTLING",
    "symbol": "RLSUSDT",
@@ -4741,6 +5417,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1772181900000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "ROBOUSDT",
@@ -4748,6 +5425,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1707193800000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "RONINUSDT",
@@ -4755,6 +5433,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1640934000000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "ROSEUSDT",
@@ -4762,6 +5441,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1725885000000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "RPLUSDT",
@@ -4769,6 +5449,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1603091100000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "RSRUSDT",
@@ -4776,6 +5457,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1790586900000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "RUMUSDT",
@@ -4783,6 +5465,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1599203400000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "RUNEUSDT",
@@ -4790,6 +5473,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1614063600000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "RVNUSDT",
@@ -4797,6 +5481,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1760794200000,
    "quoteAsset": "USDT",
    "status": "SETTLING",
    "symbol": "RVVUSDT",
@@ -4804,6 +5489,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1729859400000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "SAFEUSDT",
@@ -4811,6 +5497,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1712658600000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "SAGAUSDT",
@@ -4818,6 +5505,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1750939200000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "SAHARAUSDT",
@@ -4825,6 +5513,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1786673100000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "SAMSUNGEMUSDT",
@@ -4832,6 +5521,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1780369800000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "SAMSUNGUSDT",
@@ -4839,6 +5529,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1610953200000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "SANDUSDT",
@@ -4846,6 +5537,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1730124000000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "SANTOSUSDT",
@@ -4853,6 +5545,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1755711000000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "SAPIENUSDT",
@@ -4860,6 +5553,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1732188600000,
    "quoteAsset": "USDT",
    "status": "SETTLING",
    "symbol": "SCRTUSDT",
@@ -4867,6 +5561,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1729591200000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "SCRUSDT",
@@ -4874,6 +5569,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1618210800000,
    "quoteAsset": "USDT",
    "status": "SETTLING",
    "symbol": "SCUSDT",
@@ -4881,6 +5577,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1790673600000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "SECZUSDT",
@@ -4888,6 +5585,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1692239400000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "SEIUSDT",
@@ -4895,6 +5593,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1763124300000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "SENTUSDT",
@@ -4902,6 +5601,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1614150000000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "SFPUSDT",
@@ -4909,6 +5609,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1784624400000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "SHAZUSDT",
@@ -4916,6 +5617,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1739812500000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "SHELLUSDT",
@@ -4923,6 +5625,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1786974300000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "SHOPUSDT",
@@ -4930,6 +5633,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1745838000000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "SIGNUSDT",
@@ -4937,6 +5641,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1742634000000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "SIRENUSDT",
@@ -4944,6 +5649,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1749465000000,
    "quoteAsset": "USDT",
    "status": "SETTLING",
    "symbol": "SKATEUSDT",
@@ -4951,6 +5657,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1787648700000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "SKDDUSDT",
@@ -4958,6 +5665,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1780369200000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "SKHYNIXUSDT",
@@ -4965,6 +5673,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1783698600000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "SKHYUSDT",
@@ -4972,6 +5681,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1598252400000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "SKLUSDT",
@@ -4979,6 +5689,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1769078700000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "SKRUSDT",
@@ -4986,6 +5697,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1787648400000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "SKUUUSDT",
@@ -4993,6 +5705,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1747129500000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "SKYAIUSDT",
@@ -5000,6 +5713,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1757401200000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "SKYUSDT",
@@ -5007,6 +5721,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1732188600000,
    "quoteAsset": "USDT",
    "status": "SETTLING",
    "symbol": "SLERFUSDT",
@@ -5014,6 +5729,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1753271100000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "SLPUSDT",
@@ -5021,6 +5737,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1780299000000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "SLXUSDT",
@@ -5028,6 +5745,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1782135900000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "SMCIUSDT",
@@ -5035,6 +5753,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1785316200000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "SMHUSDT",
@@ -5042,6 +5761,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1775569200000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "SNDKUSDT",
@@ -5049,6 +5769,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1783672800000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "SNOWUSDT",
@@ -5056,6 +5777,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1698928200000,
    "quoteAsset": "USDT",
    "status": "SETTLING",
    "symbol": "SNTUSDT",
@@ -5063,6 +5785,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1597388400000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "SNXUSDT",
@@ -5070,6 +5793,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1783606500000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "SNXXUSDT",
@@ -5077,6 +5801,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1784624700000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "SOFIUSDT",
@@ -5084,6 +5809,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1704285900000,
    "quoteAsset": "USDC",
    "status": "TRADING",
    "symbol": "SOLUSDC",
@@ -5091,6 +5817,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1600066800000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "SOLUSDT",
@@ -5098,6 +5825,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1737116100000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "SOLVUSDT",
@@ -5105,6 +5833,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1756114200000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "SOMIUSDT",
@@ -5112,6 +5841,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1736319600000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "SONICUSDT",
@@ -5119,6 +5849,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1782136800000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "SONYUSDT",
@@ -5126,6 +5857,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1747989000000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "SOONUSDT",
@@ -5133,6 +5865,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1748437200000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "SOPHUSDT",
@@ -5140,6 +5873,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1778853600000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "SOXLUSDT",
@@ -5147,6 +5881,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1784192700000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "SOXSUSDT",
@@ -5154,6 +5889,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1769168700000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "SPACEUSDT",
@@ -5161,6 +5897,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1784538000000,
    "quoteAsset": "USD1",
    "status": "TRADING",
    "symbol": "SPCXUSD1",
@@ -5168,6 +5905,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1779338700000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "SPCXUSDT",
@@ -5175,6 +5913,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1662361200000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "SPELLUSDT",
@@ -5182,6 +5921,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1750150800000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "SPKUSDT",
@@ -5189,6 +5929,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1768571100000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "SPORTFUNUSDT",
@@ -5196,6 +5937,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1733834700000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "SPXUSDT",
@@ -5203,6 +5945,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1775482800000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "SPYUSDT",
@@ -5210,6 +5953,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1749645900000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "SQDUSDT",
@@ -5217,6 +5961,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1782740700000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "SQQQUSDT",
@@ -5224,6 +5969,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1677135600000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "SSVUSDT",
@@ -5231,6 +5977,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1762430400000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "STABLEUSDT",
@@ -5238,6 +5985,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1778736600000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "STARUSDT",
@@ -5245,6 +5993,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1758087900000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "STBLUSDT",
@@ -5252,6 +6001,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1699453800000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "STEEMUSDT",
@@ -5259,6 +6009,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1661324400000,
    "quoteAsset": "USDT",
    "status": "SETTLING",
    "symbol": "STGUSDT",
@@ -5266,6 +6017,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1615964400000,
    "quoteAsset": "USDT",
    "status": "SETTLING",
    "symbol": "STMXUSDT",
@@ -5273,6 +6025,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1600239600000,
    "quoteAsset": "USDT",
    "status": "SETTLING",
    "symbol": "STORJUSDT",
@@ -5280,6 +6033,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1744469100000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "STOUSDT",
@@ -5287,6 +6041,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1697639400000,
    "quoteAsset": "USDT",
    "status": "SETTLING",
    "symbol": "STPTUSDT",
@@ -5294,6 +6049,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1696991400000,
    "quoteAsset": "USDT",
    "status": "SETTLING",
    "symbol": "STRAXUSDT",
@@ -5301,6 +6057,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1782983700000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "STRCUSDT",
@@ -5308,6 +6065,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1708448400000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "STRKUSDT",
@@ -5315,6 +6073,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1676876400000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "STXUSDT",
@@ -5322,6 +6081,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1781170500000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "STXXUSDT",
@@ -5329,6 +6089,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1707375600000,
    "quoteAsset": "USDC",
    "status": "TRADING",
    "symbol": "SUIUSDC",
@@ -5336,6 +6097,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1683072000000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "SUIUSDT",
@@ -5343,6 +6105,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1724331900000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "SUNUSDT",
@@ -5350,6 +6113,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1701003600000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "SUPERUSDT",
@@ -5357,6 +6121,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1737021600000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "SUSDT",
@@ -5364,6 +6129,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1599202800000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "SUSHIUSDT",
@@ -5371,6 +6137,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1736252100000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "SWARMSUSDT",
@@ -5378,6 +6145,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1731081600000,
    "quoteAsset": "USDT",
    "status": "SETTLING",
    "symbol": "SWELLUSDT",
@@ -5385,6 +6153,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1746174600000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "SXTUSDT",
@@ -5392,6 +6161,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1723811400000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "SYNUSDT",
@@ -5399,6 +6169,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1746606600000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "SYRUPUSDT",
@@ -5406,6 +6177,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1724070600000,
    "quoteAsset": "USDT",
    "status": "SETTLING",
    "symbol": "SYSUSDT",
@@ -5413,6 +6185,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1752575400000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "TACUSDT",
@@ -5420,6 +6193,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1753442100000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "TAGUSDT",
@@ -5427,6 +6201,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1749645000000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "TAIKOUSDT",
@@ -5434,6 +6209,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1756898100000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "TAKEUSDT",
@@ -5441,6 +6217,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1752060600000,
    "quoteAsset": "USDT",
    "status": "SETTLING",
    "symbol": "TANSSIUSDT",
@@ -5448,6 +6225,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1712845800000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "TAOUSDT",
@@ -5455,6 +6233,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1753083000000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "TAUSDT",
@@ -5462,6 +6241,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1785159300000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "TBTUSDT",
@@ -5469,6 +6249,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1788344100000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "TEAMUSDT",
@@ -5476,6 +6257,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1787907600000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "TEMUSDT",
@@ -5483,6 +6265,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1784689800000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "TENCENTUSDT",
@@ -5490,6 +6273,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1782984900000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "TERUSDT",
@@ -5497,6 +6281,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1590566400000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "THETAUSDT",
@@ -5504,6 +6289,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1732709700000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "THEUSDT",
@@ -5511,6 +6297,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1714029300000,
    "quoteAsset": "USDC",
    "status": "TRADING",
    "symbol": "TIAUSDC",
@@ -5518,6 +6305,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1698769800000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "TIAUSDT",
@@ -5525,6 +6313,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1680048000000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "TLMUSDT",
@@ -5532,6 +6321,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1785159000000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "TMFUSDT",
@@ -5539,6 +6329,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1712595600000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "TNSRUSDT",
@@ -5546,6 +6337,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1699023600000,
    "quoteAsset": "USDT",
    "status": "SETTLING",
    "symbol": "TOKENUSDT",
@@ -5553,6 +6345,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1709296200000,
    "quoteAsset": "USDT",
    "status": "SETTLING",
    "symbol": "TONUSDT",
@@ -5560,6 +6353,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1758087000000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "TOSHIUSDT",
@@ -5567,6 +6361,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1754404200000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "TOWNSUSDT",
@@ -5574,6 +6369,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1782740400000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "TQQQUSDT",
@@ -5581,6 +6377,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1758285000000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "TRADOORUSDT",
@@ -5588,6 +6385,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1599116400000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "TRBUSDT",
@@ -5595,6 +6393,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1753797600000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "TREEUSDT",
@@ -5602,6 +6401,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1770380100000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "TRIAUSDT",
@@ -5609,6 +6409,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1730379600000,
    "quoteAsset": "USDT",
    "status": "SETTLING",
    "symbol": "TROYUSDT",
@@ -5616,6 +6417,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1741255200000,
    "quoteAsset": "USDC",
    "status": "TRADING",
    "symbol": "TRUMPUSDC",
@@ -5623,6 +6425,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1737205200000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "TRUMPUSDT",
@@ -5630,6 +6433,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1762335000000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "TRUSTUSDT",
@@ -5637,6 +6441,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1759320000000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "TRUTHUSDT",
@@ -5644,6 +6449,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1678086000000,
    "quoteAsset": "USDT",
    "status": "SETTLING",
    "symbol": "TRUUSDT",
@@ -5651,6 +6457,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1579075500000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "TRXUSDT",
@@ -5658,6 +6465,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1769610600000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "TSLAUSDT",
@@ -5665,6 +6473,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1788343500000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "TSLLUSDT",
@@ -5672,6 +6481,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1775484000000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "TSMUSDT",
@@ -5679,6 +6489,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1739106000000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "TSTUSDT",
@@ -5686,6 +6497,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1782985200000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "TTWOUSDT",
@@ -5693,6 +6505,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1717083000000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "TURBOUSDT",
@@ -5700,6 +6513,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1761145200000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "TURTLEUSDT",
@@ -5707,6 +6521,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1675148400000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "TUSDT",
@@ -5714,6 +6529,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1742461200000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "TUTUSDT",
@@ -5721,6 +6537,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1790586300000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "TWSTUSDT",
@@ -5728,6 +6545,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1699021800000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "TWTUSDT",
@@ -5735,6 +6553,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1782984300000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "TXNUSDT",
@@ -5742,6 +6561,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1784193000000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "TZAUSDT",
@@ -5749,6 +6569,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1762428600000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "UAIUSDT",
@@ -5756,6 +6577,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1778852700000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "UBERUSDT",
@@ -5763,6 +6585,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1757673000000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "UBUSDT",
@@ -5770,6 +6593,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1683590400000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "UMAUSDT",
@@ -5777,6 +6601,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1612854000000,
    "quoteAsset": "USDT",
    "status": "SETTLING",
    "symbol": "UNFIUSDT",
@@ -5784,6 +6609,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1790673900000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "UNHUSDT",
@@ -5791,6 +6617,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1787107500000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "UNITREEUSDT",
@@ -5798,6 +6625,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1750063500000,
    "quoteAsset": "USDC",
    "status": "TRADING",
    "symbol": "UNIUSDC",
@@ -5805,6 +6633,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1600412400000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "UNIUSDT",
@@ -5812,6 +6641,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1780996200000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "URNMUSDT",
@@ -5819,6 +6649,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1778074800000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "USARUSDT",
@@ -5826,6 +6657,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1789999200000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "USDBRLUSDT",
@@ -5833,6 +6665,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1678579200000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "USDCUSDT",
@@ -5840,6 +6673,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1791277200000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "USDEXUSDT",
@@ -5847,6 +6681,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1755260100000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "USELESSUSDT",
@@ -5854,6 +6689,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1701088200000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "USTCUSDT",
@@ -5861,6 +6697,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1734526800000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "USUALUSDT",
@@ -5868,6 +6705,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1765536300000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "USUSDT",
@@ -5875,6 +6713,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1781169600000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "UVXYUSDT",
@@ -5882,6 +6721,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1726412400000,
    "quoteAsset": "USDT",
    "status": "SETTLING",
    "symbol": "UXLINKUSDT",
@@ -5889,6 +6729,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1734355800000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "VANAUSDT",
@@ -5896,6 +6737,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1710351000000,
    "quoteAsset": "USDT",
    "status": "SETTLING",
    "symbol": "VANRYUSDT",
@@ -5903,6 +6745,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1734106500000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "VELODROMEUSDT",
@@ -5910,6 +6753,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1752570900000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "VELVETUSDT",
@@ -5917,6 +6761,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1581667200000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "VETUSDT",
@@ -5924,6 +6769,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1759233600000,
    "quoteAsset": "USDT",
    "status": "SETTLING",
    "symbol": "VFYUSDT",
@@ -5931,6 +6777,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1741798800000,
    "quoteAsset": "USDT",
    "status": "SETTLING",
    "symbol": "VICUSDT",
@@ -5938,6 +6785,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1724405400000,
    "quoteAsset": "USDT",
    "status": "SETTLING",
    "symbol": "VIDTUSDT",
@@ -5945,6 +6793,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1737712800000,
    "quoteAsset": "USDT",
    "status": "SETTLING",
    "symbol": "VINEUSDT",
@@ -5952,6 +6801,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1733833800000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "VIRTUALUSDT",
@@ -5959,6 +6809,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1791277500000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "VKTXUSDT",
@@ -5966,6 +6817,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1724149800000,
    "quoteAsset": "USDT",
    "status": "SETTLING",
    "symbol": "VOXELUSDT",
@@ -5973,6 +6825,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1783672500000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "VRTUSDT",
@@ -5980,6 +6833,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1786974000000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "VSTUSDT",
@@ -5987,6 +6841,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1737538200000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "VTHOUSDT",
@@ -5994,6 +6849,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1779111900000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "VUSDT",
@@ -6001,6 +6857,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1738138500000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "VVVUSDT",
@@ -6008,6 +6865,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1743089400000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "WALUSDT",
@@ -6015,6 +6873,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1597215600000,
    "quoteAsset": "USDT",
    "status": "SETTLING",
    "symbol": "WAVESUSDT",
@@ -6022,6 +6881,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1697640300000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "WAXPUSDT",
@@ -6029,6 +6889,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1744714800000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "WCTUSDT",
@@ -6036,6 +6897,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1779802500000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "WDCUSDT",
@@ -6043,6 +6905,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1783605900000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "WENUSDT",
@@ -6050,6 +6913,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1765350000000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "WETUSDT",
@@ -6057,6 +6921,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1712214900000,
    "quoteAsset": "USDC",
    "status": "TRADING",
    "symbol": "WIFUSDC",
@@ -6064,6 +6929,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1705587300000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "WIFUSDT",
@@ -6071,6 +6937,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1710399600000,
    "quoteAsset": "USDC",
    "status": "TRADING",
    "symbol": "WLDUSDC",
@@ -6078,6 +6945,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1690200000000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "WLDUSDT",
@@ -6085,6 +6953,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1757320200000,
    "quoteAsset": "USDC",
    "status": "TRADING",
    "symbol": "WLFIUSDC",
@@ -6092,6 +6961,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1755937800000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "WLFIUSDT",
@@ -6099,6 +6969,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1779111300000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "WMTUSDT",
@@ -6106,6 +6977,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1649314800000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "WOOUSDT",
@@ -6113,6 +6985,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1712158200000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "WUSDT",
@@ -6120,6 +6993,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1767780000000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "XAGUSDT",
@@ -6127,6 +7001,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1704808800000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "XAIUSDT",
@@ -6134,6 +7009,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1759141800000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "XANUSDT",
@@ -6141,6 +7017,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1774533600000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "XAUTUSDT",
@@ -6148,6 +7025,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1765440300000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "XAUUSDT",
@@ -6155,6 +7033,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1783606800000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "XBIUSDT",
@@ -6162,6 +7041,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1744385400000,
    "quoteAsset": "USDT",
    "status": "SETTLING",
    "symbol": "XCNUSDT",
@@ -6169,6 +7049,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1614668400000,
    "quoteAsset": "USDT",
    "status": "SETTLING",
    "symbol": "XEMUSDT",
@@ -6176,6 +7057,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1781083200000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "XLEUSDT",
@@ -6183,6 +7065,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1579507200000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "XLMUSDT",
@@ -6190,6 +7073,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1580716800000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "XMRUSDT",
@@ -6197,6 +7081,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1755085500000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "XNYUSDT",
@@ -6204,6 +7089,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1790587200000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "XOMUSDT",
@@ -6211,6 +7097,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1769768100000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "XPDUSDT",
@@ -6218,6 +7105,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1757664000000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "XPINUSDT",
@@ -6225,6 +7113,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1755855000000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "XPLUSDT",
@@ -6232,6 +7121,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1769767200000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "XPTUSDT",
@@ -6239,6 +7129,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1704286200000,
    "quoteAsset": "USDC",
    "status": "TRADING",
    "symbol": "XRPUSDC",
@@ -6246,6 +7137,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1578298800000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "XRPUSDT",
@@ -6253,6 +7145,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1580976000000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "XTZUSDT",
@@ -6260,6 +7153,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1688558400000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "XVGUSDT",
@@ -6267,6 +7161,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1681257600000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "XVSUSDT",
@@ -6274,6 +7169,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1754584200000,
    "quoteAsset": "USDT",
    "status": "SETTLING",
    "symbol": "YALAUSDT",
@@ -6281,6 +7177,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1760107500000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "YBUSDT",
@@ -6288,6 +7185,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1598857200000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "YFIUSDT",
@@ -6295,6 +7193,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1691206200000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "YGGUSDT",
@@ -6302,6 +7201,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1767949200000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "ZAMAUSDT",
@@ -6309,6 +7209,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1760700600000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "ZBTUSDT",
@@ -6316,6 +7217,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1763548200000,
    "quoteAsset": "USDC",
    "status": "TRADING",
    "symbol": "ZECUSDC",
@@ -6323,6 +7225,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1580889600000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "ZECUSDT",
@@ -6330,6 +7233,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1606201200000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "ZENUSDT",
@@ -6337,6 +7241,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1735826400000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "ZEREBROUSDT",
@@ -6344,6 +7249,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1780581600000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "ZESTUSDT",
@@ -6351,6 +7257,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1706862600000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "ZETAUSDT",
@@ -6358,6 +7265,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1784257500000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "ZHIPUUSDT",
@@ -6365,6 +7273,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1786672800000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "ZHONGJIUSDT",
@@ -6372,6 +7281,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1592470800000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "ZILUSDT",
@@ -6379,6 +7289,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1757944800000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "ZKCUSDT",
@@ -6386,6 +7297,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1747128600000,
    "quoteAsset": "USDT",
    "status": "SETTLING",
    "symbol": "ZKJUSDT",
@@ -6393,6 +7305,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1766311200000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "ZKPUSDT",
@@ -6400,6 +7313,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1718622000000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "ZKUSDT",
@@ -6407,6 +7321,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1781082000000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "ZMUSDT",
@@ -6414,6 +7329,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1753441200000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "ZORAUSDT",
@@ -6421,6 +7337,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1753782300000,
    "quoteAsset": "USDT",
    "status": "SETTLING",
    "symbol": "ZRCUSDT",
@@ -6428,6 +7345,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1718893800000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "ZROUSDT",
@@ -6435,6 +7353,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1592989200000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "ZRXUSDT",
@@ -6442,6 +7361,7 @@
   },
   {
    "contractType": "TRADIFI_PERPETUAL",
+   "onboardDate": 1788344700000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "ZSUSDT",
@@ -6449,6 +7369,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1788678900000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "\u54c8\u57fa\u7c73USDT",
@@ -6456,6 +7377,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1760958000000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "\u5e01\u5b89\u4eba\u751fUSDT",
@@ -6463,6 +7385,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1769005800000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "\u6211\u8e0f\u9a6c\u6765\u4e86USDT",
@@ -6470,6 +7393,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1788089400000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "\u725b\u6765USDT",
@@ -6477,6 +7401,7 @@
   },
   {
    "contractType": "PERPETUAL",
+   "onboardDate": 1773228600000,
    "quoteAsset": "USDT",
    "status": "TRADING",
    "symbol": "\u9f99\u867eUSDT",
