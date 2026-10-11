@@ -20,7 +20,7 @@ Order of operations (`run_pit`):
      configuration and stress row, one chronological cycle loop over the tier's symbols (m3_eval order): (A) exits
      due at the bar open (signal exits; the 180-bar cap: a lot open 180 bars after entry closes at the OPEN of the
      next bar, market taker), one wallet snapshot, entries in frozen rank order - 10,000 USDT start, risk 1% of the
-     snapshot / stop distance, max 4 open lots, gross notional <= 3x equity sized on signal close x 1.10, quantity
+     snapshot / the actual per-unit stop risk (tick-rounded fill - tick-floored stop), max 4 open lots, gross notional <= 3x equity sized on signal close x 1.10, quantity
      floored to the pinned rule step (never upsized), below min qty / min notional = counted refusal, a Cairo-day
      halted decision = counted refusal; fill at the next bar open (tick-rounded), stop = fill - registered distance
      floored to the tick; (B) stop over each played bar (`costs.stop_reference`: a gap stop fills and exits at the
@@ -399,13 +399,6 @@ def run_book(tape, cfg: dict, symbols, *, first: int, last: int, hi: int, slip_c
             if snapshot <= 0 or not dist or dist <= 0 or ref <= 0:
                 refusals['execution.size_min'] += 1
                 continue
-            raw = snapshot * book['risk_pct'] / dist
-            room = book['max_leverage'] * snapshot - notional
-            q = min(raw, max(room, 0.0) / (ref * (1 + book['cap_gap_buffer'])))
-            q = _floor(q, rule['step']) if q > 0 else 0.0
-            if q <= 0 or q < float(rule['min_qty']) or q * ref < float(rule['min_notional']):
-                refusals['execution.size_min'] += 1
-                continue
             if rec[s] is None:
                 refusals['entry_no_next_open'] += 1
                 continue
@@ -415,11 +408,25 @@ def run_book(tape, cfg: dict, symbols, *, first: int, last: int, hi: int, slip_c
             except Incomplete:
                 refusals['entry_no_slip_history'] += 1
                 continue
+            # size from the ACTUAL per-unit stop risk: the adverse tick-rounded fill and the tick-floored stop
+            # (flooring can only widen fill - stop beyond dist), so qty x (fill - stop) <= risk_pct x snapshot
+            stop = _floor(fill - dist, rule['tick'])
+            risk_u = fill - stop
+            if risk_u <= 0:
+                refusals['execution.size_min'] += 1
+                continue
+            raw = snapshot * book['risk_pct'] / risk_u
+            room = book['max_leverage'] * snapshot - notional
+            q = min(raw, max(room, 0.0) / (ref * (1 + book['cap_gap_buffer'])))
+            q = _floor(q, rule['step']) if q > 0 else 0.0
+            if q <= 0 or q < float(rule['min_qty']) or q * ref < float(rule['min_notional']):
+                refusals['execution.size_min'] += 1
+                continue
             fee = C.fee(fill * q, 'taker', C.CRYPTO, scen)
             wallet -= fee
             o = rec[s]['b'][0]
             lots[s] = {'signal_ms': sig_t, 'entry_ms': bo, 'qty': q, 'fill': fill,
-                       'stop': _floor(fill - dist, rule['tick']), 'fees': fee, 'funding': 0.0, 'snapshot': snapshot,
+                       'stop': stop, 'fees': fee, 'funding': 0.0, 'snapshot': snapshot,
                        'hi': o, 'lo': o}
         pend_entry = []
         # (B) play the bar: stop first; funding events entry <= T < exit time (accounting convention, PR #61:

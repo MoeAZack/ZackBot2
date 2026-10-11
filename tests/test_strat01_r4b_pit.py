@@ -317,7 +317,8 @@ def test_the_book_sizes_by_risk_floors_to_step_and_books_the_wallet():
     (tr,) = a['counted']
     x = PR.read_tape(mk_tape(closes))[1]['AAAUSDT']
     fill = C.fill_price(closes[25], 'buy', x.bps(t_of(25), C.TR_SMA14, 0.05), C.STRESS['base'], tick=0.01)
-    q = math.floor(min(10_000 * 0.01 / 2.0, 3 * 10_000 / (closes[25] * 1.10)) / 0.001 + 1e-9) * 0.001
+    stop = math.floor((fill - 2.0) / 0.01 + 1e-9) * 0.01
+    q = math.floor(min(10_000 * 0.01 / (fill - stop), 3 * 10_000 / (closes[25] * 1.10)) / 0.001 + 1e-9) * 0.001
     assert tr['qty'] == pytest.approx(q) and tr['entry_price'] == fill
     assert tr['stop_price'] == pytest.approx(math.floor((fill - 2.0) / 0.01 + 1e-9) * 0.01)
     base = a['rows']['base']
@@ -339,6 +340,24 @@ def test_book_limits_max_lots_leverage_and_minimums():
     assert tr['qty'] * closes[25] * 1.10 <= 3 * 10_000 + 1e-6 and tr['qty'] < 10_000 * 0.01 / 0.01
     big = acct(mk_tape(closes, le={25}, lx={40}), rules={'AAAUSDT': dict(RULE, min_notional=1e9)})
     assert big['counted'] == [] and big['refusals'] == {'execution.size_min': 1}
+
+
+@pytest.mark.parametrize('tick', [0.01, 0.5, 1.0, 3.0, 7.0])
+def test_initial_stop_risk_never_exceeds_one_percent_on_coarse_ticks(tick):
+    """Codex 6109370176: qty is sized from the tick-rounded fill minus the tick-floored stop, never from the raw
+    distance (flooring the stop widens the risk)."""
+    rule = dict(RULE, tick=tick, step=0.0001)
+    for d in ('0.3', '1.7', '2.0', '4.9', '9.99'):
+        closes = [100.0 + 0.137 * i for i in range(60)]
+        a = acct(mk_tape(closes, le={25}, lx={40}, d=d), rules={'AAAUSDT': rule}, rows=tuple(C.STRESS))
+        for row, x in a['rows'].items():
+            for tr in x['counted']:
+                risk = tr['qty'] * (tr['entry_price'] - tr['stop_price'])
+                assert risk <= 0.01 * tr['snapshot'] * (1 + 1e-9), (tick, d, row)
+                assert tr['entry_price'] - tr['stop_price'] >= float(d) - 1e-9
+                bigger = tr['qty'] + rule['step']                           # floored: one more step would breach
+                lev_room = 3 * tr['snapshot'] / (closes[25] * 1.10)
+                assert bigger * (tr['entry_price'] - tr['stop_price']) > 0.01 * tr['snapshot'] or bigger > lev_room
 
 
 def test_the_cairo_day_mtm_halt_refuses_that_days_entries():
