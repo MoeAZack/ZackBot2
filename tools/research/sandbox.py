@@ -381,6 +381,9 @@ class View:
     def funding_events(self, position, exit_ms):
         return [tuple(e) for e in self._call('funding_events', position, exit_ms)]
 
+    def next_open(self, symbol, interval, *, position=None):
+        return self._call('next_open', symbol, interval, position=position)
+
     def minute_bars(self, symbol, open_ms, close_ms, *, position=None):
         return tuple(Bar(*r) for r in self._call('minute_bars', symbol, open_ms, close_ms, position=position))
 

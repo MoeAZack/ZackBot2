@@ -83,7 +83,8 @@ SANDBOX = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'sandbox.py')
 CANONICAL_REPO = M.REPO                          # the checkout whose registered ledger may open a sealed holdout
 LEDGER_REL = ('research_evidence', 'ledger')
 RUNS_REL = ('research_evidence', 'runs')
-VIEW_CALLS = ('labels', 'members', 'enter', 'bars', 'mark_bars', 'funding', 'funding_events', 'minute_bars')
+VIEW_CALLS = ('labels', 'members', 'enter', 'bars', 'mark_bars', 'funding', 'funding_events', 'minute_bars',
+              'next_open')
 
 
 class PITError(ValueError):
@@ -380,6 +381,27 @@ class View:
             out.append((f.time_ms, f.rate, marks[i].close))
         return out
 
+    def next_open(self, symbol: str, interval: str, *, position=None):
+        """The OPEN price of the bar opening exactly at t (the first trade at t, observable at t) - never its high, low,
+        close or volume, which are not available before the bar closes. Serves the boundary fill "at the open of the
+        next bar" when that bar lies past the window (e.g. a time-cap exit at the split end): its open time must be
+        inside the window (t <= hi) and outside the plan's holdout. None when the data has no bar opening at t."""
+        w = self._check(symbol, position)
+        if interval not in M.INTERVALS:
+            raise PITError(f'unknown interval {interval!r}')
+        acc = w._access
+        if acc is not None and acc.plan is not None and acc.plan.overlaps_holdout(self.t, self.t + 1):
+            raise PITError('next_open may not read a bar opening inside the sealed holdout')
+        for f in w._ds.files('klines', symbol, interval):
+            if f['first_open_ms'] is None or not f['first_open_ms'] <= self.t <= f['last_open_ms']:
+                continue
+            rows = w._ds.rows(f)
+            times = w._ds._keys[f['path']][0]
+            i = bisect.bisect_left(times, self.t)
+            if i < len(rows) and rows[i].open_ms == self.t:
+                return rows[i].open
+        return None
+
     def minute_bars(self, symbol: str, open_ms: int, close_ms: int, *, position=None) -> tuple:
         """1m bars of one closed signal bar [open_ms, close_ms); empty when the manifest has no 1m data for it."""
         w = self._check(symbol, position)
@@ -389,14 +411,16 @@ class View:
 
 
 def _perturb_future(ds: Dataset, t: int) -> dict:
-    """Scale every cached row not yet available at t (prices x3, rates x-3); returns what to restore."""
+    """Scale every cached row not yet available at t (prices x3, rates x-3); returns what to restore. The OPEN of a
+    bar that has opened by t (open_ms <= t) is already observable at t (View.next_open) and stays untouched."""
     saved = {}
     for p, rows in ds._cache.items():
         saved[p] = list(rows)
         for i, r in enumerate(rows):
             if r.available_ms > t:
                 rows[i] = r._replace(rate=-3 * r.rate - 1e-3) if isinstance(r, Funding) else \
-                    r._replace(open=r.open * 3, high=r.high * 3, low=r.low * 3, close=r.close * 3)
+                    r._replace(open=r.open if r.open_ms <= t else r.open * 3, high=r.high * 3, low=r.low * 3,
+                               close=r.close * 3)
     return saved
 
 
