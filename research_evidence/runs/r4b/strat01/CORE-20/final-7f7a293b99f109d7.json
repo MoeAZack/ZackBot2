@@ -1,0 +1,31 @@
+{
+ "artifacts": [],
+ "digest": "1c78f7531befeeb800084ae05a8f3dab791a960b9630aab252743432d8c76051",
+ "evidence": [],
+ "format": "zb-run-progress/2",
+ "identity": {
+  "classification": null,
+  "commit": "eff1b7237f790e0ac2f91ed2867949533d87c53c",
+  "evaluator": "6adda901d112bc05d8c78b83a984c54b663580947d8e8bbd55a3d1c2fdbdd292",
+  "manifest": "54912d9d2bf6e6fc45bc75c0553f0bd867e877972beeb3452785937379baf1e7",
+  "prereg": "369aef318743b44d3cd107b93c8bb06bf133e6a1cf357a30989dfc87e4a935e4",
+  "universe": "1c06c18d2fc82413b740260f0051a9f8286e9b0cb87d7d9614a2f88d78393fce"
+ },
+ "identity_digest": "d4eff52a4e33c81974add3da003e64c4297d1739fdfe88a2e42976df2fb3439c",
+ "integrity": [
+  {
+   "code": "Unexpected"
+  }
+ ],
+ "kind": "final",
+ "run": "7f7a293b99f109d7",
+ "seq": 3,
+ "stages": [
+  {
+   "name": "pit.open",
+   "status": "done"
+  }
+ ],
+ "state": "aborted",
+ "wall": "2026-10-11T18:02:09+03:00"
+}
