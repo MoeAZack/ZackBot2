@@ -1,0 +1,1636 @@
+{
+ "aggregates": {
+  "development": {
+   "avg_loss": -0.580809538418465,
+   "avg_win": 2.6466642280953105,
+   "book": {
+    "base": {
+     "longest_underwater_cycles": 1751,
+     "mtm_max_dd_pct": 14.317641564994805,
+     "net_pct_equity": 153.54802312925335
+    },
+    "fees_slip_x2": {
+     "longest_underwater_cycles": 1751,
+     "mtm_max_dd_pct": 14.599626003610428,
+     "net_pct_equity": 130.58715402502176
+    },
+    "flat_funding_legacy": {
+     "longest_underwater_cycles": 1751,
+     "mtm_max_dd_pct": 14.323244044031307,
+     "net_pct_equity": 155.3377180905605
+    },
+    "funding_mark_adverse": {
+     "longest_underwater_cycles": 1751,
+     "mtm_max_dd_pct": 14.318020476114556,
+     "net_pct_equity": 153.46888832719728
+    },
+    "funding_x2": {
+     "longest_underwater_cycles": 1751,
+     "mtm_max_dd_pct": 14.354836051198049,
+     "net_pct_equity": 143.52477658879008
+    },
+    "gap_slip_x5": {
+     "longest_underwater_cycles": 1751,
+     "mtm_max_dd_pct": 14.317641564994805,
+     "net_pct_equity": 153.54802312925335
+    },
+    "limit_as_taker": {
+     "longest_underwater_cycles": 1751,
+     "mtm_max_dd_pct": 14.317641564994805,
+     "net_pct_equity": 153.54802312925335
+    },
+    "limit_no_fill": {
+     "longest_underwater_cycles": 1751,
+     "mtm_max_dd_pct": 14.317641564994805,
+     "net_pct_equity": 153.54802312925335
+    },
+    "slip_wilder_atr14": {
+     "longest_underwater_cycles": 1751,
+     "mtm_max_dd_pct": 14.333803599421149,
+     "net_pct_equity": 153.24817193220002
+    }
+   },
+   "ci95_episode": [
+    -0.0025638177196860277,
+    1.0340785800268628
+   ],
+   "ci95_trade": [
+    0.14936781121566364,
+    0.8994162197943755
+   ],
+   "closed_trade_max_dd_r": 28.16116597879907,
+   "episodes": 107,
+   "excluded_symbol_count": 2,
+   "excluded_trades": 4,
+   "exit_reasons": {
+    "exit.signal": 253,
+    "exit.stop": 59,
+    "exit.time_cap": 1
+   },
+   "exposure_bars": 7446,
+   "gap_fills": 0,
+   "incomplete": 2,
+   "incomplete_reasons": {
+    "incomplete.funding_mark": 2
+   },
+   "intrabar_ambiguous": 0,
+   "label": "CURRENT-UNIVERSE / SURVIVOR-BIASED",
+   "longest_underwater_trades": 100,
+   "mc_drawdown_pct": {
+    "p5": 5.9909247812554165,
+    "p50": 12.884829255795808,
+    "p95": 30.028358884617738,
+    "resamples": 10000
+   },
+   "mean_giveback_r": 1.4424599650529841,
+   "mean_mae_r": -0.5973468444927381,
+   "mean_mfe_r": 1.934037876210981,
+   "mean_r": 0.4915779111579971,
+   "pf": 2.2675254008925663,
+   "refusals": {
+    "capacity.max_positions": 104,
+    "filter.halt": 2
+   },
+   "resamples": 10000,
+   "seed": 20261009,
+   "stress_mean_r": {
+    "base": 0.4915779111579971,
+    "fees_slip_x2": 0.42932963905622606,
+    "flat_funding_legacy": 0.49826222301118805,
+    "funding_mark_adverse": 0.4913532825689535,
+    "funding_x2": 0.46193928244717175,
+    "gap_slip_x5": 0.4915779111579971,
+    "limit_as_taker": 0.4915779111579971,
+    "limit_no_fill": 0.4915779111579971,
+    "slip_wilder_atr14": 0.4907533622168342
+   },
+   "total_r": 153.8638861924531,
+   "trades": 313,
+   "win_rate": 0.33226837060702874
+  },
+  "walk_forward": {
+   "avg_loss": -0.591808224315617,
+   "avg_win": 2.9381008342617028,
+   "book": {
+    "base": {
+     "longest_underwater_cycles": 1751,
+     "mtm_max_dd_pct": 14.317641564994805,
+     "net_pct_equity": 146.59099793949665
+    },
+    "fees_slip_x2": {
+     "longest_underwater_cycles": 1751,
+     "mtm_max_dd_pct": 14.599626003610428,
+     "net_pct_equity": 126.58000714951959
+    },
+    "flat_funding_legacy": {
+     "longest_underwater_cycles": 1751,
+     "mtm_max_dd_pct": 14.323244044031307,
+     "net_pct_equity": 144.4101361971342
+    },
+    "funding_mark_adverse": {
+     "longest_underwater_cycles": 1751,
+     "mtm_max_dd_pct": 14.318020476114556,
+     "net_pct_equity": 146.53398584684987
+    },
+    "funding_x2": {
+     "longest_underwater_cycles": 1751,
+     "mtm_max_dd_pct": 14.354836051198049,
+     "net_pct_equity": 141.06159885489913
+    },
+    "gap_slip_x5": {
+     "longest_underwater_cycles": 1751,
+     "mtm_max_dd_pct": 14.317641564994805,
+     "net_pct_equity": 146.59099793949665
+    },
+    "limit_as_taker": {
+     "longest_underwater_cycles": 1751,
+     "mtm_max_dd_pct": 14.317641564994805,
+     "net_pct_equity": 146.59099793949665
+    },
+    "limit_no_fill": {
+     "longest_underwater_cycles": 1751,
+     "mtm_max_dd_pct": 14.317641564994805,
+     "net_pct_equity": 146.59099793949665
+    },
+    "slip_wilder_atr14": {
+     "longest_underwater_cycles": 1751,
+     "mtm_max_dd_pct": 14.333803599421149,
+     "net_pct_equity": 146.36209847912932
+    }
+   },
+   "ci95_episode": [
+    -0.02144475520523808,
+    1.241018476201918
+   ],
+   "ci95_trade": [
+    0.16689483953749712,
+    1.0736180953222325
+   ],
+   "closed_trade_max_dd_r": 26.969517249466886,
+   "episodes": 92,
+   "excluded_symbol_count": 2,
+   "excluded_trades": 4,
+   "exit_reasons": {
+    "exit.signal": 204,
+    "exit.stop": 49,
+    "exit.time_cap": 1
+   },
+   "exposure_bars": 6073,
+   "gap_fills": 0,
+   "incomplete": 2,
+   "incomplete_reasons": {
+    "incomplete.funding_mark": 2
+   },
+   "intrabar_ambiguous": 0,
+   "label": "CURRENT-UNIVERSE / SURVIVOR-BIASED",
+   "longest_underwater_trades": 70,
+   "mc_drawdown_pct": {
+    "p5": 5.785020554218616,
+    "p50": 12.492353958092547,
+    "p95": 29.72410488472958,
+    "resamples": 10000
+   },
+   "mean_giveback_r": 1.4736953593568776,
+   "mean_mae_r": -0.5897157957466963,
+   "mean_mfe_r": 2.049258634728248,
+   "mean_r": 0.5755632753713708,
+   "pf": 2.4531045892878938,
+   "refusals": {
+    "capacity.max_positions": 93,
+    "filter.halt": 1
+   },
+   "resamples": 10000,
+   "seed": 20261009,
+   "stress_mean_r": {
+    "base": 0.5755632753713708,
+    "fees_slip_x2": 0.5098046379382334,
+    "flat_funding_legacy": 0.5692642923822286,
+    "funding_mark_adverse": 0.5753878215331167,
+    "funding_x2": 0.5571233419951236,
+    "gap_slip_x5": 0.5755632753713708,
+    "limit_as_taker": 0.5755632753713708,
+    "limit_no_fill": 0.5755632753713708,
+    "slip_wilder_atr14": 0.5748380024358477
+   },
+   "total_r": 146.19307194432818,
+   "trades": 254,
+   "win_rate": 0.33070866141732286
+  }
+ },
+ "baselines": {
+  "B0": {
+   "ci95": [
+    -0.31127349457896875,
+    0.17154289105739723
+   ],
+   "invalid_draws": 3250,
+   "label": "CURRENT-UNIVERSE / SURVIVOR-BIASED",
+   "match": "symbol + side + split + PIT regime label (BTC 4h close vs EMA200)",
+   "mean_difference": -0.06986530176078574,
+   "n_pairs": 107,
+   "p_holm": 1.0,
+   "p_one_sided": 0.7094290570942906,
+   "pairing": "episode",
+   "unmatched_trades": 0
+  },
+  "B1": {
+   "ci95": [
+    -0.7033332545695341,
+    4.7944087229900445
+   ],
+   "label": "CURRENT-UNIVERSE / SURVIVOR-BIASED",
+   "mean_difference": 2.045537734210255,
+   "n_pairs": 62,
+   "p_holm": 1.0,
+   "p_one_sided": 0.08489151084891511,
+   "pairing": "calendar-month block"
+  },
+  "B2": {
+   "ci95": [
+    -0.8896763517066151,
+    4.905738122411437
+   ],
+   "label": "CURRENT-UNIVERSE / SURVIVOR-BIASED",
+   "mean_difference": 2.0080308853524107,
+   "n_pairs": 62,
+   "p_holm": 1.0,
+   "p_one_sided": 0.09359064093590641,
+   "pairing": "calendar-month block"
+  },
+  "B3": {
+   "label": "CURRENT-UNIVERSE / SURVIVOR-BIASED",
+   "note": "reduces to the expectancy row",
+   "pairing": "cash (0 R)"
+  }
+ },
+ "book": {
+  "cap_gap_buffer": 0.1,
+  "daily_loss_pct": 0.03,
+  "equity0": 10000.0,
+  "max_leverage": 3.0,
+  "max_positions": 4,
+  "risk_pct": 0.01
+ },
+ "contribution_by_regime": {
+  "btc_down": {
+   "mean_r": 0.6829202047321821,
+   "trades": 69
+  },
+  "btc_up": {
+   "mean_r": 0.43746881994234643,
+   "trades": 244
+  }
+ },
+ "development_only": true,
+ "edge00": {
+  "baselines": {
+   "development": {
+    "B0": false,
+    "B1": false,
+    "B2": false
+   },
+   "status": "HOLDOUT-ONLY"
+  },
+  "e10_drawdown": {
+   "status": "PARK-ONLY"
+  },
+  "e11_follower": {
+   "status": "NOT-EVALUATED"
+  },
+  "expectancy": {
+   "development": {
+    "walk_forward_mean_positive": true
+   },
+   "status": "HOLDOUT-ONLY"
+  },
+  "intrabar": {
+   "ambiguous_share": 0.0,
+   "status": "PASS"
+  },
+  "multiplicity": {
+   "n_trials": 18,
+   "status": "PASS"
+  },
+  "neighbours": {
+   "sign_keep_share": 1.0,
+   "status": "PASS"
+  },
+  "pit": {
+   "label": "CURRENT-UNIVERSE / SURVIVOR-BIASED",
+   "status": "HOLDOUT-ONLY"
+  },
+  "robustness": {
+   "loso_positive_share": 1.0,
+   "loyo_positive_share": 1.0,
+   "status": "PASS"
+  },
+  "sample": {
+   "development": {
+    "episodes": 107,
+    "meets_60_episodes_6_blocks": true,
+    "month_blocks": 62
+   },
+   "status": "HOLDOUT-ONLY"
+  }
+ },
+ "flags": [],
+ "format": "zb-strat01-pit-summary/1",
+ "identity": {
+  "classification": null,
+  "commit": "02ef56f18fe3d2c9e264df1fc9657a3101346182",
+  "evaluator": "2587213656a08dd17187ed78e080d9d5a165f711159e7a0cc4e21fb379ab0beb",
+  "manifest": "54912d9d2bf6e6fc45bc75c0553f0bd867e877972beeb3452785937379baf1e7",
+  "prereg": "369aef318743b44d3cd107b93c8bb06bf133e6a1cf357a30989dfc87e4a935e4",
+  "universe": "1c06c18d2fc82413b740260f0051a9f8286e9b0cb87d7d9614a2f88d78393fce"
+ },
+ "label": "CURRENT-UNIVERSE / SURVIVOR-BIASED",
+ "labels": [
+  "CURRENT-UNIVERSE / SURVIVOR-BIASED",
+  "DEVELOPMENT-ONLY",
+  "FUNDING-MARK-PROXY-V1",
+  "SLIP-VOL-TR-SMA14",
+  "SLIP-C-UNFITTED"
+ ],
+ "not_evaluated": [
+  "follower tiers 100 / 200 / 500 USDT and RULES-BACKFILLED share (E11)",
+  "per-side split (long only rule; the short mirror is never an edge claim)",
+  "stop-first vs target-first (one stop, no target: every exit bar is single-level)",
+  "MDE at 80% power (holdout-only quantity)"
+ ],
+ "run_config_digest": "cd80d7db4cf9cca0b9ac5590c5c84e40c91504a48a3485c18fdda79c1a938ff6",
+ "splits": {
+  "train": {
+   "primary": {
+    "avg_loss": -0.5328665486103671,
+    "avg_win": 1.4226304821964624,
+    "book": {
+     "base": {
+      "longest_underwater_cycles": 877,
+      "mtm_max_dd_pct": 11.713901574974672,
+      "net_pct_equity": 6.9570251897566955
+     },
+     "fees_slip_x2": {
+      "longest_underwater_cycles": 879,
+      "mtm_max_dd_pct": 12.033841555126742,
+      "net_pct_equity": 4.007146875502185
+     },
+     "flat_funding_legacy": {
+      "longest_underwater_cycles": 874,
+      "mtm_max_dd_pct": 11.520779918133336,
+      "net_pct_equity": 10.927581893426286
+     },
+     "funding_mark_adverse": {
+      "longest_underwater_cycles": 877,
+      "mtm_max_dd_pct": 11.712482696198236,
+      "net_pct_equity": 6.934902480347409
+     },
+     "funding_x2": {
+      "longest_underwater_cycles": 1506,
+      "mtm_max_dd_pct": 12.274053531853294,
+      "net_pct_equity": 2.463177733890934
+     },
+     "gap_slip_x5": {
+      "longest_underwater_cycles": 877,
+      "mtm_max_dd_pct": 11.713901574974672,
+      "net_pct_equity": 6.9570251897566955
+     },
+     "limit_as_taker": {
+      "longest_underwater_cycles": 877,
+      "mtm_max_dd_pct": 11.713901574974672,
+      "net_pct_equity": 6.9570251897566955
+     },
+     "limit_no_fill": {
+      "longest_underwater_cycles": 877,
+      "mtm_max_dd_pct": 11.713901574974672,
+      "net_pct_equity": 6.9570251897566955
+     },
+     "slip_wilder_atr14": {
+      "longest_underwater_cycles": 877,
+      "mtm_max_dd_pct": 11.718731695792837,
+      "net_pct_equity": 6.886073453070712
+     }
+    },
+    "ci95_episode": [
+     -0.29311880010449004,
+     0.44348806286546627
+    ],
+    "ci95_trade": [
+     -0.18956137263152695,
+     0.5067018429326849
+    ],
+    "closed_trade_max_dd_r": 7.922121882335624,
+    "episodes": 15,
+    "excluded_symbol_count": 0,
+    "excluded_trades": 0,
+    "exit_reasons": {
+     "exit.signal": 49,
+     "exit.stop": 10
+    },
+    "exposure_bars": 1373,
+    "gap_fills": 0,
+    "incomplete": 0,
+    "incomplete_reasons": {},
+    "intrabar_ambiguous": 0,
+    "label": "CURRENT-UNIVERSE / SURVIVOR-BIASED",
+    "longest_underwater_trades": 30,
+    "mc_drawdown_pct": {
+     "p5": 2.728219820471734,
+     "p50": 6.707279274073831,
+     "p95": 14.911314602693674,
+     "resamples": 10000
+    },
+    "mean_giveback_r": 1.3079889455074087,
+    "mean_mae_r": -0.6301991560434944,
+    "mean_mfe_r": 1.4380027463230853,
+    "mean_r": 0.13001380081567676,
+    "pf": 1.369112201425754,
+    "refusals": {
+     "capacity.max_positions": 11,
+     "filter.halt": 1
+    },
+    "resamples": 10000,
+    "seed": 20261009,
+    "stress_mean_r": {
+     "base": 0.13001380081567676,
+     "fees_slip_x2": 0.08014998289022797,
+     "flat_funding_legacy": 0.19259229724433513,
+     "funding_mark_adverse": 0.129577470757132,
+     "funding_x2": 0.05216383964751489,
+     "gap_slip_x5": 0.13001380081567676,
+     "limit_as_taker": 0.13001380081567676,
+     "limit_no_fill": 0.13001380081567676,
+     "slip_wilder_atr14": 0.12876186025701347
+    },
+    "total_r": 7.670814248124929,
+    "trades": 59,
+    "win_rate": 0.3389830508474576
+   },
+   "uncapped_development_only": {
+    "avg_loss": -0.5328665486103671,
+    "avg_win": 1.4226304821964624,
+    "book": {
+     "base": {
+      "longest_underwater_cycles": 877,
+      "mtm_max_dd_pct": 11.713901574974672,
+      "net_pct_equity": 6.9570251897566955
+     },
+     "fees_slip_x2": {
+      "longest_underwater_cycles": 879,
+      "mtm_max_dd_pct": 12.033841555126742,
+      "net_pct_equity": 4.007146875502185
+     },
+     "flat_funding_legacy": {
+      "longest_underwater_cycles": 874,
+      "mtm_max_dd_pct": 11.520779918133336,
+      "net_pct_equity": 10.927581893426286
+     },
+     "funding_mark_adverse": {
+      "longest_underwater_cycles": 877,
+      "mtm_max_dd_pct": 11.712482696198236,
+      "net_pct_equity": 6.934902480347409
+     },
+     "funding_x2": {
+      "longest_underwater_cycles": 1506,
+      "mtm_max_dd_pct": 12.274053531853294,
+      "net_pct_equity": 2.463177733890934
+     },
+     "gap_slip_x5": {
+      "longest_underwater_cycles": 877,
+      "mtm_max_dd_pct": 11.713901574974672,
+      "net_pct_equity": 6.9570251897566955
+     },
+     "limit_as_taker": {
+      "longest_underwater_cycles": 877,
+      "mtm_max_dd_pct": 11.713901574974672,
+      "net_pct_equity": 6.9570251897566955
+     },
+     "limit_no_fill": {
+      "longest_underwater_cycles": 877,
+      "mtm_max_dd_pct": 11.713901574974672,
+      "net_pct_equity": 6.9570251897566955
+     },
+     "slip_wilder_atr14": {
+      "longest_underwater_cycles": 877,
+      "mtm_max_dd_pct": 11.718731695792837,
+      "net_pct_equity": 6.886073453070712
+     }
+    },
+    "ci95_episode": [
+     -0.29311880010449004,
+     0.44348806286546627
+    ],
+    "ci95_trade": [
+     -0.18956137263152695,
+     0.5067018429326849
+    ],
+    "closed_trade_max_dd_r": 7.922121882335624,
+    "episodes": 15,
+    "excluded_symbol_count": 0,
+    "excluded_trades": 0,
+    "exit_reasons": {
+     "exit.signal": 49,
+     "exit.stop": 10
+    },
+    "exposure_bars": 1373,
+    "gap_fills": 0,
+    "incomplete": 0,
+    "incomplete_reasons": {},
+    "intrabar_ambiguous": 0,
+    "label": "CURRENT-UNIVERSE / SURVIVOR-BIASED",
+    "longest_underwater_trades": 30,
+    "mc_drawdown_pct": {
+     "p5": 2.728219820471734,
+     "p50": 6.707279274073831,
+     "p95": 14.911314602693674,
+     "resamples": 10000
+    },
+    "mean_giveback_r": 1.3079889455074087,
+    "mean_mae_r": -0.6301991560434944,
+    "mean_mfe_r": 1.4380027463230853,
+    "mean_r": 0.13001380081567676,
+    "pf": 1.369112201425754,
+    "refusals": {
+     "capacity.max_positions": 11,
+     "filter.halt": 1
+    },
+    "resamples": 10000,
+    "seed": 20261009,
+    "stress_mean_r": {
+     "base": 0.13001380081567676,
+     "fees_slip_x2": 0.08014998289022797,
+     "flat_funding_legacy": 0.19259229724433513,
+     "funding_mark_adverse": 0.129577470757132,
+     "funding_x2": 0.05216383964751489,
+     "gap_slip_x5": 0.13001380081567676,
+     "limit_as_taker": 0.13001380081567676,
+     "limit_no_fill": 0.13001380081567676,
+     "slip_wilder_atr14": 0.12876186025701347
+    },
+    "total_r": 7.670814248124929,
+    "trades": 59,
+    "win_rate": 0.3389830508474576
+   }
+  },
+  "walk_forward[0]": {
+   "primary": {
+    "avg_loss": -0.7029051427173257,
+    "avg_win": 0.2646424148455088,
+    "book": {
+     "base": {
+      "longest_underwater_cycles": 1751,
+      "mtm_max_dd_pct": 12.243537969198016,
+      "net_pct_equity": -11.600952982838207
+     },
+     "fees_slip_x2": {
+      "longest_underwater_cycles": 1751,
+      "mtm_max_dd_pct": 13.218402683266312,
+      "net_pct_equity": -12.718308937071141
+     },
+     "flat_funding_legacy": {
+      "longest_underwater_cycles": 1751,
+      "mtm_max_dd_pct": 12.265880263354589,
+      "net_pct_equity": -11.624934105070698
+     },
+     "funding_mark_adverse": {
+      "longest_underwater_cycles": 1751,
+      "mtm_max_dd_pct": 12.244479153610055,
+      "net_pct_equity": -11.602176255884824
+     },
+     "funding_x2": {
+      "longest_underwater_cycles": 1751,
+      "mtm_max_dd_pct": 12.425520436104463,
+      "net_pct_equity": -11.838868152722425
+     },
+     "gap_slip_x5": {
+      "longest_underwater_cycles": 1751,
+      "mtm_max_dd_pct": 12.243537969198016,
+      "net_pct_equity": -11.600952982838207
+     },
+     "limit_as_taker": {
+      "longest_underwater_cycles": 1751,
+      "mtm_max_dd_pct": 12.243537969198016,
+      "net_pct_equity": -11.600952982838207
+     },
+     "limit_no_fill": {
+      "longest_underwater_cycles": 1751,
+      "mtm_max_dd_pct": 12.243537969198016,
+      "net_pct_equity": -11.600952982838207
+     },
+     "slip_wilder_atr14": {
+      "longest_underwater_cycles": 1751,
+      "mtm_max_dd_pct": 12.251883113837867,
+      "net_pct_equity": -11.606649296944196
+     }
+    },
+    "ci95_episode": [
+     -0.7947595780832377,
+     -0.3272123484795882
+    ],
+    "ci95_trade": [
+     -0.7233643142960997,
+     -0.32729407793489507
+    ],
+    "closed_trade_max_dd_r": 12.483869506672495,
+    "episodes": 14,
+    "excluded_symbol_count": 2,
+    "excluded_trades": 4,
+    "exit_reasons": {
+     "exit.signal": 17,
+     "exit.stop": 6
+    },
+    "exposure_bars": 418,
+    "gap_fills": 0,
+    "incomplete": 2,
+    "incomplete_reasons": {
+     "incomplete.funding_mark": 2
+    },
+    "intrabar_ambiguous": 0,
+    "label": "CURRENT-UNIVERSE / SURVIVOR-BIASED",
+    "longest_underwater_trades": 23,
+    "mc_drawdown_pct": {
+     "p5": 8.17598835753006,
+     "p50": 11.530507997210371,
+     "p95": 15.705693546232924,
+     "resamples": 10000
+    },
+    "mean_giveback_r": 1.3151496441168484,
+    "mean_mae_r": -0.6812055364329155,
+    "mean_mfe_r": 0.7805136418452332,
+    "mean_r": -0.5346360022716153,
+    "pf": 0.07926274715201512,
+    "refusals": {
+     "capacity.max_positions": 3
+    },
+    "resamples": 10000,
+    "seed": 20261009,
+    "stress_mean_r": {
+     "base": -0.5346360022716153,
+     "fees_slip_x2": -0.5896994376211165,
+     "flat_funding_legacy": -0.535802228201594,
+     "funding_mark_adverse": -0.5346952044242907,
+     "funding_x2": -0.546336325671809,
+     "gap_slip_x5": -0.5346360022716153,
+     "limit_as_taker": -0.5346360022716153,
+     "limit_no_fill": -0.5346360022716153,
+     "slip_wilder_atr14": -0.5349050377270512
+    },
+    "total_r": -12.296628052247152,
+    "trades": 23,
+    "win_rate": 0.17391304347826086
+   },
+   "uncapped_development_only": {
+    "avg_loss": -0.7029051427173257,
+    "avg_win": 0.2646424148455088,
+    "book": {
+     "base": {
+      "longest_underwater_cycles": 1751,
+      "mtm_max_dd_pct": 12.243537969198016,
+      "net_pct_equity": -11.600952982838207
+     },
+     "fees_slip_x2": {
+      "longest_underwater_cycles": 1751,
+      "mtm_max_dd_pct": 13.218402683266312,
+      "net_pct_equity": -12.718308937071141
+     },
+     "flat_funding_legacy": {
+      "longest_underwater_cycles": 1751,
+      "mtm_max_dd_pct": 12.265880263354589,
+      "net_pct_equity": -11.624934105070698
+     },
+     "funding_mark_adverse": {
+      "longest_underwater_cycles": 1751,
+      "mtm_max_dd_pct": 12.244479153610055,
+      "net_pct_equity": -11.602176255884824
+     },
+     "funding_x2": {
+      "longest_underwater_cycles": 1751,
+      "mtm_max_dd_pct": 12.425520436104463,
+      "net_pct_equity": -11.838868152722425
+     },
+     "gap_slip_x5": {
+      "longest_underwater_cycles": 1751,
+      "mtm_max_dd_pct": 12.243537969198016,
+      "net_pct_equity": -11.600952982838207
+     },
+     "limit_as_taker": {
+      "longest_underwater_cycles": 1751,
+      "mtm_max_dd_pct": 12.243537969198016,
+      "net_pct_equity": -11.600952982838207
+     },
+     "limit_no_fill": {
+      "longest_underwater_cycles": 1751,
+      "mtm_max_dd_pct": 12.243537969198016,
+      "net_pct_equity": -11.600952982838207
+     },
+     "slip_wilder_atr14": {
+      "longest_underwater_cycles": 1751,
+      "mtm_max_dd_pct": 12.251883113837867,
+      "net_pct_equity": -11.606649296944196
+     }
+    },
+    "ci95_episode": [
+     -0.7947595780832377,
+     -0.3272123484795882
+    ],
+    "ci95_trade": [
+     -0.7233643142960997,
+     -0.32729407793489507
+    ],
+    "closed_trade_max_dd_r": 12.483869506672495,
+    "episodes": 14,
+    "excluded_symbol_count": 2,
+    "excluded_trades": 4,
+    "exit_reasons": {
+     "exit.signal": 17,
+     "exit.stop": 6
+    },
+    "exposure_bars": 418,
+    "gap_fills": 0,
+    "incomplete": 2,
+    "incomplete_reasons": {
+     "incomplete.funding_mark": 2
+    },
+    "intrabar_ambiguous": 0,
+    "label": "CURRENT-UNIVERSE / SURVIVOR-BIASED",
+    "longest_underwater_trades": 23,
+    "mc_drawdown_pct": {
+     "p5": 8.17598835753006,
+     "p50": 11.530507997210371,
+     "p95": 15.705693546232924,
+     "resamples": 10000
+    },
+    "mean_giveback_r": 1.3151496441168484,
+    "mean_mae_r": -0.6812055364329155,
+    "mean_mfe_r": 0.7805136418452332,
+    "mean_r": -0.5346360022716153,
+    "pf": 0.07926274715201512,
+    "refusals": {
+     "capacity.max_positions": 3
+    },
+    "resamples": 10000,
+    "seed": 20261009,
+    "stress_mean_r": {
+     "base": -0.5346360022716153,
+     "fees_slip_x2": -0.5896994376211165,
+     "flat_funding_legacy": -0.535802228201594,
+     "funding_mark_adverse": -0.5346952044242907,
+     "funding_x2": -0.546336325671809,
+     "gap_slip_x5": -0.5346360022716153,
+     "limit_as_taker": -0.5346360022716153,
+     "limit_no_fill": -0.5346360022716153,
+     "slip_wilder_atr14": -0.5349050377270512
+    },
+    "total_r": -12.296628052247152,
+    "trades": 23,
+    "win_rate": 0.17391304347826086
+   }
+  },
+  "walk_forward[1]": {
+   "primary": {
+    "avg_loss": -0.6315517120366695,
+    "avg_win": 5.609112020924078,
+    "book": {
+     "base": {
+      "longest_underwater_cycles": 1572,
+      "mtm_max_dd_pct": 12.90394989962724,
+      "net_pct_equity": 42.41076321370541
+     },
+     "fees_slip_x2": {
+      "longest_underwater_cycles": 1573,
+      "mtm_max_dd_pct": 14.371920377171069,
+      "net_pct_equity": 38.27840227111302
+     },
+     "flat_funding_legacy": {
+      "longest_underwater_cycles": 1572,
+      "mtm_max_dd_pct": 12.98116479333753,
+      "net_pct_equity": 42.467055585240466
+     },
+     "funding_mark_adverse": {
+      "longest_underwater_cycles": 1572,
+      "mtm_max_dd_pct": 12.9065284235237,
+      "net_pct_equity": 42.40184240549674
+     },
+     "funding_x2": {
+      "longest_underwater_cycles": 1572,
+      "mtm_max_dd_pct": 13.311537374722466,
+      "net_pct_equity": 40.655189525886634
+     },
+     "gap_slip_x5": {
+      "longest_underwater_cycles": 1572,
+      "mtm_max_dd_pct": 12.90394989962724,
+      "net_pct_equity": 42.41076321370541
+     },
+     "limit_as_taker": {
+      "longest_underwater_cycles": 1572,
+      "mtm_max_dd_pct": 12.90394989962724,
+      "net_pct_equity": 42.41076321370541
+     },
+     "limit_no_fill": {
+      "longest_underwater_cycles": 1572,
+      "mtm_max_dd_pct": 12.90394989962724,
+      "net_pct_equity": 42.41076321370541
+     },
+     "slip_wilder_atr14": {
+      "longest_underwater_cycles": 1572,
+      "mtm_max_dd_pct": 12.903506294835617,
+      "net_pct_equity": 42.40840207133096
+     }
+    },
+    "ci95_episode": [
+     -0.48275602437214776,
+     2.933882025267066
+    ],
+    "ci95_trade": [
+     -0.1914032187571371,
+     2.5625548980014217
+    ],
+    "closed_trade_max_dd_r": 14.672889197219734,
+    "episodes": 20,
+    "excluded_symbol_count": 0,
+    "excluded_trades": 0,
+    "exit_reasons": {
+     "exit.signal": 38,
+     "exit.stop": 12,
+     "exit.time_cap": 1
+    },
+    "exposure_bars": 1365,
+    "gap_fills": 0,
+    "incomplete": 0,
+    "incomplete_reasons": {},
+    "intrabar_ambiguous": 0,
+    "label": "CURRENT-UNIVERSE / SURVIVOR-BIASED",
+    "longest_underwater_trades": 45,
+    "mc_drawdown_pct": {
+     "p5": 3.7187374665576796,
+     "p50": 9.119794972680102,
+     "p95": 19.57615506463025,
+     "resamples": 10000
+    },
+    "mean_giveback_r": 1.4901617308542783,
+    "mean_mae_r": -0.7045797668642609,
+    "mean_mfe_r": 2.449367440944858,
+    "mean_r": 0.95920571009058,
+    "pf": 3.0384000350693783,
+    "refusals": {
+     "capacity.max_positions": 12
+    },
+    "resamples": 10000,
+    "seed": 20261009,
+    "stress_mean_r": {
+     "base": 0.95920571009058,
+     "fees_slip_x2": 0.8961762125899657,
+     "flat_funding_legacy": 0.9618247795116673,
+     "funding_mark_adverse": 0.9590234551825975,
+     "funding_x2": 0.9275452181019321,
+     "gap_slip_x5": 0.95920571009058,
+     "limit_as_taker": 0.95920571009058,
+     "limit_no_fill": 0.95920571009058,
+     "slip_wilder_atr14": 0.9591982771434708
+    },
+    "total_r": 48.919491214619576,
+    "trades": 51,
+    "win_rate": 0.2549019607843137
+   },
+   "uncapped_development_only": {
+    "avg_loss": -0.6315517120366695,
+    "avg_win": 5.323182148571978,
+    "book": {
+     "base": {
+      "longest_underwater_cycles": 1572,
+      "mtm_max_dd_pct": 12.90394989962724,
+      "net_pct_equity": 39.10062170465448
+     },
+     "fees_slip_x2": {
+      "longest_underwater_cycles": 1573,
+      "mtm_max_dd_pct": 14.371920377171069,
+      "net_pct_equity": 35.06214959912948
+     },
+     "flat_funding_legacy": {
+      "longest_underwater_cycles": 1572,
+      "mtm_max_dd_pct": 12.98116479333753,
+      "net_pct_equity": 39.21275243044058
+     },
+     "funding_mark_adverse": {
+      "longest_underwater_cycles": 1572,
+      "mtm_max_dd_pct": 12.9065284235237,
+      "net_pct_equity": 39.09135968010056
+     },
+     "funding_x2": {
+      "longest_underwater_cycles": 1572,
+      "mtm_max_dd_pct": 13.311537374722466,
+      "net_pct_equity": 37.29966950664211
+     },
+     "gap_slip_x5": {
+      "longest_underwater_cycles": 1572,
+      "mtm_max_dd_pct": 12.90394989962724,
+      "net_pct_equity": 39.10062170465448
+     },
+     "limit_as_taker": {
+      "longest_underwater_cycles": 1572,
+      "mtm_max_dd_pct": 12.90394989962724,
+      "net_pct_equity": 39.10062170465448
+     },
+     "limit_no_fill": {
+      "longest_underwater_cycles": 1572,
+      "mtm_max_dd_pct": 12.90394989962724,
+      "net_pct_equity": 39.10062170465448
+     },
+     "slip_wilder_atr14": {
+      "longest_underwater_cycles": 1572,
+      "mtm_max_dd_pct": 12.903506294835617,
+      "net_pct_equity": 39.09102418228004
+     }
+    },
+    "ci95_episode": [
+     -0.48275602437214776,
+     2.7437485529441705
+    ],
+    "ci95_trade": [
+     -0.1914032187571371,
+     2.3324343200062327
+    ],
+    "closed_trade_max_dd_r": 14.672889197219734,
+    "episodes": 20,
+    "excluded_symbol_count": 0,
+    "excluded_trades": 0,
+    "exit_reasons": {
+     "exit.signal": 39,
+     "exit.stop": 12
+    },
+    "exposure_bars": 1383,
+    "gap_fills": 0,
+    "incomplete": 0,
+    "incomplete_reasons": {},
+    "intrabar_ambiguous": 0,
+    "label": "CURRENT-UNIVERSE / SURVIVOR-BIASED",
+    "longest_underwater_trades": 45,
+    "mc_drawdown_pct": {
+     "p5": 3.7777969494836463,
+     "p50": 9.174185035628609,
+     "p95": 19.57615506463025,
+     "resamples": 10000
+    },
+    "mean_giveback_r": 1.6319123869822887,
+    "mean_mae_r": -0.7045797668642609,
+    "mean_mfe_r": 2.5182340119635094,
+    "mean_r": 0.8863216249812208,
+    "pf": 2.883514675151236,
+    "refusals": {
+     "capacity.max_positions": 12
+    },
+    "resamples": 10000,
+    "seed": 20261009,
+    "stress_mean_r": {
+     "base": 0.8863216249812208,
+     "fees_slip_x2": 0.823646343963948,
+     "flat_funding_legacy": 0.8901107351947536,
+     "funding_mark_adverse": 0.88613185702853,
+     "funding_x2": 0.8531585240509167,
+     "gap_slip_x5": 0.8863216249812208,
+     "limit_as_taker": 0.8863216249812208,
+     "limit_no_fill": 0.8863216249812208,
+     "slip_wilder_atr14": 0.8861548583819515
+    },
+    "total_r": 45.202402874042264,
+    "trades": 51,
+    "win_rate": 0.2549019607843137
+   }
+  },
+  "walk_forward[2]": {
+   "primary": {
+    "avg_loss": -0.5427476779650003,
+    "avg_win": 1.6564693494564509,
+    "book": {
+     "base": {
+      "longest_underwater_cycles": 1603,
+      "mtm_max_dd_pct": 12.335470910172756,
+      "net_pct_equity": 15.652296922272434
+     },
+     "fees_slip_x2": {
+      "longest_underwater_cycles": 1214,
+      "mtm_max_dd_pct": 14.57930083749065,
+      "net_pct_equity": 11.966842830571187
+     },
+     "flat_funding_legacy": {
+      "longest_underwater_cycles": 1109,
+      "mtm_max_dd_pct": 12.446463615585868,
+      "net_pct_equity": 15.124784268868899
+     },
+     "funding_mark_adverse": {
+      "longest_underwater_cycles": 1603,
+      "mtm_max_dd_pct": 12.34571177244918,
+      "net_pct_equity": 15.626184850739373
+     },
+     "funding_x2": {
+      "longest_underwater_cycles": 1748,
+      "mtm_max_dd_pct": 13.644234260594734,
+      "net_pct_equity": 14.557800173922407
+     },
+     "gap_slip_x5": {
+      "longest_underwater_cycles": 1603,
+      "mtm_max_dd_pct": 12.335470910172756,
+      "net_pct_equity": 15.652296922272434
+     },
+     "limit_as_taker": {
+      "longest_underwater_cycles": 1603,
+      "mtm_max_dd_pct": 12.335470910172756,
+      "net_pct_equity": 15.652296922272434
+     },
+     "limit_no_fill": {
+      "longest_underwater_cycles": 1603,
+      "mtm_max_dd_pct": 12.335470910172756,
+      "net_pct_equity": 15.652296922272434
+     },
+     "slip_wilder_atr14": {
+      "longest_underwater_cycles": 1603,
+      "mtm_max_dd_pct": 12.393516526766005,
+      "net_pct_equity": 15.571192614922747
+     }
+    },
+    "ci95_episode": [
+     -0.23565321702518444,
+     0.7173253496883706
+    ],
+    "ci95_trade": [
+     -0.14157094485923802,
+     0.7658184366229983
+    ],
+    "closed_trade_max_dd_r": 9.879785460502399,
+    "episodes": 21,
+    "excluded_symbol_count": 0,
+    "excluded_trades": 0,
+    "exit_reasons": {
+     "exit.signal": 51,
+     "exit.stop": 9
+    },
+    "exposure_bars": 1597,
+    "gap_fills": 0,
+    "incomplete": 0,
+    "incomplete_reasons": {},
+    "intrabar_ambiguous": 0,
+    "label": "CURRENT-UNIVERSE / SURVIVOR-BIASED",
+    "longest_underwater_trades": 33,
+    "mc_drawdown_pct": {
+     "p5": 3.619098642798837,
+     "p50": 7.346760321302955,
+     "p95": 15.006210753207325,
+     "resamples": 10000
+    },
+    "mean_giveback_r": 1.3334272203035233,
+    "mean_mae_r": -0.5450935493798578,
+    "mean_mfe_r": 1.5970591190597219,
+    "mean_r": 0.2636318987561985,
+    "pf": 1.766951033920016,
+    "refusals": {
+     "capacity.max_positions": 25
+    },
+    "resamples": 10000,
+    "seed": 20261009,
+    "stress_mean_r": {
+     "base": 0.2636318987561985,
+     "fees_slip_x2": 0.20185637534035586,
+     "flat_funding_legacy": 0.25489487783002035,
+     "funding_mark_adverse": 0.2632788083544788,
+     "funding_x2": 0.24734964143326812,
+     "gap_slip_x5": 0.2636318987561985,
+     "limit_as_taker": 0.2636318987561985,
+     "limit_no_fill": 0.2636318987561985,
+     "slip_wilder_atr14": 0.2624396217437834
+    },
+    "total_r": 15.817913925371911,
+    "trades": 60,
+    "win_rate": 0.36666666666666664
+   },
+   "uncapped_development_only": {
+    "avg_loss": -0.5427476779650003,
+    "avg_win": 1.6564693494564509,
+    "book": {
+     "base": {
+      "longest_underwater_cycles": 1603,
+      "mtm_max_dd_pct": 12.335470910172756,
+      "net_pct_equity": 15.652296922272434
+     },
+     "fees_slip_x2": {
+      "longest_underwater_cycles": 1214,
+      "mtm_max_dd_pct": 14.57930083749065,
+      "net_pct_equity": 11.966842830571187
+     },
+     "flat_funding_legacy": {
+      "longest_underwater_cycles": 1109,
+      "mtm_max_dd_pct": 12.446463615585868,
+      "net_pct_equity": 15.124784268868899
+     },
+     "funding_mark_adverse": {
+      "longest_underwater_cycles": 1603,
+      "mtm_max_dd_pct": 12.34571177244918,
+      "net_pct_equity": 15.626184850739373
+     },
+     "funding_x2": {
+      "longest_underwater_cycles": 1748,
+      "mtm_max_dd_pct": 13.644234260594734,
+      "net_pct_equity": 14.557800173922407
+     },
+     "gap_slip_x5": {
+      "longest_underwater_cycles": 1603,
+      "mtm_max_dd_pct": 12.335470910172756,
+      "net_pct_equity": 15.652296922272434
+     },
+     "limit_as_taker": {
+      "longest_underwater_cycles": 1603,
+      "mtm_max_dd_pct": 12.335470910172756,
+      "net_pct_equity": 15.652296922272434
+     },
+     "limit_no_fill": {
+      "longest_underwater_cycles": 1603,
+      "mtm_max_dd_pct": 12.335470910172756,
+      "net_pct_equity": 15.652296922272434
+     },
+     "slip_wilder_atr14": {
+      "longest_underwater_cycles": 1603,
+      "mtm_max_dd_pct": 12.393516526766005,
+      "net_pct_equity": 15.571192614922747
+     }
+    },
+    "ci95_episode": [
+     -0.23565321702518444,
+     0.7173253496883706
+    ],
+    "ci95_trade": [
+     -0.14157094485923802,
+     0.7658184366229983
+    ],
+    "closed_trade_max_dd_r": 9.879785460502399,
+    "episodes": 21,
+    "excluded_symbol_count": 0,
+    "excluded_trades": 0,
+    "exit_reasons": {
+     "exit.signal": 51,
+     "exit.stop": 9
+    },
+    "exposure_bars": 1597,
+    "gap_fills": 0,
+    "incomplete": 0,
+    "incomplete_reasons": {},
+    "intrabar_ambiguous": 0,
+    "label": "CURRENT-UNIVERSE / SURVIVOR-BIASED",
+    "longest_underwater_trades": 33,
+    "mc_drawdown_pct": {
+     "p5": 3.619098642798837,
+     "p50": 7.346760321302955,
+     "p95": 15.006210753207325,
+     "resamples": 10000
+    },
+    "mean_giveback_r": 1.3334272203035233,
+    "mean_mae_r": -0.5450935493798578,
+    "mean_mfe_r": 1.5970591190597219,
+    "mean_r": 0.2636318987561985,
+    "pf": 1.766951033920016,
+    "refusals": {
+     "capacity.max_positions": 25
+    },
+    "resamples": 10000,
+    "seed": 20261009,
+    "stress_mean_r": {
+     "base": 0.2636318987561985,
+     "fees_slip_x2": 0.20185637534035586,
+     "flat_funding_legacy": 0.25489487783002035,
+     "funding_mark_adverse": 0.2632788083544788,
+     "funding_x2": 0.24734964143326812,
+     "gap_slip_x5": 0.2636318987561985,
+     "limit_as_taker": 0.2636318987561985,
+     "limit_no_fill": 0.2636318987561985,
+     "slip_wilder_atr14": 0.2624396217437834
+    },
+    "total_r": 15.817913925371911,
+    "trades": 60,
+    "win_rate": 0.36666666666666664
+   }
+  },
+  "walk_forward[3]": {
+   "primary": {
+    "avg_loss": -0.5249800172183119,
+    "avg_win": 3.430823184126082,
+    "book": {
+     "base": {
+      "longest_underwater_cycles": 463,
+      "mtm_max_dd_pct": 14.317641564994805,
+      "net_pct_equity": 68.45829265808635
+     },
+     "fees_slip_x2": {
+      "longest_underwater_cycles": 735,
+      "mtm_max_dd_pct": 14.599626003610428,
+      "net_pct_equity": 62.199147914106945
+     },
+     "flat_funding_legacy": {
+      "longest_underwater_cycles": 463,
+      "mtm_max_dd_pct": 14.323244044031307,
+      "net_pct_equity": 67.59396123504975
+     },
+     "funding_mark_adverse": {
+      "longest_underwater_cycles": 463,
+      "mtm_max_dd_pct": 14.318020476114556,
+      "net_pct_equity": 68.44470802126405
+     },
+     "funding_x2": {
+      "longest_underwater_cycles": 463,
+      "mtm_max_dd_pct": 14.354836051198049,
+      "net_pct_equity": 66.99583709790451
+     },
+     "gap_slip_x5": {
+      "longest_underwater_cycles": 463,
+      "mtm_max_dd_pct": 14.317641564994805,
+      "net_pct_equity": 68.45829265808635
+     },
+     "limit_as_taker": {
+      "longest_underwater_cycles": 463,
+      "mtm_max_dd_pct": 14.317641564994805,
+      "net_pct_equity": 68.45829265808635
+     },
+     "limit_no_fill": {
+      "longest_underwater_cycles": 463,
+      "mtm_max_dd_pct": 14.317641564994805,
+      "net_pct_equity": 68.45829265808635
+     },
+     "slip_wilder_atr14": {
+      "longest_underwater_cycles": 463,
+      "mtm_max_dd_pct": 14.333803599421149,
+      "net_pct_equity": 68.36798817915991
+     }
+    },
+    "ci95_episode": [
+     -0.22205326477229861,
+     2.292309054407824
+    ],
+    "ci95_trade": [
+     0.09096324215041568,
+     2.57994701242447
+    ],
+    "closed_trade_max_dd_r": 4.405727556504539,
+    "episodes": 19,
+    "excluded_symbol_count": 0,
+    "excluded_trades": 0,
+    "exit_reasons": {
+     "exit.signal": 50,
+     "exit.stop": 7
+    },
+    "exposure_bars": 1421,
+    "gap_fills": 0,
+    "incomplete": 0,
+    "incomplete_reasons": {},
+    "intrabar_ambiguous": 0,
+    "label": "CURRENT-UNIVERSE / SURVIVOR-BIASED",
+    "longest_underwater_trades": 17,
+    "mc_drawdown_pct": {
+     "p5": 2.3390985706831664,
+     "p50": 5.463520439862394,
+     "p95": 13.12461132337421,
+     "resamples": 10000
+    },
+    "mean_giveback_r": 1.861619839616227,
+    "mean_mae_r": -0.4717618367647176,
+    "mean_mfe_r": 2.9328411141684603,
+    "mean_r": 1.0712212745522331,
+    "pf": 4.4208367964069275,
+    "refusals": {
+     "capacity.max_positions": 36,
+     "filter.halt": 1
+    },
+    "resamples": 10000,
+    "seed": 20261009,
+    "stress_mean_r": {
+     "base": 1.0712212745522331,
+     "fees_slip_x2": 1.0000330846259415,
+     "flat_funding_legacy": 1.0616139630484993,
+     "funding_mark_adverse": 1.071101622521036,
+     "funding_x2": 1.0544409802381758,
+     "gap_slip_x5": 1.0712212745522331,
+     "limit_as_taker": 1.0712212745522331,
+     "limit_no_fill": 1.0712212745522331,
+     "slip_wilder_atr14": 1.0700901895825607
+    },
+    "total_r": 61.05961264947729,
+    "trades": 57,
+    "win_rate": 0.40350877192982454
+   },
+   "uncapped_development_only": {
+    "avg_loss": -0.5249800172183119,
+    "avg_win": 3.430823184126082,
+    "book": {
+     "base": {
+      "longest_underwater_cycles": 463,
+      "mtm_max_dd_pct": 14.317641564994805,
+      "net_pct_equity": 68.45829265808635
+     },
+     "fees_slip_x2": {
+      "longest_underwater_cycles": 735,
+      "mtm_max_dd_pct": 14.599626003610428,
+      "net_pct_equity": 62.199147914106945
+     },
+     "flat_funding_legacy": {
+      "longest_underwater_cycles": 463,
+      "mtm_max_dd_pct": 14.323244044031307,
+      "net_pct_equity": 67.59396123504975
+     },
+     "funding_mark_adverse": {
+      "longest_underwater_cycles": 463,
+      "mtm_max_dd_pct": 14.318020476114556,
+      "net_pct_equity": 68.44470802126405
+     },
+     "funding_x2": {
+      "longest_underwater_cycles": 463,
+      "mtm_max_dd_pct": 14.354836051198049,
+      "net_pct_equity": 66.99583709790451
+     },
+     "gap_slip_x5": {
+      "longest_underwater_cycles": 463,
+      "mtm_max_dd_pct": 14.317641564994805,
+      "net_pct_equity": 68.45829265808635
+     },
+     "limit_as_taker": {
+      "longest_underwater_cycles": 463,
+      "mtm_max_dd_pct": 14.317641564994805,
+      "net_pct_equity": 68.45829265808635
+     },
+     "limit_no_fill": {
+      "longest_underwater_cycles": 463,
+      "mtm_max_dd_pct": 14.317641564994805,
+      "net_pct_equity": 68.45829265808635
+     },
+     "slip_wilder_atr14": {
+      "longest_underwater_cycles": 463,
+      "mtm_max_dd_pct": 14.333803599421149,
+      "net_pct_equity": 68.36798817915991
+     }
+    },
+    "ci95_episode": [
+     -0.22205326477229861,
+     2.292309054407824
+    ],
+    "ci95_trade": [
+     0.09096324215041568,
+     2.57994701242447
+    ],
+    "closed_trade_max_dd_r": 4.405727556504539,
+    "episodes": 19,
+    "excluded_symbol_count": 0,
+    "excluded_trades": 0,
+    "exit_reasons": {
+     "exit.signal": 50,
+     "exit.stop": 7
+    },
+    "exposure_bars": 1421,
+    "gap_fills": 0,
+    "incomplete": 0,
+    "incomplete_reasons": {},
+    "intrabar_ambiguous": 0,
+    "label": "CURRENT-UNIVERSE / SURVIVOR-BIASED",
+    "longest_underwater_trades": 17,
+    "mc_drawdown_pct": {
+     "p5": 2.3390985706831664,
+     "p50": 5.463520439862394,
+     "p95": 13.12461132337421,
+     "resamples": 10000
+    },
+    "mean_giveback_r": 1.861619839616227,
+    "mean_mae_r": -0.4717618367647176,
+    "mean_mfe_r": 2.9328411141684603,
+    "mean_r": 1.0712212745522331,
+    "pf": 4.4208367964069275,
+    "refusals": {
+     "capacity.max_positions": 36,
+     "filter.halt": 1
+    },
+    "resamples": 10000,
+    "seed": 20261009,
+    "stress_mean_r": {
+     "base": 1.0712212745522331,
+     "fees_slip_x2": 1.0000330846259415,
+     "flat_funding_legacy": 1.0616139630484993,
+     "funding_mark_adverse": 1.071101622521036,
+     "funding_x2": 1.0544409802381758,
+     "gap_slip_x5": 1.0712212745522331,
+     "limit_as_taker": 1.0712212745522331,
+     "limit_no_fill": 1.0712212745522331,
+     "slip_wilder_atr14": 1.0700901895825607
+    },
+    "total_r": 61.05961264947729,
+    "trades": 57,
+    "win_rate": 0.40350877192982454
+   }
+  },
+  "walk_forward[4]": {
+   "primary": {
+    "avg_loss": -0.6043781223546253,
+    "avg_win": 2.6123720556202814,
+    "book": {
+     "base": {
+      "longest_underwater_cycles": 608,
+      "mtm_max_dd_pct": 11.858196432861817,
+      "net_pct_equity": 31.670598128270665
+     },
+     "fees_slip_x2": {
+      "longest_underwater_cycles": 609,
+      "mtm_max_dd_pct": 12.877432314272784,
+      "net_pct_equity": 26.85392307079957
+     },
+     "flat_funding_legacy": {
+      "longest_underwater_cycles": 609,
+      "mtm_max_dd_pct": 11.971753721759242,
+      "net_pct_equity": 30.84926921304579
+     },
+     "funding_mark_adverse": {
+      "longest_underwater_cycles": 608,
+      "mtm_max_dd_pct": 11.858893661764244,
+      "net_pct_equity": 31.663426825234527
+     },
+     "funding_x2": {
+      "longest_underwater_cycles": 609,
+      "mtm_max_dd_pct": 11.937043438209132,
+      "net_pct_equity": 30.691640209908
+     },
+     "gap_slip_x5": {
+      "longest_underwater_cycles": 608,
+      "mtm_max_dd_pct": 11.858196432861817,
+      "net_pct_equity": 31.670598128270665
+     },
+     "limit_as_taker": {
+      "longest_underwater_cycles": 608,
+      "mtm_max_dd_pct": 11.858196432861817,
+      "net_pct_equity": 31.670598128270665
+     },
+     "limit_no_fill": {
+      "longest_underwater_cycles": 608,
+      "mtm_max_dd_pct": 11.858196432861817,
+      "net_pct_equity": 31.670598128270665
+     },
+     "slip_wilder_atr14": {
+      "longest_underwater_cycles": 608,
+      "mtm_max_dd_pct": 11.865313944634194,
+      "net_pct_equity": 31.6211649106599
+     }
+    },
+    "ci95_episode": [
+     -0.2566918631526534,
+     1.8056924844322393
+    ],
+    "ci95_trade": [
+     -0.07295148427674462,
+     1.2439393184211456
+    ],
+    "closed_trade_max_dd_r": 6.980328610375355,
+    "episodes": 18,
+    "excluded_symbol_count": 0,
+    "excluded_trades": 0,
+    "exit_reasons": {
+     "exit.signal": 48,
+     "exit.stop": 15
+    },
+    "exposure_bars": 1272,
+    "gap_fills": 0,
+    "incomplete": 0,
+    "incomplete_reasons": {},
+    "intrabar_ambiguous": 0,
+    "label": "CURRENT-UNIVERSE / SURVIVOR-BIASED",
+    "longest_underwater_trades": 38,
+    "mc_drawdown_pct": {
+     "p5": 3.3009640759752346,
+     "p50": 6.715558826978414,
+     "p95": 14.060824783206465,
+     "resamples": 10000
+    },
+    "mean_giveback_r": 1.3008566208262675,
+    "mean_mae_r": -0.6125472859245416,
+    "mean_mfe_r": 1.8197880844311334,
+    "mean_r": 0.5189314636048659,
+    "pf": 2.319343740884758,
+    "refusals": {
+     "capacity.max_positions": 17
+    },
+    "resamples": 10000,
+    "seed": 20261009,
+    "stress_mean_r": {
+     "base": 0.5189314636048659,
+     "fees_slip_x2": 0.45795407048578474,
+     "flat_funding_legacy": 0.5088544316676511,
+     "funding_mark_adverse": 0.5188377646331762,
+     "funding_x2": 0.5051768868959103,
+     "gap_slip_x5": 0.5189314636048659,
+     "limit_as_taker": 0.5189314636048659,
+     "limit_no_fill": 0.5189314636048659,
+     "slip_wilder_atr14": 0.518270448274246
+    },
+    "total_r": 32.69268220710655,
+    "trades": 63,
+    "win_rate": 0.3492063492063492
+   },
+   "uncapped_development_only": {
+    "avg_loss": -0.6043781223546253,
+    "avg_win": 2.6123720556202814,
+    "book": {
+     "base": {
+      "longest_underwater_cycles": 608,
+      "mtm_max_dd_pct": 11.858196432861817,
+      "net_pct_equity": 31.670598128270665
+     },
+     "fees_slip_x2": {
+      "longest_underwater_cycles": 609,
+      "mtm_max_dd_pct": 12.877432314272784,
+      "net_pct_equity": 26.85392307079957
+     },
+     "flat_funding_legacy": {
+      "longest_underwater_cycles": 609,
+      "mtm_max_dd_pct": 11.971753721759242,
+      "net_pct_equity": 30.84926921304579
+     },
+     "funding_mark_adverse": {
+      "longest_underwater_cycles": 608,
+      "mtm_max_dd_pct": 11.858893661764244,
+      "net_pct_equity": 31.663426825234527
+     },
+     "funding_x2": {
+      "longest_underwater_cycles": 609,
+      "mtm_max_dd_pct": 11.937043438209132,
+      "net_pct_equity": 30.691640209908
+     },
+     "gap_slip_x5": {
+      "longest_underwater_cycles": 608,
+      "mtm_max_dd_pct": 11.858196432861817,
+      "net_pct_equity": 31.670598128270665
+     },
+     "limit_as_taker": {
+      "longest_underwater_cycles": 608,
+      "mtm_max_dd_pct": 11.858196432861817,
+      "net_pct_equity": 31.670598128270665
+     },
+     "limit_no_fill": {
+      "longest_underwater_cycles": 608,
+      "mtm_max_dd_pct": 11.858196432861817,
+      "net_pct_equity": 31.670598128270665
+     },
+     "slip_wilder_atr14": {
+      "longest_underwater_cycles": 608,
+      "mtm_max_dd_pct": 11.865313944634194,
+      "net_pct_equity": 31.6211649106599
+     }
+    },
+    "ci95_episode": [
+     -0.2566918631526534,
+     1.8056924844322393
+    ],
+    "ci95_trade": [
+     -0.07295148427674462,
+     1.2439393184211456
+    ],
+    "closed_trade_max_dd_r": 6.980328610375355,
+    "episodes": 18,
+    "excluded_symbol_count": 0,
+    "excluded_trades": 0,
+    "exit_reasons": {
+     "exit.signal": 48,
+     "exit.stop": 15
+    },
+    "exposure_bars": 1272,
+    "gap_fills": 0,
+    "incomplete": 0,
+    "incomplete_reasons": {},
+    "intrabar_ambiguous": 0,
+    "label": "CURRENT-UNIVERSE / SURVIVOR-BIASED",
+    "longest_underwater_trades": 38,
+    "mc_drawdown_pct": {
+     "p5": 3.3009640759752346,
+     "p50": 6.715558826978414,
+     "p95": 14.060824783206465,
+     "resamples": 10000
+    },
+    "mean_giveback_r": 1.3008566208262675,
+    "mean_mae_r": -0.6125472859245416,
+    "mean_mfe_r": 1.8197880844311334,
+    "mean_r": 0.5189314636048659,
+    "pf": 2.319343740884758,
+    "refusals": {
+     "capacity.max_positions": 17
+    },
+    "resamples": 10000,
+    "seed": 20261009,
+    "stress_mean_r": {
+     "base": 0.5189314636048659,
+     "fees_slip_x2": 0.45795407048578474,
+     "flat_funding_legacy": 0.5088544316676511,
+     "funding_mark_adverse": 0.5188377646331762,
+     "funding_x2": 0.5051768868959103,
+     "gap_slip_x5": 0.5189314636048659,
+     "limit_as_taker": 0.5189314636048659,
+     "limit_no_fill": 0.5189314636048659,
+     "slip_wilder_atr14": 0.518270448274246
+    },
+    "total_r": 32.69268220710655,
+    "trades": 63,
+    "win_rate": 0.3492063492063492
+   }
+  }
+ },
+ "symbol_count": 20,
+ "tier": "CORE-20",
+ "verdict": "PARK",
+ "verdict_basis": "prereg verdict_rules.development: development evidence can neither PROMOTE nor REJECT"
+}

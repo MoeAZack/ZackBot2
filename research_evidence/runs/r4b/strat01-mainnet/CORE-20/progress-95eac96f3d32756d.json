@@ -1,0 +1,54 @@
+{
+ "digest": "8aac69258081d0d8cc58a20925e7fd860848221538a97fe1888ad6a712bc3a7c",
+ "format": "zb-run-progress/2",
+ "identity": {
+  "classification": null,
+  "commit": "02ef56f18fe3d2c9e264df1fc9657a3101346182",
+  "evaluator": "2587213656a08dd17187ed78e080d9d5a165f711159e7a0cc4e21fb379ab0beb",
+  "manifest": "54912d9d2bf6e6fc45bc75c0553f0bd867e877972beeb3452785937379baf1e7",
+  "prereg": "369aef318743b44d3cd107b93c8bb06bf133e6a1cf357a30989dfc87e4a935e4",
+  "universe": "1c06c18d2fc82413b740260f0051a9f8286e9b0cb87d7d9614a2f88d78393fce"
+ },
+ "identity_digest": "67599b85d574d53ae63f6a21816ea4ae2e48ff86be7ddbf719c42aa40385ae77",
+ "integrity": [],
+ "kind": "live",
+ "run": "95eac96f3d32756d",
+ "seq": 15,
+ "stages": [
+  {
+   "name": "pit.open",
+   "status": "done"
+  },
+  {
+   "name": "pit.development",
+   "status": "done"
+  },
+  {
+   "fold": 0,
+   "name": "pit.walk_forward",
+   "status": "done"
+  },
+  {
+   "fold": 1,
+   "name": "pit.walk_forward",
+   "status": "done"
+  },
+  {
+   "fold": 2,
+   "name": "pit.walk_forward",
+   "status": "done"
+  },
+  {
+   "fold": 3,
+   "name": "pit.walk_forward",
+   "status": "done"
+  },
+  {
+   "fold": 4,
+   "name": "pit.walk_forward",
+   "status": "done"
+  }
+ ],
+ "state": "sealed",
+ "wall": "2026-10-11T20:16:59+03:00"
+}
