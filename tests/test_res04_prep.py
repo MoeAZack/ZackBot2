@@ -12,6 +12,7 @@ import os
 import shutil
 import subprocess
 import sys
+import types
 from datetime import datetime, timezone
 from decimal import Decimal
 from zoneinfo import ZoneInfo
@@ -703,6 +704,33 @@ def test_gate_refuses_until_registered_committed_merged_and_universe_bound(grepo
     git(repo, 'checkout', '--', 'tools/research/trend_ema_mom.py')
     recs = L.verify(os.path.join(repo, 'research_evidence/ledger/trend_ema_mom.jsonl'), registry_genesis=gen)
     assert L.n_trials(recs['trend_ema_mom']) == 18
+
+
+def test_run_m3_replays_each_cost_row_on_its_own_freshly_opened_window(tmp_path, monkeypatch):
+    """STRAT-00 Windows run: base then 2x on one Window failed with 'decision ... already issued a position'."""
+    opened, used = [], []
+
+    class W:
+        pass
+
+    def fake_open(repo, store, ledger, **kw):
+        opened.append(W())
+        return types.SimpleNamespace(digest=X.REPRO_DIGEST, labels=('REPRO-ONLY',)), opened[-1], lo, hi
+
+    def fake_replay(w, **kw):
+        assert w not in used                                              # never the same Window twice
+        used.append(w)
+        return None
+
+    lo, hi = X.span(P.Dataset(M.load(os.path.join(ROOT, X.REPRO_MANIFEST)), ROOT, None))
+    monkeypatch.setattr(G, 'refuse_unless_open', lambda repo, **kw: None)
+    monkeypatch.setattr(X, 'open_repro', fake_open)
+    monkeypatch.setattr(X, 'replay', fake_replay)
+    monkeypatch.setattr(X, 'read_reference', lambda repo, name: '')
+    monkeypatch.setattr(X, 'report', lambda **kw: {'cost_row': kw['name']})
+    out = G.run_m3(ROOT, store=ROOT, rows=('base', '2x'), out_dir=str(tmp_path), author='t', cairo_date='2026-10-11')
+    assert [os.path.basename(p) for p in out] == ['m3_repro_base.json', 'm3_repro_2x.json']
+    assert len(opened) == 2 and used == opened
 
 
 def test_registration_is_refused_once_the_holdout_has_started(grepo):

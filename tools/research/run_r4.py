@@ -407,12 +407,19 @@ def run_m3(repo: str, *, store: str, rows, out_dir: str, author: str, cairo_date
     # artifact hashes. No outcome ever enters it; the reports below are referenced only by SHA-256.
     prog = PG.Progress(out_dir, identity=ident, config=config, clock=clock)
     stage = 'm3.open'
-    try:
-        prog.stage_start(stage)
+
+    def opened():
+        # STRAT-00: one freshly opened (ledgered) development window per cost row. A Window records the decisions it
+        # issued, so a second row replayed on the same Window re-issues the same decision ids and is refused.
         ds, w, lo2, hi2 = X.open_repro(repo, store, os.path.join(repo, g['ledger']), author=author,
                                        cairo_date=cairo_date)
         if (ds.digest, lo2, hi2) != (X.REPRO_DIGEST, lo, hi):
             raise X.ReproError('the opened dataset differs from the declared identity')
+        return ds, w
+
+    try:
+        prog.stage_start(stage)
+        ds, w = opened()
         meta = {'code': R.code_identity(repo), 'identity': ident, 'manifest_digest': ds.digest,
                 'labels': list(ds.labels), 'window': [S.utc(lo), S.utc(hi)], 'cycles': len(times)}
         prog.stage_done(stage)
@@ -420,6 +427,8 @@ def run_m3(repo: str, *, store: str, rows, out_dir: str, author: str, cairo_date
         for name in rows:
             stage = f'm3.{name}'
             prog.stage_start(stage)
+            if name != rows[0]:
+                ds, w = opened()
             ev = X.replay(w, start_ms=lo, end_ms=hi, function=X.FUNCTIONS[name], perturb=perturb)
             doc = X.report(name=name, ref_text=X.read_reference(repo, name), ev=ev, meta=meta)
             written.append(X.atomic_write_json(os.path.join(out_dir, f'm3_repro_{name}.json'), doc))
