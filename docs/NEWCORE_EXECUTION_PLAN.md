@@ -347,7 +347,30 @@ not silently filled with weak strategies.
 | G5 | PWA-01/02 mobile | Secure monitor first; dangerous controls require re-auth, MFA, idempotency, expiry and audit. |
 | G6 | TV-01 TradingView | Signed/versioned webhook intents through the same risk gateway. |
 | G7 | NEWS-01 news authority | Timestamped source/expiry; observe then veto/reduce only. |
-| G8 | REL-02 shareable/lead product | Signed release, private lead/no-followers rehearsal, then copy-suitability/incident gates before public launch. |
+| G8 | DATA-EXT-01 secondary market intelligence | Read-only PerpEquities adapter for later gold/TradFi discovery and cross-venue context; shadow-only until independently validated and never an execution authority. |
+| G9 | REL-02 shareable/lead product | Signed release, private lead/no-followers rehearsal, then copy-suitability/incident gates before public launch. |
+
+#### DATA-EXT-01 binding data path and gate
+
+`PerpEquities discovery/context -> ZackBot normalization + stale/quality checks -> official Binance API confirmation -> strategy eligibility and risk scoring -> Binance execution`
+
+- Ingest stable asset/venue IDs, explicit coverage, source timestamp, retrieval timestamp, raw and quality-filtered
+  volume, funding rate and interval, spread, depth, open interest, leverage and settlement currency where supplied.
+- Preserve `missing`/`unknown` separately from numeric zero. Cache immutable input snapshots with schema version,
+  source/licence/provenance and a content digest so research can be reproduced.
+- Before any Binance decision, re-confirm the executable contract, price/freshness, quantity rules, leverage/funding and
+  venue availability from official Binance endpoints. A stale, missing or contradictory value produces explicit
+  `UNKNOWN/HOLD`; it never falls back to the secondary source.
+- Begin read-only and shadow-scored with zero execution authority. Promotion needs causal evidence from point-in-time
+  history; a current snapshot or thin history is not valid strategy/backtest evidence.
+- Contract/fixture tests cover stale data, null versus zero, partial coverage, additive schema changes, rate limiting,
+  unavailable service and disagreement with Binance. The UI shows source, freshness, coverage, raw versus filtered
+  values, costs/break-even and the precise rejection reason.
+- Funding/basis views include fees, slippage, both legs, break-even, rate reversal and venue/counterparty risk. Analyst
+  calls, political/congressional activity, affiliate venue rankings, headline APR and pre-IPO estimates remain research
+  context only and cannot create trade intents.
+- This ticket does not interrupt the native-Binance top-40 engine, STRAT-00 strategy validation or the first testnet/live
+  milestone. Broad multi-venue routing and Vantage/Bybit/MT5 execution remain post-Binance-live.
 
 ## 6. Bug interruption lane
 

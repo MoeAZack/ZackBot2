@@ -237,6 +237,13 @@ feasibility, secure PWA/mobile monitoring and control, TradingView/news integrat
 gold, and paper-proven TradFi indices/stocks. Gold and TradFi keep separate venue/session/gap/borrow/corporate-action
 contracts; they are not treated as 24/7 crypto.
 
+Later secondary market-intelligence adapters may supply instrument discovery, coverage and cross-venue context, but
+they remain read-only and advisory. For the approved PerpEquities integration the binding chain is `PerpEquities
+discovery/context -> ZackBot normalization + stale/quality checks -> official Binance API confirmation -> strategy
+eligibility and risk scoring -> Binance execution`. Binance remains authoritative for every executable fact and account
+action; stale, missing or contradictory secondary data fails to explicit `UNKNOWN/HOLD`. Secondary snapshots cannot be
+used as strategy/backtest truth without point-in-time provenance and independently validated historical coverage.
+
 Simple/Guided/Pro interfaces must remain coherent and responsive. Simple mode exposes the important outcome, risk and
 controls without engine noise; Pro exposes the evidence, mechanics and advanced scopes. Accessibility, mobile behavior
 and actionable error/recovery states are release acceptance requirements.
