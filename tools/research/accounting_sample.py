@@ -11,6 +11,8 @@ files:
   <out>/accounting_build.json   Build's side, computed with the R3 primitives of costs.py (slip_bps, fill_price,
                                 stop_reference, fee, funding_cost): fills, fees, funding, gross, net and R per trade.
 
+The inputs file is committed as the immutable fixture FIXTURE (sha256 FIXTURE_SHA256; it carries no Build answers);
+tests/test_strat00_accounting_sample.py regenerates it byte-identically from the store when the store is present.
 Cowork recomputes `accounting_build.json` from `accounting_inputs.json` alone and compares: every value |d| <= 1e-9
 (relative to the notional for USDT values). Both files are referenced only by SHA-256 in status posts.
 
@@ -35,6 +37,9 @@ FORMAT = 'zb-accounting-sample/1'
 MANIFEST = 'research_evidence/manifests/binance-um-archive-v1.json.gz'
 UNIVERSE = 'research_evidence/universe/pit-top40-qv30d-v4.json'
 LEDGER = 'research_evidence/ledger/res01_infra.jsonl'
+FIXTURE = 'research_evidence/accounting/strat00-accounting-inputs-v1.json'   # committed input fixture (no answers)
+FIXTURE_SHA256 = '267b3c52ed3f03ff2e048333d7ebfc81d1bffb415eae121317b08c7992ad91ff'
+HOLDOUT_START = '2026-10-05T00:00:00Z'                           # no fixture bar or funding event may reach it
 WINDOW = ('2025-02-24T00:00:00Z', '2025-05-05T00:00:00Z')        # spent development window (walk_forward fold 3)
 TF, TF_MS = '4h', 4 * P.HOUR
 NOTIONAL = 1000.0                                                 # USDT at the entry fill; qty = NOTIONAL / fill
@@ -129,12 +134,12 @@ def one(w, spec: dict, c: float, row: C.CostRow) -> tuple[dict, dict]:
     return inputs, build
 
 
-def run(repo: str, store: str, out_dir: str, *, author: str, cairo_date: str) -> dict:
+def run(repo: str, store: str, out_dir: str, *, author: str, cairo_date: str, ledger: str | None = None) -> dict:
     man = M.load(os.path.join(repo, MANIFEST))
     with open(os.path.join(repo, UNIVERSE), encoding='utf-8') as f:
         uni = json.load(f)
     ds = P.Dataset(man, store, uni, books=['crypto'])
-    acc = P.Access(ds, None, os.path.join(repo, LEDGER), candidate_id='res01.strat00.accounting', author=author,
+    acc = P.Access(ds, None, ledger or os.path.join(repo, LEDGER), candidate_id='res01.strat00.accounting', author=author,
                    cairo_date=cairo_date, repo=repo)
     w = acc.open_development(*WINDOW, detail={'purpose': 'STRAT-00 R4-0 item 4: fixed hand-specified long + short '
                                                          'accounting sample; no strategy, no signal',
