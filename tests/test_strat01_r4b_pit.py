@@ -380,7 +380,7 @@ def test_stops_fill_at_the_level_or_at_a_gapping_open_and_mfe_is_pre_stop():
     closes = [100.0] * 40
     a = acct(mk_tape(closes, le={25}, lows={28: 97.0}, highs={28: 130.0}))
     (tr,) = a['counted']
-    assert tr['exit_reason'] == 'exit.stop' and not tr['gap'] and tr['exit_ms'] == t_of(27)
+    assert tr['exit_reason'] == 'exit.stop' and not tr['gap'] and tr['exit_ms'] == t_of(28)    # stop bar CLOSE
     risk = tr['entry_price'] - tr['stop_price']
     assert tr['mfe_r'] == pytest.approx((100.25 - tr['entry_price']) / risk)   # earlier highs + the stop bar's open,
     assert tr['mfe_r'] < (130.0 - tr['entry_price']) / risk                      # never the stop bar's own high
@@ -390,6 +390,39 @@ def test_stops_fill_at_the_level_or_at_a_gapping_open_and_mfe_is_pre_stop():
     b = acct(mk_tape(closes2, le={25}, lows={27: 99.5}))
     (tr2,) = b['counted']
     assert tr2['exit_reason'] == 'exit.stop' and tr2['gap'] and tr2['r']['base'] < -1.0
+
+
+def _has_event(i):
+    """The bar closing at t_of(i) holds a funding event (calc time + 3 ms inside [open, close))."""
+    return any(t_of(i) - TF <= ft + 3 < t_of(i) for ft in range(T0, t_of(i) + 1, 8 * HOUR))
+
+
+@pytest.mark.parametrize('row', ['base', 'funding_x2'])
+def test_a_non_gap_stop_pays_the_stop_bars_funding_and_a_gap_stop_does_not(row):
+    """Cowork 6109240642: a non-gap stop exits at the stop-bar close (PR #61 convention, entry <= T < exit_time),
+    so an event inside the stop bar is charged; the fill stays at the stop level. A gap stop exits at the open."""
+    closes = [100.0] * 60
+    fund = {}
+    for k in range(27, 36):
+        a = acct(mk_tape(closes, le={25}, lows={k: 97.0}), rows=(row,))
+        (tr,) = a['rows'][row]['counted']
+        assert tr['exit_reason'] == 'exit.stop' and not tr['gap'] and tr['exit_ms'] == t_of(k)
+        n = sum(1 for i in range(26, k + 1) if _has_event(i))         # events over entry bar .. stop bar inclusive
+        fund[k] = (tr['funding'], n)
+        assert tr['exit_price'] == pytest.approx(tr['stop_price'], abs=1.0)   # the stop level (+ slippage), not a close
+    per = {f / n for f, n in fund.values() if n}
+    assert len({round(v, 9) for v in per}) == 1                         # funding = events x one per-event amount
+    for k in range(28, 36):
+        stepped = fund[k][0] > fund[k - 1][0] + 1e-12
+        assert stepped == _has_event(k), k                              # steps up exactly on bars holding an event
+    gapk = next(k for k in range(28, 36) if _has_event(k))
+    g = acct(mk_tape(closes[:gapk] + [96.0] * (60 - gapk), le={25}, opens={gapk: 96.0}), rows=(row,))
+    (tg,) = g['rows'][row]['counted']
+    assert tg['gap'] and tg['exit_ms'] == t_of(gapk) - TF and tg['funding'] == pytest.approx(fund[gapk - 1][0])
+    u = unit(mk_tape(closes, le={25}, lows={gapk: 97.0}))
+    v = unit(mk_tape(closes, le={25}, lows={gapk - 1: 97.0}))
+    assert u['counted'][0]['exit_ms'] == t_of(gapk)
+    assert u['counted'][0]['r'][row] < v['counted'][0]['r'][row]        # the per-symbol diagnostic pays the event too
 
 
 def test_entries_only_inside_the_decision_range():

@@ -23,7 +23,8 @@ Order of operations (`run_pit`):
      snapshot / stop distance, max 4 open lots, gross notional <= 3x equity sized on signal close x 1.10, quantity
      floored to the pinned rule step (never upsized), below min qty / min notional = counted refusal, a Cairo-day
      halted decision = counted refusal; fill at the next bar open (tick-rounded), stop = fill - registered distance
-     floored to the tick; (B) stop over each played bar (`costs.stop_reference`, gap fills at the open), funding at
+     floored to the tick; (B) stop over each played bar (`costs.stop_reference`: a gap stop fills and exits at the
+     open; a non-gap stop fills at the stop and exits at the bar close, so the bar's funding is charged), funding at
      each actual funding time x mark proxy; (C) MTM at the closes, Cairo-day 3% MTM halt, drawdown kill disarmed.
      The bar opening at the split end is served by the causal `View.next_open` capability (its open only, never its
      H/L/C), so a cap or signal exit due exactly at the split end fills there; with no such bar it is INCOMPLETE,
@@ -421,23 +422,28 @@ def run_book(tape, cfg: dict, symbols, *, first: int, last: int, hi: int, slip_c
                        'stop': _floor(fill - dist, rule['tick']), 'fees': fee, 'funding': 0.0, 'snapshot': snapshot,
                        'hi': o, 'lo': o}
         pend_entry = []
-        # (B) play the bar: stop first, else the bar's actual funding events
+        # (B) play the bar: stop first; funding events entry <= T < exit time (accounting convention, PR #61:
+        # a gap stop exits at the bar open, before the bar's events; a non-gap stop exits at the bar CLOSE t, so the
+        # bar's events [bo, t) are charged first, with the fill still at the stop level)
         for s in [s for s in order if s in lots]:
             lot, (o, h, lo, c) = lots[s], rec[s]['b']
-            if o <= lot['stop'] or lo <= lot['stop']:
-                ref, gap = C.stop_reference('long', lot['stop'], o)
+            stop_hit = o <= lot['stop'] or lo <= lot['stop']
+            ref, gap = C.stop_reference('long', lot['stop'], o) if stop_hit else (None, False)
+            if not (stop_hit and gap):
+                ev = [(f.time_ms, f.rate, syms[s].mark[f.time_ms]) for f in syms[s].fund
+                      if bo <= f.time_ms < t and f.time_ms >= lot['entry_ms']]
+                if any(m is None for _, _, m in ev):
+                    drop(s, 'incomplete.funding_mark')
+                    continue
+                amt = C.funding_cost('long', lot['qty'], ev, scen, bars_held=1,
+                                     entry_notional=lot['qty'] * lot['fill'])
+                wallet -= amt
+                lot['funding'] += amt
+            if stop_hit:
                 lot['hi'], lot['lo'] = max(lot['hi'], o), min(lot['lo'], lo)    # pre-stop bound: never the bar high
-                close(s, ref, bo, 'exit.stop', gap, bo, (bo - lot['entry_ms']) // TF + 1)
+                close(s, ref, bo if gap else t, 'exit.stop', gap, bo, (bo - lot['entry_ms']) // TF + 1)
                 continue
             lot['hi'], lot['lo'] = max(lot['hi'], h), min(lot['lo'], lo)
-            ev = [(f.time_ms, f.rate, syms[s].mark[f.time_ms]) for f in syms[s].fund
-                  if bo <= f.time_ms < t and f.time_ms >= lot['entry_ms']]
-            if any(m is None for _, _, m in ev):
-                drop(s, 'incomplete.funding_mark')
-                continue
-            amt = C.funding_cost('long', lot['qty'], ev, scen, bars_held=1, entry_notional=lot['qty'] * lot['fill'])
-            wallet -= amt
-            lot['funding'] += amt
         for s in order:
             if rec[s] is not None:
                 closes[s] = rec[s]['b'][3]
@@ -580,7 +586,7 @@ def account_unit(outputs, cfg: dict, *, first: int, last: int, hi: int, slip_c: 
                 if lot['stop'] is not None and (o <= lot['stop'] or lo <= lot['stop']):
                     lot['hi'], lot['lo'] = max(lot['hi'], o), min(lot['lo'], lo)   # pre-stop bound
                     ref, gap = C.stop_reference('long', lot['stop'], o)
-                    close(ref, bo, 'exit.stop', gap, bo, (bo - lot['entry_ms']) // TF + 1)
+                    close(ref, bo if gap else t, 'exit.stop', gap, bo, (bo - lot['entry_ms']) // TF + 1)
                     lot = None
                 else:
                     lot['hi'], lot['lo'] = max(lot['hi'], h), min(lot['lo'], lo)
@@ -652,7 +658,8 @@ def b0_pairs(outputs, primary: dict, *, first: int, last: int, hi: int, slip_c: 
                     if o <= stop or lo <= stop:
                         ref, gap = C.stop_reference('long', stop, o)
                         bo = e + (j - 1) * TF
-                        res = net_r(x, entry_ref=o0, entry_ms=e, dist=d, exit_ref=ref, exit_ms=bo, gap=gap,
+                        res = net_r(x, entry_ref=o0, entry_ms=e, dist=d, exit_ref=ref, exit_ms=bo if gap else bo + TF,
+                                    gap=gap,
                                     exit_bps_at=bo, nbars=j, slip_c=slip_c, rows=('base',))['base']
                         break
                 if res is None:
