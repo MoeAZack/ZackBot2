@@ -110,7 +110,13 @@ NOT_EVALUATED = (
     'per-side split (long only rule; the short mirror is never an edge claim)',
     'stop-first vs target-first (one stop, no target: every exit bar is single-level)',
     'MDE at 80% power (holdout-only quantity)')
-RULES_PATH = 'data/exchange_rules_testnet.json'      # the pinned M3 rules snapshot (m3_repro.RULES_SHA256)
+# Exchange lot rules of the registered book: ONE complete Binance USD-M MAINNET snapshot (direct public exchangeInfo
+# fetch, Codex ruling 6110459316), pinned by its exact bytes here only. The M3 reproduction keeps its own testnet anchor
+# (data/exchange_rules_testnet.json, m3_repro.RULES_SHA256) untouched; the two are never mixed.
+RULES_PATH = 'data/exchange_rules_mainnet.json'
+RULES_SHA256 = 'a34ec71130683101183cd6039fcdd37096457544ccb9c07bbcdaa09d90680aa3'
+RULES_ENV = 'mainnet'
+RULES_FIELDS = ('tick', 'step', 'min_qty', 'min_notional')
 
 
 class PitRunError(ValueError):
@@ -1116,6 +1122,27 @@ def run_tiers(env: dict, out_dir: str, *, resume: bool = False, clock=PG.cairo_n
 
 
 # ------------------------------------------------------------------ the real environment (gate-cleared repo only)
+def load_rules(raw: bytes, symbols, *, pin: str = RULES_SHA256) -> dict:
+    """The book's lot rules for `symbols` from the pinned mainnet snapshot bytes. Fail-closed: the bytes must hash to the
+    pin (never the M3 testnet anchor), the snapshot must be a verified direct fetch of the mainnet environment, and
+    EVERY symbol must be present with all four fields - no fallback, no partial tier, no testnet/mainnet mixing."""
+    digest = hashlib.sha256(raw).hexdigest()
+    if digest == X.RULES_SHA256:
+        raise PitRunError('the M3 testnet rules anchor may not size the R4b book (no testnet/mainnet mixing)')
+    if digest != pin:
+        raise PitRunError(f'{RULES_PATH}: bytes differ from the pinned mainnet rules snapshot')
+    snap = json.loads(raw)
+    if (snap.get('environment'), snap.get('provenance'), snap.get('verified')) != (RULES_ENV, 'direct_fetch', True):
+        raise PitRunError('the rules snapshot is not a verified direct fetch of Binance mainnet')
+    if snap.get('source_url') != 'https://fapi.binance.com/fapi/v1/exchangeInfo':
+        raise PitRunError('the rules snapshot source is not the Binance USD-M mainnet exchangeInfo')
+    table = snap.get('symbols') or {}
+    missing = [s for s in symbols if s not in table or any(k not in table[s] for k in RULES_FIELDS)]
+    if missing:
+        raise PitRunError(f'no pinned {RULES_ENV} exchange rule for {missing}; the registered book cannot size them')
+    return {s: {k: table[s][k] for k in RULES_FIELDS} for s in symbols}
+
+
 def real_env(repo: str, *, store: str, author: str, cairo_date: str, gate_path: str) -> dict:
     """Derived ONLY from the gate's committed files. Reads manifest metadata, never a data row."""
     import run_r4 as G                                                                      # noqa: E402
@@ -1140,14 +1167,9 @@ def real_env(repo: str, *, store: str, author: str, cairo_date: str, gate_path: 
     n_trials = sum(1 for r in fam if r['kind'] in ('variant', 'grid_point', 'baseline'))
     cal = pre['costs']['slip_cal_v1']
     model = C.CostModel(cal, {'BTCUSDT': 'crypto'})
-    rules_raw = G._load(repo, RULES_PATH)
-    if hashlib.sha256(rules_raw).hexdigest() != X.RULES_SHA256:
-        raise PitRunError(f'{RULES_PATH}: bytes differ from the pinned rules snapshot')
-    snap = json.loads(rules_raw)['symbols']
-    universe = static['core_20']
-    rules = {s: {k: snap[s][k] for k in ('tick', 'step', 'min_qty', 'min_notional')} for s in universe if s in snap}
+    rules = load_rules(G._load(repo, RULES_PATH), static['core_20'])
     run_config = {'configs': [c['name'] for c in configs()], 'stress_rows': list(C.STRESS), 'book': dict(BOOK),
-                  'rules_sha256': X.RULES_SHA256, 'rules': rules,
+                  'rules_path': RULES_PATH, 'rules_sha256': RULES_SHA256, 'rules_env': RULES_ENV, 'rules': rules,
                   'slip_c': cal['c']['crypto'], 'seed': SEED, 'resamples': RESAMPLES, 'perms': PERMS,
                   'b0_draws': B0_DRAWS, 'dev_keys': dev_keys(plan), 'plan_digest': plan.digest, 'window': T.WINDOW,
                   'tape': PE.FORMAT, 'cost_model': model.digest, 'n_trials': n_trials}
