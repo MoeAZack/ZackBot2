@@ -244,6 +244,32 @@ def test_evaluator_runs_sandboxed_and_a_nondeterministic_control_is_caught(world
         P.evaluate(w.view(times[0]), counter, 'run', times)
 
 
+DATACLASS_EV = """from __future__ import annotations
+
+from dataclasses import dataclass
+
+
+@dataclass(frozen=True)
+class Cfg:
+    n: int = 15
+
+
+def run(v):
+    b = v.bars('AAAUSDT', '4h', Cfg().n)
+    return len(b)
+"""
+
+
+def test_an_evaluator_with_postponed_annotations_and_a_dataclass_loads_in_the_sandbox(world, tmp_path):
+    """STRAT-00: the real m3_eval.py (`from __future__ import annotations` + @dataclass) failed to load in the sandbox
+    because the evaluator module was not registered in sys.modules before exec."""
+    ds = ds_of(world)
+    path, _ = dirs(tmp_path)
+    w = access(ds, path).open('train', lineage='root')
+    times = train_times(3)
+    assert list(P.evaluate(w, evaluator(tmp_path / 'ev', DATACLASS_EV, 'dc.py'), 'run', times)) == [15] * len(times)
+
+
 @pytest.mark.parametrize('src,msg', [
     # Codex 6079042573 repro: the raw Dataset behind the capability (manifest metadata of a future file)
     ("import pit\n\n\ndef run(v):\n    return pit._src(v._cap)._ds.files('klines', 'AAAUSDT', '4h')[-1]"
