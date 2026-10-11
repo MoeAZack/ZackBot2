@@ -411,6 +411,9 @@ def run_book(tape, cfg: dict, symbols, *, first: int, last: int, hi: int, slip_c
             # size from the ACTUAL per-unit stop risk: the adverse tick-rounded fill and the tick-floored stop
             # (flooring can only widen fill - stop beyond dist), so qty x (fill - stop) <= risk_pct x snapshot
             stop = _floor(fill - dist, rule['tick'])
+            if stop <= 0:                                       # a long stop at/below zero can never trigger: no lot
+                refusals['execution.stop_nonpositive'] += 1
+                continue
             risk_u = fill - stop
             if risk_u <= 0:
                 refusals['execution.size_min'] += 1
@@ -419,7 +422,7 @@ def run_book(tape, cfg: dict, symbols, *, first: int, last: int, hi: int, slip_c
             room = book['max_leverage'] * snapshot - notional
             q = min(raw, max(room, 0.0) / (ref * (1 + book['cap_gap_buffer'])))
             q = _floor(q, rule['step']) if q > 0 else 0.0
-            if q <= 0 or q < float(rule['min_qty']) or q * ref < float(rule['min_notional']):
+            if q <= 0 or q < float(rule['min_qty']) or q * fill < float(rule['min_notional']):   # executable notional
                 refusals['execution.size_min'] += 1
                 continue
             fee = C.fee(fill * q, 'taker', C.CRYPTO, scen)
@@ -586,7 +589,10 @@ def account_unit(outputs, cfg: dict, *, first: int, last: int, hi: int, slip_c: 
                     fill = C.fill_price(o, 'buy', x.bps(bo, BASE.vol, slip_c), BASE)
                 except Incomplete:
                     refusals['entry_no_slip_history'] += 1
-                else:
+                    fill = None
+                if fill is not None and cfg['stop'] and fill - dist <= 0:
+                    refusals['execution.stop_nonpositive'] += 1      # an untriggerable long stop: never opened
+                elif fill is not None:
                     lot = {'entry_ms': bo, 'entry_ref': o, 'dist': dist, 'fill': fill,
                            'stop': fill - dist if cfg['stop'] else None, 'hi': o, 'lo': o}
             if lot is not None:
@@ -660,6 +666,8 @@ def b0_pairs(outputs, primary: dict, *, first: int, last: int, hi: int, slip_c: 
                 o0 = x.rec[e + TF]['b'][0]
                 fill = C.fill_price(o0, 'buy', x.bps(e, BASE.vol, slip_c), BASE)
                 stop, res = fill - d, None
+                if stop <= 0:
+                    raise Incomplete('incomplete.stop_nonpositive')         # never simulate an untriggerable stop
                 for j in range(1, h + 1):
                     o, _, lo, c = x.rec[e + j * TF]['b']
                     if o <= stop or lo <= stop:

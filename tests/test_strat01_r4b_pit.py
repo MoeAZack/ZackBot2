@@ -360,6 +360,44 @@ def test_initial_stop_risk_never_exceeds_one_percent_on_coarse_ticks(tick):
                 assert bigger * (tr['entry_price'] - tr['stop_price']) > 0.01 * tr['snapshot'] or bigger > lev_room
 
 
+def test_min_notional_is_checked_on_the_executable_fill_not_the_signal_close():
+    """Cowork 6109643284 F1: a gap-down entry open must not pass min notional on the signal close."""
+    closes = [100.0] * 60
+    tape = lambda: mk_tape(closes, le={25}, lx={40}, opens={26: 90.0})
+    ok = acct(tape(), rules={'AAAUSDT': dict(RULE, min_notional=1.0)})
+    (tr,) = ok['counted']
+    q, fill = tr['qty'], tr['entry_price']
+    assert fill < 91 and q * fill < q * 100.0
+    mid = (q * fill + q * 100.0) / 2                                    # passes on q x close, fails on q x fill
+    bad = acct(tape(), rules={'AAAUSDT': dict(RULE, min_notional=mid)}, rows=tuple(C.STRESS))
+    for row, x in bad['rows'].items():
+        assert x['counted'] == [], row
+    assert bad['counted'] == [] and bad['refusals'] == {'execution.size_min': 1}
+    edge = acct(tape(), rules={'AAAUSDT': dict(RULE, min_notional=q * fill - 1e-6)})
+    assert len(edge['counted']) == 1 and edge['counted'][0]['qty'] * edge['counted'][0]['entry_price'] >= q * fill - 1e-6
+
+
+def test_a_non_positive_stop_is_refused_never_sized():
+    """Cowork 6109643284 F2: a registered distance >= the fill puts a long stop at/below zero (untriggerable)."""
+    closes = [100.0] * 60
+    a = acct(mk_tape(closes, le={25}, lx={40}, d='150'), rows=tuple(C.STRESS))
+    assert a['counted'] == [] and a['refusals'] == {'execution.stop_nonpositive': 1}
+    assert all(x['counted'] == [] for x in a['rows'].values())
+    u = unit(mk_tape(closes, le={25}, lx={40}, d='150'))
+    assert u['counted'] == [] and u['refusals'] == {'execution.stop_nonpositive': 1}
+    ok = acct(mk_tape(closes, le={25}, lx={40}, d='99.0'))                # positive stop: still a lot
+    assert len(ok['counted']) == 1 and ok['counted'][0]['stop_price'] > 0
+    tape = mk_tape(closes, le={25}, lx={40})
+    for o in tape:                                                      # every OTHER decision: untriggerable stop
+        for r in o['r']:
+            if 'd' in r and o['t'] != t_of(25):
+                r['d'] = '150'
+    prim = acct(tape, first=t_of(20), last=t_of(45))
+    b0 = PR.b0_pairs(tape, prim, seed_key='k', first=t_of(26), last=t_of(45), hi=tape[-1]['t'], slip_c=0.05,
+                     draws=30)                                          # pool = the untriggerable-stop decisions only
+    assert len(prim['counted']) == 1 and b0['diffs'] == [] and b0['invalid_draws'] == 30   # never simulated
+
+
 def test_the_cairo_day_mtm_halt_refuses_that_days_entries():
     closes = [100.0] * 32 + [98.0] * 40                                   # bar 32 gaps through a 0.5 stop: ~-4%
     a = acct(merge(mk_tape(closes, sym='AAAUSDT', le={25}, d='0.5', opens={32: 98.0}),
