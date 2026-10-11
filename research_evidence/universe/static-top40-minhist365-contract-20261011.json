@@ -33,7 +33,7 @@
   "AVAXUSDT",
   "LINKUSDT"
  ],
- "digest": "5353adbcf054184f39c98a7b898e9c7495588ee34126b34c9ecb741232c92f27",
+ "digest": "1c06c18d2fc82413b740260f0051a9f8286e9b0cb87d7d9614a2f88d78393fce",
  "excluded_by_history": [
   {
    "history_days": 34,
@@ -81,8 +81,15 @@
  ],
  "label": "CURRENT-UNIVERSE / SURVIVOR-BIASED",
  "list_digest": "d95ba63c126029e23196e253c74cd95918cb5c9102079792194c972d20884bc5",
- "owner_approval": "PENDING",
- "owner_approved": false,
+ "owner_approval": {
+  "approved_at_sha": "487c2c855572321b9c53119e6936f3ba5c6843ce",
+  "by": "owner",
+  "date_cairo": "2026-10-11",
+  "list_digest": "d95ba63c126029e23196e253c74cd95918cb5c9102079792194c972d20884bc5",
+  "pending_digest": "5353adbcf054184f39c98a7b898e9c7495588ee34126b34c9ecb741232c92f27",
+  "status": "APPROVED"
+ },
+ "owner_approved": true,
  "ranked_source": [
   [
    1,

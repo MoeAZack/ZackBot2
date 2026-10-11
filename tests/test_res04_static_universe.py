@@ -148,7 +148,8 @@ def test_committed_artifact():
     assert S.main(['verify', path, '--snapshot', snap_path]) == 0
     with open(path, encoding='ascii') as f:
         u = json.load(f)
-    assert u['label'] == 'CURRENT-UNIVERSE / SURVIVOR-BIASED' and u['owner_approved'] is False
+    assert u['label'] == 'CURRENT-UNIVERSE / SURVIVOR-BIASED' and u['owner_approved'] is True
+    assert u['owner_approval']['approved_at_sha'] == '487c2c855572321b9c53119e6936f3ba5c6843ce'
     assert u['ranking_rule']['rule_id'] == 'qv30d-top40-minhist365' and u['ranking_rule']['min_history_days'] == 365
     with open(os.path.join(UDIR, 'binance-um-klines1d-recent-v2-20261011.json'), encoding='ascii') as f:
         recent = json.load(f)
