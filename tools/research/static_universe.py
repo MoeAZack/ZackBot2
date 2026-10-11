@@ -194,7 +194,29 @@ def validate(u: dict, snapshot: dict) -> None:
     src = {'base_rule_id': u['ranking_rule']['base_rule_id'], 'instant_ms': u['ranking_rule']['instant_ms'],
            'instant_utc': u['ranking_rule']['instant_utc'], **{k: u['sources'][k] for k in
            ('manifest_digest', 'classes_digest', 'pit_universe_digest', 'recent_klines')}}
-    need(dumps(build_static(u['ranked_source'], snapshot, src)) == dumps(u), 'rebuild is not byte-identical')
+    rebuilt = build_static(u['ranked_source'], snapshot, src)
+    if u['owner_approved']:                     # an approved file must be exactly the rebuilt PENDING list + approval
+        rec = u['owner_approval']
+        need(isinstance(rec, dict) and rec.get('pending_digest') == rebuilt['digest']
+             and rec.get('list_digest') == rebuilt['list_digest'], 'approval does not pin this exact list')
+        rebuilt = approve(rebuilt, approved_sha=rec['approved_at_sha'], date_cairo=rec['date_cairo'])
+    else:
+        need(u['owner_approval'] == 'PENDING', 'owner_approval must be PENDING while owner_approved is false')
+    need(dumps(rebuilt) == dumps(u), 'rebuild is not byte-identical')
+
+
+def approve(u: dict, *, approved_sha: str, date_cairo: str) -> dict:
+    """The owner's approval of the exact PENDING list: only owner_approved / owner_approval change. The record pins the
+    PENDING file digest and the list digest, so an approval cannot be carried over to a different list."""
+    if u['owner_approved'] or u['owner_approval'] != 'PENDING' or u['digest'] != body_digest(u):
+        raise StaticUniverseError('only an intact PENDING list can be approved')
+    a = {k: v for k, v in u.items() if k != 'digest'}
+    a['owner_approved'] = True
+    a['owner_approval'] = {'status': 'APPROVED', 'by': 'owner', 'date_cairo': date_cairo,
+                           'approved_at_sha': approved_sha, 'pending_digest': u['digest'],
+                           'list_digest': u['list_digest']}
+    a['digest'] = body_digest(a)
+    return a
 
 
 def write_once(d: dict, path: str) -> None:

@@ -206,3 +206,29 @@ def test_recent_refresh_and_merge():
     bad['symbols']['C01USDT']['bars'][0][1] = '9'
     with pytest.raises(S.StaticUniverseError, match='digest'):
         S.merge_recent({'C01USDT': {}}, bad, snap)
+
+
+# owner approval: only the two approval fields change, and the approval is pinned to the exact PENDING list
+def test_owner_approval_is_pinned_to_the_exact_list(built):
+    u, snap = built
+    a = S.approve(u, approved_sha='0' * 40, date_cairo='2026-10-11')
+    S.validate(a, snap)
+    assert a['owner_approved'] is True and a['owner_approval']['pending_digest'] == u['digest']
+    assert {k for k in a if a[k] != u.get(k)} == {'owner_approved', 'owner_approval', 'digest'}
+    with pytest.raises(S.StaticUniverseError):
+        S.approve(a, approved_sha='0' * 40, date_cairo='2026-10-11')              # approve once only
+    moved = copy.deepcopy(a)                                                    # approval carried to another list
+    moved['symbols'][0], moved['symbols'][1] = moved['symbols'][1], moved['symbols'][0]
+    moved['digest'] = S.body_digest(moved)
+    with pytest.raises(S.StaticUniverseError):
+        S.validate(moved, snap)
+    forged = copy.deepcopy(a)                                                   # approval record re-pinned
+    forged['owner_approval']['pending_digest'] = 'f' * 64
+    forged['digest'] = S.body_digest(forged)
+    with pytest.raises(S.StaticUniverseError, match='approval does not pin'):
+        S.validate(forged, snap)
+    half = copy.deepcopy(u)                                                     # flag flipped without a record
+    half['owner_approved'] = True
+    half['digest'] = S.body_digest(half)
+    with pytest.raises(S.StaticUniverseError):
+        S.validate(half, snap)
