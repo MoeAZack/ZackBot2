@@ -1,6 +1,6 @@
 # STRAT-02 contract: `trend_ema_mom_short.v1` (short-only trend continuation)
 
-**Status: UNREGISTERED DRAFT for Codex review.** It is not frozen and not runnable. No ledger record exists, no short-side code exists, and the R4 gate does not point at it. The machine-readable twin is `research_evidence/prereg/trend_ema_mom_short.v1.json`. If the two ever disagree, the JSON is authoritative once frozen.
+**Status: UNREGISTERED DRAFT for Codex review.** It is not frozen and not runnable. No ledger record exists, no short-side code exists, and the R4 gate does not point at it. The machine-readable twin is the NON-CANONICAL draft `docs/newcore/research/drafts/trend_ema_mom_short.v1.draft.json`. It moves to `research_evidence/prereg/` only after Codex freezes it, immediately before registration. If the two ever disagree, the JSON is authoritative once frozen.
 
 Author: claude-code. Date: 2026-10-11 (Cairo). Base: master `e2e39e98fab27e7f52d1986a4a5c87421de2cf75`.
 
@@ -13,27 +13,24 @@ Author: claude-code. Date: 2026-10-11 (Cairo). Base: master `e2e39e98fab27e7f52d
   - The author has seen only STRAT-01's published sealed aggregates. A long rule's aggregate cannot inform the short rule's parameters, and none was used.
 - **No code is implemented here.** The required runner slice is listed in §10.
 
-## 1. How it differs from the rejected 4h BTC-bear Donchian short
+## 1. How it differs from the earlier BTC-bear Donchian short (structural comparison only)
 
-The rejected candidate is #13 comment 6055348078 (`short_research/PREREG.md`, 2026-10-08). It failed 3 of its 4 preregistered criteria: 3x-funding robustness, concentration, and holdout > 0.
+The earlier candidate is #13 comment 6055348078 (`short_research/PREREG.md`, 2026-10-08), which was not accepted. This section compares **rule structure only**. No outcome of that candidate (per-symbol, per-period or aggregate) was used to design this contract, and none is cited.
 
-| | Rejected Donchian breakdown | `trend_ema_mom_short.v1` |
+| | Earlier Donchian breakdown | `trend_ema_mom_short.v1` |
 |---|---|---|
 | Trigger | close below the prior 20-bar low (price-level breakout) | EMA20 crosses below EMA50 (trend-state change); no breakout level |
 | Regime | **BTC-bear gate** (BTC 4h close < EMA200) required to enter | **per-symbol** filter: the symbol's own close < EMA200 and 7d and 30d returns < 0. No BTC gate; the BTC label is used only for reporting and B0 matching |
 | Exit | close above the prior 10-bar high | trend or momentum loss (EMA20 > EMA50, or either return >= 0), at the next open |
 | Stop / horizon | fixed 2x ATR14, no time cap | 2.5x ATR14, ceiled to the tick, gap-at-open; **180-bar cap** at the next open |
 | Universe | PIT volume filter, core8 | frozen static-40 list; CORE-10 / CORE-20 tiers reported separately |
-| Book | no portfolio cap (up to 8 open) | the registered book: max 4 lots, 3x gross, 1% actual-risk sizing, daily halt, mainnet lot rules |
-| Funding | real for BTC/ETH only; the rest used an ETH proxy | actual per-symbol funding at each funding time × the mark proxy, fail-closed; `funding_x2` stress row |
-| Concentration | checked after the fact (it failed) | LOSO / LOYO and neighbour-stability rows are **gating** EDGE-00 rows |
-| Holdout | 2025-2026 history (now **spent** for the breakdown family) | a **fresh forward** holdout (2026-10-19 → 2027-10-18) that nobody has seen |
+| Book | no portfolio cap | the registered book: max 4 lots, 3x gross, 1% actual-risk sizing, daily halt, mainnet lot rules |
+| Funding | real for BTC/ETH; an ETH proxy for the rest | actual per-symbol funding at each funding time × the mark proxy, fail-closed |
+| Parameters | its own choices | the exact sign-mirror of the registered `trend_ema_mom.v1` (§3) |
 
-**Why the differences matter.**
-- The Donchian rule fired on a single price-level break inside a BTC-bear window. Its edge then came from a few crash episodes (AVAX 61%, Apr–Jul 2022 105% of net R).
-- This rule needs a persistent, multi-horizon downtrend in the symbol itself. It also exits when that state ends, not on a fixed channel.
-- The concentration, funding and forward-holdout weaknesses that killed the Donchian candidate are written into this contract as gates, before any data is read.
-- None of these choices was made by looking at the Donchian results' per-symbol or per-period numbers. Only its published verdict and failure modes were used.
+**Evidence status.** The shared historical window (2021-01-04 → 2026-09-28) is **DEVELOPMENT-ONLY** for this family, whatever earlier research has or has not looked at. Development results can neither PROMOTE nor REJECT. **The fresh forward holdout (2026-10-19 → 2027-10-18) is the only untouched claim.**
+
+The gating rows (LOSO/LOYO, neighbour stability, `funding_x2`, the program Holm family) are the standard v1 EDGE-00 rows applied unchanged to the short side. They are not designed around any earlier result.
 
 ## 2. Economic rationale (general mechanisms only, no fitted numbers)
 
@@ -77,7 +74,15 @@ The book is run separately on its own 10,000 USDT, never pooled with STRAT-01.
   - anything below them is a counted refusal;
   - a non-positive or non-finite stop risk is refused.
 - **Lot rules:** the Binance **mainnet** pin, `data/exchange_rules_mainnet.json` (sha256 `a34ec711…0aa3`, PR #69). The M3 testnet anchor is never used.
-- **Liquidation:** not modelled as an exit (cross margin, gross <= 3x). It is reported as a diagnostic: the largest one-bar adverse excursion of any open short, plus any bar where book MTM equity would fall below 1/3 of gross notional. **Any such bar is a PARK flag.**
+- **Liquidation:** this is a **PARK-only diagnostic, never an exit** (Codex ruling). On every played 4h bar t with open shorts:
+  - Gross notional is `G_t = Σ_s q_s × high_s,t`.
+  - Worst-case equity is `W_t = wallet_t + Σ_s q_s × (entry_s − high_s,t)`. Here `wallet_t` is the realised wallet after the fees and funding booked up to t, and every open short is marked at its own bar high at the same time, ignoring stops.
+  - The bar is flagged when `W_t < G_t / 3` (worst-case equity below the 3x initial margin).
+  - Reported:
+    - the count of flagged bars;
+    - `min_t W_t / G_t`;
+    - the largest single-bar `(high − open) / open` of any open short.
+  - **Any flagged bar is a PARK flag for Codex.** It never changes an exit, a fill or a sizing decision.
 
 ## 5. Costs and stress rows
 
@@ -108,9 +113,22 @@ These are unchanged from v1:
 | | Definition | Pairing |
 |---|---|---|
 | B0 | 1,000 matched random **short** entries per trade. Each matches the trade's symbol, side, split and PIT regime label (BTC 4h close vs EMA200). Each uses the trade's realised hold capped at 180 (exit at the next open), the same ceiled gap-at-open stop, the same costs and the short funding sign. Invalid draws are counted. | episode |
-| B1 | Equal-weight **short** of the list members with data at the time, rebalanced each Monday 00:00 UTC, short funding sign, scaled to equal risk (1R = 1% of equity). | calendar-month blocks |
+| B1 | Equal-weight **perp short** basket of the list members; exact definition in §7.1. | calendar-month blocks |
 | B2 | 20-bar momentum **short**: short when close < close 20 bars earlier, cover when not. Same stop, cap, costs, sizing and book. | calendar-month blocks |
 | B3 | Cash (0 R); reduces to the expectancy row. | — |
+
+### 7.1 B1 exact definition (perp short benchmark, Codex ruling)
+
+B1 is a USD-M perpetual short. It has no spot borrow and no borrow fee, and it carries signed actual funding: it receives positive rates and pays negative ones. B1 runs its own book, starting at 10,000 USDT in each split.
+- **Rebalance times τ:** every Monday 00:00 UTC inside the split's decision range, plus the first 4h bar of that range.
+- **Members M_τ:** the frozen-list members of the tier with a closed 4h bar at τ, an ATR14 defined on the contiguous tail, and a bar opening at τ. N_τ = |M_τ|. With N_τ = 0, B1 is flat until the next τ.
+- **Target quantity per symbol:** with E_τ the B1 book's MTM equity at τ, set `q*_s = floor_step( (0.01 × E_τ / N_τ) / (2.5 × ATR14_s(τ)) )`. The whole basket thus risks 1% of equity across 2.5-ATR moves, the same risk unit as the candidate.
+- **Leverage cap:** if `Σ q*_s × close_s(τ) × 1.10 > 3 × E_τ`, every `q*_s` is multiplied by the common factor `3 × E_τ / Σ(...)` before flooring.
+- **Minimums:** a leg below min qty or min notional (checked on qty × fill, mainnet pin) is set to 0 and counted.
+- **Trades:** at the open of the bar starting at τ, each symbol trades only the difference `q*_s − q_s` (sell to add short, buy to reduce), taker, with adverse slip-v1. A member that leaves M_τ is fully covered.
+- **What B1 omits:** no stop, no time cap and no other exits. Funding is charged on the held quantity at each funding time; a missing mark makes that symbol INCOMPLETE, excluded with a count.
+- **Block result:** for each calendar month m, `B1_R(m) = (E_end(m) − E_start(m)) / (0.01 × E_start(m))`, from MTM equity at the month boundaries.
+- **Pairing:** with the candidate's block net R for the same month in the same split, via its book's MTM in the same units.
 
 The test is a one-sided paired sign-flip test with 10,000 permutations, Holm-adjusted over the program family (§8). Ordinary 95% CIs are reported beside it.
 
@@ -151,12 +169,12 @@ The test is a one-sided paired sign-flip test with 10,000 permutations, Holm-adj
    - the liquidation diagnostic.
    It comes with synthetic tests only (Evidence has pre-staged the adversarial cases).
 2. **Generalise `run_r4.validate_prereg` and `register`.** They currently hard-code `trend_ema_mom.v1` (family, variant names, 18 trials, M3 manifest). Against this draft they report exactly those 5 identity findings and nothing structural. They also need to compute the program-level Holm n across both family ledgers.
-3. **Point the R4 gate** (`r4_gate.json`) at this prereg only after Codex freezes it.
+3. **Move the frozen JSON** to `research_evidence/prereg/trend_ema_mom_short.v1.json` (and extend the committed-prereg LF test list then), and point the R4 gate at it, only after Codex freezes it.
 
-## 11. Open questions for Codex
+## 11. Codex rulings recorded (6112077638)
 
-1. **Program Holm n = 35** (this family plus STRAT-01) versus own-family n = 17: is the cross-family gating family the right control? It is the more conservative choice.
-2. **Holdout start 2026-10-19:** is it acceptable for this family to have a different forward window from STRAT-01's, or should both families share one later window?
-3. **Liquidation:** a diagnostic plus a PARK flag, or an explicit liquidation exit model?
-4. **B1 hold-short** ignores borrow (perps have none) but carries short funding. Is that analogue acceptable as the passive benchmark?
-5. **The LF test change:** the single test edit lists the new prereg file in `test_committed_prereg_artifacts_are_lf_in_every_checkout`. Is that acceptable, or should drafts live outside `research_evidence/prereg/` until frozen?
+1. **Multiplicity:** the program Holm family of n = 35 (this family's 17 plus STRAT-01's 18) is retained as the gating family. The own-family n of 17 is reported only.
+2. **Holdout:** the fresh forward holdout 2026-10-19T00:00Z → 2027-10-18T00:00Z is valid if registration lands before it. Otherwise this draft is void (§9).
+3. **B1:** a USD-M perp short benchmark with signed funding and no spot-borrow assumption, with exact sizing and rebalancing in §7.1.
+4. **Liquidation:** a PARK-only diagnostic (§4), not an exit model.
+5. **Draft location:** the draft JSON is non-canonical (`docs/newcore/research/drafts/`). Only a Codex-frozen prereg moves to `research_evidence/prereg/`, immediately before registration. The committed-prereg test list is unchanged.
