@@ -795,11 +795,57 @@ def test_the_real_environment_derives_from_committed_files_only(tmp_path):
     assert env['identity']['universe'] == u['digest'] and env['identity']['classification'] is None
     assert 'SLIP-C-UNFITTED' in env['cost_labels'] and not os.path.exists(tmp_path / 'no-store')
     PG.check_identity(env['identity'])
-    rules = env['rules']                                                 # the pinned M3 rules snapshot, sha-checked
+    rules = env['rules']                                                 # the pinned MAINNET snapshot, sha-checked
     assert env['run_config']['rules'] == rules and env['run_config']['book'] == PR.BOOK
-    assert set(rules) <= set(u['core_20']) and all(set(r) == {'tick', 'step', 'min_qty', 'min_notional'}
-                                                    for r in rules.values())
-    missing = sorted(set(u['core_20']) - set(rules))                    # fail closed: such a tier refuses to run
-    if missing:
-        with pytest.raises(PR.PitRunError, match='no pinned exchange rule'):
-            PR.evaluate_tier(env, 'CORE-20', None)
+    assert (env['run_config']['rules_env'], env['run_config']['rules_sha256']) == ('mainnet', PR.RULES_SHA256)
+    assert list(rules) == u['core_20'] and all(set(r) == set(PR.RULES_FIELDS) for r in rules.values())
+    assert set(env['tiers']['CORE-10']) <= set(rules)                    # both tiers complete: no partial tier
+
+
+# ------------------------------------------------------------------ the R4b exchange-rules pin (mainnet, never mixed)
+def _rules_bytes(path):
+    with open(os.path.join(ROOT, path), 'rb') as f:
+        return f.read()
+
+
+def test_the_committed_mainnet_rules_match_the_pin_and_cover_the_static_40():
+    raw = _rules_bytes(PR.RULES_PATH)
+    assert hashlib.sha256(raw).hexdigest() == PR.RULES_SHA256
+    snap = json.loads(raw)
+    assert (snap['environment'], snap['provenance'], snap['verified']) == ('mainnet', 'direct_fetch', True)
+    assert snap['source_url'] == 'https://fapi.binance.com/fapi/v1/exchangeInfo' and len(snap['raw_sha256']) == 64
+    assert snap['fetched_at'].endswith('Z') and snap['fetched_at_cairo'].endswith(('+02:00', '+03:00'))
+    g = json.loads(G._load(ROOT, G.GATE))
+    u = json.loads(G._load(ROOT, g['universe']['path']))
+    every = [x['symbol'] if isinstance(x, dict) else x for x in u['symbols']]
+    assert len(every) == 40 and PR.load_rules(raw, every).keys() == set(every)
+
+
+def test_the_m3_testnet_anchor_is_unchanged_and_never_sizes_the_book():
+    import m3_repro as X
+    raw = _rules_bytes('data/exchange_rules_testnet.json')
+    assert hashlib.sha256(raw).hexdigest() == X.RULES_SHA256 != PR.RULES_SHA256
+    assert json.loads(raw)['environment'] == 'testnet'
+    with pytest.raises(PR.PitRunError, match='no testnet/mainnet mixing'):
+        PR.load_rules(raw, ['BTCUSDT'])
+    with pytest.raises(PR.PitRunError, match='no testnet/mainnet mixing'):
+        PR.load_rules(raw, ['BTCUSDT'], pin=X.RULES_SHA256)               # even if someone re-pinned it
+
+
+def test_the_rules_loader_fails_closed_on_tamper_environment_or_a_missing_symbol():
+    raw = _rules_bytes(PR.RULES_PATH)
+    snap = json.loads(raw)
+    with pytest.raises(PR.PitRunError, match='bytes differ'):
+        PR.load_rules(raw + b' ', ['BTCUSDT'])
+    for key, val in (('environment', 'testnet'), ('provenance', 'file_import'), ('verified', False),
+                     ('source_url', 'https://testnet.binancefuture.com/fapi/v1/exchangeInfo')):
+        bad = json.dumps(dict(snap, **{key: val})).encode()
+        with pytest.raises(PR.PitRunError, match='mainnet'):
+            PR.load_rules(bad, ['BTCUSDT'], pin=hashlib.sha256(bad).hexdigest())
+    with pytest.raises(PR.PitRunError, match=r"no pinned mainnet exchange rule for \['NOPEUSDT'\]"):
+        PR.load_rules(raw, ['BTCUSDT', 'NOPEUSDT'])
+    part = json.loads(raw)
+    del part['symbols']['BTCUSDT']['min_notional']
+    part = json.dumps(part).encode()
+    with pytest.raises(PR.PitRunError, match='BTCUSDT'):
+        PR.load_rules(part, ['BTCUSDT'], pin=hashlib.sha256(part).hexdigest())
