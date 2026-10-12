@@ -251,6 +251,22 @@ two isolated simulated accounts survive independently. Wave D runtime promotion 
 
 #### Owner-approved strategy scouting — 12 October 2026
 
+**Horizontal-first constraint:** the binding owner contract's horizontal-first rule applies to this queue.
+The 12 October audit adds the bounded corrections below; it does not authorize a broad legacy rewrite or
+delay independent strategy contract preparation. The owner-requested pause still applies to agent execution.
+
+| Bounded correction | Minimum proof / return to the queue |
+|---|---|
+| Research missing-data handling (audit P1-5) before further affected evaluations | Preserve prior membership, fills and capital when a future gap is injected; distinguish funding gaps, missing bars, delisting and split censoring. Never rerun the historical portfolio after globally deleting a later-incomplete symbol. Apply the versioned policy or mark evidence incomplete. Resume the short/range/exit evaluation queue after independent acceptance. |
+| Replacement runtime exposure and reconciliation (P1-1/P1-2) | Unique persisted lot IDs, duplicate handling, and only proven executed quantities/prices; cover same-time entries and manual reduction plus missing/cancelled/partially filled stops. Patch legacy only when required by an active execution/test path. |
+| Venue and accounting parity (P1-3/P1-6/P2-6) | Divergent signal/venue-price fixture, unified fill parsing, target versus executed risk, and shared capital/exit timing across runtime and simulation. Keep implementation within the immediate Binance path. |
+| Unknown data and protection scheduling (P1-7/P2-1/P2-2) | Reject invalid snapshots, explicit enforced-unknown behavior, and a bounded protection/reconciliation deadline under delayed cleanup. Preserve the minimum testnet floor without expanding into exhaustive hardening. |
+| Evidence reconciliation | Compare the audit's failed replay with passing CI using identical inputs/environment; do not loosen tolerance. Registration is ledger/hash based: the current preregistration hash matches its ledger despite a stale UNREGISTERED label. Preserve original evidence and append corrections; candidate holdout requirements do not suspend unrelated engine/testnet work. |
+
+These are audit triage decisions, not a claim that every finding has been independently reproduced.
+Use targeted proofs while iterating and the required complete gate on the final candidate. Build implements;
+Cowork independently verifies; Codex accepts and returns the queue to missing strategy/runtime coverage.
+
 The [source register and candidate rules](newcore/research/STRATEGY_SCOUTING_2026-10-12.md)
 are incorporated into this roadmap. They refine existing Wave D work rather than create a second engine.
 Research IDs below are aliases for scheduling; they do not replace existing STR/STRAT contracts.

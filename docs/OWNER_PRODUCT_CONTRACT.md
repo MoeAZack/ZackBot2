@@ -12,6 +12,23 @@ manual control.
 
 ## 0. Binding delivery priority and staged safety
 
+### Horizontal-first rule — reaffirmed by owner, 12 October 2026
+
+This rule binds Codex, Claude Code and Cowork. Build useful breadth across the native Binance engine:
+longs, shorts, range entries, exits, bounded risk and shared accounting, exercised together on testnet.
+Do not perfect one subsystem while other essential paths remain unimplemented. "Vertical slice" below
+means the minimum connected signal-to-recorded-outcome path, not permission for exhaustive depth.
+
+A defect may interrupt the queue only when it invalidates the immediate execution or research evidence.
+Give that interruption a bounded fix, a focused regression proof and an explicit return to strategy coverage.
+Preserve the narrow pre-testnet safety floor and required acceptance gates. Defer speculative edge matrices,
+broad legacy cleanup, complex regime/ML models, optional platforms and polish. Research candidate contracts
+may progress independently while an affected runner is repaired; never use invalid results for acceptance.
+
+Every handoff must state which missing engine/strategy path it advances, the minimal completion proof,
+and what adjacent depth is deferred. No lane may expand an audit into a new program without a Codex scope ruling.
+Progress means executable coverage and trustworthy evidence, not document, test or strategy counts alone.
+
 The urgent product priority is the **native Binance engine and its strategies**, not a security program, polished final
 UI or broad platform architecture. Build the smallest trustworthy vertical slice, put it on Binance Futures testnet,
 observe what works and fails, and improve it from evidence. Do not hold the first useful testnet engine behind optional
