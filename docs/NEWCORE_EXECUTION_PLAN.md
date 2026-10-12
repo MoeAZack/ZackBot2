@@ -92,17 +92,43 @@ states `ROADMAP FIT:` and `DEFERRED:` so multi-agent capacity accelerates the pl
 
 ### Standard ticket loop
 
-1. Codex publishes scope, dependencies, acceptance contract and exact base SHA.
-2. Claude implements on one non-protected branch and runs focused tests.
-3. Claude posts `READY FOR CODEX` and `HANDOFF TO COWORK` with the exact SHA.
-4. Cowork validates independent claims and posts exact-head evidence.
-5. Codex reviews the diff, reproduces important risks and returns prioritized findings.
-6. Revisions use fast/focused checks. The expensive full suite runs once on the accepted exact head.
-7. Codex advances `full-ready`, verifies protection, merges and assigns the next ticket.
-8. Every handoff or review marker ends with a `LANES:` line naming the current Build, Evidence and Integration work. An
-   idle lane must name its next task.
+1. On owner resumption, Codex publishes one bounded milestone: objective, base SHA, included files/behaviors,
+   dependencies, minimal acceptance proofs, exclusions and expected completion/checkpoint window.
+2. Claude owns its implementation branch through completion, making routine implementation choices and running
+   targeted tests without per-step approvals. Use subagents only for useful independent tasks within token limits.
+3. Cowork performs specifically assigned independent experiments when useful. Three continuously active agents
+   are not required. Codex must not duplicate Claude's implementation or repeatedly review unfinished changes.
+4. Claude hands off one package: exact SHA, completed scope, commands/results with evidence links, limitations,
+   outstanding findings and next step. Sign the comment and add one #13 pointer. LANES may honestly say idle/paused.
+5. Codex independently reviews decision-critical logic and evidence, using Cowork results where available, and
+   returns one consolidated prioritized fix list. Report a confirmed invalidating defect immediately at any stage.
+6. Claude completes the bounded revision; use focused delta checks. Run the required full gate on the final head,
+   once unless a change/failure invalidates it. No self-acceptance and no weaker acceptance thresholds.
+7. Codex accepts/merges after required evidence and gates, then releases the next ready milestone. Explicitly
+   preauthorized independent preparation may proceed while review runs; dependent evaluation waits for acceptance.
+8. Owner updates are short: completed / running / blocked / next, at milestone changes or meaningful findings.
+   One wait notice per unchanged cause. No duplicate polling posts or invented work to keep lanes busy.
 
-GitHub commits and PR comments are the message bus. Five-minute polling is only a connection fallback.
+GitHub commits and PR comments remain the shared record. Five-minute polling is a fallback for expected handoffs;
+known longer-running jobs use their realistic window/completion signal. Investigate missed handoffs, not silence
+during declared productive work. These rules supersede older per-step/all-lanes-busy rules below.
+
+#### First milestone when the owner says ready
+
+**M1 — restore trustworthy research accounting.** Reconcile with current repository state before assigning the
+base. Claude owns the smallest correction to the future-conditioned symbol exclusion in the research runner,
+with causal missing-data policies and targeted regression evidence. Preserve earlier portfolio decisions when
+a later gap is introduced. Treat funding gaps, missing bars, delistings and split boundaries explicitly; an
+unaccountable run must be incomplete rather than silently rerun with a different historical universe.
+Preserve original reports and ledger history. Any frozen-policy amendment requires an explicit versioned decision;
+routine implementation within the approved contract does not. Acceptance: synthetic causal-prefix proof,
+cash/exposure/accounting consistency, independent review and required final gates. No holdout opening or new
+market-data strategy evaluation is released by M1. Return next to STRAT-02 short coverage and range/exit contracts.
+
+Cowork can independently challenge M1's missing-data fixtures when available; Codex supplies acceptance and
+reconciles the audit replay/registration claims. Prepare range/exit contracts only if independent of M1's evolving
+accounting. Optional ML, platforms, broad legacy repairs and documentation expansion stay outside this milestone.
+The owner pause persists until an explicit ready; updating this plan does not restart any worker or scheduler.
 
 ### Progress acceleration rules
 

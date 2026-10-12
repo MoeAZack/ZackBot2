@@ -98,6 +98,20 @@ read more broadly. Codex must stop and redirect drift at proposal/handoff time r
 
 ### Roadmap and multi-agent authority
 
+**Owner amendment — 12 October 2026: milestone-based collaboration.** On the owner's explicit "ready",
+Claude Code owns one bounded implementation milestone through completion. Codex defines scope and acceptance
+up front, then independently reviews the completed milestone and integrates it. Cowork receives specific
+independent validation/research assignments where useful; it is not a mandatory approval hop for every edit.
+Routine internal steps do not wait for Codex. One implementation owner remains responsible for unfinished code.
+Review occurs before dependent evidence is accepted, not after unchecked assumptions accumulate across milestones.
+
+This amendment supersedes older instructions requiring all three lanes to stay busy, per-step handoffs,
+five-minute agent activity or repeated approval messages. Five-minute checks are a fallback for expected handoffs,
+not a requirement to interrupt productive work. Quiet work within a declared completion window is not a stall.
+Confirmed defects invalidating current execution/evidence are reported immediately; ordinary findings are
+consolidated into the milestone review. Mainnet boundaries, horizontal-first delivery, independent acceptance
+and mandatory final checks remain binding. See the execution plan for the restart milestone and handoff format.
+
 The owner is the ultimate product authority. Under this contract, **Codex is the roadmap, prioritization, scope and
 integration authority**. Codex owns the active `NOW / NEXT / LATER / POST-LIVE` queue, acceptance sequence, parallel-work
 boundaries, requirement traceability and protected-branch merge decision.
