@@ -2,6 +2,14 @@
 
 *Plan v4, 2026-10-05 (Cairo).*
 
+**Owner-approved strategy research addition — 12 October 2026 (Cairo):** finish STRAT-02 shorts,
+then range reversion and exit comparisons, followed by two-sided breakouts, trend pullbacks,
+cost-aware scalping and range baskets. Simple regime diagnostics precede optional Markov/HMM
+experiments. See the [execution order](docs/NEWCORE_EXECUTION_PLAN.md#owner-approved-strategy-scouting--12-october-2026)
+and [research/source register](docs/newcore/research/STRATEGY_SCOUTING_2026-10-12.md).
+These are research priorities, not validated strategies. The owner-requested Claude bridge pause
+remains in effect until the owner says ready.
+
 > **Execution control:** the replacement-first build order, three-agent responsibilities, bug/scouting interruption rules
 > and current next steps are maintained in [`docs/NEWCORE_EXECUTION_PLAN.md`](docs/NEWCORE_EXECUTION_PLAN.md). This file
 > remains the long-term product vision; the execution plan controls the near-term sequence when the two differ.

@@ -249,6 +249,36 @@ two isolated simulated accounts survive independently. Wave D runtime promotion 
 
 ### Wave D — engine strategies, regimes and risk controls
 
+#### Owner-approved strategy scouting — 12 October 2026
+
+The [source register and candidate rules](newcore/research/STRATEGY_SCOUTING_2026-10-12.md)
+are incorporated into this roadmap. They refine existing Wave D work rather than create a second engine.
+Research IDs below are aliases for scheduling; they do not replace existing STR/STRAT contracts.
+
+| Order after the owner resumes work | Scope / existing roadmap mapping |
+|---|---|
+| 1 | Finish frozen STRAT-02 short-runner implementation and independent synthetic validation, then its existing registration/evaluation gates. |
+| 2 | SCOUT-RANGE-01: long/short range reversion under STR-02; SCOUT-EXIT-01: compare whole-position TP, partial TP plus runner, and trailing/time exits using identical entries and initial risk. Contract preparation may run independently in parallel. |
+| 3 | SCOUT-BREAKOUT-01: simple two-sided channel/volatility breakout; SCOUT-PULLBACK-01 follows as a trend-family candidate only if it adds distinct value. |
+| 4 | SCOUT-SCALP-01 under STR-03: quick-bank exits with executable costs and holding limits; SCOUT-BASKET-01 follows only after the base strategy has evidence. |
+| 5 | SCOUT-REGIME-01 under REG-01: descriptive per-asset direction, volatility and uncertainty first; Markov/HMM challenger later after simple-filter comparisons. Funding/crowding context is later research. |
+
+Keep CORE-10 first, CORE-20 next and the approved static-40 universe explicitly survivor-biased.
+Scouting has not validated profitability. Freeze rules and trial budgets before evaluation; preserve STRAT-01 PARK
+and all existing sealed holdouts. Exit/filter changes create new versions. Measure net expectancy, drawdown,
+profit giveback, opportunity cost and feasibility at $500 master / hypothetical $100-$200 follower allocations.
+Follower simulation does not promise copy execution. Shorter holding time does not automatically raise size.
+
+Range baskets account for realized and unrealized P&L, fees and funding, with a peak-giveback rule, loss ceiling,
+range invalidation and individual protection. Bounded DCA is a separate optional experiment, initially off.
+The UI eventually exposes regime OFF/diagnostic/automatic modes, direction/risk/holding controls and clear
+experimental versus validated status, without altering frozen policies silently.
+
+Build owns candidate implementation; Cowork independently validates; Codex owns sequencing and acceptance.
+The owner-requested automation pause remains active until the owner says ready. This documentation change
+does not release runs or restart agents. Gold stays a separate later group; stocks, other venues, broad macro
+ingestion and standalone ML trading remain deferred under the existing owner priorities.
+
 This is the primary product wave. Optional application features remain behind it.
 
 #### Strategy research starts in parallel before Wave D implementation
