@@ -1,5 +1,13 @@
 # ZackBot owner overview
 
+> **Current coordination — 12 October 2026 (Cairo):** agents/bridge are paused until the owner says ready.
+> PR #72 contains the owner-approved milestone workflow, horizontal-first rule, strategy queue and audit triage.
+> First milestone on resumption: correct research missing-data accounting with focused independent proof;
+> then return to short/range/exit coverage. Runtime/account status has not been rechecked for this update.
+> See [repository cleanup record](reviews/REPOSITORY_CLEANUP_2026-10-12.md) for parked and historical PRs.
+>
+> **Everything below is a historical 8 October snapshot, not current runtime status or the active work queue.**
+
 > **Canonical owner requirements:** [`OWNER_PRODUCT_CONTRACT.md`](OWNER_PRODUCT_CONTRACT.md) is the binding feature,
 > settings and final-UI contract. Every affected implementation and acceptance ticket must trace to it so requirements
 > are not reconstructed from chat history.
