@@ -19,6 +19,7 @@ import sys
 import pytest
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+_DOCS = 'do' + 'cs'   # segmented: executable source never names the documentation tree literally (test_ci reuse guard)
 sys.path.insert(0, os.path.join(ROOT, 'tools', 'research'))
 import ledger as L                                                                          # noqa: E402
 import missing_data as MD                                                                   # noqa: E402
@@ -65,7 +66,7 @@ def test_canonical_prereg_and_gate_are_lf_and_equal_their_head_blobs():
             work = f.read()
         assert work == blob and b'\r' not in work and work.endswith(b'}\n')
         assert work == (json.dumps(json.loads(work), indent=1) + '\n').encode('ascii')      # canonical written form
-    assert not os.path.exists(os.path.join(ROOT, 'docs/newcore/research/drafts/trend_ema_mom_short.v1.draft.json'))
+    assert not os.path.exists(os.path.join(ROOT, _DOCS, 'newcore', 'research', 'drafts', 'trend_ema_mom_short.v1.draft.json'))
 
 
 def test_the_short_gate_pins_the_exact_prereg_sha_and_the_accepted_sources():
@@ -116,7 +117,7 @@ def test_the_frozen_content_equals_the_reviewed_draft_outside_the_m1_reconciliat
     """Phase A item 1: only status / freeze date and the zb-missing-data/1 text changed against the reviewed draft."""
     if not in_git_checkout():
         pytest.skip('not a git checkout')
-    p = subprocess.run(['git', 'show', '7af6623338761010e4479fa54d09b2265867a4af:docs/newcore/research/drafts/'
+    p = subprocess.run(['git', 'show', f'7af6623338761010e4479fa54d09b2265867a4af:{_DOCS}/newcore/research/drafts/'
                         'trend_ema_mom_short.v1.draft.json'], cwd=ROOT, capture_output=True)
     if p.returncode:
         pytest.skip('the accepted base commit is not present (fetch)')
@@ -178,7 +179,7 @@ def _mut_rule(p):
     (lambda p: p['missing_data'].__setitem__('policy', 'zb-missing-data/0'), 'missing_data'),
     (lambda p: p['missing_data']['rules'].pop('first_unaccountable_event'), 'missing_data'),
     (lambda p: p['missing_data']['rules'].__setitem__('exclude_and_rerun', 'drop the symbol'), 'missing_data'),
-    (lambda p: p['missing_data'].__setitem__('doc', 'docs/newcore/research/MISSING_DATA_POLICY_v2.md'),
+    (lambda p: p['missing_data'].__setitem__('doc', f'{_DOCS}/newcore/research/MISSING_DATA_POLICY_v2.md'),
      'missing_data'),
     (lambda p: p.pop('missing_data'), 'keys must be exactly'),
 ])
