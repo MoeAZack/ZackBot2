@@ -55,6 +55,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import costs as C                                                                           # noqa: E402
 import manifest as M                                                                        # noqa: E402
+import missing_data as MD                                                                   # noqa: E402
 import sandbox as SB                                                                        # noqa: E402
 
 FORMAT = 'zb-research-run/2'
@@ -69,7 +70,8 @@ EVAL_KEYS = {'files', 'config', 'entrypoint', 'schedule'}
 ENTRY_KEYS = {'path', 'function', 'summary'}
 # Every evaluation runs on these research modules; a run must hash them along with its own strategy files.
 CORE_EVAL_FILES = ('feasibility.py', 'tools/research/costs.py', 'tools/research/intrabar.py',
-                   'tools/research/ledger.py', 'tools/research/manifest.py', 'tools/research/pit.py',
+                   'tools/research/ledger.py', 'tools/research/manifest.py', 'tools/research/missing_data.py',
+                   'tools/research/pit.py',
                    'tools/research/report.py', 'tools/research/sandbox.py', 'tools/research/splits.py',
                    'tools/research/universe.py')
 # The research path is stdlib-only: the canonical third-party dependency set is empty, and any distribution named here
@@ -502,20 +504,18 @@ def check_attestation(env: dict, att: dict, ledger_path: str) -> str:
     return digest
 
 
+MD_KEYS = ('status', 'missing_data_policy')         # the explicit missing-data declaration of a results payload
+
+
 def refuse_incomplete(obj, where: str = 'results') -> None:
-    """Missing-data policy (zb-missing-data/1): a payload carrying any status other than COMPLETE, incomplete rows or
-    excluded symbols anywhere is refused before anything is sealed (fail closed; the report schema has no such
-    fields)."""
-    if isinstance(obj, dict):
-        if 'status' in obj and obj['status'] != 'COMPLETE':
-            raise ReportError(f'{where}: status {obj["status"]!r} is not sealable evidence (INCOMPLETE fails closed)')
-        if obj.get('incomplete') or obj.get('excluded_symbols'):
-            raise ReportError(f'{where}: incomplete rows / excluded symbols are never sealable evidence')
-        for k, v in obj.items():
-            refuse_incomplete(v, f'{where}.{k}')
-    elif isinstance(obj, list):
-        for i, v in enumerate(obj):
-            refuse_incomplete(v, f'{where}[{i}]')
+    """Missing-data policy (zb-missing-data/1), the SAME predicate as the runner (`missing_data.check_tree`): the
+    payload must carry an explicit top-level status COMPLETE; a missing status, INCOMPLETE, or a COMPLETE with a
+    censor / incomplete rows / excluded symbols / INCOMPLETE verdict or counts - at the top or in any nested dict - is
+    refused before anything is sealed (fail closed)."""
+    try:
+        MD.check_tree(obj, where)
+    except MD.MissingDataError as e:
+        raise ReportError(f'{e} - never sealable evidence (INCOMPLETE fails closed)')
 
 
 def make_report(env: dict, results: dict, attestation: dict, ledger_path: str) -> dict:
@@ -523,6 +523,8 @@ def make_report(env: dict, results: dict, attestation: dict, ledger_path: str) -
     The exact `results` payload must be the one the frozen summary function produced in the sandbox (its digest is
     in the attestation)."""
     refuse_incomplete(results)
+    if results.get('missing_data_policy') != MD.POLICY:
+        raise ReportError(f'results: missing-data policy must be {MD.POLICY!r} (an unknown policy fails closed)')
     if env.get('run_digest') != run_digest(env['run']):
         raise ReportError('envelope run_digest does not match its run block')
     att_digest = check_attestation(env, attestation, ledger_path)
@@ -530,9 +532,10 @@ def make_report(env: dict, results: dict, attestation: dict, ledger_path: str) -
                             'the process sealing the report')
     if bad:
         raise ReportError('; '.join(bad))
-    if not isinstance(results, dict) or not results or set(results) - set(SIDES):
-        raise ReportError(f'results must be keyed by side {SIDES}')
-    for side, rows in results.items():
+    sides = {k: v for k, v in results.items() if k not in MD_KEYS}
+    if not sides or set(sides) - set(SIDES):
+        raise ReportError(f'results must be keyed by side {SIDES} (plus {sorted(MD_KEYS)})')
+    for side, rows in sides.items():
         if not isinstance(rows, dict) or set(rows) != set(C.STRESS):
             raise ReportError(f'{side}: every stress row {sorted(C.STRESS)} is always reported')
         for row, secs in rows.items():

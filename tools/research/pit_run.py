@@ -78,6 +78,7 @@ import ledger as L                                                              
 import m3_eval as E                                                                         # noqa: E402
 import m3_repro as X                                                                        # noqa: E402
 import manifest as M                                                                        # noqa: E402
+import missing_data as MD                                                                   # noqa: E402
 import pit as P                                                                             # noqa: E402
 import pit_eval as PE                                                                       # noqa: E402
 import progress as PG                                                                       # noqa: E402
@@ -141,13 +142,12 @@ class Incomplete(Exception):
 # docs/newcore/research/MISSING_DATA_POLICY_v1.md (Codex M1 release 6153717648). One causal book pass per row; the
 # FIRST unaccountable event halts the row at the last fully accounted cycle (state restored, nothing forward-filled,
 # nothing re-run without a symbol); the row and every aggregate holding it are INCOMPLETE and never evidence.
-POLICY = 'zb-missing-data/1'
-COMPLETE, INCOMPLETE = 'COMPLETE', 'INCOMPLETE'
+POLICY, COMPLETE, INCOMPLETE = MD.POLICY, MD.COMPLETE, MD.INCOMPLETE
 GAP_CLASS = {'incomplete.gap': 'missing_bar', 'incomplete.slip_history': 'missing_bar',
              'incomplete.delisted': 'delisting', 'incomplete.funding': 'funding_rate_gap',
              'incomplete.funding_mark': 'funding_mark_gap', 'incomplete.split_end': 'split_censoring'}
 HALTED = 'incomplete.book_halt'                    # an open lot stopped only because another symbol halted the row
-PHASE_RANK = {'bar': 0, 'exit': 1, 'next_open': 2, 'fill': 2, 'funding': 3}   # event order inside one cycle
+PHASE_RANK = {'bar': 0, 'exit': 1, 'next_open': 2, 'fill': 2, 'funding': 3, 'decision': 4}   # in-cycle order
 
 
 class _Halt(Exception):
@@ -165,21 +165,25 @@ def gap_reason(x, t: int) -> str:
 
 
 def require_complete(doc, what: str = 'result') -> None:
-    """Fail closed unless `doc` is explicitly COMPLETE: a missing status, INCOMPLETE, or a COMPLETE that still
-    carries incomplete rows / excluded symbols (a contradiction) is refused. Every evidence consumer calls this."""
-    if not isinstance(doc, dict) or 'status' not in doc:
-        raise PitRunError(f'{what}: no explicit COMPLETE / INCOMPLETE status (fail closed)')
-    rows = doc.get('incomplete') or []
-    if any(r.get('secondary') for r in rows) and not any(r.get('secondary') is False for r in rows):
-        raise PitRunError(f'{what}: halted lots without a primary cause row (contradiction, fail closed)')
-    if doc['status'] != COMPLETE:
-        raise PitRunError(f'{what}: status {doc["status"]!r} is not evidence (missing-data policy {POLICY})')
-    if (rows or doc.get('excluded_symbols') or doc.get('verdict') == INCOMPLETE or doc.get('incomplete_rows')
-            or doc.get('censor')):
-        raise PitRunError(f'{what}: COMPLETE contradicts its incomplete rows / excluded symbols (fail closed)')
-    for k, v in (doc.get('rows') or {}).items():
-        if isinstance(v, dict):
-            require_complete(v, f'{what} row {k}')
+    """Fail closed unless `doc` is explicitly COMPLETE (the shared predicate `missing_data.check`: a missing status,
+    INCOMPLETE, a COMPLETE still carrying incomplete rows / excluded symbols / a censor, or secondary rows without a
+    primary are refused). Every evidence consumer uses this same predicate."""
+    try:
+        MD.check(doc, what)
+    except MD.MissingDataError as e:
+        raise PitRunError(str(e))
+
+
+def _decision_inputs(x, t: int):
+    """None when a SCHEDULED decision of symbol `x` at t (B1 long Monday, B1 short rebalance) has its exact input
+    window: the bar closing at t and the T.WINDOW-bar signal read behind it, from the series start on (bars before
+    the first one are warm-up, never missing). Else the primary reason: a missing decision candle / a hole inside
+    the read changes membership, weights or the weekly schedule, so it is unaccountable, never a silent skip."""
+    if not x.avail or x.avail[0] > t:
+        return None                                     # not listed yet: no decision input exists
+    if x.rec.get(t) is None:
+        return gap_reason(x, t)
+    return None if x.missing_in(t - (T.WINDOW - 1) * TF, t) is None else 'incomplete.gap'
 
 
 def canon(obj) -> bytes:
@@ -266,7 +270,7 @@ class Sym:
     def __init__(self, s):
         self.s, self.bars, self.avail, self.rec = s, [], [], {}
         self.fund, self.mark = [], {}
-        self._bps, self._ft = {}, None
+        self._bps, self._ft, self._holes = {}, None, None
 
     def add(self, t, rec):
         if 'b' in rec:
@@ -278,18 +282,39 @@ class Sym:
             self.fund.append(P.Funding(tm, rate, ih, tm))
             self.mark[tm] = mk
 
+    def missing_in(self, lo, hi):
+        """The first bar-close time in the exact scheduled window [lo, hi] (on the bar grid) with no bar although the
+        series had started (a hole) or had already ended; None = exactly covered (times before the first bar are
+        warm-up, never missing)."""
+        if not self.avail or hi < self.avail[0]:
+            return None
+        if self._holes is None:
+            have = set(self.avail)
+            self._holes = [g for g in range(self.avail[0] + TF, self.avail[-1], TF) if g not in have]
+        k = bisect.bisect_left(self._holes, lo)
+        if k < len(self._holes) and self._holes[k] <= hi:
+            return self._holes[k]
+        return max(lo, self.avail[-1] + TF) if hi > self.avail[-1] else None
+
     def bps(self, at_ms, vol, c):
-        """slip-v1 bps from the bars closed at or before `at_ms` (TR-SMA14: last 15; Wilder: the read window)."""
+        """slip-v1 bps from the EXACT scheduled lookback closing at `at_ms` (TR-SMA14: 15 bars; Wilder: the read
+        window). A hole inside it is unaccountable (`incomplete.gap`; never an older bar substituted); too little
+        history from the series start is `incomplete.slip_history`."""
         key = (at_ms, vol)
         if key not in self._bps:
-            k = bisect.bisect_right(self.avail, at_ms)
             n = C.SLIP_BARS if vol == C.TR_SMA14 else T.WINDOW
-            try:
-                self._bps[key] = C.slip_bps(self.bars[max(0, k - n):k], c, vol)
-            except C.CostError:
-                self._bps[key] = None
-        if self._bps[key] is None:
-            raise Incomplete('incomplete.slip_history')
+            lo = at_ms - (n - 1) * TF
+            miss = self.missing_in(lo, at_ms)
+            if miss is not None:
+                self._bps[key] = 'incomplete.gap' if miss <= self.avail[-1] else 'incomplete.delisted'
+            else:
+                try:
+                    self._bps[key] = C.slip_bps(self.bars[bisect.bisect_left(self.avail, lo):
+                                                          bisect.bisect_right(self.avail, at_ms)], c, vol)
+                except C.CostError:
+                    self._bps[key] = 'incomplete.slip_history'
+        if isinstance(self._bps[key], str):
+            raise Incomplete(self._bps[key])
         return self._bps[key]
 
     def covered(self, entry_ms, end_ms):
@@ -666,7 +691,9 @@ def run_book(tape, cfg: dict, symbols, *, first: int, last: int, hi: int, slip_c
                 if short:
                     try:
                         fill = C.fill_price(rec[s]['b'][0], 'sell', x.bps(bo, scen.vol, slip_c), scen, tick=tick(s))
-                    except Incomplete:
+                    except Incomplete as e:
+                        if e.reason != 'incomplete.slip_history':       # a hole in the exact lookback
+                            raise _Halt(s, e.reason, bo, 'fill')
                         refusals['entry_no_slip_history'] += 1
                         continue
                     q, stop, why = size_short(snapshot, fill, dist, ref, notional, rule, book)
@@ -681,7 +708,9 @@ def run_book(tape, cfg: dict, symbols, *, first: int, last: int, hi: int, slip_c
                     continue
                 try:
                     fill = C.fill_price(rec[s]['b'][0], 'buy', x.bps(bo, scen.vol, slip_c), scen, tick=tick(s))
-                except Incomplete:
+                except Incomplete as e:
+                    if e.reason != 'incomplete.slip_history':           # a hole in the exact lookback
+                        raise _Halt(s, e.reason, bo, 'fill')
                     refusals['entry_no_slip_history'] += 1
                     continue
                 # size from the ACTUAL per-unit stop risk: the adverse tick-rounded fill and the tick-floored stop
@@ -951,11 +980,14 @@ def account_unit(outputs, cfg: dict, *, first: int, last: int, hi: int, slip_c: 
         for t in times:
             try:
                 rec = x.rec.get(t)
+                sched = cfg['kind'] == 'b1' and first <= t <= last and _is_monday_open(t)
                 if rec is None:
                     if lot is not None:
                         raise _Halt(s, gap_reason(x, t), t, 'bar')
                     if pend_entry is not None:
                         raise _Halt(s, gap_reason(x, t), t, 'next_open')
+                    if sched and _decision_inputs(x, t) is not None:   # the scheduled Monday decision candle
+                        raise _Halt(s, gap_reason(x, t), t, 'decision')
                     pend_exit = None
                     continue
                 o, h, lo, c = rec['b']
@@ -972,7 +1004,9 @@ def account_unit(outputs, cfg: dict, *, first: int, last: int, hi: int, slip_c: 
                     pend_entry = None
                     try:
                         fill = C.fill_price(o, 'buy', x.bps(bo, BASE.vol, slip_c), BASE)
-                    except Incomplete:
+                    except Incomplete as e:
+                        if e.reason != 'incomplete.slip_history':       # a hole in the exact lookback
+                            raise _Halt(s, e.reason, bo, 'fill')
                         sym_ref.append((t, 'entry_no_slip_history'))
                         fill = None
                     if fill is not None and cfg['stop'] and fill - dist <= 0:
@@ -995,6 +1029,8 @@ def account_unit(outputs, cfg: dict, *, first: int, last: int, hi: int, slip_c: 
                         lot = None
                     else:
                         lot['hi'], lot['lo'] = max(lot['hi'], h), min(lot['lo'], lo)
+                if sched and lot is None and _decision_inputs(x, t) is not None:   # a hole in its exact inputs
+                    raise _Halt(s, _decision_inputs(x, t), t, 'decision')
                 le, lx, dist = _signal(cfg, x, rec, t)
                 if lx and lot is not None:
                     pend_exit = t
@@ -1062,7 +1098,8 @@ def b1_short_book(outputs, *, symbols, first: int, last: int, hi: int, slip_c: f
       * tau = every Monday 00:00 UTC inside the decision range [first, last] plus its first bar (`first`);
       * M_tau = tier members with a closed 4h bar at tau and ATR14 defined on the contiguous tail (tape `a`), known
         at the decision close (M1: the execution open is NOT a membership filter - a decided leg whose open is
-        missing halts the book INCOMPLETE, phase next_open); N = |M_tau|, N = 0 = flat until the next tau;
+        missing halts the book INCOMPLETE, phase next_open; a listed tier symbol whose decision candle or exact
+        T.WINDOW-bar input read has a hole halts it, phase decision); N = |M_tau|, N = 0 = flat until the next tau;
       * q*_s = floor_step((0.01 x E_tau / N) / (2.5 x ATR14_s(tau))) with E_tau the B1 MTM equity at tau; if
         sum(q*_s x close_s(tau) x 1.10) > 3 x E_tau every q*_s is scaled by 3 x E_tau / that sum BEFORE flooring;
       * a leg below min qty / min notional (qty x the executable sell fill, pinned rules) is set to 0 and counted;
@@ -1146,6 +1183,10 @@ def b1_short_book(outputs, *, symbols, first: int, last: int, hi: int, slip_c: f
             mtm = wallet + math.fsum(p['qty'] * (p['avg'] - closes.get(k, p['avg'])) for k, p in pos.items())
             series.append((t, mtm))
             if first <= t <= last and (t == first or _is_monday_open(t)):  # (C) the rebalance decision at tau
+                for s in order:                                 # exact inputs: never shrink M_tau silently
+                    why = _decision_inputs(syms[s], t)
+                    if why is not None:
+                        raise _Halt(s, why, t, 'decision')
                 members = [s for s in order if rec[s] is not None and rec[s].get('a') is not None]
                 raw = {}
                 if members and mtm > 0:
@@ -1539,7 +1580,9 @@ def evaluate_tier(env: dict, tier: str, prog: PG.Progress | None) -> tuple[dict,
 
 def _detail(v: dict) -> dict:
     out = {k: v[k] for k in ('trades', 'incomplete', 'excluded_symbols', 'excluded_trades', 'refusals')}
-    out.update(status=v.get('status', INCOMPLETE), policy=POLICY)
+    ok = (v.get('status') == COMPLETE and not v['incomplete'] and not v['excluded_symbols']
+          and all(x.get('status') == COMPLETE for x in (v.get('rows') or {}).values()))
+    out.update(status=COMPLETE if ok else INCOMPLETE, policy=POLICY)                 # derived from its rows
     if v.get('book'):
         out['rows'] = {r: {'trades': x['counted'], 'status': x.get('status', INCOMPLETE),
                            **({'censor': x['censor']} if x.get('censor') else {}),
@@ -1713,7 +1756,8 @@ def summarize(env, tier, symbols, per_split, detail_splits, blocks, b0_diffs, b0
                                           for g, v in sorted(_by_regime(dev_tr).items())},
                'book': dict(BOOK), 'baselines': base, 'edge00': edge,
                'verdict': verdict, 'verdict_basis': basis, 'flags': flags, 'not_evaluated': list(NOT_EVALUATED)}
-    detail = {'format': DETAIL_FORMAT, 'tier': tier, 'label': LABEL, 'symbols': list(symbols), 'splits': detail_splits,
+    detail = {'format': DETAIL_FORMAT, 'status': status, 'missing_data_policy': POLICY,     # derived from the rows
+              'tier': tier, 'label': LABEL, 'symbols': list(symbols), 'splits': detail_splits,
               'neighbours_mean_r': neigh, 'loso_mean_r': loso_m, 'loyo_mean_r': loyo_m, 'month_blocks': blocks,
               'b0_episode_differences': b0_diffs}
     return summary, detail
@@ -1796,7 +1840,8 @@ def run_tiers(env: dict, out_dir: str, *, resume: bool = False, clock=PG.cairo_n
         except Exception as e:
             prog.aborted([PG.integrity_code(type(e).__name__)], stage=stage)
             raise
-        prog.sealed(paths, [os.path.basename(paths[0])] if is_complete(summary) else [])  # INCOMPLETE: no evidence
+        ok = is_complete(summary) and is_complete(detail)                # both artifacts explicitly COMPLETE
+        prog.sealed(paths, [os.path.basename(paths[0])] if ok else [])                # INCOMPLETE: no evidence
         finals.append(final)
     return finals
 

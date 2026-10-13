@@ -187,6 +187,9 @@ def run(v):
 """
 
 
+MDK = {'status': 'COMPLETE', 'missing_data_policy': 'zb-missing-data/1'}   # M1: explicit missing-data status
+
+
 REPORTING = """
 
 import report as _R
@@ -195,7 +198,7 @@ import report as _R
 def summarize(outputs):
     sec = {s: {k: None for k in keys} for s, keys in _R.SECTIONS.items()}
     sec['counts'] = dict(sec['counts'], trades=len(outputs))
-    return {'long': {row: sec for row in C.STRESS}}
+    return {'status': 'COMPLETE', 'missing_data_policy': 'zb-missing-data/1', 'long': {row: sec for row in C.STRESS}}
 
 
 def summarize2(outputs):
@@ -1693,12 +1696,12 @@ def test_envelope_write_once_and_report_needs_the_runner_attestation(world, tmp_
     assert rep['attestation_digest'] == out.attestation_digest and rep['attestation']['evaluator']['path'] ==         'strategy/ev.py'
     sec = {s: {k: None for k in keys} for s, keys in R.SECTIONS.items()}
     with pytest.raises(R.ReportError, match='every stress row'):
-        R.make_report(env, {'long': {'base': sec}}, out.attestation, path)
+        R.make_report(env, dict(MDK, long={'base': sec}), out.attestation, path)
     with pytest.raises(R.ReportError, match='keys must be exactly'):
-        R.make_report(env, {'short': {row: dict(sec, ci={}) for row in C.STRESS}}, out.attestation, path)
+        R.make_report(env, dict(MDK, short={row: dict(sec, ci={}) for row in C.STRESS}), out.attestation, path)
     # Codex 6089002043 P1: an unrelated payload, a second function of the same file, an altered / subset schedule
     with pytest.raises(R.ReportError, match='not the payload the frozen summary produced'):
-        R.make_report(env, {'long': {row: sec for row in C.STRESS}}, out.attestation, path)
+        R.make_report(env, dict(MDK, long={row: sec for row in C.STRESS}), out.attestation, path)
     other_fn = P.evaluate(w, ev, 'run2', times, summary='summarize')
     with pytest.raises(R.ReportError, match='entrypoint'):
         R.make_report(env, other_fn.results, other_fn.attestation, path)

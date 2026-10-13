@@ -464,13 +464,18 @@ def test_m1_codex_p1_b1_short_zero_target_missing_open_stays_complete():
     """Control (Codex 6154541287): a flat member whose target floors to exactly 0 needs no execution, so a missing
     next-open candle is irrelevant -> COMPLETE, no leg / fill, identical to the same book without the drop."""
     huge = dict(RULE, step=1e9, min_qty=1e9)                          # every target floors to 0
-    kw_ = dict(symbols=[A], first=K(20), last=K(380), hi=K(400), slip_c=0.05, rules={A: huge}, row='base')
-    clean = PR.b1_short_book(tape(sym=A, side='short', le=(), lx=()), **kw_)
+    kw_ = dict(symbols=[A], first=K(20), last=K(41), hi=K(400), slip_c=0.05, rules={A: huge}, row='base')
+    clean = PR.b1_short_book(tape(sym=A, side='short', le=(), lx=()), **kw_)   # one decision: tau = first = K(20)
     r = PR.b1_short_book(tape(sym=A, side='short', le=(), lx=(), drop={21}), **kw_)
-    assert clean['legs'] == [] and clean['rebalances'][0] == {'tau': K(20), 'members': 1}
+    assert clean['legs'] == [] and clean['rebalances'] == [{'tau': K(20), 'members': 1}]
     assert r['status'] == 'COMPLETE' and r['incomplete'] == [] and r['legs'] == [] and r['row'] == 'base'
     assert r['month_r'] is not None and r['wallet_end'] == PR.BOOK['equity0']
     PR.require_complete(r)
+    # the hole then lies inside the exact input read of the NEXT scheduled decision (Monday K(42)): that one halts
+    r = PR.b1_short_book(tape(sym=A, side='short', le=(), lx=(), drop={21}), **dict(kw_, last=K(380)))
+    p = primary(r)
+    assert (p['reason'], p['phase'], p['first_unaccountable_ms'], p['last_valid_ms']) == (
+        'incomplete.gap', 'decision', K(42), K(41))
 
 
 # ------------------------------------------------------------------ status contract
@@ -572,6 +577,11 @@ def clean():
     return acct(tape())
 
 
+def top(**sides):
+    """A results payload with its explicit top-level missing-data declaration (COMPLETE) around `sides`."""
+    return {'status': 'COMPLETE', 'missing_data_policy': PR.POLICY, **sides}
+
+
 def _stub_env():
     rc = {'configs': ['x'], 'stress_rows': ['base'], 'seed': 1, 'resamples': 10}
     ident = {'commit': '1' * 40, 'evaluator': PR.sha(rc), 'manifest': '2' * 64, 'universe': '3' * 64,
@@ -580,7 +590,9 @@ def _stub_env():
 
 
 def _seal(path, monkeypatch, summary):
-    monkeypatch.setattr(PR, 'evaluate_tier', lambda env, tier, prog: (dict(summary, tier=tier), {'tier': tier}))
+    monkeypatch.setattr(PR, 'evaluate_tier', lambda env, tier, prog: (
+        dict(summary, tier=tier), {'tier': tier, **({'status': summary['status'], 'missing_data_policy': PR.POLICY}
+                                                    if 'status' in summary else {})}))
     return PR.run_tiers(_stub_env(), str(path), clock=None)
 
 
@@ -612,7 +624,7 @@ def test_m1_cn_01(tmp_path):
 def test_m1_cn_02(tmp_path, monkeypatch):
     """Report / readiness / promotion refuse an INCOMPLETE result; readiness never turns it into a PASS."""
     with pytest.raises(RP.ReportError, match='INCOMPLETE'):
-        RP.refuse_incomplete({'long': {'base': gapped()}})
+        RP.refuse_incomplete(top(long={'base': gapped()}))
     fin = _seal(tmp_path, monkeypatch, {'status': 'INCOMPLETE'})[0]
     assert PG.read(fin)['state'] == 'sealed' and PG.read(fin)['evidence'] == []
     with pytest.raises(RD.ReadinessError, match='INCOMPLETE'):
@@ -633,7 +645,7 @@ def test_m1_cn_03(tmp_path, monkeypatch):
     assert PR.metrics({'counted': [], 'incomplete': [], 'refusals': {}, 'excluded_symbols': [],
                        'excluded_trades': 0}, rows=('base',))['status'] == 'INCOMPLETE'
     with pytest.raises(RP.ReportError):
-        RP.refuse_incomplete({'long': {'status': None}})
+        RP.refuse_incomplete(top(long={'status': None}))
 
 
 def test_m1_cn_04():
@@ -643,13 +655,13 @@ def test_m1_cn_04():
         with pytest.raises(PR.PitRunError, match='contradict'):
             PR.require_complete(bad)
     with pytest.raises(RP.ReportError):
-        RP.refuse_incomplete({'long': {'status': 'COMPLETE', 'excluded_symbols': [A]}})
+        RP.refuse_incomplete(top(long={'status': 'COMPLETE', 'excluded_symbols': [A]}))
 
 
 def test_m1_cn_05(tmp_path, monkeypatch):
     """The control is accepted unchanged by every consumer."""
     PR.require_complete(clean())
-    RP.refuse_incomplete({'long': {'base': clean()}})
+    RP.refuse_incomplete(top(long={'base': clean()}))
     finals = _seal(tmp_path, monkeypatch, {'status': 'COMPLETE'})
     assert all(PG.read(f)['evidence'] for f in finals) and G.pit_incomplete(finals) == []
     RD.sealed_artifacts(finals[0])
@@ -668,7 +680,7 @@ def test_m1_cn_06(tmp_path, monkeypatch):
     m, _ = PR._agg({'train': {'configs': {PR.PRIMARY_NAME: d}}}, PR.PRIMARY_NAME, ['train'], ('base',), None)
     assert m['status'] == 'INCOMPLETE' and m['book']['base']['net_pct_equity'] is None          # aggregate
     with pytest.raises(RP.ReportError):                                # report
-        RP.refuse_incomplete({'long': {'base': d}})
+        RP.refuse_incomplete(top(long={'base': d}))
     fin = _seal(tmp_path, monkeypatch, {'status': 'INCOMPLETE'})[0]
     with pytest.raises(RD.ReadinessError):                             # readiness
         RD.sealed_artifacts(fin)
@@ -688,3 +700,122 @@ def test_m1_cn_07():
     for status in ('INCOMPLETE', 'COMPLETE'):
         with pytest.raises(PR.PitRunError, match='without a primary'):
             PR.require_complete({'status': status, 'incomplete': rows})
+
+
+# ------------------------------------------------------------------ Cowork 6154873429 / 6154871621 + Codex 6154894668
+def late(tp, sym, k0):
+    """`tp` with `sym` listed only from bar key k0 on (no record before: warm-up, never a hole)."""
+    return [dict(o, r=[r for r in o['r'] if r['s'] != sym or o['t'] >= K(k0)]) for o in tp]
+
+
+@pytest.mark.parametrize('side', ['long', 'short'])
+def test_m1_cw_1a_a_hole_inside_the_exact_slippage_lookback_halts_never_an_older_bar(side):
+    """Probe 1a: the entry fill at the open K(300) needs the exact 15-bar TR-SMA14 lookback K(286)..K(300). A flat
+    hole at K(290) used to be replaced by an older bar (COMPLETE, a different fill). Now INCOMPLETE, phase fill."""
+    res = book(tape(side=side, drop={290}), side)
+    one(res, 'incomplete.gap', 300, 300, phase='fill')
+    assert res['trades'] == [] and res['refusals'] == {}
+    assert_prefix(res, tape(side=side), 300, side)
+    ctrl = book(tape(side=side, drop={280}), side)                    # control: outside the exact lookback
+    assert ctrl['status'] == 'COMPLETE' and repr(ctrl['trades']) == repr(book(tape(side=side), side)['trades'])
+
+
+def test_m1_cw_1a_exact_lookback_and_warmup_history():
+    """The lookback hole is `incomplete.gap` (never an older bar); too little history from the series start is still
+    the causal `incomplete.slip_history` (an entry refusal); a complete window is unchanged."""
+    x = PR.read_tape(tape(drop={290}))[1][A]
+    with pytest.raises(PR.Incomplete, match='incomplete.gap'):
+        x.bps(K(300), C.TR_SMA14, 0.05)
+    with pytest.raises(PR.Incomplete, match='incomplete.slip_history'):
+        PR.read_tape(late(tape(), A, 295))[1][A].bps(K(300), C.TR_SMA14, 0.05)
+    assert x.bps(K(320), C.TR_SMA14, 0.05) == PR.read_tape(tape())[1][A].bps(K(320), C.TR_SMA14, 0.05)
+
+
+def test_m1_cw_1b_b1_short_rebalance_candle_gap_never_shrinks_membership():
+    """Probe 1b: a member missing its decision candle at tau used to drop out (membership 2 -> 1, the other target
+    doubled, COMPLETE). Now the decision halts INCOMPLETE (phase decision), nothing sized or filled."""
+    kw_ = dict(symbols=[A, B], first=K(20), last=K(380), hi=K(400), slip_c=0.05, rules={A: RULE, B: RULE})
+    two = merge(tape(sym=A, side='short', le=(), lx=()), tape(sym=B, side='short', le=(), lx=()))
+    gap = merge(tape(sym=A, side='short', le=(), lx=(), drop={20}), tape(sym=B, side='short', le=(), lx=()))
+    clean = PR.b1_short_book(two, **kw_)
+    r = PR.b1_short_book(gap, **kw_)
+    assert clean['rebalances'][0] == {'tau': K(20), 'members': 2}
+    p = primary(r)
+    assert (p['symbol'], p['reason'], p['phase'], p['first_unaccountable_ms'], p['last_valid_ms']) == (
+        A, 'incomplete.gap', 'decision', K(20), K(19))
+    assert r['status'] == 'INCOMPLETE' and r['legs'] == [] and r['rebalances'] == [] and r['row'] == 'base'
+    ctrl = PR.b1_short_book(merge(late(tape(sym=A, side='short', le=(), lx=()), A, 30),
+                                  tape(sym=B, side='short', le=(), lx=())), **dict(kw_, last=K(41)))
+    assert ctrl['status'] == 'COMPLETE' and ctrl['rebalances'][0] == {'tau': K(20), 'members': 1}   # not listed
+
+
+def test_m1_cw_1c_unit_b1_monday_decision_gap_never_shifts_the_schedule():
+    """Probe 1c: a flat symbol missing its Monday decision candle (K(42)) used to skip that week silently. Now the
+    unit row halts INCOMPLETE at K(42) (phase decision); a hole inside a later Monday's input read halts THAT
+    decision and keeps the earlier week."""
+    args = dict(first=K(20), last=K(350), hi=K(400), slip_c=0.05, rows=('base',))
+    clean = PR.account_unit(tape(), LONG['B1'], **args)
+    assert clean['trades'][0]['entry_ms'] == K(42)
+    u = PR.account_unit(tape(drop={42}), LONG['B1'], **args)
+    p = primary(u)
+    assert (p['symbol'], p['reason'], p['phase'], p['first_unaccountable_ms'], p['last_valid_ms']) == (
+        A, 'incomplete.gap', 'decision', K(42), K(41))
+    assert u['trades'] == [] and u['status'] == 'INCOMPLETE'
+    ctrl = PR.account_unit(late(tape(), A, 50), LONG['B1'], **args)   # control: listed after that Monday
+    assert not any(r.get('phase') == 'decision' for r in ctrl['incomplete'])
+
+
+def test_m1_cw_2a_detail_artifacts_carry_a_status_derived_from_their_rows():
+    d = PR._detail(dict(clean(), rows={'base': dict(clean()['rows']['base'], status='INCOMPLETE')}))
+    assert d['status'] == 'INCOMPLETE' and d['policy'] == PR.POLICY             # rows win over a stated COMPLETE
+    assert PR._detail(clean())['status'] == 'COMPLETE'
+    env = {'run_config': {'stress_rows': ['base'], 'seed': 1, 'resamples': 10, 'perms': 10}, 'plan': _Plan(),
+           'n_trials': 14, 'cost_labels': [], 'identity': {}}
+    for tp, want in ((tape(), 'COMPLETE'), (tape(drop={310}), 'INCOMPLETE')):
+        det = {'train': {'configs': {c['name']: PR._detail(PR.account(tp, c, rows=('base',), **kw(tp)))
+                                     for c in PR.configs()}}}
+        s, detail = PR.summarize(env, 'CORE-10', [A], {'train': {}}, det, [], [])
+        assert detail['status'] == s['status'] == want and detail['missing_data_policy'] == PR.POLICY
+
+
+@pytest.mark.parametrize('doc', [{}, {'rows': {}}, {'status': 'COMPLETE', 'censor': {'class': 'split_censoring'}},
+                                 {'status': 'COMPLETE', 'verdict': 'INCOMPLETE'},
+                                 {'x': {'status': 'COMPLETE', 'incomplete_rows': [1]}},
+                                 {'status': 'COMPLETE', 'x': {'status': 'COMPLETE', 'incomplete_rows': [1]}},
+                                 {'status': 'COMPLETE', 'x': {'censor': {}}}])
+def test_m1_cw_2b_report_refusal_uses_the_shared_predicate(doc):
+    """Cowork's five report probes (+ the nested variants under an explicit top-level COMPLETE) all refuse."""
+    with pytest.raises(RP.ReportError):
+        RP.refuse_incomplete(doc)
+
+
+def test_m1_cw_2b_make_report_requires_the_declared_policy(tmp_path):
+    with pytest.raises(RP.ReportError, match='policy'):
+        RP.make_report({}, {'status': 'COMPLETE', 'long': {}}, {}, str(tmp_path / 'l.jsonl'))
+
+
+def _final(d, body):
+    d.mkdir(parents=True, exist_ok=True)
+    art = d / 'summary.json'
+    art.write_bytes(body)
+    p = PG.Progress(str(d), identity=_stub_env()['identity'], config={'tier': 'X'}, clock=None)
+    p.sealed([str(art)], ['summary.json'])
+    return p.final_path, art
+
+
+def test_m1_cw_2c_readiness_opens_each_named_evidence_artifact(tmp_path):
+    ok, _ = _final(tmp_path / 'ok', json.dumps({'status': 'COMPLETE', 'missing_data_policy': PR.POLICY}).encode())
+    RD.sealed_artifacts(ok)
+    for name, body in (('inc', {'status': 'INCOMPLETE'}), ('none', {'format': 'x'}),
+                       ('censor', {'status': 'COMPLETE', 'censor': {}})):
+        f, _ = _final(tmp_path / name, json.dumps(body).encode())
+        with pytest.raises(RD.ReadinessError, match='evidence'):
+            RD.sealed_artifacts(f)
+    f, art = _final(tmp_path / 'swap', json.dumps({'status': 'COMPLETE'}).encode())
+    art.write_bytes(json.dumps({'status': 'COMPLETE', 'x': 1}).encode())          # changed after sealing
+    with pytest.raises(RD.ReadinessError, match='sha256'):
+        RD.sealed_artifacts(f)
+    f, art = _final(tmp_path / 'gone', b'{"status": "COMPLETE"}')
+    art.unlink()
+    with pytest.raises(RD.ReadinessError, match='unreadable'):
+        RD.sealed_artifacts(f)

@@ -29,7 +29,8 @@ def new(tmp, **kw):
 def run_all(tmp):
     p = new(tmp)
     art = tmp / 'm3_repro_base.json'
-    art.write_text('{"pnl": 12.5, "sharpe": 1.3}\n')
+    art.write_text('{"missing_data_policy": "zb-missing-data/1", "pnl": 12.5, "sharpe": 1.3, "status": "COMPLETE"}'
+                   + chr(10))
     p.stage_start('m3.open')
     p.stage_done('m3.open')
     p.stage_start('pit.walk_forward', fold=2)
@@ -412,7 +413,7 @@ def test_readiness_determinism_from_sealed_finals(tmp_path):
     doc = RR.build(dict(FULL, final_files=[a.final_path, b.final_path]))
     assert doc['verdict'] == 'READY' and doc['determinism_sha256']['m3_repro_base.json']
     (tmp_path / 'c').mkdir()
-    art = tmp_path / 'c' / 'm3_repro_base.json'
+    art.write_text('{"changed": 1, "status": "COMPLETE"}' + chr(10))
     art.write_text('{"changed": 1}' + chr(10))
     c = new(tmp_path / 'c')
     c.sealed([str(art)], ['m3_repro_base.json'])

@@ -31,6 +31,13 @@ every trade of an affected symbol; that is removed too.
 
    Other lots that were open when the row halted get the **secondary** label `incomplete.book_halt`, with
    `primary_ref = <symbol>@<first_unaccountable_ms>`. They are never given the primary cause.
+   - **Exactly one primary per row.** Same-cycle faults resolve deterministically: in the shared book, by the frozen
+     symbol order; in the unit book, by (cycle, in-cycle phase bar < exit < next_open/fill < funding < decision,
+     symbol). All other open lots are `incomplete.book_halt`.
+   - **Decisions at the halt cycle are not booked.** A decision taken at `last_valid_ms` whose fill falls at the
+     unaccountable instant (another symbol's signal exit, a B1 rebalance at tau == `last_valid_ms`) is rolled back
+     with that cycle. Its lot is reported as halted, not as a booked trade. "Identical through `last_valid_ms`"
+     covers the fills, trades, wallet and series up to and including that cycle.
 4. **Rows carry timestamps.** Each row has `first_unaccountable_ms` and `last_valid_ms`. The row-level `censor`
    records the class, phase, cycle, wallet, MTM, gross exposure and unrealised P&L at the refusal, with
    `wallet + unrealised == mtm`.
@@ -40,15 +47,41 @@ every trade of an affected symbol; that is removed too.
    - No entry is taken once a notice is known.
    - No notice source is committed yet, so `real_env` supplies none. Wiring a timestamped observation source is a
      later data task.
-6. **Flat symbols.** An absence or funding gap is irrelevant, and the row stays COMPLETE, only when no decision,
-   position or later accounting depends on it.
+6. **Exact scheduled inputs (Codex 6154894668).** Wherever an input is causally needed, the exact scheduled window
+   is required. An older row is never substituted, and a membership, weight or schedule never shrinks or shifts
+   silently.
+   - **Slippage:** the fill at open `bo` uses exactly the bars closing at `bo - (n-1)*4h .. bo` (TR-SMA14: 15;
+     Wilder: the read window). A hole inside that window is `incomplete.gap` (phase `fill` / `exit`). Too little
+     history from the series start (warm-up) stays the causal `entry_no_slip_history` refusal.
+   - **Scheduled decisions** (B1 long Mondays, B1 short rebalances at tau): a listed symbol needs its decision
+     candle at tau and a hole-free `T.WINDOW`-bar input read behind it. Otherwise the row halts at tau (phase
+     `decision`). A symbol not listed yet (no bar before tau) is warm-up, not missing.
+   - **B1 short execution:** the execution open is required only for a non-zero trade (`abs(target - current)`). A
+     flat member whose target floors to 0 needs none.
+7. **Flat symbols.** An absence or funding gap is irrelevant, and the row stays COMPLETE, only when no decision,
+   sizing, fill, position or later accounting depends on it.
+   - Signal-triggered configurations (the 13 signal configs and B2) read their decision inputs from the attested
+     tape. After a hole, the tape layer recomputes signals on the contiguous tail only. A missing bar for a flat
+     symbol therefore removes any entry it would have carried, and the row stays COMPLETE.
+   - That is correct only while the tape layer guarantees a decision-bearing bar is never absent without a record.
+   - Holes before the tape start are invisible to the runner. Both are tape-layer guarantees, outside this runner.
 
 ## Status contract (fail closed)
 
 - Every new result carries `status` (`COMPLETE` | `INCOMPLETE`) and the policy id: run_book, account, account_unit,
   b1_short_book, detail, metrics/aggregate, summary.
-- A missing status, a COMPLETE that still carries incomplete rows / excluded symbols / a censor, or secondary rows
-  without a primary row are all refused (`pit_run.require_complete`).
+- One predicate, `tools/research/missing_data.py` (`check` / `check_tree`), is shared by the runner
+  (`pit_run.require_complete`), the report gate (`report.refuse_incomplete`) and readiness. It refuses:
+  - a missing status, or INCOMPLETE;
+  - a COMPLETE that still carries incomplete rows, excluded symbols, any censor, `incomplete_rows` or an INCOMPLETE
+    verdict;
+  - secondary rows without a primary row.
+- Tier and detail artifacts carry `status` and `missing_data_policy`, derived from their rows.
+- A report results payload must declare a top-level `status` COMPLETE and `missing_data_policy`. Every nested dict
+  that carries a status must pass too.
+- Readiness opens every named evidence artifact, checks its sealed sha256 and requires it to pass the predicate.
+  - M3 repro reports declare no missing-data status, so readiness refuses them (fail closed) until Codex rules how
+    they declare one.
 - An INCOMPLETE row gives `None` book figures (net % equity, MTM drawdown, underwater, month R). Its closed trades
   stay visible for audit only.
 - A tier is INCOMPLETE if any primary, neighbour or baseline row is. Its verdict is `INCOMPLETE`, and its computed
