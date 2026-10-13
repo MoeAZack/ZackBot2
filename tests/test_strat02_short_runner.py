@@ -8,7 +8,7 @@ import math
 import os
 import sys
 from datetime import datetime, timezone
-from decimal import Decimal
+from decimal import ROUND_CEILING, Decimal
 
 import pytest
 
@@ -72,6 +72,12 @@ def sym_of(tape, s='AAAUSDT'):
     return PR.read_tape(tape)[1][s]
 
 
+def xceil(fill, dist, tick):
+    """Independent exact oracle: ceil_tick(fill + dist) in Decimal from the fill's repr and the distance text."""
+    u = Decimal(str(tick))
+    return float(((Decimal(repr(fill)) + Decimal(str(dist))) / u).to_integral_value(rounding=ROUND_CEILING) * u)
+
+
 def entry_fill(tape, i, tick=0.01, s='AAAUSDT', scen=BASE):
     """The expected short entry fill for a se at bar i: sell at bar i+1's open, slipped DOWN, floored to the tick."""
     x = sym_of(tape, s)
@@ -87,7 +93,7 @@ def test_s02_stop_02_ceil_book_coarse_tick():
     tape = mk_tape(FLAT, le={25}, lx={40}, d='2.3')
     (tr,) = acct(tape, rules={'AAAUSDT': rule})['counted']
     fill = entry_fill(tape, 25, tick=0.5)
-    assert tr['entry_price'] == fill and tr['stop_price'] == math.ceil((fill + 2.3) / 0.5 - 1e-9) * 0.5
+    assert tr['entry_price'] == fill and tr['stop_price'] == xceil(fill, '2.3', 0.5)
     assert tr['stop_price'] - tr['entry_price'] >= 2.3                 # rounding can only widen the risk
 
 
@@ -103,8 +109,7 @@ def test_s02_gap_01_book():
 
 def test_s02_gap_02_eq_book():
     probe = mk_tape(FLAT, le={25})
-    stop = math.ceil((entry_fill(probe, 25) + 2.0) / 0.01 - 1e-9) * 0.01
-    stop = round(stop, 2)
+    stop = xceil(entry_fill(probe, 25), '2.0', 0.01)
     tape = mk_tape(FLAT, le={25}, opens={28: stop})
     (tr,) = acct(tape)['counted']
     assert tr['stop_price'] == stop and tr['gap'] and tr['exit_ms'] == t_of(27)
@@ -112,7 +117,7 @@ def test_s02_gap_02_eq_book():
 
 def test_s02_intra_01_book():
     probe = mk_tape(FLAT, le={25})
-    stop = round(math.ceil((entry_fill(probe, 25) + 2.0) / 0.01 - 1e-9) * 0.01, 2)
+    stop = xceil(entry_fill(probe, 25), '2.0', 0.01)
     tape = mk_tape(FLAT, le={25}, highs={28: stop})
     (tr,) = acct(tape)['counted']
     x = sym_of(tape)
@@ -123,7 +128,7 @@ def test_s02_intra_01_book():
 
 def test_s02_intra_02_book():
     probe = mk_tape(FLAT, le={25})
-    stop = round(math.ceil((entry_fill(probe, 25) + 2.0) / 0.01 - 1e-9) * 0.01, 2)
+    stop = xceil(entry_fill(probe, 25), '2.0', 0.01)
     (tr,) = acct(mk_tape(FLAT, le={25}, lx={35}, highs={28: round(stop - 0.01, 2)}))['counted']
     assert tr['exit_reason'] == 'exit.signal' and tr['exit_ms'] == t_of(35)
 
@@ -146,7 +151,7 @@ def test_s02_size_01_book():
     a = acct(tape, rows=tuple(C.STRESS))
     (tr,) = a['counted']
     fill = entry_fill(tape, 25)
-    stop = round(math.ceil((fill + 2.0) / 0.01 - 1e-9) * 0.01, 2)
+    stop = xceil(fill, '2.0', 0.01)
     q = math.floor(min(10_000 * 0.01 / (stop - fill), 3 * 10_000 / (100.0 * 1.10)) / 0.001 + 1e-9) * 0.001
     assert tr['qty'] == pytest.approx(q) and tr['stop_price'] == pytest.approx(stop)
     assert tr['r']['base'] == pytest.approx(tr['pnl'] / (tr['qty'] * (stop - fill)))
@@ -245,7 +250,7 @@ def _has_event(i):
 def test_s02_fund_05_stopbar():
     k = next(k for k in range(28, 36) if _has_event(k))
     probe = mk_tape(FLAT, le={25})
-    stop = round(math.ceil((entry_fill(probe, 25) + 2.0) / 0.01 - 1e-9) * 0.01, 2)
+    stop = xceil(entry_fill(probe, 25), '2.0', 0.01)
     (ng,) = acct(mk_tape(FLAT, le={25}, highs={k: stop + 1}))['counted']
     assert not ng['gap'] and ng['exit_ms'] == t_of(k)
     tape = mk_tape(FLAT, le={25})
@@ -286,7 +291,7 @@ def test_s02_cap_02_splitend():
 # ------------------------------------------------------------------ MFE / MAE
 def _stopped(low=50.0):
     probe = mk_tape(FLAT, le={25})
-    stop = round(math.ceil((entry_fill(probe, 25) + 2.0) / 0.01 - 1e-9) * 0.01, 2)
+    stop = xceil(entry_fill(probe, 25), '2.0', 0.01)
     (tr,) = acct(mk_tape(FLAT, le={25}, highs={28: stop + 5.0}, lows={28: low}))['counted']
     return tr
 
@@ -511,7 +516,8 @@ def test_s02_liq_01_book():
     liq = res['liquidation']
     (tr,) = res['trades']
     g = tr['qty'] * 115.0
-    w = 10_000 - tr['qty'] * tr['entry_price'] * 0.0005 + tr['qty'] * (tr['entry_price'] - 115.0)
+    w = 10_000 - tr['qty'] * tr['entry_price'] * 0.0005 - tr['funding'] + tr['qty'] * (tr['entry_price'] - 115.0)
+    assert tr['funding'] != 0.0                                      # the stop bar's funding is booked before W_t
     assert w < g / 3 and liq['flagged_bars'] == 1 and liq['park'] and liq['bars'] == 1
     assert liq['min_w_over_g'] == pytest.approx(w / g)
     assert liq['max_bar_high_over_open'] == pytest.approx(0.15)
@@ -525,7 +531,8 @@ def test_x_liq_ordinary_book_not_flagged_and_long_has_no_diagnostic():
     assert res['liquidation']['flagged_bars'] == 0 and not res['liquidation']['park']
     assert res['liquidation']['bars'] == 15 and res['liquidation']['min_w_over_g'] > 1 / 3
     long_cfg = {c['name']: c for c in PR.configs()}[PR.PRIMARY_NAME]
-    lres = PR.run_book(PR.read_tape(tape), long_cfg, ['AAAUSDT'], first=t_of(20), last=t_of(58), hi=tape[-1]['t'],
+    plain = [{k: v for k, v in o.items() if k != 'side'} for o in tape]
+    lres = PR.run_book(PR.read_tape(plain), long_cfg, ['AAAUSDT'], first=t_of(20), last=t_of(58), hi=tape[-1]['t'],
                        slip_c=0.05, rules={'AAAUSDT': RULE})
     assert 'liquidation' not in lres and 'side' not in lres
 
@@ -555,7 +562,7 @@ def test_s02_b0_01():
     x = sym_of(tape)
     e, h = t_of(60), tr['bars']
     ef = C.fill_price(x.rec[e + TF]['b'][0], 'sell', x.bps(e, C.TR_SMA14, 0.05), BASE, tick=0.01)
-    stop = PR._ceil(ef + 2.0, 0.01)
+    stop = xceil(ef, '2.0', 0.01)
     xf = C.fill_price(x.rec[e + (h + 1) * TF]['b'][0], 'buy', x.bps(e + h * TF, C.TR_SMA14, 0.05), BASE, tick=0.01)
     fees = C.fee(ef, 'taker', C.CRYPTO, BASE) + C.fee(xf, 'taker', C.CRYPTO, BASE)
     fund = C.funding_cost('short', 1.0, x.events(e, e + h * TF), BASE)
@@ -752,7 +759,7 @@ def test_s02_mfe_01_and_mae_01():
     tape = mk_tape(FLAT, le={25}, d='5.05', lows={26: 97.0, 27: 96.0, 28: 90.0}, opens={28: 104.0},
                    highs={28: 109.0})
     (tr,) = acct(tape, rules={'AAAUSDT': R01})['counted']
-    assert (tr['entry_price'], tr['stop_price']) == (99.9, 105.0) and tr['exit_ms'] == t_of(28)
+    assert (tr['entry_price'], tr['stop_price']) == (99.9, 105.0) and tr['exit_ms'] == t_of(28) and not tr['gap']
     risk = 105.0 - 99.9
     assert tr['mfe_r'] == pytest.approx((99.9 - 96.0) / risk) and tr['mae_r'] == pytest.approx(-1.0)
 
@@ -822,3 +829,179 @@ def test_x_every_spec_v2_case_id_has_a_named_test():
     norm = lambda i: 'test_' + i.lower().replace('-', '_')
     missing = [i for i in SPEC_V2_IDS if not any(n.startswith(norm(i)) for n in names)]
     assert missing == []
+
+
+# ================================================================== Codex 6152791867 revision (items 1-4)
+# ---- 1 [P1] exact tick arithmetic for short stops
+def test_codex1_exact_stop_repros():
+    r = dict(RULE, tick=0.1)
+    assert PR.size_short(10_000.0, 0.1, 0.2, 100.0, 0.0, r)[1] == 0.3            # was 0.4 (0.1 + 0.2 float noise)
+    assert PR.size_short(10_000.0, 0.1, Decimal('0.2'), 100.0, 0.0, r)[1] == 0.3
+    assert PR.size_short(10_000.0, 10.0, 3.62, 100.0, 0.0, RULE)[1] == 13.62      # was 13.63
+    assert PR.short_stop(10.0, '3.62', 0.01) == (13.62, 3.62)
+
+
+@pytest.mark.parametrize('tick', [0.1, 0.01, 0.5, 0.001])
+def test_codex1_on_grid_cross_product_is_never_widened(tick):
+    u = Decimal(str(tick))
+    for i in range(1, 400, 3):
+        f = Decimal(i) * u
+        fill = float(f)
+        assert Decimal(repr(fill)) == f
+        for j in range(1, 80):
+            dt = str(Decimal(j) * u)
+            stop, risk = PR.short_stop(fill, Decimal(dt), tick)
+            assert (stop, risk) == (float(f + Decimal(dt)), float(Decimal(dt))), (tick, i, j)
+
+
+def test_codex1_just_off_grid_values_are_never_misclassified():
+    assert PR.short_stop(100.0, '5.050000001', 0.1)[0] == 105.1
+    assert PR.short_stop(100.0, '4.9999999999', 0.1)[0] == 105.0
+    assert PR.short_stop(100.0, '5.0000000001', 0.1)[0] == 105.1                  # a tolerance would say 105.0
+    assert PR.short_stop(100.0, '0', 0.1) is None and PR.short_stop(100.0, 'NaN', 0.1) is None
+    assert PR.short_stop(100.0, '-1', 0.1) is None and PR.short_stop(100.0, 'Infinity', 0.1) is None
+
+
+def test_codex1_the_book_and_b0_use_the_exact_stop():
+    tape = mk_tape(FLAT, le={25}, lx={30}, d='0.2')
+    (tr,) = acct(tape, rules={'AAAUSDT': R01})['counted']
+    assert tr['entry_price'] == 99.9 and 99.9 + 0.2 != 100.1 and tr['stop_price'] == 100.1   # float noise case
+    lab = lambda i: 'btc_down' if i == 25 else None
+    t2 = mk_tape(FLAT, le={25}, lx={30}, d='0.2', regime=lab)
+    prim = acct(t2, rules={'AAAUSDT': R01})
+    b0 = PR.b0_pairs(t2, prim, seed_key='k', first=t_of(20), last=t_of(58), hi=t2[-1]['t'], slip_c=0.05, draws=3,
+                     side='short', rules={'AAAUSDT': R01})
+    (p,) = prim['counted']
+    assert p['stop_price'] == 100.1
+    assert b0['invalid_draws'] == 0 and b0['diffs'] == [pytest.approx(0.0, abs=1e-9)]   # same decision, same R
+
+
+# ---- 2 [P1] tape direction bound to the accounting direction
+def _long_tape(tape):
+    return [{k: v for k, v in o.items() if k != 'side'} for o in tape]
+
+
+def test_codex2_a_short_tape_never_accounts_as_long():
+    tape = mk_tape(FLAT, le={25}, lx={30})
+    lcfg = {c['name']: c for c in PR.configs()}
+    with pytest.raises(PR.PitRunError, match='short tape cannot be accounted as long'):
+        PR.account(tape, lcfg[PR.PRIMARY_NAME], symbols=['AAAUSDT'], first=t_of(20), last=t_of(58), hi=t_of(59),
+                   slip_c=0.05, rules={'AAAUSDT': RULE})
+    with pytest.raises(PR.PitRunError):
+        PR.run_book(PR.read_tape(tape), lcfg[PR.PRIMARY_NAME], ['AAAUSDT'], first=t_of(20), last=t_of(58),
+                    hi=t_of(59), slip_c=0.05, rules={'AAAUSDT': RULE})
+    with pytest.raises(PR.PitRunError):
+        PR.account_unit(tape, lcfg['B1'], first=t_of(20), last=t_of(58), hi=t_of(59), slip_c=0.05)
+    with pytest.raises(PR.PitRunError):
+        PR.b0_pairs(tape, {'counted': []}, seed_key='k', first=t_of(20), last=t_of(58), hi=t_of(59), slip_c=0.05)
+
+
+def test_codex2_a_long_tape_never_accounts_as_short():
+    tape = _long_tape(mk_tape(FLAT, le={25}, lx={30}))
+    with pytest.raises(PR.PitRunError, match='long tape cannot be accounted as short'):
+        acct(tape)
+    with pytest.raises(PR.PitRunError):
+        PR.run_book(PR.read_tape(tape), SCFG[PRIM], ['AAAUSDT'], first=t_of(20), last=t_of(58), hi=t_of(59),
+                    slip_c=0.05, rules={'AAAUSDT': RULE}, side='short')
+    with pytest.raises(PR.PitRunError):
+        PR.b1_short_book(tape, symbols=['AAAUSDT'], first=t_of(20), last=t_of(58), hi=t_of(59), slip_c=0.05,
+                         rules={'AAAUSDT': RULE})
+    with pytest.raises(PR.PitRunError):
+        PR.b0_pairs(tape, {'counted': []}, seed_key='k', first=t_of(20), last=t_of(58), hi=t_of(59), slip_c=0.05,
+                    side='short', rules={'AAAUSDT': RULE})
+
+
+def test_codex2_mixed_or_unknown_markers_refuse():
+    tape = mk_tape(FLAT, le={25}, lx={30})
+    mixed = [dict(o) for o in tape]
+    del mixed[10]['side']                                              # one unmarked (legacy long) cycle
+    with pytest.raises(PR.PitRunError, match='mixed tape direction'):
+        PR.read_tape(mixed)
+    with pytest.raises(PR.PitRunError, match='mixed tape direction'):
+        acct(mixed)
+    odd = [dict(o, side='up') for o in tape]
+    with pytest.raises(PR.PitRunError, match='unknown tape direction'):
+        PR.read_tape(odd)
+    assert PR.read_tape(_long_tape(tape)).side == 'long' and PR.read_tape(tape).side == 'short'
+
+
+# ---- 3 [P1] liquidation after the bar's funding, exact boundary, durable fields
+def test_codex3_liq_point_exact_boundary():
+    assert PR.liq_point(2.5, [(1.0, 1.0, 3.0)]) == (0.5, 3.0, True)      # W 0.5 < G/3 = 1: flagged
+    assert PR.liq_point(3.0, [(1.0, 1.0, 3.0)]) == (1.0, 3.0, False)     # W == G/3: not flagged (strict <)
+    assert PR.liq_point(3.5, [(1.0, 1.0, 3.0)]) == (1.5, 3.0, False)
+
+
+def test_codex3_the_bars_funding_is_booked_before_the_diagnostic():
+    """Codex repro: qty 200, entry 99.97, funding cost 4,000 in the bar, high 100.25: W = 5934.003 < G/3 = 6683.333."""
+    big = T0 + 104 * HOUR                                              # the event inside the entry bar 26
+    tape = mk_tape(FLAT, le={25}, lx={40}, d='0.5', rate=lambda ft: -0.2 if ft == big else 0.0001)
+    res = PR.run_book(PR.read_tape(tape), SCFG[PRIM], ['AAAUSDT'], first=t_of(20), last=t_of(58), hi=t_of(59),
+                      slip_c=0.05, rules={'AAAUSDT': RULE}, side='short')
+    (tr,) = res['trades']
+    assert (tr['qty'], tr['entry_price']) == (200.0, 99.97)
+    w = 10_000 - C.fee(99.97 * 200, 'taker', C.CRYPTO, BASE) - 4_000.0 + 200 * (99.97 - 100.25)
+    assert w == pytest.approx(5934.003) and 200 * 100.25 / 3 == pytest.approx(6683.333, abs=1e-3)
+    liq = res['liquidation']
+    assert liq['park'] and liq['flagged_bars'] >= 1
+    assert liq['min_w_over_g'] == pytest.approx(w / (200 * 100.25))
+
+
+def test_codex3_liquidation_survives_detail_artifact_aggregate_and_flags(tmp_path):
+    tape = mk_tape(FLAT, le={25}, d='0.3', highs={26: 115.0})
+    a = acct(tape, rows=('base', 'funding_x2'))
+    det = PR._detail(a)
+    path = str(tmp_path / 'detail.json')
+    PR.write_json(path, {'splits': {'s1': {'configs': {PRIM: det}}, 's2': {'configs': {PRIM: det}}}})
+    import json
+    back = json.load(open(path, encoding='utf-8'))
+    for row in ('base', 'funding_x2'):
+        assert back['splits']['s1']['configs'][PRIM]['rows'][row]['liquidation'] == a['rows'][row]['liquidation']
+    one = PR.metrics(PR._acc(a), rows=('base', 'funding_x2'))
+    assert one['liquidation']['base'] == a['rows']['base']['liquidation'] and PR.liquidation_flags(one) == [
+        'LIQUIDATION-PARK']
+    m, _ = PR._agg(back['splits'], PRIM, ['s1', 's2'], ('base', 'funding_x2'), None)
+    lb = m['liquidation']['base']
+    assert lb['flagged_bars'] == 2 * a['rows']['base']['liquidation']['flagged_bars'] and lb['park']
+    assert PR.liquidation_flags(m) == ['LIQUIDATION-PARK']
+    calm = PR.metrics(PR._acc(acct(mk_tape(FLAT, le={25}, lx={40}))), rows=('base',))
+    assert calm['liquidation']['base']['park'] is False and PR.liquidation_flags(calm) == []
+    lcfg = {c['name']: c for c in PR.configs()}[PR.PRIMARY_NAME]
+    lacc = PR.account(_long_tape(tape), lcfg, symbols=['AAAUSDT'], first=t_of(20), last=t_of(58), hi=t_of(59),
+                      slip_c=0.05, rules={'AAAUSDT': RULE})
+    lm = PR.metrics(PR._acc(lacc), rows=('base',))
+    assert 'liquidation' not in lm and 'liquidation' not in PR._detail(lacc)['rows']['base']
+    assert PR.liquidation_flags(lm) == []
+
+
+# ---- 4 [P2] (a) gap-stop MAE, (b) strict delist notice, (c) B1 ATR14 needs 14 contiguous bars
+def test_codex4a_a_gap_stops_mae_includes_the_known_adverse_open():
+    (tr,) = acct(mk_tape(FLAT, le={25}, opens={28: 110.0}))['counted']
+    risk = tr['stop_price'] - tr['entry_price']
+    assert tr['gap'] and tr['mae_r'] == pytest.approx((tr['entry_price'] - 110.0) / risk) and tr['mae_r'] < -1.0
+    assert tr['mfe_r'] == pytest.approx((tr['entry_price'] - 99.75) / risk)
+
+
+def test_codex4b_an_open_exactly_at_the_notice_is_not_executable():
+    opens = [(t_of(30), 99.0), (t_of(31), 97.0)]
+    kw = dict(opens=opens, last_mark=95.0, bps=10.0, scen=BASE, tick=0.1)
+    assert PR.delist_cover(notice_ms=t_of(30), **kw)[1:] == (t_of(31), 'exit.delist')
+    assert PR.delist_cover(notice_ms=t_of(30) - 1, **kw)[1:] == (t_of(30), 'exit.delist')
+    assert PR.delist_cover(notice_ms=t_of(31), **kw)[1:] == (None, 'exit.delist_forced')
+
+
+def test_codex4c_b1_atr14_needs_14_contiguous_bars_after_a_gap():
+    full = _bars(60)
+    bars = full[:30] + full[32:]                                       # a 2-bar gap: the tail restarts at full[32]
+    for k in range(1, 20):
+        j = 30 + k - 1                                                 # the k-th bar after the gap
+        rec = PE.Tape(side='short').decide(_View(bars, j))['r'][0]
+        tail = bars[30:j + 1]
+        assert len(tail) == k
+        if k < 14:
+            assert rec['a'] is None, k
+        else:
+            want = T.wilder_atr([b.high for b in tail], [b.low for b in tail], [b.close for b in tail], 14)[-1]
+            assert rec['a'] == repr(want), k
+    res = _b1([mk_tape([100.0] * 60, sym='AAAUSDT', a=None), mk_tape([100.0] * 60, sym='BBBUSDT')], last=t_of(30))
+    assert res['rebalances'][0]['members'] == 1 and {lg['symbol'] for lg in res['legs']} == {'BBBUSDT'}

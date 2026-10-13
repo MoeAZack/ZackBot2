@@ -25,8 +25,8 @@ re-run is a pure function of (prior state, view at t); a time going backwards is
 
 STRAT-02 (`trend_ema_mom_short.v1`, docs/newcore/research/STRAT02_SHORT_CONTRACT.md): the entry point `tape_short`
 serves the same tape with the exact sign-mirrored signals (`short_signals`: se in `e`, sx in `x`, same indicators,
-window and warm-up), the cycle marked `side: short`, and per bar `a` = Wilder ATR14 of the contiguous tail (B1 short
-sizing). The long entry point `tape` and its records are unchanged.
+window and warm-up), the cycle marked `side: short`, and per bar `a` = Wilder ATR14 of the contiguous tail once it holds
+>= 14 bars, else None (B1 short sizing). The long entry point `tape` and its records are unchanged.
 """
 from __future__ import annotations
 
@@ -169,9 +169,10 @@ class Tape:
                          for k, x in enumerate(sig) if x is not None and x[0]},
                    'd': None if sig[0] is None else str(T.stop_distance(sig[0][2], self.configs[0][1])),
                    'n': view.next_open(s, T.TF)}
-            if self.side == 'short':                        # B1 short sizing: ATR14 on the contiguous tail (sec 7.1)
-                rec['a'] = repr(T.wilder_atr([x.high for x in tail], [x.low for x in tail],
-                                             [x.close for x in tail], T.PRIMARY.atr_len)[-1])
+            if self.side == 'short':                        # B1 short sizing: ATR14 on the contiguous tail (sec 7.1),
+                rec['a'] = (repr(T.wilder_atr([x.high for x in tail], [x.low for x in tail],   # defined only once the
+                                              [x.close for x in tail], T.PRIMARY.atr_len)[-1])  # tail has >= 14 bars
+                            if len(tail) >= T.PRIMARY.atr_len else None)
             recs.append(rec)
         out = {'t': t, 'r': recs, 'g': regime}
         if self.side == 'short':
@@ -189,5 +190,6 @@ def tape(view):
 
 def tape_short(view):
     """STRAT-02 entry point: the same tape with `trend_ema_mom_short.v1` signals (se in `e`, sx in `x`), the cycle
-    marked `side: short`, and per bar `a` = Wilder ATR14 of the contiguous tail (B1 short sizing)."""
+    marked `side: short`, and per bar `a` = Wilder ATR14 of the contiguous tail, None below 14 bars (B1 short
+    sizing)."""
     return _TAPE_SHORT.decide(view)
