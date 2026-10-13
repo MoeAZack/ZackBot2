@@ -254,6 +254,34 @@ def test_the_committed_registration_state_is_all_or_nothing():
     assert G.gate(ROOT, gate_path=G.SHORT_GATE, need_cleared=False) == []
 
 
+REGISTERED_SHORT_SHA = '2ed497d1e71f150b9d8958da7598131da3543a8e57c0f27e768bb21c13719a4a'   # its first 17 lines
+REGISTERED_REGISTRY_ENTRY = 'c348bc798e6600befb4196ed3f520bc8d931247b342e7e849a0e0765be75b23f'  # REGISTRY seq 8
+
+
+def test_the_committed_strat02_registration_is_pinned():
+    """Phase B (7230ba5): the real registration, Cairo 2026-10-14, before the 2026-10-19 holdout. Later appends may
+    extend the files; the registration prefix itself never changes."""
+    if not in_git_checkout():
+        pytest.skip('not a git checkout')
+    blob = subprocess.run(['git', 'show', f'HEAD:{G.SHORT_LEDGER}'], cwd=ROOT, capture_output=True, check=True).stdout
+    lines = blob.splitlines(keepends=True)
+    assert sha(b''.join(lines[:17])) == REGISTERED_SHORT_SHA
+    recs = [json.loads(x) for x in lines[:17]]
+    assert all(r['cairo_date'] == '2026-10-14' and r['author'] == 'claude-code' for r in recs)
+    assert {r['detail']['prereg_sha256'] for r in recs} == {sha(load_short())}
+    reg_blob = subprocess.run(['git', 'show', f'HEAD:{LEDGER_DIR}/{L.REGISTRY}'], cwd=ROOT, capture_output=True,
+                              check=True).stdout.splitlines(keepends=True)
+    entry = [x for x in reg_blob if b'"trend_ema_mom_short"' in x]
+    assert len(entry) == 1 and sha(entry[0]) == REGISTERED_REGISTRY_ENTRY
+    e = json.loads(entry[0])
+    assert (e['seq'], e['kind'], e['ref']) == (8, 'family', {'parent': None, 'genesis': sha(lines[0])})
+    led = [os.path.join(ROOT, G.SHORT_LEDGER), os.path.join(ROOT, LEDGER_DIR, L.REGISTRY)]
+    before = [open(p, 'rb').read() for p in led]
+    with pytest.raises(G.GateError):                         # a repeat is a no-op refusal (already registered)
+        G.register(ROOT, author='claude-code', cairo_date='2026-10-14', gate_path=G.SHORT_GATE, now_ms=BEFORE)
+    assert [open(p, 'rb').read() for p in led] == before
+
+
 # ------------------------------------------------------------------ a throwaway repo (never the real ledger)
 CODE = tuple(R.CORE_EVAL_FILES) + tuple(G.EVAL_FILES) + ('tools/research/run_r4.py', 'tools/research/m3_repro.py',
                                                            'tools/research/static_universe.py')
