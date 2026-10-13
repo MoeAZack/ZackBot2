@@ -460,6 +460,19 @@ def test_m1_codex_p1_b1_short_missing_execution_open_is_incomplete_next_open():
     assert r['series'][-1][0] == K(20) and r['series'] == clean['series'][:n] and r['wallet_end'] == PR.BOOK['equity0']
 
 
+def test_m1_codex_p1_b1_short_zero_target_missing_open_stays_complete():
+    """Control (Codex 6154541287): a flat member whose target floors to exactly 0 needs no execution, so a missing
+    next-open candle is irrelevant -> COMPLETE, no leg / fill, identical to the same book without the drop."""
+    huge = dict(RULE, step=1e9, min_qty=1e9)                          # every target floors to 0
+    kw_ = dict(symbols=[A], first=K(20), last=K(380), hi=K(400), slip_c=0.05, rules={A: huge}, row='base')
+    clean = PR.b1_short_book(tape(sym=A, side='short', le=(), lx=()), **kw_)
+    r = PR.b1_short_book(tape(sym=A, side='short', le=(), lx=(), drop={21}), **kw_)
+    assert clean['legs'] == [] and clean['rebalances'][0] == {'tau': K(20), 'members': 1}
+    assert r['status'] == 'COMPLETE' and r['incomplete'] == [] and r['legs'] == [] and r['row'] == 'base'
+    assert r['month_r'] is not None and r['wallet_end'] == PR.BOOK['equity0']
+    PR.require_complete(r)
+
+
 # ------------------------------------------------------------------ status contract
 def test_m1_st_01():
     for side in ('long', 'short'):

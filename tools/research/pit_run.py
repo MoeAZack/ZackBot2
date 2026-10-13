@@ -1095,12 +1095,12 @@ def b1_short_book(outputs, *, symbols, first: int, last: int, hi: int, slip_c: f
             if pending is not None and pending[0] == bo:              # (A) rebalance fills at the open of [tau, ...)
                 targets = pending[1]
                 for s in order:
-                    if rec[s] is None:
-                        if s in targets:                        # a decided leg with no open candle
-                            raise _Halt(s, gap_reason(syms[s], t), t, 'next_open')
-                        continue
                     cur = pos[s]['qty'] if s in pos else 0.0
                     tgt = targets.get(s, 0.0)
+                    if rec[s] is None:
+                        if abs(tgt - cur) >= 1e-12:             # a decided trade with no open candle
+                            raise _Halt(s, gap_reason(syms[s], t), t, 'next_open')
+                        continue                                # nothing to execute: flat and irrelevant
                     x, rule = syms[s], rules[s]
                     o = rec[s]['b'][0]
                     try:
