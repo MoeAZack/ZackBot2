@@ -454,6 +454,26 @@ def run_pit(repo: str, *, store: str, out_dir: str, author: str, cairo_date: str
     return PR.run_tiers(env, out_dir, resume=resume, clock=clock)
 
 
+def pit_incomplete(finals) -> list[str]:
+    """The PIT tier finals that are not evidence: unreadable, not sealed, sealed with no evidence (an INCOMPLETE tier),
+    or whose summary is not explicitly COMPLETE (missing-data policy; fail closed)."""
+    import pit_run as PR                                                                    # noqa: E402
+    bad = []
+    for f in finals:
+        doc = PG.read(f)
+        ok = doc is not None and doc['state'] == 'sealed' and bool(doc['evidence'])
+        if ok:
+            try:
+                for e in doc['evidence']:
+                    with open(os.path.join(os.path.dirname(f), e), 'rb') as fh:
+                        PR.require_complete(json.loads(fh.read()), e)
+            except (OSError, ValueError):
+                ok = False
+        if not ok:
+            bad.append(f)
+    return bad
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description='RES-01 R4: gated M3 reproduction and PIT run of trend_ema_mom.v1')
     sub = ap.add_subparsers(dest='cmd', required=True)
@@ -486,9 +506,15 @@ def main(argv=None) -> int:
                                cairo_date=a.cairo_date):
                 print(path)
             return 0
-        for path in run_pit(M.REPO, store=a.store, out_dir=a.out_dir, author=a.author, cairo_date=a.cairo_date,
-                            resume=a.resume):
+        finals = run_pit(M.REPO, store=a.store, out_dir=a.out_dir, author=a.author, cairo_date=a.cairo_date,
+                         resume=a.resume)
+        for path in finals:
             print(path)
+        bad = pit_incomplete(finals)
+        if bad:                                 # missing-data policy: sealed for audit, never evidence
+            print('INCOMPLETE (no evidence; not usable by any gate, verdict, promotion or ledger record): '
+                  + ', '.join(bad), file=sys.stderr)
+            return 4
         return 0
     except GateError as e:
         print(str(e), file=sys.stderr)

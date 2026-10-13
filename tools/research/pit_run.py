@@ -33,9 +33,11 @@ Order of operations (`run_pit`):
      equity, MTM max drawdown, longest underwater and an episode-bootstrap MC drawdown p5/p50/p95; per-trade R
      (pnl / qty x initial stop risk) and MFE/MAE (stop bars bounded conservatively: earlier highs + the stop bar's
      open) are diagnostics. B1 keeps its registered unit-R definition (`account_unit`);
-  5. INCOMPLETE, never counted: a lot meeting a missing bar (gap), a funding sequence that is not provably complete or
-     lacks a mark, or a lot still open at the split end is INCOMPLETE; that (configuration, split, symbol) is excluded
-     and the book is re-run without it until stable, with counts reported (never silently);
+  5. missing data (M1, policy `POLICY`, docs/newcore/research/MISSING_DATA_POLICY_v1.md): ONE causal book pass per
+     row, never a re-run without a symbol. The first unaccountable event (missing candle, a valid entry without its
+     next-open candle, funding-rate gap, funding-mark gap, end of series / delisting without a notice) halts the row
+     at the last fully accounted cycle; a lot open at the split end is split-end censoring. Such a row, and every
+     aggregate / summary / final holding it, is explicitly INCOMPLETE and never evidence (sealed without evidence);
   6. aggregate metrics, paired baselines (B0 episode-paired matched random entries - same symbol, side, split and
      registered PIT regime label (BTC 4h close vs its EMA200, frozen in the attested tape), B1 weekly equal-weight hold and
      B2 20-bar momentum on calendar-month blocks, B3 cash = the expectancy row; one-sided sign-flip permutation test,
@@ -76,6 +78,7 @@ import ledger as L                                                              
 import m3_eval as E                                                                         # noqa: E402
 import m3_repro as X                                                                        # noqa: E402
 import manifest as M                                                                        # noqa: E402
+import missing_data as MD                                                                   # noqa: E402
 import pit as P                                                                             # noqa: E402
 import pit_eval as PE                                                                       # noqa: E402
 import progress as PG                                                                       # noqa: E402
@@ -133,6 +136,54 @@ class Incomplete(Exception):
     def __init__(self, reason):
         super().__init__(reason)
         self.reason = reason
+
+
+# ------------------------------------------------------------------ missing-data policy (M1, versioned)
+# docs/newcore/research/MISSING_DATA_POLICY_v1.md (Codex M1 release 6153717648). One causal book pass per row; the
+# FIRST unaccountable event halts the row at the last fully accounted cycle (state restored, nothing forward-filled,
+# nothing re-run without a symbol); the row and every aggregate holding it are INCOMPLETE and never evidence.
+POLICY, COMPLETE, INCOMPLETE = MD.POLICY, MD.COMPLETE, MD.INCOMPLETE
+GAP_CLASS = {'incomplete.gap': 'missing_bar', 'incomplete.slip_history': 'missing_bar',
+             'incomplete.delisted': 'delisting', 'incomplete.funding': 'funding_rate_gap',
+             'incomplete.funding_mark': 'funding_mark_gap', 'incomplete.split_end': 'split_censoring'}
+HALTED = 'incomplete.book_halt'                    # an open lot stopped only because another symbol halted the row
+PHASE_RANK = {'bar': 0, 'exit': 1, 'next_open': 2, 'fill': 2, 'funding': 3, 'decision': 4}   # in-cycle order
+
+
+class _Halt(Exception):
+    """The first unaccountable event of a book row (raised inside a cycle; the cycle is rolled back)."""
+
+    def __init__(self, symbol, reason, first_ms, phase):
+        super().__init__(reason)
+        self.symbol, self.reason, self.first_ms, self.phase = symbol, reason, first_ms, phase
+
+
+def gap_reason(x, t: int) -> str:
+    """Primary reason of a symbol with no bar at cycle t: end-of-series (no later bar in this tape: delisting or data
+    end) or a missing candle. A LABEL only: the accounting (halt at the last valid cycle) is identical for both."""
+    return 'incomplete.delisted' if not x.avail or x.avail[-1] < t else 'incomplete.gap'
+
+
+def require_complete(doc, what: str = 'result') -> None:
+    """Fail closed unless `doc` is explicitly COMPLETE (the shared predicate `missing_data.check`: a missing status,
+    INCOMPLETE, a COMPLETE still carrying incomplete rows / excluded symbols / a censor, or secondary rows without a
+    primary are refused). Every evidence consumer uses this same predicate."""
+    try:
+        MD.check(doc, what)
+    except MD.MissingDataError as e:
+        raise PitRunError(str(e))
+
+
+def _decision_inputs(x, t: int):
+    """None when a SCHEDULED decision of symbol `x` at t (B1 long Monday, B1 short rebalance) has its exact input
+    window: the bar closing at t and the T.WINDOW-bar signal read behind it, from the series start on (bars before
+    the first one are warm-up, never missing). Else the primary reason: a missing decision candle / a hole inside
+    the read changes membership, weights or the weekly schedule, so it is unaccountable, never a silent skip."""
+    if not x.avail or x.avail[0] > t:
+        return None                                     # not listed yet: no decision input exists
+    if x.rec.get(t) is None:
+        return gap_reason(x, t)
+    return None if x.missing_in(t - (T.WINDOW - 1) * TF, t) is None else 'incomplete.gap'
 
 
 def canon(obj) -> bytes:
@@ -219,7 +270,7 @@ class Sym:
     def __init__(self, s):
         self.s, self.bars, self.avail, self.rec = s, [], [], {}
         self.fund, self.mark = [], {}
-        self._bps = {}
+        self._bps, self._ft, self._holes = {}, None, None
 
     def add(self, t, rec):
         if 'b' in rec:
@@ -231,19 +282,61 @@ class Sym:
             self.fund.append(P.Funding(tm, rate, ih, tm))
             self.mark[tm] = mk
 
+    def missing_in(self, lo, hi):
+        """The first bar-close time in the exact scheduled window [lo, hi] (on the bar grid) with no bar although the
+        series had started (a hole) or had already ended; None = exactly covered (times before the first bar are
+        warm-up, never missing)."""
+        if not self.avail or hi < self.avail[0]:
+            return None
+        if self._holes is None:
+            have = set(self.avail)
+            self._holes = [g for g in range(self.avail[0] + TF, self.avail[-1], TF) if g not in have]
+        k = bisect.bisect_left(self._holes, lo)
+        if k < len(self._holes) and self._holes[k] <= hi:
+            return self._holes[k]
+        return max(lo, self.avail[-1] + TF) if hi > self.avail[-1] else None
+
     def bps(self, at_ms, vol, c):
-        """slip-v1 bps from the bars closed at or before `at_ms` (TR-SMA14: last 15; Wilder: the read window)."""
+        """slip-v1 bps from the EXACT scheduled lookback closing at `at_ms` (TR-SMA14: 15 bars; Wilder: the read
+        window). A hole inside it is unaccountable (`incomplete.gap`; never an older bar substituted); too little
+        history from the series start is `incomplete.slip_history`."""
         key = (at_ms, vol)
         if key not in self._bps:
-            k = bisect.bisect_right(self.avail, at_ms)
             n = C.SLIP_BARS if vol == C.TR_SMA14 else T.WINDOW
-            try:
-                self._bps[key] = C.slip_bps(self.bars[max(0, k - n):k], c, vol)
-            except C.CostError:
-                self._bps[key] = None
-        if self._bps[key] is None:
-            raise Incomplete('incomplete.slip_history')
+            lo = at_ms - (n - 1) * TF
+            miss = self.missing_in(lo, at_ms)
+            if miss is not None:
+                self._bps[key] = 'incomplete.gap' if miss <= self.avail[-1] else 'incomplete.delisted'
+            else:
+                try:
+                    self._bps[key] = C.slip_bps(self.bars[bisect.bisect_left(self.avail, lo):
+                                                          bisect.bisect_right(self.avail, at_ms)], c, vol)
+                except C.CostError:
+                    self._bps[key] = 'incomplete.slip_history'
+        if isinstance(self._bps[key], str):
+            raise Incomplete(self._bps[key])
         return self._bps[key]
+
+    def covered(self, entry_ms, end_ms):
+        """Causal funding proof of a lot held from `entry_ms` through `end_ms`, from the rows known before `end_ms`
+        only (the prefix of the `events` check at exit, so it never fires on data that passes at exit)."""
+        ts = [f.time_ms for f in self.fund] if self._ft is None else self._ft
+        self._ft = ts
+        rows = self.fund[bisect.bisect_left(ts, entry_ms - FUND_SPAN):bisect.bisect_left(ts, end_ms)]
+        try:
+            C.check_funding_sequence(self.s, rows, start_ms=entry_ms, end_ms=end_ms)
+        except C.CostError:
+            raise Incomplete('incomplete.funding')
+
+    def bar_events(self, entry_ms, bo, t):
+        """The funding events charged in the played bar [bo, t) of a lot held since `entry_ms`, after the causal
+        rate proof through t; a missing mark is a funding-mark gap (never a filled mark)."""
+        self.covered(entry_ms, t)
+        ev = [(f.time_ms, f.rate, self.mark[f.time_ms]) for f in self.fund
+              if bo <= f.time_ms < t and f.time_ms >= entry_ms]
+        if any(m is None for _, _, m in ev):
+            raise Incomplete('incomplete.funding_mark')
+        return ev
 
     def events(self, entry_ms, exit_ms):
         rows = [f for f in self.fund if entry_ms - FUND_SPAN <= f.time_ms < exit_ms]
@@ -439,8 +532,9 @@ def delist_cover(*, notice_ms, opens, last_mark: float, bps: float, scen, tick) 
     """STRAT-02 delist cover price (prereg costs.delist, short side): with a timestamped notice, BUY at the first bar
     open STRICTLY after the notice (an open at the notice time is not causally executable) (`opens` = [(open_ms, open)] ascending) -> (fill, open_ms, 'exit.delist'); with no
     observed notice (or no open after it), BUY at the last archived mark with 5x slippage -> (fill, None,
-    'exit.delist_forced'), reported separately. Buys round UP to the tick. Pricing only: the attested tape carries no
-    delist notice yet, so the book does not call this (a held symbol whose bars end is INCOMPLETE; M1 scope)."""
+    'exit.delist_forced'), reported separately. Buys round UP to the tick. M1: `run_book(delist=...)` covers a held
+    short through this at the first open strictly after a timestamped notice; with no notice a held symbol whose bars
+    end is INCOMPLETE (missing-data policy), so the forced-mark branch is never used by the book."""
     if notice_ms is not None:
         for ms, o in opens:
             if ms > notice_ms:
@@ -449,7 +543,7 @@ def delist_cover(*, notice_ms, opens, last_mark: float, bps: float, scen, tick) 
 
 
 def run_book(tape, cfg: dict, symbols, *, first: int, last: int, hi: int, slip_c: float, rules: dict, row: str = 'base',
-             exclude=frozenset(), book=BOOK, side='long') -> dict:
+             book=BOOK, side='long', delist=None) -> dict:
     """ONE pass of the registered shared crypto book over a split's attested tape, one cost row (prereg rule.book,
     the M3 BookRunner order of m3_eval.Machine): cycle at bar close t (bar [t - 4h, t)):
       (A) fills at the open of that bar of the decisions taken at t - 4h: signal exits, then time-cap exits (a lot held
@@ -462,8 +556,17 @@ def run_book(tape, cfg: dict, symbols, *, first: int, last: int, hi: int, slip_c
           of the bar [t - 4h, t) at the funding-mark proxy are charged to the wallet;
       (C) decision at t: MTM = wallet + open lots at the closes; Cairo-day roll / 3% MTM halt; signals queued.
     At the split end (t == hi) a pending signal exit or a cap exit due at hi fills at the next open read through
-    `View.next_open`; a lot that cannot exit inside the split, a lot meeting a missing bar, or an incomplete funding
-    sequence / mark is INCOMPLETE (the caller re-runs the book without that symbol).
+    `View.next_open`.
+
+    Missing data (policy `POLICY`, M1): ONE causal pass, never a re-run without a symbol. The first event that makes the
+    shared book unaccountable - a held symbol without its candle (missing candle, or end-of-series = delisting when no
+    notice), a valid entry decision whose next-open candle is missing, a funding-rate or funding-mark gap of a held lot
+    (proved per bar from the rows known by then), or no slip history at a fill - rolls that cycle back and HALTS the
+    row: everything through the last fully accounted cycle (decisions, fills, trades, wallet, exposure, capacity,
+    series) is exactly what the same tape without the event gives; the affected symbol gets its primary reason, other
+    open lots `HALTED`; status INCOMPLETE. A lot still open at the split end (no observable next open) is split-end
+    censoring: INCOMPLETE, nothing after it to halt. `delist` = {symbol: notice_ms}: a held lot exits at the first
+    bar open strictly after the notice (`exit.delist`; a short covers through `delist_cover`); no entry after it.
 
     `side='short'` (STRAT-02 contract sections 3-4, the exact mirror): market SELL entry rounded DOWN to the tick after
     adverse slip, stop = ceil_tick(fill + dist), actual per-unit risk stop - fill (non-finite / non-positive = refusal
@@ -475,7 +578,8 @@ def run_book(tape, cfg: dict, symbols, *, first: int, last: int, hi: int, slip_c
     short = side == 'short'
     times, syms = tape
     scen = C.STRESS[row]
-    order = [s for s in symbols if s in syms and s not in exclude]
+    order = [s for s in symbols if s in syms]
+    notice = dict(delist or {})
     wallet = book['equity0']
     lots, closes, trades, incomplete, refusals, series = {}, {}, [], [], Counter(), []
     pend_exit, pend_entry, day, day_start, halted_day = [], [], None, None, None
@@ -485,20 +589,21 @@ def run_book(tape, cfg: dict, symbols, *, first: int, last: int, hi: int, slip_c
     def tick(s):
         return float(rules[s]['tick'])
 
-    def drop(s, reason):
-        incomplete.append({'symbol': s, 'entry_ms': lots[s]['entry_ms'], 'reason': reason})
-        del lots[s]
+    def lot_row(s, lot, reason, first_ms, last_ms):
+        return {'symbol': s, 'entry_ms': lot['entry_ms'], 'reason': reason, 'class': GAP_CLASS.get(reason, 'halted'),
+                'first_unaccountable_ms': first_ms, 'last_valid_ms': last_ms, 'qty': lot['qty'], 'fill': lot['fill'],
+                'stop': lot['stop'], 'fees': lot['fees'], 'funding': lot['funding'], 'secondary': reason == HALTED}
 
-    def close(s, ref, exit_ms, reason, gap, at, nbars):
+    def close(s, ref, exit_ms, reason, gap, at, nbars, xf=None):
         nonlocal wallet
         lot, x = lots[s], syms[s]
         try:
             x.events(lot['entry_ms'], exit_ms)                      # the whole funding sequence is provably complete
-            xf = C.fill_price(ref, 'buy' if short else 'sell', x.bps(at, scen.vol, slip_c), scen, gap=gap,
-                              tick=tick(s))
+            if xf is None:
+                xf = C.fill_price(ref, 'buy' if short else 'sell', x.bps(at, scen.vol, slip_c), scen, gap=gap,
+                                  tick=tick(s))
         except Incomplete as e:
-            drop(s, e.reason)
-            return
+            raise _Halt(s, e.reason, at, 'exit')
         if short:
             fee = C.fee(xf * lot['qty'], 'taker', C.CRYPTO, scen)
             gross = (lot['fill'] - xf) * lot['qty']
@@ -530,202 +635,258 @@ def run_book(tape, cfg: dict, symbols, *, first: int, last: int, hi: int, slip_c
                        'mae_r': (lot['lo'] - lot['fill']) / (lot['fill'] - lot['stop'])})
         del lots[s]
 
+    halt, prev_t = None, None
     for t in times:
-        bo = t - TF
-        rec = {s: syms[s].rec.get(t) for s in order}
-        for s in [s for s in lots if rec[s] is None]:
-            drop(s, 'incomplete.gap')
-        # (A) fills at the open of the bar [bo, t)
-        for s, _ in pend_exit:
-            if s in lots:
-                close(s, rec[s]['b'][0], bo, 'exit.signal', False, bo, (bo - lots[s]['entry_ms']) // TF)
-        pend_exit = []
-        if cap_ms is not None:
-            for s in [s for s in order if s in lots]:
-                held = bo - lots[s]['entry_ms']
-                if held > cap_ms:
-                    raise PitRunError(f'{s}: lot held past its time cap')          # unreachable: every bar is played
-                if held == cap_ms:
-                    close(s, rec[s]['b'][0], bo, 'exit.time_cap', False, bo, cfg['cap'])
-        snapshot = wallet
-        for s, sig_t, dist, ref, halted in pend_entry:
-            if s in lots:
-                refusals['capacity.in_trade'] += 1
-                continue
-            if halted:
-                refusals['filter.halt'] += 1
-                continue
-            if len(lots) >= book['max_positions']:
-                refusals['capacity.max_positions'] += 1
-                continue
-            rule = rules[s]
-            notional = math.fsum(x['qty'] * (x['fill'] if x['entry_ms'] == bo else closes.get(k, x['fill']))
-                                 for k, x in lots.items())
-            if short and _dec(dist) is None:
-                refusals['execution.stop_risk_invalid'] += 1         # a non-finite / non-positive stop risk
-                continue
-            if snapshot <= 0 or not dist or dist <= 0 or ref <= 0:
-                refusals['execution.size_min'] += 1
-                continue
-            if rec[s] is None:
-                refusals['entry_no_next_open'] += 1
-                continue
-            x = syms[s]
-            if short:
+        snap = (wallet, {k: dict(v) for k, v in lots.items()}, len(trades), Counter(refusals), len(series),
+                dict(closes))
+        try:
+            bo = t - TF
+            rec = {s: syms[s].rec.get(t) for s in order}
+            for s in [s for s in order if s in lots and rec[s] is None]:
+                raise _Halt(s, gap_reason(syms[s], t), t, 'bar')      # a held symbol without its candle
+            # (A) fills at the open of the bar [bo, t)
+            for s, why in pend_exit:
+                if s in lots and why == 'exit.delist':          # the first open strictly after the notice
+                    xf = None
+                    if short:
+                        xf = delist_cover(notice_ms=notice[s], opens=[(bo, rec[s]['b'][0])], last_mark=0.0,
+                                          bps=syms[s].bps(bo, scen.vol, slip_c), scen=scen, tick=tick(s))[0]
+                    close(s, rec[s]['b'][0], bo, why, False, bo, (bo - lots[s]['entry_ms']) // TF, xf=xf)
+                elif s in lots:
+                    close(s, rec[s]['b'][0], bo, 'exit.signal', False, bo, (bo - lots[s]['entry_ms']) // TF)
+            pend_exit = []
+            if cap_ms is not None:
+                for s in [s for s in order if s in lots]:
+                    held = bo - lots[s]['entry_ms']
+                    if held > cap_ms:
+                        raise PitRunError(f'{s}: lot held past its time cap')      # unreachable: every bar is played
+                    if held == cap_ms:
+                        close(s, rec[s]['b'][0], bo, 'exit.time_cap', False, bo, cfg['cap'])
+            snapshot = wallet
+            for s, sig_t, dist, ref, halted in pend_entry:
+                if s in lots:
+                    refusals['capacity.in_trade'] += 1
+                    continue
+                if halted:
+                    refusals['filter.halt'] += 1
+                    continue
+                if len(lots) >= book['max_positions']:
+                    refusals['capacity.max_positions'] += 1
+                    continue
+                rule = rules[s]
+                notional = math.fsum(x['qty'] * (x['fill'] if x['entry_ms'] == bo else closes.get(k, x['fill']))
+                                     for k, x in lots.items())
+                if short and _dec(dist) is None:
+                    refusals['execution.stop_risk_invalid'] += 1         # a non-finite / non-positive stop risk
+                    continue
+                if snapshot <= 0 or not dist or dist <= 0 or ref <= 0:
+                    refusals['execution.size_min'] += 1
+                    continue
+                if s in notice and notice[s] <= sig_t:          # no entry once a delist notice is known
+                    refusals['filter.delist_notice'] += 1
+                    continue
+                if rec[s] is None:                              # a valid decision with no next-open candle
+                    raise _Halt(s, gap_reason(syms[s], t), t, 'next_open')
+                x = syms[s]
+                if short:
+                    try:
+                        fill = C.fill_price(rec[s]['b'][0], 'sell', x.bps(bo, scen.vol, slip_c), scen, tick=tick(s))
+                    except Incomplete as e:
+                        if e.reason != 'incomplete.slip_history':       # a hole in the exact lookback
+                            raise _Halt(s, e.reason, bo, 'fill')
+                        refusals['entry_no_slip_history'] += 1
+                        continue
+                    q, stop, why = size_short(snapshot, fill, dist, ref, notional, rule, book)
+                    if why is not None:
+                        refusals[why] += 1
+                        continue
+                    fee = C.fee(fill * q, 'taker', C.CRYPTO, scen)
+                    wallet -= fee
+                    o = rec[s]['b'][0]
+                    lots[s] = {'signal_ms': sig_t, 'entry_ms': bo, 'qty': q, 'fill': fill, 'stop': stop, 'fees': fee,
+                               'funding': 0.0, 'snapshot': snapshot, 'hi': o, 'lo': o}
+                    continue
                 try:
-                    fill = C.fill_price(rec[s]['b'][0], 'sell', x.bps(bo, scen.vol, slip_c), scen, tick=tick(s))
-                except Incomplete:
+                    fill = C.fill_price(rec[s]['b'][0], 'buy', x.bps(bo, scen.vol, slip_c), scen, tick=tick(s))
+                except Incomplete as e:
+                    if e.reason != 'incomplete.slip_history':           # a hole in the exact lookback
+                        raise _Halt(s, e.reason, bo, 'fill')
                     refusals['entry_no_slip_history'] += 1
                     continue
-                q, stop, why = size_short(snapshot, fill, dist, ref, notional, rule, book)
-                if why is not None:
-                    refusals[why] += 1
+                # size from the ACTUAL per-unit stop risk: the adverse tick-rounded fill and the tick-floored stop
+                # (flooring can only widen fill - stop beyond dist), so qty x (fill - stop) <= risk_pct x snapshot
+                stop = _floor(fill - dist, rule['tick'])
+                if stop <= 0:                               # a long stop at/below zero can never trigger: no lot
+                    refusals['execution.stop_nonpositive'] += 1
+                    continue
+                risk_u = fill - stop
+                if risk_u <= 0:
+                    refusals['execution.size_min'] += 1
+                    continue
+                raw = snapshot * book['risk_pct'] / risk_u
+                room = book['max_leverage'] * snapshot - notional
+                q = min(raw, max(room, 0.0) / (ref * (1 + book['cap_gap_buffer'])))
+                q = _floor(q, rule['step']) if q > 0 else 0.0
+                if q <= 0 or q < float(rule['min_qty']) or q * fill < float(rule['min_notional']):  # executable
+                    refusals['execution.size_min'] += 1
                     continue
                 fee = C.fee(fill * q, 'taker', C.CRYPTO, scen)
                 wallet -= fee
                 o = rec[s]['b'][0]
-                lots[s] = {'signal_ms': sig_t, 'entry_ms': bo, 'qty': q, 'fill': fill, 'stop': stop, 'fees': fee,
-                           'funding': 0.0, 'snapshot': snapshot, 'hi': o, 'lo': o}
-                continue
-            try:
-                fill = C.fill_price(rec[s]['b'][0], 'buy', x.bps(bo, scen.vol, slip_c), scen, tick=tick(s))
-            except Incomplete:
-                refusals['entry_no_slip_history'] += 1
-                continue
-            # size from the ACTUAL per-unit stop risk: the adverse tick-rounded fill and the tick-floored stop
-            # (flooring can only widen fill - stop beyond dist), so qty x (fill - stop) <= risk_pct x snapshot
-            stop = _floor(fill - dist, rule['tick'])
-            if stop <= 0:                                       # a long stop at/below zero can never trigger: no lot
-                refusals['execution.stop_nonpositive'] += 1
-                continue
-            risk_u = fill - stop
-            if risk_u <= 0:
-                refusals['execution.size_min'] += 1
-                continue
-            raw = snapshot * book['risk_pct'] / risk_u
-            room = book['max_leverage'] * snapshot - notional
-            q = min(raw, max(room, 0.0) / (ref * (1 + book['cap_gap_buffer'])))
-            q = _floor(q, rule['step']) if q > 0 else 0.0
-            if q <= 0 or q < float(rule['min_qty']) or q * fill < float(rule['min_notional']):   # executable notional
-                refusals['execution.size_min'] += 1
-                continue
-            fee = C.fee(fill * q, 'taker', C.CRYPTO, scen)
-            wallet -= fee
-            o = rec[s]['b'][0]
-            lots[s] = {'signal_ms': sig_t, 'entry_ms': bo, 'qty': q, 'fill': fill,
-                       'stop': stop, 'fees': fee, 'funding': 0.0, 'snapshot': snapshot,
-                       'hi': o, 'lo': o}
-        pend_entry = []
-        # (B) play the bar: stop first; funding events entry <= T < exit time (accounting convention, PR #61:
-        # a gap stop exits at the bar open, before the bar's events; a non-gap stop exits at the bar CLOSE t, so the
-        # bar's events [bo, t) are charged first, with the fill still at the stop level)
-        if short:
-            # (B) short, three passes over the open lots in rank order (contract sections 3-4):
-            #   1. a gap stop exits at the bar OPEN (before the bar's funding events); every other lot books the
-            #      bar's eligible funding events (a non-gap stop exits at the bar CLOSE, so they are charged);
-            #   2. the PARK-only liquidation diagnostic on the lots still open, wallet_t = the realised wallet after
-            #      the fees and funding booked up to t, every short marked at its own bar high at once, ignoring the
-            #      bar's non-gap stops (never an exit, fill or sizing input);
-            #   3. non-gap stops fill at the stop level and exit at the bar close; other lots update MFE / MAE.
-            hits = {}
-            for s in [s for s in order if s in lots]:
+                lots[s] = {'signal_ms': sig_t, 'entry_ms': bo, 'qty': q, 'fill': fill,
+                           'stop': stop, 'fees': fee, 'funding': 0.0, 'snapshot': snapshot,
+                           'hi': o, 'lo': o}
+            pend_entry = []
+            # (B) play the bar: stop first; funding events entry <= T < exit time (accounting convention, PR #61:
+            # a gap stop exits at the bar open, before the bar's events; a non-gap stop exits at the bar CLOSE t, so the
+            # bar's events [bo, t) are charged first, with the fill still at the stop level)
+            if short:
+                # (B) short, three passes over the open lots in rank order (contract sections 3-4):
+                #   1. a gap stop exits at the bar OPEN (before the bar's funding events); every other lot books the
+                #      bar's eligible funding events (a non-gap stop exits at the bar CLOSE, so they are charged);
+                #   2. the PARK-only liquidation diagnostic on the lots still open, wallet_t = the realised wallet after
+                #      the fees and funding booked up to t, every short marked at its own bar high at once, ignoring the
+                #      bar's non-gap stops (never an exit, fill or sizing input);
+                #   3. non-gap stops fill at the stop level and exit at the bar close; other lots update MFE / MAE.
+                hits = {}
+                for s in [s for s in order if s in lots]:
+                    lot, (o, h, lo, c) = lots[s], rec[s]['b']
+                    stop_hit = o >= lot['stop'] or h >= lot['stop']
+                    ref, gap = C.stop_reference('short', lot['stop'], o) if stop_hit else (None, False)
+                    if stop_hit and gap:                    # MFE: earlier lows + the open; MAE: the known adverse open
+                        lot['lo'], lot['hi'] = min(lot['lo'], o), max(lot['hi'], o)
+                        close(s, ref, bo, 'exit.stop', True, bo, (bo - lot['entry_ms']) // TF + 1)
+                        continue
+                    try:
+                        ev = syms[s].bar_events(lot['entry_ms'], bo, t)
+                    except Incomplete as e:
+                        raise _Halt(s, e.reason, bo, 'funding')
+                    amt = C.funding_cost('short', lot['qty'], ev, scen, bars_held=1,
+                                         entry_notional=lot['qty'] * lot['fill'])
+                    wallet -= amt
+                    lot['funding'] += amt
+                    hits[s] = (stop_hit, ref)
+                held = [(lots[k], rec[k]['b']) for k in order if k in lots]
+                if held:
+                    w, g, flag = liq_point(wallet, [(lt['qty'], lt['fill'], b[1]) for lt, b in held])
+                    liq['bars'] += 1
+                    liq['flagged_bars'] += flag
+                    if g > 0:
+                        liq['min_w_over_g'] = w / g if liq['min_w_over_g'] is None else min(liq['min_w_over_g'], w / g)
+                    jump = max((b[1] - b[0]) / b[0] for _, b in held)
+                    liq['max_bar_high_over_open'] = jump if liq['max_bar_high_over_open'] is None else max(
+                        liq['max_bar_high_over_open'], jump)
+                for s in [s for s in order if s in lots]:
+                    lot, (o, h, lo, c) = lots[s], rec[s]['b']
+                    stop_hit, ref = hits[s]
+                    if stop_hit:                            # ambiguous intrabar path: MAE bounded by the stop
+                        lot['lo'], lot['hi'] = min(lot['lo'], o), max(lot['hi'], min(h, lot['stop']))
+                        close(s, ref, t, 'exit.stop', False, bo, (bo - lot['entry_ms']) // TF + 1)
+                        continue
+                    lot['hi'], lot['lo'] = max(lot['hi'], h), min(lot['lo'], lo)
+            for s in [s for s in order if s in lots and not short]:
                 lot, (o, h, lo, c) = lots[s], rec[s]['b']
-                stop_hit = o >= lot['stop'] or h >= lot['stop']
-                ref, gap = C.stop_reference('short', lot['stop'], o) if stop_hit else (None, False)
-                if stop_hit and gap:                    # MFE: earlier lows + the open; MAE: the known adverse open
-                    lot['lo'], lot['hi'] = min(lot['lo'], o), max(lot['hi'], o)
-                    close(s, ref, bo, 'exit.stop', True, bo, (bo - lot['entry_ms']) // TF + 1)
-                    continue
-                ev = [(f.time_ms, f.rate, syms[s].mark[f.time_ms]) for f in syms[s].fund
-                      if bo <= f.time_ms < t and f.time_ms >= lot['entry_ms']]
-                if any(m is None for _, _, m in ev):
-                    drop(s, 'incomplete.funding_mark')
-                    continue
-                amt = C.funding_cost('short', lot['qty'], ev, scen, bars_held=1,
-                                     entry_notional=lot['qty'] * lot['fill'])
-                wallet -= amt
-                lot['funding'] += amt
-                hits[s] = (stop_hit, ref)
-            held = [(lots[k], rec[k]['b']) for k in order if k in lots]
-            if held:
-                w, g, flag = liq_point(wallet, [(lt['qty'], lt['fill'], b[1]) for lt, b in held])
-                liq['bars'] += 1
-                liq['flagged_bars'] += flag
-                if g > 0:
-                    liq['min_w_over_g'] = w / g if liq['min_w_over_g'] is None else min(liq['min_w_over_g'], w / g)
-                jump = max((b[1] - b[0]) / b[0] for _, b in held)
-                liq['max_bar_high_over_open'] = jump if liq['max_bar_high_over_open'] is None else max(
-                    liq['max_bar_high_over_open'], jump)
-            for s in [s for s in order if s in lots]:
-                lot, (o, h, lo, c) = lots[s], rec[s]['b']
-                stop_hit, ref = hits[s]
-                if stop_hit:                            # ambiguous intrabar path: MAE bounded by the stop
-                    lot['lo'], lot['hi'] = min(lot['lo'], o), max(lot['hi'], min(h, lot['stop']))
-                    close(s, ref, t, 'exit.stop', False, bo, (bo - lot['entry_ms']) // TF + 1)
+                stop_hit = o <= lot['stop'] or lo <= lot['stop']
+                ref, gap = C.stop_reference('long', lot['stop'], o) if stop_hit else (None, False)
+                if not (stop_hit and gap):
+                    try:
+                        ev = syms[s].bar_events(lot['entry_ms'], bo, t)
+                    except Incomplete as e:
+                        raise _Halt(s, e.reason, bo, 'funding')
+                    amt = C.funding_cost('long', lot['qty'], ev, scen, bars_held=1,
+                                         entry_notional=lot['qty'] * lot['fill'])
+                    wallet -= amt
+                    lot['funding'] += amt
+                if stop_hit:
+                    lot['hi'], lot['lo'] = max(lot['hi'], o), min(lot['lo'], lo)    # pre-stop bound: never the bar high
+                    close(s, ref, bo if gap else t, 'exit.stop', gap, bo, (bo - lot['entry_ms']) // TF + 1)
                     continue
                 lot['hi'], lot['lo'] = max(lot['hi'], h), min(lot['lo'], lo)
-        for s in [s for s in order if s in lots and not short]:
-            lot, (o, h, lo, c) = lots[s], rec[s]['b']
-            stop_hit = o <= lot['stop'] or lo <= lot['stop']
-            ref, gap = C.stop_reference('long', lot['stop'], o) if stop_hit else (None, False)
-            if not (stop_hit and gap):
-                ev = [(f.time_ms, f.rate, syms[s].mark[f.time_ms]) for f in syms[s].fund
-                      if bo <= f.time_ms < t and f.time_ms >= lot['entry_ms']]
-                if any(m is None for _, _, m in ev):
-                    drop(s, 'incomplete.funding_mark')
+            for s in order:
+                if rec[s] is not None:
+                    closes[s] = rec[s]['b'][3]
+            # (C) decision at t
+            if short:
+                mtm = wallet + math.fsum(x['qty'] * (x['fill'] - closes.get(k, x['fill'])) for k, x in lots.items())
+            else:
+                mtm = wallet + math.fsum(x['qty'] * (closes.get(k, x['fill']) - x['fill']) for k, x in lots.items())
+            series.append((t, mtm))
+            d = E.cairo_day(t)
+            if d != day:
+                day, day_start = d, mtm
+            if halted_day != d and day_start > 0 and mtm / day_start - 1.0 <= -book['daily_loss_pct']:
+                halted_day = d
+            for s in order:
+                r = rec[s]
+                if r is None:
                     continue
-                amt = C.funding_cost('long', lot['qty'], ev, scen, bars_held=1,
-                                     entry_notional=lot['qty'] * lot['fill'])
-                wallet -= amt
-                lot['funding'] += amt
-            if stop_hit:
-                lot['hi'], lot['lo'] = max(lot['hi'], o), min(lot['lo'], lo)    # pre-stop bound: never the bar high
-                close(s, ref, bo if gap else t, 'exit.stop', gap, bo, (bo - lot['entry_ms']) // TF + 1)
+                le, lx, dist = _signal(cfg, syms[s], r, t, side)
+                if s in lots and s in notice and notice[s] < t:
+                    pend_exit.append((s, 'exit.delist'))
+                elif lx and s in lots:
+                    pend_exit.append((s, t))
+                if le and first <= t <= last:
+                    pend_entry.append((s, t, _dist_exact(cfg, r) if short else dist, r['b'][3], halted_day == d))
+            if t == hi:                                     # split end: fills due at hi read the next open
+                sig_due = {s for s, _ in pend_exit if s in lots}
+                due = set(sig_due)
+                if cap_ms is not None:
+                    due |= {s for s in lots if lots[s]['entry_ms'] + cap_ms == hi}
+                tag = {s: why for s, why in pend_exit}
+                for s in [s for s in order if s in due]:
+                    n = _next_open(syms[s], hi, hi)
+                    if n is not None:
+                        why = 'exit.delist' if tag.get(s) == 'exit.delist' else (
+                            'exit.signal' if s in sig_due else 'exit.time_cap')
+                        xf = None
+                        if why == 'exit.delist' and short:
+                            xf = delist_cover(notice_ms=notice[s], opens=[(hi, n)], last_mark=0.0,
+                                              bps=syms[s].bps(hi, scen.vol, slip_c), scen=scen, tick=tick(s))[0]
+                        close(s, n, hi, why, False, hi, (hi - lots[s]['entry_ms']) // TF, xf=xf)
+                pend_exit = []
+        except _Halt as h:                              # roll the cycle back: state = end of the last valid cycle
+            wallet, lots, refusals, closes = snap[0], snap[1], snap[3], snap[5]
+            del trades[snap[2]:], series[snap[4]:]
+            halt = (h, t)
+            break
+        prev_t = t
+    censor = None
+    if halt is not None:
+        h, at = halt
+        for s in [s for s in order if s in lots or s == h.symbol]:
+            if s not in lots:                           # a flat symbol: the decision with no next open
+                incomplete.append({'symbol': s, 'entry_ms': None, 'reason': h.reason,
+                                   'class': GAP_CLASS[h.reason], 'first_unaccountable_ms': h.first_ms,
+                                   'last_valid_ms': prev_t, 'phase': h.phase, 'secondary': False})
                 continue
-            lot['hi'], lot['lo'] = max(lot['hi'], h), min(lot['lo'], lo)
-        for s in order:
-            if rec[s] is not None:
-                closes[s] = rec[s]['b'][3]
-        # (C) decision at t
-        if short:
-            mtm = wallet + math.fsum(x['qty'] * (x['fill'] - closes.get(k, x['fill'])) for k, x in lots.items())
-        else:
-            mtm = wallet + math.fsum(x['qty'] * (closes.get(k, x['fill']) - x['fill']) for k, x in lots.items())
-        series.append((t, mtm))
-        d = E.cairo_day(t)
-        if d != day:
-            day, day_start = d, mtm
-        if halted_day != d and day_start > 0 and mtm / day_start - 1.0 <= -book['daily_loss_pct']:
-            halted_day = d
-        for s in order:
-            r = rec[s]
-            if r is None:
-                continue
-            le, lx, dist = _signal(cfg, syms[s], r, t, side)
-            if lx and s in lots:
-                pend_exit.append((s, t))
-            if le and first <= t <= last:
-                pend_entry.append((s, t, _dist_exact(cfg, r) if short else dist, r['b'][3], halted_day == d))
-        if t == hi:                                     # split end: fills due at hi read the next open
-            sig_due = {s for s, _ in pend_exit if s in lots}
-            due = set(sig_due)
-            if cap_ms is not None:
-                due |= {s for s in lots if lots[s]['entry_ms'] + cap_ms == hi}
-            for s in [s for s in order if s in due]:
-                n = _next_open(syms[s], hi, hi)
-                if n is None:
-                    drop(s, 'incomplete.split_end')
-                else:
-                    close(s, n, hi, 'exit.signal' if s in sig_due else 'exit.time_cap', False, hi,
-                          (hi - lots[s]['entry_ms']) // TF)
-            pend_exit = []
-    for s in list(lots):
-        if cap_ms is not None and lots[s]['entry_ms'] + cap_ms < hi:
-            raise PitRunError(f'{s}: a capped lot outlived its cap inside the split')    # unreachable
-        drop(s, 'incomplete.split_end')
+            why = h.reason if s == h.symbol else HALTED        # exactly ONE primary; ties -> the frozen order
+            r = dict(lot_row(s, lots[s], why, h.first_ms if s == h.symbol else at, prev_t),
+                     phase=h.phase if s == h.symbol else 'halt')
+            if why == HALTED:
+                r['primary_ref'] = f'{h.symbol}@{h.first_ms}'
+            incomplete.append(r)
+        censor = {'class': GAP_CLASS[h.reason], 'reason': h.reason, 'symbol': h.symbol, 'phase': h.phase,
+                  'halted': True, 'cycle_ms': at, 'first_unaccountable_ms': h.first_ms, 'last_valid_ms': prev_t}
+    else:
+        for s in [s for s in order if s in lots]:
+            if cap_ms is not None and lots[s]['entry_ms'] + cap_ms < hi:
+                raise PitRunError(f'{s}: a capped lot outlived its cap inside the split')    # unreachable
+            incomplete.append(dict(lot_row(s, lots[s], 'incomplete.split_end', hi, hi), phase='split_end'))
+        if incomplete:
+            censor = {'class': 'split_censoring', 'reason': 'incomplete.split_end', 'symbol': None,
+                      'phase': 'split_end', 'halted': False, 'cycle_ms': hi, 'first_unaccountable_ms': hi,
+                      'last_valid_ms': hi}
+    if censor is not None:                              # cash / exposure at the refusal, consistent with the series
+        sgn = -1.0 if short else 1.0
+        censor.update(wallet=wallet, mtm=series[-1][1] if series else book['equity0'], open_lots=len(lots),
+                      gross_exposure=math.fsum(x['qty'] * closes.get(k, x['fill']) for k, x in lots.items()),
+                      unrealised=math.fsum(sgn * x['qty'] * (closes.get(k, x['fill']) - x['fill'])
+                                           for k, x in lots.items()))
     trades.sort(key=lambda r: (r['entry_ms'], r['symbol']))
     out = {'trades': trades, 'incomplete': incomplete, 'refusals': dict(sorted(refusals.items())),
-           'wallet_end': wallet, 'series': series}
+           'wallet_end': wallet, 'series': series, 'status': INCOMPLETE if incomplete else COMPLETE, 'policy': POLICY}
+    if censor is not None:
+        out['censor'] = censor
     if short:
         out['side'] = 'short'
         out['liquidation'] = dict(liq, park=liq['flagged_bars'] > 0,
@@ -746,132 +907,183 @@ def book_stats(series, equity0=BOOK['equity0']) -> dict:
 
 
 def account(outputs, cfg: dict, *, symbols, first: int, last: int, hi: int, slip_c: float, rules: dict,
-            rows=('base',), side='long') -> dict:
-    """The registered book for one configuration over one split, per cost row. A symbol with any INCOMPLETE lot is
-    excluded and the book re-run without it until no INCOMPLETE remains (reported, never silently counted)."""
+            rows=('base',), side='long', delist=None) -> dict:
+    """The registered book for one configuration over one split, per cost row: ONE causal `run_book` pass per row
+    (missing-data policy `POLICY`: never a re-run without a symbol). A row with any incomplete record is INCOMPLETE;
+    its book figures are None (the realised wallet omits the unresolved lots) and the result is never evidence."""
     tape = read_tape(outputs)
     _bind_side(tape, side)
     missing = sorted(s for s in symbols if s in tape[1] and s not in rules)
     if missing:
         raise PitRunError(f'no pinned exchange rule (tick / step / min qty / min notional) for {missing}')
     if cfg['kind'] == 'b1' and side == 'short':
-        return {'config': cfg['name'], 'book': True, 'side': 'short',
-                'rows': {row: b1_short_book(outputs, symbols=symbols, first=first, last=last, hi=hi, slip_c=slip_c,
-                                            rules=rules, row=row) for row in rows}}
+        res = {'config': cfg['name'], 'book': True, 'side': 'short',
+               'rows': {row: b1_short_book(outputs, symbols=symbols, first=first, last=last, hi=hi, slip_c=slip_c,
+                                           rules=rules, row=row) for row in rows}}
+        return dict(res, status=_status(res['rows'].values()), policy=POLICY)
     if cfg['kind'] == 'b1':
         return account_unit(outputs, cfg, first=first, last=last, hi=hi, slip_c=slip_c, rows=rows)
     out = {'config': cfg['name'], 'book': True, 'rows': {}}
     for row in rows:
-        excl, seen, first_trades = set(), [], None
-        while True:
-            res = run_book(tape, cfg, symbols, first=first, last=last, hi=hi, slip_c=slip_c, rules=rules, row=row,
-                           exclude=frozenset(excl), side=side)
-            if first_trades is None:
-                first_trades = res['trades']
-            seen += res['incomplete']
-            new = {i['symbol'] for i in res['incomplete']} - excl
-            if not new:
-                break
-            excl |= new
-        res.update(counted=res['trades'], incomplete=seen, excluded_symbols=sorted(excl),
-                   excluded_trades=sum(1 for r in first_trades if r['symbol'] in excl),
-                   net_pct_equity=100.0 * (res['wallet_end'] - BOOK['equity0']) / BOOK['equity0'],
-                   **book_stats(res['series']))
+        res = run_book(tape, cfg, symbols, first=first, last=last, hi=hi, slip_c=slip_c, rules=rules, row=row,
+                       side=side, delist=delist)
+        done = res['status'] == COMPLETE
+        res.update(counted=res['trades'], excluded_symbols=[], excluded_trades=0,
+                   net_pct_equity=100.0 * (res['wallet_end'] - BOOK['equity0']) / BOOK['equity0'] if done else None,
+                   **(book_stats(res['series']) if done else {'mtm_max_dd_pct': None,
+                                                              'longest_underwater_cycles': None}))
         if side == 'short':                     # STRAT-02 B1 pairing: the candidate's book MTM month R, same units
-            res['month_r'] = month_r(res['series'], first, last)
+            res['month_r'] = month_r(res['series'], first, last) if done else None
         res.pop('series')
         out['rows'][row] = res
     base = out['rows'][rows[0]]
     out.update({k: base[k] for k in ('trades', 'counted', 'incomplete', 'excluded_symbols', 'excluded_trades',
                                      'refusals')})
+    out.update(status=_status(out['rows'].values()), policy=POLICY)
     return out
+
+
+def _status(rows) -> str:
+    """INCOMPLETE when any row is not explicitly COMPLETE (a missing status fails closed)."""
+    return COMPLETE if all(r.get('status') == COMPLETE for r in rows) else INCOMPLETE
 
 
 def account_unit(outputs, cfg: dict, *, first: int, last: int, hi: int, slip_c: float, rows=tuple(C.STRESS)) -> dict:
     """Unit-quantity R per symbol (no shared book): B1 (prereg: equal-weight weekly hold scaled to equal risk) and
-    per-trade diagnostics. Same fill / stop / next-open cap / funding / INCOMPLETE rules as the book."""
+    per-trade diagnostics. Same fill / stop / next-open cap / funding rules as the book.
+    Missing data (policy `POLICY`): the symbols share no state, so each is played causally on its own and the row is
+    then cut exactly where ONE joint causal pass would halt - at the earliest cycle holding an unaccountable event (a
+    held symbol without its candle, a valid entry without its next-open candle, a funding-rate / mark gap proved per
+    bar, an exit without slip history). Trades closed in earlier cycles are kept (never a whole-symbol exclusion);
+    lots open at that cycle are INCOMPLETE (the affected one with its reason, others `HALTED`). Without such an event,
+    lots open at the split end are split-end censoring. Any incomplete record = status INCOMPLETE."""
     tape = read_tape(outputs)
     _bind_side(tape, 'long')
     times, syms = tape
-    trades, incomplete, refusals = [], [], Counter()
+    refusals, per = Counter(), {}
     for s in sorted(syms):
         x, lot, pend_entry, pend_exit = syms[s], None, None, None
+        done, lots_seen, ev, sym_ref = [], [], None, []   # (cycle, trade); [entry, close cycle, lot]; (cycle, refusal)
 
-        def close(exit_ref, exit_ms, reason, gap, at, nbars):
+        def close(exit_ref, exit_ms, reason, gap, at, nbars, cyc):
             try:
                 r = net_r(x, entry_ref=lot['entry_ref'], entry_ms=lot['entry_ms'], dist=lot['dist'], exit_ref=exit_ref,
                           exit_ms=exit_ms, gap=gap, exit_bps_at=at, nbars=nbars, slip_c=slip_c, rows=rows)
             except Incomplete as e:
-                incomplete.append({'symbol': s, 'entry_ms': lot['entry_ms'], 'reason': e.reason})
-                return
-            trades.append({'config': cfg['name'], 'symbol': s, 'signal_ms': lot['entry_ms'],
-                           'entry_ms': lot['entry_ms'], 'exit_ms': exit_ms, 'exit_reason': reason, 'gap': gap,
-                           'bars': nbars, 'r': r, 'mfe_r': (lot['hi'] - lot['fill']) / lot['dist'],
-                           'mae_r': (lot['lo'] - lot['fill']) / lot['dist']})
+                raise _Halt(s, e.reason, at, 'exit')
+            done.append((cyc, {'config': cfg['name'], 'symbol': s, 'signal_ms': lot['entry_ms'],
+                               'entry_ms': lot['entry_ms'], 'exit_ms': exit_ms, 'exit_reason': reason, 'gap': gap,
+                               'bars': nbars, 'r': r, 'mfe_r': (lot['hi'] - lot['fill']) / lot['dist'],
+                               'mae_r': (lot['lo'] - lot['fill']) / lot['dist']}))
+            lots_seen[-1][1] = cyc
 
         for t in times:
-            rec = x.rec.get(t)
-            if rec is None:
-                if lot is not None:
-                    incomplete.append({'symbol': s, 'entry_ms': lot['entry_ms'], 'reason': 'incomplete.gap'})
+            try:
+                rec = x.rec.get(t)
+                sched = cfg['kind'] == 'b1' and first <= t <= last and _is_monday_open(t)
+                if rec is None:
+                    if lot is not None:
+                        raise _Halt(s, gap_reason(x, t), t, 'bar')
+                    if pend_entry is not None:
+                        raise _Halt(s, gap_reason(x, t), t, 'next_open')
+                    if sched and _decision_inputs(x, t) is not None:   # the scheduled Monday decision candle
+                        raise _Halt(s, gap_reason(x, t), t, 'decision')
+                    pend_exit = None
+                    continue
+                o, h, lo, c = rec['b']
+                bo = t - TF
+                if pend_exit is not None and lot is not None:
+                    close(o, bo, 'exit.signal', False, bo, (bo - lot['entry_ms']) // TF, t)
+                    lot = None
+                pend_exit = None
+                if lot is not None and cfg['cap'] is not None and bo - lot['entry_ms'] == cfg['cap'] * TF:
+                    close(o, bo, 'exit.time_cap', False, bo, cfg['cap'], t)
                     lot = None
                 if pend_entry is not None:
-                    refusals['entry_no_next_open'] += 1
-                pend_entry = pend_exit = None
+                    sig_t, dist = pend_entry
+                    pend_entry = None
+                    try:
+                        fill = C.fill_price(o, 'buy', x.bps(bo, BASE.vol, slip_c), BASE)
+                    except Incomplete as e:
+                        if e.reason != 'incomplete.slip_history':       # a hole in the exact lookback
+                            raise _Halt(s, e.reason, bo, 'fill')
+                        sym_ref.append((t, 'entry_no_slip_history'))
+                        fill = None
+                    if fill is not None and cfg['stop'] and fill - dist <= 0:
+                        sym_ref.append((t, 'execution.stop_nonpositive'))   # an untriggerable long stop: no lot
+                    elif fill is not None:
+                        lot = {'entry_ms': bo, 'entry_ref': o, 'dist': dist, 'fill': fill,
+                               'stop': fill - dist if cfg['stop'] else None, 'hi': o, 'lo': o}
+                        lots_seen.append([t, None, lot])
+                if lot is not None:
+                    stop_hit = lot['stop'] is not None and (o <= lot['stop'] or lo <= lot['stop'])
+                    if not (stop_hit and C.stop_reference('long', lot['stop'], o)[1]):
+                        try:                                    # the bar's funding obligation, proved causally
+                            x.bar_events(lot['entry_ms'], bo, t)
+                        except Incomplete as e:
+                            raise _Halt(s, e.reason, bo, 'funding')
+                    if stop_hit:
+                        lot['hi'], lot['lo'] = max(lot['hi'], o), min(lot['lo'], lo)   # pre-stop bound
+                        ref, gap = C.stop_reference('long', lot['stop'], o)
+                        close(ref, bo if gap else t, 'exit.stop', gap, bo, (bo - lot['entry_ms']) // TF + 1, t)
+                        lot = None
+                    else:
+                        lot['hi'], lot['lo'] = max(lot['hi'], h), min(lot['lo'], lo)
+                if sched and lot is None and _decision_inputs(x, t) is not None:   # a hole in its exact inputs
+                    raise _Halt(s, _decision_inputs(x, t), t, 'decision')
+                le, lx, dist = _signal(cfg, x, rec, t)
+                if lx and lot is not None:
+                    pend_exit = t
+                if le and lot is None and first <= t <= last:
+                    if not dist or dist <= 0:
+                        sym_ref.append((t, 'entry_bad_stop_distance'))
+                    else:
+                        pend_entry = (t, dist)
+                if t == hi and lot is not None and (pend_exit is not None or (
+                        cfg['cap'] is not None and lot['entry_ms'] + cfg['cap'] * TF == hi)):
+                    n = _next_open(x, hi, hi)
+                    if n is not None:
+                        close(n, hi, 'exit.signal' if pend_exit is not None else 'exit.time_cap', False, hi,
+                              (hi - lot['entry_ms']) // TF, t)
+                        lot = None
+            except _Halt as e:
+                ev = (t, e)
+                break
+        per[s] = {'done': done, 'lots': lots_seen, 'event': ev, 'refusals': sym_ref}
+    halts = sorted((v['event'][0], PHASE_RANK[v['event'][1].phase], s) for s, v in per.items()
+                   if v['event'] is not None)              # the joint pass's order inside a cycle, then the symbol
+    at = halts[0][0] if halts else None
+    trades, incomplete = [], []
+    for s, v in sorted(per.items()):
+        trades += [tr for cyc, tr in v['done'] if at is None or cyc < at]
+        refusals.update(k for c, k in v['refusals'] if at is None or c < at)
+    if at is not None:
+        prim = [halts[0][2]]                           # exactly ONE primary; same-cycle faults are HALTED
+        ref0 = f'{prim[0]}@{per[prim[0]]["event"][1].first_ms}'
+        for s, v in sorted(per.items()):
+            open_at = [lt for c0, c1, lt in v['lots'] if c0 < at and (c1 is None or c1 >= at)]
+            if s in prim:
+                e = v['event'][1]
+                incomplete.append({'symbol': s, 'entry_ms': open_at[0]['entry_ms'] if open_at else None,
+                                   'reason': e.reason, 'class': GAP_CLASS[e.reason], 'phase': e.phase,
+                                   'first_unaccountable_ms': e.first_ms, 'last_valid_ms': at - TF, 'secondary': False})
                 continue
-            o, h, lo, c = rec['b']
-            bo = t - TF
-            if pend_exit is not None and lot is not None:
-                close(o, bo, 'exit.signal', False, bo, (bo - lot['entry_ms']) // TF)
-                lot = None
-            pend_exit = None
-            if lot is not None and cfg['cap'] is not None and bo - lot['entry_ms'] == cfg['cap'] * TF:
-                close(o, bo, 'exit.time_cap', False, bo, cfg['cap'])
-                lot = None
-            if pend_entry is not None:
-                sig_t, dist = pend_entry
-                pend_entry = None
-                try:
-                    fill = C.fill_price(o, 'buy', x.bps(bo, BASE.vol, slip_c), BASE)
-                except Incomplete:
-                    refusals['entry_no_slip_history'] += 1
-                    fill = None
-                if fill is not None and cfg['stop'] and fill - dist <= 0:
-                    refusals['execution.stop_nonpositive'] += 1      # an untriggerable long stop: never opened
-                elif fill is not None:
-                    lot = {'entry_ms': bo, 'entry_ref': o, 'dist': dist, 'fill': fill,
-                           'stop': fill - dist if cfg['stop'] else None, 'hi': o, 'lo': o}
-            if lot is not None:
-                if lot['stop'] is not None and (o <= lot['stop'] or lo <= lot['stop']):
-                    lot['hi'], lot['lo'] = max(lot['hi'], o), min(lot['lo'], lo)   # pre-stop bound
-                    ref, gap = C.stop_reference('long', lot['stop'], o)
-                    close(ref, bo if gap else t, 'exit.stop', gap, bo, (bo - lot['entry_ms']) // TF + 1)
-                    lot = None
-                else:
-                    lot['hi'], lot['lo'] = max(lot['hi'], h), min(lot['lo'], lo)
-            le, lx, dist = _signal(cfg, x, rec, t)
-            if lx and lot is not None:
-                pend_exit = t
-            if le and lot is None and first <= t <= last:
-                if not dist or dist <= 0:
-                    refusals['entry_bad_stop_distance'] += 1
-                else:
-                    pend_entry = (t, dist)
-            if t == hi and lot is not None and (pend_exit is not None or (
-                    cfg['cap'] is not None and lot['entry_ms'] + cfg['cap'] * TF == hi)):
-                n = _next_open(x, hi, hi)
-                if n is not None:
-                    close(n, hi, 'exit.signal' if pend_exit is not None else 'exit.time_cap', False, hi,
-                          (hi - lot['entry_ms']) // TF)
-                    lot = None
-        if lot is not None:
-            incomplete.append({'symbol': s, 'entry_ms': lot['entry_ms'], 'reason': 'incomplete.split_end'})
+            for lt in open_at:
+                incomplete.append({'symbol': s, 'entry_ms': lt['entry_ms'], 'reason': HALTED, 'class': 'halted',
+                                   'phase': 'halt', 'first_unaccountable_ms': at, 'last_valid_ms': at - TF,
+                                   'secondary': True, 'primary_ref': ref0})
+    else:
+        for s, v in sorted(per.items()):
+            for c0, c1, lt in v['lots']:
+                if c1 is None:
+                    incomplete.append({'symbol': s, 'entry_ms': lt['entry_ms'], 'reason': 'incomplete.split_end',
+                                       'class': 'split_censoring', 'phase': 'split_end', 'first_unaccountable_ms': hi,
+                                       'last_valid_ms': hi, 'secondary': False})
     trades.sort(key=lambda r: (r['entry_ms'], r['symbol']))
-    bad = sorted({i['symbol'] for i in incomplete})
-    counted = [r for r in trades if r['symbol'] not in bad]
-    return {'config': cfg['name'], 'book': False, 'trades': trades, 'counted': counted, 'incomplete': incomplete,
-            'excluded_symbols': bad, 'excluded_trades': len(trades) - len(counted),
-            'refusals': dict(sorted(refusals.items()))}
+    return {'config': cfg['name'], 'book': False, 'trades': trades, 'counted': list(trades), 'incomplete': incomplete,
+            'excluded_symbols': [], 'excluded_trades': 0, 'refusals': dict(sorted(refusals.items())),
+            'status': INCOMPLETE if incomplete else COMPLETE, 'policy': POLICY,
+            **({} if at is None else {'censor': {'cycle_ms': at, 'last_valid_ms': at - TF, 'halted': True}})}
 
 
 # ------------------------------------------------------------------ B1 short: the perp short benchmark book
@@ -884,8 +1096,10 @@ def b1_short_book(outputs, *, symbols, first: int, last: int, hi: int, slip_c: f
     """STRAT-02 B1 (contract section 7.1, Codex 6112077638): an equal-weight USD-M perpetual SHORT basket on its own
     10,000 USDT book, no spot borrow, signed actual funding (a short receives positive and pays negative rates).
       * tau = every Monday 00:00 UTC inside the decision range [first, last] plus its first bar (`first`);
-      * M_tau = tier members with a closed 4h bar at tau, ATR14 defined on the contiguous tail (tape `a`) and a bar
-        opening at tau (`_next_open`); N = |M_tau|, N = 0 = flat until the next tau;
+      * M_tau = tier members with a closed 4h bar at tau and ATR14 defined on the contiguous tail (tape `a`), known
+        at the decision close (M1: the execution open is NOT a membership filter - a decided leg whose open is
+        missing halts the book INCOMPLETE, phase next_open; a listed tier symbol whose decision candle or exact
+        T.WINDOW-bar input read has a hole halts it, phase decision); N = |M_tau|, N = 0 = flat until the next tau;
       * q*_s = floor_step((0.01 x E_tau / N) / (2.5 x ATR14_s(tau))) with E_tau the B1 MTM equity at tau; if
         sum(q*_s x close_s(tau) x 1.10) > 3 x E_tau every q*_s is scaled by 3 x E_tau / that sum BEFORE flooring;
       * a leg below min qty / min notional (qty x the executable sell fill, pinned rules) is set to 0 and counted;
@@ -893,9 +1107,11 @@ def b1_short_book(outputs, *, symbols, first: int, last: int, hi: int, slip_c: f
         adverse slip-v1, sell rounded DOWN / buy rounded UP to the tick; a member leaving M_tau is fully covered;
       * no stop, no time cap, no other exit; funding on the held qty at each funding time T in the played bar
         [t - 4h, t) at the funding-mark proxy;
-      * a missing mark or a missing bar while held makes that symbol INCOMPLETE: it is counted, its leg leaves the
-        book unsettled from that time and the symbol is excluded from later rebalances; the book is then labelled
-        status INCOMPLETE (never a silently complete result).
+      * missing data (policy `POLICY`, M1): the first unaccountable event - a held symbol without its candle, a
+        target leg without its open, a funding-rate / mark gap of a held leg (proved per bar), a fill without slip
+        history - rolls that cycle back and HALTS the book (one causal pass, no symbol excluded and the book never
+        continued from an unknowable wallet); status INCOMPLETE, the affected symbol with its reason, other held legs
+        `HALTED`.
     Returns the MTM series and the calendar-month block R `(E_end(m) - E_start(m)) / (0.01 x E_start(m))`."""
     tape = read_tape(outputs)
     _bind_side(tape, 'short')
@@ -904,93 +1120,110 @@ def b1_short_book(outputs, *, symbols, first: int, last: int, hi: int, slip_c: f
     order = [s for s in symbols if s in syms]
     wallet = book['equity0']
     pos, closes, legs, incomplete, refusals, series = {}, {}, [], [], Counter(), []
-    dead, pending, taus = set(), None, []
-
-    def kill(s, t, reason):
-        incomplete.append({'symbol': s, 'time_ms': t, 'reason': reason})
-        dead.add(s)
-        pos.pop(s, None)
+    pending, taus, halt, prev_t = None, [], None, None
 
     for t in times:
-        bo = t - TF
-        rec = {s: syms[s].rec.get(t) for s in order}
-        for s in [s for s in order if s in pos and rec[s] is None]:
-            kill(s, t, 'incomplete.gap')
-        if pending is not None and pending[0] == bo:                  # (A) rebalance fills at the open of [tau, ...)
-            targets = pending[1]
-            for s in order:
-                if s in dead or rec[s] is None:
-                    if targets.get(s) and s not in dead:
-                        refusals['b1.no_open'] += 1
-                    continue
-                cur = pos[s]['qty'] if s in pos else 0.0
-                tgt = targets.get(s, 0.0)
-                x, rule = syms[s], rules[s]
-                o = rec[s]['b'][0]
-                try:
-                    bps = x.bps(bo, scen.vol, slip_c)
-                except Incomplete:
-                    refusals['b1.no_slip_history'] += 1
-                    continue
-                if tgt > 0:
-                    chk = C.fill_price(o, 'sell', bps, scen, tick=float(rule['tick']))
-                    if tgt < float(rule['min_qty']) or tgt * chk < float(rule['min_notional']):
-                        refusals['b1.size_min'] += 1
-                        tgt = 0.0
-                dq = tgt - cur
-                if abs(dq) < 1e-12:
-                    continue
-                act = 'sell' if dq > 0 else 'buy'
-                fill = C.fill_price(o, act, bps, scen, tick=float(rule['tick']))
-                fee = C.fee(fill * abs(dq), 'taker', C.CRYPTO, scen)
-                wallet -= fee
-                if dq > 0:
-                    avg = fill if cur == 0 else (cur * pos[s]['avg'] + dq * fill) / (cur + dq)
-                    pos[s] = {'qty': cur + dq, 'avg': avg}
-                    realised = 0.0
-                else:
-                    realised = (pos[s]['avg'] - fill) * -dq
-                    wallet += realised
-                    if tgt <= 0:
-                        del pos[s]
+        snap = (wallet, {k: dict(v) for k, v in pos.items()}, len(legs), Counter(refusals))
+        try:
+            bo = t - TF
+            rec = {s: syms[s].rec.get(t) for s in order}
+            for s in [s for s in order if s in pos and rec[s] is None]:
+                raise _Halt(s, gap_reason(syms[s], t), t, 'bar')
+            if pending is not None and pending[0] == bo:              # (A) rebalance fills at the open of [tau, ...)
+                targets = pending[1]
+                for s in order:
+                    cur = pos[s]['qty'] if s in pos else 0.0
+                    tgt = targets.get(s, 0.0)
+                    if rec[s] is None:
+                        if abs(tgt - cur) >= 1e-12:             # a decided trade with no open candle
+                            raise _Halt(s, gap_reason(syms[s], t), t, 'next_open')
+                        continue                                # nothing to execute: flat and irrelevant
+                    x, rule = syms[s], rules[s]
+                    o = rec[s]['b'][0]
+                    try:
+                        bps = x.bps(bo, scen.vol, slip_c)
+                    except Incomplete as e:                     # missing candles behind a fill
+                        raise _Halt(s, e.reason, bo, 'fill')
+                    if tgt > 0:
+                        chk = C.fill_price(o, 'sell', bps, scen, tick=float(rule['tick']))
+                        if tgt < float(rule['min_qty']) or tgt * chk < float(rule['min_notional']):
+                            refusals['b1.size_min'] += 1
+                            tgt = 0.0
+                    dq = tgt - cur
+                    if abs(dq) < 1e-12:
+                        continue
+                    act = 'sell' if dq > 0 else 'buy'
+                    fill = C.fill_price(o, act, bps, scen, tick=float(rule['tick']))
+                    fee = C.fee(fill * abs(dq), 'taker', C.CRYPTO, scen)
+                    wallet -= fee
+                    if dq > 0:
+                        avg = fill if cur == 0 else (cur * pos[s]['avg'] + dq * fill) / (cur + dq)
+                        pos[s] = {'qty': cur + dq, 'avg': avg, 'since': pos[s]['since'] if cur else bo}
+                        realised = 0.0
                     else:
-                        pos[s]['qty'] = tgt
-                legs.append({'symbol': s, 'time_ms': bo, 'action': act, 'qty': abs(dq), 'fill': fill, 'fee': fee,
-                             'realised': realised})
-            pending = None
-        for s in [s for s in order if s in pos]:                       # (B) funding on the held quantity
-            ev = [(f.time_ms, f.rate, syms[s].mark[f.time_ms]) for f in syms[s].fund if bo <= f.time_ms < t]
-            if any(m is None for _, _, m in ev):
-                kill(s, t, 'incomplete.funding_mark')
-                continue
-            wallet -= C.funding_cost('short', pos[s]['qty'], ev, scen, bars_held=1,
-                                     entry_notional=pos[s]['qty'] * pos[s]['avg'])
-        for s in order:
-            if rec[s] is not None:
-                closes[s] = rec[s]['b'][3]
-        mtm = wallet + math.fsum(p['qty'] * (p['avg'] - closes.get(k, p['avg'])) for k, p in pos.items())
-        series.append((t, mtm))
-        if first <= t <= last and (t == first or _is_monday_open(t)):  # (C) the rebalance decision at tau
-            members = [s for s in order if s not in dead and rec[s] is not None and rec[s].get('a') is not None
-                       and _next_open(syms[s], t, hi) is not None]
-            raw = {}
-            if members and mtm > 0:
-                for s in members:
-                    unit = float(T.stop_distance(float(rec[s]['a']), T.PRIMARY))       # 2.5 x ATR14_s(tau)
-                    if unit > 0:
-                        raw[s] = (0.01 * mtm / len(members)) / unit
-                gross = math.fsum(q * rec[s]['b'][3] * (1 + book['cap_gap_buffer']) for s, q in raw.items())
-                if gross > book['max_leverage'] * mtm:
-                    k = book['max_leverage'] * mtm / gross
-                    raw = {s: q * k for s, q in raw.items()}
-            targets = {s: _floor(q, rules[s]['step']) for s, q in raw.items()}
-            taus.append({'tau': t, 'members': len(members)})
-            pending = (t, targets)
+                        realised = (pos[s]['avg'] - fill) * -dq
+                        wallet += realised
+                        if tgt <= 0:
+                            del pos[s]
+                        else:
+                            pos[s]['qty'] = tgt
+                    legs.append({'symbol': s, 'time_ms': bo, 'action': act, 'qty': abs(dq), 'fill': fill, 'fee': fee,
+                                 'realised': realised})
+                pending = None
+            for s in [s for s in order if s in pos]:                       # (B) funding on the held quantity
+                try:
+                    ev = syms[s].bar_events(pos[s]['since'], bo, t)
+                except Incomplete as e:
+                    raise _Halt(s, e.reason, bo, 'funding')
+                wallet -= C.funding_cost('short', pos[s]['qty'], ev, scen, bars_held=1,
+                                         entry_notional=pos[s]['qty'] * pos[s]['avg'])
+            for s in order:
+                if rec[s] is not None:
+                    closes[s] = rec[s]['b'][3]
+            mtm = wallet + math.fsum(p['qty'] * (p['avg'] - closes.get(k, p['avg'])) for k, p in pos.items())
+            series.append((t, mtm))
+            if first <= t <= last and (t == first or _is_monday_open(t)):  # (C) the rebalance decision at tau
+                for s in order:                                 # exact inputs: never shrink M_tau silently
+                    why = _decision_inputs(syms[s], t)
+                    if why is not None:
+                        raise _Halt(s, why, t, 'decision')
+                members = [s for s in order if rec[s] is not None and rec[s].get('a') is not None]
+                raw = {}
+                if members and mtm > 0:
+                    for s in members:
+                        unit = float(T.stop_distance(float(rec[s]['a']), T.PRIMARY))       # 2.5 x ATR14_s(tau)
+                        if unit > 0:
+                            raw[s] = (0.01 * mtm / len(members)) / unit
+                    gross = math.fsum(q * rec[s]['b'][3] * (1 + book['cap_gap_buffer']) for s, q in raw.items())
+                    if gross > book['max_leverage'] * mtm:
+                        k = book['max_leverage'] * mtm / gross
+                        raw = {s: q * k for s, q in raw.items()}
+                targets = {s: _floor(q, rules[s]['step']) for s, q in raw.items()}
+                taus.append({'tau': t, 'members': len(members)})
+                pending = (t, targets)
+        except _Halt as h:                              # roll the cycle back: state = end of the last valid cycle
+            wallet, pos, refusals = snap[0], snap[1], snap[3]
+            del legs[snap[2]:]
+            halt = (h, t)
+            break
+        prev_t = t
+    if halt is not None:
+        h, at = halt
+        for s in [s for s in order if s in pos or s == h.symbol]:
+            ir = {'symbol': s, 'time_ms': at, 'last_valid_ms': prev_t, 'secondary': s != h.symbol,
+                  'qty': pos[s]['qty'] if s in pos else 0.0, 'avg': pos[s]['avg'] if s in pos else None}
+            if s == h.symbol:
+                ir.update(reason=h.reason, **{'class': GAP_CLASS[h.reason]}, phase=h.phase,
+                           first_unaccountable_ms=h.first_ms)
+            else:
+                ir.update(reason=HALTED, **{'class': 'halted'}, phase='halt', first_unaccountable_ms=at,
+                          primary_ref=f'{h.symbol}@{h.first_ms}')
+            incomplete.append(ir)
     blocks = month_r(series, first, last, book['equity0'])
     return {'config': 'B1', 'side': 'short', 'row': row, 'legs': legs, 'incomplete': incomplete,
-            'excluded_symbols': sorted(dead), 'refusals': dict(sorted(refusals.items())), 'rebalances': taus,
-            'series': series, 'wallet_end': wallet, 'month_r': blocks,
-            'status': 'INCOMPLETE' if incomplete else 'COMPLETE'}
+            'excluded_symbols': [], 'refusals': dict(sorted(refusals.items())), 'rebalances': taus,
+            'series': series, 'wallet_end': wallet, 'month_r': blocks if not incomplete else None,
+            'status': INCOMPLETE if incomplete else COMPLETE, 'policy': POLICY}
 
 
 def month_r(series, first: int, last: int, equity0=BOOK['equity0']) -> dict:
@@ -1231,7 +1464,10 @@ def metrics(acc: dict, *, rows, boot=None) -> dict:
            'refusals': acc['refusals'], 'incomplete': len(acc['incomplete']),
            'incomplete_reasons': dict(sorted(Counter(i['reason'] for i in acc['incomplete']).items())),
            'excluded_symbol_count': len(acc['excluded_symbols']), 'excluded_trades': acc['excluded_trades'],
+           'status': acc.get('status', INCOMPLETE), 'missing_data_policy': POLICY,
            'stress_mean_r': {}}
+    if acc['incomplete']:
+        out['incomplete_classes'] = dict(sorted(Counter(i.get('class', '?') for i in acc['incomplete']).items()))
     by_row = acc.get('rows_trades')
     for k in rows:
         xs = [r['r'][k] for r in by_row[k]] if by_row is not None else [r['r'][k] for r in tr]
@@ -1317,7 +1553,9 @@ def evaluate_tier(env: dict, tier: str, prog: PG.Progress | None) -> tuple[dict,
         ev = P.evaluate(w, env['evaluator'], FUNCTION, list(range(lo + TF, hi + 1, TF)), perturb=True)
         res = {c['name']: account(ev, c, symbols=symbols, first=first, last=last, hi=hi, slip_c=cfg_run['slip_c'],
                                   rules=env['rules'],
-                                  rows=rows if c['role'] in ('primary', 'development_only', 'baseline') else ('base',))
+                                  rows=rows if c['role'] in ('primary', 'development_only', 'baseline') else ('base',),
+                                  **({'delist': env['delist_notices']} if env.get('delist_notices') and
+                                     c['kind'] != 'b1' else {}))
                for c in cfgs}
         regime = {o['t']: o.get('g') for o in ev}
         for v in res.values():
@@ -1342,8 +1580,12 @@ def evaluate_tier(env: dict, tier: str, prog: PG.Progress | None) -> tuple[dict,
 
 def _detail(v: dict) -> dict:
     out = {k: v[k] for k in ('trades', 'incomplete', 'excluded_symbols', 'excluded_trades', 'refusals')}
+    ok = (v.get('status') == COMPLETE and not v['incomplete'] and not v['excluded_symbols']
+          and all(x.get('status') == COMPLETE for x in (v.get('rows') or {}).values()))
+    out.update(status=COMPLETE if ok else INCOMPLETE, policy=POLICY)                 # derived from its rows
     if v.get('book'):
-        out['rows'] = {r: {'trades': x['counted'],
+        out['rows'] = {r: {'trades': x['counted'], 'status': x.get('status', INCOMPLETE),
+                           **({'censor': x['censor']} if x.get('censor') else {}),
                            'book': {k: x[k] for k in ('net_pct_equity', 'mtm_max_dd_pct', 'longest_underwater_cycles',
                                                       'wallet_end')}}
                        for r, x in v['rows'].items()}
@@ -1356,6 +1598,7 @@ def _detail(v: dict) -> dict:
 def _acc(v: dict) -> dict:
     """The metrics view of one configuration's account (one split)."""
     a = {k: v[k] for k in ('counted', 'incomplete', 'refusals', 'excluded_symbols', 'excluded_trades')}
+    a['status'] = v.get('status', INCOMPLETE)
     if v.get('book'):
         a['rows_trades'] = {r: x['counted'] for r, x in v['rows'].items()}
         a['book'] = {r: {k: x[k] for k in ('net_pct_equity', 'mtm_max_dd_pct', 'longest_underwater_cycles')}
@@ -1402,14 +1645,17 @@ def _agg(detail_splits, name, keys, rows, boot):
         ref.update(c['refusals'])
     acc = {'counted': tr, 'incomplete': [i for c in cs for i in c['incomplete']], 'refusals': dict(sorted(ref.items())),
            'excluded_symbols': sorted({f'{k}:{s}' for k, c in zip(keys, cs) for s in c['excluded_symbols']}),
-           'excluded_trades': sum(c['excluded_trades'] for c in cs)}
+           'excluded_trades': sum(c['excluded_trades'] for c in cs), 'status': _status(cs)}
     if cs and all('rows' in c for c in cs):
         rs = [r for r in rows if all(r in c['rows'] for c in cs)]
         acc['rows_trades'] = {r: [t for c in cs for t in c['rows'][r]['trades']] for r in rs}
-        acc['book'] = {r: {'net_pct_equity': math.fsum(c['rows'][r]['book']['net_pct_equity'] for c in cs),
-                           'mtm_max_dd_pct': max(c['rows'][r]['book']['mtm_max_dd_pct'] for c in cs),
-                           'longest_underwater_cycles': max(c['rows'][r]['book']['longest_underwater_cycles']
-                                                            for c in cs)} for r in rs}
+        bk = lambda r, k: [c['rows'][r]['book'][k] for c in cs]
+        acc['book'] = {r: ({'net_pct_equity': math.fsum(bk(r, 'net_pct_equity')),
+                            'mtm_max_dd_pct': max(bk(r, 'mtm_max_dd_pct')),
+                            'longest_underwater_cycles': max(bk(r, 'longest_underwater_cycles'))}
+                           if acc['status'] == COMPLETE else          # an INCOMPLETE split has no book figures
+                           {'net_pct_equity': None, 'mtm_max_dd_pct': None, 'longest_underwater_cycles': None})
+                       for r in rs}
         rows = rs
         lr = [r for r in rs if all('liquidation' in c['rows'][r] for c in cs)]
         if lr:
@@ -1478,16 +1724,40 @@ def summarize(env, tier, symbols, per_split, detail_splits, blocks, b0_diffs, b0
     if set(edge) != G.EDGE_ROWS:
         raise PitRunError('the EDGE-00 rows differ from the prereg rows')
     flags = (['DEV-NEGATIVE'] if dev_mean is None or dev_mean <= 0 else []) + liquidation_flags(dev_m)
-    summary = {'format': SUMMARY_FORMAT, 'tier': tier, 'label': LABEL, 'labels': [LABEL, DEV_LABEL] + env['cost_labels'],
+    # missing-data policy: any INCOMPLETE primary / neighbour / baseline row makes the tier INCOMPLETE (the uncapped
+    # development-only variant is split-end censored by design and can never be evidence; reported, not gating)
+    role = {c['name']: c['role'] for c in configs()}
+    bad_roles, bad_classes = Counter(), Counter()
+    for sp in detail_splits.values():
+        for name, c in sp['configs'].items():
+            if c.get('status') != COMPLETE:
+                bad_roles[role.get(name, 'unknown')] += 1
+                if role.get(name) != 'development_only':
+                    bad_classes.update(i.get('class', '?') for i in c['incomplete'] if not i.get('secondary'))
+    status = INCOMPLETE if any(n for r, n in bad_roles.items() if r != 'development_only') else COMPLETE
+    verdict, basis = 'PARK', 'prereg verdict_rules.development: development evidence can neither PROMOTE nor REJECT'
+    if status != COMPLETE:
+        verdict, basis = INCOMPLETE, (f'missing-data policy {POLICY}: an unaccountable row halted the book; no '
+                                      'verdict, gate, promotion or ledger evidence may use this tier')
+        flags.append(INCOMPLETE)
+        for v in edge.values():
+            if v['status'] in ('PASS', 'FAIL'):
+                v['status'] = INCOMPLETE
+    summary = {'format': SUMMARY_FORMAT, 'status': status, 'missing_data_policy': POLICY,
+               **({'incomplete_rows': {r: n for r, n in sorted(bad_roles.items()) if r != 'development_only'},
+                   'incomplete_classes': dict(sorted(bad_classes.items()))} if status != COMPLETE else {}),
+               **({'development_only_incomplete_rows': bad_roles['development_only']}
+                  if bad_roles['development_only'] else {}),
+               'tier': tier, 'label': LABEL, 'labels': [LABEL, DEV_LABEL] + env['cost_labels'],
                'development_only': True, 'identity': env['identity'], 'run_config_digest': sha(cfg_run),
                'symbol_count': len(symbols), 'splits': per_split,
                'aggregates': {'development': dev_m, 'walk_forward': wf_m},
                'contribution_by_regime': {g: {'trades': len(v), 'mean_r': math.fsum(v) / len(v)}
                                           for g, v in sorted(_by_regime(dev_tr).items())},
                'book': dict(BOOK), 'baselines': base, 'edge00': edge,
-               'verdict': 'PARK', 'verdict_basis': 'prereg verdict_rules.development: development evidence can neither '
-               'PROMOTE nor REJECT', 'flags': flags, 'not_evaluated': list(NOT_EVALUATED)}
-    detail = {'format': DETAIL_FORMAT, 'tier': tier, 'label': LABEL, 'symbols': list(symbols), 'splits': detail_splits,
+               'verdict': verdict, 'verdict_basis': basis, 'flags': flags, 'not_evaluated': list(NOT_EVALUATED)}
+    detail = {'format': DETAIL_FORMAT, 'status': status, 'missing_data_policy': POLICY,     # derived from the rows
+              'tier': tier, 'label': LABEL, 'symbols': list(symbols), 'splits': detail_splits,
               'neighbours_mean_r': neigh, 'loso_mean_r': loso_m, 'loyo_mean_r': loyo_m, 'month_blocks': blocks,
               'b0_episode_differences': b0_diffs}
     return summary, detail
@@ -1570,9 +1840,18 @@ def run_tiers(env: dict, out_dir: str, *, resume: bool = False, clock=PG.cairo_n
         except Exception as e:
             prog.aborted([PG.integrity_code(type(e).__name__)], stage=stage)
             raise
-        prog.sealed(paths, [os.path.basename(paths[0])])
+        ok = is_complete(summary) and is_complete(detail)                # both artifacts explicitly COMPLETE
+        prog.sealed(paths, [os.path.basename(paths[0])] if ok else [])                # INCOMPLETE: no evidence
         finals.append(final)
     return finals
+
+
+def is_complete(doc) -> bool:
+    try:
+        require_complete(doc)
+    except PitRunError:
+        return False
+    return True
 
 
 # ------------------------------------------------------------------ the real environment (gate-cleared repo only)

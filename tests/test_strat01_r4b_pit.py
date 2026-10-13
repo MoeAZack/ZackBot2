@@ -191,9 +191,17 @@ def test_summary_is_labelled_aggregate_only_and_mechanical(e2e):
         raw = open(path, 'rb').read()
         s = json.loads(raw)
         assert s['label'] == SU.LABEL and SU.LABEL in s['labels'] and 'DEVELOPMENT-ONLY' in s['labels']
-        assert s['development_only'] is True and s['verdict'] == 'PARK'
+        assert s['development_only'] is True and s['missing_data_policy'] == PR.POLICY
+        fin = PG.read(tier_files(outs[0][0], tier)[0][0])
+        if tier == 'CORE-10':
+            assert s['status'] == 'COMPLETE' and s['verdict'] == 'PARK' and set(s['flags']) <= {'DEV-NEGATIVE'}
+            assert fin['evidence'] == [os.path.basename(path)]
+        else:                       # M1: the injected ZEC gap (DROP) halts the rows holding ZEC -> no evidence
+            assert s['status'] == 'INCOMPLETE' and s['verdict'] == 'INCOMPLETE' and 'INCOMPLETE' in s['flags']
+            assert s['incomplete_classes'] == {'missing_bar': sum(s['incomplete_rows'].values())}
+            assert fin['state'] == 'sealed' and fin['evidence'] == [] and G.pit_incomplete([tier_files(
+                outs[0][0], tier)[0][0]])
         assert set(s['edge00']) == G.EDGE_ROWS
-        assert set(s['flags']) <= {'DEV-NEGATIVE'}
         for sym in SYMS:                                     # no symbol names / rankings / raw trades disclosed
             assert sym.encode() not in raw
         assert b'"trades": [' not in raw and b'neighbours_mean_r' not in raw
@@ -214,7 +222,7 @@ def test_ledger_records_development_access_and_attestations_only(e2e):
     assert all(SU.LABEL in r['detail']['labels'] for r in recs)
 
 
-def test_capped_trades_never_cross_their_split_and_incomplete_is_excluded(e2e):
+def test_capped_trades_never_cross_their_split_and_incomplete_is_labelled(e2e):
     _, outs = e2e
     out = outs[0][0]
     plan = S.SplitPlan(FIX_SPLITS, interval='4h', lookback_bars=240, horizon_bars=180)
@@ -418,7 +426,7 @@ def test_the_180_bar_cap_exits_at_the_next_bar_open_never_a_close():
                                             C.STRESS['base'], tick=0.01)
     u = acct(mk_tape(closes, le={25}), cfg=PR.DEV_ONLY)
     assert not u['counted'] and [i['reason'] for i in u['incomplete']] == ['incomplete.split_end']
-    assert u['excluded_symbols'] == ['AAAUSDT']
+    assert u['excluded_symbols'] == [] and u['status'] == 'INCOMPLETE'      # M1: censored, never excluded
 
 
 def test_a_cap_due_at_the_split_end_reads_the_attested_next_open_or_is_incomplete():
@@ -493,24 +501,30 @@ def test_entries_only_inside_the_decision_range():
 @pytest.mark.parametrize('kw,reason', [({'drop': {28}}, 'incomplete.gap'),
                                        ({'fund_drop': {T0 + 13 * 8 * HOUR}}, 'incomplete.funding'),
                                        ({'mark_none': {T0 + 14 * 8 * HOUR}}, 'incomplete.funding_mark')])
-def test_incomplete_symbols_are_excluded_and_the_book_is_rerun_without_them(kw, reason):
+def test_an_incomplete_lot_halts_the_book_once_and_never_reruns_without_the_symbol(kw, reason):
+    """M1 (missing-data policy zb-missing-data/1, replaces the pre-M1 exclude-and-re-run rule): the first unaccountable
+    event halts the ONE book pass; earlier history is kept, the other open lot is labelled book_halt, nothing is
+    excluded and the row is INCOMPLETE."""
     closes = [100.0 + 0.1 * i for i in range(80)]
     bad = mk_tape(closes, sym='AAAUSDT', le={25, 60}, lx={32, 66}, **kw)
     good = mk_tape(closes, sym='BBBUSDT', le={25}, lx={32})
     a = acct(merge(bad, good))
-    assert [i['reason'] for i in a['incomplete']] == [reason]
-    assert a['excluded_symbols'] == ['AAAUSDT'] and [t['symbol'] for t in a['counted']] == ['BBBUSDT']
-    assert a['excluded_trades'] >= 1
-    alone = acct(good)
-    assert a['counted'] == alone['counted']                              # the re-run book never saw the excluded symbol
+    assert a['status'] == 'INCOMPLETE' and a['excluded_symbols'] == [] and a['excluded_trades'] == 0
+    (head, *rest) = [(i['symbol'], i['reason']) for i in a['incomplete']]
+    assert head == ('AAAUSDT', reason) and rest in ([], [('BBBUSDT', 'incomplete.book_halt')])
+    assert a['counted'] == [] and a['rows']['base']['net_pct_equity'] is None
     m = PR.metrics(PR._acc(a), rows=('base',))
-    assert m['trades'] == 1 and m['incomplete'] == 1 and m['excluded_symbol_count'] == 1
+    assert m['status'] == 'INCOMPLETE' and m['incomplete'] == 1 + len(rest) and m['excluded_symbol_count'] == 0
+    with pytest.raises(PR.PitRunError):
+        PR.require_complete(a)
 
 
-def test_a_gap_while_flat_drops_the_pending_entry_as_a_refusal():
+def test_a_valid_entry_without_its_next_open_candle_is_incomplete_not_a_refusal():
+    """Codex M1 ruling 4 (replaces the pre-M1 refusal): no fill, no refusal count, INCOMPLETE candle gap."""
     closes = [100.0 + 0.1 * i for i in range(60)]
     a = acct(mk_tape(closes, le={25}, drop={26}))
-    assert a['counted'] == [] and a['refusals'] == {'entry_no_next_open': 1} and not a['incomplete']
+    assert a['counted'] == [] and a['refusals'] == {} and a['status'] == 'INCOMPLETE'
+    assert [(i['reason'], i['phase']) for i in a['incomplete']] == [('incomplete.gap', 'next_open')]
 
 
 def test_baselines_b1_weekly_and_b2_momentum_rules():

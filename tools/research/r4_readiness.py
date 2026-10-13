@@ -26,6 +26,7 @@ import subprocess
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import missing_data as MD                                                                   # noqa: E402
 import progress as PG                                                                       # noqa: E402
 
 FORMAT = 'zb-r4-0-readiness/2'
@@ -91,7 +92,26 @@ def sealed_artifacts(path: str) -> tuple[str, dict]:
     doc = PG.read(path)
     if doc is None or doc['kind'] != 'final' or doc['state'] != 'sealed':
         raise ReadinessError(f'{path}: not a sealed final record')
-    return doc['digest'], {a['path']: a['sha256'] for a in doc['artifacts']}
+    if not doc['evidence']:                     # missing-data policy: an INCOMPLETE run is sealed without evidence
+        raise ReadinessError(f'{path}: sealed without evidence (INCOMPLETE run); never a readiness pass')
+    arts = {a['path']: a['sha256'] for a in doc['artifacts']}
+    for name in doc['evidence']:                # open EACH named evidence artifact: explicitly COMPLETE, hash-bound
+        if name not in arts:
+            raise ReadinessError(f'{path}: evidence {name!r} is not a sealed artifact')
+        f = os.path.join(os.path.dirname(os.path.abspath(path)), name)
+        try:
+            with open(f, 'rb') as fh:
+                data = fh.read()
+            ev = json.loads(data)
+        except (OSError, ValueError) as e:
+            raise ReadinessError(f'{path}: evidence {name!r} unreadable ({type(e).__name__}); fail closed')
+        if hashlib.sha256(data).hexdigest() != arts[name]:
+            raise ReadinessError(f'{path}: evidence {name!r} does not match its sealed sha256')
+        try:
+            MD.check(ev, f'{path}: evidence {name}')
+        except MD.MissingDataError as e:
+            raise ReadinessError(f'{e}; never a readiness pass (INCOMPLETE)')
+    return doc['digest'], arts
 
 
 def determinism(final_files) -> dict:
