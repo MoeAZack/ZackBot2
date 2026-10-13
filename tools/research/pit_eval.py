@@ -22,6 +22,11 @@ Signals are bit-identical to `trend_ema_mom.signal_at_last` (same float recursio
 across configurations by period only, which changes no arithmetic). State: the incremental bar cache only (the m3_eval
 pattern): a repeated time recomputes from the state BEFORE that time and discards its new state, so the perturbation
 re-run is a pure function of (prior state, view at t); a time going backwards is refused. Stdlib only.
+
+STRAT-02 (`trend_ema_mom_short.v1`, docs/newcore/research/STRAT02_SHORT_CONTRACT.md): the entry point `tape_short`
+serves the same tape with the exact sign-mirrored signals (`short_signals`: se in `e`, sx in `x`, same indicators,
+window and warm-up), the cycle marked `side: short`, and per bar `a` = Wilder ATR14 of the contiguous tail once it holds
+>= 14 bars, else None (B1 short sizing). The long entry point `tape` and its records are unchanged.
 """
 from __future__ import annotations
 
@@ -62,9 +67,46 @@ def signals(bars, configs=SIGNAL_CONFIGS):
     return out
 
 
+def cross_down(a, b, i):
+    """STRAT-02 (contract section 3): a_i < b_i and a_(i-1) >= b_(i-1); the exact mirror of `trend_ema_mom.cross_up`."""
+    return i >= 1 and a[i] < b[i] and a[i - 1] >= b[i - 1]
+
+
+def short_signals(bars, configs=SIGNAL_CONFIGS):
+    """STRAT-02 `trend_ema_mom_short.v1` (contract section 3): [(se, sx, atr) | None per configuration] at the last bar
+    of `bars` (closed, contiguous), the exact sign-mirror of `signals` over the same indicators (same EMAs, Wilder ATR,
+    returns, warm-up and window):
+      se = cross_down(EMA_fast, EMA_slow) and close < EMA_trend and ret_short < 0 and ret_long < 0
+      sx = EMA_fast > EMA_slow or not (ret_short < 0 and ret_long < 0)."""
+    i = len(bars) - 1
+    c = [b.close for b in bars]
+    h = [b.high for b in bars]
+    lo = [b.low for b in bars]
+    emas, atrs, out = {}, {}, []
+
+    def ema(n):
+        if n not in emas:
+            emas[n] = T.ema(c, n)
+        return emas[n]
+
+    for _, p in configs:
+        if i < p.start():
+            out.append(None)
+            continue
+        ef, es, et = ema(p.ema_fast), ema(p.ema_slow), ema(p.ema_trend)
+        if p.atr_len not in atrs:
+            atrs[p.atr_len] = T.wilder_atr(h, lo, c, p.atr_len)
+        rs, rl = T.pct_return(c, p.bars_of(p.mom_short_days), i), T.pct_return(c, p.bars_of(p.mom_long_days), i)
+        mom = rs is not None and rl is not None and rs < 0 and rl < 0
+        out.append((cross_down(ef, es, i) and c[i] < et[i] and mom, ef[i] > es[i] or not mom, atrs[p.atr_len][i]))
+    return out
+
+
 class Tape:
-    def __init__(self, configs=SIGNAL_CONFIGS, window: int = T.WINDOW):
-        self.configs, self.window = tuple(configs), window
+    def __init__(self, configs=SIGNAL_CONFIGS, window: int = T.WINDOW, side: str = 'long'):
+        if side not in ('long', 'short'):
+            raise ValueError("side must be 'long' or 'short'")
+        self.configs, self.window, self.side = tuple(configs), window, side
         self._last_t = None
         self._prev = self._cur = None
 
@@ -116,7 +158,7 @@ class Tape:
                 continue                                    # no bar closing at t: no decision (never stale)
             last = b[-1]
             tail = T.contiguous_tail(b)
-            sig = signals(tail, self.configs)
+            sig = (short_signals if self.side == 'short' else signals)(tail, self.configs)
             if s == REGIME_SYMBOL and len(tail) > T.PRIMARY.warmup_bars:
                 closes = [x.close for x in tail]
                 regime = 'btc_up' if closes[-1] > T.ema(closes, REGIME_EMA)[-1] else 'btc_down'
@@ -127,12 +169,27 @@ class Tape:
                          for k, x in enumerate(sig) if x is not None and x[0]},
                    'd': None if sig[0] is None else str(T.stop_distance(sig[0][2], self.configs[0][1])),
                    'n': view.next_open(s, T.TF)}
+            if self.side == 'short':                        # B1 short sizing: ATR14 on the contiguous tail (sec 7.1),
+                rec['a'] = (repr(T.wilder_atr([x.high for x in tail], [x.low for x in tail],   # defined only once the
+                                              [x.close for x in tail], T.PRIMARY.atr_len)[-1])  # tail has >= 14 bars
+                            if len(tail) >= T.PRIMARY.atr_len else None)
             recs.append(rec)
-        return {'t': t, 'r': recs, 'g': regime}, cache
+        out = {'t': t, 'r': recs, 'g': regime}
+        if self.side == 'short':
+            out['side'] = 'short'
+        return out, cache
 
 
 _TAPE = Tape()
+_TAPE_SHORT = Tape(side='short')
 
 
 def tape(view):
     return _TAPE.decide(view)
+
+
+def tape_short(view):
+    """STRAT-02 entry point: the same tape with `trend_ema_mom_short.v1` signals (se in `e`, sx in `x`), the cycle
+    marked `side: short`, and per bar `a` = Wilder ATR14 of the contiguous tail, None below 14 bars (B1 short
+    sizing)."""
+    return _TAPE_SHORT.decide(view)
