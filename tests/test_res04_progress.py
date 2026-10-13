@@ -413,8 +413,8 @@ def test_readiness_determinism_from_sealed_finals(tmp_path):
     doc = RR.build(dict(FULL, final_files=[a.final_path, b.final_path]))
     assert doc['verdict'] == 'READY' and doc['determinism_sha256']['m3_repro_base.json']
     (tmp_path / 'c').mkdir()
+    art = tmp_path / 'c' / 'm3_repro_base.json'
     art.write_text('{"changed": 1, "status": "COMPLETE"}' + chr(10))
-    art.write_text('{"changed": 1}' + chr(10))
     c = new(tmp_path / 'c')
     c.sealed([str(art)], ['m3_repro_base.json'])
     doc = RR.build(dict(FULL, final_files=[a.final_path, c.final_path]))
