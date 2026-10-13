@@ -31,7 +31,8 @@ Profiles (REG-02, Codex 6155928419): every gate file routes to exactly one candi
 the STRAT-01 long profile, whose gate `r4_gate.json` and 18-trial behaviour are unchanged). STRAT-02
 `trend_ema_mom_short.v1` has its own gate `r4_gate_short.json` (exact `prereg_sha256`, #73 / #74 pins), its own root
 family ledger and 17 trials (capped primary + 12 neighbours + B0-B3; no uncapped variant, no M3). Its G3 also requires
-the program Holm family (trend_ema_mom + trend_ema_mom_short trial records) to be >= 35. `m3` / `pit` stay STRAT-01 only.
+the program Holm family (trend_ema_mom + trend_ema_mom_short trial records) to be >= 35.
+`m3` / `pit` stay STRAT-01 only.
 `m3` keeps the sanitized progress snapshot + sealed final (progress.py, zb-run-progress/2) beside its reports:
 operational state only. `register` (after Codex clears the prereg) needs G1 + G2 and appends the declared trial
 records once; commit the ledger, then `m3` / `pit` pass G3. No network, no credentials; git is read locally (fetch
@@ -97,8 +98,8 @@ SHORT_SEED = 20261012                                   # == pit_run.SHORT_SEED 
 SHORT_PREREG_KEYS = PREREG_KEYS | {'missing_data'}
 SHORT_ENTRY = ('se at the close of bar i = cross_down(EMA20, EMA50) and close < EMA200 and ret7d < 0 and ret30d < 0; '
                'market SELL (open short) at the open of bar i+1')
-SHORT_RULE_KEYS = {'entry', 'exit_signal', 'stop', 'time_cap', 'exit_times', 'funding', 'excursions', 'indicators', 'book',
-                   'liquidation', 'no_maker', 'fill_rounding', 'window'}
+SHORT_RULE_KEYS = {'entry', 'exit_signal', 'stop', 'time_cap', 'exit_times', 'funding', 'excursions', 'indicators',
+                   'book', 'liquidation', 'no_maker', 'fill_rounding', 'window'}
 MISSING_DATA_DOC = 'docs/newcore/research/MISSING_DATA_POLICY_v1.md'
 MISSING_DATA_RULES = {'one_pass', 'first_unaccountable_event', 'classes', 'one_primary', 'delist', 'slippage_window',
                       'b1_decision', 'split_end', 'flat_gaps', 'fail_closed'}
@@ -368,7 +369,8 @@ def _validate_short(pre: dict, repo: str) -> list[str]:
         r = pre['rule']
         if (set(r) != SHORT_RULE_KEYS or not str(r.get('entry', '')).startswith(SHORT_ENTRY)
                 or 'cross_down' not in str(r.get('indicators', ''))
-                or 'CEILED' not in str(r.get('stop', '')) or 'RECEIVES a positive rate' not in str(r.get('funding', ''))):
+                or 'CEILED' not in str(r.get('stop', ''))
+                or 'RECEIVES a positive rate' not in str(r.get('funding', ''))):
             bad.append('rule must be the short mirror (se cross_down / SELL entry, ceiled stop, short funding sign)')
         b = pre['baselines']
         if (f'seed {SHORT_SEED}' not in str(b.get('B0', '')) or f'seed {SHORT_SEED}' not in str(b.get('p_value', ''))
@@ -706,7 +708,8 @@ def main(argv=None) -> int:
             print(f'appended {len(recs)} records; commit the ledger before running')
             if prof.program:
                 n = multiplicity(L.verify(os.path.join(M.REPO, prof.ledger)))
-                print(f'program Holm family n = {n["program"]} {n["by_family"]} (own-family {len(recs)}: reporting only)')
+                print(f'program Holm family n = {n["program"]} {n["by_family"]} '
+                      f'(own-family {len(recs)}: reporting only)')
             return 0
         if a.cmd == 'm3':
             rows = ('base', '2x') if a.cost == 'both' else (a.cost,)
