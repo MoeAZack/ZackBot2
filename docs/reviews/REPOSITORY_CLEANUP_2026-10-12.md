@@ -1,7 +1,8 @@
 # Repository cleanup — 12 October 2026, Cairo
 
 Owner requested a cleaner GitHub and replacement of the continuous review loop with milestone handoffs.
-Active planning PR: #72. Coordination index: #13. Automation remains PAUSED until explicit owner ready.
+Active planning PR: #72. Coordination index: #13. Automation was paused during this cleanup; the owner explicitly
+resumed it on 13 October 2026 under the bounded M0/M1 order recorded in the execution plan.
 
 | PR | Disposition | Preserved work / reactivation condition |
 |---|---|---|

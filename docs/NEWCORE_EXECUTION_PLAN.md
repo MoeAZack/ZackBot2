@@ -138,7 +138,8 @@ evaluation is released by M1. Return next to STRAT-02 evaluation, then range/exi
 Cowork can independently challenge M1's missing-data fixtures when available; Codex supplies acceptance and
 reconciles the audit replay/registration claims. Prepare range/exit contracts only if independent of M1's evolving
 accounting. Optional ML, platforms, broad legacy repairs and documentation expansion stay outside this milestone.
-The owner pause persists until an explicit ready; updating this plan does not restart any worker or scheduler.
+The owner gave the explicit ready on 13 October 2026. That release activates only the bounded M0/M1 order above;
+it does not authorize historical evaluation, registration, holdout access or unrelated work early.
 
 ### Progress acceleration rules
 
@@ -289,7 +290,8 @@ two isolated simulated accounts survive independently. Wave D runtime promotion 
 
 **Horizontal-first constraint:** the binding owner contract's horizontal-first rule applies to this queue.
 The 12 October audit adds the bounded corrections below; it does not authorize a broad legacy rewrite or
-delay independent strategy contract preparation. The owner-requested pause still applies to agent execution.
+delay independent strategy contract preparation. The owner ended the execution pause on 13 October 2026; the
+resumed M0/M1 order above remains the active boundary.
 
 | Bounded correction | Minimum proof / return to the queue |
 |---|---|
@@ -327,8 +329,8 @@ The UI eventually exposes regime OFF/diagnostic/automatic modes, direction/risk/
 experimental versus validated status, without altering frozen policies silently.
 
 Build owns candidate implementation; Cowork independently validates; Codex owns sequencing and acceptance.
-The owner-requested automation pause remains active until the owner says ready. This documentation change
-does not release runs or restart agents. Gold stays a separate later group; stocks, other venues, broad macro
+The owner ended the automation pause on 13 October 2026. Only work released by the resumed milestone order may run;
+this scouting section by itself releases nothing. Gold stays a separate later group; stocks, other venues, broad macro
 ingestion and standalone ML trading remain deferred under the existing owner priorities.
 
 This is the primary product wave. Optional application features remain behind it.

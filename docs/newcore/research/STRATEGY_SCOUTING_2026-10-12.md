@@ -1,6 +1,6 @@
 # ZackBot strategy scouting — 12 October 2026, Cairo
 
-Status: research proposal prepared during the owner-requested Claude pause. The review automation remains paused. This document does not start implementation, alter frozen strategy contracts, register trials, or open a holdout. Reconcile with the current canonical roadmap when work resumes. No candidate below has been backtested by this scouting exercise.
+Status: research proposal prepared during the owner-requested Claude pause. The owner ended that pause on 13 October 2026, but this document still does not start implementation, alter frozen strategy contracts, register trials, or open a holdout. The resumed M0/M1 order in the execution plan is authoritative. No candidate below has been backtested by this scouting exercise.
 
 ## Decision
 
@@ -65,7 +65,7 @@ Sources were inspected for a bounded scouting pass, not audited or installed. No
 7. Check feasibility at $500 controlled master capital and hypothetical $100/$200 follower allocations, using current venue filters. Report minimum-order skips and partial-exit infeasibility. This is a sizing simulation, not a guarantee of Binance copy execution or follower outcomes.
 8. Advance eligible candidates to paper/testnet for execution parity. Synthetic exchange fills test implementation, not real-market profitability. Keep experimental/manual controls distinguishable from evidence-qualified automated strategies.
 
-## Prepared lane handoff for when the owner says ready
+## Resumed lane handoff (owner ready on 13 October 2026)
 
 Build: finish STRAT-02; then draft the smallest RANGE and EXIT contracts using existing interfaces. Evidence: independently challenge causal entries, range invalidation, scalp costs and exit assumptions. Integration: reconcile these proposals with existing tickets, deduplicate, freeze trial budgets and order the gates. No need for a new general backtester, multi-venue framework or ML platform.
 

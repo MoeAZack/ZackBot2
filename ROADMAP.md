@@ -7,8 +7,8 @@ then range reversion and exit comparisons, followed by two-sided breakouts, tren
 cost-aware scalping and range baskets. Simple regime diagnostics precede optional Markov/HMM
 experiments. See the [execution order](docs/NEWCORE_EXECUTION_PLAN.md#owner-approved-strategy-scouting--12-october-2026)
 and [research/source register](docs/newcore/research/STRATEGY_SCOUTING_2026-10-12.md).
-These are research priorities, not validated strategies. The owner-requested Claude bridge pause
-remains in effect until the owner says ready.
+These are research priorities, not validated strategies. The owner ended the Claude bridge pause on
+13 October 2026; the resumed M0/M1 order in the execution plan controls current work.
 
 > **Execution control:** the replacement-first build order, three-agent responsibilities, bug/scouting interruption rules
 > and current next steps are maintained in [`docs/NEWCORE_EXECUTION_PLAN.md`](docs/NEWCORE_EXECUTION_PLAN.md). This file

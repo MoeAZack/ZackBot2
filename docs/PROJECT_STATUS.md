@@ -1,9 +1,10 @@
 # ZackBot owner overview
 
-> **Current coordination — 12 October 2026 (Cairo):** agents/bridge are paused until the owner says ready.
+> **Current coordination — 13 October 2026 (Cairo):** the owner ended the agent/bridge pause.
 > PR #72 contains the owner-approved milestone workflow, horizontal-first rule, strategy queue and audit triage.
-> First milestone on resumption: correct research missing-data accounting with focused independent proof;
-> then return to short/range/exit coverage. Runtime/account status has not been rechecked for this update.
+> Active M0: finish the already-running STRAT-02 short runner and 48-case synthetic review, with no historical result.
+> M1 follows acceptance: causal missing-data accounting and downstream refusal of incomplete evidence.
+> Runtime/account status has not been rechecked for this update.
 > See [repository cleanup record](reviews/REPOSITORY_CLEANUP_2026-10-12.md) for parked and historical PRs.
 >
 > **Everything below is a historical 8 October snapshot, not current runtime status or the active work queue.**
