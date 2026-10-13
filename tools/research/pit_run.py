@@ -68,7 +68,7 @@ import random
 import subprocess
 import sys
 from collections import Counter
-from decimal import Decimal
+from decimal import ROUND_CEILING, Decimal
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import costs as C                                                                           # noqa: E402
@@ -97,6 +97,12 @@ PERMS = 10_000                                     # prereg: sign-flip permutati
 B0_DRAWS = 1_000                                   # prereg: matched random entries per candidate trade
 EVALUATOR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'pit_eval.py')
 FUNCTION = 'tape'
+# STRAT-02 `trend_ema_mom_short.v1` (docs/newcore/research/STRAT02_SHORT_CONTRACT.md, frozen at PR #71): the short-side
+# symmetry slice only. Long (STRAT-01) behaviour is the default of every function and is unchanged.
+SHORT_FUNCTION = 'tape_short'
+SHORT_PRIMARY_NAME = 'trend_ema_mom_short.v1.cap180'
+SHORT_SEED = 20261012                              # STRAT-02 contract section 9 seeds (B0, bootstrap, permutations)
+SIDES = ('long', 'short')
 MANIFEST_PATH = 'research_evidence/manifests/binance-um-archive-v1.json.gz'
 TF = T.TF_MS
 HOUR = 3_600_000
@@ -251,7 +257,33 @@ class Sym:
         return ev
 
 
+class TapeData(tuple):
+    """(times, syms) of one attested tape plus its direction `side` (STRAT-02: bound to the accounting side)."""
+    side = 'long'
+
+
+def tape_side(outputs) -> str:
+    """The ONE direction of a tape: no cycle marker = the legacy long tape; a short tape marks EVERY cycle
+    `side: 'short'`. A mixed or unknown marker refuses (fail closed)."""
+    sides = {o.get('side', 'long') for o in outputs}
+    if len(sides) > 1:
+        raise PitRunError(f'mixed tape direction markers {sorted(sides)}: one tape is one side')
+    side = sides.pop() if sides else 'long'
+    if side not in SIDES:
+        raise PitRunError(f'unknown tape direction marker {side!r}')
+    return side
+
+
+def _bind_side(tape, side: str) -> None:
+    if side not in SIDES:
+        raise PitRunError("side must be 'long' or 'short'")
+    have = getattr(tape, 'side', 'long')
+    if have != side:
+        raise PitRunError(f'a {have} tape cannot be accounted as {side} (tape direction != accounting direction)')
+
+
 def read_tape(outputs) -> tuple[list[int], dict]:
+    side = tape_side(outputs)
     times, syms = [], {}
     for o in outputs:
         times.append(o['t'])
@@ -261,13 +293,28 @@ def read_tape(outputs) -> tuple[list[int], dict]:
         raise PitRunError('tape times must be strictly increasing')
     for x in syms.values():
         x.fund.sort(key=lambda f: f.time_ms)
-    return times, syms
+    out = TapeData((times, syms))
+    out.side = side
+    return out
 
 
-def net_r(x: Sym, *, entry_ref, entry_ms, dist, exit_ref, exit_ms, gap, exit_bps_at, nbars, slip_c, rows):
-    """Net R per stress row of one unit-quantity long trade on a fixed path (diagnostics, B0 and B1 only)."""
+def net_r(x: Sym, *, entry_ref, entry_ms, dist, exit_ref, exit_ms, gap, exit_bps_at, nbars, slip_c, rows,
+          side='long', tick=None):
+    """Net R per stress row of one unit-quantity trade on a fixed path (diagnostics, B0 and B1 only). `side='short'`
+    (STRAT-02): sell entry rounded DOWN / buy cover rounded UP to `tick`, PnL = entry - exit, short funding sign."""
     ev = x.events(entry_ms, exit_ms)
     out = {}
+    if side == 'short':
+        for name in rows:
+            scen = C.STRESS[name]
+            ef = C.fill_price(entry_ref, 'sell', x.bps(entry_ms, scen.vol, slip_c), scen, tick=tick)
+            xf = C.fill_price(exit_ref, 'buy', x.bps(exit_bps_at, scen.vol, slip_c), scen, gap=gap, tick=tick)
+            fees = C.fee(ef, 'taker', C.CRYPTO, scen) + C.fee(xf, 'taker', C.CRYPTO, scen)
+            fund = C.funding_cost('short', 1.0, ev, scen, bars_held=nbars, entry_notional=ef)
+            out[name] = (ef - xf - fees - fund) / dist
+        return out
+    if side != 'long':
+        raise PitRunError("side must be 'long' or 'short'")
     for name in rows:
         scen = C.STRESS[name]
         ef = C.fill_price(entry_ref, 'buy', x.bps(entry_ms, scen.vol, slip_c), scen)
@@ -278,8 +325,9 @@ def net_r(x: Sym, *, entry_ref, entry_ms, dist, exit_ref, exit_ms, gap, exit_bps
     return out
 
 
-def _signal(cfg, x: Sym, rec, t):
-    """(le, lx, stop distance | None) of a configuration at t from the tape."""
+def _signal(cfg, x: Sym, rec, t, side='long'):
+    """(le, lx, stop distance | None) of a configuration at t from the tape (short: se, sx; B2 short = close below the
+    close 20 bars earlier)."""
     if cfg['kind'] == 'sig':
         k = cfg['k']
         if rec['w'][k] != '1':
@@ -287,12 +335,17 @@ def _signal(cfg, x: Sym, rec, t):
         d = rec['e'].get(str(k))
         return d is not None, rec['x'][k] == '1', None if d is None else float(Decimal(d))
     d = None if rec['d'] is None else float(Decimal(rec['d']))
+    if cfg['kind'] == 'b1' and side == 'short':
+        raise PitRunError('B1 short is the perp short book (b1_short_book), never a signal configuration')
     if cfg['kind'] == 'b1':
         monday = t % DAY == 0 and (t // DAY - 4) % 7 == 0
         return monday and d is not None, False, d
     back = x.rec.get(t - 20 * TF)                      # B2: close > close 20 bars earlier (contiguous bars only)
     if back is None or any((t - j * TF) not in x.rec for j in range(1, 20)):
         return False, True, d
+    if side == 'short':                                # B2 short: close < close 20 bars earlier, cover when not
+        down = rec['b'][3] < back['b'][3]
+        return down and d is not None, not down, d
     up = rec['b'][3] > back['b'][3]
     return up and d is not None, not up, d
 
@@ -316,8 +369,87 @@ def _floor(v: float, unit) -> float:
     return float(X.q_down(Decimal(repr(float(v))), Decimal(str(unit))))
 
 
+def _ceil(v: float, unit) -> float:
+    """STRAT-02: the short stop level CEILED to the tick (rounding can only widen the risk)."""
+    u = Decimal(str(unit))
+    return float((Decimal(repr(float(v))) / u).to_integral_value(rounding=ROUND_CEILING) * u)
+
+
+def _dec(v):
+    """An exact Decimal of a tape distance (Decimal / decimal text as attested) or a float (its repr); None when it
+    is not a finite positive number."""
+    try:
+        d = v if isinstance(v, Decimal) else Decimal(v) if isinstance(v, str) else Decimal(repr(float(v)))
+    except (ArithmeticError, TypeError, ValueError):
+        return None
+    return d if d.is_finite() and d > 0 else None
+
+
+def short_stop(fill: float, dist, tick):
+    """STRAT-02 stop = ceil_tick(fill + dist), computed ONCE in exact decimal arithmetic (the tick-rounded fill's repr
+    plus the attested distance text), so an on-grid sum is never widened by float noise. Returns (stop, risk per
+    unit = stop - fill) as floats of the exact values, or None for a non-finite / non-positive distance or fill."""
+    d = _dec(dist)
+    f = _dec(fill)
+    if d is None or f is None:
+        return None
+    u = Decimal(str(tick))
+    stop = ((f + d) / u).to_integral_value(rounding=ROUND_CEILING) * u
+    risk = stop - f
+    if not risk > 0:
+        return None
+    return float(stop), float(risk)
+
+
+def _dist_exact(cfg, rec):
+    """The attested stop-distance TEXT of a configuration's entry (exact; never via float)."""
+    v = rec['e'].get(str(cfg['k'])) if cfg['kind'] == 'sig' else rec['d']
+    return None if v is None else Decimal(v)
+
+
+def size_short(snapshot: float, fill: float, dist, ref: float, notional: float, rule: dict, book=BOOK):
+    """STRAT-02 book sizing of one short entry (contract section 4): (qty, stop, None) or (None, None, refusal code).
+    stop = ceil_tick(fill + dist) with `fill` the slipped sell fill already rounded DOWN; the actual per-unit risk
+    stop - fill must be finite and > 0 (else `execution.stop_risk_invalid`); qty = min(1% x snapshot / risk,
+    (3 x snapshot - open notional) / (signal close x 1.10)) floored to the step, never upsized; below min qty or
+    qty x the executable fill below min notional = `execution.size_min`."""
+    sr = short_stop(fill, dist, rule['tick'])
+    if sr is None:
+        return None, None, 'execution.stop_risk_invalid'
+    stop, risk_u = sr
+    raw = snapshot * book['risk_pct'] / risk_u
+    room = book['max_leverage'] * snapshot - notional
+    q = min(raw, max(room, 0.0) / (ref * (1 + book['cap_gap_buffer'])))
+    q = _floor(q, rule['step']) if q > 0 else 0.0
+    if q <= 0 or q < float(rule['min_qty']) or q * fill < float(rule['min_notional']):     # the executable fill
+        return None, None, 'execution.size_min'
+    return q, stop, None
+
+
+def liq_point(wallet: float, held) -> tuple[float, float, bool]:
+    """STRAT-02 PARK-only liquidation diagnostic of one bar (contract section 4): `held` = [(qty, entry, bar high)] of
+    every open short. G = sum q x high, W = wallet + sum q x (entry - high); flagged when W < G / 3. Never an exit,
+    a fill or a sizing input."""
+    g = math.fsum(q * h for q, _, h in held)
+    w = wallet + math.fsum(q * (e - h) for q, e, h in held)
+    return w, g, w < g / 3
+
+
+def delist_cover(*, notice_ms, opens, last_mark: float, bps: float, scen, tick) -> tuple[float, int | None, str]:
+    """STRAT-02 delist cover price (prereg costs.delist, short side): with a timestamped notice, BUY at the first bar
+    open STRICTLY after the notice (an open at the notice time is not causally executable) (`opens` = [(open_ms, open)] ascending) -> (fill, open_ms, 'exit.delist'); with no
+    observed notice (or no open after it), BUY at the last archived mark with 5x slippage -> (fill, None,
+    'exit.delist_forced'), reported separately. Buys round UP to the tick. Pricing only: the attested tape carries no
+    delist notice yet, so the book does not call this (a held symbol whose bars end is INCOMPLETE; M1 scope)."""
+    if notice_ms is not None:
+        for ms, o in opens:
+            if ms > notice_ms:
+                return C.fill_price(o, 'buy', bps, scen, tick=tick), ms, 'exit.delist'
+    return C.fill_price(last_mark, 'buy', 5.0 * bps, scen, tick=tick), None, 'exit.delist_forced'
+
+
 def run_book(tape, cfg: dict, symbols, *, first: int, last: int, hi: int, slip_c: float, rules: dict, row: str = 'base',
-             exclude=frozenset(), book=BOOK) -> dict:
+             exclude=frozenset(), book=BOOK, side='long') -> dict:
     """ONE pass of the registered shared crypto book over a split's attested tape, one cost row (prereg rule.book,
     the M3 BookRunner order of m3_eval.Machine): cycle at bar close t (bar [t - 4h, t)):
       (A) fills at the open of that bar of the decisions taken at t - 4h: signal exits, then time-cap exits (a lot held
@@ -331,7 +463,16 @@ def run_book(tape, cfg: dict, symbols, *, first: int, last: int, hi: int, slip_c
       (C) decision at t: MTM = wallet + open lots at the closes; Cairo-day roll / 3% MTM halt; signals queued.
     At the split end (t == hi) a pending signal exit or a cap exit due at hi fills at the next open read through
     `View.next_open`; a lot that cannot exit inside the split, a lot meeting a missing bar, or an incomplete funding
-    sequence / mark is INCOMPLETE (the caller re-runs the book without that symbol)."""
+    sequence / mark is INCOMPLETE (the caller re-runs the book without that symbol).
+
+    `side='short'` (STRAT-02 contract sections 3-4, the exact mirror): market SELL entry rounded DOWN to the tick after
+    adverse slip, stop = ceil_tick(fill + dist), actual per-unit risk stop - fill (non-finite / non-positive = refusal
+    `execution.stop_risk_invalid`); a bar OPENING at or above the stop fills at its open (gap), else a HIGH reaching it
+    fills at the stop; covers are BUYs rounded UP; PnL = (fill - exit) x qty; short funding sign; MFE from lows (stop
+    bar: its open), MAE from highs (stop bar: bounded by the stop); MTM = wallet + qty x (fill - close); plus the
+    PARK-only liquidation diagnostic (never an exit, fill or sizing input)."""
+    _bind_side(tape, side)
+    short = side == 'short'
     times, syms = tape
     scen = C.STRESS[row]
     order = [s for s in symbols if s in syms and s not in exclude]
@@ -339,6 +480,7 @@ def run_book(tape, cfg: dict, symbols, *, first: int, last: int, hi: int, slip_c
     lots, closes, trades, incomplete, refusals, series = {}, {}, [], [], Counter(), []
     pend_exit, pend_entry, day, day_start, halted_day = [], [], None, None, None
     cap_ms = None if cfg['cap'] is None else cfg['cap'] * TF
+    liq = {'bars': 0, 'flagged_bars': 0, 'min_w_over_g': None, 'max_bar_high_over_open': None}
 
     def tick(s):
         return float(rules[s]['tick'])
@@ -352,9 +494,26 @@ def run_book(tape, cfg: dict, symbols, *, first: int, last: int, hi: int, slip_c
         lot, x = lots[s], syms[s]
         try:
             x.events(lot['entry_ms'], exit_ms)                      # the whole funding sequence is provably complete
-            xf = C.fill_price(ref, 'sell', x.bps(at, scen.vol, slip_c), scen, gap=gap, tick=tick(s))
+            xf = C.fill_price(ref, 'buy' if short else 'sell', x.bps(at, scen.vol, slip_c), scen, gap=gap,
+                              tick=tick(s))
         except Incomplete as e:
             drop(s, e.reason)
+            return
+        if short:
+            fee = C.fee(xf * lot['qty'], 'taker', C.CRYPTO, scen)
+            gross = (lot['fill'] - xf) * lot['qty']
+            wallet += gross - fee
+            fees = lot['fees'] + fee
+            pnl = gross - fees - lot['funding']
+            risk_u = lot['stop'] - lot['fill']
+            risk = lot['qty'] * risk_u
+            trades.append({'config': cfg['name'], 'side': 'short', 'symbol': s, 'signal_ms': lot['signal_ms'],
+                           'entry_ms': lot['entry_ms'], 'exit_ms': exit_ms, 'exit_reason': reason, 'gap': gap,
+                           'bars': nbars, 'qty': lot['qty'], 'entry_price': lot['fill'], 'exit_price': xf,
+                           'stop_price': lot['stop'], 'fees': fees, 'funding': lot['funding'], 'pnl': pnl,
+                           'snapshot': lot['snapshot'], 'r': {row: pnl / risk if risk > 0 else 0.0},
+                           'mfe_r': (lot['fill'] - lot['lo']) / risk_u, 'mae_r': (lot['fill'] - lot['hi']) / risk_u})
+            del lots[s]
             return
         fee = C.fee(xf * lot['qty'], 'taker', C.CRYPTO, scen)
         gross = (xf - lot['fill']) * lot['qty']
@@ -402,6 +561,9 @@ def run_book(tape, cfg: dict, symbols, *, first: int, last: int, hi: int, slip_c
             rule = rules[s]
             notional = math.fsum(x['qty'] * (x['fill'] if x['entry_ms'] == bo else closes.get(k, x['fill']))
                                  for k, x in lots.items())
+            if short and _dec(dist) is None:
+                refusals['execution.stop_risk_invalid'] += 1         # a non-finite / non-positive stop risk
+                continue
             if snapshot <= 0 or not dist or dist <= 0 or ref <= 0:
                 refusals['execution.size_min'] += 1
                 continue
@@ -409,6 +571,22 @@ def run_book(tape, cfg: dict, symbols, *, first: int, last: int, hi: int, slip_c
                 refusals['entry_no_next_open'] += 1
                 continue
             x = syms[s]
+            if short:
+                try:
+                    fill = C.fill_price(rec[s]['b'][0], 'sell', x.bps(bo, scen.vol, slip_c), scen, tick=tick(s))
+                except Incomplete:
+                    refusals['entry_no_slip_history'] += 1
+                    continue
+                q, stop, why = size_short(snapshot, fill, dist, ref, notional, rule, book)
+                if why is not None:
+                    refusals[why] += 1
+                    continue
+                fee = C.fee(fill * q, 'taker', C.CRYPTO, scen)
+                wallet -= fee
+                o = rec[s]['b'][0]
+                lots[s] = {'signal_ms': sig_t, 'entry_ms': bo, 'qty': q, 'fill': fill, 'stop': stop, 'fees': fee,
+                           'funding': 0.0, 'snapshot': snapshot, 'hi': o, 'lo': o}
+                continue
             try:
                 fill = C.fill_price(rec[s]['b'][0], 'buy', x.bps(bo, scen.vol, slip_c), scen, tick=tick(s))
             except Incomplete:
@@ -441,7 +619,52 @@ def run_book(tape, cfg: dict, symbols, *, first: int, last: int, hi: int, slip_c
         # (B) play the bar: stop first; funding events entry <= T < exit time (accounting convention, PR #61:
         # a gap stop exits at the bar open, before the bar's events; a non-gap stop exits at the bar CLOSE t, so the
         # bar's events [bo, t) are charged first, with the fill still at the stop level)
-        for s in [s for s in order if s in lots]:
+        if short:
+            # (B) short, three passes over the open lots in rank order (contract sections 3-4):
+            #   1. a gap stop exits at the bar OPEN (before the bar's funding events); every other lot books the
+            #      bar's eligible funding events (a non-gap stop exits at the bar CLOSE, so they are charged);
+            #   2. the PARK-only liquidation diagnostic on the lots still open, wallet_t = the realised wallet after
+            #      the fees and funding booked up to t, every short marked at its own bar high at once, ignoring the
+            #      bar's non-gap stops (never an exit, fill or sizing input);
+            #   3. non-gap stops fill at the stop level and exit at the bar close; other lots update MFE / MAE.
+            hits = {}
+            for s in [s for s in order if s in lots]:
+                lot, (o, h, lo, c) = lots[s], rec[s]['b']
+                stop_hit = o >= lot['stop'] or h >= lot['stop']
+                ref, gap = C.stop_reference('short', lot['stop'], o) if stop_hit else (None, False)
+                if stop_hit and gap:                    # MFE: earlier lows + the open; MAE: the known adverse open
+                    lot['lo'], lot['hi'] = min(lot['lo'], o), max(lot['hi'], o)
+                    close(s, ref, bo, 'exit.stop', True, bo, (bo - lot['entry_ms']) // TF + 1)
+                    continue
+                ev = [(f.time_ms, f.rate, syms[s].mark[f.time_ms]) for f in syms[s].fund
+                      if bo <= f.time_ms < t and f.time_ms >= lot['entry_ms']]
+                if any(m is None for _, _, m in ev):
+                    drop(s, 'incomplete.funding_mark')
+                    continue
+                amt = C.funding_cost('short', lot['qty'], ev, scen, bars_held=1,
+                                     entry_notional=lot['qty'] * lot['fill'])
+                wallet -= amt
+                lot['funding'] += amt
+                hits[s] = (stop_hit, ref)
+            held = [(lots[k], rec[k]['b']) for k in order if k in lots]
+            if held:
+                w, g, flag = liq_point(wallet, [(lt['qty'], lt['fill'], b[1]) for lt, b in held])
+                liq['bars'] += 1
+                liq['flagged_bars'] += flag
+                if g > 0:
+                    liq['min_w_over_g'] = w / g if liq['min_w_over_g'] is None else min(liq['min_w_over_g'], w / g)
+                jump = max((b[1] - b[0]) / b[0] for _, b in held)
+                liq['max_bar_high_over_open'] = jump if liq['max_bar_high_over_open'] is None else max(
+                    liq['max_bar_high_over_open'], jump)
+            for s in [s for s in order if s in lots]:
+                lot, (o, h, lo, c) = lots[s], rec[s]['b']
+                stop_hit, ref = hits[s]
+                if stop_hit:                            # ambiguous intrabar path: MAE bounded by the stop
+                    lot['lo'], lot['hi'] = min(lot['lo'], o), max(lot['hi'], min(h, lot['stop']))
+                    close(s, ref, t, 'exit.stop', False, bo, (bo - lot['entry_ms']) // TF + 1)
+                    continue
+                lot['hi'], lot['lo'] = max(lot['hi'], h), min(lot['lo'], lo)
+        for s in [s for s in order if s in lots and not short]:
             lot, (o, h, lo, c) = lots[s], rec[s]['b']
             stop_hit = o <= lot['stop'] or lo <= lot['stop']
             ref, gap = C.stop_reference('long', lot['stop'], o) if stop_hit else (None, False)
@@ -464,7 +687,10 @@ def run_book(tape, cfg: dict, symbols, *, first: int, last: int, hi: int, slip_c
             if rec[s] is not None:
                 closes[s] = rec[s]['b'][3]
         # (C) decision at t
-        mtm = wallet + math.fsum(x['qty'] * (closes.get(k, x['fill']) - x['fill']) for k, x in lots.items())
+        if short:
+            mtm = wallet + math.fsum(x['qty'] * (x['fill'] - closes.get(k, x['fill'])) for k, x in lots.items())
+        else:
+            mtm = wallet + math.fsum(x['qty'] * (closes.get(k, x['fill']) - x['fill']) for k, x in lots.items())
         series.append((t, mtm))
         d = E.cairo_day(t)
         if d != day:
@@ -475,11 +701,11 @@ def run_book(tape, cfg: dict, symbols, *, first: int, last: int, hi: int, slip_c
             r = rec[s]
             if r is None:
                 continue
-            le, lx, dist = _signal(cfg, syms[s], r, t)
+            le, lx, dist = _signal(cfg, syms[s], r, t, side)
             if lx and s in lots:
                 pend_exit.append((s, t))
             if le and first <= t <= last:
-                pend_entry.append((s, t, dist, r['b'][3], halted_day == d))
+                pend_entry.append((s, t, _dist_exact(cfg, r) if short else dist, r['b'][3], halted_day == d))
         if t == hi:                                     # split end: fills due at hi read the next open
             sig_due = {s for s, _ in pend_exit if s in lots}
             due = set(sig_due)
@@ -498,8 +724,13 @@ def run_book(tape, cfg: dict, symbols, *, first: int, last: int, hi: int, slip_c
             raise PitRunError(f'{s}: a capped lot outlived its cap inside the split')    # unreachable
         drop(s, 'incomplete.split_end')
     trades.sort(key=lambda r: (r['entry_ms'], r['symbol']))
-    return {'trades': trades, 'incomplete': incomplete, 'refusals': dict(sorted(refusals.items())),
-            'wallet_end': wallet, 'series': series}
+    out = {'trades': trades, 'incomplete': incomplete, 'refusals': dict(sorted(refusals.items())),
+           'wallet_end': wallet, 'series': series}
+    if short:
+        out['side'] = 'short'
+        out['liquidation'] = dict(liq, park=liq['flagged_bars'] > 0,
+                                  note='PARK-only diagnostic (W_t < G_t / 3); never an exit, fill or sizing input')
+    return out
 
 
 def book_stats(series, equity0=BOOK['equity0']) -> dict:
@@ -515,13 +746,18 @@ def book_stats(series, equity0=BOOK['equity0']) -> dict:
 
 
 def account(outputs, cfg: dict, *, symbols, first: int, last: int, hi: int, slip_c: float, rules: dict,
-            rows=('base',)) -> dict:
+            rows=('base',), side='long') -> dict:
     """The registered book for one configuration over one split, per cost row. A symbol with any INCOMPLETE lot is
     excluded and the book re-run without it until no INCOMPLETE remains (reported, never silently counted)."""
     tape = read_tape(outputs)
+    _bind_side(tape, side)
     missing = sorted(s for s in symbols if s in tape[1] and s not in rules)
     if missing:
         raise PitRunError(f'no pinned exchange rule (tick / step / min qty / min notional) for {missing}')
+    if cfg['kind'] == 'b1' and side == 'short':
+        return {'config': cfg['name'], 'book': True, 'side': 'short',
+                'rows': {row: b1_short_book(outputs, symbols=symbols, first=first, last=last, hi=hi, slip_c=slip_c,
+                                            rules=rules, row=row) for row in rows}}
     if cfg['kind'] == 'b1':
         return account_unit(outputs, cfg, first=first, last=last, hi=hi, slip_c=slip_c, rows=rows)
     out = {'config': cfg['name'], 'book': True, 'rows': {}}
@@ -529,7 +765,7 @@ def account(outputs, cfg: dict, *, symbols, first: int, last: int, hi: int, slip
         excl, seen, first_trades = set(), [], None
         while True:
             res = run_book(tape, cfg, symbols, first=first, last=last, hi=hi, slip_c=slip_c, rules=rules, row=row,
-                           exclude=frozenset(excl))
+                           exclude=frozenset(excl), side=side)
             if first_trades is None:
                 first_trades = res['trades']
             seen += res['incomplete']
@@ -541,6 +777,8 @@ def account(outputs, cfg: dict, *, symbols, first: int, last: int, hi: int, slip
                    excluded_trades=sum(1 for r in first_trades if r['symbol'] in excl),
                    net_pct_equity=100.0 * (res['wallet_end'] - BOOK['equity0']) / BOOK['equity0'],
                    **book_stats(res['series']))
+        if side == 'short':                     # STRAT-02 B1 pairing: the candidate's book MTM month R, same units
+            res['month_r'] = month_r(res['series'], first, last)
         res.pop('series')
         out['rows'][row] = res
     base = out['rows'][rows[0]]
@@ -552,7 +790,9 @@ def account(outputs, cfg: dict, *, symbols, first: int, last: int, hi: int, slip
 def account_unit(outputs, cfg: dict, *, first: int, last: int, hi: int, slip_c: float, rows=tuple(C.STRESS)) -> dict:
     """Unit-quantity R per symbol (no shared book): B1 (prereg: equal-weight weekly hold scaled to equal risk) and
     per-trade diagnostics. Same fill / stop / next-open cap / funding / INCOMPLETE rules as the book."""
-    times, syms = read_tape(outputs)
+    tape = read_tape(outputs)
+    _bind_side(tape, 'long')
+    times, syms = tape
     trades, incomplete, refusals = [], [], Counter()
     for s in sorted(syms):
         x, lot, pend_entry, pend_exit = syms[s], None, None, None
@@ -634,6 +874,153 @@ def account_unit(outputs, cfg: dict, *, first: int, last: int, hi: int, slip_c: 
             'refusals': dict(sorted(refusals.items()))}
 
 
+# ------------------------------------------------------------------ B1 short: the perp short benchmark book
+def _is_monday_open(t: int) -> bool:
+    return t % DAY == 0 and (t // DAY - 4) % 7 == 0       # 1970-01-01 was a Thursday
+
+
+def b1_short_book(outputs, *, symbols, first: int, last: int, hi: int, slip_c: float, rules: dict, row: str = 'base',
+                  book=BOOK) -> dict:
+    """STRAT-02 B1 (contract section 7.1, Codex 6112077638): an equal-weight USD-M perpetual SHORT basket on its own
+    10,000 USDT book, no spot borrow, signed actual funding (a short receives positive and pays negative rates).
+      * tau = every Monday 00:00 UTC inside the decision range [first, last] plus its first bar (`first`);
+      * M_tau = tier members with a closed 4h bar at tau, ATR14 defined on the contiguous tail (tape `a`) and a bar
+        opening at tau (`_next_open`); N = |M_tau|, N = 0 = flat until the next tau;
+      * q*_s = floor_step((0.01 x E_tau / N) / (2.5 x ATR14_s(tau))) with E_tau the B1 MTM equity at tau; if
+        sum(q*_s x close_s(tau) x 1.10) > 3 x E_tau every q*_s is scaled by 3 x E_tau / that sum BEFORE flooring;
+      * a leg below min qty / min notional (qty x the executable sell fill, pinned rules) is set to 0 and counted;
+      * at the open of the bar starting at tau each symbol trades q*_s - q_s (sell = add short, buy = reduce), taker,
+        adverse slip-v1, sell rounded DOWN / buy rounded UP to the tick; a member leaving M_tau is fully covered;
+      * no stop, no time cap, no other exit; funding on the held qty at each funding time T in the played bar
+        [t - 4h, t) at the funding-mark proxy;
+      * a missing mark or a missing bar while held makes that symbol INCOMPLETE: it is counted, its leg leaves the
+        book unsettled from that time and the symbol is excluded from later rebalances; the book is then labelled
+        status INCOMPLETE (never a silently complete result).
+    Returns the MTM series and the calendar-month block R `(E_end(m) - E_start(m)) / (0.01 x E_start(m))`."""
+    tape = read_tape(outputs)
+    _bind_side(tape, 'short')
+    times, syms = tape
+    scen = C.STRESS[row]
+    order = [s for s in symbols if s in syms]
+    wallet = book['equity0']
+    pos, closes, legs, incomplete, refusals, series = {}, {}, [], [], Counter(), []
+    dead, pending, taus = set(), None, []
+
+    def kill(s, t, reason):
+        incomplete.append({'symbol': s, 'time_ms': t, 'reason': reason})
+        dead.add(s)
+        pos.pop(s, None)
+
+    for t in times:
+        bo = t - TF
+        rec = {s: syms[s].rec.get(t) for s in order}
+        for s in [s for s in order if s in pos and rec[s] is None]:
+            kill(s, t, 'incomplete.gap')
+        if pending is not None and pending[0] == bo:                  # (A) rebalance fills at the open of [tau, ...)
+            targets = pending[1]
+            for s in order:
+                if s in dead or rec[s] is None:
+                    if targets.get(s) and s not in dead:
+                        refusals['b1.no_open'] += 1
+                    continue
+                cur = pos[s]['qty'] if s in pos else 0.0
+                tgt = targets.get(s, 0.0)
+                x, rule = syms[s], rules[s]
+                o = rec[s]['b'][0]
+                try:
+                    bps = x.bps(bo, scen.vol, slip_c)
+                except Incomplete:
+                    refusals['b1.no_slip_history'] += 1
+                    continue
+                if tgt > 0:
+                    chk = C.fill_price(o, 'sell', bps, scen, tick=float(rule['tick']))
+                    if tgt < float(rule['min_qty']) or tgt * chk < float(rule['min_notional']):
+                        refusals['b1.size_min'] += 1
+                        tgt = 0.0
+                dq = tgt - cur
+                if abs(dq) < 1e-12:
+                    continue
+                act = 'sell' if dq > 0 else 'buy'
+                fill = C.fill_price(o, act, bps, scen, tick=float(rule['tick']))
+                fee = C.fee(fill * abs(dq), 'taker', C.CRYPTO, scen)
+                wallet -= fee
+                if dq > 0:
+                    avg = fill if cur == 0 else (cur * pos[s]['avg'] + dq * fill) / (cur + dq)
+                    pos[s] = {'qty': cur + dq, 'avg': avg}
+                    realised = 0.0
+                else:
+                    realised = (pos[s]['avg'] - fill) * -dq
+                    wallet += realised
+                    if tgt <= 0:
+                        del pos[s]
+                    else:
+                        pos[s]['qty'] = tgt
+                legs.append({'symbol': s, 'time_ms': bo, 'action': act, 'qty': abs(dq), 'fill': fill, 'fee': fee,
+                             'realised': realised})
+            pending = None
+        for s in [s for s in order if s in pos]:                       # (B) funding on the held quantity
+            ev = [(f.time_ms, f.rate, syms[s].mark[f.time_ms]) for f in syms[s].fund if bo <= f.time_ms < t]
+            if any(m is None for _, _, m in ev):
+                kill(s, t, 'incomplete.funding_mark')
+                continue
+            wallet -= C.funding_cost('short', pos[s]['qty'], ev, scen, bars_held=1,
+                                     entry_notional=pos[s]['qty'] * pos[s]['avg'])
+        for s in order:
+            if rec[s] is not None:
+                closes[s] = rec[s]['b'][3]
+        mtm = wallet + math.fsum(p['qty'] * (p['avg'] - closes.get(k, p['avg'])) for k, p in pos.items())
+        series.append((t, mtm))
+        if first <= t <= last and (t == first or _is_monday_open(t)):  # (C) the rebalance decision at tau
+            members = [s for s in order if s not in dead and rec[s] is not None and rec[s].get('a') is not None
+                       and _next_open(syms[s], t, hi) is not None]
+            raw = {}
+            if members and mtm > 0:
+                for s in members:
+                    unit = float(T.stop_distance(float(rec[s]['a']), T.PRIMARY))       # 2.5 x ATR14_s(tau)
+                    if unit > 0:
+                        raw[s] = (0.01 * mtm / len(members)) / unit
+                gross = math.fsum(q * rec[s]['b'][3] * (1 + book['cap_gap_buffer']) for s, q in raw.items())
+                if gross > book['max_leverage'] * mtm:
+                    k = book['max_leverage'] * mtm / gross
+                    raw = {s: q * k for s, q in raw.items()}
+            targets = {s: _floor(q, rules[s]['step']) for s, q in raw.items()}
+            taus.append({'tau': t, 'members': len(members)})
+            pending = (t, targets)
+    blocks = month_r(series, first, last, book['equity0'])
+    return {'config': 'B1', 'side': 'short', 'row': row, 'legs': legs, 'incomplete': incomplete,
+            'excluded_symbols': sorted(dead), 'refusals': dict(sorted(refusals.items())), 'rebalances': taus,
+            'series': series, 'wallet_end': wallet, 'month_r': blocks,
+            'status': 'INCOMPLETE' if incomplete else 'COMPLETE'}
+
+
+def month_r(series, first: int, last: int, equity0=BOOK['equity0']) -> dict:
+    """{YYYY-MM: (E_end - E_start) / (0.01 x E_start)} from MTM equity at the calendar-month boundaries (the last MTM
+    at or before each boundary; equity0 before the first cycle). Used for B1 short and the candidate book alike."""
+    def at(ms):
+        k = bisect.bisect_right(ts, ms)
+        return equity0 if k == 0 else series[k - 1][1]
+    ts = [t for t, _ in series]
+    out = {}
+    for mo in months_of(first, last):
+        y, m = map(int, mo.split('-'))
+        a = S.parse_utc(f'{mo}-01T00:00:00Z')
+        b = S.parse_utc(f'{y + (m == 12):04d}-{1 if m == 12 else m + 1:02d}-01T00:00:00Z')
+        e0, e1 = at(a), at(b)
+        out[mo] = (e1 - e0) / (0.01 * e0) if e0 > 0 else None
+    return out
+
+
+def configs_short() -> list[dict]:
+    """STRAT-02 configurations (contract section 8): the single capped primary, the 12 one-at-a-time neighbours (same
+    steps and evaluator indices as v1), B1 (perp short book) and B2 (20-bar momentum short). No uncapped variant."""
+    out = [{'name': SHORT_PRIMARY_NAME, 'kind': 'sig', 'k': 0, 'cap': CAP, 'stop': True, 'role': 'primary'}]
+    out += [{'name': n, 'kind': 'sig', 'k': i + 1, 'cap': CAP, 'stop': True, 'role': 'neighbour'}
+            for i, (n, _) in enumerate(T.neighbours())]
+    out += [{'name': 'B1', 'kind': 'b1', 'k': None, 'cap': None, 'stop': False, 'role': 'baseline'},
+            {'name': 'B2', 'kind': 'b2', 'k': None, 'cap': CAP, 'stop': True, 'role': 'baseline'}]
+    return out
+
+
 # ------------------------------------------------------------------ B0: matched random entries
 def b0_pool(outputs, *, first: int, last: int) -> dict:
     """{(symbol, regime label): [eligible decision times]}: inside the split's decision range, the symbol warm (its
@@ -649,20 +1036,59 @@ def b0_pool(outputs, *, first: int, last: int) -> dict:
 
 
 def b0_pairs(outputs, primary: dict, *, first: int, last: int, hi: int, slip_c: float, seed_key: str,
-             draws: int = B0_DRAWS) -> dict:
+             draws: int = B0_DRAWS, side: str = 'long', rules=None) -> dict:
     """Episode-paired differences: candidate episode mean net R - the mean of its matched draws. A draw matches the
     candidate's symbol, side (long), split and registered PIT regime label at the decision (tape `g`: BTCUSDT close
     vs EMA200, frozen in the attested tape), uses its realised hold capped at 180 bars (exit at the next open, the
     same stop rule, base costs and funding) and is drawn uniformly from that symbol's eligible decision times in the
     split with the same label. A candidate whose label is undefined is unmatched (counted); an invalid draw (gap /
-    funding / slip history / no next open in the split) is excluded and counted."""
-    times, syms = read_tape(outputs)
+    funding / slip history / no next open in the split) is excluded and counted.
+
+    `side='short'` (STRAT-02 B0): matched random SHORT entries - sell fill rounded DOWN to the symbol's tick (`rules`),
+    stop = ceil_tick(fill + dist), a bar OPENING at or above it fills at its open, else a HIGH reaching it fills at the
+    stop; covers rounded UP; R per unit of the actual risk stop - fill; short funding sign."""
+    if side not in SIDES:
+        raise PitRunError("side must be 'long' or 'short'")
+    if side == 'short' and rules is None:
+        raise PitRunError('B0 short needs the pinned tick rules (ceiled stop, tick-rounded fills)')
+    tape = read_tape(outputs)
+    _bind_side(tape, side)
+    times, syms = tape
     regime = {o['t']: o.get('g') for o in outputs}
     elig = b0_pool(outputs, first=first, last=last)
     cache, invalid, unmatched = {}, 0, 0
 
+    def sim_short(s, e, h):
+        x, tk = syms[s], float(rules[s]['tick'])
+        if e + h * TF > hi or any((e + j * TF) not in x.rec for j in range(1, h + 1)):
+            raise Incomplete('incomplete.gap')
+        o0 = x.rec[e + TF]['b'][0]
+        fill = C.fill_price(o0, 'sell', x.bps(e, BASE.vol, slip_c), BASE, tick=tk)
+        sr = short_stop(fill, Decimal(x.rec[e]['d']), tk)
+        if sr is None:
+            raise Incomplete('incomplete.stop_risk_invalid')
+        stop, risk_u = sr
+        kw = dict(entry_ref=o0, entry_ms=e, dist=risk_u, slip_c=slip_c, rows=('base',), side='short', tick=tk)
+        for j in range(1, h + 1):
+            o, hh, _, _ = x.rec[e + j * TF]['b']
+            if o >= stop or hh >= stop:
+                ref, gap = C.stop_reference('short', stop, o)
+                bo = e + (j - 1) * TF
+                return net_r(x, exit_ref=ref, exit_ms=bo if gap else bo + TF, gap=gap, exit_bps_at=bo, nbars=j,
+                             **kw)['base']
+        t = e + h * TF
+        n = _next_open(x, t, hi)
+        if n is None:
+            raise Incomplete('incomplete.split_end')
+        return net_r(x, exit_ref=n, exit_ms=t, gap=False, exit_bps_at=t, nbars=h, **kw)['base']
+
     def sim(s, e, h):
         key = (s, e, h)
+        if key not in cache and side == 'short':
+            try:
+                cache[key] = sim_short(s, e, h)
+            except Incomplete:
+                cache[key] = None
         if key not in cache:
             x = syms[s]
             d = float(Decimal(x.rec[e]['d']))
@@ -812,6 +1238,8 @@ def metrics(acc: dict, *, rows, boot=None) -> dict:
         out['stress_mean_r'][k] = math.fsum(xs) / len(xs) if xs else None
     if acc.get('book') is not None:
         out['book'] = {k: dict(v) for k, v in sorted(acc['book'].items())}
+    if acc.get('liquidation') is not None:
+        out['liquidation'] = {k: dict(v) for k, v in sorted(acc['liquidation'].items())}
     if boot is not None:
         out.update(bootstrap(tr, **boot))
         if all('pnl' in r for r in tr):
@@ -919,6 +1347,9 @@ def _detail(v: dict) -> dict:
                            'book': {k: x[k] for k in ('net_pct_equity', 'mtm_max_dd_pct', 'longest_underwater_cycles',
                                                       'wallet_end')}}
                        for r, x in v['rows'].items()}
+        for r, x in v['rows'].items():                     # STRAT-02 short rows only: the PARK-only diagnostic
+            if 'liquidation' in x:
+                out['rows'][r]['liquidation'] = dict(x['liquidation'])
     return out
 
 
@@ -929,7 +1360,27 @@ def _acc(v: dict) -> dict:
         a['rows_trades'] = {r: x['counted'] for r, x in v['rows'].items()}
         a['book'] = {r: {k: x[k] for k in ('net_pct_equity', 'mtm_max_dd_pct', 'longest_underwater_cycles')}
                      for r, x in v['rows'].items()}
+        if any('liquidation' in x for x in v['rows'].values()):
+            a['liquidation'] = {r: dict(x['liquidation']) for r, x in v['rows'].items() if 'liquidation' in x}
     return a
+
+
+def liq_combine(parts) -> dict:
+    """Several splits' liquidation diagnostics of one row: counts summed, the worst W / G and largest bar jump, PARK
+    when any split flagged."""
+    mins = [p['min_w_over_g'] for p in parts if p.get('min_w_over_g') is not None]
+    jumps = [p['max_bar_high_over_open'] for p in parts if p.get('max_bar_high_over_open') is not None]
+    flagged = sum(p['flagged_bars'] for p in parts)
+    return {'bars': sum(p['bars'] for p in parts), 'flagged_bars': flagged,
+            'min_w_over_g': min(mins) if mins else None, 'max_bar_high_over_open': max(jumps) if jumps else None,
+            'park': flagged > 0,
+            'note': 'PARK-only diagnostic (W_t < G_t / 3); never an exit, fill or sizing input'}
+
+
+def liquidation_flags(m: dict) -> list[str]:
+    """`LIQUIDATION-PARK` when any row of an aggregate's liquidation diagnostic flagged a bar (contract section 4)."""
+    liq = m.get('liquidation') or {}
+    return ['LIQUIDATION-PARK'] if any(v.get('park') for v in liq.values()) else []
 
 
 def _counted(detail_splits, name, keys):
@@ -960,6 +1411,9 @@ def _agg(detail_splits, name, keys, rows, boot):
                            'longest_underwater_cycles': max(c['rows'][r]['book']['longest_underwater_cycles']
                                                             for c in cs)} for r in rs}
         rows = rs
+        lr = [r for r in rs if all('liquidation' in c['rows'][r] for c in cs)]
+        if lr:
+            acc['liquidation'] = {r: liq_combine([c['rows'][r]['liquidation'] for c in cs]) for r in lr}
     return metrics(acc, rows=rows, boot=boot), tr
 
 
@@ -1023,7 +1477,7 @@ def summarize(env, tier, symbols, per_split, detail_splits, blocks, b0_diffs, b0
     import run_r4 as G                                                                      # noqa: E402
     if set(edge) != G.EDGE_ROWS:
         raise PitRunError('the EDGE-00 rows differ from the prereg rows')
-    flags = ['DEV-NEGATIVE'] if dev_mean is None or dev_mean <= 0 else []
+    flags = (['DEV-NEGATIVE'] if dev_mean is None or dev_mean <= 0 else []) + liquidation_flags(dev_m)
     summary = {'format': SUMMARY_FORMAT, 'tier': tier, 'label': LABEL, 'labels': [LABEL, DEV_LABEL] + env['cost_labels'],
                'development_only': True, 'identity': env['identity'], 'run_config_digest': sha(cfg_run),
                'symbol_count': len(symbols), 'splits': per_split,

@@ -12,6 +12,23 @@ manual control.
 
 ## 0. Binding delivery priority and staged safety
 
+### Horizontal-first rule — reaffirmed by owner, 12 October 2026
+
+This rule binds Codex, Claude Code and Cowork. Build useful breadth across the native Binance engine:
+longs, shorts, range entries, exits, bounded risk and shared accounting, exercised together on testnet.
+Do not perfect one subsystem while other essential paths remain unimplemented. "Vertical slice" below
+means the minimum connected signal-to-recorded-outcome path, not permission for exhaustive depth.
+
+A defect may interrupt the queue only when it invalidates the immediate execution or research evidence.
+Give that interruption a bounded fix, a focused regression proof and an explicit return to strategy coverage.
+Preserve the narrow pre-testnet safety floor and required acceptance gates. Defer speculative edge matrices,
+broad legacy cleanup, complex regime/ML models, optional platforms and polish. Research candidate contracts
+may progress independently while an affected runner is repaired; never use invalid results for acceptance.
+
+Every handoff must state which missing engine/strategy path it advances, the minimal completion proof,
+and what adjacent depth is deferred. No lane may expand an audit into a new program without a Codex scope ruling.
+Progress means executable coverage and trustworthy evidence, not document, test or strategy counts alone.
+
 The urgent product priority is the **native Binance engine and its strategies**, not a security program, polished final
 UI or broad platform architecture. Build the smallest trustworthy vertical slice, put it on Binance Futures testnet,
 observe what works and fails, and improve it from evidence. Do not hold the first useful testnet engine behind optional
@@ -80,6 +97,20 @@ This section is the controlling interpretation when an older roadmap item, issue
 read more broadly. Codex must stop and redirect drift at proposal/handoff time rather than after implementation.
 
 ### Roadmap and multi-agent authority
+
+**Owner amendment — 12 October 2026: milestone-based collaboration.** On the owner's explicit "ready",
+Claude Code owns one bounded implementation milestone through completion. Codex defines scope and acceptance
+up front, then independently reviews the completed milestone and integrates it. Cowork receives specific
+independent validation/research assignments where useful; it is not a mandatory approval hop for every edit.
+Routine internal steps do not wait for Codex. One implementation owner remains responsible for unfinished code.
+Review occurs before dependent evidence is accepted, not after unchecked assumptions accumulate across milestones.
+
+This amendment supersedes older instructions requiring all three lanes to stay busy, per-step handoffs,
+five-minute agent activity or repeated approval messages. Five-minute checks are a fallback for expected handoffs,
+not a requirement to interrupt productive work. Quiet work within a declared completion window is not a stall.
+Confirmed defects invalidating current execution/evidence are reported immediately; ordinary findings are
+consolidated into the milestone review. Mainnet boundaries, horizontal-first delivery, independent acceptance
+and mandatory final checks remain binding. See the execution plan for the restart milestone and handoff format.
 
 The owner is the ultimate product authority. Under this contract, **Codex is the roadmap, prioritization, scope and
 integration authority**. Codex owns the active `NOW / NEXT / LATER / POST-LIVE` queue, acceptance sequence, parallel-work
