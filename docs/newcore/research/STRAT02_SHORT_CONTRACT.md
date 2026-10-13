@@ -1,8 +1,8 @@
 # STRAT-02 contract: `trend_ema_mom_short.v1` (short-only trend continuation)
 
-**Status: UNREGISTERED DRAFT for Codex review.** It is not frozen and not runnable. No ledger record exists, no short-side code exists, and the R4 gate does not point at it. The machine-readable twin is the NON-CANONICAL draft `docs/newcore/research/drafts/trend_ema_mom_short.v1.draft.json`. It moves to `research_evidence/prereg/` only after Codex freezes it, immediately before registration. If the two ever disagree, the JSON is authoritative once frozen.
+**Status: FROZEN v1 (REG-02, Codex 6155928419, frozen 2026-10-14 Cairo).** The canonical, authoritative machine-readable preregistration is `research_evidence/prereg/trend_ema_mom_short.v1.json` (LF bytes; it replaces the former non-canonical draft under `docs/newcore/research/drafts/`). It is registered by `run_r4.py register --candidate trend_ema_mom_short.v1` through the separate short gate `research_evidence/prereg/r4_gate_short.json` into its own root-family ledger `research_evidence/ledger/trend_ema_mom_short.jsonl` (§12). If this text and the JSON ever disagree, the JSON is authoritative. Missing data follows the accepted policy `zb-missing-data/1` (§3.2).
 
-Author: claude-code. Date: 2026-10-11 (Cairo). Base: master `e2e39e98fab27e7f52d1986a4a5c87421de2cf75`.
+Author: claude-code. Drafted 2026-10-11 (Cairo), frozen 2026-10-14 (Cairo). Draft base: master `e2e39e98fab27e7f52d1986a4a5c87421de2cf75`; freeze base: master `7af6623338761010e4479fa54d09b2265867a4af`.
 
 ## 0. What this is and what it is not
 
@@ -50,9 +50,9 @@ The gating rows (LOSO/LOYO, neighbour stability, `funding_x2`, the program Holm 
 | Entry `se` (close of bar i) | `cross_down(EMA20, EMA50)` and `close < EMA200` and `ret7d < 0` and `ret30d < 0`. Market **sell** at the open of bar i+1 (taker; adverse slip-v1 puts the fill below the open). |
 | Exit `sx` (close of bar i) | `EMA20 > EMA50` or not (`ret7d < 0` and `ret30d < 0`). Market **buy** (cover) at the open of bar i+1 (taker; fill above the open). |
 | Stop | `fill + 2.5 × Wilder ATR14(signal bar)`, **ceiled** to the tick. A bar that **opens at or above** the stop fills at its open (gap). Otherwise, a bar whose **high** reaches the stop fills at the stop, plus adverse slip. The stop is checked first on every played bar. |
-| Time cap | A lot still open 180 bars after entry is covered at the **next bar open**. At a split end, the causal `View.next_open` supplies it; with no next open inside the split the trade is INCOMPLETE, never filled at a close. |
+| Time cap | A lot still open 180 bars after entry is covered at the **next bar open**. At a split end, the causal `View.next_open` supplies it; with no next open inside the split the lot is split-end censored (`incomplete.split_end`, §3.2): INCOMPLETE, never filled at a close, no halt. |
 | Exit time for funding | Signal and cap exits and gap stops exit at the bar open. A non-gap intrabar stop exits at the stop-bar **close** (PR #61 / #67 convention), with the fill at the stop level. |
-| Funding | Signed actual funding at each funding time T with entry <= T < exit time, times funding-mark proxy v1. **A short receives a positive rate and pays a negative one** (`costs.funding_cost(side='short')`). A missing mark or an unprovable sequence makes the trade INCOMPLETE. |
+| Funding | Signed actual funding at each funding time T with entry <= T < exit time, times funding-mark proxy v1. **A short receives a positive rate and pays a negative one** (`costs.funding_cost(side='short')`). A funding-rate sequence that cannot be proved complete through the played bar (`incomplete.funding`, class funding_rate_gap) and a funding event without a mark (`incomplete.funding_mark`, class funding_mark_gap) are distinct classes; either halts the row (§3.2). |
 | MFE / MAE (diagnostics) | MFE = entry − lowest low before the exit. On the stop bar the bound is conservative: earlier lows plus the stop bar's **open**, never its own low. MAE uses highs, with the stop bar bounded by the stop. |
 | Fill tick rounding | Applied after adverse slip-v1. A **sell** (short entry) fill is rounded **DOWN** to the tick. A **buy** (cover: signal, cap, stop, gap stop or delist exit) fill is rounded **UP** to the tick. The stop level is **ceiled** to the tick. Every risk, sizing, PnL and R figure uses these exact rounded values, never unrounded ones. |
 | Indicators | Identical to v1: EMA `adjust=False` seeded at bar 0, Wilder ATR seeded at TR0, 7d = 42 and 30d = 180 bars, the last 1500 closed bars, warm-up 220 bars. Plus `cross_down(a,b) = a_i < b_i and a_(i-1) >= b_(i-1)`. |
@@ -75,6 +75,20 @@ This is **intentionally identical to STRAT-01** (`trend_ema_mom.v1`). The window
 3. **Early-history dependence is accepted by design.** Before the window reaches 1500 bars (from the 220-bar warm-up onward, where the EMA200 residual is ≈ 0.11), decisions depend on where the contiguous history starts. This is the same declared behaviour as STRAT-01, not a defect to be tuned.
 
 **Parameters (all fixed by symmetry with v1):** ema 20/50/200, ATR 14, stop 2.5, momentum 7d/30d, warm-up 220, cap 180, window 1500.
+
+### 3.2 Missing data: accepted policy `zb-missing-data/1` (M1, PR #74)
+
+The frozen JSON binds the policy in its `missing_data` block (policy id + `docs/newcore/research/MISSING_DATA_POLICY_v1.md`). In short:
+- **One causal pass per book row.** No re-run and no symbol exclusion; a later gap never rewrites the universe, earlier trades, cash or capacity.
+- **First unaccountable event wins.** Its cycle is rolled back and the **whole row halts** there (status INCOMPLETE, `first_unaccountable_ms` / `last_valid_ms`, a row censor with wallet + unrealised = MTM). Nothing is forward-filled, flat-lined or forced to a mark.
+- **Distinct classes:** missing_bar (`incomplete.gap`), delisting (`incomplete.delisted`), funding_rate_gap (`incomplete.funding`), funding_mark_gap (`incomplete.funding_mark`), split_censoring (`incomplete.split_end`).
+- **One primary per row, deterministically** (shared book: frozen symbol order; unit book: cycle, then phase bar < exit < next_open/fill < funding < decision, then symbol). Other open lots are the secondary `incomplete.book_halt`. Decisions at the halt cycle are not booked.
+- **Delist:** with a timestamped notice, a held short is covered at the first bar open **strictly after** the notice (`delist_cover`) and no entry is taken once it is known. With no notice, the end of a held series is `incomplete.delisted`: INCOMPLETE, no fake fill.
+- **Exact slippage window:** a fill at open `bo` uses exactly the bars closing at `bo − (n−1)·4h .. bo`; a hole inside it is `incomplete.gap`.
+- **B1 exact decision window:** see §7.1. No membership shrink; the execution open is required only for a non-zero delta.
+- **Split end:** a lot open at a split end with no observable next open is censored (`incomplete.split_end`), with no halt.
+- **Flat-symbol gaps** leave the row COMPLETE only when no later decision, sizing, fill, position or accounting depends on them.
+- **Fail closed:** every consumer (runner, report gate, readiness) uses the one predicate in `tools/research/missing_data.py`. An INCOMPLETE row makes its tier INCOMPLETE (verdict INCOMPLETE), sealed for audit with no evidence.
 
 ## 4. Risk and sizing: the same registered book
 
@@ -106,7 +120,7 @@ The book is run separately on its own 10,000 USDT, never pooled with STRAT-01.
 
 These are unchanged from v1:
 - the `zb-cost-model/2` crypto row: VIP0 taker 0.05% per side, slip-v1 TR-SMA14 with c = 0.05 (SLIP-C-UNFITTED), and actual signed funding;
-- delisting: exit at the next open after a timestamped notice, else the last mark with 5x slip, reported separately;
+- delisting (reconciled to `zb-missing-data/1` at freeze): cover at the first bar open strictly after a timestamped notice, with no entry once a notice is known; with no notice the end of a held series is `incomplete.delisted` (INCOMPLETE, never a fake fill or last-mark close); forced-exit PnL reported separately;
 - stress rows: `base`, `fees_slip_x2`, `funding_x2`, `gap_slip_x5`, `limit_no_fill`, `limit_as_taker`, `flat_funding_legacy`, `slip_wilder_atr14` and `funding_mark_adverse`, each running its own book.
 - For shorts, `funding_x2` doubles the signed funding. It hurts when funding is negative and helps when it is positive. `funding_mark_adverse` moves the mark against the short.
 
@@ -124,6 +138,7 @@ These are unchanged from v1:
 - **PROMOTE:** only on the sealed forward holdout, and only when every EDGE-00 row passes. INCOMPLETE trades never count.
 - **REJECT:** a powered holdout (>= 30 holdout episodes) with a base-row mean <= 0.
 - **PARK:** everything else, including a positive mean whose CI includes 0, any failing row, unfitted or provisional cost rows, and a liquidation flag (§4).
+- **INCOMPLETE (missing data, §3.2):** an INCOMPLETE row or tier is not evidence of any kind (not PARK evidence either): its verdict is INCOMPLETE and it is sealed for audit with no evidence.
 - **Development runs** (any run before the holdout opens) can neither PROMOTE nor REJECT. A base-row development mean <= 0 is flagged DEV-NEGATIVE. Nothing is retuned either way.
 
 ## 7. Baselines (short analogues; seed 20261012)
@@ -139,12 +154,12 @@ These are unchanged from v1:
 
 B1 is a USD-M perpetual short. It has no spot borrow and no borrow fee, and it carries signed actual funding: it receives positive rates and pays negative ones. B1 runs its own book, starting at 10,000 USDT in each split.
 - **Rebalance times τ:** every Monday 00:00 UTC inside the split's decision range, plus the first 4h bar of that range.
-- **Members M_τ:** the frozen-list members of the tier with a closed 4h bar at τ, an ATR14 defined on the contiguous tail, and a bar opening at τ. N_τ = |M_τ|. With N_τ = 0, B1 is flat until the next τ.
+- **Members M_τ:** the frozen-list members of the tier with a closed 4h bar at τ and an ATR14 defined on the contiguous tail, known at the decision close. A member not listed yet (no bar before τ) is warm-up, not missing. **Exact decision window (`zb-missing-data/1`):** a listed tier symbol whose decision candle at τ or exact hole-free `T.WINDOW`-bar input read has a hole halts the whole row at τ (phase decision); the membership never shrinks or shifts silently. The execution open is **not** a membership filter. N_τ = |M_τ|. With N_τ = 0, B1 is flat until the next τ.
 - **Target quantity per symbol:** with E_τ the B1 book's MTM equity at τ, set `q*_s = floor_step( (0.01 × E_τ / N_τ) / (2.5 × ATR14_s(τ)) )`. The whole basket thus risks 1% of equity across 2.5-ATR moves, the same risk unit as the candidate.
 - **Leverage cap:** if `Σ q*_s × close_s(τ) × 1.10 > 3 × E_τ`, every `q*_s` is multiplied by the common factor `3 × E_τ / Σ(...)` before flooring.
 - **Minimums:** a leg below min qty or min notional (checked on qty × fill, mainnet pin) is set to 0 and counted.
-- **Trades:** at the open of the bar starting at τ, each symbol trades only the difference `q*_s − q_s` (sell to add short, buy to reduce), taker, with adverse slip-v1. A member that leaves M_τ is fully covered.
-- **What B1 omits:** no stop, no time cap and no other exits. Funding is charged on the held quantity at each funding time; a missing mark makes that symbol INCOMPLETE, excluded with a count.
+- **Trades:** at the open of the bar starting at τ, each symbol trades only the difference `q*_s − q_s` (sell to add short, buy to reduce), taker, with adverse slip-v1. A member that leaves M_τ is fully covered. The execution open is required only for a non-zero delta `|q*_s − q_s|` (a flat member whose target floors to 0 needs none); a decided leg without its open halts the row (phase next_open).
+- **What B1 omits:** no stop, no time cap and no other exits. Funding is charged on the held quantity at each funding time; a funding-rate or mark gap of a held leg halts the row (funding_rate_gap / funding_mark_gap), never a symbol exclusion. An INCOMPLETE B1 row is not evidence.
 - **Block result:** for each calendar month m, `B1_R(m) = (E_end(m) − E_start(m)) / (0.01 × E_start(m))`, from MTM equity at the month boundaries.
 - **Pairing:** with the candidate's block net R for the same month in the same split, via its book's MTM in the same units.
 
@@ -187,7 +202,7 @@ The test is a one-sided paired sign-flip test with 10,000 permutations, Holm-adj
    - the liquidation diagnostic.
    It comes with synthetic tests only (Evidence has pre-staged the adversarial cases).
 2. **Generalise `run_r4.validate_prereg` and `register`.** They currently hard-code `trend_ema_mom.v1` (family, variant names, 18 trials, M3 manifest). Against this draft they report exactly those 5 identity findings and nothing structural. They also need to compute the program-level Holm n across both family ledgers.
-3. **Move the frozen JSON** to `research_evidence/prereg/trend_ema_mom_short.v1.json` (and extend the committed-prereg LF test list then), and point the R4 gate at it, only after Codex freezes it.
+3. **Move the frozen JSON** to `research_evidence/prereg/trend_ema_mom_short.v1.json` (and extend the committed-prereg LF test list then), and point the R4 gate at it, only after Codex freezes it. **Done in REG-02 (§12)**, with a separate short gate instead of repointing the STRAT-01 gate.
 
 ## 11. Codex rulings recorded (6112077638)
 
@@ -195,4 +210,13 @@ The test is a one-sided paired sign-flip test with 10,000 permutations, Holm-adj
 2. **Holdout:** the fresh forward holdout 2026-10-19T00:00Z → 2027-10-18T00:00Z is valid if registration lands before it. Otherwise this draft is void (§9).
 3. **B1:** a USD-M perp short benchmark with signed funding and no spot-borrow assumption, with exact sizing and rebalancing in §7.1.
 4. **Liquidation:** a PARK-only diagnostic (§4), not an exit model.
-5. **Draft location:** the draft JSON is non-canonical (`docs/newcore/research/drafts/`). Only a Codex-frozen prereg moves to `research_evidence/prereg/`, immediately before registration. The committed-prereg test list is unchanged.
+5. **Draft location:** the draft JSON is non-canonical (`docs/newcore/research/drafts/`). Only a Codex-frozen prereg moves to `research_evidence/prereg/`, immediately before registration. The committed-prereg test list is unchanged. (Superseded at freeze by REG-02, §12.)
+
+## 12. Freeze and registration (REG-02, Codex 6155928419)
+
+- **Canonical prereg:** `research_evidence/prereg/trend_ema_mom_short.v1.json`, LF bytes (`.gitattributes` `research_evidence/prereg/*.json text eol=lf`). The only changes from the reviewed draft are the status / freeze date and the reconciliation of the missing-data text to `zb-missing-data/1` (rule.time_cap, rule.funding, costs.delist, baselines.B1, splits.notes, verdict_rules.PARK and the new `missing_data` block). Signal parameters, trials, universe, costs, seeds, splits and verdict thresholds are unchanged.
+- **Separate short gate:** `research_evidence/prereg/r4_gate_short.json` (`candidate_id` routing, exact `prereg_sha256`, the short ledger, the frozen universe, and the accepted source + integrated commits of STRAT-02 #73 and M1 #74). The STRAT-01 gate `r4_gate.json` is unchanged.
+- **Registration:** `python tools/research/run_r4.py register --candidate trend_ema_mom_short.v1 --author claude-code --cairo-date 2026-10-14` appends exactly 17 records (1 capped primary, 12 neighbours, B0-B3; no uncapped variant, no M3) to the new root family `trend_ema_mom_short` (one `REGISTRY.jsonl` family entry, `parent: null`). It refuses at or after the holdout start 2026-10-19T00:00:00Z, and a second registration is a no-op refusal.
+- **Multiplicity:** the gating program Holm family is `trend_ema_mom` + `trend_ema_mom_short` trial records = 18 + 17 = **35** at registration (the short gate's G3 requires >= 35; later records only raise it). The own-family 17 is reporting only.
+- **Deadline:** the 2026-10-19 holdout stays valid only if the prereg, ledger and registry records land in master before 2026-10-19 03:00 Cairo (00:00 UTC). Otherwise a reviewed later version moves the entire window to a later Monday; never back-dated.
+- **Not in this ticket:** any historical run, development result or holdout access. Short real-environment evaluation wiring (`pit_run.real_env` / `evaluate_tier` for short CORE-10) is the next ticket.
