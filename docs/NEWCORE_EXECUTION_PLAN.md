@@ -113,17 +113,27 @@ GitHub commits and PR comments remain the shared record. Five-minute polling is 
 known longer-running jobs use their realistic window/completion signal. Investigate missed handoffs, not silence
 during declared productive work. These rules supersede older per-step/all-lanes-busy rules below.
 
-#### First milestone when the owner says ready
+#### Resumption milestones after the owner said ready
 
-**M1 — restore trustworthy research accounting.** Reconcile with current repository state before assigning the
-base. Claude owns the smallest correction to the future-conditioned symbol exclusion in the research runner,
+**M0 — finish the already-running STRAT-02 implementation.** At resumption Claude Code had already started the
+frozen short-runner symmetry implementation and 48 synthetic cases on `nc-strat02-short-runner`. Finish that bounded
+implementation and independent synthetic review first; do not start a historical market-data evaluation. This preserves
+active work and the preregistration window while keeping one implementation owner. Registration follows only after the
+runner is accepted and must precede the declared 19 October 2026 holdout start. If that cannot be completed without
+changing the frozen contract, move the holdout window through an explicit versioned decision; never backdate it.
+
+**M1 — restore trustworthy research accounting before any STRAT-02 data evaluation.** Reconcile with current repository
+state before assigning the base. Claude owns the smallest correction to the future-conditioned symbol exclusion,
 with causal missing-data policies and targeted regression evidence. Preserve earlier portfolio decisions when
 a later gap is introduced. Treat funding gaps, missing bars, delistings and split boundaries explicitly; an
 unaccountable run must be incomplete rather than silently rerun with a different historical universe.
 Preserve original reports and ledger history. Any frozen-policy amendment requires an explicit versioned decision;
 routine implementation within the approved contract does not. Acceptance: synthetic causal-prefix proof,
-cash/exposure/accounting consistency, independent review and required final gates. No holdout opening or new
-market-data strategy evaluation is released by M1. Return next to STRAT-02 short coverage and range/exit contracts.
+with decisions, fills, cash and exposure identical before the first injected gap for funding-gap, missing-bar,
+delisting and split-boundary classes; positions in the affected symbol are accounted only through the last valid bar;
+the aggregate is explicitly invalid/incomplete and downstream ledger/gate/report consumers refuse it. No silent
+flat-line or forward-fill. Require independent review and final gates. No holdout opening or market-data strategy
+evaluation is released by M1. Return next to STRAT-02 evaluation, then range/exit contracts.
 
 Cowork can independently challenge M1's missing-data fixtures when available; Codex supplies acceptance and
 reconciles the audit replay/registration claims. Prepare range/exit contracts only if independent of M1's evolving
