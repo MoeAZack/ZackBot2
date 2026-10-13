@@ -1,0 +1,38 @@
+{
+ "format": "zb-r4-gate/3",
+ "candidate_id": "trend_ema_mom_short.v1",
+ "prereg": "research_evidence/prereg/trend_ema_mom_short.v1.json",
+ "prereg_sha256": "9d459b31b3aa2095938acaf291cef792fbec4be09ea95e7ad5915862c5ad87b8",
+ "ledger": "research_evidence/ledger/trend_ema_mom_short.jsonl",
+ "integration_ref": "origin/master",
+ "pins": [
+  {
+   "slice": "STRAT-02 short-side R4b runner symmetry",
+   "prs": [
+    73
+   ],
+   "head": "620cf71a5649276ee3819aed8810e012c74eb37c",
+   "integrated": "4f7e3b4335512bd448d45a9d914d83531c9d77b1",
+   "after": "c613337a4efc7ebf31afbda186aef4219ecd30e3"
+  },
+  {
+   "slice": "M1 causal missing-data accounting (zb-missing-data/1)",
+   "prs": [
+    74
+   ],
+   "head": "686868ba520445116c59fa271326f0c0c0d78468",
+   "integrated": "7af6623338761010e4479fa54d09b2265867a4af",
+   "after": "4f7e3b4335512bd448d45a9d914d83531c9d77b1"
+  }
+ ],
+ "universe": {
+  "path": "research_evidence/universe/static-top40-minhist365-contract-20261011.json",
+  "snapshot": "research_evidence/universe/binance-um-exchangeinfo-v2-20261011.json",
+  "id": "static-top40-minhist365-contract-20261011",
+  "digest": "1c06c18d2fc82413b740260f0051a9f8286e9b0cb87d7d9614a2f88d78393fce",
+  "list_digest": "d95ba63c126029e23196e253c74cd95918cb5c9102079792194c972d20884bc5",
+  "owner_approved": true,
+  "note": "STRAT-00 (Codex 6106446403, contract section 0.1): the frozen current list replaces the PIT book; classification v2 is superseded and no longer required. G5 re-validates the file and requires owner_approved true."
+ },
+ "note": "REG-02 (Codex 6155928419): the SEPARATE STRAT-02 gate; the STRAT-01 gate r4_gate.json is unchanged. candidate_id routes run_r4 to the short profile (17 trials, root family, program Holm n >= 35). prereg_sha256 pins the exact canonical LF prereg bytes. #73 and #74 were squash-merged: each reviewed source head and its integrated master commit have identical trees; ancestry is checked on the integrated commits (c613337 STRAT-00 base -> 4f7e3b4 -> 7af6623). A fix round that moves a pin is re-pinned only in a reviewed commit."
+}
