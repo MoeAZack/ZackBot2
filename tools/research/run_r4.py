@@ -563,6 +563,7 @@ def register(repo: str, *, author: str, cairo_date: str, gate_path: str = GATE, 
         raise GateError(f'registration refused: the holdout started at {S.utc(h0)}; re-date the prereg holdout first')
     path = os.path.join(repo, g['ledger'])
     fams = L.verify(path, registry_genesis=registry_genesis)
+    registration_dirt(repo, g['ledger'], pre['family'], sha)
     recs = fams.get(pre['family'], [])
     want = [dict(r, author=author, cairo_date=cairo_date) for r in trial_records(pre, sha, g['prereg'])]
     done = resumable_prefix(path, prof, pre['family'], recs, want, sha)
@@ -578,6 +579,49 @@ def register(repo: str, *, author: str, cairo_date: str, gate_path: str = GATE, 
     for i, r in enumerate(want[done:], start=done):
         out.append(L.append(path, **r, lineage='root' if prof.root and i == 0 else None))
     return out
+
+
+def _status_paths(repo: str) -> list[str]:
+    raw = _git(repo, 'status', '--porcelain=v1', '-z', '--untracked-files=all').stdout.decode('utf-8')
+    items, out, i = raw.split('\0'), [], 0
+    while i < len(items):
+        it = items[i]
+        i += 1
+        if not it:
+            continue
+        out.append(it[3:])
+        if 'R' in it[:2] or 'C' in it[:2]:
+            out.append(items[i])
+            i += 1
+    return sorted(set(out))
+
+
+def registration_dirt(repo: str, led_rel: str, family: str, sha: str) -> None:
+    """Codex 6156391577: the ONLY uncommitted change `register` accepts is an append to this family's ledger and the
+    registry (e.g. a crash mid-registration, before anyone commits): every other change anywhere (code, prereg, gate,
+    another ledger, any other file, tracked or untracked) is refused; both files must extend their HEAD bytes; the
+    family-ledger append may hold only records of this prereg and the registry append at most this family's own
+    declaration. Raises GateError before anything is written."""
+    reg_rel = f'{os.path.dirname(led_rel)}/{L.REGISTRY}'
+    other = [x for x in _status_paths(repo) if x not in (led_rel, reg_rel)]
+    if other:
+        raise GateError(f'registration refused: uncommitted changes besides the ledger append: {other} (nothing '
+                        'appended)')
+    added = {}
+    for rel in (led_rel, reg_rel):
+        hb = _git(repo, 'show', f'HEAD:{rel}', check=False)
+        head = b'' if hb.returncode else hb.stdout
+        p = os.path.join(repo, rel)
+        work = _load(repo, rel) if os.path.exists(p) else b''
+        if not work.startswith(head):
+            raise GateError(f'registration refused: {rel} does not extend its committed HEAD bytes (nothing appended)')
+        added[rel] = [json.loads(x) for x in work[len(head):].splitlines() if x.strip()]
+    if any(r.get('detail', {}).get('prereg_sha256') != sha for r in added[led_rel]):
+        raise GateError('registration refused: the uncommitted ledger append holds records of another prereg or kind '
+                        '(nothing appended)')
+    if len(added[reg_rel]) > 1 or any((r.get('kind'), r.get('family')) != ('family', family) for r in added[reg_rel]):
+        raise GateError('registration refused: the uncommitted registry append is not only this family\'s '
+                        'declaration (nothing appended)')
 
 
 _REC_KEYS = ('kind', 'candidate_id', 'split', 'window', 'manifest_digest', 'detail', 'author', 'cairo_date')

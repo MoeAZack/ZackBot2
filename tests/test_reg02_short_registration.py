@@ -423,7 +423,12 @@ def test_a_pre_existing_short_family_is_refused(tmp_path):
              window={'start': '2021-01-04T00:00:00Z', 'end': '2021-12-20T00:00:00Z'}, author='t',
              cairo_date='2026-10-14', lineage='root')
     before = files(repo)
-    with pytest.raises(G.GateError, match='independent root'):
+    with pytest.raises(G.GateError, match='another prereg or kind'):                # uncommitted: dirt refusal
+        reg(repo, gen)
+    assert files(repo) == before
+    git(repo, 'add', '-A')
+    git(repo, 'commit', '-q', '-m', 'foreign root')
+    with pytest.raises(G.GateError, match='independent root'):                       # committed: root refusal
         reg(repo, gen)
     assert files(repo) == before
 
@@ -553,8 +558,9 @@ def root_declarations(repo):
     return [x for x in files(repo)[L.REGISTRY].splitlines() if b'"trend_ema_mom_short"' in x]
 
 
+@pytest.mark.parametrize('commit', [False, True], ids=['raw-crash-state', 'committed-prefix'])
 @pytest.mark.parametrize('n', [1, 5])
-def test_an_interrupted_registration_resumes_to_exactly_17(tmp_path, monkeypatch, n):
+def test_an_interrupted_registration_resumes_to_exactly_17(tmp_path, monkeypatch, n, commit):
     clean, _ = make_repo(tmp_path, name='clean')
     reg(clean)                                                                       # the uninterrupted reference
     repo, gen = make_repo(tmp_path)
@@ -564,9 +570,12 @@ def test_an_interrupted_registration_resumes_to_exactly_17(tmp_path, monkeypatch
     restore()
     part = files(repo)
     assert len(part[f'{G.SHORT_FAMILY}.jsonl'].splitlines()) == n and len(root_declarations(repo)) == 1
-    git(repo, 'add', '-A')
-    git(repo, 'commit', '-q', '-m', 'interrupted')                                  # even a committed prefix resumes
-    assert any('differ from the declared set' in f for f in G.gate(repo, gate_path=G.SHORT_GATE, registry_genesis=gen))
+    if commit:                                                                       # optional: committed prefix
+        git(repo, 'add', '-A')
+        git(repo, 'commit', '-q', '-m', 'interrupted')
+    else:                                                                            # required: the raw crash state
+        assert sorted(G._status_paths(repo)) == sorted([G.SHORT_LEDGER, f'{LEDGER_DIR}/{L.REGISTRY}'])
+    assert any(f.startswith('G3') for f in G.gate(repo, gate_path=G.SHORT_GATE, registry_genesis=gen))
     for bad in (dict(date='2026-10-15'), dict(now=HOLDOUT_START)):                   # refusals: byte-identical
         with pytest.raises(G.GateError):
             reg(repo, gen, **bad)
@@ -604,8 +613,67 @@ def test_a_non_prefix_or_extended_partial_state_is_refused(tmp_path, monkeypatch
     L.append(path(b), kind='data_access', candidate_id=G.SHORT_ID, split='development',
              window={'start': '2021-01-04T00:00:00Z', 'end': '2021-12-20T00:00:00Z'}, author='t',
              cairo_date='2026-10-14')
-    for repo, msg in ((a, 'not the exact declared'), (b, 'tail of the family')):
+    for repo, msg in ((a, 'not the exact declared'), (b, 'another prereg or kind')):
         before = files(repo)
         with pytest.raises(G.GateError, match=msg):
             reg(repo)
         assert files(repo) == before
+    git(b, 'add', '-A')
+    git(b, 'commit', '-q', '-m', 'prefix + later record')
+    before = files(b)
+    with pytest.raises(G.GateError, match='tail of the family'):
+        reg(b)
+    assert files(b) == before
+
+
+def _dirt_cases(repo):
+    """(name, apply, undo) for every state a raw-crash retry must refuse byte-identically."""
+    reg_p = os.path.join(repo, LEDGER_DIR, L.REGISTRY)
+    short_p = os.path.join(repo, G.SHORT_LEDGER)
+    long_p = os.path.join(repo, LEDGER_DIR, 'trend_ema_mom.jsonl')
+
+    def edit(path, fn):
+        old = open(path, 'rb').read()
+        return (lambda: open(path, 'wb').write(fn(old))), (lambda: open(path, 'wb').write(old))
+
+    def touch(rel):
+        p = os.path.join(repo, rel)
+        return (lambda: open(p, 'w').write('x')), (lambda: os.remove(p))
+    w = {'start': '2021-01-04T00:00:00Z', 'end': '2021-12-20T00:00:00Z'}
+    return [
+        ('code', *edit(os.path.join(repo, 'tools/research/trend_ema_mom.py'), lambda b: b + b'# edit\n'), 'G1'),
+        ('prereg', *edit(os.path.join(repo, G.SHORT_PREREG), lambda b: b + b'\n'), 'G2'),
+        ('gate', *edit(os.path.join(repo, G.SHORT_GATE), lambda b: b.replace(b'"note"', b'"notes"')),
+         'besides the ledger append'),
+        ('unrelated file', *touch('notes.txt'), 'G1'),
+        ('unrelated evidence file', *touch('research_evidence/x.json'), 'besides the ledger append'),
+        ('other ledger append', *(lambda: L.append(long_p, kind='data_access', candidate_id=T.RULE_ID,
+                                                    split='development', window=w, author='t', cairo_date='2026-10-14'),
+                                  edit(long_p, lambda b: b)[1]), 'besides the ledger append'),
+        # a rewritten / malformed registry is refused already by L.verify (it never reaches the append)
+        ('registry rewrite', *edit(reg_p, lambda b: b.replace(b'"seq":1}', b'"seq":1 }', 1)),
+         'HEAD bytes|not canonical|append-only'),
+        ('registry extra line', *edit(reg_p, lambda b: b + b.splitlines(keepends=True)[-1]), 'declaration|seq must'),
+        ('extra record', *(lambda: L.append(short_p, kind='data_access', candidate_id=G.SHORT_ID, split='development',
+                                             window=w, author='t', cairo_date='2026-10-14'),
+                           edit(short_p, lambda b: b)[1]), 'another prereg or kind'),
+    ]
+
+
+@pytest.mark.parametrize('case', range(9))
+def test_a_raw_crash_retry_refuses_any_other_dirt_byte_identically(tmp_path, monkeypatch, case):
+    repo, gen = make_repo(tmp_path)
+    restore = interrupt_after(monkeypatch, 5)
+    with pytest.raises(OSError):
+        reg(repo, gen)
+    restore()
+    part = files(repo)
+    name, apply, undo, msg = _dirt_cases(repo)[case]
+    apply()
+    dirty = files(repo)
+    with pytest.raises((G.GateError, L.LedgerError), match=msg):
+        reg(repo, gen)
+    assert files(repo) == dirty, name                                                # nothing appended
+    undo()
+    assert files(repo) == part and len(reg(repo, gen)) == 12                         # then the clean retry resumes
+    assert len(files(repo)[f'{G.SHORT_FAMILY}.jsonl'].splitlines()) == 17 and len(root_declarations(repo)) == 1
