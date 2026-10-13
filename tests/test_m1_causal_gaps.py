@@ -418,6 +418,46 @@ def test_m1_b1_short_book_halts_with_rollback():
     n = len(r['series'])
     assert r['series'][-1][0] == K(209) and repr(clean['series'][:n]) == repr(r['series'])
     assert repr(clean['legs'][:len(r['legs'])]) == repr(r['legs']) and all(lg['time_ms'] < K(209) for lg in r['legs'])
+    assert r['row'] == clean['row'] == 'base'                         # Codex P2: the stress-row id survives a halt
+
+
+# ------------------------------------------------------------------ Codex review 6154396021 corrections
+@pytest.mark.parametrize('side', ['long', 'short'])
+def test_m1_codex_p1_same_cycle_faults_have_exactly_one_primary_in_the_shared_book(side):
+    """Two held symbols both missing at K(310): ONE primary (the first in the frozen order), the rest HALTED."""
+    tp = merge(tape(sym=A, side=side, drop={310}), tape(sym=B, side=side, drop={310}), tape(sym=CC, side=side))
+    res = book(tp, side)
+    one(res, 'incomplete.gap', 310, 309, phase='bar')                 # primary() asserts exactly one
+    sec = sorted((r for r in res['incomplete'] if r.get('secondary')), key=lambda r: r['symbol'])
+    assert [(r['symbol'], r['reason'], r['primary_ref']) for r in sec] == [
+        (s, 'incomplete.book_halt', f'{A}@{K(310)}') for s in (B, CC)]
+    assert_prefix(res, merge(tape(sym=A, side=side), tape(sym=B, side=side), tape(sym=CC, side=side)), 309, side)
+
+
+def test_m1_codex_p1_same_cycle_faults_have_exactly_one_primary_in_unit_b1():
+    tp = merge(tape(sym=A, drop={140}), tape(sym=B, drop={140}))
+    u = PR.account_unit(tp, LONG['B1'], first=K(20), last=K(350), hi=K(400), slip_c=0.05, rows=('base',))
+    r = primary(u)                                                     # exactly one primary
+    assert (r['symbol'], r['reason'], r['last_valid_ms'], r['secondary']) == (A, 'incomplete.gap', K(139), False)
+    sec = [x for x in u['incomplete'] if x.get('secondary')]
+    assert [(x['symbol'], x['reason'], x['primary_ref']) for x in sec] == [(B, PR.HALTED, f'{A}@{K(140)}')]
+    with pytest.raises(PR.PitRunError):
+        PR.require_complete(u)
+
+
+def test_m1_codex_p1_b1_short_missing_execution_open_is_incomplete_next_open():
+    """One eligible member decided at first=K(20); its execution candle K(21) is missing -> rolled back, INCOMPLETE
+    incomplete.gap phase next_open, no leg or fill (was: silently COMPLETE)."""
+    kw_ = dict(symbols=[A], first=K(20), last=K(380), hi=K(400), slip_c=0.05, rules={A: RULE}, row='base')
+    clean = PR.b1_short_book(tape(sym=A, side='short', le=(), lx=()), **kw_)
+    assert clean['status'] == 'COMPLETE' and clean['legs'][0]['time_ms'] == K(20)   # the control trades at K(20)
+    r = PR.b1_short_book(tape(sym=A, side='short', le=(), lx=(), drop={21}), **kw_)
+    assert r['status'] == 'INCOMPLETE' and r['legs'] == [] and r['month_r'] is None and r['row'] == 'base'
+    p = primary(r)
+    assert (p['symbol'], p['reason'], p['phase'], p['first_unaccountable_ms'], p['last_valid_ms']) == (
+        A, 'incomplete.gap', 'next_open', K(21), K(20))
+    n = len(r['series'])
+    assert r['series'][-1][0] == K(20) and r['series'] == clean['series'][:n] and r['wallet_end'] == PR.BOOK['equity0']
 
 
 # ------------------------------------------------------------------ status contract

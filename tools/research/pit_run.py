@@ -147,6 +147,7 @@ GAP_CLASS = {'incomplete.gap': 'missing_bar', 'incomplete.slip_history': 'missin
              'incomplete.delisted': 'delisting', 'incomplete.funding': 'funding_rate_gap',
              'incomplete.funding_mark': 'funding_mark_gap', 'incomplete.split_end': 'split_censoring'}
 HALTED = 'incomplete.book_halt'                    # an open lot stopped only because another symbol halted the row
+PHASE_RANK = {'bar': 0, 'exit': 1, 'next_open': 2, 'fill': 2, 'funding': 3}   # event order inside one cycle
 
 
 class _Halt(Exception):
@@ -823,14 +824,13 @@ def run_book(tape, cfg: dict, symbols, *, first: int, last: int, hi: int, slip_c
     censor = None
     if halt is not None:
         h, at = halt
-        mine = {s for s in lots if syms[s].rec.get(at) is None} | {h.symbol}
         for s in [s for s in order if s in lots or s == h.symbol]:
             if s not in lots:                           # a flat symbol: the decision with no next open
                 incomplete.append({'symbol': s, 'entry_ms': None, 'reason': h.reason,
                                    'class': GAP_CLASS[h.reason], 'first_unaccountable_ms': h.first_ms,
                                    'last_valid_ms': prev_t, 'phase': h.phase, 'secondary': False})
                 continue
-            why = h.reason if s == h.symbol else gap_reason(syms[s], at) if s in mine else HALTED
+            why = h.reason if s == h.symbol else HALTED        # exactly ONE primary; ties -> the frozen order
             r = dict(lot_row(s, lots[s], why, h.first_ms if s == h.symbol else at, prev_t),
                      phase=h.phase if s == h.symbol else 'halt')
             if why == HALTED:
@@ -1014,14 +1014,15 @@ def account_unit(outputs, cfg: dict, *, first: int, last: int, hi: int, slip_c: 
                 ev = (t, e)
                 break
         per[s] = {'done': done, 'lots': lots_seen, 'event': ev, 'refusals': sym_ref}
-    halts = sorted((v['event'][0], s) for s, v in per.items() if v['event'] is not None)
+    halts = sorted((v['event'][0], PHASE_RANK[v['event'][1].phase], s) for s, v in per.items()
+                   if v['event'] is not None)              # the joint pass's order inside a cycle, then the symbol
     at = halts[0][0] if halts else None
     trades, incomplete = [], []
     for s, v in sorted(per.items()):
         trades += [tr for cyc, tr in v['done'] if at is None or cyc < at]
         refusals.update(k for c, k in v['refusals'] if at is None or c < at)
     if at is not None:
-        prim = [s for c, s in halts if c == at]
+        prim = [halts[0][2]]                           # exactly ONE primary; same-cycle faults are HALTED
         ref0 = f'{prim[0]}@{per[prim[0]]["event"][1].first_ms}'
         for s, v in sorted(per.items()):
             open_at = [lt for c0, c1, lt in v['lots'] if c0 < at and (c1 is None or c1 >= at)]
@@ -1059,8 +1060,9 @@ def b1_short_book(outputs, *, symbols, first: int, last: int, hi: int, slip_c: f
     """STRAT-02 B1 (contract section 7.1, Codex 6112077638): an equal-weight USD-M perpetual SHORT basket on its own
     10,000 USDT book, no spot borrow, signed actual funding (a short receives positive and pays negative rates).
       * tau = every Monday 00:00 UTC inside the decision range [first, last] plus its first bar (`first`);
-      * M_tau = tier members with a closed 4h bar at tau, ATR14 defined on the contiguous tail (tape `a`) and a bar
-        opening at tau (`_next_open`); N = |M_tau|, N = 0 = flat until the next tau;
+      * M_tau = tier members with a closed 4h bar at tau and ATR14 defined on the contiguous tail (tape `a`), known
+        at the decision close (M1: the execution open is NOT a membership filter - a decided leg whose open is
+        missing halts the book INCOMPLETE, phase next_open); N = |M_tau|, N = 0 = flat until the next tau;
       * q*_s = floor_step((0.01 x E_tau / N) / (2.5 x ATR14_s(tau))) with E_tau the B1 MTM equity at tau; if
         sum(q*_s x close_s(tau) x 1.10) > 3 x E_tau every q*_s is scaled by 3 x E_tau / that sum BEFORE flooring;
       * a leg below min qty / min notional (qty x the executable sell fill, pinned rules) is set to 0 and counted;
@@ -1094,7 +1096,7 @@ def b1_short_book(outputs, *, symbols, first: int, last: int, hi: int, slip_c: f
                 targets = pending[1]
                 for s in order:
                     if rec[s] is None:
-                        if targets.get(s):                      # a decided leg with no open candle
+                        if s in targets:                        # a decided leg with no open candle
                             raise _Halt(s, gap_reason(syms[s], t), t, 'next_open')
                         continue
                     cur = pos[s]['qty'] if s in pos else 0.0
@@ -1144,8 +1146,7 @@ def b1_short_book(outputs, *, symbols, first: int, last: int, hi: int, slip_c: f
             mtm = wallet + math.fsum(p['qty'] * (p['avg'] - closes.get(k, p['avg'])) for k, p in pos.items())
             series.append((t, mtm))
             if first <= t <= last and (t == first or _is_monday_open(t)):  # (C) the rebalance decision at tau
-                members = [s for s in order if rec[s] is not None and rec[s].get('a') is not None
-                           and _next_open(syms[s], t, hi) is not None]
+                members = [s for s in order if rec[s] is not None and rec[s].get('a') is not None]
                 raw = {}
                 if members and mtm > 0:
                     for s in members:
@@ -1168,15 +1169,15 @@ def b1_short_book(outputs, *, symbols, first: int, last: int, hi: int, slip_c: f
     if halt is not None:
         h, at = halt
         for s in [s for s in order if s in pos or s == h.symbol]:
-            row = {'symbol': s, 'time_ms': at, 'last_valid_ms': prev_t, 'secondary': s != h.symbol,
-                   'qty': pos[s]['qty'] if s in pos else 0.0, 'avg': pos[s]['avg'] if s in pos else None}
+            ir = {'symbol': s, 'time_ms': at, 'last_valid_ms': prev_t, 'secondary': s != h.symbol,
+                  'qty': pos[s]['qty'] if s in pos else 0.0, 'avg': pos[s]['avg'] if s in pos else None}
             if s == h.symbol:
-                row.update(reason=h.reason, **{'class': GAP_CLASS[h.reason]}, phase=h.phase,
+                ir.update(reason=h.reason, **{'class': GAP_CLASS[h.reason]}, phase=h.phase,
                            first_unaccountable_ms=h.first_ms)
             else:
-                row.update(reason=HALTED, **{'class': 'halted'}, phase='halt', first_unaccountable_ms=at,
-                           primary_ref=f'{h.symbol}@{h.first_ms}')
-            incomplete.append(row)
+                ir.update(reason=HALTED, **{'class': 'halted'}, phase='halt', first_unaccountable_ms=at,
+                          primary_ref=f'{h.symbol}@{h.first_ms}')
+            incomplete.append(ir)
     blocks = month_r(series, first, last, book['equity0'])
     return {'config': 'B1', 'side': 'short', 'row': row, 'legs': legs, 'incomplete': incomplete,
             'excluded_symbols': [], 'refusals': dict(sorted(refusals.items())), 'rebalances': taus,
