@@ -540,7 +540,7 @@ def test_x_liq_ordinary_book_not_flagged_and_long_has_no_diagnostic():
 # ------------------------------------------------------------------ DELIST (bars end while held / flat)
 def test_x_held_symbol_whose_bars_end_is_incomplete_never_a_silent_close():
     a = acct(mk_tape(FLAT, le={25}, drop=set(range(41, 60))))
-    assert a['counted'] == [] and [i['reason'] for i in a['incomplete']] == ['incomplete.gap']
+    assert a['counted'] == [] and [i['reason'] for i in a['incomplete']] == ['incomplete.delisted']  # M1
 
 
 def test_x_flat_symbol_whose_bars_end_leaves_no_record():
@@ -621,7 +621,7 @@ def test_x_b1_signed_funding_and_month_block_r():
     assert pos['month_r']['2024-01'] == pytest.approx((e(end) - 10_000) / (0.01 * 10_000))
     miss = _b1([mk_tape(closes, sym='AAAUSDT', mark_none={T0 + 20 * 8 * HOUR})], last=t_of(150))
     assert miss['status'] == 'INCOMPLETE' and [i['reason'] for i in miss['incomplete']] == ['incomplete.funding_mark']
-    assert miss['excluded_symbols'] == ['AAAUSDT']
+    assert miss['excluded_symbols'] == [] and miss['month_r'] is None       # M1: halted, never excluded
 
 
 # ------------------------------------------------------------------ B2 short (not an Evidence case; rule check)

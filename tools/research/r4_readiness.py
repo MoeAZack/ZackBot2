@@ -91,6 +91,8 @@ def sealed_artifacts(path: str) -> tuple[str, dict]:
     doc = PG.read(path)
     if doc is None or doc['kind'] != 'final' or doc['state'] != 'sealed':
         raise ReadinessError(f'{path}: not a sealed final record')
+    if not doc['evidence']:                     # missing-data policy: an INCOMPLETE run is sealed without evidence
+        raise ReadinessError(f'{path}: sealed without evidence (INCOMPLETE run); never a readiness pass')
     return doc['digest'], {a['path']: a['sha256'] for a in doc['artifacts']}
 
 

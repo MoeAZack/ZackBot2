@@ -502,10 +502,27 @@ def check_attestation(env: dict, att: dict, ledger_path: str) -> str:
     return digest
 
 
+def refuse_incomplete(obj, where: str = 'results') -> None:
+    """Missing-data policy (zb-missing-data/1): a payload carrying any status other than COMPLETE, incomplete rows or
+    excluded symbols anywhere is refused before anything is sealed (fail closed; the report schema has no such
+    fields)."""
+    if isinstance(obj, dict):
+        if 'status' in obj and obj['status'] != 'COMPLETE':
+            raise ReportError(f'{where}: status {obj["status"]!r} is not sealable evidence (INCOMPLETE fails closed)')
+        if obj.get('incomplete') or obj.get('excluded_symbols'):
+            raise ReportError(f'{where}: incomplete rows / excluded symbols are never sealable evidence')
+        for k, v in obj.items():
+            refuse_incomplete(v, f'{where}.{k}')
+    elif isinstance(obj, list):
+        for i, v in enumerate(obj):
+            refuse_incomplete(v, f'{where}[{i}]')
+
+
 def make_report(env: dict, results: dict, attestation: dict, ledger_path: str) -> dict:
     """Validate the results shape against plan section 6, bind the runner attestation and seal with `report_digest`.
     The exact `results` payload must be the one the frozen summary function produced in the sandbox (its digest is
     in the attestation)."""
+    refuse_incomplete(results)
     if env.get('run_digest') != run_digest(env['run']):
         raise ReportError('envelope run_digest does not match its run block')
     att_digest = check_attestation(env, attestation, ledger_path)
