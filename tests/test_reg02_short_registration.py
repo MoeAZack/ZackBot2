@@ -401,13 +401,14 @@ def test_deadline_boundary_on_an_injected_clock(tmp_path):
     assert len(reg(repo, gen, now=LAST_MS)) == 17                                    # 2026-10-18T23:59:59.999Z
 
 
-def test_partial_registration_is_refused_without_appending(tmp_path):
+def test_a_foreign_partial_registration_is_refused_without_appending(tmp_path):
+    """A prefix written by another author is not this registration's deterministic prefix: never resumed."""
     repo, gen = make_repo(tmp_path)
     raw = load_short()
     first = G.trial_records(json.loads(raw), sha(raw), G.SHORT_PREREG)[0]
     L.append(os.path.join(repo, G.SHORT_LEDGER), author='t', cairo_date='2026-10-14', lineage='root', **first)
     before = files(repo)
-    with pytest.raises(G.GateError, match='already registered'):
+    with pytest.raises(G.GateError, match='same --author'):
         reg(repo, gen)
     assert files(repo) == before
     git(repo, 'add', '-A')
@@ -533,3 +534,78 @@ def test_short_gate_g2_g4_g5_close_on_drift(tmp_path):
     assert any(f.startswith('G5') for f in with_gate(universe=dict(g0['universe'], owner_approved=False)))
     assert any('unknown candidate_id' in f for f in with_gate(candidate_id='nope'))
     assert G.gate(repo, **kw) == []
+
+
+# ------------------------------------------------------------- interrupted registration recovery (Codex 6156314715)
+def interrupt_after(monkeypatch, n):
+    real, calls = L.append, []
+
+    def flaky(*a, **kw):
+        if len(calls) == n:
+            raise OSError(f'injected fault after {n} successful appends')
+        calls.append(1)
+        return real(*a, **kw)
+    monkeypatch.setattr(G.L, 'append', flaky)
+    return lambda: monkeypatch.setattr(G.L, 'append', real)
+
+
+def root_declarations(repo):
+    return [x for x in files(repo)[L.REGISTRY].splitlines() if b'"trend_ema_mom_short"' in x]
+
+
+@pytest.mark.parametrize('n', [1, 5])
+def test_an_interrupted_registration_resumes_to_exactly_17(tmp_path, monkeypatch, n):
+    clean, _ = make_repo(tmp_path, name='clean')
+    reg(clean)                                                                       # the uninterrupted reference
+    repo, gen = make_repo(tmp_path)
+    restore = interrupt_after(monkeypatch, n)
+    with pytest.raises(OSError, match='injected'):
+        reg(repo, gen)
+    restore()
+    part = files(repo)
+    assert len(part[f'{G.SHORT_FAMILY}.jsonl'].splitlines()) == n and len(root_declarations(repo)) == 1
+    git(repo, 'add', '-A')
+    git(repo, 'commit', '-q', '-m', 'interrupted')                                  # even a committed prefix resumes
+    assert any('differ from the declared set' in f for f in G.gate(repo, gate_path=G.SHORT_GATE, registry_genesis=gen))
+    for bad in (dict(date='2026-10-15'), dict(now=HOLDOUT_START)):                   # refusals: byte-identical
+        with pytest.raises(G.GateError):
+            reg(repo, gen, **bad)
+        assert files(repo) == part
+    with pytest.raises(G.GateError, match='same --author'):
+        G.register(repo, author='someone-else', cairo_date='2026-10-14', gate_path=G.SHORT_GATE,
+                   registry_genesis=gen, now_ms=BEFORE)
+    assert files(repo) == part
+    more = reg(repo, gen, now=LAST_MS)                                               # h0 - 1 ms: allowed
+    assert len(more) == 17 - n and [r['seq'] for r in more] == list(range(n + 1, 18))
+    done = files(repo)
+    assert done == files(clean)                                                      # identical to uninterrupted
+    assert len(done[f'{G.SHORT_FAMILY}.jsonl'].splitlines()) == 17 and len(root_declarations(repo)) == 1
+    fams = L.verify(os.path.join(repo, G.SHORT_LEDGER), registry_genesis=gen)
+    assert G.multiplicity(fams)['program'] == 35
+    with pytest.raises(G.GateError, match='already registered'):                     # complete: duplicate no-op
+        reg(repo, gen)
+    assert files(repo) == done
+    git(repo, 'add', '-A')
+    git(repo, 'commit', '-q', '-m', 'resumed')
+    assert G.gate(repo, gate_path=G.SHORT_GATE, registry_genesis=gen) == []
+
+
+def test_a_non_prefix_or_extended_partial_state_is_refused(tmp_path, monkeypatch):
+    raw = load_short()
+    want = G.trial_records(json.loads(raw), sha(raw), G.SHORT_PREREG)
+    path = lambda r: os.path.join(r, G.SHORT_LEDGER)
+    a, gen = make_repo(tmp_path, name='a')                                           # record 2 first: not a prefix
+    L.append(path(a), author='claude-code', cairo_date='2026-10-14', lineage='root', **want[1])
+    b, _ = make_repo(tmp_path, name='b')                                             # a prefix, then a later record
+    restore = interrupt_after(monkeypatch, 3)
+    with pytest.raises(OSError):
+        reg(b)
+    restore()
+    L.append(path(b), kind='data_access', candidate_id=G.SHORT_ID, split='development',
+             window={'start': '2021-01-04T00:00:00Z', 'end': '2021-12-20T00:00:00Z'}, author='t',
+             cairo_date='2026-10-14')
+    for repo, msg in ((a, 'not the exact declared'), (b, 'tail of the family')):
+        before = files(repo)
+        with pytest.raises(G.GateError, match=msg):
+            reg(repo)
+        assert files(repo) == before

@@ -564,21 +564,60 @@ def register(repo: str, *, author: str, cairo_date: str, gate_path: str = GATE, 
     path = os.path.join(repo, g['ledger'])
     fams = L.verify(path, registry_genesis=registry_genesis)
     recs = fams.get(pre['family'], [])
-    if any(r['detail'].get('prereg_sha256') == sha for r in recs):
+    want = [dict(r, author=author, cairo_date=cairo_date) for r in trial_records(pre, sha, g['prereg'])]
+    done = resumable_prefix(path, prof, pre['family'], recs, want, sha)
+    if done == len(want):
         raise GateError('this prereg is already registered (append-only: nothing appended)')
-    want = trial_records(pre, sha, g['prereg'])
-    if prof.root:
-        if pre['family'] in fams:
-            raise GateError(f'family {pre["family"]!r} already exists: its registration must create it as an '
-                            'independent root (nothing appended)')
-        if multiplicity(fams)['program'] + len(want) < PROGRAM_N_AT_FREEZE:
-            raise GateError(f'the program Holm family would stay below {PROGRAM_N_AT_FREEZE}: register STRAT-01 '
-                            'first (nothing appended)')
+    if not done and prof.root and pre['family'] in fams:
+        raise GateError(f'family {pre["family"]!r} already exists: its registration must create it as an '
+                        'independent root (nothing appended)')
+    if prof.root and multiplicity(fams)['program'] - done + len(want) < PROGRAM_N_AT_FREEZE:
+        raise GateError(f'the program Holm family would stay below {PROGRAM_N_AT_FREEZE}: register STRAT-01 '
+                        'first (nothing appended)')
     out = []
-    for i, r in enumerate(want):
-        out.append(L.append(path, author=author, cairo_date=cairo_date, **r,
-                            lineage='root' if prof.root and i == 0 else None))
+    for i, r in enumerate(want[done:], start=done):
+        out.append(L.append(path, **r, lineage='root' if prof.root and i == 0 else None))
     return out
+
+
+_REC_KEYS = ('kind', 'candidate_id', 'split', 'window', 'manifest_digest', 'detail', 'author', 'cairo_date')
+
+
+def resumable_prefix(path: str, prof: Profile, family: str, recs: list, want: list, sha: str) -> int:
+    """How many of the declared registration records are already in the (verified) family ledger: 0, an exact
+    prefix k < len(want) left by an interrupted `register` (Codex 6156314715: the retry appends only the exact remaining
+    suffix), or len(want) (a complete registration: duplicate). Anything else is refused, nothing appended: records of
+    this prereg that are not the exact deterministic prefix (other author / date / content / order), that are not the
+    tail of the family file (something appended after them), or extra ones; for a root profile, a family holding
+    anything but that prefix, or whose registry declaration is not an independent root genesis-bound to it. The hash
+    chain and genesis binding are L.verify's (already run by the caller)."""
+    got = [r for r in recs if r['detail'].get('prereg_sha256') == sha]
+    if not got:
+        return 0
+    k = len(got)
+    pick = lambda r, keys: tuple(json.dumps(r.get(x), sort_keys=True) for x in keys)
+    content = _REC_KEYS[:-2]
+    if k > len(want) or [pick(r, content) for r in got] != [pick(r, content) for r in want[:k]]:
+        raise GateError('the ledger holds records of this prereg that are not the exact declared registration records '
+                        '(content / order / extra): refused, nothing appended (append-only: never rewritten)')
+    if k == len(want):
+        return k                                           # complete: a duplicate (whoever registered it, whenever)
+    if [pick(r, _REC_KEYS) for r in got] != [pick(r, _REC_KEYS) for r in want[:k]] or recs[-k:] != got:
+        raise GateError('an interrupted registration resumes only with the same --author / --cairo-date and only while '
+                        'its prefix is the tail of the family ledger: refused, nothing appended')
+    if prof.root:
+        if recs != got:
+            raise GateError(f'family {family!r} holds other records besides the interrupted registration prefix: '
+                            'refused, nothing appended')
+        with open(os.path.join(os.path.dirname(path), L.REGISTRY), 'rb') as f:
+            decl = [json.loads(x) for x in f.read().splitlines() if x.strip()]
+        decl = [d for d in decl if d['kind'] == 'family' and d['family'] == family]
+        with open(path, 'rb') as f:
+            first = f.read().splitlines(keepends=True)[0]
+        if len(decl) != 1 or decl[0]['ref'] != {'parent': None, 'genesis': hashlib.sha256(first).hexdigest()}:
+            raise GateError(f'family {family!r}: the registry declaration is not one independent root bound to the '
+                            'registration prefix: refused, nothing appended')
+    return k
 
 
 def m3_identity(repo: str, rows, times, config: dict, prereg_sha: str | None) -> dict:
