@@ -92,17 +92,54 @@ states `ROADMAP FIT:` and `DEFERRED:` so multi-agent capacity accelerates the pl
 
 ### Standard ticket loop
 
-1. Codex publishes scope, dependencies, acceptance contract and exact base SHA.
-2. Claude implements on one non-protected branch and runs focused tests.
-3. Claude posts `READY FOR CODEX` and `HANDOFF TO COWORK` with the exact SHA.
-4. Cowork validates independent claims and posts exact-head evidence.
-5. Codex reviews the diff, reproduces important risks and returns prioritized findings.
-6. Revisions use fast/focused checks. The expensive full suite runs once on the accepted exact head.
-7. Codex advances `full-ready`, verifies protection, merges and assigns the next ticket.
-8. Every handoff or review marker ends with a `LANES:` line naming the current Build, Evidence and Integration work. An
-   idle lane must name its next task.
+1. On owner resumption, Codex publishes one bounded milestone: objective, base SHA, included files/behaviors,
+   dependencies, minimal acceptance proofs, exclusions and expected completion/checkpoint window.
+2. Claude owns its implementation branch through completion, making routine implementation choices and running
+   targeted tests without per-step approvals. Use subagents only for useful independent tasks within token limits.
+3. Cowork performs specifically assigned independent experiments when useful. Three continuously active agents
+   are not required. Codex must not duplicate Claude's implementation or repeatedly review unfinished changes.
+4. Claude hands off one package: exact SHA, completed scope, commands/results with evidence links, limitations,
+   outstanding findings and next step. Sign the comment and add one #13 pointer. LANES may honestly say idle/paused.
+5. Codex independently reviews decision-critical logic and evidence, using Cowork results where available, and
+   returns one consolidated prioritized fix list. Report a confirmed invalidating defect immediately at any stage.
+6. Claude completes the bounded revision; use focused delta checks. Run the required full gate on the final head,
+   once unless a change/failure invalidates it. No self-acceptance and no weaker acceptance thresholds.
+7. Codex accepts/merges after required evidence and gates, then releases the next ready milestone. Explicitly
+   preauthorized independent preparation may proceed while review runs; dependent evaluation waits for acceptance.
+8. Owner updates are short: completed / running / blocked / next, at milestone changes or meaningful findings.
+   One wait notice per unchanged cause. No duplicate polling posts or invented work to keep lanes busy.
 
-GitHub commits and PR comments are the message bus. Five-minute polling is only a connection fallback.
+GitHub commits and PR comments remain the shared record. Five-minute polling is a fallback for expected handoffs;
+known longer-running jobs use their realistic window/completion signal. Investigate missed handoffs, not silence
+during declared productive work. These rules supersede older per-step/all-lanes-busy rules below.
+
+#### Resumption milestones after the owner said ready
+
+**M0 — finish the already-running STRAT-02 implementation.** At resumption Claude Code had already started the
+frozen short-runner symmetry implementation and 48 synthetic cases on `nc-strat02-short-runner`. Finish that bounded
+implementation and independent synthetic review first; do not start a historical market-data evaluation. This preserves
+active work and the preregistration window while keeping one implementation owner. Registration follows only after the
+runner is accepted and must precede the declared 19 October 2026 holdout start. If that cannot be completed without
+changing the frozen contract, move the holdout window through an explicit versioned decision; never backdate it.
+
+**M1 — restore trustworthy research accounting before any STRAT-02 data evaluation.** Reconcile with current repository
+state before assigning the base. Claude owns the smallest correction to the future-conditioned symbol exclusion,
+with causal missing-data policies and targeted regression evidence. Preserve earlier portfolio decisions when
+a later gap is introduced. Treat funding gaps, missing bars, delistings and split boundaries explicitly; an
+unaccountable run must be incomplete rather than silently rerun with a different historical universe.
+Preserve original reports and ledger history. Any frozen-policy amendment requires an explicit versioned decision;
+routine implementation within the approved contract does not. Acceptance: synthetic causal-prefix proof,
+with decisions, fills, cash and exposure identical before the first injected gap for funding-gap, missing-bar,
+delisting and split-boundary classes; positions in the affected symbol are accounted only through the last valid bar;
+the aggregate is explicitly invalid/incomplete and downstream ledger/gate/report consumers refuse it. No silent
+flat-line or forward-fill. Require independent review and final gates. No holdout opening or market-data strategy
+evaluation is released by M1. Return next to STRAT-02 evaluation, then range/exit contracts.
+
+Cowork can independently challenge M1's missing-data fixtures when available; Codex supplies acceptance and
+reconciles the audit replay/registration claims. Prepare range/exit contracts only if independent of M1's evolving
+accounting. Optional ML, platforms, broad legacy repairs and documentation expansion stay outside this milestone.
+The owner gave the explicit ready on 13 October 2026. That release activates only the bounded M0/M1 order above;
+it does not authorize historical evaluation, registration, holdout access or unrelated work early.
 
 ### Progress acceleration rules
 
@@ -248,6 +285,53 @@ truth after ambiguity/restart; TNET-01 proves at least one complete long and one
 two isolated simulated accounts survive independently. Wave D runtime promotion is blocked until this gate passes.
 
 ### Wave D — engine strategies, regimes and risk controls
+
+#### Owner-approved strategy scouting — 12 October 2026
+
+**Horizontal-first constraint:** the binding owner contract's horizontal-first rule applies to this queue.
+The 12 October audit adds the bounded corrections below; it does not authorize a broad legacy rewrite or
+delay independent strategy contract preparation. The owner ended the execution pause on 13 October 2026; the
+resumed M0/M1 order above remains the active boundary.
+
+| Bounded correction | Minimum proof / return to the queue |
+|---|---|
+| Research missing-data handling (audit P1-5) before further affected evaluations | Preserve prior membership, fills and capital when a future gap is injected; distinguish funding gaps, missing bars, delisting and split censoring. Never rerun the historical portfolio after globally deleting a later-incomplete symbol. Apply the versioned policy or mark evidence incomplete. Resume the short/range/exit evaluation queue after independent acceptance. |
+| Replacement runtime exposure and reconciliation (P1-1/P1-2) | Unique persisted lot IDs, duplicate handling, and only proven executed quantities/prices; cover same-time entries and manual reduction plus missing/cancelled/partially filled stops. Patch legacy only when required by an active execution/test path. |
+| Venue and accounting parity (P1-3/P1-6/P2-6) | Divergent signal/venue-price fixture, unified fill parsing, target versus executed risk, and shared capital/exit timing across runtime and simulation. Keep implementation within the immediate Binance path. |
+| Unknown data and protection scheduling (P1-7/P2-1/P2-2) | Reject invalid snapshots, explicit enforced-unknown behavior, and a bounded protection/reconciliation deadline under delayed cleanup. Preserve the minimum testnet floor without expanding into exhaustive hardening. |
+| Evidence reconciliation | Compare the audit's failed replay with passing CI using identical inputs/environment; do not loosen tolerance. Registration is ledger/hash based: the current preregistration hash matches its ledger despite a stale UNREGISTERED label. Preserve original evidence and append corrections; candidate holdout requirements do not suspend unrelated engine/testnet work. |
+
+These are audit triage decisions, not a claim that every finding has been independently reproduced.
+Use targeted proofs while iterating and the required complete gate on the final candidate. Build implements;
+Cowork independently verifies; Codex accepts and returns the queue to missing strategy/runtime coverage.
+
+The [source register and candidate rules](newcore/research/STRATEGY_SCOUTING_2026-10-12.md)
+are incorporated into this roadmap. They refine existing Wave D work rather than create a second engine.
+Research IDs below are aliases for scheduling; they do not replace existing STR/STRAT contracts.
+
+| Order after the owner resumes work | Scope / existing roadmap mapping |
+|---|---|
+| 1 | Finish frozen STRAT-02 short-runner implementation and independent synthetic validation, then its existing registration/evaluation gates. |
+| 2 | SCOUT-RANGE-01: long/short range reversion under STR-02; SCOUT-EXIT-01: compare whole-position TP, partial TP plus runner, and trailing/time exits using identical entries and initial risk. Contract preparation may run independently in parallel. |
+| 3 | SCOUT-BREAKOUT-01: simple two-sided channel/volatility breakout; SCOUT-PULLBACK-01 follows as a trend-family candidate only if it adds distinct value. |
+| 4 | SCOUT-SCALP-01 under STR-03: quick-bank exits with executable costs and holding limits; SCOUT-BASKET-01 follows only after the base strategy has evidence. |
+| 5 | SCOUT-REGIME-01 under REG-01: descriptive per-asset direction, volatility and uncertainty first; Markov/HMM challenger later after simple-filter comparisons. Funding/crowding context is later research. |
+
+Keep CORE-10 first, CORE-20 next and the approved static-40 universe explicitly survivor-biased.
+Scouting has not validated profitability. Freeze rules and trial budgets before evaluation; preserve STRAT-01 PARK
+and all existing sealed holdouts. Exit/filter changes create new versions. Measure net expectancy, drawdown,
+profit giveback, opportunity cost and feasibility at $500 master / hypothetical $100-$200 follower allocations.
+Follower simulation does not promise copy execution. Shorter holding time does not automatically raise size.
+
+Range baskets account for realized and unrealized P&L, fees and funding, with a peak-giveback rule, loss ceiling,
+range invalidation and individual protection. Bounded DCA is a separate optional experiment, initially off.
+The UI eventually exposes regime OFF/diagnostic/automatic modes, direction/risk/holding controls and clear
+experimental versus validated status, without altering frozen policies silently.
+
+Build owns candidate implementation; Cowork independently validates; Codex owns sequencing and acceptance.
+The owner ended the automation pause on 13 October 2026. Only work released by the resumed milestone order may run;
+this scouting section by itself releases nothing. Gold stays a separate later group; stocks, other venues, broad macro
+ingestion and standalone ML trading remain deferred under the existing owner priorities.
 
 This is the primary product wave. Optional application features remain behind it.
 
