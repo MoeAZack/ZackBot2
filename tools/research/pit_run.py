@@ -347,6 +347,49 @@ def _ceil(v: float, unit) -> float:
     return float((Decimal(repr(float(v))) / u).to_integral_value(rounding=ROUND_CEILING) * u)
 
 
+def size_short(snapshot: float, fill: float, dist: float, ref: float, notional: float, rule: dict, book=BOOK):
+    """STRAT-02 book sizing of one short entry (contract section 4): (qty, stop, None) or (None, None, refusal code).
+    stop = ceil_tick(fill + dist) with `fill` the slipped sell fill already rounded DOWN; the actual per-unit risk
+    stop - fill must be finite and > 0 (else `execution.stop_risk_invalid`); qty = min(1% x snapshot / risk,
+    (3 x snapshot - open notional) / (signal close x 1.10)) floored to the step, never upsized; below min qty or
+    qty x the executable fill below min notional = `execution.size_min`."""
+    if not (dist is not None and math.isfinite(dist) and dist > 0 and math.isfinite(fill) and fill > 0):
+        return None, None, 'execution.stop_risk_invalid'
+    stop = _ceil(fill + dist, rule['tick'])
+    risk_u = stop - fill
+    if not (math.isfinite(stop) and math.isfinite(risk_u) and risk_u > 0):
+        return None, None, 'execution.stop_risk_invalid'
+    raw = snapshot * book['risk_pct'] / risk_u
+    room = book['max_leverage'] * snapshot - notional
+    q = min(raw, max(room, 0.0) / (ref * (1 + book['cap_gap_buffer'])))
+    q = _floor(q, rule['step']) if q > 0 else 0.0
+    if q <= 0 or q < float(rule['min_qty']) or q * fill < float(rule['min_notional']):     # the executable fill
+        return None, None, 'execution.size_min'
+    return q, stop, None
+
+
+def liq_point(wallet: float, held) -> tuple[float, float, bool]:
+    """STRAT-02 PARK-only liquidation diagnostic of one bar (contract section 4): `held` = [(qty, entry, bar high)] of
+    every open short. G = sum q x high, W = wallet + sum q x (entry - high); flagged when W < G / 3. Never an exit,
+    a fill or a sizing input."""
+    g = math.fsum(q * h for q, _, h in held)
+    w = wallet + math.fsum(q * (e - h) for q, e, h in held)
+    return w, g, w < g / 3
+
+
+def delist_cover(*, notice_ms, opens, last_mark: float, bps: float, scen, tick) -> tuple[float, int | None, str]:
+    """STRAT-02 delist cover price (prereg costs.delist, short side): with a timestamped notice, BUY at the first bar
+    open at or after the notice (`opens` = [(open_ms, open)] ascending) -> (fill, open_ms, 'exit.delist'); with no
+    observed notice (or no open after it), BUY at the last archived mark with 5x slippage -> (fill, None,
+    'exit.delist_forced'), reported separately. Buys round UP to the tick. Pricing only: the attested tape carries no
+    delist notice yet, so the book does not call this (a held symbol whose bars end is INCOMPLETE; M1 scope)."""
+    if notice_ms is not None:
+        for ms, o in opens:
+            if ms >= notice_ms:
+                return C.fill_price(o, 'buy', bps, scen, tick=tick), ms, 'exit.delist'
+    return C.fill_price(last_mark, 'buy', 5.0 * bps, scen, tick=tick), None, 'exit.delist_forced'
+
+
 def run_book(tape, cfg: dict, symbols, *, first: int, last: int, hi: int, slip_c: float, rules: dict, row: str = 'base',
              exclude=frozenset(), book=BOOK, side='long') -> dict:
     """ONE pass of the registered shared crypto book over a split's attested tape, one cost row (prereg rule.book,
@@ -477,18 +520,9 @@ def run_book(tape, cfg: dict, symbols, *, first: int, last: int, hi: int, slip_c
                 except Incomplete:
                     refusals['entry_no_slip_history'] += 1
                     continue
-                # actual per-unit risk from the tick-rounded (DOWN) sell fill and the CEILED stop (contract sec 4)
-                stop = _ceil(fill + dist, rule['tick'])
-                risk_u = stop - fill
-                if not (fill > 0 and math.isfinite(stop) and math.isfinite(risk_u) and risk_u > 0):
-                    refusals['execution.stop_risk_invalid'] += 1
-                    continue
-                raw = snapshot * book['risk_pct'] / risk_u
-                room = book['max_leverage'] * snapshot - notional
-                q = min(raw, max(room, 0.0) / (ref * (1 + book['cap_gap_buffer'])))
-                q = _floor(q, rule['step']) if q > 0 else 0.0
-                if q <= 0 or q < float(rule['min_qty']) or q * fill < float(rule['min_notional']):  # executable fill
-                    refusals['execution.size_min'] += 1
+                q, stop, why = size_short(snapshot, fill, dist, ref, notional, rule, book)
+                if why is not None:
+                    refusals[why] += 1
                     continue
                 fee = C.fee(fill * q, 'taker', C.CRYPTO, scen)
                 wallet -= fee
@@ -532,8 +566,7 @@ def run_book(tape, cfg: dict, symbols, *, first: int, last: int, hi: int, slip_c
             # PARK-only liquidation diagnostic (contract sec 4): every open short marked at its own bar high at once,
             # ignoring stops; wallet_t = the realised wallet after the fees / funding booked before this bar's events
             held = [(lots[k], rec[k]['b']) for k in order if k in lots]
-            g = math.fsum(lt['qty'] * b[1] for lt, b in held)
-            w = wallet + math.fsum(lt['qty'] * (lt['fill'] - b[1]) for lt, b in held)
+            w, g, _ = liq_point(wallet, [(lt['qty'], lt['fill'], b[1]) for lt, b in held])
             liq['bars'] += 1
             if w < g / 3:
                 liq['flagged_bars'] += 1

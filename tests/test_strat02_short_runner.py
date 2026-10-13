@@ -1,7 +1,9 @@
 """STRAT-02 `trend_ema_mom_short.v1.cap180`: short-side R4b runner symmetry (contract
 docs/newcore/research/STRAT02_SHORT_CONTRACT.md, frozen at PR #71) on synthetic fixtures only - no market data, no
-registration, no ledger. Each test carries the Evidence case id(s) it covers (S02-<AREA>-<n>, 48 cases); the long
-(STRAT-01) path is covered unchanged by tests/test_strat01_r4b_pit.py."""
+registration, no ledger. Cowork's synthetic spec v2 (#13 6152124742, 48 cases, sha256 3107b100...a11c) is bound by
+name: every case id S02-<ID> has at least one test named test_s02_<id> (lower case, '-' -> '_'); `_book` tests are the
+same case through the real book. `test_x_*` tests are additional Build checks outside the 48. The long (STRAT-01)
+path is covered unchanged by tests/test_strat01_r4b_pit.py."""
 import math
 import os
 import sys
@@ -80,7 +82,7 @@ FLAT = [100.0] * 60
 
 
 # ------------------------------------------------------------------ STOP
-def test_s02_stop_01_stop_is_ceiled_to_the_tick_above_the_fill():
+def test_s02_stop_02_ceil_book_coarse_tick():
     rule = dict(RULE, tick=0.5)
     tape = mk_tape(FLAT, le={25}, lx={40}, d='2.3')
     (tr,) = acct(tape, rules={'AAAUSDT': rule})['counted']
@@ -89,7 +91,7 @@ def test_s02_stop_01_stop_is_ceiled_to_the_tick_above_the_fill():
     assert tr['stop_price'] - tr['entry_price'] >= 2.3                 # rounding can only widen the risk
 
 
-def test_s02_stop_02_a_bar_opening_above_the_stop_fills_at_its_open():
+def test_s02_gap_01_book():
     tape = mk_tape(FLAT, le={25}, opens={28: 110.0})
     (tr,) = acct(tape)['counted']
     x = sym_of(tape)
@@ -99,7 +101,7 @@ def test_s02_stop_02_a_bar_opening_above_the_stop_fills_at_its_open():
     assert tr['r']['base'] < -1.0
 
 
-def test_s02_stop_03_an_open_exactly_at_the_stop_is_a_gap_fill():
+def test_s02_gap_02_eq_book():
     probe = mk_tape(FLAT, le={25})
     stop = math.ceil((entry_fill(probe, 25) + 2.0) / 0.01 - 1e-9) * 0.01
     stop = round(stop, 2)
@@ -108,7 +110,7 @@ def test_s02_stop_03_an_open_exactly_at_the_stop_is_a_gap_fill():
     assert tr['stop_price'] == stop and tr['gap'] and tr['exit_ms'] == t_of(27)
 
 
-def test_s02_stop_04_an_intrabar_high_at_the_stop_fills_at_the_stop_plus_slip_rounded_up():
+def test_s02_intra_01_book():
     probe = mk_tape(FLAT, le={25})
     stop = round(math.ceil((entry_fill(probe, 25) + 2.0) / 0.01 - 1e-9) * 0.01, 2)
     tape = mk_tape(FLAT, le={25}, highs={28: stop})
@@ -119,7 +121,7 @@ def test_s02_stop_04_an_intrabar_high_at_the_stop_fills_at_the_stop_plus_slip_ro
     assert tr['exit_price'] >= stop
 
 
-def test_s02_stop_05_a_high_one_tick_below_the_stop_does_not_trigger():
+def test_s02_intra_02_book():
     probe = mk_tape(FLAT, le={25})
     stop = round(math.ceil((entry_fill(probe, 25) + 2.0) / 0.01 - 1e-9) * 0.01, 2)
     (tr,) = acct(mk_tape(FLAT, le={25}, lx={35}, highs={28: round(stop - 0.01, 2)}))['counted']
@@ -127,19 +129,19 @@ def test_s02_stop_05_a_high_one_tick_below_the_stop_does_not_trigger():
 
 
 # ------------------------------------------------------------------ ORDER
-def test_s02_order_01_a_signal_cover_due_at_the_open_fills_before_the_bar_is_played():
+def test_s02_order_01_signal_cover_at_open_before_the_stop():
     (tr,) = acct(mk_tape(FLAT, le={25}, lx={27}, highs={28: 150.0}))['counted']
     assert tr['exit_reason'] == 'exit.signal' and tr['exit_ms'] == t_of(27) and not tr['gap']
 
 
-def test_s02_order_02_the_cap_cover_at_the_open_precedes_a_stop_in_the_cap_bar():
+def test_s02_order_02_cap_cover_at_open_before_the_stop():
     closes = [100.0] * 260
     (tr,) = acct(mk_tape(closes, le={25}, highs={206: 1000.0}))['counted']
     assert tr['exit_reason'] == 'exit.time_cap' and tr['exit_ms'] == t_of(205)
 
 
 # ------------------------------------------------------------------ SIZE / GROSS
-def test_s02_size_01_qty_is_one_percent_of_actual_risk_floored_to_the_step():
+def test_s02_size_01_book():
     tape = mk_tape(FLAT, le={25}, lx={30})
     a = acct(tape, rows=tuple(C.STRESS))
     (tr,) = a['counted']
@@ -152,12 +154,12 @@ def test_s02_size_01_qty_is_one_percent_of_actual_risk_floored_to_the_step():
     assert set(a['rows']) == set(C.STRESS)
 
 
-def test_s02_size_02_below_min_qty_is_a_counted_refusal():
+def test_s02_size_03_minqty_book():
     a = acct(mk_tape(FLAT, le={25}, lx={40}), rules={'AAAUSDT': dict(RULE, min_qty=1e6)})
     assert a['counted'] == [] and a['refusals'] == {'execution.size_min': 1}
 
 
-def test_s02_size_03_min_notional_is_checked_on_the_executable_fill_not_the_signal_close():
+def test_s02_size_04_minnotional_fill_book():
     tape = lambda: mk_tape(FLAT, le={25}, lx={40}, opens={26: 90.0})     # the sell fills ~10% below the signal close
     (tr,) = acct(tape(), rules={'AAAUSDT': dict(RULE, min_notional=1.0)})['counted']
     q, fill = tr['qty'], tr['entry_price']
@@ -169,20 +171,20 @@ def test_s02_size_03_min_notional_is_checked_on_the_executable_fill_not_the_sign
 
 
 @pytest.mark.parametrize('d', ['0', '-1.5'])
-def test_s02_size_04_a_zero_or_negative_stop_risk_is_refused_never_sized(d):
+def test_s02_size_05_zero_risk_book(d):
     a = acct(mk_tape(FLAT, le={25}, lx={40}, d=d), rows=tuple(C.STRESS))
     assert a['counted'] == [] and a['refusals'] == {'execution.stop_risk_invalid': 1}
 
 
 @pytest.mark.parametrize('d', ['NaN', 'Infinity'])
-def test_s02_size_05_a_non_finite_stop_risk_is_refused_never_sized(d):
+def test_s02_size_06_nonfinite_book(d):
     a = acct(mk_tape(FLAT, le={25}, lx={40}, d=d), rows=tuple(C.STRESS))
     assert a['counted'] == [] and a['refusals'] == {'execution.stop_risk_invalid': 1}
     assert all(x['counted'] == [] for x in a['rows'].values())
 
 
 @pytest.mark.parametrize('tick', [0.01, 0.5, 1.0, 3.0, 7.0])
-def test_s02_size_06_initial_risk_never_exceeds_one_percent_on_coarse_ticks(tick):
+def test_x_initial_risk_never_exceeds_one_percent_on_coarse_ticks(tick):
     rule = dict(RULE, tick=tick, step=0.0001)
     for d in ('0.3', '1.7', '2.0', '4.9', '9.99'):
         closes = [100.0 - 0.137 * i for i in range(60)]
@@ -196,7 +198,7 @@ def test_s02_size_06_initial_risk_never_exceeds_one_percent_on_coarse_ticks(tick
                 assert abs(tr['entry_price'] / tick - round(tr['entry_price'] / tick)) < 1e-6
 
 
-def test_s02_gross_01_gross_notional_is_capped_at_3x_on_the_signal_close_x_1_10():
+def test_s02_gross_01_book():
     (tr,) = acct(mk_tape(FLAT, le={25}, lx={40}, d='0.01'))['counted']
     assert tr['qty'] * 100.0 * 1.10 <= 3 * 10_000 + 1e-6
     assert tr['qty'] == pytest.approx(math.floor(3 * 10_000 / 110.0 / 0.001 + 1e-9) * 0.001)
@@ -208,7 +210,7 @@ def _events(tape, a, b):
 
 
 @pytest.mark.parametrize('rate,sign', [(0.0001, -1), (-0.0001, 1)])
-def test_s02_fund_01_02_a_short_receives_positive_and_pays_negative_funding(rate, sign):
+def test_s02_fund_01_pos_fund_02_neg_book(rate, sign):
     tape = mk_tape(FLAT, le={25}, lx={30}, rate=rate)
     (tr,) = acct(tape)['counted']
     ev = _events(tape, t_of(25), t_of(30))
@@ -219,7 +221,7 @@ def test_s02_fund_01_02_a_short_receives_positive_and_pays_negative_funding(rate
                                  math.fsum(-r * tr['qty'] * m for _, r, m in ev))
 
 
-def test_s02_fund_03_events_are_charged_on_entry_le_t_lt_exit():
+def test_s02_fund_03_boundary():
     tape = mk_tape(FLAT, le={25}, lx={31}, foff=0)        # events exactly on bar boundaries: 104h (entry) ... 128h
     (tr,) = acct(tape)['counted']
     assert (tr['entry_ms'], tr['exit_ms']) == (t_of(25), t_of(31))
@@ -229,7 +231,7 @@ def test_s02_fund_03_events_are_charged_on_entry_le_t_lt_exit():
     assert tr['funding'] == pytest.approx(C.funding_cost('short', tr['qty'], ev, BASE), abs=1e-12)
 
 
-def test_s02_fund_04_funding_x2_doubles_the_signed_funding():
+def test_s02_fund_04_x2_book():
     a = acct(mk_tape(FLAT, le={25}, lx={30}), rows=('base', 'funding_x2'))
     b, x2 = a['rows']['base']['counted'][0], a['rows']['funding_x2']['counted'][0]
     assert b['qty'] == x2['qty'] and x2['funding'] == pytest.approx(2 * b['funding'], abs=1e-12)
@@ -240,7 +242,7 @@ def _has_event(i):
     return any(t_of(i) - TF <= ft + 3 < t_of(i) for ft in range(T0, t_of(i) + 1, 8 * HOUR))
 
 
-def test_s02_fund_05_a_non_gap_stop_pays_the_stop_bars_funding_and_a_gap_stop_does_not():
+def test_s02_fund_05_stopbar():
     k = next(k for k in range(28, 36) if _has_event(k))
     probe = mk_tape(FLAT, le={25})
     stop = round(math.ceil((entry_fill(probe, 25) + 2.0) / 0.01 - 1e-9) * 0.01, 2)
@@ -257,13 +259,13 @@ def test_s02_fund_05_a_non_gap_stop_pays_the_stop_bars_funding_and_a_gap_stop_do
 
 @pytest.mark.parametrize('kw,reason', [({'mark_none': {T0 + 14 * 8 * HOUR}}, 'incomplete.funding_mark'),
                                        ({'fund_drop': {T0 + 13 * 8 * HOUR}}, 'incomplete.funding')])
-def test_s02_fund_06_a_missing_mark_or_funding_event_makes_the_trade_incomplete(kw, reason):
+def test_s02_fund_06_missingmark(kw, reason):
     a = acct(mk_tape([100.0] * 80, le={25}, lx={32}, **kw))
     assert a['counted'] == [] and [i['reason'] for i in a['incomplete']] == [reason]
 
 
 # ------------------------------------------------------------------ CAP
-def test_s02_cap_01_the_180_bar_cap_covers_at_the_next_open_rounded_up():
+def test_s02_cap_01_next_open_after_180_bars():
     closes = [100.0] * 260
     tape = mk_tape(closes, le={25}, opens={206: 50.0})
     (tr,) = acct(tape)['counted']
@@ -272,7 +274,7 @@ def test_s02_cap_01_the_180_bar_cap_covers_at_the_next_open_rounded_up():
     assert tr['exit_price'] == C.fill_price(50.0, 'buy', x.bps(tr['exit_ms'], C.TR_SMA14, 0.05), BASE, tick=0.01)
 
 
-def test_s02_cap_02_a_cap_due_at_the_split_end_reads_the_next_open_or_is_incomplete():
+def test_s02_cap_02_splitend():
     closes = [100.0] * 206
     hi = t_of(205)
     (tr,) = acct(mk_tape(closes, le={25}, opens={206: 77.0}), hi=hi, last=t_of(25))['counted']
@@ -289,20 +291,20 @@ def _stopped(low=50.0):
     return tr
 
 
-def test_s02_mfe_01_the_stop_bar_bounds_mfe_by_its_open_never_its_low():
+def test_x_mfe_stop_bar_open_bound_flat_book():
     tr = _stopped()
     risk = tr['stop_price'] - tr['entry_price']
     assert tr['mfe_r'] == pytest.approx((tr['entry_price'] - 99.75) / risk)    # earlier lows (99.75) + open (100)
     assert tr['mfe_r'] < (tr['entry_price'] - 50.0) / risk
 
 
-def test_s02_mfe_02_the_stop_bar_bounds_mae_by_the_stop():
+def test_x_mae_stop_bound_flat_book():
     tr = _stopped()
     assert tr['mae_r'] == pytest.approx(-1.0)                          # never the stop bar's own high (stop + 5)
 
 
 # ------------------------------------------------------------------ CROSS / ENTRY / EXIT (rule predicates)
-def test_s02_cross_01_cross_down_is_strict_now_and_inclusive_before():
+def test_x_cross_down_edges():
     assert PE.cross_down([1.0, 0.5], [1.0, 1.0], 1)                     # equal before, below now
     assert not PE.cross_down([1.0, 1.0], [1.0, 1.0], 1)                 # equal now: no cross
     assert not PE.cross_down([0.9, 0.5], [1.0, 1.0], 1)                 # already below: no cross
@@ -314,7 +316,7 @@ def _bars(n, f=lambda i: 100.0 + 3 * math.sin(i / 9.0) - 0.01 * i):
                   T0 + (i + 1) * TF) for i in range(n)]
 
 
-def test_s02_cross_02_short_signals_are_the_exact_mirror_formula_for_every_configuration():
+def test_x_short_signals_are_the_exact_mirror_formula_for_every_configuration():
     bars = _bars(900)
     seen = 0
     for n in range(225, 900, 7):
@@ -349,25 +351,25 @@ def _sig(monkeypatch, *, ef, es, et, close, rs, rl):
     return g[0], g[1]
 
 
-def test_s02_cross_03_close_equal_to_the_trend_ema_is_not_an_entry(monkeypatch):
+def test_s02_entry_02_strict(monkeypatch):
     kw = dict(ef=(1.0, 0.5), es=(1.0, 1.0), rs=-0.01, rl=-0.02)
     assert _sig(monkeypatch, et=(0, 100.0), close=100.0, **kw) == (False, False)
     assert _sig(monkeypatch, et=(0, 100.0), close=99.99, **kw) == (True, False)
 
 
-def test_s02_cross_04_a_zero_return_is_not_negative_momentum(monkeypatch):
+def test_s02_entry_01_strict_and_exit_01(monkeypatch):
     kw = dict(ef=(1.0, 0.5), es=(1.0, 1.0), et=(0, 200.0), close=100.0)
     assert _sig(monkeypatch, rs=0.0, rl=-0.02, **kw) == (False, True)       # no entry, and momentum loss = cover
     assert _sig(monkeypatch, rs=-1e-12, rl=-0.02, **kw) == (True, False)
 
 
-def test_s02_cross_05_fast_equal_to_slow_is_neither_a_cross_nor_a_cover(monkeypatch):
+def test_x_fast_equal_to_slow_is_neither_a_cross_nor_a_cover(monkeypatch):
     kw = dict(et=(0, 200.0), close=100.0, rs=-0.01, rl=-0.02)
     assert _sig(monkeypatch, ef=(1.1, 1.0), es=(1.0, 1.0), **kw) == (False, False)
     assert _sig(monkeypatch, ef=(1.1, 1.0 + 1e-12), es=(1.0, 1.0), **kw) == (False, True)   # strictly above: cover
 
 
-def test_s02_cross_06_a_non_negative_long_return_covers(monkeypatch):
+def test_x_a_non_negative_long_return_covers(monkeypatch):
     kw = dict(ef=(0.5, 0.5), es=(1.0, 1.0), et=(0, 200.0), close=100.0, rs=-0.01)
     assert _sig(monkeypatch, rl=0.0, **kw) == (False, True)
     assert _sig(monkeypatch, rl=-0.02, **kw) == (False, False)
@@ -402,7 +404,7 @@ def _rebased(bars, k0):
             for i, b in enumerate(bars)]
 
 
-def test_s02_window_01_gating_exact_prefix_invariance():
+def test_s02_window_01_prefix():
     """Changing, adding or removing any bar BEFORE the 1500-bar read window leaves se / sx / stop distance (and the
     whole record) bit-identical."""
     base = _bars(1800)
@@ -430,7 +432,7 @@ def _ind(bars):
     return out
 
 
-def test_s02_window_02_declared_tolerance_vs_longer_history_is_1e_5_relative():
+def test_s02_window_02_tol():
     long_hist = _bars(3000)
     full, window = _ind(long_hist), _ind(long_hist[-T.WINDOW:])
     assert 'ema250' in full and 'ema200' in full
@@ -438,7 +440,7 @@ def test_s02_window_02_declared_tolerance_vs_longer_history_is_1e_5_relative():
         assert abs(window[k] - full[k]) <= 1e-5 * abs(full[k]), k
 
 
-def test_s02_window_03_before_a_full_window_decisions_depend_on_the_history_start_by_design():
+def test_s02_window_03_early():
     bars = _bars(600)
     a, b = _ind(bars[-300:]), _ind(bars[-260:])                    # two contiguous-history starts, warm-up reached
     assert abs(a['ema200'] - b['ema200']) > 1e-5 * abs(a['ema200'])  # declared, accepted (contract 3.1 point 3)
@@ -446,7 +448,7 @@ def test_s02_window_03_before_a_full_window_decisions_depend_on_the_history_star
 
 
 # ------------------------------------------------------------------ COST / RND
-def test_s02_cost_01_02_entry_sells_below_the_open_cover_buys_above_both_taker():
+def test_s02_entryfill_01_fee_01_book():
     tape = mk_tape(FLAT, le={25}, lx={30})
     (tr,) = acct(tape)['counted']
     x = sym_of(tape)
@@ -457,7 +459,7 @@ def test_s02_cost_01_02_entry_sells_below_the_open_cover_buys_above_both_taker()
     assert tr['pnl'] == pytest.approx((ef - xf) * tr['qty'] - tr['fees'] - tr['funding'])
 
 
-def test_s02_rnd_01_worked_example_sell_fill_down_stop_ceiled():
+def test_s02_rnd_01_sell():
     """open 100.0, slip 7 bps (0.07), tick 0.1, ATR 2.02 -> fill 99.9, stop 105.0, risk 5.1 (Cowork spec v2)."""
     fill = C.fill_price(100.0, 'sell', 7.0, BASE, tick=0.1)
     dist = float(T.stop_distance(2.02, T.PRIMARY))
@@ -465,7 +467,7 @@ def test_s02_rnd_01_worked_example_sell_fill_down_stop_ceiled():
     assert (fill, dist, stop) == (99.9, 5.05, 105.0) and round(stop - fill, 9) == 5.1
 
 
-def test_s02_rnd_02_cover_fills_round_up_and_the_book_uses_the_rounded_values():
+def test_s02_rnd_02_cover():
     assert C.fill_price(100.0, 'buy', 7.0, BASE, tick=0.1) == 100.1
     rule = dict(RULE, tick=0.1)
     (tr,) = acct(mk_tape(FLAT, le={25}, lx={30}), rules={'AAAUSDT': rule})['counted']
@@ -474,13 +476,13 @@ def test_s02_rnd_02_cover_fills_round_up_and_the_book_uses_the_rounded_values():
     assert tr['exit_price'] >= 100.0 and tr['entry_price'] <= 100.0
 
 
-def test_s02_rnd_03_on_tick_values_are_unchanged():
+def test_s02_rnd_03_ontick():
     assert PR._ceil(105.0, 0.1) == 105.0 and PR._ceil(105.0000001, 0.1) == 105.1
     assert C.round_adverse(99.9, 0.1, 'sell') == 99.9 and C.round_adverse(100.1, 0.1, 'buy') == 100.1
 
 
 # ------------------------------------------------------------------ BOOK
-def test_s02_book_01_exits_free_a_slot_before_entries_in_frozen_rank_order():
+def test_s02_book_01():
     syms = [f'S{k}USDT' for k in range(5)]
     tapes = [mk_tape(FLAT, sym=s, le={25}, lx={40} if s == 'S0USDT' else {50}) for s in syms[:4]]
     tapes.append(mk_tape(FLAT, sym='S4USDT', le={25, 40}, lx={50}))
@@ -492,7 +494,7 @@ def test_s02_book_01_exits_free_a_slot_before_entries_in_frozen_rank_order():
     assert [t['symbol'] for t in first] == syms[:4]
 
 
-def test_s02_book_02_the_cairo_day_mtm_halt_refuses_that_days_entries():
+def test_s02_halt_01():
     closes = [100.0] * 32 + [102.0] * 40                                # bar 32 gaps up through a 0.5 stop
     a = acct(merge(mk_tape(closes, sym='AAAUSDT', le={25}, d='0.5', opens={32: 102.0}),
                    mk_tape([100.0] * 72, sym='BBBUSDT', le={32})))
@@ -502,7 +504,7 @@ def test_s02_book_02_the_cairo_day_mtm_halt_refuses_that_days_entries():
 
 
 # ------------------------------------------------------------------ LIQ (PARK-only diagnostic)
-def test_s02_liq_01_a_worst_case_bar_below_initial_margin_is_flagged_and_changes_nothing():
+def test_s02_liq_01_book():
     tape = mk_tape(FLAT, le={25}, d='0.3', highs={26: 115.0})
     res = PR.run_book(PR.read_tape(tape), SCFG[PRIM], ['AAAUSDT'], first=t_of(20), last=t_of(58), hi=tape[-1]['t'],
                       slip_c=0.05, rules={'AAAUSDT': RULE}, side='short')
@@ -516,7 +518,7 @@ def test_s02_liq_01_a_worst_case_bar_below_initial_margin_is_flagged_and_changes
     assert tr['exit_reason'] == 'exit.stop' and not tr['gap'] and tr['exit_ms'] == t_of(26)   # the stop still rules
 
 
-def test_s02_liq_02_an_ordinary_book_is_not_flagged_and_the_long_book_has_no_diagnostic():
+def test_x_liq_ordinary_book_not_flagged_and_long_has_no_diagnostic():
     tape = mk_tape(FLAT, le={25}, lx={40})
     res = PR.run_book(PR.read_tape(tape), SCFG[PRIM], ['AAAUSDT'], first=t_of(20), last=t_of(58), hi=tape[-1]['t'],
                       slip_c=0.05, rules={'AAAUSDT': RULE}, side='short')
@@ -529,18 +531,18 @@ def test_s02_liq_02_an_ordinary_book_is_not_flagged_and_the_long_book_has_no_dia
 
 
 # ------------------------------------------------------------------ DELIST (bars end while held / flat)
-def test_s02_delist_01_a_held_symbol_whose_bars_end_is_incomplete_never_a_silent_close():
+def test_x_held_symbol_whose_bars_end_is_incomplete_never_a_silent_close():
     a = acct(mk_tape(FLAT, le={25}, drop=set(range(41, 60))))
     assert a['counted'] == [] and [i['reason'] for i in a['incomplete']] == ['incomplete.gap']
 
 
-def test_s02_delist_02_a_flat_symbol_whose_bars_end_leaves_no_record():
+def test_x_flat_symbol_whose_bars_end_leaves_no_record():
     a = acct(mk_tape(FLAT, drop=set(range(41, 60))))
     assert a['trades'] == [] and a['incomplete'] == [] and a['refusals'] == {}
 
 
 # ------------------------------------------------------------------ B0 (matched random SHORT entries)
-def test_s02_b0_01_matched_random_short_draws_use_the_short_fill_stop_and_funding():
+def test_s02_b0_01():
     closes = [100.0 + 2 * math.sin(i / 7) for i in range(200)]
     lab = lambda i: 'btc_down' if i == 60 else None                     # the pool = the candidate's own decision
     tape = mk_tape(closes, le={60}, lx={70}, regime=lab)
@@ -571,7 +573,7 @@ def _b1(tapes, *, rules=None, first=None, last=None, row='base'):
                             hi=tape[-1]['t'], slip_c=0.05, rules=rules or {s: RULE for s in syms}, row=row)
 
 
-def test_s02_b1_01_monday_rebalances_and_the_sizing_equation():
+def test_x_b1_monday_rebalances_and_the_sizing_equation():
     closes = [100.0] * 120
     res = _b1([mk_tape(closes, sym='AAAUSDT', a='0.8'), mk_tape(closes, sym='BBBUSDT', a='0.4')], last=t_of(100))
     taus = [r['tau'] for r in res['rebalances']]
@@ -586,7 +588,7 @@ def test_s02_b1_01_monday_rebalances_and_the_sizing_equation():
     assert res['status'] == 'COMPLETE' and res['incomplete'] == []
 
 
-def test_s02_b1_02_the_3x_scale_down_and_legs_below_the_minimums():
+def test_x_b1_3x_scale_down_and_legs_below_the_minimums():
     closes = [100.0] * 60
     res = _b1([mk_tape(closes, sym='AAAUSDT', a='0.001'), mk_tape(closes, sym='BBBUSDT', a='0.002')], last=t_of(30))
     first = {lg['symbol']: lg['qty'] for lg in res['legs'] if lg['time_ms'] == t_of(20)}
@@ -599,7 +601,7 @@ def test_s02_b1_02_the_3x_scale_down_and_legs_below_the_minimums():
     assert tiny['legs'] == [] and tiny['refusals'] == {'b1.size_min': 2}
 
 
-def test_s02_b1_03_signed_funding_and_month_block_r():
+def test_x_b1_signed_funding_and_month_block_r():
     closes = [100.0] * 200
     pos = _b1([mk_tape(closes, sym='AAAUSDT', rate=0.0001)], last=t_of(150))
     neg = _b1([mk_tape(closes, sym='AAAUSDT', rate=-0.0001)], last=t_of(150))
@@ -616,10 +618,207 @@ def test_s02_b1_03_signed_funding_and_month_block_r():
 
 
 # ------------------------------------------------------------------ B2 short (not an Evidence case; rule check)
-def test_b2_short_enters_below_the_close_20_bars_earlier_only():
+def test_x_b2_short_enters_below_the_close_20_bars_earlier_only():
     down = acct(mk_tape([100.0 - 0.1 * i for i in range(260)]), cfg='B2', first=t_of(20), last=t_of(30))
     assert down['counted'] and down['counted'][0]['entry_ms'] == t_of(20)
     up = acct(mk_tape([100.0 + 0.1 * i for i in range(200)]), cfg='B2', first=t_of(20), last=t_of(150))
     assert up['counted'] == []
     with pytest.raises(PR.PitRunError):
         PR._signal(SCFG['B1'], None, {'d': '1.0'}, t_of(20), 'short')
+
+
+# ================================================================== Cowork spec v2: the hand-checkable numbers
+D = Decimal
+R01 = dict(RULE, tick=0.1)
+
+
+def test_s02_stop_01():
+    q, stop, why = PR.size_short(10_000.0, 100.0, float(T.stop_distance(2.0, T.PRIMARY)), 100.0, 0.0, R01)
+    assert why is None and stop == 105.0
+
+
+def test_s02_stop_02_ceil():
+    q, stop, why = PR.size_short(10_000.0, 100.0, float(T.stop_distance(2.02, T.PRIMARY)), 100.0, 0.0, R01)
+    assert why is None and stop == 105.1                                # raw 105.05: a floor (105.0) would be wrong
+
+
+def test_s02_gap_01():
+    ref, gap = C.stop_reference('short', 105.0, 107.0)
+    assert (ref, gap) == (107.0, True) and C.fill_price(ref, 'buy', 0.0, BASE, gap=True, tick=0.1) == 107.0
+    assert D(repr(ref)) - D('100.0') == D('7.0')                        # not the stop level 105.0
+
+
+def test_s02_gap_02_eq():
+    assert C.stop_reference('short', 105.0, 105.0) == (105.0, True)     # open == stop: at-or-above = gap at the open
+
+
+def test_s02_intra_01():
+    o, h = 103.0, 105.0
+    assert (o >= 105.0 or h >= 105.0) and C.stop_reference('short', 105.0, o) == (105.0, False)   # bar-close exit
+
+
+def test_s02_intra_02():
+    o, h = 103.0, 104.9
+    assert not (o >= 105.0 or h >= 105.0)
+
+
+def test_s02_size_01():
+    q, stop, why = PR.size_short(10_000.0, 100.0, 5.0, 100.0, 0.0, dict(RULE, min_notional=5.0))
+    assert (q, stop, why) == (20.0, 105.0, None) and q * 100.0 == 2000.0
+
+
+def test_s02_size_02_floor():
+    q, stop, why = PR.size_short(10_000.0, 100.0, 3.7, 100.0, 0.0, R01)
+    assert why is None and q == 27.027                                  # 27.027027... floored, never upsized
+
+
+def test_s02_size_03_minqty():
+    q, stop, why = PR.size_short(10_000.0, 100.0, 5000.0, 100.0, 0.0, dict(RULE, min_qty=0.1))
+    assert (q, why) == (None, 'execution.size_min')                     # raw 0.02 < 0.1: refused, not upsized
+
+
+def test_s02_size_04_minnotional_fill():
+    rule = dict(RULE, tick=0.01, step=0.0001, min_qty=0.0001, min_notional=5.0)
+    dist = 1980.0                                                        # 100 / (stop - fill) floors to qty 0.0505
+    assert PR._floor(100.0 / (PR._ceil(99.0 + dist, 0.01) - 99.0), 0.0001) == 0.0505
+    assert D('0.0505') * D('100.0') == D('5.05000') and D('0.0505') * D('99.0') == D('4.99950')
+    assert PR.size_short(10_000.0, 99.0, dist, 100.0, 0.0, rule) == (None, None, 'execution.size_min')
+    assert PR.size_short(10_000.0, 100.0, dist, 100.0, 0.0, rule)[2] is None     # the same qty at 100 passes
+
+
+def test_s02_size_05_zero_risk():
+    assert PR.size_short(10_000.0, 100.0, 0.0, 100.0, 0.0, R01) == (None, None, 'execution.stop_risk_invalid')
+
+
+def test_s02_size_06_nonfinite():
+    nan = float(D('NaN'))
+    assert PR.size_short(10_000.0, 100.0, nan, 100.0, 0.0, R01) == (None, None, 'execution.stop_risk_invalid')
+    assert PR.size_short(10_000.0, 100.0, math.inf, 100.0, 0.0, R01) == (None, None, 'execution.stop_risk_invalid')
+
+
+def test_s02_gross_01():
+    """Spec v2 expects REFUSED for 29,000 open + 1,500 new > 30,000; the registered book (identical to v1, contract
+    section 4) CLIPS the new lot to the remaining room on signal close x 1.10 - gross never exceeds 3x either way."""
+    q, _, why = PR.size_short(10_000.0, 100.0, 0.5, 100.0, 29_000.0, R01)
+    assert why is None and 29_000.0 + q * 100.0 * 1.10 <= 30_000.0 + 1e-9
+    assert q == PR._floor(1_000.0 / 110.0, 0.001)
+    assert PR.size_short(10_000.0, 100.0, 0.5, 100.0, 30_000.0, R01) == (None, None, 'execution.size_min')
+
+
+def test_s02_fund_01_pos():
+    cost = C.funding_cost('short', 1000.0, [(0, 0.0001, 1.0)], BASE)
+    assert -cost == pytest.approx(0.1, abs=1e-15)                       # cash flow +0.1000: the short RECEIVES
+
+
+def test_s02_fund_02_neg():
+    cost = C.funding_cost('short', 1000.0, [(0, -0.0001, 1.0)], BASE)
+    assert -cost == pytest.approx(-0.1, abs=1e-15)                      # cash flow -0.1000: the short PAYS
+
+
+def test_s02_fund_04_x2():
+    assert -C.funding_cost('short', 1000.0, [(0, -0.0001, 1.0)], C.STRESS['funding_x2']) == pytest.approx(-0.2)
+    assert -C.funding_cost('short', 1000.0, [(0, 0.0001, 1.0)], C.STRESS['funding_x2']) == pytest.approx(0.2)
+
+
+def test_s02_entryfill_01():
+    assert C.fill_price(100.0, 'sell', 10.0, BASE, tick=0.1) == 99.9     # slip 0.1 on 100 = 10 bps, below the open
+    assert C.fill_price(100.0, 'buy', 10.0, BASE, tick=0.1) == 100.1     # the cover, above the open
+
+
+def test_s02_fee_01():
+    assert C.fee(100.0 * 10, 'taker', C.CRYPTO, BASE) == pytest.approx(0.5)
+
+
+def test_s02_cross_01():
+    assert PE.cross_down([10.0, 9.9], [10.0, 10.0], 1)
+
+
+def test_s02_cross_02():
+    assert not PE.cross_down([10.1, 10.0], [10.0, 10.0], 1)
+
+
+def test_s02_cross_03():
+    assert not PE.cross_down([9.9, 9.8], [10.0, 10.0], 1)
+
+
+def test_s02_exit_01(monkeypatch):
+    se, sx = _sig(monkeypatch, ef=(0.5, 0.5), es=(1.0, 1.0), et=(0, 200.0), close=100.0, rs=0.0, rl=-0.02)
+    assert sx and not se
+
+
+def test_s02_mfe_01_and_mae_01():
+    """Entry ~100 (fill 99.9 on a 0.1 tick), earlier lows 97 / 96, stop 105.0; the stop bar o 104, h 109, l 90:
+    MFE uses min(97, 96, 104) = 96 (never the stop bar's own low 90); MAE is bounded by the stop (never 109)."""
+    tape = mk_tape(FLAT, le={25}, d='5.05', lows={26: 97.0, 27: 96.0, 28: 90.0}, opens={28: 104.0},
+                   highs={28: 109.0})
+    (tr,) = acct(tape, rules={'AAAUSDT': R01})['counted']
+    assert (tr['entry_price'], tr['stop_price']) == (99.9, 105.0) and tr['exit_ms'] == t_of(28)
+    risk = 105.0 - 99.9
+    assert tr['mfe_r'] == pytest.approx((99.9 - 96.0) / risk) and tr['mae_r'] == pytest.approx(-1.0)
+
+
+test_s02_mae_01 = test_s02_mfe_01_and_mae_01
+
+
+def test_s02_liq_01():
+    w, g, flag = PR.liq_point(10_000.0, [(300.0, 100.0, 134.0)])        # gross 30,000 at entry, adverse 0.34
+    assert w == pytest.approx(-200.0) and g == pytest.approx(40_200.0) and flag
+
+
+def test_s02_liq_02():
+    w, g, flag = PR.liq_point(10_000.0, [(300.0, 100.0, 120.0)])        # adverse 0.2
+    assert w == pytest.approx(4_000.0) and g == pytest.approx(36_000.0) and flag   # 4,000 < 12,000 (high-based G/3)
+    assert not PR.liq_point(10_000.0, [(30.0, 100.0, 101.0)])[2]        # an ordinary 1%-risk book is not flagged
+
+
+def test_s02_delist_01():
+    fill, ms, why = PR.delist_cover(notice_ms=t_of(30) + 5, opens=[(t_of(30), 99.0), (t_of(31), 97.0)],
+                                    last_mark=95.0, bps=10.0, scen=BASE, tick=0.1)
+    assert (ms, why) == (t_of(31), 'exit.delist') and fill == C.fill_price(97.0, 'buy', 10.0, BASE, tick=0.1)
+
+
+def test_s02_delist_02():
+    fill, ms, why = PR.delist_cover(notice_ms=None, opens=[(t_of(30), 99.0)], last_mark=95.0, bps=10.0, scen=BASE,
+                                    tick=0.01)
+    assert (ms, why) == (None, 'exit.delist_forced') and fill == C.fill_price(95.0, 'buy', 50.0, BASE, tick=0.01)
+    assert fill > 95.0                                                   # 5x slip, adverse (above L) for a cover
+
+
+def test_s02_repaint_01():
+    base = _bars(1700)
+    j = 1600
+    mutated = base[:j + 1] + [P.Bar(b.open_ms, b.open * 3, b.high * 3, b.low * 3, b.close * 3, 1, 1, b.available_ms)
+                              for b in base[j + 1:]]
+    a, b = PE.Tape(side='short').decide(_View(base, j)), PE.Tape(side='short').decide(_View(mutated, j))
+    assert a == b                                                       # the decision at i never sees bars after i
+    tape = mk_tape(FLAT, le={25}, lx={30})
+    tape2 = mk_tape(FLAT, le={25}, lx={30}, opens={27: 101.0, 28: 99.0})
+    assert acct(tape)['counted'][0]['entry_price'] == acct(tape2)['counted'][0]['entry_price']   # fill = open of i+1
+
+
+def test_s02_repaint_02():
+    base = _bars(1700)
+    one, two = PE.Tape(side='short'), PE.Tape(side='short')
+    a = [one.decide(_View(base[:1650], j)) for j in range(1550, 1650)]
+    b = [two.decide(_View(base, j)) for j in range(1550, 1700)][:100]
+    assert a == b                                                       # appending bars changes no earlier decision
+
+
+SPEC_V2_IDS = (
+    'S02-B0-01', 'S02-BOOK-01', 'S02-CAP-01', 'S02-CAP-02-SPLITEND', 'S02-CROSS-01', 'S02-CROSS-02', 'S02-CROSS-03',
+    'S02-DELIST-01', 'S02-DELIST-02', 'S02-ENTRY-01-STRICT', 'S02-ENTRY-02-STRICT', 'S02-ENTRYFILL-01', 'S02-EXIT-01',
+    'S02-FEE-01', 'S02-FUND-01-POS', 'S02-FUND-02-NEG', 'S02-FUND-03-BOUNDARY', 'S02-FUND-04-X2',
+    'S02-FUND-05-STOPBAR', 'S02-FUND-06-MISSINGMARK', 'S02-GAP-01', 'S02-GAP-02-EQ', 'S02-GROSS-01', 'S02-HALT-01',
+    'S02-INTRA-01', 'S02-INTRA-02', 'S02-LIQ-01', 'S02-LIQ-02', 'S02-MAE-01', 'S02-MFE-01', 'S02-ORDER-01',
+    'S02-ORDER-02', 'S02-REPAINT-01', 'S02-REPAINT-02', 'S02-RND-01-SELL', 'S02-RND-02-COVER', 'S02-RND-03-ONTICK',
+    'S02-SIZE-01', 'S02-SIZE-02-FLOOR', 'S02-SIZE-03-MINQTY', 'S02-SIZE-04-MINNOTIONAL-FILL', 'S02-SIZE-05-ZERO-RISK',
+    'S02-SIZE-06-NONFINITE', 'S02-STOP-01', 'S02-STOP-02-CEIL', 'S02-WINDOW-01-PREFIX', 'S02-WINDOW-02-TOL',
+    'S02-WINDOW-03-EARLY')
+
+
+def test_x_every_spec_v2_case_id_has_a_named_test():
+    assert len(SPEC_V2_IDS) == len(set(SPEC_V2_IDS)) == 48
+    names = [n for n in globals() if n.startswith('test_s02_')]
+    norm = lambda i: 'test_' + i.lower().replace('-', '_')
+    missing = [i for i in SPEC_V2_IDS if not any(n.startswith(norm(i)) for n in names)]
+    assert missing == []
