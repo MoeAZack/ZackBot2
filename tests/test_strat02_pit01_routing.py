@@ -487,7 +487,7 @@ def _two_short_finals(tmp_path, monkeypatch):
 
 def test_readiness_aggregation_carries_the_routed_fold_bound(tmp_path, long3, monkeypatch):
     finals = _two_short_finals(tmp_path, monkeypatch)
-    det = RD.determinism(finals, 5, RD.expected_identity(SYN_EV), G.SHORT_ID)
+    det = RD.determinism(finals, 5, RD.expected_identity(SYN_EV, G.SHORT_ID), G.SHORT_ID)
     assert det['status'] == 'PASS' and det['runs'] == 2
     assert RD.determinism(finals, 5)['status'] == 'FAIL'                 # unbound: matching each other is not enough
     doc = RD.build(dict(SYN_EV, final_files=finals, items={6: {'status': 'PASS'}}), folds=5, candidate=G.SHORT_ID)
@@ -551,11 +551,16 @@ def readiness(tmp_path, stub, monkeypatch):
     off = {c: RD.offline(ROOT, **({'candidate': c} if c else {})) for c in (None, G.SHORT_ID)}
 
     def make(cand, tag, **wrong):
-        """Two identical finals built synthetically at the computed HEAD with the routed provenance (+ overrides)."""
+        """Two identical finals built synthetically at the computed HEAD with the routed provenance (+ overrides):
+        STRAT-01 = M3 reproduction finals (repro manifest, no universe); STRAT-02 = short PIT finals."""
         o = off[cand]
+        if cand is None:
+            ident = dict({'commit': o['head'], 'prereg': o['digests']['prereg'],
+                          'manifest': o['offline']['repro_manifest']['digest']}, **wrong)
+            return [_m3_final(tmp_path / f'{tag}{x}', ident) for x in 'ab']
         ident = dict({'commit': o['head'], 'prereg': o['digests']['prereg'], 'manifest': o['digests']['dataset'],
                       'universe': o['digests']['universe']}, **wrong)
-        return _finals2(tmp_path, _env(SHORT if cand else None, ident=ident), tag)
+        return _finals2(tmp_path, _env(SHORT, ident=ident), tag)
     fin = {None: make(None, 'l'), G.SHORT_ID: make(G.SHORT_ID, 's')}
 
     def run(candidate, mutate=lambda e: e):
@@ -717,7 +722,7 @@ def test_each_unbound_final_pair_is_refused(readiness):
         assert det['status'] == 'FAIL' and det['binding'] and doc['items']['6']['status'] == 'FAIL', name
     rc, doc = run(None, lambda e: dict(e, final_files=run.fin[G.SHORT_ID]))      # long validates its own profile
     assert rc == 1 and doc['items']['6']['determinism']['status'] == 'FAIL'
-    assert any('zb-strat01-pit' in b for b in doc['items']['6']['determinism']['binding'])
+    assert any('PIT artifact' in b for b in doc['items']['6']['determinism']['binding'])
 
 
 # ------------------------------------------------------------------ malformed evidence shapes (Cowork 6158379808)
@@ -729,3 +734,33 @@ def test_malformed_evidence_refuses_cleanly_with_exit_2(tmp_path, monkeypatch, c
     p.write_text(json.dumps(ev))
     assert RD.main(['--out', str(out), '--evidence', str(p)]) == 2 and not out.exists()
     assert capsys.readouterr().err.startswith('error: ')
+
+
+
+def _m3_final(d, over=None, **wrong):
+    """A STRAT-01 M3 reproduction final (identity universe null, plain M3 artifact) at the synthetic HEAD."""
+    base = dict({'commit': SYN['commit'], 'prereg': SYN['prereg'], 'manifest': SYN['manifest']}, **(over or {}))
+    ident = dict(_env()['identity'], **dict(base, universe=None, **wrong))
+    d.mkdir(parents=True, exist_ok=True)
+    prog = PG.Progress(str(d), identity=ident, config={'rows': ['base']}, clock=None)
+    art = d / 'm3_repro_base.json'
+    art.write_text(json.dumps(OK))
+    prog.sealed([str(art)], ['m3_repro_base.json'])
+    return prog.final_path
+
+
+def test_long_m3_finals_stay_valid_bound_and_never_serve_short(tmp_path):
+    exp = RD.expected_identity(SYN_EV)                                           # bare build(ev): no offline pass
+    assert exp['manifest'] == SYN['manifest'] and exp['universe'] is None
+    good = [_m3_final(tmp_path / 'a'), _m3_final(tmp_path / 'b')]
+    assert RD.determinism(good, None, exp)['status'] == 'PASS'                   # accepted long behaviour
+    rep = RD.expected_identity(dict(SYN_EV, offline={'repro_manifest': {'digest': '9' * 64}}))
+    assert rep['manifest'] == '9' * 64                                           # with an offline pass: repro digest
+    det = RD.determinism(good, None, rep)
+    assert det['status'] == 'FAIL' and any('identity.manifest' in b for b in det['binding'])
+    assert RD.determinism(good, None, RD.expected_identity(dict(SYN_EV, offline={})))['status'] == 'FAIL'
+    stale = [_m3_final(tmp_path / 'c', commit='0' * 40), _m3_final(tmp_path / 'd', commit='0' * 40)]
+    det = RD.determinism(stale, None, exp)
+    assert det['status'] == 'FAIL' and any('identity.commit' in b for b in det['binding'])
+    det = RD.determinism(good, 5, RD.expected_identity(SYN_EV, G.SHORT_ID), G.SHORT_ID)   # no short M3 exists
+    assert det['status'] == 'FAIL' and any('identity.universe' in b for b in det['binding'])

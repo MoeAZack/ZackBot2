@@ -115,30 +115,44 @@ def sealed_artifacts(path: str, folds: int | None = None) -> tuple[str, dict]:
     return doc['digest'], arts
 
 
-def expected_identity(ev: dict) -> dict:
-    """The immutable identity every readiness final must carry, from the routed offline pass only: the computed HEAD,
-    the routed prereg digest, the archive manifest (dataset) digest, the static universe digest, no classification."""
+IDENT_KEYS = ('commit', 'prereg', 'manifest', 'universe', 'classification')
+
+
+def expected_identity(ev: dict, candidate: str | None = None) -> dict:
+    """The immutable identity every readiness final must carry, by readiness mode, from the offline pass only
+    (Codex 6158493978):
+      * default / STRAT-01 = the documented R4-0 M3 determinism report: computed HEAD, routed long prereg digest, the
+        offline M3 reproduction manifest digest (`offline.repro_manifest.digest`; a bare `build(ev)` with no offline
+        pass falls back to its `digests.dataset`), universe None, classification None;
+      * explicit STRAT-02: computed HEAD, routed short prereg digest, archive (dataset) manifest digest, routed
+        universe digest, classification None."""
     dig = ev.get('digests') or {}
-    return {'commit': ev.get('head'), 'prereg': dig.get('prereg'), 'manifest': dig.get('dataset'),
-            'universe': dig.get('universe'), 'classification': None}
+    long = route_candidate(candidate).candidate_id == route_candidate(None).candidate_id
+    off = ev.get('offline')
+    repro = ((off or {}).get('repro_manifest') or {}).get('digest') if off is not None else dig.get('dataset')
+    return {'commit': ev.get('head'), 'prereg': dig.get('prereg'), 'manifest': repro if long else dig.get('dataset'),
+            'universe': None if long else dig.get('universe'), 'classification': None}
 
 
 def final_binding(path: str, expect: dict, candidate: str | None, folds: int | None = None) -> list[str]:
-    """Every way one sealed final fails its routed provenance (empty = bound): its identity must equal `expect`
-    field by field, and each sealed summary / detail artifact must be the routed profile's own format with its own
-    candidate / side binding (STRAT-02: zb-strat02-pit-*, candidate_id, side short; STRAT-01: zb-strat01-pit-*, no
-    other candidate)."""
+    """Every way one sealed final fails its routed provenance (empty = bound), each final independently: identity ==
+    `expect` (`expected_identity` of the same mode) field by field, and the artifact schema of the mode:
+      * STRAT-01 / M3: the existing M3 evidence contract - no PIT summary / detail artifact (zb-strat0*-pit-*);
+      * STRAT-02: every sealed artifact is zb-strat02-pit-summary/1 or -detail/1 bound to candidate_id
+        trend_ema_mom_short.v1 and side short."""
     import pit_run as PR                                                                    # noqa: E402
     prof = PR.RUN_PROFILES[route_candidate(candidate).candidate_id]
-    bad = [f'expected identity.{k} is not a computed digest' for k, v in expect.items()
-           if k != 'classification' and not (isinstance(v, str) and (HEX40 if k == 'commit' else HEX64).match(v))]
+    long = prof is PR.LONG_RUN
+    bad = [f'expected identity.{k} is not a computed digest' for k in IDENT_KEYS
+           if (k == 'commit' or k == 'prereg' or k == 'manifest' or (k == 'universe' and not long))
+           and not (isinstance(expect.get(k), str) and (HEX40 if k == 'commit' else HEX64).match(expect[k]))]
     doc = PG.read(path, folds)
     if doc is None:
         return bad + ['no final record']
-    bad += [f'identity.{k} {doc["identity"].get(k)!r} != routed {v!r}' for k, v in expect.items()
-            if doc['identity'].get(k) != v]
+    bad += [f'identity.{k} {doc["identity"].get(k)!r} != routed {expect.get(k)!r}' for k in IDENT_KEYS
+            if doc['identity'].get(k) != expect.get(k)]
     d = os.path.dirname(os.path.abspath(path))
-    fmts = (prof.summary_format, prof.detail_format)
+    pit_fmts = {f for p in PR.RUN_PROFILES.values() for f in (p.summary_format, p.detail_format)}
     for a in doc['artifacts']:
         try:
             with open(os.path.join(d, a['path']), 'rb') as fh:
@@ -146,15 +160,17 @@ def final_binding(path: str, expect: dict, candidate: str | None, folds: int | N
         except (OSError, ValueError) as e:
             bad.append(f'artifact {a["path"]} unreadable ({type(e).__name__})')
             continue
-        if not isinstance(art, dict) or art.get('format') not in fmts:
-            bad.append(f'artifact {a["path"]}: format {art.get("format") if isinstance(art, dict) else None!r} is '
-                       f'not the {prof.candidate_id} profile ({", ".join(fmts)})')
+        fmt = art.get('format') if isinstance(art, dict) else None
+        if long:
+            if fmt in pit_fmts:
+                bad.append(f'artifact {a["path"]}: a PIT artifact ({fmt}) is not M3 determinism evidence')
             continue
-        want = ({'candidate_id': prof.candidate_id, 'side': prof.side} if prof is not PR.LONG_RUN else
-                {'candidate_id': None, 'side': None})                       # STRAT-01 artifacts carry no binding
-        got = {k: art.get(k) for k in want}
-        if got != want:
-            bad.append(f'artifact {a["path"]}: candidate / side {got} != {want}')
+        if fmt not in (prof.summary_format, prof.detail_format):
+            bad.append(f'artifact {a["path"]}: format {fmt!r} is not the {prof.candidate_id} profile')
+            continue
+        got = {k: art.get(k) for k in ('candidate_id', 'side')}
+        if got != {'candidate_id': prof.candidate_id, 'side': prof.side}:
+            bad.append(f'artifact {a["path"]}: candidate / side {got} is not {prof.candidate_id} / {prof.side}')
     return bad
 
 
@@ -204,7 +220,7 @@ def build(ev: dict, folds: int | None = None, candidate: str | None = None) -> d
         if str(k) not in items:
             raise ReadinessError(f'item {k!r}: unknown item')
         items[str(k)].update(_result(v, f'item {k}'))
-    det = determinism(ev.get('final_files') or [], folds, expected_identity(ev), candidate)
+    det = determinism(ev.get('final_files') or [], folds, expected_identity(ev, candidate), candidate)
     if items['6']['status'] == 'PASS' and det['status'] != 'PASS':
         items['6']['status'] = det['status']               # the hash check can only downgrade a claimed PASS
     items['6']['determinism'] = det
