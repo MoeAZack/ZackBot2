@@ -379,7 +379,7 @@ STRATEGIES = {
                                'or regime-flip exit, 24-candle (6h) cap. Run on 15m.',
                           mgmt=dict(stop_atr=1.0, tp_r=2.0, max_bars=24)),
     'exp_vwaprev': dict(name='[TESTNET EXP] VWAP Rev L/S', style='balanced', fn=sig_exp_vwaprev, sides='both', tf='4h',
-                        params=dict(n=42, k=2.0, rg=1.0), runtime_key='VWAPREV',
+                        params=dict(n=42, k=2.0, rg=1.0), runtime_key='VWAPREV', reentry_lock=True,
                         desc=EXP_TAG + ': VWAPREV = range_vwap_rev.v1 X1 (RANGE-EXIT-01). VWAP42 from quote volume / volume, ATR = '
                              'TR-SMA14, z = (close - VWAP)/ATR. Long when z crosses back above -2 below VWAP while VWAP moved <= 1 ATR '
                              'over 6 candles; short mirrored. Target = close back at VWAP, exit if the range breaks, stop 1.5 TR-SMA14 '

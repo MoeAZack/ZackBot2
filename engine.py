@@ -993,6 +993,13 @@ EXCHANGE_DOWN = ('Binance is not answering status checks (no order was sent) - p
                  'are and re-checked when it answers')
 
 
+def _utc_ms(x):
+    """ms since the epoch of a timestamp text / value; naive values are UTC (never the PC's local zone)."""
+    ts = pd.Timestamp(x)
+    ts = ts.tz_localize('UTC') if ts.tzinfo is None else ts.tz_convert('UTC')
+    return int(ts.value // 1_000_000)
+
+
 def _sig_atr(raw, d):
     """Stop ATR of a signal: the strategy's own ATR when it defines one (VWAPREV: TR-SMA14 of the decision candle) and it is
     finite and positive, else the engine ATR - so a protective stop distance is always defined."""
@@ -3401,6 +3408,27 @@ class Engine:
             self.save_state()
             self.record_equity(self.guard_eq or eq)
 
+    def reentry_lock(self, sl, sym, side, sg):
+        """VWAPREV re-entry lock (Codex 6172827142), ONLY for strategies registered with reentry_lock=True: the research
+        book (range_vwap_rev.run_book) lets the decision at close t enter only when its decision candle opened strictly
+        after the candle in which this slot's last exit on this coin AND side filled (t - TF > last exit candle open).
+        So the decision bar that produced an exit can never reopen, nor can the next one (its trigger candle i-1 is the
+        exit candle). Per-side book: the opposite side is never locked. Source: the persisted trade history (closed
+        time), so the lock survives restarts; a late-detected stop fill only lengthens it. Returns a reason or None."""
+        if not (S.STRATEGIES.get(sl.get('key')) or {}).get('reentry_lock') or not sg or not sg.get('time'): return None
+        tf_ms = TF_SEC.get(sl.get('tf'), 14400) * 1000
+        try: dec_open = _utc_ms(sg['time'])                       # the decision candle's open (str(d.t), UTC)
+        except Exception: return 'decision candle time unknown - re-entry lock cannot be checked'
+        for h in reversed(self.history):
+            if h.get('sleeve') == sl['id'] and h.get('symbol') == sym and h.get('side') == side and h.get('closed'):
+                try: ex = _utc_ms(h['closed'])
+                except Exception: return 'last exit time unknown - re-entry lock cannot be checked'
+                ex_bar = ex // tf_ms * tf_ms
+                if dec_open <= ex_bar:
+                    return 're-entry lock: the last exit on this coin/side was too recent (contract: next trigger candle must close after it)'
+                return None
+        return None
+
     def entry_block(self, sl, sym, side, manual=False, size=None, sg=None, skip_pending=None):
         """One gate for every way a trade can be opened (automatic, 'Take now', trailing entry, manual). Returns a reason or None.
         size: dict(notional, risk) of the trade being opened (for the size-based risk rules); sg: the signal (pump guard).
@@ -3427,6 +3455,9 @@ class Engine:
         if not sl.get('enabled', True): return 'strategy slot switched off'
         held = [l for l in st['lots'].values() if l['sleeve'] == sl['id']]
         if any(l['symbol'] == sym for l in held): return 'already in a trade on this coin'
+        if sg is not None:
+            rl = self.reentry_lock(sl, sym, side, sg)
+            if rl: return rl
         working = [p for k, p in st.get('pending_entries', {}).items() if p['sleeve'] == sl['id'] and k != skip_pending] + \
                   [r for r in st.get('resting_entries', {}).values() if r['sleeve'] == sl['id']]
         if any(p['symbol'] == sym for p in working): return 'an entry is already working on this coin'

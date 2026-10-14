@@ -264,3 +264,78 @@ def test_validate_sleeve_and_meta_pick_up_4h():
     assert A.validate_sleeve(dict(base, key=KEY, sides='short'), 0)['sides'] == 'short'
     lib = A.App.meta(SimpleNamespace(engine=SimpleNamespace(rules=None)))['library']
     assert lib[KEY]['tf'] == '4h' and lib[KEY]['sides'] == 'both' and lib[KEY]['mgmt'] == dict(stop_atr=1.5, max_bars=30)
+
+
+# ------------------------------------------------------------------ re-entry lock (Codex 6172827142, VWAPREV only)
+T0 = pd.Timestamp('2026-11-16 00:00')                    # a 4h candle boundary (UTC)
+H4 = pd.Timedelta(hours=4)
+
+
+def _eng(history):
+    return SimpleNamespace(history=list(history))
+
+
+def _exit(side, at, sleeve='V', sym='BTCUSDT'):
+    return dict(sleeve=sleeve, symbol=sym, side=side, closed=pd.Timestamp(at).tz_localize('UTC').isoformat())
+
+
+def _lock(eng, side, dec_close, key=KEY, sleeve='V', sym='BTCUSDT'):
+    """The engine's re-entry gate for a signal decided at the close `dec_close` (sg time = that candle's open)."""
+    sl = E.sleeve(sleeve, key, 1.0, .01, 4, tf='4h')
+    sg = dict(time=str(dec_close - H4), le=side == 'LONG', se=side == 'SHORT')
+    return E.Engine.reentry_lock(eng, sl, sym, side, sg)
+
+
+@pytest.mark.parametrize('side', ['LONG', 'SHORT'])
+def test_reentry_same_decision_bar_blocked(side):
+    eng = _eng([_exit(side, T0 + pd.Timedelta(seconds=20))])     # signal exit decided at close T0, filled just after
+    assert _lock(eng, side, T0)                                    # the same decision bar can never reopen
+    assert _lock(eng, side, T0 + H4)                               # contract: trigger candle i-1 IS the exit candle
+
+
+@pytest.mark.parametrize('side', ['LONG', 'SHORT'])
+def test_reentry_later_bar_allowed_and_stop_fill(side):
+    eng = _eng([_exit(side, T0 + pd.Timedelta(seconds=20))])
+    assert _lock(eng, side, T0 + 2 * H4) is None and _lock(eng, side, T0 + 10 * H4) is None
+    stop = _eng([_exit(side, T0 + pd.Timedelta(hours=1))])        # intrabar stop in candle [T0, T0 + 4h)
+    assert _lock(stop, side, T0 + H4) and _lock(stop, side, T0 + 2 * H4) is None
+
+
+def test_reentry_opposite_side_not_locked():
+    """Per-side books (range_vwap_rev.run_book): a long exit never locks the short book, and vice versa."""
+    eng = _eng([_exit('LONG', T0 + pd.Timedelta(seconds=20))])
+    assert _lock(eng, 'SHORT', T0) is None and _lock(eng, 'LONG', T0)
+    eng = _eng([_exit('SHORT', T0 + pd.Timedelta(seconds=20))])
+    assert _lock(eng, 'LONG', T0) is None and _lock(eng, 'SHORT', T0)
+
+
+def test_reentry_lock_scoped_to_slot_and_coin():
+    eng = _eng([_exit('LONG', T0 + pd.Timedelta(seconds=20))])
+    assert _lock(eng, 'LONG', T0, sym='ETHUSDT') is None
+    assert _lock(eng, 'LONG', T0, sleeve='W') is None
+
+
+def test_reentry_guard_survives_within_a_run_and_restart():
+    hist = [_exit('LONG', T0 + pd.Timedelta(seconds=20))]
+    eng = _eng(hist)
+    seq = [bool(_lock(eng, 'LONG', T0 + k * H4)) for k in range(4)]
+    assert seq == [True, True, False, False]
+    eng.history.append(_exit('LONG', T0 + 3 * H4 + pd.Timedelta(seconds=5)))   # a later trade exits again
+    assert [bool(_lock(eng, 'LONG', T0 + k * H4)) for k in range(3, 7)] == [True, True, False, False]
+    assert _lock(_eng(list(eng.history)), 'LONG', T0 + 4 * H4)                 # rebuilt from persisted history
+
+
+@pytest.mark.parametrize('key', ['exp_range', 'exp_trend', 'exp_breakout'])
+def test_other_families_unaffected(key):
+    eng = _eng([_exit('LONG', T0 + pd.Timedelta(seconds=20)), _exit('SHORT', T0 + pd.Timedelta(seconds=20))])
+    assert not S.STRATEGIES[key].get('reentry_lock')
+    for side in ('LONG', 'SHORT'):
+        assert _lock(eng, side, T0, key=key) is None                # can still reopen on the exit's decision bar
+
+
+def test_reentry_lock_wired_into_entry_gate():
+    import inspect
+    assert S.STRATEGIES[KEY]['reentry_lock'] is True
+    src = inspect.getsource(E.Engine.entry_block)
+    assert 'self.reentry_lock(sl, sym, side, sg)' in src             # every automatic entry passes entry_block with sg
+    assert 'self.entry_block(sl, sym, side, manual, sg=sg)' in inspect.getsource(E.Engine.open_lot)
