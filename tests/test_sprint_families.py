@@ -17,7 +17,8 @@ FREQ = {'4h': '4h', '1h': '1h', '15m': '15min'}
 # key -> (timeframe, synthetic-shape kwargs, signal-fixture seeds, replay seeds per symbol); seeds are fixed, data is synthetic
 FAMILIES = {'exp_trend': ('4h', dict(A=0.10, P=20.0), (10, 12, 2, 4), (10, 11, 12)),
             'exp_range': ('4h', dict(A=0.08, P=6.0, dr=0.002), (1, 2, 3, 4), (5, 6, 7)),
-            'exp_breakout': ('4h', dict(A=0.10, P=20.0), (1, 2, 3, 4), (5, 6, 7))}
+            'exp_breakout': ('4h', dict(A=0.10, P=20.0), (1, 2, 3, 4), (5, 6, 7)),
+            'exp_scalp': ('15m', dict(A=0.04, P=10.0, dr=0.001), (1, 2, 3, 4), (5, 6, 7))}
 
 
 def synth_one(n=700, seed=3, tf='4h', scale=100.0, A=0.06, P=12.0, seg=200, dr=0.004):
@@ -167,6 +168,20 @@ def test_breakout_rule_literal():
         assert c[i] < ll[i] and not c[i - 1] < ll[i - 1]
     assert (s['lx'] == (c < l.rolling(10).min().shift()).values).all()
     assert (s['sx'] == (c > h.rolling(10).max().shift()).values).all()
+
+
+def test_scalp_rule_literal():
+    tf, kw, seeds, _ = FAMILIES['exp_scalp']
+    raw = synth_one(seed=seeds[0], tf=tf, **kw)
+    s = sig('exp_scalp', raw)
+    d = S.indicators(raw)
+    for i in np.flatnonzero(s['le']):
+        assert d.e20[i] > d.e50[i] and d.l[i] <= d.e20[i] < d.c[i] and d.c[i - 1] > d.e20[i - 1]
+    for i in np.flatnonzero(s['se']):
+        assert d.e20[i] < d.e50[i] and d.h[i] >= d.e20[i] > d.c[i] and d.c[i - 1] < d.e20[i - 1]
+    assert (s['lx'] == (d.e20 < d.e50).values).all() and (s['sx'] == (d.e20 > d.e50).values).all()
+    g = S.merge_mgmt('exp_scalp')
+    assert g['stop_atr'] <= 1.0 and 1.0 <= g['tp_r'] <= 1.5 and g['max_bars'] <= 16
 
 
 # ------------------------------------------------------------------ live engine path (simulated Binance)

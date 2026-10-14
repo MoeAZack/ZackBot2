@@ -203,6 +203,15 @@ def sig_exp_breakout(d, p, ctx):
                           lx=d.c < d.ll10, sx=d.c > d.hh10))
 
 
+def sig_exp_scalp(d, p, ctx):
+    """Scalp v0 (15m intended) = EMA-pullback continuation: in an EMA20 > EMA50 trend, the candle dips to EMA20 (low <= EMA20)
+    and closes back above it after a close above it -> long; exact mirror for shorts. Exit when the EMA20/50 trend flips."""
+    up, dn = d.e20 > d.e50, d.e20 < d.e50
+    le = up & (d.l <= d.e20) & (d.c > d.e20) & (d.c.shift() > d.e20.shift())
+    se = dn & (d.h >= d.e20) & (d.c < d.e20) & (d.c.shift() < d.e20.shift())
+    return _one_side(dict(le=le, se=se, lx=dn, sx=up))
+
+
 # ------------------------------------------------------------------ registry
 # style: calm / balanced / aggressive  ·  sides: long / short / both
 STRATEGIES = {
@@ -252,6 +261,11 @@ STRATEGIES = {
                          desc=EXP_TAG + ': first close above the prior 20-candle high (long) or below the prior 20-candle low '
                               '(short). Stop 2 ATR, target 3R, exit on a close through the opposite 10-candle channel, 60-candle cap. 4h.',
                          mgmt=dict(stop_atr=2.0, tp_r=3.0, max_bars=60)),
+    'exp_scalp': dict(name='[EXPERIMENTAL testnet-only] Scalp EMA20 pullback L+S (15m)', style='aggressive', fn=sig_exp_scalp,
+                      sides='both', tf='15m',
+                      desc=EXP_TAG + ': with EMA20 above EMA50, a candle that dips to EMA20 and closes back above it (long); '
+                           'mirrored for shorts. Tight stop 1 ATR, target 1.5R, exit when EMA20/50 flips, 16-candle (4h) cap. Run on 15m.',
+                      mgmt=dict(stop_atr=1.0, tp_r=1.5, max_bars=16)),
 }
 
 
