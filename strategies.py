@@ -14,6 +14,9 @@ Management keys (all optional):
     pyramid       dict(n=adds, step_r=R between adds, frac=size of each add vs first unit)
     dca           dict(n=safety orders, step_atr, scale, tp_atr, stop_atr) — averaging down, basket TP/stop
 """
+from decimal import Decimal
+from fractions import Fraction
+
 import numpy as np
 import pandas as pd
 
@@ -231,6 +234,90 @@ def sig_exp_structure(d, p, ctx):
                           lx=(d.c < last_lo) | dn, sx=(d.c > last_hi) | up))
 
 
+# ------------------------------------------------------------------ VWAPREV: REX-01 runtime adapter (EXPERIMENTAL / PAPER)
+# The sixth PAPER family: `range_vwap_rev.v1` X1 (frozen contract RANGE-EXIT-01, tools/research/range_vwap_rev.py) on
+# closed 4h candles. The research decision logic (`indicators` / `entry_x1` / `mean_close` / `invalidated`) is mirrored
+# here in the SAME exact decimal-fraction arithmetic, so the frozen equality boundaries (z == -k, drift == 1 ATR) decide
+# identically; tests/test_vwaprev_runtime.py proves bar-for-bar parity against the research module. The runtime does not
+# import tools/research (not shipped with the app). Fail closed: no quote volume, a hole / non-4h step in the 48-bar
+# decision window, zero volume or ATR <= 0 -> no entry and no indicator exit (stop + time cap still apply).
+VWAPREV = dict(n=42, k=2.0, rg=1.0, rg_lag=6, stop_atr=1.5, cap=30, tf_ms=4 * 3_600_000)
+
+
+def _fr(x):
+    """The research module's `fr`: the exact decimal value of the float's repr."""
+    return Fraction(Decimal(repr(float(x))))
+
+
+def vwaprev_eval(d, n=42, k=2.0, rg=1.0, rg_lag=6, tf_ms=4 * 3_600_000):
+    """Per closed candle i of d (t,o,h,l,c,v,qv): dict of numpy arrays le / se (X1 entries), lx / sx (mean close or range
+    invalidation), atr (TR-SMA14 as float, NaN when undefined), z (float, NaN when undefined). A decision reads exactly
+    n + rg_lag contiguous candles i-n-rg_lag+1..i (research `Cfg.lookback`), keyed on a fixed tf_ms step."""
+    m = len(d)
+    z0 = lambda: np.zeros(m, bool)
+    out = dict(le=z0(), se=z0(), lx=z0(), sx=z0(), atr=np.full(m, np.nan), z=np.full(m, np.nan))
+    if m == 0 or 'qv' not in d:
+        return out
+    look = n + rg_lag
+    t = pd.to_datetime(d['t']).astype('datetime64[ns]').astype('int64').to_numpy() // 1_000_000
+    cols = [np.asarray(d[c], float) for c in ('h', 'l', 'c', 'v', 'qv')]
+    bad = ~np.isfinite(np.vstack(cols)).all(axis=0)
+    brk = np.r_[False, np.diff(t) != tf_ms]                       # candle j does not follow j-1 by exactly one step
+    nbad, nbrk = np.r_[0, np.cumsum(bad)], np.r_[0, np.cumsum(brk)]
+    h, l, c, v, qv = ([None if b else _fr(x) for x, b in zip(col, bad)] for col in cols)
+    pv, pq = [Fraction(0)], [Fraction(0)]
+    for j in range(m):
+        pv.append(pv[-1] + (v[j] or 0)); pq.append(pq[-1] + (qv[j] or 0))
+    ptr = [Fraction(0), Fraction(0)]                               # TR of candle 0 is never used
+    for j in range(1, m):
+        ok = h[j] is not None and c[j - 1] is not None
+        tr = max(h[j] - l[j], abs(h[j] - c[j - 1]), abs(l[j] - c[j - 1])) if ok else Fraction(0)
+        ptr.append(ptr[-1] + tr)
+
+    def vwap(i):                                                   # candles i-n+1..i
+        s = pv[i + 1] - pv[i + 1 - n]
+        return None if s == 0 else (pq[i + 1] - pq[i + 1 - n]) / s
+
+    def atr(i):                                                    # TR-SMA14 of candles i-14..i
+        a = (ptr[i + 1] - ptr[i - 13]) / 14
+        return a if a > 0 else None
+
+    kk, rgk = _fr(k), _fr(rg)
+    for i in range(look - 1, m):
+        lo = i - look + 1
+        if nbad[i + 1] - nbad[lo] or nbrk[i + 1] - nbrk[lo + 1]:
+            continue                                               # hole / bad value / wrong step in the window
+        vw, vw_p, vw_l = vwap(i), vwap(i - 1), vwap(i - rg_lag)
+        a, a_p = atr(i), atr(i - 1)
+        zz = None if vw is None or a is None else (c[i] - vw) / a
+        zp = None if vw_p is None or a_p is None else (c[i - 1] - vw_p) / a_p
+        rgv = None if vw is None or vw_l is None or a is None else abs(vw - vw_l) <= rgk * a
+        if a is not None:
+            out['atr'][i] = float(a)
+        if zz is not None:
+            out['z'][i] = float(zz)
+            out['lx'][i] = c[i] >= vw                              # research mean_close (long)
+            out['sx'][i] = c[i] <= vw
+        if rgv is False:                                           # research invalidated
+            out['lx'][i] = out['sx'][i] = True
+        if zz is not None and zp is not None and rgv is True:      # research entry_x1
+            out['le'][i] = zp <= -kk and zz > -kk and c[i] < vw
+            out['se'][i] = zp >= kk and zz < kk and c[i] > vw
+    return out
+
+
+def sig_exp_vwaprev(d, p, ctx):
+    """VWAPREV = range_vwap_rev.v1 X1 on closed 4h candles: VWAP42 = sum quote volume / sum volume, ATR = TR-SMA14,
+    z = (close - VWAP) / ATR, RG = |VWAP_i - VWAP_(i-6)| <= 1 ATR. Long when z crosses back above -2 below VWAP inside
+    RG; short the exact mirror. Exit at the mean (close at / through VWAP) or on range invalidation; stop 1.5 x the
+    decision candle's TR-SMA14 (returned as `atr`, used by the engine for the stop), 30-candle cap."""
+    r = vwaprev_eval(d, n=int(p.get('n', 42)), k=float(p.get('k', 2.0)), rg=float(p.get('rg', 1.0)))
+    idx = d.index
+    s = _one_side({k_: pd.Series(r[k_], index=idx) for k_ in ('le', 'se', 'lx', 'sx')})
+    s['atr'] = r['atr']
+    return s
+
+
 # ------------------------------------------------------------------ registry
 # style: calm / balanced / aggressive  ·  sides: long / short / both
 STRATEGIES = {
@@ -291,6 +378,13 @@ STRATEGIES = {
                                'Confirmed pivots and closed-candle entries prevent lookahead. Stop 1 ATR, target 2R, opposite-structure '
                                'or regime-flip exit, 24-candle (6h) cap. Run on 15m.',
                           mgmt=dict(stop_atr=1.0, tp_r=2.0, max_bars=24)),
+    'exp_vwaprev': dict(name='[TESTNET EXP] VWAP Rev L/S', style='balanced', fn=sig_exp_vwaprev, sides='both', tf='4h',
+                        params=dict(n=42, k=2.0, rg=1.0), runtime_key='VWAPREV',
+                        desc=EXP_TAG + ': VWAPREV = range_vwap_rev.v1 X1 (RANGE-EXIT-01). VWAP42 from quote volume / volume, ATR = '
+                             'TR-SMA14, z = (close - VWAP)/ATR. Long when z crosses back above -2 below VWAP while VWAP moved <= 1 ATR '
+                             'over 6 candles; short mirrored. Target = close back at VWAP, exit if the range breaks, stop 1.5 TR-SMA14 '
+                             'ATR, 30-candle cap. No entry without quote volume or a gap-free 48-candle window. 4h only.',
+                        mgmt=dict(stop_atr=1.5, max_bars=30)),
 }
 
 
@@ -393,6 +487,8 @@ def signals(key, d, ctx, params=None, mask_sides=True):
     ctx = dict(ctx); ctx['btc_down'] = pd.Series(ctx['btc_down'], index=d.index)
     s = st['fn'](d, p, ctx)
     out = {k: np.array(X(s[k]).values, dtype=bool, copy=True) for k in ('le', 'se', 'lx', 'sx')}
+    if 'atr' in s:                                     # a strategy-defined stop ATR (VWAPREV: TR-SMA14), NaN where undefined
+        out['atr'] = np.asarray(s['atr'], dtype=float).copy()
     if mask_sides and st['sides'] == 'long': out['se'][:] = False
     if mask_sides and st['sides'] == 'short': out['le'][:] = False
     return out

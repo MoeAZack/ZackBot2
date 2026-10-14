@@ -993,6 +993,14 @@ EXCHANGE_DOWN = ('Binance is not answering status checks (no order was sent) - p
                  'are and re-checked when it answers')
 
 
+def _sig_atr(raw, d):
+    """Stop ATR of a signal: the strategy's own ATR when it defines one (VWAPREV: TR-SMA14 of the decision candle) and it is
+    finite and positive, else the engine ATR - so a protective stop distance is always defined."""
+    a = raw.get('atr')
+    if a is not None and len(a) and np.isfinite(a[-1]) and a[-1] > 0: return float(a[-1])
+    return float(d.atr)
+
+
 class Engine:
     def __init__(self, cfg, data_dir, dry=False):
         self.cfg, self.dir, self.dry = cfg, data_dir, dry
@@ -1628,11 +1636,12 @@ class Engine:
             return hit[0]
         raw = self.data.klines(sym, tf, 1500)
         now_ms = time.time() * 1000
-        rows = [r[:7] for r in raw if r[6] < now_ms]
-        df = pd.DataFrame(rows, columns=['t', 'o', 'h', 'l', 'c', 'v', 'ct']).astype(float)
+        # VWAPREV: keep the kline's quote volume (field 7); a source without it (replay) leaves NaN -> VWAPREV fails closed
+        rows = [list(r[:7]) + [r[7] if len(r) > 7 else 'nan'] for r in raw if r[6] < now_ms]
+        df = pd.DataFrame(rows, columns=['t', 'o', 'h', 'l', 'c', 'v', 'ct', 'qv']).astype(float)
         last_open = float(df.t.iloc[-1]) if len(df) else 0
         df['t'] = pd.to_datetime(df.t, unit='ms')
-        df = S.indicators(df[['t', 'o', 'h', 'l', 'c', 'v']])
+        df = S.indicators(df[['t', 'o', 'h', 'l', 'c', 'v', 'qv']])
         self._kc[(sym, tf)] = (df, last_open)
         return df
 
@@ -1673,7 +1682,7 @@ class Engine:
                                               se=bool(raw['se'][-1]) and sl['sides'] in ('short', 'both'),
                                               lx=bool(raw['lx'][-1]), sx=bool(raw['sx'][-1]), close=float(d.c),
                                               vol_rank=float((al[s].atr / al[s].c).rolling(180, min_periods=60).rank(pct=True).iloc[-1]),
-                                              atr=float(d.atr), time=str(d.t),
+                                              atr=_sig_atr(raw, d), time=str(d.t),
                                               rng_atr=float((d.h - d.l) / d.atr) if d.atr > 0 else 0.0)
         return out, al
 
