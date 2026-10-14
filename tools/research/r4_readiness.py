@@ -153,10 +153,12 @@ def final_binding(path: str, expect: dict, candidate: str | None, folds: int | N
             if doc['identity'].get(k) != expect.get(k)]
     d = os.path.dirname(os.path.abspath(path))
     pit_fmts = {f for p in PR.RUN_PROFILES.values() for f in (p.summary_format, p.detail_format)}
+    roles = {prof.summary_format: [], prof.detail_format: []}
     for a in doc['artifacts']:
         try:
             with open(os.path.join(d, a['path']), 'rb') as fh:
-                art = json.loads(fh.read())
+                data = fh.read()
+            art = json.loads(data)
         except (OSError, ValueError) as e:
             bad.append(f'artifact {a["path"]} unreadable ({type(e).__name__})')
             continue
@@ -165,12 +167,21 @@ def final_binding(path: str, expect: dict, candidate: str | None, folds: int | N
             if fmt in pit_fmts:
                 bad.append(f'artifact {a["path"]}: a PIT artifact ({fmt}) is not M3 determinism evidence')
             continue
-        if fmt not in (prof.summary_format, prof.detail_format):
-            bad.append(f'artifact {a["path"]}: format {fmt!r} is not the {prof.candidate_id} profile')
+        if fmt not in roles:
+            bad.append(f'artifact {a["path"]}: unexpected role (format {fmt!r}) in a {prof.candidate_id} final')
             continue
+        roles[fmt].append(a['path'])
+        if hashlib.sha256(data).hexdigest() != a['sha256']:
+            bad.append(f'artifact {a["path"]}: does not match its sealed sha256')
+        try:
+            MD.check(art, f'artifact {a["path"]}')
+        except MD.MissingDataError as e:
+            bad.append(f'artifact {a["path"]}: not COMPLETE ({e})')
         got = {k: art.get(k) for k in ('candidate_id', 'side')}
         if got != {'candidate_id': prof.candidate_id, 'side': prof.side}:
             bad.append(f'artifact {a["path"]}: candidate / side {got} is not {prof.candidate_id} / {prof.side}')
+    if not long:                                    # exactly one sealed summary AND one sealed detail (Codex 6158712069)
+        bad += [f'{len(v)} {f} artifacts (exactly one required)' for f, v in roles.items() if len(v) != 1]
     return bad
 
 

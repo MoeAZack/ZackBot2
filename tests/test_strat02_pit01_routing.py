@@ -764,3 +764,33 @@ def test_long_m3_finals_stay_valid_bound_and_never_serve_short(tmp_path):
     assert det['status'] == 'FAIL' and any('identity.commit' in b for b in det['binding'])
     det = RD.determinism(good, 5, RD.expected_identity(SYN_EV, G.SHORT_ID), G.SHORT_ID)   # no short M3 exists
     assert det['status'] == 'FAIL' and any('identity.universe' in b for b in det['binding'])
+
+
+
+# ------------------------------------------------------------------ short finals hold exactly one summary + one detail
+def _short_pair(tmp_path, tag, docs):
+    """Two identical short finals whose sealed artifacts are exactly `docs` ({name: doc}), at the synthetic HEAD."""
+    out = []
+    for x in 'ab':
+        d = tmp_path / f'{tag}{x}'
+        prog = PG.Progress(str(d), identity=dict(_env(SHORT)['identity'], **SYN), config={'t': tag}, clock=None,
+                           folds=5)
+        paths = [PR.write_json(str(d / n), doc) for n, doc in docs.items()]
+        prog.sealed(paths, [n for n in sorted(docs) if n.startswith('summary')][:1] or [sorted(docs)[0]])
+        out.append(prog.final_path)
+    return out
+
+
+def test_short_finals_need_exactly_one_summary_and_one_detail(tmp_path):
+    exp = RD.expected_identity(SYN_EV, G.SHORT_ID)
+    summ = dict(OK, format=SHORT.summary_format, **_bind(SHORT))
+    det = dict(OK, format=SHORT.detail_format, **_bind(SHORT))
+    ok = _short_pair(tmp_path, 'ok', {'summary-x.json': summ, 'detail-x.json': det})
+    assert RD.determinism(ok, 5, exp, G.SHORT_ID)['status'] == 'PASS'              # the proper pair
+    cases = {'summary only': {'summary-x.json': summ}, 'detail only': {'detail-x.json': det},
+             'two summaries': {'summary-x.json': summ, 'summary-y.json': summ},
+             'extra role': {'summary-x.json': summ, 'detail-x.json': det, 'other.json': dict(OK, format='x')},
+             'incomplete detail': {'summary-x.json': summ, 'detail-x.json': dict(det, status='INCOMPLETE')}}
+    for name, docs in cases.items():
+        r = RD.determinism(_short_pair(tmp_path, name.replace(' ', '_'), docs), 5, exp, G.SHORT_ID)
+        assert r['status'] == 'FAIL' and r['binding'], name
