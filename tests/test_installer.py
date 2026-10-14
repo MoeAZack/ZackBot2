@@ -257,7 +257,7 @@ def test_installer_uses_no_cmdlets():
 def test_staging_copy_excludes_the_installer_and_private_files():
     src = open(INSTALLER, encoding='utf-8').read()
     xf = re.search(r"'/XF',(.*?)'/NFL'", src, re.S).group(1)
-    for f in ('build_app.bat', 'rollback_drill.bat', 'installer.ps1', 'setup_git.bat', 'config.env', 'session.json', '*.log'):
+    for f in ('.git', 'build_app.bat', 'rollback_drill.bat', 'installer.ps1', 'setup_git.bat', 'config.env', 'session.json', '*.log'):
         assert f"'{f}'" in xf, f'{f} must not be copied into the build'
 
 

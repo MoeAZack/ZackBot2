@@ -332,9 +332,11 @@ function Invoke-Step1Stage {
     # Keep the manifest-controlled candle datasets through the safety-test step. T04d's CI tests validate every file in
     # DATA_MANIFEST.json; excluding these folders made a normal installer fail before touching the running bot. They are
     # removed from this temporary staging tree immediately after the tests and are never bundled or mirrored.
+    # '.git' is excluded as a folder (/XD) AND as a file (/XF): in a git worktree .git is a pointer FILE, and copying it made
+    # the staged tree a dirty checkout of the real repository (BUILD-FIX-01: the G1 clean-tree tests then failed).
     $r = Invoke-Logged 'robocopy' @(($s.Src.TrimEnd('\') + '\.'), $s.StageSrc, '/MIR',
         '/XD', '__pycache__', '.git', '.git_failed_*', 'dev_out', 'data_market',
-        '/XF', 'build_app.bat', 'rollback_drill.bat', 'installer.ps1', 'setup_git.bat', 'config.env', '*.log', 'session.json',
+        '/XF', '.git', 'build_app.bat', 'rollback_drill.bat', 'installer.ps1', 'setup_git.bat', 'config.env', '*.log', 'session.json',
         '*.tmp', '*.pkl', 'build_info.py', '/NFL', '/NDL', '/NJH', '/NJS')
     if ($r.Code -ge 8) { Stop-Install 'copying the source failed' }
     $s.BuildId = New-BuildId

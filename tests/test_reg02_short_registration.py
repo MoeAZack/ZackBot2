@@ -240,6 +240,8 @@ def test_pit_is_refused_for_the_short_gate_even_when_open(monkeypatch):
 def test_the_committed_registration_state_is_all_or_nothing():
     """Before Phase B: no short family anywhere. After: exactly the 17 declared records, committed, SHA-bound, and the
     program Holm family is 35 (never a partial state)."""
+    if not os.path.exists(os.path.join(ROOT, '.git')):   # BUILD-FIX-01: the installer's staged copy has no git history
+        pytest.skip('not a git checkout')
     fams = L.verify(os.path.join(ROOT, G.SHORT_LEDGER))
     raw = load_short()
     if G.SHORT_FAMILY not in fams:
