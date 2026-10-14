@@ -993,6 +993,21 @@ EXCHANGE_DOWN = ('Binance is not answering status checks (no order was sent) - p
                  'are and re-checked when it answers')
 
 
+def _utc_ms(x):
+    """ms since the epoch of a timestamp text / value; naive values are UTC (never the PC's local zone)."""
+    ts = pd.Timestamp(x)
+    ts = ts.tz_localize('UTC') if ts.tzinfo is None else ts.tz_convert('UTC')
+    return int(ts.value // 1_000_000)
+
+
+def _sig_atr(raw, d):
+    """Stop ATR of a signal: the strategy's own ATR when it defines one (VWAPREV: TR-SMA14 of the decision candle) and it is
+    finite and positive, else the engine ATR - so a protective stop distance is always defined."""
+    a = raw.get('atr')
+    if a is not None and len(a) and np.isfinite(a[-1]) and a[-1] > 0: return float(a[-1])
+    return float(d.atr)
+
+
 class Engine:
     def __init__(self, cfg, data_dir, dry=False):
         self.cfg, self.dir, self.dry = cfg, data_dir, dry
@@ -1628,11 +1643,12 @@ class Engine:
             return hit[0]
         raw = self.data.klines(sym, tf, 1500)
         now_ms = time.time() * 1000
-        rows = [r[:7] for r in raw if r[6] < now_ms]
-        df = pd.DataFrame(rows, columns=['t', 'o', 'h', 'l', 'c', 'v', 'ct']).astype(float)
+        # VWAPREV: keep the kline's quote volume (field 7); a source without it (replay) leaves NaN -> VWAPREV fails closed
+        rows = [list(r[:7]) + [r[7] if len(r) > 7 else 'nan'] for r in raw if r[6] < now_ms]
+        df = pd.DataFrame(rows, columns=['t', 'o', 'h', 'l', 'c', 'v', 'ct', 'qv']).astype(float)
         last_open = float(df.t.iloc[-1]) if len(df) else 0
         df['t'] = pd.to_datetime(df.t, unit='ms')
-        df = S.indicators(df[['t', 'o', 'h', 'l', 'c', 'v']])
+        df = S.indicators(df[['t', 'o', 'h', 'l', 'c', 'v', 'qv']])
         self._kc[(sym, tf)] = (df, last_open)
         return df
 
@@ -1673,7 +1689,7 @@ class Engine:
                                               se=bool(raw['se'][-1]) and sl['sides'] in ('short', 'both'),
                                               lx=bool(raw['lx'][-1]), sx=bool(raw['sx'][-1]), close=float(d.c),
                                               vol_rank=float((al[s].atr / al[s].c).rolling(180, min_periods=60).rank(pct=True).iloc[-1]),
-                                              atr=float(d.atr), time=str(d.t),
+                                              atr=_sig_atr(raw, d), time=str(d.t),
                                               rng_atr=float((d.h - d.l) / d.atr) if d.atr > 0 else 0.0)
         return out, al
 
@@ -3392,6 +3408,28 @@ class Engine:
             self.save_state()
             self.record_equity(self.guard_eq or eq)
 
+    def reentry_lock(self, sl, sym, side, sg):
+        """VWAPREV re-entry lock (Codex 6172827142 / 6173810806), ONLY for strategies registered with reentry_lock=True: an
+        exit is associated with one candle-open t and only an entry decision for that same candle t is blocked; the next
+        candle (open > t) is eligible. A cycle exit (exit_signal / time_exit) is decided on the closed decision candle and
+        fills just after its close, so t = fill candle - TF; an intrabar exit (stop, take-profit, anything else or unknown)
+        is associated with the candle it filled in. Per-side book: the opposite side is never locked. Source: the persisted
+        trade history (closed time, exit_reason), so the lock survives restarts. Returns a reason or None."""
+        if not (S.STRATEGIES.get(sl.get('key')) or {}).get('reentry_lock') or not sg or not sg.get('time'): return None
+        tf_ms = TF_SEC.get(sl.get('tf'), 14400) * 1000
+        try: dec_open = _utc_ms(sg['time'])                       # the decision candle's open (str(d.t), UTC)
+        except Exception: return 'decision candle time unknown - re-entry lock cannot be checked'
+        for h in reversed(self.history):
+            if h.get('sleeve') == sl['id'] and h.get('symbol') == sym and h.get('side') == side and h.get('closed'):
+                try: ex = _utc_ms(h['closed'])
+                except Exception: return 'last exit time unknown - re-entry lock cannot be checked'
+                ex_bar = ex // tf_ms * tf_ms
+                t = ex_bar - tf_ms if h.get('exit_reason') in ('exit_signal', 'time_exit') else ex_bar
+                if dec_open <= t:
+                    return 're-entry lock: this coin/side already exited on this decision candle (contract: next candle only)'
+                return None
+        return None
+
     def entry_block(self, sl, sym, side, manual=False, size=None, sg=None, skip_pending=None):
         """One gate for every way a trade can be opened (automatic, 'Take now', trailing entry, manual). Returns a reason or None.
         size: dict(notional, risk) of the trade being opened (for the size-based risk rules); sg: the signal (pump guard).
@@ -3418,6 +3456,9 @@ class Engine:
         if not sl.get('enabled', True): return 'strategy slot switched off'
         held = [l for l in st['lots'].values() if l['sleeve'] == sl['id']]
         if any(l['symbol'] == sym for l in held): return 'already in a trade on this coin'
+        if sg is not None:
+            rl = self.reentry_lock(sl, sym, side, sg)
+            if rl: return rl
         working = [p for k, p in st.get('pending_entries', {}).items() if p['sleeve'] == sl['id'] and k != skip_pending] + \
                   [r for r in st.get('resting_entries', {}).values() if r['sleeve'] == sl['id']]
         if any(p['symbol'] == sym for p in working): return 'an entry is already working on this coin'
