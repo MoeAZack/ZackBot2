@@ -197,7 +197,7 @@ def _env(profile=None, **over):
     ident = {'commit': '1' * 40, 'evaluator': PR.sha(rc), 'manifest': '2' * 64, 'universe': '3' * 64,
              'classification': None, 'prereg': None}
     env = {'tiers': {'CORE-10': ['A'], 'CORE-20': ['A', 'B']}, 'run_config': rc, 'identity': ident}
-    return dict(env, profile=profile) if profile is not None else env
+    return dict(env, profile=profile, folds=5) if profile is not None else env
 
 
 @pytest.fixture
@@ -279,7 +279,7 @@ def short_env(store, ledger):
     rc = dict(env['run_config'], configs=[c['name'] for c in SHORT.configs()], seed=SHORT.seed, n_trials=35,
               profile=SHORT.binding(), multiplicity=MULT)
     ident = dict(env['identity'], evaluator=PR.sha({'code': PR.code_digest(ROOT), 'config': rc}))
-    return dict(env, run_config=rc, identity=ident, n_trials=35, profile=SHORT, multiplicity=MULT)
+    return dict(env, run_config=rc, identity=ident, n_trials=35, profile=SHORT, multiplicity=MULT, folds=1)
 
 
 @pytest.fixture(scope='module')
@@ -325,3 +325,135 @@ def test_short_e2e_access_records_are_candidate_and_side_bound(short_e2e):
     assert opens and all(r['detail']['side'] == 'short' and r['detail']['purpose'].startswith('STRAT-02 R4b-PIT')
                          and r['split'] != 'holdout' for r in opens)
     assert not os.path.exists(os.path.join(os.path.dirname(led), 'trend_ema_mom.jsonl'))
+
+
+# ------------------------------------------------------------------ PIT-01 revision (Codex 6157724309)
+# P1-1: the CORE barrier - CORE-20 opens only after a same-identity CORE-10 final that is sealed, hash-valid,
+# explicitly COMPLETE and evidence-bearing; an INCOMPLETE CORE-10 is returned as the audit final, nothing else opens.
+PROFS = pytest.mark.parametrize('prof', [None, SHORT], ids=['long', 'short'])
+OK = {'status': 'COMPLETE', 'missing_data_policy': PR.POLICY}
+
+
+def _craft(out, env, summary, evidence):
+    """A sealed CORE-10 final written directly under the env's run id (named evidence chosen by the test)."""
+    d = os.path.join(out, 'CORE-10')
+    cfg = PR.tier_config(env, 'CORE-10')
+    prog = PG.Progress(d, identity=env['identity'], config=cfg, clock=None, folds=PR.fold_bound(env))
+    p = PR.write_json(os.path.join(d, f'summary-{PG.run_id(env["identity"], cfg)}.json'), summary)
+    prog.sealed([p], evidence(os.path.basename(p)))
+    return prog.final_path, p
+
+
+@PROFS
+def test_a_fresh_incomplete_core10_is_the_audit_final_and_core20_never_opens(tmp_path, stub, monkeypatch, prof):
+    access = []
+    monkeypatch.setattr(P, 'Access', lambda *a, **kw: access.append(1))
+    env = dict(_env(prof), status={'CORE-10': 'INCOMPLETE'})
+    fb = PR.fold_bound(env)
+    finals = PR.run_tiers(env, str(tmp_path), clock=None)
+    assert len(finals) == 1 and os.path.basename(os.path.dirname(finals[0])) == 'CORE-10'
+    doc = PG.read(finals[0], fb)
+    assert doc['state'] == 'sealed' and not doc['evidence']
+    assert [t for _, t in stub] == ['CORE-10'] and not os.path.exists(tmp_path / 'CORE-20') and access == []
+    assert G.pit_incomplete(finals, fb) == finals
+    monkeypatch.setattr(G, 'run_pit', lambda repo, **kw: finals)
+    monkeypatch.setattr(G, 'pit_folds', lambda repo, c=None: fb)
+    cli = ['pit', '--store', 'x', '--author', AUTH[0], '--cairo-date', AUTH[1]]
+    assert G.main(cli + (['--candidate', G.SHORT_ID] if prof else [])) == 4
+
+
+@PROFS
+def test_a_resumed_incomplete_core10_is_returned_and_core20_never_opens(tmp_path, stub, prof):
+    env = dict(_env(prof), status={'CORE-10': 'INCOMPLETE'})
+    first = PR.run_tiers(env, str(tmp_path), clock=None)
+    again = PR.run_tiers(env, str(tmp_path), resume=True, clock=None)
+    assert again == first and [t for _, t in stub] == ['CORE-10'] and not os.path.exists(tmp_path / 'CORE-20')
+
+
+@PROFS
+def test_a_complete_evidence_bearing_core10_opens_core20(tmp_path, stub, prof):
+    env = _env(prof)
+    finals = PR.run_tiers(env, str(tmp_path), clock=None)
+    assert [t for _, t in stub] == ['CORE-10', 'CORE-20'] and len(finals) == 2
+    assert all(PR.tier_evidence(f, env['identity'], PR.fold_bound(env)) for f in finals)
+
+
+@PROFS
+def test_named_evidence_must_be_a_sealed_complete_artifact(tmp_path, stub, prof):
+    env = _env(prof)
+    cases = [(OK, lambda p: ['ghost.json'], 'not a sealed artifact'),
+             (dict(OK, status='INCOMPLETE'), lambda p: [p], 'INCOMPLETE'),
+             ({'format': 'x'}, lambda p: [p], 'status')]
+    for n, (summary, ev, msg) in enumerate(cases):
+        out = str(tmp_path / str(n))
+        _craft(out, env, summary, ev)
+        with pytest.raises(PR.PitRunError, match=msg):
+            PR.run_tiers(env, out, resume=True, clock=None)
+        assert not os.path.exists(os.path.join(out, 'CORE-20'))
+    assert stub == []
+
+
+@PROFS
+def test_a_tampered_or_foreign_identity_core10_refuses_before_core20(tmp_path, stub, prof):
+    env = _env(prof)
+    final, summary = _craft(str(tmp_path / 't'), env, OK, lambda p: [p])
+    assert PR.tier_evidence(final, env['identity'], PR.fold_bound(env)) is True
+    with open(summary, 'ab') as f:
+        f.write(b' ')
+    with pytest.raises(PR.PitRunError, match='no longer matches'):
+        PR.run_tiers(env, str(tmp_path / 't'), resume=True, clock=None)
+    with pytest.raises(PR.PitRunError, match='another identity'):
+        PR.tier_evidence(final, dict(env['identity'], commit='9' * 40), PR.fold_bound(env))
+    _craft(str(tmp_path / 'o'), _env(prof, resamples=99), OK, lambda p: [p])   # CORE-10 under another identity
+    with pytest.raises(PR.PitRunError, match='another run identity'):
+        PR.run_tiers(env, str(tmp_path / 'o'), resume=True, clock=None)
+    assert stub == [] and not glob.glob(str(tmp_path / '*' / 'CORE-20'))
+
+
+# P1-2: progress fold bounds are bound to the routed candidate's prereg / plan, never the global long prereg.
+@pytest.fixture
+def long3(tmp_path, monkeypatch):
+    """A substituted 3-fold long prereg (the global default fold source); the committed short prereg has 5 folds."""
+    p = tmp_path / 'long3.json'
+    p.write_text(json.dumps({'splits': {'splits': [{'name': 'walk_forward', 'fold': k} for k in range(3)]}}))
+    monkeypatch.setattr(PG, 'PREREG', str(p))
+    assert PG.fold_count() == 3
+    return p
+
+
+def test_short_fold_bounds_come_from_the_short_prereg_never_the_long_one(tmp_path, long3):
+    assert G.pit_folds(ROOT, G.SHORT_ID) == 5 and G.pit_folds(ROOT) is None
+    env = PR.real_env(ROOT, store=str(tmp_path / 'no-store'), author=AUTH[0], cairo_date=AUTH[1],
+                      gate_path=G.SHORT_GATE, profile=SHORT)
+    assert env['folds'] == PR.fold_bound(env) == 5
+    with pytest.raises(PR.PitRunError, match='routed split plan'):    # the long count never stands in for short
+        PR.fold_bound(dict(env, folds=3))
+    with pytest.raises(PR.PitRunError, match='no fold bound'):
+        PR.fold_bound({k: v for k, v in env.items() if k != 'folds'})
+    ident = _env()['identity']
+    short = PG.Progress(str(tmp_path / 's'), identity=ident, config={'x': 1}, clock=None, folds=5)
+    short.stage_start('pit.walk_forward', 4)                             # a valid short fold 4 is accepted
+    long = PG.Progress(str(tmp_path / 'l'), identity=ident, config={'x': 1}, clock=None)
+    with pytest.raises(PG.ProgressError, match=r'\[0, 3\)'):             # ... and refused under the long prereg
+        long.stage_start('pit.walk_forward', 4)
+
+
+def test_fold_bound_is_carried_through_write_read_seal_and_resume(tmp_path, long3, monkeypatch):
+    def ev(env, tier, prog):
+        prog.stage_start('pit.walk_forward', 4)
+        prog.stage_done('pit.walk_forward', 4)
+        return dict(OK, format=SHORT.summary_format, tier=tier), dict(OK, format=SHORT.detail_format, tier=tier)
+    monkeypatch.setattr(PR, 'evaluate_tier', ev)
+    env = _env(SHORT)
+    finals = PR.run_tiers(env, str(tmp_path), clock=None)
+    assert len(finals) == 2 and G.pit_incomplete(finals, 5) == []
+    for f in finals:
+        assert PG.read(f, 5)['stages'][-1]['fold'] == 4
+        RD.sealed_artifacts(f, 5)
+        with pytest.raises(PG.ProgressError):                            # never validates through the long prereg
+            PG.read(f)
+    assert G.pit_incomplete(finals) == finals                            # long bound: not evidence (fail closed)
+    assert PR.run_tiers(env, str(tmp_path), resume=True, clock=None) == finals
+    longish = {k: v for k, v in env.items() if k not in ('profile', 'folds')}
+    with pytest.raises((PG.ProgressError, PR.PitRunError)):              # never resumes under the long bound
+        PR.run_tiers(longish, str(tmp_path), resume=True, clock=None)

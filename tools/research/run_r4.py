@@ -755,13 +755,23 @@ def run_pit(repo: str, *, store: str, out_dir: str, author: str, cairo_date: str
     return PR.run_tiers(env, out_dir, resume=resume, clock=clock)
 
 
-def pit_incomplete(finals) -> list[str]:
+def pit_folds(repo: str, candidate: str | None = None) -> int | None:
+    """The progress fold bound of a routed candidate: STRAT-01 None (its default prereg, unchanged); any other profile
+    its OWN committed prereg's walk-forward fold count (never the long one)."""
+    p = PROFILES[candidate or LONG.candidate_id]
+    return None if p is LONG else PG.fold_count_of(os.path.join(repo, p.prereg))
+
+
+def pit_incomplete(finals, folds: int | None = None) -> list[str]:
     """The PIT tier finals that are not evidence: unreadable, not sealed, sealed with no evidence (an INCOMPLETE tier),
-    or whose summary is not explicitly COMPLETE (missing-data policy; fail closed)."""
+    or whose summary is not explicitly COMPLETE (missing-data policy; fail closed). `folds` = the routed bound."""
     import pit_run as PR                                                                    # noqa: E402
     bad = []
     for f in finals:
-        doc = PG.read(f)
+        try:
+            doc = PG.read(f, folds)
+        except PG.ProgressError:
+            doc = None
         ok = doc is not None and doc['state'] == 'sealed' and bool(doc['evidence'])
         if ok:
             try:
@@ -824,7 +834,7 @@ def main(argv=None) -> int:
                          resume=a.resume, candidate=a.candidate)
         for path in finals:
             print(path)
-        bad = pit_incomplete(finals)
+        bad = pit_incomplete(finals, pit_folds(M.REPO, a.candidate))
         if bad:                                 # missing-data policy: sealed for audit, never evidence
             print('INCOMPLETE (no evidence; not usable by any gate, verdict, promotion or ledger record): '
                   + ', '.join(bad), file=sys.stderr)

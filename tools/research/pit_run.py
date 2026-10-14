@@ -1907,7 +1907,56 @@ def write_json(path: str, doc) -> str:
     return X.atomic_write_json(path, doc)
 
 
-def _state(d: str, run: str, resume: bool) -> str:
+def fold_bound(env: dict) -> int | None:
+    """The progress fold bound of the routed profile (STRAT-02-PIT-01): STRAT-01 keeps the default (None = its own
+    prereg, unchanged); any other profile MUST carry the walk-forward fold count of its own routed prereg / plan, so
+    neither profile's progress, finals or resumes validate through the other's prereg."""
+    prof = env.get('profile', LONG_RUN)
+    if prof is LONG_RUN:
+        return env.get('folds')
+    n = env.get('folds')
+    if type(n) is not int or n < 1:
+        raise PitRunError(f'{prof.tag}: no fold bound from the routed {prof.candidate_id} prereg')
+    plan = env.get('plan')
+    if plan is not None and n != sum(1 for k in plan.keys() if plan.split(k)['name'] == 'walk_forward'):
+        raise PitRunError(f'{prof.tag}: the fold bound differs from the routed split plan')
+    return n
+
+
+def _sealed_final(d: str, final: str, folds) -> dict:
+    """A sealed final whose every artifact still hashes to its record (else refuse: aborted / tampered)."""
+    doc = PG.read(final, folds)
+    if doc['state'] != 'sealed':
+        raise PitRunError(f'{final}: the run was aborted; use a new evidence dir')
+    for a in doc['artifacts']:
+        if PG.file_sha256(os.path.join(d, a['path'])) != a['sha256']:
+            raise PitRunError(f'{d}: sealed artifact {a["path"]} no longer matches its final record')
+    return doc
+
+
+def tier_evidence(final: str, ident: dict, folds=None) -> bool:
+    """The CORE barrier (Codex 6157420962 item 2): True only for a same-identity final that is sealed, hash-valid,
+    evidence-bearing and whose every NAMED evidence artifact is a sealed artifact and explicitly COMPLETE. False = a
+    sealed INCOMPLETE / no-evidence audit final (the next tier never opens). Anything else refuses."""
+    d = os.path.dirname(final)
+    doc = PG.read(final, folds)
+    if doc is None:
+        raise PitRunError(f'{final}: no final record')
+    if doc['identity'] != ident:
+        raise PitRunError(f'{final}: sealed under another identity')
+    doc = _sealed_final(d, final, folds)
+    if not doc['evidence']:
+        return False
+    arts = {a['path'] for a in doc['artifacts']}
+    for e in doc['evidence']:
+        if e not in arts:
+            raise PitRunError(f'{final}: evidence {e!r} is not a sealed artifact')
+        with open(os.path.join(d, e), 'rb') as f:
+            require_complete(json.loads(f.read()), e)
+    return True
+
+
+def _state(d: str, run: str, resume: bool, folds=None) -> str:
     """'new' | 'resume' | 'sealed' for one tier dir; refuses an interrupted run without resume and any other run."""
     if not os.path.isdir(d):
         return 'new'
@@ -1918,12 +1967,7 @@ def _state(d: str, run: str, resume: bool) -> str:
         raise PitRunError(f'{d}: holds another run identity/config ({other[0]}); use a new evidence dir')
     final = os.path.join(d, f'final-{run}.json')
     if os.path.exists(final):
-        doc = PG.read(final)
-        if doc['state'] != 'sealed':
-            raise PitRunError(f'{final}: the run was aborted; use a new evidence dir')
-        for a in doc['artifacts']:
-            if PG.file_sha256(os.path.join(d, a['path'])) != a['sha256']:
-                raise PitRunError(f'{d}: sealed artifact {a["path"]} no longer matches its final record')
+        _sealed_final(d, final, folds)
         if not resume:
             raise PitRunError(f'{final}: tier already sealed (pass resume to continue)')
         return 'sealed'
@@ -1931,27 +1975,33 @@ def _state(d: str, run: str, resume: bool) -> str:
         if not resume:
             raise PitRunError(f'{d}: interrupted run (progress without a final); pass resume to re-run it '
                               'under the same identity')
+        PG.read(os.path.join(d, f'progress-{run}.json'), folds)
         return 'resume'
     return 'new'
 
 
 def run_tiers(env: dict, out_dir: str, *, resume: bool = False, clock=PG.cairo_now) -> list[str]:
-    """CORE-10 then CORE-20: each tier sealed (final written) before the next starts. Returns the final paths."""
-    finals, ident = [], env['identity']
+    """CORE-10 then CORE-20: each tier sealed (final written) before the next starts, and the next tier opens ONLY
+    after the same-identity previous final is sealed, hash-valid, explicitly COMPLETE and evidence-bearing
+    (`tier_evidence`). A fresh or resumed INCOMPLETE / no-evidence tier stops the run there: its audit final is
+    returned (pit_incomplete -> exit 4) and no later tier dir, Access window, progress or artifact is created."""
+    finals, ident, folds = [], env['identity'], fold_bound(env)
     for i, tier in enumerate(RUN_TIERS):
         d = os.path.join(out_dir, tier)
         run = PG.run_id(ident, tier_config(env, tier))
-        state = _state(d, run, resume)
         final = os.path.join(d, f'final-{run}.json')
+        if i:
+            prev = os.path.join(out_dir, RUN_TIERS[i - 1],
+                                f'final-{PG.run_id(ident, tier_config(env, RUN_TIERS[i - 1]))}.json')
+            if not os.path.exists(prev):
+                raise PitRunError(f'{RUN_TIERS[i - 1]} must be sealed under the same identity before {tier} starts')
+            if not tier_evidence(prev, ident, folds):
+                return finals                   # INCOMPLETE audit final: stop, never open the next tier
+        state = _state(d, run, resume, folds)
         if state == 'sealed':
             finals.append(final)
             continue
-        if i:
-            prev = os.path.join(out_dir, RUN_TIERS[i - 1], f'final-{PG.run_id(ident, tier_config(env, RUN_TIERS[i - 1]))}.json')
-            doc = PG.read(prev)
-            if doc is None or doc['state'] != 'sealed' or doc['identity'] != ident:
-                raise PitRunError(f'{RUN_TIERS[i - 1]} must be sealed under the same identity before {tier} starts')
-        prog = PG.Progress(d, identity=ident, config=tier_config(env, tier), clock=clock)
+        prog = PG.Progress(d, identity=ident, config=tier_config(env, tier), clock=clock, folds=folds)
         stage = 'pit.open'
         try:
             prog.stage_start(stage)
@@ -2061,4 +2111,5 @@ def real_env(repo: str, *, store: str, author: str, cairo_date: str, gate_path: 
             'evaluator': EVALUATOR, 'author': author, 'cairo_date': cairo_date, 'run_config': run_config,
             'rules': rules,
             'identity': identity, 'n_trials': n_trials, 'cost_labels': model.labels('BTCUSDT'),
-            **({'profile': profile, 'multiplicity': mult} if short else {})}
+            **({'profile': profile, 'multiplicity': mult,                 # the routed prereg's own fold bound
+                'folds': PG.fold_count_of(os.path.join(repo, g['prereg']))} if short else {})}

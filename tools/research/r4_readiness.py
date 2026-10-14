@@ -87,9 +87,10 @@ def atomic_write(path: str, doc: dict) -> None:
 
 
 # ------------------------------------------------------------------ determinism from sealed finals
-def sealed_artifacts(path: str) -> tuple[str, dict]:
-    """(final digest, {artifact path: sha256}) from a verified, sealed final record."""
-    doc = PG.read(path)
+def sealed_artifacts(path: str, folds: int | None = None) -> tuple[str, dict]:
+    """(final digest, {artifact path: sha256}) from a verified, sealed final record (`folds`: the routed fold bound,
+    None = the STRAT-01 default)."""
+    doc = PG.read(path, folds)
     if doc is None or doc['kind'] != 'final' or doc['state'] != 'sealed':
         raise ReadinessError(f'{path}: not a sealed final record')
     if not doc['evidence']:                     # missing-data policy: an INCOMPLETE run is sealed without evidence
