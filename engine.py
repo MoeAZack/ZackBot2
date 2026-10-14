@@ -3409,12 +3409,12 @@ class Engine:
             self.record_equity(self.guard_eq or eq)
 
     def reentry_lock(self, sl, sym, side, sg):
-        """VWAPREV re-entry lock (Codex 6172827142), ONLY for strategies registered with reentry_lock=True: the research
-        book (range_vwap_rev.run_book) lets the decision at close t enter only when its decision candle opened strictly
-        after the candle in which this slot's last exit on this coin AND side filled (t - TF > last exit candle open).
-        So the decision bar that produced an exit can never reopen, nor can the next one (its trigger candle i-1 is the
-        exit candle). Per-side book: the opposite side is never locked. Source: the persisted trade history (closed
-        time), so the lock survives restarts; a late-detected stop fill only lengthens it. Returns a reason or None."""
+        """VWAPREV re-entry lock (Codex 6172827142 / 6173810806), ONLY for strategies registered with reentry_lock=True: an
+        exit is associated with one candle-open t and only an entry decision for that same candle t is blocked; the next
+        candle (open > t) is eligible. A cycle exit (exit_signal / time_exit) is decided on the closed decision candle and
+        fills just after its close, so t = fill candle - TF; an intrabar exit (stop, take-profit, anything else or unknown)
+        is associated with the candle it filled in. Per-side book: the opposite side is never locked. Source: the persisted
+        trade history (closed time, exit_reason), so the lock survives restarts. Returns a reason or None."""
         if not (S.STRATEGIES.get(sl.get('key')) or {}).get('reentry_lock') or not sg or not sg.get('time'): return None
         tf_ms = TF_SEC.get(sl.get('tf'), 14400) * 1000
         try: dec_open = _utc_ms(sg['time'])                       # the decision candle's open (str(d.t), UTC)
@@ -3424,8 +3424,9 @@ class Engine:
                 try: ex = _utc_ms(h['closed'])
                 except Exception: return 'last exit time unknown - re-entry lock cannot be checked'
                 ex_bar = ex // tf_ms * tf_ms
-                if dec_open <= ex_bar:
-                    return 're-entry lock: the last exit on this coin/side was too recent (contract: next trigger candle must close after it)'
+                t = ex_bar - tf_ms if h.get('exit_reason') in ('exit_signal', 'time_exit') else ex_bar
+                if dec_open <= t:
+                    return 're-entry lock: this coin/side already exited on this decision candle (contract: next candle only)'
                 return None
         return None
 

@@ -274,8 +274,8 @@ def _eng(history):
     return SimpleNamespace(history=list(history))
 
 
-def _exit(side, at, sleeve='V', sym='BTCUSDT'):
-    return dict(sleeve=sleeve, symbol=sym, side=side, closed=pd.Timestamp(at).tz_localize('UTC').isoformat())
+def _exit(side, at, sleeve='V', sym='BTCUSDT', why='exit_signal'):
+    return dict(sleeve=sleeve, symbol=sym, side=side, closed=pd.Timestamp(at).tz_localize('UTC').isoformat(), exit_reason=why)
 
 
 def _lock(eng, side, dec_close, key=KEY, sleeve='V', sym='BTCUSDT'):
@@ -288,16 +288,18 @@ def _lock(eng, side, dec_close, key=KEY, sleeve='V', sym='BTCUSDT'):
 @pytest.mark.parametrize('side', ['LONG', 'SHORT'])
 def test_reentry_same_decision_bar_blocked(side):
     eng = _eng([_exit(side, T0 + pd.Timedelta(seconds=20))])     # signal exit decided at close T0, filled just after
-    assert _lock(eng, side, T0)                                    # the same decision bar can never reopen
-    assert _lock(eng, side, T0 + H4)                               # contract: trigger candle i-1 IS the exit candle
+    assert _lock(eng, side, T0)                                    # the same decision candle can never reopen
+    assert _lock(eng, side, T0 + H4) is None                       # Codex 6173810806: the very next 4h candle is eligible
+    assert _lock(_eng([_exit(side, T0 + pd.Timedelta(seconds=20), why='time_exit')]), side, T0 + H4) is None
 
 
 @pytest.mark.parametrize('side', ['LONG', 'SHORT'])
 def test_reentry_later_bar_allowed_and_stop_fill(side):
     eng = _eng([_exit(side, T0 + pd.Timedelta(seconds=20))])
     assert _lock(eng, side, T0 + 2 * H4) is None and _lock(eng, side, T0 + 10 * H4) is None
-    stop = _eng([_exit(side, T0 + pd.Timedelta(hours=1))])        # intrabar stop in candle [T0, T0 + 4h)
-    assert _lock(stop, side, T0 + H4) and _lock(stop, side, T0 + 2 * H4) is None
+    for why in ('stop_crossed', 'take_profit', None):              # intrabar / unknown exit in candle [T0, T0 + 4h)
+        stop = _eng([_exit(side, T0 + pd.Timedelta(hours=1), why=why)])
+        assert _lock(stop, side, T0 + H4) and _lock(stop, side, T0 + 2 * H4) is None
 
 
 def test_reentry_opposite_side_not_locked():
@@ -318,10 +320,10 @@ def test_reentry_guard_survives_within_a_run_and_restart():
     hist = [_exit('LONG', T0 + pd.Timedelta(seconds=20))]
     eng = _eng(hist)
     seq = [bool(_lock(eng, 'LONG', T0 + k * H4)) for k in range(4)]
-    assert seq == [True, True, False, False]
+    assert seq == [True, False, False, False]
     eng.history.append(_exit('LONG', T0 + 3 * H4 + pd.Timedelta(seconds=5)))   # a later trade exits again
-    assert [bool(_lock(eng, 'LONG', T0 + k * H4)) for k in range(3, 7)] == [True, True, False, False]
-    assert _lock(_eng(list(eng.history)), 'LONG', T0 + 4 * H4)                 # rebuilt from persisted history
+    assert [bool(_lock(eng, 'LONG', T0 + k * H4)) for k in range(3, 7)] == [True, False, False, False]
+    assert _lock(_eng(list(eng.history)), 'LONG', T0 + 3 * H4)                 # rebuilt from persisted history
 
 
 @pytest.mark.parametrize('key', ['exp_range', 'exp_trend', 'exp_breakout'])
