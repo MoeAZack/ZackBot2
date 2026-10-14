@@ -65,7 +65,9 @@ def fam(request):
 def test_registry_labels_and_both_sides():
     for key, (tf, _, _, _) in FAMILIES.items():
         st = S.STRATEGIES[key]
-        assert 'EXPERIMENTAL' in st['name'] and 'testnet-only' in st['name']
+        # Codex 6164007063: compact visible label (no longer than the longest pre-sprint name, 32 chars, so the slot
+        # selects never widen the Strategy tab); the full warning stays in desc
+        assert st['name'].startswith('[TESTNET EXP] ') and len(st['name']) <= 32
         assert S.EXP_TAG in st['desc']
         assert st['sides'] == 'both' and st['tf'] == tf
         g = S.merge_mgmt(key)

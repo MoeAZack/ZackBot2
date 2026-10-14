@@ -246,22 +246,22 @@ STRATEGIES = {
                      desc='Lead-trader style: top-3 7-day movers breaking out on a volume surge; tight trail.',
                      mgmt=dict(stop_atr=2.0, trail_atr=2.5, tp1_r=2.0, tp1_frac=0.5)),
     # ---- sprint families: EXPERIMENTAL / testnet-only (frozen v0, long + short, no demonstrated edge)
-    'exp_trend': dict(name='[EXPERIMENTAL testnet-only] Trend EMA/momentum L+S', style='balanced', fn=sig_exp_trend, sides='both', tf='4h',
+    'exp_trend': dict(name='[TESTNET EXP] Trend L/S', style='balanced', fn=sig_exp_trend, sides='both', tf='4h',
                       desc=EXP_TAG + ': EMA20/50 cross on the EMA200 side with 7d+30d momentum agreeing (trend_ema_mom.v1), mirrored '
                            'for shorts. Stop 2.5 ATR, target 3R, exit on cross-back or momentum loss, 180-candle time cap. 4h.',
                       mgmt=dict(stop_atr=2.5, tp_r=3.0, max_bars=180)),
-    'exp_range': dict(name='[EXPERIMENTAL testnet-only] Range VWAP/ATR mean reversion L+S', style='balanced', fn=sig_exp_range,
+    'exp_range': dict(name='[TESTNET EXP] Range L/S', style='balanced', fn=sig_exp_range,
                       sides='both', tf='4h', params=dict(k=2.0),
                       desc=EXP_TAG + ': RANGE-EXIT-01 v0. 42-candle VWAP (typical price x volume), ATR = 14-candle mean true range, '
                            'z = (close - VWAP)/ATR. Long when z crosses back above -2 below VWAP while VWAP moved <= 1 ATR over 6 '
                            'candles; short mirrored. Target = back at VWAP, exit if the range breaks, stop 1.5 ATR, 30-candle cap. 4h.',
                       mgmt=dict(stop_atr=1.5, max_bars=30)),
-    'exp_breakout': dict(name='[EXPERIMENTAL testnet-only] Breakout Donchian 20 L+S', style='balanced', fn=sig_exp_breakout,
+    'exp_breakout': dict(name='[TESTNET EXP] Breakout L/S', style='balanced', fn=sig_exp_breakout,
                          sides='both', tf='4h',
                          desc=EXP_TAG + ': first close above the prior 20-candle high (long) or below the prior 20-candle low '
                               '(short). Stop 2 ATR, target 3R, exit on a close through the opposite 10-candle channel, 60-candle cap. 4h.',
                          mgmt=dict(stop_atr=2.0, tp_r=3.0, max_bars=60)),
-    'exp_scalp': dict(name='[EXPERIMENTAL testnet-only] Scalp EMA20 pullback L+S (15m)', style='aggressive', fn=sig_exp_scalp,
+    'exp_scalp': dict(name='[TESTNET EXP] Scalp L/S 15m', style='aggressive', fn=sig_exp_scalp,
                       sides='both', tf='15m',
                       desc=EXP_TAG + ': with EMA20 above EMA50, a candle that dips to EMA20 and closes back above it (long); '
                            'mirrored for shorts. Tight stop 1 ATR, target 1.5R, exit when EMA20/50 flips, 16-candle (4h) cap. Run on 15m.',
