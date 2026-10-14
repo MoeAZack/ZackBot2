@@ -123,6 +123,23 @@ def test_f16_notice_register(case):
         r = run(reg.view())
         assert r['status'] == RV.INCOMPLETE
         assert (r['censor']['reason'], r['censor']['first_unaccountable_ms']) == ('incomplete.notice_gap', ms(2))
+        # Codex 6169708729 item 4, boundary 1: a gap affecting the decision at close ms(7) halts BEFORE those
+        # decisions; the entry filled at the open ms(6) (ordered by the fully accountable close ms(6)) and the bar
+        # [ms(6), ms(7)) stay - never rolled back.
+        r = run(RV.NoticeView({}, ((ms(6) + S.HOUR, ms(9)),)))
+        assert (r['censor']['reason'], r['censor']['cycle_ms'], r['censor']['last_valid_ms']) ==                ('incomplete.notice_gap', ms(7), ms(7))
+        assert r['series'][-1][0] == ms(7) and r['signals'] == [(SYM, ms(6), -1.5)]
+        (lot,) = [x for x in r['incomplete'] if x['symbol'] == SYM]
+        assert (lot['entry_ms'], lot['reason']) == (ms(6), 'incomplete.book_halt')
+        assert [x['symbol'] for x in r['incomplete'] if x['secondary'] is False] == ['*']
+        stopped = S.run({SYM: S.build(n=14, vwap=LE, ohlc={6: (100, 101, 97.0, 99)})}, 'long', 14,
+                        notices=RV.NoticeView({}, ((ms(6) + S.HOUR, ms(9)),)))
+        assert [t['exit_ms'] for t in stopped['trades']] == [ms(6)]           # the intrabar stop fill stays too
+        # boundary 2: a gap already affecting the prior decision (start <= ms(6)) is checked before that
+        # decision's open fills: no entry at the open ms(6).
+        r = run(RV.NoticeView({}, ((ms(6), ms(9)),)))
+        assert r['censor']['first_unaccountable_ms'] == ms(6) and r['censor']['cycle_ms'] == ms(6)
+        assert r['incomplete'][0]['entry_ms'] is None and r['trades'] == [] and r['signals'] == []
         tail = base(ms(2))
         tail.ingest(fetch(ms(3), [], ok=False))
         tail.finalize(ms(14))                                                 # never recovered: GAP to the end

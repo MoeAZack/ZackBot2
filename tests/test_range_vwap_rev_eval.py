@@ -44,9 +44,13 @@ def open_at_end(side='long'):
 def fake_book(rs, *, syms=None, weeks=None, status=RV.COMPLETE, inel=None):
     syms = syms or ['A', 'B', 'C', 'D']
     weeks = weeks or list(range(len(rs)))
-    tr = [{'symbol': syms[i % len(syms)], 'entry_ms': H + weeks[i] * EV.WEEK + S.TF, 'r': r}
-          for i, r in enumerate(rs)]
-    doc = {'status': status, 'policy': RV.POLICY, 'trades': tr,
+    tr = [{'symbol': syms[i % len(syms)], 'entry_ms': H + weeks[i] * EV.WEEK + S.TF, 'r': r, 'net': 100.0 * r,
+           'exit_ms': H + weeks[i] * EV.WEEK + 3 * S.TF} for i, r in enumerate(rs)]
+    eq, series = RV.BOOK['equity0'], [(H, RV.BOOK['equity0'])]
+    for t in sorted(tr, key=lambda t: t['exit_ms']):
+        eq += t['net']
+        series.append((t['exit_ms'], eq))
+    doc = {'status': status, 'policy': RV.POLICY, 'trades': tr, 'series': series,
            'ineligible': inel or {'per_symbol': {s: 0.0 for s in syms}, 'book': 0.0}}
     if status != RV.COMPLETE:
         doc['incomplete'] = [{'reason': 'incomplete.gap', 'secondary': False}]
@@ -109,7 +113,8 @@ def test_f9_incomplete_consumers(case, tmp_path):
         nbs['n0'] = dict(nbs['n0'], status=RV.INCOMPLETE)
         one = EV.edge00(side='long', H=H, base=base, x2=x2, holm_p={'B0': 1e-4, 'B1': 1e-4, 'B2': 1e-4},
                         neighbours=nbs)
-        assert one['neighbours_kept'] == 7 and one['rows']['neighbours'] and one['verdict'] == 'PASS'
+        assert one['neighbours_kept'] == 7 and all(one['rows'].values())
+        assert one['verdict'] == 'PARK' and one['e10_park'] is True             # E10 PARK-only: never PASS (6169708729)
         nbs['n1'] = fake_book([-0.5] * 52, weeks=list(range(52)))
         two = EV.edge00(side='long', H=H, base=base, x2=x2, holm_p={'B0': 1e-4, 'B1': 1e-4, 'B2': 1e-4},
                         neighbours=nbs)
@@ -133,7 +138,17 @@ def test_f9_incomplete_consumers(case, tmp_path):
     elif case == 'fees_slip_x2_conjunction':
         base, x2, nbs = edge_inputs()
         hp = {'B0': 1e-4, 'B1': 1e-4, 'B2': 1e-4}
-        assert EV.edge00(side='long', H=H, base=base, x2=x2, holm_p=hp, neighbours=nbs)['verdict'] == 'PASS'
+        good = EV.edge00(side='long', H=H, base=base, x2=x2, holm_p=hp, neighbours=nbs)
+        assert all(good['rows'].values()) and good['verdict'] == 'PARK' and good['e10_park'] is True
+        e10 = good['e10']                                                    # E10 = DRAWDOWN, PARK-only (6169708729)
+        assert (e10['row'], e10['status'], e10['ceiling'], e10['park_only']) == ('E10-DRAWDOWN', 'PARK', None, True)
+        b = e10['boot_dd_pct']
+        assert b['resamples'] == 10_000 and b['seed'] == [20261026, 3] and b['p5'] <= b['p50'] <= b['p95']
+        assert e10['mtm_max_dd_pct'] == 0.0 and e10 == EV.e10_drawdown(base['series'], base['trades'])
+        dd = EV.e10_drawdown([(H, 10_000.0), (H + 1, 11_000.0), (H + 2, 9_900.0)], [])
+        assert dd['mtm_max_dd_pct'] == pytest.approx(10.0) and dd['boot_dd_pct'] is None and dd['park']
+        rej = EV.edge00(side='long', H=H, base=fake_book([-0.5] * 52), x2=x2, holm_p=hp, neighbours=nbs)
+        assert rej['verdict'] == 'REJECT' and rej['e10']['status'] == 'PARK'  # REJECT is expectancy, never E10
         bad = EV.edge00(side='long', H=H, base=base, x2=fake_book([-0.1] * 52), holm_p=hp, neighbours=nbs)
         assert not bad['rows']['expectancy'] and bad['verdict'] == 'PARK'
         inc_x2 = EV.edge00(side='long', H=H, base=base, x2=dict(x2, status=RV.INCOMPLETE), holm_p=hp,
@@ -275,6 +290,11 @@ def test_f13_baselines_side(side, case):
         b1 = EV.b1_book(tape, side, first=H, end=ms(84))
         x1 = S.run(tape1(side, 84, vwap=LE, close={12: 104.0}), side, 84)
         b2 = RV.run_book(tape1(side, 84, vwap=B2P), RV.PRIMARY, side, first=H, end=ms(84), mode='b2')
+        holed = EV.b1_book(tape1(side, 84, vwap=LE, holes=(50,)), side, first=H, end=ms(84))
+        assert holed['status'] == RV.INCOMPLETE and holed['series'] == []    # a gap is never bypassed by B1
+        with pytest.raises(EV.EvalError):
+            EV.weekly_r(holed['series'], H, ms(84))
+        assert b1['status'] == RV.COMPLETE and b1['legs_end'] == 1 and b1['series'][-1][0] == ms(84)
         for doc in (b1, x1, b2):
             wr = EV.weekly_r(doc['series'], H, ms(84))
             eq = dict(doc['series'])
@@ -306,6 +326,11 @@ def test_f13_p_resolution(case):
         a, b = EV.sign_flip(d, seed=EV.SEED_B1), EV.sign_flip(d, seed=[20261026, 1])
         assert a == b and a['method'] == 'mc' and EV.sign_flip(d, seed=EV.SEED_B2)['p'] is not None
         assert (EV.SEED_B1, EV.SEED_B2, EV.SEED) == ([20261026, 1], [20261026, 2], 20261026)
+        assert EV.SEED_BOOT == [20261026, 3]                                # frozen episode-bootstrap / CI seed
+        tr = fake_book([0.3, -0.2, 0.5, 0.1] * 6)['trades']
+        lo = EV.week_clustered_boot(tr, H)
+        shifted = [dict(t, entry_ms=t['entry_ms'] + EV.WEEK) for t in tr]
+        assert lo == EV.week_clustered_boot(tr, H) == EV.week_clustered_boot(shifted, H + EV.WEEK)   # not from H
     elif case == 'b1_sizing':
         rules = {'A': S.RULE, 'B': S.RULE}
         q = EV.b1_targets(10_000.0, {'A': RV.fr(2), 'B': RV.fr(2)}, {'A': 100.0, 'B': 100.0}, rules)

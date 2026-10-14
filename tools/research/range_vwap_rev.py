@@ -81,6 +81,12 @@ class Incomplete(Exception):
         self.reason, self.first_ms, self.phase, self.symbol = reason, first_ms, phase, symbol
 
 
+class NoticeGapHalt(Incomplete):
+    """An R_ext-GAP affecting the decisions at close t (Codex 6169708729 item 4): the row halts BEFORE those decisions;
+    the fills already causally executed in [t - 4h, t) (ordered by the previous, fully accountable close) stay - the
+    cycle is NOT rolled back."""
+
+
 # ------------------------------------------------------------------ configurations (trials per side)
 @dataclass(frozen=True)
 class Cfg:
@@ -428,6 +434,9 @@ def run_book(tape: dict, cfg: Cfg, side: str, *, first: int, end: int, order=Non
             st['stopped_now'] = set()
             if t > first:
                 bo = t - TF
+                g0 = notices.gap_at(bo)              # a gap already affecting the prior decision is checked BEFORE
+                if g0 is not None:                   # that decision's open fills: none of them executes
+                    raise Incomplete('incomplete.notice_gap', g0, 'open', symbol='*')
                 # (A) exits at the open
                 for s in [s for s in order if s in st['lots']]:
                     cur = s
@@ -483,13 +492,13 @@ def run_book(tape: dict, cfg: Cfg, side: str, *, first: int, end: int, order=Non
                         st['stopped_now'].add(s)
                     else:
                         st['closes'][s] = b.close
-            # (C) the decision at close t
-            g = notices.gap_at(t)
-            if g is not None:
-                raise Incomplete('incomplete.notice_gap', g, 'decision', symbol='*')
+            # (C) the close t: valuation of the bar just played, then the decisions
             mtm = st['wallet'] + math.fsum(sg * v['qty'] * (st['closes'][k] - v['fill'])
                                            for k, v in st['lots'].items())
             st['series'].append((t, mtm))
+            g = notices.gap_at(t)
+            if g is not None:                        # eligibility UNDETERMINED at t: halt before the decisions at t
+                raise NoticeGapHalt('incomplete.notice_gap', g, 'decision', symbol='*')
             d = E.cairo_day(t)
             if d != st['day']:
                 st['day'], st['day_start'] = d, mtm
@@ -539,7 +548,10 @@ def run_book(tape: dict, cfg: Cfg, side: str, *, first: int, end: int, order=Non
         except Incomplete as h:
             if h.symbol is None:
                 h.symbol = cur
-            st = snap
+            if isinstance(h, NoticeGapHalt):
+                prev_t = t                           # [t - 4h, t) was fully accounted: its fills stay
+            else:
+                st = snap                            # roll the cycle back to the last fully accounted close
             halt = (h, t)
             break
         prev_t = t

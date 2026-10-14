@@ -1,5 +1,5 @@
 """REX-01 evaluation mechanics of `range_vwap_rev.v1` (v5 sections 4, 6, 7 + P3; Codex rulings 3-8, 6161875941;
-split-end ruling 6169006548). Synthetic / development only: no store, archive, holdout or market read happens here.
+split-end ruling 6169006548; contract rulings 6169708729). Synthetic / development only: no store, archive, holdout or market read happens here.
 
   * trials: 15 per side (X1, X2, X3; 8 X1 neighbours; B0-B3), family 30; program Holm n = 65 FROZEN in the prereg
     (18 trend_ema_mom + 17 trend_ema_mom_short + 30 range_vwap_rev), outside `run_r4.PROGRAM_FAMILIES`; each re-issue
@@ -11,6 +11,10 @@ split-end ruling 6169006548). Synthetic / development only: no store, archive, h
   * B1 weekly perp hold (1% / N risk units at 1.5 TR-SMA14, gross <= 3x), B2 naive fade (via `run_book`), B3 cash;
   * weekly R = (E_end - E_start) / (0.01 E_start) at Monday boundaries; one-sided paired sign-flip, exact at m <= 24
     non-zero differences, else 10,000 flips (B1 seed [20261026, 1], B2 [20261026, 2]);
+  * seeds are fixed literals, never derived from H or data: B0 SeedSequence(20261026), sign-flip [20261026, 1] (B1)
+    / [20261026, 2] (B2), episode-bootstrap / CI SeedSequence([20261026, 3]) (Codex 6169708729 item 1);
+  * E10 = DRAWDOWN, PARK-only (item 2): bar-close MTM max drawdown + 10k episode-bootstrap DD p5 / p50 / p95; it can
+    never PASS or REJECT until GOV freezes a ceiling, so every current EDGE-00 result carries e10_park = True;
   * EDGE-00 (CORE-20 X1, per side), M3 ineligibility caps, sealed INCOMPLETE packets (NO-RESULT), the atomic CORE-10 ->
     CORE-20 reveal, the outcome-blind VOID monitor, dates derived from H and the register access guards."""
 from __future__ import annotations
@@ -46,7 +50,8 @@ BOOT = 10_000
 EXACT_MAX_M = 24
 SEED = 20261026                                               # fixed literal, independent of H
 SEED_B1, SEED_B2 = [SEED, 1], [SEED, 2]
-SEED_BOOT = [SEED, 3]                                         # NOT frozen by v5 (Build choice, flagged for Codex)
+SEED_BOOT = [20261026, 3]                                     # FROZEN literal episode-bootstrap / CI seed (6169708729)
+E10_CEILING = None                                            # no GOV drawdown ceiling frozen: E10 is PARK-only
 B0_MATCH_Z = 0.10
 B0_SHORTFALL_CAP = 0.25
 INCOMPLETE_PAIR_CAP = 0.05
@@ -264,10 +269,12 @@ def b1_targets(E_tau: float, atrs: dict, closes: dict, rules: dict, cfg=RV.PRIMA
 
 
 def b1_book(tape, side, *, first, end, order=None, row='base', notices=RV.NO_NOTICES, cfg=RV.PRIMARY) -> dict:
-    """B1 per side: rebalance to `b1_targets` at every Monday 00:00 UTC open (H + 7j d) trading the deltas (taker,
-    slip-v1, X1 costs), no stop / cap, funding-window/2 per leg (anchored at the leg's first open), MTM at every
-    close, a delist notice exits at the first open after it. B1 is MTM-defined (weekly R): legs open at `end` are
-    valued at the last in-window close and are not trades. Missing data halts (INCOMPLETE)."""
+    """B1 per side (Codex 6169708729 item 3): a CONTINUOUS equal-risk weekly comparator, not an X1 trade book.
+    Rebalance to `b1_targets` at every Monday 00:00 UTC open (H + 7j d) trading the deltas (taker, slip-v1, X1 costs),
+    no stop / cap, funding-window/2 per leg (anchored at the leg's first open), MTM at every bar close, a delist notice
+    exits at the first open after it. Open legs are VALUED at each declared Monday / end boundary with the last
+    causally available in-window mark (the close of the bar ending at the boundary): no synthetic exit or fill is
+    created, nothing past the boundary is read, and a missing bar / funding / mark is INCOMPLETE, never bypassed."""
     scen = C.STRESS[row]
     order = list(order or tape)
     sg = 1.0 if side == 'long' else -1.0
@@ -353,11 +360,56 @@ def ineligibility(per_symbol: dict, book: float) -> dict:
             'status': 'EVALUABLE' if ok else 'NOT-EVALUABLE'}
 
 
+def episodes(trades) -> list[list[dict]]:
+    """Trades whose holding windows overlap form one episode (an intrabar stop holds through its bar)."""
+    out, cur = [], None
+    for r in sorted(trades, key=lambda r: (r['entry_ms'], r['symbol'])):
+        end = r['exit_ms'] + (TF if r.get('intrabar') else 0)
+        if out and r['entry_ms'] < cur:
+            out[-1].append(r)
+            cur = max(cur, end)
+        else:
+            out.append([r])
+            cur = end
+    return out
+
+
+def e10_drawdown(series, trades, *, seed=SEED_BOOT, B: int = BOOT, equity0: float = RV.BOOK['equity0']) -> dict:
+    """E10 = DRAWDOWN, PARK-only (Codex 6169708729 item 2): the bar-close MTM max drawdown (% of the running peak) and
+    the episode-bootstrap closed-trade drawdown p5 / p50 / p95 (B resamples, PCG64 from SeedSequence(seed)). With no
+    GOV ceiling frozen it can never PASS or REJECT: status PARK, park True."""
+    peak, dd = equity0, 0.0
+    for _, m in series:
+        peak = max(peak, m)
+        dd = max(dd, (peak - m) / peak if peak > 0 else 0.0)
+    eps = [[t['net'] for t in e] for e in episodes(trades)]
+    boot = None
+    if eps:
+        rng = np.random.Generator(np.random.PCG64(np.random.SeedSequence(seed)))
+        dds = []
+        for row in rng.integers(0, len(eps), size=(B, len(eps))):
+            eq = pk = equity0
+            d = 0.0
+            for i in row:
+                for v in eps[i]:
+                    eq += v
+                    pk = max(pk, eq)
+                    d = max(d, (pk - eq) / pk if pk > 0 else 0.0)
+            dds.append(100.0 * d)
+        dds.sort()
+        boot = {q: dds[min(B - 1, int(f * B))] for q, f in (('p5', 0.05), ('p50', 0.50), ('p95', 0.95))}
+        boot.update(resamples=B, seed=list(seed))
+    park = E10_CEILING is None
+    return {'row': 'E10-DRAWDOWN', 'status': 'PARK' if park else 'EVALUATED', 'park': park, 'park_only': True,
+            'ceiling': E10_CEILING, 'mtm_max_dd_pct': 100.0 * dd, 'boot_dd_pct': boot}
+
+
 def edge00(*, side, H, base: dict, x2: dict, holm_p: dict, neighbours: dict, unresolved_share: float = 0.0,
-           e10_park: bool = False, b0_row: str = 'TESTED') -> dict:
+           b0_row: str = 'TESTED') -> dict:
     """EDGE-00 per side on the CORE-20 X1 book (`base` = the base-row book, `x2` = the fees_slip_x2 book).
-    Any INCOMPLETE input -> NO-RESULT. REJECT: sample met and base mean <= 0. PASS only if every row passes;
-    PARK otherwise."""
+    Any INCOMPLETE input -> NO-RESULT. REJECT: sample met and base mean <= 0 (an expectancy verdict; E10 never
+    rejects). PASS needs every row AND E10 not PARK - impossible while no GOV ceiling is frozen, so every current
+    non-REJECT result is PARK with e10_park = True."""
     for name, doc in (('base', base), ('fees_slip_x2', x2)):
         try:
             MD.check(doc, name)
@@ -394,16 +446,17 @@ def edge00(*, side, H, base: dict, x2: dict, holm_p: dict, neighbours: dict, unr
     rows['neighbours'] = len(neighbours) == 8 and keep >= 7
     rows['intrabar'] = unresolved_share <= UNRESOLVED_CAP
     rows['eligibility'] = inel['status'] == 'EVALUABLE'
+    e10 = e10_drawdown(base.get('series', []), tr)
     if rows['sample'] and mean is not None and mean <= 0:
         verdict = 'REJECT'
-    elif all(rows.values()) and not e10_park:
+    elif all(rows.values()) and not e10['park']:
         verdict = 'PASS'
     else:
         verdict = 'PARK'
     if not rows['eligibility']:
         verdict = 'PARK'                              # NOT-EVALUABLE: the universe cannot shrink silently
     return {'side': side, 'verdict': verdict, 'rows': rows, 'mean_r': mean, 'neighbours_kept': keep,
-            'ineligibility': inel, 'e10_park_only': e10_park}
+            'ineligibility': inel, 'e10': e10, 'e10_park': e10['park']}
 
 
 # ------------------------------------------------------------------ sealed packets and the atomic reveal
