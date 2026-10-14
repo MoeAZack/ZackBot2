@@ -519,3 +519,82 @@ def test_short_e2e_summary_and_detail_carry_program_n_trials(short_e2e):
         (p,) = glob.glob(os.path.join(d, 'summary-*.json'))
         m = json.load(open(p))['edge00']['multiplicity']
         assert (m['program_n_trials'], m['own_family_n_trials']) == (35, 17)
+
+
+# ------------------------------------------------------------------ readiness provenance routing (Codex 6158042334)
+def _finals2(tmp_path, env, tag):
+    a = PR.run_tiers(env, str(tmp_path / f'{tag}a'), clock=None)
+    b = PR.run_tiers(env, str(tmp_path / f'{tag}b'), clock=None)
+    return [a[0], b[0]]
+
+
+@pytest.fixture
+def readiness(tmp_path, stub, monkeypatch):
+    """Real routed offline() over the committed tree, with the gate failing for ONE gate file (set per test) and
+    every run-time item claimed PASS by the evidence except item 1 (derived from the routed gate)."""
+    bad = {}
+    monkeypatch.setattr(G, 'gate', lambda repo, gate_path=G.GATE, **kw: list(bad.get(gate_path, [])))
+    monkeypatch.setattr(G, 'pin_failures', lambda repo, g: [])
+    fin = {None: _finals2(tmp_path, _env(), 'l'), G.SHORT_ID: _finals2(tmp_path, _env(SHORT), 's')}
+
+    def run(candidate):
+        ev = {'tests': {'passed': 1, 'failed': 0}, 'final_files': fin[candidate],
+              **{k: {'status': 'PASS'} for k in RD.RESULTS}, 'items': {str(n): {'status': 'PASS'} for n in range(2, 8)}}
+        p, out = tmp_path / 'ev.json', tmp_path / 'r.json'
+        p.write_text(json.dumps(ev))
+        rc = RD.main(['--out', str(out), '--evidence', str(p)] + (['--candidate', candidate] if candidate else []))
+        return rc, json.loads(out.read_text())
+    return bad, run
+
+
+def _sha(rel):
+    return G.hashlib.sha256(G._load(ROOT, rel)).hexdigest()
+
+
+def test_short_is_never_ready_through_long_provenance(readiness):
+    bad, run = readiness
+    bad[G.SHORT_GATE] = ['G1 dirty working tree']                      # long foundations pass, short fail
+    rc, doc = run(G.SHORT_ID)
+    assert rc == 1 and doc['verdict'] == 'NOT READY' and {'item.1', 'foundations'} <= set(doc['not_passing'])
+    assert doc['digests']['prereg'] == _sha(G.SHORT_PREREG) != _sha(json.loads(G._load(ROOT, G.GATE))['prereg'])
+    prof = doc['offline']['profile']
+    assert (prof['candidate_id'], prof['gate'], prof['ledger']) == (G.SHORT_ID, G.SHORT_GATE, G.SHORT_LEDGER)
+    rc, doc = run(None)                                                 # long unaffected by the short failure
+    assert rc == 0 and doc['verdict'] == 'READY' and 'candidate' not in doc and 'profile' not in doc['offline']
+
+
+def test_long_failure_never_leaks_into_short_and_long_stays_compatible(readiness):
+    bad, run = readiness
+    bad[G.GATE] = ['G1 dirty working tree']                             # short foundations pass, long fail
+    rc, doc = run(None)
+    assert rc == 1 and doc['not_passing'] == ['item.1'] and 'gate: G1 dirty working tree' in doc['limitations']
+    rc, doc = run(G.SHORT_ID)
+    assert rc == 0 and doc['verdict'] == 'READY' and (doc['candidate'], doc['folds']) == (G.SHORT_ID, 5)
+    assert doc['digests']['prereg'] == _sha(G.SHORT_PREREG) and doc['offline']['profile']['failures'] == []
+    assert not any('G1' in x for x in doc['limitations'])
+
+
+def test_long_offline_inputs_relabelled_as_short_are_refused(readiness, monkeypatch, tmp_path):
+    bad, run = readiness
+    real = RD.offline
+    monkeypatch.setattr(RD, 'offline', lambda repo, **kw: real(repo))   # the Cowork attack: long provenance only
+    rc, doc = run(G.SHORT_ID)
+    assert rc == 1 and doc['verdict'] == 'NOT READY' and 'foundations' in doc['not_passing']
+    monkeypatch.setattr(RD, 'offline', real)
+    p = tmp_path / 'relabel.json'                                       # evidence may not swap in long digests
+    p.write_text(json.dumps({'digests': real(ROOT)['digests']}))
+    assert RD.main(['--out', str(tmp_path / 'x.json'), '--evidence', str(p), '--candidate', G.SHORT_ID]) == 2
+
+
+def test_unknown_or_conflicting_candidates_refuse_before_offline_work(tmp_path, monkeypatch):
+    monkeypatch.setattr(RD, 'offline', lambda *a, **kw: pytest.fail('offline work before routing'))
+    out = str(tmp_path / 'r.json')
+    assert RD.main(['--out', out, '--candidate', 'nope.v1']) == 2
+    p = tmp_path / 'ev.json'
+    p.write_text(json.dumps({'candidate': G.SHORT_ID}))
+    assert RD.main(['--out', out, '--evidence', str(p), '--candidate', G.LONG.candidate_id]) == 2
+    p.write_text(json.dumps({'candidate': 'nope.v1'}))
+    assert RD.main(['--out', out, '--evidence', str(p)]) == 2
+    with pytest.raises(RD.ReadinessError, match='unknown candidate'):
+        RD.route_candidate('nope.v1')
+    assert not os.path.exists(out)

@@ -181,16 +181,32 @@ def pytest_counts(repo: str, files=R40_TESTS) -> dict:
     return {'passed': n('passed'), 'failed': n('failed') + n('errors?'), 'summary': line, 'returncode': p.returncode}
 
 
-def offline(repo: str, *, run_tests: bool = False, store: str | None = None) -> dict:
-    """The inputs computable now from the committed tree, plus per-item offline detail."""
+def route_candidate(candidate: str | None = None):
+    """The run_r4 registration profile of a readiness candidate (None = STRAT-01); unknown refuses before any work."""
+    import run_r4 as G                                                                      # noqa: E402
+    prof = G.PROFILES.get(candidate or G.LONG.candidate_id)
+    if prof is None:
+        raise ReadinessError(f'unknown candidate {candidate!r} (known: {sorted(G.PROFILES)})')
+    return prof
+
+
+def offline(repo: str, *, run_tests: bool = False, store: str | None = None, candidate: str | None = None) -> dict:
+    """The inputs computable now from the committed tree, plus per-item offline detail. STRAT-02-PIT-01: `candidate`
+    is routed FIRST; its own gate file, prereg, ledger, family and registration drive every profile-specific
+    provenance item and check (the STRAT-01 default is unchanged). A non-STRAT-01 profile also reports
+    `offline.profile` with its foundation failures; any failure keeps it NOT READY (`main`)."""
+    prof = route_candidate(candidate)
     import ledger as L                                                                      # noqa: E402
     import m3_repro as X                                                                    # noqa: E402
     import manifest as M                                                                    # noqa: E402
     import pit as P                                                                         # noqa: E402
     import run_r4 as G                                                                      # noqa: E402
+    long = prof is G.LONG
     head = _git(repo, 'rev-parse', 'HEAD')
-    g = json.loads(G._load(repo, G.GATE))
-    gate = G.gate(repo)
+    g = json.loads(G._load(repo, prof.gate))
+    if G.route(g) is not prof:
+        raise ReadinessError(f'{prof.gate}: does not route {prof.candidate_id}')
+    gate = G.gate(repo) if long else G.gate(repo, gate_path=prof.gate)
     pins = G.pin_failures(repo, g)
     detail, lim = {}, []
     repro = M.load(os.path.join(repo, X.REPRO_MANIFEST))
@@ -205,10 +221,12 @@ def offline(repo: str, *, run_tests: bool = False, store: str | None = None) -> 
     pre = json.loads(pre_raw)
     prereg_sha = hashlib.sha256(pre_raw).hexdigest()
     arch = M.load(os.path.join(repo, 'research_evidence', 'manifests', 'binance-um-archive-v1.json.gz'))
+    u_rel = G.UNIVERSE if long else g['universe']['path']
     try:
-        uni, u_err = G.static_universe(repo, G.UNIVERSE), None
+        uni, u_err = (G.static_universe(repo, u_rel) if long else
+                      G.static_universe(repo, u_rel, g['universe'].get('snapshot', G.SNAPSHOT))), None
     except G.GateError as e:
-        uni, u_err = json.loads(G._load(repo, G.UNIVERSE)), str(e)
+        uni, u_err = json.loads(G._load(repo, u_rel)), str(e)
     u_ok = u_err is None and uni['sources']['manifest_digest'] == arch['digest']
     detail['archive_manifest'] = {'digest': arch['digest'], 'files': len(arch['files']),
                                   'matches_prereg': arch['digest'] == pre['data']['manifest_digest']}
@@ -241,7 +259,16 @@ def offline(repo: str, *, run_tests: bool = False, store: str | None = None) -> 
         if n in OFFLINE_CHECKS:
             items[str(n)]['offline_checks'] = OFFLINE_CHECKS[n]
     if not registered:
-        lim.append('preregistration v1 is UNREGISTERED (G3): no strategy run may start')
+        lim.append('preregistration v1 is UNREGISTERED (G3): no strategy run may start' if long else
+                   f'preregistration {prof.candidate_id} is UNREGISTERED (G3): no strategy run may start')
+    if not long:                                    # routed provenance: never long evidence labelled as short
+        if pre.get('candidate_id') != prof.candidate_id or pre.get('family') != prof.family:
+            gate = gate + [f'G2 routing: the prereg is not {prof.candidate_id}']
+        detail['profile'] = {'candidate_id': prof.candidate_id, 'family': pre.get('family'), 'gate': prof.gate,
+                             'prereg': g['prereg'], 'prereg_sha256': prereg_sha, 'ledger': g['ledger'],
+                             'registered': registered, 'holdout_unread': holdout_unread, 'universe_bound': u_bound,
+                             'failures': list(gate) + ([] if registered else ['not registered'])
+                             + ([] if holdout_unread else ['holdout read']) + ([] if u_bound else ['universe'])}
     if not u_bound:
         lim.append('static universe not bound by the gate (G5)')
     lim.append('universe labelled CURRENT-UNIVERSE / SURVIVOR-BIASED (frozen current list, contract section 0.1)')
@@ -264,23 +291,34 @@ def main(argv=None) -> int:
     ap.add_argument('--repo', default=os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
     a = ap.parse_args(argv)
     try:
-        ev = offline(a.repo, run_tests=a.pytest, store=a.store)
+        import run_r4 as G                                                                  # noqa: E402
+        extra = {}
         if a.evidence:
             with open(a.evidence, encoding='utf-8') as f:
                 extra = json.load(f)
+        cand = a.candidate or extra.get('candidate') or G.LONG.candidate_id
+        if extra.get('candidate', cand) != cand or cand not in G.PROFILES:   # refused before any offline work
+            raise ValueError(f'candidate {cand!r} / evidence candidate {extra.get("candidate")!r}: not one routed '
+                             'profile')
+        long = cand == G.LONG.candidate_id
+        ev = offline(a.repo, run_tests=a.pytest, store=a.store, **({} if long else {'candidate': cand}))
+        own = dict(ev.get('digests') or {})
+        if a.evidence:
             items = dict(ev['items'])
             for k, v in (extra.pop('items', None) or {}).items():
                 items[str(k)] = {**items.get(str(k), {}), **v}
             ev.update(extra, items=items)
-        import run_r4 as G                                                                  # noqa: E402
-        cand = a.candidate or ev.get('candidate') or G.LONG.candidate_id
-        if ev.get('candidate', cand) != cand or cand not in G.PROFILES:
-            raise ValueError(f'candidate {cand!r} / evidence candidate {ev.get("candidate")!r}: not one routed profile')
+        if not long and (ev.get('digests') or {}) != own:
+            raise ValueError(f'{cand}: evidence digests differ from the routed offline provenance')
         folds = G.pit_folds(a.repo, cand)
         doc = build(ev, folds)
-        if cand != G.LONG.candidate_id:                     # STRAT-01 output unchanged
-            doc['candidate'], doc['folds'] = cand, folds
         doc['tests_summary'], doc['offline'] = ev.get('tests_summary'), ev.get('offline')
+        if not long:                                        # STRAT-01 output unchanged
+            prof = (ev.get('offline') or {}).get('profile') or {}
+            doc['candidate'], doc['folds'] = cand, folds
+            if prof.get('candidate_id') != cand or prof.get('failures') != []:
+                doc['not_passing'] = doc['not_passing'] + ['foundations']     # routed foundations: fail closed
+                doc['verdict'] = 'NOT READY'
     except (OSError, ValueError) as e:
         print(f'error: {e}', file=sys.stderr)
         return 2
