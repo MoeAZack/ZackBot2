@@ -230,7 +230,9 @@ def test_cli_routes_check_and_register_to_the_named_candidate(monkeypatch):
 
 def test_pit_is_refused_for_the_short_gate_even_when_open(monkeypatch):
     monkeypatch.setattr(G, 'refuse_unless_open', lambda repo, **kw: None)
-    with pytest.raises(G.GateError, match='only STRAT-01 is wired'):
+    # STRAT-02-PIT-01: the short gate runs only under the explicit short candidate (its own profile); an implicit
+    # (STRAT-01) pit pointed at the short gate is still refused before any data is read
+    with pytest.raises(G.GateError, match=f'routes {G.SHORT_ID}, not {G.LONG.candidate_id}'):
         G.run_pit(ROOT, store=ROOT, out_dir=ROOT, author='t', cairo_date='2026-10-14',
                   gate_kw={'gate_path': G.SHORT_GATE})
 

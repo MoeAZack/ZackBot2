@@ -150,19 +150,34 @@ def fold_count() -> int:
     return _fold_count_of(PREREG)
 
 
-def _fold(v, what):
-    n = fold_count()
+def fold_count_of(prereg_path: str) -> int:
+    """STRAT-02-PIT-01: the walk-forward fold count of an explicitly routed candidate's prereg (never the global
+    one)."""
+    return _fold_count_of(os.path.abspath(prereg_path))
+
+
+def _bound(folds) -> int:
+    """The fold bound of one run: an explicit routed count, or None = the default STRAT-01 prereg (unchanged)."""
+    if folds is None:
+        return fold_count()
+    if type(folds) is not int or folds < 1:
+        raise ProgressError('folds must be a positive int (the routed prereg walk-forward fold count)')
+    return folds
+
+
+def _fold(v, what, folds=None):
+    n = _bound(folds)
     if type(v) is not int or not 0 <= v < n:
         raise ProgressError(f'{what} must be an int in [0, {n}) (the preregistered walk-forward folds)')
 
 
-def _stage(v):
+def _stage(v, folds=None):
     _keys(v, {'name', 'fold', 'status', 'artifacts'}, {'name', 'status'}, 'stage')
     _code(v['name'], 'stage.name', STAGE_NAMES)
     if v['status'] not in ('started', 'done'):
         raise ProgressError('stage.status must be started / done')
     if 'fold' in v:
-        _fold(v['fold'], 'stage.fold')
+        _fold(v['fold'], 'stage.fold', folds)
     if 'artifacts' in v:
         _artifacts(v['artifacts'])
 
@@ -179,7 +194,7 @@ def _artifacts(v):
         raise ProgressError('artifacts must be sorted by path and unique')
 
 
-def _integrity(v):
+def _integrity(v, folds=None):
     if not isinstance(v, list):
         raise ProgressError('integrity must be a list')
     for i in v:
@@ -188,11 +203,12 @@ def _integrity(v):
         if 'stage' in i:
             _code(i['stage'], 'integrity.stage', STAGE_NAMES)
         if 'fold' in i:
-            _fold(i['fold'], 'integrity.fold')
+            _fold(i['fold'], 'integrity.fold', folds)
 
 
-def check_doc(doc: dict) -> None:
-    """Refuse anything outside the whitelist, any numeric outcome and any malformed field."""
+def check_doc(doc: dict, folds: int | None = None) -> None:
+    """Refuse anything outside the whitelist, any numeric outcome and any malformed field. `folds` = the routed
+    candidate's walk-forward fold count (None = the default STRAT-01 prereg)."""
     if not isinstance(doc, dict) or doc.get('kind') not in STATES:
         raise ProgressError('kind must be live or final')
     kind = doc['kind']
@@ -212,8 +228,8 @@ def check_doc(doc: dict) -> None:
     if not isinstance(doc['stages'], list):
         raise ProgressError('stages must be a list')
     for s in doc['stages']:
-        _stage(s)
-    _integrity(doc['integrity'])
+        _stage(s, folds)
+    _integrity(doc['integrity'], folds)
     if kind == 'final':
         _artifacts(doc['artifacts'])
         if not isinstance(doc['evidence'], list) or doc['evidence'] != sorted(set(doc['evidence'])):
@@ -230,8 +246,8 @@ def doc_bytes(doc: dict) -> bytes:
     return json.dumps(doc, sort_keys=True, indent=1, ensure_ascii=True, allow_nan=False).encode('ascii') + b'\n'
 
 
-def read(path: str) -> dict | None:
-    """Read and check one snapshot / final record (None when absent)."""
+def read(path: str, folds: int | None = None) -> dict | None:
+    """Read and check one snapshot / final record (None when absent) under the run's fold bound."""
     if not os.path.exists(path):
         return None
     with open(path, 'rb') as f:
@@ -240,7 +256,7 @@ def read(path: str) -> dict | None:
         doc = json.loads(data)
     except ValueError as e:
         raise ProgressError(f'{path}: not JSON: {e}')
-    check_doc(doc)
+    check_doc(doc, folds)
     if doc_bytes(doc) != data:
         raise ProgressError(f'{path}: not in canonical form')
     return doc
@@ -304,8 +320,9 @@ def file_sha256(path: str) -> str:
 class Progress:
     """Live snapshot writer + one sealed final. `clock=None` omits `wall` entirely (tests, determinism checks)."""
 
-    def __init__(self, evidence_dir: str, *, identity: dict, config: dict, clock=cairo_now):
+    def __init__(self, evidence_dir: str, *, identity: dict, config: dict, clock=cairo_now, folds: int | None = None):
         check_identity(identity)
+        self.folds = None if folds is None else _bound(folds)       # routed fold bound, carried to every write/read
         self.dir, self.clock, self.identity = evidence_dir, clock, dict(identity)
         self.run = run_id(self.identity, config)
         self.path = os.path.join(evidence_dir, f'progress-{self.run}.json')
@@ -313,7 +330,7 @@ class Progress:
         os.makedirs(evidence_dir, exist_ok=True)
         if os.path.exists(self.final_path):
             raise ProgressError(f'{self.final_path}: run already sealed; use a new evidence dir')
-        cur = read(self.path)
+        cur = read(self.path, self.folds)
         if cur is not None and cur['state'] in TERMINAL:
             raise ProgressError(f'{self.path}: run already {cur["state"]}; use a new evidence dir')
         if cur is not None and cur['identity'] != self.identity:
@@ -330,7 +347,7 @@ class Progress:
         doc['digest'] = doc_digest(doc)
         if self.clock is not None:
             doc['wall'] = self.clock()
-        check_doc(doc)
+        check_doc(doc, self.folds)
         return doc
 
     def _write(self, state: str) -> dict:
@@ -350,11 +367,11 @@ class Progress:
         return out
 
     def stage_start(self, name: str, fold: int | None = None) -> dict:
-        self.stages = self.stages + [_mk_stage(name, fold, 'started')]
+        self.stages = self.stages + [_mk_stage(name, fold, 'started', self.folds)]
         return self._write('running')
 
     def stage_done(self, name: str, fold: int | None = None, artifacts=()) -> dict:
-        s = _mk_stage(name, fold, 'done')
+        s = _mk_stage(name, fold, 'done', self.folds)
         if artifacts:
             s['artifacts'] = self.artifacts(artifacts)
         key = (name, fold)
@@ -366,7 +383,7 @@ class Progress:
         return self._write('running')
 
     def integrity_failure(self, codes, stage: str | None = None, fold: int | None = None) -> dict:
-        self.integrity = self.integrity + [_mk_integrity(c, stage, fold) for c in codes]
+        self.integrity = self.integrity + [_mk_integrity(c, stage, fold, self.folds) for c in codes]
         return self._write('running')
 
     def _finish(self, state: str, artifacts, evidence) -> dict:
@@ -380,23 +397,23 @@ class Progress:
         return self._finish('sealed', artifacts, evidence)
 
     def aborted(self, codes, stage: str | None = None, fold: int | None = None) -> dict:
-        self.integrity = self.integrity + [_mk_integrity(c, stage, fold) for c in codes]
+        self.integrity = self.integrity + [_mk_integrity(c, stage, fold, self.folds) for c in codes]
         return self._finish('aborted', (), ())
 
 
-def _mk_stage(name, fold, status):
+def _mk_stage(name, fold, status, folds=None):
     s = {'name': name, 'status': status}
     if fold is not None:
         s['fold'] = fold
-    _stage(s)                                   # refuse before the in-memory state changes
+    _stage(s, folds)                            # refuse before the in-memory state changes
     return s
 
 
-def _mk_integrity(code, stage, fold):
+def _mk_integrity(code, stage, fold, folds=None):
     i = {'code': code}
     if stage is not None:
         i['stage'] = stage
     if fold is not None:
         i['fold'] = fold
-    _integrity([i])                             # refuse before the in-memory state changes
+    _integrity([i], folds)                      # refuse before the in-memory state changes
     return i

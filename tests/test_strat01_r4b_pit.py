@@ -693,7 +693,8 @@ def stub(monkeypatch):
             raise KeyboardInterrupt
         if env.get('fail') == tier:
             raise P.PITError('integrity')
-        return {'format': PR.SUMMARY_FORMAT, 'tier': tier, 'label': SU.LABEL}, {'tier': tier}
+        ok = {'status': 'COMPLETE', 'missing_data_policy': PR.POLICY}      # CORE barrier: evidence-bearing CORE-10
+        return dict(ok, format=PR.SUMMARY_FORMAT, tier=tier, label=SU.LABEL), dict(ok, tier=tier)
     monkeypatch.setattr(PR, 'evaluate_tier', ev)
     return seen
 

@@ -87,9 +87,10 @@ def atomic_write(path: str, doc: dict) -> None:
 
 
 # ------------------------------------------------------------------ determinism from sealed finals
-def sealed_artifacts(path: str) -> tuple[str, dict]:
-    """(final digest, {artifact path: sha256}) from a verified, sealed final record."""
-    doc = PG.read(path)
+def sealed_artifacts(path: str, folds: int | None = None) -> tuple[str, dict]:
+    """(final digest, {artifact path: sha256}) from a verified, sealed final record (`folds`: the routed fold bound,
+    None = the STRAT-01 default)."""
+    doc = PG.read(path, folds)
     if doc is None or doc['kind'] != 'final' or doc['state'] != 'sealed':
         raise ReadinessError(f'{path}: not a sealed final record')
     if not doc['evidence']:                     # missing-data policy: an INCOMPLETE run is sealed without evidence
@@ -114,15 +115,91 @@ def sealed_artifacts(path: str) -> tuple[str, dict]:
     return doc['digest'], arts
 
 
-def determinism(final_files) -> dict:
+IDENT_KEYS = ('commit', 'prereg', 'manifest', 'universe', 'classification')
+
+
+def expected_identity(ev: dict, candidate: str | None = None) -> dict:
+    """The immutable identity every readiness final must carry, by readiness mode, from the offline pass only
+    (Codex 6158493978):
+      * default / STRAT-01 = the documented R4-0 M3 determinism report: computed HEAD, routed long prereg digest, the
+        offline M3 reproduction manifest digest (`offline.repro_manifest.digest`; a bare `build(ev)` with no offline
+        pass falls back to its `digests.dataset`), universe None, classification None;
+      * explicit STRAT-02: computed HEAD, routed short prereg digest, archive (dataset) manifest digest, routed
+        universe digest, classification None."""
+    dig = ev.get('digests') or {}
+    long = route_candidate(candidate).candidate_id == route_candidate(None).candidate_id
+    off = ev.get('offline')
+    repro = ((off or {}).get('repro_manifest') or {}).get('digest') if off is not None else dig.get('dataset')
+    return {'commit': ev.get('head'), 'prereg': dig.get('prereg'), 'manifest': repro if long else dig.get('dataset'),
+            'universe': None if long else dig.get('universe'), 'classification': None}
+
+
+def final_binding(path: str, expect: dict, candidate: str | None, folds: int | None = None) -> list[str]:
+    """Every way one sealed final fails its routed provenance (empty = bound), each final independently: identity ==
+    `expect` (`expected_identity` of the same mode) field by field, and the artifact schema of the mode:
+      * STRAT-01 / M3: the existing M3 evidence contract - no PIT summary / detail artifact (zb-strat0*-pit-*);
+      * STRAT-02: every sealed artifact is zb-strat02-pit-summary/1 or -detail/1 bound to candidate_id
+        trend_ema_mom_short.v1 and side short."""
+    import pit_run as PR                                                                    # noqa: E402
+    prof = PR.RUN_PROFILES[route_candidate(candidate).candidate_id]
+    long = prof is PR.LONG_RUN
+    bad = [f'expected identity.{k} is not a computed digest' for k in IDENT_KEYS
+           if (k == 'commit' or k == 'prereg' or k == 'manifest' or (k == 'universe' and not long))
+           and not (isinstance(expect.get(k), str) and (HEX40 if k == 'commit' else HEX64).match(expect[k]))]
+    doc = PG.read(path, folds)
+    if doc is None:
+        return bad + ['no final record']
+    bad += [f'identity.{k} {doc["identity"].get(k)!r} != routed {expect.get(k)!r}' for k in IDENT_KEYS
+            if doc['identity'].get(k) != expect.get(k)]
+    d = os.path.dirname(os.path.abspath(path))
+    pit_fmts = {f for p in PR.RUN_PROFILES.values() for f in (p.summary_format, p.detail_format)}
+    roles = {prof.summary_format: [], prof.detail_format: []}
+    for a in doc['artifacts']:
+        try:
+            with open(os.path.join(d, a['path']), 'rb') as fh:
+                data = fh.read()
+            art = json.loads(data)
+        except (OSError, ValueError) as e:
+            bad.append(f'artifact {a["path"]} unreadable ({type(e).__name__})')
+            continue
+        fmt = art.get('format') if isinstance(art, dict) else None
+        if long:
+            if fmt in pit_fmts:
+                bad.append(f'artifact {a["path"]}: a PIT artifact ({fmt}) is not M3 determinism evidence')
+            continue
+        if fmt not in roles:
+            bad.append(f'artifact {a["path"]}: unexpected role (format {fmt!r}) in a {prof.candidate_id} final')
+            continue
+        roles[fmt].append(a['path'])
+        if hashlib.sha256(data).hexdigest() != a['sha256']:
+            bad.append(f'artifact {a["path"]}: does not match its sealed sha256')
+        try:
+            MD.check(art, f'artifact {a["path"]}')
+        except MD.MissingDataError as e:
+            bad.append(f'artifact {a["path"]}: not COMPLETE ({e})')
+        got = {k: art.get(k) for k in ('candidate_id', 'side')}
+        if got != {'candidate_id': prof.candidate_id, 'side': prof.side}:
+            bad.append(f'artifact {a["path"]}: candidate / side {got} is not {prof.candidate_id} / {prof.side}')
+    if not long:                                    # exactly one sealed summary AND one sealed detail (Codex 6158712069)
+        bad += [f'{len(v)} {f} artifacts (exactly one required)' for f, v in roles.items() if len(v) != 1]
+    return bad
+
+
+def determinism(final_files, folds: int | None = None, expect: dict | None = None,
+                candidate: str | None = None) -> dict:
     """Item 6 (mechanical part): >= 2 sealed finals (fresh processes / relocated checkout) with the same record
-    digest (identity, run id, stages) and identical artifact hashes."""
+    digest (identity, run id, stages) and identical artifact hashes, AND every final independently bound to the
+    routed offline provenance (`expect`, `final_binding`; Codex 6158344957): matching each other is never enough.
+    `folds` = the routed candidate's fold bound (None = the STRAT-01 default prereg)."""
     if len(final_files) < 2:
         return {'status': 'MISSING', 'detail': 'need >= 2 sealed final records'}
-    runs = [sealed_artifacts(p) for p in final_files]
+    runs = [sealed_artifacts(p, folds) for p in final_files]
     same = all(r == runs[0] for r in runs[1:])
-    return {'status': 'PASS' if same else 'FAIL', 'runs': len(runs), 'final_digest': runs[0][0],
-            'artifact_sha256': runs[0][1]}
+    binding = (['no routed offline provenance to bind the finals to'] if expect is None else
+               [f'{os.path.basename(os.path.dirname(os.path.abspath(p)))}/{os.path.basename(p)}: {b}'
+                for p in final_files for b in final_binding(p, expect, candidate, folds)])
+    return {'status': 'PASS' if same and not binding else 'FAIL', 'runs': len(runs), 'final_digest': runs[0][0],
+            'artifact_sha256': runs[0][1], **({'binding': binding} if binding else {})}
 
 
 def _result(v, what):
@@ -133,10 +210,11 @@ def _result(v, what):
     return dict(v)
 
 
-def build(ev: dict) -> dict:
+def build(ev: dict, folds: int | None = None, candidate: str | None = None) -> dict:
     """`ev` = {'head': 40-hex, 'digests': {dataset, universe, universe_list, prereg}, 'tests': {passed, failed},
     'm3_parity' / 'accounting_sample' / 'pilot': {'status', ...}, 'items': {n: {'status', ...}},
-    'final_files': [...], 'limitations': [...]}. NOT READY whenever any field is missing or not PASS."""
+    'final_files': [...], 'limitations': [...]}. NOT READY whenever any field is missing or not PASS. `folds` = the
+    routed candidate's progress fold bound (STRAT-02-PIT-01; None = the STRAT-01 default), carried to every final."""
     missing = []
     head = ev.get('head')
     if not (isinstance(head, str) and HEX40.match(head)):
@@ -153,7 +231,7 @@ def build(ev: dict) -> dict:
         if str(k) not in items:
             raise ReadinessError(f'item {k!r}: unknown item')
         items[str(k)].update(_result(v, f'item {k}'))
-    det = determinism(ev.get('final_files') or [])
+    det = determinism(ev.get('final_files') or [], folds, expected_identity(ev, candidate), candidate)
     if items['6']['status'] == 'PASS' and det['status'] != 'PASS':
         items['6']['status'] = det['status']               # the hash check can only downgrade a claimed PASS
     items['6']['determinism'] = det
@@ -178,16 +256,32 @@ def pytest_counts(repo: str, files=R40_TESTS) -> dict:
     return {'passed': n('passed'), 'failed': n('failed') + n('errors?'), 'summary': line, 'returncode': p.returncode}
 
 
-def offline(repo: str, *, run_tests: bool = False, store: str | None = None) -> dict:
-    """The inputs computable now from the committed tree, plus per-item offline detail."""
+def route_candidate(candidate: str | None = None):
+    """The run_r4 registration profile of a readiness candidate (None = STRAT-01); unknown refuses before any work."""
+    import run_r4 as G                                                                      # noqa: E402
+    prof = G.PROFILES.get(candidate or G.LONG.candidate_id)
+    if prof is None:
+        raise ReadinessError(f'unknown candidate {candidate!r} (known: {sorted(G.PROFILES)})')
+    return prof
+
+
+def offline(repo: str, *, run_tests: bool = False, store: str | None = None, candidate: str | None = None) -> dict:
+    """The inputs computable now from the committed tree, plus per-item offline detail. STRAT-02-PIT-01: `candidate`
+    is routed FIRST; its own gate file, prereg, ledger, family and registration drive every profile-specific
+    provenance item and check (the STRAT-01 default is unchanged). A non-STRAT-01 profile also reports
+    `offline.profile` with its foundation failures; any failure keeps it NOT READY (`main`)."""
+    prof = route_candidate(candidate)
     import ledger as L                                                                      # noqa: E402
     import m3_repro as X                                                                    # noqa: E402
     import manifest as M                                                                    # noqa: E402
     import pit as P                                                                         # noqa: E402
     import run_r4 as G                                                                      # noqa: E402
+    long = prof is G.LONG
     head = _git(repo, 'rev-parse', 'HEAD')
-    g = json.loads(G._load(repo, G.GATE))
-    gate = G.gate(repo)
+    g = json.loads(G._load(repo, prof.gate))
+    if G.route(g) is not prof:
+        raise ReadinessError(f'{prof.gate}: does not route {prof.candidate_id}')
+    gate = G.gate(repo) if long else G.gate(repo, gate_path=prof.gate)
     pins = G.pin_failures(repo, g)
     detail, lim = {}, []
     repro = M.load(os.path.join(repo, X.REPRO_MANIFEST))
@@ -202,10 +296,12 @@ def offline(repo: str, *, run_tests: bool = False, store: str | None = None) -> 
     pre = json.loads(pre_raw)
     prereg_sha = hashlib.sha256(pre_raw).hexdigest()
     arch = M.load(os.path.join(repo, 'research_evidence', 'manifests', 'binance-um-archive-v1.json.gz'))
+    u_rel = G.UNIVERSE if long else g['universe']['path']
     try:
-        uni, u_err = G.static_universe(repo, G.UNIVERSE), None
+        uni, u_err = (G.static_universe(repo, u_rel) if long else
+                      G.static_universe(repo, u_rel, g['universe'].get('snapshot', G.SNAPSHOT))), None
     except G.GateError as e:
-        uni, u_err = json.loads(G._load(repo, G.UNIVERSE)), str(e)
+        uni, u_err = json.loads(G._load(repo, u_rel)), str(e)
     u_ok = u_err is None and uni['sources']['manifest_digest'] == arch['digest']
     detail['archive_manifest'] = {'digest': arch['digest'], 'files': len(arch['files']),
                                   'matches_prereg': arch['digest'] == pre['data']['manifest_digest']}
@@ -231,14 +327,25 @@ def offline(repo: str, *, run_tests: bool = False, store: str | None = None) -> 
                                                                           'universe', 'm3_coverage')},
                   'universe_bound': u_bound, 'remaining': REMAINING[2]}
     t_ok = bool(tests) and tests['failed'] == 0 and tests['passed'] > 0
-    items['3'] = {'status': 'PASS' if t_ok and holdout_unread else 'MISSING', 'holdout_unread': holdout_unread,
-                  'offline_checks': OFFLINE_CHECKS[3]}
+    items['3'] = {'status': ('PASS' if t_ok else 'MISSING') if holdout_unread else 'FAIL',    # holdout read: FAIL
+                  'holdout_unread': holdout_unread, 'offline_checks': OFFLINE_CHECKS[3]}
     for n in (4, 5, 6, 7):
         items[str(n)] = {'status': 'MISSING', 'remaining': REMAINING[n]}
         if n in OFFLINE_CHECKS:
             items[str(n)]['offline_checks'] = OFFLINE_CHECKS[n]
     if not registered:
-        lim.append('preregistration v1 is UNREGISTERED (G3): no strategy run may start')
+        lim.append('preregistration v1 is UNREGISTERED (G3): no strategy run may start' if long else
+                   f'preregistration {prof.candidate_id} is UNREGISTERED (G3): no strategy run may start')
+    if not long and (pre.get('candidate_id') != prof.candidate_id or pre.get('family') != prof.family):
+        gate = gate + [f'G2 routing: the prereg is not {prof.candidate_id}']    # never long evidence labelled short
+    # the blocking foundation results (both profiles; immutable: `main` never lets evidence replace or upgrade them)
+    detail['foundations'] = (list(gate) + ([] if registered else ['not registered'])
+                             + ([] if holdout_unread else ['holdout read']) + ([] if u_bound else ['universe']))
+    if not long:
+        detail['profile'] = {'candidate_id': prof.candidate_id, 'family': pre.get('family'), 'gate': prof.gate,
+                             'prereg': g['prereg'], 'prereg_sha256': prereg_sha, 'ledger': g['ledger'],
+                             'registered': registered, 'holdout_unread': holdout_unread, 'universe_bound': u_bound,
+                             'failures': list(detail['foundations'])}
     if not u_bound:
         lim.append('static universe not bound by the gate (G5)')
     lim.append('universe labelled CURRENT-UNIVERSE / SURVIVOR-BIASED (frozen current list, contract section 0.1)')
@@ -250,25 +357,78 @@ def offline(repo: str, *, run_tests: bool = False, store: str | None = None) -> 
             'items': items, 'limitations': lim, 'offline': detail}
 
 
+# The ONLY evidence keys merged over the offline pass (bounded runtime results of the official Windows run).
+# Everything offline computes - head, digests, offline / profile / foundations, limitations, item 1 - is
+# immutable: a reserved or unknown key, a computed item field, or upgrading a computed FAIL refuses (exit 2).
+RUNTIME_KEYS = ('candidate', 'm3_parity', 'accounting_sample', 'pilot', 'items', 'final_files', 'tests')
+COMPUTED_ITEMS = ('1',)                             # clean tree + pins: derived from the routed gate only
+
+
+def merge_evidence(ev: dict, extra: dict) -> dict:
+    """`ev` (the offline pass) with the whitelisted runtime evidence merged; never replaces or upgrades a computed
+    value. `tests` only when offline did not count them (no --pytest)."""
+    if not isinstance(extra, dict):
+        raise ReadinessError('evidence must be a JSON object')
+    for k, kind in (('items', dict), ('tests', dict), ('final_files', list)):
+        if k in extra and not isinstance(extra[k], kind):
+            raise ReadinessError(f'evidence {k} must be a JSON {"object" if kind is dict else "array"}')
+    bad = sorted(set(extra) - set(RUNTIME_KEYS))
+    if bad:
+        raise ReadinessError(f'evidence may not set reserved / unknown keys {bad} (runtime keys: {list(RUNTIME_KEYS)})')
+    if 'tests' in extra and ev.get('tests') is not None:
+        raise ReadinessError('evidence may not replace the computed test counts')
+    out, items = dict(ev), {k: dict(v) for k, v in (ev.get('items') or {}).items()}
+    for k, v in (extra.get('items') or {}).items():
+        k, base = str(k), items.get(str(k), {})
+        if k not in {str(n) for n in ITEMS} or k in COMPUTED_ITEMS or not isinstance(v, dict):
+            raise ReadinessError(f'evidence item {k!r}: unknown or computed from the committed tree only')
+        clash = sorted((set(v) - {'status'}) & set(base))
+        if clash:
+            raise ReadinessError(f'evidence item {k}: may not replace computed fields {clash}')
+        if base.get('status') == 'FAIL' and v.get('status', 'FAIL') != 'FAIL':
+            raise ReadinessError(f'evidence item {k}: may not upgrade a computed FAIL')
+        items[k] = {**base, **v}
+    out.update({k: extra[k] for k in RUNTIME_KEYS if k in extra and k not in ('items', 'candidate')}, items=items)
+    return out
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description='R4-0 readiness report')
     ap.add_argument('--out', required=True)
     ap.add_argument('--evidence', help='Windows-run evidence JSON merged over the offline inputs')
     ap.add_argument('--pytest', action='store_true', help='run the R4-0 test suite once for the counts')
     ap.add_argument('--store', help='data root for the byte-level M3 coverage check (Windows step: the checkout)')
+    ap.add_argument('--candidate', default=None,
+                    help='routed candidate of the final files (default trend_ema_mom.v1); its own prereg fold bound')
     ap.add_argument('--repo', default=os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
     a = ap.parse_args(argv)
     try:
-        ev = offline(a.repo, run_tests=a.pytest, store=a.store)
+        import run_r4 as G                                                                  # noqa: E402
+        extra = {}
         if a.evidence:
             with open(a.evidence, encoding='utf-8') as f:
                 extra = json.load(f)
-            items = dict(ev['items'])
-            for k, v in (extra.pop('items', None) or {}).items():
-                items[str(k)] = {**items.get(str(k), {}), **v}
-            ev.update(extra, items=items)
-        doc = build(ev)
+            if not isinstance(extra, dict):                 # malformed shape: a clean exit-2 refusal, never a trace
+                raise ValueError('evidence must be a JSON object')
+        cand = a.candidate or extra.get('candidate') or G.LONG.candidate_id
+        if extra.get('candidate', cand) != cand or cand not in G.PROFILES:   # refused before any offline work
+            raise ValueError(f'candidate {cand!r} / evidence candidate {extra.get("candidate")!r}: not one routed '
+                             'profile')
+        long = cand == G.LONG.candidate_id
+        ev = offline(a.repo, run_tests=a.pytest, store=a.store, **({} if long else {'candidate': cand}))
+        ev = merge_evidence(ev, extra)
+        folds = G.pit_folds(a.repo, cand)
+        doc = build(ev, folds, cand)
         doc['tests_summary'], doc['offline'] = ev.get('tests_summary'), ev.get('offline')
+        found = (ev.get('offline') or {}).get('foundations')
+        if not long:
+            prof = (ev.get('offline') or {}).get('profile') or {}
+            doc['candidate'], doc['folds'] = cand, folds
+            if prof.get('candidate_id') != cand or prof.get('failures') != found:
+                found = None                                # routed provenance missing / inconsistent
+        if found != []:                                     # computed foundations block READY (fail closed)
+            doc['not_passing'] = doc['not_passing'] + ['foundations']
+            doc['verdict'] = 'NOT READY'
     except (OSError, ValueError) as e:
         print(f'error: {e}', file=sys.stderr)
         return 2

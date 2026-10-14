@@ -6,8 +6,8 @@ gate is code, not a comment.
   python tools/research/run_r4.py register [--candidate ...] --author claude-code --cairo-date YYYY-MM-DD
   python tools/research/run_r4.py m3 --store <repo root holding data_long/4h> --cost base|2x|both
          --out-dir research_evidence/runs/r4 --author claude-code --cairo-date YYYY-MM-DD
-  python tools/research/run_r4.py pit --store <binance_um store> --author claude-code --cairo-date YYYY-MM-DD
-         [--out-dir research_evidence/runs/r4b] [--resume]
+  python tools/research/run_r4.py pit [--candidate ...] --store <binance_um store> --author claude-code
+         --cairo-date YYYY-MM-DD [--out-dir research_evidence/runs/r4b] [--resume]
          (STRAT-01 R4b-PIT, pit_run.py: CORE-10 then CORE-20 development splits only; holdout never opened. Codex
          6108364741: run only after Codex posts `R4 READY`.)
 
@@ -32,7 +32,8 @@ the STRAT-01 long profile, whose gate `r4_gate.json` and 18-trial behaviour are 
 `trend_ema_mom_short.v1` has its own gate `r4_gate_short.json` (exact `prereg_sha256`, #73 / #74 pins), its own root
 family ledger and 17 trials (capped primary + 12 neighbours + B0-B3; no uncapped variant, no M3). Its G3 also requires
 the program Holm family (trend_ema_mom + trend_ema_mom_short trial records) to be >= 35.
-`m3` / `pit` stay STRAT-01 only.
+`m3` stays STRAT-01 only. `pit --candidate trend_ema_mom_short.v1` (STRAT-02-PIT-01) runs the short gate and the
+pit_run short profile (tape_short, configs_short, seed 20261012, program Holm n >= 35); default out dir r4b-short.
 `m3` keeps the sanitized progress snapshot + sealed final (progress.py, zb-run-progress/2) beside its reports:
 operational state only. `register` (after Codex clears the prereg) needs G1 + G2 and appends the declared trial
 records once; commit the ledger, then `m3` / `pit` pass G3. No network, no credentials; git is read locally (fetch
@@ -727,25 +728,50 @@ def run_m3(repo: str, *, store: str, rows, out_dir: str, author: str, cairo_date
 
 
 def run_pit(repo: str, *, store: str, out_dir: str, author: str, cairo_date: str, resume: bool = False,
-            gate_kw=None, clock=PG.cairo_now) -> list[str]:
-    """STRAT-01 R4b-PIT (pit_run.py): the R4 gate first (nothing is read on any failure), then CORE-10 and CORE-20
-    over the development splits. Returns the sealed final record paths (operational; no outcome is printed)."""
-    refuse_unless_open(repo, **(gate_kw or {}))
-    if route(json.loads(_load(repo, (gate_kw or {}).get('gate_path', GATE)))) is not LONG:
-        raise GateError('pit: only STRAT-01 is wired; short real-environment evaluation is a later ticket')
+            gate_kw=None, clock=PG.cairo_now, candidate: str | None = None) -> list[str]:
+    """R4b-PIT (pit_run.py): the R4 gate of the candidate's gate file first (nothing is read on any failure), then
+    CORE-10 and CORE-20 over the development splits. Routing (STRAT-02-PIT-01) is explicit and by the COMMITTED gate's
+    candidate: `candidate` (default STRAT-01) names the gate file; the opened gate must route back to that same
+    candidate, which selects exactly one pit_run profile (the short gate selects only trend_ema_mom_short.v1).
+    Returns the sealed final record paths (operational; no outcome is printed)."""
+    kw = dict(gate_kw or {})
+    want = PROFILES.get(candidate or LONG.candidate_id)
+    if want is None:
+        raise GateError(f'pit: unknown candidate {candidate!r} (known: {sorted(PROFILES)})')
+    if candidate is not None:
+        if kw.setdefault('gate_path', want.gate) != want.gate:
+            raise GateError(f'pit: {want.candidate_id} runs only from its own gate {want.gate}')
+    gate_path = kw.get('gate_path', GATE)
+    refuse_unless_open(repo, **kw)
+    prof = route(json.loads(_load(repo, gate_path)))
+    if prof is not want:
+        raise GateError(f'pit: the gate {gate_path} routes {prof.candidate_id}, not {want.candidate_id}')
     import pit_run as PR                                                                    # noqa: E402
-    env = PR.real_env(repo, store=store, author=author, cairo_date=cairo_date,
-                      gate_path=(gate_kw or {}).get('gate_path', GATE))
+    run = PR.RUN_PROFILES[prof.candidate_id]
+    if (run.family, run.primary, run.dev_only) != (prof.family, prof.primary, prof.dev_only):
+        raise GateError(f'pit: the run profile of {prof.candidate_id} differs from its registration profile')
+    env = PR.real_env(repo, store=store, author=author, cairo_date=cairo_date, gate_path=gate_path,
+                      **({} if run is PR.LONG_RUN else {'profile': run}))
     return PR.run_tiers(env, out_dir, resume=resume, clock=clock)
 
 
-def pit_incomplete(finals) -> list[str]:
+def pit_folds(repo: str, candidate: str | None = None) -> int | None:
+    """The progress fold bound of a routed candidate: STRAT-01 None (its default prereg, unchanged); any other profile
+    its OWN committed prereg's walk-forward fold count (never the long one)."""
+    p = PROFILES[candidate or LONG.candidate_id]
+    return None if p is LONG else PG.fold_count_of(os.path.join(repo, p.prereg))
+
+
+def pit_incomplete(finals, folds: int | None = None) -> list[str]:
     """The PIT tier finals that are not evidence: unreadable, not sealed, sealed with no evidence (an INCOMPLETE tier),
-    or whose summary is not explicitly COMPLETE (missing-data policy; fail closed)."""
+    or whose summary is not explicitly COMPLETE (missing-data policy; fail closed). `folds` = the routed bound."""
     import pit_run as PR                                                                    # noqa: E402
     bad = []
     for f in finals:
-        doc = PG.read(f)
+        try:
+            doc = PG.read(f, folds)
+        except PG.ProgressError:
+            doc = None
         ok = doc is not None and doc['state'] == 'sealed' and bool(doc['evidence'])
         if ok:
             try:
@@ -768,6 +794,7 @@ def main(argv=None) -> int:
         x.add_argument('--candidate', choices=sorted(PROFILES), default=LONG.candidate_id)
     m = sub.add_parser('m3')
     p = sub.add_parser('pit')
+    p.add_argument('--candidate', choices=sorted(PROFILES), default=LONG.candidate_id)
     for x in (r, m, p):
         x.add_argument('--author', required=True)
         x.add_argument('--cairo-date', required=True)
@@ -775,7 +802,8 @@ def main(argv=None) -> int:
     m.add_argument('--cost', choices=['base', '2x', 'both'], default='both')
     m.add_argument('--out-dir', default=os.path.join(M.REPO, 'research_evidence', 'runs', 'r4'))
     p.add_argument('--store', required=True)
-    p.add_argument('--out-dir', default=os.path.join(M.REPO, 'research_evidence', 'runs', 'r4b'))
+    p.add_argument('--out-dir', default=None, help='default research_evidence/runs/r4b (STRAT-01), r4b-short '
+                                                     '(STRAT-02)')
     p.add_argument('--resume', action='store_true', help='re-run an interrupted tier under the same identity')
     a = ap.parse_args(argv)
     try:
@@ -800,11 +828,13 @@ def main(argv=None) -> int:
                                cairo_date=a.cairo_date):
                 print(path)
             return 0
-        finals = run_pit(M.REPO, store=a.store, out_dir=a.out_dir, author=a.author, cairo_date=a.cairo_date,
-                         resume=a.resume)
+        out = a.out_dir or os.path.join(M.REPO, 'research_evidence', 'runs',
+                                        'r4b' if a.candidate == LONG.candidate_id else 'r4b-short')
+        finals = run_pit(M.REPO, store=a.store, out_dir=out, author=a.author, cairo_date=a.cairo_date,
+                         resume=a.resume, candidate=a.candidate)
         for path in finals:
             print(path)
-        bad = pit_incomplete(finals)
+        bad = pit_incomplete(finals, pit_folds(M.REPO, a.candidate))
         if bad:                                 # missing-data policy: sealed for audit, never evidence
             print('INCOMPLETE (no evidence; not usable by any gate, verdict, promotion or ledger record): '
                   + ', '.join(bad), file=sys.stderr)

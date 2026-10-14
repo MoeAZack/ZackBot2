@@ -57,10 +57,19 @@ Disclosure (Codex 6108364741 item 3): `summary-<run>.json` carries the labels, a
 sign-keep share, baseline p-values and the verdict rows only - no symbol names or rankings, no raw trades, no
 neighbour-level results. Those live in `detail-<run>.json`, sealed by hash and not for disclosure before both tiers
 are sealed and independently reviewed.
+
+STRAT-02-PIT-01 (`trend_ema_mom_short.v1`): the same runner under an explicit immutable `RunProfile` (`SHORT_RUN`),
+selected only by run_r4.run_pit from the committed short gate: short prereg + ledger, `tape_short`, `configs_short`
+(capped primary + 12 neighbours + B1 perp short book + B2; no uncapped trial), short accounting / B0 (tick rules) /
+B1 / B2 on book month-R blocks, seed 20261012, side-bound Access records. Holm gates on the PROGRAM family
+(trend_ema_mom + trend_ema_mom_short, n >= 35, `program_multiplicity`); the own-family 17 is reported, never gating.
+The profile binding enters the run config, tier config (run id), and the distinct zb-strat02-pit-* summary / detail
+formats, so long and short runs or resumes never alias. `LONG_RUN` is the default and the STRAT-01 path unchanged.
 """
 from __future__ import annotations
 
 import bisect
+import dataclasses
 import glob
 import hashlib
 import json
@@ -126,6 +135,35 @@ RULES_PATH = 'data/exchange_rules_mainnet.json'
 RULES_SHA256 = 'a34ec71130683101183cd6039fcdd37096457544ccb9c07bbcdaa09d90680aa3'
 RULES_ENV = 'mainnet'
 RULES_FIELDS = ('tick', 'step', 'min_qty', 'min_notional')
+SHORT_NOT_EVALUATED = (
+    'follower tiers 100 / 200 / 500 USDT and RULES-BACKFILLED share (E11)',
+    'per-side split (short only rule; the long side is STRAT-01 and never pooled with it)',
+    'stop-first vs target-first (one stop, no target: every exit bar is single-level)',
+    'MDE at 80% power (holdout-only quantity)')
+
+
+@dataclasses.dataclass(frozen=True)
+class RunProfile:
+    """STRAT-02-PIT-01: the immutable candidate profile of one PIT run (candidate, family, side, evaluator entry
+    point, registered configurations, seed, artifact formats). Routed by run_r4.run_pit from the committed gate only;
+    the long profile is the default everywhere and is byte-for-byte the STRAT-01 path."""
+    tag: str
+    candidate_id: str
+    family: str
+    side: str
+    function: str
+    primary: str
+    dev_only: str | None
+    seed: int
+    summary_format: str
+    detail_format: str
+    configs: object                                 # () -> list[dict]: the registered configurations only
+    not_evaluated: tuple
+
+    def binding(self) -> dict:
+        """What binds a run to this profile (run config, tier config, artifacts): long and short never alias."""
+        return {'tag': self.tag, 'candidate_id': self.candidate_id, 'family': self.family, 'side': self.side,
+                'function': self.function, 'primary': self.primary, 'summary_format': self.summary_format}
 
 
 class PitRunError(ValueError):
@@ -1254,6 +1292,28 @@ def configs_short() -> list[dict]:
     return out
 
 
+LONG_RUN = RunProfile('STRAT-01', T.RULE_ID, 'trend_ema_mom', 'long', FUNCTION, PRIMARY_NAME, DEV_ONLY, SEED,
+                      SUMMARY_FORMAT, DETAIL_FORMAT, configs, NOT_EVALUATED)
+SHORT_RUN = RunProfile('STRAT-02', 'trend_ema_mom_short.v1', 'trend_ema_mom_short', 'short', SHORT_FUNCTION,
+                       SHORT_PRIMARY_NAME, None, SHORT_SEED, 'zb-strat02-pit-summary/1', 'zb-strat02-pit-detail/1',
+                       configs_short, SHORT_NOT_EVALUATED)
+RUN_PROFILES = {p.candidate_id: p for p in (LONG_RUN, SHORT_RUN)}
+
+
+def profile_of(env: dict) -> RunProfile:
+    """The env's run profile (absent = STRAT-01). A short env must carry its binding in the run config and point at
+    its own family ledger; anything cross-wired refuses before a split is opened."""
+    prof = env.get('profile', LONG_RUN)
+    if prof not in RUN_PROFILES.values():
+        raise PitRunError(f'unknown run profile {prof!r}')
+    if prof is not LONG_RUN:
+        if env['run_config'].get('profile') != prof.binding():
+            raise PitRunError(f'{prof.tag}: the run config is not bound to {prof.candidate_id}')
+        if os.path.splitext(os.path.basename(env['ledger']))[0] != prof.family:
+            raise PitRunError(f'{prof.tag}: Access records must go to the {prof.family} family ledger')
+    return prof
+
+
 # ------------------------------------------------------------------ B0: matched random entries
 def b0_pool(outputs, *, first: int, last: int) -> dict:
     """{(symbol, regime label): [eligible decision times]}: inside the split's decision range, the symbol warm (its
@@ -1528,10 +1588,40 @@ def month_blocks(key, first, last, cand, b1, b2) -> list[dict]:
     return out
 
 
+def b1_short_view(v: dict) -> dict:
+    """The STRAT-02 B1 perp short book account (`account`, kind b1, side short) in the shared detail / metrics shape:
+    no trades (its legs are rebalances, never episodes), the book figures per row (None when a row is INCOMPLETE), the
+    month R kept for the block pairing. Status is re-derived from the rows (fail closed)."""
+    rows = {}
+    for r, x in v['rows'].items():
+        done = x.get('status') == COMPLETE
+        rows[r] = dict({k: x[k] for k in ('incomplete', 'refusals', 'month_r', 'wallet_end', 'status')},
+                       counted=[], trades=[], excluded_symbols=[], excluded_trades=0,
+                       net_pct_equity=100.0 * (x['wallet_end'] - BOOK['equity0']) / BOOK['equity0'] if done else None,
+                       **(book_stats(x['series']) if done else {'mtm_max_dd_pct': None,
+                                                                'longest_underwater_cycles': None}))
+    base = rows[next(iter(rows))]
+    return {'config': v['config'], 'book': True, 'side': 'short', 'rows': rows, 'trades': [], 'counted': [],
+            'incomplete': base['incomplete'], 'excluded_symbols': [], 'excluded_trades': 0,
+            'refusals': base['refusals'], 'status': _status(rows.values()), 'policy': POLICY}
+
+
+def month_blocks_short(key, first, last, cand, b1, b2) -> list[dict]:
+    """STRAT-02 calendar-month blocks (prereg baselines B1 / B2): every side in the same units, the base-row book MTM
+    month R (`month_r`: (E_end - E_start) / (0.01 x E_start)) of the candidate, the B1 perp short book and B2. A row
+    with no month R (INCOMPLETE) gives None, never a zero; such a tier is INCOMPLETE and never evidence."""
+    mr = lambda v: (v['rows']['base'].get('month_r') or {}) if v['rows'].get('base') else {}
+    c, x1, x2 = mr(cand), mr(b1), mr(b2)
+    return [{'block': f'{key}:{mo}', 'cand': c.get(mo), 'B2': x2.get(mo), 'B1': x1.get(mo)}
+            for mo in months_of(first, last)]
+
+
 # ------------------------------------------------------------------ the tier evaluation
 def evaluate_tier(env: dict, tier: str, prog: PG.Progress | None) -> tuple[dict, dict]:
     """Open, evaluate and account every development split of one tier; returns (summary, detail)."""
-    plan, cfgs, cfg_run = env['plan'], configs(), env['run_config']
+    prof = profile_of(env)
+    plan, cfgs, cfg_run = env['plan'], prof.configs(), env['run_config']
+    short = prof.side == 'short'
     symbols = env['tiers'][tier]
     missing = [s for s in symbols if s not in env['rules']]
     if missing:
@@ -1546,30 +1636,35 @@ def evaluate_tier(env: dict, tier: str, prog: PG.Progress | None) -> tuple[dict,
         stage = 'pit.walk_forward' if name == 'walk_forward' else 'pit.development'
         if prog is not None:
             prog.stage_start(stage, fold)
-        acc = P.Access(ds, plan, env['ledger'], candidate_id=T.RULE_ID, author=env['author'],
+        acc = P.Access(ds, plan, env['ledger'], candidate_id=prof.candidate_id, author=env['author'],
                        cairo_date=env['cairo_date'], repo=env['repo'])
-        w = acc.open(key, detail={'purpose': f'STRAT-01 R4b-PIT {tier} development split (no holdout)',
-                                  'tier': tier, 'symbols': list(symbols)}, lineage='root')
-        ev = P.evaluate(w, env['evaluator'], FUNCTION, list(range(lo + TF, hi + 1, TF)), perturb=True)
+        w = acc.open(key, detail={'purpose': f'{prof.tag} R4b-PIT {tier} development split (no holdout)',
+                                  'tier': tier, 'symbols': list(symbols),
+                                  **({'side': prof.side} if short else {})}, lineage='root')
+        ev = P.evaluate(w, env['evaluator'], prof.function, list(range(lo + TF, hi + 1, TF)), perturb=True)
         res = {c['name']: account(ev, c, symbols=symbols, first=first, last=last, hi=hi, slip_c=cfg_run['slip_c'],
                                   rules=env['rules'],
                                   rows=rows if c['role'] in ('primary', 'development_only', 'baseline') else ('base',),
                                   **({'delist': env['delist_notices']} if env.get('delist_notices') and
-                                     c['kind'] != 'b1' else {}))
+                                     c['kind'] != 'b1' else {}), **({'side': 'short'} if short else {}))
                for c in cfgs}
+        if short:
+            res['B1'] = b1_short_view(res['B1'])
         regime = {o['t']: o.get('g') for o in ev}
         for v in res.values():
             for tr in v['trades']:
                 tr['regime'] = regime.get(tr['signal_ms'])
-        prim = res[PRIMARY_NAME]
+        prim = res[prof.primary]
         boot = {'seed': cfg_run['seed'], 'resamples': cfg_run['resamples']}
-        per_split[key] = {'primary': metrics(_acc(prim), rows=rows, boot=boot),
-                          'uncapped_development_only': metrics(_acc(res[DEV_ONLY]), rows=rows, boot=boot)}
+        per_split[key] = {'primary': metrics(_acc(prim), rows=rows, boot=boot)}
+        if prof.dev_only:                                  # STRAT-01 only: STRAT-02 has no uncapped variant
+            per_split[key]['uncapped_development_only'] = metrics(_acc(res[prof.dev_only]), rows=rows, boot=boot)
         b0 = b0_pairs(ev, prim, first=first, last=last, hi=hi, slip_c=cfg_run['slip_c'],
-                      seed_key=f'{cfg_run["seed"]}|{tier}|{key}', draws=cfg_run['b0_draws'])
+                      seed_key=f'{cfg_run["seed"]}|{tier}|{key}', draws=cfg_run['b0_draws'],
+                      **({'side': 'short', 'rules': env['rules']} if short else {}))
         b0_diffs += b0['diffs']
         b0_meta.update(invalid_draws=b0['invalid_draws'], unmatched_trades=b0['unmatched_trades'])
-        blocks += month_blocks(key, first, last, prim, res['B1'], res['B2'])
+        blocks += (month_blocks_short if short else month_blocks)(key, first, last, prim, res['B1'], res['B2'])
         detail_splits[key] = {'attestation': ev.attestation_digest, 'outputs_digest': ev.attestation['outputs_digest'],
                               'b0_invalid_draws': b0['invalid_draws'], 'b0_unmatched_trades': b0['unmatched_trades'],
                               'configs': {k: _detail(v) for k, v in res.items()}}
@@ -1663,17 +1758,40 @@ def _agg(detail_splits, name, keys, rows, boot):
     return metrics(acc, rows=rows, boot=boot), tr
 
 
+def program_multiplicity(env: dict, prof: RunProfile) -> dict:
+    """The Holm family a profile gates on. STRAT-01: its own family ledger count (unchanged). STRAT-02: the PROGRAM
+    family (every trial record of trend_ema_mom AND trend_ema_mom_short, n = 35 at freeze) carried by the env from the
+    verified ledgers; the own-family n is reported beside it, never gating. Absent / inconsistent refuses: the long
+    family count is never silently substituted."""
+    if prof is LONG_RUN:
+        return {'status': 'PASS', 'n_trials': env['n_trials']}
+    import run_r4 as G                                                                      # noqa: E402
+    m = env.get('multiplicity')
+    by = (m or {}).get('by_family') or {}
+    if (not m or set(by) != set(G.PROGRAM_FAMILIES) or m.get('program') != sum(by.values())
+            or env['n_trials'] != m['program'] or m['program'] < G.PROGRAM_N_AT_FREEZE
+            or by.get(prof.family, 0) < G.SHORT_TRIALS):
+        raise PitRunError(f'{prof.tag}: the gating Holm family must be the program family (>= '
+                          f'{G.PROGRAM_N_AT_FREEZE}, {" + ".join(G.PROGRAM_FAMILIES)}); got {m!r} / '
+                          f'n_trials {env["n_trials"]!r}')
+    return {'status': 'PASS', 'n_trials': m['program'], 'program_n_trials': m['program'],     # n_trials: compat
+            'gating_family': 'program', 'program_families': dict(by), 'own_family_n_trials': by[prof.family],
+            'own_family_gating': False}
+
+
 def summarize(env, tier, symbols, per_split, detail_splits, blocks, b0_diffs, b0_meta=None):
+    prof = profile_of(env)
+    mult = program_multiplicity(env, prof)
     cfg_run, plan = env['run_config'], env['plan']
     rows = tuple(cfg_run['stress_rows'])
     keys = list(per_split)
     wf = [k for k in keys if plan.split(k)['name'] == 'walk_forward']
     boot = {'seed': cfg_run['seed'], 'resamples': cfg_run['resamples']}
-    dev_m, dev_tr = _agg(detail_splits, PRIMARY_NAME, keys, rows, boot)
-    wf_m, _ = _agg(detail_splits, PRIMARY_NAME, wf, rows, boot)
+    dev_m, dev_tr = _agg(detail_splits, prof.primary, keys, rows, boot)
+    wf_m, _ = _agg(detail_splits, prof.primary, wf, rows, boot)
     sign = (dev_m['mean_r'] or 0.0) > 0
     neigh = {}
-    for c in configs():
+    for c in prof.configs():
         if c['role'] == 'neighbour':
             m, _ = _agg(detail_splits, c['name'], keys, rows, None)
             neigh[c['name']] = m['mean_r']
@@ -1685,11 +1803,11 @@ def summarize(env, tier, symbols, per_split, detail_splits, blocks, b0_diffs, b0
     loyo_m = {y: (lambda v: math.fsum(v) / len(v) if v else None)(
         [r['r']['base'] for r in dev_tr if S.utc(r['entry_ms'])[:4] != y]) for y in years}
     perms, seed = cfg_run['perms'], cfg_run['seed']
-    d1 = [b['cand'] - b['B1'] for b in blocks]
-    d2 = [b['cand'] - b['B2'] for b in blocks]
+    d1 = [b['cand'] - b['B1'] for b in blocks if b['cand'] is not None and b['B1'] is not None]
+    d2 = [b['cand'] - b['B2'] for b in blocks if b['cand'] is not None and b['B2'] is not None]
     ps = {'B0': sign_flip_p(b0_diffs, perms=perms, seed=seed), 'B1': sign_flip_p(d1, perms=perms, seed=seed),
           'B2': sign_flip_p(d2, perms=perms, seed=seed)}
-    adj = holm(ps, env['n_trials'])
+    adj = holm(ps, mult['n_trials'])
     base = {k: {'pairing': p, 'n_pairs': len(d), 'mean_difference': (math.fsum(d) / len(d) if d else None),
                 'ci95': ci_mean(d), 'p_one_sided': ps[k], 'p_holm': adj[k], 'label': LABEL}
             for k, p, d in (('B0', 'episode', b0_diffs), ('B1', 'calendar-month block', d1),
@@ -1706,7 +1824,7 @@ def summarize(env, tier, symbols, per_split, detail_splits, blocks, b0_diffs, b0
             'walk_forward_mean_positive': (wf_m['mean_r'] or 0.0) > 0}},
         'baselines': {'status': 'HOLDOUT-ONLY', 'development': {
             k: (adj[k] is not None and adj[k] < 0.05) for k in ('B0', 'B1', 'B2')}},
-        'multiplicity': {'status': 'PASS', 'n_trials': env['n_trials']},
+        'multiplicity': mult,
         'pit': {'status': 'HOLDOUT-ONLY', 'label': LABEL},
         'robustness': {'status': 'PASS' if loso_m and all(v is not None and v > 0 for v in loso_m.values())
                        and loyo_m and all(v is not None and v > 0 for v in loyo_m.values()) else 'FAIL',
@@ -1726,7 +1844,7 @@ def summarize(env, tier, symbols, per_split, detail_splits, blocks, b0_diffs, b0
     flags = (['DEV-NEGATIVE'] if dev_mean is None or dev_mean <= 0 else []) + liquidation_flags(dev_m)
     # missing-data policy: any INCOMPLETE primary / neighbour / baseline row makes the tier INCOMPLETE (the uncapped
     # development-only variant is split-end censored by design and can never be evidence; reported, not gating)
-    role = {c['name']: c['role'] for c in configs()}
+    role = {c['name']: c['role'] for c in prof.configs()}
     bad_roles, bad_classes = Counter(), Counter()
     for sp in detail_splits.values():
         for name, c in sp['configs'].items():
@@ -1743,7 +1861,10 @@ def summarize(env, tier, symbols, per_split, detail_splits, blocks, b0_diffs, b0
         for v in edge.values():
             if v['status'] in ('PASS', 'FAIL'):
                 v['status'] = INCOMPLETE
-    summary = {'format': SUMMARY_FORMAT, 'status': status, 'missing_data_policy': POLICY,
+    bind = {} if prof is LONG_RUN else {'candidate_id': prof.candidate_id, 'side': prof.side,
+                                        'profile': prof.binding(), 'program_n_trials': mult['program_n_trials'],
+                                        'own_family_n_trials': mult['own_family_n_trials']}
+    summary = {'format': prof.summary_format, **bind, 'status': status, 'missing_data_policy': POLICY,
                **({'incomplete_rows': {r: n for r, n in sorted(bad_roles.items()) if r != 'development_only'},
                    'incomplete_classes': dict(sorted(bad_classes.items()))} if status != COMPLETE else {}),
                **({'development_only_incomplete_rows': bad_roles['development_only']}
@@ -1755,8 +1876,9 @@ def summarize(env, tier, symbols, per_split, detail_splits, blocks, b0_diffs, b0
                'contribution_by_regime': {g: {'trades': len(v), 'mean_r': math.fsum(v) / len(v)}
                                           for g, v in sorted(_by_regime(dev_tr).items())},
                'book': dict(BOOK), 'baselines': base, 'edge00': edge,
-               'verdict': verdict, 'verdict_basis': basis, 'flags': flags, 'not_evaluated': list(NOT_EVALUATED)}
-    detail = {'format': DETAIL_FORMAT, 'status': status, 'missing_data_policy': POLICY,     # derived from the rows
+               'verdict': verdict, 'verdict_basis': basis, 'flags': flags, 'not_evaluated': list(prof.not_evaluated)}
+    detail = {'format': prof.detail_format, **bind, 'status': status,            # status: derived from the rows
+              'missing_data_policy': POLICY,
               'tier': tier, 'label': LABEL, 'symbols': list(symbols), 'splits': detail_splits,
               'neighbours_mean_r': neigh, 'loso_mean_r': loso_m, 'loyo_mean_r': loyo_m, 'month_blocks': blocks,
               'b0_episode_differences': b0_diffs}
@@ -1777,14 +1899,67 @@ def code_digest(repo: str) -> str:
 
 
 def tier_config(env: dict, tier: str) -> dict:
-    return {'tier': tier, 'symbols': list(env['tiers'][tier]), 'shared': sha(env['run_config'])}
+    """The run config of one tier (with the identity -> run id). A non-STRAT-01 profile binds its candidate / side /
+    profile here too, so a long and a short run (or resume) can never share a run id, progress or final."""
+    prof = env.get('profile', LONG_RUN)
+    return {'tier': tier, 'symbols': list(env['tiers'][tier]), 'shared': sha(env['run_config']),
+            **({} if prof is LONG_RUN else {'profile': prof.binding()})}
 
 
 def write_json(path: str, doc) -> str:
     return X.atomic_write_json(path, doc)
 
 
-def _state(d: str, run: str, resume: bool) -> str:
+def fold_bound(env: dict) -> int | None:
+    """The progress fold bound of the routed profile (STRAT-02-PIT-01): STRAT-01 keeps the default (None = its own
+    prereg, unchanged); any other profile MUST carry the walk-forward fold count of its own routed prereg / plan, so
+    neither profile's progress, finals or resumes validate through the other's prereg."""
+    prof = env.get('profile', LONG_RUN)
+    if prof is LONG_RUN:
+        return env.get('folds')
+    n = env.get('folds')
+    if type(n) is not int or n < 1:
+        raise PitRunError(f'{prof.tag}: no fold bound from the routed {prof.candidate_id} prereg')
+    plan = env.get('plan')
+    if plan is not None and n != sum(1 for k in plan.keys() if plan.split(k)['name'] == 'walk_forward'):
+        raise PitRunError(f'{prof.tag}: the fold bound differs from the routed split plan')
+    return n
+
+
+def _sealed_final(d: str, final: str, folds) -> dict:
+    """A sealed final whose every artifact still hashes to its record (else refuse: aborted / tampered)."""
+    doc = PG.read(final, folds)
+    if doc['state'] != 'sealed':
+        raise PitRunError(f'{final}: the run was aborted; use a new evidence dir')
+    for a in doc['artifacts']:
+        if PG.file_sha256(os.path.join(d, a['path'])) != a['sha256']:
+            raise PitRunError(f'{d}: sealed artifact {a["path"]} no longer matches its final record')
+    return doc
+
+
+def tier_evidence(final: str, ident: dict, folds=None) -> bool:
+    """The CORE barrier (Codex 6157420962 item 2): True only for a same-identity final that is sealed, hash-valid,
+    evidence-bearing and whose every NAMED evidence artifact is a sealed artifact and explicitly COMPLETE. False = a
+    sealed INCOMPLETE / no-evidence audit final (the next tier never opens). Anything else refuses."""
+    d = os.path.dirname(final)
+    doc = PG.read(final, folds)
+    if doc is None:
+        raise PitRunError(f'{final}: no final record')
+    if doc['identity'] != ident:
+        raise PitRunError(f'{final}: sealed under another identity')
+    doc = _sealed_final(d, final, folds)
+    if not doc['evidence']:
+        return False
+    arts = {a['path'] for a in doc['artifacts']}
+    for e in doc['evidence']:
+        if e not in arts:
+            raise PitRunError(f'{final}: evidence {e!r} is not a sealed artifact')
+        with open(os.path.join(d, e), 'rb') as f:
+            require_complete(json.loads(f.read()), e)
+    return True
+
+
+def _state(d: str, run: str, resume: bool, folds=None) -> str:
     """'new' | 'resume' | 'sealed' for one tier dir; refuses an interrupted run without resume and any other run."""
     if not os.path.isdir(d):
         return 'new'
@@ -1795,12 +1970,7 @@ def _state(d: str, run: str, resume: bool) -> str:
         raise PitRunError(f'{d}: holds another run identity/config ({other[0]}); use a new evidence dir')
     final = os.path.join(d, f'final-{run}.json')
     if os.path.exists(final):
-        doc = PG.read(final)
-        if doc['state'] != 'sealed':
-            raise PitRunError(f'{final}: the run was aborted; use a new evidence dir')
-        for a in doc['artifacts']:
-            if PG.file_sha256(os.path.join(d, a['path'])) != a['sha256']:
-                raise PitRunError(f'{d}: sealed artifact {a["path"]} no longer matches its final record')
+        _sealed_final(d, final, folds)
         if not resume:
             raise PitRunError(f'{final}: tier already sealed (pass resume to continue)')
         return 'sealed'
@@ -1808,27 +1978,33 @@ def _state(d: str, run: str, resume: bool) -> str:
         if not resume:
             raise PitRunError(f'{d}: interrupted run (progress without a final); pass resume to re-run it '
                               'under the same identity')
+        PG.read(os.path.join(d, f'progress-{run}.json'), folds)
         return 'resume'
     return 'new'
 
 
 def run_tiers(env: dict, out_dir: str, *, resume: bool = False, clock=PG.cairo_now) -> list[str]:
-    """CORE-10 then CORE-20: each tier sealed (final written) before the next starts. Returns the final paths."""
-    finals, ident = [], env['identity']
+    """CORE-10 then CORE-20: each tier sealed (final written) before the next starts, and the next tier opens ONLY
+    after the same-identity previous final is sealed, hash-valid, explicitly COMPLETE and evidence-bearing
+    (`tier_evidence`). A fresh or resumed INCOMPLETE / no-evidence tier stops the run there: its audit final is
+    returned (pit_incomplete -> exit 4) and no later tier dir, Access window, progress or artifact is created."""
+    finals, ident, folds = [], env['identity'], fold_bound(env)
     for i, tier in enumerate(RUN_TIERS):
         d = os.path.join(out_dir, tier)
         run = PG.run_id(ident, tier_config(env, tier))
-        state = _state(d, run, resume)
         final = os.path.join(d, f'final-{run}.json')
+        if i:
+            prev = os.path.join(out_dir, RUN_TIERS[i - 1],
+                                f'final-{PG.run_id(ident, tier_config(env, RUN_TIERS[i - 1]))}.json')
+            if not os.path.exists(prev):
+                raise PitRunError(f'{RUN_TIERS[i - 1]} must be sealed under the same identity before {tier} starts')
+            if not tier_evidence(prev, ident, folds):
+                return finals                   # INCOMPLETE audit final: stop, never open the next tier
+        state = _state(d, run, resume, folds)
         if state == 'sealed':
             finals.append(final)
             continue
-        if i:
-            prev = os.path.join(out_dir, RUN_TIERS[i - 1], f'final-{PG.run_id(ident, tier_config(env, RUN_TIERS[i - 1]))}.json')
-            doc = PG.read(prev)
-            if doc is None or doc['state'] != 'sealed' or doc['identity'] != ident:
-                raise PitRunError(f'{RUN_TIERS[i - 1]} must be sealed under the same identity before {tier} starts')
-        prog = PG.Progress(d, identity=ident, config=tier_config(env, tier), clock=clock)
+        prog = PG.Progress(d, identity=ident, config=tier_config(env, tier), clock=clock, folds=folds)
         stage = 'pit.open'
         try:
             prog.stage_start(stage)
@@ -1876,12 +2052,21 @@ def load_rules(raw: bytes, symbols, *, pin: str = RULES_SHA256) -> dict:
     return {s: {k: table[s][k] for k in RULES_FIELDS} for s in symbols}
 
 
-def real_env(repo: str, *, store: str, author: str, cairo_date: str, gate_path: str) -> dict:
-    """Derived ONLY from the gate's committed files. Reads manifest metadata, never a data row."""
+def real_env(repo: str, *, store: str, author: str, cairo_date: str, gate_path: str,
+             profile: RunProfile = LONG_RUN) -> dict:
+    """Derived ONLY from the gate's committed files. Reads manifest metadata, never a data row. `profile` (routed by
+    run_r4.run_pit from the gate's candidate) must be the candidate of that gate and its prereg."""
     import run_r4 as G                                                                      # noqa: E402
+    if profile not in RUN_PROFILES.values():
+        raise PitRunError(f'unknown run profile {profile!r}')
     g = json.loads(G._load(repo, gate_path))
     raw = G._load(repo, g['prereg'])
     pre = json.loads(raw)
+    short = profile is SHORT_RUN
+    if (G.route(g).candidate_id, pre.get('candidate_id'), pre.get('family')) != (
+            profile.candidate_id, profile.candidate_id, profile.family) or (
+            os.path.splitext(os.path.basename(g['ledger']))[0] != profile.family):
+        raise PitRunError(f'{profile.tag}: the gate / prereg / ledger are not the {profile.candidate_id} profile')
     static = G.static_universe(repo, g['universe']['path'], g['universe']['snapshot'])
     man = M.load(os.path.join(repo, MANIFEST_PATH))
     if man['digest'] != pre['data']['manifest_digest']:
@@ -1891,21 +2076,34 @@ def real_env(repo: str, *, store: str, author: str, cairo_date: str, gate_path: 
                        horizon_bars=sp['horizon_bars'])
     if [n for n, _ in T.neighbours()] != pre['neighbour_grid']['configs']:
         raise PitRunError('the neighbour grid differs from the registered prereg configs')
-    if pre['variants']['primary']['name'] != PRIMARY_NAME or pre['variants']['secondary'][0]['name'] != DEV_ONLY:
-        raise PitRunError('the variants differ from the registered prereg')
+    v = pre['variants']
+    if v['primary']['name'] != profile.primary or (v['secondary'] != [] if short else
+                                                    v['secondary'][0]['name'] != DEV_ONLY):
+        raise PitRunError('the variants differ from the registered prereg')     # STRAT-02: no uncapped variant
+    if short and (v['primary'].get('side') != 'short' or f'seed {SHORT_SEED}' not in pre['baselines']['B0']
+                  or pre['data']['exchange_rules'].get('sha256') != RULES_SHA256):
+        raise PitRunError('STRAT-02: side / seed / exchange-rules pin differ from the registered short prereg')
     if pre['costs']['stress_rows'] != list(C.STRESS):
         raise PitRunError('stress rows differ from the registered prereg')
     ledger = os.path.join(repo, g['ledger'])
-    fam = L.verify(ledger).get(pre['family'], [])
+    fams = L.verify(ledger)
+    fam = fams.get(pre['family'], [])
     n_trials = sum(1 for r in fam if r['kind'] in ('variant', 'grid_point', 'baseline'))
+    mult = None
+    if short:                                       # gating Holm = the program family (18 + 17 = 35), never own-family
+        mult = G.multiplicity(fams)
+        if mult['by_family'][profile.family] != n_trials:
+            raise PitRunError('STRAT-02: the own-family count differs between the ledger and the program family')
+        n_trials = mult['program']
     cal = pre['costs']['slip_cal_v1']
     model = C.CostModel(cal, {'BTCUSDT': 'crypto'})
     rules = load_rules(G._load(repo, RULES_PATH), static['core_20'])
-    run_config = {'configs': [c['name'] for c in configs()], 'stress_rows': list(C.STRESS), 'book': dict(BOOK),
+    run_config = {'configs': [c['name'] for c in profile.configs()], 'stress_rows': list(C.STRESS), 'book': dict(BOOK),
                   'rules_path': RULES_PATH, 'rules_sha256': RULES_SHA256, 'rules_env': RULES_ENV, 'rules': rules,
-                  'slip_c': cal['c']['crypto'], 'seed': SEED, 'resamples': RESAMPLES, 'perms': PERMS,
+                  'slip_c': cal['c']['crypto'], 'seed': profile.seed, 'resamples': RESAMPLES, 'perms': PERMS,
                   'b0_draws': B0_DRAWS, 'dev_keys': dev_keys(plan), 'plan_digest': plan.digest, 'window': T.WINDOW,
-                  'tape': PE.FORMAT, 'cost_model': model.digest, 'n_trials': n_trials}
+                  'tape': PE.FORMAT, 'cost_model': model.digest, 'n_trials': n_trials,
+                  **({'profile': profile.binding(), 'multiplicity': mult} if short else {})}
     head = subprocess.run(['git', '-C', repo, 'rev-parse', 'HEAD'], capture_output=True, text=True,
                           check=True).stdout.strip()
     identity = {'commit': head, 'evaluator': sha({'code': code_digest(repo), 'config': run_config}),
@@ -1915,4 +2113,6 @@ def real_env(repo: str, *, store: str, author: str, cairo_date: str, gate_path: 
             'tiers': {'CORE-10': static['core_10'], 'CORE-20': static['core_20']}, 'plan': plan, 'ledger': ledger,
             'evaluator': EVALUATOR, 'author': author, 'cairo_date': cairo_date, 'run_config': run_config,
             'rules': rules,
-            'identity': identity, 'n_trials': n_trials, 'cost_labels': model.labels('BTCUSDT')}
+            'identity': identity, 'n_trials': n_trials, 'cost_labels': model.labels('BTCUSDT'),
+            **({'profile': profile, 'multiplicity': mult,                 # the routed prereg's own fold bound
+                'folds': PG.fold_count_of(os.path.join(repo, g['prereg']))} if short else {})}
