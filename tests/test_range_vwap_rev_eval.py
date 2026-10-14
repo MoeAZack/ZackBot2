@@ -313,6 +313,9 @@ def test_f13_p_resolution(case):
         q = EV.b1_targets(10_000.0, {'A': RV.fr('0.01'), 'B': RV.fr('0.01')}, {'A': 100.0, 'B': 100.0}, rules)
         assert q == {'A': 136.363, 'B': 136.363}                        # scaled to gross 3x BEFORE flooring
         assert sum(v * 100 * 1.1 for v in q.values()) <= 30_000
+        two = {'A': S.build(n=20), 'B': S.build(n=20)}                 # B delisted mid-week: only B's leg closes
+        b1 = EV.b1_book(two, 'long', first=H, end=ms(20), notices=RV.NoticeView({'B': ms(8) + 1}))
+        assert b1['status'] == RV.COMPLETE and b1['legs_end'] == 1
     else:
         assert EV.b0_park(1.5, 1.5, 0.25) == [] and EV.b0_park(1.5, 1.5, 0.2501) == ['B0-SHORTFALL']
 

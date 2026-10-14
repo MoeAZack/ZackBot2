@@ -284,7 +284,8 @@ def b1_book(tape, side, *, first, end, order=None, row='base', notices=RV.NO_NOT
                 if target is not None:
                     for s in order:
                         x = tape[s]
-                        q0, q1 = legs.get(s, {}).get('qty', 0.0), target.get(s, 0.0)
+                        q0 = legs.get(s, {}).get('qty', 0.0)
+                        q1 = target.get(s, q0)                 # a symbol without a target keeps its leg
                         dq = q1 - q0
                         if dq == 0:
                             continue
