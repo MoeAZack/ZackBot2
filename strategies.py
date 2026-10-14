@@ -212,6 +212,25 @@ def sig_exp_scalp(d, p, ctx):
     return _one_side(dict(le=le, se=se, lx=dn, sx=up))
 
 
+def sig_exp_structure(d, p, ctx):
+    """Session-agnostic structure break v0 (15m).
+
+    A swing is usable only after the candle to its right has closed. Longs require
+    the close to cross the latest confirmed swing high while EMA50 is above
+    EMA200; shorts are the exact mirror. This keeps the first version causal and
+    compatible with the engine's existing single-timeframe contract. A later
+    research revision may replace the EMA regime proxy with native 1h context.
+    """
+    ph = d.h.shift(1).where((d.h.shift(1) > d.h.shift(2)) & (d.h.shift(1) >= d.h))
+    pl = d.l.shift(1).where((d.l.shift(1) < d.l.shift(2)) & (d.l.shift(1) <= d.l))
+    last_hi, last_lo = ph.ffill(), pl.ffill()
+    up, dn = d.e50 > d.e200, d.e50 < d.e200
+    broke_hi = (d.c > last_hi) & (d.c.shift() <= last_hi.shift())
+    broke_lo = (d.c < last_lo) & (d.c.shift() >= last_lo.shift())
+    return _one_side(dict(le=up & broke_hi, se=dn & broke_lo,
+                          lx=(d.c < last_lo) | dn, sx=(d.c > last_hi) | up))
+
+
 # ------------------------------------------------------------------ registry
 # style: calm / balanced / aggressive  ·  sides: long / short / both
 STRATEGIES = {
@@ -266,6 +285,12 @@ STRATEGIES = {
                       desc=EXP_TAG + ': with EMA20 above EMA50, a candle that dips to EMA20 and closes back above it (long); '
                            'mirrored for shorts. Tight stop 1 ATR, target 1.5R, exit when EMA20/50 flips, 16-candle (4h) cap. Run on 15m.',
                       mgmt=dict(stop_atr=1.0, tp_r=1.5, max_bars=16)),
+    'exp_structure': dict(name='[TESTNET EXP] Structure L/S', style='aggressive', fn=sig_exp_structure,
+                          sides='both', tf='15m',
+                          desc=EXP_TAG + ': first close through the latest confirmed 3-candle swing in the EMA50/200 direction. '
+                               'Confirmed pivots and closed-candle entries prevent lookahead. Stop 1 ATR, target 2R, opposite-structure '
+                               'or regime-flip exit, 24-candle (6h) cap. Run on 15m.',
+                          mgmt=dict(stop_atr=1.0, tp_r=2.0, max_bars=24)),
 }
 
 
