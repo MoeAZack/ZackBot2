@@ -535,6 +535,8 @@ tr.wrnrow td:first-child{box-shadow:inset 3px 0 0 var(--warn)}
       <div><div class="sub">How entries are placed</div><div id="rrEntry"></div></div>
       <div><div class="sub">Pump guard · all slots</div><div id="rrPump"></div></div>
     </div>
+    <div class="sub">Direction bias &amp; risk · new automatic entries only</div>
+    <div id="ctrlBox"></div>
     <div class="sub">Risk governor <span id="govMode" class="tag t-mute"></span></div>
     <div id="govBox"></div>
   </div>
@@ -1297,7 +1299,7 @@ function renderRisk(){const S=D.settings,eq=D.equity||0,E=D.exposure||{},lots=D.
    [S.SLEEVES.filter(s=>s.enabled).every(s=>s.risk<=0.03)?1:.5,'Risk per trade ≤ 3% on every slot','Above 3% the backtests showed 50-80% drawdowns.']];
   setHTML($('checklist'),items.map(([ok,t,hh])=>`<div class="check"><span class="ic ${ok===1?'ok':ok?'wn':'bd'}" aria-hidden="true">${ok===1?'✓':ok?'!':'✕'}</span><div><b>${t}</b><span class="sr">${ok===1?' (ok)':ok?' (warning)':' (problem)'}</span><div class="mute small">${hh}</div></div></div>`).join(''));
   RF.forEach(([k,show])=>{const i=$(k);if(document.activeElement!==i&&!i.dataset.dirty)i.value=show(S[k])});
-  renderCapital();renderRiskRules();renderEntryOpts();renderGov();updUnsaved()}
+  renderCapital();renderRiskRules();renderEntryOpts();renderCtrl();renderGov();updUnsaved()}
 RF.forEach(([k])=>$(k).addEventListener('input',()=>{$(k).dataset.dirty=1;updUnsaved()}));$('capBase').addEventListener('input',()=>{$('capBase').dataset.dirty=1;updUnsaved()});
 function clearRiskDirty(){RF.forEach(([k])=>delete $(k).dataset.dirty);delete $('capBase').dataset.dirty}
 async function saveRiskForm(){const o={};RF.forEach(([k,,back])=>{const v=parseFloat($(k).value);if(!isNaN(v))o[k]=back(v)});const cb=$('capBase').value;if(cb!=='')o.CAPITAL_CAP=+cb||0;
@@ -1688,6 +1690,17 @@ function renderRiskRules(){const cfg=rrCfg(),ST=D.risk_rules||{};
 async function rrSet(k,p,v){const cfg=rrCfg(),I=RRI[k];if(p==='mode')cfg[k].mode=v;else if(typeof v==='boolean')cfg[k][p]=v;else if(I.s&&p===I.s[0])cfg[k][p]=v;
   else{const x=parseFloat(v),P=I.p.find(q=>q[0]===p);if(isNaN(x))return toast('enter a number',true);if(x<P[2]||x>P[3])return toast(`${I.n}: ${P[1]} must be between ${P[2]} and ${P[3]}`,true);cfg[k][p]=p==='n'?Math.round(x):x/(P[5]||1)}
   try{await post('/api/settings',{RISK_RULES:cfg});toast(p==='mode'?`${I.n}: ${v}`:'Saved');load()}catch(e){toast(e.message,true);load()}}
+// CTRL-01-LITE: the preview numbers come from the engine's own ctrl_effect() table (D.ctrl.table) - never computed here
+let CTRLD=null;
+function ctrlPick(k,v){const c=D.ctrl||{};CTRLD=Object.assign({bias:c.bias,risk:c.risk},CTRLD||{},{[k]:v});renderCtrl()}
+async function ctrlSave(){if(!CTRLD)return;try{await post('/api/settings',{CTRL_BIAS:CTRLD.bias,CTRL_RISK:CTRLD.risk});CTRLD=null;toast('Saved');load()}catch(e){toast(e.message,true)}}
+function renderCtrl(){const c=D.ctrl;if(!c||!c.table){setHTML($('ctrlBox'),'<div class="mute small">not available</div>');return}
+  const sel=CTRLD||{bias:c.bias,risk:c.risk},x=c.table[sel.bias+'|'+sel.risk]||c.current,dirty=!!CTRLD&&(sel.bias!==c.bias||sel.risk!==c.risk);
+  const seg=(k,lv,cur)=>`<span class="seg" role="group">${lv.map(([v,n])=>`<button class="${v===cur?'on':''}" aria-pressed="${v===cur}" onclick="ctrlPick('${k}','${v}')">${esc(n)}</button>`).join('')}</span>`;
+  const sl=(x.sleeves||[]).map(s=>`${esc(s.id)} ${(+s.long_risk_pct).toFixed(2)}% / ${(+s.short_risk_pct).toFixed(2)}%`).join(' · ');
+  setHTML($('ctrlBox'),`<div class="row"><div class="l"><b>Direction bias ${Q('Scales or disables NEW automatic entries after a real strategy signal. It never creates, adds or flips a signal and never touches open trades. Neutral = 1x / 1x (the research baseline).')}</b></div>${seg('bias',c.bias_levels,sel.bias)}</div>
+<div class="row"><div class="l"><b>Risk ${Q('Per-trade risk for new automatic entries, as a share of each slot\'s own risk (Maximum Test = today\'s 2% setting, unchanged). Every existing cap, the leverage ceiling, exchange minimums and stops still apply. Manual trades and Take now are not affected.')}</b></div>${seg('risk',c.risk_levels,sel.risk)}</div>
+<div class="row"><div class="l"><b>Result${dirty?' (not saved yet)':''}</b><small>long x${(+x.long_mult).toFixed(2)} · short x${(+x.short_mult).toFixed(2)} · risk ${(+x.risk_pct).toFixed(2)}% (x${(+x.risk_factor).toFixed(2)} of each slot's risk)${sl?'<br>per slot long / short: '+sl:''}</small></div>${dirty?'<span><button onclick="ctrlSave()">Save</button> <button onclick="CTRLD=null;renderCtrl()">Cancel</button></span>':''}</div>`)}
 function renderEntryOpts(){const S=D.settings,mk=S.ENTRY_ORDER==='maker',pg=S.PUMP_GUARD||{};
   setHTML($('rrEntry'),`<div class="row"><div class="l"><b>Entry order type ${Q('Market (taker) orders fill at once and pay the taker fee (0.05%). Maker (post-only) orders rest in the order book at the best price and pay the lower maker fee; they can miss a fast move.')}</b><small>${mk?'Maker: a post-only limit order waits in the book, re-priced a few times.':'Market: fills at once, pays the taker fee.'}</small></div><span class="seg" role="group" aria-label="Entry order type"><button class="${mk?'':'on'}" aria-pressed="${!mk}" onclick="setS({ENTRY_ORDER:'market'})">Market</button><button class="${mk?'on':''}" aria-pressed="${mk}" onclick="setS({ENTRY_ORDER:'maker'})">Maker (post-only)</button></span></div>
    ${mk?`<div class="row"><div class="l"><b id="lb_mfb">Fall back to market</b><small>if it has not filled after the re-prices, the rest goes at market (off = the unfilled part is skipped)</small></div><label class="sw"><input type="checkbox" id="sw_mfb" aria-labelledby="lb_mfb" ${S.MAKER_FALLBACK!==false?'checked':''} onchange="setS({MAKER_FALLBACK:this.checked})"><span></span></label></div>
