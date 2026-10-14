@@ -537,13 +537,16 @@ def readiness(tmp_path, stub, monkeypatch):
     monkeypatch.setattr(G, 'pin_failures', lambda repo, g: [])
     fin = {None: _finals2(tmp_path, _env(), 'l'), G.SHORT_ID: _finals2(tmp_path, _env(SHORT), 's')}
 
-    def run(candidate):
-        ev = {'tests': {'passed': 1, 'failed': 0}, 'final_files': fin[candidate],
-              **{k: {'status': 'PASS'} for k in RD.RESULTS}, 'items': {str(n): {'status': 'PASS'} for n in range(2, 8)}}
+    def run(candidate, mutate=lambda e: e):
+        ev = mutate({'tests': {'passed': 1, 'failed': 0}, 'final_files': fin[candidate],
+                     **{k: {'status': 'PASS'} for k in RD.RESULTS},
+                     'items': {str(n): {'status': 'PASS'} for n in range(2, 8)}})
         p, out = tmp_path / 'ev.json', tmp_path / 'r.json'
+        if out.exists():
+            out.unlink()
         p.write_text(json.dumps(ev))
         rc = RD.main(['--out', str(out), '--evidence', str(p)] + (['--candidate', candidate] if candidate else []))
-        return rc, json.loads(out.read_text())
+        return rc, (json.loads(out.read_text()) if out.exists() else None)
     return bad, run
 
 
@@ -567,7 +570,8 @@ def test_long_failure_never_leaks_into_short_and_long_stays_compatible(readiness
     bad, run = readiness
     bad[G.GATE] = ['G1 dirty working tree']                             # short foundations pass, long fail
     rc, doc = run(None)
-    assert rc == 1 and doc['not_passing'] == ['item.1'] and 'gate: G1 dirty working tree' in doc['limitations']
+    assert rc == 1 and doc['not_passing'] == ['item.1', 'foundations'] and 'gate: G1 dirty working tree' in doc[
+        'limitations']
     rc, doc = run(G.SHORT_ID)
     assert rc == 0 and doc['verdict'] == 'READY' and (doc['candidate'], doc['folds']) == (G.SHORT_ID, 5)
     assert doc['digests']['prereg'] == _sha(G.SHORT_PREREG) and doc['offline']['profile']['failures'] == []
@@ -598,3 +602,69 @@ def test_unknown_or_conflicting_candidates_refuse_before_offline_work(tmp_path, 
     with pytest.raises(RD.ReadinessError, match='unknown candidate'):
         RD.route_candidate('nope.v1')
     assert not os.path.exists(out)
+
+
+# ------------------------------------------------------------------ immutable computed provenance (Codex 6158180298)
+FAILS = ['G1 dirty working tree', 'not registered', 'holdout read', 'universe']
+
+
+@pytest.fixture
+def failing(readiness, monkeypatch):
+    """Cowork's setup: the routed offline pass reports items 1-3 FAIL and every foundation failing."""
+    real = RD.offline
+
+    def bad(repo, **kw):
+        ev = real(repo, **kw)
+        for k in ('1', '2', '3'):
+            ev['items'][k]['status'] = 'FAIL'
+        ev['offline']['foundations'] = list(FAILS)
+        if 'profile' in ev['offline']:
+            ev['offline']['profile']['failures'] = list(FAILS)
+        ev['limitations'] = ev['limitations'] + ['gate: G1 dirty working tree']
+        return ev
+    monkeypatch.setattr(RD, 'offline', bad)
+    return readiness[1]
+
+
+def _forge(cand):
+    prof = {'candidate_id': cand or G.LONG.candidate_id, 'failures': [], 'registered': True, 'holdout_unread': True,
+            'universe_bound': True}
+
+    def m(e):
+        return dict(e, offline={'profile': prof, 'foundations': []}, limitations=[], head='f' * 40,
+                    items={str(n): {'status': 'PASS'} for n in range(1, 8)})
+    return m
+
+
+@PROFS
+def test_cowork_forgery_of_computed_provenance_is_refused(failing, prof):
+    cand = prof and prof.candidate_id
+    rc, doc = failing(cand)                                              # honest runtime evidence over failing offline
+    assert rc == 2 and doc is None                                       # items 2-3 PASS would upgrade a computed FAIL
+    rc, doc = failing(cand, lambda e: dict(e, items={str(n): {'status': 'PASS'} for n in range(4, 8)}))
+    assert rc == 1 and doc['verdict'] == 'NOT READY'
+    assert {'item.1', 'item.2', 'item.3', 'foundations'} <= set(doc['not_passing'])
+    rc, doc = failing(cand, _forge(cand))                                # the exact forgery
+    assert rc == 2 and doc is None
+    for key, val in (('offline', {'foundations': []}), ('limitations', []), ('head', 'f' * 40),
+                     ('digests', {}), ('tests_summary', 'x'), ('verdict', 'READY'), ('nope', 1)):
+        rc, doc = failing(cand, lambda e, k=key, v=val: dict(e, **{k: v}))
+        assert rc == 2 and doc is None, key
+    for items in ({'1': {'status': 'PASS'}}, {'3': {'status': 'PASS'}}, {'2': {'status': 'FAIL', 'offline': {}}},
+                  {'9': {'status': 'PASS'}}):
+        rc, doc = failing(cand, lambda e, i=items: dict(e, items=i))
+        assert rc == 2 and doc is None, items
+
+
+@PROFS
+def test_legitimate_runtime_evidence_still_reaches_ready(readiness, prof):
+    rc, doc = readiness[1](prof and prof.candidate_id)
+    assert rc == 0 and doc['verdict'] == 'READY' and doc['not_passing'] == []
+    assert doc['offline']['foundations'] == [] and doc['items']['6']['determinism']['status'] == 'PASS'
+    assert ('candidate' in doc) == (prof is not None)
+
+
+def test_computed_tests_are_never_replaced():
+    with pytest.raises(RD.ReadinessError, match='test counts'):
+        RD.merge_evidence({'tests': {'passed': 0, 'failed': 3}, 'items': {}}, {'tests': {'passed': 9, 'failed': 0}})
+    assert RD.merge_evidence({'tests': None, 'items': {}}, {'tests': {'passed': 9, 'failed': 0}})['tests']['passed'] == 9

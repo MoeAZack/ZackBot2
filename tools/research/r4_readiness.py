@@ -252,8 +252,8 @@ def offline(repo: str, *, run_tests: bool = False, store: str | None = None, can
                                                                           'universe', 'm3_coverage')},
                   'universe_bound': u_bound, 'remaining': REMAINING[2]}
     t_ok = bool(tests) and tests['failed'] == 0 and tests['passed'] > 0
-    items['3'] = {'status': 'PASS' if t_ok and holdout_unread else 'MISSING', 'holdout_unread': holdout_unread,
-                  'offline_checks': OFFLINE_CHECKS[3]}
+    items['3'] = {'status': ('PASS' if t_ok else 'MISSING') if holdout_unread else 'FAIL',    # holdout read: FAIL
+                  'holdout_unread': holdout_unread, 'offline_checks': OFFLINE_CHECKS[3]}
     for n in (4, 5, 6, 7):
         items[str(n)] = {'status': 'MISSING', 'remaining': REMAINING[n]}
         if n in OFFLINE_CHECKS:
@@ -261,14 +261,16 @@ def offline(repo: str, *, run_tests: bool = False, store: str | None = None, can
     if not registered:
         lim.append('preregistration v1 is UNREGISTERED (G3): no strategy run may start' if long else
                    f'preregistration {prof.candidate_id} is UNREGISTERED (G3): no strategy run may start')
-    if not long:                                    # routed provenance: never long evidence labelled as short
-        if pre.get('candidate_id') != prof.candidate_id or pre.get('family') != prof.family:
-            gate = gate + [f'G2 routing: the prereg is not {prof.candidate_id}']
+    if not long and (pre.get('candidate_id') != prof.candidate_id or pre.get('family') != prof.family):
+        gate = gate + [f'G2 routing: the prereg is not {prof.candidate_id}']    # never long evidence labelled short
+    # the blocking foundation results (both profiles; immutable: `main` never lets evidence replace or upgrade them)
+    detail['foundations'] = (list(gate) + ([] if registered else ['not registered'])
+                             + ([] if holdout_unread else ['holdout read']) + ([] if u_bound else ['universe']))
+    if not long:
         detail['profile'] = {'candidate_id': prof.candidate_id, 'family': pre.get('family'), 'gate': prof.gate,
                              'prereg': g['prereg'], 'prereg_sha256': prereg_sha, 'ledger': g['ledger'],
                              'registered': registered, 'holdout_unread': holdout_unread, 'universe_bound': u_bound,
-                             'failures': list(gate) + ([] if registered else ['not registered'])
-                             + ([] if holdout_unread else ['holdout read']) + ([] if u_bound else ['universe'])}
+                             'failures': list(detail['foundations'])}
     if not u_bound:
         lim.append('static universe not bound by the gate (G5)')
     lim.append('universe labelled CURRENT-UNIVERSE / SURVIVOR-BIASED (frozen current list, contract section 0.1)')
@@ -278,6 +280,36 @@ def offline(repo: str, *, run_tests: bool = False, store: str | None = None, can
             'tests': ({'passed': tests['passed'], 'failed': tests['failed']} if tests else None),
             'tests_summary': tests['summary'] if tests else 'not run (pass --pytest)',
             'items': items, 'limitations': lim, 'offline': detail}
+
+
+# The ONLY evidence keys merged over the offline pass (bounded runtime results of the official Windows run).
+# Everything offline computes - head, digests, offline / profile / foundations, limitations, item 1 - is
+# immutable: a reserved or unknown key, a computed item field, or upgrading a computed FAIL refuses (exit 2).
+RUNTIME_KEYS = ('candidate', 'm3_parity', 'accounting_sample', 'pilot', 'items', 'final_files', 'tests')
+COMPUTED_ITEMS = ('1',)                             # clean tree + pins: derived from the routed gate only
+
+
+def merge_evidence(ev: dict, extra: dict) -> dict:
+    """`ev` (the offline pass) with the whitelisted runtime evidence merged; never replaces or upgrades a computed
+    value. `tests` only when offline did not count them (no --pytest)."""
+    bad = sorted(set(extra) - set(RUNTIME_KEYS))
+    if bad:
+        raise ReadinessError(f'evidence may not set reserved / unknown keys {bad} (runtime keys: {list(RUNTIME_KEYS)})')
+    if 'tests' in extra and ev.get('tests') is not None:
+        raise ReadinessError('evidence may not replace the computed test counts')
+    out, items = dict(ev), {k: dict(v) for k, v in (ev.get('items') or {}).items()}
+    for k, v in (extra.get('items') or {}).items():
+        k, base = str(k), items.get(str(k), {})
+        if k not in {str(n) for n in ITEMS} or k in COMPUTED_ITEMS or not isinstance(v, dict):
+            raise ReadinessError(f'evidence item {k!r}: unknown or computed from the committed tree only')
+        clash = sorted((set(v) - {'status'}) & set(base))
+        if clash:
+            raise ReadinessError(f'evidence item {k}: may not replace computed fields {clash}')
+        if base.get('status') == 'FAIL' and v.get('status', 'FAIL') != 'FAIL':
+            raise ReadinessError(f'evidence item {k}: may not upgrade a computed FAIL')
+        items[k] = {**base, **v}
+    out.update({k: extra[k] for k in RUNTIME_KEYS if k in extra and k not in ('items', 'candidate')}, items=items)
+    return out
 
 
 def main(argv=None) -> int:
@@ -302,23 +334,19 @@ def main(argv=None) -> int:
                              'profile')
         long = cand == G.LONG.candidate_id
         ev = offline(a.repo, run_tests=a.pytest, store=a.store, **({} if long else {'candidate': cand}))
-        own = dict(ev.get('digests') or {})
-        if a.evidence:
-            items = dict(ev['items'])
-            for k, v in (extra.pop('items', None) or {}).items():
-                items[str(k)] = {**items.get(str(k), {}), **v}
-            ev.update(extra, items=items)
-        if not long and (ev.get('digests') or {}) != own:
-            raise ValueError(f'{cand}: evidence digests differ from the routed offline provenance')
+        ev = merge_evidence(ev, extra)
         folds = G.pit_folds(a.repo, cand)
         doc = build(ev, folds)
         doc['tests_summary'], doc['offline'] = ev.get('tests_summary'), ev.get('offline')
-        if not long:                                        # STRAT-01 output unchanged
+        found = (ev.get('offline') or {}).get('foundations')
+        if not long:
             prof = (ev.get('offline') or {}).get('profile') or {}
             doc['candidate'], doc['folds'] = cand, folds
-            if prof.get('candidate_id') != cand or prof.get('failures') != []:
-                doc['not_passing'] = doc['not_passing'] + ['foundations']     # routed foundations: fail closed
-                doc['verdict'] = 'NOT READY'
+            if prof.get('candidate_id') != cand or prof.get('failures') != found:
+                found = None                                # routed provenance missing / inconsistent
+        if found != []:                                     # computed foundations block READY (fail closed)
+            doc['not_passing'] = doc['not_passing'] + ['foundations']
+            doc['verdict'] = 'NOT READY'
     except (OSError, ValueError) as e:
         print(f'error: {e}', file=sys.stderr)
         return 2
