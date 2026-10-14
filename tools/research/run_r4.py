@@ -6,6 +6,9 @@ gate is code, not a comment.
   python tools/research/run_r4.py register [--candidate ...] --author claude-code --cairo-date YYYY-MM-DD
   python tools/research/run_r4.py m3 --store <repo root holding data_long/4h> --cost base|2x|both
          --out-dir research_evidence/runs/r4 --author claude-code --cairo-date YYYY-MM-DD
+  python tools/research/run_r4.py rex --window START/END --tier CORE-10 [--out-dir ...] [--resume]
+         (REX-02 range_vwap_rev.v1: explicit development window, refused on / after the sealed cutoff; input
+         preflight fail-closed; no real loader bound yet -> exit 3 after the window check.)
   python tools/research/run_r4.py pit [--candidate ...] --store <binance_um store> --author claude-code
          --cairo-date YYYY-MM-DD [--out-dir research_evidence/runs/r4b] [--resume]
          (STRAT-01 R4b-PIT, pit_run.py: CORE-10 then CORE-20 development splits only; holdout never opened. Codex
@@ -755,6 +758,23 @@ def run_pit(repo: str, *, store: str, out_dir: str, author: str, cairo_date: str
     return PR.run_tiers(env, out_dir, resume=resume, clock=clock)
 
 
+def run_rex(repo: str, *, window, tier: str, out_dir: str, loader=None, resume: bool = False,
+            clock=PG.cairo_now) -> str:
+    """REX-02 entry point of `range_vwap_rev.v1` (pit_run.run_rex). The window is checked FIRST against the committed
+    split plan's sealed cutoff (no default; nothing is read on a refusal), then `loader(repo, tier, window)` must return
+    the run env (attested tape, its manifest, the zb-delist-notice/1 register, frozen symbols, commit); the runner's
+    input preflight refuses any missing series / column / register. No real loader is bound yet: the store loader and
+    the notice-register source await Codex, so `loader=None` refuses (exit 3) after the window check."""
+    import pit_run as PR                                                                    # noqa: E402
+    plan = PR.rex_plan(repo)
+    PR.rex_window(window, plan)
+    if loader is None:
+        raise GateError('rex: no attested REX tape loader / notice-register source is bound yet (REX-02 binds '
+                        'synthetic tapes only; real runs await Codex: window, gate, loader, register source)')
+    env = dict(loader(repo, tier, window), plan=plan, tier=tier)
+    return PR.run_rex(env, out_dir, window=window, resume=resume, clock=clock)
+
+
 def pit_folds(repo: str, candidate: str | None = None) -> int | None:
     """The progress fold bound of a routed candidate: STRAT-01 None (its default prereg, unchanged); any other profile
     its OWN committed prereg's walk-forward fold count (never the long one)."""
@@ -805,6 +825,11 @@ def main(argv=None) -> int:
     p.add_argument('--out-dir', default=None, help='default research_evidence/runs/r4b (STRAT-01), r4b-short '
                                                      '(STRAT-02)')
     p.add_argument('--resume', action='store_true', help='re-run an interrupted tier under the same identity')
+    x = sub.add_parser('rex', help='REX-02 range_vwap_rev.v1 development run (explicit window, no default)')
+    x.add_argument('--window', required=True, help='START/END UTC on the 4h grid, before the sealed cutoff')
+    x.add_argument('--tier', required=True, choices=['CORE-10', 'CORE-20'])
+    x.add_argument('--out-dir', default=os.path.join(M.REPO, 'research_evidence', 'runs', 'rex'))
+    x.add_argument('--resume', action='store_true')
     a = ap.parse_args(argv)
     try:
         if a.cmd == 'check':
@@ -827,6 +852,9 @@ def main(argv=None) -> int:
             for path in run_m3(M.REPO, store=a.store, rows=rows, out_dir=a.out_dir, author=a.author,
                                cairo_date=a.cairo_date):
                 print(path)
+            return 0
+        if a.cmd == 'rex':
+            print(run_rex(M.REPO, window=a.window, tier=a.tier, out_dir=a.out_dir, resume=a.resume))
             return 0
         out = a.out_dir or os.path.join(M.REPO, 'research_evidence', 'runs',
                                         'r4b' if a.candidate == LONG.candidate_id else 'r4b-short')

@@ -2116,3 +2116,293 @@ def real_env(repo: str, *, store: str, author: str, cairo_date: str, gate_path: 
             'identity': identity, 'n_trials': n_trials, 'cost_labels': model.labels('BTCUSDT'),
             **({'profile': profile, 'multiplicity': mult,                 # the routed prereg's own fold bound
                 'folds': PG.fold_count_of(os.path.join(repo, g['prereg']))} if short else {})}
+
+
+# ------------------------------------------------------------------ REX-02: range_vwap_rev.v1 binding
+# REX-02 binds the REX-01 module (`range_vwap_rev`, `range_vwap_rev_notice`, `range_vwap_rev_eval`) into this runner
+# under its own immutable profile (`REX_RUN`, NOT in the gate-routed RUN_PROFILES: the family has no R4 gate yet).
+# Fail closed at every input: an explicit development window (no default), never on / after the sealed cutoff of the
+# committed split plan; a tape manifest that must declare and attest every required series / column (4h klines WITH
+# quote_volume for VWAP, funding rows, the 1h funding-mark proxy) and the attested `zb-delist-notice/1` register. Any
+# missing input refuses before a single book pass; nothing is defaulted. Provenance: the same progress snapshot +
+# sealed final + summary / detail artifacts as the STRAT runs (progress.py, `_state`, `is_complete`).
+import range_vwap_rev as RV                                                                 # noqa: E402
+import range_vwap_rev_eval as RE                                                            # noqa: E402
+import range_vwap_rev_notice as NT                                                          # noqa: E402
+
+REX_TAPE_FORMAT = 'zb-rex-tape-manifest/1'
+REX_SUMMARY_FORMAT = 'zb-rex02-run-summary/1'
+REX_DETAIL_FORMAT = 'zb-rex02-run-detail/1'
+REX_ROWS = ('base', 'fees_slip_x2')                  # the rows EDGE-00 reads (range_vwap_rev_eval.edge00)
+REX_INPUTS = {                                       # the explicit input spec: series -> required columns
+    'klines_4h': ('open_ms', 'open', 'high', 'low', 'close', 'volume', 'quote_volume', 'available_ms'),
+    'funding': ('time_ms', 'rate', 'interval_hours', 'available_ms'),
+    'mark_1h': ('open_ms', 'close'),                 # funding-mark proxy v1 (RV.mark_at); funding is unpriced without it
+}
+REX_NOTICE_KEYS = ('rule_id', 'schema', 'parser_sha', 'digest', 'attested', 'covers_to_ms', 'frozen')
+REX_NOT_EVALUATED = (
+    'B0 matched random entries and B1 weekly book (range_vwap_rev_eval; holdout-protocol quantities)',
+    'X2 / X3 tape-level overlays (SCOUT-EXIT-01 comparison, TAPE-LEVEL only)',
+    'EDGE-00 verdict rows (holdout only; development can neither promote nor reject)')
+
+
+def rex_configs() -> list[dict]:
+    """The registered X1 trials of one side (primary + 8 one-step neighbours) and B2 (naive fade, primary params)."""
+    out = [{'name': RV.PRIMARY.name, 'cfg': RV.PRIMARY, 'mode': 'x1', 'role': 'primary'}]
+    out += [{'name': c.name, 'cfg': c, 'mode': 'x1', 'role': 'neighbour'} for c in RV.neighbours()]
+    out.append({'name': 'B2', 'cfg': RV.PRIMARY, 'mode': 'b2', 'role': 'baseline'})
+    return out
+
+
+REX_RUN = RunProfile('REX-02', RV.CANDIDATE, RV.FAMILY, 'both', 'range_vwap_rev.run_book', RV.PRIMARY.name, None,
+                     RE.SEED, REX_SUMMARY_FORMAT, REX_DETAIL_FORMAT, rex_configs, REX_NOT_EVALUATED)
+REX_PROFILES = {REX_RUN.candidate_id: REX_RUN}
+
+
+def rex_plan(repo: str) -> S.SplitPlan:
+    """The committed split plan whose development end is the sealed cutoff (the STRAT-02 prereg, the latest freeze:
+    development ends 2026-09-28; everything from there on belongs to no development split and is never read)."""
+    import run_r4 as G                                                                      # noqa: E402
+    sp = json.loads(G._load(repo, G.SHORT_PREREG))['splits']
+    return S.SplitPlan(sp['splits'], interval=sp['interval'], lookback_bars=sp['lookback_bars'],
+                       horizon_bars=sp['horizon_bars'])
+
+
+def rex_sealed_cutoff(plan: S.SplitPlan) -> int:
+    """The first sealed instant: the end of the last development split (each re-checked by `dev_window`)."""
+    cut = max(dev_window(plan, k)[1] for k in dev_keys(plan))
+    if cut > holdout_start(plan) or cut > RE.S_END:
+        raise PitRunError('REX-02: the development end reaches the holdout / never-read window')
+    return cut
+
+
+def rex_window(spec, plan: S.SplitPlan) -> tuple[int, int]:
+    """[first, end] decision closes of a REX development run from an EXPLICIT `START/END` (UTC, 4h grid). There is no
+    default: no window = refusal (the CORE-10 development window is not confirmed). A window reaching past the sealed
+    cutoff (or whose warm-up read touches the holdout) refuses."""
+    if spec is None or (isinstance(spec, str) and not spec.strip()):
+        raise PitRunError('REX-02: an explicit --window START/END is required (no default development window)')
+    parts = spec.split('/') if isinstance(spec, str) else list(spec)
+    if len(parts) != 2:
+        raise PitRunError('REX-02: --window must be START/END (UTC YYYY-MM-DDTHH:MM:SSZ)')
+    try:
+        lo, hi = (S.parse_utc(p.strip()) for p in parts)
+    except S.SplitError as e:
+        raise PitRunError(f'REX-02: {e}')
+    if lo % RV.TF or hi % RV.TF:
+        raise PitRunError('REX-02: window bounds must lie on the 4h grid')
+    if hi <= lo:
+        raise PitRunError('REX-02: window end must be after its start')
+    cut = rex_sealed_cutoff(plan)
+    if hi > cut or lo >= cut or plan.overlaps_holdout(lo - RV.WARMUP_MS, hi):
+        raise PitRunError(f'REX-02: window reaches the sealed holdout (on / after {S.utc(cut)})')
+    return lo, hi
+
+
+def _rex_rows(kind: str, x) -> list:
+    if kind == 'klines_4h':
+        return [list(x.bars[k]) for k in sorted(x.bars)]
+    if kind == 'funding':
+        return [list(r) for r in x.funding]
+    return [[k, x.marks[k]] for k in sorted(x.marks)]
+
+
+def rex_tape_digest(kind: str, tape: dict, symbols) -> str:
+    return sha({s: _rex_rows(kind, tape[s]) for s in symbols})
+
+
+def rex_tape_manifest(tape: dict, register, *, symbols=None, attested: bool = True) -> dict:
+    """The tape manifest of an in-memory REX tape: per series the symbols that carry rows, the columns present in EVERY
+    row (a column with any null is NOT declared), and the content digest; plus the notice register binding."""
+    symbols = list(symbols or tape)
+    series = {}
+    for kind, cols in REX_INPUTS.items():
+        rows = {s: _rex_rows(kind, tape[s]) for s in symbols}
+        have = [s for s in symbols if rows[s]]
+        present = [c for i, c in enumerate(cols)
+                   if have and all(r[i] is not None for s in have for r in rows[s])]
+        series[kind] = {'symbols': have, 'columns': present, 'digest': rex_tape_digest(kind, tape, symbols),
+                        **({'interval': '4h'} if kind == 'klines_4h' else {})}
+    doc = {'format': REX_TAPE_FORMAT, 'candidate_id': RV.CANDIDATE, 'symbols': symbols, 'series': series,
+           'notice_register': {'rule_id': NT.RULE_ID, 'schema': NT.SCHEMA, 'parser_sha': NT.parser_sha(),
+                               'digest': register.digest(), 'attested': attested, 'covers_to_ms': register.last_ok,
+                               'frozen': list(register.frozen)}}
+    doc['digest'] = sha(doc)
+    return doc
+
+
+def rex_seal_manifest(doc: dict) -> dict:
+    """Re-digest a manifest after an edit (tests / the loader); the preflight checks the digest, never trusts it."""
+    doc = {k: v for k, v in doc.items() if k != 'digest'}
+    doc['digest'] = sha(doc)
+    return doc
+
+
+def rex_preflight(manifest, tape, register, *, symbols, window) -> list[str]:
+    """Every failure of the REX input spec (empty = pass). Fail closed: a missing / undeclared series or column, a
+    symbol without rows, a tape that is not the attested one, or a missing / unattested / stale / non-covering notice
+    register is a failure; nothing is ever defaulted."""
+    fail = []
+    if not isinstance(manifest, dict):
+        return ['tape manifest missing']
+    if manifest.get('format') != REX_TAPE_FORMAT or manifest.get('candidate_id') != RV.CANDIDATE:
+        fail.append(f'tape manifest is not {REX_TAPE_FORMAT} of {RV.CANDIDATE}')
+    if manifest.get('digest') != sha({k: v for k, v in manifest.items() if k != 'digest'}):
+        fail.append('tape manifest digest does not match its content')
+    symbols = list(symbols)
+    if not symbols:
+        fail.append('no symbols')
+    absent = [s for s in symbols if not isinstance(tape, dict) or s not in tape]
+    if absent:
+        return fail + [f'tape has no series for {absent}']
+    if list(manifest.get('symbols') or ()) != symbols:
+        fail.append('tape manifest symbols differ from the run symbols (frozen rank order)')
+    series = manifest.get('series') or {}
+    for kind, cols in REX_INPUTS.items():
+        e = series.get(kind)
+        if not isinstance(e, dict):
+            fail.append(f'{kind}: required series missing from the tape manifest')
+            continue
+        miss = [c for c in cols if c not in (e.get('columns') or ())]
+        if miss:
+            fail.append(f'{kind}: required column(s) missing {miss}')
+        nosym = [s for s in symbols if s not in (e.get('symbols') or ())]
+        if nosym:
+            fail.append(f'{kind}: no rows for {nosym}')
+        if kind == 'klines_4h' and e.get('interval') != '4h':
+            fail.append('klines_4h: interval is not 4h')
+        if e.get('digest') != rex_tape_digest(kind, tape, symbols):
+            fail.append(f'{kind}: the tape is not the attested one (digest mismatch)')
+    for s in symbols:                                       # the rows themselves (never trust the declaration alone)
+        x = tape[s]
+        if any(b.quote_volume is None or b.volume is None for b in x.bars.values()):
+            fail.append(f'{s}: a 4h bar without volume / quote_volume (VWAP undefined)')
+        if any(b.available_ms - b.open_ms != RV.TF or b.open_ms % RV.TF for b in x.bars.values()):
+            fail.append(f'{s}: a kline that is not a closed 4h bar on the grid')
+        if not x.funding:
+            fail.append(f'{s}: no funding rows')
+        if not x.marks:
+            fail.append(f'{s}: no 1h funding-mark rows')
+        if any(k not in (x.rule or {}) for k in RULES_FIELDS):
+            fail.append(f'{s}: exchange rule incomplete')
+    nb = manifest.get('notice_register')
+    if not isinstance(register, NT.Register) or not isinstance(nb, dict):
+        return fail + [f'{NT.RULE_ID}: notice register missing']
+    miss = [k for k in REX_NOTICE_KEYS if k not in nb]
+    if miss:
+        fail.append(f'{NT.RULE_ID}: binding key(s) missing {miss}')
+    if nb.get('attested') is not True:
+        fail.append(f'{NT.RULE_ID}: notice register not attested')
+    if (nb.get('rule_id'), nb.get('schema'), nb.get('parser_sha')) != (NT.RULE_ID, NT.SCHEMA, NT.parser_sha()):
+        fail.append(f'{NT.RULE_ID}: rule_id / schema / parser_sha differ from the frozen parser')
+    if nb.get('digest') != register.digest():
+        fail.append(f'{NT.RULE_ID}: the register is not the attested one (digest mismatch)')
+    if register.last_ok is None or nb.get('covers_to_ms') != register.last_ok or register.last_ok < window[1]:
+        fail.append(f'{NT.RULE_ID}: the register does not cover the window end (no successful fetch at / after it)')
+    if list(register.frozen) != list(nb.get('frozen') or ()) or not set(symbols) <= set(register.frozen):
+        fail.append(f'{NT.RULE_ID}: the register was not built over every run symbol')
+    return fail
+
+
+def rex_code_digest() -> str:
+    here = os.path.dirname(os.path.abspath(__file__))
+    files = sorted(glob.glob(os.path.join(here, 'range_vwap_rev*.py'))) + [os.path.abspath(__file__)]
+    return sha([{'path': os.path.basename(f), 'sha256': PG.file_sha256(f)} for f in files])
+
+
+def _jsonable(o):
+    if isinstance(o, dict):
+        return {str(k): _jsonable(v) for k, v in o.items()}
+    if isinstance(o, (list, tuple)):
+        return [_jsonable(v) for v in o]
+    if isinstance(o, (int, float, str, bool)) or o is None:
+        return o
+    return float(o)                                          # Fraction / Decimal diagnostics
+
+
+def rex_evaluate(env: dict, tier: str, lo: int, hi: int, run_config: dict) -> tuple[dict, dict]:
+    """Both side books of every registered configuration and row over closes lo..hi (one causal pass each)."""
+    symbols = list(env['symbols'])
+    tape = {s: env['tape'][s] for s in symbols}
+    notices = env['register'].view()
+    results, counts, inc = {}, {}, []
+    for side in RV.SIDES:
+        for c in rex_configs():
+            for row in REX_ROWS:
+                res = RV.run_book(tape, c['cfg'], side, first=lo, end=hi, order=symbols, row=row,
+                                  notices=notices, mode=c['mode'])
+                results.setdefault(side, {}).setdefault(c['name'], {})[row] = _jsonable(res)
+                counts.setdefault(side, {}).setdefault(c['name'], {})[row] = {'trades': len(res['trades']),
+                                                                             'status': res['status']}
+                if res['status'] != COMPLETE:
+                    cz = res.get('censor') or {}
+                    inc.append({'side': side, 'config': c['name'], 'row': row, 'reason': cz.get('reason'),
+                                'class': cz.get('class'), 'secondary': False})
+    status = INCOMPLETE if inc else COMPLETE
+    man = env['manifest']
+    access = {'kind': 'data_access', 'candidate_id': RV.CANDIDATE, 'split': 'development',
+              'window': {'start': S.utc(lo - RV.WARMUP_MS), 'end': S.utc(hi)},
+              'detail': {'purpose': 'development', 'tape_manifest': man['digest'],
+                         'file_digests': {k: v['digest'] for k, v in man['series'].items()},
+                         'notice_register': man['notice_register']['digest']}}
+    head = {'candidate_id': RV.CANDIDATE, 'family': RV.FAMILY, 'tier': tier, 'label': DEV_LABEL,
+            'universe_label': LABEL, 'window': {'start': S.utc(lo), 'end': S.utc(hi)},
+            'funding_window': RV.FUNDING_WINDOW, 'notice_rule': NT.RULE_ID, 'missing_data_policy': POLICY,
+            'status': status, 'run': sha(run_config)}
+    if inc:
+        head['incomplete'] = inc
+    summary = dict(head, format=REX_SUMMARY_FORMAT, counts=counts, not_evaluated=list(REX_NOT_EVALUATED))
+    detail = dict(head, format=REX_DETAIL_FORMAT, access=access, results=results)
+    return summary, detail
+
+
+def rex_run_config(env: dict, lo: int, hi: int) -> dict:
+    return {'profile': REX_RUN.binding(), 'configs': [c['name'] for c in rex_configs()], 'rows': list(REX_ROWS),
+            'book': dict(RV.BOOK), 'slip_c': RV.SLIP_C, 'funding_window': RV.FUNDING_WINDOW,
+            'notice_rule': NT.RULE_ID, 'parser_sha': NT.parser_sha(),
+            'inputs': {k: list(v) for k, v in REX_INPUTS.items()},
+            'tape_manifest': env['manifest']['digest'], 'window': [S.utc(lo), S.utc(hi)],
+            'cutoff': S.utc(rex_sealed_cutoff(env['plan'])), 'plan_digest': env['plan'].digest}
+
+
+def run_rex(env: dict, out_dir: str, *, window, resume: bool = False, clock=PG.cairo_now) -> str:
+    """REX-02 development run of `range_vwap_rev.v1` on one tier: window check (explicit, before the sealed cutoff) ->
+    input preflight (fail closed) -> progress snapshot -> both side books -> sealed summary / detail + final record.
+    `env`: tape {symbol: RV.Series}, manifest (rex_tape_manifest), register (NT.Register), symbols (frozen rank order),
+    tier, plan (rex_plan), commit (40-hex), universe (64-hex digest or None). Returns the final record path."""
+    lo, hi = rex_window(window, env['plan'])
+    tier = env.get('tier')
+    if tier not in RUN_TIERS:
+        raise PitRunError(f'REX-02: tier must be one of {RUN_TIERS}')
+    fail = rex_preflight(env.get('manifest'), env.get('tape'), env.get('register'), symbols=env.get('symbols') or (),
+                         window=(lo, hi))
+    if fail:
+        raise PitRunError('REX-02 preflight refused (fail closed):\n  ' + '\n  '.join(fail))
+    run_config = rex_run_config(env, lo, hi)
+    identity = {'commit': env['commit'], 'evaluator': sha({'code': rex_code_digest(), 'config': run_config}),
+                'manifest': env['manifest']['digest'], 'universe': env.get('universe'), 'classification': None,
+                'prereg': None}
+    cfg = {'tier': tier, 'symbols': list(env['symbols']), 'shared': sha(run_config), 'profile': REX_RUN.binding()}
+    d = os.path.join(out_dir, tier)
+    run = PG.run_id(identity, cfg)
+    final = os.path.join(d, f'final-{run}.json')
+    if _state(d, run, resume) == 'sealed':
+        return final
+    prog = PG.Progress(d, identity=identity, config=cfg, clock=clock)
+    stage = 'pit.open'
+    try:
+        prog.stage_start(stage)
+        prog.stage_done(stage)
+        stage = 'pit.development'
+        prog.stage_start(stage)
+        summary, detail = rex_evaluate(env, tier, lo, hi, run_config)
+        prog.stage_done(stage)
+        stage = None
+        paths = [write_json(os.path.join(d, f'summary-{run}.json'), summary),
+                 write_json(os.path.join(d, f'detail-{run}.json'), detail)]
+    except Exception as e:
+        prog.aborted([PG.integrity_code(type(e).__name__)], stage=stage)
+        raise
+    ok = is_complete(summary) and is_complete(detail)
+    prog.sealed(paths, [os.path.basename(paths[0])] if ok else [])
+    return final
