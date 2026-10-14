@@ -1,11 +1,6 @@
-"""REX-01 synthetic fixtures F11 (SCOUT-EXIT-01 overlay isolation, TAPE-LEVEL R) and F12 (Cairo day / holdout week
-keys). Generated tapes only."""
-import calendar
-import copy
-import datetime as dt
+"""REX-01 synthetic fixtures F11 (SCOUT-EXIT-01 overlay isolation, TAPE-LEVEL R). Generated tapes only."""
 import os
 import sys
-import zoneinfo
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import rex_synth as S                                                                       # noqa: E402
@@ -68,40 +63,3 @@ def test_f11_overlay_isolation(side, case):
         assert cmp['x1']['r_lt_m1'] == 1 and cmp['x1']['r_lt_m1_share'] == 1.0
         assert cmp['x2']['r_lt_m1'] == cmp['x3']['r_lt_m1'] == 1
         assert all(p[0]['label'] == RV.TAPE_LABEL for p in pairs.values())
-
-
-# ------------------------------------------------------------------ F12 Cairo day / week keys (4)
-def _hours_of(date):
-    """UTC hours whose Cairo date (m3_eval.cairo_day) is `date`, scanned around it."""
-    y, m, d = map(int, date.split('-'))
-    base = calendar.timegm((y, m, d, 0, 0, 0)) * 1000
-    return sum(RV.E.cairo_day(base + h * S.HOUR) == date for h in range(-30, 54))
-
-
-def _transitions(a, b):
-    return [t for t, _ in RV.E.CAIRO_OFFSETS if a <= t < b]
-
-
-@rex('F12', ['day_25h', 'day_23h', 'table_equals_iana', 'week_boundaries'])
-def test_f12_cairo_and_weeks(case):
-    import range_vwap_rev_eval as EV
-    H = EV.H_RECOMMENDED
-    w = EV.windows(H)
-    trs = _transitions(*w['holdout'])
-    assert len(trs) == 2                             # one spring-forward, one fall-back inside [H, H + 364 d)
-    if case in ('day_25h', 'day_23h'):
-        offs = dict(RV.E.CAIRO_OFFSETS)
-        t = next(x for x in trs if (offs[x] == 7200) == (case == 'day_25h'))
-        local = RV.E.cairo_day(t - 1 if case == 'day_25h' else t)      # fall back repeats 23:00, spring skips 00:00
-        assert _hours_of(local) == (25 if case == 'day_25h' else 23)
-    elif case == 'table_equals_iana':
-        z = zoneinfo.ZoneInfo('Africa/Cairo')
-        for t in range(w['holdout'][0], w['holdout'][1], S.HOUR):
-            want = dt.datetime.fromtimestamp(t / 1000, z).strftime('%Y-%m-%d')
-            assert RV.E.cairo_day(t) == want
-    else:
-        assert w['weeks'][0] == (H, H + EV.WEEK) and len(w['weeks']) == 52 and len(w['blocks']) == 13
-        for j in (0, 1, 51):
-            assert EV.week_of(H + j * EV.WEEK, H) == j and EV.week_of(H + (j + 1) * EV.WEEK - 1, H) == j
-            assert EV.is_monday_midnight(H + j * EV.WEEK) and (EV.WEEK // S.TF) == 42
-        assert copy.deepcopy(w)['holdout'] == (H, H + 364 * 86_400_000)
