@@ -155,6 +155,82 @@ def sig_hot_coin(d, p, ctx):
                 lx=d.c < d.e20, sx=d.c < -1)
 
 
+
+# ------------------------------------------------------------------ sprint families (EXPERIMENTAL / TESTNET-ONLY, frozen v0)
+# Four deterministic long+short entry families for the 48h testnet sprint. Each is one simple frozen rule on CLOSED
+# candles, symmetric by construction (a price reflection maps every long decision onto the short one), and never raises
+# a long and a short entry on the same candle. An opposite entry always implies the held side's exit signal, so a
+# reversal closes first and the engine's one-lot-per-coin-per-slot rule does the rest. No tuning; no profitability claim.
+EXP_TAG = 'EXPERIMENTAL / testnet-only'
+
+
+def _one_side(s):
+    """Never both entries on one candle (an ambiguous candle takes neither)."""
+    le, se = X(s['le']), X(s['se'])
+    return dict(s, le=le & ~se, se=se & ~le)
+
+
+def sig_exp_trend(d, p, ctx):
+    """Trend v0 = trend_ema_mom.v1 (EMA20/50 cross on the EMA200 side, 7d+30d momentum agreeing) and its exact mirror."""
+    return _one_side(sig_ema_mom(d, p, ctx))
+
+
+def sig_exp_range(d, p, ctx):
+    """Range / mean reversion v0 = RANGE-EXIT-01 v0 on closed candles (frozen; 4h intended).
+    VWAP42 = sum(typical price * volume) / sum(volume) over 42 candles (the engine's candles carry no quote volume, so
+    typical price * volume stands in for it), ATR = simple 14-candle mean of the true range, z = (close - VWAP) / ATR, k = 2.
+    Range gate: |VWAP_i - VWAP_(i-6)| <= 1.0 ATR. Long when z crosses back up through -k below VWAP inside the gate; short
+    is the exact mirror. Exit at the mean (close back at VWAP) or when the range gate breaks; stop / time cap in mgmt."""
+    k = float(p.get('k', 2.0))
+    h, l, c, v = d.h, d.l, d.c, d.v
+    tr = pd.concat([h - l, (h - c.shift()).abs(), (l - c.shift()).abs()], axis=1).max(axis=1)
+    atr = tr.rolling(14).mean()
+    vw = (((h + l + c) / 3) * v).rolling(42).sum() / v.rolling(42).sum()
+    z = (c - vw) / atr
+    gate = (vw - vw.shift(6)).abs() <= 1.0 * atr
+    le = gate & (z.shift() <= -k) & (z > -k) & (c < vw)
+    se = gate & (z.shift() >= k) & (z < k) & (c > vw)
+    ok = vw.notna() & atr.notna()
+    return _one_side(dict(le=le, se=se, lx=ok & ((c >= vw) | ~gate), sx=ok & ((c <= vw) | ~gate)))
+
+
+def sig_exp_breakout(d, p, ctx):
+    """Breakout v0 = symmetric 20-candle Donchian (the donchian_ens / bear_breakdown channel): long on the first close above
+    the prior 20-candle high, short on the first close below the prior 20-candle low; exit on a close through the opposite
+    10-candle channel (reversal / failed breakout)."""
+    up, dn = X(d.c > d.hh20), X(d.c < d.ll20)
+    return _one_side(dict(le=up & ~up.shift(fill_value=False), se=dn & ~dn.shift(fill_value=False),
+                          lx=d.c < d.ll10, sx=d.c > d.hh10))
+
+
+def sig_exp_scalp(d, p, ctx):
+    """Scalp v0 (15m intended) = EMA-pullback continuation: in an EMA20 > EMA50 trend, the candle dips to EMA20 (low <= EMA20)
+    and closes back above it after a close above it -> long; exact mirror for shorts. Exit when the EMA20/50 trend flips."""
+    up, dn = d.e20 > d.e50, d.e20 < d.e50
+    le = up & (d.l <= d.e20) & (d.c > d.e20) & (d.c.shift() > d.e20.shift())
+    se = dn & (d.h >= d.e20) & (d.c < d.e20) & (d.c.shift() < d.e20.shift())
+    return _one_side(dict(le=le, se=se, lx=dn, sx=up))
+
+
+def sig_exp_structure(d, p, ctx):
+    """Session-agnostic structure break v0 (15m).
+
+    A swing is usable only after the candle to its right has closed. Longs require
+    the close to cross the latest confirmed swing high while EMA50 is above
+    EMA200; shorts are the exact mirror. This keeps the first version causal and
+    compatible with the engine's existing single-timeframe contract. A later
+    research revision may replace the EMA regime proxy with native 1h context.
+    """
+    ph = d.h.shift(1).where((d.h.shift(1) > d.h.shift(2)) & (d.h.shift(1) >= d.h))
+    pl = d.l.shift(1).where((d.l.shift(1) < d.l.shift(2)) & (d.l.shift(1) <= d.l))
+    last_hi, last_lo = ph.ffill(), pl.ffill()
+    up, dn = d.e50 > d.e200, d.e50 < d.e200
+    broke_hi = (d.c > last_hi) & (d.c.shift() <= last_hi.shift())
+    broke_lo = (d.c < last_lo) & (d.c.shift() >= last_lo.shift())
+    return _one_side(dict(le=up & broke_hi, se=dn & broke_lo,
+                          lx=(d.c < last_lo) | dn, sx=(d.c > last_hi) | up))
+
+
 # ------------------------------------------------------------------ registry
 # style: calm / balanced / aggressive  ·  sides: long / short / both
 STRATEGIES = {
@@ -188,6 +264,33 @@ STRATEGIES = {
     'hot_coin': dict(name='Hot-coin momentum chase', style='aggressive', fn=sig_hot_coin, sides='long',
                      desc='Lead-trader style: top-3 7-day movers breaking out on a volume surge; tight trail.',
                      mgmt=dict(stop_atr=2.0, trail_atr=2.5, tp1_r=2.0, tp1_frac=0.5)),
+    # ---- sprint families: EXPERIMENTAL / testnet-only (frozen v0, long + short, no demonstrated edge)
+    'exp_trend': dict(name='[TESTNET EXP] Trend L/S', style='balanced', fn=sig_exp_trend, sides='both', tf='4h',
+                      desc=EXP_TAG + ': EMA20/50 cross on the EMA200 side with 7d+30d momentum agreeing (trend_ema_mom.v1), mirrored '
+                           'for shorts. Stop 2.5 ATR, target 3R, exit on cross-back or momentum loss, 180-candle time cap. 4h.',
+                      mgmt=dict(stop_atr=2.5, tp_r=3.0, max_bars=180)),
+    'exp_range': dict(name='[TESTNET EXP] Range L/S', style='balanced', fn=sig_exp_range,
+                      sides='both', tf='4h', params=dict(k=2.0),
+                      desc=EXP_TAG + ': RANGE-EXIT-01 v0. 42-candle VWAP (typical price x volume), ATR = 14-candle mean true range, '
+                           'z = (close - VWAP)/ATR. Long when z crosses back above -2 below VWAP while VWAP moved <= 1 ATR over 6 '
+                           'candles; short mirrored. Target = back at VWAP, exit if the range breaks, stop 1.5 ATR, 30-candle cap. 4h.',
+                      mgmt=dict(stop_atr=1.5, max_bars=30)),
+    'exp_breakout': dict(name='[TESTNET EXP] Breakout L/S', style='balanced', fn=sig_exp_breakout,
+                         sides='both', tf='4h',
+                         desc=EXP_TAG + ': first close above the prior 20-candle high (long) or below the prior 20-candle low '
+                              '(short). Stop 2 ATR, target 3R, exit on a close through the opposite 10-candle channel, 60-candle cap. 4h.',
+                         mgmt=dict(stop_atr=2.0, tp_r=3.0, max_bars=60)),
+    'exp_scalp': dict(name='[TESTNET EXP] Scalp L/S 15m', style='aggressive', fn=sig_exp_scalp,
+                      sides='both', tf='15m',
+                      desc=EXP_TAG + ': with EMA20 above EMA50, a candle that dips to EMA20 and closes back above it (long); '
+                           'mirrored for shorts. Tight stop 1 ATR, target 1.5R, exit when EMA20/50 flips, 16-candle (4h) cap. Run on 15m.',
+                      mgmt=dict(stop_atr=1.0, tp_r=1.5, max_bars=16)),
+    'exp_structure': dict(name='[TESTNET EXP] Structure L/S', style='aggressive', fn=sig_exp_structure,
+                          sides='both', tf='15m',
+                          desc=EXP_TAG + ': first close through the latest confirmed 3-candle swing in the EMA50/200 direction. '
+                               'Confirmed pivots and closed-candle entries prevent lookahead. Stop 1 ATR, target 2R, opposite-structure '
+                               'or regime-flip exit, 24-candle (6h) cap. Run on 15m.',
+                          mgmt=dict(stop_atr=1.0, tp_r=2.0, max_bars=24)),
 }
 
 

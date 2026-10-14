@@ -32,7 +32,7 @@ function New-InstallerState([string]$mode, [string]$src, [string]$localAppData) 
         Stage = [IO.Path]::Combine($root, 'staging'); Venv = [IO.Path]::Combine($root, 'buildenv')
         Log = [IO.Path]::Combine($root, 'build.log')
         Drill = ($mode -eq 'drill'); Preflight = ($mode -eq 'preflight'); BuildCheck = ($mode -eq 'buildcheck')
-        BuildId = ''; NewHash = ''; OldHash = ''; OldBuild = ''; HaveOld = $false; Stopped = $false; InRollback = $false
+        BuildId = ''; SrcCommit = ''; StageWorktree = $false; NewHash = ''; OldHash = ''; OldBuild = ''; HaveOld = $false; Stopped = $false; InRollback = $false
         Warn = ''; RbOk = $false; RbNote = ''; RbHash = ''; RbTried = $false; StopCalled = $false; StopConfirmed = $false; DrillInvalid = $false
         RecTried = $false; RecOk = $false; RecNote = ''; FileHash = ''; FilePresent = $null; TouchesInstall = ($mode -eq 'install' -or $mode -eq 'drill')
         WarnList = [Collections.Generic.List[string]]::new()
@@ -105,14 +105,14 @@ function Get-Record {
     # installed_file_present / installed_file_sha256 = the installed exe as it is at the END of the run (re-read right
     # before the verdict; null/false when there is no file), independent of whether it runs.
     $installed = $null
-    if ($s.Verdict -eq 'BUILD_DONE') { $installed = [ordered]@{ build = $s.BuildId; sha256 = $s.NewHash } }
+    if ($s.Verdict -eq 'BUILD_DONE' -or $s.Verdict -eq 'INSTALLED_CLEANUP_FAILED') { $installed = [ordered]@{ build = $s.BuildId; sha256 = $s.NewHash } }
     elseif ($s.RbOk) { $installed = [ordered]@{ build = $s.OldBuild; sha256 = $s.RbHash } }
     elseif ($s.RecOk) { $installed = [ordered]@{ build = $s.OldBuild; sha256 = $s.OldHash } }
     $nz = { param($x) if ($x) { $x } else { $null } }
     return [ordered]@{
         schema = 1; tool = 'installer.ps1'; mode = $s.Mode
         started = $s.Started; finished = (& $nz $s.Finished)
-        source_dir = $s.Src; log = $s.Log
+        source_dir = $s.Src; source_commit = (& $nz $s.SrcCommit); log = $s.Log
         build_id = (& $nz $s.BuildId); new_exe_sha256 = (& $nz $s.NewHash)
         previous = [ordered]@{ build = (& $nz $s.OldBuild); sha256 = (& $nz $s.OldHash) }
         bot_stop_attempted = $s.StopCalled; bot_stop_confirmed = $s.StopConfirmed
@@ -246,6 +246,114 @@ function Remove-Stage([string]$dir) {
     [void](Invoke-Logged 'cmd.exe' @('/d', '/c', 'rmdir', '/s', '/q', $dir))
 }
 
+function Invoke-Git([string[]]$argv, [switch]$Quiet) {
+    # git through Invoke-Logged. git.exe missing or not starting -> code -1 (callers treat that as indeterminate).
+    try { return (Invoke-Logged 'git' $argv -Quiet:$Quiet) }
+    catch { Write-Log ('  git not run: ' + $_.Exception.Message); return @{ Code = -1; Out = ''; Err = '' } }
+}
+
+function Get-GitSourceCommit([string]$src) {
+    # The HEAD commit when $src is the top folder of a git checkout (a repository or a linked worktree), '' ONLY when git
+    # positively reports a plain folder (no .git in it and 'not a git repository'). Everything else is refused before
+    # staging (fail closed): git missing / not starting, any other rev-parse error (dubious ownership, corrupt or
+    # inaccessible checkout), a .git that git does not accept, a folder inside a checkout but not its top.
+    $dotGit = [IO.Path]::Combine($src, '.git')
+    $hasDotGit = [IO.File]::Exists($dotGit) -or [IO.Directory]::Exists($dotGit)
+    $r = Invoke-Git @('-C', $src, 'rev-parse', '--is-inside-work-tree') -Quiet
+    $err = ([string]$r.Err).Trim()
+    if ($r.Code -eq 0 -and ([string]$r.Out).Trim() -eq 'true') {
+        $top = Invoke-Git @('-C', $src, 'rev-parse', '--show-toplevel') -Quiet
+        $same = $false
+        try { $same = ($top.Code -eq 0 -and [IO.Path]::GetFullPath(([string]$top.Out).Trim()).TrimEnd('\') -ieq [IO.Path]::GetFullPath($src).TrimEnd('\')) } catch { }
+        if (-not $same) { Stop-Install "the source folder is inside a git checkout but is not its top folder ($(([string]$top.Out).Trim())) - nothing was changed" }
+        $h = Invoke-Git @('-C', $src, 'rev-parse', '--verify', 'HEAD^{commit}') -Quiet
+        $sha = ([string]$h.Out).Trim()
+        if ($h.Code -ne 0 -or $sha -notmatch '^[0-9a-f]{40}([0-9a-f]{24})?$') { Stop-Install 'could not read the commit of the source checkout (git rev-parse HEAD) - nothing was changed' }
+        return $sha
+    }
+    if ($err) { Write-Log "  git rev-parse: exit $($r.Code) $err" }
+    if ($r.Code -gt 0 -and -not $hasDotGit -and $err -match 'not a git repository') { return '' }    # positively plain
+    if ($r.Code -eq -1) { Stop-Install 'git is needed to tell whether the source is a git checkout, but it did not run - nothing was changed; the reason is in the log' }
+    Stop-Install "could not tell whether the source is a clean git checkout (git rev-parse exit $($r.Code)$(if ($hasDotGit) { ', .git present' })) - nothing was changed; the reason is in the log"
+}
+
+function Test-EvidenceArtifact([string]$rel) {
+    # tools/research/report.py is_evidence_artifact: a validated NON-EXECUTABLE artifact under research_evidence/.
+    $rel = $rel.Replace('\', '/'); $parts = $rel.Split('/')
+    if ($parts.Count -lt 2 -or $parts[0] -ne 'research_evidence' -or $parts -contains '..' -or $parts -contains '') { return $false }
+    $low = $rel.ToLowerInvariant()
+    foreach ($x in @('.json', '.jsonl', '.json.gz', '.csv', '.md')) { if ($low.EndsWith($x)) { return $true } }
+    return $false
+}
+
+function Get-SourceDirtyPaths([string]$src) {
+    # What makes the source differ from its commit: every tracked change (staged or not, both sides of a rename) and every
+    # untracked file except the validated evidence artifacts tools/research/report.py also ignores (its dirty_paths).
+    # $null when git status itself failed.
+    $r = Invoke-Git @('-C', $src, 'status', '--porcelain=v1', '-z', '--untracked-files=all') -Quiet
+    if ($r.Code -ne 0) { if ($r.Err) { Write-Log $r.Err.TrimEnd() }; return $null }
+    $items = ([string]$r.Out).Split([char]0)
+    $out = [Collections.Generic.List[string]]::new(); $i = 0
+    while ($i -lt $items.Count) {
+        $it = $items[$i]; $i++
+        if ($it.Length -lt 4) { continue }
+        $code = $it.Substring(0, 2); $paths = @($it.Substring(3))
+        if (($code.Contains('R') -or $code.Contains('C')) -and $i -lt $items.Count) { $paths += $items[$i]; $i++ }
+        foreach ($p in $paths) {
+            if ($code -eq '??' -and (Test-EvidenceArtifact $p)) { continue }
+            if (-not $out.Contains($p)) { $out.Add($p) }
+        }
+    }
+    return ,$out
+}
+
+function Test-StageRegistered {
+    # $true / $false: is the staging src path still a registered worktree of the source repository; $null = unknown.
+    $s = $script:S
+    $r = Invoke-Git @('-C', $s.Src, 'worktree', 'list', '--porcelain') -Quiet
+    if ($r.Code -ne 0) { return $null }
+    $want = [IO.Path]::GetFullPath($s.StageSrc).TrimEnd('\')
+    foreach ($line in ([string]$r.Out).Split("`n")) {
+        $l = $line.Trim()
+        if (-not $l.StartsWith('worktree ')) { continue }
+        try { if ([IO.Path]::GetFullPath($l.Substring(9).Trim()).TrimEnd('\') -ieq $want) { return $true } } catch { }
+    }
+    return $false
+}
+
+function Remove-StageWorktree([bool]$checkDir = $true) {
+    # Unregisters the staged worktree (git worktree remove also deletes its folder) and prunes a registration whose folder
+    # is already gone. Returns @{ Ok; Detail }: Ok only when prune succeeded, the registration is verifiably gone and
+    # (checkDir) the staging src folder is gone. Never throws, never writes to the pipeline.
+    $s = $script:S
+    try {
+        $r = Invoke-Git @('-C', $s.Src, 'worktree', 'remove', '--force', '--force', $s.StageSrc) -Quiet
+        $rm = $r.Code
+        $p = Invoke-Git @('-C', $s.Src, 'worktree', 'prune') -Quiet
+        $reg = Test-StageRegistered
+        $dirGone = -not [IO.Directory]::Exists($s.StageSrc)
+        $detail = "worktree remove exit $rm, prune exit $($p.Code), registered=$reg, folder gone=$dirGone"
+        Write-Log "  staging worktree cleanup: $detail"
+        $ok = ($p.Code -eq 0 -and $reg -eq $false -and ($dirGone -or -not $checkDir))
+        return @{ Ok = $ok; Detail = $detail }
+    } catch {
+        try { Write-Log ('  staging worktree not removed: ' + $_.Exception.Message) } catch { }
+        return @{ Ok = $false; Detail = 'cleanup error: ' + $_.Exception.Message }
+    }
+}
+
+function Invoke-StageCleanup {
+    # Success gate (BUILD-FIX-01 review): before any OK verdict the staging worktree must be verifiably gone - folder and
+    # registration. Recorded as the 'cleanup' step. $true when there was nothing to clean or it is gone.
+    $s = $script:S
+    if (-not $s.StageWorktree) { return $true }
+    Start-Step 'cleanup'
+    $c = Remove-StageWorktree $true
+    $s.StageWorktree = -not $c.Ok
+    Complete-Step $c.Ok $c.Detail
+    return $c.Ok
+}
+
 function Find-Python {
     # "py" launcher if installed, else "python" (as before).
     foreach ($d in ([string]$env:PATH).Split([IO.Path]::PathSeparator)) {
@@ -327,16 +435,51 @@ function Invoke-Step1Stage {
     $s = $script:S
     Write-Say '[1/8] Copying the source to a clean staging folder...'
     Start-Step 'stage'
+    # BUILD-FIX-01 option A: a git checkout is staged as a detached worktree of its exact HEAD commit, so the safety tests
+    # see real git metadata (the committed-state / clean-tree tests need it) and the exe is built from committed code only.
+    # A dirty checkout is refused before anything is touched. A plain folder (no git) is copied as before.
+    $s.SrcCommit = Get-GitSourceCommit $s.Src
+    if ($s.SrcCommit) {
+        $dirty = Get-SourceDirtyPaths $s.Src
+        if ($null -eq $dirty) { Stop-Install 'git status failed on the source checkout - nothing was changed; the reason is in the log' }
+        if ($dirty.Count -gt 0) {
+            Write-Log ('  uncommitted: ' + (@($dirty)[0..([Math]::Min($dirty.Count, 50) - 1)] -join ', '))
+            Stop-Install "the source checkout has uncommitted changes ($($dirty.Count) path(s), listed in the log) - commit or remove them, then build again; nothing was changed"
+        }
+        Write-Log "  source commit $($s.SrcCommit) (clean git checkout, staged as a detached worktree)"
+        $c = Remove-StageWorktree $false                         # a registration left by an earlier, interrupted run
+        if (-not $c.Ok) { Stop-Install "a staging worktree from an earlier run could not be unregistered ($($c.Detail)) - nothing was changed" }
+    }
     Remove-Stage $s.Stage
     if ([IO.Directory]::Exists($s.Stage)) { Stop-Install "could not clear the staging folder $($s.Stage) (a file is open there?)" }
-    # Keep the manifest-controlled candle datasets through the safety-test step. T04d's CI tests validate every file in
-    # DATA_MANIFEST.json; excluding these folders made a normal installer fail before touching the running bot. They are
-    # removed from this temporary staging tree immediately after the tests and are never bundled or mirrored.
-    $r = Invoke-Logged 'robocopy' @(($s.Src.TrimEnd('\') + '\.'), $s.StageSrc, '/MIR',
-        '/XD', '__pycache__', '.git', '.git_failed_*', 'dev_out', 'data_market',
-        '/XF', 'build_app.bat', 'rollback_drill.bat', 'installer.ps1', 'setup_git.bat', 'config.env', '*.log', 'session.json',
-        '*.tmp', '*.pkl', 'build_info.py', '/NFL', '/NDL', '/NJH', '/NJS')
-    if ($r.Code -ge 8) { Stop-Install 'copying the source failed' }
+    if ($s.SrcCommit) {
+        [void](Invoke-Git @('-C', $s.Src, 'worktree', 'prune') -Quiet)
+        $s.StageWorktree = $true                                 # from here on Invoke-Main unregisters it, success or failure
+        $r = Invoke-Git @('-C', $s.Src, 'worktree', 'add', '--detach', $s.StageSrc, $s.SrcCommit)
+        if ($r.Code -ne 0) { Stop-Install 'staging the committed source failed (git worktree add) - nothing was changed; the reason is in the log' }
+        # The installer-private files stay out of the staged tree exactly as the plain-folder copy below leaves them out
+        # (the staged tests skip the launcher checks; nothing nests a real installer run). skip-worktree first, so their
+        # absence is not an uncommitted change: the staged tree stays a CLEAN checkout of the commit.
+        $priv = @('build_app.bat', 'rollback_drill.bat', 'installer.ps1', 'setup_git.bat')
+        $r = Invoke-Git (@('-C', $s.StageSrc, 'update-index', '--skip-worktree', '--') + $priv)
+        if ($r.Code -ne 0) { Stop-Install 'staging the committed source failed (git update-index) - nothing was changed; the reason is in the log' }
+        foreach ($f in $priv) {
+            $fp = [IO.Path]::Combine($s.StageSrc, $f)
+            try { if ([IO.File]::Exists($fp)) { [IO.File]::Delete($fp) } } catch { }
+            if ([IO.File]::Exists($fp)) { Stop-Install "could not leave $f out of the staged source - nothing was changed" }
+        }
+    } else {
+        # Keep the manifest-controlled candle datasets through the safety-test step. T04d's CI tests validate every file in
+        # DATA_MANIFEST.json; excluding these folders made a normal installer fail before touching the running bot. They are
+        # removed from this temporary staging tree immediately after the tests and are never bundled or mirrored.
+        # '.git' is excluded as a folder (/XD) AND as a file (/XF): in a git worktree .git is a pointer FILE, and copying it
+        # made the staged tree a dirty checkout of the real repository (BUILD-FIX-01).
+        $r = Invoke-Logged 'robocopy' @(($s.Src.TrimEnd('\') + '\.'), $s.StageSrc, '/MIR',
+            '/XD', '__pycache__', '.git', '.git_failed_*', 'dev_out', 'data_market',
+            '/XF', '.git', 'build_app.bat', 'rollback_drill.bat', 'installer.ps1', 'setup_git.bat', 'config.env', '*.log', 'session.json',
+            '*.tmp', '*.pkl', 'build_info.py', '/NFL', '/NDL', '/NJH', '/NJS')
+        if ($r.Code -ge 8) { Stop-Install 'copying the source failed' }
+    }
     $s.BuildId = New-BuildId
     if (-not $s.BuildId) { Stop-Install 'copying the source failed' }
     [IO.File]::WriteAllText([IO.Path]::Combine($s.StageSrc, 'build_info.py'), "BUILD_ID = '$($s.BuildId)'`r`n", [Text.Encoding]::ASCII)
@@ -369,6 +512,14 @@ function Invoke-BuildSteps {
     Start-Step 'safety_tests'
     $r = Invoke-Logged $bpy @('-m', 'pytest', '-q', '-p', 'no:cacheprovider', '-m', 'not slow', 'tests') $s.StageSrc
     if ($r.Code -ne 0) { Stop-Install 'the safety tests FAILED - this build is not safe to install' }
+    # The exe bundles ONE runtime file from data\ (the testnet exchange rules). The cleanup below deletes the whole staged
+    # data\ folder, so keep that file aside first (BUILD-FIX-01: deleting it made PyInstaller fail on 2026-10-08).
+    $rulesSrc = [IO.Path]::Combine($s.StageSrc, 'data', 'exchange_rules_testnet.json')
+    $bundleData = [IO.Path]::Combine($s.Stage, 'bundle_data')
+    $rulesKept = [IO.Path]::Combine($bundleData, 'exchange_rules_testnet.json')
+    if (-not [IO.File]::Exists($rulesSrc)) { Stop-Install 'data\exchange_rules_testnet.json is missing from the source - the exe cannot be built' }
+    try { [void][IO.Directory]::CreateDirectory($bundleData); [IO.File]::Copy($rulesSrc, $rulesKept, $true) }
+    catch { Stop-Install 'could not keep the exchange rules file for the build' }
     foreach ($name in @('data', 'data1h', 'data_long')) {
         $path = [IO.Path]::Combine($s.StageSrc, $name)
         try { if ([IO.Directory]::Exists($path)) { [IO.Directory]::Delete($path, $true) } }
@@ -383,7 +534,7 @@ function Invoke-BuildSteps {
         '--icon', [IO.Path]::Combine($src, 'zackbot.ico'),
         '--add-data', ([IO.Path]::Combine($src, 'panel.html') + ';.'),
         '--add-data', ([IO.Path]::Combine($src, 'research') + ';research'),
-        '--add-data', ([IO.Path]::Combine($src, 'data', 'exchange_rules_testnet.json') + ';data'),
+        '--add-data', ($rulesKept + ';data'),
         '--collect-data', 'tzdata',
         '--distpath', [IO.Path]::Combine($s.Stage, 'dist'), '--workpath', [IO.Path]::Combine($s.Stage, 'work'),
         '--specpath', [IO.Path]::Combine($s.Stage, 'work'), [IO.Path]::Combine($src, 'app.py'))
@@ -498,13 +649,27 @@ function Invoke-Finish {
     $s = $script:S
     $s.Stopped = $false
     Start-Step 'mirror'
-    $r = Invoke-Logged 'robocopy' @($s.StageSrc, $s.Dst, '/MIR', '/XD', 'tests', 'data_market', '/NFL', '/NDL', '/NJH', '/NJS')
+    # '.git' (the staged worktree's pointer FILE, or a folder) never reaches the installed source: /XD and /XF.
+    $r = Invoke-Logged 'robocopy' @($s.StageSrc, $s.Dst, '/MIR', '/XD', 'tests', 'data_market', '.git', '/XF', '.git', '/NFL', '/NDL', '/NJH', '/NJS')
     if ($r.Code -ge 8) { $s.Warn += " [source copy in $($s.Dst) failed]"; $s.WarnList.Add("source copy in $($s.Dst) failed") }
     Complete-Step ($r.Code -lt 8) "robocopy exit $($r.Code)"
     Start-Step 'shortcuts'
     $okSc = Update-Shortcuts
     if (-not $okSc) { $s.Warn += ' [desktop/start-menu shortcut not updated]'; $s.WarnList.Add('desktop/start-menu shortcut not updated') }
     Complete-Step $okSc ''
+    # The new version is installed and confirmed running, so a staging cleanup failure never rolls it back - but the run is
+    # NOT a success: verdict INSTALLED_CLEANUP_FAILED, the failed 'cleanup' step recorded, exit code 1 (Codex re-review).
+    if (-not (Invoke-StageCleanup)) {
+        $why = "build $($s.BuildId) is installed and confirmed running, but the staging worktree could not be removed (folder or git registration left; details in the log) - remove it before the next build"
+        Write-Log "INSTALLED_CLEANUP_FAILED build=$($s.BuildId) sha256=$($s.NewHash) target=$($s.Exe)"
+        if ($s.Warn) { Write-Log "BUILD_WARNINGS$($s.Warn)" }
+        Set-Verdict 'INSTALLED_CLEANUP_FAILED' $why 1
+        Write-Say ''
+        Write-Say " *** INSTALLED, CLEANUP FAILED: $why"
+        Write-Say " Details: $($s.Log)"
+        if (-not (Test-NoPause)) { Invoke-Pause }
+        return 1
+    }
     Write-Log "BUILD_DONE build=$($s.BuildId) sha256=$($s.NewHash) target=$($s.Exe)"
     if ($s.Warn) { Write-Log "BUILD_WARNINGS$($s.Warn)" }
     Set-Verdict 'BUILD_DONE' '' 0
@@ -553,6 +718,7 @@ function Invoke-Rollback {
     if ($s.DrillInvalid) { Stop-Install "ROLLBACK DRILL INVALID: the new exe answered although it was told to fail (check --simulate-failed-launch) - $($s.RbNote)" }
     if (-not $s.Drill) { Stop-Install "the new version did not start correctly - $($s.RbNote)" }
     if (-not $s.RbOk) { Stop-Install "ROLLBACK DRILL FAILED - $($s.RbNote)" }
+    if (-not (Invoke-StageCleanup)) { Stop-Install 'the staging worktree could not be removed (folder or git registration left; details in the log)' }
     Set-Verdict 'DRILL_PASSED' '' 0
     Write-Log "DRILL_PASSED new=$($s.BuildId) failed its launch on purpose, restored=$($s.OldBuild) sha256=$($s.RbHash) confirmed running"
     Write-Say ''
@@ -566,6 +732,11 @@ function Invoke-Rollback {
 
 function Invoke-Fail([string]$why) {
     $s = $script:S
+    if ($s.Current) { Complete-Step $false $why }
+    if ($s.StageWorktree) {
+        # Failure paths clean up too (recorded as the 'cleanup' step); a cleanup failure is added to the reason.
+        if (-not (Invoke-StageCleanup)) { $why += '; the staging worktree could not be removed (folder or git registration left; details in the log)' }
+    }
     Write-Log "BUILD_FAILED: $why"
     Set-Verdict 'BUILD_FAILED' $why 1
     Write-Say ''
@@ -581,14 +752,16 @@ function Invoke-Flow {
     Invoke-Banner
     $pre = Invoke-Step1Stage
     if ($s.Preflight) {
+        if (-not (Invoke-StageCleanup)) { Stop-Install 'the staging worktree could not be removed (folder or git registration left; details in the log)' }
+        Remove-Stage $s.Stage
         Write-Log "PREFLIGHT_OK build=$($s.BuildId) app.py sha256=$pre"
         Write-Say "PREFLIGHT_OK app.py sha256=$pre"
-        Remove-Stage $s.Stage
         Set-Verdict 'PREFLIGHT_OK' '' 0
         return 0
     }
     Invoke-BuildSteps
     if ($s.BuildCheck) {
+        if (-not (Invoke-StageCleanup)) { Stop-Install 'the staging worktree could not be removed (folder or git registration left; details in the log)' }
         Write-Log "BUILDCHECK_OK build=$($s.BuildId) sha256=$($s.NewHash) exe=$($s.NewExe)"
         Write-Say "BUILDCHECK_OK build $($s.BuildId) sha256 $($s.NewHash)"
         Set-Verdict 'BUILDCHECK_OK' '' 0
@@ -659,6 +832,8 @@ function Invoke-Main([string]$mode, [string]$src, [string]$localAppData) {
             }
         }
         return (Invoke-Fail $why)
+    } finally {
+        if ($script:S.StageWorktree) { [void](Remove-StageWorktree $true); $script:S.StageWorktree = $false }   # last resort
     }
 }
 
