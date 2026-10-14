@@ -14,3 +14,6 @@ research_evidence/ledger/*.jsonl text eol=lf
 research_evidence/prereg/*.json text eol=lf
 # All Python is LF in the repo and in every checkout (Codex R1: CRLF pollution from Windows).
 *.py text eol=lf
+# REX-03: the zb-delist-notice/1 artifacts and their coverage sidecars are byte-pinned by tests (LF only).
+research_evidence/notices/*.json text eol=lf
+research_evidence/notices/*.md text eol=lf
