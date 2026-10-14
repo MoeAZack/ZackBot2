@@ -247,24 +247,34 @@ function Remove-Stage([string]$dir) {
 }
 
 function Invoke-Git([string[]]$argv, [switch]$Quiet) {
-    # git through Invoke-Logged. No git.exe on PATH -> code -1 (the source is then treated as a plain folder).
+    # git through Invoke-Logged. git.exe missing or not starting -> code -1 (callers treat that as indeterminate).
     try { return (Invoke-Logged 'git' $argv -Quiet:$Quiet) }
     catch { Write-Log ('  git not run: ' + $_.Exception.Message); return @{ Code = -1; Out = ''; Err = '' } }
 }
 
 function Get-GitSourceCommit([string]$src) {
-    # The HEAD commit when $src is the top folder of a git checkout (a repository or a linked worktree), '' when it is a
-    # plain folder. A folder INSIDE a checkout but not its top cannot be staged from a commit: refused.
+    # The HEAD commit when $src is the top folder of a git checkout (a repository or a linked worktree), '' ONLY when git
+    # positively reports a plain folder (no .git in it and 'not a git repository'). Everything else is refused before
+    # staging (fail closed): git missing / not starting, any other rev-parse error (dubious ownership, corrupt or
+    # inaccessible checkout), a .git that git does not accept, a folder inside a checkout but not its top.
+    $dotGit = [IO.Path]::Combine($src, '.git')
+    $hasDotGit = [IO.File]::Exists($dotGit) -or [IO.Directory]::Exists($dotGit)
     $r = Invoke-Git @('-C', $src, 'rev-parse', '--is-inside-work-tree') -Quiet
-    if ($r.Code -ne 0 -or $r.Out.Trim() -ne 'true') { return '' }
-    $top = Invoke-Git @('-C', $src, 'rev-parse', '--show-toplevel') -Quiet
-    $same = $false
-    try { $same = ($top.Code -eq 0 -and [IO.Path]::GetFullPath($top.Out.Trim()).TrimEnd('\') -ieq [IO.Path]::GetFullPath($src).TrimEnd('\')) } catch { }
-    if (-not $same) { Stop-Install "the source folder is inside a git checkout but is not its top folder ($($top.Out.Trim())) - nothing was changed" }
-    $h = Invoke-Git @('-C', $src, 'rev-parse', '--verify', 'HEAD^{commit}') -Quiet
-    $sha = $h.Out.Trim()
-    if ($h.Code -ne 0 -or $sha -notmatch '^[0-9a-f]{40}([0-9a-f]{24})?$') { Stop-Install 'could not read the commit of the source checkout (git rev-parse HEAD) - nothing was changed' }
-    return $sha
+    $err = ([string]$r.Err).Trim()
+    if ($r.Code -eq 0 -and ([string]$r.Out).Trim() -eq 'true') {
+        $top = Invoke-Git @('-C', $src, 'rev-parse', '--show-toplevel') -Quiet
+        $same = $false
+        try { $same = ($top.Code -eq 0 -and [IO.Path]::GetFullPath(([string]$top.Out).Trim()).TrimEnd('\') -ieq [IO.Path]::GetFullPath($src).TrimEnd('\')) } catch { }
+        if (-not $same) { Stop-Install "the source folder is inside a git checkout but is not its top folder ($(([string]$top.Out).Trim())) - nothing was changed" }
+        $h = Invoke-Git @('-C', $src, 'rev-parse', '--verify', 'HEAD^{commit}') -Quiet
+        $sha = ([string]$h.Out).Trim()
+        if ($h.Code -ne 0 -or $sha -notmatch '^[0-9a-f]{40}([0-9a-f]{24})?$') { Stop-Install 'could not read the commit of the source checkout (git rev-parse HEAD) - nothing was changed' }
+        return $sha
+    }
+    if ($err) { Write-Log "  git rev-parse: exit $($r.Code) $err" }
+    if ($r.Code -gt 0 -and -not $hasDotGit -and $err -match 'not a git repository') { return '' }    # positively plain
+    if ($r.Code -eq -1) { Stop-Install 'git is needed to tell whether the source is a git checkout, but it did not run - nothing was changed; the reason is in the log' }
+    Stop-Install "could not tell whether the source is a clean git checkout (git rev-parse exit $($r.Code)$(if ($hasDotGit) { ', .git present' })) - nothing was changed; the reason is in the log"
 }
 
 function Test-EvidenceArtifact([string]$rel) {
@@ -297,16 +307,51 @@ function Get-SourceDirtyPaths([string]$src) {
     return ,$out
 }
 
-function Remove-StageWorktree {
+function Test-StageRegistered {
+    # $true / $false: is the staging src path still a registered worktree of the source repository; $null = unknown.
+    $s = $script:S
+    $r = Invoke-Git @('-C', $s.Src, 'worktree', 'list', '--porcelain') -Quiet
+    if ($r.Code -ne 0) { return $null }
+    $want = [IO.Path]::GetFullPath($s.StageSrc).TrimEnd('\')
+    foreach ($line in ([string]$r.Out).Split("`n")) {
+        $l = $line.Trim()
+        if (-not $l.StartsWith('worktree ')) { continue }
+        try { if ([IO.Path]::GetFullPath($l.Substring(9).Trim()).TrimEnd('\') -ieq $want) { return $true } } catch { }
+    }
+    return $false
+}
+
+function Remove-StageWorktree([bool]$checkDir = $true) {
     # Unregisters the staged worktree (git worktree remove also deletes its folder) and prunes a registration whose folder
-    # is already gone, so the next build can stage again. Never throws, never writes to the pipeline.
+    # is already gone. Returns @{ Ok; Detail }: Ok only when prune succeeded, the registration is verifiably gone and
+    # (checkDir) the staging src folder is gone. Never throws, never writes to the pipeline.
     $s = $script:S
     try {
         $r = Invoke-Git @('-C', $s.Src, 'worktree', 'remove', '--force', '--force', $s.StageSrc) -Quiet
-        Write-Log "  staging worktree remove: exit $($r.Code)"
-        $r = Invoke-Git @('-C', $s.Src, 'worktree', 'prune') -Quiet
-        if ($r.Code -ne 0) { Write-Log "  git worktree prune: exit $($r.Code) $($r.Err)" }
-    } catch { try { Write-Log ('  staging worktree not removed: ' + $_.Exception.Message) } catch { } }
+        $rm = $r.Code
+        $p = Invoke-Git @('-C', $s.Src, 'worktree', 'prune') -Quiet
+        $reg = Test-StageRegistered
+        $dirGone = -not [IO.Directory]::Exists($s.StageSrc)
+        $detail = "worktree remove exit $rm, prune exit $($p.Code), registered=$reg, folder gone=$dirGone"
+        Write-Log "  staging worktree cleanup: $detail"
+        $ok = ($p.Code -eq 0 -and $reg -eq $false -and ($dirGone -or -not $checkDir))
+        return @{ Ok = $ok; Detail = $detail }
+    } catch {
+        try { Write-Log ('  staging worktree not removed: ' + $_.Exception.Message) } catch { }
+        return @{ Ok = $false; Detail = 'cleanup error: ' + $_.Exception.Message }
+    }
+}
+
+function Invoke-StageCleanup {
+    # Success gate (BUILD-FIX-01 review): before any OK verdict the staging worktree must be verifiably gone - folder and
+    # registration. Recorded as the 'cleanup' step. $true when there was nothing to clean or it is gone.
+    $s = $script:S
+    if (-not $s.StageWorktree) { return $true }
+    Start-Step 'cleanup'
+    $c = Remove-StageWorktree $true
+    $s.StageWorktree = -not $c.Ok
+    Complete-Step $c.Ok $c.Detail
+    return $c.Ok
 }
 
 function Find-Python {
@@ -402,7 +447,8 @@ function Invoke-Step1Stage {
             Stop-Install "the source checkout has uncommitted changes ($($dirty.Count) path(s), listed in the log) - commit or remove them, then build again; nothing was changed"
         }
         Write-Log "  source commit $($s.SrcCommit) (clean git checkout, staged as a detached worktree)"
-        Remove-StageWorktree                                     # a registration left by an earlier, interrupted run
+        $c = Remove-StageWorktree $false                         # a registration left by an earlier, interrupted run
+        if (-not $c.Ok) { Stop-Install "a staging worktree from an earlier run could not be unregistered ($($c.Detail)) - nothing was changed" }
     }
     Remove-Stage $s.Stage
     if ([IO.Directory]::Exists($s.Stage)) { Stop-Install "could not clear the staging folder $($s.Stage) (a file is open there?)" }
@@ -611,6 +657,9 @@ function Invoke-Finish {
     $okSc = Update-Shortcuts
     if (-not $okSc) { $s.Warn += ' [desktop/start-menu shortcut not updated]'; $s.WarnList.Add('desktop/start-menu shortcut not updated') }
     Complete-Step $okSc ''
+    # The new version is installed and confirmed running: a staging cleanup failure cannot undo that, so it downgrades the
+    # run to BUILD_DONE with a warning (recorded as the failed 'cleanup' step) instead of claiming a clean finish.
+    if (-not (Invoke-StageCleanup)) { $s.Warn += ' [staging worktree not removed]'; $s.WarnList.Add('the staging worktree could not be removed (folder or git registration left; details in the log)') }
     Write-Log "BUILD_DONE build=$($s.BuildId) sha256=$($s.NewHash) target=$($s.Exe)"
     if ($s.Warn) { Write-Log "BUILD_WARNINGS$($s.Warn)" }
     Set-Verdict 'BUILD_DONE' '' 0
@@ -659,6 +708,7 @@ function Invoke-Rollback {
     if ($s.DrillInvalid) { Stop-Install "ROLLBACK DRILL INVALID: the new exe answered although it was told to fail (check --simulate-failed-launch) - $($s.RbNote)" }
     if (-not $s.Drill) { Stop-Install "the new version did not start correctly - $($s.RbNote)" }
     if (-not $s.RbOk) { Stop-Install "ROLLBACK DRILL FAILED - $($s.RbNote)" }
+    if (-not (Invoke-StageCleanup)) { Stop-Install 'the staging worktree could not be removed (folder or git registration left; details in the log)' }
     Set-Verdict 'DRILL_PASSED' '' 0
     Write-Log "DRILL_PASSED new=$($s.BuildId) failed its launch on purpose, restored=$($s.OldBuild) sha256=$($s.RbHash) confirmed running"
     Write-Say ''
@@ -672,6 +722,11 @@ function Invoke-Rollback {
 
 function Invoke-Fail([string]$why) {
     $s = $script:S
+    if ($s.Current) { Complete-Step $false $why }
+    if ($s.StageWorktree) {
+        # Failure paths clean up too (recorded as the 'cleanup' step); a cleanup failure is added to the reason.
+        if (-not (Invoke-StageCleanup)) { $why += '; the staging worktree could not be removed (folder or git registration left; details in the log)' }
+    }
     Write-Log "BUILD_FAILED: $why"
     Set-Verdict 'BUILD_FAILED' $why 1
     Write-Say ''
@@ -687,14 +742,16 @@ function Invoke-Flow {
     Invoke-Banner
     $pre = Invoke-Step1Stage
     if ($s.Preflight) {
+        if (-not (Invoke-StageCleanup)) { Stop-Install 'the staging worktree could not be removed (folder or git registration left; details in the log)' }
+        Remove-Stage $s.Stage
         Write-Log "PREFLIGHT_OK build=$($s.BuildId) app.py sha256=$pre"
         Write-Say "PREFLIGHT_OK app.py sha256=$pre"
-        Remove-Stage $s.Stage
         Set-Verdict 'PREFLIGHT_OK' '' 0
         return 0
     }
     Invoke-BuildSteps
     if ($s.BuildCheck) {
+        if (-not (Invoke-StageCleanup)) { Stop-Install 'the staging worktree could not be removed (folder or git registration left; details in the log)' }
         Write-Log "BUILDCHECK_OK build=$($s.BuildId) sha256=$($s.NewHash) exe=$($s.NewExe)"
         Write-Say "BUILDCHECK_OK build $($s.BuildId) sha256 $($s.NewHash)"
         Set-Verdict 'BUILDCHECK_OK' '' 0
@@ -766,7 +823,7 @@ function Invoke-Main([string]$mode, [string]$src, [string]$localAppData) {
         }
         return (Invoke-Fail $why)
     } finally {
-        if ($script:S.StageWorktree) { Remove-StageWorktree; $script:S.StageWorktree = $false }
+        if ($script:S.StageWorktree) { [void](Remove-StageWorktree $true); $script:S.StageWorktree = $false }   # last resort
     }
 }
 
