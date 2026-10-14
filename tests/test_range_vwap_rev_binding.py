@@ -34,6 +34,7 @@ COMMIT = 'a' * 40
 SYMS = ['AAA', 'BBB']
 DAY = 86_400_000
 TAIL = PR.REX_FUNDING_TAIL_MS
+WF3 = 'walk_forward[3]'                              # the committed split holding the synthetic window
 
 
 def shift(x: RV.Series, d: int = SHIFT) -> RV.Series:
@@ -287,7 +288,8 @@ CASES = {
     'artifact_not_pinned': (lambda p: dict(env(p), notice_sha256='e' * 64), 'not the artifact the run command pinned'),
     'artifact_tampered': (lambda p: dict(env(p), notice_artifact=_tampered_artifact()),
                           'digest does not match its content'),
-    'artifact_missing_symbol': (lambda p: env(p, art=artifact(frozen=['AAA'])), 'not built over every run symbol'),
+    'artifact_frozen_rebound': (lambda p: env(p, man=_notice(env(p)['manifest'], frozen=['AAA'])),
+                                'binds another frozen symbol list'),
     'artifact_parser_differs': (lambda p: env(p, man=_notice(env(p)['manifest'], parser_sha='0' * 64)), 'parser_sha'),
     'tape_tampered': (lambda p: dict(env(p), tape=_strip(tape(), 'marks')), 'mark_1h: the tape is not the attested'),
     'manifest_digest': (lambda p: dict(env(p), manifest=dict(env(p)['manifest'], digest='0' * 64)),
@@ -370,7 +372,7 @@ def test_a_missing_mark_under_a_held_lot_makes_the_rows_incomplete(plan, tmp_pat
     assert pre(e) == []                                # not a refusal: the affected rows are INCOMPLETE
     doc, summary, _ = docs(run(e, tmp_path))
     assert summary['status'] == RV.INCOMPLETE and doc['evidence'] == []
-    assert {'side': 'long', 'config': RV.PRIMARY.name, 'row': 'base', 'reason': 'incomplete.funding_mark',
+    assert {'split': WF3, 'side': 'long', 'config': RV.PRIMARY.name, 'row': 'base', 'reason': 'incomplete.funding_mark',
             'class': 'funding_mark_gap', 'secondary': False} in summary['incomplete']
 
 
@@ -417,7 +419,9 @@ def test_end_to_end_with_trades_records_them_and_seals_status_consistently(plan,
     prim = detail['results']['long'][RV.PRIMARY.name]['base']
     (tr,) = prim['trades']
     assert (tr['symbol'], tr['reason'], tr['exit_ms']) == ('BBB', 'exit.mean', RS.ms(13) - SHIFT)
-    assert summary['counts']['long'][RV.PRIMARY.name]['base'] == {'trades': 1, 'status': RV.COMPLETE}
+    c = summary['counts']['long'][RV.PRIMARY.name]['base']
+    assert (c['trades'], c['status'], c['splits']) == (1, RV.COMPLETE, {WF3: RV.COMPLETE})
+    assert c['r'] == pytest.approx(tr['r']) and c['net'] == pytest.approx(tr['net']) and tr['split'] == WF3
     complete = summary['status'] == RV.COMPLETE
     assert doc['evidence'] == ([f'summary-{doc["run"]}.json'] if complete else [])
     if not complete:
@@ -433,7 +437,7 @@ def test_split_end_censoring_is_incomplete_without_evidence(plan, tmp_path):
     doc, summary, _ = docs(final)
     assert doc['state'] == 'sealed' and doc['evidence'] == []
     assert summary['status'] == RV.INCOMPLETE
-    assert {'side': 'long', 'config': RV.PRIMARY.name, 'row': 'base', 'reason': 'incomplete.split_end',
+    assert {'split': WF3, 'side': 'long', 'config': RV.PRIMARY.name, 'row': 'base', 'reason': 'incomplete.split_end',
             'class': 'split_censoring', 'secondary': False} in summary['incomplete']
     assert not PR.is_complete(summary)
     assert G.pit_incomplete([final]) == [final]
@@ -571,3 +575,145 @@ def test_rex_profile_is_not_gate_routed():
     assert PR.REX_RUN.candidate_id == RV.CANDIDATE and PR.REX_RUN.family == RV.FAMILY
     assert RV.CANDIDATE not in PR.RUN_PROFILES and RV.CANDIDATE not in G.PROFILES
     assert PR.REX_PROFILES == {RV.CANDIDATE: PR.REX_RUN}
+
+
+# ------------------------------------------------------------------ notice register: absence refuses (6172596212 a)
+@pytest.mark.parametrize('bad', [None, {}, 'not-json', {'format': 'zb-delist-notice/1'}])
+def test_a_missing_or_malformed_notice_artifact_is_a_preflight_refusal(plan, tmp_path, bad):
+    e = dict(env(plan), notice_artifact=bad)
+    assert pre(e)                                      # refused: absence is never INCOMPLETE
+    with pytest.raises(PR.PitRunError, match='preflight refused'):
+        run(e, tmp_path)
+    assert os.listdir(tmp_path) == []                  # nothing written, no book pass
+
+
+def test_a_digest_mismatched_notice_artifact_is_a_preflight_refusal(plan, tmp_path):
+    for e in (dict(env(plan), notice_sha256='e' * 64), dict(env(plan), notice_artifact=_tampered_artifact())):
+        with pytest.raises(PR.PitRunError, match='preflight refused'):
+            run(e, tmp_path)
+    assert os.listdir(tmp_path) == []
+
+
+def test_a_valid_register_without_coverage_for_a_symbol_makes_rows_incomplete_not_a_refusal(plan, tmp_path):
+    e = env(plan, art=artifact(frozen=['AAA']))       # attested register, BBB outside its frozen list
+    assert pre(e) == []
+    doc, summary, _ = docs(run(e, tmp_path))
+    assert summary['status'] == RV.INCOMPLETE and doc['evidence'] == []
+    assert _reasons(summary) == {'incomplete.notice_gap'}
+
+
+# ------------------------------------------------------------------ split-aware evidence (6172596212 b)
+B = S.parse_utc('2025-12-15T00:00:00Z')              # the committed WF3 / WF4 boundary
+SHIFT2 = 49 * 7 * DAY                                # bar 42 of the synthetic tape opens exactly at B
+NB2 = 120
+ALO2, HI2 = RS.ms(-RV.W_BARS) - SHIFT2, RS.ms(NB2) - SHIFT2
+WINDOW2 = f'{S.utc(ALO2)}/{S.utc(HI2)}'
+WF4 = 'walk_forward[4]'
+
+
+def tape2(**kw):
+    return {'AAA': clip(shift(RS.build(n=NB2), SHIFT2), ALO2, HI2),
+            'BBB': clip(shift(RS.build(n=NB2, **kw), SHIFT2), ALO2, HI2)}
+
+
+def env2(plan, t=None, covers_from=None):
+    t = tape2() if t is None else t
+    art = artifact(fetch_ts=HI2 + RV.HOUR, covers_from=ALO2 - 30 * DAY if covers_from is None else covers_from)
+    return env(plan, t=t, art=art)
+
+
+def run2(e, d):
+    return PR.run_rex(e, str(d), window=WINDOW2, clock=None)
+
+
+def test_split_boundaries_come_from_the_committed_plan(plan):
+    assert RS.ms(42) - SHIFT2 == B == plan.access_range(WF4)[0] == plan.access_range(WF3)[1]
+    segs = PR.rex_segments(plan, ALO2, HI2)
+    assert [(g['key'], g['lo'], g['hi'], g['first']) for g in segs] == [
+        (WF3, ALO2, B, ALO2 + RV.WARMUP_MS), (WF4, B, HI2, B + RV.WARMUP_MS)]
+    with pytest.raises(PR.PitRunError, match='per-split W x 4h warm-up'):   # a split sliver with no decision
+        PR.rex_window(f'{S.utc(ALO2)}/{S.utc(B + 10 * RV.TF)}', plan)
+
+
+def test_warm_up_and_tape_are_per_split(plan, tmp_path, monkeypatch):
+    seen, real = [], RV.run_book
+
+    def spy(tape, cfg, side, *, first, end, **kw):
+        seen.append((first, end, min(min(x.bars) for x in tape.values()),
+                     max(b.available_ms for x in tape.values() for b in x.bars.values()),
+                     min(r.time_ms for x in tape.values() for r in x.funding)))
+        return real(tape, cfg, side, first=first, end=end, **kw)
+    monkeypatch.setattr(PR.RV, 'run_book', spy)
+    run2(env2(plan), tmp_path)
+    per = len(RV.SIDES) * len(PR.rex_configs()) * len(PR.REX_ROWS)
+    assert len(seen) == 2 * per
+    assert set(seen[:per]) == {(ALO2 + RV.WARMUP_MS, B, ALO2, B, ALO2)}     # WF3: nothing at / after B
+    assert set(seen[per:]) == {(B + RV.WARMUP_MS, HI2, B, HI2, B)}         # WF4: warm-up read from B on
+
+
+def test_a_position_open_at_a_boundary_does_not_carry_over(plan, tmp_path):
+    e = env2(plan, t=tape2(vwap=RS.long_entry(38)))   # long lot opened at bar 39, held through the boundary (bar 42)
+    doc, summary, detail = docs(run2(e, tmp_path))
+    a, b = detail['splits']
+    pa, pb = (x['results']['long'][RV.PRIMARY.name]['base'] for x in (a, b))
+    assert pa['status'] == RV.INCOMPLETE and pa['censor']['reason'] == 'incomplete.split_end'
+    assert set(pa['open_lots']) == {'BBB'} and pa['trades'] == []
+    assert pb['status'] == RV.COMPLETE and pb['open_lots'] == {} and pb['trades'] == []
+    agg = detail['results']['long'][RV.PRIMARY.name]['base']
+    assert agg['status'] == RV.INCOMPLETE and agg['splits'] == {WF3: RV.INCOMPLETE, WF4: RV.COMPLETE}
+    assert doc['evidence'] == [] and summary['status'] == RV.INCOMPLETE
+
+
+def test_per_split_statuses_are_present_and_only_the_affected_split_is_incomplete(plan, tmp_path):
+    e = env2(plan, covers_from=B - DAY)              # notice coverage proven only from just before the boundary
+    doc, summary, detail = docs(run2(e, tmp_path))
+    assert summary['split_keys'] == [WF3, WF4] and [s['key'] for s in summary['splits']] == [WF3, WF4]
+    assert [s['key'] for s in detail['splits']] == [WF3, WF4]
+    assert {s['key']: s['status'] for s in summary['splits']} == {WF3: RV.INCOMPLETE, WF4: RV.COMPLETE}
+    assert {r['split'] for r in summary['incomplete']} == {WF3}
+    assert {r['reason'] for r in summary['incomplete']} == {'incomplete.notice_gap'}
+    s3, s4 = summary['splits']
+    assert s3['window'] == {'start': S.utc(ALO2), 'end': S.utc(B)} and s4['first_decision'] == S.utc(B + RV.WARMUP_MS)
+    assert summary['status'] == RV.INCOMPLETE and doc['evidence'] == []
+
+
+def test_the_aggregate_is_derived_from_the_splits(plan, tmp_path):
+    vw = dict(RS.long_entry(5))
+    vw.update({20: 100.0})
+    vw.update(RS.long_entry(110))
+    t = tape2(vwap=vw, close={12: 104.0})
+    _, summary, detail = docs(run2(env2(plan, t=t), tmp_path))
+    for side in RV.SIDES:
+        for c in PR.rex_configs():
+            for row in PR.REX_ROWS:
+                parts = [s['counts'][side][c['name']][row] for s in summary['splits']]
+                agg = summary['counts'][side][c['name']][row]
+                assert agg['trades'] == sum(p['trades'] for p in parts)
+                assert agg['net'] == pytest.approx(sum(p['net'] for p in parts))
+                assert agg['r'] == pytest.approx(sum(p['r'] for p in parts))
+                assert agg['splits'] == {s['key']: p['status'] for s, p in zip(summary['splits'], parts)}
+                assert (agg['status'] == RV.COMPLETE) == all(p['status'] == RV.COMPLETE for p in parts)
+                res = detail['results'][side][c['name']][row]
+                assert [tr['split'] for tr in res['trades']] == [
+                    s['key'] for s in detail['splits'] for _ in s['results'][side][c['name']][row]['trades']]
+    assert summary['counts']['long'][RV.PRIMARY.name]['base']['trades'] >= 1
+    assert (summary['status'] == RV.COMPLETE) == all(s['status'] == RV.COMPLETE for s in summary['splits'])
+
+
+# ------------------------------------------------------------------ provenance class (6172596212 c)
+def test_a_synthetic_run_is_marked_non_evidence(plan, tmp_path):
+    _, summary, detail = docs(run(env(plan), tmp_path))
+    for d in (summary, detail):
+        assert d['provenance']['class'] == 'synthetic' and d['provenance']['historical_evidence'] is False
+
+
+def test_a_historical_env_must_carry_its_proven_clean_commit(plan, tmp_path):
+    for pv in ({'class': 'historical', 'commit': 'b' * 40, 'tree': 'clean'},     # not the env commit
+               {'class': 'historical', 'commit': COMMIT, 'tree': 'dirty'}):
+        with pytest.raises(PR.PitRunError, match='clean commit SHA'):
+            run(env(plan, provenance=pv), tmp_path)
+    assert os.listdir(tmp_path) == []
+    _, summary, _ = docs(run(env(plan, provenance={'class': 'historical', 'commit': COMMIT, 'tree': 'clean'}),
+                             tmp_path))
+    assert summary['provenance'] == {'class': 'historical', 'historical_evidence': True, 'commit': COMMIT,
+                                     'tree': 'clean'}

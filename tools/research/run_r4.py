@@ -780,15 +780,16 @@ def run_rex(repo: str, *, window, tier: str, out_dir: str, loader=None, resume: 
 
 
 def rex_store_loader(*, store: str, notice: str, notice_sha256: str, author: str, cairo_date: str):
-    """The real REX loader (pit_run.rex_load over pit_run.rex_sources: committed manifest / universe / rules / ledger)."""
+    """The real REX loader (pit_run.rex_load over pit_run.rex_sources: committed manifest / universe / rules / ledger).
+    A dirty git tree refuses FIRST, before the committed sources are read or any Access is opened; rex_load re-proves
+    it and records the exact clean commit SHA (Codex 6172596212 c)."""
     import pit_run as PR                                                                    # noqa: E402
 
     def load(repo, tier, window):
-        head = subprocess.run(['git', '-C', repo, 'rev-parse', 'HEAD'], capture_output=True, text=True,
-                              check=True).stdout.strip()
+        PR.rex_clean_commit(repo)
         return PR.rex_load(PR.rex_sources(repo), repo=repo, store=store, tier=tier, window=window,
                            notice_path=notice, notice_sha256=notice_sha256, author=author, cairo_date=cairo_date,
-                           plan=PR.rex_plan(repo), commit=head)
+                           plan=PR.rex_plan(repo))
     return load
 
 

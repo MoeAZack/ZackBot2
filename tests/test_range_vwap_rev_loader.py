@@ -7,6 +7,7 @@ import hashlib
 import io
 import json
 import math
+import subprocess
 import os
 import sys
 import zipfile
@@ -95,8 +96,18 @@ def artifact():
     return NA.build(list(SYMS), [f], {}, covers_from_ms=LO - 60 * DAY)
 
 
+CLEAN = 'c' * 40                                     # the faked clean HEAD of the tree the loader proves
+
+
+def fake_git(dirty=''):
+    def git(repo, *args):
+        return dirty if args[0] == 'status' else CLEAN + '\n'
+    return git
+
+
 @pytest.fixture
-def fx(tmp_path):
+def fx(tmp_path, monkeypatch):
+    monkeypatch.setattr(PR, '_git', fake_git())      # tests never depend on the worktree's own git state
     store = str(tmp_path / 'store')
     man = build_store(store)
     art = artifact()
@@ -112,8 +123,7 @@ def fx(tmp_path):
 
 def load(fx, **kw):
     a = dict(repo=ROOT, store=fx['store'], tier='CORE-10', window=WINDOW, notice_path=fx['notice'],
-             notice_sha256=fx['art']['digest'], author='t', cairo_date='2026-10-14', plan=PR.rex_plan(ROOT),
-             commit='b' * 40)
+             notice_sha256=fx['art']['digest'], author='t', cairo_date='2026-10-14', plan=PR.rex_plan(ROOT))
     a.update(kw)
     return PR.rex_load(fx['src'], **a)
 
@@ -127,7 +137,12 @@ def test_loader_binds_the_attested_manifest_through_a_development_access(fx):
     assert e['symbols'] == list(SYMS) and e['notice_sha256'] == fx['art']['digest']
     (r,) = records(fx['ledger'])                      # the access is ledgered before any row is returned
     assert (r['kind'], r['split'], r['candidate_id']) == ('data_access', 'development', RV.CANDIDATE)
-    assert r['window'] == {'start': S.utc(LO), 'end': S.utc(HI)} and r['manifest_digest'] == fx['man']['digest']
+    # N1 / N2: the access window covers what is read, incl. the documented 60 s funding tail, and records it
+    assert r['window'] == {'start': S.utc(LO), 'end': S.utc(HI + PR.REX_FUNDING_TAIL_MS)}
+    assert r['detail']['decision_window'] == {'start': S.utc(LO), 'end': S.utc(HI)}
+    assert r['detail']['funding_tail_ms'] == PR.REX_FUNDING_TAIL_MS == 60_000
+    assert r['manifest_digest'] == fx['man']['digest'] and r['detail']['commit'] == CLEAN
+    assert e['commit'] == CLEAN and e['provenance'] == {'class': 'historical', 'commit': CLEAN, 'tree': 'clean'}
     assert r['detail']['promotable'] is False and r['detail']['notice_artifact'] == fx['art']['digest']
     assert e['manifest']['source'] == {'data_manifest': fx['man']['digest'], 'universe': static()['digest'],
                                        'loader': M.ARCHIVE_LOADER}
@@ -203,3 +218,88 @@ def test_a_tampered_store_file_is_refused_by_the_manifest_recheck(fx):
         f.write(b'\0')
     with pytest.raises((P.PITError, M.ManifestError), match='checksum|no longer match'):
         load(fx)
+
+
+# ------------------------------------------------------------------ N1: reads go through the Access window
+def test_store_reads_go_through_the_window_views(fx, monkeypatch):
+    calls, direct = [], []
+    real_rows = P.View._rows
+    monkeypatch.setattr(P.View, '_rows', lambda self, w, series, *a, **k: calls.append((series, self.t))
+                        or real_rows(self, w, series, *a, **k))
+    real_slice = P.Dataset.slice
+
+    def slice_(self, f, lo, t):
+        direct.append((f['series'], lo, t))
+        return real_slice(self, f, lo, t)
+    monkeypatch.setattr(P.Dataset, 'slice', slice_)
+    load(fx)
+    assert {s for s, _ in calls} == {'klines', 'markPriceKlines', 'fundingRate'}
+    assert {t for s, t in calls if s != 'fundingRate'} == {HI}                    # klines / marks: the decision end
+    assert {t for s, t in calls if s == 'fundingRate'} == {HI + PR.REX_FUNDING_TAIL_MS}
+    assert len(direct) and all(lo >= LO and t <= HI + PR.REX_FUNDING_TAIL_MS for _, lo, t in direct)
+
+
+# ------------------------------------------------------------------ notice absence refuses (6172596212 a)
+def test_a_missing_or_unreadable_notice_artifact_refuses_before_any_access(fx, tmp_path):
+    bad = tmp_path / 'bad.json'
+    bad.write_bytes(b'{not json')
+    for path in (str(tmp_path / 'missing.json'), str(bad), str(tmp_path)):
+        with pytest.raises(PR.PitRunError, match='missing or unreadable'):
+            load(fx, notice_path=path)
+    assert not os.path.exists(fx['ledger'])
+
+
+# ------------------------------------------------------------------ clean tree + exact SHA (6172596212 c)
+def test_a_dirty_tree_refuses_before_access_is_opened(fx, monkeypatch):
+    opened = []
+    monkeypatch.setattr(PR, '_git', fake_git(' M tools/research/pit_run.py\n?? scratch.txt\n'))
+    monkeypatch.setattr(PR, 'StaticDataset', lambda *a, **k: opened.append('dataset'))
+    monkeypatch.setattr(P, 'Access', lambda *a, **k: opened.append('access'))
+    monkeypatch.setattr(PR, 'rex_sources', lambda repo: opened.append('sources') or fx['src'])
+    with pytest.raises(PR.PitRunError, match='dirty git tree'):
+        load(fx)
+    rc = G.main(['rex', '--window', WINDOW, '--tier', 'CORE-10', '--out-dir', fx['out'], '--store', fx['store'],
+                 '--notice', fx['notice'], '--notice-sha256', fx['art']['digest'], '--author', 't',
+                 '--cairo-date', '2026-10-14'])
+    assert rc == 2 and opened == []                  # neither the committed sources nor any Access / dataset
+    assert not os.path.exists(fx['ledger']) and not os.path.exists(fx['out'])
+
+
+def test_the_clean_commit_sha_is_recorded(fx, monkeypatch, capsys):
+    monkeypatch.setattr(PR, 'rex_sources', lambda repo: fx['src'])
+    rc = G.main(['rex', '--window', WINDOW, '--tier', 'CORE-10', '--out-dir', fx['out'], '--store', fx['store'],
+                 '--notice', fx['notice'], '--notice-sha256', fx['art']['digest'], '--author', 't',
+                 '--cairo-date', '2026-10-14'])
+    out = capsys.readouterr()
+    assert rc in (0, 4), out.err
+    final = out.out.strip().splitlines()[-1]
+    doc = PG.read(final)
+    assert doc['identity']['commit'] == CLEAN
+    summary = json.load(open(os.path.join(os.path.dirname(final), f'summary-{doc["run"]}.json')))
+    assert summary['provenance'] == {'class': 'historical', 'historical_evidence': True, 'commit': CLEAN,
+                                     'tree': 'clean'}
+    assert records(fx['ledger'])[0]['detail']['commit'] == CLEAN
+
+
+def _git_repo(d):
+    run = lambda *a: subprocess.run(['git', '-C', str(d), '-c', 'user.name=t', '-c', 'user.email=t@t', *a],
+                                    capture_output=True, text=True, check=True).stdout.strip()
+    run('init', '-q')
+    (d / 'a.txt').write_text('a\n')
+    run('add', 'a.txt')
+    run('commit', '-q', '-m', 'init')
+    return run
+
+
+def test_rex_clean_commit_on_a_real_git_tree(tmp_path):
+    run = _git_repo(tmp_path)
+    assert PR.rex_clean_commit(str(tmp_path)) == run('rev-parse', 'HEAD')
+    (tmp_path / 'b.txt').write_text('untracked\n')                  # an untracked file is dirty
+    with pytest.raises(PR.PitRunError, match='dirty git tree'):
+        PR.rex_clean_commit(str(tmp_path))
+    (tmp_path / 'b.txt').unlink()
+    (tmp_path / 'a.txt').write_text('edited\n')                     # a tracked edit is dirty
+    with pytest.raises(PR.PitRunError, match='dirty git tree'):
+        PR.rex_clean_commit(str(tmp_path))
+    with pytest.raises(PR.PitRunError, match='cannot prove a clean git tree'):
+        PR.rex_clean_commit(str(tmp_path / 'not-a-repo'))

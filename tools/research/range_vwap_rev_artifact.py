@@ -19,7 +19,9 @@ Schema (top-level keys exactly `TOP_KEYS`):
   digest          SHA-256 of the canonical JSON of everything except `digest` (the artifact digest the run pins)
 
 Coverage (never inferred from the data): proven announcement coverage is [max(covers_from_ms, oldest releaseDate any
-successful fetch returned), last successful fetch]. Anything of the access window outside it, every register R_ext-GAP,
+successful fetch returned), last successful fetch], for the frozen symbols only. A missing / unreadable / digest-
+mismatched artifact is a refusal (`validate`); for a valid one, a run symbol outside `frozen`, anything of the access
+window outside the proven coverage, every register R_ext-GAP,
 and every data / notice disagreement becomes a NoticeView GAP: the book halts `incomplete.notice_gap` from its start
 (INCOMPLETE / NO-RESULT for the affected rows; no flat or forward fill). Disagreements:
   * klines of a noticed symbol at / after its effective delist time (the data contradicts the notice);
@@ -92,7 +94,11 @@ class Validated:
             gaps.append((lo, hi + 1 if self.cov_from is None else min(self.cov_from, hi + 1)))
         if self.cov_to is None or self.cov_to < hi:                     # no successful fetch at / after the end
             gaps.append((lo if self.cov_to is None else max(self.cov_to, lo), hi + 1))
+        frozen = set(self.doc['frozen'])
         for s in symbols:
+            if s not in frozen:                                         # coverage never proven for this symbol
+                gaps.append((lo, hi + 1))
+                continue
             gaps += [(g, hi + 1) for g in disagreements(self.notices, s, tape[s], hi)]
         return RV.NoticeView(self.register.view().releases, tuple(sorted(set(gaps))))
 

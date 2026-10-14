@@ -2134,9 +2134,19 @@ def real_env(repo: str, *, store: str, author: str, cairo_date: str, gate_path: 
 #   * preflight (F2): no kline at / after the cutoff, no row before the window start, no kline / mark available after
 #     the window end and no funding row available after END + `REX_FUNDING_TAIL_MS` (see there);
 #   * costs: only `base` and `fees_slip_x2` (frozen; nothing else can be configured).
-# Missing / unprovable notice coverage and data / notice disagreements are NOT refusals: they become notice GAPs, so
-# the affected book rows halt INCOMPLETE (no fill). Provenance: the same progress snapshot + sealed final + summary /
-# detail artifacts as the STRAT runs (progress.py, `_state`, `is_complete`). Nothing is promotable.
+# Notice register (Codex 6172596212 a): a MISSING, unreadable or digest-mismatched `zb-delist-notice/1` artifact is a
+# PREFLIGHT REFUSAL (loader and runner). A present, validly attested register whose PROVEN coverage is missing for a
+# symbol (not in its frozen list) or a time (coverage hole), and data / notice disagreements, are NOT refusals: they
+# become notice GAPs of the affected split segment only, so only those book rows halt INCOMPLETE (no fill).
+# Split-aware evidence (6172596212 b): one invocation, but the access window is cut at every frozen train / WF
+# boundary of the committed split plan (`rex_segments`); each segment is a fresh, independent pass (its own clipped
+# tape, its own W x 4h warm-up read inside the segment, fresh books, its own notice view and completeness status), so
+# no position, indicator warm-up or completeness state crosses a boundary (REX runs no bootstrap). Metrics and status
+# are emitted per split; the aggregate is derived from the split results afterwards (`rex_aggregate`).
+# Provenance (6172596212 c): a historical / store run (rex_load) refuses a dirty git tree before any access and records
+# the exact clean commit SHA; any other (synthetic / unit) run is marked `historical_evidence: False`.
+# Provenance files: the same progress snapshot + sealed final + summary / detail artifacts as the STRAT runs
+# (progress.py, `_state`, `is_complete`). Nothing is promotable.
 import range_vwap_rev as RV                                                                 # noqa: E402
 import range_vwap_rev_artifact as NA                                                        # noqa: E402
 import range_vwap_rev_eval as RE                                                            # noqa: E402
@@ -2151,6 +2161,7 @@ REX_ROWS = REX_COST_ROWS                             # the rows EDGE-00 reads (r
 # Calibration (2020-02-03 .. 2021-01-04) and everything from the cutoff on (post-development gap, holdout) are refused.
 REX_DEV_WINDOW = ('2021-01-04T00:00:00Z', '2026-09-28T00:00:00Z')
 REX_LEDGER = 'research_evidence/ledger/range_vwap_rev.jsonl'
+REX_SPLIT_MODE = 'per-split reset at the train / WF boundaries of the committed plan; aggregate derived from the splits'
 # Funding tail allowance (F2): a funding row is AVAILABLE at its calc_time, which lies up to RV.FUNDING_TOL (60 s)
 # after its nominal hour. funding-window/2 (RV.funding_events) proves coverage of a played bar (bo, close] by reading
 # rows with time <= close + FUNDING_TOL, so the event nominally AT the window end (paid by a lot held through the last
@@ -2245,7 +2256,38 @@ def rex_window(spec, plan: S.SplitPlan) -> tuple[int, int]:
         raise PitRunError(f'REX-02: window starts before the frozen development window ({REX_DEV_WINDOW[0]})')
     if lo + RV.WARMUP_MS >= hi:
         raise PitRunError('REX-02: window is not longer than the W x 4h warm-up (no decision close)')
+    rex_segments(plan, lo, hi)                              # every split segment must hold a decision (fail closed)
     return lo, hi
+
+
+def rex_segments(plan: S.SplitPlan, lo: int, hi: int) -> list[dict]:
+    """The access window [lo, hi] cut at the frozen development split boundaries of the committed plan (read from the
+    plan, never hardcoded): one segment per train / WF split it intersects, in time order. Each segment is evaluated
+    independently with its own warm-up read INSIDE it (decisions from seg_lo + W x 4h), so a segment not longer than
+    the warm-up would carry no decision and refuses (align the window to the split boundaries instead)."""
+    out = []
+    for k in dev_keys(plan):
+        a, b = dev_window(plan, k)
+        s_lo, s_hi = max(lo, a), min(hi, b)
+        if s_lo >= s_hi:
+            continue
+        if s_lo + RV.WARMUP_MS >= s_hi:
+            raise PitRunError(f'REX-02: the window covers only {S.utc(s_lo)}..{S.utc(s_hi)} of split {k}, not longer '
+                              f'than the per-split W x 4h warm-up (no decision; warm-up never crosses a split boundary)')
+        sp = plan.split(k)
+        out.append({'key': k, 'name': sp['name'], 'fold': sp['fold'], 'lo': s_lo, 'hi': s_hi,
+                    'first': s_lo + RV.WARMUP_MS})
+    if not out or out[0]['lo'] != lo or out[-1]['hi'] != hi or any(x['hi'] != y['lo'] for x, y in zip(out, out[1:])):
+        raise PitRunError('REX-02: the window is not covered exactly by development splits of the committed plan')
+    return out
+
+
+def rex_clip(x, lo: int, hi: int):
+    """One symbol's series restricted to a segment [lo, hi] (funding: + the documented tail): nothing before the
+    segment start is visible, so the warm-up and every indicator are read inside the segment."""
+    return RV.Series({k: b for k, b in x.bars.items() if k >= lo and b.available_ms <= hi}, dict(x.rule),
+                     tuple(r for r in x.funding if r.time_ms >= lo and r.available_ms <= hi + REX_FUNDING_TAIL_MS),
+                     {k: v for k, v in x.marks.items() if k >= lo and k + RV.HOUR <= hi})
 
 
 def _rex_rows(kind: str, x) -> list:
@@ -2385,8 +2427,10 @@ def rex_preflight(manifest, tape, artifact, *, symbols, window, artifact_sha, cu
         fail.append(f'{NT.RULE_ID}: rule_id / schema / parser_sha differ from the frozen parser')
     if (nb.get('artifact_digest'), nb.get('register_digest')) != (val.digest, val.register.digest()):
         fail.append(f'{NT.RULE_ID}: the tape manifest binds another notice artifact (digest mismatch)')
-    if list(nb.get('frozen') or ()) != list(artifact['frozen']) or not set(symbols) <= set(artifact['frozen']):
-        fail.append(f'{NT.RULE_ID}: the register was not built over every run symbol')
+    if list(nb.get('frozen') or ()) != list(artifact['frozen']):
+        fail.append(f'{NT.RULE_ID}: the tape manifest binds another frozen symbol list')
+    # a run symbol outside the register's frozen list is NOT a refusal: its coverage is unproven, so the affected rows
+    # are INCOMPLETE (Validated.view gap; Codex 6172596212 a)
     return fail
 
 
@@ -2414,26 +2458,85 @@ def rex_check_rows(env: dict) -> None:
         raise PitRunError('REX-02: cost rows cannot be configured (frozen: base + fees_slip_x2)')
 
 
-def rex_evaluate(env: dict, tier: str, lo: int, hi: int, run_config: dict) -> tuple[dict, dict]:
-    """Both side books of every registered configuration and row over decision closes lo + W x 4h .. hi."""
-    rex_check_rows(env)
-    symbols = list(env['symbols'])
-    tape = {s: env['tape'][s] for s in symbols}
-    first = lo + RV.WARMUP_MS
+REX_SYNTHETIC = {'class': 'synthetic', 'historical_evidence': False,
+                 'note': 'synthetic / unit run (no clean-tree store provenance): never historical evidence'}
+
+
+def rex_provenance(env: dict) -> dict:
+    """The run's evidence class (Codex 6172596212 c): `historical` only for an env built by the store loader
+    (rex_load: clean tree proven before any access, exact commit recorded); everything else is synthetic."""
+    pv = env.get('provenance')
+    if pv is None:
+        return dict(REX_SYNTHETIC)
+    if (pv.get('class') != 'historical' or pv.get('tree') != 'clean' or pv.get('commit') != env.get('commit')
+            or not isinstance(pv.get('commit'), str) or len(pv['commit']) != 40):
+        raise PitRunError('REX-02: historical provenance must carry the exact clean commit SHA the loader proved')
+    return {'class': 'historical', 'historical_evidence': True, 'commit': pv['commit'], 'tree': 'clean'}
+
+
+def rex_split_pass(env: dict, seg: dict, symbols) -> dict:
+    """ONE independent split pass: the tape clipped to the segment (warm-up read inside it), a notice view over the
+    segment only, and fresh side books per configuration and row (run_book keeps no state between calls), so nothing
+    of a previous split (lot, indicator, halt, completeness) is visible here."""
+    lo, hi = seg['lo'], seg['hi']
+    tape = {s: rex_clip(env['tape'][s], lo, hi) for s in symbols}
     notices = NA.validate(env['notice_artifact'], expect_digest=env['notice_sha256']).view(tape, symbols, lo, hi)
     results, counts, inc = {}, {}, []
     for side in RV.SIDES:
         for c in rex_configs():
             for row in REX_ROWS:
-                res = RV.run_book(tape, c['cfg'], side, first=first, end=hi, order=symbols, row=row,
+                res = RV.run_book(tape, c['cfg'], side, first=seg['first'], end=hi, order=symbols, row=row,
                                   notices=notices, mode=c['mode'])
                 results.setdefault(side, {}).setdefault(c['name'], {})[row] = _jsonable(res)
-                counts.setdefault(side, {}).setdefault(c['name'], {})[row] = {'trades': len(res['trades']),
-                                                                             'status': res['status']}
+                counts.setdefault(side, {}).setdefault(c['name'], {})[row] = {
+                    'trades': len(res['trades']), 'status': res['status'],
+                    'net': _jsonable(sum(t['net'] for t in res['trades'])),
+                    'r': _jsonable(sum(t['r'] for t in res['trades']))}
                 if res['status'] != COMPLETE:
                     cz = res.get('censor') or {}
-                    inc.append({'side': side, 'config': c['name'], 'row': row, 'reason': cz.get('reason'),
-                                'class': cz.get('class'), 'secondary': False})
+                    inc.append({'split': seg['key'], 'side': side, 'config': c['name'], 'row': row,
+                                'reason': cz.get('reason'), 'class': cz.get('class'), 'secondary': False})
+    head = {'key': seg['key'], 'name': seg['name'], 'fold': seg['fold'],
+            'window': {'start': S.utc(lo), 'end': S.utc(hi)}, 'first_decision': S.utc(seg['first']),
+            'status': INCOMPLETE if inc else COMPLETE}
+    if inc:
+        head['incomplete'] = inc
+    return {'summary': dict(head, counts=counts), 'detail': dict(head, results=results)}
+
+
+def rex_aggregate(splits: list[dict]) -> tuple[dict, dict, list]:
+    """The aggregate, derived ONLY from the per-split results (never a pooled pass): per side / config / row the
+    summed trades, net and R, the per-split statuses, and COMPLETE only when every split is COMPLETE."""
+    counts, results, inc = {}, {}, []
+    for sp in splits:
+        key = sp['summary']['key']
+        inc += sp['summary'].get('incomplete', [])
+        for side, by_cfg in sp['detail']['results'].items():
+            for name, by_row in by_cfg.items():
+                for row, res in by_row.items():
+                    c = counts.setdefault(side, {}).setdefault(name, {}).setdefault(
+                        row, {'trades': 0, 'status': COMPLETE, 'net': 0.0, 'r': 0.0, 'splits': {}})
+                    r = results.setdefault(side, {}).setdefault(name, {}).setdefault(
+                        row, {'status': COMPLETE, 'trades': [], 'splits': {}})
+                    n = sp['summary']['counts'][side][name][row]
+                    c['trades'] += n['trades']
+                    c['net'] += n['net']
+                    c['r'] += n['r']
+                    c['splits'][key] = r['splits'][key] = res['status']
+                    r['trades'] += [dict(t, split=key) for t in res['trades']]
+                    if res['status'] != COMPLETE:
+                        c['status'] = r['status'] = INCOMPLETE
+    return counts, results, inc
+
+
+def rex_evaluate(env: dict, tier: str, lo: int, hi: int, run_config: dict) -> tuple[dict, dict]:
+    """Split-aware (Codex 6172596212 b): one independent pass per frozen split segment of [lo, hi] (rex_segments /
+    rex_split_pass), per-split metrics and status, then the aggregate derived from them (rex_aggregate)."""
+    rex_check_rows(env)
+    symbols = list(env['symbols'])
+    segs = rex_segments(env['plan'], lo, hi)
+    splits = [rex_split_pass(env, seg, symbols) for seg in segs]
+    counts, results, inc = rex_aggregate(splits)
     status = INCOMPLETE if inc else COMPLETE
     man = env['manifest']
     access = {'kind': 'data_access', 'candidate_id': RV.CANDIDATE, 'split': 'development',
@@ -2444,14 +2547,17 @@ def rex_evaluate(env: dict, tier: str, lo: int, hi: int, run_config: dict) -> tu
                          'notice_artifact': env['notice_sha256'], 'funding_tail_ms': REX_FUNDING_TAIL_MS,
                          'ledger': env.get('access')}}
     head = {'candidate_id': RV.CANDIDATE, 'family': RV.FAMILY, 'tier': tier, 'label': DEV_LABEL,
-            'universe_label': LABEL, 'split': 'development', 'promotable': False,
-            'window': {'start': S.utc(lo), 'end': S.utc(hi)}, 'first_decision': S.utc(first),
+            'universe_label': LABEL, 'split': 'development', 'promotable': False, 'provenance': rex_provenance(env),
+            'window': {'start': S.utc(lo), 'end': S.utc(hi)}, 'first_decision': S.utc(segs[0]['first']),
+            'split_mode': REX_SPLIT_MODE, 'split_keys': [g['key'] for g in segs],
             'cost_rows': list(REX_ROWS), 'funding_window': RV.FUNDING_WINDOW, 'notice_rule': NT.RULE_ID,
             'missing_data_policy': POLICY, 'status': status, 'run': sha(run_config)}
     if inc:
         head['incomplete'] = inc
-    summary = dict(head, format=REX_SUMMARY_FORMAT, counts=counts, not_evaluated=list(REX_NOT_EVALUATED))
-    detail = dict(head, format=REX_DETAIL_FORMAT, access=access, results=results)
+    summary = dict(head, format=REX_SUMMARY_FORMAT, counts=counts, splits=[sp['summary'] for sp in splits],
+                   not_evaluated=list(REX_NOT_EVALUATED))
+    detail = dict(head, format=REX_DETAIL_FORMAT, access=access, results=results,
+                  splits=[sp['detail'] for sp in splits])
     return summary, detail
 
 
@@ -2463,7 +2569,9 @@ def rex_run_config(env: dict, lo: int, hi: int) -> dict:
             'inputs': {k: list(v) for k, v in REX_INPUTS.items()}, 'rules_digest': man['rules_digest'],
             'source': man.get('source'), 'tape_manifest': man['digest'], 'window': [S.utc(lo), S.utc(hi)],
             'dev_window': list(REX_DEV_WINDOW), 'funding_tail_ms': REX_FUNDING_TAIL_MS,
-            'cutoff': S.utc(rex_sealed_cutoff(env['plan'])), 'plan_digest': env['plan'].digest}
+            'cutoff': S.utc(rex_sealed_cutoff(env['plan'])), 'plan_digest': env['plan'].digest,
+            'split_mode': REX_SPLIT_MODE, 'splits': [g['key'] for g in rex_segments(env['plan'], lo, hi)],
+            'provenance': rex_provenance(env)}
 
 
 def rex_no_holdout(ledger: str) -> None:
@@ -2496,7 +2604,8 @@ def run_rex(env: dict, out_dir: str, *, window, resume: bool = False, clock=PG.c
     `env`: tape {symbol: RV.Series}, manifest (rex_tape_manifest), notice_artifact (zb-delist-notice/1 doc),
     notice_sha256 (the digest the run command pinned), symbols (frozen rank order), tier, plan (rex_plan), commit
     (40-hex), universe (64-hex digest or None); from the store loader also ledger / access / author / cairo_date
-    (development variant / baseline records). Returns the final record path."""
+    (development variant / baseline records) and the `historical` provenance (clean commit); without it the run is
+    synthetic and marked `historical_evidence: False`. Returns the final record path."""
     lo, hi = rex_window(window, env['plan'])
     tier = env.get('tier')
     if tier not in RUN_TIERS:
@@ -2507,6 +2616,7 @@ def run_rex(env: dict, out_dir: str, *, window, resume: bool = False, clock=PG.c
                          cutoff=rex_sealed_cutoff(env['plan']))
     if fail:
         raise PitRunError('REX-02 preflight refused (fail closed):\n  ' + '\n  '.join(fail))
+    rex_provenance(env)                                      # a historical env must carry its proven clean commit
     run_config = rex_run_config(env, lo, hi)
     identity = {'commit': env['commit'], 'evaluator': sha({'code': rex_code_digest(), 'config': run_config}),
                 'manifest': env['manifest']['digest'], 'universe': env.get('universe'), 'classification': None,
@@ -2555,56 +2665,87 @@ def rex_sources(repo: str) -> dict:
     return {'manifest': man, 'static': static, 'rules': rules, 'ledger': os.path.join(repo, REX_LEDGER)}
 
 
-def rex_series(ds, s: str, lo: int, hi: int, rule: dict):
-    """One symbol's REX series from the opened dataset, bounded to the access window (funding: + the tail). Every row
-    is read through the manifest's SHA-256 re-check (Dataset.rows); files outside the window are never opened."""
-    def rows(series, interval, t):
-        out = []
-        for f in ds.files(series, s, interval):
-            if f['first_open_ms'] is None or f['first_open_ms'] > t or f['last_open_ms'] < lo:
-                continue
-            out += ds.slice(f, lo, t)
-        return out
-    bars = {b.open_ms: b for b in rows('klines', '4h', hi)}
-    marks = {b.open_ms: b.close for b in rows('markPriceKlines', '1h', hi)}
-    fund = rows('fundingRate', None, hi + REX_FUNDING_TAIL_MS)
+def _git(repo: str, *args) -> str:
+    return subprocess.run(['git', '-C', repo, *args], capture_output=True, text=True, check=True).stdout
+
+
+def rex_clean_commit(repo: str) -> str:
+    """The exact commit a historical / store run executes (Codex 6172596212 c): refuses unless `git status
+    --porcelain` (tracked changes AND untracked files) is empty; returns the 40-hex HEAD SHA. Called before any
+    artifact, manifest, ledger or data access."""
+    try:
+        dirty = _git(repo, 'status', '--porcelain', '--untracked-files=all')
+        head = _git(repo, 'rev-parse', '--verify', 'HEAD^{commit}').strip()
+    except (OSError, subprocess.CalledProcessError) as e:
+        raise PitRunError(f'REX-02: cannot prove a clean git tree at {repo} ({e}); a store run refuses')
+    if dirty.strip():
+        n = len(dirty.strip().splitlines())
+        raise PitRunError(f'REX-02: dirty git tree ({n} changed / untracked path(s)); a historical / store run '
+                          f'refuses before any access (commit or remove them first)')
+    if len(head) != 40 or any(c not in '0123456789abcdef' for c in head):
+        raise PitRunError(f'REX-02: HEAD {head!r} is not a 40-hex commit SHA')
+    return head
+
+
+def rex_series(w, s: str, rule: dict):
+    """One symbol's REX series read THROUGH the opened Access window (Cowork N1): klines and 1h marks from a View at
+    the decision end (w.hi - tail: rows with open >= w.lo, available <= end), funding from a View at w.hi (the window
+    was opened to end + REX_FUNDING_TAIL_MS, so the documented 60 s tail is inside the recorded access window). Every
+    row passes the window gate and the manifest's SHA-256 re-check (Dataset.rows); no direct dataset read."""
+    end = w.hi - REX_FUNDING_TAIL_MS
+    v = w.view(end)
+    bars = {b.open_ms: b for b in v.bars(s, '4h', (end - w.lo) // RV.TF + 1)}
+    marks = {b.open_ms: b.close for b in v.mark_bars(s, (end - w.lo) // RV.HOUR + 1)}
+    fund = w.view(w.hi).funding(s, w.lo)
     return RV.Series(bars, {k: rule[k] for k in RULES_FIELDS}, tuple(fund), marks)
 
 
+def _rex_read_artifact(path: str, sha256: str) -> dict:
+    """The pinned zb-delist-notice/1 artifact: missing, unreadable, not JSON or not the pinned digest REFUSES
+    (Codex 6172596212 a: absence is never INCOMPLETE)."""
+    try:
+        with open(path, 'rb') as f:
+            art = json.loads(f.read())
+    except (OSError, TypeError, ValueError) as e:
+        raise PitRunError(f'REX-02: {NT.RULE_ID} artifact missing or unreadable ({type(e).__name__}): refused')
+    try:
+        NA.validate(art, expect_digest=sha256)
+    except NA.ArtifactError as e:
+        raise PitRunError(f'REX-02: {e}')
+    return art
+
+
 def rex_load(src: dict, *, repo: str, store: str, tier: str, window, notice_path: str, notice_sha256: str,
-             author: str, cairo_date: str, plan: S.SplitPlan, commit: str) -> dict:
-    """The REX-02 loader: window -> notice artifact (exact pinned digest) -> tier symbols + rules -> ledger guard ->
-    StaticDataset -> ledger-recorded development Access (lineage root) -> bounded tape + its manifest. Returns the
-    run env for run_rex (nothing is read before the window, artifact and ledger checks pass)."""
+             author: str, cairo_date: str, plan: S.SplitPlan) -> dict:
+    """The REX-02 loader: window -> CLEAN git tree (exact commit SHA) -> notice artifact (exact pinned digest) -> tier
+    symbols + rules -> ledger guard -> StaticDataset -> ledger-recorded development Access (lineage root) -> tape read
+    through the Window + its manifest. Returns the run env for run_rex with `historical` provenance (nothing is read
+    before the window, clean-tree, artifact and ledger checks pass)."""
     lo, hi = rex_window(window, plan)
     if tier not in RUN_TIERS:
         raise PitRunError(f'REX-02: tier must be one of {RUN_TIERS}')
-    with open(notice_path, 'rb') as f:
-        art = json.loads(f.read())
-    try:
-        NA.validate(art, expect_digest=notice_sha256)
-    except NA.ArtifactError as e:
-        raise PitRunError(f'REX-02: {e}')
+    commit = rex_clean_commit(repo)
+    art = _rex_read_artifact(notice_path, notice_sha256)
     static = src['static']
     symbols = list(static['core_10' if tier == 'CORE-10' else 'core_20'])
     missing = [s for s in symbols if s not in src['rules']]
     if missing:
         raise PitRunError(f'REX-02: no pinned exchange rule for {missing}')
-    if not set(symbols) <= set(art['frozen']):
-        raise PitRunError(f'REX-02: the notice artifact was not built over every {tier} symbol')
     ledger = src['ledger']
     rex_no_holdout(ledger)
     ds = StaticDataset(src['manifest'], store, static, symbols)
     acc = P.Access(ds, plan, ledger, candidate_id=RV.CANDIDATE, author=author, cairo_date=cairo_date, repo=repo)
-    w = acc.open_development(S.utc(lo), S.utc(hi), lineage='root',
+    w = acc.open_development(S.utc(lo), S.utc(hi + REX_FUNDING_TAIL_MS), lineage='root',
                              detail={'purpose': 'REX-02 range_vwap_rev.v1 development screen (no holdout, not '
                                                 'promotable)', 'promotable': False, 'tier': tier,
-                                     'symbols': symbols, 'notice_artifact': notice_sha256,
+                                     'symbols': symbols, 'notice_artifact': notice_sha256, 'commit': commit,
+                                     'decision_window': {'start': S.utc(lo), 'end': S.utc(hi)},
                                      'funding_tail_ms': REX_FUNDING_TAIL_MS, 'cost_rows': list(REX_ROWS)})
-    tape = {s: rex_series(ds, s, w.lo, w.hi, src['rules'][s]) for s in symbols}
+    tape = {s: rex_series(w, s, src['rules'][s]) for s in symbols}
     source = {'data_manifest': ds.digest, 'universe': static['digest'], 'loader': ds.manifest['loader_version']}
     man = rex_tape_manifest(tape, art, symbols=symbols, source=source)
     return {'tape': tape, 'manifest': man, 'notice_artifact': art, 'notice_sha256': notice_sha256,
             'symbols': symbols, 'commit': commit, 'universe': static['digest'], 'ledger': ledger, 'author': author,
             'cairo_date': cairo_date,
+            'provenance': {'class': 'historical', 'commit': commit, 'tree': 'clean'},
             'access': {'family': RV.FAMILY, 'window': w.window_doc, 'manifest': ds.digest, 'split': 'development'}}
