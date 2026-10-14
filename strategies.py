@@ -175,6 +175,25 @@ def sig_exp_trend(d, p, ctx):
     return _one_side(sig_ema_mom(d, p, ctx))
 
 
+def sig_exp_range(d, p, ctx):
+    """Range / mean reversion v0 = RANGE-EXIT-01 v0 on closed candles (frozen; 4h intended).
+    VWAP42 = sum(typical price * volume) / sum(volume) over 42 candles (the engine's candles carry no quote volume, so
+    typical price * volume stands in for it), ATR = simple 14-candle mean of the true range, z = (close - VWAP) / ATR, k = 2.
+    Range gate: |VWAP_i - VWAP_(i-6)| <= 1.0 ATR. Long when z crosses back up through -k below VWAP inside the gate; short
+    is the exact mirror. Exit at the mean (close back at VWAP) or when the range gate breaks; stop / time cap in mgmt."""
+    k = float(p.get('k', 2.0))
+    h, l, c, v = d.h, d.l, d.c, d.v
+    tr = pd.concat([h - l, (h - c.shift()).abs(), (l - c.shift()).abs()], axis=1).max(axis=1)
+    atr = tr.rolling(14).mean()
+    vw = (((h + l + c) / 3) * v).rolling(42).sum() / v.rolling(42).sum()
+    z = (c - vw) / atr
+    gate = (vw - vw.shift(6)).abs() <= 1.0 * atr
+    le = gate & (z.shift() <= -k) & (z > -k) & (c < vw)
+    se = gate & (z.shift() >= k) & (z < k) & (c > vw)
+    ok = vw.notna() & atr.notna()
+    return _one_side(dict(le=le, se=se, lx=ok & ((c >= vw) | ~gate), sx=ok & ((c <= vw) | ~gate)))
+
+
 # ------------------------------------------------------------------ registry
 # style: calm / balanced / aggressive  ·  sides: long / short / both
 STRATEGIES = {
@@ -213,6 +232,12 @@ STRATEGIES = {
                       desc=EXP_TAG + ': EMA20/50 cross on the EMA200 side with 7d+30d momentum agreeing (trend_ema_mom.v1), mirrored '
                            'for shorts. Stop 2.5 ATR, target 3R, exit on cross-back or momentum loss, 180-candle time cap. 4h.',
                       mgmt=dict(stop_atr=2.5, tp_r=3.0, max_bars=180)),
+    'exp_range': dict(name='[EXPERIMENTAL testnet-only] Range VWAP/ATR mean reversion L+S', style='balanced', fn=sig_exp_range,
+                      sides='both', tf='4h', params=dict(k=2.0),
+                      desc=EXP_TAG + ': RANGE-EXIT-01 v0. 42-candle VWAP (typical price x volume), ATR = 14-candle mean true range, '
+                           'z = (close - VWAP)/ATR. Long when z crosses back above -2 below VWAP while VWAP moved <= 1 ATR over 6 '
+                           'candles; short mirrored. Target = back at VWAP, exit if the range breaks, stop 1.5 ATR, 30-candle cap. 4h.',
+                      mgmt=dict(stop_atr=1.5, max_bars=30)),
 }
 
 

@@ -15,7 +15,8 @@ from replay import run_replay
 SYMS = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT']
 FREQ = {'4h': '4h', '1h': '1h', '15m': '15min'}
 # key -> (timeframe, synthetic-shape kwargs, signal-fixture seeds, replay seeds per symbol); seeds are fixed, data is synthetic
-FAMILIES = {'exp_trend': ('4h', dict(A=0.10, P=20.0), (10, 12, 2, 4), (10, 11, 12))}
+FAMILIES = {'exp_trend': ('4h', dict(A=0.10, P=20.0), (10, 12, 2, 4), (10, 11, 12)),
+            'exp_range': ('4h', dict(A=0.08, P=6.0, dr=0.002), (1, 2, 3, 4), (5, 6, 7))}
 
 
 def synth_one(n=700, seed=3, tf='4h', scale=100.0, A=0.06, P=12.0, seg=200, dr=0.004):
@@ -118,6 +119,41 @@ def test_order_spec_stop_side(fam):
         assert abs(z['R'] - g['stop_atr'] * atr) < 1e-9 * px
 
 
+# ------------------------------------------------------------------ family-specific exits
+def _range_parts(raw):
+    h, l, c, v = raw.h, raw.l, raw.c, raw.v
+    tr = pd.concat([h - l, (h - c.shift()).abs(), (l - c.shift()).abs()], axis=1).max(axis=1)
+    atr = tr.rolling(14).mean()
+    vw = (((h + l + c) / 3) * v).rolling(42).sum() / v.rolling(42).sum()
+    return vw, atr
+
+
+def test_range_exit_at_mean_and_on_invalidation():
+    tf, kw, seeds, _ = FAMILIES['exp_range']
+    raw = synth_one(seed=seeds[0], tf=tf, **kw)
+    s = sig('exp_range', raw)
+    vw, atr = _range_parts(raw)
+    c = raw.c.values
+    gate = ((vw - vw.shift(6)).abs() <= atr).values
+    z = ((raw.c - vw) / atr).values
+    for i in np.flatnonzero(s['le']):
+        assert z[i - 1] <= -2 < z[i] and c[i] < vw[i] and gate[i]                     # the frozen entry rule, literally
+    mean_hit = s['lx'] & (c >= vw.values)
+    assert mean_hit.any() and (s['lx'] == ((c >= vw.values) | ~gate) & vw.notna().values & atr.notna().values).all()
+    # invalidation: a flat range then a one-way slide - the long exit fires while price is still BELOW the mean
+    n = 320
+    t = pd.date_range('2024-01-01', periods=n, freq='4h')
+    cc = 100 + 0.8 * np.sin(np.arange(n) / 3.0)
+    cc[280:] = cc[279] - 1.5 * np.arange(1, n - 279)
+    flat = pd.DataFrame(dict(t=t, o=np.r_[cc[0], cc[:-1]], h=cc + 0.3, l=cc - 0.3, c=cc, v=1000.0))
+    flat['h'] = np.maximum(flat.h, flat.o + 0.3); flat['l'] = np.minimum(flat.l, flat.o - 0.3)
+    fs = sig('exp_range', flat)
+    fvw, fatr = _range_parts(flat)
+    broke = np.flatnonzero(fs['lx'] & (flat.c.values < fvw.values))
+    assert len(broke) and broke[0] > 280, broke[:3]
+    assert S.merge_mgmt('exp_range') == dict(stop_atr=1.5, max_bars=30)
+
+
 # ------------------------------------------------------------------ live engine path (simulated Binance)
 def _sleeve(key, tf):
     return E.sleeve('X', key, 1.0, .02, 3, 'all', sides='both', tf=tf)
@@ -190,3 +226,16 @@ def test_engine_emergency_flatten(replayed, key):
     assert eng.trade.positions() == {} and all(not eng.trade.open_stop_tags(s) for s in SYMS)
     assert eng.S['ENTRIES_PAUSED'] is True
     assert eng.history[-1]['exit_reason'] == 'flatten'
+
+
+@pytest.mark.parametrize('key', sorted(FAMILIES))
+def test_engine_time_exit(key):
+    """The family's time cap is the engine's max_bars exit: shortened to 1 candle on a short replay, it must close lots."""
+    tf, kw, _, rseeds = FAMILIES[key]
+    raw = {s: synth_one(n=420, seed=rseeds[j], tf=tf, scale=100.0 * (j + 1), **kw) for j, s in enumerate(SYMS)}
+    sl = E.sleeve('X', key, 1.0, .02, 3, 'all', sides='both', tf=tf, mgmt=dict(max_bars=1, tp_r=0))
+    sl['mgmt'] = S.merge_mgmt(key, sl['mgmt'])
+    r = run_replay(raw, [sl], 230, steps=3, tf_sec=E.TF_SEC[tf])
+    why = set(pd.DataFrame(r['history']).exit_reason) if r['history'] else set()
+    assert 'time_exit' in why, (key, why)
+    assert not r['mismatch'] and r['metrics']['stops'] == r['metrics']['lots']
