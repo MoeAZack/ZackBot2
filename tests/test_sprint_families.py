@@ -16,7 +16,8 @@ SYMS = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT']
 FREQ = {'4h': '4h', '1h': '1h', '15m': '15min'}
 # key -> (timeframe, synthetic-shape kwargs, signal-fixture seeds, replay seeds per symbol); seeds are fixed, data is synthetic
 FAMILIES = {'exp_trend': ('4h', dict(A=0.10, P=20.0), (10, 12, 2, 4), (10, 11, 12)),
-            'exp_range': ('4h', dict(A=0.08, P=6.0, dr=0.002), (1, 2, 3, 4), (5, 6, 7))}
+            'exp_range': ('4h', dict(A=0.08, P=6.0, dr=0.002), (1, 2, 3, 4), (5, 6, 7)),
+            'exp_breakout': ('4h', dict(A=0.10, P=20.0), (1, 2, 3, 4), (5, 6, 7))}
 
 
 def synth_one(n=700, seed=3, tf='4h', scale=100.0, A=0.06, P=12.0, seg=200, dr=0.004):
@@ -152,6 +153,20 @@ def test_range_exit_at_mean_and_on_invalidation():
     broke = np.flatnonzero(fs['lx'] & (flat.c.values < fvw.values))
     assert len(broke) and broke[0] > 280, broke[:3]
     assert S.merge_mgmt('exp_range') == dict(stop_atr=1.5, max_bars=30)
+
+
+def test_breakout_rule_literal():
+    tf, kw, seeds, _ = FAMILIES['exp_breakout']
+    raw = synth_one(seed=seeds[0], tf=tf, **kw)
+    s = sig('exp_breakout', raw)
+    h, l, c = raw.h, raw.l, raw.c
+    hh, ll = h.rolling(20).max().shift(), l.rolling(20).min().shift()
+    for i in np.flatnonzero(s['le']):
+        assert c[i] > hh[i] and not c[i - 1] > hh[i - 1]
+    for i in np.flatnonzero(s['se']):
+        assert c[i] < ll[i] and not c[i - 1] < ll[i - 1]
+    assert (s['lx'] == (c < l.rolling(10).min().shift()).values).all()
+    assert (s['sx'] == (c > h.rolling(10).max().shift()).values).all()
 
 
 # ------------------------------------------------------------------ live engine path (simulated Binance)

@@ -194,6 +194,15 @@ def sig_exp_range(d, p, ctx):
     return _one_side(dict(le=le, se=se, lx=ok & ((c >= vw) | ~gate), sx=ok & ((c <= vw) | ~gate)))
 
 
+def sig_exp_breakout(d, p, ctx):
+    """Breakout v0 = symmetric 20-candle Donchian (the donchian_ens / bear_breakdown channel): long on the first close above
+    the prior 20-candle high, short on the first close below the prior 20-candle low; exit on a close through the opposite
+    10-candle channel (reversal / failed breakout)."""
+    up, dn = X(d.c > d.hh20), X(d.c < d.ll20)
+    return _one_side(dict(le=up & ~up.shift(fill_value=False), se=dn & ~dn.shift(fill_value=False),
+                          lx=d.c < d.ll10, sx=d.c > d.hh10))
+
+
 # ------------------------------------------------------------------ registry
 # style: calm / balanced / aggressive  ·  sides: long / short / both
 STRATEGIES = {
@@ -238,6 +247,11 @@ STRATEGIES = {
                            'z = (close - VWAP)/ATR. Long when z crosses back above -2 below VWAP while VWAP moved <= 1 ATR over 6 '
                            'candles; short mirrored. Target = back at VWAP, exit if the range breaks, stop 1.5 ATR, 30-candle cap. 4h.',
                       mgmt=dict(stop_atr=1.5, max_bars=30)),
+    'exp_breakout': dict(name='[EXPERIMENTAL testnet-only] Breakout Donchian 20 L+S', style='balanced', fn=sig_exp_breakout,
+                         sides='both', tf='4h',
+                         desc=EXP_TAG + ': first close above the prior 20-candle high (long) or below the prior 20-candle low '
+                              '(short). Stop 2 ATR, target 3R, exit on a close through the opposite 10-candle channel, 60-candle cap. 4h.',
+                         mgmt=dict(stop_atr=2.0, tp_r=3.0, max_bars=60)),
 }
 
 
