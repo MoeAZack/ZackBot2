@@ -862,7 +862,7 @@ class App:
     def meta(self):
         e = self.engine
         return dict(version=VERSION, build=BUILD_ID, presets={k: dict(name=v['name'], note=v['note'], bt=v.get('bt'), sleeves=v['sleeves']) for k, v in PRESETS.items()},
-                    library={k: dict(name=v['name'], style=v['style'], sides=v['sides'], desc=v['desc'], mgmt=v['mgmt']) for k, v in S.STRATEGIES.items()},
+                    library={k: dict(name=v['name'], style=v['style'], sides=v['sides'], desc=v['desc'], mgmt=v['mgmt'], tf=v.get('tf', '4h')) for k, v in S.STRATEGIES.items()},
                     core8=CORE8, top40=TOP40, tradable=sorted(e.rules) if e.rules else [], manual_max_risk=MANUAL_MAX_RISK * 100,
                     risk_rule_defaults=RISK_RULE_DEFAULTS, grid_defaults=GRID.clean_cfg({}), gov_mult_max=GOV_MULT_MAX)
 
@@ -1206,7 +1206,7 @@ def validate_sleeve(sl, i):
     out = dict(id=sid, key=sl['key'], name=S.STRATEGIES[sl['key']]['name'],
                enabled=bool(sl.get('enabled', True)), share=_num(sl['share'], 0.001, 1, 'capital share'), risk=_num(sl['risk'], 0.0005, 0.25, 'risk per trade'),
                max_pos=int(_num(sl['max_pos'], 1, 20, 'max positions')), symbols=clean_symbols(sl.get('symbols', 'all')),
-               sides=sl.get('sides') or S.STRATEGIES[sl['key']]['sides'], mgmt=clean_mgmt(sl.get('mgmt') or {}), tf=sl.get('tf', '4h'))
+               sides=sl.get('sides') or S.STRATEGIES[sl['key']]['sides'], mgmt=clean_mgmt(sl.get('mgmt') or {}), tf=sl.get('tf') or S.STRATEGIES[sl['key']].get('tf', '4h'))
     if sl.get('hours'): out['hours'] = sorted({int(_num(h, 0, 23, 'hour')) for h in sl['hours']})
     if sl.get('when') not in (None, 'any'):
         if sl['when'] not in ('bull', 'bear', 'range'): raise ValueError('market filter must be any, bull, bear or range')
