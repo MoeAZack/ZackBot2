@@ -269,3 +269,16 @@ def test_engine_time_exit(key):
     why = set(pd.DataFrame(r['history']).exit_reason) if r['history'] else set()
     assert 'time_exit' in why, (key, why)
     assert not r['mismatch'] and r['metrics']['stops'] == r['metrics']['lots']
+
+
+def test_slot_timeframe_defaults_to_the_registered_strategy_timeframe():
+    """Codex 6162610022: a client that omits tf must not run exp_scalp (15m-tuned exits) on 4h. Explicit tf still wins;
+    the strategy library exposes the registered timeframe."""
+    import app as A
+    base = dict(share=0.25, risk=0.01, max_pos=2, symbols='core8', sides='both')
+    assert A.validate_sleeve(dict(base, key='exp_scalp'), 0)['tf'] == '15m'
+    assert A.validate_sleeve(dict(base, key='exp_trend'), 0)['tf'] == '4h'
+    assert A.validate_sleeve(dict(base, key='exp_scalp', tf='1h'), 0)['tf'] == '1h'
+    from types import SimpleNamespace
+    lib = A.App.meta(SimpleNamespace(engine=SimpleNamespace(rules=None)))['library']
+    assert lib['exp_scalp']['tf'] == '15m' and lib['exp_trend']['tf'] == '4h'
