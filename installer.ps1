@@ -105,7 +105,7 @@ function Get-Record {
     # installed_file_present / installed_file_sha256 = the installed exe as it is at the END of the run (re-read right
     # before the verdict; null/false when there is no file), independent of whether it runs.
     $installed = $null
-    if ($s.Verdict -eq 'BUILD_DONE') { $installed = [ordered]@{ build = $s.BuildId; sha256 = $s.NewHash } }
+    if ($s.Verdict -eq 'BUILD_DONE' -or $s.Verdict -eq 'INSTALLED_CLEANUP_FAILED') { $installed = [ordered]@{ build = $s.BuildId; sha256 = $s.NewHash } }
     elseif ($s.RbOk) { $installed = [ordered]@{ build = $s.OldBuild; sha256 = $s.RbHash } }
     elseif ($s.RecOk) { $installed = [ordered]@{ build = $s.OldBuild; sha256 = $s.OldHash } }
     $nz = { param($x) if ($x) { $x } else { $null } }
@@ -657,9 +657,19 @@ function Invoke-Finish {
     $okSc = Update-Shortcuts
     if (-not $okSc) { $s.Warn += ' [desktop/start-menu shortcut not updated]'; $s.WarnList.Add('desktop/start-menu shortcut not updated') }
     Complete-Step $okSc ''
-    # The new version is installed and confirmed running: a staging cleanup failure cannot undo that, so it downgrades the
-    # run to BUILD_DONE with a warning (recorded as the failed 'cleanup' step) instead of claiming a clean finish.
-    if (-not (Invoke-StageCleanup)) { $s.Warn += ' [staging worktree not removed]'; $s.WarnList.Add('the staging worktree could not be removed (folder or git registration left; details in the log)') }
+    # The new version is installed and confirmed running, so a staging cleanup failure never rolls it back - but the run is
+    # NOT a success: verdict INSTALLED_CLEANUP_FAILED, the failed 'cleanup' step recorded, exit code 1 (Codex re-review).
+    if (-not (Invoke-StageCleanup)) {
+        $why = "build $($s.BuildId) is installed and confirmed running, but the staging worktree could not be removed (folder or git registration left; details in the log) - remove it before the next build"
+        Write-Log "INSTALLED_CLEANUP_FAILED build=$($s.BuildId) sha256=$($s.NewHash) target=$($s.Exe)"
+        if ($s.Warn) { Write-Log "BUILD_WARNINGS$($s.Warn)" }
+        Set-Verdict 'INSTALLED_CLEANUP_FAILED' $why 1
+        Write-Say ''
+        Write-Say " *** INSTALLED, CLEANUP FAILED: $why"
+        Write-Say " Details: $($s.Log)"
+        if (-not (Test-NoPause)) { Invoke-Pause }
+        return 1
+    }
     Write-Log "BUILD_DONE build=$($s.BuildId) sha256=$($s.NewHash) target=$($s.Exe)"
     if ($s.Warn) { Write-Log "BUILD_WARNINGS$($s.Warn)" }
     Set-Verdict 'BUILD_DONE' '' 0

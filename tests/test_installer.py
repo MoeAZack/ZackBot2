@@ -677,9 +677,15 @@ def test_flow_cleanup_is_part_of_the_success_gate():
             assert 'the staging worktree could not be removed' in f['rec']['reason'], f['rec']['reason']
             assert [x['ok'] for x in _cleanup(f['rec'])][0] is False, f['rec']['steps']
             assert 'BUILDCHECK_OK' not in f['log'] and 'PREFLIGHT_OK' not in f['log']
-        f = _flow('install', gitSrc=True, **cfg)                 # installed + confirmed running: downgraded, never hidden
-        assert f['rc'] == 0 and f['installed'] == 'NEWEXE' and f['rec']['verdict'] == 'BUILD_DONE', f
-        assert _cleanup(f['rec'])[0]['ok'] is False and any('staging worktree' in w for w in f['rec']['warnings']), f['rec']
+        # install: the new version is installed and confirmed running - kept (no rollback for a cleanup failure), but
+        # the run is NOT a success: INSTALLED_CLEANUP_FAILED, exit 1, failed cleanup step (Codex re-review of 93f0a2b).
+        f = _flow('install', gitSrc=True, **cfg)
+        rec = f['rec']
+        assert f['rc'] == 1 and f['installed'] == 'NEWEXE' and rec['verdict'] == 'INSTALLED_CLEANUP_FAILED', f
+        assert rec['exit_code'] == 1 and 'BUILD_DONE' not in f['log'] and 'the staging worktree could not be removed' in rec['reason']
+        assert _cleanup(rec)[0]['ok'] is False and rec['steps'][-1]['step'] == 'cleanup', rec['steps']
+        assert rec['installed_after'] == dict(build='NEW1', sha256=rec['new_exe_sha256']) and rec['rollback']['attempted'] is False
+        assert not any(c.startswith('start:OLDEXE') for c in f['calls']) and 'mirror' in f['calls'], f['calls']
     f = _flow('install', gitSrc=True, removeFail=True, pytestCode=1)   # failure path: cleanup recorded, reason extended
     assert f['rec']['verdict'] == 'BUILD_FAILED' and f['rec']['reason'].startswith('the safety tests FAILED')
     assert 'the staging worktree could not be removed' in f['rec']['reason'] and _cleanup(f['rec'])[0]['ok'] is False
