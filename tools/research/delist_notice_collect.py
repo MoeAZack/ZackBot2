@@ -13,7 +13,7 @@ What it does (deterministic output ordering; a re-run differs only by fetch time
      mentions a perpetual. Raw bytes are hashed; only the hit lists are kept.
   3. builds ONE fetch document (`range_vwap_rev_artifact` schema) whose `raw_digest` is the SHA-256 of the canonical
      page manifest [[url, sha256], ...] and whose items are the minimal audit excerpt: every crawled item whose title
-     contains `delist` or names a tier pair / base asset (released at / after the window start), plus the oldest crawled
+     contains `delist` or names a tier pair (released at / after the window start), plus the oldest crawled
      item below the window start (the coverage-start witness). Replayed through the frozen inclusion rule.
   4. per symbol: `notice` (the frozen title rule included an announcement), `proven_none` (every catalog covered, no
      included notice and no delist-titled body names the pair next to a perpetual) or `unproven` (any doubt). Unproven
@@ -45,12 +45,12 @@ LIST_URL = API + '/list/query?type=1&catalogId={cid}&pageNo={page}&pageSize={siz
 DETAIL_URL = API + '/detail/query?articleCode={code}'
 PUBLIC_URL = 'https://www.binance.com/en/support/announcement/detail/{code}'
 PAGE_SIZE = 50
-UA = 'ZackBot-notice-collector/1 (research; public announcements only)'
+UA = 'ZackBot-notice-collector/1 (research script; public announcements only; sequential, 1 req / 8 s)'
 WINDOW_FROM_MS = 1609718400000          # 2021-01-04T00:00:00Z (Codex 6172019060 point 1, development splits)
 WINDOW_TO_MS = 1790553600000            # 2026-09-28T00:00:00Z (end exclusive)
 UNIVERSE = os.path.join('research_evidence', 'universe', 'static-top40-minhist365-contract-20261011.json')
 TIER_KEY = {'CORE-10': 'core_10', 'CORE-20': 'core_20'}
-DELAY_S = 0.35
+DELAY_S = 8.0                           # owner-approved slow rate: at most one request per 8 s
 
 
 TRANSPORT_RETRIES = 4
@@ -61,7 +61,11 @@ class TransportError(RuntimeError):
 
 
 class Blocked(RuntimeError):
-    """The official source refused automated access (bot wall / captcha / non-JSON): stop and report."""
+    """The official source refused automated access (HTTP error / 429 / bot wall / non-JSON): stop and report."""
+
+    def __init__(self, msg, *, status=None, retry_after=None):
+        super().__init__(msg)
+        self.status, self.retry_after = status, retry_after
 
 
 def _canon(o) -> bytes:
@@ -157,36 +161,73 @@ def effective_ms(text: str, published_at: int) -> int | None:
 
 
 class Client:
-    def __init__(self, delay=DELAY_S):
-        self.delay = delay
+    """Sequential, fixed-rate GETs to the official API (at most one request per `delay` seconds). With `cache_dir`
+    (a LOCAL, uncommitted scratch dir) every validated raw response is kept with its fetch time, and a resumed run
+    reads it from there instead of re-requesting it. Any server refusal (HTTP error / 429 / bot wall) stops the run;
+    a 429's Retry-After is reported and recorded, never worked around."""
 
-    def get(self, url: str) -> tuple[int, bytes, dict]:
-        if not url.startswith(API):
-            raise ValueError(f'refusing a non-official URL: {url}')
-        time.sleep(self.delay)
-        ts = int(time.time() * 1000)
-        req = urllib.request.Request(url, headers={'User-Agent': UA, 'Accept': 'application/json'})
-        for attempt in range(TRANSPORT_RETRIES + 1):
-            try:
-                with urllib.request.urlopen(req, timeout=30) as r:
-                    raw, ctype, code = r.read(), r.headers.get('content-type', ''), r.status
-                break
-            except urllib.error.HTTPError as e:             # an answer from the server: never retried / bypassed
-                raise Blocked(f'{url}: HTTP {e.code} (stopping; not bypassed)')
-            except (urllib.error.URLError, OSError) as e:   # transport only (TLS reset / timeout): bounded retry
-                if attempt == TRANSPORT_RETRIES:
-                    raise TransportError(f'{url}: {e}')
-                time.sleep(2.0 * (attempt + 1))
-                ts = int(time.time() * 1000)
-        if code != 200 or 'json' not in ctype:
-            raise Blocked(f'{url}: HTTP {code} {ctype!r} (bot wall / captcha? stopping; not bypassed)')
+    def __init__(self, delay=DELAY_S, cache_dir=None):
+        self.delay, self.cache_dir = delay, cache_dir
+        self.requests = self.cache_hits = 0
+        self._last = 0.0
+        if cache_dir:
+            os.makedirs(cache_dir, exist_ok=True)
+
+    def _cpath(self, url):
+        return os.path.join(self.cache_dir, sha(url.encode()))
+
+    def _parse(self, url, raw, ctype):
+        if 'json' not in ctype:
+            raise Blocked(f'{url}: content-type {ctype!r} (bot wall / captcha? stopping; not bypassed)')
         try:
             doc = json.loads(raw)
         except ValueError:
             raise Blocked(f'{url}: non-JSON answer (bot wall / captcha? stopping; not bypassed)')
         if doc.get('code') != '000000' or not isinstance(doc.get('data'), dict):
             raise Blocked(f'{url}: API error {doc.get("code")!r} {doc.get("message")!r}')
-        return ts, raw, doc['data']
+        return doc['data']
+
+    def get(self, url: str) -> tuple[int, bytes, dict]:
+        if not url.startswith(API):
+            raise ValueError(f'refusing a non-official URL: {url}')
+        if self.cache_dir and os.path.exists(self._cpath(url) + '.bin'):
+            with open(self._cpath(url) + '.bin', 'rb') as f:
+                raw = f.read()
+            with open(self._cpath(url) + '.ts', encoding='ascii') as f:
+                ts = int(f.read())
+            self.cache_hits += 1
+            return ts, raw, self._parse(url, raw, 'application/json')
+        req = urllib.request.Request(url, headers={'User-Agent': UA, 'Accept': 'application/json'})
+        for attempt in range(TRANSPORT_RETRIES + 1):
+            wait = self._last + self.delay - time.time()
+            if wait > 0:
+                time.sleep(wait)
+            self._last = time.time()
+            ts = int(self._last * 1000)
+            self.requests += 1
+            try:
+                with urllib.request.urlopen(req, timeout=30) as r:
+                    raw, ctype, code = r.read(), r.headers.get('content-type', ''), r.status
+                break
+            except urllib.error.HTTPError as e:             # an answer from the server: never retried / bypassed
+                ra = e.headers.get('Retry-After') if e.headers else None
+                raise Blocked(f'{url}: HTTP {e.code} Retry-After={ra!r} (stopping; not bypassed)', status=e.code,
+                              retry_after=ra)
+            except (urllib.error.URLError, OSError) as e:   # transport only (TLS reset / timeout): bounded backoff
+                if attempt == TRANSPORT_RETRIES:
+                    raise TransportError(f'{url}: {e}')
+                time.sleep(self.delay * 2 ** (attempt + 1))
+        if code != 200:
+            raise Blocked(f'{url}: HTTP {code} (stopping; not bypassed)', status=code)
+        data = self._parse(url, raw, ctype)
+        if self.requests % 25 == 0:
+            print(f'.. {self.requests} requests ({self.cache_hits} cached) {utc(ts)}', file=sys.stderr, flush=True)
+        if self.cache_dir:
+            with open(self._cpath(url) + '.ts', 'w', encoding='ascii') as f:
+                f.write(str(ts))
+            with open(self._cpath(url) + '.bin', 'wb') as f:
+                f.write(raw)
+        return ts, raw, data
 
 
 def crawl_catalog(cl: Client, cid: int, *, tries=3) -> tuple[dict, list, list]:
@@ -225,7 +266,6 @@ def crawl_catalog(cl: Client, cid: int, *, tries=3) -> tuple[dict, list, list]:
 def collect(root: str, tier: str, out_dir: str, *, cl: Client | None = None) -> tuple[str, str]:
     cl = cl or Client()
     symbols, universe_digest = tier_symbols(root, tier)
-    base = bases(symbols)
     start_ms = int(time.time() * 1000)
     ts, raw, data = cl.get(CATALOG_URL)
     cat_names = {c['catalogId']: c['catalogName'] for c in data['catalogs']}
@@ -238,7 +278,7 @@ def collect(root: str, tier: str, out_dir: str, *, cl: Client | None = None) -> 
         pages += pg
         for a in aa:
             arts.setdefault(a['code'], a)
-    words = list(symbols) + sorted(set(base.values()))
+    words = list(symbols)                              # pair tokens: what the frozen inclusion rule matches on
     keep = sorted((a for a in arts.values() if a['releaseDate'] >= WINDOW_FROM_MS and
                    ('delist' in NT.norm(a['title']) or tokens(a['title'], words))),
                   key=lambda a: (-a['releaseDate'], a['code']))
@@ -311,15 +351,32 @@ def main(argv=None) -> int:
     c.add_argument('--tier', default='CORE-10', choices=sorted(TIER_KEY))
     c.add_argument('--out-dir', default=os.path.join('research_evidence', 'notices'))
     c.add_argument('--root', default='.')
+    c.add_argument('--cache-dir', default=os.path.join(os.environ.get('TEMP', '/tmp'), 'zb_notice_cache'),
+                   help='LOCAL uncommitted raw-response cache (resume without re-requesting)')
+    sub.add_parser('probe', help='ONE request to the catalog list (cool-down check)')
     a = ap.parse_args(argv)
+    if a.cmd == 'probe':
+        try:
+            ts, raw, data = Client(delay=0).get(CATALOG_URL)
+        except Blocked as e:
+            print(f'BLOCKED: {e}', file=sys.stderr)
+            return 2
+        except TransportError as e:
+            print(f'TRANSPORT: {e}', file=sys.stderr)
+            return 3
+        print('OK', utc(ts), sha(raw), [(c['catalogId'], c['total']) for c in data['catalogs']])
+        return 0
+    cl = Client(cache_dir=a.cache_dir)
+    t0 = time.time()
     try:
-        paths = collect(a.root, a.tier, a.out_dir)
+        paths = collect(a.root, a.tier, a.out_dir, cl=cl)
     except Blocked as e:
-        print(f'BLOCKED: {e}', file=sys.stderr)
+        print(f'BLOCKED: {e} | requests={cl.requests} cache_hits={cl.cache_hits} {time.time() - t0:.0f}s', file=sys.stderr)
         return 2
     except TransportError as e:
-        print(f'TRANSPORT: {e}', file=sys.stderr)
+        print(f'TRANSPORT: {e} | requests={cl.requests} cache_hits={cl.cache_hits}', file=sys.stderr)
         return 3
+    print(f'requests={cl.requests} cache_hits={cl.cache_hits} duration={time.time() - t0:.0f}s')
     for p in paths:
         with open(p, 'rb') as f:
             print(p, sha(f.read()))

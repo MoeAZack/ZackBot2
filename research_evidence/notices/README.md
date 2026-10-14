@@ -2,20 +2,23 @@
 
 REX-03, under Codex ruling #81 6172019060 §3. A CORE-10 `range_vwap_rev` run passes these with `--notice` / `--notice-sha256`.
 
-## Status: PENDING (no artifact committed yet)
+## Status: COLLECTED (`zb-delist-notice-core-10-20261014`)
 
-The 2026-10-14 collection did not complete:
+- **When and how.** Collected 2026-10-14, 21:54-22:50 Cairo (18:54-19:50 UTC). The collector made 409 sequential
+  requests at no more than one per 8 s, after a cool-down approved by the owner. It got no 429s and had 0 body-scan
+  failures.
+  - An earlier attempt the same day was cut off by a TLS reset.
+  - Its re-run then got HTTP 429. The collector stopped without bypassing it.
+- **Artifact digest.** `1554d2f33384426d68b08d150f667ba623a4d5de55f826c2ed0092c96cf0fcd3`. This is the value to pass as
+  `--notice-sha256`.
+- **Coverage.** All 7 announcement catalogs were crawled: 190 list pages and 208 body scans. Every catalog is either
+  complete (Delisting, Maintenance) or crawled past 2021-01-04.
+- **Result.** All 10 CORE-10 symbols are `proven_none`. No USDⓈ-M perpetual delist notice was found inside the window.
+- **Open (Codex).** Some notices have generic titles, such as "Delist Multiple USDⓈ-M Perpetual Contracts". The frozen
+  title rule can never include them. The body scan makes any CORE-10 pair named next to a perpetual `unproven` rather
+  than a notice, because a notice row must equal the frozen-rule replay. None was found.
 
-1. The first crawl was cut off by a TLS connection reset partway through catalog paging.
-2. The re-run got **HTTP 429** from the official API on its first request.
-
-The collector stopped and wrote nothing, as required. It did not bypass the block. There is no artifact, so a CORE-10
-`range_vwap_rev` run has nothing to pin and must refuse at its notice preflight.
-
-To finish: re-run the collector once the rate limit clears, commit the dated pair, then set `STEM` and the three digests in
-`tests/test_delist_notice_core10.py`.
-
-## Files (once collected)
+## Files
 
 - `zb-delist-notice-core-10-<YYYYMMDD>.json` is the artifact. It is validated by
   `tools/research/range_vwap_rev_artifact.validate`, and the run command pins its `digest`.

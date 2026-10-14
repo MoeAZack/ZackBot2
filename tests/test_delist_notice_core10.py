@@ -12,17 +12,13 @@ sys.path.insert(0, os.path.join(ROOT, 'tools', 'research'))
 import delist_notice_collect as DC                                                          # noqa: E402
 import range_vwap_rev_artifact as NA                                                        # noqa: E402
 
-# PENDING: the official source answered HTTP 429 on 2026-10-14 (collector stopped, not bypassed). Once a collection
-# succeeds, set STEM to the committed dated pair and pin the three digests; until then the artifact tests SKIP (no
-# artifact exists, so a CORE-10 run cannot pass its notice preflight either).
-STEM = None
-ARTIFACT = COVERAGE = None
-ARTIFACT_DIGEST = None                           # the digest a CORE-10 run command pins (--notice-sha256)
-ARTIFACT_FILE_SHA = None
-COVERAGE_FILE_SHA = None
-if STEM is not None:
-    ARTIFACT, COVERAGE = STEM + '.json', STEM + '.coverage.json'
-PENDING = pytest.mark.skipif(STEM is None, reason='CORE-10 notice artifact not collected yet (source HTTP 429)')
+# Collected 2026-10-14 (18:54-19:50 UTC, 409 sequential requests at 1 / 8 s, no 429) by delist_notice_collect.py.
+STEM = os.path.join(ROOT, 'research_evidence', 'notices', 'zb-delist-notice-core-10-20261014')
+ARTIFACT, COVERAGE = STEM + '.json', STEM + '.coverage.json'
+ARTIFACT_DIGEST = '1554d2f33384426d68b08d150f667ba623a4d5de55f826c2ed0092c96cf0fcd3'   # what --notice-sha256 pins
+ARTIFACT_FILE_SHA = 'd79bfddca7d2e502cc07439f8662f618a5e58450afd2d2eca4e0e1708e3d5813'
+COVERAGE_FILE_SHA = 'c3eb4ccc510bb911336c9395dfa88743ba34002fd44824c140b8ed1a8a32554c'
+PENDING = pytest.mark.skipif(STEM is None, reason='CORE-10 notice artifact not collected')
 CORE10 = ['BTCUSDT', 'ETHUSDT', 'ZECUSDT', 'SOLUSDT', 'XRPUSDT', 'NEARUSDT', 'HYPEUSDT', 'DOGEUSDT', 'UNIUSDT',
           'SUIUSDT']
 
@@ -96,6 +92,11 @@ def test_every_catalog_covers_the_window(cov):
     cats = cov[1]['catalogs']
     assert cats and all(c['complete'] or c['reached_below_window'] for c in cats)
     assert cov[1]['body_scan_failures'] == 0
+
+
+@PENDING
+def test_core10_verdicts_as_collected(cov):
+    assert {s: v['status'] for s, v in cov[1]['verdicts'].items()} == dict.fromkeys(CORE10, 'proven_none')
 
 
 @PENDING
