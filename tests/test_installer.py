@@ -199,9 +199,18 @@ def test_build_app_preflight_from_cmd():
         return out
     before = snap()
     bat = os.path.join(ROOT, 'build_app.bat')
+    # BUILD-FIX-01: a git checkout with uncommitted changes is refused (fail closed) - a developer running this test on a
+    # dirty tree sees that refusal; a clean checkout (CI, the accepted head) gets the full PREFLIGHT_OK.
+    st = subprocess.run(['git', '-C', ROOT, 'status', '--porcelain', '--untracked-files=all'], capture_output=True, text=True)
+    dirty = st.returncode == 0 and any(l and not (l.startswith('?? research_evidence/') and
+                                                  l.lower().endswith(('.json', '.jsonl', '.json.gz', '.csv', '.md')))
+                                       for l in st.stdout.splitlines())
     for env in (None, _env(PSModulePath=r'C:\Program Files\PowerShell\7\Modules;C:\nowhere\Modules')):
         r = subprocess.run(['cmd', '/d', '/c', bat, 'preflight'], capture_output=True, text=True, env=env, timeout=300,
                            stdin=subprocess.DEVNULL)
+        if dirty:
+            assert r.returncode == 1 and 'uncommitted changes' in r.stdout, (r.returncode, r.stdout[-800:], r.stderr[-400:])
+            continue
         assert r.returncode == 0 and 'PREFLIGHT_OK' in r.stdout, (r.returncode, r.stdout[-800:], r.stderr[-400:])
     assert snap() == before, 'preflight must not touch the real staging folder or build.log'
     assert not os.path.exists(os.path.join(root, 'staging_preflight')), 'preflight staging folder must be removed'
@@ -350,15 +359,45 @@ function Invoke-ExeWait([string]$exe, [string[]]$argv) {
     if ($kind -eq 'OLDEXE' -and -not (Opt 'noOldBuild' $false)) { [IO.File]::WriteAllText($argv[1], '{"ok": true, "build": "OLD1"}') }
     return 0
 }
+function New-FakeStage {
+    $s = $script:S; [void][IO.Directory]::CreateDirectory($s.StageSrc)
+    [IO.File]::WriteAllText([IO.Path]::Combine($s.StageSrc, 'app.py'), 'print(1)')
+    if (-not (Opt 'noRules' $false)) {
+        [void][IO.Directory]::CreateDirectory([IO.Path]::Combine($s.StageSrc, 'data'))
+        [IO.File]::WriteAllText([IO.Path]::Combine($s.StageSrc, 'data', 'exchange_rules_testnet.json'), '{}')
+    }
+}
 function Invoke-Logged([string]$file, [string[]]$argv, [string]$cwd = '', [switch]$Quiet) {
     $s = $script:S; $code = 0; $name = [IO.Path]::GetFileName($file)
+    if ($name -eq 'git') {
+        # gitSrc: the source is a clean (gitDirty = '|'-separated porcelain entries) checkout at gitHead; else a plain folder.
+        $sub = $argv[2]; $out = ''
+        if ($sub -eq 'rev-parse') {
+            if (-not [bool](Opt 'gitSrc' $false)) { $code = 128 }
+            elseif ($argv[3] -eq '--is-inside-work-tree') { $out = "true`n" }
+            elseif ($argv[3] -eq '--show-toplevel') { $out = [string](Opt 'gitTop' $argv[1].Replace('\', '/')) + "`n" }
+            else { $out = [string](Opt 'gitHead' '0123456789abcdef0123456789abcdef01234567') + "`n" }
+        } elseif ($sub -eq 'status') { C 'git-status'; $out = ([string](Opt 'gitDirty' '')).Replace('|', [string][char]0) }
+        elseif ($sub -eq 'worktree' -and $argv[3] -eq 'add') {
+            C ('worktree-add:' + $argv[4] + ':' + $argv[6]); $code = [int](Opt 'worktreeAddCode' 0)
+            if ($argv[5] -ne $s.StageSrc) { throw "worktree add outside the staging folder: $($argv[5])" }
+            if ($code -eq 0) {
+                New-FakeStage
+                foreach ($f in @('.git', 'build_app.bat', 'rollback_drill.bat', 'installer.ps1', 'setup_git.bat')) {
+                    [IO.File]::WriteAllText([IO.Path]::Combine($s.StageSrc, $f), 'x')
+                }
+            }
+        } elseif ($sub -eq 'worktree' -and $argv[3] -eq 'remove') {
+            C 'worktree-remove'
+            if ($argv[$argv.Count - 1] -ne $s.StageSrc) { throw "worktree remove outside the staging folder" }
+            if ([IO.Directory]::Exists($s.StageSrc)) { [IO.Directory]::Delete($s.StageSrc, $true) } else { $code = 128 }
+        } elseif ($sub -eq 'worktree') { C ('worktree-' + $argv[3]) }
+        elseif ($sub -eq 'update-index') { C ('skip-worktree:' + ($argv[5..($argv.Count - 1)] -join ',')) }
+        else { C ('git-other:' + $sub) }
+        return @{ Code = $code; Out = $out; Err = '' }
+    }
     if ($name -eq 'robocopy' -and $argv[1] -eq $s.StageSrc) {
-        C 'stage'; [void][IO.Directory]::CreateDirectory($s.StageSrc)
-        [IO.File]::WriteAllText([IO.Path]::Combine($s.StageSrc, 'app.py'), 'print(1)')
-        if (-not (Opt 'noRules' $false)) {
-            [void][IO.Directory]::CreateDirectory([IO.Path]::Combine($s.StageSrc, 'data'))
-            [IO.File]::WriteAllText([IO.Path]::Combine($s.StageSrc, 'data', 'exchange_rules_testnet.json'), '{}')
-        }
+        C 'stage'; New-FakeStage
         $code = [int](Opt 'stageCode' 1)
     } elseif ($name -eq 'robocopy') {
         C 'mirror'; $global:MirrorOpts = $argv[2..($argv.Count - 1)]; $code = [int](Opt 'mirrorCode' 1)
@@ -370,6 +409,7 @@ function Invoke-Logged([string]$file, [string[]]$argv, [string]$cwd = '', [switc
         $step = @{ pip = 'pip'; '-c' = 'libs'; pytest = 'pytest'; PyInstaller = 'pyinstaller' }
         $k = if ($argv[0] -eq '-c') { 'libs' } else { $step[$argv[1]] }
         C $k; $code = [int](Opt ($k + 'Code') 0)
+        if ($k -eq 'pytest' -and [IO.File]::Exists([IO.Path]::Combine($s.StageSrc, 'build_app.bat'))) { C 'private-files-in-stage' }
         if ($k -eq 'pyinstaller' -and $code -eq 0) {
             [void][IO.Directory]::CreateDirectory([IO.Path]::Combine($s.Stage, 'dist'))
             [IO.File]::WriteAllText($s.NewExe, 'NEWEXE')
@@ -521,6 +561,93 @@ def test_flow_buildcheck_builds_but_never_installs():
     for x in ('stop', 'start:NEWEXE', 'copy:ZackBot.exe>ZackBot.prev.exe', 'mirror'):
         assert x not in f['calls'], x
     assert f['stages'] == ['staging_buildcheck'] and f['installed'] == 'OLDEXE'
+
+
+# ---------------------------------------------------------------- BUILD-FIX-01 option A: stage the committed source
+SHA = '0123456789abcdef0123456789abcdef01234567'
+
+
+@needs_flow
+def test_flow_clean_git_source_is_staged_as_a_detached_worktree_of_its_commit():
+    f = _flow('install', gitSrc=True)
+    c = f['calls']
+    assert f['rc'] == 0 and f['installed'] == 'NEWEXE', f
+    assert 'stage' not in c, 'a git checkout is never robocopied (no git metadata -> the committed-state tests fail)'
+    assert c[:5] == ['git-status', 'worktree-remove', 'worktree-prune', 'rmdir', 'worktree-prune'], c
+    _order(c, 'rmdir', f'worktree-add:--detach:{SHA}',
+           'skip-worktree:build_app.bat,rollback_drill.bat,installer.ps1,setup_git.bat', 'pytest', 'pyinstaller', 'mirror')
+    assert 'private-files-in-stage' not in c, 'the installer-private files must be gone before the safety tests'
+    assert c[-2:] == ['worktree-remove', 'worktree-prune'], 'the staging worktree is unregistered after the build'
+    assert f'source commit {SHA}' in f['log'] and f['rec']['source_commit'] == SHA
+    i = f['mirror_opts'].index('/XD'); j = f['mirror_opts'].index('/XF')
+    assert '.git' in f['mirror_opts'][i:j] and '.git' in f['mirror_opts'][j:], f['mirror_opts']
+    for mode in ('buildcheck', 'preflight'):                     # every mode unregisters it; buildcheck keeps its exe
+        g = _flow(mode, gitSrc=True)
+        assert g['rc'] == 0 and g['calls'][-2:] == ['worktree-remove', 'worktree-prune'] and g['installed'] == 'OLDEXE', (mode, g)
+        assert g['stages'] == (['staging_buildcheck'] if mode == 'buildcheck' else []), g['stages']
+
+
+@pytest.mark.parametrize('dirty, n', [
+    (' M app.py', 1),                                             # tracked change
+    ('M  panel.html|?? notes.txt', 2),                            # staged change + untracked file
+    ('R  new.py|old.py', 2),                                      # both sides of a rename
+    (' M research_evidence/ledger/runs.jsonl', 1),                # a TRACKED evidence change is still a change
+    ('?? research_evidence/helper.py', 1),                        # executable file under research_evidence/
+])
+@needs_flow
+def test_flow_dirty_git_source_is_refused_before_anything_changes(dirty, n):
+    f = _flow('install', gitSrc=True, gitDirty=dirty)
+    assert f['rc'] == 1 and f['installed'] == 'OLDEXE', f
+    assert f'BUILD_FAILED: the source checkout has uncommitted changes ({n} path(s)' in f['log'], f['log'][-600:]
+    assert f['calls'] == ['git-status'], 'refused before staging, building or touching the running bot'
+    assert f['rec']['verdict'] == 'BUILD_FAILED' and f['rec']['steps'][-1]['step'] == 'stage'
+
+
+@needs_flow
+def test_flow_untracked_evidence_artifacts_do_not_make_the_source_dirty():
+    """Same rule as tools/research/report.py dirty_paths: validated non-executable evidence artifacts are not 'dirty'."""
+    f = _flow('install', gitSrc=True, gitDirty='?? research_evidence/ledger/x.jsonl|?? research_evidence/runs/r.json.gz')
+    assert f['rc'] == 0 and f['installed'] == 'NEWEXE', f
+
+
+@needs_flow
+def test_flow_git_staging_failures_fail_closed_and_unregister_the_worktree():
+    f = _flow('install', gitSrc=True, worktreeAddCode=128)
+    assert f['rc'] == 1 and f['installed'] == 'OLDEXE' and 'BUILD_FAILED: staging the committed source failed (git worktree add)' in f['log']
+    assert 'pytest' not in f['calls'] and f['calls'][-2:] == ['worktree-remove', 'worktree-prune'], f['calls']
+    f = _flow('install', gitSrc=True, pytestCode=1)
+    assert f['rc'] == 1 and f['installed'] == 'OLDEXE' and 'BUILD_FAILED: the safety tests FAILED' in f['log']
+    assert f['calls'][-2:] == ['worktree-remove', 'worktree-prune'], f['calls']
+    f = _flow('install', gitSrc=True, gitTop='C:/somewhere/else')
+    assert f['rc'] == 1 and f['installed'] == 'OLDEXE' and 'is not its top folder' in f['log'] and 'rmdir' not in f['calls']
+
+
+@needs_flow
+def test_flow_plain_folder_source_keeps_the_robocopy_staging():
+    f = _flow('install')                                          # the fake git says: not a git checkout
+    c = f['calls']
+    assert f['rc'] == 0 and 'stage' in c and not any(x.startswith(('worktree', 'skip-worktree', 'git-')) for x in c), c
+    assert f['rec']['source_commit'] is None and 'source commit' not in f['log']
+
+
+@needs_installer
+def test_installed_source_mirror_excludes_git():
+    """BUILD-FIX-01: the staged worktree has a .git pointer FILE; it must never reach the installed source."""
+    src = open(INSTALLER, encoding='utf-8').read()
+    line = next(l for l in src.split('\n') if "Invoke-Logged 'robocopy' @($s.StageSrc, $s.Dst" in l)
+    xd, xf = line.index("'/XD'"), line.index("'/XF'")
+    assert xd < xf and "'.git'" in line[xd:xf] and "'.git'" in line[xf:], line
+    assert "'tests'" in line[xd:xf] and "'data_market'" in line[xd:xf], line
+
+
+@needs_installer
+def test_build_info_is_ignored_so_the_staged_worktree_stays_clean():
+    r = subprocess.run(['git', '-C', ROOT, 'check-ignore', '-q', 'build_info.py'], capture_output=True)
+    if r.returncode == 128:
+        pytest.skip('not a git checkout')
+    assert r.returncode == 0, 'build_info.py (written into the staged worktree) must be git-ignored'
+    t = subprocess.run(['git', '-C', ROOT, 'ls-files', '--error-unmatch', 'build_info.py'], capture_output=True)
+    assert t.returncode != 0, 'build_info.py must not be tracked'
 
 
 @pytest.mark.parametrize('cfg, why', [
@@ -886,8 +1013,10 @@ def test_upgrade_mirror_preserves_collected_market_data():
         for d, f_ in (('data_market', 'manifest.json'), (os.path.join('data_market', 'open_interest_hist'), 'BTCUSDT_1h.csv')):
             os.makedirs(os.path.join(dst, d), exist_ok=True); open(os.path.join(dst, d, f_), 'w').write('history')
         open(os.path.join(dst, 'old_module.py'), 'w').write('stale')                 # a normal stale file IS removed
+        open(os.path.join(src, '.git'), 'w').write('gitdir: C:/repo/.git/worktrees/src')   # the staged worktree pointer
         r = subprocess.run(['robocopy', src, dst] + f['mirror_opts'], capture_output=True, text=True, timeout=60)
         assert r.returncode < 8, r.stdout[-800:]
         assert open(os.path.join(dst, 'data_market', 'open_interest_hist', 'BTCUSDT_1h.csv')).read() == 'history'
         assert os.path.exists(os.path.join(dst, 'data_market', 'manifest.json'))
         assert open(os.path.join(dst, 'app.py')).read() == 'new' and not os.path.exists(os.path.join(dst, 'old_module.py'))
+        assert not os.path.exists(os.path.join(dst, '.git')), 'the staged .git pointer must not be mirrored'

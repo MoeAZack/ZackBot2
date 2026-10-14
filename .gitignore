@@ -7,3 +7,5 @@ dev_out_engine_sim*.txt
 dev_out_ui.txt
 verify_out/
 data_market/
+# installer.ps1 writes it into the staged worktree; ignored so the staged tree stays a clean checkout
+build_info.py

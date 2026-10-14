@@ -801,8 +801,6 @@ def test_pit_subcommand_and_m3_never_run_with_the_gate_closed(monkeypatch):
 
 def test_committed_preregistration_is_complete_and_opens_the_gate():
     """STRAT-00 registration transition: the accepted prereg has exactly its 18 committed trial records."""
-    if not os.path.exists(os.path.join(ROOT, '.git')):   # BUILD-FIX-01: the installer's staged copy has no git history
-        pytest.skip('not a git checkout')
     # Exercise the registration gate without requiring CI to fetch every historical pin.
     assert G.gate(ROOT, need_cleared=False) == []
     g = json.loads(G._load(ROOT, G.GATE))
