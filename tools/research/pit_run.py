@@ -1774,8 +1774,9 @@ def program_multiplicity(env: dict, prof: RunProfile) -> dict:
         raise PitRunError(f'{prof.tag}: the gating Holm family must be the program family (>= '
                           f'{G.PROGRAM_N_AT_FREEZE}, {" + ".join(G.PROGRAM_FAMILIES)}); got {m!r} / '
                           f'n_trials {env["n_trials"]!r}')
-    return {'status': 'PASS', 'n_trials': m['program'], 'gating_family': 'program',
-            'program_families': dict(by), 'own_family_n_trials': by[prof.family], 'own_family_gating': False}
+    return {'status': 'PASS', 'n_trials': m['program'], 'program_n_trials': m['program'],     # n_trials: compat
+            'gating_family': 'program', 'program_families': dict(by), 'own_family_n_trials': by[prof.family],
+            'own_family_gating': False}
 
 
 def summarize(env, tier, symbols, per_split, detail_splits, blocks, b0_diffs, b0_meta=None):
@@ -1861,7 +1862,8 @@ def summarize(env, tier, symbols, per_split, detail_splits, blocks, b0_diffs, b0
             if v['status'] in ('PASS', 'FAIL'):
                 v['status'] = INCOMPLETE
     bind = {} if prof is LONG_RUN else {'candidate_id': prof.candidate_id, 'side': prof.side,
-                                        'profile': prof.binding()}
+                                        'profile': prof.binding(), 'program_n_trials': mult['program_n_trials'],
+                                        'own_family_n_trials': mult['own_family_n_trials']}
     summary = {'format': prof.summary_format, **bind, 'status': status, 'missing_data_policy': POLICY,
                **({'incomplete_rows': {r: n for r, n in sorted(bad_roles.items()) if r != 'development_only'},
                    'incomplete_classes': dict(sorted(bad_classes.items()))} if status != COMPLETE else {}),
@@ -1875,7 +1877,8 @@ def summarize(env, tier, symbols, per_split, detail_splits, blocks, b0_diffs, b0
                                           for g, v in sorted(_by_regime(dev_tr).items())},
                'book': dict(BOOK), 'baselines': base, 'edge00': edge,
                'verdict': verdict, 'verdict_basis': basis, 'flags': flags, 'not_evaluated': list(prof.not_evaluated)}
-    detail = {'format': prof.detail_format, **bind, 'status': status, 'missing_data_policy': POLICY,     # derived from the rows
+    detail = {'format': prof.detail_format, **bind, 'status': status,            # status: derived from the rows
+              'missing_data_policy': POLICY,
               'tier': tier, 'label': LABEL, 'symbols': list(symbols), 'splits': detail_splits,
               'neighbours_mean_r': neigh, 'loso_mean_r': loso_m, 'loyo_mean_r': loyo_m, 'month_blocks': blocks,
               'b0_episode_differences': b0_diffs}

@@ -115,12 +115,13 @@ def sealed_artifacts(path: str, folds: int | None = None) -> tuple[str, dict]:
     return doc['digest'], arts
 
 
-def determinism(final_files) -> dict:
+def determinism(final_files, folds: int | None = None) -> dict:
     """Item 6 (mechanical part): >= 2 sealed finals (fresh processes / relocated checkout) with the same record
-    digest (identity, run id, stages) and identical artifact hashes."""
+    digest (identity, run id, stages) and identical artifact hashes. `folds` = the routed candidate's fold bound
+    (None = the STRAT-01 default prereg)."""
     if len(final_files) < 2:
         return {'status': 'MISSING', 'detail': 'need >= 2 sealed final records'}
-    runs = [sealed_artifacts(p) for p in final_files]
+    runs = [sealed_artifacts(p, folds) for p in final_files]
     same = all(r == runs[0] for r in runs[1:])
     return {'status': 'PASS' if same else 'FAIL', 'runs': len(runs), 'final_digest': runs[0][0],
             'artifact_sha256': runs[0][1]}
@@ -134,10 +135,11 @@ def _result(v, what):
     return dict(v)
 
 
-def build(ev: dict) -> dict:
+def build(ev: dict, folds: int | None = None) -> dict:
     """`ev` = {'head': 40-hex, 'digests': {dataset, universe, universe_list, prereg}, 'tests': {passed, failed},
     'm3_parity' / 'accounting_sample' / 'pilot': {'status', ...}, 'items': {n: {'status', ...}},
-    'final_files': [...], 'limitations': [...]}. NOT READY whenever any field is missing or not PASS."""
+    'final_files': [...], 'limitations': [...]}. NOT READY whenever any field is missing or not PASS. `folds` = the
+    routed candidate's progress fold bound (STRAT-02-PIT-01; None = the STRAT-01 default), carried to every final."""
     missing = []
     head = ev.get('head')
     if not (isinstance(head, str) and HEX40.match(head)):
@@ -154,7 +156,7 @@ def build(ev: dict) -> dict:
         if str(k) not in items:
             raise ReadinessError(f'item {k!r}: unknown item')
         items[str(k)].update(_result(v, f'item {k}'))
-    det = determinism(ev.get('final_files') or [])
+    det = determinism(ev.get('final_files') or [], folds)
     if items['6']['status'] == 'PASS' and det['status'] != 'PASS':
         items['6']['status'] = det['status']               # the hash check can only downgrade a claimed PASS
     items['6']['determinism'] = det
@@ -257,6 +259,8 @@ def main(argv=None) -> int:
     ap.add_argument('--evidence', help='Windows-run evidence JSON merged over the offline inputs')
     ap.add_argument('--pytest', action='store_true', help='run the R4-0 test suite once for the counts')
     ap.add_argument('--store', help='data root for the byte-level M3 coverage check (Windows step: the checkout)')
+    ap.add_argument('--candidate', default=None,
+                    help='routed candidate of the final files (default trend_ema_mom.v1); its own prereg fold bound')
     ap.add_argument('--repo', default=os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
     a = ap.parse_args(argv)
     try:
@@ -268,7 +272,14 @@ def main(argv=None) -> int:
             for k, v in (extra.pop('items', None) or {}).items():
                 items[str(k)] = {**items.get(str(k), {}), **v}
             ev.update(extra, items=items)
-        doc = build(ev)
+        import run_r4 as G                                                                  # noqa: E402
+        cand = a.candidate or ev.get('candidate') or G.LONG.candidate_id
+        if ev.get('candidate', cand) != cand or cand not in G.PROFILES:
+            raise ValueError(f'candidate {cand!r} / evidence candidate {ev.get("candidate")!r}: not one routed profile')
+        folds = G.pit_folds(a.repo, cand)
+        doc = build(ev, folds)
+        if cand != G.LONG.candidate_id:                     # STRAT-01 output unchanged
+            doc['candidate'], doc['folds'] = cand, folds
         doc['tests_summary'], doc['offline'] = ev.get('tests_summary'), ev.get('offline')
     except (OSError, ValueError) as e:
         print(f'error: {e}', file=sys.stderr)

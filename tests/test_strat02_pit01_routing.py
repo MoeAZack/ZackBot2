@@ -457,3 +457,65 @@ def test_fold_bound_is_carried_through_write_read_seal_and_resume(tmp_path, long
     longish = {k: v for k, v in env.items() if k not in ('profile', 'folds')}
     with pytest.raises((PG.ProgressError, PR.PitRunError)):              # never resumes under the long bound
         PR.run_tiers(longish, str(tmp_path), resume=True, clock=None)
+
+
+# ------------------------------------------------------------------ PIT-01 final correction (Codex 6157897448)
+def _two_short_finals(tmp_path, monkeypatch):
+    """Two byte-identical valid short finals (fresh dirs) holding fold 4 under the short bound folds=5."""
+    def ev(env, tier, prog):
+        prog.stage_start('pit.walk_forward', 4)
+        prog.stage_done('pit.walk_forward', 4)
+        return dict(OK, format=SHORT.summary_format, tier=tier), dict(OK, format=SHORT.detail_format, tier=tier)
+    monkeypatch.setattr(PR, 'evaluate_tier', ev)
+    a = PR.run_tiers(_env(SHORT), str(tmp_path / 'a'), clock=None)
+    b = PR.run_tiers(_env(SHORT), str(tmp_path / 'b'), clock=None)
+    assert open(a[0], 'rb').read() == open(b[0], 'rb').read()
+    return [a[0], b[0]]
+
+
+def test_readiness_aggregation_carries_the_routed_fold_bound(tmp_path, long3, monkeypatch):
+    finals = _two_short_finals(tmp_path, monkeypatch)
+    det = RD.determinism(finals, 5)
+    assert det['status'] == 'PASS' and det['runs'] == 2
+    doc = RD.build({'final_files': finals, 'items': {6: {'status': 'PASS'}}}, folds=5)
+    assert doc['items']['6']['status'] == 'PASS' and doc['items']['6']['determinism']['status'] == 'PASS'
+    for call in (lambda: RD.determinism(finals), lambda: RD.build({'final_files': finals})):
+        with pytest.raises(PG.ProgressError, match=r'\[0, 3\)'):          # never validates through the long prereg
+            call()
+
+
+def test_readiness_cli_routes_the_candidate_fold_bound(tmp_path, long3, monkeypatch):
+    finals = _two_short_finals(tmp_path, monkeypatch)
+    monkeypatch.setattr(RD, 'offline', lambda repo, **kw: {'items': {}, 'limitations': []})
+    evp = tmp_path / 'ev.json'
+    evp.write_text(json.dumps({'final_files': finals, 'items': {'6': {'status': 'PASS'}}}))
+    out = tmp_path / 'r.json'
+    assert RD.main(['--out', str(out), '--evidence', str(evp), '--candidate', G.SHORT_ID]) == 1   # NOT READY overall
+    doc = json.loads(out.read_text())
+    assert doc['items']['6']['determinism']['status'] == 'PASS' and (doc['candidate'], doc['folds']) == (G.SHORT_ID, 5)
+    evp.write_text(json.dumps({'candidate': G.SHORT_ID, 'final_files': finals}))     # routed by the evidence file
+    RD.main(['--out', str(out), '--evidence', str(evp)])
+    assert json.loads(out.read_text())['items']['6']['determinism']['status'] == 'PASS'
+    lp = tmp_path / 'long.json'
+    lp.write_text(json.dumps({'final_files': finals}))
+    assert RD.main(['--out', str(out), '--evidence', str(lp)]) == 2      # long default: refused at the long bound
+    assert RD.main(['--out', str(out), '--evidence', str(evp), '--candidate', G.LONG.candidate_id]) == 2  # conflict
+
+
+def test_short_artifacts_expose_program_and_own_family_n_trials():
+    m = PR.program_multiplicity({'n_trials': 35, 'multiplicity': MULT}, SHORT)
+    assert (m['program_n_trials'], m['own_family_n_trials'], m['n_trials']) == (35, 17, 35)
+    assert 'program_n_trials' not in PR.program_multiplicity({'n_trials': 18}, PR.LONG_RUN)    # STRAT-01 unchanged
+
+
+def test_short_e2e_summary_and_detail_carry_program_n_trials(short_e2e):
+    _, _, finals = short_e2e
+    for f in finals:
+        d = os.path.dirname(f)
+        for pat in ('summary-*.json', 'detail-*.json'):
+            (p,) = glob.glob(os.path.join(d, pat))
+            doc = json.load(open(p))
+            assert (doc['program_n_trials'], doc['own_family_n_trials']) == (35, 17)
+        (p,) = glob.glob(os.path.join(d, 'summary-*.json'))
+        m = json.load(open(p))['edge00']['multiplicity']
+        assert (m['program_n_trials'], m['own_family_n_trials']) == (35, 17)

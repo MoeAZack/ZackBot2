@@ -151,7 +151,8 @@ def fold_count() -> int:
 
 
 def fold_count_of(prereg_path: str) -> int:
-    """STRAT-02-PIT-01: the walk-forward fold count of an explicitly routed candidate's prereg (never the global one)."""
+    """STRAT-02-PIT-01: the walk-forward fold count of an explicitly routed candidate's prereg (never the global
+    one)."""
     return _fold_count_of(os.path.abspath(prereg_path))
 
 
