@@ -155,6 +155,26 @@ def sig_hot_coin(d, p, ctx):
                 lx=d.c < d.e20, sx=d.c < -1)
 
 
+
+# ------------------------------------------------------------------ sprint families (EXPERIMENTAL / TESTNET-ONLY, frozen v0)
+# Four deterministic long+short entry families for the 48h testnet sprint. Each is one simple frozen rule on CLOSED
+# candles, symmetric by construction (a price reflection maps every long decision onto the short one), and never raises
+# a long and a short entry on the same candle. An opposite entry always implies the held side's exit signal, so a
+# reversal closes first and the engine's one-lot-per-coin-per-slot rule does the rest. No tuning; no profitability claim.
+EXP_TAG = 'EXPERIMENTAL / testnet-only'
+
+
+def _one_side(s):
+    """Never both entries on one candle (an ambiguous candle takes neither)."""
+    le, se = X(s['le']), X(s['se'])
+    return dict(s, le=le & ~se, se=se & ~le)
+
+
+def sig_exp_trend(d, p, ctx):
+    """Trend v0 = trend_ema_mom.v1 (EMA20/50 cross on the EMA200 side, 7d+30d momentum agreeing) and its exact mirror."""
+    return _one_side(sig_ema_mom(d, p, ctx))
+
+
 # ------------------------------------------------------------------ registry
 # style: calm / balanced / aggressive  ·  sides: long / short / both
 STRATEGIES = {
@@ -188,6 +208,11 @@ STRATEGIES = {
     'hot_coin': dict(name='Hot-coin momentum chase', style='aggressive', fn=sig_hot_coin, sides='long',
                      desc='Lead-trader style: top-3 7-day movers breaking out on a volume surge; tight trail.',
                      mgmt=dict(stop_atr=2.0, trail_atr=2.5, tp1_r=2.0, tp1_frac=0.5)),
+    # ---- sprint families: EXPERIMENTAL / testnet-only (frozen v0, long + short, no demonstrated edge)
+    'exp_trend': dict(name='[EXPERIMENTAL testnet-only] Trend EMA/momentum L+S', style='balanced', fn=sig_exp_trend, sides='both', tf='4h',
+                      desc=EXP_TAG + ': EMA20/50 cross on the EMA200 side with 7d+30d momentum agreeing (trend_ema_mom.v1), mirrored '
+                           'for shorts. Stop 2.5 ATR, target 3R, exit on cross-back or momentum loss, 180-candle time cap. 4h.',
+                      mgmt=dict(stop_atr=2.5, tp_r=3.0, max_bars=180)),
 }
 
 
