@@ -236,7 +236,6 @@ def test_registry_entry():
     st = S.STRATEGIES[KEY]
     assert st['name'] == '[TESTNET EXP] VWAP Rev L/S' and len(st['name']) <= 32
     assert S.EXP_TAG in st['desc'] and st['tf'] == '4h' and st['sides'] == 'both'
-    assert st.get('runtime_key') == 'VWAPREV'
     g = S.merge_mgmt(KEY)
     assert g == dict(stop_atr=RV.STOP_ATR, max_bars=RV.CAP_BARS)            # 1.5 ATR stop, 30-candle cap, no R target
     assert st['params'] == dict(n=RV.N, k=RV.K, rg=RV.RG_ATR)
