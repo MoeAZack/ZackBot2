@@ -190,12 +190,22 @@ def test_the_short_plan_opens_development_splits_only_and_never_the_gap():
 
 
 # ------------------------------------------------------------------ orchestration: identity / resume / tier order
-def _env(profile=None, **over):
+SYN = {'commit': '1' * 40, 'manifest': '2' * 64, 'universe': '3' * 64, 'prereg': '4' * 64}   # a synthetic HEAD
+SYN_EV = {'head': SYN['commit'], 'digests': {'dataset': SYN['manifest'], 'universe': SYN['universe'],
+                                             'prereg': SYN['prereg']}}
+
+
+def _bind(prof):
+    """The candidate / side binding a profile's summary / detail artifacts carry (none for STRAT-01)."""
+    return {} if prof in (None, PR.LONG_RUN) else {'candidate_id': prof.candidate_id, 'side': prof.side}
+
+
+def _env(profile=None, ident=None, **over):
     rc = {'configs': ['x'], 'stress_rows': ['base'], 'seed': 1, 'resamples': 10, **over}
     if profile is not None:
         rc['profile'] = profile.binding()
     ident = {'commit': '1' * 40, 'evaluator': PR.sha(rc), 'manifest': '2' * 64, 'universe': '3' * 64,
-             'classification': None, 'prereg': None}
+             'classification': None, 'prereg': None, **(ident or {})}
     env = {'tiers': {'CORE-10': ['A'], 'CORE-20': ['A', 'B']}, 'run_config': rc, 'identity': ident}
     return dict(env, profile=profile, folds=5) if profile is not None else env
 
@@ -215,8 +225,8 @@ def stub(monkeypatch):
         prof = env.get('profile', PR.LONG_RUN)
         st = env.get('status', {}).get(tier, 'COMPLETE')
         core = {'status': st, 'missing_data_policy': PR.POLICY}
-        return (dict(core, format=prof.summary_format, tier=tier, label=SU.LABEL),
-                dict(core, format=prof.detail_format, tier=tier))
+        return (dict(core, format=prof.summary_format, tier=tier, label=SU.LABEL, **_bind(prof)),
+                dict(core, format=prof.detail_format, tier=tier, **_bind(prof)))
     monkeypatch.setattr(PR, 'evaluate_tier', ev)
     return seen
 
@@ -442,7 +452,8 @@ def test_fold_bound_is_carried_through_write_read_seal_and_resume(tmp_path, long
     def ev(env, tier, prog):
         prog.stage_start('pit.walk_forward', 4)
         prog.stage_done('pit.walk_forward', 4)
-        return dict(OK, format=SHORT.summary_format, tier=tier), dict(OK, format=SHORT.detail_format, tier=tier)
+        return (dict(OK, format=SHORT.summary_format, tier=tier, **_bind(SHORT)),
+                dict(OK, format=SHORT.detail_format, tier=tier, **_bind(SHORT)))
     monkeypatch.setattr(PR, 'evaluate_tier', ev)
     env = _env(SHORT)
     finals = PR.run_tiers(env, str(tmp_path), clock=None)
@@ -465,19 +476,21 @@ def _two_short_finals(tmp_path, monkeypatch):
     def ev(env, tier, prog):
         prog.stage_start('pit.walk_forward', 4)
         prog.stage_done('pit.walk_forward', 4)
-        return dict(OK, format=SHORT.summary_format, tier=tier), dict(OK, format=SHORT.detail_format, tier=tier)
+        return (dict(OK, format=SHORT.summary_format, tier=tier, **_bind(SHORT)),
+                dict(OK, format=SHORT.detail_format, tier=tier, **_bind(SHORT)))
     monkeypatch.setattr(PR, 'evaluate_tier', ev)
-    a = PR.run_tiers(_env(SHORT), str(tmp_path / 'a'), clock=None)
-    b = PR.run_tiers(_env(SHORT), str(tmp_path / 'b'), clock=None)
+    a = PR.run_tiers(_env(SHORT, ident=SYN), str(tmp_path / 'a'), clock=None)
+    b = PR.run_tiers(_env(SHORT, ident=SYN), str(tmp_path / 'b'), clock=None)
     assert open(a[0], 'rb').read() == open(b[0], 'rb').read()
     return [a[0], b[0]]
 
 
 def test_readiness_aggregation_carries_the_routed_fold_bound(tmp_path, long3, monkeypatch):
     finals = _two_short_finals(tmp_path, monkeypatch)
-    det = RD.determinism(finals, 5)
+    det = RD.determinism(finals, 5, RD.expected_identity(SYN_EV), G.SHORT_ID)
     assert det['status'] == 'PASS' and det['runs'] == 2
-    doc = RD.build({'final_files': finals, 'items': {6: {'status': 'PASS'}}}, folds=5)
+    assert RD.determinism(finals, 5)['status'] == 'FAIL'                 # unbound: matching each other is not enough
+    doc = RD.build(dict(SYN_EV, final_files=finals, items={6: {'status': 'PASS'}}), folds=5, candidate=G.SHORT_ID)
     assert doc['items']['6']['status'] == 'PASS' and doc['items']['6']['determinism']['status'] == 'PASS'
     for call in (lambda: RD.determinism(finals), lambda: RD.build({'final_files': finals})):
         with pytest.raises(PG.ProgressError, match=r'\[0, 3\)'):          # never validates through the long prereg
@@ -486,7 +499,7 @@ def test_readiness_aggregation_carries_the_routed_fold_bound(tmp_path, long3, mo
 
 def test_readiness_cli_routes_the_candidate_fold_bound(tmp_path, long3, monkeypatch):
     finals = _two_short_finals(tmp_path, monkeypatch)
-    monkeypatch.setattr(RD, 'offline', lambda repo, **kw: {'items': {}, 'limitations': []})
+    monkeypatch.setattr(RD, 'offline', lambda repo, **kw: dict(SYN_EV, items={}, limitations=[]))
     evp = tmp_path / 'ev.json'
     evp.write_text(json.dumps({'final_files': finals, 'items': {'6': {'status': 'PASS'}}}))
     out = tmp_path / 'r.json'
@@ -535,7 +548,15 @@ def readiness(tmp_path, stub, monkeypatch):
     bad = {}
     monkeypatch.setattr(G, 'gate', lambda repo, gate_path=G.GATE, **kw: list(bad.get(gate_path, [])))
     monkeypatch.setattr(G, 'pin_failures', lambda repo, g: [])
-    fin = {None: _finals2(tmp_path, _env(), 'l'), G.SHORT_ID: _finals2(tmp_path, _env(SHORT), 's')}
+    off = {c: RD.offline(ROOT, **({'candidate': c} if c else {})) for c in (None, G.SHORT_ID)}
+
+    def make(cand, tag, **wrong):
+        """Two identical finals built synthetically at the computed HEAD with the routed provenance (+ overrides)."""
+        o = off[cand]
+        ident = dict({'commit': o['head'], 'prereg': o['digests']['prereg'], 'manifest': o['digests']['dataset'],
+                      'universe': o['digests']['universe']}, **wrong)
+        return _finals2(tmp_path, _env(SHORT if cand else None, ident=ident), tag)
+    fin = {None: make(None, 'l'), G.SHORT_ID: make(G.SHORT_ID, 's')}
 
     def run(candidate, mutate=lambda e: e):
         ev = mutate({'tests': {'passed': 1, 'failed': 0}, 'final_files': fin[candidate],
@@ -547,6 +568,7 @@ def readiness(tmp_path, stub, monkeypatch):
         p.write_text(json.dumps(ev))
         rc = RD.main(['--out', str(out), '--evidence', str(p)] + (['--candidate', candidate] if candidate else []))
         return rc, (json.loads(out.read_text()) if out.exists() else None)
+    run.make, run.off, run.fin = make, off, fin
     return bad, run
 
 
@@ -668,3 +690,42 @@ def test_computed_tests_are_never_replaced():
     with pytest.raises(RD.ReadinessError, match='test counts'):
         RD.merge_evidence({'tests': {'passed': 0, 'failed': 3}, 'items': {}}, {'tests': {'passed': 9, 'failed': 0}})
     assert RD.merge_evidence({'tests': None, 'items': {}}, {'tests': {'passed': 9, 'failed': 0}})['tests']['passed'] == 9
+
+
+# ------------------------------------------------------------------ finals bound to routed provenance (Codex 6158344957)
+@PROFS
+def test_correctly_bound_finals_reach_ready(readiness, prof):
+    rc, doc = readiness[1](prof and prof.candidate_id)
+    det = doc['items']['6']['determinism']
+    assert rc == 0 and doc['verdict'] == 'READY' and det['status'] == 'PASS' and 'binding' not in det
+
+
+def test_each_unbound_final_pair_is_refused(readiness):
+    _, run = readiness
+    o = run.off[G.SHORT_ID]
+    attacks = {'long finals as short': run.fin[None],
+               'stale commit': run.make(G.SHORT_ID, 'c', commit='0' * 40),
+               'wrong prereg': run.make(G.SHORT_ID, 'p', prereg=run.off[None]['digests']['prereg']),
+               'wrong universe': run.make(G.SHORT_ID, 'u', universe='3' * 64),
+               'wrong manifest': run.make(G.SHORT_ID, 'm', manifest='2' * 64)}
+    assert o['digests']['universe'] != '3' * 64 and o['digests']['dataset'] != '2' * 64
+    for name, finals in attacks.items():
+        assert open(finals[0], 'rb').read() == open(finals[1], 'rb').read()      # they DO match each other
+        rc, doc = run(G.SHORT_ID, lambda e, f=finals: dict(e, final_files=f))
+        det = doc['items']['6']['determinism']
+        assert rc == 1 and doc['verdict'] == 'NOT READY' and 'item.6' in doc['not_passing'], name
+        assert det['status'] == 'FAIL' and det['binding'] and doc['items']['6']['status'] == 'FAIL', name
+    rc, doc = run(None, lambda e: dict(e, final_files=run.fin[G.SHORT_ID]))      # long validates its own profile
+    assert rc == 1 and doc['items']['6']['determinism']['status'] == 'FAIL'
+    assert any('zb-strat01-pit' in b for b in doc['items']['6']['determinism']['binding'])
+
+
+# ------------------------------------------------------------------ malformed evidence shapes (Cowork 6158379808)
+@pytest.mark.parametrize('ev', [{'items': [{'status': 'PASS'}]}, {'tests': [1, 0]}, [{'items': {}}]],
+                         ids=['items-list', 'tests-list', 'top-level-list'])
+def test_malformed_evidence_refuses_cleanly_with_exit_2(tmp_path, monkeypatch, capsys, ev):
+    monkeypatch.setattr(RD, 'offline', lambda repo, **kw: dict(SYN_EV, items={}, limitations=[], tests=None))
+    p, out = tmp_path / 'ev.json', tmp_path / 'r.json'
+    p.write_text(json.dumps(ev))
+    assert RD.main(['--out', str(out), '--evidence', str(p)]) == 2 and not out.exists()
+    assert capsys.readouterr().err.startswith('error: ')

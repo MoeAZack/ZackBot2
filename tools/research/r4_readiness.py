@@ -115,16 +115,64 @@ def sealed_artifacts(path: str, folds: int | None = None) -> tuple[str, dict]:
     return doc['digest'], arts
 
 
-def determinism(final_files, folds: int | None = None) -> dict:
+def expected_identity(ev: dict) -> dict:
+    """The immutable identity every readiness final must carry, from the routed offline pass only: the computed HEAD,
+    the routed prereg digest, the archive manifest (dataset) digest, the static universe digest, no classification."""
+    dig = ev.get('digests') or {}
+    return {'commit': ev.get('head'), 'prereg': dig.get('prereg'), 'manifest': dig.get('dataset'),
+            'universe': dig.get('universe'), 'classification': None}
+
+
+def final_binding(path: str, expect: dict, candidate: str | None, folds: int | None = None) -> list[str]:
+    """Every way one sealed final fails its routed provenance (empty = bound): its identity must equal `expect`
+    field by field, and each sealed summary / detail artifact must be the routed profile's own format with its own
+    candidate / side binding (STRAT-02: zb-strat02-pit-*, candidate_id, side short; STRAT-01: zb-strat01-pit-*, no
+    other candidate)."""
+    import pit_run as PR                                                                    # noqa: E402
+    prof = PR.RUN_PROFILES[route_candidate(candidate).candidate_id]
+    bad = [f'expected identity.{k} is not a computed digest' for k, v in expect.items()
+           if k != 'classification' and not (isinstance(v, str) and (HEX40 if k == 'commit' else HEX64).match(v))]
+    doc = PG.read(path, folds)
+    if doc is None:
+        return bad + ['no final record']
+    bad += [f'identity.{k} {doc["identity"].get(k)!r} != routed {v!r}' for k, v in expect.items()
+            if doc['identity'].get(k) != v]
+    d = os.path.dirname(os.path.abspath(path))
+    fmts = (prof.summary_format, prof.detail_format)
+    for a in doc['artifacts']:
+        try:
+            with open(os.path.join(d, a['path']), 'rb') as fh:
+                art = json.loads(fh.read())
+        except (OSError, ValueError) as e:
+            bad.append(f'artifact {a["path"]} unreadable ({type(e).__name__})')
+            continue
+        if not isinstance(art, dict) or art.get('format') not in fmts:
+            bad.append(f'artifact {a["path"]}: format {art.get("format") if isinstance(art, dict) else None!r} is '
+                       f'not the {prof.candidate_id} profile ({", ".join(fmts)})')
+            continue
+        want = ({'candidate_id': prof.candidate_id, 'side': prof.side} if prof is not PR.LONG_RUN else
+                {'candidate_id': None, 'side': None})                       # STRAT-01 artifacts carry no binding
+        got = {k: art.get(k) for k in want}
+        if got != want:
+            bad.append(f'artifact {a["path"]}: candidate / side {got} != {want}')
+    return bad
+
+
+def determinism(final_files, folds: int | None = None, expect: dict | None = None,
+                candidate: str | None = None) -> dict:
     """Item 6 (mechanical part): >= 2 sealed finals (fresh processes / relocated checkout) with the same record
-    digest (identity, run id, stages) and identical artifact hashes. `folds` = the routed candidate's fold bound
-    (None = the STRAT-01 default prereg)."""
+    digest (identity, run id, stages) and identical artifact hashes, AND every final independently bound to the
+    routed offline provenance (`expect`, `final_binding`; Codex 6158344957): matching each other is never enough.
+    `folds` = the routed candidate's fold bound (None = the STRAT-01 default prereg)."""
     if len(final_files) < 2:
         return {'status': 'MISSING', 'detail': 'need >= 2 sealed final records'}
     runs = [sealed_artifacts(p, folds) for p in final_files]
     same = all(r == runs[0] for r in runs[1:])
-    return {'status': 'PASS' if same else 'FAIL', 'runs': len(runs), 'final_digest': runs[0][0],
-            'artifact_sha256': runs[0][1]}
+    binding = (['no routed offline provenance to bind the finals to'] if expect is None else
+               [f'{os.path.basename(os.path.dirname(os.path.abspath(p)))}/{os.path.basename(p)}: {b}'
+                for p in final_files for b in final_binding(p, expect, candidate, folds)])
+    return {'status': 'PASS' if same and not binding else 'FAIL', 'runs': len(runs), 'final_digest': runs[0][0],
+            'artifact_sha256': runs[0][1], **({'binding': binding} if binding else {})}
 
 
 def _result(v, what):
@@ -135,7 +183,7 @@ def _result(v, what):
     return dict(v)
 
 
-def build(ev: dict, folds: int | None = None) -> dict:
+def build(ev: dict, folds: int | None = None, candidate: str | None = None) -> dict:
     """`ev` = {'head': 40-hex, 'digests': {dataset, universe, universe_list, prereg}, 'tests': {passed, failed},
     'm3_parity' / 'accounting_sample' / 'pilot': {'status', ...}, 'items': {n: {'status', ...}},
     'final_files': [...], 'limitations': [...]}. NOT READY whenever any field is missing or not PASS. `folds` = the
@@ -156,7 +204,7 @@ def build(ev: dict, folds: int | None = None) -> dict:
         if str(k) not in items:
             raise ReadinessError(f'item {k!r}: unknown item')
         items[str(k)].update(_result(v, f'item {k}'))
-    det = determinism(ev.get('final_files') or [], folds)
+    det = determinism(ev.get('final_files') or [], folds, expected_identity(ev), candidate)
     if items['6']['status'] == 'PASS' and det['status'] != 'PASS':
         items['6']['status'] = det['status']               # the hash check can only downgrade a claimed PASS
     items['6']['determinism'] = det
@@ -292,6 +340,11 @@ COMPUTED_ITEMS = ('1',)                             # clean tree + pins: derived
 def merge_evidence(ev: dict, extra: dict) -> dict:
     """`ev` (the offline pass) with the whitelisted runtime evidence merged; never replaces or upgrades a computed
     value. `tests` only when offline did not count them (no --pytest)."""
+    if not isinstance(extra, dict):
+        raise ReadinessError('evidence must be a JSON object')
+    for k, kind in (('items', dict), ('tests', dict), ('final_files', list)):
+        if k in extra and not isinstance(extra[k], kind):
+            raise ReadinessError(f'evidence {k} must be a JSON {"object" if kind is dict else "array"}')
     bad = sorted(set(extra) - set(RUNTIME_KEYS))
     if bad:
         raise ReadinessError(f'evidence may not set reserved / unknown keys {bad} (runtime keys: {list(RUNTIME_KEYS)})')
@@ -328,6 +381,8 @@ def main(argv=None) -> int:
         if a.evidence:
             with open(a.evidence, encoding='utf-8') as f:
                 extra = json.load(f)
+            if not isinstance(extra, dict):                 # malformed shape: a clean exit-2 refusal, never a trace
+                raise ValueError('evidence must be a JSON object')
         cand = a.candidate or extra.get('candidate') or G.LONG.candidate_id
         if extra.get('candidate', cand) != cand or cand not in G.PROFILES:   # refused before any offline work
             raise ValueError(f'candidate {cand!r} / evidence candidate {extra.get("candidate")!r}: not one routed '
@@ -336,7 +391,7 @@ def main(argv=None) -> int:
         ev = offline(a.repo, run_tests=a.pytest, store=a.store, **({} if long else {'candidate': cand}))
         ev = merge_evidence(ev, extra)
         folds = G.pit_folds(a.repo, cand)
-        doc = build(ev, folds)
+        doc = build(ev, folds, cand)
         doc['tests_summary'], doc['offline'] = ev.get('tests_summary'), ev.get('offline')
         found = (ev.get('offline') or {}).get('foundations')
         if not long:
