@@ -369,6 +369,14 @@ function Invoke-BuildSteps {
     Start-Step 'safety_tests'
     $r = Invoke-Logged $bpy @('-m', 'pytest', '-q', '-p', 'no:cacheprovider', '-m', 'not slow', 'tests') $s.StageSrc
     if ($r.Code -ne 0) { Stop-Install 'the safety tests FAILED - this build is not safe to install' }
+    # The exe bundles ONE runtime file from data\ (the testnet exchange rules). The cleanup below deletes the whole staged
+    # data\ folder, so keep that file aside first (BUILD-FIX-01: deleting it made PyInstaller fail on 2026-10-08).
+    $rulesSrc = [IO.Path]::Combine($s.StageSrc, 'data', 'exchange_rules_testnet.json')
+    $bundleData = [IO.Path]::Combine($s.Stage, 'bundle_data')
+    $rulesKept = [IO.Path]::Combine($bundleData, 'exchange_rules_testnet.json')
+    if (-not [IO.File]::Exists($rulesSrc)) { Stop-Install 'data\exchange_rules_testnet.json is missing from the source - the exe cannot be built' }
+    try { [void][IO.Directory]::CreateDirectory($bundleData); [IO.File]::Copy($rulesSrc, $rulesKept, $true) }
+    catch { Stop-Install 'could not keep the exchange rules file for the build' }
     foreach ($name in @('data', 'data1h', 'data_long')) {
         $path = [IO.Path]::Combine($s.StageSrc, $name)
         try { if ([IO.Directory]::Exists($path)) { [IO.Directory]::Delete($path, $true) } }
@@ -383,7 +391,7 @@ function Invoke-BuildSteps {
         '--icon', [IO.Path]::Combine($src, 'zackbot.ico'),
         '--add-data', ([IO.Path]::Combine($src, 'panel.html') + ';.'),
         '--add-data', ([IO.Path]::Combine($src, 'research') + ';research'),
-        '--add-data', ([IO.Path]::Combine($src, 'data', 'exchange_rules_testnet.json') + ';data'),
+        '--add-data', ($rulesKept + ';data'),
         '--collect-data', 'tzdata',
         '--distpath', [IO.Path]::Combine($s.Stage, 'dist'), '--workpath', [IO.Path]::Combine($s.Stage, 'work'),
         '--specpath', [IO.Path]::Combine($s.Stage, 'work'), [IO.Path]::Combine($src, 'app.py'))

@@ -277,6 +277,20 @@ def test_staging_keeps_manifest_data_for_tests_then_removes_it_before_packaging(
     assert 'Stop-Install' in cleanup
 
 
+
+@needs_installer
+def test_exchange_rules_file_survives_the_staging_cleanup_and_is_bundled():
+    """BUILD-FIX-01: the cleanup deletes the whole staged data folder, and PyInstaller then failed on the missing
+    data/exchange_rules_testnet.json (2026-10-08). The file is kept aside BEFORE the cleanup and bundled from there."""
+    src = open(INSTALLER, encoding='utf-8').read()
+    keep_at = src.index("[IO.File]::Copy($rulesSrc, $rulesKept, $true)")
+    cleanup_at = src.index("foreach ($name in @('data', 'data1h', 'data_long'))")
+    build_at = src.index("@('-m', 'PyInstaller'")
+    assert keep_at < cleanup_at < build_at
+    assert "'--add-data', ($rulesKept + ';data')" in src[build_at:]
+    assert "Combine($src, 'data', 'exchange_rules_testnet.json')" not in src[build_at:]
+    assert os.path.exists(os.path.join(ROOT, 'data', 'exchange_rules_testnet.json'))
+
 # The fake world: every outside effect of installer.ps1 is replaced; files live in a temp LOCALAPPDATA.
 _FAKES = r'''
 param([string]$TInstaller, [string]$TCfg, [string]$TMode, [string]$TSrc, [string]$TLad)
@@ -341,6 +355,10 @@ function Invoke-Logged([string]$file, [string[]]$argv, [string]$cwd = '', [switc
     if ($name -eq 'robocopy' -and $argv[1] -eq $s.StageSrc) {
         C 'stage'; [void][IO.Directory]::CreateDirectory($s.StageSrc)
         [IO.File]::WriteAllText([IO.Path]::Combine($s.StageSrc, 'app.py'), 'print(1)')
+        if (-not (Opt 'noRules' $false)) {
+            [void][IO.Directory]::CreateDirectory([IO.Path]::Combine($s.StageSrc, 'data'))
+            [IO.File]::WriteAllText([IO.Path]::Combine($s.StageSrc, 'data', 'exchange_rules_testnet.json'), '{}')
+        }
         $code = [int](Opt 'stageCode' 1)
     } elseif ($name -eq 'robocopy') {
         C 'mirror'; $global:MirrorOpts = $argv[2..($argv.Count - 1)]; $code = [int](Opt 'mirrorCode' 1)
@@ -508,6 +526,7 @@ def test_flow_buildcheck_builds_but_never_installs():
 @pytest.mark.parametrize('cfg, why', [
     (dict(stageCode=8), 'copying the source failed'),
     (dict(hashFail='app.py'), 'the checksum helper does not work'),
+    (dict(noRules=True), r'data\exchange_rules_testnet.json is missing from the source'),
     (dict(pipCode=1), 'installing the pinned libraries failed'),
     (dict(libsCode=1), 'the build libraries do not load'),
     (dict(pytestCode=1), 'the safety tests FAILED'),
