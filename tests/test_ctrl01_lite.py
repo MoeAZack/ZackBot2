@@ -335,18 +335,26 @@ def test_api_rejects_invalid_and_changes_nothing(api, body):
     assert (json.dumps(e.S, sort_keys=True, default=str), open(e.F['settings'], 'rb').read()) == before
 
 
-@pytest.mark.parametrize('bad', [None, 'sideways', 7, ['neutral'], 'NEUTRAL'])
-def test_missing_or_invalid_on_disk_migrates_to_todays_behaviour(bad):
+def test_missing_on_disk_migrates_to_todays_behaviour():
     e, tmp = mk()
-    if bad is None:
-        e.S.pop('CTRL_BIAS'); e.S.pop('CTRL_RISK')                       # an old (pre-CTRL-01) settings file
-    else:
-        e.S['CTRL_BIAS'] = bad; e.S['CTRL_RISK'] = bad
+    e.S.pop('CTRL_BIAS'); e.S.pop('CTRL_RISK')                           # an old (pre-CTRL-01) settings file
     e.save_settings()
     raw = json.loads(open(e.F['settings'], encoding='utf-8').read())
-    assert raw.get('CTRL_BIAS') == (None if bad is None else bad)
+    assert raw.get('CTRL_BIAS') is None and raw.get('CTRL_RISK') is None
     e2 = _restart(tmp, e.trade)
     assert (e2.S['CTRL_BIAS'], e2.S['CTRL_RISK']) == ('neutral', 'max_test')
-    assert not e2.S['ENTRIES_PAUSED'], 'a bad control value is migrated, not treated as a corrupt file'
+    assert not e2.S['ENTRIES_PAUSED']
     x = e2.ctrl_now()
     assert x['long_factor'] == x['short_factor'] == 1.0
+
+
+@pytest.mark.parametrize('bad', [None, 'sideways', 7, ['neutral'], 'NEUTRAL'])
+def test_invalid_on_disk_fails_down_to_low_risk(bad):
+    e, tmp = mk()
+    e.S['CTRL_BIAS'] = bad; e.S['CTRL_RISK'] = bad
+    e.save_settings()
+    e2 = _restart(tmp, e.trade)
+    assert (e2.S['CTRL_BIAS'], e2.S['CTRL_RISK']) == ('neutral', 'low')
+    assert not e2.S['ENTRIES_PAUSED'], 'a bad control value is migrated, not treated as a corrupt file'
+    x = e2.ctrl_now()
+    assert x['long_factor'] == x['short_factor'] == .25

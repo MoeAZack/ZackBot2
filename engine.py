@@ -356,6 +356,7 @@ CTRL_BIAS = {'strong_bearish': ('Strong Bearish', 0.0, 1.0), 'bearish': ('Bearis
 CTRL_RISK = {'low': ('Low', 0.5), 'medium': ('Medium', 1.0), 'high': ('High', 1.5), 'max_test': ('Maximum Test', 2.0)}
 CTRL_RISK_BASE_PCT = 2.0
 CTRL_DEFAULT = dict(CTRL_BIAS='neutral', CTRL_RISK='max_test')
+_CTRL_MISSING = object()
 
 
 def ctrl_validate(bias, risk):
@@ -365,10 +366,11 @@ def ctrl_validate(bias, risk):
     return bias, risk
 
 
-def ctrl_norm(bias, risk):
-    """Lenient load: a missing / invalid / unknown value migrates to the default (Neutral + Maximum Test = today)."""
-    return (bias if isinstance(bias, str) and bias in CTRL_BIAS else CTRL_DEFAULT['CTRL_BIAS'],
-            risk if isinstance(risk, str) and risk in CTRL_RISK else CTRL_DEFAULT['CTRL_RISK'])
+def ctrl_norm(bias=_CTRL_MISSING, risk=_CTRL_MISSING):
+    """Lenient disk migration. A pre-feature missing risk preserves today's behaviour; corrupt risk fails down to Low."""
+    b = bias if isinstance(bias, str) and bias in CTRL_BIAS else CTRL_DEFAULT['CTRL_BIAS']
+    r = CTRL_DEFAULT['CTRL_RISK'] if risk is _CTRL_MISSING else (risk if isinstance(risk, str) and risk in CTRL_RISK else 'low')
+    return b, r
 
 
 def ctrl_effect(bias, risk, sleeves=None):
@@ -1486,8 +1488,9 @@ class Engine:
         if not isinstance(s.get('GOVERNOR'), dict): s['GOVERNOR'] = dict(mode='off', rules=[])
         s.setdefault('GRID_SLOTS', [])
         if not isinstance(s.get('MARKET_COLLECTOR'), bool): s['MARKET_COLLECTOR'] = True
-        cb = ctrl_norm(s.get('CTRL_BIAS'), s.get('CTRL_RISK'))                 # CTRL-01: bad/missing -> today's behaviour
-        if cb != (s.get('CTRL_BIAS'), s.get('CTRL_RISK')):
+        raw_ctrl = (s.get('CTRL_BIAS', _CTRL_MISSING), s.get('CTRL_RISK', _CTRL_MISSING))
+        cb = ctrl_norm(*raw_ctrl)                    # missing old risk -> today's behaviour; corrupt risk -> Low
+        if cb != raw_ctrl:
             log.warning(f"CTRL-01: direction/risk control {str(s.get('CTRL_BIAS'))[:30]!r}/{str(s.get('CTRL_RISK'))[:30]!r} "
                         f'invalid - using {cb[0]}/{cb[1]} (current behaviour)')
         s['CTRL_BIAS'], s['CTRL_RISK'] = cb
