@@ -1,0 +1,1429 @@
+{
+ "covers_from_ms": 1609718400000,
+ "digest": "4cdf7d61c1e8c38397e04a685f94540bfaf612e8c176385f30f1a2bbd1a6cf68",
+ "fetches": [
+  {
+   "fetch_ts": 1792004012875,
+   "items": [
+    {
+     "code": "7d17add1ffe6416391f65a001734e1c7",
+     "releaseDate": 1790146800000,
+     "title": "Binance Will Close UAH Deposits and Withdrawals via Fiat Trade UAH and Delist USDT/UAH Spot Trading Pair",
+     "url": "https://www.binance.com/en/support/announcement/detail/7d17add1ffe6416391f65a001734e1c7"
+    },
+    {
+     "code": "8e6fd91b79a34bddbd7643ef002db47e",
+     "releaseDate": 1789020012727,
+     "title": "Binance Will Delist USDP on 2026-09-24",
+     "url": "https://www.binance.com/en/support/announcement/detail/8e6fd91b79a34bddbd7643ef002db47e"
+    },
+    {
+     "code": "d72915ed7a60473b92f0818d959a227a",
+     "releaseDate": 1787205606608,
+     "title": "Binance Will Delist ICX, SCRT, STORJ on 2026-09-03",
+     "url": "https://www.binance.com/en/support/announcement/detail/d72915ed7a60473b92f0818d959a227a"
+    },
+    {
+     "code": "948546d989254418a4646db8a6da18c5",
+     "releaseDate": 1786356004147,
+     "title": "Binance Margin And Loan Will Delist BTTC & POWR on 2026-08-14",
+     "url": "https://www.binance.com/en/support/announcement/detail/948546d989254418a4646db8a6da18c5"
+    },
+    {
+     "code": "64cf7544b98e4f2ca7f54ba11fd72d9d",
+     "releaseDate": 1785727810683,
+     "title": "Binance Will Delist ACX, HFT, PIVX, PYR, VANRY, VIC on 2026-08-17",
+     "url": "https://www.binance.com/en/support/announcement/detail/64cf7544b98e4f2ca7f54ba11fd72d9d"
+    },
+    {
+     "code": "5a8ae66176794fe79cd0f250b3ec05e5",
+     "releaseDate": 1785139203511,
+     "title": "Binance Capital Connect \u2014 Delisting & Access Criteria",
+     "url": "https://www.binance.com/en/support/announcement/detail/5a8ae66176794fe79cd0f250b3ec05e5"
+    },
+    {
+     "code": "f0e3fc835b9545759e4279c64b200389",
+     "releaseDate": 1784643314244,
+     "title": "Binance Futures Will Delist USD\u24c8-M AERGOUSDT Perpetual Contract (2026-07-24)",
+     "url": "https://www.binance.com/en/support/announcement/detail/f0e3fc835b9545759e4279c64b200389"
+    },
+    {
+     "code": "2733031786ea4b2688696cf578ac339f",
+     "releaseDate": 1783332001595,
+     "title": "Binance Margin And Loan Will Delist TST & IOTX on 2026-07-10",
+     "url": "https://www.binance.com/en/support/announcement/detail/2733031786ea4b2688696cf578ac339f"
+    },
+    {
+     "code": "b703403f123b4d95af7222431d053c7c",
+     "releaseDate": 1782716408506,
+     "title": "Binance Margin And Loan Will Delist HOT, THE on 2026-07-03",
+     "url": "https://www.binance.com/en/support/announcement/detail/b703403f123b4d95af7222431d053c7c"
+    },
+    {
+     "code": "a9c1a7bb97064c69a660316bff39f2bd",
+     "releaseDate": 1782464415053,
+     "title": "Binance Will Delist ALCX, ARDR, NFP, POND on 2026-07-10",
+     "url": "https://www.binance.com/en/support/announcement/detail/a9c1a7bb97064c69a660316bff39f2bd"
+    },
+    {
+     "code": "5702f93568604ea7bfd2f4233f054bd1",
+     "releaseDate": 1782406806669,
+     "title": "Binance Futures Will Delist USD\u24c8-Margined IPUSDT and IPUSDC Perpetual Contracts (2026-06-28)",
+     "url": "https://www.binance.com/en/support/announcement/detail/5702f93568604ea7bfd2f4233f054bd1"
+    },
+    {
+     "code": "d5d69ae4b2f0497aa45d06da33796f9d",
+     "releaseDate": 1780912804311,
+     "title": "Binance Margin And Loan Will Delist XNO, IQ, QUICK, DGB on 2026-06-12",
+     "url": "https://www.binance.com/en/support/announcement/detail/d5d69ae4b2f0497aa45d06da33796f9d"
+    },
+    {
+     "code": "24aced8c698649d9a552a47eeead5e34",
+     "releaseDate": 1780642807472,
+     "title": "Binance Will Delist COS, D, HIGH, MBOX on 2026-06-19",
+     "url": "https://www.binance.com/en/support/announcement/detail/24aced8c698649d9a552a47eeead5e34"
+    },
+    {
+     "code": "6492bd3434204b29a1709e64f72e2ee6",
+     "releaseDate": 1779159608915,
+     "title": "Binance Margin And Binance Loans Will Delist AEUR and AI on 2026-05-22",
+     "url": "https://www.binance.com/en/support/announcement/detail/6492bd3434204b29a1709e64f72e2ee6"
+    },
+    {
+     "code": "a42f51022cb649aea0b4cb808205fd76",
+     "releaseDate": 1778659204681,
+     "title": "Binance Will Delist ATA, FARM, MLN, PHB, SYS on 2026-05-27",
+     "url": "https://www.binance.com/en/support/announcement/detail/a42f51022cb649aea0b4cb808205fd76"
+    },
+    {
+     "code": "ba5d61807b474b0ca9f40250e7fa782c",
+     "releaseDate": 1777029313345,
+     "title": "Binance Futures Will Delist USD\u24c8-M Multiple Perpetual Contracts (2026-04-28)",
+     "url": "https://www.binance.com/en/support/announcement/detail/ba5d61807b474b0ca9f40250e7fa782c"
+    },
+    {
+     "code": "1d2b6970facd470dbba6a674e1595bd4",
+     "releaseDate": 1776956437768,
+     "title": "Binance Futures Will Delist USD\u24c8-M Multiple Perpetual Contracts (2026-04-28 & 2026-04-29)",
+     "url": "https://www.binance.com/en/support/announcement/detail/1d2b6970facd470dbba6a674e1595bd4"
+    },
+    {
+     "code": "d067b373496c44a4ab8d28f3e90b66ad",
+     "releaseDate": 1776416406263,
+     "title": "Binance Will Delist DEGO, DENT, TRU on 2026-04-28",
+     "url": "https://www.binance.com/en/support/announcement/detail/d067b373496c44a4ab8d28f3e90b66ad"
+    },
+    {
+     "code": "bb7238d13db14c9ebce9fa8704e3098f",
+     "releaseDate": 1776137401903,
+     "title": "Binance Margin And Loan Will Delist BAR, PIVX, XVG on 2026-04-17",
+     "url": "https://www.binance.com/en/support/announcement/detail/bb7238d13db14c9ebce9fa8704e3098f"
+    },
+    {
+     "code": "895c114d247a41159cc7e4c913f42c36",
+     "releaseDate": 1776132001137,
+     "title": "Binance Will Delist UTK and Support Rebranding and Airdrop Plan on Binance Alpha",
+     "url": "https://www.binance.com/en/support/announcement/detail/895c114d247a41159cc7e4c913f42c36"
+    },
+    {
+     "code": "10999fd17dc045de801c0c78ab29e6fc",
+     "releaseDate": 1775715267803,
+     "title": "Updates on Minimum Notional Value for BTCUSDT and BTCUSDC USD\u24c8-M Perpetual Futures Contracts (2026-04-14)",
+     "url": "https://www.binance.com/en/support/announcement/detail/10999fd17dc045de801c0c78ab29e6fc"
+    },
+    {
+     "code": "d26a627649ee44fca27e07672add9ac2",
+     "releaseDate": 1775714405744,
+     "title": "Binance Will Delist BIFI, FIO, FUN, MDT, OXT, WAN on 2026-04-23",
+     "url": "https://www.binance.com/en/support/announcement/detail/d26a627649ee44fca27e07672add9ac2"
+    },
+    {
+     "code": "f263d2f8ac7e488ead84b181b12bb69d",
+     "releaseDate": 1775552407906,
+     "title": "Binance Margin Will Delist WAN on 2026-04-10",
+     "url": "https://www.binance.com/en/support/announcement/detail/f263d2f8ac7e488ead84b181b12bb69d"
+    },
+    {
+     "code": "97b4f3a7d02a486c8d412ada2281b907",
+     "releaseDate": 1775224771078,
+     "title": "Binance Futures Will Delist Multiple Perpetual Contracts (2026-04-08 & 2026-04-09)",
+     "url": "https://www.binance.com/en/support/announcement/detail/97b4f3a7d02a486c8d412ada2281b907"
+    },
+    {
+     "code": "cb0ce24d50ac4db782f7484dbc6377b5",
+     "releaseDate": 1774494003206,
+     "title": "Binance Margin Will Delist UTK on 2026-03-30",
+     "url": "https://www.binance.com/en/support/announcement/detail/cb0ce24d50ac4db782f7484dbc6377b5"
+    },
+    {
+     "code": "48f99309fd5442d7b44491c76483223e",
+     "releaseDate": 1774016064610,
+     "title": "Binance Futures Will Delist COIN-M APTUSD and OPUSD Perpetual Contracts (2026-03-25)",
+     "url": "https://www.binance.com/en/support/announcement/detail/48f99309fd5442d7b44491c76483223e"
+    },
+    {
+     "code": "ddac99c0e5044c13a13c7c113e530e2b",
+     "releaseDate": 1773824408667,
+     "title": "Binance Will Delist A2Z, FORTH, HOOK, IDEX, LRC, NTRN, RDNT, SXP on 2026-04-01",
+     "url": "https://www.binance.com/en/support/announcement/detail/ddac99c0e5044c13a13c7c113e530e2b"
+    },
+    {
+     "code": "f6ebc17e4dbd451b873d9ef25c801237",
+     "releaseDate": 1773411259653,
+     "title": "Binance Futures Will Delist Multiple USD\u24c8-M and COIN-M Perpetual Contracts (2026-03-17 & 2026-03-18)",
+     "url": "https://www.binance.com/en/support/announcement/detail/f6ebc17e4dbd451b873d9ef25c801237"
+    },
+    {
+     "code": "6643b898afa54f3a9d96a53f432e068d",
+     "releaseDate": 1773367204369,
+     "title": "Binance VIP Loan Will Delist TUSD and ALCX from Eligible Collateral Asset List - 2026-03-30",
+     "url": "https://www.binance.com/en/support/announcement/detail/6643b898afa54f3a9d96a53f432e068d"
+    },
+    {
+     "code": "37a8026d1bbb4385916513623135ee2b",
+     "releaseDate": 1773118801491,
+     "title": "Binance Margin Will Delist ARDR on 2026-03-12",
+     "url": "https://www.binance.com/en/support/announcement/detail/37a8026d1bbb4385916513623135ee2b"
+    },
+    {
+     "code": "9ac36fb4f2ad4bf2b3b27f9c9224739c",
+     "releaseDate": 1770275659503,
+     "title": "Binance Futures Will Delist USD\u24c8-M RVVUSDT and YALAUSDT Perpetual Contracts (2026-02-10)",
+     "url": "https://www.binance.com/en/support/announcement/detail/9ac36fb4f2ad4bf2b3b27f9c9224739c"
+    },
+    {
+     "code": "87a9bdf137f348668a85575ee02b8a27",
+     "releaseDate": 1770022792762,
+     "title": "Binance Will Delist ACA, CHESS, DATA, DF, GHST, NKN on 2026-02-13",
+     "url": "https://www.binance.com/en/support/announcement/detail/87a9bdf137f348668a85575ee02b8a27"
+    },
+    {
+     "code": "79211335d1de4f7589ad2d8780580970",
+     "releaseDate": 1769595249706,
+     "title": "Binance Futures Will Delist Multiple USD\u24c8-M Perpetual Contracts (2026-01-30)",
+     "url": "https://www.binance.com/en/support/announcement/detail/79211335d1de4f7589ad2d8780580970"
+    },
+    {
+     "code": "5798be852fb5449bb438dde4166126dc",
+     "releaseDate": 1768636591216,
+     "title": "Binance Futures Will Delist Multiple USD\u24c8-M Perpetual Contracts (2026-01-21)",
+     "url": "https://www.binance.com/en/support/announcement/detail/5798be852fb5449bb438dde4166126dc"
+    },
+    {
+     "code": "20eee4109e06448992f0557bf798bb36",
+     "releaseDate": 1765453426582,
+     "title": "Binance Futures Will Delist AIAUSDT USD\u24c8-M Perpetual Contract (2025-12-11)",
+     "url": "https://www.binance.com/en/support/announcement/detail/20eee4109e06448992f0557bf798bb36"
+    },
+    {
+     "code": "7621c0ff8a924305b6e8fe78ce2c7fcd",
+     "releaseDate": 1764930770574,
+     "title": "Binance Futures Will Delist Multiple USD\u24c8-M Perpetual Contracts (2025-12-10)",
+     "url": "https://www.binance.com/en/support/announcement/detail/7621c0ff8a924305b6e8fe78ce2c7fcd"
+    },
+    {
+     "code": "f958d031b39f46b1ab3947b1d53fa736",
+     "releaseDate": 1764743396380,
+     "title": "Binance Will Delist FIS, REI, VOXEL on 2025-12-17",
+     "url": "https://www.binance.com/en/support/announcement/detail/f958d031b39f46b1ab3947b1d53fa736"
+    },
+    {
+     "code": "746056ce732d43dda12c1e5ae1b7a059",
+     "releaseDate": 1764576863757,
+     "title": "Binance Futures Will Delist Multiple Perpetual Contracts (2025-12-05)",
+     "url": "https://www.binance.com/en/support/announcement/detail/746056ce732d43dda12c1e5ae1b7a059"
+    },
+    {
+     "code": "53998d26b57f47beb97811ec9f5e582b",
+     "releaseDate": 1763991911669,
+     "title": "Binance Futures Will Delist Multiple USD\u24c8-M Perpetual Contracts (2025-11-28)",
+     "url": "https://www.binance.com/en/support/announcement/detail/53998d26b57f47beb97811ec9f5e582b"
+    },
+    {
+     "code": "aa3cc74779bf456e8b100304905b9cc2",
+     "releaseDate": 1763877454108,
+     "title": "Binance Futures Will Delist USD\u24c8-M PORT3USDT Perpetual Contract (2025-11-23)",
+     "url": "https://www.binance.com/en/support/announcement/detail/aa3cc74779bf456e8b100304905b9cc2"
+    },
+    {
+     "code": "6392491d998b4cbaa6d4beee0fd898c6",
+     "releaseDate": 1763438473736,
+     "title": "Binance Futures Will Delist Multiple USD\u24c8-M Perpetual Contracts (2025-11-21)",
+     "url": "https://www.binance.com/en/support/announcement/detail/6392491d998b4cbaa6d4beee0fd898c6"
+    },
+    {
+     "code": "4e11bae0efbb4811842ff1b2d37d1389",
+     "releaseDate": 1763105419907,
+     "title": "Binance Futures Will Delist COIN-M RUNEUSD Perpetual Contract (2025-11-19)",
+     "url": "https://www.binance.com/en/support/announcement/detail/4e11bae0efbb4811842ff1b2d37d1389"
+    },
+    {
+     "code": "869c1c15564048e29ae6139578637cd4",
+     "releaseDate": 1762782300002,
+     "title": "Binance Futures Will Delist USD\u24c8-M MYROUSDT and 1000XUSDT Perpetual Contracts (2025-11-14)",
+     "url": "https://www.binance.com/en/support/announcement/detail/869c1c15564048e29ae6139578637cd4"
+    },
+    {
+     "code": "f73071bd329f4a31ba0218ac675bea67",
+     "releaseDate": 1762507832708,
+     "title": "Binance Futures Will Delist COIN-M MANAUSD and EGLDUSD Perpetual Contracts (2025-11-13)",
+     "url": "https://www.binance.com/en/support/announcement/detail/f73071bd329f4a31ba0218ac675bea67"
+    },
+    {
+     "code": "ebe57975b8c34e928c7d3fdacfcef32a",
+     "releaseDate": 1762137028085,
+     "title": "Binance Futures Will Delist Multiple Perpetual Contracts",
+     "url": "https://www.binance.com/en/support/announcement/detail/ebe57975b8c34e928c7d3fdacfcef32a"
+    },
+    {
+     "code": "a6c810fc36424548917e146dbe21469a",
+     "releaseDate": 1761706804123,
+     "title": "Binance Will Delist FLM, KDA, PERP on 2025-11-12",
+     "url": "https://www.binance.com/en/support/announcement/detail/a6c810fc36424548917e146dbe21469a"
+    },
+    {
+     "code": "fe8c53fbe54540b88cff9caa193ffd60",
+     "releaseDate": 1761219095905,
+     "title": "Binance Futures Will Delist COIN-M GMTUSD and DOGSUSD Perpetual Contracts (2025-10-28)",
+     "url": "https://www.binance.com/en/support/announcement/detail/fe8c53fbe54540b88cff9caa193ffd60"
+    },
+    {
+     "code": "c045753243994cfcba6a22563389e910",
+     "releaseDate": 1760759930952,
+     "title": "Binance Futures Will Delist USD\u24c8-M SLERFUSDT and COIN-M CHZUSD Perpetual Contracts (2025-10-20 & 2025-10-21)",
+     "url": "https://www.binance.com/en/support/announcement/detail/c045753243994cfcba6a22563389e910"
+    },
+    {
+     "code": "82df1b55a0d84c288fa396d5a5cead48",
+     "releaseDate": 1759146319511,
+     "title": "Binance Futures Will Delist USD\u24c8-M HIFIUSDT and BAKEUSDT Perpetual Contracts (2025-10-03)",
+     "url": "https://www.binance.com/en/support/announcement/detail/82df1b55a0d84c288fa396d5a5cead48"
+    },
+    {
+     "code": "5a4fddd83a25401cabc2ae6271b532a2",
+     "releaseDate": 1758715205980,
+     "title": "Binance Futures Will Delist USD\u24c8-M UXLINKUSDT Perpetual Contract (2025-09-26)",
+     "url": "https://www.binance.com/en/support/announcement/detail/5a4fddd83a25401cabc2ae6271b532a2"
+    },
+    {
+     "code": "77d088eda9b040dc9f73bb7e57ae8e26",
+     "releaseDate": 1758526202610,
+     "title": "Binance Futures Will Delist USD\u24c8-M NEIROETHUSDT Perpetual Contract (2025-09-26)",
+     "url": "https://www.binance.com/en/support/announcement/detail/77d088eda9b040dc9f73bb7e57ae8e26"
+    },
+    {
+     "code": "10fd115c29244067bd4566a70f77e327",
+     "releaseDate": 1758098727976,
+     "title": "Binance Futures Will Delist USD\u24c8-M ALPHAUSDT Perpetual Contract (2025-09-23)",
+     "url": "https://www.binance.com/en/support/announcement/detail/10fd115c29244067bd4566a70f77e327"
+    },
+    {
+     "code": "c95b56efd290471ba11c6cb850208d07",
+     "releaseDate": 1757499283992,
+     "title": "Binance Futures Will Delist USD\u24c8-M BSWUSDT Perpetual Contract (2025-09-15)",
+     "url": "https://www.binance.com/en/support/announcement/detail/c95b56efd290471ba11c6cb850208d07"
+    },
+    {
+     "code": "b601f1d986ad403b8c667dd0ca17e2e7",
+     "releaseDate": 1756868394550,
+     "title": "Binance Will Delist BAKE, HIFI, SLF on 2025-09-17",
+     "url": "https://www.binance.com/en/support/announcement/detail/b601f1d986ad403b8c667dd0ca17e2e7"
+    },
+    {
+     "code": "d5fc5fdda5c74e3e8780050ed0841267",
+     "releaseDate": 1756465212480,
+     "title": "Binance Futures Will Delist USD\u24c8-M LEVERUSDT Perpetual Contract (2025-09-03)",
+     "url": "https://www.binance.com/en/support/announcement/detail/d5fc5fdda5c74e3e8780050ed0841267"
+    },
+    {
+     "code": "21e399dcea734230a3c181daf5407b64",
+     "releaseDate": 1754465406291,
+     "title": "Binance Futures Will Delist USD\u24c8-M DEFIUSDT and MEMEFI Perpetual Contracts (2025-08-11)",
+     "url": "https://www.binance.com/en/support/announcement/detail/21e399dcea734230a3c181daf5407b64"
+    },
+    {
+     "code": "173b2a63c03141009029407ecfebd14a",
+     "releaseDate": 1750921209887,
+     "title": "Binance Will Delist ALPHA, BSW, KMD, LEVER, LTO on 2025-07-04",
+     "url": "https://www.binance.com/en/support/announcement/detail/173b2a63c03141009029407ecfebd14a"
+    },
+    {
+     "code": "9166fe6f7b8a4b438262df3a040b007b",
+     "releaseDate": 1748594200290,
+     "title": "Binance Futures Will Launch USD\u24c8-Margined HYPEUSDT Perpetual Contract",
+     "url": "https://www.binance.com/en/support/announcement/detail/9166fe6f7b8a4b438262df3a040b007b"
+    },
+    {
+     "code": "0274f9d47da1437990bc13eb17b0ec99",
+     "releaseDate": 1745467205257,
+     "title": "Binance Will Delist ALPACA, PDA, VIB, WING on 2025-05-02",
+     "url": "https://www.binance.com/en/support/announcement/detail/0274f9d47da1437990bc13eb17b0ec99"
+    },
+    {
+     "code": "562332a340474eda890417685ebbb26b",
+     "releaseDate": 1744255873621,
+     "title": "Binance Introduces the 2nd Batch of Vote to Delist on 2025-04-10",
+     "url": "https://www.binance.com/en/support/announcement/detail/562332a340474eda890417685ebbb26b"
+    },
+    {
+     "code": "fac9c3e401da4cc8b604566fd261d70c",
+     "releaseDate": 1744092007355,
+     "title": "Binance Announced the First Batch of Vote to Delist Results and Will Delist BADGER, BAL, BETA, CREAM, CTXC, ELF, FIRO, HARD, NULS, PROS, SNT, TROY, UFT, VIDT on 2025-04-16",
+     "url": "https://www.binance.com/en/support/announcement/detail/fac9c3e401da4cc8b604566fd261d70c"
+    },
+    {
+     "code": "b2cecfd1006947e18bf029c11d19c351",
+     "releaseDate": 1743478234305,
+     "title": "Binance Futures Will Postpone the Minimum Trade Amount Adjustment of USD\u24c8-M SOLUSDT Perpetual Contract",
+     "url": "https://www.binance.com/en/support/announcement/detail/b2cecfd1006947e18bf029c11d19c351"
+    },
+    {
+     "code": "62e7f20e3f2d4313ab7b2147f51065c6",
+     "releaseDate": 1743176936922,
+     "title": "Updates on Minimum Trade Amount for USD\u24c8-M SOLUSDT Perpetual Futures Contract (2025-04-02)",
+     "url": "https://www.binance.com/en/support/announcement/detail/62e7f20e3f2d4313ab7b2147f51065c6"
+    },
+    {
+     "code": "ed7591c973014ed487b339066292a5ee",
+     "releaseDate": 1742536809937,
+     "title": "Binance Will Start the First Batch of Vote to Delist on 2025-03-21",
+     "url": "https://www.binance.com/en/support/announcement/detail/ed7591c973014ed487b339066292a5ee"
+    },
+    {
+     "code": "db7ad1c7aa6248cda735102cdcdc4b8d",
+     "releaseDate": 1742536220352,
+     "title": "Binance Will Delist AERGO, AST, BURGER, COMBO, LINA on 2025-03-28",
+     "url": "https://www.binance.com/en/support/announcement/detail/db7ad1c7aa6248cda735102cdcdc4b8d"
+    },
+    {
+     "code": "bcaa1f68d6a6450099056ff694ad6c46",
+     "releaseDate": 1740992403856,
+     "title": "Binance Will Delist Non-MiCA Compliant Stablecoin Trading Pairs For EEA Users on 2025-03-31",
+     "url": "https://www.binance.com/en/support/announcement/detail/bcaa1f68d6a6450099056ff694ad6c46"
+    },
+    {
+     "code": "f3cc64a8758d4bb394e0830e5b31da97",
+     "releaseDate": 1739775624287,
+     "title": "Binance Will Delist AMB, CLV, STMX, VITE on 2025-02-24",
+     "url": "https://www.binance.com/en/support/announcement/detail/f3cc64a8758d4bb394e0830e5b31da97"
+    },
+    {
+     "code": "572715f2d96e47769ebbb967c2a6e445",
+     "releaseDate": 1736928006723,
+     "title": "Binance Futures Will Delist and Update the Leverage & Margin Tiers of USD\u24c8-M REEFUSDT Perpetual Contract (2025-01-22)",
+     "url": "https://www.binance.com/en/support/announcement/detail/572715f2d96e47769ebbb967c2a6e445"
+    },
+    {
+     "code": "0121f22d485c43da89f2686c5c703886",
+     "releaseDate": 1736841604362,
+     "title": "Notice on Delisting of Binance Loans (Flexible Rate) Loanable Assets - 2025-01-15",
+     "url": "https://www.binance.com/en/support/announcement/detail/0121f22d485c43da89f2686c5c703886"
+    },
+    {
+     "code": "2e211c0bc75244399f03acfb57b21bd3",
+     "releaseDate": 1736827208343,
+     "title": "Binance Options RFQ Adds SOLUSDT Options",
+     "url": "https://www.binance.com/en/support/announcement/detail/2e211c0bc75244399f03acfb57b21bd3"
+    },
+    {
+     "code": "5b215fbc6a0a46afaf0d7e331d2583fa",
+     "releaseDate": 1735880404764,
+     "title": "Notice on Delisting of Binance Loans (Flexible Rate) Loanable Assets - 2025-01-03",
+     "url": "https://www.binance.com/en/support/announcement/detail/5b215fbc6a0a46afaf0d7e331d2583fa"
+    },
+    {
+     "code": "1e43c128806544018d3cc537a8add3f6",
+     "releaseDate": 1734678000929,
+     "title": "Delisting of USD\u24c8-M OMGUSDT Perpetual Contract Will Be Further Postponed",
+     "url": "https://www.binance.com/en/support/announcement/detail/1e43c128806544018d3cc537a8add3f6"
+    },
+    {
+     "code": "b140faee7cf9482cb10257308abda245",
+     "releaseDate": 1734508872939,
+     "title": "Binance Will Delist AKRO, BLZ, WRX on 2024-12-25",
+     "url": "https://www.binance.com/en/support/announcement/detail/b140faee7cf9482cb10257308abda245"
+    },
+    {
+     "code": "eedac7aff5b849d58efda6c4b3cec01b",
+     "releaseDate": 1734184414273,
+     "title": "Delisting of USD\u24c8-M OMGUSDT Perpetual Contract Postponed",
+     "url": "https://www.binance.com/en/support/announcement/detail/eedac7aff5b849d58efda6c4b3cec01b"
+    },
+    {
+     "code": "27eac260521b4f40ab331e1a345887a7",
+     "releaseDate": 1733454004185,
+     "title": "Binance Futures Will Delist USD\u24c8-M MAVIAUSDT, OMGUSDT, and BONDUSDT Perpetual Contracts (2024-12-16)",
+     "url": "https://www.binance.com/en/support/announcement/detail/27eac260521b4f40ab331e1a345887a7"
+    },
+    {
+     "code": "7ce833294cdf4eff97dd4d1cc01845f3",
+     "releaseDate": 1732889433223,
+     "title": "Suspension of Gifto (GFT) Deposits and Update on the Delisting Date (2024-12-03)",
+     "url": "https://www.binance.com/en/support/announcement/detail/7ce833294cdf4eff97dd4d1cc01845f3"
+    },
+    {
+     "code": "cfe97d52a8c840d3ba631835b637e9e7",
+     "releaseDate": 1732852801809,
+     "title": "Binance Futures Will Delist USD\u24c8-M XEMUSDT, ORBSUSDT and LOOMUSDT Perpetual Contracts (2024-12-09)",
+     "url": "https://www.binance.com/en/support/announcement/detail/cfe97d52a8c840d3ba631835b637e9e7"
+    },
+    {
+     "code": "131b75b63a71490393034f36de70c92c",
+     "releaseDate": 1732609814278,
+     "title": "Binance Will Delist GFT, IRIS, KEY, OAX, REN on 2024-12-10",
+     "url": "https://www.binance.com/en/support/announcement/detail/131b75b63a71490393034f36de70c92c"
+    },
+    {
+     "code": "02067834ba564042aa7e5f0d30eb2731",
+     "releaseDate": 1732510801511,
+     "title": "Binance Options Will Launch BNBUSDT and SOLUSDT Monthly Options",
+     "url": "https://www.binance.com/en/support/announcement/detail/02067834ba564042aa7e5f0d30eb2731"
+    },
+    {
+     "code": "8d899ac9c1f84199943914f67d427091",
+     "releaseDate": 1731571218480,
+     "title": "Binance Futures Memecoin Carnival: Trade DOGEUSDT and More to Share 17,600 USDT in Rewards",
+     "url": "https://www.binance.com/en/support/announcement/detail/8d899ac9c1f84199943914f67d427091"
+    },
+    {
+     "code": "37941f8572a9484b98879b785f5c30df",
+     "releaseDate": 1730962800000,
+     "title": "Binance Options Will Launch SOLUSDT Options",
+     "url": "https://www.binance.com/en/support/announcement/detail/37941f8572a9484b98879b785f5c30df"
+    },
+    {
+     "code": "043c8407bb904652a428573a50d07e07",
+     "releaseDate": 1729666837062,
+     "title": "Binance Will Delist IDRT, KP3R, OOKI, UNFI on 2024-11-06",
+     "url": "https://www.binance.com/en/support/announcement/detail/043c8407bb904652a428573a50d07e07"
+    },
+    {
+     "code": "7710376072b94b7b9125ef079d50b052",
+     "releaseDate": 1728624831925,
+     "title": "Updates on Tick Size for New ETHUSDT Options Contracts",
+     "url": "https://www.binance.com/en/support/announcement/detail/7710376072b94b7b9125ef079d50b052"
+    },
+    {
+     "code": "1657c0d30d5449908e8e20d9efa893a2",
+     "releaseDate": 1728360012037,
+     "title": "Notice on the Withdrawals of Delisted Tokens & Conversion of Selected Tokens to USDC (2024-10-08)",
+     "url": "https://www.binance.com/en/support/announcement/detail/1657c0d30d5449908e8e20d9efa893a2"
+    },
+    {
+     "code": "e2fcd2c945654c8d832395335429403e",
+     "releaseDate": 1723446011329,
+     "title": "Binance Will Delist CVP, EPX, FOR, LOOM, REEF, VGX on 2024-08-26",
+     "url": "https://www.binance.com/en/support/announcement/detail/e2fcd2c945654c8d832395335429403e"
+    },
+    {
+     "code": "9ec5cabbc8974a1c8890e1c9d87a98a7",
+     "releaseDate": 1723442400000,
+     "title": "Notice on the Withdrawals of Delisted Tokens & Conversion of Selected Tokens to USDC (2024-08-12)",
+     "url": "https://www.binance.com/en/support/announcement/detail/9ec5cabbc8974a1c8890e1c9d87a98a7"
+    },
+    {
+     "code": "09bc413524f04c6296e2b009b498c805",
+     "releaseDate": 1721703611603,
+     "title": "Binance Options Will List BTCUSDT and ETHUSDT 2024-11-08 Expiry Options",
+     "url": "https://www.binance.com/en/support/announcement/detail/09bc413524f04c6296e2b009b498c805"
+    },
+    {
+     "code": "44e121076fb045f69810a1da1e4c632f",
+     "releaseDate": 1720663202463,
+     "title": "Binance Margin Will Delist TUSD from Cross and Isolated Margin - 2024-07-24",
+     "url": "https://www.binance.com/en/support/announcement/detail/44e121076fb045f69810a1da1e4c632f"
+    },
+    {
+     "code": "4ffb7170f2f84ce3a06cc0cf1a788c23",
+     "releaseDate": 1720422069631,
+     "title": "Binance Will Delist BOND, DOCK, MDX, POLS on 2024-07-22",
+     "url": "https://www.binance.com/en/support/announcement/detail/4ffb7170f2f84ce3a06cc0cf1a788c23"
+    },
+    {
+     "code": "f65faeeefe07417a8b6dd2900ba8da7e",
+     "releaseDate": 1717383620294,
+     "title": "Binance Will Delist OMG, WAVES, WNXM, XEM on 2024-06-17",
+     "url": "https://www.binance.com/en/support/announcement/detail/f65faeeefe07417a8b6dd2900ba8da7e"
+    },
+    {
+     "code": "5150d4f0ee1546d7ae6382ba7cda3ffe",
+     "releaseDate": 1715330951658,
+     "title": "Binance Futures Will Delist and Update the Leverage & Margin Tiers of COIN-M KNCUSD, ICXUSD, XTZUSD, ROSEUSD and APEUSD Perpetual Contracts",
+     "url": "https://www.binance.com/en/support/announcement/detail/5150d4f0ee1546d7ae6382ba7cda3ffe"
+    },
+    {
+     "code": "cb525a5fbb954935afc77630fc5bd0cc",
+     "releaseDate": 1715144426574,
+     "title": "Binance Futures Will Delist and Update the Leverage & Margin Tiers of USD\u24c8-M IDEXUSDT, SLPUSDT, GLMRUSDT, MDTUSDT and AUDIOUSDT Perpetual Contracts",
+     "url": "https://www.binance.com/en/support/announcement/detail/cb525a5fbb954935afc77630fc5bd0cc"
+    },
+    {
+     "code": "a58cc13f78a34fbba11f00ff7144e9ee",
+     "releaseDate": 1714971617942,
+     "title": "Binance Futures Will Delist and Update the Leverage & Margin Tiers of USD\u24c8-M STPTUSDT, SNTUSDT, MBLUSDT, RADUSDT and CVXUSDT Perpetual Contracts",
+     "url": "https://www.binance.com/en/support/announcement/detail/a58cc13f78a34fbba11f00ff7144e9ee"
+    },
+    {
+     "code": "b1e997d92c90432fb28cf788f313f3dd",
+     "releaseDate": 1711962468466,
+     "title": "Notice on the Withdrawals of Delisted Tokens & Conversion of Selected Tokens to USDT (2024-04-01)",
+     "url": "https://www.binance.com/en/support/announcement/detail/b1e997d92c90432fb28cf788f313f3dd"
+    },
+    {
+     "code": "ce74360a3fd444b2b35da7186f8dd0ad",
+     "releaseDate": 1711341612437,
+     "title": "Binance Futures Will Delist and Update the Leverage & Margin Tiers of USD\u24c8-M ANTUSDT, DGBUSDT and CTKUSDT Perpetual Contracts",
+     "url": "https://www.binance.com/en/support/announcement/detail/ce74360a3fd444b2b35da7186f8dd0ad"
+    },
+    {
+     "code": "1e531578a30c46eebf52c8dae3c56092",
+     "releaseDate": 1710914407471,
+     "title": "Binance Will Delist DREP, MOB, PNT on 2024-04-03",
+     "url": "https://www.binance.com/en/support/announcement/detail/1e531578a30c46eebf52c8dae3c56092"
+    },
+    {
+     "code": "673183dd8eea4e3cba1596dcec7565d1",
+     "releaseDate": 1710824702006,
+     "title": "Binance Futures Will Delist and Update the Leverage & Margin Tiers of USD\u24c8-M FOOTBALLUSDT and BLUEBIRDUSDT Perpetual Contracts",
+     "url": "https://www.binance.com/en/support/announcement/detail/673183dd8eea4e3cba1596dcec7565d1"
+    },
+    {
+     "code": "46a0372dab2e496c9e0f164a8c2cc819",
+     "releaseDate": 1709897109545,
+     "title": "Binance Options RFQ Will Launch XRPUSDT Options",
+     "url": "https://www.binance.com/en/support/announcement/detail/46a0372dab2e496c9e0f164a8c2cc819"
+    },
+    {
+     "code": "dd8e180b94c84d53a5a93f7b99d1bd08",
+     "releaseDate": 1708412705927,
+     "title": "Binance Options Will Launch T+4 BTCUSDT Daily Options",
+     "url": "https://www.binance.com/en/support/announcement/detail/dd8e180b94c84d53a5a93f7b99d1bd08"
+    },
+    {
+     "code": "f73b083ba6834771b07dbe5319917ae5",
+     "releaseDate": 1707202812575,
+     "title": "Binance Will Delist ANT, MULTI, VAI, XMR on 2024-02-20",
+     "url": "https://www.binance.com/en/support/announcement/detail/f73b083ba6834771b07dbe5319917ae5"
+    },
+    {
+     "code": "d278dcbec2d448efa3e3109e7fd42a4e",
+     "releaseDate": 1702876230074,
+     "title": "Binance Options Will Launch Additional BTCUSDT & ETHUSDT Weekly Options",
+     "url": "https://www.binance.com/en/support/announcement/detail/d278dcbec2d448efa3e3109e7fd42a4e"
+    },
+    {
+     "code": "9972ee7df32144d099c78c7df39011a2",
+     "releaseDate": 1701666604715,
+     "title": "Notice on the Withdrawals of Delisted Tokens & Conversion of Selected Tokens to USDT",
+     "url": "https://www.binance.com/en/support/announcement/detail/9972ee7df32144d099c78c7df39011a2"
+    },
+    {
+     "code": "d24dd4a035c443b1ad8cf49f60b9d194",
+     "releaseDate": 1701064826207,
+     "title": "Binance Will Delist BTS, PERL, TORN, WTC on 2023-12-07",
+     "url": "https://www.binance.com/en/support/announcement/detail/d24dd4a035c443b1ad8cf49f60b9d194"
+    },
+    {
+     "code": "d980d81501594f80b2903cdfe29f1166",
+     "releaseDate": 1700814330006,
+     "title": "Binance Margin & Binance Futures Will Delist BUSD",
+     "url": "https://www.binance.com/en/support/announcement/detail/d980d81501594f80b2903cdfe29f1166"
+    },
+    {
+     "code": "e4384cba297a4bd2a154be644d5d76f9",
+     "releaseDate": 1698410424319,
+     "title": "Updates on Minimum Notional Value for BTCUSDT and ETHUSDT Perpetual Contracts (2023-11-02)",
+     "url": "https://www.binance.com/en/support/announcement/detail/e4384cba297a4bd2a154be644d5d76f9"
+    },
+    {
+     "code": "6c95b3a188e140a39108251f72ecbf87",
+     "releaseDate": 1697623240905,
+     "title": "Binance to Delist and Cease Redemption for ADAUP and ADADOWN Leveraged Tokens (2023-11-01)",
+     "url": "https://www.binance.com/en/support/announcement/detail/6c95b3a188e140a39108251f72ecbf87"
+    },
+    {
+     "code": "19c694ed39f14a9791e0f34a2235def1",
+     "releaseDate": 1693552182147,
+     "title": "Binance Margin Will Delist ALPHA/BUSD, ANT/BUSD, BAL/BUSD, COS/BTC, DGB/BUSD, FIRO/BUSD, OOKI/BUSD, QI/BTC, RVN/BUSD & TWT/BUSD Isolated Margin Pairs",
+     "url": "https://www.binance.com/en/support/announcement/detail/19c694ed39f14a9791e0f34a2235def1"
+    },
+    {
+     "code": "d0f401e56c594069afad13c80f97a356",
+     "releaseDate": 1693375203152,
+     "title": "Binance Margin Will Delist the AMB/BUSD, DASH/BUSD, FIDA/BUSD, HARD/BUSD, HOT/BUSD, IOST/BTC, NULS/BUSD, PORTO/BUSD and REQ/BUSD Cross Margin & Isolated Margin Pairs",
+     "url": "https://www.binance.com/en/support/announcement/detail/d0f401e56c594069afad13c80f97a356"
+    },
+    {
+     "code": "6723cf112ab943bb9db7542bf8e107f0",
+     "releaseDate": 1692616803287,
+     "title": "Binance Futures Will Delist and Update the Leverage & Margin Tiers of USD\u24c8-M SOLBUSD Perpetual Contract",
+     "url": "https://www.binance.com/en/support/announcement/detail/6723cf112ab943bb9db7542bf8e107f0"
+    },
+    {
+     "code": "f662330259c44f869ea1dd618925677e",
+     "releaseDate": 1692266704608,
+     "title": "Binance Futures Will Delist and Update the Leverage & Margin Tiers of USD\u24c8-M LTCBUSD and DOGEBUSD Perpetual Contracts",
+     "url": "https://www.binance.com/en/support/announcement/detail/f662330259c44f869ea1dd618925677e"
+    },
+    {
+     "code": "0a22f72cdfac479f95393e7b57e6dda1",
+     "releaseDate": 1692155138357,
+     "title": "Binance Margin Will Delist the EPX/BUSD, GAL/BUSD, GMX/BUSD, HIVE/BUSD, KLAY/BUSD, RAD/BUSD and TVK/BUSD Cross Margin & Isolated Margin Pairs",
+     "url": "https://www.binance.com/en/support/announcement/detail/0a22f72cdfac479f95393e7b57e6dda1"
+    },
+    {
+     "code": "f43511a4c1d347a8a2dd1efbdd2fe716",
+     "releaseDate": 1692082868922,
+     "title": "Binance Will Delist SNM, SRM and YFII on 2023-08-22",
+     "url": "https://www.binance.com/en/support/announcement/detail/f43511a4c1d347a8a2dd1efbdd2fe716"
+    },
+    {
+     "code": "63b70cab6d4f482f892f0fd7bda9e05e",
+     "releaseDate": 1691658004905,
+     "title": "Binance Futures Will Delist and Update the Leverage & Margin Tiers of USD\u24c8-M ADABUSD and MATICBUSD Perpetual Contract",
+     "url": "https://www.binance.com/en/support/announcement/detail/63b70cab6d4f482f892f0fd7bda9e05e"
+    },
+    {
+     "code": "52400d42b35a4bb6bfff5aa6cfd62054",
+     "releaseDate": 1691561025278,
+     "title": "Binance Options Will Launch DOGEUSDT Weekly Options",
+     "url": "https://www.binance.com/en/support/announcement/detail/52400d42b35a4bb6bfff5aa6cfd62054"
+    },
+    {
+     "code": "8a8c41ad9eac4225b46b7d53d0df8f2c",
+     "releaseDate": 1691464207277,
+     "title": "Binance Margin Will Delist the ASTR/BUSD, AUDIO/BUSD, BAT/BUSD, BSW/BUSD, NMR/BUSD, PEOPLE/BUSD and RSR/BUSD Cross Margin & Isolated Margin Pairs",
+     "url": "https://www.binance.com/en/support/announcement/detail/8a8c41ad9eac4225b46b7d53d0df8f2c"
+    },
+    {
+     "code": "38376f9e7814466dbff49586c6e2e1cf",
+     "releaseDate": 1691409003749,
+     "title": "Binance Will Open Spot Grid Trading for ARKM/USDT, PEPE/USDT, USTC/USDT & WLD/USDT Trading Pairs, and Delist Selected Spot Grid Trading Pairs",
+     "url": "https://www.binance.com/en/support/announcement/detail/38376f9e7814466dbff49586c6e2e1cf"
+    },
+    {
+     "code": "63f3038beda94f3e9a05652f55c4fb75",
+     "releaseDate": 1691055003469,
+     "title": "Binance Futures Will Delist and Update the Leverage & Margin Tiers of USD\u24c8-M TRXBUSD and DODOBUSD Perpetual Contracts",
+     "url": "https://www.binance.com/en/support/announcement/detail/63f3038beda94f3e9a05652f55c4fb75"
+    },
+    {
+     "code": "584d65bfa49f4f5894d2416e76214dc5",
+     "releaseDate": 1690451103030,
+     "title": "Binance Futures Will Delist and Update the Leverage & Margin Tiers of USD\u24c8-M APTBUSD and FTMBUSD Perpetual Contracts",
+     "url": "https://www.binance.com/en/support/announcement/detail/584d65bfa49f4f5894d2416e76214dc5"
+    },
+    {
+     "code": "632aa37b7ce44e4f89f0e917e885ffbf",
+     "releaseDate": 1690252204237,
+     "title": "Binance Margin Will Delist the CKB/BUSD, CTK/BUSD, ELF/BUSD, FOR/BUSD, PERP/BUSD, SKL/BUSD & UNFI/BUSD Isolated Margin Pairs",
+     "url": "https://www.binance.com/en/support/announcement/detail/632aa37b7ce44e4f89f0e917e885ffbf"
+    },
+    {
+     "code": "217d0ff70eac403480b5137e2a90b424",
+     "releaseDate": 1689840007070,
+     "title": "Binance Futures Will Delist and Update the Leverage & Margin Tiers of USD\u24c8-M LDOBUSD and GALABUSD Perpetual Contracts",
+     "url": "https://www.binance.com/en/support/announcement/detail/217d0ff70eac403480b5137e2a90b424"
+    },
+    {
+     "code": "37a510c756cc44ca8948a8a64fddd512",
+     "releaseDate": 1689760808223,
+     "title": "Binance Margin Will Delist the OGN/BUSD, OSMO/BUSD, REI/BUSD and SPELL/BUSD Cross Margin & Isolated Margin Pairs",
+     "url": "https://www.binance.com/en/support/announcement/detail/37a510c756cc44ca8948a8a64fddd512"
+    },
+    {
+     "code": "64e983b9aebb48998e7ba789aabe3de2",
+     "releaseDate": 1689318001849,
+     "title": "Binance Margin Will Delist the ALCX/BUSD, ALPACA/BUSD, CVX/BUSD, DOCK/BUSD, LOOM/BUSD, MC/BUSD, MOB/BUSD & TROY/BUSD Isolated Margin Pairs",
+     "url": "https://www.binance.com/en/support/announcement/detail/64e983b9aebb48998e7ba789aabe3de2"
+    },
+    {
+     "code": "3e64fa6aa26c40e0be51e0f8c3a1d9b1",
+     "releaseDate": 1689072303374,
+     "title": "Binance Futures Will Delist and Update the Leverage & Margin Tiers of USD\u24c8-M AGIXBUSD Perpetual Contract",
+     "url": "https://www.binance.com/en/support/announcement/detail/3e64fa6aa26c40e0be51e0f8c3a1d9b1"
+    },
+    {
+     "code": "e6764830f1aa468990b3263cd967c655",
+     "releaseDate": 1689066007256,
+     "title": "Binance to Delist and Cease Redemption for XRPUP and XRPDOWN Leveraged Tokens (2023-07-25)",
+     "url": "https://www.binance.com/en/support/announcement/detail/e6764830f1aa468990b3263cd967c655"
+    },
+    {
+     "code": "1b4044db45834ae6b367e12ac776215c",
+     "releaseDate": 1688703003727,
+     "title": "Binance Margin Will Delist the ATA/BUSD, FORTH/BUSD, JST/BUSD, QTUM/BUSD, SUN/BUSD, ZEN/BUSD & ZRX/BUSD Isolated Margin Pairs",
+     "url": "https://www.binance.com/en/support/announcement/detail/1b4044db45834ae6b367e12ac776215c"
+    },
+    {
+     "code": "edebf68609a6495886c349fe7cbc355f",
+     "releaseDate": 1686889511376,
+     "title": "Binance Flexible Loan Has Delisted PEPE as a Borrowable Asset",
+     "url": "https://www.binance.com/en/support/announcement/detail/edebf68609a6495886c349fe7cbc355f"
+    },
+    {
+     "code": "8915d06693ed49f78262c80b6d54c13a",
+     "releaseDate": 1686815412709,
+     "title": "Binance Margin Will Delist MBL/BUSD, PUNDIX/BUSD Cross Margin Pairs and FARM/BUSD, LSK/BUSD, MBL/BUSD, PLA/BUSD, PUNDIX/BUSD, SC/BUSD Isolated Margin Pairs",
+     "url": "https://www.binance.com/en/support/announcement/detail/8915d06693ed49f78262c80b6d54c13a"
+    },
+    {
+     "code": "cd599a0f00004f399b03b8077788e39c",
+     "releaseDate": 1686550803118,
+     "title": "Binance Margin Will Delist the BNT/BUSD, CVX/BTC, POLS/BUSD, POWR/BUSD, STPT/BUSD & STRAX/BUSD Isolated Margin Pairs",
+     "url": "https://www.binance.com/en/support/announcement/detail/cd599a0f00004f399b03b8077788e39c"
+    },
+    {
+     "code": "0e84e685101d457a95cbe5c550b6e891",
+     "releaseDate": 1685610906427,
+     "title": "Binance Futures Will Delist and Update the Leverage & Margin Tiers of USD\u24c8-M 1000LUNCBUSD Perpetual Contract",
+     "url": "https://www.binance.com/en/support/announcement/detail/0e84e685101d457a95cbe5c550b6e891"
+    },
+    {
+     "code": "51ac7ced06274cd08710b38289e2ea43",
+     "releaseDate": 1685007904026,
+     "title": "Binance Futures Will Delist and Update the Leverage & Margin Tiers of USD\u24c8-M 1000SHIBBUSD Perpetual Contract",
+     "url": "https://www.binance.com/en/support/announcement/detail/51ac7ced06274cd08710b38289e2ea43"
+    },
+    {
+     "code": "e7d6bc2aa47c42a28d2e023a7ceb7234",
+     "releaseDate": 1684470616021,
+     "title": "Binance Futures Will Delist and Update the Leverage & Margin Tiers of USD\u24c8-M LINKBUSD Perpetual Contract",
+     "url": "https://www.binance.com/en/support/announcement/detail/e7d6bc2aa47c42a28d2e023a7ceb7234"
+    },
+    {
+     "code": "a8e3ce7e46ed46359336e1d48ab8c538",
+     "releaseDate": 1684299631912,
+     "title": "Binance Margin Will Delist the JASMY/BTC Cross Margin Pair and AMP/BTC, JASMY/BTC, STMX/BTC Isolated Margin Pairs",
+     "url": "https://www.binance.com/en/support/announcement/detail/a8e3ce7e46ed46359336e1d48ab8c538"
+    },
+    {
+     "code": "575835ebb33346b28cf1dd78a8a50aaa",
+     "releaseDate": 1683874532167,
+     "title": "Binance Futures Will Delist and Update the Leverage & Margin Tiers of USD\u24c8-M APEBUSD Perpetual Contract",
+     "url": "https://www.binance.com/en/support/announcement/detail/575835ebb33346b28cf1dd78a8a50aaa"
+    },
+    {
+     "code": "15974bb3a80441e5bc7d6755e55512ec",
+     "releaseDate": 1683863114601,
+     "title": "Binance Options Will Launch Additional BTCUSDT and ETHUSDT Daily Options",
+     "url": "https://www.binance.com/en/support/announcement/detail/15974bb3a80441e5bc7d6755e55512ec"
+    },
+    {
+     "code": "e47dd8e9f2d84c3aa175bd09fe2f8c94",
+     "releaseDate": 1683619303518,
+     "title": "Binance Margin Will Delist the WRX/BTC Isolated Margin Pair",
+     "url": "https://www.binance.com/en/support/announcement/detail/e47dd8e9f2d84c3aa175bd09fe2f8c94"
+    },
+    {
+     "code": "4536c9819c5d498a975ae40fcd6ecac4",
+     "releaseDate": 1683251412529,
+     "title": "Binance Futures Will Delist and Update the Leverage & Margin Tiers of USD\u24c8-M DOTBUSD Perpetual Contract",
+     "url": "https://www.binance.com/en/support/announcement/detail/4536c9819c5d498a975ae40fcd6ecac4"
+    },
+    {
+     "code": "72ae35cffb8842d5acb8ff22c70f8dd3",
+     "releaseDate": 1682678706662,
+     "title": "Binance Futures Will Delist and Update the Leverage & Margin Tiers of USD\u24c8-M FILBUSD Perpetual Contract",
+     "url": "https://www.binance.com/en/support/announcement/detail/72ae35cffb8842d5acb8ff22c70f8dd3"
+    },
+    {
+     "code": "f9ed8900260141bbb2af4bb71741839a",
+     "releaseDate": 1682577903228,
+     "title": "Binance to Delist and Cease Redemption for TRXUP, TRXDOWN, DOTUP, DOTDOWN, LINKUP & LINKDOWN Leveraged Tokens (2023-04-27)",
+     "url": "https://www.binance.com/en/support/announcement/detail/f9ed8900260141bbb2af4bb71741839a"
+    },
+    {
+     "code": "084acdd39aae4b1b8660fc3b9ab7efef",
+     "releaseDate": 1682071224769,
+     "title": "Binance Futures Will Delist and Update the Leverage & Margin Tiers of USD\u24c8-M ETCBUSD Perpetual Contract",
+     "url": "https://www.binance.com/en/support/announcement/detail/084acdd39aae4b1b8660fc3b9ab7efef"
+    },
+    {
+     "code": "10d9ee3c69584398894526c5dba9e3a6",
+     "releaseDate": 1681466509865,
+     "title": "Binance Futures Will Delist and Update the Leverage & Margin Tiers of USD\u24c8-M GMTBUSD, NEARBUSD and AVAXBUSD Perpetual Contracts",
+     "url": "https://www.binance.com/en/support/announcement/detail/10d9ee3c69584398894526c5dba9e3a6"
+    },
+    {
+     "code": "27933fc8f6c8451fbb18c0189681441a",
+     "releaseDate": 1681196422114,
+     "title": "Binance Will Delist QLC, NEBL and AUTO on 2023-04-18",
+     "url": "https://www.binance.com/en/support/announcement/detail/27933fc8f6c8451fbb18c0189681441a"
+    },
+    {
+     "code": "9453bc521ae34d2e8ea22e15c5635a29",
+     "releaseDate": 1680776103366,
+     "title": "Binance Futures Will Delist and Update the Leverage & Margin Tiers of USD\u24c8-M PHBBUSD, SANDBUSD and UNIBUSD Perpetual Contracts",
+     "url": "https://www.binance.com/en/support/announcement/detail/9453bc521ae34d2e8ea22e15c5635a29"
+    },
+    {
+     "code": "8c012ee71d4046699a0025e37c0e3c3d",
+     "releaseDate": 1680597004561,
+     "title": "Binance Margin Will Delist SNM From Isolated Margin",
+     "url": "https://www.binance.com/en/support/announcement/detail/8c012ee71d4046699a0025e37c0e3c3d"
+    },
+    {
+     "code": "7fd48887590649699ad65419023bacfb",
+     "releaseDate": 1680253507407,
+     "title": "Binance Futures Will Delist and Update the Leverage & Margin Tiers of USD\u24c8-M AMBBUSD, LEVERBUSD and TLMBUSD Perpetual Contracts",
+     "url": "https://www.binance.com/en/support/announcement/detail/7fd48887590649699ad65419023bacfb"
+    },
+    {
+     "code": "2e621e1ca6124ec08292cad4edd572c8",
+     "releaseDate": 1680058218884,
+     "title": "Binance Options Will List Additional BTCUSDT and ETHUSDT Quarterly Options (2023-03-30)",
+     "url": "https://www.binance.com/en/support/announcement/detail/2e621e1ca6124ec08292cad4edd572c8"
+    },
+    {
+     "code": "2bcaff7b39064aa8969bb509d28b90f5",
+     "releaseDate": 1679900403355,
+     "title": "Binance Margin Will Delist NEBL as a Borrowable Asset From Cross Margin and DCR, NEBL, XVG From Isolated Margin",
+     "url": "https://www.binance.com/en/support/announcement/detail/2bcaff7b39064aa8969bb509d28b90f5"
+    },
+    {
+     "code": "13fc2ddbf03948f2adc2721982e1f615",
+     "releaseDate": 1679458517439,
+     "title": "Binance Options Will Launch XRPUSDT Weekly Options",
+     "url": "https://www.binance.com/en/support/announcement/detail/13fc2ddbf03948f2adc2721982e1f615"
+    },
+    {
+     "code": "d1111775c644473cb9579a0f5a50c082",
+     "releaseDate": 1679384707132,
+     "title": "Binance Options Will List Additional BTCUSDT and ETHUSDT Quarterly Options",
+     "url": "https://www.binance.com/en/support/announcement/detail/d1111775c644473cb9579a0f5a50c082"
+    },
+    {
+     "code": "2f5fb73f1b6e411090318ca60a9f47bc",
+     "releaseDate": 1679296806814,
+     "title": "Binance Futures Will Delist and Update the Leverage & Margin Tiers of USD\u24c8-M ICPBUSD and LUNA2BUSD Perpetual Contracts",
+     "url": "https://www.binance.com/en/support/announcement/detail/2f5fb73f1b6e411090318ca60a9f47bc"
+    },
+    {
+     "code": "f1a8aa29692b4442a8f18be2076e14a0",
+     "releaseDate": 1679036475726,
+     "title": "Binance Will Delist HNT and WABI on 2023-03-24",
+     "url": "https://www.binance.com/en/support/announcement/detail/f1a8aa29692b4442a8f18be2076e14a0"
+    },
+    {
+     "code": "4b1ce508219949bebb536542e777446d",
+     "releaseDate": 1678854008296,
+     "title": "Binance Options Will Launch BTCUSDT and ETHUSDT Quarterly Options",
+     "url": "https://www.binance.com/en/support/announcement/detail/4b1ce508219949bebb536542e777446d"
+    },
+    {
+     "code": "edab50e09da64814970d9fb86a740617",
+     "releaseDate": 1678688117686,
+     "title": "Binance Futures Will Delist and Update the Leverage & Margin Tiers of USD\u24c8-M CVXBUSD, GALBUSD and WAVESBUSD Perpetual Contracts",
+     "url": "https://www.binance.com/en/support/announcement/detail/edab50e09da64814970d9fb86a740617"
+    },
+    {
+     "code": "9431a427329d48b2955853366f1e85a4",
+     "releaseDate": 1678155635508,
+     "title": "Binance Options Will List Additional BTCUSDT Monthly Options",
+     "url": "https://www.binance.com/en/support/announcement/detail/9431a427329d48b2955853366f1e85a4"
+    },
+    {
+     "code": "5a927cdc26a0401b8bb5f49c5b61f54d",
+     "releaseDate": 1677063603612,
+     "title": "Binance Margin Will Delist LOOM, STRAX as Borrowable Assets From Cross Margin and OG From Isolated Margin",
+     "url": "https://www.binance.com/en/support/announcement/detail/5a927cdc26a0401b8bb5f49c5b61f54d"
+    },
+    {
+     "code": "b461bf1f04d9456ea978f1549a31e174",
+     "releaseDate": 1676865785355,
+     "title": "Binance Will Delist AION, MIR, ANC on 2023-02-27",
+     "url": "https://www.binance.com/en/support/announcement/detail/b461bf1f04d9456ea978f1549a31e174"
+    },
+    {
+     "code": "31165986e57f479196d30c884e9550bc",
+     "releaseDate": 1675774222333,
+     "title": "Binance Options Will List Additional BTCUSDT Monthly Options",
+     "url": "https://www.binance.com/en/support/announcement/detail/31165986e57f479196d30c884e9550bc"
+    },
+    {
+     "code": "fca7186611164299b4456073a9594e2a",
+     "releaseDate": 1675749621021,
+     "title": "Binance Margin Will Delist FIO, GNO, IRIS, MLN, WTC Trading Pairs From Isolated Margin",
+     "url": "https://www.binance.com/en/support/announcement/detail/fca7186611164299b4456073a9594e2a"
+    },
+    {
+     "code": "24f6a5472ad049dca43ea2cad5aac0ff",
+     "releaseDate": 1675224903734,
+     "title": "Binance Options Will Launch BTCUSDT Daily Options",
+     "url": "https://www.binance.com/en/support/announcement/detail/24f6a5472ad049dca43ea2cad5aac0ff"
+    },
+    {
+     "code": "40582b9b67564072a9a3d3cad4f70b00",
+     "releaseDate": 1674799803614,
+     "title": "Binance Margin Will Delist JST, SNM, SUN as Borrowable Assets From Cross Margin",
+     "url": "https://www.binance.com/en/support/announcement/detail/40582b9b67564072a9a3d3cad4f70b00"
+    },
+    {
+     "code": "181e7d0c59b1498f866a1e79b6c499f6",
+     "releaseDate": 1674112226735,
+     "title": "Binance Margin Will Delist NEXO, POLS, QUICK as Borrowable Assets From Cross Margin and ALCX, NEXO, POLS, TOMO Trading Pairs From Isolated Margin",
+     "url": "https://www.binance.com/en/support/announcement/detail/181e7d0c59b1498f866a1e79b6c499f6"
+    },
+    {
+     "code": "a80d47617f1046b883b5ba237d2c75a7",
+     "releaseDate": 1674100806617,
+     "title": "Binance Will Delist BEAM on 2023-01-26",
+     "url": "https://www.binance.com/en/support/announcement/detail/a80d47617f1046b883b5ba237d2c75a7"
+    },
+    {
+     "code": "ed7dcc263e6e4f3687f8260340ec96ce",
+     "releaseDate": 1673592309526,
+     "title": "Binance Margin Will Delist FLM, KMD as Borrowable Assets From Cross Margin and COCOS, CREAM, SCRT From Isolated Margin",
+     "url": "https://www.binance.com/en/support/announcement/detail/ed7dcc263e6e4f3687f8260340ec96ce"
+    },
+    {
+     "code": "4de1611d14ed44d2b9923b0540193f70",
+     "releaseDate": 1672907126372,
+     "title": "Binance Margin Will Delist AGLD, DATA, ERN, FIO & TROY as Borrowable Assets From Cross Margin and KEY From Isolated Margin",
+     "url": "https://www.binance.com/en/support/announcement/detail/4de1611d14ed44d2b9923b0540193f70"
+    },
+    {
+     "code": "b271dde3a3ea459aadc5369f777d69d4",
+     "releaseDate": 1672290931854,
+     "title": "Binance Margin Will Delist ATA, DEXE, HIGH, STPT & WAN as Borrowable Assets From Cross Margin",
+     "url": "https://www.binance.com/en/support/announcement/detail/b271dde3a3ea459aadc5369f777d69d4"
+    },
+    {
+     "code": "2a7d2f14142646959b101f4254d22340",
+     "releaseDate": 1671768907038,
+     "title": "Binance Futures Will Delist COIN-M GALAUSD, ZILUSD and VETUSD Perpetual Contracts",
+     "url": "https://www.binance.com/en/support/announcement/detail/2a7d2f14142646959b101f4254d22340"
+    },
+    {
+     "code": "fb10a5286033409fbba06a197a7a2ffc",
+     "releaseDate": 1671710396824,
+     "title": "Binance Margin Will Delist FET, FORTH, KEY, MBOX, WIN as Borrowable Assets From Cross Margin and AION, BTS From Isolated Margin",
+     "url": "https://www.binance.com/en/support/announcement/detail/fb10a5286033409fbba06a197a7a2ffc"
+    },
+    {
+     "code": "9da748d1d20048beb0fd4e824da4c50e",
+     "releaseDate": 1671085221101,
+     "title": "Binance Margin Will Delist CHESS, CVP and More Tokens as Borrowable Assets From Cross Margin",
+     "url": "https://www.binance.com/en/support/announcement/detail/9da748d1d20048beb0fd4e824da4c50e"
+    },
+    {
+     "code": "35a4169422154c838f012331f5f4b425",
+     "releaseDate": 1671076804887,
+     "title": "Binance Will Delist MITH, TRIBE, REP and BTCST on 2022-12-22",
+     "url": "https://www.binance.com/en/support/announcement/detail/35a4169422154c838f012331f5f4b425"
+    },
+    {
+     "code": "7dcc170b060c4c6a8ade4ded423f726a",
+     "releaseDate": 1670912849285,
+     "title": "Notice on Updating Leverage & Margin Tiers, and Delisting USD\u24c8-M ANCBUSD and AUCTIONBUSD Perpetual Contracts",
+     "url": "https://www.binance.com/en/support/announcement/detail/7dcc170b060c4c6a8ade4ded423f726a"
+    },
+    {
+     "code": "f4f20b3b72324b3b82c543988f5b2328",
+     "releaseDate": 1670497371715,
+     "title": "Binance Margin Will Delist BNX, TORN and More Margin Pairs on Cross Margin & Isolated Margin",
+     "url": "https://www.binance.com/en/support/announcement/detail/f4f20b3b72324b3b82c543988f5b2328"
+    },
+    {
+     "code": "9ea990c25dcd474081c2259c85a59325",
+     "releaseDate": 1670325826754,
+     "title": "Binance Margin Will Delist ACA and More Margin Pairs on Cross Margin & Isolated Margin",
+     "url": "https://www.binance.com/en/support/announcement/detail/9ea990c25dcd474081c2259c85a59325"
+    },
+    {
+     "code": "84d48bb4678b4da6a7da419bcc99dfb8",
+     "releaseDate": 1669779905243,
+     "title": "Binance Will Delist All American-Style Daily Options",
+     "url": "https://www.binance.com/en/support/announcement/detail/84d48bb4678b4da6a7da419bcc99dfb8"
+    },
+    {
+     "code": "2220f382c1764f84834b1d74a26489a8",
+     "releaseDate": 1669617922401,
+     "title": "Binance Margin Will Delist CVC & More Margin Pairs on Cross Margin & Isolated Margin",
+     "url": "https://www.binance.com/en/support/announcement/detail/2220f382c1764f84834b1d74a26489a8"
+    },
+    {
+     "code": "3188e26f14a1464b91487abad452c04f",
+     "releaseDate": 1669606227750,
+     "title": "Binance Futures Will Delist and Update the Leverage & Margin Tiers of CVCUSDT Perpetual Futures Contract",
+     "url": "https://www.binance.com/en/support/announcement/detail/3188e26f14a1464b91487abad452c04f"
+    },
+    {
+     "code": "8f74739047874206827f0fcbd1c3ae6b",
+     "releaseDate": 1669101669372,
+     "title": "Binance Will Delist Multiple American-Style Daily Options",
+     "url": "https://www.binance.com/en/support/announcement/detail/8f74739047874206827f0fcbd1c3ae6b"
+    },
+    {
+     "code": "b25c54dc95744d5db55e4437c55ce6b5",
+     "releaseDate": 1668765625978,
+     "title": "Binance Margin Will Delist GTO, TRIBE & More Margin Pairs on Cross Margin & Isolated Margin",
+     "url": "https://www.binance.com/en/support/announcement/detail/b25c54dc95744d5db55e4437c55ce6b5"
+    },
+    {
+     "code": "e0ff4c7020ca4203b49907505bc86809",
+     "releaseDate": 1668650316774,
+     "title": "Binance Will Delist SRM and RAY Margin Pairs and Binance Earn Products",
+     "url": "https://www.binance.com/en/support/announcement/detail/e0ff4c7020ca4203b49907505bc86809"
+    },
+    {
+     "code": "9a6676662bd5417c92267953f3819dd0",
+     "releaseDate": 1668409204880,
+     "title": "Binance Futures Will Delist RAYUSDT and SRMUSDT Perpetual Futures Contracts",
+     "url": "https://www.binance.com/en/support/announcement/detail/9a6676662bd5417c92267953f3819dd0"
+    },
+    {
+     "code": "3b4c7c08479b48d48189191e37a7adca",
+     "releaseDate": 1668332838510,
+     "title": "Binance Will Delist FTT Margin Pairs, USD\u24c8-M Futures Contracts and Binance Flexible Products",
+     "url": "https://www.binance.com/en/support/announcement/detail/3b4c7c08479b48d48189191e37a7adca"
+    },
+    {
+     "code": "e8be17e1e544418490e86723d84759f0",
+     "releaseDate": 1668013503492,
+     "title": "Updates on Funding Rate Settlement Frequency and Capped Funding Rate Multiplier of SOLUSDT, SOLBUSD and SOLUSD Perpetual Futures Contracts (2022-11-09)",
+     "url": "https://www.binance.com/en/support/announcement/detail/e8be17e1e544418490e86723d84759f0"
+    },
+    {
+     "code": "766a6e85266a42b7b56822ac4e2890b8",
+     "releaseDate": 1667351703733,
+     "title": "Binance Options Will Launch BTCUSDT Monthly Options",
+     "url": "https://www.binance.com/en/support/announcement/detail/766a6e85266a42b7b56822ac4e2890b8"
+    },
+    {
+     "code": "227969d0a422441f8c391dc67d08dfb1",
+     "releaseDate": 1666161303718,
+     "title": "Binance Options Will Launch BTCUSDT Weekly Options",
+     "url": "https://www.binance.com/en/support/announcement/detail/227969d0a422441f8c391dc67d08dfb1"
+    },
+    {
+     "code": "cd7aae08f6a84ad89ca6a2c4d52fa32e",
+     "releaseDate": 1665633628184,
+     "title": "Binance Will Delist DNT, NBS, BTG and TCT on 2022-10-24",
+     "url": "https://www.binance.com/en/support/announcement/detail/cd7aae08f6a84ad89ca6a2c4d52fa32e"
+    },
+    {
+     "code": "42d1e6c46e3346bda9e9dd9ef88798ee",
+     "releaseDate": 1665550847924,
+     "title": "Binance Options Will Launch ETHUSDT Daily Options",
+     "url": "https://www.binance.com/en/support/announcement/detail/42d1e6c46e3346bda9e9dd9ef88798ee"
+    },
+    {
+     "code": "e573c08d695b4efbb0b114400c6cf38b",
+     "releaseDate": 1663914603859,
+     "title": "Binance Adds GLM, NEBL & VIB on Cross Margin and Isolated Margin, Delisting DF from Isolated Margin",
+     "url": "https://www.binance.com/en/support/announcement/detail/e573c08d695b4efbb0b114400c6cf38b"
+    },
+    {
+     "code": "02b5d183f4944f18b3b0335f7b7348cc",
+     "releaseDate": 1663229120786,
+     "title": "Binance Margin Will Delist TCT on Isolated Margin",
+     "url": "https://www.binance.com/en/support/announcement/detail/02b5d183f4944f18b3b0335f7b7348cc"
+    },
+    {
+     "code": "ebe08acbf4384a6fa7439e1014d6c566",
+     "releaseDate": 1661397900450,
+     "title": "Delisting of USDT-Margined BLZ Perpetual Contract Postponed",
+     "url": "https://www.binance.com/en/support/announcement/detail/ebe08acbf4384a6fa7439e1014d6c566"
+    },
+    {
+     "code": "b312715afbff4d7493b77089967303b1",
+     "releaseDate": 1660730127229,
+     "title": "Binance Futures Will Delist USDT-Margined BLZ Perpetual Contract",
+     "url": "https://www.binance.com/en/support/announcement/detail/b312715afbff4d7493b77089967303b1"
+    },
+    {
+     "code": "90498d8e2fec42468ec3d659bdfbb78b",
+     "releaseDate": 1660013959306,
+     "title": "Binance Futures Will Delist USDT-Margined BTS Perpetual Contract",
+     "url": "https://www.binance.com/en/support/announcement/detail/90498d8e2fec42468ec3d659bdfbb78b"
+    },
+    {
+     "code": "d5f079935fda4abfb4a5636f01984ec2",
+     "releaseDate": 1659591197638,
+     "title": "Binance Will Delist EZ, QSP, BRD, NXS, NAV, MDA and SPARTA on 2022-08-11",
+     "url": "https://www.binance.com/en/support/announcement/detail/d5f079935fda4abfb4a5636f01984ec2"
+    },
+    {
+     "code": "2c90ba6178524b9e9e19640df1fa2606",
+     "releaseDate": 1657273103633,
+     "title": "Binance Staking to Delist EZ, TRU, VITE, ANC & MIR",
+     "url": "https://www.binance.com/en/support/announcement/detail/2c90ba6178524b9e9e19640df1fa2606"
+    },
+    {
+     "code": "d8f6cf77d58b4571a2c4c1ed77572256",
+     "releaseDate": 1656658181710,
+     "title": "Binance Will Delist GRS, NAS and GO on 2022-07-08",
+     "url": "https://www.binance.com/en/support/announcement/detail/d8f6cf77d58b4571a2c4c1ed77572256"
+    },
+    {
+     "code": "0cc7c656b0704373bb4088fc531f89e0",
+     "releaseDate": 1655953224692,
+     "title": "Binance Futures Will Delist CRV Coin-Margined Perpetual Contract",
+     "url": "https://www.binance.com/en/support/announcement/detail/0cc7c656b0704373bb4088fc531f89e0"
+    },
+    {
+     "code": "6ce355dedc5d438abde7b5dc99b3a56d",
+     "releaseDate": 1654855342935,
+     "title": "Binance Futures Will Delist USDT-Margined SC Perpetual Contract",
+     "url": "https://www.binance.com/en/support/announcement/detail/6ce355dedc5d438abde7b5dc99b3a56d"
+    },
+    {
+     "code": "af469aeeab074738bb4a276070a9d11b",
+     "releaseDate": 1654165095432,
+     "title": "Binance Futures Will Delist TLM and ICP USDT-Margined Contracts",
+     "url": "https://www.binance.com/en/support/announcement/detail/af469aeeab074738bb4a276070a9d11b"
+    },
+    {
+     "code": "185001cde1614f0e8987c4d39aca8639",
+     "releaseDate": 1653555502627,
+     "title": "Delisting of AKRO USDT-Margined Contract Postponed",
+     "url": "https://www.binance.com/en/support/announcement/detail/185001cde1614f0e8987c4d39aca8639"
+    },
+    {
+     "code": "a84543906ea44685a22a74f79e3c395c",
+     "releaseDate": 1653026404865,
+     "title": "Binance Adds DYDX, FTT, KAVA, VOXEL Cross Margin Pairs and TROY Isolated Margin Pair, Delisting YFI and YFII from Cross Margin",
+     "url": "https://www.binance.com/en/support/announcement/detail/a84543906ea44685a22a74f79e3c395c"
+    },
+    {
+     "code": "d1cb959677034c45b5149f1d998ae2b1",
+     "releaseDate": 1652871565804,
+     "title": "Binance Futures Will Delist AKRO and DODO USDT-Margined Contracts",
+     "url": "https://www.binance.com/en/support/announcement/detail/d1cb959677034c45b5149f1d998ae2b1"
+    },
+    {
+     "code": "992804123d7f48d5a3824474097d46ec",
+     "releaseDate": 1652681469569,
+     "title": "Binance Futures Will Cancel USD\u24c8-M FTTBUSD Delisting and Launch Multiple USD\u24c8-M  Perpetual Contracts",
+     "url": "https://www.binance.com/en/support/announcement/detail/992804123d7f48d5a3824474097d46ec"
+    },
+    {
+     "code": "70d41dea57454556b68d2a58c70c9cc5",
+     "releaseDate": 1652424609208,
+     "title": "Binance Margin to Delist ANC and MIR on Cross Margin and Isolated Margin",
+     "url": "https://www.binance.com/en/support/announcement/detail/70d41dea57454556b68d2a58c70c9cc5"
+    },
+    {
+     "code": "0bfb6cfd10aa4d26926260c0159ef58d",
+     "releaseDate": 1652408842500,
+     "title": "Binance Futures Will Delist USDT-Margined ANC Perpetual Contract",
+     "url": "https://www.binance.com/en/support/announcement/detail/0bfb6cfd10aa4d26926260c0159ef58d"
+    },
+    {
+     "code": "ef3ce76d5c2d45ee9b6dc3f281cde744",
+     "releaseDate": 1652367541271,
+     "title": "Binance Futures Will Delist LUNA USDT-Margined Contract",
+     "url": "https://www.binance.com/en/support/announcement/detail/ef3ce76d5c2d45ee9b6dc3f281cde744"
+    },
+    {
+     "code": "30b94fa12397417ebb75567d525c2ecd",
+     "releaseDate": 1652353160901,
+     "title": "Binance Margin to Delist LUNA on Cross Margin and Isolated Margin",
+     "url": "https://www.binance.com/en/support/announcement/detail/30b94fa12397417ebb75567d525c2ecd"
+    },
+    {
+     "code": "1b73e64616ee4e769c29e70c66728d1a",
+     "releaseDate": 1652331009976,
+     "title": "Binance Futures to Delist Coin-Margined LUNA Perpetual Contracts and Update the Leverage & Margin Tiers for USDT-Margined LUNA Perpetual Contracts",
+     "url": "https://www.binance.com/en/support/announcement/detail/1b73e64616ee4e769c29e70c66728d1a"
+    },
+    {
+     "code": "7305d3e50f0647838078ded2be975d48",
+     "releaseDate": 1652070302529,
+     "title": "Binance Futures Will Delist FTTBUSD USDT-Margined Contract",
+     "url": "https://www.binance.com/en/support/announcement/detail/7305d3e50f0647838078ded2be975d48"
+    },
+    {
+     "code": "c24b77f6b7f14f618676f416edfb07aa",
+     "releaseDate": 1649815802588,
+     "title": "Binance to Delist UST/BTC Trading Pair and Add BTC/UST Trading Pair",
+     "url": "https://www.binance.com/en/support/announcement/detail/c24b77f6b7f14f618676f416edfb07aa"
+    },
+    {
+     "code": "81f425fef8774e0a82451fa480b95085",
+     "releaseDate": 1649322306941,
+     "title": "Binance to Delist and Cease Redemption for XTZUP, XTZDOWN, LTCUP & LTCDOWN Leveraged Tokens (2022-04-07)",
+     "url": "https://www.binance.com/en/support/announcement/detail/81f425fef8774e0a82451fa480b95085"
+    },
+    {
+     "code": "baa11155dadb452f84c4fef6448315b7",
+     "releaseDate": 1649223613714,
+     "title": "Binance Adds KDA, MBL on Cross Margin and KDA, IMX on Isolated Margin, Delisting HEGIC/BUSD Isolated Margin Pair",
+     "url": "https://www.binance.com/en/support/announcement/detail/baa11155dadb452f84c4fef6448315b7"
+    },
+    {
+     "code": "da14a6dce7a64283b8d536ca1c97c026",
+     "releaseDate": 1649066280853,
+     "title": "Binance Will Delist HEGIC, RENBTC and SUSD on 2022-04-11",
+     "url": "https://www.binance.com/en/support/announcement/detail/da14a6dce7a64283b8d536ca1c97c026"
+    },
+    {
+     "code": "4baf8d70485c46e38637bd063c58c4d8",
+     "releaseDate": 1649049710096,
+     "title": "Binance Futures Will Delist 1000BTTC and YFII USDT-Margined Contracts",
+     "url": "https://www.binance.com/en/support/announcement/detail/4baf8d70485c46e38637bd063c58c4d8"
+    },
+    {
+     "code": "92eea3f48aa04210a454511151f3d362",
+     "releaseDate": 1646107170632,
+     "title": "Binance Will Delist BCD, CND, MTH, NCASH and YOYO on 2022-03-08",
+     "url": "https://www.binance.com/en/support/announcement/detail/92eea3f48aa04210a454511151f3d362"
+    },
+    {
+     "code": "4aee48a0aced4fe3a49c71d876cc1725",
+     "releaseDate": 1641460484877,
+     "title": "Updates on PPT & SWRV Delisting",
+     "url": "https://www.binance.com/en/support/announcement/detail/4aee48a0aced4fe3a49c71d876cc1725"
+    },
+    {
+     "code": "83b0ed10abd646328bf104d871d03d70",
+     "releaseDate": 1641452071140,
+     "title": "Binance to Delist and Cease Redemption for Multiple Leveraged Tokens (2022-01-06)",
+     "url": "https://www.binance.com/en/support/announcement/detail/83b0ed10abd646328bf104d871d03d70"
+    },
+    {
+     "code": "feb78d8d93f54540a5ade2a970da87b3",
+     "releaseDate": 1639994607938,
+     "title": "Binance Will Delist APPC, EVX & RDN on 2021-12-27",
+     "url": "https://www.binance.com/en/support/announcement/detail/feb78d8d93f54540a5ade2a970da87b3"
+    },
+    {
+     "code": "42310c7ed5364eab93e370ab1830162a",
+     "releaseDate": 1638770096655,
+     "title": "Binance P2P Will Delist DAI/AUD Trading Pair",
+     "url": "https://www.binance.com/en/support/announcement/detail/42310c7ed5364eab93e370ab1830162a"
+    },
+    {
+     "code": "5404f867ff9d4e3488b5184a8a30e2e8",
+     "releaseDate": 1635500707280,
+     "title": "Updates on SNGLS, VIA, RCN & WPR Delisting",
+     "url": "https://www.binance.com/en/support/announcement/detail/5404f867ff9d4e3488b5184a8a30e2e8"
+    },
+    {
+     "code": "2d4fd75ab76142eba89d8305766ea74e",
+     "releaseDate": 1635497801995,
+     "title": "Binance Will Delist DLT, GVT, SKY & POA on 2021-11-05",
+     "url": "https://www.binance.com/en/support/announcement/detail/2d4fd75ab76142eba89d8305766ea74e"
+    },
+    {
+     "code": "d1a73a4b0f624f52897b4c38fa9decb3",
+     "releaseDate": 1632990941056,
+     "title": "Binance Staking to Delist SRM",
+     "url": "https://www.binance.com/en/support/announcement/detail/d1a73a4b0f624f52897b4c38fa9decb3"
+    },
+    {
+     "code": "c9ba94238bd7430ab0a22ca2050924ef",
+     "releaseDate": 1632387870539,
+     "title": "Binance Will Delist PPT & SWRV on 2021-09-30",
+     "url": "https://www.binance.com/en/support/announcement/detail/c9ba94238bd7430ab0a22ca2050924ef"
+    },
+    {
+     "code": "78677302e3af4d819fd7c08205508d98",
+     "releaseDate": 1631868637191,
+     "title": "Binance Will Delist COVER on 2021-09-24",
+     "url": "https://www.binance.com/en/support/announcement/detail/78677302e3af4d819fd7c08205508d98"
+    },
+    {
+     "code": "2f8bdfe2557e493495bed51b610f42c0",
+     "releaseDate": 1631178106153,
+     "title": "Binance P2P Will Delist 5 DAI Trading Pairs",
+     "url": "https://www.binance.com/en/support/announcement/detail/2f8bdfe2557e493495bed51b610f42c0"
+    },
+    {
+     "code": "3b0938634d1a454d926f0b84b0a20578",
+     "releaseDate": 1629363914801,
+     "title": "Binance Will Delist SNGLS & VIA on 2021-08-26",
+     "url": "https://www.binance.com/en/support/announcement/detail/3b0938634d1a454d926f0b84b0a20578"
+    },
+    {
+     "code": "6315a8f9cc884ab8b39aab97aa0a3479",
+     "releaseDate": 1629352908248,
+     "title": "Binance P2P Will Delist 14 DAI Trading Pairs",
+     "url": "https://www.binance.com/en/support/announcement/detail/6315a8f9cc884ab8b39aab97aa0a3479"
+    },
+    {
+     "code": "0bb891ff23a1463b95851f76a1ad329f",
+     "releaseDate": 1627284057011,
+     "title": "Binance Margin to Delist AUD, EUR & GBP Pairs",
+     "url": "https://www.binance.com/en/support/announcement/detail/0bb891ff23a1463b95851f76a1ad329f"
+    },
+    {
+     "code": "ef86c91c21484923a9fe68ceb44f6620",
+     "releaseDate": 1626257460804,
+     "title": "Binance Margin to Support BEAM, EPS & FORTH Assets, and Delist BCHA",
+     "url": "https://www.binance.com/en/support/announcement/detail/ef86c91c21484923a9fe68ceb44f6620"
+    },
+    {
+     "code": "4d6c589a033e4ee099d55d5141279578",
+     "releaseDate": 1625837452494,
+     "title": "Binance Will Delist OST, RCN & WPR on 2021-07-16",
+     "url": "https://www.binance.com/en/support/announcement/detail/4d6c589a033e4ee099d55d5141279578"
+    },
+    {
+     "code": "a6e9bfe3106f4390abf96622139db6d8",
+     "releaseDate": 1625194861367,
+     "title": "Notice on Converting Delisted Tokens Balances to BUSD (2021-07-02)",
+     "url": "https://www.binance.com/en/support/announcement/detail/a6e9bfe3106f4390abf96622139db6d8"
+    },
+    {
+     "code": "3142e87910ae4f1f9b88fe331e27c9ea",
+     "releaseDate": 1623404219235,
+     "title": "Binance Staking to Delist ARK, GXS, LOOM & NAV",
+     "url": "https://www.binance.com/en/support/announcement/detail/3142e87910ae4f1f9b88fe331e27c9ea"
+    },
+    {
+     "code": "f45dde7da58b473aa885349946bed269",
+     "releaseDate": 1618299587094,
+     "title": "Notice to API Users on Delisting WAPI Endpoints",
+     "url": "https://www.binance.com/en/support/announcement/detail/f45dde7da58b473aa885349946bed269"
+    },
+    {
+     "code": "c04fdd0f33bb462bb53843285a55371f",
+     "releaseDate": 1617177548863,
+     "title": "Binance Will Delist All ZAR Trading Pairs on 2021-04-02",
+     "url": "https://www.binance.com/en/support/announcement/detail/c04fdd0f33bb462bb53843285a55371f"
+    },
+    {
+     "code": "b2871bc40ea84e639c2d63b048403b69",
+     "releaseDate": 1612507411638,
+     "title": "Binance Futures Will Delist DOTECO USDT-Margined Contract",
+     "url": "https://www.binance.com/en/support/announcement/detail/b2871bc40ea84e639c2d63b048403b69"
+    },
+    {
+     "code": "2b73a2f43b834897aadc60f049fdb6ab",
+     "releaseDate": 1612353727495,
+     "title": "Binance Will Delist BCPT, CMT, TNB & VIBE on 2021-02-10",
+     "url": "https://www.binance.com/en/support/announcement/detail/2b73a2f43b834897aadc60f049fdb6ab"
+    },
+    {
+     "code": "0f897e72fd4b4e38bfec5cc5e1d3ae0b",
+     "releaseDate": 1609419652776,
+     "title": "Explore and Share Your #Binance2020 - $20,000 in BNB To Be Won!",
+     "url": "https://www.binance.com/en/support/announcement/detail/0f897e72fd4b4e38bfec5cc5e1d3ae0b"
+    }
+   ],
+   "ok": true,
+   "raw_digest": "84971bbdf13fb3fa7c2207fa1f6369f0d7e5cdabb129674786e1f2e5defd6608",
+   "schema": "binance-cms-announcement-list/v1"
+  }
+ ],
+ "format": "zb-delist-notice/1",
+ "frozen": [
+  "BTCUSDT",
+  "ETHUSDT",
+  "ZECUSDT",
+  "SOLUSDT",
+  "XRPUSDT",
+  "NEARUSDT",
+  "HYPEUSDT",
+  "DOGEUSDT",
+  "UNIUSDT",
+  "SUIUSDT"
+ ],
+ "notices": [],
+ "parser_sha": "c2849676b35fe1c7dcf440c3f75bee2c869ac94459be0ab9f8ca26284b430447",
+ "register_digest": "16db18b40b45c74f2ced331c5caf6265464589119756faaede6707354acb44ed",
+ "schema": "binance-cms-announcement-list/v1"
+}
