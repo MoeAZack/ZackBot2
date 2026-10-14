@@ -1,5 +1,5 @@
 {
- "artifact_digest": "1554d2f33384426d68b08d150f667ba623a4d5de55f826c2ed0092c96cf0fcd3",
+ "artifact_digest": "4cdf7d61c1e8c38397e04a685f94540bfaf612e8c176385f30f1a2bbd1a6cf68",
  "body_scan_failures": 0,
  "body_scans": [
   {
@@ -2419,39 +2419,6 @@
    "sha256": "d05ab5eef5e9ae9a6632bc047e21b31086baa2c57f8a3b75b88ceb079ab6014a",
    "title": "Binance Will Close UAH Deposits and Withdrawals via Fiat Trade UAH and Delist USDT/UAH Spot Trading Pair",
    "url": "https://www.binance.com/bapi/composite/v1/public/cms/article/detail/query?articleCode=7d17add1ffe6416391f65a001734e1c7"
-  },
-  {
-   "base_hits": [],
-   "code": "55310e70fc4b4d7c9fc4aa133700a958",
-   "fetch_ts": 1792007347662,
-   "pair_hits": [],
-   "perpetual": true,
-   "releaseDate": 1790668801341,
-   "sha256": "ec38e26db61dc3c1f90194b1a18fb9f67419f632503361eb3b6cd599898279a0",
-   "title": "Binance Margin And Loans Token Delist on 2026-10-02",
-   "url": "https://www.binance.com/bapi/composite/v1/public/cms/article/detail/query?articleCode=55310e70fc4b4d7c9fc4aa133700a958"
-  },
-  {
-   "base_hits": [],
-   "code": "2f1a743334f044abbd82e34093c7b771",
-   "fetch_ts": 1792007355662,
-   "pair_hits": [],
-   "perpetual": true,
-   "releaseDate": 1790822713435,
-   "sha256": "d60d0e1bd41ce8c8bf5dfb4356ef552e8888a63ae4b1ffd72dfb806a35695196",
-   "title": "Binance Futures Will Delist Multiple USD\u24c8-M Perpetual Contracts (2026-10-05)",
-   "url": "https://www.binance.com/bapi/composite/v1/public/cms/article/detail/query?articleCode=2f1a743334f044abbd82e34093c7b771"
-  },
-  {
-   "base_hits": [],
-   "code": "290a660c0b2e4e888c582cd29ecf9ecc",
-   "fetch_ts": 1792007363663,
-   "pair_hits": [],
-   "perpetual": true,
-   "releaseDate": 1791957608049,
-   "sha256": "a64669953bafe2608ff1114df1dcdd575f616263eab832303b3349488c60c217",
-   "title": "Binance Will Delist EPIC, QUICK on 2026-10-28",
-   "url": "https://www.binance.com/bapi/composite/v1/public/cms/article/detail/query?articleCode=290a660c0b2e4e888c582cd29ecf9ecc"
   }
  ],
  "catalog_probe": {
@@ -2539,7 +2506,7 @@
  ],
  "collected_utc": "2026-10-14T18:53:32Z",
  "collector": "tools/research/delist_notice_collect.py",
- "digest": "87eddf85759a002a58feebe1b97abbfaee84597f3e8a054a0479a20b50f1c7bc",
+ "digest": "2453607ffb3901135d832774fd38ee786cc1f98ed6084d99cc57041b3855f48d",
  "endpoints": {
   "catalogs": "https://www.binance.com/bapi/composite/v1/public/cms/article/list/query?type=1&pageNo=1&pageSize=1",
   "detail": "https://www.binance.com/bapi/composite/v1/public/cms/article/detail/query?articleCode={code}",

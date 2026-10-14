@@ -279,7 +279,7 @@ def collect(root: str, tier: str, out_dir: str, *, cl: Client | None = None) -> 
         for a in aa:
             arts.setdefault(a['code'], a)
     words = list(symbols)                              # pair tokens: what the frozen inclusion rule matches on
-    keep = sorted((a for a in arts.values() if a['releaseDate'] >= WINDOW_FROM_MS and
+    keep = sorted((a for a in arts.values() if WINDOW_FROM_MS <= a['releaseDate'] < WINDOW_TO_MS and
                    ('delist' in NT.norm(a['title']) or tokens(a['title'], words))),
                   key=lambda a: (-a['releaseDate'], a['code']))
     below = [a for a in arts.values() if a['releaseDate'] < WINDOW_FROM_MS]

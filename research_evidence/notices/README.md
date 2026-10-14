@@ -9,9 +9,10 @@ REX-03, under Codex ruling #81 6172019060 §3. A CORE-10 `range_vwap_rev` run pa
   failures.
   - An earlier attempt the same day was cut off by a TLS reset.
   - Its re-run then got HTTP 429. The collector stopped without bypassing it.
-- **Artifact digest.** `1554d2f33384426d68b08d150f667ba623a4d5de55f826c2ed0092c96cf0fcd3`. This is the value to pass as
+- **Artifact digest.** `4cdf7d61c1e8c38397e04a685f94540bfaf612e8c176385f30f1a2bbd1a6cf68`. This is the value to pass as
   `--notice-sha256`.
-- **Coverage.** All 7 announcement catalogs were crawled: 190 list pages and 208 body scans. Every catalog is either
+- **Coverage.** All 7 announcement catalogs were crawled: 190 list pages and 205 in-window body scans (three
+  after-window scans were excluded from the artifact and verdict inputs). Every catalog is either
   complete (Delisting, Maintenance) or crawled past 2021-01-04.
 - **Result.** All 10 CORE-10 symbols are `proven_none`. No USDⓈ-M perpetual delist notice was found inside the window.
 - **Open (Codex).** Some notices have generic titles, such as "Delist Multiple USDⓈ-M Perpetual Contracts". The frozen

@@ -1,28 +1,10 @@
 {
  "covers_from_ms": 1609718400000,
- "digest": "1554d2f33384426d68b08d150f667ba623a4d5de55f826c2ed0092c96cf0fcd3",
+ "digest": "4cdf7d61c1e8c38397e04a685f94540bfaf612e8c176385f30f1a2bbd1a6cf68",
  "fetches": [
   {
    "fetch_ts": 1792004012875,
    "items": [
-    {
-     "code": "290a660c0b2e4e888c582cd29ecf9ecc",
-     "releaseDate": 1791957608049,
-     "title": "Binance Will Delist EPIC, QUICK on 2026-10-28",
-     "url": "https://www.binance.com/en/support/announcement/detail/290a660c0b2e4e888c582cd29ecf9ecc"
-    },
-    {
-     "code": "2f1a743334f044abbd82e34093c7b771",
-     "releaseDate": 1790822713435,
-     "title": "Binance Futures Will Delist Multiple USD\u24c8-M Perpetual Contracts (2026-10-05)",
-     "url": "https://www.binance.com/en/support/announcement/detail/2f1a743334f044abbd82e34093c7b771"
-    },
-    {
-     "code": "55310e70fc4b4d7c9fc4aa133700a958",
-     "releaseDate": 1790668801341,
-     "title": "Binance Margin And Loans Token Delist on 2026-10-02",
-     "url": "https://www.binance.com/en/support/announcement/detail/55310e70fc4b4d7c9fc4aa133700a958"
-    },
     {
      "code": "7d17add1ffe6416391f65a001734e1c7",
      "releaseDate": 1790146800000,

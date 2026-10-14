@@ -15,9 +15,9 @@ import range_vwap_rev_artifact as NA                                            
 # Collected 2026-10-14 (18:54-19:50 UTC, 409 sequential requests at 1 / 8 s, no 429) by delist_notice_collect.py.
 STEM = os.path.join(ROOT, 'research_evidence', 'notices', 'zb-delist-notice-core-10-20261014')
 ARTIFACT, COVERAGE = STEM + '.json', STEM + '.coverage.json'
-ARTIFACT_DIGEST = '1554d2f33384426d68b08d150f667ba623a4d5de55f826c2ed0092c96cf0fcd3'   # what --notice-sha256 pins
-ARTIFACT_FILE_SHA = 'd79bfddca7d2e502cc07439f8662f618a5e58450afd2d2eca4e0e1708e3d5813'
-COVERAGE_FILE_SHA = 'c3eb4ccc510bb911336c9395dfa88743ba34002fd44824c140b8ed1a8a32554c'
+ARTIFACT_DIGEST = '4cdf7d61c1e8c38397e04a685f94540bfaf612e8c176385f30f1a2bbd1a6cf68'   # what --notice-sha256 pins
+ARTIFACT_FILE_SHA = '234458b8e8e4e68fe4b77d0437244c38d1fc3dc613e7904353e34f1e7ea33ce9'
+COVERAGE_FILE_SHA = '4b00410d856f3c68ae6c6788792df871ff3562f1dd32cd02be22645b8b5aa523'
 PENDING = pytest.mark.skipif(STEM is None, reason='CORE-10 notice artifact not collected')
 CORE10 = ['BTCUSDT', 'ETHUSDT', 'ZECUSDT', 'SOLUSDT', 'XRPUSDT', 'NEARUSDT', 'HYPEUSDT', 'DOGEUSDT', 'UNIUSDT',
           'SUIUSDT']
@@ -85,6 +85,16 @@ def test_coverage_sidecar_binds_the_artifact(art, cov):
         assert p['url'].startswith(DC.API) and NA.HEX64.match(p['sha256'])
     for s in c['body_scans']:
         assert s['url'].startswith(DC.API) and NA.HEX64.match(s['sha256'])
+
+
+@PENDING
+def test_artifact_and_scans_exclude_after_window_records(art, cov):
+    """The declared end-exclusive development window is also the hard inclusion boundary."""
+    items = [item for fetch in art[1]['fetches'] for item in fetch['items']]
+    assert items and all(item['releaseDate'] < DC.WINDOW_TO_MS for item in items)
+    assert sum(item['releaseDate'] < DC.WINDOW_FROM_MS for item in items) == 1  # coverage-start witness only
+    scans = cov[1]['body_scans']
+    assert scans and all(DC.WINDOW_FROM_MS <= scan['releaseDate'] < DC.WINDOW_TO_MS for scan in scans)
 
 
 @PENDING
