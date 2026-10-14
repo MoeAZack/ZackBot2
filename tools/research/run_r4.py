@@ -6,6 +6,13 @@ gate is code, not a comment.
   python tools/research/run_r4.py register [--candidate ...] --author claude-code --cairo-date YYYY-MM-DD
   python tools/research/run_r4.py m3 --store <repo root holding data_long/4h> --cost base|2x|both
          --out-dir research_evidence/runs/r4 --author claude-code --cairo-date YYYY-MM-DD
+  python tools/research/run_r4.py rex --window START/END --tier CORE-10 --store <binance_um store>
+         --notice <zb-delist-notice/1 artifact> --notice-sha256 HEX --author claude-code --cairo-date YYYY-MM-DD
+         [--out-dir ...] [--resume]
+         (REX-02 range_vwap_rev.v1: explicit development ACCESS window inside the frozen train + WF0..WF4 window
+         2021-01-04T00:00:00Z/2026-09-28T00:00:00Z (calibration / holdout refused); attested manifest -> ledger-
+         recorded development Access (range_vwap_rev ledger) -> bounded tape -> fail-closed preflight. No --store ->
+         exit 3 after the window check; INCOMPLETE -> exit 4.)
   python tools/research/run_r4.py pit [--candidate ...] --store <binance_um store> --author claude-code
          --cairo-date YYYY-MM-DD [--out-dir research_evidence/runs/r4b] [--resume]
          (STRAT-01 R4b-PIT, pit_run.py: CORE-10 then CORE-20 development splits only; holdout never opened. Codex
@@ -755,6 +762,37 @@ def run_pit(repo: str, *, store: str, out_dir: str, author: str, cairo_date: str
     return PR.run_tiers(env, out_dir, resume=resume, clock=clock)
 
 
+def run_rex(repo: str, *, window, tier: str, out_dir: str, loader=None, resume: bool = False,
+            clock=PG.cairo_now) -> str:
+    """REX-02 entry point of `range_vwap_rev.v1` (pit_run.run_rex). The window is checked FIRST against the frozen
+    development window of the committed split plan (no default; nothing is read on a refusal), then
+    `loader(repo, tier, window)` returns the run env (pit_run.rex_load: attested manifest -> development Access ->
+    bounded tape, its manifest, the pinned zb-delist-notice/1 artifact, frozen symbols, commit); the runner's input
+    preflight refuses any missing series / column / rule / artifact. `loader=None` (no --store) refuses (exit 3)."""
+    import pit_run as PR                                                                    # noqa: E402
+    plan = PR.rex_plan(repo)
+    PR.rex_window(window, plan)
+    if loader is None:
+        raise GateError('rex: no attested REX store bound (pass --store, --notice, --notice-sha256, --author and '
+                        '--cairo-date)')
+    env = dict(loader(repo, tier, window), plan=plan, tier=tier)
+    return PR.run_rex(env, out_dir, window=window, resume=resume, clock=clock)
+
+
+def rex_store_loader(*, store: str, notice: str, notice_sha256: str, author: str, cairo_date: str):
+    """The real REX loader (pit_run.rex_load over pit_run.rex_sources: committed manifest / universe / rules / ledger).
+    A dirty git tree refuses FIRST, before the committed sources are read or any Access is opened; rex_load re-proves
+    it and records the exact clean commit SHA (Codex 6172596212 c)."""
+    import pit_run as PR                                                                    # noqa: E402
+
+    def load(repo, tier, window):
+        PR.rex_clean_commit(repo)
+        return PR.rex_load(PR.rex_sources(repo), repo=repo, store=store, tier=tier, window=window,
+                           notice_path=notice, notice_sha256=notice_sha256, author=author, cairo_date=cairo_date,
+                           plan=PR.rex_plan(repo))
+    return load
+
+
 def pit_folds(repo: str, candidate: str | None = None) -> int | None:
     """The progress fold bound of a routed candidate: STRAT-01 None (its default prereg, unchanged); any other profile
     its OWN committed prereg's walk-forward fold count (never the long one)."""
@@ -805,6 +843,16 @@ def main(argv=None) -> int:
     p.add_argument('--out-dir', default=None, help='default research_evidence/runs/r4b (STRAT-01), r4b-short '
                                                      '(STRAT-02)')
     p.add_argument('--resume', action='store_true', help='re-run an interrupted tier under the same identity')
+    x = sub.add_parser('rex', help='REX-02 range_vwap_rev.v1 development run (explicit window, no default)')
+    x.add_argument('--window', required=True, help='START/END UTC on the 4h grid, before the sealed cutoff')
+    x.add_argument('--tier', required=True, choices=['CORE-10', 'CORE-20'])
+    x.add_argument('--out-dir', default=os.path.join(M.REPO, 'research_evidence', 'runs', 'rex'))
+    x.add_argument('--resume', action='store_true')
+    x.add_argument('--store', default=None, help='the binance_um archive store of the attested manifest')
+    x.add_argument('--notice', default=None, help='the committed zb-delist-notice/1 artifact (JSON)')
+    x.add_argument('--notice-sha256', default=None, help='the artifact digest pinned by this run command')
+    x.add_argument('--author', default=None)
+    x.add_argument('--cairo-date', default=None)
     a = ap.parse_args(argv)
     try:
         if a.cmd == 'check':
@@ -827,6 +875,21 @@ def main(argv=None) -> int:
             for path in run_m3(M.REPO, store=a.store, rows=rows, out_dir=a.out_dir, author=a.author,
                                cairo_date=a.cairo_date):
                 print(path)
+            return 0
+        if a.cmd == 'rex':
+            loader = None
+            if a.store is not None:
+                need = [n for n, v in (('--notice', a.notice), ('--notice-sha256', a.notice_sha256),
+                                       ('--author', a.author), ('--cairo-date', a.cairo_date)) if not v]
+                if need:
+                    raise ValueError(f'rex --store also needs {need}')
+                loader = rex_store_loader(store=a.store, notice=a.notice, notice_sha256=a.notice_sha256,
+                                          author=a.author, cairo_date=a.cairo_date)
+            final = run_rex(M.REPO, window=a.window, tier=a.tier, out_dir=a.out_dir, loader=loader, resume=a.resume)
+            print(final)
+            if pit_incomplete([final]):         # missing-data policy: sealed for audit, never evidence
+                print('INCOMPLETE (no evidence; development only, never promotable): ' + final, file=sys.stderr)
+                return 4
             return 0
         out = a.out_dir or os.path.join(M.REPO, 'research_evidence', 'runs',
                                         'r4b' if a.candidate == LONG.candidate_id else 'r4b-short')
