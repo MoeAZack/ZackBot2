@@ -108,6 +108,7 @@ input:focus,select:focus{outline:none;border-color:var(--acc);box-shadow:0 0 0 3
 .btns{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
 .seg{display:inline-flex;background:rgba(5,3,20,.45);border:1px solid var(--line2);border-radius:12px;padding:3px;gap:2px}
 #runP{flex-wrap:wrap;max-width:100%}  /* AUD-06a: the unverified tags on the profile buttons must wrap, never scroll the page sideways (tablet width) */
+#addkey{max-width:min(240px,100%);min-width:0}select[id^="sl"][id$="_key"]{max-width:100%;min-width:0}  /* SPRINT: the long [EXPERIMENTAL testnet-only] strategy names must never widen the page (tablet / mobile) */
 .seg button{border:0;background:transparent;padding:5px 11px;border-radius:9px;color:var(--text2);box-shadow:none}.seg button:hover{background:var(--panel2)}.seg button.on{background:var(--grad);color:#fff;box-shadow:0 2px 12px rgba(124,58,237,.45)}
 /* ---------- tables */
 .tw{overflow:auto;max-height:540px;border-radius:12px}
