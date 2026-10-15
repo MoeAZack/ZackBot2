@@ -92,14 +92,24 @@ def plan():
     return PR.rex_plan(ROOT)
 
 
+CLEAN = 'c' * 40
+
+
+def fake_git(dirty=''):
+    def git(repo, *args):
+        return dirty if args[0] == 'status' else CLEAN + '\n'
+    return git
+
+
 @pytest.fixture
-def fx(tmp_path):
+def fx(tmp_path, monkeypatch):
+    monkeypatch.setattr(PR, '_git', fake_git())      # tests never depend on the worktree's own git state
     store = str(tmp_path / 'store')
     return {'store': store, 'man': build_store(store)}
 
 
 def report(fx, plan, **kw):
-    a = dict(symbols=list(SYMS), window=WINDOW, plan=plan, tier='CORE-10')
+    a = dict(symbols=list(SYMS), window=WINDOW, plan=plan, tier='CORE-10', repo=ROOT)
     a.update(kw)
     return GI.build(fx['man'], fx['store'], **a)
 
@@ -183,7 +193,7 @@ def test_holdout_and_calibration_are_refused_before_any_read(fx, plan, spec):
 
 def test_inventory_is_deterministic(fx, plan):
     a, b = report(fx, plan), report(fx, plan)
-    assert GI.canon(a) == GI.canon(b) and a['digest'] == BF.digest(a)
+    assert GI.canon(a) == GI.canon(b) and a[GI.SIG] == GI.sign(a)[GI.SIG]
 
 
 # ------------------------------------------------------------------ archive fill
@@ -199,8 +209,8 @@ def day_zip(series, sym, iv, day, step, drop=()):
     return url, raw, f'{hashlib.sha256(raw).hexdigest()}  {name}.zip'.encode()
 
 
-def fake_archive(files, overrides=None):
-    pages = {}
+def fake_archive(files, overrides=None, finals=None):
+    pages, finals = {}, finals or {}
     for url, raw, ck in files:
         pages[url], pages[url + '.CHECKSUM'] = (200, raw), (200, ck)
     pages.update(overrides or {})
@@ -208,7 +218,8 @@ def fake_archive(files, overrides=None):
 
     def fetch(url):
         calls.append(url)
-        return pages.get(url, (404, b''))
+        st, body = pages.get(url, (404, b''))
+        return st, body, finals.get(url, url)
     fetch.calls = calls
     return fetch
 
@@ -247,7 +258,7 @@ def test_plan_urls_monthly_vs_daily(fx, plan):
     assert all(r['checksum_url'] == r['url'] + '.CHECKSUM' for r in BF.plan(rep))
     # a month the store does not hold gets its monthly zip (the store's own monthly file is the one with the hole)
     rep2 = dict(rep, holes=[dict(h, store_files=[]) if h['series'] == 'markPriceKlines' else h for h in rep['holes']])
-    rep2['digest'] = BF.digest(rep2)
+    rep2 = GI.sign(rep2)
     assert f'{base}/monthly/markPriceKlines/BBBUSDT/1h/BBBUSDT-1h-2025-01.zip' in [r['url'] for r in BF.plan(rep2)]
     doc = BF.plan_doc(rep)
     assert doc['format'] == BF.PLAN_FORMAT and doc['fetches'] == 8
@@ -275,7 +286,7 @@ def test_fill_extracts_only_hole_rows_with_digests_and_paces(fx, plan):
     assert sum(f['rows'] for f in doc['files']) == 5               # the other 18 + 23 rows of those days are not kept
     assert doc['fetched'] == 8 and len(c.slept) == 7 and all(s >= 1.0 for s in c.slept)
     with pytest.raises(BF.FillError):
-        BF.Pacer(lambda u: (200, b''), min_gap=0.5)
+        BF.Pacer(lambda u: (200, b'', u), min_gap=0.5)
 
 
 def test_checksum_mismatch_is_rejected(fx, plan):
@@ -328,9 +339,95 @@ def test_fill_is_deterministic(fx, plan):
 
 def test_edited_or_out_of_window_report_is_refused(fx, plan):
     rep = report(fx, plan)
-    with pytest.raises(BF.FillError, match='digest'):
+    with pytest.raises(BF.FillError, match='sha256'):
         BF.plan(dict(rep, holes=rep['holes'][:1]))
     bad = dict(rep, holes=[dict(rep['holes'][0], split_name='holdout')])
-    bad['digest'] = BF.digest(bad)
+    bad = GI.sign(bad)
     with pytest.raises(BF.FillError, match='holdout'):
         BF.plan(bad)
+
+
+# ------------------------------------------------------------------ Codex correction on #88 (9b6eb03)
+def test_report_end_after_the_sealed_cutoff_is_refused_before_planning(fx, plan):
+    rep = report(fx, plan)
+    late = GI.sign(dict(rep, window={'start': rep['window']['start'], 'end': '2026-10-05T00:00:00Z'}))
+    with pytest.raises(BF.FillError, match='sealed cutoff'):
+        BF.plan(late)
+    hole = GI.sign(dict(rep, window={'start': rep['window']['start'], 'end': '2026-12-28T00:00:00Z'},
+                        holes=[dict(rep['holes'][0], start_ms=U('2026-10-20T00:00:00Z'),
+                                    end_ms=U('2026-10-20T04:00:00Z'))]))
+    with pytest.raises(BF.FillError):
+        BF.plan_doc(hole)
+    with pytest.raises(BF.FillError):
+        run_fill(hole, lambda u: pytest.fail('fetched'))
+    assert BF.SEALED_END == PR.REX_DEV_WINDOW[1]
+
+
+@pytest.mark.parametrize('final', [
+    'http://data.binance.vision/data/futures/um/daily/klines/AAAUSDT/4h/AAAUSDT-4h-2024-11-20.zip',      # http
+    'https://evil.example.com/data/futures/um/daily/klines/AAAUSDT/4h/AAAUSDT-4h-2024-11-20.zip',        # other host
+    'https://data.binance.vision.evil.com/data/futures/um/daily/klines/AAAUSDT/4h/x.zip',                # lookalike
+    'https://data-binance.vision/data/futures/um/daily/klines/AAAUSDT/4h/x.zip',                         # lookalike
+    'https://data.binance.vision@evil.com/data/futures/um/daily/klines/AAAUSDT/4h/x.zip',                # userinfo
+    'https://data.binance.vision:8443/data/futures/um/daily/klines/AAAUSDT/4h/x.zip'])                   # port
+def test_redirect_whose_final_url_is_off_archive_stops_the_run(fx, plan, final):
+    rep = report(fx, plan)
+    first = BF.plan(rep)[0]
+    fetch = fake_archive(all_days(rep), finals={first['checksum_url']: final})
+    doc, _ = run_fill(rep, fetch)
+    assert doc['stopped']['reason'] == 'offsite_redirect' and doc['stopped']['url'] == final
+    assert fetch.calls == [first['checksum_url']] and doc['rows'] == [] and doc['genuine_gaps'] == []
+    assert all(h['status'] == 'unresolved' for h in doc['holes'])
+
+
+def test_real_fetcher_redirect_guard_refuses_before_following():
+    import urllib.request
+    g = BF._redirect_handler()
+    req = urllib.request.Request(BF.url_for('daily', 'klines', 'AAAUSDT', '4h', '2024-11-20'))
+    for bad in ('http://data.binance.vision/data/futures/um/x.zip', 'https://evil.com/data/futures/um/x.zip',
+                'https://data.binance.vision.evil.com/data/futures/um/x.zip'):
+        with pytest.raises(BF.OffsiteRedirect):
+            g.redirect_request(req, None, 302, 'Found', {}, bad)
+    ok = 'https://data.binance.vision/data/futures/um/daily/klines/AAAUSDT/4h/AAAUSDT-4h-2024-11-21.zip'
+    assert g.redirect_request(req, None, 302, 'Found', {}, ok).full_url == ok
+    with pytest.raises(BF.FillError):
+        BF.http_fetcher('https://evil.com/data/futures/um/x.zip')        # refused before any socket is opened
+
+
+def test_inventory_opens_no_ledger_and_pins_provenance(fx, plan, monkeypatch, tmp_path):
+    import ledger as L
+
+    def boom(*a, **k):
+        raise AssertionError('a PIT data_access / ledger record was attempted')
+    monkeypatch.setattr(L, 'append', boom)
+    monkeypatch.setattr(P.Access, '__init__', boom)
+    monkeypatch.setattr(P.Access, 'open_development', boom)
+    rep = report(fx, plan)
+    assert rep['purpose'] == 'timestamp-only gap inventory'
+    assert rep['provenance'] == {'commit': CLEAN, 'tree': 'clean'} and rep['manifest_digest'] == fx['man']['digest']
+    assert rep['window'] == {'start': '2024-11-04T00:00:00Z', 'end': '2025-01-27T00:00:00Z'}
+    by_path = {f['path']: f['sha256'] for f in fx['man']['files']}
+    assert rep['files_read'] and all(by_path[r['path']] == r['sha256'] for r in rep['files_read'])
+    for r in rep['files_read']:
+        with open(os.path.join(fx['store'], *r['path'].split('/')), 'rb') as f:
+            assert hashlib.sha256(f.read()).hexdigest() == r['sha256']
+    want = sorted(p for p in by_path
+                  if '/fundingRate/' in p and p.endswith(('2024-11.zip', '2024-12.zip', '2025-01.zip')))
+    assert want == sorted(r['path'] for r in rep['files_read'] if '/fundingRate/' in r['path'])
+    assert not any('ledger' in n for n in os.listdir(tmp_path))
+
+
+def test_inventory_refuses_a_dirty_tree_before_any_read(fx, plan, monkeypatch):
+    monkeypatch.setattr(PR, '_git', fake_git(' M tools/x.py\n'))
+    with pytest.raises(PR.PitRunError, match='dirty'):
+        report(fx, plan, reader=lambda *a: pytest.fail('store opened'))
+
+
+def test_report_is_self_digested_and_tamper_evident(fx, plan):
+    rep = report(fx, plan)
+    body = {k: v for k, v in rep.items() if k != 'sha256'}
+    assert rep['sha256'] == hashlib.sha256(GI.canon(body)).hexdigest()
+    assert GI.verify(rep) is rep
+    for edit in ({'purpose': 'x'}, {'files_read': []}, {'provenance': {'commit': 'd' * 40, 'tree': 'clean'}}):
+        with pytest.raises(GI.InventoryError, match='sha256'):
+            GI.verify(dict(rep, **edit))

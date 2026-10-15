@@ -46,6 +46,8 @@ import range_vwap_rev as RV                                                     
 import splits as S                                                                          # noqa: E402
 
 FORMAT = 'zb-rex-gap-inventory/1'
+PURPOSE = 'timestamp-only gap inventory'
+SIG = 'sha256'                                       # the self-digest field: sha256 of the canonical JSON without it
 HOUR, TF = RV.HOUR, RV.TF
 KLINES = ('klines', '4h')
 MARKS = ('markPriceKlines', '1h')
@@ -59,6 +61,21 @@ class InventoryError(ValueError):
 
 def canon(obj) -> bytes:
     return json.dumps(obj, sort_keys=True, separators=(',', ':'), ensure_ascii=True, allow_nan=False).encode('ascii')
+
+
+def sign(doc: dict) -> dict:
+    """Self-digest ("signed" report): `sha256` = SHA-256 of the canonical JSON of every other field."""
+    doc = {k: v for k, v in doc.items() if k != SIG}
+    doc[SIG] = hashlib.sha256(canon(doc)).hexdigest()
+    return doc
+
+
+def verify(doc: dict) -> dict:
+    if not isinstance(doc, dict) or doc.get('format') != FORMAT:
+        raise InventoryError(f'not a {FORMAT} report')
+    if doc.get(SIG) != sign(doc)[SIG]:
+        raise InventoryError('inventory report sha256 does not match its canonical content (edited?)')
+    return doc
 
 
 # ------------------------------------------------------------------ the only data reader: first CSV field
@@ -95,7 +112,7 @@ def proven_full(f: dict, iv: int) -> bool:
     return bool(f['rows']) and f['rows'] == (f['last_open_ms'] - f['first_open_ms']) // iv + 1
 
 
-def index(manifest: dict, store: str, symbols, lo: int, hi: int, *, reader=file_times) -> dict:
+def index(manifest: dict, store: str, symbols, lo: int, hi: int, *, reader=file_times, read_log=None) -> dict:
     """{(series, symbol, interval): {'times': sorted window times, 'first': first archived open, 'last': ..., 'paths':
     [(path, month_start, month_end)]}} for the REX series of the tier symbols. Only times are produced."""
     M.validate(manifest)
@@ -128,7 +145,9 @@ def index(manifest: dict, store: str, symbols, lo: int, hi: int, *, reader=file_
                 a += -(a - f['first_open_ms']) % iv              # stay on the file's (aligned) open grid
                 times.extend(range(a, min(f['last_open_ms'], hi) + 1, iv))
             else:
-                times.extend(reader(store, f, lo, hi))
+                times.extend(reader(store, f, lo, hi))            # sha256 re-checked inside the reader
+                if read_log is not None:
+                    read_log.append({'path': f['path'], 'sha256': f['sha256']})
         out[key] = {'times': sorted(set(times)), 'first': min(firsts) if firsts else None,
                     'last': max(lasts) if lasts else None, 'paths': paths}
     return out
@@ -193,6 +212,8 @@ def funding_instants(times):
 
 
 def mark_holes(sym, mentry, fentry, segments):
+    """FROZEN evaluator rule (Codex ruling 1 on #88): the required mark is exactly the 1h bar opening at T - 1h
+    (`range_vwap_rev.mark_at`); a 'last mark at or before T' substitute is never used."""
     out, off_total = [], 0
     if not fentry:
         return out, 0
@@ -231,21 +252,27 @@ def inventory(idx: dict, symbols, segments) -> dict:
     return {'holes': holes, 'series_end': ends, 'off_grid_funding': off, 'missing_by_reason_split': counts}
 
 
-def build(manifest: dict, store: str, *, symbols, window, plan, tier, reader=file_times) -> dict:
-    """The deterministic report. The window guard runs before any file is opened."""
+def build(manifest: dict, store: str, *, symbols, window, plan, tier, repo, reader=file_times) -> dict:
+    """The signed report. Order: window guard (holdout / calibration refused) -> clean git tree (exact commit) -> time
+    reads. No PIT Access / ledger `data_access` record is opened (Codex ruling 2 on #88: a price-blind inventory opens
+    no strategy / evaluation window); instead the report pins commit, manifest, window, every file read and purpose."""
     lo, hi = PR.rex_window(window, plan)
     segments = PR.rex_segments(plan, lo, hi)
-    idx = index(manifest, store, symbols, lo, hi + PR.REX_FUNDING_TAIL_MS, reader=reader)
+    commit = PR.rex_clean_commit(repo)
+    read_log: list = []
+    idx = index(manifest, store, symbols, lo, hi + PR.REX_FUNDING_TAIL_MS, reader=reader, read_log=read_log)
     body = inventory(idx, list(symbols), segments)
-    doc = {'format': FORMAT, 'candidate_id': RV.CANDIDATE, 'tier': tier, 'symbols': list(symbols),
+    doc = {'format': FORMAT, 'purpose': PURPOSE, 'candidate_id': RV.CANDIDATE, 'tier': tier, 'symbols': list(symbols),
+           'provenance': {'commit': commit, 'tree': 'clean'}, 'ledger': 'none (no PIT data_access record)',
            'manifest_digest': manifest['digest'], 'window': {'start': S.utc(lo), 'end': S.utc(hi)},
+           'funding_tail_ms': PR.REX_FUNDING_TAIL_MS,
+           'files_read': sorted(read_log, key=lambda r: r['path']),
            'segments': [{k: s[k] for k in ('key', 'name', 'lo', 'hi', 'first')} for s in segments],
            'rules': {'klines': '4h open missing in [seg lo, seg hi) between first and last archived open',
-                     'mark': 'mark_at(T): the 1h mark bar opening at T - 1h, T = funding time rounded to the hour '
-                             '(+-60 s), seg first < T <= seg hi'},
+                     'mark': 'frozen evaluator rule mark_at(T): exactly the 1h mark bar opening at T - 1h, T = funding '
+                             'time rounded to the hour (+-60 s), seg first < T <= seg hi'},
            'reads': 'time column only (first CSV field); no price / volume / rate / outcome', **body}
-    doc['digest'] = hashlib.sha256(canon(doc)).hexdigest()
-    return doc
+    return sign(doc)
 
 
 def main(argv=None) -> int:
@@ -260,11 +287,11 @@ def main(argv=None) -> int:
     PR.rex_window(a.window, plan)                            # refuse before the manifest / store is touched
     src = PR.rex_sources(repo)
     symbols = list(src['static']['core_10' if a.tier == 'CORE-10' else 'core_20'])
-    doc = build(src['manifest'], a.store, symbols=symbols, window=a.window, plan=plan, tier=a.tier)
+    doc = build(src['manifest'], a.store, symbols=symbols, window=a.window, plan=plan, tier=a.tier, repo=repo)
     with open(a.out, 'w', newline='\n') as f:
         json.dump(doc, f, sort_keys=True, indent=1)
         f.write('\n')
-    print(f'{len(doc["holes"])} hole(s) {doc["missing_by_reason_split"]} -> {a.out} (digest {doc["digest"][:16]})')
+    print(f'{len(doc["holes"])} hole(s) {doc["missing_by_reason_split"]} -> {a.out} (sha256 {doc[SIG][:16]})')
     return 0
 
 

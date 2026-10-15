@@ -15,9 +15,10 @@ Rules:
     missing opens; each row is schema-checked (12 columns, aligned open, close_time = open + interval - 1);
   * a missing open that no conclusively checked candidate (verified zip or HTTP 404) contains is a GENUINE EXCHANGE GAP:
     reported under `genuine_gaps`, never filled, never interpolated;
-  * network sits behind an injectable `fetcher(url) -> (status, bytes)`; requests are sequential and paced >= 1 s apart
-    (injectable `sleep` / `clock`); HTTP 429 / 418 stops the run (rate limit / ban) and HTTP 403 or an HTML body stops
-    it (bot wall) - the remaining holes stay `unresolved`.
+  * network sits behind an injectable `fetcher(url) -> (status, bytes, final_url)`; the FINAL url after any redirect
+    must be https on exactly data.binance.vision under /data/futures/um/ (else the run stops: `offsite_redirect`);
+    requests are sequential and paced >= 1 s apart (injectable `sleep` / `clock`); HTTP 429 / 418 stops the run
+    (rate limit / ban) and HTTP 403 or an HTML body stops it (bot wall) - the remaining holes stay `unresolved`.
 This tool never writes into the store or the manifest: the add-on is a separate document for Integration to review.
 
 Usage (repo root):
@@ -34,6 +35,7 @@ import os
 import re
 import sys
 import time
+import urllib.parse
 import zipfile
 from datetime import datetime, timezone
 
@@ -47,6 +49,11 @@ SERIES = {'klines', 'markPriceKlines'}
 INTERVALS = {'4h': 4 * 3_600_000, '1h': 3_600_000}
 DAY = 86_400_000
 MIN_GAP_S = 1.0
+HOST = 'data.binance.vision'
+PATH_PREFIX = '/data/futures/um/'
+# Independent of the report and of pit_run: the sealed development cutoff (end-exclusive). Nothing on / after it is
+# ever planned or fetched, whatever the report claims (Codex correction on #88).
+SEALED_END = '2026-09-28T00:00:00Z'
 STOP_STATUS = {429: 'rate_limited', 418: 'ip_banned', 403: 'bot_wall'}
 SYM_RE = re.compile(r'^[A-Z0-9]+$')
 HEX64 = re.compile(r'^[0-9a-f]{64}$')
@@ -71,17 +78,32 @@ def digest(doc: dict) -> str:
     return sha(GI.canon({k: v for k, v in doc.items() if k != 'digest'}))
 
 
+def archive_url_ok(url) -> bool:
+    """True only for https://data.binance.vision/data/futures/um/... (exact host, no userinfo, default port)."""
+    try:
+        u = urllib.parse.urlsplit(url)
+        port = u.port
+    except (ValueError, TypeError, AttributeError):
+        return False
+    return (u.scheme == 'https' and u.hostname == HOST and u.netloc == HOST and port is None
+            and u.path.startswith(PATH_PREFIX) and '..' not in u.path.split('/'))
+
+
 # ------------------------------------------------------------------ report + plan
 def check_report(rep: dict) -> dict:
-    if not isinstance(rep, dict) or rep.get('format') != GI.FORMAT:
-        raise FillError(f'not a {GI.FORMAT} report')
-    if rep.get('digest') != digest(rep):
-        raise FillError('inventory report digest does not match its content (edited?)')
+    try:
+        GI.verify(rep)
+    except GI.InventoryError as e:
+        raise FillError(str(e))
+    sealed = GI.S.parse_utc(SEALED_END)
     end = GI.S.parse_utc(rep['window']['end'])
+    if end > sealed:
+        raise FillError(f'report window end {rep["window"]["end"]} is after the sealed cutoff {SEALED_END}: refused')
     for h in rep['holes']:
         if h['series'] not in SERIES or h['interval'] not in INTERVALS or not SYM_RE.match(h['symbol']):
             raise FillError(f'unexpected hole series/interval/symbol {h["series"]}/{h["interval"]}/{h["symbol"]}')
-        if h['split_name'] not in ('train', 'walk_forward') or h['end_ms'] > end or h['start_ms'] >= h['end_ms']:
+        if (h['split_name'] not in ('train', 'walk_forward') or h['end_ms'] > end or h['end_ms'] > sealed
+                or h['start_ms'] >= h['end_ms']):
             raise FillError(f'hole {hole_id(h)} lies outside the development window (holdout / calibration refused)')
     return rep
 
@@ -134,7 +156,7 @@ def plan(rep: dict) -> list:
 
 def plan_doc(rep: dict) -> dict:
     reqs = plan(rep)
-    doc = {'format': PLAN_FORMAT, 'inventory_digest': rep['digest'], 'manifest_digest': rep['manifest_digest'],
+    doc = {'format': PLAN_FORMAT, 'inventory_digest': rep[GI.SIG], 'manifest_digest': rep['manifest_digest'],
            'holes': len(rep['holes']), 'requests': reqs, 'fetches': 2 * len(reqs), 'min_gap_s': MIN_GAP_S}
     doc['digest'] = digest(doc)
     return doc
@@ -154,8 +176,12 @@ class Pacer:
             if wait > 0:
                 self.sleep(wait)
         self.last = self.clock()
-        status, body = self.fetcher(url)
+        if not archive_url_ok(url):
+            raise FillError(f'refusing a non-archive URL {url}')
+        status, body, final = self.fetcher(url)
         self.calls.append(url)
+        if not archive_url_ok(final):
+            raise StopRun('offsite_redirect', final, status)
         if status in STOP_STATUS:
             raise StopRun(STOP_STATUS[status], url, status)
         if status == 200 and body[:512].lstrip().lower().startswith((b'<!doctype html', b'<html')):
@@ -253,24 +279,47 @@ def fill(rep: dict, fetcher, *, sleep=time.sleep, clock=time.monotonic, min_gap=
                 genuine.append({'hole': k, 'symbol': h['symbol'], 'series': h['series'], 'start_ms': a, 'end_ms': b,
                                 'missing': n, 'reason': h['reason'], 'split': h['split'],
                                 'status': 'genuine_exchange_gap (never filled)'})
-    doc = {'format': ADDON_FORMAT, 'inventory_digest': rep['digest'], 'manifest_digest': rep['manifest_digest'],
+    doc = {'format': ADDON_FORMAT, 'inventory_digest': rep[GI.SIG], 'manifest_digest': rep['manifest_digest'],
            'stopped': stopped, 'files': files, 'rows': rows, 'holes': out_holes, 'genuine_gaps': genuine,
            'fetched': len(pacer.calls)}
     doc['digest'] = digest(doc)
     return doc
 
 
+class OffsiteRedirect(FillError):
+    def __init__(self, code, newurl):
+        super().__init__(f'redirect {code} to a non-archive URL {newurl}')
+        self.code, self.newurl = code, newurl
+
+
+def _redirect_handler():
+    import urllib.request
+
+    class Guard(urllib.request.HTTPRedirectHandler):
+        """Refuses (before following) any redirect whose target is not the https archive host."""
+        def redirect_request(self, req, fp, code, msg, headers, newurl):
+            if not archive_url_ok(newurl):
+                raise OffsiteRedirect(code, newurl)
+            return super().redirect_request(req, fp, code, msg, headers, newurl)
+    return Guard()
+
+
 def http_fetcher(url: str):                                  # the real network path; never used by the tests
+    """(status, body, final_url). Redirects off the archive host are refused before they are followed and reported as
+    their target URL, which the Pacer then rejects; the final URL of a followed redirect is returned for re-check."""
     import urllib.error
     import urllib.request
-    if not url.startswith(BASE + '/'):
+    if not archive_url_ok(url):
         raise FillError(f'refusing a non-archive URL {url}')
+    opener = urllib.request.build_opener(_redirect_handler())
     req = urllib.request.Request(url, headers={'User-Agent': USER_AGENT})
     try:
-        with urllib.request.urlopen(req, timeout=60) as resp:
-            return resp.status, resp.read()
+        with opener.open(req, timeout=60) as resp:
+            return resp.status, resp.read(), resp.geturl()
+    except OffsiteRedirect as e:
+        return e.code, b'', e.newurl
     except urllib.error.HTTPError as e:
-        return e.code, b''
+        return e.code, b'', e.geturl() or url
 
 
 def main(argv=None) -> int:
