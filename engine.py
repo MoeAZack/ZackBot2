@@ -1740,15 +1740,19 @@ class Engine:
             return f'gold_family_cap: a {side} gold position (XAUUSDT/PAXGUSDT) is already open or working'
         if (lots or work) and not self.hedge: return 'gold_family_cap: opposite gold position needs hedge mode'
         if len(lots) + len(work) >= GOLD_FAMILY_MAX_POS: return f'gold_family_cap: family max positions ({GOLD_FAMILY_MAX_POS})'
-        if size:
-            eq = self.guard_eq or self.last_eq or 0.0
-            if eq <= 0: return 'gold_family_cap: equity unknown'
-            risk = sum(float(l.get('risk_usd') or 0.0) for l in lots) + float(size.get('risk') or 0.0)
-            notional = sum(l['qty'] * l['avg'] for l in lots) + float(size.get('notional') or 0.0)
-            if risk > GOLD_FAMILY_RISK_EQ * eq + 1e-9:
-                return f'gold_family_cap: family risk {risk:.2f} > {GOLD_FAMILY_RISK_EQ:.0%} of equity'
-            cap = self.S['MAX_LEVERAGE'] * eq * GOLD_FAMILY_NOTIONAL_SLOTS / ROTATION_MAX_ACTIVE
-            if notional > cap + 1e-9: return f'gold_family_cap: family notional {notional:.2f} > {cap:.2f}'
+        if size: return self._gold_family_budget(lots, float(size.get('risk') or 0.0), float(size.get('notional') or 0.0))
+        return None
+
+    def _gold_family_budget(self, lots, add_risk, add_notional):
+        """Shared XAU+PAXG risk / notional budget (ruling d) for new entries AND adds (pyramid / DCA) on gold lots."""
+        eq = self.guard_eq or self.last_eq or 0.0
+        if eq <= 0: return 'gold_family_cap: equity unknown'
+        risk = sum(float(l.get('risk_usd') or 0.0) for l in lots) + add_risk
+        notional = sum(l['qty'] * l['avg'] for l in lots) + add_notional
+        if risk > GOLD_FAMILY_RISK_EQ * eq + 1e-9:
+            return f'gold_family_cap: family risk {risk:.2f} > {GOLD_FAMILY_RISK_EQ:.0%} of equity'
+        cap = self.S['MAX_LEVERAGE'] * eq * GOLD_FAMILY_NOTIONAL_SLOTS / ROTATION_MAX_ACTIVE
+        if notional > cap + 1e-9: return f'gold_family_cap: family notional {notional:.2f} > {cap:.2f}'
         return None
 
     def sleeve_symbols(self, sl, include_off=False):
@@ -3605,6 +3609,11 @@ class Engine:
         blk = self.stop_missing_block(lot['symbol'])               # AUD-04: a stop on this coin is missing on Binance
         if blk: return blk
         if lot.get('manual'): return 'manual trade (no adds)'
+        if lot['symbol'] in TU.GOLD_FAMILY and (lot['symbol'] != 'PAXGUSDT' or self.tradfi_on()):   # TRADFI-01 ruling d
+            gl = [l for l in st['lots'].values() if l['symbol'] in TU.GOLD_FAMILY]
+            stop = lot.get('stop')
+            gb = self._gold_family_budget(gl, q * abs(px - float(stop)) if stop is not None else 0.0, q * px)
+            if gb: return gb
         lx = self._lev_exception_block(lot['symbol'])             # T03c r1: the above-cap exception admitted the entry only
         if lx: return lx
         if self._breaker_add_mult(lot) == 0.0:

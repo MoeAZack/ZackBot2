@@ -137,6 +137,20 @@ def test_opposite_gold_only_with_hedge_and_inside_the_family_budget(mk):
     assert e.entry_block(slot('TF-RANGE', 'exp_vwaprev'), 'XAUUSDT', 'LONG').startswith('gold_family_cap')
 
 
+
+def test_gold_adds_count_against_the_family_budget(mk):
+    """Ruling d is an aggregate budget: a pyramid / DCA add on a gold lot is new family exposure, so _add_block applies
+    the same shared risk / notional budget (it does not go through entry_block)."""
+    e = mk(on=True)
+    l = open_(e, slot('TF-BRK', 'breakout_pyramid'), 'XAUUSDT', 'LONG')
+    l['stop_dirty'] = False
+    assert not (e._add_block(l, 0.0001, 4000.0) or '').startswith('gold_family_cap')        # a tiny add fits
+    cap = e.S['MAX_LEVERAGE'] * e.guard_eq / E.ROTATION_MAX_ACTIVE
+    at_stop = l['stop']                                       # add priced at the stop: zero added risk, notional only
+    assert 'family notional' in (e._add_block(l, cap / at_stop + 1.0, at_stop) or '')
+    risky = E.GOLD_FAMILY_RISK_EQ * e.guard_eq / abs(4000.0 - l['stop']) + 0.01
+    assert (e._add_block(l, risky, 4000.0) or '').startswith('gold_family_cap')
+
 # ------------------------------------------------------------------ session gate + mapping
 def test_stock_session_gate_per_family(mk):
     e = mk(on=True)
