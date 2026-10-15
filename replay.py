@@ -22,7 +22,7 @@ LOOSE_RET_GAP = 15.0          # interim hard gate while the shared-core refactor
 
 
 def run_replay(raw, sleeves, t0, steps=6, start=500.0, tf_sec=14400, quiet=True, stop_at=None, exchange_rules=None):
-    """raw: {symbol: DataFrame t,o,h,l,c,v} (same length / timestamps); sleeves: engine slot dicts; t0: first bar index.
+    """raw: {symbol: DataFrame t,o,h,l,c,v[,qv]} (same length / timestamps; qv = Binance kline quote volume, optional); sleeves: engine slot dicts; t0: first bar index.
     Returns dict(engine_curve, bt_curve, engine_trades, bt_trades, matched, metrics, mismatch, stops, lots).
     stop_at=(bar, leg, step) or a list of them: stop INSIDE that candle's price path (leg 0-2, step 1..steps) and return only the engine's
     decisions so far: dict(lots, events, history, stops) (a list -> {point: that dict}) - used by the causality test.
@@ -84,7 +84,10 @@ def run_replay(raw, sleeves, t0, steps=6, start=500.0, tf_sec=14400, quiet=True,
         def klines(self, s, tf, limit=1500, **k):
             d = D[s].iloc[max(0, W.i - 1000 + 1):W.i + 2]
             ms = (d.t.astype('datetime64[ns]').astype('int64') // 10 ** 6).values
-            return [[int(t), o, h, l, c, v, int(t) + tf_sec * 1000 - 1] for t, o, h, l, c, v in zip(ms, d.o, d.h, d.l, d.c, d.v)]
+            rows = [[int(t), o, h, l, c, v, int(t) + tf_sec * 1000 - 1] for t, o, h, l, c, v in zip(ms, d.o, d.h, d.l, d.c, d.v)]
+            if 'qv' in d:      # VWAPREV: the real kline quote volume (field 7) when the source has it; absent -> engine NaN (fails closed)
+                for r, q in zip(rows, d.qv): r.append(q)
+            return rows
         def marks(self): return dict(W.mark)
         def premium(self, s): return {'lastFundingRate': '0.0001'}
         def account(self): return {'totalMarginBalance': str(equity())}
