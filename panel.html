@@ -411,6 +411,8 @@ tr.wrnrow td:first-child{box-shadow:inset 3px 0 0 var(--warn)}
   <h1 id="pageTitle">Dashboard</h1>
   <span id="status" class="pill p-mute" role="status"><i></i>CONNECTING</span>
   <span id="presetlbl" class="pill p-mute"></span>
+  <span id="mlstate" class="pill p-mute" role="status" title="Claude shadow research analyst; separate from entry filtering"><i></i>ML OFF</span>
+  <span id="apistate" class="pill p-mute" role="status" title="Whether an Anthropic API key is loaded"><i></i>API OFF</span>
   <div class="hk" id="money">
     <div><span>Binance account <span class="q" data-t="The whole USDT futures wallet on Binance (margin balance). It can include money the bot does not trade with.">?</span></span><b id="k_bal">–</b></div>
     <div><span>Bot capital <span class="q" data-t="What the bot trades with and what the safety limits watch: start amount + closed P&amp;L + open P&amp;L − withdrawals + deposits.">?</span></span><b id="k_eq">–</b></div>
@@ -1066,6 +1068,11 @@ function statusPill(){const h=D.health||{};if(OFFLINE)return ['APP OFFLINE','p-b
 function renderHeader(){const S=D.settings,eq=D.equity,h=D.health||{};
   const[t,c]=statusPill();$('status').innerHTML='<i></i>'+t;$('status').className='pill '+c;
   $('presetlbl').textContent='Profile · '+(D.presets[S.PRESET]?D.presets[S.PRESET].name:'Custom');
+  const ml=!!S.CLAUDE_SHADOW_ANALYST,api=!!D.ai_key,mlc=ml?(api&&D.mode==='PAPER'?'p-ok':'p-warn'):'p-mute',apic=api?'p-ok':(ml?'p-warn':'p-mute');
+  $('mlstate').innerHTML='<i></i>ML '+(ml?'ON':'OFF');$('mlstate').className='pill '+mlc;
+  $('mlstate').title=ml?(api?(D.mode==='PAPER'?'Claude shadow research analyst is enabled (report-only)':'Shadow analyst is enabled but refuses non-PAPER mode'):'Shadow analyst is enabled but no Anthropic API key is loaded'):'Claude shadow research analyst is off; the entry-review filter is separate';
+  $('apistate').innerHTML='<i></i>API '+(api?'ON':'OFF');$('apistate').className='pill '+apic;
+  $('apistate').title=api?'Anthropic API key is loaded':'No Anthropic API key is loaded';
   $('k_bal').textContent=usd(D.balance);$('k_eq').textContent=usd(eq);$('k_size').textContent=usd(D.sizing_equity);
   const day=D.day_start&&eq!=null?eq-D.day_start:null,dp=D.day_start&&eq!=null?eq/D.day_start-1:null;$('k_day').textContent=day==null?'–':`${susd(day)} · ${pct(dp,2)}`;$('k_day').className=cls(day);
   const up=D.lots.reduce((a,p)=>a+(p.pnl||0),0);$('k_upnl').textContent=susd(up);$('k_upnl').className=cls(up);
