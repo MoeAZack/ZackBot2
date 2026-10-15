@@ -193,3 +193,27 @@ def test_family_labels_case_insensitive_and_unknown_fails_closed():
         assert TS.entry_allowed('NVDAUSDT', fam, closed) is True, fam
     assert TS.entry_allowed('XAUUSDT', 'Range', closed) is True
     assert TS.entry_allowed('SPYUSDT', 'Oil', opened) is False
+
+
+
+# engine.BREADTH_FAMILY (B2, #95) canonical labels, pinned here so this PR proves the gate without #95; the stacked T3/T4
+# test re-checks against the live engine.BREADTH_FAMILY values.
+CANONICAL_FAMILIES = ('Trend', 'Momentum', 'Range', 'Breakout', 'Scalp', 'Rotation', 'Dip-DCA')
+
+
+@pytest.mark.parametrize('when', ['saturday', 'holiday', 'unknown'])
+def test_stock_vwaprev_and_scalp_blocked_outside_session_with_canonical_labels(when):
+    """Codex 6187427899: Saturday / NYSE holiday / beyond-table UNKNOWN block new stock Range (VWAPREV) and Scalp entries
+    under the real capitalised labels; gold stays allowed. (Management never calls entry_allowed.)"""
+    import tradfi_session as TS
+    from datetime import datetime, timezone
+    ts = {'saturday': datetime(2026, 10, 17, 15, 0, tzinfo=timezone.utc),
+          'holiday': datetime(2026, 11, 26, 16, 0, tzinfo=timezone.utc),      # Thanksgiving, 11:00 ET
+          'unknown': datetime(2031, 3, 5, 15, 0, tzinfo=timezone.utc)}[when]
+    assert TS.us_cash_session(ts) == ('UNKNOWN' if when == 'unknown' else 'CLOSED')
+    for fam in ('Range', 'Scalp'):
+        for sym in ('SPYUSDT', 'QQQUSDT', 'NVDAUSDT'):
+            assert TS.entry_allowed(sym, fam, ts) is False, (sym, fam)
+        assert TS.entry_allowed('XAUUSDT', fam, ts) is True
+    for fam in CANONICAL_FAMILIES:
+        assert TS.entry_allowed('SPYUSDT', fam, ts) is (fam in ('Trend', 'Momentum', 'Breakout') and when != 'unknown'), fam
