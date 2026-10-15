@@ -325,6 +325,70 @@ for _p in PRESETS.values():
         if not _p['note'].startswith(UNVERIFIED_NOTE): _p['note'] = UNVERIFIED_NOTE + _p['note']
 del _p
 
+# BREADTH-01 B2 (Codex rulings): an AUTOMATIC PAPER rotation so every accepted family gets entry opportunities, six slots at
+# a time. SETTINGS['SLEEVES'] holds one slot per registry strategy (all of them, always), so every open lot keeps its own
+# slot - stop, exits, adds and management run exactly as for any slot. The rotation only decides which slots are ELIGIBLE
+# FOR NEW ENTRIES: the active group is a pure function of UTC time (no stored counter, restart-safe). Not in PRESETS (no
+# backtest/UI/governor loop over it); PAPER/testnet only - in live mode every entry of this profile is refused (fail closed).
+ROTATION_PRESET = 'breadth_rotation'
+ROTATION_NAME = 'Breadth rotation (PAPER, 6 slots at a time)'
+ROTATION_PERIOD_S = 8 * 3600           # active group advances every 8 h (00/08/16 UTC): 3 groups -> each gets an entry window daily (Cowork 6187025398)
+ROTATION_MAX_ACTIVE = 6                # Codex ruling 2: at most 6 active slots, equal shares
+BREADTH_RISK, BREADTH_MAX_POS = 0.02, 4
+BREADTH_FAMILIES = ('Trend', 'Momentum', 'Range', 'Breakout', 'Scalp', 'Rotation', 'Dip-DCA')
+BREADTH_FAMILY = {'ema_st': 'Trend', 'ema_mom': 'Trend', 'donchian_ens': 'Trend', 'exp_trend': 'Trend',
+                  'pullback_rsi': 'Momentum', 'hot_coin': 'Momentum',
+                  'exp_range': 'Range', 'exp_vwaprev': 'Range',
+                  'breakout_pyramid': 'Breakout', 'squeeze_tp': 'Breakout', 'bear_breakdown': 'Breakout',
+                  'exp_breakout': 'Breakout', 'exp_structure': 'Breakout',
+                  'exp_scalp': 'Scalp', 'rotation': 'Rotation', 'dca_dip': 'Dip-DCA',
+                  'exp_mom_short': 'Momentum', 'exp_rip_sell_dca': 'Dip-DCA'}   # unknown keys -> 'Other' (still rotated)
+# Codex ruling 3: long-default strategies whose signal function already emits both sides run 'both' in PAPER; every other
+# strategy keeps its registry sides (dca_dip / hot_coin long, bear_breakdown short; rotation shorts need params.shorts).
+BREADTH_BOTH = frozenset({'ema_st', 'ema_mom', 'donchian_ens', 'breakout_pyramid', 'squeeze_tp', 'pullback_rsi'})
+BREADTH_ALL_SYMBOLS = frozenset({'rotation', 'hot_coin'})          # cross-sectional ranks: whole universe, others core 8
+
+
+def breadth_groups(keys=None):
+    """Deterministic groups of <= ROTATION_MAX_ACTIVE strategy keys. Keys are ordered by family, then dealt round-robin
+    into ceil(n / 6) groups, so each family is spread across the groups and group sizes differ by at most one."""
+    keys = sorted(S.STRATEGIES) if keys is None else list(keys)
+    fo = {f: i for i, f in enumerate(BREADTH_FAMILIES)}
+    order = sorted(keys, key=lambda k: (fo.get(BREADTH_FAMILY.get(k, 'Other'), len(fo)), k))
+    n = max(1, -(-len(order) // ROTATION_MAX_ACTIVE))
+    return [order[i::n] for i in range(n)]
+
+
+def breadth_id(key):
+    return key[:12]                                     # app.validate_sleeve: [A-Za-z0-9_-]{1,12}
+
+
+def breadth_sleeves():
+    """One slot per registry strategy; share = 1 / size of its group (equal shares within the active group)."""
+    out = []
+    for g in breadth_groups():
+        for k in g:
+            st = S.STRATEGIES[k]
+            out.append(sleeve(breadth_id(k), k, 1 / len(g), BREADTH_RISK, BREADTH_MAX_POS,
+                              'all' if k in BREADTH_ALL_SYMBOLS else 'core8',
+                              sides='both' if k in BREADTH_BOTH else st['sides'], tf=st.get('tf', '4h')))
+    ids = [x['id'] for x in out]
+    assert len(set(ids)) == len(ids), 'breadth slot ids collide'
+    return out
+
+
+def rotation_at(ts=None):
+    """The rotation at unix time ts (default now): active group index, its slot ids/keys/families, window start / next switch."""
+    groups = breadth_groups()
+    t = int(time.time() if ts is None else ts)
+    epoch = t // ROTATION_PERIOD_S
+    idx = epoch % len(groups)
+    iso = lambda s: datetime.fromtimestamp(s, timezone.utc).isoformat(timespec='seconds')
+    return dict(index=idx, groups=len(groups), keys=list(groups[idx]), active=[breadth_id(k) for k in groups[idx]],
+                families=sorted({BREADTH_FAMILY.get(k, 'Other') for k in groups[idx]}), share=round(1 / len(groups[idx]), 6),
+                since=iso(epoch * ROTATION_PERIOD_S), next_switch=iso((epoch + 1) * ROTATION_PERIOD_S),
+                period_h=ROTATION_PERIOD_S // 3600)
+
 GLOBAL_DEFAULTS = dict(COMPOUND=False, CAP_SINCE='', CAP_ADJ=[], CAP_CYCLES=[], TELEGRAM_ON=False, TELEGRAM_CHAT='', MAX_LEVERAGE=10, DAILY_LOSS_HALT=0.08, PEAK_DD_FLATTEN=0.0, CAPITAL_CAP=500.0,
                        ENTRIES_PAUSED=False, AI_FILTER=False, PRESET='original',
                        UNIVERSE=list(TOP40), SYMBOLS_ON={}, RUN_IN_BACKGROUND=True,
@@ -1498,7 +1562,8 @@ class Engine:
         s.pop('schema_version', None)
         for k in SECRET_SETTING_KEYS: s.pop(k, None)              # AUD-05 r2: never in S (the app migrated it to the config)
         if 'SLEEVES' not in s:
-            s['SLEEVES'] = copy.deepcopy(PRESETS[s.get('PRESET', 'original')]['sleeves'])
+            s['SLEEVES'] = (breadth_sleeves() if s.get('PRESET') == ROTATION_PRESET
+                            else copy.deepcopy(PRESETS[s.get('PRESET', 'original')]['sleeves']))
         for k in ('RISK_PER_TRADE', 'MAX_POSITIONS_PER_SLEEVE', 'STOP_ATR', 'SPLIT_ST', 'SLEEVE_ST', 'SLEEVE_TSM'):
             s.pop(k, None)                                       # v1 keys
         s['SYMBOLS_ON'] = {sym: s.get('SYMBOLS_ON', {}).get(sym, True) for sym in s['UNIVERSE']}
@@ -1545,11 +1610,32 @@ class Engine:
                 if k not in self.S or self.S[k] != v: self.S[k] = v
 
     def apply_preset(self, name):
+        if name == ROTATION_PRESET:
+            if getattr(self, 'live', True) is not False:      # BREADTH-01 B2: PAPER/testnet only, fail closed
+                raise ValueError('the breadth rotation is PAPER/testnet only - refused in live mode')
+            sleeves, label = breadth_sleeves(), ROTATION_NAME
+        else:
+            sleeves, label = copy.deepcopy(PRESETS[name]['sleeves']), PRESETS[name]['name']
         with self.lock:
-            self.S['SLEEVES'] = copy.deepcopy(PRESETS[name]['sleeves'])
+            self.S['SLEEVES'] = sleeves
             self.S['PRESET'] = name
             self.save_settings()
-        log.info(f'preset applied: {PRESETS[name]["name"]} (open trades keep their own management)')
+        log.info(f'preset applied: {label} (open trades keep their own management)')
+
+    def rotation_block(self, sl, ts=None):
+        """BREADTH-01 B2: why a NEW automatic entry of this slot is refused by the breadth rotation, or None. Only new
+        entries consult it - stops, exits, adds and management of open lots never do. Live mode refuses every entry."""
+        if self.S.get('PRESET') != ROTATION_PRESET: return None
+        if getattr(self, 'live', True) is not False: return 'breadth rotation is PAPER/testnet only - no entries in live mode'
+        r = rotation_at(ts)
+        if (sl or {}).get('id') not in r['active']:
+            return f"rotation: slot not in the active group {r['index'] + 1}/{r['groups']} (next switch {r['next_switch']})"
+        return None
+
+    def rotation_status(self, ts=None):
+        """Current breadth rotation (for the status snapshot). on=False when another profile is active."""
+        return dict(rotation_at(ts), on=self.S.get('PRESET') == ROTATION_PRESET, paper_only=True,
+                    live_refused=getattr(self, 'live', True) is not False)
 
     def sleeve_symbols(self, sl, include_off=False):
         u = [s for s in self.S['UNIVERSE'] if s in self.rules]
@@ -3652,6 +3738,7 @@ class Engine:
                     why = None
                     if not Sg['SYMBOLS_ON'].get(s, True): why = 'coin switched off'
                     elif not sl['enabled']: why = 'strategy slot switched off'
+                    elif self.rotation_block(sl): why = self.rotation_block(sl)        # BREADTH-01 B2: new entries only
                     elif Sg['ENTRIES_PAUSED']: why = 'entries paused'
                     elif st['halted']: why = 'daily loss halt'
                     elif s in held: why = 'already in a trade on this coin'
@@ -3733,6 +3820,8 @@ class Engine:
         if Sg.get('ENTRIES_PAUSED'): return 'entries paused'
         if not Sg['SYMBOLS_ON'].get(sym, True): return 'coin switched off'
         if not sl.get('enabled', True): return 'strategy slot switched off'
+        rb = self.rotation_block(sl)                                # BREADTH-01 B2 (manual / adds never get here)
+        if rb: return rb
         held = [l for l in st['lots'].values() if l['sleeve'] == sl['id']]
         if any(l['symbol'] == sym for l in held): return 'already in a trade on this coin'
         if sg is not None:

@@ -49,7 +49,8 @@ SHAPES = dict(trend=dict(n=600, dr=0.004, A=0.10, P=40.0),          # up-drift +
 EMITS = {'ema_st': ('le', 'se'), 'ema_mom': ('le', 'se'), 'donchian_ens': ('le', 'se'), 'breakout_pyramid': ('le', 'se'),
          'squeeze_tp': ('le', 'se'), 'pullback_rsi': ('le', 'se'), 'dca_dip': ('le',), 'bear_breakdown': ('se',),
          'rotation': ('le', 'se'), 'hot_coin': ('le',), 'exp_trend': ('le', 'se'), 'exp_range': ('le', 'se'),
-         'exp_breakout': ('le', 'se'), 'exp_scalp': ('le', 'se'), 'exp_structure': ('le', 'se'), 'exp_vwaprev': ('le', 'se')}
+         'exp_breakout': ('le', 'se'), 'exp_scalp': ('le', 'se'), 'exp_structure': ('le', 'se'), 'exp_vwaprev': ('le', 'se'),
+         'exp_mom_short': ('se',), 'exp_rip_sell_dca': ('se',)}
 # sides that need a non-default param to be emitted
 SIDE_PARAMS = {('rotation', 'se'): dict(shorts=True)}
 LONG_DEFAULT_SHORT_EMITTERS = {'ema_st', 'ema_mom', 'donchian_ens', 'breakout_pyramid', 'squeeze_tp', 'pullback_rsi',
@@ -64,7 +65,8 @@ FAMILY = {'ema_st': 'Trend', 'ema_mom': 'Trend', 'donchian_ens': 'Trend', 'exp_t
           'exp_structure': 'Breakout',
           'exp_scalp': 'Scalp',
           'rotation': 'Rotation',
-          'dca_dip': 'Dip-DCA'}
+          'dca_dip': 'Dip-DCA',
+          'exp_mom_short': 'Momentum', 'exp_rip_sell_dca': 'Dip-DCA'}   # B3 short mirrors (#94)
 FAMILIES = ('Trend', 'Momentum', 'Range', 'Breakout', 'Scalp', 'Rotation', 'Dip-DCA')
 
 # (key, side) -> (shape, mirrored). Long fixtures are up-drift tapes, shorts their exact price mirror (BTC down too).
