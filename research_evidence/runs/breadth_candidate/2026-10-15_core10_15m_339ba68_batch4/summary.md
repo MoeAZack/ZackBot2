@@ -10,22 +10,39 @@ REVIEW-ONLY research evidence. non_promotable. Development window only; not evid
 - account (app defaults): start 500.0, risk 1%/trade, max_pos 4, max_lev 10, daily halt 8%
 - mgmt: `defaults` = frozen strategy mgmt (empty override). `profit_capture` exp_scalp: override {"be_r": 0.75, "tp1_frac": 0.5, "tp1_r": 0.75} -> merged {"be_r": 0.75, "max_bars": 16, "stop_atr": 1.0, "tp1_frac": 0.5, "tp1_r": 0.75, "tp_r": 1.5}; `profit_capture` exp_structure: override {"be_r": 0.75, "tp1_frac": 0.5, "tp1_r": 1.0} -> merged {"be_r": 0.75, "max_bars": 24, "stop_atr": 1.0, "tp1_frac": 0.5, "tp1_r": 1.0, "tp_r": 2.0}; Source: https://github.com/MoeAZack/ZackBot2/issues/13#issuecomment-6198970276
 
-| key | side | mgmt | status | trades | net R | net PnL | PF | win % | max DD (R) | max DD (equity) | fee share | MFE R | MAE R* | giveback R | R above / below BTC EMA200 |
-|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| exp_scalp | long | defaults | ok | 1671 | -371.64 | -490.15 | 0.71 | 39.1% | 386.09 | -98.3% | n/a (gross<=0) | 0.67 | 1.03 | 0.89 | -345.1 (1498) / -26.5 (173) |
-| exp_scalp | long | profit_capture | ok | 1789 | -377.59 | -489.92 | 0.56 | 53.2% | 383.28 | -98.1% | n/a (gross<=0) | 0.66 | 0.90 | 0.87 | -358.0 (1622) / -19.6 (167) |
-| exp_scalp | short | defaults | ok | 1689 | -365.95 | -489.97 | 0.67 | 39.3% | 365.95 | -98.0% | n/a (gross<=0) | 0.69 | 1.02 | 0.90 | -286.1 (1401) / -79.9 (288) |
-| exp_scalp | short | profit_capture | ok | 1697 | -376.55 | -489.97 | 0.54 | 53.2% | 377.23 | -98.0% | n/a (gross<=0) | 0.66 | 0.89 | 0.88 | -326.5 (1505) / -50.0 (192) |
-| exp_structure | long | defaults | ok | 1636 | -368.87 | -489.98 | 0.70 | 31.2% | 378.36 | -98.2% | n/a (gross<=0) | 0.81 | 1.02 | 1.03 | -367.8 (1502) / -1.1 (134) |
-| exp_structure | long | profit_capture | ok | 1654 | -377.89 | -489.96 | 0.57 | 40.3% | 379.44 | -98.0% | n/a (gross<=0) | 0.75 | 0.90 | 0.98 | -363.6 (1558) / -14.3 (96) |
-| exp_structure | short | defaults | ok | 2170 | -345.98 | -490.04 | 0.76 | 33.7% | 347.71 | -98.0% | 8776.9% | 0.86 | 1.02 | 1.02 | -159.7 (1319) / -186.3 (851) |
-| exp_structure | short | profit_capture | ok | 2194 | -367.56 | -489.96 | 0.66 | 43.9% | 368.79 | -98.0% | n/a (gross<=0) | 0.82 | 0.88 | 0.99 | -205.3 (1465) / -162.2 (729) |
+| key | side | registry_sides | mgmt | status | trades | net R | net PnL | PF | win % | max DD (R) | max DD (equity) | fee share | MFE R | MAE R* | giveback R | R above / below BTC EMA200 |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| exp_scalp | long | both | defaults | ok | 1671 | -371.64 | -490.15 | 0.71 | 39.1% | 386.09 | -98.3% | n/a (gross<=0) | 0.67 | 1.03 | 0.89 | -345.1 (1498) / -26.5 (173) |
+| exp_scalp | long | both | profit_capture | ok | 1789 | -377.59 | -489.92 | 0.56 | 53.2% | 383.28 | -98.1% | n/a (gross<=0) | 0.66 | 0.90 | 0.87 | -358.0 (1622) / -19.6 (167) |
+| exp_scalp | short | both | defaults | ok | 1689 | -365.95 | -489.97 | 0.67 | 39.3% | 365.95 | -98.0% | n/a (gross<=0) | 0.69 | 1.02 | 0.90 | -286.1 (1401) / -79.9 (288) |
+| exp_scalp | short | both | profit_capture | ok | 1697 | -376.55 | -489.97 | 0.54 | 53.2% | 377.23 | -98.0% | n/a (gross<=0) | 0.66 | 0.89 | 0.88 | -326.5 (1505) / -50.0 (192) |
+| exp_structure | long | both | defaults | ok | 1636 | -368.87 | -489.98 | 0.70 | 31.2% | 378.36 | -98.2% | n/a (gross<=0) | 0.81 | 1.02 | 1.03 | -367.8 (1502) / -1.1 (134) |
+| exp_structure | long | both | profit_capture | ok | 1654 | -377.89 | -489.96 | 0.57 | 40.3% | 379.44 | -98.0% | n/a (gross<=0) | 0.75 | 0.90 | 0.98 | -363.6 (1558) / -14.3 (96) |
+| exp_structure | short | both | defaults | ok | 2170 | -345.98 | -490.04 | 0.76 | 33.7% | 347.71 | -98.0% | 8776.9% | 0.86 | 1.02 | 1.02 | -159.7 (1319) / -186.3 (851) |
+| exp_structure | short | both | profit_capture | ok | 2194 | -367.56 | -489.96 | 0.66 | 43.9% | 368.79 | -98.0% | n/a (gross<=0) | 0.82 | 0.88 | 0.99 | -205.3 (1465) / -162.2 (729) |
 
 \* MAE is a bar-extreme approximation over [entry bar, exit bar] (the exit bar may include movement after the exit). MFE uses the backtest path best price. Both in stop-distance R. Fee share = fees / gross (gross = price P&L after slippage, before fees and funding); n/a when gross <= 0.
 
 ## INCOMPLETE symbols (excluded from every aggregate, never filled)
 
 - HYPEUSDT: 22150 of 68764 15m candles missing in [warm-up start, END) (2024-10-11T17:00:00Z .. 2025-05-30T10:15:00Z), off-grid 0, duplicates 0
+
+## Headline (registry sides only)
+
+Registry-side slices with trades: 8. Off-registry slices excluded from this headline: 0 (none).
+
+| key | side | mgmt | trades | net R | PF |
+|---|---|---|---|---|---|
+| exp_structure | short | defaults | 2170 | -345.98 | 0.76 |
+| exp_scalp | short | defaults | 1689 | -365.95 | 0.67 |
+| exp_structure | short | profit_capture | 2194 | -367.56 | 0.66 |
+| exp_structure | long | defaults | 1636 | -368.87 | 0.70 |
+| exp_scalp | long | defaults | 1671 | -371.64 | 0.71 |
+| exp_scalp | short | profit_capture | 1697 | -376.55 | 0.54 |
+| exp_scalp | long | profit_capture | 1789 | -377.59 | 0.56 |
+| exp_structure | long | profit_capture | 1654 | -377.89 | 0.57 |
+
+registry_sides = strategies.STRATEGIES[key]['sides'] as recorded in each packet. An off-registry side is one the registry does not list for that key: the runner can still simulate it (the signal function emits it), but it is hypothetical and is excluded from every headline line. Not evidence of edge.
 
 ## Per-symbol net R
 
