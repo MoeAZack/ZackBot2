@@ -1,4 +1,5 @@
 {
+ "conclusion": "NOT justified as a hard entry filter. Development-window signal only, EXPLORATORY: the within-strategy stratified mean-R difference with-structure minus counter-structure is +0.256 R (CORE-10) / +0.233 R (CORE-20), computed per hypothesis and weighted by 1/(1/n_with + 1/n_counter) over hypotheses with >= 5 trades on each side (no t-statistic computed for it). The t of 4.00 / 3.56 is the POOLED Welch t across hypotheses, inflated by composition and by trades sharing bars. It may justify a future ML/explainability evaluation, not a production rule. CORE-20 contains every CORE-10 symbol, so it is not independent of CORE-10.",
  "format": "zb-structure-inputs/1",
  "note": "Inputs of the REVIEW-ONLY structure comparison (#118). Packets are NOT copied: each lives on its review branch at the exact commit. CORE-20 contains every CORE-10 symbol, so the CORE-20 result is not independent of CORE-10.",
  "packets": [
