@@ -240,8 +240,10 @@ def sig_exp_structure(d, p, ctx):
 def sig_exp_mom_short(d, p, ctx):
     """Short mirror of hot_coin: a 'cold coin' (bottom-3 7-day mover = mirror of top-3) dumping on a volume surge
     (vol_ratio > 1.5) through its prior 20-candle low and below EMA50. Exit on a close back above EMA20 (mirror of
-    hot_coin's close below EMA20). Unranked coins (rank7 = 999 fill) are never cold."""
-    r7, nb = ctx['rank7'], ctx['n_symbols']
+    hot_coin's close below EMA20). Unranked coins (rank7 = 999 fill) are never cold. 'Bottom 3' is among the symbols
+    ranked at that candle (rank7_n), not the full universe, so late listings / gaps don't hide the true bottom-3."""
+    r7 = ctx['rank7']
+    nb = ctx['rank7_n'] if 'rank7_n' in ctx else ctx['n_symbols']
     cold = (r7 > nb - 3) & (r7 <= nb)
     never = d.c < -1
     return _one_side(dict(le=never, se=cold & (d.vol_ratio > 1.5) & (d.c < d.ll20) & (d.c < d.e50),
@@ -432,13 +434,16 @@ def build_context(dfs, btc_key='BTCUSDT'):
     ra = pd.DataFrame({s: pd.Series((d.ret180 / (d.c.pct_change().rolling(180).std() * np.sqrt(180))).values, index=d.t)
                        for s, d in dfs.items()})
     rank = ra.rank(axis=1, ascending=False)
-    r7 = pd.DataFrame({s: pd.Series(d.ret42.values, index=d.t) for s, d in dfs.items()}).rank(axis=1, ascending=False)
+    r42 = pd.DataFrame({s: pd.Series(d.ret42.values, index=d.t) for s, d in dfs.items()})
+    r7 = r42.rank(axis=1, ascending=False)
+    r7n = r42.notna().sum(axis=1)   # symbols actually ranked at each candle (late listings / gaps excluded)
     out = {}
     for s, d in dfs.items():
         t = d.t
         out[s] = dict(btc_down=btc_down.reindex(t).fillna(False).astype(bool).values,
                       rank=pd.Series(rank[s].reindex(t).values, index=d.index).fillna(999),
                       rank7=pd.Series(r7[s].reindex(t).values, index=d.index).fillna(999),
+                      rank7_n=pd.Series(r7n.reindex(t).values, index=d.index).fillna(0),
                       n_symbols=len(dfs))
     return out
 

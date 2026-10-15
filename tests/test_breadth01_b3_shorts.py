@@ -168,6 +168,26 @@ def test_cold_rule_on_real_context():
         assert cold.all() == (s in ('C2USDT', 'C3USDT', 'C4USDT')) and (cold.any() == cold.all())
 
 
+
+def test_cold_rule_partial_universe():
+    """Cowork 6186426434: with late listings absent at a candle, 'bottom 3' is among the symbols ranked there
+    (rank7_n), so the weakest present coins are still cold and an absent coin never is."""
+    n, late = 700, 400
+    raws = {f'C{k}USDT': _frame(100 * np.exp(np.linspace(0, 0.5 - 0.1 * k, n)), np.full(n, 1000.0), k) for k in range(9)}
+    raws['BTCUSDT'] = raws.pop('C0USDT')
+    for k in (6, 7, 8):   # three weakest coins list late
+        raws[f'C{k}USDT'] = raws[f'C{k}USDT'].iloc[late:].reset_index(drop=True)
+    # build_context directly: the backtest Book trims to the common window, the live engine does not
+    ctx = S.build_context({k: S.indicators(v) for k, v in raws.items()})
+    for s in ('C3USDT', 'C4USDT', 'C5USDT', 'C1USDT'):   # candles before the late listings: 6 present, n_symbols = 9
+        c = ctx[s]
+        m = c['rank7_n'].values == 6
+        assert m.sum() > 50 and c['n_symbols'] == 9
+        nb, r = c['rank7_n'].values[m], c['rank7'].values[m]
+        assert (((r > nb - 3) & (r <= nb)) == (s in ('C3USDT', 'C4USDT', 'C5USDT'))).all(), s
+        old = (r > 9 - 3) & (r <= 9)   # the pre-fix full-universe rule found no cold coin here
+        assert not old.any()
+
 # ------------------------------------------------------------------ causality + restart
 @pytest.mark.parametrize('key', KEYS)
 def test_prefix_causality(key):
