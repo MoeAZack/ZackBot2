@@ -230,3 +230,15 @@ def test_missing_file_incomplete(env, tmp_path):
     p = go(env, cache=VT.write_cache(str(tmp_path / 'nf'), fr))
     inc = p['universe']['incomplete']
     assert inc[0]['symbol'] == 'SOLUSDT' and inc[0]['missing_file'] is True and p['universe']['run'] == ['ETHUSDT']
+
+
+def test_cache_extra_fills_only_missing_files(env, tmp_path):
+    fr = VT.frames()
+    sol = fr.pop('SOLUSDT')
+    prim = VT.write_cache(str(tmp_path / 'prim'), fr)
+    extra = VT.write_cache(str(tmp_path / 'extra'), {'SOLUSDT': sol, 'ETHUSDT': fr['ETHUSDT'] * 2})
+    p = go(env, cache=prim, cache_extra=extra)
+    f = p['cache']['files']
+    assert f['SOLUSDT']['dir'] == 'cache_extra' and f['ETHUSDT']['dir'] == 'cache' and f['BTCUSDT']['dir'] == 'cache'
+    assert p['universe']['run'] == VT.SYMS and p['universe']['incomplete'] == []
+    assert p['trades'] == go(env, out='full.json')['trades']             # same data as a single complete cache

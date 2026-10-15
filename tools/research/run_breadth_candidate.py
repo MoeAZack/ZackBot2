@@ -7,7 +7,8 @@ Generalises tools/research/run_vwaprev_candidate.py (unchanged; its guards and h
     the same app machinery (backtest.Book + backtest.run, app costs / account / sleeve defaults, legacy exchange rules).
   - --key: any strategies.STRATEGIES key on a cached timeframe (4h: the app cache; 15m: a research cache collected by
     tools/research/collect_klines_research.py, passed as --cache, with --regime-cache = the 4h cache). Any other tf is
-    refused ('BLOCKED: no <tf> cache'), never resampled. The window guard is always the 4h one (grid, dev window, the
+    refused ('BLOCKED: no <tf> cache'), never resampled. --cache-extra: a second (research) cache dir read only for a
+    symbol whose file the primary --cache lacks; every file records which dir it came from and its sha256. The window guard is always the 4h one (grid, dev window, the
     220 x 4h warm-up); a 15m run's own 220-bar warm-up lies inside that validated span.
   - --side long|short: the sleeve 'sides' field (backtest.run zeroes the other side's entry signals). A side whose raw
     entry signal never fires in the window over the run symbols is recorded 'not emitted' (status in the packet).
@@ -318,7 +319,7 @@ def curve_dd(cv) -> float | None:
 
 # ------------------------------------------------------------------ the run
 def run(*, cache: str, window, out: str, key: str, side: str, mgmt_mode: str = 'defaults', custom=None, tier=None,
-        symbols=None, regime_cache=None, repo: str = VC.ROOT, plan=None, start=APP_DEFAULTS['start'], max_lev=APP_DEFAULTS['max_lev'],
+        symbols=None, regime_cache=None, cache_extra=None, repo: str = VC.ROOT, plan=None, start=APP_DEFAULTS['start'], max_lev=APP_DEFAULTS['max_lev'],
         daily_halt=APP_DEFAULTS['daily_halt'], risk=APP_DEFAULTS['risk'], max_pos=APP_DEFAULTS['max_pos']) -> dict:
     strat = check_key(key)
     if side not in SIDES:
@@ -349,6 +350,10 @@ def run(*, cache: str, window, out: str, key: str, side: str, mgmt_mode: str = '
     raw, files, comp, nan_qv, incomplete = {}, {}, {}, {}, []
     for s in book_syms:
         df, rec = read_cache(cache, s, tf)
+        rec['dir'] = 'cache'
+        if df is None and cache_extra:                   # a symbol the primary cache lacks: the research cache, if any
+            df, rec = read_cache(cache_extra, s, tf)
+            rec['dir'] = 'cache_extra'
         files[s] = rec
         d = VC.slice_frame(df, warm_lo, hi) if df is not None else None
         comp[s] = completeness(d, warm_lo, hi, tf_ms)
@@ -402,6 +407,8 @@ def run(*, cache: str, window, out: str, key: str, side: str, mgmt_mode: str = '
         'universe': {'digest': static['digest'], 'id': static.get('universe_id'), 'tier': tier, 'requested': syms,
                      'run': run_syms, 'book': sorted(raw), 'incomplete': incomplete},
         'cache': {'format': f'app._get_candles CSV <SYMBOL>_{tf}.csv: t(ms),o,h,l,c,v,qv', 'files': files,
+                  'dirs': {'cache': 'primary (--cache)', 'cache_extra': 'research cache (--cache-extra), used only for '
+                           'symbols the primary lacks' if cache_extra else None},
                   'completeness': comp, 'regime_btc_4h': b4rec},
         'nan_qv': nan_qv,
         'strategy': {'key': key, 'name': strat['name'], 'tf': strat.get('tf', '4h'), 'registry_sides': strat['sides'],
@@ -449,6 +456,7 @@ def main(argv=None) -> int:
     ap.add_argument('--key', required=True)
     ap.add_argument('--side', required=True, choices=tuple(SIDES))
     ap.add_argument('--mgmt', default='defaults', choices=('defaults', 'profit_capture', 'custom'))
+    ap.add_argument('--cache-extra', default=None, help='a second cache dir read only for symbols --cache lacks')
     ap.add_argument('--regime-cache', default=None, help='the 4h cache dir (BTC regime split); required for non-4h keys')
     for k in CUSTOM:
         ap.add_argument('--' + k.replace('_', '-'), type=CUSTOM[k][2], default=None)
@@ -458,7 +466,7 @@ def main(argv=None) -> int:
     a = ap.parse_args(argv)
     try:
         pkt = run(cache=a.cache, window=a.window, out=a.out, key=a.key, side=a.side, mgmt_mode=a.mgmt,
-                  custom={k: getattr(a, k) for k in CUSTOM}, tier=a.tier, regime_cache=a.regime_cache,
+                  custom={k: getattr(a, k) for k in CUSTOM}, tier=a.tier, regime_cache=a.regime_cache, cache_extra=a.cache_extra,
                   symbols=a.symbols.split(',') if a.symbols else None, **{k: getattr(a, k) for k in APP_DEFAULTS})
     except RunnerError as e:
         print(f'REFUSED: {e}', file=sys.stderr)
