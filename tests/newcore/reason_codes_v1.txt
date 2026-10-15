@@ -110,3 +110,7 @@ reconcile.late_fill_after_not_found
 reconcile.external_close
 filter.ctrl_bias
 execution.ctrl_size_min
+filter.tradfi_off
+filter.tradfi_session
+config.tradfi_policy
+capacity.gold_family_cap
