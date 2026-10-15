@@ -1,0 +1,96 @@
+{
+ "canonical_bodies_equal": false,
+ "canonical_body_sha256_excluding_ignored": {
+  "pr105": "d0aeef3ba60f10951231e7d657d32d71900374945c30ddf18d50c1092d2b9c0c",
+  "rerun": "1a45844cba59e09ad6fda371aed8cc02162f21e5972700e34a4cabb00faecfd3"
+ },
+ "ignored_differences": [
+  {
+   "field": "commit",
+   "pr105": "7690426103544e09df1f008397a28b02c6c3d836",
+   "rerun": "339ba688cf4218af4b520fc2e4e92ed441e40740"
+  },
+  {
+   "field": "packet_sha256",
+   "pr105": "8ba7bf569cb1b53b3c0758419e251b4ec6b0dbd4c0bf2625b8e10050803a8333",
+   "rerun": "9fe8b5fc7fed50c7e28c6b0488852c9478aee4e7bd8599c9a64b1022002ea33a"
+  },
+  {
+   "field": "runner_sha256.run_breadth_candidate.py",
+   "pr105": "f934786fc7aacae7de3e3f8b2ff952d8622fe62d08600cfb610f66ce3f8ced15",
+   "rerun": "de3a9666da556224ed384b24f58ac1a3fb6ea457e2148837bf322d0d56454c8a"
+  }
+ ],
+ "ignored_fields": [
+  "runner_sha256",
+  "commit",
+  "packet_sha256"
+ ],
+ "other_differences": [
+  {
+   "field": "cache.regime_btc_4h",
+   "pr105": "<absent>",
+   "rerun": {
+    "bytes": 452996,
+    "file": "BTCUSDT_4h.csv",
+    "rows": 5999,
+    "sha256": "9d22e344e2902cfdb3cf2d0c9c97537461b9734f290146f063b4b717b1d085cc"
+   }
+  },
+  {
+   "field": "strategy.mgmt_check",
+   "pr105": "<absent>",
+   "rerun": {
+    "defaults": {
+     "max_bars": 30,
+     "stop_atr": 1.5
+    },
+    "kept_from_defaults": {
+     "max_bars": 30,
+     "stop_atr": 1.5
+    },
+    "merged": {
+     "max_bars": 30,
+     "stop_atr": 1.5
+    },
+    "ok": true,
+    "override": {}
+   }
+  },
+  {
+   "field": "strategy.mgmt_source",
+   "pr105": "<absent>",
+   "rerun": null
+  },
+  {
+   "field": "warmup.guard_4h_start",
+   "pr105": "<absent>",
+   "rerun": "2024-09-07T08:00:00Z"
+  },
+  {
+   "field": "warmup.tf",
+   "pr105": "<absent>",
+   "rerun": "4h"
+  },
+  {
+   "field": "window.tf",
+   "pr105": "<absent>",
+   "rerun": "4h"
+  }
+ ],
+ "pr105": {
+  "commit": "7690426103544e09df1f008397a28b02c6c3d836",
+  "file": "research_evidence/runs/breadth_candidate/2026-10-15_core10_7690426_batch1/exp_range_long_defaults.json",
+  "file_sha256": "ea2294b671da3c6292cd92ea8fed9c2619e7777c31fccf46d6f7c7f401770daf",
+  "packet_sha256": "8ba7bf569cb1b53b3c0758419e251b4ec6b0dbd4c0bf2625b8e10050803a8333"
+ },
+ "purpose": "Cowork #107 6199257525: rerun exp_range long defaults on runner 339ba68 vs the #105 packet (runner 7690426)",
+ "regime_split_equal": true,
+ "rerun": {
+  "commit": "339ba688cf4218af4b520fc2e4e92ed441e40740",
+  "file": "exp_range_long_defaults_rerun_339ba68.json",
+  "file_sha256": "4a5f073730886416ed9ba56b2fe69d6214e3b7c418bda54a117ace82c10cdcde",
+  "packet_sha256": "9fe8b5fc7fed50c7e28c6b0488852c9478aee4e7bd8599c9a64b1022002ea33a"
+ },
+ "trades_equal": true
+}

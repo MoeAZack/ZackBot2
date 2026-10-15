@@ -1,0 +1,534 @@
+{
+ "baseline": {
+  "commit": "7690426103544e09df1f008397a28b02c6c3d836",
+  "file": "research_evidence/runs/breadth_candidate/2026-10-15_core10_7690426_batch1/exp_range_long_defaults.json",
+  "file_sha256": "ea2294b671da3c6292cd92ea8fed9c2619e7777c31fccf46d6f7c7f401770daf",
+  "packet_sha256": "8ba7bf569cb1b53b3c0758419e251b4ec6b0dbd4c0bf2625b8e10050803a8333"
+ },
+ "baseline_pr": "#105",
+ "canonical_bodies_equal": false,
+ "canonical_body_sha256_excluding_ignored": {
+  "baseline": "d0aeef3ba60f10951231e7d657d32d71900374945c30ddf18d50c1092d2b9c0c",
+  "rerun": "3358cc2a2abb62a5f7670fa27937380e8e168718171aa0fe19fc33127ceaf3ab"
+ },
+ "ignored_differences": [
+  {
+   "baseline": "7690426103544e09df1f008397a28b02c6c3d836",
+   "field": "commit",
+   "rerun": "c8c7b927ee575ba71a9724ce84d23f72774b07b8"
+  },
+  {
+   "baseline": "8ba7bf569cb1b53b3c0758419e251b4ec6b0dbd4c0bf2625b8e10050803a8333",
+   "field": "packet_sha256",
+   "rerun": "8222047ee462107b4c49ac0766a23f9ce614834e247c252355a9fb75c8436a76"
+  },
+  {
+   "baseline": "f934786fc7aacae7de3e3f8b2ff952d8622fe62d08600cfb610f66ce3f8ced15",
+   "field": "runner_sha256.run_breadth_candidate.py",
+   "rerun": "dad619aaf2df00fd79ce9a2ca2d4848f298b745920fe7f6c56898e7b4f6922f2"
+  }
+ ],
+ "ignored_fields": [
+  "runner_sha256",
+  "commit",
+  "packet_sha256"
+ ],
+ "other_differences": [
+  {
+   "baseline": "<absent>",
+   "field": "bust",
+   "rerun": {
+    "busted": false,
+    "rule": "first equity-curve bar <= 0.1 x start; trades split by entry time",
+    "threshold": 50.0,
+    "time": null,
+    "trade_number": null,
+    "trades_after": 0,
+    "trades_before": 606
+   }
+  },
+  {
+   "baseline": "<absent>",
+   "field": "cache.dirs",
+   "rerun": {
+    "cache": "primary (--cache)",
+    "cache_extra": null
+   }
+  },
+  {
+   "baseline": "<absent>",
+   "field": "cache.files.BTCUSDT.dir",
+   "rerun": "cache"
+  },
+  {
+   "baseline": "<absent>",
+   "field": "cache.files.DOGEUSDT.dir",
+   "rerun": "cache"
+  },
+  {
+   "baseline": "<absent>",
+   "field": "cache.files.ETHUSDT.dir",
+   "rerun": "cache"
+  },
+  {
+   "baseline": "<absent>",
+   "field": "cache.files.HYPEUSDT.dir",
+   "rerun": "cache"
+  },
+  {
+   "baseline": "<absent>",
+   "field": "cache.files.NEARUSDT.dir",
+   "rerun": "cache"
+  },
+  {
+   "baseline": "<absent>",
+   "field": "cache.files.SOLUSDT.dir",
+   "rerun": "cache"
+  },
+  {
+   "baseline": "<absent>",
+   "field": "cache.files.SUIUSDT.dir",
+   "rerun": "cache"
+  },
+  {
+   "baseline": "<absent>",
+   "field": "cache.files.UNIUSDT.dir",
+   "rerun": "cache"
+  },
+  {
+   "baseline": "<absent>",
+   "field": "cache.files.XRPUSDT.dir",
+   "rerun": "cache"
+  },
+  {
+   "baseline": "<absent>",
+   "field": "cache.files.ZECUSDT.dir",
+   "rerun": "cache"
+  },
+  {
+   "baseline": "<absent>",
+   "field": "cache.regime_btc_4h",
+   "rerun": {
+    "bytes": 452996,
+    "file": "BTCUSDT_4h.csv",
+    "rows": 5999,
+    "sha256": "9d22e344e2902cfdb3cf2d0c9c97537461b9734f290146f063b4b717b1d085cc"
+   }
+  },
+  {
+   "baseline": "<absent>",
+   "field": "stats.post_bust",
+   "rerun": {
+    "aggregate": {
+     "exits": {},
+     "fee_share": null,
+     "fees": 0.0,
+     "funding": 0.0,
+     "giveback_r_mean": null,
+     "gross": 0.0,
+     "gross_loss": 0.0,
+     "gross_win": 0.0,
+     "longs": 0,
+     "mae_r_mean": null,
+     "max_dd_r": null,
+     "mfe_r_mean": null,
+     "pf": null,
+     "pnl": 0.0,
+     "r_mean": null,
+     "r_sum": 0.0,
+     "shorts": 0,
+     "trades": 0,
+     "win_rate": null,
+     "wins": 0
+    }
+   }
+  },
+  {
+   "baseline": "<absent>",
+   "field": "stats.pre_bust",
+   "rerun": {
+    "aggregate": {
+     "exits": {
+      "signal": 316,
+      "stop": 289,
+      "time": 1
+     },
+     "fee_share": 2.83081,
+     "fee_share_note": null,
+     "fees": 86.117158,
+     "fees_over_abs_gross": 0.029288,
+     "funding": 31.935438,
+     "giveback_r_mean": 0.868195,
+     "gross": 30.421384,
+     "gross_loss": 1514.566017,
+     "gross_win": 1426.934805,
+     "longs": 606,
+     "mae_r_mean": 0.87335,
+     "max_dd_equity": -0.39249,
+     "max_dd_r": 42.878125,
+     "mfe_r_mean": 0.849934,
+     "pf": 0.942141,
+     "pnl": -87.631212,
+     "r_mean": -0.018261,
+     "r_sum": -11.066287,
+     "shorts": 0,
+     "trades": 606,
+     "win_rate": 0.481848,
+     "wins": 292
+    },
+    "per_symbol": {
+     "BTCUSDT": {
+      "exits": {
+       "signal": 37,
+       "stop": 30
+      },
+      "fee_share": 0.364464,
+      "fee_share_note": null,
+      "fees": 16.963137,
+      "fees_over_abs_gross": 0.049625,
+      "funding": 6.534179,
+      "giveback_r_mean": 0.89565,
+      "gross": 46.542673,
+      "gross_loss": 157.980844,
+      "gross_win": 181.026201,
+      "longs": 67,
+      "mae_r_mean": 0.865962,
+      "max_dd_r": 9.996977,
+      "mfe_r_mean": 0.969144,
+      "pf": 1.145874,
+      "pnl": 23.045357,
+      "r_mean": 0.073493,
+      "r_sum": 4.924041,
+      "shorts": 0,
+      "trades": 67,
+      "win_rate": 0.552239,
+      "wins": 37
+     },
+     "DOGEUSDT": {
+      "exits": {
+       "signal": 37,
+       "stop": 36
+      },
+      "fee_share": null,
+      "fee_share_note": "gross <= 0: fee share undefined",
+      "fees": 9.593243,
+      "fees_over_abs_gross": 0.026359,
+      "funding": 3.145346,
+      "giveback_r_mean": 0.894588,
+      "gross": -8.495293,
+      "gross_loss": 192.937318,
+      "gross_win": 171.703436,
+      "longs": 73,
+      "mae_r_mean": 0.796132,
+      "max_dd_r": 14.389491,
+      "mfe_r_mean": 0.878507,
+      "pf": 0.889944,
+      "pnl": -21.233882,
+      "r_mean": -0.016081,
+      "r_sum": -1.173926,
+      "shorts": 0,
+      "trades": 73,
+      "win_rate": 0.465753,
+      "wins": 34
+     },
+     "ETHUSDT": {
+      "exits": {
+       "signal": 35,
+       "stop": 36
+      },
+      "fee_share": null,
+      "fee_share_note": "gross <= 0: fee share undefined",
+      "fees": 10.713648,
+      "fees_over_abs_gross": 0.030947,
+      "funding": 4.003076,
+      "giveback_r_mean": 0.885219,
+      "gross": -10.477565,
+      "gross_loss": 186.016104,
+      "gross_win": 160.821815,
+      "longs": 71,
+      "mae_r_mean": 0.912414,
+      "max_dd_r": 9.3717,
+      "mfe_r_mean": 0.837876,
+      "pf": 0.864559,
+      "pnl": -25.194288,
+      "r_mean": -0.047344,
+      "r_sum": -3.361396,
+      "shorts": 0,
+      "trades": 71,
+      "win_rate": 0.478873,
+      "wins": 34
+     },
+     "NEARUSDT": {
+      "exits": {
+       "signal": 33,
+       "stop": 39
+      },
+      "fee_share": null,
+      "fee_share_note": "gross <= 0: fee share undefined",
+      "fees": 7.624109,
+      "fees_over_abs_gross": 0.022681,
+      "funding": 2.734113,
+      "giveback_r_mean": 0.906123,
+      "gross": -60.656672,
+      "gross_loss": 204.639141,
+      "gross_win": 133.624247,
+      "longs": 72,
+      "mae_r_mean": 0.92083,
+      "max_dd_r": 16.62181,
+      "mfe_r_mean": 0.718788,
+      "pf": 0.652975,
+      "pnl": -71.014894,
+      "r_mean": -0.187334,
+      "r_sum": -13.488065,
+      "shorts": 0,
+      "trades": 72,
+      "win_rate": 0.416667,
+      "wins": 30
+     },
+     "SOLUSDT": {
+      "exits": {
+       "signal": 34,
+       "stop": 32
+      },
+      "fee_share": 1.534315,
+      "fee_share_note": null,
+      "fees": 9.258815,
+      "fees_over_abs_gross": 0.028623,
+      "funding": 3.739611,
+      "giveback_r_mean": 0.909494,
+      "gross": 6.034496,
+      "gross_loss": 165.052444,
+      "gross_win": 158.088514,
+      "longs": 66,
+      "mae_r_mean": 0.873571,
+      "max_dd_r": 12.935676,
+      "mfe_r_mean": 0.893632,
+      "pf": 0.957808,
+      "pnl": -6.96393,
+      "r_mean": -0.015863,
+      "r_sum": -1.046927,
+      "shorts": 0,
+      "trades": 66,
+      "win_rate": 0.5,
+      "wins": 33
+     },
+     "SUIUSDT": {
+      "exits": {
+       "signal": 32,
+       "stop": 28,
+       "time": 1
+      },
+      "fee_share": 1.326243,
+      "fee_share_note": null,
+      "fees": 6.464631,
+      "fees_over_abs_gross": 0.022247,
+      "funding": 2.707813,
+      "giveback_r_mean": 0.864374,
+      "gross": 4.874393,
+      "gross_loss": 147.568819,
+      "gross_win": 143.270768,
+      "longs": 61,
+      "mae_r_mean": 0.897534,
+      "max_dd_r": 6.419782,
+      "mfe_r_mean": 0.853639,
+      "pf": 0.970874,
+      "pnl": -4.298051,
+      "r_mean": -0.010735,
+      "r_sum": -0.654845,
+      "shorts": 0,
+      "trades": 61,
+      "win_rate": 0.47541,
+      "wins": 29
+     },
+     "UNIUSDT": {
+      "exits": {
+       "signal": 27,
+       "stop": 26
+      },
+      "fee_share": 1.008617,
+      "fee_share_note": null,
+      "fees": 6.291392,
+      "fees_over_abs_gross": 0.023533,
+      "funding": 2.12474,
+      "giveback_r_mean": 0.903276,
+      "gross": 6.237645,
+      "gross_loss": 135.351047,
+      "gross_win": 133.172559,
+      "longs": 53,
+      "mae_r_mean": 0.941544,
+      "max_dd_r": 10.313944,
+      "mfe_r_mean": 0.908258,
+      "pf": 0.983905,
+      "pnl": -2.178488,
+      "r_mean": 0.004982,
+      "r_sum": 0.264041,
+      "shorts": 0,
+      "trades": 53,
+      "win_rate": 0.45283,
+      "wins": 24
+     },
+     "XRPUSDT": {
+      "exits": {
+       "signal": 44,
+       "stop": 42
+      },
+      "fee_share": null,
+      "fee_share_note": "gross <= 0: fee share undefined",
+      "fees": 13.763197,
+      "fees_over_abs_gross": 0.033329,
+      "funding": 4.85429,
+      "giveback_r_mean": 0.856679,
+      "gross": -8.190998,
+      "gross_loss": 220.420543,
+      "gross_win": 193.612059,
+      "longs": 86,
+      "mae_r_mean": 0.850458,
+      "max_dd_r": 12.077315,
+      "mfe_r_mean": 0.803073,
+      "pf": 0.878376,
+      "pnl": -26.808485,
+      "r_mean": -0.053606,
+      "r_sum": -4.610135,
+      "shorts": 0,
+      "trades": 86,
+      "win_rate": 0.465116,
+      "wins": 40
+     },
+     "ZECUSDT": {
+      "exits": {
+       "signal": 37,
+       "stop": 20
+      },
+      "fee_share": 0.099811,
+      "fee_share_note": null,
+      "fees": 5.444986,
+      "fees_over_abs_gross": 0.021118,
+      "funding": 2.09227,
+      "giveback_r_mean": 0.674033,
+      "gross": 54.552705,
+      "gross_loss": 104.599757,
+      "gross_win": 151.615206,
+      "longs": 57,
+      "mae_r_mean": 0.817292,
+      "max_dd_r": 9.172371,
+      "mfe_r_mean": 0.815803,
+      "pf": 1.44948,
+      "pnl": 47.015449,
+      "r_mean": 0.141771,
+      "r_sum": 8.080926,
+      "shorts": 0,
+      "trades": 57,
+      "win_rate": 0.54386,
+      "wins": 31
+     }
+    },
+    "regime": {
+     "btc_above_ema200": {
+      "exits": {
+       "signal": 122,
+       "stop": 108
+      },
+      "fee_share": 0.452062,
+      "fee_share_note": null,
+      "fees": 33.935705,
+      "fees_over_abs_gross": 0.028589,
+      "funding": 11.84906,
+      "giveback_r_mean": 0.821875,
+      "gross": 75.068671,
+      "gross_loss": 577.24401,
+      "gross_win": 606.527916,
+      "longs": 230,
+      "mae_r_mean": 0.875515,
+      "max_dd_r": 20.577124,
+      "mfe_r_mean": 0.870722,
+      "pf": 1.050731,
+      "pnl": 29.283906,
+      "r_mean": 0.048847,
+      "r_sum": 11.234713,
+      "shorts": 0,
+      "trades": 230,
+      "win_rate": 0.504348,
+      "wins": 116
+     },
+     "btc_below_ema200": {
+      "exits": {
+       "signal": 194,
+       "stop": 181,
+       "time": 1
+      },
+      "fee_share": null,
+      "fee_share_note": "gross <= 0: fee share undefined",
+      "fees": 52.181453,
+      "fees_over_abs_gross": 0.029762,
+      "funding": 20.086378,
+      "giveback_r_mean": 0.896529,
+      "gross": -44.647287,
+      "gross_loss": 937.322007,
+      "gross_win": 820.406889,
+      "longs": 376,
+      "mae_r_mean": 0.872026,
+      "max_dd_r": 36.390911,
+      "mfe_r_mean": 0.837218,
+      "pf": 0.875267,
+      "pnl": -116.915118,
+      "r_mean": -0.059311,
+      "r_sum": -22.301001,
+      "shorts": 0,
+      "trades": 376,
+      "win_rate": 0.468085,
+      "wins": 176
+     }
+    }
+   }
+  },
+  {
+   "baseline": "<absent>",
+   "field": "strategy.mgmt_check",
+   "rerun": {
+    "defaults": {
+     "max_bars": 30,
+     "stop_atr": 1.5
+    },
+    "kept_from_defaults": {
+     "max_bars": 30,
+     "stop_atr": 1.5
+    },
+    "merged": {
+     "max_bars": 30,
+     "stop_atr": 1.5
+    },
+    "ok": true,
+    "override": {}
+   }
+  },
+  {
+   "baseline": "<absent>",
+   "field": "strategy.mgmt_source",
+   "rerun": null
+  },
+  {
+   "baseline": "<absent>",
+   "field": "warmup.guard_4h_start",
+   "rerun": "2024-09-07T08:00:00Z"
+  },
+  {
+   "baseline": "<absent>",
+   "field": "warmup.tf",
+   "rerun": "4h"
+  },
+  {
+   "baseline": "<absent>",
+   "field": "window.tf",
+   "rerun": "4h"
+  }
+ ],
+ "purpose": "Cowork #107 6199428640: exp_range long defaults rerun on runner c8c7b92 vs the #105 packet (runner 7690426)",
+ "regime_split_equal": true,
+ "rerun": {
+  "commit": "c8c7b927ee575ba71a9724ce84d23f72774b07b8",
+  "file": "exp_range_long_defaults_rerun_c8c7b92.json",
+  "file_sha256": "614b1f0c8e9a8cdf01c92137e0b1be5c110b441a2c985af1b4c48545e53d3330",
+  "packet_sha256": "8222047ee462107b4c49ac0766a23f9ce614834e247c252355a9fb75c8436a76"
+ },
+ "trades_equal": true
+}
