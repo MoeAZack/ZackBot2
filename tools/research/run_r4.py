@@ -781,29 +781,39 @@ def run_rex(repo: str, *, window, tier: str, out_dir: str, loader=None, resume: 
     return PR.run_rex(env, out_dir, window=window, resume=resume, clock=clock, variant=variant)
 
 
-def _rex_json(path: str, what: str) -> dict:
+def _rex_bytes(path: str, what: str) -> bytes:
     try:
         with open(path, 'rb') as f:
-            return json.loads(f.read())
-    except (OSError, TypeError, ValueError) as e:
+            return f.read()
+    except (OSError, TypeError) as e:
         raise GateError(f'rex: {what} {path!r} missing or unreadable ({type(e).__name__}): refused')
 
 
+def _rex_json(path: str, what: str) -> dict:
+    try:
+        return json.loads(_rex_bytes(path, what))
+    except ValueError as e:
+        raise GateError(f'rex: {what} {path!r} is not JSON ({type(e).__name__}): refused')
+
+
 def rex_store_loader(*, store: str, notice: str, notice_sha256: str, author: str, cairo_date: str, variant=None,
-                     addon: str | None = None, addon_report: str | None = None):
+                     addon: str | None = None, addon_report: str | None = None, addon_sha256: str | None = None,
+                     addon_zips: str | None = None):
     """The real REX loader (pit_run.rex_load over pit_run.rex_sources: committed manifest / universe / rules / ledger).
     A dirty git tree refuses FIRST, before the committed sources are read or any Access is opened; rex_load re-proves
-    it and records the exact clean commit SHA (Codex 6172596212 c). `addon` / `addon_report`: paths of a
-    zb-rex-gap-fill/1 add-on and the signed gap report it pins (both or neither; pit_run.rex_load validates them)."""
+    it and records the exact clean commit SHA (Codex 6172596212 c). Add-on (all four or none): `addon` path of a
+    zb-rex-gap-fill/1 add-on (its RAW bytes are handed on and pinned to `addon_sha256` before parsing),
+    `addon_report` the signed gap report it pins, `addon_zips` the kept archive zips (pit_run.rex_load validates)."""
     import pit_run as PR                                                                    # noqa: E402
 
-    if (addon is None) != (addon_report is None):
-        raise GateError('rex: --addon and --addon-report go together')
+    if len({x is None for x in (addon, addon_report, addon_sha256, addon_zips)}) > 1:
+        raise GateError('rex: --addon, --addon-sha256, --addon-report and --addon-zips go together')
 
     def load(repo, tier, window):
         PR.rex_clean_commit(repo)
-        kw = {} if addon is None else {'addon': _rex_json(addon, 'add-on'),
-                                       'addon_report': _rex_json(addon_report, 'gap report')}
+        kw = {} if addon is None else {'addon': _rex_bytes(addon, 'add-on'), 'addon_sha256': addon_sha256,
+                                       'addon_report': _rex_json(addon_report, 'gap report'),
+                                       'addon_zips': addon_zips}
         return PR.rex_load(PR.rex_sources(repo), repo=repo, store=store, tier=tier, window=window,
                            notice_path=notice, notice_sha256=notice_sha256, author=author, cairo_date=cairo_date,
                            plan=PR.rex_plan(repo), variant=variant, **kw)
@@ -873,8 +883,12 @@ def main(argv=None) -> int:
     x.add_argument('--author', default=None)
     x.add_argument('--cairo-date', default=None)
     x.add_argument('--addon', default=None, help='a zb-rex-gap-fill/1 add-on (binance_archive_fill.py --fetch): fills '
-                                                 'ONLY exact holes of its pinned gap report; needs --addon-report')
+                                                 'ONLY exact holes of its pinned gap report; needs --addon-sha256, '
+                                                 '--addon-report and --addon-zips')
     x.add_argument('--addon-report', default=None, help='the signed zb-rex-gap-inventory/1 report the add-on pins')
+    x.add_argument('--addon-sha256', default=None, help='the sha256 of the add-on FILE bytes, pinned by this command')
+    x.add_argument('--addon-zips', default=None, help='the verified archive zips kept by binance_archive_fill --zips '
+                                                      '(every add-on row is re-proved from them)')
     a = ap.parse_args(argv)
     try:
         if a.cmd == 'check':
@@ -907,8 +921,9 @@ def main(argv=None) -> int:
                     raise ValueError(f'rex --store also needs {need}')
                 loader = rex_store_loader(store=a.store, notice=a.notice, notice_sha256=a.notice_sha256,
                                           author=a.author, cairo_date=a.cairo_date, variant=a.variant,
-                                          addon=a.addon, addon_report=a.addon_report)
-            elif a.addon is not None or a.addon_report is not None:
+                                          addon=a.addon, addon_report=a.addon_report, addon_sha256=a.addon_sha256,
+                                          addon_zips=a.addon_zips)
+            elif any(v is not None for v in (a.addon, a.addon_report, a.addon_sha256, a.addon_zips)):
                 raise ValueError('rex --addon needs an attested --store')
             out = a.out_dir or os.path.join(M.REPO, 'research_evidence', 'runs',
                                             'rex' if a.variant is None else 'rex-splitcut')

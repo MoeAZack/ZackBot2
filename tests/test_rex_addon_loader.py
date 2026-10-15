@@ -108,12 +108,25 @@ def fx(tmp_path, monkeypatch):
     plan = PR.rex_plan(ROOT)
     rep = GI.build(man, store, symbols=list(SYMS), window=WINDOW, plan=plan, tier='CORE-10', repo=ROOT)
     return {'store': store, 'man': man, 'art': art, 'notice': notice, 'ledger': ledger, 'src': src, 'plan': plan,
-            'rep': rep, 'out': str(tmp_path / 'out'), 'tmp': tmp_path}
+            'rep': rep, 'out': str(tmp_path / 'out'), 'tmp': tmp_path, 'zips': str(tmp_path / 'zips')}
 
 
-def make_addon(rep, days=tuple(DAYS), extra=()):
+def make_addon(fx, rep=None, days=tuple(DAYS), extra=()):
+    """BF.fill against the fake archive; every verified zip + .CHECKSUM is kept in fx['zips'] (the re-proof source)."""
     c = GT.Clock()
-    return BF.fill(rep, GT.fake_archive(archive(days, extra)), sleep=c.sleep, clock=c.clock)
+    return BF.fill(rep or fx['rep'], GT.fake_archive(archive(days, extra)), sleep=c.sleep, clock=c.clock,
+                   keep_dir=fx['zips'])
+
+
+def addon_bytes(addon) -> bytes:
+    return (json.dumps(addon, sort_keys=True, indent=1) + '\n').encode()
+
+
+def with_addon(fx, addon, rep=None, pin=None, **kw):
+    """rex_load with an add-on: raw file bytes, the pinned sha256 (default: of these bytes), report and kept zips."""
+    raw = addon_bytes(addon)
+    return load(fx, addon=raw, addon_sha256=pin or hashlib.sha256(raw).hexdigest(), addon_report=rep or fx['rep'],
+                addon_zips=fx['zips'], **kw)
 
 
 def load(fx, **kw):
@@ -202,8 +215,11 @@ def test_no_addon_is_byte_identical_to_the_loader_before_this_slice(fx):
 
 
 def test_a_report_without_its_addon_or_vice_versa_refuses_before_access(fx):
-    for kw in ({'addon_report': fx['rep']}, {'addon': make_addon(fx['rep'])}):
-        with pytest.raises(PR.PitRunError, match='both'):
+    raw = addon_bytes(make_addon(fx))
+    pin = hashlib.sha256(raw).hexdigest()
+    for kw in ({'addon_report': fx['rep']}, {'addon': raw}, {'addon': raw, 'addon_sha256': pin},
+               {'addon': raw, 'addon_sha256': pin, 'addon_report': fx['rep']}, {'addon_zips': fx['zips']}):
+        with pytest.raises(PR.PitRunError, match='all four'):
             load(fx, **kw)
     assert not os.path.exists(fx['ledger'])
 
@@ -211,9 +227,9 @@ def test_a_report_without_its_addon_or_vice_versa_refuses_before_access(fx):
 # ------------------------------------------------------------------ a valid add-on fills exactly the holes
 def test_valid_addon_fills_exactly_the_holes_and_the_rows_become_evaluable(fx):
     base = load(fx)
-    addon = make_addon(fx['rep'])
+    addon = make_addon(fx)
     assert [h['status'] for h in addon['holes']] == ['filled'] * 3
-    e = load(fx, addon=addon, addon_report=fx['rep'])
+    e = with_addon(fx, addon)
     filled = {'AAAUSDT': FILLED_BARS | {OPEN_BAR}}
     for s in SYMS:
         x0, x1 = base['tape'][s], e['tape'][s]
@@ -239,11 +255,11 @@ def test_valid_addon_fills_exactly_the_holes_and_the_rows_become_evaluable(fx):
 
 
 def test_partial_coverage_leaves_the_remaining_holes_incomplete(fx):
-    addon = make_addon(fx['rep'], days=('bars', 'mark'))           # the archive has no 2024-03-12 day file
+    addon = make_addon(fx, days=('bars', 'mark'))           # the archive has no 2024-03-12 day file
     st = {h['hole']: h['status'] for h in addon['holes']}
     assert sorted(st.values()) == ['archive_missing', 'filled', 'filled']
     assert [g['start_ms'] for g in addon['genuine_gaps']] == [OPEN_BAR]
-    e = load(fx, addon=addon, addon_report=fx['rep'])
+    e = with_addon(fx, addon)
     x = e['tape']['AAAUSDT']
     assert FILLED_BARS <= set(x.bars) and OPEN_BAR not in x.bars
     with pytest.raises(RV.Incomplete, match='incomplete.gap'):
@@ -262,7 +278,7 @@ def _collision_case(fx):
     extra = dict(h0, start_ms=t, end_ms=t + TF, missing=1, start_utc=S.utc(t), end_utc=S.utc(t + TF))
     rep = GI.sign(dict(fx['rep'], holes=sorted(fx['rep']['holes'] + [extra],
                                                key=lambda h: (h['symbol'], h['series'], h['start_ms']))))
-    return make_addon(rep, extra=[day_zip('klines', 'AAAUSDT', '4h', '2024-02-21')]), rep
+    return make_addon(fx, rep, extra=[day_zip('klines', 'AAAUSDT', '4h', '2024-02-21')]), rep
 
 
 def _urls(old, new):
@@ -274,6 +290,11 @@ def _urls(old, new):
     return fn
 
 
+def _forge_file_sha(a):
+    for f in a['files']:
+        f['sha256'] = 'ab' * 32                      # an arbitrary well-formed hex digest
+
+
 def _tamper_line(a):
     r = a['rows'][0]
     r['line'] = r['line'].replace(',', ',9', 1)       # a changed price, the recorded sha256 kept
@@ -281,27 +302,28 @@ def _tamper_line(a):
 
 CASES = {
     'collision_with_a_base_row': (_collision_case, 'collide with base rows'),
-    'row_outside_any_hole': (lambda fx: (reseal(make_addon(fx['rep']), move_row(U('2024-02-21T00:00:00Z'))),
+    'row_outside_any_hole': (lambda fx: (reseal(make_addon(fx), move_row(U('2024-02-21T00:00:00Z'))),
                                          fx['rep']), 'outside every exact hole'),
-    'row_after_END': (lambda fx: (reseal(make_addon(fx['rep']), move_row(U('2026-09-28T00:00:00Z'))), fx['rep']),
+    'row_after_END': (lambda fx: (reseal(make_addon(fx), move_row(U('2026-09-28T00:00:00Z'))), fx['rep']),
                       'sealed cutoff 2026-09-28'),
-    'row_outside_the_run_window': (lambda fx: (reseal(make_addon(fx['rep']), move_row(LO - TF)), fx['rep']),
+    'row_outside_the_run_window': (lambda fx: (reseal(make_addon(fx), move_row(LO - TF)), fx['rep']),
                                    'outside the run access window'),
-    'tampered_row_digest': (lambda fx: (reseal(make_addon(fx['rep']), _tamper_line), fx['rep']), 'row sha256'),
-    'tampered_addon_digest': (lambda fx: (dict(make_addon(fx['rep']), fetched=99), fx['rep']), 'add-on digest'),
-    'wrong_base_manifest_pin': (lambda fx: (reseal(make_addon(fx['rep']),
+    'tampered_row_digest': (lambda fx: (reseal(make_addon(fx), _tamper_line), fx['rep']), 'row sha256'),
+    'tampered_addon_digest': (lambda fx: (dict(make_addon(fx), fetched=99), fx['rep']), 'add-on digest'),
+    'forged_file_sha256': (lambda fx: (reseal(make_addon(fx), _forge_file_sha), fx['rep']), 'disagree'),
+    'wrong_base_manifest_pin': (lambda fx: (reseal(make_addon(fx),
                                                    lambda a: a.update(manifest_digest='0' * 64)), fx['rep']),
                                 'another base manifest'),
-    'wrong_report_pin': (lambda fx: (reseal(make_addon(fx['rep']), lambda a: a.update(inventory_digest='0' * 64)),
+    'wrong_report_pin': (lambda fx: (reseal(make_addon(fx), lambda a: a.update(inventory_digest='0' * 64)),
                                      fx['rep']), 'another gap report'),
-    'tampered_report': (lambda fx: (make_addon(fx['rep']), dict(fx['rep'], holes=[
+    'tampered_report': (lambda fx: (make_addon(fx), dict(fx['rep'], holes=[
         dict(h, end_ms=h['end_ms'] + TF) for h in fx['rep']['holes']])), 'gap report refused'),
-    'unverified_checksum_record': (lambda fx: (reseal(make_addon(fx['rep']), lambda a: a['files'][0].update(
+    'unverified_checksum_record': (lambda fx: (reseal(make_addon(fx), lambda a: a['files'][0].update(
         status='rejected_checksum')), fx['rep']), 'no verified archive checksum'),
-    'non_archive_host': (lambda fx: (reseal(make_addon(fx['rep']),
+    'non_archive_host': (lambda fx: (reseal(make_addon(fx),
                                             _urls('data.binance.vision', 'data.binance.vision.evil.example')),
                                      fx['rep']), 'is not on https'),
-    'http_not_https': (lambda fx: (reseal(make_addon(fx['rep']), _urls('https://', 'http://')), fx['rep']),
+    'http_not_https': (lambda fx: (reseal(make_addon(fx), _urls('https://', 'http://')), fx['rep']),
                        'is not on https'),
 }
 
@@ -311,22 +333,27 @@ def test_addon_refusals(fx, case):
     build, want = CASES[case]
     addon, rep = build(fx)
     with pytest.raises(PR.PitRunError, match=want):
-        load(fx, addon=addon, addon_report=rep)
-    if case != 'collision_with_a_base_row':          # validated in full BEFORE the Access opens: nothing recorded
-        assert not os.path.exists(fx['ledger']) or not ledger_recs(fx)
+        with_addon(fx, addon, rep)
+    assert_no_access(fx)
+
+
+def assert_no_access(fx):
+    """Validated in full (collision included) BEFORE the Access opens: no ledger record, no run output."""
+    assert not os.path.exists(fx['ledger']) or not ledger_recs(fx)
     assert not os.path.exists(fx['out'])
 
 
 # ------------------------------------------------------------------ provenance + run identity
 def test_run_id_changes_and_provenance_is_recorded(fx):
     d0, s0, _ = docs(run(fx, load(fx), 'base'))
-    addon = make_addon(fx['rep'])
-    e = load(fx, addon=addon, addon_report=fx['rep'])
+    addon = make_addon(fx)
+    e = with_addon(fx, addon)
     d1, s1, x1 = docs(run(fx, e, 'addon'))
     assert d0['run'] != d1['run'] and s0['run'] != s1['run']
     want_files = sorted(BF.url_for('daily', *DAYS[k]) for k in DAYS)
     prov = e['addon']
     assert prov['digest'] == addon['digest'] and prov['gap_report'] == fx['rep'][GI.SIG]
+    assert prov['addon_sha256'] == hashlib.sha256(addon_bytes(addon)).hexdigest()
     assert prov['base_manifest'] == fx['man']['digest']
     assert prov['filled'] == {'AAAUSDT|klines': 3, 'BBBUSDT|markPriceKlines': 1}
     assert [f['url'] for f in prov['source_files']] == want_files
@@ -341,7 +368,7 @@ def test_run_id_changes_and_provenance_is_recorded(fx):
 
 def test_cli_rex_with_addon_end_to_end(fx, monkeypatch, capsys):
     monkeypatch.setattr(PR, 'rex_sources', lambda repo: fx['src'])
-    addon = make_addon(fx['rep'])
+    addon = make_addon(fx)
     pa, pr = str(fx['tmp'] / 'addon.json'), str(fx['tmp'] / 'report.json')
     for p, d in ((pa, addon), (pr, fx['rep'])):
         with open(p, 'w', newline='\n') as f:
@@ -349,12 +376,139 @@ def test_cli_rex_with_addon_end_to_end(fx, monkeypatch, capsys):
     base = ['rex', '--window', WINDOW, '--tier', 'CORE-10', '--out-dir', fx['out'], '--store', fx['store'],
             '--notice', fx['notice'], '--notice-sha256', fx['art']['digest'], '--author', 't',
             '--cairo-date', '2026-10-15']
-    assert G.main(base + ['--addon', pa]) == 3                          # the report must come with it
-    assert G.main(['rex', '--window', WINDOW, '--tier', 'CORE-10', '--out-dir', fx['out'], '--addon', pa,
-                   '--addon-report', pr]) == 2                          # and an attested store
+    pin = hashlib.sha256(open(pa, 'rb').read()).hexdigest()
+    full = ['--addon', pa, '--addon-sha256', pin, '--addon-report', pr, '--addon-zips', fx['zips']]
+    for part in (full[:2], full[:4], full[:6], full[2:]):              # all four go together
+        assert G.main(base + part) == 3
+    assert G.main(['rex', '--window', WINDOW, '--tier', 'CORE-10', '--out-dir', fx['out']] + full) == 2   # + a store
+    assert G.main(base + ['--addon', pa, '--addon-sha256', 'e' * 64] + full[4:]) == 2                    # wrong pin
+    assert not os.path.exists(fx['ledger']) or not ledger_recs(fx)
     capsys.readouterr()
-    rc = G.main(base + ['--addon', pa, '--addon-report', pr])
+    rc = G.main(base + full)
     out = capsys.readouterr()
     assert rc in (0, 4), out.err
     _, sm, _ = docs(out.out.strip().splitlines()[-1])
-    assert sm['addon']['digest'] == addon['digest']
+    assert sm['addon']['digest'] == addon['digest'] and sm['addon']['addon_sha256'] == pin
+
+
+# ------------------------------------------------------------------ Cowork D1 (6185519839): values, pin, re-proof
+def _forge(pick, **cols):
+    """Forge value columns of one add-on row (row sha + add-on digest re-sealed by the forger)."""
+    idx = {'open': 1, 'high': 2, 'low': 3, 'close': 4, 'volume': 5, 'qv': 7}
+
+    def fn(a):
+        r = pick(a)
+        c = r['line'].split(',')
+        for k, v in cols.items():
+            c[idx[k]] = v
+        r['line'] = ','.join(c)
+        r['sha256'] = hashlib.sha256(r['line'].encode()).hexdigest()
+    return fn
+
+
+def _bar_row(a):
+    return row_of(a, 'AAAUSDT', min(FILLED_BARS))
+
+
+def _mark_row(a):
+    return next(x for x in a['rows'] if x['series'] == 'markPriceKlines')
+
+
+PROBES = {
+    'all_999_ohlc': (dict(open='999', high='999', low='999', close='999'), _bar_row, 'byte for byte'),
+    'nan': (dict(close='nan'), _bar_row, 'not finite'),
+    'inf': (dict(high='inf'), _bar_row, 'not finite'),
+    'negative_open': (dict(open='-1'), _bar_row, 'OHLC must be > 0'),
+    'zero_close': (dict(close='0'), _bar_row, 'OHLC must be > 0'),
+    'high_below_low': (dict(high='1', low='2', open='1.5', close='1.5'), _bar_row, 'inconsistent OHLC'),
+    'abc': (dict(close='abc'), _bar_row, 'not a number'),
+    'negative_volume': (dict(volume='-5'), _bar_row, 'negative volume'),
+    'nan_quote_volume': (dict(qv='nan'), _bar_row, 'not finite'),
+    'mark_nan': (dict(close='nan'), _mark_row, 'not finite'),
+    'mark_high_below_close': (dict(high='1'), _mark_row, 'inconsistent OHLC'),
+    'valid_looking_forgery': (None, _bar_row, 'byte for byte'),
+}
+
+
+@pytest.mark.parametrize('probe', sorted(PROBES))
+def test_cowork_value_probes_refuse_before_the_access(fx, probe):
+    cols, pick, want = PROBES[probe]
+    addon = make_addon(fx)
+    if cols is None:                                 # a plausible close inside [low, high]: only the re-proof sees it
+        c = _bar_row(addon)['line'].split(',')
+        cols = dict(close=repr(round((float(c[2]) + float(c[3])) / 2 + 0.00005, 5)))
+    with pytest.raises(PR.PitRunError, match=want):
+        with_addon(fx, reseal(addon, _forge(pick, **cols)))     # the forger also re-pins: internal checks must hold
+    assert_no_access(fx)
+
+
+def test_a_forged_resealed_addon_fails_the_external_pin(fx):
+    addon = make_addon(fx)
+    pin = hashlib.sha256(addon_bytes(addon)).hexdigest()
+    forged = reseal(addon, _forge(_bar_row, open='999', high='999', low='999', close='999'))
+    with pytest.raises(PR.PitRunError, match='not the pinned --addon-sha256'):
+        with_addon(fx, forged, pin=pin)
+    with pytest.raises(PR.PitRunError, match='pinned sha256'):
+        with_addon(fx, addon, pin='not-hex')
+    assert_no_access(fx)
+    e = with_addon(fx, addon, pin=pin)               # the genuine file under its pin loads
+    assert e['addon']['addon_sha256'] == pin
+
+
+def _zip_of(fx, addon):
+    return BF.zip_path(fx['zips'], sorted({r['source_url'] for r in addon['rows']})[0])
+
+
+def _rewrite_zip(p, with_checksum):
+    name = os.path.basename(p)[:-4]
+    sym, iv, day = name.split('-', 2)
+    step = TF if iv == '4h' else HOUR
+    a = U(day + 'T00:00:00Z')
+    raw = zbytes(name + '.csv', [LD.kline(SYMS.index(sym), t, step).replace(',', ',1', 1)
+                                 for t in range(a, a + DAY, step)])
+    with open(p, 'wb') as f:
+        f.write(raw)
+    if with_checksum:                                # the kept checksum agrees with the zip, not with the record
+        with open(p + '.CHECKSUM', 'w') as f:
+            f.write(f'{hashlib.sha256(raw).hexdigest()}  {name}.zip')
+
+
+@pytest.mark.parametrize('how, want', [
+    ('missing_zip', 'missing from the kept zips'),
+    ('missing_checksum', 'missing from the kept zips'),
+    ('zip_bytes_changed', 'disagree'),
+    ('zip_and_checksum_rewritten', 'disagree'),
+    ('no_zips_dir', 'zips directory'),
+])
+def test_archive_reproof_refuses_a_missing_or_mismatched_zip(fx, how, want):
+    addon = make_addon(fx)
+    p = _zip_of(fx, addon)
+    zips = fx['zips']
+    if how == 'missing_zip':
+        os.remove(p)
+    elif how == 'missing_checksum':
+        os.remove(p + '.CHECKSUM')
+    elif how == 'no_zips_dir':
+        zips = str(fx['tmp'] / 'nowhere')
+    else:
+        _rewrite_zip(p, how == 'zip_and_checksum_rewritten')
+    raw = addon_bytes(addon)
+    with pytest.raises(PR.PitRunError, match=want):
+        load(fx, addon=raw, addon_sha256=hashlib.sha256(raw).hexdigest(), addon_report=fx['rep'], addon_zips=zips)
+    assert_no_access(fx)
+
+
+def test_malformed_addon_bytes_refuse_before_the_access(fx):
+    for raw in (b'{not json', b'[1, 2]', b'{"format": "zb-rex-gap-fill/1", "x": NaN}'):
+        with pytest.raises(PR.PitRunError, match='add-on refused'):
+            load(fx, addon=raw, addon_sha256=hashlib.sha256(raw).hexdigest(), addon_report=fx['rep'],
+                 addon_zips=fx['zips'])
+    assert_no_access(fx)
+
+
+def test_fill_cli_fetch_requires_a_zips_dir(fx, monkeypatch):
+    monkeypatch.setattr(BF, 'http_fetcher', lambda url: pytest.fail('network touched'))
+    p = fx['tmp'] / 'report.json'
+    p.write_text(json.dumps(fx['rep']))
+    with pytest.raises(SystemExit):
+        BF.main(['--report', str(p), '--out', str(fx['tmp'] / 'a.json'), '--fetch'])

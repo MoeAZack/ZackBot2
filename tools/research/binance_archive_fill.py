@@ -23,7 +23,8 @@ This tool never writes into the store or the manifest: the add-on is a separate 
 
 Usage (repo root):
   py -3.14 tools/research/binance_archive_fill.py --report REPORT.json --out PLAN.json            # plan only (default)
-  py -3.14 tools/research/binance_archive_fill.py --report REPORT.json --out ADDON.json --fetch    # paced real fetch
+  py -3.14 tools/research/binance_archive_fill.py --report REPORT.json --out ADDON.json --fetch --zips ZIPDIR
+                                                                    # paced real fetch; verified zips kept in ZIPDIR
 """
 from __future__ import annotations
 
@@ -217,7 +218,33 @@ def extract(raw: bytes, req: dict, wanted: set) -> list:
     return out
 
 
-def fill(rep: dict, fetcher, *, sleep=time.sleep, clock=time.monotonic, min_gap=MIN_GAP_S) -> dict:
+def zip_path(keep_dir: str, url: str) -> str:
+    """Where a verified archive zip is kept: <keep_dir>/<path under /data/futures/um/> (its `.CHECKSUM` beside it).
+    The add-on loader (rex_addon) re-proves every add-on row from these exact bytes."""
+    if not archive_url_ok(url):
+        raise FillError(f'refusing a non-archive URL {url}')
+    rel = urllib.parse.urlsplit(url).path[len(PATH_PREFIX):]
+    if not rel or any(p in ('', '.', '..') for p in rel.split('/')):
+        raise FillError(f'bad archive path {url}')
+    root = os.path.realpath(keep_dir)
+    out = os.path.realpath(os.path.join(root, *rel.split('/')))
+    if os.path.commonpath([root, out]) != root:
+        raise FillError(f'archive path {url} escapes {keep_dir}')
+    return out
+
+
+def keep_zip(keep_dir: str, url: str, raw: bytes, checksum: bytes) -> None:
+    p = zip_path(keep_dir, url)
+    os.makedirs(os.path.dirname(p), exist_ok=True)
+    with open(p, 'wb') as f:
+        f.write(raw)
+    with open(p + '.CHECKSUM', 'wb') as f:
+        f.write(checksum)
+
+
+def fill(rep: dict, fetcher, *, sleep=time.sleep, clock=time.monotonic, min_gap=MIN_GAP_S, keep_dir=None) -> dict:
+    """`keep_dir`: keep every VERIFIED zip + its .CHECKSUM there (zip_path), so the add-on loader can re-prove the
+    rows from the archive bytes (required for `run_r4 rex --addon`)."""
     reqs = plan(rep)
     pacer = Pacer(fetcher, sleep=sleep, clock=clock, min_gap=min_gap)
     holes = {hole_id(h): h for h in rep['holes']}
@@ -229,6 +256,7 @@ def fill(rep: dict, fetcher, *, sleep=time.sleep, clock=time.monotonic, min_gap=
         entry = {'url': r['url'], 'freq': r['freq'], 'period': r['period'], 'holes': r['holes']}
         try:
             st, body = pacer.get(r['checksum_url'])
+            ck_body = body
             if st == 404:
                 files.append(dict(entry, status='archive_missing'))
                 continue
@@ -247,6 +275,8 @@ def fill(rep: dict, fetcher, *, sleep=time.sleep, clock=time.monotonic, min_gap=
                 continue
             wanted = set().union(*(need[k] for k in r['holes']))
             rows = extract(raw, r, wanted)
+            if keep_dir is not None:
+                keep_zip(keep_dir, r['url'], raw, ck_body)
             for t, ln in rows:
                 for k in r['holes']:
                     if t in need[k]:
@@ -329,10 +359,14 @@ def main(argv=None) -> int:
     g = ap.add_mutually_exclusive_group()
     g.add_argument('--plan-only', action='store_true', default=True, help='list URLs only (default)')
     g.add_argument('--fetch', action='store_true', help='paced sequential fetch from data.binance.vision')
+    ap.add_argument('--zips', default=None, help='with --fetch (required): keep every verified zip + .CHECKSUM here '
+                                                 '(the add-on loader re-proves each row from them)')
     a = ap.parse_args(argv)
+    if a.fetch and not a.zips:
+        ap.error('--fetch needs --zips DIR (the verified zips the loader re-proves rows from)')
     with open(a.report, 'rb') as f:
         rep = check_report(json.loads(f.read()))
-    doc = fill(rep, http_fetcher) if a.fetch else plan_doc(rep)
+    doc = fill(rep, http_fetcher, keep_dir=a.zips) if a.fetch else plan_doc(rep)
     with open(a.out, 'w', newline='\n') as f:
         json.dump(doc, f, sort_keys=True, indent=1)
         f.write('\n')
