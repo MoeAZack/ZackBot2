@@ -5,7 +5,8 @@ from datetime import datetime
 import numpy as np
 import pandas as pd
 
-SCHEMA_VERSION = 'ml_shadow.v1'
+SCHEMA_VERSION = 'ml_shadow.v2'   # v2 (hook): decision rows carry status taken|skipped|pending
+STATUSES = ('taken', 'skipped', 'pending')   # pending = resting maker / armed trailing entry; label accepted if it fills
 # Any field NAME matching this is dropped before a row is written - at any nesting depth.
 SECRET_NAME_RE = re.compile(r'(key|secret|token|passw|passphrase|signature|credential|auth|cookie|bearer)', re.I)
 

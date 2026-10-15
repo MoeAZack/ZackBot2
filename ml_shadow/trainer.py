@@ -20,6 +20,7 @@ import numpy as np
 import pandas as pd
 
 from .common import SCHEMA_VERSION, canonical_json, sha256_hex, to_utc
+from .ledger import labelable
 from .features import NUMERIC, CATEGORICAL
 
 MIN_TOTAL, MIN_BUCKET = 1000, 100
@@ -49,7 +50,7 @@ def _cairo_midnight_utc(day):
 
 
 def join(ledger, labels):
-    """[(feature_row, label_row)] for TAKEN decisions with a numeric net_r label (first label per id wins)."""
+    """[(feature_row, label_row)] for TAKEN (or filled PENDING) decisions with a numeric net_r label (first label per id wins)."""
     lab = {}
     for r in _rows(labels):
         if r.get('net_r') is not None and r.get('decision_id') not in lab:
@@ -57,7 +58,7 @@ def join(ledger, labels):
     out, seen = [], set()
     for r in _rows(ledger):
         did = r.get('decision_id')
-        if r.get('taken') and did in lab and did not in seen:
+        if labelable(r) and did in lab and did not in seen:   # pending without a label (cancelled/expired) never joins
             seen.add(did)
             out.append((r, lab[did]))
     return out

@@ -3,7 +3,7 @@
 Run:  python app.py            (or ZackBot.exe after building)
       python app.py --no-window  (server only; open http://localhost:8765 yourself)
 """
-import atexit, base64, copy, csv, glob, gzip, hmac, json, logging, logging.handlers, math, os, queue, random, re, secrets, shutil, subprocess, sys, threading, time, traceback, uuid, socket
+import atexit, base64, collections, copy, csv, glob, gzip, hmac, json, logging, logging.handlers, math, os, queue, random, re, secrets, shutil, subprocess, sys, threading, time, traceback, uuid, socket
 from datetime import datetime, timezone
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlsplit, parse_qs
@@ -81,13 +81,16 @@ from engine import RISK_RULE_DEFAULTS, GOV_MULT_MAX, EXCHANGE_DOWN   # noqa: E40
 from telegram_ctl import TelegramControl, clean_setting as tg_clean_setting   # noqa: E402
 import market_collector as MC     # noqa: E402
 import engine as ENG              # noqa: E402
+import shadow_analyst as SA       # noqa: E402  ML-SHADOW-01: report-only analyst (never feeds trading)
 
 
 # ------------------------------------------------------------------ config (keys) - validated, atomically written, encrypted on Windows
-CFG_KEYS = ('MODE', 'LIVE_CONFIRM', 'API_KEY', 'API_SECRET', 'ANTHROPIC_API_KEY', 'ANTHROPIC_MODEL', 'TELEGRAM_TOKEN')
-CFG_SECRET = ('API_KEY', 'API_SECRET', 'ANTHROPIC_API_KEY', 'TELEGRAM_TOKEN')
+CFG_KEYS = ('MODE', 'LIVE_CONFIRM', 'API_KEY', 'API_SECRET', 'ANTHROPIC_API_KEY', 'ANTHROPIC_MODEL', 'TELEGRAM_TOKEN',
+            'ANTHROPIC_WORKSPACE_ID')
+CFG_SECRET = ('API_KEY', 'API_SECRET', 'ANTHROPIC_API_KEY', 'TELEGRAM_TOKEN', 'ANTHROPIC_WORKSPACE_ID')   # ML-SHADOW-01: DPAPI too
 CFG_RULES = dict(MODE=r'paper|live', LIVE_CONFIRM=r'(YES_REAL_MONEY)?', API_KEY=r'[A-Za-z0-9]{8,128}', API_SECRET=r'[A-Za-z0-9]{8,128}',
-                 ANTHROPIC_API_KEY=r'[A-Za-z0-9_\-]{8,200}', ANTHROPIC_MODEL=r'[A-Za-z0-9.\-_]{0,80}', TELEGRAM_TOKEN=r'\d{5,15}:[A-Za-z0-9_\-]{20,80}')
+                 ANTHROPIC_API_KEY=r'[A-Za-z0-9_\-]{8,200}', ANTHROPIC_MODEL=r'[A-Za-z0-9.\-_]{0,80}', TELEGRAM_TOKEN=r'\d{5,15}:[A-Za-z0-9_\-]{20,80}',
+                 ANTHROPIC_WORKSPACE_ID=r'[A-Za-z0-9_\-]{1,128}')
 
 
 def cfg_value_ok(k, v):
@@ -593,6 +596,101 @@ def migrate_settings_secrets(cfg, data_dir=None):
     ENG.redact_settings_files(data_dir)
 
 
+# ------------------------------------------------------------------ ML-SHADOW-01: shadow analyst wiring (report only)
+ANALYST_TICK_S = 300
+
+
+def ml_aggregate(e):
+    """Counts-only aggregate of the engine's ML ledgers for shadow_analyst.build_aggregate (no raw rows, ids or prices)."""
+    p = e.ml_paths()
+    if not os.path.exists(p['decisions']): return {}
+    import ml_shadow as MLS
+    dec = list(MLS.JsonlLedger(p['decisions'], e.ML_MAX_BYTES, e.ML_MAX_FILES).rows())
+    lab = list(MLS.JsonlLedger(p['labels'], e.ML_MAX_BYTES, e.ML_MAX_FILES).rows()) if os.path.exists(p['labels']) else []
+    taken = {r.get('decision_id'): r for r in dec if r.get('taken')}
+    trades = [(taken[l['decision_id']], l) for l in lab if l.get('decision_id') in taken and isinstance(l.get('net_r'), (int, float))]
+
+    def perf(rs):
+        if not rs: return None
+        pos, neg = sum(x for x in rs if x > 0), -sum(x for x in rs if x < 0)
+        out = dict(n=len(rs), net_r=round(sum(rs), 3), win_rate=round(sum(1 for x in rs if x > 0) / len(rs), 3), avg_r=round(sum(rs) / len(rs), 3))
+        if neg > 0: out['pf'] = round(pos / neg, 3)
+        return out
+    performance = {'all': perf([l['net_r'] for _, l in trades])} if trades else {}
+    for strat in sorted({d.get('strategy') or '?' for d, _ in trades}):
+        performance[str(strat)] = perf([l['net_r'] for d, l in trades if (d.get('strategy') or '?') == strat])
+    counts = {}
+    for g in ('strategy', 'family', 'side'):
+        c = collections.Counter(str(d.get(g) or '?') for d in taken.values())
+        counts[g] = dict(c.most_common(30))
+    counts['regime'] = dict(collections.Counter(str((d.get('features') or {}).get('regime') or '?') for d in taken.values()).most_common(10))
+    skips = collections.Counter(str(r.get('reason') or '?').split(' - ')[0].split(':')[0][:40] for r in dec if not r.get('taken'))
+    times = sorted(str(r.get('candle_time')) for r in dec if r.get('candle_time'))
+    miss = collections.Counter(k for r in dec for k in (r.get('missing') or []))
+    raw = dict(n_trades=len(trades), performance=performance, counts=counts, skip_reasons=dict(skips.most_common(20)),
+               missingness={k: round(v / len(dec), 3) for k, v in miss.items()} if dec else {})
+    if times: raw['window'] = dict(start=times[0], end=times[-1])
+    return raw
+
+
+def _analyst(app):
+    a = getattr(app, '_analyst', None)
+    if a is None or getattr(a, '_zb_dir', None) != app.engine.dir:
+        a = SA.ShadowAnalyst(os.path.join(app.engine.dir, 'analyst'))
+        a._zb_dir = app.engine.dir
+        app._analyst = a
+    return a
+
+
+def _analyst_args(app):
+    e = app.engine
+    return dict(api_key=app.cfg.get('ANTHROPIC_API_KEY') or None, cfg=e.S, trading_mode='LIVE' if e.live else 'PAPER',
+                workspace_id=app.cfg.get('ANTHROPIC_WORKSPACE_ID') or None)
+
+
+def analyst_tick(app, now=None):
+    """Timer body: runs only on a due Cairo slot and only when CLAUDE_SHADOW_ANALYST is on (the analyst checks both)."""
+    try:
+        if not SA.is_enabled(app.engine.S): return None
+        return _analyst(app).run_scheduled(ml_aggregate(app.engine), now_utc=now or datetime.now(timezone.utc), **_analyst_args(app))
+    except Exception as ex:
+        log.warning(f'shadow analyst tick failed ({type(ex).__name__})'); return None
+
+
+def analyst_view(app, now=None):
+    """GET /api/analyst: latest report + usage. Only set/unset flags for the key and workspace id - never their values."""
+    e, now = app.engine, now or datetime.now(timezone.utc)
+    a = _analyst(app)
+    return dict(enabled=SA.is_enabled(e.S), model=str(e.S.get('CLAUDE_SHADOW_MODEL') or SA.DEFAULT_MODEL),
+                mode='LIVE' if e.live else 'PAPER', key_set=bool(app.cfg.get('ANTHROPIC_API_KEY')),
+                workspace_id_set=bool(app.cfg.get('ANTHROPIC_WORKSPACE_ID')), ml_shadow=bool(e.S.get('ML_SHADOW')),
+                ml_health=dict(e.health.get('ml_shadow') or {}), latest=a.latest(now), usage=a.usage(now))
+
+
+def analyst_action(app, path, b, now=None):
+    e = app.engine
+    if path == '/api/analyst/analyze_now':
+        return _analyst(app).analyze_now(ml_aggregate(e), now_utc=now, **_analyst_args(app))
+    if path == '/api/analyst/auth_self_test':
+        if e.live: raise ValueError('the Claude shadow analyst is PAPER only')
+        args = _analyst_args(app)
+        if not args['api_key']: return dict(status=SA.AUTH_UNAVAILABLE, request_id=None)
+        if not SA.valid_workspace_id(args['workspace_id']): return dict(status=SA.AUTH_REJECTED, request_id=None)
+        r = _analyst(app).auth_self_test(args['api_key'], args['workspace_id'], now_utc=now)
+        return dict(status=r.get('status'), request_id=r.get('request_id'))
+    if path == '/api/analyst/workspace':
+        v = b.get('ANTHROPIC_WORKSPACE_ID')
+        v = '' if v is None else v
+        if not isinstance(v, str) or not SA.valid_workspace_id(v.strip()):
+            raise ValueError('workspace id: letters, digits, dash and underscore only (max 128)')
+        v = v.strip()
+        write_cfg({'ANTHROPIC_WORKSPACE_ID': v})                       # DPAPI-protected like the other secrets
+        if v: app.cfg['ANTHROPIC_WORKSPACE_ID'] = v
+        else: app.cfg.pop('ANTHROPIC_WORKSPACE_ID', None)
+        return 'workspace id saved' if v else 'workspace id cleared'
+    raise ValueError('unknown analyst action')
+
+
 class App:
     def __init__(self):
         self.engine = None
@@ -704,6 +802,11 @@ class App:
                 log.warning(f'signal preview failed: {ex}')
 
     states = {}
+
+    def analyst_loop(self):
+        while True:
+            time.sleep(ANALYST_TICK_S)
+            analyst_tick(self)
 
     def loop(self):
         e0 = self.engine
@@ -1068,6 +1171,7 @@ class H(BaseHTTPRequestHandler):
             if p == '/api/candles':
                 return self._json(APP.candles_view((q.get('symbol') or [''])[0], (q.get('tf') or ['4h'])[0], (q.get('n') or ['160'])[0]))
             if p == '/api/research': return self._json(APP.research)
+            if p == '/api/analyst': return self._json(analyst_view(APP))
             if p == '/api/backtests': return self._json(list_backtests())
             if p.startswith('/api/backtest/'):
                 bid = p.rsplit('/', 1)[1]
@@ -1254,6 +1358,14 @@ def settings_update(e, b):
                 raise ValueError('cannot resume entries: ' + e.install_block())
             ns[k] = bool(v)
         elif k in ('AI_FILTER', 'RUN_IN_BACKGROUND', 'TELEGRAM_ON', 'MAKER_FALLBACK'): ns[k] = bool(v)
+        elif k in ('ML_SHADOW', 'CLAUDE_SHADOW_ANALYST'):          # ML-SHADOW-01: observation / report only, independent of AI_FILTER
+            if not isinstance(v, bool): raise ValueError(f'{k.lower()} must be true or false')
+            if v and k == 'CLAUDE_SHADOW_ANALYST' and getattr(e, 'live', True) is not False:
+                raise ValueError('the Claude shadow analyst is PAPER only')
+            ns[k] = v
+        elif k == 'CLAUDE_SHADOW_MODEL':
+            if not isinstance(v, str) or not re.fullmatch(r'[A-Za-z0-9.\-_]{0,80}', v): raise ValueError('shadow analyst model: letters, digits, dot, dash only')
+            ns[k] = v or SA.DEFAULT_MODEL
         elif k == 'MARKET_COLLECTOR':
             if not isinstance(v, bool): raise ValueError('market data collector switch must be true or false')
             ns[k] = v
@@ -1305,6 +1417,7 @@ def settings_update(e, b):
 
 def handle(path, b):
     e = APP.engine
+    if path.startswith('/api/analyst/'): return analyst_action(APP, path, b)       # ML-SHADOW-01 (report only)
     if path == '/api/settings':
         with e.lock:
             ns, after = settings_update(e, b)      # AUD-05: EVERY key validated on a copy - any error: nothing applied or saved
@@ -1619,6 +1732,7 @@ def main():
     APP = App()
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     threading.Thread(target=APP.loop, daemon=True).start()
+    threading.Thread(target=APP.analyst_loop, daemon=True).start()     # ML-SHADOW-01: no-op unless CLAUDE_SHADOW_ANALYST (PAPER)
     APP.collector = MC.MarketCollector(lambda: APP.engine, os.path.join(DATA, 'market_data'))   # observe-only, own thread + folder
     APP.collector.start()
     log.info(f'control panel at http://127.0.0.1:{PORT} (opens from the ZackBot shortcut)')
