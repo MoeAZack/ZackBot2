@@ -502,7 +502,7 @@ def run(book, sleeves, start=500.0, max_lev=10.0, daily_halt=0.08, t0=None, t1=N
             sl_eq = eq * cfg['share']
             for s, side in list(sl['pend'].items()):
                 if len(sl['pos']) >= cfg['max_pos'] or halted: break
-                a = book.arr[s]; atr = a['atr'][i - 1]
+                a = book.arr[s]; atr = _sig_atr(sl['sigs'][s], i - 1, a['atr'][i - 1])   # engine parity (B1 finding)
                 if entry_order == 'maker':
                     lim = a['c'][i - 1]
                     if (a['l'][i] < lim) if side == 1 else (a['h'][i] > lim):
@@ -597,7 +597,7 @@ def run(book, sleeves, start=500.0, max_lev=10.0, daily_halt=0.08, t0=None, t1=N
                         if why: blocked[why] = blocked.get(why, 0) + 1; continue
                     te = cfg.get('trail_entry')
                     if te and te.get('dev_atr'):
-                        sl['tpend'][s] = dict(side=side, ext=book.arr[s]['c'][i], atr=book.arr[s]['atr'][i],
+                        sl['tpend'][s] = dict(side=side, ext=book.arr[s]['c'][i], atr=_sig_atr(sl['sigs'][s], i, book.arr[s]['atr'][i]),
                                               dev=te['dev_atr'], until=i + int(te.get('max_bars', 3)))
                     else:
                         sl['pend'][s] = side
@@ -617,6 +617,14 @@ def run(book, sleeves, start=500.0, max_lev=10.0, daily_halt=0.08, t0=None, t1=N
 
 
 norm_tps = S.norm_tps
+
+
+def _sig_atr(sig, i, fallback):
+    """Stop ATR for a signal decided at candle i - the same rule as engine._sig_atr: the strategy's own ATR series when it
+    supplies one (VWAPREV: TR-SMA14 of the decision candle) and the value is finite and > 0, else the book's engine ATR."""
+    a = sig.get('atr')
+    if a is not None and 0 <= i < len(a) and np.isfinite(a[i]) and a[i] > 0: return float(a[i])
+    return float(fallback)
 
 
 def martingale_risk(mgmt, atr_pct, fee=FEE, slip=SLIP):
