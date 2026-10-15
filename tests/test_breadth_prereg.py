@@ -288,3 +288,21 @@ def test_evaluation_guard_refuses_a_same_tree_other_commit(repo):
 def test_registered_binding_requires_records(repo):
     with pytest.raises(BP.BreadthPreregError, match='no registration'):
         BP.registered_binding(repo, 'HEAD')
+
+
+def test_verify_refuses_a_smuggled_change_in_the_registration_commit(repo):
+    BP.register(repo, accepted_commit=_head(repo))
+    with open(os.path.join(repo, 'strategies.py'), 'ab') as f:
+        f.write(b'# smuggled\n')
+    _commit_ledger(repo)
+    bad = BP.verify_registration(repo)
+    assert any('not ledger-only' in b and 'strategies.py' in b for b in bad), bad
+
+
+def test_verify_refuses_a_registration_not_descending_from_the_accepted_commit(repo):
+    acc = _head(repo)
+    _git(repo, 'checkout', '-q', '--orphan', 'other')
+    _git(repo, 'commit', '-q', '-m', 'unrelated root')
+    BP.register(repo, accepted_commit=acc)
+    _commit_ledger(repo)
+    assert any('not an ancestor' in b for b in BP.verify_registration(repo))

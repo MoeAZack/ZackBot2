@@ -3,13 +3,14 @@
  "cairo_date": "2026-10-15",
  "candidate_id": "breadth_static40.v1",
  "code": {
-  "digest": "669b98c70f6996a9e9eded1f080d3b0c734f18d46095d69ee9579bbc732ac0d3",
+  "digest": "1f71fc58f73d7f3a1bf692e3904c8d9f55a79d1710ba7282a3a5a3075c64bdcf",
   "runner_commit": "c8c7b92",
   "sha256": {
    "backtest.py": "40456e94741854350101547b519f2abbeee922ff2a489afcfefef986cb09bc75",
    "engine.py": "088b2827489c5c6174c5f8f28d7d8d82a2e25b258b43740990a2296fdf4320c2",
    "market_data.py": "aa16e76fdadfd1d39d3cb4cd4e8d144044aea750e8ba44ae1348c644e6440148",
    "strategies.py": "0e28e823894ecadf5bc1d634f4f9fa5e3fe934b4f2a53ae68386d7c6cce27c18",
+   "tools/research/breadth_eval.py": "9074fbd4de0c41399dab8625021a041825248e10b50e35a75a4c287c7e5a6e42",
    "tools/research/collect_klines_research.py": "b6a2a70a59d805f67541be42019e393a6677a954e0be889bfb06eb1f66a46856",
    "tools/research/run_breadth_candidate.py": "dad619aaf2df00fd79ce9a2ca2d4848f298b745920fe7f6c56898e7b4f6922f2",
    "tools/research/run_vwaprev_candidate.py": "c2f43564cc1da4cd79e12253ece82d10b3f82c1ecdbbc11aeafa80202060d23e"
@@ -439,9 +440,10 @@
   }
  ],
  "registration": {
+  "authoritative_time": "the time the registration commit lands on master (GitHub merge time; squash merge), before the holdout start",
   "binds": [
    "prereg_sha256",
-   "accepted_commit (the Codex-accepted exact head)",
+   "accepted_commit (the master commit holding the accepted prereg, validator and evaluator)",
    "accepted_tree"
   ],
   "evaluation_guard": "the evaluation path refuses a dirty worktree and any HEAD whose commit or tree differs from the registered accepted commit / tree (this transitively freezes every module the runner loads)",
@@ -449,7 +451,9 @@
   "kind": "variant",
   "ledger": "research_evidence/ledger/breadth_static40.jsonl",
   "records": 12,
+  "registration_commit": "a direct descendant of accepted_commit whose diff from it touches only the family ledger and REGISTRY.jsonl (the family declaration)",
   "role": "preregistration",
+  "runbook": "research_evidence/breadth_prereg/RUNBOOK.md",
   "time": "registered_at_utc (ms) taken internally at registration; refused at or after 2026-10-19T00:00:00Z"
  },
  "reporting": {

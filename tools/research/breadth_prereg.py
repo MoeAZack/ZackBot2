@@ -56,8 +56,10 @@ LONGS = ('breakout_pyramid', 'donchian_ens', 'ema_mom', 'ema_st', 'exp_breakout'
 SHORTS = ('donchian_ens', 'squeeze_tp')
 HYPOTHESES = tuple((k, 'long') for k in LONGS) + tuple((k, 'short') for k in SHORTS)
 BREADTH_BOTH = ('breakout_pyramid', 'donchian_ens', 'ema_mom', 'ema_st', 'pullback_rsi', 'squeeze_tp')  # engine.py L350
+EVALUATOR = 'tools/research/breadth_eval.py'
 CODE_FILES = ('tools/research/run_breadth_candidate.py', 'tools/research/collect_klines_research.py', 'strategies.py',
-              'backtest.py', 'engine.py', 'tools/research/run_vwaprev_candidate.py', 'market_data.py')
+              'backtest.py', 'engine.py', 'tools/research/run_vwaprev_candidate.py', 'market_data.py', EVALUATOR)
+REGISTRATION_FILES = ('research_evidence/ledger/breadth_static40.jsonl', 'research_evidence/ledger/REGISTRY.jsonl')
 UNIVERSE = 'research_evidence/universe/static-top40-minhist365-contract-20261011.json'
 DEV_INCOMPLETE = ('AKEUSDT', 'BRUSDT', 'HYPEUSDT', 'MUBARAKUSDT', 'PENGUUSDT', 'PUMPUSDT', 'TRUMPUSDT')
 GATE = {'data': 'complete_and_accountable', 'no_bust': True, 'min_closed_trades': 30, 'net_cash_gt': 0.0,
@@ -233,7 +235,13 @@ def build(repo: str = ROOT) -> dict:
                          'kind': 'variant', 'role': 'preregistration',
                          'time': 'registered_at_utc (ms) taken internally at registration; refused at or after '
                                  f'{HOLDOUT["start"]}',
-                         'binds': ['prereg_sha256', 'accepted_commit (the Codex-accepted exact head)', 'accepted_tree'],
+                         'binds': ['prereg_sha256', 'accepted_commit (the master commit holding the accepted prereg, '
+                                   'validator and evaluator)', 'accepted_tree'],
+                         'registration_commit': 'a direct descendant of accepted_commit whose diff from it touches only '
+                                                'the family ledger and REGISTRY.jsonl (the family declaration)',
+                         'authoritative_time': 'the time the registration commit lands on master (GitHub merge time; '
+                                               'squash merge), before the holdout start',
+                         'runbook': 'research_evidence/breadth_prereg/RUNBOOK.md',
                          'evaluation_guard': 'the evaluation path refuses a dirty worktree and any HEAD whose '
                                              'commit or tree differs from the registered accepted commit / tree '
                                              '(this transitively freezes every module the runner loads)'},
@@ -391,7 +399,7 @@ def register(repo: str = ROOT, *, author: str = AUTHOR, accepted_commit: str, **
         raise BreadthPreregError('accepted_commit must be the full 40-hex SHA of the Codex-accepted head')
     _git(repo, 'cat-file', '-e', f'{accepted_commit}^{{commit}}')
     tree = _git(repo, 'rev-parse', f'{accepted_commit}^{{tree}}').strip()
-    for rel in (PREREG, VALIDATOR):
+    for rel in (PREREG, VALIDATOR, EVALUATOR):
         if _blob(repo, accepted_commit, rel) != _blob(repo, 'HEAD', rel):
             raise BreadthPreregError(f'{rel} at HEAD differs from the accepted commit {accepted_commit[:10]}')
     if hashlib.sha256(_blob(repo, accepted_commit, PREREG)).hexdigest() != sha:
@@ -473,6 +481,14 @@ def verify_registration(repo: str = ROOT, *, require_committed: bool = True) -> 
             cm = _commit_ms(repo, c)
             if not (at <= cm + 999 and cm < HOLDOUT_START_MS):
                 bad.append('the committing commit must be at/after registered_at_utc and before the holdout start')
+            if isinstance(acc, str) and HEX40.match(acc):
+                if subprocess.run(['git', '-C', repo, 'merge-base', '--is-ancestor', acc, c],
+                                  capture_output=True).returncode:
+                    bad.append('accepted_commit is not an ancestor of the registration commit')
+                touched = set(_git(repo, 'diff', '--name-only', acc, c, check=False).split())
+                if not touched or touched - set(REGISTRATION_FILES):
+                    bad.append('registration commit is not ledger-only: the diff from accepted_commit touches '
+                               f'{sorted(touched - set(REGISTRATION_FILES)) or "nothing"}')
     return bad
 
 
