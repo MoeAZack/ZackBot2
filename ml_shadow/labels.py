@@ -2,7 +2,7 @@
 import logging
 from datetime import datetime, timezone
 
-from .common import SCHEMA_VERSION, redact
+from .common import SCHEMA_VERSION, redact, redact_text
 
 log = logging.getLogger('zackbot.ml_shadow')
 UNKNOWN = 'UNKNOWN'
@@ -21,7 +21,7 @@ def build_label_record(*, decision_id, net_r, net_pnl, exit_reason, mfe_r=None, 
     return redact({
         'schema': SCHEMA_VERSION, 'decision_id': str(decision_id), 'corr_id': None if trade_id is None else str(trade_id),
         'closed_at': closed_at or datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'),
-        'net_r': _f(net_r), 'net_pnl': _f(net_pnl), 'exit_reason': str(exit_reason or UNKNOWN),
+        'net_r': _f(net_r), 'net_pnl': _f(net_pnl), 'exit_reason': redact_text(exit_reason or UNKNOWN),
         'mfe_r': _f(mfe_r), 'mae_r': _f(mae_r), 'target_before_stop': tbs,
     })
 

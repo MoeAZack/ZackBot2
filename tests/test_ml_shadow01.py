@@ -135,10 +135,10 @@ def test_secret_named_fields_never_written(tmp_path):
 
 
 # ---------- M3 trainer ----------
-def synth_dataset(n_trades, families=(('trend', 'LONG'),), days=60, seed=1):
+def synth_dataset(n_trades, families=(('trend', 'LONG'),), days=60, seed=1, t0='2026-01-01'):
     rng = np.random.default_rng(seed)
     feats_rows, labels = [], []
-    t0 = pd.Timestamp('2026-01-01', tz='UTC')
+    t0 = pd.Timestamp(t0, tz='UTC')
     for k in range(n_trades):
         fam, side = families[k % len(families)]
         ct = t0 + pd.Timedelta(minutes=int(k * days * 1440 / n_trades))
@@ -229,3 +229,55 @@ def test_package_is_standalone_observation_only():
     for mod in ('engine', 'app', 'strategies', 'backtest', 'binance_client', 'requests', 'urllib', 'socket'):
         assert f'import {mod}' not in src and f'from {mod} ' not in src
     assert 'LOCALAPPDATA' not in src
+
+
+# ---------- Cowork F1: Egypt DST boundaries never raise ----------
+@pytest.mark.parametrize('day', ['2026-04-24', '2027-04-30', '2026-10-29', '2026-10-30'])
+def test_dst_boundary_test_block_never_raises(day):
+    d0 = pd.Timestamp(day, tz='UTC')
+    ot = [d0 + pd.Timedelta(days=k - 1, hours=12) for k in range(5)]   # 5 Cairo days, test block 1 starts on `day`
+    ct = [t + pd.Timedelta(hours=2) for t in ot]
+    splits = walk_forward_splits(ot, ct, n_folds=4, embargo_days=0)
+    assert splits and str(cairo_day(ot[1])) == day
+    first = splits[0]
+    assert first['test_start'] <= ot[1] and first['test_start'] > ot[0]
+    f, l = synth_dataset(1200, families=(('trend', 'LONG'), ('trend', 'SHORT')), days=6,
+                         t0=str((d0 - pd.Timedelta(days=1)).date()))
+    assert train(f, l, embargo_days=0)['status'] in ('OK', 'INSUFFICIENT_DATA')
+
+
+# ---------- Cowork F2: one time normaliser, ints = epoch ms ----------
+def test_time_forms_give_same_decision_id_and_session(tmp_path):
+    ts = pd.Timestamp('2026-01-10 14:00', tz='UTC')
+    forms = [ts, ts.tz_localize(None), '2026-01-10T14:00:00Z', '2026-01-10 16:00:00+02:00', int(ts.value // 10**6)]
+    ids = {decision_id('core', 's', 'BTCUSDT', 'LONG', '4h', t) for t in forms}
+    assert len(ids) == 1
+    df = candles(n=60, start='2026-01-01 06:00')
+    i = 59
+    ms = df.copy()
+    ms['t'] = (pd.to_datetime(df['t']).astype('datetime64[ns]').astype('int64') // 10**6).astype('int64')
+    iso = df.copy()
+    iso['t'] = pd.to_datetime(df['t']).dt.strftime('%Y-%m-%dT%H:%M:%SZ')
+    ref = features_at(df, i, {})
+    assert features_at(ms, i, {}) == ref == features_at(iso, i, {})
+    led = JsonlLedger(tmp_path / 'f.jsonl')
+    assert record_decision(led, df=df, i=i, **kw(candle_time=df['t'][i])) is not None
+    assert record_decision(led, df=ms, i=i, **kw(candle_time=int(ms['t'][i]))) is None        # deduped, not doubled
+    assert record_decision(led, df=iso, i=i, **kw(candle_time=iso['t'][i])) is None
+    for bad in (1.7e12, None, True, object(), 'not-a-time'):
+        assert record_decision(led, df=df, i=i, **kw(candle_time=bad)) is None                # never raises
+    assert len(list(led.rows())) == 1
+
+
+# ---------- Cowork note: free-text reason redaction + cap ----------
+def test_reason_text_redacted_and_capped(tmp_path):
+    led, lab = JsonlLedger(tmp_path / 'f.jsonl'), JsonlLedger(tmp_path / 'l.jsonl')
+    secret = 'sk_live_' + 'Q' * 40
+    reason = f'cap hit api_key=ABC123 secret: s3cr3t Bearer eyJhbGciOi token={secret} raw {secret} ' + 'z ' * 300
+    rec = record_decision(led, features=features_at(candles(), 80, {}), **kw(reason=reason))
+    lr = record_label(lab, decision_id=rec['decision_id'], net_r=1, net_pnl=1, exit_reason=reason)
+    for r in (rec['reason'], lr['exit_reason']):
+        assert len(r) <= 200 and r.startswith('cap hit ')
+    text = (tmp_path / 'f.jsonl').read_text() + (tmp_path / 'l.jsonl').read_text()
+    for bad in ('ABC123', 's3cr3t', 'eyJhbGciOi', 'QQQQQQQQQQ'):
+        assert bad not in text

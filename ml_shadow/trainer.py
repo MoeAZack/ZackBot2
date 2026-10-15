@@ -19,7 +19,7 @@ from zoneinfo import ZoneInfo
 import numpy as np
 import pandas as pd
 
-from .common import SCHEMA_VERSION, canonical_json, sha256_hex
+from .common import SCHEMA_VERSION, canonical_json, sha256_hex, to_utc
 from .features import NUMERIC, CATEGORICAL
 
 MIN_TOTAL, MIN_BUCKET = 1000, 100
@@ -34,8 +34,7 @@ def _rows(x):
 
 
 def _utc(ts):
-    t = pd.Timestamp(ts)
-    return t.tz_localize('UTC') if t.tzinfo is None else t.tz_convert('UTC')
+    return to_utc(ts)
 
 
 def cairo_day(ts):
@@ -43,7 +42,10 @@ def cairo_day(ts):
 
 
 def _cairo_midnight_utc(day):
-    return pd.Timestamp(datetime(day.year, day.month, day.day)).tz_localize(CAIRO).tz_convert('UTC')
+    # Egypt DST starts at 00:00 (midnight does not exist -> first valid instant) and ends at 24:00 (no ambiguity at
+    # midnight, but pass ambiguous=True = earliest/DST reading so a rule change can never raise).
+    return pd.Timestamp(datetime(day.year, day.month, day.day)).tz_localize(
+        CAIRO, nonexistent='shift_forward', ambiguous=True).tz_convert('UTC')
 
 
 def join(ledger, labels):

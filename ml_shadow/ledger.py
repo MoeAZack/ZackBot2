@@ -7,9 +7,8 @@ Dedupe: every row carries a `decision_id`; ids already present in any retained f
 import json, logging, os, threading
 from datetime import datetime, timezone
 
-import pandas as pd
 
-from .common import SCHEMA_VERSION, canonical_json, redact, sha256_hex
+from .common import SCHEMA_VERSION, canonical_json, redact, redact_text, sha256_hex, to_utc
 from .features import features_at
 
 log = logging.getLogger('zackbot.ml_shadow')
@@ -75,9 +74,7 @@ class JsonlLedger:
 
 
 def _iso(ts):
-    t = pd.Timestamp(ts)
-    t = t.tz_localize('UTC') if t.tzinfo is None else t.tz_convert('UTC')
-    return t.strftime('%Y-%m-%dT%H:%M:%SZ')
+    return to_utc(ts).strftime('%Y-%m-%dT%H:%M:%SZ')
 
 
 def decision_id(sleeve, strategy, symbol, side, tf, candle_time):
@@ -101,7 +98,7 @@ def build_decision_record(*, sleeve, strategy, family, symbol, side, tf, candle_
         'ts_utc': (now or datetime.now(timezone.utc)).strftime('%Y-%m-%dT%H:%M:%SZ'),
         'candle_time': _iso(candle_time),
         'sleeve': sleeve, 'strategy': strategy, 'family': family, 'symbol': str(symbol).upper(),
-        'side': str(side).upper(), 'tf': str(tf), 'taken': bool(taken), 'reason': str(reason or ''),
+        'side': str(side).upper(), 'tf': str(tf), 'taken': bool(taken), 'reason': redact_text(reason),
         'rotation_group': rotation_group, 'features': feats, 'missing': missing,
     }
     rec['feature_hash'] = sha256_hex(canonical_json(feats))

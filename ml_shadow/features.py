@@ -1,6 +1,6 @@
 """Causal decision-time features. `features_at(df, i, ctx)` reads ONLY rows 0..i of df (it slices first), never fills.
 
-df: candles with columns t (open time), o, h, l, c, v and optionally qv (quote volume). Row i is the decision candle.
+df: candles with columns t (open time: datetime/Timestamp/ISO str, or int = epoch MILLISECONDS), o, h, l, c, v and optionally qv (quote volume). Row i is the decision candle.
 ctx (optional, whitelisted keys only - anything else, including secrets, is ignored):
   regime (str), funding (float), btc_dir (float, -1..+1) or btc_df (candles; only rows with t <= df.t[i] are used),
   breadth (float), rank (int), exposure_count (int), corr_count (int).
@@ -9,6 +9,8 @@ Missing values are explicit None and listed in `missing` (the missing-mask). No 
 import math
 import numpy as np
 import pandas as pd
+
+from .common import to_utc
 
 EMA_FAST, EMA_SLOW, SLOPE_LAG, ATR_N, VOL_N, HI_N, VWAP_N = 20, 50, 5, 14, 20, 20, 20
 NUMERIC = ['ema_slope', 'atr_pct', 'vol_ratio', 'qv_ratio', 'breakout_dist', 'stretch', 'vwap_dist', 'btc_dir',
@@ -101,17 +103,15 @@ def features_at(df, i, ctx=None):
             f['regime'] = ('TREND_UP' if ema_f > ema_s and f['ema_slope'] > 0 else
                            'TREND_DOWN' if ema_f < ema_s and f['ema_slope'] < 0 else 'RANGE')
 
-    t_i = pd.Timestamp(d['t'].iloc[-1])
-    if t_i.tzinfo is None:
-        t_i = t_i.tz_localize('UTC')
-    f['session'] = _session(t_i.tz_convert('UTC'))
+    t_i = to_utc(d['t'].iloc[-1])                      # ints = epoch ms (see common.to_utc)
+    f['session'] = _session(t_i)
 
     if ctx.get('btc_dir') is not None:
         f['btc_dir'] = _num(ctx['btc_dir'])
     elif ctx.get('btc_df') is not None:
         b = ctx['btc_df']
-        bt = pd.to_datetime(b['t'], utc=True)
-        f['btc_dir'] = _dir(b.loc[(bt <= t_i).to_numpy(), 'c'].to_numpy(float))
+        keep = np.array([to_utc(x) <= t_i for x in b['t']], bool)
+        f['btc_dir'] = _dir(b['c'].to_numpy(float)[keep])
     for k in _CTX_NUM:
         if ctx.get(k) is not None:
             f[k] = _num(ctx[k])
