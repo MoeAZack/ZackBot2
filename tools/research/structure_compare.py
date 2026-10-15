@@ -5,8 +5,10 @@ structure_features.structure() of the last candle CLOSED at or before t_in (open
 symbol's cache file whose sha256 must equal the digest the packet recorded. Costs are the packet's (R is net).
 
   py -3.14 tools/research/structure_compare.py --packets DIR --cache DIR [--cache DIR ...] --out FILE.json
+  py -3.14 tools/research/structure_compare.py --inputs <run dir>/inputs.json --universe CORE-10 --cache DIR [...] --out F
+    (--inputs: fetches each packet's review branch, reads it at the exact recorded commit, checks its sha256, then runs)
 """
-import argparse, glob, hashlib, json, math, os, sys
+import argparse, glob, hashlib, json, math, os, subprocess, sys, tempfile
 
 import numpy as np
 import pandas as pd
@@ -99,11 +101,31 @@ def stratified(df, col, a_val, b_val, min_n=5):
     return dict(diff_mean_r=round(num / den, 3) if den else None, hyps=used)
 
 
+def stage_inputs(inputs, universe):
+    """Packets of one universe from the committed inputs index -> a temp dir (sha256-checked). Never copies into the repo."""
+    idx = [x for x in json.load(open(inputs))['packets'] if x['universe'] == universe]
+    if not idx: raise SystemExit(f'no packets for {universe} in {inputs}')
+    for b in sorted({x['branch'] for x in idx}):
+        subprocess.run(['git', 'fetch', '-q', 'origin', b], check=True)
+    d = tempfile.mkdtemp(prefix='structure_inputs_')
+    for x in idx:
+        raw = subprocess.run(['git', 'show', f"{x['commit']}:{x['path']}"], check=True, capture_output=True).stdout
+        if hashlib.sha256(raw).hexdigest() != x['packet_sha256']: raise SystemExit(f"packet digest mismatch: {x['path']}")
+        open(os.path.join(d, x['hypothesis'] + '.json'), 'wb').write(raw)
+    return d
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser()
-    ap.add_argument('--packets', required=True); ap.add_argument('--cache', action='append', required=True)
+    g = ap.add_mutually_exclusive_group(required=True)
+    g.add_argument('--packets'); g.add_argument('--inputs')
+    ap.add_argument('--universe', choices=('CORE-10', 'CORE-20'))
+    ap.add_argument('--cache', action='append', required=True)
     ap.add_argument('--out', required=True)
     a = ap.parse_args(argv)
+    if a.inputs:
+        if not a.universe: ap.error('--inputs needs --universe')
+        a.packets = stage_inputs(a.inputs, a.universe)
     df, files = run(a.packets, a.cache)
     res = dict(n_trades=len(df), all=stats(df.R), files=files, n=SF.N,
                pooled={c: table(df, c, o) for c, o in SPLITS.items()},
