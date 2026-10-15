@@ -402,13 +402,13 @@ STRATEGIES = {
                                'or regime-flip exit, 24-candle (6h) cap. Run on 15m.',
                           mgmt=dict(stop_atr=1.0, tp_r=2.0, max_bars=24)),
     # ---- BREADTH-01 B3: short-only mirrors of hot_coin / dca_dip (EXPERIMENTAL / testnet-only, no demonstrated edge)
-    'exp_mom_short': dict(name='[TESTNET EXP] Momentum Short (dump)', style='aggressive', fn=sig_exp_mom_short,
+    'exp_mom_short': dict(name='[TESTNET EXP] Mom Short (dump)', style='aggressive', fn=sig_exp_mom_short,
                           sides='short', tf='4h',
                           desc=EXP_TAG + ': short-only mirror of Hot-coin momentum chase. Bottom-3 7-day movers breaking below the '
                                'prior 20-candle low and EMA50 on a volume surge (> 1.5x the 42-candle average). Stop 2 ATR above, '
                                'half off at 2R, 2.5 ATR trail, exit on a close back above EMA20. 4h.',
                           mgmt=dict(stop_atr=2.0, trail_atr=2.5, tp1_r=2.0, tp1_frac=0.5)),
-    'exp_rip_sell_dca': dict(name='[TESTNET EXP] Rip-sell DCA (short)', style='aggressive', fn=sig_exp_rip_sell_dca,
+    'exp_rip_sell_dca': dict(name='[TESTNET EXP] Rip-sell DCA S', style='aggressive', fn=sig_exp_rip_sell_dca,
                              sides='short', tf='4h',
                              desc=EXP_TAG + ': UNVERIFIED DCA / martingale basket (never backtested). Short-only mirror of DCA dip '
                                   'buyer: with EMA50 below EMA200, sells the first close > 1.5 ATR above EMA20; up to 3 safety '

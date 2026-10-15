@@ -79,8 +79,8 @@ def test_registry_conventions(key):
     assert st['sides'] == 'short' and st['tf'] == '4h'
     g = S.merge_mgmt(key)
     assert g.get('stop_atr', 0) > 0 or g.get('dca', {}).get('stop_atr', 0) > 0      # mandatory stop
-    assert S.STRATEGIES['exp_mom_short']['name'] == '[TESTNET EXP] Momentum Short (dump)'
-    assert S.STRATEGIES['exp_rip_sell_dca']['name'] == '[TESTNET EXP] Rip-sell DCA (short)'
+    assert S.STRATEGIES['exp_mom_short']['name'] == '[TESTNET EXP] Mom Short (dump)'
+    assert S.STRATEGIES['exp_rip_sell_dca']['name'] == '[TESTNET EXP] Rip-sell DCA S'
 
 
 def test_mgmt_is_exactly_the_mirrored_strategies_mgmt():
