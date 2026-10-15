@@ -1,0 +1,40 @@
+{
+ "artifacts": [
+  {
+   "path": "detail-370fb3b0b1170055.json",
+   "sha256": "1c2bd93ed4d37389800e2f8a06575dbe261daf9909669e287cd9cdf465ec0cb2"
+  },
+  {
+   "path": "summary-370fb3b0b1170055.json",
+   "sha256": "6787120a4a6fcbd2833f4ad6b0de25b3700ee4b16432568376c467640ffe8b29"
+  }
+ ],
+ "digest": "1b05e92e0365a521f69005c7ea1622227a08ba3165d583282a4043c3a48769de",
+ "evidence": [],
+ "format": "zb-run-progress/2",
+ "identity": {
+  "classification": null,
+  "commit": "b681ebcb50c4e375f0e6a6e9e0177524bd8f3364",
+  "evaluator": "d3dda76068d46b9564c616918ad8c08fb6749574bca9f3bdc60e240504a73f84",
+  "manifest": "dd9a584f818263b89fe75d0b2b8c4084791d82490706444f9e0768b8392ab2b4",
+  "prereg": null,
+  "universe": "1c06c18d2fc82413b740260f0051a9f8286e9b0cb87d7d9614a2f88d78393fce"
+ },
+ "identity_digest": "4ed250db727f7d2cd4a4bc77709597627b1a84397fe405a7ab6e614a11504563",
+ "integrity": [],
+ "kind": "final",
+ "run": "370fb3b0b1170055",
+ "seq": 5,
+ "stages": [
+  {
+   "name": "pit.open",
+   "status": "done"
+  },
+  {
+   "name": "pit.development",
+   "status": "done"
+  }
+ ],
+ "state": "sealed",
+ "wall": "2026-10-15T02:56:51+03:00"
+}
