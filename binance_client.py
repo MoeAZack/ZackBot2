@@ -530,6 +530,30 @@ class Futures:
                 raise AmbiguousOrder(f'algo stop unconfirmed: {ex}', f'ac:{acid}')
             return f"a:{r['algoId']}"
 
+    def take_profit(self, symbol, pos_side, qty, price, reduce_only=True, cid=None, acid=None):
+        """Resting exchange take-profit (TAKE_PROFIT_MARKET, mark-price trigger) for qty of the given position side, sent
+        through the same idempotent client-id path and algo fallback as stop(). Returns 'o:<id>' or 'a:<algoId>'.
+        Reduce-only: in hedge mode (positionSide LONG/SHORT) the close side of that position side IS reduce-only and Binance
+        refuses an explicit reduceOnly there (-1106), so the flag is only sent for a one-way (BOTH) position."""
+        if not reduce_only: raise ValueError('a resting take-profit is always reduce-only')
+        side = 'SELL' if pos_side == 'LONG' else 'BUY'
+        extra = {} if pos_side in ('LONG', 'SHORT') else dict(reduceOnly='true')
+        try:
+            r = self._order(self._cid(dict(symbol=symbol, side=side, positionSide=pos_side, type='TAKE_PROFIT_MARKET',
+                                           quantity=qty, stopPrice=price, workingType='MARK_PRICE', **extra), cid))
+            return f"o:{r['orderId']}"
+        except BinanceError as e:
+            if e.code not in (-4120, -1116, -1102, -4136):
+                raise
+            acid = acid or new_cid('zq')
+            try:
+                r = self._req('POST', '/fapi/v1/algoOrder', dict(algoType='CONDITIONAL', symbol=symbol, side=side, clientAlgoId=acid,
+                              positionSide=pos_side, type='TAKE_PROFIT_MARKET', quantity=qty, triggerPrice=price,
+                              workingType='MARK_PRICE', **extra), signed=True, retry=False)
+            except (requests.RequestException, AmbiguousOrder) as ex:
+                raise AmbiguousOrder(f'algo take-profit unconfirmed: {ex}', f'ac:{acid}')
+            return f"a:{r['algoId']}"
+
     def cancel(self, symbol, tag):
         """Cancel one stop. Returns True if cancelled or already gone; raises on other errors (rate limit, network)."""
         if not tag: return True
