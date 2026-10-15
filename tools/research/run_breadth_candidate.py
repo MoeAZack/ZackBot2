@@ -5,12 +5,16 @@ Generalises tools/research/run_vwaprev_candidate.py (unchanged; its guards and h
     the same frozen static universe tiers (CORE-10 / CORE-20), the same clean-tree check before any cache read, the same
     app cache format (<cache>/<SYMBOL>_4h.csv) with SHA-256 digests, the same slice-before-indicators + bounded assert,
     the same app machinery (backtest.Book + backtest.run, app costs / account / sleeve defaults, legacy exchange rules).
-  - --key: any strategies.STRATEGIES key whose timeframe is 4h (the only cached timeframe). Another tf is refused
-    ('BLOCKED: no <tf> cache'), never resampled.
+  - --key: any strategies.STRATEGIES key on a cached timeframe (4h: the app cache; 15m: a research cache collected by
+    tools/research/collect_klines_research.py, passed as --cache, with --regime-cache = the 4h cache). Any other tf is
+    refused ('BLOCKED: no <tf> cache'), never resampled. The window guard is always the 4h one (grid, dev window, the
+    220 x 4h warm-up); a 15m run's own 220-bar warm-up lies inside that validated span.
   - --side long|short: the sleeve 'sides' field (backtest.run zeroes the other side's entry signals). A side whose raw
     entry signal never fires in the window over the run symbols is recorded 'not emitted' (status in the packet).
   - --mgmt defaults (frozen strategy mgmt, empty override) | custom (explicit --tp1-r / --tp1-frac / --be-r / --max-bars
-    overrides on top of the defaults; no named preset is invented here).
+    overrides on top of the defaults) | profit_capture (the exact Codex overrides, PROFIT_CAPTURE, six keys only).
+    The packet's mgmt_check proves every default field the override does not name (stop_atr, tp_r, untouched max_bars)
+    is carried unchanged into the merged sleeve mgmt.
   - completeness: a symbol whose [warm-up start, END) slice has any missing 4h candle (gap, late listing, early end) is
     INCOMPLETE: it is never filled, never enters the book (a gap would drop that bar for every symbol through the Book's
     timestamp intersection), is reported separately and is excluded from every aggregate. BTCUSDT incomplete refuses.
@@ -18,8 +22,8 @@ Generalises tools/research/run_vwaprev_candidate.py (unchanged; its guards and h
     entry fees, funding (residual), MFE (path best price, in stop-distance R), MAE (bar-extreme approximation over
     [entry bar, exit bar], in stop-distance R) and giveback (MFE R - realised R). The probe does not change any number:
     BT.FEE is replaced for the run by an object that multiplies exactly like 0.0005 and only records the close() products.
-  - regime split: BTCUSDT close vs its 4h EMA200 (strategies.indicators e200) on the last CLOSED candle before the entry
-    fill (bar i_in - 1), i.e. causal.
+  - regime split: BTCUSDT close vs its 4h EMA200 (strategies.ema, 200) on the last 4h candle CLOSED at or before the
+    entry fill, i.e. causal (for a 4h run: bar i_in - 1, identical to the book's own e200).
   - packet JSON per (key, side, mgmt): commit, window, symbols, cache digests, runner sha256, params, costs, stats, every
     trade; non_promotable true; never overwritten.
 
@@ -50,12 +54,24 @@ import run_vwaprev_candidate as VC                                              
 
 FORMAT = 'zb-breadth-candidate/1'
 EVIDENCE_CLASS = 'candidate-runtime'
-TF, TF_MS, TF_SEC, BTC = VC.TF, VC.TF_MS, VC.TF_SEC, VC.BTC
+TF, TF_MS, TF_SEC, BTC = VC.TF, VC.TF_MS, VC.TF_SEC, VC.BTC        # the 4h reference timeframe (window grid, regime)
+TFS = {'4h': 4 * 3_600_000, '15m': 15 * 60_000}                    # timeframes with a candle cache (one dir per tf)
 SEALED_CUTOFF, WARMUP_BARS, APP_DEFAULTS = VC.SEALED_CUTOFF, VC.WARMUP_BARS, VC.APP_DEFAULTS
 SIDES = {'long': 1, 'short': -1}
 # custom mgmt fields and their allowed ranges (app.MG_NUM, the app's own validation for slot management)
 CUSTOM = {'tp1_r': (0.1, 50.0, float), 'tp1_frac': (0.05, 1.0, float), 'be_r': (0.1, 50.0, float),
           'max_bars': (1, 5000, int)}
+# The PAPER profit-capture candidate, exact sleeve overrides from Codex (ZackBot2 #13, comment 6198970276), merged onto
+# each frozen default (stop_atr / tp_r / untouched max_bars stay). Only these six keys; every other key is defaults-only.
+PROFIT_CAPTURE_SOURCE = 'https://github.com/MoeAZack/ZackBot2/issues/13#issuecomment-6198970276'
+PROFIT_CAPTURE = {
+    'exp_trend': dict(be_r=1.0, tp1_r=1.5, tp1_frac=0.33),
+    'exp_range': dict(be_r=0.5, tp1_r=0.5, tp1_frac=0.5, max_bars=18),
+    'exp_breakout': dict(be_r=1.0, tp1_r=1.25, tp1_frac=0.5),
+    'exp_scalp': dict(be_r=0.75, tp1_r=0.75, tp1_frac=0.5),
+    'exp_structure': dict(be_r=0.75, tp1_r=1.0, tp1_frac=0.5),
+    'exp_vwaprev': dict(be_r=0.5, tp1_r=0.5, tp1_frac=0.5, max_bars=18),
+}
 FEE_VALUE = float(BT.FEE)
 
 
@@ -81,20 +97,27 @@ def check_key(key) -> dict:
     if key not in ST.STRATEGIES:
         raise RunnerError(f'breadth candidate: unknown strategy key {key!r}')
     tf = ST.STRATEGIES[key].get('tf', '4h')
-    if tf != TF:
-        raise RunnerError(f'BLOCKED: no {tf} cache ({key} runs on {tf}; only {TF} candles are cached)')
+    if tf not in TFS:
+        raise RunnerError(f'BLOCKED: no {tf} cache ({key} runs on {tf}; cached timeframes: {sorted(TFS)})')
     return ST.STRATEGIES[key]
 
 
-def build_mgmt(mode, custom=None) -> dict:
-    """defaults -> {} (frozen strategy mgmt); custom -> explicit overrides only, range-checked like app.MG_NUM."""
+def build_mgmt(mode, custom=None, key=None) -> dict:
+    """defaults -> {} (frozen strategy mgmt); custom -> explicit overrides only, range-checked like app.MG_NUM;
+    profit_capture -> the exact Codex overrides for the six keys in PROFIT_CAPTURE (refused for any other key)."""
     custom = {k: v for k, v in (custom or {}).items() if v is not None}
     if mode == 'defaults':
         if custom:
             raise RunnerError('breadth candidate: --mgmt defaults takes no overrides')
         return {}
+    if mode == 'profit_capture':
+        if custom:
+            raise RunnerError('breadth candidate: --mgmt profit_capture takes no overrides (exact Codex values)')
+        if key not in PROFIT_CAPTURE:
+            raise RunnerError(f'breadth candidate: no profit_capture config for {key} (defaults-only key)')
+        mode, custom = 'custom', dict(PROFIT_CAPTURE[key])
     if mode != 'custom':
-        raise RunnerError('breadth candidate: --mgmt must be defaults or custom')
+        raise RunnerError('breadth candidate: --mgmt must be defaults, profit_capture or custom')
     if not custom:
         raise RunnerError('breadth candidate: --mgmt custom needs at least one of --tp1-r/--tp1-frac/--be-r/--max-bars')
     out = {}
@@ -111,18 +134,49 @@ def build_mgmt(mode, custom=None) -> dict:
     return out
 
 
-def mgmt_label(mode, mg) -> str:
-    if mode == 'defaults':
-        return 'defaults'
-    return 'custom-' + '-'.join(f'{k}{mg[k]:g}' for k in sorted(mg))
+def mgmt_check(key, mg) -> dict:
+    """Every default mgmt field the override does not name is carried unchanged into the merged sleeve mgmt."""
+    base, merged = ST.merge_mgmt(key, {}), ST.merge_mgmt(key, mg)
+    kept = {k: base[k] for k in base if k not in mg}
+    if any(merged.get(k) != v for k, v in kept.items()) or any(merged.get(k) != v for k, v in mg.items()):
+        raise RunnerError('breadth candidate: merged mgmt lost a default or an override; aborted')
+    return {'defaults': base, 'override': dict(mg), 'kept_from_defaults': kept, 'merged': merged, 'ok': True}
+
+
+def read_cache(cache: str, sym: str, tf: str):
+    """<cache>/<SYM>_<tf>.csv in the app._get_candles format. A missing file is reported (the symbol is INCOMPLETE),
+    never substituted."""
+    name = f'{sym}_{tf}.csv'
+    path = os.path.join(cache, name)
+    if not os.path.exists(path):
+        return None, {'file': name, 'missing_file': True}
+    if tf == TF:
+        try:
+            return VC.read_cache(cache, sym)
+        except VC.RunnerError as e:
+            raise RunnerError(str(e).replace('VWAPREV candidate', 'breadth candidate')) from None
+    with open(path, 'rb') as f:
+        raw = f.read()
+    import io
+    df = pd.read_csv(io.BytesIO(raw))
+    if 'qv' not in df:
+        df['qv'] = float('nan')
+    miss = [c for c in VC.COLS if c not in df]
+    if miss:
+        raise RunnerError(f'breadth candidate: cache file {name} lacks columns {miss}')
+    df = df[VC.COLS].astype(float)
+    return df, {'file': name, 'sha256': hashlib.sha256(raw).hexdigest(), 'bytes': len(raw), 'rows': int(len(df))}
 
 
 # ------------------------------------------------------------------ completeness
-def completeness(d: pd.DataFrame, warm_lo: int, hi: int) -> dict:
-    """Missing 4h candles in [warm_lo, hi) (open times). Never filled."""
-    exp = (hi - warm_lo) // TF_MS
+def completeness(d, warm_lo: int, hi: int, tf_ms: int = TF_MS) -> dict:
+    """Missing candles in [warm_lo, hi) (open times) on the tf grid. Never filled."""
+    exp = (hi - warm_lo) // tf_ms
+    if d is None:
+        return {'expected': int(exp), 'rows': 0, 'missing': int(exp), 'off_grid': 0, 'duplicates': 0,
+                'missing_file': True, 'complete': False}
     t = np.unique(_ms(d.t)) if len(d) else np.array([], dtype=np.int64)
-    grid = np.arange(warm_lo, hi, TF_MS, dtype=np.int64)
+    grid = np.arange(warm_lo, hi, tf_ms, dtype=np.int64)
     miss = np.setdiff1d(grid, t)
     off = np.setdiff1d(t, grid)
     rec = {'expected': int(exp), 'rows': int(len(d)), 'missing': int(len(miss)), 'off_grid': int(len(off)),
@@ -170,7 +224,7 @@ def sleeve(key, side, symbols, mgmt, risk, max_pos) -> dict:
                 symbols=list(symbols), hours=None, vol_max_pct=None, kelly=None)
 
 
-def simulate(raw, key, side, symbols, mgmt, lo, hi, *, start, max_lev, daily_halt, risk, max_pos):
+def simulate(raw, key, side, symbols, mgmt, lo, hi, *, start, max_lev, daily_halt, risk, max_pos, tf_sec=TF_SEC):
     book = BT.Book(raw)
     if len(book.t) and _ms(book.t).max() >= hi:
         raise RunnerError('breadth candidate: the book holds a candle at / after END; aborted')
@@ -184,7 +238,7 @@ def simulate(raw, key, side, symbols, mgmt, lo, hi, *, start, max_lev, daily_hal
     try:
         tr, cv = BT.run(book, cfg, start=float(start), max_lev=float(max_lev), daily_halt=float(daily_halt),
                         warmup=n_before, t0=np.datetime64(lo, 'ms'), t1=np.datetime64(hi, 'ms'),
-                        fund_per_bar=BT.FUND_PER_BAR * TF_SEC / 14400, exchange_rules=None)
+                        fund_per_bar=BT.FUND_PER_BAR * tf_sec / 14400, exchange_rules=None)
     finally:
         BT.FEE = old
     return tr, cv, book, probe.pos
@@ -199,12 +253,25 @@ def emitted(book, key, side, symbols, lo, hi) -> int:
 
 
 # ------------------------------------------------------------------ stats
-def enrich(tr: pd.DataFrame, pos: dict, book) -> pd.DataFrame:
+def btc_regime_frame(btc4h: pd.DataFrame):
+    """(4h open ms, close, EMA200) of the sliced 4h BTCUSDT frame - strategies.ema, the same e200 the 4h book computes."""
+    return _ms(btc4h.t), btc4h.c.to_numpy(float), ST.ema(btc4h.c.astype(float), 200).to_numpy(float)
+
+
+def regime_at(reg, t_fill_ms) -> str:
+    """BTC close vs 4h EMA200 on the last 4h candle CLOSED at or before the entry fill (open + 4h <= fill time)."""
+    t4, c4, e4 = reg
+    j = int(np.searchsorted(t4, t_fill_ms - TF_MS, side='right')) - 1
+    if j < 0 or not math.isfinite(e4[j]):
+        return 'n/a'
+    return 'btc_above_ema200' if c4[j] > e4[j] else 'btc_below_ema200'
+
+
+def enrich(tr: pd.DataFrame, pos: dict, book, reg) -> pd.DataFrame:
     """Per trade: gross / fees / funding / MFE / MAE / giveback / BTC regime at entry (all causal or realised)."""
     if not len(tr):
         return tr.assign(gross=[], fees=[], funding=[], mfe_r=[], mae_r=[], giveback_r=[], regime=[])
-    bt = book.d[BTC]
-    btc_c, btc_e = bt.c.to_numpy(float), bt.e200.to_numpy(float)
+    bt_ms = _ms(book.t)
     rows = []
     for r in tr.itertuples():
         x = pos[(r.sym, int(r.i_in))]
@@ -220,11 +287,8 @@ def enrich(tr: pd.DataFrame, pos: dict, book) -> pd.DataFrame:
             mae = max(0.0, sd * (x['e0'] - worst) / R)
         else:
             mfe = mae = float('nan')
-        j = int(r.i_in) - 1
-        reg = 'n/a' if j < 0 or not math.isfinite(btc_e[j]) else ('btc_above_ema200' if btc_c[j] > btc_e[j]
-                                                                     else 'btc_below_ema200')
         rows.append(dict(gross=x['gross'], fees=fees, funding=funding, mfe_r=max(0.0, mfe), mae_r=mae,
-                         giveback_r=max(0.0, mfe) - float(r.R), regime=reg))
+                         giveback_r=max(0.0, mfe) - float(r.R), regime=regime_at(reg, int(bt_ms[int(r.i_in)]))))
     return pd.concat([tr.reset_index(drop=True), pd.DataFrame(rows)], axis=1)
 
 
@@ -254,14 +318,20 @@ def curve_dd(cv) -> float | None:
 
 # ------------------------------------------------------------------ the run
 def run(*, cache: str, window, out: str, key: str, side: str, mgmt_mode: str = 'defaults', custom=None, tier=None,
-        symbols=None, repo: str = VC.ROOT, plan=None, start=APP_DEFAULTS['start'], max_lev=APP_DEFAULTS['max_lev'],
+        symbols=None, regime_cache=None, repo: str = VC.ROOT, plan=None, start=APP_DEFAULTS['start'], max_lev=APP_DEFAULTS['max_lev'],
         daily_halt=APP_DEFAULTS['daily_halt'], risk=APP_DEFAULTS['risk'], max_pos=APP_DEFAULTS['max_pos']) -> dict:
     strat = check_key(key)
     if side not in SIDES:
         raise RunnerError('breadth candidate: --side must be long or short')
-    mg = build_mgmt(mgmt_mode, custom)
+    mg = build_mgmt(mgmt_mode, custom, key)
+    mcheck = mgmt_check(key, mg)
+    tf = strat.get('tf', '4h')
+    tf_ms = TFS[tf]
+    if tf != TF and not regime_cache:
+        raise RunnerError(f'breadth candidate: a {tf} run needs --regime-cache (the 4h cache for the BTC regime split)')
+    regime_cache = regime_cache or cache
     try:
-        lo, hi, warm_lo = VC.check_window(window, plan)
+        lo, hi, warm4 = VC.check_window(window, plan)     # 4h grid + frozen dev window + 220 x 4h warm-up guard
         static = VC.frozen_universe()
         syms = VC.pick_symbols(static, tier, symbols)
     except VC.RunnerError as e:
@@ -272,16 +342,20 @@ def run(*, cache: str, window, out: str, key: str, side: str, mgmt_mode: str = '
         commit = VC.clean_commit(repo)                   # before a single cache byte is read
     except VC.RunnerError as e:
         raise RunnerError(str(e).replace('VWAPREV candidate', 'breadth candidate')) from None
+    # the run tf's warm-up (220 bars of tf) lies inside the 4h warm-up span the guard already validated
+    warm_lo = lo - WARMUP_BARS * tf_ms
+    assert warm_lo >= warm4
     book_syms = sorted(set(syms) | {BTC})
     raw, files, comp, nan_qv, incomplete = {}, {}, {}, {}, []
     for s in book_syms:
-        df, rec = VC.read_cache(cache, s)
+        df, rec = read_cache(cache, s, tf)
         files[s] = rec
-        d = VC.slice_frame(df, warm_lo, hi)
-        comp[s] = completeness(d, warm_lo, hi)
-        t = _ms(d.t)
-        q = ~np.isfinite(d.qv.to_numpy(float))
-        nan_qv[s] = {'all': int(q.sum()), 'in_window': int(q[t >= lo].sum()), 'warmup': int(q[t < lo].sum())}
+        d = VC.slice_frame(df, warm_lo, hi) if df is not None else None
+        comp[s] = completeness(d, warm_lo, hi, tf_ms)
+        if d is not None:
+            t = _ms(d.t)
+            q = ~np.isfinite(d.qv.to_numpy(float))
+            nan_qv[s] = {'all': int(q.sum()), 'in_window': int(q[t >= lo].sum()), 'warmup': int(q[t < lo].sum())}
         if not comp[s]['complete']:
             incomplete.append(dict(symbol=s, status='INCOMPLETE', **comp[s]))
             continue
@@ -289,13 +363,21 @@ def run(*, cache: str, window, out: str, key: str, side: str, mgmt_mode: str = '
     if BTC not in raw:
         raise RunnerError('breadth candidate: BTCUSDT is INCOMPLETE for the window (the book requires it); refused')
     VC.assert_bounded(raw, warm_lo, hi)
+    b4, b4rec = read_cache(regime_cache, BTC, TF)
+    if b4 is None:
+        raise RunnerError('breadth candidate: no 4h BTCUSDT file for the regime split; refused')
+    b4 = VC.slice_frame(b4, warm4, hi)
+    if not completeness(b4, warm4, hi)['complete']:
+        raise RunnerError('breadth candidate: the 4h BTCUSDT regime frame is INCOMPLETE; refused')
+    VC.assert_bounded({BTC: b4}, warm4, hi)
+    reg = btc_regime_frame(b4)
     run_syms = [s for s in syms if s in raw]
     tr, cv, book, pos = simulate(raw, key, side, run_syms, mg, lo, hi, start=start, max_lev=max_lev,
-                                 daily_halt=daily_halt, risk=risk, max_pos=max_pos)
+                                 daily_halt=daily_halt, risk=risk, max_pos=max_pos, tf_sec=tf_ms // 1000)
     n_sig = emitted(book, key, side, run_syms, lo, hi)
     if len(tr) and (tr.side != SIDES[side]).any():
         raise RunnerError('breadth candidate: a trade on the filtered-out side; aborted')
-    tr = enrich(tr, pos, book)
+    tr = enrich(tr, pos, book, reg)
     bt = _ms(book.t)
     if len(tr):
         tr = tr.assign(t_in=[_utc(bt[i]) for i in tr.i_in], t_out=[_utc(bt[i]) for i in tr.i_out])
@@ -314,21 +396,23 @@ def run(*, cache: str, window, out: str, key: str, side: str, mgmt_mode: str = '
         'purpose': 'bounded breadth candidate run (development window only; not evidence for promotion)',
         'status': status, 'raw_entry_signals': n_sig,
         'commit': commit, 'tree': 'clean', 'runner_sha256': runner_digest(),
-        'window': {'start': _utc(lo), 'end': _utc(hi), 'end_exclusive': True, 'bars': int((hi - lo) // TF_MS),
+        'window': {'start': _utc(lo), 'end': _utc(hi), 'end_exclusive': True, 'bars': int((hi - lo) // tf_ms), 'tf': tf,
                    'guard': 'pit_run.rex_window', 'sealed_cutoff': SEALED_CUTOFF},
-        'warmup': {'bars': WARMUP_BARS, 'start': _utc(warm_lo), 'book_bars_before_start': int((bt < lo).sum())},
+        'warmup': {'bars': WARMUP_BARS, 'tf': tf, 'start': _utc(warm_lo), 'guard_4h_start': _utc(warm4), 'book_bars_before_start': int((bt < lo).sum())},
         'universe': {'digest': static['digest'], 'id': static.get('universe_id'), 'tier': tier, 'requested': syms,
                      'run': run_syms, 'book': sorted(raw), 'incomplete': incomplete},
-        'cache': {'format': 'app._get_candles CSV <SYMBOL>_4h.csv: t(ms),o,h,l,c,v,qv', 'files': files,
-                  'completeness': comp},
+        'cache': {'format': f'app._get_candles CSV <SYMBOL>_{tf}.csv: t(ms),o,h,l,c,v,qv', 'files': files,
+                  'completeness': comp, 'regime_btc_4h': b4rec},
         'nan_qv': nan_qv,
         'strategy': {'key': key, 'name': strat['name'], 'tf': strat.get('tf', '4h'), 'registry_sides': strat['sides'],
                      'params': dict(strat.get('params') or {}), 'mgmt_mode': mgmt_mode, 'mgmt_override': mg,
+                     'mgmt_check': mcheck,
+                     'mgmt_source': PROFIT_CAPTURE_SOURCE if mgmt_mode == 'profit_capture' else None,
                      'mgmt': ST.merge_mgmt(key, mg), 'reentry_lock': bool(strat.get('reentry_lock'))},
         'side': side,
         'sleeve': sleeve(key, side, run_syms, mg, risk, max_pos),
         'account': {'start': float(start), 'max_lev': float(max_lev), 'daily_halt': float(daily_halt)},
-        'costs': {'fee_taker': FEE_VALUE, 'slip': BT.SLIP, 'fund_per_bar': BT.FUND_PER_BAR * TF_SEC / 14400,
+        'costs': {'fee_taker': FEE_VALUE, 'slip': BT.SLIP, 'fund_per_bar': BT.FUND_PER_BAR * (tf_ms // 1000) / 14400,
                   'entry_order': 'market (taker)',
                   'exchange_rules': 'legacy floor (BT02 off: no step / minQty); not execution-realistic'},
         'engine': {'backtest': BT.VERSION, 'machinery': 'backtest.Book + backtest.run (app.run_backtest_job)'},
@@ -364,7 +448,8 @@ def main(argv=None) -> int:
     g.add_argument('--symbols')
     ap.add_argument('--key', required=True)
     ap.add_argument('--side', required=True, choices=tuple(SIDES))
-    ap.add_argument('--mgmt', default='defaults', choices=('defaults', 'custom'))
+    ap.add_argument('--mgmt', default='defaults', choices=('defaults', 'profit_capture', 'custom'))
+    ap.add_argument('--regime-cache', default=None, help='the 4h cache dir (BTC regime split); required for non-4h keys')
     for k in CUSTOM:
         ap.add_argument('--' + k.replace('_', '-'), type=CUSTOM[k][2], default=None)
     ap.add_argument('--out', required=True)
@@ -373,7 +458,7 @@ def main(argv=None) -> int:
     a = ap.parse_args(argv)
     try:
         pkt = run(cache=a.cache, window=a.window, out=a.out, key=a.key, side=a.side, mgmt_mode=a.mgmt,
-                  custom={k: getattr(a, k) for k in CUSTOM}, tier=a.tier,
+                  custom={k: getattr(a, k) for k in CUSTOM}, tier=a.tier, regime_cache=a.regime_cache,
                   symbols=a.symbols.split(',') if a.symbols else None, **{k: getattr(a, k) for k in APP_DEFAULTS})
     except RunnerError as e:
         print(f'REFUSED: {e}', file=sys.stderr)

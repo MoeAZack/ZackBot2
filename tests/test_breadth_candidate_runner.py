@@ -46,8 +46,9 @@ def test_window_required_and_warmup_guard(env):
         go(env, window='2021-01-11T00:00:00Z/2021-03-01T00:00:00Z')
 
 
-def test_non_4h_key_blocked(env):
-    with pytest.raises(B.RunnerError, match='BLOCKED: no 15m cache'):
+def test_uncached_tf_key_blocked(env, monkeypatch):
+    monkeypatch.setitem(B.ST.STRATEGIES['exp_scalp'], 'tf', '1h')
+    with pytest.raises(B.RunnerError, match='BLOCKED: no 1h cache'):
         go(env, key='exp_scalp')
 
 
@@ -145,3 +146,87 @@ def test_deterministic_rerun_and_no_overwrite(env):
     with pytest.raises(B.RunnerError, match='never overwritten'):
         go(env, out='a.json')
     assert a['non_promotable'] is True and a['runner_sha256']['run_breadth_candidate.py']
+
+
+# ------------------------------------------------------------------ profit_capture (Codex 6198970276)
+def test_profit_capture_exact_values_and_defaults_kept():
+    assert B.build_mgmt('profit_capture', key='exp_range') == dict(be_r=0.5, tp1_r=0.5, tp1_frac=0.5, max_bars=18)
+    for key, keep in (('exp_trend', dict(stop_atr=2.5, tp_r=3.0, max_bars=180)),
+                      ('exp_breakout', dict(stop_atr=2.0, tp_r=3.0, max_bars=60)),
+                      ('exp_scalp', dict(stop_atr=1.0, tp_r=1.5, max_bars=16)),
+                      ('exp_structure', dict(stop_atr=1.0, tp_r=2.0, max_bars=24)),
+                      ('exp_vwaprev', dict(stop_atr=1.5)), ('exp_range', dict(stop_atr=1.5))):
+        mg = B.build_mgmt('profit_capture', key=key)
+        c = B.mgmt_check(key, mg)
+        assert c['kept_from_defaults'] == keep and c['merged'] == {**keep, **mg} and 'trail_atr' not in c['merged']
+    with pytest.raises(B.RunnerError, match='defaults-only'):
+        B.build_mgmt('profit_capture', key='ema_st')
+    with pytest.raises(B.RunnerError, match='no overrides'):
+        B.build_mgmt('profit_capture', {'be_r': 1}, key='exp_range')
+
+
+def test_profit_capture_packet_differs_and_is_labelled(env):
+    d = go(env, out='d.json')
+    p = go(env, out='p.json', mgmt_mode='profit_capture')
+    assert p['strategy']['mgmt_mode'] == 'profit_capture' and p['strategy']['mgmt_source'] == B.PROFIT_CAPTURE_SOURCE
+    assert p['strategy']['mgmt'] == dict(stop_atr=1.5, max_bars=18, be_r=0.5, tp1_r=0.5, tp1_frac=0.5)
+    assert p['sleeve']['mgmt'] == B.PROFIT_CAPTURE['exp_range'] and p['strategy']['mgmt_check']['ok'] is True
+    assert d['strategy']['mgmt_source'] is None and d['trades'] != p['trades']
+
+
+# ------------------------------------------------------------------ 15m runs + missing files
+M15 = 15 * 60_000
+WARM15 = VT.LO - B.WARMUP_BARS * M15
+
+
+def tape15(seed, scale):
+    t = np.arange(WARM15 - 8 * M15, VT.HI + 40 * M15, M15, dtype=np.int64)
+    n = len(t)
+    rng = np.random.default_rng(seed)
+    c = scale * np.exp(np.cumsum(rng.standard_t(4, n) * 0.002) * 0.3 + 0.03 * np.sin(np.arange(n) / 9.0))
+    o = np.r_[c[0], c[:-1]]
+    w = np.abs(rng.normal(0, 0.0015, n)) * c
+    v = np.round(1000.0 + 500 * rng.random(n), 3)
+    return VT.pd.DataFrame(dict(t=t.astype(float), o=o, h=np.maximum(o, c) + w, l=np.minimum(o, c) - w, c=c, v=v,
+                                qv=np.round(c * v, 6)))
+
+
+def write15(d, fr):
+    os.makedirs(d, exist_ok=True)
+    for s, df in fr.items():
+        df.to_csv(os.path.join(d, f'{s}_15m.csv'), index=False)
+    return d
+
+
+def test_15m_run_uses_15m_cache_and_4h_regime(env, tmp_path):
+    c15 = write15(str(tmp_path / 'c15'), {s: tape15(i + 7, 100.0 * (i + 1)) for i, s in enumerate(['BTCUSDT'] + VT.SYMS)})
+    with pytest.raises(B.RunnerError, match='regime-cache'):
+        go(env, key='exp_scalp', cache=c15)
+    p = go(env, out='l.json', key='exp_scalp', cache=c15, regime_cache=env['cache'])
+    s = go(env, out='s.json', key='exp_scalp', side='short', cache=c15, regime_cache=env['cache'])
+    assert p['window']['tf'] == '15m' and p['warmup']['start'] == B._utc(WARM15)
+    assert p['costs']['fund_per_bar'] == pytest.approx(BT.FUND_PER_BAR / 16)
+    assert p['cache']['files']['ETHUSDT']['file'] == 'ETHUSDT_15m.csv' and p['cache']['regime_btc_4h']['file'] == 'BTCUSDT_4h.csv'
+    assert p['trades'] and {t['side'] for t in p['trades']} == {1} and {t['side'] for t in s['trades']} == {-1}
+    assert all(t['regime'] in ('btc_above_ema200', 'btc_below_ema200') for t in p['trades'])
+    q = go(env, out='q.json', key='exp_scalp', cache=c15, regime_cache=env['cache'], mgmt_mode='profit_capture')
+    assert q['trades'] != p['trades']
+
+
+def test_regime_matches_book_e200_on_4h(env):
+    p = go(env)
+    raw = {s: VT.R.slice_frame(VT.R.read_cache(env['cache'], s)[0], VT.WARM_LO, VT.HI) for s in ['BTCUSDT'] + VT.SYMS}
+    book = BT.Book(raw)
+    t = B._ms(book.t)
+    c, e = book.d['BTCUSDT'].c.to_numpy(), book.d['BTCUSDT'].e200.to_numpy()
+    for tr in p['trades']:
+        j = int(np.searchsorted(t, VT.SP.parse_utc(tr['t_in']))) - 1
+        assert tr['regime'] == ('btc_above_ema200' if c[j] > e[j] else 'btc_below_ema200')
+
+
+def test_missing_file_incomplete(env, tmp_path):
+    fr = VT.frames()
+    del fr['SOLUSDT']
+    p = go(env, cache=VT.write_cache(str(tmp_path / 'nf'), fr))
+    inc = p['universe']['incomplete']
+    assert inc[0]['symbol'] == 'SOLUSDT' and inc[0]['missing_file'] is True and p['universe']['run'] == ['ETHUSDT']
