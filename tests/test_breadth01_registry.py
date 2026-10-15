@@ -241,18 +241,8 @@ def _bt_one(key, side):
 
 
 @pytest.mark.parametrize('side', ['le', 'se'])
-def test_backtest_vwaprev_stop_atr_today(side):
-    """Documents current behaviour: every backtest VWAPREV entry is sized off the Wilder ATR of the signal candle."""
-    bk, s, calls = _bt_one('exp_vwaprev', side)
-    hits = np.flatnonzero(s[side][WARM:]) + WARM
-    wilder = [float(bk.d[SYM].atr.iloc[i]) for i in hits]
-    assert calls and all(any(abs(a - w) <= 1e-12 * w for w in wilder) for a in calls)
-
-
-@pytest.mark.xfail(strict=True, reason='BREADTH-01 B1 finding: backtest.run sizes the VWAPREV stop from the Wilder ATR '
-                                       '(book.arr atr) while the engine uses the strategy TR-SMA14 (engine._sig_atr)')
-@pytest.mark.parametrize('side', ['le', 'se'])
 def test_backtest_vwaprev_stop_uses_strategy_atr(side):
+    """Engine parity (B1 finding, fixed): backtest VWAPREV stops use the strategy TR-SMA14 like engine._sig_atr."""
     bk, s, calls = _bt_one('exp_vwaprev', side)
     hits = np.flatnonzero(s[side][WARM:]) + WARM
     want = [float(s['atr'][i]) for i in hits]
