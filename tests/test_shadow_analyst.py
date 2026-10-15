@@ -67,10 +67,13 @@ def raw(**over):
     return d
 
 
-def mk(tmp_path, *responses, sleeps=None):
+def mk(tmp_path, *responses, sleeps=None, verify=True):
     t = FakeTransport(*(responses or [(200, api_body(good_text()))]))
     sl = sleeps if sleeps is not None else []
-    return sa.ShadowAnalyst(str(tmp_path), transport=t, sleep=sl.append), t, sl
+    a = sa.ShadowAnalyst(str(tmp_path), transport=t, sleep=sl.append)
+    if verify:
+        assert a.auth_self_test(KEY, None, now_utc=NOW, transport=FakeTransport((200, api_body('x'))))['status'] == 'accepted'
+    return a, t, sl
 
 
 def run(a, data=None, cfg=None, mode='PAPER', key=KEY, now=NOW):
@@ -181,7 +184,7 @@ def test_prompt_injection_stays_quoted_data(tmp_path):
     # the response is research text only - nothing changed, no action surface exists
     assert r['status'] == sa.STATUS_OK and cfg == snapshot
     public = {n for n in dir(a) if not n.startswith('_')}
-    assert public == {'analyze_now', 'run_scheduled', 'latest', 'usage', 'dir', 'state', 'state_path', 'report_path'}
+    assert public == {'analyze_now', 'run_scheduled', 'latest', 'usage', 'auth_self_test', 'dir', 'state', 'state_path', 'report_path'}
     for bad in ('order', 'place', 'cancel', 'setting', 'strategy', 'model'):
         assert not any(bad in n for n in public)
 
@@ -441,3 +444,110 @@ def test_ai_filter_untouched(tmp_path):
     assert r['status'] == sa.STATUS_OK
     assert cfg.read <= {sa.FLAG, sa.MODEL_SETTING}
     assert cfg['AI_FILTER'] == 'on' and 'should-not-be-read' not in t.calls[0]['body']
+
+
+# --- workspace id + auth self-test (Codex 6190894405) ---------------------------------------------------------------
+WS = 'wrkspc_FAKEworkspace01ABCdef'
+ORG_KEY = 'sk-ant-admin01-FAKEorgkey987654321zyxwvu'
+
+
+def ws_required_body():
+    return json.dumps({'type': 'error', 'error': {'type': 'invalid_request_error',
+                                                  'message': f'anthropic-workspace-id header is required for this key ({WS})'},
+                       'request_id': 'req_011FAKE'})
+
+
+def test_scoped_key_without_header_accepted(tmp_path):
+    t = FakeTransport((200, api_body('x'), {'request-id': 'req_abc123'}))
+    r = sa.auth_self_test(KEY, None, transport=t)
+    assert r == {'status': 'accepted', 'request_id': 'req_abc123'}
+    h = t.calls[0]['headers']
+    assert sa.WORKSPACE_HEADER not in h and h['x-api-key'] == KEY
+    body = json.loads(t.calls[0]['body'])
+    assert body['max_tokens'] == 1
+
+
+def test_org_key_with_workspace_header_accepted(tmp_path):
+    a, _, _ = mk(tmp_path, verify=False)
+    t = FakeTransport((200, api_body('x')))
+    assert a.auth_self_test(ORG_KEY, WS, now_utc=NOW, transport=t)['status'] == 'accepted'
+    assert t.calls[0]['headers'][sa.WORKSPACE_HEADER] == WS
+
+
+def test_missing_and_wrong_workspace():
+    assert sa.auth_self_test(ORG_KEY, None, transport=FakeTransport((400, ws_required_body())))['status'] == 'workspace_id_required'
+    assert sa.auth_self_test(ORG_KEY, 'wrkspc_wrong', transport=FakeTransport((403, '{"type":"error","error":{"type":"permission_error","message":"no"}}')))['status'] == 'rejected'
+    assert sa.auth_self_test(ORG_KEY, 'wrkspc_wrong', transport=FakeTransport((400, ws_required_body())))['status'] == 'workspace_id_required'
+    assert sa.auth_self_test(KEY, None, transport=FakeTransport((401, '{}')))['status'] == 'rejected'
+    assert sa.auth_self_test(KEY, None, transport=FakeTransport((400, '{"type":"error","error":{"type":"invalid_request_error","message":"bad model"}}')))['status'] == 'unavailable'
+    for resp in ((429, '{}'), (503, '{}'), (529, '{}'), sa.TransportTimeout(), ConnectionError('x')):
+        assert sa.auth_self_test(KEY, None, transport=FakeTransport(resp))['status'] == 'unavailable'
+
+
+@pytest.mark.parametrize('bad', ['wrkspc bad', 'x' * 129, 'wrk/../etc', 'ws\nInjected: 1', 'wrkspc_ü', 123])
+def test_invalid_workspace_format_no_call(tmp_path, bad):
+    t = FakeTransport((200, api_body('x')))
+    assert sa.auth_self_test(KEY, bad, transport=t)['status'] == 'workspace_id_required' and t.calls == []
+    a, t2, _ = mk(tmp_path)
+    r = a.analyze_now(raw(), api_key=KEY, cfg=ON, trading_mode='PAPER', now_utc=NOW, workspace_id=bad)
+    assert r['reason'] == 'workspace_id_invalid' and t2.calls == []
+
+
+def test_workspace_and_key_never_leak(tmp_path, caplog):
+    caplog.set_level(logging.DEBUG)
+    a, _, _ = mk(tmp_path, verify=False)
+    a.auth_self_test(ORG_KEY, None, now_utc=NOW, transport=FakeTransport((400, ws_required_body())))
+    assert a.auth_self_test(ORG_KEY, WS, now_utc=NOW, transport=FakeTransport((200, api_body('x'), {'request-id': 'req_1'})))['status'] == 'accepted'
+    t = FakeTransport((200, api_body(good_text())))
+    a._transport = t
+    r1 = a.analyze_now(raw(), api_key=ORG_KEY, cfg=ON, trading_mode='PAPER', now_utc=NOW, workspace_id=WS)
+    assert r1['status'] == sa.STATUS_OK and t.calls[0]['headers'][sa.WORKSPACE_HEADER] == WS
+    d = raw()
+    d['n_trades'] = 77
+    a._transport = FakeTransport((400, ws_required_body()))
+    r2 = a.analyze_now(d, api_key=ORG_KEY, cfg=ON, trading_mode='PAPER', now_utc=NOW, workspace_id=WS)
+    assert r2['status'] == sa.STATUS_NO
+    stored = all_files_text(tmp_path)
+    for secret in (WS, ORG_KEY, 'FAKEworkspace', 'FAKEorgkey'):
+        assert secret not in t.calls[0]['body']
+        assert secret not in stored and secret not in caplog.text
+        assert secret not in json.dumps(r1) and secret not in json.dumps(r2)
+    rec = [json.loads(x) for x in open(a.report_path, encoding='utf-8').read().splitlines() if '"auth_self_test"' in x]
+    assert rec and all(set(x) == {'ts', 'kind', 'status', 'request_id'} for x in rec)
+
+
+def test_analyst_refuses_until_self_test_accepted(tmp_path):
+    a, t, _ = mk(tmp_path, verify=False)
+    assert run(a)['reason'] == 'auth_not_verified' and t.calls == []
+    a.auth_self_test(KEY, None, now_utc=NOW, transport=FakeTransport((503, '{}')))
+    assert run(a)['reason'] == 'auth_not_verified'
+    a.auth_self_test(KEY, None, now_utc=NOW, transport=FakeTransport((200, api_body('x'))))
+    assert run(a)['status'] == sa.STATUS_OK and len(t.calls) == 1
+    # survives restart (fingerprints in state, never raw values)
+    b, t2, _ = mk(tmp_path, verify=False)
+    assert b._auth_ok(KEY, None)
+    assert KEY not in open(b.state_path, encoding='utf-8').read()
+
+
+def test_key_or_workspace_change_requires_new_test(tmp_path):
+    a, t, _ = mk(tmp_path)
+    assert run(a, key=KEY + 'X')['reason'] == 'auth_not_verified'
+    r = a.analyze_now(raw(), api_key=KEY, cfg=ON, trading_mode='PAPER', now_utc=NOW, workspace_id=WS)
+    assert r['reason'] == 'auth_not_verified' and t.calls == []
+    assert run(a)['status'] == sa.STATUS_OK
+
+
+@pytest.mark.parametrize('resp', [(401, '{}'), (403, '{}'), (400, None)])
+def test_later_auth_error_resets_verification(tmp_path, resp):
+    resp = (400, ws_required_body()) if resp[1] is None else resp
+    a, t, _ = mk(tmp_path, resp)
+    assert run(a)['status'] == sa.STATUS_NO
+    assert a.state['auth'] is None
+    d = raw()
+    d['n_trades'] = 60
+    assert run(a, data=d)['reason'] == 'auth_not_verified'
+
+
+def test_transient_error_keeps_verification(tmp_path):
+    a, t, _ = mk(tmp_path, (503, '{}'), (503, '{}'))
+    assert run(a)['reason'] == 'http_503' and a._auth_ok(KEY, None)
