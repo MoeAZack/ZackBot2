@@ -314,7 +314,7 @@ def _retryable(status):
 
 # --- auth / workspace ------------------------------------------------------------------------------------------------
 WORKSPACE_HEADER = 'anthropic-workspace-id'
-_WORKSPACE_RE = re.compile(r'^[A-Za-z0-9_-]{1,128}$')
+_WORKSPACE_RE = re.compile(r'[A-Za-z0-9_-]{1,128}')   # used with fullmatch: no trailing newline (Cowork F1)
 _REQUEST_ID_RE = re.compile(r'^[A-Za-z0-9_-]{1,128}$')
 AUTH_ACCEPTED, AUTH_WS_REQUIRED, AUTH_REJECTED, AUTH_UNAVAILABLE = 'accepted', 'workspace_id_required', 'rejected', 'unavailable'
 AUTH_TIMEOUT_S = 15
@@ -326,7 +326,7 @@ SCRYPT_N, SCRYPT_R, SCRYPT_P = 2 ** 14, 8, 1
 
 def valid_workspace_id(ws):
     """None / '' = not configured (valid). Otherwise a conservative identifier such as wrkspc_..."""
-    return ws in (None, '') or (isinstance(ws, str) and bool(_WORKSPACE_RE.match(ws)))
+    return ws in (None, '') or (isinstance(ws, str) and bool(_WORKSPACE_RE.fullmatch(ws)))
 
 
 def _headers(api_key, workspace_id):

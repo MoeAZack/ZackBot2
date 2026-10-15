@@ -661,3 +661,11 @@ def test_no_plain_hash_of_key_or_workspace():
         names = {x.id for x in ast.walk(c) if isinstance(x, ast.Name)}
         assert not names & {'api_key', 'workspace_id', 'key', 'ws'}, ast.unparse(c)
     assert fn
+
+
+def test_workspace_id_trailing_newline_rejected_cowork_f1():
+    """Cowork 6191480901 F1: '^...$' let 'wrkspc_ok\n' pass; fullmatch must reject any trailing newline / CR."""
+    import shadow_analyst as SA
+    assert SA.valid_workspace_id('wrkspc_ok')
+    for bad in ('wrkspc_ok\n', 'wrkspc_ok\r\n', 'wrkspc_ok\r', '\nwrkspc_ok', 'wrkspc ok'):
+        assert not SA.valid_workspace_id(bad), repr(bad)
