@@ -234,6 +234,29 @@ def sig_exp_structure(d, p, ctx):
                           lx=(d.c < last_lo) | dn, sx=(d.c > last_hi) | up))
 
 
+# ------------------------------------------------------------------ BREADTH-01 B3: short-only mirrors (EXPERIMENTAL / testnet-only)
+# Codex ruling 6186050896 pt 4. Each is the exact price mirror of an existing long-only strategy (same thresholds, same
+# mgmt, no new parameters, no tuning). Short side only; the long columns never fire.
+def sig_exp_mom_short(d, p, ctx):
+    """Short mirror of hot_coin: a 'cold coin' (bottom-3 7-day mover = mirror of top-3) dumping on a volume surge
+    (vol_ratio > 1.5) through its prior 20-candle low and below EMA50. Exit on a close back above EMA20 (mirror of
+    hot_coin's close below EMA20). Unranked coins (rank7 = 999 fill) are never cold."""
+    r7, nb = ctx['rank7'], ctx['n_symbols']
+    cold = (r7 > nb - 3) & (r7 <= nb)
+    never = d.c < -1
+    return _one_side(dict(le=never, se=cold & (d.vol_ratio > 1.5) & (d.c < d.ll20) & (d.c < d.e50),
+                          lx=never, sx=d.c > d.e20))
+
+
+def sig_exp_rip_sell_dca(d, p, ctx):
+    """Short mirror of dca_dip: in a downtrend (EMA50 < EMA200) sell a stretched rip above EMA20 (first close more than
+    1.5 ATR above EMA20); the basket adds safety orders UP and takes profit below (mgmt dca, side-aware)."""
+    dn = (d.e50 < d.e200)
+    stretch = (d.c - d.e20) / d.atr
+    never = d.c < -1
+    return _one_side(dict(le=never, se=dn & (stretch > 1.5) & (stretch.shift() <= 1.5), lx=never, sx=never))
+
+
 # ------------------------------------------------------------------ VWAPREV: REX-01 runtime adapter (EXPERIMENTAL / PAPER)
 # The sixth PAPER family: `range_vwap_rev.v1` X1 (frozen contract RANGE-EXIT-01, tools/research/range_vwap_rev.py) on
 # closed 4h candles. The research decision logic (`indicators` / `entry_x1` / `mean_close` / `invalidated`) is mirrored
@@ -378,6 +401,20 @@ STRATEGIES = {
                                'Confirmed pivots and closed-candle entries prevent lookahead. Stop 1 ATR, target 2R, opposite-structure '
                                'or regime-flip exit, 24-candle (6h) cap. Run on 15m.',
                           mgmt=dict(stop_atr=1.0, tp_r=2.0, max_bars=24)),
+    # ---- BREADTH-01 B3: short-only mirrors of hot_coin / dca_dip (EXPERIMENTAL / testnet-only, no demonstrated edge)
+    'exp_mom_short': dict(name='[TESTNET EXP] Momentum Short (dump)', style='aggressive', fn=sig_exp_mom_short,
+                          sides='short', tf='4h',
+                          desc=EXP_TAG + ': short-only mirror of Hot-coin momentum chase. Bottom-3 7-day movers breaking below the '
+                               'prior 20-candle low and EMA50 on a volume surge (> 1.5x the 42-candle average). Stop 2 ATR above, '
+                               'half off at 2R, 2.5 ATR trail, exit on a close back above EMA20. 4h.',
+                          mgmt=dict(stop_atr=2.0, trail_atr=2.5, tp1_r=2.0, tp1_frac=0.5)),
+    'exp_rip_sell_dca': dict(name='[TESTNET EXP] Rip-sell DCA (short)', style='aggressive', fn=sig_exp_rip_sell_dca,
+                             sides='short', tf='4h',
+                             desc=EXP_TAG + ': UNVERIFIED DCA / martingale basket (never backtested). Short-only mirror of DCA dip '
+                                  'buyer: with EMA50 below EMA200, sells the first close > 1.5 ATR above EMA20; up to 3 safety '
+                                  'orders 1 ATR apart ABOVE (1.5x each), basket TP 1 ATR below the average, hard basket stop 2 ATR '
+                                  'above the last order, 60-candle cap. 4h.',
+                             mgmt=dict(dca=dict(n=3, step_atr=1.0, scale=1.5, tp_atr=1.0, stop_atr=2.0), max_bars=60)),
     'exp_vwaprev': dict(name='[TESTNET EXP] VWAP Rev L/S', style='balanced', fn=sig_exp_vwaprev, sides='both', tf='4h',
                         params=dict(n=42, k=2.0, rg=1.0), reentry_lock=True,
                         desc=EXP_TAG + ': VWAPREV = range_vwap_rev.v1 X1 (RANGE-EXIT-01). VWAP42 from quote volume / volume, ATR = '
