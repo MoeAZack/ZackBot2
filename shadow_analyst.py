@@ -318,6 +318,10 @@ _WORKSPACE_RE = re.compile(r'^[A-Za-z0-9_-]{1,128}$')
 _REQUEST_ID_RE = re.compile(r'^[A-Za-z0-9_-]{1,128}$')
 AUTH_ACCEPTED, AUTH_WS_REQUIRED, AUTH_REJECTED, AUTH_UNAVAILABLE = 'accepted', 'workspace_id_required', 'rejected', 'unavailable'
 AUTH_TIMEOUT_S = 15
+FP_VERSION = 'scrypt-v1'                                        # fingerprints of any other version are ignored
+SALT_FILE = 'analyst_salt.bin'                                  # random, NOT secret; restart-stable
+SALT_MIN, SALT_MAX = 16, 64
+SCRYPT_N, SCRYPT_R, SCRYPT_P = 2 ** 14, 8, 1
 
 
 def valid_workspace_id(ws):
@@ -400,6 +404,7 @@ class ShadowAnalyst:
         os.makedirs(state_dir, exist_ok=True)
         self.state_path = os.path.join(state_dir, 'shadow_state.json')
         self.report_path = os.path.join(state_dir, 'shadow_reports.jsonl')
+        self.salt_path = os.path.join(state_dir, SALT_FILE)
         self._transport = transport or urllib_transport
         self._sleep = sleep
         self._mono = monotonic
@@ -408,7 +413,7 @@ class ShadowAnalyst:
     # state ----------------------------------------------------------------------------------------------------------
     def _load(self):
         base = {'last_digest': None, 'last_result': None, 'last_ok_ts': None, 'slots_run': [], 'usage': {'day': {}, 'month': {}},
-                'auth': None, 'fp_salt': None}
+                'auth': None}
         try:
             with open(self.state_path, encoding='utf-8') as f:
                 d = json.load(f)
@@ -416,20 +421,57 @@ class ShadowAnalyst:
                 base.update({k: d[k] for k in base if k in d})
         except (OSError, ValueError):
             pass
-        if not isinstance(base.get('fp_salt'), str):
-            base['fp_salt'] = os.urandom(16).hex()
         return base
 
-    def _fp(self, value):
-        """Salted sha256 prefix - the raw key / workspace id is never stored."""
-        return hashlib.sha256((self.state['fp_salt'] + '|' + (value or '')).encode('utf-8')).hexdigest()[:16]
+    # auth fingerprints: scrypt over domain-separated material with a persisted NON-secret salt ---------------------
+    def _read_salt(self):
+        """-> (salt bytes | None, problem None|'missing'|'corrupt')."""
+        try:
+            with open(self.salt_path, 'rb') as f:
+                b = f.read(SALT_MAX + 1)
+        except FileNotFoundError:
+            return None, 'missing'
+        except OSError:
+            return None, 'corrupt'
+        if not SALT_MIN <= len(b) <= SALT_MAX:
+            return None, 'corrupt'
+        return b, None
 
-    def _pair(self, api_key, workspace_id):
-        return [self._fp(api_key), self._fp(workspace_id or '')]
+    def _create_salt(self):
+        tmp = self.salt_path + '.tmp'
+        with open(tmp, 'wb') as f:
+            f.write(os.urandom(SALT_MIN))
+        os.replace(tmp, self.salt_path)
+
+    @staticmethod
+    def _derive(salt, domain, value):
+        return hashlib.scrypt(domain + b'|' + (value or '').encode('utf-8'), salt=salt,
+                              n=SCRYPT_N, r=SCRYPT_R, p=SCRYPT_P, dklen=32, maxmem=64 * 1024 * 1024).hex()
+
+    def _pair(self, salt, api_key, workspace_id):
+        memo = getattr(self, '_pair_memo', None)               # in-memory only: avoids re-running scrypt every call
+        if memo and memo[0] == (salt, api_key, workspace_id or ''):
+            return list(memo[1])
+        pair = [self._derive(salt, b'zackbot-shadow-key-v1', api_key), self._derive(salt, b'zackbot-shadow-ws-v1', workspace_id or '')]
+        self._pair_memo = ((salt, api_key, workspace_id or ''), tuple(pair))
+        return list(pair)
+
+    def _auth_check(self, api_key, workspace_id):
+        """-> None when verified, else the NO_ANALYSIS reason. Fails closed on any salt problem."""
+        salt, problem = self._read_salt()
+        if problem:
+            if self.state.get('auth'):
+                self._reset_auth()                       # an accepted fingerprint can no longer be checked
+            return 'auth_salt_unavailable'
+        a = self.state.get('auth')
+        if not (isinstance(a, dict) and a.get('status') == AUTH_ACCEPTED and a.get('fp_version') == FP_VERSION):
+            return 'auth_not_verified'                   # includes old plain-sha fingerprints (no / other fp_version)
+        if a.get('pair') != self._pair(salt, api_key, workspace_id):
+            return 'auth_not_verified'
+        return None
 
     def _auth_ok(self, api_key, workspace_id):
-        a = self.state.get('auth')
-        return isinstance(a, dict) and a.get('status') == AUTH_ACCEPTED and a.get('pair') == self._pair(api_key, workspace_id)
+        return self._auth_check(api_key, workspace_id) is None
 
     def _reset_auth(self):
         if self.state.get('auth'):
@@ -484,9 +526,22 @@ class ShadowAnalyst:
     def auth_self_test(self, api_key, workspace_id=None, *, now_utc=None, transport=None):
         """Run the self-test and record it for this (key, workspace) pair. -> {'status', 'request_id'}."""
         now_utc = now_utc or _dt.datetime.now(_dt.timezone.utc)
+        salt, problem = self._read_salt()
+        if problem:
+            if problem == 'corrupt' and self.state.get('auth'):
+                self._reset_auth()                       # never keep an accepted state across a salt replacement
+                log.warning('shadow analyst: fingerprint salt was corrupt - accepted auth invalidated, salt replaced')
+            try:
+                self._create_salt()
+            except OSError as e:
+                log.warning('shadow analyst: fingerprint salt unavailable (%s)', e.__class__.__name__)
+                return {'status': AUTH_UNAVAILABLE, 'request_id': None}
+            salt, problem = self._read_salt()
+            if problem:
+                return {'status': AUTH_UNAVAILABLE, 'request_id': None}
         res = auth_self_test(api_key, workspace_id, transport=transport or self._transport)
         if res['status'] == AUTH_ACCEPTED:
-            self.state['auth'] = {'status': AUTH_ACCEPTED, 'pair': self._pair(api_key, workspace_id),
+            self.state['auth'] = {'status': AUTH_ACCEPTED, 'fp_version': FP_VERSION, 'pair': self._pair(salt, api_key, workspace_id),
                                   'request_id': res['request_id'], 'ts': now_utc.isoformat()}
         elif res['status'] in (AUTH_REJECTED, AUTH_WS_REQUIRED):
             self.state['auth'] = None
@@ -552,8 +607,9 @@ class ShadowAnalyst:
             return self._no('missing_key', now_utc, model, digest)
         if not valid_workspace_id(workspace_id):
             return self._no('workspace_id_invalid', now_utc, model, digest)
-        if not self._auth_ok(api_key, workspace_id):
-            return self._no('auth_not_verified', now_utc, model, digest)
+        why = self._auth_check(api_key, workspace_id)
+        if why:
+            return self._no(why, now_utc, model, digest)
         if digest == self.state.get('last_digest') and self.state.get('last_result'):
             if now_utc.timestamp() - (self.state.get('last_ok_ts') or 0) > STALE_AFTER_S:
                 return self._no('stale', now_utc, model, digest, record=False)

@@ -184,7 +184,7 @@ def test_prompt_injection_stays_quoted_data(tmp_path):
     # the response is research text only - nothing changed, no action surface exists
     assert r['status'] == sa.STATUS_OK and cfg == snapshot
     public = {n for n in dir(a) if not n.startswith('_')}
-    assert public == {'analyze_now', 'run_scheduled', 'latest', 'usage', 'auth_self_test', 'dir', 'state', 'state_path', 'report_path'}
+    assert public == {'analyze_now', 'run_scheduled', 'latest', 'usage', 'auth_self_test', 'dir', 'state', 'state_path', 'report_path', 'salt_path'}
     for bad in ('order', 'place', 'cancel', 'setting', 'strategy', 'model'):
         assert not any(bad in n for n in public)
 
@@ -518,9 +518,9 @@ def test_workspace_and_key_never_leak(tmp_path, caplog):
 
 def test_analyst_refuses_until_self_test_accepted(tmp_path):
     a, t, _ = mk(tmp_path, verify=False)
-    assert run(a)['reason'] == 'auth_not_verified' and t.calls == []
+    assert run(a)['reason'] == 'auth_salt_unavailable' and t.calls == []     # no salt yet -> fails closed
     a.auth_self_test(KEY, None, now_utc=NOW, transport=FakeTransport((503, '{}')))
-    assert run(a)['reason'] == 'auth_not_verified'
+    assert run(a)['reason'] == 'auth_not_verified' and t.calls == []
     a.auth_self_test(KEY, None, now_utc=NOW, transport=FakeTransport((200, api_body('x'))))
     assert run(a)['status'] == sa.STATUS_OK and len(t.calls) == 1
     # survives restart (fingerprints in state, never raw values)
@@ -551,3 +551,113 @@ def test_later_auth_error_resets_verification(tmp_path, resp):
 def test_transient_error_keeps_verification(tmp_path):
     a, t, _ = mk(tmp_path, (503, '{}'), (503, '{}'))
     assert run(a)['reason'] == 'http_503' and a._auth_ok(KEY, None)
+
+
+# --- scrypt fingerprints + salt (Codex 6191228099) ------------------------------------------------------------------
+def _derived(a, key, ws=None):
+    salt = open(a.salt_path, 'rb').read()
+    return a._pair(salt, key, ws)
+
+
+def test_fingerprint_is_scrypt_versioned_and_restart_stable(tmp_path):
+    a, t, _ = mk(tmp_path)
+    salt = open(a.salt_path, 'rb').read()
+    assert 16 <= len(salt) <= 64
+    auth = json.load(open(a.state_path, encoding='utf-8'))['auth']
+    assert auth['fp_version'] == sa.FP_VERSION == 'scrypt-v1'
+    import hashlib
+    expect = hashlib.scrypt(b'zackbot-shadow-key-v1|' + KEY.encode(), salt=salt, n=2 ** 14, r=8, p=1, dklen=32).hex()
+    assert auth['pair'][0] == expect and len(auth['pair'][0]) == 64
+    b, t2, _ = mk(tmp_path, verify=False)                 # restart, same dir: same salt -> still verified
+    assert open(b.salt_path, 'rb').read() == salt
+    assert run(b)['status'] == sa.STATUS_OK and len(t2.calls) == 1
+    assert run(b, key=KEY + 'Z')['reason'] == 'auth_not_verified'
+    r = b.analyze_now(raw(), api_key=KEY, cfg=ON, trading_mode='PAPER', now_utc=NOW, workspace_id='wrkspc_other')
+    assert r['reason'] == 'auth_not_verified'
+
+
+def test_no_secret_or_derived_material_leaks(tmp_path, caplog):
+    caplog.set_level(logging.DEBUG)
+    a, _, _ = mk(tmp_path, verify=False)
+    assert a.auth_self_test(ORG_KEY, WS, now_utc=NOW, transport=FakeTransport((200, api_body('x'))))['status'] == 'accepted'
+    t = FakeTransport((200, api_body(good_text())))
+    a._transport = t
+    r = a.analyze_now(raw(), api_key=ORG_KEY, cfg=ON, trading_mode='PAPER', now_utc=NOW, workspace_id=WS)
+    assert r['status'] == sa.STATUS_OK
+    kfp, wfp = _derived(a, ORG_KEY, WS)
+    reports = open(a.report_path, encoding='utf-8').read()
+    for s_ in (ORG_KEY, WS, 'zackbot-shadow-key-v1', 'zackbot-shadow-ws-v1', kfp, wfp):
+        assert s_ not in t.calls[0]['body'] and s_ not in reports and s_ not in caplog.text and s_ not in json.dumps(r)
+    state = open(a.state_path, encoding='utf-8').read()
+    assert ORG_KEY not in state and WS not in state
+
+
+def test_missing_salt_fails_closed(tmp_path):
+    a, t, _ = mk(tmp_path)
+    os.remove(a.salt_path)
+    r = run(a)
+    assert r['status'] == sa.STATUS_NO and r['reason'] == 'auth_salt_unavailable' and t.calls == []
+    assert a.state['auth'] is None                       # accepted state invalidated
+    # a new self-test recreates the salt and re-verifies
+    assert a.auth_self_test(KEY, None, now_utc=NOW, transport=FakeTransport((200, api_body('x'))))['status'] == 'accepted'
+    assert run(a)['status'] == sa.STATUS_OK
+
+
+@pytest.mark.parametrize('content', [b'', b'short', b'x' * 65])
+def test_corrupt_salt_fails_closed_and_is_not_silently_replaced(tmp_path, content, caplog):
+    a, t, _ = mk(tmp_path)
+    open(a.salt_path, 'wb').write(content)
+    r = run(a)
+    assert r['reason'] == 'auth_salt_unavailable' and t.calls == []
+    assert a.state['auth'] is None and open(a.salt_path, 'rb').read() == content      # analysis never replaces it
+    b, t2, _ = mk(tmp_path, verify=False)                                             # restart: still closed
+    assert run(b)['reason'] == 'auth_salt_unavailable' and t2.calls == []
+    open(a.salt_path, 'wb').write(content)
+    a2, _, _ = mk(tmp_path / 'c')
+    open(a2.salt_path, 'wb').write(content)
+    with caplog.at_level(logging.WARNING):
+        a2.auth_self_test(KEY, None, now_utc=NOW, transport=FakeTransport((200, api_body('x'))))
+    assert 'salt was corrupt' in caplog.text                                         # replacement is logged, not silent
+
+
+def test_unreadable_salt_fails_closed(tmp_path, monkeypatch):
+    a, t, _ = mk(tmp_path)
+    real_open = open
+
+    def bad_open(path, *args, **kw):
+        if str(path) == a.salt_path:
+            raise PermissionError('denied')
+        return real_open(path, *args, **kw)
+    monkeypatch.setattr('builtins.open', bad_open)
+    r = run(a)
+    monkeypatch.undo()
+    assert r['reason'] == 'auth_salt_unavailable' and t.calls == []
+
+
+def test_old_plain_sha_fingerprint_ignored(tmp_path):
+    a, t, _ = mk(tmp_path, verify=False)
+    a.auth_self_test(KEY, None, now_utc=NOW, transport=FakeTransport((503, '{}')))   # creates the salt only
+    st = json.load(open(a.state_path, encoding='utf-8'))
+    st['auth'] = {'status': 'accepted', 'pair': ['0123456789abcdef', 'fedcba9876543210'], 'request_id': None, 'ts': 'x'}
+    st['fp_salt'] = 'deadbeef'
+    json.dump(st, open(a.state_path, 'w', encoding='utf-8'))
+    b, t2, _ = mk(tmp_path, verify=False)
+    assert run(b)['reason'] == 'auth_not_verified' and t2.calls == []
+    # even a pair that matches but carries no / an old version is ignored
+    st['auth'] = {'status': 'accepted', 'pair': _derived(b, KEY), 'fp_version': 'sha256-v0'}
+    json.dump(st, open(a.state_path, 'w', encoding='utf-8'))
+    c, t3, _ = mk(tmp_path, verify=False)
+    assert run(c)['reason'] == 'auth_not_verified' and t3.calls == []
+
+
+def test_no_plain_hash_of_key_or_workspace():
+    src = open(sa.__file__, encoding='utf-8').read()
+    assert 'md5' not in src and 'fp_salt' not in src
+    assert src.count('hashlib.sha256(') == 1                                          # _sha: aggregate/response digests only
+    tree = ast.parse(src)
+    fn = next(n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and n.name == '_sha')
+    callers = [n for n in ast.walk(tree) if isinstance(n, ast.Call) and getattr(n.func, 'id', None) == '_sha']
+    for c in callers:
+        names = {x.id for x in ast.walk(c) if isinstance(x, ast.Name)}
+        assert not names & {'api_key', 'workspace_id', 'key', 'ws'}, ast.unparse(c)
+    assert fn
