@@ -1549,6 +1549,10 @@ _PREFIX = (
     ('Binance holds an untracked position', 'risk_gateway', 'untracked_position'),
     ('max positions reached', 'capacity', 'max_positions'),
     ('regime: ', 'regime', 'regime'),
+    ('gold_family_cap', 'capacity', 'gold_family_cap'),            # TRADFI-01 T3: XAU+PAXG share one family budget
+    ('tradfi_session', 'filter', 'tradfi_session'),                # TRADFI-01 T2/T4: US cash-session entry gate
+    ('tradfi_policy', 'config', 'tradfi_policy'),                  # TRADFI-01 T4: strategy not mapped for this symbol
+    ('TRADFI', 'filter', 'tradfi_off'),                            # TRADFI-01: off / live / oil
     ('regime unknown', 'regime', 'regime_unknown'),
     ('pump guard', 'risk_gateway', 'pump_guard'),
     ('DCA basket without a hard stop', 'config', 'dca_no_stop'),
