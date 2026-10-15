@@ -176,3 +176,20 @@ def test_entry_allowed_matrix():
     assert TS.entry_allowed('TSLAUSDT', 'trend', closed) is True
     assert TS.entry_allowed('TSLAUSDT', 'trend', opened) is True
     assert TS.entry_allowed('ANYUSDT', 'oil', opened) is False
+
+
+def test_family_labels_case_insensitive_and_unknown_fails_closed():
+    """Cowork 6187379380 F1: engine.BREADTH_FAMILY labels are capitalised ('Range', 'Scalp', 'Trend'); the gate must match
+    them, and an unrecognised / missing family on a stock is cash-session-only."""
+    import tradfi_session as TS
+    from datetime import datetime, timezone
+    closed = datetime(2026, 10, 17, 15, 0, tzinfo=timezone.utc)   # Saturday
+    opened = datetime(2026, 10, 15, 15, 0, tzinfo=timezone.utc)   # Thursday 11:00 ET
+    assert TS.us_cash_session(closed) == 'CLOSED' and TS.us_cash_session(opened) == 'OPEN'
+    for fam in ('Range', 'RANGE', ' scalp ', 'Scalp', 'Dip-DCA', 'Rotation', 'Other', '', None):
+        assert TS.entry_allowed('SPYUSDT', fam, closed) is False, fam
+        assert TS.entry_allowed('SPYUSDT', fam, opened) is True, fam
+    for fam in ('Trend', 'Momentum', 'Breakout'):
+        assert TS.entry_allowed('NVDAUSDT', fam, closed) is True, fam
+    assert TS.entry_allowed('XAUUSDT', 'Range', closed) is True
+    assert TS.entry_allowed('SPYUSDT', 'Oil', opened) is False
