@@ -1,6 +1,6 @@
 """Optional Claude review of each entry signal. Claude can only VETO a trade, never create or resize one.
 If the API key is missing or the call fails, the trade is taken (the backtested rules stay in charge)."""
-import json, requests
+import json, re, requests
 
 PROMPT_VERSION = 'v2'
 PROMPT = """You are a cautious second reader for a systematic crypto futures bot. Its backtested rules already produced
@@ -36,6 +36,11 @@ def review(cfg, symbol, sleeve, sig, candles, funding, tf='4h', side='LONG'):
             'x-api-key': key, 'anthropic-version': '2023-06-01', 'content-type': 'application/json'},
             json=dict(model=model, max_tokens=200,
                       messages=[{'role': 'user', 'content': msg}]))
+        meta['http_status'] = r.status_code
+        err = api_error_type(r)
+        if err:
+            meta['api_error'] = err
+            raise APIReviewError(err)
         text = r.json()['content'][0]['text']
         d = json.loads(text[text.find('{'): text.rfind('}') + 1])
         dec = 'skip' if str(d.get('decision', '')).lower() == 'skip' else 'take'
@@ -43,4 +48,33 @@ def review(cfg, symbol, sleeve, sig, candles, funding, tf='4h', side='LONG'):
         return dec, d.get('reason', ''), meta
     except Exception as e:
         meta.update(latency_s=round(time.time() - t0, 1), error=e.__class__.__name__)
-        return 'take', f'AI review failed ({e.__class__.__name__}) - taking trade by rules', meta
+        why = (f"http {meta['http_status']} {meta.get('api_error', e.__class__.__name__)}" if 'http_status' in meta
+               else e.__class__.__name__)
+        return 'take', f'AI review failed ({why}) - taking trade by rules', meta
+
+
+class APIReviewError(Exception):
+    """The API answered with an error object (or an unusable body) instead of a message."""
+
+
+_ERR_TYPE = re.compile(r'[a-z_]{1,40}')
+
+
+def api_error_type(r):
+    """None for a usable 200 message; otherwise a short NON-SECRET error class for the log: the API's own error.type when it
+    is a plain identifier (e.g. authentication_error, not_found_error, rate_limit_error), else a fixed label. Never returns
+    anything from the response body except that identifier - no message text, headers, key or account ids."""
+    try:
+        body = r.json()
+    except Exception:                                   # noqa: BLE001 - not JSON at all
+        return 'malformed_response'
+    if not isinstance(body, dict):
+        return 'malformed_response'
+    e = body.get('error')
+    if r.status_code != 200 or e is not None or body.get('type') == 'error':
+        t = e.get('type') if isinstance(e, dict) else None
+        return t if isinstance(t, str) and _ERR_TYPE.fullmatch(t) else 'api_error'
+    c = body.get('content')
+    if not (isinstance(c, list) and c and isinstance(c[0], dict) and isinstance(c[0].get('text'), str)):
+        return 'malformed_response'
+    return None
