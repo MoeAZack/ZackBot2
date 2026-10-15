@@ -16,7 +16,7 @@ try:
 except Exception:  # zoneinfo or tzdata missing -> every query is UNKNOWN (fail closed for gated entries)
     _NY = None
 
-# NYSE holiday / early-close table. Source: NYSE "Holidays & Trading Hours" (nyse.com/markets/hours-calendars),
+# 2026 and 2027 schedules (checked line-by-line against nyse.com 2026-10-15). Re-verify when extending the table.
 # 2026 and 2027 schedules. Re-verify against nyse.com when extending the table.
 NYSE_FULL_HOLIDAYS = frozenset({
     # 2026
