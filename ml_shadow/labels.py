@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 
 from .common import SCHEMA_VERSION, corr_id_of
 from .sanitize import sanitize_row
+from .ledger import labelable
 
 log = logging.getLogger('zackbot.ml_shadow')
 UNKNOWN = 'UNKNOWN'
@@ -29,12 +30,12 @@ def build_label_record(*, decision_id, net_r, net_pnl, exit_reason, mfe_r=None, 
 
 def record_label(label_ledger, feature_ledger=None, **kw):
     """CLOSE HOOK. Appends one label per decision_id (dedupe). If feature_ledger is given, refuses labels for unknown
-    or skipped decisions (skipped signals stay unlabeled). Never raises; returns the row or None."""
+    or skipped decisions (skipped signals stay unlabeled; pending ones are accepted - they filled). Never raises; returns the row or None."""
     try:
         rec = build_label_record(**kw)
         if feature_ledger is not None:
             row = next((r for r in feature_ledger.rows() if r.get('decision_id') == rec['decision_id']), None)
-            if row is None or not row.get('taken'):
+            if row is None or not labelable(row):            # taken or pending-then-filled; never skipped
                 return None
         return label_ledger.append(rec)
     except Exception as e:                                   # noqa: BLE001

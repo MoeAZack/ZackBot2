@@ -59,8 +59,9 @@ def run_fixture(tmp, monkeypatch, ml_on, boom=False):
         e.compute_signals = lambda tf, syms, extra=(), sigs=sigs: ({f'A|{s}': dict(v) for s, v in sigs.items()}, frames)
         e.cycle('4h')
     state = copy.deepcopy(e.state)
+    for l in state['lots'].values(): l.pop('ml_decision_id', None)      # the only state the hook may add (ON only)
     return e, dict(orders=orders, state=json.dumps(state, sort_keys=True, default=str),
-                   lots=json.dumps(e.state['lots'], sort_keys=True, default=str),
+                   lots=json.dumps(state['lots'], sort_keys=True, default=str),
                    history=json.dumps(e.history, sort_keys=True, default=str),
                    missed=[(m['symbol'], m['candle'], m['reason']) for m in e.missed])
 
@@ -79,8 +80,9 @@ def test_ml_shadow_on_vs_off_identical_trading(tmp_path, monkeypatch):
     assert not os.path.exists(e0.ml_paths()['dir'])                               # OFF: nothing written at all
     assert 'ml_shadow' not in e0.health
     dec = ledger_rows(e1, 'decisions')
-    assert {(r['symbol'], r['taken']) for r in dec} >= {('BTCUSDT', True), ('ETHUSDT', False), ('ETHUSDT', True)}
-    skip = next(r for r in dec if not r['taken'])
+    assert {(r['symbol'], r['status']) for r in dec} >= {('BTCUSDT', 'taken'), ('ETHUSDT', 'skipped'), ('ETHUSDT', 'taken')}
+    assert all(r['schema'] == MLS.SCHEMA_VERSION == 'ml_shadow.v2' for r in dec)
+    skip = next(r for r in dec if r['status'] == 'skipped')
     assert 'max positions' in skip['reason'] and skip['family'] == 'Trend' and skip['strategy'] == 'ema_mom'
     assert skip['features']['atr_pct'] is not None                                # features_at ran on the candle frame
     labels = ledger_rows(e1, 'labels')
@@ -224,3 +226,81 @@ def test_live_mode_refuses_analyst(app_env):
     assert r['status'] == SA.STATUS_NO and r['reason'] == 'live_refused'
     with pytest.raises(ValueError): A.handle('/api/analyst/auth_self_test', {})
     assert A.analyst_view(app)['mode'] == 'LIVE' and not t.calls
+
+
+# ------------------------------------------------------------------ pending decisions (resting maker / armed trailing)
+from test_v31_engine import Book                           # noqa: E402  (fake order book for maker entries)
+from ml_shadow.trainer import join                        # noqa: E402
+
+
+def one_cycle(e, sigs, frames=None):
+    e.compute_signals = lambda tf, syms, extra=(): ({f'A|{s}': dict(v) for s, v in sigs.items()}, frames or {})
+    e.cycle('4h')
+
+
+def maker_setup(tmp):
+    os.makedirs(str(tmp), exist_ok=True)
+    e, _ = mk_engine(str(tmp), ENTRY_ORDER='maker', MAKER_REPRICE=2, MAKER_WAIT_S=30)
+    e.S['ML_SHADOW'] = True; e.S['SLEEVES'] = [SLA]
+    bk = Book(e.trade)
+    one_cycle(e, {'BTCUSDT': sig('2026-10-04 00:00:00', le=True)}, {'BTCUSDT': frame(100.0)})
+    assert e.state['resting_entries'] and not e.state['lots']
+    bk.fill(); e.manage(e.trade.marks())
+    (k, lot), = e.state['lots'].items()
+    return e, k, lot
+
+
+def test_maker_rests_fills_closes_one_pending_decision_one_label(tmp_path):
+    e, k, lot = maker_setup(tmp_path)
+    dec = ledger_rows(e, 'decisions')
+    assert len(dec) == 1 and dec[0]['status'] == 'pending' and dec[0]['taken'] is False
+    assert lot['ml_decision_id'] == dec[0]['decision_id']
+    one_cycle(e, {'BTCUSDT': sig('2026-10-04 04:00:00', lx=True)}, {'BTCUSDT': frame(100.0)})
+    assert not e.state['lots']
+    assert len(ledger_rows(e, 'decisions')) == 1                       # no second row on fill
+    labels = ledger_rows(e, 'labels')
+    assert len(labels) == 1 and labels[0]['decision_id'] == dec[0]['decision_id']
+    assert len(join(ledger_rows(e, 'decisions'), labels)) == 1          # trainer accepts a filled pending decision
+
+
+def test_restart_between_fill_and_close_still_labels(tmp_path):
+    e, k, lot = maker_setup(tmp_path)
+    e.save_state()
+    pos, stops = dict(e.trade.pos), dict(e.trade.stops)
+    e2, _ = mk_engine(str(tmp_path))                                   # new process: same data folder, fresh ledgers
+    e2.trade.pos.update(pos); e2.trade.stops.update(stops)
+    e2.S['ML_SHADOW'] = True
+    assert e2.state['lots'][k]['ml_decision_id'] == lot['ml_decision_id']
+    e2.close_lot(k, 'exit_signal')
+    labels = ledger_rows(e2, 'labels')
+    assert [l['decision_id'] for l in labels] == [lot['ml_decision_id']]
+
+
+def test_cancelled_pending_gets_no_label_and_trainer_excludes_it(tmp_path):
+    os.makedirs(str(tmp_path), exist_ok=True)
+    e, _ = mk_engine(str(tmp_path))
+    e.S['ML_SHADOW'] = True
+    e.S['SLEEVES'] = [dict(SLA, trail_entry={'dev_atr': 0.5, 'max_bars': 2})]
+    e.compute_signals = lambda tf, syms, extra=(): ({'A|BTCUSDT': sig('2026-10-04 00:00:00', le=True)}, {'BTCUSDT': frame(100.0)})
+    e.cycle('4h')
+    assert e.state['pending_entries']
+    e.state['pending_entries']['A|BTCUSDT']['until'] = 0
+    e.manage(e.trade.marks())
+    assert not e.state['pending_entries'] and not e.state['lots']
+    dec = ledger_rows(e, 'decisions')
+    assert [r['status'] for r in dec] == ['pending']                   # stays pending, nothing appended on expiry
+    assert ledger_rows(e, 'labels') == []
+    fake = [dict(decision_id=dec[0]['decision_id'], net_r=-1.0)]
+    assert join(dec, []) == [] and len(join(dec, fake)) == 1            # only a real (filled) label could ever join it
+    assert not MLS.record_label(e._ml_ledgers()[1], e._ml_ledgers()[0], decision_id='0' * 32, net_r=1, net_pnl=1, exit_reason='x')
+
+
+def test_skipped_decisions_never_labelled(tmp_path):
+    led = MLS.JsonlLedger(str(tmp_path / 'd.jsonl')); lab = MLS.JsonlLedger(str(tmp_path / 'l.jsonl'))
+    kw = dict(sleeve='A', strategy='ema_mom', family='Trend', symbol='BTCUSDT', side='LONG', tf='4h', features={'features': {}})
+    sk = MLS.record_decision(led, candle_time='2026-10-01 00:00:00', taken=False, **kw)
+    pe = MLS.record_decision(led, candle_time='2026-10-01 04:00:00', taken=False, status='pending', **kw)
+    assert sk['status'] == 'skipped' and pe['status'] == 'pending'
+    assert MLS.record_label(lab, led, decision_id=sk['decision_id'], net_r=1, net_pnl=1, exit_reason='x') is None
+    assert MLS.record_label(lab, led, decision_id=pe['decision_id'], net_r=1, net_pnl=1, exit_reason='x') is not None
+    assert MLS.record_decision(led, candle_time='2026-10-01 08:00:00', taken=False, status='maybe', **kw) is None

@@ -2917,16 +2917,18 @@ class Engine:
         except Exception as e: log.warning(f'trade audit not recorded ({e})')
         self.history.append(rec); self.history = self.history[-3000:]
         self._save_aux('history', self.history)
-        self._ml_label(key, rec)                                   # ML-SHADOW-01 close label (observe only, never raises)
+        self._ml_label(key, rec, lot)                              # ML-SHADOW-01 close label (observe only, never raises)
         self.notify(f"{'✅' if net > 0 else '❌'} CLOSED {lot['side']} {lot['symbol']} [{lot['sleeve']}] {why} · PnL {net:+.2f} USDT ({rec['r']}R) · {rec['hours']}h")
 
     # ------------------------------------------------------------ ML-SHADOW-01 hooks (observation only)
-    ML_DIR, ML_MAX_BYTES, ML_MAX_FILES, ML_OPEN_MAX = 'ml_shadow', 2_000_000, 5, 500
+    # The lot -> decision link lives in the lot record itself (lot['ml_decision_id'], survives restarts with state.json).
+    # Lots opened while ML_SHADOW was off carry no id and never get a label. Pending decisions (resting maker / armed
+    # trailing entry) are linked when they fill; if they are cancelled or expire nothing more is written (stay unlabeled).
+    ML_DIR, ML_MAX_BYTES, ML_MAX_FILES = 'ml_shadow', 2_000_000, 5
 
     def ml_paths(self):
         d = os.path.join(self.dir, self.ML_DIR)
-        return dict(dir=d, decisions=os.path.join(d, 'decisions.jsonl'), labels=os.path.join(d, 'labels.jsonl'),
-                    open=os.path.join(d, 'open_lots.json'))
+        return dict(dir=d, decisions=os.path.join(d, 'decisions.jsonl'), labels=os.path.join(d, 'labels.jsonl'))
 
     def _ml_health(self):
         return self.health.setdefault('ml_shadow', dict(decisions=0, labels=0, errors=0))
@@ -2936,19 +2938,15 @@ class Engine:
         if led is None:
             import ml_shadow as MLS
             p = self.ml_paths()
-            led = (MLS.JsonlLedger(p['decisions'], self.ML_MAX_BYTES, self.ML_MAX_FILES),
-                   MLS.JsonlLedger(p['labels'], self.ML_MAX_BYTES, self.ML_MAX_FILES))
-            try:
-                with open(p['open'], encoding='utf-8') as f: op = json.load(f)
-                op = {str(k): str(v) for k, v in op.items()} if isinstance(op, dict) else {}
-            except Exception: op = {}
-            self._ml_open, self._ml_led = op, led
+            led = self._ml_led = (MLS.JsonlLedger(p['decisions'], self.ML_MAX_BYTES, self.ML_MAX_FILES),
+                                  MLS.JsonlLedger(p['labels'], self.ML_MAX_BYTES, self.ML_MAX_FILES))
         return led
 
-    def _ml_decision(self, sl, sym, side, sg, frames, taken, reason, exposure=None, lot_key=None):
-        """ML-SHADOW-01 decision hook: ONE ledger row per candidate signal (taken or skipped + the existing reason), after
-        the engine has decided. Writes only under <data>/ml_shadow, returns nothing, swallows every exception (counted in
-        health['ml_shadow']). Off unless S['ML_SHADOW'] is True. Nothing in the trading code reads what it writes."""
+    def _ml_decision(self, sl, sym, side, sg, frames, status, reason, exposure=None, lot_key=None):
+        """ML-SHADOW-01 decision hook: ONE ledger row per candidate signal (status taken | skipped | pending + the existing
+        reason), after the engine has decided. Writes only under <data>/ml_shadow (plus the decision id on a lot it just
+        opened), returns nothing, swallows every exception (counted in health['ml_shadow']). Off unless S['ML_SHADOW'] is
+        True. Nothing in the trading code reads what it writes."""
         try:
             if self.S.get('ML_SHADOW') is not True: return
             import ml_shadow as MLS
@@ -2964,33 +2962,41 @@ class Engine:
                 if r.get('on'): rg = f"{r['index'] + 1}/{r['groups']}"
             except Exception: pass
             row = MLS.record_decision(dec, sleeve=sl['id'], strategy=sl.get('key'), family=_bfam(sl.get('key')), symbol=sym,
-                                      side=side, tf=sl.get('tf'), candle_time=sg['time'], taken=bool(taken),
+                                      side=side, tf=sl.get('tf'), candle_time=sg['time'], taken=status == 'taken', status=status,
                                       reason=scrub(str(reason or '')), rotation_group=rg, trade_id=lot_key, **kw)
             h = self._ml_health()
             if row is not None: h['decisions'] += 1
-            if taken and lot_key:
-                self._ml_open[lot_key] = MLS.decision_id(sl['id'], sl.get('key'), sym, side, sl.get('tf'), sg['time'])
-                while len(self._ml_open) > self.ML_OPEN_MAX: self._ml_open.pop(next(iter(self._ml_open)))
-                self._ml_save_open()
+            lot = self.state['lots'].get(lot_key) if status == 'taken' and lot_key else None
+            if lot is not None:
+                lot['ml_decision_id'] = MLS.decision_id(sl['id'], sl.get('key'), sym, side, sl.get('tf'), sg['time'])
         except Exception:                                   # noqa: BLE001 - an observer never alters trading
             try: self._ml_health()['errors'] += 1
             except Exception: pass
 
-    def _ml_save_open(self):
-        p = self.ml_paths()['open']
-        with open(p + '.tmp', 'w', encoding='utf-8') as f: json.dump(self._ml_open, f)
-        os.replace(p + '.tmp', p)
+    def _ml_link_pending(self, lot, plan):
+        """A pending decision (maker resting / trailing armed) that fills: tag the new lot with that decision id. No new
+        decision row is written. Only ids already in the decision ledger are linked."""
+        try:
+            if self.S.get('ML_SHADOW') is not True or plan.get('manual') or not plan.get('sl'): return
+            import ml_shadow as MLS
+            sl, t = plan['sl'], (plan.get('sg') or {}).get('time')
+            if not t: return
+            did = MLS.decision_id(sl['id'], sl.get('key'), plan['sym'], plan['side'], sl.get('tf'), t)
+            dec, _lab = self._ml_ledgers()
+            if did in dec: lot['ml_decision_id'] = did
+        except Exception:                                   # noqa: BLE001
+            try: self._ml_health()['errors'] += 1
+            except Exception: pass
 
-    def _ml_label(self, key, rec):
-        """ML-SHADOW-01 close hook: one label (realized R / pnl / exit reason) for a lot whose entry decision was recorded.
+    def _ml_label(self, key, rec, lot):
+        """ML-SHADOW-01 close hook: one label (realized R / pnl / exit reason) for a lot carrying an ml_decision_id.
         Never raises, never changes the trade record."""
         try:
             if self.S.get('ML_SHADOW') is not True: return
+            did = (lot or {}).get('ml_decision_id')
+            if not isinstance(did, str): return
             import ml_shadow as MLS
             dec, lab = self._ml_ledgers()
-            did = self._ml_open.pop(key, None)
-            if did is None: return
-            self._ml_save_open()
             row = MLS.record_label(lab, dec, decision_id=did, net_r=rec.get('r'), net_pnl=rec.get('pnl'),
                                    exit_reason=rec.get('exit_reason'), trade_id=key)
             if row is not None: self._ml_health()['labels'] += 1
@@ -3974,7 +3980,7 @@ class Engine:
                                 until=time.time() + int(te.get('max_bars', 3)) * TF_SEC.get(sl['tf'], 14400))
                             log.info(f"TRAIL ENTRY armed {s} {side} [{sl['id']}] rebound {te['dev_atr']} ATR from the extreme")
                             self._audit_cand(sl, s, side, sg, 'armed_trailing')
-                            self._ml_decision(sl, s, side, sg, frames, False, 'trailing entry armed', len(held))   # ML-SHADOW-01 (observe only)
+                            self._ml_decision(sl, s, side, sg, frames, 'pending', 'trailing entry armed', len(held))   # ML-SHADOW-01 (observe only)
                             held.append(s); continue
                     if why is None:
                         self.last_skip = ''
@@ -3983,13 +3989,16 @@ class Engine:
                             if self.open_lot(sl, s, side, sg, frames.get(s), eq):
                                 self._audit_opened(sl, s, side, sg)     # T05a: 'taken', or 'order_placed' (maker)
                                 lk = getattr(self, '_last_lot_key', None)
-                                self._ml_decision(sl, s, side, sg, frames, True, '', len(held), lk if lk != lk0 else None)
+                                mst = 'taken' if lk != lk0 or self.last_skip != 'maker entry working' else 'pending'   # maker rests
+                                self._ml_decision(sl, s, side, sg, frames, mst, self.last_skip if mst == 'pending' else '', len(held),
+                                                  lk if lk != lk0 else None)                    # ML-SHADOW-01 (observe only)
                                 held.append(s); continue
                         except Exception as e:                     # one failed order never stops the other entries
                             self.err(f'entry {s} [{sl["id"]}] failed: {e}'); self.last_skip = f'order failed: {e}'
                         why = self.last_skip or 'order failed'
                     self.miss(sl, s, side, sg, why)
-                    self._ml_decision(sl, s, side, sg, frames, False, why, len(held))            # ML-SHADOW-01 (observe only)
+                    self._ml_decision(sl, s, side, sg, frames, 'pending' if why == 'maker entry working' else 'skipped',
+                                      why, len(held))                                       # ML-SHADOW-01 (observe only)
             try: self.grids.on_cycle(tf)
             except Exception as e: self.err(f'grid cycle {tf}: {e}')
             st['last_cycle'][tf] = now_utc().isoformat(timespec='minutes')
@@ -4812,6 +4821,7 @@ class Engine:
                 lot['ap'] = ap
         except Exception: pass
         if adopt_stop: lot['stop_id'] = adopt_stop               # AUD-03b: the provisional stop is replaced (new first, then cancelled)
+        self._ml_link_pending(lot, plan)                          # ML-SHADOW-01: a filled pending entry keeps its decision id
         self.state['lots'][key] = lot; self.save_state()          # recorded BEFORE the stop: a crash here can never orphan the position
         self._last_lot_key = key
         if not self._replace_stop(lot):
