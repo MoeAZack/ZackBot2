@@ -281,3 +281,13 @@ def test_reason_text_redacted_and_capped(tmp_path):
     text = (tmp_path / 'f.jsonl').read_text() + (tmp_path / 'l.jsonl').read_text()
     for bad in ('ABC123', 's3cr3t', 'eyJhbGciOi', 'QQQQQQQQQQ'):
         assert bad not in text
+
+
+def test_redact_text_bearer_and_sign_cowork_f3():
+    """Cowork 6191480901 F3: a short Bearer token after 'Authorization:' and sign=/sig= values must not survive."""
+    from ml_shadow.common import redact_text
+    for raw, leak in (('Authorization: Bearer abc.def', 'abc.def'), ('bearer xyz12', 'xyz12'),
+                      ('sign=abcd1234', 'abcd1234'), ('sig: 9f9f', '9f9f'), ('x-signature=deadbeef', 'deadbeef')):
+        out = redact_text(raw)
+        assert leak not in out and '[REDACTED]' in out, (raw, out)
+    assert redact_text('stop hit after 3 bars') == 'stop hit after 3 bars'

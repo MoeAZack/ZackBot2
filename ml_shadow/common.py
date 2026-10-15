@@ -53,9 +53,9 @@ def to_utc(t):
 
 
 REASON_MAX = 200
-_TEXT_SECRET_RES = (
-    re.compile(r'(?i)\b[\w-]*(?:key|secret|token|passw|passphrase|signature|auth|cookie|credential)[\w-]*\s*[=:]\s*\S+'),
+_TEXT_SECRET_RES = (   # order matters: Bearer first, so 'Authorization: Bearer <tok>' loses the token (Cowork F3)
     re.compile(r'(?i)\bbearer\s+\S+'),
+    re.compile(r'(?i)\b[\w-]*(?:key|secret|token|passw|passphrase|sig|auth|cookie|credential)[\w-]*\s*[=:]\s*\S+'),
     re.compile(r'[A-Za-z0-9_\-+/=.]{32,}'),
 )
 
