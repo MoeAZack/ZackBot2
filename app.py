@@ -848,7 +848,8 @@ class App:
         settings['TELEGRAM_TOKEN_SET'] = bool(e.cfg.get('TELEGRAM_TOKEN'))
         settings['TELEGRAM_PIN_SET'] = bool(e.S.get('TELEGRAM_PIN'))
         extra = {}
-        for name, fn in (('risk_rules', e.risk_rules_status), ('governor', e.governor_status), ('grids', e.grids.status)):
+        for name, fn in (('risk_rules', e.risk_rules_status), ('governor', e.governor_status), ('grids', e.grids.status),
+                         ('ctrl', e.ctrl_status)):          # CTRL-01-LITE: current controls + the preview table (ctrl_effect)
             try: extra[name] = fn()
             except Exception as ex: extra[name] = dict(error=str(ex)[:120])
         extra['telegram'] = self.tg.status() if getattr(self, 'tg', None) else None
@@ -1251,6 +1252,10 @@ def settings_update(e, b):
             ns[k] = v
         elif k == 'ENTRY_ORDER':
             if v not in ('market', 'maker'): raise ValueError('entry order must be market or maker')
+            ns[k] = v
+        elif k in ('CTRL_BIAS', 'CTRL_RISK'):        # CTRL-01-LITE: strict enum check (engine.ctrl_validate)
+            if not isinstance(v, str): raise ValueError('direction bias / risk must be a level name')
+            ENG.ctrl_validate(v if k == 'CTRL_BIAS' else 'neutral', v if k == 'CTRL_RISK' else 'max_test')
             ns[k] = v
         elif k == 'MAKER_REPRICE': ns[k] = int(_num(v, 0, 10, 'maker re-prices'))
         elif k == 'MAKER_WAIT_S': ns[k] = int(_num(v, 5, 300, 'maker wait seconds'))

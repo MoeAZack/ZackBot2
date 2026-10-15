@@ -142,6 +142,8 @@ class ReasonCode(enum.StrEnum):
     RECONCILE_STALE_READ = 'reconcile.stale_read'
     RECONCILE_LATE_FILL = 'reconcile.late_fill_after_not_found'
     RECONCILE_EXTERNAL_CLOSE = 'reconcile.external_close'      # r3a ruling 2: the booking reason, never a send
+    FILTER_CTRL_BIAS = 'filter.ctrl_bias'
+    EXEC_CTRL_SIZE_MIN = 'execution.ctrl_size_min'
 
     @property
     def namespace(self):
@@ -265,6 +267,8 @@ MEANING = {
     R.RECONCILE_LATE_FILL: 'a FINAL record of an owned order supersedes its earlier corroborated not-found',
     R.RECONCILE_EXTERNAL_CLOSE: 'books a reduce / close that already happened on the venue outside the bot (a historical '
                                 'fact from venue trades; never permission to send)',
+    R.FILTER_CTRL_BIAS: 'the saved direction-bias control disabled this side for a new automatic entry',
+    R.EXEC_CTRL_SIZE_MIN: 'the risk or direction control reduced the order below the venue minimum size',
 }
 del R
 

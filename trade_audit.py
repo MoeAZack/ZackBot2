@@ -1547,6 +1547,8 @@ _PREFIX = (
     ('DCA basket without a hard stop', 'config', 'dca_no_stop'),
     ('DCA settings out of range', 'config', 'dca_range'),
     ('size below Binance minimum', 'execution', 'size_min'),
+    ('control: direction bias', 'filter', 'ctrl_bias'),                 # CTRL-01-LITE: bias x0 disables this side
+    ('control: scaled size', 'execution', 'ctrl_size_min'),             # CTRL-01-LITE: scaled below the exchange minimum
     ('trailing entry expired', 'trailing', 'expired'),
     ('data file not saved', 'risk_gateway', 'state_untrusted'),
     ('account not confirmed for this data folder', 'risk_gateway', 'account_unconfirmed'),    # AUD-05 r5                 # AUD-05 r2: safety file write failed

@@ -331,7 +331,8 @@ GLOBAL_DEFAULTS = dict(COMPOUND=False, CAP_SINCE='', CAP_ADJ=[], CAP_CYCLES=[], 
                        MARKET_COLLECTOR=True,         # observe-only public market-data collector (market_collector.py); owner: collect now
                        # v3.1 - all off by default (risk rules only WARN: they log, never block, until set to 'enforce')
                        ENTRY_ORDER='market', MAKER_FALLBACK=True, MAKER_REPRICE=3, MAKER_WAIT_S=40, FEE_MAKER=0.0002,
-                       PUMP_GUARD={}, RISK_RULES={}, GOVERNOR=dict(mode='off', rules=[]))
+                       PUMP_GUARD={}, RISK_RULES={}, GOVERNOR=dict(mode='off', rules=[]),
+                       CTRL_BIAS='neutral', CTRL_RISK='max_test')   # CTRL-01-LITE (default = today's behaviour)
 
 # Portfolio risk rules: mode 'off' | 'warn' (log + 'WARNING:' entry on the missed list, still trades) | 'enforce' (entry refused)
 RISK_RULE_DEFAULTS = dict(
@@ -343,6 +344,54 @@ RISK_RULE_DEFAULTS = dict(
     funding_filter=dict(mode='warn', rate=0.001))      # no longs when funding > rate, no shorts when < -rate
 GOV_COOLDOWN_S = 24 * 3600                             # minimum time between two automatic profile switches
 GOV_MULT_MAX = 2.0                                     # martingale-style recovery (risk_mult > 1) is capped here
+
+# CTRL-01-LITE: two GLOBAL controls for NEW automatic entries only (after a genuine strategy signal). Both can only
+# shrink or disable an entry the strategy already signalled - every multiplier is <= 1, nothing is added or flipped.
+# Direction Bias: (long x, short x). Risk: per-trade % at a sleeve risk of CTRL_RISK_BASE_PCT (today's 2 % PAPER
+# setting). Applied as a RATIO to each sleeve's own `risk` (factor = level % / 2 %), so Maximum Test is exactly x1.0 for
+# every sleeve value and Neutral + Maximum Test reproduces the pre-CTRL-01 sizing bit for bit. Every existing ceiling
+# (leverage cap, exchange minimum, risk rules, exposure proof, prop/FUNDED-style rules) applies after the scaling.
+CTRL_BIAS = {'strong_bearish': ('Strong Bearish', 0.0, 1.0), 'bearish': ('Bearish', 0.5, 1.0),
+             'neutral': ('Neutral', 1.0, 1.0), 'bullish': ('Bullish', 1.0, 0.5), 'strong_bullish': ('Strong Bullish', 1.0, 0.0)}
+CTRL_RISK = {'low': ('Low', 0.5), 'medium': ('Medium', 1.0), 'high': ('High', 1.5), 'max_test': ('Maximum Test', 2.0)}
+CTRL_RISK_BASE_PCT = 2.0
+CTRL_DEFAULT = dict(CTRL_BIAS='neutral', CTRL_RISK='max_test')
+_CTRL_MISSING = object()
+
+
+def ctrl_validate(bias, risk):
+    """Strict check for the panel API: raises ValueError on an unknown level."""
+    if bias not in CTRL_BIAS: raise ValueError('direction bias must be one of: ' + ', '.join(CTRL_BIAS))
+    if risk not in CTRL_RISK: raise ValueError('risk must be one of: ' + ', '.join(CTRL_RISK))
+    return bias, risk
+
+
+def ctrl_norm(bias=_CTRL_MISSING, risk=_CTRL_MISSING):
+    """Lenient disk migration. A pre-feature missing risk preserves today's behaviour; corrupt risk fails down to Low."""
+    b = bias if isinstance(bias, str) and bias in CTRL_BIAS else CTRL_DEFAULT['CTRL_BIAS']
+    r = CTRL_DEFAULT['CTRL_RISK'] if risk is _CTRL_MISSING else (risk if isinstance(risk, str) and risk in CTRL_RISK else 'low')
+    return b, r
+
+
+def ctrl_effect(bias, risk, sleeves=None):
+    """THE one function for both the panel preview and the engine: what the controls do to a new automatic entry.
+    -> dict(bias, risk, labels, long_mult, short_mult, risk_pct, risk_factor, long_factor, short_factor, sleeves=[...])
+    long_factor / short_factor multiply the sleeve's risk fraction (and so the risk-sized quantity); 0 = skip."""
+    bias, risk = ctrl_validate(bias, risk)
+    bl, lm, sm = CTRL_BIAS[bias]; rl, rp = CTRL_RISK[risk]
+    rf = rp / CTRL_RISK_BASE_PCT
+    out = dict(bias=bias, risk=risk, bias_label=bl, risk_label=rl, long_mult=lm, short_mult=sm, risk_pct=rp,
+               risk_factor=rf, long_factor=rf * lm, short_factor=rf * sm, sleeves=[])
+    for sl in sleeves or []:
+        base = float(sl.get('risk') or 0.0) * 100
+        out['sleeves'].append(dict(id=sl.get('id'), base_risk_pct=round(base, 6), long_risk_pct=round(base * rf * lm, 6),
+                                   short_risk_pct=round(base * rf * sm, 6)))
+    return out
+
+
+def ctrl_table(sleeves=None):
+    """Every bias x risk combination, from ctrl_effect (the panel previews the chosen one before save)."""
+    return {f'{b}|{r}': ctrl_effect(b, r, sleeves) for b in CTRL_BIAS for r in CTRL_RISK}
 
 
 def now_utc():
@@ -1439,6 +1488,12 @@ class Engine:
         if not isinstance(s.get('GOVERNOR'), dict): s['GOVERNOR'] = dict(mode='off', rules=[])
         s.setdefault('GRID_SLOTS', [])
         if not isinstance(s.get('MARKET_COLLECTOR'), bool): s['MARKET_COLLECTOR'] = True
+        raw_ctrl = (s.get('CTRL_BIAS', _CTRL_MISSING), s.get('CTRL_RISK', _CTRL_MISSING))
+        cb = ctrl_norm(*raw_ctrl)                    # missing old risk -> today's behaviour; corrupt risk -> Low
+        if cb != raw_ctrl:
+            log.warning(f"CTRL-01: direction/risk control {str(s.get('CTRL_BIAS'))[:30]!r}/{str(s.get('CTRL_RISK'))[:30]!r} "
+                        f'invalid - using {cb[0]}/{cb[1]} (current behaviour)')
+        s['CTRL_BIAS'], s['CTRL_RISK'] = cb
         self.S = s
 
     def risk_rules_cfg(self):
@@ -3825,7 +3880,7 @@ class Engine:
         return (f'{sym} leverage on Binance is still above your {want}x cap (entered through the cross-margin exception) '
                 f'- orders that add exposure are paused until it is back within the cap')
 
-    def open_lot(self, sl, sym, side, sg, df, eq, risk=None, manual=False, stop_atr=None, tp_r=None):
+    def open_lot(self, sl, sym, side, sg, df, eq, risk=None, manual=False, stop_atr=None, tp_r=None, ctrl=True):
         block = self.entry_block(sl, sym, side, manual, sg=sg)
         if block:
             self.last_skip = block
@@ -3846,15 +3901,42 @@ class Engine:
                 self.last_skip = 'DCA basket without a hard stop (stop_atr) is not allowed'; return False
             if not (1 <= int(dc.get('n', 0)) <= 8 and 1.0 <= float(dc.get('scale', 1)) <= 3.0):
                 self.last_skip = 'DCA settings out of range (n 1-8, scale 1-3)'; return False
+        # CTRL-01-LITE: automatic entries only (ctrl=False for 'Take now'; manual trades never). factor <= 1 always.
+        ce = self.ctrl_now() if ctrl and not manual and sl else None
+        factor = 1.0 if ce is None else ce['long_factor' if side == 'LONG' else 'short_factor']
+        if factor <= 0:
+            self.last_skip = (f"control: direction bias {ce['bias_label']} disables {side.lower()} entries "
+                              f"(long x{ce['long_mult']:g} / short x{ce['short_mult']:g})")
+            self._ctrl_log('reject', sl, sym, side, ce, factor, self.last_skip)
+            return False
+        base_risk_usd = risk_usd
+        risk_usd = base_risk_usd * factor                # the risk-sized position scales; the stop below does not
         px = self.trade.marks().get(sym) if not self.dry else sg['close']
         atr = sg['atr']
-        z = F.risk_qty(g, risk_usd, px, atr, sd)        # BT02: shared sizing (DCA basket or stop_atr), same formula as before
-        qty, stop, R = z['qty'], z['stop'], z['R']
-        qty_raw = qty
-        used = sum(l['qty'] * l['avg'] for l in self.state['lots'].values() if l['sleeve'] == ('MAN' if manual else sl['id']))
-        qty = min(qty, max(0.0, self.S['MAX_LEVERAGE'] * sleeve_eq - used) / px)        # leverage cap applies to manual trades too
-        d = F.size_check(qty_raw, qty, px, r)            # BT02: THE shared exchange-filter check - floors to the step, never rounds up
-        qty = d['qty']
+        lev_room = max(0.0, self.S['MAX_LEVERAGE'] * sleeve_eq - sum(
+            l['qty'] * l['avg'] for l in self.state['lots'].values() if l['sleeve'] == ('MAN' if manual else sl['id']))) / px
+
+        def _size(ru):
+            z_ = F.risk_qty(g, ru, px, atr, sd)          # BT02: shared sizing (DCA basket or stop_atr), same formula as before
+            return z_, F.size_check(z_['qty'], min(z_['qty'], lev_room), px, r)   # leverage cap applies to manual trades too
+        z, d = _size(risk_usd)                           # BT02: THE shared exchange-filter check - floors to the step, never rounds up
+        qty, stop, R = d['qty'], z['stop'], z['R']
+        qty_raw = z['qty']
+        if factor != 1.0:                                # what the same entry would have been without the control
+            zb, db = _size(base_risk_usd)
+            if not d['ok'] and db['ok'] is not False:
+                self.last_skip = (f"control: scaled size {qty:g} below Binance minimum - skipped, never rounded up "
+                                  f"(would have been {db['qty']:g})")
+                self._ctrl_log('reject', sl, sym, side, ce, factor, self.last_skip, base_qty=db['qty'], qty=qty)
+                return False
+            if d['ok'] is not False and db['ok'] is not False:
+                blk0 = self.entry_block(sl, sym, side, manual, sg=sg, size=dict(notional=db['qty'] * px,
+                                        risk=base_risk_usd * db['qty'] / zb['qty'] if zb['qty'] else 0))
+                if blk0:                                 # the control never lets through what the baseline would refuse
+                    self.last_skip = blk0
+                    return False
+                if qty != db['qty']:
+                    self._ctrl_log('scale', sl, sym, side, ce, factor, f'size {db["qty"]:g} -> {qty:g}', base_qty=db['qty'], qty=qty)
         if not d['ok']:
             log.info(f"SKIP {sym} [{sl['id'] if sl else 'MAN'}] size {qty} below Binance minimum")
             # same texts as feasibility.REASON_* (kept literal here: the trade-audit reason scan reads them from this file)
@@ -3901,6 +3983,27 @@ class Engine:
         if not manual and self.S.get('ENTRY_ORDER') == 'maker' and how != 'exposure':
             return self._maker_start(plan)
         return self._market_entry(plan)
+
+    def ctrl_now(self):
+        """CTRL-01-LITE: the effect of the saved controls (ctrl_effect - the same function the panel previews)."""
+        b, k = ctrl_norm(self.S.get('CTRL_BIAS'), self.S.get('CTRL_RISK'))
+        return ctrl_effect(b, k)
+
+    def ctrl_status(self):
+        b, k = ctrl_norm(self.S.get('CTRL_BIAS'), self.S.get('CTRL_RISK'))
+        sls = self.S.get('SLEEVES') or []
+        return dict(bias=b, risk=k, current=ctrl_effect(b, k, sls), table=ctrl_table(sls),
+                    bias_levels=[[x, v[0]] for x, v in CTRL_BIAS.items()], risk_levels=[[x, v[0]] for x, v in CTRL_RISK.items()])
+
+    def _ctrl_log(self, what, sl, sym, side, ce, factor, why, **kw):
+        """CTRL-01-LITE: one line for every control-caused scale / reject decision (never when the control had no effect)."""
+        rec = dict(event='ctrl_' + what, sleeve=sl['id'], symbol=sym, side=side, bias=ce['bias'], risk=ce['risk'],
+                   long_mult=ce['long_mult'], short_mult=ce['short_mult'], risk_pct=ce['risk_pct'],
+                   risk_factor=ce['risk_factor'], factor=factor, reason=why, **kw)
+        self.ctrl_events = (getattr(self, 'ctrl_events', None) or [])[-199:] + [rec]
+        log.info(f"CTRL-01 {what.upper()} {sym} {side} [{sl['id']}]: {why} | bias {ce['bias_label']} "
+                 f"(long x{ce['long_mult']:g} / short x{ce['short_mult']:g}) risk {ce['risk_label']} {ce['risk_pct']:g}% "
+                 f"(x{ce['risk_factor']:g}) -> x{factor:g}")
 
     def _market_entry(self, plan):
         sym, side, r = plan['sym'], plan['side'], self.rules[plan['sym']]
@@ -4615,7 +4718,8 @@ class Engine:
             block = self.entry_block(sl, sym, side)
             if block: raise ValueError(block)
             eq = self.equity()
-            if not self.open_lot(sl, sym, side, sg, self.candles(sym, sl['tf']), eq): raise ValueError(self.last_skip or 'not opened')
+            if not self.open_lot(sl, sym, side, sg, self.candles(sym, sl['tf']), eq, ctrl=False):   # hand action: no CTRL-01
+                raise ValueError(self.last_skip or 'not opened')
             return True
 
     def move_stop(self, key, price):
