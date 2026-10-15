@@ -10,7 +10,7 @@ import re
 
 import numpy as np
 
-from .common import SCHEMA_VERSION, canonical_json, redact_text, sha256_hex
+from .common import SCHEMA_VERSION, STATUSES, canonical_json, redact_text, sha256_hex
 from .features import NUMERIC, CATEGORICAL
 
 _HEX32, _CORR = re.compile(r'^[0-9a-f]{32}$'), re.compile(r'^c_[0-9a-f]{16}$')
@@ -56,6 +56,7 @@ def _decision(r):
         'sleeve': _txt(r.get('sleeve')), 'strategy': _txt(r.get('strategy')), 'family': _txt(r.get('family')),
         'symbol': _txt(r.get('symbol')), 'side': _txt(r.get('side')), 'tf': _txt(r.get('tf')),
         'taken': bool(r.get('taken')), 'reason': _txt(r.get('reason'), 200),
+        'status': r.get('status') if r.get('status') in STATUSES else ('taken' if r.get('taken') else 'skipped'),
         'rotation_group': _txt(r.get('rotation_group')), 'features': feats,
         'missing': sorted(k for k, v in feats.items() if v is None),
         'feature_hash': sha256_hex(canonical_json(feats)),          # always over the PERSISTED features

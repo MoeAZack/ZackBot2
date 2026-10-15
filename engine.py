@@ -17,6 +17,7 @@ from binance_client import Futures, MAINNET, TESTNET, BinanceError, AmbiguousOrd
 from ai_filter import review
 import grid as GRID
 import tradfi_universe as TU, tradfi_session as TS
+from shadow_analyst import DEFAULT_MODEL as _SHADOW_MODEL   # constant only; the analyst never runs in the engine
 
 log = logging.getLogger('zackbot')
 from time import monotonic as _mono, sleep as _sleep   # T05 writer: real clock even when replay swaps E.time
@@ -432,7 +433,10 @@ GLOBAL_DEFAULTS = dict(COMPOUND=False, CAP_SINCE='', CAP_ADJ=[], CAP_CYCLES=[], 
                        # v3.1 - all off by default (risk rules only WARN: they log, never block, until set to 'enforce')
                        ENTRY_ORDER='market', MAKER_FALLBACK=True, MAKER_REPRICE=3, MAKER_WAIT_S=40, FEE_MAKER=0.0002,
                        PUMP_GUARD={}, RISK_RULES={}, GOVERNOR=dict(mode='off', rules=[]),
-                       CTRL_BIAS='neutral', CTRL_RISK='max_test')   # CTRL-01-LITE (default = today's behaviour)
+                       CTRL_BIAS='neutral', CTRL_RISK='max_test',   # CTRL-01-LITE (default = today's behaviour)
+                       # ML-SHADOW-01: observation-only decision/label ledger (engine) + the report-only Claude analyst (app).
+                       # Both OFF by default; independent of AI_FILTER; nothing in trading code ever reads their output.
+                       ML_SHADOW=False, CLAUDE_SHADOW_ANALYST=False, CLAUDE_SHADOW_MODEL=_SHADOW_MODEL)
 
 # Portfolio risk rules: mode 'off' | 'warn' (log + 'WARNING:' entry on the missed list, still trades) | 'enforce' (entry refused)
 RISK_RULE_DEFAULTS = dict(
@@ -919,7 +923,8 @@ def validate_state(doc):
 
 _SETTING_NUM = dict(MAX_LEVERAGE=(1, 125), DAILY_LOSS_HALT=(0.0, 1.0), PEAK_DD_FLATTEN=(0.0, 1.0), CAPITAL_CAP=(0.0, 1e12),
                     MAKER_REPRICE=(0, 10), MAKER_WAIT_S=(0, 3600), FEE_MAKER=(-0.01, 0.01))
-_SETTING_BOOL = ('ENTRIES_PAUSED', 'COMPOUND', 'TELEGRAM_ON', 'AI_FILTER', 'MAKER_FALLBACK', 'RUN_IN_BACKGROUND', 'TRADFI_ENABLED')
+_SETTING_BOOL = ('ENTRIES_PAUSED', 'COMPOUND', 'TELEGRAM_ON', 'AI_FILTER', 'MAKER_FALLBACK', 'RUN_IN_BACKGROUND', 'TRADFI_ENABLED',
+                 'ML_SHADOW', 'CLAUDE_SHADOW_ANALYST')
 
 
 def validate_settings(doc):
@@ -2912,7 +2917,92 @@ class Engine:
         except Exception as e: log.warning(f'trade audit not recorded ({e})')
         self.history.append(rec); self.history = self.history[-3000:]
         self._save_aux('history', self.history)
+        self._ml_label(key, rec, lot)                              # ML-SHADOW-01 close label (observe only, never raises)
         self.notify(f"{'✅' if net > 0 else '❌'} CLOSED {lot['side']} {lot['symbol']} [{lot['sleeve']}] {why} · PnL {net:+.2f} USDT ({rec['r']}R) · {rec['hours']}h")
+
+    # ------------------------------------------------------------ ML-SHADOW-01 hooks (observation only)
+    # The lot -> decision link lives in the lot record itself (lot['ml_decision_id'], survives restarts with state.json).
+    # Lots opened while ML_SHADOW was off carry no id and never get a label. Pending decisions (resting maker / armed
+    # trailing entry) are linked when they fill; if they are cancelled or expire nothing more is written (stay unlabeled).
+    ML_DIR, ML_MAX_BYTES, ML_MAX_FILES = 'ml_shadow', 2_000_000, 5
+
+    def ml_paths(self):
+        d = os.path.join(self.dir, self.ML_DIR)
+        return dict(dir=d, decisions=os.path.join(d, 'decisions.jsonl'), labels=os.path.join(d, 'labels.jsonl'))
+
+    def _ml_health(self):
+        return self.health.setdefault('ml_shadow', dict(decisions=0, labels=0, errors=0))
+
+    def _ml_ledgers(self):
+        led = self.__dict__.get('_ml_led')
+        if led is None:
+            import ml_shadow as MLS
+            p = self.ml_paths()
+            led = self._ml_led = (MLS.JsonlLedger(p['decisions'], self.ML_MAX_BYTES, self.ML_MAX_FILES),
+                                  MLS.JsonlLedger(p['labels'], self.ML_MAX_BYTES, self.ML_MAX_FILES))
+        return led
+
+    def _ml_decision(self, sl, sym, side, sg, frames, status, reason, exposure=None, lot_key=None):
+        """ML-SHADOW-01 decision hook: ONE ledger row per candidate signal (status taken | skipped | pending + the existing
+        reason), after the engine has decided. Writes only under <data>/ml_shadow (plus the decision id on a lot it just
+        opened), returns nothing, swallows every exception (counted in health['ml_shadow']). Off unless S['ML_SHADOW'] is
+        True. Nothing in the trading code reads what it writes."""
+        try:
+            if self.S.get('ML_SHADOW') is not True: return
+            import ml_shadow as MLS
+            dec, _lab = self._ml_ledgers()
+            df = (frames or {}).get(sym)
+            ctx = {'exposure_count': exposure}
+            btc = (frames or {}).get('BTCUSDT')
+            if btc is not None and sym != 'BTCUSDT': ctx['btc_df'] = btc
+            kw = dict(df=df, i=len(df) - 1, ctx=ctx) if df is not None and len(df) else dict(features={'features': {}})
+            rg = None
+            try:
+                r = self.rotation_status()
+                if r.get('on'): rg = f"{r['index'] + 1}/{r['groups']}"
+            except Exception: pass
+            row = MLS.record_decision(dec, sleeve=sl['id'], strategy=sl.get('key'), family=_bfam(sl.get('key')), symbol=sym,
+                                      side=side, tf=sl.get('tf'), candle_time=sg['time'], taken=status == 'taken', status=status,
+                                      reason=scrub(str(reason or '')), rotation_group=rg, trade_id=lot_key, **kw)
+            h = self._ml_health()
+            if row is not None: h['decisions'] += 1
+            lot = self.state['lots'].get(lot_key) if status == 'taken' and lot_key else None
+            if lot is not None:
+                lot['ml_decision_id'] = MLS.decision_id(sl['id'], sl.get('key'), sym, side, sl.get('tf'), sg['time'])
+        except Exception:                                   # noqa: BLE001 - an observer never alters trading
+            try: self._ml_health()['errors'] += 1
+            except Exception: pass
+
+    def _ml_link_pending(self, lot, plan):
+        """A pending decision (maker resting / trailing armed) that fills: tag the new lot with that decision id. No new
+        decision row is written. Only ids already in the decision ledger are linked."""
+        try:
+            if self.S.get('ML_SHADOW') is not True or plan.get('manual') or not plan.get('sl'): return
+            import ml_shadow as MLS
+            sl, t = plan['sl'], (plan.get('sg') or {}).get('time')
+            if not t: return
+            did = MLS.decision_id(sl['id'], sl.get('key'), plan['sym'], plan['side'], sl.get('tf'), t)
+            dec, _lab = self._ml_ledgers()
+            if did in dec: lot['ml_decision_id'] = did
+        except Exception:                                   # noqa: BLE001
+            try: self._ml_health()['errors'] += 1
+            except Exception: pass
+
+    def _ml_label(self, key, rec, lot):
+        """ML-SHADOW-01 close hook: one label (realized R / pnl / exit reason) for a lot carrying an ml_decision_id.
+        Never raises, never changes the trade record."""
+        try:
+            if self.S.get('ML_SHADOW') is not True: return
+            did = (lot or {}).get('ml_decision_id')
+            if not isinstance(did, str): return
+            import ml_shadow as MLS
+            dec, lab = self._ml_ledgers()
+            row = MLS.record_label(lab, dec, decision_id=did, net_r=rec.get('r'), net_pnl=rec.get('pnl'),
+                                   exit_reason=rec.get('exit_reason'), trade_id=key)
+            if row is not None: self._ml_health()['labels'] += 1
+        except Exception:                                   # noqa: BLE001
+            try: self._ml_health()['errors'] += 1
+            except Exception: pass
 
     def miss(self, sl, sym, side, sg, reason, kind=None):
         """Record a signal that was not taken (kind None) or a risk-rule warning on a trade that WAS taken (kind 'warning')."""
@@ -3890,17 +3980,25 @@ class Engine:
                                 until=time.time() + int(te.get('max_bars', 3)) * TF_SEC.get(sl['tf'], 14400))
                             log.info(f"TRAIL ENTRY armed {s} {side} [{sl['id']}] rebound {te['dev_atr']} ATR from the extreme")
                             self._audit_cand(sl, s, side, sg, 'armed_trailing')
+                            self._ml_decision(sl, s, side, sg, frames, 'pending', 'trailing entry armed', len(held))   # ML-SHADOW-01 (observe only)
                             held.append(s); continue
                     if why is None:
                         self.last_skip = ''
+                        lk0 = getattr(self, '_last_lot_key', None)
                         try:
                             if self.open_lot(sl, s, side, sg, frames.get(s), eq):
                                 self._audit_opened(sl, s, side, sg)     # T05a: 'taken', or 'order_placed' (maker)
+                                lk = getattr(self, '_last_lot_key', None)
+                                mst = 'taken' if lk != lk0 or self.last_skip != 'maker entry working' else 'pending'   # maker rests
+                                self._ml_decision(sl, s, side, sg, frames, mst, self.last_skip if mst == 'pending' else '', len(held),
+                                                  lk if lk != lk0 else None)                    # ML-SHADOW-01 (observe only)
                                 held.append(s); continue
                         except Exception as e:                     # one failed order never stops the other entries
                             self.err(f'entry {s} [{sl["id"]}] failed: {e}'); self.last_skip = f'order failed: {e}'
                         why = self.last_skip or 'order failed'
                     self.miss(sl, s, side, sg, why)
+                    self._ml_decision(sl, s, side, sg, frames, 'pending' if why == 'maker entry working' else 'skipped',
+                                      why, len(held))                                       # ML-SHADOW-01 (observe only)
             try: self.grids.on_cycle(tf)
             except Exception as e: self.err(f'grid cycle {tf}: {e}')
             st['last_cycle'][tf] = now_utc().isoformat(timespec='minutes')
@@ -4723,6 +4821,7 @@ class Engine:
                 lot['ap'] = ap
         except Exception: pass
         if adopt_stop: lot['stop_id'] = adopt_stop               # AUD-03b: the provisional stop is replaced (new first, then cancelled)
+        self._ml_link_pending(lot, plan)                          # ML-SHADOW-01: a filled pending entry keeps its decision id
         self.state['lots'][key] = lot; self.save_state()          # recorded BEFORE the stop: a crash here can never orphan the position
         self._last_lot_key = key
         if not self._replace_stop(lot):

@@ -58,6 +58,37 @@ def _dir(c):
     return float(np.sign(e_now - e_prev)) if e_prev else None
 
 
+def _utc_ns(col):
+    """Vectorised to_utc over a time column -> int64 ns since epoch (UTC). Same rules as common.to_utc: integers are
+    epoch MILLISECONDS, naive datetimes/strings are UTC, aware ones are converted. None if the column needs the slow
+    path (mixed/unsupported types, NaT) - the caller then uses the per-row to_utc loop (identical semantics/errors)."""
+    try:
+        s = pd.Series(col)
+        if pd.api.types.is_bool_dtype(s):
+            return None
+        if pd.api.types.is_integer_dtype(s):
+            dt = pd.to_datetime(s.astype('int64'), unit='ms', utc=True)
+        elif pd.api.types.is_datetime64_any_dtype(s):
+            dt = s.dt.tz_localize('UTC') if s.dt.tz is None else s.dt.tz_convert('UTC')
+        elif s.map(type).isin([str, pd.Timestamp]).all():
+            dt = pd.to_datetime(s, utc=True, format='mixed')
+        else:
+            return None
+        if dt.isna().any():
+            return None
+        return dt.dt.tz_convert('UTC').dt.tz_localize(None).to_numpy('datetime64[ns]').astype('int64')
+    except Exception:                                          # noqa: BLE001 - slow path decides
+        return None
+
+
+def btc_keep_mask(tcol, t_i):
+    """Strict causality: True for rows with t <= decision time t_i (Cowork F1: vectorised, identical to the loop)."""
+    ns = _utc_ns(tcol)
+    if ns is None:
+        return np.array([to_utc(x) <= t_i for x in tcol], bool)
+    return ns <= to_utc(t_i).tz_convert('UTC').tz_localize(None).value
+
+
 def features_at(df, i, ctx=None):
     """Return {'features': {...}, 'missing': [names]} computed from df rows 0..i and whitelisted ctx only."""
     ctx = ctx or {}
@@ -110,7 +141,7 @@ def features_at(df, i, ctx=None):
         f['btc_dir'] = _num(ctx['btc_dir'])
     elif ctx.get('btc_df') is not None:
         b = ctx['btc_df']
-        keep = np.array([to_utc(x) <= t_i for x in b['t']], bool)
+        keep = btc_keep_mask(b['t'], t_i)
         f['btc_dir'] = _dir(b['c'].to_numpy(float)[keep])
     for k in _CTX_NUM:
         if ctx.get(k) is not None:
