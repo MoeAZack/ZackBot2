@@ -8,26 +8,41 @@ REVIEW-ONLY research evidence. non_promotable. Development window only; not evid
 - universe: static-top40-minhist365-contract-20261011 tier CORE-10 (digest 1c06c18d2fc82413…); run symbols: BTCUSDT, ETHUSDT, ZECUSDT, SOLUSDT, XRPUSDT, NEARUSDT, DOGEUSDT, UNIUSDT, SUIUSDT
 - costs: taker fee 0.0005 per side, slippage 0.0002 per side, funding 0.000050 of notional per 4h bar; market (taker) entries; legacy exchange rules
 - account (app defaults): start 500.0, risk 1%/trade, max_pos 4, max_lev 10, daily halt 8%
-- mgmt: `defaults` = frozen strategy mgmt (empty override). profit_capture variant and the 15m keys are pending Codex.
+- mgmt: `defaults` = frozen strategy mgmt (empty override). profit_capture and the 15m keys came later: #107, #108, #109.
 
-| key | side | mgmt | status | trades | net R | net PnL | PF | win % | max DD (R) | max DD (equity) | fee share | MFE R | MAE R* | giveback R | R above / below BTC EMA200 |
-|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| exp_breakout | long | defaults | ok | 489 | 86.69 | 513.20 | 1.29 | 33.7% | 36.63 | -32.7% | 11.8% | 1.21 | 0.82 | 1.03 | 70.8 (323) / 15.9 (166) |
-| exp_breakout | short | defaults | ok | 420 | -22.16 | -132.79 | 0.87 | 31.4% | 43.38 | -38.2% | n/a (gross<=0) | 1.12 | 0.79 | 1.17 | 7.3 (185) / -29.5 (235) |
-| exp_range | long | defaults | ok | 606 | -11.07 | -87.63 | 0.94 | 48.2% | 42.88 | -39.2% | 283.1% | 0.85 | 0.87 | 0.87 | 11.2 (230) / -22.3 (376) |
-| exp_range | short | defaults | ok | 653 | -20.00 | -121.42 | 0.91 | 50.1% | 36.96 | -33.6% | n/a (gross<=0) | 0.82 | 0.91 | 0.85 | -46.6 (465) / 26.6 (188) |
-| exp_vwaprev | long | defaults | ok | 623 | -30.12 | -158.63 | 0.89 | 46.4% | 61.24 | -49.2% | n/a (gross<=0) | 0.84 | 0.91 | 0.89 | 8.7 (236) / -38.8 (387) |
-| exp_vwaprev | short | defaults | ok | 658 | -25.47 | -142.33 | 0.89 | 49.7% | 42.45 | -37.3% | n/a (gross<=0) | 0.82 | 0.92 | 0.86 | -53.9 (464) / 28.4 (194) |
-| exp_scalp | long | defaults | BLOCKED: no 15m cache | – | – | – | – | – | – | – | – | – | – | – | – |
-| exp_scalp | short | defaults | BLOCKED: no 15m cache | – | – | – | – | – | – | – | – | – | – | – | – |
-| exp_structure | long | defaults | BLOCKED: no 15m cache | – | – | – | – | – | – | – | – | – | – | – | – |
-| exp_structure | short | defaults | BLOCKED: no 15m cache | – | – | – | – | – | – | – | – | – | – | – | – |
+| key | side | registry_sides | mgmt | status | trades | net R | net PnL | PF | win % | max DD (R) | max DD (equity) | fee share | MFE R | MAE R* | giveback R | R above / below BTC EMA200 |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| exp_breakout | long | both | defaults | ok | 489 | 86.69 | 513.20 | 1.29 | 33.7% | 36.63 | -32.7% | 11.8% | 1.21 | 0.82 | 1.03 | 70.8 (323) / 15.9 (166) |
+| exp_breakout | short | both | defaults | ok | 420 | -22.16 | -132.79 | 0.87 | 31.4% | 43.38 | -38.2% | n/a (gross<=0) | 1.12 | 0.79 | 1.17 | 7.3 (185) / -29.5 (235) |
+| exp_range | long | both | defaults | ok | 606 | -11.07 | -87.63 | 0.94 | 48.2% | 42.88 | -39.2% | 283.1% | 0.85 | 0.87 | 0.87 | 11.2 (230) / -22.3 (376) |
+| exp_range | short | both | defaults | ok | 653 | -20.00 | -121.42 | 0.91 | 50.1% | 36.96 | -33.6% | n/a (gross<=0) | 0.82 | 0.91 | 0.85 | -46.6 (465) / 26.6 (188) |
+| exp_vwaprev | long | both | defaults | ok | 623 | -30.12 | -158.63 | 0.89 | 46.4% | 61.24 | -49.2% | n/a (gross<=0) | 0.84 | 0.91 | 0.89 | 8.7 (236) / -38.8 (387) |
+| exp_vwaprev | short | both | defaults | ok | 658 | -25.47 | -142.33 | 0.89 | 49.7% | 42.45 | -37.3% | n/a (gross<=0) | 0.82 | 0.92 | 0.86 | -53.9 (464) / 28.4 (194) |
+| exp_scalp | long | both | defaults | BLOCKED: no 15m cache | – | – | – | – | – | – | – | – | – | – | – | – |
+| exp_scalp | short | both | defaults | BLOCKED: no 15m cache | – | – | – | – | – | – | – | – | – | – | – | – |
+| exp_structure | long | both | defaults | BLOCKED: no 15m cache | – | – | – | – | – | – | – | – | – | – | – | – |
+| exp_structure | short | both | defaults | BLOCKED: no 15m cache | – | – | – | – | – | – | – | – | – | – | – | – |
 
 \* MAE is a bar-extreme approximation over [entry bar, exit bar] (the exit bar may include movement after the exit). MFE uses the backtest path best price. Both in stop-distance R. Fee share = fees / gross (gross = price P&L after slippage, before fees and funding); n/a when gross <= 0.
 
 ## INCOMPLETE symbols (excluded from every aggregate, never filled)
 
 - HYPEUSDT: 1590 of 4504 4h candles missing in [warm-up start, END) (2024-09-07T08:00:00Z .. 2025-05-30T04:00:00Z), off-grid 0, duplicates 0
+
+## Headline (registry sides only)
+
+Registry-side slices with trades: 6. Off-registry slices excluded from this headline: 0 (none).
+
+| key | side | mgmt | trades | net R | PF |
+|---|---|---|---|---|---|
+| exp_breakout | long | defaults | 489 | 86.69 | 1.29 |
+| exp_range | long | defaults | 606 | -11.07 | 0.94 |
+| exp_range | short | defaults | 653 | -20.00 | 0.91 |
+| exp_breakout | short | defaults | 420 | -22.16 | 0.87 |
+| exp_vwaprev | short | defaults | 658 | -25.47 | 0.89 |
+| exp_vwaprev | long | defaults | 623 | -30.12 | 0.89 |
+
+registry_sides = strategies.STRATEGIES[key]['sides'] as recorded in each packet. An off-registry side is one the registry does not list for that key: the runner can still simulate it (the signal function emits it), but it is hypothetical and is excluded from every headline line. Not evidence of edge.
 
 ## Per-symbol net R
 
