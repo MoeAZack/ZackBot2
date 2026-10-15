@@ -242,3 +242,36 @@ def test_cache_extra_fills_only_missing_files(env, tmp_path):
     assert f['SOLUSDT']['dir'] == 'cache_extra' and f['ETHUSDT']['dir'] == 'cache' and f['BTCUSDT']['dir'] == 'cache'
     assert p['universe']['run'] == VT.SYMS and p['universe']['incomplete'] == []
     assert p['trades'] == go(env, out='full.json')['trades']             # same data as a single complete cache
+
+
+# ------------------------------------------------------------------ bust (Cowork #109 6199440196)
+def test_no_bust_pre_equals_full(env):
+    p = go(env)
+    assert p['bust']['busted'] is False and p['bust']['trades_after'] == 0
+    assert p['stats']['pre_bust']['aggregate'] == p['stats']['aggregate']
+    assert p['stats']['post_bust']['aggregate']['trades'] == 0
+
+
+def test_bust_splits_trades(env, monkeypatch):
+    monkeypatch.setattr(B, 'BUST_FRAC', 1.0)    # the line at the start equity: the first curve bar is the bust
+    p = go(env)
+    b = p['bust']
+    full = p['stats']['aggregate']
+    assert b['busted'] and b['trades_before'] == 0 and b['trades_after'] == full['trades'] > 0 and b['trade_number'] == 1
+    assert p['stats']['pre_bust']['aggregate']['trades'] == 0
+    assert p['stats']['post_bust']['aggregate'] == {k: v for k, v in full.items() if k != 'max_dd_equity'}
+    pre, post = p['stats']['pre_bust']['aggregate'], p['stats']['post_bust']['aggregate']
+    assert pre['trades'] + post['trades'] == full['trades'] and b['trades_after'] == post['trades']
+    assert all(VT.SP.parse_utc(t['t_in']) < VT.SP.parse_utc(b['time']) for t in p['trades'][:b['trades_before']])
+
+
+def test_bust_info_unit():
+    import pandas as pd
+    idx = pd.date_range('2025-03-03', periods=6, freq='4h')
+    cv = pd.Series([500, 400, 60, 49, 30, 20.0], index=idx)
+    tr = pd.DataFrame(dict(t_in=['2025-03-03T00:00:00Z', '2025-03-03T08:00:00Z', '2025-03-03T12:00:00Z',
+                                 '2025-03-03T16:00:00Z']))
+    b = B.bust_info(cv, tr, 500.0)
+    assert b['busted'] and b['time'] == '2025-03-03T12:00:00Z' and b['trade_number'] == 3
+    assert b['trades_before'] == 2 and b['trades_after'] == 2 and list(b['post_mask']) == [False, False, True, True]
+    assert B.bust_info(pd.Series([500, 60.0], index=idx[:2]), tr, 500.0)['busted'] is False

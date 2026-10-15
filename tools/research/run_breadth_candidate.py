@@ -311,6 +311,28 @@ def stats(tr: pd.DataFrame) -> dict:
     return out
 
 
+BUST_FRAC = 0.10        # bust = first bar the equity curve is at or below 10% of the start (the $50 line on a $500 book)
+
+
+def bust_info(cv, tr, start) -> dict:
+    """When the account is dead: the first equity-curve bar at or below BUST_FRAC x start. Trades are split by entry fill
+    time: pre-bust = entered before that bar, post-bust = entered at or after it (a dead account in the real world)."""
+    thr = BUST_FRAC * float(start)
+    out = {'threshold': thr, 'rule': f'first equity-curve bar <= {BUST_FRAC:g} x start; trades split by entry time',
+           'busted': False, 'time': None, 'trade_number': None, 'trades_before': int(len(tr)), 'trades_after': 0}
+    if cv is None or cv.empty:
+        return out
+    hit = np.flatnonzero(cv.to_numpy(float) <= thr)
+    if not len(hit):
+        return out
+    tb = int(pd.Timestamp(cv.index[hit[0]]).value // 1_000_000)
+    after = (np.array([VC.SP.parse_utc(x) for x in tr.t_in]) >= tb) if len(tr) else np.zeros(0, bool)
+    first = int((~after).sum()) + 1 if after.any() else None     # in entry order: the first trade of the dead account
+    out.update(busted=True, time=_utc(tb), trade_number=first, trades_before=int((~after).sum()),
+               trades_after=int(after.sum()), post_mask=after)
+    return out
+
+
 def curve_dd(cv) -> float | None:
     if cv is None or cv.empty:
         return None
@@ -390,6 +412,17 @@ def run(*, cache: str, window, out: str, key: str, side: str, mgmt_mode: str = '
     regimes = {g: stats(tr[tr.regime == g] if len(tr) else tr) for g in ('btc_above_ema200', 'btc_below_ema200')}
     agg = stats(tr)
     agg['max_dd_equity'] = curve_dd(cv)
+    bust = bust_info(cv, tr, start)
+    post = bust.pop('post_mask', np.zeros(len(tr), bool))
+    pre_tr, post_tr = (tr[~post], tr[post]) if len(tr) else (tr, tr)
+    pre = {'aggregate': stats(pre_tr),
+           'regime': {g: stats(pre_tr[pre_tr.regime == g] if len(pre_tr) else pre_tr)
+                      for g in ('btc_above_ema200', 'btc_below_ema200')},
+           'per_symbol': {s: stats(pre_tr[pre_tr.sym == s] if len(pre_tr) else pre_tr) for s in run_syms}}
+    if bust['busted']:
+        pre['aggregate']['max_dd_equity'] = curve_dd(cv[cv.index < pd.Timestamp(bust['time'].rstrip('Z'))])
+    else:
+        pre['aggregate']['max_dd_equity'] = agg['max_dd_equity']
     trades = [] if not len(tr) else [
         {'symbol': r.sym, 'side': int(r.side), 't_in': r.t_in, 't_out': r.t_out, 'pnl': _num(r.pnl), 'R': _num(r.R),
          'why': r.why, 'gross': _num(r.gross), 'fees': _num(r.fees), 'funding': _num(r.funding),
@@ -432,7 +465,9 @@ def run(*, cache: str, window, out: str, key: str, side: str, mgmt_mode: str = '
             'giveback_r': 'mfe_r - realised R', 'max_dd_r': 'max drawdown of cumulative trade R in exit order',
             'max_dd_equity': 'max drawdown of the bar equity curve (fraction)',
             'regime': 'BTCUSDT close vs 4h EMA200 on the last closed candle before the entry fill'},
-        'stats': {'per_symbol': per, 'aggregate': agg, 'regime': regimes, 'app': VC._app_stats(tr, cv, start),
+        'bust': bust,
+        'stats': {'pre_bust': pre, 'post_bust': {'aggregate': stats(post_tr)},
+                  'per_symbol': per, 'aggregate': agg, 'regime': regimes, 'app': VC._app_stats(tr, cv, start),
                   'curve_end': _num(cv.iloc[-1]) if len(cv) else None,
                   'liquidations': int(cv.attrs.get('liquidations', 0))},
         'trades': trades,
