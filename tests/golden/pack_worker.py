@@ -5,6 +5,8 @@
 --tier runs only the cases TIERS.json puts in that tier (goldenlib.tiers; a tier manifest that does not place every case in
 exactly one tier makes the worker fail). Without --tier: the whole pack.
 
+The tier targets (CORE_TARGET_S / EXTENDED_TARGET_S) are checked against the reported `cpu`; the wall-clock HARD_STOP_S
+deadline is enforced from outside.
 test_golden.py starts it through goldenlib.deadline.run with the HARD_STOP_S deadline (the whole tree is killed on expiry),
 so no adapter code runs in the pytest process and a hung adapter costs at most the hard stop. Adapters only ever see
 adapters.blind(case) (no expectation, no known divergences); legacy_backtest is cheap, so it also runs on the full case and
@@ -57,7 +59,8 @@ def main(argv):
             rec['seconds'] = time.perf_counter() - t0
             runs.append(rec)
     with open(out_path, 'w', encoding='utf-8') as f:
-        json.dump(dict(runs=runs, tier=a.tier, wall=time.perf_counter() - t_all), f, default=float)
+        # cpu: this process's CPU seconds (all threads, incl. imports) - the tier budget; wall is load / disk dependent
+        json.dump(dict(runs=runs, tier=a.tier, wall=time.perf_counter() - t_all, cpu=time.process_time()), f, default=float)
     return 0
 
 
