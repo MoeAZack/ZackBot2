@@ -362,7 +362,6 @@ TRADFI_SLOTS = {'TF-TREND': dict(key='ema_st', symbols='tradfi'),              #
 TRADFI_KEYS_GOLD = frozenset({'ema_st', 'breakout_pyramid', 'exp_vwaprev', 'exp_range'})
 TRADFI_KEYS_MEGA = frozenset({'ema_st', 'breakout_pyramid', 'ema_mom', 'exp_vwaprev', 'exp_range'})
 TRADFI_KEYS_HIGH_BETA = frozenset({'ema_st', 'breakout_pyramid', 'ema_mom'})
-TRADFI_SESSION_FAMILY = {'exp_vwaprev': 'range', 'exp_range': 'range', 'exp_scalp': 'scalp'}   # else 'trend'
 # Codex ruling d: XAUUSDT + PAXGUSDT share ONE budget (risk / notional / positions), checked before every gold entry.
 GOLD_FAMILY_MAX_POS = 2                 # at most one long + one (hedge) short across the pair
 GOLD_FAMILY_RISK_EQ = 0.01              # open gold risk_usd + new risk <= 1 % of equity
@@ -1718,7 +1717,7 @@ class Engine:
         if not self.tradfi_on(): return 'TRADFI disabled - no new entries on this symbol (open trades stay managed)'
         if not manual:
             key = (sl or {}).get('key')
-            fam = TRADFI_SESSION_FAMILY.get(key, 'trend')
+            fam = BREADTH_FAMILY.get(key, 'Other')   # real B2 labels; tradfi_session normalises case, unknown -> session-only
             t = time.time() if ts is None else ts
             if not TS.entry_allowed(sym, fam, t):
                 return f'tradfi_session: US cash session {TS.us_cash_session(t)} - no new {fam} entry on {sym}'

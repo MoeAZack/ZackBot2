@@ -271,3 +271,16 @@ def test_skip_reasons_have_funnel_codes():
     assert TA.reason_code('tradfi_session: US cash session CLOSED - no new range entry on SPYUSDT')[1] == 'tradfi_session'
     assert TA.reason_code('tradfi_policy: dca_dip is not an approved strategy for NVDAUSDT')[1] == 'tradfi_policy'
     assert TA.reason_code('TRADFI is PAPER/testnet only - refused in live mode')[1] == 'tradfi_off'
+
+
+
+@pytest.mark.parametrize('ts', [CLOSED_TS, datetime(2026, 11, 26, 16, 0, tzinfo=timezone.utc).timestamp(), UNKNOWN_TS])
+def test_engine_session_gate_uses_real_breadth_family(mk, ts):
+    """Codex 6187427899: the engine passes the real engine.BREADTH_FAMILY label; Saturday / holiday / UNKNOWN block new
+    stock VWAPREV (Range) entries, an unmapped key fails closed, and trend is blocked only when UNKNOWN."""
+    assert E.BREADTH_FAMILY['exp_vwaprev'] == 'Range' and E.BREADTH_FAMILY['ema_st'] == 'Trend'
+    e = mk(on=True)
+    assert e.tradfi_block(slot('TF-RANGE', 'exp_vwaprev'), 'SPYUSDT', 'LONG', ts=ts).startswith('tradfi_session')
+    assert e.tradfi_block(slot('TF-RANGE', 'exp_vwaprev'), 'SPYUSDT', 'LONG', ts=OPEN_TS) is None
+    trend = e.tradfi_block(slot('TF-TREND', 'ema_st'), 'SPYUSDT', 'LONG', ts=ts)
+    assert (trend or '').startswith('tradfi_session') is (ts == UNKNOWN_TS)
