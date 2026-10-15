@@ -45,16 +45,28 @@ def ceil_step(x, step):
 
 
 # ------------------------------------------------------------------ rules
-def rules_from_exchange_info(info):
+def rules_from_exchange_info(info, allow_tradfi=False):
     """exchangeInfo JSON -> {symbol: dict(step, min_qty, tick, min_notional)}: PERPETUAL + TRADING only, MARKET_LOT_SIZE for
-    the quantity filters, MIN_NOTIONAL default 5 - exactly what engine.connect has always built."""
+    the quantity filters, MIN_NOTIONAL default 5 - exactly what engine.connect has always built.
+
+    TRADFI-01 T1: allow_tradfi=True ALSO admits contractType 'TRADIFI_PERPETUAL' with status 'TRADING', but only for symbols
+    in tradfi_universe.TRADFI_ALLOW_LIST; those rules carry an extra key kind='tradfi'. Normal PERPETUAL rules never get the
+    key. Default False = previous behaviour bit-for-bit. Any non-TRADING status (e.g. PENDING_TRADING) is refused."""
+    allow = set()
+    if allow_tradfi:
+        from tradfi_universe import TRADFI_ALLOW_LIST
+        allow = set(TRADFI_ALLOW_LIST)
     out = {}
     for s in info['symbols']:
-        if s.get('contractType') != 'PERPETUAL' or s.get('status') != 'TRADING': continue
+        if s.get('status') != 'TRADING': continue
+        ct = s.get('contractType')
+        tradfi = allow_tradfi and ct == 'TRADIFI_PERPETUAL' and s.get('symbol') in allow
+        if ct != 'PERPETUAL' and not tradfi: continue
         f = {x['filterType']: x for x in s['filters']}
         out[s['symbol']] = dict(step=float(f['MARKET_LOT_SIZE']['stepSize']), min_qty=float(f['MARKET_LOT_SIZE']['minQty']),
                                 tick=float(f['PRICE_FILTER']['tickSize']),
                                 min_notional=float(f.get('MIN_NOTIONAL', {}).get('notional', DEFAULT_MIN_NOTIONAL)))
+        if tradfi: out[s['symbol']]['kind'] = 'tradfi'
     return out
 
 
