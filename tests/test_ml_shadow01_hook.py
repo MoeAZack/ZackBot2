@@ -304,3 +304,35 @@ def test_skipped_decisions_never_labelled(tmp_path):
     assert MLS.record_label(lab, led, decision_id=sk['decision_id'], net_r=1, net_pnl=1, exit_reason='x') is None
     assert MLS.record_label(lab, led, decision_id=pe['decision_id'], net_r=1, net_pnl=1, exit_reason='x') is not None
     assert MLS.record_decision(led, candle_time='2026-10-01 08:00:00', taken=False, status='maybe', **kw) is None
+
+
+# ------------------------------------------------------------------ Cowork F1: vectorised causal BTC cutoff
+def _old_mask(col, ti):
+    from ml_shadow.common import to_utc
+    return np.array([to_utc(x) <= ti for x in col], bool)
+
+
+def test_btc_cutoff_vectorised_equals_loop_incl_future_rows():
+    import time as _t
+    from ml_shadow.common import to_utc
+    from ml_shadow.features import btc_keep_mask, features_at
+    n = 1500
+    t = pd.date_range('2026-01-01', periods=n, freq='15min', tz='UTC')
+    c = 100 + np.cumsum(np.sin(np.arange(n) / 7.0))
+    btc = pd.DataFrame(dict(t=t, o=c, h=c + 1, l=c - 1, c=c, v=np.ones(n)))
+    ms = (btc.t - pd.Timestamp('1970-01-01', tz='UTC')) // pd.Timedelta('1ms')
+    cols = [btc.t, btc.t.dt.tz_localize(None), btc.t.astype(str), ms, btc.t.dt.tz_convert('Asia/Tokyo'),
+            pd.Series(list(btc.t.astype(str)[:10]) + list(ms[10:20]), dtype=object)]     # mixed -> slow path, same answer
+    for k in (0, 7, 700, n - 2):                                                      # future rows beyond k exist
+        ti = to_utc(btc.t.iloc[k])
+        for col in cols:
+            assert (btc_keep_mask(col, ti) == _old_mask(col, ti)).all()
+        assert btc_keep_mask(btc.t, ti).sum() == k + 1
+    df = btc.iloc[:800].copy()
+    df['t'] = btc.t.iloc[:800]
+    old = features_at(df, 799, {'btc_dir': None, 'btc_df': btc})['features']['btc_dir']
+    from ml_shadow.features import _dir
+    assert old == _dir(btc.c.to_numpy(float)[:800])                                   # identical to the strictly-causal slice
+    t0 = _t.perf_counter()
+    for k in range(200): btc_keep_mask(btc.t, to_utc(btc.t.iloc[n - 1 - k]))
+    assert _t.perf_counter() - t0 < 0.5                                               # was ~6.5 ms/decision with the loop
