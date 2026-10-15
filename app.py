@@ -1149,7 +1149,7 @@ def clean_mgmt(m):
 
 
 def clean_symbols(v):
-    if v in ('all', 'core8'): return v
+    if v in ('all', 'core8') or v in ENG.TRADFI_TIERS: return v       # TRADFI-01 tiers resolve to [] unless TRADFI is on
     if not isinstance(v, list) or len(v) > 80: raise ValueError('coin list must be all, core8 or a list of up to 80 coins')
     for x in v:
         if not isinstance(x, str) or not SYM.match(x): raise ValueError(f'bad coin symbol: {str(x)[:20]}')
