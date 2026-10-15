@@ -10,48 +10,48 @@ REVIEW-ONLY research evidence. non_promotable. Development window only; not evid
 - account (app defaults): start 500.0, risk 1%/trade, max_pos 4, max_lev 10, daily halt 8%
 - mgmt: `defaults` = frozen strategy mgmt (empty override). `profit_capture` exp_breakout: override {"be_r": 1.0, "tp1_frac": 0.5, "tp1_r": 1.25} -> merged {"be_r": 1.0, "max_bars": 60, "stop_atr": 2.0, "tp1_frac": 0.5, "tp1_r": 1.25, "tp_r": 3.0}; `profit_capture` exp_range: override {"be_r": 0.5, "max_bars": 18, "tp1_frac": 0.5, "tp1_r": 0.5} -> merged {"be_r": 0.5, "max_bars": 18, "stop_atr": 1.5, "tp1_frac": 0.5, "tp1_r": 0.5}; `profit_capture` exp_trend: override {"be_r": 1.0, "tp1_frac": 0.33, "tp1_r": 1.5} -> merged {"be_r": 1.0, "max_bars": 180, "stop_atr": 2.5, "tp1_frac": 0.33, "tp1_r": 1.5, "tp_r": 3.0}; `profit_capture` exp_vwaprev: override {"be_r": 0.5, "max_bars": 18, "tp1_frac": 0.5, "tp1_r": 0.5} -> merged {"be_r": 0.5, "max_bars": 18, "stop_atr": 1.5, "tp1_frac": 0.5, "tp1_r": 0.5}; Source: https://github.com/MoeAZack/ZackBot2/issues/13#issuecomment-6198970276
 
-| key | side | mgmt | status | trades | net R | net PnL | PF | win % | max DD (R) | max DD (equity) | fee share | MFE R | MAE R* | giveback R | R above / below BTC EMA200 |
-|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| bear_breakdown | long | defaults | not emitted | 0 | 0.00 | 0.00 | n/a | n/a | n/a | 0.0% | n/a | n/a | n/a | n/a | 0.0 (0) / 0.0 (0) |
-| bear_breakdown | short | defaults | ok | 286 | 7.32 | -11.36 | 0.98 | 33.6% | 27.45 | -26.6% | 76.8% | 1.29 | 0.67 | 1.27 | 0.0 (0) / 7.3 (286) |
-| breakout_pyramid | long | defaults | ok | 321 | 164.22 | 1292.17 | 1.70 | 26.8% | 22.20 | -26.6% | 7.3% | 1.85 | 0.76 | 1.34 | 99.9 (271) / 64.3 (50) |
-| breakout_pyramid | short | defaults | ok | 310 | 85.54 | 239.50 | 1.18 | 21.9% | 39.37 | -37.5% | 18.8% | 1.48 | 0.77 | 1.21 | 67.7 (90) / 17.8 (220) |
-| dca_dip | long | defaults | ok | 241 | -4.11 | -21.20 | 0.83 | 88.8% | 8.12 | -8.7% | n/a (gross<=0) | 0.09 | 0.39 | 0.11 | -7.1 (171) / 3.0 (70) |
-| dca_dip | short | defaults | not emitted | 0 | 0.00 | 0.00 | n/a | n/a | n/a | 0.0% | n/a | n/a | n/a | n/a | 0.0 (0) / 0.0 (0) |
-| donchian_ens | long | defaults | ok | 249 | 47.20 | 243.81 | 1.37 | 34.1% | 18.07 | -21.6% | 8.5% | 1.65 | 0.65 | 1.46 | 32.3 (171) / 14.9 (78) |
-| donchian_ens | short | defaults | ok | 196 | 37.25 | 179.76 | 1.40 | 42.9% | 15.49 | -16.8% | 7.9% | 1.42 | 0.64 | 1.23 | 31.7 (84) / 5.5 (112) |
-| ema_mom | long | defaults | ok | 133 | 79.20 | 485.25 | 2.55 | 33.8% | 8.03 | -19.6% | 3.6% | 2.13 | 0.53 | 1.54 | 40.5 (108) / 38.7 (25) |
-| ema_mom | short | defaults | ok | 149 | -16.41 | -82.10 | 0.72 | 27.5% | 22.25 | -23.0% | n/a (gross<=0) | 1.11 | 0.61 | 1.22 | -2.2 (49) / -14.2 (100) |
-| ema_st | long | defaults | ok | 159 | 83.42 | 473.11 | 1.80 | 28.9% | 19.51 | -29.9% | 3.9% | 2.63 | 0.81 | 2.11 | 32.4 (116) / 51.0 (43) |
-| ema_st | short | defaults | ok | 189 | -16.74 | -92.86 | 0.80 | 31.2% | 27.41 | -27.5% | n/a (gross<=0) | 1.60 | 0.77 | 1.69 | -0.4 (82) / -16.3 (107) |
-| exp_breakout | long | defaults | ok | 533 | 84.29 | 477.95 | 1.22 | 33.0% | 39.54 | -36.8% | 14.8% | 1.20 | 0.82 | 1.04 | 68.0 (346) / 16.3 (187) |
-| exp_breakout | long | profit_capture | ok | 559 | 39.41 | 181.55 | 1.11 | 41.7% | 36.46 | -33.4% | 27.8% | 1.17 | 0.77 | 1.10 | 24.3 (364) / 15.1 (195) |
-| exp_breakout | short | defaults | ok | 445 | -20.59 | -129.65 | 0.88 | 31.7% | 43.64 | -38.3% | n/a (gross<=0) | 1.12 | 0.80 | 1.17 | 1.9 (197) / -22.5 (248) |
-| exp_breakout | short | profit_capture | ok | 464 | -8.45 | -69.71 | 0.94 | 39.9% | 32.46 | -31.0% | 395.1% | 1.10 | 0.76 | 1.11 | -0.9 (208) / -7.6 (256) |
-| exp_mom_short | long | defaults | not emitted | 0 | 0.00 | 0.00 | n/a | n/a | n/a | 0.0% | n/a | n/a | n/a | n/a | 0.0 (0) / 0.0 (0) |
-| exp_mom_short | short | defaults | ok | 278 | 11.66 | 33.24 | 1.05 | 37.4% | 22.21 | -22.0% | 38.7% | 1.23 | 0.67 | 1.19 | 11.9 (117) / -0.2 (161) |
-| exp_range | long | defaults | ok | 728 | -23.95 | -145.22 | 0.91 | 48.1% | 58.05 | -48.7% | n/a (gross<=0) | 0.84 | 0.88 | 0.87 | 8.1 (273) / -32.0 (455) |
-| exp_range | long | profit_capture | ok | 862 | -19.51 | -109.82 | 0.91 | 67.1% | 47.82 | -40.9% | 510.7% | 0.74 | 0.70 | 0.77 | -2.1 (327) / -17.4 (535) |
-| exp_range | short | defaults | ok | 803 | -21.12 | -134.22 | 0.92 | 50.1% | 43.52 | -38.8% | n/a (gross<=0) | 0.83 | 0.90 | 0.85 | -35.7 (558) / 14.5 (245) |
-| exp_range | short | profit_capture | ok | 926 | -55.10 | -228.39 | 0.81 | 63.4% | 55.31 | -46.3% | n/a (gross<=0) | 0.75 | 0.75 | 0.81 | -51.8 (655) / -3.3 (271) |
-| exp_rip_sell_dca | long | defaults | not emitted | 0 | 0.00 | 0.00 | n/a | n/a | n/a | 0.0% | n/a | n/a | n/a | n/a | 0.0 (0) / 0.0 (0) |
-| exp_rip_sell_dca | short | defaults | ok | 372 | -12.01 | -58.71 | 0.72 | 88.2% | 12.27 | -12.0% | n/a (gross<=0) | 0.10 | 0.38 | 0.13 | -7.9 (223) / -4.1 (149) |
-| exp_trend | long | defaults | ok | 141 | 36.97 | 202.30 | 1.74 | 34.8% | 10.24 | -12.5% | 7.5% | 0.97 | 0.52 | 0.70 | 35.8 (116) / 1.2 (25) |
-| exp_trend | long | profit_capture | ok | 141 | 37.01 | 209.05 | 1.96 | 37.6% | 8.06 | -10.0% | 7.6% | 0.96 | 0.45 | 0.69 | 37.2 (116) / -0.1 (25) |
-| exp_trend | short | defaults | ok | 150 | -11.85 | -63.13 | 0.79 | 28.7% | 23.43 | -23.2% | n/a (gross<=0) | 0.77 | 0.61 | 0.85 | -3.6 (49) / -8.2 (101) |
-| exp_trend | short | profit_capture | ok | 150 | -11.53 | -59.05 | 0.77 | 26.7% | 17.81 | -18.0% | n/a (gross<=0) | 0.73 | 0.56 | 0.81 | -4.3 (49) / -7.2 (101) |
-| exp_vwaprev | long | defaults | ok | 743 | -37.60 | -189.90 | 0.88 | 46.6% | 69.01 | -54.1% | n/a (gross<=0) | 0.85 | 0.91 | 0.90 | 4.6 (280) / -42.2 (463) |
-| exp_vwaprev | long | profit_capture | ok | 886 | -40.29 | -183.64 | 0.84 | 65.3% | 66.99 | -51.3% | n/a (gross<=0) | 0.74 | 0.74 | 0.79 | -8.5 (339) / -31.8 (547) |
-| exp_vwaprev | short | defaults | ok | 816 | -25.72 | -151.96 | 0.91 | 49.6% | 47.26 | -41.3% | n/a (gross<=0) | 0.83 | 0.91 | 0.86 | -40.8 (565) / 15.0 (251) |
-| exp_vwaprev | short | profit_capture | ok | 915 | -45.41 | -200.51 | 0.84 | 64.0% | 45.63 | -40.4% | n/a (gross<=0) | 0.76 | 0.75 | 0.81 | -45.7 (640) / 0.3 (275) |
-| hot_coin | long | defaults | ok | 354 | 60.72 | 373.94 | 1.35 | 37.9% | 16.72 | -17.5% | 12.3% | 1.52 | 0.65 | 1.34 | 43.1 (245) / 17.7 (109) |
-| hot_coin | short | defaults | not emitted | 0 | 0.00 | 0.00 | n/a | n/a | n/a | 0.0% | n/a | n/a | n/a | n/a | 0.0 (0) / 0.0 (0) |
-| pullback_rsi | long | defaults | ok | 239 | 23.85 | 116.15 | 1.19 | 54.0% | 18.52 | -20.6% | 17.2% | 1.22 | 0.87 | 1.12 | -1.0 (176) / 24.8 (63) |
-| pullback_rsi | short | defaults | ok | 282 | 1.35 | -15.74 | 0.98 | 51.1% | 27.55 | -26.3% | 77.8% | 1.21 | 0.86 | 1.20 | 3.7 (116) / -2.3 (166) |
-| rotation | long | defaults | ok | 795 | 79.83 | 428.42 | 1.36 | 21.8% | 29.45 | -30.2% | 15.2% | 0.90 | 0.33 | 0.79 | 64.1 (398) / 15.7 (397) |
-| rotation | short | defaults | not emitted | 0 | 0.00 | 0.00 | n/a | n/a | n/a | 0.0% | n/a | n/a | n/a | n/a | 0.0 (0) / 0.0 (0) |
-| squeeze_tp | long | defaults | ok | 250 | 20.59 | 79.73 | 1.11 | 36.8% | 23.49 | -23.5% | 27.1% | 1.69 | 0.76 | 1.61 | 6.6 (200) / 14.0 (50) |
-| squeeze_tp | short | defaults | ok | 264 | 26.98 | 127.03 | 1.17 | 42.8% | 24.24 | -24.0% | 22.8% | 1.51 | 0.72 | 1.41 | 11.2 (94) / 15.7 (170) |
+| key | side | registry_sides | mgmt | status | trades | net R | net PnL | PF | win % | max DD (R) | max DD (equity) | fee share | MFE R | MAE R* | giveback R | R above / below BTC EMA200 |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| bear_breakdown | long | short — off-registry (hypothetical) | defaults | not emitted | 0 | 0.00 | 0.00 | n/a | n/a | n/a | 0.0% | n/a | n/a | n/a | n/a | 0.0 (0) / 0.0 (0) |
+| bear_breakdown | short | short | defaults | ok | 286 | 7.32 | -11.36 | 0.98 | 33.6% | 27.45 | -26.6% | 76.8% | 1.29 | 0.67 | 1.27 | 0.0 (0) / 7.3 (286) |
+| breakout_pyramid | long | long | defaults | ok | 321 | 164.22 | 1292.17 | 1.70 | 26.8% | 22.20 | -26.6% | 7.3% | 1.85 | 0.76 | 1.34 | 99.9 (271) / 64.3 (50) |
+| breakout_pyramid | short | long — off-registry (hypothetical) | defaults | ok | 310 | 85.54 | 239.50 | 1.18 | 21.9% | 39.37 | -37.5% | 18.8% | 1.48 | 0.77 | 1.21 | 67.7 (90) / 17.8 (220) |
+| dca_dip | long | long | defaults | ok | 241 | -4.11 | -21.20 | 0.83 | 88.8% | 8.12 | -8.7% | n/a (gross<=0) | 0.09 | 0.39 | 0.11 | -7.1 (171) / 3.0 (70) |
+| dca_dip | short | long — off-registry (hypothetical) | defaults | not emitted | 0 | 0.00 | 0.00 | n/a | n/a | n/a | 0.0% | n/a | n/a | n/a | n/a | 0.0 (0) / 0.0 (0) |
+| donchian_ens | long | long | defaults | ok | 249 | 47.20 | 243.81 | 1.37 | 34.1% | 18.07 | -21.6% | 8.5% | 1.65 | 0.65 | 1.46 | 32.3 (171) / 14.9 (78) |
+| donchian_ens | short | long — off-registry (hypothetical) | defaults | ok | 196 | 37.25 | 179.76 | 1.40 | 42.9% | 15.49 | -16.8% | 7.9% | 1.42 | 0.64 | 1.23 | 31.7 (84) / 5.5 (112) |
+| ema_mom | long | long | defaults | ok | 133 | 79.20 | 485.25 | 2.55 | 33.8% | 8.03 | -19.6% | 3.6% | 2.13 | 0.53 | 1.54 | 40.5 (108) / 38.7 (25) |
+| ema_mom | short | long — off-registry (hypothetical) | defaults | ok | 149 | -16.41 | -82.10 | 0.72 | 27.5% | 22.25 | -23.0% | n/a (gross<=0) | 1.11 | 0.61 | 1.22 | -2.2 (49) / -14.2 (100) |
+| ema_st | long | long | defaults | ok | 159 | 83.42 | 473.11 | 1.80 | 28.9% | 19.51 | -29.9% | 3.9% | 2.63 | 0.81 | 2.11 | 32.4 (116) / 51.0 (43) |
+| ema_st | short | long — off-registry (hypothetical) | defaults | ok | 189 | -16.74 | -92.86 | 0.80 | 31.2% | 27.41 | -27.5% | n/a (gross<=0) | 1.60 | 0.77 | 1.69 | -0.4 (82) / -16.3 (107) |
+| exp_breakout | long | both | defaults | ok | 533 | 84.29 | 477.95 | 1.22 | 33.0% | 39.54 | -36.8% | 14.8% | 1.20 | 0.82 | 1.04 | 68.0 (346) / 16.3 (187) |
+| exp_breakout | long | both | profit_capture | ok | 559 | 39.41 | 181.55 | 1.11 | 41.7% | 36.46 | -33.4% | 27.8% | 1.17 | 0.77 | 1.10 | 24.3 (364) / 15.1 (195) |
+| exp_breakout | short | both | defaults | ok | 445 | -20.59 | -129.65 | 0.88 | 31.7% | 43.64 | -38.3% | n/a (gross<=0) | 1.12 | 0.80 | 1.17 | 1.9 (197) / -22.5 (248) |
+| exp_breakout | short | both | profit_capture | ok | 464 | -8.45 | -69.71 | 0.94 | 39.9% | 32.46 | -31.0% | 395.1% | 1.10 | 0.76 | 1.11 | -0.9 (208) / -7.6 (256) |
+| exp_mom_short | long | short — off-registry (hypothetical) | defaults | not emitted | 0 | 0.00 | 0.00 | n/a | n/a | n/a | 0.0% | n/a | n/a | n/a | n/a | 0.0 (0) / 0.0 (0) |
+| exp_mom_short | short | short | defaults | ok | 278 | 11.66 | 33.24 | 1.05 | 37.4% | 22.21 | -22.0% | 38.7% | 1.23 | 0.67 | 1.19 | 11.9 (117) / -0.2 (161) |
+| exp_range | long | both | defaults | ok | 728 | -23.95 | -145.22 | 0.91 | 48.1% | 58.05 | -48.7% | n/a (gross<=0) | 0.84 | 0.88 | 0.87 | 8.1 (273) / -32.0 (455) |
+| exp_range | long | both | profit_capture | ok | 862 | -19.51 | -109.82 | 0.91 | 67.1% | 47.82 | -40.9% | 510.7% | 0.74 | 0.70 | 0.77 | -2.1 (327) / -17.4 (535) |
+| exp_range | short | both | defaults | ok | 803 | -21.12 | -134.22 | 0.92 | 50.1% | 43.52 | -38.8% | n/a (gross<=0) | 0.83 | 0.90 | 0.85 | -35.7 (558) / 14.5 (245) |
+| exp_range | short | both | profit_capture | ok | 926 | -55.10 | -228.39 | 0.81 | 63.4% | 55.31 | -46.3% | n/a (gross<=0) | 0.75 | 0.75 | 0.81 | -51.8 (655) / -3.3 (271) |
+| exp_rip_sell_dca | long | short — off-registry (hypothetical) | defaults | not emitted | 0 | 0.00 | 0.00 | n/a | n/a | n/a | 0.0% | n/a | n/a | n/a | n/a | 0.0 (0) / 0.0 (0) |
+| exp_rip_sell_dca | short | short | defaults | ok | 372 | -12.01 | -58.71 | 0.72 | 88.2% | 12.27 | -12.0% | n/a (gross<=0) | 0.10 | 0.38 | 0.13 | -7.9 (223) / -4.1 (149) |
+| exp_trend | long | both | defaults | ok | 141 | 36.97 | 202.30 | 1.74 | 34.8% | 10.24 | -12.5% | 7.5% | 0.97 | 0.52 | 0.70 | 35.8 (116) / 1.2 (25) |
+| exp_trend | long | both | profit_capture | ok | 141 | 37.01 | 209.05 | 1.96 | 37.6% | 8.06 | -10.0% | 7.6% | 0.96 | 0.45 | 0.69 | 37.2 (116) / -0.1 (25) |
+| exp_trend | short | both | defaults | ok | 150 | -11.85 | -63.13 | 0.79 | 28.7% | 23.43 | -23.2% | n/a (gross<=0) | 0.77 | 0.61 | 0.85 | -3.6 (49) / -8.2 (101) |
+| exp_trend | short | both | profit_capture | ok | 150 | -11.53 | -59.05 | 0.77 | 26.7% | 17.81 | -18.0% | n/a (gross<=0) | 0.73 | 0.56 | 0.81 | -4.3 (49) / -7.2 (101) |
+| exp_vwaprev | long | both | defaults | ok | 743 | -37.60 | -189.90 | 0.88 | 46.6% | 69.01 | -54.1% | n/a (gross<=0) | 0.85 | 0.91 | 0.90 | 4.6 (280) / -42.2 (463) |
+| exp_vwaprev | long | both | profit_capture | ok | 886 | -40.29 | -183.64 | 0.84 | 65.3% | 66.99 | -51.3% | n/a (gross<=0) | 0.74 | 0.74 | 0.79 | -8.5 (339) / -31.8 (547) |
+| exp_vwaprev | short | both | defaults | ok | 816 | -25.72 | -151.96 | 0.91 | 49.6% | 47.26 | -41.3% | n/a (gross<=0) | 0.83 | 0.91 | 0.86 | -40.8 (565) / 15.0 (251) |
+| exp_vwaprev | short | both | profit_capture | ok | 915 | -45.41 | -200.51 | 0.84 | 64.0% | 45.63 | -40.4% | n/a (gross<=0) | 0.76 | 0.75 | 0.81 | -45.7 (640) / 0.3 (275) |
+| hot_coin | long | long | defaults | ok | 354 | 60.72 | 373.94 | 1.35 | 37.9% | 16.72 | -17.5% | 12.3% | 1.52 | 0.65 | 1.34 | 43.1 (245) / 17.7 (109) |
+| hot_coin | short | long — off-registry (hypothetical) | defaults | not emitted | 0 | 0.00 | 0.00 | n/a | n/a | n/a | 0.0% | n/a | n/a | n/a | n/a | 0.0 (0) / 0.0 (0) |
+| pullback_rsi | long | long | defaults | ok | 239 | 23.85 | 116.15 | 1.19 | 54.0% | 18.52 | -20.6% | 17.2% | 1.22 | 0.87 | 1.12 | -1.0 (176) / 24.8 (63) |
+| pullback_rsi | short | long — off-registry (hypothetical) | defaults | ok | 282 | 1.35 | -15.74 | 0.98 | 51.1% | 27.55 | -26.3% | 77.8% | 1.21 | 0.86 | 1.20 | 3.7 (116) / -2.3 (166) |
+| rotation | long | long | defaults | ok | 795 | 79.83 | 428.42 | 1.36 | 21.8% | 29.45 | -30.2% | 15.2% | 0.90 | 0.33 | 0.79 | 64.1 (398) / 15.7 (397) |
+| rotation | short | long — off-registry (hypothetical) | defaults | not emitted | 0 | 0.00 | 0.00 | n/a | n/a | n/a | 0.0% | n/a | n/a | n/a | n/a | 0.0 (0) / 0.0 (0) |
+| squeeze_tp | long | long | defaults | ok | 250 | 20.59 | 79.73 | 1.11 | 36.8% | 23.49 | -23.5% | 27.1% | 1.69 | 0.76 | 1.61 | 6.6 (200) / 14.0 (50) |
+| squeeze_tp | short | long — off-registry (hypothetical) | defaults | ok | 264 | 26.98 | 127.03 | 1.17 | 42.8% | 24.24 | -24.0% | 22.8% | 1.51 | 0.72 | 1.41 | 11.2 (94) / 15.7 (170) |
 
 \* MAE is a bar-extreme approximation over [entry bar, exit bar] (the exit bar may include movement after the exit). MFE uses the backtest path best price. Both in stop-distance R. Fee share = fees / gross (gross = price P&L after slippage, before fees and funding); n/a when gross <= 0.
 
@@ -64,6 +64,43 @@ REVIEW-ONLY research evidence. non_promotable. Development window only; not evid
 - PUMPUSDT: no cache file for this timeframe (all 4504 candles missing; never fetched or substituted)
 - QNTUSDT: no cache file for this timeframe (all 4504 candles missing; never fetched or substituted)
 - WLDUSDT: no cache file for this timeframe (all 4504 candles missing; never fetched or substituted)
+
+## Headline (registry sides only)
+
+Registry-side slices with trades: 28. Off-registry slices excluded from this headline: 12 (bear_breakdown long, breakout_pyramid short, dca_dip short, donchian_ens short, ema_mom short, ema_st short, exp_mom_short long, exp_rip_sell_dca long, hot_coin short, pullback_rsi short, rotation short, squeeze_tp short).
+
+| key | side | mgmt | trades | net R | PF |
+|---|---|---|---|---|---|
+| breakout_pyramid | long | defaults | 321 | 164.22 | 1.70 |
+| exp_breakout | long | defaults | 533 | 84.29 | 1.22 |
+| ema_st | long | defaults | 159 | 83.42 | 1.80 |
+| rotation | long | defaults | 795 | 79.83 | 1.36 |
+| ema_mom | long | defaults | 133 | 79.20 | 2.55 |
+| hot_coin | long | defaults | 354 | 60.72 | 1.35 |
+| donchian_ens | long | defaults | 249 | 47.20 | 1.37 |
+| exp_breakout | long | profit_capture | 559 | 39.41 | 1.11 |
+| exp_trend | long | profit_capture | 141 | 37.01 | 1.96 |
+| exp_trend | long | defaults | 141 | 36.97 | 1.74 |
+| pullback_rsi | long | defaults | 239 | 23.85 | 1.19 |
+| squeeze_tp | long | defaults | 250 | 20.59 | 1.11 |
+| exp_mom_short | short | defaults | 278 | 11.66 | 1.05 |
+| bear_breakdown | short | defaults | 286 | 7.32 | 0.98 |
+| dca_dip | long | defaults | 241 | -4.11 | 0.83 |
+| exp_breakout | short | profit_capture | 464 | -8.45 | 0.94 |
+| exp_trend | short | profit_capture | 150 | -11.53 | 0.77 |
+| exp_trend | short | defaults | 150 | -11.85 | 0.79 |
+| exp_rip_sell_dca | short | defaults | 372 | -12.01 | 0.72 |
+| exp_range | long | profit_capture | 862 | -19.51 | 0.91 |
+| exp_breakout | short | defaults | 445 | -20.59 | 0.88 |
+| exp_range | short | defaults | 803 | -21.12 | 0.92 |
+| exp_range | long | defaults | 728 | -23.95 | 0.91 |
+| exp_vwaprev | short | defaults | 816 | -25.72 | 0.91 |
+| exp_vwaprev | long | defaults | 743 | -37.60 | 0.88 |
+| exp_vwaprev | long | profit_capture | 886 | -40.29 | 0.84 |
+| exp_vwaprev | short | profit_capture | 915 | -45.41 | 0.84 |
+| exp_range | short | profit_capture | 926 | -55.10 | 0.81 |
+
+registry_sides = strategies.STRATEGIES[key]['sides'] as recorded in each packet. An off-registry side is one the registry does not list for that key: the runner can still simulate it (the signal function emits it), but it is hypothetical and is excluded from every headline line. Not evidence of edge.
 
 ## Per-symbol net R
 
