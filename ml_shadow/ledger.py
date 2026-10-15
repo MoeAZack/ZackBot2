@@ -8,7 +8,8 @@ import json, logging, os, threading
 from datetime import datetime, timezone
 
 
-from .common import SCHEMA_VERSION, canonical_json, redact, redact_text, sha256_hex, to_utc
+from .common import SCHEMA_VERSION, canonical_json, corr_id_of, sha256_hex, to_utc
+from .sanitize import sanitize_row, _features
 from .features import features_at
 
 log = logging.getLogger('zackbot.ml_shadow')
@@ -56,8 +57,10 @@ class JsonlLedger:
         self._seen = {r.get(self.id_field) for r in self.rows()}
 
     def append(self, row):
-        """Append one redacted row. Returns the written row, or None if its id is already present."""
-        row = redact(row)
+        """Append one row of a known kind ('decision' | 'label'). The row is rebuilt by sanitize_row from a fixed
+        per-kind allow-list (unknown keys dropped, strings redacted, numbers finite) - nothing else reaches disk.
+        Returns the written row, or None if its id is already present. Unknown kind -> ValueError, nothing written."""
+        row = sanitize_row(row.get('kind') if isinstance(row, dict) else None, row)
         rid = row.get(self.id_field)
         line = canonical_json(row) + '\n'
         with self._lock:
@@ -67,7 +70,10 @@ class JsonlLedger:
             if size and size + len(line.encode('utf-8')) > self.max_bytes:
                 self._rotate()
             with open(self.path, 'a', encoding='utf-8') as fh:
-                fh.write(line)
+                # Only sanitize_row output reaches this sink: fixed field allow-list, every string through
+                # redact_text, raw trade ids hashed (corr_id_of). Proven by tests/test_ml_shadow01.py redaction probes
+                # (planted keys/tokens/ids across ctx, features, reason, exit_reason and rotated files).
+                fh.write(line)  # lgtm[py/clear-text-storage-sensitive-data]  # codeql[py/clear-text-storage-sensitive-data]
                 fh.flush()
             self._seen.add(rid)
         return row
@@ -89,16 +95,16 @@ def build_decision_record(*, sleeve, strategy, family, symbol, side, tf, candle_
         if df is None or i is None:
             raise ValueError('need df+i or precomputed features')
         features = features_at(df, i, ctx)
-    feats = redact(dict(features['features']))
+    feats = _features(features['features'])
     missing = sorted(k for k, v in feats.items() if v is None)
     rec = {
-        'schema': SCHEMA_VERSION,
+        'kind': 'decision', 'schema': SCHEMA_VERSION,
         'decision_id': decision_id(sleeve, strategy, symbol, side, tf, candle_time),
-        'corr_id': str(trade_id) if (taken and trade_id is not None) else None,
+        'corr_id': corr_id_of(trade_id) if taken else None,
         'ts_utc': (now or datetime.now(timezone.utc)).strftime('%Y-%m-%dT%H:%M:%SZ'),
         'candle_time': _iso(candle_time),
         'sleeve': sleeve, 'strategy': strategy, 'family': family, 'symbol': str(symbol).upper(),
-        'side': str(side).upper(), 'tf': str(tf), 'taken': bool(taken), 'reason': redact_text(reason),
+        'side': str(side).upper(), 'tf': str(tf), 'taken': bool(taken), 'reason': str(reason or ''),
         'rotation_group': rotation_group, 'features': feats, 'missing': missing,
     }
     rec['feature_hash'] = sha256_hex(canonical_json(feats))
@@ -110,6 +116,6 @@ def record_decision(ledger, **kw):
     returns anything the engine should act on. Returns the written row, or None on dedupe / any error."""
     try:
         return ledger.append(build_decision_record(**kw))
-    except Exception:                                        # noqa: BLE001 - an observer must never break the engine
-        log.exception('ml_shadow: record_decision failed (ignored)')
+    except Exception as e:                                   # noqa: BLE001 - an observer must never break the engine
+        log.warning('ml_shadow: record_decision failed (%s, ignored)', type(e).__name__)   # type only: no data in logs
         return None

@@ -56,6 +56,9 @@ REASON_MAX = 200
 _TEXT_SECRET_RES = (   # order matters: Bearer first, so 'Authorization: Bearer <tok>' loses the token (Cowork F3)
     re.compile(r'(?i)\bbearer\s+\S+'),
     re.compile(r'(?i)\b[\w-]*(?:key|secret|token|passw|passphrase|sig|auth|cookie|credential)[\w-]*\s*[=:]\s*\S+'),
+    re.compile(r'(?i)\b(?:sk|pk|rk|wrkspc|acct|org|user|key|tok)[-_][\w-]{4,}'),            # prefixed ids/keys
+    re.compile(r'(?i)\b(?:account|acct|order|client|user|workspace|org)[\s_-]?(?:id|no|num(?:ber)?)?\s*[=:#]\s*\S+'),
+    re.compile(r'\d{8,}'),                                                                       # long numeric ids
     re.compile(r'[A-Za-z0-9_\-+/=.]{32,}'),
 )
 
@@ -67,3 +70,9 @@ def redact_text(s, cap=REASON_MAX):
     for rx in _TEXT_SECRET_RES:
         s = rx.sub('[REDACTED]', s)
     return s[:cap]
+
+
+def corr_id_of(trade_id):
+    """Correlation id persisted for a taken trade: an unsalted sha256 prefix of the raw trade/order id, so raw
+    exchange order ids never reach disk but the engine can still recompute and join."""
+    return None if trade_id is None else 'c_' + sha256_hex(str(trade_id))[:16]

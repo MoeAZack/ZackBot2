@@ -8,7 +8,7 @@ import pytest
 
 from ml_shadow import (JsonlLedger, FEATURE_NAMES, build_decision_record, decision_id, features_at, record_decision,
                        record_label, score, train, walk_forward_splits, cairo_day)
-from ml_shadow.common import SECRET_NAME_RE
+from ml_shadow.common import SECRET_NAME_RE, corr_id_of
 from ml_shadow.trainer import join
 
 
@@ -106,7 +106,7 @@ def test_labels_never_mutate_feature_rows_and_skipped_stay_unlabeled(tmp_path):
     assert record_label(lab, led, decision_id=skipped['decision_id'], net_r=-1, net_pnl=-5, exit_reason='stop') is None
     assert record_label(lab, led, decision_id=taken['decision_id'], net_r=9, net_pnl=9, exit_reason='x') is None
     assert (tmp_path / 'f.jsonl').read_bytes() == before
-    assert taken['corr_id'] == 'T1'
+    assert taken['corr_id'] == corr_id_of('T1') and 'T1' not in taken['corr_id']
     assert [r['decision_id'] for r in lab.rows()] == [taken['decision_id']]
     assert len(join(led, lab)) == 1
 
@@ -117,9 +117,9 @@ def test_secret_named_fields_never_written(tmp_path):
     ctx = {'api_key': 'AKIA-SECRET', 'secret': 's3cr3t', 'token': 'tok', 'password': 'pw', 'funding': 0.0001}
     feats = features_at(candles(), 80, ctx)
     feats['features'].update({'apiKey': 'x', 'nested_token': 'y'})   # even if a caller smuggles them in
-    record_decision(led, features=feats, **kw())
+    rec = record_decision(led, features=feats, **kw())
     lab = JsonlLedger(tmp_path / 'l.jsonl')
-    record_label(lab, decision_id='abc', net_r=1, net_pnl=1, exit_reason='t')
+    assert record_label(lab, decision_id=rec['decision_id'], net_r=1, net_pnl=1, exit_reason='t') is not None
     for name in ('f.jsonl', 'l.jsonl'):
         text = (tmp_path / name).read_text()
         for bad in ('AKIA-SECRET', 's3cr3t', '"tok"', '"pw"'):
@@ -291,3 +291,58 @@ def test_redact_text_bearer_and_sign_cowork_f3():
         out = redact_text(raw)
         assert leak not in out and '[REDACTED]' in out, (raw, out)
     assert redact_text('stop hit after 3 bars') == 'stop hit after 3 bars'
+
+
+# ---------- Codex 6191576037: allow-listed persisted schema, planted-probe scan across rotations + logs ----------
+SK = 'sk-ant-api03-AbCdEfGhIjKlMnOpQr'
+HEX64 = 'a1b2c3d4' * 8
+LONGTOK = 'Zx9Qw' * 9
+PROBES = {SK: SK, HEX64: HEX64, 'Bearer abc.def': 'abc.def', 'Authorization: bearer XTOKEN9': 'XTOKEN9',
+          'wrkspc_01HZY7Q9': 'wrkspc_01HZY7Q9', 'acct_778899': 'acct_778899', 'order_id=5566778899': '5566778899',
+          'API_KEY=Zq9AAA1': 'Zq9AAA1', 'ApiKey: Zq9BBB2': 'Zq9BBB2', 'Secret=Zq9CCC3': 'Zq9CCC3',
+          'account id: 44332211': '44332211', LONGTOK: LONGTOK}
+
+
+def test_planted_probes_never_persisted_or_logged(tmp_path, caplog):
+    import logging
+    from ml_shadow.sanitize import FIELDS, sanitize_row
+    caplog.set_level(logging.DEBUG)
+    led = JsonlLedger(tmp_path / 'f.jsonl', max_bytes=1500, max_files=4)
+    lab = JsonlLedger(tmp_path / 'l.jsonl', max_bytes=800, max_files=4)
+    df = candles()
+    for n, (text, raw) in enumerate(PROBES.items()):
+        ctx = {'API_KEY': raw, 'ApiKey': raw, 'Secret': raw, 'nested': {'token': raw, 'x': text},
+               'regime': text, 'funding': 0.0001, 'rank': text}
+        feats = features_at(df, 80, ctx)
+        feats['features'].update({'ApiKey': raw, 'note': text, 'extra': {'secret': raw}, 'session': text})
+        when = pd.Timestamp('2026-02-01', tz='UTC') + pd.Timedelta(hours=4 * n)
+        rec = record_decision(led, features=feats, trade_id=text, **kw(candle_time=when, reason=f'cap {text} {text}',
+                                                                          symbol='BTCUSDT', rotation_group=text))
+        assert rec is not None and set(rec) == set(FIELDS['decision'])
+        assert set(rec['features']) == set(FEATURE_NAMES)
+        lr = record_label(lab, led, decision_id=rec['decision_id'], net_r=1.0, net_pnl=2.0, exit_reason=f'x {text}',
+                          trade_id=text, closed_at=text)
+        assert lr is not None and set(lr) == set(FIELDS['label'])
+        record_decision(led, features=feats, **kw(candle_time=text))            # failure path: logged, not raised
+        with pytest.raises(ValueError):                                           # direct sink call, bogus id
+            led.append({'kind': 'label', 'decision_id': raw, 'exit_reason': text, raw: raw})
+        assert record_label(lab, decision_id=raw, net_r=1, net_pnl=1, exit_reason=text) is None
+    with pytest.raises(ValueError):
+        led.append({'decision_id': 'x', 'reason': 'no kind'})
+    with pytest.raises(ValueError):
+        sanitize_row('other', {})
+    files = sorted(os.listdir(tmp_path))
+    assert 'f.jsonl.1' in files and 'l.jsonl.1' in files                         # rotations really happened
+    blob = ''.join((tmp_path / f).read_text(encoding='utf-8') for f in files) + caplog.text
+    for raw in PROBES.values():
+        assert raw not in blob, raw
+    assert 'Zq9' not in blob and 'XTOKEN' not in blob
+
+
+def test_numeric_features_only_finite_numbers():
+    from ml_shadow.sanitize import sanitize_row
+    row = sanitize_row('decision', {'decision_id': '0' * 32, 'features': {'atr_pct': float('nan'), 'ema_slope': '0.5', 'rank': True,
+                                                 'vol_ratio': np.float64(1.5), 'breadth': 3}})
+    f = row['features']
+    assert f['atr_pct'] is None and f['ema_slope'] is None and f['rank'] is None
+    assert f['vol_ratio'] == 1.5 and f['breadth'] == 3.0 and 'atr_pct' in row['missing']
