@@ -8,42 +8,65 @@ REVIEW-ONLY research evidence. non_promotable. Development window only; not evid
 - universe: static-top40-minhist365-contract-20261011 tier CORE-10 (digest 1c06c18d2fc82413…); run symbols: BTCUSDT, ETHUSDT, ZECUSDT, SOLUSDT, XRPUSDT, NEARUSDT, DOGEUSDT, UNIUSDT, SUIUSDT
 - costs: taker fee 0.0005 per side, slippage 0.0002 per side, funding 0.000050 of notional per 4h bar; market (taker) entries; legacy exchange rules
 - account (app defaults): start 500.0, risk 1%/trade, max_pos 4, max_lev 10, daily halt 8%
-- mgmt: `defaults` = frozen strategy mgmt (empty override). profit_capture variant and the 15m keys are pending Codex.
+- mgmt: `defaults` = frozen strategy mgmt (empty override). profit_capture and the 15m keys came later: #107, #108, #109.
 
-| key | side | mgmt | status | trades | net R | net PnL | PF | win % | max DD (R) | max DD (equity) | fee share | MFE R | MAE R* | giveback R | R above / below BTC EMA200 |
-|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| bear_breakdown | long | defaults | not emitted | 0 | 0.00 | 0.00 | n/a | n/a | n/a | 0.0% | n/a | n/a | n/a | n/a | 0.0 (0) / 0.0 (0) |
-| bear_breakdown | short | defaults | ok | 267 | 8.95 | -4.01 | 0.99 | 33.0% | 27.95 | -27.1% | 66.1% | 1.32 | 0.69 | 1.28 | 0.0 (0) / 9.0 (267) |
-| breakout_pyramid | long | defaults | ok | 283 | 151.90 | 1161.52 | 1.72 | 26.1% | 20.25 | -23.1% | 6.8% | 1.87 | 0.76 | 1.33 | 91.9 (248) / 60.0 (35) |
-| breakout_pyramid | short | defaults | ok | 270 | 86.77 | 334.69 | 1.30 | 23.7% | 33.22 | -33.0% | 13.1% | 1.53 | 0.76 | 1.21 | 61.5 (66) / 25.2 (204) |
-| dca_dip | long | defaults | ok | 187 | -4.60 | -23.38 | 0.78 | 88.2% | 8.50 | -8.8% | n/a (gross<=0) | 0.09 | 0.38 | 0.12 | -7.2 (134) / 2.6 (53) |
-| dca_dip | short | defaults | not emitted | 0 | 0.00 | 0.00 | n/a | n/a | n/a | 0.0% | n/a | n/a | n/a | n/a | 0.0 (0) / 0.0 (0) |
-| donchian_ens | long | defaults | ok | 215 | 54.71 | 303.44 | 1.56 | 35.3% | 21.22 | -24.2% | 5.9% | 1.72 | 0.62 | 1.47 | 43.0 (152) / 11.7 (63) |
-| donchian_ens | short | defaults | ok | 178 | 32.75 | 162.82 | 1.44 | 45.5% | 13.73 | -15.8% | 7.6% | 1.42 | 0.62 | 1.24 | 13.8 (72) / 18.9 (106) |
-| ema_mom | long | defaults | ok | 97 | 59.92 | 345.78 | 2.73 | 36.1% | 5.03 | -17.9% | 3.5% | 2.19 | 0.48 | 1.57 | 25.4 (81) / 34.5 (16) |
-| ema_mom | short | defaults | ok | 101 | -4.69 | -26.30 | 0.86 | 30.7% | 11.46 | -15.8% | n/a (gross<=0) | 1.11 | 0.58 | 1.16 | -1.6 (30) / -3.1 (71) |
-| ema_st | long | defaults | ok | 132 | 92.03 | 575.97 | 2.23 | 33.3% | 12.32 | -24.4% | 2.8% | 2.86 | 0.72 | 2.16 | 45.0 (100) / 47.0 (32) |
-| ema_st | short | defaults | ok | 152 | -13.57 | -71.27 | 0.80 | 32.9% | 20.14 | -23.6% | n/a (gross<=0) | 1.63 | 0.74 | 1.72 | 1.2 (60) / -14.8 (92) |
-| exp_mom_short | long | defaults | not emitted | 0 | 0.00 | 0.00 | n/a | n/a | n/a | 0.0% | n/a | n/a | n/a | n/a | 0.0 (0) / 0.0 (0) |
-| exp_mom_short | short | defaults | ok | 261 | 1.47 | -6.93 | 0.99 | 37.9% | 21.34 | -21.0% | 79.4% | 1.16 | 0.65 | 1.15 | 10.5 (112) / -9.1 (149) |
-| exp_rip_sell_dca | long | defaults | not emitted | 0 | 0.00 | 0.00 | n/a | n/a | n/a | 0.0% | n/a | n/a | n/a | n/a | 0.0 (0) / 0.0 (0) |
-| exp_rip_sell_dca | short | defaults | ok | 301 | -12.74 | -61.58 | 0.68 | 87.0% | 14.40 | -14.3% | n/a (gross<=0) | 0.09 | 0.39 | 0.14 | -6.5 (188) / -6.3 (113) |
-| exp_trend | long | defaults | ok | 101 | 27.45 | 147.03 | 1.80 | 36.6% | 4.91 | -8.0% | 7.2% | 0.98 | 0.48 | 0.70 | 26.2 (85) / 1.2 (16) |
-| exp_trend | short | defaults | ok | 101 | 0.32 | -3.29 | 0.98 | 31.7% | 13.35 | -12.9% | 70.4% | 0.81 | 0.57 | 0.80 | -2.3 (30) / 2.7 (71) |
-| hot_coin | long | defaults | ok | 313 | 74.67 | 503.91 | 1.57 | 41.2% | 14.98 | -16.0% | 8.4% | 1.61 | 0.63 | 1.37 | 48.1 (222) / 26.6 (91) |
-| hot_coin | short | defaults | not emitted | 0 | 0.00 | 0.00 | n/a | n/a | n/a | 0.0% | n/a | n/a | n/a | n/a | 0.0 (0) / 0.0 (0) |
-| pullback_rsi | long | defaults | ok | 201 | 15.82 | 72.82 | 1.14 | 53.2% | 15.13 | -16.0% | 20.5% | 1.20 | 0.87 | 1.12 | -0.0 (158) / 15.8 (43) |
-| pullback_rsi | short | defaults | ok | 250 | 9.17 | 27.40 | 1.04 | 52.4% | 23.65 | -23.3% | 38.8% | 1.22 | 0.86 | 1.18 | -0.1 (102) / 9.3 (148) |
-| rotation | long | defaults | ok | 785 | 115.22 | 711.43 | 1.50 | 19.0% | 26.53 | -26.8% | 11.7% | 0.93 | 0.31 | 0.78 | 87.6 (383) / 27.6 (402) |
-| rotation | short | defaults | not emitted | 0 | 0.00 | 0.00 | n/a | n/a | n/a | 0.0% | n/a | n/a | n/a | n/a | 0.0 (0) / 0.0 (0) |
-| squeeze_tp | long | defaults | ok | 205 | 24.12 | 106.04 | 1.18 | 36.6% | 18.36 | -20.1% | 20.2% | 1.78 | 0.74 | 1.66 | 8.3 (167) / 15.8 (38) |
-| squeeze_tp | short | defaults | ok | 226 | 34.40 | 178.52 | 1.27 | 45.1% | 21.61 | -21.9% | 16.4% | 1.58 | 0.70 | 1.43 | 19.0 (72) / 15.4 (154) |
+| key | side | registry_sides | mgmt | status | trades | net R | net PnL | PF | win % | max DD (R) | max DD (equity) | fee share | MFE R | MAE R* | giveback R | R above / below BTC EMA200 |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| bear_breakdown | long | short — off-registry (hypothetical) | defaults | not emitted | 0 | 0.00 | 0.00 | n/a | n/a | n/a | 0.0% | n/a | n/a | n/a | n/a | 0.0 (0) / 0.0 (0) |
+| bear_breakdown | short | short | defaults | ok | 267 | 8.95 | -4.01 | 0.99 | 33.0% | 27.95 | -27.1% | 66.1% | 1.32 | 0.69 | 1.28 | 0.0 (0) / 9.0 (267) |
+| breakout_pyramid | long | long | defaults | ok | 283 | 151.90 | 1161.52 | 1.72 | 26.1% | 20.25 | -23.1% | 6.8% | 1.87 | 0.76 | 1.33 | 91.9 (248) / 60.0 (35) |
+| breakout_pyramid | short | long — off-registry (hypothetical) | defaults | ok | 270 | 86.77 | 334.69 | 1.30 | 23.7% | 33.22 | -33.0% | 13.1% | 1.53 | 0.76 | 1.21 | 61.5 (66) / 25.2 (204) |
+| dca_dip | long | long | defaults | ok | 187 | -4.60 | -23.38 | 0.78 | 88.2% | 8.50 | -8.8% | n/a (gross<=0) | 0.09 | 0.38 | 0.12 | -7.2 (134) / 2.6 (53) |
+| dca_dip | short | long — off-registry (hypothetical) | defaults | not emitted | 0 | 0.00 | 0.00 | n/a | n/a | n/a | 0.0% | n/a | n/a | n/a | n/a | 0.0 (0) / 0.0 (0) |
+| donchian_ens | long | long | defaults | ok | 215 | 54.71 | 303.44 | 1.56 | 35.3% | 21.22 | -24.2% | 5.9% | 1.72 | 0.62 | 1.47 | 43.0 (152) / 11.7 (63) |
+| donchian_ens | short | long — off-registry (hypothetical) | defaults | ok | 178 | 32.75 | 162.82 | 1.44 | 45.5% | 13.73 | -15.8% | 7.6% | 1.42 | 0.62 | 1.24 | 13.8 (72) / 18.9 (106) |
+| ema_mom | long | long | defaults | ok | 97 | 59.92 | 345.78 | 2.73 | 36.1% | 5.03 | -17.9% | 3.5% | 2.19 | 0.48 | 1.57 | 25.4 (81) / 34.5 (16) |
+| ema_mom | short | long — off-registry (hypothetical) | defaults | ok | 101 | -4.69 | -26.30 | 0.86 | 30.7% | 11.46 | -15.8% | n/a (gross<=0) | 1.11 | 0.58 | 1.16 | -1.6 (30) / -3.1 (71) |
+| ema_st | long | long | defaults | ok | 132 | 92.03 | 575.97 | 2.23 | 33.3% | 12.32 | -24.4% | 2.8% | 2.86 | 0.72 | 2.16 | 45.0 (100) / 47.0 (32) |
+| ema_st | short | long — off-registry (hypothetical) | defaults | ok | 152 | -13.57 | -71.27 | 0.80 | 32.9% | 20.14 | -23.6% | n/a (gross<=0) | 1.63 | 0.74 | 1.72 | 1.2 (60) / -14.8 (92) |
+| exp_mom_short | long | short — off-registry (hypothetical) | defaults | not emitted | 0 | 0.00 | 0.00 | n/a | n/a | n/a | 0.0% | n/a | n/a | n/a | n/a | 0.0 (0) / 0.0 (0) |
+| exp_mom_short | short | short | defaults | ok | 261 | 1.47 | -6.93 | 0.99 | 37.9% | 21.34 | -21.0% | 79.4% | 1.16 | 0.65 | 1.15 | 10.5 (112) / -9.1 (149) |
+| exp_rip_sell_dca | long | short — off-registry (hypothetical) | defaults | not emitted | 0 | 0.00 | 0.00 | n/a | n/a | n/a | 0.0% | n/a | n/a | n/a | n/a | 0.0 (0) / 0.0 (0) |
+| exp_rip_sell_dca | short | short | defaults | ok | 301 | -12.74 | -61.58 | 0.68 | 87.0% | 14.40 | -14.3% | n/a (gross<=0) | 0.09 | 0.39 | 0.14 | -6.5 (188) / -6.3 (113) |
+| exp_trend | long | both | defaults | ok | 101 | 27.45 | 147.03 | 1.80 | 36.6% | 4.91 | -8.0% | 7.2% | 0.98 | 0.48 | 0.70 | 26.2 (85) / 1.2 (16) |
+| exp_trend | short | both | defaults | ok | 101 | 0.32 | -3.29 | 0.98 | 31.7% | 13.35 | -12.9% | 70.4% | 0.81 | 0.57 | 0.80 | -2.3 (30) / 2.7 (71) |
+| hot_coin | long | long | defaults | ok | 313 | 74.67 | 503.91 | 1.57 | 41.2% | 14.98 | -16.0% | 8.4% | 1.61 | 0.63 | 1.37 | 48.1 (222) / 26.6 (91) |
+| hot_coin | short | long — off-registry (hypothetical) | defaults | not emitted | 0 | 0.00 | 0.00 | n/a | n/a | n/a | 0.0% | n/a | n/a | n/a | n/a | 0.0 (0) / 0.0 (0) |
+| pullback_rsi | long | long | defaults | ok | 201 | 15.82 | 72.82 | 1.14 | 53.2% | 15.13 | -16.0% | 20.5% | 1.20 | 0.87 | 1.12 | -0.0 (158) / 15.8 (43) |
+| pullback_rsi | short | long — off-registry (hypothetical) | defaults | ok | 250 | 9.17 | 27.40 | 1.04 | 52.4% | 23.65 | -23.3% | 38.8% | 1.22 | 0.86 | 1.18 | -0.1 (102) / 9.3 (148) |
+| rotation | long | long | defaults | ok | 785 | 115.22 | 711.43 | 1.50 | 19.0% | 26.53 | -26.8% | 11.7% | 0.93 | 0.31 | 0.78 | 87.6 (383) / 27.6 (402) |
+| rotation | short | long — off-registry (hypothetical) | defaults | not emitted | 0 | 0.00 | 0.00 | n/a | n/a | n/a | 0.0% | n/a | n/a | n/a | n/a | 0.0 (0) / 0.0 (0) |
+| squeeze_tp | long | long | defaults | ok | 205 | 24.12 | 106.04 | 1.18 | 36.6% | 18.36 | -20.1% | 20.2% | 1.78 | 0.74 | 1.66 | 8.3 (167) / 15.8 (38) |
+| squeeze_tp | short | long — off-registry (hypothetical) | defaults | ok | 226 | 34.40 | 178.52 | 1.27 | 45.1% | 21.61 | -21.9% | 16.4% | 1.58 | 0.70 | 1.43 | 19.0 (72) / 15.4 (154) |
 
 \* MAE is a bar-extreme approximation over [entry bar, exit bar] (the exit bar may include movement after the exit). MFE uses the backtest path best price. Both in stop-distance R. Fee share = fees / gross (gross = price P&L after slippage, before fees and funding); n/a when gross <= 0.
 
 ## INCOMPLETE symbols (excluded from every aggregate, never filled)
 
 - HYPEUSDT: 1590 of 4504 4h candles missing in [warm-up start, END) (2024-09-07T08:00:00Z .. 2025-05-30T04:00:00Z), off-grid 0, duplicates 0
+
+## Headline (registry sides only)
+
+Registry-side slices with trades: 14. Off-registry slices excluded from this headline: 12 (bear_breakdown long, breakout_pyramid short, dca_dip short, donchian_ens short, ema_mom short, ema_st short, exp_mom_short long, exp_rip_sell_dca long, hot_coin short, pullback_rsi short, rotation short, squeeze_tp short).
+
+| key | side | mgmt | trades | net R | PF |
+|---|---|---|---|---|---|
+| breakout_pyramid | long | defaults | 283 | 151.90 | 1.72 |
+| rotation | long | defaults | 785 | 115.22 | 1.50 |
+| ema_st | long | defaults | 132 | 92.03 | 2.23 |
+| hot_coin | long | defaults | 313 | 74.67 | 1.57 |
+| ema_mom | long | defaults | 97 | 59.92 | 2.73 |
+| donchian_ens | long | defaults | 215 | 54.71 | 1.56 |
+| exp_trend | long | defaults | 101 | 27.45 | 1.80 |
+| squeeze_tp | long | defaults | 205 | 24.12 | 1.18 |
+| pullback_rsi | long | defaults | 201 | 15.82 | 1.14 |
+| bear_breakdown | short | defaults | 267 | 8.95 | 0.99 |
+| exp_mom_short | short | defaults | 261 | 1.47 | 0.99 |
+| exp_trend | short | defaults | 101 | 0.32 | 0.98 |
+| dca_dip | long | defaults | 187 | -4.60 | 0.78 |
+| exp_rip_sell_dca | short | defaults | 301 | -12.74 | 0.68 |
+
+registry_sides = strategies.STRATEGIES[key]['sides'] as recorded in each packet. An off-registry side is one the registry does not list for that key: the runner can still simulate it (the signal function emits it), but it is hypothetical and is excluded from every headline line. Not evidence of edge.
 
 ## Per-symbol net R
 
