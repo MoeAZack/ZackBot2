@@ -1128,6 +1128,9 @@ def clean_mgmt(m):
         if k in MG_NUM:
             if k in ('be_r', 'tp1_r', 'tp_r', 'max_bars', 'trail_atr') and v in (0, '0', 0.0): out[k] = 0; continue   # 0 = off
             out[k] = _num(v, *MG_NUM[k], k)
+        elif k == 'resting_tp':                                # resting exchange take-profit (default OFF): strict bool
+            if not isinstance(v, bool): raise ValueError('resting_tp must be true or false')
+            out[k] = v
         elif k == 'tps':
             if not isinstance(v, list) or len(v) > 8: raise ValueError('take-profit ladder: up to 8 levels')
             lv = []
