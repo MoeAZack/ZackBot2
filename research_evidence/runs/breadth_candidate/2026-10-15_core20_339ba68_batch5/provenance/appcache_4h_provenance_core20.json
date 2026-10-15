@@ -1,0 +1,64 @@
+{
+ "comparison": {
+  "ADAUSDT": {
+   "app_file_sha256": "4298f681a022aeb4fffa0117d20220cfcbfa75a7a3d4ef47a0746fc1c3e893d2",
+   "app_rows": 4504,
+   "differing_cols": [],
+   "identical": true,
+   "research_rows": 4504
+  },
+  "AVAXUSDT": {
+   "app_file_sha256": "7294bb828e7289245a30b6f3d08e311549637cb0c4fed4876826816c239100bb",
+   "app_rows": 4504,
+   "differing_cols": [],
+   "identical": true,
+   "research_rows": 4504
+  },
+  "BNBUSDT": {
+   "app_file_sha256": "de44454945d40e0175c0e2ab20685706bfebd2bf19b577d4a1b62ca3251037b0",
+   "app_rows": 4504,
+   "differing_cols": [],
+   "identical": true,
+   "research_rows": 4504
+  },
+  "BTCUSDT": {
+   "app_file_sha256": "9d22e344e2902cfdb3cf2d0c9c97537461b9734f290146f063b4b717b1d085cc",
+   "app_rows": 4504,
+   "differing_cols": [],
+   "identical": true,
+   "research_rows": 4504
+  },
+  "LINKUSDT": {
+   "app_file_sha256": "88bc362c86f3d1764e79ab9dfba55d76a8a51d8aa6516f04a490331317b55bb9",
+   "app_rows": 4504,
+   "differing_cols": [],
+   "identical": true,
+   "research_rows": 4504
+  }
+ },
+ "comparison_window": {
+  "cols": [
+   "t",
+   "o",
+   "h",
+   "l",
+   "c",
+   "v",
+   "qv"
+  ],
+  "end_exclusive": "2026-09-28T00:00:00Z",
+  "start": "2024-09-07T08:00:00Z"
+ },
+ "origin_established": false,
+ "origin_statement": "The four files are the installed app's live candle cache (%LOCALAPPDATA%/ZackBot/candles), written by app._get_candles from the public Binance /fapi/v1/klines endpoint. That code path is known, but the app records no fetch time or request bounds, and the files extend past the sealed cutoff (the runner slices them to [warm-up start, END) before use). So the collection bounds cannot be established from the files.",
+ "purpose": "Cowork #108 6199433480: provenance of the app-cache 4h files ADA/AVAX/BNB/LINK used in #108",
+ "recollection_sha256": {
+  "ADAUSDT": "047d58c453a383f889b3bc8ead17a9a79e415a0a2f6ee06f0ffcfafd8aa1be59",
+  "AVAXUSDT": "565e8b46191003f06c714f3d8830c90b83963732e9b747a77304b0a91c8b33a2",
+  "BNBUSDT": "a7b2b1c5919a3da2552acffd2bd78ce554b27a3570ba2a18e149320e3367284b",
+  "BTCUSDT": "f97d65b5690b11c8809aada183f2174a538dbae8eb41248c5f5d0ee66e605cd9",
+  "LINKUSDT": "861bd51d0f3d2628fe8c9ab6a87c6a61ead776d2ab03c08c6dde44a9f809c387"
+ },
+ "remedy": "Recollected the same four symbols (plus BTCUSDT) with the bounded collector tools/research/collect_klines_research.py into a separate research cache (not committed, never the app cache); manifest: provenance/klines_4h_core20_recollect_research.json.",
+ "result": "Every compared row (4504 per symbol, all 7 columns) of the app-cache files inside the run window is identical in value to the bounded recollection, so the #108 numbers are unchanged by the recollection."
+}
