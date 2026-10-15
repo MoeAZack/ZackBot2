@@ -68,6 +68,30 @@ GAP_CLASS = {'incomplete.gap': 'missing_bar', 'incomplete.slip_history': 'missin
              'incomplete.notice_gap': 'notice_register_gap'}
 HALTED = 'incomplete.book_halt'
 
+# ------------------------------------------------------------------ remedy A: development-only split-end entry cutoff
+# Codex ruling 6185035993 point 4 (draft 6183334843 A). A NEW, explicitly versioned candidate rule; the frozen
+# `range_vwap_rev.v1` is untouched (run_book's default `entry_rule=None` executes exactly the v1 path). Under
+# `entry-cutoff/1` a NEW entry decided at close t is admitted only if its MAXIMUM possible holding window ends strictly
+# inside the split: the fill is the open at t, the cap pends an exit at the close t + cap x 4h and that exit fills at
+# the open of the bar [t + cap x 4h, t + (cap + 1) x 4h), which must lie inside [first, end):
+#     allowed  <=>  t + (cap + 1) x 4h <= end          (cap = 30 -> the last 31 decision closes of a split are blocked)
+# It reads only the decision time, the configuration's cap and the frozen split end (known before the run): no price,
+# no outcome, no later bar. It never closes, flattens or relabels anything; it only refuses entries. A blocked X1 / B2
+# signal is counted (`splitcut_blocked`), a blocked B0 draw is a counted shortfall (`b0_shortfall_splitcut`).
+SPLITCUT_CANDIDATE = 'range_vwap_rev.v1-splitcut'
+SPLITCUT_RULE = 'entry-cutoff/1'
+SPLITCUT_LABEL = 'DEVELOPMENT-ONLY CANDIDATE RULE - NON-PROMOTABLE (remedy A, Codex 6185035993 point 4)'
+SPLITCUT = {'candidate_id': SPLITCUT_CANDIDATE, 'variant_of': CANDIDATE, 'entry_rule': SPLITCUT_RULE,
+            'label': SPLITCUT_LABEL, 'development_only': True, 'promotable': False,
+            'boundary': 'decision close t admitted iff t + (cap + 1) x 4h <= split end'}
+ENTRY_RULES = (None, SPLITCUT_RULE)
+
+
+def splitcut_allows(t: int, cap: int, end: int) -> bool:
+    """`entry-cutoff/1`: True iff an entry decided at close t can be fully exited (cap exit filled at the open
+    t + cap x 4h) inside a split ending at `end`. Causal: time, cap and the frozen boundary only."""
+    return t + (cap + 1) * TF <= end
+
 
 class RexError(ValueError):
     pass
@@ -383,7 +407,7 @@ def _sgn(side):
 
 
 def run_book(tape: dict, cfg: Cfg, side: str, *, first: int, end: int, order=None, row: str = 'base',
-             notices: NoticeView = NO_NOTICES, mode: str = 'x1', draws=None, book=BOOK) -> dict:
+             notices: NoticeView = NO_NOTICES, mode: str = 'x1', draws=None, book=BOOK, entry_rule=None) -> dict:
     """ONE causal pass of one side's book over closes first..end (see module doc). `mode`: 'x1' (the primary and its
     neighbours), 'b2' (naive fade), 'b0' (entries only at the drawn closes `draws` = {(symbol, close)}; a draw the
     replicate cannot take - not flat, re-entry lock, ineligible - is a counted shortfall). Per cycle t:
@@ -395,9 +419,13 @@ def run_book(tape: dict, cfg: Cfg, side: str, *, first: int, end: int, order=Non
       (C) the decision at close t: MTM, Cairo-day 3% halt, then per symbol exits (mean / invalidation / cap) and entries
           (eligible and flat; re-entry needs the trigger bar i-1 to close strictly after the last exit fill, compared
           with the exit bar open). No entry is decided at close `end` (its fill would lie outside the window).
-    A lot open at `end` (including an exit pending there) is `incomplete.split_end`."""
+    A lot open at `end` (including an exit pending there) is `incomplete.split_end`.
+    `entry_rule`: None = the frozen v1 book; SPLITCUT_RULE = the development-only `entry-cutoff/1` (see there), which
+    must be selected explicitly and applies identically to every mode (X1, neighbours, B2, B0) and cost row."""
     if side not in SIDES or mode not in ('x1', 'b2', 'b0'):
         raise RexError('side must be long/short and mode x1/b2/b0')
+    if entry_rule not in ENTRY_RULES:
+        raise RexError(f'entry_rule must be one of {ENTRY_RULES}')
     if (first - end) % TF or end <= first:
         raise RexError('first < end on the 4h grid')
     scen = C.STRESS[row]
@@ -542,6 +570,9 @@ def run_book(tape: dict, cfg: Cfg, side: str, *, first: int, end: int, order=Non
                         want = False
                 else:
                     want = (entry_x1 if mode == 'x1' else entry_b2)(cfg, ind, side) and not locked
+                if want and entry_rule is not None and not splitcut_allows(t, cfg.cap, end):
+                    st['counts']['b0_shortfall_splitcut' if mode == 'b0' else 'splitcut_blocked'] += 1
+                    want = False
                 if want:
                     st['signals'].append((s, t, float(ind.z)))
                     st['pend_entry'].append((s, t, ind, st['halted_day'] == d))
@@ -555,7 +586,12 @@ def run_book(tape: dict, cfg: Cfg, side: str, *, first: int, end: int, order=Non
             halt = (h, t)
             break
         prev_t = t
-    return _finish(st, halt, prev_t, end, order, side, cfg, row, mode)
+    out = _finish(st, halt, prev_t, end, order, side, cfg, row, mode)
+    if entry_rule is not None:
+        out['entry_rule'] = entry_rule
+        out['candidate_id'] = SPLITCUT_CANDIDATE
+        out['promotable'] = False
+    return out
 
 
 def _lot_row(s, lot, reason, first_ms, last_ms, phase):
