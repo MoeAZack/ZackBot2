@@ -781,17 +781,32 @@ def run_rex(repo: str, *, window, tier: str, out_dir: str, loader=None, resume: 
     return PR.run_rex(env, out_dir, window=window, resume=resume, clock=clock, variant=variant)
 
 
-def rex_store_loader(*, store: str, notice: str, notice_sha256: str, author: str, cairo_date: str, variant=None):
+def _rex_json(path: str, what: str) -> dict:
+    try:
+        with open(path, 'rb') as f:
+            return json.loads(f.read())
+    except (OSError, TypeError, ValueError) as e:
+        raise GateError(f'rex: {what} {path!r} missing or unreadable ({type(e).__name__}): refused')
+
+
+def rex_store_loader(*, store: str, notice: str, notice_sha256: str, author: str, cairo_date: str, variant=None,
+                     addon: str | None = None, addon_report: str | None = None):
     """The real REX loader (pit_run.rex_load over pit_run.rex_sources: committed manifest / universe / rules / ledger).
     A dirty git tree refuses FIRST, before the committed sources are read or any Access is opened; rex_load re-proves
-    it and records the exact clean commit SHA (Codex 6172596212 c)."""
+    it and records the exact clean commit SHA (Codex 6172596212 c). `addon` / `addon_report`: paths of a
+    zb-rex-gap-fill/1 add-on and the signed gap report it pins (both or neither; pit_run.rex_load validates them)."""
     import pit_run as PR                                                                    # noqa: E402
+
+    if (addon is None) != (addon_report is None):
+        raise GateError('rex: --addon and --addon-report go together')
 
     def load(repo, tier, window):
         PR.rex_clean_commit(repo)
+        kw = {} if addon is None else {'addon': _rex_json(addon, 'add-on'),
+                                       'addon_report': _rex_json(addon_report, 'gap report')}
         return PR.rex_load(PR.rex_sources(repo), repo=repo, store=store, tier=tier, window=window,
                            notice_path=notice, notice_sha256=notice_sha256, author=author, cairo_date=cairo_date,
-                           plan=PR.rex_plan(repo), variant=variant)
+                           plan=PR.rex_plan(repo), variant=variant, **kw)
     return load
 
 
@@ -857,6 +872,9 @@ def main(argv=None) -> int:
     x.add_argument('--notice-sha256', default=None, help='the artifact digest pinned by this run command')
     x.add_argument('--author', default=None)
     x.add_argument('--cairo-date', default=None)
+    x.add_argument('--addon', default=None, help='a zb-rex-gap-fill/1 add-on (binance_archive_fill.py --fetch): fills '
+                                                 'ONLY exact holes of its pinned gap report; needs --addon-report')
+    x.add_argument('--addon-report', default=None, help='the signed zb-rex-gap-inventory/1 report the add-on pins')
     a = ap.parse_args(argv)
     try:
         if a.cmd == 'check':
@@ -888,7 +906,10 @@ def main(argv=None) -> int:
                 if need:
                     raise ValueError(f'rex --store also needs {need}')
                 loader = rex_store_loader(store=a.store, notice=a.notice, notice_sha256=a.notice_sha256,
-                                          author=a.author, cairo_date=a.cairo_date, variant=a.variant)
+                                          author=a.author, cairo_date=a.cairo_date, variant=a.variant,
+                                          addon=a.addon, addon_report=a.addon_report)
+            elif a.addon is not None or a.addon_report is not None:
+                raise ValueError('rex --addon needs an attested --store')
             out = a.out_dir or os.path.join(M.REPO, 'research_evidence', 'runs',
                                             'rex' if a.variant is None else 'rex-splitcut')
             final = run_rex(M.REPO, window=a.window, tier=a.tier, out_dir=out, loader=loader, resume=a.resume,
