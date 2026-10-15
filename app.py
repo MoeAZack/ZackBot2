@@ -853,7 +853,7 @@ class App:
         settings['TELEGRAM_PIN_SET'] = bool(e.S.get('TELEGRAM_PIN'))
         extra = {}
         for name, fn in (('risk_rules', e.risk_rules_status), ('governor', e.governor_status), ('grids', e.grids.status),
-                         ('ctrl', e.ctrl_status)):          # CTRL-01-LITE: current controls + the preview table (ctrl_effect)
+                         ('ctrl', e.ctrl_status), ('rotation', e.rotation_status)):          # CTRL-01-LITE: current controls + the preview table (ctrl_effect)
             try: extra[name] = fn()
             except Exception as ex: extra[name] = dict(error=str(ex)[:120])
         extra['telegram'] = self.tg.status() if getattr(self, 'tg', None) else None
@@ -1149,7 +1149,7 @@ def clean_mgmt(m):
 
 
 def clean_symbols(v):
-    if v in ('all', 'core8'): return v
+    if v in ('all', 'core8') or v in ENG.TRADFI_TIERS: return v       # TRADFI-01 tiers resolve to [] unless TRADFI is on
     if not isinstance(v, list) or len(v) > 80: raise ValueError('coin list must be all, core8 or a list of up to 80 coins')
     for x in v:
         if not isinstance(x, str) or not SYM.match(x): raise ValueError(f'bad coin symbol: {str(x)[:20]}')
@@ -1337,6 +1337,9 @@ def handle(path, b):
         APP.preview()
         return 'strategies saved'
     if path == '/api/preset':
+        if b.get('name') == ENG.ROTATION_PRESET:           # BREADTH-01 B2: PAPER-only rotation (apply_preset refuses live)
+            e.apply_preset(b['name']); APP.preview()
+            return f"preset {ENG.ROTATION_NAME} applied"
         if b.get('name') not in PRESETS: raise ValueError('unknown profile')
         e.apply_preset(b['name']); APP.preview()
         return f"preset {PRESETS[b['name']]['name']} applied"

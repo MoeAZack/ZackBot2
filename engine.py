@@ -16,6 +16,7 @@ import feasibility as F
 from binance_client import Futures, MAINNET, TESTNET, BinanceError, AmbiguousOrder, ExchangeUnavailable, is_transient, new_cid, scrub, testnet_faults, testnet_read_outage
 from ai_filter import review
 import grid as GRID
+import tradfi_universe as TU, tradfi_session as TS
 
 log = logging.getLogger('zackbot')
 from time import monotonic as _mono, sleep as _sleep   # T05 writer: real clock even when replay swaps E.time
@@ -324,6 +325,105 @@ for _p in PRESETS.values():
         _p['bt']['unverified'] = UNVERIFIED_BT01; _p['bt']['verified'] = False
         if not _p['note'].startswith(UNVERIFIED_NOTE): _p['note'] = UNVERIFIED_NOTE + _p['note']
 del _p
+
+# BREADTH-01 B2 (Codex rulings): an AUTOMATIC PAPER rotation so every accepted family gets entry opportunities, six slots at
+# a time. SETTINGS['SLEEVES'] holds one slot per registry strategy (all of them, always), so every open lot keeps its own
+# slot - stop, exits, adds and management run exactly as for any slot. The rotation only decides which slots are ELIGIBLE
+# FOR NEW ENTRIES: the active group is a pure function of UTC time (no stored counter, restart-safe). Not in PRESETS (no
+# backtest/UI/governor loop over it); PAPER/testnet only - in live mode every entry of this profile is refused (fail closed).
+ROTATION_PRESET = 'breadth_rotation'
+ROTATION_NAME = 'Breadth rotation (PAPER, 6 slots at a time)'
+ROTATION_PERIOD_S = 8 * 3600           # active group advances every 8 h (00/08/16 UTC): 3 groups -> each gets an entry window daily (Cowork 6187025398)
+ROTATION_MAX_ACTIVE = 6                # Codex ruling 2: at most 6 active slots, equal shares
+BREADTH_RISK, BREADTH_MAX_POS = 0.02, 4
+BREADTH_FAMILIES = ('Trend', 'Momentum', 'Range', 'Breakout', 'Scalp', 'Rotation', 'Dip-DCA')
+BREADTH_FAMILY = {'ema_st': 'Trend', 'ema_mom': 'Trend', 'donchian_ens': 'Trend', 'exp_trend': 'Trend',
+                  'pullback_rsi': 'Momentum', 'hot_coin': 'Momentum',
+                  'exp_range': 'Range', 'exp_vwaprev': 'Range',
+                  'breakout_pyramid': 'Breakout', 'squeeze_tp': 'Breakout', 'bear_breakdown': 'Breakout',
+                  'exp_breakout': 'Breakout', 'exp_structure': 'Breakout',
+                  'exp_scalp': 'Scalp', 'rotation': 'Rotation', 'dca_dip': 'Dip-DCA',
+                  'exp_mom_short': 'Momentum', 'exp_rip_sell_dca': 'Dip-DCA'}   # unknown keys -> 'Other' (still rotated)
+# Codex ruling 3: long-default strategies whose signal function already emits both sides run 'both' in PAPER; every other
+# strategy keeps its registry sides (dca_dip / hot_coin long, bear_breakdown short; rotation shorts need params.shorts).
+BREADTH_BOTH = frozenset({'ema_st', 'ema_mom', 'donchian_ens', 'breakout_pyramid', 'squeeze_tp', 'pullback_rsi'})
+BREADTH_ALL_SYMBOLS = frozenset({'rotation', 'hot_coin'})          # cross-sectional ranks: whole universe, others core 8
+
+
+# TRADFI-01 T4 (Codex ruling c + 6186554256 mapping): with S['TRADFI_ENABLED'] (PAPER only) the SAME rotation gains these
+# slots - one rotation, max six active. Symbol tiers resolve to [] whenever TRADFI is off, so a stale slot never trades.
+TRADFI_RANGE_STOCKS = ('SPYUSDT', 'QQQUSDT', 'AMZNUSDT', 'METAUSDT', 'GOOGLUSDT', 'MUUSDT')     # mega caps (no high beta)
+TRADFI_TIERS = ('gold', 'stocks12', 'tradfi', 'tradfi_mom', 'tradfi_range')
+TRADFI_SLOTS = {'TF-TREND': dict(key='ema_st', symbols='tradfi'),              # gold + 12 stocks
+                'TF-BRK': dict(key='breakout_pyramid', symbols='tradfi'),      # gold + 12 stocks
+                'TF-MOM': dict(key='ema_mom', symbols='tradfi_mom'),            # 12 stocks (gold: trend/breakout/range only)
+                'TF-RANGE': dict(key='exp_vwaprev', symbols='tradfi_range')}   # gold + mega caps; range gate (RG) in the signal
+# strategy keys a NEW automatic entry may use per TradFi class (any slot, incl. hand-made symbol lists). No DCA anywhere.
+TRADFI_KEYS_GOLD = frozenset({'ema_st', 'breakout_pyramid', 'exp_vwaprev', 'exp_range'})
+TRADFI_KEYS_MEGA = frozenset({'ema_st', 'breakout_pyramid', 'ema_mom', 'exp_vwaprev', 'exp_range'})
+TRADFI_KEYS_HIGH_BETA = frozenset({'ema_st', 'breakout_pyramid', 'ema_mom'})
+# Codex ruling d: XAUUSDT + PAXGUSDT share ONE budget (risk / notional / positions), checked before every gold entry.
+GOLD_FAMILY_MAX_POS = 2                 # at most one long + one (hedge) short across the pair
+GOLD_FAMILY_RISK_EQ = 0.01              # open gold risk_usd + new risk <= 1 % of equity
+GOLD_FAMILY_NOTIONAL_SLOTS = 1          # open gold notional + new <= MAX_LEVERAGE x equity x this / ROTATION_MAX_ACTIVE
+
+
+def tradfi_tier_symbols(tier):
+    gold, stocks = list(TU.TRADFI_GOLD), list(TU.TRADFI_STOCKS)
+    return dict(gold=gold, stocks12=stocks, tradfi=gold + stocks, tradfi_mom=stocks,
+                tradfi_range=gold + list(TRADFI_RANGE_STOCKS))[tier]
+
+
+def _bfam(k):
+    return BREADTH_FAMILY.get(TRADFI_SLOTS[k]['key'] if k in TRADFI_SLOTS else k, 'Other')
+
+
+def breadth_groups(keys=None, tradfi=False):
+    """Deterministic groups of <= ROTATION_MAX_ACTIVE strategy keys. Keys are ordered by family, then dealt round-robin
+    into ceil(n / 6) groups, so each family is spread across the groups and group sizes differ by at most one.
+    tradfi=True (TRADFI-01 T4) adds the TRADFI_SLOTS ids to the same pool."""
+    keys = (sorted(S.STRATEGIES) + (sorted(TRADFI_SLOTS) if tradfi else [])) if keys is None else list(keys)
+    fo = {f: i for i, f in enumerate(BREADTH_FAMILIES)}
+    order = sorted(keys, key=lambda k: (fo.get(_bfam(k), len(fo)), k))
+    n = max(1, -(-len(order) // ROTATION_MAX_ACTIVE))
+    return [order[i::n] for i in range(n)]
+
+
+def breadth_id(key):
+    return key[:12]                                     # app.validate_sleeve: [A-Za-z0-9_-]{1,12}
+
+
+def breadth_sleeves(tradfi=False):
+    """One slot per registry strategy; share = 1 / size of its group (equal shares within the active group).
+    tradfi=True also builds the TRADFI_SLOTS (TRADFI-01 T4)."""
+    out = []
+    for g in breadth_groups(tradfi=tradfi):
+        for k in g:
+            if k in TRADFI_SLOTS:
+                key = TRADFI_SLOTS[k]['key']; st = S.STRATEGIES[key]
+                out.append(sleeve(k, key, 1 / len(g), BREADTH_RISK, BREADTH_MAX_POS, TRADFI_SLOTS[k]['symbols'],
+                                  sides='both' if key in BREADTH_BOTH else st['sides'], tf=st.get('tf', '4h')))
+                continue
+            st = S.STRATEGIES[k]
+            out.append(sleeve(breadth_id(k), k, 1 / len(g), BREADTH_RISK, BREADTH_MAX_POS,
+                              'all' if k in BREADTH_ALL_SYMBOLS else 'core8',
+                              sides='both' if k in BREADTH_BOTH else st['sides'], tf=st.get('tf', '4h')))
+    ids = [x['id'] for x in out]
+    assert len(set(ids)) == len(ids), 'breadth slot ids collide'
+    return out
+
+
+def rotation_at(ts=None, tradfi=False):
+    """The rotation at unix time ts (default now): active group index, its slot ids/keys/families, window start / next switch."""
+    groups = breadth_groups(tradfi=tradfi)
+    t = int(time.time() if ts is None else ts)
+    epoch = t // ROTATION_PERIOD_S
+    idx = epoch % len(groups)
+    iso = lambda s: datetime.fromtimestamp(s, timezone.utc).isoformat(timespec='seconds')
+    return dict(index=idx, groups=len(groups), keys=list(groups[idx]), active=[breadth_id(k) for k in groups[idx]],
+                families=sorted({_bfam(k) for k in groups[idx]}), share=round(1 / len(groups[idx]), 6),
+                since=iso(epoch * ROTATION_PERIOD_S), next_switch=iso((epoch + 1) * ROTATION_PERIOD_S),
+                period_h=ROTATION_PERIOD_S // 3600)
 
 GLOBAL_DEFAULTS = dict(COMPOUND=False, CAP_SINCE='', CAP_ADJ=[], CAP_CYCLES=[], TELEGRAM_ON=False, TELEGRAM_CHAT='', MAX_LEVERAGE=10, DAILY_LOSS_HALT=0.08, PEAK_DD_FLATTEN=0.0, CAPITAL_CAP=500.0,
                        ENTRIES_PAUSED=False, AI_FILTER=False, PRESET='original',
@@ -819,7 +919,7 @@ def validate_state(doc):
 
 _SETTING_NUM = dict(MAX_LEVERAGE=(1, 125), DAILY_LOSS_HALT=(0.0, 1.0), PEAK_DD_FLATTEN=(0.0, 1.0), CAPITAL_CAP=(0.0, 1e12),
                     MAKER_REPRICE=(0, 10), MAKER_WAIT_S=(0, 3600), FEE_MAKER=(-0.01, 0.01))
-_SETTING_BOOL = ('ENTRIES_PAUSED', 'COMPOUND', 'TELEGRAM_ON', 'AI_FILTER', 'MAKER_FALLBACK', 'RUN_IN_BACKGROUND')
+_SETTING_BOOL = ('ENTRIES_PAUSED', 'COMPOUND', 'TELEGRAM_ON', 'AI_FILTER', 'MAKER_FALLBACK', 'RUN_IN_BACKGROUND', 'TRADFI_ENABLED')
 
 
 def validate_settings(doc):
@@ -832,6 +932,9 @@ def validate_settings(doc):
         if k in doc: _num(doc[k], k, lo, hi)
     for k in _SETTING_BOOL:
         if k in doc: _bool(doc[k], k)
+    if 'TRADFI_OIL_ENABLED' in doc:                                   # TRADFI-01: oil stays hard OFF
+        try: TU.check_oil_flag(doc['TRADFI_OIL_ENABLED'])
+        except ValueError as ex: _bad('TRADFI_OIL_ENABLED', str(ex))
     if 'ENTRY_ORDER' in doc: _str(doc['ENTRY_ORDER'], 'ENTRY_ORDER', choices=('market', 'maker'))
     if 'UNIVERSE' in doc:
         if not isinstance(doc['UNIVERSE'], list): _bad('UNIVERSE', 'not a list')
@@ -1498,7 +1601,9 @@ class Engine:
         s.pop('schema_version', None)
         for k in SECRET_SETTING_KEYS: s.pop(k, None)              # AUD-05 r2: never in S (the app migrated it to the config)
         if 'SLEEVES' not in s:
-            s['SLEEVES'] = copy.deepcopy(PRESETS[s.get('PRESET', 'original')]['sleeves'])
+            s['SLEEVES'] = (breadth_sleeves(tradfi=s.get('TRADFI_ENABLED') is True and getattr(self, 'live', True) is False)
+                            if s.get('PRESET') == ROTATION_PRESET
+                            else copy.deepcopy(PRESETS[s.get('PRESET', 'original')]['sleeves']))
         for k in ('RISK_PER_TRADE', 'MAX_POSITIONS_PER_SLEEVE', 'STOP_ATR', 'SPLIT_ST', 'SLEEVE_ST', 'SLEEVE_TSM'):
             s.pop(k, None)                                       # v1 keys
         s['SYMBOLS_ON'] = {sym: s.get('SYMBOLS_ON', {}).get(sym, True) for sym in s['UNIVERSE']}
@@ -1545,16 +1650,116 @@ class Engine:
                 if k not in self.S or self.S[k] != v: self.S[k] = v
 
     def apply_preset(self, name):
+        if name == ROTATION_PRESET:
+            if getattr(self, 'live', True) is not False:      # BREADTH-01 B2: PAPER/testnet only, fail closed
+                raise ValueError('the breadth rotation is PAPER/testnet only - refused in live mode')
+            sleeves, label = breadth_sleeves(tradfi=self.tradfi_on()), ROTATION_NAME
+        else:
+            sleeves, label = copy.deepcopy(PRESETS[name]['sleeves']), PRESETS[name]['name']
         with self.lock:
-            self.S['SLEEVES'] = copy.deepcopy(PRESETS[name]['sleeves'])
+            self.S['SLEEVES'] = sleeves
             self.S['PRESET'] = name
             self.save_settings()
-        log.info(f'preset applied: {PRESETS[name]["name"]} (open trades keep their own management)')
+        log.info(f'preset applied: {label} (open trades keep their own management)')
+
+    def rotation_block(self, sl, ts=None):
+        """BREADTH-01 B2: why a NEW automatic entry of this slot is refused by the breadth rotation, or None. Only new
+        entries consult it - stops, exits, adds and management of open lots never do. Live mode refuses every entry."""
+        if self.S.get('PRESET') != ROTATION_PRESET: return None
+        if getattr(self, 'live', True) is not False: return 'breadth rotation is PAPER/testnet only - no entries in live mode'
+        r = rotation_at(ts, **self._rot_kw())
+        if (sl or {}).get('id') not in r['active']:
+            return f"rotation: slot not in the active group {r['index'] + 1}/{r['groups']} (next switch {r['next_switch']})"
+        return None
+
+    def rotation_status(self, ts=None):
+        """Current breadth rotation (for the status snapshot). on=False when another profile is active."""
+        return dict(rotation_at(ts, **self._rot_kw()), on=self.S.get('PRESET') == ROTATION_PRESET, paper_only=True,
+                    live_refused=getattr(self, 'live', True) is not False, tradfi=self.tradfi_on())
+
+    # ------------------------------------------------------------ TRADFI-01 T3/T4
+    def tradfi_on(self):
+        """TradFi (gold + 12 US stock perps) is opt-in AND PAPER/testnet only: S['TRADFI_ENABLED'] is True and not live.
+        In live mode the flag is ignored (refused, fail closed)."""
+        return self.S.get('TRADFI_ENABLED') is True and getattr(self, 'live', True) is False
+
+    def _rot_kw(self):
+        return dict(tradfi=True) if self.tradfi_on() else {}          # off: the exact B2 call
+
+    def sync_tradfi_slots(self):
+        """Rotation profile + TRADFI on: add the missing TRADFI_SLOTS and refresh every rotation slot's share to the new
+        group sizes. Never removes a slot (open lots keep their owner); with TRADFI off their tiers resolve to [] and they are
+        in no active group, so they never open anything. Returns the ids added."""
+        if self.S.get('PRESET') != ROTATION_PRESET or not self.tradfi_on(): return []
+        want = {x['id']: x for x in breadth_sleeves(tradfi=True)}
+        with self.lock:
+            have = {x['id'] for x in self.S['SLEEVES']}
+            add = [want[i] for i in want if i not in have]
+            if not add: return []
+            for x in self.S['SLEEVES']:
+                if x['id'] in want: x['share'] = want[x['id']]['share']
+            self.S['SLEEVES'].extend(add)
+            self.save_settings()
+        log.info(f"TRADFI: rotation slots added {[x['id'] for x in add]}")
+        return [x['id'] for x in add]
+
+    def is_tradfi(self, sym):
+        return sym in TU.GOLD_FAMILY or sym in TU.STOCK_SET or sym in TU.OIL_SET or \
+            (getattr(self, 'rules', None) or {}).get(sym, {}).get('kind') == 'tradfi'
+
+    def tradfi_block(self, sl, sym, side, size=None, ts=None, manual=False):
+        """TRADFI-01 admission for a NEW entry (stops / exits / adds / management never consult it). Reason or None.
+        Non-TradFi symbols -> None. PAXGUSDT is an ordinary perp: with TRADFI off it is untouched (B2 behaviour)."""
+        if sym in TU.OIL_SET: return 'TRADFI oil is disabled'
+        if not self.is_tradfi(sym): return None
+        if sym == 'PAXGUSDT' and not self.tradfi_on(): return None
+        if getattr(self, 'live', True) is not False: return 'TRADFI is PAPER/testnet only - refused in live mode'
+        if not self.tradfi_on(): return 'TRADFI disabled - no new entries on this symbol (open trades stay managed)'
+        if not manual:
+            key = (sl or {}).get('key')
+            fam = BREADTH_FAMILY.get(key, 'Other')   # real B2 labels; tradfi_session normalises case, unknown -> session-only
+            t = time.time() if ts is None else ts
+            if not TS.entry_allowed(sym, fam, t):
+                return f'tradfi_session: US cash session {TS.us_cash_session(t)} - no new {fam} entry on {sym}'
+            allowed = (TRADFI_KEYS_GOLD if sym in TU.GOLD_FAMILY else TRADFI_KEYS_HIGH_BETA if sym in TU.HIGH_BETA
+                       else TRADFI_KEYS_MEGA)
+            if key not in allowed or 'dca' in self.mgmt(sl):
+                return f'tradfi_policy: {key} is not an approved strategy for {sym}'
+        if sym in TU.GOLD_FAMILY: return self._gold_family_block(side, size)
+        return None
+
+    def _gold_family_block(self, side, size=None):
+        """Codex ruling d: XAUUSDT + PAXGUSDT = ONE family. A second same-direction gold position is refused; the opposite
+        direction needs hedge mode and must fit the shared position / risk / notional budget."""
+        st = self.state
+        lots = [l for l in st['lots'].values() if l['symbol'] in TU.GOLD_FAMILY]
+        work = [p for p in list(st.get('pending_entries', {}).values()) + list(st.get('resting_entries', {}).values())
+                if p.get('symbol') in TU.GOLD_FAMILY]
+        if any(x.get('side') == side for x in lots + work):
+            return f'gold_family_cap: a {side} gold position (XAUUSDT/PAXGUSDT) is already open or working'
+        if (lots or work) and not self.hedge: return 'gold_family_cap: opposite gold position needs hedge mode'
+        if len(lots) + len(work) >= GOLD_FAMILY_MAX_POS: return f'gold_family_cap: family max positions ({GOLD_FAMILY_MAX_POS})'
+        if size: return self._gold_family_budget(lots, float(size.get('risk') or 0.0), float(size.get('notional') or 0.0))
+        return None
+
+    def _gold_family_budget(self, lots, add_risk, add_notional):
+        """Shared XAU+PAXG risk / notional budget (ruling d) for new entries AND adds (pyramid / DCA) on gold lots."""
+        eq = self.guard_eq or self.last_eq or 0.0
+        if eq <= 0: return 'gold_family_cap: equity unknown'
+        risk = sum(float(l.get('risk_usd') or 0.0) for l in lots) + add_risk
+        notional = sum(l['qty'] * l['avg'] for l in lots) + add_notional
+        if risk > GOLD_FAMILY_RISK_EQ * eq + 1e-9:
+            return f'gold_family_cap: family risk {risk:.2f} > {GOLD_FAMILY_RISK_EQ:.0%} of equity'
+        cap = self.S['MAX_LEVERAGE'] * eq * GOLD_FAMILY_NOTIONAL_SLOTS / ROTATION_MAX_ACTIVE
+        if notional > cap + 1e-9: return f'gold_family_cap: family notional {notional:.2f} > {cap:.2f}'
+        return None
 
     def sleeve_symbols(self, sl, include_off=False):
         u = [s for s in self.S['UNIVERSE'] if s in self.rules]
         if sl['symbols'] == 'core8': base = [s for s in CORE8 if s in u]
-        elif sl['symbols'] == 'all': base = u
+        elif sl['symbols'] == 'all': base = [s for s in u if self.rules[s].get('kind') != 'tradfi']   # TRADFI-01: crypto only
+        elif isinstance(sl['symbols'], str) and sl['symbols'] in TRADFI_TIERS:
+            base = [s for s in tradfi_tier_symbols(sl['symbols']) if s in self.rules] if self.tradfi_on() else []
         else: base = [s for s in sl['symbols'] if s in self.rules]
         return [s for s in base if include_off or self.S['SYMBOLS_ON'].get(s, True)]
 
@@ -1564,7 +1769,16 @@ class Engine:
     # ------------------------------------------------------------ exchange setup
     def connect(self):
         info = self.trade.exchange_info()
-        self.rules = F.rules_from_exchange_info(info)          # BT02: the one shared parser (same filters / defaults as before)
+        on = self.tradfi_on()                                  # TRADFI-01: opt-in, PAPER only (ignored in live)
+        if self.S.get('TRADFI_ENABLED') and not on: log.warning('TRADFI_ENABLED ignored: TradFi is PAPER/testnet only')
+        held = set() if self.live else ({l['symbol'] for l in (getattr(self, 'state', None) or {}).get('lots', {}).values()}
+                                        & set(TU.TRADFI_ALLOW_LIST))          # restart with TRADFI off: still manage these
+        if on or held:
+            self.rules = F.rules_from_exchange_info(info, allow_tradfi=True)
+            if not on: self.rules = {k: v for k, v in self.rules.items() if v.get('kind') != 'tradfi' or k in held}
+        else:
+            self.rules = F.rules_from_exchange_info(info)      # BT02: the one shared parser (same filters / defaults as before)
+        self.tradfi_universe = [s for s in TU.TRADFI_ALLOW_LIST if s in self.rules] if on else []
         self.rules_meta = dict(source='exchangeInfo (live connection)', environment='mainnet' if self.live else 'testnet',
                                fetched_at=now_utc().isoformat(timespec='seconds'), verified=True)
         missing = [s for s in self.S['UNIVERSE'] if s not in self.rules]
@@ -1583,6 +1797,7 @@ class Engine:
                 log.warning(f'hedge mode check failed: {e}')
             self.equity()
         self.connected = True
+        if on: self.sync_tradfi_slots()
 
     # ------------------------------------------------------------ helpers
     @staticmethod
@@ -3393,6 +3608,11 @@ class Engine:
         blk = self.stop_missing_block(lot['symbol'])               # AUD-04: a stop on this coin is missing on Binance
         if blk: return blk
         if lot.get('manual'): return 'manual trade (no adds)'
+        if lot['symbol'] in TU.GOLD_FAMILY and (lot['symbol'] != 'PAXGUSDT' or self.tradfi_on()):   # TRADFI-01 ruling d
+            gl = [l for l in st['lots'].values() if l['symbol'] in TU.GOLD_FAMILY]
+            stop = lot.get('stop')
+            gb = self._gold_family_budget(gl, q * abs(px - float(stop)) if stop is not None else 0.0, q * px)
+            if gb: return gb
         lx = self._lev_exception_block(lot['symbol'])             # T03c r1: the above-cap exception admitted the entry only
         if lx: return lx
         if self._breaker_add_mult(lot) == 0.0:
@@ -3652,6 +3872,7 @@ class Engine:
                     why = None
                     if not Sg['SYMBOLS_ON'].get(s, True): why = 'coin switched off'
                     elif not sl['enabled']: why = 'strategy slot switched off'
+                    elif self.rotation_block(sl): why = self.rotation_block(sl)        # BREADTH-01 B2: new entries only
                     elif Sg['ENTRIES_PAUSED']: why = 'entries paused'
                     elif st['halted']: why = 'daily loss halt'
                     elif s in held: why = 'already in a trade on this coin'
@@ -3729,10 +3950,17 @@ class Engine:
         if blk: return blk
         if f'{sym}|{side}' in self.untracked: return 'Binance holds an untracked position on this coin/side - resolve it first'
         if (sym, side) in self._unconfirmed_claims(): return 'an earlier entry on this coin/side is not confirmed yet'
-        if manual: return self._rules_block(sl, sym, side, size, manual=True)
+        if manual:
+            tb = self.tradfi_block(sl, sym, side, size, manual=True)    # TRADFI-01: oil / live / off / gold-family cap
+            if tb: return tb
+            return self._rules_block(sl, sym, side, size, manual=True)
         if Sg.get('ENTRIES_PAUSED'): return 'entries paused'
         if not Sg['SYMBOLS_ON'].get(sym, True): return 'coin switched off'
         if not sl.get('enabled', True): return 'strategy slot switched off'
+        rb = self.rotation_block(sl)                                # BREADTH-01 B2 (manual / adds never get here)
+        if rb: return rb
+        tb = self.tradfi_block(sl, sym, side, size)                 # TRADFI-01 T3/T4: session, mapping, gold-family cap
+        if tb: return tb
         held = [l for l in st['lots'].values() if l['sleeve'] == sl['id']]
         if any(l['symbol'] == sym for l in held): return 'already in a trade on this coin'
         if sg is not None:
