@@ -8,7 +8,7 @@ import json, logging, os, threading
 from datetime import datetime, timezone
 
 
-from .common import SCHEMA_VERSION, canonical_json, corr_id_of, sha256_hex, to_utc
+from .common import SCHEMA_VERSION, STATUSES, canonical_json, corr_id_of, sha256_hex, to_utc
 from .sanitize import sanitize_row, _features
 from .features import features_at
 
@@ -89,12 +89,26 @@ def decision_id(sleeve, strategy, symbol, side, tf, candle_time):
     return sha256_hex('|'.join(parts))[:32]
 
 
+def labelable(row):
+    """A decision that may receive a close label: taken, or pending (a resting/armed entry that later filled).
+    Skipped decisions never do. v1 rows without status fall back to `taken`."""
+    st = row.get('status') if isinstance(row, dict) else None
+    if not isinstance(row, dict) or st == 'skipped':
+        return False
+    return st == 'pending' or bool(row.get('taken'))          # 'taken' (or a v1 row) needs taken=True as well
+
+
 def build_decision_record(*, sleeve, strategy, family, symbol, side, tf, candle_time, taken, reason='',
-                          rotation_group=None, df=None, i=None, ctx=None, features=None, trade_id=None, now=None):
+                          rotation_group=None, df=None, i=None, ctx=None, features=None, trade_id=None, now=None,
+                          status=None):
     if features is None:
         if df is None or i is None:
             raise ValueError('need df+i or precomputed features')
         features = features_at(df, i, ctx)
+    status = status or ('taken' if taken else 'skipped')
+    if status not in STATUSES:
+        raise ValueError('status must be taken, skipped or pending')
+    taken = status == 'taken'
     feats = _features(features['features'])
     missing = sorted(k for k, v in feats.items() if v is None)
     rec = {
@@ -104,7 +118,7 @@ def build_decision_record(*, sleeve, strategy, family, symbol, side, tf, candle_
         'ts_utc': (now or datetime.now(timezone.utc)).strftime('%Y-%m-%dT%H:%M:%SZ'),
         'candle_time': _iso(candle_time),
         'sleeve': sleeve, 'strategy': strategy, 'family': family, 'symbol': str(symbol).upper(),
-        'side': str(side).upper(), 'tf': str(tf), 'taken': bool(taken), 'reason': str(reason or ''),
+        'side': str(side).upper(), 'tf': str(tf), 'taken': bool(taken), 'status': status, 'reason': str(reason or ''),
         'rotation_group': rotation_group, 'features': feats, 'missing': missing,
     }
     rec['feature_hash'] = sha256_hex(canonical_json(feats))
