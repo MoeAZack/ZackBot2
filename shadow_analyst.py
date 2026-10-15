@@ -286,16 +286,16 @@ class TransportTimeout(Exception):
 
 
 def urllib_transport(url, headers, body, timeout):
-    """Default transport -> (status, text). Raises TransportTimeout on a timeout. Never used by tests."""
+    """Default transport -> (status, text, response_headers). Fakes may return (status, text). Raises TransportTimeout on a timeout. Never used by tests."""
     import socket
     import urllib.error
     import urllib.request
     req = urllib.request.Request(url, data=body, headers=headers, method='POST')
     try:
         with urllib.request.urlopen(req, timeout=timeout) as r:
-            return r.status, r.read().decode('utf-8', 'replace')
+            return r.status, r.read().decode('utf-8', 'replace'), {'request-id': r.headers.get('request-id')}
     except urllib.error.HTTPError as e:
-        return e.code, e.read().decode('utf-8', 'replace')
+        return e.code, e.read().decode('utf-8', 'replace'), {'request-id': e.headers.get('request-id') if e.headers else None}
     except (socket.timeout, TimeoutError) as e:
         raise TransportTimeout() from e
     except urllib.error.URLError as e:
@@ -312,6 +312,89 @@ def _retryable(status):
     return status == 429 or 500 <= status <= 599
 
 
+# --- auth / workspace ------------------------------------------------------------------------------------------------
+WORKSPACE_HEADER = 'anthropic-workspace-id'
+_WORKSPACE_RE = re.compile(r'[A-Za-z0-9_-]{1,128}')   # used with fullmatch: no trailing newline (Cowork F1)
+_REQUEST_ID_RE = re.compile(r'^[A-Za-z0-9_-]{1,128}$')
+AUTH_ACCEPTED, AUTH_WS_REQUIRED, AUTH_REJECTED, AUTH_UNAVAILABLE = 'accepted', 'workspace_id_required', 'rejected', 'unavailable'
+AUTH_TIMEOUT_S = 15
+FP_VERSION = 'scrypt-v1'                                        # fingerprints of any other version are ignored
+SALT_FILE = 'analyst_salt.bin'                                  # random, NOT secret; restart-stable
+SALT_MIN, SALT_MAX = 16, 64
+SCRYPT_N, SCRYPT_R, SCRYPT_P = 2 ** 14, 8, 1
+
+
+def valid_workspace_id(ws):
+    """None / '' = not configured (valid). Otherwise a conservative identifier such as wrkspc_..."""
+    return ws in (None, '') or (isinstance(ws, str) and bool(_WORKSPACE_RE.fullmatch(ws)))
+
+
+def _headers(api_key, workspace_id):
+    h = {'x-api-key': api_key, 'anthropic-version': ANTHROPIC_VERSION, 'content-type': 'application/json'}
+    if workspace_id:
+        h[WORKSPACE_HEADER] = workspace_id                      # only when configured; scoped keys need no header
+    return h
+
+
+def _call(transport, url, headers, body, timeout):
+    """-> (status, text, request_id). Accepts transports returning (status, text) or (status, text, headers)."""
+    r = transport(url, headers, body, timeout)
+    status, text = r[0], r[1]
+    rh = r[2] if len(r) > 2 and isinstance(r[2], dict) else {}
+    rid = rh.get('request-id') or rh.get('Request-Id')
+    if not rid and isinstance(text, str):
+        try:
+            d = json.loads(text)
+            rid = d.get('request_id') if isinstance(d, dict) else None
+        except ValueError:
+            rid = None
+    rid = rid if isinstance(rid, str) and _REQUEST_ID_RE.match(rid) else None
+    return status, text, rid
+
+
+def _error_info(text):
+    """(error type, mentions workspace) from an API error body. The body itself is never persisted or logged."""
+    try:
+        d = json.loads(text)
+    except (TypeError, ValueError):
+        return None, False
+    err = d.get('error') if isinstance(d, dict) else None
+    if not isinstance(err, dict):
+        return None, False
+    return err.get('type'), 'workspace' in str(err.get('message', '')).lower()
+
+
+def _auth_status(status, text):
+    if status is None:
+        return AUTH_UNAVAILABLE
+    if 200 <= status <= 299:
+        return AUTH_ACCEPTED
+    etype, ws = _error_info(text)
+    if status == 400 and etype == 'invalid_request_error' and ws:
+        return AUTH_WS_REQUIRED
+    if status in (401, 403):
+        return AUTH_REJECTED
+    return AUTH_UNAVAILABLE                                     # 429 / 5xx / anything that does not prove auth either way
+
+
+def auth_self_test(api_key, workspace_id=None, transport=None, model=DEFAULT_MODEL):
+    """Cheapest valid Messages request (max_tokens=1). -> {'status': accepted|workspace_id_required|rejected|unavailable,
+    'request_id': str|None}. Nothing else is returned; the key, workspace id and error bodies are never exposed."""
+    if not api_key:
+        return {'status': AUTH_REJECTED, 'request_id': None}
+    if not valid_workspace_id(workspace_id):
+        return {'status': AUTH_WS_REQUIRED, 'request_id': None}
+    body = canonical({'model': model, 'max_tokens': 1, 'messages': [{'role': 'user', 'content': 'ping'}]}).encode('utf-8')
+    try:
+        status, text, rid = _call(transport or urllib_transport, API_URL, _headers(api_key, workspace_id or None), body, AUTH_TIMEOUT_S)
+    except Exception as e:                                      # network / timeout
+        log.info('shadow auth self-test: unavailable (%s)', e.__class__.__name__)
+        return {'status': AUTH_UNAVAILABLE, 'request_id': None}
+    st = _auth_status(status, text)
+    log.info('shadow auth self-test: %s', st)
+    return {'status': st, 'request_id': rid}
+
+
 class ShadowAnalyst:
     """Stateful runner: dedupe, schedule bookkeeping, usage counters and bounded JSONL reports under state_dir.
     Deliberately has no method that can touch settings, models, strategies or orders."""
@@ -321,6 +404,7 @@ class ShadowAnalyst:
         os.makedirs(state_dir, exist_ok=True)
         self.state_path = os.path.join(state_dir, 'shadow_state.json')
         self.report_path = os.path.join(state_dir, 'shadow_reports.jsonl')
+        self.salt_path = os.path.join(state_dir, SALT_FILE)
         self._transport = transport or urllib_transport
         self._sleep = sleep
         self._mono = monotonic
@@ -328,7 +412,8 @@ class ShadowAnalyst:
 
     # state ----------------------------------------------------------------------------------------------------------
     def _load(self):
-        base = {'last_digest': None, 'last_result': None, 'last_ok_ts': None, 'slots_run': [], 'usage': {'day': {}, 'month': {}}}
+        base = {'last_digest': None, 'last_result': None, 'last_ok_ts': None, 'slots_run': [], 'usage': {'day': {}, 'month': {}},
+                'auth': None}
         try:
             with open(self.state_path, encoding='utf-8') as f:
                 d = json.load(f)
@@ -337,6 +422,62 @@ class ShadowAnalyst:
         except (OSError, ValueError):
             pass
         return base
+
+    # auth fingerprints: scrypt over domain-separated material with a persisted NON-secret salt ---------------------
+    def _read_salt(self):
+        """-> (salt bytes | None, problem None|'missing'|'corrupt')."""
+        try:
+            with open(self.salt_path, 'rb') as f:
+                b = f.read(SALT_MAX + 1)
+        except FileNotFoundError:
+            return None, 'missing'
+        except OSError:
+            return None, 'corrupt'
+        if not SALT_MIN <= len(b) <= SALT_MAX:
+            return None, 'corrupt'
+        return b, None
+
+    def _create_salt(self):
+        tmp = self.salt_path + '.tmp'
+        with open(tmp, 'wb') as f:
+            f.write(os.urandom(SALT_MIN))
+        os.replace(tmp, self.salt_path)
+
+    @staticmethod
+    def _derive(salt, domain, value):
+        return hashlib.scrypt(domain + b'|' + (value or '').encode('utf-8'), salt=salt,
+                              n=SCRYPT_N, r=SCRYPT_R, p=SCRYPT_P, dklen=32, maxmem=64 * 1024 * 1024).hex()
+
+    def _pair(self, salt, api_key, workspace_id):
+        memo = getattr(self, '_pair_memo', None)               # in-memory only: avoids re-running scrypt every call
+        if memo and memo[0] == (salt, api_key, workspace_id or ''):
+            return list(memo[1])
+        pair = [self._derive(salt, b'zackbot-shadow-key-v1', api_key), self._derive(salt, b'zackbot-shadow-ws-v1', workspace_id or '')]
+        self._pair_memo = ((salt, api_key, workspace_id or ''), tuple(pair))
+        return list(pair)
+
+    def _auth_check(self, api_key, workspace_id):
+        """-> None when verified, else the NO_ANALYSIS reason. Fails closed on any salt problem."""
+        salt, problem = self._read_salt()
+        if problem:
+            if self.state.get('auth'):
+                self._reset_auth()                       # an accepted fingerprint can no longer be checked
+            return 'auth_salt_unavailable'
+        a = self.state.get('auth')
+        if not (isinstance(a, dict) and a.get('status') == AUTH_ACCEPTED and a.get('fp_version') == FP_VERSION):
+            return 'auth_not_verified'                   # includes old plain-sha fingerprints (no / other fp_version)
+        if a.get('pair') != self._pair(salt, api_key, workspace_id):
+            return 'auth_not_verified'
+        return None
+
+    def _auth_ok(self, api_key, workspace_id):
+        return self._auth_check(api_key, workspace_id) is None
+
+    def _reset_auth(self):
+        if self.state.get('auth'):
+            self.state['auth'] = None
+            self._save()
+            log.info('shadow analyst: auth verification reset')
 
     def _save(self):
         tmp = self.state_path + '.tmp'
@@ -382,6 +523,32 @@ class ShadowAnalyst:
         return {'day': row('day', local.date().isoformat()), 'month': row('month', local.strftime('%Y-%m'))}
 
     # public ---------------------------------------------------------------------------------------------------------
+    def auth_self_test(self, api_key, workspace_id=None, *, now_utc=None, transport=None):
+        """Run the self-test and record it for this (key, workspace) pair. -> {'status', 'request_id'}."""
+        now_utc = now_utc or _dt.datetime.now(_dt.timezone.utc)
+        salt, problem = self._read_salt()
+        if problem:
+            if problem == 'corrupt' and self.state.get('auth'):
+                self._reset_auth()                       # never keep an accepted state across a salt replacement
+                log.warning('shadow analyst: fingerprint salt was corrupt - accepted auth invalidated, salt replaced')
+            try:
+                self._create_salt()
+            except OSError as e:
+                log.warning('shadow analyst: fingerprint salt unavailable (%s)', e.__class__.__name__)
+                return {'status': AUTH_UNAVAILABLE, 'request_id': None}
+            salt, problem = self._read_salt()
+            if problem:
+                return {'status': AUTH_UNAVAILABLE, 'request_id': None}
+        res = auth_self_test(api_key, workspace_id, transport=transport or self._transport)
+        if res['status'] == AUTH_ACCEPTED:
+            self.state['auth'] = {'status': AUTH_ACCEPTED, 'fp_version': FP_VERSION, 'pair': self._pair(salt, api_key, workspace_id),
+                                  'request_id': res['request_id'], 'ts': now_utc.isoformat()}
+        elif res['status'] in (AUTH_REJECTED, AUTH_WS_REQUIRED):
+            self.state['auth'] = None
+        self._save()
+        self._report({'ts': now_utc.isoformat(), 'kind': 'auth_self_test', 'status': res['status'], 'request_id': res['request_id']})
+        return dict(res)
+
     def latest(self, now_utc):
         """The last OK analysis, or NO_ANALYSIS when none exists or it is stale."""
         r, ts = self.state.get('last_result'), self.state.get('last_ok_ts')
@@ -389,22 +556,24 @@ class ShadowAnalyst:
             return {'status': STATUS_NO, 'reason': 'stale' if r else 'none'}
         return dict(r, cached=True)
 
-    def run_scheduled(self, raw_aggregates, *, api_key, cfg, trading_mode, now_utc):
+    def run_scheduled(self, raw_aggregates, *, api_key, cfg, trading_mode, now_utc, workspace_id=None):
         """Call from a timer (e.g. every few minutes). Runs only when a Cairo 00:15 / 12:15 slot is due -> result or None."""
         slots = due_slots(now_utc, self.state.get('slots_run'))
         if not slots:
             return None
         if not is_enabled(cfg) or str(trading_mode).upper() != 'PAPER':
-            return self.analyze_now(raw_aggregates, api_key=api_key, cfg=cfg, trading_mode=trading_mode, now_utc=now_utc)
+            return self.analyze_now(raw_aggregates, api_key=api_key, cfg=cfg, trading_mode=trading_mode, now_utc=now_utc,
+                                workspace_id=workspace_id)
         self.state['slots_run'] = (list(self.state.get('slots_run') or []) + slots)[-8:]
         self._save()
-        return self.analyze_now(raw_aggregates, api_key=api_key, cfg=cfg, trading_mode=trading_mode, now_utc=now_utc)
+        return self.analyze_now(raw_aggregates, api_key=api_key, cfg=cfg, trading_mode=trading_mode, now_utc=now_utc,
+                                workspace_id=workspace_id)
 
-    def analyze_now(self, raw_aggregates, *, api_key, cfg, trading_mode, now_utc=None):
+    def analyze_now(self, raw_aggregates, *, api_key, cfg, trading_mode, now_utc=None, workspace_id=None):
         """Manual path. -> dict(status OK|NO_ANALYSIS, reason, analysis?, input_hash, ...). Never raises."""
         now_utc = now_utc or _dt.datetime.now(_dt.timezone.utc)
         try:
-            return self._analyze(raw_aggregates, api_key, cfg or {}, trading_mode, now_utc)
+            return self._analyze(raw_aggregates, api_key, workspace_id, cfg or {}, trading_mode, now_utc)
         except Exception as e:                                  # contract: never break the caller
             log.warning('shadow analyst failed: %s', e.__class__.__name__)
             return {'status': STATUS_NO, 'reason': 'internal_error'}
@@ -419,7 +588,7 @@ class ShadowAnalyst:
                               latency_s=extra.get('latency_s'), attempts=extra.get('attempts', 0)))
         return res
 
-    def _analyze(self, raw, api_key, cfg, trading_mode, now_utc):
+    def _analyze(self, raw, api_key, workspace_id, cfg, trading_mode, now_utc):
         if not is_enabled(cfg):
             return self._no('disabled', now_utc, record=False)
         if str(trading_mode).upper() != 'PAPER':
@@ -434,23 +603,28 @@ class ShadowAnalyst:
         if dropped:
             agg['truncated'] = dropped
         digest = _sha(canonical({'agg': agg, 'model': model, 'prompt': PROMPT_VERSION, 'schema': SCHEMA_VERSION}))
+        if not api_key:
+            return self._no('missing_key', now_utc, model, digest)
+        if not valid_workspace_id(workspace_id):
+            return self._no('workspace_id_invalid', now_utc, model, digest)
+        why = self._auth_check(api_key, workspace_id)
+        if why:
+            return self._no(why, now_utc, model, digest)
         if digest == self.state.get('last_digest') and self.state.get('last_result'):
             if now_utc.timestamp() - (self.state.get('last_ok_ts') or 0) > STALE_AFTER_S:
                 return self._no('stale', now_utc, model, digest, record=False)
             log.info('shadow analyst: input unchanged - cached analysis returned')
             return dict(self.state['last_result'], cached=True)
-        if not api_key:
-            return self._no('missing_key', now_utc, model, digest)
 
         body = canonical({'model': model, 'max_tokens': MAX_OUTPUT_TOKENS, 'temperature': 0, 'system': SYSTEM_PROMPT,
                           'messages': [{'role': 'user', 'content': user_message(agg)}]}).encode('utf-8')
-        headers = {'x-api-key': api_key, 'anthropic-version': ANTHROPIC_VERSION, 'content-type': 'application/json'}
+        headers = _headers(api_key, workspace_id or None)
         t0 = self._mono()
         status, text, attempts, reason = None, None, 0, None
         for attempt in range(2):
             attempts += 1
             try:
-                status, text = self._transport(API_URL, headers, body, TIMEOUT_S)
+                status, text, _rid = _call(self._transport, API_URL, headers, body, TIMEOUT_S)
                 reason = None
             except TransportTimeout:
                 status, text, reason = None, None, 'timeout'
@@ -469,6 +643,8 @@ class ShadowAnalyst:
         if reason:
             return self._no(reason, now_utc, model, digest, **meta)
         if status != 200:
+            if _auth_status(status, text) in (AUTH_REJECTED, AUTH_WS_REQUIRED):
+                self._reset_auth()                             # a later 401/403/workspace error re-requires the self-test
             return self._no(f'http_{status}', now_utc, model, digest, **meta)
         try:
             resp = json.loads(text)
