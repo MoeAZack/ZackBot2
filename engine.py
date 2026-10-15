@@ -398,6 +398,7 @@ def breadth_id(key):
 # `mgmt`. Setting ROTATION_MGMT_OVERLAY = {strategy_key: {be_r, tp1_r, tp1_frac, max_bars}}. Only these four keys; the
 # bounds and the 0 = off rule are app.MG_NUM / app.clean_mgmt's (tests/test_rotation_mgmt_overlay pins them equal).
 ROTATION_MGMT_KEYS = dict(be_r=(0.1, 50), tp1_r=(0.1, 50), tp1_frac=(0.05, 1), max_bars=(1, 5000))
+ROTATION_OVERLAY_STRATS = frozenset({'exp_trend', 'exp_range', 'exp_breakout', 'exp_scalp', 'exp_structure', 'exp_vwaprev'})
 
 
 def clean_rotation_overlay(ov):
@@ -406,6 +407,8 @@ def clean_rotation_overlay(ov):
     out = {}
     for key, m in ov.items():
         if not isinstance(key, str) or key not in S.STRATEGIES: raise ValueError(f'rotation overlay: unknown strategy {str(key)[:30]!r}')
+        if key not in ROTATION_OVERLAY_STRATS:
+            raise ValueError(f'rotation overlay: {key} is not one of the experimental keys ({", ".join(sorted(ROTATION_OVERLAY_STRATS))})')
         if not isinstance(m, dict): raise ValueError(f'rotation overlay {key}: management must be an object')
         g = {}
         for k, v in m.items():
@@ -425,12 +428,17 @@ def clean_rotation_overlay(ov):
 
 def rotation_overlay_from(sleeves):
     """The per-key overlay held by a sleeve list (the owner's custom sleeves, or a rotation already carrying one):
-    every non-empty `mgmt`, by strategy key. Refused (ValueError) on a disallowed key/value or on two slots of the same
-    key with different management."""
+    every non-empty `mgmt` of the six experimental keys (ROTATION_OVERLAY_STRATS), by strategy key; a mgmt on any other
+    key is ignored with a warning. Refused (ValueError) on a disallowed key/value or on two slots of the same key with
+    different management."""
     ov = {}
     for sl in sleeves or []:
         m = sl.get('mgmt') or {}
         if not m: continue
+        if sl.get('key') not in ROTATION_OVERLAY_STRATS:
+            log.warning(f"rotation overlay: management of slot {str(sl.get('id'))[:12]} ({str(sl.get('key'))[:30]}) not carried "
+                        '- only the six experimental keys keep overrides in the rotation')
+            continue
         c = clean_rotation_overlay({sl.get('key'): m}).get(sl.get('key'), {})
         if sl['key'] in ov and ov[sl['key']] != c:
             raise ValueError(f"rotation overlay: slots of {sl['key']} carry different management - make them equal first")
@@ -1655,6 +1663,9 @@ class Engine:
         try: s['ROTATION_MGMT_OVERLAY'] = clean_rotation_overlay(s.get('ROTATION_MGMT_OVERLAY') or {})
         except ValueError as ex:                                  # invalid on disk -> defaults-only (today's behaviour)
             log.warning(f'rotation management overlay ignored: {ex}')
+            if hasattr(self, '_integrity_alert'):
+                self._integrity_alert('integrity|rotation-overlay', f'settings ROTATION_MGMT_OVERLAY invalid ({str(ex)[:120]}) '
+                                      '- ignored, rotation slots use strategy defaults')
             s['ROTATION_MGMT_OVERLAY'] = {}
         if 'SLEEVES' not in s:
             s['SLEEVES'] = (breadth_sleeves(tradfi=s.get('TRADFI_ENABLED') is True and getattr(self, 'live', True) is False,
@@ -1708,14 +1719,17 @@ class Engine:
 
     def apply_preset(self, name, overlay=None):
         """overlay (rotation only): explicit ROTATION_MGMT_OVERLAY; None = taken from the current sleeves when they are
-        the owner's custom sleeves or an earlier rotation (a named profile's built-in management is not carried)."""
+        the owner's custom sleeves or an earlier rotation and carry one (a named profile's built-in management is not
+        carried); otherwise the stored ROTATION_MGMT_OVERLAY is kept - a stored overlay is never silently wiped."""
         ov = None
         if name == ROTATION_PRESET:
             if getattr(self, 'live', True) is not False:      # BREADTH-01 B2: PAPER/testnet only, fail closed
                 raise ValueError('the breadth rotation is PAPER/testnet only - refused in live mode')
             if overlay is not None: ov = clean_rotation_overlay(overlay)
-            elif self.S.get('PRESET') in ('custom', ROTATION_PRESET): ov = rotation_overlay_from(self.S.get('SLEEVES'))
-            else: ov = {}
+            else:
+                ov = (rotation_overlay_from(self.S.get('SLEEVES'))
+                      if self.S.get('PRESET') in ('custom', ROTATION_PRESET) else {})
+                if not ov: ov = clean_rotation_overlay(self.S.get('ROTATION_MGMT_OVERLAY') or {})
             sleeves, label = breadth_sleeves(tradfi=self.tradfi_on(), overlay=ov), ROTATION_NAME
         else:
             sleeves, label = copy.deepcopy(PRESETS[name]['sleeves']), PRESETS[name]['name']

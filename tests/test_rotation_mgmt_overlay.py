@@ -139,3 +139,33 @@ def test_orders_identical_for_keys_without_overlay(monkeypatch, tmp_path):
     a = _entry(monkeypatch, tmp_path / 'a', True)
     b = _entry(monkeypatch, tmp_path / 'b', False)
     assert len(a) == 1 and a == b
+
+
+# ------------------------------------------------------------------ Cowork #117 findings
+def test_switch_away_and_back_keeps_the_stored_overlay(tmp_path):
+    e, tmp = rot_engine(tmp_path)
+    e.apply_preset('original')                         # the governor auto-switch path: apply_preset(key), no overlay
+    assert e.S['PRESET'] == 'original' and e.S['ROTATION_MGMT_OVERLAY'] == OV
+    e.apply_preset(E.ROTATION_PRESET)                  # original -> rotation: falls back to the stored overlay
+    assert e.S['ROTATION_MGMT_OVERLAY'] == OV
+    assert {x['key']: x['mgmt'] for x in e.S['SLEEVES'] if x['mgmt']} == OV
+    e2 = reload(tmp); e2.apply_preset('original'); e2.apply_preset(E.ROTATION_PRESET)   # across a restart too
+    assert {x['key']: x['mgmt'] for x in e2.S['SLEEVES'] if x['mgmt']} == OV
+
+
+def test_seventh_key_is_not_inherited(tmp_path, caplog):
+    e, _ = mk_engine(str(tmp_path)); custom(e)
+    e.S['SLEEVES'][-1]['mgmt'] = dict(be_r=1.0, tp1_r=2.0, tp1_frac=.5)       # ema_mom: allowed mgmt keys, not an exp key
+    with caplog.at_level('WARNING'):
+        e.apply_preset(E.ROTATION_PRESET)
+    assert e.S['ROTATION_MGMT_OVERLAY'] == OV and by_key(e)['ema_mom']['mgmt'] == {}
+    assert any('ema_mom' in r.getMessage() and 'not carried' in r.getMessage() for r in caplog.records)
+    with pytest.raises(ValueError, match='experimental'):
+        E.clean_rotation_overlay({'ema_mom': {'be_r': 1.0}})
+
+
+def test_invalid_overlay_on_disk_is_surfaced_in_health(tmp_path):
+    e, tmp = rot_engine(tmp_path)
+    e.S['ROTATION_MGMT_OVERLAY'] = {'exp_trend': {'stop_atr': 9}}; e.save_settings()
+    e2 = reload(tmp)
+    assert 'integrity|rotation-overlay' in e2.health['incidents']
