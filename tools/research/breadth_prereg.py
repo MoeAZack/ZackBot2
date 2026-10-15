@@ -227,8 +227,10 @@ def build(repo: str = ROOT) -> dict:
         'rules': {'no_retune': 'no parameter, mgmt, cost, universe, window or code change after registration; the '
                                'ledger family may never hold a variant / grid_point / baseline record besides the 12 '
                                'registration records (verify_registration)',
-                  'one_evaluation': 'one holdout_reveal for the family (one spend); reruns only as zb-ledger/1 '
-                                    'holdout_rerun of the identical identity',
+                  'one_evaluation': 'one evaluation spend for the family: a window_spent record (role '
+                                    'evaluation_spend) binding the exact packets, manifest and output location '
+                                    '(eval_digest), committed as R = the only, ledger-only child of Y BEFORE any '
+                                    'verdict is computed; evaluate runs only at R on exactly those inputs, once',
                   'supersession': 'none: a new family and window; trend_ema_mom.v1 records are untouched',
                   'deferred': ['holdout evaluation', 'mainnet', 'tuning', 'breakout_pyramid short']},
         'registration': {'ledger': LEDGER, 'family': FAMILY, 'records': len(HYPOTHESES),
@@ -237,14 +239,20 @@ def build(repo: str = ROOT) -> dict:
                                  f'{HOLDOUT["start"]}',
                          'binds': ['prereg_sha256', 'accepted_commit (the master commit holding the accepted prereg, '
                                    'validator and evaluator)', 'accepted_tree'],
-                         'registration_commit': 'a direct descendant of accepted_commit whose diff from it touches only '
-                                                'the family ledger and REGISTRY.jsonl (the family declaration)',
-                         'authoritative_time': 'the time the registration commit lands on master (GitHub merge time; '
-                                               'squash merge), before the holdout start',
+                         'registration_commit': 'Y: accepted_commit X is its only, direct parent and its diff from X '
+                                                'touches only the family ledger and REGISTRY.jsonl (the family '
+                                                'declaration); master is frozen between X and Y',
+                         'authoritative_time': 'X chronology: the final master merge time of X; Y lands on master '
+                                               'before the holdout start',
+                         'y_tag': 'the integration owner (Codex) creates an immutable tag on Y after acceptance; '
+                                  'the evaluator takes it as --registration (Build never self-binds Y)',
                          'runbook': 'research_evidence/breadth_prereg/RUNBOOK.md',
-                         'evaluation_guard': 'the evaluation path refuses a dirty worktree and any HEAD whose '
-                                             'commit or tree differs from the registered accepted commit / tree '
-                                             '(this transitively freezes every module the runner loads)'},
+                         'evaluation_guard': 'collect / packets / spend run only at HEAD == the pinned Y, evaluate only '
+                                             'at R; clean worktree; Y introduced the 12 records; the only parent of Y '
+                                             'is X; the tree of Y minus the two ledger files equals the tree of X; the '
+                                             'ledger records verify; packets bind commit Y, a clean tree, their '
+                                             'packet_sha256, the holdout window, a recomputed aggregate and the '
+                                             'holdout manifest digests'},
     }
     return pre
 
@@ -395,9 +403,16 @@ def register(repo: str = ROOT, *, author: str = AUTHOR, accepted_commit: str, **
     bad = validate(pre, repo)
     if bad:
         raise BreadthPreregError('prereg invalid: ' + '; '.join(bad))
+    path = os.path.join(repo, LEDGER)
+    fams = L.verify(path)
+    if FAMILY in fams:
+        raise BreadthPreregError(f'family {FAMILY!r} already registered (duplicate; append-only: nothing appended)')
     if not (isinstance(accepted_commit, str) and HEX40.match(accepted_commit)):
-        raise BreadthPreregError('accepted_commit must be the full 40-hex SHA of the Codex-accepted head')
+        raise BreadthPreregError('accepted_commit must be the full 40-hex SHA of the accepted code commit X')
     _git(repo, 'cat-file', '-e', f'{accepted_commit}^{{commit}}')
+    if _git(repo, 'rev-parse', 'HEAD').strip() != accepted_commit:
+        raise BreadthPreregError('register only from a clean checkout of the accepted commit X (HEAD != X), so the '
+                                 'registration commit Y has X as its direct parent')
     tree = _git(repo, 'rev-parse', f'{accepted_commit}^{{tree}}').strip()
     for rel in (PREREG, VALIDATOR, EVALUATOR):
         if _blob(repo, accepted_commit, rel) != _blob(repo, 'HEAD', rel):
@@ -409,10 +424,6 @@ def register(repo: str = ROOT, *, author: str = AUTHOR, accepted_commit: str, **
     dirt = [p for p in _dirty(repo) if p not in (LEDGER, f'{os.path.dirname(LEDGER)}/{L.REGISTRY}')]
     if dirt:
         raise BreadthPreregError(f'uncommitted changes besides the ledger: {dirt}')
-    path = os.path.join(repo, LEDGER)
-    fams = L.verify(path)
-    if FAMILY in fams:
-        raise BreadthPreregError(f'family {FAMILY!r} already registered (duplicate; append-only: nothing appended)')
     out = []
     for i, r in enumerate(registration_records(sha, accepted_commit, tree, now)):
         r['author'] = author
@@ -420,8 +431,8 @@ def register(repo: str = ROOT, *, author: str = AUTHOR, accepted_commit: str, **
     return out
 
 
-def _introducing_commit(repo, line: bytes):
-    for c in _git(repo, 'rev-list', '--reverse', 'HEAD', '--', LEDGER).split():
+def _introducing_commit(repo, line: bytes, rev: str = 'HEAD'):
+    for c in _git(repo, 'rev-list', '--reverse', rev, '--', LEDGER).split():
         b = _blob(repo, c, LEDGER)
         if b is not None and line in b.splitlines(keepends=True):
             return c
@@ -448,6 +459,8 @@ def verify_registration(repo: str = ROOT, *, require_committed: bool = True) -> 
         bad.append('no retune: a variant / grid_point / baseline record after the registration')
     if sum(r['kind'] == 'holdout_reveal' for r in recs) > 1:
         bad.append('one evaluation: more than one holdout_reveal in the family')
+    if sum(r['kind'] == 'window_spent' and r['detail'].get('role') == 'evaluation_spend' for r in recs) > 1:
+        bad.append('one evaluation: more than one evaluation spend in the family')
     if not reg:
         return bad
     d0 = reg[0]['detail']
@@ -482,9 +495,9 @@ def verify_registration(repo: str = ROOT, *, require_committed: bool = True) -> 
             if not (at <= cm + 999 and cm < HOLDOUT_START_MS):
                 bad.append('the committing commit must be at/after registered_at_utc and before the holdout start')
             if isinstance(acc, str) and HEX40.match(acc):
-                if subprocess.run(['git', '-C', repo, 'merge-base', '--is-ancestor', acc, c],
-                                  capture_output=True).returncode:
-                    bad.append('accepted_commit is not an ancestor of the registration commit')
+                parents = _git(repo, 'rev-list', '--parents', '-n', '1', c).split()[1:]
+                if parents != [acc]:
+                    bad.append('the registration commit Y must have the accepted commit X as its only, direct parent')
                 touched = set(_git(repo, 'diff', '--name-only', acc, c, check=False).split())
                 if not touched or touched - set(REGISTRATION_FILES):
                     bad.append('registration commit is not ledger-only: the diff from accepted_commit touches '
@@ -509,20 +522,62 @@ def registered_binding(repo: str = ROOT, ledger_ref: str = 'HEAD') -> dict:
     return {k: d[k] for k in ('accepted_commit', 'accepted_tree', 'prereg_sha256', 'registered_at_utc')}
 
 
-def evaluation_guard(repo: str, binding: dict) -> None:
-    """Called by the evaluation path before it reads anything: the worktree must be clean and HEAD must be exactly the
-    registered accepted commit with the registered tree, so every module the frozen runner loads is the accepted
-    byte-for-byte state (Codex 6201186673). Raises BreadthPreregError otherwise."""
+def _parents(repo, rev) -> list[str]:
+    return _git(repo, 'rev-list', '--parents', '-n', '1', rev).split()[1:]
+
+
+def _family_lines(raw: bytes) -> list[dict]:
+    return [r for r, _ in L._lines(raw, FAMILY)]
+
+
+def evaluation_guard(repo: str, y: str, *, allow_spend_child: bool = False) -> dict:
+    """Called by the evaluation path before it reads anything (Codex 6201777892, Cowork 6201874565).
+
+    `y` (the immutable registration tag or SHA, supplied by the integration owner) pins the registration commit Y:
+    Y must be the commit that introduced the 12 records, its only parent is X, and X..Y touches only the two ledger
+    files (so the tree of Y minus the ledger equals the tree of X). The worktree must be clean and HEAD must be Y; with
+    `allow_spend_child`, HEAD may instead be R = Y's only child whose only change is exactly one appended family
+    `window_spent` evaluation-spend record (+ its REGISTRY copy). The ledger records verify at HEAD. Y is never
+    self-bound: it is located from the ledger and compared with the pinned input. Returns the binding (+ 'y', 'spend')."""
     dirt = _dirty(repo)
     if dirt:
         raise BreadthPreregError(f'evaluation refused: dirty worktree {dirt[:5]}')
+    yc = _git(repo, 'rev-parse', '--verify', f'{y}^{{commit}}', check=False).strip()
+    if not HEX40.match(yc or ''):
+        raise BreadthPreregError(f'evaluation refused: the registration commit {y!r} does not resolve')
+    binding = registered_binding(repo, yc)
+    x = binding['accepted_commit']
+    if _blob(repo, x, PREREG) is None or _git(repo, 'rev-parse', f'{x}^{{tree}}').strip() != binding['accepted_tree']:
+        raise BreadthPreregError('evaluation refused: the accepted commit X / tree is not available or does not match')
+    first = _family_lines(_blob(repo, yc, LEDGER))[0]
+    if _introducing_commit(repo, L.line_of(first), yc) != yc:
+        raise BreadthPreregError('evaluation refused: the pinned Y is not the commit that introduced the registration')
+    if _parents(repo, yc) != [x]:
+        raise BreadthPreregError('evaluation refused: the only parent of Y must be X')
+    off = set(_git(repo, 'diff', '--name-only', x, yc).split()) - set(REGISTRATION_FILES)
+    if off:
+        raise BreadthPreregError(f'evaluation refused: the tree of Y minus the ledger differs from X in {sorted(off)[:5]}')
     head = _git(repo, 'rev-parse', 'HEAD').strip()
-    tree = _git(repo, 'rev-parse', 'HEAD^{tree}').strip()
-    if head != binding.get('accepted_commit') or tree != binding.get('accepted_tree'):
-        raise BreadthPreregError(f'evaluation refused: HEAD {head[:10]} / tree {tree[:10]} is not the registered '
-                                 'accepted commit / tree')
-    if load_prereg(repo)[1] != binding.get('prereg_sha256'):
+    ly, lh = _blob(repo, yc, LEDGER), _blob(repo, 'HEAD', LEDGER) or b''
+    spend = None
+    if head != yc:
+        extra = _family_lines(lh)[len(_family_lines(ly)):] if lh.startswith(ly) else None
+        ok = (allow_spend_child and _parents(repo, head) == [yc] and lh.startswith(ly)
+              and not set(_git(repo, 'diff', '--name-only', yc, head).split()) - set(REGISTRATION_FILES)
+              and extra is not None and len(extra) == 1 and extra[0]['kind'] == 'window_spent'
+              and extra[0]['detail'].get('role') == 'evaluation_spend'
+              and extra[0]['detail'].get('registration_commit') == yc)
+        if not ok:
+            raise BreadthPreregError(f'evaluation refused: HEAD {head[:10]} is not the registration commit Y '
+                                     f'{yc[:10]}' + (' or its single ledger-only evaluation-spend child'
+                                                     if allow_spend_child else ''))
+        spend = extra[0]
+    bad = verify_registration(repo)
+    if bad:
+        raise BreadthPreregError('evaluation refused: ' + '; '.join(bad))
+    if load_prereg(repo)[1] != binding['prereg_sha256']:
         raise BreadthPreregError('evaluation refused: prereg bytes differ from the registration')
+    return dict(binding, y=yc, spend=spend)
 
 
 def main(argv=None) -> int:
