@@ -2,7 +2,7 @@
 
 REVIEW-ONLY research evidence. non_promotable. Development window only; not evidence of edge.
 
-- commit: `c8c7b927ee575ba71a9724ce84d23f72774b07b8`
+- commit: `c8c7b927ee575ba71a9724ce84d23f72774b07b8` for the comparison rows, which are the `parity/*_rerun_c8c7b92.json` packets. The 8 top-level profit_capture packets listed under **Packets** were produced on runner commit `339ba68`; their numbers are identical to the c8c7b92 reruns (see `parity/`). Provenance wording clarified per Cowork 6199914527.
 - window: 2024-10-14T00:00:00Z -> 2026-09-28T00:00:00Z (end-exclusive, 4284 4h bars; warm-up 220 bars from 2024-09-07T08:00:00Z)
 - runner sha256: `run_breadth_candidate.py` dad619aaf2df00fd79ce9a2ca2d4848f298b745920fe7f6c56898e7b4f6922f2 · `run_vwaprev_candidate.py` c2f43564cc1da4cd79e12253ece82d10b3f82c1ecdbbc11aeafa80202060d23e
 - universe: static-top40-minhist365-contract-20261011 tier CORE-10 (digest 1c06c18d2fc82413…); run symbols: BTCUSDT, ETHUSDT, ZECUSDT, SOLUSDT, XRPUSDT, NEARUSDT, DOGEUSDT, UNIUSDT, SUIUSDT
