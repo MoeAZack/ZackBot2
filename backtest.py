@@ -26,7 +26,7 @@ def legacy_rule(sym):
 
 class Book:
     """Shared data: indicator frames + cross-sectional context for a set of symbols."""
-    def __init__(self, raw):      # raw: {sym: DataFrame t,o,h,l,c,v}
+    def __init__(self, raw):      # raw: {sym: DataFrame t,o,h,l,c,v[,qv]}; qv (kline quote volume, VWAPREV) is carried as is
         # align every coin on the SAME candle timestamps (intersection), so a missing candle can never shift one coin
         # against another; bars missing inside the common window are reported in self.gaps
         clean = {s: d.drop_duplicates('t').sort_values('t').reset_index(drop=True) for s, d in raw.items()}

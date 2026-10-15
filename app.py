@@ -197,7 +197,10 @@ _CANDLE_LOCKS, _CL = {}, threading.Lock()
 
 
 def get_candles(sym, tf, days):
-    """Cached klines from Binance (public endpoint). Returns DataFrame t,o,h,l,c,v. One writer per cache file at a time."""
+    """Cached klines from Binance (public endpoint). Returns DataFrame t,o,h,l,c,v,qv. One writer per cache file at a time.
+    qv = the kline's quote volume (field 7, VWAPREV). Caches written before it was kept have no qv column: their rows load
+    with qv NaN (VWAPREV fails closed on them, never a synthesized volume); only newly fetched rows carry it, so a full
+    VWAPREV history needs the cache file deleted and re-downloaded."""
     if not re.fullmatch(r'[A-Z0-9]{2,20}USDT', sym) or tf not in TF_SEC: raise ValueError('bad symbol/timeframe')
     with _CL: lk = _CANDLE_LOCKS.setdefault((sym, tf), threading.Lock())
     with lk:
@@ -210,7 +213,8 @@ def _get_candles(sym, tf, days):
     f = os.path.join(DATA, 'candles', f'{sym}_{tf}.csv')
     step = TF_SEC[tf] * 1000
     need_from = int((time.time() - days * 86400 - 260 * TF_SEC[tf]) * 1000)
-    df = pd.read_csv(f) if os.path.exists(f) else pd.DataFrame(columns=['t', 'o', 'h', 'l', 'c', 'v'])
+    df = pd.read_csv(f) if os.path.exists(f) else pd.DataFrame(columns=['t', 'o', 'h', 'l', 'c', 'v', 'qv'])
+    if 'qv' not in df: df['qv'] = float('nan')                 # pre-qv cache: backward compatible, VWAPREV fails closed on these rows
     rows = []
     # backfill older history
     first = int(df.t.min()) if len(df) else int(time.time() * 1000)
@@ -218,7 +222,7 @@ def _get_candles(sym, tf, days):
     while end > need_from:
         k = PUB.klines(sym, tf, 1500, end_time=end)
         if not k: break
-        rows += [r[:6] for r in k]
+        rows += [list(r[:6]) + [r[7] if len(r) > 7 else 'nan'] for r in k]
         end = int(k[0][0]) - 1
         if len(k) < 1500: break
     # forward fill to now
@@ -228,11 +232,11 @@ def _get_candles(sym, tf, days):
         while start < time.time() * 1000 - step:
             k = PUB.klines(sym, tf, 1500, start_time=start)
             if not k: break
-            rows += [r[:6] for r in k]
+            rows += [list(r[:6]) + [r[7] if len(r) > 7 else 'nan'] for r in k]
             start = int(k[-1][0]) + step
             if len(k) < 1500: break
     if rows:
-        new = pd.DataFrame(rows, columns=['t', 'o', 'h', 'l', 'c', 'v']).astype(float)
+        new = pd.DataFrame(rows, columns=['t', 'o', 'h', 'l', 'c', 'v', 'qv']).astype(float)
         df = pd.concat([df.astype(float), new]).drop_duplicates('t').sort_values('t')
         df = df[df.t < time.time() * 1000 - step]          # closed candles only
         tmp = f + '.tmp'; df.to_csv(tmp, index=False); os.replace(tmp, f)     # atomic: a crash never leaves a half-written cache

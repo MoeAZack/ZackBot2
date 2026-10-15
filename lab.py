@@ -504,7 +504,7 @@ def monte_carlo_daily(cv, start=500.0, n=2000, block_days=5, seed=0):
 # ------------------------------------------------------------------ 4) lookahead check
 def _raw_from(book_or_raw):
     if isinstance(book_or_raw, BT.Book):
-        return {s: d[['t', 'o', 'h', 'l', 'c', 'v']].copy() for s, d in book_or_raw.d.items()}
+        return {s: d[['t', 'o', 'h', 'l', 'c', 'v'] + (['qv'] if 'qv' in d else [])].copy() for s, d in book_or_raw.d.items()}
     return {s: d.drop_duplicates('t').sort_values('t').reset_index(drop=True) for s, d in book_or_raw.items()}
 
 
