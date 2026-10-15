@@ -332,7 +332,7 @@ del _p
 # backtest/UI/governor loop over it); PAPER/testnet only - in live mode every entry of this profile is refused (fail closed).
 ROTATION_PRESET = 'breadth_rotation'
 ROTATION_NAME = 'Breadth rotation (PAPER, 6 slots at a time)'
-ROTATION_PERIOD_S = 24 * 3600          # active group advances every 24 h, aligned to 00:00 UTC
+ROTATION_PERIOD_S = 8 * 3600           # active group advances every 8 h (00/08/16 UTC): 3 groups -> each gets an entry window daily (Cowork 6187025398)
 ROTATION_MAX_ACTIVE = 6                # Codex ruling 2: at most 6 active slots, equal shares
 BREADTH_RISK, BREADTH_MAX_POS = 0.02, 4
 BREADTH_FAMILIES = ('Trend', 'Momentum', 'Range', 'Breakout', 'Scalp', 'Rotation', 'Dip-DCA')
@@ -341,7 +341,8 @@ BREADTH_FAMILY = {'ema_st': 'Trend', 'ema_mom': 'Trend', 'donchian_ens': 'Trend'
                   'exp_range': 'Range', 'exp_vwaprev': 'Range',
                   'breakout_pyramid': 'Breakout', 'squeeze_tp': 'Breakout', 'bear_breakdown': 'Breakout',
                   'exp_breakout': 'Breakout', 'exp_structure': 'Breakout',
-                  'exp_scalp': 'Scalp', 'rotation': 'Rotation', 'dca_dip': 'Dip-DCA'}   # unknown keys -> 'Other' (still rotated)
+                  'exp_scalp': 'Scalp', 'rotation': 'Rotation', 'dca_dip': 'Dip-DCA',
+                  'exp_mom_short': 'Momentum', 'exp_rip_sell_dca': 'Dip-DCA'}   # unknown keys -> 'Other' (still rotated)
 # Codex ruling 3: long-default strategies whose signal function already emits both sides run 'both' in PAPER; every other
 # strategy keeps its registry sides (dca_dip / hot_coin long, bear_breakdown short; rotation shorts need params.shorts).
 BREADTH_BOTH = frozenset({'ema_st', 'ema_mom', 'donchian_ens', 'breakout_pyramid', 'squeeze_tp', 'pullback_rsi'})
