@@ -44,6 +44,13 @@ STR_MAX = 1000           # any string in an event is capped at this length
 # with the lot quantity (an unknown add kind would show up there).
 ENTRY_KINDS = ('entry', 'pyramid_add', 'safety_order', 'entry_fallback', 'grid_buy', 'grid_sell')
 RUNNER_WHY = ('take_profit_1', 'basket_tp_part', 'take_profit_ladder')   # partial take-profits that leave a runner
+# Registered exit / close reason codes (a close fill's `why`, a history record's exit_reason) of the lot paths in engine.py.
+# APPEND-ONLY: a shipped code is never renamed, reordered or reused (audit lines and history keep it for good); grid closes
+# stay open-ended ('grid_<reason>'). tests/test_resting_tp.py pins the order.
+EXIT_REASONS = ('stop', 'take_profit', 'take_profit_1', 'take_profit_ladder', 'basket_tp', 'basket_tp_part', 'stop_crossed',
+                'stop_failed', 'exit_signal', 'time_exit', 'flatten', 'resync', 'manual_close', 'closed_from_panel',
+                'closed_from_telegram',
+                'take_profit_resting')    # mgmt.resting_tp: the lot's resting exchange take-profit filled (full or partial)
 TRAIL_ATR_DEFAULT = 2.0        # predeclared: trailing stop k x ATR behind the running best when the lot has no trail_atr
 TIME_CAP_BARS_DEFAULT = 48     # predeclared: close at the first observation at/after entry + N bars
 RULE_TARGET = 'close the remainder at the planned target'
