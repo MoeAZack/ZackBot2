@@ -628,6 +628,11 @@ def _validate_lot(k, l):
     _str(l.get('stop_foreign'), w + '.stop_foreign', _TAG_RE, opt=True)
     _num(l.get('stop_confirmed_t'), w + '.stop_confirmed_t', opt=True)
     _bool(l.get('restored_from_bak'), w + '.restored_from_bak', opt=True)
+    _str(l.get('tp_id'), w + '.tp_id', _TAG_RE, opt=True)                 # resting take-profit (mgmt.resting_tp)
+    _str(l.get('tp_cid'), w + '.tp_cid', _CID_RE, opt=True); _str(l.get('tp_acid'), w + '.tp_acid', _CID_RE, opt=True)
+    _num(l.get('tp_px'), w + '.tp_px', gt=0, opt=True); _num(l.get('tp_qty'), w + '.tp_qty', lo=0, opt=True)
+    _num(l.get('tp_done'), w + '.tp_done', lo=0, opt=True); _num(l.get('tp_placed_t'), w + '.tp_placed_t', opt=True)
+    _str(l.get('tp_failed'), w + '.tp_failed', opt=True)
     pd_ = l.get('pending')
     if pd_ is not None:
         _dict(pd_, w + '.pending')
@@ -1027,6 +1032,19 @@ PROV_PENDING_S = 60          # AUD-04 r2: a provisional stop whose answer was lo
 STOP_TYPES = ('STOP_MARKET', 'STOP')
 BOT_STOP_CID_RE = re.compile(r'z[ab][0-9a-f]{22}')   # exact new_cid('zb'|'za') shape of the bot's own stop client ids
 #   (classic / algo); any other client id (manual, web, other bots, malformed) is never adopted or cancelled
+TP_CID_RE = re.compile(r'z[tq][0-9a-f]{22}')        # resting take-profit client ids: new_cid('zt') classic / ('zq') algo
+TP_EXIT = 'take_profit_resting'                       # exit reason of a lot closed by its resting exchange take-profit
+TP_EXCLUDE = ('runner', 'ttp', 'tp1_r', 'tps', 'dca', 'grid')   # any of these makes the exit more than a plain fixed tp_r
+
+
+def resting_tp_eligible(g):
+    """mgmt.resting_tp (default OFF) applies only to a plain fixed tp_r exit: no runner, trailing take-profit, partial tp1,
+    ladder, DCA basket, grid or pyramid add (each of those changes the exit or the size the target must close)."""
+    g = g if isinstance(g, dict) else {}
+    if g.get('resting_tp') is not True or not g.get('tp_r'): return False
+    if any(g.get(k) for k in TP_EXCLUDE): return False
+    py = g.get('pyramid')
+    return not (isinstance(py, dict) and (py.get('n') or 0) > 0)
 STOP_MISS_ORDER = ('owner_check', 'restoring', 'checking')       # lot['stop_miss_why'] values, most severe first
 STOP_MISSING_BLOCKS = dict(
     checking='protective stop not found on Binance for this coin - re-checking it; no new entries or adds until it is confirmed',
@@ -2236,7 +2254,196 @@ class Engine:
         if old and old != new: self._cancel_or_park(lot['symbol'], old)
         fx = lot.pop('stop_foreign', None)                 # AUD-04: Move stop took over from a stop placed outside the bot
         if fx and fx not in (old, new): self._cancel_or_park(lot['symbol'], fx)
+        if lot.get('tp_id'):                               # resting TP (mgmt.resting_tp): AFTER the stop is done, kept at
+            try: self._tp_sync(lot)                        # the lot's size - it never changes what the stop did
+            except Exception as ex: log.warning(f"{lot['symbol']} resting take-profit resize failed ({ex}) - retried by the verifier")
         return True
+
+    # ------------------------------------------------------------ resting exchange take-profit (mgmt.resting_tp, default OFF)
+    # A plain fixed tp_r target can rest on Binance as a reduce-only TAKE_PROFIT_MARKET (mark-price trigger) instead of being
+    # checked on the manage poll and closed at market. The protective stop is never touched, widened or delayed for it: the TP
+    # is placed only AFTER the stop is confirmed, and a TP that cannot be placed falls back to the poll path for good.
+    _TP_FIELDS = ('tp_id', 'tp_cid', 'tp_acid', 'tp_px', 'tp_qty', 'tp_done', 'tp_placed_t')
+
+    def _tp_wanted(self, lot):
+        return not self.dry and not lot.get('manual') and not lot.get('tp_failed') and resting_tp_eligible(lot.get('mgmt'))
+
+    def _tp_price(self, lot):
+        """e0 + tp_r * R on the tick grid, rounded TOWARD the entry (a long's sell target down, a short's buy target up):
+        the resting order triggers no later than the poll path would."""
+        tick, sd = self.rules[lot['symbol']]['tick'], (1 if lot['side'] == 'LONG' else -1)
+        lvl = lot['e0'] + sd * lot['mgmt']['tp_r'] * lot['R']
+        q = self._rd(lvl, tick)
+        if sd == -1 and q < lvl - tick * 1e-6: q = self._rd(q + tick, tick)
+        return q
+
+    def _tp_clear(self, lot):
+        for f in self._TP_FIELDS: lot.pop(f, None)
+
+    def _tp_fail(self, lot, why):
+        """Placement failed: logged, and this lot keeps the poll-based market close (today's path). The stop is untouched."""
+        self._tp_clear(lot); lot['tp_failed'] = str(why)[:160]
+        self.err(f"{lot['symbol']} {lot['side']} [{lot['sleeve']}]: resting take-profit not placed ({str(why)[:120]}) - the bot "
+                 "watches the target and closes at market instead; the stop is unchanged")
+
+    def _place_tp(self, lot):
+        """Place the lot's resting take-profit for its whole quantity (same order client and write-ahead client-id scheme
+        as the stop: zt<hex> classic / zq<hex> algo fallback, recorded durably BEFORE the send). Only once the stop is
+        confirmed placed. Returns True when a TP is placed (or owned after a lost answer)."""
+        if not self._tp_wanted(lot) or lot.get('tp_id') or lot.get('pending'): return False
+        if lot.get('stop_dirty') or not lot.get('stop_id') or lot.get('stop_miss_why') == 'owner_check': return False
+        sym = lot['symbol']; r = self.rules.get(sym)
+        fn = getattr(self.trade, 'take_profit', None)
+        if r is None or not callable(fn):
+            self._tp_fail(lot, 'no take-profit order on this exchange client'); return False
+        px, qty = self._tp_price(lot), self._rd(lot['qty'], r['step'])
+        if qty <= 0 or px <= 0:
+            self._tp_fail(lot, f'target {px} / quantity {qty} not placeable'); return False
+        cid, acid = new_cid('zt'), new_cid('zq')
+        lot['tp_cid'], lot['tp_acid'] = cid, acid
+        try:
+            self._save_wal()
+        except Exception as ex:
+            lot.pop('tp_cid', None); lot.pop('tp_acid', None)
+            self.err(f"{sym} [{lot['sleeve']}] resting take-profit NOT sent - its write-ahead record could not be saved "
+                     f"({type(ex).__name__}); retried later", key=f'tp-wal|{sym}')
+            return False
+        try:
+            tag = self._send(fn, sym, lot['side'], self._fmt(qty, r['step']), self._fmt(px, r['tick']), reduce_only=True,
+                             cid=cid, acid=acid)
+        except AmbiguousOrder as ex:                      # it may be live: owned by its client id, the verifier decides
+            tag = ex.tag or f'c:{cid}'
+            self.err(f"{sym} [{lot['sleeve']}] resting take-profit answer lost ({tag}) - owned, its status is checked")
+        except BinanceError as ex:
+            self._tp_fail(lot, 'target already reached' if ex.code == -2021 else ex); return False
+        except Exception as ex:
+            self._tp_fail(lot, ex); return False
+        lot.update(tp_id=tag, tp_px=px, tp_qty=qty, tp_done=0.0, tp_placed_t=self.clock())
+        self.save_state()
+        log.info(f"{sym} {lot['side']} [{lot['sleeve']}] resting take-profit {tag}: {qty} @ {px}")
+        return True
+
+    def _tp_sync(self, lot):
+        """A live resting TP is never larger than its lot (after a partial close / resync the stop was resized): a TP for
+        the lot's quantity is placed first, then the old one is cancelled (parked + retried if the cancel fails)."""
+        tag = lot.get('tp_id')
+        if not tag or self.dry or lot.get('pending') or lot['symbol'] not in self.rules: return False
+        left = (lot.get('tp_qty') or 0.0) - (lot.get('tp_done') or 0.0)
+        if abs(left - lot['qty']) <= self._qty_tol(self.rules[lot['symbol']]['step']): return False
+        old = {f: lot[f] for f in self._TP_FIELDS if f in lot}
+        self._tp_clear(lot)
+        if self._place_tp(lot) or lot.get('tp_failed'):
+            self._cancel_or_park(lot['symbol'], tag)      # replaced, or fell back to the poll path: the old one must go
+        else:
+            lot.update(old)                               # not placeable right now: kept, retried by the verifier
+        return True
+
+    def _tp_record(self, lot):
+        """Order record of a classic resting TP by its client id -> dict(state 'ok'|'notfound'|'unknown', exec, px, final).
+        'unknown': no record source (algo TP, a client without get_order) or a failed read - never read as 'gone'."""
+        tag, cid = str(lot.get('tp_id') or ''), lot.get('tp_cid')
+        fn = getattr(self.trade, 'get_order', None)
+        if not cid or not callable(fn) or not tag.startswith(('o:', 'c:')): return dict(state='unknown')
+        try:
+            o = fn(lot['symbol'], cid)
+        except Exception:
+            return dict(state='unknown')
+        if not o: return dict(state='notfound')
+        try: ex = float(o.get('executedQty') or 0)
+        except (TypeError, ValueError): return dict(state='unknown')
+        ex = min(self._rd(ex, self.rules[lot['symbol']]['step']), lot.get('tp_qty') or lot['qty'])
+        return dict(state='ok', exec=ex, px=self._fill_px(o) or lot.get('tp_px'), oid=o.get('orderId'),
+                    final=str(o.get('status') or '').upper() in ORDER_FINAL)
+
+    def _tp_settle(self, k, tags, short=None, replace=True):
+        """Settle a lot's resting TP: its order record decides (classic); without one, a position SHORTFALL (`short`, from
+        reconcile) is the TP's fill only while the lot's stop is still listed. A fill is booked as 'take_profit_resting';
+        a full fill finishes the lot (its stop is cancelled), a partial one keeps the rest with its stop resized exactly
+        like a partial stop fill. A TP that ended without a fill is placed again (replace=False, from reconcile: left to the
+        verifier, which places it once the stop is confirmed). -> 'filled'|'partial'|'gone'|'none'|'unknown'."""
+        l = self.state['lots'][k]; tag = l.get('tp_id')
+        if not tag: return 'none'
+        sym, step, listed = l['symbol'], self.rules[l['symbol']]['step'], tag in tags
+        rec = self._tp_record(l)
+        if rec['state'] == 'ok':
+            new, px, final = self._rd(max(0.0, rec['exec'] - (l.get('tp_done') or 0.0)), step), rec['px'], rec['final']
+            if tag.startswith('c:') and rec.get('oid') and not final: l['tp_id'] = f"o:{rec['oid']}"   # lost answer: it exists
+        elif rec['state'] == 'notfound' and not listed:
+            new, px, final = 0.0, None, True                       # Binance has no such order: it never existed
+        elif short is not None and not listed and l.get('stop_id') in tags:
+            new, px, final = min(self._rd(short, step), l['qty']), l.get('tp_px'), True
+        else:
+            return 'unknown'
+        if new > 0:
+            self._apply_close(l, new, px or l.get('tp_px') or l['avg'], TP_EXIT)
+            l['tp_done'] = (l.get('tp_done') or 0.0) + new
+            self.notify(f"🎯 TAKE PROFIT {l['side']} {sym} [{l['sleeve']}] {new:g} @ {px or l.get('tp_px')} (resting exchange target)")
+        if l['qty'] <= 0:
+            self._tp_clear(l)                                       # filled: nothing left to cancel
+            self._finish(k, TP_EXIT); self.save_state()             # the stop is cancelled there (never a stale stop)
+            return 'filled'
+        if final: self._tp_clear(l)                                  # that order is over: a new one covers what is left
+        if new > 0:
+            l['stop_dirty'] = True                                   # stop resized to what is left (new first, then old cancelled)
+            try: self._replace_stop(l)
+            except Exception as ex: log.warning(f"{sym} stop resize after a partial take-profit failed ({ex}) - retried next pass")
+            if final and replace: self._place_tp(l)
+            self.save_state(); return 'partial'
+        if final:
+            log.info(f"{sym} {l['side']} [{l['sleeve']}] resting take-profit {tag} ended without a fill - placing it again")
+            if replace: self._place_tp(l)
+            self.save_state(); return 'gone'
+        return 'none'
+
+    def _tp_by_position(self, k, tags):
+        """No order record for a missing TP: one critical positions read decides - the position intact -> the TP is gone
+        (placed again); smaller -> settled as its fill while the stop is listed, else left to reconcile."""
+        l = self.state['lots'][k]; sym, side = l['symbol'], l['side']
+        try: live = self._positions_critical()
+        except Exception: return 'unknown'
+        have = live.get((sym, side), 0.0)
+        expected = sum(x['qty'] for x in self.state['lots'].values() if x['symbol'] == sym and x['side'] == side)
+        if have >= expected - self._qty_tol(self.rules[sym]['step']):
+            self._tp_clear(l); self._place_tp(l); self.save_state(); return 'gone'
+        return self._tp_settle(k, tags, short=expected - have)
+
+    def _verify_tps(self, sym, rows, tags):
+        """Resting take-profits of one symbol, from the verifier's open-order read: a bot TP (zt/zq client id) that no lot
+        owns is cancelled; an eligible lot with a confirmed stop and no TP gets one; a listed TP of the wrong size is
+        resized; a missing one is settled from its order record (filled / partial / gone -> placed again). Returns changed."""
+        changed, now = False, self.clock()
+        lots = [(k, l) for k, l in self.state['lots'].items() if l['symbol'] == sym]
+        owned = {v for _, l in lots for v in (l.get('tp_id'), l.get('tp_cid'), l.get('tp_acid')) if v}
+        orph = {t for s_, t in self.state.get('orphans') or [] if s_ == sym}
+        by_cid = {}
+        for r in rows:
+            cid = str(r.get('client_id') or '')
+            if not TP_CID_RE.fullmatch(cid): continue
+            by_cid[cid] = r
+            if r['tag'] in owned or cid in owned or r['tag'] in orph: continue
+            ik = f"tp-orphan|{sym}|{r['tag']}"
+            self.err(f"{sym}: resting take-profit {r['tag']} is not owned by any trade - cancelled", key=ik)
+            if self._cancel_or_park(sym, r['tag']): self.resolve(ik, f"{sym}: orphaned take-profit {r['tag']} cancelled")
+            changed = True
+        for k, l in lots:
+            if k not in self.state['lots'] or l.get('pending'): continue
+            tag = l.get('tp_id')
+            if not tag:
+                if self._tp_wanted(l) and l.get('stop_id') in tags and not l.get('stop_dirty'): changed = self._place_tp(l) or changed
+                continue
+            if tag not in tags:
+                row = by_cid.get(l.get('tp_cid') or '') or by_cid.get(l.get('tp_acid') or '')
+                if row: l['tp_id'] = tag = row['tag']; changed = True       # a lost answer: listed under its client id
+            if tag in tags:
+                changed = self._tp_sync(l) or changed
+                continue
+            if now - (l.get('tp_placed_t') or -1e18) < STOP_LIST_GRACE_S:
+                self._stopv_due(sym, now + STOP_RECHECK_S); continue        # just placed: not listed yet is not a miss
+            res = self._tp_settle(k, tags)
+            if res == 'unknown': res = self._tp_by_position(k, tags)
+            if res == 'unknown': self._stopv_due(sym, now + STOP_RECHECK_S)
+            changed = changed or res not in ('none', 'unknown')
+        return changed
 
     def _market_close(self, lot, qty, why, mark=None, post=None):
         """Close qty at market. If Binance's answer is lost (AmbiguousOrder) the lot is marked 'pending' and reconcile()
@@ -2464,6 +2671,8 @@ class Engine:
         if not lot: return
         self.resolve(f'stop-missing|{key}', f"{lot['symbol']} {lot['side']} [{lot['sleeve']}]: trade closed ({why}) - stop check ended")
         if why != 'stop': self._cancel_or_park(lot['symbol'], lot.get('stop_id'))   # no stale stop may survive its lot
+        if lot.get('tp_id') and why != TP_EXIT:            # resting TP: cancelled on every other close (a failed cancel is
+            self._cancel_or_park(lot['symbol'], lot['tp_id'])   # parked and retried - it never blocks the close)
         self._record_r(lot)
         sd = 1 if lot['side'] == 'LONG' else -1
         closes = [f for f in lot.get('fills', []) if f[1] not in ('entry', 'pyramid_add', 'safety_order')]
@@ -2686,7 +2895,8 @@ class Engine:
                               if lot['qty'] <= 0: break
                           if lot['qty'] <= 0: self._finish(key, 'take_profit_ladder'); continue
                           if fired: self._replace_stop(lot)
-                    if g.get('tp_r') and not g.get('runner') and not g.get('ttp') and ge(lot['e0'] + sd * g['tp_r'] * lot['R']):
+                    if (g.get('tp_r') and not g.get('runner') and not g.get('ttp') and ge(lot['e0'] + sd * g['tp_r'] * lot['R'])
+                            and not lot.get('tp_id')):         # a resting exchange TP owns this exit while it is placed
                       with self._stage(key, lot, 'take_profit', failed):
                           self.close_lot(key, 'take_profit', m); changed = True; continue
                     if key not in self.state['lots']: continue   # AUD-02: finished by a stage (or its recovery)
@@ -2974,6 +3184,9 @@ class Engine:
                 log.info(f"{sym} {l['side']} [{l['sleeve']}] stop {l['stop_id']} not listed (status {st or 'unknown'}, "
                          f"miss {l['stop_miss']}) - re-checking before any restore"); continue
             self._restore_missing_stop(k, l, st, extras, foreign)
+        if (any(l['symbol'] == sym and (l.get('tp_id') or self._tp_wanted(l)) for l in self.state['lots'].values())
+                or any(TP_CID_RE.fullmatch(str(r.get('client_id') or '')) for r in rows)):
+            changed = self._verify_tps(sym, rows, tags) or changed    # resting take-profits (mgmt.resting_tp)
         clean = all(l.get('stop_id') in tags and not l.get('stop_dirty') for l in self.state['lots'].values()
                     if l['symbol'] == sym and not l.get('pending'))
         claims = self._side_entries(sym)
@@ -3138,7 +3351,11 @@ class Engine:
             steps.append(f"take {g.get('tp1_frac', 0.5) * 100:.0f}% profit at {p(lvl)} (+{g['tp1_r']:g}R)"); nxt = nxt or f'partial take-profit at {p(lvl)}'
         if g.get('tp_r') and not g.get('runner') and not g.get('ttp') and R:
             lvl = e0 + sd * g['tp_r'] * R
-            title = title or f'Fixed target {p(lvl)}'; steps.append(f"close everything at {p(lvl)} (+{g['tp_r']:g}R)")
+            title = title or f'Fixed target {p(lvl)}'
+            if resting_tp_eligible(g) and not l.get('tp_failed') and not l.get('manual'):
+                steps.append(f"close everything at {p(l.get('tp_px') or lvl)} (+{g['tp_r']:g}R) - resting exchange target on Binance")
+            else:
+                steps.append(f"close everything at {p(lvl)} (+{g['tp_r']:g}R)")
         if g.get('be_r') and R and sd * (l['stop'] - l['avg']) < 0:
             lvl = e0 + sd * g['be_r'] * R; steps.append(f"stop moves to breakeven once price reaches {p(lvl)} (+{g['be_r']:g}R)")
             nxt = nxt or f'breakeven trigger at {p(lvl)}'
@@ -3291,6 +3508,13 @@ class Engine:
             self.health.setdefault('confirmed', {}).setdefault('stops', {})[sym] = now_utc().isoformat(timespec='seconds')
             self.resolve(f'open-orders|{sym}', f'open orders {sym} readable again')
             self._stops_seen(sym, open_tags)                            # AUD-04: listed stops are confirmed now
+            if any(st['lots'][k].get('tp_id') for k in keys):           # a resting TP fill shrinks the position too: its
+                acted = False                                           # record (or, without one, the listed stop) decides
+                for k in [k for k in keys if st['lots'][k].get('tp_id')]:
+                    if k in st['lots'] and have < expected - tol:
+                        acted = self._tp_settle(k, open_tags, short=expected - have, replace=False) in ('filled', 'partial') or acted
+                        keys = [k for k in keys if k in st['lots']]; expected = sum(st['lots'][k]['qty'] for k in keys)
+                if acted or have >= expected - tol: continue            # booked: the rest is re-read next pass (fresh tags)
             gone = [k for k in keys if st['lots'][k].get('stop_id') and st['lots'][k]['stop_id'] not in open_tags]
             gone.sort(key=lambda k: -sd * st['lots'][k]['stop'])       # highest long stop triggers first
             for k in gone:
@@ -4282,6 +4506,9 @@ class Engine:
                 self.err(f'{sym}: stop AND safety close failed ({e}) - kept as unprotected, retrying every few seconds')
                 self.notify(f'🆘 {side} {sym} has NO stop on Binance (stop and close both failed). The bot keeps retrying - check it.')
                 return True
+        if self._tp_wanted(lot):                                  # mgmt.resting_tp: only after the stop is placed
+            try: self._place_tp(lot)
+            except Exception as e: self._tp_fail(lot, e)
         self.log_trade(time=now_utc().isoformat(timespec='seconds'), event='entry', sleeve=lot['sleeve'], symbol=sym, side=side,
                        qty=qty, price=fill, stop=stop, equity=round(eq, 2), note=reason)
         log.info(f"ENTRY {sym} {side} [{lot['sleeve']}] {qty} @ {fill} stop {stop}")
