@@ -51,6 +51,9 @@ TABLE_YEARS = frozenset({2026, 2027})
 
 OPEN_T, CLOSE_T, EARLY_CLOSE_T = time(9, 30), time(16, 0), time(13, 0)
 SESSION_GATED_FAMILIES = frozenset({'range', 'scalp'})  # VWAPREV / SCALP
+# Families allowed outside the cash session (still blocked when UNKNOWN). Any other / missing family label is treated as
+# session-gated (fail closed). Labels are compared case-insensitively: engine.BREADTH_FAMILY uses 'Range', 'Scalp', ...
+UNGATED_FAMILIES = frozenset({'trend', 'momentum', 'breakout'})
 
 
 def _to_utc(ts_utc):
@@ -78,10 +81,11 @@ def entry_allowed(symbol, family, ts_utc):
     """May a NEW tradfi entry be opened? Gold -> True (no cash-session gate). Stocks: family in {'range','scalp'} only when
     OPEN; other families True unless UNKNOWN (fail closed). Oil -> always False. Non-tradfi symbols -> True (not gated here).
     Position management never consults this."""
-    if symbol in OIL_SET or family == 'oil': return False
+    fam = str(family or '').strip().lower()
+    if symbol in OIL_SET or fam == 'oil': return False
     if symbol in GOLD_FAMILY: return True
     if symbol in STOCK_SET:
         st = us_cash_session(ts_utc)
-        if family in SESSION_GATED_FAMILIES: return st == 'OPEN'
-        return st != 'UNKNOWN'
+        if fam in UNGATED_FAMILIES: return st != 'UNKNOWN'
+        return st == 'OPEN'   # range / scalp and any unrecognised family: cash session only
     return True
