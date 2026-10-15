@@ -1,0 +1,200 @@
+{
+ "format": "zb-static40-data-plan/1",
+ "interval": "4h",
+ "window": {
+  "start": "2024-10-14T00:00:00Z",
+  "end": "2026-09-28T00:00:00Z",
+  "end_exclusive": true,
+  "sealed_cutoff": "2026-09-28T00:00:00Z"
+ },
+ "warmup_bars": 220,
+ "collector": "tools/research/collect_klines_research.py (bounded; endTime = cutoff-1 on every request; never overwrites; out dir outside the repo)",
+ "source": "https://fapi.binance.com/fapi/v1/klines (public, no key)",
+ "research_cache": "%LOCALAPPDATA%/ZackBot/candles_4h_research (outside the repo; not the app candles dir)",
+ "rule": "symbols with gaps / late listing in the warm-up+window are INCOMPLETE and excluded by the runner, never filled",
+ "runner": "tools/research/run_breadth_candidate.py @ c8c7b92, unchanged; Static-40 passed via --symbols (all 40, rank order); no runner change",
+ "plan": [
+  {
+   "symbol": "BTCUSDT",
+   "source": "primary app cache (read-only, --cache)"
+  },
+  {
+   "symbol": "ETHUSDT",
+   "source": "primary app cache (read-only, --cache)"
+  },
+  {
+   "symbol": "ZECUSDT",
+   "source": "primary app cache (read-only, --cache)"
+  },
+  {
+   "symbol": "SOLUSDT",
+   "source": "primary app cache (read-only, --cache)"
+  },
+  {
+   "symbol": "XRPUSDT",
+   "source": "primary app cache (read-only, --cache)"
+  },
+  {
+   "symbol": "NEARUSDT",
+   "source": "primary app cache (read-only, --cache)"
+  },
+  {
+   "symbol": "HYPEUSDT",
+   "source": "primary app cache (read-only, --cache)"
+  },
+  {
+   "symbol": "DOGEUSDT",
+   "source": "primary app cache (read-only, --cache)"
+  },
+  {
+   "symbol": "UNIUSDT",
+   "source": "primary app cache (read-only, --cache)"
+  },
+  {
+   "symbol": "SUIUSDT",
+   "source": "primary app cache (read-only, --cache)"
+  },
+  {
+   "symbol": "QNTUSDT",
+   "source": "research cache (--cache-extra), already present"
+  },
+  {
+   "symbol": "BNBUSDT",
+   "source": "primary app cache (read-only, --cache)"
+  },
+  {
+   "symbol": "LSKUSDT",
+   "source": "research cache (--cache-extra), already present"
+  },
+  {
+   "symbol": "ENAUSDT",
+   "source": "research cache (--cache-extra), already present"
+  },
+  {
+   "symbol": "1000PEPEUSDT",
+   "source": "research cache (--cache-extra), already present"
+  },
+  {
+   "symbol": "WLDUSDT",
+   "source": "research cache (--cache-extra), already present"
+  },
+  {
+   "symbol": "PUMPUSDT",
+   "source": "research cache (--cache-extra), already present"
+  },
+  {
+   "symbol": "ADAUSDT",
+   "source": "primary app cache (read-only, --cache)"
+  },
+  {
+   "symbol": "AVAXUSDT",
+   "source": "primary app cache (read-only, --cache)"
+  },
+  {
+   "symbol": "LINKUSDT",
+   "source": "primary app cache (read-only, --cache)"
+  },
+  {
+   "symbol": "TAOUSDT",
+   "source": "TO COLLECT into research cache (--cache-extra)"
+  },
+  {
+   "symbol": "ONDOUSDT",
+   "source": "TO COLLECT into research cache (--cache-extra)"
+  },
+  {
+   "symbol": "AKEUSDT",
+   "source": "TO COLLECT into research cache (--cache-extra)"
+  },
+  {
+   "symbol": "ARBUSDT",
+   "source": "TO COLLECT into research cache (--cache-extra)"
+  },
+  {
+   "symbol": "BCHUSDT",
+   "source": "TO COLLECT into research cache (--cache-extra)"
+  },
+  {
+   "symbol": "BRUSDT",
+   "source": "TO COLLECT into research cache (--cache-extra)"
+  },
+  {
+   "symbol": "FILUSDT",
+   "source": "TO COLLECT into research cache (--cache-extra)"
+  },
+  {
+   "symbol": "AAVEUSDT",
+   "source": "TO COLLECT into research cache (--cache-extra)"
+  },
+  {
+   "symbol": "LTCUSDT",
+   "source": "TO COLLECT into research cache (--cache-extra)"
+  },
+  {
+   "symbol": "ONEUSDT",
+   "source": "TO COLLECT into research cache (--cache-extra)"
+  },
+  {
+   "symbol": "SANDUSDT",
+   "source": "TO COLLECT into research cache (--cache-extra)"
+  },
+  {
+   "symbol": "TRUMPUSDT",
+   "source": "TO COLLECT into research cache (--cache-extra)"
+  },
+  {
+   "symbol": "MOVRUSDT",
+   "source": "TO COLLECT into research cache (--cache-extra)"
+  },
+  {
+   "symbol": "RLCUSDT",
+   "source": "TO COLLECT into research cache (--cache-extra)"
+  },
+  {
+   "symbol": "XLMUSDT",
+   "source": "TO COLLECT into research cache (--cache-extra)"
+  },
+  {
+   "symbol": "HBARUSDT",
+   "source": "TO COLLECT into research cache (--cache-extra)"
+  },
+  {
+   "symbol": "PENGUUSDT",
+   "source": "TO COLLECT into research cache (--cache-extra)"
+  },
+  {
+   "symbol": "STRKUSDT",
+   "source": "TO COLLECT into research cache (--cache-extra)"
+  },
+  {
+   "symbol": "MUBARAKUSDT",
+   "source": "TO COLLECT into research cache (--cache-extra)"
+  },
+  {
+   "symbol": "DASHUSDT",
+   "source": "TO COLLECT into research cache (--cache-extra)"
+  }
+ ],
+ "to_collect": [
+  "TAOUSDT",
+  "ONDOUSDT",
+  "AKEUSDT",
+  "ARBUSDT",
+  "BCHUSDT",
+  "BRUSDT",
+  "FILUSDT",
+  "AAVEUSDT",
+  "LTCUSDT",
+  "ONEUSDT",
+  "SANDUSDT",
+  "TRUMPUSDT",
+  "MOVRUSDT",
+  "RLCUSDT",
+  "XLMUSDT",
+  "HBARUSDT",
+  "PENGUUSDT",
+  "STRKUSDT",
+  "MUBARAKUSDT",
+  "DASHUSDT"
+ ]
+}
