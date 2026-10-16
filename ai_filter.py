@@ -19,13 +19,16 @@ Last 12 {tf} candles (open, high, low, close): {candles}
 Reply with JSON only: {{"decision": "take" or "skip", "reason": "<one sentence citing the numbers above>"}}"""
 
 
+DEFAULT_MODEL = 'claude-sonnet-4-5'          # used when ANTHROPIC_MODEL is unset/blank (settable via /api/keys)
+
+
 def review(cfg, symbol, sleeve, sig, candles, funding, tf='4h', side='LONG'):
     """-> (decision, reason, meta). meta = model, prompt version, latency, error - logged by the engine."""
     import time
     key = cfg.get('ANTHROPIC_API_KEY')
     if not key or cfg.get('AI_FILTER', 'on') != 'on':
         return 'take', 'AI filter off', {}
-    model = cfg.get('ANTHROPIC_MODEL') or 'claude-sonnet-4-5'
+    model = cfg.get('ANTHROPIC_MODEL') or DEFAULT_MODEL
     meta = dict(model=model, prompt=PROMPT_VERSION, tf=tf)
     t0 = time.time()
     msg = PROMPT.format(sleeve=sleeve, symbol=symbol, tf=tf, side=side, side_l=side.lower(), st='up' if sig['st_dir'] > 0 else 'down',
