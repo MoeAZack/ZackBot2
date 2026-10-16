@@ -277,29 +277,39 @@ def _next(data: bytes, rec: dict) -> bytes:
     return line_of(rec)
 
 
-def _enforce_promotion(d: str, run_digest) -> None:
-    """The promotion boundary for a record registering `run_digest`: its frozen envelope in the runs store must pass
-    report.enforce_promotion (raises `promotion_refused:<reason>`). No runs store / no envelope is left to the record
-    checks, which already refuse such a holdout record."""
-    runs = _runs_of(d)
-    if runs is None or not isinstance(run_digest, str) or not HEX64.match(run_digest):
+def _enforce_promotion(d: str, run_digest, exec_manifest=None, exec_store=None) -> None:
+    """The promotion boundary for a PROMOTION_KINDS record (Codex 6226591731 item 1, Cowork 6226614247). A record that
+    names a run must prove it: the frozen envelope is resolved from the runs store beside the ledger and must pass
+    report.enforce_promotion WITH the caller's bound execution evidence (`exec_manifest` read under `exec_store`; a /3
+    run bound to a manifest is verified against it, files re-hashed). No runs store, an unreadable envelope or a
+    malformed digest REFUSES (`promotion_refused:...`) - never a silent admit. A record with run_digest null (e.g. a
+    `window_spent` that burns a window without promoting any run, breadth_eval's evaluation spend) names no run to
+    promote and is outside this boundary BY DESIGN; the ledger's own record checks still apply to it."""
+    if run_digest is None:
         return
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
     import report as R
+    EO = R._exec_obs()
+    if not isinstance(run_digest, str) or not HEX64.match(run_digest):
+        raise EO.PromotionRefused(['run_digest_invalid'])
+    runs = _runs_of(d)
+    if runs is None:
+        raise EO.PromotionRefused(['runs_store_missing'])
     try:
         env = R.load_envelope(runs, run_digest)
-    except R.ReportError:
-        return
-    R.enforce_promotion(env)
+    except R.ReportError as e:
+        raise EO.PromotionRefused([f'run_envelope_unreadable: {e}'])
+    R.enforce_promotion(env, exec_manifest=exec_manifest, exec_store=exec_store)
 
 
 def append(path: str, *, kind, candidate_id, split, window, author, cairo_date, manifest_digest=None, run_digest=None,
-           detail=None, lineage=None) -> dict:
+           detail=None, lineage=None, exec_manifest=None, exec_store=None) -> dict:
     """Append one record. A new family needs `lineage`: 'root' (an independent hypothesis) or its parent family.
-    A promotion record (PROMOTION_KINDS) is refused before any mutation unless its run passes the promotion boundary."""
+    A promotion record (PROMOTION_KINDS) is refused before any mutation unless its run passes the promotion boundary;
+    a /3 run bound to execution observations needs its manifest (`exec_manifest`) and store (`exec_store`)."""
     d = _dir_of(path)
     if kind in PROMOTION_KINDS:
-        _enforce_promotion(d, run_digest)
+        _enforce_promotion(d, run_digest, exec_manifest, exec_store)
     family = os.path.splitext(os.path.basename(path))[0]
     lock = os.path.join(d, LOCK)
     try:

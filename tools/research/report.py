@@ -573,11 +573,37 @@ def enforce_promotion(obj: dict, *, exec_manifest=None, exec_store=None) -> None
     report: raises `exec_obs.PromotionRefused` (`promotion_refused:<first reason>`, every reason in `.reasons`) when a
     /3 run's execution realism is not promotable (recomputed; a report's `exec_realism` label must agree) or a /2 run's
     eval.config carries any execution-like key / value (`exec_obs_missing`). Every promotion / registration path calls
-    it BEFORE any ledger / registry / runs mutation (`ledger.append` for PROMOTION_KINDS)."""
+    it BEFORE any ledger / registry / runs mutation (`ledger.append` for PROMOTION_KINDS).
+    A sealed report (it carries `results`) is re-verified first (Codex 6226591731 item 2): its `report_digest` must
+    equal the digest of everything else, its results must be the attested payload, and a /3 report's `exec_realism`
+    must EXACTLY equal the recomputation from `exec_manifest` / `exec_store` (a /2 report has none). Any mismatch
+    refuses (`report_digest_mismatch`, `results_not_attested`, `exec_realism_mismatch`, `exec_realism_unexpected`)."""
     if not isinstance(obj, dict) or obj.get('run_digest') != run_digest(obj.get('run')) or \
             obj.get('format') != run_format(obj['run']):
         raise ReportError('promotion: not a valid envelope / report (format or run_digest mismatch)')
-    _exec_obs().enforce_promotion(obj, exec_manifest, store=exec_store)
+    EO = _exec_obs()
+    if 'results' in obj:
+        body = {k: v for k, v in obj.items() if k != 'report_digest'}
+        try:
+            ok = obj.get('report_digest') == _digest(body)
+        except (TypeError, ValueError):
+            ok = False
+        if not ok:
+            raise EO.PromotionRefused(['report_digest_mismatch'])
+        att = obj.get('attestation')
+        try:
+            ok = isinstance(att, dict) and att.get('results_digest') == results_digest(obj['results'])
+        except ReportError:
+            ok = False
+        if not ok:
+            raise EO.PromotionRefused(['results_not_attested'])
+        if obj['format'] == FORMAT_3:
+            now = exec_realism(obj, exec_manifest, exec_store)
+            if obj.get('exec_realism') != now:
+                raise EO.PromotionRefused(['exec_realism_mismatch'] + now['refusals'])
+        elif 'exec_realism' in obj:
+            raise EO.PromotionRefused(['exec_realism_unexpected'])
+    EO.enforce_promotion(obj, exec_manifest, store=exec_store)
 
 
 def make_report(env: dict, results: dict, attestation: dict, ledger_path: str, *, exec_manifest=None,

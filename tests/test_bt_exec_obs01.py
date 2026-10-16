@@ -1308,11 +1308,12 @@ def test_report_level_boundary_rechecks_the_label(world, no_att):
         R.enforce_promotion(rep, exec_manifest=m, exec_store=store)
     ok = R.make_report(R.envelope(run3(m)), res, att, 'unused', exec_manifest=m, exec_store=store)
     R.enforce_promotion(ok, exec_manifest=m, exec_store=store)
-    lied = dict(ok, exec_realism={'claims': [], 'refusals': ['x'], 'promotable': False})
-    with pytest.raises(E.PromotionRefused, match='^promotion_refused:x$'):
+    lied = reseal(dict(ok, exec_realism={'claims': [], 'refusals': ['x'], 'promotable': False}))
+    with pytest.raises(E.PromotionRefused, match='^promotion_refused:exec_realism_mismatch$'):
         R.enforce_promotion(lied, exec_manifest=m, exec_store=store)
-    with pytest.raises(E.PromotionRefused, match='^promotion_refused:exec_realism_missing$'):
-        R.enforce_promotion({k: v for k, v in ok.items() if k != 'exec_realism'}, exec_manifest=m, exec_store=store)
+    with pytest.raises(E.PromotionRefused, match='^promotion_refused:exec_realism_mismatch$'):
+        R.enforce_promotion(reseal({k: v for k, v in ok.items() if k != 'exec_realism'}), exec_manifest=m,
+                            exec_store=store)
     with pytest.raises(R.ReportError, match='run_digest mismatch'):
         R.enforce_promotion(dict(ok, run_digest='0' * 64))
 
@@ -1377,3 +1378,107 @@ def test_head_gap_at_the_start_of_coverage_is_emitted(tmp_path):
     m = build(str(tmp_path))
     heads = [g for g in m['gap_report'] if g['kind'] == 'head']
     assert [(g['from'], g['to'], g['at_ms'], g['next_ms']) for g in heads] == [(D0, t, D0, t)]
+
+
+# ============================================================ round 2: Codex 6226591731 + Cowork 6226614247
+def reseal(rep):
+    """A forger's re-sealed report: the unkeyed report_digest recomputed over the edited body."""
+    body = {k: v for k, v in rep.items() if k != 'report_digest'}
+    return dict(body, report_digest=R._digest(body))
+
+
+# item 2: a sealed report is re-verified in full before promotion
+def test_forged_sealed_reports_refuse_with_zero_mutation(world, no_att, tmp_path):
+    store, m = world
+    res = results()
+    att = {'results_digest': R.results_digest(res)}
+    ok = R.make_report(R.envelope(run3(m)), res, att, 'unused', exec_manifest=m, exec_store=store)
+    bad = R.make_report(R.envelope(run3(m, ['maker_fill'])), res, att, 'unused', exec_manifest=m, exec_store=store)
+    other = tmp_path / 'other'
+    make_store(other, alt_after=D0)
+    tampered = copy.deepcopy(ok)
+    tampered['results']['long']['base'][next(iter(R.SECTIONS))] = {'x': 1}
+    cases = [
+        (tampered, 'report_digest_mismatch'),                                  # results edited, digest stale
+        (dict(ok, report_digest='0' * 64), 'report_digest_mismatch'),          # stale / forged digest
+        (reseal(tampered), 'results_not_attested'),                            # resealed, but not the attested payload
+        (reseal(dict(bad, exec_realism=dict(bad['exec_realism'], refusals=[], promotable=True))),
+         'exec_realism_mismatch'),                                             # forged promotable=true
+        (reseal(dict(ok, exec_realism={'claims': ['maker_fill'], 'refusals': [], 'promotable': True})),
+         'exec_realism_mismatch'),                                             # label != recomputation
+    ]
+    before = evidence_snapshot()
+    for rep, reason in cases:
+        with pytest.raises(E.PromotionRefused, match=f'^promotion_refused:{reason}$'):
+            R.enforce_promotion(rep, exec_manifest=m, exec_store=store)
+    with pytest.raises(E.PromotionRefused, match='^promotion_refused:exec_realism_mismatch$') as ei:
+        R.enforce_promotion(ok, exec_manifest=m, exec_store=str(other))        # evidence no longer matches
+    assert any(x.startswith('manifest_files_unverified') for x in ei.value.reasons)
+    two = R.make_report(R.envelope(run2()), res, att, 'unused')
+    R.enforce_promotion(two)
+    with pytest.raises(E.PromotionRefused, match='^promotion_refused:exec_realism_unexpected$'):
+        R.enforce_promotion(reseal(dict(two, exec_realism=ok['exec_realism'])))
+    R.enforce_promotion(ok, exec_manifest=m, exec_store=store)                 # the genuine report passes
+    assert evidence_snapshot() == before
+
+
+# item 1: the ledger boundary verifies the bound execution evidence the caller threads in; never a silent admit
+def test_ledger_promotion_of_an_observation_bound_v3_run(world, tmp_path):
+    store, m = world
+    led, runs = tmp_path / 'ledger', tmp_path / 'runs'
+    led.mkdir()
+    runs.mkdir()
+    good = holdout_env(run3(m))                                                 # bound taker / no-claim /3 run
+    bogus = holdout_env(run3(m, manifest_digest='a' * 64))
+    for env in (good, bogus):
+        R.write_envelope(str(runs), env)
+    m2 = build(make_store(tmp_path / 'alt', days=(0,)))
+    fam = str(led / 'fam.jsonl')
+
+    def reveal(env, **kw):
+        r = env['run']
+        return L.append(fam, kind='holdout_reveal', candidate_id=r['candidate_id'], split='holdout', window=r['window'],
+                        author='t', cairo_date='2026-10-17', manifest_digest=r['manifest_digest'],
+                        run_digest=env['run_digest'], detail={'eval_digest': r['eval_digest']}, lineage='root', **kw)
+    before = tree_hash(tmp_path)                                               # ledger, runs, lock / temp files
+    for env, kw, reason in (
+            (good, {}, 'manifest_unavailable'),                                # evidence not supplied
+            (good, {'exec_manifest': m}, 'manifest_unavailable'),              # missing store
+            (good, {'exec_manifest': m2, 'exec_store': store}, 'manifest_digest_mismatch'),   # wrong manifest
+            (good, {'exec_manifest': m, 'exec_store': str(tmp_path / 'alt')}, 'manifest_files_unverified'),
+            (bogus, {'exec_manifest': m, 'exec_store': store}, 'manifest_digest_mismatch')):  # bogus bound digest
+        with pytest.raises(E.PromotionRefused, match=f'^promotion_refused:{reason}'):
+            reveal(env, **kw)
+        assert tree_hash(tmp_path) == before
+    rec = reveal(good, exec_manifest=m, exec_store=store)                      # valid bound evidence: admitted
+    assert rec['run_digest'] == good['run_digest'] and tree_hash(tmp_path) != before
+    assert not os.path.exists(led / L.LOCK)
+
+
+def test_promotion_records_naming_a_run_never_admit_silently(tmp_path):
+    env = holdout_env(run3(None, []))                                          # promotable, if it could be proven
+    w = env['run']['window']
+    nostore = tmp_path / 'a' / 'ledger'
+    nostore.mkdir(parents=True)
+    led, runs = tmp_path / 'b' / 'ledger', tmp_path / 'b' / 'runs'
+    led.mkdir(parents=True)
+    runs.mkdir()
+
+    def add(d, kind, rd):
+        return L.append(str(d / 'fam.jsonl'), kind=kind, candidate_id='fam.v1', split='holdout', window=w, author='t',
+                        cairo_date='2026-10-17', manifest_digest=env['run']['manifest_digest'], run_digest=rd,
+                        detail={'eval_digest': env['run']['eval_digest']}, lineage='root')
+    before = tree_hash(tmp_path)
+    for d, kind, rd, reason in ((nostore, 'window_spent', env['run_digest'], 'runs_store_missing'),
+                                (nostore, 'holdout_reveal', env['run_digest'], 'runs_store_missing'),
+                                (led, 'window_spent', env['run_digest'], 'run_envelope_unreadable'),
+                                (led, 'holdout_rerun', 'f' * 64, 'run_envelope_unreadable'),
+                                (led, 'window_spent', 'not-a-digest', 'run_digest_invalid')):
+        with pytest.raises(E.PromotionRefused, match=f'^promotion_refused:{reason}'):
+            add(d, kind, rd)
+        assert tree_hash(tmp_path) == before
+    # BY DESIGN out of the boundary: a window_spent with run_digest null names no run to promote - it only burns the
+    # window (breadth_eval's evaluation spend); the ledger's record checks still apply.
+    rec = L.append(str(nostore / 'fam.jsonl'), kind='window_spent', candidate_id='fam.v1', split='holdout', window=w,
+                   author='t', cairo_date='2026-10-17', detail={}, lineage='root')
+    assert rec['kind'] == 'window_spent' and rec['run_digest'] is None
