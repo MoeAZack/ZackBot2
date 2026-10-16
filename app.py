@@ -81,6 +81,7 @@ from engine import RISK_RULE_DEFAULTS, GOV_MULT_MAX, EXCHANGE_DOWN   # noqa: E40
 from telegram_ctl import TelegramControl, clean_setting as tg_clean_setting   # noqa: E402
 import market_collector as MC     # noqa: E402
 import engine as ENG              # noqa: E402
+import ai_filter                   # noqa: E402  (DEFAULT_MODEL for the non-secret ai_model read-back)
 import shadow_analyst as SA       # noqa: E402  ML-SHADOW-01: report-only analyst (never feeds trading)
 
 
@@ -961,6 +962,7 @@ class App:
             except Exception as ex: extra[name] = dict(error=str(ex)[:120])
         extra['telegram'] = self.tg.status() if getattr(self, 'tg', None) else None
         return dict(version=VERSION, build=BUILD_ID, mode='LIVE' if e.live else 'PAPER', keys=bool(e.cfg.get('API_KEY')), ai_key=bool(e.cfg.get('ANTHROPIC_API_KEY')),
+                    ai_model=e.cfg.get('ANTHROPIC_MODEL') or ai_filter.DEFAULT_MODEL,
                     error=e.error, hedge=e.hedge, equity=e.guard_eq if e.guard_eq is not None else e.last_eq, sizing_equity=e.last_eq,
                     balance=e.last_balance, day_start=st.get('day_start_equity'), peak=st.get('peak_equity'), halted=st.get('halted'),
                     last_cycle=st.get('last_cycle'), next_cycle=getattr(e, 'next_cycle', None), settings=settings, lots=lots,
@@ -1463,6 +1465,10 @@ def handle(path, b):
             if v:
                 if not cfg_value_ok(k, v): raise ValueError(f'{k.replace("_", " ").lower()}: unexpected characters - copy it again from Binance/Anthropic')
                 upd[k] = v
+        if 'ANTHROPIC_MODEL' in b:                         # AI_FILTER model id - not a secret; '' = built-in default
+            v = str(b.get('ANTHROPIC_MODEL') or '').strip()
+            if not cfg_value_ok('ANTHROPIC_MODEL', v): raise ValueError('model: letters, digits, dot, dash and underscore only (max 80)')
+            upd['ANTHROPIC_MODEL'] = v
         if b.get('MODE') in ('paper', 'live'):
             if b['MODE'] == 'live' and b.get('CONFIRM') != 'YES_REAL_MONEY': raise ValueError('type YES_REAL_MONEY to switch to live')
             upd['MODE'] = b['MODE']; upd['LIVE_CONFIRM'] = 'YES_REAL_MONEY' if b['MODE'] == 'live' else ''
