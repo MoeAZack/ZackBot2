@@ -1457,6 +1457,41 @@ def clean_governor(v):
     return dict(mode=mode, rules=out)
 
 
+# UI-SLEEVE-CAP-01 (Codex 6218761375): the slot cap follows the registry - the largest set the engine itself builds (every
+# rotation strategy + TradFi + SCALP slots) - instead of a fixed 12. Shared by /api/sleeves and the backtest slice.
+MAX_SLEEVES = max(12, len(ENG.breadth_sleeves(tradfi=True)))
+
+
+def rotation_share_groups(sleeves):
+    """{slot id: rotation group index} for the breadth rotation; slots in no rotation group (SCALP-4) share one extra group.
+    The grouping follows the STORED slot set (TradFi slots present = TradFi groups), not the engine's current tradfi_on():
+    TradFi slots are never removed when TradFi goes off (or in live), and their shares keep the TradFi group sizes."""
+    tradfi = any(x.get('id') in ENG.TRADFI_SLOTS for x in sleeves or [])
+    out = {}
+    for gi, g in enumerate(ENG.breadth_groups(tradfi=tradfi)):
+        for k in g: out[k if k in ENG.TRADFI_SLOTS else ENG.breadth_id(k)] = gi
+    return out
+
+
+def check_rotation_sleeves(e, sl):
+    """UI-SLEEVE-CAP-01: under the breadth rotation the panel may edit slots, never the slot set. The posted id->key set
+    must equal the current one (nothing added, removed or re-keyed) and each rotation group's enabled shares - SCALP as
+    its own group - must stay <= 100%. Raises before anything is saved."""
+    cur = {x.get('id'): x.get('key') for x in e.S.get('SLEEVES') or []}
+    new = {x['id']: x['key'] for x in sl}
+    if new != cur:
+        extra = sorted(set(new) - set(cur)); gone = sorted(set(cur) - set(new))
+        rekey = sorted(i for i in set(new) & set(cur) if new[i] != cur[i])
+        raise ValueError('the breadth rotation keeps its slot set - '
+                         + '; '.join(f'{w}: {", ".join(v)[:80]}' for w, v in
+                                     (('added', extra), ('removed', gone), ('strategy changed', rekey)) if v)
+                         + ' (apply another profile to change slots)')
+    grp, tot = rotation_share_groups(e.S.get('SLEEVES')), {}
+    for x in sl:
+        if x['enabled']: g = grp.get(x['id'], 'other'); tot[g] = tot.get(g, 0) + x['share']
+    if any(v > 1.0001 for v in tot.values()): raise ValueError('capital shares of a rotation group add up to more than 100%')
+
+
 def validate_sleeve(sl, i):
     if not isinstance(sl, dict) or sl.get('key') not in S.STRATEGIES: raise ValueError(f'unknown strategy {str(sl.get("key"))[:30]}')
     sid = str(sl.get('id') or f'S{i + 1}')[:12]
@@ -1588,13 +1623,16 @@ def handle(path, b):
         if b.get('CONFIRM') != 'THIS_ACCOUNT': raise ValueError('type THIS_ACCOUNT to confirm the account of this data folder')
         return e.confirm_install()
     if path == '/api/sleeves':
-        if not isinstance(b.get('sleeves'), list) or len(b['sleeves']) > 12: raise ValueError('1-12 strategy slots')
+        if not isinstance(b.get('sleeves'), list) or len(b['sleeves']) > MAX_SLEEVES: raise ValueError(f'1-{MAX_SLEEVES} strategy slots')
         sl = [validate_sleeve(x, i) for i, x in enumerate(b['sleeves'])]
         if len({x['id'] for x in sl}) != len(sl): raise ValueError('each strategy slot needs a unique name')
-        gshare = sum(g.get('share', 0) for g in e.S.get('GRID_SLOTS', []) if g.get('enabled'))
-        if sum(x['share'] for x in sl if x['enabled']) + gshare > 1.0001: raise ValueError('capital shares of active strategies (and grids) add up to more than 100%')
         with e.lock:
-            e.S['SLEEVES'] = sl; e.S['PRESET'] = 'custom'; e.save_settings()
+            rot = e.S.get('PRESET') == ENG.ROTATION_PRESET
+            if rot: check_rotation_sleeves(e, sl)          # UI-SLEEVE-CAP-01: the rotation (PAPER) stays the rotation
+            else:
+                gshare = sum(g.get('share', 0) for g in e.S.get('GRID_SLOTS', []) if g.get('enabled'))
+                if sum(x['share'] for x in sl if x['enabled']) + gshare > 1.0001: raise ValueError('capital shares of active strategies (and grids) add up to more than 100%')
+            e.S['SLEEVES'] = sl; e.S['PRESET'] = ENG.ROTATION_PRESET if rot else 'custom'; e.save_settings()
         log.info('strategies updated from panel: ' + ', '.join(f"{x['id']}={x['key']}@{x['risk']:.1%}" + ('' if x['enabled'] else '(off)') for x in sl))
         APP.preview()
         return 'strategies saved'
@@ -1632,7 +1670,7 @@ def handle(path, b):
                    max_lev=_num(b.get('max_lev', 10), 1, 50, 'max leverage'), daily_halt=_num(b.get('daily_halt', 0.08), 0.01, 1, 'daily halt'),
                    universe=[s for s in (b.get('universe') or e.S['UNIVERSE']) if isinstance(s, str) and SYM.match(s)][:80])
         if not isinstance(b.get('sleeves'), list) or not b['sleeves']: raise ValueError('no strategies to test')
-        req['sleeves'] = [validate_sleeve(x, i) for i, x in enumerate(b['sleeves'][:12])]
+        req['sleeves'] = [validate_sleeve(x, i) for i, x in enumerate(b['sleeves'][:MAX_SLEEVES])]
         if b.get('run_options'): req['run_options'] = LAB._validate_run_options(b['run_options'])
         JOBS[jid] = dict(id=jid, status='queued')
         try: enqueue(run_backtest_job, jid, req)
