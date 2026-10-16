@@ -36,7 +36,7 @@ import structure_regime_exit_replay as X                                        
 KEY, SYM = 'exp_structure', 'BTCUSDT'
 COLS = ['symbol', 'side', 't_in', 't_out', 'entry_open', 'entry_fill', 'exit_level', 'exit_fill', 'qty', 'stop',
         'stop_dist', 'risk_usd', 'fee_entry', 'fee_exit', 'fee_usd', 'slip_entry_usd', 'slip_exit_usd', 'slip_usd',
-        'gross_before_slip', 'gross', 'funding', 'net', 'net_recomputed', 'R', 'why', 'bars_held']
+        'gross_before_slip', 'gross', 'funding', 'funding_recomputed', 'net', 'net_recomputed', 'R', 'why', 'bars_held']
 
 
 class _Probe(R.FeeProbe):
@@ -81,7 +81,7 @@ def run(*, side, out_dir, write_slice=False, write_csv=True, packet_name=None, *
                          risk_usd=p['risk'], fee_entry=fe, fee_exit=fx, fee_usd=fe + fx,
                          slip_entry_usd=sd * (avg - eo) * q, slip_exit_usd=sd * (xl - xf) * q,
                          slip_usd=sd * (avg - eo) * q + sd * (xl - xf) * q, gross_before_slip=sd * (xl - eo) * q,
-                         gross=p['gross'], funding=t['funding'], net=t['pnl'], net_recomputed=net_h, R=t['R'],
+                         gross=p['gross'], funding=t['funding'], funding_recomputed=fund, net=t['pnl'], net_recomputed=net_h, R=t['R'],
                          why=t['why'], bars_held=i_out - i_in))
     if write_csv:
         with open(os.path.join(out_dir, f'trades_{side}.csv'), 'w', newline='') as f:
@@ -105,17 +105,18 @@ def decompose(rows) -> dict:
     if not rows:
         return dict(trades=0)
     r = {k: np.array([float(x[k]) / float(x['risk_usd']) for x in rows])
-         for k in ('gross_before_slip', 'slip_usd', 'fee_usd', 'funding', 'net_recomputed')}
-    gap = r['gross_before_slip'] - r['slip_usd'] - r['fee_usd'] - r['funding'] - r['net_recomputed']
+         for k in ('gross_before_slip', 'slip_usd', 'fee_usd', 'funding_recomputed', 'net_recomputed')}
+    gap = r['gross_before_slip'] - r['slip_usd'] - r['fee_usd'] - r['funding_recomputed'] - r['net_recomputed']
     assert np.abs(gap).max() <= DECOMP_TOL, f'decomposition identity broken: {np.abs(gap).max()}'
     sides = {int(x['side']) for x in rows}
     bps = np.array([float(x['stop_dist']) / float(x['entry_fill']) * 1e4 for x in rows])
     tot = dict(gross_before_slip_r=r['gross_before_slip'].sum(), slip_r=r['slip_usd'].sum(), fee_r=r['fee_usd'].sum(),
-               funding_r=r['funding'].sum(), net_r=r['net_recomputed'].sum())
+               funding_r=r['funding_recomputed'].sum(), net_r=r['net_recomputed'].sum())
     n = len(rows)
     out = dict(trades=n, sides=sorted(sides), **{k: float(v) for k, v in tot.items()},
                per_trade={k: float(v / n) for k, v in tot.items()},
                net_r_runner=float(sum(float(x['R']) for x in rows)),
+               runner_r_max_abs_diff=float(np.abs(r['net_recomputed'] - np.array([float(x['R']) for x in rows])).max()),
                identity_max_abs_gap_r=float(np.abs(gap).max()),
                median_stop_bps=float(np.median(bps)))
     assert abs(out['gross_before_slip_r'] - out['slip_r'] - out['fee_r'] - out['funding_r'] - out['net_r']) <= DECOMP_TOL * n
