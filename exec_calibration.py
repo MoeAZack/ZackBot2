@@ -63,7 +63,7 @@ THRESHOLDS = dict(
     max_age_days=14,           # a cell / profile whose newest row is older than this is stale
     max_stale_share=0.25,      # promotion: share of populated cells that may be stale
     max_rejected_share=0.05,   # promotion: share of rows rejected as malformed
-    slip_outlier_bps=1000.0,   # |slippage| above this is flagged and kept out of the slippage statistics
+    slip_outlier_bps=1000.0,   # |slippage| above this is flagged: adverse kept clamped at the cut, favourable dropped
     slip_mismatch_bps=0.5,     # recorded slip_bps vs recomputed from prices: flagged above this, recomputed value used
     max_outlier_share=0.01,    # promotion: share of priced fills dropped as slippage outliers
 )
@@ -161,7 +161,8 @@ def normalize(rec, th=THRESHOLDS):
         slip = (act - ref) / ref * 1e4 * (1 if buy else -1)
         rs = rec.get('slip_bps')
         if _finite(rs) and ref == rec.get('expected') and abs(rs - slip) > th['slip_mismatch_bps']: flags.append('slip_mismatch')
-        if abs(slip) > th['slip_outlier_bps']: flags.append('slip_outlier'); slip = None
+        if slip > th['slip_outlier_bps']: flags.append('slip_outlier'); slip = th['slip_outlier_bps']   # adverse tail: kept, clamped (Cowork 6215229343)
+        elif slip < -th['slip_outlier_bps']: flags.append('slip_outlier_fav'); slip = None              # favourable outlier: never credited
     elif not filled and act:
         flags.append('price_on_unfilled')
     elif filled:
@@ -272,7 +273,9 @@ def build_profile(rows, source, as_of, thresholds=None):
                            fallback_name=LEVELS[use[0]] if use else 'below_min_at_all_levels')
     filled_n = sum(1 for r in rows if r['outcome'] in ('filled', 'partial'))
     slip_n = sum(1 for r in rows if r['slip'] is not None)
-    outliers = source.get('flagged', {}).get('slip_outlier', 0)
+    fl = source.get('flagged', {})
+    fav = fl.get('slip_outlier_fav', 0)
+    outliers = fl.get('slip_outlier', 0) + fav       # adverse ones are inside slip_n (clamped at the cut), favourable ones dropped
     n_cells = len(cells)
     total_seen = source.get('rows_read', len(rows))
     rej = sum(source.get('rejected', {}).values())
@@ -290,7 +293,7 @@ def build_profile(rows, source, as_of, thresholds=None):
         coverage=dict(rows=len(rows), filled=filled_n, slip_n=slip_n,
                       slip_coverage=_r(slip_n / filled_n, 4) if filled_n else 0.0,
                       slip_outliers=outliers,
-                      slip_outlier_share=_r(outliers / (slip_n + outliers), 4) if slip_n + outliers else 0.0,
+                      slip_outlier_share=_r(outliers / (slip_n + fav), 4) if slip_n + fav else 0.0,
                       cells=n_cells, cells_collapsed=sum(1 for c in cells.values() if c['fallback_level'] != 0),
                       stale_share=_r(sum(c['stale'] for c in cells.values()) / n_cells, 4) if n_cells else 1.0,
                       rejected_share=_r(rej / total_seen, 4) if total_seen else 0.0),

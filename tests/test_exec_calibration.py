@@ -425,3 +425,25 @@ def test_d12_cost_kwargs_conflicting_with_profile_refused(tmp_path):
     with pytest.raises(X.CalibrationError, match='fee_maker'):
         X.run_backtest(_book(), SLEEVES, profile=p, now=NOW, warmup=220, fee_maker=0.0)
     assert (BT.FEE, BT.SLIP, BT.FEE_MAKER) == consts
+
+
+def test_adverse_outlier_tail_kept_clamped_never_hidden(tmp_path):
+    """Cowork 6215229343: 300 BTC longs, 257 at +5 bps and 43 (14.3 %) at +1500 bps. Dropping the outliers gave p90 = worst
+    = 5 bps and a promotable profile. Adverse outliers now stay in the statistics clamped at the cut (p90 = worst = 1000),
+    the share is reported and the profile is refused (slip_outliers)."""
+    t = [NOW - timedelta(hours=1 + i % 5) for i in range(300)]
+    p = profile_of(tmp_path, [rec(act=adverse_px(100.0, 5 if i < 257 else 1500, True), t=t[i]) for i in range(300)])
+    a = p['levels']['all']
+    assert a['slip_n'] == 300 and a['slip_p90_bps'] == a['slip_worst_bps'] == 1000.0 and a['slip_p50_bps'] == 5.0
+    assert p['coverage']['slip_outliers'] == 43 and p['coverage']['slip_outlier_share'] == pytest.approx(43 / 300, abs=1e-4)
+    ok, why = X.promotable(p, NOW)
+    assert not ok and 'slip_outliers' in why
+
+
+def test_favourable_outlier_never_credited_but_counted(tmp_path):
+    t = [NOW - timedelta(hours=1 + i % 5) for i in range(300)]
+    p = profile_of(tmp_path, [rec(act=adverse_px(100.0, -1500 if i < 5 else 5, True), t=t[i]) for i in range(300)])
+    a = p['levels']['all']
+    assert a['slip_n'] == 295 and a['slip_p50_bps'] == a['slip_worst_bps'] == 5.0              # dropped, not a -1500 credit
+    assert p['coverage']['slip_outliers'] == 5 and p['coverage']['slip_outlier_share'] == pytest.approx(5 / 300, abs=1e-4)
+    assert 'slip_outliers' in X.promotable(p, NOW)[1]                                           # 1.7 % > 1 % share
