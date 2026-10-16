@@ -1462,10 +1462,13 @@ def clean_governor(v):
 MAX_SLEEVES = max(12, len(ENG.breadth_sleeves(tradfi=True)))
 
 
-def rotation_share_groups(e):
-    """{slot id: rotation group index} for the breadth rotation; slots in no rotation group (SCALP-4) share one extra group."""
+def rotation_share_groups(sleeves):
+    """{slot id: rotation group index} for the breadth rotation; slots in no rotation group (SCALP-4) share one extra group.
+    The grouping follows the STORED slot set (TradFi slots present = TradFi groups), not the engine's current tradfi_on():
+    TradFi slots are never removed when TradFi goes off (or in live), and their shares keep the TradFi group sizes."""
+    tradfi = any(x.get('id') in ENG.TRADFI_SLOTS for x in sleeves or [])
     out = {}
-    for gi, g in enumerate(ENG.breadth_groups(tradfi=e.tradfi_on())):
+    for gi, g in enumerate(ENG.breadth_groups(tradfi=tradfi)):
         for k in g: out[k if k in ENG.TRADFI_SLOTS else ENG.breadth_id(k)] = gi
     return out
 
@@ -1483,7 +1486,7 @@ def check_rotation_sleeves(e, sl):
                          + '; '.join(f'{w}: {", ".join(v)[:80]}' for w, v in
                                      (('added', extra), ('removed', gone), ('strategy changed', rekey)) if v)
                          + ' (apply another profile to change slots)')
-    grp, tot = rotation_share_groups(e), {}
+    grp, tot = rotation_share_groups(e.S.get('SLEEVES')), {}
     for x in sl:
         if x['enabled']: g = grp.get(x['id'], 'other'); tot[g] = tot.get(g, 0) + x['share']
     if any(v > 1.0001 for v in tot.values()): raise ValueError('capital shares of a rotation group add up to more than 100%')

@@ -110,7 +110,7 @@ def test_rotation_group_over_100_percent_is_refused(app):
     sl = _rotation()
     e, saves = _eng(copy.deepcopy(sl), ENG.ROTATION_PRESET)
     app(e)
-    grp = A.rotation_share_groups(e)
+    grp = A.rotation_share_groups(e.S['SLEEVES'])
     g0 = [x for x in sl if grp.get(x['id']) == 0]
     g0[0]['share'] = 1.0                                   # group 0 now > 100% while every other group is untouched
     with pytest.raises(ValueError, match='rotation group'):
@@ -127,7 +127,7 @@ def test_scalp_slots_are_their_own_share_group(app):
     with pytest.raises(ValueError, match='rotation group'):
         _post(sl)
     assert saves == []
-    assert all(A.rotation_share_groups(e).get(i) is None for i in ENG.SCALP_SLOTS)
+    assert all(A.rotation_share_groups(e.S['SLEEVES']).get(i) is None for i in ENG.SCALP_SLOTS)
 
 
 def _custom(n, share):
@@ -194,3 +194,39 @@ def test_backtest_slice_uses_the_same_cap(app, monkeypatch):
     monkeypatch.setattr(A, 'enqueue', lambda fn, jid, req: seen.update(req))
     A.handle('/api/backtest', {'sleeves': _custom(A.MAX_SLEEVES + 3, 0.01), 'universe': ['BTCUSDT']})
     assert len(seen['sleeves']) == A.MAX_SLEEVES
+
+
+@pytest.mark.parametrize('mut', ['duplicate_id', 'unknown_key'])
+def test_rotation_invalid_slot_is_refused_and_nothing_saved(app, mut):
+    sl = _rotation()
+    e, saves = _eng(copy.deepcopy(sl), ENG.ROTATION_PRESET)
+    app(e)
+    before = json.dumps(e.S, sort_keys=True)
+    if mut == 'duplicate_id': sl[1]['id'] = sl[0]['id']
+    else: sl[0]['key'] = 'no_such_strategy'
+    with pytest.raises(ValueError):
+        _post(sl)
+    assert json.dumps(e.S, sort_keys=True) == before and saves == []
+
+
+def test_rotation_round_trip_keeps_saved_scalp_state_not_registry_defaults(app):
+    """Cowork: the registry ships the SCALP slots OFF; the running cohort has them ON in saved settings. A save compares
+    and keeps the SAVED values - it never re-seeds from the registry."""
+    assert all(x['enabled'] is False for x in ENG.scalp_sleeves())
+    sl = _rotation(scalp_on=True)
+    e, _ = _eng(copy.deepcopy(sl), ENG.ROTATION_PRESET)
+    app(e)
+    _post(sl)
+    assert [x['id'] for x in e.S['SLEEVES']] == [x['id'] for x in sl]
+    assert all(x['enabled'] is True for x in e.S['SLEEVES'] if x['key'] in ENG.SCALP_KEYS)
+
+
+@pytest.mark.parametrize('scalp_on', [False, True])
+def test_stored_tradfi_slots_with_tradfi_now_off_still_round_trip(app, scalp_on):
+    """Review F1: TradFi slots stay stored when TradFi goes off (or in live, where tradfi_on() is False) and keep the
+    TradFi group shares; the share groups follow the STORED set, so an unchanged save is not refused."""
+    sl = _rotation(scalp_on=scalp_on, tradfi=True)
+    e, saves = _eng(copy.deepcopy(sl), ENG.ROTATION_PRESET, tradfi=False)
+    app(e)
+    assert _post(sl) == 'strategies saved' and len(saves) == 1 and e.S['PRESET'] == ENG.ROTATION_PRESET
+    assert json.dumps(e.S['SLEEVES'], sort_keys=True) == json.dumps(sl, sort_keys=True)
