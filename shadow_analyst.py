@@ -44,6 +44,7 @@ MAX_OUTPUT_TOKENS = 3000                       # SHADOW-ANALYST-TRUNC-01: >= 2x 
 # 300 chars per section (~15k chars) under a 1600 cap: live replies hit the cap and were cut mid-JSON.
 PROMPT_MAX_ITEMS = 4
 PROMPT_ITEM_CHARS = 200
+PROMPT_OBJ_KEYS = 3                            # an object item is bounded like a string item (review note)
 OUTPUT_CHARS_PER_TOKEN = 3
 TIMEOUT_S = 30
 BACKOFF_BASE_S = 2.0
@@ -92,7 +93,7 @@ SYSTEM_PROMPT = (
     '"data_quality_warnings": [], "experiments": []}. '
     f"Each value is a list of at most {PROMPT_MAX_ITEMS} items; each item is a short string (under {PROMPT_ITEM_CHARS} "
     "characters) or a small "
-    "flat object of short strings/numbers. Cite numbers from the data. For backtests, challenge out-of-sample stability, "
+    f"flat object of at most {PROMPT_OBJ_KEYS} short strings/numbers, under {PROMPT_ITEM_CHARS} characters in total. Cite numbers from the data. For backtests, challenge out-of-sample stability, "
     "drawdown, costs, side/regime concentration and execution realism, then suggest one bounded next experiment. "
     "Never treat a model opinion as backtest evidence. Say plainly when the sample is too small. "
     "Be concise: the whole reply must stay well under 4000 characters."
