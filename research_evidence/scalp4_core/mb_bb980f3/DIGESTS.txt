@@ -1,0 +1,4 @@
+CORE-10_long commit bb980f3b7037 packet_sha256 43a91ba3b0a0a5d6 trades_sha256 fefbcf2b9ef60c0c identical_trades_to_a53a649 True stats_identical True
+CORE-10_short commit bb980f3b7037 packet_sha256 eee8402b71af63f6 trades_sha256 701b65b363998b78 identical_trades_to_a53a649 True stats_identical True
+CORE-20_long commit bb980f3b7037 packet_sha256 e56f356513070d23 trades_sha256 f0608152211c2726 identical_trades_to_a53a649 True stats_identical True
+CORE-20_short commit bb980f3b7037 packet_sha256 669a49e510c606e6 trades_sha256 b3e10caa74d2d187 identical_trades_to_a53a649 True stats_identical True
