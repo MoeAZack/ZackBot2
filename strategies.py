@@ -409,7 +409,8 @@ def sig_momentum_burst_scalp(d, p, ctx):
     Long on an up-impulse, short on the mirror. Exit on a close back through EMA9; mgmt time cap 4 candles (1 h)."""
     n = int(p.get('n', MB['n']))
     rng = d.h - d.l
-    big = (rng >= MB['rng_x'] * rng.rolling(n).mean().shift()) & (d.v >= MB['vol_x'] * d.v.rolling(n).mean().shift())
+    avg_v = d.v.rolling(n).mean().shift()
+    big = (rng >= MB['rng_x'] * rng.rolling(n).mean().shift()) & (d.v > 0) & (avg_v > 0) & (d.v >= MB['vol_x'] * avg_v)  # 0 >= 2x0 is no burst
     pos = (d.c - d.l) / rng.where(rng > 0)
     gate = big & scalp_cost_ok(d)
     le = gate & (d.c > d.o) & (pos >= MB['body'])

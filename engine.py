@@ -353,12 +353,12 @@ BREADTH_ALL_SYMBOLS = frozenset({'rotation', 'hot_coin'})          # cross-secti
 # SCALP-4 (PAPER): four 15m scalp strategies run as INDEPENDENT slots of the breadth rotation profile. They are NOT part of
 # the 6-slot rotation: breadth_groups() leaves their keys out (so the existing groups / schedule stay byte-identical) and a
 # scalp slot is eligible for new entries whenever its own `enabled` flag is on. PAPER/testnet only: every new entry of a
-# scalp strategy is refused in live mode, whatever the profile (scalp_block). Default enabled: True - the rotation profile
-# itself is PAPER-only, each slot is sized small (1 % risk on a 1/6 share, max 2 open per slot) and can be switched off alone.
+# scalp strategy is refused in live mode, whatever the profile (scalp_block). Default enabled: False (Codex ruling
+# 6212617801: negative dev evidence) - the owner switches each slot on in PAPER; sized small (1 % risk on a 1/6 share, max 2 open).
 SCALP_SLOTS = {'SC-RANGE': 'range_scalp', 'SC-FAILBRK': 'failed_breakout_scalp', 'SC-MBURST': 'momentum_burst_scalp',
                'SC-QBANK': 'quick_bank_runner'}                    # slot id (<= 12 chars) -> strategy key
 SCALP_KEYS = frozenset(SCALP_SLOTS.values())
-SCALP_SHARE, SCALP_RISK, SCALP_MAX_POS, SCALP_DEFAULT_ENABLED = 1 / 6, 0.01, 2, True
+SCALP_SHARE, SCALP_RISK, SCALP_MAX_POS, SCALP_DEFAULT_ENABLED = 1 / 6, 0.01, 2, False
 
 
 def scalp_sleeves():
