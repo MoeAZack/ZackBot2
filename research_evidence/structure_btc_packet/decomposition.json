@@ -1,0 +1,154 @@
+{
+ "format": "zb-structure-cost-decomposition/1",
+ "key": "exp_structure",
+ "mgmt": "defaults",
+ "non_promotable": true,
+ "tolerance_r": 1e-06,
+ "units": "R = $ / the intended risk_usd of that trade; gross_before_slip - slip - fee - funding = net",
+ "views": {
+  "btcusdt_arm_a": {
+   "long": {
+    "account": {
+     "daily_halt": 0.08,
+     "max_lev": 10.0,
+     "start": 500.0
+    },
+    "fee_r": 266.59798040488965,
+    "funding_r": 3.999988166430697,
+    "gross_before_slip_r": -7.183283132508146,
+    "identity_max_abs_gap_r": 6.661338147750939e-16,
+    "median_stop_bps": 28.941044148521375,
+    "net_r": -384.4204435784422,
+    "net_r_runner": -384.420449,
+    "packet_sha256": "9b88d403ba4c73476a6417960ad9b3995da23c815d029e8a7b586f1b92fc7bc7",
+    "per_trade": {
+     "fee_r": 0.37130637939399674,
+     "funding_r": 0.00557101415937423,
+     "gross_before_slip_r": -0.010004572607950065,
+     "net_r": -0.5354045175187218,
+     "slip_r": 0.14852255135740064
+    },
+    "runner_r_max_abs_diff": 4.997023628217079e-07,
+    "sides": [
+     1
+    ],
+    "slip_r": 106.63919187461366,
+    "symbols": [
+     "BTCUSDT"
+    ],
+    "trades": 718
+   },
+   "short": {
+    "account": {
+     "daily_halt": 0.08,
+     "max_lev": 10.0,
+     "start": 500.0
+    },
+    "fee_r": 267.8589793882616,
+    "funding_r": 3.4091802424995397,
+    "gross_before_slip_r": -5.155838831413337,
+    "identity_max_abs_gap_r": 8.881784197001252e-16,
+    "median_stop_bps": 30.273292370257774,
+    "net_r": -383.5675900112333,
+    "net_r_runner": -383.567599,
+    "packet_sha256": "bf5b5725a1530364b4e5688de87da160463590761488534069b5c2fd8c9f0b1a",
+    "per_trade": {
+     "fee_r": 0.3725437821811705,
+     "funding_r": 0.0047415580563275935,
+     "gross_before_slip_r": -0.007170846775261944,
+     "net_r": -0.5334736995983773,
+     "slip_r": 0.14901751258561727
+    },
+    "runner_r_max_abs_diff": 4.995994380418978e-07,
+    "sides": [
+     -1
+    ],
+    "slip_r": 107.14359154905881,
+    "symbols": [
+     "BTCUSDT"
+    ],
+    "trades": 719
+   }
+  },
+  "core10_fixed_r": {
+   "long": {
+    "account": {
+     "daily_halt": 0.08,
+     "max_lev": 10.0,
+     "start": 1000000000.0
+    },
+    "fee_r": 3185.060069494389,
+    "funding_r": 45.31814372674032,
+    "gross_before_slip_r": -159.29792482821006,
+    "identity_max_abs_gap_r": 8.881784197001252e-16,
+    "median_stop_bps": 55.35073937530925,
+    "net_r": -4663.70015947504,
+    "net_r_runner": -4663.700153,
+    "packet_sha256": "d3ec727b758ae7fdfa01d066a151dbb31b0d85c8959d9c9810a9a223280e7e13",
+    "per_trade": {
+     "fee_r": 0.2217082047538904,
+     "funding_r": 0.0031545415374314573,
+     "gross_before_slip_r": -0.011088537159140335,
+     "net_r": -0.3246345649084672,
+     "slip_r": 0.08868328145800496
+    },
+    "runner_r_max_abs_diff": 4.999837397434703e-07,
+    "sides": [
+     1
+    ],
+    "slip_r": 1274.0240214256992,
+    "symbols": [
+     "BTCUSDT",
+     "ETHUSDT",
+     "ZECUSDT",
+     "SOLUSDT",
+     "XRPUSDT",
+     "NEARUSDT",
+     "DOGEUSDT",
+     "UNIUSDT",
+     "SUIUSDT"
+    ],
+    "trades": 14366
+   },
+   "short": {
+    "account": {
+     "daily_halt": 0.08,
+     "max_lev": 10.0,
+     "start": 1000000000.0
+    },
+    "fee_r": 3278.245599211581,
+    "funding_r": 47.13427194166496,
+    "gross_before_slip_r": -188.42537681497816,
+    "identity_max_abs_gap_r": 8.881784197001252e-16,
+    "median_stop_bps": 54.32401937943026,
+    "net_r": -4825.103480115696,
+    "net_r_runner": -4825.10348,
+    "packet_sha256": "81e2ae188f8dcb661eb548f963e3e7dad54af0d506a7bbad212ce53a6cf3d887",
+    "per_trade": {
+     "fee_r": 0.22677404532454212,
+     "funding_r": 0.0032605334768722304,
+     "gross_before_slip_r": -0.013034406254494892,
+     "net_r": -0.3337786026643398,
+     "slip_r": 0.09070961760843053
+    },
+    "runner_r_max_abs_diff": 4.99903662243284e-07,
+    "sides": [
+     -1
+    ],
+    "slip_r": 1311.2982321474717,
+    "symbols": [
+     "BTCUSDT",
+     "ETHUSDT",
+     "ZECUSDT",
+     "SOLUSDT",
+     "XRPUSDT",
+     "NEARUSDT",
+     "DOGEUSDT",
+     "UNIUSDT",
+     "SUIUSDT"
+    ],
+    "trades": 14456
+   }
+  }
+ }
+}
