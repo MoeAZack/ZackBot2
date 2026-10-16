@@ -2,14 +2,18 @@
 executes and the Static-40 universe are pinned by SHA-256. Any byte drift fails here; a change needs a new reviewed
 freeze (and, once registered, a new preregistration: no retune of a registered hypothesis).
 
-Hashes are of the repository (LF) bytes. A Windows checkout with core.autocrlf=true writes CRLF, so CRLF is folded
-back to LF before hashing (the pins are the committed blobs' bytes either way).
+Hashes are of the REGISTERED bytes: the blobs of the registration commit Y behind the annotated tag
+(tests/breadth_registered.py, Codex ruling), never the mutable working tree, so a post-registration edit on master
+cannot fail - or satisfy - these pins. A missing / moved / lightweight tag fails closed.
 """
-import hashlib
 import json
 import os
 
 import pytest
+
+from breadth_registered import assert_pinned, registered_blob
+
+from breadth_registered import assert_pinned, registered_blob
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 FROZEN_COMMIT = 'c8c7b92'          # the runner commit every breadth packet of #105-#114 was produced with
@@ -39,19 +43,13 @@ UNIVERSE_LIST_DIGEST = 'd95ba63c126029e23196e253c74cd95918cb5c9102079792194c972d
 STATIC40_INCOMPLETE = ('AKEUSDT', 'BRUSDT', 'HYPEUSDT', 'MUBARAKUSDT', 'PENGUUSDT', 'PUMPUSDT', 'TRUMPUSDT')
 
 
-def lf_sha256(rel: str) -> str:
-    with open(os.path.join(ROOT, rel), 'rb') as f:
-        return hashlib.sha256(f.read().replace(b'\r\n', b'\n')).hexdigest()
-
-
 @pytest.mark.parametrize('rel', sorted(PINS))
 def test_frozen_file_sha256(rel):
-    assert lf_sha256(rel) == PINS[rel], f'{rel} drifted from the breadth freeze ({FROZEN_COMMIT}); re-freeze needed'
+    assert_pinned(ROOT, rel, PINS[rel])     # Y's registered (LF) bytes vs the breadth freeze (FROZEN_COMMIT lineage)
 
 
 def test_static40_universe_identity():
-    with open(os.path.join(ROOT, UNIVERSE), encoding='utf-8') as f:
-        u = json.load(f)
+    u = json.loads(registered_blob(ROOT, UNIVERSE))
     assert (u['universe_id'], u['digest'], u['list_digest'], u['owner_approved']) == (
         UNIVERSE_ID, UNIVERSE_DIGEST, UNIVERSE_LIST_DIGEST, True)
     syms = [x['symbol'] for x in u['symbols']]
