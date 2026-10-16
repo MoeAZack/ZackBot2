@@ -2253,7 +2253,7 @@ class Engine:
     # vs filled qty, wait, maker tries, fallback state. Order paths only BUILD a record (no I/O) and hand it to the
     # process-wide FillWriter for this file with a non-blocking put; that writer is the only thing that ever touches
     # fills.jsonl. Telemetry never raises into an order path, never waits on the disk there, never changes what is traded.
-    FILL_KINDS = ('entry_market', 'entry_maker', 'entry_fallback', 'pyramid_add', 'safety_order', 'exit')
+    FILL_KINDS = ('entry_market', 'entry_maker', 'entry_fallback', 'pyramid_add', 'safety_order', 'exit', 'br01_add')
 
     def _fill_rec(self, kind, sym, side, buy, expected, actual, q_req, q_fill, t0=None, outcome=None, **extra):
         """Build one record (pure: no I/O). q_fill None/0 from the exchange = unknown, never invented as a full fill."""
@@ -3206,6 +3206,9 @@ class Engine:
         px = (getattr(self, 'marks', None) or {}).get(sym) or bar['c']        # fast-loop mark; the closed candle as a fallback
         sd = 1 if lot['side'] == 'LONG' else -1
         why = 'BR-01 adds are PAPER/testnet only' if getattr(self, 'live', True) is not False else BR.admit(lot['br'], k)
+        sl = next((x for x in self.S['SLEEVES'] if x['id'] == lot['sleeve']), None)
+        if why is None and (sl is None or not sl.get('enabled', True)): why = 'strategy slot switched off'   # a deferred leg is entry exposure
+        if why is None and not (sl.get('mgmt') or {}).get('br01'): why = 'BR-01 removed from the slot - no more legs'
         if why is None and lot.get('pending'): why = 'an earlier order of this lot is unconfirmed'
         if why is None:
             qn = lot['qty'] + q
@@ -3217,6 +3220,8 @@ class Engine:
             post = BR.apply_fill(lot['br'], q, px, bar['t'])
             try:
                 ok = self._add_qty(lot, q, px, 'br01_add', post={'br': post})
+            except AmbiguousOrder as e:
+                why = f'order unconfirmed ({e}) - settled from its write-ahead record'
             except Exception as e:
                 why = f'order failed: {e}'
             else:

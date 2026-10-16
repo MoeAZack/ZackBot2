@@ -370,7 +370,7 @@ def run(book, sleeves, start=500.0, max_lev=10.0, daily_halt=0.08, t0=None, t1=N
         if why is None:
             if halted or (RR['btc_breaker'] and i <= breaker_until): why = 'entries halted / BTC breaker'
             elif notional(sl, i) + q * px > max_lev * eq * cfg['share']: why = 'slot leverage cap'
-            elif rule_block(s, sd, q, px, 0.0, i, add=True): why = 'portfolio risk rule'
+            elif rule_block(s, sd, q, px, q * max(0.0, sd * (px - p['stop'])), i, add=True): why = 'portfolio risk rule'   # the engine's add_risk
         if why is None:
             d = F.size_check(q, q, px, ADD_RULES[s])        # BT02: the engine's _add_qty check
             if d['ok'] is False: why = 'below the exchange minimum'

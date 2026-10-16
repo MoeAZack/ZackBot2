@@ -394,3 +394,61 @@ def test_state_schema_rejects_a_corrupt_leg_state(eng):
         with pytest.raises(E.SchemaError):
             E._validate_lot('k', dict(l, br=dict(l['br'], **bad)))
     E._validate_lot('k', l)
+
+
+# ------------------------------------------------------------------ adversarial-review regressions (8dabeff)
+def _adverse(e):
+    e.trade.mark['BTCUSDT'] = 98.9; e.marks = e.trade.marks()        # a close 0.55 ATR against the long entry
+    cyc(e, {}, {'BTCUSDT': frame(98.9)})
+
+
+def test_engine_adverse_close_adds_the_first_leg_with_its_own_fill_kind(eng):
+    e, _ = eng
+    seen, real = [], e._fill
+    e._fill = lambda kind, *a, **k: (seen.append((kind, k.get('reason'))), real(kind, *a, **k))[1]
+    _adverse(e)
+    assert len(brlot(e)['br']['filled']) == 2 and ('br01_add', 'br01_add') in seen      # not audited as pyramid_add
+
+
+@pytest.mark.parametrize('change', ('switched_off', 'br01_removed', 'slot_removed'))
+def test_engine_no_leg_after_the_slot_is_switched_off_or_loses_br01(eng, change):
+    e, _ = eng
+    sl = next(x for x in e.S['SLEEVES'] if x['id'] == 'BRT')
+    if change == 'switched_off': sl['enabled'] = False
+    elif change == 'br01_removed': sl['mgmt'] = {}
+    else: e.S['SLEEVES'].remove(sl)
+    _adverse(e)
+    l = brlot(e)
+    assert len(l['br']['filled']) == 1 and l['br']['adds'] == 0
+    why = 'switched off' if change != 'br01_removed' else 'BR-01 removed'
+    assert any(x.get('kind') == 'refuse' and why in x.get('reason', '') for x in l['br']['ev'])
+
+
+def test_engine_ambiguous_add_is_journalled_as_unconfirmed_not_failed(eng, monkeypatch):
+    e, _ = eng
+    def amb(*a, **k): raise E.AmbiguousOrder('timeout')
+    monkeypatch.setattr(e, '_add_qty', amb)
+    _adverse(e)
+    ev = brlot(e)['br']['ev']
+    assert any('unconfirmed' in x.get('reason', '') for x in ev) and not any('order failed' in x.get('reason', '') for x in ev)
+
+
+def _run_rr2(pct):
+    """BTC + ETH on the same 0.5 / 1.0 ATR adverse path, both entered on the signal candle (max_pos 2)."""
+    rows = [(100.0, 100.5, 99.5, 100.0)] * N0 + list(DOWN2) + [(DOWN2[-1][3],) * 4] * 30
+    t = pd.date_range('2026-06-01', periods=len(rows), freq='15min')
+    o, h, l, c = (np.array(x, float) for x in zip(*rows))
+    bk = B.Book({s: pd.DataFrame(dict(t=t, o=o, h=h, l=l, c=c, v=1000.0)) for s in ('BTCUSDT', 'ETHUSDT')})
+    sl = dict(key='br_test', share=1.0, risk=0.01, max_pos=2, sides='both', mgmt=dict(br01=dict(variant='bounded_recovery')), params={})
+    tr, cv = B.run(bk, [sl], start=10000.0, warmup=250, maint_margin=0, risk_rules=dict(open_risk_cap=dict(mode='enforce', pct=pct)))
+    return tr, [x for x in cv.attrs.get('br01', {}).get('events', []) if x['kind'] == 'refuse']
+
+
+def test_backtest_leg_counts_its_own_risk_in_the_portfolio_open_risk_rule():
+    """Engine parity (_add_block add_risk = q x |px - stop|, 8dabeff review): two staged lots fit a 1.7 % open-risk cap at
+    entry (0.6 % each + 1 % for the second's check) but their later legs would breach it, so a leg is refused (logged) and
+    stays armed; with a roomy cap nothing is refused. Before the fix the leg's own risk counted as 0 and nothing was refused."""
+    tr, ref = _run_rr2(1.7)
+    assert len(tr) == 2 and ref and all(x['reason'] == 'portfolio risk rule' for x in ref)
+    tr, ref = _run_rr2(2.1)
+    assert len(tr) == 2 and not ref
