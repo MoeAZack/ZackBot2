@@ -349,6 +349,29 @@ BREADTH_FAMILY = {'ema_st': 'Trend', 'ema_mom': 'Trend', 'donchian_ens': 'Trend'
 # strategy keeps its registry sides (dca_dip / hot_coin long, bear_breakdown short; rotation shorts need params.shorts).
 BREADTH_BOTH = frozenset({'ema_st', 'ema_mom', 'donchian_ens', 'breakout_pyramid', 'squeeze_tp', 'pullback_rsi'})
 BREADTH_ALL_SYMBOLS = frozenset({'rotation', 'hot_coin'})          # cross-sectional ranks: whole universe, others core 8
+# SCALP-4 (PAPER): four 15m scalp strategies run as INDEPENDENT slots of the breadth rotation profile. They are NOT part of
+# the 6-slot rotation: breadth_groups() leaves their keys out (so the existing groups / schedule stay byte-identical) and a
+# scalp slot is eligible for new entries whenever its own `enabled` flag is on. PAPER/testnet only: every new entry of a
+# scalp strategy is refused in live mode, whatever the profile (scalp_block). Default enabled: False (Codex ruling
+# 6212617801: negative dev evidence) - the owner switches each slot on in PAPER; sized small (1 % risk on a 1/6 share, max 2 open).
+SCALP_SLOTS = {'SC-RANGE': 'range_scalp', 'SC-FAILBRK': 'failed_breakout_scalp', 'SC-MBURST': 'momentum_burst_scalp',
+               'SC-QBANK': 'quick_bank_runner'}                    # slot id (<= 12 chars) -> strategy key
+SCALP_KEYS = frozenset(SCALP_SLOTS.values())
+SCALP_SHARE, SCALP_RISK, SCALP_MAX_POS, SCALP_DEFAULT_ENABLED = 1 / 6, 0.01, 2, False
+
+
+def scalp_sleeves():
+    """The four PAPER scalp slots (core 8, both sides, the strategy's own timeframe), in SCALP_SLOTS order."""
+    return [sleeve(i, k, SCALP_SHARE, SCALP_RISK, SCALP_MAX_POS, 'core8', sides='both', tf=S.STRATEGIES[k].get('tf', '15m'),
+                   enabled=SCALP_DEFAULT_ENABLED) for i, k in SCALP_SLOTS.items()]
+
+
+def with_scalp_slots(sleeves):
+    """(sleeves + the missing scalp slots, ids added). Existing entries are returned as the SAME objects, untouched; a slot
+    is missing when no slot carries its id. Idempotent."""
+    have = {x.get('id') for x in sleeves or []}
+    add = [x for x in scalp_sleeves() if x['id'] not in have]
+    return list(sleeves or []) + add, [x['id'] for x in add]
 
 
 # TRADFI-01 T4 (Codex ruling c + 6186554256 mapping): with S['TRADFI_ENABLED'] (PAPER only) the SAME rotation gains these
@@ -383,7 +406,8 @@ def breadth_groups(keys=None, tradfi=False):
     """Deterministic groups of <= ROTATION_MAX_ACTIVE strategy keys. Keys are ordered by family, then dealt round-robin
     into ceil(n / 6) groups, so each family is spread across the groups and group sizes differ by at most one.
     tradfi=True (TRADFI-01 T4) adds the TRADFI_SLOTS ids to the same pool."""
-    keys = (sorted(S.STRATEGIES) + (sorted(TRADFI_SLOTS) if tradfi else [])) if keys is None else list(keys)
+    keys = (sorted(k for k in S.STRATEGIES if k not in SCALP_KEYS) + (sorted(TRADFI_SLOTS) if tradfi else [])) \
+        if keys is None else list(keys)                  # SCALP-4: scalp slots are independent, never in a rotation group
     fo = {f: i for i, f in enumerate(BREADTH_FAMILIES)}
     order = sorted(keys, key=lambda k: (fo.get(_bfam(k), len(fo)), k))
     n = max(1, -(-len(order) // ROTATION_MAX_ACTIVE))
@@ -468,6 +492,7 @@ def breadth_sleeves(tradfi=False, overlay=None):
                               sides='both' if k in BREADTH_BOTH else st['sides'], tf=st.get('tf', '4h')))
     for x in out:
         if x['key'] in (overlay or {}): x['mgmt'] = copy.deepcopy(overlay[x['key']])
+    out = with_scalp_slots(out)[0]                      # SCALP-4: independent PAPER scalp slots after the rotation slots
     ids = [x['id'] for x in out]
     assert len(set(ids)) == len(ids), 'breadth slot ids collide'
     return out
@@ -1788,6 +1813,29 @@ class Engine:
         log.info(f"TRADFI: rotation slots added {[x['id'] for x in add]}")
         return [x['id'] for x in add]
 
+    # ------------------------------------------------------------ SCALP-4 (PAPER)
+    def scalp_block(self, sl, ts=None):
+        """Rotation gate for a NEW automatic entry, with the SCALP-4 slots folded in. A scalp-strategy slot: refused in live
+        mode (any profile, fail closed); in PAPER always eligible (it is not part of the rotation - its own `enabled` flag,
+        checked before this, switches it). Every other slot: exactly rotation_block. Open lots never consult it."""
+        if (sl or {}).get('key') in SCALP_KEYS:
+            if getattr(self, 'live', True) is not False: return 'scalp slots are PAPER/testnet only - no entries in live mode'
+            return None
+        return self.rotation_block(sl, ts)
+
+    def sync_scalp_slots(self):
+        """Rotation profile in PAPER: add the scalp slots an installed bot's saved SLEEVES lack (saved before SCALP-4).
+        Only appends - existing slot entries (ids, shares, enabled flags, mgmt) are never touched; idempotent. Returns the
+        ids added."""
+        if self.S.get('PRESET') != ROTATION_PRESET or getattr(self, 'live', True) is not False: return []
+        with self.lock:
+            new, added = with_scalp_slots(self.S.get('SLEEVES'))
+            if not added: return []
+            self.S['SLEEVES'][len(self.S['SLEEVES']):] = new[len(self.S['SLEEVES']):]
+            self.save_settings()
+        log.info(f'SCALP-4: PAPER scalp slots added {added}')
+        return added
+
     def is_tradfi(self, sym):
         return sym in TU.GOLD_FAMILY or sym in TU.STOCK_SET or sym in TU.OIL_SET or \
             (getattr(self, 'rules', None) or {}).get(sym, {}).get('kind') == 'tradfi'
@@ -1883,6 +1931,7 @@ class Engine:
             self.equity()
         self.connected = True
         if on: self.sync_tradfi_slots()
+        self.sync_scalp_slots()                         # SCALP-4: PAPER rotation only; appends missing slots, idempotent
 
     # ------------------------------------------------------------ helpers
     @staticmethod
@@ -4042,7 +4091,7 @@ class Engine:
                     why = None
                     if not Sg['SYMBOLS_ON'].get(s, True): why = 'coin switched off'
                     elif not sl['enabled']: why = 'strategy slot switched off'
-                    elif self.rotation_block(sl): why = self.rotation_block(sl)        # BREADTH-01 B2: new entries only
+                    elif self.scalp_block(sl): why = self.scalp_block(sl)              # BREADTH-01 B2 + SCALP-4: new entries only
                     elif Sg['ENTRIES_PAUSED']: why = 'entries paused'
                     elif st['halted']: why = 'daily loss halt'
                     elif s in held: why = 'already in a trade on this coin'
@@ -4135,7 +4184,7 @@ class Engine:
         if Sg.get('ENTRIES_PAUSED'): return 'entries paused'
         if not Sg['SYMBOLS_ON'].get(sym, True): return 'coin switched off'
         if not sl.get('enabled', True): return 'strategy slot switched off'
-        rb = self.rotation_block(sl)                                # BREADTH-01 B2 (manual / adds never get here)
+        rb = self.scalp_block(sl)                                   # BREADTH-01 B2 + SCALP-4 (manual / adds never get here)
         if rb: return rb
         tb = self.tradfi_block(sl, sym, side, size)                 # TRADFI-01 T3/T4: session, mapping, gold-family cap
         if tb: return tb

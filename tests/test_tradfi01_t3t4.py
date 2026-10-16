@@ -219,7 +219,7 @@ def test_restart_with_flag_off_adopts_held_tradfi_lot_but_opens_nothing_new(mk, 
 def test_rotation_with_tradfi_slots_caps_six_active(mk):
     groups = E.breadth_groups(tradfi=True)
     flat = [k for g in groups for k in g]
-    assert sorted(flat) == sorted(list(S.STRATEGIES) + list(E.TRADFI_SLOTS)) and len(flat) == len(set(flat))
+    assert sorted(flat) == sorted([k for k in S.STRATEGIES if k not in E.SCALP_KEYS] + list(E.TRADFI_SLOTS)) and len(flat) == len(set(flat))   # SCALP-4 slots never rotate
     assert all(1 <= len(g) <= E.ROTATION_MAX_ACTIVE for g in groups)
     for i in range(len(groups)):
         r = E.rotation_at(i * E.ROTATION_PERIOD_S + 60, tradfi=True)
