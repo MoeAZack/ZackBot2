@@ -398,6 +398,10 @@ def breadth_id(key):
 # `mgmt`. Setting ROTATION_MGMT_OVERLAY = {strategy_key: {be_r, tp1_r, tp1_frac, max_bars}}. Only these four keys; the
 # bounds and the 0 = off rule are app.MG_NUM / app.clean_mgmt's (tests/test_rotation_mgmt_overlay pins them equal).
 ROTATION_MGMT_KEYS = dict(be_r=(0.1, 50), tp1_r=(0.1, 50), tp1_frac=(0.05, 1), max_bars=(1, 5000))
+# Strategy keys whose NEW automatic entries the PAPER breadth rotation refuses (Codex 6207997736, 2026-10-16: exp_structure
+# has no pre-cost edge on the dev window and loses in every quarter/regime/side). Open lots keep full management (stops,
+# exits, adds); the strategy stays registered and research-visible.
+ROTATION_ENTRY_DISABLED = frozenset({'exp_structure'})
 ROTATION_OVERLAY_STRATS = frozenset({'exp_trend', 'exp_range', 'exp_breakout', 'exp_scalp', 'exp_structure', 'exp_vwaprev'})
 
 
@@ -1746,6 +1750,8 @@ class Engine:
         entries consult it - stops, exits, adds and management of open lots never do. Live mode refuses every entry."""
         if self.S.get('PRESET') != ROTATION_PRESET: return None
         if getattr(self, 'live', True) is not False: return 'breadth rotation is PAPER/testnet only - no entries in live mode'
+        if (sl or {}).get('key') in ROTATION_ENTRY_DISABLED:
+            return f"rotation: {sl['key']} disabled for new entries (no dev-window edge) - open lots stay managed"
         r = rotation_at(ts, **self._rot_kw())
         if (sl or {}).get('id') not in r['active']:
             return f"rotation: slot not in the active group {r['index'] + 1}/{r['groups']} (next switch {r['next_switch']})"
