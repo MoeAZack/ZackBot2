@@ -1,7 +1,11 @@
 """EXEC-CAL-01: execution calibration reader, frozen profile, opt-in backtest hook and promotion guard (synthetic only)."""
 import ast
 import copy
+import hashlib
+import inspect
+import itertools
 import json
+import threading
 import os
 import pickle
 import re
@@ -17,6 +21,7 @@ import exec_calibration as X
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 NOW = datetime(2026, 10, 16, 12, 0, tzinfo=timezone.utc)
 FAKE_IDS = ('FAKEORDER123456', 'zqFAKECLIENT0001', 'acctFAKE999')
+_SEQ = itertools.count()    # each synthetic fill is a distinct order (the reader drops identical records)
 
 
 def rec(kind='entry_market', sym='BTCUSDT', side='LONG', ref=100.0, act=100.0, t=NOW - timedelta(hours=1), outcome='filled',
@@ -24,7 +29,7 @@ def rec(kind='entry_market', sym='BTCUSDT', side='LONG', ref=100.0, act=100.0, t
     buy = (side == 'LONG') if kind in X.ENTRY_KINDS else (side == 'SHORT')
     r = dict(time=t.isoformat(timespec='seconds'), kind=kind, symbol=sym, side=side, buy=buy, expected=ref, actual=act,
              slip_bps=None, qty_req=1.0, qty_fill=1.0 if outcome in ('filled', 'partial') else None, outcome=outcome,
-             wait_s=wait, orderId=FAKE_IDS[0], clientOrderId=FAKE_IDS[1], account=FAKE_IDS[2])
+             wait_s=wait, orderId=f'{FAKE_IDS[0]}-{next(_SEQ)}', clientOrderId=FAKE_IDS[1], account=FAKE_IDS[2])
     r.update(extra)
     return r
 
@@ -81,7 +86,7 @@ def test_adverse_favourable_long_short_mirrored(tmp_path, kind):
     out = {}
     for side in ('LONG', 'SHORT'):
         buy = (side == 'LONG') if kind != 'exit' else (side == 'SHORT')
-        recs = [rec(kind, side=side, act=adverse_px(100.0, 7, buy))] * 3 + [rec(kind, side=side, act=adverse_px(100.0, -4, buy))]
+        recs = [rec(kind, side=side, act=adverse_px(100.0, 7, buy)) for _ in range(3)] + [rec(kind, side=side, act=adverse_px(100.0, -4, buy))]
         st = profile_of(tmp_path, recs, min_cell_n=1)['levels'][kind]
         out[side] = (st['slip_p50_bps'], st['slip_worst_bps'], st['slip_n'])
     assert out['LONG'] == out['SHORT'] == (7.0, 7.0, 4)
@@ -147,16 +152,16 @@ def test_sparse_cell_collapse(tmp_path):
     sparse = [rec('entry_market', 'BTCUSDT', t=NOW.replace(hour=3) - timedelta(minutes=i)) for i in range(3)]  # L1 h00_06
     other = [rec('entry_market', 'SUIUSDT', t=t - timedelta(minutes=i)) for i in range(2)]                     # L3: 2 rows
     lone = [rec('safety_order', 'SOLUSDT', t=t)]
-    p = profile_of(tmp_path, dense + sparse + other + lone)
+    p = profile_of(tmp_path, dense + sparse + other + lone, as_of=t)
     c = p['cells']
-    assert c['entry_market|L1|h12_18'] == dict(n=30, stale=False, use='entry_market|L1|h12_18', fallback_level=0,
+    assert c['entry_market|L1|h12_18'] == dict(n=30, slip_n=30, stale=False, use='entry_market|L1|h12_18', fallback_level=0,
                                                fallback_name='kind_liq_hour')
     assert c['entry_market|L1|h00_06']['use'] == 'entry_market|L1' and c['entry_market|L1|h00_06']['fallback_level'] == 1
     assert c['entry_market|L3|h12_18']['use'] == 'entry_market' and c['entry_market|L3|h12_18']['fallback_level'] == 2
     assert c['safety_order|L2|h12_18']['use'] == 'taker' and c['safety_order|L2|h12_18']['fallback_level'] == 3
     assert p['coverage']['cells_collapsed'] == 3
-    few = profile_of(tmp_path, other)
-    assert few['cells']['entry_market|L3|h12_18'] == dict(n=2, stale=False, use=None, fallback_level=None,
+    few = profile_of(tmp_path, other, as_of=t)
+    assert few['cells']['entry_market|L3|h12_18'] == dict(n=2, slip_n=2, stale=False, use=None, fallback_level=None,
                                                           fallback_name='below_min_at_all_levels')
 
 
@@ -213,7 +218,7 @@ def test_stale_and_small_refused(tmp_path):
     ok, why = X.promotable(small, NOW)
     assert not ok and 'small_sample' in why
     fresh = profile_of(tmp_path, big_set())
-    assert X.promotable(fresh, NOW + timedelta(days=20))[1] == ['stale_profile']    # ages out by itself
+    assert X.promotable(fresh, NOW + timedelta(days=20))[1] == ['stale_profile', 'stale_cells']   # ages out by itself
     assert 'future_dated' in X.promotable(fresh, NOW - timedelta(days=1))[1]
 
 
@@ -292,3 +297,131 @@ def test_cli_writes_profile(tmp_path, capsys):
     s = json.loads(capsys.readouterr().out)
     p = X.load_profile(out / 'profile.json')
     assert s['digest'] == p['digest'] and s['by_kind']['exit']['n'] == 80
+
+
+# ---- adversarial-review regressions (each failed on b215c3b) ---------------------------------------------------------------
+def _good(tmp_path):
+    return profile_of(tmp_path, big_set(300))
+
+
+def _resign(p):
+    p['digest'] = X.digest_of(p); return p
+
+
+def test_d1_staleness_rejudged_at_now(tmp_path):
+    """The stored stale_share was judged at build time; the guard must re-judge each cell's newest row at `now`."""
+    p = profile_of(tmp_path, big_set(300, t=NOW - timedelta(days=2)) + [rec(t=NOW)], as_of=NOW)
+    assert X.promotable(p, NOW) == (True, [])
+    later = NOW + timedelta(days=13)                     # profile.last (NOW) still fresh; almost every cell is not
+    stale_now = sum(X._parse_t(p['levels'][k]['last']) < later - timedelta(days=14) for k in p['cells']) / len(p['cells'])
+    ok, why = X.promotable(p, later)
+    assert stale_now > 0.25 and not ok and why == ['stale_cells'], why
+
+
+def test_d2_as_of_before_data_refused(tmp_path):
+    recs = big_set(300, t=NOW - timedelta(days=16)) + [rec(t=NOW)]
+    with pytest.raises(X.CalibrationError, match='as_of'):
+        profile_of(tmp_path, recs, as_of=NOW - timedelta(days=30))
+    assert profile_of(tmp_path, recs, as_of=NOW)['source']['as_of'] == NOW.isoformat()   # == newest row is fine
+
+
+def test_d4_outlier_cut_recorded_and_guarded(tmp_path):
+    rows, src = X.read_fills([write(tmp_path, big_set(300))], dict(X.THRESHOLDS, slip_outlier_bps=7.5))   # drops 8, 9 bps
+    p = X.build_profile(rows, src, NOW)
+    ok, why = X.promotable(p, NOW)
+    assert not ok and 'outlier_cut_tightened' in why and 'slip_outliers' in why, why
+    assert p['thresholds']['slip_outlier_bps'] == 7.5 == p['source']['reader_thresholds']['slip_outlier_bps']
+    assert p['coverage']['slip_outliers'] == 60 and p['coverage']['slip_outlier_share'] == 0.2
+    wild = big_set(300) + [rec(t=NOW - timedelta(seconds=i), act=adverse_px(100.0, 2000, True)) for i in range(10)]
+    q = profile_of(tmp_path, wild)                                                                 # default cut, 10 outliers
+    assert q['thresholds']['slip_outlier_bps'] == 1000.0 and q['coverage']['slip_outliers'] == 10
+    assert X.promotable(q, NOW) == (False, ['slip_outliers'])
+
+
+def test_d5_coverage_cross_checked_and_ranges(tmp_path):
+    """The digest is unkeyed (integrity only), so a re-signed edit must still agree with the levels and stay in range."""
+    p = profile_of(tmp_path, big_set(60))
+    p['coverage'].update(rows=999, slip_coverage=1.0); p['levels']['taker']['slip_n'] = 999; _resign(p)
+    assert 'inconsistent_profile' in X.promotable(p, NOW)[1]
+    for edit in (lambda q: q['coverage'].update(stale_share=-1.0), lambda q: q['coverage'].update(rejected_share=-5.0),
+                 lambda q: q['coverage'].update(slip_coverage=7.0), lambda q: q['levels']['taker'].update(fill_rate=1.5),
+                 lambda q: q['levels']['taker'].update(unknown=-1), lambda q: q['cells'][next(iter(q['cells']))].update(n=-3)):
+        q = _good(tmp_path); edit(q); _resign(q)
+        ok, why = X.promotable(q, NOW)
+        assert not ok and 'inconsistent_profile' in why, why
+    assert 'integrity only' in X.__doc__ and 'NOT authentication' in X.__doc__
+
+
+def test_d6_cell_level_matches_cost_params(tmp_path):
+    recs = big_set(300)
+    for i in range(40):
+        f = i < 10
+        recs.append(rec('entry_maker', 'BTCUSDT', 'LONG', 100.0, 100.0 if f else None,
+                        datetime(2026, 10, 16, 8, i, tzinfo=timezone.utc), outcome='filled' if f else 'unfilled'))
+    p = profile_of(tmp_path, recs)
+    cell = p['cells']['entry_maker|L1|h06_12']
+    assert cell['use'] == X.cost_params(p, 'median', 'entry_maker', 'BTCUSDT', 8)['provenance']['level']
+    assert (cell['n'], cell['slip_n']) == (40, 10)                  # both recorded; the level is chosen by slip_n
+
+
+def test_d7_backtest_params_stays_in_class(tmp_path):
+    taker = [rec('entry_market', 'BTCUSDT', 'LONG', 100.0, adverse_px(100.0, 20, True), NOW - timedelta(minutes=i))
+             for i in range(20)]
+    maker = [rec('entry_maker', 'BTCUSDT', 'LONG', 100.0, 99.9, NOW - timedelta(minutes=i)) for i in range(40)]
+    with pytest.raises(X.CalibrationError, match='slippage samples'):     # 20 taker rows: never borrow maker fills
+        X.backtest_params(profile_of(tmp_path, taker + maker), 'median')
+    more = taker + [rec('entry_market', 'BTCUSDT', 'LONG', 100.0, adverse_px(100.0, 20, True),
+                        NOW - timedelta(hours=1, minutes=i)) for i in range(20)]
+    bp = X.backtest_params(profile_of(tmp_path, more + maker), 'median')
+    assert bp['provenance']['level'] == 'taker' and bp['SLIP'] == pytest.approx(20e-4)
+    assert (bp['FEE'], bp['FEE_MAKER']) == (0.0005, 0.0002)
+
+
+def test_d8_naive_datetime_hour_refused(tmp_path):
+    p = _good(tmp_path)
+    with pytest.raises(X.CalibrationError, match='timezone-aware'):
+        X.cost_params(p, 'median', 'entry_market', 'BTCUSDT', datetime(2026, 10, 16, 6, 0))
+    assert X.cost_params(p, 'median', 'entry_market', 'BTCUSDT', datetime(2026, 10, 16, 6, 0, tzinfo=timezone.utc))
+
+
+def test_d9_bom_tolerated(tmp_path):
+    f = tmp_path / 'f.jsonl'; f.write_bytes(b'\xef\xbb\xbf' + json.dumps(rec()).encode() + b'\n')
+    rows, src = X.read_fills([str(f)])
+    assert len(rows) == 1 and src['rejected'] == {}, src
+
+
+def test_d10_duplicate_paths_and_records(tmp_path):
+    recs = big_set(10)
+    f = write(tmp_path, recs + [recs[0]])                      # one record repeated verbatim inside the file
+    alias = os.path.join(str(tmp_path), '.', 'fills.jsonl')    # same file, different spelling
+    rows, src = X.read_fills([f, f, alias])
+    assert len(rows) == 10 and src['files'] == ['fills.jsonl'] and src['duplicates'] == 1 and src['rows_read'] == 10
+    twin = dict(recs[0], orderId='FAKEORDER123456-other')      # same content, different order id: a distinct fill
+    assert len(X.read_fills([write(tmp_path, [recs[0], twin], 'b.jsonl')])[0]) == 2
+    text = X.dumps_profile(X.build_profile(rows, src, NOW))
+    h = hashlib.sha256(json.dumps(recs[0], sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+    assert not any(i in text for i in FAKE_IDS) and h not in text
+
+
+def test_d11_hook_serialised_across_threads(tmp_path):
+    p = _good(tmp_path); old = (BT.FEE, BT.SLIP, BT.FEE_MAKER)
+    a_in, b_in, seen = threading.Event(), threading.Event(), []
+    def a():
+        with X.calibrated_backtest(p, 'pessimistic', NOW):
+            a_in.set(); seen.append(b_in.wait(0.5))           # B must not get in while A holds the globals
+    def b():
+        a_in.wait(5)
+        with X.calibrated_backtest(p, 'median', NOW): b_in.set()
+    ts = [threading.Thread(target=a), threading.Thread(target=b)]
+    for t in ts: t.start()
+    for t in ts: t.join(10)
+    got = (BT.FEE, BT.SLIP, BT.FEE_MAKER); BT.FEE, BT.SLIP, BT.FEE_MAKER = old
+    assert seen == [False] and b_in.is_set() and got == old, (seen, got)
+
+
+def test_d12_cost_kwargs_conflicting_with_profile_refused(tmp_path):
+    assert 'fee_maker' in inspect.signature(BT.run).parameters        # backtest.py untouched: the refusal lives here
+    p = _good(tmp_path); consts = (BT.FEE, BT.SLIP, BT.FEE_MAKER)
+    with pytest.raises(X.CalibrationError, match='fee_maker'):
+        X.run_backtest(_book(), SLEEVES, profile=p, now=NOW, warmup=220, fee_maker=0.0)
+    assert (BT.FEE, BT.SLIP, BT.FEE_MAKER) == consts

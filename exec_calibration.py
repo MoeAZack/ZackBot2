@@ -16,6 +16,11 @@ the frozen research runners. Three parts:
    without the hook is byte-identical by construction). `promotable(profile, now)` refuses with reasons.
 
 Output never carries record ids, order / client ids, account data or symbols' raw rows - only bucket aggregates.
+
+The digest is an UNKEYED sha256: it detects accidental edits and corruption (integrity only). It is NOT authentication -
+anyone can edit a profile and recompute it, so the guard also re-derives what it can (staleness at `now`, coverage vs
+levels, ranges). Provenance and authorship of a profile (who built it, from which audit) belong to Codex's acceptance
+record, not to this digest.
 """
 from __future__ import annotations
 
@@ -26,10 +31,11 @@ import json
 import math
 import os
 import sys
+import threading
 from collections import Counter
 from datetime import datetime, timedelta, timezone
 
-SCHEMA = 'zb-exec-cal/1'
+SCHEMA = 'zb-exec-cal/2'   # /2: applied reader cuts + outlier / duplicate counts recorded, cells carry slip_n
 
 # ---- prespecified buckets (frozen with the schema; changing any of them is a schema bump) ---------------------------------
 FILL_KINDS = ('entry_market', 'entry_maker', 'entry_fallback', 'pyramid_add', 'safety_order', 'exit')   # == Engine.FILL_KINDS
@@ -59,7 +65,11 @@ THRESHOLDS = dict(
     max_rejected_share=0.05,   # promotion: share of rows rejected as malformed
     slip_outlier_bps=1000.0,   # |slippage| above this is flagged and kept out of the slippage statistics
     slip_mismatch_bps=0.5,     # recorded slip_bps vs recomputed from prices: flagged above this, recomputed value used
+    max_outlier_share=0.01,    # promotion: share of priced fills dropped as slippage outliers
 )
+READER_KEYS = ('slip_outlier_bps', 'slip_mismatch_bps')   # applied in read_fills; recorded in source.reader_thresholds
+COST_KWARGS = ('fee_maker',)   # backtest.run kwargs that set a cost the profile owns
+_HOOK_LOCK = threading.RLock()   # backtest.FEE / SLIP / FEE_MAKER are process globals: one calibrated run at a time
 MODES = {'median': 'p50', 'pessimistic': 'p90'}
 _NUM = ('expected', 'actual', 'signal_px', 'slip_bps', 'qty_req', 'qty_fill', 'wait_s', 'fee', 'commission', 'fee_rate')
 _OUTCOMES = ('filled', 'partial', 'unfilled', 'unknown')
@@ -174,22 +184,34 @@ def normalize(rec, th=THRESHOLDS):
 
 def read_fills(paths, th=THRESHOLDS):
     """Read fills.jsonl-format files in the order given (pass `fills.jsonl.1` before `fills.jsonl`). Missing files are
-    skipped. Returns (rows, source) where source has counts only."""
-    rows, rejected, flagged, files, n_lines = [], Counter(), Counter(), [], 0
+    skipped. A path given twice (same resolved file) is read once, and a record identical to one already read (content hash
+    over the whole raw record, ids included, taken before normalize strips them; never stored) is counted as a duplicate
+    and skipped. A UTF-8 BOM is tolerated. Returns (rows, source) where source has counts only, plus the reader cuts
+    actually applied (`reader_thresholds`) so the profile records what was really used."""
+    th = dict(THRESHOLDS, **(th or {}))
+    rows, rejected, flagged, files, n_lines, dups = [], Counter(), Counter(), [], 0, 0
+    seen_paths, seen_recs = set(), set()
     for p in paths:
         if not os.path.exists(p): continue
+        rp = os.path.normcase(os.path.realpath(p))
+        if rp in seen_paths: continue
+        seen_paths.add(rp)
         files.append(os.path.basename(p))
-        with open(p, encoding='utf-8', errors='replace') as fh:
+        with open(p, encoding='utf-8-sig', errors='replace') as fh:
             for ln in fh:
                 if not ln.strip(): continue
-                n_lines += 1
                 try: rec = json.loads(ln)
-                except ValueError: rejected['bad_json'] += 1; continue
+                except ValueError: n_lines += 1; rejected['bad_json'] += 1; continue
+                h = hashlib.sha256(json.dumps(rec, sort_keys=True, separators=(',', ':')).encode('utf-8')).digest()
+                if h in seen_recs: dups += 1; continue
+                seen_recs.add(h)
+                n_lines += 1
                 row, why, flags = normalize(rec, th)
                 if row is None: rejected[why] += 1; continue
                 flagged.update(flags); rows.append(row)
-    return rows, dict(files=files, rows_read=n_lines, rows_used=len(rows), rejected=dict(sorted(rejected.items())),
-                      flagged=dict(sorted(flagged.items())))
+    return rows, dict(files=files, rows_read=n_lines, rows_used=len(rows), duplicates=dups,
+                      rejected=dict(sorted(rejected.items())), flagged=dict(sorted(flagged.items())),
+                      reader_thresholds={k: float(th[k]) for k in READER_KEYS})
 
 
 # ---- 2. profile --------------------------------------------------------------------------------------------------------
@@ -219,9 +241,17 @@ def _stats(rows, kind_class, as_of, max_age):
 
 
 def build_profile(rows, source, as_of, thresholds=None):
-    """The frozen profile dict (digest included). as_of: tz-aware datetime the staleness is judged against."""
+    """The frozen profile dict (digest included). as_of: tz-aware datetime the staleness is judged against; it may not be
+    earlier than the newest row (else nothing could ever look stale). The reader cuts recorded are the ones read_fills
+    actually applied (source.reader_thresholds), not the module defaults."""
     th = dict(THRESHOLDS, **(thresholds or {}))
-    if as_of.tzinfo is None: raise CalibrationError('as_of must be timezone-aware')
+    if not isinstance(as_of, datetime) or as_of.tzinfo is None: raise CalibrationError('as_of must be timezone-aware')
+    if rows and as_of < max(r['t'] for r in rows):
+        raise CalibrationError('as_of is earlier than the newest fill row: staleness would be hidden')
+    applied = source.get('reader_thresholds')
+    if not isinstance(applied, dict) or set(applied) != set(READER_KEYS) or not all(_finite(v) for v in applied.values()):
+        raise CalibrationError('source.reader_thresholds missing: build from read_fills output')
+    th.update(applied)
     as_of = as_of.astimezone(timezone.utc).replace(microsecond=0)
     max_age = timedelta(days=th['max_age_days'])
     groups = {}
@@ -235,12 +265,14 @@ def build_profile(rows, source, as_of, thresholds=None):
     for leaf in sorted({level_keys(r['kind'], r['liq'], r['hb'])[0] for r in rows}):
         kind, liq, hb = leaf.split('|')
         chain = level_keys(kind, liq, hb)
-        use = next(((i, k) for i, k in enumerate(chain) if levels[k]['n'] >= th['min_cell_n']), None)
-        cells[leaf] = dict(n=levels[leaf]['n'], stale=levels[leaf]['stale'],
+        # same rule as cost_params/_slip_level: the slippage level is chosen by slip_n, not by n
+        use = next(((i, k) for i, k in enumerate(chain) if levels[k]['slip_n'] >= th['min_cell_n']), None)
+        cells[leaf] = dict(n=levels[leaf]['n'], slip_n=levels[leaf]['slip_n'], stale=levels[leaf]['stale'],
                            use=use[1] if use else None, fallback_level=use[0] if use else None,
                            fallback_name=LEVELS[use[0]] if use else 'below_min_at_all_levels')
     filled_n = sum(1 for r in rows if r['outcome'] in ('filled', 'partial'))
     slip_n = sum(1 for r in rows if r['slip'] is not None)
+    outliers = source.get('flagged', {}).get('slip_outlier', 0)
     n_cells = len(cells)
     total_seen = source.get('rows_read', len(rows))
     rej = sum(source.get('rejected', {}).values())
@@ -257,6 +289,8 @@ def build_profile(rows, source, as_of, thresholds=None):
                     percentile='nearest-rank'),
         coverage=dict(rows=len(rows), filled=filled_n, slip_n=slip_n,
                       slip_coverage=_r(slip_n / filled_n, 4) if filled_n else 0.0,
+                      slip_outliers=outliers,
+                      slip_outlier_share=_r(outliers / (slip_n + outliers), 4) if slip_n + outliers else 0.0,
                       cells=n_cells, cells_collapsed=sum(1 for c in cells.values() if c['fallback_level'] != 0),
                       stale_share=_r(sum(c['stale'] for c in cells.values()) / n_cells, 4) if n_cells else 1.0,
                       rejected_share=_r(rej / total_seen, 4) if total_seen else 0.0),
@@ -310,9 +344,56 @@ def promotable(profile, now, thresholds=None):
     lv = profile.get('levels') if isinstance(profile.get('levels'), dict) else {}
     taker = lv.get('taker') or {}
     if not _finite(taker.get('slip_n')) or taker['slip_n'] < tight('min_cell_n', True): reasons.append('no_taker_slippage')
-    if not _finite(cov.get('stale_share')) or cov['stale_share'] > max_stale: reasons.append('stale_cells')
     if not _finite(cov.get('rejected_share')) or cov['rejected_share'] > max_rej: reasons.append('rejected_share')
+    # staleness is re-judged at `now` from each cell's newest row; the stored stale_share (judged at build time) is only
+    # range-checked, never trusted
+    cells = profile.get('cells') if isinstance(profile.get('cells'), dict) else {}
+    lasts = [_parse_t((lv.get(k) or {}).get('last')) if isinstance(lv.get(k), dict) else None for k in cells]
+    if any(t is None for t in lasts): reasons.append('malformed_profile')
+    cut = now - timedelta(days=max_age)
+    stale_now = sum(t is None or t < cut for t in lasts) / len(lasts) if lasts else 1.0
+    if stale_now > max_stale: reasons.append('stale_cells')
+    # reader cuts actually applied: an outlier cut tighter than the default hides adverse fills
+    src_th = src.get('reader_thresholds') if isinstance(src.get('reader_thresholds'), dict) else {}
+    cuts = [src_th.get('slip_outlier_bps'), pt.get('slip_outlier_bps')]
+    if not all(_finite(c) for c in cuts) or min(cuts) < base['slip_outlier_bps']: reasons.append('outlier_cut_tightened')
+    max_out = tight('max_outlier_share', False)
+    if not _finite(cov.get('slip_outlier_share')) or cov['slip_outlier_share'] > max_out: reasons.append('slip_outliers')
+    if not _consistent(cov, lv, cells): reasons.append('inconsistent_profile')
+    reasons = list(dict.fromkeys(reasons))
     return not reasons, reasons
+
+
+_COUNTS = ('rows', 'filled', 'slip_n', 'slip_outliers', 'cells', 'cells_collapsed')
+_SHARES = ('slip_coverage', 'slip_outlier_share', 'stale_share', 'rejected_share')
+_LEVEL_COUNTS = ('n', 'filled', 'partial', 'unfilled', 'unknown', 'slip_n', 'wait_n', 'fee_n')
+_LEVEL_SHARES = ('fill_rate', 'unfilled_rate', 'maker_fill_rate', 'fallback_rate', 'fallback_confirmed_rate')
+
+
+def _consistent(cov, lv, cells):
+    """Coverage agrees with the levels it summarises, every count is a non-negative integer and every share is in [0, 1].
+    (The digest is unkeyed, so a re-signed edit must also survive this.)"""
+    def cnt(v): return _finite(v) and v >= 0 and float(v).is_integer()
+    def shr(v): return _finite(v) and 0 <= v <= 1
+    if not all(cnt(cov.get(k)) for k in _COUNTS) or not all(shr(cov.get(k)) for k in _SHARES): return False
+    for st in lv.values():
+        if not isinstance(st, dict): return False
+        if not all(cnt(st.get(k)) for k in _LEVEL_COUNTS): return False
+        if not all(st.get(k) is None or shr(st[k]) for k in _LEVEL_SHARES): return False
+        if st['filled'] + st['partial'] + st['unfilled'] + st['unknown'] != st['n'] or st['slip_n'] > st['n']: return False
+    al = lv.get('all')
+    if not isinstance(al, dict): return cov['rows'] == 0 and not cells
+    if (cov['rows'] != al['n'] or cov['filled'] != al['filled'] + al['partial'] or cov['slip_n'] != al['slip_n']
+            or cov['slip_n'] > cov['filled'] or cov['cells'] != len(cells) or cov['cells_collapsed'] > cov['cells']):
+        return False
+    cls = [lv[k] for k in ('maker', 'taker') if isinstance(lv.get(k), dict)]
+    if sum(s['n'] for s in cls) != al['n'] or sum(s['slip_n'] for s in cls) != al['slip_n']: return False
+    if cov['filled'] and abs(cov['slip_coverage'] - cov['slip_n'] / cov['filled']) > 1e-4: return False
+    for k, c in cells.items():
+        st = lv.get(k)
+        if not isinstance(c, dict) or not isinstance(st, dict) or c.get('n') != st['n'] or c.get('slip_n') != st['slip_n']:
+            return False
+    return True
 
 
 # ---- 3. opt-in application ---------------------------------------------------------------------------------------------
@@ -335,7 +416,10 @@ def cost_params(profile, mode, kind, symbol, hour):
     """Per-fill parameters for one simulated fill. Slippage never credits a favourable median (floored at 0)."""
     _check(profile, mode)
     if kind not in FILL_KINDS: raise CalibrationError(f'unknown kind {kind!r}')
-    h = hour.astimezone(timezone.utc).hour if isinstance(hour, datetime) else int(hour)
+    if isinstance(hour, datetime):
+        if hour.tzinfo is None: raise CalibrationError('hour datetime must be timezone-aware (naive = ambiguous local time)')
+        h = hour.astimezone(timezone.utc).hour
+    else: h = int(hour)
     chain = level_keys(kind, liq_tier(symbol), hour_bucket(h))
     i, k, st = _slip_level(profile, chain)
     raw = st['slip_p50_bps' if mode == 'median' else 'slip_p90_bps']
@@ -349,13 +433,18 @@ def cost_params(profile, mode, kind, symbol, hour):
 
 def backtest_params(profile, mode):
     """Scalar parameters for backtest.run (one SLIP for every fill, taker FEE, FEE_MAKER): taker class pooled; the maker
-    fee only when the profile has maker rows, else None (= backtest default kept)."""
+    fee only when the profile has maker rows, else None (= backtest default kept). Each stays inside its own class: SLIP
+    and FEE from the taker class only (never the pooled 'all' level, which mixes in maker fills), FEE_MAKER from the maker
+    class only. Refuses (CalibrationError) rather than return FEE=None."""
     _check(profile, mode)
-    i, k, st = _slip_level(profile, ('taker', 'all'))
+    i, k, st = _slip_level(profile, ('taker',))
     raw = st['slip_p50_bps' if mode == 'median' else 'slip_p90_bps']
     bps = max(0.0, raw)
+    if not _finite(st.get('fee_rate')): raise CalibrationError('taker class has no fee rate')
     mk = profile['levels'].get('maker') or {}
-    return dict(SLIP=bps / 1e4, FEE=st['fee_rate'], FEE_MAKER=mk.get('fee_rate'),
+    fm = mk.get('fee_rate')
+    if fm is not None and not _finite(fm): raise CalibrationError('maker class fee rate malformed')
+    return dict(SLIP=bps / 1e4, FEE=st['fee_rate'], FEE_MAKER=fm,
                 provenance=dict(schema=SCHEMA, digest=profile['digest'], mode=mode, stat=MODES[mode], level=k,
                                 slip_bps=bps, floored=raw < 0, fee_basis=st['fee_basis'],
                                 maker_fee_basis=mk.get('fee_basis', 'backtest_default'),
@@ -370,19 +459,23 @@ def calibrated_backtest(profile, mode, now=None):
     p = backtest_params(profile, mode)
     ok, why = promotable(profile, now or datetime.now(timezone.utc))
     prov = dict(p['provenance'], promotable=ok, refusals=why)
-    old = (BT.FEE, BT.SLIP, BT.FEE_MAKER)
-    try:
-        BT.FEE, BT.SLIP = p['FEE'], p['SLIP']
-        if p['FEE_MAKER'] is not None: BT.FEE_MAKER = p['FEE_MAKER']
-        yield prov
-    finally:
-        BT.FEE, BT.SLIP, BT.FEE_MAKER = old
+    with _HOOK_LOCK:   # held for the whole context: another thread's swap/restore cannot interleave (re-entrant per thread)
+        old = (BT.FEE, BT.SLIP, BT.FEE_MAKER)
+        try:
+            BT.FEE, BT.SLIP = p['FEE'], p['SLIP']
+            if p['FEE_MAKER'] is not None: BT.FEE_MAKER = p['FEE_MAKER']
+            yield prov
+        finally:
+            BT.FEE, BT.SLIP, BT.FEE_MAKER = old
 
 
 def run_backtest(book, sleeves, profile=None, mode='median', now=None, **kw):
-    """backtest.run with an optional calibration. profile None = exactly backtest.run(book, sleeves, **kw)."""
+    """backtest.run with an optional calibration. profile None = exactly backtest.run(book, sleeves, **kw). With a profile,
+    cost kwargs that would override it (fee_maker) are refused, so the provenance always names the costs actually used."""
     import backtest as BT
     if profile is None: return BT.run(book, sleeves, **kw)
+    clash = sorted(k for k in COST_KWARGS if kw.get(k) is not None)
+    if clash: raise CalibrationError(f'cost kwargs {clash} conflict with the calibration profile')
     with calibrated_backtest(profile, mode, now) as prov:
         tr, cv = BT.run(book, sleeves, **kw)
     try: cv.attrs['exec_calibration'] = prov
