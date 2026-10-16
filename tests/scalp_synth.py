@@ -87,3 +87,28 @@ def qbank_long(df=None):
     e9, pc = float(d.e9.iloc[-1]), float(df.c.iloc[-1])
     c = max(pc, e9) + 0.05
     return append(df, e9 - 0.05, c + 0.03, e9 - 0.4, c)
+
+
+# ------------------------------------------------------------------ Wave B1: htf_pullback_scalp
+def htf_base(n=1100, base=78.0, slope=0.04, seed=3):
+    """A steady 15m up-trend (4h close > EMA50, EMA20 > EMA50 after warm-up) with a period-16 swing; starts on a 4h
+    boundary. Prices stay near 100 so the mirror (K - p) has the same cost-gate scale."""
+    rng = np.random.default_rng(seed)
+    i = np.arange(n)
+    c = base + slope * i + 0.5 * np.sin(2 * np.pi * i / 16) + rng.normal(0, 0.02, n)
+    o = np.r_[c[0], c[:-1]]
+    h, l = np.maximum(o, c) + 0.3, np.minimum(o, c) - 0.3
+    v = 1000 + rng.uniform(-50, 50, n)
+    return _frame(o, h, l, c, v)
+
+
+def htf_long(df=None):
+    """Up-trend; two candles pull back and close below the 15m EMA20, then the last candle closes back above it at its top."""
+    df = htf_base() if df is None else df
+    for _ in range(2):
+        e20 = float(S.indicators(df).e20.iloc[-1])
+        o = float(df.c.iloc[-1]); c = min(o, e20) - 0.4
+        df = append(df, o, o + 0.1, c - 0.1, c)
+    e20 = float(S.indicators(df).e20.iloc[-1])
+    o = float(df.c.iloc[-1]); c = e20 + 0.6
+    return append(df, o, c + 0.05, o - 0.1, c)

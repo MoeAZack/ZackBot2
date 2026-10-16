@@ -34,7 +34,7 @@ def sig(key, raw):
 
 # ------------------------------------------------------------------ registry contract
 def test_registry_entries_are_labelled_paper_experimental_symmetric_15m():
-    assert E.SCALP_KEYS == set(KEYS)
+    assert E.SCALP_KEYS == set(KEYS) | {'htf_pullback_scalp'}          # + Wave B1 (tests/test_htf_pullback_scalp.py)
     for k in KEYS:
         st = S.STRATEGIES[k]
         assert st['sides'] == 'both' and st['tf'] == '15m' and 'PAPER' in st['name'] and S.SCALP_TAG in st['desc']
@@ -218,8 +218,9 @@ def test_existing_groups_and_schedule_byte_identical():
 
 def test_scalp_slots_appended_after_the_rotation_slots():
     sl = E.breadth_sleeves()
-    assert [x['id'] for x in sl[-4:]] == list(E.SCALP_SLOTS) and [x['key'] for x in sl[-4:]] == list(KEYS)
-    for x in sl[-4:]:
+    m = len(E.SCALP_SLOTS)                                              # SCALP-4 + Wave B1 SC-HTFPB (appended last)
+    assert [x['id'] for x in sl[-m:]] == list(E.SCALP_SLOTS) and [x['key'] for x in sl[-m:]] == list(KEYS) + ['htf_pullback_scalp']
+    for x in sl[-m:]:
         assert x['enabled'] is E.SCALP_DEFAULT_ENABLED and x['tf'] == '15m' and x['sides'] == 'both'
         assert x['symbols'] == 'core8' and x['max_pos'] == E.SCALP_MAX_POS and x['mgmt'] == {}
         assert x['id'] not in E.rotation_at(0)['active'] and len(x['id']) <= 12
@@ -240,7 +241,7 @@ def test_scalp_slots_default_off_and_sync_only_appends(tmp_path):
     assert E.SCALP_DEFAULT_ENABLED is False and all(x['enabled'] is False for x in E.scalp_sleeves())
     e, _ = mk_engine(str(tmp_path)); e.apply_preset(E.ROTATION_PRESET)
     sc = [x for x in e.S['SLEEVES'] if x['key'] in E.SCALP_KEYS]
-    assert len(sc) == 4 and not any(x['enabled'] for x in sc)
+    assert len(sc) == len(E.SCALP_SLOTS) and not any(x['enabled'] for x in sc)
     assert e.entry_block(sc[0], 'BTCUSDT', 'LONG') == 'strategy slot switched off'
     sc[0]['enabled'] = True                                             # an owner opt-in survives a re-sync
     assert e.sync_scalp_slots() == [] and sc[0]['enabled'] is True
@@ -360,7 +361,7 @@ def test_installed_rotation_gets_missing_scalp_slots_once_and_existing_slots_byt
     sl = e2.S['SLEEVES']
     assert json.dumps(sl[:len(old)], sort_keys=True) == snap
     assert [x['id'] for x in sl[len(old):]] == list(E.SCALP_SLOTS)
-    assert e2.sync_scalp_slots() == [] and len(e2.S['SLEEVES']) == len(old) + 4  # idempotent
+    assert e2.sync_scalp_slots() == [] and len(e2.S['SLEEVES']) == len(old) + len(E.SCALP_SLOTS)  # idempotent
     # persisted: a further restart reads them from disk; an owner-disabled scalp slot stays disabled, never duplicated
     e2.S['SLEEVES'][-1]['enabled'] = False; e2.save_settings()
     e3 = E.Engine(dict(MODE='paper', API_KEY='k' * 16, API_SECRET='s' * 16), tmp)

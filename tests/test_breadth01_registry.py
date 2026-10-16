@@ -53,7 +53,8 @@ EMITS = {'ema_st': ('le', 'se'), 'ema_mom': ('le', 'se'), 'donchian_ens': ('le',
          'exp_mom_short': ('se',), 'exp_rip_sell_dca': ('se',),
          # SCALP-4 (PAPER, 15m)
          'range_scalp': ('le', 'se'), 'failed_breakout_scalp': ('le', 'se'), 'momentum_burst_scalp': ('le', 'se'),
-         'quick_bank_runner': ('le', 'se')}
+         'quick_bank_runner': ('le', 'se'),
+         'htf_pullback_scalp': ('le', 'se')}                                            # Wave B1 (PAPER, 15m)
 # sides that need a non-default param to be emitted
 SIDE_PARAMS = {('rotation', 'se'): dict(shorts=True)}
 LONG_DEFAULT_SHORT_EMITTERS = {'ema_st', 'ema_mom', 'donchian_ens', 'breakout_pyramid', 'squeeze_tp', 'pullback_rsi',
@@ -71,7 +72,8 @@ FAMILY = {'ema_st': 'Trend', 'ema_mom': 'Trend', 'donchian_ens': 'Trend', 'exp_t
           'dca_dip': 'Dip-DCA',
           'exp_mom_short': 'Momentum', 'exp_rip_sell_dca': 'Dip-DCA',   # B3 short mirrors (#94)
           'range_scalp': 'Scalp', 'failed_breakout_scalp': 'Scalp', 'momentum_burst_scalp': 'Scalp',
-          'quick_bank_runner': 'Scalp'}                                  # SCALP-4 (PAPER slots, not rotated)
+          'quick_bank_runner': 'Scalp',                                  # SCALP-4 (PAPER slots, not rotated)
+          'htf_pullback_scalp': 'Scalp'}                                 # Wave B1 (PAPER slot, not rotated)
 FAMILIES = ('Trend', 'Momentum', 'Range', 'Breakout', 'Scalp', 'Rotation', 'Dip-DCA')
 
 # (key, side) -> (shape, mirrored). Long fixtures are up-drift tapes, shorts their exact price mirror (BTC down too).

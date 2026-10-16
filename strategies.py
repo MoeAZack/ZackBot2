@@ -428,6 +428,79 @@ def sig_quick_bank_runner(d, p, ctx):
     return _one_side(dict(le=le, se=se, lx=dn, sx=up))
 
 
+# ------------------------------------------------------------------ WAVE B1: htf_pullback_scalp (EXPERIMENTAL / PAPER-only)
+# 4h trend context + 15m EMA20 pullback / reclaim. Symmetric by construction (the short rule is the price mirror of the long
+# rule), wrapped in _one_side. Constants are prespecified defaults, NOT optimised; no edge is claimed.
+HP = dict(h4_fast=20, h4_slow=50, h4_warm=50, n=8, pos=0.6, stop_atr=1.25, buf_atr=0.1, min_atr=0.5, tp_r=1.5, max_bars=12)
+H4_MS = 4 * 3_600_000
+
+
+def htf_context(d, fast=HP['h4_fast'], slow=HP['h4_slow'], warm=HP['h4_warm']):
+    """4h trend for every row of d, from the last COMPLETED 4h candle only. d's candles (t = open time, closed candles) are
+    bucketed into UTC 4h candles; a bucket is used only when it holds every candle of its 4h span (a partial / gappy /
+    in-progress bucket is dropped, never used) and only from the close of the row whose close time is >= the bucket's
+    close (bucket open + 4h). So the in-progress 4h candle never reaches a decision. up = 4h close > EMA(slow) and
+    EMA(fast) > EMA(slow); dn = the mirror. Both False until `warm` completed 4h candles exist. On a frame of 4h (or
+    coarser) candles each row is its own completed candle. Returns (up, dn) boolean numpy arrays aligned to d."""
+    n = len(d)
+    if n == 0: return np.zeros(0, bool), np.zeros(0, bool)
+    t = pd.to_datetime(d['t']).reset_index(drop=True)
+    tm = t.values.astype('datetime64[ms]').astype(np.int64)
+    step = int(np.median(np.diff(tm))) if n > 1 else H4_MS
+    step = step if step > 0 else H4_MS
+    c = np.asarray(d['c'], float)
+    if step >= H4_MS:
+        b_close, b_avail = c, tm + step
+    else:
+        per = H4_MS // step
+        b = tm // H4_MS
+        g = pd.DataFrame({'b': b, 'c': c}).groupby('b', sort=True)['c'].agg(['last', 'count'])
+        g = g[g['count'] == per]                               # completed buckets only (all `per` candles present)
+        b_close, b_avail = g['last'].to_numpy(float), g.index.to_numpy(np.int64) * H4_MS + H4_MS
+    cs = pd.Series(b_close)
+    ef, es = ema(cs, fast).to_numpy(), ema(cs, slow).to_numpy()
+    ok = np.arange(1, len(cs) + 1) >= warm
+    up4, dn4 = ok & (b_close > es) & (ef > es), ok & (b_close < es) & (ef < es)
+    ct = tm + step                                             # each row's close time (decision time)
+    j = np.searchsorted(b_avail, ct, side='right') - 1         # last completed 4h candle closed at or before ct
+    has = j >= 0
+    jj = np.where(has, j, 0)
+    if len(cs) == 0: return np.zeros(n, bool), np.zeros(n, bool)
+    return has & up4[jj], has & dn4[jj]
+
+
+def sig_htf_pullback_scalp(d, p, ctx):
+    """4h trend + 15m EMA20 pullback / reclaim. Long: the last completed 4h candle is in an up-trend (htf_context); within
+    the last n candles price touched or closed through the 15m EMA20 (low <= EMA20); the decision candle is the FIRST since
+    that touch to close back above EMA20 in the outer 40 % of its range (close - low >= 0.6 x range); it passes
+    scalp_cost_ok for a 1.25 ATR stop. Short = the exact mirror. Stop distance (the signal's `atr`, mgmt stop_atr = 1):
+    max(1.25 ATR, beyond the pullback extreme (lowest low / highest high of the last n candles) + 0.1 ATR, 0.5 ATR).
+    Exit on a close back through EMA20 against the trade; target 1.5R, 12-candle cap (mgmt)."""
+    n = int(p.get('n', HP['n']))
+    c, h, l, e20, a = d.c, d.h, d.l, d.e20, d.atr
+    up4, dn4 = htf_context(d)
+    up4, dn4 = pd.Series(up4, index=d.index), pd.Series(dn4, index=d.index)
+    rng = (h - l).where(h - l > 0)
+    pos = (c - l) / rng
+
+    def first_reclaim(touch, q):
+        g = touch.cumsum()                                     # a group starts at every EMA20 touch
+        k = touch.groupby(g).cumcount()                        # candles since the latest touch (0 = the touch candle)
+        nq = q.astype(int).groupby(g).cumsum()
+        return q & (nq == 1) & (g > 0) & (k <= n - 1)
+
+    gate = scalp_cost_ok(d, stop_atr=HP['stop_atr'])
+    le = up4 & gate & first_reclaim(X(l <= e20), X(c > e20) & X(pos >= HP['pos']))
+    se = dn4 & gate & first_reclaim(X(h >= e20), X(c < e20) & X(pos <= 1 - HP['pos']))
+    s = _one_side(dict(le=le, se=se, lx=c < e20, sx=c > e20))
+    floor = np.maximum(HP['stop_atr'] * a, HP['min_atr'] * a)
+    stop_l = np.maximum(c - l.rolling(n, min_periods=1).min() + HP['buf_atr'] * a, floor)
+    stop_s = np.maximum(h.rolling(n, min_periods=1).max() - c + HP['buf_atr'] * a, floor)
+    dist = np.where(s['le'], stop_l, np.where(s['se'], stop_s, a)).astype(float)
+    s['atr'] = np.where(np.isfinite(dist) & (dist > 0), dist, np.nan)
+    return s
+
+
 # ------------------------------------------------------------------ registry
 # style: calm / balanced / aggressive  ·  sides: long / short / both
 STRATEGIES = {
@@ -534,6 +607,14 @@ STRATEGIES = {
                               desc=SCALP_TAG + ': EMA9 pullback in an EMA20/50 trend. Banks 70% at 0.8R and moves the stop to '
                                    'breakeven; the 30% runner targets 2R, exits on an EMA20/50 flip or after 12 candles (3h). Stop 1 ATR.',
                               mgmt=dict(QB)),
+    # ---- WAVE B1: EXPERIMENTAL / PAPER-only, independent PAPER slot like SCALP-4 (default OFF, refused in live mode).
+    'htf_pullback_scalp': dict(name='[PAPER EXP] HTF pullback scalp L/S 15m', style='aggressive', fn=sig_htf_pullback_scalp,
+                               sides='both', tf='15m',
+                               desc=SCALP_TAG + ': trend of the last completed 4h candle (close above EMA50, EMA20 above EMA50; '
+                                    'short = mirror), then a 15m pullback to EMA20 within 8 candles and the first close back '
+                                    'beyond it in the outer 40% of the candle. Stop the wider of 1.25 ATR or the pullback extreme '
+                                    '+ 0.1 ATR, target 1.5R, exit on a close back through EMA20, 12-candle (3h) cap.',
+                               mgmt=dict(stop_atr=1.0, tp_r=HP['tp_r'], max_bars=HP['max_bars'])),
 }
 
 

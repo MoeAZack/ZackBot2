@@ -355,13 +355,14 @@ BREADTH_ALL_SYMBOLS = frozenset({'rotation', 'hot_coin'})          # cross-secti
 # scalp strategy is refused in live mode, whatever the profile (scalp_block). Default enabled: False (Codex ruling
 # 6212617801: negative dev evidence) - the owner switches each slot on in PAPER; sized small (1 % risk on a 1/6 share, max 2 open).
 SCALP_SLOTS = {'SC-RANGE': 'range_scalp', 'SC-FAILBRK': 'failed_breakout_scalp', 'SC-MBURST': 'momentum_burst_scalp',
-               'SC-QBANK': 'quick_bank_runner'}                    # slot id (<= 12 chars) -> strategy key
+               'SC-QBANK': 'quick_bank_runner',
+               'SC-HTFPB': 'htf_pullback_scalp'}                  # slot id (<= 12 chars) -> strategy key; Wave B1 appended last
 SCALP_KEYS = frozenset(SCALP_SLOTS.values())
 SCALP_SHARE, SCALP_RISK, SCALP_MAX_POS, SCALP_DEFAULT_ENABLED = 1 / 6, 0.01, 2, False
 
 
 def scalp_sleeves():
-    """The four PAPER scalp slots (core 8, both sides, the strategy's own timeframe), in SCALP_SLOTS order."""
+    """The PAPER scalp slots (SCALP-4 + Wave B1 htf_pullback_scalp; core 8, both sides, the strategy's own timeframe), in SCALP_SLOTS order."""
     return [sleeve(i, k, SCALP_SHARE, SCALP_RISK, SCALP_MAX_POS, 'core8', sides='both', tf=S.STRATEGIES[k].get('tf', '15m'),
                    enabled=SCALP_DEFAULT_ENABLED) for i, k in SCALP_SLOTS.items()]
 
