@@ -321,6 +321,13 @@ class Futures:
             if e.code == -2013: return None             # order does not exist
             raise
 
+    def user_trades(self, symbol, order_id):
+        """EXEC-CAL-00 (read-only): this account's executions of ONE order (price, qty, commission, commissionAsset rows).
+        One attempt (retry=False): the caller bounds its own retries. critical=True: an audit read neither drives nor is
+        refused by the T05b outage circuit (it is not a status check)."""
+        return self._req('GET', '/fapi/v1/userTrades', dict(symbol=symbol, orderId=order_id), signed=True, retry=False,
+                         critical=True)
+
     def _order(self, params):
         """Idempotent order placement: a client order id is attached; on a timeout / 5xx the order is looked up
         by that id instead of being re-sent, so a lost response can never create a second position.
