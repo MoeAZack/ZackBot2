@@ -29,13 +29,18 @@ timestamp / boolean text, an empty file) refuses with `source_schema_mismatch`:
                        epoch ms): parsed strictly (round-trip exact) to ms; it is the event time. Rows sharing a
                        timestamp form one summary; summary times strictly increase; each summary carries exactly the
                        manifest's frozen `depth_scope` band set, depth and notional non-decreasing outward from the mid
-                       on each side. There is no sequence column (first/last_seq null, no sequence check).
+                       on each side. There is no sequence column (first/last_seq null, no sequence check). Band layouts
+                       are versioned by source era (DEPTH_SCOPES: `bd-scope-5/1` = +-1..+-5, `bd-scope-020-5/1` =
+                       +-0.20 plus +-1..+-5); a well-formed layout of no known era refuses `source_schema_unsupported`
+                       (Codex 6225951309 item 3), another known era than the frozen scope refuses as a scope mismatch.
   agg_trades           (aggTrades) agg_trade_id,price,quantity,first_trade_id,last_trade_id,transact_time,
                        is_buyer_maker
                        no separate event time: `transact_time` IS the event time. Sequence = `agg_trade_id`, strictly
                        increasing within and across files; `first_trade_id <= last_trade_id`; a trade-id overlap with
-                       the previous row rejects the file, a jump (`first_id != prev last_id + 1` inside a file,
-                       `agg_id != prev last agg_id + 1` across consecutive files) is a `seq` GAP.
+                       the previous row (or the previous file) rejects the file. The manifest binds each file's raw
+                       `first_trade_id` / `last_trade_id`; a raw jump (`first_trade_id != prev last_trade_id + 1`,
+                       inside a file or across consecutive files) is a `trade_id` GAP, an `agg_id != prev last agg_id
+                       + 1` across consecutive files a `seq` GAP (Codex 6225951309 item 2).
 Row checks fail closed (any failure rejects the file): 13-digit ms inside the file's day/month, transaction <= event
 time, event time non-decreasing, sequence strictly increasing, bid > 0, ask > 0, bid < ask (crossed AND locked books are
 refused), quantities > 0, canonical plain-decimal numbers (`manifest.QV_RE`; a percentage may carry one leading `-`).
@@ -44,9 +49,11 @@ Two files of one (symbol, series) whose periods overlap (a daily inside a monthl
 
 Gap report: deterministic and sorted - `head` / `tail` (period edge to first / last event) and `time` (between
 consecutive events) gaps longer than the series threshold of the allow-listed `gap_policy_id` (thresholds live in
-GAP_POLICIES, never chosen by a caller; item 3), `seq` gaps (aggTrades only - a bookTicker update-id jump is no proof of
-a missing row), and `file` gaps (a period with no file between two manifested files of one (symbol, series)). `at_ms`
-places each entry in time (a seq gap: the last event before the jump). It is stored in the manifest with
+GAP_POLICIES, never chosen by a caller; item 3), `seq` / `trade_id` gaps (aggTrades only - a bookTicker update-id jump
+is no proof of a missing row), and `file` gaps (a period with no file between two manifested files of one (symbol,
+series)). Each entry spans [`at_ms`, `next_ms`] (a jump: the last event before it and the first after it) and a run
+window sees it by interval OVERLAP, so a jump at midnight is seen by a window starting at the boundary (Cowork NB3).
+It is stored in the manifest with
 `gap_report_digest` = SHA-256 of its canonical JSON; `validate` recomputes the digest from the stored list and `verify`
 recomputes the list from the files - either mismatch fails. Per file, `coverage.covered_ms` = period length minus its
 head / tail / time gaps; `gap_count` counts its gap entries.
@@ -68,15 +75,22 @@ Promotion (contract section 4 + Codex Q4): `realism_refusals(run, manifest, stor
 and the gap report from the manifest AND the files (never the envelope's values on trust) and lists every reason a /3
 run is not promotable. The realism a run NEEDS is derived from its registered `eval.config.execution` (EXECUTION_KEYS,
 allow-listed; unknown keys / values refuse) and must be declared in `claims`, else `exec_claims_incomplete:<claim>`
-(item 2: an empty `claims` cannot bypass); every needed or declared claim adds `model_not_implemented:<claim>` (plus
+(item 2: an empty `claims` cannot bypass). The block must be exact even for taker / bar-close (TAKER_EXECUTION; else
+`execution_block_missing` / `execution_key_missing:<k>`), and the rest of eval.config is scanned recursively and
+case-insensitively for execution-like keys / values (`unscoped_execution_key|value:<dotted.path>`, Codex 6225951309
+item 1). A bound manifest is verified even when nothing is claimed. Every needed or declared claim adds
+`model_not_implemented:<claim>` (plus
 `latency_unfitted:latency`), then the data reasons (coverage from the allow-listed `coverage_policy_id`).
 `report.make_report` records them as `exec_realism`; any refusal = non-promotable, labelled, never hidden (the
 `exec_calibration.promotable` style). Nothing needed or claimed = today's labelled taker / bar-close behaviour, nothing
 to refuse. This module writes no ledger or registry record; a schema or integrity fault raises before any manifest
-exists (no artifact).
+exists (no artifact). `enforce_promotion` is the hard boundary (item 4): it raises `promotion_refused:<first reason>`
+for a /3 run with any refusal and for a /2 run whose config is execution-like (`exec_obs_missing`, Cowork B1; /2
+validation and digests untouched); `report.enforce_promotion` wraps it and `ledger.append` (holdout_reveal /
+holdout_rerun / window_spent) and `pit.Access.open` (holdout) call it before any mutation.
 
 Usage (repo root):
-  python tools/research/exec_obs.py build --store DIR --id ID --root um/daily --depth-scope bd-pct-1-5/1
+  python tools/research/exec_obs.py build --store DIR --id ID --root um/daily --depth-scope bd-scope-5/1
       --accessed-cairo TEXT --out FILE
   python tools/research/exec_obs.py verify FILE --store DIR
 """
@@ -111,6 +125,7 @@ HEADERS = {'book_ticker': b'update_id,best_bid_price,best_bid_qty,best_ask_price
 NCOL = {s: h.count(b',') + 1 for s, h in HEADERS.items()}
 SEQUENCED = ('agg_trades', 'book_ticker')                   # book_depth_summary has no sequence column
 SCHEMA = 'source_schema_mismatch'                           # the refusal of a row the authentic schema cannot hold
+UNSUPPORTED = 'source_schema_unsupported'                   # a well-formed bookDepth band layout of no known era
 # Codex addendum 6225107087 item 3: gap and coverage thresholds are versioned, allow-listed policy ids whose values
 # live HERE; no caller passes a threshold, and a new threshold is a new id. Gaps are only REPORTED (and lower coverage);
 # they never reject a file. Not calibrated.
@@ -123,7 +138,12 @@ LATENCY_LABELS = {'lat-none/1': 'none', 'lat-fixed-250/1': 'assumed/unfitted'}
 LAT_NONE = 'lat-none/1'
 # Q4: declared identifiers only; the depth / queue MODELS are deferred. `*-none/1` = no such model claimed.
 DEPTH_NONE, QUEUE_NONE = 'depth-none/1', 'queue-none/1'
-DEPTH_SCOPES = {'bd-pct-1-5/1': ('-5', '-4', '-3', '-2', '-1', '1', '2', '3', '4', '5')}
+# Codex 6225951309 item 3: the authentic bookDepth band layouts, one versioned scope id per source era. Both are
+# PERCENTAGE-BAND summaries (never L2, never a queue). A manifest freezes one of them; a well-formed summary whose band
+# set is neither refuses `source_schema_unsupported`; an allow-listed layout other than the frozen one refuses as a
+# scope mismatch (a store spanning both eras is two manifests).
+DEPTH_SCOPES = {'bd-scope-5/1': ('-5', '-4', '-3', '-2', '-1', '1', '2', '3', '4', '5'),
+                'bd-scope-020-5/1': ('-5', '-4', '-3', '-2', '-1', '-0.20', '0.20', '1', '2', '3', '4', '5')}
 DEPTH_SCOPE_IDS = (DEPTH_NONE, *sorted(DEPTH_SCOPES))
 QUEUE_POLICIES = (QUEUE_NONE, 'queue-fifo-back/1')
 CLAIMS = ('depth_impact', 'latency', 'maker_fill', 'queue_position')
@@ -134,8 +154,10 @@ CLAIM_SERIES = {'maker_fill': ('agg_trades', 'book_ticker'), 'queue_position': (
                 'depth_impact': ('book_depth_summary',), 'latency': ()}
 # Codex addendum item 2: the realism a run NEEDS is derived from its registered execution config
 # (`eval.config.execution`), never only from what it declares. Every key and value is allow-listed; an unknown key or
-# value refuses. Absent = today's taker / bar-close execution (market entries and exits pay taker, costs.py), which
-# needs no claim. A resting maker order needs both a maker-fill and a queue-position model.
+# value refuses. Codex 6225951309 item 1: a /3 run must carry the block EXACTLY (all keys; missing block ->
+# `execution_block_missing`, missing key -> `execution_key_missing:<k>`), even for today's taker / bar-close execution
+# (market entries and exits pay taker, costs.py), whose minimal form is TAKER_EXECUTION and needs no claim. A resting
+# maker order needs both a maker-fill and a queue-position model.
 EXECUTION_KEYS = {
     'entry_liquidity': {'taker': (), 'maker': ('maker_fill', 'queue_position')},
     'exit_liquidity': {'taker': (), 'maker': ('maker_fill', 'queue_position')},
@@ -144,17 +166,32 @@ EXECUTION_KEYS = {
     'depth_impact': {'none': (), 'modelled': ('depth_impact',)},
     'queue': {'none': (), 'modelled': ('queue_position',)},
 }
-# A config key outside `execution` that names execution behaviour is refused rather than silently ignored.
-UNSCOPED_EXEC_RE = re.compile(r'maker|taker|queue|latency|depth|impact|liquidity|limit_order|order_type|fill_model')
+TAKER_EXECUTION = {'entry_liquidity': 'taker', 'exit_liquidity': 'taker', 'target_order': 'market', 'latency': 'none',
+                   'depth_impact': 'none', 'queue': 'none'}
+# Outside `execution`, the WHOLE config (nested dicts / lists) is scanned case-insensitively: a key that names execution
+# behaviour is `unscoped_execution_key:<dotted.path>`, a string value naming a resting / maker order is
+# `unscoped_execution_value:<dotted.path>` (Cowork 6225945725 B2). Keys are split into words (snake / kebab / camel /
+# dotted); EXEC_WORDS match a whole word, EXEC_STEMS any substring of the separator-free key. A denylist this broad is
+# still a backstop: the control is the exact `execution` block above.
+EXEC_WORDS = frozenset({'maker', 'makers', 'taker', 'takers', 'queue', 'queued', 'queues', 'latency', 'latencies',
+                        'depth', 'impact', 'liquidity', 'limit', 'limits', 'order', 'orders', 'passive', 'resting',
+                        'rest', 'fill', 'fills', 'filled', 'execution', 'gtx', 'ioc', 'fok', 'tif', 'slippage'})
+EXEC_STEMS = ('maker', 'taker', 'queue', 'latenc', 'liquidit', 'postonly', 'offsetbps', 'fillmodel', 'slippagemodel',
+              'slipmodel', 'limitorder', 'ordertype', 'orderentry', 'entryorder', 'resting', 'passive')
+EXEC_VALUES = frozenset({'maker', 'limit', 'postonly', 'passive', 'resting', 'gtx', 'limitorder', 'makerfill',
+                         'maker_only', 'makeronly'})
 EXEC_KEYS = {'manifest_digest', 'gap_report_digest', 'latency_policy_id', 'depth_scope_id', 'queue_policy_id',
              'gap_policy_id', 'coverage_policy_id', 'claims'}
 TOP_KEYS = {'format', 'manifest_id', 'loader_version', 'available_rule', 'data_root', 'accessed_cairo', 'note',
             'depth_scope', 'gap_policy_id', 'files', 'gap_report', 'gap_report_digest', 'digest'}
 FILE_KEYS = {'path', 'series', 'symbol', 'member', 'sha256', 'sidecar_sha256', 'bytes', 'rows', 'first_event_ms',
-             'last_event_ms', 'first_seq', 'last_seq', 'source', 'coverage'}
+             'last_event_ms', 'first_seq', 'last_seq', 'first_trade_id', 'last_trade_id', 'source', 'coverage'}
 COV_KEYS = {'start_ms', 'end_ms', 'covered_ms', 'gap_count'}
-GAP_KEYS = {'symbol', 'series', 'path', 'kind', 'from', 'to', 'at_ms'}
-GAP_KINDS = ('file', 'head', 'seq', 'tail', 'time')
+GAP_KEYS = {'symbol', 'series', 'path', 'kind', 'from', 'to', 'at_ms', 'next_ms'}
+# `seq` = an aggTrades agg-id jump across files; `trade_id` = a raw trade-id jump (first_trade_id != previous
+# last_trade_id + 1) inside a file or across files (Codex 6225951309 item 2).
+GAP_KINDS = ('file', 'head', 'seq', 'tail', 'time', 'trade_id')
+SEQ_GAPS = ('seq', 'trade_id')
 TIME_GAPS = ('head', 'tail', 'time')
 NAME_RE = re.compile(r'^((?:[A-Z0-9]|[^\x00-\x7f])+)-(bookTicker|bookDepth|aggTrades)-(\d{4})-(\d{2})'
                      r'(?:-(\d{2}))?\.zip$')
@@ -171,6 +208,13 @@ AggTrade = namedtuple('AggTrade', 'agg_id price qty first_id last_id event_ms is
 
 class ExecObsError(ValueError):
     pass
+
+
+class PromotionRefused(ExecObsError):
+    """`promotion_refused:<first reason>`; every reason is in `.reasons` (Codex 6225951309 item 4)."""
+    def __init__(self, reasons):
+        self.reasons = list(reasons)
+        super().__init__(f'promotion_refused:{self.reasons[0]}')
 
 
 def _sha(obj) -> str:
@@ -306,7 +350,11 @@ def parse(rel: str, data: bytes, meta: dict, depth_scope: dict, feed_ms: int = 0
         for t, bands in groups:
             got = sorted(Decimal(b[0]) for b in bands)
             if got != want:
-                raise ExecObsError(f'{rel}: summary {t} bands {[str(g) for g in got]} != frozen depth scope '
+                era = next((k for k, v in sorted(DEPTH_SCOPES.items()) if got == sorted(Decimal(x) for x in v)), None)
+                if era is None:                            # well-formed rows, but no allow-listed source era
+                    raise ExecObsError(f'{UNSUPPORTED}: {rel}: summary {t} band layout {[str(g) for g in got]} is '
+                                       f'not an allow-listed bookDepth era {sorted(DEPTH_SCOPES)}')
+                raise ExecObsError(f'{rel}: summary {t} bands are era {era}, not the frozen depth scope '
                                    f'{depth_scope["id"]} {list(depth_scope["bands"])}')
             bands = sorted(bands, key=lambda b: Decimal(b[0]))
             for side in ([b for b in bands if Decimal(b[0]) > 0],                        # outward: +1 -> +5
@@ -326,17 +374,22 @@ def _seq(series, r):
 def gaps_of(rel: str, meta: dict, rows: list, max_gap: int) -> list[dict]:
     """The gap entries of one parsed file: time gaps > max_gap and aggTrades trade-id jumps. A bookTicker update-id
     jump is NOT a gap (ids are non-contiguous by design, so a jump proves no missing row; Codex addendum item 3).
-    `at_ms` is the last observed event before the gap."""
+    `at_ms` is the last observed event before the gap, `next_ms` the first after it (a window sees the gap when
+    [at_ms, next_ms] overlaps it)."""
     base = {'symbol': meta['symbol'], 'series': meta['series'], 'path': rel}
     t = [r.event_ms for r in rows]
     out = []
     if t[0] - meta['start_ms'] > max_gap:
-        out.append(dict(base, kind='head', at_ms=meta['start_ms'], **{'from': meta['start_ms'], 'to': t[0]}))
-    out += [dict(base, kind='time', at_ms=a, **{'from': a, 'to': b}) for a, b in zip(t, t[1:]) if b - a > max_gap]
+        out.append(dict(base, kind='head', at_ms=meta['start_ms'], next_ms=t[0],
+                        **{'from': meta['start_ms'], 'to': t[0]}))
+    out += [dict(base, kind='time', at_ms=a, next_ms=b, **{'from': a, 'to': b}) for a, b in zip(t, t[1:])
+            if b - a > max_gap]
     if meta['end_ms'] - t[-1] > max_gap:
-        out.append(dict(base, kind='tail', at_ms=t[-1], **{'from': t[-1], 'to': meta['end_ms']}))
+        out.append(dict(base, kind='tail', at_ms=t[-1], next_ms=meta['end_ms'],
+                        **{'from': t[-1], 'to': meta['end_ms']}))
     if meta['series'] == 'agg_trades':
-        out += [dict(base, kind='seq', at_ms=a.event_ms, **{'from': a.last_id, 'to': b.first_id})
+        out += [dict(base, kind='trade_id', at_ms=a.event_ms, next_ms=b.event_ms,
+                     **{'from': a.last_id, 'to': b.first_id})
                 for a, b in zip(rows, rows[1:]) if b.first_id != a.last_id + 1]
     return out
 
@@ -369,6 +422,8 @@ def scan(abs_path: str, rel: str, depth_scope: dict, gap_policy_id: str) -> tupl
              'sidecar_sha256': hashlib.sha256(side).hexdigest(), 'bytes': len(raw),
              'rows': len(rows), 'first_event_ms': rows[0].event_ms, 'last_event_ms': rows[-1].event_ms,
              'first_seq': _seq(s, rows[0]), 'last_seq': _seq(s, rows[-1]),
+             'first_trade_id': rows[0].first_id if s == 'agg_trades' else None,
+             'last_trade_id': rows[-1].last_id if s == 'agg_trades' else None,
              'source': {'kind': SOURCE, 'url': M.archive_url(rel), 'archive_checksum': published},
              'coverage': {'start_ms': meta['start_ms'], 'end_ms': meta['end_ms'],
                           'covered_ms': meta['end_ms'] - meta['start_ms'] - lost, 'gap_count': len(gaps)}}
@@ -381,10 +436,11 @@ def member_of(rel: str) -> str:
 
 
 def _cross_file(files: list) -> list[dict]:
-    """Gaps BETWEEN consecutive files of one (symbol, series): a missing period (`file`) and an aggTrades id jump
-    (`seq`, at the last event before it). Overlapping periods (duplicates, a daily inside a monthly) and a sequence
-    that does not increase across the boundary are refused: two sources for one instant would make the PIT view
-    ambiguous (`pit._refuse_overlap`)."""
+    """Gaps BETWEEN consecutive files of one (symbol, series): a missing period (`file`), an aggTrades agg-id jump
+    (`seq`) and a raw trade-id jump (`trade_id`: the next file's bound `first_trade_id` != the previous file's
+    `last_trade_id` + 1), each from the last event before it (`at_ms`) to the first after it (`next_ms`).
+    Overlapping periods (duplicates, a daily inside a monthly) and a sequence that does not increase across the
+    boundary are refused: two sources for one instant would make the PIT view ambiguous (`pit._refuse_overlap`)."""
     out = []
     fs = sorted(files, key=lambda f: (f['symbol'], f['series'], f['coverage']['start_ms']))
     for a, b in zip(fs, fs[1:]):
@@ -394,14 +450,22 @@ def _cross_file(files: list) -> list[dict]:
         if b['coverage']['start_ms'] < a['coverage']['end_ms']:
             raise ExecObsError(f'{a["path"]} and {b["path"]} overlap (one source per instant)')
         if b['coverage']['start_ms'] > a['coverage']['end_ms']:
-            out.append(dict(base, kind='file', at_ms=a['coverage']['end_ms'],
+            out.append(dict(base, kind='file', at_ms=a['coverage']['end_ms'], next_ms=b['coverage']['start_ms'],
                             **{'from': a['coverage']['end_ms'], 'to': b['coverage']['start_ms']}))
         if b['series'] in SEQUENCED and b['first_seq'] <= a['last_seq']:
             raise ExecObsError(f'{b["path"]}: sequence {b["first_seq"]} does not increase across the file boundary '
                                f'(previous file ends at {a["last_seq"]})')
-        if b['series'] == 'agg_trades' and b['first_seq'] != a['last_seq'] + 1:
-            out.append(dict(base, kind='seq', at_ms=a['last_event_ms'],
-                            **{'from': a['last_seq'], 'to': b['first_seq']}))
+        if b['series'] != 'agg_trades':
+            continue
+        jump = {'at_ms': a['last_event_ms'], 'next_ms': b['first_event_ms']}
+        if b['first_seq'] != a['last_seq'] + 1:
+            out.append(dict(base, kind='seq', **jump, **{'from': a['last_seq'], 'to': b['first_seq']}))
+        if b['first_trade_id'] <= a['last_trade_id']:
+            raise ExecObsError(f'{b["path"]}: first_trade_id {b["first_trade_id"]} overlaps the previous file '
+                               f'(ends at trade id {a["last_trade_id"]}) (bad sequence)')
+        if b['first_trade_id'] != a['last_trade_id'] + 1:
+            out.append(dict(base, kind='trade_id', **jump,
+                            **{'from': a['last_trade_id'], 'to': b['first_trade_id']}))
     return out
 
 
@@ -487,6 +551,10 @@ def validate(m: dict) -> None:
         need((M._is_int(f['first_seq']) and M._is_int(f['last_seq']) and f['first_seq'] <= f['last_seq'])
              if f['series'] in SEQUENCED else (f['first_seq'] is None and f['last_seq'] is None),
              f'{p}: first/last_seq int (null for book_depth_summary)')
+        need((M._is_int(f['first_trade_id']) and M._is_int(f['last_trade_id'])
+              and f['first_trade_id'] <= f['last_trade_id']) if f['series'] == 'agg_trades'
+             else (f['first_trade_id'] is None and f['last_trade_id'] is None),
+             f'{p}: first/last_trade_id int for agg_trades (null otherwise)')
         c = f['coverage']
         need(isinstance(c, dict) and set(c) == COV_KEYS and all(M._is_int(v) for v in c.values())
              and (c['start_ms'], c['end_ms']) == (meta['start_ms'], meta['end_ms'])
@@ -494,7 +562,8 @@ def validate(m: dict) -> None:
              f'{p}: coverage must be {sorted(COV_KEYS)} over the file period')
     gr = m['gap_report']
     need(isinstance(gr, list) and all(isinstance(g, dict) and set(g) == GAP_KEYS and g['kind'] in GAP_KINDS
-                                      and all(M._is_int(g[k]) for k in ('from', 'to', 'at_ms')) and g['from'] < g['to']
+                                      and all(M._is_int(g[k]) for k in ('from', 'to', 'at_ms', 'next_ms'))
+                                      and g['from'] < g['to'] and g['at_ms'] <= g['next_ms']
                                       and g['path'] in paths for g in gr) and gr == _sort_gaps(gr),
          f'gap_report must be a sorted list of {sorted(GAP_KEYS)} entries naming manifested files')
     need(m['gap_report_digest'] == gap_report_digest(gr), 'gap_report_digest does not match the stored gap report')
@@ -612,6 +681,10 @@ class View:
         raise AttributeError('a view is frozen at its decision time')
 
     def _series(self, series: str, symbol: str, n=None, since=None) -> tuple:
+        if n is not None and not (M._is_int(n) and n > 0):
+            raise ExecObsError(f'n must be None (every row) or a positive int, not {n!r}')
+        if since is not None and not M._is_int(since):
+            raise ExecObsError(f'since_ms must be None or an int, not {since!r}')
         o, out = self._obs, []
         lo = o._lo if since is None else max(o._lo, since)
         for f in o._files.get((series, symbol), []):
@@ -666,15 +739,57 @@ def validate_block(eo) -> None:
                                 f'{list(CLAIMS)}')
 
 
+def _words(key: str) -> list[str]:
+    key = re.sub(r'([a-z0-9])([A-Z])', r'\1_\2', key)
+    return [w for w in re.split(r'[^a-z0-9]+', key.lower()) if w]
+
+
+def _exec_like_key(key: str) -> bool:
+    flat = ''.join(_words(key))
+    return any(w in EXEC_WORDS for w in _words(key)) or any(st in flat for st in EXEC_STEMS)
+
+
+def _exec_like_value(v) -> bool:
+    return isinstance(v, str) and (''.join(_words(v)) in EXEC_VALUES or v.strip().lower() in EXEC_VALUES)
+
+
+def unscoped_execution(config, *, allow_block: bool) -> list[str]:
+    """Every execution-like key / string value anywhere in `config` (nested dicts and lists, case-insensitive),
+    as sorted `unscoped_execution_key:<dotted.path>` / `unscoped_execution_value:<dotted.path>` reasons. With
+    `allow_block` the top-level `execution` block (validated exactly by `required_claims`) is not scanned; without it
+    (a /2 run) the block itself is execution-like."""
+    out = []
+
+    def walk(o, path):
+        if isinstance(o, dict):
+            for k, v in o.items():
+                p = f'{path}.{k}' if path else str(k)
+                if allow_block and not path and k == 'execution':
+                    continue
+                if _exec_like_key(str(k)):
+                    out.append(f'unscoped_execution_key:{p}')
+                walk(v, p)
+        elif isinstance(o, (list, tuple)):
+            for i, v in enumerate(o):
+                walk(v, f'{path}.{i}' if path else str(i))
+        elif _exec_like_value(o):
+            out.append(f'unscoped_execution_value:{path}')
+    walk(config, '')
+    return sorted(out)
+
+
 def required_claims(config) -> tuple[set, list[str]]:
-    """(claims the registered execution config needs, refusals for keys / values outside the allow-list)."""
+    """(claims the registered execution config needs, refusals: a missing / inexact `execution` block, keys / values
+    outside its allow-list, and execution-like keys or values anywhere else in the config)."""
     if not isinstance(config, dict):
         return set(), ['execution_config_invalid: eval.config is not an object']
-    bad = sorted(f'unscoped_execution_key:{k}' for k in config
-                 if k != 'execution' and isinstance(k, str) and UNSCOPED_EXEC_RE.search(k))
-    ex = config.get('execution', {})
+    bad = unscoped_execution(config, allow_block=True)
+    if 'execution' not in config:
+        return set(), bad + ['execution_block_missing']
+    ex = config['execution']
     if not isinstance(ex, dict):
         return set(), bad + ['execution_config_invalid: eval.config.execution is not an object']
+    bad += [f'execution_key_missing:{k}' for k in sorted(set(EXECUTION_KEYS) - set(ex))]
     need = set()
     for k in sorted(ex):
         if k not in EXECUTION_KEYS:
@@ -722,15 +837,17 @@ def realism_refusals(run: dict, manifest: dict | None, *, store: str | None) -> 
     need, out = required_claims(config)
     out += [f'exec_claims_incomplete:{c}' for c in sorted(need - set(claims))]
     eff = sorted(need | set(claims))
-    if not eff:
-        return sorted(out)                                 # taker / bar-close as today: no realism needed or claimed
+    if eo['manifest_digest'] is None:
+        if not eff:
+            return sorted(out)                             # taker / bar-close as today: no realism needed or claimed
     out += [f'model_not_implemented:{c}' for c in eff if c not in IMPLEMENTED_CLAIMS]
     if 'latency' in eff:
         out.append('latency_unfitted:latency')             # Q3: no policy id here is a fitted latency
     if eo['manifest_digest'] is None:
         return sorted(out + [f'no_manifest:{c}' for c in eff])
+    # A bound manifest is ALWAYS verified, claims or not: a /3 run never carries unproven digests while promotable.
     if manifest is None or store is None:
-        return sorted(out + [f'manifest_unavailable:{c}' for c in eff])
+        return sorted(out + ([f'manifest_unavailable:{c}' for c in eff] or ['manifest_unavailable']))
     try:
         validate(manifest)
     except (ExecObsError, M.ManifestError, KeyError, TypeError, AttributeError) as e:
@@ -775,9 +892,41 @@ def realism_refusals(run: dict, manifest: dict | None, *, store: str | None) -> 
                 gs = [g for g in manifest['gap_report'] if (g['symbol'], g['series']) == (sym, ser)]
                 if any(g['kind'] == 'file' and _clip(g['from'], g['to'], lo, hi) for g in gs):
                     out.append(f'missing_period:{key}')
-                if any(g['kind'] == 'seq' and lo <= g['at_ms'] < hi for g in gs):
+                # interval overlap (Cowork NB3): a jump at midnight is seen by a window that starts at the boundary,
+                # and one straddling the window end by a window that ends inside it
+                if any(g['kind'] in SEQ_GAPS and g['at_ms'] < hi and g['next_ms'] >= lo for g in gs):
                     out.append(f'sequence_gap:{key}')
     return sorted(out)
+
+
+def promotion_reasons(run, manifest=None, *, store=None) -> list[str]:
+    """Why `run` may not be promoted / registered (empty = allowed). A /3 run (it carries `exec_obs`): its
+    `realism_refusals`. A /2 run is taker / bar-close by definition and binds no execution observations, so an
+    execution-like key or value ANYWHERE in its eval.config (the same scanner, `execution` block included) refuses
+    `exec_obs_missing` (Cowork 6225945725 B1) - /2 validation and digests are untouched; only this boundary refuses."""
+    if not isinstance(run, dict) or not isinstance(run.get('eval'), dict):
+        return ['run_invalid']
+    if 'exec_obs' in run:
+        return realism_refusals(run, manifest, store=store)
+    hits = unscoped_execution(run['eval'].get('config'), allow_block=False)
+    return ['exec_obs_missing'] + hits if hits else []
+
+
+def enforce_promotion(obj, manifest=None, *, store=None) -> None:
+    """THE promotion / registration boundary (Codex 6225951309 item 4): raises `PromotionRefused`
+    (`promotion_refused:<first reason>`, all reasons in `.reasons`) unless the run is promotable. `obj` is an envelope
+    or a sealed report; a report's recorded `exec_realism` must say promotable AND the reasons are recomputed (a label
+    is never taken on trust). Callers run it BEFORE any ledger / registry / runs mutation."""
+    run = obj.get('run') if isinstance(obj, dict) else None
+    reasons = promotion_reasons(run, manifest, store=store)
+    if isinstance(obj, dict) and isinstance(run, dict) and 'exec_obs' in run and 'results' in obj:
+        er = obj.get('exec_realism')
+        if not isinstance(er, dict):
+            reasons = ['exec_realism_missing'] + reasons
+        elif er.get('promotable') is not True:
+            reasons = reasons + [r for r in er.get('refusals') or ['exec_realism_not_promotable'] if r not in reasons]
+    if reasons:
+        raise PromotionRefused(reasons)
 
 
 def main(argv=None) -> int:

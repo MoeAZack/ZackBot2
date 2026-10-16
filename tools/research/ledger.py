@@ -61,6 +61,9 @@ TRIAL_KINDS = ('variant', 'grid_point', 'baseline')
 COMPONENT_KINDS = ('data_access', 'variant', 'grid_point', 'baseline')
 TUNING_KINDS = ('variant', 'grid_point')
 SPEND_KINDS = ('holdout_reveal', 'window_spent')
+# Records that register a run for promotion (BT-EXEC-OBS-01, Codex 6225951309 item 4): `append` runs the promotion
+# boundary (report.enforce_promotion) on the run's frozen envelope BEFORE the lock or any write.
+PROMOTION_KINDS = ('holdout_reveal', 'holdout_rerun', 'window_spent')
 KEYS = {'format', 'seq', 'prev', 'family', 'kind', 'candidate_id', 'split', 'window', 'manifest_digest', 'run_digest',
         'detail', 'author', 'cairo_date'}
 REG_KEYS = {'format', 'seq', 'prev', 'kind', 'family', 'ref'}
@@ -274,10 +277,29 @@ def _next(data: bytes, rec: dict) -> bytes:
     return line_of(rec)
 
 
+def _enforce_promotion(d: str, run_digest) -> None:
+    """The promotion boundary for a record registering `run_digest`: its frozen envelope in the runs store must pass
+    report.enforce_promotion (raises `promotion_refused:<reason>`). No runs store / no envelope is left to the record
+    checks, which already refuse such a holdout record."""
+    runs = _runs_of(d)
+    if runs is None or not isinstance(run_digest, str) or not HEX64.match(run_digest):
+        return
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import report as R
+    try:
+        env = R.load_envelope(runs, run_digest)
+    except R.ReportError:
+        return
+    R.enforce_promotion(env)
+
+
 def append(path: str, *, kind, candidate_id, split, window, author, cairo_date, manifest_digest=None, run_digest=None,
            detail=None, lineage=None) -> dict:
-    """Append one record. A new family needs `lineage`: 'root' (an independent hypothesis) or its parent family."""
+    """Append one record. A new family needs `lineage`: 'root' (an independent hypothesis) or its parent family.
+    A promotion record (PROMOTION_KINDS) is refused before any mutation unless its run passes the promotion boundary."""
     d = _dir_of(path)
+    if kind in PROMOTION_KINDS:
+        _enforce_promotion(d, run_digest)
     family = os.path.splitext(os.path.basename(path))[0]
     lock = os.path.join(d, LOCK)
     try:

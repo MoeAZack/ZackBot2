@@ -17,6 +17,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, 'tools', 'research'))
 import costs as C                                                                           # noqa: E402
 import exec_obs as E                                                                        # noqa: E402
+import ledger as L                                                                          # noqa: E402
 import manifest as M                                                                        # noqa: E402
 import missing_data as MD                                                                   # noqa: E402
 import pit as P                                                                             # noqa: E402
@@ -95,7 +96,7 @@ def make_store(store, days=(0, 1), series=tuple(DIRS), sym=SYM, **kw):
     return str(store)
 
 
-def build(store, scope='bd-pct-1-5/1', **kw):
+def build(store, scope='bd-scope-5/1', **kw):
     return E.build(['um'], manifest_id='fx-exec', base=str(store), depth_scope_id=scope, **kw)
 
 
@@ -181,7 +182,7 @@ def test_fresh_process_replay_same_digest_and_view(world, tmp_path):
 
 
 # ------------------------------------------------------------------ 2. rejections (each guard on its own)
-def one(tmp_path, series, text, day=0, scope='bd-pct-1-5/1', rel=None):
+def one(tmp_path, series, text, day=0, scope='bd-scope-5/1', rel=None):
     zput(str(tmp_path), rel or rel_of(series, day), text)
     return lambda: build(str(tmp_path), scope)
 
@@ -248,9 +249,9 @@ def bd(ts='2024-01-01 00:00:10', bands=BANDS, depth=lambda p: abs(p) * 10, notio
 
 
 @pytest.mark.parametrize('rows,match', [
-    (bd(bands=BANDS[:-1]), 'bands .* != frozen depth scope'),
-    (bd(bands=BANDS + (6,)), 'bands .* != frozen depth scope'),
-    (bd(bands=(-5, -4, -3, -2, -1, 1, 2, 3, 4, 4)), 'bands .* != frozen depth scope'),
+    (bd(bands=BANDS[:-1]), '^source_schema_unsupported: .*band layout'),
+    (bd(bands=BANDS + (6,)), '^source_schema_unsupported: .*band layout'),
+    (bd(bands=(-5, -4, -3, -2, -1, 1, 2, 3, 4, 4)), '^source_schema_unsupported: .*band layout'),
     (bd(depth=lambda p: 50 - abs(p)), 'not monotonic outward'),
     (bd(notional=lambda p: 9 if p == 2 else abs(p) * 1000), 'not monotonic outward'),
     (bd(depth=lambda p: 1 if p == -5 else abs(p) * 10), 'not monotonic outward'),
@@ -335,7 +336,7 @@ def test_gap_report_time_seq_file_and_cross_file_gaps(tmp_path):
     zput(str(tmp_path), rel_of('agg_trades', 3), f'11,100.0,1,17,17,{T0 + 3 * DAY},true\n')
     m = build(str(tmp_path))
     kinds = sorted((g['kind'], g['from'], g['to']) for g in m['gap_report'])
-    assert ('seq', 12, 15) in kinds                                   # trade-id jump inside a file
+    assert ('trade_id', 12, 15) in kinds                              # raw trade-id jump inside a file
     assert ('seq', 8, 10) in kinds                                    # agg id jump ACROSS the file boundary
     assert ('file', D0 + 2 * DAY, D0 + 3 * DAY) in kinds              # the missing day
     assert ('tail', T0 + 5, D0 + DAY) in kinds and ('head', D0 + DAY, T0 + DAY) not in kinds   # 1 s head < max gap
@@ -352,7 +353,7 @@ def test_tampered_gap_digest_and_gap_report_fail(world, tmp_path):
         E.validate(bad)
     forged = copy.deepcopy(m)                                         # consistently re-digested lie about the files
     forged['gap_report'] = [{'symbol': SYM, 'series': 'book_ticker', 'path': m['files'][0]['path'], 'kind': 'time',
-                             'from': D0, 'to': D0 + 1, 'at_ms': D0}]
+                             'from': D0, 'to': D0 + 1, 'at_ms': D0, 'next_ms': D0 + 1}]
     forged['gap_report'] = E._sort_gaps(forged['gap_report'])
     forged['gap_report_digest'] = E.gap_report_digest(forged['gap_report'])
     forged['digest'] = M.digest_of(forged)
@@ -504,16 +505,16 @@ RUN2_DIGEST = '9d4044c20b9c0df799939bb345fc8872db39e7c13ef66e002b341a8f06f7bb64'
 RUN2_FILE_SHA = 'd47284229656ffae3526d098de95b5a362cd73dca36d762bb218e523e1f0761c'
 
 
-def run3(m=None, claims=(), symbols=(SYM,), execution=None, **eo):
+def run3(m=None, claims=(), symbols=(SYM,), execution='taker', **eo):
     run = run2()
     files = sorted(set(R.CORE_EVAL_FILES_3) | {'tools/research/trend_ema_mom.py'})
     run['eval'] = dict(run['eval'], files=[{'path': p, 'sha256': h('file:' + p)} for p in files],
-                       config=dict({'k': 1, 'symbols': list(symbols)},
-                                   **({} if execution is None else {'execution': execution})))
+                       config=dict({'k': 1, 'symbols': list(symbols)}, **({} if execution is None else {
+                           'execution': dict(E.TAKER_EXECUTION) if execution == 'taker' else execution})))
     run['eval_digest'] = R.eval_digest(run['eval'], run['seeds'])
     run['exec_obs'] = dict({'manifest_digest': m['digest'] if m else None,
                             'gap_report_digest': m['gap_report_digest'] if m else None,
-                            'latency_policy_id': 'lat-fixed-250/1', 'depth_scope_id': 'bd-pct-1-5/1',
+                            'latency_policy_id': 'lat-fixed-250/1', 'depth_scope_id': 'bd-scope-5/1',
                             'queue_policy_id': 'queue-fifo-back/1', 'gap_policy_id': 'gap-policy/1',
                             'coverage_policy_id': 'coverage-policy/1', 'claims': sorted(claims)}, **eo)
     return run
@@ -715,7 +716,10 @@ def test_missing_period_and_sequence_gap_are_refusals_at_window_level(tmp_path):
     assert 'missing_period:maker_fill:AAAUSDT/book_ticker' in out
     assert 'sequence_gap:maker_fill:AAAUSDT/agg_trades' in out         # agg ids jump across the missing day
     assert 'coverage_below_min:maker_fill:AAAUSDT/book_ticker' in out
-    r['window'] = {'start': '2024-01-03T00:00:00Z', 'end': '2024-01-03T12:00:00Z'}
+    r['window'] = {'start': '2024-01-03T00:00:00Z', 'end': '2024-01-03T12:00:00Z'}  # the jump leads INTO it
+    assert set(E.realism_refusals(r, m, store=store)) == {'model_not_implemented:maker_fill',
+                                                          'sequence_gap:maker_fill:AAAUSDT/agg_trades'}
+    r['window'] = {'start': '2024-01-03T01:00:00Z', 'end': '2024-01-03T12:00:00Z'}
     assert set(E.realism_refusals(r, m, store=store)) == {'model_not_implemented:maker_fill'}
 
 
@@ -835,11 +839,11 @@ def test_schema_and_integrity_faults_create_no_artifact(tmp_path):
     store = make_store(tmp_path / 's', days=(0,))
     zput(store, rel_of('book_ticker', 0), f'5,100.2,1,100.1,1,{T0},{T0}' + NL)       # crossed book
     out = tmp_path / 'm.json'
-    assert E.main(['build', '--store', store, '--id', 'x', '--root', 'um', '--depth-scope', 'bd-pct-1-5/1',
+    assert E.main(['build', '--store', store, '--id', 'x', '--root', 'um', '--depth-scope', 'bd-scope-5/1',
                    '--out', str(out)]) == 2
     assert not out.exists()
     zput(store, rel_of('book_ticker', 0), lines('book_ticker', 0))
-    assert E.main(['build', '--store', store, '--id', 'x', '--root', 'um', '--depth-scope', 'bd-pct-1-5/1',
+    assert E.main(['build', '--store', store, '--id', 'x', '--root', 'um', '--depth-scope', 'bd-scope-5/1',
                    '--out', str(out)]) == 0 and out.exists()
     assert E.main(['verify', str(out), '--store', store]) == 0
 
@@ -1103,3 +1107,273 @@ def test_test_fixture_v2_envelopes_keep_their_shape(tmp_path):
     assert R.run_format(bad) == R.FORMAT_3
     with pytest.raises(R.ReportError):
         R.run_digest(bad)
+
+
+# ============================================================ Codex correction list 6225951309 + Cowork 6225945725
+# fix 1: an exact `execution` block on every /3 run; the rest of eval.config scanned recursively, case-insensitively
+def test_v3_needs_an_exact_execution_block(world):
+    store, m = world
+    assert 'execution_block_missing' in E.realism_refusals(run3(m, execution=None), m, store=store)
+    out = E.realism_refusals(run3(m, execution={'entry_liquidity': 'taker'}), m, store=store)
+    assert {f'execution_key_missing:{k}' for k in E.EXECUTION_KEYS if k != 'entry_liquidity'} <= set(out)
+    assert E.realism_refusals(run3(m, execution=dict(E.TAKER_EXECUTION)), m, store=store) == []
+
+
+@pytest.mark.parametrize('extra,reasons', [
+    ({'strategy': {'entry_liquidity': 'maker', 'target_order': 'limit'}},
+     ['unscoped_execution_key:strategy.entry_liquidity', 'unscoped_execution_key:strategy.target_order']),
+    ({'entry_limit_offset_bps': 5}, ['unscoped_execution_key:entry_limit_offset_bps']),
+    ({'Maker_Fill': True}, ['unscoped_execution_key:Maker_Fill']),
+    ({'ENTRY_LIQUIDITY': 'maker'}, ['unscoped_execution_key:ENTRY_LIQUIDITY']),
+    ({'post_only': True}, ['unscoped_execution_key:post_only']),
+    ({'postOnly': True}, ['unscoped_execution_key:postOnly']),
+    ({'passive_entry': True}, ['unscoped_execution_key:passive_entry']),
+    ({'entry': 'limit'}, ['unscoped_execution_value:entry']),
+    ({'order': 'limit'}, ['unscoped_execution_key:order', 'unscoped_execution_value:order']),
+    ({'resting_ticks': 2}, ['unscoped_execution_key:resting_ticks']),
+    ({'legs': [{'x': 1}, {'QueueModel': 'fifo'}]}, ['unscoped_execution_key:legs.1.QueueModel']),
+    ({'s': {'mode': 'POST_ONLY'}}, ['unscoped_execution_value:s.mode']),
+    ({'sim': {'execution': {'entry_liquidity': 'maker'}}}, ['unscoped_execution_key:sim.execution']),
+])
+def test_cowork_config_evasions_are_refused(world, extra, reasons):
+    store, m = world
+    r = run3(m, [])                                                   # exact taker block, empty claims
+    r['eval']['config'].update(extra)
+    r['eval_digest'] = R.eval_digest(r['eval'], r['seeds'])
+    out = E.realism_refusals(r, m, store=store)
+    assert set(reasons) <= set(out)
+    with pytest.raises(E.PromotionRefused, match='^promotion_refused:'):
+        E.enforce_promotion(R.envelope(r), m, store=store)
+
+
+def test_existing_research_configs_are_not_execution_like():
+    import m3_eval as X3
+    import trend_ema_mom as T
+    m3 = {'rows': list(C.STRESS), 'perturb': True, 'params': T.PRIMARY.doc(), 'window': T.WINDOW,
+          'time_cap_bars': None, 'book': {k: str(v) for k, v in X3.Book().__dict__.items()}}
+    for cfg in [m3, run2()['eval']['config'], {'k': 1}, {}] + [p.doc() for _, p in T.neighbours()]:
+        assert E.unscoped_execution(cfg, allow_block=False) == []
+
+
+def test_v2_run_with_execution_config_is_refused_only_at_the_promotion_boundary():
+    r = run2()
+    r['eval'] = dict(r['eval'], config={'k': 1, 'symbols': ['BTCUSDT'],
+                                        'execution': {'entry_liquidity': 'maker', 'target_order': 'limit'}})
+    r['eval_digest'] = R.eval_digest(r['eval'], r['seeds'])
+    R.validate_run(r)                                                 # /2 validation untouched
+    assert R.run_format(r) == R.FORMAT
+    with pytest.raises(E.PromotionRefused, match='^promotion_refused:exec_obs_missing$') as ei:
+        R.enforce_promotion(R.envelope(r))
+    assert ei.value.reasons[0] == 'exec_obs_missing' and 'unscoped_execution_key:execution' in ei.value.reasons
+    R.enforce_promotion(R.envelope(run2()))                           # a plain /2 run passes
+
+
+# fix 2: raw trade-id boundaries bound, gaps within and across files, window overlap
+def test_raw_trade_id_boundaries_bound_and_cross_file_gap(tmp_path):
+    zput(str(tmp_path), rel_of('agg_trades', 0), f'7,100.0,1,10,12,{T0},true\n')
+    zput(str(tmp_path), rel_of('agg_trades', 1), f'8,100.0,1,20,21,{T0 + DAY},true\n')   # agg ids continuous
+    m = build(str(tmp_path))
+    f0, f1 = m['files']
+    assert (f0['first_trade_id'], f0['last_trade_id'], f1['first_trade_id'], f1['last_trade_id']) == (10, 12, 20, 21)
+    g = [x for x in m['gap_report'] if x['kind'] == 'trade_id']
+    assert [(x['from'], x['to'], x['at_ms'], x['next_ms']) for x in g] == [(12, 20, T0, T0 + DAY)]
+    assert not any(x['kind'] == 'seq' for x in m['gap_report'])
+    lie = copy.deepcopy(m)
+    lie['files'][1]['first_trade_id'] = 13
+    lie['digest'] = M.digest_of(lie)
+    assert any('first_trade_id' in x for x in E.verify(lie, str(tmp_path)))
+    zput(str(tmp_path), rel_of('agg_trades', 1), f'8,100.0,1,12,13,{T0 + DAY},true\n')
+    with pytest.raises(E.ExecObsError, match='overlaps the previous file'):
+        build(str(tmp_path))
+
+
+def _shift_trade_ids(text, by):
+    out = []
+    for ln in text.splitlines():
+        c = ln.split(',')
+        if c[0].isdigit():
+            c[3], c[4] = str(int(c[3]) + by), str(int(c[4]) + by)
+        out.append(','.join(c))
+    return NL.join(out) + NL
+
+
+def test_trade_id_jump_at_midnight_seen_by_overlapping_windows(tmp_path):
+    store = make_store(tmp_path, series=('book_ticker', 'book_depth_summary'))
+    zput(store, rel_of('agg_trades', 0), lines('agg_trades', 0))
+    zput(store, rel_of('agg_trades', 1), _shift_trade_ids(lines('agg_trades', 1), 500))
+    m = build(store)
+    key = 'sequence_gap:maker_fill:AAAUSDT/agg_trades'
+    r = run3(m, ['maker_fill'])
+    for start, end, seen in (('2024-01-02T00:00:00Z', '2024-01-03T00:00:00Z', True),     # day-1-only window
+                             ('2024-01-01T00:00:00Z', '2024-01-02T00:00:00Z', True),     # jump straddles its end
+                             ('2024-01-02T01:00:00Z', '2024-01-03T00:00:00Z', False)):
+        r['window'] = {'start': start, 'end': end}
+        assert (key in E.realism_refusals(r, m, store=store)) is seen, (start, end)
+
+
+# fix 3: bookDepth source eras
+BANDS_020 = ('-5', '-4', '-3', '-2', '-1', '-0.20', '0.20', '1', '2', '3', '4', '5')
+DEP = {'0.20': '2', '1': '10', '2': '20', '3': '30', '4': '40', '5': '50', '0.5': '5'}
+
+
+def bd_era(bands, ts='2024-01-01 00:00:10'):
+    return [f'{ts},{p},{DEP[p.lstrip("-")]},{DEP[p.lstrip("-")]}00' for p in bands]
+
+
+def test_both_book_depth_eras_are_versioned_scopes(tmp_path):
+    assert set(E.DEPTH_SCOPES) == {'bd-scope-5/1', 'bd-scope-020-5/1'}
+    m = one(tmp_path / 'a', 'book_depth_summary', NL.join(bd_era(BANDS_020)) + NL, scope='bd-scope-020-5/1')()
+    assert m['depth_scope'] == {'id': 'bd-scope-020-5/1', 'bands': list(BANDS_020)}
+    m5 = one(tmp_path / 'b', 'book_depth_summary', NL.join(bd_era([str(b) for b in BANDS])) + NL)()
+    assert m5['depth_scope']['id'] == 'bd-scope-5/1'
+    with pytest.raises(E.ExecObsError, match='^um/.*era bd-scope-020-5/1, not the frozen depth scope bd-scope-5/1'):
+        one(tmp_path / 'c', 'book_depth_summary', NL.join(bd_era(BANDS_020)) + NL)()
+    odd = ('-5', '-4', '-3', '-2', '-1', '-0.5', '0.5', '1', '2', '3', '4', '5')
+    with pytest.raises(E.ExecObsError, match='^source_schema_unsupported: '):
+        one(tmp_path / 'd', 'book_depth_summary', NL.join(bd_era(odd)) + NL, scope='bd-scope-020-5/1')()
+    with pytest.raises(E.ExecObsError, match='^source_schema_mismatch: '):
+        one(tmp_path / 'e', 'book_depth_summary', NL.join(bd_era(BANDS_020) + ['x,1,2,3']) + NL,
+            scope='bd-scope-020-5/1')()
+    r = run3(m, ['depth_impact'], depth_scope_id='bd-scope-020-5/1')
+    assert 'model_not_implemented:depth_impact' in E.realism_refusals(r, m, store=str(tmp_path / 'a'))
+
+
+# fix 4: the hard promotion boundary - ledger reveal, pit holdout and report level; refusal mutates nothing
+def tree_hash(*dirs):
+    out = {}
+    for top in dirs:
+        for d, _, names in os.walk(top):
+            for n in names:
+                with open(os.path.join(d, n), 'rb') as f:
+                    out[os.path.join(d, n)] = hashlib.sha256(f.read()).hexdigest()
+    return out
+
+
+def holdout_env(run):
+    run['split'] = 'holdout'
+    return R.envelope(run)
+
+
+def reveal_rec(path, env):
+    r = env['run']
+    return L.append(path, kind='holdout_reveal', candidate_id=r['candidate_id'], split='holdout', window=r['window'],
+                    author='t', cairo_date='2026-10-17', manifest_digest=r['manifest_digest'],
+                    run_digest=env['run_digest'], detail={'eval_digest': r['eval_digest']}, lineage='root')
+
+
+def test_ledger_reveal_refused_byte_identical_and_allowed_taker_passes(tmp_path):
+    led, runs = tmp_path / 'ledger', tmp_path / 'runs'
+    led.mkdir()
+    runs.mkdir()
+    bad = holdout_env(run3(None, [], execution={'entry_liquidity': 'maker'}))
+    ok = holdout_env(run3(None, []))
+    v2bad = run2()
+    v2bad['eval'] = dict(v2bad['eval'], config={'k': 1, 'order_type': 'post_only'})
+    v2bad['eval_digest'] = R.eval_digest(v2bad['eval'], v2bad['seeds'])
+    v2bad = holdout_env(v2bad)
+    for env in (bad, ok, v2bad):
+        R.write_envelope(str(runs), env)
+    before = tree_hash(led, runs)
+    with pytest.raises(E.PromotionRefused, match='^promotion_refused:exec_claims_incomplete:maker_fill$') as ei:
+        reveal_rec(str(led / 'fam.jsonl'), bad)
+    assert 'model_not_implemented:queue_position' in ei.value.reasons
+    with pytest.raises(E.PromotionRefused, match='^promotion_refused:exec_obs_missing$'):
+        reveal_rec(str(led / 'fam.jsonl'), v2bad)
+    assert tree_hash(led, runs) == before                             # nothing written, no lock left behind
+    reveal_rec(str(led / 'fam.jsonl'), ok)                            # a /3 no-claims taker run registers
+    assert tree_hash(led, runs) != before
+
+
+def test_pit_holdout_open_refuses_before_any_ledger_record(tmp_path):
+    plan = S.SplitPlan(PLAN, interval='1h', lookback_bars=15, horizon_bars=1)
+    acc = access(str(tmp_path), plan)
+    acc.open('train', lineage='root')
+    bad = holdout_env(run3(None, ['maker_fill']))
+    dirs = (tmp_path / 'ledger', tmp_path / 'runs')
+    before = tree_hash(*dirs)
+    with pytest.raises(E.PromotionRefused, match='^promotion_refused:'):
+        acc.open('holdout', envelope=bad)
+    assert tree_hash(*dirs) == before
+    with pytest.raises(P.PITError):                                   # allowed: passes on to the existing guard
+        acc.open('holdout', envelope=holdout_env(run3(None, [])))
+    assert tree_hash(*dirs) == before
+
+
+def test_report_level_boundary_rechecks_the_label(world, no_att):
+    store, m = world
+    res = results()
+    att = {'results_digest': R.results_digest(res)}
+    rep = R.make_report(R.envelope(run3(m, ['maker_fill'])), res, att, 'unused', exec_manifest=m, exec_store=store)
+    with pytest.raises(E.PromotionRefused, match='^promotion_refused:model_not_implemented:maker_fill$'):
+        R.enforce_promotion(rep, exec_manifest=m, exec_store=store)
+    ok = R.make_report(R.envelope(run3(m)), res, att, 'unused', exec_manifest=m, exec_store=store)
+    R.enforce_promotion(ok, exec_manifest=m, exec_store=store)
+    lied = dict(ok, exec_realism={'claims': [], 'refusals': ['x'], 'promotable': False})
+    with pytest.raises(E.PromotionRefused, match='^promotion_refused:x$'):
+        R.enforce_promotion(lied, exec_manifest=m, exec_store=store)
+    with pytest.raises(E.PromotionRefused, match='^promotion_refused:exec_realism_missing$'):
+        R.enforce_promotion({k: v for k, v in ok.items() if k != 'exec_realism'}, exec_manifest=m, exec_store=store)
+    with pytest.raises(R.ReportError, match='run_digest mismatch'):
+        R.enforce_promotion(dict(ok, run_digest='0' * 64))
+
+
+# coordinator additions (independent mutation review of 37ff402)
+def test_no_claim_v3_run_never_carries_unverified_digests(world):
+    store, m = world
+    r = run3(m)
+    r['exec_obs'].update(manifest_digest='a' * 64, gap_report_digest='b' * 64)
+    out = E.realism_refusals(r, m, store=store)
+    assert 'manifest_digest_mismatch' in out and 'gap_report_digest_mismatch' in out
+    assert E.realism_refusals(run3(m), None, store=None) == ['manifest_unavailable']
+    assert E.realism_refusals(run3(m), m, store=store) == []
+
+
+def test_freeze_run_dispatches_v2_without_exec_obs(monkeypatch):
+    monkeypatch.setattr(R, 'code_identity', lambda repo: run2()['code'])
+    base = run2()
+    ident = {k: v for k, v in base.items() if k not in ('code', 'eval', 'seeds', 'eval_digest')}
+    ep = {'path': 'tools/research/trend_ema_mom.py', 'function': 'decide', 'summary': 'summarize'}
+    kw = dict(repo=ROOT, eval_files=[ep['path']], config={'k': 1}, seeds=[7], entrypoint=ep, schedule=[0], **ident)
+    two = R.freeze_run(**kw)
+    paths = [f['path'] for f in two['run']['eval']['files']]
+    assert two['format'] == R.FORMAT and 'exec_obs' not in two['run']
+    assert 'tools/research/exec_obs.py' not in paths
+    assert paths == R.import_closure(ROOT, sorted(set(R.CORE_EVAL_FILES) | {ep['path']}))
+    three = R.freeze_run(exec_obs=run3()['exec_obs'], **kw)
+    assert three['format'] == R.FORMAT_3 and 'tools/research/exec_obs.py' in [
+        f['path'] for f in three['run']['eval']['files']]
+
+
+def test_view_rows_before_lo_or_since_are_never_served(world, tmp_path):
+    store, m = world
+    o = obs(m, store, tmp_path, start='2024-01-01T12:00:00Z')
+    lo = D0 + 12 * HOUR
+    v = o.view(D0 + DAY)
+    for rows in (v.book_ticker(SYM), v.agg_trades(SYM), v.book_depth_summary(SYM)):
+        assert rows and lo <= min(r.event_ms for r in rows) < lo + BD_STEP
+    s = v.agg_trades(SYM, since_ms=D0 + 18 * HOUR)
+    assert s and s[0].event_ms >= D0 + 18 * HOUR and len(s) < len(v.agg_trades(SYM))
+
+
+@pytest.mark.parametrize('n', [0, -1, True, 1.0, '2'])
+def test_view_n_must_be_a_positive_int(world, tmp_path, n):
+    store, m = world
+    v = obs(m, store, tmp_path).view(D0 + HOUR)
+    with pytest.raises(E.ExecObsError, match='positive int'):
+        v.book_ticker(SYM, n)
+    assert len(v.book_ticker(SYM, 2)) == 2 and len(v.book_ticker(SYM)) > 2
+
+
+def test_series_directory_must_match_the_file_name(tmp_path):
+    zput(str(tmp_path), 'um/daily/aggTrades/AAAUSDT/AAAUSDT-bookTicker-2024-01-01.zip',
+         f'5,100.0,1,100.1,1,{T0},{T0}\n')
+    with pytest.raises(E.ExecObsError, match='not um/'):
+        build(str(tmp_path))
+
+
+def test_head_gap_at_the_start_of_coverage_is_emitted(tmp_path):
+    t = D0 + 2 * E.GAP_POLICIES['gap-policy/1']['book_ticker']
+    zput(str(tmp_path), rel_of('book_ticker', 0), f'5,100.0,1,100.1,1,{t},{t}\n')
+    m = build(str(tmp_path))
+    heads = [g for g in m['gap_report'] if g['kind'] == 'head']
+    assert [(g['from'], g['to'], g['at_ms'], g['next_ms']) for g in heads] == [(D0, t, D0, t)]

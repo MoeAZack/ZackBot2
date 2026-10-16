@@ -568,6 +568,18 @@ def exec_realism(env: dict, exec_manifest, exec_store) -> dict:
     return {'claims': list(run['exec_obs']['claims']), 'refusals': refusals, 'promotable': not refusals}
 
 
+def enforce_promotion(obj: dict, *, exec_manifest=None, exec_store=None) -> None:
+    """THE promotion / registration boundary (BT-EXEC-OBS-01, Codex 6225951309 item 4) for an envelope or a sealed
+    report: raises `exec_obs.PromotionRefused` (`promotion_refused:<first reason>`, every reason in `.reasons`) when a
+    /3 run's execution realism is not promotable (recomputed; a report's `exec_realism` label must agree) or a /2 run's
+    eval.config carries any execution-like key / value (`exec_obs_missing`). Every promotion / registration path calls
+    it BEFORE any ledger / registry / runs mutation (`ledger.append` for PROMOTION_KINDS)."""
+    if not isinstance(obj, dict) or obj.get('run_digest') != run_digest(obj.get('run')) or \
+            obj.get('format') != run_format(obj['run']):
+        raise ReportError('promotion: not a valid envelope / report (format or run_digest mismatch)')
+    _exec_obs().enforce_promotion(obj, exec_manifest, store=exec_store)
+
+
 def make_report(env: dict, results: dict, attestation: dict, ledger_path: str, *, exec_manifest=None,
                 exec_store=None) -> dict:
     """Validate the results shape against plan section 6, bind the runner attestation and seal with `report_digest`.
