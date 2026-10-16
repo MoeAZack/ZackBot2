@@ -33,7 +33,8 @@ def test_groups_at_most_six_equal_shares_and_cover_every_strategy():
     assert all(1 <= len(g) <= E.ROTATION_MAX_ACTIVE for g in groups)
     assert max(map(len, groups)) - min(map(len, groups)) <= 1
     flat = [k for g in groups for k in g]
-    assert sorted(flat) == sorted(S.STRATEGIES) and len(flat) == len(set(flat))      # each strategy in exactly one group
+    rotated = sorted(k for k in S.STRATEGIES if k not in E.SCALP_KEYS)                  # SCALP-4 slots are never rotated
+    assert sorted(flat) == rotated and len(flat) == len(set(flat))                       # each strategy in exactly one group
     sl = E.breadth_sleeves()
     assert {x['key'] for x in sl} == set(S.STRATEGIES) and len({x['id'] for x in sl}) == len(sl)
     by_key = {x['key']: x for x in sl}

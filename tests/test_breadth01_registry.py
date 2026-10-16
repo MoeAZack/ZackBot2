@@ -50,13 +50,16 @@ EMITS = {'ema_st': ('le', 'se'), 'ema_mom': ('le', 'se'), 'donchian_ens': ('le',
          'squeeze_tp': ('le', 'se'), 'pullback_rsi': ('le', 'se'), 'dca_dip': ('le',), 'bear_breakdown': ('se',),
          'rotation': ('le', 'se'), 'hot_coin': ('le',), 'exp_trend': ('le', 'se'), 'exp_range': ('le', 'se'),
          'exp_breakout': ('le', 'se'), 'exp_scalp': ('le', 'se'), 'exp_structure': ('le', 'se'), 'exp_vwaprev': ('le', 'se'),
-         'exp_mom_short': ('se',), 'exp_rip_sell_dca': ('se',)}
+         'exp_mom_short': ('se',), 'exp_rip_sell_dca': ('se',),
+         # SCALP-4 (PAPER, 15m)
+         'range_scalp': ('le', 'se'), 'failed_breakout_scalp': ('le', 'se'), 'momentum_burst_scalp': ('le', 'se'),
+         'quick_bank_runner': ('le', 'se')}
 # sides that need a non-default param to be emitted
 SIDE_PARAMS = {('rotation', 'se'): dict(shorts=True)}
 LONG_DEFAULT_SHORT_EMITTERS = {'ema_st', 'ema_mom', 'donchian_ens', 'breakout_pyramid', 'squeeze_tp', 'pullback_rsi',
                                'rotation'}
 RUNTIME_UNTESTED_SHORTS = {'ema_st', 'ema_mom', 'breakout_pyramid', 'pullback_rsi', 'rotation'}
-ONE_SIDE = {k for k in S.STRATEGIES if k.startswith('exp_')}      # wrapped in strategies._one_side
+ONE_SIDE = {k for k in S.STRATEGIES if k.startswith('exp_')} | E.SCALP_KEYS      # wrapped in strategies._one_side
 
 FAMILY = {'ema_st': 'Trend', 'ema_mom': 'Trend', 'donchian_ens': 'Trend', 'exp_trend': 'Trend',
           'pullback_rsi': 'Momentum', 'hot_coin': 'Momentum',
@@ -66,11 +69,13 @@ FAMILY = {'ema_st': 'Trend', 'ema_mom': 'Trend', 'donchian_ens': 'Trend', 'exp_t
           'exp_scalp': 'Scalp',
           'rotation': 'Rotation',
           'dca_dip': 'Dip-DCA',
-          'exp_mom_short': 'Momentum', 'exp_rip_sell_dca': 'Dip-DCA'}   # B3 short mirrors (#94)
+          'exp_mom_short': 'Momentum', 'exp_rip_sell_dca': 'Dip-DCA',   # B3 short mirrors (#94)
+          'range_scalp': 'Scalp', 'failed_breakout_scalp': 'Scalp', 'momentum_burst_scalp': 'Scalp',
+          'quick_bank_runner': 'Scalp'}                                  # SCALP-4 (PAPER slots, not rotated)
 FAMILIES = ('Trend', 'Momentum', 'Range', 'Breakout', 'Scalp', 'Rotation', 'Dip-DCA')
 
 # (key, side) -> (shape, mirrored). Long fixtures are up-drift tapes, shorts their exact price mirror (BTC down too).
-RANGE_KEYS = {'ema_st', 'ema_mom', 'exp_trend', 'exp_range', 'exp_vwaprev'}
+RANGE_KEYS = {'ema_st', 'ema_mom', 'exp_trend', 'exp_range', 'exp_vwaprev', 'range_scalp', 'failed_breakout_scalp'}
 
 
 def fixture_of(key, side):
