@@ -716,6 +716,14 @@ tr.wrnrow td:first-child{box-shadow:inset 3px 0 0 var(--warn)}
     <div class="card"><h3>Claude review key (optional) <span class="r" id="aistate"></span></h3>
       <div class="row"><label class="t2" for="k_ai">Anthropic API key</label><input id="k_ai" type="password" placeholder="leave blank to keep" style="width:270px" autocomplete="off"></div>
       <div class="row"><span></span><button onclick="saveAI()">Save</button></div></div>
+    <div class="card"><h3>Claude research <span class="r" id="anstate"></span></h3>
+      <div class="help">Report-only PAPER research. Claude reviews sanitized trade and backtest statistics at most every three hours and after new tests (no call when nothing changed); it cannot place, close or resize trades. The limits below are ceilings that stop calls, not expected spend.</div>
+      <div class="row"><div class="l"><b id="lb_mls">Record strategy decisions</b><small>collect candidate and outcome data locally</small></div><label class="sw"><input type="checkbox" id="sw_mls" aria-labelledby="lb_mls" onchange="setS({ML_SHADOW:this.checked})"><span></span></label></div>
+      <div class="row"><div class="l"><b id="lb_ca">Promotional Claude research boost</b><small>At most every 3 hours at :15 Cairo + after new backtest results</small></div><label class="sw"><input type="checkbox" id="sw_ca" aria-labelledby="lb_ca" onchange="setS({CLAUDE_SHADOW_ANALYST:this.checked})"><span></span></label></div>
+      <div class="row"><label class="t2" for="an_daily">Daily ceiling</label><span><input id="an_daily" type="number" min="0" max="1000" step="0.5" style="width:90px"> USD</span></div>
+      <div class="row"><label class="t2" for="an_monthly">Monthly ceiling</label><span><input id="an_monthly" type="number" min="0" max="1000" step="1" style="width:90px"> USD</span></div>
+      <div class="row"><span></span><span class="btns"><button onclick="saveAnalystBudget()">Save ceilings</button><button onclick="analystTest()">Test API</button><button class="b-pri" onclick="analystNow()">Analyse now</button></span></div>
+      <div id="anusage" class="small t2" aria-live="polite"></div></div>
     <div class="card"><h3>App</h3>
       <div class="row"><span class="t2">Version</span><b id="ver"></b></div>
       <div class="row"><span class="t2">Setup checklist on the Dashboard</span><button class="sm" onclick="showOnb()">Show again</button></div>
@@ -750,7 +758,7 @@ tr.wrnrow td:first-child{box-shadow:inset 3px 0 0 var(--warn)}
 <script>
 "use strict";
 let PF=null,PFT=0;   // BT02: exchange-filter preflight of the profiles (/api/preflight), refreshed at most once a minute on the Strategies tab
-let D=null,META=null,R=null,BTL=null,SLV=null,slDirty=false,eqR=30,trView='closed',trR=0,mSide='LONG',calM=null,trDay=null,EXPIRED=false,OFFLINE=false,TC=null;
+let D=null,META=null,R=null,BTL=null,SLV=null,AN=null,slDirty=false,eqR=30,trView='closed',trR=0,mSide='LONG',calM=null,trDay=null,EXPIRED=false,OFFLINE=false,TC=null;
 const CH={history:[],missed:[],signals:{},states:{},sigTime:null,equity:[],orders:[],logs:[]},REV={},LAST={missed:0,logs:0};
 const EXP=new Set(),SORT={},PAGE={},RER={},ADV=new Set();
 const $=id=>document.getElementById(id);
@@ -1559,12 +1567,21 @@ async function copyDiag(){let lines=CH.logs;try{lines=await api('/api/logs')}cat
 function renderSet(){const S=D.settings;$('keystate').innerHTML=D.keys?'<span class="tag t-long">keys saved</span>':'<span class="tag t-short">no keys</span>';$('ver').textContent=D.version+(D.build&&D.build!=='dev'?' · build '+D.build:'');
   if(document.activeElement.id!=='k_mode')$('k_mode').value=D.mode==='LIVE'?'live':'paper';if(document.activeElement.id!=='tg_chat'&&!$('tg_chat').value)$('tg_chat').value=S.TELEGRAM_CHAT||'';
   $('tgstate').innerHTML=S.TELEGRAM_TOKEN_SET?'<span class="tag t-long">token saved ✓</span>':'<span class="tag t-mute">no token</span>';$('tg_token').placeholder=S.TELEGRAM_TOKEN_SET?'saved ✓ — leave blank to keep':'123456:ABC...';
-  $('aistate').innerHTML=D.ai_key?'<span class="tag t-long">key saved ✓</span>':'';renderTC();renderTgCtl()}
+  $('aistate').innerHTML=D.ai_key?'<span class="tag t-long">key saved ✓</span>':'';renderTC();renderTgCtl();renderAnalyst()}
+function renderAnalyst(){if(!AN)return;const S=D.settings,u=AN.usage||{},b=AN.budget||{},d=u.day||{},m=u.month||{},latest=AN.latest||{};
+  const sw=(id,v)=>{const x=$(id);if(document.activeElement!==x)x.checked=!!v};sw('sw_mls',S.ML_SHADOW);sw('sw_ca',S.CLAUDE_SHADOW_ANALYST);
+  if(document.activeElement!==$('an_daily'))$('an_daily').value=b.daily_limit_usd??18;if(document.activeElement!==$('an_monthly'))$('an_monthly').value=b.monthly_limit_usd??198;
+  $('anstate').innerHTML=AN.enabled?(AN.model_price_known===false?'<span class="tag t-warn">model not priced</span>':AN.key_set?'<span class="tag t-long">active</span>':'<span class="tag t-warn">key needed</span>'):'<span class="tag t-mute">off</span>';
+  const lr=latest.status==='OK'?(latest.cached?'latest report cached':'latest report ready'):'no report: '+(latest.reason||'none');
+  setHTML($('anusage'),`<div class="rv" style="margin-top:8px"><span>Today</span><b>${d.calls||0} calls · ${fmt(d.input_tokens||0,0)} in / ${fmt(d.output_tokens||0,0)} out · ${usd(d.est_cost_usd||0,4)}</b><span>This month</span><b>${m.calls||0} calls · ${usd(m.est_cost_usd||0,4)} estimated</b><span>Left under ceiling</span><b>${usd(b.daily_remaining_usd||0,2)} today · ${usd(b.monthly_remaining_usd||0,2)} month</b><span>Status</span><b>${esc(lr)}</b></div>`)}
 function renderTC(){const el=$('tcOut');if(!TC){setHTML(el,'');return}if(TC.busy){setHTML(el,'<div class="mute small">Testing the connection…</div>');return}if(TC.err){setHTML(el,`<div class="note bd">${esc(TC.err)}</div>`);return}
   const m=TC.msg||{};setHTML(el,`<div class="small t2" style="margin-top:8px">Mode: <b>${esc(m.mode||'')}</b> · tested ${fTime(TC.t)}</div>`+(m.checks||[]).map(c=>`<div><span class="ic ${c.ok?'ok':'bd'}" style="width:22px;height:22px;border-radius:50%;display:grid;place-items:center;font-weight:900;flex-shrink:0" aria-hidden="true">${c.ok?'✓':'✕'}</span><div><b>${esc(c.name)}</b><span class="sr">${c.ok?' passed':' failed'}</span><div class="mute small">${esc(c.detail||'')}</div></div></div>`).join(''))}
 async function testConn(){TC={busy:1};renderTC();$('tcBtn').disabled=true;try{const m=await post('/api/action',{action:'test_connection'});TC={msg:m,t:new Date()};if((m.checks||[]).length&&m.checks.every(c=>c.ok))LS.set('zb_conn_ok','1')}catch(e){TC={err:e.message}}$('tcBtn').disabled=false;renderTC();if(D&&CUR==='dash')renderOnb()}
 async function saveKeys(){const b={MODE:$('k_mode').value,API_KEY:$('k_key').value,API_SECRET:$('k_secret').value,CONFIRM:$('k_confirm').value};if(b.MODE==='live'&&!confirm('Switch to LIVE trading with real money?'))return;try{toast(await post('/api/keys',b));['k_key','k_secret','k_confirm'].forEach(i=>$(i).value='');TC=null;setTimeout(load,1500)}catch(e){toast(e.message,true)}}
 async function saveAI(){try{toast(await post('/api/keys',{ANTHROPIC_API_KEY:$('k_ai').value}));$('k_ai').value='';setTimeout(load,1500)}catch(e){toast(e.message,true)}}
+async function saveAnalystBudget(){await setS({CLAUDE_DAILY_BUDGET_USD:+$('an_daily').value,CLAUDE_MONTHLY_BUDGET_USD:+$('an_monthly').value})}
+async function analystTest(){try{const r=await post('/api/analyst/auth_self_test',{});toast(r.status==='accepted'?'Claude API connected':'Claude API test: '+r.status,r.status!=='accepted');AN=await api('/api/analyst');renderAnalyst()}catch(e){toast(e.message,true)}}
+async function analystNow(){try{const r=await post('/api/analyst/analyze_now',{});toast(r.status==='OK'?'Claude analysis completed':'No analysis: '+(r.reason||'unknown'),r.status!=='OK');AN=await api('/api/analyst');renderAnalyst()}catch(e){toast(e.message,true)}}
 function saveTG(){const o={TELEGRAM_CHAT:$('tg_chat').value};if($('tg_token').value)o.TELEGRAM_TOKEN=$('tg_token').value;setS(o);$('tg_token').value=''}
 
 // ---------------- help / glossary
@@ -2008,6 +2025,7 @@ async function load(){if(EXPIRED||LOADING)return;LOADING=true;
     if(rv.equity!==REV.equity)jobs.push(api('/api/equity').then(j=>{CH.equity=j.equity_hist||[];REV.equity=rv.equity}));
     if(CUR==='strat'&&Date.now()-PFT>60000){PFT=Date.now();jobs.push(api('/api/preflight').then(j=>{PF=j}))}
     if(CUR==='logs')jobs.push(Promise.all([api('/api/orders'),api('/api/logs')]).then(([o,l])=>{CH.orders=Array.isArray(o)?o:[];CH.logs=Array.isArray(l)?l:[];LAST.logs=Date.now()}));
+    if(CUR==='set')jobs.push(api('/api/analyst').then(a=>{AN=a}));
     const jk=Object.entries(s.jobs||{}).map(([k,j])=>k+':'+j.status+':'+(j.done||0)).join(',');if(BTL===null||jk!==LASTJOBS){LASTJOBS=jk;jobs.push(api('/api/backtests').then(b=>{BTL=b;if(CUR==='bt'){renderBTList();renderStudy()}}))}
     const res=await Promise.allSettled(jobs);if(EXPIRED)return;if(!META)throw new Error((res.find(r=>r.status==='rejected')||{}).reason||'no meta');
     D=Object.assign(s,{presets:META.presets,library:META.library,core8:META.core8,top40:META.top40,tradable:META.tradable,history:CH.history,missed:CH.missed,signals:CH.signals,states:CH.states,equity_hist:CH.equity,trades:CH.orders,logs:CH.logs});

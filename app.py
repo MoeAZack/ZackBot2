@@ -3,7 +3,7 @@
 Run:  python app.py            (or ZackBot.exe after building)
       python app.py --no-window  (server only; open http://localhost:8765 yourself)
 """
-import atexit, base64, collections, copy, csv, glob, gzip, hmac, json, logging, logging.handlers, math, os, queue, random, re, secrets, shutil, subprocess, sys, threading, time, traceback, uuid, socket
+import atexit, base64, collections, copy, csv, glob, gzip, heapq, hmac, json, logging, logging.handlers, math, os, queue, random, re, secrets, shutil, subprocess, sys, threading, time, traceback, uuid, socket
 from datetime import datetime, timezone
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlsplit, parse_qs
@@ -384,6 +384,13 @@ def run_backtest_job(job_id, req):
         fz['promotable'] = fz['execution_realistic']
         save_json(os.path.join(DATA, 'backtests', f'{job_id}.json'), res)
         job.update(status='done', result=res)
+        # PAPER-only, report-only critique of the newly completed deterministic result. The result is already marked
+        # done; the critique is only QUEUED (non-blocking, coalesced) on the analyst's own thread, so analyst latency or
+        # failure never holds the single research worker. Spend/auth/safety guards remain inside shadow_analyst.
+        try:
+            request_backtest_review()
+        except Exception as ex:
+            log.warning(f'backtest analyst review not queued ({type(ex).__name__})')
     except Exception as e:
         log.error('backtest failed: ' + traceback.format_exc())
         job.update(status='error', error=str(e))
@@ -599,14 +606,67 @@ def migrate_settings_secrets(cfg, data_dir=None):
 
 # ------------------------------------------------------------------ ML-SHADOW-01: shadow analyst wiring (report only)
 ANALYST_TICK_S = 300
+# Serialises the analyst's persisted state and its API call (timer, manual action, review thread). Never held while the
+# local evidence files are scanned: ml_aggregate() runs before the lock is taken.
+ANALYST_LOCK = threading.Lock()
+BT_SCAN_MAX_ENTRIES = 50000                   # directory entries stat'ed (cheap, no open), at most
+BT_SCAN_MAX_FILES = 24                        # newest result files opened, at most (size checked BEFORE any JSON parse)
+BT_FILE_MAX_BYTES = 4 * 1024 * 1024           # a larger result file is skipped unread
+BT_EVIDENCE_MAX = SA.MAX_BACKTESTS
+
+
+def _recent_backtests(bt_dir):
+    """Newest non-lab backtest results as allow-listed numeric summaries (see SA.BT_FIELDS). Bounded: at most
+    BT_SCAN_MAX_ENTRIES directory entries, BT_SCAN_MAX_FILES files opened, each <= BT_FILE_MAX_BYTES read before parsing."""
+    def entries(it):
+        for n, de in enumerate(it):
+            if n >= BT_SCAN_MAX_ENTRIES:
+                return
+            try:
+                if de.name.endswith('.json') and de.is_file(follow_symlinks=False):
+                    st = de.stat(follow_symlinks=False)
+                    yield st.st_mtime, st.st_size, de.path
+            except OSError:
+                continue
+    try:
+        with os.scandir(bt_dir) as it:              # newest by mtime, whatever the listing order (NTFS lists by name)
+            newest = heapq.nlargest(BT_SCAN_MAX_FILES, entries(it))
+    except OSError:
+        return []
+    out = []
+    for _, size, path in newest:
+        if len(out) >= BT_EVIDENCE_MAX:
+            break
+        if size > BT_FILE_MAX_BYTES:
+            continue
+        try:
+            with open(path, 'rb') as f:
+                blob = f.read(BT_FILE_MAX_BYTES + 1)
+            if len(blob) > BT_FILE_MAX_BYTES:
+                continue                                  # grew after the stat: still never parsed
+            r = json.loads(blob.decode('utf-8'))
+            if not isinstance(r, dict) or r.get('lab') or not isinstance(r.get('stats'), dict):
+                continue
+            st, oo, fz = r['stats'], r.get('oos') or {}, r.get('feasibility') or {}
+            oo, fz = (oo if isinstance(oo, dict) else {}), (fz if isinstance(fz, dict) else {})
+            req = r.get('request') if isinstance(r.get('request'), dict) else {}
+            out.append(dict(name=r.get('name'), trades=st.get('trades'), days=req.get('days'), ret=st.get('ret'),
+                            pf=st.get('pf'), maxdd=st.get('maxdd'), win=st.get('win'), sharpe=st.get('sharpe'),
+                            worst_month=st.get('worst_month'), liquidations=st.get('liquidations'), busted=st.get('busted'),
+                            oos_ret_first=oo.get('ret_first'), oos_ret=oo.get('ret_last'), oos_dd=oo.get('dd_last'),
+                            executable_pct=fz.get('executable_pct'), rule_blocked=fz.get('rule_blocked'),
+                            rules_applied=fz.get('rules_applied'), realistic=bool(fz.get('execution_realistic')),
+                            promotable=bool(fz.get('promotable'))))
+        except (OSError, ValueError, TypeError, UnicodeDecodeError, RecursionError):
+            continue
+    return out
 
 
 def ml_aggregate(e):
     """Counts-only aggregate of the engine's ML ledgers for shadow_analyst.build_aggregate (no raw rows, ids or prices)."""
     p = e.ml_paths()
-    if not os.path.exists(p['decisions']): return {}
     import ml_shadow as MLS
-    dec = list(MLS.JsonlLedger(p['decisions'], e.ML_MAX_BYTES, e.ML_MAX_FILES).rows())
+    dec = list(MLS.JsonlLedger(p['decisions'], e.ML_MAX_BYTES, e.ML_MAX_FILES).rows()) if os.path.exists(p['decisions']) else []
     lab = list(MLS.JsonlLedger(p['labels'], e.ML_MAX_BYTES, e.ML_MAX_FILES).rows()) if os.path.exists(p['labels']) else []
     taken = {r.get('decision_id'): r for r in dec if r.get('taken')}
     trades = [(taken[l['decision_id']], l) for l in lab if l.get('decision_id') in taken and isinstance(l.get('net_r'), (int, float))]
@@ -626,21 +686,46 @@ def ml_aggregate(e):
         counts[g] = dict(c.most_common(30))
     counts['regime'] = dict(collections.Counter(str((d.get('features') or {}).get('regime') or '?') for d in taken.values()).most_common(10))
     skips = collections.Counter(str(r.get('reason') or '?').split(' - ')[0].split(':')[0][:40] for r in dec if not r.get('taken'))
+    exits = collections.Counter(str(l.get('exit_reason') or '?')[:40] for _, l in trades)
     times = sorted(str(r.get('candle_time')) for r in dec if r.get('candle_time'))
     miss = collections.Counter(k for r in dec for k in (r.get('missing') or []))
-    raw = dict(n_trades=len(trades), performance=performance, counts=counts, skip_reasons=dict(skips.most_common(20)),
-               missingness={k: round(v / len(dec), 3) for k, v in miss.items()} if dec else {})
+    mfes = [float(l['mfe_r']) for _, l in trades if isinstance(l.get('mfe_r'), (int, float))]
+    maes = [float(l['mae_r']) for _, l in trades if isinstance(l.get('mae_r'), (int, float))]
+    givebacks = [float(l['mfe_r']) - float(l['net_r']) for _, l in trades
+                 if isinstance(l.get('mfe_r'), (int, float)) and isinstance(l.get('net_r'), (int, float))]
+    diagnostic = dict(
+        avg_mfe_r=round(sum(mfes) / len(mfes), 3) if mfes else 0,
+        avg_mae_r=round(sum(maes) / len(maes), 3) if maes else 0,
+        avg_giveback_r=round(sum(givebacks) / len(givebacks), 3) if givebacks else 0,
+        profitable_then_lost=sum(1 for _, l in trades if isinstance(l.get('mfe_r'), (int, float)) and
+                                 isinstance(l.get('net_r'), (int, float)) and l['mfe_r'] > 0.5 and l['net_r'] < 0),
+    )
+    # Compact evidence from the newest deterministic runs, as allow-listed NUMERIC fields (F5) - no candle rows, paths,
+    # configuration, credentials or identifiers. Bound to this engine instance's folder (production: DATA == e.dir).
+    bts = _recent_backtests(os.path.join(e.dir, 'backtests'))
+    bt_n = max([b['trades'] for b in bts if isinstance(b.get('trades'), int) and not isinstance(b['trades'], bool)] or [0])
+    raw = dict(n_trades=max(len(trades), bt_n), performance=performance, counts=counts, skip_reasons=dict(skips.most_common(20)),
+               mfe_mae_coverage=dict(mfe=round(len(mfes) / len(trades), 3), mae=round(len(maes) / len(trades), 3)) if trades else {},
+               outcome_diagnostics=diagnostic, backtests=bts,
+               missingness={k: round(v / len(dec), 3) for k, v in miss.items()} if dec else {},
+               notes=[f'exit {k}: {v}' for k, v in exits.most_common(12)])
     if times: raw['window'] = dict(start=times[0], end=times[-1])
     return raw
 
 
+_ANALYST_INIT = threading.Lock()
+
+
 def _analyst(app):
-    a = getattr(app, '_analyst', None)
-    if a is None or getattr(a, '_zb_dir', None) != app.engine.dir:
-        a = SA.ShadowAnalyst(os.path.join(app.engine.dir, 'analyst'))
-        a._zb_dir = app.engine.dir
-        app._analyst = a
-    return a
+    """One ShadowAnalyst per engine folder. Creation is locked: two threads must never each load (and later save) their
+    own copy of the persisted state, or usage counters could be lost."""
+    with _ANALYST_INIT:
+        a = getattr(app, '_analyst', None)
+        if a is None or getattr(a, '_zb_dir', None) != app.engine.dir:
+            a = SA.ShadowAnalyst(os.path.join(app.engine.dir, 'analyst'))
+            a._zb_dir = app.engine.dir
+            app._analyst = a
+        return a
 
 
 def _analyst_args(app):
@@ -653,9 +738,64 @@ def analyst_tick(app, now=None):
     """Timer body: runs only on a due Cairo slot and only when CLAUDE_SHADOW_ANALYST is on (the analyst checks both)."""
     try:
         if not SA.is_enabled(app.engine.S): return None
-        return _analyst(app).run_scheduled(ml_aggregate(app.engine), now_utc=now or datetime.now(timezone.utc), **_analyst_args(app))
+        now = now or datetime.now(timezone.utc)
+        if not SA.due_slots(now, _analyst(app).state.get('slots_run')): return None     # cheap pre-check, no file scan
+        raw = ml_aggregate(app.engine)                                                   # file scan: lock NOT held
+        with ANALYST_LOCK:
+            return _analyst(app).run_scheduled(raw, now_utc=now, **_analyst_args(app))
     except Exception as ex:
         log.warning(f'shadow analyst tick failed ({type(ex).__name__})'); return None
+
+
+def analyst_backtest_review():
+    """Review the newest finished backtests when the running app is confirmed PAPER and the analyst is enabled.
+    Runs on the analyst review thread (never on the research worker)."""
+    app = globals().get('APP')
+    if not app or not getattr(app, 'engine', None):
+        return None
+    e = app.engine
+    if e.live or not SA.is_enabled(e.S):
+        return None
+    raw = ml_aggregate(e)                                     # file scan: lock NOT held
+    with ANALYST_LOCK:
+        return _analyst(app).analyze_now(raw, now_utc=datetime.now(timezone.utc), **_analyst_args(app))
+
+
+# Bounded, non-trading dispatch for the post-backtest critique: ONE daemon thread and a queue of ONE pending request.
+# Requests made while one is pending coalesce (the aggregate is built when the review runs, so it already covers every
+# backtest finished meanwhile). A slow or failing analyst therefore never blocks the research worker, and a burst of
+# backtests costs at most one in-flight call plus one queued call.
+ANALYST_REVIEW_Q = queue.Queue(maxsize=1)
+_ANALYST_REVIEW_THREAD = None
+_ANALYST_REVIEW_START = threading.Lock()
+
+
+def _analyst_review_worker():
+    while True:
+        ANALYST_REVIEW_Q.get()
+        try:
+            analyst_backtest_review()
+        except Exception as ex:
+            log.warning(f'backtest analyst review failed ({type(ex).__name__})')
+        finally:
+            ANALYST_REVIEW_Q.task_done()
+
+
+def request_backtest_review():
+    """Non-blocking: queue a review (or coalesce into the pending one) and return at once. -> True when newly queued."""
+    global _ANALYST_REVIEW_THREAD
+    app = globals().get('APP')
+    if not app or not getattr(app, 'engine', None) or app.engine.live or not SA.is_enabled(app.engine.S):
+        return False
+    with _ANALYST_REVIEW_START:
+        if _ANALYST_REVIEW_THREAD is None or not _ANALYST_REVIEW_THREAD.is_alive():
+            _ANALYST_REVIEW_THREAD = threading.Thread(target=_analyst_review_worker, name='analyst-review', daemon=True)
+            _ANALYST_REVIEW_THREAD.start()
+    try:
+        ANALYST_REVIEW_Q.put_nowait(1)
+        return True
+    except queue.Full:
+        return False
 
 
 def analyst_view(app, now=None):
@@ -665,19 +805,24 @@ def analyst_view(app, now=None):
     return dict(enabled=SA.is_enabled(e.S), model=str(e.S.get('CLAUDE_SHADOW_MODEL') or SA.DEFAULT_MODEL),
                 mode='LIVE' if e.live else 'PAPER', key_set=bool(app.cfg.get('ANTHROPIC_API_KEY')),
                 workspace_id_set=bool(app.cfg.get('ANTHROPIC_WORKSPACE_ID')), ml_shadow=bool(e.S.get('ML_SHADOW')),
-                ml_health=dict(e.health.get('ml_shadow') or {}), latest=a.latest(now), usage=a.usage(now))
+                ml_health=dict(e.health.get('ml_shadow') or {}), latest=a.latest(now), usage=a.usage(now), budget=a._budget(e.S, now),
+                schedule_cairo=[f'{h:02d}:15' for h, _ in SA.SLOTS],
+                model_price_known=SA.model_price(e.S.get('CLAUDE_SHADOW_MODEL') or SA.DEFAULT_MODEL) is not None)
 
 
 def analyst_action(app, path, b, now=None):
     e = app.engine
     if path == '/api/analyst/analyze_now':
-        return _analyst(app).analyze_now(ml_aggregate(e), now_utc=now, **_analyst_args(app))
+        raw = ml_aggregate(e)                                 # file scan: lock NOT held
+        with ANALYST_LOCK:
+            return _analyst(app).analyze_now(raw, now_utc=now, **_analyst_args(app))
     if path == '/api/analyst/auth_self_test':
         if e.live: raise ValueError('the Claude shadow analyst is PAPER only')
         args = _analyst_args(app)
         if not args['api_key']: return dict(status=SA.AUTH_UNAVAILABLE, request_id=None)
         if not SA.valid_workspace_id(args['workspace_id']): return dict(status=SA.AUTH_REJECTED, request_id=None)
-        r = _analyst(app).auth_self_test(args['api_key'], args['workspace_id'], now_utc=now)
+        with ANALYST_LOCK:
+            r = _analyst(app).auth_self_test(args['api_key'], args['workspace_id'], now_utc=now)
         return dict(status=r.get('status'), request_id=r.get('request_id'))
     if path == '/api/analyst/workspace':
         v = b.get('ANTHROPIC_WORKSPACE_ID')
@@ -1368,6 +1513,8 @@ def settings_update(e, b):
         elif k == 'CLAUDE_SHADOW_MODEL':
             if not isinstance(v, str) or not re.fullmatch(r'[A-Za-z0-9.\-_]{0,80}', v): raise ValueError('shadow analyst model: letters, digits, dot, dash only')
             ns[k] = v or SA.DEFAULT_MODEL
+        elif k in ('CLAUDE_DAILY_BUDGET_USD', 'CLAUDE_MONTHLY_BUDGET_USD'):
+            ns[k] = _num(v, 0, 1000, k.lower())
         elif k == 'MARKET_COLLECTOR':
             if not isinstance(v, bool): raise ValueError('market data collector switch must be true or false')
             ns[k] = v
