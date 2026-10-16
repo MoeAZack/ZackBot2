@@ -3,11 +3,11 @@
  "cairo_date": "2026-10-15",
  "candidate_id": "breadth_static40.v1",
  "code": {
-  "digest": "754f7d8e7c9be5769156b87d19b7aa34c6e86064a76adc3b6c67869f3c17a023",
+  "digest": "88ad1580ab424c2cb18054aa8f22210f2751325f894ab6551edd7f5dcf00bab0",
   "runner_commit": "c8c7b92",
   "sha256": {
    "backtest.py": "40456e94741854350101547b519f2abbeee922ff2a489afcfefef986cb09bc75",
-   "engine.py": "088b2827489c5c6174c5f8f28d7d8d82a2e25b258b43740990a2296fdf4320c2",
+   "engine.py": "40ae636eab315d5b844aea0692f3233791aafc3227807349d6da059d7ef57a32",
    "market_data.py": "aa16e76fdadfd1d39d3cb4cd4e8d144044aea750e8ba44ae1348c644e6440148",
    "strategies.py": "0e28e823894ecadf5bc1d634f4f9fa5e3fe934b4f2a53ae68386d7c6cce27c18",
    "tools/research/breadth_eval.py": "b0bae06e8e8a369d2dc9131544d5d9b9b4c1a2a0e3a9f626f870ea79be9ae2fb",

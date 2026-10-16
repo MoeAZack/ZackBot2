@@ -18,10 +18,13 @@ PINS = {
     # brought onto master byte-identical to c8c7b92
     'tools/research/run_breadth_candidate.py': 'dad619aaf2df00fd79ce9a2ca2d4848f298b745920fe7f6c56898e7b4f6922f2',
     'tools/research/collect_klines_research.py': 'b6a2a70a59d805f67541be42019e393a6677a954e0be889bfb06eb1f66a46856',
-    # executed by the runner / collector; identical at c8c7b92 and master 3904cde
+    # executed by the runner / collector; identical at c8c7b92 and master 3904cde (engine.py: see below)
     'strategies.py': '0e28e823894ecadf5bc1d634f4f9fa5e3fe934b4f2a53ae68386d7c6cce27c18',
     'backtest.py': '40456e94741854350101547b519f2abbeee922ff2a489afcfefef986cb09bc75',
-    'engine.py': '088b2827489c5c6174c5f8f28d7d8d82a2e25b258b43740990a2296fdf4320c2',
+    # engine.py re-frozen to accepted master 9206f17: #117 (breadth_rotation per-key mgmt overlay) intentionally
+    # changed it (was 088b2827... at c8c7b92 / 3904cde). Dev-window parity of the 13 Static-40 slices at this head vs
+    # the #114 packets is the review evidence for the re-freeze (Codex issue-13 6204084063).
+    'engine.py': '40ae636eab315d5b844aea0692f3233791aafc3227807349d6da059d7ef57a32',
     'tools/research/run_vwaprev_candidate.py': 'c2f43564cc1da4cd79e12253ece82d10b3f82c1ecdbbc11aeafa80202060d23e',
     'market_data.py': 'aa16e76fdadfd1d39d3cb4cd4e8d144044aea750e8ba44ae1348c644e6440148',
     # the frozen Static-40 universe (owner-approved list)
