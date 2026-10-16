@@ -6,6 +6,7 @@ import os
 import sys
 
 import numpy as np
+import pytest
 import pandas as pd
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -87,3 +88,46 @@ def test_exit_is_causal_decided_and_filled_at_the_triggering_close(env, tmp_path
     assert (d1[:len(d2)] == d2).all() and (u1[:len(u2)] == u2).all()
     with open(kw['out'] + '.regime_exit.json') as f:
         assert json.load(f)['script_sha256'] == car['script_sha256']
+
+
+# ------------------------------------------------------------------ follow-ups: fixed-R report, BTC packet
+import structure_fixed_r_report as FR                                                       # noqa: E402
+import structure_btc_packet as BP                                                           # noqa: E402
+
+
+def _pkt(rs, regimes=None, t0='2024-12-30T00:00:00Z'):
+    base = pd.Timestamp(t0.rstrip('Z'))
+    tr = [dict(symbol='S', t_in=(base + pd.Timedelta(days=k)).isoformat() + 'Z',
+               t_out=(base + pd.Timedelta(days=k, hours=1)).isoformat() + 'Z', R=r,
+               regime=(regimes or ['btc_above_ema200'] * len(rs))[k]) for k, r in enumerate(rs)]
+    return dict(trades=tr, packet_sha256='x', account={}, side='long', bust={'busted': False})
+
+
+def test_fixed_r_report_totals_quarters_runs_and_parity():
+    rs = [1.0, -1.0, -1.0, -1.0, 2.0, -1.0]
+    rep = FR.report(_pkt(rs, ['btc_above_ema200'] * 3 + ['btc_below_ema200'] * 3), _pkt(rs[:4] + [5.0]))
+    t = rep['totals']
+    assert t['trades'] == 6 and t['net_r'] == -1.0 and t['pf'] == 3 / 4 and t['max_dd_r'] == 3.0
+    assert rep['longest_losing_run']['n'] == 3 and rep['longest_losing_run']['r'] == -3.0
+    assert rep['quarters'] == {'2024Q4': dict(trades=2, net_r=0.0), '2025Q1': dict(trades=4, net_r=-1.0)}
+    assert rep['regime']['btc_below_ema200'] == dict(trades=3, net_r=0.0) and rep['positive_buckets'] == []
+    assert rep['parity_vs_ref']['common'] == 5 and rep['parity_vs_ref']['exact_1e9'] == 4
+
+
+def test_btc_packet_net_recomputes_by_hand_and_matches_runner(env, tmp_path):
+    cache = BT_.write15(str(tmp_path / 'c15'), {'BTCUSDT': BT_.tape15(7, 100.0)})
+    d = str(tmp_path / 'pk')
+    for side in ('long', 'short'):
+        pkt, rows = BP.run(side=side, out_dir=d, write_slice=True, cache=cache, regime_cache=env['cache'],
+                           window=BT_.VT.WINDOW, repo=env['repo'])
+        ref = B.run(cache=cache, regime_cache=env['cache'], window=BT_.VT.WINDOW, symbols=['BTCUSDT'], repo=env['repo'],
+                    key=KEY, side=side, out=str(tmp_path / f'ref_{side}.json'))
+        assert rows and pkt['trades'] == ref['trades']
+        for r in rows:
+            sd = r['side']
+            assert abs(r['net'] - r['net_recomputed']) <= 1e-6        # the packet rounds $ to 6 decimals
+            assert r['entry_fill'] == pytest.approx(r['entry_open'] * (1 + sd * BT.SLIP), rel=1e-12)
+            assert r['R'] == pytest.approx(r['net'] / r['risk_usd'], rel=1e-6, abs=1e-6)
+            assert r['gross_before_slip'] - r['slip_usd'] == pytest.approx(r['gross'], rel=1e-9, abs=1e-9)
+    sl = pd.read_csv(os.path.join(d, 'btc_15m_slice.csv'))
+    assert sl.t.max() < B._ms(np.array([np.datetime64(BT_.VT.WINDOW.split('/')[1].rstrip('Z'))]))[0]
