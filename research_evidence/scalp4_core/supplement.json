@@ -1,0 +1,368 @@
+{
+ "CORE-10_failed_breakout_scalp_long": {
+  "trades": 10489,
+  "net_r": -2649.2,
+  "pf": 0.589,
+  "net_r_2xfee": -4462.7,
+  "pf_2xfee": 0.418,
+  "fee_r_per_trade": 0.1729,
+  "excluded": {
+   "HYPEUSDT": {
+    "missing": 22150,
+    "first": "2024-10-11T17:00:00Z",
+    "last": "2025-05-30T10:15:00Z"
+   }
+  }
+ },
+ "CORE-10_failed_breakout_scalp_short": {
+  "trades": 10771,
+  "net_r": -2667.7,
+  "pf": 0.6,
+  "net_r_2xfee": -4580.9,
+  "pf_2xfee": 0.425,
+  "fee_r_per_trade": 0.1776,
+  "excluded": {
+   "HYPEUSDT": {
+    "missing": 22150,
+    "first": "2024-10-11T17:00:00Z",
+    "last": "2025-05-30T10:15:00Z"
+   }
+  }
+ },
+ "CORE-10_momentum_burst_scalp_long": {
+  "trades": 5748,
+  "net_r": -834.9,
+  "pf": 0.706,
+  "net_r_2xfee": -1508.6,
+  "pf_2xfee": 0.539,
+  "fee_r_per_trade": 0.1172,
+  "excluded": {
+   "HYPEUSDT": {
+    "missing": 22150,
+    "first": "2024-10-11T17:00:00Z",
+    "last": "2025-05-30T10:15:00Z"
+   }
+  }
+ },
+ "CORE-10_momentum_burst_scalp_short": {
+  "trades": 5200,
+  "net_r": -735.5,
+  "pf": 0.704,
+  "net_r_2xfee": -1357.0,
+  "pf_2xfee": 0.53,
+  "fee_r_per_trade": 0.1195,
+  "excluded": {
+   "HYPEUSDT": {
+    "missing": 22150,
+    "first": "2024-10-11T17:00:00Z",
+    "last": "2025-05-30T10:15:00Z"
+   }
+  }
+ },
+ "CORE-10_quick_bank_runner_long": {
+  "trades": 25914,
+  "net_r": -8450.6,
+  "pf": 0.466,
+  "net_r_2xfee": -14380.9,
+  "pf_2xfee": 0.262,
+  "fee_r_per_trade": 0.2288,
+  "trades_per_coin_per_day": {
+   "BTCUSDT": 5.16,
+   "DOGEUSDT": 3.36,
+   "ETHUSDT": 5.06,
+   "NEARUSDT": 3.7,
+   "SOLUSDT": 4.32,
+   "SUIUSDT": 2.7,
+   "UNIUSDT": 3.23,
+   "XRPUSDT": 4.0,
+   "ZECUSDT": 4.76
+  },
+  "exit_mix": {
+   "stop": 19628,
+   "tp": 5404,
+   "time": 788,
+   "signal": 94
+  },
+  "excluded": {
+   "HYPEUSDT": {
+    "missing": 22150,
+    "first": "2024-10-11T17:00:00Z",
+    "last": "2025-05-30T10:15:00Z"
+   }
+  }
+ },
+ "CORE-10_quick_bank_runner_short": {
+  "trades": 25511,
+  "net_r": -7693.6,
+  "pf": 0.492,
+  "net_r_2xfee": -13397.1,
+  "pf_2xfee": 0.279,
+  "fee_r_per_trade": 0.2236,
+  "trades_per_coin_per_day": {
+   "BTCUSDT": 4.68,
+   "DOGEUSDT": 3.04,
+   "ETHUSDT": 4.54,
+   "NEARUSDT": 4.04,
+   "SOLUSDT": 4.35,
+   "SUIUSDT": 2.96,
+   "UNIUSDT": 3.16,
+   "XRPUSDT": 4.2,
+   "ZECUSDT": 4.76
+  },
+  "exit_mix": {
+   "stop": 19251,
+   "tp": 5391,
+   "time": 762,
+   "signal": 107
+  },
+  "excluded": {
+   "HYPEUSDT": {
+    "missing": 22150,
+    "first": "2024-10-11T17:00:00Z",
+    "last": "2025-05-30T10:15:00Z"
+   }
+  }
+ },
+ "CORE-10_range_scalp_long": {
+  "trades": 3471,
+  "net_r": -1020.4,
+  "pf": 0.587,
+  "net_r_2xfee": -1682.6,
+  "pf_2xfee": 0.417,
+  "fee_r_per_trade": 0.1908,
+  "excluded": {
+   "HYPEUSDT": {
+    "missing": 22150,
+    "first": "2024-10-11T17:00:00Z",
+    "last": "2025-05-30T10:15:00Z"
+   }
+  }
+ },
+ "CORE-10_range_scalp_short": {
+  "trades": 3565,
+  "net_r": -995.3,
+  "pf": 0.601,
+  "net_r_2xfee": -1697.3,
+  "pf_2xfee": 0.422,
+  "fee_r_per_trade": 0.1969,
+  "excluded": {
+   "HYPEUSDT": {
+    "missing": 22150,
+    "first": "2024-10-11T17:00:00Z",
+    "last": "2025-05-30T10:15:00Z"
+   }
+  }
+ },
+ "CORE-20_failed_breakout_scalp_long": {
+  "trades": 16051,
+  "net_r": -4161.0,
+  "pf": 0.586,
+  "net_r_2xfee": -6969.6,
+  "pf_2xfee": 0.417,
+  "fee_r_per_trade": 0.175,
+  "excluded": {
+   "HYPEUSDT": {
+    "missing": 22150,
+    "first": "2024-10-11T17:00:00Z",
+    "last": "2025-05-30T10:15:00Z"
+   },
+   "PUMPUSDT": {
+    "missing": 26074,
+    "first": "2024-10-11T17:00:00Z",
+    "last": "2025-07-10T07:15:00Z"
+   }
+  }
+ },
+ "CORE-20_failed_breakout_scalp_short": {
+  "trades": 17220,
+  "net_r": -4153.2,
+  "pf": 0.613,
+  "net_r_2xfee": -7216.8,
+  "pf_2xfee": 0.435,
+  "fee_r_per_trade": 0.1779,
+  "excluded": {
+   "HYPEUSDT": {
+    "missing": 22150,
+    "first": "2024-10-11T17:00:00Z",
+    "last": "2025-05-30T10:15:00Z"
+   },
+   "PUMPUSDT": {
+    "missing": 26074,
+    "first": "2024-10-11T17:00:00Z",
+    "last": "2025-07-10T07:15:00Z"
+   }
+  }
+ },
+ "CORE-20_momentum_burst_scalp_long": {
+  "trades": 8943,
+  "net_r": -1327.3,
+  "pf": 0.704,
+  "net_r_2xfee": -2349.2,
+  "pf_2xfee": 0.544,
+  "fee_r_per_trade": 0.1143,
+  "excluded": {
+   "HYPEUSDT": {
+    "missing": 22150,
+    "first": "2024-10-11T17:00:00Z",
+    "last": "2025-05-30T10:15:00Z"
+   },
+   "PUMPUSDT": {
+    "missing": 26074,
+    "first": "2024-10-11T17:00:00Z",
+    "last": "2025-07-10T07:15:00Z"
+   }
+  }
+ },
+ "CORE-20_momentum_burst_scalp_short": {
+  "trades": 8156,
+  "net_r": -1191.5,
+  "pf": 0.688,
+  "net_r_2xfee": -2151.5,
+  "pf_2xfee": 0.516,
+  "fee_r_per_trade": 0.1177,
+  "excluded": {
+   "HYPEUSDT": {
+    "missing": 22150,
+    "first": "2024-10-11T17:00:00Z",
+    "last": "2025-05-30T10:15:00Z"
+   },
+   "PUMPUSDT": {
+    "missing": 26074,
+    "first": "2024-10-11T17:00:00Z",
+    "last": "2025-07-10T07:15:00Z"
+   }
+  }
+ },
+ "CORE-20_quick_bank_runner_long": {
+  "trades": 34755,
+  "net_r": -10954.4,
+  "pf": 0.479,
+  "net_r_2xfee": -18566.8,
+  "pf_2xfee": 0.276,
+  "fee_r_per_trade": 0.219,
+  "trades_per_coin_per_day": {
+   "1000PEPEUSDT": 1.57,
+   "ADAUSDT": 1.23,
+   "AVAXUSDT": 1.27,
+   "BNBUSDT": 2.65,
+   "BTCUSDT": 4.83,
+   "DOGEUSDT": 2.69,
+   "ENAUSDT": 2.14,
+   "ETHUSDT": 4.6,
+   "LINKUSDT": 1.18,
+   "LSKUSDT": 2.28,
+   "NEARUSDT": 3.21,
+   "QNTUSDT": 2.82,
+   "SOLUSDT": 3.76,
+   "SUIUSDT": 2.17,
+   "UNIUSDT": 2.77,
+   "WLDUSDT": 1.72,
+   "XRPUSDT": 3.39,
+   "ZECUSDT": 4.4
+  },
+  "exit_mix": {
+   "stop": 26363,
+   "tp": 7305,
+   "time": 967,
+   "signal": 120
+  },
+  "excluded": {
+   "HYPEUSDT": {
+    "missing": 22150,
+    "first": "2024-10-11T17:00:00Z",
+    "last": "2025-05-30T10:15:00Z"
+   },
+   "PUMPUSDT": {
+    "missing": 26074,
+    "first": "2024-10-11T17:00:00Z",
+    "last": "2025-07-10T07:15:00Z"
+   }
+  }
+ },
+ "CORE-20_quick_bank_runner_short": {
+  "trades": 33743,
+  "net_r": -9634.9,
+  "pf": 0.512,
+  "net_r_2xfee": -16896.5,
+  "pf_2xfee": 0.295,
+  "fee_r_per_trade": 0.2152,
+  "trades_per_coin_per_day": {
+   "1000PEPEUSDT": 1.66,
+   "ADAUSDT": 1.25,
+   "AVAXUSDT": 1.11,
+   "BNBUSDT": 1.95,
+   "BTCUSDT": 4.25,
+   "DOGEUSDT": 2.44,
+   "ENAUSDT": 2.51,
+   "ETHUSDT": 4.0,
+   "LINKUSDT": 0.86,
+   "LSKUSDT": 2.12,
+   "NEARUSDT": 3.39,
+   "QNTUSDT": 3.09,
+   "SOLUSDT": 3.73,
+   "SUIUSDT": 2.43,
+   "UNIUSDT": 2.65,
+   "WLDUSDT": 1.91,
+   "XRPUSDT": 3.55,
+   "ZECUSDT": 4.37
+  },
+  "exit_mix": {
+   "stop": 25348,
+   "tp": 7197,
+   "time": 1045,
+   "signal": 153
+  },
+  "excluded": {
+   "HYPEUSDT": {
+    "missing": 22150,
+    "first": "2024-10-11T17:00:00Z",
+    "last": "2025-05-30T10:15:00Z"
+   },
+   "PUMPUSDT": {
+    "missing": 26074,
+    "first": "2024-10-11T17:00:00Z",
+    "last": "2025-07-10T07:15:00Z"
+   }
+  }
+ },
+ "CORE-20_range_scalp_long": {
+  "trades": 6425,
+  "net_r": -1831.1,
+  "pf": 0.597,
+  "net_r_2xfee": -2965.3,
+  "pf_2xfee": 0.436,
+  "fee_r_per_trade": 0.1765,
+  "excluded": {
+   "HYPEUSDT": {
+    "missing": 22150,
+    "first": "2024-10-11T17:00:00Z",
+    "last": "2025-05-30T10:15:00Z"
+   },
+   "PUMPUSDT": {
+    "missing": 26074,
+    "first": "2024-10-11T17:00:00Z",
+    "last": "2025-07-10T07:15:00Z"
+   }
+  }
+ },
+ "CORE-20_range_scalp_short": {
+  "trades": 6505,
+  "net_r": -1804.6,
+  "pf": 0.603,
+  "net_r_2xfee": -3015.2,
+  "pf_2xfee": 0.432,
+  "fee_r_per_trade": 0.1861,
+  "excluded": {
+   "HYPEUSDT": {
+    "missing": 22150,
+    "first": "2024-10-11T17:00:00Z",
+    "last": "2025-05-30T10:15:00Z"
+   },
+   "PUMPUSDT": {
+    "missing": 26074,
+    "first": "2024-10-11T17:00:00Z",
+    "last": "2025-07-10T07:15:00Z"
+   }
+  }
+ }
+}
