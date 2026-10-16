@@ -14,6 +14,7 @@ import strategies as S
 import trade_audit as TA
 import feasibility as F
 from binance_client import Futures, MAINNET, TESTNET, BinanceError, AmbiguousOrder, ExchangeUnavailable, is_transient, new_cid, scrub, testnet_faults, testnet_read_outage
+from binance_client import AuditSkipped
 from ai_filter import review
 import grid as GRID
 import tradfi_universe as TU, tradfi_session as TS
@@ -257,6 +258,18 @@ def fill_px_fields(rec, lim=None):
     return rec
 
 
+def fill_px_unknown(rec):
+    """EXEC-CAL-00: the record's price is not an exchange-reported execution price (e.g. a maker fill answered without
+    avgPrice, booked at its limit): `actual` and every bps field derived from it are cleared (in place) until the
+    audit reads resolve them. Booking is untouched - this only changes what the audit record claims."""
+    rec['actual'] = None
+    return fill_px_fields(rec)
+
+
+def _px_known(refs):
+    return all((_fnum(r.get('opx')) or 0) > 0 for r in refs)
+
+
 def _ref_limit(refs):
     if not refs or not all(_fnum(r.get('lpx')) for r in refs): return None
     q = sum(r['exec'] for r in refs)
@@ -274,11 +287,14 @@ def enrich_attempt(rec, refs, client):
     another round may help (a transient failure, or trades not visible / not complete yet), False when done. Each round
     re-reads the full trade list of an order (deduplicated by trade id), so a repeated row is never counted twice."""
     sym, again = rec.get('symbol'), False
+    blocked = getattr(client, 'audit_blocked', None)
     for r in refs:
         if r.get('done'): continue
         try:
+            why = blocked() if blocked else None
+            if why: raise AuditSkipped(f'audit read not sent ({why})')
             if r.get('oid') is None:
-                g = getattr(client, 'get_order', None)
+                g = getattr(client, 'audit_order', None) or getattr(client, 'get_order', None)
                 if not (g and r.get('cid')): r['done'] = True; continue                  # nothing to correlate with
                 o = g(sym, r['cid'])
                 if not o: again = True; continue                                         # not visible yet
@@ -287,6 +303,10 @@ def enrich_attempt(rec, refs, client):
                 if r['oid'] is None: r['done'] = True; continue
             rows = client.user_trades(sym, r['oid'])
         except Exception as e:
+            if getattr(e, 'audit_stop', False):                                          # cooldown / 418 / 429: stop the job
+                for x in refs: x['done'] = True
+                rec['enrich_reason'] = getattr(e, 'reason', 'cooldown')
+                return False
             if isinstance(e, BinanceError) and not is_transient(e): r['done'] = True      # a definitive refusal: no retry
             else: again = True                                                           # 429 / 5xx / timeout / outage
             continue
@@ -294,11 +314,12 @@ def enrich_attempt(rec, refs, client):
         for t in rows if isinstance(rows, list) else ():
             if not isinstance(t, dict) or str(t.get('orderId')) != str(r['oid']) or t.get('symbol', sym) != sym: continue
             q, p = _fnum(t.get('qty')), _fnum(t.get('price'))
-            if not q or q <= 0 or not p or p <= 0: continue
-            got[t.get('id', ('row', len(got)))] = (q, p, _fnum(t.get('commission')), t.get('commissionAsset'))
+            if not q or q <= 0 or not p or p <= 0 or t.get('id') is None: continue        # an id-less row is never counted
+            got[str(t['id'])] = (q, p, _fnum(t.get('commission')), t.get('commissionAsset'))
         if not got: again = True; continue                                                # not visible yet
         r['tq'] = sum(v[0] for v in got.values()); r['tn'] = sum(v[0] * v[1] for v in got.values())
         r['comm'] = sum(v[2] for v in got.values()) if all(v[2] is not None for v in got.values()) else None
+        r['rebate'] = any(v[2] is not None and v[2] < 0 for v in got.values())           # a maker rebate (negative fee)
         r['assets'] = {v[3] if isinstance(v[3], str) else None for v in got.values()}
         if _covered(r): r['done'] = True
         else: again = True                                                                # more executions to show
@@ -310,6 +331,7 @@ def enrich_finish(rec, refs, cut=False):
     complete evidence: every order's trades cover its executed quantity (qty-weighted over all of them), else every order's
     own reported average; otherwise the record keeps the price it was built with (or none). The commission becomes a rate
     only when every trade is charged in the symbol's quote asset; otherwise commission_rate / commission_asset stay absent.
+    A rebate (any negative commission) is flagged commission_rebate and leaves commission_rate / fee_rate absent.
     cut: the cap (or a shutdown) ended the reads - 'timeout' instead of 'missing' when nothing was found."""
     refs = refs or []
     full = bool(refs) and all(_covered(r) for r in refs)
@@ -326,7 +348,9 @@ def enrich_finish(rec, refs, cut=False):
     if full and quote and all(r.get('comm') is not None and r.get('assets') == {quote} for r in refs):
         tn = sum(r['tn'] for r in refs)
         if tn > 0: rate = sum(r['comm'] for r in refs) / tn
-    for k in ('commission_rate', 'fee_rate', 'commission_asset'): rec.pop(k, None)
+    for k in ('commission_rate', 'fee_rate', 'commission_asset', 'commission_rebate'): rec.pop(k, None)
+    if rate is not None and (rate < 0 or any(r.get('rebate') for r in refs)):
+        rec['commission_rebate'], rec['commission_asset'], rate = True, quote, None   # never a negative fee_rate
     if rate is not None:
         rec['commission_rate'] = rec['fee_rate'] = round(rate, 8) + 0.0     # fee_rate: the field EXEC-CAL-01 reads
         rec['commission_asset'] = quote
@@ -340,13 +364,20 @@ class FillEnricher:
     """EXEC-CAL-00: the ONE enrichment worker of this process (lazy thread, like FillWriter). submit() is the only call an
     order path makes: a non-blocking hand-off under a lock (no I/O). Each job is in exactly one place - the queue or the
     worker's hands - and is written exactly once (by the worker, or by close() for what is still queued), so a duplicate
-    hand-off, an engine replaced by a settings restart or a shutdown mid-enrichment never records a fill twice."""
+    hand-off, an engine replaced by a settings restart or a shutdown mid-enrichment never records a fill twice.
+    Shutdown writes EVERY pending job at once (queued and in flight, as cut short) before the fill writers close; a read
+    still in flight then finishes into nothing (its job is already claimed). Ids are marked seen and a job is queued only
+    once the worker thread is confirmed running; if it cannot start, the caller writes the record now, once.
+    Limitation: the seen-set is memory only (ids are never persisted), so a replay of the same fill after a process
+    restart can write a second record for that order."""
 
     def __init__(self):
         self.cv = threading.Condition()
         self.jobs, self.busy, self.closing, self.thread = [], 0, False, None
+        self.inflight = []                                  # the job the worker is reading right now (at most one)
         self.seen = collections.OrderedDict()              # memory only: (symbol, 'o'|'c', id) of orders handed off
-        self.ctr = dict(submitted=0, duplicates=0, refused=0, **{s: 0 for s in ENRICH_STATUSES})
+        self.ctr = dict(submitted=0, duplicates=0, refused=0, start_failed=0, dropped_late=0,
+                        **{s: 0 for s in ENRICH_STATUSES})
 
     @staticmethod
     def _keys(rec, refs):
@@ -362,14 +393,19 @@ class FillEnricher:
             if self.closing: self.ctr['refused'] += 1; return 'refused'
             if any(k in self.seen for k in keys): self.ctr['duplicates'] += 1; return 'duplicate'
             if len(self.jobs) + self.busy >= ENRICH_QUEUE_MAX: self.ctr['refused'] += 1; return 'refused'
+            if self.thread is None or not self.thread.is_alive():
+                try:
+                    t = threading.Thread(target=self._run, name='fill-enrich', daemon=True); t.start()
+                except Exception:                           # no worker: nothing queued, nothing seen - the caller writes now
+                    self.ctr['start_failed'] += 1; self.ctr['refused'] += 1; return 'refused'
+                self.thread = t
             for k in keys: self.seen[k] = True
             while len(self.seen) > ENRICH_SEEN_MAX: self.seen.popitem(last=False)
             now = _mono()
             self.jobs.append(dict(rec=copy.deepcopy(rec), refs=[dict(r) for r in refs], client=client, writer=writer,
-                                  deadline=now + ENRICH_CAP_S, next_at=now, n=0))
+                                  rec0=copy.deepcopy(rec), refs0=[dict(r) for r in refs],
+                                  deadline=now + ENRICH_CAP_S, next_at=now, n=0, written=False))
             self.ctr['submitted'] += 1
-            if self.thread is None or not self.thread.is_alive():
-                self.thread = threading.Thread(target=self._run, name='fill-enrich', daemon=True); self.thread.start()
             self.cv.notify_all()
         return 'queued'
 
@@ -385,13 +421,16 @@ class FillEnricher:
                     else:
                         wait = 0.5
                     self.cv.wait(min(0.5, wait))
-                self.jobs.remove(j); self.busy += 1
+                self.jobs.remove(j); self.busy += 1; self.inflight.append(j)
             try:
                 self._step(j)
             except Exception as e:
                 log.debug(f'fill enrichment step failed ({type(e).__name__})')
             finally:
-                with self.cv: self.busy -= 1; self.cv.notify_all()
+                with self.cv:
+                    self.busy -= 1
+                    if j in self.inflight: self.inflight.remove(j)
+                    self.cv.notify_all()
 
     def _step(self, j):
         if _mono() >= j['deadline']: return self._finish(j, cut=True)
@@ -406,11 +445,18 @@ class FillEnricher:
                 j['next_at'] = nxt; self.jobs.append(j); self.cv.notify_all(); return
         self._finish(j, cut=True)
 
-    def _finish(self, j, cut):
-        rec = j['rec']
-        try: enrich_finish(rec, j['refs'], cut)
+    def _finish(self, j, cut, snapshot=False):
+        """Write the job's record exactly once: the first caller claims it (under the lock); a later one is dropped.
+        snapshot (shutdown with a read in flight): the worker may still be mutating rec/refs, so the pristine copies taken
+        at hand-off are written instead, as cut short."""
+        with self.cv:
+            if j.get('written'): self.ctr['dropped_late'] += 1; return
+            j['written'] = True
+            rec, refs = (copy.deepcopy(j['rec0']), [dict(r) for r in j['refs0']]) if snapshot else (j['rec'], j['refs'])
+        n = j['n']
+        try: enrich_finish(rec, refs, cut)
         except Exception: rec['enrich_status'] = 'timeout' if cut else 'missing'
-        rec['enrich_attempts'] = j['n']
+        rec['enrich_attempts'] = n
         with self.cv: self.ctr[rec['enrich_status']] = self.ctr.get(rec['enrich_status'], 0) + 1
         try: j['writer'].emit(rec)
         except Exception: pass
@@ -423,12 +469,14 @@ class FillEnricher:
             return not (self.jobs or self.busy)
 
     def close(self, timeout=2.0):
-        """Stop accepting; what is still queued is written now, once, as cut short; the read in flight (if any) is waited
-        for (bounded) and written by the worker. True when no worker thread remains."""
+        """Stop accepting and write EVERY pending record now, once, as cut short: the queued ones and the one whose read
+        is still in flight (from its hand-off snapshot) - all before close_fill_writers runs. The in-flight read's later
+        result is dropped. Then the worker is waited for (bounded). True when no worker thread remains."""
         end = _mono() + timeout
         with self.cv:
-            self.closing = True; left, self.jobs = self.jobs, []; self.cv.notify_all()
+            self.closing = True; left, self.jobs = self.jobs, []; busy = list(self.inflight); self.cv.notify_all()
         for j in left: self._finish(j, cut=True)
+        for j in busy: self._finish(j, cut=True, snapshot=True)
         with self.cv:
             while self.busy and _mono() < end: self.cv.wait(min(0.05, max(0.0, end - _mono())))
         if self.thread is not None: self.thread.join(max(0.0, end - _mono()) + 0.3)
@@ -2552,6 +2600,8 @@ class Engine:
         try:
             if refs is not None and rec.get('outcome') in ('filled', 'partial'):
                 refs = [r for r in refs if r]
+                if rec.get('actual') is not None and not (refs and _px_known(refs)):
+                    rec = fill_px_unknown(dict(rec))                    # no exchange price: never the limit as `actual`
                 lim = _ref_limit(refs)
                 if self._enrich_on():
                     if refs and all(r.get('oid') is not None or r.get('cid') for r in refs):
@@ -5567,6 +5617,7 @@ class Engine:
         if ex > 0:
             px = float(o.get('avgPrice') or 0) or rec['price']
             rec['filled'] += ex; rec['cost'] += ex * px
+            if not float(o.get('avgPrice') or 0): rec['px_unknown'] = True    # EXEC-CAL-00: booked at the limit (audit only)
             try:                                                     # EXEC-CAL-00: memory only (ids are never saved)
                 self._mk_refs.setdefault(self._mk_key(rec), []).append(self._order_ref(o, ex, rec['price'], rec.get('cid')))
             except Exception: pass
@@ -5640,6 +5691,7 @@ class Engine:
                         else: st['fallback_unconfirmed'] = 'Binance answered without an executed quantity'
                         self._replace_stop(lot)
             if mrec: mrec.update(st)
+            if mrec and rec.get('px_unknown'): fill_px_unknown(mrec)     # EXEC-CAL-00: the limit is not an executed price
             self._fill_emit(mrec, mrefs)
             return
         blk = (self.entry_block(sl, rec['symbol'], rec['side'], sg=sg)

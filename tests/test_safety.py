@@ -1,6 +1,6 @@
 """ZackBot v3 safety tests: every fix from the v2.2 audits gets a test that tries to break it.
 Run:  python -m pytest -q tests/   (from the zackbot2 folder)"""
-import json, os, sys, tempfile, types, logging
+import json, os, sys, tempfile, threading, types, logging
 from datetime import datetime, timezone, timedelta
 import pytest, pandas as pd, numpy as np, requests
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -84,6 +84,7 @@ def client_with(script):
         if isinstance(r, Exception): raise r
         return r
     c.s = types.SimpleNamespace(request=request, headers={}, get=lambda *a, **k: Resp(200, {'serverTime': 0}))
+    c._audit = dict(lock=threading.Lock(), s=c.s, until=0.0)    # EXEC-CAL-00: the audit-read session is the same fake (no network)
     c.sync_time = lambda: None
     return c, calls
 

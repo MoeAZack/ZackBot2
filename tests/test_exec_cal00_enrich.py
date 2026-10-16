@@ -1,7 +1,7 @@
 """EXEC-CAL-00 (PAPER/testnet, observe only): a fill whose order answer has no average price (or, always, no commission)
 is enriched from the order's own userTrades by a bounded, non-blocking worker. Enrichment never changes, retries,
 cancels or resizes an order, never touches a lot, and what it cannot resolve stays explicitly missing."""
-import copy, json, os, sys, tempfile
+import copy, json, os, sys, tempfile, threading, time
 import pytest
 import requests
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -382,3 +382,139 @@ def test_maker_fill_partly_before_restart_is_not_enriched_from_the_rest():
     bk.fill(); e.manage(e.trade.marks())
     r = one(e, 'entry_maker')
     assert e.trade.ut_calls == 0 and 'enrich_status' not in r and 'limit_improvement_bps' not in r
+
+
+# ------------------------------------------------------------------ review fixes (ported from the e0_rev adversarial repros)
+class _ListWriter:
+    def __init__(self): self.out, self.closed = [], False
+    def emit(self, r):
+        if not self.closed: self.out.append(r)
+
+
+def _jrec(**k):
+    return dict(dict(kind='entry_market', symbol='BTCUSDT', side='LONG', buy=True, outcome='filled', expected=100.0, actual=None), **k)
+
+
+def _jref(oid, cid=None, exec=1.0, opx=None):
+    return dict(oid=oid, cid=cid, exec=exec, opx=opx, lpx=None)
+
+
+def _maker_no_avg(cls, lose_refs=False):
+    e, _ = mk(cls=cls, ENTRY_ORDER='maker', MAKER_REPRICE=2, MAKER_WAIT_S=30)
+    bk = Book(e.trade)
+    assert e.open_lot(SL, 'BTCUSDT', 'LONG', SG, None, e.equity())
+    bk.fill()
+    o = next(iter(bk.orders.values())); o['orderId'] = OID0 + 77; o['avgPrice'] = '0'    # answered without a price
+    if lose_refs:
+        real = e._maker_done_order
+        def done(rec, o):
+            real(rec, o); e._mk_refs.clear()                                             # as after a restart
+        e._maker_done_order = done
+    e.manage(e.trade.marks())
+    return e, one(e, 'entry_maker')
+
+
+@pytest.mark.parametrize('cls,lose', [(EX, False), (FakeX, False), (EX, True)])
+def test_maker_fill_without_price_never_records_the_limit_as_executed(cls, lose):
+    """MEDIUM: a maker fill answered with no avgPrice is booked at its limit (unchanged), but the audit record never
+    claims the limit as `actual`: no actual, no bps; with reads that never resolve it, status missing / timeout."""
+    e, r = _maker_no_avg(cls, lose)
+    assert r.get('actual') is None and r.get('slip_bps') is None, r
+    assert 'limit_improvement_bps' not in r and 'decision_slippage_bps' not in r, r
+    if cls is EX and not lose: assert r['enrich_status'] in ('missing', 'timeout'), r
+    lot = next(iter(e.state['lots'].values()))
+    assert lot['avg'] == pytest.approx(r['expected'])                       # booking unchanged: the lot still sits at the limit
+
+
+def test_audit_read_never_touches_the_outage_circuit(monkeypatch):
+    """LOW-MED: an audit read neither closes nor feeds the T05b circuit, never touches its telemetry, uses its own
+    session with a short timeout, and is not sent while an outage is open."""
+    monkeypatch.setattr(BC.time, 'sleep', lambda x: None)
+    c, calls = client_with([Resp(200, [])])
+    c.health.fail('GET /fapi/v2/positionRisk: HTTP 503', read=True)
+    before = c.health.snapshot()
+    assert c.user_trades('BTCUSDT', 1) == [] and c.health.snapshot() == before and c.last_ok == 0   # no ok(): still degraded
+    c, calls = client_with([Resp(429, {'code': -1003, 'msg': 'rate'})])
+    before = c.health.snapshot()
+    with pytest.raises(BC.AuditRateLimited): c.user_trades('BTCUSDT', 1)
+    assert c.health.snapshot() == before and c.audit_blocked() == 'cooldown'            # no fail(); shared audit pause
+    c, calls = client_with([Resp(200, [])])
+    for _ in range(3): c.health.fail('GET /fapi/v2/positionRisk: HTTP 503', read=True)
+    before = c.health.snapshot()
+    with pytest.raises(BC.AuditSkipped): c.user_trades('BTCUSDT', 1)
+    assert calls == [] and c.health.snapshot() == before                                # not sent; no probe / fail-fast count
+    c, calls = client_with([Resp(503, {}, {'Retry-After': '30'})])
+    seen, real = {}, c.s.request
+    def request(m, u, params=None, timeout=None):
+        seen['t'] = timeout; return real(m, u, params, timeout)
+    c.s.request = request
+    with pytest.raises(BC.BinanceError): c.user_trades('BTCUSDT', 1)
+    assert seen['t'] == BC.AUDIT_TIMEOUT_S <= 3.0 < E.ENRICH_CAP_S                     # bounded well below the 10 s cap
+    assert c._audit['until'] - BC.time.monotonic() > 25                                # Retry-After honoured
+    f = BC.Futures.__new__(BC.Futures); f.key, f.s = 'k' * 16, requests.Session()
+    s = f._audit_session()
+    assert isinstance(s, requests.Session) and s is not f.s and s.headers['X-MBX-APIKEY'] == f.key   # same auth path
+
+
+def test_rate_limit_stops_the_job_and_pauses_every_other_audit_read(monkeypatch):
+    monkeypatch.setattr(BC.time, 'sleep', lambda x: None)
+    c, calls = client_with([Resp(429, {'code': -1003, 'msg': 'rate'}, {'Retry-After': '5'})])
+    enr, w = E.FillEnricher(), _ListWriter()
+    assert enr.submit(_jrec(), [_jref(1, 'a')], c, w) == 'queued' and enr.flush(5)
+    assert enr.submit(_jrec(symbol='ETHUSDT'), [_jref(2, 'b')], c, w) == 'queued' and enr.flush(5)
+    assert len(calls) == 1 and [r.get('enrich_reason') for r in w.out] == ['rate_limit', 'cooldown']
+    assert [r['enrich_status'] for r in w.out] == ['missing', 'missing'] and w.out[0]['enrich_attempts'] == 1
+    assert c.health.snapshot()['other_fails'] == 0 and c.health.state == 'ok'
+    enr.close(1.0)
+
+
+def test_shutdown_with_a_hung_read_writes_every_pending_record_once():
+    """LOW: close() writes the in-flight job and the queued ones BEFORE the fill writers close; the hung read's late
+    result is dropped, never written a second time."""
+    class Slow:
+        def user_trades(self, s, oid): time.sleep(1.0); return []
+    enr, w = E.FillEnricher(), _ListWriter()
+    assert enr.submit(_jrec(), [_jref(1, 'c1')], Slow(), w) == 'queued'
+    time.sleep(0.1)
+    assert enr.submit(_jrec(symbol='ETHUSDT'), [_jref(2, 'c2')], Slow(), w) == 'queued'
+    enr.close(0.2)
+    assert len(w.out) == 2 and {r['enrich_status'] for r in w.out} == {'timeout'}
+    time.sleep(1.3)                                                     # the hung read returns after the shutdown
+    assert len(w.out) == 2 and enr.summary()['dropped_late'] >= 1
+
+
+def test_worker_start_failure_writes_the_record_once(monkeypatch):
+    """LOW: when the worker thread cannot start, nothing is queued or marked seen; the caller writes it now, once."""
+    enr, w = E.FillEnricher(), _ListWriter()
+    e, _ = mk(enr=enr); e._fillw = w
+    real, n = threading.Thread.start, [0]
+    def start(self):
+        if self.name == 'fill-enrich' and n[0] == 0:
+            n[0] += 1; raise RuntimeError('cannot start new thread')
+        return real(self)
+    monkeypatch.setattr(threading.Thread, 'start', start)
+    opened(e)
+    assert n[0] == 1 and not enr.seen and not enr.jobs
+    enr.submit(_jrec(symbol='ETHUSDT'), [_jref(2, 'c2')], e.trade, w)    # a later hand-off starts the worker
+    assert enr.flush(5)
+    assert len([r for r in w.out if r['kind'] == 'entry_market' and r['symbol'] == 'BTCUSDT']) == 1
+    enr.close(1.0)
+
+
+def test_trade_rows_without_an_id_are_rejected():
+    rec, refs = _jrec(), [_jref(5)]
+    row = dict(symbol='BTCUSDT', orderId=5, price='101', qty='1', commission='0.05', commissionAsset='USDT')
+    class C:
+        def user_trades(self, s, oid): return [dict(row), dict(row)]        # no id: never counted, never coverage
+    E.enrich_attempt(rec, refs, C()); E.enrich_finish(rec, refs)
+    assert rec.get('actual') is None and rec['enrich_status'] == 'missing' and 'fee_rate' not in rec
+
+
+def test_negative_commission_is_a_rebate_flag_never_a_negative_fee_rate():
+    rec, refs = _jrec(), [_jref(5)]
+    class C:
+        def user_trades(self, s, oid):
+            return [dict(symbol='BTCUSDT', id=1, orderId=5, price='100', qty='1', commission='-0.01', commissionAsset='USDT')]
+    E.enrich_attempt(rec, refs, C()); E.enrich_finish(rec, refs)
+    assert rec['actual'] == 100.0 and rec.get('commission_rebate') is True and rec.get('commission_asset') == 'USDT'
+    assert 'fee_rate' not in rec and 'commission_rate' not in rec and rec['enrich_status'] == 'partial'
