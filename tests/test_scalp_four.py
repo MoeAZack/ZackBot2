@@ -225,6 +225,27 @@ def test_scalp_slots_appended_after_the_rotation_slots():
         assert x['id'] not in E.rotation_at(0)['active'] and len(x['id']) <= 12
 
 
+def test_momentum_burst_needs_real_volume():
+    """Cowork C1: a zero-volume tape (0 >= 2 x 0) or a zero candle is no volume impulse."""
+    x = Y.momentum_long()
+    assert sig('momentum_burst_scalp', x)[0]['le'][-1]
+    z = x.assign(v=0.0)
+    r, _ = sig('momentum_burst_scalp', z)
+    assert not r['le'].any() and not r['se'].any()
+    y = x.copy(); y.loc[y.index[-21:-1], 'v'] = 0.0                     # zero average before the candle
+    assert not sig('momentum_burst_scalp', y)[0]['le'][-1]
+
+
+def test_scalp_slots_default_off_and_sync_only_appends(tmp_path):
+    assert E.SCALP_DEFAULT_ENABLED is False and all(x['enabled'] is False for x in E.scalp_sleeves())
+    e, _ = mk_engine(str(tmp_path)); e.apply_preset(E.ROTATION_PRESET)
+    sc = [x for x in e.S['SLEEVES'] if x['key'] in E.SCALP_KEYS]
+    assert len(sc) == 4 and not any(x['enabled'] for x in sc)
+    assert e.entry_block(sc[0], 'BTCUSDT', 'LONG') == 'strategy slot switched off'
+    sc[0]['enabled'] = True                                             # an owner opt-in survives a re-sync
+    assert e.sync_scalp_slots() == [] and sc[0]['enabled'] is True
+
+
 # ------------------------------------------------------------------ engine integration
 SG = dict(close=100.0, atr=2.0, time='2026-10-04 00:00:00', le=True, se=False, lx=False, sx=False)
 QB = 'SC-QBANK'
@@ -246,6 +267,8 @@ def lots(e, sid, sym=None):
 @pytest.fixture
 def rot(tmp_path):
     e, tmp = mk_engine(str(tmp_path)); e.apply_preset(E.ROTATION_PRESET)
+    for x in e.S['SLEEVES']:
+        if x['key'] in E.SCALP_KEYS: x['enabled'] = True                    # owner opt-in (default OFF)
     return e, tmp
 
 
