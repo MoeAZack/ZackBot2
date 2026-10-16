@@ -33,11 +33,19 @@ MONTHLY_BUDGET_SETTING = 'CLAUDE_MONTHLY_BUDGET_USD'
 DEFAULT_MODEL = 'claude-sonnet-5-5'            # owner 2026-10-15; single constant - change here only
 API_URL = 'https://api.anthropic.com/v1/messages'
 ANTHROPIC_VERSION = '2023-06-01'
-PROMPT_VERSION = 'shadow-prompt-v1'
+PROMPT_VERSION = 'shadow-prompt-v2'               # v2 (SHADOW-ANALYST-TRUNC-01): bounded item count/length
 SCHEMA_VERSION = 'shadow-schema-v1'
 
 MAX_INPUT_TOKENS = 4000                        # estimated as chars / 4 over system prompt + user message
-MAX_OUTPUT_TOKENS = 1600                       # promotional research mode: deeper experiment/backtest critique
+MAX_OUTPUT_TOKENS = 3000                       # SHADOW-ANALYST-TRUNC-01: >= 2x the worst-case reply the v2 prompt allows
+# What the prompt ASKS for (the validator below stays more lenient - MAX_ITEMS / MAX_ITEM_CHARS). Worst case under the
+# prompt: 5 sections x PROMPT_MAX_ITEMS x PROMPT_ITEM_CHARS ~ 4.2k chars of JSON; at a conservative OUTPUT_CHARS_PER_TOKEN
+# that is ~1.4k tokens, so a compliant reply fits MAX_OUTPUT_TOKENS with margin (tests pin the margin). v1 allowed 10 x
+# 300 chars per section (~15k chars) under a 1600 cap: live replies hit the cap and were cut mid-JSON.
+PROMPT_MAX_ITEMS = 4
+PROMPT_ITEM_CHARS = 200
+PROMPT_OBJ_KEYS = 3                            # an object item is bounded like a string item (review note)
+OUTPUT_CHARS_PER_TOKEN = 3
 TIMEOUT_S = 30
 BACKOFF_BASE_S = 2.0
 MAX_ATTEMPTS = 2                               # one retry on 429/5xx/timeout; a timed-out attempt may still be billed
@@ -83,10 +91,12 @@ SYSTEM_PROMPT = (
     "Reply with ONLY one JSON object and nothing else (no prose, no code fences) with exactly these keys: "
     '{"observations": [], "regime_strategy_interactions": [], "feature_suggestions": [], '
     '"data_quality_warnings": [], "experiments": []}. '
-    f"Each value is a list of at most {MAX_ITEMS} items; each item is a short string (under 300 characters) or a small "
-    "flat object of short strings/numbers. Cite numbers from the data. For backtests, challenge out-of-sample stability, "
+    f"Each value is a list of at most {PROMPT_MAX_ITEMS} items; each item is a short string (under {PROMPT_ITEM_CHARS} "
+    "characters) or a small "
+    f"flat object of at most {PROMPT_OBJ_KEYS} short strings/numbers, under {PROMPT_ITEM_CHARS} characters in total. Cite numbers from the data. For backtests, challenge out-of-sample stability, "
     "drawdown, costs, side/regime concentration and execution realism, then suggest one bounded next experiment. "
-    "Never treat a model opinion as backtest evidence. Say plainly when the sample is too small."
+    "Never treat a model opinion as backtest evidence. Say plainly when the sample is too small. "
+    "Be concise: the whole reply must stay well under 4000 characters."
 )
 USER_PREFIX = "Aggregate statistics for the review window follow as JSON data.\n<data>\n"
 USER_SUFFIX = "\n</data>"
@@ -507,7 +517,7 @@ class ShadowAnalyst:
     # state ----------------------------------------------------------------------------------------------------------
     def _load(self):
         base = {'last_digest': None, 'last_result': None, 'last_ok_ts': None, 'slots_run': [], 'usage': {'day': {}, 'month': {}},
-                'auth': None}
+                'auth': None, 'last_trunc_digest': None}
         try:
             with open(self.state_path, encoding='utf-8') as f:
                 d = json.load(f)
@@ -725,7 +735,8 @@ class ShadowAnalyst:
             return self._no('over_budget', now_utc, model)
         if dropped:
             agg['truncated'] = dropped
-        digest = _sha(canonical({'agg': agg, 'model': model, 'prompt': PROMPT_VERSION, 'schema': SCHEMA_VERSION}))
+        digest = _sha(canonical({'agg': agg, 'model': model, 'prompt': PROMPT_VERSION, 'schema': SCHEMA_VERSION,
+                                 'max_out': MAX_OUTPUT_TOKENS}))   # TRUNC-01: a new cap/prompt re-allows a call
         if not api_key:
             return self._no('missing_key', now_utc, model, digest)
         if not valid_workspace_id(workspace_id):
@@ -738,6 +749,9 @@ class ShadowAnalyst:
                 return self._no('stale', now_utc, model, digest, record=False)
             log.info('shadow analyst: input unchanged - cached analysis returned')
             return dict(self.state['last_result'], cached=True)
+        if digest == self.state.get('last_trunc_digest'):   # TRUNC-01: the same request was already cut at the cap -
+            log.info('shadow analyst: input unchanged since a truncated reply - not paid for again')
+            return self._no('output_truncated_unchanged', now_utc, model, digest, record=False)
 
         body = request_body(model, agg)                  # SHADOW-ANALYST-TEMP-01: no deprecated temperature
         headers = _headers(api_key, workspace_id or None)
@@ -781,6 +795,11 @@ class ShadowAnalyst:
         self._save()
         content = resp.get('content')
         texts = [c.get('text') for c in content if isinstance(c, dict) and c.get('type') == 'text'] if isinstance(content, list) else []
+        if resp.get('stop_reason') == 'max_tokens':       # TRUNC-01: cut at the output cap - explicit, never generic
+            log.warning('shadow analyst: reply cut at max_tokens=%s - no analysis', MAX_OUTPUT_TOKENS)
+            self.state['last_trunc_digest'] = digest
+            self._save()
+            return self._no('output_truncated', now_utc, model, digest, **meta)
         if resp.get('stop_reason') not in ('end_turn', 'stop_sequence') or len(texts) != 1:
             return self._no('malformed_response', now_utc, model, digest, **meta)
         analysis = parse_analysis(texts[0])
