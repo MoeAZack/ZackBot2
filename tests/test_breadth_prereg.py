@@ -2,15 +2,23 @@
 
 Registration tests run in a throwaway git repo holding copies of the frozen files and the real ledger directory, with
 pinned commit dates and an injected CLOCK, so they stay valid after the real holdout start.
+
+Every frozen byte comes from the IMMUTABLE registered commit Y behind the annotated tag (tests/breadth_registered.py,
+Codex ruling), never the mutable working tree: the committed prereg is rebuilt by Y's own validator on Y's own modules
+in an isolated interpreter, and the throwaway repo is materialized from Y. In-process validate / register calls take
+the module-derived parts of the build (_frozen_config / _hypotheses) from that isolated Y build, because this process
+has already imported backtest / strategies / run_breadth_candidate from the working tree by bare name.
 """
 import ast
+import copy
 import json
 import os
-import shutil
 import subprocess
 import sys
 
 import pytest
+
+import breadth_registered as RG
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, 'tools', 'research'))
@@ -21,12 +29,23 @@ ACCEPT_DATE = '2026-10-16T10:00:00Z'
 ACCEPT_MS = BP._ms(ACCEPT_DATE)
 
 
+def _registered_modules(monkeypatch):
+    """In-process builds take the module-derived config / hypotheses from Y (computed by Y's own code, isolated)."""
+    reg = RG.registered_build(ROOT)
+    monkeypatch.setattr(BP, '_frozen_config', lambda repo: copy.deepcopy(reg['frozen_config']))
+    monkeypatch.setattr(BP, '_hypotheses', lambda repo: copy.deepcopy(reg['hypotheses']))
+    return reg
+
+
 # ------------------------------------------------------------------ the committed prereg
-def test_committed_prereg_is_the_frozen_build():
-    pre, sha = BP.load_prereg(ROOT)
-    assert BP.validate(pre, ROOT) == []
-    with open(os.path.join(ROOT, BP.PREREG), 'rb') as f:
-        assert f.read().replace(b'\r\n', b'\n') == BP.dumps(BP.build(ROOT))
+def test_committed_prereg_is_the_frozen_build(monkeypatch):
+    reg = _registered_modules(monkeypatch)
+    raw = RG.registered_blob(ROOT, BP.PREREG)
+    assert reg['validate'] == []                            # Y's validator on Y's modules accepts Y's prereg
+    assert raw == reg['build'].encode()                     # and Y's prereg is byte-for-byte BP.build(Y)
+    pre = json.loads(raw)
+    assert BP.validate(pre, reg['tree']) == []              # the current validator accepts it on the Y tree too
+    assert BP.dumps(BP.build(reg['tree'])) == raw
     assert [h['id'] for h in pre['hypotheses']] == [BP.hypothesis_id(k, s) for k, s in BP.HYPOTHESES]
     assert len(pre['hypotheses']) == 12 and pre['statistics']['multiplicity']['m'] == 12
     assert ('breakout_pyramid', 'short') not in BP.HYPOTHESES
@@ -48,10 +67,12 @@ def test_committed_prereg_is_the_frozen_build():
     (lambda p: p['statistics'].update(n_flips=1000), 'statistics'),
     (lambda p: p.update(extra=1), 'keys'),
 ])
-def test_tamper_refused(mut, msg):
-    pre, _ = BP.load_prereg(ROOT)
+def test_tamper_refused(mut, msg, monkeypatch):
+    tree = _registered_modules(monkeypatch)['tree']
+    pre, _ = BP.load_prereg(tree)
+    assert BP.validate(pre, tree) == []                     # untampered is clean, so each refusal is the mutation's
     mut(pre)
-    bad = BP.validate(pre, ROOT)
+    bad = BP.validate(pre, tree)
     assert bad and any(msg in b for b in bad), bad
 
 
@@ -62,13 +83,30 @@ def _git(repo, *a, date=ACCEPT_DATE):
     return subprocess.run(['git', '-C', repo, *a], capture_output=True, check=True, env=env).stdout.decode().strip()
 
 
+def _unregister(r):
+    """Return the copied ledger to its pre-registration state (the real family is registered from Y onward).
+
+    The family's ledger is removed and REGISTRY.jsonl is cut before the family's first line; it is appended last,
+    so the hash-chained prefix stays valid."""
+    led = os.path.join(r, BP.LEDGER)
+    if os.path.exists(led): os.remove(led)
+    reg = os.path.join(r, BP.REGISTRATION_FILES[1])
+    with open(reg, 'rb') as f: lines = f.read().splitlines(keepends=True)
+    keep = []
+    for ln in lines:
+        if json.loads(ln).get('family') == BP.FAMILY: break
+        keep.append(ln)
+    with open(reg, 'wb') as f: f.write(b''.join(keep))
+
+
 @pytest.fixture
 def repo(tmp_path, monkeypatch):
     r = str(tmp_path / 'repo')
-    for rel in BP.CODE_FILES + (BP.UNIVERSE, BP.PREREG, BP.VALIDATOR, 'tools/research/ledger.py'):
-        os.makedirs(os.path.join(r, os.path.dirname(rel)), exist_ok=True)
-        shutil.copyfile(os.path.join(ROOT, rel), os.path.join(r, rel))
-    shutil.copytree(os.path.join(ROOT, 'research_evidence', 'ledger'), os.path.join(r, 'research_evidence', 'ledger'))
+    os.makedirs(r)
+    RG.materialize(ROOT, r, BP.CODE_FILES + (BP.UNIVERSE, BP.PREREG, BP.VALIDATOR, 'tools/research/ledger.py',
+                                             'research_evidence/ledger'))       # registered Y bytes, not ROOT
+    _unregister(r)
+    _registered_modules(monkeypatch)
     _git(r, 'init', '-q')
     _git(r, 'config', 'core.autocrlf', 'false')
     _git(r, 'add', '-A')
