@@ -62,6 +62,22 @@ def _git(repo, *a, date=ACCEPT_DATE):
     return subprocess.run(['git', '-C', repo, *a], capture_output=True, check=True, env=env).stdout.decode().strip()
 
 
+def _unregister(r):
+    """Return the copied ledger to its pre-registration state (the real family is registered from Y onward).
+
+    The family's ledger is removed and REGISTRY.jsonl is cut before the family's first line; it is appended last,
+    so the hash-chained prefix stays valid."""
+    led = os.path.join(r, BP.LEDGER)
+    if os.path.exists(led): os.remove(led)
+    reg = os.path.join(r, BP.REGISTRATION_FILES[1])
+    with open(reg, 'rb') as f: lines = f.read().splitlines(keepends=True)
+    keep = []
+    for ln in lines:
+        if json.loads(ln).get('family') == BP.FAMILY: break
+        keep.append(ln)
+    with open(reg, 'wb') as f: f.write(b''.join(keep))
+
+
 @pytest.fixture
 def repo(tmp_path, monkeypatch):
     r = str(tmp_path / 'repo')
@@ -69,6 +85,7 @@ def repo(tmp_path, monkeypatch):
         os.makedirs(os.path.join(r, os.path.dirname(rel)), exist_ok=True)
         shutil.copyfile(os.path.join(ROOT, rel), os.path.join(r, rel))
     shutil.copytree(os.path.join(ROOT, 'research_evidence', 'ledger'), os.path.join(r, 'research_evidence', 'ledger'))
+    _unregister(r)
     _git(r, 'init', '-q')
     _git(r, 'config', 'core.autocrlf', 'false')
     _git(r, 'add', '-A')
