@@ -40,6 +40,7 @@ MAX_INPUT_TOKENS = 4000                        # estimated as chars / 4 over sys
 MAX_OUTPUT_TOKENS = 1600                       # promotional research mode: deeper experiment/backtest critique
 TIMEOUT_S = 30
 BACKOFF_BASE_S = 2.0
+MAX_ATTEMPTS = 2                               # one retry on 429/5xx/timeout; a timed-out attempt may still be billed
 MIN_TRADES = 10                                # fewer closed trades in the window -> NO_ANALYSIS (insufficient data)
 STALE_AFTER_S = 26 * 3600                      # a cached analysis of unchanged input older than this is stale
 REPORT_MAX_BYTES = 256 * 1024
@@ -449,9 +450,10 @@ def cost_usd(input_tokens, output_tokens, price):
 
 
 def worst_case_call_usd(model):
-    """Upper bound for ONE analysis call at the input/output caps (a retry happens only after an unbilled failure)."""
+    """Upper bound for ONE analysis at the input/output caps, counting every attempt (a timed-out attempt may be billed
+    by the provider without the usage ever reaching this counter)."""
     p = model_price(model)
-    return None if p is None else cost_usd(MAX_INPUT_TOKENS, MAX_OUTPUT_TOKENS, p)
+    return None if p is None else MAX_ATTEMPTS * cost_usd(MAX_INPUT_TOKENS, MAX_OUTPUT_TOKENS, p)
 
 
 def auth_self_test(api_key, workspace_id=None, transport=None, model=AUTH_SELF_TEST_MODEL):
@@ -724,7 +726,7 @@ class ShadowAnalyst:
         headers = _headers(api_key, workspace_id or None)
         t0 = self._mono()
         status, text, attempts, reason = None, None, 0, None
-        for attempt in range(2):
+        for attempt in range(MAX_ATTEMPTS):
             attempts += 1
             try:
                 status, text, _rid = _call(self._transport, API_URL, headers, body, TIMEOUT_S)

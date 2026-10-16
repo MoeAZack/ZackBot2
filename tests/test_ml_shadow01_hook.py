@@ -531,3 +531,33 @@ def test_concurrent_analyses_are_serialised(app_env, monkeypatch):
     assert len(out) == 6 and all(r['status'] == SA.STATUS_OK for r in out)
     assert peak[0] == 1                                        # the API call and state update stay serialised
     assert a.usage()['day']['calls'] == 6
+
+
+def test_backtest_scan_newest_by_mtime_not_name_order(app_env, monkeypatch):
+    A, app, e, _ = app_env
+    d = _bt_dir(e)
+    for i in range(12):                                     # names sort OPPOSITE to age: 'z...' oldest, 'a...' newest
+        _bt_file(d, f'{chr(122 - i)}.json', i, mtime=1000 + i)
+    monkeypatch.setattr(A, 'BT_SCAN_MAX_FILES', 3)
+    assert [b['name'] for b in A._recent_backtests(str(d))] == ['bt 11', 'bt 10', 'bt 9']
+
+
+def test_analyst_instance_created_once_under_concurrency(app_env, monkeypatch):
+    A, app, e, _ = app_env
+    app.__dict__.pop('_analyst', None)
+    real = A.SA.ShadowAnalyst
+    made = []
+
+    class Slow(real):
+        def __init__(self, *a, **k):
+            made.append(1)
+            time.sleep(0.05)
+            super().__init__(*a, **k)
+    monkeypatch.setattr(A.SA, 'ShadowAnalyst', Slow)
+    got = []
+    ths = [threading.Thread(target=lambda: got.append(A._analyst(app))) for _ in range(5)]
+    for t in ths:
+        t.start()
+    for t in ths:
+        t.join(5)
+    assert len(made) == 1 and len({id(x) for x in got}) == 1

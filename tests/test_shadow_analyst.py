@@ -736,7 +736,8 @@ def test_f5_backtests_kept_before_lower_priority_sections():
 def test_f1_default_model_price_pinned():
     assert sa.DEFAULT_MODEL == 'claude-sonnet-5-5'
     assert sa.MODEL_PRICES_PER_MTOK[sa.DEFAULT_MODEL] == {'input': 2.0, 'output': 10.0}
-    assert sa.worst_case_call_usd(sa.DEFAULT_MODEL) == pytest.approx(4000 * 2 / 1e6 + 1600 * 10 / 1e6)
+    assert sa.MAX_ATTEMPTS == 2                              # every attempt counted: a timed-out one may be billed
+    assert sa.worst_case_call_usd(sa.DEFAULT_MODEL) == pytest.approx(2 * (4000 * 2 / 1e6 + 1600 * 10 / 1e6))
     assert sa.model_price('claude-unknown-9') is None and sa.worst_case_call_usd('claude-unknown-9') is None
 
 

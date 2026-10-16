@@ -3,7 +3,7 @@
 Run:  python app.py            (or ZackBot.exe after building)
       python app.py --no-window  (server only; open http://localhost:8765 yourself)
 """
-import atexit, base64, collections, copy, csv, glob, gzip, hmac, json, logging, logging.handlers, math, os, queue, random, re, secrets, shutil, subprocess, sys, threading, time, traceback, uuid, socket
+import atexit, base64, collections, copy, csv, glob, gzip, heapq, hmac, json, logging, logging.handlers, math, os, queue, random, re, secrets, shutil, subprocess, sys, threading, time, traceback, uuid, socket
 from datetime import datetime, timezone
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlsplit, parse_qs
@@ -609,7 +609,7 @@ ANALYST_TICK_S = 300
 # Serialises the analyst's persisted state and its API call (timer, manual action, review thread). Never held while the
 # local evidence files are scanned: ml_aggregate() runs before the lock is taken.
 ANALYST_LOCK = threading.Lock()
-BT_SCAN_MAX_ENTRIES = 5000                    # directory entries looked at, at most
+BT_SCAN_MAX_ENTRIES = 50000                   # directory entries stat'ed (cheap, no open), at most
 BT_SCAN_MAX_FILES = 24                        # newest result files opened, at most (size checked BEFORE any JSON parse)
 BT_FILE_MAX_BYTES = 4 * 1024 * 1024           # a larger result file is skipped unread
 BT_EVIDENCE_MAX = SA.MAX_BACKTESTS
@@ -618,22 +618,23 @@ BT_EVIDENCE_MAX = SA.MAX_BACKTESTS
 def _recent_backtests(bt_dir):
     """Newest non-lab backtest results as allow-listed numeric summaries (see SA.BT_FIELDS). Bounded: at most
     BT_SCAN_MAX_ENTRIES directory entries, BT_SCAN_MAX_FILES files opened, each <= BT_FILE_MAX_BYTES read before parsing."""
-    ents = []
+    def entries(it):
+        for n, de in enumerate(it):
+            if n >= BT_SCAN_MAX_ENTRIES:
+                return
+            try:
+                if de.name.endswith('.json') and de.is_file(follow_symlinks=False):
+                    st = de.stat(follow_symlinks=False)
+                    yield st.st_mtime, st.st_size, de.path
+            except OSError:
+                continue
     try:
-        with os.scandir(bt_dir) as it:
-            for n, de in enumerate(it):
-                if n >= BT_SCAN_MAX_ENTRIES:
-                    break
-                try:
-                    if de.name.endswith('.json') and de.is_file(follow_symlinks=False):
-                        st = de.stat(follow_symlinks=False)
-                        ents.append((st.st_mtime, st.st_size, de.path))
-                except OSError:
-                    continue
+        with os.scandir(bt_dir) as it:              # newest by mtime, whatever the listing order (NTFS lists by name)
+            newest = heapq.nlargest(BT_SCAN_MAX_FILES, entries(it))
     except OSError:
         return []
     out = []
-    for _, size, path in sorted(ents, reverse=True)[:BT_SCAN_MAX_FILES]:
+    for _, size, path in newest:
         if len(out) >= BT_EVIDENCE_MAX:
             break
         if size > BT_FILE_MAX_BYTES:
@@ -712,13 +713,19 @@ def ml_aggregate(e):
     return raw
 
 
+_ANALYST_INIT = threading.Lock()
+
+
 def _analyst(app):
-    a = getattr(app, '_analyst', None)
-    if a is None or getattr(a, '_zb_dir', None) != app.engine.dir:
-        a = SA.ShadowAnalyst(os.path.join(app.engine.dir, 'analyst'))
-        a._zb_dir = app.engine.dir
-        app._analyst = a
-    return a
+    """One ShadowAnalyst per engine folder. Creation is locked: two threads must never each load (and later save) their
+    own copy of the persisted state, or usage counters could be lost."""
+    with _ANALYST_INIT:
+        a = getattr(app, '_analyst', None)
+        if a is None or getattr(a, '_zb_dir', None) != app.engine.dir:
+            a = SA.ShadowAnalyst(os.path.join(app.engine.dir, 'analyst'))
+            a._zb_dir = app.engine.dir
+            app._analyst = a
+        return a
 
 
 def _analyst_args(app):
