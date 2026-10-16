@@ -18,3 +18,5 @@ research_evidence/prereg/*.json text eol=lf
 research_evidence/notices/*.json text eol=lf
 research_evidence/notices/*.md text eol=lf
 research_evidence/breadth_prereg/*.json text eol=lf
+# exp_structure BTCUSDT derived packet (README, per-trade CSVs, decomposition): LF, byte-stable.
+research_evidence/structure_btc_packet/* text eol=lf

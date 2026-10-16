@@ -131,3 +131,18 @@ def test_btc_packet_net_recomputes_by_hand_and_matches_runner(env, tmp_path):
             assert r['gross_before_slip'] - r['slip_usd'] == pytest.approx(r['gross'], rel=1e-9, abs=1e-9)
     sl = pd.read_csv(os.path.join(d, 'btc_15m_slice.csv'))
     assert sl.t.max() < B._ms(np.array([np.datetime64(BT_.VT.WINDOW.split('/')[1].rstrip('Z'))]))[0]
+
+
+def test_decomposition_identity_and_side_purity(env, tmp_path):
+    cache = BT_.write15(str(tmp_path / 'c15'), {'BTCUSDT': BT_.tape15(7, 100.0)})
+    for side, sd in (('long', 1), ('short', -1)):
+        _, rows = BP.run(side=side, out_dir=str(tmp_path / 'pk'), cache=cache, regime_cache=env['cache'],
+                         window=BT_.VT.WINDOW, repo=env['repo'])
+        d = BP.decompose(rows)
+        assert d['sides'] == [sd] and d['trades'] == len(rows)
+        assert abs(d['gross_before_slip_r'] - d['slip_r'] - d['fee_r'] - d['funding_r'] - d['net_r']) <= 1e-6
+        assert abs(d['net_r'] - d['net_r_runner']) <= 1e-5 * len(rows)
+        assert d['slip_r'] > 0 and d['fee_r'] > 0 and d['funding_r'] > 0 and d['median_stop_bps'] > 0
+    bad = [dict(rows[0], net_recomputed=float(rows[0]['net_recomputed']) + 1.0)]
+    with pytest.raises(AssertionError, match='identity'):
+        BP.decompose(bad)
