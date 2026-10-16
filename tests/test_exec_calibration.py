@@ -447,3 +447,20 @@ def test_favourable_outlier_never_credited_but_counted(tmp_path):
     assert a['slip_n'] == 295 and a['slip_p50_bps'] == a['slip_worst_bps'] == 5.0              # dropped, not a -1500 credit
     assert p['coverage']['slip_outliers'] == 5 and p['coverage']['slip_outlier_share'] == pytest.approx(5 / 300, abs=1e-4)
     assert 'slip_outliers' in X.promotable(p, NOW)[1]                                           # 1.7 % > 1 % share
+
+
+def test_profile_built_with_looser_thresholds_refused_and_never_honoured(tmp_path):
+    """Cowork 6215364804: a profile built with min_cell_n=3 let a 3-row cell price at 900 bps in cost_params while
+    promotable() passed. The guard now refuses any stored threshold looser than the defaults, and cost_params never uses a
+    cell minimum below the default."""
+    t = [NOW - timedelta(hours=1 + i % 5) for i in range(300)]
+    recs = [rec(act=adverse_px(100.0, 5, True), t=t[i]) for i in range(297)] + \
+           [rec(sym='SOLUSDT', act=adverse_px(100.0, 900, True), t=NOW - timedelta(hours=1)) for _ in range(3)]
+    p = profile_of(tmp_path, recs, min_cell_n=3)
+    assert p['thresholds']['min_cell_n'] == 3
+    ok, why = X.promotable(p, NOW)
+    assert not ok and 'thresholds_loosened' in why
+    sol = X.cost_params(p, 'pessimistic', 'entry_market', 'SOLUSDT', NOW - timedelta(hours=1))
+    assert sol['slip_bps'] < 900                                    # the 3-row cell is not used
+    q = profile_of(tmp_path, recs)                                  # defaults: nothing loosened
+    assert 'thresholds_loosened' not in X.promotable(q, NOW)[1]

@@ -333,6 +333,10 @@ def promotable(profile, now, thresholds=None):
         if not _finite(v): return base[k]
         return max(v, base[k]) if bigger_is_stricter else min(v, base[k])
     min_n, min_cov = tight('min_profile_n', True), tight('min_slip_coverage', True)
+    STRICT_UP = ('min_cell_n', 'min_profile_n', 'min_slip_coverage')         # Cowork 6215364804: a profile built with a looser
+    loose = [k for k in THRESHOLDS if k in pt and _finite(pt[k]) and k not in READER_KEYS and
+             (pt[k] < THRESHOLDS[k] if k in STRICT_UP else pt[k] > THRESHOLDS[k])]  # threshold than the defaults is refused
+    if loose: reasons.append('thresholds_loosened')
     max_age, max_stale, max_rej = tight('max_age_days', False), tight('max_stale_share', False), tight('max_rejected_share', False)
     cov = profile.get('coverage') if isinstance(profile.get('coverage'), dict) else {}
     src = profile.get('source') if isinstance(profile.get('source'), dict) else {}
@@ -408,7 +412,7 @@ def _check(profile, mode):
 
 def _slip_level(profile, chain):
     """First level in the chain with enough slippage samples."""
-    mn = profile['thresholds']['min_cell_n']
+    mn = max(profile['thresholds']['min_cell_n'], THRESHOLDS['min_cell_n'])   # a stored looser cell minimum is never honoured
     for i, k in enumerate(chain):
         st = profile['levels'].get(k)
         if st and st['slip_n'] >= mn: return i, k, st
