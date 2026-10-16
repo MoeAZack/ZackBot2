@@ -41,10 +41,21 @@ runner's `attestation` and its digest, and a `report_digest` over the whole. Onl
 perturbed and sandbox-isolated, that names another run / split / window, whose evaluator file is not one of the
 envelope's hashed evaluation files, or that has no matching `data_access` record in the family ledger. R3 defines and
 validates the shape only; it computes no metric.
+
+`zb-research-run/3` (BT-EXEC-OBS-01, contract 6224963744, Codex ruling 6224996960 Q1): /2 plus one `exec_obs` block
+{manifest_digest | null, gap_report_digest | null, latency_policy_id, depth_scope_id, queue_policy_id, claims} binding
+the execution-observation data hash and the frozen latency / depth-scope / queue-policy identifiers into `run_digest`.
+/2 is frozen: a run block without `exec_obs` validates, digests and writes exactly as before (registered envelopes stay
+byte-identical); `validate_run` dispatches on the format, which is a function of the block (`run_format`), so a /3 run
+can never share a digest with a /2 one. A /3 run hashes `exec_obs.py` too (`CORE_EVAL_FILES_3`). report.py reaches
+exec_obs only through `_exec_obs()`, a dynamic import ON PURPOSE: a static one would put exec_obs.py into report.py's
+import closure and so into the evaluation files of every /2 run. `make_report` of a /3 run records `exec_realism`
+{claims, refusals, promotable}; refusals never block the report, they make it non-promotable (labelled, never hidden).
 """
 from __future__ import annotations
 
 import hashlib
+import importlib
 import json
 import os
 import platform
@@ -59,12 +70,15 @@ import missing_data as MD                                                       
 import sandbox as SB                                                                        # noqa: E402
 
 FORMAT = 'zb-research-run/2'
+FORMAT_3 = 'zb-research-run/3'
+FORMATS = (FORMAT, FORMAT_3)
 HEX64 = re.compile(r'^[0-9a-f]{64}$')
 HEAD_RE = re.compile(r'^[0-9a-f]{40}$')
 DIGESTS = ('manifest_digest', 'universe_digest', 'split_plan_digest', 'cost_model_digest', 'slip_cal_digest',
            'eval_digest')
 RUN_KEYS = {'family', 'candidate_id', 'split', 'window', 'books', 'seeds', 'eval', 'code', 'author', 'cairo_date',
             *DIGESTS}
+RUN_KEYS_3 = RUN_KEYS | {'exec_obs'}
 CODE_KEYS = {'git_head', 'dirty', 'python', 'libs', 'execution_environment'}
 EVAL_KEYS = {'files', 'config', 'entrypoint', 'schedule'}
 ENTRY_KEYS = {'path', 'function', 'summary'}
@@ -74,6 +88,8 @@ CORE_EVAL_FILES = ('feasibility.py', 'tools/research/costs.py', 'tools/research/
                    'tools/research/pit.py',
                    'tools/research/report.py', 'tools/research/sandbox.py', 'tools/research/splits.py',
                    'tools/research/universe.py')
+# /3 runs also hash the execution-observation layer; /2 runs keep exactly CORE_EVAL_FILES (their file lists unchanged).
+CORE_EVAL_FILES_3 = tuple(sorted(CORE_EVAL_FILES + ('tools/research/exec_obs.py',)))
 # The research path is stdlib-only: the canonical third-party dependency set is empty, and any distribution named here
 # would be pinned by its installed version.
 RESEARCH_DEPS: tuple[str, ...] = ()
@@ -282,7 +298,17 @@ def results_digest(results) -> str:
         raise ReportError('results must be strict JSON (NaN / Infinity refused)')
 
 
-def eval_identity(repo: str, paths, config: dict, entrypoint: dict, schedule) -> dict:
+def _exec_obs():
+    """exec_obs, imported dynamically so it never enters the static import closure of a /2 run (module docstring)."""
+    return importlib.import_module('exec_obs')
+
+
+def run_format(run) -> str:
+    """/3 exactly when the run block carries `exec_obs`; every /2 block stays /2."""
+    return FORMAT_3 if isinstance(run, dict) and 'exec_obs' in run else FORMAT
+
+
+def eval_identity(repo: str, paths, config: dict, entrypoint: dict, schedule, core=CORE_EVAL_FILES) -> dict:
     """The canonical evaluation block: sorted unique repo-relative tracked files (CORE_EVAL_FILES and the entrypoint
     file included, closed over static imports), hashed from disk, plus the config, the frozen entrypoint and the
     canonical decision schedule."""
@@ -290,7 +316,7 @@ def eval_identity(repo: str, paths, config: dict, entrypoint: dict, schedule) ->
             isinstance(entrypoint[k], str) and entrypoint[k] for k in ENTRY_KEYS) or not (
             entrypoint['function'].isidentifier() and entrypoint['summary'].isidentifier()):
         raise ReportError(f'entrypoint must be {{path, function, summary}} with identifier function names')
-    paths = import_closure(repo, sorted(set(paths) | set(CORE_EVAL_FILES) | {entrypoint['path']}))
+    paths = import_closure(repo, sorted(set(paths) | set(core) | {entrypoint['path']}))
     evidence = [p for p in paths if p.split('/')[0] == EVIDENCE_DIR]
     if evidence:
         raise ReportError(f'evaluation code may not live in or import from {EVIDENCE_DIR}/: {evidence}')
@@ -302,11 +328,15 @@ def eval_identity(repo: str, paths, config: dict, entrypoint: dict, schedule) ->
             'entrypoint': dict(entrypoint), 'schedule': schedule_of(schedule)}
 
 
-def validate_run(run: dict) -> None:
+def validate_run(run: dict, fmt: str | None = None) -> None:
+    """Shape of a run block; `fmt`, when given, must be the block's own format (/2 or /3, `run_format`)."""
     def need(ok, msg):
         if not ok:
             raise ReportError(msg)
-    need(isinstance(run, dict) and set(run) == RUN_KEYS, f'run keys must be exactly {sorted(RUN_KEYS)}')
+    need(fmt is None or fmt == run_format(run), f'run block is {run_format(run)}, not {fmt}')
+    three = run_format(run) == FORMAT_3
+    keys, core = (RUN_KEYS_3, CORE_EVAL_FILES_3) if three else (RUN_KEYS, CORE_EVAL_FILES)
+    need(isinstance(run, dict) and set(run) == keys, f'run keys must be exactly {sorted(keys)}')
     for k in DIGESTS:
         need(isinstance(run[k], str) and HEX64.match(run[k]), f'{k} must be 64 lowercase hex')
     for k in ('family', 'candidate_id', 'split', 'author'):
@@ -329,8 +359,9 @@ def validate_run(run: dict) -> None:
     need(isinstance(sc, dict) and set(sc) == {'n', 'digest'} and type(sc['n']) is int and sc['n'] > 0
          and isinstance(sc['digest'], str) and HEX64.match(sc['digest']), 'eval.schedule must be {n, digest}')
     paths = [f['path'] for f in e['files']]
-    need(paths == sorted(set(paths)) and set(CORE_EVAL_FILES) <= set(paths),
-         f'eval.files must be sorted, unique and include every CORE_EVAL_FILES entry')
+    need(paths == sorted(set(paths)) and set(core) <= set(paths),
+         f'eval.files must be sorted, unique and include every {"CORE_EVAL_FILES_3" if three else "CORE_EVAL_FILES"}'
+         f' entry')
     need(run['eval_digest'] == eval_digest(e, run['seeds']),
          'eval_digest does not match the eval files, config, entrypoint, schedule and seeds')
     c = run['code']
@@ -338,6 +369,12 @@ def validate_run(run: dict) -> None:
          and isinstance(c['python'], str) and isinstance(c['libs'], dict), f'code must be {sorted(CODE_KEYS)}')
     need(valid_exec_env(c['execution_environment']) and c['execution_environment']['python'] == c['python'],
          f'code.execution_environment must be the canonical {list(SB.EXEC_ENV_KEYS)} of the frozen Python')
+    if three:
+        EO = _exec_obs()
+        try:
+            EO.validate_block(run['exec_obs'])
+        except EO.ExecObsError as e:
+            raise ReportError(str(e))
 
 
 def run_digest(run: dict) -> str:
@@ -346,18 +383,21 @@ def run_digest(run: dict) -> str:
 
 
 def envelope(run: dict) -> dict:
-    return {'format': FORMAT, 'run': run, 'run_digest': run_digest(run)}
+    return {'format': run_format(run), 'run': run, 'run_digest': run_digest(run)}
 
 
-def freeze_run(*, repo: str = M.REPO, eval_files, config: dict, seeds, entrypoint: dict, schedule,
+def freeze_run(*, repo: str = M.REPO, eval_files, config: dict, seeds, entrypoint: dict, schedule, exec_obs=None,
                **ident) -> dict:
     """Build the envelope with an independently captured code identity and evaluation digest. `ident` carries family,
     candidate_id, split, window, books, author, cairo_date and the five data/cost digests. A dirty tree is refused."""
     code = code_identity(repo)
     if code['dirty']:
         raise ReportError('dirty working tree: commit the evaluation code before freezing a run')
-    ev = eval_identity(repo, eval_files, config, entrypoint, schedule)
+    ev = eval_identity(repo, eval_files, config, entrypoint, schedule,
+                       CORE_EVAL_FILES if exec_obs is None else CORE_EVAL_FILES_3)
     run = dict(ident, code=code, eval=ev, seeds=list(seeds), eval_digest=eval_digest(ev, seeds))
+    if exec_obs is not None:                                # a /3 run; omitted = the frozen /2 shape, byte for byte
+        run['exec_obs'] = exec_obs
     return envelope(run)
 
 
@@ -406,9 +446,9 @@ def verify_code(env: dict, repo: str = M.REPO) -> list[str]:
 
 def write_envelope(runs_dir: str, env: dict) -> str:
     """Write once to `<runs_dir>/<run_digest>.json`; identical bytes are a no-op, different bytes are refused."""
-    if env.get('format') != FORMAT or env.get('run_digest') != run_digest(env.get('run')) or set(env) != {
-            'format', 'run', 'run_digest'}:
-        raise ReportError(f'not a valid {FORMAT} envelope')
+    if env.get('format') != run_format(env.get('run')) or env.get('run_digest') != run_digest(env.get('run')) or \
+            set(env) != {'format', 'run', 'run_digest'}:
+        raise ReportError(f'not a valid {FORMAT} / {FORMAT_3} envelope')
     path = os.path.join(runs_dir, env['run_digest'] + '.json')
     data = json.dumps(env, sort_keys=True, indent=1, ensure_ascii=True, allow_nan=False).encode('ascii') + b'\n'
     if os.path.exists(path):
@@ -430,8 +470,9 @@ def load_envelope(runs_dir: str, digest: str) -> dict:
             env = json.loads(f.read(), parse_constant=lambda c: (_ for _ in ()).throw(ValueError(c)))
     except (OSError, ValueError) as e:
         raise ReportError(f'run envelope {digest[:12]}... unreadable: {e}')
-    if not isinstance(env, dict) or env.get('format') != FORMAT or set(env) != {'format', 'run', 'run_digest'}:
-        raise ReportError(f'run envelope {digest[:12]}... is not {FORMAT}')
+    if not isinstance(env, dict) or env.get('format') not in FORMATS or set(env) != {'format', 'run', 'run_digest'} \
+            or env['format'] != run_format(env['run']):
+        raise ReportError(f'run envelope {digest[:12]}... is not {FORMAT} / {FORMAT_3}')
     return env
 
 
@@ -518,15 +559,27 @@ def refuse_incomplete(obj, where: str = 'results') -> None:
         raise ReportError(f'{e} - never sealable evidence (INCOMPLETE fails closed)')
 
 
-def make_report(env: dict, results: dict, attestation: dict, ledger_path: str) -> dict:
+def exec_realism(env: dict, exec_manifest, exec_store) -> dict:
+    """The /3 promotion label: `exec_obs.realism_refusals`, recomputed from the manifest AND the files under
+    `exec_store` (the envelope's digests are never taken on trust). Any refusal = non-promotable; the report still
+    seals, labelled."""
+    run = env['run']
+    refusals = _exec_obs().realism_refusals(run, exec_manifest, store=exec_store)
+    return {'claims': list(run['exec_obs']['claims']), 'refusals': refusals, 'promotable': not refusals}
+
+
+def make_report(env: dict, results: dict, attestation: dict, ledger_path: str, *, exec_manifest=None,
+                exec_store=None) -> dict:
     """Validate the results shape against plan section 6, bind the runner attestation and seal with `report_digest`.
     The exact `results` payload must be the one the frozen summary function produced in the sandbox (its digest is
-    in the attestation)."""
+    in the attestation). A /3 run also records `exec_realism` (`exec_manifest` read under `exec_store`)."""
     refuse_incomplete(results)
     if results.get('missing_data_policy') != MD.POLICY:
         raise ReportError(f'results: missing-data policy must be {MD.POLICY!r} (an unknown policy fails closed)')
     if env.get('run_digest') != run_digest(env['run']):
         raise ReportError('envelope run_digest does not match its run block')
+    if env.get('format') != run_format(env['run']):
+        raise ReportError(f'envelope format {env.get("format")!r} does not match its run block')
     att_digest = check_attestation(env, attestation, ledger_path)
     bad = exec_env_mismatch(env['run']['code']['execution_environment'], SB.execution_environment(),
                             'the process sealing the report')
@@ -547,6 +600,8 @@ def make_report(env: dict, results: dict, attestation: dict, ledger_path: str) -
     if attestation.get('results_digest') != results_digest(results):
         raise ReportError('attestation: the report results are not the payload the frozen summary produced')
     rep = {**env, 'results': results, 'attestation': attestation, 'attestation_digest': att_digest}
+    if env['format'] == FORMAT_3:                          # /2 reports keep exactly their frozen shape
+        rep['exec_realism'] = exec_realism(env, exec_manifest, exec_store)
     try:
         rep['report_digest'] = _digest(rep)
     except ValueError:
