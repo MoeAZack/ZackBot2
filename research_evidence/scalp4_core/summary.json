@@ -1,0 +1,3130 @@
+{
+ "CORE-10_range_scalp_long": {
+  "acct": {
+   "status": "ok",
+   "raw_sig": 5568,
+   "trades": 1524,
+   "pf": 0.614152,
+   "win": 0.4166666666666667,
+   "net_cash": -489.9320819999999,
+   "net_r": -374.14092500000004,
+   "max_dd_r": 379.050804,
+   "max_dd_eq": -0.981087,
+   "bust": true,
+   "bust_time": "2025-05-07T15:45:00Z",
+   "bust_trade": 1006,
+   "incomplete": [
+    "HYPEUSDT"
+   ],
+   "run_syms": [
+    "BTCUSDT",
+    "ETHUSDT",
+    "ZECUSDT",
+    "SOLUSDT",
+    "XRPUSDT",
+    "NEARUSDT",
+    "DOGEUSDT",
+    "UNIUSDT",
+    "SUIUSDT"
+   ],
+   "liq": 0,
+   "curve_end": 9.970542,
+   "fee_share_abs": 0.152093,
+   "packet": "5f4014146451",
+   "files": {
+    "BTCUSDT": "78596bc43123fdda13650d78524f79966801c31ed8384dd4bf83586da944d6e3",
+    "DOGEUSDT": "a95ef9911e5465c21e9feaa47d45f9b74d7947e3e586eeeebd348adbbb83089d",
+    "ETHUSDT": "476730a8ce348de694614841da2916e76479feef6df3d960e0f3324bc7b90125",
+    "HYPEUSDT": "02130df50ef72d041bc5798e655e648970a0cd4584955d163e89eacef8ced7f1",
+    "NEARUSDT": "56e5eb2ed35e5db2e8c329a03e4c6e9c231c78b7cea93e8c4a89af8e46f9ca46",
+    "SOLUSDT": "7f0cb86a52a75e143a50dc662d0da857bbe5c783f235ebb64c72161d0a6423bd",
+    "SUIUSDT": "60313f17f09f44d5015ee69d960fc165b58cc128bf0efb698dd3bc7224e5aebb",
+    "UNIUSDT": "3b9270610dc91a57967535f61c080be84bca5501d697e9ad70fd2717e1446ca8",
+    "XRPUSDT": "76afecd4973695f69713979e335a3330a534bf0b2304365f7360532916f4d3c6",
+    "ZECUSDT": "a47b6ac2e8c9193af20b6f7db8470db0394dcb2a8592f7b2ef27cf66b4f5a662"
+   },
+   "regime4h": "f97d65b5690b11c8809aada183f2174a538dbae8eb41248c5f5d0ee66e605cd9",
+   "commit": "a53a649cc228d74a943f05ab462be6fcfb278473",
+   "hold_med": 3.0,
+   "hold_mean": 4.4934383202099735,
+   "mfe": 1200.541787,
+   "mae": 1503.293849,
+   "giveback": 1574.682687,
+   "pf_r": 0.6416203833285341,
+   "top3_share": 0.5359516738245088,
+   "top3": {
+    "BTCUSDT": -101.7,
+    "ETHUSDT": -61.0,
+    "XRPUSDT": -37.9
+   },
+   "decomp": {
+    "gross_before_slip_r": -8.393363397664938,
+    "slip_r": 103.243866847341,
+    "fee_r": 258.1096671183525,
+    "funding_r": 4.394200954028223,
+    "net_r": -374.14092500000004,
+    "gap": 9.880891032265637e-06,
+    "runner_r_diff": 2.220446049250313e-16
+   },
+   "gross_pt": -0.0055074562976804055,
+   "cost_pt": 0.2399919520470615,
+   "fee_r_pt": 0.16936329863408955,
+   "quarters": {
+    "2024Q4": -87.98,
+    "2025Q1": -102.82,
+    "2025Q2": -114.15,
+    "2025Q3": -69.19
+   },
+   "regime": {
+    "btc_above_ema200": [
+     1022,
+     -262.69
+    ],
+    "btc_below_ema200": [
+     502,
+     -111.46
+    ]
+   }
+  },
+  "fixr": {
+   "status": "ok",
+   "raw_sig": 5568,
+   "trades": 3471,
+   "pf": 0.586792,
+   "win": 0.4062229904926534,
+   "net_cash": -1019919.0765229999,
+   "net_r": -1020.4357219999999,
+   "max_dd_r": 1029.163003,
+   "max_dd_eq": -0.001029,
+   "bust": false,
+   "bust_time": null,
+   "bust_trade": null,
+   "incomplete": [
+    "HYPEUSDT"
+   ],
+   "run_syms": [
+    "BTCUSDT",
+    "ETHUSDT",
+    "ZECUSDT",
+    "SOLUSDT",
+    "XRPUSDT",
+    "NEARUSDT",
+    "DOGEUSDT",
+    "UNIUSDT",
+    "SUIUSDT"
+   ],
+   "liq": 0,
+   "curve_end": 998980080.923456,
+   "fee_share_abs": 0.174986,
+   "packet": "62a3f3037e9e",
+   "files": {
+    "BTCUSDT": "78596bc43123fdda13650d78524f79966801c31ed8384dd4bf83586da944d6e3",
+    "DOGEUSDT": "a95ef9911e5465c21e9feaa47d45f9b74d7947e3e586eeeebd348adbbb83089d",
+    "ETHUSDT": "476730a8ce348de694614841da2916e76479feef6df3d960e0f3324bc7b90125",
+    "HYPEUSDT": "02130df50ef72d041bc5798e655e648970a0cd4584955d163e89eacef8ced7f1",
+    "NEARUSDT": "56e5eb2ed35e5db2e8c329a03e4c6e9c231c78b7cea93e8c4a89af8e46f9ca46",
+    "SOLUSDT": "7f0cb86a52a75e143a50dc662d0da857bbe5c783f235ebb64c72161d0a6423bd",
+    "SUIUSDT": "60313f17f09f44d5015ee69d960fc165b58cc128bf0efb698dd3bc7224e5aebb",
+    "UNIUSDT": "3b9270610dc91a57967535f61c080be84bca5501d697e9ad70fd2717e1446ca8",
+    "XRPUSDT": "76afecd4973695f69713979e335a3330a534bf0b2304365f7360532916f4d3c6",
+    "ZECUSDT": "a47b6ac2e8c9193af20b6f7db8470db0394dcb2a8592f7b2ef27cf66b4f5a662"
+   },
+   "regime4h": "f97d65b5690b11c8809aada183f2174a538dbae8eb41248c5f5d0ee66e605cd9",
+   "commit": "a53a649cc228d74a943f05ab462be6fcfb278473",
+   "hold_med": 3.0,
+   "hold_mean": 4.5522904062229905,
+   "mfe": 2752.0155839999998,
+   "mae": 3507.0683209999997,
+   "giveback": 3772.451322,
+   "pf_r": 0.5867867898156744,
+   "top3_share": 0.4561841632588397,
+   "top3": {
+    "BTCUSDT": -207.2,
+    "SOLUSDT": -138.3,
+    "ETHUSDT": -120.0
+   },
+   "decomp": {
+    "gross_before_slip_r": -82.24008881259608,
+    "slip_r": 264.874341566877,
+    "fee_r": 662.1858539171924,
+    "funding_r": 11.135437787351888,
+    "net_r": -1020.4357219999999,
+    "gap": 1.0010243745028902e-09,
+    "runner_r_diff": 0.0
+   },
+   "gross_pt": -0.023693485684988788,
+   "cost_pt": 0.2702954863933798,
+   "fee_r_pt": 0.19077667931927178,
+   "quarters": {
+    "2024Q4": -95.41,
+    "2025Q1": -104.22,
+    "2025Q2": -111.71,
+    "2025Q3": -143.65,
+    "2025Q4": -157.22,
+    "2026Q1": -176.54,
+    "2026Q2": -96.7,
+    "2026Q3": -134.98
+   },
+   "regime": {
+    "btc_above_ema200": [
+     1825,
+     -523.48
+    ],
+    "btc_below_ema200": [
+     1646,
+     -496.96
+    ]
+   }
+  }
+ },
+ "CORE-10_range_scalp_short": {
+  "acct": {
+   "status": "ok",
+   "raw_sig": 6176,
+   "trades": 1501,
+   "pf": 0.648329,
+   "win": 0.4083944037308461,
+   "net_cash": -490.102539,
+   "net_r": -376.083938,
+   "max_dd_r": 376.083927,
+   "max_dd_eq": -0.980205,
+   "bust": true,
+   "bust_time": "2025-04-11T02:15:00Z",
+   "bust_trade": 936,
+   "incomplete": [
+    "HYPEUSDT"
+   ],
+   "run_syms": [
+    "BTCUSDT",
+    "ETHUSDT",
+    "ZECUSDT",
+    "SOLUSDT",
+    "XRPUSDT",
+    "NEARUSDT",
+    "DOGEUSDT",
+    "UNIUSDT",
+    "SUIUSDT"
+   ],
+   "liq": 0,
+   "curve_end": 9.897461,
+   "fee_share_abs": 0.14278,
+   "packet": "9c5fb9760b23",
+   "files": {
+    "BTCUSDT": "78596bc43123fdda13650d78524f79966801c31ed8384dd4bf83586da944d6e3",
+    "DOGEUSDT": "a95ef9911e5465c21e9feaa47d45f9b74d7947e3e586eeeebd348adbbb83089d",
+    "ETHUSDT": "476730a8ce348de694614841da2916e76479feef6df3d960e0f3324bc7b90125",
+    "HYPEUSDT": "02130df50ef72d041bc5798e655e648970a0cd4584955d163e89eacef8ced7f1",
+    "NEARUSDT": "56e5eb2ed35e5db2e8c329a03e4c6e9c231c78b7cea93e8c4a89af8e46f9ca46",
+    "SOLUSDT": "7f0cb86a52a75e143a50dc662d0da857bbe5c783f235ebb64c72161d0a6423bd",
+    "SUIUSDT": "60313f17f09f44d5015ee69d960fc165b58cc128bf0efb698dd3bc7224e5aebb",
+    "UNIUSDT": "3b9270610dc91a57967535f61c080be84bca5501d697e9ad70fd2717e1446ca8",
+    "XRPUSDT": "76afecd4973695f69713979e335a3330a534bf0b2304365f7360532916f4d3c6",
+    "ZECUSDT": "a47b6ac2e8c9193af20b6f7db8470db0394dcb2a8592f7b2ef27cf66b4f5a662"
+   },
+   "regime4h": "f97d65b5690b11c8809aada183f2174a538dbae8eb41248c5f5d0ee66e605cd9",
+   "commit": "a53a649cc228d74a943f05ab462be6fcfb278473",
+   "hold_med": 4.0,
+   "hold_mean": 4.952031978680879,
+   "mfe": 1226.269517,
+   "mae": 1517.357585,
+   "giveback": 1602.353402,
+   "pf_r": 0.6340944871196662,
+   "top3_share": 0.5983550991215159,
+   "top3": {
+    "BTCUSDT": -100.2,
+    "XRPUSDT": -70.5,
+    "DOGEUSDT": -54.3
+   },
+   "decomp": {
+    "gross_before_slip_r": -28.64135017026361,
+    "slip_r": 98.00833052439147,
+    "fee_r": 245.02082631097866,
+    "funding_r": 4.413348048599817,
+    "net_r": -376.083938,
+    "gap": 9.799354544037797e-06,
+    "runner_r_diff": 2.220446049250313e-16
+   },
+   "gross_pt": -0.019081512438550042,
+   "cost_pt": 0.23147402057559624,
+   "fee_r_pt": 0.16323839194602177,
+   "quarters": {
+    "2024Q4": -91.81,
+    "2025Q1": -115.43,
+    "2025Q2": -123.78,
+    "2025Q3": -45.07
+   },
+   "regime": {
+    "btc_above_ema200": [
+     1056,
+     -223.34
+    ],
+    "btc_below_ema200": [
+     445,
+     -152.75
+    ]
+   }
+  },
+  "fixr": {
+   "status": "ok",
+   "raw_sig": 6176,
+   "trades": 3565,
+   "pf": 0.601162,
+   "win": 0.4120617110799439,
+   "net_cash": -994778.812993,
+   "net_r": -995.269998,
+   "max_dd_r": 997.927609,
+   "max_dd_eq": -0.000997,
+   "bust": false,
+   "bust_time": null,
+   "bust_trade": null,
+   "incomplete": [
+    "HYPEUSDT"
+   ],
+   "run_syms": [
+    "BTCUSDT",
+    "ETHUSDT",
+    "ZECUSDT",
+    "SOLUSDT",
+    "XRPUSDT",
+    "NEARUSDT",
+    "DOGEUSDT",
+    "UNIUSDT",
+    "SUIUSDT"
+   ],
+   "liq": 0,
+   "curve_end": 999005221.187019,
+   "fee_share_abs": 0.18195,
+   "packet": "e9c420241bc6",
+   "files": {
+    "BTCUSDT": "78596bc43123fdda13650d78524f79966801c31ed8384dd4bf83586da944d6e3",
+    "DOGEUSDT": "a95ef9911e5465c21e9feaa47d45f9b74d7947e3e586eeeebd348adbbb83089d",
+    "ETHUSDT": "476730a8ce348de694614841da2916e76479feef6df3d960e0f3324bc7b90125",
+    "HYPEUSDT": "02130df50ef72d041bc5798e655e648970a0cd4584955d163e89eacef8ced7f1",
+    "NEARUSDT": "56e5eb2ed35e5db2e8c329a03e4c6e9c231c78b7cea93e8c4a89af8e46f9ca46",
+    "SOLUSDT": "7f0cb86a52a75e143a50dc662d0da857bbe5c783f235ebb64c72161d0a6423bd",
+    "SUIUSDT": "60313f17f09f44d5015ee69d960fc165b58cc128bf0efb698dd3bc7224e5aebb",
+    "UNIUSDT": "3b9270610dc91a57967535f61c080be84bca5501d697e9ad70fd2717e1446ca8",
+    "XRPUSDT": "76afecd4973695f69713979e335a3330a534bf0b2304365f7360532916f4d3c6",
+    "ZECUSDT": "a47b6ac2e8c9193af20b6f7db8470db0394dcb2a8592f7b2ef27cf66b4f5a662"
+   },
+   "regime4h": "f97d65b5690b11c8809aada183f2174a538dbae8eb41248c5f5d0ee66e605cd9",
+   "commit": "a53a649cc228d74a943f05ab462be6fcfb278473",
+   "hold_med": 4.0,
+   "hold_mean": 4.951192145862553,
+   "mfe": 2881.599229,
+   "mae": 3616.286371,
+   "giveback": 3876.869167,
+   "pf_r": 0.6011550572327807,
+   "top3_share": 0.5343572679460996,
+   "top3": {
+    "BTCUSDT": -247.5,
+    "DOGEUSDT": -142.6,
+    "ETHUSDT": -141.7
+   },
+   "decomp": {
+    "gross_before_slip_r": 0.19194892425333165,
+    "slip_r": 280.82626550901017,
+    "fee_r": 702.0656637725253,
+    "funding_r": 12.570017648727521,
+    "net_r": -995.269998,
+    "gap": 1.0009975071056942e-09,
+    "runner_r_diff": 1.1102230246251565e-16
+   },
+   "gross_pt": 5.384261549883076e-05,
+   "cost_pt": 0.2792319626732856,
+   "fee_r_pt": 0.1969328650133311,
+   "quarters": {
+    "2024Q4": -91.96,
+    "2025Q1": -116.88,
+    "2025Q2": -131.03,
+    "2025Q3": -156.91,
+    "2025Q4": -127.2,
+    "2026Q1": -79.64,
+    "2026Q2": -102.49,
+    "2026Q3": -189.16
+   },
+   "regime": {
+    "btc_above_ema200": [
+     1942,
+     -543.73
+    ],
+    "btc_below_ema200": [
+     1623,
+     -451.54
+    ]
+   }
+  }
+ },
+ "CORE-10_failed_breakout_scalp_long": {
+  "acct": {
+   "status": "ok",
+   "raw_sig": 11639,
+   "trades": 1839,
+   "pf": 0.692816,
+   "win": 0.3648722131593257,
+   "net_cash": -490.0280839999999,
+   "net_r": -373.06892100000005,
+   "max_dd_r": 381.248429,
+   "max_dd_eq": -0.98168,
+   "bust": true,
+   "bust_time": "2025-01-25T00:00:00Z",
+   "bust_trade": 1312,
+   "incomplete": [
+    "HYPEUSDT"
+   ],
+   "run_syms": [
+    "BTCUSDT",
+    "ETHUSDT",
+    "ZECUSDT",
+    "SOLUSDT",
+    "XRPUSDT",
+    "NEARUSDT",
+    "DOGEUSDT",
+    "UNIUSDT",
+    "SUIUSDT"
+   ],
+   "liq": 0,
+   "curve_end": 9.955241,
+   "fee_share_abs": 0.168521,
+   "packet": "1f01bff875cf",
+   "files": {
+    "BTCUSDT": "78596bc43123fdda13650d78524f79966801c31ed8384dd4bf83586da944d6e3",
+    "DOGEUSDT": "a95ef9911e5465c21e9feaa47d45f9b74d7947e3e586eeeebd348adbbb83089d",
+    "ETHUSDT": "476730a8ce348de694614841da2916e76479feef6df3d960e0f3324bc7b90125",
+    "HYPEUSDT": "02130df50ef72d041bc5798e655e648970a0cd4584955d163e89eacef8ced7f1",
+    "NEARUSDT": "56e5eb2ed35e5db2e8c329a03e4c6e9c231c78b7cea93e8c4a89af8e46f9ca46",
+    "SOLUSDT": "7f0cb86a52a75e143a50dc662d0da857bbe5c783f235ebb64c72161d0a6423bd",
+    "SUIUSDT": "60313f17f09f44d5015ee69d960fc165b58cc128bf0efb698dd3bc7224e5aebb",
+    "UNIUSDT": "3b9270610dc91a57967535f61c080be84bca5501d697e9ad70fd2717e1446ca8",
+    "XRPUSDT": "76afecd4973695f69713979e335a3330a534bf0b2304365f7360532916f4d3c6",
+    "ZECUSDT": "a47b6ac2e8c9193af20b6f7db8470db0394dcb2a8592f7b2ef27cf66b4f5a662"
+   },
+   "regime4h": "f97d65b5690b11c8809aada183f2174a538dbae8eb41248c5f5d0ee66e605cd9",
+   "commit": "a53a649cc228d74a943f05ab462be6fcfb278473",
+   "hold_med": 3.0,
+   "hold_mean": 4.800435019032083,
+   "mfe": 1161.248494,
+   "mae": 1553.141768,
+   "giveback": 1534.3174,
+   "pf_r": 0.6534003272387162,
+   "top3_share": 0.4920826170883314,
+   "top3": {
+    "BTCUSDT": -71.8,
+    "ZECUSDT": -64.6,
+    "SUIUSDT": -47.2
+   },
+   "decomp": {
+    "gross_before_slip_r": -8.644820613568783,
+    "slip_r": 103.01953564948332,
+    "fee_r": 257.54883912370826,
+    "funding_r": 3.8556797710675443,
+    "net_r": -373.06892100000005,
+    "gap": 9.938937812759008e-06,
+    "runner_r_diff": 2.220446049250313e-16
+   },
+   "gross_pt": -0.00470082686980358,
+   "cost_pt": 0.19816424934434973,
+   "fee_r_pt": 0.1400483083870083,
+   "quarters": {
+    "2024Q4": -123.38,
+    "2025Q1": -249.69
+   },
+   "regime": {
+    "btc_above_ema200": [
+     1259,
+     -249.65
+    ],
+    "btc_below_ema200": [
+     580,
+     -123.42
+    ]
+   }
+  },
+  "fixr": {
+   "status": "ok",
+   "raw_sig": 11639,
+   "trades": 10489,
+   "pf": 0.589221,
+   "win": 0.3588521308036991,
+   "net_cash": -2645744.101102,
+   "net_r": -2649.238996,
+   "max_dd_r": 2659.231267,
+   "max_dd_eq": -0.002656,
+   "bust": false,
+   "bust_time": null,
+   "bust_trade": null,
+   "incomplete": [
+    "HYPEUSDT"
+   ],
+   "run_syms": [
+    "BTCUSDT",
+    "ETHUSDT",
+    "ZECUSDT",
+    "SOLUSDT",
+    "XRPUSDT",
+    "NEARUSDT",
+    "DOGEUSDT",
+    "UNIUSDT",
+    "SUIUSDT"
+   ],
+   "liq": 0,
+   "curve_end": 997354304.615071,
+   "fee_share_abs": 0.186542,
+   "packet": "4ba04265a466",
+   "files": {
+    "BTCUSDT": "78596bc43123fdda13650d78524f79966801c31ed8384dd4bf83586da944d6e3",
+    "DOGEUSDT": "a95ef9911e5465c21e9feaa47d45f9b74d7947e3e586eeeebd348adbbb83089d",
+    "ETHUSDT": "476730a8ce348de694614841da2916e76479feef6df3d960e0f3324bc7b90125",
+    "HYPEUSDT": "02130df50ef72d041bc5798e655e648970a0cd4584955d163e89eacef8ced7f1",
+    "NEARUSDT": "56e5eb2ed35e5db2e8c329a03e4c6e9c231c78b7cea93e8c4a89af8e46f9ca46",
+    "SOLUSDT": "7f0cb86a52a75e143a50dc662d0da857bbe5c783f235ebb64c72161d0a6423bd",
+    "SUIUSDT": "60313f17f09f44d5015ee69d960fc165b58cc128bf0efb698dd3bc7224e5aebb",
+    "UNIUSDT": "3b9270610dc91a57967535f61c080be84bca5501d697e9ad70fd2717e1446ca8",
+    "XRPUSDT": "76afecd4973695f69713979e335a3330a534bf0b2304365f7360532916f4d3c6",
+    "ZECUSDT": "a47b6ac2e8c9193af20b6f7db8470db0394dcb2a8592f7b2ef27cf66b4f5a662"
+   },
+   "regime4h": "f97d65b5690b11c8809aada183f2174a538dbae8eb41248c5f5d0ee66e605cd9",
+   "commit": "a53a649cc228d74a943f05ab462be6fcfb278473",
+   "hold_med": 3.0,
+   "hold_mean": 4.947659452760035,
+   "mfe": 6505.330701,
+   "mae": 9123.158868999999,
+   "giveback": 9154.569692000001,
+   "pf_r": 0.5892062027833259,
+   "top3_share": 0.4790376020872977,
+   "top3": {
+    "BTCUSDT": -571.0,
+    "XRPUSDT": -378.9,
+    "SOLUSDT": -319.2
+   },
+   "decomp": {
+    "gross_before_slip_r": -82.17439307992896,
+    "slip_r": 725.3706007803487,
+    "fee_r": 1813.4265019508716,
+    "funding_r": 28.267500355053766,
+    "net_r": -2649.238996,
+    "gap": 1.0026535157692251e-09,
+    "runner_r_diff": 2.220446049250313e-16
+   },
+   "gross_pt": -0.007834340078170365,
+   "cost_pt": 0.24473873611271565,
+   "fee_r_pt": 0.1728884070884614,
+   "quarters": {
+    "2024Q4": -160.63,
+    "2025Q1": -388.18,
+    "2025Q2": -377.73,
+    "2025Q3": -424.82,
+    "2025Q4": -353.51,
+    "2026Q1": -381.99,
+    "2026Q2": -294.91,
+    "2026Q3": -267.47
+   },
+   "regime": {
+    "btc_above_ema200": [
+     5335,
+     -1412.82
+    ],
+    "btc_below_ema200": [
+     5154,
+     -1236.42
+    ]
+   }
+  }
+ },
+ "CORE-10_failed_breakout_scalp_short": {
+  "acct": {
+   "status": "ok",
+   "raw_sig": 11595,
+   "trades": 1780,
+   "pf": 0.663497,
+   "win": 0.36067415730337077,
+   "net_cash": -490.01217699999995,
+   "net_r": -375.04592699999995,
+   "max_dd_r": 376.392398,
+   "max_dd_eq": -0.980629,
+   "bust": true,
+   "bust_time": "2024-12-28T22:45:00Z",
+   "bust_trade": 1173,
+   "incomplete": [
+    "HYPEUSDT"
+   ],
+   "run_syms": [
+    "BTCUSDT",
+    "ETHUSDT",
+    "ZECUSDT",
+    "SOLUSDT",
+    "XRPUSDT",
+    "NEARUSDT",
+    "DOGEUSDT",
+    "UNIUSDT",
+    "SUIUSDT"
+   ],
+   "liq": 0,
+   "curve_end": 9.987831,
+   "fee_share_abs": 0.159866,
+   "packet": "37aed78d177d",
+   "files": {
+    "BTCUSDT": "78596bc43123fdda13650d78524f79966801c31ed8384dd4bf83586da944d6e3",
+    "DOGEUSDT": "a95ef9911e5465c21e9feaa47d45f9b74d7947e3e586eeeebd348adbbb83089d",
+    "ETHUSDT": "476730a8ce348de694614841da2916e76479feef6df3d960e0f3324bc7b90125",
+    "HYPEUSDT": "02130df50ef72d041bc5798e655e648970a0cd4584955d163e89eacef8ced7f1",
+    "NEARUSDT": "56e5eb2ed35e5db2e8c329a03e4c6e9c231c78b7cea93e8c4a89af8e46f9ca46",
+    "SOLUSDT": "7f0cb86a52a75e143a50dc662d0da857bbe5c783f235ebb64c72161d0a6423bd",
+    "SUIUSDT": "60313f17f09f44d5015ee69d960fc165b58cc128bf0efb698dd3bc7224e5aebb",
+    "UNIUSDT": "3b9270610dc91a57967535f61c080be84bca5501d697e9ad70fd2717e1446ca8",
+    "XRPUSDT": "76afecd4973695f69713979e335a3330a534bf0b2304365f7360532916f4d3c6",
+    "ZECUSDT": "a47b6ac2e8c9193af20b6f7db8470db0394dcb2a8592f7b2ef27cf66b4f5a662"
+   },
+   "regime4h": "f97d65b5690b11c8809aada183f2174a538dbae8eb41248c5f5d0ee66e605cd9",
+   "commit": "a53a649cc228d74a943f05ab462be6fcfb278473",
+   "hold_med": 3.0,
+   "hold_mean": 4.599438202247191,
+   "mfe": 1165.566036,
+   "mae": 1580.2239129999998,
+   "giveback": 1540.611987,
+   "pf_r": 0.6478457927951324,
+   "top3_share": 0.5339086004792155,
+   "top3": {
+    "BTCUSDT": -83.5,
+    "SOLUSDT": -67.6,
+    "ETHUSDT": -49.1
+   },
+   "decomp": {
+    "gross_before_slip_r": -26.130128490763582,
+    "slip_r": 98.64445421258628,
+    "fee_r": 246.6111355314657,
+    "funding_r": 3.6602594230729224,
+    "net_r": -375.045927,
+    "gap": 9.710340729607303e-06,
+    "runner_r_diff": 2.220446049250313e-16
+   },
+   "gross_pt": -0.014679847466721114,
+   "cost_pt": 0.19602013998153087,
+   "fee_r_pt": 0.13854558175925039,
+   "quarters": {
+    "2024Q4": -221.87,
+    "2025Q1": -153.17
+   },
+   "regime": {
+    "btc_above_ema200": [
+     1414,
+     -264.44
+    ],
+    "btc_below_ema200": [
+     366,
+     -110.6
+    ]
+   }
+  },
+  "fixr": {
+   "status": "ok",
+   "raw_sig": 11595,
+   "trades": 10771,
+   "pf": 0.600028,
+   "win": 0.3618048463466716,
+   "net_cash": -2664152.937392,
+   "net_r": -2667.697062,
+   "max_dd_r": 2674.414714,
+   "max_dd_eq": -0.002673,
+   "bust": false,
+   "bust_time": null,
+   "bust_trade": null,
+   "incomplete": [
+    "HYPEUSDT"
+   ],
+   "run_syms": [
+    "BTCUSDT",
+    "ETHUSDT",
+    "ZECUSDT",
+    "SOLUSDT",
+    "XRPUSDT",
+    "NEARUSDT",
+    "DOGEUSDT",
+    "UNIUSDT",
+    "SUIUSDT"
+   ],
+   "liq": 0,
+   "curve_end": 997335884.474145,
+   "fee_share_abs": 0.189,
+   "packet": "e46e1d6fbde7",
+   "files": {
+    "BTCUSDT": "78596bc43123fdda13650d78524f79966801c31ed8384dd4bf83586da944d6e3",
+    "DOGEUSDT": "a95ef9911e5465c21e9feaa47d45f9b74d7947e3e586eeeebd348adbbb83089d",
+    "ETHUSDT": "476730a8ce348de694614841da2916e76479feef6df3d960e0f3324bc7b90125",
+    "HYPEUSDT": "02130df50ef72d041bc5798e655e648970a0cd4584955d163e89eacef8ced7f1",
+    "NEARUSDT": "56e5eb2ed35e5db2e8c329a03e4c6e9c231c78b7cea93e8c4a89af8e46f9ca46",
+    "SOLUSDT": "7f0cb86a52a75e143a50dc662d0da857bbe5c783f235ebb64c72161d0a6423bd",
+    "SUIUSDT": "60313f17f09f44d5015ee69d960fc165b58cc128bf0efb698dd3bc7224e5aebb",
+    "UNIUSDT": "3b9270610dc91a57967535f61c080be84bca5501d697e9ad70fd2717e1446ca8",
+    "XRPUSDT": "76afecd4973695f69713979e335a3330a534bf0b2304365f7360532916f4d3c6",
+    "ZECUSDT": "a47b6ac2e8c9193af20b6f7db8470db0394dcb2a8592f7b2ef27cf66b4f5a662"
+   },
+   "regime4h": "f97d65b5690b11c8809aada183f2174a538dbae8eb41248c5f5d0ee66e605cd9",
+   "commit": "a53a649cc228d74a943f05ab462be6fcfb278473",
+   "hold_med": 3.0,
+   "hold_mean": 4.828613870578405,
+   "mfe": 6878.379156,
+   "mae": 9297.987274,
+   "giveback": 9546.076232,
+   "pf_r": 0.600017807945892,
+   "top3_share": 0.5165692599169642,
+   "top3": {
+    "BTCUSDT": -655.3,
+    "ETHUSDT": -394.9,
+    "XRPUSDT": -327.8
+   },
+   "decomp": {
+    "gross_before_slip_r": 39.72765440714173,
+    "slip_r": 765.2925017493932,
+    "fee_r": 1913.231254373483,
+    "funding_r": 28.900960196071104,
+    "net_r": -2667.697062,
+    "gap": 1.0026726116052487e-09,
+    "runner_r_diff": 0.0
+   },
+   "gross_pt": 0.003688390530790245,
+   "cost_pt": 0.25136242840209333,
+   "fee_r_pt": 0.17762800616223962,
+   "quarters": {
+    "2024Q4": -245.02,
+    "2025Q1": -334.08,
+    "2025Q2": -369.9,
+    "2025Q3": -460.11,
+    "2025Q4": -334.65,
+    "2026Q1": -299.57,
+    "2026Q2": -221.29,
+    "2026Q3": -403.07
+   },
+   "regime": {
+    "btc_above_ema200": [
+     5961,
+     -1555.04
+    ],
+    "btc_below_ema200": [
+     4810,
+     -1112.65
+    ]
+   }
+  }
+ },
+ "CORE-10_momentum_burst_scalp_long": {
+  "acct": {
+   "status": "ok",
+   "raw_sig": 7140,
+   "trades": 2653,
+   "pf": 0.688725,
+   "win": 0.391255182811911,
+   "net_cash": -489.898565,
+   "net_r": -368.74957,
+   "max_dd_r": 378.297699,
+   "max_dd_eq": -0.98182,
+   "bust": true,
+   "bust_time": "2025-04-14T14:45:00Z",
+   "bust_trade": 1475,
+   "incomplete": [
+    "HYPEUSDT"
+   ],
+   "run_syms": [
+    "BTCUSDT",
+    "ETHUSDT",
+    "ZECUSDT",
+    "SOLUSDT",
+    "XRPUSDT",
+    "NEARUSDT",
+    "DOGEUSDT",
+    "UNIUSDT",
+    "SUIUSDT"
+   ],
+   "liq": 0,
+   "curve_end": 9.994172,
+   "fee_share_abs": 0.127373,
+   "packet": "a02347f4aa6a",
+   "files": {
+    "BTCUSDT": "78596bc43123fdda13650d78524f79966801c31ed8384dd4bf83586da944d6e3",
+    "DOGEUSDT": "a95ef9911e5465c21e9feaa47d45f9b74d7947e3e586eeeebd348adbbb83089d",
+    "ETHUSDT": "476730a8ce348de694614841da2916e76479feef6df3d960e0f3324bc7b90125",
+    "HYPEUSDT": "02130df50ef72d041bc5798e655e648970a0cd4584955d163e89eacef8ced7f1",
+    "NEARUSDT": "56e5eb2ed35e5db2e8c329a03e4c6e9c231c78b7cea93e8c4a89af8e46f9ca46",
+    "SOLUSDT": "7f0cb86a52a75e143a50dc662d0da857bbe5c783f235ebb64c72161d0a6423bd",
+    "SUIUSDT": "60313f17f09f44d5015ee69d960fc165b58cc128bf0efb698dd3bc7224e5aebb",
+    "UNIUSDT": "3b9270610dc91a57967535f61c080be84bca5501d697e9ad70fd2717e1446ca8",
+    "XRPUSDT": "76afecd4973695f69713979e335a3330a534bf0b2304365f7360532916f4d3c6",
+    "ZECUSDT": "a47b6ac2e8c9193af20b6f7db8470db0394dcb2a8592f7b2ef27cf66b4f5a662"
+   },
+   "regime4h": "f97d65b5690b11c8809aada183f2174a538dbae8eb41248c5f5d0ee66e605cd9",
+   "commit": "a53a649cc228d74a943f05ab462be6fcfb278473",
+   "hold_med": 2.0,
+   "hold_mean": 2.01130795326046,
+   "mfe": 1525.752226,
+   "mae": 1980.224312,
+   "giveback": 1894.501816,
+   "pf_r": 0.7156363675964627,
+   "top3_share": 0.46351030050014697,
+   "top3": {
+    "ETHUSDT": -64.2,
+    "SOLUSDT": -57.4,
+    "XRPUSDT": -49.3
+   },
+   "decomp": {
+    "gross_before_slip_r": 40.85039150679217,
+    "slip_r": 116.24830406074702,
+    "fee_r": 290.6207601518675,
+    "funding_r": 2.7310073353792834,
+    "net_r": -368.74957,
+    "gap": 9.787398411675863e-06,
+    "runner_r_diff": 2.220446049250313e-16
+   },
+   "gross_pt": 0.015397810594343073,
+   "cost_pt": 0.15439128215152423,
+   "fee_r_pt": 0.10954419907722107,
+   "quarters": {
+    "2024Q4": -120.74,
+    "2025Q1": -91.91,
+    "2025Q2": -85.08,
+    "2025Q3": -71.01
+   },
+   "regime": {
+    "btc_above_ema200": [
+     1865,
+     -275.15
+    ],
+    "btc_below_ema200": [
+     788,
+     -93.6
+    ]
+   }
+  },
+  "fixr": {
+   "status": "ok",
+   "raw_sig": 7140,
+   "trades": 5748,
+   "pf": 0.705776,
+   "win": 0.38204592901878914,
+   "net_cash": -834584.19246,
+   "net_r": -834.92768,
+   "max_dd_r": 844.868242,
+   "max_dd_eq": -0.000845,
+   "bust": false,
+   "bust_time": null,
+   "bust_trade": null,
+   "incomplete": [
+    "HYPEUSDT"
+   ],
+   "run_syms": [
+    "BTCUSDT",
+    "ETHUSDT",
+    "ZECUSDT",
+    "SOLUSDT",
+    "XRPUSDT",
+    "NEARUSDT",
+    "DOGEUSDT",
+    "UNIUSDT",
+    "SUIUSDT"
+   ],
+   "liq": 0,
+   "curve_end": 999165415.807556,
+   "fee_share_abs": 0.143296,
+   "packet": "410f28b0a200",
+   "files": {
+    "BTCUSDT": "78596bc43123fdda13650d78524f79966801c31ed8384dd4bf83586da944d6e3",
+    "DOGEUSDT": "a95ef9911e5465c21e9feaa47d45f9b74d7947e3e586eeeebd348adbbb83089d",
+    "ETHUSDT": "476730a8ce348de694614841da2916e76479feef6df3d960e0f3324bc7b90125",
+    "HYPEUSDT": "02130df50ef72d041bc5798e655e648970a0cd4584955d163e89eacef8ced7f1",
+    "NEARUSDT": "56e5eb2ed35e5db2e8c329a03e4c6e9c231c78b7cea93e8c4a89af8e46f9ca46",
+    "SOLUSDT": "7f0cb86a52a75e143a50dc662d0da857bbe5c783f235ebb64c72161d0a6423bd",
+    "SUIUSDT": "60313f17f09f44d5015ee69d960fc165b58cc128bf0efb698dd3bc7224e5aebb",
+    "UNIUSDT": "3b9270610dc91a57967535f61c080be84bca5501d697e9ad70fd2717e1446ca8",
+    "XRPUSDT": "76afecd4973695f69713979e335a3330a534bf0b2304365f7360532916f4d3c6",
+    "ZECUSDT": "a47b6ac2e8c9193af20b6f7db8470db0394dcb2a8592f7b2ef27cf66b4f5a662"
+   },
+   "regime4h": "f97d65b5690b11c8809aada183f2174a538dbae8eb41248c5f5d0ee66e605cd9",
+   "commit": "a53a649cc228d74a943f05ab462be6fcfb278473",
+   "hold_med": 2.0,
+   "hold_mean": 1.9697286012526096,
+   "mfe": 3251.74723,
+   "mae": 4277.1940859999995,
+   "giveback": 4086.674933,
+   "pf_r": 0.7057762876619398,
+   "top3_share": 0.44258227491032515,
+   "top3": {
+    "ETHUSDT": -139.1,
+    "SOLUSDT": -120.3,
+    "BTCUSDT": -110.1
+   },
+   "decomp": {
+    "gross_before_slip_r": 114.50364610211906,
+    "slip_r": 269.48792843678666,
+    "fee_r": 673.7198210919668,
+    "funding_r": 6.223576548348278,
+    "net_r": -834.92768,
+    "gap": 1.0227150402323647e-09,
+    "runner_r_diff": 0.0
+   },
+   "gross_pt": 0.019920606489582302,
+   "cost_pt": 0.16517594399392863,
+   "fee_r_pt": 0.11720943303618071,
+   "quarters": {
+    "2024Q4": -121.37,
+    "2025Q1": -88.9,
+    "2025Q2": -96.74,
+    "2025Q3": -103.23,
+    "2025Q4": -111.28,
+    "2026Q1": -111.98,
+    "2026Q2": -78.65,
+    "2026Q3": -122.78
+   },
+   "regime": {
+    "btc_above_ema200": [
+     3115,
+     -522.35
+    ],
+    "btc_below_ema200": [
+     2633,
+     -312.58
+    ]
+   }
+  }
+ },
+ "CORE-10_momentum_burst_scalp_short": {
+  "acct": {
+   "status": "ok",
+   "raw_sig": 6564,
+   "trades": 2367,
+   "pf": 0.628132,
+   "win": 0.3650190114068441,
+   "net_cash": -490.06777000000005,
+   "net_r": -371.687347,
+   "max_dd_r": 384.208164,
+   "max_dd_eq": -0.982497,
+   "bust": true,
+   "bust_time": "2025-04-02T14:00:00Z",
+   "bust_trade": 1245,
+   "incomplete": [
+    "HYPEUSDT"
+   ],
+   "run_syms": [
+    "BTCUSDT",
+    "ETHUSDT",
+    "ZECUSDT",
+    "SOLUSDT",
+    "XRPUSDT",
+    "NEARUSDT",
+    "DOGEUSDT",
+    "UNIUSDT",
+    "SUIUSDT"
+   ],
+   "liq": 0,
+   "curve_end": 9.932226,
+   "fee_share_abs": 0.136102,
+   "packet": "ad766ebf32da",
+   "files": {
+    "BTCUSDT": "78596bc43123fdda13650d78524f79966801c31ed8384dd4bf83586da944d6e3",
+    "DOGEUSDT": "a95ef9911e5465c21e9feaa47d45f9b74d7947e3e586eeeebd348adbbb83089d",
+    "ETHUSDT": "476730a8ce348de694614841da2916e76479feef6df3d960e0f3324bc7b90125",
+    "HYPEUSDT": "02130df50ef72d041bc5798e655e648970a0cd4584955d163e89eacef8ced7f1",
+    "NEARUSDT": "56e5eb2ed35e5db2e8c329a03e4c6e9c231c78b7cea93e8c4a89af8e46f9ca46",
+    "SOLUSDT": "7f0cb86a52a75e143a50dc662d0da857bbe5c783f235ebb64c72161d0a6423bd",
+    "SUIUSDT": "60313f17f09f44d5015ee69d960fc165b58cc128bf0efb698dd3bc7224e5aebb",
+    "UNIUSDT": "3b9270610dc91a57967535f61c080be84bca5501d697e9ad70fd2717e1446ca8",
+    "XRPUSDT": "76afecd4973695f69713979e335a3330a534bf0b2304365f7360532916f4d3c6",
+    "ZECUSDT": "a47b6ac2e8c9193af20b6f7db8470db0394dcb2a8592f7b2ef27cf66b4f5a662"
+   },
+   "regime4h": "f97d65b5690b11c8809aada183f2174a538dbae8eb41248c5f5d0ee66e605cd9",
+   "commit": "a53a649cc228d74a943f05ab462be6fcfb278473",
+   "hold_med": 2.0,
+   "hold_mean": 2.089142374313477,
+   "mfe": 1393.684632,
+   "mae": 1695.200007,
+   "giveback": 1765.372054,
+   "pf_r": 0.6703921820798613,
+   "top3_share": 0.5355799453673628,
+   "top3": {
+    "BTCUSDT": -76.6,
+    "ZECUSDT": -72.0,
+    "SOLUSDT": -50.4
+   },
+   "decomp": {
+    "gross_before_slip_r": -13.057046103178566,
+    "slip_r": 101.77171259012005,
+    "fee_r": 254.42928147530012,
+    "funding_r": 2.429285218411663,
+    "net_r": -371.687347,
+    "gap": 8.75204149919373e-06,
+    "runner_r_diff": 2.220446049250313e-16
+   },
+   "gross_pt": -0.005516284792217391,
+   "cost_pt": 0.15151258102401008,
+   "fee_r_pt": 0.1074901907373469,
+   "quarters": {
+    "2024Q4": -107.64,
+    "2025Q1": -104.12,
+    "2025Q2": -85.17,
+    "2025Q3": -74.76
+   },
+   "regime": {
+    "btc_above_ema200": [
+     1594,
+     -228.82
+    ],
+    "btc_below_ema200": [
+     773,
+     -142.86
+    ]
+   }
+  },
+  "fixr": {
+   "status": "ok",
+   "raw_sig": 6564,
+   "trades": 5200,
+   "pf": 0.704157,
+   "win": 0.37365384615384617,
+   "net_cash": -735192.199567,
+   "net_r": -735.457803,
+   "max_dd_r": 747.978624,
+   "max_dd_eq": -0.000749,
+   "bust": false,
+   "bust_time": null,
+   "bust_trade": null,
+   "incomplete": [
+    "HYPEUSDT"
+   ],
+   "run_syms": [
+    "BTCUSDT",
+    "ETHUSDT",
+    "ZECUSDT",
+    "SOLUSDT",
+    "XRPUSDT",
+    "NEARUSDT",
+    "DOGEUSDT",
+    "UNIUSDT",
+    "SUIUSDT"
+   ],
+   "liq": 0,
+   "curve_end": 999264807.800428,
+   "fee_share_abs": 0.151542,
+   "packet": "6a65618d2747",
+   "files": {
+    "BTCUSDT": "78596bc43123fdda13650d78524f79966801c31ed8384dd4bf83586da944d6e3",
+    "DOGEUSDT": "a95ef9911e5465c21e9feaa47d45f9b74d7947e3e586eeeebd348adbbb83089d",
+    "ETHUSDT": "476730a8ce348de694614841da2916e76479feef6df3d960e0f3324bc7b90125",
+    "HYPEUSDT": "02130df50ef72d041bc5798e655e648970a0cd4584955d163e89eacef8ced7f1",
+    "NEARUSDT": "56e5eb2ed35e5db2e8c329a03e4c6e9c231c78b7cea93e8c4a89af8e46f9ca46",
+    "SOLUSDT": "7f0cb86a52a75e143a50dc662d0da857bbe5c783f235ebb64c72161d0a6423bd",
+    "SUIUSDT": "60313f17f09f44d5015ee69d960fc165b58cc128bf0efb698dd3bc7224e5aebb",
+    "UNIUSDT": "3b9270610dc91a57967535f61c080be84bca5501d697e9ad70fd2717e1446ca8",
+    "XRPUSDT": "76afecd4973695f69713979e335a3330a534bf0b2304365f7360532916f4d3c6",
+    "ZECUSDT": "a47b6ac2e8c9193af20b6f7db8470db0394dcb2a8592f7b2ef27cf66b4f5a662"
+   },
+   "regime4h": "f97d65b5690b11c8809aada183f2174a538dbae8eb41248c5f5d0ee66e605cd9",
+   "commit": "a53a649cc228d74a943f05ab462be6fcfb278473",
+   "hold_med": 2.0,
+   "hold_mean": 2.0721153846153846,
+   "mfe": 3015.792574,
+   "mae": 3753.9537689999997,
+   "giveback": 3751.250492,
+   "pf_r": 0.7041588035620129,
+   "top3_share": 0.48369097934501076,
+   "top3": {
+    "BTCUSDT": -165.5,
+    "ZECUSDT": -104.3,
+    "SOLUSDT": -86.0
+   },
+   "decomp": {
+    "gross_before_slip_r": 140.6146911107794,
+    "slip_r": 248.61376635453865,
+    "fee_r": 621.5344158863466,
+    "funding_r": 5.9243118618915105,
+    "net_r": -735.457803,
+    "gap": 1.0007353001828534e-09,
+    "runner_r_diff": 0.0
+   },
+   "gross_pt": 0.02704128675207296,
+   "cost_pt": 0.1684754796351494,
+   "fee_r_pt": 0.1195258492089128,
+   "quarters": {
+    "2024Q4": -107.35,
+    "2025Q1": -104.77,
+    "2025Q2": -89.18,
+    "2025Q3": -107.01,
+    "2025Q4": -19.87,
+    "2026Q1": -96.3,
+    "2026Q2": -109.22,
+    "2026Q3": -101.76
+   },
+   "regime": {
+    "btc_above_ema200": [
+     2674,
+     -363.17
+    ],
+    "btc_below_ema200": [
+     2526,
+     -372.28
+    ]
+   }
+  }
+ },
+ "CORE-10_quick_bank_runner_long": {
+  "acct": {
+   "status": "ok",
+   "raw_sig": 60915,
+   "trades": 1895,
+   "pf": 0.549572,
+   "win": 0.5372031662269129,
+   "net_cash": -489.965551,
+   "net_r": -376.22737500000005,
+   "max_dd_r": 380.666495,
+   "max_dd_eq": -0.980998,
+   "bust": true,
+   "bust_time": "2024-11-19T04:15:00Z",
+   "bust_trade": 1108,
+   "incomplete": [
+    "HYPEUSDT"
+   ],
+   "run_syms": [
+    "BTCUSDT",
+    "ETHUSDT",
+    "ZECUSDT",
+    "SOLUSDT",
+    "XRPUSDT",
+    "NEARUSDT",
+    "DOGEUSDT",
+    "UNIUSDT",
+    "SUIUSDT"
+   ],
+   "liq": 0,
+   "curve_end": 9.917651,
+   "fee_share_abs": 0.220347,
+   "packet": "3d51b99a49d9",
+   "files": {
+    "BTCUSDT": "78596bc43123fdda13650d78524f79966801c31ed8384dd4bf83586da944d6e3",
+    "DOGEUSDT": "a95ef9911e5465c21e9feaa47d45f9b74d7947e3e586eeeebd348adbbb83089d",
+    "ETHUSDT": "476730a8ce348de694614841da2916e76479feef6df3d960e0f3324bc7b90125",
+    "HYPEUSDT": "02130df50ef72d041bc5798e655e648970a0cd4584955d163e89eacef8ced7f1",
+    "NEARUSDT": "56e5eb2ed35e5db2e8c329a03e4c6e9c231c78b7cea93e8c4a89af8e46f9ca46",
+    "SOLUSDT": "7f0cb86a52a75e143a50dc662d0da857bbe5c783f235ebb64c72161d0a6423bd",
+    "SUIUSDT": "60313f17f09f44d5015ee69d960fc165b58cc128bf0efb698dd3bc7224e5aebb",
+    "UNIUSDT": "3b9270610dc91a57967535f61c080be84bca5501d697e9ad70fd2717e1446ca8",
+    "XRPUSDT": "76afecd4973695f69713979e335a3330a534bf0b2304365f7360532916f4d3c6",
+    "ZECUSDT": "a47b6ac2e8c9193af20b6f7db8470db0394dcb2a8592f7b2ef27cf66b4f5a662"
+   },
+   "regime4h": "f97d65b5690b11c8809aada183f2174a538dbae8eb41248c5f5d0ee66e605cd9",
+   "commit": "a53a649cc228d74a943f05ab462be6fcfb278473",
+   "hold_med": 2.0,
+   "hold_mean": 3.0612137203166228,
+   "mfe": 1532.2972519999998,
+   "mae": 1723.806381,
+   "giveback": 1908.524619,
+   "pf_r": 0.6308959891428135,
+   "top3_share": 0.5679086935127994,
+   "top3": {
+    "BTCUSDT": -91.3,
+    "ETHUSDT": -76.9,
+    "UNIUSDT": -45.5
+   },
+   "decomp": {
+    "gross_before_slip_r": 57.16807907849425,
+    "slip_r": 122.96797031539748,
+    "fee_r": 307.41992578849363,
+    "funding_r": 3.0076083040646946,
+    "net_r": -376.22737500000005,
+    "gap": 9.829613347056565e-06,
+    "runner_r_diff": 2.220446049250313e-16
+   },
+   "gross_pt": 0.030167851756461347,
+   "cost_pt": 0.22870475166646745,
+   "fee_r_pt": 0.1622268737670151,
+   "quarters": {
+    "2024Q4": -376.23
+   },
+   "regime": {
+    "btc_above_ema200": [
+     1895,
+     -376.23
+    ]
+   }
+  },
+  "fixr": {
+   "status": "ok",
+   "raw_sig": 60915,
+   "trades": 25914,
+   "pf": 0.465874,
+   "win": 0.49486763911399245,
+   "net_cash": -8415055.8287,
+   "net_r": -8450.635774,
+   "max_dd_r": 8454.740558,
+   "max_dd_eq": -0.00842,
+   "bust": false,
+   "bust_time": null,
+   "bust_trade": null,
+   "incomplete": [
+    "HYPEUSDT"
+   ],
+   "run_syms": [
+    "BTCUSDT",
+    "ETHUSDT",
+    "ZECUSDT",
+    "SOLUSDT",
+    "XRPUSDT",
+    "NEARUSDT",
+    "DOGEUSDT",
+    "UNIUSDT",
+    "SUIUSDT"
+   ],
+   "liq": 0,
+   "curve_end": 991585427.478451,
+   "fee_share_abs": 0.257851,
+   "packet": "d5cbbeccc2e0",
+   "files": {
+    "BTCUSDT": "78596bc43123fdda13650d78524f79966801c31ed8384dd4bf83586da944d6e3",
+    "DOGEUSDT": "a95ef9911e5465c21e9feaa47d45f9b74d7947e3e586eeeebd348adbbb83089d",
+    "ETHUSDT": "476730a8ce348de694614841da2916e76479feef6df3d960e0f3324bc7b90125",
+    "HYPEUSDT": "02130df50ef72d041bc5798e655e648970a0cd4584955d163e89eacef8ced7f1",
+    "NEARUSDT": "56e5eb2ed35e5db2e8c329a03e4c6e9c231c78b7cea93e8c4a89af8e46f9ca46",
+    "SOLUSDT": "7f0cb86a52a75e143a50dc662d0da857bbe5c783f235ebb64c72161d0a6423bd",
+    "SUIUSDT": "60313f17f09f44d5015ee69d960fc165b58cc128bf0efb698dd3bc7224e5aebb",
+    "UNIUSDT": "3b9270610dc91a57967535f61c080be84bca5501d697e9ad70fd2717e1446ca8",
+    "XRPUSDT": "76afecd4973695f69713979e335a3330a534bf0b2304365f7360532916f4d3c6",
+    "ZECUSDT": "a47b6ac2e8c9193af20b6f7db8470db0394dcb2a8592f7b2ef27cf66b4f5a662"
+   },
+   "regime4h": "f97d65b5690b11c8809aada183f2174a538dbae8eb41248c5f5d0ee66e605cd9",
+   "commit": "a53a649cc228d74a943f05ab462be6fcfb278473",
+   "hold_med": 2.0,
+   "hold_mean": 3.05518252681948,
+   "mfe": 20250.233871999997,
+   "mae": 24422.019674999996,
+   "giveback": 28700.869543,
+   "pf_r": 0.4657623776202628,
+   "top3_share": 0.554668650898597,
+   "top3": {
+    "BTCUSDT": -2222.0,
+    "ETHUSDT": -1454.6,
+    "XRPUSDT": -1010.7
+   },
+   "decomp": {
+    "gross_before_slip_r": -89.2299260890316,
+    "slip_r": 2372.0989754992847,
+    "fee_r": 5930.2474387482125,
+    "funding_r": 59.05943366840697,
+    "net_r": -8450.635774,
+    "gap": 1.0094371978379944e-09,
+    "runner_r_diff": 1.1102230246251565e-16
+   },
+   "gross_pt": -0.003443309643012719,
+   "cost_pt": 0.3226597919238984,
+   "fee_r_pt": 0.22884338345096136,
+   "quarters": {
+    "2024Q4": -796.57,
+    "2025Q1": -847.67,
+    "2025Q2": -972.95,
+    "2025Q3": -1340.77,
+    "2025Q4": -1006.89,
+    "2026Q1": -913.46,
+    "2026Q2": -1083.1,
+    "2026Q3": -1489.25
+   },
+   "regime": {
+    "btc_above_ema200": [
+     15051,
+     -4969.23
+    ],
+    "btc_below_ema200": [
+     10863,
+     -3481.41
+    ]
+   }
+  }
+ },
+ "CORE-10_quick_bank_runner_short": {
+  "acct": {
+   "status": "ok",
+   "raw_sig": 62869,
+   "trades": 1563,
+   "pf": 0.48907,
+   "win": 0.5233525271912988,
+   "net_cash": -490.01721,
+   "net_r": -375.954692,
+   "max_dd_r": 375.954692,
+   "max_dd_eq": -0.980159,
+   "bust": true,
+   "bust_time": "2024-11-16T21:00:00Z",
+   "bust_trade": 805,
+   "incomplete": [
+    "HYPEUSDT"
+   ],
+   "run_syms": [
+    "BTCUSDT",
+    "ETHUSDT",
+    "ZECUSDT",
+    "SOLUSDT",
+    "XRPUSDT",
+    "NEARUSDT",
+    "DOGEUSDT",
+    "UNIUSDT",
+    "SUIUSDT"
+   ],
+   "liq": 0,
+   "curve_end": 9.972837,
+   "fee_share_abs": 0.235261,
+   "packet": "507e21d32954",
+   "files": {
+    "BTCUSDT": "78596bc43123fdda13650d78524f79966801c31ed8384dd4bf83586da944d6e3",
+    "DOGEUSDT": "a95ef9911e5465c21e9feaa47d45f9b74d7947e3e586eeeebd348adbbb83089d",
+    "ETHUSDT": "476730a8ce348de694614841da2916e76479feef6df3d960e0f3324bc7b90125",
+    "HYPEUSDT": "02130df50ef72d041bc5798e655e648970a0cd4584955d163e89eacef8ced7f1",
+    "NEARUSDT": "56e5eb2ed35e5db2e8c329a03e4c6e9c231c78b7cea93e8c4a89af8e46f9ca46",
+    "SOLUSDT": "7f0cb86a52a75e143a50dc662d0da857bbe5c783f235ebb64c72161d0a6423bd",
+    "SUIUSDT": "60313f17f09f44d5015ee69d960fc165b58cc128bf0efb698dd3bc7224e5aebb",
+    "UNIUSDT": "3b9270610dc91a57967535f61c080be84bca5501d697e9ad70fd2717e1446ca8",
+    "XRPUSDT": "76afecd4973695f69713979e335a3330a534bf0b2304365f7360532916f4d3c6",
+    "ZECUSDT": "a47b6ac2e8c9193af20b6f7db8470db0394dcb2a8592f7b2ef27cf66b4f5a662"
+   },
+   "regime4h": "f97d65b5690b11c8809aada183f2174a538dbae8eb41248c5f5d0ee66e605cd9",
+   "commit": "a53a649cc228d74a943f05ab462be6fcfb278473",
+   "hold_med": 2.0,
+   "hold_mean": 2.9392194497760715,
+   "mfe": 1255.743076,
+   "mae": 1414.560398,
+   "giveback": 1631.697774,
+   "pf_r": 0.5643246275084922,
+   "top3_share": 0.4611111011217277,
+   "top3": {
+    "BTCUSDT": -69.5,
+    "XRPUSDT": -52.0,
+    "ETHUSDT": -51.8
+   },
+   "decomp": {
+    "gross_before_slip_r": -19.27808174738517,
+    "slip_r": 101.21845565389557,
+    "fee_r": 253.0461391347389,
+    "funding_r": 2.4119339947219656,
+    "net_r": -375.95469199999997,
+    "gap": 9.241664882475575e-06,
+    "runner_r_diff": 2.220446049250313e-16
+   },
+   "gross_pt": -0.012334025430188848,
+   "cost_pt": 0.22819995443592858,
+   "fee_r_pt": 0.16189772177526482,
+   "quarters": {
+    "2024Q4": -375.95
+   },
+   "regime": {
+    "btc_above_ema200": [
+     1563,
+     -375.95
+    ]
+   }
+  },
+  "fixr": {
+   "status": "ok",
+   "raw_sig": 62869,
+   "trades": 25511,
+   "pf": 0.492634,
+   "win": 0.5109168593939869,
+   "net_cash": -7664149.621778,
+   "net_r": -7693.641756999999,
+   "max_dd_r": 7693.641728,
+   "max_dd_eq": -0.007665,
+   "bust": false,
+   "bust_time": null,
+   "bust_trade": null,
+   "incomplete": [
+    "HYPEUSDT"
+   ],
+   "run_syms": [
+    "BTCUSDT",
+    "ETHUSDT",
+    "ZECUSDT",
+    "SOLUSDT",
+    "XRPUSDT",
+    "NEARUSDT",
+    "DOGEUSDT",
+    "UNIUSDT",
+    "SUIUSDT"
+   ],
+   "liq": 0,
+   "curve_end": 992335118.09752,
+   "fee_share_abs": 0.252835,
+   "packet": "d01ccfc798b9",
+   "files": {
+    "BTCUSDT": "78596bc43123fdda13650d78524f79966801c31ed8384dd4bf83586da944d6e3",
+    "DOGEUSDT": "a95ef9911e5465c21e9feaa47d45f9b74d7947e3e586eeeebd348adbbb83089d",
+    "ETHUSDT": "476730a8ce348de694614841da2916e76479feef6df3d960e0f3324bc7b90125",
+    "HYPEUSDT": "02130df50ef72d041bc5798e655e648970a0cd4584955d163e89eacef8ced7f1",
+    "NEARUSDT": "56e5eb2ed35e5db2e8c329a03e4c6e9c231c78b7cea93e8c4a89af8e46f9ca46",
+    "SOLUSDT": "7f0cb86a52a75e143a50dc662d0da857bbe5c783f235ebb64c72161d0a6423bd",
+    "SUIUSDT": "60313f17f09f44d5015ee69d960fc165b58cc128bf0efb698dd3bc7224e5aebb",
+    "UNIUSDT": "3b9270610dc91a57967535f61c080be84bca5501d697e9ad70fd2717e1446ca8",
+    "XRPUSDT": "76afecd4973695f69713979e335a3330a534bf0b2304365f7360532916f4d3c6",
+    "ZECUSDT": "a47b6ac2e8c9193af20b6f7db8470db0394dcb2a8592f7b2ef27cf66b4f5a662"
+   },
+   "regime4h": "f97d65b5690b11c8809aada183f2174a538dbae8eb41248c5f5d0ee66e605cd9",
+   "commit": "a53a649cc228d74a943f05ab462be6fcfb278473",
+   "hold_med": 2.0,
+   "hold_mean": 3.062169260319078,
+   "mfe": 20451.524511,
+   "mae": 23718.759506000002,
+   "giveback": 28145.166224,
+   "pf_r": 0.4924944291981297,
+   "top3_share": 0.522272933015641,
+   "top3": {
+    "BTCUSDT": -1925.7,
+    "ETHUSDT": -1134.5,
+    "XRPUSDT": -958.0
+   },
+   "decomp": {
+    "gross_before_slip_r": 347.59008555978255,
+    "slip_r": 2281.392045119069,
+    "fee_r": 5703.480112797672,
+    "funding_r": 56.359684720404445,
+    "net_r": -7693.641756999999,
+    "gap": 1.0077205736536143e-09,
+    "runner_r_diff": 1.1102230246251565e-16
+   },
+   "gross_pt": 0.013625106250628457,
+   "cost_pt": 0.3152064537900178,
+   "fee_r_pt": 0.22356944505498302,
+   "quarters": {
+    "2024Q4": -648.05,
+    "2025Q1": -646.17,
+    "2025Q2": -941.19,
+    "2025Q3": -1076.1,
+    "2025Q4": -948.93,
+    "2026Q1": -1041.75,
+    "2026Q2": -1088.65,
+    "2026Q3": -1302.8
+   },
+   "regime": {
+    "btc_above_ema200": [
+     12646,
+     -4084.07
+    ],
+    "btc_below_ema200": [
+     12865,
+     -3609.57
+    ]
+   }
+  }
+ },
+ "CORE-20_range_scalp_long": {
+  "acct": {
+   "status": "ok",
+   "raw_sig": 11347,
+   "trades": 1767,
+   "pf": 0.611803,
+   "win": 0.4142614601018676,
+   "net_cash": -490.0475200000001,
+   "net_r": -368.854074,
+   "max_dd_r": 374.86614,
+   "max_dd_eq": -0.981274,
+   "bust": true,
+   "bust_time": "2025-01-29T16:15:00Z",
+   "bust_trade": 861,
+   "incomplete": [
+    "HYPEUSDT",
+    "PUMPUSDT"
+   ],
+   "run_syms": [
+    "BTCUSDT",
+    "ETHUSDT",
+    "ZECUSDT",
+    "SOLUSDT",
+    "XRPUSDT",
+    "NEARUSDT",
+    "DOGEUSDT",
+    "UNIUSDT",
+    "SUIUSDT",
+    "QNTUSDT",
+    "BNBUSDT",
+    "LSKUSDT",
+    "ENAUSDT",
+    "1000PEPEUSDT",
+    "WLDUSDT",
+    "ADAUSDT",
+    "AVAXUSDT",
+    "LINKUSDT"
+   ],
+   "liq": 0,
+   "curve_end": 9.952469,
+   "fee_share_abs": 0.13648,
+   "packet": "6d451dc80ddb",
+   "files": {
+    "1000PEPEUSDT": "965f4d2d09c9b0825ee9111a2c75b9690760133b8489160f89c74ff367ba9252",
+    "ADAUSDT": "4830b92195cbde1bc603f49fc5f0df529342b52d9d5912db16da93d5b5a59561",
+    "AVAXUSDT": "57ca6976dac87a33749498120e96b14b05061e46ad991923b8521747fcc9d18c",
+    "BNBUSDT": "374b1853cb135260d1395366b906c2468603bac8c0667cb4f9c83a710649b492",
+    "BTCUSDT": "78596bc43123fdda13650d78524f79966801c31ed8384dd4bf83586da944d6e3",
+    "DOGEUSDT": "a95ef9911e5465c21e9feaa47d45f9b74d7947e3e586eeeebd348adbbb83089d",
+    "ENAUSDT": "d87c7f849001b1183f7a18a91f367d2be647ffc5adeb60e4854990637ca89289",
+    "ETHUSDT": "476730a8ce348de694614841da2916e76479feef6df3d960e0f3324bc7b90125",
+    "HYPEUSDT": "02130df50ef72d041bc5798e655e648970a0cd4584955d163e89eacef8ced7f1",
+    "LINKUSDT": "7e09791c3427cb8ed5bc6e42f18c1d54636b6194b49bb50980ac41205207c1f3",
+    "LSKUSDT": "829161e6de0e775849ef50f94656209806d6018990e23cd832112b45715fade2",
+    "NEARUSDT": "56e5eb2ed35e5db2e8c329a03e4c6e9c231c78b7cea93e8c4a89af8e46f9ca46",
+    "PUMPUSDT": "83845b5042566b967bac16a771aeacb391c11b7ce0b9eee6be29d255869d5f9e",
+    "QNTUSDT": "decca4ff988e7b30837187048f7b06dc10e9ee13a4312693c96b2a299da57fa0",
+    "SOLUSDT": "7f0cb86a52a75e143a50dc662d0da857bbe5c783f235ebb64c72161d0a6423bd",
+    "SUIUSDT": "60313f17f09f44d5015ee69d960fc165b58cc128bf0efb698dd3bc7224e5aebb",
+    "UNIUSDT": "3b9270610dc91a57967535f61c080be84bca5501d697e9ad70fd2717e1446ca8",
+    "WLDUSDT": "6e6499d382e54cdf9efede3f1629672165f274476e713b050c58394e762a10a5",
+    "XRPUSDT": "76afecd4973695f69713979e335a3330a534bf0b2304365f7360532916f4d3c6",
+    "ZECUSDT": "a47b6ac2e8c9193af20b6f7db8470db0394dcb2a8592f7b2ef27cf66b4f5a662"
+   },
+   "regime4h": "f97d65b5690b11c8809aada183f2174a538dbae8eb41248c5f5d0ee66e605cd9",
+   "commit": "a53a649cc228d74a943f05ab462be6fcfb278473",
+   "hold_med": 3.0,
+   "hold_mean": 4.691567628749293,
+   "mfe": 1400.394744,
+   "mae": 1711.676809,
+   "giveback": 1769.24879,
+   "pf_r": 0.68713978803498,
+   "top3_share": 0.366478728352112,
+   "top3": {
+    "BTCUSDT": -60.8,
+    "BNBUSDT": -41.5,
+    "ETHUSDT": -35.7
+   },
+   "decomp": {
+    "gross_before_slip_r": -13.169944931693266,
+    "slip_r": 100.37939782840544,
+    "fee_r": 250.9484945710136,
+    "funding_r": 4.356313969390881,
+    "net_r": -368.854074,
+    "gap": 9.430235659468877e-06,
+    "runner_r_diff": 2.220446049250313e-16
+   },
+   "gross_pt": -0.007453279531235577,
+   "cost_pt": 0.20129270309496886,
+   "fee_r_pt": 0.14201952154556516,
+   "quarters": {
+    "2024Q4": -151.56,
+    "2025Q1": -157.6,
+    "2025Q2": -59.7
+   },
+   "regime": {
+    "btc_above_ema200": [
+     1073,
+     -253.68
+    ],
+    "btc_below_ema200": [
+     694,
+     -115.17
+    ]
+   }
+  },
+  "fixr": {
+   "status": "ok",
+   "raw_sig": 11347,
+   "trades": 6425,
+   "pf": 0.597436,
+   "win": 0.40155642023346305,
+   "net_cash": -1829431.234154,
+   "net_r": -1831.098176,
+   "max_dd_r": 1844.494773,
+   "max_dd_eq": -0.001843,
+   "bust": false,
+   "bust_time": null,
+   "bust_trade": null,
+   "incomplete": [
+    "HYPEUSDT",
+    "PUMPUSDT"
+   ],
+   "run_syms": [
+    "BTCUSDT",
+    "ETHUSDT",
+    "ZECUSDT",
+    "SOLUSDT",
+    "XRPUSDT",
+    "NEARUSDT",
+    "DOGEUSDT",
+    "UNIUSDT",
+    "SUIUSDT",
+    "QNTUSDT",
+    "BNBUSDT",
+    "LSKUSDT",
+    "ENAUSDT",
+    "1000PEPEUSDT",
+    "WLDUSDT",
+    "ADAUSDT",
+    "AVAXUSDT",
+    "LINKUSDT"
+   ],
+   "liq": 0,
+   "curve_end": 998170319.756998,
+   "fee_share_abs": 0.161214,
+   "packet": "4b67a51529fb",
+   "files": {
+    "1000PEPEUSDT": "965f4d2d09c9b0825ee9111a2c75b9690760133b8489160f89c74ff367ba9252",
+    "ADAUSDT": "4830b92195cbde1bc603f49fc5f0df529342b52d9d5912db16da93d5b5a59561",
+    "AVAXUSDT": "57ca6976dac87a33749498120e96b14b05061e46ad991923b8521747fcc9d18c",
+    "BNBUSDT": "374b1853cb135260d1395366b906c2468603bac8c0667cb4f9c83a710649b492",
+    "BTCUSDT": "78596bc43123fdda13650d78524f79966801c31ed8384dd4bf83586da944d6e3",
+    "DOGEUSDT": "a95ef9911e5465c21e9feaa47d45f9b74d7947e3e586eeeebd348adbbb83089d",
+    "ENAUSDT": "d87c7f849001b1183f7a18a91f367d2be647ffc5adeb60e4854990637ca89289",
+    "ETHUSDT": "476730a8ce348de694614841da2916e76479feef6df3d960e0f3324bc7b90125",
+    "HYPEUSDT": "02130df50ef72d041bc5798e655e648970a0cd4584955d163e89eacef8ced7f1",
+    "LINKUSDT": "7e09791c3427cb8ed5bc6e42f18c1d54636b6194b49bb50980ac41205207c1f3",
+    "LSKUSDT": "829161e6de0e775849ef50f94656209806d6018990e23cd832112b45715fade2",
+    "NEARUSDT": "56e5eb2ed35e5db2e8c329a03e4c6e9c231c78b7cea93e8c4a89af8e46f9ca46",
+    "PUMPUSDT": "83845b5042566b967bac16a771aeacb391c11b7ce0b9eee6be29d255869d5f9e",
+    "QNTUSDT": "decca4ff988e7b30837187048f7b06dc10e9ee13a4312693c96b2a299da57fa0",
+    "SOLUSDT": "7f0cb86a52a75e143a50dc662d0da857bbe5c783f235ebb64c72161d0a6423bd",
+    "SUIUSDT": "60313f17f09f44d5015ee69d960fc165b58cc128bf0efb698dd3bc7224e5aebb",
+    "UNIUSDT": "3b9270610dc91a57967535f61c080be84bca5501d697e9ad70fd2717e1446ca8",
+    "WLDUSDT": "6e6499d382e54cdf9efede3f1629672165f274476e713b050c58394e762a10a5",
+    "XRPUSDT": "76afecd4973695f69713979e335a3330a534bf0b2304365f7360532916f4d3c6",
+    "ZECUSDT": "a47b6ac2e8c9193af20b6f7db8470db0394dcb2a8592f7b2ef27cf66b4f5a662"
+   },
+   "regime4h": "f97d65b5690b11c8809aada183f2174a538dbae8eb41248c5f5d0ee66e605cd9",
+   "commit": "a53a649cc228d74a943f05ab462be6fcfb278473",
+   "hold_med": 3.0,
+   "hold_mean": 4.544435797665369,
+   "mfe": 5036.205961,
+   "mae": 6500.297365999999,
+   "giveback": 6867.304139,
+   "pf_r": 0.5974176045430852,
+   "top3_share": 0.255379807117453,
+   "top3": {
+    "BTCUSDT": -203.7,
+    "SOLUSDT": -136.2,
+    "BNBUSDT": -127.8
+   },
+   "decomp": {
+    "gross_before_slip_r": -224.284933346566,
+    "slip_r": 453.6677953348386,
+    "fee_r": 1134.1694883370967,
+    "funding_r": 18.975958877423594,
+    "net_r": -1831.098176,
+    "gap": 1.0018390561583601e-09,
+    "runner_r_diff": 1.1102230246251565e-16
+   },
+   "gross_pt": -0.03490816083215035,
+   "cost_pt": 0.250087664210017,
+   "fee_r_pt": 0.1765244339824275,
+   "quarters": {
+    "2024Q4": -182.37,
+    "2025Q1": -175.45,
+    "2025Q2": -187.84,
+    "2025Q3": -219.41,
+    "2025Q4": -288.8,
+    "2026Q1": -307.31,
+    "2026Q2": -215.2,
+    "2026Q3": -254.72
+   },
+   "regime": {
+    "btc_above_ema200": [
+     3343,
+     -952.07
+    ],
+    "btc_below_ema200": [
+     3082,
+     -879.03
+    ]
+   }
+  }
+ },
+ "CORE-20_range_scalp_short": {
+  "acct": {
+   "status": "ok",
+   "raw_sig": 12325,
+   "trades": 1629,
+   "pf": 0.667734,
+   "win": 0.4106813996316759,
+   "net_cash": -489.957981,
+   "net_r": -369.546963,
+   "max_dd_r": 369.546963,
+   "max_dd_eq": -0.980096,
+   "bust": true,
+   "bust_time": "2025-02-17T14:00:00Z",
+   "bust_trade": 1104,
+   "incomplete": [
+    "HYPEUSDT",
+    "PUMPUSDT"
+   ],
+   "run_syms": [
+    "BTCUSDT",
+    "ETHUSDT",
+    "ZECUSDT",
+    "SOLUSDT",
+    "XRPUSDT",
+    "NEARUSDT",
+    "DOGEUSDT",
+    "UNIUSDT",
+    "SUIUSDT",
+    "QNTUSDT",
+    "BNBUSDT",
+    "LSKUSDT",
+    "ENAUSDT",
+    "1000PEPEUSDT",
+    "WLDUSDT",
+    "ADAUSDT",
+    "AVAXUSDT",
+    "LINKUSDT"
+   ],
+   "liq": 0,
+   "curve_end": 9.951802,
+   "fee_share_abs": 0.135312,
+   "packet": "99dad3d3ca4b",
+   "files": {
+    "1000PEPEUSDT": "965f4d2d09c9b0825ee9111a2c75b9690760133b8489160f89c74ff367ba9252",
+    "ADAUSDT": "4830b92195cbde1bc603f49fc5f0df529342b52d9d5912db16da93d5b5a59561",
+    "AVAXUSDT": "57ca6976dac87a33749498120e96b14b05061e46ad991923b8521747fcc9d18c",
+    "BNBUSDT": "374b1853cb135260d1395366b906c2468603bac8c0667cb4f9c83a710649b492",
+    "BTCUSDT": "78596bc43123fdda13650d78524f79966801c31ed8384dd4bf83586da944d6e3",
+    "DOGEUSDT": "a95ef9911e5465c21e9feaa47d45f9b74d7947e3e586eeeebd348adbbb83089d",
+    "ENAUSDT": "d87c7f849001b1183f7a18a91f367d2be647ffc5adeb60e4854990637ca89289",
+    "ETHUSDT": "476730a8ce348de694614841da2916e76479feef6df3d960e0f3324bc7b90125",
+    "HYPEUSDT": "02130df50ef72d041bc5798e655e648970a0cd4584955d163e89eacef8ced7f1",
+    "LINKUSDT": "7e09791c3427cb8ed5bc6e42f18c1d54636b6194b49bb50980ac41205207c1f3",
+    "LSKUSDT": "829161e6de0e775849ef50f94656209806d6018990e23cd832112b45715fade2",
+    "NEARUSDT": "56e5eb2ed35e5db2e8c329a03e4c6e9c231c78b7cea93e8c4a89af8e46f9ca46",
+    "PUMPUSDT": "83845b5042566b967bac16a771aeacb391c11b7ce0b9eee6be29d255869d5f9e",
+    "QNTUSDT": "decca4ff988e7b30837187048f7b06dc10e9ee13a4312693c96b2a299da57fa0",
+    "SOLUSDT": "7f0cb86a52a75e143a50dc662d0da857bbe5c783f235ebb64c72161d0a6423bd",
+    "SUIUSDT": "60313f17f09f44d5015ee69d960fc165b58cc128bf0efb698dd3bc7224e5aebb",
+    "UNIUSDT": "3b9270610dc91a57967535f61c080be84bca5501d697e9ad70fd2717e1446ca8",
+    "WLDUSDT": "6e6499d382e54cdf9efede3f1629672165f274476e713b050c58394e762a10a5",
+    "XRPUSDT": "76afecd4973695f69713979e335a3330a534bf0b2304365f7360532916f4d3c6",
+    "ZECUSDT": "a47b6ac2e8c9193af20b6f7db8470db0394dcb2a8592f7b2ef27cf66b4f5a662"
+   },
+   "regime4h": "f97d65b5690b11c8809aada183f2174a538dbae8eb41248c5f5d0ee66e605cd9",
+   "commit": "a53a649cc228d74a943f05ab462be6fcfb278473",
+   "hold_med": 3.0,
+   "hold_mean": 4.883977900552487,
+   "mfe": 1325.684052,
+   "mae": 1606.827068,
+   "giveback": 1695.230995,
+   "pf_r": 0.6612721442142246,
+   "top3_share": 0.3511483071776152,
+   "top3": {
+    "BTCUSDT": -44.5,
+    "BNBUSDT": -44.3,
+    "DOGEUSDT": -42.7
+   },
+   "decomp": {
+    "gross_before_slip_r": -37.55403517675311,
+    "slip_r": 93.65326780197864,
+    "fee_r": 234.13316950494664,
+    "funding_r": 4.206531972790877,
+    "net_r": -369.546963,
+    "gap": 9.622776895534813e-06,
+    "runner_r_diff": 2.220446049250313e-16
+   },
+   "gross_pt": -0.02305342859223641,
+   "cost_pt": 0.20380169998754827,
+   "fee_r_pt": 0.14372815807547368,
+   "quarters": {
+    "2024Q4": -133.25,
+    "2025Q1": -163.22,
+    "2025Q2": -73.07
+   },
+   "regime": {
+    "btc_above_ema200": [
+     982,
+     -157.53
+    ],
+    "btc_below_ema200": [
+     647,
+     -212.02
+    ]
+   }
+  },
+  "fixr": {
+   "status": "ok",
+   "raw_sig": 12325,
+   "trades": 6505,
+   "pf": 0.603206,
+   "win": 0.40953112990007684,
+   "net_cash": -1802996.123679,
+   "net_r": -1804.6148449999998,
+   "max_dd_r": 1804.614858,
+   "max_dd_eq": -0.001803,
+   "bust": false,
+   "bust_time": null,
+   "bust_trade": null,
+   "incomplete": [
+    "HYPEUSDT",
+    "PUMPUSDT"
+   ],
+   "run_syms": [
+    "BTCUSDT",
+    "ETHUSDT",
+    "ZECUSDT",
+    "SOLUSDT",
+    "XRPUSDT",
+    "NEARUSDT",
+    "DOGEUSDT",
+    "UNIUSDT",
+    "SUIUSDT",
+    "QNTUSDT",
+    "BNBUSDT",
+    "LSKUSDT",
+    "ENAUSDT",
+    "1000PEPEUSDT",
+    "WLDUSDT",
+    "ADAUSDT",
+    "AVAXUSDT",
+    "LINKUSDT"
+   ],
+   "liq": 0,
+   "curve_end": 998197003.876318,
+   "fee_share_abs": 0.171631,
+   "packet": "33fbd168928a",
+   "files": {
+    "1000PEPEUSDT": "965f4d2d09c9b0825ee9111a2c75b9690760133b8489160f89c74ff367ba9252",
+    "ADAUSDT": "4830b92195cbde1bc603f49fc5f0df529342b52d9d5912db16da93d5b5a59561",
+    "AVAXUSDT": "57ca6976dac87a33749498120e96b14b05061e46ad991923b8521747fcc9d18c",
+    "BNBUSDT": "374b1853cb135260d1395366b906c2468603bac8c0667cb4f9c83a710649b492",
+    "BTCUSDT": "78596bc43123fdda13650d78524f79966801c31ed8384dd4bf83586da944d6e3",
+    "DOGEUSDT": "a95ef9911e5465c21e9feaa47d45f9b74d7947e3e586eeeebd348adbbb83089d",
+    "ENAUSDT": "d87c7f849001b1183f7a18a91f367d2be647ffc5adeb60e4854990637ca89289",
+    "ETHUSDT": "476730a8ce348de694614841da2916e76479feef6df3d960e0f3324bc7b90125",
+    "HYPEUSDT": "02130df50ef72d041bc5798e655e648970a0cd4584955d163e89eacef8ced7f1",
+    "LINKUSDT": "7e09791c3427cb8ed5bc6e42f18c1d54636b6194b49bb50980ac41205207c1f3",
+    "LSKUSDT": "829161e6de0e775849ef50f94656209806d6018990e23cd832112b45715fade2",
+    "NEARUSDT": "56e5eb2ed35e5db2e8c329a03e4c6e9c231c78b7cea93e8c4a89af8e46f9ca46",
+    "PUMPUSDT": "83845b5042566b967bac16a771aeacb391c11b7ce0b9eee6be29d255869d5f9e",
+    "QNTUSDT": "decca4ff988e7b30837187048f7b06dc10e9ee13a4312693c96b2a299da57fa0",
+    "SOLUSDT": "7f0cb86a52a75e143a50dc662d0da857bbe5c783f235ebb64c72161d0a6423bd",
+    "SUIUSDT": "60313f17f09f44d5015ee69d960fc165b58cc128bf0efb698dd3bc7224e5aebb",
+    "UNIUSDT": "3b9270610dc91a57967535f61c080be84bca5501d697e9ad70fd2717e1446ca8",
+    "WLDUSDT": "6e6499d382e54cdf9efede3f1629672165f274476e713b050c58394e762a10a5",
+    "XRPUSDT": "76afecd4973695f69713979e335a3330a534bf0b2304365f7360532916f4d3c6",
+    "ZECUSDT": "a47b6ac2e8c9193af20b6f7db8470db0394dcb2a8592f7b2ef27cf66b4f5a662"
+   },
+   "regime4h": "f97d65b5690b11c8809aada183f2174a538dbae8eb41248c5f5d0ee66e605cd9",
+   "commit": "a53a649cc228d74a943f05ab462be6fcfb278473",
+   "hold_med": 3.0,
+   "hold_mean": 4.843351268255188,
+   "mfe": 5210.437443000001,
+   "mae": 6541.372606999999,
+   "giveback": 7015.052258,
+   "pf_r": 0.6031920948244317,
+   "top3_share": 0.32770635221057376,
+   "top3": {
+    "BTCUSDT": -239.5,
+    "BNBUSDT": -213.3,
+    "ETHUSDT": -138.6
+   },
+   "decomp": {
+    "gross_before_slip_r": -88.41468687093459,
+    "slip_r": 484.2450912572924,
+    "fee_r": 1210.612728143231,
+    "funding_r": 21.34233874258919,
+    "net_r": -1804.6148449999998,
+    "gap": 1.0018053053784115e-09,
+    "runner_r_diff": 1.1102230246251565e-16
+   },
+   "gross_pt": -0.01359180428454029,
+   "cost_pt": 0.263827849061201,
+   "fee_r_pt": 0.18610495436483182,
+   "quarters": {
+    "2024Q4": -151.62,
+    "2025Q1": -202.01,
+    "2025Q2": -262.68,
+    "2025Q3": -253.69,
+    "2025Q4": -219.34,
+    "2026Q1": -154.8,
+    "2026Q2": -233.04,
+    "2026Q3": -327.43
+   },
+   "regime": {
+    "btc_above_ema200": [
+     3563,
+     -990.16
+    ],
+    "btc_below_ema200": [
+     2942,
+     -814.45
+    ]
+   }
+  }
+ },
+ "CORE-20_failed_breakout_scalp_long": {
+  "acct": {
+   "status": "ok",
+   "raw_sig": 23153,
+   "trades": 2082,
+   "pf": 0.69552,
+   "win": 0.37319884726224783,
+   "net_cash": -490.069526,
+   "net_r": -366.059138,
+   "max_dd_r": 369.334359,
+   "max_dd_eq": -0.980949,
+   "bust": true,
+   "bust_time": "2025-01-12T06:15:00Z",
+   "bust_trade": 1572,
+   "incomplete": [
+    "HYPEUSDT",
+    "PUMPUSDT"
+   ],
+   "run_syms": [
+    "BTCUSDT",
+    "ETHUSDT",
+    "ZECUSDT",
+    "SOLUSDT",
+    "XRPUSDT",
+    "NEARUSDT",
+    "DOGEUSDT",
+    "UNIUSDT",
+    "SUIUSDT",
+    "QNTUSDT",
+    "BNBUSDT",
+    "LSKUSDT",
+    "ENAUSDT",
+    "1000PEPEUSDT",
+    "WLDUSDT",
+    "ADAUSDT",
+    "AVAXUSDT",
+    "LINKUSDT"
+   ],
+   "liq": 0,
+   "curve_end": 9.930469,
+   "fee_share_abs": 0.161737,
+   "packet": "da6f33e64715",
+   "files": {
+    "1000PEPEUSDT": "965f4d2d09c9b0825ee9111a2c75b9690760133b8489160f89c74ff367ba9252",
+    "ADAUSDT": "4830b92195cbde1bc603f49fc5f0df529342b52d9d5912db16da93d5b5a59561",
+    "AVAXUSDT": "57ca6976dac87a33749498120e96b14b05061e46ad991923b8521747fcc9d18c",
+    "BNBUSDT": "374b1853cb135260d1395366b906c2468603bac8c0667cb4f9c83a710649b492",
+    "BTCUSDT": "78596bc43123fdda13650d78524f79966801c31ed8384dd4bf83586da944d6e3",
+    "DOGEUSDT": "a95ef9911e5465c21e9feaa47d45f9b74d7947e3e586eeeebd348adbbb83089d",
+    "ENAUSDT": "d87c7f849001b1183f7a18a91f367d2be647ffc5adeb60e4854990637ca89289",
+    "ETHUSDT": "476730a8ce348de694614841da2916e76479feef6df3d960e0f3324bc7b90125",
+    "HYPEUSDT": "02130df50ef72d041bc5798e655e648970a0cd4584955d163e89eacef8ced7f1",
+    "LINKUSDT": "7e09791c3427cb8ed5bc6e42f18c1d54636b6194b49bb50980ac41205207c1f3",
+    "LSKUSDT": "829161e6de0e775849ef50f94656209806d6018990e23cd832112b45715fade2",
+    "NEARUSDT": "56e5eb2ed35e5db2e8c329a03e4c6e9c231c78b7cea93e8c4a89af8e46f9ca46",
+    "PUMPUSDT": "83845b5042566b967bac16a771aeacb391c11b7ce0b9eee6be29d255869d5f9e",
+    "QNTUSDT": "decca4ff988e7b30837187048f7b06dc10e9ee13a4312693c96b2a299da57fa0",
+    "SOLUSDT": "7f0cb86a52a75e143a50dc662d0da857bbe5c783f235ebb64c72161d0a6423bd",
+    "SUIUSDT": "60313f17f09f44d5015ee69d960fc165b58cc128bf0efb698dd3bc7224e5aebb",
+    "UNIUSDT": "3b9270610dc91a57967535f61c080be84bca5501d697e9ad70fd2717e1446ca8",
+    "WLDUSDT": "6e6499d382e54cdf9efede3f1629672165f274476e713b050c58394e762a10a5",
+    "XRPUSDT": "76afecd4973695f69713979e335a3330a534bf0b2304365f7360532916f4d3c6",
+    "ZECUSDT": "a47b6ac2e8c9193af20b6f7db8470db0394dcb2a8592f7b2ef27cf66b4f5a662"
+   },
+   "regime4h": "f97d65b5690b11c8809aada183f2174a538dbae8eb41248c5f5d0ee66e605cd9",
+   "commit": "a53a649cc228d74a943f05ab462be6fcfb278473",
+   "hold_med": 3.0,
+   "hold_mean": 4.421229586935639,
+   "mfe": 1333.422681,
+   "mae": 1750.658946,
+   "giveback": 1699.4817830000002,
+   "pf_r": 0.6992916666517434,
+   "top3_share": 0.3359018033524361,
+   "top3": {
+    "BTCUSDT": -48.2,
+    "ZECUSDT": -45.9,
+    "BNBUSDT": -34.3
+   },
+   "decomp": {
+    "gross_before_slip_r": 42.84611959654893,
+    "slip_r": 115.65763394695121,
+    "fee_r": 289.144084867378,
+    "funding_r": 4.103622008189873,
+    "net_r": -366.05913799999996,
+    "gap": 9.884657650172102e-06,
+    "runner_r_diff": 2.220446049250313e-16
+   },
+   "gross_pt": 0.02057930816356817,
+   "cost_pt": 0.19640025976105624,
+   "fee_r_pt": 0.138878042683659,
+   "quarters": {
+    "2024Q4": -162.62,
+    "2025Q1": -203.44
+   },
+   "regime": {
+    "btc_above_ema200": [
+     1612,
+     -305.53
+    ],
+    "btc_below_ema200": [
+     470,
+     -60.53
+    ]
+   }
+  },
+  "fixr": {
+   "status": "ok",
+   "raw_sig": 23153,
+   "trades": 16051,
+   "pf": 0.586327,
+   "win": 0.3548688555230204,
+   "net_cash": -4152330.1805570005,
+   "net_r": -4160.955182000001,
+   "max_dd_r": 4170.792676,
+   "max_dd_eq": -0.004164,
+   "bust": false,
+   "bust_time": null,
+   "bust_trade": null,
+   "incomplete": [
+    "HYPEUSDT",
+    "PUMPUSDT"
+   ],
+   "run_syms": [
+    "BTCUSDT",
+    "ETHUSDT",
+    "ZECUSDT",
+    "SOLUSDT",
+    "XRPUSDT",
+    "NEARUSDT",
+    "DOGEUSDT",
+    "UNIUSDT",
+    "SUIUSDT",
+    "QNTUSDT",
+    "BNBUSDT",
+    "LSKUSDT",
+    "ENAUSDT",
+    "1000PEPEUSDT",
+    "WLDUSDT",
+    "ADAUSDT",
+    "AVAXUSDT",
+    "LINKUSDT"
+   ],
+   "liq": 0,
+   "curve_end": 995847580.856244,
+   "fee_share_abs": 0.185981,
+   "packet": "94a916387f59",
+   "files": {
+    "1000PEPEUSDT": "965f4d2d09c9b0825ee9111a2c75b9690760133b8489160f89c74ff367ba9252",
+    "ADAUSDT": "4830b92195cbde1bc603f49fc5f0df529342b52d9d5912db16da93d5b5a59561",
+    "AVAXUSDT": "57ca6976dac87a33749498120e96b14b05061e46ad991923b8521747fcc9d18c",
+    "BNBUSDT": "374b1853cb135260d1395366b906c2468603bac8c0667cb4f9c83a710649b492",
+    "BTCUSDT": "78596bc43123fdda13650d78524f79966801c31ed8384dd4bf83586da944d6e3",
+    "DOGEUSDT": "a95ef9911e5465c21e9feaa47d45f9b74d7947e3e586eeeebd348adbbb83089d",
+    "ENAUSDT": "d87c7f849001b1183f7a18a91f367d2be647ffc5adeb60e4854990637ca89289",
+    "ETHUSDT": "476730a8ce348de694614841da2916e76479feef6df3d960e0f3324bc7b90125",
+    "HYPEUSDT": "02130df50ef72d041bc5798e655e648970a0cd4584955d163e89eacef8ced7f1",
+    "LINKUSDT": "7e09791c3427cb8ed5bc6e42f18c1d54636b6194b49bb50980ac41205207c1f3",
+    "LSKUSDT": "829161e6de0e775849ef50f94656209806d6018990e23cd832112b45715fade2",
+    "NEARUSDT": "56e5eb2ed35e5db2e8c329a03e4c6e9c231c78b7cea93e8c4a89af8e46f9ca46",
+    "PUMPUSDT": "83845b5042566b967bac16a771aeacb391c11b7ce0b9eee6be29d255869d5f9e",
+    "QNTUSDT": "decca4ff988e7b30837187048f7b06dc10e9ee13a4312693c96b2a299da57fa0",
+    "SOLUSDT": "7f0cb86a52a75e143a50dc662d0da857bbe5c783f235ebb64c72161d0a6423bd",
+    "SUIUSDT": "60313f17f09f44d5015ee69d960fc165b58cc128bf0efb698dd3bc7224e5aebb",
+    "UNIUSDT": "3b9270610dc91a57967535f61c080be84bca5501d697e9ad70fd2717e1446ca8",
+    "WLDUSDT": "6e6499d382e54cdf9efede3f1629672165f274476e713b050c58394e762a10a5",
+    "XRPUSDT": "76afecd4973695f69713979e335a3330a534bf0b2304365f7360532916f4d3c6",
+    "ZECUSDT": "a47b6ac2e8c9193af20b6f7db8470db0394dcb2a8592f7b2ef27cf66b4f5a662"
+   },
+   "regime4h": "f97d65b5690b11c8809aada183f2174a538dbae8eb41248c5f5d0ee66e605cd9",
+   "commit": "a53a649cc228d74a943f05ab462be6fcfb278473",
+   "hold_med": 3.0,
+   "hold_mean": 4.633979191327644,
+   "mfe": 9935.250517,
+   "mae": 14130.804221999999,
+   "giveback": 14096.205618,
+   "pf_r": 0.5862978458576094,
+   "top3_share": 0.3202863216996794,
+   "top3": {
+    "BTCUSDT": -544.8,
+    "BNBUSDT": -434.1,
+    "XRPUSDT": -353.7
+   },
+   "decomp": {
+    "gross_before_slip_r": -187.3554633259606,
+    "slip_r": 1123.4690569718564,
+    "fee_r": 2808.6726424296407,
+    "funding_r": 41.45801914015535,
+    "net_r": -4160.955182000001,
+    "gap": 1.0041721898446099e-09,
+    "runner_r_diff": 1.1102230246251565e-16
+   },
+   "gross_pt": -0.011672510331191864,
+   "cost_pt": 0.24756088209716856,
+   "fee_r_pt": 0.1749842777664719,
+   "quarters": {
+    "2024Q4": -290.73,
+    "2025Q1": -543.98,
+    "2025Q2": -586.68,
+    "2025Q3": -599.99,
+    "2025Q4": -555.67,
+    "2026Q1": -581.96,
+    "2026Q2": -522.92,
+    "2026Q3": -479.03
+   },
+   "regime": {
+    "btc_above_ema200": [
+     8204,
+     -2212.87
+    ],
+    "btc_below_ema200": [
+     7847,
+     -1948.09
+    ]
+   }
+  }
+ },
+ "CORE-20_failed_breakout_scalp_short": {
+  "acct": {
+   "status": "ok",
+   "raw_sig": 23357,
+   "trades": 2133,
+   "pf": 0.713235,
+   "win": 0.3788091889357712,
+   "net_cash": -489.984732,
+   "net_r": -368.17310100000003,
+   "max_dd_r": 368.173091,
+   "max_dd_eq": -0.980111,
+   "bust": true,
+   "bust_time": "2024-12-07T05:30:00Z",
+   "bust_trade": 1221,
+   "incomplete": [
+    "HYPEUSDT",
+    "PUMPUSDT"
+   ],
+   "run_syms": [
+    "BTCUSDT",
+    "ETHUSDT",
+    "ZECUSDT",
+    "SOLUSDT",
+    "XRPUSDT",
+    "NEARUSDT",
+    "DOGEUSDT",
+    "UNIUSDT",
+    "SUIUSDT",
+    "QNTUSDT",
+    "BNBUSDT",
+    "LSKUSDT",
+    "ENAUSDT",
+    "1000PEPEUSDT",
+    "WLDUSDT",
+    "ADAUSDT",
+    "AVAXUSDT",
+    "LINKUSDT"
+   ],
+   "liq": 0,
+   "curve_end": 9.944743,
+   "fee_share_abs": 0.161149,
+   "packet": "c585431ae7f8",
+   "files": {
+    "1000PEPEUSDT": "965f4d2d09c9b0825ee9111a2c75b9690760133b8489160f89c74ff367ba9252",
+    "ADAUSDT": "4830b92195cbde1bc603f49fc5f0df529342b52d9d5912db16da93d5b5a59561",
+    "AVAXUSDT": "57ca6976dac87a33749498120e96b14b05061e46ad991923b8521747fcc9d18c",
+    "BNBUSDT": "374b1853cb135260d1395366b906c2468603bac8c0667cb4f9c83a710649b492",
+    "BTCUSDT": "78596bc43123fdda13650d78524f79966801c31ed8384dd4bf83586da944d6e3",
+    "DOGEUSDT": "a95ef9911e5465c21e9feaa47d45f9b74d7947e3e586eeeebd348adbbb83089d",
+    "ENAUSDT": "d87c7f849001b1183f7a18a91f367d2be647ffc5adeb60e4854990637ca89289",
+    "ETHUSDT": "476730a8ce348de694614841da2916e76479feef6df3d960e0f3324bc7b90125",
+    "HYPEUSDT": "02130df50ef72d041bc5798e655e648970a0cd4584955d163e89eacef8ced7f1",
+    "LINKUSDT": "7e09791c3427cb8ed5bc6e42f18c1d54636b6194b49bb50980ac41205207c1f3",
+    "LSKUSDT": "829161e6de0e775849ef50f94656209806d6018990e23cd832112b45715fade2",
+    "NEARUSDT": "56e5eb2ed35e5db2e8c329a03e4c6e9c231c78b7cea93e8c4a89af8e46f9ca46",
+    "PUMPUSDT": "83845b5042566b967bac16a771aeacb391c11b7ce0b9eee6be29d255869d5f9e",
+    "QNTUSDT": "decca4ff988e7b30837187048f7b06dc10e9ee13a4312693c96b2a299da57fa0",
+    "SOLUSDT": "7f0cb86a52a75e143a50dc662d0da857bbe5c783f235ebb64c72161d0a6423bd",
+    "SUIUSDT": "60313f17f09f44d5015ee69d960fc165b58cc128bf0efb698dd3bc7224e5aebb",
+    "UNIUSDT": "3b9270610dc91a57967535f61c080be84bca5501d697e9ad70fd2717e1446ca8",
+    "WLDUSDT": "6e6499d382e54cdf9efede3f1629672165f274476e713b050c58394e762a10a5",
+    "XRPUSDT": "76afecd4973695f69713979e335a3330a534bf0b2304365f7360532916f4d3c6",
+    "ZECUSDT": "a47b6ac2e8c9193af20b6f7db8470db0394dcb2a8592f7b2ef27cf66b4f5a662"
+   },
+   "regime4h": "f97d65b5690b11c8809aada183f2174a538dbae8eb41248c5f5d0ee66e605cd9",
+   "commit": "a53a649cc228d74a943f05ab462be6fcfb278473",
+   "hold_med": 3.0,
+   "hold_mean": 4.393342709798406,
+   "mfe": 1412.172488,
+   "mae": 1845.6992019999998,
+   "giveback": 1780.345604,
+   "pf_r": 0.7084018445350603,
+   "top3_share": 0.42241863079759034,
+   "top3": {
+    "BTCUSDT": -64.7,
+    "BNBUSDT": -59.3,
+    "SOLUSDT": -48.8
+   },
+   "decomp": {
+    "gross_before_slip_r": 53.58252354645771,
+    "slip_r": 119.30646745122763,
+    "fee_r": 298.26616862806907,
+    "funding_r": 4.182896608894253,
+    "net_r": -368.17310100000003,
+    "gap": 9.751478408981384e-06,
+    "runner_r_diff": 2.220446049250313e-16
+   },
+   "gross_pt": 0.02512073302693751,
+   "cost_pt": 0.1977288010727571,
+   "fee_r_pt": 0.13983411562497378,
+   "quarters": {
+    "2024Q4": -285.73,
+    "2025Q1": -82.45
+   },
+   "regime": {
+    "btc_above_ema200": [
+     1849,
+     -308.54
+    ],
+    "btc_below_ema200": [
+     284,
+     -59.63
+    ]
+   }
+  },
+  "fixr": {
+   "status": "ok",
+   "raw_sig": 23357,
+   "trades": 17220,
+   "pf": 0.612813,
+   "win": 0.3655052264808362,
+   "net_cash": -4144596.189732,
+   "net_r": -4153.188595,
+   "max_dd_r": 4160.220401,
+   "max_dd_eq": -0.004152,
+   "bust": false,
+   "bust_time": null,
+   "bust_trade": null,
+   "incomplete": [
+    "HYPEUSDT",
+    "PUMPUSDT"
+   ],
+   "run_syms": [
+    "BTCUSDT",
+    "ETHUSDT",
+    "ZECUSDT",
+    "SOLUSDT",
+    "XRPUSDT",
+    "NEARUSDT",
+    "DOGEUSDT",
+    "UNIUSDT",
+    "SUIUSDT",
+    "QNTUSDT",
+    "BNBUSDT",
+    "LSKUSDT",
+    "ENAUSDT",
+    "1000PEPEUSDT",
+    "WLDUSDT",
+    "ADAUSDT",
+    "AVAXUSDT",
+    "LINKUSDT"
+   ],
+   "liq": 0,
+   "curve_end": 995855441.166246,
+   "fee_share_abs": 0.186484,
+   "packet": "71c0cb8bc26a",
+   "files": {
+    "1000PEPEUSDT": "965f4d2d09c9b0825ee9111a2c75b9690760133b8489160f89c74ff367ba9252",
+    "ADAUSDT": "4830b92195cbde1bc603f49fc5f0df529342b52d9d5912db16da93d5b5a59561",
+    "AVAXUSDT": "57ca6976dac87a33749498120e96b14b05061e46ad991923b8521747fcc9d18c",
+    "BNBUSDT": "374b1853cb135260d1395366b906c2468603bac8c0667cb4f9c83a710649b492",
+    "BTCUSDT": "78596bc43123fdda13650d78524f79966801c31ed8384dd4bf83586da944d6e3",
+    "DOGEUSDT": "a95ef9911e5465c21e9feaa47d45f9b74d7947e3e586eeeebd348adbbb83089d",
+    "ENAUSDT": "d87c7f849001b1183f7a18a91f367d2be647ffc5adeb60e4854990637ca89289",
+    "ETHUSDT": "476730a8ce348de694614841da2916e76479feef6df3d960e0f3324bc7b90125",
+    "HYPEUSDT": "02130df50ef72d041bc5798e655e648970a0cd4584955d163e89eacef8ced7f1",
+    "LINKUSDT": "7e09791c3427cb8ed5bc6e42f18c1d54636b6194b49bb50980ac41205207c1f3",
+    "LSKUSDT": "829161e6de0e775849ef50f94656209806d6018990e23cd832112b45715fade2",
+    "NEARUSDT": "56e5eb2ed35e5db2e8c329a03e4c6e9c231c78b7cea93e8c4a89af8e46f9ca46",
+    "PUMPUSDT": "83845b5042566b967bac16a771aeacb391c11b7ce0b9eee6be29d255869d5f9e",
+    "QNTUSDT": "decca4ff988e7b30837187048f7b06dc10e9ee13a4312693c96b2a299da57fa0",
+    "SOLUSDT": "7f0cb86a52a75e143a50dc662d0da857bbe5c783f235ebb64c72161d0a6423bd",
+    "SUIUSDT": "60313f17f09f44d5015ee69d960fc165b58cc128bf0efb698dd3bc7224e5aebb",
+    "UNIUSDT": "3b9270610dc91a57967535f61c080be84bca5501d697e9ad70fd2717e1446ca8",
+    "WLDUSDT": "6e6499d382e54cdf9efede3f1629672165f274476e713b050c58394e762a10a5",
+    "XRPUSDT": "76afecd4973695f69713979e335a3330a534bf0b2304365f7360532916f4d3c6",
+    "ZECUSDT": "a47b6ac2e8c9193af20b6f7db8470db0394dcb2a8592f7b2ef27cf66b4f5a662"
+   },
+   "regime4h": "f97d65b5690b11c8809aada183f2174a538dbae8eb41248c5f5d0ee66e605cd9",
+   "commit": "a53a649cc228d74a943f05ab462be6fcfb278473",
+   "hold_med": 3.0,
+   "hold_mean": 4.639082462253194,
+   "mfe": 10978.326146,
+   "mae": 14950.307206,
+   "giveback": 15131.514713,
+   "pf_r": 0.6127885894232277,
+   "top3_share": 0.36656422461354665,
+   "top3": {
+    "BTCUSDT": -627.0,
+    "BNBUSDT": -526.4,
+    "ETHUSDT": -369.0
+   },
+   "decomp": {
+    "gross_before_slip_r": 179.93098768415695,
+    "slip_r": 1225.463093602232,
+    "fee_r": 3063.65773400558,
+    "funding_r": 43.99875509539646,
+    "net_r": -4153.188595,
+    "gap": 1.004167637930209e-09,
+    "runner_r_diff": 2.220446049250313e-16
+   },
+   "gross_pt": 0.010448953988627,
+   "cost_pt": 0.25163296066801444,
+   "fee_r_pt": 0.1779127603952137,
+   "quarters": {
+    "2024Q4": -369.94,
+    "2025Q1": -451.31,
+    "2025Q2": -601.69,
+    "2025Q3": -714.81,
+    "2025Q4": -513.65,
+    "2026Q1": -481.17,
+    "2026Q2": -390.24,
+    "2026Q3": -630.39
+   },
+   "regime": {
+    "btc_above_ema200": [
+     9543,
+     -2419.86
+    ],
+    "btc_below_ema200": [
+     7677,
+     -1733.33
+    ]
+   }
+  }
+ },
+ "CORE-20_momentum_burst_scalp_long": {
+  "acct": {
+   "status": "ok",
+   "raw_sig": 13745,
+   "trades": 2691,
+   "pf": 0.694077,
+   "win": 0.38758825715347456,
+   "net_cash": -489.8417220000001,
+   "net_r": -367.785826,
+   "max_dd_r": 378.873807,
+   "max_dd_eq": -0.981988,
+   "bust": true,
+   "bust_time": "2025-02-21T14:15:00Z",
+   "bust_trade": 1704,
+   "incomplete": [
+    "HYPEUSDT",
+    "PUMPUSDT"
+   ],
+   "run_syms": [
+    "BTCUSDT",
+    "ETHUSDT",
+    "ZECUSDT",
+    "SOLUSDT",
+    "XRPUSDT",
+    "NEARUSDT",
+    "DOGEUSDT",
+    "UNIUSDT",
+    "SUIUSDT",
+    "QNTUSDT",
+    "BNBUSDT",
+    "LSKUSDT",
+    "ENAUSDT",
+    "1000PEPEUSDT",
+    "WLDUSDT",
+    "ADAUSDT",
+    "AVAXUSDT",
+    "LINKUSDT"
+   ],
+   "liq": 0,
+   "curve_end": 9.968961,
+   "fee_share_abs": 0.120028,
+   "packet": "615763c2295c",
+   "files": {
+    "1000PEPEUSDT": "965f4d2d09c9b0825ee9111a2c75b9690760133b8489160f89c74ff367ba9252",
+    "ADAUSDT": "4830b92195cbde1bc603f49fc5f0df529342b52d9d5912db16da93d5b5a59561",
+    "AVAXUSDT": "57ca6976dac87a33749498120e96b14b05061e46ad991923b8521747fcc9d18c",
+    "BNBUSDT": "374b1853cb135260d1395366b906c2468603bac8c0667cb4f9c83a710649b492",
+    "BTCUSDT": "78596bc43123fdda13650d78524f79966801c31ed8384dd4bf83586da944d6e3",
+    "DOGEUSDT": "a95ef9911e5465c21e9feaa47d45f9b74d7947e3e586eeeebd348adbbb83089d",
+    "ENAUSDT": "d87c7f849001b1183f7a18a91f367d2be647ffc5adeb60e4854990637ca89289",
+    "ETHUSDT": "476730a8ce348de694614841da2916e76479feef6df3d960e0f3324bc7b90125",
+    "HYPEUSDT": "02130df50ef72d041bc5798e655e648970a0cd4584955d163e89eacef8ced7f1",
+    "LINKUSDT": "7e09791c3427cb8ed5bc6e42f18c1d54636b6194b49bb50980ac41205207c1f3",
+    "LSKUSDT": "829161e6de0e775849ef50f94656209806d6018990e23cd832112b45715fade2",
+    "NEARUSDT": "56e5eb2ed35e5db2e8c329a03e4c6e9c231c78b7cea93e8c4a89af8e46f9ca46",
+    "PUMPUSDT": "83845b5042566b967bac16a771aeacb391c11b7ce0b9eee6be29d255869d5f9e",
+    "QNTUSDT": "decca4ff988e7b30837187048f7b06dc10e9ee13a4312693c96b2a299da57fa0",
+    "SOLUSDT": "7f0cb86a52a75e143a50dc662d0da857bbe5c783f235ebb64c72161d0a6423bd",
+    "SUIUSDT": "60313f17f09f44d5015ee69d960fc165b58cc128bf0efb698dd3bc7224e5aebb",
+    "UNIUSDT": "3b9270610dc91a57967535f61c080be84bca5501d697e9ad70fd2717e1446ca8",
+    "WLDUSDT": "6e6499d382e54cdf9efede3f1629672165f274476e713b050c58394e762a10a5",
+    "XRPUSDT": "76afecd4973695f69713979e335a3330a534bf0b2304365f7360532916f4d3c6",
+    "ZECUSDT": "a47b6ac2e8c9193af20b6f7db8470db0394dcb2a8592f7b2ef27cf66b4f5a662"
+   },
+   "regime4h": "f97d65b5690b11c8809aada183f2174a538dbae8eb41248c5f5d0ee66e605cd9",
+   "commit": "a53a649cc228d74a943f05ab462be6fcfb278473",
+   "hold_med": 2.0,
+   "hold_mean": 2.0483091787439616,
+   "mfe": 1575.6183420000002,
+   "mae": 2064.11641,
+   "giveback": 1943.404191,
+   "pf_r": 0.7231704910734683,
+   "top3_share": 0.36466469241226174,
+   "top3": {
+    "ETHUSDT": -66.9,
+    "SOLUSDT": -39.6,
+    "XRPUSDT": -34.0
+   },
+   "decomp": {
+    "gross_before_slip_r": 2.8396845927061634,
+    "slip_r": 105.1810432656109,
+    "fee_r": 262.9526081640272,
+    "funding_r": 2.4920874088951197,
+    "net_r": -367.785826,
+    "gap": 9.896029247447036e-06,
+    "runner_r_diff": 2.220446049250313e-16
+   },
+   "gross_pt": 0.001055252542811655,
+   "cost_pt": 0.1377278851127957,
+   "fee_r_pt": 0.09771557345374478,
+   "quarters": {
+    "2024Q4": -171.15,
+    "2025Q1": -106.34,
+    "2025Q2": -90.3
+   },
+   "regime": {
+    "btc_above_ema200": [
+     1920,
+     -251.75
+    ],
+    "btc_below_ema200": [
+     771,
+     -116.04
+    ]
+   }
+  },
+  "fixr": {
+   "status": "ok",
+   "raw_sig": 13745,
+   "trades": 8943,
+   "pf": 0.70413,
+   "win": 0.3767192217376719,
+   "net_cash": -1326452.077319,
+   "net_r": -1327.324983,
+   "max_dd_r": 1339.057013,
+   "max_dd_eq": -0.001338,
+   "bust": false,
+   "bust_time": null,
+   "bust_trade": null,
+   "incomplete": [
+    "HYPEUSDT",
+    "PUMPUSDT"
+   ],
+   "run_syms": [
+    "BTCUSDT",
+    "ETHUSDT",
+    "ZECUSDT",
+    "SOLUSDT",
+    "XRPUSDT",
+    "NEARUSDT",
+    "DOGEUSDT",
+    "UNIUSDT",
+    "SUIUSDT",
+    "QNTUSDT",
+    "BNBUSDT",
+    "LSKUSDT",
+    "ENAUSDT",
+    "1000PEPEUSDT",
+    "WLDUSDT",
+    "ADAUSDT",
+    "AVAXUSDT",
+    "LINKUSDT"
+   ],
+   "liq": 0,
+   "curve_end": 998673547.922697,
+   "fee_share_abs": 0.137801,
+   "packet": "f75de8eda712",
+   "files": {
+    "1000PEPEUSDT": "965f4d2d09c9b0825ee9111a2c75b9690760133b8489160f89c74ff367ba9252",
+    "ADAUSDT": "4830b92195cbde1bc603f49fc5f0df529342b52d9d5912db16da93d5b5a59561",
+    "AVAXUSDT": "57ca6976dac87a33749498120e96b14b05061e46ad991923b8521747fcc9d18c",
+    "BNBUSDT": "374b1853cb135260d1395366b906c2468603bac8c0667cb4f9c83a710649b492",
+    "BTCUSDT": "78596bc43123fdda13650d78524f79966801c31ed8384dd4bf83586da944d6e3",
+    "DOGEUSDT": "a95ef9911e5465c21e9feaa47d45f9b74d7947e3e586eeeebd348adbbb83089d",
+    "ENAUSDT": "d87c7f849001b1183f7a18a91f367d2be647ffc5adeb60e4854990637ca89289",
+    "ETHUSDT": "476730a8ce348de694614841da2916e76479feef6df3d960e0f3324bc7b90125",
+    "HYPEUSDT": "02130df50ef72d041bc5798e655e648970a0cd4584955d163e89eacef8ced7f1",
+    "LINKUSDT": "7e09791c3427cb8ed5bc6e42f18c1d54636b6194b49bb50980ac41205207c1f3",
+    "LSKUSDT": "829161e6de0e775849ef50f94656209806d6018990e23cd832112b45715fade2",
+    "NEARUSDT": "56e5eb2ed35e5db2e8c329a03e4c6e9c231c78b7cea93e8c4a89af8e46f9ca46",
+    "PUMPUSDT": "83845b5042566b967bac16a771aeacb391c11b7ce0b9eee6be29d255869d5f9e",
+    "QNTUSDT": "decca4ff988e7b30837187048f7b06dc10e9ee13a4312693c96b2a299da57fa0",
+    "SOLUSDT": "7f0cb86a52a75e143a50dc662d0da857bbe5c783f235ebb64c72161d0a6423bd",
+    "SUIUSDT": "60313f17f09f44d5015ee69d960fc165b58cc128bf0efb698dd3bc7224e5aebb",
+    "UNIUSDT": "3b9270610dc91a57967535f61c080be84bca5501d697e9ad70fd2717e1446ca8",
+    "WLDUSDT": "6e6499d382e54cdf9efede3f1629672165f274476e713b050c58394e762a10a5",
+    "XRPUSDT": "76afecd4973695f69713979e335a3330a534bf0b2304365f7360532916f4d3c6",
+    "ZECUSDT": "a47b6ac2e8c9193af20b6f7db8470db0394dcb2a8592f7b2ef27cf66b4f5a662"
+   },
+   "regime4h": "f97d65b5690b11c8809aada183f2174a538dbae8eb41248c5f5d0ee66e605cd9",
+   "commit": "a53a649cc228d74a943f05ab462be6fcfb278473",
+   "hold_med": 2.0,
+   "hold_mean": 1.9957508665995751,
+   "mfe": 5045.642613,
+   "mae": 6731.245917,
+   "giveback": 6372.967642,
+   "pf_r": 0.704118050837028,
+   "top3_share": 0.2869419877407672,
+   "top3": {
+    "ETHUSDT": -143.6,
+    "SOLUSDT": -120.7,
+    "QNTUSDT": -116.6
+   },
+   "decomp": {
+    "gross_before_slip_r": 112.81410639844347,
+    "slip_r": 408.74678545424274,
+    "fee_r": 1021.8669636356067,
+    "funding_r": 9.525340239571033,
+    "net_r": -1327.324983,
+    "gap": 1.0013287976562424e-09,
+    "runner_r_diff": 5.551115123125783e-17
+   },
+   "gross_pt": 0.012614794408860949,
+   "cost_pt": 0.1610353448875568,
+   "fee_r_pt": 0.11426444857828544,
+   "quarters": {
+    "2024Q4": -177.91,
+    "2025Q1": -114.18,
+    "2025Q2": -109.71,
+    "2025Q3": -145.53,
+    "2025Q4": -159.52,
+    "2026Q1": -212.52,
+    "2026Q2": -163.84,
+    "2026Q3": -244.11
+   },
+   "regime": {
+    "btc_above_ema200": [
+     4944,
+     -799.92
+    ],
+    "btc_below_ema200": [
+     3999,
+     -527.41
+    ]
+   }
+  }
+ },
+ "CORE-20_momentum_burst_scalp_short": {
+  "acct": {
+   "status": "ok",
+   "raw_sig": 12871,
+   "trades": 2625,
+   "pf": 0.615219,
+   "win": 0.3737142857142857,
+   "net_cash": -490.03974900000003,
+   "net_r": -368.653988,
+   "max_dd_r": 375.624203,
+   "max_dd_eq": -0.981436,
+   "bust": true,
+   "bust_time": "2025-02-23T23:45:00Z",
+   "bust_trade": 1446,
+   "incomplete": [
+    "HYPEUSDT",
+    "PUMPUSDT"
+   ],
+   "run_syms": [
+    "BTCUSDT",
+    "ETHUSDT",
+    "ZECUSDT",
+    "SOLUSDT",
+    "XRPUSDT",
+    "NEARUSDT",
+    "DOGEUSDT",
+    "UNIUSDT",
+    "SUIUSDT",
+    "QNTUSDT",
+    "BNBUSDT",
+    "LSKUSDT",
+    "ENAUSDT",
+    "1000PEPEUSDT",
+    "WLDUSDT",
+    "ADAUSDT",
+    "AVAXUSDT",
+    "LINKUSDT"
+   ],
+   "liq": 0,
+   "curve_end": 9.960256,
+   "fee_share_abs": 0.137412,
+   "packet": "0615424c927e",
+   "files": {
+    "1000PEPEUSDT": "965f4d2d09c9b0825ee9111a2c75b9690760133b8489160f89c74ff367ba9252",
+    "ADAUSDT": "4830b92195cbde1bc603f49fc5f0df529342b52d9d5912db16da93d5b5a59561",
+    "AVAXUSDT": "57ca6976dac87a33749498120e96b14b05061e46ad991923b8521747fcc9d18c",
+    "BNBUSDT": "374b1853cb135260d1395366b906c2468603bac8c0667cb4f9c83a710649b492",
+    "BTCUSDT": "78596bc43123fdda13650d78524f79966801c31ed8384dd4bf83586da944d6e3",
+    "DOGEUSDT": "a95ef9911e5465c21e9feaa47d45f9b74d7947e3e586eeeebd348adbbb83089d",
+    "ENAUSDT": "d87c7f849001b1183f7a18a91f367d2be647ffc5adeb60e4854990637ca89289",
+    "ETHUSDT": "476730a8ce348de694614841da2916e76479feef6df3d960e0f3324bc7b90125",
+    "HYPEUSDT": "02130df50ef72d041bc5798e655e648970a0cd4584955d163e89eacef8ced7f1",
+    "LINKUSDT": "7e09791c3427cb8ed5bc6e42f18c1d54636b6194b49bb50980ac41205207c1f3",
+    "LSKUSDT": "829161e6de0e775849ef50f94656209806d6018990e23cd832112b45715fade2",
+    "NEARUSDT": "56e5eb2ed35e5db2e8c329a03e4c6e9c231c78b7cea93e8c4a89af8e46f9ca46",
+    "PUMPUSDT": "83845b5042566b967bac16a771aeacb391c11b7ce0b9eee6be29d255869d5f9e",
+    "QNTUSDT": "decca4ff988e7b30837187048f7b06dc10e9ee13a4312693c96b2a299da57fa0",
+    "SOLUSDT": "7f0cb86a52a75e143a50dc662d0da857bbe5c783f235ebb64c72161d0a6423bd",
+    "SUIUSDT": "60313f17f09f44d5015ee69d960fc165b58cc128bf0efb698dd3bc7224e5aebb",
+    "UNIUSDT": "3b9270610dc91a57967535f61c080be84bca5501d697e9ad70fd2717e1446ca8",
+    "WLDUSDT": "6e6499d382e54cdf9efede3f1629672165f274476e713b050c58394e762a10a5",
+    "XRPUSDT": "76afecd4973695f69713979e335a3330a534bf0b2304365f7360532916f4d3c6",
+    "ZECUSDT": "a47b6ac2e8c9193af20b6f7db8470db0394dcb2a8592f7b2ef27cf66b4f5a662"
+   },
+   "regime4h": "f97d65b5690b11c8809aada183f2174a538dbae8eb41248c5f5d0ee66e605cd9",
+   "commit": "a53a649cc228d74a943f05ab462be6fcfb278473",
+   "hold_med": 2.0,
+   "hold_mean": 2.038095238095238,
+   "mfe": 1499.9022639999998,
+   "mae": 1832.854011,
+   "giveback": 1868.556289,
+   "pf_r": 0.6953401025316855,
+   "top3_share": 0.4114412759516821,
+   "top3": {
+    "ZECUSDT": -64.4,
+    "BTCUSDT": -48.9,
+    "QNTUSDT": -47.8
+   },
+   "decomp": {
+    "gross_before_slip_r": -0.17113403817380046,
+    "slip_r": 104.57265497363841,
+    "fee_r": 261.431637434096,
+    "funding_r": 2.4786985520065734,
+    "net_r": -368.65398799999997,
+    "gap": 9.456019169906682e-06,
+    "runner_r_diff": 2.220446049250313e-16
+   },
+   "gross_pt": -6.519391930430493e-05,
+   "cost_pt": 0.14037447274656797,
+   "fee_r_pt": 0.09959300473679847,
+   "quarters": {
+    "2024Q4": -155.97,
+    "2025Q1": -140.08,
+    "2025Q2": -72.6
+   },
+   "regime": {
+    "btc_above_ema200": [
+     1786,
+     -232.65
+    ],
+    "btc_below_ema200": [
+     839,
+     -136.01
+    ]
+   }
+  },
+  "fixr": {
+   "status": "ok",
+   "raw_sig": 12871,
+   "trades": 8156,
+   "pf": 0.687765,
+   "win": 0.37076998528690536,
+   "net_cash": -1190749.226893,
+   "net_r": -1191.451572,
+   "max_dd_r": 1198.421784,
+   "max_dd_eq": -0.001198,
+   "bust": false,
+   "bust_time": null,
+   "bust_trade": null,
+   "incomplete": [
+    "HYPEUSDT",
+    "PUMPUSDT"
+   ],
+   "run_syms": [
+    "BTCUSDT",
+    "ETHUSDT",
+    "ZECUSDT",
+    "SOLUSDT",
+    "XRPUSDT",
+    "NEARUSDT",
+    "DOGEUSDT",
+    "UNIUSDT",
+    "SUIUSDT",
+    "QNTUSDT",
+    "BNBUSDT",
+    "LSKUSDT",
+    "ENAUSDT",
+    "1000PEPEUSDT",
+    "WLDUSDT",
+    "ADAUSDT",
+    "AVAXUSDT",
+    "LINKUSDT"
+   ],
+   "liq": 0,
+   "curve_end": 998809250.773081,
+   "fee_share_abs": 0.154379,
+   "packet": "13e9577671bc",
+   "files": {
+    "1000PEPEUSDT": "965f4d2d09c9b0825ee9111a2c75b9690760133b8489160f89c74ff367ba9252",
+    "ADAUSDT": "4830b92195cbde1bc603f49fc5f0df529342b52d9d5912db16da93d5b5a59561",
+    "AVAXUSDT": "57ca6976dac87a33749498120e96b14b05061e46ad991923b8521747fcc9d18c",
+    "BNBUSDT": "374b1853cb135260d1395366b906c2468603bac8c0667cb4f9c83a710649b492",
+    "BTCUSDT": "78596bc43123fdda13650d78524f79966801c31ed8384dd4bf83586da944d6e3",
+    "DOGEUSDT": "a95ef9911e5465c21e9feaa47d45f9b74d7947e3e586eeeebd348adbbb83089d",
+    "ENAUSDT": "d87c7f849001b1183f7a18a91f367d2be647ffc5adeb60e4854990637ca89289",
+    "ETHUSDT": "476730a8ce348de694614841da2916e76479feef6df3d960e0f3324bc7b90125",
+    "HYPEUSDT": "02130df50ef72d041bc5798e655e648970a0cd4584955d163e89eacef8ced7f1",
+    "LINKUSDT": "7e09791c3427cb8ed5bc6e42f18c1d54636b6194b49bb50980ac41205207c1f3",
+    "LSKUSDT": "829161e6de0e775849ef50f94656209806d6018990e23cd832112b45715fade2",
+    "NEARUSDT": "56e5eb2ed35e5db2e8c329a03e4c6e9c231c78b7cea93e8c4a89af8e46f9ca46",
+    "PUMPUSDT": "83845b5042566b967bac16a771aeacb391c11b7ce0b9eee6be29d255869d5f9e",
+    "QNTUSDT": "decca4ff988e7b30837187048f7b06dc10e9ee13a4312693c96b2a299da57fa0",
+    "SOLUSDT": "7f0cb86a52a75e143a50dc662d0da857bbe5c783f235ebb64c72161d0a6423bd",
+    "SUIUSDT": "60313f17f09f44d5015ee69d960fc165b58cc128bf0efb698dd3bc7224e5aebb",
+    "UNIUSDT": "3b9270610dc91a57967535f61c080be84bca5501d697e9ad70fd2717e1446ca8",
+    "WLDUSDT": "6e6499d382e54cdf9efede3f1629672165f274476e713b050c58394e762a10a5",
+    "XRPUSDT": "76afecd4973695f69713979e335a3330a534bf0b2304365f7360532916f4d3c6",
+    "ZECUSDT": "a47b6ac2e8c9193af20b6f7db8470db0394dcb2a8592f7b2ef27cf66b4f5a662"
+   },
+   "regime4h": "f97d65b5690b11c8809aada183f2174a538dbae8eb41248c5f5d0ee66e605cd9",
+   "commit": "a53a649cc228d74a943f05ab462be6fcfb278473",
+   "hold_med": 2.0,
+   "hold_mean": 2.0719715546836683,
+   "mfe": 4612.460923,
+   "mae": 5720.912731,
+   "giveback": 5803.912539,
+   "pf_r": 0.687758046475336,
+   "top3_share": 0.33419732900398574,
+   "top3": {
+    "BTCUSDT": -164.3,
+    "QNTUSDT": -132.6,
+    "ZECUSDT": -101.3
+   },
+   "decomp": {
+    "gross_before_slip_r": 161.79700725732306,
+    "slip_r": 384.0033011115383,
+    "fee_r": 960.0082527788458,
+    "funding_r": 9.23702540498974,
+    "net_r": -1191.451572,
+    "gap": 1.0011981955299065e-09,
+    "runner_r_diff": 5.551115123125783e-17
+   },
+   "gross_pt": 0.01983778902125099,
+   "cost_pt": 0.16592062031576432,
+   "fee_r_pt": 0.11770576909990753,
+   "quarters": {
+    "2024Q4": -151.31,
+    "2025Q1": -139.6,
+    "2025Q2": -107.31,
+    "2025Q3": -197.47,
+    "2025Q4": -55.57,
+    "2026Q1": -163.2,
+    "2026Q2": -188.98,
+    "2026Q3": -188.01
+   },
+   "regime": {
+    "btc_above_ema200": [
+     4308,
+     -603.29
+    ],
+    "btc_below_ema200": [
+     3848,
+     -588.16
+    ]
+   }
+  }
+ },
+ "CORE-20_quick_bank_runner_long": {
+  "acct": {
+   "status": "ok",
+   "raw_sig": 119266,
+   "trades": 2259,
+   "pf": 0.595748,
+   "win": 0.548472775564409,
+   "net_cash": -489.863406,
+   "net_r": -372.14897,
+   "max_dd_r": 379.45164,
+   "max_dd_eq": -0.981252,
+   "bust": true,
+   "bust_time": "2024-11-19T20:15:00Z",
+   "bust_trade": 1232,
+   "incomplete": [
+    "HYPEUSDT",
+    "PUMPUSDT"
+   ],
+   "run_syms": [
+    "BTCUSDT",
+    "ETHUSDT",
+    "ZECUSDT",
+    "SOLUSDT",
+    "XRPUSDT",
+    "NEARUSDT",
+    "DOGEUSDT",
+    "UNIUSDT",
+    "SUIUSDT",
+    "QNTUSDT",
+    "BNBUSDT",
+    "LSKUSDT",
+    "ENAUSDT",
+    "1000PEPEUSDT",
+    "WLDUSDT",
+    "ADAUSDT",
+    "AVAXUSDT",
+    "LINKUSDT"
+   ],
+   "liq": 0,
+   "curve_end": 9.966031,
+   "fee_share_abs": 0.20848,
+   "packet": "03ad8f19a3e4",
+   "files": {
+    "1000PEPEUSDT": "965f4d2d09c9b0825ee9111a2c75b9690760133b8489160f89c74ff367ba9252",
+    "ADAUSDT": "4830b92195cbde1bc603f49fc5f0df529342b52d9d5912db16da93d5b5a59561",
+    "AVAXUSDT": "57ca6976dac87a33749498120e96b14b05061e46ad991923b8521747fcc9d18c",
+    "BNBUSDT": "374b1853cb135260d1395366b906c2468603bac8c0667cb4f9c83a710649b492",
+    "BTCUSDT": "78596bc43123fdda13650d78524f79966801c31ed8384dd4bf83586da944d6e3",
+    "DOGEUSDT": "a95ef9911e5465c21e9feaa47d45f9b74d7947e3e586eeeebd348adbbb83089d",
+    "ENAUSDT": "d87c7f849001b1183f7a18a91f367d2be647ffc5adeb60e4854990637ca89289",
+    "ETHUSDT": "476730a8ce348de694614841da2916e76479feef6df3d960e0f3324bc7b90125",
+    "HYPEUSDT": "02130df50ef72d041bc5798e655e648970a0cd4584955d163e89eacef8ced7f1",
+    "LINKUSDT": "7e09791c3427cb8ed5bc6e42f18c1d54636b6194b49bb50980ac41205207c1f3",
+    "LSKUSDT": "829161e6de0e775849ef50f94656209806d6018990e23cd832112b45715fade2",
+    "NEARUSDT": "56e5eb2ed35e5db2e8c329a03e4c6e9c231c78b7cea93e8c4a89af8e46f9ca46",
+    "PUMPUSDT": "83845b5042566b967bac16a771aeacb391c11b7ce0b9eee6be29d255869d5f9e",
+    "QNTUSDT": "decca4ff988e7b30837187048f7b06dc10e9ee13a4312693c96b2a299da57fa0",
+    "SOLUSDT": "7f0cb86a52a75e143a50dc662d0da857bbe5c783f235ebb64c72161d0a6423bd",
+    "SUIUSDT": "60313f17f09f44d5015ee69d960fc165b58cc128bf0efb698dd3bc7224e5aebb",
+    "UNIUSDT": "3b9270610dc91a57967535f61c080be84bca5501d697e9ad70fd2717e1446ca8",
+    "WLDUSDT": "6e6499d382e54cdf9efede3f1629672165f274476e713b050c58394e762a10a5",
+    "XRPUSDT": "76afecd4973695f69713979e335a3330a534bf0b2304365f7360532916f4d3c6",
+    "ZECUSDT": "a47b6ac2e8c9193af20b6f7db8470db0394dcb2a8592f7b2ef27cf66b4f5a662"
+   },
+   "regime4h": "f97d65b5690b11c8809aada183f2174a538dbae8eb41248c5f5d0ee66e605cd9",
+   "commit": "a53a649cc228d74a943f05ab462be6fcfb278473",
+   "hold_med": 2.0,
+   "hold_mean": 3.0075254537405933,
+   "mfe": 1855.3697080000002,
+   "mae": 2018.115667,
+   "giveback": 2227.518678,
+   "pf_r": 0.6829812872881036,
+   "top3_share": 0.45896137457378144,
+   "top3": {
+    "BTCUSDT": -66.6,
+    "ETHUSDT": -64.3,
+    "SOLUSDT": -44.0
+   },
+   "decomp": {
+    "gross_before_slip_r": 107.92407771992052,
+    "slip_r": 136.2182474653833,
+    "fee_r": 340.54561866345824,
+    "funding_r": 3.309324787942631,
+    "net_r": -372.14897,
+    "gap": 9.953894704484156e-06,
+    "runner_r_diff": 2.220446049250313e-16
+   },
+   "gross_pt": 0.04777515613984972,
+   "cost_pt": 0.21251579943195403,
+   "fee_r_pt": 0.15075060587138478,
+   "quarters": {
+    "2024Q4": -372.15
+   },
+   "regime": {
+    "btc_above_ema200": [
+     2259,
+     -372.15
+    ]
+   }
+  },
+  "fixr": {
+   "status": "ok",
+   "raw_sig": 119266,
+   "trades": 34755,
+   "pf": 0.478792,
+   "win": 0.49653287296791826,
+   "net_cash": -10894685.069509,
+   "net_r": -10954.4305,
+   "max_dd_r": 10960.667267,
+   "max_dd_eq": -0.010902,
+   "bust": false,
+   "bust_time": null,
+   "bust_trade": null,
+   "incomplete": [
+    "HYPEUSDT",
+    "PUMPUSDT"
+   ],
+   "run_syms": [
+    "BTCUSDT",
+    "ETHUSDT",
+    "ZECUSDT",
+    "SOLUSDT",
+    "XRPUSDT",
+    "NEARUSDT",
+    "DOGEUSDT",
+    "UNIUSDT",
+    "SUIUSDT",
+    "QNTUSDT",
+    "BNBUSDT",
+    "LSKUSDT",
+    "ENAUSDT",
+    "1000PEPEUSDT",
+    "WLDUSDT",
+    "ADAUSDT",
+    "AVAXUSDT",
+    "LINKUSDT"
+   ],
+   "liq": 0,
+   "curve_end": 989105647.806905,
+   "fee_share_abs": 0.246365,
+   "packet": "1e7e82d8bdc1",
+   "files": {
+    "1000PEPEUSDT": "965f4d2d09c9b0825ee9111a2c75b9690760133b8489160f89c74ff367ba9252",
+    "ADAUSDT": "4830b92195cbde1bc603f49fc5f0df529342b52d9d5912db16da93d5b5a59561",
+    "AVAXUSDT": "57ca6976dac87a33749498120e96b14b05061e46ad991923b8521747fcc9d18c",
+    "BNBUSDT": "374b1853cb135260d1395366b906c2468603bac8c0667cb4f9c83a710649b492",
+    "BTCUSDT": "78596bc43123fdda13650d78524f79966801c31ed8384dd4bf83586da944d6e3",
+    "DOGEUSDT": "a95ef9911e5465c21e9feaa47d45f9b74d7947e3e586eeeebd348adbbb83089d",
+    "ENAUSDT": "d87c7f849001b1183f7a18a91f367d2be647ffc5adeb60e4854990637ca89289",
+    "ETHUSDT": "476730a8ce348de694614841da2916e76479feef6df3d960e0f3324bc7b90125",
+    "HYPEUSDT": "02130df50ef72d041bc5798e655e648970a0cd4584955d163e89eacef8ced7f1",
+    "LINKUSDT": "7e09791c3427cb8ed5bc6e42f18c1d54636b6194b49bb50980ac41205207c1f3",
+    "LSKUSDT": "829161e6de0e775849ef50f94656209806d6018990e23cd832112b45715fade2",
+    "NEARUSDT": "56e5eb2ed35e5db2e8c329a03e4c6e9c231c78b7cea93e8c4a89af8e46f9ca46",
+    "PUMPUSDT": "83845b5042566b967bac16a771aeacb391c11b7ce0b9eee6be29d255869d5f9e",
+    "QNTUSDT": "decca4ff988e7b30837187048f7b06dc10e9ee13a4312693c96b2a299da57fa0",
+    "SOLUSDT": "7f0cb86a52a75e143a50dc662d0da857bbe5c783f235ebb64c72161d0a6423bd",
+    "SUIUSDT": "60313f17f09f44d5015ee69d960fc165b58cc128bf0efb698dd3bc7224e5aebb",
+    "UNIUSDT": "3b9270610dc91a57967535f61c080be84bca5501d697e9ad70fd2717e1446ca8",
+    "WLDUSDT": "6e6499d382e54cdf9efede3f1629672165f274476e713b050c58394e762a10a5",
+    "XRPUSDT": "76afecd4973695f69713979e335a3330a534bf0b2304365f7360532916f4d3c6",
+    "ZECUSDT": "a47b6ac2e8c9193af20b6f7db8470db0394dcb2a8592f7b2ef27cf66b4f5a662"
+   },
+   "regime4h": "f97d65b5690b11c8809aada183f2174a538dbae8eb41248c5f5d0ee66e605cd9",
+   "commit": "a53a649cc228d74a943f05ab462be6fcfb278473",
+   "hold_med": 2.0,
+   "hold_mean": 2.9716587541360955,
+   "mfe": 27165.131819000002,
+   "mae": 32877.43974,
+   "giveback": 38119.562175,
+   "pf_r": 0.47865177710060064,
+   "top3_share": 0.3985583962580255,
+   "top3": {
+    "BTCUSDT": -2068.5,
+    "ETHUSDT": -1290.6,
+    "BNBUSDT": -1006.9
+   },
+   "decomp": {
+    "gross_before_slip_r": -222.796091299935,
+    "slip_r": 3044.931477404609,
+    "fee_r": 7612.328693511523,
+    "funding_r": 74.37423785755183,
+    "net_r": -10954.4305,
+    "gap": 1.011009498341764e-09,
+    "runner_r_diff": 1.1102230246251565e-16
+   },
+   "gross_pt": -0.006410475940150625,
+   "cost_pt": 0.3087795830462864,
+   "fee_r_pt": 0.21902830365448203,
+   "quarters": {
+    "2024Q4": -972.5,
+    "2025Q1": -1045.58,
+    "2025Q2": -1345.8,
+    "2025Q3": -1714.16,
+    "2025Q4": -1290.99,
+    "2026Q1": -1235.49,
+    "2026Q2": -1429.56,
+    "2026Q3": -1920.34
+   },
+   "regime": {
+    "btc_above_ema200": [
+     19974,
+     -6310.14
+    ],
+    "btc_below_ema200": [
+     14781,
+     -4644.29
+    ]
+   }
+  }
+ },
+ "CORE-20_quick_bank_runner_short": {
+  "acct": {
+   "status": "ok",
+   "raw_sig": 126606,
+   "trades": 1690,
+   "pf": 0.505649,
+   "win": 0.5307692307692308,
+   "net_cash": -489.948358,
+   "net_r": -372.885951,
+   "max_dd_r": 373.83456,
+   "max_dd_eq": -0.980389,
+   "bust": true,
+   "bust_time": "2024-11-16T18:00:00Z",
+   "bust_trade": 930,
+   "incomplete": [
+    "HYPEUSDT",
+    "PUMPUSDT"
+   ],
+   "run_syms": [
+    "BTCUSDT",
+    "ETHUSDT",
+    "ZECUSDT",
+    "SOLUSDT",
+    "XRPUSDT",
+    "NEARUSDT",
+    "DOGEUSDT",
+    "UNIUSDT",
+    "SUIUSDT",
+    "QNTUSDT",
+    "BNBUSDT",
+    "LSKUSDT",
+    "ENAUSDT",
+    "1000PEPEUSDT",
+    "WLDUSDT",
+    "ADAUSDT",
+    "AVAXUSDT",
+    "LINKUSDT"
+   ],
+   "liq": 0,
+   "curve_end": 9.971795,
+   "fee_share_abs": 0.233798,
+   "packet": "9a73db4bf480",
+   "files": {
+    "1000PEPEUSDT": "965f4d2d09c9b0825ee9111a2c75b9690760133b8489160f89c74ff367ba9252",
+    "ADAUSDT": "4830b92195cbde1bc603f49fc5f0df529342b52d9d5912db16da93d5b5a59561",
+    "AVAXUSDT": "57ca6976dac87a33749498120e96b14b05061e46ad991923b8521747fcc9d18c",
+    "BNBUSDT": "374b1853cb135260d1395366b906c2468603bac8c0667cb4f9c83a710649b492",
+    "BTCUSDT": "78596bc43123fdda13650d78524f79966801c31ed8384dd4bf83586da944d6e3",
+    "DOGEUSDT": "a95ef9911e5465c21e9feaa47d45f9b74d7947e3e586eeeebd348adbbb83089d",
+    "ENAUSDT": "d87c7f849001b1183f7a18a91f367d2be647ffc5adeb60e4854990637ca89289",
+    "ETHUSDT": "476730a8ce348de694614841da2916e76479feef6df3d960e0f3324bc7b90125",
+    "HYPEUSDT": "02130df50ef72d041bc5798e655e648970a0cd4584955d163e89eacef8ced7f1",
+    "LINKUSDT": "7e09791c3427cb8ed5bc6e42f18c1d54636b6194b49bb50980ac41205207c1f3",
+    "LSKUSDT": "829161e6de0e775849ef50f94656209806d6018990e23cd832112b45715fade2",
+    "NEARUSDT": "56e5eb2ed35e5db2e8c329a03e4c6e9c231c78b7cea93e8c4a89af8e46f9ca46",
+    "PUMPUSDT": "83845b5042566b967bac16a771aeacb391c11b7ce0b9eee6be29d255869d5f9e",
+    "QNTUSDT": "decca4ff988e7b30837187048f7b06dc10e9ee13a4312693c96b2a299da57fa0",
+    "SOLUSDT": "7f0cb86a52a75e143a50dc662d0da857bbe5c783f235ebb64c72161d0a6423bd",
+    "SUIUSDT": "60313f17f09f44d5015ee69d960fc165b58cc128bf0efb698dd3bc7224e5aebb",
+    "UNIUSDT": "3b9270610dc91a57967535f61c080be84bca5501d697e9ad70fd2717e1446ca8",
+    "WLDUSDT": "6e6499d382e54cdf9efede3f1629672165f274476e713b050c58394e762a10a5",
+    "XRPUSDT": "76afecd4973695f69713979e335a3330a534bf0b2304365f7360532916f4d3c6",
+    "ZECUSDT": "a47b6ac2e8c9193af20b6f7db8470db0394dcb2a8592f7b2ef27cf66b4f5a662"
+   },
+   "regime4h": "f97d65b5690b11c8809aada183f2174a538dbae8eb41248c5f5d0ee66e605cd9",
+   "commit": "a53a649cc228d74a943f05ab462be6fcfb278473",
+   "hold_med": 2.0,
+   "hold_mean": 2.9958579881656804,
+   "mfe": 1393.060332,
+   "mae": 1512.6679049999998,
+   "giveback": 1765.946285,
+   "pf_r": 0.5907067034196551,
+   "top3_share": 0.3184689945031119,
+   "top3": {
+    "BTCUSDT": -50.4,
+    "XRPUSDT": -36.3,
+    "ZECUSDT": -32.5
+   },
+   "decomp": {
+    "gross_before_slip_r": 2.55205748753359,
+    "slip_r": 106.53165899020293,
+    "fee_r": 266.3291474755073,
+    "funding_r": 2.577324899485912,
+    "net_r": -372.885951,
+    "gap": 9.930493986787248e-06,
+    "runner_r_diff": 2.220446049250313e-16
+   },
+   "gross_pt": 0.0015100931878896983,
+   "cost_pt": 0.22215274045277877,
+   "fee_r_pt": 0.1575912115239688,
+   "quarters": {
+    "2024Q4": -372.89
+   },
+   "regime": {
+    "btc_above_ema200": [
+     1690,
+     -372.89
+    ]
+   }
+  },
+  "fixr": {
+   "status": "ok",
+   "raw_sig": 126606,
+   "trades": 33743,
+   "pf": 0.512005,
+   "win": 0.5161366802003379,
+   "net_cash": -9588700.134936001,
+   "net_r": -9634.929521999999,
+   "max_dd_r": 9635.202213,
+   "max_dd_eq": -0.009591,
+   "bust": false,
+   "bust_time": null,
+   "bust_trade": null,
+   "incomplete": [
+    "HYPEUSDT",
+    "PUMPUSDT"
+   ],
+   "run_syms": [
+    "BTCUSDT",
+    "ETHUSDT",
+    "ZECUSDT",
+    "SOLUSDT",
+    "XRPUSDT",
+    "NEARUSDT",
+    "DOGEUSDT",
+    "UNIUSDT",
+    "SUIUSDT",
+    "QNTUSDT",
+    "BNBUSDT",
+    "LSKUSDT",
+    "ENAUSDT",
+    "1000PEPEUSDT",
+    "WLDUSDT",
+    "ADAUSDT",
+    "AVAXUSDT",
+    "LINKUSDT"
+   ],
+   "liq": 0,
+   "curve_end": 990410569.004667,
+   "fee_share_abs": 0.243161,
+   "packet": "593f3f147ddc",
+   "files": {
+    "1000PEPEUSDT": "965f4d2d09c9b0825ee9111a2c75b9690760133b8489160f89c74ff367ba9252",
+    "ADAUSDT": "4830b92195cbde1bc603f49fc5f0df529342b52d9d5912db16da93d5b5a59561",
+    "AVAXUSDT": "57ca6976dac87a33749498120e96b14b05061e46ad991923b8521747fcc9d18c",
+    "BNBUSDT": "374b1853cb135260d1395366b906c2468603bac8c0667cb4f9c83a710649b492",
+    "BTCUSDT": "78596bc43123fdda13650d78524f79966801c31ed8384dd4bf83586da944d6e3",
+    "DOGEUSDT": "a95ef9911e5465c21e9feaa47d45f9b74d7947e3e586eeeebd348adbbb83089d",
+    "ENAUSDT": "d87c7f849001b1183f7a18a91f367d2be647ffc5adeb60e4854990637ca89289",
+    "ETHUSDT": "476730a8ce348de694614841da2916e76479feef6df3d960e0f3324bc7b90125",
+    "HYPEUSDT": "02130df50ef72d041bc5798e655e648970a0cd4584955d163e89eacef8ced7f1",
+    "LINKUSDT": "7e09791c3427cb8ed5bc6e42f18c1d54636b6194b49bb50980ac41205207c1f3",
+    "LSKUSDT": "829161e6de0e775849ef50f94656209806d6018990e23cd832112b45715fade2",
+    "NEARUSDT": "56e5eb2ed35e5db2e8c329a03e4c6e9c231c78b7cea93e8c4a89af8e46f9ca46",
+    "PUMPUSDT": "83845b5042566b967bac16a771aeacb391c11b7ce0b9eee6be29d255869d5f9e",
+    "QNTUSDT": "decca4ff988e7b30837187048f7b06dc10e9ee13a4312693c96b2a299da57fa0",
+    "SOLUSDT": "7f0cb86a52a75e143a50dc662d0da857bbe5c783f235ebb64c72161d0a6423bd",
+    "SUIUSDT": "60313f17f09f44d5015ee69d960fc165b58cc128bf0efb698dd3bc7224e5aebb",
+    "UNIUSDT": "3b9270610dc91a57967535f61c080be84bca5501d697e9ad70fd2717e1446ca8",
+    "WLDUSDT": "6e6499d382e54cdf9efede3f1629672165f274476e713b050c58394e762a10a5",
+    "XRPUSDT": "76afecd4973695f69713979e335a3330a534bf0b2304365f7360532916f4d3c6",
+    "ZECUSDT": "a47b6ac2e8c9193af20b6f7db8470db0394dcb2a8592f7b2ef27cf66b4f5a662"
+   },
+   "regime4h": "f97d65b5690b11c8809aada183f2174a538dbae8eb41248c5f5d0ee66e605cd9",
+   "commit": "a53a649cc228d74a943f05ab462be6fcfb278473",
+   "hold_med": 2.0,
+   "hold_mean": 3.102480514477077,
+   "mfe": 27218.778859,
+   "mae": 31433.742624,
+   "giveback": 36853.708325,
+   "pf_r": 0.5118458507133632,
+   "top3_share": 0.36642939929540264,
+   "top3": {
+    "BTCUSDT": -1758.0,
+    "ETHUSDT": -976.2,
+    "XRPUSDT": -796.4
+   },
+   "decomp": {
+    "gross_before_slip_r": 603.2903513293502,
+    "slip_r": 2904.6085428505166,
+    "fee_r": 7261.521357126292,
+    "funding_r": 72.08997328059111,
+    "net_r": -9634.929521999999,
+    "gap": 1.009670347329461e-09,
+    "runner_r_diff": 1.1102230246251565e-16
+   },
+   "gross_pt": 0.017878977901471423,
+   "cost_pt": 0.303417593967857,
+   "fee_r_pt": 0.21520082260398576,
+   "quarters": {
+    "2024Q4": -776.85,
+    "2025Q1": -806.87,
+    "2025Q2": -1219.6,
+    "2025Q3": -1332.57,
+    "2025Q4": -1244.6,
+    "2026Q1": -1182.37,
+    "2026Q2": -1371.66,
+    "2026Q3": -1700.41
+   },
+   "regime": {
+    "btc_above_ema200": [
+     16883,
+     -5135.12
+    ],
+    "btc_below_ema200": [
+     16860,
+     -4499.81
+    ]
+   }
+  }
+ }
+}
