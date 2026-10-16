@@ -51,6 +51,12 @@ REPORT_BACKUPS = 3
 MODEL_PRICES_PER_MTOK = {
     'claude-sonnet-5-5': {'input': 2.0, 'output': 10.0},
 }
+# SHADOW-ANALYST-TEMP-01: optional sampling parameters each accepted model takes, pinned beside its price. `temperature`
+# is deprecated for claude-sonnet-5-5 (Anthropic answers http 400 invalid_request_error), so its body carries none.
+# A model without a reviewed row here is REFUSED ('model_params_unknown') before any spend - never sent a guessed body.
+MODEL_REQUEST_PARAMS = {
+    'claude-sonnet-5-5': {},
+}
 PRICE_PER_MTOK = MODEL_PRICES_PER_MTOK[DEFAULT_MODEL]  # legacy usage rows (no stored cost) are valued at this price
 # The auth self-test always uses the pinned DEFAULT_MODEL with max_tokens=1, whatever CLAUDE_SHADOW_MODEL says; it is
 # an explicit owner action, is not gated by the spend limits and is not added to the usage counters.
@@ -440,6 +446,15 @@ def _auth_status(status, text):
     return AUTH_UNAVAILABLE                                     # 429 / 5xx / anything that does not prove auth either way
 
 
+def request_body(model, agg):
+    """The analysis request body (canonical JSON bytes) for an accepted model: model, token cap, system prompt and the
+    aggregate message, plus only the sampling parameters MODEL_REQUEST_PARAMS allows. None for an unknown model."""
+    extra = MODEL_REQUEST_PARAMS.get(str(model or ''))
+    if extra is None: return None
+    return canonical(dict(extra, model=model, max_tokens=MAX_OUTPUT_TOKENS, system=SYSTEM_PROMPT,
+                          messages=[{'role': 'user', 'content': user_message(agg)}])).encode('utf-8')
+
+
 def model_price(model):
     """Pinned USD/MTok price for an accepted model, or None (unknown -> analysis refused, never under-counted)."""
     return MODEL_PRICES_PER_MTOK.get(str(model or ''))
@@ -695,6 +710,9 @@ class ShadowAnalyst:
         if price is None:                                # F1: never meter an unknown model at another model's price
             log.warning('shadow analyst: no pinned price for the configured model - analysis refused')
             return self._no('model_price_unknown', now_utc, record=False)
+        if model not in MODEL_REQUEST_PARAMS:            # SHADOW-ANALYST-TEMP-01: no reviewed request shape -> no call
+            log.warning('shadow analyst: no pinned request parameters for the configured model - analysis refused')
+            return self._no('model_params_unknown', now_utc, record=False)
         budget = self._budget(cfg, now_utc)
         worst = worst_case_call_usd(model)               # a call that could cross a ceiling is not started
         if budget['daily_remaining_usd'] < worst or budget['monthly_remaining_usd'] < worst:
@@ -721,8 +739,7 @@ class ShadowAnalyst:
             log.info('shadow analyst: input unchanged - cached analysis returned')
             return dict(self.state['last_result'], cached=True)
 
-        body = canonical({'model': model, 'max_tokens': MAX_OUTPUT_TOKENS, 'temperature': 0, 'system': SYSTEM_PROMPT,
-                          'messages': [{'role': 'user', 'content': user_message(agg)}]}).encode('utf-8')
+        body = request_body(model, agg)                  # SHADOW-ANALYST-TEMP-01: no deprecated temperature
         headers = _headers(api_key, workspace_id or None)
         t0 = self._mono()
         status, text, attempts, reason = None, None, 0, None

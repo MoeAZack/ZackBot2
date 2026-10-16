@@ -129,6 +129,7 @@ def test_happy_path_request_shape(tmp_path):
 
 def test_model_configurable(tmp_path, monkeypatch):
     monkeypatch.setitem(sa.MODEL_PRICES_PER_MTOK, 'claude-priced-x', {'input': 10.0, 'output': 50.0})
+    monkeypatch.setitem(sa.MODEL_REQUEST_PARAMS, 'claude-priced-x', {})
     a, t, _ = mk(tmp_path)
     run(a, cfg={sa.FLAG: 'on', sa.MODEL_SETTING: 'claude-priced-x'})
     assert json.loads(t.calls[0]['body'])['model'] == 'claude-priced-x'
@@ -784,3 +785,54 @@ def test_wording_limits_are_ceilings():
     doc = sa.__doc__ + sa.ShadowAnalyst.run_scheduled.__doc__ + sa.ShadowAnalyst._budget.__doc__
     assert 'CEILINGS' in doc and 'not expected spend' in doc and 'six-hour' not in doc and 'Twice per' not in doc
     assert 'at most two scheduled' not in sa.due_slots.__doc__
+
+
+# --- SHADOW-ANALYST-TEMP-01 (Codex 6219409177): temperature is deprecated for claude-sonnet-5-5 (http 400) ---------------
+
+def test_accepted_model_body_omits_deprecated_temperature(tmp_path):
+    a, t, _ = mk(tmp_path)
+    r = run(a)
+    assert r['status'] == sa.STATUS_OK and len(t.calls) == 1
+    body = json.loads(t.calls[0]['body'])
+    assert 'temperature' not in body
+    assert set(body) == {'model', 'max_tokens', 'system', 'messages'}
+
+
+def test_body_keeps_prompt_model_and_token_cap_byte_for_byte(tmp_path):
+    """Only `temperature` left the body: the rest equals the pre-fix canonical body exactly."""
+    a, t, _ = mk(tmp_path)
+    run(a)
+    sent = t.calls[0]['body']
+    body = json.loads(sent)
+    old = json.loads(sa.canonical({'model': sa.DEFAULT_MODEL, 'max_tokens': sa.MAX_OUTPUT_TOKENS, 'temperature': 0,
+                                   'system': sa.SYSTEM_PROMPT, 'messages': body['messages']}))
+    old.pop('temperature')
+    assert sent == sa.canonical(old)
+    assert body['max_tokens'] == sa.MAX_OUTPUT_TOKENS == 1600 and body['system'] == sa.SYSTEM_PROMPT
+    assert body['model'] == sa.DEFAULT_MODEL == 'claude-sonnet-5-5'
+
+
+def test_every_priced_model_has_a_reviewed_request_shape():
+    assert set(sa.MODEL_REQUEST_PARAMS) == set(sa.MODEL_PRICES_PER_MTOK)
+    assert 'temperature' not in sa.MODEL_REQUEST_PARAMS[sa.DEFAULT_MODEL]
+
+
+def test_model_without_request_params_is_refused_before_any_spend(tmp_path, monkeypatch):
+    monkeypatch.setitem(sa.MODEL_PRICES_PER_MTOK, 'claude-priced-y', {'input': 1.0, 'output': 1.0})
+    a, t, _ = mk(tmp_path)
+    r = run(a, cfg={sa.FLAG: 'on', sa.MODEL_SETTING: 'claude-priced-y'})
+    assert r['status'] == sa.STATUS_NO and r['reason'] == 'model_params_unknown'
+    assert t.calls == [] and a.usage(NOW)['day']['est_cost_usd'] == 0
+
+
+def test_request_body_none_for_unknown_model():
+    assert sa.request_body('claude-unknown', {'n_trades': 0}) is None
+
+
+def test_fixed_body_unchanged_input_is_served_from_cache_once(tmp_path):
+    """Usage increments once; a second run on unchanged input is cached - no duplicate spend."""
+    a, t, _ = mk(tmp_path)
+    r1 = run(a); c1 = a.usage(NOW)['day']['est_cost_usd']
+    r2 = run(a)
+    assert r1['status'] == sa.STATUS_OK and r2.get('cached') is True and len(t.calls) == 1
+    assert a.usage(NOW)['day']['est_cost_usd'] == c1 > 0
