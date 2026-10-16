@@ -13,6 +13,7 @@ import pandas as pd
 import strategies as S
 import trade_audit as TA
 import feasibility as F
+import staging as BR
 from binance_client import Futures, MAINNET, TESTNET, BinanceError, AmbiguousOrder, ExchangeUnavailable, is_transient, new_cid, scrub, testnet_faults, testnet_read_outage
 from ai_filter import review
 import grid as GRID
@@ -826,6 +827,10 @@ def _validate_lot(k, l):
         _str(pd_.get('cid'), w + '.pending.cid', _CID_RE, opt=True)
         _dict(pd_.get('post'), w + '.pending.post', opt=True)
     _dict(l.get('mgmt'), w + '.mgmt', opt=True)
+    if l.get('br') is not None:                         # BR-01 (PAPER): persisted leg state of a staged lot
+        _dict(l['br'], w + '.br')
+        why = BR.check_state(l['br'])
+        if why: _bad(w + '.br', why)
 
 
 def _validate_ue(k, u):
@@ -3018,7 +3023,7 @@ class Engine:
             self._cancel_or_park(lot['symbol'], lot['tp_id'])   # parked and retried - it never blocks the close)
         self._record_r(lot)
         sd = 1 if lot['side'] == 'LONG' else -1
-        closes = [f for f in lot.get('fills', []) if f[1] not in ('entry', 'pyramid_add', 'safety_order')]
+        closes = [f for f in lot.get('fills', []) if f[1] not in ('entry', 'pyramid_add', 'safety_order', 'br01_add')]
         cq = sum(f[2] for f in closes) or 1e-12
         exit_avg = sum(f[2] * f[3] for f in closes) / cq if closes else lot['avg']
         gross = lot.get('realized', 0.0); fees = lot.get('fees', 0.0); net = gross - fees
@@ -3145,6 +3150,84 @@ class Engine:
         self.missed = self.missed[-600:]
         self._save_aux('missed', self.missed)
 
+    # ------------------------------------------------------------ BR-01 (PAPER research): staged entry legs
+    def _br_journal(self, lot, ev):
+        """Every BR-01 add / refusal / cancel / deadline: bot log + trades.csv journal row (variant, leg, reason)."""
+        if not ev: return
+        b = lot.get('br') or {}
+        note = f"BR-01 {b.get('v')} leg {ev.get('leg')}: {ev.get('reason')}"
+        log.info(f"{lot['symbol']} {lot['side']} [{lot['sleeve']}] {note}")
+        self.log_trade(time=now_utc().isoformat(timespec='seconds'), event=f"br01_{ev['kind']}", sleeve=lot['sleeve'],
+                       symbol=lot['symbol'], side=lot['side'], qty=ev.get('qty'), price=ev.get('px'), stop=lot.get('stop'), note=note)
+
+    def _br_stop(self, lot):
+        """The lot's stop tightened to the BR-01 risk budget, on the tick grid in the tightening direction."""
+        sd = 1 if lot['side'] == 'LONG' else -1
+        ns = BR.cap_stop(sd, lot['qty'], lot['avg'], lot['stop'], lot['br']['budget'])
+        tick = (self.rules.get(lot['symbol']) or {}).get('tick')
+        if tick and ns != lot['stop']: ns = F.ceil_step(ns, tick) if sd == 1 else F.round_step(ns, tick)
+        return ns
+
+    def _br_over(self, lot):
+        sd = 1 if lot['side'] == 'LONG' else -1
+        return sd * (self._br_stop(lot) - lot['stop']) > 0
+
+    def _br_cap(self, key, lot, mark):
+        """Stop tightened (never widened) so qty x |avg - stop| <= the budget, sized for the whole aggregate. Price already
+        through that level -> the lot is closed (the same rule as every other tightening). Returns 'closed' / True / False."""
+        sd = 1 if lot['side'] == 'LONG' else -1
+        ns = self._br_stop(lot)
+        if sd * (ns - lot['stop']) <= 0: return self._replace_stop(lot)          # within budget: resize to the new quantity
+        if mark is not None and sd * (mark - ns) <= 0:
+            self.close_lot(key, 'stop_crossed', mark); return 'closed'
+        return self._replace_stop(lot, ns)
+
+    def _br_step(self, key, lot, d, ex, sl):
+        """BR-01: one decision on the last CLOSED candle of a staged lot. An add goes through the normal add path
+        (_add_gate, write-ahead _add_qty with the leg state in `post`, so a restart never loses or repeats a leg), then the
+        stop is resized / tightened to the budget. Refusals are journalled once per leg + reason."""
+        if d is None or len(d) < 2: return
+        sd = 1 if lot['side'] == 'LONG' else -1
+        row = d.iloc[-1]
+        bar = dict(t=str(row.t), o=float(row.o), h=float(row.h), l=float(row.l), c=float(row.c), pc=float(d.c.iloc[-2]),
+                   range_ok=BR.range_ok_last(d))
+        when = (sl or {}).get('when') or 'any'
+        rok = True
+        if when != 'any':
+            try: rok = bool(self.regime_now().get(when))
+            except Exception: rok = False                       # regime unknown: no add (fail closed)
+        lot['br'], ev = BR.decide(lot['br'], bar, sd, lot['stop'], lot['avg'], base_exit=bool(ex), regime_ok=rok,
+                                  tp_done=bool(lot.get('tp1') or lot.get('tps_done')))
+        if ev and ev['kind'] == 'add': ev = self._br_add(key, lot, ev, bar)
+        if ev: self._br_journal(lot, ev)
+
+    def _br_add(self, key, lot, ev, bar):
+        k, q, sym = ev['leg'], ev['qty'], lot['symbol']
+        px = (getattr(self, 'marks', None) or {}).get(sym) or bar['c']        # fast-loop mark; the closed candle as a fallback
+        sd = 1 if lot['side'] == 'LONG' else -1
+        why = 'BR-01 adds are PAPER/testnet only' if getattr(self, 'live', True) is not False else BR.admit(lot['br'], k)
+        if why is None and lot.get('pending'): why = 'an earlier order of this lot is unconfirmed'
+        if why is None:
+            qn = lot['qty'] + q
+            ns = BR.cap_stop(sd, qn, (lot['avg'] * lot['qty'] + px * q) / qn, lot['stop'], lot['br']['budget'])
+            if sd * (px - ns) <= 0: why = 'add would need a stop at / through price (risk budget)'
+        if why is None and self._add_gate(lot, q, px, 'br01_add'): why = f"add gate: {lot.get('add_blocked')}"
+        if why is None:
+            q0 = lot['qty']
+            post = BR.apply_fill(lot['br'], q, px, bar['t'])
+            try:
+                ok = self._add_qty(lot, q, px, 'br01_add', post={'br': post})
+            except Exception as e:
+                why = f'order failed: {e}'
+            else:
+                if not ok: why = 'leg below Binance minimum'
+                else:
+                    post['filled'][-1] = round(lot['qty'] - q0, 12)          # what was really booked for this leg
+                    lot['br'] = post
+                    self._br_cap(key, lot, px)
+                    return dict(post['ev'][-1], qty=post['filled'][-1], px=lot['avg'])
+        return BR.refusal(lot['br'], k, why, bar['t'])
+
     def _add_qty(self, lot, q, px, why, post=None, cid=None):
         r = self.rules[lot['symbol']]
         d = F.size_check(q, q, px, r)                    # BT02: the shared check (floor to the step, minQty, minNotional)
@@ -3262,6 +3345,9 @@ class Engine:
                         pass                                   # AUD-05 r1: Binance may hold its stop - the verifier reads (and
                     elif lot.get('stop_dirty') or not lot.get('stop_id'):   # adopts) first; protection missing -> retry
                         if self._replace_stop(lot): changed = True; log.info(f"{lot['symbol']} [{lot['sleeve']}] stop restored")
+                    if lot.get('br') and self._br_over(lot):     # BR-01: risk above budget (e.g. an add settled after a restart)
+                        changed = True
+                        if self._br_cap(key, lot, m) == 'closed': continue
                     if 'dca' in g and lot.get('levels'):
                         with self._stage(key, lot, 'safety_order', failed, add=True):
                             while (lot['dca'] < len(lot['levels']) and sd * (lot['levels'][lot['dca']] - m) >= 0
@@ -4067,7 +4153,13 @@ class Engine:
                         ex = False
                     elif winning and run.get('trend_exit') and not trend_ok: ex = True
                 closing = ex or (l['mgmt'].get('max_bars') and not run and bars >= l['mgmt']['max_bars']) or (sl is None and False)
+                if not closing and l.get('br') and BR.deadline_hit(l['br'], now_utc().isoformat(timespec='seconds')):
+                    closing = True                                     # BR-01: staged aggregate deadline (a time exit)
+                    self._br_journal(l, dict(kind='deadline', leg=len(l['br']['filled']), reason='staged deadline - aggregate closed'))
                 self._audit_hold(k, l, d, closing, ex, ex0)            # T05a: candle-close hold/close evaluation (observe only)
+                if not closing and (l.get('br') or {}).get('status') == 'active':
+                    try: self._br_step(k, l, d, ex, sl)
+                    except Exception as e: self.err(f'BR-01 {l["symbol"]} [{l["sleeve"]}]: {e} - no add, stop unchanged')
                 if closing:
                     try: self.close_lot(k, 'exit_signal' if ex else 'time_exit', sg['close'] if sg else None)
                     except Exception as e: self.err(f'exit {l["symbol"]} [{l["sleeve"]}] failed: {e} - stop stays in place, retried next cycle')
@@ -4622,6 +4714,19 @@ class Engine:
             if manual: raise ValueError(block)
             return False
         warns = list(self._rule_warns)
+        brp = None
+        if g.get('br01') and not manual:                 # BR-01 (PAPER research): first leg of the SAME risk budget
+            if getattr(self, 'live', True) is not False:
+                self.last_skip = 'BR-01 staged entries are PAPER/testnet only - no entries in live mode'; return False
+            try: brc = BR.validate(g['br01'], sl['key'], g, sl)
+            except ValueError as ex:
+                self.last_skip = f'BR-01 settings refused: {ex}'; return False
+            on = not BR.VARIANTS[brc['variant']].get('range') or BR.range_ok_last(df)
+            d1 = F.size_check(qty * brc['legs'][0], qty * brc['legs'][0], px, r) if on else d
+            if not d1['ok']:
+                self.last_skip = 'BR-01 first leg below Binance minimum (raise capital or risk)'; return False
+            brp = dict(cfg=brc, q_plan=qty, on=on)
+            qty = d1['qty']
         reason = 'manual' if manual else 'signal'
         if not manual and self.S.get('AI_FILTER'):
             if df is None: df = self.candles(sym, sl['tf'])
@@ -4653,6 +4758,7 @@ class Engine:
                     stop_dist=abs(px - stop), atr=atr, g=g, risk_usd=risk_usd, eq=eq, manual=manual, reason=reason, px=px,
                     sg=dict(time=sg.get('time'), close=sg.get('close')))
         if how == 'exposure': plan['lev_exception'] = True     # T03c r1: no adds / market remainder until leverage is within the cap
+        if brp: plan['br'] = brp
         if not manual and self.S.get('ENTRY_ORDER') == 'maker' and how != 'exposure':
             return self._maker_start(plan)
         return self._market_entry(plan)
@@ -4932,6 +5038,11 @@ class Engine:
         if maker_qty > 0: lot['maker_qty'] = maker_qty
         if plan.get('lev_exception'): lot['lev_exception'] = True    # T03c r1: entered while Binance leverage stayed above the cap
         if 'pyramid' in g: lot['next_add'] = fill + sd * g['pyramid']['step_r'] * lot['R']
+        if plan.get('br'):                                # BR-01: leg state, deadline as an ABSOLUTE time (restart-safe)
+            b = plan['br']
+            dl = (now_utc() + timedelta(seconds=b['cfg']['deadline'] * TF_SEC.get(lot['tf'], 900))).isoformat(timespec='seconds')
+            lot['br'] = BR.new_state(b['cfg'], sd, b['q_plan'], qty, fill, stop, atr, dl, on=b['on'])
+            if not b['on']: self._br_journal(lot, dict(kind='off', leg=0, reason='no confirmed range at entry - single entry'))
         if 'dca' in g:
             lot['levels'] = [fill - sd * k * g['dca']['step_atr'] * atr for k in range(1, g['dca']['n'] + 1)]
             lot['w'] = [g['dca']['scale'] ** k for k in range(1, g['dca']['n'] + 1)]
