@@ -123,7 +123,7 @@ def test_happy_path_request_shape(tmp_path):
     assert c['headers'] == {'x-api-key': KEY, 'anthropic-version': '2023-06-01', 'content-type': 'application/json'}
     body = json.loads(c['body'])
     assert body['model'] == sa.DEFAULT_MODEL == 'claude-sonnet-5-5'
-    assert body['max_tokens'] <= 800 and 'UNTRUSTED' in body['system']
+    assert body['max_tokens'] <= 1600 and 'UNTRUSTED' in body['system']
     assert sa.estimate_tokens(body['system']) + sa.estimate_tokens(body['messages'][0]['content']) <= 4000
 
 
@@ -359,7 +359,7 @@ def test_schedule_slots_winter_and_summer():
     assert sa.due_slots(dt.datetime(2026, 11, 1, 22, 14, tzinfo=UTC), []) == []
     assert sa.due_slots(dt.datetime(2026, 11, 1, 22, 15, tzinfo=UTC), []) == ['2026-11-02T00:15']
     assert sa.due_slots(cairo(2026, 11, 2, 12, 15), ['2026-11-02T00:15']) == ['2026-11-02T12:15']
-    assert sa.due_slots(cairo(2026, 11, 2, 12, 14), ['2026-11-02T00:15']) == ['2026-11-02T06:15']
+    assert sa.due_slots(cairo(2026, 11, 2, 12, 14), ['2026-11-02T00:15']) == ['2026-11-02T09:15']
 
 
 def test_egypt_dst_2026_transitions():
@@ -379,7 +379,7 @@ def test_egypt_dst_2026_transitions():
 
 @pytest.mark.parametrize('day', [dt.date(2026, 4, 23), dt.date(2026, 4, 24), dt.date(2026, 4, 25),
                                  dt.date(2026, 10, 29), dt.date(2026, 10, 30), dt.date(2026, 10, 15)])
-def test_at_most_four_times_per_cairo_day(day):
+def test_at_most_eight_times_per_cairo_day(day):
     start = dt.datetime(day.year, day.month, day.day, tzinfo=sa.CAIRO).astimezone(UTC) - dt.timedelta(hours=2)
     runs, fired = [], []
     t = start
@@ -391,19 +391,19 @@ def test_at_most_four_times_per_cairo_day(day):
     per_day = {}
     for s, when in fired:
         per_day.setdefault(when.astimezone(sa.CAIRO).date(), []).append(s)
-    assert all(len(v) <= 4 for v in per_day.values())
+    assert all(len(v) <= 8 for v in per_day.values())
     assert sorted(s for s, _ in fired if s.startswith(day.isoformat())) == [
-        f'{day}T00:15', f'{day}T06:15', f'{day}T12:15', f'{day}T18:15']
+        f'{day}T{h:02d}:15' for h in range(0, 24, 3)]
     if day != dt.date(2026, 4, 24):
         for s, when in fired:
             if s.startswith(day.isoformat()):
                 lt = when.astimezone(sa.CAIRO)
-                assert (lt.hour, lt.minute) in ((0, 15), (6, 15), (12, 15), (18, 15))
+                assert lt.minute == 15 and lt.hour in range(0, 24, 3)
 
 
 def test_backlog_collapses_to_one():
-    assert sa.due_slots(cairo(2026, 10, 15, 18, 0), []) == ['2026-10-15T12:15']
-    assert sa.due_slots(cairo(2026, 10, 15, 18, 0), ['2026-10-15T12:15']) == []
+    assert sa.due_slots(cairo(2026, 10, 15, 18, 0), []) == ['2026-10-15T15:15']
+    assert sa.due_slots(cairo(2026, 10, 15, 18, 0), ['2026-10-15T15:15']) == []
     with pytest.raises(ValueError):
         sa.due_slots(dt.datetime(2026, 10, 15), [])
 

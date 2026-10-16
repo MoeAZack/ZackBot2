@@ -207,6 +207,22 @@ def test_analyst_aggregate_counts_only(app_env, monkeypatch):
     assert 'A|BTCUSDT' not in blob and 'decision_id' not in blob
 
 
+def test_completed_backtest_is_compact_analyst_evidence_without_trade_ledger(app_env, monkeypatch):
+    A, app, e, tmp = app_env
+    data = type(tmp)(e.dir); (data / 'backtests').mkdir(parents=True)
+    result = {
+        'name': 'SCALP holdout', 'stats': {'trades': 321, 'ret': 18.2, 'pf': 1.31, 'maxdd': -7.4, 'win': 54.0},
+        'oos': {'ret_last': 4.3, 'dd_last': -3.1},
+        'feasibility': {'execution_realistic': True, 'promotable': False},
+    }
+    (data / 'backtests' / 'safe.json').write_text(json.dumps(result), encoding='utf-8')
+    raw = A.ml_aggregate(e)
+    assert raw['n_trades'] == 321
+    assert raw['notes'] == ['backtest SCALP holdout: trades=321, ret=18.2%, pf=1.31, maxdd=-7.4%, win=54.0%, '
+                            'oos_ret=4.3%, oos_dd=-3.1%, realistic=True, promotable=False']
+    assert 'request' not in json.dumps(raw)
+
+
 def test_ai_filter_unchanged_by_analyst_settings(app_env):
     A, app, e, _ = app_env
     before = e.S['AI_FILTER']

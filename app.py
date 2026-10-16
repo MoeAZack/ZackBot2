@@ -384,6 +384,12 @@ def run_backtest_job(job_id, req):
         fz['promotable'] = fz['execution_realistic']
         save_json(os.path.join(DATA, 'backtests', f'{job_id}.json'), res)
         job.update(status='done', result=res)
+        # PAPER-only, report-only critique of the newly completed deterministic result.  Failure never changes the
+        # backtest or its status; spend/auth/safety guards remain inside shadow_analyst.
+        try:
+            analyst_backtest_review()
+        except Exception as ex:
+            log.warning(f'backtest analyst review failed ({type(ex).__name__})')
     except Exception as e:
         log.error('backtest failed: ' + traceback.format_exc())
         job.update(status='error', error=str(e))
@@ -599,14 +605,14 @@ def migrate_settings_secrets(cfg, data_dir=None):
 
 # ------------------------------------------------------------------ ML-SHADOW-01: shadow analyst wiring (report only)
 ANALYST_TICK_S = 300
+ANALYST_LOCK = threading.Lock()               # timer, manual action and backtest worker share one persisted analyst state
 
 
 def ml_aggregate(e):
     """Counts-only aggregate of the engine's ML ledgers for shadow_analyst.build_aggregate (no raw rows, ids or prices)."""
     p = e.ml_paths()
-    if not os.path.exists(p['decisions']): return {}
     import ml_shadow as MLS
-    dec = list(MLS.JsonlLedger(p['decisions'], e.ML_MAX_BYTES, e.ML_MAX_FILES).rows())
+    dec = list(MLS.JsonlLedger(p['decisions'], e.ML_MAX_BYTES, e.ML_MAX_FILES).rows()) if os.path.exists(p['decisions']) else []
     lab = list(MLS.JsonlLedger(p['labels'], e.ML_MAX_BYTES, e.ML_MAX_FILES).rows()) if os.path.exists(p['labels']) else []
     taken = {r.get('decision_id'): r for r in dec if r.get('taken')}
     trades = [(taken[l['decision_id']], l) for l in lab if l.get('decision_id') in taken and isinstance(l.get('net_r'), (int, float))]
@@ -640,11 +646,36 @@ def ml_aggregate(e):
         profitable_then_lost=sum(1 for _, l in trades if isinstance(l.get('mfe_r'), (int, float)) and
                                  isinstance(l.get('net_r'), (int, float)) and l['mfe_r'] > 0.5 and l['net_r'] < 0),
     )
-    raw = dict(n_trades=len(trades), performance=performance, counts=counts, skip_reasons=dict(skips.most_common(20)),
+    # Include compact evidence from the newest deterministic runs.  The model sees summary metrics only: no candle rows,
+    # paths, configuration, credentials or identifiers.  This lets extra API budget critique real tests instead of
+    # manufacturing model-only "results".
+    bt_notes, bt_n = [], 0
+    # Bind evidence to this engine instance.  Production uses DATA == e.dir; tests/alternate instances must never ingest
+    # another installation's research files.
+    for f in sorted(glob.glob(os.path.join(e.dir, 'backtests', '*.json')), key=os.path.getmtime, reverse=True):
+        if len(bt_notes) >= 6:
+            break
+        try:
+            r = json.load(open(f, encoding='utf-8'))
+            if r.get('lab') or not isinstance(r.get('stats'), dict):
+                continue
+            st, oo, fz = r['stats'], r.get('oos') or {}, r.get('feasibility') or {}
+            if isinstance(st.get('trades'), int):
+                bt_n = max(bt_n, st['trades'])
+            name = str(r.get('name') or 'backtest')[:32]
+            bt_notes.append(
+                f"backtest {name}: trades={st.get('trades')}, ret={st.get('ret')}%, pf={st.get('pf')}, "
+                f"maxdd={st.get('maxdd')}%, win={st.get('win')}%, oos_ret={oo.get('ret_last')}%, "
+                f"oos_dd={oo.get('dd_last')}%, realistic={bool(fz.get('execution_realistic'))}, "
+                f"promotable={bool(fz.get('promotable'))}"
+            )
+        except (OSError, ValueError, TypeError):
+            continue
+    raw = dict(n_trades=max(len(trades), bt_n), performance=performance, counts=counts, skip_reasons=dict(skips.most_common(20)),
                mfe_mae_coverage=dict(mfe=round(len(mfes) / len(trades), 3), mae=round(len(maes) / len(trades), 3)) if trades else {},
                outcome_diagnostics=diagnostic,
                missingness={k: round(v / len(dec), 3) for k, v in miss.items()} if dec else {},
-               notes=[f'exit {k}: {v}' for k, v in exits.most_common(8)])
+               notes=bt_notes + [f'exit {k}: {v}' for k, v in exits.most_common(max(0, 12 - len(bt_notes)))])
     if times: raw['window'] = dict(start=times[0], end=times[-1])
     return raw
 
@@ -668,9 +699,22 @@ def analyst_tick(app, now=None):
     """Timer body: runs only on a due Cairo slot and only when CLAUDE_SHADOW_ANALYST is on (the analyst checks both)."""
     try:
         if not SA.is_enabled(app.engine.S): return None
-        return _analyst(app).run_scheduled(ml_aggregate(app.engine), now_utc=now or datetime.now(timezone.utc), **_analyst_args(app))
+        with ANALYST_LOCK:
+            return _analyst(app).run_scheduled(ml_aggregate(app.engine), now_utc=now or datetime.now(timezone.utc), **_analyst_args(app))
     except Exception as ex:
         log.warning(f'shadow analyst tick failed ({type(ex).__name__})'); return None
+
+
+def analyst_backtest_review():
+    """Review a just-finished backtest immediately when the running app is confirmed PAPER and the analyst is enabled."""
+    app = globals().get('APP')
+    if not app or not getattr(app, 'engine', None):
+        return None
+    e = app.engine
+    if e.live or not SA.is_enabled(e.S):
+        return None
+    with ANALYST_LOCK:
+        return _analyst(app).analyze_now(ml_aggregate(e), now_utc=datetime.now(timezone.utc), **_analyst_args(app))
 
 
 def analyst_view(app, now=None):
@@ -681,19 +725,21 @@ def analyst_view(app, now=None):
                 mode='LIVE' if e.live else 'PAPER', key_set=bool(app.cfg.get('ANTHROPIC_API_KEY')),
                 workspace_id_set=bool(app.cfg.get('ANTHROPIC_WORKSPACE_ID')), ml_shadow=bool(e.S.get('ML_SHADOW')),
                 ml_health=dict(e.health.get('ml_shadow') or {}), latest=a.latest(now), usage=a.usage(now), budget=a._budget(e.S, now),
-                schedule_cairo=['00:15', '06:15', '12:15', '18:15'])
+                schedule_cairo=[f'{h:02d}:15' for h in range(0, 24, 3)])
 
 
 def analyst_action(app, path, b, now=None):
     e = app.engine
     if path == '/api/analyst/analyze_now':
-        return _analyst(app).analyze_now(ml_aggregate(e), now_utc=now, **_analyst_args(app))
+        with ANALYST_LOCK:
+            return _analyst(app).analyze_now(ml_aggregate(e), now_utc=now, **_analyst_args(app))
     if path == '/api/analyst/auth_self_test':
         if e.live: raise ValueError('the Claude shadow analyst is PAPER only')
         args = _analyst_args(app)
         if not args['api_key']: return dict(status=SA.AUTH_UNAVAILABLE, request_id=None)
         if not SA.valid_workspace_id(args['workspace_id']): return dict(status=SA.AUTH_REJECTED, request_id=None)
-        r = _analyst(app).auth_self_test(args['api_key'], args['workspace_id'], now_utc=now)
+        with ANALYST_LOCK:
+            r = _analyst(app).auth_self_test(args['api_key'], args['workspace_id'], now_utc=now)
         return dict(status=r.get('status'), request_id=r.get('request_id'))
     if path == '/api/analyst/workspace':
         v = b.get('ANTHROPIC_WORKSPACE_ID')
